@@ -10,12 +10,12 @@ import type { OperationRenderContext, PluginInstallContext } from "@fleet-consol
 import { TerminalSurface } from "../shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE } from "../shared/terminal-font.js";
 import { useTerminalPrefs, setInstalledTerminalFont, setTerminalRenderer, setTerminalFont, setTerminalFontSize } from "../shared/terminal-prefs-store.js";
-import type { TerminalFontSettings, TerminalRenderer } from "../shared/types.js";
+import type { TerminalFontId, TerminalFontSettings, TerminalRenderer } from "../shared/types.js";
 import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
 import { ANALYST_ARTIFACTS_COMPANION_ID, AnalystChatPanel } from "./analysis-chat-panel.js";
 import { fetchAnalysisReady } from "./analysis-api.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { getT, useTerminalLocale } from "../i18n/index.js";
+import { getT, useTerminalLocale, type TerminalMessageKey } from "../i18n/index.js";
 import { disposeAnalysisStore, rearmAnalysisArtifacts, useAnalysisStore } from "./analysis-store.js";
 import "./analysis.css";
 
@@ -58,7 +58,12 @@ const AGENT_TICKET_PATH = "/plugins/terminal/agent/ticket";
 const TERMINAL_WS_PATH = "/plugins/terminal/ws";
 const PIN_SLACK_PX = 56;
 const TERMINAL_FONT_PICKER_SIZE_RANGE = { ...TERMINAL_FONT_SIZE_RANGE, step: 1, defaultValue: 14 };
-const TERMINAL_FONT_PREVIEW = "The quick brown fox jumps over 0123456789 — terminal output stays crisp.";
+const FONT_META_KEYS = {
+  cascadia: "terminal.settings.fontMetaCascadia",
+  jetbrains: "terminal.settings.fontMetaJetbrains",
+  "fira-code": "terminal.settings.fontMetaFiraCode",
+  "source-code-pro": "terminal.settings.fontMetaSourceCodePro",
+} as const satisfies Record<TerminalFontId, TerminalMessageKey>;
 const ANALYSIS_READY_POLL_MS = 5_000;
 export const CARRIER_STREAMS_COMPANION_ID = "carrier-streams";
 const ANALYST_CHAT_COMPANION_ID = "session-analyst-chat";
@@ -968,22 +973,43 @@ function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: Ter
     <section className="global-settings-card" aria-label={t("terminal.settings.terminalFont")}>
       <div className="global-settings-row">
         <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">{t("terminal.settings.terminalFont")} <span className="new-badge">New</span></p>
+          <p className="global-settings-resp-title">{t("terminal.settings.terminalFont")} <span className="new-badge">{t("terminal.settings.terminalFontNew")}</span></p>
           <p className="global-settings-help" id="terminal-font-help">{t("terminal.settings.terminalFontHelp")}</p>
         </div>
       </div>
       <div aria-describedby="terminal-font-help">
           <FontPicker
-            builtIns={CURATED_TERMINAL_FONTS.map((font) => ({ id: font.id, label: font.name, family: font.family, aliases: [font.familyName], description: font.meta }))}
+            builtIns={CURATED_TERMINAL_FONTS.map((font) => ({ id: font.id, label: font.name, family: font.family, aliases: [font.familyName], description: t(FONT_META_KEYS[font.id]) }))}
             installedFonts={installedFonts}
             selected={selected}
             selectedSystemFont={terminalFont.source === "custom" ? terminalFont.customName : null}
             fallbackStack={DEFAULT_TERMINAL_FONT.family}
-            previewText={TERMINAL_FONT_PREVIEW}
+            previewText={t("terminal.settings.terminalFontPreview")}
             size={terminalFont.size}
             sizeRange={TERMINAL_FONT_PICKER_SIZE_RANGE}
             loading={isLoadingFonts}
             error={fontLoadFailed ? t("terminal.settings.fontLoadError") : null}
+            labels={{
+              browserAria: t("terminal.settings.fontPicker.browserAria"),
+              searchLabel: t("terminal.settings.fontPicker.searchLabel"),
+              searchPlaceholder: t("terminal.settings.fontPicker.searchPlaceholder"),
+              loading: t("terminal.settings.fontPicker.loading"),
+              choicesAria: t("terminal.settings.fontPicker.choicesAria"),
+              builtInGroup: t("terminal.settings.fontPicker.builtInGroup"),
+              installedGroup: t("terminal.settings.fontPicker.installedGroup"),
+              noMatch: t("terminal.settings.fontPicker.noMatch"),
+              preview: t("terminal.settings.fontPicker.preview"),
+              available: t("terminal.settings.fontPicker.available"),
+              unavailable: t("terminal.settings.fontPicker.unavailable"),
+              fontSizeAria: t("terminal.settings.fontPicker.fontSizeAria"),
+              decreaseSizeAria: t("terminal.settings.fontPicker.decreaseSizeAria"),
+              sizeValueAria: t("terminal.settings.fontPicker.sizeValueAria"),
+              increaseSizeAria: t("terminal.settings.fontPicker.increaseSizeAria"),
+              sizeSliderAria: t("terminal.settings.fontPicker.sizeSliderAria"),
+              monospace: t("terminal.settings.fontPicker.monospace"),
+              systemFont: t("terminal.settings.fontPicker.systemFont"),
+              savedSystemFont: t("terminal.settings.fontPicker.savedSystemFont"),
+            }}
             onSelectionChange={handleSelectionChange}
             onSizeCommit={setTerminalFontSize}
           />

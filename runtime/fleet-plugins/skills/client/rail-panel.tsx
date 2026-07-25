@@ -106,7 +106,7 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
 
   return (
     <div className="skills-root">
-      <div className="skills-tab-bar" role="tablist" aria-label="Skills panels">
+      <div className="skills-tab-bar" role="tablist" aria-label={t("skills.tab.panelsAria")}>
         <button
           type="button"
           role="tab"

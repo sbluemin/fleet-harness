@@ -70,7 +70,7 @@ export function SkillCard({ skill, onReadMore, onUpdate, onRemove, isUpdating, t
           <button
             type="button"
             className="skills-btn skills-btn--ghost"
-            title={`Updates all ${skill.scope} skills`}
+            title={t("skills.action.updateAllTitle", { scope: skill.scope })}
             onClick={() => onUpdate(skill.scope)}
             disabled={isUpdating}
           >
@@ -82,7 +82,11 @@ export function SkillCard({ skill, onReadMore, onUpdate, onRemove, isUpdating, t
             type="button"
             className={`skills-btn skills-btn--remove${removeArmed ? " is-armed" : ""}`}
             onClick={handleRemoveClick}
-            aria-label={removeArmed ? `Confirm remove ${skill.name}` : `Remove ${skill.name}`}
+            aria-label={
+              removeArmed
+                ? t("skills.action.removeConfirmAria", { name: skill.name })
+                : t("skills.action.removeAria", { name: skill.name })
+            }
           >
             {removeArmed ? t("skills.action.removeConfirm") : "✕"}
           </button>

@@ -156,7 +156,7 @@ export function ReadingOverlay({
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label={`${skill.name} SKILL.md`}
+        aria-label={t("skills.overlay.skillMdAria", { name: skill.name })}
         className="skills-overlay-dialog"
         onClick={(e) => e.stopPropagation()}
       >

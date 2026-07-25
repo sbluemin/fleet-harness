@@ -162,7 +162,7 @@ export function FindTab({ theaterId, onReadMore, onInstallSuccess, t }: FindTabP
           placeholder={t("skills.filter.searchPlaceholder")}
           value={searchQuery}
           onChange={(e) => handleQueryChange(e.target.value)}
-          aria-label="Search skills registry"
+          aria-label={t("skills.filter.searchAria")}
         />
 
         {searchLoading && <div className="skills-empty-state">{t("skills.empty.searching")}</div>}

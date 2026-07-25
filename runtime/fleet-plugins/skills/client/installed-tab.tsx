@@ -121,7 +121,7 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
             className={`skills-scope-btn${visibleScope === "project" ? " is-active" : ""}`}
             onClick={() => setScope("project")}
             disabled={!theaterId}
-            title={!theaterId ? "Select a Theater to view project skills" : undefined}
+            title={!theaterId ? t("skills.scope.viewProjectTitle") : undefined}
           >
             {t("skills.scope.project")}
           </button>
@@ -140,7 +140,7 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
           placeholder={t("skills.filter.installedPlaceholder")}
           value={filterText}
           onChange={(e) => setFilterText(e.target.value)}
-          aria-label="Filter installed skills"
+          aria-label={t("skills.filter.installedAria")}
         />
 
         {installedLoading && <div className="skills-empty-state">{t("skills.empty.loading")}</div>}

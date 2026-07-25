@@ -381,6 +381,27 @@ function TypographyCard({
         loading={fontsLoading}
         error={fontsError}
         disabled={!state || saving}
+        labels={{
+          browserAria: t("settings.typography.picker.browserAria"),
+          searchLabel: t("settings.typography.picker.searchLabel"),
+          searchPlaceholder: t("settings.typography.picker.searchPlaceholder"),
+          loading: t("settings.typography.picker.loading"),
+          choicesAria: t("settings.typography.picker.choicesAria"),
+          builtInGroup: t("settings.typography.picker.builtInGroup"),
+          installedGroup: t("settings.typography.picker.installedGroup"),
+          noMatch: t("settings.typography.picker.noMatch"),
+          preview: t("settings.typography.picker.preview"),
+          available: t("settings.typography.picker.available"),
+          unavailable: t("settings.typography.picker.unavailable"),
+          fontSizeAria: t("settings.typography.picker.fontSizeAria"),
+          decreaseSizeAria: t("settings.typography.picker.decreaseSizeAria"),
+          sizeValueAria: t("settings.typography.picker.sizeValueAria"),
+          increaseSizeAria: t("settings.typography.picker.increaseSizeAria"),
+          sizeSliderAria: t("settings.typography.picker.sizeSliderAria"),
+          monospace: t("settings.typography.picker.monospace"),
+          systemFont: t("settings.typography.picker.systemFont"),
+          savedSystemFont: t("settings.typography.picker.savedSystemFont"),
+        }}
         onSelectionChange={selectUiFont}
         onSizeCommit={(size) => saveUiFont({ ...activeUiFont, size })}
       />
