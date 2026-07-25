@@ -14,10 +14,10 @@ import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
-import { getSideBarStatusAxis, getSideBarStatusSectionCollapsed, getStatusTransitionTick, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
+import { toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
-import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, removeTheater, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder, statusCycleOperationIds } from "../store.js";
+import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, removeTheater, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
@@ -59,7 +59,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     void fetchOperationCatalog().then(setCatalog).catch(() => {});
   }, [state.activeTheaterId]);
 
-  // Alt+←/→는 SideBar 가시 순서로 포커스를 순환하고, Alt+F/Alt+S는 같은 capture/editable 가드 정책을 공유한다.
+  // Alt+←/→는 캔버스 배치 순서(그룹 order → 그룹 내 operationOrder → ungrouped)로 포커스를 순환하고, Alt+F/Alt+S는 같은 capture/editable 가드 정책을 공유한다.
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (!shouldHandleOperationsKeyboardShortcut()) return;
@@ -84,24 +84,15 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       const snapshot = stateRef.current;
       const canvas = getCanvasSnapshot();
       const theaterOperations = snapshot.operations.filter((operation) => operation.theaterId === snapshot.activeTheaterId);
-      // STATUS 축에서는 사이드바 가시 순서가 상태 섹션 순서이므로 순환도 같은 순서를 따른다.
-      const order = getSideBarStatusAxis()
-        ? statusCycleOperationIds(
-            theaterOperations,
-            canvas.operationOrder,
-            snapshot.operationStatus,
-            canvas.minimized,
-            (status) => snapshot.activeTheaterId !== null
-              && getSideBarStatusSectionCollapsed(snapshot.activeTheaterId, status, false),
-            getStatusTransitionTick,
-          )
-        : focusCycleOperationIds(
-            theaterOperations,
-            snapshot.groups.filter((g) => g.theaterId === snapshot.activeTheaterId),
-            canvas.operationOrder,
-            canvas.collapsedGroups,
-            canvas.minimized,
-          );
+      // 사이드바 'Sort by status'(statusAxis)는 순환 순서에 관여하지 않는다. 캔버스 패널 배치는 그룹/order
+      // 순서 그대로이므로 상태 랭크로 순환하면 포커스가 화면 배치와 어긋나 튄다(PR#361 계약 되돌림).
+      const order = focusCycleOperationIds(
+        theaterOperations,
+        snapshot.groups.filter((g) => g.theaterId === snapshot.activeTheaterId),
+        canvas.operationOrder,
+        canvas.collapsedGroups,
+        canvas.minimized,
+      );
       event.preventDefault();
       event.stopImmediatePropagation();
       if (order.length === 0) return;
