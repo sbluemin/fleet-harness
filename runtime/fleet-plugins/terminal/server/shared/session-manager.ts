@@ -38,7 +38,7 @@ interface TerminalSession {
   // theater-shell(캔버스 순정 셸) 전용: 소켓 단절 후 PTY 정리까지의 grace 타이머. 재연결 시 취소된다.
   graceTimer: ReturnType<typeof setTimeout> | null;
   terminalQueryResidual: string;
-  // 인메모리 유후 추적(서버 monotonic). attach / PTY 출력 / binary 입력에서만 갱신.
+  // 인메모리 유후 추적(서버 monotonic). 생성 시 시드되고 attach / PTY 출력 / binary 입력 / 서버 주입 write에서 갱신.
   lastActivityAt: number | undefined;
 }
 
@@ -217,7 +217,8 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       rows: DEFAULT_ROWS,
       graceTimer: null,
       terminalQueryResidual: "",
-      lastActivityAt: undefined,
+      // 생성 시각으로 시드한다 — 조용한 PTY가 attach 전에 고아가 되어도 sweeper가 유후 판정할 수 있게 한다.
+      lastActivityAt: now(),
     };
     try {
       const dataDisposable = pty.onData((data) => handlePtyData(session, data));
