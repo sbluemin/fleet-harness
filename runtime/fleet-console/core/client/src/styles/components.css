@@ -1736,7 +1736,8 @@
 
 .canvas-context-menu {
   width: 288px;
-  max-height: 520px;
+  /* 상한은 뷰포트 높이에서 산출된 geometry 변수가 소유한다 — 짧은 화면에서도 메뉴가 잘리지 않는다. */
+  max-height: var(--canvas-menu-max-height, 520px);
   overflow-y: auto;
 }
 

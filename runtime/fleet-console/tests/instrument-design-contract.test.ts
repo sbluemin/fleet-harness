@@ -86,6 +86,8 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--ws-tree-width",
   // Terminal Carriers TSX injects the selected captain identity tone.
   "--cap-color",
+  // Canvas context menu TSX injects the viewport-derived height ceiling for its own box.
+  "--canvas-menu-max-height",
 ]);
 
 function source(path: string): string {

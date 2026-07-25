@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 
 interface CanvasContextMenuProps {
@@ -17,6 +17,7 @@ interface CanvasContextMenuProps {
 
 const MENU_WIDTH = 288;
 const MENU_MAX_HEIGHT = 520;
+const MENU_MIN_HEIGHT = 120;
 const MENU_MARGIN = 12;
 const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
 
@@ -26,6 +27,26 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [promptTarget, setPromptTarget] = useState<{ readonly pluginId: string; readonly kind: OperationLaunchKind } | null>(null);
   const [initialPrompt, setInitialPrompt] = useState("");
+  const [menuSize, setMenuSize] = useState<{ readonly width: number; readonly height: number } | null>(null);
+
+  // 배치 판정은 CSS의 max-height 상한이 아니라 실제 렌더 높이로 해야 한다 —
+  // 상한(520px)으로 clamp하면 짧은 메뉴가 커서에서 수백 px 떨어진 곳에 열린다.
+  useLayoutEffect(() => {
+    const element = menuRef.current;
+    if (!element) return;
+    const measure = () => {
+      const rect = element.getBoundingClientRect();
+      setMenuSize((previous) =>
+        previous && Math.abs(previous.width - rect.width) < 0.5 && Math.abs(previous.height - rect.height) < 0.5
+          ? previous
+          : { width: rect.width, height: rect.height });
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const handlePointer = (event: MouseEvent) => {
@@ -65,7 +86,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     <div
       className={`operation-launch-control operation-launch-control--canvas ${placement === "above" ? "operation-launch-control--up" : ""}`}
       ref={containerRef}
-      style={clampedAnchorStyle(anchor, viewportBounds, placement)}
+      style={clampedAnchorStyle(anchor, viewportBounds, placement, menuSize)}
       data-canvas-blocker
     >
       <div className="operation-launch-menu theater-menu canvas-context-menu" role="dialog" aria-label="Canvas controls" tabIndex={-1} ref={menuRef}>
@@ -172,14 +193,27 @@ function clampedAnchorStyle(
   anchor: { readonly x: number; readonly y: number },
   bounds: { readonly width: number; readonly height: number } | undefined,
   placement: "above" | "cursor",
-): { readonly left: number; readonly top?: number; readonly bottom?: number } {
-  const left = bounds ? Math.max(MENU_MARGIN, Math.min(anchor.x, bounds.width - MENU_WIDTH - MENU_MARGIN)) : anchor.x;
+  size: { readonly width: number; readonly height: number } | null,
+): CSSProperties {
+  // 상한도 뷰포트에서 산출한다 — 520px보다 낮은 화면에서 메뉴가 잘려 나가지 않게.
+  const maxHeight = bounds
+    ? Math.max(MENU_MIN_HEIGHT, Math.min(MENU_MAX_HEIGHT, bounds.height - MENU_MARGIN * 2))
+    : MENU_MAX_HEIGHT;
+  const base = { "--canvas-menu-max-height": `${maxHeight}px` };
+  const width = size?.width ?? MENU_WIDTH;
+  // 측정 전 첫 렌더는 높이 0으로 두어 커서 좌표를 그대로 쓴다 —
+  // useLayoutEffect 측정이 페인트 전에 반영되므로 위치가 튀지 않는다.
+  const height = size?.height ?? 0;
+  const left = bounds ? Math.max(MENU_MARGIN, Math.min(anchor.x, bounds.width - width - MENU_MARGIN)) : anchor.x;
   if (placement === "above") {
-    // anchor.y = 캔버스 하단에서 메뉴 바닥까지의 거리. 메뉴는 위로 자라며 max-height로 화면 안에 가둔다.
-    return { left, bottom: Math.max(MENU_MARGIN, anchor.y) };
+    // anchor.y = 캔버스 하단에서 메뉴 바닥까지의 거리. 메뉴는 위로 자란다.
+    return { ...base, left, bottom: Math.max(MENU_MARGIN, anchor.y) } as CSSProperties;
   }
-  const top = bounds ? Math.max(MENU_MARGIN, Math.min(anchor.y, bounds.height - MENU_MAX_HEIGHT - MENU_MARGIN)) : anchor.y;
-  return { left, top };
+  if (!bounds) return { ...base, left, top: anchor.y } as CSSProperties;
+  // 커서 아래에 자리가 없으면 커서를 메뉴 바닥으로 삼아 위로 펼친다(네이티브 컨텍스트 메뉴 문법).
+  const preferred = anchor.y + height + MENU_MARGIN <= bounds.height ? anchor.y : anchor.y - height;
+  const top = Math.max(MENU_MARGIN, Math.min(preferred, bounds.height - height - MENU_MARGIN));
+  return { ...base, left, top } as CSSProperties;
 }
 
 // 플러그인이 아이콘을 등록하지 않았을 때의 일반 폴백 마크 — 특정 플러그인 지식이 아니다.
