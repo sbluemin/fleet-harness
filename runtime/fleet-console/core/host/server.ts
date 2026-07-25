@@ -1387,7 +1387,6 @@ function sanitizeLaunchKind(value: unknown): OperationLaunchKind | null {
     id: value.id,
     type: value.type,
     title: value.title,
-    ...(typeof value.supportsInitialPrompt === "boolean" ? { supportsInitialPrompt: value.supportsInitialPrompt } : {}),
     ...(typeof value.disabled === "boolean" ? { disabled: value.disabled } : {}),
     ...(typeof value.disabledReason === "string" ? { disabledReason: value.disabledReason } : {}),
   };
