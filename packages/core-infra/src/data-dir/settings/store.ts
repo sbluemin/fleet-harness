@@ -58,17 +58,26 @@ export function sanitizeGlobalOptionsData(value: unknown): GlobalOptionsValidati
   }
 
   const kimiModel = sanitizeKimiModel(value.kimiModel);
+  const agentIdleDormantMinutes = sanitizeAgentIdleDormantMinutes(value.agentIdleDormantMinutes);
   const data: GlobalOptionsData = {
     version: GLOBAL_OPTIONS_VERSION,
     ...(typeof value.enableMetaphor === "boolean" ? { enableMetaphor: value.enableMetaphor } : {}),
     ...(kimiModel ? { kimiModel } : {}),
+    ...(agentIdleDormantMinutes !== undefined ? { agentIdleDormantMinutes } : {}),
   };
-  const allowedKeys = new Set(["version", "enableMetaphor", "kimiModel"]);
+  const allowedKeys = new Set(["version", "enableMetaphor", "kimiModel", "agentIdleDormantMinutes"]);
   const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
     ("enableMetaphor" in value && typeof value.enableMetaphor !== "boolean") ||
-    ("kimiModel" in value && kimiModel === undefined);
+    ("kimiModel" in value && kimiModel === undefined) ||
+    ("agentIdleDormantMinutes" in value && agentIdleDormantMinutes === undefined);
 
   return { data, changed };
+}
+
+function sanitizeAgentIdleDormantMinutes(value: unknown): number | null | undefined {
+  if (value === null) return null;
+  if (typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value > 0) return value;
+  return undefined;
 }
 
 function sanitizeKimiModel(

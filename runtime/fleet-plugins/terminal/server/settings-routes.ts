@@ -12,15 +12,20 @@ interface TerminalSettingsRouteDeps {
 interface TerminalSettingsBody {
   readonly enableMetaphor?: unknown;
   readonly kimiModel?: unknown;
+  readonly agentIdleDormantMinutes?: unknown;
 }
 
 type TerminalSettingsUpdate =
   | { readonly enableMetaphor: boolean }
-  | { readonly kimiModel: { readonly model: string; readonly effort?: string } };
+  | { readonly kimiModel: { readonly model: string; readonly effort?: string } }
+  | { readonly agentIdleDormantMinutes: number | null };
+
+export const DEFAULT_AGENT_IDLE_DORMANT_MINUTES = 60;
 
 export interface TerminalSettingsState {
   readonly enableMetaphor: boolean;
   readonly kimiModel: { readonly model: string; readonly effort?: string } | null;
+  readonly agentIdleDormantMinutes: number | null;
 }
 
 export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, deps: TerminalSettingsRouteDeps): void {
@@ -60,7 +65,16 @@ export function toTerminalSettingsState(data: GlobalOptionsData): TerminalSettin
   return {
     enableMetaphor: data.enableMetaphor ?? false,
     kimiModel: data.kimiModel ?? null,
+    agentIdleDormantMinutes: data.agentIdleDormantMinutes === undefined
+      ? DEFAULT_AGENT_IDLE_DORMANT_MINUTES
+      : data.agentIdleDormantMinutes,
   };
+}
+
+export function resolveAgentIdleDormantMinutes(data: GlobalOptionsData): number | null {
+  return data.agentIdleDormantMinutes === undefined
+    ? DEFAULT_AGENT_IDLE_DORMANT_MINUTES
+    : data.agentIdleDormantMinutes;
 }
 
 function isTerminalSettingsBody(value: unknown): value is TerminalSettingsUpdate {
@@ -70,7 +84,13 @@ function isTerminalSettingsBody(value: unknown): value is TerminalSettingsUpdate
   if (keys.length !== 1) return false;
   const body = value as TerminalSettingsBody;
   if (keys[0] === "enableMetaphor") return typeof body.enableMetaphor === "boolean";
+  if (keys[0] === "agentIdleDormantMinutes") return isAgentIdleDormantMinutes(body.agentIdleDormantMinutes);
   return keys[0] === "kimiModel" && isKimiModelSetting(body.kimiModel);
+}
+
+function isAgentIdleDormantMinutes(value: unknown): value is number | null {
+  if (value === null) return true;
+  return typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value > 0;
 }
 
 // Kimi 프로바이더 기본 모델 설정 검증: 모델은 레지스트리 ID여야 하고,

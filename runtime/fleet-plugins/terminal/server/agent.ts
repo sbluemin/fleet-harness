@@ -24,6 +24,7 @@ import { createConsoleObservabilityStore } from "./agent-api/observability-store
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./agent-api/osc-agent-activity.js";
 import { writeAggregateObserverEvents } from "./agent-api/observability-routes.js";
 import type { AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
+import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown };
 type HookTurnBody = { readonly phase?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
@@ -193,6 +194,17 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   });
   backfillAgentOperationLaunchKinds();
   rehydrateDormantAgentOperations();
+  startIdleAgentDormantSweeper({
+    loadGlobalOptions: () => deps.globalOptionsService.load(),
+    listTerminalSessions: () => observability.listTerminalSessions(),
+    getSessionLastActivityAt: (sessionId) => terminalRuntime.getSessionLastActivityAt(sessionId),
+    hasProviderSessionCapture: (sessionId) => (
+      readProviderSessionCapture(sessionId, { capturesDir: ctx.host.paths.capturesDir }) !== null
+      || readProviderSession(ctx.host.operations.get(sessionId)?.payload) !== undefined
+    ),
+    terminate: (sessionId) => terminalRuntime.terminate(sessionId),
+    registerCleanup: (cleanup) => ctx.host.lifecycle.registerCleanup(cleanup),
+  });
 
   async function handle({ req, res, pathname }: Parameters<FleetPluginServerContext["registerRouter"]>[1] extends (arg: infer T) => unknown ? T : never): Promise<boolean> {
     const path = pathname.slice(`${ctx.basePath}/agent`.length) || "/";
@@ -251,6 +263,12 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       const operation = ctx.host.operations.get(body.operationId);
       if (!operation) {
         ctx.host.http.writeJson(res, 404, { error: "terminal_session_not_found" });
+        return true;
+      }
+      // dormant 세션은 ticket 발급을 거부한다 — stale 클라이언트가 PTY를 재생성하지 못하게 한다.
+      // resume은 /resume이 status를 dormant에서 뺀 뒤에야 TerminalSurface가 ticket을 요청한다.
+      if (observability.getTerminalSessionInfo(operation.id)?.status === "dormant") {
+        ctx.host.http.writeJson(res, 409, { error: "operation_dormant" });
         return true;
       }
       const cwd = readPayloadString(operation.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(operation.theaterId);
@@ -561,6 +579,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       observability.updateTerminalSessionProviderSession(operationId, providerSession);
       const dormant = observability.transitionTerminalSessionToDormant(operationId, providerSession);
       if (dormant) {
+        // 전이 전 발급된 미소비 ticket이 WS consume으로 PTY를 되살리지 못하도록 폐기한다.
+        terminalRuntime.invalidateTicketsForSession(operationId);
         observability.notifySessionUpdated(dormant);
         const exitCwd = readPayloadString(ctx.host.operations.get(operationId)?.payload ?? {}, "cwd") ?? "";
         ctx.host.operations.patch(operationId, { payload: toOperationPayload(ctx.host.operations.get(operationId)?.payload, exitCwd, dormant, providerSession, observability.getDurableOperation(operationId)?.providerTitle) });

@@ -380,9 +380,32 @@ describe("agent activity observability state", () => {
       sessionId: "provider-session",
       capturedAt: "2026-07-25T00:00:00.000Z",
     });
-    expect(dormant).toMatchObject({ status: "dormant" });
+    expect(dormant).toMatchObject({ status: "dormant", attentionPending: true });
     expect(dormant).not.toHaveProperty("modelActivity");
-    expect(dormant).not.toHaveProperty("attentionPending");
+  });
+
+  it("preserves attentionPending across transitionTerminalSessionToDormant", () => {
+    const store = createStore();
+    store.setTerminalSessionModelActivity("session-a", "not-working");
+    store.notifySessionAttention(store.getTerminalSessionInfo("session-a")!, "permission_prompt");
+    expect(store.getTerminalSessionInfo("session-a")).toMatchObject({ attentionPending: true });
+
+    const dormant = store.transitionTerminalSessionToDormant("session-a", {
+      provider: "claude",
+      sessionId: "provider-session",
+      capturedAt: "2026-07-25T00:00:00.000Z",
+    });
+    expect(dormant).toMatchObject({ status: "dormant", attentionPending: true });
+    expect(store.getTerminalSessionInfo("session-a")).toMatchObject({ attentionPending: true });
+  });
+
+  it("still clears attentionPending when updateTerminalSessionStatus sets dormant", () => {
+    const store = createStore();
+    store.setTerminalSessionModelActivity("session-a", "not-working");
+    store.notifySessionAttention(store.getTerminalSessionInfo("session-a")!, "permission_prompt");
+    const rolledBack = store.updateTerminalSessionStatus("session-a", "dormant");
+    expect(rolledBack).toMatchObject({ status: "dormant" });
+    expect(rolledBack).not.toHaveProperty("attentionPending");
   });
 
   it("emits exactly one update when repeated working clears late attention", () => {
