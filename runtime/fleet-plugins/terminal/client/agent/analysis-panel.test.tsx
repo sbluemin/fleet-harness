@@ -53,12 +53,12 @@ describe("Session Analyst contract", () => {
   it("registers Carrier Streams first and keeps both Analyst panels hidden by default", () => {
     const source = readFileSync(new URL("./index.tsx", import.meta.url), "utf8");
     const chat = readFileSync(new URL("./analysis-chat-panel.tsx", import.meta.url), "utf8");
-    expect(source).toContain('{ id: CARRIER_STREAMS_COMPANION_ID, title: "Carrier Streams", hideCaption: true');
+    expect(source).toContain('{ id: CARRIER_STREAMS_COMPANION_ID, title: "Carrier Streams", hideCaption: true, defaultHidden: true');
     expect(source).toContain('{ id: ANALYST_CHAT_COMPANION_ID, title: "Session Analyst", hideCaption: true, defaultHidden: true');
     expect(source).toContain('{ id: ANALYST_ARTIFACTS_COMPANION_ID, title: "Artifacts", hideCaption: true, defaultHidden: true');
     expect(chat).toContain('export const ANALYST_ARTIFACTS_COMPANION_ID = "session-analyst-artifacts";');
     expect(source.match(/hideCaption: true/g)).toHaveLength(3);
-    expect(source.match(/defaultHidden: true/g)).toHaveLength(2);
+    expect(source.match(/defaultHidden: true/g)).toHaveLength(3);
     expect(source).toContain("toggleCompanionPanel(context, ANALYST_CHAT_COMPANION_ID)");
     expect(source).toContain("toggleCompanionPanel(context, CARRIER_STREAMS_COMPANION_ID)");
     expect(source).toContain("previousCompanionsOpenRef");

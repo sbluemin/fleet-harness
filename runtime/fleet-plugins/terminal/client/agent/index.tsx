@@ -14,7 +14,7 @@ import type { TerminalFontSettings, TerminalRenderer } from "../shared/types.js"
 import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
 import { ANALYST_ARTIFACTS_COMPANION_ID, AnalystChatPanel } from "./analysis-chat-panel.js";
 import { fetchAnalysisReady } from "./analysis-api.js";
-import { analysisCopy } from "./analysis-i18n.js";
+import { analysisCopy, type AnalysisLanguage } from "./analysis-i18n.js";
 import { disposeAnalysisStore, rearmAnalysisArtifacts, useAnalysisStore } from "./analysis-store.js";
 import "./analysis.css";
 
@@ -70,8 +70,13 @@ const ANALYSIS_READY_POLL_MS = 5_000;
 export const CARRIER_STREAMS_COMPANION_ID = "carrier-streams";
 const ANALYST_CHAT_COMPANION_ID = "session-analyst-chat";
 const AGENT_COMPANION_IDS = [CARRIER_STREAMS_COMPANION_ID, ANALYST_CHAT_COMPANION_ID, ANALYST_ARTIFACTS_COMPANION_ID] as const;
-const streamsAutoOpenedOperationIds = new Set<string>();
 type AnalysisReadiness = "unknown" | "ready" | "not-ready";
+
+const TRACK_PHASE_COPY_KEYS = {
+  live: "LIVE",
+  done: "DONE",
+  error: "ERROR",
+} as const;
 
 export const agentOperationKind = defineOperationKind({
   pluginId: "terminal",
@@ -81,7 +86,7 @@ export const agentOperationKind = defineOperationKind({
   render: (context) => <AgentOperationView context={context} />,
   canOpenCompanions: () => true,
   companions: [
-    { id: CARRIER_STREAMS_COMPANION_ID, title: "Carrier Streams", hideCaption: true, render: (context) => <CarrierStreamsPanel context={context} /> },
+    { id: CARRIER_STREAMS_COMPANION_ID, title: "Carrier Streams", hideCaption: true, defaultHidden: true, render: (context) => <CarrierStreamsPanel context={context} /> },
     { id: ANALYST_CHAT_COMPANION_ID, title: "Session Analyst", hideCaption: true, defaultHidden: true, render: (context) => <AnalystChatPanel context={context} /> },
     { id: ANALYST_ARTIFACTS_COMPANION_ID, title: "Artifacts", hideCaption: true, defaultHidden: true, render: (context) => <AnalystArtifactsPanel context={context} /> },
   ],
@@ -130,7 +135,6 @@ export const agentPlugin = definePlugin({
     } finally {
       disposeAnalysisStore(operationId);
       removeSession(operationId);
-      streamsAutoOpenedOperationIds.delete(operationId);
     }
   },
   resumeOperation: async (operationId) => {
@@ -344,7 +348,7 @@ function CarrierStreamsHandle({ context, live }: { readonly context: OperationRe
     >
       {live ? <span className="session-analyst-handle__live" aria-hidden="true" /> : null}
       <span className="session-analyst-handle__chev" aria-hidden="true">{open ? "«" : "»"}</span>
-      <span className="session-analyst-handle__label">{open ? "EXIT" : "STREAMS"}</span>
+      <span className="session-analyst-handle__label">{analysisCopy(language, open ? "EXIT" : "STREAMS")}</span>
     </button>
   );
 }
@@ -356,10 +360,6 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   const { state: analysisState } = useAnalysisStore(context);
   const jobs = sessionJobs(session);
   const liveTrackCount = countLiveTracks(jobs);
-  const previousLiveTrackRef = React.useRef({
-    operationId: context.operationId,
-    count: liveTrackCount,
-  });
   // 초기값 true: 닫힘 상태로 마운트해도 첫 effect가 re-arm한다(force-drop과 동시 언마운트로
   // EXIT 전이를 관찰하지 못한 경우 복구). Theater 복귀는 companionsOpen=true 마운트라 disarm이 보존된다.
   const previousCompanionsOpenRef = React.useRef(true);
@@ -376,23 +376,6 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     context.onSetCompanionPanelVisible(ANALYST_CHAT_COMPANION_ID, false);
     context.onSetCompanionPanelVisible(ANALYST_ARTIFACTS_COMPANION_ID, false);
   }, [analysisReadiness, context.onSetCompanionPanelVisible]);
-
-  React.useEffect(() => {
-    const previous = previousLiveTrackRef.current;
-    if (previous.operationId !== context.operationId) {
-      previousLiveTrackRef.current = { operationId: context.operationId, count: liveTrackCount };
-      return;
-    }
-    previousLiveTrackRef.current = { operationId: context.operationId, count: liveTrackCount };
-    if (
-      streamsAutoOpenedOperationIds.has(context.operationId)
-      || previous.count !== 0
-      || liveTrackCount === 0
-    ) return;
-    streamsAutoOpenedOperationIds.add(context.operationId);
-    if (!context.companionsOpen) context.onRequestCompanions?.(true);
-    context.onSetCompanionPanelVisible?.(CARRIER_STREAMS_COMPANION_ID, true);
-  }, [context.companionsOpen, context.onRequestCompanions, context.onSetCompanionPanelVisible, context.operationId, liveTrackCount]);
 
   const handles = (
     <div className="session-analyst-handle-stack">
@@ -431,6 +414,7 @@ function CarrierStreamsPanel({ context }: { readonly context: OperationRenderCon
   const state = useAgentState();
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
   const jobs = sessionJobs(session);
+  const language = context.language ?? "en";
   const [expandedCompletedTrackIds, setExpandedCompletedTrackIds] = React.useState<readonly string[]>([]);
   // 스토어는 종결 잡을 세션 내내 보존한다 — 완료 트랙은 시한부 잔존이 아니라
   // 접힌 스트립으로 세션 끝까지 남아 클릭 전개(보존 기록 열람)를 보장한다.
@@ -444,15 +428,17 @@ function CarrierStreamsPanel({ context }: { readonly context: OperationRenderCon
     <section className="carrier-streams" aria-label="Carrier Streams">
       <header className="session-analyst__panel-head carrier-streams__panel-head">
         <span className="session-analyst__panel-mark" aria-hidden="true">✳</span>
-        <span className="session-analyst__panel-copy"><strong>Carrier Streams</strong><small>This operation · live carrier output</small></span>
+        <span className="session-analyst__panel-copy"><strong>Carrier Streams</strong><small>{analysisCopy(language, "This operation · live carrier output")}</small></span>
         <span className={`carrier-streams__state${liveTrackCount > 0 ? " is-live" : ""}`}>
-          <i aria-hidden="true" />{liveTrackCount > 0 ? `${liveTrackCount} LIVE` : "IDLE"}
+          <i aria-hidden="true" />{liveTrackCount > 0
+            ? `${liveTrackCount} ${analysisCopy(language, "LIVE")}`
+            : analysisCopy(language, "IDLE")}
         </span>
       </header>
       {tracks.length === 0 ? (
         <div className="carrier-streams__empty">
-          <strong>No carriers streaming.</strong>
-          <span>The next dispatch from this operation appears here the moment it begins.</span>
+          <strong>{analysisCopy(language, "No carriers streaming.")}</strong>
+          <span>{analysisCopy(language, "The next dispatch from this operation appears here the moment it begins.")}</span>
         </div>
       ) : (
         <div className="carrier-streams__board">
@@ -465,6 +451,7 @@ function CarrierStreamsPanel({ context }: { readonly context: OperationRenderCon
                 key={trackKey}
                 job={job}
                 track={track}
+                language={language}
                 expanded={expanded}
                 onToggleCompleted={() => {
                   setExpandedCompletedTrackIds((current) => expanded
@@ -483,11 +470,13 @@ function CarrierStreamsPanel({ context }: { readonly context: OperationRenderCon
 function CarrierStreamColumn({
   job,
   track,
+  language,
   expanded,
   onToggleCompleted,
 }: {
   readonly job: JobView;
   readonly track: TrackView;
+  readonly language: AnalysisLanguage;
   readonly expanded: boolean;
   readonly onToggleCompleted: () => void;
 }) {
@@ -503,6 +492,7 @@ function CarrierStreamColumn({
   // 잡 레벨 오류/요약 폴백은 이 트랙의 phase가 error일 때만 — 혼합 결과 잡에서
   // 성공 트랙 컬럼이 잡 실패 문구를 떠안는 오표기를 막는다(트랙 자체 오류는 항상 표시).
   const error = track.error ?? (phase.tone === "error" ? job.error ?? job.summary : undefined);
+  const phaseLabel = analysisCopy(language, TRACK_PHASE_COPY_KEYS[phase.tone]);
 
   if (completed && !expanded) {
     return (
@@ -510,12 +500,12 @@ function CarrierStreamColumn({
         type="button"
         className="carrier-stream-column carrier-stream-column--collapsed"
         data-captain={captain}
-        aria-label={`Expand completed stream for ${track.displayName}`}
+        aria-label={`${analysisCopy(language, "Expand completed stream")} · ${track.displayName}`}
         onClick={onToggleCompleted}
       >
         {captain ? <span className="carrier-stream-column__captain-dot" data-captain={captain} aria-hidden="true" /> : null}
         <strong>{track.displayName}</strong>
-        <span className="carrier-stream-column__phase" data-tone="done">DONE</span>
+        <span className="carrier-stream-column__phase" data-tone="done">{analysisCopy(language, "DONE")}</span>
         <time>{elapsed}</time>
       </button>
     );
@@ -527,15 +517,15 @@ function CarrierStreamColumn({
       <header className="carrier-stream-column__head">
         {captain ? <span className="carrier-stream-column__captain-dot" data-captain={captain} aria-hidden="true" /> : null}
         <strong title={track.displayName}>{track.displayName}</strong>
-        <span className="carrier-stream-column__phase" data-tone={phase.tone}>{phase.tone.toUpperCase()}</span>
+        <span className="carrier-stream-column__phase" data-tone={phase.tone}>{phaseLabel}</span>
         <time>{elapsed}</time>
-        {completed ? <button type="button" aria-label={`Collapse completed stream for ${track.displayName}`} onClick={onToggleCompleted}>‹</button> : null}
+        {completed ? <button type="button" aria-label={`${analysisCopy(language, "Collapse completed stream")} · ${track.displayName}`} onClick={onToggleCompleted}>‹</button> : null}
       </header>
       <div ref={scroll.containerRef} className="carrier-stream-column__body" tabIndex={0}>
         <div ref={scroll.contentRef} className="carrier-stream-column__content">
           {request ? <div className="carrier-stream-column__request">{request}</div> : null}
           {track.tools.length > 0 || reasoning ? (
-            <div className="carrier-stream-column__activity" data-tone={phase.tone} aria-label={`Activity for ${track.displayName}`}>
+            <div className="carrier-stream-column__activity" data-tone={phase.tone} aria-label={`${analysisCopy(language, "Activity")} · ${track.displayName}`}>
               {phase.tone === "live" ? <span className="carrier-stream-column__activity-scan" aria-hidden="true" /> : null}
               <div className="carrier-stream-column__activity-list" role="list">
                 {track.tools.map((tool) => {
@@ -552,7 +542,7 @@ function CarrierStreamColumn({
                 {reasoning ? (
                   <div className="carrier-stream-column__activity-row" data-tone="live" role="listitem" aria-live="polite">
                     <i aria-hidden="true" />
-                    <strong>Reasoning…</strong>
+                    <strong>{analysisCopy(language, "Reasoning…")}</strong>
                   </div>
                 ) : null}
               </div>
