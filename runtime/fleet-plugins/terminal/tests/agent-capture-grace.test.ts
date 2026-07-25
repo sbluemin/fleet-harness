@@ -48,8 +48,8 @@ describe("agent provider capture grace", () => {
     const harness = createHarness({ cliId: "codex" });
     await harness.postSessions();
     const sessionId = harness.operations[0]!.id;
-    harness.emitTitle(sessionId, "⠏ project");
-    harness.emitTitle(sessionId, "project");
+    harness.emitTitle(sessionId, "⠏ theater");
+    harness.emitTitle(sessionId, "theater");
 
     await harness.deleteSession(sessionId);
     vi.advanceTimersByTime(400);
@@ -63,8 +63,8 @@ describe("agent provider capture grace", () => {
     await harness.postSessions();
     const sessionId = harness.operations[0]!.id;
     harness.markProviderSession(sessionId);
-    harness.emitTitle(sessionId, "⠏ project");
-    harness.emitTitle(sessionId, "project");
+    harness.emitTitle(sessionId, "⠏ theater");
+    harness.emitTitle(sessionId, "theater");
 
     await harness.emitExit(sessionId);
     vi.advanceTimersByTime(400);
@@ -81,14 +81,38 @@ describe("agent provider capture grace", () => {
     await harness.postSessions();
     const sessionId = harness.operations[0]!.id;
     harness.markProviderSession(sessionId);
-    harness.emitTitle(sessionId, "⠏ project");
-    harness.emitTitle(sessionId, "project");
+    harness.emitTitle(sessionId, "⠏ theater");
+    harness.emitTitle(sessionId, "theater");
 
     await harness.resumeSession(sessionId);
     vi.advanceTimersByTime(400);
 
     expect((await harness.getSessions())[0]).toMatchObject({ sessionId, status: "terminal-only" });
     expect((await harness.getSessions())[0]).not.toHaveProperty("modelActivity");
+  });
+
+  it("resets tracker state on a turn transition before recommitting the same Codex bare title", async () => {
+    vi.useFakeTimers();
+    const harness = createHarness({ cliId: "codex", phase: "start" });
+    await harness.postSessions();
+    const sessionId = harness.operations[0]!.id;
+    harness.emitTitle(sessionId, "⠏ theater");
+    harness.emitTitle(sessionId, "theater");
+    vi.advanceTimersByTime(400);
+    expect((await harness.getSessions())[0]).toMatchObject({ modelActivity: "not-working" });
+
+    await harness.turnSession(sessionId);
+    expect((await harness.getSessions())[0]).toMatchObject({ turnState: "running" });
+    expect((await harness.getSessions())[0]).not.toHaveProperty("modelActivity");
+
+    harness.emitTitle(sessionId, "theater");
+    vi.advanceTimersByTime(400);
+    expect((await harness.getSessions())[0]).not.toHaveProperty("modelActivity");
+
+    harness.emitTitle(sessionId, "⠏ theater");
+    harness.emitTitle(sessionId, "theater");
+    vi.advanceTimersByTime(400);
+    expect((await harness.getSessions())[0]).toMatchObject({ modelActivity: "not-working" });
   });
 });
 
@@ -292,6 +316,14 @@ function createHarness(body: Record<string, unknown>) {
         req: { method: "POST", url: `/plugins/terminal/agent/sessions/${sessionId}/resume` } as http.IncomingMessage,
         res: {} as http.ServerResponse,
         pathname: `/plugins/terminal/agent/sessions/${sessionId}/resume`,
+      });
+    },
+    turnSession: async (sessionId: string) => {
+      if (!route) throw new Error("Agent route was not registered");
+      await route({
+        req: { method: "POST", url: `/plugins/terminal/agent/sessions/${sessionId}/turn` } as http.IncomingMessage,
+        res: {} as http.ServerResponse,
+        pathname: `/plugins/terminal/agent/sessions/${sessionId}/turn`,
       });
     },
   };

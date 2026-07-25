@@ -11,6 +11,7 @@ export interface OscAgentActivityTracker {
 
 interface OscAgentActivityTrackerOptions {
   readonly cliId: AgentCliId;
+  readonly cwdBasename: string;
   readonly onActivity: (activity: AgentModelActivity) => void;
 }
 
@@ -43,7 +44,9 @@ export function createOscAgentActivityTracker(options: OscAgentActivityTrackerOp
     const classification = classifyOscAgentActivity(options.cliId, title, codexWorkingBaseline);
     if (classification === "unknown") return;
     if (classification === "working") {
-      if (options.cliId === "codex") codexWorkingBaseline = readWorkingTitleBody(title);
+      if (options.cliId === "codex" && readWorkingTitleBody(title) === options.cwdBasename) {
+        codexWorkingBaseline = options.cwdBasename;
+      }
       cancelPendingNotWorking();
       committed = "working";
       options.onActivity("working");

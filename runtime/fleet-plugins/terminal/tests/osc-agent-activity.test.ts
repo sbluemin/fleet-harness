@@ -35,7 +35,11 @@ describe("OSC Agent activity debounce", () => {
   it("commits working immediately and not-working only after 400ms", () => {
     vi.useFakeTimers();
     const emitted: string[] = [];
-    const tracker = createOscAgentActivityTracker({ cliId: "claude", onActivity: (activity) => emitted.push(activity) });
+    const tracker = createOscAgentActivityTracker({
+      cliId: "claude",
+      cwdBasename: "project",
+      onActivity: (activity) => emitted.push(activity),
+    });
 
     tracker.observeTitle("⠐ project");
     expect(emitted).toEqual(["working"]);
@@ -49,7 +53,11 @@ describe("OSC Agent activity debounce", () => {
   it("cancels pending not-working when working returns and preserves not-working duplicate suppression", () => {
     vi.useFakeTimers();
     const emitted: string[] = [];
-    const tracker = createOscAgentActivityTracker({ cliId: "claude", onActivity: (activity) => emitted.push(activity) });
+    const tracker = createOscAgentActivityTracker({
+      cliId: "claude",
+      cwdBasename: "project",
+      onActivity: (activity) => emitted.push(activity),
+    });
 
     tracker.observeTitle("⠐ one");
     tracker.observeTitle("⠂ two");
@@ -67,25 +75,51 @@ describe("OSC Agent activity debounce", () => {
     expect(emitted).toEqual(["working", "working", "working", "not-working"]);
   });
 
-  it("rejects a child OSC body while committing a matching Codex baseline after 400ms", () => {
+  it("does not let a braille-prefixed child title replace the Codex cwd baseline", () => {
     vi.useFakeTimers();
     const emitted: string[] = [];
-    const tracker = createOscAgentActivityTracker({ cliId: "codex", onActivity: (activity) => emitted.push(activity) });
+    const tracker = createOscAgentActivityTracker({
+      cliId: "codex",
+      cwdBasename: "codexlab",
+      onActivity: (activity) => emitted.push(activity),
+    });
 
     tracker.observeTitle("⠏ codexlab");
-    tracker.observeTitle("child-title");
-    vi.advanceTimersByTime(450);
-    expect(emitted).toEqual(["working"]);
+    tracker.observeTitle("⠋ child-work");
+    tracker.observeTitle("child-work");
+    vi.advanceTimersByTime(400);
+    expect(emitted).toEqual(["working", "working"]);
 
     tracker.observeTitle("codexlab");
     vi.advanceTimersByTime(400);
-    expect(emitted).toEqual(["working", "not-working"]);
+    expect(emitted).toEqual(["working", "working", "not-working"]);
+  });
+
+  it("keeps Codex not-working detection disabled when only non-cwd working titles were seen", () => {
+    vi.useFakeTimers();
+    const emitted: string[] = [];
+    const tracker = createOscAgentActivityTracker({
+      cliId: "codex",
+      cwdBasename: "codexlab",
+      onActivity: (activity) => emitted.push(activity),
+    });
+
+    tracker.observeTitle("⠋ child-work");
+    tracker.observeTitle("child-work");
+    tracker.observeTitle("codexlab");
+    vi.advanceTimersByTime(400);
+
+    expect(emitted).toEqual(["working"]);
   });
 
   it.each(["tracker removal", "PTY exit", "resume"])("reset used by %s clears the Codex baseline and pending debounce", () => {
     vi.useFakeTimers();
     const emitted: string[] = [];
-    const tracker = createOscAgentActivityTracker({ cliId: "codex", onActivity: (activity) => emitted.push(activity) });
+    const tracker = createOscAgentActivityTracker({
+      cliId: "codex",
+      cwdBasename: "project",
+      onActivity: (activity) => emitted.push(activity),
+    });
 
     tracker.observeTitle("⠐ project");
     tracker.observeTitle("project");

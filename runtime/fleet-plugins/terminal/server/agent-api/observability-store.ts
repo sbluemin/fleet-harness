@@ -312,6 +312,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
     session.turnState = turnState;
+    delete session.modelActivity;
     delete session.attentionPending;
     return toTerminalSessionInfo(session);
   }

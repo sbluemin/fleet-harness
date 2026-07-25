@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { sessionActivity } from "../client/agent/connection.js";
 import { reduceSnapshotJob } from "../client/agent/reduce.js";
 import { createConsoleObservabilityStore } from "../server/agent-api/observability-store.js";
 
@@ -354,15 +355,22 @@ describe("agent activity observability state", () => {
     expect(JSON.stringify(store.listDurableOperations())).not.toContain("attentionPending");
   });
 
-  it("clears attention on either turn phase and clears both transient axes on dormant transition", () => {
+  it("clears both transient axes on either turn phase and falls back to the hook turn state", () => {
     const store = createStore();
     const initial = store.getTerminalSessionInfo("session-a")!;
     store.setTerminalSessionModelActivity("session-a", "not-working");
     store.notifySessionAttention(initial, "permission_prompt");
 
-    expect(store.setTerminalSessionTurnState("session-a", "running")).not.toHaveProperty("attentionPending");
+    const started = store.setTerminalSessionTurnState("session-a", "running")!;
+    expect(started).not.toHaveProperty("attentionPending");
+    expect(started).not.toHaveProperty("modelActivity");
+    expect(sessionActivity(started)).toBe("running");
+    store.setTerminalSessionModelActivity("session-a", "not-working");
     store.notifySessionAttention(store.getTerminalSessionInfo("session-a")!, "elicitation_dialog");
-    expect(store.setTerminalSessionTurnState("session-a", "ended")).not.toHaveProperty("attentionPending");
+    const ended = store.setTerminalSessionTurnState("session-a", "ended")!;
+    expect(ended).not.toHaveProperty("attentionPending");
+    expect(ended).not.toHaveProperty("modelActivity");
+    expect(sessionActivity(ended)).toBe("idle");
     store.notifySessionAttention(store.getTerminalSessionInfo("session-a")!, "idle_prompt");
     expect(store.getTerminalSessionInfo("session-a")).not.toHaveProperty("attentionPending");
 

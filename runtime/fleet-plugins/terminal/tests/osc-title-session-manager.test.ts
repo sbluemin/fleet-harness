@@ -53,6 +53,7 @@ describe("OSC title session wiring", () => {
     store.subscribeAll((event) => frames.push(event));
     const tracker = createOscAgentActivityTracker({
       cliId: "codex",
+      cwdBasename: "work",
       onActivity: (activity) => {
         activityCalls.push(activity);
         const updated = store.setTerminalSessionModelActivity("agent-private", activity);

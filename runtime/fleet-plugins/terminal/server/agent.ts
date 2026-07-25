@@ -129,10 +129,13 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     // spinner는 프레임마다 타이틀을 방출하므로 tracker가 이미 있으면 세션 조회(DTO 투영)를 건너뛴다.
     let tracker = oscActivityTrackers.get(sessionId);
     if (!tracker) {
-      const cliId = observability.getTerminalSessionInfo(sessionId)?.cliId;
+      const session = observability.getTerminalSessionInfo(sessionId);
+      if (!session) return;
+      const cliId = session.cliId;
       if (cliId !== "claude" && cliId !== "claude-kimi" && cliId !== "codex") return;
       tracker = createOscAgentActivityTracker({
         cliId,
+        cwdBasename: session.cwdLabel,
         onActivity: (modelActivity) => {
           const updated = observability.setTerminalSessionModelActivity(sessionId, modelActivity);
           if (updated) observability.notifySessionUpdated(updated);
@@ -454,6 +457,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       ctx.host.http.writeJson(res, 404, { error: "terminal_session_not_found" });
       return true;
     }
+    oscActivityTrackers.get(sessionId)?.reset();
     observability.notifySessionUpdated(updated);
     ctx.host.http.writeJson(res, 200, { ok: true });
     if (turnState === "ended") scheduleIdentityRefresh(sessionId);
