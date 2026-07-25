@@ -5,7 +5,7 @@ import type { ConsoleLocale, LocalizedText, Translate } from "@fleet-console/sdk
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import "@fleet-console/font-picker/styles.css";
-import { fetchSystemFonts } from "@fleet-console/font-picker/system-fonts";
+import { fetchSystemFonts, SystemFontsFetchError } from "@fleet-console/font-picker/system-fonts";
 
 import { BackendApiSection } from "../components/backend-api-section.js";
 import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
@@ -320,7 +320,10 @@ function TypographyCard({
     }).catch((error: unknown) => {
       if (!controller.signal.aborted) {
         setInstalledFonts([]);
-        setFontsError(error instanceof Error ? error.message : t("settings.typography.fontsLoadError"));
+        // SystemFontsFetchError는 고정 영문 메시지를 담고 오므로 그대로 노출하면 로케일을 벗어난다.
+        // 예상된 탐색 실패는 카탈로그 문구로 바꾸고, 예상 밖 오류만 원문을 남긴다.
+        const expected = error instanceof SystemFontsFetchError;
+        setFontsError(!expected && error instanceof Error ? error.message : t("settings.typography.fontsLoadError"));
       }
     }).finally(() => {
       if (!controller.signal.aborted) setFontsLoading(false);

@@ -25,18 +25,32 @@ export function formatRelativeTime(timestampMs: number, locale: ConsoleLocale, n
 }
 
 export function formatAbsoluteDateTime(value: Date | string | number, locale: ConsoleLocale): string {
+  const date = toDate(value);
+  if (!isValidDate(date)) return rawText(value);
   return new Intl.DateTimeFormat(LOCALE_TAG[locale], {
     dateStyle: "medium",
     timeStyle: "short",
-  }).format(toDate(value));
+  }).format(date);
 }
 
 export function formatDate(value: Date | string | number, locale: ConsoleLocale): string {
+  const date = toDate(value);
+  if (!isValidDate(date)) return rawText(value);
   return new Intl.DateTimeFormat(LOCALE_TAG[locale], {
     dateStyle: "medium",
-  }).format(toDate(value));
+  }).format(date);
 }
 
 function toDate(value: Date | string | number): Date {
   return value instanceof Date ? value : new Date(value);
+}
+
+function isValidDate(date: Date): boolean {
+  return !Number.isNaN(date.getTime());
+}
+
+// 파싱할 수 없는 값은 Intl에 넘기면 RangeError가 나므로 원본을 그대로 돌려준다.
+// 수기로 작성된 Wiki frontmatter처럼 형식이 보장되지 않는 입력이 화면을 깨뜨리지 않게 하는 계약이다.
+function rawText(value: Date | string | number): string {
+  return typeof value === "string" ? value : String(value);
 }
