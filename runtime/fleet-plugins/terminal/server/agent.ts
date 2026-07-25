@@ -18,7 +18,7 @@ import { buildAgentCliLaunchKinds } from "./agent-api/agent-cli-launch-kinds.js"
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-api/agent-cli-launch-metadata.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
-import { captureSession, readProviderSessionCapture, unlinkProviderSessionCapture, type ProviderSession } from "./agent-api/session-capture.js";
+import { captureSession, readProviderSessionCapture, readProviderSessionCaptureRaw, unlinkProviderSessionCapture, writeProviderSessionCaptureRaw, type ProviderSession } from "./agent-api/session-capture.js";
 import { createAgentTerminalLaunchResolver, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { writeAggregateObserverEvents } from "./agent-api/observability-routes.js";
@@ -372,6 +372,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       return true;
     }
     const starting = observability.updateTerminalSessionStatus(sessionId, "starting") ?? injectOperation(node);
+    const staleCapture = fresh ? readProviderSessionCaptureRaw(sessionId, { capturesDir: ctx.host.paths.capturesDir }) : null;
     try {
       const cwd = readPayloadString(node.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(node.theaterId);
       if (!cwd) {
@@ -383,7 +384,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         // stale provider 상태는 spawn 전에 모두 떼어낸다(capture 파일, observability, payload) —
         // attach 도중 새 CLI의 capture hook이 먼저 완료되면 attach 후 정리가 새 capture까지 지우고,
         // payload에 구 세션이 남으면 성공 patch가 그것을 다시 심는다(Codex P1). attach 실패 시에는
-        // catch에서 payload providerSession을 원복해 일반 resume 재시도를 보존한다.
+        // catch에서 capture 파일과 payload providerSession을 원복해 일반 resume 재시도와
+        // Session Analyst의 transcript 접근을 보존한다(Codex P2).
         unlinkProviderSessionCapture(sessionId, { capturesDir: ctx.host.paths.capturesDir });
         observability.clearTerminalSessionProviderSession(sessionId);
         const payloadWithoutProvider = { ...node.payload };
@@ -413,10 +415,13 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     } catch {
       invalidateInitialPromptGeneration(sessionId);
       if (fresh && providerSession) {
-        // 실패 롤백: spawn 전에 떼어낸 payload providerSession을 복원해 일반 resume 재시도를 보존한다.
+        // 실패 롤백: spawn 전에 떼어낸 capture 파일·payload providerSession·observability 세션을
+        // 모두 복원한다 — payload만 복원하면 resume은 되지만 Analyst가 transcript를 잃는다(Codex P2).
         const rollbackPayload = { ...(ctx.host.operations.get(sessionId)?.payload ?? {}) };
         rollbackPayload.providerSession = providerSession;
         ctx.host.operations.patch(sessionId, { payload: rollbackPayload });
+        if (staleCapture) writeProviderSessionCaptureRaw(sessionId, staleCapture, { capturesDir: ctx.host.paths.capturesDir });
+        observability.updateTerminalSessionProviderSession(sessionId, providerSession);
       }
       pendingRuntimeSessions.delete(sessionId);
       const reverted = observability.updateTerminalSessionStatus(sessionId, "dormant");

@@ -73,6 +73,29 @@ export function unlinkProviderSessionCapture(fleetSessionId: string, deps: { rea
   }
 }
 
+// fresh 시작 전 stale capture를 지우는 경로의 실패 롤백용 원시 스냅샷/복원 쌍.
+// 파싱 없이 바이트 단위로 보존해, 롤백이 capture의 어떤 필드도 재해석하지 않게 한다.
+export function readProviderSessionCaptureRaw(fleetSessionId: string, deps: { readonly capturesDir?: string } = {}): string | null {
+  if (!isSafeCaptureId(fleetSessionId)) return null;
+  const capturesDir = deps.capturesDir ?? defaultCapturePaths().capturesDir;
+  try {
+    return fs.readFileSync(path.join(capturesDir, `${fleetSessionId}.json`), "utf8");
+  } catch {
+    return null;
+  }
+}
+
+export function writeProviderSessionCaptureRaw(fleetSessionId: string, content: string, deps: { readonly capturesDir?: string } = {}): boolean {
+  if (!isSafeCaptureId(fleetSessionId)) return false;
+  const capturesDir = deps.capturesDir ?? defaultCapturePaths().capturesDir;
+  try {
+    fs.writeFileSync(path.join(capturesDir, `${fleetSessionId}.json`), content);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function captureSessionStrict(options: CaptureSessionOptions): CaptureSessionResult {
   const provider = parseProvider(options.provider);
   const fleetSessionId = readFleetSessionId(options.env ?? process.env);
