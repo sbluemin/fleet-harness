@@ -1,4 +1,4 @@
-import type { ConsoleEnvironmentDiagnostics, ConsoleUpdateApplyAcceptedResponse, DurableWorkspacePreset, OperationGeometry, OperationGroup, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo, WorkspacePresetApplyResult, WorkspacePresetLayout } from "./types.js";
+import type { ConsoleEnvironmentDiagnostics, ConsoleUpdateApplyAcceptedResponse, OperationGroup, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
 
 export interface TheaterFolderListEntry {
   readonly name: string;
@@ -181,85 +181,6 @@ export async function patchTheaterOrder(theaterId: string, order: number, signal
   });
   await assertOk(response);
   return assertTheaterInfo(await response.json(), response.status);
-}
-
-export async function fetchWorkspacePresets(theaterId: string, signal?: AbortSignal): Promise<readonly DurableWorkspacePreset[]> {
-  const response = await fetch(`/api/v1/theaters/${encodeURIComponent(theaterId)}/workspace-presets`, { signal });
-  await assertOk(response);
-  const payload = await response.json() as { readonly workspacePresets?: unknown };
-  if (!Array.isArray(payload.workspacePresets) || hasForbiddenBrowserPayloadKeyDeep(payload)) {
-    throw new ApiError(response.status, "Invalid Workspace Preset response");
-  }
-  return payload.workspacePresets.map((preset) => assertWorkspacePreset(preset, response.status));
-}
-
-export async function createWorkspacePreset(
-  theaterId: string,
-  name: string,
-  layout: WorkspacePresetLayout,
-  signal?: AbortSignal,
-): Promise<DurableWorkspacePreset> {
-  const response = await fetch(`/api/v1/theaters/${encodeURIComponent(theaterId)}/workspace-presets`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, layout }),
-    signal,
-  });
-  await assertOk(response);
-  const payload = await response.json() as { readonly workspacePreset?: unknown };
-  if (hasForbiddenBrowserPayloadKeyDeep(payload)) throw new ApiError(response.status, "Invalid Workspace Preset response");
-  return assertWorkspacePreset(payload.workspacePreset, response.status);
-}
-
-export async function renameWorkspacePreset(
-  theaterId: string,
-  presetId: string,
-  name: string,
-  signal?: AbortSignal,
-): Promise<DurableWorkspacePreset> {
-  const response = await fetch(`/api/v1/theaters/${encodeURIComponent(theaterId)}/workspace-presets/${encodeURIComponent(presetId)}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
-    signal,
-  });
-  await assertOk(response);
-  const payload = await response.json() as { readonly workspacePreset?: unknown };
-  if (hasForbiddenBrowserPayloadKeyDeep(payload)) throw new ApiError(response.status, "Invalid Workspace Preset response");
-  return assertWorkspacePreset(payload.workspacePreset, response.status);
-}
-
-export async function deleteWorkspacePreset(theaterId: string, presetId: string, signal?: AbortSignal): Promise<void> {
-  const response = await fetch(`/api/v1/theaters/${encodeURIComponent(theaterId)}/workspace-presets/${encodeURIComponent(presetId)}`, {
-    method: "DELETE",
-    signal,
-  });
-  await assertOk(response);
-}
-
-export async function applyWorkspacePreset(
-  theaterId: string,
-  presetId: string,
-  signal?: AbortSignal,
-): Promise<WorkspacePresetApplyResult> {
-  const response = await fetch(`/api/v1/theaters/${encodeURIComponent(theaterId)}/workspace-presets/${encodeURIComponent(presetId)}/apply`, {
-    method: "POST",
-    signal,
-  });
-  await assertOk(response);
-  const payload = await response.json() as Partial<WorkspacePresetApplyResult>;
-  if (!Array.isArray(payload.appliedOperationIds)
-    || !payload.appliedOperationIds.every((id) => typeof id === "string")
-    || !Array.isArray(payload.missingOperationIds)
-    || !payload.missingOperationIds.every((id) => typeof id === "string")
-    || hasForbiddenBrowserPayloadKeyDeep(payload)) {
-    throw new ApiError(response.status, "Invalid Workspace Preset apply response");
-  }
-  return {
-    preset: assertWorkspacePreset(payload.preset, response.status),
-    appliedOperationIds: payload.appliedOperationIds,
-    missingOperationIds: payload.missingOperationIds,
-  };
 }
 
 export async function listTheaterFolders(path: string | null, signal?: AbortSignal): Promise<TheaterFolderListResponse> {
@@ -498,86 +419,6 @@ function assertOperationGroup(value: unknown, status: number): OperationGroup {
   };
 }
 
-function assertWorkspacePreset(value: unknown, status: number): DurableWorkspacePreset {
-  const payload = value as Partial<DurableWorkspacePreset>;
-  if (!payload
-    || typeof payload.id !== "string"
-    || typeof payload.theaterId !== "string"
-    || typeof payload.name !== "string"
-    || typeof payload.createdAt !== "number"
-    || !Number.isFinite(payload.createdAt)
-    || typeof payload.updatedAt !== "number"
-    || !Number.isFinite(payload.updatedAt)
-    || hasForbiddenBrowserPayloadKeyDeep(payload)) {
-    throw new ApiError(status, "Invalid Workspace Preset response");
-  }
-  return {
-    id: payload.id,
-    theaterId: payload.theaterId,
-    name: payload.name,
-    createdAt: payload.createdAt,
-    updatedAt: payload.updatedAt,
-    layout: assertWorkspacePresetLayout(payload.layout, status),
-  };
-}
-
-function assertWorkspacePresetLayout(value: unknown, status: number): WorkspacePresetLayout {
-  const payload = value as Partial<WorkspacePresetLayout>;
-  const viewport = payload?.viewport;
-  const rail = payload?.rail;
-  const sidebar = payload?.sidebar;
-  if (!payload
-    || !viewport
-    || !isFiniteNumber(viewport.x)
-    || !isFiniteNumber(viewport.y)
-    || !isFiniteNumber(viewport.zoom)
-    || !payload.operationGeometries
-    || typeof payload.operationGeometries !== "object"
-    || Array.isArray(payload.operationGeometries)
-    || !Array.isArray(payload.minimizedOperationIds)
-    || !payload.minimizedOperationIds.every((id) => typeof id === "string")
-    || !rail
-    || (rail.activePanelId !== null && typeof rail.activePanelId !== "string")
-    || typeof rail.chromeExpanded !== "boolean"
-    || (rail.panelWidth !== null && !isFiniteNumber(rail.panelWidth))
-    || !sidebar
-    || (sidebar.statusAxis !== "group" && sidebar.statusAxis !== "status")) {
-    throw new ApiError(status, "Invalid Workspace Preset response");
-  }
-  const operationGeometryEntries: Array<[string, OperationGeometry]> = [];
-  for (const [operationId, geometry] of Object.entries(payload.operationGeometries)) {
-    operationGeometryEntries.push([operationId, assertOperationGeometry(geometry, status)]);
-  }
-  return {
-    viewport: { x: viewport.x, y: viewport.y, zoom: viewport.zoom },
-    operationGeometries: Object.fromEntries(operationGeometryEntries),
-    minimizedOperationIds: payload.minimizedOperationIds,
-    rail: {
-      activePanelId: rail.activePanelId,
-      chromeExpanded: rail.chromeExpanded,
-      panelWidth: rail.panelWidth,
-    },
-    sidebar: { statusAxis: sidebar.statusAxis },
-  };
-}
-
-function assertOperationGeometry(value: unknown, status: number): OperationGeometry {
-  const geometry = value as Partial<OperationGeometry>;
-  if (!geometry
-    || !isFiniteNumber(geometry.x)
-    || !isFiniteNumber(geometry.y)
-    || !isFiniteNumber(geometry.width)
-    || !isFiniteNumber(geometry.height)
-    || !isFiniteNumber(geometry.zIndex)) {
-    throw new ApiError(status, "Invalid Workspace Preset geometry");
-  }
-  return { x: geometry.x, y: geometry.y, width: geometry.width, height: geometry.height, zIndex: geometry.zIndex };
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
 function assertTheaterInfo(value: unknown, status: number): TheaterInfo {
   const payload = value as Partial<TheaterInfo>;
   if (
@@ -775,12 +616,6 @@ function hasForbiddenBrowserPayloadKey(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   const payload = value as Record<string, unknown>;
   return FORBIDDEN_BROWSER_PAYLOAD_KEYS.some((key) => key in payload);
-}
-
-function hasForbiddenBrowserPayloadKeyDeep(value: unknown): boolean {
-  if (!value || typeof value !== "object") return false;
-  if (hasForbiddenBrowserPayloadKey(value)) return true;
-  return Object.values(value).some(hasForbiddenBrowserPayloadKeyDeep);
 }
 
 function assertDeferredDeletionResponse(value: unknown, status: number): DeferredDeletionResponse {

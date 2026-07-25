@@ -14,7 +14,6 @@ import { focusOperation, hydrateOperations, requestSideBarAddTheater, requestSid
 import type { ConsoleEnvironmentDiagnostics } from "../types.js";
 import { useInlineRename } from "../use-inline-rename.js";
 import { useFullscreenCommandBand } from "./use-fullscreen-command-band.js";
-import { WorkspacePresets } from "./workspace-presets.js";
 
 interface NavigatorWithUserAgentData extends Navigator {
   readonly userAgentData?: {
@@ -333,8 +332,6 @@ export function CommandBand({ operationsViewVisible }: CommandBandProps) {
         <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("grid")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "grid"} aria-label="Formation view — Grid layout" title="Formation view — Grid layout"><FormationGridIcon /></button>
         <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("columns")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "columns"} aria-label="Formation view — Columns layout" title="Formation view — Columns layout"><FormationColumnsIcon /></button>
         <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("rows")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "rows"} aria-label="Formation view — Rows layout" title="Formation view — Rows layout"><FormationRowsIcon /></button>
-        <span className="command-band-formation-divider" aria-hidden="true" />
-        <WorkspacePresets theaterId={state.activeTheaterId} />
       </div> : null}
       <div className="command-band-center">
         {operationsViewVisible && activeTheater ? <div ref={switcherRef} className="command-band-switcher" onBlur={handleSwitcherFocusOut}>

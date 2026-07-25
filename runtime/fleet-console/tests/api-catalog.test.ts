@@ -106,16 +106,6 @@ describe("api catalog", () => {
     }
   });
 
-  it("registers the complete Workspace Preset route table", () => {
-    expect(buildApiCatalog()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ method: "GET", path: "/api/v1/theaters/:theaterId/workspace-presets", gate: "loopback" }),
-      expect.objectContaining({ method: "POST", path: "/api/v1/theaters/:theaterId/workspace-presets", gate: "origin-write" }),
-      expect.objectContaining({ method: "PATCH", path: "/api/v1/theaters/:theaterId/workspace-presets/:presetId", gate: "origin-write" }),
-      expect.objectContaining({ method: "DELETE", path: "/api/v1/theaters/:theaterId/workspace-presets/:presetId", gate: "origin-write" }),
-      expect.objectContaining({ method: "POST", path: "/api/v1/theaters/:theaterId/workspace-presets/:presetId/apply", gate: "origin-write" }),
-    ]));
-  });
-
   it("lists the loopback system-font route without scanning the developer machine", async () => {
     const fixture = await startFixture();
     const response = await fetch(`${fixture.endpoint}api/v1/settings/fonts/system`);

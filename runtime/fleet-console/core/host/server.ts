@@ -49,8 +49,6 @@ import { TheaterRegistry } from "./theaters.js";
 import { canonicalizeTheaterPathSync, workspaceHash } from "./theater.js";
 import { createConsoleUpdateApplyService, type ConsoleUpdateApplyService } from "./update-apply.js";
 import { createConsoleUpdateCheckService, type ConsoleUpdateCheckService } from "./update-check.js";
-import { createWorkspacePresetsRouter } from "./workspace-presets/routes.js";
-import { createWorkspacePresetStore } from "./workspace-presets/store.js";
 
 export interface ConsoleServerDeps {
   readonly host?: string;
@@ -169,41 +167,6 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     method: "DELETE",
     path: "/api/v1/theaters/:theaterId",
     summary: "Theater와 소속 Operation을 제거합니다.",
-    category: "Observer",
-    gate: "origin-write",
-  },
-  {
-    method: "GET",
-    path: "/api/v1/theaters/:theaterId/workspace-presets",
-    summary: "Theater의 Workspace Preset 목록을 조회합니다.",
-    category: "Observer",
-    gate: "loopback",
-  },
-  {
-    method: "POST",
-    path: "/api/v1/theaters/:theaterId/workspace-presets",
-    summary: "현재 배치를 Workspace Preset으로 저장합니다.",
-    category: "Observer",
-    gate: "origin-write",
-  },
-  {
-    method: "PATCH",
-    path: "/api/v1/theaters/:theaterId/workspace-presets/:presetId",
-    summary: "Workspace Preset 이름을 변경합니다.",
-    category: "Observer",
-    gate: "origin-write",
-  },
-  {
-    method: "DELETE",
-    path: "/api/v1/theaters/:theaterId/workspace-presets/:presetId",
-    summary: "Workspace Preset을 삭제합니다.",
-    category: "Observer",
-    gate: "origin-write",
-  },
-  {
-    method: "POST",
-    path: "/api/v1/theaters/:theaterId/workspace-presets/:presetId/apply",
-    summary: "Workspace Preset 배치를 적용합니다.",
     category: "Observer",
     gate: "origin-write",
   },
@@ -359,11 +322,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function publishPluginEvent(channel: string, payload: unknown): void {
     for (const listener of pluginEventListeners.get(channel) ?? []) listener(payload);
   }
-  const workspacePresets = createWorkspacePresetStore();
   const deletionCoordinator = createDeferredDeletionCoordinator({
     operations,
     theaters,
-    workspacePresets,
     save: saveDurableState,
     publish: publishPluginEvent,
     unregisterTheaterWorkspaces: (theaterId) => codex.unregisterTheaterWorkspaces(theaterId),
@@ -655,18 +616,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       });
     },
   });
-  const workspacePresetsRouter = createWorkspacePresetsRouter({
-    store: workspacePresets,
-    operations,
-    theaters,
-    isAuthorized: isTerminalAuthorized,
-    readJsonBody,
-    writeJson,
-    persist: persistDurableState,
-  });
   routeRegistry.register("/api/v1/operations", operationsRouter);
   routeRegistry.register("/api/v1/theaters", async (context) => {
-    if (await workspacePresetsRouter(context)) return true;
     return codexWorkspaceRouter(context);
   });
   routeRegistry.register("/api/v1/settings", async (ctx) => {
@@ -1189,14 +1140,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       theaters.restore(state.theaters);
       operations.replace(state.operations);
       operations.replaceGroups(state.groups ?? []);
-      workspacePresets.replace(state.workspacePresets ?? []);
     } catch (error) {
       console.warn(`[fleet-console] Durable state restore skipped: ${error instanceof Error ? error.message : String(error)}`);
       state = emptyDurableConsoleState();
       theaters.restore([]);
       operations.replace([]);
       operations.replaceGroups([]);
-      workspacePresets.replace([]);
     }
     deletionCoordinator.load(state.deletionTombstones ?? []);
     try {
@@ -1271,7 +1220,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       operations: operations.list(),
       groups: operations.listAllGroups(),
       deletionTombstones,
-      workspacePresets: workspacePresets.list(),
     });
   }
 
