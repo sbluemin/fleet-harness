@@ -2211,6 +2211,17 @@
   border-color: var(--brass);
 }
 
+/* 미확인 완료 — 사이드바 칩과 같은 테두리 문법. 포커스는 항상 brass가 이긴다. */
+.canvas-operation.is-unseen {
+  border-color: var(--positive);
+  box-shadow: var(--shadow-soft), 0 0 0 1px color-mix(in oklch, var(--positive) 28%, transparent), 0 0 22px -4px var(--positive-glow);
+}
+
+.canvas-operation.is-unseen.is-active {
+  border-color: var(--brass);
+  box-shadow: var(--shadow-soft);
+}
+
 /* Map에서 사용자 accent(정체성)는 좌측 스파인·명판 마크·명판 워시만 소유한다.
    패널 보더/글로우/비콘은 상태 채널(brass 포커스·aurora 대기·coral 위험) 전용으로 남는다. */
 .canvas-operation-spine {
@@ -2615,6 +2626,13 @@
 .side-bar-chip:focus-visible {
   border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
   background: var(--brass-glow);
+}
+
+/* 미확인 완료 — 유휴로 막 전이됐지만 아직 확인하지 않은 Operation. 상태 채널(--positive)이
+   테두리를 쓰고 포커스(--brass)가 항상 우선한다. 좌측 3px 스파인은 정체성 소유라 침범하지 않는다. */
+.side-bar-chip--unseen {
+  background: color-mix(in oklch, var(--positive) 10%, transparent);
+  border-color: color-mix(in oklch, var(--positive) 40%, transparent);
 }
 
 /* active: brass highlight */

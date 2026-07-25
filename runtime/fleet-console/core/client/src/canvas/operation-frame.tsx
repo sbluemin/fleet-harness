@@ -12,6 +12,7 @@ import { resolveAccentColor } from "./operation-accent.js";
 interface OperationFrameProps {
   readonly operation: OperationNode;
   readonly active: boolean;
+  readonly unseen: boolean;
   readonly geometry: OperationGeometry;
   readonly zoom: number;
   readonly status?: OperationActivity;
@@ -53,7 +54,7 @@ const MIN_OPERATION_WIDTH = 320;
 const MIN_OPERATION_HEIGHT = 200;
 const CLOSE_ARM_DURATION_MS = 1500;
 
-export function OperationFrame({ operation, active, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const identityTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -81,6 +82,7 @@ export function OperationFrame({ operation, active, geometry, zoom, status, mini
   const accentColor = accentKey ? resolveAccentColor(accentKey) : null;
   const className = [
     "canvas-operation",
+    unseen ? "is-unseen" : "",
     active ? "is-active" : "",
     minimized ? "is-minimized" : "",
     maximized ? "is-maximized" : "",

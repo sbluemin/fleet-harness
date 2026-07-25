@@ -1048,6 +1048,7 @@ export function OperationsSideBar({
                         index={globalIndex}
                         isCloseArmed={armedCloseId === entry.operation.id}
                         accentValue={accentValue}
+                        idleUnseen={isIdleUnseen(entry.operation.id)}
                         dragging={drag?.kind === "chip" && drag.sourceId === entry.operation.id && drag.dragging}
                         dragOffsetY={drag?.kind === "chip" && drag.sourceId === entry.operation.id && drag.dragging ? drag.currentY - drag.startY : 0}
                         dropTarget={
@@ -1539,6 +1540,7 @@ function TheaterInactiveSection({
                           index={index}
                           isCloseArmed={false}
                           accentValue={accentValue}
+                          idleUnseen={idleUnseenIds.has(entry.operation.id)}
                           dragging={false}
                           dragOffsetY={0}
                           dropTarget={false}
