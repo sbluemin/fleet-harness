@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import type { FolderEntry, FolderListResult } from "../server/types.js";
 
@@ -15,13 +15,20 @@ interface FileTreeProps {
   readonly onSelect: (entry: FolderEntry) => void;
 }
 
-interface FlatRow {
+export interface FlatRow {
   readonly entry: FolderEntry;
   readonly depth: number;
   readonly isSelected: boolean;
   readonly isExpanded: boolean;
   readonly isLoading: boolean;
 }
+
+export type TreeNavigationAction =
+  | { readonly kind: "focus"; readonly index: number }
+  | { readonly kind: "expand" }
+  | { readonly kind: "collapse" }
+  | { readonly kind: "activate" }
+  | { readonly kind: "none" };
 
 interface FilterDescendantLoadOptions {
   readonly entries: readonly FolderEntry[];
@@ -94,6 +101,7 @@ export function buildFlatRows(
   low: string,
   showHidden: boolean,
   ancestorFolders: ReadonlySet<string> = new Set(),
+  filterCollapsedDirs: ReadonlySet<string> = new Set(),
 ): FlatRow[] {
   const rows: FlatRow[] = [];
   for (const entry of entries) {
@@ -107,7 +115,8 @@ export function buildFlatRows(
       const directMatch = entry.name.toLowerCase().includes(low);
       if (!directMatch && !childMatch) continue;
     }
-    const isExpanded = expandedDirs.has(entry.relativePath) || Boolean(low && childMatch);
+    const isExpanded = !filterCollapsedDirs.has(entry.relativePath)
+      && (expandedDirs.has(entry.relativePath) || Boolean(low && childMatch));
     rows.push({
       entry,
       depth,
@@ -119,11 +128,47 @@ export function buildFlatRows(
       if (children) {
         const nextAncestorFolders = new Set(ancestorFolders);
         nextAncestorFolders.add(folderIdentity);
-        rows.push(...buildFlatRows(children, depth + 1, selectedPath, expandedDirs, loadingDirs, childResults, low, showHidden, nextAncestorFolders));
+        rows.push(...buildFlatRows(
+          children,
+          depth + 1,
+          selectedPath,
+          expandedDirs,
+          loadingDirs,
+          childResults,
+          low,
+          showHidden,
+          nextAncestorFolders,
+          filterCollapsedDirs,
+        ));
       }
     }
   }
   return rows;
+}
+
+export function resolveTreeNavigation(rows: readonly FlatRow[], index: number, key: string): TreeNavigationAction {
+  const row = rows[index];
+  if (!row) return { kind: "none" };
+  if (key === "ArrowDown") return { kind: "focus", index: Math.min(rows.length - 1, index + 1) };
+  if (key === "ArrowUp") return { kind: "focus", index: Math.max(0, index - 1) };
+  if (key === "Home") return { kind: "focus", index: 0 };
+  if (key === "End") return { kind: "focus", index: rows.length - 1 };
+  if (key === "ArrowRight") {
+    if (row.entry.kind !== "dir") return { kind: "none" };
+    if (!row.isExpanded) return { kind: "expand" };
+    return rows[index + 1]?.depth === row.depth + 1
+      ? { kind: "focus", index: index + 1 }
+      : { kind: "none" };
+  }
+  if (key === "ArrowLeft") {
+    if (row.entry.kind === "dir" && row.isExpanded) return { kind: "collapse" };
+    for (let parentIndex = index - 1; parentIndex >= 0; parentIndex -= 1) {
+      if (rows[parentIndex]?.depth === row.depth - 1) return { kind: "focus", index: parentIndex };
+    }
+    return { kind: "none" };
+  }
+  if (key === "Enter" || key === " ") return { kind: "activate" };
+  return { kind: "none" };
 }
 
 export function FileTree({ contextKey, files, theaterId, selectedPath, onSelect }: FileTreeProps) {
@@ -134,10 +179,14 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, onSelect 
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
   const [childResults, setChildResults] = useState<Map<string, FolderListResult>>(new Map());
   const [filterText, setFilterText] = useState<string>("");
+  const [filterCollapsedDirs, setFilterCollapsedDirs] = useState<Set<string>>(new Set());
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(600);
   const [showHidden, setShowHidden] = useState<boolean>(() => readShowHidden());
+  const [cursorPath, setCursorPath] = useState<string | null>(null);
   const treeRef = useRef<HTMLDivElement>(null);
+  const rowRefs = useRef(new Map<string, HTMLButtonElement>());
+  const pendingFocusPathRef = useRef<string | null>(null);
 
   // SSE 핸들러가 최신 상태를 참조하도록 ref로 유지
   const expandedDirsRef = useRef<Set<string>>(expandedDirs);
@@ -161,7 +210,9 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, onSelect 
     setExpandedDirs(new Set());
     setChildResults(new Map());
     setFilterText("");
+    setFilterCollapsedDirs(new Set());
     setScrollTop(0);
+    setCursorPath(null);
   }, [contextKey, theaterId]);
 
   useEffect(() => {
@@ -299,11 +350,6 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, onSelect 
     }
   }, [contextKey, files, expandedDirs]);
 
-  const handleEntryClick = useCallback((entry: FolderEntry) => {
-    if (entry.kind === "dir") handleDirClick(entry);
-    else onSelect(entry);
-  }, [handleDirClick, onSelect]);
-
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     setScrollTop((e.currentTarget as HTMLDivElement).scrollTop);
   }, []);
@@ -345,8 +391,8 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, onSelect 
 
   const flatRows = useMemo(() => {
     if (!result) return [];
-    return buildFlatRows(result.entries, 0, selectedPath, expandedDirs, loadingDirs, childResults, low, showHidden);
-  }, [result, selectedPath, expandedDirs, loadingDirs, childResults, low, showHidden]);
+    return buildFlatRows(result.entries, 0, selectedPath, expandedDirs, loadingDirs, childResults, low, showHidden, new Set(), filterCollapsedDirs);
+  }, [result, selectedPath, expandedDirs, loadingDirs, childResults, low, showHidden, filterCollapsedDirs]);
 
   const hasOnlyHiddenEntries = !showHidden && result !== null && result.entries.length > 0 && flatRows.length === 0 && !filterText;
 
@@ -356,6 +402,110 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, onSelect 
   const visibleRows = flatRows.slice(startIdx, endIdx);
   const totalHeight = flatRows.length * ROW_HEIGHT;
   const offsetY = startIdx * ROW_HEIGHT;
+  const selectedVisiblePath = selectedPath && flatRows.some((row) => row.entry.relativePath === selectedPath)
+    ? selectedPath
+    : null;
+  const resolvedCursorPath = cursorPath && flatRows.some((row) => row.entry.relativePath === cursorPath)
+    ? cursorPath
+    : selectedVisiblePath ?? flatRows[0]?.entry.relativePath ?? null;
+  const renderedCursorPath = visibleRows.some((row) => row.entry.relativePath === resolvedCursorPath)
+    ? resolvedCursorPath
+    : visibleRows[0]?.entry.relativePath ?? null;
+
+  useEffect(() => {
+    if (renderedCursorPath !== cursorPath) setCursorPath(renderedCursorPath);
+  }, [cursorPath, renderedCursorPath]);
+
+  useLayoutEffect(() => {
+    const path = pendingFocusPathRef.current;
+    if (path === null || path !== renderedCursorPath) return;
+    pendingFocusPathRef.current = null;
+    rowRefs.current.get(path)?.focus();
+  }, [renderedCursorPath, visibleRows]);
+
+  const focusRow = (rowIndex: number) => {
+    const row = flatRows[rowIndex];
+    if (!row) return;
+    const path = row.entry.relativePath;
+    if (path === renderedCursorPath) {
+      // 경계(첫/마지막 행)에서는 커서가 그대로라 리렌더가 없다. 요청을 남겨두면 나중의 SSE 리렌더가
+      // 그걸 소비해 사용자가 떠난 뒤 포커스를 훔치므로, 여기서 바로 처리하고 큐를 비운다.
+      pendingFocusPathRef.current = null;
+      rowRefs.current.get(path)?.focus();
+      return;
+    }
+    pendingFocusPathRef.current = path;
+    setCursorPath(path);
+    if (shouldVirtualize && (rowIndex < startIdx || rowIndex >= endIdx)) {
+      const nextScrollTop = Math.max(0, rowIndex * ROW_HEIGHT);
+      if (treeRef.current) treeRef.current.scrollTop = nextScrollTop;
+      setScrollTop(nextScrollTop);
+    }
+  };
+
+  const handleTreeItemKeyDown = (row: FlatRow, event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    const index = flatRows.findIndex((candidate) => candidate.entry.relativePath === row.entry.relativePath);
+    if (index < 0) return;
+    const action = resolveTreeNavigation(flatRows, index, event.key);
+    if (action.kind === "none") {
+      if (event.key === "ArrowRight" || event.key === "ArrowLeft") event.preventDefault();
+      return;
+    }
+    event.preventDefault();
+    if (action.kind === "focus") {
+      focusRow(action.index);
+      return;
+    }
+    if (action.kind === "expand") {
+      if (low) {
+        setFilterCollapsedDirs((current) => {
+          const next = new Set(current);
+          next.delete(row.entry.relativePath);
+          return next;
+        });
+      } else {
+        handleDirClick(row.entry);
+      }
+      return;
+    }
+    if (action.kind === "collapse") {
+      if (row.entry.kind === "dir") {
+        if (low) {
+          setFilterCollapsedDirs((current) => new Set(current).add(row.entry.relativePath));
+        } else {
+          setExpandedDirs((current) => {
+            const next = new Set(current);
+            next.delete(row.entry.relativePath);
+            return next;
+          });
+        }
+      }
+      return;
+    }
+    activateRow(row);
+  };
+
+  const activateRow = (row: FlatRow) => {
+    if (row.entry.kind !== "dir") {
+      onSelect(row.entry);
+      return;
+    }
+    if (!low) {
+      handleDirClick(row.entry);
+      return;
+    }
+    setFilterCollapsedDirs((current) => {
+      const next = new Set(current);
+      if (row.isExpanded) next.add(row.entry.relativePath);
+      else next.delete(row.entry.relativePath);
+      return next;
+    });
+  };
+
+  const handleRowClick = (row: FlatRow) => {
+    setCursorPath(row.entry.relativePath);
+    activateRow(row);
+  };
 
   if (!theaterId) return <div className="fexp-tree-empty">Select a Theater</div>;
   // 전체 에러 화면은 보여줄 트리가 아예 없을 때(초기 로드 실패)만 —
@@ -371,14 +521,20 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, onSelect 
           className="fexp-filter-input"
           placeholder="Filter…"
           value={filterText}
-          onChange={(e) => setFilterText(e.target.value)}
+          onChange={(e) => {
+            setFilterText(e.target.value);
+            setFilterCollapsedDirs(new Set());
+          }}
           aria-label="Filter files"
         />
         {filterText && (
           <button
             type="button"
             className="fexp-filter-clear"
-            onClick={() => setFilterText("")}
+            onClick={() => {
+              setFilterText("");
+              setFilterCollapsedDirs(new Set());
+            }}
             aria-label="Clear filter"
           >
             ✕
@@ -436,13 +592,27 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, onSelect 
           <div style={{ height: totalHeight, position: "relative" }}>
             <div style={{ transform: `translateY(${offsetY}px)` }}>
               {visibleRows.map((row) => (
-                <FlatTreeRow key={row.entry.relativePath} row={row} onEntryClick={handleEntryClick} />
+                <FlatTreeRow
+                  key={row.entry.relativePath}
+                  row={row}
+                  cursor={row.entry.relativePath === renderedCursorPath}
+                  rowRefs={rowRefs}
+                  onEntryClick={handleRowClick}
+                  onKeyDown={handleTreeItemKeyDown}
+                />
               ))}
             </div>
           </div>
         ) : (
           visibleRows.map((row) => (
-            <FlatTreeRow key={row.entry.relativePath} row={row} onEntryClick={handleEntryClick} />
+            <FlatTreeRow
+              key={row.entry.relativePath}
+              row={row}
+              cursor={row.entry.relativePath === renderedCursorPath}
+              rowRefs={rowRefs}
+              onEntryClick={handleRowClick}
+              onKeyDown={handleTreeItemKeyDown}
+            />
           ))
         )}
         {flatRows.length === 0 && filterText && (
@@ -487,24 +657,33 @@ function isVisibleDirectory(entry: FolderEntry, showHidden: boolean): boolean {
 
 interface FlatTreeRowProps {
   readonly row: FlatRow;
-  readonly onEntryClick: (entry: FolderEntry) => void;
+  readonly cursor: boolean;
+  readonly rowRefs: React.MutableRefObject<Map<string, HTMLButtonElement>>;
+  readonly onEntryClick: (row: FlatRow) => void;
+  readonly onKeyDown: (row: FlatRow, event: ReactKeyboardEvent<HTMLButtonElement>) => void;
 }
 
-function FlatTreeRow({ row, onEntryClick }: FlatTreeRowProps) {
+function FlatTreeRow({ row, cursor, rowRefs, onEntryClick, onKeyDown }: FlatTreeRowProps) {
   const { entry, depth, isSelected, isExpanded, isLoading } = row;
   const isDir = entry.kind === "dir";
   const indent = depth * 16;
-  const handleClick = useCallback(() => onEntryClick(entry), [entry, onEntryClick]);
+  const handleClick = useCallback(() => onEntryClick(row), [onEntryClick, row]);
 
   return (
     <button
+      ref={(node) => {
+        if (node) rowRefs.current.set(entry.relativePath, node);
+        else rowRefs.current.delete(entry.relativePath);
+      }}
       className={`fexp-tree-row${isSelected ? " is-cur" : ""}${isDir ? " is-dir" : " is-file"}`}
       style={{ paddingLeft: `${indent + 12}px` }}
       type="button"
       role="treeitem"
+      tabIndex={cursor ? 0 : -1}
       aria-selected={isSelected}
       aria-expanded={isDir ? isExpanded : undefined}
       onClick={handleClick}
+      onKeyDown={(event) => onKeyDown(row, event)}
     >
       <span className="fexp-tree-icon" aria-hidden="true">
         {isDir ? <FolderIcon name={entry.name} open={isExpanded} /> : <FileIcon name={entry.name} />}

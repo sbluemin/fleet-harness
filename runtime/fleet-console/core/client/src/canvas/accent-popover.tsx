@@ -34,6 +34,8 @@ export function AccentToneList({
           type="button"
           className="accent-tone-row accent-tone-row--clear"
           role="menuitem"
+          // 키보드 진입점이 accent 섹션을 찾는 근거 — 접근 이름 문구가 바뀌어도 깨지지 않아야 한다.
+          data-accent-option="none"
           aria-label="No accent"
           aria-pressed={activeKey === null}
           onClick={() => onSelect(null)}
@@ -48,6 +50,7 @@ export function AccentToneList({
           type="button"
           className="accent-tone-row"
           role="menuitem"
+          data-accent-option={accent.key}
           aria-label={accent.label}
           aria-pressed={activeKey === accent.key}
           onClick={() => onSelect(accent.key)}

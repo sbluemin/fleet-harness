@@ -147,6 +147,42 @@ describe("buildPaletteCommands", () => {
     const commands = buildPaletteCommands(makeState(), []);
     expect(commands.some((command) => command.commandId === "minimize-all-operations")).toBe(false);
   });
+
+  it("shows the four exact chip-menu Operation actions only for an active Operation in the active Theater", () => {
+    const withoutActive = buildPaletteCommands(makeState(), []);
+    const operationLabels = ["Rename operation…", "Assign group…", "Set accent…", "Minimize operation"];
+    expect(withoutActive.filter((command) => operationLabels.includes(command.label))).toEqual([]);
+
+    const withActive = buildPaletteCommands(makeState({
+      activeOperationId: "operation-a",
+      operations: [{
+        id: "operation-a",
+        theaterId: "theater-alpha",
+        type: "shell",
+        pluginId: "terminal",
+        title: "Operation A",
+        payload: {},
+        geometry: null,
+        ts: { createdAt: 1, updatedAt: 1 },
+      }],
+    }), []);
+    expect(withActive.filter((command) => operationLabels.includes(command.label)).map((command) => command.label)).toEqual(operationLabels);
+
+    const staleActive = buildPaletteCommands(makeState({
+      activeOperationId: "operation-b",
+      operations: [{
+        id: "operation-b",
+        theaterId: "theater-beta",
+        type: "shell",
+        pluginId: "terminal",
+        title: "Operation B",
+        payload: {},
+        geometry: null,
+        ts: { createdAt: 1, updatedAt: 1 },
+      }],
+    }), []);
+    expect(staleActive.filter((command) => operationLabels.includes(command.label))).toEqual([]);
+  });
 });
 
 function makeOperation(id: string, payload: Record<string, unknown> = {}, theaterId = "theater-alpha"): ConsoleState["operations"][number] {

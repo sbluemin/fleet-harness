@@ -18,6 +18,7 @@ import { closeOperationCompletely } from "../operation-close.js";
 import { getLoadedTheaterId, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, loadForTheater, minimizeOperations, toggleFormationView } from "../canvas/canvas-store.js";
 import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
+import { requestSideBarOperationAction, type SideBarOperationAction } from "../sidebar/operation-action-request.js";
 import {
   closeOperationSearch,
   focusOperation,
@@ -217,6 +218,16 @@ export function OperationSearch({ state, railPanels, plugins }: OperationSearchP
         openKeyboardShortcuts();
         break;
       }
+      case "rename-operation":
+      case "assign-operation-group":
+      case "set-operation-accent":
+      case "minimize-operation": {
+        previousFocusRef.current = null;
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        if (getSideBarState().collapsed) setSideBarCollapsed(false);
+        requestSideBarOperationAction(action.operationId, paletteActionToSideBarAction(action.kind));
+        break;
+      }
       case "whats-new": {
         openWhatsNew();
         break;
@@ -356,6 +367,17 @@ export function OperationSearch({ state, railPanels, plugins }: OperationSearchP
       </section>
     </div>
   );
+}
+
+function paletteActionToSideBarAction(
+  kind: "rename-operation" | "assign-operation-group" | "set-operation-accent" | "minimize-operation",
+): SideBarOperationAction {
+  switch (kind) {
+    case "rename-operation": return "rename";
+    case "assign-operation-group": return "assign-group";
+    case "set-operation-accent": return "set-accent";
+    case "minimize-operation": return "minimize";
+  }
 }
 
 function clampIndex(index: number, length: number): number {

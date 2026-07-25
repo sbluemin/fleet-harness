@@ -1,10 +1,14 @@
-import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
+import { useEffect, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
 
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { operationActivityLabel, operationActivityVisual } from "../operation-activity.js";
 import { useInlineRename } from "../use-inline-rename.js";
 import type { OperationNode } from "../types.js";
+import {
+  subscribeSideBarOperationAction,
+  type SideBarOperationMenuAction,
+} from "./operation-action-request.js";
 
 export interface SideBarEntry {
   readonly operation: OperationNode;
@@ -36,7 +40,12 @@ interface SideBarChipProps {
   readonly onFocus: (operationId: string) => void;
   readonly onKeyboardMove: (operationId: string, direction: -1 | 1) => void;
   readonly onPointerDragStart: (event: ReactPointerEvent<HTMLLIElement>, operationId: string) => void;
-  readonly onOpenAccent: (operationId: string, anchor: DOMRect) => void;
+  readonly onOpenAccent: (
+    operationId: string,
+    anchor: DOMRect,
+    returnFocus?: HTMLElement | null,
+    requestedAction?: SideBarOperationMenuAction,
+  ) => void;
   readonly onRename: (operationId: string, title: string) => void;
 }
 
@@ -63,6 +72,7 @@ export function OperationsSideBarChip({
   onOpenAccent,
   onRename,
 }: SideBarChipProps) {
+  const chipRef = useRef<HTMLLIElement | null>(null);
   const suppressClickRef = useRef(false);
   const { operation, active, minimized, notificationCount, status } = entry;
   const title = displayTitle(operation);
@@ -114,13 +124,37 @@ export function OperationsSideBarChip({
     onOpenAccent(operation.id, event.currentTarget.getBoundingClientRect());
   };
 
+  useEffect(() => subscribeSideBarOperationAction((request) => {
+    if (request.operationId !== operation.id || preview) return false;
+    const chip = chipRef.current;
+    if (!chip) return false;
+    if (chip.closest("[inert]")) return false;
+    if (request.action === "rename") {
+      rename.begin();
+      return true;
+    }
+    if (request.action === "assign-group" || request.action === "set-accent") {
+      onDisarmClose();
+      // 팔레트로 부른 칩은 사이드바 스크롤 밖일 수 있다. rect를 읽기 전에 끌어와야 메뉴가 화면 안에 앵커링된다.
+      chip.scrollIntoView({ block: "nearest" });
+      onOpenAccent(operation.id, chip.getBoundingClientRect(), chip, request.action);
+      return true;
+    }
+    onDisarmClose();
+    onMinimize(operation.id);
+    chip.focus();
+    return true;
+  }), [onDisarmClose, onMinimize, onOpenAccent, operation.id, preview, rename]);
+
   return (
     <li
+      ref={chipRef}
       data-side-bar-chip-id={operation.id}
       data-reorder-enabled={reorderEnabled ? "true" : "false"}
       className={chipClassName}
       role="button"
       tabIndex={0}
+      aria-haspopup={preview ? undefined : "menu"}
       aria-label={chipAriaLabel}
       aria-current={active ? "true" : undefined}
       title={preview ? "Click to open in its Theater" : active ? "Focused · double-click to rename · right-click to set accent" : "Click to focus · double-click to rename · right-click to set accent"}
@@ -140,6 +174,12 @@ export function OperationsSideBarChip({
         if (!preview && reorderEnabled && event.altKey && event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
           event.preventDefault();
           onKeyboardMove(operation.id, event.key === "ArrowUp" ? -1 : 1);
+          return;
+        }
+        if (!preview && (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) {
+          event.preventDefault();
+          onDisarmClose();
+          onOpenAccent(operation.id, event.currentTarget.getBoundingClientRect(), event.currentTarget);
           return;
         }
         if (event.key === "Enter" || event.key === " ") {
