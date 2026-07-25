@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
@@ -14,6 +14,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { getTheaterCanvasSnapshot, setOperationOrder, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
+import { getTriageSnapshot, isTriageActive, resolveTriageQueue, subscribeTriage } from "../canvas/triage-store.js";
 import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, sortOperationsByOrder } from "../store.js";
 import { resolveOperationActivity } from "../operation-activity.js";
 import { SideBarBrandFoot } from "../components/side-bar-brand-foot.js";
@@ -171,6 +172,10 @@ interface TheaterInactiveSectionProps {
   readonly statusActionsOpen: boolean;
   readonly showStatusLiveTick: boolean;
   readonly statusLandingIds: ReadonlySet<string>;
+  readonly triageOrderByOperation: ReadonlyMap<string, number>;
+  readonly triageStageIds: ReadonlySet<string>;
+  readonly triageActive: boolean;
+  readonly triageQueueIds: readonly string[];
   readonly dragging: boolean;
   readonly dropBefore: boolean;
   readonly dropAfter: boolean;
@@ -202,6 +207,12 @@ const STATUS_LANDING_DURATION_MS = 500;
 
 interface StatusSection {
   readonly status: SideBarStatus;
+  readonly label: string;
+  readonly entries: readonly SideBarEntry[];
+}
+
+interface TriageSection {
+  readonly key: "queue" | "rest";
   readonly label: string;
   readonly entries: readonly SideBarEntry[];
 }
@@ -258,6 +269,33 @@ function StatusSectionSlot({
           {empty ? <li className="side-bar-status-empty-hint">{t("sidebar.status.noOperations")}</li> : children}
         </ol>
       ) : null}
+    </li>
+  );
+}
+
+function TriageSectionSlot({
+  section,
+  children,
+}: {
+  readonly section: TriageSection;
+  readonly children: ReactNode;
+}) {
+  const statusClass = section.key === "queue" ? "awaiting" : "dormant";
+  return (
+    <li className={[
+      "side-bar-status-section",
+      `side-bar-status-section--${statusClass}`,
+      `side-bar-status-section--triage-${section.key}`,
+      section.entries.length === 0 ? "side-bar-status-section--empty" : "",
+    ].filter(Boolean).join(" ")}>
+      <div className={`side-bar-status-header side-bar-status-header--${statusClass} side-bar-status-header--triage-${section.key}`}>
+        <span className="side-bar-status-header__dot" aria-hidden="true" />
+        <span className="side-bar-status-header__label">{section.label}</span>
+        <span className="side-bar-status-header__count">{section.entries.length}</span>
+      </div>
+      <ol className="side-bar-group-chips" aria-label={section.label}>
+        {children}
+      </ol>
     </li>
   );
 }
@@ -335,6 +373,17 @@ export function OperationsSideBar({
   const collapsedGroups = useCollapsedGroups();
   const collapsedTheaters = useCollapsedTheaters();
   const { operationStatus, pendingSideBarAddTheater, pendingSideBarTheaterLaunch, launchMenuRequest } = useConsoleState();
+  useSyncExternalStore(subscribeTriage, getTriageSnapshot, getTriageSnapshot);
+  const triageOrderByOperation = new Map<string, number>();
+  const triageStageIds = new Set<string>();
+  const triageQueueIdsByTheater = new Map<string, readonly string[]>();
+  for (const theater of theaters) {
+    if (!isTriageActive(theater.id)) continue;
+    const queue = resolveTriageQueue(theater.id, operations, operationStatus);
+    triageQueueIdsByTheater.set(theater.id, queue.map((entry) => entry.operation.id));
+    queue.forEach((entry, index) => triageOrderByOperation.set(entry.operation.id, index + 1));
+    if (queue[0]) triageStageIds.add(queue[0].operation.id);
+  }
 
   useLayoutEffect(() => {
     if (!previousCollapsedRef.current && collapsed) focusCommandBandToggleWhenPanelContainsActiveElement(rootRef.current, ".command-band-sidebar-toggle");
@@ -357,6 +406,8 @@ export function OperationsSideBar({
       icon,
     };
   });
+  const triageAxisActive = isTriageActive(activeTheaterId);
+  const triageSections = buildTriageSections(allEntries, triageQueueIdsByTheater.get(activeTheaterId ?? "") ?? [], t);
   const groupedSections = groupOperations(allEntries, activeGroups, canvas.operationOrder);
   const statusSections = groupOperationsByStatus(allEntries, getStatusTransitionTick, t);
   const idleUnseenIds = getIdleUnseenIds();
@@ -414,6 +465,7 @@ export function OperationsSideBar({
       return false;
     }
     // 상태축에서는 그룹 접힘이 배치에 영향을 주지 않는다 — 여기서 펼치면 사용자의 그룹축 설정만 조용히 바뀐다.
+    if (triageAxisActive) return false;
     if (statusAxis) {
       const status = resolveOperationActivity(operation, operationStatus);
       if (getSideBarStatusSectionCollapsed(operation.theaterId, status, false)) {
@@ -426,7 +478,7 @@ export function OperationsSideBar({
       return false;
     }
     return false;
-  }), [activeTheaterId, collapsed, collapsedGroupSet, collapsedTheaters, operationStatus, operations, statusAxis]);
+  }), [activeTheaterId, collapsed, collapsedGroupSet, collapsedTheaters, operationStatus, operations, statusAxis, triageAxisActive]);
 
   useEffect(() => {
     if (armedCloseId === null) return;
@@ -507,7 +559,7 @@ export function OperationsSideBar({
     : null;
 
   const keyboardMove = (operationId: string, direction: -1 | 1) => {
-    if (statusAxis) return;
+    if (statusAxis || triageAxisActive) return;
     const index = visibleEntries.findIndex((e) => e.operation.id === operationId);
     if (index === -1) return;
     const targetIndex = Math.max(0, Math.min(visibleEntries.length - 1, index + direction));
@@ -544,8 +596,8 @@ export function OperationsSideBar({
   };
 
   useEffect(() => {
-    if (statusAxis && dragRef.current?.kind === "chip") updateDrag(null);
-  }, [statusAxis]);
+    if ((statusAxis || triageAxisActive) && dragRef.current?.kind === "chip") updateDrag(null);
+  }, [statusAxis, triageAxisActive]);
 
   // drag 시작(pointerId가 생김)에만 window 리스너 3개를 등록하고, drag 종료 시 정확히 3개 해제한다.
   const dragPointerId = drag?.pointerId ?? null;
@@ -635,7 +687,7 @@ export function OperationsSideBar({
   }, [dragPointerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const beginPointerDrag = (event: ReactPointerEvent<HTMLLIElement>, operationId: string) => {
-    if (statusAxis) return;
+    if (statusAxis || triageAxisActive) return;
     if (event.button !== 0) return;
     if (event.target instanceof Element && event.target.closest("button")) return;
     setActiveContextMenu(null);
@@ -842,7 +894,8 @@ export function OperationsSideBar({
         {theaters.map((theater, theaterIndex) => {
           const isActiveTheater = theater.id === activeTheaterId;
           const theaterOperations = operations.filter((operation) => operation.theaterId === theater.id);
-          const showStatusLiveTick = !statusAxis && hasAwaitingOperation(theaterOperations, operationStatus);
+          const theaterTriageActive = isTriageActive(theater.id);
+          const showStatusLiveTick = !statusAxis && !theaterTriageActive && hasAwaitingOperation(theaterOperations, operationStatus);
           const statusActionsOpen = activeContextMenu?.kind === "theater" && activeContextMenu.theaterId === theater.id;
           const theaterCollapsed = collapsedTheaters.includes(theater.id);
           const isTheaterDragging = drag?.kind === "theater" && drag.sourceTheaterId === theater.id && drag.dragging;
@@ -883,6 +936,10 @@ export function OperationsSideBar({
                 statusActionsOpen={statusActionsOpen}
                 showStatusLiveTick={showStatusLiveTick}
                 statusLandingIds={statusLandingIds}
+                triageOrderByOperation={triageOrderByOperation}
+                triageStageIds={triageStageIds}
+                triageActive={theaterTriageActive}
+                triageQueueIds={triageQueueIdsByTheater.get(theater.id) ?? []}
                 dragging={isTheaterDragging}
                 dropBefore={theaterDropBefore}
                 dropAfter={theaterDropAfter}
@@ -940,7 +997,43 @@ export function OperationsSideBar({
               />
               {!theaterCollapsed ? (
               <ol className="side-bar-theater-groups" aria-label={t("sidebar.theater.operationsAria", { theater: theater.label })}>
-                {statusAxis ? statusSections.map((section) => (
+                {triageAxisActive ? triageSections.map((section) => (
+                  <TriageSectionSlot key={section.key} section={section}>
+                    {section.entries.map((entry) => {
+                      const globalIndex = entryIndexById.get(entry.operation.id) ?? 0;
+                      const accentKey = canvas.operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
+                      const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
+                      return (
+                        <OperationsSideBarChip
+                          key={entry.operation.id}
+                          entry={entry}
+                          index={globalIndex}
+                          isCloseArmed={armedCloseId === entry.operation.id}
+                          accentValue={accentValue}
+                          idleUnseen={isIdleUnseen(entry.operation.id)}
+                          triageOrder={triageOrderByOperation.get(entry.operation.id)}
+                          triageStage={triageStageIds.has(entry.operation.id)}
+                          triageMode
+                          reorderEnabled={false}
+                          dragging={false}
+                          dragOffsetY={0}
+                          dropTarget={false}
+                          onArmClose={armClose}
+                          onDisarmClose={disarmClose}
+                          onClose={onClose}
+                          onMinimize={onMinimize}
+                          onFocus={onFocus}
+                          onKeyboardMove={keyboardMove}
+                          onPointerDragStart={beginPointerDrag}
+                          onOpenAccent={(operationId, anchor, returnFocus, requestedAction) => {
+                            setActiveContextMenu({ kind: "chip", operationId, anchor, returnFocus, requestedAction });
+                          }}
+                          onRename={onRename}
+                        />
+                      );
+                    })}
+                  </TriageSectionSlot>
+                )) : statusAxis ? statusSections.map((section) => (
                   <StatusSectionSlot
                     key={section.status}
                     theaterId={theater.id}
@@ -965,6 +1058,8 @@ export function OperationsSideBar({
                           statusAxis
                           idleUnseen={isIdleUnseen(entry.operation.id)}
                           statusLanded={statusLandingIds.has(entry.operation.id)}
+                          triageOrder={triageOrderByOperation.get(entry.operation.id)}
+                          triageStage={triageStageIds.has(entry.operation.id)}
                           reorderEnabled={false}
                           dragging={false}
                           dragOffsetY={0}
@@ -1049,6 +1144,8 @@ export function OperationsSideBar({
                         isCloseArmed={armedCloseId === entry.operation.id}
                         accentValue={accentValue}
                         idleUnseen={isIdleUnseen(entry.operation.id)}
+                        triageOrder={triageOrderByOperation.get(entry.operation.id)}
+                        triageStage={triageStageIds.has(entry.operation.id)}
                         dragging={drag?.kind === "chip" && drag.sourceId === entry.operation.id && drag.dragging}
                         dragOffsetY={drag?.kind === "chip" && drag.sourceId === entry.operation.id && drag.dragging ? drag.currentY - drag.startY : 0}
                         dropTarget={
@@ -1216,6 +1313,30 @@ export function groupOperationsByStatus(
         return rightTick - leftTick;
       }),
   }));
+}
+
+export function buildTriageSections(
+  entries: readonly SideBarEntry[],
+  queueIds: readonly string[],
+  t: Translate<CoreMessageKey> = getT("en"),
+): TriageSection[] {
+  const entryById = new Map(entries.map((entry) => [entry.operation.id, entry] as const));
+  const queueEntries = queueIds
+    .map((operationId) => entryById.get(operationId))
+    .filter((entry): entry is SideBarEntry => entry !== undefined);
+  const queueIdSet = new Set(queueIds);
+  return [
+    {
+      key: "queue",
+      label: t("sidebar.triage.queueSection"),
+      entries: queueEntries,
+    },
+    {
+      key: "rest",
+      label: t("sidebar.triage.restSection"),
+      entries: entries.filter((entry) => !queueIdSet.has(entry.operation.id)),
+    },
+  ];
 }
 
 export function hasAwaitingOperation(
@@ -1414,6 +1535,10 @@ function TheaterInactiveSection({
   statusActionsOpen,
   showStatusLiveTick,
   statusLandingIds,
+  triageOrderByOperation,
+  triageStageIds,
+  triageActive,
+  triageQueueIds,
   dragging,
   dropBefore,
   dropAfter,
@@ -1430,6 +1555,7 @@ function TheaterInactiveSection({
   const t = useT();
   const sections = groupOperations(entries, groups, []);
   const statusSections = groupOperationsByStatus(entries, getStatusTransitionTick, t);
+  const triageSections = buildTriageSections(entries, triageQueueIds, t);
   const idleUnseenIds = getIdleUnseenIds();
   const hasCustomGroups = sections.some((section) => section.group !== null);
   return (
@@ -1459,9 +1585,43 @@ function TheaterInactiveSection({
         onContextMenu={onContextMenu}
         onPointerDragStart={onPointerDragStart}
       />
-      {!collapsed && (statusAxis ? statusSections.length : sections.length) > 0 ? (
+      {!collapsed && (triageActive ? triageSections.length : statusAxis ? statusSections.length : sections.length) > 0 ? (
         <ol className="side-bar-theater-groups" aria-label={t("sidebar.theater.operationsAria", { theater: theater.label })}>
-          {statusAxis ? statusSections.map((section) => (
+          {triageActive ? triageSections.map((section) => (
+            <TriageSectionSlot key={section.key} section={section}>
+              {section.entries.map((entry, index) => {
+                const accentKey = operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
+                const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
+                return (
+                  <OperationsSideBarChip
+                    key={entry.operation.id}
+                    entry={entry}
+                    index={index}
+                    isCloseArmed={false}
+                    accentValue={accentValue}
+                    idleUnseen={idleUnseenIds.has(entry.operation.id)}
+                    triageOrder={triageOrderByOperation.get(entry.operation.id)}
+                    triageStage={triageStageIds.has(entry.operation.id)}
+                    triageMode
+                    reorderEnabled={false}
+                    dragging={false}
+                    dragOffsetY={0}
+                    dropTarget={false}
+                    preview
+                    onArmClose={() => {}}
+                    onDisarmClose={() => {}}
+                    onClose={() => {}}
+                    onMinimize={() => {}}
+                    onFocus={onFocus}
+                    onKeyboardMove={() => {}}
+                    onPointerDragStart={() => {}}
+                    onOpenAccent={() => {}}
+                    onRename={() => {}}
+                  />
+                );
+              })}
+            </TriageSectionSlot>
+          )) : statusAxis ? statusSections.map((section) => (
             <StatusSectionSlot
               key={section.status}
               theaterId={theater.id}
@@ -1484,6 +1644,8 @@ function TheaterInactiveSection({
                     statusAxis
                     idleUnseen={idleUnseenIds.has(entry.operation.id)}
                     statusLanded={statusLandingIds.has(entry.operation.id)}
+                    triageOrder={triageOrderByOperation.get(entry.operation.id)}
+                    triageStage={triageStageIds.has(entry.operation.id)}
                     reorderEnabled={false}
                     dragging={false}
                     dragOffsetY={0}
@@ -1541,6 +1703,8 @@ function TheaterInactiveSection({
                           isCloseArmed={false}
                           accentValue={accentValue}
                           idleUnseen={idleUnseenIds.has(entry.operation.id)}
+                          triageOrder={triageOrderByOperation.get(entry.operation.id)}
+                          triageStage={triageStageIds.has(entry.operation.id)}
                           dragging={false}
                           dragOffsetY={0}
                           dropTarget={false}

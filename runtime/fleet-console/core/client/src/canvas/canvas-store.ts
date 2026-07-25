@@ -49,7 +49,7 @@ export interface GridSlotGeometry {
 export type FormationLayout = "grid" | "columns" | "rows";
 
 type Listener = () => void;
-type FocusLayerState =
+export type FocusLayerState =
   | { readonly mode: "maximized"; readonly operationId: string }
   | { readonly mode: "companion"; readonly operationId: string; readonly returnTo: "underlay" | "maximized" };
 type CompanionPanelVisibilityOverrides = Record<string, Readonly<Record<string, boolean>>>;
@@ -93,6 +93,7 @@ let formationLayout = readStoredFormationLayout();
 // 줌 보간 루프가 향하는 목표 viewport. 즉시 이동(pan/focus/load)은 이 값을 current와 동기화해 잔여 보간을 무효화한다.
 let targetViewport: CanvasViewport = DEFAULT_VIEWPORT;
 let zoomRaf: number | null = null;
+let beforeFormationViewActivation: ((theaterId: string) => void) | null = null;
 // 모든 Operation이 공유하는 단조 증가 z-index 발급기.
 // 두 레지스트리가 같은 카운터에서 값을 받아 "활성화한 Operation이 최상단"이 Operation 종류를 가로질러 성립한다.
 let topZIndex = 0;
@@ -128,6 +129,18 @@ export function getFocusLayerRevision(): number {
 export function getTheaterCompanionOperationId(theaterId: string): string | null {
   const layer = activeTheaterId === theaterId ? focusLayer : focusLayersByTheater.get(theaterId) ?? null;
   return layer?.mode === "companion" ? layer.operationId : null;
+}
+
+export function getTheaterFocusLayerSnapshot(theaterId: string): FocusLayerState | null {
+  return activeTheaterId === theaterId ? focusLayer : focusLayersByTheater.get(theaterId) ?? null;
+}
+
+export function setTheaterFocusLayerSnapshot(theaterId: string, nextFocusLayer: FocusLayerState | null): void {
+  if (nextFocusLayer) focusLayersByTheater.set(theaterId, nextFocusLayer);
+  else focusLayersByTheater.delete(theaterId);
+  if (activeTheaterId !== theaterId || focusLayersEqual(focusLayer, nextFocusLayer)) return;
+  focusLayer = nextFocusLayer;
+  emitFocusLayer();
 }
 
 export function getFormationView(): boolean {
@@ -576,6 +589,7 @@ export function forceDropCompanionOperationId(): void {
 export function toggleFormationView(): void {
   if (!activeTheaterId) return;
   if (getCompanionOperationId() !== null) {
+    beforeFormationViewActivation?.(activeTheaterId);
     forceDropCompanionOperationId();
     if (!formationView) {
       formationViewsByTheater.set(activeTheaterId, true);
@@ -588,6 +602,7 @@ export function toggleFormationView(): void {
     clearFormationView();
     return;
   }
+  beforeFormationViewActivation?.(activeTheaterId);
   clearMaximizedOperationId();
   forceDropCompanionOperationId();
   formationViewsByTheater.set(activeTheaterId, true);
@@ -599,6 +614,7 @@ export function selectFormationLayout(layout: FormationLayout): void {
   if (!activeTheaterId) return;
   if (getCompanionOperationId() !== null) {
     setFormationLayout(layout);
+    beforeFormationViewActivation?.(activeTheaterId);
     forceDropCompanionOperationId();
     if (!formationView) {
       formationViewsByTheater.set(activeTheaterId, true);
@@ -613,6 +629,7 @@ export function selectFormationLayout(layout: FormationLayout): void {
   }
   setFormationLayout(layout);
   if (!formationView) {
+    beforeFormationViewActivation?.(activeTheaterId);
     clearMaximizedOperationId();
     forceDropCompanionOperationId();
     formationViewsByTheater.set(activeTheaterId, true);
@@ -621,11 +638,15 @@ export function selectFormationLayout(layout: FormationLayout): void {
   }
 }
 
-export function clearFormationView(): void {
-  if (activeTheaterId) formationViewsByTheater.delete(activeTheaterId);
-  if (!formationView) return;
+export function clearFormationView(theaterId = activeTheaterId): void {
+  if (theaterId) formationViewsByTheater.delete(theaterId);
+  if (activeTheaterId !== theaterId || !formationView) return;
   formationView = false;
   emitFormationView();
+}
+
+export function registerBeforeFormationViewActivation(listener: (theaterId: string) => void): void {
+  beforeFormationViewActivation = listener;
 }
 
 export function setFormationLayout(layout: FormationLayout): void {

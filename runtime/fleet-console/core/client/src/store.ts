@@ -2,6 +2,7 @@ import type { ClientNotification } from "@fleet-console/sdk/notifications";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { buildOperationSearchEntries } from "./operation-search.js";
+import { getGlobalSettingsStoreState, setGlobalSettingsField } from "./global-settings-store.js";
 import { uiFontFamily } from "./ui-font.js";
 import type {
   CodexReaderRequest,
@@ -22,7 +23,9 @@ import type {
 type Listener = () => void;
 
 const ACTIVE_THEATER_STORAGE_KEY = "fleet-console.activeTheaterId";
+// 서버 seenFeatureTours로 일방향 승격하기 위한 legacy migration 읽기·삭제 전용 키다. 새 값은 쓰지 않는다.
 const COMMISSIONING_SEEN_STORAGE_KEY = "fleet-console.commissioningSeen";
+const COMMISSIONING_SEEN_KEY = "commissioning";
 const WHATS_NEW_SEEN_VERSION_STORAGE_KEY = "fleet-console.whatsNewSeenVersion";
 const NOTIFICATION_PREFERENCES_STORAGE_KEY = "fleet-console.notificationPreferences";
 const NOTIFICATION_PREFERENCES_VERSION = 1;
@@ -37,6 +40,7 @@ const listeners = new Set<Listener>();
 
 let notificationSeq = 0;
 let whatsNewSeenVersionMemo: string | null = null;
+let commissioningMigrationAttempted = false;
 
 let state: ConsoleState = {
   connection: "connecting",
@@ -472,7 +476,10 @@ export function openOnboarding(): void {
 }
 
 export function closeOnboarding(): void {
-  writeStoredCommissioningSeen(true);
+  const settings = getGlobalSettingsStoreState().state;
+  if (settings && !settings.seenFeatureTours.includes(COMMISSIONING_SEEN_KEY)) {
+    void setGlobalSettingsField("seenFeatureTours", [...settings.seenFeatureTours, COMMISSIONING_SEEN_KEY]);
+  }
   if (!state.onboardingOpen) return;
   setState({ onboardingOpen: false });
 }
@@ -496,8 +503,31 @@ export function closeCodexReader(): void {
 
 export function resolveOnboardingOnBootstrap(): void {
   if (state.bootstrapped) return;
-  const shouldOpen = state.theaters.length === 0 && !readStoredCommissioningSeen();
+  const settings = getGlobalSettingsStoreState();
+  if (settings.loadStatus === "pending") return;
+  if (settings.loadStatus === "failed" || !settings.state) {
+    setState({ bootstrapped: true, onboardingOpen: false });
+    return;
+  }
+  const commissioningSeen = settings.state.seenFeatureTours.includes(COMMISSIONING_SEEN_KEY)
+    || readStoredCommissioningSeen();
+  const shouldOpen = state.theaters.length === 0 && !commissioningSeen;
   setState({ bootstrapped: true, onboardingOpen: shouldOpen ? true : state.onboardingOpen });
+}
+
+export async function migrateStoredCommissioningSeen(): Promise<boolean> {
+  if (commissioningMigrationAttempted) return false;
+  commissioningMigrationAttempted = true;
+  const settings = getGlobalSettingsStoreState();
+  if (settings.loadStatus !== "ready" || !settings.state) return false;
+  if (settings.state.seenFeatureTours.includes(COMMISSIONING_SEEN_KEY)) return false;
+  if (!readStoredCommissioningSeen()) return false;
+  const saved = await setGlobalSettingsField(
+    "seenFeatureTours",
+    [...settings.state.seenFeatureTours, COMMISSIONING_SEEN_KEY],
+  );
+  if (saved) removeStoredCommissioningSeen();
+  return saved;
 }
 
 export function removeTheater(theaterId: string): void {
@@ -669,16 +699,12 @@ function readStoredCommissioningSeen(): boolean {
   }
 }
 
-function writeStoredCommissioningSeen(seen: boolean): void {
+function removeStoredCommissioningSeen(): void {
   if (typeof window === "undefined") return;
   try {
-    if (seen) {
-      window.localStorage.setItem(COMMISSIONING_SEEN_STORAGE_KEY, "1");
-    } else {
-      window.localStorage.removeItem(COMMISSIONING_SEEN_STORAGE_KEY);
-    }
+    window.localStorage.removeItem(COMMISSIONING_SEEN_STORAGE_KEY);
   } catch {
-    // 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
+    // 저장소가 막힌 환경에서는 legacy 표식을 그대로 둔다.
   }
 }
 

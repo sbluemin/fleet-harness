@@ -21,10 +21,10 @@ import "./styles/layout.css";
 import "./styles/components.css";
 import { App } from "./app.js";
 import { fetchGlobalSettingsState } from "./global-settings-api.js";
-import { getGlobalSettingsStoreState, hydrateGlobalSettings, subscribe as subscribeGlobalSettings } from "./global-settings-store.js";
+import { failGlobalSettingsLoad, getGlobalSettingsStoreState, hydrateGlobalSettings, subscribe as subscribeGlobalSettings } from "./global-settings-store.js";
 import { connectOperationsSse } from "./operations-sse.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "./plugin-registry.js";
-import { applyDesktopShellMarker, setActiveTheme, setActiveUiFont } from "./store.js";
+import { applyDesktopShellMarker, migrateStoredCommissioningSeen, setActiveTheme, setActiveUiFont } from "./store.js";
 
 interface FleetConsoleRuntime {
   readonly "react": typeof reactNs;
@@ -67,7 +67,9 @@ try {
   setActiveTheme(settings.theme);
   setActiveUiFont(settings.uiFont);
   hydrateGlobalSettings(settings);
-} catch {
+  await migrateStoredCommissioningSeen();
+} catch (error) {
+  failGlobalSettingsLoad(error);
   // 서버 미응답 시 기본 Theme 및 Manrope UI font를 유지한다.
 }
 

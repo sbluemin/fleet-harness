@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
@@ -7,12 +7,13 @@ import type { CompanionPanelDescriptor, ConsoleTheme, FleetClientPlugin, Operati
 
 import { fetchOperations } from "../api.js";
 import { isBlockingDialogOpen } from "../blocking-dialog.js";
-import { flattenGroupedOrder, hydrateOperations, requestOperationLaunchMenu, setActiveOperation } from "../store.js";
+import { flattenGroupedOrder, hydrateOperations, requestOperationKeyboardFocus, requestOperationLaunchMenu, setActiveOperation } from "../store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import { getIdleUnseenIds, subscribeIdleUnseen } from "../sidebar/operations-side-bar-store.js";
+import { resolveOperationActivity } from "../operation-activity.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
@@ -22,11 +23,14 @@ import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { resolveAccentColor } from "./operation-accent.js";
 import { CanvasGrid } from "./canvas-grid.js";
+import { TriageClearPlate } from "./triage-clear-plate.js";
 import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
 import { RubberBand } from "./rubber-band.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { screenToCanvas, type CanvasPoint, type CanvasRect } from "./coordinates.js";
+import { modeSlotGeometryFor, triageStageGeometryFor } from "./triage-geometry.js";
+import { dismissTriageOperation, getTriageCleared, getTriageEnteredAt, getTriagePick, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
 
 interface OperationsCanvasProps {
   readonly state: ConsoleState;
@@ -83,6 +87,7 @@ export function OperationsCanvas({
   onSetAccent,
 }: OperationsCanvasProps) {
   const canvasRef = useRef<HTMLElement | null>(null);
+  const t = useT();
   const canvas = useCanvasState();
   const formationLayout = useFormationLayout();
   const formationView = useFormationView();
@@ -101,6 +106,29 @@ export function OperationsCanvas({
   const glanceVisible = useGlanceHold();
   const disabled = !state.activeTheaterId || state.addingTheater;
   const operationBodyPoolAvailable = useOperationBodyPoolAvailable();
+  const triageActive = useTriageActive(state.activeTheaterId);
+  useSyncExternalStore(subscribeTriage, getTriageSnapshot, getTriageSnapshot);
+  const [triageEntering, setTriageEntering] = useState(false);
+  const [formationEntering, setFormationEntering] = useState(false);
+  const [, setTriageFocusRevision] = useState(0);
+  const previousTriageStageRef = useRef<string | null>(null);
+  const triageStageActivityRef = useRef<{
+    readonly theaterId: string;
+    readonly operationId: string;
+    readonly activity: OperationActivity;
+  } | null>(null);
+  const pendingTriageClearRef = useRef<{
+    readonly theaterId: string;
+    readonly operationId: string;
+    readonly cancel: () => void;
+  } | null>(null);
+  const autoFocusedTriageStageRef = useRef<TriageStageIdentity | null>(null);
+  const companionTriageStageRef = useRef<TriageStageIdentity | null>(null);
+  const triageRuntimeRef = useRef<{
+    readonly theaterId: string | null;
+    readonly operations: readonly OperationNode[];
+    readonly operationStatus: Readonly<Record<string, OperationActivity>>;
+  }>({ theaterId: null, operations: [], operationStatus: {} });
 
   useEffect(() => {
     const element = canvasRef.current;
@@ -112,11 +140,48 @@ export function OperationsCanvas({
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    if (!triageActive || !state.activeTheaterId) {
+      setTriageEntering(false);
+      return;
+    }
+    const enteredAt = getTriageEnteredAt(state.activeTheaterId) ?? Date.now();
+    const remaining = Math.max(0, 1_900 - (Date.now() - enteredAt));
+    setTriageEntering(remaining > 0);
+    if (remaining === 0) return;
+    const timer = window.setTimeout(() => setTriageEntering(false), remaining);
+    return () => window.clearTimeout(timer);
+  }, [state.activeTheaterId, triageActive]);
+
+  useEffect(() => {
+    if (!triageActive) return;
+    const rerender = () => setTriageFocusRevision((value) => value + 1);
+    document.addEventListener("focusin", rerender);
+    document.addEventListener("focusout", rerender);
+    return () => {
+      document.removeEventListener("focusin", rerender);
+      document.removeEventListener("focusout", rerender);
+    };
+  }, [triageActive]);
+
+  useEffect(() => {
+    if (!formationView || !state.activeTheaterId) {
+      setFormationEntering(false);
+      return;
+    }
+    setFormationEntering(true);
+    // 커튼 1400ms → 타일 착지 1180ms + stagger 40ms×n + 420ms. 9패널 기준 1920ms에 끝난다.
+    const timer = window.setTimeout(() => {
+      setFormationEntering(false);
+    }, 1_950);
+    return () => window.clearTimeout(timer);
+  }, [formationView, state.activeTheaterId]);
+
   const interaction = useCanvasInteraction({
     viewport: canvas.viewport,
     // Formation은 읽기 전용 감독 그리드다 — 슬롯 사이 빈 공간에서 숨은 viewport를 팬/줌하거나
     // 오래된 월드 좌표로 생성하는 일이 없도록 캔버스 제스처를 통째로 게이트한다.
-    disabled: disabled || formationView || companionOperationId !== null,
+    disabled: disabled || formationView || companionOperationId !== null || triageActive,
     onViewportChange: setViewport,
     onZoom: animateViewportTo,
     onCreate: (rect) => {
@@ -150,14 +215,191 @@ export function OperationsCanvas({
   };
 
   const minimizedSet = new Set(minimized);
-  useEffect(() => {
-    if (state.activeOperationId && minimizedSet.has(state.activeOperationId)) setActiveOperation(null);
-  }, [minimized, state.activeOperationId]);
-
   const visibleOperations = Object.fromEntries(
     Object.entries(canvas.operations).filter(([sessionId]) => !minimizedSet.has(sessionId)),
   );
   const theaterOperations = (state.operations ?? []).filter((operation) => operation.theaterId === state.activeTheaterId);
+  triageRuntimeRef.current = {
+    theaterId: state.activeTheaterId,
+    operations: theaterOperations,
+    operationStatus: state.operationStatus,
+  };
+  const triageQueue = state.activeTheaterId
+    ? resolveTriageQueue(state.activeTheaterId, theaterOperations, state.operationStatus)
+    : [];
+  const automaticTriageStage = triageQueue[0] ?? null;
+  const previousTriageStageId = previousTriageStageRef.current;
+  const previousTriageStageOperation = previousTriageStageId
+    ? theaterOperations.find((operation) => operation.id === previousTriageStageId) ?? null
+    : null;
+  const previousTriageFrame = previousTriageStageId
+    ? canvasRef.current?.querySelector<HTMLElement>(`.canvas-operation[data-operation-id="${escapeSelectorValue(previousTriageStageId)}"]`) ?? null
+    : null;
+  const previousTriageHasFocus = previousTriageFrame !== null
+    && typeof document !== "undefined"
+    && document.activeElement instanceof Node
+    && previousTriageFrame.contains(document.activeElement)
+    && !isTriageOperationDismissed(previousTriageStageId!);
+  const previousTriageActivity = previousTriageStageOperation
+    ? resolveOperationActivity(previousTriageStageOperation, state.operationStatus)
+    : null;
+  const previousTriageStillWaiting = previousTriageStageOperation !== null
+    && isTriageWaitingOperation(previousTriageStageOperation, state.operationStatus);
+  const previousStageTransitioning = previousTriageStageOperation !== null
+    && triageStageActivityRef.current?.theaterId === state.activeTheaterId
+    && triageStageActivityRef.current.operationId === previousTriageStageOperation.id
+    && previousTriageActivity !== null
+    && isTriageClearedTransition(triageStageActivityRef.current.activity, previousTriageActivity);
+  const pendingTriageOperationId = pendingTriageClearRef.current?.theaterId === state.activeTheaterId
+    ? pendingTriageClearRef.current.operationId
+    : null;
+  const graceTriageOperation = previousStageTransitioning
+    ? previousTriageStageOperation
+    : pendingTriageOperationId
+      ? theaterOperations.find((operation) => operation.id === pendingTriageOperationId) ?? null
+      : null;
+  const graceTriageEntry: TriageQueueEntry | null = graceTriageOperation
+    ? {
+        operation: graceTriageOperation,
+        activity: resolveOperationActivity(graceTriageOperation, state.operationStatus),
+        picked: getTriagePick(state.activeTheaterId ?? "") === graceTriageOperation.id,
+      }
+    : null;
+  const protectedTriageEntry: TriageQueueEntry | null = previousTriageHasFocus && previousTriageStageOperation && previousTriageStillWaiting
+    && !isTriageOperationDeferred(previousTriageStageOperation.id)
+    ? {
+        operation: previousTriageStageOperation,
+        activity: previousTriageActivity!,
+        picked: false,
+      }
+    : null;
+  const retainedTriageEntry = graceTriageEntry ?? protectedTriageEntry;
+  const pickedDifferentOperation = automaticTriageStage?.picked === true
+    && automaticTriageStage.operation.id !== retainedTriageEntry?.operation.id;
+  const triageDisplayQueue = retainedTriageEntry && !pickedDifferentOperation && automaticTriageStage?.operation.id !== retainedTriageEntry.operation.id
+    ? [retainedTriageEntry, ...triageQueue.filter((entry) => entry.operation.id !== retainedTriageEntry.operation.id)]
+    : triageQueue;
+  const triageStage = triageActive ? triageDisplayQueue[0] ?? null : null;
+  const triageStageId = triageStage?.operation.id ?? null;
+  useEffect(() => {
+    if (state.activeOperationId
+      && minimizedSet.has(state.activeOperationId)
+      && (!triageActive || state.activeOperationId !== triageStageId)) {
+      setActiveOperation(null);
+    }
+  }, [minimized, state.activeOperationId, triageActive, triageStageId]);
+  useEffect(() => {
+    if (!triageActive || !state.activeTheaterId || !triageStageId) {
+      autoFocusedTriageStageRef.current = null;
+      return;
+    }
+    const nextStage = { theaterId: state.activeTheaterId, operationId: triageStageId };
+    if (autoFocusedTriageStageRef.current?.theaterId === nextStage.theaterId
+      && autoFocusedTriageStageRef.current.operationId === nextStage.operationId) return;
+    autoFocusedTriageStageRef.current = nextStage;
+    const frame = window.requestAnimationFrame(() => {
+      if (document.querySelector(".feature-tour-layer") || hasVisibleModal(document)) return;
+      const activeElement = document.activeElement;
+      if (activeElement instanceof HTMLElement
+        && activeElement.closest(".canvas-operation")
+        && activeElement.matches("input, textarea, [contenteditable='true']")
+        && !activeElement.closest(".xterm")) return;
+      setActiveOperation(triageStageId);
+      requestOperationKeyboardFocus(triageStageId);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [state.activeTheaterId, triageActive, triageStageId]);
+  useLayoutEffect(() => {
+    if (!triageActive || !state.activeTheaterId) {
+      companionTriageStageRef.current = null;
+      return;
+    }
+    companionTriageStageRef.current = reconcileTriageStageCompanion(
+      companionTriageStageRef.current,
+      { theaterId: state.activeTheaterId, operationId: triageStageId },
+    );
+  }, [state.activeTheaterId, triageActive, triageStageId]);
+  useEffect(() => {
+    if (!triageActive || !state.activeTheaterId) {
+      pendingTriageClearRef.current?.cancel();
+      pendingTriageClearRef.current = null;
+      previousTriageStageRef.current = null;
+      triageStageActivityRef.current = null;
+      return;
+    }
+    const pendingClear = pendingTriageClearRef.current;
+    if (pendingClear?.theaterId === state.activeTheaterId) {
+      const pendingOperation = theaterOperations.find((operation) => operation.id === pendingClear.operationId);
+      const pickedId = getTriagePick(state.activeTheaterId);
+      const replacedByPick = pickedId !== null && pickedId !== pendingClear.operationId;
+      if (!pendingOperation
+        || isTriageWaitingOperation(pendingOperation, state.operationStatus)
+        || replacedByPick) {
+        pendingClear.cancel();
+        pendingTriageClearRef.current = null;
+        if (replacedByPick) {
+          previousTriageStageRef.current = triageStageId;
+          triageStageActivityRef.current = triageStage
+            ? {
+                theaterId: state.activeTheaterId,
+                operationId: triageStage.operation.id,
+                activity: resolveOperationActivity(triageStage.operation, state.operationStatus),
+              }
+            : null;
+          return;
+        }
+      } else {
+        previousTriageStageRef.current = pendingClear.operationId;
+        return;
+      }
+    }
+    const previousStage = triageStageActivityRef.current;
+    if (previousStage?.theaterId === state.activeTheaterId) {
+      const previousOperation = theaterOperations.find((operation) => operation.id === previousStage.operationId);
+      if (previousOperation && !isTriageOperationDismissed(previousStage.operationId)) {
+        const currentActivity = resolveOperationActivity(previousOperation, state.operationStatus);
+        if (isTriageClearedTransition(previousStage.activity, currentActivity)) {
+          const theaterId = state.activeTheaterId;
+          const operationId = previousStage.operationId;
+          const cancel = scheduleTriageClear(
+            theaterId,
+            operationId,
+            () => {
+              const runtime = triageRuntimeRef.current;
+              const liveOperation = runtime.operations.find((operation) => operation.id === operationId);
+              const pickedId = getTriagePick(theaterId);
+              return runtime.theaterId === theaterId
+                && isTriageActive(theaterId)
+                && liveOperation !== undefined
+                && !isTriageOperationDismissed(operationId)
+                && !isTriageWaitingOperation(liveOperation, runtime.operationStatus)
+                && (pickedId === null || pickedId === operationId);
+            },
+            () => {
+              pendingTriageClearRef.current = null;
+              previousTriageStageRef.current = null;
+              triageStageActivityRef.current = null;
+            },
+          );
+          pendingTriageClearRef.current = { theaterId, operationId, cancel };
+          previousTriageStageRef.current = operationId;
+          return;
+        }
+      }
+    }
+    previousTriageStageRef.current = triageStageId;
+    triageStageActivityRef.current = triageStage
+      ? {
+          theaterId: state.activeTheaterId,
+          operationId: triageStage.operation.id,
+          activity: resolveOperationActivity(triageStage.operation, state.operationStatus),
+        }
+      : null;
+  }, [state.activeTheaterId, state.operationStatus, theaterOperations, triageActive, triageStage]);
+  useEffect(() => () => {
+    pendingTriageClearRef.current?.cancel();
+    pendingTriageClearRef.current = null;
+  }, []);
   const operationKindRegistry = registry.operationKinds;
   const maximizedOperationExists = maximizedOperationId !== null && theaterOperations.some((operation) => operation.id === maximizedOperationId && !minimizedSet.has(operation.id));
   const panelMaximized = maximizedOperationExists ? maximizedOperationId : null;
@@ -180,7 +422,7 @@ export function OperationsCanvas({
   const pluginOperations = companionOperation && !theaterOperations.some((operation) => operation.id === companionOperation.id)
     ? [...theaterOperations, companionOperation]
     : theaterOperations;
-  const hasContent = hasVisibleCanvasContent(pluginOperations, minimizedSet);
+  const hasContent = triageActive ? triageStage !== null : hasVisibleCanvasContent(pluginOperations, minimizedSet);
   useEffect(() => {
     if (companionOperationId === null || currentPanelCompanion !== null) return;
     // ops 푸시 직후 대상 Operation이 목록에서 일시적으로 빠지는 레이스가 있어, 방금 연 분석
@@ -197,8 +439,32 @@ export function OperationsCanvas({
     canvas.operationOrder,
     [],
   ).filter((operation) => !minimizedSet.has(operation.id)).map((operation) => operation.id);
-  const formationSlots = formationView ? calculateGridSlots({ x: 0, y: 0, width: canvasSize.width, height: canvasSize.height }, formationOperationIds.length, undefined, undefined, undefined, undefined, formationLayout) : [];
+  const formationCellCount = formationLayout === "grid"
+    ? completeFormationGridCellCount(formationOperationIds.length)
+    : formationOperationIds.length;
+  const formationSlotArea = {
+    x: 18,
+    y: 18,
+    width: Math.max(0, canvasSize.width - 36),
+    height: Math.max(0, canvasSize.height - 36),
+  };
+  const allFormationSlots = formationView
+    ? calculateGridSlots(
+        { x: 0, y: 0, width: canvasSize.width, height: canvasSize.height },
+        formationCellCount,
+        undefined,
+        undefined,
+        undefined,
+        18,
+        formationLayout,
+      )
+    : [];
+  const formationSlots = allFormationSlots.slice(0, formationOperationIds.length);
+  const formationGuideSlots = formationLayout === "grid"
+    ? allFormationSlots.slice(formationOperationIds.length)
+    : [];
   const formationSlotByOperationId = new Map(formationOperationIds.map((operationId, index) => [operationId, formationSlots[index]!]));
+  const formationSlotIndexByOperationId = new Map(formationOperationIds.map((operationId, index) => [operationId, index + 1]));
   // Formation 진입·레이아웃 전환 시 슬롯 순서 stagger — 윈도우 리사이즈 재배치에는 적용하지 않는다.
   useEffect(() => {
     if (!formationView || panelMotionSuppressed()) return;
@@ -208,9 +474,18 @@ export function OperationsCanvas({
       .map((operationId) => root.querySelector<HTMLElement>(`.canvas-operation[data-operation-id="${escapeSelectorValue(operationId)}"]`))
       .filter((element): element is HTMLElement => element !== null);
     // geometry 전용 CSS 변수 채널 — inline transition-delay는 존재 전환의 per-property 지연을 덮어쓴다.
-    frames.forEach((element, index) => { element.style.setProperty("--panel-stagger-delay", `${index * 40}ms`); });
-    const clear = () => { for (const element of frames) element.style.removeProperty("--panel-stagger-delay"); };
-    const timer = window.setTimeout(clear, 600 + frames.length * 40);
+    frames.forEach((element, index) => {
+      element.style.setProperty("--panel-stagger-delay", `${index * 40}ms`);
+      element.style.setProperty("--li", String(index));
+    });
+    const clear = () => {
+      for (const element of frames) {
+        element.style.removeProperty("--panel-stagger-delay");
+        element.style.removeProperty("--li");
+      }
+    };
+    // 진입 연출이 끝나는 1950ms까지 --li를 유지해야 마지막 타일의 착지 애니메이션이 잘리지 않는다.
+    const timer = window.setTimeout(clear, 1_950);
     return () => {
       window.clearTimeout(timer);
       clear();
@@ -218,13 +493,13 @@ export function OperationsCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formationView, formationLayout]);
   // 최대화 시에는 net scale 1(기본 줌)로 렌더한다 — 현재 배율과 무관하게 터미널이 선명하게 그려진다.
-  const effectiveZoom = panelMaximized || panelCompanion || formationView ? 1 : canvas.viewport.zoom;
+  const effectiveZoom = panelMaximized || panelCompanion || formationView || triageActive ? 1 : canvas.viewport.zoom;
   const topPanelZIndex = maxOperationZIndex(canvas.operations) + 1;
   const companionSlotCount = visibleCompanionPanels.length + 1;
 
   return (
     <main
-      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${glanceVisible ? "is-glance" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${panelCompanion ? "is-companion-layout" : ""} ${formationView ? "is-formation-view" : ""}`}
+      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${glanceVisible ? "is-glance" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${panelCompanion ? "is-companion-layout" : ""} ${formationView ? "is-formation-view" : ""} ${formationEntering ? "is-formation-entering" : ""} ${triageActive ? "is-triage" : ""} ${triageEntering ? "is-triage-entering" : ""}`}
       onPointerDown={interaction.onPointerDown}
       onPointerMove={interaction.onPointerMove}
       onPointerUp={interaction.onPointerUp}
@@ -235,30 +510,57 @@ export function OperationsCanvas({
       tabIndex={-1}
     >
       <CanvasGrid viewport={canvas.viewport} />
+      {triageActive ? <div className="canvas-triage-scan" aria-hidden="true" /> : null}
       <div
         style={{
           // 최대화 시 transform 제거(none)로 net scale 1. 일반 상태에서는 pan 좌표를 정수 픽셀로 스냅해
           // will-change 합성 레이어의 서브픽셀 오프셋 리샘플(글자 번짐)을 제거한다.
-          transform: panelMaximized || panelCompanion || formationView
+          transform: panelMaximized || panelCompanion || formationView || triageActive
             ? "none"
             : `translate(${Math.round(canvas.viewport.x)}px, ${Math.round(canvas.viewport.y)}px) scale(${canvas.viewport.zoom})`,
         }}
         className="operations-canvas-world"
       >
+        {formationView ? formationGuideSlots.map((geometry, index) => (
+          <div
+            key={`formation-guide-${formationOperationIds.length + index + 1}`}
+            className="canvas-formation-guide"
+            style={{
+              left: Math.round(geometry.x),
+              top: Math.round(geometry.y),
+              width: Math.round(geometry.width),
+              height: Math.round(geometry.height),
+              "--gi": index,
+            } as CSSProperties}
+            aria-label={t("canvas.formation.slotAria", { index: formationOperationIds.length + index + 1 })}
+          >
+            <span className="canvas-formation-guide-index">
+              {String(formationOperationIds.length + index + 1).padStart(2, "0")}
+            </span>
+          </div>
+        )) : null}
         {pluginOperations.map((operation) => {
           const baseGeometry = canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation);
           const operationMaximized = panelMaximized === operation.id;
           const operationCompanion = panelCompanion === operation.id;
+          const operationTriageStage = triageStageId === operation.id;
           // focus layer는 peer를 실제 최소화하지 않고, mount를 보존한 채 렌더만 감춘다.
-          const focusLayerHidden = (panelMaximized !== null || panelCompanion !== null) && !operationMaximized && !operationCompanion;
+          const focusLayerHidden = triageActive
+            ? !operationTriageStage
+            : (panelMaximized !== null || panelCompanion !== null) && !operationMaximized && !operationCompanion;
           const formationSlot = formationSlotByOperationId.get(operation.id);
-          const frameGeometry = operationMaximized
+          const frameGeometry = operationTriageStage
+            ? triageStageGeometryFor(canvasSize, topPanelZIndex, 0, triageActive && operationCompanion ? companionSlotCount : 1)
+            : operationMaximized
             ? maximizedGeometryFor(canvasSize, topPanelZIndex)
-            : operationCompanion ? companionGeometryFor(canvasSize, 0, companionSlotCount, topPanelZIndex)
+            : operationCompanion
+            ? formationView
+              ? modeSlotGeometryFor(formationSlotArea, 0, companionSlotCount, 8, topPanelZIndex)
+              : companionGeometryFor(canvasSize, 0, companionSlotCount, topPanelZIndex)
             : formationSlot ? { ...baseGeometry, ...formationSlot } : baseGeometry;
           // 보더 위 명판(top: -space-3)이 캔버스 상단 클립에 잘리는 뷰포트-상대 위치면 내부 인셋으로 전환한다.
           // 최대화/Formation은 전용 CSS 인셋 규칙이 이미 소유한다.
-          const topEdge = !operationMaximized && !operationCompanion && !formationSlot
+          const topEdge = !operationTriageStage && !operationMaximized && !operationCompanion && !formationSlot
             && canvas.viewport.y + frameGeometry.y * effectiveZoom < TITLEBAR_OUTSET_PX * effectiveZoom;
           return renderPluginOperation(operation, {
             active: activePluginOperationId === operation.id,
@@ -273,13 +575,22 @@ export function OperationsCanvas({
             theme: state.activeTheme,
             language,
             viewportZoom: effectiveZoom,
-            minimized: minimizedSet.has(operation.id),
+            minimized: triageActive ? !operationTriageStage : minimizedSet.has(operation.id),
             maximized: operationMaximized,
+            triageStage: operationTriageStage,
+            triagePicked: operationTriageStage && triageStage?.picked === true,
+            formationSlotIndex: formationView ? formationSlotIndexByOperationId.get(operation.id) : undefined,
             companion: operationCompanion,
             companions: operationCompanion ? visibleCompanionPanels : [],
-            companionGeometries: operationCompanion ? visibleCompanionPanels.map((_, index) => companionGeometryFor(canvasSize, index + 1, companionSlotCount, topPanelZIndex)) : [],
+            companionGeometries: operationCompanion
+              ? visibleCompanionPanels.map((_, index) => triageActive
+                  ? triageStageGeometryFor(canvasSize, topPanelZIndex, index + 1, companionSlotCount)
+                  : formationView
+                    ? modeSlotGeometryFor(formationSlotArea, index + 1, companionSlotCount, 8, topPanelZIndex)
+                    : companionGeometryFor(canvasSize, index + 1, companionSlotCount, topPanelZIndex))
+              : [],
             hiddenCompanionPanelIds: operationCompanion ? hiddenCompanionPanelIds : [],
-            formation: formationView,
+            formation: formationView || triageActive,
             focusLayerHidden,
             operationBodyPoolAvailable,
             onRenderHiddenFocus: () => {
@@ -296,6 +607,7 @@ export function OperationsCanvas({
               if (!operationMaximized && !operationCompanion && !formationView) setOperationGeometry(operation.id, canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation));
             },
             onClose: () => {
+              if (triageActive && state.activeTheaterId) dismissTriageOperation(state.activeTheaterId, operation.id);
               if (state.activeOperationId === operation.id) setActiveOperation(null);
               if (panelMaximized === operation.id) clearMaximizedOperationId();
               if (panelCompanion === operation.id) forceDropCompanionOperationId();
@@ -329,7 +641,71 @@ export function OperationsCanvas({
           });
         })}
       </div>
-      {!hasContent ? (
+      {formationView ? (
+        <>
+          <div className="canvas-mode-frame" aria-hidden="true">
+            <span className="canvas-mode-bracket canvas-mode-bracket--nw" />
+            <span className="canvas-mode-bracket canvas-mode-bracket--ne" />
+            <span className="canvas-mode-bracket canvas-mode-bracket--sw" />
+            <span className="canvas-mode-bracket canvas-mode-bracket--se" />
+          </div>
+          {formationEntering ? (
+            <div className="canvas-mode-curtain canvas-formation-curtain" aria-hidden="true">
+              <span className="canvas-mode-curtain-kicker">{t("canvas.formation.curtainKicker")}</span>
+              <span className="canvas-mode-curtain-ruler" />
+              <strong>{t("canvas.formation.curtainTitle")}</strong>
+              <span>{t("canvas.formation.curtainBody", { count: formationOperationIds.length })}</span>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+      {triageActive ? (
+        <>
+          <div className="canvas-mode-frame" aria-hidden="true">
+            <span className="canvas-mode-bracket canvas-mode-bracket--nw" />
+            <span className="canvas-mode-bracket canvas-mode-bracket--ne" />
+            <span className="canvas-mode-bracket canvas-mode-bracket--sw" />
+            <span className="canvas-mode-bracket canvas-mode-bracket--se" />
+          </div>
+          <div className="canvas-triage-rail" data-canvas-blocker>
+            {triageStage ? (
+              <>
+                <div className="canvas-triage-rail-current">
+                  <span className="canvas-triage-rail-current-label">{t("canvas.triage.railCurrent")}</span>
+                  <span aria-hidden="true">▸</span>
+                  <span className="canvas-triage-rail-current-name" title={triageStage.operation.title}>{triageStage.operation.title}</span>
+                </div>
+                <span className="canvas-triage-rail-divider" aria-hidden="true" />
+              </>
+            ) : null}
+            <div className="canvas-triage-rail-next">
+              <span className="canvas-triage-rail-lead">{t("canvas.triage.railLead")}</span>
+              <span aria-hidden="true">▸</span>
+              <div className="canvas-triage-rail-track">
+                {triageDisplayQueue.slice(1).length > 0 ? triageDisplayQueue.slice(1).map((entry) => (
+                  <button key={entry.operation.id} type="button" onClick={() => state.activeTheaterId && pickTriageOperation(state.activeTheaterId, entry.operation.id)}>
+                    {entry.operation.title}
+                  </button>
+                )) : <span className="canvas-triage-rail-empty">{t("canvas.triage.railEmpty")}</span>}
+              </div>
+            </div>
+            <span className="canvas-triage-rail-cleared">{t("canvas.triage.railCleared", { count: state.activeTheaterId ? getTriageCleared(state.activeTheaterId) : 0 })}</span>
+          </div>
+          {triageEntering ? <div className="canvas-triage-sweep" aria-hidden="true" /> : null}
+          {triageEntering ? (
+            <div className="canvas-mode-curtain canvas-triage-curtain" aria-hidden="true">
+              <span className="canvas-mode-curtain-kicker">{t("canvas.triage.curtainKicker")}</span>
+              <span className="canvas-mode-curtain-ruler" />
+              <strong>{t("canvas.triage.curtainTitle")}</strong>
+              <span>{triageQueue.length > 0
+                ? t("canvas.triage.curtainBody", { waiting: triageQueue.length, stowed: Math.max(0, theaterOperations.length - 1) })
+                : t("canvas.triage.curtainBodyEmpty", { stowed: theaterOperations.length })}</span>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+      <TriageClearPlate active={triageActive} entering={triageEntering} hasContent={hasContent} />
+      {!triageActive && !hasContent && !formationEntering ? (
         <OperationsCanvasEmptyState
           activeTheaterId={state.activeTheaterId}
           theaterLabel={state.theaters.find((theater) => theater.id === state.activeTheaterId)?.label ?? state.activeTheaterId ?? ""}
@@ -347,7 +723,7 @@ export function OperationsCanvas({
           viewportBounds={viewportBoundsFor(canvasRef.current)}
           placement="cursor"
           catalog={catalog}
-          canLaunch={canLaunch && !formationView}
+          canLaunch={canLaunch && !formationView && !triageActive}
           renderKindIcon={renderKindIcon}
           onLaunchKind={handleContextMenuLaunchKind}
           onClose={() => setContextMenu(null)}
@@ -496,6 +872,9 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly viewportZoom: number;
   readonly minimized: boolean;
   readonly maximized: boolean;
+  readonly triageStage: boolean;
+  readonly triagePicked: boolean;
+  readonly formationSlotIndex?: number;
   readonly companion: boolean;
   readonly companions: readonly CompanionPanelDescriptor[];
   readonly companionGeometries: readonly OperationGeometry[];
@@ -541,10 +920,13 @@ function renderPluginOperation(operation: OperationNode, options: {
         status={options.status}
         minimized={options.minimized}
         maximized={options.maximized}
+        triageStage={options.triageStage}
+        triagePicked={options.triagePicked}
+        formationSlotIndex={options.formationSlotIndex}
         topEdge={options.topEdge}
         renderHidden={options.focusLayerHidden}
         focusLayerTarget={options.maximized || options.companion}
-        interactionDisabled={options.formation || options.companion || options.focusLayerHidden}
+        interactionDisabled={options.formation || options.companion || options.focusLayerHidden || options.triageStage}
         accentKey={options.accentKey}
         onActivate={options.onActivate}
         onClose={options.onClose}
@@ -716,4 +1098,18 @@ async function updatePluginOperationGeometry(operationId: string, geometry: Oper
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ geometry }),
   });
+}
+
+function hasVisibleModal(root: ParentNode): boolean {
+  return [...root.querySelectorAll<HTMLElement>('[aria-modal="true"]')].some((element) => {
+    if (element.hidden || element.getAttribute("aria-hidden") === "true") return false;
+    const style = getComputedStyle(element);
+    return style.display !== "none" && style.visibility !== "hidden";
+  });
+}
+
+function completeFormationGridCellCount(count: number): number {
+  if (count <= 0) return 0;
+  const columns = Math.ceil(Math.sqrt(count));
+  return columns * Math.ceil(count / columns);
 }

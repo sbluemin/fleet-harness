@@ -485,6 +485,27 @@ describe("canvas store", () => {
     expect(slots[4]).toEqual({ x: 30, y: 656, width: 960, height: 144 });
   });
 
+  it("quantifies the Formation frame padding without a HUD reserve at 1280x720", () => {
+    const formationRect = { x: 0, y: 0, width: 1_280, height: 720 };
+    const gridNine = calculateGridSlots(formationRect, 9, 320, 200, 8, 18, "grid");
+    const gridTwelve = calculateGridSlots(formationRect, 12, 320, 200, 8, 18, "grid");
+    const columnsThree = calculateGridSlots(formationRect, 3, 320, 200, 8, 18, "columns");
+    const columnsFour = calculateGridSlots(formationRect, 4, 320, 200, 8, 18, "columns");
+    const rowsThree = calculateGridSlots(formationRect, 3, 320, 200, 8, 18, "rows");
+    const rowsFour = calculateGridSlots(formationRect, 4, 320, 200, 8, 18, "rows");
+
+    expect(gridNine[0]).toMatchObject({ x: 18, y: 18, width: 409.3333333333333 });
+    expect(gridNine[0]?.height).toBeCloseTo(222.666667);
+    expect(gridTwelve[0]).toMatchObject({ x: 18, y: 18, width: 305 });
+    expect(gridTwelve[0]?.height).toBeCloseTo(222.666667);
+    expect(columnsThree[0]).toMatchObject({ width: 409.3333333333333, height: 684 });
+    expect(columnsFour[0]).toMatchObject({ width: 305, height: 684 });
+    expect(rowsThree[0]?.width).toBe(1_244);
+    expect(rowsThree[0]?.height).toBeCloseTo(222.666667);
+    expect(rowsFour[0]?.width).toBe(1_244);
+    expect(rowsFour[0]?.height).toBe(165);
+  });
+
   it("defaults Formation layout to grid and persists the global selection", () => {
     expect(getFormationLayout()).toBe("grid");
 

@@ -6,6 +6,7 @@ import type { GlobalSettingsState } from "./types.js";
 export type GlobalSettingsField = keyof GlobalSettingsState;
 
 interface GlobalSettingsStoreState {
+  readonly loadStatus: "pending" | "ready" | "failed";
   readonly loading: boolean;
   readonly state: GlobalSettingsState | null;
   readonly savingField: GlobalSettingsField | null;
@@ -16,6 +17,7 @@ type Listener = () => void;
 
 const listeners = new Set<Listener>();
 let snapshot: GlobalSettingsStoreState = {
+  loadStatus: "pending",
   loading: false,
   state: null,
   savingField: null,
@@ -31,7 +33,11 @@ export function getGlobalSettingsStoreState(): GlobalSettingsStoreState {
 }
 
 export function hydrateGlobalSettings(state: GlobalSettingsState): void {
-  setSnapshot({ loading: false, state, error: null });
+  setSnapshot({ loadStatus: "ready", loading: false, state, error: null });
+}
+
+export function failGlobalSettingsLoad(error: unknown): void {
+  setSnapshot({ loadStatus: "failed", loading: false, state: null, error: toErrorMessage(error) });
 }
 
 export function subscribe(listener: Listener): () => void {
@@ -45,10 +51,10 @@ export async function loadGlobalSettings(signal?: AbortSignal): Promise<void> {
   setSnapshot({ loading: true, error: null });
   try {
     const state = await fetchGlobalSettingsState(signal);
-    setSnapshot({ loading: false, state, error: null });
+    setSnapshot({ loadStatus: "ready", loading: false, state, error: null });
   } catch (error) {
     if (signal?.aborted) return;
-    setSnapshot({ loading: false, error: toErrorMessage(error) });
+    setSnapshot({ loadStatus: "failed", loading: false, error: toErrorMessage(error) });
   }
 }
 

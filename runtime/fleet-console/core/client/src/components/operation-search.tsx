@@ -24,6 +24,7 @@ import { stashKeyboardShortcutsReturnFocus } from "../keyboard-shortcuts-return-
 import { closeOperationCompletely } from "../operation-close.js";
 import type { DeferredDeletionReceipt } from "../api.js";
 import { getLoadedTheaterId, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, loadForTheater, minimizeOperations, toggleFormationView } from "../canvas/canvas-store.js";
+import { forgetTriageOperation, isTriageActive, setTriageActive } from "../canvas/triage-store.js";
 import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import { requestSideBarOperationAction, type SideBarOperationAction } from "../sidebar/operation-action-request.js";
@@ -207,7 +208,10 @@ export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion
         if (getCompanionOperationId() === action.operationId) forceDropCompanionOperationId();
         const operation = state.operations.find((op) => op.id === action.operationId);
         const plugin = (operation ? plugins.find((candidate) => candidate.id === operation.pluginId) : null) ?? null;
-        void closeOperationCompletely(action.operationId, plugin).then((deletion) => onDeferredDeletion?.(deletion));
+        void closeOperationCompletely(action.operationId, plugin).then((deletion) => {
+          forgetTriageOperation(action.operationId);
+          onDeferredDeletion?.(deletion);
+        });
         break;
       }
       case "minimize-all-operations": {
@@ -221,6 +225,14 @@ export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion
         const theaterOperations = state.operations.filter((op) => op.theaterId === state.activeTheaterId);
         for (const operation of theaterOperations) ensureDefaultGeometry(operation.id);
         minimizeOperations(theaterOperations.map((op) => op.id));
+        break;
+      }
+      case "toggle-triage-mode": {
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        ensurePaletteCanvasTheater(state);
+        if (state.activeTheaterId) {
+          setTriageActive(state.activeTheaterId, !isTriageActive(state.activeTheaterId));
+        }
         break;
       }
       case "toggle-formation": {

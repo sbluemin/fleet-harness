@@ -4,7 +4,7 @@ import { ApiError } from "../core/client/src/api.js";
 import { fetchGlobalSettingsState, updateGlobalSettings } from "../core/client/src/global-settings-api.js";
 
 const originalFetch = globalThis.fetch;
-const SETTINGS = { consolePortMode: "dynamic", consoleStaticPort: null, reducePanelMotion: false, theme: "instrument", uiFont: { source: "builtin", id: "manrope", size: 14 }, language: "auto" } as const;
+const SETTINGS = { consolePortMode: "dynamic", consoleStaticPort: null, reducePanelMotion: false, seenFeatureTours: [], theme: "instrument", uiFont: { source: "builtin", id: "manrope", size: 14 }, language: "auto" } as const;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -36,6 +36,17 @@ describe("global settings client transport", () => {
     await expect(updateGlobalSettings({ reducePanelMotion: true })).resolves.toEqual({ state: { ...SETTINGS, reducePanelMotion: true } });
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/settings/global", expect.objectContaining({
       body: JSON.stringify({ reducePanelMotion: true }),
+    }));
+  });
+
+  it("requires and sends the seen Feature Tour keys", async () => {
+    const seenFeatureTours = ["triage.spotlight"] as const;
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ state: { ...SETTINGS, seenFeatureTours } })));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(updateGlobalSettings({ seenFeatureTours })).resolves.toEqual({ state: { ...SETTINGS, seenFeatureTours } });
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/settings/global", expect.objectContaining({
+      body: JSON.stringify({ seenFeatureTours }),
     }));
   });
 

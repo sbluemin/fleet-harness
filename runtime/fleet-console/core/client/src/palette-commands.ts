@@ -19,6 +19,7 @@ export type PaletteCommandAction =
   | { readonly kind: "resume-operation"; readonly operationId: string }
   | { readonly kind: "close-operation"; readonly operationId: string }
   | { readonly kind: "minimize-all-operations" }
+  | { readonly kind: "toggle-triage-mode" }
   | { readonly kind: "toggle-formation" }
   | { readonly kind: "toggle-status-axis" }
   | { readonly kind: "open-rail-panel"; readonly panelId: string }
@@ -111,6 +112,12 @@ export function buildPaletteCommands(
         action: { kind: "minimize-all-operations" },
       });
     }
+    commands.push({
+      commandId: "toggle-triage-mode",
+      label: t("palette.toggleTriage"),
+      current: false,
+      action: { kind: "toggle-triage-mode" },
+    });
     commands.push({
       commandId: "toggle-formation",
       label: t("palette.toggleFormation"),

@@ -3,7 +3,7 @@ import type http from "node:http";
 import type { DurableJsonStore } from "@dotobokuri/core-infra";
 
 import type { ApiCatalogEntry } from "./api-catalog.js";
-import { DEFAULT_UI_FONT_SETTINGS, isUiFontSettings, type ConsoleSettingsData, type ConsoleThemeId } from "./console-settings.js";
+import { DEFAULT_UI_FONT_SETTINGS, isUiFontSettings, sanitizeSeenFeatureTours, type ConsoleSettingsData, type ConsoleThemeId } from "./console-settings.js";
 import type { GlobalSettingsMutationResult, GlobalSettingsState } from "./global-settings-types.js";
 
 interface GlobalSettingsRouteDeps {
@@ -25,6 +25,7 @@ interface GlobalSettingsBody {
   readonly consoleStaticPort?: unknown;
   readonly language?: unknown;
   readonly reducePanelMotion?: boolean;
+  readonly seenFeatureTours?: unknown;
   readonly theme?: unknown;
   readonly uiFont?: unknown;
 }
@@ -106,6 +107,10 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_reduce_panel_motion" });
     return;
   }
+  if (body.seenFeatureTours !== undefined && !isSeenFeatureToursInput(body.seenFeatureTours)) {
+    deps.writeJson(res, 400, { error: "invalid_seen_feature_tours" });
+    return;
+  }
   if (body.theme !== undefined && body.theme !== "instrument" && body.theme !== "maritime" && body.theme !== "carbon") {
     deps.writeJson(res, 400, { error: "invalid_theme" });
     return;
@@ -124,6 +129,7 @@ async function mutateGlobalSettings(
       ...(isValidConsoleStaticPort(body.consoleStaticPort) ? { consoleStaticPort: body.consoleStaticPort } : {}),
       ...(body.language === "auto" || body.language === "en" || body.language === "ko" ? { language: body.language } : {}),
       ...(typeof body.reducePanelMotion === "boolean" ? { reducePanelMotion: body.reducePanelMotion } : {}),
+      ...(body.seenFeatureTours !== undefined ? { seenFeatureTours: sanitizeSeenFeatureTours(body.seenFeatureTours) ?? [] } : {}),
       ...(theme !== undefined ? { theme } : {}),
       ...(isUiFontSettings(body.uiFont) ? { uiFont: body.uiFont } : {}),
     },
@@ -141,6 +147,7 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     consoleStaticPort: general.consoleStaticPort ?? null,
     language: general.language ?? "auto",
     reducePanelMotion: general.reducePanelMotion ?? false,
+    seenFeatureTours: general.seenFeatureTours ?? [],
     theme: general.theme ?? "instrument",
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
   };
@@ -157,4 +164,10 @@ function isValidConsoleStaticPort(value: unknown): value is number {
 
 function isUiFontSettingsOrUndefined(value: unknown): boolean {
   return value === undefined || isUiFontSettings(value);
+}
+
+function isSeenFeatureToursInput(value: unknown): value is readonly string[] {
+  return Array.isArray(value)
+    && value.length <= 64
+    && value.every((item) => typeof item === "string" && item.length <= 64);
 }

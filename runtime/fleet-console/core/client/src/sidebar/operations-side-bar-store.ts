@@ -41,6 +41,7 @@ let idleUnseenIds = new Set<string>();
 let previousActivityById = new Map<string, SideBarStatus>();
 let baselinedLiveActivityIds = new Set<string>();
 let pendingStatusLandingIds = new Set<string>();
+let canActivateStatusAxis: () => boolean = () => true;
 
 export type SideBarStatus = "awaiting" | "running" | "idle" | "dormant";
 
@@ -101,9 +102,14 @@ export function setTheaterCollapsed(theaterId: string, collapsed: boolean): void
 }
 
 export function setSideBarStatusAxis(active: boolean): void {
+  if (active && !canActivateStatusAxis()) return;
   if (statusAxis === active) return;
   statusAxis = active;
   for (const listener of statusAxisListeners) listener();
+}
+
+export function registerSideBarStatusAxisActivationGuard(guard: () => boolean): void {
+  canActivateStatusAxis = guard;
 }
 
 export function toggleSideBarStatusAxis(): void {
