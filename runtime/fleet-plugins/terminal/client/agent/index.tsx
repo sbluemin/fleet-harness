@@ -118,11 +118,18 @@ export const agentEndedNotification = defineNotificationKind({
   title: "Agent turn ended",
 });
 
+// resume 실패는 사용자의 다음 행동(Try again / Start fresh)이 필요한 이벤트다.
+// ".end"/"done"을 id에 넣지 않아 core mapNotificationKind가 input-waiting으로 분류하게 둔다.
+export const agentResumeFailedNotification = defineNotificationKind({
+  id: "agent.resume-failed",
+  title: "Resume failed",
+});
+
 export const agentPlugin = definePlugin({
   id: "terminal",
   operationKinds: [agentOperationKind],
   settingsSections: [generalSettingsSection, agentSettingsSection],
-  notificationKinds: [agentAttentionNotification, agentEndedNotification],
+  notificationKinds: [agentAttentionNotification, agentEndedNotification, agentResumeFailedNotification],
   install: (ctx) => installAgentPlugin(ctx),
   closeOperation: async (operationId) => {
     try {
@@ -130,6 +137,20 @@ export const agentPlugin = definePlugin({
     } finally {
       disposeAnalysisStore(operationId);
       removeSession(operationId);
+    }
+  },
+  resumeOperation: async (operationId) => {
+    // 팔레트 등 프레임 밖 resume 진입점. 실패 알림은 프레임 내 카드가 못 잡는 경로이므로 여기서도 emit한다.
+    try {
+      await resumeSession(operationId);
+      installedNotifications?.dismiss(operationId);
+    } catch (error) {
+      installedNotifications?.emit({
+        kind: agentResumeFailedNotification.id,
+        operationId,
+        message: "Resume failed — the saved session has expired.",
+      });
+      throw error;
     }
   },
   launch: async ({ theaterId, kind, initialPrompt }) => {
@@ -149,13 +170,22 @@ export const agentPlugin = definePlugin({
 export const operationKinds = [agentOperationKind] as const;
 export const plugins = [agentPlugin] as const;
 
+// resumeOperation 훅은 install context를 받지 못하므로 notifications만 모듈 스코프로 캡처한다.
+// (같은 프로세스 내 plugin 인스턴스는 하나라 core의 단일 install 계약과 충돌하지 않는다.)
+let installedNotifications: PluginInstallContext["notifications"] | null = null;
+
 function installAgentPlugin(ctx: PluginInstallContext): () => void {
-  return startAgentConnection({
+  installedNotifications = ctx.notifications;
+  const disposeConnection = startAgentConnection({
     operations: ctx.operations,
     notifications: ctx.notifications,
     status: ctx.status,
     refreshOperations: ctx.api.resync,
   });
+  return () => {
+    installedNotifications = null;
+    disposeConnection();
+  };
 }
 
 // core를 import하지 않고 pin-to-bottom 패턴을 플러그인 로컬로 복제한다.
@@ -440,10 +470,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     return (
       <div className="agent-stream-host">
         <SessionAnalystHandle context={context} ready={analysisReady} />
-        <button type="button" className="canvas-operation-dormant" onClick={() => { void resumeSession(session.sessionId); }}>
-          <span className="canvas-operation-dormant-status">Dormant</span>
-          <span className="canvas-operation-dormant-action">Resume</span>
-        </button>
+        <DormantOperationView context={context} session={session} />
       </div>
     );
   }
@@ -1004,9 +1031,58 @@ function TrackCard({ track, jobStatus }: { readonly track: TrackView; readonly j
   );
 }
 
-async function resumeSession(sessionId: string): Promise<void> {
-  applySessionUpdate(await resumeAgentSession(sessionId));
+async function resumeSession(sessionId: string, options?: { readonly fresh?: boolean }): Promise<void> {
+  applySessionUpdate(await resumeAgentSession(sessionId, options));
   selectSession(sessionId);
+}
+
+// dormant 프레임의 resume 상태기계. 실패는 프레임 내 에러 카드(Try again / Start fresh)와
+// Alerts 알림(agent.resume-failed) 두 경로로 표면화한다 — 어느 쪽도 침묵하지 않는다.
+function DormantOperationView({ context, session }: { readonly context: OperationRenderContext; readonly session: SessionInfo }) {
+  const [resumeState, setResumeState] = React.useState<"idle" | "resuming" | "error">("idle");
+  const resume = React.useCallback(async (fresh: boolean) => {
+    setResumeState("resuming");
+    try {
+      await resumeSession(session.sessionId, { fresh });
+      // 성공 시 이전 실패 알림을 거둔다 — 두지 않으면 live 세션에 "Resume failed" 뱃지가 남는다.
+      context.notifications.dismiss(session.sessionId);
+    } catch {
+      setResumeState("error");
+      context.notifications.emit({
+        kind: agentResumeFailedNotification.id,
+        operationId: session.sessionId,
+        message: "Resume failed — the saved session has expired.",
+      });
+    }
+  }, [context, session.sessionId]);
+
+  if (resumeState === "error") {
+    return (
+      <div className="canvas-operation-dormant canvas-operation-dormant--error" role="alert">
+        <span className="canvas-operation-dormant-status">Dormant</span>
+        <p className="canvas-operation-dormant-error">
+          Couldn’t resume this session. The saved session for “{session.label || session.cwdLabel}” has expired.
+        </p>
+        <div className="canvas-operation-dormant-error-actions">
+          <button type="button" className="canvas-operation-dormant-action" onClick={() => { void resume(false); }}>
+            Try again
+          </button>
+          <button type="button" className="canvas-operation-dormant-action canvas-operation-dormant-action--ghost" onClick={() => { void resume(true); }}>
+            Start fresh
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button type="button" className="canvas-operation-dormant" disabled={resumeState === "resuming"} onClick={() => { void resume(false); }}>
+      <span className="canvas-operation-dormant-status">Dormant</span>
+      <span className={`canvas-operation-dormant-action${resumeState === "resuming" ? " canvas-operation-dormant-action--pending" : ""}`}>
+        {resumeState === "resuming" ? "Resuming…" : "Resume"}
+      </span>
+    </button>
+  );
 }
 
 function sessionFromOperation(context: OperationRenderContext): SessionInfo {

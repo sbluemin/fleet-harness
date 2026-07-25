@@ -27,6 +27,11 @@ export interface FleetClientPlugin {
   readonly install?: (ctx: PluginInstallContext) => void | (() => void);
   readonly launch?: (ctx: LaunchContext) => Promise<{ readonly id: string }>;
   readonly closeOperation?: (operationId: string) => void | Promise<void>;
+  /**
+   * Optional host→plugin resume request for a dormant Operation (e.g. a palette command).
+   * Plugins without resumable sessions omit it; the host falls back to focusing the Operation.
+   */
+  readonly resumeOperation?: (operationId: string) => void | Promise<void>;
   readonly renderLaunchIcon?: (kind: OperationLaunchKind) => ReactNode;
 }
 

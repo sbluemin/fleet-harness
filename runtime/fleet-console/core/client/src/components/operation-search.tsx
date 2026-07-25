@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
+import type { FleetClientPlugin } from "@fleet-console/sdk/plugin";
+
 import { setGlobalSettingsField } from "../global-settings-store.js";
 import { filterOperationSearchEntries, groupOperationSearchEntries, searchTokens } from "../operation-search.js";
 import {
@@ -12,8 +14,10 @@ import {
   type PaletteRailPanelInfo,
 } from "../palette-commands.js";
 import { stashKeyboardShortcutsReturnFocus } from "../keyboard-shortcuts-return-focus.js";
+import { closeOperationCompletely } from "../operation-close.js";
+import { getLoadedTheaterId, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, loadForTheater, minimizeOperations, toggleFormationView } from "../canvas/canvas-store.js";
 import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
-import { getSideBarState, setSideBarCollapsed } from "../sidebar/operations-side-bar-store.js";
+import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import {
   closeOperationSearch,
   focusOperation,
@@ -29,6 +33,8 @@ import type { ConsoleState } from "../types.js";
 interface OperationSearchProps {
   readonly state: ConsoleState;
   readonly railPanels: readonly PaletteRailPanelInfo[];
+  // virtual:fleet-plugins 의존을 테스트 경계 밖으로 밀기 위해 registry 직접 import 대신 prop으로 받는다.
+  readonly plugins: readonly FleetClientPlugin[];
 }
 
 const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
@@ -36,7 +42,7 @@ const LISTBOX_ID = "operation-search-listbox";
 const UNASSIGNED_GROUP_KEY = "__unassigned__";
 const COMMAND_GROUP_HEADING_ID = "operation-search-heading-commands";
 
-export function OperationSearch({ state, railPanels }: OperationSearchProps) {
+export function OperationSearch({ state, railPanels, plugins }: OperationSearchProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const [query, setQuery] = useState("");
@@ -116,6 +122,56 @@ export function OperationSearch({ state, railPanels }: OperationSearchProps) {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         requestOperationLaunchMenu();
+        break;
+      }
+      case "resume-operation": {
+        // plugin이 resumeOperation 훅을 제공하면 직접 재개하고, 미제공 시에만 프레임 포커스로 폭백한다.
+        // 실패 시에는 포커스하지 않는다 — focusOperation은 알림을 제거하므로(store.ts) plugin이 emit한
+        // agent.resume-failed가 지워져 침묵 실패가 된다. 실패 피드백은 칩 뱃지 + Alerts 항목이 담당한다.
+        previousFocusRef.current = null;
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        const operation = state.operations.find((op) => op.id === action.operationId);
+        const plugin = operation ? plugins.find((candidate) => candidate.id === operation.pluginId) : undefined;
+        if (plugin?.resumeOperation) {
+          void Promise.resolve(plugin.resumeOperation(action.operationId)).catch(() => { /* 실패 알림은 plugin이 emit */ });
+        } else {
+          focusOperation(action.operationId);
+        }
+        break;
+      }
+      case "close-operation": {
+        previousFocusRef.current = null;
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        // Analyze/companion 대상을 닫을 때는 캔버스/사이드바 close 경로(operations.tsx handleClose)와
+        // 같이 companion을 먼저 해제한다 — 두면 삭제된 op가 fallback dormant 프레임으로 잔존한다(Codex P2).
+        if (getCompanionOperationId() === action.operationId) forceDropCompanionOperationId();
+        const operation = state.operations.find((op) => op.id === action.operationId);
+        const plugin = (operation ? plugins.find((candidate) => candidate.id === operation.pluginId) : null) ?? null;
+        void closeOperationCompletely(action.operationId, plugin);
+        break;
+      }
+      case "minimize-all-operations": {
+        previousFocusRef.current = null;
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        // Operations 미마운트 경로(/settings 등)에서는 canvas store가 아직 Theater를 로드하지 않아
+        // 액션이 no-op이 된다(Codex P2). 동일 Theater 재로드는 flush 후 저장값 재독이라 안전하다.
+        ensurePaletteCanvasTheater(state);
+        // minimizeOperations는 geometry 맵에 없는 id를 버리므로, 페이지와 같이 현재 op의 기본
+        // geometry를 먼저 심는다 — persisted canvas가 없는 신규 op도 최소화 대상이 된다.
+        const theaterOperations = state.operations.filter((op) => op.theaterId === state.activeTheaterId);
+        for (const operation of theaterOperations) ensureDefaultGeometry(operation.id);
+        minimizeOperations(theaterOperations.map((op) => op.id));
+        break;
+      }
+      case "toggle-formation": {
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        ensurePaletteCanvasTheater(state);
+        toggleFormationView();
+        break;
+      }
+      case "toggle-status-axis": {
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        toggleSideBarStatusAxis();
         break;
       }
       case "open-rail-panel": {
@@ -286,6 +342,9 @@ export function OperationSearch({ state, railPanels }: OperationSearchProps) {
                       <strong>{highlightText(entry.operationName, tokens)}</strong>
                       <small>{operationMeta(entry)}</small>
                     </span>
+                    {entry.activity !== "idle" ? (
+                      <span className={`operation-search-status operation-search-status--${entry.activity}`}>{entry.activity}</span>
+                    ) : null}
                     <span className="operation-search-theater">{highlightText(entry.theaterLabel, tokens)}</span>
                   </button>
                 );
@@ -302,6 +361,14 @@ export function OperationSearch({ state, railPanels }: OperationSearchProps) {
 function clampIndex(index: number, length: number): number {
   if (length <= 0) return 0;
   return Math.max(0, Math.min(index, length - 1));
+}
+
+// Operations 페이지 미마운트 상태에서 canvas 의존 커맨드가 no-op이 되지 않도록
+// 활성 Theater를 canvas store에 선로드한다(같은 Theater 재로드는 저장값 재독으로 무해).
+function ensurePaletteCanvasTheater(state: ConsoleState): void {
+  if (state.activeTheaterId && getLoadedTheaterId() !== state.activeTheaterId) {
+    loadForTheater(state.activeTheaterId);
+  }
 }
 
 function operationMeta(entry: { readonly pluginId: string; readonly status: string }): string {

@@ -3954,6 +3954,63 @@
   box-shadow: 0 0 18px color-mix(in oklch, var(--brass) 12%, transparent);
 }
 
+.canvas-operation-dormant:disabled {
+  cursor: default;
+}
+
+.canvas-operation-dormant:disabled:hover {
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--brass) 10%, transparent), transparent 34%),
+    color-mix(in oklch, var(--ink-deep) 74%, transparent);
+}
+
+.canvas-operation-dormant-action--pending {
+  animation: dormant-resume-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes dormant-resume-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-operation-dormant-action--pending {
+    animation: none;
+  }
+}
+
+.canvas-operation-dormant--error {
+  cursor: default;
+  padding: var(--space-5);
+}
+
+.canvas-operation-dormant-error {
+  max-width: 34ch;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.canvas-operation-dormant-error-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.canvas-operation-dormant-action--ghost {
+  border-color: var(--surface-rim-strong);
+  background: var(--surface-glass);
+  color: var(--text-secondary);
+  box-shadow: none;
+}
+
+.canvas-operation-dormant-action--ghost:hover,
+.canvas-operation-dormant-action--ghost:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
+  color: var(--brass-bright);
+}
+
 .canvas-operation-resize {
   position: absolute;
   z-index: 5;
@@ -6499,6 +6556,33 @@
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+/* 팔레트 Operation 행의 활동 뱃지. 상태 채널은 signal 토큰만 쓴다(디자인 불변식). */
+.operation-search-status {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-xs);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.operation-search-status--awaiting {
+  border-color: color-mix(in oklch, var(--coral) 45%, var(--surface-rim));
+  color: var(--coral);
+}
+
+.operation-search-status--running {
+  border-color: color-mix(in oklch, var(--warn) 45%, var(--surface-rim));
+  color: var(--warn);
+}
+
+.operation-search-status--dormant {
+  color: var(--ink-muted);
 }
 
 .operation-search-result mark,

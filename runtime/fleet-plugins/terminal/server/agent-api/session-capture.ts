@@ -73,6 +73,35 @@ export function unlinkProviderSessionCapture(fleetSessionId: string, deps: { rea
   }
 }
 
+// fresh 시작 전 stale capture를 지우는 경로의 실패 롤백용 원시 스냅샷/복원 쌍.
+// 파싱 없이 바이트 단위로 보존해, 롤백이 capture의 어떤 필드도 재해석하지 않게 한다.
+export function readProviderSessionCaptureRaw(fleetSessionId: string, deps: { readonly capturesDir?: string } = {}): string | null {
+  if (!isSafeCaptureId(fleetSessionId)) return null;
+  const capturesDir = deps.capturesDir ?? defaultCapturePaths().capturesDir;
+  try {
+    return fs.readFileSync(path.join(capturesDir, `${fleetSessionId}.json`), "utf8");
+  } catch {
+    return null;
+  }
+}
+
+export function writeProviderSessionCaptureRaw(fleetSessionId: string, content: string, deps: { readonly capturesDir?: string } = {}): boolean {
+  if (!isSafeCaptureId(fleetSessionId)) return false;
+  const capturesDir = deps.capturesDir ?? defaultCapturePaths().capturesDir;
+  // 정상 capture 경로와 같은 보안 기록 패턴: 0o600 + temp→rename 원자 교체(Codex P2).
+  // 롤백 파일도 provider 세션 신원과 transcript 경로를 담으므로 umask 기본 권한(0644)을 허용하지 않는다.
+  const finalPath = path.join(capturesDir, `${fleetSessionId}.json`);
+  const tempPath = path.join(capturesDir, `${CAPTURE_TEMP_PREFIX}${fleetSessionId}.${process.pid}.${Date.now()}.tmp`);
+  try {
+    fs.mkdirSync(capturesDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(tempPath, content, { mode: 0o600 });
+    fs.renameSync(tempPath, finalPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function captureSessionStrict(options: CaptureSessionOptions): CaptureSessionResult {
   const provider = parseProvider(options.provider);
   const fleetSessionId = readFleetSessionId(options.env ?? process.env);

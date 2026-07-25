@@ -1,3 +1,6 @@
+import type { OperationActivity } from "@fleet-console/sdk/plugin";
+
+import { resolveOperationActivity } from "./operation-activity.js";
 import type { ConsoleState, OperationNode, TheaterInfo } from "./types.js";
 
 export interface OperationSearchEntry {
@@ -7,6 +10,7 @@ export interface OperationSearchEntry {
   readonly operationName: string;
   readonly pluginId: string;
   readonly status: string;
+  readonly activity: OperationActivity;
 }
 
 export interface OperationSearchGroup {
@@ -22,7 +26,7 @@ export function buildOperationSearchEntries(current: ConsoleState): readonly Ope
   const entries: OperationSearchEntry[] = [];
   for (const operation of current.operations) {
     if (!operation.theaterId) continue;
-    entries.push(toOperationSearchEntry(operation, theaters.get(operation.theaterId)));
+    entries.push(toOperationSearchEntry(operation, theaters.get(operation.theaterId), current.operationStatus));
   }
   return entries;
 }
@@ -57,7 +61,11 @@ export function searchTokens(query: string): readonly string[] {
   return query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
 }
 
-function toOperationSearchEntry(operation: OperationNode, theater: TheaterInfo | undefined): OperationSearchEntry {
+function toOperationSearchEntry(
+  operation: OperationNode,
+  theater: TheaterInfo | undefined,
+  operationStatus: Readonly<Record<string, OperationActivity>>,
+): OperationSearchEntry {
   return {
     operationId: operation.id,
     theaterId: operation.theaterId,
@@ -65,6 +73,7 @@ function toOperationSearchEntry(operation: OperationNode, theater: TheaterInfo |
     operationName: operation.title,
     pluginId: operation.pluginId,
     status: "operation",
+    activity: resolveOperationActivity(operation, operationStatus),
   };
 }
 

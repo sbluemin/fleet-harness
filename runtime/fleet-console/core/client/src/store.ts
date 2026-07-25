@@ -2,6 +2,7 @@ import type { ClientNotification } from "@fleet-console/sdk/notifications";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { buildOperationSearchEntries } from "./operation-search.js";
+import { resolveOperationActivity } from "./operation-activity.js";
 import { uiFontFamily } from "./ui-font.js";
 import type {
   CodexReaderRequest,
@@ -234,10 +235,9 @@ export function setActiveOperation(operationId: string | null): void {
 }
 
 export function setOperationStatus(operationId: string, status: OperationActivity): void {
-  if (status === "idle") {
-    clearOperationStatus(operationId);
-    return;
-  }
+  // idle도 명시 항목으로 저장한다. 항목 삭제로 idle을 표현하면 resumeAvailable 마커를 가진
+  // live 세션이 resolveOperationActivity 폭백에서 dormant로 재분류된다(Codex P1) —
+  // "플러그인이 관측한 live idle"과 "미관측"은 구분되어야 한다.
   if (state.operationStatus[operationId] === status) return;
   setState({ operationStatus: { ...state.operationStatus, [operationId]: status } });
 }
@@ -448,7 +448,7 @@ export function statusCycleOperationIds(
   isStatusSectionCollapsed: (status: OperationActivity) => boolean,
 ): readonly string[] {
   const minimizedIds = new Set(minimized);
-  const status = (operation: OperationNode): OperationActivity => operationStatus[operation.id] ?? "idle";
+  const status = (operation: OperationNode): OperationActivity => resolveOperationActivity(operation, operationStatus);
   const rank = (operation: OperationNode): number => STATUS_CYCLE_RANK[status(operation)];
   return [...sortOperationsByOrder(operations, operationOrder)]
     .sort((left, right) => rank(left) - rank(right))

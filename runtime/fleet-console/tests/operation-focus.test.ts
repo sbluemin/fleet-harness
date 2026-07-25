@@ -144,6 +144,47 @@ describe("statusCycleOperationIds — STATUS 축 Alt+←/→ 순환", () => {
     expect(order).toEqual(["plain"]);
   });
 
+  it("ranks a restored operation with resumeAvailable but no live status as dormant", () => {
+    const restored = { ...makeOperation("restored", null, 1), payload: { resumeAvailable: true } };
+    const operations = [makeOperation("plain", null, 2), restored];
+    const order = statusCycleOperationIds(
+      operations,
+      ["restored", "plain"],
+      {},
+      [],
+      () => false,
+    );
+    // idle(plain) → dormant(restored) 랭크 순서여야 사이드바 STATUS 섹션과 일치한다.
+    expect(order).toEqual(["plain", "restored"]);
+  });
+
+  it("lets a live status entry win over the resumeAvailable dormant fallback", () => {
+    const restored = { ...makeOperation("restored", null, 1), payload: { resumeAvailable: true } };
+    const order = statusCycleOperationIds(
+      [restored, makeOperation("plain", null, 2)],
+      ["restored", "plain"],
+      { restored: "running" },
+      [],
+      () => false,
+    );
+    expect(order).toEqual(["restored", "plain"]);
+  });
+
+  it("keeps a resumed live-idle operation idle — an explicit idle entry beats the dormant fallback", () => {
+    // resume 성공 직후 plugin은 idle을 보고한다. idle이 항목 삭제로 표현되면 resumeAvailable
+    // 마커와 함께 dormant로 재분류된다(Codex P1) — 명시 idle 항목이 이를 막는다.
+    const restored = { ...makeOperation("restored", null, 1), payload: { resumeAvailable: true } };
+    const order = statusCycleOperationIds(
+      [restored, makeOperation("plain", null, 2)],
+      ["restored", "plain"],
+      { restored: "idle" },
+      [],
+      () => false,
+    );
+    // 둘 다 idle 랭크여야 operationOrder가 유지된다(dormant로 밀리면 plain이 앞선다).
+    expect(order).toEqual(["restored", "plain"]);
+  });
+
   it("excludes explicitly collapsed status sections, restores them when expanded, and leaves GROUP cycling unchanged", () => {
     resetSideBarStatusSectionCollapseForTests();
     const operations = [

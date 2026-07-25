@@ -507,6 +507,28 @@ describe("Instrument core design contract", () => {
     expect(reducedMotionBlock).toContain(".panel-motion-ghost {");
   });
 
+  it("pins the dormant resume feedback grammar — pending pulse, error card, and reduced-motion fallback", () => {
+    const components = source("styles/components.css");
+    // (a) pending pulse는 opacity 2단 맥동 하나뿐 — 새 안무는 keyframe과 사용처가 함께 고정된다.
+    expect(components).toContain("@keyframes dormant-resume-pulse");
+    expect(components).toContain(".canvas-operation-dormant-action--pending {\n  animation: dormant-resume-pulse");
+    // (b) 접근성 폭백: pulse는 전용 reduced-motion 블록에서 무효화된다.
+    const pendingReducedMotion = components.match(/@media \(prefers-reduced-motion: reduce\) \{\s*\.canvas-operation-dormant-action--pending \{\s*animation: none;\s*\}\s*\}/)?.[0] ?? "";
+    expect(pendingReducedMotion).toContain("animation: none;");
+    // (c) 에러 카드 문법: 상태 채널은 signal/neutral 토큰만, 회복 액션의 강조는 brass(focus/hover) 채널만.
+    const errorBlock = components.match(/\.canvas-operation-dormant--error \{[^}]*\}/)?.[0] ?? "";
+    expect(errorBlock).toContain("cursor: default;");
+    const errorText = components.match(/\.canvas-operation-dormant-error \{[^}]*\}/)?.[0] ?? "";
+    expect(errorText).toContain("color: var(--text-secondary);");
+    const ghostAction = components.match(/\.canvas-operation-dormant-action--ghost \{[^}]*\}/)?.[0] ?? "";
+    expect(ghostAction).toContain("color: var(--text-secondary);");
+    const ghostHover = components.match(/\.canvas-operation-dormant-action--ghost:hover,[^]*?\{[^}]*\}/)?.[0] ?? "";
+    expect(ghostHover).toContain("color: var(--brass-bright);");
+    // (d) pending/disabled 중에는 hover 강조가 다시 점화하지 않는다.
+    const disabledHover = components.match(/\.canvas-operation-dormant:disabled:hover \{[^}]*\}/)?.[0] ?? "";
+    expect(disabledHover).toContain("var(--brass) 10%");
+  });
+
   it("collapses sidebar chip actions out of layout until hover or focus-within", () => {
     const components = source("styles/components.css");
     const restingActions = components.match(/\.side-bar-chip-close,\n\.side-bar-chip-minimize \{[^}]*\}/)?.[0] ?? "";

@@ -47,6 +47,37 @@ describe("agent observability DTO boundary", () => {
     expect(serialized).not.toContain("token");
   });
 
+  it("clears the in-memory provider session for a fresh start and ignores unknown sessions", () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-store-"));
+    tempDirs.push(cwd);
+    const store = createConsoleObservabilityStore({
+      canonicalizeTheaterPath: (value) => fs.realpathSync.native(value),
+      workspaceHash: () => "theater-a",
+    });
+    store.injectDormantOperation({
+      sessionId: "session-a",
+      theaterId: "theater-a",
+      cwd,
+      cliId: "claude",
+      cliLabel: "Claude",
+      createdAt: 1_000,
+      providerSession: {
+        provider: "claude",
+        sessionId: "provider-session-secret",
+        transcriptPath: "/secret/transcript.jsonl",
+        source: "startup",
+        capturedAt: "2026-06-16T00:00:00.000Z",
+      },
+    });
+
+    const cleared = store.clearTerminalSessionProviderSession("session-a");
+
+    expect(cleared).not.toBeNull();
+    expect(cleared?.resumeAvailable).toBe(false);
+    expect(JSON.stringify(store.listTerminalSessions())).not.toContain("provider-session-secret");
+    expect(store.clearTerminalSessionProviderSession("missing")).toBeNull();
+  });
+
   it("sanitizes carrier stream events before observer snapshots and SSE frames", () => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-events-"));
     tempDirs.push(cwd);

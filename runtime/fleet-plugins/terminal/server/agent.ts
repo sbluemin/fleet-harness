@@ -18,7 +18,7 @@ import { buildAgentCliLaunchKinds } from "./agent-api/agent-cli-launch-kinds.js"
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-api/agent-cli-launch-metadata.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
-import { captureSession, readProviderSessionCapture, unlinkProviderSessionCapture, type ProviderSession } from "./agent-api/session-capture.js";
+import { captureSession, readProviderSessionCapture, readProviderSessionCaptureRaw, unlinkProviderSessionCapture, writeProviderSessionCaptureRaw, type ProviderSession } from "./agent-api/session-capture.js";
 import { createAgentTerminalLaunchResolver, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { writeAggregateObserverEvents } from "./agent-api/observability-routes.js";
@@ -359,15 +359,20 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
       return true;
     }
+    // body는 선택이다: { fresh: true }이면 저장된 provider 세션을 버리고 같은 Operation에서
+    // 완전히 새 세션을 시작한다(Resume 실패 후의 Start fresh 경로). body 없음/파싱 실패는 일반 resume.
+    const body = await ctx.host.http.readJsonBody<{ readonly fresh?: unknown }>(req);
+    const fresh = body?.fresh === true;
     const node = ctx.host.operations.get(sessionId);
     const payload = node?.payload;
     const cliId = readOptionalAgentCliId(payload?.cliId, res);
     const providerSession = readProviderSession(payload);
-    if (!node || cliId === false || !cliId || !providerSession) {
+    if (!node || cliId === false || !cliId || (!fresh && !providerSession)) {
       ctx.host.http.writeJson(res, node ? 409 : 404, { error: node ? "resume_unavailable" : "session_not_found" });
       return true;
     }
     const starting = observability.updateTerminalSessionStatus(sessionId, "starting") ?? injectOperation(node);
+    const staleCapture = fresh ? readProviderSessionCaptureRaw(sessionId, { capturesDir: ctx.host.paths.capturesDir }) : null;
     try {
       const cwd = readPayloadString(node.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(node.theaterId);
       if (!cwd) {
@@ -375,6 +380,18 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         return true;
       }
       beginInitialPromptGeneration(sessionId);
+      if (fresh) {
+        // stale provider 상태는 spawn 전에 모두 떼어낸다(capture 파일, observability, payload) —
+        // attach 도중 새 CLI의 capture hook이 먼저 완료되면 attach 후 정리가 새 capture까지 지우고,
+        // payload에 구 세션이 남으면 성공 patch가 그것을 다시 심는다(Codex P1). attach 실패 시에는
+        // catch에서 capture 파일과 payload providerSession을 원복해 일반 resume 재시도와
+        // Session Analyst의 transcript 접근을 보존한다(Codex P2).
+        unlinkProviderSessionCapture(sessionId, { capturesDir: ctx.host.paths.capturesDir });
+        observability.clearTerminalSessionProviderSession(sessionId);
+        const payloadWithoutProvider = { ...node.payload };
+        delete payloadWithoutProvider.providerSession;
+        ctx.host.operations.patch(sessionId, { payload: payloadWithoutProvider });
+      }
       await terminalRuntime.attach({
         cwd,
         sessionId,
@@ -383,16 +400,29 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         pluginId: node.pluginId,
         theaterId: node.theaterId,
         cliId,
-        resumeSessionId: providerSession.sessionId,
+        ...(fresh ? {} : { resumeSessionId: providerSession?.sessionId }),
       });
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
       pendingRuntimeSessions.delete(sessionId);
       const resumed = runtimeSession ? observability.registerTerminalRuntimeSession(runtimeSession) ?? starting : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? starting;
       observability.notifySessionUpdated(resumed);
-      ctx.host.operations.patch(sessionId, { payload: toOperationPayload(node.payload, cwd, resumed, providerSession, observability.getDurableOperation(sessionId)?.providerTitle) });
+      // fresh 성공 patch는 attach 중 자식이 capture한 새 providerSession만 보존한다 —
+      // payload는 spawn 전에 비워 두었으므로, 읽히는 세션은 반드시 자식의 신규 capture다(Codex P1).
+      const currentPayload = fresh ? ctx.host.operations.get(sessionId)?.payload : node.payload;
+      const effectiveProviderSession = fresh ? readProviderSession(currentPayload) : providerSession;
+      ctx.host.operations.patch(sessionId, { payload: toOperationPayload(currentPayload ?? node.payload, cwd, resumed, effectiveProviderSession, observability.getDurableOperation(sessionId)?.providerTitle) });
       ctx.host.http.writeJson(res, 200, resumed);
     } catch {
       invalidateInitialPromptGeneration(sessionId);
+      if (fresh && providerSession) {
+        // 실패 롤백: spawn 전에 떼어낸 capture 파일·payload providerSession·observability 세션을
+        // 모두 복원한다 — payload만 복원하면 resume은 되지만 Analyst가 transcript를 잃는다(Codex P2).
+        const rollbackPayload = { ...(ctx.host.operations.get(sessionId)?.payload ?? {}) };
+        rollbackPayload.providerSession = providerSession;
+        ctx.host.operations.patch(sessionId, { payload: rollbackPayload });
+        if (staleCapture) writeProviderSessionCaptureRaw(sessionId, staleCapture, { capturesDir: ctx.host.paths.capturesDir });
+        observability.updateTerminalSessionProviderSession(sessionId, providerSession);
+      }
       pendingRuntimeSessions.delete(sessionId);
       const reverted = observability.updateTerminalSessionStatus(sessionId, "dormant");
       if (reverted) observability.notifySessionUpdated(reverted);

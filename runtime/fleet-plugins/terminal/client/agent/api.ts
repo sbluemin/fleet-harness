@@ -77,8 +77,14 @@ export async function createAgentSession(theaterId: string, cliId: string, initi
 }
 
 
-export async function resumeAgentSession(sessionId: string, signal?: AbortSignal): Promise<SessionInfo> {
-  const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/resume`, { method: "POST", signal });
+export async function resumeAgentSession(sessionId: string, options?: { readonly fresh?: boolean; readonly signal?: AbortSignal }): Promise<SessionInfo> {
+  const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/resume`, {
+    method: "POST",
+    ...(options?.fresh
+      ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fresh: true }) }
+      : {}),
+    signal: options?.signal,
+  });
   await assertOk(response);
   return assertSessionInfo(await response.json(), response.status);
 }

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import type { OperationActivity } from "@fleet-console/sdk/plugin";
+
 import { buildOperationSearchEntries, filterOperationSearchEntries, groupOperationSearchEntries } from "../core/client/src/operation-search.js";
 import type { ConsoleState, OperationNode, TheaterInfo } from "../core/client/src/types.js";
 
@@ -20,7 +22,11 @@ function makeOperation(id: string, theaterId: string, title: string, pluginId = 
   };
 }
 
-function makeState(operations: readonly OperationNode[], theaters: readonly TheaterInfo[] = [THEATER_ALPHA, THEATER_BETA]): ConsoleState {
+function makeState(
+  operations: readonly OperationNode[],
+  theaters: readonly TheaterInfo[] = [THEATER_ALPHA, THEATER_BETA],
+  operationStatus: Readonly<Record<string, OperationActivity>> = {},
+): ConsoleState {
   return {
     connection: "connecting",
     connectionError: null,
@@ -39,7 +45,7 @@ function makeState(operations: readonly OperationNode[], theaters: readonly Thea
     groups: [],
     activeTheaterId: "theater-alpha",
     activeOperationId: null,
-    operationStatus: {},
+    operationStatus,
     addingTheater: false,
     theaterError: null,
     operationsViewActive: false,
@@ -80,6 +86,31 @@ describe("operation search", () => {
       ["operation-a", "Alpha Harbor", "Bridge Watch", "agent"],
       ["operation-b", "Beta Dock", "Cargo Sweep", "shell"],
       ["operation-c", "theater-race", "Night Watch", "agent"],
+    ]);
+  });
+
+  it("resolves entry activity: live status wins, resumeAvailable falls back to dormant, otherwise idle", () => {
+    const entries = buildOperationSearchEntries(makeState([
+      makeOperation("op-live", "theater-alpha", "Live"),
+      { ...makeOperation("op-restored", "theater-alpha", "Restored"), payload: { resumeAvailable: true } },
+      makeOperation("op-plain", "theater-alpha", "Plain"),
+    ]));
+    const state = makeState([
+      makeOperation("op-live", "theater-alpha", "Live"),
+      { ...makeOperation("op-restored", "theater-alpha", "Restored"), payload: { resumeAvailable: true } },
+      makeOperation("op-plain", "theater-alpha", "Plain"),
+    ], undefined, { "op-live": "running", "op-restored": "awaiting" });
+    const withStatus = buildOperationSearchEntries(state);
+
+    expect(entries.map((entry) => [entry.operationId, entry.activity])).toEqual([
+      ["op-live", "idle"],
+      ["op-restored", "dormant"],
+      ["op-plain", "idle"],
+    ]);
+    expect(withStatus.map((entry) => [entry.operationId, entry.activity])).toEqual([
+      ["op-live", "running"],
+      ["op-restored", "awaiting"],
+      ["op-plain", "idle"],
     ]);
   });
 
