@@ -5,5 +5,6 @@ export interface LaunchContext {
   readonly theaterId: string;
   readonly kind: OperationLaunchKind;
   readonly geometry: OperationGeometry;
+  readonly initialPrompt?: string;
   readonly operations: ClientOperationsCapability;
 }

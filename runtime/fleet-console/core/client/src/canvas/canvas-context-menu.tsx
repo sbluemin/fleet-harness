@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 
 interface CanvasContextMenuProps {
@@ -11,7 +11,7 @@ interface CanvasContextMenuProps {
   readonly canLaunch: boolean;
   // 아이콘은 플러그인 소유다 — console-core는 어떤 플러그인인지 모른 채 렌더만 위임한다.
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
-  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind) => void;
+  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, initialPrompt?: string) => void;
   readonly onClose: () => void;
 }
 
@@ -22,13 +22,23 @@ const MENU_MARGIN = 12;
 export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", catalog, canLaunch, renderKindIcon, onLaunchKind, onClose }: CanvasContextMenuProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [promptTarget, setPromptTarget] = useState<{ readonly pluginId: string; readonly kind: OperationLaunchKind } | null>(null);
+  const [initialPrompt, setInitialPrompt] = useState("");
 
   useEffect(() => {
     const handlePointer = (event: MouseEvent) => {
       if (!containerRef.current?.contains(event.target as Node)) onClose();
     };
     const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key !== "Escape") return;
+      if (promptTarget) {
+        event.preventDefault();
+        setPromptTarget(null);
+        setInitialPrompt("");
+        return;
+      }
+      onClose();
     };
     document.addEventListener("mousedown", handlePointer);
     document.addEventListener("keydown", handleKey);
@@ -36,12 +46,19 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
       document.removeEventListener("mousedown", handlePointer);
       document.removeEventListener("keydown", handleKey);
     };
-  }, [onClose]);
+  }, [onClose, promptTarget]);
 
   useEffect(() => {
     // 첫 항목을 강제 포커스하지 않고 컨테이너만 포커스해 '이미 선택된 듯한' UX를 피한다.
-    menuRef.current?.focus();
-  }, []);
+    if (promptTarget) textareaRef.current?.focus();
+    else menuRef.current?.focus();
+  }, [promptTarget]);
+
+  const launchPromptTarget = (launchEmpty: boolean) => {
+    if (!promptTarget) return;
+    const prompt = launchEmpty ? undefined : initialPrompt.trim() || undefined;
+    onLaunchKind(promptTarget.pluginId, promptTarget.kind, prompt);
+  };
 
   return (
     <div
@@ -57,6 +74,30 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
             <strong>Canvas controls</strong>
           </span>
         </div>
+        {promptTarget ? (
+          <div className="canvas-context-menu-prompt-step">
+            <label className="canvas-context-menu-prompt-label" htmlFor="canvas-context-menu-initial-prompt">First prompt (optional)</label>
+            <textarea
+              id="canvas-context-menu-initial-prompt"
+              ref={textareaRef}
+              className="canvas-context-menu-prompt-input"
+              placeholder="Type the first instruction for this session"
+              value={initialPrompt}
+              maxLength={4000}
+              onChange={(event) => setInitialPrompt(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+                event.preventDefault();
+                launchPromptTarget(false);
+              }}
+            />
+            <p className="canvas-context-menu-prompt-hint">Enter to launch · Shift+Enter for a new line</p>
+            <div className="canvas-context-menu-prompt-actions">
+              <button type="button" className="canvas-context-menu-prompt-button is-primary" onClick={() => launchPromptTarget(false)}>Launch</button>
+              <button type="button" className="canvas-context-menu-prompt-button" onClick={() => launchPromptTarget(true)}>Launch empty</button>
+            </div>
+          </div>
+        ) : <>
         <p className="canvas-context-menu-section">Launch</p>
         {catalog.length > 0 ? catalog.map((plugin, index) => (
           <div key={plugin.id}>
@@ -72,7 +113,13 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                   className="theater-menu-item canvas-context-menu-item operation-launch-menu-item"
                   disabled={disabled}
                   title={kind.disabledReason}
-                  onClick={() => onLaunchKind(plugin.id, kind)}
+                  onClick={() => {
+                    if (kind.supportsInitialPrompt) {
+                      setPromptTarget({ pluginId: plugin.id, kind });
+                      return;
+                    }
+                    onLaunchKind(plugin.id, kind);
+                  }}
                 >
                   <span className="theater-menu-check" aria-hidden="true">{renderKindIcon(plugin.id, kind) ?? <FallbackGlyph />}</span>
                   <span className="theater-menu-label">{kind.title}</span>
@@ -82,6 +129,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
             })}
           </div>
         )) : <p className="theater-menu-empty">No operations available.</p>}
+        </>}
       </div>
     </div>
   );

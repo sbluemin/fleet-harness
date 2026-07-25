@@ -23,7 +23,7 @@ import { createAgentTerminalLaunchResolver, type ConsoleRuntimeSessionInfo } fro
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { writeAggregateObserverEvents } from "./agent-api/observability-routes.js";
 import type { AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
-type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown };
+type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly initialPrompt?: unknown };
 type HookTurnBody = { readonly phase?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
 type HookAutoNameBody = { readonly input?: unknown; readonly prompt?: unknown };
@@ -43,6 +43,8 @@ interface AgentRouteDeps {
 
 const AGENT_OPERATION_TYPE = "agent";
 const CONSOLE_PTY_MESSAGE_DELIVERY = { submitDelayMs: 250 } as const;
+const INITIAL_PROMPT_MAX_LENGTH = 4_000;
+const INITIAL_PROMPT_RETRY_DELAY_MS = 500;
 const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
 const TERMINAL_PLUGIN_ID = "terminal";
 
@@ -93,6 +95,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   });
   const detector = createDefaultAgentCliDetector();
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
+  const initialPromptRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
   const jobOriginById = new Map<string, string>();
   const launchResolver = createAgentTerminalLaunchResolver({
@@ -243,6 +246,11 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     }
     if (req.method !== "POST") return methodNotAllowed(res);
     const body = await ctx.host.http.readJsonBody<SessionCreateBody>(req);
+    const initialPrompt = readInitialPrompt(body?.initialPrompt);
+    if (initialPrompt === false) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_initial_prompt" });
+      return true;
+    }
     const cliId = readOptionalAgentCliId(body?.cliId, res);
     if (cliId === false) return true;
     if (!cliId) {
@@ -261,7 +269,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
       return true;
     }
-    await createSession(cwd, theaterId, cliId, res);
+    await createSession(cwd, theaterId, cliId, initialPrompt, res);
     return true;
   }
 
@@ -283,7 +291,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     return methodNotAllowed(res);
   }
 
-  async function createSession(cwd: string, theaterId: string, cliId: AgentCliId, res: Parameters<typeof handle>[0]["res"]): Promise<void> {
+  async function createSession(cwd: string, theaterId: string, cliId: AgentCliId, initialPrompt: string | undefined, res: Parameters<typeof handle>[0]["res"]): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     if (!meta || !meta.available || !meta.signedIn) {
       ctx.host.http.writeJson(res, 409, { error: "agent_cli_unavailable" });
@@ -310,6 +318,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         theaterId,
         cliId,
       });
+      if (initialPrompt) injectInitialPrompt(sessionId, initialPrompt);
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
       pendingRuntimeSessions.delete(sessionId);
       const created = runtimeSession
@@ -481,6 +490,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
 
   async function handleExit(operationId: string): Promise<void> {
     reminderWriter.cancel(operationId);
+    clearInitialPromptRetry(operationId);
     pendingRuntimeSessions.delete(operationId);
     const providerSession = readProviderSessionCapture(operationId, { capturesDir: ctx.host.paths.capturesDir }) ?? readProviderSession(ctx.host.operations.get(operationId)?.payload);
     if (providerSession) {
@@ -499,6 +509,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
 
   function removeSession(sessionId: string): void {
     reminderWriter.cancel(sessionId);
+    clearInitialPromptRetry(sessionId);
     terminalRuntime.terminate(sessionId);
     pendingRuntimeSessions.delete(sessionId);
     observability.removeTerminalSession(sessionId);
@@ -508,6 +519,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
 
   async function cleanup(): Promise<void> {
     reminderWriter.cancelAll();
+    for (const sessionId of [...initialPromptRetryTimers.keys()]) clearInitialPromptRetry(sessionId);
     unsubscribeRename();
     unsubscribeReminder();
     unsubscribeStream();
@@ -570,6 +582,39 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       (data) => terminalRuntime.write(sessionId, data),
       formatCarrierResultReminderMessage(policy, `${renameCommand} ${safeLabel}`, process.platform, CONSOLE_PTY_MESSAGE_DELIVERY),
     );
+  }
+
+  function injectInitialPrompt(sessionId: string, prompt: string, isRetry = false): void {
+    const safePrompt = sanitizeCarrierResultReminder(prompt).trim();
+    if (safePrompt.length === 0) return;
+    const policy = terminalRuntime.getMessagePolicy(sessionId) ?? {};
+    let handledWriteFailure = false;
+    reminderWriter.enqueue(
+      sessionId,
+      (data) => {
+        const written = terminalRuntime.write(sessionId, data);
+        if (written || handledWriteFailure) return written;
+        handledWriteFailure = true;
+        if (isRetry) {
+          console.debug("[fleet-console] Initial prompt injection dropped because the PTY was unavailable", { sessionId });
+          return false;
+        }
+        const timer = setTimeout(() => {
+          if (initialPromptRetryTimers.get(sessionId) !== timer) return;
+          initialPromptRetryTimers.delete(sessionId);
+          injectInitialPrompt(sessionId, safePrompt, true);
+        }, INITIAL_PROMPT_RETRY_DELAY_MS);
+        initialPromptRetryTimers.set(sessionId, timer);
+        return false;
+      },
+      formatCarrierResultReminderMessage(policy, safePrompt, process.platform, CONSOLE_PTY_MESSAGE_DELIVERY),
+    );
+  }
+
+  function clearInitialPromptRetry(sessionId: string): void {
+    const timer = initialPromptRetryTimers.get(sessionId);
+    if (timer) clearTimeout(timer);
+    initialPromptRetryTimers.delete(sessionId);
   }
 
   function injectOperation(operation: OperationNode): AgentTerminalSessionInfo {
@@ -675,6 +720,14 @@ function readOptionalAgentCliId(value: unknown, res: Parameters<FleetPluginServe
     res.end(JSON.stringify({ error: "invalid_agent_cli" }));
     return false;
   }
+}
+
+function readInitialPrompt(value: unknown): string | undefined | false {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") return false;
+  const prompt = value.trim();
+  if (prompt.length > INITIAL_PROMPT_MAX_LENGTH) return false;
+  return prompt.length > 0 ? prompt : undefined;
 }
 
 function readProviderSession(value: Record<string, unknown> | undefined): ProviderSession | undefined {

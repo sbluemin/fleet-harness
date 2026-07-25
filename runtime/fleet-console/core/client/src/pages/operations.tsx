@@ -161,17 +161,17 @@ export function Operations({ state, claimBootPanelMinimization }: OperationsProp
     return plugin?.renderLaunchIcon?.(kind) ?? null;
   }, [registry.plugins]);
 
-  const handleCanvasLaunchKind = useCallback((pluginId: string, kind: OperationLaunchKind, canvasPoint: CanvasPoint) => {
+  const handleCanvasLaunchKind = useCallback((pluginId: string, kind: OperationLaunchKind, canvasPoint: CanvasPoint, initialPrompt?: string) => {
     if (!stateRef.current.activeTheaterId) return;
     const geometry = { ...canvasPointToGeometry(canvasPoint), zIndex: claimTopZIndex() };
-    void launchViaPlugin(pluginId, kind, geometry, stateRef.current.activeTheaterId, registry.plugins);
+    void launchViaPlugin(pluginId, kind, geometry, stateRef.current.activeTheaterId, registry.plugins, initialPrompt);
   }, [registry.plugins]);
 
-  const handleSideBarLaunchKind = useCallback((pluginId: string, kind: OperationLaunchKind) => {
+  const handleSideBarLaunchKind = useCallback((pluginId: string, kind: OperationLaunchKind, initialPrompt?: string) => {
     if (!stateRef.current.activeTheaterId) return;
     const canvasPoint = canvasCenterPoint(bodyRef.current);
     const geometry = { ...canvasPointToGeometry(canvasPoint), zIndex: claimTopZIndex() };
-    void launchViaPlugin(pluginId, kind, geometry, stateRef.current.activeTheaterId, registry.plugins);
+    void launchViaPlugin(pluginId, kind, geometry, stateRef.current.activeTheaterId, registry.plugins, initialPrompt);
   }, [registry.plugins]);
 
   const handleLaunchAtGeometry = useCallback((pluginId: string, kind: OperationLaunchKind, geometry: OperationGeometry) => {
@@ -479,13 +479,14 @@ async function launchViaPlugin(
   geometry: OperationGeometry,
   theaterId: string,
   plugins: readonly FleetClientPlugin[],
+  initialPrompt?: string,
 ): Promise<void> {
   const plugin = plugins.find((p) => p.id === pluginId);
   const resync = () => { void fetchOperations(null).then(hydrateOperations).catch(() => {}); };
   const capabilities = createHostCapabilities(resync);
   let newOperationId: string | null = null;
   if (plugin?.launch) {
-    const result = await plugin.launch({ theaterId, kind, geometry, operations: capabilities.operations });
+    const result = await plugin.launch({ theaterId, kind, geometry, ...(initialPrompt === undefined ? {} : { initialPrompt }), operations: capabilities.operations });
     newOperationId = result.id;
   } else {
     const operation = await capabilities.operations.create({

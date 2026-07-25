@@ -49,7 +49,7 @@ export function assertOperationNode(value: unknown): OperationNode {
 }
 
 export function hasForbiddenBrowserPayloadKey(value: unknown): boolean {
-  return containsForbiddenKey(value, new Set(["canonicalCwd", "cwd", "persona", "prompt", "providerSession", "ticket", "token", "toolAllowlist", "tools", "transcriptPath"]));
+  return containsForbiddenKey(value, new Set(["canonicalCwd", "cwd", "initialPrompt", "persona", "prompt", "providerSession", "ticket", "token", "toolAllowlist", "tools", "transcriptPath"]));
 }
 
 export function OperationBody({ children, className }: OperationBodyProps): React.ReactElement {
@@ -69,6 +69,7 @@ function readLaunchKind(value: unknown): OperationLaunchKind | null {
     id: value.id,
     type: value.type,
     title: value.title,
+    ...(typeof value.supportsInitialPrompt === "boolean" ? { supportsInitialPrompt: value.supportsInitialPrompt } : {}),
     ...(typeof value.disabled === "boolean" ? { disabled: value.disabled } : {}),
     ...(typeof value.disabledReason === "string" ? { disabledReason: value.disabledReason } : {}),
   };
