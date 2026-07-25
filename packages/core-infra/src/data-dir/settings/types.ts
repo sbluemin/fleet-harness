@@ -1,7 +1,6 @@
 export interface GlobalOptionsData {
   readonly version: 1;
   readonly enableMetaphor?: boolean;
-  readonly codexLaunchMode?: 'acp' | 'app-server';
   readonly kimiModel?: { readonly model: string; readonly effort?: string };
 }
 

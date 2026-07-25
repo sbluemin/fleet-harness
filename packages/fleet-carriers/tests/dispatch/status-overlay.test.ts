@@ -17,7 +17,7 @@ describe("StatusOverlayController", () => {
         models: cliType === "codex"
           ? [
             { modelId: "gpt-provider-default", name: "Provider Default" },
-            { modelId: "gpt-5.4-mini", name: "GPT 5.4 Mini" },
+            { modelId: "gpt-5.5", name: "GPT 5.5" },
           ]
           : [{ modelId: "sonnet", name: "Sonnet" }],
         name: cliType,

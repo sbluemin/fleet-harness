@@ -10,7 +10,6 @@ import type {
   ConnectionOptions,
   McpServerConfig,
 } from '../types/config.js';
-import type { CodexJsonValue } from '../types/codex-app-server.js';
 import { resolveNpxPath, buildNpxArgs } from '../utils/npx.js';
 import { cleanEnvironment } from '../utils/env.js';
 import { resolveCursorSpawnModel } from '../models/ModelRegistry.js';
@@ -65,8 +64,6 @@ export const CLI_BACKENDS = {
     cliCommand: 'codex',
     protocol: 'codex-app-server',
     authRequired: true,
-    npxPackage: '@agentclientprotocol/codex-acp@1.1.2',
-    acpArgs: [],
     appServerArgs: ['app-server', '--listen', 'stdio://'],
     modes: [
       { id: 'default', label: 'Plan' },
@@ -76,7 +73,7 @@ export const CLI_BACKENDS = {
     supportsSessionClose: true,
     supportsSessionLoad: true,
     requiresModelAtSpawn: false,
-    usesNpxBridge: true,
+    usesNpxBridge: false,
     defaultMaxTokens: 100_000,
   },
   'opencode-go': {
@@ -221,37 +218,6 @@ export function getAllBackendConfigs(): CliBackendConfig[] {
 }
 
 /**
- * Codex ACP 브릿지(`codex-acp`)가 읽는 `CODEX_CONFIG` 환경변수 값을 생성합니다.
- * 브릿지는 이 JSON 맵을 `thread/start`/`thread/resume` config에 spread하므로,
- * 설정 오버라이드를 argv 대신 env로 주입합니다.
- *
- * @param configOverrides - `key=value` 형태의 설정 오버라이드 배열 (dotted key는 중첩 객체로 확장)
- * @param baseConfigJson - 호출자가 이미 지정한 CODEX_CONFIG(JSON) 값. 유효한 JSON 객체면 시작점으로 병합.
- * @returns JSON 문자열(맵에 키가 하나 이상일 때) 또는 undefined(빈 맵)
- */
-export function buildCodexConfigEnv(
-  configOverrides?: string[],
-  baseConfigJson?: string,
-): string | undefined {
-  const map = parseBaseConfigMap(baseConfigJson);
-
-  for (const override of configOverrides ?? []) {
-    const eqIndex = override.indexOf('=');
-    if (eqIndex < 0) {
-      continue;
-    }
-    const key = override.slice(0, eqIndex);
-    const rawValue = override.slice(eqIndex + 1);
-    assignNestedKey(map, key, parseOverrideValue(rawValue));
-  }
-
-  if (Object.keys(map).length === 0) {
-    return undefined;
-  }
-  return JSON.stringify(map);
-}
-
-/**
  * `-c key=value` CLI 오버라이드 인자로 변환합니다.
  *
  * @param overrides - 설정 오버라이드 값
@@ -304,59 +270,4 @@ export function mcpServerConfigsToAcp(servers: McpServerConfig[]): McpServer[] {
     url: server.url,
     headers: server.headers ?? [],
   })) as McpServer[];
-}
-
-// baseConfigJson을 JSON 객체 맵으로 파싱한다. 유효한 JSON 객체가 아니면(부재/배열/스칼라/파싱 실패)
-// 조용히 빈 맵에서 시작한다.
-function parseBaseConfigMap(baseConfigJson?: string): Record<string, CodexJsonValue> {
-  if (!baseConfigJson) {
-    return {};
-  }
-  try {
-    const parsed = JSON.parse(baseConfigJson) as unknown;
-    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-      return parsed as Record<string, CodexJsonValue>;
-    }
-  } catch {
-    // 잘못된 JSON은 무시하고 빈 맵에서 시작한다.
-  }
-  return {};
-}
-
-// 오버라이드 값을 파싱한다. JSON.parse를 우선 시도하고, 실패하면 감싼 큰따옴표 한 쌍만 제거해
-// 원시 문자열로 사용한다. TOML inline table 등 비-JSON TOML 값은 원시 문자열로 강등된다
-// (best-effort; 현재 이 경로에는 프로덕션 호출자가 없다).
-function parseOverrideValue(raw: string): CodexJsonValue {
-  try {
-    return JSON.parse(raw) as CodexJsonValue;
-  } catch {
-    if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) {
-      return raw.slice(1, -1);
-    }
-    return raw;
-  }
-}
-
-// dotted key를 중첩 객체로 확장해 값을 할당한다.
-// (예: `mcp_servers.fleet.url` → `{ mcp_servers: { fleet: { url: ... } } }`)
-// 중간 경로에 객체가 아닌 값이 있으면 새 객체로 덮어쓴다.
-function assignNestedKey(
-  target: Record<string, CodexJsonValue>,
-  dottedKey: string,
-  value: CodexJsonValue,
-): void {
-  const segments = dottedKey.split('.');
-  let cursor = target;
-  for (let i = 0; i < segments.length - 1; i += 1) {
-    const segment = segments[i];
-    const existing = cursor[segment];
-    if (typeof existing === 'object' && existing !== null && !Array.isArray(existing)) {
-      cursor = existing as Record<string, CodexJsonValue>;
-    } else {
-      const nested: Record<string, CodexJsonValue> = {};
-      cursor[segment] = nested;
-      cursor = nested;
-    }
-  }
-  cursor[segments[segments.length - 1]] = value;
 }

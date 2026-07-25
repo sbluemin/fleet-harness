@@ -162,12 +162,12 @@ describe("session options runtime", () => {
       parseCliId: parseAgentCliId,
     });
 
-    runtime.setModel("gpt-5.4");
+    runtime.setModel("gpt-5.5");
     runtime.selectCli("codex");
 
     expect(runtime.getDraft()).toMatchObject({
       cliId: "codex",
-      model: "gpt-5.4",
+      model: "gpt-5.5",
     });
     expect(runtime.getResolved().sources.cliId).toBe("session");
   });

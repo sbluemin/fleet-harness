@@ -72,8 +72,8 @@ describe("carrier status view model", () => {
     const entry = buildStatusEntries(runtime)[0];
 
     expect(entry?.cliType).toBe("codex");
-    expect(entry?.model).toBe("gpt-5.4");
-    expect(entry?.effort).toBe("high");
+    expect(entry?.model).toBe("gpt-5.6-sol");
+    expect(entry?.effort).toBe("low");
   });
 
   it("hides stale TaskForce selections until source capability is re-registered", () => {

@@ -39,6 +39,10 @@ export const ModelEntrySchema = z.object({
   description: z.string().optional(),
   /** spawn 시 실제 CLI 모델 ID를 조립해야 하는 경우의 템플릿 */
   spawnModelTemplate: z.string().optional(),
+  /** 카탈로그 ID와 실제 provider 모델 ID가 다른 경우의 원본 모델 ID */
+  providerModelId: z.string().optional(),
+  /** provider가 모델과 별도로 받는 서비스 티어 */
+  serviceTier: z.string().optional(),
   /** 모델의 컨텍스트 윈도우 크기 (토큰) */
   contextWindow: z.number().int().positive().optional(),
   /** 모델별 effort 설정 */
@@ -59,6 +63,14 @@ export const ModelEntrySchema = z.object({
       input: ctx.value.spawnModelTemplate,
       message: 'effort 지원 모델의 spawnModelTemplate은 "{effort}" 플레이스홀더를 포함해야 합니다',
       path: ['spawnModelTemplate'],
+    });
+  }
+  if (ctx.value.serviceTier && !ctx.value.providerModelId) {
+    ctx.issues.push({
+      code: 'custom',
+      input: ctx.value.serviceTier,
+      message: 'serviceTier를 지정한 모델은 providerModelId도 지정해야 합니다',
+      path: ['serviceTier'],
     });
   }
 });

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-07-21T00:00:00Z",
+  "updatedAt": "2026-07-25T00:00:00Z",
   "providers": {
     "claude": {
       "name": "Claude Code",
@@ -36,11 +36,13 @@
       "defaultModel": "gpt-5.6-sol",
       "models": [
         { "modelId": "gpt-5.6-sol", "name": "GPT-5.6-Sol", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max", "ultra"], "default": "low" } },
+        { "modelId": "gpt-5.6-sol-fast", "name": "GPT-5.6-Sol Fast", "providerModelId": "gpt-5.6-sol", "serviceTier": "priority", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max", "ultra"], "default": "low" } },
         { "modelId": "gpt-5.6-terra", "name": "GPT-5.6-Terra", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max", "ultra"], "default": "medium" } },
+        { "modelId": "gpt-5.6-terra-fast", "name": "GPT-5.6-Terra Fast", "providerModelId": "gpt-5.6-terra", "serviceTier": "priority", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max", "ultra"], "default": "medium" } },
         { "modelId": "gpt-5.6-luna", "name": "GPT-5.6-Luna", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "medium" } },
+        { "modelId": "gpt-5.6-luna-fast", "name": "GPT-5.6-Luna Fast", "providerModelId": "gpt-5.6-luna", "serviceTier": "priority", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "medium" } },
         { "modelId": "gpt-5.5", "name": "GPT-5.5", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh"], "default": "high" } },
-        { "modelId": "gpt-5.4", "name": "GPT-5.4", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh"], "default": "high" } },
-        { "modelId": "gpt-5.4-mini", "name": "GPT-5.4 Mini", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh"], "default": "high" } }
+        { "modelId": "gpt-5.5-fast", "name": "GPT-5.5 Fast", "providerModelId": "gpt-5.5", "serviceTier": "priority", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh"], "default": "high" } }
       ]
     },
     "opencode-go": {

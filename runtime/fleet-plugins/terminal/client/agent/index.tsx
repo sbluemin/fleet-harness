@@ -682,7 +682,6 @@ function GeneralSection() {
 function AgentCliSection() {
   const [clis, setClis] = React.useState<readonly AgentCliStatus[]>([]);
   const [error, setError] = React.useState<string | null>(null);
-  const settings = useSystemPromptSettingsStore();
 
   React.useEffect(() => {
     const abort = new AbortController();
@@ -692,14 +691,6 @@ function AgentCliSection() {
         if (!abort.signal.aborted) setError(err instanceof Error ? err.message : String(err));
       });
     return () => abort.abort();
-  }, []);
-
-  // Codex launch mode 토글은 system prompt 설정(codexLaunchMode)에 의존하므로, Metaphor 카드가
-  // General 섹션으로 분리된 지금은 이 섹션에서도 설정을 로드해야 토글이 채워진다.
-  React.useEffect(() => {
-    const controller = new AbortController();
-    void loadSystemPromptSettings(controller.signal);
-    return () => controller.abort();
   }, []);
 
   // 카드를 Fragment로 직접 반환한다. 카드 간 간격은 호스트의 .global-settings-detail(그리드 gap)이
@@ -714,17 +705,9 @@ function AgentCliSection() {
         {error ? <p className="settings-error">{error}</p> : null}
         <div className="agent-cli-list">
           {clis.map((cli) => (
-            <AgentCliRow
-              key={cli.id}
-              cli={cli}
-              codexLaunchMode={settings.state?.codexLaunchMode}
-              disabled={settings.savingField !== null}
-              onCodexLaunchModeChange={(mode) => void setSystemPromptSettingsField("codexLaunchMode", mode)}
-            />
+            <AgentCliRow key={cli.id} cli={cli} />
           ))}
         </div>
-        {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
-        <p className="global-settings-help">Codex launch mode controls the unified-agent carrier protocol for new Codex sessions; it does not affect the interactive Codex TUI in terminal panels.</p>
         <p className="global-settings-foot">Install or update a CLI, then reopen this page to re-check availability.</p>
       </section>
       <ModelAuthBlock />
@@ -925,43 +908,11 @@ function SettingToggleRow({ title, help, onLabel, offLabel, value, disabled, onT
   );
 }
 
-function AgentCliRow({
-  cli,
-  codexLaunchMode,
-  disabled,
-  onCodexLaunchModeChange,
-}: {
-  readonly cli: AgentCliStatus;
-  readonly codexLaunchMode: "acp" | "app-server" | undefined;
-  readonly disabled: boolean;
-  readonly onCodexLaunchModeChange: (mode: "acp" | "app-server") => void;
-}) {
+function AgentCliRow({ cli }: { readonly cli: AgentCliStatus }) {
   return (
     <div className="agent-cli-row">
       <span className="agent-cli-name">{cli.displayName}</span>
       <span className="agent-cli-meta">
-        {cli.id === "codex" && codexLaunchMode ? (
-          <span className="segmented" role="group" aria-label="Codex launch mode">
-            <button
-              type="button"
-              aria-pressed={codexLaunchMode === "acp"}
-              className={`segmented-option ${codexLaunchMode === "acp" ? "is-active" : ""}`}
-              disabled={disabled}
-              onClick={() => onCodexLaunchModeChange("acp")}
-            >
-              ACP
-            </button>
-            <button
-              type="button"
-              aria-pressed={codexLaunchMode === "app-server"}
-              className={`segmented-option ${codexLaunchMode === "app-server" ? "is-active" : ""}`}
-              disabled={disabled}
-              onClick={() => onCodexLaunchModeChange("app-server")}
-            >
-              App Server
-            </button>
-          </span>
-        ) : null}
         {cli.available && cli.version ? <span className="agent-cli-version">{cli.version}</span> : null}
         <span className={`agent-cli-status ${cli.available ? "is-on" : ""}`}>{cli.available ? "Available" : "Missing"}</span>
       </span>

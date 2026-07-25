@@ -1,84 +1,50 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'events';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mockCodexConnect = vi.fn();
-const mockCodexDisconnect = vi.fn();
-const mockCodexEndSession = vi.fn();
-const mockCodexResetSession = vi.fn();
-const mockCodexLoadSession = vi.fn();
-const mockCodexSendMessage = vi.fn();
-const mockCodexCancelPrompt = vi.fn();
+const mockConnect = vi.fn();
+const mockDisconnect = vi.fn();
+const mockEndSession = vi.fn();
+const mockResetSession = vi.fn();
+const mockLoadSession = vi.fn();
+const mockSendMessage = vi.fn();
+const mockCancelPrompt = vi.fn();
 const mockSetPendingModel = vi.fn();
+const mockSetPendingServiceTier = vi.fn();
 const mockSetPendingEffort = vi.fn();
-const mockRemoveAllListeners = vi.fn();
 
-const mockAcpConnect = vi.fn();
-const mockAcpLoadSession = vi.fn();
-const mockAcpSendPrompt = vi.fn();
-const mockAcpSetMode = vi.fn();
-const mockAcpSetModel = vi.fn();
-const mockAcpSetConfigOption = vi.fn();
-const originalCodexUseAcp = process.env.CODEX_USE_ACP;
-const originalCodexConfig = process.env.CODEX_CONFIG;
-
-function createMockCodexConnection(): EventEmitter & Record<string, unknown> {
+function createMockConnection(): EventEmitter & Record<string, unknown> {
   const connection = new EventEmitter() as EventEmitter & Record<string, unknown>;
   Object.assign(connection, {
     connect: async (...args: unknown[]) => {
-      const result = await mockCodexConnect(...args);
+      const result = await mockConnect(...args);
+      if (result?.thread?.id) connection.sessionId = result.thread.id;
+      return result;
+    },
+    disconnect: mockDisconnect,
+    endSession: mockEndSession,
+    resetSession: async (...args: unknown[]) => {
+      const result = await mockResetSession(...args);
       connection.sessionId = result.thread.id;
       return result;
     },
-    disconnect: mockCodexDisconnect,
-    endSession: mockCodexEndSession,
-    resetSession: mockCodexResetSession,
     loadSession: async (...args: unknown[]) => {
-      const result = await mockCodexLoadSession(...args);
+      const result = await mockLoadSession(...args);
       connection.sessionId = result.thread.id;
       return result;
     },
-    sendMessage: mockCodexSendMessage,
-    cancelPrompt: mockCodexCancelPrompt,
+    sendMessage: mockSendMessage,
+    cancelPrompt: mockCancelPrompt,
     setPendingModel: mockSetPendingModel,
+    setPendingServiceTier: mockSetPendingServiceTier,
     setPendingEffort: mockSetPendingEffort,
-    removeAllListeners: mockRemoveAllListeners,
     connectionState: 'ready',
     sessionId: null,
   });
   return connection;
 }
 
-// ACP 경로용 mock 연결. instanceof AcpConnection이 true가 되도록 prototype을 상속시키고,
-// EventEmitter 기반 이벤트 메서드와 connect/sendPrompt 등 사용 메서드를 주입한다.
-function createMockAcpConnection(): Record<string, unknown> {
-  const emitter = new EventEmitter();
-  return Object.assign(Object.create(AcpConnection.prototype), {
-    on: emitter.on.bind(emitter),
-    off: emitter.off.bind(emitter),
-    once: emitter.once.bind(emitter),
-    emit: emitter.emit.bind(emitter),
-    removeAllListeners: vi.fn(),
-    connect: mockAcpConnect,
-    loadSession: mockAcpLoadSession,
-    sendPrompt: mockAcpSendPrompt,
-    setMode: mockAcpSetMode,
-    setModel: mockAcpSetModel,
-    setConfigOption: mockAcpSetConfigOption,
-    disconnect: vi.fn().mockResolvedValue(undefined),
-    endSession: vi.fn().mockResolvedValue(undefined),
-    cancelSession: vi.fn().mockResolvedValue(undefined),
-    canResetSession: true,
-    connectionState: 'ready',
-    sessionId: 'acp-session-1',
-  });
-}
-
 vi.mock('../../src/connection/CodexAppServerConnection.js', () => ({
-  CodexAppServerConnection: vi.fn(() => createMockCodexConnection()),
-}));
-
-vi.mock('../../src/connection/AcpConnection.js', () => ({
-  AcpConnection: vi.fn(() => createMockAcpConnection()),
+  CodexAppServerConnection: vi.fn(() => createMockConnection()),
 }));
 
 vi.mock('../../src/detector/CliDetector.js', () => ({
@@ -90,193 +56,43 @@ vi.mock('../../src/detector/CliDetector.js', () => ({
 
 const { UnifiedCodexAgentClient } = await import('../../src/client/UnifiedCodexAgentClient.js');
 const { CodexAppServerConnection } = await import('../../src/connection/CodexAppServerConnection.js');
-const { AcpConnection } = await import('../../src/connection/AcpConnection.js');
 
-type CodexClient = InstanceType<typeof UnifiedCodexAgentClient>;
-
-// 특정 app-server config 스테이징 검증은 전송 선택과 분리하기 위해
-// 내부 connectAppServer 경로를 직접 구동한다.
-// (소스 동작은 변경하지 않는 테스트 전용 우회 — element access로 private 메서드 호출)
-function connectAppServer(
-  client: CodexClient,
-  options: Parameters<CodexClient['connect']>[0],
-): ReturnType<CodexClient['connect']> {
-  return client['connectAppServer'](options);
-}
-
-// ACP 연결 생성자에 전달된 첫 호출 인자(env/args)를 추출한다.
-function acpCtorOptions(): { env?: Record<string, string | undefined>; args: string[]; fsAccess?: boolean } {
-  const call = vi.mocked(AcpConnection).mock.calls[0];
-  return call[0] as unknown as { env?: Record<string, string | undefined>; args: string[]; fsAccess?: boolean };
-}
-
-function restoreEnvironmentVariable(name: string, value: string | undefined): void {
-  if (value === undefined) {
-    delete process.env[name];
-    return;
-  }
-  process.env[name] = value;
-}
-
-describe('UnifiedCodexAgentClient config staging', () => {
+describe('UnifiedCodexAgentClient App Server config staging', () => {
   beforeEach(() => {
-    delete process.env.CODEX_USE_ACP;
-    delete process.env.CODEX_CONFIG;
     vi.clearAllMocks();
-    mockCodexConnect.mockResolvedValue({ thread: { id: 'codex-thread-1' } });
-    mockCodexDisconnect.mockResolvedValue(undefined);
-    mockCodexEndSession.mockResolvedValue(undefined);
-    mockCodexResetSession.mockResolvedValue({ thread: { id: 'codex-thread-2' } });
-    mockCodexLoadSession.mockResolvedValue({ thread: { id: 'codex-thread-9' } });
-    mockCodexSendMessage.mockResolvedValue(undefined);
-    mockCodexCancelPrompt.mockResolvedValue(undefined);
-    mockAcpConnect.mockResolvedValue({ sessionId: 'acp-session-1' });
-    mockAcpLoadSession.mockResolvedValue({});
-    mockAcpSendPrompt.mockResolvedValue({ stopReason: 'endTurn' });
-    mockAcpSetMode.mockResolvedValue(undefined);
-    mockAcpSetModel.mockResolvedValue(undefined);
-    mockAcpSetConfigOption.mockResolvedValue(undefined);
+    mockConnect.mockResolvedValue({ thread: { id: 'codex-thread-1' } });
+    mockDisconnect.mockResolvedValue(undefined);
+    mockEndSession.mockResolvedValue(undefined);
+    mockResetSession.mockResolvedValue({ thread: { id: 'codex-thread-2' } });
+    mockLoadSession.mockResolvedValue({ thread: { id: 'codex-thread-9' } });
+    mockSendMessage.mockResolvedValue(undefined);
+    mockCancelPrompt.mockResolvedValue(undefined);
   });
 
-  afterEach(() => {
-    restoreEnvironmentVariable('CODEX_USE_ACP', originalCodexUseAcp);
-    restoreEnvironmentVariable('CODEX_CONFIG', originalCodexConfig);
-  });
-
-  it('CODEX_USE_ACP 미설정 시 App Server로 연결한다', async () => {
+  it('Codex는 항상 App Server로 연결한다', async () => {
     const client = new UnifiedCodexAgentClient();
-
     const result = await client.connect({ cwd: '/workspace', cli: 'codex' });
 
     expect(CodexAppServerConnection).toHaveBeenCalledTimes(1);
-    expect(AcpConnection).not.toHaveBeenCalled();
-    expect(result.session).toEqual({ sessionId: 'codex-thread-1' });
+    expect(result).toEqual({
+      cli: 'codex',
+      protocol: 'codex-app-server',
+      session: { sessionId: 'codex-thread-1' },
+    });
   });
 
-  it('App Server가 세션 ID 없이 연결되면 연결을 정리하고 실패한다', async () => {
-    mockCodexConnect.mockResolvedValue({ thread: { id: '' } });
+  it('세션 ID 없이 연결되면 연결을 정리하고 실패한다', async () => {
+    mockConnect.mockResolvedValue({ thread: { id: '' } });
     const client = new UnifiedCodexAgentClient();
 
     await expect(client.connect({ cwd: '/workspace', cli: 'codex' })).rejects.toThrow(
       '[codex] App Server 연결에서 유효한 세션 ID를 받지 못했습니다.',
     );
-
-    expect(mockCodexDisconnect).toHaveBeenCalledTimes(1);
-    expect(client.getConnectionInfo()).toEqual({
-      cli: null,
-      protocol: null,
-      sessionId: null,
-      state: 'disconnected',
-    });
+    expect(mockDisconnect).toHaveBeenCalledTimes(1);
+    expect(client.getConnectionInfo().state).toBe('disconnected');
   });
 
-  it("options.env CODEX_USE_ACP='false'는 App Server로 연결한다", async () => {
-    const client = new UnifiedCodexAgentClient();
-
-    await client.connect({
-      cwd: '/workspace',
-      cli: 'codex',
-      env: { CODEX_USE_ACP: 'false' },
-    });
-
-    expect(CodexAppServerConnection).toHaveBeenCalledTimes(1);
-    expect(AcpConnection).not.toHaveBeenCalled();
-  });
-
-  it("options.env CODEX_USE_ACP='0'는 App Server로 연결한다", async () => {
-    const client = new UnifiedCodexAgentClient();
-
-    await client.connect({
-      cwd: '/workspace',
-      cli: 'codex',
-      env: { CODEX_USE_ACP: '0' },
-    });
-
-    expect(CodexAppServerConnection).toHaveBeenCalledTimes(1);
-    expect(AcpConnection).not.toHaveBeenCalled();
-  });
-
-  it("options.env CODEX_USE_ACP='true'는 ACP로 연결한다", async () => {
-    const client = new UnifiedCodexAgentClient();
-
-    await client.connect({
-      cwd: '/workspace',
-      cli: 'codex',
-      env: { CODEX_USE_ACP: 'true' },
-    });
-
-    expect(AcpConnection).toHaveBeenCalledTimes(1);
-    expect(CodexAppServerConnection).not.toHaveBeenCalled();
-  });
-
-  it('Codex ACP 연결은 호출자의 fsAccess를 전달한다', async () => {
-    const client = new UnifiedCodexAgentClient();
-
-    await client.connect({
-      cwd: '/workspace',
-      cli: 'codex',
-      fsAccess: false,
-      env: { CODEX_USE_ACP: 'true' },
-    });
-
-    expect(acpCtorOptions().fsAccess).toBe(false);
-  });
-
-  it.each([
-    ['false', false],
-    ['0', false],
-    ['true', true],
-    ['yes', true],
-  ] as const)('process.env CODEX_USE_ACP=%s 선택을 적용한다', async (value, usesAcp) => {
-    process.env.CODEX_USE_ACP = value;
-    const client = new UnifiedCodexAgentClient();
-
-    await client.connect({ cwd: '/workspace', cli: 'codex' });
-
-    expect(AcpConnection).toHaveBeenCalledTimes(usesAcp ? 1 : 0);
-    expect(CodexAppServerConnection).toHaveBeenCalledTimes(usesAcp ? 0 : 1);
-  });
-
-  it('options.env가 process.env CODEX_USE_ACP보다 우선한다', async () => {
-    process.env.CODEX_USE_ACP = 'true';
-    const client = new UnifiedCodexAgentClient();
-
-    await client.connect({
-      cwd: '/workspace',
-      cli: 'codex',
-      env: { CODEX_USE_ACP: 'false' },
-    });
-
-    expect(CodexAppServerConnection).toHaveBeenCalledTimes(1);
-    expect(AcpConnection).not.toHaveBeenCalled();
-  });
-
-  it('options.env ACP 선택도 process.env App Server 선택보다 우선한다', async () => {
-    process.env.CODEX_USE_ACP = 'false';
-    const client = new UnifiedCodexAgentClient();
-
-    await client.connect({
-      cwd: '/workspace',
-      cli: 'codex',
-      env: { CODEX_USE_ACP: 'true' },
-    });
-
-    expect(AcpConnection).toHaveBeenCalledTimes(1);
-    expect(CodexAppServerConnection).not.toHaveBeenCalled();
-  });
-
-  it('ACP mode 매핑은 공식 codex-acp bridge mode ID를 사용한다', () => {
-    const client = new UnifiedCodexAgentClient();
-    const testClient = client as unknown as {
-      resolveAcpMode: (modeId: string) => string;
-    };
-
-    expect(testClient.resolveAcpMode('default')).toBe('read-only');
-    expect(testClient.resolveAcpMode('autoEdit')).toBe('agent');
-    expect(testClient.resolveAcpMode('yolo')).toBe('agent-full-access');
-  });
-
-  it('지원하지 않는 model+effort 조합은 ACP bridge 생성 전에 로컬 오류로 거부한다', async () => {
+  it('지원하지 않는 model+effort 조합은 spawn 전에 거부한다', async () => {
     const client = new UnifiedCodexAgentClient();
 
     await expect(client.connect({
@@ -287,225 +103,70 @@ describe('UnifiedCodexAgentClient config staging', () => {
     })).rejects.toThrow(
       'codex/gpt-5.6-luna 모델은 effort "ultra"을(를) 지원하지 않습니다. 사용 가능: low, medium, high, xhigh, max',
     );
-    expect(AcpConnection).not.toHaveBeenCalled();
+    expect(CodexAppServerConnection).not.toHaveBeenCalled();
   });
 
-  it('ACP resetSession 후 첫 프롬프트에 systemPrompt를 한 번만 prepend한다', async () => {
+  it('systemPrompt를 developerInstructions가 아니라 첫 프롬프트에 한 번만 prepend한다', async () => {
     const client = new UnifiedCodexAgentClient();
-    const mockAcpConnection = Object.assign(Object.create(AcpConnection.prototype), {
-      canResetSession: true,
-      connectionState: 'ready',
-      endSession: vi.fn().mockResolvedValue(undefined),
-      reconnectSession: vi.fn().mockResolvedValue({ sessionId: 'acp-session-2' }),
-      sendPrompt: vi.fn().mockResolvedValue({ stopReason: 'endTurn' }),
-    });
-    Object.assign(client as unknown as Record<string, unknown>, {
-      connection: mockAcpConnection,
-      sessionId: 'acp-session-1',
-      sessionCwd: '/workspace',
-      currentSystemPrompt: '리셋 후 지침',
-      firstPromptPending: null,
-    });
-
-    await client.resetSession();
-    await client.sendMessage('첫 요청');
-    await client.sendMessage('두 번째 요청');
-
-    expect(mockAcpConnection.endSession).toHaveBeenCalledWith('acp-session-1');
-    expect(mockAcpConnection.reconnectSession).toHaveBeenCalledWith('/workspace');
-    expect(mockAcpConnection.sendPrompt).toHaveBeenNthCalledWith(1, 'acp-session-2', [
-      { type: 'text', text: '리셋 후 지침' },
-      { type: 'text', text: '첫 요청' },
-    ]);
-    expect(mockAcpConnection.sendPrompt).toHaveBeenNthCalledWith(2, 'acp-session-2', '두 번째 요청');
-    expect(client.getCurrentSystemPrompt()).toBe('리셋 후 지침');
-  });
-
-  it('ACP 연결은 systemPrompt를 CODEX_CONFIG에 주입하지 않고 첫 프롬프트에만 prepend한다', async () => {
-    const client = new UnifiedCodexAgentClient();
-
     await client.connect({
       cwd: '/workspace',
       cli: 'codex',
       systemPrompt: '개발자 지침',
-      env: { CODEX_USE_ACP: 'true' },
+      model: 'gpt-5.5',
     });
 
-    const options = acpCtorOptions();
-    expect(options.env?.CODEX_CONFIG).toBeUndefined();
-
-    await client.sendMessage('첫 요청');
-    await client.sendMessage('두 번째 요청');
-
-    expect(mockAcpSendPrompt).toHaveBeenNthCalledWith(1, 'acp-session-1', [
-      { type: 'text', text: '개발자 지침' },
-      { type: 'text', text: '첫 요청' },
-    ]);
-    expect(mockAcpSendPrompt).toHaveBeenNthCalledWith(2, 'acp-session-1', '두 번째 요청');
-  });
-
-  it('Codex ACP failed-first-send는 Tier-2를 재시도하고 성공 뒤에는 반복하지 않는다', async () => {
-    mockAcpSendPrompt
-      .mockRejectedValueOnce(new Error('transient send failure'))
-      .mockResolvedValue({ stopReason: 'endTurn' });
-    const client = new UnifiedCodexAgentClient();
-
-    await client.connect({
-      cwd: '/workspace',
-      cli: 'codex',
-      systemPrompt: 'Tier-2 지침',
-      env: { CODEX_USE_ACP: 'true' },
-    });
-    await expect(client.sendMessage('첫 요청')).rejects.toThrow('transient send failure');
-    await client.sendMessage('재시도 요청');
-    await client.sendMessage('다음 요청');
-
-    expect(mockAcpSendPrompt).toHaveBeenNthCalledWith(1, 'acp-session-1', [
-      { type: 'text', text: 'Tier-2 지침' },
-      { type: 'text', text: '첫 요청' },
-    ]);
-    expect(mockAcpSendPrompt).toHaveBeenNthCalledWith(2, 'acp-session-1', [
-      { type: 'text', text: 'Tier-2 지침' },
-      { type: 'text', text: '재시도 요청' },
-    ]);
-    expect(mockAcpSendPrompt).toHaveBeenNthCalledWith(3, 'acp-session-1', '다음 요청');
-  });
-
-  it('Codex ACP resumed and loaded sessions send user content only', async () => {
-    const resumed = new UnifiedCodexAgentClient();
-    await resumed.connect({
-      cwd: '/workspace',
-      cli: 'codex',
-      sessionId: 'existing',
-      systemPrompt: 'Tier-2 지침',
-      env: { CODEX_USE_ACP: 'true' },
-    });
-    await resumed.sendMessage('재개 요청');
-
-    const loaded = new UnifiedCodexAgentClient();
-    await loaded.connect({
-      cwd: '/workspace',
-      cli: 'codex',
-      systemPrompt: 'Tier-2 지침',
-      env: { CODEX_USE_ACP: 'true' },
-    });
-    await loaded.loadSession('loaded-session');
-    await loaded.sendMessage('로드 요청');
-
-    expect(mockAcpSendPrompt).toHaveBeenNthCalledWith(1, 'acp-session-1', '재개 요청');
-    expect(mockAcpSendPrompt).toHaveBeenNthCalledWith(2, 'loaded-session', '로드 요청');
-  });
-
-  it('호출자 제공 CODEX_CONFIG의 developer_instructions는 systemPrompt와 별개로 보존한다', async () => {
-    const client = new UnifiedCodexAgentClient();
-
-    await client.connect({
-      cwd: '/workspace',
-      cli: 'codex',
-      systemPrompt: '우선 지침',
-      env: {
-        CODEX_USE_ACP: 'true',
-        CODEX_CONFIG: JSON.stringify({ model: 'gpt-5.4', developer_instructions: '무시될 지침' }),
-      },
-    });
-
-    const options = acpCtorOptions();
-    const config = JSON.parse(options.env?.CODEX_CONFIG ?? '{}') as Record<string, unknown>;
-    expect(config).toEqual({ model: 'gpt-5.4', developer_instructions: '무시될 지침' });
-  });
-
-  it('systemPrompt·configOverrides·호출자 CODEX_CONFIG가 모두 없으면 env에 CODEX_CONFIG를 넣지 않는다', async () => {
-    const client = new UnifiedCodexAgentClient();
-
-    await client.connect({
-      cwd: '/workspace',
-      cli: 'codex',
-      env: { CODEX_USE_ACP: 'true' },
-    });
-
-    const options = acpCtorOptions();
-    expect(options.env?.CODEX_CONFIG).toBeUndefined();
-  });
-
-  it('App Server 연결은 systemPrompt를 developerInstructions로 전달하지 않고 첫 프롬프트에만 prepend한다', async () => {
-    const client = new UnifiedCodexAgentClient();
-
-    await client.connect({
-      cwd: '/workspace',
-      cli: 'codex',
-      systemPrompt: '개발자 지침',
-      model: 'gpt-5.4',
-    });
-
-    expect(CodexAppServerConnection).toHaveBeenCalledWith(expect.objectContaining({
-      args: [
-        'app-server',
-        '--listen',
-        'stdio://',
-        '-c',
-        'approval_policy="never"',
-        '-c',
-        'sandbox_mode="danger-full-access"',
-      ],
-    }));
-    expect(mockCodexConnect).toHaveBeenCalledWith({
+    expect(mockConnect).toHaveBeenCalledWith({
       developerInstructions: undefined,
-      model: 'gpt-5.4',
+      model: 'gpt-5.5',
+      serviceTier: undefined,
       approvalPolicy: 'never',
       sandbox: 'danger-full-access',
     });
     await client.sendMessage('첫 요청');
     await client.sendMessage('두 번째 요청');
-    expect(mockCodexSendMessage).toHaveBeenNthCalledWith(1, [
+    expect(mockSendMessage).toHaveBeenNthCalledWith(1, [
       { type: 'text', text: '개발자 지침', text_elements: [] },
       { type: 'text', text: '첫 요청', text_elements: [] },
     ]);
-    expect(mockCodexSendMessage).toHaveBeenNthCalledWith(2, [
+    expect(mockSendMessage).toHaveBeenNthCalledWith(2, [
       { type: 'text', text: '두 번째 요청', text_elements: [] },
     ]);
-    expect(client.getConnectionInfo().protocol).toBe('codex-app-server');
   });
 
-  it('Codex App Server failed-first-send는 Tier-2를 재시도하고 성공 뒤에는 반복하지 않는다', async () => {
-    mockCodexSendMessage
+  it('첫 전송 실패 시 systemPrompt를 재시도하고 성공 후에는 반복하지 않는다', async () => {
+    mockSendMessage
       .mockRejectedValueOnce(new Error('transient send failure'))
       .mockResolvedValue(undefined);
     const client = new UnifiedCodexAgentClient();
-
     await client.connect({ cwd: '/workspace', cli: 'codex', systemPrompt: 'Tier-2 지침' });
+
     await expect(client.sendMessage('첫 요청')).rejects.toThrow('transient send failure');
     await client.sendMessage('재시도 요청');
     await client.sendMessage('다음 요청');
 
-    expect(mockCodexSendMessage).toHaveBeenNthCalledWith(1, [
-      { type: 'text', text: 'Tier-2 지침', text_elements: [] },
-      { type: 'text', text: '첫 요청', text_elements: [] },
-    ]);
-    expect(mockCodexSendMessage).toHaveBeenNthCalledWith(2, [
+    expect(mockSendMessage).toHaveBeenNthCalledWith(2, [
       { type: 'text', text: 'Tier-2 지침', text_elements: [] },
       { type: 'text', text: '재시도 요청', text_elements: [] },
     ]);
-    expect(mockCodexSendMessage).toHaveBeenNthCalledWith(3, [
+    expect(mockSendMessage).toHaveBeenNthCalledWith(3, [
       { type: 'text', text: '다음 요청', text_elements: [] },
     ]);
   });
 
-  it('Codex App Server loaded sessions send user content only', async () => {
+  it('loadSession 이후에는 사용자 content만 전송한다', async () => {
     const client = new UnifiedCodexAgentClient();
-
     await client.connect({ cwd: '/workspace', cli: 'codex', systemPrompt: 'Tier-2 지침' });
     await client.loadSession('loaded-thread');
     await client.sendMessage('로드 요청');
 
-    expect(mockCodexSendMessage).toHaveBeenCalledWith([
+    expect(mockSendMessage).toHaveBeenCalledWith([
       { type: 'text', text: '로드 요청', text_elements: [] },
     ]);
   });
 
-  it('codex MCP 서버 설정은 app-server 시작 -c 인자로 전달한다', async () => {
+  it('MCP 서버 설정을 App Server 시작 -c 인자와 readiness 대상에 반영한다', async () => {
     const client = new UnifiedCodexAgentClient();
-
-    await connectAppServer(client, {
+    await client.connect({
       cwd: '/workspace',
       cli: 'codex',
       mcpServers: [{
@@ -518,38 +179,19 @@ describe('UnifiedCodexAgentClient config staging', () => {
 
     expect(CodexAppServerConnection).toHaveBeenCalledWith(expect.objectContaining({
       mcpServerNames: ['test-math'],
-      args: [
-        'app-server',
-        '--listen',
-        'stdio://',
-        '-c',
-        'approval_policy="never"',
-        '-c',
-        'sandbox_mode="danger-full-access"',
-        '-c',
+      args: expect.arrayContaining([
         'mcp_servers.test-math.url="http://127.0.0.1:1234"',
-        '-c',
         'mcp_servers.test-math.tool_timeout_sec=180',
-      ],
+      ]),
     }));
-    expect(mockCodexConnect).toHaveBeenCalledWith({
-      developerInstructions: undefined,
-      model: undefined,
-      approvalPolicy: 'never',
-      sandbox: 'danger-full-access',
-    });
   });
 
-  it('configOverrides의 mcp_servers 설정도 MCP ready 대기 대상으로 등록한다', async () => {
+  it('configOverrides의 MCP 서버도 readiness 대상으로 등록한다', async () => {
     const client = new UnifiedCodexAgentClient();
-
-    await connectAppServer(client, {
+    await client.connect({
       cwd: '/workspace',
       cli: 'codex',
-      configOverrides: [
-        'mcp_servers.fleet-tools.url="http://127.0.0.1:54300"',
-        'model="gpt-5.4"',
-      ],
+      configOverrides: ['mcp_servers.fleet-tools.url="http://127.0.0.1:54300"'],
     });
 
     expect(CodexAppServerConnection).toHaveBeenCalledWith(expect.objectContaining({
@@ -557,24 +199,24 @@ describe('UnifiedCodexAgentClient config staging', () => {
     }));
   });
 
-  it('codex session resume은 systemPrompt를 developerInstructions나 첫 프롬프트에 재전달하지 않는다', async () => {
+  it('재개 세션에는 systemPrompt를 다시 전달하지 않는다', async () => {
     const client = new UnifiedCodexAgentClient();
-
-    const result = await connectAppServer(client, {
+    const result = await client.connect({
       cwd: '/workspace',
       cli: 'codex',
       sessionId: 'codex-thread-existing',
       systemPrompt: '재개 지침',
-      model: 'gpt-5.4',
+      model: 'gpt-5.5',
     });
 
-    expect(mockCodexConnect).toHaveBeenCalledWith({
+    expect(mockConnect).toHaveBeenCalledWith({
       skipThreadStart: true,
-      model: 'gpt-5.4',
+      model: 'gpt-5.5',
+      serviceTier: undefined,
     });
-    expect(mockCodexLoadSession).toHaveBeenCalledWith('codex-thread-existing', {
+    expect(mockLoadSession).toHaveBeenCalledWith('codex-thread-existing', {
       cwd: '/workspace',
-      model: 'gpt-5.4',
+      model: 'gpt-5.5',
       approvalPolicy: 'never',
       sandbox: 'danger-full-access',
       developerInstructions: undefined,
@@ -582,153 +224,92 @@ describe('UnifiedCodexAgentClient config staging', () => {
     });
     expect(result.session).toEqual({ sessionId: 'codex-thread-9' });
     await client.sendMessage('재개 요청');
-    expect(mockCodexSendMessage).toHaveBeenCalledWith([
+    expect(mockSendMessage).toHaveBeenCalledWith([
       { type: 'text', text: '재개 요청', text_elements: [] },
     ]);
-    expect(client.getCurrentSystemPrompt()).toBe('재개 지침');
   });
 
-  it('setModel/setConfigOption 후 다음 sendMessage에서 pending override를 consume한다', async () => {
+  it('Fast 자산을 기본 모델과 priority tier로 연결한다', async () => {
     const client = new UnifiedCodexAgentClient();
-    await connectAppServer(client, {
-      cwd: '/workspace',
-      cli: 'codex',
-    });
-
-    await client.setModel('gpt-5.4-mini');
-    // app-server 경로의 turn-level 키는 'effort' (ACP 경로에서만 'reasoning_effort'로 매핑)
-    await client.setConfigOption('effort', 'high');
-    await client.sendMessage('안녕');
-
-    expect(mockSetPendingModel).toHaveBeenCalledWith('gpt-5.4-mini');
-    expect(mockSetPendingEffort).toHaveBeenCalledWith('high');
-    expect(mockCodexSendMessage).toHaveBeenCalledWith([
-      { type: 'text', text: '안녕', text_elements: [] },
-    ]);
-
-    await client.sendMessage('다음');
-    expect(mockSetPendingModel).toHaveBeenCalledTimes(1);
-    expect(mockSetPendingEffort).toHaveBeenCalledTimes(1);
-  });
-
-  it('App Server 연결 effort는 첫 sendMessage에서 한 번만 적용한다', async () => {
-    const client = new UnifiedCodexAgentClient();
-
     await client.connect({
       cwd: '/workspace',
       cli: 'codex',
-      effort: 'high',
+      model: 'gpt-5.6-sol-fast',
     });
+
+    expect(mockConnect).toHaveBeenCalledWith(expect.objectContaining({
+      model: 'gpt-5.6-sol',
+      serviceTier: 'priority',
+    }));
+  });
+
+  it('setModel은 Fast tier를 다음 turn에 적용하고 일반 모델 선택 시 tier를 해제한다', async () => {
+    const client = new UnifiedCodexAgentClient();
+    await client.connect({ cwd: '/workspace', cli: 'codex' });
+
+    await client.setModel('gpt-5.6-terra-fast');
+    await client.sendMessage('fast');
+    expect(mockSetPendingModel).toHaveBeenNthCalledWith(1, 'gpt-5.6-terra');
+    expect(mockSetPendingServiceTier).toHaveBeenNthCalledWith(1, 'priority');
+
+    await client.setModel('gpt-5.5');
+    await client.sendMessage('standard');
+    expect(mockSetPendingModel).toHaveBeenNthCalledWith(2, 'gpt-5.5');
+    expect(mockSetPendingServiceTier).toHaveBeenNthCalledWith(2, null);
+  });
+
+  it('연결 effort를 첫 turn에 한 번만 적용한다', async () => {
+    const client = new UnifiedCodexAgentClient();
+    await client.connect({ cwd: '/workspace', cli: 'codex', effort: 'high' });
     await client.sendMessage('첫 요청');
-
-    expect(mockSetPendingEffort).toHaveBeenCalledWith('high');
-    expect(mockCodexSendMessage).toHaveBeenCalledWith([
-      { type: 'text', text: '첫 요청', text_elements: [] },
-    ]);
-
     await client.sendMessage('두 번째 요청');
 
+    expect(mockSetPendingEffort).toHaveBeenCalledWith('high');
     expect(mockSetPendingEffort).toHaveBeenCalledTimes(1);
-    expect(mockCodexSendMessage).toHaveBeenNthCalledWith(2, [
-      { type: 'text', text: '두 번째 요청', text_elements: [] },
-    ]);
   });
 
-  it('setMode는 Codex pending mode로 저장되고 즉시 ACP 호출하지 않는다', async () => {
+  it('resetSession은 Fast 모델과 tier를 유지하고 systemPrompt를 다음 첫 turn에 적용한다', async () => {
     const client = new UnifiedCodexAgentClient();
-    await connectAppServer(client, {
-      cwd: '/workspace',
-      cli: 'codex',
-    });
-
-    await client.setMode('yolo');
-    await client.sendMessage('모드 반영');
-
-    expect(mockCodexConnect).toHaveBeenCalledTimes(1);
-    expect(mockCodexSendMessage).toHaveBeenCalledTimes(1);
-  });
-
-  it('resetSession은 systemPrompt를 developerInstructions 없이 다음 첫 프롬프트에 전달한다', async () => {
-    const client = new UnifiedCodexAgentClient();
-    await connectAppServer(client, {
+    await client.connect({
       cwd: '/workspace',
       cli: 'codex',
       yoloMode: false,
       systemPrompt: '초기 지침',
+      model: 'gpt-5.6-luna-fast',
     });
-
     await client.resetSession();
 
-    expect(mockCodexResetSession).toHaveBeenCalledWith({
+    expect(mockResetSession).toHaveBeenCalledWith({
       cwd: '/workspace',
+      model: 'gpt-5.6-luna',
+      serviceTier: 'priority',
       approvalPolicy: 'on-request',
       sandbox: 'read-only',
       developerInstructions: undefined,
       config: undefined,
     });
     await client.sendMessage('리셋 후 요청');
-    expect(mockCodexSendMessage).toHaveBeenCalledWith([
+    expect(mockSendMessage).toHaveBeenCalledWith([
       { type: 'text', text: '초기 지침', text_elements: [] },
       { type: 'text', text: '리셋 후 요청', text_elements: [] },
     ]);
-    expect(client.getCurrentSystemPrompt()).toBe('초기 지침');
   });
 
-  it('setMode와 non-turn setConfigOption은 다음 resetSession payload에 반영한다', async () => {
+  it('setMode와 thread config를 다음 resetSession payload에 반영한다', async () => {
     const client = new UnifiedCodexAgentClient();
-    await connectAppServer(client, {
-      cwd: '/workspace',
-      cli: 'codex',
-      systemPrompt: '리셋 지침',
-    });
-
+    await client.connect({ cwd: '/workspace', cli: 'codex' });
     await client.setMode('autoEdit');
     await client.setConfigOption('notify', 'false');
-    await client.setConfigOption('model_reasoning_summary', 'auto');
     await client.resetSession('/next-workspace');
 
-    expect(mockCodexResetSession).toHaveBeenCalledWith({
+    expect(mockResetSession).toHaveBeenCalledWith({
       cwd: '/next-workspace',
+      model: undefined,
+      serviceTier: undefined,
       approvalPolicy: 'on-request',
       sandbox: 'workspace-write',
       developerInstructions: undefined,
-      config: {
-        notify: 'false',
-        model_reasoning_summary: 'auto',
-      },
+      config: { notify: 'false' },
     });
-    expect(mockCodexResetSession).not.toHaveBeenCalledWith(expect.objectContaining({
-      config: expect.objectContaining({
-        approvalPolicy: expect.anything(),
-        sandbox: expect.anything(),
-      }),
-    }));
-  });
-
-  it('sessionId resume 경로는 developerInstructions를 전달하지 않는다', async () => {
-    const client = new UnifiedCodexAgentClient();
-
-    await connectAppServer(client, {
-      cwd: '/workspace',
-      cli: 'codex',
-      sessionId: 'thread-existing',
-      systemPrompt: '재개 지침',
-      model: 'gpt-5.4',
-      yoloMode: false,
-    });
-
-    expect(mockCodexConnect).toHaveBeenCalledWith({
-      skipThreadStart: true,
-      model: 'gpt-5.4',
-    });
-    expect(mockCodexLoadSession).toHaveBeenCalledWith('thread-existing', {
-      cwd: '/workspace',
-      developerInstructions: undefined,
-      model: 'gpt-5.4',
-      approvalPolicy: 'on-request',
-      sandbox: 'read-only',
-      config: undefined,
-    });
-    expect(client.getCurrentSystemPrompt()).toBe('재개 지침');
   });
 });

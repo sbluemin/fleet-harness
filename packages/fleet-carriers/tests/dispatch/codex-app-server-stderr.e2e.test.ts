@@ -35,9 +35,9 @@ const SECRET_VALUE = "sk-e2e-secret-value-00000000000000000000";
 let tempDir: string | null = null;
 let fakeBinDir: string | null = null;
 
-describe("carrier_jobs Codex ACP stderr diagnostics e2e", () => {
+describe("carrier_jobs Codex App Server stderr diagnostics e2e", () => {
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-codex-acp-stderr-"));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-codex-app-server-stderr-"));
     fakeBinDir = path.join(tempDir, "bin");
     fs.mkdirSync(fakeBinDir, { recursive: true });
     initStore(path.join(tempDir, "store"));
@@ -67,11 +67,11 @@ describe("carrier_jobs Codex ACP stderr diagnostics e2e", () => {
     fakeBinDir = null;
   });
 
-  it("carrier_jobs summary에서 redacted codex-acp stderr tail을 확인한다", async () => {
+  it("동기 launch 실패에서 redacted App Server stderr tail을 확인한다", async () => {
     const cwd = tempDir;
     const binDir = fakeBinDir;
     if (!cwd || !binDir) throw new Error("테스트 디렉토리가 초기화되지 않았습니다.");
-    writeFailingFakeNpx(binDir);
+    writeFailingFakeCodex(binDir);
 
     const registry = createCarrierRegistry();
     registerCarrier(registry, createCodexCarrierConfig("stderr_probe", "Stderr Probe"));
@@ -83,19 +83,19 @@ describe("carrier_jobs Codex ACP stderr diagnostics e2e", () => {
     });
     const dispatchCtx: AgentToolCtx = {
       cwd,
-      toolCallId: "codex-acp-stderr",
+      toolCallId: "codex-app-server-stderr",
     };
 
     const dispatchResult = await dispatchTool.execute({
       carrier_id: "stderr_probe",
-      label: "Capture codex-acp stderr",
-      request: "Trigger deterministic codex-acp startup failure.",
+      label: "Capture Codex App Server stderr",
+      request: "Trigger deterministic Codex App Server startup failure.",
     }, dispatchCtx) as ToolExecutionResult<{ job_id: string; accepted: boolean; error?: string }>;
 
     // 연결/초기화 실패는 프롬프트 이전 readiness 단계에서 발생하므로 동기 accepted:false 로 반환된다.
     expect(dispatchResult.isError).toBe(true);
     expect(dispatchResult.details.accepted).toBe(false);
-    expect(dispatchResult.details.job_id).toBe("carrier:codex-acp-stderr");
+    expect(dispatchResult.details.job_id).toBe("carrier:codex-app-server-stderr");
 
     const errorText = dispatchResult.details.error ?? "";
     expect(errorText).toContain("[REDACTED:generic_secret]");
@@ -106,10 +106,10 @@ describe("carrier_jobs Codex ACP stderr diagnostics e2e", () => {
     const jobsResult = await jobsTool.execute({
       action: "result",
       format: "summary",
-      job_id: "carrier:codex-acp-stderr",
+      job_id: "carrier:codex-app-server-stderr",
     }, {
       cwd,
-      toolCallId: "carrier-jobs-codex-acp-stderr",
+      toolCallId: "carrier-jobs-codex-app-server-stderr",
     }) as ToolExecutionResult<CarrierJobsResponse>;
     expect(jobsResult.details.ok).toBe(false);
   });
@@ -118,7 +118,7 @@ describe("carrier_jobs Codex ACP stderr diagnostics e2e", () => {
     const cwd = tempDir;
     const binDir = fakeBinDir;
     if (!cwd || !binDir) throw new Error("테스트 디렉토리가 초기화되지 않았습니다.");
-    writeSuccessfulFakeNpx(binDir);
+    writeSuccessfulFakeCodex(binDir);
 
     const registry = createCarrierRegistry();
     registerCarrier(registry, createCodexCarrierConfig("stderr_success", "Stderr Success"));
@@ -135,12 +135,12 @@ describe("carrier_jobs Codex ACP stderr diagnostics e2e", () => {
       request: "Complete successfully after stderr noise.",
     }, {
       cwd,
-      toolCallId: "codex-acp-success-stderr",
+      toolCallId: "codex-app-server-success-stderr",
     }) as ToolExecutionResult<{ job_id: string; accepted: boolean; error?: string }>;
 
     expect(dispatchResult.isError).toBe(false);
     expect(dispatchResult.details).toEqual({
-      job_id: "carrier:codex-acp-success-stderr",
+      job_id: "carrier:codex-app-server-success-stderr",
       accepted: true,
     });
 
@@ -151,10 +151,10 @@ describe("carrier_jobs Codex ACP stderr diagnostics e2e", () => {
       const jobsResult = await jobsTool.execute({
         action: "result",
         format: "summary",
-        job_id: "carrier:codex-acp-success-stderr",
+        job_id: "carrier:codex-app-server-success-stderr",
       }, {
         cwd,
-        toolCallId: "carrier-jobs-codex-acp-success-summary",
+        toolCallId: "carrier-jobs-codex-app-server-success-summary",
       }) as ToolExecutionResult<CarrierJobsResponse>;
       const response = jobsResult.details;
       summaryPayload = JSON.stringify(response);
@@ -168,17 +168,17 @@ describe("carrier_jobs Codex ACP stderr diagnostics e2e", () => {
     const fullResult = await jobsTool.execute({
       action: "result",
       format: "full",
-      job_id: "carrier:codex-acp-success-stderr",
+      job_id: "carrier:codex-app-server-success-stderr",
     }, {
       cwd,
-      toolCallId: "carrier-jobs-codex-acp-success-full",
+      toolCallId: "carrier-jobs-codex-app-server-success-full",
     }) as ToolExecutionResult<CarrierJobsResponse>;
     const fullPayload = JSON.stringify(fullResult.details);
 
-    expect(summaryPayload).not.toContain("ACP initialize stderr tail:");
-    expect(summaryPayload).not.toContain("codex-acp success stderr noise");
-    expect(fullPayload).not.toContain("ACP initialize stderr tail:");
-    expect(fullPayload).not.toContain("codex-acp success stderr noise");
+    expect(summaryPayload).not.toContain("Codex initialize stderr tail:");
+    expect(summaryPayload).not.toContain("codex app-server success stderr noise");
+    expect(fullPayload).not.toContain("Codex initialize stderr tail:");
+    expect(fullPayload).not.toContain("codex app-server success stderr noise");
   });
 });
 
@@ -200,9 +200,9 @@ function firstCodexModel(): string {
   return model;
 }
 
-function writeFailingFakeNpx(binDir: string): void {
+function writeFailingFakeCodex(binDir: string): void {
   const script = `#!/usr/bin/env node
-process.stderr.write("codex-acp deterministic failure: git repository required\\n");
+process.stderr.write("codex app-server deterministic failure: git repository required\\n");
 process.stderr.write("OPENAI_API_KEY=${SECRET_VALUE}\\n");
 
 let buffer = "";
@@ -217,15 +217,17 @@ function respond(line) {
     id = request.id ?? null;
   } catch {
   }
-  process.stdout.write(JSON.stringify({
-    jsonrpc: "2.0",
-    id,
-    error: {
-      code: -32000,
-      message: "deterministic initialize failure",
-    },
-  }) + "\\n");
-  setTimeout(() => process.exit(1), 10);
+  setTimeout(() => {
+    process.stdout.write(JSON.stringify({
+      jsonrpc: "2.0",
+      id,
+      error: {
+        code: -32000,
+        message: "deterministic initialize failure",
+      },
+    }) + "\\n");
+    setTimeout(() => process.exit(1), 10);
+  }, 50);
 }
 
 process.stdin.setEncoding("utf8");
@@ -238,29 +240,34 @@ process.stdin.on("data", (chunk) => {
 });
 
 setTimeout(() => {
-  process.stderr.write("codex-acp timed out waiting for initialize\\n");
+  process.stderr.write("codex app-server timed out waiting for initialize\\n");
   process.exit(1);
 }, 2000);
 `;
-  fs.writeFileSync(path.join(binDir, "npx"), script, { mode: 0o755 });
+  fs.writeFileSync(path.join(binDir, "codex"), script, { mode: 0o755 });
 }
 
-function writeSuccessfulFakeNpx(binDir: string): void {
+function writeSuccessfulFakeCodex(binDir: string): void {
   const script = `#!/usr/bin/env node
-process.stderr.write("codex-acp success stderr noise\\n");
+process.stderr.write("codex app-server success stderr noise\\n");
 
 let buffer = "";
 
 function resultFor(method) {
   if (method === "initialize") {
-    return { agentCapabilities: {} };
+    return {
+      userAgent: "codex/test",
+      codexHome: "/tmp/codex",
+      platformFamily: "unix",
+      platformOs: "macos",
+    };
   }
-  if (method === "session/new") {
-    return { sessionId: "success-session" };
+  if (method === "thread/start") {
+    return { thread: { id: "success-thread" } };
   }
-  if (method === "session/prompt") {
-    process.stderr.write("codex-acp success stderr noise during prompt\\n");
-    return { stopReason: "endTurn" };
+  if (method === "turn/start") {
+    process.stderr.write("codex app-server success stderr noise during prompt\\n");
+    return { turn: { id: "success-turn" } };
   }
   return {};
 }
@@ -277,6 +284,16 @@ function respond(line) {
     id: request.id ?? null,
     result: resultFor(request.method),
   }) + "\\n");
+  if (request.method === "turn/start") {
+    process.stdout.write(JSON.stringify({
+      jsonrpc: "2.0",
+      method: "turn/completed",
+      params: {
+        threadId: "success-thread",
+        turn: { id: "success-turn", status: "completed", error: null },
+      },
+    }) + "\\n");
+  }
 }
 
 process.stdin.setEncoding("utf8");
@@ -291,5 +308,5 @@ process.stdin.on("data", (chunk) => {
   }
 });
 `;
-  fs.writeFileSync(path.join(binDir, "npx"), script, { mode: 0o755 });
+  fs.writeFileSync(path.join(binDir, "codex"), script, { mode: 0o755 });
 }

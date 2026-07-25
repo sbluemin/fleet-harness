@@ -28,31 +28,31 @@ describe('CliConfigs', () => {
       expect(isClaudeFamily('claude-kimi')).toBe(true);
     });
 
-    it('Codex는 ACP 브리지를 npx로 spawn한다', () => {
+    it('Codex는 native App Server를 spawn한다', () => {
       const config = createSpawnConfig('codex', {
         cwd: '/tmp/workspace',
       });
 
-      expect(config.command).toContain('npx');
+      expect(config.command).toBe('codex');
       expect(config.args).toEqual([
-        '--yes',
-        '--package=@agentclientprotocol/codex-acp@1.1.2',
-        'codex-acp',
+        'app-server',
+        '--listen',
+        'stdio://',
       ]);
-      expect(config.useNpx).toBe(true);
+      expect(config.useNpx).toBe(false);
     });
 
-    it('Codex configOverrides가 있어도 기본 ACP spawn 인자는 유지한다', () => {
+    it('Codex cliPath를 App Server command로 사용한다', () => {
       const config = createSpawnConfig('codex', {
         cwd: '/tmp/workspace',
-        configOverrides: ['mcp_servers.fleet-tools.tool_timeout_sec=1800'],
+        cliPath: '/opt/codex',
       });
 
-      expect(config.command).toContain('npx');
+      expect(config.command).toBe('/opt/codex');
       expect(config.args).toEqual([
-        '--yes',
-        '--package=@agentclientprotocol/codex-acp@1.1.2',
-        'codex-acp',
+        'app-server',
+        '--listen',
+        'stdio://',
       ]);
     });
 

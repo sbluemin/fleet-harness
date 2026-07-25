@@ -61,15 +61,11 @@ export function sanitizeGlobalOptionsData(value: unknown): GlobalOptionsValidati
   const data: GlobalOptionsData = {
     version: GLOBAL_OPTIONS_VERSION,
     ...(typeof value.enableMetaphor === "boolean" ? { enableMetaphor: value.enableMetaphor } : {}),
-    ...(value.codexLaunchMode === "acp" || value.codexLaunchMode === "app-server"
-      ? { codexLaunchMode: value.codexLaunchMode }
-      : {}),
     ...(kimiModel ? { kimiModel } : {}),
   };
-  const allowedKeys = new Set(["version", "enableMetaphor", "codexLaunchMode", "kimiModel"]);
+  const allowedKeys = new Set(["version", "enableMetaphor", "kimiModel"]);
   const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
     ("enableMetaphor" in value && typeof value.enableMetaphor !== "boolean") ||
-    ("codexLaunchMode" in value && value.codexLaunchMode !== "acp" && value.codexLaunchMode !== "app-server") ||
     ("kimiModel" in value && kimiModel === undefined);
 
   return { data, changed };

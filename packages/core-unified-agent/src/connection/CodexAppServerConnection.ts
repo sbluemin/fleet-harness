@@ -104,6 +104,7 @@ interface SyntheticPermissionOption {
 
 interface SendMessageOptions {
   model?: string;
+  serviceTier?: string;
   effort?: string;
 }
 
@@ -111,6 +112,7 @@ interface ConnectSessionOptions {
   cwd?: string;
   developerInstructions?: string;
   model?: string;
+  serviceTier?: string;
   approvalPolicy?: string;
   sandbox?: string;
   config?: Record<string, CodexJsonValue>;
@@ -120,6 +122,7 @@ interface ResumeSessionOptions {
   cwd?: string;
   developerInstructions?: string;
   model?: string;
+  serviceTier?: string;
   approvalPolicy?: string;
   sandbox?: string;
   config?: Record<string, CodexJsonValue>;
@@ -185,6 +188,7 @@ export class CodexAppServerConnection extends BaseConnection {
   private pendingMcpReadyWaiters = new Set<PendingMcpReadyWaiter>();
   private stdoutBuffer = '';
   private pendingModel: string | null = null;
+  private pendingServiceTier: string | null = null;
   private pendingEffort: string | null = null;
   private codexHome: string | null = null;
   private isDisconnecting = false;
@@ -209,8 +213,12 @@ export class CodexAppServerConnection extends BaseConnection {
     this.mcpStartupTimeout = options.mcpStartupTimeout ?? DEFAULT_MCP_STARTUP_TIMEOUT;
   }
 
-  setPendingModel(model: string): void {
+  setPendingModel(model: string | null): void {
     this.pendingModel = model;
+  }
+
+  setPendingServiceTier(serviceTier: string | null): void {
+    this.pendingServiceTier = serviceTier;
   }
 
   setPendingEffort(effort: string): void {
@@ -277,6 +285,7 @@ export class CodexAppServerConnection extends BaseConnection {
           cwd: options?.cwd ?? this.cwd,
           developerInstructions: options?.developerInstructions ?? null,
           model: options?.model ?? null,
+          serviceTier: options?.serviceTier ?? null,
           approvalPolicy: options?.approvalPolicy ?? null,
           sandbox: options?.sandbox ?? null,
           config: options?.config ?? null,
@@ -287,10 +296,11 @@ export class CodexAppServerConnection extends BaseConnection {
       this.setState('ready');
       return response;
     } catch (error) {
+      const diagnosticError = this.withStderrDiagnostics(error, 'Codex initialize');
       this.setState('error');
       this.isDisconnecting = true;
       await this.disconnect();
-      throw error;
+      throw diagnosticError;
     }
   }
 
@@ -385,10 +395,12 @@ export class CodexAppServerConnection extends BaseConnection {
           threadId: sessionId,
           input,
           model: options?.model ?? this.pendingModel ?? null,
+          serviceTier: options?.serviceTier ?? this.pendingServiceTier ?? null,
           effort: options?.effort ?? this.pendingEffort ?? null,
         },
       );
       this.pendingModel = null;
+      this.pendingServiceTier = null;
       this.pendingEffort = null;
       this.turnId = response.turn.id;
 
@@ -447,6 +459,7 @@ export class CodexAppServerConnection extends BaseConnection {
         cwd: options?.cwd ?? this.cwd,
         developerInstructions: options?.developerInstructions ?? null,
         model: options?.model ?? null,
+        serviceTier: options?.serviceTier ?? null,
         approvalPolicy: options?.approvalPolicy ?? null,
         sandbox: options?.sandbox ?? null,
         config: options?.config ?? null,
@@ -465,6 +478,9 @@ export class CodexAppServerConnection extends BaseConnection {
     this.rejectPendingRequests(new Error('Codex 연결이 종료되었습니다.'));
     this.rejectPendingMcpReadyWaiters(new Error('Codex 연결이 종료되었습니다.'));
     this.stdoutBuffer = '';
+    this.pendingModel = null;
+    this.pendingServiceTier = null;
+    this.pendingEffort = null;
     this.codexHome = null;
     try {
       await super.disconnect();
@@ -996,6 +1012,7 @@ export class CodexAppServerConnection extends BaseConnection {
         path: rolloutPath ?? null,
         cwd: options?.cwd ?? this.cwd,
         model: options?.model ?? null,
+        serviceTier: options?.serviceTier ?? null,
         approvalPolicy: options?.approvalPolicy ?? null,
         sandbox: options?.sandbox ?? null,
         developerInstructions: options?.developerInstructions ?? null,

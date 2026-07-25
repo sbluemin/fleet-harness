@@ -1,22 +1,20 @@
 # @dotobokuri/core-unified-agent
 
-> A TypeScript SDK that unifies Codex CLI, Claude Code, OpenCode, and Cursor Agent under a single interface.
+> A TypeScript SDK that unifies Codex, Claude Code, OpenCode, and Cursor Agent under a single interface.
 
 Within this monorepo, Fleet consumes `@dotobokuri/core-unified-agent` through `workspace:*` from `packages/core-unified-agent/`. It is the core engine for all Fleet agents and shares the same build and release flow as the other workspace packages.
 
 ## Overview
 
-Unified Agent provides two ways to control supported CLI agents — Claude, Codex, OpenCode, and Cursor — under a single interface.
-
-- **CLI Binary** — One-shot prompt execution from the command line
-- **TypeScript SDK** — Full programmatic control with event-based streaming
+Unified Agent provides programmatic control of supported agent backends through a
+single event-based TypeScript interface.
 
 ### Supported CLIs
 
 | CLI | Protocol | Spawn Command |
 |-----|----------|---------------|
 | **Claude** | ACP | `npx --package=@agentclientprotocol/claude-agent-acp@0.33.1 claude-agent-acp` |
-| **Codex** | ACP (`codex-acp`) / `app-server` | (Toggle) `npx --yes --package=@agentclientprotocol/codex-acp@1.1.2 codex-acp` / `codex app-server` |
+| **Codex** | App Server | `codex app-server --listen stdio://` |
 | **OpenCode Go** | ACP | `opencode acp` |
 | **Cursor Agent** | ACP | `cursor-agent acp` |
 
@@ -24,137 +22,6 @@ Unified Agent provides two ways to control supported CLI agents — Claude, Code
 
 - Node.js >= 18.0.0
 - At least one of the above CLIs installed and authenticated
-
----
-
-## CLI Usage
-
-### Installation
-
-Clone the repository and link globally:
-
-```bash
-git clone https://github.com/sbluemin/fleet-harness.git
-cd fleet-harness/packages/core-unified-agent
-pnpm install
-pnpm build
-pnpm link --global
-```
-
-After linking, the `ait` command is available globally:
-
-```bash
-ait --help
-```
-
-To unlink:
-
-```bash
-npm unlink -g @dotobokuri/core-unified-agent
-```
-
-### REPL Mode
-
-Running `ait` without any arguments enters the interactive REPL mode:
-
-```bash
-ait
-```
-
-#### REPL Prompt
-The prompt displays the current model, and shows reasoning effort only for CLIs that support it:
-`ait (model) (effort) ❯`
-
-#### Slash Commands
-| Command | Description |
-|---------|-------------|
-| `/model <name>` | Change the current model |
-| `/effort <level>` | Change reasoning effort when supported |
-| `/status` | Show connection status and session info |
-| `/clear` | Clear the terminal screen |
-| `/help` | Show available commands |
-| `/exit` | Exit the REPL |
-
-#### Keyboard Shortcuts
-- **Ctrl+C**:
-  - While streaming: Cancels the current response generation.
-  - While waiting for input: Double-tap to exit the REPL.
-
-### Basic Usage (One-shot)
-
-```bash
-# Auto-detect available CLI and run
-ait "Analyze this project"
-
-# Select a specific CLI
-ait -c claude "Review this code"
-
-# Select a model
-ait -c claude -m opus "Find bugs"
-
-# Set reasoning effort (Codex GPT-5.6 Sol/Terra also support `ultra`)
-ait -c codex -m gpt-5.6-sol -e ultra "Refactor this module"
-
-# Claude Sonnet supports `low | medium | high | max`
-ait -c claude -m sonnet -e max "Review this code"
-
-# Pipe from stdin
-cat error.log | ait -c claude "Explain this error"
-
-# Resume a previous session
-ait -c claude -s <sessionId> "Continue this conversation"
-
-# JSON output (for scripting / AI agents)
-ait --json -c claude "Summarize" | jq .response
-```
-
-### Options
-
-| Option | Short | Description |
-|--------|-------|-------------|
-| `--cli <name>` | `-c` | CLI selection (`claude` \| `codex` \| `opencode-go` \| `cursor`) |
-| `--session <id>` | `-s` | Resume a previous session (requires `--cli`) |
-| `--model <name>` | `-m` | Model override |
-| `--effort <level>` | `-e` | Reasoning effort when supported by the selected CLI |
-| `--cwd <path>` | `-d` | Working directory (default: current directory) |
-| `--yolo` | | Auto-approve all permissions where supported |
-| `--json` | | JSON output mode |
-| `--help` | `-h` | Show help |
-
-### Output Modes
-
-**Pretty mode** (default) — streams the AI response to stdout with status on stderr:
-
-```
-● ait (claude)
-
-The project is a TypeScript SDK that...
-
-  ▶ Read file: src/index.ts
-  ▶ Read file: package.json
-
-● Done (12.3s)
-```
-
-**JSON mode** (`--json`) — outputs a single JSON object to stdout:
-
-```json
-{"response":"The project is a TypeScript SDK that...","cli":"claude"}
-```
-
-On error:
-
-```json
-{"error":"No available CLI found"}
-```
-
-### Reasoning Effort Support
-
-- **Codex**: supported via the official `codex-acp` bridge's `reasoning_effort` config option. GPT-5.6-Sol and GPT-5.6-Terra support `low | medium | high | xhigh | max | ultra`; GPT-5.6-Luna supports `low | medium | high | xhigh | max`.
-- **Claude (ACP via `claude-agent-acp`)**: supported on the `claude` provider with `low | medium | high | max`
-
-Fleet sends Claude ACP effort through the bridge's advertised `effort` config option. Only the primary `claude` provider exposes effort in `models.json`.
-Fleet sends Codex ACP model changes through `model` and public `effort` changes through the bridge's `reasoning_effort` config option.
 
 ---
 
@@ -220,6 +87,10 @@ const result = await client.connect({
 ```
 
 For Claude and Codex, `systemPrompt` is prepended once to the first user turn of a fresh session. It is not sent through provider system/developer-instruction channels, is not repeated on later turns, and is not injected when connecting to an existing session.
+
+Codex always uses App Server. Model entries with a `-fast` suffix are virtual
+catalog assets: the SDK sends their base model ID with the App Server
+`priority` service tier. Reasoning effort remains a separate per-model option.
 
 #### `sendMessage(content: string | AcpContentBlock[]): Promise<PromptResponse>`
 

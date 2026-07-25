@@ -11,18 +11,15 @@ interface TerminalSettingsRouteDeps {
 
 interface TerminalSettingsBody {
   readonly enableMetaphor?: unknown;
-  readonly codexLaunchMode?: unknown;
   readonly kimiModel?: unknown;
 }
 
 type TerminalSettingsUpdate =
   | { readonly enableMetaphor: boolean }
-  | { readonly codexLaunchMode: "acp" | "app-server" }
   | { readonly kimiModel: { readonly model: string; readonly effort?: string } };
 
 export interface TerminalSettingsState {
   readonly enableMetaphor: boolean;
-  readonly codexLaunchMode: "acp" | "app-server";
   readonly kimiModel: { readonly model: string; readonly effort?: string } | null;
 }
 
@@ -62,7 +59,6 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
 export function toTerminalSettingsState(data: GlobalOptionsData): TerminalSettingsState {
   return {
     enableMetaphor: data.enableMetaphor ?? false,
-    codexLaunchMode: data.codexLaunchMode ?? "app-server",
     kimiModel: data.kimiModel ?? null,
   };
 }
@@ -74,7 +70,6 @@ function isTerminalSettingsBody(value: unknown): value is TerminalSettingsUpdate
   if (keys.length !== 1) return false;
   const body = value as TerminalSettingsBody;
   if (keys[0] === "enableMetaphor") return typeof body.enableMetaphor === "boolean";
-  if (keys[0] === "codexLaunchMode") return body.codexLaunchMode === "acp" || body.codexLaunchMode === "app-server";
   return keys[0] === "kimiModel" && isKimiModelSetting(body.kimiModel);
 }
 
