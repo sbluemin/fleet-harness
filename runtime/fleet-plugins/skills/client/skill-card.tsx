@@ -70,7 +70,7 @@ export function SkillCard({ skill, onReadMore, onUpdate, onRemove, isUpdating, t
           <button
             type="button"
             className="skills-btn skills-btn--ghost"
-            title={t("skills.action.updateAllTitle", { scope: skill.scope })}
+            title={t("skills.action.updateAllTitle", { scope: t(skill.scope === "project" ? "skills.scope.project" : "skills.scope.global") })}
             onClick={() => onUpdate(skill.scope)}
             disabled={isUpdating}
           >
