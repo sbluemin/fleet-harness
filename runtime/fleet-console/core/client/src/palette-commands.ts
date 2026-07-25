@@ -21,6 +21,10 @@ export type PaletteCommandAction =
   | { readonly kind: "switch-theme"; readonly theme: ThemeId }
   | { readonly kind: "open-settings" }
   | { readonly kind: "open-keyboard-shortcuts" }
+  | { readonly kind: "rename-operation"; readonly operationId: string }
+  | { readonly kind: "assign-operation-group"; readonly operationId: string }
+  | { readonly kind: "set-operation-accent"; readonly operationId: string }
+  | { readonly kind: "minimize-operation"; readonly operationId: string }
   | { readonly kind: "whats-new" };
 
 export interface PaletteCommandEntry {
@@ -47,6 +51,9 @@ export function commandModeQuery(value: string): string {
 export function buildPaletteCommands(current: ConsoleState, railPanels: readonly PaletteRailPanelInfo[]): readonly PaletteCommandEntry[] {
   const commands: PaletteCommandEntry[] = [];
   const activeTheater = current.theaters.find((theater) => theater.id === current.activeTheaterId) ?? null;
+  const activeOperation = current.operations.find(
+    (operation) => operation.id === current.activeOperationId && operation.theaterId === current.activeTheaterId,
+  ) ?? null;
   for (const theater of current.theaters) {
     commands.push({
       commandId: `switch-theater:${theater.id}`,
@@ -101,6 +108,34 @@ export function buildPaletteCommands(current: ConsoleState, railPanels: readonly
       current: false,
       action: { kind: "toggle-status-axis" },
     });
+  }
+  if (activeOperation) {
+    commands.push(
+      {
+        commandId: "rename-operation",
+        label: "Rename operation…",
+        current: false,
+        action: { kind: "rename-operation", operationId: activeOperation.id },
+      },
+      {
+        commandId: "assign-operation-group",
+        label: "Assign group…",
+        current: false,
+        action: { kind: "assign-operation-group", operationId: activeOperation.id },
+      },
+      {
+        commandId: "set-operation-accent",
+        label: "Set accent…",
+        current: false,
+        action: { kind: "set-operation-accent", operationId: activeOperation.id },
+      },
+      {
+        commandId: "minimize-operation",
+        label: "Minimize operation",
+        current: false,
+        action: { kind: "minimize-operation", operationId: activeOperation.id },
+      },
+    );
   }
   for (const panel of railPanels) {
     commands.push({

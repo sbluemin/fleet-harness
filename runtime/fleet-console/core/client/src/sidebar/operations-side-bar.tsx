@@ -16,12 +16,15 @@ import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarThe
 import { resolveOperationActivity } from "../operation-activity.js";
 import { SideBarBrandFoot } from "../components/side-bar-brand-foot.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
+import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
+import { subscribeSideBarOperationAction } from "./operation-action-request.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
 import {
   setSideBarCollapsed,
   setSideBarWidth,
   setTheaterCollapsed,
+  getSideBarStatusSectionCollapsed,
   toggleSideBarStatusAxis,
   toggleSideBarStatusSectionCollapsed,
   useCollapsedTheaters,
@@ -65,9 +68,9 @@ interface OperationsSideBarProps {
 }
 
 type ActiveContextMenu =
-  | { readonly kind: "chip"; readonly operationId: string; readonly anchor: DOMRect }
-  | { readonly kind: "group"; readonly groupId: string; readonly anchor: DOMRect }
-  | { readonly kind: "theater"; readonly theaterId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLButtonElement | null };
+  | { readonly kind: "chip"; readonly operationId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null }
+  | { readonly kind: "group"; readonly groupId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null }
+  | { readonly kind: "theater"; readonly theaterId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null };
 
 interface NewMenuState {
   readonly anchor: { readonly x: number; readonly y: number };
@@ -138,7 +141,7 @@ interface TheaterSectionHeaderProps {
   readonly onToggleStatusAxis: () => void;
   readonly onOpenActions: (anchor: DOMRect, returnFocus?: HTMLButtonElement | null) => void;
   readonly onOpenLaunch: (event: MouseEvent<HTMLButtonElement>, theaterId: string) => void;
-  readonly onContextMenu: (anchor: DOMRect) => void;
+  readonly onContextMenu: (anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
   readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, theaterId: string) => void;
 }
 
@@ -163,7 +166,7 @@ interface TheaterInactiveSectionProps {
   readonly onToggleStatusAxis: () => void;
   readonly onOpenActions: (anchor: DOMRect, returnFocus?: HTMLButtonElement | null) => void;
   readonly onOpenLaunch: (event: MouseEvent<HTMLButtonElement>, theaterId: string) => void;
-  readonly onContextMenu: (anchor: DOMRect) => void;
+  readonly onContextMenu: (anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
   readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, theaterId: string) => void;
 }
 
@@ -302,6 +305,7 @@ export function OperationsSideBar({
   const onSetGroupIdRef = useRef(onSetGroupId);
   const onReorderGroupsRef = useRef(onReorderGroups);
   const onReorderTheatersRef = useRef(onReorderTheaters);
+  const contextMenuReturnFocusRef = useRef<HTMLElement | null>(null);
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
@@ -373,6 +377,30 @@ export function OperationsSideBar({
   );
 
   useEffect(() => clearCloseArmTimer, [clearCloseArmTimer]);
+
+  useEffect(() => subscribeSideBarOperationAction((request) => {
+    const operation = operations.find((candidate) => candidate.id === request.operationId);
+    if (!operation || operation.theaterId !== activeTheaterId) return false;
+    if (collapsed) {
+      setSideBarCollapsed(false);
+      return false;
+    }
+    if (collapsedTheaters.includes(operation.theaterId)) {
+      setTheaterCollapsed(operation.theaterId, false);
+      return false;
+    }
+    if (operation.groupId && collapsedGroupSet.has(operation.groupId)) {
+      toggleGroupCollapsed(operation.groupId);
+      return false;
+    }
+    if (statusAxis) {
+      const status = normalizeOperationStatus(operationStatus[operation.id]);
+      if (getSideBarStatusSectionCollapsed(operation.theaterId, status, false)) {
+        toggleSideBarStatusSectionCollapsed(operation.theaterId, status, false);
+      }
+    }
+    return false;
+  }), [activeTheaterId, collapsed, collapsedGroupSet, collapsedTheaters, operationStatus, operations, statusAxis]);
 
   useEffect(() => {
     if (armedCloseId === null) return;
@@ -693,10 +721,19 @@ export function OperationsSideBar({
   };
 
   const closeActiveContextMenu = useCallback(() => {
-    const returnFocus = activeContextMenu?.kind === "theater" ? activeContextMenu.returnFocus : null;
+    const returnFocus = activeContextMenu?.returnFocus ?? null;
     setActiveContextMenu(null);
     returnFocus?.focus();
   }, [activeContextMenu]);
+  contextMenuReturnFocusRef.current = activeContextMenu?.returnFocus ?? null;
+  useContextMenuKeyboard({
+    open: activeContextMenu !== null,
+    menuSelector: activeContextMenu?.kind === "theater"
+      ? '.side-bar-theater-menu[role="menu"]'
+      : '.group-context-menu-card[role="menu"]',
+    returnFocusRef: contextMenuReturnFocusRef,
+    onEscape: closeActiveContextMenu,
+  });
 
   const openTheaterLaunchMenuAt = (anchor: DOMRect, theaterId: string) => {
     if (theaterId !== activeTheaterId) onSelectTheater(theaterId);
@@ -829,9 +866,9 @@ export function OperationsSideBar({
                   setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor, returnFocus });
                 }}
                 onOpenLaunch={openTheaterLaunchMenu}
-                onContextMenu={(anchor) => {
+                onContextMenu={(anchor, returnFocus) => {
                   setNewMenu(null);
-                  setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor });
+                  setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor, returnFocus });
                 }}
                 onPointerDragStart={beginTheaterPointerDrag}
               />
@@ -865,9 +902,9 @@ export function OperationsSideBar({
                   setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor, returnFocus });
                 }}
                 onOpenLaunch={openTheaterLaunchMenu}
-                onContextMenu={(anchor) => {
+                onContextMenu={(anchor, returnFocus) => {
                   setNewMenu(null);
-                  setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor });
+                  setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor, returnFocus });
                 }}
                 onPointerDragStart={beginTheaterPointerDrag}
               />
@@ -905,7 +942,7 @@ export function OperationsSideBar({
                           onFocus={onFocus}
                           onKeyboardMove={keyboardMove}
                           onPointerDragStart={beginPointerDrag}
-                          onOpenAccent={(operationId, anchor) => setActiveContextMenu({ kind: "chip", operationId, anchor })}
+                          onOpenAccent={(operationId, anchor, returnFocus) => setActiveContextMenu({ kind: "chip", operationId, anchor, returnFocus })}
                           onRename={onRename}
                         />
                       );
@@ -992,7 +1029,7 @@ export function OperationsSideBar({
                         onFocus={onFocus}
                         onKeyboardMove={keyboardMove}
                         onPointerDragStart={beginPointerDrag}
-                        onOpenAccent={(operationId, anchor) => setActiveContextMenu({ kind: "chip", operationId, anchor })}
+                        onOpenAccent={(operationId, anchor, returnFocus) => setActiveContextMenu({ kind: "chip", operationId, anchor, returnFocus })}
                         onRename={onRename}
                       />
                     );
@@ -1211,6 +1248,11 @@ function TheaterSectionHeader({
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     // 중첩 행 컨트롤(status/+ /caret)에서 버블된 Enter/Space를 가로채면 버튼 키보드 활성화가 죽는다.
     if (event.target !== event.currentTarget) return;
+    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+      event.preventDefault();
+      onContextMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget);
+      return;
+    }
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     activateOrToggle();
@@ -1248,6 +1290,7 @@ function TheaterSectionHeader({
     <div
       role="button"
       tabIndex={0}
+      aria-haspopup="menu"
       className={headerClassName}
       style={headerStyle}
       onClick={select}

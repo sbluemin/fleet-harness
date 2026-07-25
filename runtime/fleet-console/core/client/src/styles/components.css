@@ -2438,6 +2438,11 @@
   outline: none;
 }
 
+.side-bar-theater-header:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
+  background: var(--brass-glow);
+}
+
 .side-bar-theater-header.is-active {
   color: var(--text-secondary);
   border-color: transparent;
@@ -2680,6 +2685,11 @@
 .side-bar-chip:focus-visible {
   background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
   outline: none;
+}
+
+.side-bar-chip:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
+  background: var(--brass-glow);
 }
 
 /* active: brass highlight */
@@ -3539,6 +3549,11 @@
   outline: none;
 }
 
+.group-context-menu-item:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
+  background: var(--brass-glow);
+}
+
 .group-context-menu-item.is-selected {
   background: color-mix(in oklch, var(--brass) 10%, transparent);
   color: color-mix(in oklch, var(--brass) 80%, var(--text-secondary));
@@ -3653,6 +3668,11 @@
   border-color: color-mix(in oklch, var(--ink-fog) 20%, transparent);
   background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
   outline: none;
+}
+
+.accent-tone-row:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
+  background: var(--brass-glow);
 }
 
 .accent-tone-row[aria-pressed="true"] {
