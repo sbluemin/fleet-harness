@@ -170,7 +170,6 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   useEffect(() => {
     if (viewMode.effective === "mobile") return;
     for (const operationId of operationOrder) ensureDefaultGeometry(operationId);
-    consumePendingFitAllOperations();
     if (!state.operationsHydrated) return;
     pruneOperations(operationOrder);
     // 각 Theater를 세션 중 처음 열 때 한 번, 그 Theater의 부팅 시점 기존 패널을 최소화한다.
@@ -187,6 +186,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     ].filter((id): id is string => id !== null));
     minimizeOperations(bootOperationIds.filter((id) => !protectedIds.has(id)));
   }, [claimBootPanelMinimization, operationOrder, state.activeTheaterId, state.operationsHydrated, viewMode.effective]);
+
+  useEffect(() => {
+    if (!state.operationsHydrated) return;
+    consumePendingFitAllOperations();
+  }, [state.activeTheaterId, state.operationsHydrated]);
 
   const focusMapOperation = useCallback((operationId: string) => {
     const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);

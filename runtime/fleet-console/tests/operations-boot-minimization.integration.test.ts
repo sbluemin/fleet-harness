@@ -225,6 +225,41 @@ describe("Operations boot minimization", () => {
     expect(getSnapshot().viewport).toEqual({ x: 180, y: 200, zoom: 1 });
   });
 
+  it("prunes stale geometry before consuming a cold pending fit", async () => {
+    vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
+      matches: query === "(prefers-reduced-motion: reduce)" || query === "(min-width: 832px)",
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })));
+    window.history.replaceState({}, "", "/settings");
+    loadForTheater("theater-a");
+    setOperationGeometry("visible", { x: 20, y: 30, width: 100, height: 80, zIndex: 1 });
+    setOperationGeometry("stale", { x: 2_000, y: 2_000, width: 100, height: 80, zIndex: 2 });
+    setViewport({ x: 120, y: 160, zoom: 0.5 });
+    loadForTheater(null);
+    await bootApp([operation("visible", Date.now() + 1_000)]);
+    loadForTheater("theater-a");
+    resetCanvasViewportSize();
+    requestFitAllOperations();
+    const mountCanvas = vi.fn(() => {
+      setCanvasViewportSize({ width: 1_000, height: 800 });
+      return resetCanvasViewportSize;
+    });
+    canvasMocks.onMount = mountCanvas;
+
+    await navigateTo("/operations");
+
+    expect(mountCanvas).toHaveBeenCalledOnce();
+    expect(getSnapshot().operations.stale).toBeUndefined();
+    expect(getSnapshot().operations.visible).toMatchObject({ x: 20, y: 30, width: 100, height: 80 });
+    expect(getSnapshot().viewport).toEqual({ x: 430, y: 330, zoom: 1 });
+  });
+
   it("minimizes initial hydrated panels once across /operations -> /settings -> /operations", async () => {
     const operations = deferred<readonly OperationNode[]>();
     const theaters = deferred<TheaterBootstrap>();
