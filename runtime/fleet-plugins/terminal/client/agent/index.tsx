@@ -92,8 +92,8 @@ export const agentOperationKind = defineOperationKind({
   render: (context) => <AgentOperationView context={context} />,
   canOpenCompanions: () => true,
   companions: [
-    { id: CARRIER_STREAMS_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.carrierStreams"), hideCaption: true, defaultHidden: true, render: (context) => <CarrierStreamsPanel context={context} /> },
-    { id: ANALYST_CHAT_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.sessionAnalyst"), hideCaption: true, defaultHidden: true, render: (context) => <AnalystChatPanel context={context} /> },
+    { id: CARRIER_STREAMS_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.carrierStreams"), hideCaption: true, defaultHidden: true, shortcut: { code: "KeyC", label: "C" }, render: (context) => <CarrierStreamsPanel context={context} /> },
+    { id: ANALYST_CHAT_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.sessionAnalyst"), hideCaption: true, defaultHidden: true, shortcut: { code: "KeyA", label: "A", clusterIds: ANALYST_COMPANION_IDS }, render: (context) => <AnalystChatPanel context={context} /> },
     { id: ANALYST_ARTIFACTS_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.artifacts"), hideCaption: true, defaultHidden: true, render: (context) => <AnalystArtifactsPanel context={context} /> },
   ],
 });

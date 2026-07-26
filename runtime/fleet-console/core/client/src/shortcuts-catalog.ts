@@ -12,9 +12,17 @@ export interface ShortcutGroup {
   readonly entries: readonly ShortcutEntry[];
 }
 
+export interface CompanionShortcutEntry {
+  readonly label: string;
+  readonly title: string;
+}
+
 type T = Translate<CoreMessageKey>;
 
-export function buildShortcutGroups(t: T): readonly ShortcutGroup[] {
+export function buildShortcutGroups(
+  t: T,
+  companionShortcuts: readonly CompanionShortcutEntry[] = [],
+): readonly ShortcutGroup[] {
   return [
     {
       title: t("shortcuts.group.console"),
@@ -22,17 +30,19 @@ export function buildShortcutGroups(t: T): readonly ShortcutGroup[] {
         { combos: [["Mod", "K"]], description: t("shortcuts.console.searchOps") },
         { combos: [["Mod", "B"]], description: t("shortcuts.console.toggleSidebar") },
         { combos: [["Mod", "Alt", "B"]], description: t("shortcuts.console.toggleRail") },
-        { combos: [["Esc"]], description: t("shortcuts.console.closeOverlay") },
       ],
     },
     {
       title: t("shortcuts.group.operations"),
       entries: [
         { combos: [["Mod", "Z"]], description: t("shortcuts.operations.undoClose") },
-        { combos: [["Esc"]], description: t("shortcuts.operations.closeCarrierStream") },
         { combos: [["Shift", "Enter"]], description: t("shortcuts.operations.insertNewline") },
         { combos: [["Enter"], ["Esc"]], description: t("shortcuts.operations.renameConfirm") },
         { combos: [["↑"], ["↓"]], description: t("shortcuts.operations.menuNav") },
+        ...companionShortcuts.map((entry) => ({
+          combos: [["Alt", entry.label]],
+          description: t("shortcuts.operations.toggleCompanion", { title: entry.title }),
+        })),
       ],
     },
     {

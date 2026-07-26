@@ -107,11 +107,21 @@ export interface OperationCompanionAvailabilityContext {
   readonly operation: OperationNode;
 }
 
+export interface CompanionPanelShortcut {
+  /** Physical KeyboardEvent.code; the host always combines it with Alt. */
+  readonly code: string;
+  /** Key label shown in the host shortcut help, e.g. "A". */
+  readonly label: string;
+  /** Sibling companion panel ids closed together with this one; opening still shows only this panel. */
+  readonly clusterIds?: readonly string[];
+}
+
 export interface CompanionPanelDescriptor {
   readonly id: string;
   readonly title: LocalizedText;
   readonly hideCaption?: boolean;
   readonly defaultHidden?: boolean;
+  readonly shortcut?: CompanionPanelShortcut;
   readonly render: (context: OperationRenderContext) => unknown;
 }
 

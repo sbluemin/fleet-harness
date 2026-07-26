@@ -7,7 +7,7 @@ import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } 
 import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, issueTheaterFolderGrant, patchOperation, patchTheaterOrder, renameOperation, updateGroup, ApiError, type DeferredDeletionReceipt } from "../api.js";
 import { closeOperationCompletely } from "../operation-close.js";
 import { forgetTheaterCompletely } from "../theater-forget.js";
-import { claimTopZIndex, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
+import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { playMinimizeFlight, playRestoreFlight } from "../canvas/panel-motion.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
@@ -20,6 +20,7 @@ import { toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
+import { resolveCompanionShortcutToggle } from "../companion-shortcut.js";
 import { resolveOperationsArrowShortcutAction } from "../operations-arrow-shortcut.js";
 import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
@@ -133,6 +134,28 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       }
       if (event.shiftKey) return;
       const snapshot = stateRef.current;
+      const activeOperation = snapshot.operations.find((operation) => operation.id === snapshot.activeOperationId);
+      const activeKind = activeOperation
+        ? registry.operationKinds.find((kind) => kind.pluginId === activeOperation.pluginId && kind.type === activeOperation.type)
+        : null;
+      const companion = activeKind?.companions?.find((candidate) => candidate.shortcut?.code === event.code);
+      if (activeOperation && activeKind?.companions && companion?.shortcut) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const toggle = resolveCompanionShortcutToggle({
+          companions: activeKind.companions,
+          targetId: companion.id,
+          clusterIds: companion.shortcut.clusterIds,
+          companionsOpen: getCompanionOperationId() === activeOperation.id,
+          visibilityOverrides: getCompanionPanelVisibilityOverrides(activeOperation.id),
+        });
+        if (toggle.openLayer) setCompanionOperationId(activeOperation.id);
+        for (const change of toggle.visibilityChanges) {
+          setCompanionPanelVisible(activeOperation.id, change.id, change.visible);
+        }
+        if (toggle.closeLayer) clearCompanionOperationId();
+        return;
+      }
       const theaterId = snapshot.activeTheaterId;
       const triageActive = theaterId !== null && isTriageActive(theaterId);
       const arrowAction = resolveOperationsArrowShortcutAction(triageActive, event.code);

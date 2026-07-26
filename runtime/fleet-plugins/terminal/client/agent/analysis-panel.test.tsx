@@ -61,6 +61,9 @@ describe("Session Analyst contract", () => {
     expect(chat).toContain('export const ANALYST_ARTIFACTS_COMPANION_ID = "session-analyst-artifacts";');
     expect(source.match(/hideCaption: true/g)).toHaveLength(3);
     expect(source.match(/defaultHidden: true/g)).toHaveLength(3);
+    expect(source).toContain('shortcut: { code: "KeyC", label: "C" }');
+    expect(source).toContain('shortcut: { code: "KeyA", label: "A", clusterIds: ANALYST_COMPANION_IDS }');
+    expect(source).not.toMatch(/id: ANALYST_ARTIFACTS_COMPANION_ID[^\n]*shortcut:/);
     expect(source).toContain("toggleCompanionPanel(context, ANALYST_CHAT_COMPANION_ID, ANALYST_COMPANION_IDS)");
     expect(source).toContain("toggleCompanionPanel(context, CARRIER_STREAMS_COMPANION_ID)");
     expect(source).toContain("previousCompanionsOpenRef");

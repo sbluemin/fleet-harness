@@ -4,6 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ActiveCompanionShortcutsProvider } from "../core/client/src/active-companion-shortcuts.js";
 import { KeyboardShortcutsDialog, isKeyboardShortcutsModalOpen, shouldHandleOperationsKeyboardShortcut } from "../core/client/src/components/keyboard-shortcuts-dialog.js";
 
 let root: Root | null = null;
@@ -44,5 +45,17 @@ describe("KeyboardShortcutsDialog", () => {
 
     expect(isKeyboardShortcutsModalOpen()).toBe(true);
     expect(shouldHandleOperationsKeyboardShortcut()).toBe(false);
+  });
+
+  it("renders active companion shortcut entries supplied by the host", () => {
+    act(() => root!.render(createElement(
+      ActiveCompanionShortcutsProvider,
+      { value: [{ label: "C", title: "Carrier Streams" }] },
+      createElement(KeyboardShortcutsDialog, { onClose: vi.fn() }),
+    )));
+
+    const rows = [...document.querySelectorAll(".keyboard-shortcuts-group dl > div")];
+    const companionRow = rows.find((row) => row.querySelector("dd")?.textContent === "Toggle Carrier Streams");
+    expect(companionRow?.querySelector("dt")?.textContent).toBe("AltC");
   });
 });
