@@ -1,0 +1,498 @@
+.ledger-root {
+  min-height: 100%;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+}
+
+.ledger-controls {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.ledger-segment {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-glass);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+}
+
+.ledger-segment button,
+.ledger-button,
+.ledger-back {
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.ledger-segment button {
+  min-height: 30px;
+  padding: 0 var(--space-2);
+}
+
+.ledger-segment button[aria-pressed="true"] {
+  color: var(--text-primary);
+  background: var(--brass-glow);
+  border-color: color-mix(in oklch, var(--brass) 35%, transparent);
+}
+
+.ledger-segment button:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+  opacity: .55;
+}
+
+.ledger-segment button:focus-visible,
+.ledger-button:focus-visible,
+.ledger-back:focus-visible,
+.ledger-operation:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+
+.ledger-summary {
+  margin: var(--space-3);
+  padding: var(--space-5) var(--space-4) var(--space-4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-glass);
+}
+
+.ledger-hero-cost {
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: var(--weight-bold);
+  letter-spacing: -.02em;
+}
+
+.ledger-summary > p {
+  margin: var(--space-1) 0 var(--space-3);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.ledger-total-token {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.ledger-total-token > span:first-child {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+}
+
+.ledger-total-token > .ledger-value {
+  font-size: 16px;
+  font-weight: var(--weight-bold);
+}
+
+.ledger-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.ledger-metric {
+  min-width: 0;
+}
+
+.ledger-metric span,
+.ledger-metric strong {
+  display: block;
+}
+
+.ledger-metric span {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ledger-metric strong {
+  margin-top: 2px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+}
+
+.ledger-list,
+.ledger-clients,
+.ledger-source {
+  margin: var(--space-3);
+}
+
+.ledger-list > h3,
+.ledger-clients > h3,
+.ledger-source h3,
+.ledger-detail-section h3 {
+  margin: 0 0 var(--space-2);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.ledger-operation {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto 12px;
+  align-items: center;
+  width: 100%;
+  min-height: 58px;
+  margin-bottom: var(--space-1);
+  padding: 0 var(--space-3) 0 0;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-glass);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.ledger-operation:hover {
+  border-color: color-mix(in oklch, var(--brass) 38%, var(--hairline));
+  background: color-mix(in oklch, var(--brass) 6%, var(--surface-glass));
+}
+
+/* CLI 정체성은 mark(아이콘)로만 전한다 — 좌측 spine은 아이콘과 중복이라 걷어냈다. */
+.ledger-operation-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  margin-left: var(--space-3);
+  color: var(--text-tertiary);
+}
+
+.ledger-operation-mark svg {
+  width: 100%;
+  height: 100%;
+}
+
+.ledger-operation--claude .ledger-operation-mark {
+  color: var(--carrier-claude);
+}
+
+.ledger-operation--kimi .ledger-operation-mark {
+  color: var(--carrier-claude-kimi);
+}
+
+.ledger-operation--codex .ledger-operation-mark {
+  color: var(--carrier-codex);
+}
+
+.ledger-operation--opencode .ledger-operation-mark {
+  color: var(--carrier-opencode-go);
+}
+
+.ledger-operation--cursor .ledger-operation-mark {
+  color: var(--carrier-cursor);
+}
+
+.ledger-operation-copy {
+  min-width: 0;
+  padding-left: var(--space-3);
+}
+
+.ledger-operation-copy strong,
+.ledger-operation-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ledger-operation-copy strong {
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+}
+
+.ledger-operation-copy small,
+.ledger-client-copy small {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.ledger-operation-values,
+.ledger-client-values {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-value {
+  white-space: nowrap;
+}
+
+.ledger-value-part {
+  color: var(--text-primary);
+}
+
+.ledger-value--primary {
+  color: var(--text-primary);
+}
+
+.ledger-value--secondary {
+  color: var(--text-secondary);
+}
+
+.ledger-value--tertiary {
+  color: var(--text-tertiary);
+}
+
+.ledger-chevron {
+  color: var(--text-tertiary);
+  font-size: 18px;
+}
+
+.ledger-inline-empty {
+  padding: var(--space-4);
+  border: 1px dashed var(--hairline);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.ledger-inline-empty strong {
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+}
+
+.ledger-inline-empty p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.ledger-clients-description {
+  margin: calc(-1 * var(--space-1)) 0 var(--space-3);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.ledger-client-list {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.ledger-client-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 54px;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-glass);
+}
+
+.ledger-client-mark {
+  display: grid;
+  place-items: center;
+  color: var(--text-tertiary);
+}
+
+.ledger-client-copy {
+  min-width: 0;
+}
+
+.ledger-client-copy strong,
+.ledger-client-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ledger-client-copy strong {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+}
+
+.ledger-client-values {
+  padding-right: var(--space-3);
+}
+
+.ledger-client-row--claude .ledger-client-mark {
+  color: var(--carrier-claude);
+}
+
+.ledger-client-row--kimi .ledger-client-mark {
+  color: var(--carrier-claude-kimi);
+}
+
+.ledger-client-row--codex .ledger-client-mark {
+  color: var(--carrier-codex);
+}
+
+.ledger-client-row--opencode .ledger-client-mark {
+  color: var(--carrier-opencode-go);
+}
+
+.ledger-client-row--cursor .ledger-client-mark {
+  color: var(--carrier-cursor);
+}
+
+.ledger-source p,
+.ledger-state p,
+.ledger-detail-section p {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.ledger-source {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3);
+  border-top: 1px solid var(--hairline);
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.ledger-source > div {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.ledger-source h3 {
+  margin: 0;
+}
+
+.ledger-source p {
+  grid-column: 1 / -1;
+  margin: var(--space-1) 0 0;
+}
+
+.ledger-source-status {
+  color: var(--positive);
+}
+
+.ledger-source-status--bootstrapping {
+  color: var(--aurora);
+}
+
+.ledger-source-status--degraded {
+  color: var(--warn);
+}
+
+.ledger-source-status--unavailable,
+.ledger-source-status--unreadable {
+  color: var(--coral);
+}
+
+.ledger-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3);
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.ledger-button,
+.ledger-back {
+  min-height: 30px;
+  padding: 0 var(--space-3);
+  border-color: var(--hairline);
+}
+
+.ledger-button:hover,
+.ledger-back:hover {
+  color: var(--text-primary);
+  border-color: color-mix(in oklch, var(--brass) 40%, var(--hairline));
+}
+
+.ledger-state {
+  margin: var(--space-3);
+  padding: var(--space-5);
+  border: 1px dashed var(--hairline);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.ledger-state > strong {
+  display: block;
+  font-weight: var(--weight-medium);
+}
+
+.ledger-state-mark {
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin: 0 auto var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--aurora);
+}
+
+.ledger-state-mark--error {
+  background: var(--coral);
+}
+
+.ledger-detail {
+  padding: var(--space-4);
+}
+
+.ledger-detail h2 {
+  margin: var(--space-4) 0 var(--space-2);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: var(--weight-bold);
+}
+
+.ledger-detail > .ledger-metrics {
+  margin: var(--space-5) 0;
+}
+
+.ledger-detail-section {
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.ledger-detail-section p {
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ledger-segment button,
+  .ledger-button,
+  .ledger-back,
+  .ledger-operation {
+    transition-duration: .01ms;
+  }
+}

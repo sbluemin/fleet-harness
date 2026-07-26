@@ -19,6 +19,7 @@ packages:
   - "runtime/fleet-plugins/repository"
   - "runtime/fleet-plugins/file-explorer"
   - "runtime/fleet-plugins/skills"
+  - "runtime/fleet-plugins/ledger"
 allowBuilds:
   esbuild: true
   node-pty: true
