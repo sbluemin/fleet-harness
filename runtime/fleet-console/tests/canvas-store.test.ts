@@ -47,13 +47,22 @@ describe("canvas store", () => {
     expect(getSnapshot().viewport).toEqual({ x: 50, y: 0, zoom: 1 });
   });
 
-  it("clamps fit zoom to the 0.25 lower bound for widely scattered Operations", () => {
-    setOperationGeometry("op-a", { ...GEOMETRY, x: -2_000, y: -1_000 });
-    setOperationGeometry("op-b", { ...GEOMETRY, x: 2_000, y: 1_000 });
+  it("clamps fit zoom to the 0.1 lower bound for widely scattered Operations", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY, x: -5_000, y: -1_000 });
+    setOperationGeometry("op-b", { ...GEOMETRY, x: 5_000, y: 1_000 });
 
     fitAllOperations();
 
-    expect(getSnapshot().viewport).toEqual({ x: 487.5, y: 387.5, zoom: 0.25 });
+    expect(getSnapshot().viewport).toEqual({ x: 495, y: 395, zoom: 0.1 });
+  });
+
+  it("preserves an intermediate fit zoom between the lower and upper bounds", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY, x: 0, y: 0 });
+    setOperationGeometry("op-b", { ...GEOMETRY, x: 1_900, y: 0 });
+
+    fitAllOperations();
+
+    expect(getSnapshot().viewport).toEqual({ x: 48, y: 377.4, zoom: 0.452 });
   });
 
   it("clamps fit zoom to the 1 upper bound for a narrow Operation set", () => {

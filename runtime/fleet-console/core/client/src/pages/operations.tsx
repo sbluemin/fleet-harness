@@ -90,6 +90,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         if (active instanceof HTMLElement && active.closest(".xterm")) return;
         const theaterId = stateRef.current.activeTheaterId;
         if (isTriageActive(theaterId)) return;
+        if (!stateRef.current.operationsHydrated) return;
         event.preventDefault();
         event.stopImmediatePropagation();
         fitAllOperations();

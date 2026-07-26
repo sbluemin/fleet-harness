@@ -388,6 +388,28 @@ describe("Operations boot minimization", () => {
     expect(canvasEvent.defaultPrevented).toBe(true);
   });
 
+  it("does not consume Shift+1 before Operations hydrate", async () => {
+    const operations = deferred<readonly OperationNode[]>();
+    const theaters = deferred<TheaterBootstrap>();
+    apiMocks.fetchOperations.mockReturnValueOnce(operations.promise);
+    apiMocks.fetchTheaterBootstrap.mockReturnValueOnce(theaters.promise);
+    const { App } = await import("../core/client/src/app.js");
+    await act(async () => {
+      root!.render(createElement(BrowserRouter, null, createElement(App)));
+    });
+    await act(async () => {
+      theaters.resolve({ theaters: [theater()] });
+      await Promise.resolve();
+    });
+    expect(getState().operationsHydrated).toBe(false);
+    keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(true);
+
+    const event = new KeyboardEvent("keydown", { code: "Digit1", shiftKey: true, cancelable: true });
+    window.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   it("restores and activates a minimized Operation before pending Map focus moves the viewport", async () => {
     await bootApp([operation("initial")]);
     expect(getSnapshot().minimized).toEqual(["initial"]);

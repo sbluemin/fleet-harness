@@ -66,6 +66,7 @@ export const OPERATION_GRID_GAP = 8;
 export const OPERATION_GRID_PADDING = 0;
 const OPERATION_FOCUS_PADDING = 96;
 const FOCUS_MIN_ZOOM = 0.25;
+const FIT_ALL_MIN_ZOOM = 0.1;
 const FOCUS_MAX_ZOOM = 1;
 // 줌 보간: 매 프레임 현재 viewport를 target 쪽으로 이 비율만큼 당긴다(지수 감쇠).
 const ZOOM_TWEEN_FACTOR = 0.2;
@@ -298,7 +299,7 @@ export function fitAllOperations(): void {
   const maxY = Math.max(...visibleGeometries.map((geometry) => geometry.y + geometry.height));
   const bboxWidth = maxX - minX;
   const bboxHeight = maxY - minY;
-  const zoom = Math.max(FOCUS_MIN_ZOOM, Math.min(FOCUS_MAX_ZOOM, Math.min(
+  const zoom = Math.max(FIT_ALL_MIN_ZOOM, Math.min(FOCUS_MAX_ZOOM, Math.min(
     (canvasViewportSize.width - OPERATION_FOCUS_PADDING) / bboxWidth,
     (canvasViewportSize.height - OPERATION_FOCUS_PADDING) / bboxHeight,
   )));
