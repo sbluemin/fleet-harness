@@ -12,4 +12,14 @@ describe("Operations Alt+Arrow shortcut policy", () => {
     expect(resolveOperationsArrowShortcutAction(false, "ArrowLeft")).toBe("focus-previous");
     expect(resolveOperationsArrowShortcutAction(false, "ArrowRight")).toBe("focus-next");
   });
+
+  it("maps vertical arrows to panel actions outside Triage", () => {
+    expect(resolveOperationsArrowShortcutAction(false, "ArrowUp")).toBe("maximize-toggle");
+    expect(resolveOperationsArrowShortcutAction(false, "ArrowDown")).toBe("minimize");
+  });
+
+  it("swallows Alt+Up and routes Alt+Down to set-aside while Triage is active", () => {
+    expect(resolveOperationsArrowShortcutAction(true, "ArrowUp")).toBe("triage-noop");
+    expect(resolveOperationsArrowShortcutAction(true, "ArrowDown")).toBe("triage-set-aside");
+  });
 });

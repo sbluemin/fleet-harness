@@ -7,11 +7,11 @@ import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } 
 import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, issueTheaterFolderGrant, patchOperation, patchTheaterOrder, renameOperation, updateGroup, ApiError, type DeferredDeletionReceipt } from "../api.js";
 import { closeOperationCompletely } from "../operation-close.js";
 import { forgetTheaterCompletely } from "../theater-forget.js";
-import { claimTopZIndex, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
+import { claimTopZIndex, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { playMinimizeFlight, playRestoreFlight } from "../canvas/panel-motion.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
-import { deferTriageOperation, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, pickTriageOperation, recordTriageActivity, resolveTriageQueue, setTriageActive } from "../canvas/triage-store.js";
+import { armTriageSetAside, deferTriageOperation, disarmTriageSetAside, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, getTriageSetAsideArmedId, isTriageActive, pickTriageOperation, recordTriageActivity, resolveTriageQueue, setTriageActive } from "../canvas/triage-store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
@@ -79,13 +79,20 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     void fetchOperationCatalog().then(setCatalog).catch(() => {});
   }, [state.activeTheaterId]);
 
-  // Alt+←/→는 캔버스 배치 순서(그룹 order → 그룹 내 operationOrder → ungrouped)로 포커스를 순환하고, Alt+F/Alt+S는 같은 capture/editable 가드 정책을 공유한다.
+  // Alt+화살표는 캔버스 배치 순서와 패널 문법을 공유하고, Alt+F/Alt+S는 같은 capture/editable 가드 정책을 따른다.
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (viewMode.effective === "mobile") return;
       if (!shouldHandleOperationsKeyboardShortcut()) return;
       const active = document.activeElement;
       if (active instanceof HTMLElement && active.matches("input, textarea, [contenteditable='true']") && !active.closest(".xterm")) return;
+      const escapeTheaterId = stateRef.current.activeTheaterId;
+      if (event.code === "Escape" && escapeTheaterId && getTriageSetAsideArmedId(escapeTheaterId) !== null) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        disarmTriageSetAside(escapeTheaterId);
+        return;
+      }
       if (event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey && event.code === "Digit1") {
         if (active instanceof HTMLElement && active.closest(".xterm")) return;
         const theaterId = stateRef.current.activeTheaterId;
@@ -128,11 +135,13 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       const snapshot = stateRef.current;
       const theaterId = snapshot.activeTheaterId;
       const triageActive = theaterId !== null && isTriageActive(theaterId);
-      const arrowAction = resolveOperationsArrowShortcutAction(triageActive, event.key);
+      const arrowAction = resolveOperationsArrowShortcutAction(triageActive, event.code);
       if (arrowAction === null) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if ((arrowAction === "maximize-toggle" || arrowAction === "minimize" || arrowAction === "triage-noop" || arrowAction === "triage-set-aside")
+        && getCompanionOperationId() !== null) return;
       if (triageActive) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
         if (arrowAction === "triage-noop") return;
         const stageId = document.querySelector<HTMLElement>(".canvas-operation.is-triage-stage[data-operation-id]")?.dataset.operationId;
         if (!stageId) return;
@@ -141,7 +150,15 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           snapshot.operations.filter((operation) => operation.theaterId === theaterId),
           snapshot.operationStatus,
         );
-        if (queue.some((entry) => entry.operation.id === stageId)) deferTriageOperation(theaterId!, stageId);
+        if (!queue.some((entry) => entry.operation.id === stageId)) return;
+        if (arrowAction === "triage-defer") {
+          deferTriageOperation(theaterId!, stageId);
+        } else if (getTriageSetAsideArmedId(theaterId!) === stageId) {
+          disarmTriageSetAside(theaterId!);
+          dismissTriageOperation(theaterId!, stageId);
+        } else {
+          armTriageSetAside(theaterId!, stageId);
+        }
         return;
       }
       // Alt 순환 순서를 Left SideBar 표시 순서(비-collapsed 그룹 order → 그룹 내 operationOrder → ungrouped)와 정확히 일치시킨다.
@@ -156,8 +173,22 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         canvas.collapsedGroups,
         canvas.minimized,
       );
-      event.preventDefault();
-      event.stopImmediatePropagation();
+      if (arrowAction === "maximize-toggle" || arrowAction === "minimize") {
+        const operationId = snapshot.activeOperationId;
+        if (!operationId || !theaterOperations.some((operation) => operation.id === operationId) || canvas.minimized.includes(operationId)) return;
+        if (arrowAction === "maximize-toggle") {
+          if (getMaximizedOperationId() === operationId) clearMaximizedOperationId();
+          else setMaximizedOperationId(operationId);
+          return;
+        }
+        const currentIndex = order.indexOf(operationId);
+        if (currentIndex === -1) return;
+        const nextId = order.length > 1 ? order[(currentIndex + 1) % order.length] ?? null : null;
+        playMinimizeFlight(operationId);
+        minimizeOperation(operationId);
+        setActiveOperation(nextId);
+        return;
+      }
       if (order.length === 0) return;
       const currentId = getCompanionOperationId() ?? getMaximizedOperationId() ?? stateRef.current.activeOperationId;
       const nextId = nextOperationId(order, currentId, arrowAction === "focus-next" ? 1 : -1);

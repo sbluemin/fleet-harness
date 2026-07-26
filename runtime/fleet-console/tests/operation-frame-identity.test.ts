@@ -160,6 +160,13 @@ function ActivationRaceFrame({ onActivate }: { readonly onActivate: () => void }
     },
     active,
     unseen: false,
+    glanceHud: {
+      index: "01",
+      hints: [
+        { key: "↑", messageKey: "canvas.glance.maximize" },
+        { key: "↓", messageKey: "canvas.glance.minimize" },
+      ],
+    },
     geometry: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 },
     zoom: 1,
     onActivate: () => {
@@ -197,6 +204,13 @@ function renderFrame(onRename: (title: string) => void, active: boolean, topEdge
     },
     active,
     unseen: false,
+    glanceHud: {
+      index: "01",
+      hints: [
+        { key: "↑", messageKey: "canvas.glance.maximize" },
+        { key: "↓", messageKey: "canvas.glance.minimize" },
+      ],
+    },
     geometry: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 },
     zoom: 1,
     onActivate: () => {},

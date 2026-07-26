@@ -7,7 +7,7 @@ import type { CompanionPanelDescriptor, ConsoleTheme, FleetClientPlugin, Operati
 
 import { fetchOperations } from "../api.js";
 import { isBlockingDialogOpen } from "../blocking-dialog.js";
-import { flattenGroupedOrder, hydrateOperations, requestOperationKeyboardFocus, requestOperationLaunchMenu, setActiveOperation } from "../store.js";
+import { flattenGroupedOrder, focusCycleOperationIds, hydrateOperations, requestOperationKeyboardFocus, requestOperationLaunchMenu, setActiveOperation } from "../store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
@@ -24,13 +24,14 @@ import { CanvasMinimap } from "./canvas-minimap.js";
 import { resolveAccentColor } from "./operation-accent.js";
 import { CanvasGrid } from "./canvas-grid.js";
 import { TriageClearPlate } from "./triage-clear-plate.js";
+import { resolveGlanceHudModel, type GlanceHudModel } from "./glance-hud.js";
 import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
 import { RubberBand } from "./rubber-band.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { screenToCanvas, type CanvasPoint, type CanvasRect } from "./coordinates.js";
 import { modeSlotGeometryFor, triageStageGeometryFor } from "./triage-geometry.js";
-import { dismissTriageOperation, getTriageCleared, getTriageEnteredAt, getTriagePick, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
+import { dismissTriageOperation, getTriageCleared, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
 
 interface OperationsCanvasProps {
   readonly state: ConsoleState;
@@ -477,6 +478,14 @@ export function OperationsCanvas({
     : [];
   const formationSlotByOperationId = new Map(formationOperationIds.map((operationId, index) => [operationId, formationSlots[index]!]));
   const formationSlotIndexByOperationId = new Map(formationOperationIds.map((operationId, index) => [operationId, index + 1]));
+  const focusCycleIds = focusCycleOperationIds(
+    theaterOperations,
+    state.groups.filter((group) => group.theaterId === state.activeTheaterId),
+    canvas.operationOrder,
+    canvas.collapsedGroups,
+    canvas.minimized,
+  );
+  const focusCycleIndexByOperationId = new Map(focusCycleIds.map((operationId, index) => [operationId, index + 1]));
   // Formation 진입·레이아웃 전환 시 슬롯 순서 stagger — 윈도우 리사이즈 재배치에는 적용하지 않는다.
   useEffect(() => {
     if (!formationView || panelMotionSuppressed()) return;
@@ -561,6 +570,23 @@ export function OperationsCanvas({
             ? !operationTriageStage
             : (panelMaximized !== null || panelCompanion !== null) && !operationMaximized && !operationCompanion;
           const formationSlot = formationSlotByOperationId.get(operation.id);
+          const glanceHud = resolveGlanceHudModel(triageActive
+            ? {
+                mode: "triage",
+                index: Math.max(1, triageDisplayQueue.findIndex((entry) => entry.operation.id === operation.id) + 1),
+                total: triageDisplayQueue.length,
+              }
+            : formationView
+              ? {
+                  mode: "formation",
+                  index: formationSlotIndexByOperationId.get(operation.id) ?? 1,
+                  maximized: operationMaximized,
+                }
+              : {
+                  mode: "map",
+                  index: focusCycleIndexByOperationId.get(operation.id) ?? 1,
+                  maximized: operationMaximized,
+                });
           const frameGeometry = operationTriageStage
             ? triageStageGeometryFor(canvasSize, topPanelZIndex, 0, triageActive && operationCompanion ? companionSlotCount : 1)
             : operationMaximized
@@ -591,6 +617,7 @@ export function OperationsCanvas({
             maximized: operationMaximized,
             triageStage: operationTriageStage,
             triagePicked: operationTriageStage && triageStage?.picked === true,
+            glanceHud,
             formationSlotIndex: formationView ? formationSlotIndexByOperationId.get(operation.id) : undefined,
             companion: operationCompanion,
             companions: operationCompanion ? visibleCompanionPanels : [],
@@ -701,6 +728,9 @@ export function OperationsCanvas({
                 )) : <span className="canvas-triage-rail-empty">{t("canvas.triage.railEmpty")}</span>}
               </div>
             </div>
+            {state.activeTheaterId && getTriageSetAsideArmedId(state.activeTheaterId) === triageStageId ? (
+              <span className="canvas-triage-rail-arm">{t("canvas.triage.setAsideArmed")}</span>
+            ) : null}
             <span className="canvas-triage-rail-cleared">{t("canvas.triage.railCleared", { count: state.activeTheaterId ? getTriageCleared(state.activeTheaterId) : 0 })}</span>
           </div>
           {triageEntering ? <div className="canvas-triage-sweep" aria-hidden="true" /> : null}
@@ -886,6 +916,7 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly maximized: boolean;
   readonly triageStage: boolean;
   readonly triagePicked: boolean;
+  readonly glanceHud: GlanceHudModel;
   readonly formationSlotIndex?: number;
   readonly companion: boolean;
   readonly companions: readonly CompanionPanelDescriptor[];
@@ -934,6 +965,7 @@ function renderPluginOperation(operation: OperationNode, options: {
         maximized={options.maximized}
         triageStage={options.triageStage}
         triagePicked={options.triagePicked}
+        glanceHud={options.glanceHud}
         formationSlotIndex={options.formationSlotIndex}
         topEdge={options.topEdge}
         renderHidden={options.focusLayerHidden}

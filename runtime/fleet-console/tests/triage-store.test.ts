@@ -30,15 +30,19 @@ import {
   toggleFormationView,
 } from "../core/client/src/canvas/canvas-store.js";
 import {
+  armTriageSetAside,
   deferTriageOperation,
+  disarmTriageSetAside,
   dismissTriageOperation,
   enterTriage,
   focusedTriageOperationId,
   forgetTriageOperation,
   getTriageCleared,
   getTriagePick,
+  getTriageSetAsideArmedId,
   isTriageActive,
   isTriageClearedTransition,
+  isTriageOperationDismissed,
   markTriageCleared,
   pickTriageOperation,
   recordTriageActivity,
@@ -93,6 +97,75 @@ afterEach(() => {
 });
 
 describe("triage store", () => {
+  it("arms the first set-aside press and dismisses only on the second press", () => {
+    const pressSetAside = () => {
+      if (getTriageSetAsideArmedId(THEATER_ID) === "picked") {
+        disarmTriageSetAside(THEATER_ID);
+        dismissTriageOperation(THEATER_ID, "picked");
+      } else {
+        armTriageSetAside(THEATER_ID, "picked");
+      }
+    };
+
+    pressSetAside();
+    expect(getTriageSetAsideArmedId(THEATER_ID)).toBe("picked");
+    expect(isTriageOperationDismissed("picked")).toBe(false);
+
+    pressSetAside();
+    expect(getTriageSetAsideArmedId(THEATER_ID)).toBeNull();
+    expect(isTriageOperationDismissed("picked")).toBe(true);
+  });
+
+  it("disarms set-aside after 1500ms", () => {
+    armTriageSetAside(THEATER_ID, "picked");
+
+    vi.advanceTimersByTime(1_499);
+    expect(getTriageSetAsideArmedId(THEATER_ID)).toBe("picked");
+    vi.advanceTimersByTime(1);
+    expect(getTriageSetAsideArmedId(THEATER_ID)).toBeNull();
+  });
+
+  it("disarms set-aside when the Triage stage changes", () => {
+    armTriageSetAside(THEATER_ID, "picked");
+    deferTriageOperation(THEATER_ID, "picked");
+    expect(getTriageSetAsideArmedId(THEATER_ID)).toBeNull();
+
+    armTriageSetAside(THEATER_ID, "picked");
+    pickTriageOperation(THEATER_ID, "next");
+    expect(getTriageSetAsideArmedId(THEATER_ID)).toBeNull();
+  });
+
+  it("keeps set-aside armed while an unrelated Operation changes activity", () => {
+    const status: Record<string, OperationActivity> = { picked: "awaiting", next: "awaiting" };
+    recordTriageActivity(THEATER_ID, OPERATIONS, status);
+    armTriageSetAside(THEATER_ID, "picked");
+
+    recordTriageActivity(THEATER_ID, OPERATIONS, { ...status, next: "running" });
+
+    expect(getTriageSetAsideArmedId(THEATER_ID)).toBe("picked");
+  });
+
+  it("disarms set-aside once its own Operation stops waiting", () => {
+    const status: Record<string, OperationActivity> = { picked: "awaiting", next: "awaiting" };
+    recordTriageActivity(THEATER_ID, OPERATIONS, status);
+    armTriageSetAside(THEATER_ID, "picked");
+
+    recordTriageActivity(THEATER_ID, OPERATIONS, { ...status, picked: "running" });
+
+    expect(getTriageSetAsideArmedId(THEATER_ID)).toBeNull();
+  });
+
+  it("disarms set-aside when Triage exits or resets", () => {
+    setTriageActive(THEATER_ID, true);
+    armTriageSetAside(THEATER_ID, "picked");
+    setTriageActive(THEATER_ID, false);
+    expect(getTriageSetAsideArmedId(THEATER_ID)).toBeNull();
+
+    armTriageSetAside(THEATER_ID, "picked");
+    resetTriageTheater(THEATER_ID);
+    expect(getTriageSetAsideArmedId(THEATER_ID)).toBeNull();
+  });
+
   it.each([false, true])("enables the status axis during Triage and restores %s on exit", (initial) => {
     setSideBarStatusAxis(initial);
     setTriageActive(THEATER_ID, true);
@@ -638,11 +711,13 @@ describe("triage store", () => {
     );
     expect(getCompanionOperationId()).toBe("picked");
 
+    armTriageSetAside(THEATER_ID, "picked");
     reconcileTriageStageCompanion(
       pickedStage,
       { theaterId: THEATER_ID, operationId: "next" },
     );
     expect(getCompanionOperationId()).toBeNull();
+    expect(getTriageSetAsideArmedId(THEATER_ID)).toBeNull();
 
     setTriageActive(THEATER_ID, false);
     expect(getCompanionOperationId()).toBe("picked");

@@ -44,6 +44,13 @@ describe("OperationFrame body activation", () => {
         },
         active: false,
         unseen: false,
+        glanceHud: {
+          index: "01",
+          hints: [
+            { key: "↑", messageKey: "canvas.glance.maximize" },
+            { key: "↓", messageKey: "canvas.glance.minimize" },
+          ],
+        },
         interactionDisabled: true,
         geometry: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 },
         zoom: 1,
