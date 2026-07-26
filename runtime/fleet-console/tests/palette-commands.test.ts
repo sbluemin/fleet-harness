@@ -105,7 +105,9 @@ describe("buildPaletteCommands", () => {
     expect(commands.map((command) => command.commandId)).toEqual([
       "switch-theater:theater-alpha",
       "switch-theater:theater-beta",
+      "new-theater",
       "new-operation",
+      "toggle-triage-mode",
       "toggle-formation",
       "toggle-status-axis",
       "open-rail-panel:alerts",
@@ -117,9 +119,32 @@ describe("buildPaletteCommands", () => {
       "switch-theme:carbon",
       "open-settings",
       "open-keyboard-shortcuts",
+      "forget-theater:theater-alpha",
+      "forget-theater:theater-beta",
     ]);
+    expect(commands.find((command) => command.commandId === "new-theater")?.label).toBe("Add Theater…");
     expect(commands.find((command) => command.commandId === "new-operation")?.label).toBe("New Operation in Alpha Harbor");
     expect(commands.find((command) => command.commandId === "open-rail-panel:repository")?.label).toBe("Open panel: Repository");
+    expect(commands.find((command) => command.commandId === "forget-theater:theater-alpha")?.label)
+      .toBe("Forget Theater: Alpha Harbor");
+  });
+
+  it("gates Undo last close and preserves the approved safe-to-destructive ordering", () => {
+    const unavailable = buildPaletteCommands(makeState(), [], tEn);
+    expect(unavailable.some((command) => command.commandId === "undo-close")).toBe(false);
+
+    const commands = buildPaletteCommands(makeState({
+      releaseNotes: [{ version: "1.30.0", date: "2026-07-20", sections: [], localizationFallback: false }],
+    }), [], tEn, { canUndoLastClose: true });
+    const ids = commands.map((command) => command.commandId);
+    expect(ids[0]).toBe("undo-close");
+    expect(commands[0]?.label).toBe("Undo last close");
+    expect(ids.indexOf("new-theater")).toBe(ids.indexOf("switch-theater:theater-beta") + 1);
+    expect(ids.slice(-3)).toEqual([
+      "whats-new",
+      "forget-theater:theater-alpha",
+      "forget-theater:theater-beta",
+    ]);
   });
 
   it("marks the active Theater and active theme as current", () => {

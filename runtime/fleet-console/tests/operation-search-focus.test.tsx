@@ -8,12 +8,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OperationSearch } from "../core/client/src/components/operation-search.js";
 import { takeKeyboardShortcutsReturnFocus } from "../core/client/src/keyboard-shortcuts-return-focus.js";
 import { useConsoleState } from "../core/client/src/hooks/use-store.js";
-import { setState } from "../core/client/src/store.js";
+import { getSideBarState, setSideBarCollapsed } from "../core/client/src/sidebar/operations-side-bar-store.js";
+import { getState, setState } from "../core/client/src/store.js";
 
 let container: HTMLDivElement | null = null;
 let previousFocus: HTMLButtonElement | null = null;
 let root: Root | null = null;
 let scrollIntoViewDescriptor: PropertyDescriptor | undefined;
+let canUndoLastClose = false;
+let onUndoLastClose = vi.fn();
+const readCanUndoLastClose = () => canUndoLastClose;
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -22,6 +26,9 @@ beforeEach(() => {
   window.localStorage.clear();
   scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+  canUndoLastClose = false;
+  onUndoLastClose = vi.fn();
+  setSideBarCollapsed(false);
 
   previousFocus = document.createElement("button");
   previousFocus.textContent = "Previous control";
@@ -133,6 +140,53 @@ describe("Operation search focus handoff", () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
+  it("keeps the opening-time Undo row snapshot while rechecking availability at execution time", () => {
+    act(() => setState({ operationSearchOpen: false }));
+    canUndoLastClose = true;
+    act(() => setState({ operationSearchOpen: true }));
+    const input = document.querySelector<HTMLInputElement>("#operation-search-input");
+    const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => {
+      setInputValue.call(input, ">undo");
+      input!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const commandOption = document.querySelector<HTMLButtonElement>('[role="option"]');
+    expect(commandOption?.textContent).toContain("Undo last close");
+
+    canUndoLastClose = false;
+    act(() => root!.render(createElement(MemoryRouter, null, createElement(SearchHarness))));
+    const retainedCommandOption = document.querySelector<HTMLButtonElement>('[role="option"]');
+    expect(retainedCommandOption?.textContent).toContain("Undo last close");
+    act(() => input!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+
+    expect(onUndoLastClose).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("routes to Operations, expands the sidebar, and requests the Add Theater flow", () => {
+    setSideBarCollapsed(true);
+    act(() => root!.render(createElement(
+      MemoryRouter,
+      { key: "add-theater-route", initialEntries: ["/settings"] },
+      createElement(SearchHarness),
+      createElement(LocationProbe),
+    )));
+    const input = document.querySelector<HTMLInputElement>("#operation-search-input");
+    const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => {
+      setInputValue.call(input, ">add theater");
+      input!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    const commandOption = document.querySelector<HTMLButtonElement>('[role="option"]');
+    expect(commandOption?.textContent).toContain("Add Theater…");
+    act(() => commandOption!.click());
+
+    expect(observedPathname).toBe("/operations");
+    expect(getSideBarState().collapsed).toBe(false);
+    expect(getState().pendingSideBarAddTheater).toBe(true);
+  });
+
   it("restores the previous focus after Escape cancellation", () => {
     const restoreFocus = vi.spyOn(previousFocus!, "focus");
     const input = document.querySelector<HTMLInputElement>("#operation-search-input");
@@ -147,7 +201,13 @@ describe("Operation search focus handoff", () => {
 });
 
 function SearchHarness() {
-  return createElement(OperationSearch, { state: useConsoleState(), railPanels: [{ id: "alerts", title: "Alerts" }], plugins: [] });
+  return createElement(OperationSearch, {
+    state: useConsoleState(),
+    railPanels: [{ id: "alerts", title: "Alerts" }],
+    plugins: [],
+    canUndoLastClose: readCanUndoLastClose,
+    onUndoLastClose,
+  });
 }
 
 let observedPathname = "";

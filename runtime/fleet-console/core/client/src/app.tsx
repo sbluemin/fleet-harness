@@ -202,16 +202,21 @@ export function App() {
       });
   }, []);
 
+  const canUndoLastClose = useCallback(
+    () => pendingDeletionsRef.current.some((deletion) => deletion.expiresAt > Date.now()),
+    [],
+  );
+
   useEffect(() => {
     return installConsoleGlobalShortcuts({
       getSideBarCollapsed: () => getSideBarState().collapsed,
       setSideBarCollapsed,
       toggleOperationSearch,
       toggleRailChrome,
-      canUndoLastClose: () => pendingDeletionsRef.current.some((deletion) => deletion.expiresAt > Date.now()),
+      canUndoLastClose,
       undoLastClose,
     });
-  }, [undoLastClose]);
+  }, [canUndoLastClose, undoLastClose]);
 
   return (
     <div className="console-shell">
@@ -225,7 +230,14 @@ export function App() {
           <Route path="*" element={<Navigate to="/operations" replace />} />
         </Routes>
       </main>
-      <OperationSearch state={state} railPanels={paletteRailPanels} plugins={registry.plugins} onDeferredDeletion={enqueueDeletion} />
+      <OperationSearch
+        state={state}
+        railPanels={paletteRailPanels}
+        plugins={registry.plugins}
+        onDeferredDeletion={enqueueDeletion}
+        canUndoLastClose={canUndoLastClose}
+        onUndoLastClose={undoLastClose}
+      />
       {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
       <WhatsNewModal state={state} />
       <CommissioningOverlay state={state} />
