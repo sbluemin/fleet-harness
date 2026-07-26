@@ -732,6 +732,11 @@
   overflow: auto;
 }
 
+.history-commit-window,
+.history-window-spacer {
+  width: 100%;
+}
+
 .history-commit-row {
   display: grid;
   grid-template-columns: auto auto minmax(120px, 1fr) minmax(78px, auto) 7ch 10ch;
@@ -857,7 +862,8 @@
 
 .history-empty,
 .history-error,
-.history-truncated {
+.history-truncated,
+.history-pagination {
   padding: 14px 12px;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
@@ -875,6 +881,19 @@
   color: var(--text-tertiary);
   border-top: 1px solid var(--surface-rim);
   background: color-mix(in oklch, var(--ink-fog) 8%, transparent);
+}
+
+.history-pagination {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  border-top: 1px solid var(--surface-rim);
+  background: color-mix(in oklch, var(--ink-fog) 8%, transparent);
+}
+
+.history-pagination-error {
+  color: var(--coral);
 }
 
 .history-detail-pane {

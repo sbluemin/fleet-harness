@@ -64,6 +64,7 @@ export interface WorktreeCheckout {
 export interface LogResult {
   readonly commits: readonly LogCommitEntry[];
   readonly checkouts: readonly WorktreeCheckout[];
+  readonly hasMore: boolean;
   readonly truncated?: boolean;
 }
 

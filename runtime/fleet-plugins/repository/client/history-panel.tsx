@@ -6,8 +6,8 @@ import type { RailPanelContext } from "@fleet-console/sdk/rail";
 import type { CommitResult, DiffFileEntry, LogCommitEntry, LogResult, WorktreeCheckout } from "../server/types.js";
 import { FileRow } from "./changed-files.js";
 import { DiffTreeView } from "./repository-tree.js";
-import { GraphGutter } from "./graph-gutter.js";
-import { layoutGraph } from "./graph-layout.js";
+import { GraphGutter, ROW_HEIGHT } from "./graph-gutter.js";
+import { layoutGraph, type GraphLayout, type GraphNode } from "./graph-layout.js";
 import { HunkView } from "./hunk-view.js";
 import { getT, localeTag, type RepositoryMessageKey } from "./i18n/index.js";
 import { formatCommitTime, refBadges } from "./log-parse.js";
@@ -17,7 +17,7 @@ import { consumeRepositorySearchTarget, useRepositorySearchTarget } from "./sear
 
 type T = Translate<RepositoryMessageKey>;
 
-type LoadState = { readonly kind: "loading" } | { readonly kind: "ok"; readonly commits: readonly LogCommitEntry[]; readonly checkouts: readonly WorktreeCheckout[]; readonly truncated: boolean } | { readonly kind: "error"; readonly message: string };
+type LoadState = { readonly kind: "loading" } | { readonly kind: "ok"; readonly commits: readonly LogCommitEntry[]; readonly checkouts: readonly WorktreeCheckout[]; readonly hasMore: boolean; readonly truncated: boolean } | { readonly kind: "error"; readonly message: string };
 type CommitTarget = { readonly fullHash: string; readonly entry?: LogCommitEntry };
 type InspectorState = { readonly kind: "loading" } | { readonly kind: "ok"; readonly result: CommitResult } | { readonly kind: "error"; readonly message: string };
 type FilesViewMode = "list" | "tree";
@@ -29,6 +29,53 @@ const PREFS_FILES_VIEW = "fleet-console.history.filesView";
 const LOG_PANE_DEFAULT_HEIGHT = 240;
 const HEADER_DEFAULT_HEIGHT = 214;
 const FILE_LIST_DEFAULT_WIDTH = 180;
+const HISTORY_OVERSCAN_ROWS = 8;
+const HISTORY_PAGE_SIZE = 200;
+
+export interface HistoryWindow {
+  readonly startIndex: number;
+  readonly endIndex: number;
+  readonly topSpacerHeight: number;
+  readonly bottomSpacerHeight: number;
+}
+
+export interface HistoryWindowRow {
+  readonly entry: LogCommitEntry;
+  readonly graphNode: GraphNode;
+  readonly visibleIndex: number;
+  readonly commitIndex: number;
+}
+
+export function calculateHistoryWindow(itemCount: number, scrollTop: number, viewportHeight: number): HistoryWindow {
+  const safeScrollTop = Math.max(0, scrollTop);
+  const safeViewportHeight = Math.max(0, viewportHeight);
+  const startIndex = Math.max(0, Math.floor(safeScrollTop / ROW_HEIGHT) - HISTORY_OVERSCAN_ROWS);
+  const endIndex = Math.min(itemCount, Math.ceil((safeScrollTop + safeViewportHeight) / ROW_HEIGHT) + HISTORY_OVERSCAN_ROWS);
+  return {
+    startIndex,
+    endIndex,
+    topSpacerHeight: startIndex * ROW_HEIGHT,
+    bottomSpacerHeight: Math.max(0, (itemCount - endIndex) * ROW_HEIGHT),
+  };
+}
+
+export function getHistoryWindowRows(
+  commitIndexes: ReadonlyMap<string, number>,
+  visible: readonly LogCommitEntry[],
+  layout: GraphLayout,
+  window: HistoryWindow,
+): readonly HistoryWindowRow[] {
+  return visible.slice(window.startIndex, window.endIndex).map((entry, offset) => {
+    const commitIndex = commitIndexes.get(entry.fullHash);
+    if (commitIndex === undefined) throw new Error(`History commit missing from graph layout: ${entry.fullHash}`);
+    return {
+      entry,
+      graphNode: layout.nodes[commitIndex]!,
+      visibleIndex: window.startIndex + offset,
+      commitIndex,
+    };
+  });
+}
 
 export function findDetachedCheckout(entry: LogCommitEntry, checkouts: readonly WorktreeCheckout[]): WorktreeCheckout | null { return checkouts.find((checkout) => checkout.branch === null && checkout.sha === entry.fullHash) ?? null; }
 export function filterHistoryCommits(commits: readonly LogCommitEntry[], filterText: string): readonly LogCommitEntry[] {
@@ -125,15 +172,40 @@ function HistoryPanelBody({ ctx, repoRel, active, refFilter, wipFiles, workspace
   const [target, setTarget] = useState<CommitTarget | null>(null);
   const [filterText, setFilterText] = useState("");
   const [refreshToken, setRefreshToken] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const [commitViewport, setCommitViewport] = useState({ scrollTop: 0, height: 0 });
   const [logHeight, setLogHeight] = useState(readLogPaneHeight);
   const [dockHeight, setDockHeight] = useState(readWorkspaceDockHeight);
   const [isDragging, setIsDragging] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const commitWindowRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
+  const revealKeyRef = useRef<string | null>(null);
+  const pendingRevealRef = useRef<string | null>(null);
+  const loadingMoreRef = useRef(false);
   const searchTarget = useRepositorySearchTarget();
   const dragDisposeRef = useRef<(() => void) | null>(null);
   const logHeightRef = useRef(logHeight);
   const dockHeightRef = useRef(dockHeight);
+  const visible = useMemo(() => state.kind === "ok" ? filterHistoryCommits(state.commits, filterText) : [], [filterText, state]);
+  const layout = useMemo(() => state.kind === "ok" ? layoutGraph(state.commits) : null, [state]);
+  const commitIndexes = useMemo(() => new Map(state.kind === "ok" ? state.commits.map((entry, index) => [entry.fullHash, index]) : []), [state]);
+  const wip = useMemo(() => aggregateWip(wipFiles), [wipFiles]);
+  const showWip = shouldShowWip(wip, filterText, refFilter);
+  const virtualWindow = calculateHistoryWindow(visible.length, commitViewport.scrollTop, commitViewport.height);
+  const windowRows = state.kind === "ok" && layout ? getHistoryWindowRows(commitIndexes, visible, layout, virtualWindow) : [];
+  const updateCommitViewport = useCallback(() => {
+    const list = listRef.current;
+    const commitWindow = commitWindowRef.current;
+    if (!list || !commitWindow) return;
+    const contentTop = commitWindow.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+    setCommitViewport({
+      scrollTop: Math.max(0, list.scrollTop - contentTop),
+      height: list.clientHeight,
+    });
+  }, []);
   useEffect(() => { setTarget(null); }, [refFilter]);
   useEffect(() => {
     if (
@@ -149,14 +221,50 @@ function HistoryPanelBody({ ctx, repoRel, active, refFilter, wipFiles, workspace
     consumeRepositorySearchTarget(searchTarget);
   }, [ctx.theaterId, repoRel, searchTarget, state]);
   useLayoutEffect(() => {
-    if (!target) return;
-    rowRefs.current.get(target.fullHash)?.scrollIntoView({ block: "nearest" });
-  }, [target]);
+    if (!target) {
+      revealKeyRef.current = null;
+      pendingRevealRef.current = null;
+      return;
+    }
+    const revealKey = `${target.fullHash}\x00${filterText}`;
+    const isNewReveal = revealKeyRef.current !== revealKey;
+    if (isNewReveal) {
+      revealKeyRef.current = revealKey;
+      pendingRevealRef.current = target.fullHash;
+    } else if (pendingRevealRef.current !== target.fullHash) {
+      return;
+    }
+    const row = rowRefs.current.get(target.fullHash);
+    if (row) {
+      row.focus({ preventScroll: true });
+      row.scrollIntoView({ block: "nearest" });
+      pendingRevealRef.current = null;
+      return;
+    }
+    const targetIndex = visible.findIndex((entry) => entry.fullHash === target.fullHash);
+    const list = listRef.current;
+    const commitWindow = commitWindowRef.current;
+    if (targetIndex < 0 || !list || !commitWindow) return;
+    const contentTop = commitWindow.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+    const rowTop = contentTop + targetIndex * ROW_HEIGHT;
+    const rowBottom = rowTop + ROW_HEIGHT;
+    if (rowTop < list.scrollTop) list.scrollTop = rowTop;
+    else if (rowBottom > list.scrollTop + list.clientHeight) list.scrollTop = rowBottom - list.clientHeight;
+    updateCommitViewport();
+  }, [filterText, target, updateCommitViewport, virtualWindow.endIndex, virtualWindow.startIndex, visible]);
   // 숨은 마운트는 상태 보존용일 뿐이므로, 첫 활성화 전에는 log 조회 비용을 지불하지 않는다
   const [everActive, setEverActive] = useState(active);
   useEffect(() => { if (active) setEverActive(true); }, [active]);
-  useEffect(() => { if (!everActive) return; if (!ctx.theaterId) { setState({ kind: "ok", commits: [], checkouts: [], truncated: false }); return; } let cancelled = false; setState({ kind: "loading" }); ctx.api.fetch("repository", "log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ...(refFilter ? { ref: refFilter } : {}) }) }).then(async (response) => { if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed"); return response.json() as Promise<LogResult>; }).then((data) => { if (!cancelled) setState({ kind: "ok", commits: data.commits, checkouts: data.checkouts, truncated: data.truncated ?? false }); }).catch((error: unknown) => { if (!cancelled) setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" }); }); return () => { cancelled = true; }; }, [ctx.api, ctx.theaterId, everActive, refreshToken, refFilter, repoRel]);
+  useEffect(() => { if (!everActive) return; if (!ctx.theaterId) { setState({ kind: "ok", commits: [], checkouts: [], hasMore: false, truncated: false }); return; } let cancelled = false; setState({ kind: "loading" }); loadingMoreRef.current = false; setLoadingMore(false); setLoadMoreError(null); ctx.api.fetch("repository", "log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, limit: HISTORY_PAGE_SIZE, skip: 0, ...(refFilter ? { ref: refFilter } : {}) }) }).then(async (response) => { if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed"); return response.json() as Promise<LogResult>; }).then((data) => { if (!cancelled) setState({ kind: "ok", commits: data.commits, checkouts: data.checkouts, hasMore: data.hasMore, truncated: data.truncated ?? false }); }).catch((error: unknown) => { if (!cancelled) setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" }); }); return () => { cancelled = true; }; }, [ctx.api, ctx.theaterId, everActive, refreshToken, refFilter, repoRel]);
   useEffect(() => { onInspectorOpenChange?.(active && target !== null); }, [active, onInspectorOpenChange, target]); useEffect(() => () => dragDisposeRef.current?.(), []);
+  useLayoutEffect(() => {
+    updateCommitViewport();
+    const list = listRef.current;
+    if (!list) return;
+    const observer = new ResizeObserver(updateCommitViewport);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [showWip, updateCommitViewport, visible.length]);
   // 저장된 dock 높이는 현재 컨테이너 기준으로 정규화해 축소된 창에서 주 영역이 잘리지 않게 한다(저장값 자체는 보존).
   useLayoutEffect(() => {
     if (!workspace || target === null) return;
@@ -207,16 +315,40 @@ function HistoryPanelBody({ ctx, repoRel, active, refFilter, wipFiles, workspace
       },
     });
   }, [workspace]);
-  const visible = useMemo(() => state.kind === "ok" ? filterHistoryCommits(state.commits, filterText) : [], [filterText, state]); const layout = state.kind === "ok" ? layoutGraph(visible) : null;
-  const wip = useMemo(() => aggregateWip(wipFiles), [wipFiles]);
-  const showWip = shouldShowWip(wip, filterText, refFilter);
+  const loadMore = useCallback(() => {
+    if (state.kind !== "ok" || !state.hasMore || loadingMoreRef.current || !ctx.theaterId) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    setLoadMoreError(null);
+    ctx.api.fetch("repository", "log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, limit: HISTORY_PAGE_SIZE, skip: state.commits.length, ...(refFilter ? { ref: refFilter } : {}) }),
+    }).then(async (response) => {
+      if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed");
+      return response.json() as Promise<LogResult>;
+    }).then((data) => {
+      setState((current) => current.kind === "ok" ? {
+        kind: "ok",
+        commits: [...current.commits, ...data.commits],
+        checkouts: data.checkouts,
+        hasMore: data.hasMore,
+        truncated: current.truncated || (data.truncated ?? false),
+      } : current);
+    }).catch((error: unknown) => {
+      setLoadMoreError(error instanceof Error ? error.message : "unknown");
+    }).finally(() => {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    });
+  }, [ctx.api, ctx.theaterId, refFilter, repoRel, state]);
   const stackTemplate = target
     ? workspace ? buildWorkspaceDockTemplate(dockHeight) : buildHistoryStackTemplate(logHeight)
     : undefined;
   return <div ref={rootRef} className={`history-root${workspace ? " repository-ws-history" : ""}${isDragging ? " is-dragging" : ""}`} style={stackTemplate ? { gridTemplateRows: stackTemplate } : undefined}>
     <div className="history-list-pane" hidden={workspace && workspaceMainVisible}>
       <div className="history-toolbar"><div className="history-filter"><input className="history-filter-input" placeholder={t("repository.common.filterPlaceholder")} value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText && <button type="button" className="history-filter-clear" onClick={() => setFilterText("")}>✕</button>}</div>{refFilter && <button type="button" className="repository-ref-chip" onClick={onClearRef}>{refFilter} ✕</button>}{state.kind === "ok" && <span className="history-count">{filterText ? `${visible.length}/${state.commits.length}` : state.commits.length}</span>}</div>
-      <div className="history-list">{showWip && <button type="button" className="repository-wip-row" onClick={onWip}>{t("repository.history.uncommitted")} <span>{t(wip.files === 1 ? "repository.history.wipStats_one" : "repository.history.wipStats_other", { count: wip.files, additions: wip.additions, deletions: wip.deletions })}</span></button>}{state.kind === "loading" && <div className="history-empty">{t("repository.common.loading")}</div>}{state.kind === "error" && <div className="history-error">{state.message}<button type="button" className="repository-refresh-btn" onClick={() => setRefreshToken((value) => value + 1)}>{t("repository.common.retry")}</button></div>}{state.kind === "ok" && state.commits.length === 0 && <div className="history-empty">{t("repository.history.empty")}</div>}{state.kind === "ok" && state.commits.length > 0 && visible.length === 0 && <div className="history-empty">{t("repository.common.noMatchingItems")}</div>}{state.kind === "ok" && layout && visible.map((entry, index) => <CommitRow key={entry.fullHash} rowRef={(node) => { if (node) rowRefs.current.set(entry.fullHash, node); else rowRefs.current.delete(entry.fullHash); }} entry={entry} checkouts={state.checkouts} selected={target?.fullHash === entry.fullHash} graphNode={layout.nodes[index]!} onSelect={(selected) => setTarget({ fullHash: selected.fullHash, entry: selected })} locale={ctx.language} />)}{state.kind === "ok" && (state.truncated || state.commits.length >= 200) && <div className="history-truncated">{t("repository.history.capped")}</div>}</div>
+      <div ref={listRef} className="history-list" onScroll={updateCommitViewport}>{showWip && <button type="button" className="repository-wip-row" onClick={onWip}>{t("repository.history.uncommitted")} <span>{t(wip.files === 1 ? "repository.history.wipStats_one" : "repository.history.wipStats_other", { count: wip.files, additions: wip.additions, deletions: wip.deletions })}</span></button>}{state.kind === "loading" && <div className="history-empty">{t("repository.common.loading")}</div>}{state.kind === "error" && <div className="history-error">{state.message}<button type="button" className="repository-refresh-btn" onClick={() => setRefreshToken((value) => value + 1)}>{t("repository.common.retry")}</button></div>}{state.kind === "ok" && state.commits.length === 0 && <div className="history-empty">{t("repository.history.empty")}</div>}{state.kind === "ok" && state.commits.length > 0 && visible.length === 0 && <div className="history-empty">{t("repository.common.noMatchingItems")}</div>}{state.kind === "ok" && layout && visible.length > 0 && <div ref={commitWindowRef} className="history-commit-window"><div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.topSpacerHeight }} />{windowRows.map(({ entry, graphNode }) => <CommitRow key={entry.fullHash} rowRef={(node) => { if (node) rowRefs.current.set(entry.fullHash, node); else rowRefs.current.delete(entry.fullHash); }} entry={entry} checkouts={state.checkouts} selected={target?.fullHash === entry.fullHash} graphNode={graphNode} onSelect={(selected) => setTarget({ fullHash: selected.fullHash, entry: selected })} locale={ctx.language} />)}<div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.bottomSpacerHeight }} /></div>}{state.kind === "ok" && state.commits.length > 0 && <div className="history-pagination">{state.hasMore ? loadingMore ? <span>{t("repository.history.loadingMore")}</span> : <button type="button" className="repository-refresh-btn" onClick={loadMore}>{t("repository.history.loadMore")}</button> : <><span>{t("repository.history.end")}</span>{state.truncated && <span>{t("repository.history.capped")}</span>}</>}{loadMoreError && <span className="history-pagination-error">{loadMoreError}</span>}</div>}</div>
     </div>
     {workspaceMain !== undefined && <div className="repository-ws-main" hidden={!workspaceMainVisible}>{workspaceMain}</div>}
     {target && <><div className="history-divider history-divider--horizontal" role="separator" aria-orientation="horizontal" aria-label={workspace ? t("repository.history.resizeDock") : t("repository.history.resizeLog")} onPointerDown={handleDivider} /><div className="history-detail-pane"><CommitInspector ctx={ctx} repoRel={repoRel} target={target} workspace={workspace} onSelectCommit={setTarget} onClose={() => setTarget(null)} /></div></>}

@@ -159,10 +159,11 @@ async function normalizeWorktreePath(worktreePath: string): Promise<string> {
   }
 }
 
-async function readHeadRevList(gitCwd: string): Promise<string> {
+async function readHeadRevList(gitCwd: string, skip: number, limit: number): Promise<string> {
   try {
-    // 표시 윈도가 200이므로 1000이면 도달성 판정에 충분한 여유다
-    return (await runGit(["rev-list", "-n", "1000", "HEAD"], { cwd: gitCwd })).stdout;
+    // 현재 페이지 끝보다 800개 더 읽되 최소 1000개를 유지해, 누적 표시 윈도 밖의
+    // 분기 커밋까지 HEAD 도달성 판정에 충분한 여유를 둔다.
+    return (await runGit(["rev-list", "-n", String(Math.max(1000, skip + limit + 800)), "HEAD"], { cwd: gitCwd })).stdout;
   } catch (error) {
     if (error instanceof GitExecutorError) return "";
     throw error;
@@ -188,11 +189,17 @@ export async function handleRepositoryLog(
   if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
-  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly repoRel?: unknown; readonly subPath?: unknown; readonly ref?: unknown }>(req);
+  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly repoRel?: unknown; readonly subPath?: unknown; readonly ref?: unknown; readonly limit?: unknown; readonly skip?: unknown }>(req);
   if (!isPlainObject(body) || "subPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
 
   const theaterId = body.theaterId;
   if (typeof theaterId !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
+  const limit = body.limit === undefined ? 200 : body.limit;
+  const skip = body.skip === undefined ? 0 : body.skip;
+  if (!Number.isInteger(limit) || typeof limit !== "number" || limit < 1 || limit > 500
+    || !Number.isInteger(skip) || typeof skip !== "number" || skip < 0) {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return;
+  }
 
   const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
   if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
@@ -217,7 +224,7 @@ export async function handleRepositoryLog(
     const [worktrees, currentWorktreePath, headRevList] = await Promise.all([
       runGit(["worktree", "list", "--porcelain"], { cwd: gitCwd }),
       readCurrentWorktreePath(gitCwd),
-      readHeadRevList(gitCwd),
+      readHeadRevList(gitCwd, skip, limit),
     ]);
     const checkouts = await parseWorktreePorcelain(worktrees.stdout, currentWorktreePath);
     // detached 워크트리 HEAD는 어떤 브랜치/태그/원격에서도 도달 불가능할 수 있으므로 rev 집합에 명시적으로 추가한다
@@ -233,15 +240,16 @@ export async function handleRepositoryLog(
     // rev/경로 모호성으로 로그 전체가 실패한다.
     const [realGitCwd, realToplevel] = await Promise.all([normalizeWorktreePath(gitCwd), normalizeWorktreePath(currentWorktreePath)]);
     const scopePathspec = realToplevel !== "" && realGitCwd === realToplevel ? [] : ["."];
+    const skipArg = skip > 0 ? [`--skip=${skip}`] : [];
     const result = resolvedRef
-      ? await runGit(["log", resolvedRef, "--date-order", "-n", "200", "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", "--", ...scopePathspec], { cwd: gitCwd })
+      ? await runGit(["log", resolvedRef, "--date-order", "-n", String(limit), ...skipArg, "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", "--", ...scopePathspec], { cwd: gitCwd })
       : await runGit(
         // --all은 refs/stash·refs/notes까지 그래프에 유입시키므로 브랜치/태그/원격 + 현재 HEAD + 워크트리 HEAD로 한정한다
-        ["log", "--branches", "--tags", "--remotes", "--date-order", "-n", "200", "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", ...headRevs, ...worktreeRevs, "--", ...scopePathspec],
+        ["log", "--branches", "--tags", "--remotes", "--date-order", "-n", String(limit), ...skipArg, "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", ...headRevs, ...worktreeRevs, "--", ...scopePathspec],
         { cwd: gitCwd },
       );
     const commits = annotateHeadReachability(parseLogOutput(result.stdout), headRevList);
-    ctx.host.http.writeJson(res, 200, { commits, checkouts, ...(result.truncated ? { truncated: true } : {}) });
+    ctx.host.http.writeJson(res, 200, { commits, checkouts, hasMore: commits.length === limit, ...(result.truncated ? { truncated: true } : {}) });
   } catch (error) {
     if (error instanceof GitExecutorError) {
       if (requestedRef !== undefined && error.code === "non_zero_exit") {
@@ -249,7 +257,7 @@ export async function handleRepositoryLog(
         return;
       }
       if (error.code === "no_git_repo") {
-        ctx.host.http.writeJson(res, 200, { commits: [], checkouts: [] });
+        ctx.host.http.writeJson(res, 200, { commits: [], checkouts: [], hasMore: false });
         return;
       }
       if (error.code === "git_unavailable") {
@@ -258,7 +266,7 @@ export async function handleRepositoryLog(
       }
       // no-HEAD 신규 저장소(HEAD 미존재)는 빈 배열 graceful; 그 외 비정상 종료는 500 — 500 분기보다 먼저 검사한다
       if (isNoHeadError(error)) {
-        ctx.host.http.writeJson(res, 200, { commits: [], checkouts: [] });
+        ctx.host.http.writeJson(res, 200, { commits: [], checkouts: [], hasMore: false });
         return;
       }
       ctx.host.http.writeJson(res, 500, { error: "git_failed" });
