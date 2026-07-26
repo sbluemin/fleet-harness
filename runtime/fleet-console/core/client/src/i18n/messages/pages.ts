@@ -81,7 +81,9 @@ export const pagesEn = {
   "palette.theme.instrument": "Instrument",
   "palette.theme.maritime": "Maritime",
   "palette.theme.carbon": "Carbon",
+  "palette.undoClose": "Undo last close",
   "palette.switchTheater": "Switch theater: {label}",
+  "palette.newTheater": "Add Theater…",
   "palette.newOperation": "New Operation in {label}",
   "palette.resumeOperation": "Resume operation: {title}",
   "palette.closeOperation": "Close operation: {title}",
@@ -100,6 +102,7 @@ export const pagesEn = {
   "palette.openSettings": "Open Settings",
   "palette.openKeyboardShortcuts": "Open keyboard shortcuts",
   "palette.whatsNew": "What's new",
+  "palette.forgetTheater": "Forget Theater: {label}",
 
   // shortcuts
   "shortcuts.group.console": "Console",
@@ -354,7 +357,9 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "palette.theme.instrument": "Instrument",
   "palette.theme.maritime": "Maritime",
   "palette.theme.carbon": "Carbon",
+  "palette.undoClose": "마지막 닫기 실행 취소",
   "palette.switchTheater": "Theater 전환: {label}",
+  "palette.newTheater": "Theater 추가…",
   "palette.newOperation": "{label}에서 새 Operation",
   "palette.resumeOperation": "Operation 재개: {title}",
   "palette.closeOperation": "Operation 닫기: {title}",
@@ -373,6 +378,7 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "palette.openSettings": "설정 열기",
   "palette.openKeyboardShortcuts": "키보드 단축키 열기",
   "palette.whatsNew": "새로운 기능",
+  "palette.forgetTheater": "Theater 잊기: {label}",
 
   "shortcuts.group.console": "Console",
   "shortcuts.console.searchOps": "Theater 전체에서 Operation 검색",

@@ -87,7 +87,7 @@ describe("rail search fan-out", () => {
     expect(slow.mock.calls[0]?.[0].signal.aborted).toBe(true);
   });
 
-  it("does not fan out for an empty query, missing Theater, or command mode", async () => {
+  it("does not fan out for an empty query, bare command mode, or a missing Theater", async () => {
     const provider = vi.fn<RailSearchProvider>(async () => []);
     panels = [panel("files", "Files", provider)];
     renderPalette();
@@ -95,7 +95,7 @@ describe("rail search fan-out", () => {
     await advanceDebounce();
     expect(provider).not.toHaveBeenCalled();
 
-    setInput(">open panel");
+    setInput(">");
     await advanceDebounce();
     expect(provider).not.toHaveBeenCalled();
 
@@ -103,6 +103,36 @@ describe("rail search fan-out", () => {
     setInput("needle");
     await advanceDebounce();
     expect(provider).not.toHaveBeenCalled();
+  });
+
+  it("mixes rail matches after commands in command mode and selects them with the shared index", async () => {
+    const activate = vi.fn();
+    const provider = vi.fn<RailSearchProvider>(async ({ query }) => {
+      expect(query).toBe("plan");
+      return [result("plan-a", "Plan A", activate)];
+    });
+    panels = [panel("plans", "Plans", provider)];
+    renderPalette();
+
+    setInput(">plan");
+    await advanceDebounce();
+
+    const headings = [...container.querySelectorAll(".operation-search-section-heading")].map((node) => node.textContent);
+    expect(headings).toEqual(["Commands", "Plans"]);
+    const options = [...container.querySelectorAll<HTMLButtonElement>('[role="option"]')];
+    expect(options.map((option) => option.textContent)).toEqual([
+      expect.stringContaining("Open panel: Plans"),
+      expect.stringContaining("Plan A"),
+    ]);
+
+    const input = container.querySelector<HTMLInputElement>("#operation-search-input");
+    act(() => input!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })));
+    expect(options[1]?.getAttribute("aria-selected")).toBe("true");
+    await act(async () => {
+      input!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+    expect(activate).toHaveBeenCalledOnce();
   });
 
   it("debounces providers and discards a response that arrives after abort via the generation fence", async () => {

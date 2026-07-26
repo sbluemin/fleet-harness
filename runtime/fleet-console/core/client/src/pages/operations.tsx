@@ -4,13 +4,14 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
-import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, forgetTheater, issueTheaterFolderGrant, patchOperation, patchTheaterOrder, renameOperation, updateGroup, ApiError, type DeferredDeletionReceipt } from "../api.js";
+import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, issueTheaterFolderGrant, patchOperation, patchTheaterOrder, renameOperation, updateGroup, ApiError, type DeferredDeletionReceipt } from "../api.js";
 import { closeOperationCompletely } from "../operation-close.js";
+import { forgetTheaterCompletely } from "../theater-forget.js";
 import { claimTopZIndex, ensureDefaultGeometry, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { playMinimizeFlight, playRestoreFlight } from "../canvas/panel-motion.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
-import { deferTriageOperation, dismissTriageOperation, focusedTriageOperationId, forgetTriageOperation, isTriageActive, pickTriageOperation, recordTriageActivity, resetTriageTheater, resolveTriageQueue, setTriageActive } from "../canvas/triage-store.js";
+import { deferTriageOperation, dismissTriageOperation, focusedTriageOperationId, forgetTriageOperation, isTriageActive, pickTriageOperation, recordTriageActivity, resolveTriageQueue, setTriageActive } from "../canvas/triage-store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
@@ -20,7 +21,7 @@ import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
 import { resolveOperationsArrowShortcutAction } from "../operations-arrow-shortcut.js";
-import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, removeTheater, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
+import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { MobileShell } from "../mobile/mobile-shell.js";
 import { OperationBodyPool, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
@@ -396,21 +397,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   }, []);
 
   const handleForgetTheater = useCallback(async (theaterId: string) => {
-    // 서버는 Theater 삭제 시 소속 Operation/Group 레코드도 정리한다 — 로컬 목록만 지우면
-    // stale 패널이 퀵서치 등에 남으므로(Codex P2) 두 컬렉션을 재수화한다.
-    const refreshCollections = () => Promise.all([
-      fetchOperations(null).then(hydrateOperations),
-      fetchGroups(null).then(hydrateGroups),
-    ]).then(() => {}).catch(() => {});
-    try {
-      const response = await forgetTheater(theaterId);
-      resetTriageTheater(theaterId);
-      removeTheater(theaterId);
-      await refreshCollections();
-      onDeferredDeletion(response.deletion);
-    } catch (error) {
-      failAddTheater(error instanceof Error ? error.message : String(error));
-    }
+    onDeferredDeletion(await forgetTheaterCompletely(theaterId));
   }, [onDeferredDeletion]);
 
   const shell = viewMode.effective === "mobile" ? (

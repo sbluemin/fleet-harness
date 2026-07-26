@@ -22,6 +22,7 @@ import {
 } from "../palette-commands.js";
 import { stashKeyboardShortcutsReturnFocus } from "../keyboard-shortcuts-return-focus.js";
 import { closeOperationCompletely } from "../operation-close.js";
+import { forgetTheaterCompletely } from "../theater-forget.js";
 import type { DeferredDeletionReceipt } from "../api.js";
 import { getLoadedTheaterId, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, loadForTheater, minimizeOperations, toggleFormationView } from "../canvas/canvas-store.js";
 import { forgetTriageOperation, isTriageActive, setTriageActive } from "../canvas/triage-store.js";
@@ -35,6 +36,7 @@ import {
   openWhatsNew,
   operationSearchEntries,
   requestOperationLaunchMenu,
+  requestSideBarAddTheater,
   setActiveTheater,
   setActiveTheme,
 } from "../store.js";
@@ -48,6 +50,8 @@ interface OperationSearchProps {
   readonly plugins: readonly FleetClientPlugin[];
   // 팔레트 close도 캔버스·사이드바와 같은 유예 큐에 receipt를 넣어야 Undo가 경로에 상관없이 동작한다.
   readonly onDeferredDeletion?: (deletion: DeferredDeletionReceipt | null) => void;
+  readonly canUndoLastClose?: () => boolean;
+  readonly onUndoLastClose?: () => void;
 }
 
 const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
@@ -55,7 +59,14 @@ const LISTBOX_ID = "operation-search-listbox";
 const UNASSIGNED_GROUP_KEY = "__unassigned__";
 const COMMAND_GROUP_HEADING_ID = "operation-search-heading-commands";
 
-export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion }: OperationSearchProps) {
+export function OperationSearch({
+  state,
+  railPanels,
+  plugins,
+  onDeferredDeletion,
+  canUndoLastClose,
+  onUndoLastClose,
+}: OperationSearchProps) {
   const t = useT();
   const navigate = useNavigate();
   const location = useLocation();
@@ -71,7 +82,11 @@ export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion
   const entries = useMemo(() => operationSearchEntries(state), [state]);
   const filteredEntries = useMemo(() => filterOperationSearchEntries(entries, query), [entries, query]);
   const groups = useMemo(() => groupOperationSearchEntries(filteredEntries), [filteredEntries]);
-  const commands = useMemo(() => buildPaletteCommands(state, railPanels, t), [state, railPanels, t]);
+  const undoAvailable = canUndoLastClose?.() === true;
+  const commands = useMemo(
+    () => buildPaletteCommands(state, railPanels, t, { canUndoLastClose: undoAvailable }),
+    [state, railPanels, t, undoAvailable],
+  );
   const filteredCommands = useMemo(
     () => (commandMode ? filterPaletteCommands(commands, commandModeQuery(query)) : commands),
     [commandMode, commands, query],
@@ -81,10 +96,19 @@ export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion
     () => railSearchGroups.flatMap((group) => group.results.map((result) => ({ group, result }))),
     [railSearchGroups],
   );
-  const resultCount = commandMode ? filteredCommands.length : filteredEntries.length + railSearchEntries.length;
+  const resultCount = commandMode
+    ? filteredCommands.length + railSearchEntries.length
+    : filteredEntries.length + railSearchEntries.length;
   const clampedSelectedIndex = clampIndex(selectedIndex, resultCount);
   const selectedResultKey = commandMode
-    ? filteredCommands[clampedSelectedIndex] ? commandResultKey(filteredCommands[clampedSelectedIndex]!.commandId) : undefined
+    ? filteredCommands[clampedSelectedIndex]
+      ? commandResultKey(filteredCommands[clampedSelectedIndex]!.commandId)
+      : railSearchEntries[clampedSelectedIndex - filteredCommands.length]
+        ? railResultKey(
+          railSearchEntries[clampedSelectedIndex - filteredCommands.length]!.group.panelId,
+          railSearchEntries[clampedSelectedIndex - filteredCommands.length]!.result.id,
+        )
+        : undefined
     : filteredEntries[clampedSelectedIndex]
       ? operationResultKey(filteredEntries[clampedSelectedIndex]!.operationId)
       : railSearchEntries[clampedSelectedIndex - filteredEntries.length]
@@ -101,11 +125,12 @@ export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion
     const generation = ++searchGenerationRef.current;
     setRailSearchGroups([]);
     const theaterId = state.activeTheaterId;
-    if (!state.operationSearchOpen || commandMode || query.trim() === "" || !theaterId) return;
+    const effectiveQuery = commandMode ? commandModeQuery(query) : query;
+    if (!state.operationSearchOpen || effectiveQuery.trim() === "" || !theaterId) return;
 
     const abort = new AbortController();
     const timer = window.setTimeout(() => {
-      void searchRailPanels(railPanels, query, theaterId, abort.signal).then((nextGroups) => {
+      void searchRailPanels(railPanels, effectiveQuery, theaterId, abort.signal).then((nextGroups) => {
         // provider가 abort를 무시해도 이전 세대 결과는 현재 팔레트에 반영하지 않는다.
         if (abort.signal.aborted || generation !== searchGenerationRef.current) return;
         setRailSearchGroups(nextGroups);
@@ -171,12 +196,24 @@ export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion
   const runCommand = (command: PaletteCommandEntry) => {
     const action = command.action;
     switch (action.kind) {
+      case "undo-close": {
+        previousFocusRef.current = null;
+        if (canUndoLastClose?.()) onUndoLastClose?.();
+        break;
+      }
       case "switch-theater": {
         if (command.current) break;
         // Theater 전환은 캔버스로 포커스 문맥을 넘기므로 selectEntry처럼 이전 포커스 복원을 억제한다.
         previousFocusRef.current = null;
         setActiveTheater(action.theaterId);
         navigate("/operations");
+        break;
+      }
+      case "new-theater": {
+        previousFocusRef.current = null;
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        if (getSideBarState().collapsed) setSideBarCollapsed(false);
+        requestSideBarAddTheater();
         break;
       }
       case "new-operation": {
@@ -303,6 +340,10 @@ export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion
         openWhatsNew();
         break;
       }
+      case "forget-theater": {
+        void forgetTheaterCompletely(action.theaterId).then(onDeferredDeletion);
+        break;
+      }
     }
     closeOperationSearch();
   };
@@ -321,9 +362,15 @@ export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion
     if (event.key === "Enter") {
       if (commandMode) {
         const selected = filteredCommands[clampedSelectedIndex];
-        if (!selected) return;
+        if (selected) {
+          event.preventDefault();
+          runCommand(selected);
+          return;
+        }
+        const panelEntry = railSearchEntries[clampedSelectedIndex - filteredCommands.length];
+        if (!panelEntry) return;
         event.preventDefault();
-        runCommand(selected);
+        void selectRailResult(panelEntry.group.panelId, panelEntry.result);
         return;
       }
       const selected = filteredEntries[clampedSelectedIndex];
@@ -374,37 +421,76 @@ export function OperationSearch({ state, railPanels, plugins, onDeferredDeletion
           <kbd>esc</kbd>
         </div>
         <div id={LISTBOX_ID} className="operation-search-results" role="listbox" aria-label={commandMode ? t("chrome.operationSearch.commandResults") : t("chrome.operationSearch.operationResults")}>
-          {commandMode ? (filteredCommands.length > 0 ? (
-            <section className="operation-search-section" role="group" aria-labelledby={COMMAND_GROUP_HEADING_ID}>
-              <h2 id={COMMAND_GROUP_HEADING_ID} className="operation-search-section-heading">{t("chrome.operationSearch.commands")}</h2>
-              {filteredCommands.map((command, index) => {
-                const active = index === clampedSelectedIndex;
-                const resultKey = commandResultKey(command.commandId);
+          {commandMode ? (
+            filteredCommands.length > 0 || railSearchGroups.length > 0 ? <>
+              {filteredCommands.length > 0 ? (
+                <section className="operation-search-section" role="group" aria-labelledby={COMMAND_GROUP_HEADING_ID}>
+                  <h2 id={COMMAND_GROUP_HEADING_ID} className="operation-search-section-heading">{t("chrome.operationSearch.commands")}</h2>
+                  {filteredCommands.map((command, index) => {
+                    const active = index === clampedSelectedIndex;
+                    const resultKey = commandResultKey(command.commandId);
+                    return (
+                      <button
+                        id={commandOptionId(command.commandId)}
+                        key={command.commandId}
+                        ref={(node) => {
+                          if (node) resultRefs.current.set(resultKey, node);
+                          else resultRefs.current.delete(resultKey);
+                        }}
+                        type="button"
+                        className={`operation-search-result ${active ? "is-active" : ""}`}
+                        role="option"
+                        aria-selected={active}
+                        onMouseEnter={() => setSelectedIndex(index)}
+                        onClick={() => runCommand(command)}
+                      >
+                        <span className="operation-search-command-glyph" aria-hidden="true">›</span>
+                        <span className="operation-search-result-text">
+                          <strong>{highlightText(command.label, tokens)}</strong>
+                        </span>
+                        {command.current ? <span className="operation-search-theater">{t("chrome.operationSearch.current")}</span> : null}
+                      </button>
+                    );
+                  })}
+                </section>
+              ) : null}
+              {railSearchGroups.map((group) => {
+                const headingId = railGroupHeadingId(group.panelId);
                 return (
-                  <button
-                    id={commandOptionId(command.commandId)}
-                    key={command.commandId}
-                    ref={(node) => {
-                      if (node) resultRefs.current.set(resultKey, node);
-                      else resultRefs.current.delete(resultKey);
-                    }}
-                    type="button"
-                    className={`operation-search-result ${active ? "is-active" : ""}`}
-                    role="option"
-                    aria-selected={active}
-                    onMouseEnter={() => setSelectedIndex(index)}
-                    onClick={() => runCommand(command)}
-                  >
-                    <span className="operation-search-command-glyph" aria-hidden="true">›</span>
-                    <span className="operation-search-result-text">
-                      <strong>{highlightText(command.label, tokens)}</strong>
-                    </span>
-                    {command.current ? <span className="operation-search-theater">{t("chrome.operationSearch.current")}</span> : null}
-                  </button>
+                  <section className="operation-search-section operation-search-panel-section" key={group.panelId} role="group" aria-labelledby={headingId}>
+                    <h2 id={headingId} className="operation-search-section-heading">{group.panelTitle}</h2>
+                    {group.results.map((result) => {
+                      const index = filteredCommands.length + railSearchEntries.findIndex((entry) => entry.group.panelId === group.panelId && entry.result === result);
+                      const active = index === clampedSelectedIndex;
+                      const resultKey = railResultKey(group.panelId, result.id);
+                      return (
+                        <button
+                          id={resultOptionId(resultKey)}
+                          key={result.id}
+                          ref={(node) => {
+                            if (node) resultRefs.current.set(resultKey, node);
+                            else resultRefs.current.delete(resultKey);
+                          }}
+                          type="button"
+                          className={`operation-search-result operation-search-panel-result ${active ? "is-active" : ""}`}
+                          role="option"
+                          aria-selected={active}
+                          onMouseEnter={() => setSelectedIndex(index)}
+                          onClick={() => { void selectRailResult(group.panelId, result); }}
+                        >
+                          <span className="operation-search-result-text">
+                            <strong>{highlightText(result.title, tokens)}</strong>
+                            {result.subtitle ? <small>{highlightText(result.subtitle, tokens)}</small> : null}
+                          </span>
+                          <span className="operation-search-panel-open">{t("chrome.operationSearch.open")}</span>
+                        </button>
+                      );
+                    })}
+                  </section>
                 );
               })}
-            </section>
-          ) : <p className="operation-search-empty">{t("chrome.operationSearch.noMatchingCommands")}</p>) : (
+            </> : <p className="operation-search-empty">{t("chrome.operationSearch.noMatchingCommands")}</p>
+          ) : (
             groups.length > 0 || railSearchGroups.length > 0 ? <>
               {groups.map((group) => {
                 const headingId = operationGroupHeadingId(group.theaterId);

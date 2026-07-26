@@ -14,7 +14,9 @@ export interface PaletteRailPanelInfo {
 }
 
 export type PaletteCommandAction =
+  | { readonly kind: "undo-close" }
   | { readonly kind: "switch-theater"; readonly theaterId: string }
+  | { readonly kind: "new-theater" }
   | { readonly kind: "new-operation" }
   | { readonly kind: "resume-operation"; readonly operationId: string }
   | { readonly kind: "close-operation"; readonly operationId: string }
@@ -32,7 +34,8 @@ export type PaletteCommandAction =
   | { readonly kind: "assign-operation-group"; readonly operationId: string }
   | { readonly kind: "set-operation-accent"; readonly operationId: string }
   | { readonly kind: "minimize-operation"; readonly operationId: string }
-  | { readonly kind: "whats-new" };
+  | { readonly kind: "whats-new" }
+  | { readonly kind: "forget-theater"; readonly theaterId: string };
 
 export interface PaletteCommandEntry {
   readonly commandId: string;
@@ -63,6 +66,7 @@ export function buildPaletteCommands(
   current: ConsoleState,
   railPanels: readonly PaletteRailPanelInfo[],
   t: T,
+  options?: { readonly canUndoLastClose?: boolean },
 ): readonly PaletteCommandEntry[] {
   const commands: PaletteCommandEntry[] = [];
   const language = resolveActiveLocale();
@@ -70,6 +74,14 @@ export function buildPaletteCommands(
   const activeOperation = current.operations.find(
     (operation) => operation.id === current.activeOperationId && operation.theaterId === current.activeTheaterId,
   ) ?? null;
+  if (options?.canUndoLastClose === true) {
+    commands.push({
+      commandId: "undo-close",
+      label: t("palette.undoClose"),
+      current: false,
+      action: { kind: "undo-close" },
+    });
+  }
   for (const theater of current.theaters) {
     commands.push({
       commandId: `switch-theater:${theater.id}`,
@@ -78,6 +90,12 @@ export function buildPaletteCommands(
       action: { kind: "switch-theater", theaterId: theater.id },
     });
   }
+  commands.push({
+    commandId: "new-theater",
+    label: t("palette.newTheater"),
+    current: false,
+    action: { kind: "new-theater" },
+  });
   if (activeTheater) {
     commands.push({
       commandId: "new-operation",
@@ -205,6 +223,14 @@ export function buildPaletteCommands(
       label: t("palette.whatsNew"),
       current: false,
       action: { kind: "whats-new" },
+    });
+  }
+  for (const theater of current.theaters) {
+    commands.push({
+      commandId: `forget-theater:${theater.id}`,
+      label: t("palette.forgetTheater", { label: theater.label }),
+      current: false,
+      action: { kind: "forget-theater", theaterId: theater.id },
     });
   }
   return commands;
