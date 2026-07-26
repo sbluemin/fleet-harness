@@ -66,7 +66,9 @@ export const OPERATION_GRID_GAP = 8;
 export const OPERATION_GRID_PADDING = 0;
 const OPERATION_FOCUS_PADDING = 96;
 const FOCUS_MIN_ZOOM = 0.25;
-const FIT_ALL_MIN_ZOOM = 0.1;
+// fit-all의 하한은 사용성 경계가 아니라 수치 안전 epsilon이다 — fit은 "전체를 담는" 계약이라
+// 임의의 사용성 하한(0.25, 0.1 등)은 초광폭 배치에서 가장자리 클리핑으로 계약을 깬다.
+const FIT_ALL_MIN_ZOOM = 0.02;
 const FOCUS_MAX_ZOOM = 1;
 // 줌 보간: 매 프레임 현재 viewport를 target 쪽으로 이 비율만큼 당긴다(지수 감쇠).
 const ZOOM_TWEEN_FACTOR = 0.2;

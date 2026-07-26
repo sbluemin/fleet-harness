@@ -47,13 +47,25 @@ describe("canvas store", () => {
     expect(getSnapshot().viewport).toEqual({ x: 50, y: 0, zoom: 1 });
   });
 
-  it("clamps fit zoom to the 0.1 lower bound for widely scattered Operations", () => {
+  it("zooms out far enough to fit widely scattered Operations", () => {
     setOperationGeometry("op-a", { ...GEOMETRY, x: -5_000, y: -1_000 });
     setOperationGeometry("op-b", { ...GEOMETRY, x: 5_000, y: 1_000 });
 
     fitAllOperations();
 
-    expect(getSnapshot().viewport).toEqual({ x: 495, y: 395, zoom: 0.1 });
+    const { x, y, zoom } = getSnapshot().viewport;
+    expect(zoom).toBeCloseTo(904 / 10_100, 10);
+    expect(x).toBeCloseTo(500 - 50 * (904 / 10_100), 10);
+    expect(y).toBeCloseTo(400 - 50 * (904 / 10_100), 10);
+  });
+
+  it("clamps fit zoom only at the numerical epsilon for extreme spreads", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY, x: -50_000, y: -1_000 });
+    setOperationGeometry("op-b", { ...GEOMETRY, x: 50_000, y: 1_000 });
+
+    fitAllOperations();
+
+    expect(getSnapshot().viewport).toEqual({ x: 499, y: 399, zoom: 0.02 });
   });
 
   it("preserves an intermediate fit zoom between the lower and upper bounds", () => {
