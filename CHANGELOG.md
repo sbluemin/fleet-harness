@@ -5,6 +5,40 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.35.0] - 2026-07-26
+
+### fleet-console
+
+#### Added
+- [fleet-console] A view mode control in the command band switches between Auto, Mobile, and Desktop, and Auto follows the window width so a narrow window opens the mobile layout on its own.
+- [fleet-console] Narrow screens get a dedicated shell that lists Operations by status, opens one session full screen, and returns to the list with the back control or the browser back button, while the desktop canvas layout stays untouched.
+- [fleet-console] Add Triage mode, which stows every panel and brings up one waiting Operation at a time on a maximized stage, with a queue rail, Alt+T toggle and Alt+Right defer. An Operation waits when it is awaiting input or has just returned to idle without being seen, and the sidebar shows that queue through its own status sort rather than a separate mode-only list.
+- [fleet-console] Add guided feature tours that introduce a new capability at its entry point and walk through it once, remembering what has been seen.
+
+#### Changed
+- [fleet-console] An Operation that just went idle without being opened now signals it on every surface: the sidebar shows the unseen mark under any sort order and files it with the awaiting group when sorted by status, and a panel sitting on the Map takes a green rim with an outer glow. Focusing the Operation clears the signal everywhere at once, and the focus highlight always wins over it. While Triage mode is on the signal survives focus, so the panel you are working on cannot drop out of the queue.
+- [fleet-console] Rebuild Formation view as a situation board with a brighter survey grid, instrument frame, slot numbers, open-slot guides and an entry sequence.
+- [fleet-console] Remember the first-run onboarding in console settings instead of browser storage, so it no longer reappears on another browser or device.
+
+#### Fixed
+- [fleet-console] Alt+Arrow panel cycling keeps following the canvas layout order while the sidebar is sorted by status, instead of jumping through the status sections.
+- [fleet-console] Join the expanded Theater sidebar to the command band block above it, so the shared column no longer stacks two hairlines at the seam and no longer breaks its right edge across a rounded corner.
+- [fleet-console] Stop scrim-backed modals, floating menus, toasts, the command palette, and the right-rail "float over Map" Solid preset from bleeding the canvas through in the maritime and carbon themes, while panels and cards keep those themes' glass design.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Agent Operations now carry a sortie ribbon along the bottom of the body while carriers stream, naming how many are out, which captains hold them, and what each is doing, so a carrier sortie is no longer indistinguishable from the agent's own turn. Clicking it opens Carrier Streams. The ribbon floats over the terminal instead of shrinking it, so the terminal keeps its full size.
+
+#### Changed
+- [fleet-console] Carrier stream rows now share the panel height instead of a fixed cap: a single stream fills what it needs without scrolling, and as more carriers stream the rows shrink evenly down to a readable floor while shorter rows hand their surplus height to longer ones.
+
+#### Fixed
+- [fleet-console] Draw repository history graph lanes from real git ancestry instead of branching at commits the log query had silently dropped.
+- [fleet-console] Leave a lane unconnected where a filter or the row cap hides the commits in between, rather than asserting an ancestry the visible rows do not prove.
+- [fleet-console] EXIT on the Session Analyst handle now closes the artifacts panel together with the chat panel, instead of leaving the artifacts panel on screen with no control able to dismiss it.
+- [fleet-console] Make the Skills reading overlay and toast and the Session Analyst artifact menu and slash-command listbox fully opaque in the maritime and carbon themes.
+
 ## [1.34.0] - 2026-07-25
 
 ### fleet-cli
