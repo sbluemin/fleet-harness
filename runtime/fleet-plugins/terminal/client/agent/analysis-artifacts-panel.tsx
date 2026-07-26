@@ -21,12 +21,31 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
   const exportId = React.useId();
   const listShell = React.useRef<HTMLDivElement>(null);
   const exportShell = React.useRef<HTMLDivElement>(null);
+  const exportTrigger = React.useRef<HTMLButtonElement>(null);
+  const exportMenu = React.useRef<HTMLDivElement>(null);
   const copiedTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const disposed = React.useRef(false);
+  const exportOpenRef = React.useRef(false);
+  const activeArtifactId = React.useRef<string | null>(null);
   React.useEffect(() => {
     if (newestId) setActiveId(newestId);
   }, [newestId]);
   const active = artifacts.find((artifact) => artifact.id === activeId) ?? artifacts.at(-1) ?? null;
+  activeArtifactId.current = active?.id ?? null;
   const count = artifacts.length;
+  const clearCopied = () => {
+    if (copiedTimer.current !== null) {
+      clearTimeout(copiedTimer.current);
+      copiedTimer.current = null;
+    }
+    setExportCopied(false);
+  };
+  const closeExport = (restoreFocus = false) => {
+    exportOpenRef.current = false;
+    setExportOpen(false);
+    clearCopied();
+    if (restoreFocus) exportTrigger.current?.focus();
+  };
   React.useEffect(() => {
     if (!listOpen) return;
     const closeOutside = (event: PointerEvent) => {
@@ -48,10 +67,10 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
   React.useEffect(() => {
     if (!exportOpen) return;
     const closeOutside = (event: PointerEvent) => {
-      if (event.target instanceof Node && !exportShell.current?.contains(event.target)) setExportOpen(false);
+      if (event.target instanceof Node && !exportShell.current?.contains(event.target)) closeExport();
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setExportOpen(false);
+      if (event.key === "Escape") closeExport(true);
     };
     document.addEventListener("pointerdown", closeOutside);
     document.addEventListener("keydown", closeOnEscape);
@@ -61,19 +80,33 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
     };
   }, [exportOpen]);
   React.useEffect(() => {
-    if (!active) setExportOpen(false);
-  }, [active]);
-  React.useEffect(() => () => {
-    if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
+    if (!active) closeExport();
+  }, [active?.id]);
+  React.useEffect(() => {
+    clearCopied();
+  }, [exportOpen, active?.id]);
+  React.useEffect(() => {
+    if (exportOpen) exportMenu.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+  }, [exportOpen]);
+  React.useEffect(() => {
+    disposed.current = false;
+    return () => {
+      disposed.current = true;
+      if (copiedTimer.current !== null) {
+        clearTimeout(copiedTimer.current);
+        copiedTimer.current = null;
+      }
+    };
   }, []);
 
   const downloadActive = () => {
     if (!active) return;
-    setExportOpen(false);
+    closeExport(true);
     const blob = new Blob([active.html], { type: "text/html" });
     const objectUrl = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
-    const filename = active.title.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-+|-+$/g, "") || "artifact";
+    const sanitized = active.title.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-+|-+$/g, "").replace(/^\.+/, "");
+    const filename = /[\p{L}\p{N}]/u.test(sanitized) ? sanitized : "artifact";
     anchor.href = objectUrl;
     anchor.download = `${filename}.html`;
     anchor.click();
@@ -81,23 +114,51 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
   };
   const copyActive = async () => {
     if (!active) return;
+    const artifactId = active.id;
     try {
       await navigator.clipboard.writeText(active.html);
+      if (disposed.current || !exportOpenRef.current || activeArtifactId.current !== artifactId) return;
       setExportCopied(true);
       if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
       copiedTimer.current = setTimeout(() => {
         copiedTimer.current = null;
+        if (disposed.current) return;
         setExportCopied(false);
       }, 1_500);
+      exportTrigger.current?.focus();
     } catch {
-      setExportOpen(false);
+      if (disposed.current) return;
+      closeExport(true);
     }
   };
   const openActiveInNewTab = () => {
     if (!active) return;
-    setExportOpen(false);
+    closeExport(true);
     const { canvas, foreground } = getArtifactColors();
     window.open(analysisArtifactUrl(active.id, context.theme, canvas, foreground), "_blank", "noopener");
+  };
+  const handleExportMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeExport(true);
+      return;
+    }
+    if (event.key === "Tab") {
+      closeExport();
+      return;
+    }
+    const items = [...(exportMenu.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [])];
+    if (!items.length) return;
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowDown") nextIndex = (currentIndex + 1) % items.length;
+    if (event.key === "ArrowUp") nextIndex = (currentIndex - 1 + items.length) % items.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = items.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    items[nextIndex]?.focus();
   };
 
   return (
@@ -125,9 +186,9 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
           ) : null}
         </div>
         <div className="session-analyst__export-shell" ref={exportShell}>
-          <button type="button" className="session-analyst__export" aria-haspopup="menu" aria-expanded={exportOpen} aria-controls={exportId} disabled={!active} onClick={() => setExportOpen((open) => !open)}>{t("terminal.artifacts.export")}</button>
+          <button type="button" className="session-analyst__export" ref={exportTrigger} aria-haspopup="menu" aria-expanded={exportOpen} aria-controls={exportId} disabled={!active} onClick={() => { exportOpenRef.current = !exportOpen; setExportOpen((open) => !open); }}>{t("terminal.artifacts.export")}</button>
           {exportOpen ? (
-            <div className="session-analyst__export-menu" id={exportId} role="menu">
+            <div className="session-analyst__export-menu" id={exportId} role="menu" ref={exportMenu} onKeyDown={handleExportMenuKeyDown}>
               <button type="button" role="menuitem" onClick={downloadActive}>{t("terminal.artifacts.exportDownload")}</button>
               <button type="button" role="menuitem" onClick={() => { void copyActive(); }}>{t(exportCopied ? "terminal.artifacts.exportCopied" : "terminal.artifacts.exportCopy")}</button>
               <button type="button" role="menuitem" onClick={openActiveInNewTab}>{t("terminal.artifacts.exportOpenTab")}</button>
