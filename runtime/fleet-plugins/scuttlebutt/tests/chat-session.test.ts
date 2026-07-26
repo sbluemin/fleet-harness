@@ -141,7 +141,8 @@ describe("ChatSession", () => {
       expect(prompt).toContain("Answer in the language the user wrote in.");
       // 자기 소속 제품을 물으면 밀어내지 말고 공개 저장소를 찾아보게 한다.
       expect(prompt).toContain("https://github.com/sbluemin/fleet-harness");
-      expect(prompt).toContain("Reading the public repository over the web is not reading this machine");
+      expect(prompt).toContain("is not reading this machine");
+      expect(prompt).toContain("Start at the README and stop as soon as it answers");
       expect(prompt).toContain("Speed is part of the job.");
     }
   });
