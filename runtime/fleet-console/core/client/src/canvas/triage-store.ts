@@ -5,6 +5,7 @@ import type { OperationActivity } from "@fleet-console/sdk/plugin";
 import { clearIdleArrival, getIdleArrivalIds, setIdleArrivalAcknowledgementSuspended } from "../operation-idle-arrival.js";
 import { resolveOperationActivity } from "../operation-activity.js";
 import { getSideBarStatusAxis, setSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
+import { getState, setActiveOperation } from "../store.js";
 import type { OperationNode } from "../types.js";
 import {
   clearFormationView,
@@ -93,6 +94,12 @@ export function setTriageActive(theaterId: string, active: boolean): void {
   statusAxisBeforeTriage.delete(theaterId);
   clearTheaterTransientOperations(theaterId);
   setIdleArrivalAcknowledgementSuspended(triageByTheater.size > 0);
+  if (triageByTheater.size === 0) {
+    const { activeOperationId, activeOperationAcknowledged } = getState();
+    if (activeOperationId !== null && !activeOperationAcknowledged) {
+      setActiveOperation(activeOperationId);
+    }
+  }
   setTheaterFocusLayerSnapshot(theaterId, restoredFocusLayer);
   setSideBarStatusAxis(previousStatusAxis);
   emitTriage();

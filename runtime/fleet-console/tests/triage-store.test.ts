@@ -13,7 +13,7 @@ import {
   markIdleArrival,
   resetIdleArrivalForTests,
 } from "../core/client/src/operation-idle-arrival.js";
-import { setActiveOperation, setState as setConsoleState } from "../core/client/src/store.js";
+import { getState, setActiveOperation, setState as setConsoleState } from "../core/client/src/store.js";
 import { getSideBarStatusAxis, setSideBarStatusAxis } from "../core/client/src/sidebar/operations-side-bar-store.js";
 import {
   clearFormationView,
@@ -274,24 +274,72 @@ describe("triage store", () => {
     expect(resolveTriageQueue(THEATER_ID, [arrived], status)).toEqual([]);
   });
 
+  it("acknowledges only the active Operation when the last Triage Theater exits", () => {
+    const active = operation("active", 1);
+    const waiting = operation("waiting", 2);
+    markIdleArrival(active.id);
+    markIdleArrival(waiting.id);
+    setConsoleState({
+      operations: [active, waiting],
+      activeTheaterId: THEATER_ID,
+      activeOperationId: active.id,
+      activeOperationAcknowledged: false,
+    });
+    setTriageActive(THEATER_ID, true);
+
+    setTriageActive(THEATER_ID, false);
+
+    expect(getIdleArrivalIds().has(active.id)).toBe(false);
+    expect(getIdleArrivalIds().has(waiting.id)).toBe(true);
+    expect(getState().activeOperationAcknowledged).toBe(true);
+  });
+
   it("keeps acknowledgement suspended while any Theater remains in Triage", () => {
     const otherTheaterId = "theater-b";
     const inactiveTheaterId = "theater-c";
     markIdleArrival("arrived");
+    setConsoleState({
+      activeOperationId: "arrived",
+      activeOperationAcknowledged: false,
+    });
     setTriageActive(THEATER_ID, true);
 
     resetTriageTheater(inactiveTheaterId);
-    acknowledgeIdleArrival("arrived");
     expect(getIdleArrivalIds().has("arrived")).toBe(true);
+    expect(getState().activeOperationAcknowledged).toBe(false);
 
     setTriageActive(otherTheaterId, true);
     resetTriageTheater(THEATER_ID);
-    acknowledgeIdleArrival("arrived");
     expect(getIdleArrivalIds().has("arrived")).toBe(true);
+    expect(getState().activeOperationAcknowledged).toBe(false);
 
     resetTriageTheater(otherTheaterId);
-    acknowledgeIdleArrival("arrived");
     expect(getIdleArrivalIds().has("arrived")).toBe(false);
+    expect(getState().activeOperationAcknowledged).toBe(true);
+  });
+
+  it("does nothing when the last Triage Theater exits without an active Operation", () => {
+    markIdleArrival("waiting");
+    setTriageActive(THEATER_ID, true);
+
+    setTriageActive(THEATER_ID, false);
+
+    expect(getIdleArrivalIds().has("waiting")).toBe(true);
+    expect(getState().activeOperationId).toBeNull();
+    expect(getState().activeOperationAcknowledged).toBe(true);
+  });
+
+  it("does not acknowledge an active Operation when resetting an inactive Theater", () => {
+    markIdleArrival("active");
+    setConsoleState({
+      activeOperationId: "active",
+      activeOperationAcknowledged: false,
+    });
+
+    resetTriageTheater("inactive-theater");
+
+    expect(getIdleArrivalIds().has("active")).toBe(true);
+    expect(getState().activeOperationAcknowledged).toBe(false);
   });
 
   it("clears an idle arrival explicitly even while acknowledgement is suspended", () => {
