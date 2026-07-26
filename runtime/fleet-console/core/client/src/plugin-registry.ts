@@ -1,4 +1,5 @@
 import { createContext, useContext } from "react";
+import type { FloatingWidgetDescriptor } from "@fleet-console/sdk/floating";
 import type { NotificationKindDescriptor } from "@fleet-console/sdk/notifications";
 import type { OperationKindDescriptor, FleetClientPlugin } from "@fleet-console/sdk/plugin";
 import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
@@ -11,6 +12,7 @@ export interface PluginRegistry {
   readonly settingsSections: readonly SettingsSectionDescriptor[];
   readonly notificationKinds: readonly NotificationKindDescriptor[];
   readonly railPanels: readonly RailPanelDescriptor[];
+  readonly floatingWidgets: readonly FloatingWidgetDescriptor[];
 }
 
 interface PluginRuntimeManifest {
@@ -110,6 +112,10 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[]): PluginRegi
     settingsSections: plugins.flatMap((plugin) => plugin.settingsSections ?? []),
     notificationKinds: plugins.flatMap((plugin) => plugin.notificationKinds ?? []),
     railPanels,
+    floatingWidgets: plugins.flatMap((plugin) => (plugin.floatingWidgets ?? []).map((descriptor) => ({
+      ...descriptor,
+      id: `${plugin.id}:${descriptor.id}`,
+    }))),
   };
 }
 

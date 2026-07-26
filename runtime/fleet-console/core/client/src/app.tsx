@@ -15,6 +15,7 @@ import { ReconnectButton } from "./components/reconnect-button.js";
 import { Toast } from "./components/toast.js";
 import { appendPendingDeletion, deletionCountdownSeconds, latestPendingDeletion } from "./deletion-undo.js";
 import { WhatsNewModal } from "./components/whatsnew-modal.js";
+import { FloatingWidgetLayer } from "./floating-widget-layer.js";
 import { useGlobalSettingsStore } from "./global-settings-store.js";
 import { installConsoleGlobalShortcuts } from "./global-shortcuts.js";
 import { useConsoleState } from "./hooks/use-store.js";
@@ -243,6 +244,7 @@ export function App() {
     <ActiveCompanionShortcutsProvider value={companionShortcuts}>
       <div className="console-shell">
         <CommandBand operationsViewVisible={operationsViewVisible} />
+        <FloatingWidgetLayer />
         {/* 배너는 링크가 live가 아닌 동안 유지한다 — offline에만 걸면 재연결 시도가 시작되는 순간
             배너째 언마운트되어, 눌린 버튼의 피드백까지 함께 사라진다(실브라우저 재현). */}
         {state.connection !== "live" && state.connectionLostAt !== null ? (
