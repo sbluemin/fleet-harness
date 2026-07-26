@@ -6,9 +6,9 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getSnapshot, loadForTheater, setOperationOrder } from "../core/client/src/canvas/canvas-store.js";
+import { getIdleArrivalIds } from "../core/client/src/operation-idle-arrival.js";
 import { OperationsSideBar } from "../core/client/src/sidebar/operations-side-bar.js";
 import {
-  getIdleUnseenIds,
   getStatusTransitionTick,
   resetSideBarStatusRecencyForTests,
   resetSideBarStatusSectionCollapseForTests,
@@ -17,7 +17,7 @@ import {
   setTheaterCollapsed,
   trackOperationActivityTransitions,
 } from "../core/client/src/sidebar/operations-side-bar-store.js";
-import { setState as setConsoleState } from "../core/client/src/store.js";
+import { setActiveOperation, setState as setConsoleState } from "../core/client/src/store.js";
 import type { OperationGroup, OperationNode, TheaterInfo } from "../core/client/src/types.js";
 
 let root: Root | null = null;
@@ -288,12 +288,14 @@ describe("OperationsSideBar STATUS axis", () => {
       operationStatus: { recorded: "running" },
       activeTheaterId: THEATER.id,
       activeOperationId: null,
+      activeOperationAcknowledged: true,
     });
     expect(trackOperationActivityTransitions({
       operations,
       operationStatus: { recorded: "idle" },
       activeTheaterId: THEATER.id,
       activeOperationId: null,
+      activeOperationAcknowledged: true,
     })).toEqual(["recorded"]);
 
     setConsoleState({ operationStatus: { recorded: "idle" } });
@@ -304,11 +306,15 @@ describe("OperationsSideBar STATUS axis", () => {
       required<HTMLElement>(".side-bar-status-section--idle").querySelectorAll<HTMLElement>("[data-side-bar-chip-id]"),
       (chip) => chip.dataset.sideBarChipId,
     );
-    expect(idleChips).toEqual(["recorded", "untouched"]);
+    expect(idleChips).toEqual(["untouched"]);
+    expect(Array.from(
+      required<HTMLElement>(".side-bar-status-section--awaiting").querySelectorAll<HTMLElement>("[data-side-bar-chip-id]"),
+      (chip) => chip.dataset.sideBarChipId,
+    )).toEqual(["recorded"]);
     const recordedChip = required<HTMLElement>('[data-side-bar-chip-id="recorded"]');
     expect(recordedChip.querySelector(".side-bar-chip-unseen")).not.toBeNull();
     expect(recordedChip.className).not.toContain("side-bar-chip--status-landed");
-    expect(required<HTMLElement>(".side-bar-status-section--idle .side-bar-status-header__unseen").textContent).toBe("1");
+    expect(required<HTMLElement>(".side-bar-status-section--awaiting .side-bar-status-header__unseen").textContent).toBe("1");
   });
 
   it("tracks idle unseen while STATUS is off, omits focused transitions, and clears on focus", () => {
@@ -317,21 +323,22 @@ describe("OperationsSideBar STATUS axis", () => {
     renderSideBar(operations, [], vi.fn(), THEATER.id, [THEATER], "focused");
 
     act(() => setConsoleState({ operationStatus: { unseen: "idle", focused: "idle" } }));
-    expect(container?.querySelector(".side-bar-chip-unseen")).toBeNull();
+    expect(container?.querySelector(".side-bar-chip-unseen")).not.toBeNull();
 
     act(() => setSideBarStatusAxis(true));
 
     const unseenChip = required<HTMLElement>('[data-side-bar-chip-id="unseen"]');
     expect(unseenChip.querySelector(".side-bar-chip-unseen")?.getAttribute("title")).toBe("Finished — not opened yet");
     expect(unseenChip.getAttribute("aria-label")).toContain(" (unseen since idle)");
-    expect(required<HTMLElement>(".side-bar-status-section--idle .side-bar-status-header__unseen").textContent).toBe("1");
+    expect(required<HTMLElement>(".side-bar-status-section--awaiting .side-bar-status-header__unseen").textContent).toBe("1");
     expect(required<HTMLElement>('[data-side-bar-chip-id="focused"]').querySelector(".side-bar-chip-unseen")).toBeNull();
 
+    act(() => setActiveOperation("unseen"));
     rerenderSideBar(operations, [], THEATER.id, [THEATER], "unseen");
 
     expect(required<HTMLElement>('[data-side-bar-chip-id="unseen"]').querySelector(".side-bar-chip-unseen")).toBeNull();
     expect(container?.querySelector(".side-bar-status-section--idle .side-bar-status-header__unseen")).toBeNull();
-    expect(getIdleUnseenIds().has("unseen")).toBe(false);
+    expect(getIdleArrivalIds().has("unseen")).toBe(false);
   });
 
   it("removes idle unseen on exit and grants it again on a later idle episode", () => {
@@ -387,7 +394,7 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(getStatusTransitionTick("restored")).toBeGreaterThan(runningTick ?? 0);
     expect(transitionedChip.querySelector(".side-bar-chip-unseen")).not.toBeNull();
     expect(transitionedChip.className).toContain("side-bar-chip--status-landed");
-    expect(required<HTMLElement>(".side-bar-status-section--idle .side-bar-status-header__unseen").textContent).toBe("1");
+    expect(required<HTMLElement>(".side-bar-status-section--awaiting .side-bar-status-header__unseen").textContent).toBe("1");
   });
 
   it("uses the Theater name row for persisted collapse and exposes the split control accessibility contract", () => {

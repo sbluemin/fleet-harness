@@ -187,6 +187,7 @@ export interface ConsoleState {
   readonly groups: readonly OperationGroup[];
   readonly activeTheaterId: string | null;
   readonly activeOperationId: string | null;
+  readonly activeOperationAcknowledged: boolean;
   readonly operationStatus: Readonly<Record<string, OperationActivity>>;
   readonly addingTheater: boolean;
   readonly theaterError: string | null;

@@ -75,6 +75,7 @@ function makeState(patch: Partial<ConsoleState> = {}): ConsoleState {
     codexReader: null,
     codexReaderExpanded: false,
     ...patch,
+    activeOperationAcknowledged: patch.activeOperationAcknowledged ?? true,
   };
 }
 

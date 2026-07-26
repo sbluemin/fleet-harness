@@ -25,6 +25,7 @@ export const canvasEn = {
   "canvas.triage.clearMark": "All clear",
   "canvas.triage.clearTitle": "Nothing is waiting on you",
   "canvas.triage.clearBody": "Panels return here when an agent needs an answer. Stowed panels go back to their coordinates when you turn the mode off.",
+  "canvas.triage.clearBodyIdle": "Nothing is waiting on you. {count} idle panels sit in the left list. Click one to bring it up.",
   "canvas.formation.curtainKicker": "FORMATION VIEW",
   "canvas.formation.curtainTitle": "Full board",
   "canvas.formation.curtainBody": "Arranging {count} Operations on the grid.",
@@ -100,8 +101,6 @@ export const canvasEn = {
   "sidebar.status.collapse": "Collapse",
   "sidebar.status.sectionOperations": "{label} operations",
   "sidebar.status.noOperations": "No operations",
-  "sidebar.triage.queueSection": "Queue",
-  "sidebar.triage.restSection": "Not waiting",
 
   "sidebar.list.aria": "Theaters and operations",
   "sidebar.theater.operationsAria": "{theater} operations",
@@ -245,6 +244,7 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "canvas.triage.clearMark": "모두 정리됨",
   "canvas.triage.clearTitle": "기다리는 작업이 없습니다",
   "canvas.triage.clearBody": "에이전트가 답을 요청하면 이 자리에 다시 올라옵니다. 접힌 패널은 모드를 끄면 원래 좌표로 돌아갑니다.",
+  "canvas.triage.clearBodyIdle": "기다리는 작업은 없습니다. 유휴 상태인 {count}개는 왼쪽 목록에 있습니다. 눌러서 올릴 수 있습니다.",
   "canvas.formation.curtainKicker": "FORMATION VIEW",
   "canvas.formation.curtainTitle": "전체 조망",
   "canvas.formation.curtainBody": "{count}개 Operation을 격자에 정렬합니다.",
@@ -319,8 +319,6 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "sidebar.status.collapse": "접기",
   "sidebar.status.sectionOperations": "{label} Operation",
   "sidebar.status.noOperations": "Operation 없음",
-  "sidebar.triage.queueSection": "처리 대기",
-  "sidebar.triage.restSection": "대기 아님",
 
   "sidebar.list.aria": "Theater와 Operation",
   "sidebar.theater.operationsAria": "{theater} Operation",

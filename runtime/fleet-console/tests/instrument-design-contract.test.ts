@@ -604,6 +604,7 @@ describe("Instrument core design contract", () => {
     const operations = source("pages/operations.tsx");
     const sidebar = source("sidebar/operations-side-bar.tsx");
     const sideBarStore = source("sidebar/operations-side-bar-store.ts");
+    const idleArrival = source("operation-idle-arrival.ts");
     const chip = source("sidebar/operations-side-bar-chip.tsx");
     const components = source("styles/components.css");
 
@@ -621,11 +622,12 @@ describe("Instrument core design contract", () => {
     expect(chip).not.toContain("statusAxis && idleUnseen");
     expect(sideBarStore).toContain("let statusAxis = false;");
     expect(sideBarStore).toContain("let statusTransitionTicks = new Map<string, number>();");
-    expect(sideBarStore).toContain("let idleUnseenIds = new Set<string>();");
+    expect(idleArrival).toContain("let idleArrivalIds = new Set<string>();");
     expect(sideBarStore).toContain("let previousActivityById = new Map<string, SideBarStatus>();");
     expect(sideBarStore).toContain("let baselinedLiveActivityIds = new Set<string>();");
     expect(sideBarStore).toContain("let pendingStatusLandingIds = new Set<string>();");
-    expect(sideBarStore).toContain("export function subscribeIdleUnseen(");
+    expect(idleArrival).toContain("export function subscribeIdleArrival(");
+    expect(sideBarStore).not.toContain("idleUnseenIds");
     expect(sideBarStore).not.toContain("STORAGE_KEY_STATUS");
     expect(sideBarStore).not.toContain("fleet-console.operations.status");
 

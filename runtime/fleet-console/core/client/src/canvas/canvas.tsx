@@ -12,7 +12,7 @@ import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
-import { getIdleUnseenIds, subscribeIdleUnseen } from "../sidebar/operations-side-bar-store.js";
+import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-idle-arrival.js";
 import { resolveOperationActivity } from "../operation-activity.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
@@ -96,7 +96,7 @@ export function OperationsCanvas({
   const companionPanelVisibilityOverrides = useCompanionPanelVisibilityOverrides(companionOperationId);
   const lastValidCompanionRef = useRef<{ readonly operation: OperationNode; readonly descriptor: OperationKindDescriptor } | null>(null);
   const minimized = useMinimized();
-  const idleUnseenIds = useSyncExternalStore(subscribeIdleUnseen, getIdleUnseenIds, getIdleUnseenIds);
+  const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   const activePluginOperationId = state.activeOperationId;
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
   const registry = usePluginRegistry();
@@ -227,6 +227,10 @@ export function OperationsCanvas({
   const triageQueue = state.activeTheaterId
     ? resolveTriageQueue(state.activeTheaterId, theaterOperations, state.operationStatus)
     : [];
+  const triageQueueIdSet = new Set(triageQueue.map((entry) => entry.operation.id));
+  const triageIdleCount = theaterOperations.filter((operation) =>
+    resolveOperationActivity(operation, state.operationStatus) === "idle"
+    && !triageQueueIdSet.has(operation.id)).length;
   const automaticTriageStage = triageQueue[0] ?? null;
   const previousTriageStageId = previousTriageStageRef.current;
   const previousTriageStageOperation = previousTriageStageId
@@ -304,7 +308,7 @@ export function OperationsCanvas({
         && activeElement.closest(".canvas-operation")
         && activeElement.matches("input, textarea, [contenteditable='true']")
         && !activeElement.closest(".xterm")) return;
-      setActiveOperation(triageStageId);
+      setActiveOperation(triageStageId, { acknowledged: false });
       requestOperationKeyboardFocus(triageStageId);
     });
     return () => window.cancelAnimationFrame(frame);
@@ -564,7 +568,7 @@ export function OperationsCanvas({
             && canvas.viewport.y + frameGeometry.y * effectiveZoom < TITLEBAR_OUTSET_PX * effectiveZoom;
           return renderPluginOperation(operation, {
             active: activePluginOperationId === operation.id,
-            unseen: idleUnseenIds.has(operation.id),
+            unseen: idleArrivalIds.has(operation.id),
             keyboardFocusRequestId: state.keyboardFocusRequest?.operationId === operation.id
               ? state.keyboardFocusRequest.requestId
               : 0,
@@ -704,7 +708,7 @@ export function OperationsCanvas({
           ) : null}
         </>
       ) : null}
-      <TriageClearPlate active={triageActive} entering={triageEntering} hasContent={hasContent} />
+      <TriageClearPlate active={triageActive} entering={triageEntering} hasContent={hasContent} idleCount={triageIdleCount} />
       {!triageActive && !hasContent && !formationEntering ? (
         <OperationsCanvasEmptyState
           activeTheaterId={state.activeTheaterId}

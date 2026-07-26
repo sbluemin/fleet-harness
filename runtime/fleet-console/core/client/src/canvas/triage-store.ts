@@ -2,8 +2,9 @@ import { useSyncExternalStore } from "react";
 
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
+import { clearIdleArrival, getIdleArrivalIds, setIdleArrivalAcknowledgementSuspended } from "../operation-idle-arrival.js";
 import { resolveOperationActivity } from "../operation-activity.js";
-import { registerSideBarStatusAxisActivationGuard, setSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
+import { getSideBarStatusAxis, setSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import type { OperationNode } from "../types.js";
 import {
   clearFormationView,
@@ -42,15 +43,13 @@ const dismissed = new Set<string>();
 const seenAt = new Map<string, number>();
 
 const activityByOperation = new Map<string, OperationActivity>();
-const liveActivityObserved = new Set<string>();
 const operationTheater = new Map<string, string>();
 const focusLayerBeforeTriage = new Map<string, FocusLayerState | null>();
+const statusAxisBeforeTriage = new Map<string, boolean>();
 const listeners = new Set<Listener>();
 let revision = 0;
 
 registerBeforeFormationViewActivation((theaterId) => setTriageActive(theaterId, false));
-registerSideBarStatusAxisActivationGuard(() => !isTriageActive(getLoadedTheaterId()));
-
 export function isTriageActive(theaterId: string | null): boolean {
   return theaterId !== null && triageByTheater.has(theaterId);
 }
@@ -58,19 +57,25 @@ export function isTriageActive(theaterId: string | null): boolean {
 export function setTriageActive(theaterId: string, active: boolean): void {
   if (active) {
     clearFormationView(theaterId);
-    setSideBarStatusAxis(false);
     if (!triageByTheater.has(theaterId)) {
       focusLayerBeforeTriage.set(theaterId, getTheaterFocusLayerSnapshot(theaterId));
+      statusAxisBeforeTriage.set(theaterId, getSideBarStatusAxis());
       triageByTheater.set(theaterId, true);
       clearedByTheater.set(theaterId, 0);
       enteredAtByTheater.set(theaterId, Date.now());
     }
+    setSideBarStatusAxis(true);
+    setIdleArrivalAcknowledgementSuspended(triageByTheater.size > 0);
     setTheaterFocusLayerSnapshot(theaterId, null);
     emitTriage();
     return;
   }
-  if (!triageByTheater.has(theaterId)) return;
+  if (!triageByTheater.has(theaterId)) {
+    setIdleArrivalAcknowledgementSuspended(triageByTheater.size > 0);
+    return;
+  }
   const previousFocusLayer = focusLayerBeforeTriage.get(theaterId) ?? null;
+  const previousStatusAxis = statusAxisBeforeTriage.get(theaterId) ?? false;
   const canvas = getTheaterCanvasSnapshot(theaterId);
   const restoredFocusLayer = previousFocusLayer
     && canvas.operations[previousFocusLayer.operationId]
@@ -85,8 +90,11 @@ export function setTriageActive(theaterId: string, active: boolean): void {
   clearedByTheater.delete(theaterId);
   enteredAtByTheater.delete(theaterId);
   focusLayerBeforeTriage.delete(theaterId);
+  statusAxisBeforeTriage.delete(theaterId);
   clearTheaterTransientOperations(theaterId);
+  setIdleArrivalAcknowledgementSuspended(triageByTheater.size > 0);
   setTheaterFocusLayerSnapshot(theaterId, restoredFocusLayer);
+  setSideBarStatusAxis(previousStatusAxis);
   emitTriage();
 }
 
@@ -131,6 +139,7 @@ export function dismissTriageOperation(theaterId: string, operationId: string): 
   operationTheater.set(operationId, theaterId);
   deferredAt.delete(operationId);
   dismissed.add(operationId);
+  clearIdleArrival(operationId);
   if (pickedByTheater.get(theaterId) === operationId) pickedByTheater.delete(theaterId);
   emitTriage();
 }
@@ -143,7 +152,9 @@ export function resetTriageTheater(theaterId: string): void {
     clearedByTheater.delete(theaterId);
     enteredAtByTheater.delete(theaterId);
     focusLayerBeforeTriage.delete(theaterId);
+    statusAxisBeforeTriage.delete(theaterId);
     clearTheaterTransientOperations(theaterId);
+    setIdleArrivalAcknowledgementSuspended(triageByTheater.size > 0);
     emitTriage();
   }
 }
@@ -155,7 +166,6 @@ export function forgetTriageOperation(operationId: string): void {
   deferredAt.delete(operationId);
   seenAt.delete(operationId);
   activityByOperation.delete(operationId);
-  liveActivityObserved.delete(operationId);
   operationTheater.delete(operationId);
   if (theaterId && pickedByTheater.get(theaterId) === operationId) {
     pickedByTheater.delete(theaterId);
@@ -219,11 +229,7 @@ export function recordTriageActivity(
     if ((activity === "running" || activity === "dormant") && deferredAt.delete(operation.id)) {
       changed = true;
     }
-    const liveActivity = Object.prototype.hasOwnProperty.call(operationStatus, operation.id);
-    const liveActivityChanged = liveActivityObserved.has(operation.id) !== liveActivity;
-    if (liveActivity) liveActivityObserved.add(operation.id);
-    else liveActivityObserved.delete(operation.id);
-    if (activityByOperation.get(operation.id) === activity && !liveActivityChanged) continue;
+    if (activityByOperation.get(operation.id) === activity) continue;
     activityByOperation.set(operation.id, activity);
     seenAt.set(operation.id, now);
     changed = true;
@@ -245,7 +251,7 @@ export function isTriageWaitingOperation(
 ): boolean {
   const activity = resolveOperationActivity(operation, operationStatus);
   return activity === "awaiting"
-    || (activity === "idle" && Object.prototype.hasOwnProperty.call(operationStatus, operation.id));
+    || (activity === "idle" && getIdleArrivalIds().has(operation.id));
 }
 
 export function scheduleTriageClear(
@@ -333,7 +339,6 @@ function clearTheaterTransientOperations(theaterId: string): void {
     deferredAt.delete(operationId);
     seenAt.delete(operationId);
     activityByOperation.delete(operationId);
-    liveActivityObserved.delete(operationId);
     operationTheater.delete(operationId);
   }
 }

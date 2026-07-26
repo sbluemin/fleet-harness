@@ -3,6 +3,7 @@ import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { buildOperationSearchEntries } from "./operation-search.js";
 import { getGlobalSettingsStoreState, setGlobalSettingsField } from "./global-settings-store.js";
+import { acknowledgeIdleArrival } from "./operation-idle-arrival.js";
 import { uiFontFamily } from "./ui-font.js";
 import type {
   CodexReaderRequest,
@@ -62,6 +63,7 @@ let state: ConsoleState = {
   groups: [],
   activeTheaterId: null,
   activeOperationId: null,
+  activeOperationAcknowledged: true,
   operationStatus: {},
   addingTheater: false,
   theaterError: null,
@@ -232,9 +234,14 @@ export function setActiveTheater(theaterId: string | null): void {
   setState({ activeTheaterId: theaterId });
 }
 
-export function setActiveOperation(operationId: string | null): void {
-  if (state.activeOperationId === operationId) return;
-  setState({ activeOperationId: operationId });
+export function setActiveOperation(
+  operationId: string | null,
+  options?: { readonly acknowledged?: boolean },
+): void {
+  const acknowledged = operationId === null ? true : options?.acknowledged ?? true;
+  if (acknowledged && operationId !== null) acknowledgeIdleArrival(operationId);
+  if (state.activeOperationId === operationId && state.activeOperationAcknowledged === acknowledged) return;
+  setState({ activeOperationId: operationId, activeOperationAcknowledged: acknowledged });
 }
 
 export function setOperationStatus(operationId: string, status: OperationActivity): void {
@@ -304,9 +311,11 @@ export function focusOperation(operationId: string): void {
   const operation = state.operations.find((item) => item.id === operationId);
   if (!operation) return;
   writeStoredActiveTheaterId(operation.theaterId);
+  acknowledgeIdleArrival(operationId);
   setState({
     activeTheaterId: operation.theaterId,
     activeOperationId: operationId,
+    activeOperationAcknowledged: true,
     pendingOperationFocus: operationId,
     operationNotifications: removeNotificationForOperation(state.operationNotifications, operationId),
   });
@@ -536,8 +545,9 @@ export function removeTheater(theaterId: string): void {
   const operationNotifications = pruneNotificationsForTheater(state.operationNotifications, theaterId);
   const removedOperationIds = new Set(state.operations.filter((operation) => operation.theaterId === theaterId).map((operation) => operation.id));
   const activeOperationId = state.activeOperationId && removedOperationIds.has(state.activeOperationId) ? null : state.activeOperationId;
+  const activeOperationAcknowledged = activeOperationId === null ? true : state.activeOperationAcknowledged;
   writeStoredActiveTheaterId(activeTheaterId);
-  setState({ theaters, activeTheaterId, activeOperationId, operationNotifications });
+  setState({ theaters, activeTheaterId, activeOperationId, activeOperationAcknowledged, operationNotifications });
 }
 
 export function dismissNotificationsForOperation(operationId: string): void {
