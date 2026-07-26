@@ -161,6 +161,30 @@ describe('resetSession()', () => {
     expect(mockSendPrompt).toHaveBeenNthCalledWith(2, 'initial-session', '두 번째 요청');
   });
 
+  it('Claude replace mode는 ACP meta로 전달하고 첫 프롬프트에는 prepend하지 않는다', async () => {
+    mockConnect.mockResolvedValue(initialSession);
+    mockSendPrompt.mockResolvedValue({ stopReason: 'endTurn' });
+    const client = new UnifiedClaudeAgentClient();
+
+    await client.connect({
+      cwd: '/workspace',
+      cli: 'claude',
+      systemPrompt: '대체 지침',
+      systemPromptMode: 'replace',
+    });
+    await client.sendMessage('첫 요청');
+
+    expect(mockConnect).toHaveBeenCalledWith(
+      '/workspace',
+      undefined,
+      [],
+      '대체 지침',
+      undefined,
+      undefined,
+    );
+    expect(mockSendPrompt).toHaveBeenCalledWith('initial-session', '첫 요청');
+  });
+
   it('Claude resetSession은 systemPrompt를 새 세션의 첫 프롬프트에 다시 prepend한다', async () => {
     mockConnect.mockResolvedValue(initialSession);
     mockReconnectSession.mockResolvedValue(newSession);
@@ -176,6 +200,46 @@ describe('resetSession()', () => {
       { type: 'text', text: 'Tier-2 지침' },
       { type: 'text', text: '리셋 후 요청' },
     ]);
+  });
+
+  it('Claude replace mode resetSession은 ACP meta를 다시 전달하고 prepend하지 않는다', async () => {
+    mockConnect.mockResolvedValue(initialSession);
+    mockReconnectSession.mockResolvedValue(newSession);
+    mockSendPrompt.mockResolvedValue({ stopReason: 'endTurn' });
+    const client = new UnifiedClaudeAgentClient();
+
+    await client.connect({
+      cwd: '/workspace',
+      cli: 'claude',
+      systemPrompt: '대체 지침',
+      systemPromptMode: 'replace',
+    });
+    await client.resetSession();
+    await client.sendMessage('리셋 후 요청');
+
+    expect(mockReconnectSession).toHaveBeenCalledWith(
+      '/workspace',
+      undefined,
+      undefined,
+      '대체 지침',
+      undefined,
+      undefined,
+    );
+    expect(mockSendPrompt).toHaveBeenCalledWith('new-session-after-reset', '리셋 후 요청');
+  });
+
+  it('replace mode를 미지원 백엔드로 요청하면 정확한 에러로 거부한다', async () => {
+    const client = new UnifiedClaudeAgentClient();
+
+    await expect(client.connect({
+      cwd: '/workspace',
+      cli: 'codex',
+      systemPrompt: '대체 지침',
+      systemPromptMode: 'replace',
+    })).rejects.toThrow(
+      'system prompt replacement is not supported by the "codex" backend',
+    );
+    expect(mockConnect).not.toHaveBeenCalled();
   });
 
   it('Claude failed-first-send는 Tier-2를 재시도하고 성공 뒤에는 반복하지 않는다', async () => {

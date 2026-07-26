@@ -1,0 +1,924 @@
+.scuttlebutt-settings-roster {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+
+.scuttlebutt-bird {
+  position: fixed;
+  left: 0;
+  top: 0;
+  /* roaming.ts 의 BIRD_WIDTH 와 같은 값이어야 한다 — 엔진이 이 크기로 화면 경계를 계산한다. */
+  width: 84px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  will-change: transform;
+}
+
+.scuttlebutt-bird:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+
+.scuttlebutt-bird-tag {
+  position: absolute;
+  left: 50%;
+  top: calc(100% - 8px);
+  transform: translateX(-50%);
+  background: var(--surface-glass-strong);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  padding: 1px var(--space-2);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-glide);
+}
+
+.scuttlebutt-bird:hover .scuttlebutt-bird-tag,
+.scuttlebutt-bird:focus-visible .scuttlebutt-bird-tag,
+.scuttlebutt-bird.is-grab .scuttlebutt-bird-tag {
+  opacity: 1;
+}
+
+.scuttlebutt-bird-say {
+  position: absolute;
+  left: 50%;
+  bottom: 96%;
+  transform: translate(-50%, -4px);
+  background: var(--surface-glass-strong);
+  border: 1px solid color-mix(in oklch, var(--brass) 45%, var(--hairline));
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  padding: var(--space-1) var(--space-3);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease-glide),
+    transform var(--duration-fast) var(--ease-glide);
+}
+
+.scuttlebutt-bird.is-saying .scuttlebutt-bird-say {
+  opacity: 1;
+  transform: translate(-50%, -12px);
+}
+
+.scuttlebutt-bird.is-grab {
+  cursor: grabbing;
+}
+
+.scuttlebutt-bird > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+}
+
+.scuttlebutt-qk {
+  --qk-tone: var(--id-moss);
+  --qk-body: color-mix(in oklch, var(--qk-tone) 58%, var(--ink-pearl));
+  --qk-wing: color-mix(in oklch, var(--qk-tone) 74%, var(--ink-pearl));
+  --qk-flight: color-mix(in oklch, var(--qk-tone) 30%, var(--ink-pearl));
+  --qk-tail: color-mix(in oklch, var(--qk-tone) 66%, var(--ink-pearl));
+  --qk-bib: color-mix(in oklch, var(--qk-tone) 12%, var(--ink-pearl));
+  --qk-bib-line: color-mix(in oklch, var(--qk-tone) 40%, var(--ink-pearl));
+  --qk-ring: color-mix(in oklch, var(--qk-tone) 6%, var(--ink-pearl));
+  --qk-eye: var(--ink-abyss);
+  --qk-blush: color-mix(in oklch, var(--id-rose) 52%, var(--ink-pearl));
+  --qk-line: color-mix(in oklch, var(--qk-tone) 88%, var(--ink-rim));
+  --qk-beak: color-mix(in oklch, var(--id-amber) 46%, var(--ink-pearl));
+  --qk-beak-shade: color-mix(in oklch, var(--id-amber) 78%, var(--ink-rim));
+  --qk-feet: color-mix(in oklch, var(--id-rose) 38%, var(--ink-pearl));
+  --qk-cap-top: var(--ink-pearl);
+  --qk-cap-band: var(--ink-veil);
+  --qk-cap-line: var(--ink-abyss);
+  --qk-visor: var(--ink-deep);
+  --qk-brass: var(--brass);
+  --qk-brass-deep: var(--brass-deep);
+  --qk-eye-gloss: var(--ink-pearl);
+  --qk-zzz: var(--ink-spectral);
+  --qk-mark-edge: var(--ink-abyss);
+  overflow: visible;
+}
+
+.scuttlebutt-qk[data-morph="dori"] {
+  --qk-tone: var(--id-cerulean);
+}
+
+/* 알비노는 몸통만 반 톤 내려 가슴판과 얼굴 윤곽이 소실되지 않게 한다. */
+.scuttlebutt-qk[data-morph="bori"] {
+  --qk-tone: var(--id-crimson);
+  --qk-body: color-mix(in oklch, var(--qk-tone) 10%, var(--ink-pearl));
+  --qk-wing: color-mix(in oklch, var(--qk-tone) 16%, var(--ink-pearl));
+  --qk-flight: color-mix(in oklch, var(--qk-tone) 6%, var(--ink-pearl));
+  --qk-tail: color-mix(in oklch, var(--qk-tone) 13%, var(--ink-pearl));
+  --qk-bib: var(--ink-pearl);
+  --qk-bib-line: color-mix(in oklch, var(--qk-tone) 24%, var(--ink-pearl));
+  --qk-ring: var(--ink-pearl);
+  --qk-eye: var(--id-crimson);
+  --qk-line: color-mix(in oklch, var(--qk-tone) 34%, var(--ink-rim));
+  --qk-blush: transparent;
+}
+
+.scuttlebutt-qk * {
+  transform-box: fill-box;
+}
+
+.scuttlebutt-qk-ln {
+  stroke: var(--qk-line);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+.scuttlebutt-qk-cap-ln {
+  stroke: var(--qk-cap-line);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+.scuttlebutt-qk-wing-l {
+  transform-origin: 92% 27%;
+  animation: scuttlebutt-qk-flap-l 0.82s ease-in-out infinite alternate;
+}
+
+.scuttlebutt-qk-wing-r {
+  transform-origin: 8% 27%;
+  animation: scuttlebutt-qk-flap-r 0.82s ease-in-out infinite alternate;
+}
+
+.scuttlebutt-bird.is-cruise .scuttlebutt-qk-wing-l,
+.scuttlebutt-bird.is-cruise .scuttlebutt-qk-wing-r {
+  animation-duration: 0.4s;
+}
+
+.scuttlebutt-bird.is-grab .scuttlebutt-qk-wing-l,
+.scuttlebutt-bird.is-grab .scuttlebutt-qk-wing-r {
+  animation-duration: 0.24s;
+}
+
+.scuttlebutt-qk-tail {
+  transform-origin: 50% 6%;
+  animation: scuttlebutt-qk-sway 2.2s ease-in-out infinite alternate;
+}
+
+.scuttlebutt-qk-feet {
+  transform-origin: 50% 0%;
+  animation: scuttlebutt-qk-dangle 1.7s ease-in-out infinite alternate;
+}
+
+.scuttlebutt-qk-eyes {
+  transform-origin: 50% 50%;
+  animation: scuttlebutt-qk-blink 5.4s linear infinite;
+}
+
+.scuttlebutt-qk[data-morph="tori"] .scuttlebutt-qk-eyes {
+  animation-delay: -0.4s;
+}
+
+.scuttlebutt-qk[data-morph="bori"] .scuttlebutt-qk-eyes {
+  animation-delay: -2.3s;
+}
+
+.scuttlebutt-qk[data-morph="dori"] .scuttlebutt-qk-eyes {
+  animation-delay: -3.7s;
+}
+
+.scuttlebutt-qk-head {
+  transform-origin: 50% 78%;
+  transition: transform 0.3s ease;
+}
+
+.scuttlebutt-qk-foot-l,
+.scuttlebutt-qk-foot-r {
+  transform-origin: 50% 6%;
+}
+
+.scuttlebutt-qk-wing-l,
+.scuttlebutt-qk-wing-r {
+  transition: transform 0.25s ease;
+}
+
+.scuttlebutt-qk-zzz,
+.scuttlebutt-qk-mark,
+.scuttlebutt-qk-happy,
+.scuttlebutt-qk-spark {
+  opacity: 0;
+}
+
+.scuttlebutt-qk-spark {
+  transform-origin: 50% 50%;
+}
+
+/* 보행에서는 날개를 접고 두 발의 위상을 반 주기 어긋나게 한다. */
+.scuttlebutt-bird.is-walk .scuttlebutt-qk {
+  animation: scuttlebutt-qk-waddle 0.52s ease-in-out infinite;
+}
+
+.scuttlebutt-bird.is-walk .scuttlebutt-qk-wing-l {
+  animation: none;
+  transform: rotate(58deg);
+}
+
+.scuttlebutt-bird.is-walk .scuttlebutt-qk-wing-r {
+  animation: none;
+  transform: rotate(-58deg);
+}
+
+.scuttlebutt-bird.is-walk .scuttlebutt-qk-feet {
+  animation: none;
+}
+
+.scuttlebutt-bird.is-walk .scuttlebutt-qk-foot-l {
+  animation: scuttlebutt-qk-step 0.52s linear infinite;
+}
+
+.scuttlebutt-bird.is-walk .scuttlebutt-qk-foot-r {
+  animation: scuttlebutt-qk-step 0.52s linear infinite;
+  animation-delay: -0.26s;
+}
+
+.scuttlebutt-bird.is-sleep .scuttlebutt-qk {
+  animation: scuttlebutt-qk-breathe 2.8s ease-in-out infinite;
+}
+
+.scuttlebutt-bird.is-sleep .scuttlebutt-qk-wing-l {
+  animation: none;
+  transform: rotate(58deg);
+}
+
+.scuttlebutt-bird.is-sleep .scuttlebutt-qk-wing-r {
+  animation: none;
+  transform: rotate(-58deg);
+}
+
+.scuttlebutt-bird.is-sleep .scuttlebutt-qk-eyes {
+  animation: none;
+  transform: scaleY(0.09);
+}
+
+.scuttlebutt-bird.is-sleep .scuttlebutt-qk-head {
+  transform: rotate(-8deg) translateY(5px);
+}
+
+.scuttlebutt-bird.is-sleep .scuttlebutt-qk-zzz {
+  opacity: 1;
+}
+
+.scuttlebutt-bird.is-sleep .scuttlebutt-qk-zzz text {
+  animation: scuttlebutt-qk-zfloat 2.6s ease-in-out infinite;
+}
+
+.scuttlebutt-bird.is-sleep .scuttlebutt-qk-zzz text:nth-child(2) {
+  animation-delay: 0.5s;
+}
+
+.scuttlebutt-bird.is-sleep .scuttlebutt-qk-zzz text:nth-child(3) {
+  animation-delay: 1s;
+}
+
+.scuttlebutt-bird.is-think .scuttlebutt-qk-head {
+  animation: scuttlebutt-qk-tilt 2s ease-in-out infinite;
+  transition: none;
+}
+
+.scuttlebutt-bird.is-think .scuttlebutt-qk-tail {
+  animation-duration: 0.9s;
+}
+
+.scuttlebutt-bird.is-think .scuttlebutt-qk-eyes {
+  animation: scuttlebutt-qk-glance 2.6s ease-in-out infinite;
+}
+
+.scuttlebutt-bird.is-salute .scuttlebutt-qk-wing-r {
+  animation: scuttlebutt-qk-salute 1.7s ease-in-out infinite;
+}
+
+.scuttlebutt-bird.is-alert .scuttlebutt-qk {
+  animation: scuttlebutt-qk-hop 0.58s cubic-bezier(0.3, 0.7, 0.3, 1) infinite;
+}
+
+.scuttlebutt-bird.is-alert .scuttlebutt-qk-wing-l,
+.scuttlebutt-bird.is-alert .scuttlebutt-qk-wing-r {
+  animation-duration: 0.22s;
+}
+
+.scuttlebutt-bird.is-alert .scuttlebutt-qk-mark {
+  opacity: 1;
+  animation: scuttlebutt-qk-markpop 0.58s ease-in-out infinite;
+}
+
+/* 만세 주기의 후반을 휴지로 남겨 상시 신호처럼 보이지 않게 한다. */
+.scuttlebutt-bird.is-cheer .scuttlebutt-qk {
+  animation: scuttlebutt-qk-cheerhop 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.scuttlebutt-bird.is-cheer .scuttlebutt-qk-wing-l {
+  animation: scuttlebutt-qk-cheer-l 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.scuttlebutt-bird.is-cheer .scuttlebutt-qk-wing-r {
+  animation: scuttlebutt-qk-cheer-r 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.scuttlebutt-bird.is-cheer .scuttlebutt-qk-eyes {
+  animation: scuttlebutt-qk-hide-eyes 2.4s steps(1) infinite;
+}
+
+.scuttlebutt-bird.is-cheer .scuttlebutt-qk-happy {
+  animation: scuttlebutt-qk-show-eyes 2.4s steps(1) infinite;
+}
+
+.scuttlebutt-bird.is-cheer .scuttlebutt-qk-spark {
+  animation: scuttlebutt-qk-sparkle 2.4s ease-out infinite;
+}
+
+.scuttlebutt-bird.is-preen .scuttlebutt-qk-head {
+  animation: scuttlebutt-qk-preen 2s ease-in-out infinite;
+  transition: none;
+}
+
+.scuttlebutt-bird.is-preen .scuttlebutt-qk-eyes {
+  animation: none;
+  transform: scaleY(0.5);
+}
+
+.scuttlebutt-arrival-bubble {
+  position: fixed;
+  z-index: 2;
+  pointer-events: auto;
+  /* 첫 프레임에 좌표를 재기 전까지는 숨긴다 — 이후 추적 루프가 인라인으로 되살린다. */
+  visibility: hidden;
+  max-width: min(320px, calc(100vw - var(--space-4)));
+  padding: var(--space-2) var(--space-3);
+  overflow: hidden;
+  border: 1px solid color-mix(in oklch, var(--positive) 50%, var(--hairline));
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--positive) 12%, var(--surface-glass-strong));
+  box-shadow: var(--shadow-floating);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  line-height: 1.35;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: scuttlebutt-arrival-in var(--duration-base) var(--ease-spring);
+}
+
+.scuttlebutt-arrival-bubble:focus-visible {
+  outline: 2px solid var(--positive);
+  outline-offset: 2px;
+}
+
+/* 부유 레이어는 클릭을 통과시키므로 실제로 그린 표면만 스스로 되살린다. */
+.scuttlebutt-chat-card {
+  position: absolute;
+  z-index: 1;
+  pointer-events: auto;
+  display: flex;
+  width: min(380px, calc(100vw - var(--space-6)));
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-glass-strong);
+  box-shadow: var(--shadow-floating);
+  animation: scuttlebutt-card-in var(--duration-base) var(--ease-spring);
+}
+
+.scuttlebutt-chat-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.scuttlebutt-chat-sigil {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid color-mix(in oklch, var(--brass) 40%, transparent);
+  border-radius: var(--radius-pill);
+  background: var(--brass-glow);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.scuttlebutt-chat-who {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+}
+
+/* 정박 스위치는 카드 머리에 둔다 — 그 제독에게만 걸리는 조작이라 전역 설정으로 빼지 않는다. */
+.scuttlebutt-chat-moor {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 2px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+.scuttlebutt-chat-moor:hover {
+  color: var(--text-secondary);
+}
+
+.scuttlebutt-chat-moor:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+
+.scuttlebutt-chat-moor-track {
+  display: block;
+  width: 26px;
+  height: 15px;
+  flex-shrink: 0;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  background: var(--ink-abyss);
+  transition:
+    background var(--duration-fast) var(--ease-glide),
+    border-color var(--duration-fast) var(--ease-glide);
+}
+
+.scuttlebutt-chat-moor-track i {
+  display: block;
+  width: 9px;
+  height: 9px;
+  margin: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--text-tertiary);
+  transition:
+    transform var(--duration-fast) var(--ease-glide),
+    background var(--duration-fast) var(--ease-glide);
+}
+
+.scuttlebutt-chat-moor[aria-checked="true"] {
+  color: var(--text-primary);
+}
+
+.scuttlebutt-chat-moor[aria-checked="true"] .scuttlebutt-chat-moor-track {
+  border-color: var(--brass);
+  background: var(--brass-glow);
+}
+
+.scuttlebutt-chat-moor[aria-checked="true"] .scuttlebutt-chat-moor-track i {
+  transform: translateX(11px);
+  background: var(--brass);
+}
+
+.scuttlebutt-chat-tuck {
+  padding: 2px var(--space-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-chat-tuck:hover {
+  background: var(--ink-veil);
+  color: var(--text-primary);
+}
+
+.scuttlebutt-chat-tuck:focus-visible {
+  outline: 2px solid var(--brass);
+}
+
+.scuttlebutt-chat-log {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-3);
+  overflow-y: auto;
+  padding: var(--space-4);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.scuttlebutt-message-user {
+  max-width: 85%;
+  align-self: flex-end;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--ink-veil);
+  color: var(--text-primary);
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-message-sam {
+  max-width: 100%;
+  color: var(--text-secondary);
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-markdown-body p {
+  margin: 0 0 var(--space-2);
+}
+
+.scuttlebutt-markdown-body ul,
+.scuttlebutt-markdown-body ol {
+  margin: 0 0 var(--space-2) var(--space-4);
+}
+
+.scuttlebutt-markdown-body code {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: var(--ink-mid);
+  color: var(--text-primary);
+}
+
+.scuttlebutt-status-row {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-status-row.is-error {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid color-mix(in oklch, var(--coral) 30%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--coral) 8%, transparent);
+  color: color-mix(in oklch, var(--coral) 72%, var(--text-secondary));
+}
+
+.scuttlebutt-thinking {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4) var(--space-3);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-thinking i {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--aurora);
+  animation: scuttlebutt-pulse var(--duration-slow) var(--ease-glide) infinite;
+}
+
+.scuttlebutt-thinking i:nth-child(2) {
+  animation-delay: calc(var(--duration-fast) * 1);
+}
+
+.scuttlebutt-thinking i:nth-child(3) {
+  animation-delay: calc(var(--duration-fast) * 2);
+}
+
+.scuttlebutt-composer {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--hairline);
+  background: var(--surface-glass);
+}
+
+.scuttlebutt-composer input {
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--ink-abyss);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-composer input:focus {
+  border-color: var(--brass);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--brass-glow);
+}
+
+.scuttlebutt-send {
+  padding: var(--space-2) var(--space-4);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--brass);
+  color: var(--ink-abyss);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: var(--weight-medium);
+}
+
+.scuttlebutt-send:focus-visible {
+  outline: 2px solid var(--text-primary);
+}
+
+.scuttlebutt-send:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+@keyframes scuttlebutt-qk-flap-l {
+  from { transform: rotate(-24deg); }
+  to { transform: rotate(15deg); }
+}
+
+@keyframes scuttlebutt-qk-flap-r {
+  from { transform: rotate(24deg); }
+  to { transform: rotate(-15deg); }
+}
+
+@keyframes scuttlebutt-qk-sway {
+  from { transform: rotate(-5deg); }
+  to { transform: rotate(5deg); }
+}
+
+@keyframes scuttlebutt-qk-dangle {
+  from { transform: rotate(-2.5deg); }
+  to { transform: rotate(2.5deg); }
+}
+
+@keyframes scuttlebutt-qk-blink {
+  0%,
+  93%,
+  100% { transform: scaleY(1); }
+  95.5%,
+  97.5% { transform: scaleY(0.1); }
+}
+
+@keyframes scuttlebutt-qk-waddle {
+  0%,
+  100% { transform: rotate(-2.4deg) translateY(0); }
+  50% { transform: rotate(2.4deg) translateY(-3px); }
+}
+
+@keyframes scuttlebutt-qk-step {
+  0%,
+  55%,
+  100% { transform: translateY(0) rotate(4deg); }
+  25% { transform: translateY(-9px) rotate(-14deg); }
+}
+
+@keyframes scuttlebutt-qk-breathe {
+  0%,
+  100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(3px) scale(1.012, 0.988); }
+}
+
+@keyframes scuttlebutt-qk-zfloat {
+  0% {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  30% { opacity: 1; }
+  70% { opacity: 0.7; }
+  100% {
+    opacity: 0;
+    transform: translateY(-9px);
+  }
+}
+
+@keyframes scuttlebutt-qk-tilt {
+  0%,
+  100% { transform: rotate(-4.5deg); }
+  50% { transform: rotate(4.5deg); }
+}
+
+@keyframes scuttlebutt-qk-glance {
+  0%,
+  100% { transform: translate(3px, -3px); }
+  50% { transform: translate(-3px, -1px); }
+}
+
+@keyframes scuttlebutt-qk-salute {
+  0%,
+  10% { transform: rotate(18deg); }
+  26%,
+  74% { transform: rotate(-66deg); }
+  90%,
+  100% { transform: rotate(18deg); }
+}
+
+@keyframes scuttlebutt-qk-hop {
+  0%,
+  100% { transform: translateY(0); }
+  38% { transform: translateY(-15px); }
+  58% { transform: translateY(-10px); }
+}
+
+@keyframes scuttlebutt-qk-markpop {
+  0%,
+  100% { transform: translateY(0); }
+  38% { transform: translateY(-9px); }
+}
+
+@keyframes scuttlebutt-qk-cheerhop {
+  0% { transform: translateY(0); }
+  6% { transform: translateY(3px) scale(1.05, 0.93); }
+  16% { transform: translateY(-17px) scale(0.97, 1.05); }
+  30% { transform: translateY(-19px); }
+  44% { transform: translateY(0) scale(1.05, 0.94); }
+  52% { transform: translateY(-5px); }
+  60%,
+  100% { transform: translateY(0) scale(1, 1); }
+}
+
+@keyframes scuttlebutt-qk-cheer-l {
+  0%,
+  6% { transform: rotate(-6deg); }
+  16%,
+  46% { transform: rotate(74deg); }
+  60%,
+  100% { transform: rotate(-6deg); }
+}
+
+@keyframes scuttlebutt-qk-cheer-r {
+  0%,
+  6% { transform: rotate(6deg); }
+  16%,
+  46% { transform: rotate(-74deg); }
+  60%,
+  100% { transform: rotate(6deg); }
+}
+
+@keyframes scuttlebutt-qk-hide-eyes {
+  0%,
+  8% { opacity: 1; }
+  9%,
+  56% { opacity: 0; }
+  57%,
+  100% { opacity: 1; }
+}
+
+@keyframes scuttlebutt-qk-show-eyes {
+  0%,
+  8% { opacity: 0; }
+  9%,
+  56% { opacity: 1; }
+  57%,
+  100% { opacity: 0; }
+}
+
+@keyframes scuttlebutt-qk-sparkle {
+  0%,
+  10% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  22% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  42% { opacity: 0.85; }
+  56%,
+  100% {
+    opacity: 0;
+    transform: scale(1.25);
+  }
+}
+
+@keyframes scuttlebutt-qk-preen {
+  0%,
+  12%,
+  100% { transform: rotate(0) translate(0, 0); }
+  32% { transform: rotate(30deg) translate(7px, 10px); }
+  42% { transform: rotate(25deg) translate(6px, 9px); }
+  50% { transform: rotate(31deg) translate(7px, 10px); }
+  58% { transform: rotate(26deg) translate(6px, 9px); }
+  78% { transform: rotate(30deg) translate(7px, 10px); }
+}
+
+@keyframes scuttlebutt-arrival-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes scuttlebutt-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes scuttlebutt-pulse {
+  0%,
+  100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+@media (max-width: 560px) {
+  .scuttlebutt-chat-card {
+    width: calc(100vw - var(--space-4));
+  }
+}
+
+/* 모션 억제는 두 축이다 — OS의 prefers-reduced-motion 과 콘솔 설정 reduce-panel-motion.
+   어느 쪽이든 편대는 정지 편대로 강등되고, 상태는 포즈 한 장으로만 남는다.
+   미디어 쿼리와 클래스는 한 블록으로 묶을 수 없어 규칙을 두 번 적는다. */
+@media (prefers-reduced-motion: reduce) {
+  .scuttlebutt-bird-tag,
+  .scuttlebutt-bird-say {
+    transition: none;
+  }
+
+  .scuttlebutt-qk,
+  .scuttlebutt-qk *,
+  .scuttlebutt-arrival-bubble,
+  .scuttlebutt-thinking i,
+  .scuttlebutt-chat-card {
+    animation: none !important;
+  }
+
+  .scuttlebutt-bird.is-cheer .scuttlebutt-qk-eyes {
+    opacity: 0;
+  }
+
+  .scuttlebutt-bird.is-cheer .scuttlebutt-qk-happy {
+    opacity: 1;
+  }
+
+  .scuttlebutt-bird.is-sleep .scuttlebutt-qk-zzz {
+    opacity: 1;
+  }
+
+  .scuttlebutt-bird.is-alert .scuttlebutt-qk-mark {
+    opacity: 1;
+  }
+}
+
+.reduce-panel-motion .scuttlebutt-bird-tag,
+.reduce-panel-motion .scuttlebutt-bird-say {
+  transition: none;
+}
+
+.reduce-panel-motion .scuttlebutt-qk,
+.reduce-panel-motion .scuttlebutt-qk *,
+.reduce-panel-motion .scuttlebutt-arrival-bubble,
+.reduce-panel-motion .scuttlebutt-thinking i,
+.reduce-panel-motion .scuttlebutt-chat-card {
+  animation: none !important;
+}
+
+.reduce-panel-motion .scuttlebutt-bird.is-cheer .scuttlebutt-qk-eyes {
+  opacity: 0;
+}
+
+.reduce-panel-motion .scuttlebutt-bird.is-cheer .scuttlebutt-qk-happy {
+  opacity: 1;
+}
+
+.reduce-panel-motion .scuttlebutt-bird.is-sleep .scuttlebutt-qk-zzz {
+  opacity: 1;
+}
+
+.reduce-panel-motion .scuttlebutt-bird.is-alert .scuttlebutt-qk-mark {
+  opacity: 1;
+}

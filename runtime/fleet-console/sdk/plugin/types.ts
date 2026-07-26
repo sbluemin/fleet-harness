@@ -1,6 +1,7 @@
 import type http from "node:http";
 import type { ReactNode } from "react";
 
+import type { FloatingWidgetDescriptor } from "../floating/types.js";
 import type { LocalizedText } from "../i18n/types.js";
 import type { LaunchContext } from "../launch/types.js";
 import type { ClientNotification } from "../notifications/types.js";
@@ -25,6 +26,7 @@ export interface FleetClientPlugin {
   readonly settingsSections?: readonly SettingsSectionDescriptor[];
   readonly notificationKinds?: readonly NotificationKindDescriptor[];
   readonly railPanels?: readonly RailPanelDescriptor[];
+  readonly floatingWidgets?: readonly FloatingWidgetDescriptor[];
   readonly install?: (ctx: PluginInstallContext) => void | (() => void);
   readonly launch?: (ctx: LaunchContext) => Promise<{ readonly id: string }>;
   readonly closeOperation?: (operationId: string) => void | Promise<void>;

@@ -1,9 +1,29 @@
 .console-shell {
+  --z-floating: 60;
   position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
+}
+
+.floating-widget-layer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-floating);
+  pointer-events: none;
+}
+
+/* 레이어도 위젯 상자도 클릭을 먹지 않는다 — 위젯이 실제로 그린 표면만 스스로 auto로 되살린다.
+   전면 오버레이가 그 아래 콘솔 조작을 가로채면 안 된다. */
+.floating-widget {
+  pointer-events: none;
+}
+
+/* 차단형 오버레이가 열린 동안에는 부유 위젯이 스스로 되살린 표면까지 입력을 놓는다 —
+   모달의 입력 독점이 위젯의 상주보다 우선한다. */
+body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
+  pointer-events: none;
 }
 
 .console-route-content {

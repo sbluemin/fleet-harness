@@ -25,6 +25,11 @@
       "import": "./launch/types.ts",
       "default": "./launch/types.ts"
     },
+    "./floating": {
+      "types": "./floating/types.ts",
+      "import": "./floating/types.ts",
+      "default": "./floating/types.ts"
+    },
     "./plugin": {
       "types": "./plugin/types.ts",
       "import": "./plugin/types.ts",

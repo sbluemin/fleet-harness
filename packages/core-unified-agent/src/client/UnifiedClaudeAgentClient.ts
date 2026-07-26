@@ -50,6 +50,7 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
   private sessionId: string | null = null;
   private sessionCwd: string | null = null;
   private currentSystemPrompt: string | null = null;
+  private currentSystemPromptMode: 'prepend' | 'replace' = 'prepend';
   private firstPromptPending: string | null = null;
   private currentEffort: string | null = null;
   private detector = new CliDetector();
@@ -90,6 +91,17 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
 
   async connect(options: UnifiedClientOptions): Promise<ConnectResult> {
     await this.disconnect();
+    const systemPromptMode = options.systemPromptMode ?? 'prepend';
+    const requestedCli = options.cli ?? this.cliType;
+    if (
+      systemPromptMode === 'replace'
+      && requestedCli !== 'claude'
+      && requestedCli !== 'claude-kimi'
+    ) {
+      throw new Error(
+        `system prompt replacement is not supported by the "${requestedCli}" backend`,
+      );
+    }
     if (options.cli && options.cli !== this.cliType) {
       throw new Error(`UnifiedClaudeAgentClient는 ${this.cliType} CLI만 지원합니다.`);
     }
@@ -161,7 +173,7 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
         options.cwd,
         options.sessionId,
         acpMcpServers,
-        undefined,
+        systemPromptMode === 'replace' ? options.systemPrompt : undefined,
         options.strictMcp,
         options.effort,
       );
@@ -305,6 +317,7 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
     }, this.currentEffort ?? undefined);
     this.sessionId = sessionId;
     this.currentSystemPrompt = null;
+    this.currentSystemPromptMode = 'prepend';
     this.firstPromptPending = null;
   }
 
@@ -325,14 +338,18 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
       targetCwd,
       undefined,
       undefined,
-      undefined,
+      this.currentSystemPromptMode === 'replace'
+        ? this.currentSystemPrompt ?? undefined
+        : undefined,
       undefined,
       this.currentEffort ?? undefined,
     );
 
     this.sessionId = session.sessionId;
     this.sessionCwd = targetCwd;
-    this.firstPromptPending = this.currentSystemPrompt;
+    this.firstPromptPending = this.currentSystemPromptMode === 'prepend'
+      ? this.currentSystemPrompt
+      : null;
 
     return {
       cli: this.cliType,
@@ -368,7 +385,10 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
     this.sessionId = session.sessionId;
     this.sessionCwd = options.cwd;
     this.currentSystemPrompt = options.systemPrompt ?? null;
-    this.firstPromptPending = options.sessionId ? null : this.currentSystemPrompt;
+    this.currentSystemPromptMode = options.systemPromptMode ?? 'prepend';
+    this.firstPromptPending = options.sessionId || this.currentSystemPromptMode === 'replace'
+      ? null
+      : this.currentSystemPrompt;
     this.currentEffort = options.effort ?? null;
 
     return {
@@ -382,6 +402,7 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
     this.sessionId = null;
     this.sessionCwd = null;
     this.currentSystemPrompt = null;
+    this.currentSystemPromptMode = 'prepend';
     this.firstPromptPending = null;
     this.currentEffort = null;
   }

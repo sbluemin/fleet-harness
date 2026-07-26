@@ -8,7 +8,12 @@ interface TestableAcpConnection {
   agentCapabilities: { sessionCapabilities?: { close?: unknown }; loadSession?: boolean } | null;
   command: string;
   connectionState: string;
-  createSession: (workspace: string, sessionId?: string) => Promise<NewSessionResponse>;
+  createSession: (
+    workspace: string,
+    sessionId?: string,
+    mcpServers?: unknown[],
+    systemPrompt?: string,
+  ) => Promise<NewSessionResponse>;
   endSession: (sessionId: string) => Promise<void>;
   pushStderr: (chunk: string) => void;
   reconnectSession: (cwd: string, sessionId?: string) => Promise<NewSessionResponse>;
@@ -62,7 +67,7 @@ describe('AcpConnection stderr diagnostics', () => {
 });
 
 describe('AcpConnection Claude session metadata', () => {
-  it('ignores the legacy systemPrompt argument instead of emitting _meta.systemPrompt', async () => {
+  it('prepend mode omits _meta.systemPrompt', async () => {
     const conn = new TestAcpConnection({
       command: 'claude',
       args: ['--acp'],
@@ -72,13 +77,59 @@ describe('AcpConnection Claude session metadata', () => {
     const mockAgent = createMockAgent();
     conn.agentProxy = mockAgent;
 
-    await (conn as unknown as {
-      createSession: (workspace: string, sessionId?: string, mcpServers?: unknown[], systemPrompt?: string) => Promise<NewSessionResponse>;
-    }).createSession('/workspace', undefined, [], 'Tier-2 지침');
+    await conn.createSession('/workspace', undefined, []);
 
     expect(mockAgent.newSession).toHaveBeenCalledWith({
       cwd: '/workspace',
       mcpServers: [],
+    });
+  });
+
+  it('replace mode emits _meta.systemPrompt as the exact plain string', async () => {
+    const conn = new TestAcpConnection({
+      command: 'claude',
+      args: ['--acp'],
+      cliType: 'claude',
+      cwd: process.cwd(),
+    }) as unknown as TestableAcpConnection;
+    const mockAgent = createMockAgent();
+    conn.agentProxy = mockAgent;
+
+    await conn.createSession('/workspace', undefined, [], 'Tier-2 지침');
+
+    expect(mockAgent.newSession).toHaveBeenCalledWith({
+      cwd: '/workspace',
+      mcpServers: [],
+      _meta: {
+        systemPrompt: 'Tier-2 지침',
+      },
+    });
+    const params = vi.mocked(mockAgent.newSession).mock.calls[0]?.[0] as {
+      _meta?: { systemPrompt?: unknown };
+    };
+    expect(params._meta?.systemPrompt).toBeTypeOf('string');
+    expect(params._meta?.systemPrompt).not.toEqual({ append: 'Tier-2 지침' });
+  });
+
+  it('replace mode emits the same plain string on session/load', async () => {
+    const conn = new TestAcpConnection({
+      command: 'claude',
+      args: ['--acp'],
+      cliType: 'claude-kimi',
+      cwd: process.cwd(),
+    }) as unknown as TestableAcpConnection;
+    const mockAgent = createMockAgent();
+    conn.agentProxy = mockAgent;
+
+    await conn.createSession('/workspace', 'existing-session', [], 'Tier-2 지침');
+
+    expect(mockAgent.loadSession).toHaveBeenCalledWith({
+      sessionId: 'existing-session',
+      cwd: '/workspace',
+      mcpServers: [],
+      _meta: {
+        systemPrompt: 'Tier-2 지침',
+      },
     });
   });
 });

@@ -195,7 +195,7 @@ export class AcpConnection extends BaseConnection {
     workspace: string,
     sessionId?: string,
     mcpServers?: McpServer[],
-    _systemPrompt?: string,
+    systemPrompt?: string,
     strictMcp?: boolean,
     effort?: string,
   ): Promise<NewSessionResponse> {
@@ -213,7 +213,7 @@ export class AcpConnection extends BaseConnection {
           cwd: workspace,
           mcpServers: servers,
         };
-        const meta = this.buildClaudeSessionMeta(strictMcp, effort);
+        const meta = this.buildClaudeSessionMeta(systemPrompt, strictMcp, effort);
         if (meta) {
           loadSessionParams._meta = meta;
         }
@@ -233,7 +233,7 @@ export class AcpConnection extends BaseConnection {
           mcpServers: servers,
         };
 
-        const meta = this.buildClaudeSessionMeta(strictMcp, effort);
+        const meta = this.buildClaudeSessionMeta(systemPrompt, strictMcp, effort);
         if (meta) {
           newSessionParams._meta = meta;
         }
@@ -305,7 +305,7 @@ export class AcpConnection extends BaseConnection {
         ? { additionalDirectories: params.additionalDirectories }
         : {}),
     };
-    const meta = this.buildClaudeSessionMeta(undefined, effort);
+    const meta = this.buildClaudeSessionMeta(undefined, undefined, effort);
     if (meta) {
       loadSessionParams._meta = meta;
     }
@@ -389,8 +389,9 @@ export class AcpConnection extends BaseConnection {
     return this.cliType === 'claude' || this.cliType === 'claude-kimi';
   }
 
-  /** Claude bridge 전용 strict-MCP와 effort `_meta`를 조립합니다. */
+  /** Claude bridge 전용 system prompt replacement, strict-MCP와 effort `_meta`를 조립합니다. */
   private buildClaudeSessionMeta(
+    systemPrompt?: string,
     strictMcp?: boolean,
     effort?: string,
   ): Record<string, unknown> | undefined {
@@ -398,14 +399,18 @@ export class AcpConnection extends BaseConnection {
       return undefined;
     }
 
+    const shouldReplaceSystemPrompt = !!systemPrompt;
     const shouldInjectStrictMcp = strictMcp;
     const shouldInjectEffort = !!effort;
 
-    if (!shouldInjectStrictMcp && !shouldInjectEffort) {
+    if (!shouldReplaceSystemPrompt && !shouldInjectStrictMcp && !shouldInjectEffort) {
       return undefined;
     }
 
     const meta: Record<string, unknown> = {};
+    if (shouldReplaceSystemPrompt) {
+      meta.systemPrompt = systemPrompt;
+    }
     if (shouldInjectStrictMcp || shouldInjectEffort) {
       const claudeOptions: Record<string, unknown> = {};
       if (shouldInjectStrictMcp) {
