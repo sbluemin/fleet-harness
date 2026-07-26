@@ -1,0 +1,7 @@
+{
+  "id": "scuttlebutt",
+  "name": "Scuttlebutt",
+  "apiVersion": 1,
+  "routes": "routes.ts",
+  "client": "client/index.tsx"
+}
