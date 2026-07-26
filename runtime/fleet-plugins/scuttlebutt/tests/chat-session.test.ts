@@ -76,6 +76,7 @@ describe("ChatSession", () => {
       fsAccess: false,
       strictMcp: true,
       systemPrompt: SCUTTLEBUTT_SYSTEM_PROMPT,
+      systemPromptMode: "replace",
       mcpServers: [],
     });
 
@@ -89,6 +90,14 @@ describe("ChatSession", () => {
     await session.dispose();
     expect(client.cancelPrompt).toHaveBeenCalledOnce();
     expect(client.disconnect).toHaveBeenCalledOnce();
+  });
+
+  it("preserves the RISEN system prompt structure", () => {
+    expect(SCUTTLEBUTT_SYSTEM_PROMPT).toContain("# Role");
+    expect(SCUTTLEBUTT_SYSTEM_PROMPT).toContain("# Instructions");
+    expect(SCUTTLEBUTT_SYSTEM_PROMPT).toContain("# Steps");
+    expect(SCUTTLEBUTT_SYSTEM_PROMPT).toContain("# End goal");
+    expect(SCUTTLEBUTT_SYSTEM_PROMPT).toContain("# Narrowing");
   });
 });
 
