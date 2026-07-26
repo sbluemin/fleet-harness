@@ -47,7 +47,7 @@ export function resolveCompanionShortcutToggle(input: {
     };
   }
 
-  const clusterIds = input.clusterIds ?? [input.targetId];
+  const clusterIds = [...new Set([input.targetId, ...(input.clusterIds ?? [])])];
   const clusterIdSet = new Set(clusterIds);
   const remainingVisible = input.companions.some((companion) =>
     !clusterIdSet.has(companion.id)

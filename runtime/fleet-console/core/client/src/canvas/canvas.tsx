@@ -331,6 +331,11 @@ export function OperationsCanvas({
       companionTriageStageRef.current,
       { theaterId: state.activeTheaterId, operationId: triageStageId },
     );
+    return () => {
+      companionTriageStageRef.current = clearInactiveTriageStageCompanion(
+        companionTriageStageRef.current,
+      );
+    };
   }, [state.activeTheaterId, triageActive, triageStageId]);
   useEffect(() => {
     if (!triageActive || !state.activeTheaterId) {

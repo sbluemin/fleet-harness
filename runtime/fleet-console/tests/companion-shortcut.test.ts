@@ -78,6 +78,40 @@ describe("companion shortcut toggle", () => {
     });
   });
 
+  it("always closes the target when the declared cluster lists only siblings", () => {
+    expect(resolveCompanionShortcutToggle({
+      companions: COMPANIONS,
+      targetId: "chat",
+      clusterIds: ["artifacts"],
+      companionsOpen: true,
+      visibilityOverrides: { chat: true, artifacts: true, streams: false, "always-visible": false },
+    })).toEqual({
+      openLayer: false,
+      closeLayer: true,
+      visibilityChanges: [
+        { id: "chat", visible: false },
+        { id: "artifacts", visible: false },
+      ],
+    });
+  });
+
+  it("keeps the target first and removes duplicate cluster ids", () => {
+    expect(resolveCompanionShortcutToggle({
+      companions: COMPANIONS,
+      targetId: "chat",
+      clusterIds: ["artifacts", "chat", "artifacts"],
+      companionsOpen: true,
+      visibilityOverrides: { chat: true, artifacts: true, streams: true, "always-visible": false },
+    })).toEqual({
+      openLayer: false,
+      closeLayer: false,
+      visibilityChanges: [
+        { id: "chat", visible: false },
+        { id: "artifacts", visible: false },
+      ],
+    });
+  });
+
   it("closes the layer when hiding the target leaves no visible companions", () => {
     expect(resolveCompanionShortcutToggle({
       companions: COMPANIONS,

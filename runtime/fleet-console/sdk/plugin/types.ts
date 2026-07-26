@@ -112,7 +112,7 @@ export interface CompanionPanelShortcut {
   readonly code: string;
   /** Key label shown in the host shortcut help, e.g. "A". */
   readonly label: string;
-  /** Sibling companion panel ids closed together with this one; opening still shows only this panel. */
+  /** Sibling companion panel ids closed together with this one; the target is always included, while opening still shows only the target. */
   readonly clusterIds?: readonly string[];
 }
 
