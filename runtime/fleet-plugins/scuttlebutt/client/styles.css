@@ -47,206 +47,112 @@
   transform: none;
 }
 
-.scuttlebutt-cat {
-  --scuttlebutt-pixel-size: 5px;
-  position: relative;
-  width: calc(var(--scuttlebutt-pixel-size) * 13);
-  height: calc(var(--scuttlebutt-pixel-size) * 13);
-  image-rendering: pixelated;
+.scuttlebutt-sam {
+  display: block;
+  width: auto;
+  height: 72px;
+  overflow: visible;
 }
 
-.scuttlebutt-pixel {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: var(--scuttlebutt-pixel-size);
-  height: var(--scuttlebutt-pixel-size);
+.scuttlebutt-sam * {
+  transform-box: fill-box;
 }
 
-.scuttlebutt-fur {
-  background: transparent;
-  box-shadow:
-    var(--scuttlebutt-pixel-size) 0 var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 11) 0 var(--ink-pearl),
-    var(--scuttlebutt-pixel-size) var(--scuttlebutt-pixel-size) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 2) var(--scuttlebutt-pixel-size) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 10) var(--scuttlebutt-pixel-size) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 11) var(--scuttlebutt-pixel-size) var(--ink-pearl),
-    var(--scuttlebutt-pixel-size) calc(var(--scuttlebutt-pixel-size) * 2) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 11) calc(var(--scuttlebutt-pixel-size) * 2) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 2) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 10) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 4) 0 var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 5) 0 var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 6) 0 var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 7) 0 var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 8) 0 var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 3) var(--scuttlebutt-pixel-size) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 4) var(--scuttlebutt-pixel-size) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 5) var(--scuttlebutt-pixel-size) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 6) var(--scuttlebutt-pixel-size) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 7) var(--scuttlebutt-pixel-size) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 8) var(--scuttlebutt-pixel-size) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 9) var(--scuttlebutt-pixel-size) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 2) calc(var(--scuttlebutt-pixel-size) * 2) var(--brass),
-    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 2) var(--brass),
-    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 2) var(--brass),
-    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 2) var(--brass),
-    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 2) var(--ink-rim),
-    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 2) var(--brass),
-    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 2) var(--brass),
-    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 2) var(--brass),
-    calc(var(--scuttlebutt-pixel-size) * 10) calc(var(--scuttlebutt-pixel-size) * 2) var(--brass),
-    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 2) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 10) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 2) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 10) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 2) calc(var(--scuttlebutt-pixel-size) * 6) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 6) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 6) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 6) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 6) var(--ink-rim),
-    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 6) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 6) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 6) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 10) calc(var(--scuttlebutt-pixel-size) * 6) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 7) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 7) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 7) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 7) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 7) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 7) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 7) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 2) calc(var(--scuttlebutt-pixel-size) * 8) var(--brass),
-    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 8) var(--brass),
-    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 8) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 8) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 8) var(--ink-rim),
-    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 8) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 8) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 8) var(--brass),
-    calc(var(--scuttlebutt-pixel-size) * 10) calc(var(--scuttlebutt-pixel-size) * 8) var(--brass),
-    calc(var(--scuttlebutt-pixel-size) * 2) calc(var(--scuttlebutt-pixel-size) * 9) var(--brass),
-    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 9) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 9) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 9) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 9) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 9) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 9) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 9) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 10) calc(var(--scuttlebutt-pixel-size) * 9) var(--brass),
-    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 10) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 10) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 10) var(--brass),
-    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 10) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 10) var(--brass),
-    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 10) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 10) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 11) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 11) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 11) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 11) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 11) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 11) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 11) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 12) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 12) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 12) var(--ink-veil),
-    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 12) var(--ink-veil);
+.scuttlebutt-sam .scuttlebutt-sam-tail {
+  transform-origin: 12% 90%;
 }
 
-.scuttlebutt-eyes {
-  background: transparent;
-  box-shadow:
-    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-abyss),
-    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-abyss);
-  transform-origin:
-    calc(var(--scuttlebutt-pixel-size) * 6.5)
-    calc(var(--scuttlebutt-pixel-size) * 5.5);
-  animation: scuttlebutt-blink 5.4s steps(1) infinite;
+.scuttlebutt-sam .scuttlebutt-sam-ear-l,
+.scuttlebutt-sam .scuttlebutt-sam-ear-r {
+  transform-origin: 50% 100%;
 }
 
-.scuttlebutt-tail {
-  background: transparent;
-  box-shadow:
-    calc(var(--scuttlebutt-pixel-size) * 10) calc(var(--scuttlebutt-pixel-size) * 11) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 11) calc(var(--scuttlebutt-pixel-size) * 11) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 11) calc(var(--scuttlebutt-pixel-size) * 10) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 11) calc(var(--scuttlebutt-pixel-size) * 9) var(--ink-pearl);
-  transform-origin: calc(var(--scuttlebutt-pixel-size) * 10) calc(var(--scuttlebutt-pixel-size) * 12);
-  animation: scuttlebutt-tail calc(var(--duration-slow) * 5) steps(2) infinite;
+.scuttlebutt-sam .scuttlebutt-sam-eyes {
+  transform-origin: 50% 50%;
 }
 
-.scuttlebutt-mascot.is-thinking .scuttlebutt-eyes {
-  box-shadow:
-    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 5) var(--aurora),
-    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 5) var(--aurora);
-  animation: none;
+/* 회전축은 각 팔이 몸에 붙는 지점 — 팔 그룹 bbox 기준으로 안쪽 위 모서리다.
+   왼팔 bbox는 x 11.6..22.4 이고 어깨는 x=22 (96%), 오른팔은 x 53.6..64.4 이고 어깨는 x=54 (4%).
+   이 값이 어긋나면 한쪽 팔만 옆으로 벌어진다. */
+.scuttlebutt-sam .scuttlebutt-sam-arm-l {
+  transform-origin: 96% 2%;
 }
 
-.scuttlebutt-mascot.is-thinking .scuttlebutt-cat {
-  animation: scuttlebutt-thinking-bob calc(var(--duration-slow) * 2) var(--ease-glide) infinite;
+.scuttlebutt-sam .scuttlebutt-sam-arm-r {
+  transform-origin: 4% 2%;
 }
 
-.scuttlebutt-mascot.is-thinking .scuttlebutt-tail {
-  animation-duration: calc(var(--duration-slow) * 2);
+.scuttlebutt-sam .scuttlebutt-sam-head {
+  transform-origin: 50% 92%;
 }
 
-/* 눈 좌표는 스프라이트 얼굴 행(x4·x8, y5)에 고정한다 — 상태별로 색만 바뀌고 위치는 움직이지 않는다.
-   idle 이외 상태에서는 깜빡임을 멈춘다. */
-.scuttlebutt-mascot.is-ready .scuttlebutt-eyes {
-  box-shadow:
-    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 5) var(--positive),
-    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 5) var(--positive);
-  animation: none;
-}
-
-.scuttlebutt-arms {
-  background: transparent;
+.scuttlebutt-sam .scuttlebutt-sam-happy,
+.scuttlebutt-sam .scuttlebutt-sam-spark {
   opacity: 0;
-  box-shadow:
-    0 calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
-    var(--scuttlebutt-pixel-size) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 11) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-pearl),
-    calc(var(--scuttlebutt-pixel-size) * 12) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl);
 }
 
-.scuttlebutt-mascot.is-cheering .scuttlebutt-cat {
-  animation: scuttlebutt-cheer 1.2s var(--ease-spring);
+.scuttlebutt-mascot:not(.is-thinking):not(.is-ready):not(.is-cheering) .scuttlebutt-sam-all {
+  animation: scuttlebutt-sam-breathe 3.4s var(--ease-glide) infinite;
 }
 
-.scuttlebutt-mascot.is-cheering .scuttlebutt-eyes {
-  box-shadow:
-    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 5) var(--positive),
-    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 5) var(--positive);
-  animation: none;
+.scuttlebutt-mascot:not(.is-thinking):not(.is-ready):not(.is-cheering) .scuttlebutt-sam-tail {
+  animation: scuttlebutt-sam-tail 2.6s var(--ease-glide) infinite;
 }
 
-.scuttlebutt-mascot.is-cheering .scuttlebutt-tail {
-  animation: scuttlebutt-tail calc(var(--duration-slow) * 2) steps(2) infinite;
+.scuttlebutt-mascot:not(.is-thinking):not(.is-ready):not(.is-cheering) .scuttlebutt-sam-eyes {
+  animation: scuttlebutt-sam-blink 5.2s infinite;
 }
 
-.scuttlebutt-mascot.is-cheering .scuttlebutt-arms {
+.scuttlebutt-mascot.is-thinking .scuttlebutt-sam-head {
+  animation: scuttlebutt-sam-tilt 1.9s var(--ease-glide) infinite;
+}
+
+.scuttlebutt-mascot.is-thinking .scuttlebutt-sam-tail {
+  animation: scuttlebutt-sam-tail 1.1s var(--ease-glide) infinite;
+}
+
+.scuttlebutt-mascot.is-thinking .scuttlebutt-sam-ear-r {
+  animation: scuttlebutt-sam-ear 1.9s var(--ease-glide) infinite;
+}
+
+.scuttlebutt-mascot.is-thinking .scuttlebutt-sam-all {
+  animation: scuttlebutt-sam-breathe 1.6s var(--ease-glide) infinite;
+}
+
+.scuttlebutt-mascot.is-ready .scuttlebutt-sam-eyes {
+  opacity: 0;
+}
+
+.scuttlebutt-mascot.is-ready .scuttlebutt-sam-happy {
   opacity: 1;
+}
+
+.scuttlebutt-mascot.is-cheering .scuttlebutt-sam-all {
+  animation: scuttlebutt-sam-hop 1.25s var(--ease-spring) 1;
+}
+
+.scuttlebutt-mascot.is-cheering .scuttlebutt-sam-arm-l {
+  animation: scuttlebutt-sam-arm-l 1.25s var(--ease-spring) 1;
+}
+
+.scuttlebutt-mascot.is-cheering .scuttlebutt-sam-arm-r {
+  animation: scuttlebutt-sam-arm-r 1.25s var(--ease-spring) 1;
+}
+
+.scuttlebutt-mascot.is-cheering .scuttlebutt-sam-eyes {
+  animation: scuttlebutt-sam-hide 1.25s steps(1) 1;
+}
+
+.scuttlebutt-mascot.is-cheering .scuttlebutt-sam-happy {
+  animation: scuttlebutt-sam-show 1.25s steps(1) 1;
+}
+
+.scuttlebutt-mascot.is-cheering .scuttlebutt-sam-spark {
+  animation: scuttlebutt-sam-spark 1.25s var(--ease-glide) 1;
+}
+
+.scuttlebutt-mascot.is-cheering .scuttlebutt-sam-tail {
+  animation: scuttlebutt-sam-tail-fast 0.42s var(--ease-glide) 3;
 }
 
 .scuttlebutt-beacon {
@@ -521,37 +427,103 @@
   opacity: 0.5;
 }
 
-/* 얼굴 y5 행 중심에서 눈 레이어를 세로로 눌러 '-' 모양으로 두 번 감는다. */
-@keyframes scuttlebutt-blink {
-  0%,
-  88% { transform: scaleY(1); }
-  89% { transform: scaleY(0.12); }
-  91% { transform: scaleY(1); }
-  92% { transform: scaleY(0.12); }
-  94%,
-  100% { transform: scaleY(1); }
-}
-
-@keyframes scuttlebutt-tail {
-  0%,
-  100% { transform: rotate(0deg); }
-  50% { transform: rotate(-9deg); }
-}
-
-@keyframes scuttlebutt-thinking-bob {
+@keyframes scuttlebutt-sam-breathe {
   0%,
   100% { transform: translateY(0); }
-  25% { transform: translateY(-2px) rotate(-1deg); }
-  65% { transform: translateY(-4px) rotate(1deg); }
+  50% { transform: translateY(-1.2px); }
 }
 
-@keyframes scuttlebutt-cheer {
+@keyframes scuttlebutt-sam-tail {
   0%,
-  100% { transform: translateY(0) rotate(0); }
-  18% { transform: translateY(-9px) rotate(-3deg); }
-  36% { transform: translateY(0) rotate(1deg); }
-  58% { transform: translateY(-7px) rotate(3deg); }
-  78% { transform: translateY(0) rotate(-1deg); }
+  100% { transform: rotate(-9deg); }
+  50% { transform: rotate(11deg); }
+}
+
+@keyframes scuttlebutt-sam-tail-fast {
+  0%,
+  100% { transform: rotate(-14deg); }
+  50% { transform: rotate(18deg); }
+}
+
+@keyframes scuttlebutt-sam-blink {
+  0%,
+  92%,
+  100% { transform: scaleY(1); }
+  94% { transform: scaleY(0.08); }
+  95.5% { transform: scaleY(1); }
+  97% { transform: scaleY(0.08); }
+  98.5% { transform: scaleY(1); }
+}
+
+@keyframes scuttlebutt-sam-tilt {
+  0%,
+  100% { transform: rotate(-3.5deg); }
+  50% { transform: rotate(3.5deg); }
+}
+
+@keyframes scuttlebutt-sam-ear {
+  0%,
+  100% { transform: rotate(0deg); }
+  40% { transform: rotate(-22deg); }
+  55% { transform: rotate(-6deg); }
+}
+
+@keyframes scuttlebutt-sam-hop {
+  0% { transform: translateY(0) scaleY(0.94) scaleX(1.05); }
+  18% { transform: translateY(-13px) scaleY(1.05) scaleX(0.97); }
+  46% { transform: translateY(-16px) scaleY(1) scaleX(1); }
+  70% { transform: translateY(0) scaleY(0.93) scaleX(1.06); }
+  86% { transform: translateY(-3px) scaleY(1.01) scaleX(0.99); }
+  100% { transform: translateY(0) scaleY(1) scaleX(1); }
+}
+
+@keyframes scuttlebutt-sam-arm-l {
+  0% { transform: rotate(0deg); }
+  18%,
+  70% { transform: rotate(-152deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes scuttlebutt-sam-arm-r {
+  0% { transform: rotate(0deg); }
+  18%,
+  70% { transform: rotate(152deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes scuttlebutt-sam-hide {
+  0%,
+  12% { opacity: 1; }
+  13%,
+  82% { opacity: 0; }
+  83%,
+  100% { opacity: 1; }
+}
+
+@keyframes scuttlebutt-sam-show {
+  0%,
+  12% { opacity: 0; }
+  13%,
+  82% { opacity: 1; }
+  83%,
+  100% { opacity: 0; }
+}
+
+@keyframes scuttlebutt-sam-spark {
+  0%,
+  10% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  70% { opacity: 0.9; }
+  100% {
+    opacity: 0;
+    transform: scale(1.15);
+  }
 }
 
 @keyframes scuttlebutt-arrival-in {
@@ -594,17 +566,18 @@
     transition: none;
   }
 
-  .scuttlebutt-cat,
-  .scuttlebutt-eyes,
-  .scuttlebutt-tail,
-  .scuttlebutt-arms,
+  .scuttlebutt-sam *,
   .scuttlebutt-arrival-bubble,
   .scuttlebutt-thinking i,
   .scuttlebutt-chat-card {
-    animation: none;
+    animation: none !important;
   }
 
-  .scuttlebutt-mascot.is-cheering .scuttlebutt-arms {
+  .scuttlebutt-mascot.is-cheering .scuttlebutt-sam-eyes {
     opacity: 0;
+  }
+
+  .scuttlebutt-mascot.is-cheering .scuttlebutt-sam-happy {
+    opacity: 1;
   }
 }

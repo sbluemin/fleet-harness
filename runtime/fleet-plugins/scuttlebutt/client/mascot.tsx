@@ -7,13 +7,13 @@ import type { ChatState } from "./chat-store.js";
 import { initialDragState, updateDrag, type DragState } from "./drag-state.js";
 import { clampPoint, snapPoint, type Point, type Size } from "./geometry.js";
 import { getT } from "./i18n.js";
+import { SamFigure } from "./sam-figure.js";
 import {
   getScuttlebuttSettings,
   subscribeScuttlebuttSettings,
 } from "./settings-store.js";
 
 const POSITION_KEY = "scuttlebutt.mascot-pos";
-const DEFAULT_SIZE: Size = { width: 81, height: 95 };
 
 interface PersistedPosition extends Point {
   readonly version: 1;
@@ -45,8 +45,8 @@ export function ScuttlebuttMascot({ context }: { readonly context: FloatingWidge
   const widgetSize = React.useCallback((): Size => {
     const rect = mascotRef.current?.getBoundingClientRect();
     return {
-      width: rect?.width || DEFAULT_SIZE.width,
-      height: rect?.height || DEFAULT_SIZE.height,
+      width: rect?.width ?? 0,
+      height: rect?.height ?? 0,
     };
   }, []);
 
@@ -105,7 +105,7 @@ export function ScuttlebuttMascot({ context }: { readonly context: FloatingWidge
     cheerTimeoutRef.current = window.setTimeout(() => {
       setCheering(false);
       cheerTimeoutRef.current = null;
-    }, 1_200);
+    }, 1_250);
   }, []);
 
   React.useEffect(() => {
@@ -164,12 +164,7 @@ export function ScuttlebuttMascot({ context }: { readonly context: FloatingWidge
             {mascotState === "is-thinking"
               ? <span className="scuttlebutt-bubble" aria-hidden="true">…</span>
               : null}
-            <span className="scuttlebutt-cat" aria-hidden="true">
-              <i className="scuttlebutt-pixel scuttlebutt-fur" />
-              <i className="scuttlebutt-pixel scuttlebutt-eyes" />
-              <i className="scuttlebutt-pixel scuttlebutt-tail" />
-              <i className="scuttlebutt-pixel scuttlebutt-arms" />
-            </span>
+            <SamFigure />
           </>
         )}
       </button>
