@@ -12,7 +12,7 @@ import { useGlobalSettingsStore } from "../global-settings-store.js";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import { useT, type CoreMessageKey } from "../i18n/index.js";
-import { reconnectOperationsSseNow } from "../operations-sse.js";
+import { ReconnectButton } from "../components/reconnect-button.js";
 import { getState, subscribe } from "../store.js";
 import type { ConnectionState } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
@@ -381,11 +381,12 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activePan
       </div>
       <div id={`rail-panel-${activePanel.id}`} className="right-rail-panel-body" role="tabpanel" aria-labelledby={`rail-tab-${activeId}`}>
         {activePanel.render(ctx)}
-        {connection === "offline" ? (
+        {/* 덮개도 배너와 같은 축으로 건다 — 재연결 시도 중에도 패널 값은 여전히 멈춰 있다. */}
+        {connection !== "live" && connectionLostAt !== null ? (
           <div className="right-rail-stale-veil">
             <strong>{t("chrome.link.staleHeadline")}</strong>
             <span>{t("chrome.link.staleDetail", { time: connectionLostTime })}</span>
-            <button type="button" onClick={reconnectOperationsSseNow}>{t("chrome.link.reconnect")}</button>
+            <ReconnectButton />
           </div>
         ) : null}
       </div>

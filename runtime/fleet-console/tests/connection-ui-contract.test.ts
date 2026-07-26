@@ -36,11 +36,17 @@ describe("console connection-loss UI contract", () => {
     expect(commandBand).toContain('className="command-band-link-chip" data-link-state={state.connection}');
     expect(commandBand).toContain('state.connection !== "live"');
     expect(app).toContain('className="console-link-banner" role="status" aria-live="polite"');
-    expect(app).toContain('state.connection === "offline"');
-    expect(app).toContain("onClick={reconnectOperationsSseNow}");
+    expect(app).toContain('state.connection !== "live" && state.connectionLostAt !== null');
+    expect(app).toContain("<ReconnectButton />");
     expect(rail).toContain('className="right-rail-stale-veil"');
-    expect(rail).toContain('connection === "offline"');
-    expect(rail).toContain("onClick={reconnectOperationsSseNow}");
+    expect(rail).toContain('connection !== "live" && connectionLostAt !== null');
+    expect(rail).toContain("<ReconnectButton />");
+
+    // 재연결 버튼은 상태 기계와 별개로 눌렸다는 사실을 보증한다 — 서버가 죽어 있으면
+    // EventSource가 즉시 실패해 connecting이 250ms 안에 사라지기 때문이다(실측).
+    const button = source("components/reconnect-button.tsx");
+    expect(button).toContain("disabled={pending}");
+    expect(button).toContain('t(pending ? "chrome.link.reconnecting" : "chrome.link.reconnect")');
   });
 
   it("uses signal tokens and the required stale-veil motion grammar", () => {
