@@ -121,12 +121,15 @@ interface ManagedSignalsCapability {
 
 function readFleetSignals(): FloatingWidgetFleetSignals {
   const state = getState();
+  const idleArrivals = getIdleArrivalIds();
   let running = 0;
   let awaiting = 0;
   for (const operation of state.operations) {
     const activity = resolveOperationActivity(operation, state.operationStatus);
     if (activity === "running") running += 1;
-    else if (activity === "awaiting") awaiting += 1;
+    // 사이드바 STATUS 축과 같은 기준을 쓴다 — 확인하지 않은 도착도 사용자를 기다리는 상태다.
+    // 원시 status만 세면 콘솔이 AWAITING이라 표시한 Operation의 절반을 위젯이 놓친다.
+    else if (activity === "awaiting" || (activity === "idle" && idleArrivals.has(operation.id))) awaiting += 1;
   }
   return {
     running,
@@ -165,12 +168,15 @@ function createManagedSignalsCapability(): ManagedSignalsCapability {
     motionQuery?.addEventListener("change", notifyIfChanged);
     const unsubscribeStore = subscribeStore(notifyIfChanged);
     const unsubscribeSettings = subscribeGlobalSettings(notifyIfChanged);
+    // 도착 확인 여부는 스토어 밖 채널이라 따로 구독해야 awaiting 집계가 갱신된다.
+    const unsubscribeIdleArrival = subscribeIdleArrival(notifyIfChanged);
     const unsubscribe = () => {
       if (!active) return;
       active = false;
       motionQuery?.removeEventListener("change", notifyIfChanged);
       unsubscribeStore();
       unsubscribeSettings();
+      unsubscribeIdleArrival();
       activeSubscriptions.delete(unsubscribe);
     };
 

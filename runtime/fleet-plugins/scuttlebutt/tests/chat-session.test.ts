@@ -42,6 +42,28 @@ describe("Scuttlebutt permission gate", () => {
     });
   });
 
+  // 브리지가 실제로 보내는 모양 — 도구 이름이 없고 title은 검색어나 "Fetch <url>" 뿐이다.
+  it("allows the web tool payloads the Claude bridge actually sends", () => {
+    expect(resolveFor('"fleet console"', { query: "fleet console" }, undefined, "fetch")).toEqual({
+      outcome: { outcome: "selected", optionId: "allow-once" },
+    });
+    expect(resolveFor("Fetch https://example.com", { url: "https://example.com", prompt: "summarize" }, undefined, "fetch")).toEqual({
+      outcome: { outcome: "selected", optionId: "allow-once" },
+    });
+  });
+
+  it("keeps the fetch kind from widening past web search and fetch", () => {
+    expect(resolveFor("something else", { path: "/etc/passwd" }, undefined, "fetch")).toEqual({
+      outcome: { outcome: "selected", optionId: "reject-once" },
+    });
+    expect(resolveFor("ls -la", { command: "ls -la" }, undefined, "execute")).toEqual({
+      outcome: { outcome: "selected", optionId: "reject-once" },
+    });
+    expect(resolveFor("Read a file", { query: "still not a fetch" }, undefined, "read")).toEqual({
+      outcome: { outcome: "selected", optionId: "reject-once" },
+    });
+  });
+
   it("recognizes a qualified rawInput tool name and cancels without a matching option", () => {
     expect(resolveFor("not-a-tool", { tool_name: "server:WebFetch" })).toEqual({
       outcome: { outcome: "selected", optionId: "allow-once" },
@@ -116,11 +138,12 @@ function resolveFor(
     { kind: "reject_always", optionId: "reject-always" },
     { kind: "reject_once", optionId: "reject-once" },
   ],
+  kind?: string,
 ): AcpPermissionResponse {
   let response: AcpPermissionResponse | undefined;
   resolveWebPermissionRequest({
     options,
-    toolCall: { title, rawInput, toolCallId: "provider-tool-call" },
+    toolCall: { title, rawInput, kind, toolCallId: "provider-tool-call" },
   } as AcpPermissionRequestParams, (value) => {
     response = value;
   });

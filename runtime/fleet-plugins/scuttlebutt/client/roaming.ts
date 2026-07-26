@@ -45,8 +45,11 @@ export const PERSONAS: Record<"tori" | "bori" | "dori", BirdPersona> = {
   dori: { max: 110, pause: [1.0, 2.4], amp: 6, freq: 2.0 },
 };
 
-export const BIRD_HALF_WIDTH = 52;
-export const BIRD_HALF_HEIGHT = 58;
+/** 새 한 마리의 렌더 크기. styles.css 의 `.scuttlebutt-bird { width }` 와 반드시 같아야 한다. */
+export const BIRD_WIDTH = 84;
+export const BIRD_HEIGHT = 97;
+export const BIRD_HALF_WIDTH = 42;
+export const BIRD_HALF_HEIGHT = 47;
 
 export function createBirdBody(index: number, viewport: Viewport, random: () => number): BirdBody {
   const body: BirdBody = {

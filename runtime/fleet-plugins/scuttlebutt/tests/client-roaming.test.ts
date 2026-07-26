@@ -80,7 +80,7 @@ describe("Scuttlebutt roaming engine", () => {
   });
 
   it("converges walking birds to the deck and reflects at both walls", () => {
-    const left = bird({ x: 65, y: 300, vx: -40, mode: "walk", modeUntil: 20 });
+    const left = bird({ x: BIRD_HALF_WIDTH + 13, y: 300, vx: -40, mode: "walk", modeUntil: 20 });
     step(left);
     expect(left.x).toBeCloseTo(BIRD_HALF_WIDTH + 12);
     expect(left.vx).toBeCloseTo(40);

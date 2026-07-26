@@ -207,7 +207,18 @@ export function isWebToolPermission(params: AcpPermissionRequestParams): boolean
     typeof params.toolCall.rawInput === "string" ? params.toolCall.rawInput : undefined,
     ...["toolName", "tool_name", "name", "title"].map((key) => rawInput[key]),
   ];
-  return candidates.some((candidate) => typeof candidate === "string" && isWebToolName(candidate));
+  if (candidates.some((candidate) => typeof candidate === "string" && isWebToolName(candidate))) return true;
+  return isWebToolCall(params.toolCall.kind, rawInput);
+}
+
+/**
+ * ACP 권한 요청은 도구 이름을 싣지 않는다 — Claude 브리지는 WebSearch를 검색어만 담은 title로,
+ * WebFetch를 "Fetch <url>"로 바꿔 보낸다. 이름만 대조하면 웹 검색이 매번 거부되어 기능이 죽는다.
+ * 브리지가 kind:"fetch"로 분류하는 도구는 이 둘뿐이고, 입력 모양까지 맞을 때만 허용해 범위를 좁힌다.
+ */
+export function isWebToolCall(kind: unknown, rawInput: Record<string, unknown>): boolean {
+  if (kind !== "fetch") return false;
+  return typeof rawInput.query === "string" || typeof rawInput.url === "string";
 }
 
 export function isWebToolName(value: string): boolean {

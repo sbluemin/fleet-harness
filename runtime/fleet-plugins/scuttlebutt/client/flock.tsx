@@ -10,6 +10,8 @@ import { QuakerFigure } from "./quaker-figure.js";
 import {
   BIRD_HALF_HEIGHT,
   BIRD_HALF_WIDTH,
+  BIRD_HEIGHT,
+  BIRD_WIDTH,
   createBirdBody,
   PERSONAS,
   pickWaypoint,
@@ -31,8 +33,6 @@ const CHEER_DURATION_MS = 2_400;
 const SAY_DURATION_MS = 1_700;
 const ARRIVAL_DURATION_MS = 6_000;
 const CLICK_DELAY_MS = 260;
-const BIRD_WIDTH = 104;
-const BIRD_HEIGHT = 120;
 const PARKED_GAP = 8;
 
 /** 첫 rAF 전에도 제자리에 그려야 세 마리가 좌상단에 겹쳤다가 흩어지는 깜빡임이 없다. */

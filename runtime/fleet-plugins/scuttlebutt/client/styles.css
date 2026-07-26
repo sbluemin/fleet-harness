@@ -2,7 +2,8 @@
   position: fixed;
   left: 0;
   top: 0;
-  width: 104px;
+  /* roaming.ts 의 BIRD_WIDTH 와 같은 값이어야 한다 — 엔진이 이 크기로 화면 경계를 계산한다. */
+  width: 84px;
   border: 0;
   background: transparent;
   padding: 0;
