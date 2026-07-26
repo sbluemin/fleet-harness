@@ -8,6 +8,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import { getT } from "./i18n.js";
 
 export const MAX_ARRIVAL_ANNOUNCEMENTS = 3;
+export const ARRIVAL_VISIBLE_MS = 6_000;
 
 export interface ArrivalAnnouncement {
   readonly id: string;
@@ -17,6 +18,7 @@ export interface ArrivalAnnouncement {
 export interface ArrivalSelectionState {
   readonly announcedIds: ReadonlySet<string>;
   readonly queue: readonly ArrivalAnnouncement[];
+  readonly sequence: number;
 }
 
 export function createArrivalSelectionState(
@@ -25,6 +27,7 @@ export function createArrivalSelectionState(
   return {
     announcedIds: new Set(initial.map((arrival) => arrival.operationId)),
     queue: [],
+    sequence: 0,
   };
 }
 
@@ -32,16 +35,27 @@ export function selectArrivalAnnouncements(
   state: ArrivalSelectionState,
   arrivals: readonly FloatingWidgetArrival[],
 ): ArrivalSelectionState {
+  // 원장은 "지금 대기 중인 것"만 담는다. 확인이 끝나 목록에서 빠진 Operation을 남겨 두면
+  // 그 Operation이 다시 대기 상태가 되어도 영영 알림이 오지 않는다.
+  const present = new Set(arrivals.map((arrival) => arrival.operationId));
+  const retained = [...state.announcedIds].filter((operationId) => present.has(operationId));
   const next = arrivals.filter((arrival) => !state.announcedIds.has(arrival.operationId));
-  if (next.length === 0) return state;
-  const announcedIds = new Set(state.announcedIds);
+  if (next.length === 0) {
+    return retained.length === state.announcedIds.size
+      ? state
+      : { ...state, announcedIds: new Set(retained) };
+  }
+  const announcedIds = new Set(retained);
   for (const arrival of next) announcedIds.add(arrival.operationId);
+  // 같은 Operation이 다시 도착하면 식별자가 겹치므로 순번을 붙여 매 알림을 구분한다.
+  const sequence = state.sequence + 1;
   const announcement: ArrivalAnnouncement = {
-    id: next.map((arrival) => arrival.operationId).join("\u0000"),
+    id: [String(sequence), ...next.map((arrival) => arrival.operationId)].join("\u0000"),
     arrivals: next,
   };
   return {
     announcedIds,
+    sequence,
     queue: [...state.queue, announcement].slice(-MAX_ARRIVAL_ANNOUNCEMENTS),
   };
 }
@@ -67,8 +81,11 @@ export function ArrivalBubble({
 }) {
   const bubbleRef = React.useRef<HTMLButtonElement>(null);
   const shownRef = React.useRef(new Set<string>());
+  const onShowRef = React.useRef(onShow);
+  React.useEffect(() => {
+    onShowRef.current = onShow;
+  }, [onShow]);
   const [selection, setSelection] = React.useState(() => createArrivalSelectionState(arrivals.list()));
-  const [placement, setPlacement] = React.useState<React.CSSProperties>({ visibility: "hidden" });
   const active = selection.queue[0];
 
   React.useEffect(() => arrivals.subscribe((current) => {
@@ -87,48 +104,41 @@ export function ArrivalBubble({
     const placeAbove = mascotRect.top + mascotRect.height / 2 > window.innerHeight / 2;
     const preferredLeft = alignRight ? mascotRect.right - bubbleRect.width : mascotRect.left;
     const left = clamp(preferredLeft, margin, window.innerWidth - bubbleRect.width - margin);
+    // 좌표를 상태로 돌리면 프레임마다 리렌더가 돈다 — 따라붙는 값은 DOM에 직접 쓴다.
+    bubble.style.left = `${left}px`;
     if (placeAbove) {
-      setPlacement({
-        left,
-        bottom: window.innerHeight - mascotRect.top + gap,
-        visibility: "visible",
-      });
+      bubble.style.top = "";
+      bubble.style.bottom = `${window.innerHeight - mascotRect.top + gap}px`;
     } else {
-      setPlacement({
-        left,
-        top: mascotRect.bottom + gap,
-        visibility: "visible",
-      });
+      bubble.style.bottom = "";
+      bubble.style.top = `${mascotRect.bottom + gap}px`;
     }
+    bubble.style.visibility = "visible";
   }, [mascot]);
 
+  // 새는 매 프레임 스스로 좌표를 쓰므로 리액트 갱신이 없다 — 말풍선이 붙어 있으려면 같이 따라가야 한다.
   React.useLayoutEffect(() => {
     if (!quiet || !active) return;
+    let frame = window.requestAnimationFrame(function follow() {
+      updatePlacement();
+      frame = window.requestAnimationFrame(follow);
+    });
     updatePlacement();
-    const bubble = bubbleRef.current;
-    if (typeof ResizeObserver === "undefined" || !bubble) return;
-    const observer = new ResizeObserver(updatePlacement);
-    observer.observe(bubble);
-    return () => observer.disconnect();
+    return () => window.cancelAnimationFrame(frame);
   }, [active, positionRevision, quiet, updatePlacement]);
 
   React.useEffect(() => {
     if (!quiet || !active) return;
     if (!shownRef.current.has(active.id)) {
       shownRef.current.add(active.id);
-      onShow();
+      onShowRef.current();
     }
+    // onShow 를 의존성에 두면 부모가 리렌더할 때마다 타이머가 리셋되어 말풍선이 영영 안 사라진다.
     const timeout = window.setTimeout(() => {
       setSelection((state) => dismissArrivalAnnouncement(state));
-    }, 6_000);
+    }, ARRIVAL_VISIBLE_MS);
     return () => window.clearTimeout(timeout);
-  }, [active, onShow, quiet]);
-
-  React.useEffect(() => {
-    if (!quiet || !active) return;
-    window.addEventListener("resize", updatePlacement);
-    return () => window.removeEventListener("resize", updatePlacement);
-  }, [active, quiet, updatePlacement]);
+  }, [active, quiet]);
 
   if (!quiet || !active) return null;
   const t = getT(locale);
@@ -140,7 +150,6 @@ export function ArrivalBubble({
       ref={bubbleRef}
       type="button"
       className="scuttlebutt-arrival-bubble"
-      style={placement}
       tabIndex={-1}
       aria-live="polite"
       onPointerDown={(event) => event.preventDefault()}

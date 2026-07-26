@@ -359,6 +359,8 @@
   position: fixed;
   z-index: 2;
   pointer-events: auto;
+  /* 첫 프레임에 좌표를 재기 전까지는 숨긴다 — 이후 추적 루프가 인라인으로 되살린다. */
+  visibility: hidden;
   max-width: min(320px, calc(100vw - var(--space-4)));
   padding: var(--space-2) var(--space-3);
   overflow: hidden;
