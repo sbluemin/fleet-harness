@@ -91,15 +91,17 @@
   opacity: 0;
 }
 
-.scuttlebutt-mascot:not(.is-thinking):not(.is-ready):not(.is-cheering) .scuttlebutt-sam-all {
+/* 무드는 idle · thinking · cheering 셋뿐이다. 만세가 끝나면 반드시 idle 로 돌아오므로
+   숨쉬기·꼬리·깜빡임은 여기서 다시 시작한다 — 답을 마친 정지 포즈는 두지 않는다. */
+.scuttlebutt-mascot.is-idle .scuttlebutt-sam-all {
   animation: scuttlebutt-sam-breathe 3.4s var(--ease-glide) infinite;
 }
 
-.scuttlebutt-mascot:not(.is-thinking):not(.is-ready):not(.is-cheering) .scuttlebutt-sam-tail {
+.scuttlebutt-mascot.is-idle .scuttlebutt-sam-tail {
   animation: scuttlebutt-sam-tail 2.6s var(--ease-glide) infinite;
 }
 
-.scuttlebutt-mascot:not(.is-thinking):not(.is-ready):not(.is-cheering) .scuttlebutt-sam-eyes {
+.scuttlebutt-mascot.is-idle .scuttlebutt-sam-eyes {
   animation: scuttlebutt-sam-blink 5.2s infinite;
 }
 
@@ -117,14 +119,6 @@
 
 .scuttlebutt-mascot.is-thinking .scuttlebutt-sam-all {
   animation: scuttlebutt-sam-breathe 1.6s var(--ease-glide) infinite;
-}
-
-.scuttlebutt-mascot.is-ready .scuttlebutt-sam-eyes {
-  opacity: 0;
-}
-
-.scuttlebutt-mascot.is-ready .scuttlebutt-sam-happy {
-  opacity: 1;
 }
 
 .scuttlebutt-mascot.is-cheering .scuttlebutt-sam-all {

@@ -57,16 +57,15 @@ describe("Admiral Sam figure", () => {
     expect(styles).toMatch(/\.scuttlebutt-sam\s*\{[^}]*width: auto;[^}]*height: 72px;/s);
     expect(styles).toContain("transform-origin: 96% 2%");
     expect(styles).toContain("transform-origin: 4% 2%");
-    expect(styles).toContain(
-      ".scuttlebutt-mascot:not(.is-thinking):not(.is-ready):not(.is-cheering) .scuttlebutt-sam-eyes",
+    expect(styles).toMatch(
+      /\.scuttlebutt-mascot\.is-idle \.scuttlebutt-sam-eyes\s*\{\s*animation: scuttlebutt-sam-blink/,
+    );
+    expect(styles).toMatch(
+      /\.scuttlebutt-mascot\.is-idle \.scuttlebutt-sam-all\s*\{\s*animation: scuttlebutt-sam-breathe/,
     );
     expect(styles).toContain(".scuttlebutt-mascot.is-thinking .scuttlebutt-sam-head");
-    expect(styles).toMatch(
-      /\.scuttlebutt-mascot\.is-ready \.scuttlebutt-sam-eyes\s*\{\s*opacity: 0;/,
-    );
-    expect(styles).toMatch(
-      /\.scuttlebutt-mascot\.is-ready \.scuttlebutt-sam-happy\s*\{\s*opacity: 1;/,
-    );
+    // 답을 마친 정지 포즈는 없다 — 만세가 끝나면 idle 로 돌아와 애니메이션이 다시 돈다.
+    expect(`${mascot}\n${styles}`).not.toContain("is-ready");
     expect(styles).toContain(
       "animation: scuttlebutt-sam-hop 1.25s var(--ease-spring) 1",
     );

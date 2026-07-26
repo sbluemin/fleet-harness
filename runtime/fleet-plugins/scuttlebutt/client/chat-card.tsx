@@ -1,18 +1,10 @@
 import { renderMarkdown } from "@fleet-console/markdown/core";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
-import { React, usePluginApi } from "@fleet-console/sdk/plugin/browser";
+import { React } from "@fleet-console/sdk/plugin/browser";
 
-import {
-  appendUser,
-  currentExchange,
-  initialChatState,
-  reduceChatEvent,
-  type ChatState,
-} from "./chat-store.js";
-import { placeCard, type CardPlacement, type Size } from "./geometry.js";
+import { currentExchange, type ChatState } from "./chat-store.js";
+import { placeCard, type CardPlacement } from "./geometry.js";
 import { getT, type ScuttlebuttMessageKey } from "./i18n.js";
-import { connectChatStream, type ChatStreamConnection } from "./sse-client.js";
 
 const FOLLOWUPS = [
   "followup.whoAreYou",
@@ -20,31 +12,30 @@ const FOLLOWUPS = [
 ] as const;
 
 export function ChatCard({
-  api,
+  state,
+  draft,
   mascot,
+  onAsk,
+  onDraftChange,
   onClose,
   onTuck,
   locale,
   positionRevision,
-  onPhaseChange,
 }: {
-  readonly api: ClientApiCapability;
+  readonly state: ChatState;
+  readonly draft: string;
   readonly mascot: React.RefObject<HTMLButtonElement | null>;
+  readonly onAsk: (text: string) => void;
+  readonly onDraftChange: (text: string) => void;
   readonly onClose: () => void;
   readonly onTuck: () => void;
   readonly locale?: ConsoleLocale;
   readonly positionRevision: number;
-  readonly onPhaseChange: (phase: ChatState["phase"]) => void;
 }) {
-  const pluginApi = usePluginApi(api, "scuttlebutt");
   const t = getT(locale);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const logRef = React.useRef<HTMLDivElement>(null);
   const cardRef = React.useRef<HTMLDivElement>(null);
-  const streamRef = React.useRef<ChatStreamConnection | null>(null);
-  const [state, setState] = React.useState<ChatState>(initialChatState);
-  const [draft, setDraft] = React.useState("");
-  const [chatId, setChatId] = React.useState<string | null>(null);
   const [placement, setPlacement] = React.useState<CardPlacement | null>(null);
 
   const position = React.useCallback(() => {
@@ -81,9 +72,6 @@ export function ChatCard({
     position();
   }, [state.entries, state.phase, position]);
 
-  React.useEffect(() => () => streamRef.current?.close(), []);
-  React.useEffect(() => onPhaseChange(state.phase), [onPhaseChange, state.phase]);
-
   // 카드 바깥을 누르면 닫는다. 캡처 단계나 preventDefault를 쓰지 않으므로 그 클릭은
   // 아래 콘솔에 그대로 도달한다 — 마스코트 위 누름은 드래그 시작이라 닫힘에서 제외한다.
   React.useEffect(() => {
@@ -97,42 +85,6 @@ export function ChatCard({
     document.addEventListener("pointerdown", dismiss);
     return () => document.removeEventListener("pointerdown", dismiss);
   }, [mascot, onClose]);
-
-  const submit = async (text: string) => {
-    const question = text.trim();
-    if (!question || state.phase === "starting" || state.phase === "thinking") return;
-    setDraft("");
-    setState((current) => ({ ...appendUser(current, question), phase: "starting" }));
-    try {
-      let activeChatId = chatId;
-      if (!activeChatId) {
-        const response = await pluginApi.fetch("chat/start", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        });
-        const payload = await response.json() as { readonly chatId?: unknown; readonly error?: unknown };
-        if (!response.ok || typeof payload.chatId !== "string") {
-          throw new Error(typeof payload.error === "string" ? payload.error : "Chat is unavailable.");
-        }
-        activeChatId = payload.chatId;
-        setChatId(activeChatId);
-        const connection = connectChatStream(activeChatId, (event) => {
-          setState((current) => reduceChatEvent(current, event, locale));
-        });
-        streamRef.current = connection;
-        await connection.connected;
-      }
-      await pluginApi.fetch(`chat/${encodeURIComponent(activeChatId)}/message`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: question }),
-      });
-      setState((current) => ({ ...current, phase: "thinking" }));
-    } catch (error) {
-      setState(errorState(error));
-    }
-  };
 
   const style = placementStyle(placement);
   const busy = state.phase === "starting" || state.phase === "thinking";
@@ -179,14 +131,14 @@ export function ChatCard({
       {busy ? <div className="scuttlebutt-thinking"><i /><i /><i />{t("chat.thinking")}</div> : null}
       <div className="scuttlebutt-followups">
         {FOLLOWUPS.map((key: ScuttlebuttMessageKey) => (
-          <button key={key} type="button" disabled={busy} onClick={() => void submit(t(key))}>
+          <button key={key} type="button" disabled={busy} onClick={() => onAsk(t(key))}>
             {t(key)}
           </button>
         ))}
       </div>
       <form className="scuttlebutt-composer" onSubmit={(event) => {
         event.preventDefault();
-        void submit(draft);
+        onAsk(draft);
       }}>
         <input
           ref={inputRef}
@@ -194,7 +146,7 @@ export function ChatCard({
           disabled={busy}
           placeholder={t("chat.placeholder")}
           autoComplete="off"
-          onChange={(event) => setDraft(event.currentTarget.value)}
+          onChange={(event) => onDraftChange(event.currentTarget.value)}
         />
         <button type="submit" className="scuttlebutt-send" disabled={busy || !draft.trim()}>{t("chat.send")}</button>
       </form>
@@ -208,11 +160,4 @@ function placementStyle(placement: CardPlacement | null): React.CSSProperties {
     return { left: placement.left, bottom: placement.bottom, maxHeight: placement.maxHeight };
   }
   return { left: placement.left, top: placement.top, maxHeight: placement.maxHeight };
-}
-
-function errorState(error: unknown): ChatState {
-  return reduceChatEvent(initialChatState, {
-    type: "error",
-    error: { code: "client_error", message: error instanceof Error ? error.message : "Chat is unavailable." },
-  });
 }
