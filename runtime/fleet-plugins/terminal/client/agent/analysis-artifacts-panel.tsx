@@ -83,6 +83,9 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
     if (!active) closeExport();
   }, [active?.id]);
   React.useEffect(() => {
+    // active 아티팩트 교체는 메뉴를 닫지 않으므로, 여기서 세대를 올려 이전 아티팩트를
+    // 대상으로 출발한 clipboard 완료가 새 아티팩트에 "Copied"로 오귀속되지 않게 한다.
+    exportGeneration.current += 1;
     clearCopied();
   }, [exportOpen, active?.id]);
   React.useEffect(() => {

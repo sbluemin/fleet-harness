@@ -247,6 +247,32 @@ describe("Session Analyst artifact export", () => {
     mounted.unmount();
   });
 
+  it("ignores clipboard completion targeting a previously active artifact", async () => {
+    storeState = withArtifact();
+    let resolveWrite: (() => void) | undefined;
+    const writeText = vi.fn(() => new Promise<void>((resolve) => { resolveWrite = resolve; }));
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const mounted = mountPanel();
+
+    act(() => mounted.container.querySelector<HTMLButtonElement>(".session-analyst__export")!.click());
+    act(() => {
+      [...mounted.container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((item) => item.textContent === "Copy source")!.click();
+    });
+
+    storeState = withArtifact({ id: "artifact-next", title: "Next artifact" });
+    mounted.render();
+
+    await act(async () => {
+      resolveWrite?.();
+      await Promise.resolve();
+    });
+
+    const menu = mounted.container.querySelector('[role="menu"]');
+    expect(menu?.textContent).toContain("Copy source");
+    expect(menu?.textContent).not.toContain("Copied");
+    mounted.unmount();
+  });
+
   it("ignores clipboard rejection that started in an earlier menu instance", async () => {
     storeState = withArtifact();
     let rejectWrite: ((reason: Error) => void) | undefined;
