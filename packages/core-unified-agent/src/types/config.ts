@@ -140,9 +140,13 @@ export interface UnifiedClientOptions extends ConnectionOptions {
   /** 재개할 기존 세션 ID */
   sessionId?: string;
   /** 세션 초기 시스템 지침.
-   * Claude와 Codex는 fresh 세션의 첫 user turn 앞에 한 번만 선행 text block으로 주입하며,
+   * 기본 prepend 모드에서는 fresh 세션의 첫 user turn 앞에 한 번만 선행 text block으로 주입하며,
    * resetSession()은 이를 다시 대기시킵니다. 기존 세션의 connect(sessionId) 및 loadSession()에는 주입하지 않습니다. */
   systemPrompt?: string;
+  /** 시스템 지침 적용 방식 (기본: "prepend").
+   * prepend는 기존처럼 fresh 세션의 첫 user turn 앞에 선행 text block으로 주입합니다.
+   * replace는 CLI 자체 system prompt를 대체하며 Claude 계열에서만 지원합니다. */
+  readonly systemPromptMode?: 'prepend' | 'replace';
   /** 에이전트에 연결할 MCP 서버 목록 (선택) */
   mcpServers?: McpServerConfig[];
 }
