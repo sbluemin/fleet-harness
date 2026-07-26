@@ -1,6 +1,7 @@
 import type { OperationNode } from "@fleet-console/sdk/operations";
 import type { ClientNotificationsCapability, ClientOperationStatusCapability, ClientOperationsCapability, OperationActivity } from "@fleet-console/sdk/plugin";
 
+import { currentTerminalLocale, getT } from "../i18n/index.js";
 import { fetchAgentState, fetchJobs, fetchOperationsSnapshot, fetchSessions, fetchTenants } from "./api.js";
 import { isTerminalJobStatus } from "./reduce.js";
 import { createSseFrameParser, interpretObserverFrame } from "./sse.js";
@@ -114,10 +115,11 @@ export function applyActivity(options: AgentConnectionOptions, sessionId: string
   options.status.set(sessionId, activity);
   lastActivity.set(sessionId, activity);
   if (previous === activity) return;
+  const t = getT(currentTerminalLocale());
   if (activity === "awaiting") {
-    options.notifications.emit({ kind: "agent.attention", operationId: sessionId, message: "Agent is waiting for input" });
+    options.notifications.emit({ kind: "agent.attention", operationId: sessionId, message: t("terminal.notifications.agentInputWaitingBody") });
   } else if (activity === "idle" && (previous === "running" || previous === "awaiting")) {
-    options.notifications.emit({ kind: "agent.ended", operationId: sessionId, message: "Agent turn ended" });
+    options.notifications.emit({ kind: "agent.ended", operationId: sessionId, message: t("terminal.notifications.agentTurnEndedBody") });
   }
 }
 

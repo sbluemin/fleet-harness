@@ -1,6 +1,7 @@
 import { CLI_BACKENDS, type CliType, type ProviderKey } from "@dotobokuri/core-unified-agent";
 import type { TrackStatus } from "@dotobokuri/core-agent";
 import type { CarrierJobFinalStatus, CarrierJobKind } from "../jobs/types.js";
+import type { CarrierPresentationCatalog } from "../i18n/carrier-presentations.js";
 
 export type { TrackStatus } from "@dotobokuri/core-agent";
 // job kind/status는 jobs/types.ts가 단일 소유자 — 여기서는 재노출/별칭으로만 참조한다.
@@ -99,6 +100,8 @@ export interface CarrierCoreConfig {
   displayName: string;
   /** carrier 메타데이터 (2-Tier: Routing + Composition) */
   carrierMetadata?: CarrierMetadata;
+  /** UI 표시 전용 번역. 프롬프트 로스터는 이 필드를 절대 읽지 않는다. */
+  readonly carrierPresentation?: CarrierPresentationCatalog;
   /** Source-owned marker that permits Task Force configuration and formation. */
   readonly taskForceCapable?: true;
 }

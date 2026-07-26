@@ -39,7 +39,8 @@ export const carrierSettingsSection = defineSettingsSection({
 });
 
 function CarrierSettingsSection() {
-  const t = getT(useTerminalLocale());
+  const locale = useTerminalLocale();
+  const t = getT(locale);
   const settings = useCarrierSettingsStore();
   const activeCarrier = settings.state?.carriers.find((carrier) => carrier.carrierId === settings.activeCarrierId) ?? null;
   const [editingDisplayName, setEditingDisplayName] = useState(false);
@@ -206,7 +207,7 @@ function CarrierSettingsSection() {
                     </>
                   )}
                 </div>
-                <div className="terminal-carriers-captain-role">{activeCarrier.role}</div>
+                <div className="terminal-carriers-captain-role">{activeCarrier.localizedPresentation?.[locale]?.role ?? activeCarrier.role}</div>
               </div>
               <div className="terminal-carriers-detail-actions">
                 <div className={`terminal-carriers-save-status ${saveStatus === "saved" ? "is-positive" : ""}`} role="status" aria-live="polite">
@@ -223,7 +224,7 @@ function CarrierSettingsSection() {
             <div className="terminal-carriers-body">
               <div className="terminal-carriers-control-group">
                 <div className="terminal-carriers-resp-title">{t("terminal.carriers.identity")}</div>
-                <div className="terminal-carriers-mission">{activeCarrier.roleDescription}</div>
+                <div className="terminal-carriers-mission">{activeCarrier.localizedPresentation?.[locale]?.roleDescription ?? activeCarrier.roleDescription}</div>
               </div>
 
               <div className="terminal-carriers-control-group">

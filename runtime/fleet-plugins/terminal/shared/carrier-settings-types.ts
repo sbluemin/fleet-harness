@@ -1,4 +1,5 @@
 import type { CliType } from "@dotobokuri/core-unified-agent";
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
 export interface CarrierSettingsModelOption {
   readonly modelId: string;
@@ -35,6 +36,10 @@ export interface CarrierSettingsCarrier {
   readonly sourceDisplayName: string;
   readonly role: string;
   readonly roleDescription: string;
+  readonly localizedPresentation?: Readonly<Record<ConsoleLocale, {
+    readonly role: string;
+    readonly roleDescription: string;
+  }>>;
   readonly category?: "strategy" | "planning" | "operations";
   readonly slot: number;
   readonly cliType: CliType;
