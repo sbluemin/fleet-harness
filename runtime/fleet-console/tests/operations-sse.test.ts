@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   getState: vi.fn(),
   hydrateOperations: vi.fn(),
   resetDesktopFullscreenSnapshot: vi.fn(),
+  setConnectionState: vi.fn(),
 }));
 
 vi.mock("../core/client/src/api.js", () => ({
@@ -21,6 +22,7 @@ vi.mock("../core/client/src/store.js", () => ({
   applyOperationUpdate: mocks.applyOperationUpdate,
   getState: mocks.getState,
   hydrateOperations: mocks.hydrateOperations,
+  setConnectionState: mocks.setConnectionState,
 }));
 
 vi.mock("../core/client/src/desktop-fullscreen.js", () => ({
@@ -28,13 +30,14 @@ vi.mock("../core/client/src/desktop-fullscreen.js", () => ({
   resetDesktopFullscreenSnapshot: mocks.resetDesktopFullscreenSnapshot,
 }));
 
-import { connectOperationsSse } from "../core/client/src/operations-sse.js";
+import { connectOperationsSse, reconnectOperationsSseNow } from "../core/client/src/operations-sse.js";
 
 class TestEventSource {
   static instances: TestEventSource[] = [];
 
   onerror: (() => void) | null = null;
   onopen: (() => void) | null = null;
+  closed = false;
   private readonly listeners = new Map<string, ((event: Event) => void)[]>();
 
   constructor(_url: string) {
@@ -47,7 +50,9 @@ class TestEventSource {
     this.listeners.set(type, registered);
   }
 
-  close(): void {}
+  close(): void {
+    this.closed = true;
+  }
 
   emit(type: string, data?: string): void {
     for (const listener of this.listeners.get(type) ?? []) listener({ data } as MessageEvent<string>);
@@ -69,6 +74,9 @@ describe("operations SSE update availability", () => {
     mocks.getState.mockReset();
     mocks.hydrateOperations.mockReset();
     mocks.resetDesktopFullscreenSnapshot.mockReset();
+    mocks.setConnectionState.mockReset();
+    vi.clearAllTimers();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -96,6 +104,7 @@ describe("operations SSE update availability", () => {
 
     await vi.waitFor(() => expect(mocks.applyObserverStatus).toHaveBeenCalledWith(status));
     expect(mocks.fetchObserverStatus).toHaveBeenCalledWith(null);
+    expect(mocks.setConnectionState).toHaveBeenCalledWith("live");
   });
 
   it("trails a status refresh when a later update frame arrives in flight", async () => {
@@ -135,6 +144,43 @@ describe("operations SSE update availability", () => {
     expect(mocks.resetDesktopFullscreenSnapshot).toHaveBeenCalledOnce();
     TestEventSource.instances[0]?.onerror?.();
     expect(mocks.resetDesktopFullscreenSnapshot).toHaveBeenCalledTimes(2);
-    vi.useRealTimers();
+    expect(mocks.setConnectionState).toHaveBeenCalledWith("offline");
+  });
+
+  it("marks the retry attempt connecting while preserving the existing exponential retry path", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.getState.mockReturnValue({ activeTheaterId: null });
+    mocks.fetchOperations.mockResolvedValue([]);
+
+    connectOperationsSse();
+    TestEventSource.instances[0]?.onerror?.();
+    expect(mocks.setConnectionState).toHaveBeenLastCalledWith("offline");
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(mocks.setConnectionState).toHaveBeenLastCalledWith("connecting");
+    await vi.waitFor(() => expect(TestEventSource.instances).toHaveLength(2));
+  });
+
+  it("cancels the pending backoff and reconnects immediately", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.getState.mockReturnValue({ activeTheaterId: null });
+    mocks.fetchOperations.mockResolvedValue([]);
+
+    reconnectOperationsSseNow();
+    TestEventSource.instances[0]?.onerror?.();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.waitFor(() => expect(TestEventSource.instances).toHaveLength(2));
+    TestEventSource.instances[1]?.onerror?.();
+
+    reconnectOperationsSseNow();
+    expect(TestEventSource.instances).toHaveLength(3);
+    TestEventSource.instances[2]?.onerror?.();
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(TestEventSource.instances).toHaveLength(3);
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.waitFor(() => expect(TestEventSource.instances).toHaveLength(4));
   });
 });

@@ -20,7 +20,7 @@ import { GlobalSettings } from "./pages/global-settings.js";
 import { Operations } from "./pages/operations.js";
 import { BUILT_IN_RAIL_PANELS } from "./rail/built-in-panels.js";
 import { toggleRailChrome } from "./rail/rail-store.js";
-import { refreshObserverStatus } from "./operations-sse.js";
+import { reconnectOperationsSseNow, refreshObserverStatus } from "./operations-sse.js";
 import { closeKeyboardShortcuts, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fetch.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "./sidebar/operations-side-bar-store.js";
@@ -48,6 +48,9 @@ export function App() {
   const t = useT();
   const consoleLocale = useConsoleLocale();
   const releaseNotesLocale = resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
+  const connectionLostTime = state.connectionLostAt === null
+    ? ""
+    : new Date(state.connectionLostAt).toLocaleTimeString(consoleLocale);
 
   useEffect(() => {
     document.documentElement.lang = consoleLocale;
@@ -216,6 +219,12 @@ export function App() {
   return (
     <div className="console-shell">
       <CommandBand operationsViewVisible={operationsViewVisible} />
+      {state.connection === "offline" ? (
+        <div className="console-link-banner" role="status" aria-live="polite">
+          <span>{t("chrome.link.offline")}. {t("chrome.link.bannerDetail", { time: connectionLostTime })}</span>
+          <button type="button" onClick={reconnectOperationsSseNow}>{t("chrome.link.reconnect")}</button>
+        </div>
+      ) : null}
       <main className="console-route-content">
         <Routes>
           <Route path="/" element={<Navigate to="/operations" replace />} />
@@ -230,12 +239,6 @@ export function App() {
       <WhatsNewModal state={state} />
       <CommissioningOverlay state={state} />
       <FeatureTourOverlay />
-      <Toast
-        open={state.connectionError !== null}
-        tone="error"
-        title={t("chrome.toast.consoleLinkInterrupted")}
-        message={state.connectionError ?? undefined}
-      />
       <Toast
         open={activeDeletion !== null}
         tone="undo"

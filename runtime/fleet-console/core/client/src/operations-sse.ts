@@ -1,6 +1,6 @@
 import { fetchObserverStatus, fetchOperations } from "./api.js";
 import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
-import { applyObserverStatus, applyOperationUpdate, getState, hydrateOperations } from "./store.js";
+import { applyObserverStatus, applyOperationUpdate, getState, hydrateOperations, setConnectionState } from "./store.js";
 import type { OperationNode } from "./types.js";
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
@@ -42,14 +42,17 @@ export function connectOperationsSse(): void {
 
   source.onopen = () => {
     reconnectDelayMs = 1_000;
+    setConnectionState("live");
     refreshObserverStatus();
   };
 
   source.onerror = () => {
     source.close();
     resetDesktopFullscreenSnapshot();
+    setConnectionState("offline");
     reconnectHandle = setTimeout(() => {
       reconnectHandle = null;
+      setConnectionState("connecting");
       reconnectDelayMs = Math.min(reconnectDelayMs * 2, MAX_RECONNECT_DELAY_MS);
       void fetchOperations()
         .then(hydrateOperations)
@@ -57,6 +60,18 @@ export function connectOperationsSse(): void {
         .finally(connectOperationsSse);
     }, reconnectDelayMs);
   };
+}
+
+export function reconnectOperationsSseNow(): void {
+  if (reconnectHandle !== null) {
+    clearTimeout(reconnectHandle);
+    reconnectHandle = null;
+  }
+  reconnectDelayMs = 1_000;
+  // 수동 재연결도 "다시 연결하는 중"으로 전이시킨다 — 상태를 offline에 둔 채 재접속하면
+  // 서버가 여전히 죽어 있을 때 버튼을 눌러도 화면이 그대로여서 눌린 것인지 알 수 없다.
+  setConnectionState("connecting");
+  connectOperationsSse();
 }
 
 export function refreshObserverStatus(): void {

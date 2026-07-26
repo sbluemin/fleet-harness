@@ -340,6 +340,11 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
           </button>
           {environmentOpen ? <div ref={environmentPopoverRef}><EnvironmentPopover environment={environment} error={environmentError} loading={environmentLoading} copiedValue={copiedValue} copyFailedValue={copyFailedValue} desktopShell={desktopShell} onCopy={copyEnvironmentValue} /></div> : null}
         </div> : null}
+        {state.connection !== "live" ? (
+          <span className="command-band-link-chip" data-link-state={state.connection}>
+            {t(state.connection === "offline" ? "chrome.link.offline" : "chrome.link.reconnecting")}
+          </span>
+        ) : null}
         {operationsViewVisible ? <button type="button" className="command-band-button command-band-sidebar-toggle" onClick={() => setSideBarCollapsed(!sideBar.collapsed)} aria-label={t(sideBar.collapsed ? "chrome.commandBand.expandSidebar" : "chrome.commandBand.collapseSidebar", { shortcut: sideBarShortcut })} title={t(sideBar.collapsed ? "chrome.commandBand.expandSidebar" : "chrome.commandBand.collapseSidebar", { shortcut: sideBarShortcut })}>
           <PanelToggleIcon side="left" />
         </button> : null}

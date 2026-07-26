@@ -224,6 +224,38 @@
   min-width: 240px;
 }
 
+.right-rail-stale-veil {
+  position: absolute;
+  z-index: 20;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: color-mix(in oklch, var(--ink-deep) 88%, transparent);
+  color: var(--coral);
+  text-align: center;
+  /* 덮개는 offline일 때만 마운트되므로 상태 전환이 없다 — transition은 발화하지 않고
+     진입 페이드는 animation이 진다. */
+  animation: right-rail-stale-veil-in var(--duration-base) var(--ease-glide);
+}
+
+@keyframes right-rail-stale-veil-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.right-rail-stale-veil strong {
+  font-size: 13px;
+}
+
+.right-rail-stale-veil span {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
 /* ── 아이콘 레일 ────────────────────────────────────────────────── */
 .right-rail-icons {
   width: 44px;

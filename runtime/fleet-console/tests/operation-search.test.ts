@@ -29,7 +29,7 @@ function makeState(
 ): ConsoleState {
   return {
     connection: "connecting",
-    connectionError: null,
+    connectionLostAt: null,
     channel: "unknown",
     activeTheme: "maritime",
     version: "1.8.0",

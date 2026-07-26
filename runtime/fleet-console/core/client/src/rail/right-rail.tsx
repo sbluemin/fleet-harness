@@ -12,7 +12,9 @@ import { useGlobalSettingsStore } from "../global-settings-store.js";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import { useT, type CoreMessageKey } from "../i18n/index.js";
+import { reconnectOperationsSseNow } from "../operations-sse.js";
 import { getState, subscribe } from "../store.js";
+import type { ConnectionState } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { closeRailPanel, requestRailPanelExtraWidth, setRailOverlayAlpha, toggleRailPanel, toggleRailPanelBehavior, useActiveRailPanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelBehavior, useRailPanelExtraWidth, type RailOverlayAlpha } from "./rail-store.js";
 import { useRailPanels } from "./rail-registry.js";
@@ -103,6 +105,8 @@ export function RightRail({ theaterId, api }: RightRailProps) {
     () => getState().theaters.find((theater) => theater.id === theaterId)?.label ?? theaterFallback,
     () => theaterFallback,
   );
+  const connection = useSyncExternalStore(subscribe, () => getState().connection, () => "connecting" as const);
+  const connectionLostAt = useSyncExternalStore(subscribe, () => getState().connectionLostAt, () => null);
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -296,7 +300,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
           />
         )}
         {activePanel && (
-          <RailPanelContent activePanel={activePanel} activePanelTitle={activePanelTitle} activeId={activeId} ctx={ctx} panelBehavior={panelBehavior} overlayAlpha={overlayAlpha} />
+          <RailPanelContent activePanel={activePanel} activePanelTitle={activePanelTitle} activeId={activeId} ctx={ctx} panelBehavior={panelBehavior} overlayAlpha={overlayAlpha} connection={connection} connectionLostAt={connectionLostAt} language={language} />
         )}
       </div>
       <nav className="right-rail-icons" aria-label={t("rail.chrome.toolsAria")}>
@@ -323,14 +327,18 @@ interface RailPanelContentProps {
   readonly ctx: RailPanelContext;
   readonly panelBehavior: "push" | "overlay";
   readonly overlayAlpha: RailOverlayAlpha;
+  readonly connection: ConnectionState;
+  readonly connectionLostAt: number | null;
+  readonly language: ConsoleLocale;
 }
 
 // 패널 본문은 무거운 플러그인 콘텐츠(파일 트리·diff·Codex)를 렌더한다. 리사이즈 드래그가
 // 매 프레임 RightRail을 재렌더해도 이 본문이 함께 재렌더되면 끊김이 생기므로, 폭과 무관한
 // (activePanel·ctx·activeId·panelBehavior·overlayAlpha) props로 memo해 드래그 중 본문 재렌더를 건너뛴다(좌측 SideBar처럼 가벼운 부분만 재렌더).
-const RailPanelContent = memo(function RailPanelContent({ activePanel, activePanelTitle, activeId, ctx, panelBehavior, overlayAlpha }: RailPanelContentProps) {
+const RailPanelContent = memo(function RailPanelContent({ activePanel, activePanelTitle, activeId, ctx, panelBehavior, overlayAlpha, connection, connectionLostAt, language }: RailPanelContentProps) {
   const t = useT();
   const overlayPresets = buildOverlayAlphaPresets(t);
+  const connectionLostTime = connectionLostAt === null ? "" : new Date(connectionLostAt).toLocaleTimeString(language);
   return (
     <>
       <div className="right-rail-panel-head">
@@ -373,6 +381,13 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activePan
       </div>
       <div id={`rail-panel-${activePanel.id}`} className="right-rail-panel-body" role="tabpanel" aria-labelledby={`rail-tab-${activeId}`}>
         {activePanel.render(ctx)}
+        {connection === "offline" ? (
+          <div className="right-rail-stale-veil">
+            <strong>{t("chrome.link.staleHeadline")}</strong>
+            <span>{t("chrome.link.staleDetail", { time: connectionLostTime })}</span>
+            <button type="button" onClick={reconnectOperationsSseNow}>{t("chrome.link.reconnect")}</button>
+          </div>
+        ) : null}
       </div>
     </>
   );
