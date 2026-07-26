@@ -45,6 +45,7 @@ describe("console connection-loss UI contract", () => {
     expect(rail).toContain("reconnectButtonRef.current?.focus()");
     expect(rail).toContain("returnFocus?.isConnected");
     expect(rail).toContain("if (returnFocus === null) return;");
+    expect(rail).toContain("if (!focusStillOwned) return;");
     expect(rail).toContain("panelBodyRef.current?.focus()");
 
     // 재연결 버튼은 상태 기계와 별개로 눌렸다는 사실을 보증한다 — 서버가 죽어 있으면

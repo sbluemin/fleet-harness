@@ -139,6 +139,21 @@ describe("Right Rail stale veil focus boundary", () => {
     expect(document.activeElement).not.toBe(document.body);
   });
 
+  it("leaves focus where the user moved it after the stale veil took ownership", () => {
+    renderRail();
+    const action = container.querySelector<HTMLButtonElement>(".test-panel-action")!;
+    action.focus();
+    act(() => setState({ connection: "offline", connectionLostAt: 1_000 }));
+    const outside = document.createElement("button");
+    outside.textContent = "Outside rail";
+    document.body.appendChild(outside);
+    outside.focus();
+
+    act(() => setState({ connection: "live", connectionLostAt: null }));
+
+    expect(document.activeElement).toBe(outside);
+  });
+
   it("leaves focus unchanged when the stale veil never took ownership", () => {
     renderRail();
     const outside = document.createElement("button");

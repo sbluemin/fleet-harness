@@ -342,6 +342,7 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activePan
   const staleVisible = connection !== "live" && connectionLostAt !== null;
   const panelBodyRef = useRef<HTMLDivElement>(null);
   const panelContentRef = useRef<HTMLDivElement>(null);
+  const staleVeilRef = useRef<HTMLDivElement>(null);
   const reconnectButtonRef = useRef<HTMLButtonElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const previousStaleVisibleRef = useRef(false);
@@ -364,6 +365,10 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activePan
     const returnFocus = returnFocusRef.current;
     returnFocusRef.current = null;
     if (returnFocus === null) return;
+    const activeElement = document.activeElement;
+    const focusStillOwned = activeElement === document.body
+      || (activeElement instanceof HTMLElement && staleVeilRef.current?.contains(activeElement));
+    if (!focusStillOwned) return;
     if (returnFocus?.isConnected && panelContentRef.current?.contains(returnFocus)) {
       returnFocus.focus();
     } else {
@@ -417,7 +422,7 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activePan
         </div>
         {/* 덮개도 배너와 같은 축으로 건다 — 재연결 시도 중에도 패널 값은 여전히 멈춰 있다. */}
         {staleVisible ? (
-          <div className="right-rail-stale-veil">
+          <div ref={staleVeilRef} className="right-rail-stale-veil">
             <strong>{t("chrome.link.staleHeadline")}</strong>
             <span>{t("chrome.link.staleDetail", { time: connectionLostTime })}</span>
             <ReconnectButton buttonRef={reconnectButtonRef} />

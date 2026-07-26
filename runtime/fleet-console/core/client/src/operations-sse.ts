@@ -5,6 +5,7 @@ import type { OperationNode } from "./types.js";
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
 
+// 누락 스냅샷은 SSE가 열리기 전에만 hydrate해 이후 실시간 프레임을 덮어쓰지 않는다.
 let reconnectDelayMs = 1_000;
 let reconnectHandle: ReturnType<typeof setTimeout> | null = null;
 let activeSource: EventSource | null = null;
@@ -54,11 +55,6 @@ export function connectOperationsSse(): void {
     reconnectDelayMs = 1_000;
     setConnectionState("live");
     refreshObserverStatus();
-    void fetchOperations()
-      .then((operations) => {
-        if (isCurrentSource()) hydrateOperations(operations);
-      })
-      .catch(() => undefined);
   };
 
   source.onerror = () => {
@@ -73,7 +69,14 @@ export function connectOperationsSse(): void {
       if (retryGeneration !== connectionGeneration) return;
       setConnectionState("connecting");
       reconnectDelayMs = Math.min(reconnectDelayMs * 2, MAX_RECONNECT_DELAY_MS);
-      connectOperationsSse();
+      void fetchOperations()
+        .then((operations) => {
+          if (retryGeneration === connectionGeneration) hydrateOperations(operations);
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (retryGeneration === connectionGeneration) connectOperationsSse();
+        });
     }, reconnectDelayMs);
   };
 }
@@ -87,7 +90,17 @@ export function reconnectOperationsSseNow(): void {
   // 수동 재연결도 "다시 연결하는 중"으로 전이시킨다 — 상태를 offline에 둔 채 재접속하면
   // 서버가 여전히 죽어 있을 때 버튼을 눌러도 화면이 그대로여서 눌린 것인지 알 수 없다.
   setConnectionState("connecting");
-  connectOperationsSse();
+  activeSource?.close();
+  activeSource = null;
+  const reconnectGeneration = ++connectionGeneration;
+  void fetchOperations()
+    .then((operations) => {
+      if (reconnectGeneration === connectionGeneration) hydrateOperations(operations);
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      if (reconnectGeneration === connectionGeneration) connectOperationsSse();
+    });
 }
 
 export function refreshObserverStatus(): void {

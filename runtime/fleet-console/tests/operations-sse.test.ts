@@ -98,35 +98,21 @@ describe("operations SSE update availability", () => {
     vi.stubGlobal("EventSource", TestEventSource);
     mocks.getState.mockReturnValue({ activeTheaterId: null });
     mocks.fetchObserverStatus.mockResolvedValue(status);
-    mocks.fetchOperations.mockResolvedValue([]);
 
     connectOperationsSse();
     TestEventSource.instances[0]?.open();
 
     await vi.waitFor(() => expect(mocks.applyObserverStatus).toHaveBeenCalledWith(status));
-    await vi.waitFor(() => expect(mocks.hydrateOperations).toHaveBeenCalledWith([]));
     expect(mocks.fetchObserverStatus).toHaveBeenCalledWith(null);
+    expect(mocks.fetchOperations).not.toHaveBeenCalled();
     expect(mocks.setConnectionState).toHaveBeenCalledWith("live");
   });
 
-  it("hydrates missed operations when a manual reconnect opens", async () => {
+  it("hydrates missed operations before creating the manual reconnect source", async () => {
     const operations = [{ id: "created-while-offline" }];
     vi.stubGlobal("EventSource", TestEventSource);
     mocks.getState.mockReturnValue({ activeTheaterId: null });
-    mocks.fetchObserverStatus.mockResolvedValue({});
-    mocks.fetchOperations.mockResolvedValue(operations);
-
-    reconnectOperationsSseNow();
-    TestEventSource.instances[0]?.open();
-
-    await vi.waitFor(() => expect(mocks.hydrateOperations).toHaveBeenCalledWith(operations));
-  });
-
-  it("does not hydrate an onopen snapshot from a superseded source", async () => {
-    vi.stubGlobal("EventSource", TestEventSource);
-    mocks.getState.mockReturnValue({ activeTheaterId: null });
-    mocks.fetchObserverStatus.mockResolvedValue({});
-    let resolveOperations: (operations: readonly [{ readonly id: string }]) => void = () => {
+    let resolveOperations: (operations: readonly { readonly id: string }[]) => void = () => {
       throw new Error("operations fetch did not start");
     };
     mocks.fetchOperations.mockImplementationOnce(() => new Promise((resolve) => {
@@ -134,13 +120,39 @@ describe("operations SSE update availability", () => {
     }));
 
     reconnectOperationsSseNow();
-    TestEventSource.instances[0]?.open();
-    reconnectOperationsSseNow();
-    resolveOperations([{ id: "stale" }]);
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(TestEventSource.instances).toHaveLength(0);
+    resolveOperations(operations);
 
-    expect(mocks.hydrateOperations).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(mocks.hydrateOperations).toHaveBeenCalledWith(operations));
+    expect(TestEventSource.instances).toHaveLength(1);
+  });
+
+  it("does not hydrate or connect a delayed manual snapshot from a superseded generation", async () => {
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.getState.mockReturnValue({ activeTheaterId: null });
+    let resolveStaleOperations: (operations: readonly { readonly id: string }[]) => void = () => {
+      throw new Error("stale operations fetch did not start");
+    };
+    let resolveCurrentOperations: (operations: readonly { readonly id: string }[]) => void = () => {
+      throw new Error("current operations fetch did not start");
+    };
+    mocks.fetchOperations
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveStaleOperations = resolve;
+      }))
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveCurrentOperations = resolve;
+      }));
+
+    reconnectOperationsSseNow();
+    reconnectOperationsSseNow();
+    resolveCurrentOperations([{ id: "current" }]);
+    await vi.waitFor(() => expect(TestEventSource.instances).toHaveLength(1));
+    resolveStaleOperations([{ id: "stale" }]);
+    await vi.waitFor(() => expect(mocks.hydrateOperations).toHaveBeenCalledTimes(1));
+
+    expect(mocks.hydrateOperations).toHaveBeenCalledWith([{ id: "current" }]);
+    expect(TestEventSource.instances).toHaveLength(1);
   });
 
   it("keeps one active source and ignores every callback from superseded generations", async () => {
@@ -214,7 +226,12 @@ describe("operations SSE update availability", () => {
     vi.useFakeTimers();
     vi.stubGlobal("EventSource", TestEventSource);
     mocks.getState.mockReturnValue({ activeTheaterId: null });
-    mocks.fetchOperations.mockResolvedValue([]);
+    let resolveOperations: (operations: readonly []) => void = () => {
+      throw new Error("operations fetch did not start");
+    };
+    mocks.fetchOperations.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveOperations = resolve;
+    }));
 
     connectOperationsSse();
     TestEventSource.instances[0]?.onerror?.();
@@ -222,8 +239,11 @@ describe("operations SSE update availability", () => {
 
     await vi.advanceTimersByTimeAsync(1_000);
     expect(mocks.setConnectionState).toHaveBeenLastCalledWith("connecting");
+    expect(mocks.fetchOperations).toHaveBeenCalledOnce();
+    expect(TestEventSource.instances).toHaveLength(1);
+    resolveOperations([]);
+    await vi.waitFor(() => expect(mocks.hydrateOperations).toHaveBeenCalledWith([]));
     expect(TestEventSource.instances).toHaveLength(2);
-    expect(mocks.fetchOperations).not.toHaveBeenCalled();
   });
 
   it("cancels the pending backoff and reconnects immediately", async () => {
@@ -233,13 +253,14 @@ describe("operations SSE update availability", () => {
     mocks.fetchOperations.mockResolvedValue([]);
 
     reconnectOperationsSseNow();
+    await vi.waitFor(() => expect(TestEventSource.instances).toHaveLength(1));
     TestEventSource.instances[0]?.onerror?.();
     await vi.advanceTimersByTimeAsync(1_000);
     await vi.waitFor(() => expect(TestEventSource.instances).toHaveLength(2));
     TestEventSource.instances[1]?.onerror?.();
 
     reconnectOperationsSseNow();
-    expect(TestEventSource.instances).toHaveLength(3);
+    await vi.waitFor(() => expect(TestEventSource.instances).toHaveLength(3));
     TestEventSource.instances[2]?.onerror?.();
 
     await vi.advanceTimersByTimeAsync(999);
@@ -263,8 +284,10 @@ describe("operations SSE update availability", () => {
       .mockResolvedValueOnce(currentStatus);
 
     reconnectOperationsSseNow();
+    await vi.waitFor(() => expect(TestEventSource.instances).toHaveLength(1));
     TestEventSource.instances[0]?.open();
     reconnectOperationsSseNow();
+    await vi.waitFor(() => expect(TestEventSource.instances).toHaveLength(2));
     TestEventSource.instances[1]?.open();
     resolveStaleStatus({ version: "1.0.0", updateAvailable: false });
 
