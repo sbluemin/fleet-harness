@@ -55,10 +55,15 @@
   min-height: 0;
 }
 
+/* 중앙 브레드크럼은 사이드바 트랙을 제외한 나머지 폭(중앙 스테이지)의 정중앙에 놓는다 —
+   좌측 트랙을 1fr로 두면 여백이 밴드 전체폭 기준으로 나뉘어 사이드바까지 포함해 정렬된다.
+   좌우 여백 트랙은 동일 하한 + 동일 1fr이라 하한이 물려도 중심이 유지된다. 하한은
+   맵 컨트롤 실측 폭에서 계산해 밴드에 주입한다(--command-band-center-gutter). */
 .command-band {
+  --command-band-center-gutter: 44px;
   position: relative;
   display: grid;
-  grid-template-columns: minmax(var(--command-band-left-width, 280px), 1fr) minmax(0, max-content) minmax(44px, 1fr);
+  grid-template-columns: var(--command-band-left-width, 280px) minmax(var(--command-band-center-gutter), 1fr) minmax(0, max-content) minmax(var(--command-band-center-gutter), 1fr);
   flex: none;
   height: var(--chrome-band-height);
   min-height: var(--chrome-band-height);
@@ -103,7 +108,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 }
 
 .command-band.is-utility {
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, max-content) auto;
 }
 
 .command-band-left,
@@ -289,14 +294,14 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 }
 
 .command-band-center {
-  grid-column: 2;
+  grid-column: 3;
   justify-content: center;
   gap: var(--space-3);
   padding-inline: var(--space-3);
 }
 
 .command-band-right {
-  grid-column: 3;
+  grid-column: 4;
   justify-content: flex-end;
   gap: var(--space-1);
   padding-inline: var(--space-2);

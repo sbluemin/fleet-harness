@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { commandBandActiveOperation, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "../core/client/src/components/command-band-guards.js";
+import { commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "../core/client/src/components/command-band-guards.js";
 import type { OperationGroup, OperationNode } from "../core/client/src/types.js";
 
 describe("Command Band v2 guards", () => {
@@ -96,6 +96,28 @@ describe("Command Band menu viewport clamp", () => {
 
   it("prioritizes the left gutter when the menu is wider than the viewport", () => {
     expect(commandBandMenuClampedLeft(0, 20, 500, 480)).toBe(12 - 20);
+  });
+});
+
+describe("Command Band center visibility measurements", () => {
+  it("uses the floor gutter while map controls are unmeasured or narrower than the floor", () => {
+    expect(commandBandCenterGutter(0)).toBe(44);
+    expect(commandBandCenterGutter(1)).toBe(44);
+  });
+
+  it("derives the gutter from the measured map control width", () => {
+    expect(commandBandCenterGutter(163)).toBe(8 + 163 + 12);
+  });
+
+  it("keeps the center visible while the track is unmeasured", () => {
+    expect(commandBandCenterFits(0, 183)).toBe(true);
+    expect(commandBandCenterFits(-1, 183)).toBe(true);
+  });
+
+  it("requires the two gutters plus the minimum readable center width", () => {
+    const gutter = 183;
+    expect(commandBandCenterFits(gutter * 2 + 168, gutter)).toBe(true);
+    expect(commandBandCenterFits(gutter * 2 + 168 - 1, gutter)).toBe(false);
   });
 });
 

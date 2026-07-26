@@ -722,7 +722,7 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain('className="command-band-button command-band-rail-toggle"');
     expect(commandBand).toContain("onClick={toggleRailChrome}");
     expect(commandBand).toContain(`      </div>
-      {operationsViewVisible ? <div className="command-band-map-controls">`);
+      {operationsViewVisible ? <div ref={mapControlsRef} className="command-band-map-controls">`);
     expect(commandBand).toContain('aria-label={t("chrome.commandBand.resetCanvasView")}');
     expect(commandBand).toContain("<ResetViewIcon />");
     expect(commandBand).toContain("onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })}");
@@ -760,10 +760,21 @@ describe("Instrument core design contract", () => {
     // 데스크톱은 사이드바 폭을 그대로 미러하고, 모바일 셸에는 미러할 사이드바가 없으므로
     // 좌측 트랙이 내용 크기로 접힌다. 두 갈래를 한 줄로 고정해 한쪽만 바뀌는 표류를 막는다.
     expect(commandBand).toContain('"--command-band-left-width": viewMode.effective === "mobile" ? "min-content" : `${sideBar.width}px`');
-    expect(layout).toContain("grid-template-columns: minmax(var(--command-band-left-width, 280px), 1fr) minmax(0, max-content) minmax(44px, 1fr);");
-    expect(layout).toContain("width: var(--command-band-left-width, 280px);");
+    expect(layout).toContain("grid-template-columns: var(--command-band-left-width, 280px) minmax(var(--command-band-center-gutter), 1fr) minmax(0, max-content) minmax(var(--command-band-center-gutter), 1fr);");
     const commandBandCenterBlock = layout.match(/\.command-band-center \{[^}]*\}/)?.[0] ?? "";
     const commandBandRightBlocks = [...layout.matchAll(/\.command-band-right \{[^}]*\}/g)].map((match) => match[0]);
+    // 좌측 트랙은 사이드바 폭으로 고정하고 좌우 여백 트랙은 동일 하한을 공유한다 —
+    // 어느 한쪽이라도 어긋나면 브레드크럼이 사이드바를 포함한 전체폭 기준으로 다시 밀린다.
+    expect(layout).toContain(".command-band.is-utility {\n  grid-template-columns: auto minmax(0, 1fr) minmax(0, max-content) auto;\n}");
+    expect(layout).toContain("  --command-band-center-gutter: 44px;");
+    expect(commandBandCenterBlock).toContain("grid-column: 3;");
+    expect(commandBandRightBlocks.some((block) => block.includes("grid-column: 4;"))).toBe(true);
+    expect(commandBand).toContain('"--command-band-center-gutter": `${centerGutter}px`,');
+    expect(commandBand).toContain("{centerBreadcrumbVisible ? <div className=\"command-band-center\">");
+    // 밴드 조상에 container-type을 걸면 contain:layout이 stacking context를 만들어
+    // .command-band-menu(z-index:45)가 우현 레일 아래로 깔린다 — 판정은 JS 실측 전용.
+    expect(layout).not.toContain("container-type");
+    expect(layout).toContain("width: var(--command-band-left-width, 280px);");
     expect(commandBandCenterBlock).toContain("justify-content: center;");
     expect(commandBandCenterBlock).not.toContain("overflow:");
     expect(commandBandRightBlocks.some((block) => block.includes("justify-content: flex-end;"))).toBe(true);
