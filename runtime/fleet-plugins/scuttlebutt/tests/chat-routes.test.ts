@@ -47,8 +47,10 @@ describe("chat routes", () => {
   it("starts an ephemeral chat without leaking provider identity or absolute paths", async () => {
     const harness = createHarness(true, { admiral: "bori" });
     const createSession = vi.fn(() => new FakeSession());
+    const ensureDir = vi.fn(async () => undefined);
     registerChatRoutes(harness.ctx, {
       createSession,
+      ensureDir,
       id: () => "browser-chat-id",
     });
     await harness.handler()({
@@ -65,6 +67,26 @@ describe("chat routes", () => {
       admiral: "bori",
       onEvent: expect.any(Function),
     });
+    // 제독별 작업 디렉터리는 먼저 만들어져야 한다 — 없는 경로에서는 CLI 기동이 실패한다.
+    expect(ensureDir).toHaveBeenCalledWith("/private/fleet/plugins/scuttlebutt/workspace/bori");
+  });
+
+  it("refuses to start when the admiral workspace cannot be created", async () => {
+    const harness = createHarness(true, { admiral: "dori" });
+    const createSession = vi.fn(() => new FakeSession());
+    registerChatRoutes(harness.ctx, {
+      createSession,
+      ensureDir: async () => {
+        throw new Error("EACCES");
+      },
+    });
+    await harness.handler()({
+      req: request("POST", { "content-type": "application/json" }) as never,
+      res: response() as never,
+      pathname: "/plugins/scuttlebutt/chat/start",
+    });
+    expect(harness.writeJson).toHaveBeenCalledWith(expect.anything(), 503, { error: "session_unavailable" });
+    expect(createSession).not.toHaveBeenCalled();
   });
 
   it.each([

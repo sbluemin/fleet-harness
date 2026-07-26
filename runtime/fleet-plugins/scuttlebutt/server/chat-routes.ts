@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import fs from "node:fs/promises";
 import type http from "node:http";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
@@ -15,12 +16,16 @@ import { SessionRegistry } from "./session-registry.js";
 export interface ChatRouteDeps {
   readonly createSession?: (options: ConstructorParameters<typeof ChatSession>[0]) => ChatSessionLike;
   readonly id?: () => string;
+  readonly ensureDir?: (dir: string) => Promise<void>;
 }
 
 export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRouteDeps = {}): SessionRegistry {
   const registry = new SessionRegistry();
   const createSession = deps.createSession ?? ((options) => new ChatSession(options));
   const id = deps.id ?? crypto.randomUUID;
+  const ensureDir = deps.ensureDir ?? (async (dir: string) => {
+    await fs.mkdir(dir, { recursive: true });
+  });
 
   registerRouter(ctx, "chat", async ({ req, res, pathname }) => {
     if (!ctx.host.security.isTerminalAuthorized(req)) {
@@ -29,7 +34,7 @@ export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRout
     }
     const routePath = pathname.slice(`${ctx.basePath}/chat`.length) || "/";
     if (routePath === "/start") {
-      return handleStart(ctx, req, res, registry, createSession, id);
+      return handleStart(ctx, req, res, registry, createSession, id, ensureDir);
     }
     const match = routePath.match(/^\/([^/]+)\/(message|stream|stop)$/u);
     if (!match) return false;
@@ -54,6 +59,7 @@ async function handleStart(
   registry: SessionRegistry,
   createSession: NonNullable<ChatRouteDeps["createSession"]>,
   id: () => string,
+  ensureDir: (dir: string) => Promise<void>,
 ): Promise<boolean> {
   if (req.method !== "POST") return methodNotAllowed(ctx, res);
   if (!isJsonRequest(req)) return unsupportedMediaType(ctx, res);
@@ -66,6 +72,8 @@ async function handleStart(
   const workspace = `${ctx.host.paths.pluginDataDir("scuttlebutt")}/workspace/${body.admiral}`;
   let result: Awaited<ReturnType<SessionRegistry["start"]>>;
   try {
+    // pluginDataDir 은 경로만 만들어 준다 — 없는 디렉터리에서 CLI를 띄우면 기동 자체가 실패한다.
+    await ensureDir(workspace);
     result = await registry.start(chatId, (onEvent) => createSession({
       cwd: workspace,
       admiral: body.admiral,
