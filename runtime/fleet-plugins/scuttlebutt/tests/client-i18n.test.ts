@@ -27,8 +27,6 @@ describe("Scuttlebutt translations", () => {
       en("arrival.one", { title: "Alpha" }),
       en("arrival.many", { count: 2 }),
       en("settings.section.title"),
-      en("settings.section.enable"),
-      en("settings.section.enableHint"),
       en("settings.section.roster"),
       en("settings.section.rosterHint"),
     ]).toEqual([
@@ -52,8 +50,6 @@ describe("Scuttlebutt translations", () => {
       "Alpha finished",
       "2 operations finished",
       "Quaker Admirals",
-      "Enable the Quaker Admirals",
-      "When off, all three floating admirals are removed.",
       "Admirals on duty",
       "Each admiral keeps their own chat.",
     ]);
@@ -78,8 +74,6 @@ describe("Scuttlebutt translations", () => {
       ko("arrival.one", { title: "알파" }),
       ko("arrival.many", { count: 2 }),
       ko("settings.section.title"),
-      ko("settings.section.enable"),
-      ko("settings.section.enableHint"),
       ko("settings.section.roster"),
       ko("settings.section.rosterHint"),
     ]).toEqual([
@@ -103,8 +97,6 @@ describe("Scuttlebutt translations", () => {
       "알파 작업이 끝났습니다",
       "Operation 2건이 끝났습니다",
       "퀘이커 제독단",
-      "퀘이커 제독단 사용",
-      "끄면 떠다니는 제독 셋이 모두 사라집니다.",
       "출근 중인 제독",
       "제독마다 대화가 따로 유지됩니다.",
     ]);

@@ -10,12 +10,11 @@ import {
 describe("Scuttlebutt settings store", () => {
   // 실험 기능이라 켠 적 없는 항목은 전부 꺼진 상태로 읽는다.
   it("leaves every unset switch off", async () => {
-    const disconnect = connectScuttlebuttSettings(capability({ enabled: true }));
+    const disconnect = connectScuttlebuttSettings(capability({ tori: true }));
     await settleRead();
 
     expect(getScuttlebuttSettings()).toEqual({
-      enabled: true,
-      tori: false,
+      tori: true,
       bori: false,
       dori: false,
     });
@@ -27,7 +26,6 @@ describe("Scuttlebutt settings store", () => {
     await settleRead();
 
     expect(getScuttlebuttSettings()).toEqual({
-      enabled: false,
       tori: false,
       bori: false,
       dori: false,
@@ -36,12 +34,11 @@ describe("Scuttlebutt settings store", () => {
   });
 
   it("applies individual admiral switches", async () => {
-    const settings = capability({ enabled: true, tori: false, bori: true, dori: false });
+    const settings = capability({ tori: false, bori: true, dori: false });
     const disconnect = connectScuttlebuttSettings(settings);
     await settleRead();
 
     expect(getScuttlebuttSettings()).toEqual({
-      enabled: true,
       tori: false,
       bori: true,
       dori: false,
@@ -49,7 +46,6 @@ describe("Scuttlebutt settings store", () => {
     await writeScuttlebuttSettings({ bori: false });
     expect(getScuttlebuttSettings().bori).toBe(false);
     expect(settings.write).toHaveBeenCalledWith("scuttlebutt", {
-      enabled: true,
       tori: false,
       bori: false,
       dori: false,

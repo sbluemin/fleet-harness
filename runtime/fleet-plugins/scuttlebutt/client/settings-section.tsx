@@ -41,9 +41,6 @@ function ScuttlebuttSettingsSection() {
         <span className="scuttlebutt-settings-experimental-badge">{t("settings.section.experimental")}</span>
         {t("settings.section.experimentalHint")}
       </p>
-      <SettingsRow label={t("settings.section.enable")} hint={t("settings.section.enableHint")}>
-        <SettingsToggle checked={settings.enabled} disabled={saving} onChange={(enabled) => void save({ enabled })} />
-      </SettingsRow>
       <SettingsRow label={t("settings.section.roster")} hint={t("settings.section.rosterHint")}>
         <div className="scuttlebutt-settings-roster">
           {(["tori", "bori", "dori"] as const).map((admiral) => (
@@ -51,7 +48,7 @@ function ScuttlebuttSettingsSection() {
               key={admiral}
               label={t(`bird.${admiral}`)}
               checked={settings[admiral]}
-              disabled={saving || !settings.enabled}
+              disabled={saving}
               onChange={(enabled) => void save({ [admiral]: enabled })}
             />
           ))}

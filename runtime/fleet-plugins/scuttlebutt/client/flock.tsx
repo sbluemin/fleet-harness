@@ -271,7 +271,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   }, [fleetSignals.reducedMotion, parkBirds]);
 
   React.useEffect(() => {
-    if (!settings.enabled) return;
+    if (activeIndices.length === 0) return;
     if (fleetSignals.reducedMotion) {
       parkBirds();
       return;
@@ -318,7 +318,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     };
     animationFrame = window.requestAnimationFrame(loop);
     return () => window.cancelAnimationFrame(animationFrame);
-  }, [activeIndices, fleetSignals.reducedMotion, parkBirds, settings.enabled]);
+  }, [activeIndices, fleetSignals.reducedMotion, parkBirds]);
 
   React.useEffect(() => () => {
     for (let index = 0; index < MORPHS.length; index += 1) {
@@ -396,7 +396,8 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   }, [clearTimer, clickAction]);
 
   const t = getT(context.language);
-  if (!settings.enabled) return null;
+  // 근무 중인 제독이 하나도 없으면 레이어에 아무것도 남기지 않는다.
+  if (activeIndices.length === 0) return null;
 
   return (
     <>
