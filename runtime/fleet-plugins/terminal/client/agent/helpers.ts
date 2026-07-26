@@ -1,8 +1,11 @@
 import type { JobView, TrackView } from "./types.js";
 
+export type TrackPhaseKind = "tool" | "writing" | "reasoning" | "working" | "done" | "error" | "aborted";
+
 export interface TrackPhase {
-  readonly label: string;
+  readonly kind: TrackPhaseKind;
   readonly tone: "live" | "done" | "error";
+  readonly toolName?: string;
 }
 
 const CAPTAIN_IDS = new Set(["nimitz", "genesis", "sentinel", "vanguard"]);
@@ -30,20 +33,20 @@ export function isTrackError(status: string): boolean {
 }
 
 export function deriveTrackPhase(track: TrackView, jobStatus: string): TrackPhase {
-  if (isTrackError(track.status)) return { label: "Error", tone: "error" };
-  if (track.status === "aborted") return { label: "Aborted", tone: "error" };
-  if (track.status === "done") return { label: "Done", tone: "done" };
-  if (jobStatus === "error") return { label: "Error", tone: "error" };
-  if (jobStatus === "aborted") return { label: "Aborted", tone: "error" };
-  if (jobStatus === "done") return { label: "Done", tone: "done" };
+  if (isTrackError(track.status)) return { kind: "error", tone: "error" };
+  if (track.status === "aborted") return { kind: "aborted", tone: "error" };
+  if (track.status === "done") return { kind: "done", tone: "done" };
+  if (jobStatus === "error") return { kind: "error", tone: "error" };
+  if (jobStatus === "aborted") return { kind: "aborted", tone: "error" };
+  if (jobStatus === "done") return { kind: "done", tone: "done" };
 
   const lastTool = track.tools.at(-1);
   if (lastTool && resolveToolTone(lastTool.status) === "live") {
-    return { label: `Using ${lastTool.name ?? "tool"}`, tone: "live" };
+    return { kind: "tool", tone: "live", toolName: lastTool.name };
   }
-  if (track.text.length > 0) return { label: "Writing", tone: "live" };
-  if (track.thought.length > 0) return { label: "Reasoning", tone: "live" };
-  return { label: "Working", tone: "live" };
+  if (track.text.length > 0) return { kind: "writing", tone: "live" };
+  if (track.thought.length > 0) return { kind: "reasoning", tone: "live" };
+  return { kind: "working", tone: "live" };
 }
 
 // 도구 status 종결 판정의 단일 지점 — ACP 계열 런타임은 completed/failed를, 내부 경로는 done/error를 쓴다.
