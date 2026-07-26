@@ -7,6 +7,7 @@ import { acknowledgeIdleArrival } from "./operation-idle-arrival.js";
 import { uiFontFamily } from "./ui-font.js";
 import type {
   CodexReaderRequest,
+  ConnectionState,
   ConsoleState,
   NotificationKind,
   NotificationPreferences,
@@ -45,7 +46,7 @@ let commissioningMigrationAttempted = false;
 
 let state: ConsoleState = {
   connection: "connecting",
-  connectionError: null,
+  connectionLostAt: null,
   channel: "unknown",
   // The SDK ConsoleTheme union matches ThemeId; the selected theme passes
   // through to the plugin context unchanged.
@@ -106,6 +107,21 @@ export function subscribe(listener: Listener): () => void {
 export function setState(patch: Partial<ConsoleState>): void {
   state = { ...state, ...patch };
   emit();
+}
+
+export function setConnectionState(next: ConnectionState): void {
+  if (next === "offline") {
+    setState({
+      connection: next,
+      connectionLostAt: state.connectionLostAt ?? Date.now(),
+    });
+    return;
+  }
+  if (next === "live") {
+    setState({ connection: next, connectionLostAt: null });
+    return;
+  }
+  setState({ connection: next });
 }
 
 export function setOperationsViewActive(active: boolean): void {

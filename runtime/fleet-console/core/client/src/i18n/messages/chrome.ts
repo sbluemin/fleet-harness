@@ -48,6 +48,14 @@ export const chromeEn = {
   "chrome.commandBand.newOperationIn": "New Operation in {theater}…",
   "chrome.commandBand.noOperationsInTheater": "No operations in this Theater",
 
+  // console link
+  "chrome.link.offline": "Connection lost",
+  "chrome.link.reconnecting": "Reconnecting…",
+  "chrome.link.bannerDetail": "Values on screen are from {time}.",
+  "chrome.link.reconnect": "Reconnect",
+  "chrome.link.staleHeadline": "Updates stopped here",
+  "chrome.link.staleDetail": "Last updated {time}",
+
   // operation-search
   "chrome.operationSearch.commandsDialog": "Console commands",
   "chrome.operationSearch.quickSearchDialog": "Operation quick search",
@@ -163,7 +171,6 @@ export const chromeEn = {
 
   // toast
   "chrome.toast.dismissNotification": "Dismiss notification",
-  "chrome.toast.consoleLinkInterrupted": "Console link interrupted",
   "chrome.toast.theaterForgotten": "Theater forgotten",
   "chrome.toast.operationClosed": "Operation closed",
   "chrome.toast.secondsRemaining": "{count}s remaining",
@@ -239,6 +246,13 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.commandBand.renameCurrentOperation": "현재 Operation 이름 변경…",
   "chrome.commandBand.newOperationIn": "{theater}에서 새 Operation…",
   "chrome.commandBand.noOperationsInTheater": "이 Theater에 Operation이 없습니다",
+
+  "chrome.link.offline": "연결 끊김",
+  "chrome.link.reconnecting": "다시 연결하는 중…",
+  "chrome.link.bannerDetail": "화면의 값은 {time} 기준입니다.",
+  "chrome.link.reconnect": "다시 연결",
+  "chrome.link.staleHeadline": "이 값은 갱신이 멈췄습니다",
+  "chrome.link.staleDetail": "마지막 갱신 {time}",
 
   "chrome.operationSearch.commandsDialog": "Console 명령",
   "chrome.operationSearch.quickSearchDialog": "Operation 빠른 검색",
@@ -348,7 +362,6 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.brandFoot.update.blockedTitle": "Console이 업데이트를 시작할 준비가 되지 않았습니다. 잠시 후 다시 시도하세요.",
 
   "chrome.toast.dismissNotification": "알림 닫기",
-  "chrome.toast.consoleLinkInterrupted": "Console 연결이 끊겼습니다",
   "chrome.toast.theaterForgotten": "Theater를 잊었습니다",
   "chrome.toast.operationClosed": "Operation이 닫혔습니다",
   "chrome.toast.secondsRemaining": "{count}초 남음",

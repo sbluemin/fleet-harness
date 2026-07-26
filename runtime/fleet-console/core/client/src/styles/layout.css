@@ -13,6 +13,42 @@
   overflow: hidden;
 }
 
+.console-link-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  flex: none;
+  min-height: 34px;
+  padding: var(--space-1) var(--space-4);
+  border-bottom: 1px solid color-mix(in oklch, var(--coral) 55%, var(--surface-rim));
+  background: var(--coral-glow);
+  color: var(--coral);
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+}
+
+.console-link-banner button,
+.right-rail-stale-veil button {
+  padding: 4px 8px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-xs);
+  background: var(--surface-glass);
+  color: inherit;
+  font: inherit;
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+
+.console-link-banner button:hover,
+.console-link-banner button:focus-visible,
+.right-rail-stale-veil button:hover,
+.right-rail-stale-veil button:focus-visible {
+  border-color: var(--brass);
+  outline: 1px solid var(--brass);
+  outline-offset: 1px;
+}
+
 .console-body,
 .console-body.is-canvas {
   height: 100%;
@@ -154,6 +190,30 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.command-band-link-chip {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: 4px 7px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.command-band-link-chip[data-link-state="offline"] {
+  background: var(--coral-glow);
+  color: var(--coral);
+}
+
+.command-band-link-chip[data-link-state="connecting"] {
+  background: var(--warn-glow);
+  color: var(--warn);
 }
 
 /* macOS Desktop은 traffic-light 인셋(좌측 88px)이 첫 트랙 폭을 잠식하므로
@@ -648,5 +708,6 @@ html[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band-le
     transition: none !important;
   }
 
+  .right-rail-stale-veil { animation: none !important; }
   .command-band.is-fullscreen { transition: none !important; }
 }

@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   getState: vi.fn(),
   hydrateOperations: vi.fn(),
   resetDesktopFullscreenSnapshot: vi.fn(),
+  setConnectionState: vi.fn(),
 }));
 
 vi.mock("../core/client/src/api.js", () => ({
@@ -21,6 +22,7 @@ vi.mock("../core/client/src/store.js", () => ({
   applyOperationUpdate: mocks.applyOperationUpdate,
   getState: mocks.getState,
   hydrateOperations: mocks.hydrateOperations,
+  setConnectionState: mocks.setConnectionState,
 }));
 
 vi.mock("../core/client/src/desktop-fullscreen.js", () => ({
@@ -28,13 +30,14 @@ vi.mock("../core/client/src/desktop-fullscreen.js", () => ({
   resetDesktopFullscreenSnapshot: mocks.resetDesktopFullscreenSnapshot,
 }));
 
-import { connectOperationsSse } from "../core/client/src/operations-sse.js";
+import { connectOperationsSse, reconnectOperationsSseNow } from "../core/client/src/operations-sse.js";
 
 class TestEventSource {
   static instances: TestEventSource[] = [];
 
   onerror: (() => void) | null = null;
   onopen: (() => void) | null = null;
+  closed = false;
   private readonly listeners = new Map<string, ((event: Event) => void)[]>();
 
   constructor(_url: string) {
@@ -47,7 +50,9 @@ class TestEventSource {
     this.listeners.set(type, registered);
   }
 
-  close(): void {}
+  close(): void {
+    this.closed = true;
+  }
 
   emit(type: string, data?: string): void {
     for (const listener of this.listeners.get(type) ?? []) listener({ data } as MessageEvent<string>);
@@ -69,6 +74,9 @@ describe("operations SSE update availability", () => {
     mocks.getState.mockReset();
     mocks.hydrateOperations.mockReset();
     mocks.resetDesktopFullscreenSnapshot.mockReset();
+    mocks.setConnectionState.mockReset();
+    vi.clearAllTimers();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -96,6 +104,82 @@ describe("operations SSE update availability", () => {
 
     await vi.waitFor(() => expect(mocks.applyObserverStatus).toHaveBeenCalledWith(status));
     expect(mocks.fetchObserverStatus).toHaveBeenCalledWith(null);
+    expect(mocks.fetchOperations).not.toHaveBeenCalled();
+    expect(mocks.setConnectionState).toHaveBeenCalledWith("live");
+  });
+
+  it("hydrates missed operations before creating the manual reconnect source", async () => {
+    const operations = [{ id: "created-while-offline" }];
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.getState.mockReturnValue({ activeTheaterId: null });
+    let resolveOperations: (operations: readonly { readonly id: string }[]) => void = () => {
+      throw new Error("operations fetch did not start");
+    };
+    mocks.fetchOperations.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveOperations = resolve;
+    }));
+
+    reconnectOperationsSseNow();
+    expect(TestEventSource.instances).toHaveLength(0);
+    resolveOperations(operations);
+
+    await vi.waitFor(() => expect(mocks.hydrateOperations).toHaveBeenCalledWith(operations));
+    expect(TestEventSource.instances).toHaveLength(1);
+  });
+
+  it("does not hydrate or connect a delayed manual snapshot from a superseded generation", async () => {
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.getState.mockReturnValue({ activeTheaterId: null });
+    let resolveStaleOperations: (operations: readonly { readonly id: string }[]) => void = () => {
+      throw new Error("stale operations fetch did not start");
+    };
+    let resolveCurrentOperations: (operations: readonly { readonly id: string }[]) => void = () => {
+      throw new Error("current operations fetch did not start");
+    };
+    mocks.fetchOperations
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveStaleOperations = resolve;
+      }))
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveCurrentOperations = resolve;
+      }));
+
+    reconnectOperationsSseNow();
+    reconnectOperationsSseNow();
+    resolveCurrentOperations([{ id: "current" }]);
+    await vi.waitFor(() => expect(TestEventSource.instances).toHaveLength(1));
+    resolveStaleOperations([{ id: "stale" }]);
+    await vi.waitFor(() => expect(mocks.hydrateOperations).toHaveBeenCalledTimes(1));
+
+    expect(mocks.hydrateOperations).toHaveBeenCalledWith([{ id: "current" }]);
+    expect(TestEventSource.instances).toHaveLength(1);
+  });
+
+  it("keeps one active source and ignores every callback from superseded generations", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.getState.mockReturnValue({ activeTheaterId: null });
+
+    connectOperationsSse();
+    const staleSource = TestEventSource.instances[0]!;
+    connectOperationsSse();
+    const currentSource = TestEventSource.instances[1]!;
+
+    expect(staleSource.closed).toBe(true);
+    staleSource.emit("operation:changed", JSON.stringify({ operation: { id: "stale" } }));
+    staleSource.emit("update:available");
+    staleSource.emit("desktop:fullscreen", JSON.stringify({ fullscreen: true }));
+    staleSource.open();
+    staleSource.onerror?.();
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(mocks.applyOperationUpdate).not.toHaveBeenCalled();
+    expect(mocks.fetchObserverStatus).not.toHaveBeenCalled();
+    expect(mocks.applyDesktopFullscreenSnapshot).not.toHaveBeenCalled();
+    expect(mocks.resetDesktopFullscreenSnapshot).not.toHaveBeenCalled();
+    expect(mocks.setConnectionState).not.toHaveBeenCalled();
+    expect(TestEventSource.instances).toHaveLength(2);
+    expect(currentSource.closed).toBe(false);
   });
 
   it("trails a status refresh when a later update frame arrives in flight", async () => {
@@ -135,6 +219,80 @@ describe("operations SSE update availability", () => {
     expect(mocks.resetDesktopFullscreenSnapshot).toHaveBeenCalledOnce();
     TestEventSource.instances[0]?.onerror?.();
     expect(mocks.resetDesktopFullscreenSnapshot).toHaveBeenCalledTimes(2);
-    vi.useRealTimers();
+    expect(mocks.setConnectionState).toHaveBeenCalledWith("offline");
+  });
+
+  it("marks the retry attempt connecting while preserving the existing exponential retry path", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.getState.mockReturnValue({ activeTheaterId: null });
+    let resolveOperations: (operations: readonly []) => void = () => {
+      throw new Error("operations fetch did not start");
+    };
+    mocks.fetchOperations.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveOperations = resolve;
+    }));
+
+    connectOperationsSse();
+    TestEventSource.instances[0]?.onerror?.();
+    expect(mocks.setConnectionState).toHaveBeenLastCalledWith("offline");
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(mocks.setConnectionState).toHaveBeenLastCalledWith("connecting");
+    expect(mocks.fetchOperations).toHaveBeenCalledOnce();
+    expect(TestEventSource.instances).toHaveLength(1);
+    resolveOperations([]);
+    await vi.waitFor(() => expect(mocks.hydrateOperations).toHaveBeenCalledWith([]));
+    expect(TestEventSource.instances).toHaveLength(2);
+  });
+
+  it("cancels the pending backoff and reconnects immediately", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.getState.mockReturnValue({ activeTheaterId: null });
+    mocks.fetchOperations.mockResolvedValue([]);
+
+    reconnectOperationsSseNow();
+    await vi.waitFor(() => expect(TestEventSource.instances).toHaveLength(1));
+    TestEventSource.instances[0]?.onerror?.();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.waitFor(() => expect(TestEventSource.instances).toHaveLength(2));
+    TestEventSource.instances[1]?.onerror?.();
+
+    reconnectOperationsSseNow();
+    await vi.waitFor(() => expect(TestEventSource.instances).toHaveLength(3));
+    TestEventSource.instances[2]?.onerror?.();
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(TestEventSource.instances).toHaveLength(3);
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.waitFor(() => expect(TestEventSource.instances).toHaveLength(4));
+  });
+
+  it("discards an observer status response from a superseded connection generation", async () => {
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.getState.mockReturnValue({ activeTheaterId: null });
+    mocks.fetchOperations.mockResolvedValue([]);
+    let resolveStaleStatus: (status: { version: string; updateAvailable: boolean }) => void = () => {
+      throw new Error("status fetch did not start");
+    };
+    const currentStatus = { version: "2.0.0", updateAvailable: true };
+    mocks.fetchObserverStatus
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveStaleStatus = resolve;
+      }))
+      .mockResolvedValueOnce(currentStatus);
+
+    reconnectOperationsSseNow();
+    await vi.waitFor(() => expect(TestEventSource.instances).toHaveLength(1));
+    TestEventSource.instances[0]?.open();
+    reconnectOperationsSseNow();
+    await vi.waitFor(() => expect(TestEventSource.instances).toHaveLength(2));
+    TestEventSource.instances[1]?.open();
+    resolveStaleStatus({ version: "1.0.0", updateAvailable: false });
+
+    await vi.waitFor(() => expect(mocks.fetchObserverStatus).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(mocks.applyObserverStatus).toHaveBeenCalledOnce());
+    expect(mocks.applyObserverStatus).toHaveBeenCalledWith(currentStatus);
   });
 });

@@ -144,7 +144,7 @@ export interface ApiCatalogEntry {
   readonly gate: string;
 }
 
-export type ConnectionState = "connecting" | "live";
+export type ConnectionState = "connecting" | "live" | "offline";
 
 export type NotificationKind = "ended" | "input-waiting";
 
@@ -171,7 +171,7 @@ export type CodexReaderRequest =
 
 export interface ConsoleState {
   readonly connection: ConnectionState;
-  readonly connectionError: string | null;
+  readonly connectionLostAt: number | null;
   readonly channel: ObserverStatus["channel"];
   readonly activeTheme: ConsoleTheme;
   readonly version: string;

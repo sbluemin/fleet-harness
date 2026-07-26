@@ -32,7 +32,7 @@ const THEATER_BETA: TheaterInfo = { id: "theater-beta", label: "Beta Dock", crea
 function makeState(patch: Partial<ConsoleState> = {}): ConsoleState {
   return {
     connection: "connecting",
-    connectionError: null,
+    connectionLostAt: null,
     channel: "unknown",
     activeTheme: "instrument",
     version: "1.30.0",

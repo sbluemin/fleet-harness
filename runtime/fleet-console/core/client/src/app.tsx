@@ -8,6 +8,7 @@ import { FeatureTourOverlay } from "./components/feature-tour.js";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog.js";
 import { takeKeyboardShortcutsReturnFocus } from "./keyboard-shortcuts-return-focus.js";
 import { OperationSearch } from "./components/operation-search.js";
+import { ReconnectButton } from "./components/reconnect-button.js";
 import { Toast } from "./components/toast.js";
 import { appendPendingDeletion, deletionCountdownSeconds, latestPendingDeletion } from "./deletion-undo.js";
 import { WhatsNewModal } from "./components/whatsnew-modal.js";
@@ -48,6 +49,9 @@ export function App() {
   const t = useT();
   const consoleLocale = useConsoleLocale();
   const releaseNotesLocale = resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
+  const connectionLostTime = state.connectionLostAt === null
+    ? ""
+    : new Date(state.connectionLostAt).toLocaleTimeString(consoleLocale);
 
   useEffect(() => {
     document.documentElement.lang = consoleLocale;
@@ -221,6 +225,14 @@ export function App() {
   return (
     <div className="console-shell">
       <CommandBand operationsViewVisible={operationsViewVisible} />
+      {/* 배너는 링크가 live가 아닌 동안 유지한다 — offline에만 걸면 재연결 시도가 시작되는 순간
+          배너째 언마운트되어, 눌린 버튼의 피드백까지 함께 사라진다(실브라우저 재현). */}
+      {state.connection !== "live" && state.connectionLostAt !== null ? (
+        <div className="console-link-banner" role="status" aria-live="polite">
+          <span>{t(state.connection === "offline" ? "chrome.link.offline" : "chrome.link.reconnecting")}. {t("chrome.link.bannerDetail", { time: connectionLostTime })}</span>
+          <ReconnectButton />
+        </div>
+      ) : null}
       <main className="console-route-content">
         <Routes>
           <Route path="/" element={<Navigate to="/operations" replace />} />
@@ -242,12 +254,6 @@ export function App() {
       <WhatsNewModal state={state} />
       <CommissioningOverlay state={state} />
       <FeatureTourOverlay />
-      <Toast
-        open={state.connectionError !== null}
-        tone="error"
-        title={t("chrome.toast.consoleLinkInterrupted")}
-        message={state.connectionError ?? undefined}
-      />
       <Toast
         open={activeDeletion !== null}
         tone="undo"
