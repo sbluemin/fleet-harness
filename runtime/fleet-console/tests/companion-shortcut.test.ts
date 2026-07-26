@@ -35,7 +35,9 @@ describe("companion shortcut toggle", () => {
     expect(appSource).toContain("usableCompanionShortcuts(activeKind?.companions ?? [])");
   });
 
-  it("opens the companion layer and shows only the requested target", () => {
+  it("opens the companion layer, revealing the target and leaving peers at their default visibility", () => {
+    // 단축키는 패널 자체의 열기 컨트롤과 같은 결과에 이르는 두 번째 경로다. defaultHidden을 끈 패널을
+    // 단축키만 강제로 숨기면 그 선언 의도를 뒤집고 두 경로의 동작이 갈린다(Codex P2 판정 근거).
     expect(resolveCompanionShortcutToggle({
       companions: COMPANIONS,
       targetId: "streams",
@@ -46,6 +48,17 @@ describe("companion shortcut toggle", () => {
       closeLayer: false,
       visibilityChanges: [{ id: "streams", visible: true }],
     });
+  });
+
+  it("does not touch a peer that declares itself visible by default when opening", () => {
+    const changed = resolveCompanionShortcutToggle({
+      companions: COMPANIONS,
+      targetId: "streams",
+      companionsOpen: false,
+      visibilityOverrides: {},
+    }).visibilityChanges.map((change) => change.id);
+
+    expect(changed).not.toContain("always-visible");
   });
 
   it("shows a hidden target without reopening an already-open layer", () => {
