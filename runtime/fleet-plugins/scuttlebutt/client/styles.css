@@ -1,3 +1,28 @@
+.scuttlebutt-settings-experimental {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: var(--weight-regular);
+}
+
+/* 실험 표식은 상태가 아니라 정보다 — 신호색을 빌리지 않고 중립 잉크로 침묵한다. */
+.scuttlebutt-settings-experimental-badge {
+  flex: none;
+  padding: 1px var(--space-2);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-pill);
+  background: var(--ink-mid);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .scuttlebutt-settings-roster {
   display: grid;
   gap: var(--space-2);

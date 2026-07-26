@@ -37,6 +37,10 @@ function ScuttlebuttSettingsSection() {
     <SettingsCard
       title={t("settings.section.title")}
     >
+      <p className="scuttlebutt-settings-experimental">
+        <span className="scuttlebutt-settings-experimental-badge">{t("settings.section.experimental")}</span>
+        {t("settings.section.experimentalHint")}
+      </p>
       <SettingsRow label={t("settings.section.enable")} hint={t("settings.section.enableHint")}>
         <SettingsToggle checked={settings.enabled} disabled={saving} onChange={(enabled) => void save({ enabled })} />
       </SettingsRow>

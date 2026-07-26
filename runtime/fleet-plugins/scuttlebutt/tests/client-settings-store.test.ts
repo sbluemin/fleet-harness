@@ -8,15 +8,29 @@ import {
 } from "../client/settings-store.js";
 
 describe("Scuttlebutt settings store", () => {
-  it("defaults missing admiral switches to enabled", async () => {
-    const disconnect = connectScuttlebuttSettings(capability({ enabled: false }));
+  // 실험 기능이라 켠 적 없는 항목은 전부 꺼진 상태로 읽는다.
+  it("leaves every unset switch off", async () => {
+    const disconnect = connectScuttlebuttSettings(capability({ enabled: true }));
+    await settleRead();
+
+    expect(getScuttlebuttSettings()).toEqual({
+      enabled: true,
+      tori: false,
+      bori: false,
+      dori: false,
+    });
+    disconnect();
+  });
+
+  it("starts with nothing enabled when no settings were ever stored", async () => {
+    const disconnect = connectScuttlebuttSettings(capability(null));
     await settleRead();
 
     expect(getScuttlebuttSettings()).toEqual({
       enabled: false,
-      tori: true,
-      bori: true,
-      dori: true,
+      tori: false,
+      bori: false,
+      dori: false,
     });
     disconnect();
   });
@@ -44,7 +58,7 @@ describe("Scuttlebutt settings store", () => {
   });
 });
 
-function capability(value: Record<string, unknown>): ClientSettingsCapability & {
+function capability(value: Record<string, unknown> | null): ClientSettingsCapability & {
   readonly write: ReturnType<typeof vi.fn>;
 } {
   return {
