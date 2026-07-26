@@ -2,12 +2,17 @@ import {
   UnifiedAgent,
   type AcpPermissionRequestParams,
   type AcpPermissionResponse,
-  type CliType,
   type IUnifiedAgentClient,
 } from "@dotobokuri/core-unified-agent";
 
 const DISPOSE_SETTLE_MS = 2_000;
 const WEB_TOOL_NAMES = new Set(["websearch", "webfetch"]);
+
+export const SCUTTLEBUTT_AGENT = {
+  cliId: "claude",
+  model: "sonnet",
+  effort: "low",
+} as const;
 
 export const SCUTTLEBUTT_SYSTEM_PROMPT = `# Role
 
@@ -65,12 +70,9 @@ export type ChatEvent =
   | { readonly type: "error"; readonly error: { readonly code: string; readonly message: string } };
 
 export interface ChatSessionOptions {
-  readonly cliId: Extract<CliType, "claude" | "claude-kimi" | "codex">;
   readonly cwd: string;
-  readonly model: string;
-  readonly effort?: string;
   readonly onEvent?: (event: ChatEvent) => void;
-  readonly buildClient?: (cliId: ChatSessionOptions["cliId"]) => Promise<IUnifiedAgentClient>;
+  readonly buildClient?: () => Promise<IUnifiedAgentClient>;
 }
 
 export interface ChatSessionLike {
@@ -95,7 +97,7 @@ export class ChatSession implements ChatSessionLike {
   async start(): Promise<void> {
     if (this.disposed) throw new Error("Session disposed");
     if (this.started) return;
-    const client = await (this.options.buildClient?.(this.options.cliId) ?? UnifiedAgent.build({ cli: this.options.cliId }));
+    const client = await (this.options.buildClient?.() ?? UnifiedAgent.build({ cli: SCUTTLEBUTT_AGENT.cliId }));
     this.pendingClient = client;
     if (this.disposed) {
       await client.disconnect().catch(() => undefined);
@@ -106,12 +108,12 @@ export class ChatSession implements ChatSessionLike {
     try {
       await client.connect({
         cwd: this.options.cwd,
-        model: this.options.model,
-        effort: this.options.effort,
+        model: SCUTTLEBUTT_AGENT.model,
+        effort: SCUTTLEBUTT_AGENT.effort,
         autoApprove: false,
         yoloMode: false,
         fsAccess: false,
-        strictMcp: this.options.cliId === "claude" || this.options.cliId === "claude-kimi",
+        strictMcp: true,
         systemPrompt: SCUTTLEBUTT_SYSTEM_PROMPT,
         systemPromptMode: "replace",
         mcpServers: [],

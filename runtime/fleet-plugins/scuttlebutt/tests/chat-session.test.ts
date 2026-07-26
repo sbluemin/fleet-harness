@@ -11,6 +11,7 @@ import {
   ChatSession,
   isWebToolName,
   resolveWebPermissionRequest,
+  SCUTTLEBUTT_AGENT,
   SCUTTLEBUTT_SYSTEM_PROMPT,
 } from "../server/chat-session.js";
 
@@ -58,10 +59,7 @@ describe("ChatSession", () => {
     const client = new FakeClient();
     const events: unknown[] = [];
     const session = new ChatSession({
-      cliId: "claude",
       cwd,
-      model: "opus[1m]",
-      effort: "high",
       onEvent: (event) => events.push(event),
       buildClient: async () => client as unknown as IUnifiedAgentClient,
     });
@@ -69,8 +67,8 @@ describe("ChatSession", () => {
     await session.start();
     expect(client.connect).toHaveBeenCalledWith({
       cwd,
-      model: "opus[1m]",
-      effort: "high",
+      model: "sonnet",
+      effort: "low",
       autoApprove: false,
       yoloMode: false,
       fsAccess: false,
@@ -90,6 +88,14 @@ describe("ChatSession", () => {
     await session.dispose();
     expect(client.cancelPrompt).toHaveBeenCalledOnce();
     expect(client.disconnect).toHaveBeenCalledOnce();
+  });
+
+  it("defines the fixed provider contract in one server constant", () => {
+    expect(SCUTTLEBUTT_AGENT).toEqual({
+      cliId: "claude",
+      model: "sonnet",
+      effort: "low",
+    });
   });
 
   it("preserves the RISEN system prompt structure", () => {

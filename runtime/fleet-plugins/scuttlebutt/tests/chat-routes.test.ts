@@ -4,17 +4,17 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { describe, expect, it, vi } from "vitest";
 
-import { buildChatCatalog, registerChatRoutes } from "../server/chat-routes.js";
+import { registerChatRoutes } from "../server/chat-routes.js";
 import type { ChatEvent, ChatSessionLike } from "../server/chat-session.js";
 
 describe("chat routes", () => {
   it("returns 403 before every handler when terminal authorization fails", async () => {
     const harness = createHarness(false);
-    registerChatRoutes(harness.ctx, { detect: async () => [] });
+    registerChatRoutes(harness.ctx);
     await harness.handler()({
-      req: request("GET") as never,
+      req: request("POST") as never,
       res: response() as never,
-      pathname: "/plugins/scuttlebutt/chat/catalog",
+      pathname: "/plugins/scuttlebutt/chat/start",
     });
     expect(harness.writeJson).toHaveBeenCalledWith(expect.anything(), 403, { error: "forbidden" });
   });
@@ -45,19 +45,10 @@ describe("chat routes", () => {
   });
 
   it("starts an ephemeral chat without leaking provider identity or absolute paths", async () => {
-    const harness = createHarness(true, { cliId: "claude", model: "claude-test" });
+    const harness = createHarness(true, {});
+    const createSession = vi.fn(() => new FakeSession());
     registerChatRoutes(harness.ctx, {
-      detect: async () => [{ cli: "claude", path: "claude", available: true, protocols: ["acp"] }],
-      modelsFor: () => ({
-        name: "Claude",
-        defaultModel: "claude-test",
-        models: [{
-          modelId: "claude-test",
-          name: "Claude Test",
-          effort: { supported: false, levels: [], default: undefined },
-        }],
-      }),
-      createSession: () => new FakeSession(),
+      createSession,
       id: () => "browser-chat-id",
     });
     await harness.handler()({
@@ -69,27 +60,48 @@ describe("chat routes", () => {
     expect(payload).toEqual({ chatId: "browser-chat-id" });
     expect(JSON.stringify(payload)).not.toContain("sessionId");
     expect(JSON.stringify(payload)).not.toContain("/private/");
+    expect(createSession).toHaveBeenCalledWith({
+      cwd: "/private/fleet/plugins/scuttlebutt/workspace",
+      onEvent: expect.any(Function),
+    });
   });
 
-  it("catalog includes only the frozen CLI set and detector defaults", () => {
-    const catalog = buildChatCatalog([
-      { cli: "claude", path: "claude", available: true, protocols: ["acp"] },
-      { cli: "claude-kimi", path: "claude", available: true, protocols: ["acp"] },
-      { cli: "codex", path: "codex", available: true, protocols: ["codex-app-server"] },
-      { cli: "cursor", path: "cursor-agent", available: true, protocols: ["acp"] },
-    ]);
-    expect(catalog.clis.map((cli) => cli.cliId)).toEqual(["claude", "claude-kimi", "codex"]);
-    expect(catalog.clis[2]).toMatchObject({
-      cliId: "codex",
-      available: false,
-      reason: "web_only_policy_unsupported",
+  it.each([
+    { cliId: "claude" },
+    { model: "sonnet" },
+    { effort: "low" },
+  ])("rejects browser selection fields in the start body: %o", async (body) => {
+    const harness = createHarness(true, body);
+    registerChatRoutes(harness.ctx);
+    await harness.handler()({
+      req: request("POST", { "content-type": "application/json" }) as never,
+      res: response() as never,
+      pathname: "/plugins/scuttlebutt/chat/start",
     });
-    expect(catalog.settings).toEqual({
-      enabled: true,
-      cliId: "claude",
-      model: catalog.clis[0]?.defaultModel,
-      effort: null,
+    expect(harness.writeJson).toHaveBeenCalledWith(expect.anything(), 400, { error: "invalid_start" });
+  });
+
+  it("removes the empty chat catalog route", async () => {
+    const harness = createHarness(true);
+    registerChatRoutes(harness.ctx);
+    expect(await harness.handler()({
+      req: request("GET") as never,
+      res: response() as never,
+      pathname: "/plugins/scuttlebutt/chat/catalog",
+    })).toBe(false);
+  });
+
+  it("returns a visible start failure when the fixed CLI cannot open", async () => {
+    const harness = createHarness(true);
+    registerChatRoutes(harness.ctx, {
+      createSession: () => new FailingSession(),
     });
+    await harness.handler()({
+      req: request("POST", { "content-type": "application/json" }) as never,
+      res: response() as never,
+      pathname: "/plugins/scuttlebutt/chat/start",
+    });
+    expect(harness.writeJson).toHaveBeenCalledWith(expect.anything(), 503, { error: "session_unavailable" });
   });
 });
 
@@ -160,4 +172,10 @@ class FakeSession implements ChatSessionLike {
   async start(): Promise<void> {}
   async send(): Promise<void> {}
   async dispose(): Promise<void> {}
+}
+
+class FailingSession extends FakeSession {
+  override async start(): Promise<void> {
+    throw new Error("CLI unavailable");
+  }
 }

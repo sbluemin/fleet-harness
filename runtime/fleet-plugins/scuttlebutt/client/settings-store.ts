@@ -2,16 +2,10 @@ import type { ClientSettingsCapability } from "@fleet-console/sdk/plugin";
 
 export interface ScuttlebuttSettings {
   readonly enabled: boolean;
-  readonly cliId: string;
-  readonly model: string;
-  readonly effort: string | null;
 }
 
 const DEFAULT_SETTINGS: ScuttlebuttSettings = {
   enabled: true,
-  cliId: "claude",
-  model: "",
-  effort: null,
 };
 
 let settings = DEFAULT_SETTINGS;
@@ -56,9 +50,6 @@ function parseSettings(value: Record<string, unknown> | null): ScuttlebuttSettin
   if (!value) return DEFAULT_SETTINGS;
   return {
     enabled: typeof value.enabled === "boolean" ? value.enabled : true,
-    cliId: typeof value.cliId === "string" ? value.cliId : "claude",
-    model: typeof value.model === "string" ? value.model : "",
-    effort: typeof value.effort === "string" ? value.effort : null,
   };
 }
 

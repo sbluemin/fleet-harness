@@ -1,55 +1,21 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 
-import {
-  CliDetector,
-  getProviderModels,
-  type CliDetectionResult,
-} from "@dotobokuri/core-unified-agent";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 
-import type { ScuttlebuttSettings } from "../client/settings-store.js";
 import { ChatSession, type ChatSessionLike } from "./chat-session.js";
 import { SessionRegistry } from "./session-registry.js";
 
-const CHAT_CLI_IDS = ["claude", "claude-kimi", "codex"] as const;
-type ChatCliId = (typeof CHAT_CLI_IDS)[number];
-
-export type ChatCatalog = {
-  readonly clis: readonly ChatCatalogCli[];
-  readonly settings: ScuttlebuttSettings;
-};
-
-export type ChatCatalogCli = {
-  readonly cliId: ChatCliId;
-  readonly label: string;
-  readonly available: boolean;
-  readonly defaultModel: string;
-  readonly models: readonly {
-    readonly id: string;
-    readonly label: string;
-    readonly effortLevels: readonly string[];
-    readonly defaultEffort?: string;
-  }[];
-  readonly reason?: string;
-};
-
 export interface ChatRouteDeps {
-  readonly detect?: () => Promise<readonly CliDetectionResult[]>;
-  readonly modelsFor?: typeof getProviderModels;
   readonly createSession?: (options: ConstructorParameters<typeof ChatSession>[0]) => ChatSessionLike;
   readonly id?: () => string;
 }
 
 export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRouteDeps = {}): SessionRegistry {
   const registry = new SessionRegistry();
-  const detect = deps.detect ?? (() => new CliDetector().detectAll());
-  const modelsFor = deps.modelsFor ?? getProviderModels;
   const createSession = deps.createSession ?? ((options) => new ChatSession(options));
   const id = deps.id ?? crypto.randomUUID;
-
-  const catalog = async (): Promise<ChatCatalog> => buildChatCatalog(await detect(), modelsFor);
 
   registerRouter(ctx, "chat", async ({ req, res, pathname }) => {
     if (!ctx.host.security.isTerminalAuthorized(req)) {
@@ -57,9 +23,8 @@ export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRout
       return true;
     }
     const routePath = pathname.slice(`${ctx.basePath}/chat`.length) || "/";
-    if (routePath === "/catalog") return handleCatalog(ctx, req, res, catalog);
     if (routePath === "/start") {
-      return handleStart(ctx, req, res, registry, catalog, createSession, id);
+      return handleStart(ctx, req, res, registry, createSession, id);
     }
     const match = routePath.match(/^\/([^/]+)\/(message|stream|stop)$/u);
     if (!match) return false;
@@ -77,77 +42,33 @@ export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRout
   return registry;
 }
 
-export function buildChatCatalog(
-  detections: readonly CliDetectionResult[],
-  modelsFor: typeof getProviderModels = getProviderModels,
-): ChatCatalog {
-  const detectionByCli = new Map(detections.map((detection) => [detection.cli, detection]));
-  const clis = CHAT_CLI_IDS.map((cliId): ChatCatalogCli => {
-    const provider = modelsFor(cliId);
-    const detection = detectionByCli.get(cliId);
-    return {
-      cliId,
-      label: cliId === "claude-kimi" ? "Kimi (Claude Code)" : provider.name,
-      available: cliId !== "codex" && detection?.available === true,
-      defaultModel: provider.defaultModel,
-      models: provider.models.map((model) => ({
-        id: model.modelId,
-        label: model.name,
-        effortLevels: model.effort.supported ? [...model.effort.levels] : [],
-        ...(model.effort.supported ? { defaultEffort: model.effort.default } : {}),
-      })),
-      ...(cliId === "codex"
-        ? { reason: "web_only_policy_unsupported" }
-        : detection?.available === true ? {} : { reason: "cli_unavailable" }),
-    };
-  });
-  return {
-    clis,
-    settings: {
-      enabled: true,
-      cliId: "claude",
-      model: modelsFor("claude").defaultModel,
-      effort: null,
-    },
-  };
-}
-
-async function handleCatalog(
-  ctx: FleetPluginServerContext,
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  catalog: () => Promise<ChatCatalog>,
-): Promise<boolean> {
-  if (req.method !== "GET") return methodNotAllowed(ctx, res);
-  ctx.host.http.writeJson(res, 200, await catalog());
-  return true;
-}
-
 async function handleStart(
   ctx: FleetPluginServerContext,
   req: http.IncomingMessage,
   res: http.ServerResponse,
   registry: SessionRegistry,
-  catalog: () => Promise<ChatCatalog>,
   createSession: NonNullable<ChatRouteDeps["createSession"]>,
   id: () => string,
 ): Promise<boolean> {
   if (req.method !== "POST") return methodNotAllowed(ctx, res);
   if (!isJsonRequest(req)) return unsupportedMediaType(ctx, res);
   const body = await ctx.host.http.readJsonBody<unknown>(req);
-  const currentCatalog = await catalog();
-  const selection = parseSelection(body, currentCatalog);
-  if (!selection) {
-    ctx.host.http.writeJson(res, 400, { error: "invalid_selection" });
+  if (!isRecord(body) || Object.keys(body).length > 0) {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_start" });
     return true;
   }
   const chatId = id();
   const workspace = ctx.host.paths.pluginDataDir("scuttlebutt") + "/workspace";
-  const result = await registry.start(chatId, (onEvent) => createSession({
-    ...selection,
-    cwd: workspace,
-    onEvent,
-  }));
+  let result: Awaited<ReturnType<SessionRegistry["start"]>>;
+  try {
+    result = await registry.start(chatId, (onEvent) => createSession({
+      cwd: workspace,
+      onEvent,
+    }));
+  } catch {
+    ctx.host.http.writeJson(res, 503, { error: "session_unavailable" });
+    return true;
+  }
   if (result === "capacity") {
     ctx.host.http.writeJson(res, 429, { error: "session_capacity" });
     return true;
@@ -231,29 +152,6 @@ async function handleStop(
   await registry.stop(chatId);
   ctx.host.http.writeJson(res, 200, { stopped: true });
   return true;
-}
-
-function parseSelection(value: unknown, catalog: ChatCatalog): {
-  readonly cliId: ChatCliId;
-  readonly model: string;
-  readonly effort?: string;
-} | null {
-  if (!isRecord(value)
-    || Object.keys(value).some((key) => !["cliId", "model", "effort"].includes(key))
-    || typeof value.cliId !== "string"
-    || typeof value.model !== "string"
-    || (value.effort !== undefined && value.effort !== null && typeof value.effort !== "string")) return null;
-  const cli = catalog.clis.find((candidate) => candidate.cliId === value.cliId);
-  if (!cli?.available) return null;
-  const model = cli.models.find((candidate) => candidate.id === value.model);
-  if (!model) return null;
-  const effort = value.effort;
-  if (model.effortLevels.length === 0) {
-    if (effort !== undefined && effort !== null && effort !== "") return null;
-    return { cliId: cli.cliId, model: model.id };
-  }
-  if (typeof effort !== "string" || !model.effortLevels.includes(effort)) return null;
-  return { cliId: cli.cliId, model: model.id, effort };
 }
 
 function isMessageBody(value: unknown): value is { readonly text: string } {

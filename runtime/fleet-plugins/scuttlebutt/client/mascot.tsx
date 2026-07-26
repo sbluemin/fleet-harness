@@ -185,7 +185,6 @@ export function ScuttlebuttMascot({ context }: { readonly context: FloatingWidge
         <ChatCard
           api={context.api}
           mascot={mascotRef}
-          settings={settings}
           locale={context.language}
           positionRevision={positionRevision}
           onPhaseChange={setPhase}

@@ -516,147 +516,9 @@
 }
 
 .scuttlebutt-send:disabled,
-.scuttlebutt-followups button:disabled,
-.scuttlebutt-settings-trigger:disabled {
+.scuttlebutt-followups button:disabled {
   cursor: default;
   opacity: 0.5;
-}
-
-.scuttlebutt-settings-root {
-  position: relative;
-  flex: 0 1 124px;
-  min-width: 0;
-}
-
-.scuttlebutt-settings-trigger {
-  display: grid;
-  width: 100%;
-  min-height: 34px;
-  align-content: center;
-  padding: var(--space-1) var(--space-2);
-  overflow: hidden;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
-  background: var(--ink-mid);
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-}
-
-.scuttlebutt-settings-trigger:focus-visible,
-.scuttlebutt-settings-row:focus-visible,
-.scuttlebutt-settings-option:focus-visible {
-  border-color: var(--brass);
-  outline: 2px solid var(--brass);
-  outline-offset: -1px;
-}
-
-.scuttlebutt-settings-trigger-model,
-.scuttlebutt-settings-trigger-effort {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.scuttlebutt-settings-trigger-model {
-  color: var(--text-primary);
-  font-size: 11px;
-  font-weight: var(--weight-medium);
-}
-
-.scuttlebutt-settings-trigger-effort {
-  color: var(--text-tertiary);
-  font-size: 9px;
-  font-weight: var(--weight-regular);
-}
-
-.scuttlebutt-settings-menu,
-.scuttlebutt-settings-submenu {
-  position: absolute;
-  z-index: 2;
-  display: grid;
-  width: min(176px, calc(100vw - var(--space-4)));
-  max-height: min(220px, calc(100vh - var(--space-4)));
-  overflow-y: auto;
-  padding: var(--space-1);
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface-glass-strong);
-  box-shadow: 0 8px 20px color-mix(in oklch, var(--ink-abyss) 45%, transparent);
-  animation: scuttlebutt-settings-in var(--duration-fast) var(--ease-glide);
-}
-
-.scuttlebutt-settings-submenu {
-  width: min(148px, calc(100vw - var(--space-4)));
-}
-
-.scuttlebutt-settings-row,
-.scuttlebutt-settings-option {
-  display: grid;
-  min-height: 32px;
-  align-items: center;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font: inherit;
-  font-weight: var(--weight-regular);
-  text-align: left;
-}
-
-.scuttlebutt-settings-row {
-  grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-}
-
-.scuttlebutt-settings-option {
-  grid-template-columns: 16px minmax(0, 1fr);
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-2);
-  font-size: 11px;
-}
-
-.scuttlebutt-settings-row:hover,
-.scuttlebutt-settings-option:hover {
-  background: var(--ink-veil);
-  color: var(--text-primary);
-}
-
-.scuttlebutt-settings-row-label {
-  overflow: hidden;
-  color: var(--text-primary);
-  font-size: 11px;
-  font-weight: var(--weight-medium);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.scuttlebutt-settings-row-value,
-.scuttlebutt-settings-chevron {
-  overflow: hidden;
-  color: var(--text-tertiary);
-  font-size: 10px;
-  font-weight: var(--weight-regular);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.scuttlebutt-settings-check {
-  color: var(--brass);
-  font-weight: var(--weight-medium);
-}
-
-@keyframes scuttlebutt-settings-in {
-  from {
-    opacity: 0;
-    transform: translateY(2px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
 }
 
 /* 얼굴 y5 행 중심에서 눈 레이어를 세로로 눌러 '-' 모양으로 두 번 감는다. */
@@ -738,9 +600,7 @@
   .scuttlebutt-arms,
   .scuttlebutt-arrival-bubble,
   .scuttlebutt-thinking i,
-  .scuttlebutt-chat-card,
-  .scuttlebutt-settings-menu,
-  .scuttlebutt-settings-submenu {
+  .scuttlebutt-chat-card {
     animation: none;
   }
 

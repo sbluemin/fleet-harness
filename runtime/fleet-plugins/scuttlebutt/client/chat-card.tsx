@@ -3,7 +3,6 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import { React, usePluginApi } from "@fleet-console/sdk/plugin/browser";
 
-import type { ChatCatalog } from "./catalog.js";
 import {
   appendUser,
   currentExchange,
@@ -13,8 +12,6 @@ import {
 } from "./chat-store.js";
 import { placeCard, type CardPlacement, type Size } from "./geometry.js";
 import { getT, type ScuttlebuttMessageKey } from "./i18n.js";
-import { getSettingsRows, SettingsMenu, type SettingsRowKey } from "./settings-menu.js";
-import type { ScuttlebuttSettings } from "./settings-store.js";
 import { connectChatStream, type ChatStreamConnection } from "./sse-client.js";
 
 const FOLLOWUPS = [
@@ -25,7 +22,6 @@ const FOLLOWUPS = [
 export function ChatCard({
   api,
   mascot,
-  settings,
   onClose,
   onTuck,
   locale,
@@ -34,7 +30,6 @@ export function ChatCard({
 }: {
   readonly api: ClientApiCapability;
   readonly mascot: React.RefObject<HTMLButtonElement | null>;
-  readonly settings: ScuttlebuttSettings;
   readonly onClose: () => void;
   readonly onTuck: () => void;
   readonly locale?: ConsoleLocale;
@@ -47,29 +42,10 @@ export function ChatCard({
   const logRef = React.useRef<HTMLDivElement>(null);
   const cardRef = React.useRef<HTMLDivElement>(null);
   const streamRef = React.useRef<ChatStreamConnection | null>(null);
-  const [catalog, setCatalog] = React.useState<ChatCatalog | null>(null);
   const [state, setState] = React.useState<ChatState>(initialChatState);
   const [draft, setDraft] = React.useState("");
   const [chatId, setChatId] = React.useState<string | null>(null);
-  const [cliId, setCliId] = React.useState(settings.cliId);
-  const [modelId, setModelId] = React.useState(settings.model);
-  const [effort, setEffort] = React.useState(settings.effort ?? "");
   const [placement, setPlacement] = React.useState<CardPlacement | null>(null);
-  const activeCli = catalog?.clis.find((cli) => cli.cliId === cliId && cli.available)
-    ?? catalog?.clis.find((cli) => cli.available);
-  const activeModel = activeCli?.models.find((model) => model.id === modelId) ?? activeCli?.models[0];
-  const availableClis = catalog?.clis.filter((cli) => cli.available) ?? [];
-  const settingsRows = getSettingsRows({
-    cliLabel: activeCli?.label ?? "",
-    cliValue: activeCli?.cliId ?? "",
-    cliOptions: availableClis.map((cli) => ({ value: cli.cliId, label: cli.label })),
-    modelLabel: activeModel?.label ?? "",
-    modelValue: activeModel?.id ?? "",
-    modelOptions: (activeCli?.models ?? []).map((model) => ({ value: model.id, label: model.label })),
-    effort,
-    effortOptions: (activeModel?.effortLevels ?? []).map((value) => ({ value, label: value })),
-    locale,
-  });
 
   const position = React.useCallback(() => {
     const mascotElement = mascot.current;
@@ -99,30 +75,6 @@ export function ChatCard({
     return () => window.removeEventListener("resize", position);
   }, [position]);
 
-  React.useEffect(() => {
-    const controller = new AbortController();
-    void pluginApi.fetch("chat/catalog", { signal: controller.signal })
-      .then((response) => response.json() as Promise<ChatCatalog>)
-      .then((nextCatalog) => {
-        setCatalog(nextCatalog);
-        const requestedCli = nextCatalog.clis.find((cli) => cli.available && cli.cliId === settings.cliId)
-          ?? nextCatalog.clis.find((cli) => cli.available);
-        if (!requestedCli) return;
-        const requestedModel = requestedCli.models.find((item) => item.id === settings.model) ?? requestedCli.models[0];
-        setCliId(requestedCli.cliId);
-        if (requestedModel) {
-          setModelId(requestedModel.id);
-          setEffort(settings.effort && requestedModel.effortLevels.includes(settings.effort)
-            ? settings.effort
-            : requestedModel.defaultEffort ?? "");
-        }
-      })
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) setState(errorState(error));
-      });
-    return () => controller.abort();
-  }, [pluginApi, settings]);
-
   React.useLayoutEffect(() => {
     const log = logRef.current;
     if (log) log.scrollTop = log.scrollHeight;
@@ -148,7 +100,7 @@ export function ChatCard({
 
   const submit = async (text: string) => {
     const question = text.trim();
-    if (!question || state.phase === "starting" || state.phase === "thinking" || !activeCli || !activeModel) return;
+    if (!question || state.phase === "starting" || state.phase === "thinking") return;
     setDraft("");
     setState((current) => ({ ...appendUser(current, question), phase: "starting" }));
     try {
@@ -157,13 +109,12 @@ export function ChatCard({
         const response = await pluginApi.fetch("chat/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            cliId: activeCli.cliId,
-            model: activeModel.id,
-            ...(effort ? { effort } : {}),
-          }),
+          body: JSON.stringify({}),
         });
-        const payload = await response.json() as { readonly chatId: string };
+        const payload = await response.json() as { readonly chatId?: unknown; readonly error?: unknown };
+        if (!response.ok || typeof payload.chatId !== "string") {
+          throw new Error(typeof payload.error === "string" ? payload.error : "Chat is unavailable.");
+        }
         activeChatId = payload.chatId;
         setChatId(activeChatId);
         const connection = connectChatStream(activeChatId, (event) => {
@@ -237,38 +188,10 @@ export function ChatCard({
         event.preventDefault();
         void submit(draft);
       }}>
-        <SettingsMenu
-          modelLabel={activeModel?.label ?? ""}
-          effort={effort}
-          rows={settingsRows}
-          locale={locale}
-          disabled={busy}
-          cardRef={cardRef}
-          onSelect={(row: SettingsRowKey, value: string) => {
-            if (row === "cli") {
-              const nextCli = catalog?.clis.find((cli) => cli.cliId === value);
-              const nextModel = nextCli?.models.find((model) => model.id === nextCli.defaultModel) ?? nextCli?.models[0];
-              if (!nextCli || !nextModel) return;
-              setCliId(nextCli.cliId);
-              setModelId(nextModel.id);
-              setEffort(nextModel.defaultEffort ?? "");
-            } else if (row === "model") {
-              const nextModel = activeCli?.models.find((model) => model.id === value);
-              if (!nextModel) return;
-              setModelId(nextModel.id);
-              setEffort(nextModel.defaultEffort ?? "");
-            } else {
-              setEffort(value);
-            }
-            setChatId(null);
-            streamRef.current?.close();
-            streamRef.current = null;
-          }}
-        />
         <input
           ref={inputRef}
           value={draft}
-          disabled={busy || !activeCli}
+          disabled={busy}
           placeholder={t("chat.placeholder")}
           autoComplete="off"
           onChange={(event) => setDraft(event.currentTarget.value)}
