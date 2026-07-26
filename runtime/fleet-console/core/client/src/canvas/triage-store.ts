@@ -99,9 +99,9 @@ export function setTriageActive(theaterId: string, active: boolean): void {
     if (activeOperationId !== null && !activeOperationAcknowledged) {
       setActiveOperation(activeOperationId);
     }
+    setSideBarStatusAxis(previousStatusAxis);
   }
   setTheaterFocusLayerSnapshot(theaterId, restoredFocusLayer);
-  setSideBarStatusAxis(previousStatusAxis);
   emitTriage();
 }
 

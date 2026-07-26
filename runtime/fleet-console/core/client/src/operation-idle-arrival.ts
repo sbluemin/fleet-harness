@@ -10,9 +10,10 @@ export function markIdleArrival(id: string): void {
   for (const listener of listeners) listener();
 }
 
-export function acknowledgeIdleArrival(id: string): void {
-  if (acknowledgementSuspended) return;
+export function acknowledgeIdleArrival(id: string): boolean {
+  if (acknowledgementSuspended) return false;
   clearIdleArrival(id);
+  return true;
 }
 
 export function setIdleArrivalAcknowledgementSuspended(suspended: boolean): void {

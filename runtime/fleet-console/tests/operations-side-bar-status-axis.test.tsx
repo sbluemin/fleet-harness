@@ -6,15 +6,18 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getSnapshot, loadForTheater, setOperationOrder } from "../core/client/src/canvas/canvas-store.js";
-import { getIdleArrivalIds } from "../core/client/src/operation-idle-arrival.js";
+import { getIdleArrivalIds, markIdleArrival } from "../core/client/src/operation-idle-arrival.js";
+import { requestSideBarOperationAction } from "../core/client/src/sidebar/operation-action-request.js";
 import { OperationsSideBar } from "../core/client/src/sidebar/operations-side-bar.js";
 import {
+  getSideBarStatusSectionCollapsed,
   getStatusTransitionTick,
   resetSideBarStatusRecencyForTests,
   resetSideBarStatusSectionCollapseForTests,
   setSideBarCollapsed,
   setSideBarStatusAxis,
   setTheaterCollapsed,
+  toggleSideBarStatusSectionCollapsed,
   trackOperationActivityTransitions,
 } from "../core/client/src/sidebar/operations-side-bar-store.js";
 import { setActiveOperation, setState as setConsoleState } from "../core/client/src/store.js";
@@ -127,6 +130,35 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(container?.querySelector('[data-side-bar-chip-id="only"]')).toBeNull();
     act(() => required<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Expand section RUNNING"]').click());
     expect(container?.querySelector('[data-side-bar-chip-id="only"]')).not.toBeNull();
+  });
+
+  it("reveals an idle arrival from the AWAITING section for a palette action", () => {
+    const operation = makeOperation("arrived", null);
+    setConsoleState({ operationStatus: { arrived: "idle" } });
+    markIdleArrival(operation.id);
+    setSideBarStatusAxis(true);
+    toggleSideBarStatusSectionCollapsed(THEATER.id, "awaiting", false);
+    renderSideBar([operation]);
+    expect(getSideBarStatusSectionCollapsed(THEATER.id, "awaiting", false)).toBe(true);
+
+    act(() => requestSideBarOperationAction(operation.id, "rename"));
+
+    expect(getSideBarStatusSectionCollapsed(THEATER.id, "awaiting", false)).toBe(false);
+    expect(getSideBarStatusSectionCollapsed(THEATER.id, "idle", true)).toBe(true);
+  });
+
+  it("continues to reveal an ordinary idle Operation from the IDLE section", () => {
+    const operation = makeOperation("idle", null);
+    setConsoleState({ operationStatus: { idle: "idle" } });
+    setSideBarStatusAxis(true);
+    toggleSideBarStatusSectionCollapsed(THEATER.id, "idle", false);
+    renderSideBar([operation]);
+    expect(getSideBarStatusSectionCollapsed(THEATER.id, "idle", false)).toBe(true);
+
+    act(() => requestSideBarOperationAction(operation.id, "rename"));
+
+    expect(getSideBarStatusSectionCollapsed(THEATER.id, "idle", false)).toBe(false);
+    expect(getSideBarStatusSectionCollapsed(THEATER.id, "awaiting", true)).toBe(true);
   });
 
   it("keeps an explicit empty-section expansion when an Operation enters and leaves again", () => {

@@ -238,8 +238,11 @@ export function setActiveOperation(
   operationId: string | null,
   options?: { readonly acknowledged?: boolean },
 ): void {
-  const acknowledged = operationId === null ? true : options?.acknowledged ?? true;
-  if (acknowledged && operationId !== null) acknowledgeIdleArrival(operationId);
+  const acknowledged = operationId === null
+    ? true
+    : options?.acknowledged === false
+      ? false
+      : acknowledgeIdleArrival(operationId);
   if (state.activeOperationId === operationId && state.activeOperationAcknowledged === acknowledged) return;
   setState({ activeOperationId: operationId, activeOperationAcknowledged: acknowledged });
 }
@@ -311,11 +314,11 @@ export function focusOperation(operationId: string): void {
   const operation = state.operations.find((item) => item.id === operationId);
   if (!operation) return;
   writeStoredActiveTheaterId(operation.theaterId);
-  acknowledgeIdleArrival(operationId);
+  const activeOperationAcknowledged = acknowledgeIdleArrival(operationId);
   setState({
     activeTheaterId: operation.theaterId,
     activeOperationId: operationId,
-    activeOperationAcknowledged: true,
+    activeOperationAcknowledged,
     pendingOperationFocus: operationId,
     operationNotifications: removeNotificationForOperation(state.operationNotifications, operationId),
   });

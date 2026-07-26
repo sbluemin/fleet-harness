@@ -13,7 +13,7 @@ import {
   markIdleArrival,
   resetIdleArrivalForTests,
 } from "../core/client/src/operation-idle-arrival.js";
-import { getState, setActiveOperation, setState as setConsoleState } from "../core/client/src/store.js";
+import { focusOperation, getState, setActiveOperation, setState as setConsoleState } from "../core/client/src/store.js";
 import { getSideBarStatusAxis, setSideBarStatusAxis } from "../core/client/src/sidebar/operations-side-bar-store.js";
 import {
   clearFormationView,
@@ -98,6 +98,26 @@ describe("triage store", () => {
     expect(getSideBarStatusAxis()).toBe(true);
     setTriageActive(THEATER_ID, false);
     expect(getSideBarStatusAxis()).toBe(initial);
+  });
+
+  it.each([
+    [THEATER_ID, "theater-b", true],
+    ["theater-b", THEATER_ID, false],
+  ] as const)("keeps the status axis enabled when %s exits and restores %s on the last exit", (
+    firstExit,
+    lastExit,
+    expectedRestored,
+  ) => {
+    const otherTheaterId = "theater-b";
+    setSideBarStatusAxis(false);
+    setTriageActive(THEATER_ID, true);
+    setTriageActive(otherTheaterId, true);
+
+    setTriageActive(firstExit, false);
+    expect(getSideBarStatusAxis()).toBe(true);
+
+    resetTriageTheater(lastExit);
+    expect(getSideBarStatusAxis()).toBe(expectedRestored);
   });
 
   it("removes a picked stage after its waiting activity clears and advances the next item", () => {
@@ -265,13 +285,32 @@ describe("triage store", () => {
     expect(resolveTriageQueue(THEATER_ID, [arrived], status)[0]?.operation.id).toBe(arrived.id);
 
     setActiveOperation(arrived.id);
-    acknowledgeIdleArrival(arrived.id);
+    expect(acknowledgeIdleArrival(arrived.id)).toBe(false);
+    expect(getState().activeOperationAcknowledged).toBe(false);
     expect(getIdleArrivalIds().has(arrived.id)).toBe(true);
     expect(resolveTriageQueue(THEATER_ID, [arrived], status)[0]?.operation.id).toBe(arrived.id);
 
     setTriageActive(THEATER_ID, false);
-    setActiveOperation(arrived.id);
+    expect(getState().activeOperationAcknowledged).toBe(true);
+    expect(getIdleArrivalIds().has(arrived.id)).toBe(false);
     expect(resolveTriageQueue(THEATER_ID, [arrived], status)).toEqual([]);
+  });
+
+  it("keeps focusOperation unacknowledged while Triage suspends acknowledgement", () => {
+    const arrived = operation("arrived", 1);
+    markIdleArrival(arrived.id);
+    setConsoleState({
+      operations: [arrived],
+      activeTheaterId: THEATER_ID,
+      activeOperationId: null,
+      activeOperationAcknowledged: true,
+    });
+    setTriageActive(THEATER_ID, true);
+
+    focusOperation(arrived.id);
+
+    expect(getIdleArrivalIds().has(arrived.id)).toBe(true);
+    expect(getState().activeOperationAcknowledged).toBe(false);
   });
 
   it("acknowledges only the active Operation when the last Triage Theater exits", () => {

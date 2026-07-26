@@ -341,7 +341,7 @@ export function OperationsSideBar({
     pendingSideBarTheaterLaunch,
     launchMenuRequest,
   } = useConsoleState();
-  useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
+  const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
 
   useLayoutEffect(() => {
     if (!previousCollapsedRef.current && collapsed) focusCommandBandToggleWhenPanelContainsActiveElement(rootRef.current, ".command-band-sidebar-toggle");
@@ -366,7 +366,7 @@ export function OperationsSideBar({
   });
   const groupedSections = groupOperations(allEntries, activeGroups, canvas.operationOrder);
   const statusSections = groupOperationsByStatus(allEntries, getStatusTransitionTick, t);
-  const idleUnseenIds = getIdleArrivalIds();
+  const idleUnseenIds = idleArrivalIds;
   const isIdleUnseen = (id: string) => id !== activeOperationId && idleUnseenIds.has(id);
   // STATUS 축 렌더는 entry/그룹 조회가 칩마다 반복되므로 O(n²)를 피해 Map으로 한 번만 인덱싱한다.
   const entryIndexById = new Map(allEntries.map((entry, index) => [entry.operation.id, index] as const));
@@ -422,7 +422,11 @@ export function OperationsSideBar({
     }
     // 상태축에서는 그룹 접힘이 배치에 영향을 주지 않는다 — 여기서 펼치면 사용자의 그룹축 설정만 조용히 바뀐다.
     if (statusAxis) {
-      const status = resolveOperationActivity(operation, operationStatus);
+      const status = resolveSideBarStatusSection(
+        resolveOperationActivity(operation, operationStatus),
+        operation.id,
+        idleArrivalIds,
+      );
       if (getSideBarStatusSectionCollapsed(operation.theaterId, status, false)) {
         toggleSideBarStatusSectionCollapsed(operation.theaterId, status, false);
       }
@@ -433,7 +437,7 @@ export function OperationsSideBar({
       return false;
     }
     return false;
-  }), [activeTheaterId, collapsed, collapsedGroupSet, collapsedTheaters, operationStatus, operations, statusAxis]);
+  }), [activeTheaterId, collapsed, collapsedGroupSet, collapsedTheaters, idleArrivalIds, operationStatus, operations, statusAxis]);
 
   useEffect(() => {
     if (armedCloseId === null) return;
@@ -1213,13 +1217,8 @@ export function groupOperationsByStatus(
     // entry.status는 엔트리 생성 시점에 resolveOperationActivity로 이미 해소된다.
     // 미해소(undefined) 엔트리의 idle 폭백은 직접 구성된 입력에 대한 방어 계약이다.
     entries: entries
-      .filter((entry) => {
-        const entryStatus = entry.status ?? "idle";
-        const idleArrival = entryStatus === "idle" && idleArrivalIds.has(entry.operation.id);
-        if (status === "awaiting") return entryStatus === "awaiting" || idleArrival;
-        if (status === "idle") return entryStatus === "idle" && !idleArrival;
-        return entryStatus === status;
-      })
+      .filter((entry) =>
+        resolveSideBarStatusSection(entry.status ?? "idle", entry.operation.id, idleArrivalIds) === status)
       .sort((left, right) => {
         const leftTick = getTick?.(left.operation.id);
         const rightTick = getTick?.(right.operation.id);
@@ -1231,14 +1230,25 @@ export function groupOperationsByStatus(
   }));
 }
 
+export function resolveSideBarStatusSection(
+  entryStatus: SideBarStatus,
+  operationId: string,
+  idleArrivalIds: ReadonlySet<string>,
+): SideBarStatus {
+  return entryStatus === "idle" && idleArrivalIds.has(operationId) ? "awaiting" : entryStatus;
+}
+
 export function hasAwaitingOperation(
   operations: readonly OperationNode[],
   operationStatus: Readonly<Record<string, OperationActivity>>,
 ): boolean {
   const idleArrivalIds = getIdleArrivalIds();
   return operations.some((operation) =>
-    operationStatus[operation.id] === "awaiting"
-    || (resolveOperationActivity(operation, operationStatus) === "idle" && idleArrivalIds.has(operation.id)));
+    resolveSideBarStatusSection(
+      resolveOperationActivity(operation, operationStatus),
+      operation.id,
+      idleArrivalIds,
+    ) === "awaiting");
 }
 
 function resolveEntryGroupMark(

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { applyVisibleReorder, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderWithinSegment, type DropSectionInfo } from "../core/client/src/sidebar/operations-side-bar-hit-test.js";
-import { groupOperations, groupOperationsByStatus, hasAwaitingOperation, theaterInitials } from "../core/client/src/sidebar/operations-side-bar.js";
+import { groupOperations, groupOperationsByStatus, hasAwaitingOperation, resolveSideBarStatusSection, theaterInitials } from "../core/client/src/sidebar/operations-side-bar.js";
 import type { SideBarEntry } from "../core/client/src/sidebar/operations-side-bar-chip.js";
 import { resolveTriageQueue } from "../core/client/src/canvas/triage-store.js";
 import {
@@ -310,6 +310,16 @@ describe("groupOperations", () => {
 });
 
 describe("groupOperationsByStatus", () => {
+  it.each([
+    { status: "idle", operationId: "arrived", arrivals: new Set(["arrived"]), expected: "awaiting" },
+    { status: "idle", operationId: "ordinary", arrivals: new Set<string>(), expected: "idle" },
+    { status: "awaiting", operationId: "arrived", arrivals: new Set(["arrived"]), expected: "awaiting" },
+    { status: "running", operationId: "arrived", arrivals: new Set(["arrived"]), expected: "running" },
+    { status: "dormant", operationId: "arrived", arrivals: new Set(["arrived"]), expected: "dormant" },
+  ] as const)("resolves $status for $operationId into the shared $expected section", ({ status, operationId, arrivals, expected }) => {
+    expect(resolveSideBarStatusSection(status, operationId, arrivals)).toBe(expected);
+  });
+
   it("places idle arrivals with awaiting and keeps every entry in exactly one status section", () => {
     const entries = [
       makeEntry("awaiting", null, "awaiting"),
