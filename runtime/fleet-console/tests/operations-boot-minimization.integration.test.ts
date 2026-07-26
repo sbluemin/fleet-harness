@@ -192,6 +192,39 @@ describe("Operations boot minimization", () => {
     expect(getSnapshot().viewport).toEqual({ x: 430, y: 330, zoom: 1 });
   });
 
+  it("seeds missing geometry before consuming a cold pending fit", async () => {
+    vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
+      matches: query === "(prefers-reduced-motion: reduce)" || query === "(min-width: 832px)",
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })));
+    window.history.replaceState({}, "", "/settings");
+    loadForTheater("theater-a");
+    setViewport({ x: 120, y: 160, zoom: 0.5 });
+    loadForTheater(null);
+    await bootApp([operation("missing-geometry", Date.now() + 1_000)]);
+    loadForTheater("theater-a");
+    resetCanvasViewportSize();
+    requestFitAllOperations();
+    const mountCanvas = vi.fn(() => {
+      setCanvasViewportSize({ width: 1_000, height: 800 });
+      return resetCanvasViewportSize;
+    });
+    canvasMocks.onMount = mountCanvas;
+
+    await navigateTo("/operations");
+
+    expect(mountCanvas).toHaveBeenCalledOnce();
+    expect(getSnapshot().operations["missing-geometry"]).toMatchObject({ x: 0, y: 0, width: 640, height: 400 });
+    expect(getSnapshot().minimized).toEqual([]);
+    expect(getSnapshot().viewport).toEqual({ x: 180, y: 200, zoom: 1 });
+  });
+
   it("minimizes initial hydrated panels once across /operations -> /settings -> /operations", async () => {
     const operations = deferred<readonly OperationNode[]>();
     const theaters = deferred<TheaterBootstrap>();

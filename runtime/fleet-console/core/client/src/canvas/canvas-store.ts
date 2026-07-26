@@ -286,7 +286,7 @@ export function resetCanvasViewportSize(): void {
 }
 
 export function fitAllOperations(): void {
-  if (formationView || canvasViewportSize.width <= 0 || canvasViewportSize.height <= 0) return;
+  if (formationView || focusLayer !== null || canvasViewportSize.width <= 0 || canvasViewportSize.height <= 0) return;
   const minimized = new Set(state.minimized);
   const visibleGeometries = Object.entries(state.operations)
     .filter(([operationId]) => !minimized.has(operationId))

@@ -94,6 +94,28 @@ describe("canvas store", () => {
     expect(getSnapshot().viewport).toEqual(viewport);
   });
 
+  it("does not fit while an Operation is maximized", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY, x: 100, y: 200 });
+    const viewport = { x: 12, y: 34, zoom: 0.75 };
+    setState({ viewport });
+    setMaximizedOperationId("op-a");
+
+    fitAllOperations();
+
+    expect(getSnapshot().viewport).toEqual(viewport);
+  });
+
+  it("does not fit while an Operation companion is active", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY, x: 100, y: 200 });
+    const viewport = { x: 12, y: 34, zoom: 0.75 };
+    setState({ viewport });
+    setCompanionOperationId("op-a");
+
+    fitAllOperations();
+
+    expect(getSnapshot().viewport).toEqual(viewport);
+  });
+
   it("preserves a pending fit until canvas size registration and then consumes it", () => {
     setOperationGeometry("op-a", { x: 20, y: 30, width: 100, height: 80, zIndex: 0 });
     resetCanvasViewportSize();
