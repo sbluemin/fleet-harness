@@ -295,6 +295,18 @@ function isCompanionPanelVisible(context: OperationRenderContext, companionId: s
   return Boolean(context.companionsOpen) && !(context.hiddenCompanionPanelIds ?? []).includes(companionId);
 }
 
+// 리본은 상태 표면이지 토글이 아니다 — 접근성 이름이 "열기"인 컨트롤이 닫으면 안 된다.
+// 여닫는 것은 우측 STREAMS 핸들의 역할이고, 리본은 멱등하게 열기만 한다.
+function openCompanionPanel(context: OperationRenderContext, companionId: string): void {
+  if (!context.onSetCompanionPanelVisible) {
+    context.onRequestCompanions?.(true);
+    return;
+  }
+  if (isCompanionPanelVisible(context, companionId)) return;
+  if (!context.companionsOpen) context.onRequestCompanions?.(true);
+  context.onSetCompanionPanelVisible(companionId, true);
+}
+
 function toggleCompanionPanel(
   context: OperationRenderContext,
   companionId: string,
@@ -380,13 +392,19 @@ function CarrierSortieRibbon({ context, jobs }: { readonly context: OperationRen
   if (live.length === 0) return null;
   const shown = live.slice(0, SORTIE_RIBBON_INLINE_LIMIT);
   const overflow = live.length - shown.length;
+  // aria-label은 자식 텍스트를 덮으므로 화면에 보이는 함장·국면을 이름에 직접 실어야 한다.
+  // 그러지 않으면 보조기기 사용자에게는 출격 수만 남고 리본의 본론이 통째로 사라진다.
+  const roster = shown
+    .map(({ job, track }) => `${track.displayName} ${sortiePhaseText(deriveTrackPhase(track, job.status), t)}`)
+    .join(", ");
+  const overflowSuffix = overflow > 0 ? `, ${t("terminal.sortie.more", { count: overflow })}` : "";
 
   return (
     <button
       type="button"
       className="carrier-sortie-ribbon"
-      aria-label={t("terminal.sortie.open", { count: live.length })}
-      onClick={() => toggleCompanionPanel(context, CARRIER_STREAMS_COMPANION_ID)}
+      aria-label={`${t("terminal.sortie.open", { count: live.length })}: ${roster}${overflowSuffix}`}
+      onClick={() => openCompanionPanel(context, CARRIER_STREAMS_COMPANION_ID)}
     >
       <span className="carrier-sortie-ribbon__scan" aria-hidden="true" />
       <span className="carrier-sortie-ribbon__count">{t("terminal.sortie.count", { count: live.length })}</span>

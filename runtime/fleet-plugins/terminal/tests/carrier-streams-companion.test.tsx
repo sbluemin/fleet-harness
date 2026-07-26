@@ -382,6 +382,10 @@ describe("Carrier Streams companion", () => {
     // 한쪽만 막으면 설정 토글을 켠 운영자에게 스캔 애니메이션이 계속 흐른다.
     expect(ANALYSIS_CSS).toMatch(/\.carrier-sortie-ribbon, \.carrier-sortie-ribbon__scan,[^{]*\{ animation: none; \}/);
     expect(ANALYSIS_CSS).toMatch(/\.reduce-panel-motion \.carrier-sortie-ribbon,\s*\n\.reduce-panel-motion \.carrier-sortie-ribbon__scan,/);
+    // 짧은 Operation에서는 세로 중앙의 핸들 스택이 리본 밴드까지 내려온다 — 먼저 있던 어포던스가 위여야 한다.
+    expect(ANALYSIS_CSS).toMatch(/\.session-analyst-handle-stack \{[^}]*z-index: 4;/);
+    // 모바일은 companion 탐색이 no-op이라 리본을 띄우지 않는다.
+    expect(ANALYSIS_CSS).toMatch(/\.mobile-operation-body-slot \.carrier-sortie-ribbon \{ display: none; \}/);
   });
 
   it("does not render the sortie ribbon without live tracks", async () => {
@@ -404,13 +408,31 @@ describe("Carrier Streams companion", () => {
     }));
 
     const ribbon = container?.querySelector<HTMLButtonElement>(".carrier-sortie-ribbon");
-    expect(ribbon?.getAttribute("aria-label")).toBe("Open Carrier Streams — 3 on sortie");
+    // 접근성 이름은 화면에 보이는 함장·국면을 그대로 실어야 한다 — aria-label이 자식 텍스트를 덮기 때문.
+    expect(ribbon?.getAttribute("aria-label")).toBe("Open Carrier Streams — 3 on sortie: Genesis Working, Nimitz Working, +1");
     expect(ribbon?.querySelectorAll(".carrier-sortie-ribbon__track")).toHaveLength(2);
     expect(ribbon?.textContent).toContain("3 on sortie");
     expect(ribbon?.textContent).toContain("+1");
     expect(ribbon?.textContent).not.toContain("Sentinel");
     act(() => ribbon?.click());
     expect(onSetCompanionPanelVisible).toHaveBeenCalledWith("carrier-streams", true);
+  });
+
+  it("opens the streams panel idempotently instead of toggling it shut", async () => {
+    installSession([makeJob("job-sortie-open", "active", [makeTrack("track-open", { displayName: "Genesis" })], "genesis")]);
+    const onSetCompanionPanelVisible = vi.fn();
+    // 패널이 이미 보이는 상태 — 리본을 눌러도 닫히면 안 된다("열기"라고 읽히는 컨트롤이므로).
+    await renderOperation(createContext({
+      companionsOpen: true,
+      hiddenCompanionPanelIds: [],
+      onSetCompanionPanelVisible,
+    }));
+
+    const ribbon = container?.querySelector<HTMLButtonElement>(".carrier-sortie-ribbon");
+    // 마운트 이펙트(analyst 패널 강제 닫기)도 같은 목을 호출하므로 클릭 효과만 격리한다.
+    onSetCompanionPanelVisible.mockClear();
+    act(() => ribbon?.click());
+    expect(onSetCompanionPanelVisible).not.toHaveBeenCalled();
   });
 
   it("localizes live tool phases in the sortie ribbon", async () => {
