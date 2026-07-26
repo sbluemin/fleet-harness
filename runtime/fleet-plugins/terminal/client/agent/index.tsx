@@ -295,6 +295,15 @@ function isCompanionPanelVisible(context: OperationRenderContext, companionId: s
   return Boolean(context.companionsOpen) && !(context.hiddenCompanionPanelIds ?? []).includes(companionId);
 }
 
+function countRemainingVisibleCompanionPanels(
+  context: OperationRenderContext,
+  hiddenIds: readonly string[],
+): number {
+  return AGENT_COMPANION_IDS
+    .filter((id) => !hiddenIds.includes(id) && isCompanionPanelVisible(context, id))
+    .length;
+}
+
 // 리본은 상태 표면이지 토글이 아니다 — 접근성 이름이 "열기"인 컨트롤이 닫으면 안 된다.
 // 여닫는 것은 우측 STREAMS 핸들의 역할이고, 리본은 멱등하게 열기만 한다.
 function openCompanionPanel(context: OperationRenderContext, companionId: string): void {
@@ -325,9 +334,7 @@ function toggleCompanionPanel(
   }
   // Artifacts는 Chat 안의 chip으로만 여닫히므로 Chat만 닫으면 닫을 수단이 사라진다.
   for (const id of clusterIds) context.onSetCompanionPanelVisible(id, false);
-  const remainingVisibleCount = AGENT_COMPANION_IDS
-    .filter((id) => !clusterIds.includes(id) && isCompanionPanelVisible(context, id))
-    .length;
+  const remainingVisibleCount = countRemainingVisibleCompanionPanels(context, clusterIds);
   if (remainingVisibleCount === 0) context.onRequestCompanions?.(false);
 }
 
@@ -444,10 +451,21 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   }, [context.companionsOpen, context.operationId]);
 
   React.useEffect(() => {
-    if (analysisReadiness !== "not-ready" || !context.onSetCompanionPanelVisible) return;
-    context.onSetCompanionPanelVisible(ANALYST_CHAT_COMPANION_ID, false);
-    context.onSetCompanionPanelVisible(ANALYST_ARTIFACTS_COMPANION_ID, false);
-  }, [analysisReadiness, context.onSetCompanionPanelVisible]);
+    if (analysisReadiness !== "not-ready" || !context.companionsOpen || !context.onSetCompanionPanelVisible) return;
+    // 단축키는 disabled 핸들 가드를 거치지 않으므로, 준비 전 진입이 빈 companion 배치를 남기지 않게 호스트 레이어까지 함께 정리한다.
+    for (const id of ANALYST_COMPANION_IDS) {
+      if (isCompanionPanelVisible(context, id)) context.onSetCompanionPanelVisible(id, false);
+    }
+    if (countRemainingVisibleCompanionPanels(context, ANALYST_COMPANION_IDS) === 0) {
+      context.onRequestCompanions?.(false);
+    }
+  }, [
+    analysisReadiness,
+    context.companionsOpen,
+    context.hiddenCompanionPanelIds,
+    context.onRequestCompanions,
+    context.onSetCompanionPanelVisible,
+  ]);
 
   const handles = (
     <div className="session-analyst-handle-stack">
