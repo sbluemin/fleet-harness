@@ -781,6 +781,9 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain("const injectedCenterGutter = centerBreadcrumbVisible ? centerGutter : 0;");
     expect(commandBand).toContain('"--command-band-center-gutter": `${injectedCenterGutter}px`,');
     expect(commandBand).toContain("{centerBreadcrumbVisible ? <div className=\"command-band-center\">");
+    // 접힘은 편집 중이던 input을 언마운트하는데 blur가 발화하지 않는다 — 취소를 빼면 다시 넓혔을 때
+    // 포커스 없는 스테일 draft로 되살아나 키보드로 빠져나올 수 없다.
+    expect(commandBand).toContain("    if (!rename.renaming) return;\n    renameTargetOperationIdRef.current = null;\n    rename.cancel();");
     // 밴드 조상에 container-type을 걸면 contain:layout이 stacking context를 만들어
     // .command-band-menu(z-index:45)가 우현 레일 아래로 깔린다 — 판정은 JS 실측 전용.
     expect(layout).not.toContain("container-type");

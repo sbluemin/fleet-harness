@@ -206,9 +206,16 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   }, [state.activeTheaterId, state.activeOperationId]);
 
   // 접힌 브레드크럼은 트리거째 사라진다 — 열려 있던 메뉴가 고아로 남지 않게 같이 닫는다.
+  // 편집 중이던 rename도 여기서 취소한다: 포커스된 input이 언마운트돼도 blur가 발화하지 않아
+  // (실브라우저 실측) 다시 넓히면 스테일 draft가 포커스 없이 되살아나고, 그 상태에서는
+  // Escape·Enter가 닿지 않아 input을 다시 클릭하기 전까지 편집을 끝낼 수 없다.
   useEffect(() => {
-    if (!centerBreadcrumbVisible) setSwitcherMenu(null);
-  }, [centerBreadcrumbVisible]);
+    if (centerBreadcrumbVisible) return;
+    setSwitcherMenu(null);
+    if (!rename.renaming) return;
+    renameTargetOperationIdRef.current = null;
+    rename.cancel();
+  }, [centerBreadcrumbVisible, rename]);
 
   // Operation 메뉴는 자기 트리거 아래 정렬(래퍼 offsetLeft), Theater 메뉴는 좌단 기준 —
   // 어느 쪽이든 좁은 viewport에서 우측이 화면을 넘지 않도록 실측 clamp하고 resize 시 재측정한다.
