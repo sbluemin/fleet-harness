@@ -32,7 +32,9 @@
 .carrier-sortie-ribbon__track[data-captain="genesis"] { border-left-color: var(--captain-genesis); }
 .carrier-sortie-ribbon__track[data-captain="sentinel"] { border-left-color: var(--captain-sentinel); }
 .carrier-sortie-ribbon__track[data-captain="vanguard"] { border-left-color: var(--captain-vanguard); }
-.carrier-sortie-ribbon__name { overflow: hidden; color: var(--text-primary); font-size: 10.5px; white-space: nowrap; text-overflow: ellipsis; }
+/* min-width 하한이 없으면 좁은 패널에서 이름이 몇 px짜리 생략부호 조각으로 뭉개진다 — 판독 불가한 잔해보다
+   roster가 통째로 잘려나가는 편이 낫다(roster의 overflow:hidden이 우측에서 깔끔히 자른다). */
+.carrier-sortie-ribbon__name { overflow: hidden; min-width: 5ch; color: var(--text-primary); font-size: 10.5px; white-space: nowrap; text-overflow: ellipsis; }
 .carrier-sortie-ribbon__phase { flex: none; color: var(--text-tertiary); font-size: 9.5px; letter-spacing: .04em; white-space: nowrap; }
 .carrier-sortie-ribbon__more { flex: none; color: var(--text-tertiary); font-size: 9.5px; white-space: nowrap; }
 .carrier-sortie-ribbon__chev { margin-left: auto; flex: none; color: var(--text-tertiary); font-size: 12px; line-height: 1; }
