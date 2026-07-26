@@ -363,6 +363,7 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activePan
     // 실브라우저가 focus()를 조용히 무시하므로, 렌더 중 직접 복원하지 않는다.
     const returnFocus = returnFocusRef.current;
     returnFocusRef.current = null;
+    if (returnFocus === null) return;
     if (returnFocus?.isConnected && panelContentRef.current?.contains(returnFocus)) {
       returnFocus.focus();
     } else {

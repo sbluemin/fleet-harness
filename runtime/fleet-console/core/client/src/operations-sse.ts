@@ -54,6 +54,11 @@ export function connectOperationsSse(): void {
     reconnectDelayMs = 1_000;
     setConnectionState("live");
     refreshObserverStatus();
+    void fetchOperations()
+      .then((operations) => {
+        if (isCurrentSource()) hydrateOperations(operations);
+      })
+      .catch(() => undefined);
   };
 
   source.onerror = () => {
@@ -68,14 +73,7 @@ export function connectOperationsSse(): void {
       if (retryGeneration !== connectionGeneration) return;
       setConnectionState("connecting");
       reconnectDelayMs = Math.min(reconnectDelayMs * 2, MAX_RECONNECT_DELAY_MS);
-      void fetchOperations()
-        .then((operations) => {
-          if (retryGeneration === connectionGeneration) hydrateOperations(operations);
-        })
-        .catch(() => undefined)
-        .finally(() => {
-          if (retryGeneration === connectionGeneration) connectOperationsSse();
-        });
+      connectOperationsSse();
     }, reconnectDelayMs);
   };
 }

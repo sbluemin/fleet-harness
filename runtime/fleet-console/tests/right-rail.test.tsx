@@ -138,6 +138,22 @@ describe("Right Rail stale veil focus boundary", () => {
     expect(document.activeElement).toBe(panelBody());
     expect(document.activeElement).not.toBe(document.body);
   });
+
+  it("leaves focus unchanged when the stale veil never took ownership", () => {
+    renderRail();
+    const outside = document.createElement("button");
+    outside.textContent = "Outside rail";
+    document.body.appendChild(outside);
+    outside.focus();
+    expect(document.activeElement).toBe(outside);
+
+    act(() => setState({ connection: "offline", connectionLostAt: 1_000 }));
+    expect(document.activeElement).toBe(outside);
+
+    act(() => setState({ connection: "live", connectionLostAt: null }));
+
+    expect(document.activeElement).toBe(outside);
+  });
 });
 
 describe("Right Rail panel width", () => {
