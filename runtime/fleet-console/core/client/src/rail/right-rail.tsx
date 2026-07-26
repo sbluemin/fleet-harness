@@ -339,6 +339,37 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activePan
   const t = useT();
   const overlayPresets = buildOverlayAlphaPresets(t);
   const connectionLostTime = connectionLostAt === null ? "" : new Date(connectionLostAt).toLocaleTimeString(language);
+  const staleVisible = connection !== "live" && connectionLostAt !== null;
+  const panelBodyRef = useRef<HTMLDivElement>(null);
+  const panelContentRef = useRef<HTMLDivElement>(null);
+  const reconnectButtonRef = useRef<HTMLButtonElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const previousStaleVisibleRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const wasVisible = previousStaleVisibleRef.current;
+    previousStaleVisibleRef.current = staleVisible;
+    if (!wasVisible && staleVisible) {
+      const activeElement = document.activeElement;
+      if (activeElement instanceof HTMLElement && panelContentRef.current?.contains(activeElement)) {
+        returnFocusRef.current = activeElement;
+        reconnectButtonRef.current?.focus();
+      }
+      return;
+    }
+    if (!wasVisible || staleVisible) return;
+
+    // 이 layout effect가 실행될 때는 React가 wrapper의 inert를 이미 해제했다. 그 전에는
+    // 실브라우저가 focus()를 조용히 무시하므로, 렌더 중 직접 복원하지 않는다.
+    const returnFocus = returnFocusRef.current;
+    returnFocusRef.current = null;
+    if (returnFocus?.isConnected && panelContentRef.current?.contains(returnFocus)) {
+      returnFocus.focus();
+    } else {
+      panelBodyRef.current?.focus();
+    }
+  }, [staleVisible]);
+
   return (
     <>
       <div className="right-rail-panel-head">
@@ -379,14 +410,16 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activePan
           ✕
         </button>
       </div>
-      <div id={`rail-panel-${activePanel.id}`} className="right-rail-panel-body" role="tabpanel" aria-labelledby={`rail-tab-${activeId}`}>
-        {activePanel.render(ctx)}
+      <div ref={panelBodyRef} id={`rail-panel-${activePanel.id}`} className="right-rail-panel-body" role="tabpanel" aria-labelledby={`rail-tab-${activeId}`} tabIndex={-1}>
+        <div ref={panelContentRef} className="right-rail-panel-content" inert={staleVisible || undefined}>
+          {activePanel.render(ctx)}
+        </div>
         {/* 덮개도 배너와 같은 축으로 건다 — 재연결 시도 중에도 패널 값은 여전히 멈춰 있다. */}
-        {connection !== "live" && connectionLostAt !== null ? (
+        {staleVisible ? (
           <div className="right-rail-stale-veil">
             <strong>{t("chrome.link.staleHeadline")}</strong>
             <span>{t("chrome.link.staleDetail", { time: connectionLostTime })}</span>
-            <ReconnectButton />
+            <ReconnectButton buttonRef={reconnectButtonRef} />
           </div>
         ) : null}
       </div>

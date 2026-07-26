@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type Ref } from "react";
 
 import { useT } from "../i18n/index.js";
 import { reconnectOperationsSseNow } from "../operations-sse.js";
@@ -8,7 +8,11 @@ import { reconnectOperationsSseNow } from "../operations-sse.js";
 // 버튼이 눌렸다는 사실은 상태 기계와 무관하게 이 로컬 pending이 보증한다.
 const RECONNECT_FEEDBACK_MS = 800;
 
-export function ReconnectButton() {
+interface ReconnectButtonProps {
+  readonly buttonRef?: Ref<HTMLButtonElement>;
+}
+
+export function ReconnectButton({ buttonRef }: ReconnectButtonProps = {}) {
   const t = useT();
   const [pending, setPending] = useState(false);
 
@@ -20,6 +24,7 @@ export function ReconnectButton() {
 
   return (
     <button
+      ref={buttonRef}
       type="button"
       disabled={pending}
       onClick={() => {

@@ -224,6 +224,11 @@
   min-width: 240px;
 }
 
+.right-rail-panel-content {
+  height: 100%;
+  min-height: 0;
+}
+
 .right-rail-stale-veil {
   position: absolute;
   z-index: 20;

@@ -40,7 +40,11 @@ describe("console connection-loss UI contract", () => {
     expect(app).toContain("<ReconnectButton />");
     expect(rail).toContain('className="right-rail-stale-veil"');
     expect(rail).toContain('connection !== "live" && connectionLostAt !== null');
-    expect(rail).toContain("<ReconnectButton />");
+    expect(rail).toContain("<ReconnectButton buttonRef={reconnectButtonRef} />");
+    expect(rail).toContain('className="right-rail-panel-content" inert={staleVisible || undefined}');
+    expect(rail).toContain("reconnectButtonRef.current?.focus()");
+    expect(rail).toContain("returnFocus?.isConnected");
+    expect(rail).toContain("panelBodyRef.current?.focus()");
 
     // 재연결 버튼은 상태 기계와 별개로 눌렸다는 사실을 보증한다 — 서버가 죽어 있으면
     // EventSource가 즉시 실패해 connecting이 250ms 안에 사라지기 때문이다(실측).

@@ -107,6 +107,33 @@ describe("operations SSE update availability", () => {
     expect(mocks.setConnectionState).toHaveBeenCalledWith("live");
   });
 
+  it("keeps one active source and ignores every callback from superseded generations", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.getState.mockReturnValue({ activeTheaterId: null });
+
+    connectOperationsSse();
+    const staleSource = TestEventSource.instances[0]!;
+    connectOperationsSse();
+    const currentSource = TestEventSource.instances[1]!;
+
+    expect(staleSource.closed).toBe(true);
+    staleSource.emit("operation:changed", JSON.stringify({ operation: { id: "stale" } }));
+    staleSource.emit("update:available");
+    staleSource.emit("desktop:fullscreen", JSON.stringify({ fullscreen: true }));
+    staleSource.open();
+    staleSource.onerror?.();
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(mocks.applyOperationUpdate).not.toHaveBeenCalled();
+    expect(mocks.fetchObserverStatus).not.toHaveBeenCalled();
+    expect(mocks.applyDesktopFullscreenSnapshot).not.toHaveBeenCalled();
+    expect(mocks.resetDesktopFullscreenSnapshot).not.toHaveBeenCalled();
+    expect(mocks.setConnectionState).not.toHaveBeenCalled();
+    expect(TestEventSource.instances).toHaveLength(2);
+    expect(currentSource.closed).toBe(false);
+  });
+
   it("trails a status refresh when a later update frame arrives in flight", async () => {
     let resolveFirstStatus: ((status: { version: string; updateAvailable: boolean }) => void) | null = null;
     const staleStatus = { version: "1.0.0", updateAvailable: false };
@@ -182,5 +209,56 @@ describe("operations SSE update availability", () => {
     expect(TestEventSource.instances).toHaveLength(3);
     await vi.advanceTimersByTimeAsync(1);
     await vi.waitFor(() => expect(TestEventSource.instances).toHaveLength(4));
+  });
+
+  it("does not reconnect or hydrate from an automatic retry superseded by a manual reconnect", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.getState.mockReturnValue({ activeTheaterId: null });
+    let resolveOperations: (operations: readonly []) => void = () => {
+      throw new Error("operations fetch did not start");
+    };
+    mocks.fetchOperations.mockImplementation(() => new Promise((resolve) => {
+      resolveOperations = resolve;
+    }));
+
+    reconnectOperationsSseNow();
+    TestEventSource.instances[0]?.onerror?.();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(mocks.fetchOperations).toHaveBeenCalledOnce();
+
+    reconnectOperationsSseNow();
+    expect(TestEventSource.instances).toHaveLength(2);
+    resolveOperations([]);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mocks.hydrateOperations).not.toHaveBeenCalled();
+    expect(TestEventSource.instances).toHaveLength(2);
+    expect(TestEventSource.instances.filter((source) => !source.closed)).toHaveLength(1);
+  });
+
+  it("discards an observer status response from a superseded connection generation", async () => {
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.getState.mockReturnValue({ activeTheaterId: null });
+    let resolveStaleStatus: (status: { version: string; updateAvailable: boolean }) => void = () => {
+      throw new Error("status fetch did not start");
+    };
+    const currentStatus = { version: "2.0.0", updateAvailable: true };
+    mocks.fetchObserverStatus
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveStaleStatus = resolve;
+      }))
+      .mockResolvedValueOnce(currentStatus);
+
+    reconnectOperationsSseNow();
+    TestEventSource.instances[0]?.open();
+    reconnectOperationsSseNow();
+    TestEventSource.instances[1]?.open();
+    resolveStaleStatus({ version: "1.0.0", updateAvailable: false });
+
+    await vi.waitFor(() => expect(mocks.fetchObserverStatus).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(mocks.applyObserverStatus).toHaveBeenCalledOnce());
+    expect(mocks.applyObserverStatus).toHaveBeenCalledWith(currentStatus);
   });
 });

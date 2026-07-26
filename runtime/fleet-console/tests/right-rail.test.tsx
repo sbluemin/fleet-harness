@@ -11,7 +11,7 @@ vi.mock("../core/client/src/rail/built-in-panels.js", () => ({
       title: "PLANS",
       defaultWidth: 360,
       icon: "P",
-      render: () => null,
+      render: () => <button className="test-panel-action">Panel action</button>,
     },
     {
       id: "codex",
@@ -51,6 +51,7 @@ import {
   setRailOverlayAlpha,
   setRailPanelBehavior,
 } from "../core/client/src/rail/rail-store.js";
+import { setState } from "../core/client/src/store.js";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -64,6 +65,7 @@ beforeEach(() => {
   requestRailPanelExtraWidth("plans", null);
   setRailPanelBehavior("push");
   setRailOverlayAlpha(100);
+  setState({ connection: "live", connectionLostAt: null });
   container = document.createElement("div");
   document.body.replaceChildren(container);
   root = createRoot(container);
@@ -100,6 +102,41 @@ describe("Right Rail overlay opacity presets", () => {
     expect(window.localStorage.getItem("fleet-console.rail.overlayAlpha")).toBe("75");
     expect(buttons.map((button) => button.getAttribute("aria-pressed"))).toEqual(["false", "false", "true", "false"]);
     expect(panelSlot().style.getPropertyValue("--right-rail-overlay-alpha")).toBe("0.75");
+  });
+});
+
+describe("Right Rail stale veil focus boundary", () => {
+  it("inerts the covered content, moves focus to reconnect, and restores it after inert is removed", () => {
+    renderRail();
+    const action = container.querySelector<HTMLButtonElement>(".test-panel-action")!;
+    action.focus();
+    expect(document.activeElement).toBe(action);
+
+    act(() => setState({ connection: "offline", connectionLostAt: 1_000 }));
+
+    const content = container.querySelector<HTMLElement>(".right-rail-panel-content")!;
+    const reconnect = container.querySelector<HTMLButtonElement>(".right-rail-stale-veil button")!;
+    expect(content.hasAttribute("inert")).toBe(true);
+    expect(document.activeElement).toBe(reconnect);
+
+    act(() => setState({ connection: "live", connectionLostAt: null }));
+
+    expect(content.hasAttribute("inert")).toBe(false);
+    expect(document.activeElement).toBe(action);
+  });
+
+  it("falls back to the panel body when the original focus target disappeared", () => {
+    renderRail();
+    const action = container.querySelector<HTMLButtonElement>(".test-panel-action")!;
+    action.focus();
+    act(() => setState({ connection: "offline", connectionLostAt: 1_000 }));
+    act(() => setActiveRailPanel("codex"));
+    expect(action.isConnected).toBe(false);
+
+    act(() => setState({ connection: "live", connectionLostAt: null }));
+
+    expect(document.activeElement).toBe(panelBody());
+    expect(document.activeElement).not.toBe(document.body);
   });
 });
 
