@@ -3,6 +3,7 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 import { currentExchange, type ChatState } from "./chat-store.js";
+import type { AdmiralId } from "./chat-session.js";
 import { placeCard, type CardPlacement } from "./geometry.js";
 import { getT, type ScuttlebuttMessageKey } from "./i18n.js";
 
@@ -14,9 +15,12 @@ const FOLLOWUPS = [
 export function ChatCard({
   state,
   draft,
+  admiral,
   mascot,
+  moored,
   onAsk,
   onDraftChange,
+  onToggleMoored,
   onClose,
   onTuck,
   locale,
@@ -24,9 +28,12 @@ export function ChatCard({
 }: {
   readonly state: ChatState;
   readonly draft: string;
+  readonly admiral: AdmiralId;
   readonly mascot: React.RefObject<HTMLButtonElement | null>;
+  readonly moored: boolean;
   readonly onAsk: (text: string) => void;
   readonly onDraftChange: (text: string) => void;
+  readonly onToggleMoored: () => void;
   readonly onClose: () => void;
   readonly onTuck: () => void;
   readonly locale?: ConsoleLocale;
@@ -95,7 +102,7 @@ export function ChatCard({
       className="scuttlebutt-chat-card"
       style={style}
       role="dialog"
-      aria-label={t("mascot.label")}
+      aria-label={t(`chat.label.${admiral}`)}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.stopPropagation();
@@ -105,13 +112,23 @@ export function ChatCard({
     >
       <div className="scuttlebutt-chat-head">
         <span className="scuttlebutt-chat-sigil" aria-hidden="true">⚓</span>
-        <span className="scuttlebutt-chat-who">{t("mascot.label")}</span>
+        <span className="scuttlebutt-chat-who">{t(`chat.label.${admiral}`)}</span>
+        <button
+          type="button"
+          className="scuttlebutt-chat-moor"
+          role="switch"
+          aria-checked={moored}
+          onClick={onToggleMoored}
+        >
+          <span className="scuttlebutt-chat-moor-track" aria-hidden="true"><i /></span>
+          {t("chat.stayPut")}
+        </button>
         <button type="button" className="scuttlebutt-chat-tuck" aria-label={t("chat.tuck")} onClick={onTuck}>✕</button>
       </div>
       <div ref={logRef} className="scuttlebutt-chat-log" aria-live="polite">
         {visibleEntries.length === 0 ? (
           <div className="scuttlebutt-message-sam">
-            {t("chat.greeting")}
+            {t(`chat.greeting.${admiral}`)}
           </div>
         ) : null}
         {visibleEntries.map((entry) => entry.kind === "assistant" ? (
@@ -128,7 +145,7 @@ export function ChatCard({
           </div>
         ))}
       </div>
-      {busy ? <div className="scuttlebutt-thinking"><i /><i /><i />{t("chat.thinking")}</div> : null}
+      {busy ? <div className="scuttlebutt-thinking"><i /><i /><i />{t(`chat.thinking.${admiral}`)}</div> : null}
       <div className="scuttlebutt-followups">
         {FOLLOWUPS.map((key: ScuttlebuttMessageKey) => (
           <button key={key} type="button" disabled={busy} onClick={() => onAsk(t(key))}>
@@ -144,7 +161,7 @@ export function ChatCard({
           ref={inputRef}
           value={draft}
           disabled={busy}
-          placeholder={t("chat.placeholder")}
+          placeholder={t(`chat.placeholder.${admiral}`)}
           autoComplete="off"
           onChange={(event) => onDraftChange(event.currentTarget.value)}
         />

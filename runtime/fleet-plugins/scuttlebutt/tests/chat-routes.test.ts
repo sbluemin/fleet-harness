@@ -45,7 +45,7 @@ describe("chat routes", () => {
   });
 
   it("starts an ephemeral chat without leaking provider identity or absolute paths", async () => {
-    const harness = createHarness(true, {});
+    const harness = createHarness(true, { admiral: "bori" });
     const createSession = vi.fn(() => new FakeSession());
     registerChatRoutes(harness.ctx, {
       createSession,
@@ -61,15 +61,16 @@ describe("chat routes", () => {
     expect(JSON.stringify(payload)).not.toContain("sessionId");
     expect(JSON.stringify(payload)).not.toContain("/private/");
     expect(createSession).toHaveBeenCalledWith({
-      cwd: "/private/fleet/plugins/scuttlebutt/workspace",
+      cwd: "/private/fleet/plugins/scuttlebutt/workspace/bori",
+      admiral: "bori",
       onEvent: expect.any(Function),
     });
   });
 
   it.each([
-    { cliId: "claude" },
-    { model: "sonnet" },
-    { effort: "low" },
+    {},
+    { admiral: "zzz" },
+    { admiral: "tori", extra: 1 },
   ])("rejects browser selection fields in the start body: %o", async (body) => {
     const harness = createHarness(true, body);
     registerChatRoutes(harness.ctx);
@@ -92,7 +93,7 @@ describe("chat routes", () => {
   });
 
   it("returns a visible start failure when the fixed CLI cannot open", async () => {
-    const harness = createHarness(true);
+    const harness = createHarness(true, { admiral: "tori" });
     registerChatRoutes(harness.ctx, {
       createSession: () => new FailingSession(),
     });

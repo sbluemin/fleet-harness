@@ -4,7 +4,7 @@ import { React, usePluginApi, useStoreSnapshot } from "@fleet-console/sdk/plugin
 import { ArrivalBubble } from "./arrival-bubble.js";
 import { birdVisual } from "./bird-state.js";
 import { ChatCard } from "./chat-card.js";
-import { createChatSession } from "./chat-session.js";
+import { createChatSession, type AdmiralId } from "./chat-session.js";
 import { getT, type ScuttlebuttMessageKey } from "./i18n.js";
 import { QuakerFigure } from "./quaker-figure.js";
 import {
@@ -31,7 +31,6 @@ const FLOCK_PERSONAS = MORPHS.map((morph) => PERSONAS[morph]);
 const SALUTE_DURATION_MS = 1_700;
 const CHEER_DURATION_MS = 2_400;
 const SAY_DURATION_MS = 1_700;
-const ARRIVAL_DURATION_MS = 6_000;
 const CLICK_DELAY_MS = 260;
 const PARKED_GAP = 8;
 
@@ -76,13 +75,23 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   }, [context.language]);
 
   // 대화는 카드보다 오래 산다 — 카드를 닫아도 답이 끝까지 도착해야 완료 연출이 나온다.
-  const session = React.useMemo(() => createChatSession({
+  const sessions = React.useMemo(() => MORPHS.map((admiral) => createChatSession({
+    admiral,
     fetch: (path, init) => pluginApi.fetch(path, init),
     locale: () => localeRef.current,
-  }), [pluginApi]);
-  React.useEffect(() => () => session.close(), [session]);
-  const chat = useStoreSnapshot(session.subscribe, session.snapshot);
-  const phase = chat.state.phase;
+  })), [pluginApi]);
+  React.useEffect(() => () => {
+    for (const session of sessions) session.close();
+  }, [sessions]);
+  const toriChat = useStoreSnapshot(sessions[0]!.subscribe, sessions[0]!.snapshot);
+  const boriChat = useStoreSnapshot(sessions[1]!.subscribe, sessions[1]!.snapshot);
+  const doriChat = useStoreSnapshot(sessions[2]!.subscribe, sessions[2]!.snapshot);
+  const chats = [toriChat, boriChat, doriChat] as const;
+  const phases = chats.map((chat) => chat.state.phase);
+  const activeIndices = React.useMemo(
+    () => MORPHS.map((morph, index) => settings[morph] ? index : -1).filter((index) => index >= 0),
+    [settings.bori, settings.dori, settings.tori],
+  );
 
   const [fleetSignals, setFleetSignals] = React.useState(() => context.signals.read());
   React.useEffect(() => context.signals.subscribe(setFleetSignals), [context.signals]);
@@ -95,27 +104,44 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   if (bodiesRef.current === null) {
     bodiesRef.current = MORPHS.map((_, index) => createBirdBody(index, viewportRef.current, Math.random));
   }
-  const birdRefs = React.useRef<Array<HTMLElement | null>>([]);
+  const birdRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
   const toriRef = React.useRef<HTMLButtonElement>(null);
   const gesturesRef = React.useRef<Array<PointerGesture | null>>([null, null, null]);
   const clickTimersRef = React.useRef<Array<number | null>>([null, null, null]);
   const oneShotTimersRef = React.useRef<Array<number | null>>([null, null, null]);
   const oneShotFramesRef = React.useRef<Array<number | null>>([null, null, null]);
   const sayTimersRef = React.useRef<Array<number | null>>([null, null, null]);
-  const arrivalTimerRef = React.useRef<number | null>(null);
   const focusFrameRef = React.useRef<number | null>(null);
   const motionFramesRef = React.useRef(framesFromBodies(bodiesRef.current));
-  const previousPhaseRef = React.useRef(phase);
+  const previousPhasesRef = React.useRef(phases);
 
   const [motionFrames, setMotionFrames] = React.useState(motionFramesRef.current);
   const [grabbed, setGrabbed] = React.useState<readonly boolean[]>([false, false, false]);
   const [oneShots, setOneShots] = React.useState<readonly OneShot[]>([null, null, null]);
   const [lines, setLines] = React.useState<readonly string[]>(["", "", ""]);
   const [saying, setSaying] = React.useState<readonly boolean[]>([false, false, false]);
-  const [open, setOpen] = React.useState(false);
-  const [toriFocused, setToriFocused] = React.useState(false);
-  const [arrivalVisible, setArrivalVisible] = React.useState(false);
+  const [openAdmiral, setOpenAdmiral] = React.useState<AdmiralId | null>(null);
+  // 정박은 이 세션 동안만 산다 — 설정에도 preferences에도 남기지 않는다.
+  const [moored, setMoored] = React.useState<readonly boolean[]>([false, false, false]);
   const [positionRevision, setPositionRevision] = React.useState(0);
+
+  const toggleMoored = React.useCallback((index: number) => {
+    setMoored((current) => {
+      const next = replaceAt(current, index, !current[index]);
+      const body = bodiesRef.current?.[index];
+      if (body) {
+        body.moored = next[index] ?? false;
+        // 풀어 주면 자던 새도 깨워 가까운 새 항로부터 다시 시작한다.
+        if (!body.moored) {
+          body.mode = "fly";
+          body.modeUntil = 0;
+          body.pauseUntil = 0;
+          pickWaypoint(body, viewportRef.current, Math.random);
+        }
+      }
+      return next;
+    });
+  }, []);
 
   const clearTimer = React.useCallback((timers: React.MutableRefObject<Array<number | null>>, index: number) => {
     const timer = timers.current[index];
@@ -141,13 +167,12 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   }, [clearTimer]);
 
   const cheerAll = React.useCallback(() => {
-    for (let index = 0; index < MORPHS.length; index += 1) {
+    for (const index of activeIndices) {
       triggerOneShot(index, "cheer", CHEER_DURATION_MS);
     }
-  }, [triggerOneShot]);
+  }, [activeIndices, triggerOneShot]);
 
   const speak = React.useCallback((index: number) => {
-    if (index === 0) return;
     const morph = MORPHS[index]!;
     const choice = Math.floor(Math.random() * 3) + 1;
     const key = `line.${morph}.${choice}` as ScuttlebuttMessageKey;
@@ -162,47 +187,57 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
 
   const clickAction = React.useCallback((index: number) => {
     triggerOneShot(index, "salute", SALUTE_DURATION_MS);
-    if (index === 0) setOpen((current) => !current);
-    else speak(index);
-  }, [speak, triggerOneShot]);
+    const admiral = MORPHS[index]!;
+    setOpenAdmiral((current) => current === admiral ? null : admiral);
+  }, [triggerOneShot]);
 
-  const focusTori = React.useCallback(() => {
+  const focusAdmiral = React.useCallback((admiral: AdmiralId) => {
     if (focusFrameRef.current !== null) window.cancelAnimationFrame(focusFrameRef.current);
     focusFrameRef.current = window.requestAnimationFrame(() => {
       focusFrameRef.current = null;
-      toriRef.current?.focus();
+      birdRefs.current[MORPHS.indexOf(admiral)]?.focus();
     });
   }, []);
 
   React.useEffect(() => {
-    if (phase === "ready" && previousPhaseRef.current !== "ready") cheerAll();
-    previousPhaseRef.current = phase;
-  }, [cheerAll, phase]);
-
-  const anchored = toriFocused || open || arrivalVisible;
-  React.useEffect(() => {
-    const tori = bodiesRef.current?.[0];
-    if (!tori) return;
-    tori.anchored = anchored;
-    if (anchored) {
-      tori.vx = 0;
-      tori.vy = 0;
-      setPositionRevision((revision) => revision + 1);
+    if (phases.some((phase, index) => phase === "ready" && previousPhasesRef.current[index] !== "ready")) {
+      cheerAll();
     }
-  }, [anchored]);
+    previousPhasesRef.current = phases;
+  }, [cheerAll, phases]);
+
+  React.useEffect(() => {
+    const bodies = bodiesRef.current;
+    if (!bodies) return;
+    for (let index = 0; index < MORPHS.length; index += 1) {
+      const body = bodies[index]!;
+      const anchored = MORPHS[index] === openAdmiral;
+      body.anchored = anchored;
+      if (anchored) {
+        body.vx = 0;
+        body.vy = 0;
+        setPositionRevision((revision) => revision + 1);
+      }
+    }
+  }, [openAdmiral]);
+
+  React.useEffect(() => {
+    if (openAdmiral && !settings[openAdmiral]) setOpenAdmiral(null);
+  }, [openAdmiral, settings.bori, settings.dori, settings.tori]);
 
   const parkBirds = React.useCallback(() => {
     const viewport = viewportRef.current;
     const bodies = bodiesRef.current;
     if (!bodies) return;
-    // 좁은 창에서는 간격을 좁혀서라도 셋 다 화면 안에 남긴다 — 겹치는 편이 사라지는 것보다 낫다.
+    // 좁은 창에서는 간격을 좁혀서라도 켜진 새를 모두 화면 안에 남긴다.
     const rightmost = Math.max(8, viewport.width - 16 - BIRD_WIDTH);
-    const step = Math.min(
+    const step = activeIndices.length > 1 ? Math.min(
       BIRD_WIDTH + PARKED_GAP,
-      Math.max(24, (viewport.width - 32 - BIRD_WIDTH) / (MORPHS.length - 1)),
-    );
-    const parkedFrames = MORPHS.map((_, index): BirdFrame => {
-      const left = Math.max(8, rightmost - step * (MORPHS.length - 1 - index));
+      Math.max(24, (viewport.width - 32 - BIRD_WIDTH) / (activeIndices.length - 1)),
+    ) : 0;
+    const parkedFrames = [...motionFramesRef.current];
+    activeIndices.forEach((index, activeIndex) => {
+      const left = Math.max(8, rightmost - step * (activeIndices.length - 1 - activeIndex));
       const top = Math.max(8, viewport.height - 16 - BIRD_HEIGHT);
       const body = bodies[index]!;
       body.x = left + BIRD_HALF_WIDTH;
@@ -213,11 +248,11 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
       body.grab = null;
       const element = birdRefs.current[index];
       if (element) element.style.transform = `translate(${left}px, ${top}px) rotate(0deg)`;
-      return { left, top, tilt: 0, flight: "hover", mode: "fly" };
+      parkedFrames[index] = { left, top, tilt: 0, flight: "hover", mode: "fly" };
     });
     motionFramesRef.current = parkedFrames;
     setMotionFrames(parkedFrames);
-  }, []);
+  }, [activeIndices]);
 
   React.useEffect(() => {
     const resize = () => {
@@ -236,7 +271,8 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     }
     const bodies = bodiesRef.current;
     if (!bodies) return;
-    for (const body of bodies) {
+    for (const index of activeIndices) {
+      const body = bodies[index]!;
       body.mode = "fly";
       body.pauseUntil = 0;
       pickWaypoint(body, viewportRef.current, Math.random);
@@ -246,17 +282,22 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     const loop = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      const frames = stepFlock(
-        bodies,
-        FLOCK_PERSONAS,
+      const activeBodies = activeIndices.map((index) => bodies[index]!);
+      const activePersonas = activeIndices.map((index) => FLOCK_PERSONAS[index]!);
+      const activeFrames = stepFlock(
+        activeBodies,
+        activePersonas,
         viewportRef.current,
         dt,
         now / 1000,
         Math.random,
       );
+      const frames = [...motionFramesRef.current];
       let motionChanged = false;
-      for (let index = 0; index < frames.length; index += 1) {
-        const frame = frames[index]!;
+      for (let activeIndex = 0; activeIndex < activeFrames.length; activeIndex += 1) {
+        const index = activeIndices[activeIndex]!;
+        const frame = activeFrames[activeIndex]!;
+        frames[index] = frame;
         const element = birdRefs.current[index];
         if (element) {
           element.style.transform = `translate(${frame.left}px, ${frame.top}px) rotate(${frame.tilt}deg)`;
@@ -270,7 +311,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     };
     animationFrame = window.requestAnimationFrame(loop);
     return () => window.cancelAnimationFrame(animationFrame);
-  }, [fleetSignals.reducedMotion, parkBirds, settings.enabled]);
+  }, [activeIndices, fleetSignals.reducedMotion, parkBirds, settings.enabled]);
 
   React.useEffect(() => () => {
     for (let index = 0; index < MORPHS.length; index += 1) {
@@ -280,7 +321,6 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
       const frame = oneShotFramesRef.current[index];
       if (frame != null) window.cancelAnimationFrame(frame);
     }
-    if (arrivalTimerRef.current !== null) window.clearTimeout(arrivalTimerRef.current);
     if (focusFrameRef.current !== null) window.cancelAnimationFrame(focusFrameRef.current);
   }, [clearTimer]);
 
@@ -354,20 +394,18 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   return (
     <>
       {MORPHS.map((morph, index) => {
+        if (!settings[morph]) return null;
         // 자세는 상태에서(리렌더를 몰고 온다), 좌표는 ref에서(루프가 쓴 최신 값) 읽는다.
         const motion = motionFrames[index]!;
         const frame = motionFramesRef.current[index] ?? motion;
+        const phase = phases[index]!;
         const visual = birdVisual({
           grabbed: grabbed[index] ?? false,
           oneShot: oneShots[index] ?? null,
-          alert: index === 0
-            ? phase === "error"
-            : index === 1
-              ? fleetSignals.awaiting > 0 || fleetSignals.disconnected
-              : false,
-          thinking: index === 0
-            ? phase === "starting" || phase === "thinking"
-            : index === 2 && fleetSignals.running > 0,
+          alert: phase === "error"
+            || (index === 1 && (fleetSignals.awaiting > 0 || fleetSignals.disconnected)),
+          thinking: phase === "starting" || phase === "thinking"
+            || (index === 2 && fleetSignals.running > 0),
           mode: motion.mode,
           flight: motion.flight,
         });
@@ -384,6 +422,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
             event.preventDefault();
             clearTimer(clickTimersRef, index);
             triggerOneShot(index, "cheer", CHEER_DURATION_MS);
+            speak(index);
           },
         };
         const children = (
@@ -393,73 +432,56 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
             <span className="scuttlebutt-bird-say" aria-hidden="true">{lines[index]}</span>
           </>
         );
-        if (morph === "tori") {
-          return (
-            <button
-              {...common}
-              key={morph}
-              ref={(element) => {
-                toriRef.current = element;
-                birdRefs.current[index] = element;
-              }}
-              type="button"
-              aria-label={t("mascot.label")}
-              aria-expanded={open}
-              onFocus={() => setToriFocused(true)}
-              onBlur={() => setToriFocused(false)}
-              onClick={(event) => {
-                if (event.detail === 0) clickAction(index);
-              }}
-            >
-              {children}
-            </button>
-          );
-        }
         return (
-          <div
+          <button
             {...common}
             key={morph}
             ref={(element) => {
+              if (morph === "tori") toriRef.current = element;
               birdRefs.current[index] = element;
             }}
-            aria-hidden="true"
+            type="button"
+            aria-label={t(`chat.label.${morph}`)}
+            aria-expanded={openAdmiral === morph}
+            onClick={(event) => {
+              if (event.detail === 0) clickAction(index);
+            }}
           >
             {children}
-          </div>
+          </button>
         );
       })}
       <ArrivalBubble
         arrivals={context.arrivals}
         locale={context.language}
         mascot={toriRef}
-        quiet={!open && phase !== "starting" && phase !== "thinking"}
+        quiet={!openAdmiral && !phases.some((phase) => phase === "starting" || phase === "thinking")}
         positionRevision={positionRevision}
         onShow={() => {
           cheerAll();
-          setArrivalVisible(true);
-          if (arrivalTimerRef.current !== null) window.clearTimeout(arrivalTimerRef.current);
-          arrivalTimerRef.current = window.setTimeout(() => {
-            arrivalTimerRef.current = null;
-            setArrivalVisible(false);
-          }, ARRIVAL_DURATION_MS);
         }}
       />
-      {open ? (
+      {openAdmiral ? (
         <ChatCard
-          state={chat.state}
-          draft={chat.draft}
-          mascot={toriRef}
+          admiral={openAdmiral}
+          state={chats[MORPHS.indexOf(openAdmiral)]!.state}
+          draft={chats[MORPHS.indexOf(openAdmiral)]!.draft}
+          mascot={{ current: birdRefs.current[MORPHS.indexOf(openAdmiral)] ?? null }}
+          moored={moored[MORPHS.indexOf(openAdmiral)] ?? false}
           locale={context.language}
           positionRevision={positionRevision}
-          onAsk={(text) => void session.ask(text)}
-          onDraftChange={session.setDraft}
+          onAsk={(text) => void sessions[MORPHS.indexOf(openAdmiral)]!.ask(text)}
+          onDraftChange={sessions[MORPHS.indexOf(openAdmiral)]!.setDraft}
+          onToggleMoored={() => toggleMoored(MORPHS.indexOf(openAdmiral))}
           onClose={() => {
-            setOpen(false);
-            focusTori();
+            const admiral = openAdmiral;
+            setOpenAdmiral(null);
+            focusAdmiral(admiral);
           }}
           onTuck={() => {
-            setOpen(false);
-            focusTori();
+            const admiral = openAdmiral;
+            setOpenAdmiral(null);
+            focusAdmiral(admiral);
           }}
         />
       ) : null}

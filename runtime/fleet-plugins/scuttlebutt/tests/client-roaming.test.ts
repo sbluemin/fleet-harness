@@ -29,6 +29,7 @@ function bird(overrides: Partial<BirdBody> = {}): BirdBody {
     cruise: false,
     grab: null,
     anchored: false,
+    moored: false,
     ...overrides,
   };
 }
@@ -166,6 +167,42 @@ describe("Scuttlebutt roaming engine", () => {
     expect(frame.left).toBeCloseTo(body.x - BIRD_HALF_WIDTH);
     expect(frame.top).toBeCloseTo(body.y - BIRD_HALF_HEIGHT);
     expect(frame.tilt).toBeCloseTo(0);
+  });
+
+  it("holds a moored bird in place while its behaviour keeps cycling", () => {
+    // 이동만 멈춘다 — 걷기·수면·깃단장이 계속 돌아야 애니메이션이 살아 있다.
+    const body = bird({ x: 300, y: 250, vx: 120, vy: -90, tx: 700, ty: 500, moored: true, modeUntil: 0 });
+    const frame = stepFlock([body], [persona], viewport, 0.1, 5, sequence(0.2, 0.5));
+
+    expect(body.x).toBeCloseTo(300);
+    expect(body.y).toBeCloseTo(250);
+    expect(body.vx).toBeCloseTo(0);
+    expect(body.vy).toBeCloseTo(0);
+    expect(body.mode).toBe("walk");
+    expect(body.modeUntil).toBeCloseTo(5 + 3 + 0.5 * 3.5);
+    expect(frame[0]!.flight).toBe("hover");
+    expect(frame[0]!.tilt).toBeCloseTo(0);
+  });
+
+  it.each([
+    [0.1, "walk"],
+    [0.45, "sleep"],
+    [0.65, "preen"],
+    [0.9, "fly"],
+  ] as const)("picks the %s roll as the in-place %s posture", (roll, mode) => {
+    const body = bird({ moored: true, modeUntil: 0, mode: "fly" });
+    stepFlock([body], [persona], viewport, 0.1, 5, sequence(roll, 0));
+    expect(body.mode).toBe(mode);
+  });
+
+  it("keeps a moored bird out of the separation force", () => {
+    const moored = bird({ x: 300, y: 250, moored: true, modeUntil: 99 });
+    const neighbor = bird({ x: 320, y: 250, tx: 320, ty: 250 });
+    stepFlock([moored, neighbor], [persona, persona], viewport, 0.1, 5, sequence(0.9, 0.9));
+
+    expect(moored.x).toBeCloseTo(300);
+    expect(moored.vx).toBeCloseTo(0);
+    expect(neighbor.vx).not.toBeCloseTo(0);
   });
 
   it("accepts each persona through the readonly engine contract", () => {

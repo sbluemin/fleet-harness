@@ -2,10 +2,16 @@ import type { ClientSettingsCapability } from "@fleet-console/sdk/plugin";
 
 export interface ScuttlebuttSettings {
   readonly enabled: boolean;
+  readonly tori: boolean;
+  readonly bori: boolean;
+  readonly dori: boolean;
 }
 
 const DEFAULT_SETTINGS: ScuttlebuttSettings = {
   enabled: true,
+  tori: true,
+  bori: true,
+  dori: true,
 };
 
 let settings = DEFAULT_SETTINGS;
@@ -50,6 +56,9 @@ function parseSettings(value: Record<string, unknown> | null): ScuttlebuttSettin
   if (!value) return DEFAULT_SETTINGS;
   return {
     enabled: typeof value.enabled === "boolean" ? value.enabled : true,
+    tori: typeof value.tori === "boolean" ? value.tori : true,
+    bori: typeof value.bori === "boolean" ? value.bori : true,
+    dori: typeof value.dori === "boolean" ? value.dori : true,
   };
 }
 

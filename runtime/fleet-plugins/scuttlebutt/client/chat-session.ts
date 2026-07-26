@@ -17,7 +17,10 @@ export interface ChatSessionSnapshot {
   readonly draft: string;
 }
 
+export type AdmiralId = "tori" | "bori" | "dori";
+
 export interface ChatSessionDeps {
+  readonly admiral: AdmiralId;
   readonly fetch: (path: string, init?: RequestInit) => Promise<Response>;
   readonly connect?: (
     chatId: string,
@@ -63,7 +66,7 @@ export function createChatSession(deps: ChatSessionDeps): ChatSession {
     const response = await deps.fetch("chat/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ admiral: deps.admiral }),
     });
     const payload = await response.json() as { readonly chatId?: unknown; readonly error?: unknown };
     if (!response.ok || typeof payload.chatId !== "string") {

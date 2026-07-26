@@ -23,7 +23,17 @@ export interface BirdBody {
   cruise: boolean;
   grab: { px: number; py: number } | null;
   anchored: boolean;
+  /** 사용자가 제자리에 묶어 둔 상태 — 이동만 멈추고 행동은 계속 돈다. */
+  moored: boolean;
 }
+
+/** 정박 중 제자리 행동 전환 확률의 누적 경계와 지속 시간. */
+const MOORED_CYCLE = [
+  { mode: "walk", until: 0.35, span: [3, 6.5] },
+  { mode: "sleep", until: 0.55, span: [3.5, 6] },
+  { mode: "preen", until: 0.75, span: [2.4, 4] },
+  { mode: "fly", until: 1, span: [2.5, 5] },
+] as const;
 
 export interface Viewport {
   readonly width: number;
@@ -67,9 +77,25 @@ export function createBirdBody(index: number, viewport: Viewport, random: () => 
     modeUntil: 0,
     deckPlan: false,
     anchored: false,
+    moored: false,
   };
   pickWaypoint(body, viewport, random);
   return body;
+}
+
+/**
+ * 정박 중에는 웨이포인트에 도착할 일이 없어 행동 전환이 영영 오지 않는다 — 날갯짓만 남고
+ * 걷기·수면·깃단장이 사라진다. 그래서 이동 대신 시간으로 다음 자세를 고른다.
+ */
+export function stepMooredBehavior(body: BirdBody, time: number, random: () => number): void {
+  body.vx = 0;
+  body.vy = 0;
+  body.cruise = false;
+  if (time <= body.modeUntil) return;
+  const roll = random();
+  const picked = MOORED_CYCLE.find((entry) => roll < entry.until) ?? MOORED_CYCLE.at(-1)!;
+  body.mode = picked.mode;
+  body.modeUntil = time + rand(picked.span[0], picked.span[1], random);
 }
 
 export function pickWaypoint(body: BirdBody, viewport: Viewport, random: () => number): void {
@@ -100,6 +126,8 @@ export function stepFlock(
       // 포인터 좌표를 직접 대입하면 손의 미세 움직임이 지나치게 딱딱해진다.
       body.x += (body.grab.px - body.x) * Math.min(1, dt * 18);
       body.y += (body.grab.py - body.y) * Math.min(1, dt * 18);
+    } else if (body.moored) {
+      stepMooredBehavior(body, time, random);
     } else if (body.anchored) {
       body.vx *= Math.max(0, 1 - dt * 3);
       body.vy *= Math.max(0, 1 - dt * 3);
@@ -177,8 +205,8 @@ export function stepFlock(
       }
     }
 
-    // 지상 행동과 외부 고정 상태에는 비행 편대의 반발력을 섞지 않는다.
-    if (!body.grab && body.mode === "fly" && !body.anchored) {
+    // 지상 행동과 고정 상태에는 비행 편대의 반발력을 섞지 않는다 — 묶어 둔 새가 떠밀리면 안 된다.
+    if (!body.grab && body.mode === "fly" && !body.anchored && !body.moored) {
       for (const other of bodies) {
         if (other === body) continue;
         const dx = body.x - other.x;

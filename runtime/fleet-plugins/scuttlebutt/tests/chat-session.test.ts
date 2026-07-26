@@ -8,11 +8,11 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  ADMIRAL_SYSTEM_PROMPTS,
   ChatSession,
   isWebToolName,
   resolveWebPermissionRequest,
   SCUTTLEBUTT_AGENT,
-  SCUTTLEBUTT_SYSTEM_PROMPT,
 } from "../server/chat-session.js";
 
 describe("Scuttlebutt permission gate", () => {
@@ -82,6 +82,7 @@ describe("ChatSession", () => {
     const events: unknown[] = [];
     const session = new ChatSession({
       cwd,
+      admiral: "bori",
       onEvent: (event) => events.push(event),
       buildClient: async () => client as unknown as IUnifiedAgentClient,
     });
@@ -95,7 +96,7 @@ describe("ChatSession", () => {
       yoloMode: false,
       fsAccess: false,
       strictMcp: true,
-      systemPrompt: SCUTTLEBUTT_SYSTEM_PROMPT,
+      systemPrompt: ADMIRAL_SYSTEM_PROMPTS.bori,
       systemPromptMode: "replace",
       mcpServers: [],
     });
@@ -120,12 +121,22 @@ describe("ChatSession", () => {
     });
   });
 
-  it("preserves the RISEN system prompt structure", () => {
-    expect(SCUTTLEBUTT_SYSTEM_PROMPT).toContain("# Role");
-    expect(SCUTTLEBUTT_SYSTEM_PROMPT).toContain("# Instructions");
-    expect(SCUTTLEBUTT_SYSTEM_PROMPT).toContain("# Steps");
-    expect(SCUTTLEBUTT_SYSTEM_PROMPT).toContain("# End goal");
-    expect(SCUTTLEBUTT_SYSTEM_PROMPT).toContain("# Narrowing");
+  it("defines three distinct admiral identities over the shared safety contract", () => {
+    const { tori, bori, dori } = ADMIRAL_SYSTEM_PROMPTS;
+    expect(tori).toContain("Admiral Tori");
+    expect(tori).toContain("speak of yourself as he");
+    expect(bori).toContain("Admiral Bori");
+    expect(bori).toContain("speak of yourself as she");
+    expect(dori).toContain("Admiral Dori");
+    expect(dori).toContain("speak of yourself as she");
+    expect(new Set([tori, bori, dori])).toHaveLength(3);
+    for (const prompt of [tori, bori, dori]) {
+      expect(prompt).toContain("# Who you are talking to");
+      expect(prompt).toContain("Admiral of the Navy");
+      expect(prompt).toContain("Never read, write, edit, list, or execute anything on this machine");
+      expect(prompt).toContain("file and shell work belongs to an Operation in a Theater");
+      expect(prompt).toContain("Answer in the language the user wrote in.");
+    }
   });
 });
 

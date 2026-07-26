@@ -1,3 +1,9 @@
+.scuttlebutt-settings-roster {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+
 .scuttlebutt-bird {
   position: fixed;
   left: 0;
@@ -421,6 +427,72 @@
   color: var(--text-primary);
   font-size: 13px;
   font-weight: var(--weight-medium);
+}
+
+/* 정박 스위치는 카드 머리에 둔다 — 그 제독에게만 걸리는 조작이라 전역 설정으로 빼지 않는다. */
+.scuttlebutt-chat-moor {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 2px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+.scuttlebutt-chat-moor:hover {
+  color: var(--text-secondary);
+}
+
+.scuttlebutt-chat-moor:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+
+.scuttlebutt-chat-moor-track {
+  display: block;
+  width: 26px;
+  height: 15px;
+  flex-shrink: 0;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  background: var(--ink-abyss);
+  transition:
+    background var(--duration-fast) var(--ease-glide),
+    border-color var(--duration-fast) var(--ease-glide);
+}
+
+.scuttlebutt-chat-moor-track i {
+  display: block;
+  width: 9px;
+  height: 9px;
+  margin: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--text-tertiary);
+  transition:
+    transform var(--duration-fast) var(--ease-glide),
+    background var(--duration-fast) var(--ease-glide);
+}
+
+.scuttlebutt-chat-moor[aria-checked="true"] {
+  color: var(--text-primary);
+}
+
+.scuttlebutt-chat-moor[aria-checked="true"] .scuttlebutt-chat-moor-track {
+  border-color: var(--brass);
+  background: var(--brass-glow);
+}
+
+.scuttlebutt-chat-moor[aria-checked="true"] .scuttlebutt-chat-moor-track i {
+  transform: translateX(11px);
+  background: var(--brass);
 }
 
 .scuttlebutt-chat-tuck {

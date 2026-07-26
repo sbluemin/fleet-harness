@@ -6,6 +6,7 @@ import type { ChatStreamEvent } from "../client/sse-client.js";
 interface Harness {
   readonly deps: ChatSessionDeps;
   readonly calls: string[];
+  readonly startBodies: string[];
   readonly streams: string[];
   emit(event: ChatStreamEvent): void;
   closes(): number;
@@ -14,18 +15,22 @@ interface Harness {
 function harness(responses: Partial<Record<"start" | "message", () => Response>> = {}): Harness {
   const calls: string[] = [];
   const streams: string[] = [];
+  const startBodies: string[] = [];
   const listeners: ((event: ChatStreamEvent) => void)[] = [];
   let closes = 0;
   return {
     calls,
+    startBodies,
     streams,
     emit: (event) => {
       for (const listener of [...listeners]) listener(event);
     },
     closes: () => closes,
     deps: {
-      fetch: (path) => {
+      admiral: "tori",
+      fetch: (path, init) => {
         calls.push(path);
+        if (path === "chat/start" && typeof init?.body === "string") startBodies.push(init.body);
         const kind = path === "chat/start" ? "start" : "message";
         const make = responses[kind];
         if (make) return Promise.resolve(make());
@@ -56,6 +61,7 @@ describe("Scuttlebutt chat session", () => {
     await session.ask("who are you?");
 
     expect(stub.calls).toEqual(["chat/start", "chat/chat-1/message"]);
+    expect(stub.startBodies).toEqual([JSON.stringify({ admiral: "tori" })]);
     expect(stub.streams).toEqual(["chat-1"]);
     expect(session.snapshot().draft).toBe("");
     expect(session.snapshot().state.entries.map((entry) => entry.text)).toEqual(["who are you?"]);

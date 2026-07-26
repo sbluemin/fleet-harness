@@ -4,7 +4,12 @@ import type http from "node:http";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 
-import { ChatSession, type ChatSessionLike } from "./chat-session.js";
+import {
+  ADMIRAL_IDS,
+  ChatSession,
+  type AdmiralId,
+  type ChatSessionLike,
+} from "./chat-session.js";
 import { SessionRegistry } from "./session-registry.js";
 
 export interface ChatRouteDeps {
@@ -53,16 +58,17 @@ async function handleStart(
   if (req.method !== "POST") return methodNotAllowed(ctx, res);
   if (!isJsonRequest(req)) return unsupportedMediaType(ctx, res);
   const body = await ctx.host.http.readJsonBody<unknown>(req);
-  if (!isRecord(body) || Object.keys(body).length > 0) {
+  if (!isStartBody(body)) {
     ctx.host.http.writeJson(res, 400, { error: "invalid_start" });
     return true;
   }
   const chatId = id();
-  const workspace = ctx.host.paths.pluginDataDir("scuttlebutt") + "/workspace";
+  const workspace = `${ctx.host.paths.pluginDataDir("scuttlebutt")}/workspace/${body.admiral}`;
   let result: Awaited<ReturnType<SessionRegistry["start"]>>;
   try {
     result = await registry.start(chatId, (onEvent) => createSession({
       cwd: workspace,
+      admiral: body.admiral,
       onEvent,
     }));
   } catch {
@@ -159,6 +165,13 @@ function isMessageBody(value: unknown): value is { readonly text: string } {
     && Object.keys(value).length === 1
     && typeof value.text === "string"
     && value.text.trim().length > 0;
+}
+
+function isStartBody(value: unknown): value is { readonly admiral: AdmiralId } {
+  return isRecord(value)
+    && Object.keys(value).length === 1
+    && typeof value.admiral === "string"
+    && ADMIRAL_IDS.some((admiral) => admiral === value.admiral);
 }
 
 function isJsonRequest(req: http.IncomingMessage): boolean {
