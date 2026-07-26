@@ -60,6 +60,7 @@ const CLOSE_ARM_DURATION_MS = 1500;
 export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, formationSlotIndex, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
+  const terminalRef = useRef<HTMLDivElement | null>(null);
   const identityTriggerRef = useRef<HTMLButtonElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const resizeRef = useRef<ResizeState | null>(null);
@@ -105,6 +106,21 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     const frame = window.requestAnimationFrame(() => identityTriggerRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
   }, [rename.renaming]);
+
+  // Operation 본체는 body pool에서 createPortal로 렌더된 뒤 DOM만 이 슬롯으로 이식된다. React 합성
+  // 이벤트는 DOM 트리가 아니라 React 트리를 따라 전파하므로 아래 onPointerDown(stopOperationPointer)은
+  // 본체 클릭에서는 영원히 호출되지 않는다 — 본체가 화면 대부분인 Formation에서는 선택이 통째로 죽는다.
+  // 네이티브 리스너는 DOM 버블링을 타므로 이식된 본체 클릭까지 닿는다. 전파를 끊으면 React root의 위임
+  // 리스너까지 막히므로 여기서는 활성화만 하고, 직접 자식 경로를 소유한 React 핸들러는 그대로 둔다.
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    const activate = () => {
+      onActivate();
+    };
+    terminal.addEventListener("pointerdown", activate);
+    return () => terminal.removeEventListener("pointerdown", activate);
+  }, [onActivate]);
 
   // focus layer가 현재 포커스를 담은 peer를 숨길 때는 body로 흘려보내지 않고 새 전면 frame(없으면 Canvas)으로 옮긴다.
   useLayoutEffect(() => {
@@ -417,7 +433,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
         </div>
       </div>
       <div className="canvas-operation-glance-hud" aria-hidden="true">{displayTitle}</div>
-      <div className="canvas-operation-terminal" onPointerDown={stopOperationPointer} onWheel={stopOperationWheel} data-canvas-blocker>
+      <div ref={terminalRef} className="canvas-operation-terminal" onPointerDown={stopOperationPointer} onWheel={stopOperationWheel} data-canvas-blocker>
         {children}
       </div>
       {/* 최대화 상태에서는 리사이즈가 차단되므로 핸들 자체를 렌더하지 않는다 —
