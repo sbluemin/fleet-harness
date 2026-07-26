@@ -133,6 +133,9 @@ describe("ChatSession", () => {
     for (const prompt of [tori, bori, dori]) {
       expect(prompt).toContain("# Who you are talking to");
       expect(prompt).toContain("Admiral of the Navy");
+      // 제독은 새들 자신의 계급이라, 사용자를 그렇게 부르면 상하가 사라진다.
+      expect(prompt).toContain("call them 대원수");
+      expect(prompt).toContain("제독, which is your own rank");
       expect(prompt).toContain("Never read, write, edit, list, or execute anything on this machine");
       expect(prompt).toContain("file and shell work belongs to an Operation in a Theater");
       expect(prompt).toContain("Answer in the language the user wrote in.");
