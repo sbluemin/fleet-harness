@@ -1,18 +1,6 @@
-export interface Rect {
-  readonly left: number;
-  readonly top: number;
-  readonly width: number;
-  readonly height: number;
-}
-
 export interface Size {
   readonly width: number;
   readonly height: number;
-}
-
-export interface Point {
-  readonly left: number;
-  readonly top: number;
 }
 
 export type CardPlacement =
@@ -22,24 +10,11 @@ export type CardPlacement =
 const EDGE = 8;
 const GAP = 10;
 
-export function clampPoint(point: Point, viewport: Size, widget: Size, inset = 4): Point {
-  return {
-    left: clamp(point.left, inset, Math.max(inset, viewport.width - widget.width - inset)),
-    top: clamp(point.top, inset, Math.max(inset, viewport.height - widget.height - inset)),
-  };
-}
-
-export function snapPoint(
-  corner: "bottom-right" | "bottom-left" | "top-right",
+export function placeCard(
   viewport: Size,
-  widget: Size,
-): Point {
-  if (corner === "bottom-left") return clampPoint({ left: 16, top: viewport.height - widget.height - 12 }, viewport, widget);
-  if (corner === "top-right") return clampPoint({ left: viewport.width - widget.width - 16, top: 12 }, viewport, widget);
-  return clampPoint({ left: viewport.width - widget.width - 16, top: viewport.height - widget.height - 12 }, viewport, widget);
-}
-
-export function placeCard(viewport: Size, mascot: Rect, card: Size): CardPlacement {
+  mascot: { readonly left: number; readonly top: number; readonly width: number; readonly height: number },
+  card: Size,
+): CardPlacement {
   const centerX = mascot.left + mascot.width / 2;
   const centeredLeft = clamp(centerX - card.width / 2, EDGE, Math.max(EDGE, viewport.width - card.width - EDGE));
   if (mascot.top - card.height - GAP >= EDGE) {

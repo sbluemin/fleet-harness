@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { clampPoint, placeCard } from "../client/geometry.js";
+import { placeCard } from "../client/geometry.js";
 
 describe("Scuttlebutt card placement", () => {
   const viewport = { width: 800, height: 600 };
@@ -34,13 +34,6 @@ describe("Scuttlebutt card placement", () => {
       left: 130,
       top: 30,
       maxHeight: 284,
-    });
-  });
-
-  it("clamps persisted and dragged positions into the viewport", () => {
-    expect(clampPoint({ left: -20, top: 900 }, viewport, { width: 80, height: 90 })).toEqual({
-      left: 4,
-      top: 506,
     });
   });
 });

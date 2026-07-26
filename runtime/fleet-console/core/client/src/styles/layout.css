@@ -14,8 +14,10 @@
   pointer-events: none;
 }
 
+/* 레이어도 위젯 상자도 클릭을 먹지 않는다 — 위젯이 실제로 그린 표면만 스스로 auto로 되살린다.
+   전면 오버레이가 그 아래 콘솔 조작을 가로채면 안 된다. */
 .floating-widget {
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .console-route-content {
