@@ -25,13 +25,13 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
   const exportMenu = React.useRef<HTMLDivElement>(null);
   const copiedTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const disposed = React.useRef(false);
-  const exportOpenRef = React.useRef(false);
-  const activeArtifactId = React.useRef<string | null>(null);
+  // 메뉴 인스턴스 세대 — 열림/닫힘마다 증가한다. 진행 중이던 clipboard 완료는 자신이 출발한
+  // 세대가 그대로일 때만 현재 메뉴를 만질 수 있어, 닫았다 재연 메뉴로의 오귀속을 막는다.
+  const exportGeneration = React.useRef(0);
   React.useEffect(() => {
     if (newestId) setActiveId(newestId);
   }, [newestId]);
   const active = artifacts.find((artifact) => artifact.id === activeId) ?? artifacts.at(-1) ?? null;
-  activeArtifactId.current = active?.id ?? null;
   const count = artifacts.length;
   const clearCopied = () => {
     if (copiedTimer.current !== null) {
@@ -41,7 +41,7 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
     setExportCopied(false);
   };
   const closeExport = (restoreFocus = false) => {
-    exportOpenRef.current = false;
+    exportGeneration.current += 1;
     setExportOpen(false);
     clearCopied();
     if (restoreFocus) exportTrigger.current?.focus();
@@ -114,10 +114,10 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
   };
   const copyActive = async () => {
     if (!active) return;
-    const artifactId = active.id;
+    const generation = exportGeneration.current;
     try {
       await navigator.clipboard.writeText(active.html);
-      if (disposed.current || !exportOpenRef.current || activeArtifactId.current !== artifactId) return;
+      if (disposed.current || generation !== exportGeneration.current) return;
       setExportCopied(true);
       if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
       copiedTimer.current = setTimeout(() => {
@@ -127,7 +127,7 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
       }, 1_500);
       exportTrigger.current?.focus();
     } catch {
-      if (disposed.current) return;
+      if (disposed.current || generation !== exportGeneration.current) return;
       closeExport(true);
     }
   };
@@ -186,7 +186,7 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
           ) : null}
         </div>
         <div className="session-analyst__export-shell" ref={exportShell}>
-          <button type="button" className="session-analyst__export" ref={exportTrigger} aria-haspopup="menu" aria-expanded={exportOpen} aria-controls={exportId} disabled={!active} onClick={() => { exportOpenRef.current = !exportOpen; setExportOpen((open) => !open); }}>{t("terminal.artifacts.export")}</button>
+          <button type="button" className="session-analyst__export" ref={exportTrigger} aria-haspopup="menu" aria-expanded={exportOpen} aria-controls={exportId} disabled={!active} onClick={() => { if (exportOpen) { closeExport(); } else { exportGeneration.current += 1; setExportOpen(true); } }}>{t("terminal.artifacts.export")}</button>
           {exportOpen ? (
             <div className="session-analyst__export-menu" id={exportId} role="menu" ref={exportMenu} onKeyDown={handleExportMenuKeyDown}>
               <button type="button" role="menuitem" onClick={downloadActive}>{t("terminal.artifacts.exportDownload")}</button>

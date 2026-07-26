@@ -220,6 +220,56 @@ describe("Session Analyst artifact export", () => {
 
     expect(vi.getTimerCount()).toBe(timerCountAfterUnmount);
   });
+
+  it("ignores clipboard completion that started in an earlier menu instance", async () => {
+    storeState = withArtifact();
+    let resolveWrite: (() => void) | undefined;
+    const writeText = vi.fn(() => new Promise<void>((resolve) => { resolveWrite = resolve; }));
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const mounted = mountPanel();
+    const exportButton = mounted.container.querySelector<HTMLButtonElement>(".session-analyst__export")!;
+
+    act(() => exportButton.click());
+    act(() => {
+      [...mounted.container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((item) => item.textContent === "Copy source")!.click();
+    });
+    act(() => exportButton.click());
+    act(() => exportButton.click());
+
+    await act(async () => {
+      resolveWrite?.();
+      await Promise.resolve();
+    });
+
+    const menu = mounted.container.querySelector('[role="menu"]');
+    expect(menu?.textContent).toContain("Copy source");
+    expect(menu?.textContent).not.toContain("Copied");
+    mounted.unmount();
+  });
+
+  it("ignores clipboard rejection that started in an earlier menu instance", async () => {
+    storeState = withArtifact();
+    let rejectWrite: ((reason: Error) => void) | undefined;
+    const writeText = vi.fn(() => new Promise<void>((_resolve, reject) => { rejectWrite = reject; }));
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const mounted = mountPanel();
+    const exportButton = mounted.container.querySelector<HTMLButtonElement>(".session-analyst__export")!;
+
+    act(() => exportButton.click());
+    act(() => {
+      [...mounted.container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((item) => item.textContent === "Copy source")!.click();
+    });
+    act(() => exportButton.click());
+    act(() => exportButton.click());
+
+    await act(async () => {
+      rejectWrite?.(new Error("denied"));
+      await Promise.resolve();
+    });
+
+    expect(mounted.container.querySelector('[role="menu"]')).not.toBeNull();
+    mounted.unmount();
+  });
 });
 
 function withArtifact(overrides: Partial<AnalysisState["artifacts"][number]> = {}): AnalysisState {
