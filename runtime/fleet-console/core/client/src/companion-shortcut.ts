@@ -1,5 +1,10 @@
 import type { CompanionPanelDescriptor } from "@fleet-console/sdk/plugin";
 
+// core가 플러그인보다 먼저 소비하는 키는 선언을 허용하면 도움말과 실제 디스패치가 어긋난다.
+export const RESERVED_SHORTCUT_CODES: readonly string[] = [
+  "KeyF", "KeyS", "KeyT", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Escape",
+];
+
 export interface CompanionVisibilityChange {
   readonly id: string;
   readonly visible: boolean;
@@ -9,6 +14,18 @@ export interface CompanionShortcutToggle {
   readonly openLayer: boolean;
   readonly closeLayer: boolean;
   readonly visibilityChanges: readonly CompanionVisibilityChange[];
+}
+
+export function usableCompanionShortcuts(
+  companions: readonly CompanionPanelDescriptor[],
+): readonly CompanionPanelDescriptor[] {
+  const seenCodes = new Set<string>();
+  return companions.filter((companion) => {
+    const code = companion.shortcut?.code;
+    if (!code || RESERVED_SHORTCUT_CODES.includes(code) || seenCodes.has(code)) return false;
+    seenCodes.add(code);
+    return true;
+  });
 }
 
 export function resolveCompanionShortcutToggle(input: {

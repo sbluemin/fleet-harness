@@ -31,7 +31,7 @@ import { RubberBand } from "./rubber-band.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { screenToCanvas, type CanvasPoint, type CanvasRect } from "./coordinates.js";
 import { modeSlotGeometryFor, triageStageGeometryFor } from "./triage-geometry.js";
-import { dismissTriageOperation, getTriageCleared, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
+import { disarmTriageSetAside, dismissTriageOperation, getTriageCleared, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
 
 interface OperationsCanvasProps {
   readonly state: ConsoleState;
@@ -324,7 +324,7 @@ export function OperationsCanvas({
   }, [state.activeTheaterId, triageActive, triageStageId]);
   useLayoutEffect(() => {
     if (!triageActive || !state.activeTheaterId) {
-      companionTriageStageRef.current = null;
+      companionTriageStageRef.current = clearInactiveTriageStageCompanion(companionTriageStageRef.current);
       return;
     }
     companionTriageStageRef.current = reconcileTriageStageCompanion(
@@ -575,17 +575,20 @@ export function OperationsCanvas({
                 mode: "triage",
                 index: Math.max(1, triageDisplayQueue.findIndex((entry) => entry.operation.id === operation.id) + 1),
                 total: triageDisplayQueue.length,
+                companionOpen: panelCompanion !== null,
               }
             : formationView
               ? {
                   mode: "formation",
                   index: formationSlotIndexByOperationId.get(operation.id) ?? 1,
                   maximized: operationMaximized,
+                  companionOpen: panelCompanion !== null,
                 }
               : {
                   mode: "map",
                   index: focusCycleIndexByOperationId.get(operation.id) ?? 1,
                   maximized: operationMaximized,
+                  companionOpen: panelCompanion !== null,
                 });
           const frameGeometry = operationTriageStage
             ? triageStageGeometryFor(canvasSize, topPanelZIndex, 0, triageActive && operationCompanion ? companionSlotCount : 1)
@@ -884,6 +887,13 @@ export function useGlanceHold(): boolean {
   }, []);
 
   return glanceVisible;
+}
+
+export function clearInactiveTriageStageCompanion(
+  previous: TriageStageIdentity | null,
+): null {
+  if (previous) disarmTriageSetAside(previous.theaterId);
+  return null;
 }
 
 function isGlanceAltKey(event: KeyboardEvent): boolean {

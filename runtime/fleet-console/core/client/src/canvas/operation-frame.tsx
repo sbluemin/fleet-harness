@@ -439,11 +439,13 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
           <span className="canvas-operation-glance-hud-index">{glanceHud.index}</span>
           <span>{displayTitle}</span>
         </div>
-        <div className="canvas-operation-glance-hud-keys">
-          {glanceHud.hints.map((hint) => (
-            <span key={hint.key}><strong>{hint.key}</strong> {t(hint.messageKey)}</span>
-          ))}
-        </div>
+        {glanceHud.hints.length > 0 ? (
+          <div className="canvas-operation-glance-hud-keys">
+            {glanceHud.hints.map((hint) => (
+              <span key={hint.key}><strong>{hint.key}</strong> {t(hint.messageKey)}</span>
+            ))}
+          </div>
+        ) : null}
       </div>
       <div ref={terminalRef} className="canvas-operation-terminal" onPointerDown={stopOperationPointer} onWheel={stopOperationWheel} data-canvas-blocker>
         {children}

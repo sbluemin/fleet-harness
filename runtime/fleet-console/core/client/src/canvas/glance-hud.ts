@@ -12,7 +12,7 @@ export interface GlanceHudKeyHint {
 
 export interface GlanceHudModel {
   readonly index: string;
-  readonly hints: readonly [GlanceHudKeyHint, GlanceHudKeyHint];
+  readonly hints: readonly GlanceHudKeyHint[];
 }
 
 export function resolveGlanceHudModel(input: {
@@ -20,10 +20,15 @@ export function resolveGlanceHudModel(input: {
   readonly index: number;
   readonly total?: number;
   readonly maximized?: boolean;
+  readonly companionOpen?: boolean;
 }): GlanceHudModel {
+  const index = input.mode === "triage"
+    ? `${input.index}/${input.total ?? 0}`
+    : String(input.index).padStart(2, "0");
+  if (input.companionOpen) return { index, hints: [] };
   if (input.mode === "triage") {
     return {
-      index: `${input.index}/${input.total ?? 0}`,
+      index,
       hints: [
         { key: "→", messageKey: "canvas.glance.defer" },
         { key: "↓", messageKey: "canvas.glance.setAside" },
@@ -31,7 +36,7 @@ export function resolveGlanceHudModel(input: {
     };
   }
   return {
-    index: String(input.index).padStart(2, "0"),
+    index,
     hints: [
       {
         key: "↑",

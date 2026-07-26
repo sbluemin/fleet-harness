@@ -32,4 +32,15 @@ describe("panel Glance HUD model", () => {
       ],
     });
   });
+
+  it("keeps the panel identity but removes action hints while a companion is open", () => {
+    expect(resolveGlanceHudModel({
+      mode: "map",
+      index: 3,
+      companionOpen: true,
+    })).toEqual({
+      index: "03",
+      hints: [],
+    });
+  });
 });

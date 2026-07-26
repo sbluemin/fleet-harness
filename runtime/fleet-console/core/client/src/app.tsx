@@ -30,6 +30,7 @@ import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fet
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "./sidebar/operations-side-bar-store.js";
 import { useConsoleLocale, useT } from "./i18n/index.js";
 import type { CompanionShortcutEntry } from "./shortcuts-catalog.js";
+import { usableCompanionShortcuts } from "./companion-shortcut.js";
 import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
@@ -73,7 +74,7 @@ export function App() {
     if (!activeOperation) return [];
     const activeKind = registry.operationKinds.find((kind) =>
       kind.pluginId === activeOperation.pluginId && kind.type === activeOperation.type);
-    return activeKind?.companions?.flatMap((companion) => companion.shortcut
+    return usableCompanionShortcuts(activeKind?.companions ?? []).flatMap((companion) => companion.shortcut
       ? [{
           label: companion.shortcut.label,
           title: resolveLocalizedText(companion.title, consoleLocale),

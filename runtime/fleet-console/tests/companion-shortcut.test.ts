@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 
 import type { CompanionPanelDescriptor } from "../sdk/plugin/types.js";
-import { resolveCompanionShortcutToggle } from "../core/client/src/companion-shortcut.js";
+import { RESERVED_SHORTCUT_CODES, resolveCompanionShortcutToggle, usableCompanionShortcuts } from "../core/client/src/companion-shortcut.js";
 
 const COMPANIONS = [
   companion("streams", true),
@@ -11,6 +12,29 @@ const COMPANIONS = [
 ];
 
 describe("companion shortcut toggle", () => {
+  it("keeps only declared, unreserved, first-by-code shortcuts", () => {
+    const companions = [
+      companion("missing", true),
+      shortcutCompanion("reserved", "ArrowDown"),
+      shortcutCompanion("first", "KeyC"),
+      shortcutCompanion("duplicate", "KeyC"),
+      shortcutCompanion("second", "KeyA"),
+    ];
+
+    expect(RESERVED_SHORTCUT_CODES).toEqual([
+      "KeyF", "KeyS", "KeyT", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Escape",
+    ]);
+    expect(usableCompanionShortcuts(companions).map((entry) => entry.id)).toEqual(["first", "second"]);
+  });
+
+  it("uses the same usable shortcut list for dispatch and help collection", () => {
+    const operationsSource = readFileSync(new URL("../core/client/src/pages/operations.tsx", import.meta.url), "utf8");
+    const appSource = readFileSync(new URL("../core/client/src/app.tsx", import.meta.url), "utf8");
+
+    expect(operationsSource).toContain("usableCompanionShortcuts(activeKind.companions)");
+    expect(appSource).toContain("usableCompanionShortcuts(activeKind?.companions ?? [])");
+  });
+
   it("opens the companion layer and shows only the requested target", () => {
     expect(resolveCompanionShortcutToggle({
       companions: COMPANIONS,
@@ -74,5 +98,12 @@ function companion(id: string, defaultHidden: boolean): CompanionPanelDescriptor
     title: id,
     defaultHidden,
     render: () => null,
+  };
+}
+
+function shortcutCompanion(id: string, code: string): CompanionPanelDescriptor {
+  return {
+    ...companion(id, true),
+    shortcut: { code, label: id },
   };
 }

@@ -7,6 +7,7 @@ import type { OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, requestFitAllOperations, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setViewport, subscribe as subscribeCanvas, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
+import { armTriageSetAside, getTriageSetAsideArmedId, resetTriageTheater, setTriageActive } from "../core/client/src/canvas/triage-store.js";
 import { focusOperation, getState, hydrateOperations, setActiveOperation, setState } from "../core/client/src/store.js";
 import type { OperationNode, TheaterBootstrap } from "../core/client/src/types.js";
 
@@ -88,6 +89,7 @@ vi.mock("../core/client/src/sidebar/operations-side-bar-store.js", () => ({
   setSideBarCollapsed: vi.fn(),
   getSideBarStatusAxis: () => false,
   getSideBarStatusSectionCollapsed: () => false,
+  setSideBarStatusAxis: vi.fn(),
   subscribeOperationActivityTracking: () => () => {},
   toggleSideBarStatusAxis: vi.fn(),
 }));
@@ -136,6 +138,8 @@ beforeEach(() => {
   canvasMocks.onLaunchAtGeometry = null;
   registryMocks.plugins = [];
   registryMocks.operationKinds = [];
+  resetTriageTheater("theater-a");
+  resetTriageTheater("theater-b");
 });
 
 afterEach(() => {
@@ -155,6 +159,8 @@ afterEach(() => {
   vi.clearAllMocks();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  resetTriageTheater("theater-a");
+  resetTriageTheater("theater-b");
 });
 
 describe("Operations boot minimization", () => {
@@ -353,7 +359,7 @@ describe("Operations boot minimization", () => {
     expect(getState().activeOperationId).toBeNull();
 
     keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(true);
-    const event = new KeyboardEvent("keydown", { key: "ArrowLeft", altKey: true, cancelable: true });
+    const event = new KeyboardEvent("keydown", { code: "ArrowLeft", key: "ArrowLeft", altKey: true, cancelable: true });
     await act(async () => {
       window.dispatchEvent(event);
       await Promise.resolve();
@@ -410,6 +416,118 @@ describe("Operations boot minimization", () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
+  it("does not let repeated Alt+Down minimize the next active panel", async () => {
+    await bootApp([operation("first"), operation("second")]);
+    await act(async () => {
+      restoreOperation("first");
+      restoreOperation("second");
+      setActiveOperation("first");
+      await Promise.resolve();
+    });
+    keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(true);
+
+    const initial = altKeyDown("ArrowDown");
+    await act(async () => {
+      window.dispatchEvent(initial);
+      await Promise.resolve();
+    });
+    expect(getSnapshot().minimized).toContain("first");
+    expect(getState().activeOperationId).toBe("second");
+
+    const repeated = altKeyDown("ArrowDown", { repeat: true });
+    await act(async () => {
+      window.dispatchEvent(repeated);
+      await Promise.resolve();
+    });
+
+    expect(repeated.defaultPrevented).toBe(true);
+    expect(getSnapshot().minimized).not.toContain("second");
+    expect(getState().activeOperationId).toBe("second");
+  });
+
+  it("does not let repeated Alt+Down confirm an armed Triage set-aside", async () => {
+    await bootApp([operation("first")]);
+    await act(async () => {
+      setState({ operationStatus: { first: "awaiting" } });
+      setTriageActive("theater-a", true);
+      await Promise.resolve();
+    });
+    const stage = document.createElement("div");
+    stage.className = "canvas-operation is-triage-stage";
+    stage.dataset.operationId = "first";
+    document.body.appendChild(stage);
+    keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(true);
+
+    const initial = altKeyDown("ArrowDown");
+    await act(async () => {
+      window.dispatchEvent(initial);
+      await Promise.resolve();
+    });
+    expect(getTriageSetAsideArmedId("theater-a")).toBe("first");
+
+    const repeated = altKeyDown("ArrowDown", { repeat: true });
+    await act(async () => {
+      window.dispatchEvent(repeated);
+      await Promise.resolve();
+    });
+
+    expect(repeated.defaultPrevented).toBe(true);
+    expect(getTriageSetAsideArmedId("theater-a")).toBe("first");
+    stage.remove();
+  });
+
+  it("continues focus cycling for repeated Alt+Left and Alt+Right", async () => {
+    await bootApp([operation("first"), operation("second")]);
+    await act(async () => {
+      restoreOperation("first");
+      restoreOperation("second");
+      setActiveOperation("first");
+      await Promise.resolve();
+    });
+    keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(true);
+
+    await act(async () => {
+      window.dispatchEvent(altKeyDown("ArrowRight", { repeat: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(getState().activeOperationId).toBe("second");
+
+    await act(async () => {
+      window.dispatchEvent(altKeyDown("ArrowLeft", { repeat: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(getState().activeOperationId).toBe("first");
+  });
+
+  it("blocks panel arrows, companion shortcuts, and armed Escape behind a modal", async () => {
+    registryMocks.operationKinds = [shortcutCompanionKind()];
+    await bootApp([operation("first")]);
+    await act(async () => {
+      restoreOperation("first");
+      setActiveOperation("first");
+      await Promise.resolve();
+    });
+    armTriageSetAside("theater-a", "first");
+    keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(true);
+    const dialog = document.createElement("div");
+    dialog.setAttribute("aria-modal", "true");
+    document.body.appendChild(dialog);
+
+    await act(async () => {
+      window.dispatchEvent(altKeyDown("ArrowDown"));
+      window.dispatchEvent(altKeyDown("KeyC"));
+      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape", key: "Escape", bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+
+    expect(getSnapshot().minimized).not.toContain("first");
+    expect(getCompanionOperationId()).toBeNull();
+    expect(getTriageSetAsideArmedId("theater-a")).toBe("first");
+    dialog.remove();
+  });
+
   it("restores and activates a minimized Operation before pending Map focus moves the viewport", async () => {
     await bootApp([operation("initial")]);
     expect(getSnapshot().minimized).toEqual(["initial"]);
@@ -461,7 +579,7 @@ describe("Operations boot minimization", () => {
     expect(getSnapshot().minimized).toEqual(["second"]);
 
     keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(true);
-    const event = new KeyboardEvent("keydown", { key: "ArrowRight", altKey: true, cancelable: true });
+    const event = new KeyboardEvent("keydown", { code: "ArrowRight", key: "ArrowRight", altKey: true, cancelable: true });
     await act(async () => {
       window.dispatchEvent(event);
       await Promise.resolve();
@@ -487,7 +605,7 @@ describe("Operations boot minimization", () => {
     expect(getSnapshot().minimized).toEqual(["second"]);
 
     keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(true);
-    const event = new KeyboardEvent("keydown", { key: "ArrowRight", altKey: true, cancelable: true });
+    const event = new KeyboardEvent("keydown", { code: "ArrowRight", key: "ArrowRight", altKey: true, cancelable: true });
     await act(async () => {
       window.dispatchEvent(event);
       await Promise.resolve();
@@ -865,7 +983,7 @@ describe("Operations boot minimization", () => {
     expect(getSnapshot().minimized).toEqual(["second"]);
 
     keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(true);
-    const event = new KeyboardEvent("keydown", { key: "ArrowRight", altKey: true, cancelable: true });
+    const event = new KeyboardEvent("keydown", { code: "ArrowRight", key: "ArrowRight", altKey: true, cancelable: true });
     await act(async () => {
       window.dispatchEvent(event);
       await Promise.resolve();
@@ -1092,6 +1210,31 @@ function companionKind(canOpenCompanions: NonNullable<OperationKindDescriptor["c
     companions: [{ id: "analysis", title: "Analysis", render: () => null }],
     canOpenCompanions,
   };
+}
+
+function shortcutCompanionKind(): OperationKindDescriptor {
+  return {
+    pluginId: "terminal",
+    type: "shell",
+    title: "Shell",
+    companions: [{
+      id: "streams",
+      title: "Streams",
+      shortcut: { code: "KeyC", label: "C" },
+      render: () => null,
+    }],
+  };
+}
+
+function altKeyDown(code: string, options: KeyboardEventInit = {}): KeyboardEvent {
+  return new KeyboardEvent("keydown", {
+    code,
+    key: code,
+    altKey: true,
+    bubbles: true,
+    cancelable: true,
+    ...options,
+  });
 }
 
 function theater(id = "theater-a", label = "Theater A") {

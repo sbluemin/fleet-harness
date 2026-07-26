@@ -5,6 +5,7 @@ import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
 import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, issueTheaterFolderGrant, patchOperation, patchTheaterOrder, renameOperation, updateGroup, ApiError, type DeferredDeletionReceipt } from "../api.js";
+import { isBlockingDialogOpen } from "../blocking-dialog.js";
 import { closeOperationCompletely } from "../operation-close.js";
 import { forgetTheaterCompletely } from "../theater-forget.js";
 import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
@@ -20,7 +21,7 @@ import { toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
-import { resolveCompanionShortcutToggle } from "../companion-shortcut.js";
+import { resolveCompanionShortcutToggle, usableCompanionShortcuts } from "../companion-shortcut.js";
 import { resolveOperationsArrowShortcutAction } from "../operations-arrow-shortcut.js";
 import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
@@ -85,6 +86,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     const handler = (event: KeyboardEvent) => {
       if (viewMode.effective === "mobile") return;
       if (!shouldHandleOperationsKeyboardShortcut()) return;
+      if (isBlockingDialogOpen()) return;
       const active = document.activeElement;
       if (active instanceof HTMLElement && active.matches("input, textarea, [contenteditable='true']") && !active.closest(".xterm")) return;
       const escapeTheaterId = stateRef.current.activeTheaterId;
@@ -138,10 +140,13 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       const activeKind = activeOperation
         ? registry.operationKinds.find((kind) => kind.pluginId === activeOperation.pluginId && kind.type === activeOperation.type)
         : null;
-      const companion = activeKind?.companions?.find((candidate) => candidate.shortcut?.code === event.code);
+      const companion = activeKind?.companions
+        ? usableCompanionShortcuts(activeKind.companions).find((candidate) => candidate.shortcut?.code === event.code)
+        : undefined;
       if (activeOperation && activeKind?.companions && companion?.shortcut) {
         event.preventDefault();
         event.stopImmediatePropagation();
+        if (event.repeat) return;
         const toggle = resolveCompanionShortcutToggle({
           companions: activeKind.companions,
           targetId: companion.id,
@@ -162,6 +167,9 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       if (arrowAction === null) return;
       event.preventDefault();
       event.stopImmediatePropagation();
+      if (event.repeat && (arrowAction === "maximize-toggle"
+        || arrowAction === "minimize"
+        || arrowAction === "triage-set-aside")) return;
       if ((arrowAction === "maximize-toggle" || arrowAction === "minimize" || arrowAction === "triage-noop" || arrowAction === "triage-set-aside")
         && getCompanionOperationId() !== null) return;
       if (triageActive) {

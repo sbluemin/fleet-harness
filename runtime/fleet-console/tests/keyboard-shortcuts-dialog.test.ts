@@ -50,8 +50,10 @@ describe("KeyboardShortcutsDialog", () => {
   it("renders active companion shortcut entries supplied by the host", () => {
     act(() => root!.render(createElement(
       ActiveCompanionShortcutsProvider,
-      { value: [{ label: "C", title: "Carrier Streams" }] },
-      createElement(KeyboardShortcutsDialog, { onClose: vi.fn() }),
+      {
+        value: [{ label: "C", title: "Carrier Streams" }],
+        children: createElement(KeyboardShortcutsDialog, { onClose: vi.fn() }),
+      },
     )));
 
     const rows = [...document.querySelectorAll(".keyboard-shortcuts-group dl > div")];
