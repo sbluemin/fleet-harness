@@ -101,15 +101,17 @@ describe("triage store", () => {
   });
 
   it.each([
-    [THEATER_ID, "theater-b", true],
-    ["theater-b", THEATER_ID, false],
-  ] as const)("keeps the status axis enabled when %s exits and restores %s on the last exit", (
+    [false, THEATER_ID, "theater-b"],
+    [false, "theater-b", THEATER_ID],
+    [true, THEATER_ID, "theater-b"],
+    [true, "theater-b", THEATER_ID],
+  ] as const)("restores the initial %s status axis after %s then %s exit", (
+    initial,
     firstExit,
     lastExit,
-    expectedRestored,
   ) => {
     const otherTheaterId = "theater-b";
-    setSideBarStatusAxis(false);
+    setSideBarStatusAxis(initial);
     setTriageActive(THEATER_ID, true);
     setTriageActive(otherTheaterId, true);
 
@@ -117,7 +119,7 @@ describe("triage store", () => {
     expect(getSideBarStatusAxis()).toBe(true);
 
     resetTriageTheater(lastExit);
-    expect(getSideBarStatusAxis()).toBe(expectedRestored);
+    expect(getSideBarStatusAxis()).toBe(initial);
   });
 
   it("removes a picked stage after its waiting activity clears and advances the next item", () => {

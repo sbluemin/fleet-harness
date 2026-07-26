@@ -46,7 +46,7 @@ const seenAt = new Map<string, number>();
 const activityByOperation = new Map<string, OperationActivity>();
 const operationTheater = new Map<string, string>();
 const focusLayerBeforeTriage = new Map<string, FocusLayerState | null>();
-const statusAxisBeforeTriage = new Map<string, boolean>();
+let statusAxisBeforeTriage = false;
 const listeners = new Set<Listener>();
 let revision = 0;
 
@@ -59,8 +59,8 @@ export function setTriageActive(theaterId: string, active: boolean): void {
   if (active) {
     clearFormationView(theaterId);
     if (!triageByTheater.has(theaterId)) {
+      if (triageByTheater.size === 0) statusAxisBeforeTriage = getSideBarStatusAxis();
       focusLayerBeforeTriage.set(theaterId, getTheaterFocusLayerSnapshot(theaterId));
-      statusAxisBeforeTriage.set(theaterId, getSideBarStatusAxis());
       triageByTheater.set(theaterId, true);
       clearedByTheater.set(theaterId, 0);
       enteredAtByTheater.set(theaterId, Date.now());
@@ -76,7 +76,6 @@ export function setTriageActive(theaterId: string, active: boolean): void {
     return;
   }
   const previousFocusLayer = focusLayerBeforeTriage.get(theaterId) ?? null;
-  const previousStatusAxis = statusAxisBeforeTriage.get(theaterId) ?? false;
   const canvas = getTheaterCanvasSnapshot(theaterId);
   const restoredFocusLayer = previousFocusLayer
     && canvas.operations[previousFocusLayer.operationId]
@@ -91,7 +90,6 @@ export function setTriageActive(theaterId: string, active: boolean): void {
   clearedByTheater.delete(theaterId);
   enteredAtByTheater.delete(theaterId);
   focusLayerBeforeTriage.delete(theaterId);
-  statusAxisBeforeTriage.delete(theaterId);
   clearTheaterTransientOperations(theaterId);
   setIdleArrivalAcknowledgementSuspended(triageByTheater.size > 0);
   if (triageByTheater.size === 0) {
@@ -99,7 +97,7 @@ export function setTriageActive(theaterId: string, active: boolean): void {
     if (activeOperationId !== null && !activeOperationAcknowledged) {
       setActiveOperation(activeOperationId);
     }
-    setSideBarStatusAxis(previousStatusAxis);
+    setSideBarStatusAxis(statusAxisBeforeTriage);
   }
   setTheaterFocusLayerSnapshot(theaterId, restoredFocusLayer);
   emitTriage();
@@ -159,7 +157,6 @@ export function resetTriageTheater(theaterId: string): void {
     clearedByTheater.delete(theaterId);
     enteredAtByTheater.delete(theaterId);
     focusLayerBeforeTriage.delete(theaterId);
-    statusAxisBeforeTriage.delete(theaterId);
     clearTheaterTransientOperations(theaterId);
     setIdleArrivalAcknowledgementSuspended(triageByTheater.size > 0);
     emitTriage();
