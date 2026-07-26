@@ -26,6 +26,7 @@ import { forgetTheaterCompletely } from "../theater-forget.js";
 import type { DeferredDeletionReceipt } from "../api.js";
 import { getLoadedTheaterId, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, loadForTheater, minimizeOperations, requestFitAllOperations, toggleFormationView } from "../canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive } from "../canvas/triage-store.js";
+import { getViewModeSnapshot } from "../view-mode-store.js";
 import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import { requestSideBarOperationAction, type SideBarOperationAction } from "../sidebar/operation-action-request.js";
@@ -265,6 +266,9 @@ export function OperationSearch({
         break;
       }
       case "fit-all-panels": {
+        // mobile은 MobileShell이 OperationsCanvas를 대신 렌더해 크기 등록소가 비어 있으므로,
+        // 요청을 남기면 이후 desktop 전환 때 stale fit이 튀어나온다 — ⇧1의 mobile 게이트와 같은 정책으로 차단.
+        if (getViewModeSnapshot().effective === "mobile") break;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         ensurePaletteCanvasTheater(state);
         if (!isTriageActive(state.activeTheaterId)) requestFitAllOperations();
