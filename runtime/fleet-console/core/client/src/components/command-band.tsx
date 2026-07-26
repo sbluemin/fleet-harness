@@ -5,7 +5,7 @@ import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../api.js";
 import { animateViewportTo, fitAllOperations, selectFormationLayout, useCanvasState, useFormationLayout, useFormationView } from "../canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, setTriageActive, useTriageActive } from "../canvas/triage-store.js";
-import { commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
+import { COMMAND_BAND_RAIL_STRIP_PX, commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
 import { FleetBrandHome } from "./side-bar-brand-foot.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
@@ -83,8 +83,11 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const [environmentLoading, setEnvironmentLoading] = useState(false);
   const [copiedValue, setCopiedValue] = useState<string | null>(null);
   const [copyFailedValue, setCopyFailedValue] = useState<string | null>(null);
-  const centerGutter = commandBandCenterGutter(mapControlsWidth);
-  const centerBreadcrumbVisible = viewMode.effective !== "mobile" && commandBandCenterFits(bandWidth - sideBar.width, centerGutter);
+  // 정렬 앵커는 실제 스테이지 경계다 — 접힌 사이드바는 폭 0, 접힌 레일 크롬은 스트립 0.
+  const stageLeftWidth = sideBar.collapsed ? 0 : sideBar.width;
+  const stageRightWidth = railChromeExpanded ? COMMAND_BAND_RAIL_STRIP_PX : 0;
+  const centerGutter = commandBandCenterGutter(sideBar.width - stageLeftWidth, mapControlsWidth);
+  const centerBreadcrumbVisible = viewMode.effective !== "mobile" && commandBandCenterFits(bandWidth - stageLeftWidth - stageRightWidth, centerGutter);
   // 열림/닫힘 전환 시 이벤트 핸들러에서 동기 호출한다 — open effect(폐기 후 fetch)는 paint 뒤에 돌므로
   // 여기서 지우지 않으면 재오픈 첫 프레임에 이전 절대경로가 그대로 렌더된다.
   const discardEnvironmentState = () => {
@@ -353,6 +356,8 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         className={`command-band${requestedOperationsViewVisible ? " is-operations" : " is-utility"}${fullscreen.isFullscreen ? " is-fullscreen" : ""}${fullscreen.isVisible ? " is-revealed" : ""}`}
         style={{
           "--command-band-left-width": viewMode.effective === "mobile" ? "min-content" : `${sideBar.width}px`,
+          "--command-band-stage-left": viewMode.effective === "mobile" ? "min-content" : `${stageLeftWidth}px`,
+          "--command-band-stage-right": `${stageRightWidth}px`,
           "--command-band-center-gutter": `${centerGutter}px`,
         } as CSSProperties}
         aria-hidden={commandBandHidden || undefined}

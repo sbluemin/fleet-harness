@@ -760,15 +760,22 @@ describe("Instrument core design contract", () => {
     // 데스크톱은 사이드바 폭을 그대로 미러하고, 모바일 셸에는 미러할 사이드바가 없으므로
     // 좌측 트랙이 내용 크기로 접힌다. 두 갈래를 한 줄로 고정해 한쪽만 바뀌는 표류를 막는다.
     expect(commandBand).toContain('"--command-band-left-width": viewMode.effective === "mobile" ? "min-content" : `${sideBar.width}px`');
-    expect(layout).toContain("grid-template-columns: var(--command-band-left-width, 280px) minmax(var(--command-band-center-gutter), 1fr) minmax(0, max-content) minmax(var(--command-band-center-gutter), 1fr);");
+    expect(layout).toContain("grid-template-columns: var(--command-band-stage-left) minmax(var(--command-band-center-gutter), 1fr) minmax(0, max-content) minmax(var(--command-band-center-gutter), 1fr) var(--command-band-stage-right);");
     const commandBandCenterBlock = layout.match(/\.command-band-center \{[^}]*\}/)?.[0] ?? "";
+    const commandBandLeftBlocks = [...layout.matchAll(/\.command-band-left \{[^}]*\}/g)].map((match) => match[0]);
     const commandBandRightBlocks = [...layout.matchAll(/\.command-band-right \{[^}]*\}/g)].map((match) => match[0]);
-    // 좌측 트랙은 사이드바 폭으로 고정하고 좌우 여백 트랙은 동일 하한을 공유한다 —
-    // 어느 한쪽이라도 어긋나면 브레드크럼이 사이드바를 포함한 전체폭 기준으로 다시 밀린다.
-    expect(layout).toContain(".command-band.is-utility {\n  grid-template-columns: auto minmax(0, 1fr) minmax(0, max-content) auto;\n}");
+    // 바깥 트랙은 실제 스테이지 경계(접힌 사이드바 0, 접힌 레일 스트립 0)를 담고, 좌측 캡과 우측
+    // 클러스터는 여백 트랙까지 걸쳐 밴드 양끝에 붙는다. 좌우 여백 트랙은 동일 하한을 공유한다 —
+    // 어느 한쪽이라도 어긋나면 브레드크럼이 스테이지 중심에서 밀린다.
+    expect(layout).toContain(".command-band.is-utility {\n  grid-template-columns: auto minmax(0, 1fr) minmax(0, max-content) auto 0px;\n}");
     expect(layout).toContain("  --command-band-center-gutter: 44px;");
+    expect(layout).toContain("  --command-band-stage-left: var(--command-band-left-width, 280px);");
+    expect(layout).toContain("  --command-band-stage-right: 0px;");
+    expect(commandBandLeftBlocks.some((block) => block.includes("grid-column: 1 / 3;"))).toBe(true);
     expect(commandBandCenterBlock).toContain("grid-column: 3;");
-    expect(commandBandRightBlocks.some((block) => block.includes("grid-column: 4;"))).toBe(true);
+    expect(commandBandRightBlocks.some((block) => block.includes("grid-column: 4 / 6;"))).toBe(true);
+    expect(commandBand).toContain('"--command-band-stage-left": viewMode.effective === "mobile" ? "min-content" : `${stageLeftWidth}px`,');
+    expect(commandBand).toContain('"--command-band-stage-right": `${stageRightWidth}px`,');
     expect(commandBand).toContain('"--command-band-center-gutter": `${centerGutter}px`,');
     expect(commandBand).toContain("{centerBreadcrumbVisible ? <div className=\"command-band-center\">");
     // 밴드 조상에 container-type을 걸면 contain:layout이 stacking context를 만들어

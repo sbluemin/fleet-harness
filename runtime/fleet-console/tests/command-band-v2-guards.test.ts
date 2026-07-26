@@ -101,12 +101,14 @@ describe("Command Band menu viewport clamp", () => {
 
 describe("Command Band center visibility measurements", () => {
   it("uses the floor gutter while map controls are unmeasured or narrower than the floor", () => {
-    expect(commandBandCenterGutter(0)).toBe(44);
-    expect(commandBandCenterGutter(1)).toBe(44);
+    expect(commandBandCenterGutter(0, 0)).toBe(44);
+    expect(commandBandCenterGutter(0, 1)).toBe(44);
   });
 
   it("derives the gutter from the measured map control width", () => {
-    expect(commandBandCenterGutter(163)).toBe(8 + 163 + 12);
+    expect(commandBandCenterGutter(0, 163)).toBe(8 + 163 + 12);
+    // 사이드바를 접으면 좌측 캡(280px)이 스테이지 원점보다 앞서므로 그만큼 하한이 커진다.
+    expect(commandBandCenterGutter(280, 163)).toBe(280 + 8 + 163 + 12);
   });
 
   it("keeps the center visible while the track is unmeasured", () => {
