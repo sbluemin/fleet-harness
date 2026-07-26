@@ -5,6 +5,59 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.36.0] - 2026-07-26
+
+### fleet-console
+
+#### Added
+- [fleet-console] The command palette's command mode now covers session lifecycle verbs: Undo last close appears at the top while the eight-second undo window is live, Add Theater opens the existing folder picker, and each Theater gets a Forget command at the bottom of the list that routes through the same undo window as the sidebar.
+- [fleet-console] Command mode now blends rail panel search results below the command list, so typing a query after the angle bracket reaches Files, Repository, and other panel providers without leaving command mode.
+- [fleet-console] The console now reports a lost server link on the command band, in a banner pinning the time values stopped updating, and over rail panels whose values are frozen, each offering to reconnect.
+- [fleet-console] While that overlay covers a rail panel, its contents stay out of the keyboard tab order and focus moves to the reconnect control, returning once the link is live.
+- [fleet-console] A new "Fit all panels" command frames every visible Operation on the canvas: Shift+1 on the map, a command-band button next to Reset canvas view, or the palette's Fit all panels row animates the viewport so all non-minimized panels fit with comfortable padding. Terminals keep the "!" keystroke, and the command is suppressed while Formation view or Triage mode is active.
+- [fleet-console] Alt with the up or down arrow now maximizes or minimizes the active panel on the map and in Formation view.
+- [fleet-console] In Triage mode, Alt with the down arrow sets the current item aside; the first press asks for confirmation and a second press within 1.5 seconds carries it out, while Escape cancels.
+- [fleet-console] Holding Alt now shows each panel's position number and the two keys available in the current mode, not just its name.
+- [fleet-console] Plugins can give a companion panel a keyboard shortcut, and the Console dispatches it and lists it in the shortcut help.
+- [fleet-console] The command band breadcrumb now folds away before it can reach the map controls when the window gets too narrow, and returns as soon as there is room again.
+- [fleet-console] Host a floating widget layer so a plugin can render across the whole console without taking a panel, and let it read the fleet as aggregate signals only.
+
+#### Changed
+- [fleet-console] The shortcut help no longer lists two Esc entries that had no effect.
+
+#### Fixed
+- [fleet-console] The Triage mode button no longer overlaps the Formation layout icons in the command band: the map controls (Reset view, Fit all panels, Formation layouts, Triage) now share one flow container with even spacing instead of per-control absolute offsets, so future buttons cannot collide again.
+- [fleet-console] Triage mode opens with nothing on stage and nothing focused when no Operation is waiting, instead of surfacing whichever panel was focused before.
+- [fleet-console] The command band breadcrumb now centers on the panel area itself instead of the whole window, so the sidebar no longer pushes it off center and collapsing the sidebar keeps it centered.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] The Session Analyst artifacts panel gains an Export menu on the active artifact: download it as a self-named HTML file, copy its source to the clipboard, or open the themed render in a new tab. The menu is fully keyboard-operable and everything stays client-side, so artifact limits and storage behavior are unchanged.
+- [fleet-console] Alt+C opens or closes Carrier Streams and Alt+A opens or closes Session Analyst on the active agent Operation.
+- [fleet-console] A new Ledger panel in the Activity Rail reports what local agent CLI work cost. Operations show their own token usage and dollar cost, matched by the session id the Console already holds, and a device-wide section totals every local session per CLI regardless of Theater or Operation. Usage is collected by installing a pinned copy of the tokscale CLI under the plugin data directory; nothing is uploaded and no prompt or response text is read.
+- [fleet-console] Add Scuttlebutt, three quaker admirals who roam the console and answer quick questions without a Theater or an Operation.
+- [fleet-console] Give Tori, Bori and Dori a chat session and a voice of their own, each reachable by clicking that admiral.
+- [fleet-console] Let the admirals search the web and read public sources, while file and shell work stays with an Operation in a Theater.
+- [fleet-console] Report the fleet through posture: thinking while operations run, an alarm while something waits on approval or the stream is down, and a cheer when an operation finishes.
+- [fleet-console] Announce a finished operation in a bubble that follows the admiral carrying it and clears itself.
+- [fleet-console] Retire any admiral individually from settings, and pin one where it stands from the head of its chat without stopping its animations.
+- [fleet-console] Ship the admirals off by default and mark the settings section experimental, so nobody gets a floating mascot they did not ask for.
+- [fleet-console] Freeze the flock into a still formation when the console or the system asks for reduced motion.
+
+#### Changed
+- [fleet-console] Repository history continues past the first 200 commits with a load-more control, and says so when the first commit is reached.
+- [fleet-console] Repository history renders only the rows in view, so a longer list no longer makes the panel heavier.
+- [fleet-console] Repository history graph lanes follow real ancestry even when a filter is applied.
+- [fleet-console] Show the idle agent session settings and the agent alerts in the console display language instead of English only.
+- [fleet-console] Show each carrier's role and mission in the console display language, switching with the language setting without refetching.
+
+### fleet-core
+
+#### Added
+- [core-unified-agent] Allow a system prompt to replace the CLI preset instead of prefixing it, so a caller can define an agent's whole identity.
+- [fleet-carriers] Keep display-only carrier translations apart from the canonical English metadata, so the routing roster given to the host agent stays language independent.
+
 ## [1.35.0] - 2026-07-26
 
 ### fleet-console
