@@ -1,10 +1,12 @@
 import type { FloatingWidgetContext } from "@fleet-console/sdk/floating";
 import { React, useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
 
+import { ArrivalBubble } from "./arrival-bubble.js";
 import { ChatCard } from "./chat-card.js";
 import type { ChatState } from "./chat-store.js";
 import { initialDragState, updateDrag, type DragState } from "./drag-state.js";
 import { clampPoint, snapPoint, type Point, type Size } from "./geometry.js";
+import { getT } from "./i18n.js";
 import {
   getScuttlebuttSettings,
   subscribeScuttlebuttSettings,
@@ -21,6 +23,8 @@ export function ScuttlebuttMascot({ context }: { readonly context: FloatingWidge
   const settings = useStoreSnapshot(subscribeScuttlebuttSettings, getScuttlebuttSettings);
   const mascotRef = React.useRef<HTMLButtonElement>(null);
   const dragRef = React.useRef<DragState>(initialDragState);
+  const cheerTimeoutRef = React.useRef<number | null>(null);
+  const previousPhaseRef = React.useRef<ChatState["phase"]>("idle");
   const positionRef = React.useRef<Point>({ left: 4, top: 4 });
   const hadPersistedPosition = React.useRef(false);
   const [position, setPosition] = React.useState<Point>(() => {
@@ -35,6 +39,7 @@ export function ScuttlebuttMascot({ context }: { readonly context: FloatingWidge
   const [open, setOpen] = React.useState(false);
   const [tucked, setTucked] = React.useState(false);
   const [phase, setPhase] = React.useState<ChatState["phase"]>("idle");
+  const [cheering, setCheering] = React.useState(false);
   const [positionRevision, setPositionRevision] = React.useState(0);
 
   const widgetSize = React.useCallback((): Size => {
@@ -93,9 +98,30 @@ export function ScuttlebuttMascot({ context }: { readonly context: FloatingWidge
     };
   }, [commitPosition]);
 
+  const cheer = React.useCallback(() => {
+    setCheering(false);
+    if (cheerTimeoutRef.current !== null) window.clearTimeout(cheerTimeoutRef.current);
+    window.requestAnimationFrame(() => setCheering(true));
+    cheerTimeoutRef.current = window.setTimeout(() => {
+      setCheering(false);
+      cheerTimeoutRef.current = null;
+    }, 1_200);
+  }, []);
+
+  React.useEffect(() => {
+    if (phase === "ready" && previousPhaseRef.current !== "ready") cheer();
+    previousPhaseRef.current = phase;
+  }, [cheer, phase]);
+
+  React.useEffect(() => () => {
+    if (cheerTimeoutRef.current !== null) window.clearTimeout(cheerTimeoutRef.current);
+  }, []);
+
   if (!settings.enabled) return null;
 
-  const mascotState = phase === "starting" || phase === "thinking"
+  const mascotState = cheering
+    ? "is-cheering"
+    : phase === "starting" || phase === "thinking"
     ? "is-thinking"
     : phase === "ready" ? "is-ready" : "";
   const isDragging = dragRef.current.phase === "dragging";
@@ -111,7 +137,7 @@ export function ScuttlebuttMascot({ context }: { readonly context: FloatingWidge
           tucked ? "is-tucked" : "",
         ].filter(Boolean).join(" ")}
         style={{ left: position.left, top: position.top }}
-        aria-label="Admiral Sam"
+        aria-label={getT(context.language)("mascot.label")}
         aria-expanded={open}
         onPointerDown={(event) => {
           if (event.button !== 0) return;
@@ -135,22 +161,32 @@ export function ScuttlebuttMascot({ context }: { readonly context: FloatingWidge
       >
         {tucked ? <span className="scuttlebutt-beacon" aria-hidden="true" /> : (
           <>
-            <span className="scuttlebutt-bubble" aria-hidden="true">
-              {mascotState === "is-thinking" ? "…" : mascotState === "is-ready" ? "got it!" : "zzz"}
-            </span>
+            {mascotState === "is-thinking"
+              ? <span className="scuttlebutt-bubble" aria-hidden="true">…</span>
+              : null}
             <span className="scuttlebutt-cat" aria-hidden="true">
               <i className="scuttlebutt-pixel scuttlebutt-fur" />
               <i className="scuttlebutt-pixel scuttlebutt-eyes" />
               <i className="scuttlebutt-pixel scuttlebutt-tail" />
+              <i className="scuttlebutt-pixel scuttlebutt-arms" />
             </span>
           </>
         )}
       </button>
+      <ArrivalBubble
+        arrivals={context.arrivals}
+        locale={context.language}
+        mascot={mascotRef}
+        quiet={!open && phase !== "starting" && phase !== "thinking"}
+        positionRevision={positionRevision}
+        onShow={cheer}
+      />
       {open && !tucked ? (
         <ChatCard
           api={context.api}
           mascot={mascotRef}
           settings={settings}
+          locale={context.language}
           positionRevision={positionRevision}
           onPhaseChange={setPhase}
           onClose={() => {

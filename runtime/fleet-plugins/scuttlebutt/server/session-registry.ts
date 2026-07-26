@@ -9,22 +9,11 @@ type Entry = {
   readonly subscribers: Set<Subscriber>;
   readonly createdAt: number;
   status: SessionStatus;
-  assistantText: string;
   disposePromise?: Promise<void>;
 };
 
-export interface SessionRegistryHooks {
-  readonly onUserMessage?: (chatId: string, text: string) => void | Promise<void>;
-  readonly onAssistantMessage?: (chatId: string, text: string) => void | Promise<void>;
-}
-
 export class SessionRegistry {
   private readonly entries = new Map<string, Entry>();
-  private readonly hooks: SessionRegistryHooks;
-
-  constructor(hooks: SessionRegistryHooks = {}) {
-    this.hooks = hooks;
-  }
 
   async start(
     chatId: string,
@@ -35,13 +24,7 @@ export class SessionRegistry {
     let entry: Entry | undefined;
     const session = create((event) => {
       if (!entry || entry.status === "stopped") return;
-      if (event.type === "chunk") entry.assistantText += event.text;
-      if (event.type === "complete") {
-        entry.status = "idle";
-        const answer = entry.assistantText;
-        entry.assistantText = "";
-        if (answer) void Promise.resolve(this.hooks.onAssistantMessage?.(chatId, answer)).catch(() => undefined);
-      }
+      if (event.type === "complete") entry.status = "idle";
       this.publish(entry, event);
       if (event.type === "error" && event.error.code === "chat_exited") void this.stopEntry(chatId, entry);
     });
@@ -50,7 +33,6 @@ export class SessionRegistry {
       subscribers: new Set(),
       createdAt: Date.now(),
       status: "starting",
-      assistantText: "",
     };
     this.entries.set(chatId, entry);
     try {
@@ -75,13 +57,6 @@ export class SessionRegistry {
     if (!entry || entry.status === "stopped") return "not_found";
     if (entry.status !== "idle") return "busy";
     entry.status = "busy";
-    entry.assistantText = "";
-    try {
-      await this.hooks.onUserMessage?.(chatId, text);
-    } catch (error) {
-      entry.status = "idle";
-      throw error;
-    }
     void entry.session.send(text).catch(() => {
       if (this.entries.get(chatId) !== entry || entry.status === "stopped") return;
       entry.status = "idle";

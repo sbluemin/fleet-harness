@@ -8,6 +8,7 @@ import {
 } from "@fleet-console/sdk/settings/browser";
 
 import type { ChatCatalog } from "./catalog.js";
+import { getT } from "./i18n.js";
 import {
   getScuttlebuttSettings,
   subscribeScuttlebuttSettings,
@@ -16,11 +17,12 @@ import {
 
 export const scuttlebuttSettingsSection = defineSettingsSection({
   id: "scuttlebutt",
-  title: "Scuttlebutt",
+  title: (locale) => getT(locale)("settings.section.title"),
   render: () => <ScuttlebuttSettingsSection />,
 });
 
 function ScuttlebuttSettingsSection() {
+  const t = getT(document.documentElement.lang === "ko" ? "ko" : "en");
   const settings = useStoreSnapshot(subscribeScuttlebuttSettings, getScuttlebuttSettings);
   const [catalog, setCatalog] = React.useState<ChatCatalog | null>(null);
   const [saving, setSaving] = React.useState(false);
@@ -48,13 +50,12 @@ function ScuttlebuttSettingsSection() {
 
   return (
     <SettingsCard
-      title="Admiral Sam"
-      description="Keep a read-only web research companion available across the Console."
+      title={t("settings.section.title")}
     >
-      <SettingsRow label="Enable Admiral Sam" hint="When off, the floating mascot is removed.">
+      <SettingsRow label={t("settings.section.enable")} hint={t("settings.section.enableHint")}>
         <SettingsToggle checked={settings.enabled} disabled={saving} onChange={(enabled) => void save({ enabled })} />
       </SettingsRow>
-      <SettingsRow label="Default CLI">
+      <SettingsRow label={t("settings.row.cli")}>
         <SettingsSelect
           value={activeCli?.cliId ?? settings.cliId}
           disabled={saving || availableClis.length === 0}
@@ -65,7 +66,7 @@ function ScuttlebuttSettingsSection() {
           }}
         />
       </SettingsRow>
-      <SettingsRow label="Default model">
+      <SettingsRow label={t("settings.row.model")}>
         <SettingsSelect
           value={model?.id ?? settings.model}
           disabled={saving || !activeCli}
@@ -76,7 +77,7 @@ function ScuttlebuttSettingsSection() {
           }}
         />
       </SettingsRow>
-      <SettingsRow label="Default effort">
+      <SettingsRow label={t("settings.row.reasoning")}>
         <SettingsSelect
           value={settings.effort ?? ""}
           disabled={saving || !model || model.effortLevels.length === 0}

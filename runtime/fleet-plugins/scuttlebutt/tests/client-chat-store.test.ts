@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   appendUser,
   currentExchange,
-  hydrateEntries,
   initialChatState,
   reduceChatEvent,
 } from "../client/chat-store.js";
@@ -27,6 +26,15 @@ describe("Scuttlebutt chat SSE reducer", () => {
     expect(reduceChatEvent(tool, { type: "complete" }).phase).toBe("ready");
   });
 
+  it("localizes quiet tool statuses", () => {
+    const reading = reduceChatEvent(initialChatState, {
+      type: "tool",
+      title: "Read",
+      status: "running",
+    }, "ko");
+    expect(reading.entries[0]).toMatchObject({ kind: "tool", text: "출처를 읽는 중…" });
+  });
+
   it("retains a quiet error entry", () => {
     const failed = reduceChatEvent(initialChatState, {
       type: "error",
@@ -39,21 +47,11 @@ describe("Scuttlebutt chat SSE reducer", () => {
 
 describe("Scuttlebutt current exchange", () => {
   it("keeps only the latest question and what followed it", () => {
-    const hydrated = hydrateEntries([{
-      id: "thread",
-      title: "Earlier",
-      cliId: "claude",
-      model: "haiku",
-      createdAt: 0,
-      messages: [
-        { id: "m1", role: "user", text: "First question", at: 1 },
-        { id: "m2", role: "assistant", text: "First answer", at: 2 },
-        { id: "m3", role: "user", text: "Second question", at: 3 },
-        { id: "m4", role: "assistant", text: "Second answer", at: 4 },
-      ],
-    }]);
-
-    const visible = currentExchange(hydrated);
+    const firstQuestion = appendUser(initialChatState, "First question");
+    const firstAnswer = reduceChatEvent(firstQuestion, { type: "chunk", text: "First answer" });
+    const secondQuestion = appendUser(firstAnswer, "Second question");
+    const secondAnswer = reduceChatEvent(secondQuestion, { type: "chunk", text: "Second answer" });
+    const visible = currentExchange(secondAnswer);
 
     expect(visible.map((entry) => entry.text)).toEqual(["Second question", "Second answer"]);
     expect(visible.some((entry) => entry.text === "First question")).toBe(false);

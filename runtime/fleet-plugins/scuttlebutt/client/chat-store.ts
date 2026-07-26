@@ -1,4 +1,7 @@
 import type { ChatStreamEvent } from "./sse-client.js";
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+
+import { getT } from "./i18n.js";
 
 export type ChatEntry =
   | { readonly id: string; readonly kind: "user" | "assistant"; readonly text: string }
@@ -11,7 +14,7 @@ export interface ChatState {
 
 export const initialChatState: ChatState = { entries: [], phase: "idle" };
 
-export function reduceChatEvent(state: ChatState, event: ChatStreamEvent): ChatState {
+export function reduceChatEvent(state: ChatState, event: ChatStreamEvent, locale?: ConsoleLocale): ChatState {
   if (event.type === "connected") return state;
   if (event.type === "chunk") {
     const last = state.entries.at(-1);
@@ -21,7 +24,7 @@ export function reduceChatEvent(state: ChatState, event: ChatStreamEvent): ChatS
     return { entries, phase: "thinking" };
   }
   if (event.type === "tool") {
-    const text = quietToolStatus(event.title, event.status);
+    const text = quietToolStatus(event.title, event.status, locale);
     const last = state.entries.at(-1);
     const entries = last?.kind === "tool"
       ? [...state.entries.slice(0, -1), { ...last, text }]
@@ -35,7 +38,7 @@ export function reduceChatEvent(state: ChatState, event: ChatStreamEvent): ChatS
   };
 }
 
-/** 카드는 마지막 질문과 그에 대한 답만 보여준다 — 이전 턴은 서버 히스토리에만 남는다. */
+/** 카드는 현재 브라우저 메모리의 마지막 질문과 그에 대한 답만 보여준다. */
 export function currentExchange(state: ChatState): readonly ChatEntry[] {
   for (let index = state.entries.length - 1; index >= 0; index -= 1) {
     if (state.entries[index]?.kind === "user") return state.entries.slice(index);
@@ -50,40 +53,12 @@ export function appendUser(state: ChatState, text: string): ChatState {
   };
 }
 
-export function hydrateEntries(threads: readonly ChatThreadDto[]): ChatState {
-  const thread = threads[0];
-  if (!thread) return initialChatState;
-  return {
-    entries: thread.messages.map((message) => ({
-      id: message.id,
-      kind: message.role,
-      text: message.text,
-    })),
-    phase: "idle",
-  };
-}
-
-export interface ChatMessageDto {
-  readonly id: string;
-  readonly role: "user" | "assistant";
-  readonly text: string;
-  readonly at: number;
-}
-
-export interface ChatThreadDto {
-  readonly id: string;
-  readonly title: string;
-  readonly cliId: "claude" | "claude-kimi" | "codex";
-  readonly model: string;
-  readonly createdAt: number;
-  readonly messages: readonly ChatMessageDto[];
-}
-
-function quietToolStatus(title: string, status: string): string {
+export function quietToolStatus(title: string, status: string, locale?: ConsoleLocale): string {
+  const t = getT(locale);
   const combined = `${title} ${status}`.toLowerCase();
-  if (combined.includes("search")) return "Searching…";
-  if (combined.includes("fetch") || combined.includes("read")) return "Reading a source…";
-  return status.trim() ? `${status.trim().replace(/[.]+$/u, "")}…` : "Working…";
+  if (combined.includes("search")) return t("status.searching");
+  if (combined.includes("fetch") || combined.includes("read")) return t("status.reading");
+  return t("status.working");
 }
 
 let id = 0;

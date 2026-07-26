@@ -1,4 +1,7 @@
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
+
+import { getT } from "./i18n.js";
 
 export type SettingsRowKey = "cli" | "model" | "reasoning";
 
@@ -9,7 +12,7 @@ export interface SettingsOption {
 
 export interface SettingsRow {
   readonly key: SettingsRowKey;
-  readonly label: "Agent CLI" | "Model" | "Reasoning";
+  readonly label: string;
   readonly value: string;
   readonly valueLabel: string;
   readonly options: readonly SettingsOption[];
@@ -71,6 +74,7 @@ export function getSettingsRows({
   modelOptions,
   effort,
   effortOptions,
+  locale,
 }: {
   readonly cliLabel: string;
   readonly cliValue: string;
@@ -80,13 +84,15 @@ export function getSettingsRows({
   readonly modelOptions: readonly SettingsOption[];
   readonly effort: string;
   readonly effortOptions: readonly SettingsOption[];
+  readonly locale?: ConsoleLocale;
 }): readonly SettingsRow[] {
+  const t = getT(locale);
   const rows: SettingsRow[] = [
-    { key: "cli", label: "Agent CLI", value: cliValue, valueLabel: cliLabel, options: cliOptions },
-    { key: "model", label: "Model", value: modelValue, valueLabel: modelLabel, options: modelOptions },
+    { key: "cli", label: t("settings.row.cli"), value: cliValue, valueLabel: cliLabel, options: cliOptions },
+    { key: "model", label: t("settings.row.model"), value: modelValue, valueLabel: modelLabel, options: modelOptions },
   ];
   if (effortOptions.length > 0) {
-    rows.push({ key: "reasoning", label: "Reasoning", value: effort, valueLabel: effort, options: effortOptions });
+    rows.push({ key: "reasoning", label: t("settings.row.reasoning"), value: effort, valueLabel: effort, options: effortOptions });
   }
   return rows;
 }
@@ -188,6 +194,7 @@ export function SettingsMenu({
   modelLabel,
   effort,
   rows,
+  locale,
   disabled,
   cardRef,
   onSelect,
@@ -195,10 +202,12 @@ export function SettingsMenu({
   readonly modelLabel: string;
   readonly effort: string;
   readonly rows: readonly SettingsRow[];
+  readonly locale?: ConsoleLocale;
   readonly disabled: boolean;
   readonly cardRef: React.RefObject<HTMLDivElement | null>;
   readonly onSelect: (row: SettingsRowKey, value: string) => void;
 }) {
+  const t = getT(locale);
   const rootRef = React.useRef<HTMLDivElement>(null);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
   const menuRef = React.useRef<HTMLDivElement>(null);
@@ -290,7 +299,7 @@ export function SettingsMenu({
         ref={triggerRef}
         type="button"
         className="scuttlebutt-settings-trigger"
-        aria-label="Model settings"
+        aria-label={t("settings.trigger")}
         aria-haspopup="menu"
         aria-expanded={state.open}
         disabled={disabled}
@@ -313,7 +322,7 @@ export function SettingsMenu({
           ref={menuRef}
           className="scuttlebutt-settings-menu"
           role="menu"
-          aria-label="Model settings"
+          aria-label={t("settings.trigger")}
           style={placement ? { left: placement.menu.left, top: placement.menu.top } : undefined}
           onKeyDown={(event) => {
             if (event.key === "Escape") {

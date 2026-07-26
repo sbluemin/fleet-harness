@@ -42,15 +42,9 @@
     transform var(--duration-base) var(--ease-glide);
 }
 
-.scuttlebutt-mascot.is-thinking .scuttlebutt-bubble,
-.scuttlebutt-mascot.is-ready .scuttlebutt-bubble {
+.scuttlebutt-mascot.is-thinking .scuttlebutt-bubble {
   opacity: 1;
   transform: none;
-}
-
-.scuttlebutt-mascot.is-ready .scuttlebutt-bubble {
-  border-color: color-mix(in oklch, var(--positive) 35%, var(--hairline));
-  color: var(--positive);
 }
 
 .scuttlebutt-cat {
@@ -185,7 +179,10 @@
   box-shadow:
     calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-abyss),
     calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-abyss);
-  animation: scuttlebutt-blink calc(var(--duration-slow) * 15) steps(1) infinite;
+  transform-origin:
+    calc(var(--scuttlebutt-pixel-size) * 6.5)
+    calc(var(--scuttlebutt-pixel-size) * 5.5);
+  animation: scuttlebutt-blink 5.4s steps(1) infinite;
 }
 
 .scuttlebutt-tail {
@@ -207,15 +204,49 @@
 }
 
 .scuttlebutt-mascot.is-thinking .scuttlebutt-cat {
-  animation: scuttlebutt-bob calc(var(--duration-slow) * 2) var(--ease-glide) infinite;
+  animation: scuttlebutt-thinking-bob calc(var(--duration-slow) * 2) var(--ease-glide) infinite;
+}
+
+.scuttlebutt-mascot.is-thinking .scuttlebutt-tail {
+  animation-duration: calc(var(--duration-slow) * 2);
 }
 
 /* 눈 좌표는 스프라이트 얼굴 행(x4·x8, y5)에 고정한다 — 상태별로 색만 바뀌고 위치는 움직이지 않는다.
-   ready에서는 blink를 그대로 두어 답변 직후에도 살아 있게 보인다. */
+   idle 이외 상태에서는 깜빡임을 멈춘다. */
 .scuttlebutt-mascot.is-ready .scuttlebutt-eyes {
   box-shadow:
     calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 5) var(--positive),
     calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 5) var(--positive);
+  animation: none;
+}
+
+.scuttlebutt-arms {
+  background: transparent;
+  opacity: 0;
+  box-shadow:
+    0 calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
+    var(--scuttlebutt-pixel-size) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 11) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 12) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl);
+}
+
+.scuttlebutt-mascot.is-cheering .scuttlebutt-cat {
+  animation: scuttlebutt-cheer 1.2s var(--ease-spring);
+}
+
+.scuttlebutt-mascot.is-cheering .scuttlebutt-eyes {
+  box-shadow:
+    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 5) var(--positive),
+    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 5) var(--positive);
+  animation: none;
+}
+
+.scuttlebutt-mascot.is-cheering .scuttlebutt-tail {
+  animation: scuttlebutt-tail calc(var(--duration-slow) * 2) steps(2) infinite;
+}
+
+.scuttlebutt-mascot.is-cheering .scuttlebutt-arms {
+  opacity: 1;
 }
 
 .scuttlebutt-beacon {
@@ -225,6 +256,33 @@
   border-radius: var(--radius-pill);
   background: var(--ink-rim);
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--brass) 18%, transparent);
+}
+
+.scuttlebutt-arrival-bubble {
+  position: fixed;
+  z-index: 2;
+  max-width: min(320px, calc(100vw - var(--space-4)));
+  padding: var(--space-2) var(--space-3);
+  overflow: hidden;
+  border: 1px solid color-mix(in oklch, var(--positive) 50%, var(--hairline));
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--positive) 12%, var(--surface-glass-strong));
+  box-shadow: var(--shadow-floating);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  line-height: 1.35;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: scuttlebutt-arrival-in var(--duration-base) var(--ease-spring);
+}
+
+.scuttlebutt-arrival-bubble:focus-visible {
+  outline: 2px solid var(--positive);
+  outline-offset: 2px;
 }
 
 .scuttlebutt-chat-card {
@@ -601,17 +659,15 @@
   }
 }
 
-/* steps(1)은 각 구간에서 시작 값을 유지하고 구간 끝에서 다음 값으로 튄다 — 픽셀 눈에 맞는 즉각적인
-   깜빡임이다. 한 번 감았다 뜨고 곧바로 한 번 더 감는 2연속 깜빡임이라야 "사라졌다"가 아니라
-   "꿈뻑였다"로 읽힌다. */
+/* 얼굴 y5 행 중심에서 눈 레이어를 세로로 눌러 '-' 모양으로 두 번 감는다. */
 @keyframes scuttlebutt-blink {
   0%,
-  88% { opacity: 1; }
-  89% { opacity: 0; }
-  91% { opacity: 1; }
-  92% { opacity: 0; }
+  88% { transform: scaleY(1); }
+  89% { transform: scaleY(0.12); }
+  91% { transform: scaleY(1); }
+  92% { transform: scaleY(0.12); }
   94%,
-  100% { opacity: 1; }
+  100% { transform: scaleY(1); }
 }
 
 @keyframes scuttlebutt-tail {
@@ -620,10 +676,31 @@
   50% { transform: rotate(-9deg); }
 }
 
-@keyframes scuttlebutt-bob {
+@keyframes scuttlebutt-thinking-bob {
   0%,
   100% { transform: translateY(0); }
-  50% { transform: translateY(-3px); }
+  25% { transform: translateY(-2px) rotate(-1deg); }
+  65% { transform: translateY(-4px) rotate(1deg); }
+}
+
+@keyframes scuttlebutt-cheer {
+  0%,
+  100% { transform: translateY(0) rotate(0); }
+  18% { transform: translateY(-9px) rotate(-3deg); }
+  36% { transform: translateY(0) rotate(1deg); }
+  58% { transform: translateY(-7px) rotate(3deg); }
+  78% { transform: translateY(0) rotate(-1deg); }
+}
+
+@keyframes scuttlebutt-arrival-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 @keyframes scuttlebutt-card-in {
@@ -658,10 +735,16 @@
   .scuttlebutt-cat,
   .scuttlebutt-eyes,
   .scuttlebutt-tail,
+  .scuttlebutt-arms,
+  .scuttlebutt-arrival-bubble,
   .scuttlebutt-thinking i,
   .scuttlebutt-chat-card,
   .scuttlebutt-settings-menu,
   .scuttlebutt-settings-submenu {
     animation: none;
+  }
+
+  .scuttlebutt-mascot.is-cheering .scuttlebutt-arms {
+    opacity: 0;
   }
 }

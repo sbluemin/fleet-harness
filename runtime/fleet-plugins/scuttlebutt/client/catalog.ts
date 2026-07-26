@@ -1,4 +1,3 @@
-import type { ChatThreadDto } from "./chat-store.js";
 import type { ScuttlebuttSettings } from "./settings-store.js";
 
 export interface ChatCatalogModel {
@@ -19,6 +18,5 @@ export interface ChatCatalogCli {
 
 export interface ChatCatalog {
   readonly clis: readonly ChatCatalogCli[];
-  readonly threads: readonly ChatThreadDto[];
   readonly settings: ScuttlebuttSettings;
 }

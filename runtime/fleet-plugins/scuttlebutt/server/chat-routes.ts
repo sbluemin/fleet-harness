@@ -9,12 +9,8 @@ import {
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 
-import { ChatSession, redactScratchPath, type ChatSessionLike } from "./chat-session.js";
-import {
-  defaultScuttlebuttSettings,
-  HistoryStore,
-  type ChatThreadDto,
-} from "./history-store.js";
+import type { ScuttlebuttSettings } from "../client/settings-store.js";
+import { ChatSession, type ChatSessionLike } from "./chat-session.js";
 import { SessionRegistry } from "./session-registry.js";
 
 const CHAT_CLI_IDS = ["claude", "claude-kimi", "codex"] as const;
@@ -22,8 +18,7 @@ type ChatCliId = (typeof CHAT_CLI_IDS)[number];
 
 export type ChatCatalog = {
   readonly clis: readonly ChatCatalogCli[];
-  readonly threads: readonly ChatThreadDto[];
-  readonly settings: ReturnType<typeof defaultScuttlebuttSettings>;
+  readonly settings: ScuttlebuttSettings;
 };
 
 export type ChatCatalogCli = {
@@ -44,24 +39,17 @@ export interface ChatRouteDeps {
   readonly detect?: () => Promise<readonly CliDetectionResult[]>;
   readonly modelsFor?: typeof getProviderModels;
   readonly createSession?: (options: ConstructorParameters<typeof ChatSession>[0]) => ChatSessionLike;
-  readonly now?: () => number;
   readonly id?: () => string;
 }
 
 export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRouteDeps = {}): SessionRegistry {
-  const pluginDataDir = ctx.host.paths.pluginDataDir("scuttlebutt");
-  const history = new HistoryStore(ctx.host.storage, (text) => redactScratchPath(text, pluginDataDir));
-  const registry = new SessionRegistry({
-    onUserMessage: (chatId, text) => history.appendMessage(chatId, "user", text).then(() => undefined),
-    onAssistantMessage: (chatId, text) => history.appendMessage(chatId, "assistant", text).then(() => undefined),
-  });
+  const registry = new SessionRegistry();
   const detect = deps.detect ?? (() => new CliDetector().detectAll());
   const modelsFor = deps.modelsFor ?? getProviderModels;
   const createSession = deps.createSession ?? ((options) => new ChatSession(options));
-  const now = deps.now ?? Date.now;
   const id = deps.id ?? crypto.randomUUID;
 
-  const catalog = async (): Promise<ChatCatalog> => buildChatCatalog(await detect(), await history.list(), modelsFor);
+  const catalog = async (): Promise<ChatCatalog> => buildChatCatalog(await detect(), modelsFor);
 
   registerRouter(ctx, "chat", async ({ req, res, pathname }) => {
     if (!ctx.host.security.isTerminalAuthorized(req)) {
@@ -71,7 +59,7 @@ export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRout
     const routePath = pathname.slice(`${ctx.basePath}/chat`.length) || "/";
     if (routePath === "/catalog") return handleCatalog(ctx, req, res, catalog);
     if (routePath === "/start") {
-      return handleStart(ctx, req, res, registry, catalog, createSession, now, id, history);
+      return handleStart(ctx, req, res, registry, catalog, createSession, id);
     }
     const match = routePath.match(/^\/([^/]+)\/(message|stream|stop)$/u);
     if (!match) return false;
@@ -91,7 +79,6 @@ export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRout
 
 export function buildChatCatalog(
   detections: readonly CliDetectionResult[],
-  threads: readonly ChatThreadDto[],
   modelsFor: typeof getProviderModels = getProviderModels,
 ): ChatCatalog {
   const detectionByCli = new Map(detections.map((detection) => [detection.cli, detection]));
@@ -116,8 +103,12 @@ export function buildChatCatalog(
   });
   return {
     clis,
-    threads,
-    settings: defaultScuttlebuttSettings(modelsFor("claude").defaultModel),
+    settings: {
+      enabled: true,
+      cliId: "claude",
+      model: modelsFor("claude").defaultModel,
+      effort: null,
+    },
   };
 }
 
@@ -139,9 +130,7 @@ async function handleStart(
   registry: SessionRegistry,
   catalog: () => Promise<ChatCatalog>,
   createSession: NonNullable<ChatRouteDeps["createSession"]>,
-  now: () => number,
   id: () => string,
-  history: HistoryStore,
 ): Promise<boolean> {
   if (req.method !== "POST") return methodNotAllowed(ctx, res);
   if (!isJsonRequest(req)) return unsupportedMediaType(ctx, res);
@@ -153,7 +142,6 @@ async function handleStart(
     return true;
   }
   const chatId = id();
-  const createdAt = now();
   const workspace = ctx.host.paths.pluginDataDir("scuttlebutt") + "/workspace";
   const result = await registry.start(chatId, (onEvent) => createSession({
     ...selection,
@@ -168,20 +156,7 @@ async function handleStart(
     ctx.host.http.writeJson(res, 409, { error: `session_${result}` });
     return true;
   }
-  try {
-    await history.create({ id: chatId, cliId: selection.cliId, model: selection.model, createdAt });
-  } catch (error) {
-    await registry.stop(chatId);
-    throw error;
-  }
-  ctx.host.http.writeJson(res, 200, { thread: {
-    id: chatId,
-    title: "New chat",
-    cliId: selection.cliId,
-    model: selection.model,
-    createdAt,
-    messages: [],
-  } satisfies ChatThreadDto });
+  ctx.host.http.writeJson(res, 200, { chatId });
   return true;
 }
 

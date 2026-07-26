@@ -4,14 +4,9 @@ import type { ChatEvent, ChatSessionLike } from "../server/chat-session.js";
 import { MAX_ACTIVE_CHAT_SESSIONS, SessionRegistry } from "../server/session-registry.js";
 
 describe("SessionRegistry", () => {
-  it("runs start/message/stop/dispose and finalizes assistant history on complete", async () => {
-    const users: string[] = [];
-    const assistants: string[] = [];
+  it("runs start/message/stop/dispose without persistence hooks", async () => {
     const fake = new FakeSession();
-    const registry = new SessionRegistry({
-      onUserMessage: (_chatId, text) => { users.push(text); },
-      onAssistantMessage: (_chatId, text) => { assistants.push(text); },
-    });
+    const registry = new SessionRegistry();
     expect(await registry.start("chat", (onEvent) => {
       fake.onEvent = onEvent;
       return fake;
@@ -23,10 +18,6 @@ describe("SessionRegistry", () => {
     expect(await registry.message("chat", "parallel")).toBe("busy");
     fake.onEvent?.({ type: "chunk", text: "answer" });
     fake.onEvent?.({ type: "complete" });
-    await Promise.resolve();
-
-    expect(users).toEqual(["question"]);
-    expect(assistants).toEqual(["answer"]);
     expect(events).toEqual([{ type: "chunk", text: "answer" }, { type: "complete" }]);
     expect(await registry.stop("chat")).toBe(true);
     expect(fake.dispose).toHaveBeenCalledOnce();

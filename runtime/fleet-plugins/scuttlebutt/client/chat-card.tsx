@@ -1,4 +1,5 @@
 import { renderMarkdown } from "@fleet-console/markdown/core";
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import { React, usePluginApi } from "@fleet-console/sdk/plugin/browser";
 
@@ -6,19 +7,19 @@ import type { ChatCatalog } from "./catalog.js";
 import {
   appendUser,
   currentExchange,
-  hydrateEntries,
   initialChatState,
   reduceChatEvent,
   type ChatState,
 } from "./chat-store.js";
 import { placeCard, type CardPlacement, type Size } from "./geometry.js";
+import { getT, type ScuttlebuttMessageKey } from "./i18n.js";
 import { getSettingsRows, SettingsMenu, type SettingsRowKey } from "./settings-menu.js";
 import type { ScuttlebuttSettings } from "./settings-store.js";
 import { connectChatStream, type ChatStreamConnection } from "./sse-client.js";
 
 const FOLLOWUPS = [
-  { label: "Who are you?", prompt: "Who are you?" },
-  { label: "What can you do?", prompt: "What can you do?" },
+  "followup.whoAreYou",
+  "followup.whatCanYouDo",
 ] as const;
 
 export function ChatCard({
@@ -27,6 +28,7 @@ export function ChatCard({
   settings,
   onClose,
   onTuck,
+  locale,
   positionRevision,
   onPhaseChange,
 }: {
@@ -35,10 +37,12 @@ export function ChatCard({
   readonly settings: ScuttlebuttSettings;
   readonly onClose: () => void;
   readonly onTuck: () => void;
+  readonly locale?: ConsoleLocale;
   readonly positionRevision: number;
   readonly onPhaseChange: (phase: ChatState["phase"]) => void;
 }) {
   const pluginApi = usePluginApi(api, "scuttlebutt");
+  const t = getT(locale);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const logRef = React.useRef<HTMLDivElement>(null);
   const cardRef = React.useRef<HTMLDivElement>(null);
@@ -51,7 +55,6 @@ export function ChatCard({
   const [modelId, setModelId] = React.useState(settings.model);
   const [effort, setEffort] = React.useState(settings.effort ?? "");
   const [placement, setPlacement] = React.useState<CardPlacement | null>(null);
-  const hydratedRef = React.useRef(false);
   const activeCli = catalog?.clis.find((cli) => cli.cliId === cliId && cli.available)
     ?? catalog?.clis.find((cli) => cli.available);
   const activeModel = activeCli?.models.find((model) => model.id === modelId) ?? activeCli?.models[0];
@@ -65,6 +68,7 @@ export function ChatCard({
     modelOptions: (activeCli?.models ?? []).map((model) => ({ value: model.id, label: model.label })),
     effort,
     effortOptions: (activeModel?.effortLevels ?? []).map((value) => ({ value, label: value })),
+    locale,
   });
 
   const position = React.useCallback(() => {
@@ -101,10 +105,6 @@ export function ChatCard({
       .then((response) => response.json() as Promise<ChatCatalog>)
       .then((nextCatalog) => {
         setCatalog(nextCatalog);
-        if (!hydratedRef.current) {
-          hydratedRef.current = true;
-          setState(hydrateEntries(nextCatalog.threads));
-        }
         const requestedCli = nextCatalog.clis.find((cli) => cli.available && cli.cliId === settings.cliId)
           ?? nextCatalog.clis.find((cli) => cli.available);
         if (!requestedCli) return;
@@ -163,10 +163,12 @@ export function ChatCard({
             ...(effort ? { effort } : {}),
           }),
         });
-        const payload = await response.json() as { readonly thread: { readonly id: string } };
-        activeChatId = payload.thread.id;
+        const payload = await response.json() as { readonly chatId: string };
+        activeChatId = payload.chatId;
         setChatId(activeChatId);
-        const connection = connectChatStream(activeChatId, (event) => setState((current) => reduceChatEvent(current, event)));
+        const connection = connectChatStream(activeChatId, (event) => {
+          setState((current) => reduceChatEvent(current, event, locale));
+        });
         streamRef.current = connection;
         await connection.connected;
       }
@@ -190,7 +192,7 @@ export function ChatCard({
       className="scuttlebutt-chat-card"
       style={style}
       role="dialog"
-      aria-label="Scuttlebutt chat"
+      aria-label={t("mascot.label")}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.stopPropagation();
@@ -200,13 +202,13 @@ export function ChatCard({
     >
       <div className="scuttlebutt-chat-head">
         <span className="scuttlebutt-chat-sigil" aria-hidden="true">⚓</span>
-        <span className="scuttlebutt-chat-who">Admiral Sam</span>
-        <button type="button" className="scuttlebutt-chat-tuck" aria-label="Tuck away" onClick={onTuck}>✕</button>
+        <span className="scuttlebutt-chat-who">{t("mascot.label")}</span>
+        <button type="button" className="scuttlebutt-chat-tuck" aria-label={t("chat.tuck")} onClick={onTuck}>✕</button>
       </div>
       <div ref={logRef} className="scuttlebutt-chat-log" aria-live="polite">
         {visibleEntries.length === 0 ? (
           <div className="scuttlebutt-message-sam">
-            Mrow — ask anything that does not need a workspace. I can search the web, and I never touch your files.
+            {t("chat.greeting")}
           </div>
         ) : null}
         {visibleEntries.map((entry) => entry.kind === "assistant" ? (
@@ -223,11 +225,11 @@ export function ChatCard({
           </div>
         ))}
       </div>
-      {busy ? <div className="scuttlebutt-thinking"><i /><i /><i />Sam is looking it up…</div> : null}
+      {busy ? <div className="scuttlebutt-thinking"><i /><i /><i />{t("chat.thinking")}</div> : null}
       <div className="scuttlebutt-followups">
-        {FOLLOWUPS.map((followup) => (
-          <button key={followup.label} type="button" disabled={busy} onClick={() => void submit(followup.prompt)}>
-            {followup.label}
+        {FOLLOWUPS.map((key: ScuttlebuttMessageKey) => (
+          <button key={key} type="button" disabled={busy} onClick={() => void submit(t(key))}>
+            {t(key)}
           </button>
         ))}
       </div>
@@ -239,6 +241,7 @@ export function ChatCard({
           modelLabel={activeModel?.label ?? ""}
           effort={effort}
           rows={settingsRows}
+          locale={locale}
           disabled={busy}
           cardRef={cardRef}
           onSelect={(row: SettingsRowKey, value: string) => {
@@ -266,11 +269,11 @@ export function ChatCard({
           ref={inputRef}
           value={draft}
           disabled={busy || !activeCli}
-          placeholder="Ask Sam anything…"
+          placeholder={t("chat.placeholder")}
           autoComplete="off"
           onChange={(event) => setDraft(event.currentTarget.value)}
         />
-        <button type="submit" className="scuttlebutt-send" disabled={busy || !draft.trim()}>Send</button>
+        <button type="submit" className="scuttlebutt-send" disabled={busy || !draft.trim()}>{t("chat.send")}</button>
       </form>
     </div>
   );

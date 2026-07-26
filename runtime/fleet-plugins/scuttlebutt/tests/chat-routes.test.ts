@@ -39,8 +39,36 @@ describe("chat routes", () => {
     expect(payload).toContain("safe answer");
     expect(payload).not.toContain("providerSession");
     expect(payload).not.toContain("sessionId");
+    expect(payload).not.toContain("/private/");
     req.emit("close");
     await registry.dispose();
+  });
+
+  it("starts an ephemeral chat without leaking provider identity or absolute paths", async () => {
+    const harness = createHarness(true, { cliId: "claude", model: "claude-test" });
+    registerChatRoutes(harness.ctx, {
+      detect: async () => [{ cli: "claude", path: "claude", available: true, protocols: ["acp"] }],
+      modelsFor: () => ({
+        name: "Claude",
+        defaultModel: "claude-test",
+        models: [{
+          modelId: "claude-test",
+          name: "Claude Test",
+          effort: { supported: false, levels: [], default: undefined },
+        }],
+      }),
+      createSession: () => new FakeSession(),
+      id: () => "browser-chat-id",
+    });
+    await harness.handler()({
+      req: request("POST", { "content-type": "application/json" }) as never,
+      res: response() as never,
+      pathname: "/plugins/scuttlebutt/chat/start",
+    });
+    const payload = harness.writeJson.mock.calls.at(-1)?.[2];
+    expect(payload).toEqual({ chatId: "browser-chat-id" });
+    expect(JSON.stringify(payload)).not.toContain("sessionId");
+    expect(JSON.stringify(payload)).not.toContain("/private/");
   });
 
   it("catalog includes only the frozen CLI set and detector defaults", () => {
@@ -49,7 +77,7 @@ describe("chat routes", () => {
       { cli: "claude-kimi", path: "claude", available: true, protocols: ["acp"] },
       { cli: "codex", path: "codex", available: true, protocols: ["codex-app-server"] },
       { cli: "cursor", path: "cursor-agent", available: true, protocols: ["acp"] },
-    ], []);
+    ]);
     expect(catalog.clis.map((cli) => cli.cliId)).toEqual(["claude", "claude-kimi", "codex"]);
     expect(catalog.clis[2]).toMatchObject({
       cliId: "codex",
@@ -65,14 +93,13 @@ describe("chat routes", () => {
   });
 });
 
-function createHarness(authorized: boolean): {
+function createHarness(authorized: boolean, body: unknown = {}): {
   readonly ctx: FleetPluginServerContext;
   readonly handler: () => RouteHandler;
   readonly writeJson: ReturnType<typeof vi.fn>;
 } {
   let routeHandler: RouteHandler | undefined;
   const writeJson = vi.fn();
-  const storageValue = new Map<string, unknown>();
   const ctx = {
     pluginId: "scuttlebutt",
     manifest: { id: "scuttlebutt" },
@@ -84,13 +111,7 @@ function createHarness(authorized: boolean): {
     registerWsHandler: vi.fn(),
     host: {
       security: { isTerminalAuthorized: () => authorized },
-      http: { writeJson, readJsonBody: async () => ({}) },
-      storage: {
-        readJson: async (_pluginId: string, key: string) => storageValue.get(key),
-        writeJson: async (_pluginId: string, key: string, value: unknown) => {
-          storageValue.set(key, value);
-        },
-      },
+      http: { writeJson, readJsonBody: async () => body },
       paths: { pluginDataDir: () => "/private/fleet/plugins/scuttlebutt" },
       lifecycle: { registerCleanup: vi.fn(() => () => undefined) },
     },
@@ -105,8 +126,11 @@ function createHarness(authorized: boolean): {
   };
 }
 
-function request(method: string): EventEmitter & { method: string; headers: Record<string, string> } {
-  return Object.assign(new EventEmitter(), { method, headers: {} });
+function request(
+  method: string,
+  headers: Record<string, string> = {},
+): EventEmitter & { method: string; headers: Record<string, string> } {
+  return Object.assign(new EventEmitter(), { method, headers });
 }
 
 function response(): {
