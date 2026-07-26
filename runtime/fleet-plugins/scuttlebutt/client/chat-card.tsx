@@ -1,24 +1,24 @@
 import { renderMarkdown } from "@fleet-console/markdown/core";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import { React, usePluginApi } from "@fleet-console/sdk/plugin/browser";
-import { Select } from "@fleet-console/sdk/react/browser";
 
 import type { ChatCatalog } from "./catalog.js";
 import {
   appendUser,
+  currentExchange,
   hydrateEntries,
   initialChatState,
   reduceChatEvent,
   type ChatState,
 } from "./chat-store.js";
 import { placeCard, type CardPlacement, type Size } from "./geometry.js";
+import { getSettingsRows, SettingsMenu, type SettingsRowKey } from "./settings-menu.js";
 import type { ScuttlebuttSettings } from "./settings-store.js";
 import { connectChatStream, type ChatStreamConnection } from "./sse-client.js";
 
 const FOLLOWUPS = [
-  { label: "HTTP/2 → HTTP/3?", prompt: "What changed between HTTP/2 and HTTP/3?" },
-  { label: "pnpm vs bun", prompt: "Compare pnpm and bun for monorepos" },
-  { label: "KST → UTC", prompt: "What time is 09:00 KST in UTC?" },
+  { label: "Who are you?", prompt: "Who are you?" },
+  { label: "What can you do?", prompt: "What can you do?" },
 ] as const;
 
 export function ChatCard({
@@ -27,7 +27,6 @@ export function ChatCard({
   settings,
   onClose,
   onTuck,
-  onSnap,
   positionRevision,
   onPhaseChange,
 }: {
@@ -36,7 +35,6 @@ export function ChatCard({
   readonly settings: ScuttlebuttSettings;
   readonly onClose: () => void;
   readonly onTuck: () => void;
-  readonly onSnap: (corner: "bottom-right" | "bottom-left" | "top-right") => void;
   readonly positionRevision: number;
   readonly onPhaseChange: (phase: ChatState["phase"]) => void;
 }) {
@@ -57,6 +55,17 @@ export function ChatCard({
   const activeCli = catalog?.clis.find((cli) => cli.cliId === cliId && cli.available)
     ?? catalog?.clis.find((cli) => cli.available);
   const activeModel = activeCli?.models.find((model) => model.id === modelId) ?? activeCli?.models[0];
+  const availableClis = catalog?.clis.filter((cli) => cli.available) ?? [];
+  const settingsRows = getSettingsRows({
+    cliLabel: activeCli?.label ?? "",
+    cliValue: activeCli?.cliId ?? "",
+    cliOptions: availableClis.map((cli) => ({ value: cli.cliId, label: cli.label })),
+    modelLabel: activeModel?.label ?? "",
+    modelValue: activeModel?.id ?? "",
+    modelOptions: (activeCli?.models ?? []).map((model) => ({ value: model.id, label: model.label })),
+    effort,
+    effortOptions: (activeModel?.effortLevels ?? []).map((value) => ({ value, label: value })),
+  });
 
   const position = React.useCallback(() => {
     const mascotElement = mascot.current;
@@ -123,6 +132,20 @@ export function ChatCard({
   React.useEffect(() => () => streamRef.current?.close(), []);
   React.useEffect(() => onPhaseChange(state.phase), [onPhaseChange, state.phase]);
 
+  // 카드 바깥을 누르면 닫는다. 캡처 단계나 preventDefault를 쓰지 않으므로 그 클릭은
+  // 아래 콘솔에 그대로 도달한다 — 마스코트 위 누름은 드래그 시작이라 닫힘에서 제외한다.
+  React.useEffect(() => {
+    const dismiss = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (cardRef.current?.contains(target)) return;
+      if (mascot.current?.contains(target)) return;
+      onClose();
+    };
+    document.addEventListener("pointerdown", dismiss);
+    return () => document.removeEventListener("pointerdown", dismiss);
+  }, [mascot, onClose]);
+
   const submit = async (text: string) => {
     const question = text.trim();
     if (!question || state.phase === "starting" || state.phase === "thinking" || !activeCli || !activeModel) return;
@@ -160,6 +183,7 @@ export function ChatCard({
 
   const style = placementStyle(placement);
   const busy = state.phase === "starting" || state.phase === "thinking";
+  const visibleEntries = currentExchange(state);
   return (
     <div
       ref={cardRef}
@@ -177,21 +201,15 @@ export function ChatCard({
       <div className="scuttlebutt-chat-head">
         <span className="scuttlebutt-chat-sigil" aria-hidden="true">⚓</span>
         <span className="scuttlebutt-chat-who">Admiral Sam</span>
-        <span className="scuttlebutt-chat-scope">No theater · read-only · web ok</span>
-        <span className="scuttlebutt-snap-controls" aria-label="Snap position">
-          <button type="button" aria-label="Snap bottom left" onClick={() => onSnap("bottom-left")}>↙</button>
-          <button type="button" aria-label="Snap top right" onClick={() => onSnap("top-right")}>↗</button>
-          <button type="button" aria-label="Snap bottom right" onClick={() => onSnap("bottom-right")}>↘</button>
-        </span>
         <button type="button" className="scuttlebutt-chat-tuck" aria-label="Tuck away" onClick={onTuck}>✕</button>
       </div>
       <div ref={logRef} className="scuttlebutt-chat-log" aria-live="polite">
-        {state.entries.length === 0 ? (
+        {visibleEntries.length === 0 ? (
           <div className="scuttlebutt-message-sam">
             Mrow — ask anything that does not need a workspace. I can search the web, and I never touch your files.
           </div>
         ) : null}
-        {state.entries.map((entry) => entry.kind === "assistant" ? (
+        {visibleEntries.map((entry) => entry.kind === "assistant" ? (
           <div
             key={entry.id}
             className="scuttlebutt-message-sam scuttlebutt-markdown-body"
@@ -217,52 +235,33 @@ export function ChatCard({
         event.preventDefault();
         void submit(draft);
       }}>
-        <Select
-          value={activeCli?.cliId ?? ""}
-          label="Backend CLI"
+        <SettingsMenu
+          modelLabel={activeModel?.label ?? ""}
+          effort={effort}
+          rows={settingsRows}
           disabled={busy}
-          options={(catalog?.clis.filter((cli) => cli.available) ?? []).map((cli) => ({ value: cli.cliId, label: cli.label }))}
-          onChange={(nextCliId) => {
-            const nextCli = catalog?.clis.find((cli) => cli.cliId === nextCliId);
-            const nextModel = nextCli?.models.find((model) => model.id === nextCli.defaultModel) ?? nextCli?.models[0];
-            if (!nextCli || !nextModel) return;
-            setCliId(nextCli.cliId);
-            setModelId(nextModel.id);
-            setEffort(nextModel.defaultEffort ?? "");
-            setChatId(null);
-            streamRef.current?.close();
-            streamRef.current = null;
-          }}
-        />
-        <Select
-          value={activeModel?.id ?? ""}
-          label="Model"
-          disabled={busy}
-          options={(activeCli?.models ?? []).map((model) => ({ value: model.id, label: model.label }))}
-          onChange={(nextModelId) => {
-            const nextModel = activeCli?.models.find((model) => model.id === nextModelId);
-            if (!nextModel) return;
-            setModelId(nextModel.id);
-            setEffort(nextModel.defaultEffort ?? "");
-            setChatId(null);
-            streamRef.current?.close();
-            streamRef.current = null;
-          }}
-        />
-        {activeModel && activeModel.effortLevels.length > 0 ? (
-          <Select
-            value={effort}
-            label="Effort"
-            disabled={busy}
-            options={activeModel.effortLevels.map((value) => ({ value, label: value }))}
-            onChange={(value) => {
+          cardRef={cardRef}
+          onSelect={(row: SettingsRowKey, value: string) => {
+            if (row === "cli") {
+              const nextCli = catalog?.clis.find((cli) => cli.cliId === value);
+              const nextModel = nextCli?.models.find((model) => model.id === nextCli.defaultModel) ?? nextCli?.models[0];
+              if (!nextCli || !nextModel) return;
+              setCliId(nextCli.cliId);
+              setModelId(nextModel.id);
+              setEffort(nextModel.defaultEffort ?? "");
+            } else if (row === "model") {
+              const nextModel = activeCli?.models.find((model) => model.id === value);
+              if (!nextModel) return;
+              setModelId(nextModel.id);
+              setEffort(nextModel.defaultEffort ?? "");
+            } else {
               setEffort(value);
-              setChatId(null);
-              streamRef.current?.close();
-              streamRef.current = null;
-            }}
-          />
-        ) : null}
+            }
+            setChatId(null);
+            streamRef.current?.close();
+            streamRef.current = null;
+          }}
+        />
         <input
           ref={inputRef}
           value={draft}

@@ -53,13 +53,13 @@ export function ScuttlebuttMascot({ context }: { readonly context: FloatingWidge
     if (persist) context.preferences.write<PersistedPosition>(POSITION_KEY, { version: 1, ...clamped });
   }, [context.preferences, widgetSize]);
 
-  const snap = React.useCallback((corner: "bottom-right" | "bottom-left" | "top-right") => {
-    commitPosition(snapPoint(corner, { width: window.innerWidth, height: window.innerHeight }, widgetSize()), true);
+  const snap = React.useCallback(() => {
+    commitPosition(snapPoint("bottom-right", { width: window.innerWidth, height: window.innerHeight }, widgetSize()), true);
   }, [commitPosition, widgetSize]);
 
   React.useLayoutEffect(() => {
     if (hadPersistedPosition.current) commitPosition(positionRef.current, false);
-    else snap("bottom-right");
+    else snap();
   }, [commitPosition, snap]);
 
   React.useEffect(() => {
@@ -153,7 +153,6 @@ export function ScuttlebuttMascot({ context }: { readonly context: FloatingWidge
           settings={settings}
           positionRevision={positionRevision}
           onPhaseChange={setPhase}
-          onSnap={snap}
           onClose={() => {
             setOpen(false);
             window.requestAnimationFrame(() => mascotRef.current?.focus());

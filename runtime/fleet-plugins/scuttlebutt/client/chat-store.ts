@@ -35,6 +35,14 @@ export function reduceChatEvent(state: ChatState, event: ChatStreamEvent): ChatS
   };
 }
 
+/** 카드는 마지막 질문과 그에 대한 답만 보여준다 — 이전 턴은 서버 히스토리에만 남는다. */
+export function currentExchange(state: ChatState): readonly ChatEntry[] {
+  for (let index = state.entries.length - 1; index >= 0; index -= 1) {
+    if (state.entries[index]?.kind === "user") return state.entries.slice(index);
+  }
+  return state.entries;
+}
+
 export function appendUser(state: ChatState, text: string): ChatState {
   return {
     entries: [...state.entries, { id: nextId(), kind: "user", text }],

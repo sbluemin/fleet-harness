@@ -185,7 +185,7 @@
   box-shadow:
     calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-abyss),
     calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-abyss);
-  animation: scuttlebutt-blink calc(var(--duration-slow) * 10) steps(1) infinite;
+  animation: scuttlebutt-blink calc(var(--duration-slow) * 15) steps(1) infinite;
 }
 
 .scuttlebutt-tail {
@@ -210,11 +210,12 @@
   animation: scuttlebutt-bob calc(var(--duration-slow) * 2) var(--ease-glide) infinite;
 }
 
+/* 눈 좌표는 스프라이트 얼굴 행(x4·x8, y5)에 고정한다 — 상태별로 색만 바뀌고 위치는 움직이지 않는다.
+   ready에서는 blink를 그대로 두어 답변 직후에도 살아 있게 보인다. */
 .scuttlebutt-mascot.is-ready .scuttlebutt-eyes {
   box-shadow:
-    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 4) var(--positive),
-    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 4) var(--positive);
-  animation: none;
+    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 5) var(--positive),
+    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 5) var(--positive);
 }
 
 .scuttlebutt-beacon {
@@ -263,30 +264,17 @@
 }
 
 .scuttlebutt-chat-who {
+  flex: 1;
+  min-width: 0;
   color: var(--text-primary);
   font-size: 13px;
   font-weight: var(--weight-medium);
 }
 
-.scuttlebutt-chat-scope {
-  margin-left: auto;
-  padding: 2px var(--space-2);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-pill);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  font-weight: var(--weight-regular);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.scuttlebutt-chat-tuck,
-.scuttlebutt-snap-controls button {
+.scuttlebutt-chat-tuck {
   padding: 2px var(--space-1);
   border: 0;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
@@ -294,19 +282,13 @@
   font-weight: var(--weight-regular);
 }
 
-.scuttlebutt-chat-tuck:hover,
-.scuttlebutt-snap-controls button:hover {
+.scuttlebutt-chat-tuck:hover {
   background: var(--ink-veil);
   color: var(--text-primary);
 }
 
-.scuttlebutt-chat-tuck:focus-visible,
-.scuttlebutt-snap-controls button:focus-visible {
+.scuttlebutt-chat-tuck:focus-visible {
   outline: 2px solid var(--brass);
-}
-
-.scuttlebutt-snap-controls {
-  display: flex;
 }
 
 .scuttlebutt-chat-log {
@@ -430,9 +412,10 @@
 }
 
 .scuttlebutt-composer {
+  position: relative;
   display: flex;
   flex-shrink: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--hairline);
@@ -440,8 +423,8 @@
 }
 
 .scuttlebutt-composer input {
-  min-width: 140px;
-  flex: 1 1 180px;
+  min-width: 0;
+  flex: 1 1 auto;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
@@ -475,17 +458,160 @@
 }
 
 .scuttlebutt-send:disabled,
-.scuttlebutt-followups button:disabled {
+.scuttlebutt-followups button:disabled,
+.scuttlebutt-settings-trigger:disabled {
   cursor: default;
   opacity: 0.5;
 }
 
+.scuttlebutt-settings-root {
+  position: relative;
+  flex: 0 1 124px;
+  min-width: 0;
+}
+
+.scuttlebutt-settings-trigger {
+  display: grid;
+  width: 100%;
+  min-height: 34px;
+  align-content: center;
+  padding: var(--space-1) var(--space-2);
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--ink-mid);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.scuttlebutt-settings-trigger:focus-visible,
+.scuttlebutt-settings-row:focus-visible,
+.scuttlebutt-settings-option:focus-visible {
+  border-color: var(--brass);
+  outline: 2px solid var(--brass);
+  outline-offset: -1px;
+}
+
+.scuttlebutt-settings-trigger-model,
+.scuttlebutt-settings-trigger-effort {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scuttlebutt-settings-trigger-model {
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+}
+
+.scuttlebutt-settings-trigger-effort {
+  color: var(--text-tertiary);
+  font-size: 9px;
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-settings-menu,
+.scuttlebutt-settings-submenu {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  width: min(176px, calc(100vw - var(--space-4)));
+  max-height: min(220px, calc(100vh - var(--space-4)));
+  overflow-y: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-glass-strong);
+  box-shadow: 0 8px 20px color-mix(in oklch, var(--ink-abyss) 45%, transparent);
+  animation: scuttlebutt-settings-in var(--duration-fast) var(--ease-glide);
+}
+
+.scuttlebutt-settings-submenu {
+  width: min(148px, calc(100vw - var(--space-4)));
+}
+
+.scuttlebutt-settings-row,
+.scuttlebutt-settings-option {
+  display: grid;
+  min-height: 32px;
+  align-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: var(--weight-regular);
+  text-align: left;
+}
+
+.scuttlebutt-settings-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+}
+
+.scuttlebutt-settings-option {
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  font-size: 11px;
+}
+
+.scuttlebutt-settings-row:hover,
+.scuttlebutt-settings-option:hover {
+  background: var(--ink-veil);
+  color: var(--text-primary);
+}
+
+.scuttlebutt-settings-row-label {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scuttlebutt-settings-row-value,
+.scuttlebutt-settings-chevron {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: var(--weight-regular);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scuttlebutt-settings-check {
+  color: var(--brass);
+  font-weight: var(--weight-medium);
+}
+
+@keyframes scuttlebutt-settings-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* steps(1)은 각 구간에서 시작 값을 유지하고 구간 끝에서 다음 값으로 튄다 — 픽셀 눈에 맞는 즉각적인
+   깜빡임이다. 한 번 감았다 뜨고 곧바로 한 번 더 감는 2연속 깜빡임이라야 "사라졌다"가 아니라
+   "꿈뻑였다"로 읽힌다. */
 @keyframes scuttlebutt-blink {
   0%,
-  92%,
-  100% { opacity: 1; }
+  88% { opacity: 1; }
+  89% { opacity: 0; }
+  91% { opacity: 1; }
+  92% { opacity: 0; }
   94%,
-  97% { opacity: 0; }
+  100% { opacity: 1; }
 }
 
 @keyframes scuttlebutt-tail {
@@ -521,10 +647,6 @@
   .scuttlebutt-chat-card {
     width: calc(100vw - var(--space-4));
   }
-
-  .scuttlebutt-chat-scope {
-    display: none;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -537,7 +659,9 @@
   .scuttlebutt-eyes,
   .scuttlebutt-tail,
   .scuttlebutt-thinking i,
-  .scuttlebutt-chat-card {
+  .scuttlebutt-chat-card,
+  .scuttlebutt-settings-menu,
+  .scuttlebutt-settings-submenu {
     animation: none;
   }
 }

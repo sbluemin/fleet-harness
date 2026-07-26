@@ -7,8 +7,19 @@ import type {
   ClientPreferencesCapability,
 } from "../plugin/types.js";
 
+export interface FloatingWidgetArrival {
+  readonly operationId: string;
+  readonly title: string;
+}
+
+export interface FloatingWidgetArrivalsCapability {
+  list(): readonly FloatingWidgetArrival[];
+  subscribe(listener: (arrivals: readonly FloatingWidgetArrival[]) => void): () => void;
+}
+
 export interface FloatingWidgetContext {
   readonly api: ClientApiCapability;
+  readonly arrivals: FloatingWidgetArrivalsCapability;
   readonly lifecycle: ClientLifecycleCapability;
   readonly preferences: ClientPreferencesCapability;
   readonly language?: ConsoleLocale;

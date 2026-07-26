@@ -1,11 +1,18 @@
 // @vitest-environment jsdom
 
-import { act, createElement } from "react";
+import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { FloatingWidgetDescriptor } from "@fleet-console/sdk/floating";
+import type { FloatingWidgetArrival, FloatingWidgetDescriptor } from "@fleet-console/sdk/floating";
 import type { FleetClientPlugin } from "@fleet-console/sdk/plugin";
+
+import {
+  markIdleArrival,
+  resetIdleArrivalForTests,
+} from "../core/client/src/operation-idle-arrival.js";
+import { setState } from "../core/client/src/store.js";
+import type { OperationNode } from "../core/client/src/types.js";
 
 let floatingWidgets: readonly FloatingWidgetDescriptor[] = [];
 
@@ -24,6 +31,8 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  resetIdleArrivalForTests();
+  setState({ operations: [] });
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -31,6 +40,8 @@ beforeEach(() => {
 
 afterEach(() => {
   act(() => root.unmount());
+  resetIdleArrivalForTests();
+  setState({ operations: [] });
   document.body.replaceChildren();
   floatingWidgets = [];
   vi.restoreAllMocks();
@@ -78,6 +89,51 @@ describe("FloatingWidgetLayer", () => {
     expect(container.querySelector(".floating-widget-layer")).not.toBeNull();
     expect(container.querySelector(".floating-widget")?.textContent).toBe("Plugin failed to render.");
   });
+
+  it("delivers titled arrivals immediately, updates them, and unsubscribes on unmount", () => {
+    const received: (readonly FloatingWidgetArrival[])[] = [];
+    setState({
+      operations: [
+        operation("alpha", "Alpha launch"),
+        operation("bravo", "Bravo finish"),
+        operation("charlie", "Charlie follow-up"),
+      ],
+    });
+    markIdleArrival("alpha");
+
+    const plugin: FleetClientPlugin = {
+      id: "arrivals",
+      floatingWidgets: [{
+        id: "observer",
+        render: (context) => {
+          useEffect(
+            () => context.arrivals.subscribe((arrivals) => received.push(arrivals)),
+            [context.arrivals],
+          );
+          return createElement("span", null, "Arrival observer");
+        },
+      }],
+    };
+
+    renderLayer([plugin]);
+
+    expect(received).toEqual([
+      [{ operationId: "alpha", title: "Alpha launch" }],
+    ]);
+
+    act(() => markIdleArrival("bravo"));
+
+    expect(received.at(-1)).toEqual([
+      { operationId: "alpha", title: "Alpha launch" },
+      { operationId: "bravo", title: "Bravo finish" },
+    ]);
+
+    renderLayer([]);
+    const updateCountAfterUnmount = received.length;
+    act(() => markIdleArrival("charlie"));
+
+    expect(received).toHaveLength(updateCountAfterUnmount);
+  });
 });
 
 function renderLayer(plugins: readonly FleetClientPlugin[]): void {
@@ -88,4 +144,20 @@ function renderLayer(plugins: readonly FleetClientPlugin[]): void {
   act(() => {
     root.render(<FloatingWidgetLayer />);
   });
+}
+
+function operation(id: string, title: string): OperationNode {
+  return {
+    id,
+    theaterId: "theater",
+    type: "test",
+    pluginId: "test",
+    title,
+    payload: {},
+    geometry: null,
+    ts: {
+      createdAt: 1,
+      updatedAt: 1,
+    },
+  };
 }
