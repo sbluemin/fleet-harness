@@ -605,6 +605,9 @@ importers:
       '@dotobokuri/core-unified-agent':
         specifier: workspace:*
         version: link:../../../packages/core-unified-agent
+      '@fleet-console/markdown':
+        specifier: workspace:*
+        version: link:../../fleet-console/markdown
       '@fleet-console/sdk':
         specifier: workspace:*
         version: link:../../fleet-console/sdk

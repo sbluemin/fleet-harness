@@ -1,0 +1,543 @@
+.scuttlebutt-mascot {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-2);
+  border: 0;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+  transition:
+    left var(--duration-slow) var(--ease-spring),
+    top var(--duration-slow) var(--ease-spring);
+}
+
+.scuttlebutt-mascot.is-dragging {
+  cursor: grabbing;
+  transition: none;
+}
+
+.scuttlebutt-mascot:focus-visible {
+  border-radius: var(--radius-md);
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.scuttlebutt-bubble {
+  padding: 1px var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--surface-glass-strong);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-regular);
+  opacity: 0;
+  transform: translateY(3px);
+  transition:
+    opacity var(--duration-base) var(--ease-glide),
+    transform var(--duration-base) var(--ease-glide);
+}
+
+.scuttlebutt-mascot.is-thinking .scuttlebutt-bubble,
+.scuttlebutt-mascot.is-ready .scuttlebutt-bubble {
+  opacity: 1;
+  transform: none;
+}
+
+.scuttlebutt-mascot.is-ready .scuttlebutt-bubble {
+  border-color: color-mix(in oklch, var(--positive) 35%, var(--hairline));
+  color: var(--positive);
+}
+
+.scuttlebutt-cat {
+  --scuttlebutt-pixel-size: 5px;
+  position: relative;
+  width: calc(var(--scuttlebutt-pixel-size) * 13);
+  height: calc(var(--scuttlebutt-pixel-size) * 13);
+  image-rendering: pixelated;
+}
+
+.scuttlebutt-pixel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--scuttlebutt-pixel-size);
+  height: var(--scuttlebutt-pixel-size);
+}
+
+.scuttlebutt-fur {
+  background: transparent;
+  box-shadow:
+    var(--scuttlebutt-pixel-size) 0 var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 11) 0 var(--ink-pearl),
+    var(--scuttlebutt-pixel-size) var(--scuttlebutt-pixel-size) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 2) var(--scuttlebutt-pixel-size) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 10) var(--scuttlebutt-pixel-size) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 11) var(--scuttlebutt-pixel-size) var(--ink-pearl),
+    var(--scuttlebutt-pixel-size) calc(var(--scuttlebutt-pixel-size) * 2) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 11) calc(var(--scuttlebutt-pixel-size) * 2) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 2) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 10) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 4) 0 var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 5) 0 var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 6) 0 var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 7) 0 var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 8) 0 var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 3) var(--scuttlebutt-pixel-size) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 4) var(--scuttlebutt-pixel-size) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 5) var(--scuttlebutt-pixel-size) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 6) var(--scuttlebutt-pixel-size) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 7) var(--scuttlebutt-pixel-size) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 8) var(--scuttlebutt-pixel-size) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 9) var(--scuttlebutt-pixel-size) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 2) calc(var(--scuttlebutt-pixel-size) * 2) var(--brass),
+    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 2) var(--brass),
+    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 2) var(--brass),
+    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 2) var(--brass),
+    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 2) var(--ink-rim),
+    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 2) var(--brass),
+    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 2) var(--brass),
+    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 2) var(--brass),
+    calc(var(--scuttlebutt-pixel-size) * 10) calc(var(--scuttlebutt-pixel-size) * 2) var(--brass),
+    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 3) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 2) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 10) calc(var(--scuttlebutt-pixel-size) * 4) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 2) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 10) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 2) calc(var(--scuttlebutt-pixel-size) * 6) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 6) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 6) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 6) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 6) var(--ink-rim),
+    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 6) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 6) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 6) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 10) calc(var(--scuttlebutt-pixel-size) * 6) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 7) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 7) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 7) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 7) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 7) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 7) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 7) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 2) calc(var(--scuttlebutt-pixel-size) * 8) var(--brass),
+    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 8) var(--brass),
+    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 8) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 8) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 8) var(--ink-rim),
+    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 8) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 8) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 8) var(--brass),
+    calc(var(--scuttlebutt-pixel-size) * 10) calc(var(--scuttlebutt-pixel-size) * 8) var(--brass),
+    calc(var(--scuttlebutt-pixel-size) * 2) calc(var(--scuttlebutt-pixel-size) * 9) var(--brass),
+    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 9) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 9) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 9) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 9) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 9) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 9) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 9) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 10) calc(var(--scuttlebutt-pixel-size) * 9) var(--brass),
+    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 10) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 10) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 10) var(--brass),
+    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 10) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 10) var(--brass),
+    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 10) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 10) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 11) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 11) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 11) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 6) calc(var(--scuttlebutt-pixel-size) * 11) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 11) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 11) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 9) calc(var(--scuttlebutt-pixel-size) * 11) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 12) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 5) calc(var(--scuttlebutt-pixel-size) * 12) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 12) var(--ink-veil),
+    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 12) var(--ink-veil);
+}
+
+.scuttlebutt-eyes {
+  background: transparent;
+  box-shadow:
+    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-abyss),
+    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 5) var(--ink-abyss);
+  animation: scuttlebutt-blink calc(var(--duration-slow) * 10) steps(1) infinite;
+}
+
+.scuttlebutt-tail {
+  background: transparent;
+  box-shadow:
+    calc(var(--scuttlebutt-pixel-size) * 10) calc(var(--scuttlebutt-pixel-size) * 11) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 11) calc(var(--scuttlebutt-pixel-size) * 11) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 11) calc(var(--scuttlebutt-pixel-size) * 10) var(--ink-pearl),
+    calc(var(--scuttlebutt-pixel-size) * 11) calc(var(--scuttlebutt-pixel-size) * 9) var(--ink-pearl);
+  transform-origin: calc(var(--scuttlebutt-pixel-size) * 10) calc(var(--scuttlebutt-pixel-size) * 12);
+  animation: scuttlebutt-tail calc(var(--duration-slow) * 5) steps(2) infinite;
+}
+
+.scuttlebutt-mascot.is-thinking .scuttlebutt-eyes {
+  box-shadow:
+    calc(var(--scuttlebutt-pixel-size) * 4) calc(var(--scuttlebutt-pixel-size) * 5) var(--aurora),
+    calc(var(--scuttlebutt-pixel-size) * 8) calc(var(--scuttlebutt-pixel-size) * 5) var(--aurora);
+  animation: none;
+}
+
+.scuttlebutt-mascot.is-thinking .scuttlebutt-cat {
+  animation: scuttlebutt-bob calc(var(--duration-slow) * 2) var(--ease-glide) infinite;
+}
+
+.scuttlebutt-mascot.is-ready .scuttlebutt-eyes {
+  box-shadow:
+    calc(var(--scuttlebutt-pixel-size) * 3) calc(var(--scuttlebutt-pixel-size) * 4) var(--positive),
+    calc(var(--scuttlebutt-pixel-size) * 7) calc(var(--scuttlebutt-pixel-size) * 4) var(--positive);
+  animation: none;
+}
+
+.scuttlebutt-beacon {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--brass);
+  border-radius: var(--radius-pill);
+  background: var(--ink-rim);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--brass) 18%, transparent);
+}
+
+.scuttlebutt-chat-card {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  width: min(380px, calc(100vw - var(--space-6)));
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-glass-strong);
+  box-shadow: var(--shadow-floating);
+  animation: scuttlebutt-card-in var(--duration-base) var(--ease-spring);
+}
+
+.scuttlebutt-chat-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.scuttlebutt-chat-sigil {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid color-mix(in oklch, var(--brass) 40%, transparent);
+  border-radius: var(--radius-pill);
+  background: var(--brass-glow);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.scuttlebutt-chat-who {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+}
+
+.scuttlebutt-chat-scope {
+  margin-left: auto;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: var(--weight-regular);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.scuttlebutt-chat-tuck,
+.scuttlebutt-snap-controls button {
+  padding: 2px var(--space-1);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-chat-tuck:hover,
+.scuttlebutt-snap-controls button:hover {
+  background: var(--ink-veil);
+  color: var(--text-primary);
+}
+
+.scuttlebutt-chat-tuck:focus-visible,
+.scuttlebutt-snap-controls button:focus-visible {
+  outline: 2px solid var(--brass);
+}
+
+.scuttlebutt-snap-controls {
+  display: flex;
+}
+
+.scuttlebutt-chat-log {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-3);
+  overflow-y: auto;
+  padding: var(--space-4);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.scuttlebutt-message-user {
+  max-width: 85%;
+  align-self: flex-end;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--ink-veil);
+  color: var(--text-primary);
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-message-sam {
+  max-width: 100%;
+  color: var(--text-secondary);
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-markdown-body p {
+  margin: 0 0 var(--space-2);
+}
+
+.scuttlebutt-markdown-body ul,
+.scuttlebutt-markdown-body ol {
+  margin: 0 0 var(--space-2) var(--space-4);
+}
+
+.scuttlebutt-markdown-body code {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: var(--ink-mid);
+  color: var(--text-primary);
+}
+
+.scuttlebutt-status-row {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-status-row.is-error {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid color-mix(in oklch, var(--coral) 30%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--coral) 8%, transparent);
+  color: color-mix(in oklch, var(--coral) 72%, var(--text-secondary));
+}
+
+.scuttlebutt-thinking {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4) var(--space-3);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-thinking i {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--aurora);
+  animation: scuttlebutt-pulse var(--duration-slow) var(--ease-glide) infinite;
+}
+
+.scuttlebutt-thinking i:nth-child(2) {
+  animation-delay: calc(var(--duration-fast) * 1);
+}
+
+.scuttlebutt-thinking i:nth-child(3) {
+  animation-delay: calc(var(--duration-fast) * 2);
+}
+
+.scuttlebutt-followups {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 0 var(--space-4) var(--space-3);
+}
+
+.scuttlebutt-followups button {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--ink-mid);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--weight-regular);
+  transition:
+    border-color var(--duration-fast) var(--ease-glide),
+    color var(--duration-fast) var(--ease-glide);
+}
+
+.scuttlebutt-followups button:hover {
+  border-color: var(--brass);
+  color: var(--text-primary);
+}
+
+.scuttlebutt-followups button:focus-visible {
+  outline: 2px solid var(--brass);
+}
+
+.scuttlebutt-composer {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--hairline);
+  background: var(--surface-glass);
+}
+
+.scuttlebutt-composer input {
+  min-width: 140px;
+  flex: 1 1 180px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--ink-abyss);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-composer input:focus {
+  border-color: var(--brass);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--brass-glow);
+}
+
+.scuttlebutt-send {
+  padding: var(--space-2) var(--space-4);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--brass);
+  color: var(--ink-abyss);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: var(--weight-medium);
+}
+
+.scuttlebutt-send:focus-visible {
+  outline: 2px solid var(--text-primary);
+}
+
+.scuttlebutt-send:disabled,
+.scuttlebutt-followups button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+@keyframes scuttlebutt-blink {
+  0%,
+  92%,
+  100% { opacity: 1; }
+  94%,
+  97% { opacity: 0; }
+}
+
+@keyframes scuttlebutt-tail {
+  0%,
+  100% { transform: rotate(0deg); }
+  50% { transform: rotate(-9deg); }
+}
+
+@keyframes scuttlebutt-bob {
+  0%,
+  100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes scuttlebutt-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes scuttlebutt-pulse {
+  0%,
+  100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+@media (max-width: 560px) {
+  .scuttlebutt-chat-card {
+    width: calc(100vw - var(--space-4));
+  }
+
+  .scuttlebutt-chat-scope {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scuttlebutt-mascot,
+  .scuttlebutt-bubble {
+    transition: none;
+  }
+
+  .scuttlebutt-cat,
+  .scuttlebutt-eyes,
+  .scuttlebutt-tail,
+  .scuttlebutt-thinking i,
+  .scuttlebutt-chat-card {
+    animation: none;
+  }
+}
