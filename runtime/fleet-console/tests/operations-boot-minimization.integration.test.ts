@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, createElement } from "react";
+import { act, createElement, useLayoutEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import type { OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setViewport, subscribe as subscribeCanvas, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
+import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, requestFitAllOperations, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setViewport, subscribe as subscribeCanvas, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
 import { focusOperation, getState, hydrateOperations, setActiveOperation, setState } from "../core/client/src/store.js";
 import type { OperationNode, TheaterBootstrap } from "../core/client/src/types.js";
 
@@ -27,6 +27,7 @@ const sideBarMocks = vi.hoisted(() => ({
   onMinimize: null as null | ((operationId: string) => void),
 }));
 const canvasMocks = vi.hoisted(() => ({
+  onMount: null as null | (() => void | (() => void)),
   onLaunchAtGeometry: null as null | ((pluginId: string, kind: { readonly type: string; readonly title: string }, geometry: { readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly zIndex: number }) => void),
 }));
 const registryMocks = vi.hoisted(() => ({
@@ -59,6 +60,7 @@ vi.mock("@fleet-console/sdk/operations/browser", () => ({ fetchOperationCatalog:
 vi.mock("../core/client/src/canvas/canvas.js", () => ({
   OperationsCanvas: ({ onLaunchAtGeometry }: { readonly onLaunchAtGeometry: NonNullable<typeof canvasMocks.onLaunchAtGeometry> }) => {
     canvasMocks.onLaunchAtGeometry = onLaunchAtGeometry;
+    useLayoutEffect(() => canvasMocks.onMount?.(), []);
     return null;
   },
 }));
@@ -86,6 +88,7 @@ vi.mock("../core/client/src/sidebar/operations-side-bar-store.js", () => ({
   setSideBarCollapsed: vi.fn(),
   getSideBarStatusAxis: () => false,
   getSideBarStatusSectionCollapsed: () => false,
+  subscribeOperationActivityTracking: () => () => {},
   toggleSideBarStatusAxis: vi.fn(),
 }));
 vi.mock("../core/client/src/sidebar/operations-side-bar.js", () => ({
@@ -96,7 +99,10 @@ vi.mock("../core/client/src/sidebar/operations-side-bar.js", () => ({
     return null;
   },
 }));
-vi.mock("../core/client/src/whatsnew-i18n.js", () => ({ resolveReleaseNotesLocale: () => "en" }));
+vi.mock("../core/client/src/whatsnew-i18n.js", () => ({
+  resolveConsoleLanguage: () => "en",
+  resolveReleaseNotesLocale: () => "en",
+}));
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -126,6 +132,7 @@ beforeEach(() => {
   sideBarMocks.onFocus = null;
   sideBarMocks.onClose = null;
   sideBarMocks.onMinimize = null;
+  canvasMocks.onMount = null;
   canvasMocks.onLaunchAtGeometry = null;
   registryMocks.plugins = [];
   registryMocks.operationKinds = [];
@@ -147,9 +154,44 @@ afterEach(() => {
   container = null;
   vi.clearAllMocks();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("Operations boot minimization", () => {
+  it("consumes a cold pending fit after loadForTheater restores the saved viewport", async () => {
+    vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
+      matches: query === "(prefers-reduced-motion: reduce)" || query === "(min-width: 832px)",
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })));
+    window.history.replaceState({}, "", "/settings");
+    loadForTheater("theater-a");
+    setOperationGeometry("visible", { x: 20, y: 30, width: 100, height: 80, zIndex: 1 });
+    setViewport({ x: 120, y: 160, zoom: 0.5 });
+    loadForTheater(null);
+    await bootApp([operation("visible", Date.now() + 1_000)]);
+    loadForTheater("theater-a");
+    resetCanvasViewportSize();
+    requestFitAllOperations();
+    const mountCanvas = vi.fn(() => {
+      setCanvasViewportSize({ width: 1_000, height: 800 });
+      return resetCanvasViewportSize;
+    });
+    canvasMocks.onMount = mountCanvas;
+
+    await navigateTo("/operations");
+
+    expect(mountCanvas).toHaveBeenCalledOnce();
+    expect(getSnapshot().operations.visible).toMatchObject({ x: 20, y: 30, width: 100, height: 80 });
+    expect(getSnapshot().minimized).toEqual([]);
+    expect(getSnapshot().viewport).toEqual({ x: 430, y: 330, zoom: 1 });
+  });
+
   it("minimizes initial hydrated panels once across /operations -> /settings -> /operations", async () => {
     const operations = deferred<readonly OperationNode[]>();
     const theaters = deferred<TheaterBootstrap>();
@@ -253,6 +295,29 @@ describe("Operations boot minimization", () => {
     expect(getState().activeOperationId).toBeNull();
     expect(getState().keyboardFocusRequest).toBeNull();
     expect(getSnapshot().minimized).toEqual(["initial"]);
+  });
+
+  it("leaves Shift+1 to xterm while consuming it outside xterm", async () => {
+    await bootApp([operation("initial")]);
+    keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(true);
+    const xterm = document.createElement("div");
+    xterm.className = "xterm";
+    const terminalInput = document.createElement("textarea");
+    terminalInput.className = "xterm-helper-textarea";
+    xterm.appendChild(terminalInput);
+    document.body.appendChild(xterm);
+    terminalInput.focus();
+
+    const terminalEvent = new KeyboardEvent("keydown", { code: "Digit1", shiftKey: true, cancelable: true });
+    window.dispatchEvent(terminalEvent);
+    expect(terminalEvent.defaultPrevented).toBe(false);
+
+    const outsideButton = document.createElement("button");
+    document.body.appendChild(outsideButton);
+    outsideButton.focus();
+    const canvasEvent = new KeyboardEvent("keydown", { code: "Digit1", shiftKey: true, cancelable: true });
+    window.dispatchEvent(canvasEvent);
+    expect(canvasEvent.defaultPrevented).toBe(true);
   });
 
   it("restores and activates a minimized Operation before pending Map focus moves the viewport", async () => {

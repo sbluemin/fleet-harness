@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OperationsCanvas } from "../core/client/src/canvas/canvas.js";
 import { CanvasMinimap } from "../core/client/src/canvas/canvas-minimap.js";
-import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, loadForTheater, minimizeOperation, setMaximizedOperationId, setState, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
+import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, consumePendingFitAllOperations, fitAllOperations, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, loadForTheater, minimizeOperation, requestFitAllOperations, resetCanvasViewportSize, setCanvasViewportSize, setMaximizedOperationId, setState, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
 import type { ConsoleState, OperationNode } from "../core/client/src/types.js";
 
 vi.mock("../core/client/src/plugin-registry.js", () => ({
@@ -93,6 +93,22 @@ afterEach(() => {
 });
 
 describe("CanvasMinimap collapse behavior", () => {
+  it("resets canvas size and clears a pending fit when OperationsCanvas unmounts", () => {
+    renderOperationsCanvas();
+    setCanvasViewportSize({ width: 0, height: 0 });
+    requestFitAllOperations();
+    act(() => root!.render(null));
+    const viewport = { x: 12, y: 34, zoom: 0.75 };
+    setState({ viewport });
+
+    fitAllOperations();
+    setCanvasViewportSize({ width: 900, height: 600 });
+    consumePendingFitAllOperations();
+
+    expect(getSnapshot().viewport).toEqual(viewport);
+    resetCanvasViewportSize();
+  });
+
   it("persists default-canvas collapse and expand preference", () => {
     act(() => root!.render(createElement(CanvasMinimap, {
       operations: { operation: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 } },

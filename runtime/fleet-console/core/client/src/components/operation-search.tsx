@@ -24,7 +24,7 @@ import { stashKeyboardShortcutsReturnFocus } from "../keyboard-shortcuts-return-
 import { closeOperationCompletely } from "../operation-close.js";
 import { forgetTheaterCompletely } from "../theater-forget.js";
 import type { DeferredDeletionReceipt } from "../api.js";
-import { getLoadedTheaterId, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, loadForTheater, minimizeOperations, toggleFormationView } from "../canvas/canvas-store.js";
+import { getLoadedTheaterId, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, loadForTheater, minimizeOperations, requestFitAllOperations, toggleFormationView } from "../canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive } from "../canvas/triage-store.js";
 import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
@@ -262,6 +262,12 @@ export function OperationSearch({
         const theaterOperations = state.operations.filter((op) => op.theaterId === state.activeTheaterId);
         for (const operation of theaterOperations) ensureDefaultGeometry(operation.id);
         minimizeOperations(theaterOperations.map((op) => op.id));
+        break;
+      }
+      case "fit-all-panels": {
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        ensurePaletteCanvasTheater(state);
+        if (!isTriageActive(state.activeTheaterId)) requestFitAllOperations();
         break;
       }
       case "toggle-triage-mode": {

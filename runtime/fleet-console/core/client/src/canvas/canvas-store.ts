@@ -90,6 +90,8 @@ let focusLayerRevision = 0;
 let companionPanelVisibilityOverrides: CompanionPanelVisibilityOverrides = {};
 let formationView = false;
 let formationLayout = readStoredFormationLayout();
+let canvasViewportSize: CanvasViewportSize = { width: 0, height: 0 };
+let fitAllOperationsPending = false;
 // 줌 보간 루프가 향하는 목표 viewport. 즉시 이동(pan/focus/load)은 이 값을 current와 동기화해 잔여 보간을 무효화한다.
 let targetViewport: CanvasViewport = DEFAULT_VIEWPORT;
 let zoomRaf: number | null = null;
@@ -261,6 +263,50 @@ export function animateViewportTo(viewport: CanvasViewport): void {
   }
   targetViewport = next;
   if (zoomRaf === null) zoomRaf = window.requestAnimationFrame(stepZoomTween);
+}
+
+export function setCanvasViewportSize(viewportSize: CanvasViewportSize): void {
+  canvasViewportSize = viewportSize;
+}
+
+export function requestFitAllOperations(): void {
+  fitAllOperationsPending = true;
+  consumePendingFitAllOperations();
+}
+
+export function consumePendingFitAllOperations(): void {
+  if (!fitAllOperationsPending || canvasViewportSize.width <= 0 || canvasViewportSize.height <= 0) return;
+  fitAllOperationsPending = false;
+  fitAllOperations();
+}
+
+export function resetCanvasViewportSize(): void {
+  canvasViewportSize = { width: 0, height: 0 };
+  fitAllOperationsPending = false;
+}
+
+export function fitAllOperations(): void {
+  if (formationView || canvasViewportSize.width <= 0 || canvasViewportSize.height <= 0) return;
+  const minimized = new Set(state.minimized);
+  const visibleGeometries = Object.entries(state.operations)
+    .filter(([operationId]) => !minimized.has(operationId))
+    .map(([, geometry]) => geometry);
+  if (visibleGeometries.length === 0) return;
+  const minX = Math.min(...visibleGeometries.map((geometry) => geometry.x));
+  const minY = Math.min(...visibleGeometries.map((geometry) => geometry.y));
+  const maxX = Math.max(...visibleGeometries.map((geometry) => geometry.x + geometry.width));
+  const maxY = Math.max(...visibleGeometries.map((geometry) => geometry.y + geometry.height));
+  const bboxWidth = maxX - minX;
+  const bboxHeight = maxY - minY;
+  const zoom = Math.max(FOCUS_MIN_ZOOM, Math.min(FOCUS_MAX_ZOOM, Math.min(
+    (canvasViewportSize.width - OPERATION_FOCUS_PADDING) / bboxWidth,
+    (canvasViewportSize.height - OPERATION_FOCUS_PADDING) / bboxHeight,
+  )));
+  animateViewportTo({
+    x: canvasViewportSize.width / 2 - (minX + bboxWidth / 2) * zoom,
+    y: canvasViewportSize.height / 2 - (minY + bboxHeight / 2) * zoom,
+    zoom,
+  });
 }
 
 export function setOperationGeometry(sessionId: string, geometry: OperationGeometry): void {

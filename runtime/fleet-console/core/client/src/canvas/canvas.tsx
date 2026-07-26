@@ -17,7 +17,7 @@ import { resolveOperationActivity } from "../operation-activity.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
-import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, minimizeOperation, panelMotionSuppressed, restoreOperation, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
+import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, minimizeOperation, panelMotionSuppressed, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
 import { escapeSelectorValue, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
@@ -133,11 +133,19 @@ export function OperationsCanvas({
   useEffect(() => {
     const element = canvasRef.current;
     if (!element || typeof ResizeObserver === "undefined") return;
-    const update = () => setCanvasSize({ width: element.clientWidth, height: element.clientHeight });
-    update();
-    const observer = new ResizeObserver(update);
+    const update = (consumePending: boolean) => {
+      const viewportSize = { width: element.clientWidth, height: element.clientHeight };
+      setCanvasSize(viewportSize);
+      setCanvasViewportSize(viewportSize);
+      if (consumePending) consumePendingFitAllOperations();
+    };
+    update(false);
+    const observer = new ResizeObserver(() => update(true));
     observer.observe(element);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      resetCanvasViewportSize();
+    };
   }, []);
 
   useEffect(() => {
