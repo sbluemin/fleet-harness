@@ -17,6 +17,10 @@ const state = {
   generation: 1,
   carriers: [{
     carrierId: "genesis", displayName: "Genesis", sourceDisplayName: "Genesis", role: "Engineer", roleDescription: "Builds", slot: 2,
+    localizedPresentation: {
+      en: { role: "Engineer", roleDescription: "Builds" },
+      ko: { role: "엔지니어", roleDescription: "구축합니다" },
+    },
     cliType: "codex", defaultCliType: "codex", model: "gpt-5", taskForceCapable: false, taskforce: { backends: [] },
   }],
 };
@@ -56,6 +60,10 @@ const interactiveState = {
     sourceDisplayName: carrierId[0]!.toUpperCase() + carrierId.slice(1),
     role: `Role ${index + 1}`,
     roleDescription: `Mission ${index + 1}`,
+    localizedPresentation: {
+      en: { role: `Role ${index + 1}`, roleDescription: `Mission ${index + 1}` },
+      ko: { role: `직함 ${index + 1}`, roleDescription: `임무 ${index + 1}` },
+    },
     slot: index + 1,
     cliType: "codex",
     defaultCliType: "codex",
@@ -80,6 +88,7 @@ afterEach(() => {
   container?.remove();
   root = null;
   container = null;
+  document.documentElement.lang = "en";
   vi.unstubAllGlobals();
 });
 
@@ -93,6 +102,22 @@ describe("Terminal Carrier Settings client", () => {
 
     fetch.mockResolvedValueOnce(new Response(JSON.stringify({ ...state, token: "secret" }), { status: 200 }));
     await expect(fetchCarrierSettingsState()).rejects.toThrow("restricted field");
+  });
+
+  it("strictly validates localized Carrier presentations", async () => {
+    const malformed = {
+      ...state,
+      carriers: [{
+        ...state.carriers[0],
+        localizedPresentation: {
+          en: { role: "Engineer", roleDescription: "Builds" },
+          ko: { role: "엔지니어" },
+        },
+      }],
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(malformed), { status: 200 })));
+
+    await expect(fetchCarrierSettingsState()).rejects.toThrow("Invalid carrier settings carrier response");
   });
 
   it("loads and selects Carrier settings without draft state", async () => {
@@ -157,6 +182,26 @@ describe("Terminal Carrier Settings client", () => {
     await act(async () => loadCarrierSettings());
     expect(strip?.textContent).toContain("No carriers registered.");
     expect(container!.querySelector(".terminal-carriers-card")?.textContent).toContain("Select a carrier.");
+  });
+
+  it("switches the displayed Carrier presentation with locale without refetching", async () => {
+    document.documentElement.lang = "en";
+    const fetch = installInteractiveFetch();
+    await loadCarrierSettings();
+    selectCarrierSettingsCarrier("nimitz");
+    await renderCarrierSettings();
+    expect(container!.querySelector(".terminal-carriers-captain-role")?.textContent).toBe("Role 1");
+    expect(container!.querySelector(".terminal-carriers-mission")?.textContent).toBe("Mission 1");
+    const fetchCount = fetch.mock.calls.length;
+
+    await act(async () => {
+      document.documentElement.lang = "ko";
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+    expect(container!.querySelector(".terminal-carriers-captain-role")?.textContent).toBe("직함 1");
+    expect(container!.querySelector(".terminal-carriers-mission")?.textContent).toBe("임무 1");
+    expect(fetch).toHaveBeenCalledTimes(fetchCount);
   });
 
   it("PATCHes a model change immediately", async () => {

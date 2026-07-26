@@ -125,6 +125,7 @@ function assertCarrierSettingsCarrier(value: unknown, status: number): CarrierSe
     || typeof payload.sourceDisplayName !== "string"
     || typeof payload.role !== "string"
     || typeof payload.roleDescription !== "string"
+    || (payload.localizedPresentation !== undefined && !isLocalizedPresentation(payload.localizedPresentation))
     || typeof payload.slot !== "number"
     || typeof payload.cliType !== "string"
     || typeof payload.defaultCliType !== "string"
@@ -142,6 +143,7 @@ function assertCarrierSettingsCarrier(value: unknown, status: number): CarrierSe
     sourceDisplayName: payload.sourceDisplayName,
     role: payload.role,
     roleDescription: payload.roleDescription,
+    ...(payload.localizedPresentation ? { localizedPresentation: payload.localizedPresentation } : {}),
     ...(payload.category ? { category: payload.category } : {}),
     slot: payload.slot,
     cliType: payload.cliType,
@@ -151,6 +153,29 @@ function assertCarrierSettingsCarrier(value: unknown, status: number): CarrierSe
     taskForceCapable: payload.taskForceCapable,
     taskforce: { backends: payload.taskforce.backends.map((backend) => assertTaskForceBackend(backend, status)) },
   };
+}
+
+function isLocalizedPresentation(
+  value: unknown,
+): value is NonNullable<CarrierSettingsCarrier["localizedPresentation"]> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if (!hasExactKeys(value, ["en", "ko"])) return false;
+  return ["en", "ko"].every((locale) => {
+    const presentation = (value as Record<string, unknown>)[locale];
+    return Boolean(
+      presentation
+      && typeof presentation === "object"
+      && !Array.isArray(presentation)
+      && hasExactKeys(presentation, ["role", "roleDescription"])
+      && typeof (presentation as Record<string, unknown>).role === "string"
+      && typeof (presentation as Record<string, unknown>).roleDescription === "string",
+    );
+  });
+}
+
+function hasExactKeys(value: object, expected: readonly string[]): boolean {
+  const keys = Object.keys(value);
+  return keys.length === expected.length && expected.every((key) => keys.includes(key));
 }
 
 function assertCliOption(value: unknown, status: number): CarrierSettingsCliOption {

@@ -26,8 +26,11 @@ import {
   TASKFORCE_MIN_BACKENDS,
   type AgentCliSelection,
   type CarrierConfig,
+  CARRIER_PRESENTATION_LOCALES,
+  type CarrierPresentationLocale,
   type CarrierRegistry,
   type ResolvedCarrierState,
+  resolveCarrierPresentation,
 } from "@dotobokuri/fleet-carriers";
 
 import type {
@@ -41,7 +44,18 @@ import type {
 } from "../shared/carrier-settings-types.js";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
+
+type CarrierPresentationLocaleSetsMatch = [
+  Exclude<ConsoleLocale, CarrierPresentationLocale>,
+  Exclude<CarrierPresentationLocale, ConsoleLocale>,
+] extends [never, never] ? true : false;
+
+// Keep the browser and Carrier presentation locale sets synchronized in both directions.
+const CARRIER_SETTINGS_PRESENTATION_LOCALES:
+  CarrierPresentationLocaleSetsMatch extends true ? typeof CARRIER_PRESENTATION_LOCALES : never =
+  CARRIER_PRESENTATION_LOCALES;
 
 interface CarrierSettingsRouteDeps {
   readonly registry: CarrierRegistry;
@@ -287,12 +301,27 @@ function toCarrierSettingsCarrier(
   const cliType = resolved.agentCliType ?? config.defaultCliType;
   const selection = resolved.agentCli[cliType] ?? readDefaultSelection(cliType);
   const taskForceBackends = toTaskForceBackends(registry, config.id, resolved.taskforce);
+  const canonicalPresentation = {
+    title: config.carrierMetadata?.title ?? config.displayName,
+    summary: config.carrierMetadata?.summary ?? "",
+  };
   return {
     carrierId: config.id,
     displayName: resolved.displayName ?? getCarrierSourceDisplayName(registry, config.id),
     sourceDisplayName: getCarrierSourceDisplayName(registry, config.id),
-    role: config.carrierMetadata?.title ?? config.displayName,
-    roleDescription: config.carrierMetadata?.summary ?? "",
+    role: canonicalPresentation.title,
+    roleDescription: canonicalPresentation.summary,
+    localizedPresentation: Object.fromEntries(
+      CARRIER_SETTINGS_PRESENTATION_LOCALES.map((locale) => {
+        const presentation = resolveCarrierPresentation(
+          locale,
+          config.id,
+          canonicalPresentation,
+          config.carrierPresentation,
+        );
+        return [locale, { role: presentation.title, roleDescription: presentation.summary }];
+      }),
+    ) as CarrierSettingsCarrier["localizedPresentation"],
     ...(config.carrierMetadata?.category ? { category: config.carrierMetadata.category } : {}),
     slot: config.slot,
     cliType,

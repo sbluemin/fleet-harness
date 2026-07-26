@@ -2,7 +2,13 @@ import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 
-import { createCarrierRegistry, initStore, registerDefaultCarriers, resetStoreForTests } from "@dotobokuri/fleet-carriers";
+import {
+  createCarrierRegistry,
+  GENESIS_METADATA,
+  initStore,
+  registerDefaultCarriers,
+  resetStoreForTests,
+} from "@dotobokuri/fleet-carriers";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { buildCarrierSettingsOptions, buildCarrierSettingsState, registerCarrierSettingsRoutes } from "../server/carrier-settings-routes.js";
@@ -20,6 +26,21 @@ describe("Terminal Carrier Settings routes", () => {
 
     expect(state.carriers.length).toBeGreaterThan(0);
     expect(options.cliTypes.length).toBeGreaterThan(0);
+    const genesis = state.carriers.find((carrier) => carrier.carrierId === "genesis");
+    expect(genesis).toMatchObject({
+      role: GENESIS_METADATA.title,
+      roleDescription: GENESIS_METADATA.summary,
+      localizedPresentation: {
+        en: {
+          role: GENESIS_METADATA.title,
+          roleDescription: GENESIS_METADATA.summary,
+        },
+        ko: {
+          role: "수석 엔지니어",
+          roleDescription: "전방위 구현 주력 — 기능을 구축하고 프로덕션 품질의 클린 코드를 작성하며 구조적 무결성을 끝까지 유지합니다.",
+        },
+      },
+    });
     expect(JSON.stringify({ state, options })).not.toMatch(/token|prompt|persona|cwd|toolAllowlist/i);
   });
 

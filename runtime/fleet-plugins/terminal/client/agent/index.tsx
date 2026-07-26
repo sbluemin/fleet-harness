@@ -15,7 +15,7 @@ import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
 import { ANALYST_ARTIFACTS_COMPANION_ID, AnalystChatPanel } from "./analysis-chat-panel.js";
 import { fetchAnalysisReady } from "./analysis-api.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { getT, useTerminalLocale, type TerminalMessageKey } from "../i18n/index.js";
+import { currentTerminalLocale, getT, useTerminalLocale, type TerminalMessageKey } from "../i18n/index.js";
 import { disposeAnalysisStore, rearmAnalysisArtifacts, useAnalysisStore } from "./analysis-store.js";
 import "./analysis.css";
 
@@ -152,7 +152,7 @@ export const agentPlugin = definePlugin({
       installedNotifications?.emit({
         kind: agentResumeFailedNotification.id,
         operationId,
-        message: "Resume failed — the saved session has expired.",
+        message: getT(currentTerminalLocale())("terminal.notifications.resumeFailedMessage"),
       });
       throw error;
     }
@@ -698,14 +698,15 @@ function GeneralSection() {
 }
 
 const IDLE_AGENT_DORMANT_OPTIONS = [
-  { value: "off", label: "Off" },
-  { value: "30", label: "30 minutes" },
-  { value: "60", label: "1 hour" },
-  { value: "120", label: "2 hours" },
-  { value: "240", label: "4 hours" },
+  { value: "off", labelKey: "terminal.settings.idleAgentOff" },
+  { value: "30", labelKey: "terminal.settings.idleAgent30m" },
+  { value: "60", labelKey: "terminal.settings.idleAgent1h" },
+  { value: "120", labelKey: "terminal.settings.idleAgent2h" },
+  { value: "240", labelKey: "terminal.settings.idleAgent4h" },
 ] as const;
 
 function IdleAgentSessionsSettingsBlock() {
+  const t = getT(useTerminalLocale());
   const settings = useSystemPromptSettingsStore();
   const state = settings.state;
   const saving = settings.savingField !== null;
@@ -724,25 +725,33 @@ function IdleAgentSessionsSettingsBlock() {
   const idleOptions = (() => {
     const options: Array<{ value: string; label: string }> = IDLE_AGENT_DORMANT_OPTIONS.map((option) => ({
       value: option.value,
-      label: option.label,
+      label: t(option.labelKey),
     }));
     const minutes = state?.agentIdleDormantMinutes;
     if (minutes === null || minutes === undefined) return options;
     const value = String(minutes);
     if (options.some((option) => option.value === value)) return options;
-    options.push({ value, label: `${minutes} minutes` });
+    options.push({
+      value,
+      label: t(
+        minutes === 1
+          ? "terminal.settings.idleAgentMinutes_one"
+          : "terminal.settings.idleAgentMinutes_other",
+        { count: minutes },
+      ),
+    });
     return options;
   })();
 
   return (
-    <section className="global-settings-card" aria-label="Idle agent sessions">
+    <section className="global-settings-card" aria-label={t("terminal.settings.idleAgent")}>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
       {state ? (
         <div className="global-settings-row">
           <div className="global-settings-row-text">
-            <p className="global-settings-resp-title" id="idle-agent-sessions-label">Idle agent sessions</p>
+            <p className="global-settings-resp-title" id="idle-agent-sessions-label">{t("terminal.settings.idleAgent")}</p>
             <p className="global-settings-help" id="idle-agent-sessions-help">
-              Automatically move idle agent terminals to Dormant after the selected period. Dormant sessions keep their conversation and resume with one click. Shell terminals are never affected. Persists on the Console server.
+              {t("terminal.settings.idleAgentHelp")}
             </p>
           </div>
           <Select
@@ -757,7 +766,7 @@ function IdleAgentSessionsSettingsBlock() {
           />
         </div>
       ) : (
-        <p className="global-settings-help">{settings.loading ? "Loading settings." : "Settings unavailable."}</p>
+        <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
       )}
     </section>
   );
@@ -1027,10 +1036,10 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
       context.notifications.emit({
         kind: agentResumeFailedNotification.id,
         operationId: session.sessionId,
-        message: "Resume failed — the saved session has expired.",
+        message: t("terminal.notifications.resumeFailedMessage"),
       });
     }
-  }, [context, session.sessionId]);
+  }, [context, session.sessionId, t]);
 
   if (resumeState === "error") {
     return (

@@ -96,6 +96,12 @@ function ensureTerminalLocaleShared(): void {
     .catch(() => undefined);
 }
 
+/** React 밖의 알림 emit 지점에서도 현재 플러그인 로케일을 사용한다. */
+export function currentTerminalLocale(): ConsoleLocale {
+  ensureTerminalLocaleShared();
+  return getLocaleSnapshot();
+}
+
 /** 설정 섹션처럼 locale context 가 없을 때 전역 설정을 읽어 해석한다. */
 export function useTerminalLocale(): ConsoleLocale {
   ensureTerminalLocaleShared();
