@@ -1,52 +1,3 @@
-.scuttlebutt-mascot {
-  position: absolute;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: var(--space-2);
-  border: 0;
-  background: transparent;
-  cursor: grab;
-  touch-action: none;
-  transition:
-    left var(--duration-slow) var(--ease-spring),
-    top var(--duration-slow) var(--ease-spring);
-}
-
-.scuttlebutt-mascot.is-dragging {
-  cursor: grabbing;
-  transition: none;
-}
-
-.scuttlebutt-mascot:focus-visible {
-  border-radius: var(--radius-md);
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
-}
-
-.scuttlebutt-bubble {
-  padding: 1px var(--space-2);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-pill);
-  background: var(--surface-glass-strong);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: var(--weight-regular);
-  opacity: 0;
-  transform: translateY(3px);
-  transition:
-    opacity var(--duration-base) var(--ease-glide),
-    transform var(--duration-base) var(--ease-glide);
-}
-
-.scuttlebutt-mascot.is-thinking .scuttlebutt-bubble {
-  opacity: 1;
-  transform: none;
-}
-
 .scuttlebutt-bird {
   position: fixed;
   left: 0;
@@ -395,15 +346,6 @@
 .scuttlebutt-bird.is-preen .scuttlebutt-qk-eyes {
   animation: none;
   transform: scaleY(0.5);
-}
-
-.scuttlebutt-beacon {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--brass);
-  border-radius: var(--radius-pill);
-  background: var(--ink-rim);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--brass) 18%, transparent);
 }
 
 .scuttlebutt-arrival-bubble {
@@ -876,12 +818,10 @@
   }
 }
 
+/* 모션 억제는 두 축이다 — OS의 prefers-reduced-motion 과 콘솔 설정 reduce-panel-motion.
+   어느 쪽이든 편대는 정지 편대로 강등되고, 상태는 포즈 한 장으로만 남는다.
+   미디어 쿼리와 클래스는 한 블록으로 묶을 수 없어 규칙을 두 번 적는다. */
 @media (prefers-reduced-motion: reduce) {
-  .scuttlebutt-mascot,
-  .scuttlebutt-bubble {
-    transition: none;
-  }
-
   .scuttlebutt-bird-tag,
   .scuttlebutt-bird-say {
     transition: none;
@@ -910,4 +850,33 @@
   .scuttlebutt-bird.is-alert .scuttlebutt-qk-mark {
     opacity: 1;
   }
+}
+
+.reduce-panel-motion .scuttlebutt-bird-tag,
+.reduce-panel-motion .scuttlebutt-bird-say {
+  transition: none;
+}
+
+.reduce-panel-motion .scuttlebutt-qk,
+.reduce-panel-motion .scuttlebutt-qk *,
+.reduce-panel-motion .scuttlebutt-arrival-bubble,
+.reduce-panel-motion .scuttlebutt-thinking i,
+.reduce-panel-motion .scuttlebutt-chat-card {
+  animation: none !important;
+}
+
+.reduce-panel-motion .scuttlebutt-bird.is-cheer .scuttlebutt-qk-eyes {
+  opacity: 0;
+}
+
+.reduce-panel-motion .scuttlebutt-bird.is-cheer .scuttlebutt-qk-happy {
+  opacity: 1;
+}
+
+.reduce-panel-motion .scuttlebutt-bird.is-sleep .scuttlebutt-qk-zzz {
+  opacity: 1;
+}
+
+.reduce-panel-motion .scuttlebutt-bird.is-alert .scuttlebutt-qk-mark {
+  opacity: 1;
 }
