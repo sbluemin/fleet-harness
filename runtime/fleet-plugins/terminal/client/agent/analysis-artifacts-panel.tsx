@@ -15,13 +15,37 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
   const newestId = state.artifacts[0]?.id ?? null;
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [listOpen, setListOpen] = React.useState(false);
+  const [exportOpen, setExportOpen] = React.useState(false);
+  const [exportCopied, setExportCopied] = React.useState(false);
   const listId = React.useId();
+  const exportId = React.useId();
   const listShell = React.useRef<HTMLDivElement>(null);
+  const exportShell = React.useRef<HTMLDivElement>(null);
+  const exportTrigger = React.useRef<HTMLButtonElement>(null);
+  const exportMenu = React.useRef<HTMLDivElement>(null);
+  const copiedTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const disposed = React.useRef(false);
+  // 메뉴 인스턴스 세대 — 열림/닫힘마다 증가한다. 진행 중이던 clipboard 완료는 자신이 출발한
+  // 세대가 그대로일 때만 현재 메뉴를 만질 수 있어, 닫았다 재연 메뉴로의 오귀속을 막는다.
+  const exportGeneration = React.useRef(0);
   React.useEffect(() => {
     if (newestId) setActiveId(newestId);
   }, [newestId]);
   const active = artifacts.find((artifact) => artifact.id === activeId) ?? artifacts.at(-1) ?? null;
   const count = artifacts.length;
+  const clearCopied = () => {
+    if (copiedTimer.current !== null) {
+      clearTimeout(copiedTimer.current);
+      copiedTimer.current = null;
+    }
+    setExportCopied(false);
+  };
+  const closeExport = (restoreFocus = false) => {
+    exportGeneration.current += 1;
+    setExportOpen(false);
+    clearCopied();
+    if (restoreFocus) exportTrigger.current?.focus();
+  };
   React.useEffect(() => {
     if (!listOpen) return;
     const closeOutside = (event: PointerEvent) => {
@@ -40,6 +64,105 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
   React.useEffect(() => {
     if (!count) setListOpen(false);
   }, [count]);
+  React.useEffect(() => {
+    if (!exportOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !exportShell.current?.contains(event.target)) closeExport();
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeExport(true);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [exportOpen]);
+  React.useEffect(() => {
+    if (!active) closeExport();
+  }, [active?.id]);
+  React.useEffect(() => {
+    // active 아티팩트 교체는 메뉴를 닫지 않으므로, 여기서 세대를 올려 이전 아티팩트를
+    // 대상으로 출발한 clipboard 완료가 새 아티팩트에 "Copied"로 오귀속되지 않게 한다.
+    exportGeneration.current += 1;
+    clearCopied();
+  }, [exportOpen, active?.id]);
+  React.useEffect(() => {
+    if (exportOpen) exportMenu.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+  }, [exportOpen]);
+  React.useEffect(() => {
+    disposed.current = false;
+    return () => {
+      disposed.current = true;
+      if (copiedTimer.current !== null) {
+        clearTimeout(copiedTimer.current);
+        copiedTimer.current = null;
+      }
+    };
+  }, []);
+
+  const downloadActive = () => {
+    if (!active) return;
+    closeExport(true);
+    const blob = new Blob([active.html], { type: "text/html" });
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const sanitized = active.title.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-+|-+$/g, "").replace(/^\.+/, "");
+    const filename = /[\p{L}\p{N}]/u.test(sanitized) ? sanitized : "artifact";
+    anchor.href = objectUrl;
+    anchor.download = `${filename}.html`;
+    anchor.click();
+    URL.revokeObjectURL(objectUrl);
+  };
+  const copyActive = async () => {
+    if (!active) return;
+    const generation = exportGeneration.current;
+    try {
+      await navigator.clipboard.writeText(active.html);
+      if (disposed.current || generation !== exportGeneration.current) return;
+      setExportCopied(true);
+      if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
+      copiedTimer.current = setTimeout(() => {
+        copiedTimer.current = null;
+        if (disposed.current) return;
+        setExportCopied(false);
+      }, 1_500);
+      exportTrigger.current?.focus();
+    } catch {
+      if (disposed.current || generation !== exportGeneration.current) return;
+      closeExport(true);
+    }
+  };
+  const openActiveInNewTab = () => {
+    if (!active) return;
+    closeExport(true);
+    const { canvas, foreground } = getArtifactColors();
+    window.open(analysisArtifactUrl(active.id, context.theme, canvas, foreground), "_blank", "noopener");
+  };
+  const handleExportMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeExport(true);
+      return;
+    }
+    if (event.key === "Tab") {
+      closeExport();
+      return;
+    }
+    const items = [...(exportMenu.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [])];
+    if (!items.length) return;
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowDown") nextIndex = (currentIndex + 1) % items.length;
+    if (event.key === "ArrowUp") nextIndex = (currentIndex - 1 + items.length) % items.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = items.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    items[nextIndex]?.focus();
+  };
 
   return (
     <section className="session-analyst__artifacts" aria-label={t("terminal.companion.artifacts")}>
@@ -65,6 +188,16 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
             </div>
           ) : null}
         </div>
+        <div className="session-analyst__export-shell" ref={exportShell}>
+          <button type="button" className="session-analyst__export" ref={exportTrigger} aria-haspopup="menu" aria-expanded={exportOpen} aria-controls={exportId} disabled={!active} onClick={() => { if (exportOpen) { closeExport(); } else { exportGeneration.current += 1; setExportOpen(true); } }}>{t("terminal.artifacts.export")}</button>
+          {exportOpen ? (
+            <div className="session-analyst__export-menu" id={exportId} role="menu" ref={exportMenu} onKeyDown={handleExportMenuKeyDown}>
+              <button type="button" role="menuitem" onClick={downloadActive}>{t("terminal.artifacts.exportDownload")}</button>
+              <button type="button" role="menuitem" onClick={() => { void copyActive(); }}>{t(exportCopied ? "terminal.artifacts.exportCopied" : "terminal.artifacts.exportCopy")}</button>
+              <button type="button" role="menuitem" onClick={openActiveInNewTab}>{t("terminal.artifacts.exportOpenTab")}</button>
+            </div>
+          ) : null}
+        </div>
         <button type="button" className="session-analyst__clear" onClick={() => { setListOpen(false); dispatch({ type: "clear-artifacts" }); void clearAnalysisArtifacts(context.api, context.operationId).catch(() => {}); }} disabled={!count}>{t("terminal.artifacts.clear")}</button>
       </header>
       {count === 0 ? (
@@ -81,15 +214,21 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
 function ActiveArtifact({ artifact, theme, language }: { readonly artifact: AnalysisArtifact; readonly theme: ConsoleTheme; readonly language: ConsoleLocale }) {
   if (!artifact.id) return null;
   const t = getT(language);
-  const consoleStyle = getComputedStyle(document.documentElement);
-  const canvas = consoleStyle.getPropertyValue("--ink-veil").trim() || "Canvas";
-  const foreground = consoleStyle.getPropertyValue("--ink-pearl").trim() || "CanvasText";
+  const { canvas, foreground } = getArtifactColors();
   return (
     <article aria-label={t("terminal.artifacts.selectedPreview")}>
       <header><span className="session-analyst__artifact-title">{artifact.title}</span><ArtifactTime createdAt={artifact.createdAt} language={language} /></header>
       <iframe title={artifact.title} src={analysisArtifactUrl(artifact.id, theme, canvas, foreground)} sandbox="allow-scripts" />
     </article>
   );
+}
+
+function getArtifactColors(): { readonly canvas: string; readonly foreground: string } {
+  const consoleStyle = getComputedStyle(document.documentElement);
+  return {
+    canvas: consoleStyle.getPropertyValue("--ink-veil").trim() || "Canvas",
+    foreground: consoleStyle.getPropertyValue("--ink-pearl").trim() || "CanvasText",
+  };
 }
 
 function ArtifactTime({ createdAt, language }: { readonly createdAt: number; readonly language: ConsoleLocale }) {
