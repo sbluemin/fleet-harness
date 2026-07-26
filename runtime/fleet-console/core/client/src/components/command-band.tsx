@@ -352,15 +352,16 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
           <SearchIcon />
         </button>
       </div>
-      {operationsViewVisible ? <div className="command-band-formation-group" role="group" aria-label={t("chrome.commandBand.formationView")}>
+      {operationsViewVisible ? <div className="command-band-map-controls">
+        <div className="command-band-formation-group" role="group" aria-label={t("chrome.commandBand.formationView")}>
         <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })} disabled={state.activeTheaterId === null} aria-label={t("chrome.commandBand.resetCanvasView")} title={t("chrome.commandBand.resetCanvasView")}><ResetViewIcon /></button>
         <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={fitAllOperations} disabled={state.activeTheaterId === null || triageActive || !state.operationsHydrated} aria-label={t("chrome.commandBand.fitAllPanels")} title={t("chrome.commandBand.fitAllPanels")}><FitAllIcon /></button>
         <span className="command-band-formation-divider" aria-hidden="true" />
         <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("grid")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "grid"} aria-label={t("chrome.commandBand.formationGrid")} title={t("chrome.commandBand.formationGrid")}><FormationGridIcon /></button>
         <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("columns")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "columns"} aria-label={t("chrome.commandBand.formationColumns")} title={t("chrome.commandBand.formationColumns")}><FormationColumnsIcon /></button>
         <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("rows")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "rows"} aria-label={t("chrome.commandBand.formationRows")} title={t("chrome.commandBand.formationRows")}><FormationRowsIcon /></button>
-      </div> : null}
-      {operationsViewVisible ? <button
+        </div>
+        <button
         type="button"
         className="command-band-triage-toggle"
         disabled={state.activeTheaterId === null}
@@ -381,7 +382,8 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       >
         <TriageIcon />
         {triageActive ? <span>{t("chrome.commandBand.triage")}</span> : null}
-      </button> : null}
+        </button>
+      </div> : null}
       {viewMode.effective !== "mobile" ? <div className="command-band-center">
         {operationsViewVisible && activeTheater ? <div ref={switcherRef} className="command-band-switcher" onBlur={handleSwitcherFocusOut}>
           <div className="command-band-theater-cluster" aria-label={t("chrome.commandBand.activeTheater", { label: activeTheater.label })}>

@@ -332,11 +332,19 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   outline: none;
 }
 
-.command-band-formation-group {
+/* 맵 컨트롤 클러스터(보기 초기화·전체 맞춤·Formation·선별 처리)는 한 컨테이너의 플로우 형제다 —
+   개별 절대 위치 + 매직 오프셋(116px)은 버튼 추가 시 겹침으로 깨졌다(fit-all 도입 당시 선별 처리 아이콘 덮임). */
+.command-band-map-controls {
   position: absolute;
   left: calc(var(--command-band-left-width, 280px) + var(--space-2));
   top: 50%;
   transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.command-band-formation-group {
   display: flex;
   flex: none;
   align-items: center;
@@ -383,11 +391,8 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 .command-band-formation-toggle:disabled { cursor: not-allowed; opacity: 0.55; }
 
 .command-band-triage-toggle {
-  position: absolute;
-  left: calc(var(--command-band-left-width, 280px) + 116px);
-  top: 50%;
-  transform: translateY(-50%);
   display: flex;
+  flex: none;
   align-items: center;
   gap: 6px;
   min-width: 24px;
