@@ -128,6 +128,8 @@ describe("rail search fan-out", () => {
     const input = container.querySelector<HTMLInputElement>("#operation-search-input");
     act(() => input!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })));
     expect(options[1]?.getAttribute("aria-selected")).toBe("true");
+    expect(input?.getAttribute("aria-activedescendant")).toBe("operation-search-option-panel-plans-plan-a");
+    expect(input?.getAttribute("aria-activedescendant")).toBe(options[1]?.id);
     await act(async () => {
       input!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
       await Promise.resolve();

@@ -17,6 +17,7 @@ let root: Root | null = null;
 let scrollIntoViewDescriptor: PropertyDescriptor | undefined;
 let canUndoLastClose = false;
 let onUndoLastClose = vi.fn();
+const readCanUndoLastClose = () => canUndoLastClose;
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -139,9 +140,10 @@ describe("Operation search focus handoff", () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
-  it("rechecks Undo availability at execution time before invoking the callback", () => {
+  it("keeps the opening-time Undo row snapshot while rechecking availability at execution time", () => {
+    act(() => setState({ operationSearchOpen: false }));
     canUndoLastClose = true;
-    act(() => root!.render(createElement(MemoryRouter, null, createElement(SearchHarness))));
+    act(() => setState({ operationSearchOpen: true }));
     const input = document.querySelector<HTMLInputElement>("#operation-search-input");
     const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     act(() => {
@@ -152,7 +154,10 @@ describe("Operation search focus handoff", () => {
     expect(commandOption?.textContent).toContain("Undo last close");
 
     canUndoLastClose = false;
-    act(() => commandOption!.click());
+    act(() => root!.render(createElement(MemoryRouter, null, createElement(SearchHarness))));
+    const retainedCommandOption = document.querySelector<HTMLButtonElement>('[role="option"]');
+    expect(retainedCommandOption?.textContent).toContain("Undo last close");
+    act(() => input!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
 
     expect(onUndoLastClose).not.toHaveBeenCalled();
     expect(document.querySelector('[role="dialog"]')).toBeNull();
@@ -200,7 +205,7 @@ function SearchHarness() {
     state: useConsoleState(),
     railPanels: [{ id: "alerts", title: "Alerts" }],
     plugins: [],
-    canUndoLastClose: () => canUndoLastClose,
+    canUndoLastClose: readCanUndoLastClose,
     onUndoLastClose,
   });
 }

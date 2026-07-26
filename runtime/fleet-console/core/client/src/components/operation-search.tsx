@@ -82,7 +82,7 @@ export function OperationSearch({
   const entries = useMemo(() => operationSearchEntries(state), [state]);
   const filteredEntries = useMemo(() => filterOperationSearchEntries(entries, query), [entries, query]);
   const groups = useMemo(() => groupOperationSearchEntries(filteredEntries), [filteredEntries]);
-  const undoAvailable = canUndoLastClose?.() === true;
+  const undoAvailable = useMemo(() => canUndoLastClose?.() === true, [state.operationSearchOpen, canUndoLastClose]);
   const commands = useMemo(
     () => buildPaletteCommands(state, railPanels, t, { canUndoLastClose: undoAvailable }),
     [state, railPanels, t, undoAvailable],
