@@ -47,6 +47,7 @@ export function buildShortcutGroups(t: T): readonly ShortcutGroup[] {
         { combos: [["Shift", "Drag"]], description: t("shortcuts.map.drawTerminal") },
         { combos: [["Space", "Drag"]], description: t("shortcuts.map.panWithSpace") },
         { combos: [["Scroll"]], description: t("shortcuts.map.zoom") },
+        { combos: [["Shift", "1"]], description: t("shortcuts.map.fitAll") },
         { combos: [["Right-click"]], description: t("shortcuts.map.contextMenu") },
         { combos: [["Double-click"]], description: t("shortcuts.map.doubleClick") },
         { combos: [["Click"]], description: t("shortcuts.map.clearFocus") },

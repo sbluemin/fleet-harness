@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { commandBandActiveOperation, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "../core/client/src/components/command-band-guards.js";
@@ -13,6 +16,12 @@ describe("Command Band v2 guards", () => {
 
     expect(draft).toBe("previous-operation draft");
     expect(commandBandRenameCommitTarget(capturedOperationId, activeOperationId)).toBeNull();
+  });
+
+  it("disables Fit all panels until Operations hydrate", () => {
+    const source = readFileSync(resolve(process.cwd(), "core/client/src/components/command-band.tsx"), "utf8");
+
+    expect(source).toContain("disabled={state.activeTheaterId === null || triageActive || !state.operationsHydrated}");
   });
 });
 

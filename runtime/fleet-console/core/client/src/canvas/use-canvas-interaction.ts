@@ -36,7 +36,9 @@ interface DragState {
   readonly startViewport: CanvasViewport;
 }
 
-const MIN_ZOOM = 0.25;
+// 휠 줌 하한은 fit-all의 FIT_ALL_MIN_ZOOM(0.02)과 같은 도메인이어야 한다 — 더 높으면
+// fit으로 깊게 나간 뷰포트에서 축소 휠이 하한으로 튀어 방향이 뒤집힌다.
+const MIN_ZOOM = 0.02;
 const MAX_ZOOM = 2;
 const MIN_CREATE_WIDTH = 200;
 const MIN_CREATE_HEIGHT = 150;

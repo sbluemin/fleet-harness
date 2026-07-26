@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { calculateGridSlots, clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, forceDropCompanionOperationId, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFormationLayout, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCanvasSnapshot, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, selectFormationLayout, setCompanionOperationId, setCompanionPanelVisible, setFormationLayout, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, setState, toggleFormationView, toggleTheaterGroupCollapsed, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
+import { calculateGridSlots, clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, consumePendingFitAllOperations, fitAllOperations, forceDropCompanionOperationId, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFormationLayout, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCanvasSnapshot, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, requestFitAllOperations, resetCanvasViewportSize, selectFormationLayout, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setFormationLayout, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, setState, toggleFormationView, toggleTheaterGroupCollapsed, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
 
 const GEOMETRY: OperationGeometry = { x: 0, y: 0, width: 100, height: 100, zIndex: 0 };
 
@@ -11,7 +11,6 @@ beforeEach(() => {
     clearTimeout,
     localStorage: createStorage(),
     matchMedia: vi.fn().mockReturnValue({ matches: false }),
-    requestAnimationFrame: vi.fn(),
     setTimeout,
   });
   window.localStorage.clear();
@@ -20,6 +19,8 @@ beforeEach(() => {
   clearCompanionOperationId();
   clearMaximizedOperationId();
   clearFormationView();
+  resetCanvasViewportSize();
+  setCanvasViewportSize({ width: 1_000, height: 800 });
 });
 
 afterEach(() => {
@@ -37,6 +38,125 @@ afterEach(() => {
 });
 
 describe("canvas store", () => {
+  it("fits the visible Operation bounding box and centers it in the canvas", () => {
+    setOperationGeometry("op-a", { x: 100, y: 200, width: 200, height: 100, zIndex: 0 });
+    setOperationGeometry("op-b", { x: 500, y: 400, width: 300, height: 200, zIndex: 0 });
+
+    fitAllOperations();
+
+    expect(getSnapshot().viewport).toEqual({ x: 50, y: 0, zoom: 1 });
+  });
+
+  it("zooms out far enough to fit widely scattered Operations", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY, x: -5_000, y: -1_000 });
+    setOperationGeometry("op-b", { ...GEOMETRY, x: 5_000, y: 1_000 });
+
+    fitAllOperations();
+
+    const { x, y, zoom } = getSnapshot().viewport;
+    expect(zoom).toBeCloseTo(904 / 10_100, 10);
+    expect(x).toBeCloseTo(500 - 50 * (904 / 10_100), 10);
+    expect(y).toBeCloseTo(400 - 50 * (904 / 10_100), 10);
+  });
+
+  it("clamps fit zoom only at the numerical epsilon for extreme spreads", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY, x: -50_000, y: -1_000 });
+    setOperationGeometry("op-b", { ...GEOMETRY, x: 50_000, y: 1_000 });
+
+    fitAllOperations();
+
+    expect(getSnapshot().viewport).toEqual({ x: 499, y: 399, zoom: 0.02 });
+  });
+
+  it("preserves an intermediate fit zoom between the lower and upper bounds", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY, x: 0, y: 0 });
+    setOperationGeometry("op-b", { ...GEOMETRY, x: 1_900, y: 0 });
+
+    fitAllOperations();
+
+    expect(getSnapshot().viewport).toEqual({ x: 48, y: 377.4, zoom: 0.452 });
+  });
+
+  it("clamps fit zoom to the 1 upper bound for a narrow Operation set", () => {
+    setOperationGeometry("op-a", { x: 20, y: 30, width: 100, height: 80, zIndex: 0 });
+
+    fitAllOperations();
+
+    expect(getSnapshot().viewport).toEqual({ x: 430, y: 330, zoom: 1 });
+  });
+
+  it("does not change the viewport when no visible Operations exist", () => {
+    const viewport = { x: 12, y: 34, zoom: 0.75 };
+    setState({ viewport });
+
+    fitAllOperations();
+
+    expect(getSnapshot().viewport).toEqual(viewport);
+  });
+
+  it("excludes minimized Operations from the fit bounds", () => {
+    setOperationGeometry("visible", { x: 20, y: 30, width: 100, height: 80, zIndex: 0 });
+    setOperationGeometry("minimized", { x: 5_000, y: 4_000, width: 500, height: 400, zIndex: 0 });
+    minimizeOperation("minimized");
+
+    fitAllOperations();
+
+    expect(getSnapshot().viewport).toEqual({ x: 430, y: 330, zoom: 1 });
+  });
+
+  it("does not fit while Formation view is active", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY, x: 100, y: 200 });
+    const viewport = { x: 12, y: 34, zoom: 0.75 };
+    setState({ viewport });
+    toggleFormationView();
+
+    fitAllOperations();
+
+    expect(getSnapshot().viewport).toEqual(viewport);
+  });
+
+  it("does not fit while an Operation is maximized", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY, x: 100, y: 200 });
+    const viewport = { x: 12, y: 34, zoom: 0.75 };
+    setState({ viewport });
+    setMaximizedOperationId("op-a");
+
+    fitAllOperations();
+
+    expect(getSnapshot().viewport).toEqual(viewport);
+  });
+
+  it("does not fit while an Operation companion is active", () => {
+    setOperationGeometry("op-a", { ...GEOMETRY, x: 100, y: 200 });
+    const viewport = { x: 12, y: 34, zoom: 0.75 };
+    setState({ viewport });
+    setCompanionOperationId("op-a");
+
+    fitAllOperations();
+
+    expect(getSnapshot().viewport).toEqual(viewport);
+  });
+
+  it("preserves a pending fit until canvas size registration and then consumes it", () => {
+    setOperationGeometry("op-a", { x: 20, y: 30, width: 100, height: 80, zIndex: 0 });
+    resetCanvasViewportSize();
+
+    requestFitAllOperations();
+    expect(getSnapshot().viewport).toEqual({ x: 0, y: 0, zoom: 1 });
+
+    setCanvasViewportSize({ width: 1_000, height: 800 });
+    consumePendingFitAllOperations();
+    expect(getSnapshot().viewport).toEqual({ x: 430, y: 330, zoom: 1 });
+  });
+
+  it("fits immediately when a valid canvas size is already registered", () => {
+    setOperationGeometry("op-a", { x: 20, y: 30, width: 100, height: 80, zIndex: 0 });
+
+    requestFitAllOperations();
+
+    expect(getSnapshot().viewport).toEqual({ x: 430, y: 330, zoom: 1 });
+  });
+
   it("keeps companion visibility overrides per Operation and resets them on Analyze entry", () => {
     setCompanionPanelVisible("op-a", "artifacts", true);
     setCompanionPanelVisible("op-b", "artifacts", false);

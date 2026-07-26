@@ -7,7 +7,7 @@ import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } 
 import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, issueTheaterFolderGrant, patchOperation, patchTheaterOrder, renameOperation, updateGroup, ApiError, type DeferredDeletionReceipt } from "../api.js";
 import { closeOperationCompletely } from "../operation-close.js";
 import { forgetTheaterCompletely } from "../theater-forget.js";
-import { claimTopZIndex, ensureDefaultGeometry, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
+import { claimTopZIndex, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { playMinimizeFlight, playRestoreFlight } from "../canvas/panel-motion.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
@@ -84,9 +84,19 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     const handler = (event: KeyboardEvent) => {
       if (viewMode.effective === "mobile") return;
       if (!shouldHandleOperationsKeyboardShortcut()) return;
-      if (!event.altKey || event.metaKey || event.ctrlKey) return;
       const active = document.activeElement;
       if (active instanceof HTMLElement && active.matches("input, textarea, [contenteditable='true']") && !active.closest(".xterm")) return;
+      if (event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey && event.code === "Digit1") {
+        if (active instanceof HTMLElement && active.closest(".xterm")) return;
+        const theaterId = stateRef.current.activeTheaterId;
+        if (isTriageActive(theaterId)) return;
+        if (!stateRef.current.operationsHydrated) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        fitAllOperations();
+        return;
+      }
+      if (!event.altKey || event.metaKey || event.ctrlKey) return;
       // macOS의 Option+문자는 합성 문자를 내보내므로(event.key가 "©"/"ƒ") 물리 키 기준인 event.code로 판별한다.
       if (event.code === "KeyS" && !event.shiftKey) {
         event.preventDefault();
@@ -177,6 +187,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     ].filter((id): id is string => id !== null));
     minimizeOperations(bootOperationIds.filter((id) => !protectedIds.has(id)));
   }, [claimBootPanelMinimization, operationOrder, state.activeTheaterId, state.operationsHydrated, viewMode.effective]);
+
+  useEffect(() => {
+    if (!state.operationsHydrated) return;
+    consumePendingFitAllOperations();
+  }, [state.activeTheaterId, state.operationsHydrated]);
 
   const focusMapOperation = useCallback((operationId: string) => {
     const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);

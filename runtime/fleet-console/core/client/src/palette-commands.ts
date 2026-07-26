@@ -21,6 +21,7 @@ export type PaletteCommandAction =
   | { readonly kind: "resume-operation"; readonly operationId: string }
   | { readonly kind: "close-operation"; readonly operationId: string }
   | { readonly kind: "minimize-all-operations" }
+  | { readonly kind: "fit-all-panels" }
   | { readonly kind: "toggle-triage-mode" }
   | { readonly kind: "toggle-formation" }
   | { readonly kind: "toggle-status-axis" }
@@ -128,6 +129,12 @@ export function buildPaletteCommands(
         label: t("palette.minimizeAll"),
         current: false,
         action: { kind: "minimize-all-operations" },
+      });
+      commands.push({
+        commandId: "fit-all-panels",
+        label: t("palette.fitAllPanels"),
+        current: false,
+        action: { kind: "fit-all-panels" },
       });
     }
     commands.push({

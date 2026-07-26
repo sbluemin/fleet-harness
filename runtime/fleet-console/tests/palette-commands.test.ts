@@ -183,6 +183,7 @@ describe("buildPaletteCommands", () => {
     expect(ids).toContain("close-operation:op-dormant");
     expect(ids).toContain("close-operation:op-live");
     expect(ids).toContain("minimize-all-operations");
+    expect(ids.indexOf("fit-all-panels")).toBe(ids.indexOf("minimize-all-operations") + 1);
     expect(commands.find((command) => command.commandId === "resume-operation:op-dormant")?.label)
       .toBe("Resume operation: op-dormant");
   });
