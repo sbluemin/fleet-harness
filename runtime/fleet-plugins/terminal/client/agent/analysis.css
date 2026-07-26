@@ -18,6 +18,25 @@
 .session-analyst-handle--artifacts.is-authoring .session-analyst-handle__count { border: 1px dashed var(--aurora); animation: analyst-authoring-breathe 1.4s var(--ease-glide) infinite; }
 .session-analyst-handle:focus-visible, .session-analyst__chat-pane button:focus-visible, .session-analyst__artifacts button:focus-visible { outline: 2px solid var(--aurora); outline-offset: 2px; }
 
+/* 출격 리본 — 터미널 stage는 absolute inset:0(PR#258 구조)이라 흐름 자식은 터미널을 줄이지 못한다.
+   리본도 흐름 밖에 두어 하단에 고정한다: 터미널 geometry가 불변이므로 PTY refit을 유발하지 않는다.
+   z-index 3 = 터미널(0) < 핸들(2) < 리본(3) < Details 모달(4). */
+.carrier-sortie-ribbon { position: absolute; z-index: 3; right: 0; bottom: 0; left: 0; box-sizing: border-box; display: flex; align-items: center; gap: var(--space-3); min-height: 30px; overflow: hidden; border: none; border-top: 1px solid color-mix(in oklch, var(--aurora) 30%, var(--hairline)); /* 판독성 계약: glass 층 + 불투명 --ink-deep 언더레이 */ background: linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)), var(--ink-deep); padding: 5px 12px; box-shadow: var(--shadow-floating); color: var(--text-secondary); font-family: var(--font-mono); text-align: left; cursor: pointer; animation: analyst-status-rise var(--duration-base) var(--ease-glide) both; }
+.carrier-sortie-ribbon:hover { background: linear-gradient(color-mix(in oklch, var(--ink-mid) 72%, var(--surface-glass-strong)), color-mix(in oklch, var(--ink-mid) 72%, var(--surface-glass-strong))), var(--ink-deep); }
+.carrier-sortie-ribbon:focus-visible { outline: 2px solid var(--aurora); outline-offset: -2px; }
+.carrier-sortie-ribbon__scan { position: absolute; z-index: 1; inset: 0 0 auto; height: 2px; background: linear-gradient(90deg, transparent, var(--aurora), transparent); background-size: 200% 100%; animation: analyst-aurora-scan 1.6s linear infinite; }
+.carrier-sortie-ribbon__count { flex: none; color: var(--aurora); font-weight: var(--weight-bold); font-size: 10px; letter-spacing: .1em; white-space: nowrap; }
+.carrier-sortie-ribbon__roster { display: flex; align-items: center; gap: var(--space-3); min-width: 0; overflow: hidden; }
+.carrier-sortie-ribbon__track { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; border-left: 2px solid var(--hairline-strong); padding-left: 7px; }
+.carrier-sortie-ribbon__track[data-captain="nimitz"] { border-left-color: var(--captain-nimitz); }
+.carrier-sortie-ribbon__track[data-captain="genesis"] { border-left-color: var(--captain-genesis); }
+.carrier-sortie-ribbon__track[data-captain="sentinel"] { border-left-color: var(--captain-sentinel); }
+.carrier-sortie-ribbon__track[data-captain="vanguard"] { border-left-color: var(--captain-vanguard); }
+.carrier-sortie-ribbon__name { overflow: hidden; color: var(--text-primary); font-size: 10.5px; white-space: nowrap; text-overflow: ellipsis; }
+.carrier-sortie-ribbon__phase { flex: none; color: var(--text-tertiary); font-size: 9.5px; letter-spacing: .04em; white-space: nowrap; }
+.carrier-sortie-ribbon__more { flex: none; color: var(--text-tertiary); font-size: 9.5px; white-space: nowrap; }
+.carrier-sortie-ribbon__chev { margin-left: auto; flex: none; color: var(--text-tertiary); font-size: 12px; line-height: 1; }
+
 .carrier-streams { container-type: inline-size; box-sizing: border-box; display: grid; grid-template-rows: auto minmax(0, 1fr); width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; background: var(--surface-pillar); color: var(--text-primary); }
 .carrier-streams__panel-head .session-analyst__panel-copy { flex: 1; }
 .carrier-streams__state { display: inline-flex; align-items: center; gap: 7px; color: var(--text-tertiary); font-weight: var(--weight-medium); font-size: 10px; line-height: 1; font-family: var(--font-mono); letter-spacing: .08em; white-space: nowrap; }
@@ -306,6 +325,8 @@
 }
 
 .reduce-panel-motion .session-analyst-handle__live::after,
+.reduce-panel-motion .carrier-sortie-ribbon,
+.reduce-panel-motion .carrier-sortie-ribbon__scan,
 .reduce-panel-motion .carrier-stream-column__scan,
 .reduce-panel-motion .carrier-stream-column__activity-scan,
 .reduce-panel-motion .carrier-stream-column__activity[data-tone="live"] .carrier-stream-column__activity-orbit::after,
@@ -320,5 +341,5 @@
   .session-analyst-handle:hover { transform: none; }
   .session-analyst-handle--artifacts:hover { transform: translateY(-50%); }
   .session-analyst__suggestions button:hover, .session-analyst__followups-row button:hover { transform: none; }
-  .session-analyst__pulse-scan, .session-analyst__composer.is-working .session-analyst__composer-surface::before, .session-analyst__pulse-orbit::after, .session-analyst__pulse, .session-analyst__pulse-copy strong, .session-analyst__receipt, .session-analyst__message--analyst, .session-analyst__queue-item, .session-analyst__followups, .session-analyst__slash, .session-analyst__composer.is-docking, .session-analyst__artifact-menu, .session-analyst-handle__count.is-pulsing, .session-analyst-handle--artifacts.is-authoring .session-analyst-handle__count, .session-analyst__author-card, .session-analyst__author-track span, .session-analyst-handle__live::after, .carrier-stream-column__scan, .carrier-stream-column__activity-scan, .carrier-stream-column__activity[data-tone="live"] .carrier-stream-column__activity-orbit::after, .carrier-stream-column__reasoning i::after { animation: none; }
+  .session-analyst__pulse-scan, .session-analyst__composer.is-working .session-analyst__composer-surface::before, .session-analyst__pulse-orbit::after, .session-analyst__pulse, .session-analyst__pulse-copy strong, .session-analyst__receipt, .session-analyst__message--analyst, .session-analyst__queue-item, .session-analyst__followups, .session-analyst__slash, .session-analyst__composer.is-docking, .session-analyst__artifact-menu, .session-analyst-handle__count.is-pulsing, .session-analyst-handle--artifacts.is-authoring .session-analyst-handle__count, .session-analyst__author-card, .session-analyst__author-track span, .session-analyst-handle__live::after, .carrier-sortie-ribbon, .carrier-sortie-ribbon__scan, .carrier-stream-column__scan, .carrier-stream-column__activity-scan, .carrier-stream-column__activity[data-tone="live"] .carrier-stream-column__activity-orbit::after, .carrier-stream-column__reasoning i::after { animation: none; }
 }

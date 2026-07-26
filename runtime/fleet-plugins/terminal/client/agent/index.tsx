@@ -23,7 +23,7 @@ import { fetchCarrierSettingsOptions } from "../carriers/api.js";
 import type { CarrierSettingsCliOption } from "../../shared/carrier-settings-types.js";
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
-import { deriveTrackPhase, formatElapsedDuration, isTrackLive, mergeJobIds, resolveCarrierCaptain, resolveToolTone } from "./helpers.js";
+import { deriveTrackPhase, formatElapsedDuration, isTrackLive, mergeJobIds, resolveCarrierCaptain, resolveToolTone, type TrackPhase } from "./helpers.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore } from "./model-auth-store.js";
 import type { ModelAuthProviderState } from "./model-auth-api.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings-store.js";
@@ -76,6 +76,13 @@ const TRACK_PHASE_COPY_KEYS = {
   done: "terminal.streams.status.done",
   error: "terminal.streams.status.error",
 } as const;
+
+function sortiePhaseText(phase: TrackPhase, t: ReturnType<typeof getT>): string {
+  if (phase.kind === "tool" && phase.toolName) return t("terminal.sortie.phase.tool", { tool: phase.toolName });
+  if (phase.kind === "writing") return t("terminal.sortie.phase.writing");
+  if (phase.kind === "reasoning") return t("terminal.sortie.phase.reasoning");
+  return t("terminal.sortie.phase.working");
+}
 
 export const agentOperationKind = defineOperationKind({
   pluginId: "terminal",
@@ -361,6 +368,45 @@ function CarrierStreamsHandle({ context, live }: { readonly context: OperationRe
   );
 }
 
+const SORTIE_RIBBON_INLINE_LIMIT = 2;
+
+function CarrierSortieRibbon({ context, jobs }: { readonly context: OperationRenderContext; readonly jobs: readonly JobView[] }) {
+  const language = context.language ?? "en";
+  const t = getT(language);
+  const live = jobs.flatMap((job) => isTerminalJobStatus(job.status) ? [] : job.trackOrder.flatMap((trackId) => {
+    const track = job.tracks[trackId];
+    return track && isTrackLive(track.status) ? [{ job, track }] : [];
+  }));
+  if (live.length === 0) return null;
+  const shown = live.slice(0, SORTIE_RIBBON_INLINE_LIMIT);
+  const overflow = live.length - shown.length;
+
+  return (
+    <button
+      type="button"
+      className="carrier-sortie-ribbon"
+      aria-label={t("terminal.sortie.open", { count: live.length })}
+      onClick={() => toggleCompanionPanel(context, CARRIER_STREAMS_COMPANION_ID)}
+    >
+      <span className="carrier-sortie-ribbon__scan" aria-hidden="true" />
+      <span className="carrier-sortie-ribbon__count">{t("terminal.sortie.count", { count: live.length })}</span>
+      <span className="carrier-sortie-ribbon__roster">
+        {shown.map(({ job, track }) => {
+          const captain = resolveCarrierCaptain(job.ownerCarrierId);
+          return (
+            <span className="carrier-sortie-ribbon__track" key={`${job.jobId}:${track.trackId}`} data-captain={captain}>
+              <span className="carrier-sortie-ribbon__name" title={track.displayName}>{track.displayName}</span>
+              <span className="carrier-sortie-ribbon__phase">{sortiePhaseText(deriveTrackPhase(track, job.status), t)}</span>
+            </span>
+          );
+        })}
+        {overflow > 0 ? <span className="carrier-sortie-ribbon__more">{t("terminal.sortie.more", { count: overflow })}</span> : null}
+      </span>
+      <span className="carrier-sortie-ribbon__chev" aria-hidden="true">»</span>
+    </button>
+  );
+}
+
 function AgentOperationView({ context }: { readonly context: OperationRenderContext }) {
   const state = useAgentState();
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
@@ -414,6 +460,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         theme={context.theme}
         onExit={() => removeSession(session.sessionId)}
       />
+      <CarrierSortieRibbon context={context} jobs={jobs} />
     </div>
   );
 }

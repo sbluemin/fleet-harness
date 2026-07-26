@@ -373,6 +373,60 @@ describe("Carrier Streams companion", () => {
     expect(container?.querySelector(".session-analyst-handle--streams.is-live")).not.toBeNull();
   });
 
+  it("keeps the sortie ribbon out of terminal geometry and disables its motion when requested", () => {
+    // 터미널 stage의 absolute 계약은 Console core 소유다 — 여기서는 리본이 흐름 밖에 있고
+    // 이 패키지가 그 계약을 덮어쓰지 않는다는 것만 단언한다(교차 패키지 소스 읽기 금지).
+    expect(ANALYSIS_CSS).toMatch(/\.carrier-sortie-ribbon \{[^}]*position: absolute;[^}]*z-index: 3;[^}]*bottom: 0;/);
+    expect(ANALYSIS_CSS).not.toMatch(/\.agent-stream-host \.terminal-stage \{[^}]*(?:height|inset)\s*:/);
+    // 모션 차단 게이트는 둘이다 — OS의 prefers-reduced-motion 과 앱 설정의 .reduce-panel-motion.
+    // 한쪽만 막으면 설정 토글을 켠 운영자에게 스캔 애니메이션이 계속 흐른다.
+    expect(ANALYSIS_CSS).toMatch(/\.carrier-sortie-ribbon, \.carrier-sortie-ribbon__scan,[^{]*\{ animation: none; \}/);
+    expect(ANALYSIS_CSS).toMatch(/\.reduce-panel-motion \.carrier-sortie-ribbon,\s*\n\.reduce-panel-motion \.carrier-sortie-ribbon__scan,/);
+  });
+
+  it("does not render the sortie ribbon without live tracks", async () => {
+    installSession([]);
+    await renderOperation(createContext());
+
+    expect(container?.querySelector(".carrier-sortie-ribbon")).toBeNull();
+  });
+
+  it("shows two of three live tracks inline and reports the overflow", async () => {
+    installSession([makeJob("job-sortie", "active", [
+      makeTrack("track-one", { displayName: "Genesis" }),
+      makeTrack("track-two", { displayName: "Nimitz" }),
+      makeTrack("track-three", { displayName: "Sentinel" }),
+    ], "genesis")]);
+    const onSetCompanionPanelVisible = vi.fn();
+    await renderOperation(createContext({
+      hiddenCompanionPanelIds: ["carrier-streams"],
+      onSetCompanionPanelVisible,
+    }));
+
+    const ribbon = container?.querySelector<HTMLButtonElement>(".carrier-sortie-ribbon");
+    expect(ribbon?.getAttribute("aria-label")).toBe("Open Carrier Streams — 3 on sortie");
+    expect(ribbon?.querySelectorAll(".carrier-sortie-ribbon__track")).toHaveLength(2);
+    expect(ribbon?.textContent).toContain("3 on sortie");
+    expect(ribbon?.textContent).toContain("+1");
+    expect(ribbon?.textContent).not.toContain("Sentinel");
+    act(() => ribbon?.click());
+    expect(onSetCompanionPanelVisible).toHaveBeenCalledWith("carrier-streams", true);
+  });
+
+  it("localizes live tool phases in the sortie ribbon", async () => {
+    installSession([makeJob("job-sortie-tool", "active", [
+      makeTrack("track-tool", {
+        displayName: "Genesis",
+        tools: [{ id: "bash-1", name: "Bash", status: "running" }],
+      }),
+    ], "genesis")]);
+    await renderOperation(createContext({ language: "en" }));
+    expect(container?.querySelector(".carrier-sortie-ribbon__phase")?.textContent).toBe("Using Bash");
+
+    await renderOperation(createContext({ language: "ko" }));
+    expect(container?.querySelector(".carrier-sortie-ribbon__phase")?.textContent).toBe("Bash 사용 중");
+  });
+
   it("keeps ANALYZE and STREAMS panel visibility independent, including coexistence", async () => {
     installSession([]);
     await render(createElement(CompanionVisibilityHost));
@@ -650,9 +704,9 @@ describe("Carrier Streams companion", () => {
 
 describe("Carrier Streams helpers", () => {
   it("derives live, done, and error phases without surfacing thought text", () => {
-    expect(deriveTrackPhase(makeTrack("live", { thought: "hidden" }), "active")).toEqual({ label: "Reasoning", tone: "live" });
-    expect(deriveTrackPhase(makeTrack("done", { status: "done" }), "active")).toEqual({ label: "Done", tone: "done" });
-    expect(deriveTrackPhase(makeTrack("error", { status: "err" }), "active")).toEqual({ label: "Error", tone: "error" });
+    expect(deriveTrackPhase(makeTrack("live", { thought: "hidden" }), "active")).toEqual({ kind: "reasoning", tone: "live" });
+    expect(deriveTrackPhase(makeTrack("done", { status: "done" }), "active")).toEqual({ kind: "done", tone: "done" });
+    expect(deriveTrackPhase(makeTrack("error", { status: "err" }), "active")).toEqual({ kind: "error", tone: "error" });
     expect(isTrackLive("conn")).toBe(true);
     expect(isTrackLive("done")).toBe(false);
   });
