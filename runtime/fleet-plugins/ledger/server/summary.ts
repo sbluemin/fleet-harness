@@ -1,0 +1,188 @@
+import type { OperationNode } from "@fleet-console/sdk/operations";
+
+import { TOKSCALE_VERSION } from "./cli.js";
+import type { LedgerClientDto, LedgerOperationDto, LedgerSourceStatus, LedgerSummaryDto, LedgerUsage, LedgerWindow, TokscaleSession } from "./types.js";
+
+interface OperationClaim {
+  readonly operation: OperationNode;
+  readonly sessionId: string;
+  readonly provider: "claude" | "codex";
+  readonly cliId: string;
+  readonly cliLabel: string;
+}
+
+interface Accumulator {
+  input: number;
+  output: number;
+  cacheRead: number;
+  costUsd: number;
+  messages: number;
+}
+
+class AggregateOverflowError extends Error {}
+
+function emptyAccumulator(): Accumulator {
+  return { input: 0, output: 0, cacheRead: 0, costUsd: 0, messages: 0 };
+}
+
+function addSession(target: Accumulator, session: TokscaleSession): void {
+  target.input = addFinite(target.input, session.input);
+  target.output = addFinite(target.output, session.output);
+  target.cacheRead = addFinite(target.cacheRead, session.cacheRead);
+  target.costUsd = addFinite(target.costUsd, session.costUsd);
+  target.messages = addFinite(target.messages, session.messages);
+}
+
+function addFinite(left: number, right: number): number {
+  const result = left + right;
+  if (!Number.isFinite(result)) throw new AggregateOverflowError("ledger aggregate overflow");
+  return result;
+}
+
+function usageOf(value: Accumulator): LedgerUsage {
+  return { input: value.input, output: value.output, cacheRead: value.cacheRead };
+}
+
+function stringField(payload: Record<string, unknown>, key: string): string {
+  return typeof payload[key] === "string" ? payload[key] : "";
+}
+
+function readClaim(operation: OperationNode): OperationClaim | null {
+  if (operation.pluginId !== "terminal" || operation.type !== "agent") return null;
+  const providerSession = operation.payload.providerSession;
+  if (!providerSession || typeof providerSession !== "object") return null;
+  const candidate = providerSession as { readonly provider?: unknown; readonly sessionId?: unknown };
+  if ((candidate.provider !== "claude" && candidate.provider !== "codex") || typeof candidate.sessionId !== "string") return null;
+  return {
+    operation,
+    sessionId: candidate.sessionId,
+    provider: candidate.provider,
+    cliId: stringField(operation.payload, "cliId"),
+    cliLabel: stringField(operation.payload, "cliLabel"),
+  };
+}
+
+export function nativeSessionId(session: TokscaleSession): string | null {
+  const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+  if (session.client === "claude") {
+    const match = session.sessionId.match(new RegExp(`^(${uuid})$`, "i"));
+    return match?.[1]?.toLowerCase() ?? null;
+  }
+  if (session.client !== "codex") return null;
+  const timestamp = "\\d{4}-\\d{2}-\\d{2}T\\d{2}(?:-|:)\\d{2}(?:-|:)\\d{2}(?:\\.\\d{3})?Z?";
+  const match = session.sessionId.match(new RegExp(`^rollout-${timestamp}-(${uuid})$`, "i"));
+  return match?.[1]?.toLowerCase() ?? null;
+}
+
+export function buildSummary(
+  sessions: readonly TokscaleSession[],
+  operations: readonly OperationNode[],
+  scope: { readonly theaterId: string | null; readonly window: LedgerWindow },
+  status: LedgerSourceStatus = "ok",
+  generatedAtMs = Date.now(),
+  skippedSessions = 0,
+): LedgerSummaryDto {
+  try {
+    return buildSummaryUnchecked(sessions, operations, scope, status, generatedAtMs, skippedSessions);
+  } catch (error) {
+    if (!(error instanceof AggregateOverflowError)) throw error;
+    return {
+      schemaVersion: 1,
+      scope,
+      generatedAtMs,
+      totals: { costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0 },
+      operations: [],
+      clients: [],
+      source: {
+        status: "unreadable",
+        skippedSessions: skippedSessions + sessions.length,
+      },
+    };
+  }
+}
+
+function buildSummaryUnchecked(
+  sessions: readonly TokscaleSession[],
+  operations: readonly OperationNode[],
+  scope: { readonly theaterId: string | null; readonly window: LedgerWindow },
+  status: LedgerSourceStatus,
+  generatedAtMs: number,
+  skippedSessions: number,
+): LedgerSummaryDto {
+  const operationClaims = operations
+    .map(readClaim)
+    .filter((claim): claim is OperationClaim => claim !== null)
+    .sort((a, b) => (
+      b.operation.ts.updatedAt - a.operation.ts.updatedAt
+      || (a.operation.id < b.operation.id ? -1 : a.operation.id > b.operation.id ? 1 : 0)
+    ));
+  const claims = new Map<string, OperationClaim>();
+  for (const claim of operationClaims) {
+    const key = `${claim.provider}:${claim.sessionId.toLowerCase()}`;
+    if (!claims.has(key)) claims.set(key, claim);
+  }
+
+  const operationBuckets = new Map<string, { claim: OperationClaim; sessions: TokscaleSession[] }>();
+  for (const session of sessions) {
+    const sessionId = nativeSessionId(session);
+    const provider = session.client === "claude" || session.client === "codex" ? session.client : null;
+    const claim = sessionId && provider ? claims.get(`${provider}:${sessionId}`) : undefined;
+    if (!claim) continue;
+    const bucket = operationBuckets.get(claim.operation.id) ?? { claim, sessions: [] };
+    bucket.sessions.push(session);
+    operationBuckets.set(claim.operation.id, bucket);
+  }
+
+  const operationDtos: LedgerOperationDto[] = [...operationBuckets.values()]
+    .filter(({ claim }) => scope.theaterId === null || claim.operation.theaterId === scope.theaterId)
+    .map(({ claim, sessions: claimed }) => {
+      const totals = emptyAccumulator();
+      for (const session of claimed) addSession(totals, session);
+      return {
+        operationId: claim.operation.id,
+        title: claim.operation.title,
+        cliId: claim.cliId,
+        cliLabel: claim.cliLabel,
+        client: claimed[0]?.client ?? claim.provider,
+        messages: totals.messages,
+        usage: usageOf(totals),
+        costUsd: totals.costUsd,
+        models: [...new Set(claimed.flatMap((session) => session.models))],
+        lastActivityAtMs: Math.max(...claimed.map((session) => session.lastActive)),
+      };
+    }).sort((a, b) => b.lastActivityAtMs - a.lastActivityAtMs);
+
+  const totalValues = emptyAccumulator();
+  for (const operation of operationDtos) {
+    totalValues.input = addFinite(totalValues.input, operation.usage.input);
+    totalValues.output = addFinite(totalValues.output, operation.usage.output);
+    totalValues.cacheRead = addFinite(totalValues.cacheRead, operation.usage.cacheRead);
+    totalValues.costUsd = addFinite(totalValues.costUsd, operation.costUsd);
+    totalValues.messages = addFinite(totalValues.messages, operation.messages);
+  }
+  const clientMap = new Map<string, { sessions: number; totals: Accumulator }>();
+  for (const session of sessions) {
+    const client = clientMap.get(session.client) ?? { sessions: 0, totals: emptyAccumulator() };
+    client.sessions = addFinite(client.sessions, 1);
+    addSession(client.totals, session);
+    clientMap.set(session.client, client);
+  }
+  const clients: LedgerClientDto[] = [...clientMap.entries()]
+    .map(([client, value]) => ({
+      client,
+      sessions: value.sessions,
+      usage: usageOf(value.totals),
+      costUsd: value.totals.costUsd,
+    }))
+    .sort((a, b) => b.costUsd - a.costUsd || (a.client < b.client ? -1 : a.client > b.client ? 1 : 0));
+
+  return {
+    schemaVersion: 1,
+    scope,
+    generatedAtMs,
+    totals: { ...usageOf(totalValues), costUsd: totalValues.costUsd, messages: totalValues.messages },
+    operations: operationDtos,
+    clients,
+    source: { status, skippedSessions },
+  };
+}
