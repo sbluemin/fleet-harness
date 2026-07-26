@@ -375,6 +375,7 @@ describe("Instrument core design contract", () => {
     expect(canvas).not.toContain("canvas-mode-hud");
     expect(components).not.toContain(".canvas-mode-hud");
     expect(canvas).toContain("canvas-triage-rail-current");
+    expect(canvas).toContain("canvas-triage-rail-arm");
     expect(canvas).toContain("canvas-triage-rail-cleared");
     expect(canvas).not.toMatch(/canvas-triage-(?:frame|bracket|hud(?:-eye|-name)?|curtain-kicker|curtain-ruler)/);
     expect(components).toContain("radial-gradient(100% 80% at 50% 42%, var(--canvas-sea-core), var(--canvas-sea-mid) 78%)");
@@ -1020,6 +1021,9 @@ describe("Instrument core design contract", () => {
     expect(operationFrame).not.toContain("!active && rename.renaming");
     expect(operationFrame).toContain('className="canvas-operation-window-controls"');
     expect(operationFrame).toContain('className="canvas-operation-glance-hud"');
+    expect(operationFrame).toContain('className="canvas-operation-glance-hud-name"');
+    expect(operationFrame).toContain('className="canvas-operation-glance-hud-index"');
+    expect(operationFrame).toContain('className="canvas-operation-glance-hud-keys"');
     expect(operationFrame).toContain("restoreIdentityFocusRef.current = true;");
     expect(operationFrame).toContain("identityTriggerRef.current?.focus()");
     expect(operationFrame).toContain('t("canvas.frame.renameTitle"');
@@ -1045,6 +1049,8 @@ describe("Instrument core design contract", () => {
     const windowControlsLastButtonBlock = components.match(/\.canvas-operation-window-controls > \.canvas-operation-icon-button:last-child \{[^}]*\}/)?.[0] ?? "";
     expect(windowControlsLastButtonBlock).toContain("margin-inline-end: var(--space-1);");
     expect(components).toContain(".operations-canvas.is-glance .canvas-operation-glance-hud {");
+    expect(components).toContain(".canvas-triage-rail-arm {");
+    expect(components).toContain("/* 두 번 눌러 확정 중인 위험 상태만 coral 채널을 쓰며");
     // armed-close는 hover 전개 규칙(0-4-0)과 같은 특이도의 후순위여야 Close? 라벨이 잘리지 않는다.
     expect(components).toContain(".canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close {");
     // Formation(y=0 슬롯)과 일반 맵 뷰의 뷰포트-상대 상단 밀착 패널은 명판을 내부 인셋으로 전환한다.

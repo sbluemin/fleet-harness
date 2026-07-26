@@ -44,6 +44,13 @@ describe("OperationFrame body activation", () => {
         },
         active: false,
         unseen: false,
+        glanceHud: {
+          index: "01",
+          hints: [
+            { key: "↑", messageKey: "canvas.glance.maximize" },
+            { key: "↓", messageKey: "canvas.glance.minimize" },
+          ],
+        },
         interactionDisabled: true,
         geometry: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 },
         zoom: 1,
@@ -64,6 +71,37 @@ describe("OperationFrame body activation", () => {
     act(() => body!.dispatchEvent(new Event("pointerdown", { bubbles: true, cancelable: true })));
 
     expect(onActivate).toHaveBeenCalledTimes(1);
+  });
+
+  it("omits the Glance key row when the model has no executable hints", () => {
+    act(() => root!.render(createElement(OperationFrame, {
+      operation: {
+        id: "operation-companion-glance",
+        theaterId: "theater-body-activation",
+        type: "shell",
+        pluginId: "terminal",
+        title: "Companion Operation",
+        payload: {},
+        geometry: null,
+        ts: { createdAt: 1, updatedAt: 1 },
+      },
+      active: true,
+      unseen: false,
+      glanceHud: { index: "01", hints: [] },
+      interactionDisabled: true,
+      geometry: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 },
+      zoom: 1,
+      onActivate: () => {},
+      onClose: () => {},
+      onMinimize: () => {},
+      onRename: () => {},
+      onGeometryChange: () => {},
+      onGeometryCommit: () => {},
+      children: null,
+    })));
+
+    expect(document.querySelector(".canvas-operation-glance-hud-name")?.textContent).toContain("01");
+    expect(document.querySelector(".canvas-operation-glance-hud-keys")).toBeNull();
   });
 });
 

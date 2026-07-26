@@ -7,6 +7,7 @@ import { useT } from "../i18n/index.js";
 import { operationActivityVisual } from "../operation-activity.js";
 import { useInlineRename } from "../use-inline-rename.js";
 import { AccentPopover } from "./accent-popover.js";
+import type { GlanceHudModel } from "./glance-hud.js";
 import { resolveAccentColor } from "./operation-accent.js";
 
 interface OperationFrameProps {
@@ -24,6 +25,7 @@ interface OperationFrameProps {
   readonly interactionDisabled?: boolean;
   readonly triageStage?: boolean;
   readonly triagePicked?: boolean;
+  readonly glanceHud: GlanceHudModel;
   readonly formationSlotIndex?: number;
   readonly accentKey?: string | null;
   readonly children: ReactNode;
@@ -57,7 +59,7 @@ const MIN_OPERATION_WIDTH = 320;
 const MIN_OPERATION_HEIGHT = 200;
 const CLOSE_ARM_DURATION_MS = 1500;
 
-export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, formationSlotIndex, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, glanceHud, formationSlotIndex, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -432,7 +434,19 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
           </button>
         </div>
       </div>
-      <div className="canvas-operation-glance-hud" aria-hidden="true">{displayTitle}</div>
+      <div className="canvas-operation-glance-hud" aria-hidden="true">
+        <div className="canvas-operation-glance-hud-name">
+          <span className="canvas-operation-glance-hud-index">{glanceHud.index}</span>
+          <span>{displayTitle}</span>
+        </div>
+        {glanceHud.hints.length > 0 ? (
+          <div className="canvas-operation-glance-hud-keys">
+            {glanceHud.hints.map((hint) => (
+              <span key={hint.key}><strong>{hint.key}</strong> {t(hint.messageKey)}</span>
+            ))}
+          </div>
+        ) : null}
+      </div>
       <div ref={terminalRef} className="canvas-operation-terminal" onPointerDown={stopOperationPointer} onWheel={stopOperationWheel} data-canvas-blocker>
         {children}
       </div>

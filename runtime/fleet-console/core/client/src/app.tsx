@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
+import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
+
+import { ActiveCompanionShortcutsProvider } from "./active-companion-shortcuts.js";
 import { fetchGroups, fetchOperations, fetchTheaterBootstrap, fetchTheaters, restoreDeletion, type DeferredDeletionReceipt } from "./api.js";
 import { CommandBand } from "./components/command-band.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
@@ -26,6 +29,8 @@ import { closeKeyboardShortcuts, hydrateGroups, hydrateInitialOperations, hydrat
 import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fetch.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "./sidebar/operations-side-bar-store.js";
 import { useConsoleLocale, useT } from "./i18n/index.js";
+import type { CompanionShortcutEntry } from "./shortcuts-catalog.js";
+import { usableCompanionShortcuts } from "./companion-shortcut.js";
 import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
@@ -64,6 +69,18 @@ export function App() {
     () => [...BUILT_IN_RAIL_PANELS, ...registry.railPanels.filter((panel) => (panel.side ?? "right") === "right")],
     [registry.railPanels],
   );
+  const companionShortcuts = useMemo((): readonly CompanionShortcutEntry[] => {
+    const activeOperation = state.operations.find((operation) => operation.id === state.activeOperationId);
+    if (!activeOperation) return [];
+    const activeKind = registry.operationKinds.find((kind) =>
+      kind.pluginId === activeOperation.pluginId && kind.type === activeOperation.type);
+    return usableCompanionShortcuts(activeKind?.companions ?? []).flatMap((companion) => companion.shortcut
+      ? [{
+          label: companion.shortcut.label,
+          title: resolveLocalizedText(companion.title, consoleLocale),
+        }]
+      : []) ?? [];
+  }, [consoleLocale, registry.operationKinds, state.activeOperationId, state.operations]);
 
   // 세션 중 각 Theater를 처음 여는 시점에 한 번, 그 Theater의 "부팅 시점에 이미 존재하던" 패널 집합을 최소화 대상으로 반환한다.
   // App boot의 활성 Theater뿐 아니라 이후 선택·전환으로 처음 진입하는 Theater도 깨끗하게 열려, 선택한 패널만 하나씩 표면화된다.
@@ -223,46 +240,48 @@ export function App() {
   }, [canUndoLastClose, undoLastClose]);
 
   return (
-    <div className="console-shell">
-      <CommandBand operationsViewVisible={operationsViewVisible} />
-      {/* 배너는 링크가 live가 아닌 동안 유지한다 — offline에만 걸면 재연결 시도가 시작되는 순간
-          배너째 언마운트되어, 눌린 버튼의 피드백까지 함께 사라진다(실브라우저 재현). */}
-      {state.connection !== "live" && state.connectionLostAt !== null ? (
-        <div className="console-link-banner" role="status" aria-live="polite">
-          <span>{t(state.connection === "offline" ? "chrome.link.offline" : "chrome.link.reconnecting")}. {t("chrome.link.bannerDetail", { time: connectionLostTime })}</span>
-          <ReconnectButton />
-        </div>
-      ) : null}
-      <main className="console-route-content">
-        <Routes>
-          <Route path="/" element={<Navigate to="/operations" replace />} />
-          <Route path="/operations" element={<Operations state={state} claimBootPanelMinimization={claimBootPanelMinimization} onDeferredDeletion={enqueueDeletion} />} />
-          <Route path="/carrier-settings" element={<Navigate to="/settings?section=terminal%3Acarriers" replace />} />
-          <Route path="/settings" element={<GlobalSettings />} />
-          <Route path="*" element={<Navigate to="/operations" replace />} />
-        </Routes>
-      </main>
-      <OperationSearch
-        state={state}
-        railPanels={paletteRailPanels}
-        plugins={registry.plugins}
-        onDeferredDeletion={enqueueDeletion}
-        canUndoLastClose={canUndoLastClose}
-        onUndoLastClose={undoLastClose}
-      />
-      {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
-      <WhatsNewModal state={state} />
-      <CommissioningOverlay state={state} />
-      <FeatureTourOverlay />
-      <Toast
-        open={activeDeletion !== null}
-        tone="undo"
-        title={activeDeletion?.kind === "theater" ? t("chrome.toast.theaterForgotten") : t("chrome.toast.operationClosed")}
-        message={activeDeletion ? t("chrome.toast.secondsRemaining", { count: deletionCountdownSeconds(activeDeletion, undoClock) }) : undefined}
-        actionLabel={t("chrome.toast.undo")}
-        onAction={undoLastClose}
-        progress={activeDeletion ? (activeDeletion.expiresAt - undoClock) / UNDO_WINDOW_MS : undefined}
-      />
-    </div>
+    <ActiveCompanionShortcutsProvider value={companionShortcuts}>
+      <div className="console-shell">
+        <CommandBand operationsViewVisible={operationsViewVisible} />
+        {/* 배너는 링크가 live가 아닌 동안 유지한다 — offline에만 걸면 재연결 시도가 시작되는 순간
+            배너째 언마운트되어, 눌린 버튼의 피드백까지 함께 사라진다(실브라우저 재현). */}
+        {state.connection !== "live" && state.connectionLostAt !== null ? (
+          <div className="console-link-banner" role="status" aria-live="polite">
+            <span>{t(state.connection === "offline" ? "chrome.link.offline" : "chrome.link.reconnecting")}. {t("chrome.link.bannerDetail", { time: connectionLostTime })}</span>
+            <ReconnectButton />
+          </div>
+        ) : null}
+        <main className="console-route-content">
+          <Routes>
+            <Route path="/" element={<Navigate to="/operations" replace />} />
+            <Route path="/operations" element={<Operations state={state} claimBootPanelMinimization={claimBootPanelMinimization} onDeferredDeletion={enqueueDeletion} />} />
+            <Route path="/carrier-settings" element={<Navigate to="/settings?section=terminal%3Acarriers" replace />} />
+            <Route path="/settings" element={<GlobalSettings />} />
+            <Route path="*" element={<Navigate to="/operations" replace />} />
+          </Routes>
+        </main>
+        <OperationSearch
+          state={state}
+          railPanels={paletteRailPanels}
+          plugins={registry.plugins}
+          onDeferredDeletion={enqueueDeletion}
+          canUndoLastClose={canUndoLastClose}
+          onUndoLastClose={undoLastClose}
+        />
+        {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
+        <WhatsNewModal state={state} />
+        <CommissioningOverlay state={state} />
+        <FeatureTourOverlay />
+        <Toast
+          open={activeDeletion !== null}
+          tone="undo"
+          title={activeDeletion?.kind === "theater" ? t("chrome.toast.theaterForgotten") : t("chrome.toast.operationClosed")}
+          message={activeDeletion ? t("chrome.toast.secondsRemaining", { count: deletionCountdownSeconds(activeDeletion, undoClock) }) : undefined}
+          actionLabel={t("chrome.toast.undo")}
+          onAction={undoLastClose}
+          progress={activeDeletion ? (activeDeletion.expiresAt - undoClock) / UNDO_WINDOW_MS : undefined}
+        />
+      </div>
+    </ActiveCompanionShortcutsProvider>
   );
 }

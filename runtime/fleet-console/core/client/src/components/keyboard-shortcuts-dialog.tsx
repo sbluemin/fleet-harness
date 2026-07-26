@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
+import { useActiveCompanionShortcuts } from "../active-companion-shortcuts.js";
 import { useT } from "../i18n/index.js";
 import { buildShortcutGroups } from "../shortcuts-catalog.js";
 
@@ -21,7 +22,11 @@ export function shouldHandleOperationsKeyboardShortcut(): boolean {
 
 export function KeyboardShortcutsDialog({ onClose }: KeyboardShortcutsDialogProps) {
   const t = useT();
-  const shortcutGroups = useMemo(() => buildShortcutGroups(t), [t]);
+  const companionShortcuts = useActiveCompanionShortcuts();
+  const shortcutGroups = useMemo(
+    () => buildShortcutGroups(t, companionShortcuts),
+    [companionShortcuts, t],
+  );
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

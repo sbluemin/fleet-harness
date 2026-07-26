@@ -150,6 +150,64 @@ describe("Session Analyst readiness handle", () => {
     await expect(Promise.resolve(canOpenCompanions({ api: createApi(fetch), operation: operation() }))).resolves.toBe(true);
     expect(fetch).not.toHaveBeenCalled();
   });
+
+  it("hides Analyst panels and closes the companion layer when no visible panel remains", async () => {
+    const onRequestCompanions = vi.fn();
+    const onSetCompanionPanelVisible = vi.fn();
+
+    await renderOperation(
+      analysisFetch(false),
+      "live",
+      onRequestCompanions,
+      true,
+      ["carrier-streams"],
+      onSetCompanionPanelVisible,
+    );
+
+    expect(onSetCompanionPanelVisible.mock.calls).toEqual([
+      ["session-analyst-chat", false],
+      ["session-analyst-artifacts", false],
+    ]);
+    expect(onRequestCompanions).toHaveBeenCalledOnce();
+    expect(onRequestCompanions).toHaveBeenCalledWith(false);
+  });
+
+  it("keeps the companion layer open when Carrier Streams remains visible", async () => {
+    const onRequestCompanions = vi.fn();
+    const onSetCompanionPanelVisible = vi.fn();
+
+    await renderOperation(
+      analysisFetch(false),
+      "live",
+      onRequestCompanions,
+      true,
+      [],
+      onSetCompanionPanelVisible,
+    );
+
+    expect(onSetCompanionPanelVisible.mock.calls).toEqual([
+      ["session-analyst-chat", false],
+      ["session-analyst-artifacts", false],
+    ]);
+    expect(onRequestCompanions).not.toHaveBeenCalled();
+  });
+
+  it("does not change panel visibility when the companion layer is already closed", async () => {
+    const onRequestCompanions = vi.fn();
+    const onSetCompanionPanelVisible = vi.fn();
+
+    await renderOperation(
+      analysisFetch(false),
+      "live",
+      onRequestCompanions,
+      false,
+      ["carrier-streams", "session-analyst-chat", "session-analyst-artifacts"],
+      onSetCompanionPanelVisible,
+    );
+
+    expect(onSetCompanionPanelVisible).not.toHaveBeenCalled();
+    expect(onRequestCompanions).not.toHaveBeenCalled();
+  });
 });
 
 async function renderLiveOperation(fetch: ReturnType<typeof vi.fn>): Promise<void> {
@@ -164,6 +222,7 @@ async function renderOperation(
   hiddenCompanionPanelIds = companionsOpen
     ? ["carrier-streams", "session-analyst-artifacts"]
     : ["carrier-streams", "session-analyst-chat", "session-analyst-artifacts"],
+  onSetCompanionPanelVisible = vi.fn(),
 ): Promise<void> {
   if (!container) {
     container = document.createElement("div");
@@ -184,7 +243,13 @@ async function renderOperation(
       theaterId: "theater",
       resumeAvailable: true,
     });
-    root?.render(render(createContext(createApi(fetch), onRequestCompanions, companionsOpen, hiddenCompanionPanelIds)) as React.ReactNode);
+    root?.render(render(createContext(
+      createApi(fetch),
+      onRequestCompanions,
+      companionsOpen,
+      hiddenCompanionPanelIds,
+      onSetCompanionPanelVisible,
+    )) as React.ReactNode);
     await Promise.resolve();
     await Promise.resolve();
   });
@@ -199,6 +264,7 @@ function createContext(
   onRequestCompanions = vi.fn(),
   companionsOpen = false,
   hiddenCompanionPanelIds: readonly string[] = [],
+  onSetCompanionPanelVisible = vi.fn(),
 ): OperationRenderContext {
   return {
     operationId: OPERATION_ID,
@@ -213,7 +279,7 @@ function createContext(
     companionsOpen,
     hiddenCompanionPanelIds,
     onRequestCompanions,
-    onSetCompanionPanelVisible: vi.fn(),
+    onSetCompanionPanelVisible,
   } as unknown as OperationRenderContext;
 }
 

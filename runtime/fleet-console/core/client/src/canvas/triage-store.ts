@@ -33,9 +33,15 @@ export interface TriageStageIdentity {
 
 const RETURN_WINDOW_MS = 10_000;
 const CLEAR_DELAY_MS = 600;
+// 패널/사이드바 닫기의 1500ms 확인과 같은 두 번 눌러 확정 문법이라, 확인 시간이 달라지면 학습이 깨진다.
+export const SET_ASIDE_ARM_DURATION_MS = 1500;
 
 const triageByTheater = new Map<string, true>();
 const pickedByTheater = new Map<string, string>();
+const setAsideArmedByTheater = new Map<string, {
+  readonly operationId: string;
+  readonly timer: ReturnType<typeof globalThis.setTimeout>;
+}>();
 const clearedByTheater = new Map<string, number>();
 const enteredAtByTheater = new Map<string, number>();
 const lastClearedAt = new Map<string, number>();
@@ -71,8 +77,10 @@ export function setTriageActive(theaterId: string, active: boolean): void {
     emitTriage();
     return;
   }
+  const armChanged = clearTriageSetAsideArm(theaterId);
   if (!triageByTheater.has(theaterId)) {
     setIdleArrivalAcknowledgementSuspended(triageByTheater.size > 0);
+    if (armChanged) emitTriage();
     return;
   }
   const previousFocusLayer = focusLayerBeforeTriage.get(theaterId) ?? null;
@@ -136,6 +144,7 @@ export function useTriageActive(theaterId: string | null): boolean {
 }
 
 export function pickTriageOperation(theaterId: string, operationId: string): void {
+  clearTriageSetAsideArm(theaterId);
   operationTheater.set(operationId, theaterId);
   dismissed.delete(operationId);
   const wasDeferred = deferredAt.delete(operationId);
@@ -152,6 +161,7 @@ export function getTriagePick(theaterId: string): string | null {
 }
 
 export function markTriageCleared(theaterId: string, operationId: string): void {
+  clearTriageSetAsideArm(theaterId);
   operationTheater.set(operationId, theaterId);
   deferredAt.delete(operationId);
   lastClearedAt.set(operationId, Date.now());
@@ -165,6 +175,7 @@ export function getTriageCleared(theaterId: string): number {
 }
 
 export function dismissTriageOperation(theaterId: string, operationId: string): void {
+  clearTriageSetAsideArm(theaterId);
   operationTheater.set(operationId, theaterId);
   deferredAt.delete(operationId);
   dismissed.add(operationId);
@@ -174,6 +185,7 @@ export function dismissTriageOperation(theaterId: string, operationId: string): 
 }
 
 export function resetTriageTheater(theaterId: string): void {
+  clearTriageSetAsideArm(theaterId);
   const wasActive = triageByTheater.has(theaterId);
   if (wasActive) setTriageActive(theaterId, false);
   else {
@@ -189,6 +201,7 @@ export function resetTriageTheater(theaterId: string): void {
 
 export function forgetTriageOperation(operationId: string): void {
   const theaterId = operationTheater.get(operationId);
+  if (theaterId) clearTriageSetAsideArm(theaterId);
   dismissed.delete(operationId);
   lastClearedAt.delete(operationId);
   deferredAt.delete(operationId);
@@ -217,7 +230,28 @@ export function getTriageEnteredAt(theaterId: string): number | null {
   return enteredAtByTheater.get(theaterId) ?? null;
 }
 
+export function armTriageSetAside(theaterId: string, operationId: string): void {
+  clearTriageSetAsideArm(theaterId);
+  const timer = globalThis.setTimeout(() => {
+    const armed = setAsideArmedByTheater.get(theaterId);
+    if (!armed || armed.operationId !== operationId || armed.timer !== timer) return;
+    setAsideArmedByTheater.delete(theaterId);
+    emitTriage();
+  }, SET_ASIDE_ARM_DURATION_MS);
+  setAsideArmedByTheater.set(theaterId, { operationId, timer });
+  emitTriage();
+}
+
+export function disarmTriageSetAside(theaterId: string): void {
+  if (clearTriageSetAsideArm(theaterId)) emitTriage();
+}
+
+export function getTriageSetAsideArmedId(theaterId: string): string | null {
+  return setAsideArmedByTheater.get(theaterId)?.operationId ?? null;
+}
+
 export function deferTriageOperation(theaterId: string, operationId: string, now = Date.now()): void {
+  clearTriageSetAsideArm(theaterId);
   operationTheater.set(operationId, theaterId);
   let latestDeferredAt = 0;
   for (const [candidateId, timestamp] of deferredAt) {
@@ -262,7 +296,17 @@ export function recordTriageActivity(
     seenAt.set(operation.id, now);
     changed = true;
   }
-  if (changed) emitTriage();
+  if (!changed) return;
+  // 무장은 대상이 대기에서 벗어났을 때만 푼다. 무관한 다른 패널의 상태 전이로 풀면 여러 에이전트가
+  // 동시에 도는 동안 두 번째 ↓가 확정 대신 재무장이 되어 키보드만으로는 큐를 끝까지 비울 수 없다.
+  const armedId = setAsideArmedByTheater.get(theaterId)?.operationId ?? null;
+  if (armedId !== null) {
+    const armedOperation = operations.find((operation) => operation.id === armedId) ?? null;
+    if (!armedOperation || !isTriageWaitingOperation(armedOperation, operationStatus)) {
+      clearTriageSetAsideArm(theaterId);
+    }
+  }
+  emitTriage();
 }
 
 export function isTriageClearedTransition(
@@ -302,6 +346,7 @@ export function reconcileTriageStageCompanion(
 ): TriageStageIdentity {
   if (previous?.theaterId !== next.theaterId || previous.operationId !== next.operationId) {
     forceDropCompanionOperationId();
+    if (previous) disarmTriageSetAside(previous.theaterId);
   }
   return next;
 }
@@ -360,6 +405,7 @@ export function resolveTriageQueue(
 }
 
 function clearTheaterTransientOperations(theaterId: string): void {
+  clearTriageSetAsideArm(theaterId);
   for (const [operationId, ownerTheaterId] of operationTheater) {
     if (ownerTheaterId !== theaterId) continue;
     dismissed.delete(operationId);
@@ -369,6 +415,14 @@ function clearTheaterTransientOperations(theaterId: string): void {
     activityByOperation.delete(operationId);
     operationTheater.delete(operationId);
   }
+}
+
+function clearTriageSetAsideArm(theaterId: string): boolean {
+  const armed = setAsideArmedByTheater.get(theaterId);
+  if (!armed) return false;
+  globalThis.clearTimeout(armed.timer);
+  setAsideArmedByTheater.delete(theaterId);
+  return true;
 }
 
 function emitTriage(): void {
