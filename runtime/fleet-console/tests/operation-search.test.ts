@@ -45,6 +45,7 @@ function makeState(
     groups: [],
     activeTheaterId: "theater-alpha",
     activeOperationId: null,
+    activeOperationAcknowledged: true,
     operationStatus,
     addingTheater: false,
     theaterError: null,

@@ -31,15 +31,9 @@ describe("OperationsSideBarChip activity status", () => {
     expect(statusDot.getAttribute("aria-label")).toBe(expectedLabel);
   });
 
-  it("hides the minimize control in Triage mode while keeping the close control", () => {
-    renderChip("awaiting", true);
-
-    expect(container?.querySelector(".side-bar-chip-minimize")).toBeNull();
-    expect(container?.querySelector(".side-bar-chip-close")).not.toBeNull();
-  });
 });
 
-function renderChip(status: OperationActivity | undefined, triageMode = false): HTMLSpanElement {
+function renderChip(status: OperationActivity | undefined): HTMLSpanElement {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -64,7 +58,6 @@ function renderChip(status: OperationActivity | undefined, triageMode = false): 
     index: 0,
     isCloseArmed: false,
     accentValue: null,
-    triageMode,
     dragging: false,
     dragOffsetY: 0,
     dropTarget: false,

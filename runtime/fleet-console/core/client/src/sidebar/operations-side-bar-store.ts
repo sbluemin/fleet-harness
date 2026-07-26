@@ -2,6 +2,7 @@ import { useCallback, useSyncExternalStore } from "react";
 
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
+import { clearIdleArrival, markIdleArrival, resetIdleArrivalForTests } from "../operation-idle-arrival.js";
 import { resolveOperationActivity } from "../operation-activity.js";
 import { getState, subscribe } from "../store.js";
 import type { OperationNode } from "../types.js";
@@ -21,7 +22,6 @@ const sideBarListeners = new Set<() => void>();
 const collapsedTheaterListeners = new Set<() => void>();
 const statusAxisListeners = new Set<() => void>();
 const statusSectionCollapseListeners = new Set<() => void>();
-const idleUnseenListeners = new Set<() => void>();
 
 let sideBarState: SideBarState = {
   width: readInitialWidth(),
@@ -37,11 +37,9 @@ let userCollapsedStatusSections = new Set<string>();
 let userExpandedStatusSections = new Set<string>();
 let statusTransitionCounter = 0;
 let statusTransitionTicks = new Map<string, number>();
-let idleUnseenIds = new Set<string>();
 let previousActivityById = new Map<string, SideBarStatus>();
 let baselinedLiveActivityIds = new Set<string>();
 let pendingStatusLandingIds = new Set<string>();
-let canActivateStatusAxis: () => boolean = () => true;
 
 export type SideBarStatus = "awaiting" | "running" | "idle" | "dormant";
 
@@ -102,14 +100,9 @@ export function setTheaterCollapsed(theaterId: string, collapsed: boolean): void
 }
 
 export function setSideBarStatusAxis(active: boolean): void {
-  if (active && !canActivateStatusAxis()) return;
   if (statusAxis === active) return;
   statusAxis = active;
   for (const listener of statusAxisListeners) listener();
-}
-
-export function registerSideBarStatusAxisActivationGuard(guard: () => boolean): void {
-  canActivateStatusAxis = guard;
 }
 
 export function toggleSideBarStatusAxis(): void {
@@ -167,38 +160,12 @@ export function getStatusTransitionTick(id: string): number | undefined {
   return statusTransitionTicks.get(id);
 }
 
-export function markIdleUnseen(id: string): void {
-  if (idleUnseenIds.has(id)) return;
-  idleUnseenIds = new Set(idleUnseenIds);
-  idleUnseenIds.add(id);
-  for (const listener of idleUnseenListeners) listener();
-}
-
-export function clearIdleUnseen(id: string): void {
-  if (!idleUnseenIds.has(id)) return;
-  idleUnseenIds = new Set(idleUnseenIds);
-  idleUnseenIds.delete(id);
-  for (const listener of idleUnseenListeners) listener();
-}
-
-// Operation-scope 상태가 역사적 이유로 사이드바 스토어에 산다. 세 번째 비-사이드바
-// 소비자가 생기면 중립 activity 모듈로 승격하라.
-export function getIdleUnseenIds(): ReadonlySet<string> {
-  return idleUnseenIds;
-}
-
-export function subscribeIdleUnseen(listener: () => void): () => void {
-  idleUnseenListeners.add(listener);
-  return () => {
-    idleUnseenListeners.delete(listener);
-  };
-}
-
 export function trackOperationActivityTransitions(input: {
   readonly operations: readonly OperationNode[];
   readonly operationStatus: Readonly<Record<string, OperationActivity>>;
   readonly activeTheaterId: string | null;
   readonly activeOperationId: string | null;
+  readonly activeOperationAcknowledged: boolean;
 }): readonly string[] {
   const nextStatuses = new Map<string, SideBarStatus>(
     input.operations.map((operation) => [
@@ -229,17 +196,13 @@ export function trackOperationActivityTransitions(input: {
   for (const operation of input.operations) {
     if (!movedIds.includes(operation.id)) continue;
     if (nextStatuses.get(operation.id) === "idle") {
-      if (!(operation.id === input.activeOperationId && operation.theaterId === input.activeTheaterId)) {
-        markIdleUnseen(operation.id);
+      if (!(operation.id === input.activeOperationId
+        && operation.theaterId === input.activeTheaterId
+        && input.activeOperationAcknowledged === true)) {
+        markIdleArrival(operation.id);
       }
     } else {
-      clearIdleUnseen(operation.id);
-    }
-  }
-  if (input.activeOperationId !== null) {
-    const activeOp = input.operations.find((operation) => operation.id === input.activeOperationId);
-    if (activeOp !== undefined && activeOp.theaterId === input.activeTheaterId) {
-      clearIdleUnseen(input.activeOperationId);
+      clearIdleArrival(operation.id);
     }
   }
   previousActivityById = nextStatuses;
@@ -260,6 +223,7 @@ export function subscribeOperationActivityTracking(): () => void {
       operationStatus: state.operationStatus,
       activeTheaterId: state.activeTheaterId,
       activeOperationId: state.activeOperationId,
+      activeOperationAcknowledged: state.activeOperationAcknowledged,
     });
   });
 }
@@ -272,7 +236,7 @@ export function resetSideBarStatusSectionCollapseForTests(): void {
 export function resetSideBarStatusRecencyForTests(): void {
   statusTransitionCounter = 0;
   statusTransitionTicks = new Map();
-  idleUnseenIds = new Set();
+  resetIdleArrivalForTests();
   previousActivityById = new Map();
   baselinedLiveActivityIds = new Set();
   pendingStatusLandingIds = new Set();

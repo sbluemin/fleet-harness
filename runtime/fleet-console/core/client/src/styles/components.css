@@ -3103,11 +3103,6 @@
   color: color-mix(in oklch, var(--brass) 88%, var(--text-secondary));
 }
 
-.side-bar-chip.is-triage-stage {
-  border-left: 2px solid var(--brass);
-  background: color-mix(in oklch, var(--brass) 11%, transparent);
-}
-
 /* minimized: 이름은 판독 가능한 --ink-muted 티어로 유지하고 "치워둠" 신호는 아이콘 감쇠로만
    전달한다. 예전의 칩 전체 opacity(색 × 투명도 이중 감쇠)는 이름 대비를 WCAG 하한 아래로
    무너뜨렸다(instrument 1.84:1). 위계: active brass › 기본 ink-spectral › 최소화 ink-muted. */
@@ -3239,20 +3234,6 @@
   text-align: right;
 }
 
-.side-bar-chip-triage-order {
-  display: grid;
-  place-items: center;
-  flex: none;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
-  border: 1px solid color-mix(in oklch, var(--brass) 28%, var(--hairline));
-  border-radius: var(--radius-pill);
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: var(--weight-bold);
-}
 
 .side-bar-chip-status {
   flex: none;

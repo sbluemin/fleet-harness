@@ -7,6 +7,15 @@ import { createRoot, type Root } from "react-dom/client";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import {
+  acknowledgeIdleArrival,
+  clearIdleArrival,
+  getIdleArrivalIds,
+  markIdleArrival,
+  resetIdleArrivalForTests,
+} from "../core/client/src/operation-idle-arrival.js";
+import { focusOperation, getState, setActiveOperation, setState as setConsoleState } from "../core/client/src/store.js";
+import { getSideBarStatusAxis, setSideBarStatusAxis } from "../core/client/src/sidebar/operations-side-bar-store.js";
+import {
   clearFormationView,
   forceDropCompanionOperationId,
   getCompanionOperationId,
@@ -22,6 +31,7 @@ import {
 } from "../core/client/src/canvas/canvas-store.js";
 import {
   deferTriageOperation,
+  dismissTriageOperation,
   focusedTriageOperationId,
   forgetTriageOperation,
   getTriageCleared,
@@ -50,11 +60,20 @@ beforeEach(() => {
   vi.setSystemTime(1_000);
   window.localStorage.clear();
   loadForTheater(THEATER_ID);
+  resetIdleArrivalForTests();
+  setConsoleState({
+    operations: [],
+    activeTheaterId: null,
+    activeOperationId: null,
+    activeOperationAcknowledged: true,
+    operationStatus: {},
+  });
   resetTriageTheater(THEATER_ID);
+  resetIdleArrivalForTests();
   clearFormationView();
   clearMaximizedOperationId();
   forceDropCompanionOperationId();
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 });
 
 afterEach(() => {
@@ -68,16 +87,47 @@ afterEach(() => {
     triagePlateRoot = null;
   }
   document.body.replaceChildren();
-  delete globalThis.IS_REACT_ACT_ENVIRONMENT;
+  delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
   vi.useRealTimers();
 });
 
 describe("triage store", () => {
+  it.each([false, true])("enables the status axis during Triage and restores %s on exit", (initial) => {
+    setSideBarStatusAxis(initial);
+    setTriageActive(THEATER_ID, true);
+    expect(getSideBarStatusAxis()).toBe(true);
+    setTriageActive(THEATER_ID, false);
+    expect(getSideBarStatusAxis()).toBe(initial);
+  });
+
+  it.each([
+    [false, THEATER_ID, "theater-b"],
+    [false, "theater-b", THEATER_ID],
+    [true, THEATER_ID, "theater-b"],
+    [true, "theater-b", THEATER_ID],
+  ] as const)("restores the initial %s status axis after %s then %s exit", (
+    initial,
+    firstExit,
+    lastExit,
+  ) => {
+    const otherTheaterId = "theater-b";
+    setSideBarStatusAxis(initial);
+    setTriageActive(THEATER_ID, true);
+    setTriageActive(otherTheaterId, true);
+
+    setTriageActive(firstExit, false);
+    expect(getSideBarStatusAxis()).toBe(true);
+
+    resetTriageTheater(lastExit);
+    expect(getSideBarStatusAxis()).toBe(initial);
+  });
+
   it("removes a picked stage after its waiting activity clears and advances the next item", () => {
     const waiting: Readonly<Record<string, OperationActivity>> = {
       picked: "awaiting",
       next: "idle",
     };
+    markIdleArrival("next");
     recordTriageActivity(THEATER_ID, OPERATIONS, waiting, 1_000);
     pickTriageOperation(THEATER_ID, "picked");
 
@@ -181,6 +231,7 @@ describe("triage store", () => {
       picked: "awaiting",
       next: "idle",
     };
+    markIdleArrival("next");
     recordTriageActivity(THEATER_ID, OPERATIONS, waiting, 1_000);
     pickTriageOperation(THEATER_ID, "picked");
     const initialActivity = resolveTriageQueue(THEATER_ID, OPERATIONS, waiting, 1_000)[0]!.activity;
@@ -201,18 +252,159 @@ describe("triage store", () => {
     expect(resolveTriageQueue(THEATER_ID, OPERATIONS, running, 2_600)[0]?.operation.id).toBe("next");
   });
 
-  it("queues only reported idle Operations unless a fallback idle Operation is picked", () => {
+  it("queues only idle arrivals unless an ordinary idle Operation is picked", () => {
     const fallbackIdle = operation("fallback-idle", 1);
     const liveIdle = operation("live-idle", 2);
     const status: Readonly<Record<string, OperationActivity>> = { "live-idle": "idle" };
     recordTriageActivity(THEATER_ID, [fallbackIdle, liveIdle], status, 1_000);
 
     expect(resolveTriageQueue(THEATER_ID, [fallbackIdle, liveIdle], status, 1_000)
+      .map((entry) => entry.operation.id)).toEqual([]);
+
+    markIdleArrival("live-idle");
+    expect(resolveTriageQueue(THEATER_ID, [fallbackIdle, liveIdle], status, 1_000)
       .map((entry) => entry.operation.id)).toEqual(["live-idle"]);
 
     pickTriageOperation(THEATER_ID, "fallback-idle");
     expect(resolveTriageQueue(THEATER_ID, [fallbackIdle, liveIdle], status, 1_000)
       .map((entry) => entry.operation.id)).toEqual(["fallback-idle", "live-idle"]);
+  });
+
+  it("keeps an idle arrival as queue head when the user activates the stage during Triage", () => {
+    const arrived = operation("arrived", 1);
+    const status: Readonly<Record<string, OperationActivity>> = { arrived: "idle" };
+    markIdleArrival(arrived.id);
+    setConsoleState({
+      operations: [arrived],
+      activeTheaterId: THEATER_ID,
+      activeOperationId: null,
+      activeOperationAcknowledged: true,
+      operationStatus: status,
+    });
+
+    setTriageActive(THEATER_ID, true);
+    setActiveOperation(arrived.id, { acknowledged: false });
+    expect(resolveTriageQueue(THEATER_ID, [arrived], status)[0]?.operation.id).toBe(arrived.id);
+
+    setActiveOperation(arrived.id);
+    expect(acknowledgeIdleArrival(arrived.id)).toBe(false);
+    expect(getState().activeOperationAcknowledged).toBe(false);
+    expect(getIdleArrivalIds().has(arrived.id)).toBe(true);
+    expect(resolveTriageQueue(THEATER_ID, [arrived], status)[0]?.operation.id).toBe(arrived.id);
+
+    setTriageActive(THEATER_ID, false);
+    expect(getState().activeOperationAcknowledged).toBe(true);
+    expect(getIdleArrivalIds().has(arrived.id)).toBe(false);
+    expect(resolveTriageQueue(THEATER_ID, [arrived], status)).toEqual([]);
+  });
+
+  it("keeps focusOperation unacknowledged while Triage suspends acknowledgement", () => {
+    const arrived = operation("arrived", 1);
+    markIdleArrival(arrived.id);
+    setConsoleState({
+      operations: [arrived],
+      activeTheaterId: THEATER_ID,
+      activeOperationId: null,
+      activeOperationAcknowledged: true,
+    });
+    setTriageActive(THEATER_ID, true);
+
+    focusOperation(arrived.id);
+
+    expect(getIdleArrivalIds().has(arrived.id)).toBe(true);
+    expect(getState().activeOperationAcknowledged).toBe(false);
+  });
+
+  it("acknowledges only the active Operation when the last Triage Theater exits", () => {
+    const active = operation("active", 1);
+    const waiting = operation("waiting", 2);
+    markIdleArrival(active.id);
+    markIdleArrival(waiting.id);
+    setConsoleState({
+      operations: [active, waiting],
+      activeTheaterId: THEATER_ID,
+      activeOperationId: active.id,
+      activeOperationAcknowledged: false,
+    });
+    setTriageActive(THEATER_ID, true);
+
+    setTriageActive(THEATER_ID, false);
+
+    expect(getIdleArrivalIds().has(active.id)).toBe(false);
+    expect(getIdleArrivalIds().has(waiting.id)).toBe(true);
+    expect(getState().activeOperationAcknowledged).toBe(true);
+  });
+
+  it("keeps acknowledgement suspended while any Theater remains in Triage", () => {
+    const otherTheaterId = "theater-b";
+    const inactiveTheaterId = "theater-c";
+    markIdleArrival("arrived");
+    setConsoleState({
+      activeOperationId: "arrived",
+      activeOperationAcknowledged: false,
+    });
+    setTriageActive(THEATER_ID, true);
+
+    resetTriageTheater(inactiveTheaterId);
+    expect(getIdleArrivalIds().has("arrived")).toBe(true);
+    expect(getState().activeOperationAcknowledged).toBe(false);
+
+    setTriageActive(otherTheaterId, true);
+    resetTriageTheater(THEATER_ID);
+    expect(getIdleArrivalIds().has("arrived")).toBe(true);
+    expect(getState().activeOperationAcknowledged).toBe(false);
+
+    resetTriageTheater(otherTheaterId);
+    expect(getIdleArrivalIds().has("arrived")).toBe(false);
+    expect(getState().activeOperationAcknowledged).toBe(true);
+  });
+
+  it("does nothing when the last Triage Theater exits without an active Operation", () => {
+    markIdleArrival("waiting");
+    setTriageActive(THEATER_ID, true);
+
+    setTriageActive(THEATER_ID, false);
+
+    expect(getIdleArrivalIds().has("waiting")).toBe(true);
+    expect(getState().activeOperationId).toBeNull();
+    expect(getState().activeOperationAcknowledged).toBe(true);
+  });
+
+  it("does not acknowledge an active Operation when resetting an inactive Theater", () => {
+    markIdleArrival("active");
+    setConsoleState({
+      activeOperationId: "active",
+      activeOperationAcknowledged: false,
+    });
+
+    resetTriageTheater("inactive-theater");
+
+    expect(getIdleArrivalIds().has("active")).toBe(true);
+    expect(getState().activeOperationAcknowledged).toBe(false);
+  });
+
+  it("clears an idle arrival explicitly even while acknowledgement is suspended", () => {
+    markIdleArrival("arrived");
+    setTriageActive(THEATER_ID, true);
+
+    clearIdleArrival("arrived");
+
+    expect(getIdleArrivalIds().has("arrived")).toBe(false);
+  });
+
+  it("clears an idle arrival when its Triage item is dismissed", () => {
+    markIdleArrival("arrived");
+    setTriageActive(THEATER_ID, true);
+
+    dismissTriageOperation(THEATER_ID, "arrived");
+
+    expect(getIdleArrivalIds().has("arrived")).toBe(false);
+  });
+
+  it("always queues awaiting Operations without an idle arrival", () => {
+    const awaiting = operation("awaiting", 1);
+    expect(resolveTriageQueue(THEATER_ID, [awaiting], { awaiting: "awaiting" })
+      .map((entry) => entry.operation.id)).toEqual(["awaiting"]);
   });
 
   it("round-robins the queue through repeated deferrals without clearing or removing items", () => {
@@ -249,6 +441,8 @@ describe("triage store", () => {
       "idle-a": "idle",
       "idle-b": "idle",
     };
+    markIdleArrival("idle-a");
+    markIdleArrival("idle-b");
     recordTriageActivity(THEATER_ID, operations, mixed, 1_000);
 
     const visited: string[] = [];
@@ -328,6 +522,7 @@ describe("triage store", () => {
         active: true,
         entering: true,
         hasContent: false,
+        idleCount: 0,
       }));
     });
     expect(container.querySelector(".canvas-triage-clear")).toBeNull();
@@ -337,9 +532,28 @@ describe("triage store", () => {
         active: true,
         entering: false,
         hasContent: false,
+        idleCount: 0,
       }));
     });
     expect(container.querySelector(".canvas-triage-clear")).not.toBeNull();
+  });
+
+  it("guides an empty queue toward idle panels", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    triagePlateRoot = createRoot(container);
+
+    act(() => {
+      triagePlateRoot?.render(createElement(TriageClearPlate, {
+        active: true,
+        entering: false,
+        hasContent: false,
+        idleCount: 2,
+      }));
+    });
+
+    expect(container.querySelector(".canvas-triage-clear p")?.textContent)
+      .toBe("Nothing is waiting on you. 2 idle panels sit in the left list. Click one to bring it up.");
   });
 
   it("closes inherited companions on entry and stage changes but preserves an explicitly opened companion", () => {

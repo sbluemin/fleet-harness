@@ -492,6 +492,7 @@ const CANVAS_STATE: ConsoleState = {
   groups: [],
   activeTheaterId: "minimap-boundary",
   activeOperationId: null,
+  activeOperationAcknowledged: true,
   operationStatus: {},
   addingTheater: false,
   theaterError: null,
