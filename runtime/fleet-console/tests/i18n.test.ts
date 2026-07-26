@@ -59,6 +59,10 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   // Plans/뱃지 프로토콜·상태 토큰
   "PARALLEL",
   "READY",
+  // 모드 커튼 키커(고정 대문자 각인)·투어 진행 표기(숫자 포맷)
+  "TRIAGE MODE",
+  "FORMATION VIEW",
+  "{current} / {total}",
   // 제품 탭·Cowork 설정 토큰
   "Fleet CLI",
   "Fleet Console",

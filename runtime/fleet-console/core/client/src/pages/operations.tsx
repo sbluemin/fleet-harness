@@ -11,7 +11,7 @@ import { claimTopZIndex, ensureDefaultGeometry, focusOperation as focusCanvasOpe
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { playMinimizeFlight, playRestoreFlight } from "../canvas/panel-motion.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
-import { deferTriageOperation, dismissTriageOperation, focusedTriageOperationId, forgetTriageOperation, isTriageActive, pickTriageOperation, recordTriageActivity, resolveTriageQueue, setTriageActive } from "../canvas/triage-store.js";
+import { deferTriageOperation, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, recordTriageActivity, resolveTriageQueue, setTriageActive } from "../canvas/triage-store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
@@ -107,10 +107,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         if (theaterId) {
           const activating = !isTriageActive(theaterId);
           if (activating) {
-            const operationId = focusedTriageOperationId(document.activeElement);
-            if (operationId) pickTriageOperation(theaterId, operationId);
+            enterTriage(theaterId, focusedTriageOperationId(document.activeElement));
+          } else {
+            setTriageActive(theaterId, false);
           }
-          setTriageActive(theaterId, activating);
         }
         return;
       }
