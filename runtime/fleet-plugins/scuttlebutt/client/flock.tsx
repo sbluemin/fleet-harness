@@ -105,7 +105,8 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     bodiesRef.current = MORPHS.map((_, index) => createBirdBody(index, viewportRef.current, Math.random));
   }
   const birdRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
-  const toriRef = React.useRef<HTMLButtonElement>(null);
+  // 소식은 근무 중인 첫 제독이 전한다 — 토리에 고정하면 토리를 끈 순간 알릴 곳이 사라진다.
+  const announcerRef = React.useRef<HTMLButtonElement | null>(null);
   const gesturesRef = React.useRef<Array<PointerGesture | null>>([null, null, null]);
   const clickTimersRef = React.useRef<Array<number | null>>([null, null, null]);
   const oneShotTimersRef = React.useRef<Array<number | null>>([null, null, null]);
@@ -114,6 +115,12 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   const focusFrameRef = React.useRef<number | null>(null);
   const motionFramesRef = React.useRef(framesFromBodies(bodiesRef.current));
   const previousPhasesRef = React.useRef(phases);
+
+  // 근무 중인 첫 제독을 매 렌더 뒤 다시 짚는다 — 설정에서 켜고 끌 때마다 대상이 바뀐다.
+  React.useLayoutEffect(() => {
+    const index = activeIndices[0];
+    announcerRef.current = index === undefined ? null : birdRefs.current[index] ?? null;
+  });
 
   const [motionFrames, setMotionFrames] = React.useState(motionFramesRef.current);
   const [grabbed, setGrabbed] = React.useState<readonly boolean[]>([false, false, false]);
@@ -437,7 +444,6 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
             {...common}
             key={morph}
             ref={(element) => {
-              if (morph === "tori") toriRef.current = element;
               birdRefs.current[index] = element;
             }}
             type="button"
@@ -454,7 +460,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
       <ArrivalBubble
         arrivals={context.arrivals}
         locale={context.language}
-        mascot={toriRef}
+        mascot={announcerRef}
         quiet={!openAdmiral && !phases.some((phase) => phase === "starting" || phase === "thinking")}
         positionRevision={positionRevision}
         onShow={() => {
