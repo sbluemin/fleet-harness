@@ -20,6 +20,12 @@
   pointer-events: none;
 }
 
+/* 차단형 오버레이가 열린 동안에는 부유 위젯이 스스로 되살린 표면까지 입력을 놓는다 —
+   모달의 입력 독점이 위젯의 상주보다 우선한다. */
+body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
+  pointer-events: none;
+}
+
 .console-route-content {
   flex: 1;
   min-width: 0;

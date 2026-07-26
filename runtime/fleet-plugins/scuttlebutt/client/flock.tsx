@@ -195,9 +195,15 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     const viewport = viewportRef.current;
     const bodies = bodiesRef.current;
     if (!bodies) return;
+    // 좁은 창에서는 간격을 좁혀서라도 셋 다 화면 안에 남긴다 — 겹치는 편이 사라지는 것보다 낫다.
+    const rightmost = Math.max(8, viewport.width - 16 - BIRD_WIDTH);
+    const step = Math.min(
+      BIRD_WIDTH + PARKED_GAP,
+      Math.max(24, (viewport.width - 32 - BIRD_WIDTH) / (MORPHS.length - 1)),
+    );
     const parkedFrames = MORPHS.map((_, index): BirdFrame => {
-      const left = viewport.width - 16 - (BIRD_WIDTH + PARKED_GAP) * (3 - index) + PARKED_GAP;
-      const top = viewport.height - 16 - BIRD_HEIGHT;
+      const left = Math.max(8, rightmost - step * (MORPHS.length - 1 - index));
+      const top = Math.max(8, viewport.height - 16 - BIRD_HEIGHT);
       const body = bodies[index]!;
       body.x = left + BIRD_HALF_WIDTH;
       body.y = top + BIRD_HALF_HEIGHT;
@@ -315,13 +321,18 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     gesture.lastAt = now;
   }, []);
 
-  const release = React.useCallback((index: number, event: React.PointerEvent<HTMLElement>) => {
+  // 취소된 제스처는 클릭이 아니다 — OS가 포인터를 뺏어갔을 뿐인데 챗이 열리면 안 된다.
+  const release = React.useCallback((
+    index: number,
+    event: React.PointerEvent<HTMLElement>,
+    cancelled = false,
+  ) => {
     const gesture = gesturesRef.current[index];
     const body = bodiesRef.current?.[index];
     if (!gesture || !body || gesture.pointerId !== event.pointerId) return;
     const moved = Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY);
     const held = performance.now() - gesture.startedAt;
-    if (moved < 7 && held < 450) {
+    if (!cancelled && moved < 7 && held < 450) {
       body.vx = 0;
       body.vy = 0;
       clearTimer(clickTimersRef, index);
@@ -368,7 +379,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
           onPointerDown: (event: React.PointerEvent<HTMLElement>) => onPointerDown(index, event),
           onPointerMove: (event: React.PointerEvent<HTMLElement>) => onPointerMove(index, event),
           onPointerUp: (event: React.PointerEvent<HTMLElement>) => release(index, event),
-          onPointerCancel: (event: React.PointerEvent<HTMLElement>) => release(index, event),
+          onPointerCancel: (event: React.PointerEvent<HTMLElement>) => release(index, event, true),
           onDoubleClick: (event: React.MouseEvent<HTMLElement>) => {
             event.preventDefault();
             clearTimer(clickTimersRef, index);
