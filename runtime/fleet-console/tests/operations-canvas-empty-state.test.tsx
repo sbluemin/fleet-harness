@@ -47,7 +47,7 @@ describe("Operations Canvas empty state", () => {
 
     expect(container?.querySelector(".operations-canvas-empty-headline")?.textContent).toBe("Launch your first operation");
     expect(container?.querySelector(".operations-canvas-empty-ghost")).toBeNull();
-    expect(container?.querySelector(".operations-canvas-empty-hints")?.textContent).toBe("⌘K Search · Alt+F Formation · Alt+S Status board");
+    expect(container?.querySelector(".operations-canvas-empty-hints")?.textContent).toBe("⌘K Search · Alt+F Formation · Alt+S Status board · Alt+T Triage");
     expect(container?.querySelector(".operations-canvas-empty-guide")?.textContent).toBe("Shift-drag to create a Shell. Right-click for actions. Drag to pan; scroll to zoom.");
 
     const launch = container?.querySelector<HTMLButtonElement>('[aria-label="New Operation in Alpha"]');
