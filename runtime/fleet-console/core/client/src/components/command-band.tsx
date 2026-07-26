@@ -4,7 +4,7 @@ import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../api.js";
 import { animateViewportTo, selectFormationLayout, useCanvasState, useFormationLayout, useFormationView } from "../canvas/canvas-store.js";
-import { focusedTriageOperationId, pickTriageOperation, setTriageActive, useTriageActive } from "../canvas/triage-store.js";
+import { enterTriage, focusedTriageOperationId, setTriageActive, useTriageActive } from "../canvas/triage-store.js";
 import { commandBandActiveOperation, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
 import { FleetBrandHome } from "./side-bar-brand-foot.js";
@@ -366,10 +366,10 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
           if (state.activeTheaterId) {
             const activating = !triageActive;
             if (activating) {
-              const operationId = focusedTriageOperationId(document.activeElement);
-              if (operationId) pickTriageOperation(state.activeTheaterId, operationId);
+              enterTriage(state.activeTheaterId, focusedTriageOperationId(document.activeElement));
+            } else {
+              setTriageActive(state.activeTheaterId, false);
             }
-            setTriageActive(state.activeTheaterId, activating);
           }
         }}
       >

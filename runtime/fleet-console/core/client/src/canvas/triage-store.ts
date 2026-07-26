@@ -103,6 +103,30 @@ export function setTriageActive(theaterId: string, active: boolean): void {
   emitTriage();
 }
 
+export function enterTriage(theaterId: string, focusedOperationId: string | null): void {
+  const { operations, operationStatus } = getState();
+  const theaterOperations = operations.filter((operation) => operation.theaterId === theaterId);
+  const focusedOperation = focusedOperationId === null
+    ? null
+    : theaterOperations.find((operation) => operation.id === focusedOperationId) ?? null;
+  if (focusedOperation && isTriageWaitingOperation(focusedOperation, operationStatus)) {
+    pickTriageOperation(theaterId, focusedOperation.id);
+  }
+  setTriageActive(theaterId, true);
+  if (resolveTriageQueue(theaterId, theaterOperations, operationStatus).length > 0) return;
+  setActiveOperation(null);
+  const document = globalThis.document;
+  const HTMLElementConstructor = document?.defaultView?.HTMLElement;
+  const activeElement = document?.activeElement;
+  if (
+    HTMLElementConstructor
+    && activeElement instanceof HTMLElementConstructor
+    && activeElement.closest(".canvas-operation")
+  ) {
+    activeElement.blur();
+  }
+}
+
 export function useTriageActive(theaterId: string | null): boolean {
   return useSyncExternalStore(
     subscribeTriage,

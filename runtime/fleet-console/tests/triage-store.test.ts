@@ -32,6 +32,7 @@ import {
 import {
   deferTriageOperation,
   dismissTriageOperation,
+  enterTriage,
   focusedTriageOperationId,
   forgetTriageOperation,
   getTriageCleared,
@@ -166,20 +167,82 @@ describe("triage store", () => {
     expect(getMaximizedOperationId()).toBeNull();
   });
 
-  it("resolves the focused canvas Operation for activation-time picking", () => {
+  it("enters with no pick, active Operation, or canvas focus when the focused Operation is running", () => {
+    const running = operation("running", 1);
     const frame = document.createElement("article");
     frame.className = "canvas-operation";
-    frame.dataset.operationId = "focused-op";
+    frame.dataset.operationId = running.id;
     const input = document.createElement("input");
     frame.append(input);
     document.body.append(frame);
     input.focus();
+    setConsoleState({
+      operations: [running],
+      activeTheaterId: THEATER_ID,
+      activeOperationId: running.id,
+      activeOperationAcknowledged: true,
+      operationStatus: { [running.id]: "running" },
+    });
 
     const focusedOperationId = focusedTriageOperationId(document.activeElement);
-    expect(focusedOperationId).toBe("focused-op");
-    if (focusedOperationId) pickTriageOperation(THEATER_ID, focusedOperationId);
-    setTriageActive(THEATER_ID, true);
-    expect(getTriagePick(THEATER_ID)).toBe("focused-op");
+    expect(focusedOperationId).toBe(running.id);
+    enterTriage(THEATER_ID, focusedOperationId);
+
+    const state = getState();
+    expect(resolveTriageQueue(THEATER_ID, [running], state.operationStatus)).toHaveLength(0);
+    expect(getTriagePick(THEATER_ID)).toBeNull();
+    expect(state.activeOperationId).toBeNull();
+    expect(document.activeElement).not.toBe(input);
+  });
+
+  it("picks a focused awaiting Operation as the queue head on entry", () => {
+    const awaiting = operation("awaiting", 1);
+    const later = operation("later", 2);
+    const operationStatus: Readonly<Record<string, OperationActivity>> = {
+      awaiting: "awaiting",
+      later: "awaiting",
+    };
+    setConsoleState({ operations: [later, awaiting], operationStatus });
+
+    enterTriage(THEATER_ID, awaiting.id);
+
+    expect(getTriagePick(THEATER_ID)).toBe(awaiting.id);
+    expect(resolveTriageQueue(THEATER_ID, [later, awaiting], operationStatus)[0]?.operation.id)
+      .toBe(awaiting.id);
+  });
+
+  it("picks a focused idle arrival on entry", () => {
+    const arrived = operation("arrived", 1);
+    const operationStatus: Readonly<Record<string, OperationActivity>> = { arrived: "idle" };
+    markIdleArrival(arrived.id);
+    setConsoleState({ operations: [arrived], operationStatus });
+
+    enterTriage(THEATER_ID, arrived.id);
+
+    expect(getTriagePick(THEATER_ID)).toBe(arrived.id);
+    expect(resolveTriageQueue(THEATER_ID, [arrived], operationStatus)[0]?.operation.id)
+      .toBe(arrived.id);
+  });
+
+  it("does not let a focused non-waiting Operation displace another waiting Operation on entry", () => {
+    const running = operation("running", 1);
+    const waiting = operation("waiting", 2);
+    const operationStatus: Readonly<Record<string, OperationActivity>> = {
+      running: "running",
+      waiting: "awaiting",
+    };
+    setConsoleState({
+      operations: [running, waiting],
+      activeOperationId: running.id,
+      operationStatus,
+    });
+
+    enterTriage(THEATER_ID, running.id);
+
+    expect(getTriagePick(THEATER_ID)).toBeNull();
+    expect(resolveTriageQueue(THEATER_ID, [running, waiting], operationStatus)
+      .map((entry) => entry.operation.id)).toEqual([waiting.id]);
+    expect(getState().activeOperationId).toBe(running.id);
   });
 
   it("drops an invalid saved focus layer instead of restoring a minimized target", () => {
