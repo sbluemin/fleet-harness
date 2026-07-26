@@ -434,12 +434,15 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
           </button>
         </div>
       </div>
-      <div className="canvas-operation-glance-hud" aria-hidden="true">
+      {/* 무장 중에는 Alt를 놓아도 안내가 남아야 한다 — 확인 기한이 1.5초뿐이라 Alt를 다시 눌러 확인할 시간이 없다. */}
+      <div className={`canvas-operation-glance-hud${glanceHud.armedMessageKey ? " is-armed-set-aside" : ""}`} aria-hidden="true">
         <div className="canvas-operation-glance-hud-name">
           <span className="canvas-operation-glance-hud-index">{glanceHud.index}</span>
           <span>{displayTitle}</span>
         </div>
-        {glanceHud.hints.length > 0 ? (
+        {glanceHud.armedMessageKey ? (
+          <div className="canvas-operation-glance-hud-arm">{t(glanceHud.armedMessageKey)}</div>
+        ) : glanceHud.hints.length > 0 ? (
           <div className="canvas-operation-glance-hud-keys">
             {glanceHud.hints.map((hint) => (
               <span key={hint.key}><strong>{hint.key}</strong> {t(hint.messageKey)}</span>

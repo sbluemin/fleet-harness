@@ -375,8 +375,9 @@ describe("Instrument core design contract", () => {
     expect(canvas).not.toContain("canvas-mode-hud");
     expect(components).not.toContain(".canvas-mode-hud");
     expect(canvas).toContain("canvas-triage-rail-current");
-    expect(canvas).toContain("canvas-triage-rail-arm");
     expect(canvas).toContain("canvas-triage-rail-cleared");
+    // 두 번 눌러 확정 안내는 레일이 아니라 패널 안 HUD가 소유한다 — 확인 순간에 시선이 화면 하단으로 내려가지 않게.
+    expect(canvas).not.toContain("canvas-triage-rail-arm");
     expect(canvas).not.toMatch(/canvas-triage-(?:frame|bracket|hud(?:-eye|-name)?|curtain-kicker|curtain-ruler)/);
     expect(components).toContain("radial-gradient(100% 80% at 50% 42%, var(--canvas-sea-core), var(--canvas-sea-mid) 78%)");
     expect(components).toContain("background-size: 48px 48px !important;");
@@ -721,7 +722,7 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain('className="command-band-button command-band-rail-toggle"');
     expect(commandBand).toContain("onClick={toggleRailChrome}");
     expect(commandBand).toContain(`      </div>
-      {operationsViewVisible ? <div className="command-band-formation-group" role="group" aria-label={t("chrome.commandBand.formationView")}>`);
+      {operationsViewVisible ? <div className="command-band-map-controls">`);
     expect(commandBand).toContain('aria-label={t("chrome.commandBand.resetCanvasView")}');
     expect(commandBand).toContain("<ResetViewIcon />");
     expect(commandBand).toContain("onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })}");
@@ -750,7 +751,11 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".side-bar-formation-group {");
     expect(components).not.toContain(".side-bar-theater-add-btn {");
     expect(layout).toContain(".command-band-formation-group {");
+    // 맵 컨트롤 클러스터는 컨테이너 플로우 배치다 — 개별 절대 위치 + 매직 오프셋(구 116px)은
+    // 버튼 추가 시 겹침으로 깨지므로(선별 처리 아이콘 덮임 사고) 다시 도입하지 않는다.
+    expect(layout).toContain(".command-band-map-controls {");
     expect(layout).toContain("left: calc(var(--command-band-left-width, 280px) + var(--space-2));");
+    expect(layout).not.toContain(".command-band-triage-toggle {\n  position: absolute;");
     expect(layout).not.toContain(".command-band-formation-group .command-band-formation-seg + .command-band-formation-seg {");
     // 데스크톱은 사이드바 폭을 그대로 미러하고, 모바일 셸에는 미러할 사이드바가 없으므로
     // 좌측 트랙이 내용 크기로 접힌다. 두 갈래를 한 줄로 고정해 한쪽만 바뀌는 표류를 막는다.
@@ -1020,10 +1025,11 @@ describe("Instrument core design contract", () => {
     expect(operationFrame).toContain("rename.renaming ? (");
     expect(operationFrame).not.toContain("!active && rename.renaming");
     expect(operationFrame).toContain('className="canvas-operation-window-controls"');
-    expect(operationFrame).toContain('className="canvas-operation-glance-hud"');
+    expect(operationFrame).toContain("`canvas-operation-glance-hud${glanceHud.armedMessageKey ? \" is-armed-set-aside\" : \"\"}`");
     expect(operationFrame).toContain('className="canvas-operation-glance-hud-name"');
     expect(operationFrame).toContain('className="canvas-operation-glance-hud-index"');
     expect(operationFrame).toContain('className="canvas-operation-glance-hud-keys"');
+    expect(operationFrame).toContain('className="canvas-operation-glance-hud-arm"');
     expect(operationFrame).toContain("restoreIdentityFocusRef.current = true;");
     expect(operationFrame).toContain("identityTriggerRef.current?.focus()");
     expect(operationFrame).toContain('t("canvas.frame.renameTitle"');
@@ -1049,7 +1055,10 @@ describe("Instrument core design contract", () => {
     const windowControlsLastButtonBlock = components.match(/\.canvas-operation-window-controls > \.canvas-operation-icon-button:last-child \{[^}]*\}/)?.[0] ?? "";
     expect(windowControlsLastButtonBlock).toContain("margin-inline-end: var(--space-1);");
     expect(components).toContain(".operations-canvas.is-glance .canvas-operation-glance-hud {");
-    expect(components).toContain(".canvas-triage-rail-arm {");
+    expect(components).not.toContain(".canvas-triage-rail-arm {");
+    expect(components).toContain(".canvas-operation-glance-hud-arm {");
+    // 무장 안내는 Alt 홀드와 무관하게 떠 있어야 한다 — 확인 기한이 1.5초뿐이다.
+    expect(components).toContain(".canvas-operation-glance-hud.is-armed-set-aside {");
     expect(components).toContain("/* 두 번 눌러 확정 중인 위험 상태만 coral 채널을 쓰며");
     // armed-close는 hover 전개 규칙(0-4-0)과 같은 특이도의 후순위여야 Close? 라벨이 잘리지 않는다.
     expect(components).toContain(".canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close {");

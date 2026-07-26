@@ -1882,21 +1882,6 @@
   font-size: 10px;
 }
 
-/* 두 번 눌러 확정 중인 위험 상태만 coral 채널을 쓰며, 레일 위에서 확인 기한을 보여준다. */
-.canvas-triage-rail-arm {
-  flex: none;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--coral) 20%, transparent);
-  color: var(--coral);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: var(--weight-bold);
-  white-space: nowrap;
-  animation: chip-close-arm 1.5s linear forwards;
-}
-
 .canvas-triage-rail-cleared {
   flex: none;
   color: var(--text-tertiary);
@@ -4389,13 +4374,32 @@
   opacity: 1;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .canvas-triage-rail-arm {
-    animation: none;
-  }
+/* 두 번 눌러 확정 중인 위험 상태만 coral 채널을 쓰며, 확인 기한을 안내 줄 자리에서 보여준다. */
+.canvas-operation-glance-hud-arm {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--coral) 20%, transparent);
+  color: var(--coral);
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-body-size) * 0.78);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+  animation: chip-close-arm 1.5s linear forwards;
+}
 
+/* 확인 기한이 1.5초뿐이라 Alt 홀드에 의존할 수 없다 — 무장 중에는 Alt와 무관하게 안내가 떠 있어야 한다. */
+.canvas-operation-glance-hud.is-armed-set-aside {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
   .canvas-operation-glance-hud {
     transition-duration: 0.01ms;
+  }
+
+  .canvas-operation-glance-hud-arm {
+    animation: none;
   }
 }
 

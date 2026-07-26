@@ -294,6 +294,7 @@ export function OperationsCanvas({
     : triageQueue;
   const triageStage = triageActive ? triageDisplayQueue[0] ?? null : null;
   const triageStageId = triageStage?.operation.id ?? null;
+  const setAsideArmedId = state.activeTheaterId ? getTriageSetAsideArmedId(state.activeTheaterId) : null;
   useEffect(() => {
     if (state.activeOperationId
       && minimizedSet.has(state.activeOperationId)
@@ -581,6 +582,7 @@ export function OperationsCanvas({
                 index: Math.max(1, triageDisplayQueue.findIndex((entry) => entry.operation.id === operation.id) + 1),
                 total: triageDisplayQueue.length,
                 companionOpen: panelCompanion !== null,
+                setAsideArmed: operationTriageStage && setAsideArmedId === operation.id,
               }
             : formationView
               ? {
@@ -736,9 +738,6 @@ export function OperationsCanvas({
                 )) : <span className="canvas-triage-rail-empty">{t("canvas.triage.railEmpty")}</span>}
               </div>
             </div>
-            {state.activeTheaterId && getTriageSetAsideArmedId(state.activeTheaterId) === triageStageId ? (
-              <span className="canvas-triage-rail-arm">{t("canvas.triage.setAsideArmed")}</span>
-            ) : null}
             <span className="canvas-triage-rail-cleared">{t("canvas.triage.railCleared", { count: state.activeTheaterId ? getTriageCleared(state.activeTheaterId) : 0 })}</span>
           </div>
           {triageEntering ? <div className="canvas-triage-sweep" aria-hidden="true" /> : null}

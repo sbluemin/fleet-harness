@@ -43,4 +43,18 @@ describe("panel Glance HUD model", () => {
       hints: [],
     });
   });
+
+  it("replaces the Triage hints with the confirm notice while set-aside is armed", () => {
+    expect(resolveGlanceHudModel({ mode: "triage", index: 1, total: 3, setAsideArmed: true })).toEqual({
+      index: "1/3",
+      hints: [],
+      armedMessageKey: "canvas.triage.setAsideArmed",
+    });
+  });
+
+  it("omits the confirm notice whenever set-aside is not armed", () => {
+    expect(resolveGlanceHudModel({ mode: "triage", index: 1, total: 3 }).armedMessageKey).toBeUndefined();
+    expect(resolveGlanceHudModel({ mode: "triage", index: 1, total: 3, setAsideArmed: false }).armedMessageKey).toBeUndefined();
+    expect(resolveGlanceHudModel({ mode: "map", index: 1 }).armedMessageKey).toBeUndefined();
+  });
 });
