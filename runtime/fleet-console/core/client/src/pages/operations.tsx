@@ -11,7 +11,7 @@ import { claimTopZIndex, consumePendingFitAllOperations, ensureDefaultGeometry, 
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { playMinimizeFlight, playRestoreFlight } from "../canvas/panel-motion.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
-import { deferTriageOperation, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, recordTriageActivity, resolveTriageQueue, setTriageActive } from "../canvas/triage-store.js";
+import { deferTriageOperation, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, pickTriageOperation, recordTriageActivity, resolveTriageQueue, setTriageActive } from "../canvas/triage-store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
