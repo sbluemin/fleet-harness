@@ -17,10 +17,18 @@ import { consumeRepositorySearchTarget, useRepositorySearchTarget } from "./sear
 
 type T = Translate<RepositoryMessageKey>;
 
-type LoadState = { readonly kind: "loading" } | { readonly kind: "ok"; readonly commits: readonly LogCommitEntry[]; readonly checkouts: readonly WorktreeCheckout[]; readonly hasMore: boolean; readonly truncated: boolean } | { readonly kind: "error"; readonly message: string };
+export type HistoryOkState = { readonly kind: "ok"; readonly commits: readonly LogCommitEntry[]; readonly checkouts: readonly WorktreeCheckout[]; readonly hasMore: boolean; readonly truncated: boolean };
+type LoadState = { readonly kind: "loading" } | HistoryOkState | { readonly kind: "error"; readonly message: string };
 type CommitTarget = { readonly fullHash: string; readonly entry?: LogCommitEntry };
 type InspectorState = { readonly kind: "loading" } | { readonly kind: "ok"; readonly result: CommitResult } | { readonly kind: "error"; readonly message: string };
 type FilesViewMode = "list" | "tree";
+
+export interface HistoryLoadGeneration {
+  readonly theaterId: string | null | undefined;
+  readonly repoRel: string;
+  readonly refFilter: string | null;
+  readonly refreshToken: number;
+}
 
 const PREFS_LOG_PANE_HEIGHT = "fleet-console.history.logHeight";
 const PREFS_HEADER_HEIGHT = "fleet-console.history.headerHeight";
@@ -47,15 +55,44 @@ export interface HistoryWindowRow {
 }
 
 export function calculateHistoryWindow(itemCount: number, scrollTop: number, viewportHeight: number): HistoryWindow {
-  const safeScrollTop = Math.max(0, scrollTop);
-  const safeViewportHeight = Math.max(0, viewportHeight);
+  const safeItemCount = Number.isFinite(itemCount) ? Math.max(0, Math.floor(itemCount)) : 0;
+  const safeViewportHeight = Number.isFinite(viewportHeight) ? Math.max(0, viewportHeight) : 0;
+  const maxScrollTop = Math.max(0, safeItemCount * ROW_HEIGHT - safeViewportHeight);
+  const safeScrollTop = Math.min(Number.isFinite(scrollTop) ? Math.max(0, scrollTop) : 0, maxScrollTop);
   const startIndex = Math.max(0, Math.floor(safeScrollTop / ROW_HEIGHT) - HISTORY_OVERSCAN_ROWS);
-  const endIndex = Math.min(itemCount, Math.ceil((safeScrollTop + safeViewportHeight) / ROW_HEIGHT) + HISTORY_OVERSCAN_ROWS);
+  const endIndex = Math.min(safeItemCount, Math.max(startIndex, Math.ceil((safeScrollTop + safeViewportHeight) / ROW_HEIGHT) + HISTORY_OVERSCAN_ROWS));
   return {
     startIndex,
     endIndex,
     topSpacerHeight: startIndex * ROW_HEIGHT,
-    bottomSpacerHeight: Math.max(0, (itemCount - endIndex) * ROW_HEIGHT),
+    bottomSpacerHeight: Math.max(0, (safeItemCount - endIndex) * ROW_HEIGHT),
+  };
+}
+
+export function isHistoryGenerationCurrent(request: HistoryLoadGeneration, current: HistoryLoadGeneration): boolean {
+  return request.theaterId === current.theaterId
+    && request.repoRel === current.repoRel
+    && request.refFilter === current.refFilter
+    && request.refreshToken === current.refreshToken;
+}
+
+export function appendHistoryPage(
+  current: HistoryOkState,
+  data: LogResult,
+  requestGeneration: HistoryLoadGeneration,
+  currentGeneration: HistoryLoadGeneration,
+): HistoryOkState | null {
+  if (!isHistoryGenerationCurrent(requestGeneration, currentGeneration)) return null;
+  const existing = new Set(current.commits.map((commit) => commit.fullHash));
+  // Offset 페이지 사이에서 ref가 움직이면 중복뿐 아니라 누락도 생길 수 있다. 여기서는 React key와
+  // 그래프 인덱스 훼손을 막기 위해 중복 hash만 제거하며, 누락 해결에는 서버 커서가 별도로 필요하다.
+  const appended = data.commits.filter((commit) => !existing.has(commit.fullHash));
+  return {
+    kind: "ok",
+    commits: [...current.commits, ...appended],
+    checkouts: data.checkouts,
+    hasMore: data.hasMore,
+    truncated: current.truncated || (data.truncated ?? false),
   };
 }
 
@@ -189,6 +226,9 @@ function HistoryPanelBody({ ctx, repoRel, active, refFilter, wipFiles, workspace
   const dragDisposeRef = useRef<(() => void) | null>(null);
   const logHeightRef = useRef(logHeight);
   const dockHeightRef = useRef(dockHeight);
+  const generation = useMemo<HistoryLoadGeneration>(() => ({ theaterId: ctx.theaterId, repoRel, refFilter, refreshToken }), [ctx.theaterId, refFilter, refreshToken, repoRel]);
+  const generationRef = useRef(generation);
+  generationRef.current = generation;
   const visible = useMemo(() => state.kind === "ok" ? filterHistoryCommits(state.commits, filterText) : [], [filterText, state]);
   const layout = useMemo(() => state.kind === "ok" ? layoutGraph(state.commits) : null, [state]);
   const commitIndexes = useMemo(() => new Map(state.kind === "ok" ? state.commits.map((entry, index) => [entry.fullHash, index]) : []), [state]);
@@ -206,6 +246,11 @@ function HistoryPanelBody({ ctx, repoRel, active, refFilter, wipFiles, workspace
       height: list.clientHeight,
     });
   }, []);
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (list) list.scrollTop = 0;
+    setCommitViewport({ scrollTop: 0, height: list?.clientHeight ?? 0 });
+  }, [filterText]);
   useEffect(() => { setTarget(null); }, [refFilter]);
   useEffect(() => {
     if (
@@ -317,6 +362,7 @@ function HistoryPanelBody({ ctx, repoRel, active, refFilter, wipFiles, workspace
   }, [workspace]);
   const loadMore = useCallback(() => {
     if (state.kind !== "ok" || !state.hasMore || loadingMoreRef.current || !ctx.theaterId) return;
+    const requestGeneration = generation;
     loadingMoreRef.current = true;
     setLoadingMore(true);
     setLoadMoreError(null);
@@ -328,20 +374,20 @@ function HistoryPanelBody({ ctx, repoRel, active, refFilter, wipFiles, workspace
       if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed");
       return response.json() as Promise<LogResult>;
     }).then((data) => {
-      setState((current) => current.kind === "ok" ? {
-        kind: "ok",
-        commits: [...current.commits, ...data.commits],
-        checkouts: data.checkouts,
-        hasMore: data.hasMore,
-        truncated: current.truncated || (data.truncated ?? false),
-      } : current);
+      if (!isHistoryGenerationCurrent(requestGeneration, generationRef.current)) return;
+      setState((current) => {
+        if (current.kind !== "ok") return current;
+        return appendHistoryPage(current, data, requestGeneration, generationRef.current) ?? current;
+      });
     }).catch((error: unknown) => {
+      if (!isHistoryGenerationCurrent(requestGeneration, generationRef.current)) return;
       setLoadMoreError(error instanceof Error ? error.message : "unknown");
     }).finally(() => {
+      if (!isHistoryGenerationCurrent(requestGeneration, generationRef.current)) return;
       loadingMoreRef.current = false;
       setLoadingMore(false);
     });
-  }, [ctx.api, ctx.theaterId, refFilter, repoRel, state]);
+  }, [ctx.api, ctx.theaterId, generation, refFilter, repoRel, state]);
   const stackTemplate = target
     ? workspace ? buildWorkspaceDockTemplate(dockHeight) : buildHistoryStackTemplate(logHeight)
     : undefined;

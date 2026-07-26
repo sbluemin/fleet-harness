@@ -376,6 +376,26 @@ describe("Repository Theater-root Git routes", () => {
     expect(refPage.commits[0]?.subject).not.toBe(first.commits[0]?.subject);
   });
 
+  it("reports no next page when the all-ref history exactly fills the requested limit", async () => {
+    const allRefCount = Number.parseInt((await runGit(
+      ["rev-list", "--count", "--branches", "--tags", "--remotes", "HEAD"],
+      { cwd: fixture.theaterPath },
+    )).stdout.trim(), 10);
+    expect(allRefCount).toBeGreaterThan(0);
+    expect(allRefCount).toBeLessThanOrEqual(500);
+
+    const writes: JsonWrite[] = [];
+    await handleRepositoryLog(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", limit: allRefCount, skip: 0 }, writes),
+    );
+    const page = readPayload<LogPayload>(writes);
+
+    expect(page.commits).toHaveLength(allRefCount);
+    expect(page.hasMore).toBe(false);
+  });
+
   it.each([
     ["zero limit", { limit: 0 }],
     ["limit above maximum", { limit: 501 }],

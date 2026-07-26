@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { calculateHistoryWindow, CommitRow, findDetachedCheckout, getHistoryWindowRows } from "../client/history-panel.js";
+import { appendHistoryPage, calculateHistoryWindow, CommitRow, findDetachedCheckout, getHistoryWindowRows, type HistoryLoadGeneration, type HistoryOkState } from "../client/history-panel.js";
 import { ROW_HEIGHT } from "../client/graph-gutter.js";
 import { layoutGraph } from "../client/graph-layout.js";
 import type { LogCommitEntry, WorktreeCheckout } from "../server/types.js";
@@ -72,6 +72,32 @@ describe("History window rendering", () => {
     });
   });
 
+  it("clamps a deep 600-row scroll when a filter leaves only 10 rows", () => {
+    const window = calculateHistoryWindow(10, 500 * ROW_HEIGHT, 240);
+
+    expect(window).toEqual({
+      startIndex: 0,
+      endIndex: 10,
+      topSpacerHeight: 0,
+      bottomSpacerHeight: 0,
+    });
+  });
+
+  it.each([
+    [10, 14_000, 240],
+    [0, 14_000, 240],
+    [10, -100, 240],
+    [10, Number.POSITIVE_INFINITY, 240],
+    [-10, 100, -20],
+  ])("keeps window indexes ordered and inside the item count for count=%s scroll=%s viewport=%s", (itemCount, scrollTop, viewportHeight) => {
+    const window = calculateHistoryWindow(itemCount, scrollTop, viewportHeight);
+    const safeItemCount = Math.max(0, itemCount);
+
+    expect(window.startIndex).toBeGreaterThanOrEqual(0);
+    expect(window.startIndex).toBeLessThanOrEqual(window.endIndex);
+    expect(window.endIndex).toBeLessThanOrEqual(safeItemCount);
+  });
+
   it("keeps filtered rows paired with graph nodes from their original accumulated indexes", () => {
     const commits = Array.from({ length: 80 }, (_, index): LogCommitEntry => ({
       ...COMMIT,
@@ -91,5 +117,36 @@ describe("History window rendering", () => {
     expect(rows[0]?.graphNode).toBe(layout.nodes[24]);
     expect(rows.at(-1)).toMatchObject({ entry: commits[58], visibleIndex: 29, commitIndex: 58 });
     expect(rows.at(-1)?.graphNode).toBe(layout.nodes[58]);
+  });
+});
+
+describe("History page accumulation", () => {
+  const generationA: HistoryLoadGeneration = { theaterId: "theater", repoRel: "", refFilter: "refs/heads/a", refreshToken: 0 };
+  const state: HistoryOkState = { kind: "ok", commits: [COMMIT], checkouts: [], hasMore: true, truncated: false };
+  const nextCommit: LogCommitEntry = { ...COMMIT, shortHash: "def5678", fullHash: "def5678fedcba9876543210fedcba9876543210f", subject: "older commit" };
+
+  it("rejects a delayed page response after the ref generation changes", () => {
+    const generationB: HistoryLoadGeneration = { ...generationA, refFilter: "refs/heads/b" };
+    const result = appendHistoryPage(
+      state,
+      { commits: [nextCommit], checkouts: [], hasMore: false },
+      generationA,
+      generationB,
+    );
+
+    expect(result).toBeNull();
+    expect(state.commits).toEqual([COMMIT]);
+  });
+
+  it("deduplicates full hashes while preserving new page order", () => {
+    const result = appendHistoryPage(
+      state,
+      { commits: [COMMIT, nextCommit], checkouts: [], hasMore: false },
+      generationA,
+      generationA,
+    );
+
+    expect(result?.commits).toEqual([COMMIT, nextCommit]);
+    expect(result?.hasMore).toBe(false);
   });
 });

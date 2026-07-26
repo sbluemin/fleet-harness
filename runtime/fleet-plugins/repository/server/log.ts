@@ -242,14 +242,16 @@ export async function handleRepositoryLog(
     const scopePathspec = realToplevel !== "" && realGitCwd === realToplevel ? [] : ["."];
     const skipArg = skip > 0 ? [`--skip=${skip}`] : [];
     const result = resolvedRef
-      ? await runGit(["log", resolvedRef, "--date-order", "-n", String(limit), ...skipArg, "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", "--", ...scopePathspec], { cwd: gitCwd })
+      ? await runGit(["log", resolvedRef, "--date-order", "-n", String(limit + 1), ...skipArg, "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", "--", ...scopePathspec], { cwd: gitCwd })
       : await runGit(
         // --all은 refs/stash·refs/notes까지 그래프에 유입시키므로 브랜치/태그/원격 + 현재 HEAD + 워크트리 HEAD로 한정한다
-        ["log", "--branches", "--tags", "--remotes", "--date-order", "-n", String(limit), ...skipArg, "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", ...headRevs, ...worktreeRevs, "--", ...scopePathspec],
+        ["log", "--branches", "--tags", "--remotes", "--date-order", "-n", String(limit + 1), ...skipArg, "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", ...headRevs, ...worktreeRevs, "--", ...scopePathspec],
         { cwd: gitCwd },
       );
-    const commits = annotateHeadReachability(parseLogOutput(result.stdout), headRevList);
-    ctx.host.http.writeJson(res, 200, { commits, checkouts, hasMore: commits.length === limit, ...(result.truncated ? { truncated: true } : {}) });
+    const parsedCommits = parseLogOutput(result.stdout);
+    const hasMore = parsedCommits.length > limit;
+    const commits = annotateHeadReachability(parsedCommits.slice(0, limit), headRevList);
+    ctx.host.http.writeJson(res, 200, { commits, checkouts, hasMore, ...(result.truncated ? { truncated: true } : {}) });
   } catch (error) {
     if (error instanceof GitExecutorError) {
       if (requestedRef !== undefined && error.code === "non_zero_exit") {
