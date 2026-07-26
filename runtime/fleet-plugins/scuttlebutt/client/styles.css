@@ -605,38 +605,6 @@
   animation-delay: calc(var(--duration-fast) * 2);
 }
 
-.scuttlebutt-followups {
-  display: flex;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  padding: 0 var(--space-4) var(--space-3);
-}
-
-.scuttlebutt-followups button {
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
-  background: var(--ink-mid);
-  color: var(--text-secondary);
-  cursor: pointer;
-  font: inherit;
-  font-size: 12px;
-  font-weight: var(--weight-regular);
-  transition:
-    border-color var(--duration-fast) var(--ease-glide),
-    color var(--duration-fast) var(--ease-glide);
-}
-
-.scuttlebutt-followups button:hover {
-  border-color: var(--brass);
-  color: var(--text-primary);
-}
-
-.scuttlebutt-followups button:focus-visible {
-  outline: 2px solid var(--brass);
-}
-
 .scuttlebutt-composer {
   position: relative;
   display: flex;
@@ -683,8 +651,7 @@
   outline: 2px solid var(--text-primary);
 }
 
-.scuttlebutt-send:disabled,
-.scuttlebutt-followups button:disabled {
+.scuttlebutt-send:disabled {
   cursor: default;
   opacity: 0.5;
 }

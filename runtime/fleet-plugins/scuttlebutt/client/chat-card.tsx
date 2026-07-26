@@ -5,12 +5,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import { currentExchange, type ChatState } from "./chat-store.js";
 import type { AdmiralId } from "./chat-session.js";
 import { placeCard, type CardPlacement } from "./geometry.js";
-import { getT, type ScuttlebuttMessageKey } from "./i18n.js";
-
-const FOLLOWUPS = [
-  "followup.whoAreYou",
-  "followup.whatCanYouDo",
-] as const;
+import { getT } from "./i18n.js";
 
 export function ChatCard({
   state,
@@ -146,13 +141,6 @@ export function ChatCard({
         ))}
       </div>
       {busy ? <div className="scuttlebutt-thinking"><i /><i /><i />{t(`chat.thinking.${admiral}`)}</div> : null}
-      <div className="scuttlebutt-followups">
-        {FOLLOWUPS.map((key: ScuttlebuttMessageKey) => (
-          <button key={key} type="button" disabled={busy} onClick={() => onAsk(t(key))}>
-            {t(key)}
-          </button>
-        ))}
-      </div>
       <form className="scuttlebutt-composer" onSubmit={(event) => {
         event.preventDefault();
         onAsk(draft);
