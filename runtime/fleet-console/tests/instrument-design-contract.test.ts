@@ -722,7 +722,7 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain('className="command-band-button command-band-rail-toggle"');
     expect(commandBand).toContain("onClick={toggleRailChrome}");
     expect(commandBand).toContain(`      </div>
-      {operationsViewVisible ? <div className="command-band-map-controls">`);
+      {operationsViewVisible ? <div ref={mapControlsRef} className="command-band-map-controls">`);
     expect(commandBand).toContain('aria-label={t("chrome.commandBand.resetCanvasView")}');
     expect(commandBand).toContain("<ResetViewIcon />");
     expect(commandBand).toContain("onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })}");
@@ -760,10 +760,34 @@ describe("Instrument core design contract", () => {
     // 데스크톱은 사이드바 폭을 그대로 미러하고, 모바일 셸에는 미러할 사이드바가 없으므로
     // 좌측 트랙이 내용 크기로 접힌다. 두 갈래를 한 줄로 고정해 한쪽만 바뀌는 표류를 막는다.
     expect(commandBand).toContain('"--command-band-left-width": viewMode.effective === "mobile" ? "min-content" : `${sideBar.width}px`');
-    expect(layout).toContain("grid-template-columns: minmax(var(--command-band-left-width, 280px), 1fr) minmax(0, max-content) minmax(44px, 1fr);");
-    expect(layout).toContain("width: var(--command-band-left-width, 280px);");
+    expect(layout).toContain("grid-template-columns: var(--command-band-stage-left) minmax(var(--command-band-center-gutter), 1fr) minmax(0, max-content) minmax(var(--command-band-center-gutter), 1fr) var(--command-band-stage-right);");
     const commandBandCenterBlock = layout.match(/\.command-band-center \{[^}]*\}/)?.[0] ?? "";
+    const commandBandLeftBlocks = [...layout.matchAll(/\.command-band-left \{[^}]*\}/g)].map((match) => match[0]);
     const commandBandRightBlocks = [...layout.matchAll(/\.command-band-right \{[^}]*\}/g)].map((match) => match[0]);
+    // 바깥 트랙은 실제 스테이지 경계(접힌 사이드바 0, 접힌 레일 스트립 0)를 담고, 좌측 캡과 우측
+    // 클러스터는 여백 트랙까지 걸쳐 밴드 양끝에 붙는다. 좌우 여백 트랙은 동일 하한을 공유한다 —
+    // 어느 한쪽이라도 어긋나면 브레드크럼이 스테이지 중심에서 밀린다.
+    expect(layout).toContain(".command-band.is-utility {\n  grid-template-columns: auto minmax(0, 1fr) minmax(0, max-content) auto 0px;\n}");
+    expect(layout).toContain("  --command-band-center-gutter: 44px;");
+    expect(layout).toContain("  --command-band-stage-left: var(--command-band-left-width, 280px);");
+    expect(layout).toContain("  --command-band-stage-right: 0px;");
+    expect(commandBandLeftBlocks.some((block) => block.includes("grid-column: 1 / 3;"))).toBe(true);
+    expect(commandBandCenterBlock).toContain("grid-column: 3;");
+    expect(commandBandRightBlocks.some((block) => block.includes("grid-column: 4 / 6;"))).toBe(true);
+    expect(commandBand).toContain('"--command-band-stage-left": viewMode.effective === "mobile" ? "min-content" : `${stageLeftWidth}px`,');
+    expect(commandBand).toContain('"--command-band-stage-right": `${stageRightWidth}px`,');
+    // 접힌 뒤에도 여백 하한을 주입하면 고정 트랙 합이 밴드 폭을 넘어 우측 컨트롤이 화면 밖으로
+    // 밀린다(넓힌 사이드바를 접었을 때 특히). 주입값과 판정값을 분리해 고정한다.
+    expect(commandBand).toContain("const injectedCenterGutter = centerBreadcrumbVisible ? centerGutter : 0;");
+    expect(commandBand).toContain('"--command-band-center-gutter": `${injectedCenterGutter}px`,');
+    expect(commandBand).toContain("{centerBreadcrumbVisible ? <div className=\"command-band-center\">");
+    // 접힘은 편집 중이던 input을 언마운트하는데 blur가 발화하지 않는다 — 취소를 빼면 다시 넓혔을 때
+    // 포커스 없는 스테일 draft로 되살아나 키보드로 빠져나올 수 없다.
+    expect(commandBand).toContain("    if (!rename.renaming) return;\n    renameTargetOperationIdRef.current = null;\n    rename.cancel();");
+    // 밴드 조상에 container-type을 걸면 contain:layout이 stacking context를 만들어
+    // .command-band-menu(z-index:45)가 우현 레일 아래로 깔린다 — 판정은 JS 실측 전용.
+    expect(layout).not.toContain("container-type");
+    expect(layout).toContain("width: var(--command-band-left-width, 280px);");
     expect(commandBandCenterBlock).toContain("justify-content: center;");
     expect(commandBandCenterBlock).not.toContain("overflow:");
     expect(commandBandRightBlocks.some((block) => block.includes("justify-content: flex-end;"))).toBe(true);

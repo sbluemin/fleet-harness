@@ -51,3 +51,32 @@ export function commandBandMenuClampedLeft(
   const minLeft = gutter - wrapperViewportLeft;
   return Math.max(minLeft, Math.min(desiredLeft, maxLeft));
 }
+
+// 맵 컨트롤 클러스터(.command-band-map-controls)는 절대 배치라 그리드가 그 폭을 모른다.
+// 매직 오프셋 상수는 버튼이 늘 때마다 겹침으로 깨졌으므로(구 116px 사고) 실측 폭에서 계산한다.
+// 좌우 여백 트랙은 반드시 같은 하한을 쓴다 — 값이 어긋나면 하한이 물리는 순간 중앙이 밀린다.
+// 사이드바를 접으면 밴드 좌측 캡은 자리를 지키지만 스테이지 좌단은 0으로 내려간다. 그 차이가
+// mapControlsLead — 하한은 스테이지 원점 기준으로 재야 접힌 상태에서도 겹치지 않는다.
+export const COMMAND_BAND_MAP_CONTROLS_INSET_PX = 8;
+export const COMMAND_BAND_CENTER_BREATHING_PX = 12;
+export const COMMAND_BAND_CENTER_GUTTER_FLOOR_PX = 44;
+export const COMMAND_BAND_CENTER_MIN_PX = 168;
+
+// Activity Rail의 고정 스트립 폭. 패널 폭은 포함하지 않는다 — PR #302가 밴드를 레일
+// 크기 조절에서 떼어냈고, 여기서 예약하는 것은 접히지 않은 레일이 늘 차지하는 스트립뿐이다.
+export const COMMAND_BAND_RAIL_STRIP_PX = 44;
+
+export function commandBandCenterGutter(mapControlsLead: number, mapControlsWidth: number): number {
+  if (mapControlsWidth <= 0) return COMMAND_BAND_CENTER_GUTTER_FLOOR_PX;
+  return Math.max(
+    COMMAND_BAND_CENTER_GUTTER_FLOOR_PX,
+    mapControlsLead + COMMAND_BAND_MAP_CONTROLS_INSET_PX + mapControlsWidth + COMMAND_BAND_CENTER_BREATHING_PX,
+  );
+}
+
+// 좌우 여백 트랙을 뺀 나머지가 최소 판독 폭에 못 미치면 브레드크럼을 접는다.
+// 미측정(0 이하)은 보이는 쪽으로 판정한다 — 첫 페인트에서 깜빡이며 사라지지 않게 한다.
+export function commandBandCenterFits(centerTrackWidth: number, gutter: number): boolean {
+  if (centerTrackWidth <= 0) return true;
+  return centerTrackWidth - gutter * 2 >= COMMAND_BAND_CENTER_MIN_PX;
+}

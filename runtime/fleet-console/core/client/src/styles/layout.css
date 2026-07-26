@@ -75,10 +75,18 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   min-height: 0;
 }
 
+/* 중앙 브레드크럼은 실제 중앙 스테이지(.operations-center-stage)의 정중앙에 놓는다 —
+   좌측 앵커는 실제 사이드바 폭(접히면 0), 우측 앵커는 Activity Rail의 고정 스트립 폭이다.
+   레일 "패널" 폭은 예약하지 않는다: PR #302가 밴드를 레일 크기 조절에서 떼어냈고, 그 결정은 유효하다.
+   좌우 여백 트랙은 동일 하한 + 동일 1fr이라 하한이 물려도 중심이 유지된다. 하한은 좌측 캡과
+   맵 컨트롤 실측 폭에서 계산해 밴드에 주입한다(--command-band-center-gutter). */
 .command-band {
+  --command-band-center-gutter: 44px;
+  --command-band-stage-left: var(--command-band-left-width, 280px);
+  --command-band-stage-right: 0px;
   position: relative;
   display: grid;
-  grid-template-columns: minmax(var(--command-band-left-width, 280px), 1fr) minmax(0, max-content) minmax(44px, 1fr);
+  grid-template-columns: var(--command-band-stage-left) minmax(var(--command-band-center-gutter), 1fr) minmax(0, max-content) minmax(var(--command-band-center-gutter), 1fr) var(--command-band-stage-right);
   flex: none;
   height: var(--chrome-band-height);
   min-height: var(--chrome-band-height);
@@ -123,7 +131,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 }
 
 .command-band.is-utility {
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, max-content) auto 0px;
 }
 
 .command-band-left,
@@ -135,7 +143,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 }
 
 .command-band-left {
-  grid-column: 1;
+  grid-column: 1 / 3;
   width: var(--command-band-left-width, 280px);
   gap: var(--space-1);
   padding-inline: var(--space-2);
@@ -309,14 +317,14 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 }
 
 .command-band-center {
-  grid-column: 2;
+  grid-column: 3;
   justify-content: center;
   gap: var(--space-3);
   padding-inline: var(--space-3);
 }
 
 .command-band-right {
-  grid-column: 3;
+  grid-column: 4 / 6;
   justify-content: flex-end;
   gap: var(--space-1);
   padding-inline: var(--space-2);
