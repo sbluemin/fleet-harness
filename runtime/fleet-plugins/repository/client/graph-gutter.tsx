@@ -10,7 +10,7 @@ interface GraphGutterProps {
 
 const LANE_WIDTH = 12;
 // .history-commit-row의 고정 높이(diff.css)와 반드시 일치해야 행 간 레인 선이 이음새 없이 연결된다
-const ROW_HEIGHT = 28;
+export const ROW_HEIGHT = 28;
 const NODE_R = 3;
 const HEAD_RING_R = 5;
 // 장식적 구분 채도는 --id-* 정체성 봉투에서만 가져온다 — 테마별 재조율·상태 신호와

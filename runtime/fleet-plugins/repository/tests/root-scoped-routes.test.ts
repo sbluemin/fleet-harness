@@ -43,6 +43,7 @@ interface ContentPayload {
 
 interface LogPayload {
   readonly commits: readonly { readonly subject: string }[];
+  readonly hasMore: boolean;
 }
 
 const handlers = [
@@ -323,6 +324,7 @@ describe("Repository Theater-root Git routes", () => {
     const log = readPayload<LogPayload>(logWrites);
     expect(log.commits.map((commit) => commit.subject)).toContain("mixed context commit");
     expect(log.commits.map((commit) => commit.subject)).toContain("outside only commit");
+    expect(log.hasMore).toBe(false);
 
     const commitWrites: JsonWrite[] = [];
     await handleRepositoryCommit(
@@ -337,6 +339,81 @@ describe("Repository Theater-root Git routes", () => {
       "inside/committed.txt",
       "outside/committed.txt",
     ]));
+  });
+
+  it("paginates all-ref and resolved-ref history with limit and skip", async () => {
+    const firstWrites: JsonWrite[] = [];
+    await handleRepositoryLog(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", limit: 2, skip: 0 }, firstWrites),
+    );
+    const first = readPayload<LogPayload>(firstWrites);
+    expect(first.commits).toHaveLength(2);
+    expect(first.hasMore).toBe(true);
+
+    const secondWrites: JsonWrite[] = [];
+    await handleRepositoryLog(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", limit: 2, skip: 2 }, secondWrites),
+    );
+    const second = readPayload<LogPayload>(secondWrites);
+    expect(second.commits).toHaveLength(2);
+    expect(second.hasMore).toBe(true);
+    expect(second.commits.map((commit) => commit.subject)).not.toEqual(first.commits.map((commit) => commit.subject));
+
+    const branch = (await runGit(["symbolic-ref", "HEAD"], { cwd: fixture.theaterPath })).stdout.trim();
+    const refWrites: JsonWrite[] = [];
+    await handleRepositoryLog(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", ref: branch, limit: 1, skip: 1 }, refWrites),
+    );
+    const refPage = readPayload<LogPayload>(refWrites);
+    expect(refPage.commits).toHaveLength(1);
+    expect(refPage.hasMore).toBe(true);
+    expect(refPage.commits[0]?.subject).not.toBe(first.commits[0]?.subject);
+  });
+
+  it("reports no next page when the all-ref history exactly fills the requested limit", async () => {
+    const allRefCount = Number.parseInt((await runGit(
+      ["rev-list", "--count", "--branches", "--tags", "--remotes", "HEAD"],
+      { cwd: fixture.theaterPath },
+    )).stdout.trim(), 10);
+    expect(allRefCount).toBeGreaterThan(0);
+    expect(allRefCount).toBeLessThanOrEqual(500);
+
+    const writes: JsonWrite[] = [];
+    await handleRepositoryLog(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", limit: allRefCount, skip: 0 }, writes),
+    );
+    const page = readPayload<LogPayload>(writes);
+
+    expect(page.commits).toHaveLength(allRefCount);
+    expect(page.hasMore).toBe(false);
+  });
+
+  it.each([
+    ["zero limit", { limit: 0 }],
+    ["limit above maximum", { limit: 501 }],
+    ["fractional limit", { limit: 1.5 }],
+    ["string limit", { limit: "2" }],
+    ["null limit", { limit: null }],
+    ["negative skip", { skip: -1 }],
+    ["fractional skip", { skip: 1.5 }],
+    ["string skip", { skip: "1" }],
+    ["null skip", { skip: null }],
+  ])("rejects %s pagination", async (_label, pagination) => {
+    const writes: JsonWrite[] = [];
+    await handleRepositoryLog(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(fixture.theaterPath, { theaterId: "theater", ...pagination }, writes),
+    );
+    expect(writes).toEqual([{ status: 400, payload: { error: "invalid_request" } }]);
   });
 
   it("하위 디렉터리 Theater의 history는 Theater 밖 커밋을 제외한다", async () => {

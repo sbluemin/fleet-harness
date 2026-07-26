@@ -286,6 +286,6 @@ describe("handleRepositoryLog", () => {
     const writes: { status: number; payload: unknown }[] = [];
     await handleRepositoryLog({ method: "POST" } as never, {} as never, makeLogContext(repoDir, writes));
 
-    expect(writes).toEqual([{ status: 200, payload: { commits: [], checkouts: [] } }]);
+    expect(writes).toEqual([{ status: 200, payload: { commits: [], checkouts: [], hasMore: false } }]);
   });
 });
