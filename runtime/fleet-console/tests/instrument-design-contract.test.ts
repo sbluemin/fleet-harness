@@ -776,7 +776,10 @@ describe("Instrument core design contract", () => {
     expect(commandBandRightBlocks.some((block) => block.includes("grid-column: 4 / 6;"))).toBe(true);
     expect(commandBand).toContain('"--command-band-stage-left": viewMode.effective === "mobile" ? "min-content" : `${stageLeftWidth}px`,');
     expect(commandBand).toContain('"--command-band-stage-right": `${stageRightWidth}px`,');
-    expect(commandBand).toContain('"--command-band-center-gutter": `${centerGutter}px`,');
+    // 접힌 뒤에도 여백 하한을 주입하면 고정 트랙 합이 밴드 폭을 넘어 우측 컨트롤이 화면 밖으로
+    // 밀린다(넓힌 사이드바를 접었을 때 특히). 주입값과 판정값을 분리해 고정한다.
+    expect(commandBand).toContain("const injectedCenterGutter = centerBreadcrumbVisible ? centerGutter : 0;");
+    expect(commandBand).toContain('"--command-band-center-gutter": `${injectedCenterGutter}px`,');
     expect(commandBand).toContain("{centerBreadcrumbVisible ? <div className=\"command-band-center\">");
     // 밴드 조상에 container-type을 걸면 contain:layout이 stacking context를 만들어
     // .command-band-menu(z-index:45)가 우현 레일 아래로 깔린다 — 판정은 JS 실측 전용.

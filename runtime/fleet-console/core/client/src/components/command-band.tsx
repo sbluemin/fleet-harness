@@ -88,6 +88,10 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const stageRightWidth = railChromeExpanded ? COMMAND_BAND_RAIL_STRIP_PX : 0;
   const centerGutter = commandBandCenterGutter(sideBar.width - stageLeftWidth, mapControlsWidth);
   const centerBreadcrumbVisible = viewMode.effective !== "mobile" && commandBandCenterFits(bandWidth - stageLeftWidth - stageRightWidth, centerGutter);
+  // 접힌 뒤에는 여백 트랙이 지킬 대상이 없다. 하한을 그대로 두면 고정 트랙 합이 밴드 폭을 넘어
+  // 우측 컨트롤이 화면 밖으로 밀린다 — 사이드바를 넓게 늘린 뒤 접으면 하한이 캡 폭만큼 커져
+  // 1280px 창에서도 터진다. 판정용 centerGutter는 그대로 두어 되돌아오는 폭이 흔들리지 않게 한다.
+  const injectedCenterGutter = centerBreadcrumbVisible ? centerGutter : 0;
   // 열림/닫힘 전환 시 이벤트 핸들러에서 동기 호출한다 — open effect(폐기 후 fetch)는 paint 뒤에 돌므로
   // 여기서 지우지 않으면 재오픈 첫 프레임에 이전 절대경로가 그대로 렌더된다.
   const discardEnvironmentState = () => {
@@ -358,7 +362,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
           "--command-band-left-width": viewMode.effective === "mobile" ? "min-content" : `${sideBar.width}px`,
           "--command-band-stage-left": viewMode.effective === "mobile" ? "min-content" : `${stageLeftWidth}px`,
           "--command-band-stage-right": `${stageRightWidth}px`,
-          "--command-band-center-gutter": `${centerGutter}px`,
+          "--command-band-center-gutter": `${injectedCenterGutter}px`,
         } as CSSProperties}
         aria-hidden={commandBandHidden || undefined}
         inert={commandBandHidden || undefined}
