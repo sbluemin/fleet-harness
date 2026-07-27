@@ -31,7 +31,7 @@ export const globalShellPanel: RailPanelDescriptor = {
         operationId={`${GLOBAL_SHELL_OPERATION_PREFIX}${encodeURIComponent(ctx.theaterId ?? "")}`}
         ticketPath={GLOBAL_SHELL_TICKET_PATH}
         wsPath={TERMINAL_WS_PATH}
-        theme="instrument"
+        theme={ctx.theme ?? "instrument"}
         active
       />
     </div>

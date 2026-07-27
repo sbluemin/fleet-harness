@@ -15,11 +15,13 @@ import { createTerminalScrollFollow, type TerminalScrollFollowController } from 
 import { createWindowsSelectionCopyHandler } from "./windows-selection-copy.js";
 import { waitForSymbolsNerdFontMono } from "./symbols-font.js";
 
+type TerminalThemeId = "instrument" | "maritime" | "carbon" | "daywatch" | "chartroom" | "whites" | "drydock";
+
 export interface TerminalSurfaceProps {
   readonly operationId: string;
   readonly ticketPath: string;
   readonly wsPath: string;
-  readonly theme?: "instrument" | "maritime" | "carbon";
+  readonly theme?: TerminalThemeId;
   readonly onExit?: () => void;
   // 이 터미널이 활성(선택)으로 전환될 때 마우스 클릭 없이 키보드 포커스를 잡아준다(Map 검색 이동 등).
   readonly active?: boolean;
@@ -113,6 +115,99 @@ const CARBON_TERMINAL_THEME: ITheme = {
   brightMagenta: "oklch(82% 0.12 320)",
   brightCyan: "oklch(86% 0.13 205)",
   brightWhite: "oklch(95% 0.003 250)",
+};
+
+// 라이트 터미널의 bright 계열은 밝히지 않고 더 진하게(L −5%p, C +0.02) 간다 — 밝은 배경에서 '밝은' ANSI는 판독 불능이기 때문.
+const DAYWATCH_TERMINAL_THEME: ITheme = {
+  background: "oklch(93% 0.01 245)",
+  foreground: "oklch(25% 0.02 248)",
+  cursor: "oklch(51% 0.09 205)",
+  selectionBackground: "oklch(54% 0.11 72 / 22%)",
+  black: "oklch(24% 0.025 248)",
+  brightBlack: "oklch(46% 0.02 245)",
+  red: "oklch(53% 0.15 25)",
+  green: "oklch(51% 0.11 158)",
+  yellow: "oklch(56% 0.1 80)",
+  blue: "oklch(50% 0.09 245)",
+  magenta: "oklch(52% 0.1 318)",
+  cyan: "oklch(51% 0.09 205)",
+  white: "oklch(88% 0.012 245)",
+  brightRed: "oklch(48% 0.17 25)",
+  brightGreen: "oklch(46% 0.13 158)",
+  brightYellow: "oklch(50% 0.12 78)",
+  brightBlue: "oklch(45% 0.1 245)",
+  brightMagenta: "oklch(47% 0.12 318)",
+  brightCyan: "oklch(46% 0.1 205)",
+  brightWhite: "oklch(96% 0.008 245)",
+};
+
+const CHARTROOM_TERMINAL_THEME: ITheme = {
+  background: "oklch(93% 0.018 90)",
+  foreground: "oklch(26% 0.032 262)",
+  cursor: "oklch(50% 0.085 205)",
+  selectionBackground: "oklch(53% 0.105 68 / 22%)",
+  black: "oklch(25% 0.035 262)",
+  brightBlack: "oklch(45% 0.026 262)",
+  red: "oklch(52% 0.15 28)",
+  green: "oklch(50% 0.1 155)",
+  yellow: "oklch(54% 0.1 78)",
+  blue: "oklch(50% 0.09 250)",
+  magenta: "oklch(52% 0.1 318)",
+  cyan: "oklch(50% 0.085 205)",
+  white: "oklch(87% 0.02 90)",
+  brightRed: "oklch(47% 0.17 28)",
+  brightGreen: "oklch(45% 0.12 155)",
+  brightYellow: "oklch(48% 0.12 76)",
+  brightBlue: "oklch(45% 0.1 250)",
+  brightMagenta: "oklch(47% 0.12 318)",
+  brightCyan: "oklch(45% 0.095 205)",
+  brightWhite: "oklch(95% 0.014 92)",
+};
+
+const WHITES_TERMINAL_THEME: ITheme = {
+  background: "oklch(95.5% 0.004 250)",
+  foreground: "oklch(22% 0.045 260)",
+  cursor: "oklch(50% 0.1 210)",
+  selectionBackground: "oklch(56% 0.125 82 / 20%)",
+  black: "oklch(23% 0.05 260)",
+  brightBlack: "oklch(44% 0.034 258)",
+  red: "oklch(52% 0.16 25)",
+  green: "oklch(50% 0.12 160)",
+  yellow: "oklch(55% 0.11 82)",
+  blue: "oklch(50% 0.1 250)",
+  magenta: "oklch(51% 0.1 318)",
+  cyan: "oklch(50% 0.1 210)",
+  white: "oklch(90% 0.005 250)",
+  brightRed: "oklch(47% 0.18 25)",
+  brightGreen: "oklch(45% 0.14 160)",
+  brightYellow: "oklch(49% 0.13 80)",
+  brightBlue: "oklch(45% 0.11 250)",
+  brightMagenta: "oklch(46% 0.12 318)",
+  brightCyan: "oklch(45% 0.11 210)",
+  brightWhite: "oklch(97% 0.003 250)",
+};
+
+const DRYDOCK_TERMINAL_THEME: ITheme = {
+  background: "oklch(92.5% 0.02 238)",
+  foreground: "oklch(25% 0.045 250)",
+  cursor: "oklch(50% 0.09 190)",
+  selectionBackground: "oklch(54% 0.1 70 / 22%)",
+  black: "oklch(24% 0.05 250)",
+  brightBlack: "oklch(46% 0.04 246)",
+  red: "oklch(53% 0.15 25)",
+  green: "oklch(50% 0.11 155)",
+  yellow: "oklch(55% 0.1 80)",
+  blue: "oklch(51% 0.09 250)",
+  magenta: "oklch(52% 0.09 318)",
+  cyan: "oklch(50% 0.09 190)",
+  white: "oklch(86% 0.015 238)",
+  brightRed: "oklch(48% 0.17 25)",
+  brightGreen: "oklch(45% 0.13 155)",
+  brightYellow: "oklch(49% 0.12 78)",
+  brightBlue: "oklch(46% 0.1 250)",
+  brightMagenta: "oklch(47% 0.11 318)",
+  brightCyan: "oklch(45% 0.1 190)",
+  brightWhite: "oklch(95% 0.012 236)",
 };
 
 export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1 }: TerminalSurfaceProps) {
@@ -438,10 +533,16 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   );
 }
 
-function terminalThemeFor(theme: "instrument" | "maritime" | "carbon"): ITheme {
-  if (theme === "carbon") return CARBON_TERMINAL_THEME;
-  if (theme === "maritime") return MARITIME_TERMINAL_THEME;
-  return INSTRUMENT_TERMINAL_THEME;
+function terminalThemeFor(theme: TerminalThemeId): ITheme {
+  switch (theme) {
+    case "instrument": return INSTRUMENT_TERMINAL_THEME;
+    case "maritime": return MARITIME_TERMINAL_THEME;
+    case "carbon": return CARBON_TERMINAL_THEME;
+    case "daywatch": return DAYWATCH_TERMINAL_THEME;
+    case "chartroom": return CHARTROOM_TERMINAL_THEME;
+    case "whites": return WHITES_TERMINAL_THEME;
+    case "drydock": return DRYDOCK_TERMINAL_THEME;
+  }
 }
 
 export function syncTerminalViewportBackground(container: HTMLElement, theme: ITheme): void {

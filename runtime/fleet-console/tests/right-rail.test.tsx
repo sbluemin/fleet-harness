@@ -4,6 +4,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const railPanelContextMock = vi.hoisted(() => ({ themes: [] as unknown[] }));
+
 vi.mock("../core/client/src/rail/built-in-panels.js", () => ({
   BUILT_IN_RAIL_PANELS: [
     {
@@ -11,7 +13,10 @@ vi.mock("../core/client/src/rail/built-in-panels.js", () => ({
       title: "PLANS",
       defaultWidth: 360,
       icon: "P",
-      render: () => <button className="test-panel-action">Panel action</button>,
+      render: (ctx: { readonly theme?: unknown }) => {
+        railPanelContextMock.themes.push(ctx.theme);
+        return <button className="test-panel-action">Panel action</button>;
+      },
     },
     {
       id: "codex",
@@ -65,7 +70,8 @@ beforeEach(() => {
   requestRailPanelExtraWidth("plans", null);
   setRailPanelBehavior("push");
   setRailOverlayAlpha(100);
-  setState({ connection: "live", connectionLostAt: null });
+  railPanelContextMock.themes.length = 0;
+  setState({ connection: "live", connectionLostAt: null, activeTheme: "instrument" });
   container = document.createElement("div");
   document.body.replaceChildren(container);
   root = createRoot(container);
@@ -102,6 +108,17 @@ describe("Right Rail overlay opacity presets", () => {
     expect(window.localStorage.getItem("fleet-console.rail.overlayAlpha")).toBe("75");
     expect(buttons.map((button) => button.getAttribute("aria-pressed"))).toEqual(["false", "false", "true", "false"]);
     expect(panelSlot().style.getPropertyValue("--right-rail-overlay-alpha")).toBe("0.75");
+  });
+});
+
+describe("Right Rail panel context", () => {
+  it("supplies the active Console theme and updates it with the store", () => {
+    setState({ activeTheme: "chartroom" });
+    renderRail();
+    expect(railPanelContextMock.themes.at(-1)).toBe("chartroom");
+
+    act(() => setState({ activeTheme: "drydock" }));
+    expect(railPanelContextMock.themes.at(-1)).toBe("drydock");
   });
 });
 

@@ -492,6 +492,32 @@ describe("console static and terminal ticket boundary", () => {
     expect(indexPath.endsWith(path.join("dist", "client", "index.html"))).toBe(true);
   });
 
+  it("injects the persisted theme into direct and fallback Console HTML", async () => {
+    ensureStaticIndex('<!doctype html><html data-theme="instrument"><title>console-test-index</title></html>');
+    const fixture = await startFixture({
+      beforeCreateServer: ({ carrierStoreDir }) => {
+        const settingsFile = path.join(carrierStoreDir, "console", "settings.json");
+        fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
+        fs.writeFileSync(settingsFile, JSON.stringify({ version: 1, general: { theme: "chartroom" }, plugins: {} }));
+      },
+    });
+
+    for (const pathname of ["console/", "console/operations"]) {
+      const response = await fetch(`${fixture.endpoint}${pathname}`);
+      expect(response.status).toBe(200);
+      expect(await response.text()).toContain('data-theme="chartroom" data-theme-source="server"');
+    }
+  });
+
+  it("keeps Instrument in Console HTML when no theme is stored", async () => {
+    ensureStaticIndex('<!doctype html><html data-theme="instrument"><title>console-test-index</title></html>');
+    const fixture = await startFixture();
+    const response = await fetch(`${fixture.endpoint}console/`);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('data-theme="instrument"');
+  });
+
   it.skip("issues terminal tickets without browser tokens and selects session cwd internally", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-ticket-cwd-"));
     tempDirs.push(dir);
@@ -2998,13 +3024,13 @@ async function readObserverChunk(fixture: ServerFixture, pathname = "observer/ev
   return chunk;
 }
 
-function ensureStaticIndex(): string {
+function ensureStaticIndex(content = "<!doctype html><title>console-test-index</title>"): string {
   const indexPath = path.resolve("dist/client/index.html");
   if (previousStaticIndex === undefined) {
     previousStaticIndex = fs.existsSync(indexPath) ? fs.readFileSync(indexPath, "utf8") : null;
   }
   fs.mkdirSync(path.dirname(indexPath), { recursive: true });
-  fs.writeFileSync(indexPath, "<!doctype html><title>console-test-index</title>");
+  fs.writeFileSync(indexPath, content);
   return indexPath;
 }
 

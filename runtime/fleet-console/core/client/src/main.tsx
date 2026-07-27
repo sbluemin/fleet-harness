@@ -24,7 +24,7 @@ import { fetchGlobalSettingsState } from "./global-settings-api.js";
 import { failGlobalSettingsLoad, getGlobalSettingsStoreState, hydrateGlobalSettings, subscribe as subscribeGlobalSettings } from "./global-settings-store.js";
 import { connectOperationsSse } from "./operations-sse.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "./plugin-registry.js";
-import { applyDesktopShellMarker, migrateStoredCommissioningSeen, setActiveTheme, setActiveUiFont } from "./store.js";
+import { applyDesktopShellMarker, migrateStoredCommissioningSeen, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setActiveUiFont } from "./store.js";
 
 interface FleetConsoleRuntime {
   readonly "react": typeof reactNs;
@@ -50,7 +50,8 @@ globalThis.__fleetConsoleRuntime__ = {
   "@fleet-console/sdk/react/browser": sdkReactBrowser,
 };
 
-setActiveTheme("instrument");
+// 서버 주입이 첫 페인트의 권위값이며 theme-hint는 미주입 서빙 경로의 폴백이다.
+setActiveTheme(readServerInjectedTheme() ?? readStoredThemeHint() ?? "instrument");
 applyDesktopShellMarker();
 
 const syncReducePanelMotionClass = () => {

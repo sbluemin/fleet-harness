@@ -52,6 +52,10 @@ export function buildPaletteThemes(t: T): readonly { readonly id: ThemeId; reado
     { id: "instrument", label: t("palette.theme.instrument") },
     { id: "maritime", label: t("palette.theme.maritime") },
     { id: "carbon", label: t("palette.theme.carbon") },
+    { id: "daywatch", label: t("palette.theme.daywatch") },
+    { id: "chartroom", label: t("palette.theme.chartroom") },
+    { id: "whites", label: t("palette.theme.whites") },
+    { id: "drydock", label: t("palette.theme.drydock") },
   ];
 }
 

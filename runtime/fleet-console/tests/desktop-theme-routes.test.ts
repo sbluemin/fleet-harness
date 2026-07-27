@@ -42,7 +42,7 @@ describe("desktop theme routes", () => {
   });
 });
 
-function createHarness(theme: "instrument" | "maritime" | "carbon", authorized = true) {
+function createHarness(theme: "instrument" | "maritime" | "carbon" | "daywatch" | "chartroom" | "whites" | "drydock", authorized = true) {
   const writes: { status: number; body: unknown }[] = [];
   const subscriptions: { res: http.ServerResponse; snapshot: ReturnType<typeof desktopThemeSnapshot> }[] = [];
   const router = createDesktopThemeRouter({

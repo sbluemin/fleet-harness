@@ -16,7 +16,7 @@ describe("Console Desktop theme mapping", () => {
       symbolColor: oklchToHex(readToken(css, "base", "text-secondary")),
       height: 43,
     });
-    for (const theme of ["maritime", "carbon"] as const) {
+    for (const theme of ["maritime", "carbon", "daywatch", "chartroom", "whites", "drydock"] as const) {
       expect(desktopThemeSnapshot(theme).titleBarOverlay).toMatchObject({
         color: oklchToHex(readToken(css, theme, "ink-deep")),
         symbolColor: oklchToHex(readToken(css, theme, "ink-spectral")),
@@ -26,7 +26,7 @@ describe("Console Desktop theme mapping", () => {
   });
 });
 
-function readToken(css: string, theme: "base" | "maritime" | "carbon", token: string): [number, number, number] {
+function readToken(css: string, theme: "base" | "maritime" | "carbon" | "daywatch" | "chartroom" | "whites" | "drydock", token: string): [number, number, number] {
   const tokenPattern = new RegExp(`--${token}: oklch\\(([^%]+)% ([^ ]+) ([^)]+)\\);`, "u");
   const blocks = theme === "base"
     ? [css.slice(0, css.indexOf(':root[data-theme="instrument"]'))]

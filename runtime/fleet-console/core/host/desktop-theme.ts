@@ -19,6 +19,10 @@ const DESKTOP_TITLE_BAR_OVERLAYS: Readonly<Record<ConsoleThemeId, DesktopThemeSn
   instrument: { color: "#03080e", symbolColor: "#989fa6", height: 43 },
   maritime: { color: "#041729", symbolColor: "#c8c4b7", height: 43 },
   carbon: { color: "#101215", symbolColor: "#bfc1c3", height: 43 },
+  daywatch: { color: "#e6ecf2", symbolColor: "#3e4953", height: 43 },
+  chartroom: { color: "#efe9db", symbolColor: "#3c4555", height: 43 },
+  whites: { color: "#eef0f3", symbolColor: "#334055", height: 43 },
+  drydock: { color: "#ddeaf2", symbolColor: "#30475d", height: 43 },
 };
 
 export function desktopThemeSnapshot(theme: ConsoleThemeId): DesktopThemeSnapshot {

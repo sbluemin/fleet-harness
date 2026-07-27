@@ -262,7 +262,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // Validate and retain v1 provenance solely for lock ownership emission. It must not
   // influence channel, health, update, or CLI feature behavior.
   const desktop = readDesktopProtocolEnvironment();
-  const tryServeStaticConsole = createStaticConsoleHandler(release.packageRoot);
   // 버전은 런타임에 package.json을 읽는 release.ts SSoT에서 해석한다(channel과 동일 경로).
   // 과거 빌드타임 상수(__PKG_VERSION__)는 tsup define에 주입된 적이 없어 항상 "0.0.0-dev"로
   // 폴백되는 죽은 경로였다. deps.version은 테스트 오버라이드용으로 유지한다.
@@ -284,6 +283,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const durablePaths = createConsoleDataPaths({ fleetDataDir: deps.dataDir });
   const durableStateStore = createConsoleDurableStateStore({ paths: durablePaths });
   const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });
+  const tryServeStaticConsole = createStaticConsoleHandler(release.packageRoot, {
+    getActiveTheme: () => consoleSettingsStore.load().general?.theme ?? "instrument",
+  });
   const wikiWorkspaceResolver = createWikiWorkspaceResolver({
     ensureWorkspace: (cwd) => {
       const workspace = ensureWorkspaceDirectory(fleetDataDir, cwd);
