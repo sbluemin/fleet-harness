@@ -107,6 +107,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   );
   const connection = useSyncExternalStore(subscribe, () => getState().connection, () => "connecting" as const);
   const connectionLostAt = useSyncExternalStore(subscribe, () => getState().connectionLostAt, () => null);
+  const theme = useSyncExternalStore(subscribe, () => getState().activeTheme, () => "instrument" as const);
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -263,10 +264,11 @@ export function RightRail({ theaterId, api }: RightRailProps) {
     pathContext: { kind: "root", relPath: null, label: theaterLabel },
     api,
     language,
+    theme,
     requestExtraWidth: (px: number | null) => {
       if (activeId !== null) requestRailPanelExtraWidth(activeId, px);
     },
-  }), [theaterId, theaterLabel, api, language, activeId]);
+  }), [theaterId, theaterLabel, api, language, theme, activeId]);
 
   return (
     <div

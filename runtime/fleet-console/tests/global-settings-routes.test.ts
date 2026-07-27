@@ -16,7 +16,7 @@ interface RouterHarnessOptions {
   readonly bodyNull?: boolean;
   readonly general?: ConsoleGeneralSettings;
   readonly plugins?: ConsoleSettingsData["plugins"];
-  readonly onThemeChanged?: (theme: "instrument" | "maritime" | "carbon") => void;
+  readonly onThemeChanged?: (theme: "instrument" | "maritime" | "carbon" | "daywatch" | "whites" | "drydock") => void;
 }
 
 describe("global settings routes", () => {
@@ -88,7 +88,7 @@ describe("global settings routes", () => {
   });
 
   it("PUT /global-settings persists each supported theme", async () => {
-    for (const theme of ["instrument", "maritime", "carbon"] as const) {
+    for (const theme of ["instrument", "maritime", "carbon", "daywatch", "whites", "drydock"] as const) {
       const harness = createRouterHarness({ authorized: true, body: { theme } });
       await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
       expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "dynamic", consoleStaticPort: null, language: "auto", reducePanelMotion: false, seenFeatureTours: [], theme, uiFont: { source: "builtin", id: "manrope", size: 14 } } } });

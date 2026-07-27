@@ -117,6 +117,9 @@ describe("buildPaletteCommands", () => {
       "switch-theme:instrument",
       "switch-theme:maritime",
       "switch-theme:carbon",
+      "switch-theme:daywatch",
+      "switch-theme:whites",
+      "switch-theme:drydock",
       "open-settings",
       "open-keyboard-shortcuts",
       "forget-theater:theater-alpha",
@@ -251,6 +254,9 @@ describe("filterPaletteCommands", () => {
       "switch-theme:instrument",
       "switch-theme:maritime",
       "switch-theme:carbon",
+      "switch-theme:daywatch",
+      "switch-theme:whites",
+      "switch-theme:drydock",
     ]);
     expect(filterPaletteCommands(commands, "theme beta")).toEqual([]);
     expect(filterPaletteCommands(commands, "")).toEqual(commands);

@@ -133,13 +133,18 @@ describe("sanitizeConsoleSettingsData", () => {
   });
 
   it("preserves each supported theme without dropping siblings", () => {
-    for (const theme of ["maritime", "carbon", "instrument"] as const) {
+    for (const theme of ["maritime", "carbon", "instrument", "daywatch", "whites", "drydock"] as const) {
       expect(sanitizeConsoleSettingsData({ version: 1, general: { theme, language: "ko", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } } })).toEqual({
         version: 1,
         general: { theme, language: "ko", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
         plugins: {},
       });
     }
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { theme: "neon" } })).toEqual({
+      version: 1,
+      general: {},
+      plugins: {},
+    });
   });
 
   it("snapshots the approved Instrument warn token below accent chroma", () => {

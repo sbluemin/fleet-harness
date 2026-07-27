@@ -332,7 +332,9 @@ describe("Instrument core design contract", () => {
     expect(rightRail).toContain("getState().theaters.find");
     expect(rightRail).toContain("theater.id === theaterId");
     expect(rightRail).toContain('pathContext: { kind: "root", relPath: null, label: theaterLabel }');
-    expect(rightRail).toContain("[theaterId, theaterLabel, api, language, activeId]");
+    expect(types).toContain("readonly theme?: ConsoleTheme;");
+    expect(rightRail).toContain("theme,");
+    expect(rightRail).toContain("[theaterId, theaterLabel, api, language, theme, activeId]");
     expect(rightRail).not.toContain("selectPathContext");
     expect(rightRail).not.toContain(".pathAware");
   });
@@ -948,21 +950,38 @@ describe("Instrument core design contract", () => {
     expect(base).not.toMatch(/--brass(?:-[a-z-]+)?:\s*oklch\([^;]*\b0\.13\b/);
     expect(theme).toContain(':root[data-theme="maritime"]');
     expect(theme).toContain(':root[data-theme="carbon"]');
+    expect(theme).toContain(':root[data-theme="daywatch"]');
+    expect(theme).toContain(':root[data-theme="whites"]');
+    expect(theme).toContain(':root[data-theme="drydock"]');
     expect(theme).toContain("--brass: oklch(78% 0.13 75);");
     expect(theme).toContain("--ink-muted: oklch(75% 0.02 248);");
     expect(theme).toContain("--ink-muted: oklch(72% 0.005 250);");
+    expect(theme).toContain("--ink-abyss: oklch(96% 0.008 245);");
+    expect(theme).toContain("--ink-abyss: oklch(97.3% 0.004 250);");
+    expect(theme).toContain("--ink-abyss: oklch(95% 0.015 235);");
     expect(theme.match(/^:root \{/gm)).toHaveLength(1);
-    // Legacy 테마 블록은 팔레트 토큰만 — 모든 선언이 승인된 색 토큰 화이트리스트에 속해야 하며
-    // 형상(radius/space)·배경 연출(grain/pseudo)·타이포(font) 오버라이드는 진입 불가.
-    const variantBlocks = theme.match(/^:root\[data-theme="(?:maritime|carbon)"\][^{]*\{[^}]*\}/gm) ?? [];
-    expect(variantBlocks).toHaveLength(3);
-    for (const block of variantBlocks) {
+    // Legacy dark 테마는 팔레트 토큰만 — 광학·color-scheme과 형상·타이포 오버라이드는 진입 불가.
+    const darkVariantBlocks = theme.match(/^:root\[data-theme="(?:maritime|carbon)"\][^{]*\{[^}]*\}/gm) ?? [];
+    expect(darkVariantBlocks).toHaveLength(3);
+    for (const block of darkVariantBlocks) {
       const declarations = block.match(/^\s{2}[^\n:]+:/gm) ?? [];
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
         expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|canvas|surface|hairline|text|id)[a-z-]*:$/);
       }
     }
+    // Light 테마만 팔레트 + 광학(color-scheme/shadow/scrollbar)을 허용한다.
+    const lightVariantBlocks = theme.match(/^:root\[data-theme="(?:daywatch|whites|drydock)"\][^{]*\{[^}]*\}/gm) ?? [];
+    expect(lightVariantBlocks).toHaveLength(3);
+    for (const block of lightVariantBlocks) {
+      expect(block).toContain("color-scheme: light;");
+      const declarations = block.match(/^\s{2}[^\n:]+:/gm) ?? [];
+      expect(declarations.length).toBeGreaterThan(0);
+      for (const declaration of declarations) {
+        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|canvas|surface|hairline|text|id|carrier|shadow|scrollbar)[a-z-]*|color-scheme):$/);
+      }
+    }
+    expect(theme).not.toMatch(/#fff(?:fff)?\b/i);
     expect(theme).not.toMatch(/body::(?:before|after)/);
   });
 

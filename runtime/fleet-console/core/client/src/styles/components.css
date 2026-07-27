@@ -371,6 +371,12 @@
   line-height: 1.6;
 }
 
+/* Agent CLI 테마 안내 — 터미널 출력색은 CLI가 소유하므로 콘솔 테마 전환 시 CLI 테마도 다시 고르라는 부가 주석. 이탤릭+'*'로 본문 도움말과 구분한다. */
+.global-settings-theme-cli-note {
+  margin-top: var(--space-2);
+  font-style: italic;
+}
+
 .global-settings-foot {
   margin: 0;
   padding-top: var(--space-4);
@@ -636,8 +642,25 @@
 .theme-picker {
   display: flex;
   flex: none;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: var(--space-2);
+}
+
+.theme-picker-group {
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: var(--space-1);
+  column-gap: var(--space-2);
+}
+
+.theme-picker-group-label {
+  flex-basis: 100%;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .theme-card {
@@ -1646,13 +1669,14 @@
   cursor: default;
 }
 
+/* 모드 스크림·비네트는 canvas-abyss를 따라 테마 극성에 맞춘다 — 다크=심해, 라이트=백무. */
 .operations-canvas.is-triage::after {
   content: "";
   position: absolute;
   inset: 0;
   z-index: 70;
   pointer-events: none;
-  background: radial-gradient(78% 66% at 50% 48%, transparent 55%, oklch(0% 0 0 / 46%) 100%);
+  background: radial-gradient(78% 66% at 50% 48%, transparent 55%, color-mix(in oklch, var(--canvas-abyss) 46%, transparent) 100%);
 }
 
 .operations-canvas.is-triage .operations-canvas-sea {
@@ -1901,7 +1925,8 @@
   gap: 12px;
   padding: 10%;
   pointer-events: none;
-  background: radial-gradient(52% 46% at 50% 50%, oklch(0% 0 0 / 66%), transparent 72%);
+  /* 모드 스크림·비네트는 canvas-abyss를 따라 테마 극성에 맞춘다 — 다크=심해, 라이트=백무. */
+  background: radial-gradient(52% 46% at 50% 50%, color-mix(in oklch, var(--canvas-abyss) 66%, transparent), transparent 72%);
   color: var(--text-secondary);
   text-align: center;
 }

@@ -25,6 +25,7 @@ import type {
 type Listener = () => void;
 
 const ACTIVE_THEATER_STORAGE_KEY = "fleet-console.activeTheaterId";
+const THEME_HINT_STORAGE_KEY = "fleet-console.theme-hint";
 // 서버 seenFeatureTours로 일방향 승격하기 위한 legacy migration 읽기·삭제 전용 키다. 새 값은 쓰지 않는다.
 const COMMISSIONING_SEEN_STORAGE_KEY = "fleet-console.commissioningSeen";
 const COMMISSIONING_SEEN_KEY = "commissioning";
@@ -186,8 +187,36 @@ export function failReleaseNotesFetch(error: string): void {
 }
 
 export function applyThemeToDocument(theme: ThemeId): void {
-  if (typeof document === "undefined") return;
-  document.documentElement.setAttribute("data-theme", theme);
+  if (typeof document !== "undefined") {
+    document.documentElement.setAttribute("data-theme", theme);
+  }
+  try {
+    globalThis.localStorage?.setItem(THEME_HINT_STORAGE_KEY, theme);
+  } catch {
+    // localStorage 접근 불가 환경에서는 DOM 테마만 적용한다.
+  }
+}
+
+export function readStoredThemeHint(): ThemeId | null {
+  try {
+    const theme = globalThis.localStorage?.getItem(THEME_HINT_STORAGE_KEY);
+    return theme === "instrument" || theme === "maritime" || theme === "carbon"
+      || theme === "daywatch" || theme === "whites" || theme === "drydock"
+      ? theme
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function readServerInjectedTheme(): ThemeId | null {
+  if (typeof document === "undefined") return null;
+  if (document.documentElement.getAttribute("data-theme-source") !== "server") return null;
+  const theme = document.documentElement.getAttribute("data-theme");
+  return theme === "instrument" || theme === "maritime" || theme === "carbon"
+    || theme === "daywatch" || theme === "whites" || theme === "drydock"
+    ? theme
+    : null;
 }
 
 // Electron 데스크톱 셸에서만 `data-desktop-shell` 마커를 심는다 — 브라우저에는 마커가 없어

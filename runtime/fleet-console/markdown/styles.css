@@ -3,7 +3,133 @@
    in markdown.tsx). Token references (--brass, --aurora, etc.) are declared
    in the consuming surface's theme.css and must be present at render time. */
 
-@import "highlight.js/styles/github-dark.css";
+/* vendored highlight.js palette (github-dark ↔ github) — 신택스 역할색 raw 리터럴은 sanctioned 예외. 테마 전환은 각 테마의 color-scheme을 따르는 light-dark()가 수행하며, color-scheme 미선언 표면(codex 등 다크 전용)은 다크 값으로 고정된다. */
+pre code.hljs {
+  display: block;
+  overflow-x: auto;
+  padding: 1em;
+}
+
+code.hljs {
+  padding: 3px 5px;
+}
+
+.hljs {
+  color: #c9d1d9;
+  color: light-dark(#24292e, #c9d1d9);
+}
+
+.hljs-doctag,
+.hljs-keyword,
+.hljs-meta .hljs-keyword,
+.hljs-template-tag,
+.hljs-template-variable,
+.hljs-type,
+.hljs-variable.language_ {
+  color: #ff7b72;
+  color: light-dark(#d73a49, #ff7b72);
+}
+
+.hljs-title,
+.hljs-title.class_,
+.hljs-title.class_.inherited__,
+.hljs-title.function_ {
+  color: #d2a8ff;
+  color: light-dark(#6f42c1, #d2a8ff);
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-literal,
+.hljs-meta,
+.hljs-number,
+.hljs-operator,
+.hljs-variable,
+.hljs-selector-attr,
+.hljs-selector-class,
+.hljs-selector-id {
+  color: #79c0ff;
+  color: light-dark(#005cc5, #79c0ff);
+}
+
+.hljs-regexp,
+.hljs-string,
+.hljs-meta .hljs-string {
+  color: #a5d6ff;
+  color: light-dark(#032f62, #a5d6ff);
+}
+
+.hljs-built_in,
+.hljs-symbol {
+  color: #ffa657;
+  color: light-dark(#e36209, #ffa657);
+}
+
+.hljs-comment,
+.hljs-code,
+.hljs-formula {
+  color: #8b949e;
+  color: light-dark(#6a737d, #8b949e);
+}
+
+.hljs-name,
+.hljs-quote,
+.hljs-selector-tag,
+.hljs-selector-pseudo {
+  color: #7ee787;
+  color: light-dark(#22863a, #7ee787);
+}
+
+.hljs-subst {
+  color: #c9d1d9;
+  color: light-dark(#24292e, #c9d1d9);
+}
+
+.hljs-section {
+  color: #1f6feb;
+  color: light-dark(#005cc5, #1f6feb);
+  font-weight: bold;
+}
+
+.hljs-bullet {
+  color: #f2cc60;
+  color: light-dark(#735c0f, #f2cc60);
+}
+
+.hljs-emphasis {
+  color: #c9d1d9;
+  color: light-dark(#24292e, #c9d1d9);
+  font-style: italic;
+}
+
+.hljs-strong {
+  color: #c9d1d9;
+  color: light-dark(#24292e, #c9d1d9);
+  font-weight: bold;
+}
+
+.hljs-addition {
+  color: #aff5b4;
+  color: light-dark(#22863a, #aff5b4);
+  background-color: #033a16;
+  background-color: light-dark(#f0fff4, #033a16);
+}
+
+.hljs-deletion {
+  color: #ffdcd7;
+  color: light-dark(#b31d28, #ffdcd7);
+  background-color: #67060c;
+  background-color: light-dark(#ffeef0, #67060c);
+}
+
+.hljs-char.escape_,
+.hljs-link,
+.hljs-params,
+.hljs-property,
+.hljs-punctuation,
+.hljs-tag {
+  /* purposely ignored */
+}
 
 /* Reading 타이포·구조 토큰 — codex theme.css와 동기화한 테마-무관 상수.
    console 메인 theme.css엔 이 reading 스케일이 없으므로(운영 UI는 미사용) 공유 패키지가

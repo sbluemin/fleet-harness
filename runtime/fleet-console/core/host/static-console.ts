@@ -2,6 +2,7 @@ import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 
+import type { ConsoleThemeId } from "./console-settings.js";
 import { withSecurityHeaders } from "./security-headers.js";
 
 const MIME_TYPES: Readonly<Record<string, string>> = {
@@ -15,12 +16,21 @@ const MIME_TYPES: Readonly<Record<string, string>> = {
 
 export type StaticConsoleHandler = (req: http.IncomingMessage, res: http.ServerResponse, pathname: string) => boolean;
 
-export function createStaticConsoleHandler(packageRoot: string): StaticConsoleHandler {
+export function createStaticConsoleHandler(
+  packageRoot: string,
+  deps?: { readonly getActiveTheme?: () => ConsoleThemeId },
+): StaticConsoleHandler {
   const consoleRoot = path.join(packageRoot, "dist", "client");
-  return (req, res, pathname) => tryServeStaticConsole(req, res, pathname, consoleRoot);
+  return (req, res, pathname) => tryServeStaticConsole(req, res, pathname, consoleRoot, deps?.getActiveTheme);
 }
 
-function tryServeStaticConsole(req: http.IncomingMessage, res: http.ServerResponse, pathname: string, consoleRoot: string): boolean {
+function tryServeStaticConsole(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  consoleRoot: string,
+  getActiveTheme?: () => ConsoleThemeId,
+): boolean {
   if (pathname !== "/console" && !pathname.startsWith("/console/")) return false;
   if (req.method !== "GET" && req.method !== "HEAD") {
     res.writeHead(405, withSecurityHeaders({ Allow: "GET, HEAD", "Content-Type": "application/json" }));
@@ -47,12 +57,12 @@ function tryServeStaticConsole(req: http.IncomingMessage, res: http.ServerRespon
       res.end();
       return true;
     }
-    res.end(data);
+    res.end(contentType === MIME_TYPES[".html"] ? injectActiveTheme(data.toString("utf8"), getActiveTheme) : data);
     return true;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     if (pathname.startsWith("/console/")) {
-      return serveFallbackIndex(req, res, consoleRoot);
+      return serveFallbackIndex(req, res, consoleRoot, getActiveTheme);
     }
     res.writeHead(404, withSecurityHeaders({ "Content-Type": "application/json" }));
     res.end(JSON.stringify({ error: "Not found" }));
@@ -60,7 +70,12 @@ function tryServeStaticConsole(req: http.IncomingMessage, res: http.ServerRespon
   }
 }
 
-function serveFallbackIndex(req: http.IncomingMessage, res: http.ServerResponse, consoleRoot: string): boolean {
+function serveFallbackIndex(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  consoleRoot: string,
+  getActiveTheme?: () => ConsoleThemeId,
+): boolean {
   try {
     const data = fs.readFileSync(path.join(consoleRoot, "index.html"));
     res.writeHead(200, withSecurityHeaders({ "Content-Type": MIME_TYPES[".html"] }));
@@ -68,7 +83,7 @@ function serveFallbackIndex(req: http.IncomingMessage, res: http.ServerResponse,
       res.end();
       return true;
     }
-    res.end(data);
+    res.end(injectActiveTheme(data.toString("utf8"), getActiveTheme));
     return true;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
@@ -76,6 +91,18 @@ function serveFallbackIndex(req: http.IncomingMessage, res: http.ServerResponse,
     res.end(JSON.stringify({ error: "Not found" }));
     return true;
   }
+}
+
+function injectActiveTheme(html: string, getActiveTheme?: () => ConsoleThemeId): string {
+  if (!getActiveTheme) return html;
+  const theme = getActiveTheme();
+  if (
+    theme !== "instrument" && theme !== "maritime" && theme !== "carbon"
+    && theme !== "daywatch" && theme !== "whites" && theme !== "drydock"
+  ) {
+    return html;
+  }
+  return html.replace('data-theme="instrument"', `data-theme="${theme}" data-theme-source="server"`);
 }
 
 function resolveConsolePath(pathname: string): string | null {

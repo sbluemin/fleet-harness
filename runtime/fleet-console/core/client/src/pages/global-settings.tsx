@@ -27,6 +27,12 @@ interface ThemeOption {
   readonly swatch: readonly [string, string, string];
 }
 
+interface ThemeGroup {
+  readonly id: "dark" | "light";
+  readonly label: string;
+  readonly themes: readonly ThemeOption[];
+}
+
 interface PortModeOption {
   readonly id: GlobalSettingsState["consolePortMode"];
   readonly label: string;
@@ -59,11 +65,18 @@ interface PluginSettingsNavGroup {
 type T = Translate<CoreMessageKey>;
 
 // 테마 선택지 — 각 항목의 3톤 스와치는 해당 테마의 brass/aurora/ink 시그니처를 미리보기로 보존한다(콘텐츠 색이라 역할색 규칙과 무관).
-function buildThemes(t: T): readonly ThemeOption[] {
+function buildThemeGroups(t: T): readonly ThemeGroup[] {
   return [
-    { id: "instrument", label: t("settings.theme.instrument"), swatch: ["oklch(16.5% 0.016 245)", "oklch(80% 0.085 78)", "oklch(77% 0.085 200)"] },
-    { id: "maritime", label: t("settings.theme.maritime"), swatch: ["oklch(20% 0.045 248)", "oklch(78% 0.13 75)", "oklch(82% 0.13 195)"] },
-    { id: "carbon", label: t("settings.theme.carbon"), swatch: ["oklch(18% 0.007 255)", "oklch(76% 0.115 62)", "oklch(80% 0.105 205)"] },
+    { id: "dark", label: t("settings.theme.group.dark"), themes: [
+      { id: "instrument", label: t("settings.theme.instrument"), swatch: ["oklch(16.5% 0.016 245)", "oklch(80% 0.085 78)", "oklch(77% 0.085 200)"] },
+      { id: "maritime", label: t("settings.theme.maritime"), swatch: ["oklch(20% 0.045 248)", "oklch(78% 0.13 75)", "oklch(82% 0.13 195)"] },
+      { id: "carbon", label: t("settings.theme.carbon"), swatch: ["oklch(18% 0.007 255)", "oklch(76% 0.115 62)", "oklch(80% 0.105 205)"] },
+    ]},
+    { id: "light", label: t("settings.theme.group.light"), themes: [
+      { id: "daywatch", label: t("settings.theme.daywatch"), swatch: ["oklch(94% 0.01 245)", "oklch(54% 0.11 72)", "oklch(51% 0.09 205)"] },
+      { id: "whites", label: t("settings.theme.whites"), swatch: ["oklch(95.5% 0.005 250)", "oklch(56% 0.125 82)", "oklch(50% 0.1 210)"] },
+      { id: "drydock", label: t("settings.theme.drydock"), swatch: ["oklch(93% 0.018 236)", "oklch(54% 0.1 70)", "oklch(50% 0.09 190)"] },
+    ]},
   ];
 }
 
@@ -255,7 +268,7 @@ function ThemeCard({
   readonly saving: boolean;
 }) {
   const t = useT();
-  const themes = buildThemes(t);
+  const themeGroups = buildThemeGroups(t);
   const activeTheme = state?.theme ?? "instrument";
   const selectTheme = (theme: ThemeId) => {
     if (getGlobalSettingsStoreState().savingField !== null) return;
@@ -271,27 +284,33 @@ function ThemeCard({
         <div className="global-settings-row-text">
           <p className="global-settings-resp-title">{t("settings.theme.title")}</p>
           <p className="global-settings-help">{t("settings.theme.help")}</p>
+          <p className="global-settings-help global-settings-theme-cli-note">{t("settings.theme.cliNote")}</p>
         </div>
         <div className="theme-picker" role="group" aria-label={t("settings.theme.aria")}>
-          {themes.map((theme) => {
-            const isActive = theme.id === activeTheme;
-            return (
-              <button
-                key={theme.id}
-                type="button"
-                aria-pressed={isActive}
-                className={`theme-card ${isActive ? "is-active" : ""}`}
-                disabled={saving}
-                onClick={() => selectTheme(theme.id)}
-              >
-                <span className="theme-card-swatch" aria-hidden="true">
-                  {theme.swatch.map((color) => <i key={color} style={{ background: color }} />)}
-                </span>
-                <span className="theme-card-label">{theme.label}</span>
-                <span className="theme-card-check" aria-hidden="true">{isActive ? <CheckIcon /> : null}</span>
-              </button>
-            );
-          })}
+          {themeGroups.map((group) => (
+            <div key={group.id} className="theme-picker-group">
+              <span className="theme-picker-group-label">{group.label}</span>
+              {group.themes.map((theme) => {
+                const isActive = theme.id === activeTheme;
+                return (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    aria-pressed={isActive}
+                    className={`theme-card ${isActive ? "is-active" : ""}`}
+                    disabled={saving}
+                    onClick={() => selectTheme(theme.id)}
+                  >
+                    <span className="theme-card-swatch" aria-hidden="true">
+                      {theme.swatch.map((color) => <i key={color} style={{ background: color }} />)}
+                    </span>
+                    <span className="theme-card-label">{theme.label}</span>
+                    <span className="theme-card-check" aria-hidden="true">{isActive ? <CheckIcon /> : null}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>
       <p className="global-settings-foot">{t("settings.theme.foot")}</p>
