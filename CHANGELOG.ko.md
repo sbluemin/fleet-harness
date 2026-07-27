@@ -5,6 +5,23 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.37.0] - 2026-07-27
+
+### fleet-console
+
+#### Added
+- [fleet-console] 라이트 테마 3종(Daywatch·Whites·Drydock)을 추가하고 설정 테마 선택기를 다크·라이트 계열로 그룹화합니다.
+- [fleet-console] 서버가 저장된 테마를 초기 HTML에 주입하고 부트 힌트를 적용해, 라이트 테마 사용자가 다크 첫 화면 섬광을 더 이상 보지 않습니다.
+- [fleet-console] 마크다운 신택스 하이라이트가 활성 테마의 color scheme을 따르며, 구형 엔진에는 다크 폴백을 제공합니다.
+
+#### Fixed
+- [fleet-console] 로컬 네트워크 환경에서 유휴 Operations 스트림 연결이 유지되도록 합니다.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] 라이트 테마 3종의 터미널 팔레트를 추가하고, Global Shell 레일과 Session Analyst 아티팩트가 활성 테마를 따르도록 합니다.
+
 ## [1.36.0] - 2026-07-26
 
 ### fleet-console

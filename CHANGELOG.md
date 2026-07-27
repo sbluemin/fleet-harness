@@ -5,6 +5,23 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.37.0] - 2026-07-27
+
+### fleet-console
+
+#### Added
+- [fleet-console] Add three light themes (Daywatch, Whites, Drydock) and group the Settings theme picker into Dark and Light families.
+- [fleet-console] Serve the stored theme in the initial console HTML and apply a boot-time hint so light-theme users no longer see a dark first-paint flash.
+- [fleet-console] Switch markdown syntax highlighting to follow the active theme's color scheme with a dark fallback for older engines.
+
+#### Fixed
+- [fleet-console] Keep idle operations streams connected across local networking environments.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Add light terminal palettes for all three light themes and follow the active theme in the Global Shell rail and Session Analyst artifacts.
+
 ## [1.36.0] - 2026-07-26
 
 ### fleet-console
