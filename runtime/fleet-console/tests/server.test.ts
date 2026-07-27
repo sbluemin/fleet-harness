@@ -498,14 +498,14 @@ describe("console static and terminal ticket boundary", () => {
       beforeCreateServer: ({ carrierStoreDir }) => {
         const settingsFile = path.join(carrierStoreDir, "console", "settings.json");
         fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
-        fs.writeFileSync(settingsFile, JSON.stringify({ version: 1, general: { theme: "chartroom" }, plugins: {} }));
+        fs.writeFileSync(settingsFile, JSON.stringify({ version: 1, general: { theme: "daywatch" }, plugins: {} }));
       },
     });
 
     for (const pathname of ["console/", "console/operations"]) {
       const response = await fetch(`${fixture.endpoint}${pathname}`);
       expect(response.status).toBe(200);
-      expect(await response.text()).toContain('data-theme="chartroom" data-theme-source="server"');
+      expect(await response.text()).toContain('data-theme="daywatch" data-theme-source="server"');
     }
   });
 

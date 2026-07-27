@@ -201,7 +201,7 @@ export function readStoredThemeHint(): ThemeId | null {
   try {
     const theme = globalThis.localStorage?.getItem(THEME_HINT_STORAGE_KEY);
     return theme === "instrument" || theme === "maritime" || theme === "carbon"
-      || theme === "daywatch" || theme === "chartroom" || theme === "whites" || theme === "drydock"
+      || theme === "daywatch" || theme === "whites" || theme === "drydock"
       ? theme
       : null;
   } catch {
@@ -214,7 +214,7 @@ export function readServerInjectedTheme(): ThemeId | null {
   if (document.documentElement.getAttribute("data-theme-source") !== "server") return null;
   const theme = document.documentElement.getAttribute("data-theme");
   return theme === "instrument" || theme === "maritime" || theme === "carbon"
-    || theme === "daywatch" || theme === "chartroom" || theme === "whites" || theme === "drydock"
+    || theme === "daywatch" || theme === "whites" || theme === "drydock"
     ? theme
     : null;
 }

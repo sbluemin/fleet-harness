@@ -8,7 +8,7 @@
     const theme = localStorage.getItem("fleet-console.theme-hint");
     if (
       theme === "instrument" || theme === "maritime" || theme === "carbon" ||
-      theme === "daywatch" || theme === "chartroom" || theme === "whites" || theme === "drydock"
+      theme === "daywatch" || theme === "whites" || theme === "drydock"
     ) {
       document.documentElement.setAttribute("data-theme", theme);
     }

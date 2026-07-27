@@ -113,9 +113,9 @@ describe("Right Rail overlay opacity presets", () => {
 
 describe("Right Rail panel context", () => {
   it("supplies the active Console theme and updates it with the store", () => {
-    setState({ activeTheme: "chartroom" });
+    setState({ activeTheme: "daywatch" });
     renderRail();
-    expect(railPanelContextMock.themes.at(-1)).toBe("chartroom");
+    expect(railPanelContextMock.themes.at(-1)).toBe("daywatch");
 
     act(() => setState({ activeTheme: "drydock" }));
     expect(railPanelContextMock.themes.at(-1)).toBe("drydock");

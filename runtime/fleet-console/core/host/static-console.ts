@@ -98,7 +98,7 @@ function injectActiveTheme(html: string, getActiveTheme?: () => ConsoleThemeId):
   const theme = getActiveTheme();
   if (
     theme !== "instrument" && theme !== "maritime" && theme !== "carbon"
-    && theme !== "daywatch" && theme !== "chartroom" && theme !== "whites" && theme !== "drydock"
+    && theme !== "daywatch" && theme !== "whites" && theme !== "drydock"
   ) {
     return html;
   }

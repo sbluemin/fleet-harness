@@ -15,7 +15,7 @@ import { createTerminalScrollFollow, type TerminalScrollFollowController } from 
 import { createWindowsSelectionCopyHandler } from "./windows-selection-copy.js";
 import { waitForSymbolsNerdFontMono } from "./symbols-font.js";
 
-type TerminalThemeId = "instrument" | "maritime" | "carbon" | "daywatch" | "chartroom" | "whites" | "drydock";
+type TerminalThemeId = "instrument" | "maritime" | "carbon" | "daywatch" | "whites" | "drydock";
 
 export interface TerminalSurfaceProps {
   readonly operationId: string;
@@ -141,28 +141,6 @@ const DAYWATCH_TERMINAL_THEME: ITheme = {
   brightWhite: "oklch(96% 0.008 245)",
 };
 
-const CHARTROOM_TERMINAL_THEME: ITheme = {
-  background: "oklch(93% 0.018 90)",
-  foreground: "oklch(26% 0.032 262)",
-  cursor: "oklch(50% 0.085 205)",
-  selectionBackground: "oklch(53% 0.105 68 / 22%)",
-  black: "oklch(25% 0.035 262)",
-  brightBlack: "oklch(45% 0.026 262)",
-  red: "oklch(52% 0.15 28)",
-  green: "oklch(50% 0.1 155)",
-  yellow: "oklch(54% 0.1 78)",
-  blue: "oklch(50% 0.09 250)",
-  magenta: "oklch(52% 0.1 318)",
-  cyan: "oklch(50% 0.085 205)",
-  white: "oklch(87% 0.02 90)",
-  brightRed: "oklch(47% 0.17 28)",
-  brightGreen: "oklch(45% 0.12 155)",
-  brightYellow: "oklch(48% 0.12 76)",
-  brightBlue: "oklch(45% 0.1 250)",
-  brightMagenta: "oklch(47% 0.12 318)",
-  brightCyan: "oklch(45% 0.095 205)",
-  brightWhite: "oklch(95% 0.014 92)",
-};
 
 const WHITES_TERMINAL_THEME: ITheme = {
   background: "oklch(95.5% 0.004 250)",
@@ -539,7 +517,6 @@ function terminalThemeFor(theme: TerminalThemeId): ITheme {
     case "maritime": return MARITIME_TERMINAL_THEME;
     case "carbon": return CARBON_TERMINAL_THEME;
     case "daywatch": return DAYWATCH_TERMINAL_THEME;
-    case "chartroom": return CHARTROOM_TERMINAL_THEME;
     case "whites": return WHITES_TERMINAL_THEME;
     case "drydock": return DRYDOCK_TERMINAL_THEME;
   }

@@ -951,14 +951,12 @@ describe("Instrument core design contract", () => {
     expect(theme).toContain(':root[data-theme="maritime"]');
     expect(theme).toContain(':root[data-theme="carbon"]');
     expect(theme).toContain(':root[data-theme="daywatch"]');
-    expect(theme).toContain(':root[data-theme="chartroom"]');
     expect(theme).toContain(':root[data-theme="whites"]');
     expect(theme).toContain(':root[data-theme="drydock"]');
     expect(theme).toContain("--brass: oklch(78% 0.13 75);");
     expect(theme).toContain("--ink-muted: oklch(75% 0.02 248);");
     expect(theme).toContain("--ink-muted: oklch(72% 0.005 250);");
     expect(theme).toContain("--ink-abyss: oklch(96% 0.008 245);");
-    expect(theme).toContain("--ink-abyss: oklch(95.5% 0.017 92);");
     expect(theme).toContain("--ink-abyss: oklch(97.3% 0.004 250);");
     expect(theme).toContain("--ink-abyss: oklch(95% 0.015 235);");
     expect(theme.match(/^:root \{/gm)).toHaveLength(1);
@@ -973,8 +971,8 @@ describe("Instrument core design contract", () => {
       }
     }
     // Light 테마만 팔레트 + 광학(color-scheme/shadow/scrollbar)을 허용한다.
-    const lightVariantBlocks = theme.match(/^:root\[data-theme="(?:daywatch|chartroom|whites|drydock)"\][^{]*\{[^}]*\}/gm) ?? [];
-    expect(lightVariantBlocks).toHaveLength(4);
+    const lightVariantBlocks = theme.match(/^:root\[data-theme="(?:daywatch|whites|drydock)"\][^{]*\{[^}]*\}/gm) ?? [];
+    expect(lightVariantBlocks).toHaveLength(3);
     for (const block of lightVariantBlocks) {
       expect(block).toContain("color-scheme: light;");
       const declarations = block.match(/^\s{2}[^\n:]+:/gm) ?? [];

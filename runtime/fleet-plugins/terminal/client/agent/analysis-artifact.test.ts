@@ -21,7 +21,7 @@ vi.mock("./analysis-store.js", () => ({
 
 import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
 
-const THEMES = ["instrument", "maritime", "carbon", "daywatch", "chartroom", "whites", "drydock"] as const satisfies readonly ConsoleTheme[];
+const THEMES = ["instrument", "maritime", "carbon", "daywatch", "whites", "drydock"] as const satisfies readonly ConsoleTheme[];
 
 function operationContext(theme: ConsoleTheme, fetch = vi.fn(async () => new Response(null, { status: 200 })), language?: "en" | "ko"): OperationRenderContext {
   return { theme, operationId: "op/id", api: { fetch }, language } as never;

@@ -74,7 +74,6 @@ function buildThemeGroups(t: T): readonly ThemeGroup[] {
     ]},
     { id: "light", label: t("settings.theme.group.light"), themes: [
       { id: "daywatch", label: t("settings.theme.daywatch"), swatch: ["oklch(94% 0.01 245)", "oklch(54% 0.11 72)", "oklch(51% 0.09 205)"] },
-      { id: "chartroom", label: t("settings.theme.chartroom"), swatch: ["oklch(93.5% 0.02 90)", "oklch(53% 0.105 68)", "oklch(50% 0.085 205)"] },
       { id: "whites", label: t("settings.theme.whites"), swatch: ["oklch(95.5% 0.005 250)", "oklch(56% 0.125 82)", "oklch(50% 0.1 210)"] },
       { id: "drydock", label: t("settings.theme.drydock"), swatch: ["oklch(93% 0.018 236)", "oklch(54% 0.1 70)", "oklch(50% 0.09 190)"] },
     ]},
@@ -285,6 +284,7 @@ function ThemeCard({
         <div className="global-settings-row-text">
           <p className="global-settings-resp-title">{t("settings.theme.title")}</p>
           <p className="global-settings-help">{t("settings.theme.help")}</p>
+          <p className="global-settings-help global-settings-theme-cli-note">{t("settings.theme.cliNote")}</p>
         </div>
         <div className="theme-picker" role="group" aria-label={t("settings.theme.aria")}>
           {themeGroups.map((group) => (

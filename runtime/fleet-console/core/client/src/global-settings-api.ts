@@ -44,7 +44,7 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     || typeof payload.reducePanelMotion !== "boolean"
     || !isSeenFeatureTours(payload.seenFeatureTours)
     || (payload.theme !== "instrument" && payload.theme !== "maritime" && payload.theme !== "carbon"
-      && payload.theme !== "daywatch" && payload.theme !== "chartroom" && payload.theme !== "whites" && payload.theme !== "drydock")
+      && payload.theme !== "daywatch" && payload.theme !== "whites" && payload.theme !== "drydock")
     || !isConsoleLanguagePreference(payload.language)
   ) {
     throw new ApiError(status, "Invalid global settings state response");

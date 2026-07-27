@@ -118,7 +118,6 @@ describe("buildPaletteCommands", () => {
       "switch-theme:maritime",
       "switch-theme:carbon",
       "switch-theme:daywatch",
-      "switch-theme:chartroom",
       "switch-theme:whites",
       "switch-theme:drydock",
       "open-settings",
@@ -256,7 +255,6 @@ describe("filterPaletteCommands", () => {
       "switch-theme:maritime",
       "switch-theme:carbon",
       "switch-theme:daywatch",
-      "switch-theme:chartroom",
       "switch-theme:whites",
       "switch-theme:drydock",
     ]);
