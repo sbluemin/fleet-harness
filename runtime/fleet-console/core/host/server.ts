@@ -39,7 +39,7 @@ import { ConsoleReleaseNotesUnavailableError, type ReleaseNotesLocale } from "./
 import { RouteRegistry } from "./route-registry/route-registry.js";
 import { UpgradeRegistry } from "./route-registry/upgrade-registry.js";
 import { withSecurityHeaders } from "./security-headers.js";
-import { encodeSseData } from "./sse.js";
+import { encodeSseData, startSseKeepaliveLifecycle } from "./sse.js";
 import { createStaticConsoleHandler } from "./static-console.js";
 import { listTheaterFolders, TheaterFolderListError } from "./theater-folder-browser.js";
 import { createFolderGrantStore } from "./theater-folder-grants.js";
@@ -599,7 +599,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       res.write(":connected\n\n");
       res.write(encodeSseData(DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot(desktopFullscreen)));
       operationSseSubscribers.add(res);
-      res.on("close", () => {
+      startSseKeepaliveLifecycle(res, () => {
         operationSseSubscribers.delete(res);
       });
     },
