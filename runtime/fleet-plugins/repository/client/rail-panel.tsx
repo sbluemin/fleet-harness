@@ -173,13 +173,13 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
   const [filterText, setFilterText] = useState(initialRepoViewState?.filterText ?? "");
   const [collapsedChangeFolders, setCollapsedChangeFolders] = useState(() => new Set(initialRepoViewState?.collapsedFolders ?? []));
-  const [changesScrollTop, setChangesScrollTop] = useState(initialRepoViewState?.scrollTop ?? 0);
   const repoViewCacheKey = `${ctx.theaterId ?? ""}\x00${repoRel}`;
   const [hydratedRepoViewCacheKey, setHydratedRepoViewCacheKey] = useState(repoViewCacheKey);
   const freshRefFilterCacheKeyRef = useRef<string | null>(null);
   const changesListRef = useRef<HTMLDivElement>(null);
   const restoredChangesScrollTopRef = useRef<number | null>(initialRepoViewState?.scrollTop ?? null);
   const changesScrollTopRef = useRef(initialRepoViewState?.scrollTop ?? 0);
+  const changesCacheFrameRef = useRef<number | null>(null);
   // 동일 컨텍스트 재착지는 repoRel key가 안 바뀌어 History 패널이 리마운트되지 않는다 —
   // epoch를 key에 섞어 전환 착지와 동일한 초기 상태(로컬 필터·선택·스크롤)로 재설정한다.
   const [historyLandingEpoch, setHistoryLandingEpoch] = useState(0);
@@ -247,7 +247,6 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     const restoredScrollTop = cached?.scrollTop ?? 0;
     restoredChangesScrollTopRef.current = restoredScrollTop;
     changesScrollTopRef.current = restoredScrollTop;
-    setChangesScrollTop(restoredScrollTop);
     setHydratedRepoViewCacheKey(repoViewCacheKey);
     if (freshRefLanding) freshRefFilterCacheKeyRef.current = null;
   }, [ctx.theaterId, hydratedRepoViewCacheKey, repoRel, repoViewCacheKey]);
@@ -321,6 +320,25 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
 
   useLayoutEffect(() => () => clearSelectedFile(), []);
 
+  const repoViewSnapshotRef = useRef({ theaterId: ctx.theaterId, repoRel, repoViewCacheKey, hydratedRepoViewCacheKey, filterText, refFilter, collapsedChangeFolders });
+  repoViewSnapshotRef.current = { theaterId: ctx.theaterId, repoRel, repoViewCacheKey, hydratedRepoViewCacheKey, filterText, refFilter, collapsedChangeFolders };
+  const flushChangesCache = useCallback(() => {
+    const snapshot = repoViewSnapshotRef.current;
+    if (!snapshot.theaterId || snapshot.hydratedRepoViewCacheKey !== snapshot.repoViewCacheKey) return;
+    writeRepoViewState(snapshot.theaterId, snapshot.repoRel, {
+      filterText: snapshot.filterText,
+      refFilter: snapshot.refFilter,
+      scrollTop: changesScrollTopRef.current,
+      collapsedFolders: [...snapshot.collapsedChangeFolders],
+    });
+  }, []);
+  const scheduleChangesCacheWrite = useCallback(() => {
+    if (changesCacheFrameRef.current !== null) return;
+    changesCacheFrameRef.current = requestAnimationFrame(() => {
+      changesCacheFrameRef.current = null;
+      flushChangesCache();
+    });
+  }, [flushChangesCache]);
   const updateChangesScroll = useCallback(() => {
     const list = changesListRef.current;
     if (!list || list.clientHeight <= 0 || list.scrollHeight <= 0) return;
@@ -331,8 +349,8 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       restoredChangesScrollTopRef.current = null;
     }
     changesScrollTopRef.current = list.scrollTop;
-    setChangesScrollTop(list.scrollTop);
-  }, []);
+    scheduleChangesCacheWrite();
+  }, [scheduleChangesCacheWrite]);
   useLayoutEffect(() => {
     updateChangesScroll();
     const list = changesListRef.current;
@@ -342,14 +360,15 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     return () => observer.disconnect();
   }, [changedFiles, filterText, hydratedRepoViewCacheKey, updateChangesScroll, viewMode]);
   useEffect(() => {
-    if (!ctx.theaterId || hydratedRepoViewCacheKey !== repoViewCacheKey) return;
-    writeRepoViewState(ctx.theaterId, repoRel, {
-      filterText,
-      refFilter,
-      scrollTop: changesScrollTopRef.current,
-      collapsedFolders: [...collapsedChangeFolders],
-    });
-  }, [changesScrollTop, collapsedChangeFolders, ctx.theaterId, filterText, hydratedRepoViewCacheKey, refFilter, repoRel, repoViewCacheKey]);
+    scheduleChangesCacheWrite();
+  }, [collapsedChangeFolders, filterText, hydratedRepoViewCacheKey, refFilter, repoRel, scheduleChangesCacheWrite]);
+  useEffect(() => () => {
+    if (changesCacheFrameRef.current !== null) {
+      cancelAnimationFrame(changesCacheFrameRef.current);
+      changesCacheFrameRef.current = null;
+    }
+    flushChangesCache();
+  }, [flushChangesCache]);
 
   const handleSelectFile = useCallback((entry: DiffFileEntry) => {
     if (ctx.theaterId) setSelectedFile(entry, ctx.theaterId, repoRel);
@@ -416,9 +435,9 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const changesView = <div ref={rootRef} className={`repository-root${selectedFile ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={selectedFile ? { gridTemplateColumns: buildDiffGridTemplate(listPaneWidth) } : undefined}>
     {selectedFile && hunkMode ? <div className="repository-hunk-pane"><div className="repository-hunk-head"><span>{selectedFile.entry.path}</span><button type="button" onClick={handleCloseHunk}>✕</button></div><HunkView ctx={ctx} repoRel={repoRel} file={selectedFile.entry} mode={hunkMode} /></div> : null}
     {selectedFile ? <div className="repository-divider" onPointerDown={handleDividerDown} aria-hidden="true" /> : null}
-    <div ref={changesListRef} className="repository-list-pane" onScroll={updateChangesScroll}>
+    <div className="repository-list-pane">
       <div className="repository-toolbar"><div className="repository-filter"><input type="text" className="repository-filter-input" placeholder={t("repository.common.filterPlaceholder")} aria-label={t("repository.common.filterChangedFiles")} value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText ? <button type="button" className="repository-filter-clear" aria-label={t("repository.common.clearFilter")} onClick={() => setFilterText("")}>✕</button> : null}</div><div className="repository-view-toggle"><button type="button" className={`repository-toggle-btn${viewMode === "list" ? " is-active" : ""}`} title={t("repository.common.listView")} aria-pressed={viewMode === "list"} onClick={() => handleViewMode("list")}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><line x1="2" y1="3.5" x2="12" y2="3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><line x1="2" y1="10.5" x2="12" y2="10.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg></button><button type="button" className={`repository-toggle-btn${viewMode === "tree" ? " is-active" : ""}`} title={t("repository.common.treeView")} aria-pressed={viewMode === "tree"} onClick={() => handleViewMode("tree")}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="9" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="1" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="9" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /></svg></button></div></div>
-      <ChangedFiles state={changedFiles} onRetry={retryChangedFiles} viewMode={viewMode} selectedPath={selectedFile?.entry.path ?? null} onSelect={handleSelectFile} filterText={filterText} t={t} collapsedFolders={collapsedChangeFolders} onToggleFolder={handleToggleChangeFolder} />
+      <ChangedFiles state={changedFiles} onRetry={retryChangedFiles} viewMode={viewMode} selectedPath={selectedFile?.entry.path ?? null} onSelect={handleSelectFile} filterText={filterText} t={t} collapsedFolders={collapsedChangeFolders} onToggleFolder={handleToggleChangeFolder} scrollContainerRef={changesListRef} onScroll={updateChangesScroll} />
     </div>
   </div>;
   const compareView = <CompareView key={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} refs={refs} refsError={refsError} onRetryRefs={() => setRefsRetry((value) => value + 1)} />;
@@ -469,7 +488,6 @@ export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTrunc
   const [query, setQuery] = useState(initialTreeState?.query ?? "");
   const [collapsedSections, setCollapsedSections] = useState(() => new Set(initialTreeState?.collapsedSections ?? ["tags", "stashes"]));
   const [collapsedFolders, setCollapsedFolders] = useState(() => new Set(initialTreeState?.collapsedFolders ?? []));
-  const [scrollTop, setScrollTop] = useState(initialTreeState?.scrollTop ?? 0);
   const handleToggleRepoFolder = (path: string) => {
     setCollapsedFolders((current) => {
       const next = new Set(current);
@@ -486,6 +504,7 @@ export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTrunc
   const nestedMatches = query ? nestedRepos.filter((repo) => matchRepository(repo) !== null) : nestedRepos;
   const matchedCount = rootMatches.length + nestedMatches.length;
   const branchCount = refs.branches.length + refs.remotes.filter((item) => !isRemoteHeadRef(item.ref)).length;
+  const refRowCount = refs.branches.length + refs.remotes.length + refs.tags.length + refs.stashes.length;
   const changesCount = changedFiles.kind === "ok" ? changedFiles.files.length : 0;
   const sections = buildWorkspaceTreeSections({
     context: repos.length,
@@ -523,7 +542,7 @@ export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTrunc
       const first = rootMatches[0] ?? nestedMatches[0];
       if (first) onRepository(first);
     }} />
-    <WorkspaceTreeScroll theaterId={theaterId} query={query} collapsedSections={collapsedSections} collapsedFolders={collapsedFolders} scrollTop={scrollTop} onScrollTop={setScrollTop} contentVersion={`${repos.length}:${collapsedSections.size}:${collapsedFolders.size}`}>
+    <WorkspaceTreeScroll theaterId={theaterId} query={query} collapsedSections={collapsedSections} collapsedFolders={collapsedFolders} initialScrollTop={initialTreeState?.scrollTop ?? 0} contentVersion={`${repos.length}:${worktrees.length}:${refRowCount}:${changesCount}:${collapsedSections.size}:${collapsedFolders.size}`}>
       <section className={`repository-ws-section${collapsedSections.has("context") ? " is-collapsed" : ""}`}>{sectionHeader("context")}
         {!collapsedSections.has("context") && (reposError ? <WorkspaceTreeError t={t} label={t("repository.discovery.loadReposFailed")} onRetry={onRetryRepos} /> : <>
           {rootMatches.map((repo) => <RepoLeafRow key={repo.relPath} repo={repo} depth={0} selectedRel={selectedRel} onRepository={onRepository} />)}
@@ -550,19 +569,37 @@ export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTrunc
   </aside>;
 }
 
-function WorkspaceTreeScroll({ theaterId, query, collapsedSections, collapsedFolders, scrollTop, onScrollTop, contentVersion, children }: {
+function WorkspaceTreeScroll({ theaterId, query, collapsedSections, collapsedFolders, initialScrollTop, contentVersion, children }: {
   readonly theaterId: string;
   readonly query: string;
   readonly collapsedSections: ReadonlySet<string>;
   readonly collapsedFolders: ReadonlySet<string>;
-  readonly scrollTop: number;
-  readonly onScrollTop: (scrollTop: number) => void;
+  readonly initialScrollTop: number;
   readonly contentVersion: string;
   readonly children: React.ReactNode;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const scrollTopRef = useRef(scrollTop);
-  const restoredScrollTopRef = useRef<number | null>(scrollTop);
+  const scrollTopRef = useRef(initialScrollTop);
+  const restoredScrollTopRef = useRef<number | null>(initialScrollTop);
+  const cacheFrameRef = useRef<number | null>(null);
+  const snapshotRef = useRef({ theaterId, query, collapsedSections, collapsedFolders });
+  snapshotRef.current = { theaterId, query, collapsedSections, collapsedFolders };
+  const flushCache = useCallback(() => {
+    const snapshot = snapshotRef.current;
+    writeWorkspaceTreeState(snapshot.theaterId, {
+      query: snapshot.query,
+      collapsedSections: [...snapshot.collapsedSections],
+      collapsedFolders: [...snapshot.collapsedFolders],
+      scrollTop: scrollTopRef.current,
+    });
+  }, []);
+  const scheduleCacheWrite = useCallback(() => {
+    if (cacheFrameRef.current !== null) return;
+    cacheFrameRef.current = requestAnimationFrame(() => {
+      cacheFrameRef.current = null;
+      flushCache();
+    });
+  }, [flushCache]);
   const updateTreeScroll = useCallback(() => {
     const tree = scrollRef.current;
     if (!tree || tree.clientHeight <= 0 || tree.scrollHeight <= 0) return;
@@ -573,8 +610,8 @@ function WorkspaceTreeScroll({ theaterId, query, collapsedSections, collapsedFol
       restoredScrollTopRef.current = null;
     }
     scrollTopRef.current = tree.scrollTop;
-    onScrollTop(tree.scrollTop);
-  }, [onScrollTop]);
+    scheduleCacheWrite();
+  }, [scheduleCacheWrite]);
   useLayoutEffect(() => {
     updateTreeScroll();
     const tree = scrollRef.current;
@@ -584,13 +621,15 @@ function WorkspaceTreeScroll({ theaterId, query, collapsedSections, collapsedFol
     return () => observer.disconnect();
   }, [contentVersion, updateTreeScroll]);
   useEffect(() => {
-    writeWorkspaceTreeState(theaterId, {
-      query,
-      collapsedSections: [...collapsedSections],
-      collapsedFolders: [...collapsedFolders],
-      scrollTop: scrollTopRef.current,
-    });
-  }, [collapsedFolders, collapsedSections, query, scrollTop, theaterId]);
+    scheduleCacheWrite();
+  }, [collapsedFolders, collapsedSections, query, scheduleCacheWrite, theaterId]);
+  useEffect(() => () => {
+    if (cacheFrameRef.current !== null) {
+      cancelAnimationFrame(cacheFrameRef.current);
+      cacheFrameRef.current = null;
+    }
+    flushCache();
+  }, [flushCache]);
   return <div ref={scrollRef} className="repository-ws-tree-scroll" onScroll={updateTreeScroll}>{children}</div>;
 }
 
