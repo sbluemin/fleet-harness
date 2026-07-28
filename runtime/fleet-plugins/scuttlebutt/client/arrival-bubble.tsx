@@ -142,9 +142,9 @@ export function ArrivalBubble({
 
   if (!quiet || !active) return null;
   const t = getT(locale);
-  const message = active.arrivals.length === 1
-    ? t("arrival.one", { title: active.arrivals[0]?.title ?? "" })
-    : t("arrival.many", { count: active.arrivals.length });
+  const detail = active.arrivals.length === 1
+    ? active.arrivals[0]?.title ?? ""
+    : t("arrival.manyCount", { count: active.arrivals.length });
   return (
     <button
       ref={bubbleRef}
@@ -155,7 +155,8 @@ export function ArrivalBubble({
       onPointerDown={(event) => event.preventDefault()}
       onClick={() => setSelection((state) => dismissArrivalAnnouncement(state))}
     >
-      {message}
+      <span className="scuttlebutt-arrival-label">{t("arrival.done")}</span>
+      <span className="scuttlebutt-arrival-detail">{detail}</span>
     </button>
   );
 }
