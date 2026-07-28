@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/fleet-analyst",
-  "version": "1.37.0",
+  "version": "1.37.1",
   "private": true,
   "type": "module",
   "files": ["dist", "AGENTS.md"],

@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.37.1] - 2026-07-28
+
+### fleet-plugin
+
+#### Fixed
+- [fleet-console] Keep all three Scuttlebutt admiral mascot colors unchanged across Console themes.
+
 ## [1.37.0] - 2026-07-27
 
 ### fleet-console

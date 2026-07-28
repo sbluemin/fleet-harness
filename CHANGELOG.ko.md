@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.37.1] - 2026-07-28
+
+### fleet-plugin
+
+#### Fixed
+- [fleet-console] Console 테마가 바뀌어도 Scuttlebutt 제독 마스코트 3종의 색상을 그대로 유지합니다.
+
 ## [1.37.0] - 2026-07-27
 
 ### fleet-console
