@@ -479,6 +479,12 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
     syncTerminalViewportBackground(container, terminalTheme);
   }, [activeTheme, mountedTerminalEpoch]);
 
+  // 세션 전환(Global Shell theater 전환 등)은 같은 surface 인스턴스의 operationId만 바꾸므로,
+  // 이전 세션의 힌트가 새 세션 위에 남지 않게 먼저 지운다.
+  useEffect(() => {
+    setThemeHint(null);
+  }, [operationId]);
+
   // 극성 전환 감지: 기준선은 세션(operationId) 단위 모듈 맵에 보관한다 — 패널이 닫혔다 열려도
   // 생존한 PTY의 기준선이 유지되어, 닫힌 사이 일어난 다크↔라이트 전환도 재오픈 시 힌트를 발화한다.
   useEffect(() => {
