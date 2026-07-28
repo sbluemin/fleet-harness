@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type RefObject } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
@@ -24,6 +24,8 @@ interface ChangedFilesProps {
   readonly t: Translate<RepositoryMessageKey>;
   readonly collapsedFolders?: ReadonlySet<string>;
   readonly onToggleFolder?: (path: string) => void;
+  readonly scrollContainerRef?: RefObject<HTMLDivElement | null>;
+  readonly onScroll?: () => void;
 }
 
 interface ListFileRowProps {
@@ -62,7 +64,7 @@ function readCollapsed(key: string): boolean {
   try { return localStorage.getItem(key) === "1"; } catch { return false; }
 }
 
-export function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect, filterText, t, collapsedFolders, onToggleFolder }: ChangedFilesProps) {
+export function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect, filterText, t, collapsedFolders, onToggleFolder, scrollContainerRef, onScroll }: ChangedFilesProps) {
   const [changesCollapsed, setChangesCollapsed] = useState(() => readCollapsed(PREFS_CHANGES_COLLAPSED));
 
   const handleToggleChanges = useCallback(() => {
@@ -109,7 +111,7 @@ export function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect,
   const countLabel = filterText ? `${visibleFiles.length}/${state.files.length}` : String(state.files.length);
 
   return (
-    <div className="repository-sections">
+    <div ref={scrollContainerRef} className="repository-sections" onScroll={onScroll}>
       <div className={`repository-section${changesCollapsed ? " is-collapsed" : ""}`}>
         <button type="button" className="repository-section-head" onClick={handleToggleChanges}>
           <svg className="repository-section-chevron" viewBox="0 0 12 12" fill="none" aria-hidden="true">

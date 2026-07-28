@@ -75,7 +75,6 @@ export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs
     return initialResult.files.find((entry) => entry.path === initialCache.selectedPath) ?? null;
   });
   const [listPaneWidth, setListPaneWidth] = useState(initialCache?.listPaneWidth ?? LIST_PANE_DEFAULT_WIDTH);
-  const [scrollTop, setScrollTop] = useState(initialCache?.scrollTop ?? 0);
   const [isDragging, setIsDragging] = useState(false);
   const listPaneWidthRef = useRef(listPaneWidth);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -83,6 +82,7 @@ export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs
   const scrollTopRef = useRef(initialCache?.scrollTop ?? 0);
   const restoredScrollTopRef = useRef<number | null>(initialCache?.scrollTop ?? null);
   const stateCacheKeyRef = useRef(`${ctx.theaterId ?? ""}\x00${repoRel}`);
+  const cacheFrameRef = useRef<number | null>(null);
   const dragDisposeRef = useRef<(() => void) | null>(null);
   const hydratedRef = useRef(false);
   const requestSeqRef = useRef(0);
@@ -114,6 +114,25 @@ export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs
 
   useEffect(() => { onFileOpenChange?.(selected !== null); }, [onFileOpenChange, selected]);
   useEffect(() => () => dragDisposeRef.current?.(), []);
+  const cacheSnapshotRef = useRef({ theaterId: ctx.theaterId, repoRel, result, selected, listPaneWidth });
+  cacheSnapshotRef.current = { theaterId: ctx.theaterId, repoRel, result, selected, listPaneWidth };
+  const flushCompareCache = useCallback(() => {
+    const snapshot = cacheSnapshotRef.current;
+    if (!snapshot.theaterId || stateCacheKeyRef.current !== `${snapshot.theaterId}\x00${snapshot.repoRel}` || snapshot.result.kind === "loading") return;
+    writeCompareViewState(snapshot.theaterId, snapshot.repoRel, {
+      result: snapshot.result.kind === "idle" ? null : snapshot.result,
+      selectedPath: snapshot.result.kind === "ok" && snapshot.selected && snapshot.result.files.some((entry) => entry.path === snapshot.selected?.path) ? snapshot.selected.path : null,
+      listPaneWidth: snapshot.listPaneWidth,
+      scrollTop: scrollTopRef.current,
+    });
+  }, []);
+  const scheduleCompareCacheWrite = useCallback(() => {
+    if (cacheFrameRef.current !== null) return;
+    cacheFrameRef.current = requestAnimationFrame(() => {
+      cacheFrameRef.current = null;
+      flushCompareCache();
+    });
+  }, [flushCompareCache]);
   const updateResultsScroll = useCallback(() => {
     const list = resultsRef.current;
     if (!list || list.clientHeight <= 0 || list.scrollHeight <= 0) return;
@@ -124,17 +143,18 @@ export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs
       restoredScrollTopRef.current = null;
     }
     scrollTopRef.current = list.scrollTop;
-    setScrollTop(list.scrollTop);
-  }, []);
+    scheduleCompareCacheWrite();
+  }, [scheduleCompareCacheWrite]);
   useEffect(() => {
-    if (!ctx.theaterId || stateCacheKeyRef.current !== `${ctx.theaterId}\x00${repoRel}` || result.kind === "loading") return;
-    writeCompareViewState(ctx.theaterId, repoRel, {
-      result: result.kind === "idle" ? null : result,
-      selectedPath: result.kind === "ok" && selected && result.files.some((entry) => entry.path === selected.path) ? selected.path : null,
-      listPaneWidth,
-      scrollTop: scrollTopRef.current,
-    });
-  }, [ctx.theaterId, listPaneWidth, repoRel, result, scrollTop, selected]);
+    scheduleCompareCacheWrite();
+  }, [listPaneWidth, result, scheduleCompareCacheWrite, selected]);
+  useEffect(() => () => {
+    if (cacheFrameRef.current !== null) {
+      cancelAnimationFrame(cacheFrameRef.current);
+      cacheFrameRef.current = null;
+    }
+    flushCompareCache();
+  }, [flushCompareCache]);
   useLayoutEffect(() => {
     updateResultsScroll();
     const list = resultsRef.current;
@@ -240,7 +260,7 @@ export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs
       <div ref={rootRef} className={`repository-root${selected ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={selected ? { gridTemplateColumns: buildDiffGridTemplate(listPaneWidth) } : undefined}>
         {selected && compareSelection ? <div className="repository-hunk-pane"><div className="repository-hunk-head"><span>{selected.path}</span><button type="button" onClick={() => setSelected(null)}>✕</button></div><HunkView ctx={ctx} repoRel={repoRel} file={selected} mode="unified" compare={compareSelection} /></div> : null}
         {selected ? <div className="repository-divider" onPointerDown={handleDividerDown} aria-hidden="true" /> : null}
-        <div ref={resultsRef} className="repository-list-pane repository-compare-results" onScroll={updateResultsScroll}>
+        <div className="repository-list-pane repository-compare-results">
           {result.kind === "idle" && <div className="history-empty">{t("repository.compare.idle")}</div>}
           {result.kind === "loading" && <div className="history-empty">{t("repository.compare.comparing")}</div>}
           {result.kind === "ok" && result.files.length === 0 && <div className="history-empty">{t("repository.compare.noDifferences")}</div>}
@@ -257,6 +277,8 @@ export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs
                 onSelect={setSelected}
                 filterText=""
                 t={t}
+                scrollContainerRef={resultsRef}
+                onScroll={updateResultsScroll}
               />
               {result.kind === "ok" && result.truncated && <div className="history-truncated">{t("repository.compare.capped")}</div>}
             </>
