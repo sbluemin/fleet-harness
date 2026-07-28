@@ -57,6 +57,37 @@ describe("Quaker admiral figures", () => {
     }
   });
 
+  it("consumes only immutable mascot source tokens for QK colors", () => {
+    const qkPalette = styles.slice(
+      styles.indexOf(".scuttlebutt-qk {"),
+      styles.indexOf(".scuttlebutt-qk * {"),
+    );
+    const sourceReferences = new Set(
+      [...qkPalette.matchAll(/var\((--scuttlebutt-qk-[a-z-]+)\)/g)].map(
+        ([, token]) => token,
+      ),
+    );
+
+    expect(sourceReferences).toEqual(
+      new Set([
+        "--scuttlebutt-qk-ink-abyss",
+        "--scuttlebutt-qk-ink-deep",
+        "--scuttlebutt-qk-ink-veil",
+        "--scuttlebutt-qk-ink-rim",
+        "--scuttlebutt-qk-ink-spectral",
+        "--scuttlebutt-qk-ink-pearl",
+        "--scuttlebutt-qk-brass",
+        "--scuttlebutt-qk-brass-deep",
+        "--scuttlebutt-qk-id-crimson",
+        "--scuttlebutt-qk-id-amber",
+        "--scuttlebutt-qk-id-moss",
+        "--scuttlebutt-qk-id-cerulean",
+        "--scuttlebutt-qk-id-rose",
+      ]),
+    );
+    expect(qkPalette).not.toMatch(/var\(--(?:ink|id|brass)(?:-[a-z-]+)?\)/);
+  });
+
   it("preserves the four reduced-motion pose fallbacks", () => {
     const reducedMotion = styles.slice(
       styles.indexOf("@media (prefers-reduced-motion: reduce)"),

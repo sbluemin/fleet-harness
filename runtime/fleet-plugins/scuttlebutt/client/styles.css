@@ -113,48 +113,48 @@
 }
 
 .scuttlebutt-qk {
-  --qk-tone: var(--id-moss);
-  --qk-body: color-mix(in oklch, var(--qk-tone) 58%, var(--ink-pearl));
-  --qk-wing: color-mix(in oklch, var(--qk-tone) 74%, var(--ink-pearl));
-  --qk-flight: color-mix(in oklch, var(--qk-tone) 30%, var(--ink-pearl));
-  --qk-tail: color-mix(in oklch, var(--qk-tone) 66%, var(--ink-pearl));
-  --qk-bib: color-mix(in oklch, var(--qk-tone) 12%, var(--ink-pearl));
-  --qk-bib-line: color-mix(in oklch, var(--qk-tone) 40%, var(--ink-pearl));
-  --qk-ring: color-mix(in oklch, var(--qk-tone) 6%, var(--ink-pearl));
-  --qk-eye: var(--ink-abyss);
-  --qk-blush: color-mix(in oklch, var(--id-rose) 52%, var(--ink-pearl));
-  --qk-line: color-mix(in oklch, var(--qk-tone) 88%, var(--ink-rim));
-  --qk-beak: color-mix(in oklch, var(--id-amber) 46%, var(--ink-pearl));
-  --qk-beak-shade: color-mix(in oklch, var(--id-amber) 78%, var(--ink-rim));
-  --qk-feet: color-mix(in oklch, var(--id-rose) 38%, var(--ink-pearl));
-  --qk-cap-top: var(--ink-pearl);
-  --qk-cap-band: var(--ink-veil);
-  --qk-cap-line: var(--ink-abyss);
-  --qk-visor: var(--ink-deep);
-  --qk-brass: var(--brass);
-  --qk-brass-deep: var(--brass-deep);
-  --qk-eye-gloss: var(--ink-pearl);
-  --qk-zzz: var(--ink-spectral);
-  --qk-mark-edge: var(--ink-abyss);
+  --qk-tone: var(--scuttlebutt-qk-id-moss);
+  --qk-body: color-mix(in oklch, var(--qk-tone) 58%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-wing: color-mix(in oklch, var(--qk-tone) 74%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-flight: color-mix(in oklch, var(--qk-tone) 30%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-tail: color-mix(in oklch, var(--qk-tone) 66%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-bib: color-mix(in oklch, var(--qk-tone) 12%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-bib-line: color-mix(in oklch, var(--qk-tone) 40%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-ring: color-mix(in oklch, var(--qk-tone) 6%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-eye: var(--scuttlebutt-qk-ink-abyss);
+  --qk-blush: color-mix(in oklch, var(--scuttlebutt-qk-id-rose) 52%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-line: color-mix(in oklch, var(--qk-tone) 88%, var(--scuttlebutt-qk-ink-rim));
+  --qk-beak: color-mix(in oklch, var(--scuttlebutt-qk-id-amber) 46%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-beak-shade: color-mix(in oklch, var(--scuttlebutt-qk-id-amber) 78%, var(--scuttlebutt-qk-ink-rim));
+  --qk-feet: color-mix(in oklch, var(--scuttlebutt-qk-id-rose) 38%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-cap-top: var(--scuttlebutt-qk-ink-pearl);
+  --qk-cap-band: var(--scuttlebutt-qk-ink-veil);
+  --qk-cap-line: var(--scuttlebutt-qk-ink-abyss);
+  --qk-visor: var(--scuttlebutt-qk-ink-deep);
+  --qk-brass: var(--scuttlebutt-qk-brass);
+  --qk-brass-deep: var(--scuttlebutt-qk-brass-deep);
+  --qk-eye-gloss: var(--scuttlebutt-qk-ink-pearl);
+  --qk-zzz: var(--scuttlebutt-qk-ink-spectral);
+  --qk-mark-edge: var(--scuttlebutt-qk-ink-abyss);
   overflow: visible;
 }
 
 .scuttlebutt-qk[data-morph="dori"] {
-  --qk-tone: var(--id-cerulean);
+  --qk-tone: var(--scuttlebutt-qk-id-cerulean);
 }
 
 /* 알비노는 몸통만 반 톤 내려 가슴판과 얼굴 윤곽이 소실되지 않게 한다. */
 .scuttlebutt-qk[data-morph="bori"] {
-  --qk-tone: var(--id-crimson);
-  --qk-body: color-mix(in oklch, var(--qk-tone) 10%, var(--ink-pearl));
-  --qk-wing: color-mix(in oklch, var(--qk-tone) 16%, var(--ink-pearl));
-  --qk-flight: color-mix(in oklch, var(--qk-tone) 6%, var(--ink-pearl));
-  --qk-tail: color-mix(in oklch, var(--qk-tone) 13%, var(--ink-pearl));
-  --qk-bib: var(--ink-pearl);
-  --qk-bib-line: color-mix(in oklch, var(--qk-tone) 24%, var(--ink-pearl));
-  --qk-ring: var(--ink-pearl);
-  --qk-eye: var(--id-crimson);
-  --qk-line: color-mix(in oklch, var(--qk-tone) 34%, var(--ink-rim));
+  --qk-tone: var(--scuttlebutt-qk-id-crimson);
+  --qk-body: color-mix(in oklch, var(--qk-tone) 10%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-wing: color-mix(in oklch, var(--qk-tone) 16%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-flight: color-mix(in oklch, var(--qk-tone) 6%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-tail: color-mix(in oklch, var(--qk-tone) 13%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-bib: var(--scuttlebutt-qk-ink-pearl);
+  --qk-bib-line: color-mix(in oklch, var(--qk-tone) 24%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-ring: var(--scuttlebutt-qk-ink-pearl);
+  --qk-eye: var(--scuttlebutt-qk-id-crimson);
+  --qk-line: color-mix(in oklch, var(--qk-tone) 34%, var(--scuttlebutt-qk-ink-rim));
   --qk-blush: transparent;
 }
 

@@ -985,6 +985,31 @@ describe("Instrument core design contract", () => {
     expect(theme).not.toMatch(/body::(?:before|after)/);
   });
 
+  it("pins immutable Scuttlebutt QK source colors to the base Instrument palette", () => {
+    const theme = source("styles/theme.css");
+    const base = theme.slice(0, theme.indexOf(':root[data-theme="'));
+    const sourceTokens = {
+      "--scuttlebutt-qk-ink-abyss": "oklch(13% 0.014 245)",
+      "--scuttlebutt-qk-ink-deep": "oklch(16.5% 0.016 245)",
+      "--scuttlebutt-qk-ink-veil": "oklch(23.5% 0.02 245)",
+      "--scuttlebutt-qk-ink-rim": "oklch(29% 0.018 245)",
+      "--scuttlebutt-qk-ink-spectral": "oklch(70% 0.012 245)",
+      "--scuttlebutt-qk-ink-pearl": "oklch(94% 0.008 90)",
+      "--scuttlebutt-qk-brass": "oklch(80% 0.085 78)",
+      "--scuttlebutt-qk-brass-deep": "var(--scuttlebutt-qk-brass)",
+      "--scuttlebutt-qk-id-crimson": "oklch(72% 0.065 25)",
+      "--scuttlebutt-qk-id-amber": "oklch(76% 0.062 70)",
+      "--scuttlebutt-qk-id-moss": "oklch(74% 0.06 140)",
+      "--scuttlebutt-qk-id-cerulean": "oklch(73% 0.062 235)",
+      "--scuttlebutt-qk-id-rose": "oklch(73% 0.06 350)",
+    } as const;
+
+    for (const [token, value] of Object.entries(sourceTokens)) {
+      expect(base).toContain(`${token}: ${value};`);
+      expect(theme.match(new RegExp(`${token}:`, "g"))).toHaveLength(1);
+    }
+  });
+
   it("keeps real GNB and captain producers aligned with the static CSS gates", () => {
     const components = source("styles/components.css");
     const brandFoot = source("components/side-bar-brand-foot.tsx");
