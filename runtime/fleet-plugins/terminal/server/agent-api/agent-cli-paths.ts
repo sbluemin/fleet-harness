@@ -89,7 +89,7 @@ export function resolveAgentCliBinary(options: {
   const envOverride = envName ? options.env[envName]?.trim() : undefined;
   if (envOverride) {
     const searchedPathEntries = path.isAbsolute(envOverride) ? [] : readPathEntries(options.env, platform);
-    const resolved = resolvePathBinary(envOverride, options.env, { platform });
+    const resolved = resolveBinarySafely(envOverride, options.env, platform);
     if (!resolved) {
       return { resolved: undefined, source: "env", error: "path_not_found", launchPath: envOverride, searchedPathEntries };
     }
@@ -104,7 +104,7 @@ export function resolveAgentCliBinary(options: {
   }
 
   const searchedPathEntries = readPathEntries(options.env, platform);
-  const resolved = resolvePathBinary(options.cliCommand, options.env, { platform });
+  const resolved = resolveBinarySafely(options.cliCommand, options.env, platform);
   if (!resolved) return { resolved: undefined, source: null, error: null, launchPath: undefined, searchedPathEntries };
   const error = validateResolvedFile(resolved, platform);
   return {
@@ -202,10 +202,21 @@ function resolveConfiguredPath(
       return { resolved: undefined, error: "path_not_executable" };
     }
   }
-  const resolved = resolvePathBinary(executablePath, env, { platform });
+  const resolved = resolveBinarySafely(executablePath, env, platform);
   return resolved
     ? { resolved, error: null }
     : { resolved: undefined, error: "path_not_executable" };
+}
+
+// resolvePathBinary는 미해석을 undefined로 돌려주지만, `%`·`^`가 든 Windows shim 경로는 cmd.exe 확장
+// 위험 때문에 예외를 던진다. 그 예외가 라우트까지 올라가면 설정 UI가 기대하는 구조화된 400 대신 500이
+// 되고, 감지 경로에서는 섹션 전체가 실패한다. 여기서 미해석과 같은 의미로 접는다.
+function resolveBinarySafely(command: string, env: NodeJS.ProcessEnv, platform: NodeJS.Platform): ResolvedBinary | undefined {
+  try {
+    return resolvePathBinary(command, env, { platform });
+  } catch {
+    return undefined;
+  }
 }
 
 function validateResolvedFile(resolved: ResolvedBinary, platform: NodeJS.Platform): Exclude<AgentCliPathError, "probe_failed"> | null {
