@@ -178,6 +178,16 @@ function terminalContrastFloorFor(theme: TerminalThemeId): number {
   return LIGHT_TERMINAL_THEMES.has(theme) ? LIGHT_MINIMUM_CONTRAST_RATIO : 1;
 }
 
+function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
+  return LIGHT_TERMINAL_THEMES.has(theme) ? "light" : "dark";
+}
+
+/* 세션 PTY는 패널 언마운트(Global Shell 닫기·Theater 전환)를 넘어 생존하므로, 극성 힌트의 기준선도
+   surface 수명 밖에 보관해야 닫힌 사이 전환된 테마가 재오픈 시 힌트를 발화한다. 같은 플러그인 번들
+   내부의 모듈 상태다 — 번들 경계를 넘는 공유가 아니다. PTY 종료 후 재spawn된 세션은 현재 극성 env를
+   받으므로, 닫힌 동안의 전환 + 재spawn이 겹치는 극단 경로에서만 힌트가 한 번 과발화할 수 있다(무해·해제 가능). */
+const sessionPolarityBaseline = new Map<string, "light" | "dark">();
+
 const DRYDOCK_TERMINAL_THEME: ITheme = {
   background: "oklch(92.5% 0.02 238)",
   foreground: "oklch(25% 0.045 250)",
@@ -224,8 +234,11 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   const [status, setStatus] = useState("connecting");
   // 테마 극성(다크↔라이트) 전환 1회성 안내 — 실행 중 CLI 내부 테마는 강제할 수 없으므로 힌트만 띄운다.
   const [themeHint, setThemeHint] = useState<"light" | "dark" | null>(null);
-  const prevPolarityRef = useRef<boolean | null>(null);
   const t = getT(useTerminalLocale());
+  // 마운트 effect는 심볼 폰트 선대기 등 await 뒤에 ticket 연결을 만들고 테마 변경에 재실행되지 않으므로,
+  // 최신 극성은 ref로 읽는다(activeRef와 같은 이유) — 대기 중 테마가 바뀌어도 첫 ticket이 현재 극성을 싣는다.
+  const colorSchemeRef = useRef(terminalPolarityFor(activeTheme));
+  colorSchemeRef.current = terminalPolarityFor(activeTheme);
   // 터미널 인스턴스는 심볼 폰트 선대기 때문에 비동기로 생성된다. 같은 커밋에서 이미 실행된
   // WebGL/테마/폰트 effect는 null 터미널을 보고 건너뛰므로, 생성 완료를 epoch로 알려 재실행시킨다.
   const [mountedTerminalEpoch, setMountedTerminalEpoch] = useState(0);
@@ -306,8 +319,8 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         operationId,
         ticketPath,
         wsPath,
-        // spawn env COLORFGBG 힌트 — 마운트 시점 극성으로 고정된다(PTY는 최초 spawn 시 env 확정).
-        colorScheme: LIGHT_TERMINAL_THEMES.has(activeTheme) ? "light" : "dark",
+        // spawn env COLORFGBG 힌트 — 연결 생성 시점의 최신 극성으로 고정된다(PTY는 최초 spawn 시 env 확정).
+        colorScheme: colorSchemeRef.current,
         terminal: {
           onData: (listener) => terminal.onData((data) => {
             // xterm's normal scrollOnUserInput behavior resumes follow for every local input,
@@ -466,18 +479,20 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
     syncTerminalViewportBackground(container, terminalTheme);
   }, [activeTheme, mountedTerminalEpoch]);
 
-  // 극성 전환 감지: 마운트 시점 극성은 기준선으로만 기록하고, 이후 다크↔라이트 전환마다 힌트를 다시 띄운다.
+  // 극성 전환 감지: 기준선은 세션(operationId) 단위 모듈 맵에 보관한다 — 패널이 닫혔다 열려도
+  // 생존한 PTY의 기준선이 유지되어, 닫힌 사이 일어난 다크↔라이트 전환도 재오픈 시 힌트를 발화한다.
   useEffect(() => {
-    const isLight = LIGHT_TERMINAL_THEMES.has(activeTheme);
-    if (prevPolarityRef.current === null) {
-      prevPolarityRef.current = isLight;
+    const polarity = terminalPolarityFor(activeTheme);
+    const baseline = sessionPolarityBaseline.get(operationId);
+    if (baseline === undefined) {
+      sessionPolarityBaseline.set(operationId, polarity);
       return;
     }
-    if (prevPolarityRef.current !== isLight) {
-      prevPolarityRef.current = isLight;
-      setThemeHint(isLight ? "light" : "dark");
+    if (baseline !== polarity) {
+      sessionPolarityBaseline.set(operationId, polarity);
+      setThemeHint(polarity);
     }
-  }, [activeTheme]);
+  }, [activeTheme, operationId]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
