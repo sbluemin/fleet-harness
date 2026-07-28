@@ -1,5 +1,8 @@
+/* rail 호스트는 고정 높이 + overflow: hidden만 제공하므로 스크롤은 패널이 자기 루트에서
+   소유한다 — 없으면 Operation이 많아질 때 아래 섹션(특히 clients)이 잘려 도달 불가. */
 .ledger-root {
-  min-height: 100%;
+  height: 100%;
+  overflow-y: auto;
   color: var(--text-primary);
   font-family: var(--font-body);
 }

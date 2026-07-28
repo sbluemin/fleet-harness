@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
@@ -148,6 +148,21 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
   const [refreshEpoch, setRefreshEpoch] = useState(0);
   const [forceRefresh, setForceRefresh] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const listScrollRef = useRef(0);
+
+  const openDetail = useCallback((operationId: string) => {
+    listScrollRef.current = rootRef.current?.scrollTop ?? 0;
+    setSelectedId(operationId);
+  }, []);
+
+  // 목록과 상세는 같은 .ledger-root DOM을 재사용하므로 scrollTop이 그대로 이어진다 —
+  // 상세 진입 시 맨 위로, 복귀 시 목록 위치 복원을 레이아웃 단계에서 처리해 깜빡임을 막는다.
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    root.scrollTop = selectedId ? 0 : listScrollRef.current;
+  }, [selectedId]);
 
   const refresh = useCallback(() => {
     setForceRefresh(true);
@@ -183,10 +198,10 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
   const expectedTheaterId = scope === "theater" ? ctx.theaterId : null;
   const visibleData = data?.scope.window === window && data.scope.theaterId === expectedTheaterId ? data : null;
   const selected = visibleData?.operations.find((operation) => operation.operationId === selectedId) ?? null;
-  if (selected) return <div className="ledger-root"><DetailView operation={selected} t={t} back={() => setSelectedId(null)} /></div>;
+  if (selected) return <div className="ledger-root" ref={rootRef}><DetailView operation={selected} t={t} back={() => setSelectedId(null)} /></div>;
 
   return (
-    <div className="ledger-root">
+    <div className="ledger-root" ref={rootRef}>
       <div className="ledger-controls">
         <div className="ledger-segment" role="group" aria-label={t("ledger.scope.aria")}>
           <button type="button" aria-pressed={scope === "theater"} disabled={!ctx.theaterId} onClick={() => setScope("theater")}>{t("ledger.scope.theater")}</button>
@@ -228,7 +243,7 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
               <div className="ledger-inline-empty"><strong>{t("ledger.empty.title")}</strong><p>{t("ledger.empty.body")}</p></div>
             ) : null}
             {visibleData.operations.map((operation) => (
-              <button type="button" className={`ledger-operation ledger-operation--${markKeyFromCliId(operation.cliId)}`} key={operation.operationId} onClick={() => setSelectedId(operation.operationId)}>
+              <button type="button" className={`ledger-operation ledger-operation--${markKeyFromCliId(operation.cliId)}`} key={operation.operationId} onClick={() => openDetail(operation.operationId)}>
                 <span className="ledger-operation-mark">{cliGlyph(markKeyFromCliId(operation.cliId))}</span>
                 <span className="ledger-operation-copy">
                   <strong>{operation.title}</strong>

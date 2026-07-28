@@ -129,6 +129,24 @@ describe("Ledger rail status rendering", () => {
     expect(container.querySelector(".ledger-total-token")?.textContent).toContain("2k");
   });
 
+  it("resets scroll on detail entry and restores the list position on back", async () => {
+    await renderWith(dto("ok"));
+    const listRoot = container.querySelector<HTMLDivElement>(".ledger-root");
+    expect(listRoot).not.toBeNull();
+    listRoot!.scrollTop = 480;
+
+    const operation = container.querySelector<HTMLButtonElement>(".ledger-operation");
+    await act(async () => operation!.click());
+    expect(container.querySelector(".ledger-detail")).not.toBeNull();
+    expect(container.querySelector<HTMLDivElement>(".ledger-root")!.scrollTop).toBe(0);
+
+    const back = container.querySelector<HTMLButtonElement>(".ledger-back");
+    expect(back).not.toBeNull();
+    await act(async () => back!.click());
+    expect(container.querySelector(".ledger-operation")).not.toBeNull();
+    expect(container.querySelector<HTMLDivElement>(".ledger-root")!.scrollTop).toBe(480);
+  });
+
   it("hides the previous window data immediately while the next request is pending", async () => {
     let resolveToday!: (value: Response) => void;
     const fetch = vi.fn((_pluginId: string, path: string) => {
