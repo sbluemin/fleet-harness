@@ -425,6 +425,30 @@ describe("filterPaletteCommands", () => {
     }
   });
 
+  it("omits highlight indices when a long contextual fold cannot provide an aligned map", () => {
+    const label = `${"a".repeat(2_001)}Íxy`;
+    const foldedLabel = `${"a".repeat(2_001)}i̇́xy`;
+    const originalToLocaleLowerCase = String.prototype.toLocaleLowerCase;
+    const lowerCaseSpy = vi.spyOn(String.prototype, "toLocaleLowerCase").mockImplementation(function (
+      this: string,
+      locales?: string | string[],
+    ): string {
+      const value = String(this);
+      if (locales === undefined && value === label) return foldedLabel;
+      return locales === undefined
+        ? originalToLocaleLowerCase.call(value)
+        : originalToLocaleLowerCase.call(value, locales);
+    });
+    try {
+      const match = fuzzyMatchPaletteLabel(label, "xy");
+      expect(match).not.toBeNull();
+      expect(match?.matchedIndices).toEqual([]);
+      expect(typeof match?.score).toBe("number");
+    } finally {
+      lowerCaseSpy.mockRestore();
+    }
+  });
+
   it("ranks consecutive fuzzy glyphs above scattered glyphs", () => {
     const consecutive = fuzzyMatchPaletteLabel("ab-d-e-", "abde");
     const scattered = fuzzyMatchPaletteLabel("a-b-d-e", "abde");

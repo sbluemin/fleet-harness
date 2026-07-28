@@ -287,15 +287,18 @@ export function fuzzyMatchPaletteLabel(label: string, query: string): PaletteCom
       }
     }
 
-    const tokenIndices = foldedTokenIndices
-      .map((foldedIndex) => foldMap[foldedIndex]!)
-      .filter((originalIndex, index, indices) => index === 0 || originalIndex !== indices[index - 1]);
+    const tokenIndices = foldMap === null
+      ? foldedTokenIndices
+      : foldedTokenIndices
+        .map((foldedIndex) => foldMap[foldedIndex]!)
+        .filter((originalIndex, index, indices) => index === 0 || originalIndex !== indices[index - 1]);
+    const scoreText = foldMap === null ? foldedLabel : label;
     for (let index = 0; index < tokenIndices.length; index += 1) {
       const matchedIndex = tokenIndices[index]!;
       const previousMatchedIndex = tokenIndices[index - 1];
       score += previousMatchedIndex !== undefined && matchedIndex === previousMatchedIndex + 1 ? 3 : 1;
-      if (matchedIndex === 0 || label[matchedIndex - 1] === " ") score += 2;
-      matchedIndices.add(matchedIndex);
+      if (matchedIndex === 0 || scoreText[matchedIndex - 1] === " ") score += 2;
+      if (foldMap !== null) matchedIndices.add(matchedIndex);
     }
   }
 
@@ -330,11 +333,11 @@ export function filterPaletteCommands(commands: readonly PaletteCommandEntry[], 
 
 function foldPaletteLabel(label: string): {
   readonly foldedLabel: string;
-  readonly foldMap: readonly number[];
+  readonly foldMap: readonly number[] | null;
 } {
   const foldedLabel = label.toLocaleLowerCase();
   if (label.length > 2_000) {
-    return { foldedLabel, foldMap: buildPerCharacterFoldMap(label) };
+    return { foldedLabel, foldMap: null };
   }
 
   const foldMap: number[] = [];
@@ -348,25 +351,14 @@ function foldPaletteLabel(label: string): {
   }
   return foldMap.length === foldedLabel.length
     ? { foldedLabel, foldMap }
-    : { foldedLabel, foldMap: buildPerCharacterFoldMap(label) };
-}
-
-function buildPerCharacterFoldMap(label: string): readonly number[] {
-  const foldMap: number[] = [];
-  for (let originalIndex = 0; originalIndex < label.length; originalIndex += 1) {
-    const foldedLength = label[originalIndex]!.toLocaleLowerCase().length;
-    for (let foldedOffset = 0; foldedOffset < foldedLength; foldedOffset += 1) {
-      foldMap.push(originalIndex);
-    }
-  }
-  return foldMap;
+    : { foldedLabel, foldMap: null };
 }
 
 function findBestExactStart(
   foldedLabel: string,
   token: string,
   label: string,
-  foldMap: readonly number[],
+  foldMap: readonly number[] | null,
 ): number {
   let firstStart = -1;
   let searchFrom = 0;
@@ -374,8 +366,9 @@ function findBestExactStart(
     const start = foldedLabel.indexOf(token, searchFrom);
     if (start === -1) break;
     if (firstStart === -1) firstStart = start;
-    const originalStart = foldMap[start];
-    if (originalStart !== undefined && (originalStart === 0 || label[originalStart - 1] === " ")) return start;
+    const boundaryIndex = foldMap?.[start] ?? start;
+    const boundaryText = foldMap === null ? foldedLabel : label;
+    if (boundaryIndex === 0 || boundaryText[boundaryIndex - 1] === " ") return start;
     searchFrom = start + 1;
   }
   return firstStart;
