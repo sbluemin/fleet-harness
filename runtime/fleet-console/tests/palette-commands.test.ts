@@ -335,12 +335,18 @@ describe("filterPaletteCommands", () => {
     });
     try {
       const label = "İX";
-      const match = fuzzyMatchPaletteLabel(label, "i");
-      expect(match).not.toBeNull();
-      const matchedIndices = match?.matchedIndices ?? [];
-      expect(matchedIndices).not.toHaveLength(0);
+      const contractedMatch = fuzzyMatchPaletteLabel(label, "i");
+      const followingMatch = fuzzyMatchPaletteLabel(label, "x");
+      expect(contractedMatch).not.toBeNull();
+      expect(followingMatch).not.toBeNull();
+      expect(contractedMatch?.matchedIndices).toContain(0);
+      expect(contractedMatch?.matchedIndices).not.toContain(1);
+      expect(followingMatch?.matchedIndices).toEqual([2]);
+      const matchedIndices = [
+        ...(contractedMatch?.matchedIndices ?? []),
+        ...(followingMatch?.matchedIndices ?? []),
+      ];
       expect(matchedIndices.filter((index) => index < 0 || index >= label.length)).toEqual([]);
-      expect(["I", "̇"]).toContain(label.slice(matchedIndices[0]!, matchedIndices[0]! + 1));
     } finally {
       lowerCaseSpy.mockRestore();
     }

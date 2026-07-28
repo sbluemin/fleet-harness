@@ -348,6 +348,25 @@ function foldPaletteLabel(label: string): {
       cursor += foldedCharacter.length;
       continue;
     }
+    let resynchronized = false;
+    for (
+      let additionalCharacters = 1;
+      additionalCharacters <= 4 && originalIndex + 1 + additionalCharacters <= label.length;
+      additionalCharacters += 1
+    ) {
+      const foldedSpan = label
+        .slice(originalIndex, originalIndex + 1 + additionalCharacters)
+        .toLocaleLowerCase();
+      if (!foldedLabel.startsWith(foldedSpan, cursor)) continue;
+      for (let foldedOffset = 0; foldedOffset < foldedSpan.length; foldedOffset += 1) {
+        foldMap.push(originalIndex + foldedOffset);
+      }
+      cursor += foldedSpan.length;
+      originalIndex += additionalCharacters;
+      resynchronized = true;
+      break;
+    }
+    if (resynchronized) continue;
     foldMap.push(originalIndex);
     cursor += 1;
   }
