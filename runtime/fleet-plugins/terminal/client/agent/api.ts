@@ -1,5 +1,5 @@
 import type { OperationNode } from "@fleet-console/sdk/operations";
-import type { AgentCliMetadata, AgentCliState, ObservedTenant, SessionInfo, SnapshotTenantJobs } from "./types.js";
+import type { AgentCliDiagnostics, AgentCliMetadata, AgentCliState, ObservedTenant, SessionInfo, SnapshotTenantJobs } from "./types.js";
 
 export interface OperationsSnapshot {
   readonly operations: readonly OperationNode[];
@@ -31,6 +31,27 @@ export async function fetchAgentCliState(signal?: AbortSignal): Promise<AgentCli
   const payload = await response.json() as AgentCliState;
   if (!Array.isArray(payload.clis)) throw new AgentApiError(response.status, "Invalid Agent CLI state response");
   return payload;
+}
+
+export async function fetchAgentCliDiagnostics(signal?: AbortSignal): Promise<AgentCliDiagnostics> {
+  const response = await fetch("/plugins/terminal/agent/agent-cli/diagnostics", { signal });
+  await assertOk(response);
+  const payload = await response.json() as AgentCliDiagnostics;
+  if (!Array.isArray(payload.entries)) throw new AgentApiError(response.status, "Invalid Agent CLI diagnostics response");
+  return payload;
+}
+
+export async function setAgentCliPath(cliCommand: string, path: string | null, signal?: AbortSignal): Promise<void> {
+  const response = await fetch("/plugins/terminal/agent/agent-cli/path", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cliCommand, path }),
+    signal,
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
+    throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);
+  }
 }
 
 export async function fetchTenants(signal?: AbortSignal): Promise<readonly ObservedTenant[]> {

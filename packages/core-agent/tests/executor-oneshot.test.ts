@@ -51,6 +51,38 @@ describe("executeOneShot", () => {
     await expect(execution.readiness).rejects.toThrow("session/load failed"); await expect(execution.completion).resolves.toMatchObject({ status: "err" });
     expect(buildMock).toHaveBeenCalledTimes(1); expect(clients[0]!.connectCalls).toEqual([expect.objectContaining({ sessionId: "provider-session" })]); expect(clients[0]!.messages).toEqual([]); expect(clients[0]!.disconnectCount).toBe(1);
   });
+  it("passes resolved Carrier cliPath and merges launch env after auth env", async () => {
+    const agentCliLaunchResolver = vi.fn(async () => ({
+      cliPath: "/custom/bin/codex",
+      env: { CODEX_BIN: "/custom/bin/codex" },
+    }));
+    const execution = executeOneShot(options("custom path", {
+      authEnvResolver: async () => ({ AUTH_TOKEN: "secret" }),
+      agentCliLaunchResolver,
+    }));
+
+    await execution.readiness;
+    expect(agentCliLaunchResolver).toHaveBeenCalledWith("codex", {
+      env: { AUTH_TOKEN: "secret" },
+    });
+    expect(clients[0]!.connectCalls[0]).toMatchObject({
+      cliPath: "/custom/bin/codex",
+      env: {
+        AUTH_TOKEN: "secret",
+        CODEX_BIN: "/custom/bin/codex",
+      },
+    });
+    await execution.abort();
+  });
+  it("does not add custom env when Carrier launch resolution has no overlay", async () => {
+    const execution = executeOneShot(options("default environment", {
+      agentCliLaunchResolver: async () => ({ cliPath: undefined }),
+    }));
+
+    await execution.readiness;
+    expect(clients[0]!.connectCalls[0]!.env).toBeUndefined();
+    await execution.abort();
+  });
   it("rejects readiness without an unhandled EventEmitter error when the provider fails during connect", async () => {
     let errorListenerCount = 0;
     buildMock.mockImplementationOnce(async () => {

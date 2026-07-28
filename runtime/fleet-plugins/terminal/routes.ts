@@ -5,6 +5,7 @@ import { createCarrierRegistry, initStore, registerDefaultCarriers } from "@doto
 
 import { registerAgentRoutes } from "./server/agent.js";
 import { registerAnalysisRoutes } from "./server/agent-api/analysis-routes.js";
+import { createAgentCliPathStore } from "./server/agent-api/agent-cli-paths.js";
 import { registerCarrierSettingsRoutes } from "./server/carrier-settings-routes.js";
 import { registerGlobalShellRoutes } from "./server/global.js";
 import { registerTerminalSettingsRoutes } from "./server/settings-routes.js";
@@ -41,7 +42,12 @@ export default definePlugin({
     registerTerminalSettingsRoutes(ctx, { globalOptionsService: infraServices.globalOptionsService });
     registerTerminalModelAuthRoutes(ctx, { authService: infraServices.authService });
     registerCarrierSettingsRoutes(ctx, { registry: carrierRegistry });
-    registerAnalysisRoutes(ctx);
+    // Agent Operation과 Analyst는 같은 plugin storage 키를 읽되 수명은 각 라우트가 독립 소유한다.
+    // store는 무상태 어댑터라 여기서 별도로 만들어도 저장 파일과 우선순위 계약은 하나로 유지된다.
+    const agentCliPathStore = createAgentCliPathStore(ctx.host.storage, ctx.pluginId);
+    registerAnalysisRoutes(ctx, {
+      readAgentCliPaths: async () => (await agentCliPathStore.read()).paths,
+    });
     const agentLaunchKinds = registerAgentRoutes(ctx, runtime, {
       authService: infraServices.authService,
       globalOptionsService: infraServices.globalOptionsService,

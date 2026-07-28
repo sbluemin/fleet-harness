@@ -29,7 +29,7 @@
 - Core browser APIs do not use bearer, admin, MCP, or session tokens. Loopback is not authorization: preserve route-specific Host and Origin gates.
 - Terminal WebSocket is the sole ticketed browser transport: an Origin-authorized HTTP route issues a short-lived one-use ticket consumed by the upgrade. Do not generalize that ticket into browser bearer authentication.
 - Provider session identities, transcripts, and raw filesystem paths may remain in sensitive server-side state but must not enter ordinary core or built-in browser DTOs, browser-visible logs, streams, or static assets.
-- Local-channel environment diagnostics invoked only by an explicit user action may return the Console's own data-root and runtime-lock paths.
+- Local-channel environment diagnostics invoked only by an explicit user action may return the Console's own data-root and runtime-lock paths, and the Agent CLI executable paths a user configured together with the PATH entries searched to resolve them.
 - Filesystem access requires lexical validation followed by containment checks on resolved real paths. Git revision input must reject option-like arguments even when no shell is used.
 - Shared markdown and Mermaid output must remain sanitized before DOM insertion; Mermaid stays strict with HTML labels disabled, and renderer-supplied bind functions are never executed.
 - The Console server is the sole durable-state writer. Development and published channels intentionally use separate data roots; an explicit Console-directory override relocates runtime and durable data together. Restored Operations are dormant until explicitly relaunched.

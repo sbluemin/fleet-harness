@@ -20,6 +20,7 @@ import { createInfraServices, getFleetDataDir, type AuthService, type GlobalOpti
 import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, runCodexCommand, toCaptureProvider, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
 import { stripConsoleInternalEnv } from "../shared/launch-env.js";
+import { applyAgentCliPathEnvOverlay } from "./agent-cli-paths.js";
 
 export interface TerminalLaunchResolverDeps {
   readonly cwd?: string;
@@ -38,6 +39,7 @@ export interface TerminalLaunchResolverDeps {
   readonly createSessionIdentityResolver?: typeof createSessionIdentityResolver;
   /** Resolves host-owned MCP bindings from the in-memory launch context only. */
   readonly resolveServerBindings?: (context: TerminalLaunchContext | undefined) => AgentServerBindings | undefined;
+  readonly readAgentCliPaths?: () => Promise<Readonly<Record<string, string>>>;
 }
 
 export interface ConsoleRuntimeSessionInfo {
@@ -76,7 +78,10 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
     const cwd = selectedCwd || baseCwd || homedir();
     const testLaunch = (globalThis as { __fleetTerminalLaunch?: TerminalLaunchResolver }).__fleetTerminalLaunch;
     if (testLaunch) return testLaunch(cwd, context);
-    const launchEnv = buildLaunchEnv(env, cwd, context?.sessionId, context?.colorScheme);
+    let launchEnv = buildLaunchEnv(env, cwd, context?.sessionId, context?.colorScheme);
+    if (deps.readAgentCliPaths) {
+      launchEnv = applyAgentCliPathEnvOverlay(launchEnv, context?.cliId, await deps.readAgentCliPaths());
+    }
     const override = parseTerminalCommand(env.FLEET_TERMINAL_CMD);
     if (override) {
       const resolvedOverride = resolveWindowsLaunchBinary(

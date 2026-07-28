@@ -9,15 +9,20 @@
 
 import { execFile } from "node:child_process";
 
-import { resolvePathBinary, type ResolvedBinary } from "@dotobokuri/core-agent";
+import type { ResolvedBinary } from "@dotobokuri/core-agent";
 import { withHidden } from "@dotobokuri/core-process";
 import { CLI_BACKENDS } from "@dotobokuri/core-unified-agent";
 
 import type { AgentCliStatus } from "./agent-cli-types.js";
+import { resolveAgentCliBinary, validateUserAgentCliPath, type AgentCliBinaryResolution, type AgentCliPathError } from "./agent-cli-paths.js";
 
 export interface AgentCliDetectorDeps {
-  // PATH에서 바이너리를 해석한다. 미설치 시 undefined. (기본: resolvePathBinary + process.env)
-  readonly resolve: (command: string) => ResolvedBinary | undefined;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly readUserPaths?: () => Promise<Readonly<Record<string, string>>>;
+  readonly resolve?: (
+    command: string,
+    userPaths: Readonly<Record<string, string>>,
+  ) => AgentCliBinaryResolution | ResolvedBinary | undefined;
   // 주어진 바이너리/인자로 프로세스를 실행해 stdout(또는 stderr)을 반환한다. 실패 시 throw.
   readonly runVersion: (bin: string, args: readonly string[]) => Promise<string>;
 }
@@ -34,15 +39,6 @@ const BINARY_DISPLAY_NAMES: Record<string, string> = {
   "cursor-agent": "Cursor Agent",
 };
 
-// cliCommand → launch가 참조하는 바이너리 경로 override 환경변수(fleet-admiral resolveBinary와 동일).
-// claude 계열은 CLAUDE_BIN, codex는 CODEX_BIN, cursor-agent는 CURSOR_AGENT_BIN을 쓴다. opencode는 PATH로만
-// 해석한다. 이 매핑을 두지 않으면 PATH 밖 절대경로 override 사용자가 미설치로 오판돼 게이트(409)에 막힌다.
-const OVERRIDE_ENV_BY_COMMAND: Record<string, string> = {
-  claude: "CLAUDE_BIN",
-  codex: "CODEX_BIN",
-  "cursor-agent": "CURSOR_AGENT_BIN",
-};
-
 // `--version` 실행 타임아웃(ms). 미설치/무응답이어도 설정 화면 로드를 막지 않도록 짧게 잡는다.
 const VERSION_PROBE_TIMEOUT_MS = 5000;
 
@@ -53,27 +49,21 @@ export function createAgentCliDetector(deps: AgentCliDetectorDeps): AgentCliDete
   return {
     detect: async () => {
       const commands = distinctBinaryCommands();
-      return Promise.all(commands.map((command) => detectOne(command, deps)));
+      const userPaths = await (deps.readUserPaths?.() ?? Promise.resolve({}));
+      return Promise.all(commands.map((command) => detectOne(command, userPaths, deps)));
     },
   };
 }
 
-export function createDefaultAgentCliDetector(): AgentCliDetector {
+export function createDefaultAgentCliDetector(
+  readUserPaths: () => Promise<Readonly<Record<string, string>>> = async () => ({}),
+  env: NodeJS.ProcessEnv = process.env,
+): AgentCliDetector {
   return createAgentCliDetector({
-    resolve: (command) => resolveCommandWithOverride(command, process.env),
+    env,
+    readUserPaths,
     runVersion: (bin, args) => execFileVersion(bin, args),
   });
-}
-
-// launch의 resolveBinary와 동일한 우선순위(override env → PATH)로 바이너리를 해석한다. override가 설정됐지만
-// 그 경로가 실재하지 않으면 undefined(미설치)로 본다 — launch도 동일 입력에서 실패하므로 게이트 판정이 일치한다.
-function resolveCommandWithOverride(command: string, env: NodeJS.ProcessEnv): ResolvedBinary | undefined {
-  const overrideName = OVERRIDE_ENV_BY_COMMAND[command];
-  const override = overrideName ? env[overrideName] : undefined;
-  if (override && override.trim().length > 0) {
-    return resolvePathBinary(override, env);
-  }
-  return resolvePathBinary(command, env);
 }
 
 // CLI_BACKENDS를 선언 순서 그대로 cliCommand 기준 중복제거한다(claude/codex/opencode/cursor-agent).
@@ -89,12 +79,21 @@ function distinctBinaryCommands(): string[] {
   return commands;
 }
 
-async function detectOne(command: string, deps: AgentCliDetectorDeps): Promise<AgentCliStatus> {
-  const resolved = deps.resolve(command);
+async function detectOne(
+  command: string,
+  userPaths: Readonly<Record<string, string>>,
+  deps: AgentCliDetectorDeps,
+): Promise<AgentCliStatus> {
+  // legacy resolver의 undefined는 "미설치"라는 권위적 결과다. 새 기본 resolver로 폴백하면
+  // 기존 테스트/호출자의 격리된 PATH 계약을 깨므로 resolver 존재 여부로 분기한다.
+  const customResolution = deps.resolve?.(command, userPaths);
+  const resolved = deps.resolve
+    ? toResolvedBinary(customResolution)
+    : resolveAgentCliBinary({ cliCommand: command, env: deps.env ?? process.env, userPaths }).resolved;
   const available = resolved !== undefined;
   let version: string | null = null;
   if (resolved) {
-    version = await probeVersionSafe(resolved, deps);
+    version = await probeAgentCliVersion(resolved, deps.runVersion);
   }
   return {
     id: command,
@@ -104,16 +103,39 @@ async function detectOne(command: string, deps: AgentCliDetectorDeps): Promise<A
   };
 }
 
+function toResolvedBinary(
+  resolution: AgentCliBinaryResolution | ResolvedBinary | undefined,
+): ResolvedBinary | undefined {
+  if (!resolution) return undefined;
+  return "resolved" in resolution ? resolution.resolved : resolution;
+}
+
 // 버전 추출은 실패해도 throw하지 않는다(가용성 표시는 유지). Token Boundary 하드룰에 따라
 // `--version` 출력에는 설치 경로/사용자명이 섞일 수 있으므로, semver 패턴에 매칭된 값만 반환하고
 // 매칭 실패 시 raw 출력을 흘리지 않고 null로 둔다.
-async function probeVersionSafe(resolved: ResolvedBinary, deps: AgentCliDetectorDeps): Promise<string | null> {
+export async function probeAgentCliVersion(
+  resolved: ResolvedBinary,
+  runVersion: AgentCliDetectorDeps["runVersion"] = execFileVersion,
+): Promise<string | null> {
   try {
-    const output = await deps.runVersion(resolved.bin, [...resolved.prefixArgs, "--version"]);
+    const output = await runVersion(resolved.bin, [...resolved.prefixArgs, "--version"]);
     return output.match(SEMVER_PATTERN)?.[1] ?? null;
   } catch {
     return null;
   }
+}
+
+export async function validateAgentCliPathForSave(
+  executablePath: string,
+  env: NodeJS.ProcessEnv = process.env,
+  runVersion: AgentCliDetectorDeps["runVersion"] = execFileVersion,
+): Promise<{ readonly error: AgentCliPathError | null; readonly version: string | null }> {
+  const resolution = validateUserAgentCliPath(executablePath, env);
+  if (resolution.error || !resolution.resolved) {
+    return { error: resolution.error ?? "path_not_found", version: null };
+  }
+  const version = await probeAgentCliVersion(resolution.resolved, runVersion);
+  return version ? { error: null, version } : { error: "probe_failed", version: null };
 }
 
 function execFileVersion(bin: string, args: readonly string[]): Promise<string> {

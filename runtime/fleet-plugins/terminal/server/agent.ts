@@ -13,9 +13,11 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { createWorkspaceChangeScanner } from "./shared/index.js";
 import type { TerminalRuntime } from "./shared/index.js";
 
-import { createDefaultAgentCliDetector } from "./agent-api/agent-cli-detect.js";
+import { createDefaultAgentCliDetector, validateAgentCliPathForSave } from "./agent-api/agent-cli-detect.js";
 import { buildAgentCliLaunchKinds } from "./agent-api/agent-cli-launch-kinds.js";
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-api/agent-cli-launch-metadata.js";
+import { AGENT_CLI_COMMANDS, createAgentCliPathStore, createCarrierAgentCliLaunchResolver, resolveAgentCliBinary } from "./agent-api/agent-cli-paths.js";
+import type { AgentCliDiagnostics } from "./agent-api/agent-cli-types.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
 import { captureSession, readProviderSessionCapture, readProviderSessionCaptureRaw, unlinkProviderSessionCapture, writeProviderSessionCaptureRaw, type ProviderSession } from "./agent-api/session-capture.js";
@@ -82,6 +84,8 @@ export function buildAgentPlanToolRegistrations(dataDir: string) {
 
 function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
   const wikiToolSpecs = createTerminalWikiToolSpecs(ctx.host.paths.fleetDataDir);
+  const agentCliPathStore = createAgentCliPathStore(ctx.host.storage, ctx.pluginId);
+  const readAgentCliPaths = async () => (await agentCliPathStore.read()).paths;
   const runtime = createFleetAgentRuntimeLifecycle({
     authService: deps.authService,
     dataDir: ctx.host.paths.fleetDataDir,
@@ -93,11 +97,12 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     wikiToolSpecs,
     ...buildAgentPlanToolRegistrations(ctx.host.paths.fleetDataDir),
   });
+  runtime.carrierRuntime.setAgentCliLaunchResolver(createCarrierAgentCliLaunchResolver(readAgentCliPaths));
   const observability = createConsoleObservabilityStore({
     canonicalizeTheaterPath: ctx.host.paths.canonicalizeTheaterPath,
     workspaceHash: ctx.host.paths.workspaceHash,
   });
-  const detector = createDefaultAgentCliDetector();
+  const detector = createDefaultAgentCliDetector(readAgentCliPaths);
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
   const jobOriginById = new Map<string, string>();
@@ -106,6 +111,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     agentRuntime: runtime,
     dataDir: ctx.host.paths.fleetDataDir,
     infraServices: deps,
+    readAgentCliPaths,
     resolveServerBindings: (launchContext) => {
       const operationId = launchContext?.operationId;
       if (!operationId) return undefined;
@@ -221,6 +227,37 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     if (path === "/agent-cli/state") {
       if (req.method !== "GET") return methodNotAllowed(res);
       ctx.host.http.writeJson(res, 200, { clis: await detector.detect() });
+      return true;
+    }
+    if (path === "/agent-cli/diagnostics") {
+      if (req.method !== "GET") return methodNotAllowed(res);
+      if (!ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+      ctx.host.http.writeJson(res, 200, await buildAgentCliDiagnostics());
+      return true;
+    }
+    if (path === "/agent-cli/path") {
+      if (req.method !== "PUT") return methodNotAllowed(res);
+      if (!ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+      const body = await ctx.host.http.readJsonBody<{ readonly cliCommand?: unknown; readonly path?: unknown }>(req);
+      if (
+        !body
+        || typeof body.cliCommand !== "string"
+        || !AGENT_CLI_COMMANDS.includes(body.cliCommand as (typeof AGENT_CLI_COMMANDS)[number])
+        || (body.path !== null && typeof body.path !== "string")
+      ) {
+        ctx.host.http.writeJson(res, 400, { error: "path_not_absolute" });
+        return true;
+      }
+      const executablePath = body.path ?? "";
+      if (executablePath.length > 0) {
+        const validation = await validateAgentCliPathForSave(executablePath, process.env);
+        if (validation.error) {
+          ctx.host.http.writeJson(res, 400, { error: validation.error });
+          return true;
+        }
+      }
+      await agentCliPathStore.writePath(body.cliCommand, executablePath);
+      ctx.host.http.writeJson(res, 200, { ok: true });
       return true;
     }
     if (path === "/tenants") {
@@ -554,6 +591,21 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     const detected = await detector.detect();
     const authStatuses = await getAgentCliAuthStatuses(deps.authService);
     return combineAgentCliLaunchMetadata(metadata, detected, authStatuses);
+  }
+
+  async function buildAgentCliDiagnostics(): Promise<AgentCliDiagnostics> {
+    const userPaths = await readAgentCliPaths();
+    return {
+      entries: AGENT_CLI_COMMANDS.map((cliCommand) => {
+        const resolution = resolveAgentCliBinary({ cliCommand, env: process.env, userPaths });
+        return {
+          cliCommand,
+          configuredPath: userPaths[cliCommand] ?? null,
+          resolutionSource: resolution.source,
+          searchedPathEntries: resolution.searchedPathEntries,
+        };
+      }),
+    };
   }
 
   async function buildLaunchKinds(): Promise<readonly OperationLaunchKind[]> {

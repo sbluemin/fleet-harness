@@ -30,6 +30,8 @@ export interface TranscriptIndexerOptions { readonly maxReadBytes?: number; }
 export interface SessionToolOptions { readonly capturePath: string; readonly cwd: string; readonly onEvent?: (event: AnalystEvent) => void; }
 export interface AnalystSessionOptions extends SessionToolOptions {
   readonly cliId: "claude" | "claude-kimi" | "codex" | "opencode-go" | "cursor";
+  readonly cliPath?: string;
+  readonly env?: Readonly<Record<string, string>>;
   readonly model: string;
   readonly effort?: string;
   readonly language?: "en" | "ko";

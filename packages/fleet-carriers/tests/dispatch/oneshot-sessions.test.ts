@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { executeOneShot } from "@dotobokuri/core-agent";
-import type { ExecResult, OneShotExecution, OneShotReady } from "@dotobokuri/core-agent";
+import type { AgentCliLaunchResolver, ExecResult, OneShotExecution, OneShotReady } from "@dotobokuri/core-agent";
 import { getEffort, getProviderModels, type CliType, type ProtocolType } from "@dotobokuri/core-unified-agent";
 import {
   createCarrierRuntime,
@@ -186,6 +186,21 @@ describe("single dispatch context resume", () => {
     await vi.waitFor(() => expect(runtime!.dispatchContexts.size).toBe(1));
   });
 
+  it("forwards the Agent CLI launch resolver to a single Carrier execution", async () => {
+    runtime = createCarrierRuntime();
+    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
+    vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
+    const agentCliLaunchResolver = vi.fn(async (_cli: CliType, _context: Parameters<AgentCliLaunchResolver>[1]) => ({}));
+    const tool = runtime.buildDispatchToolSpec(deps);
+    runtime.setAgentCliLaunchResolver(agentCliLaunchResolver);
+
+    await tool.execute({ carrier_id: "alpha", label: "Custom CLI", request: "Run." }, { cwd: "/tmp", toolCallId: "custom-cli" });
+
+    const forwarded = vi.mocked(executeOneShot).mock.calls[0]![0].agentCliLaunchResolver;
+    await expect(forwarded?.("claude", { env: {} })).resolves.toEqual({});
+    expect(agentCliLaunchResolver).toHaveBeenCalledWith("claude", { env: {} });
+  });
+
   it("commits a mapping on a done turn and resumes it with the saved session id", async () => {
     runtime = createCarrierRuntime();
     registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
@@ -301,6 +316,28 @@ describe("single dispatch context resume", () => {
 });
 
 describe("Task Force context barrier and resume", () => {
+  it("forwards the Agent CLI launch resolver to every Task Force backend", async () => {
+    runtime = createCarrierRuntime();
+    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
+    configureTaskForce(runtime.registry, "alpha");
+    vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
+    const observedCliTypes: CliType[] = [];
+    const agentCliLaunchResolver = vi.fn(async (cli: CliType, _context: Parameters<AgentCliLaunchResolver>[1]) => {
+      observedCliTypes.push(cli);
+      return {};
+    });
+    const tool = runtime.buildDispatchToolSpec(deps);
+    runtime.setAgentCliLaunchResolver(agentCliLaunchResolver);
+
+    await tool.execute({ carrier_id: "alpha", label: "Task Force custom CLI", request: "Run." }, { cwd: "/tmp", toolCallId: "taskforce-custom-cli" });
+
+    const calls = vi.mocked(executeOneShot).mock.calls.map(([options]) => options);
+    expect(calls).toHaveLength(2);
+    await Promise.all(calls.map((options) => options.agentCliLaunchResolver?.(options.cliType, { env: {} })));
+    expect(agentCliLaunchResolver).toHaveBeenCalledTimes(2);
+    expect(observedCliTypes.sort()).toEqual(["claude", "codex"]);
+  });
+
   it("tracks and rolls back every prepared Task Force handle while readiness is pending", async () => {
     runtime = createCarrierRuntime();
     registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));

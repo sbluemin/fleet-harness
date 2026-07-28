@@ -178,6 +178,7 @@ export async function launchTaskForceJob(options: TaskForceLaunchOptions): Promi
     const handle = executeOneShot({
       scopeId: carrierId,
       authEnvResolver: deps.authEnvResolver,
+      agentCliLaunchResolver: deps.agentCliLaunchResolver,
       reservedExternalMcpServerIds: deps.reservedExternalMcpServerIds,
       cliType: cliType as CliType,
       request,
