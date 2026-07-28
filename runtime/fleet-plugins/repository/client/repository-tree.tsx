@@ -13,22 +13,28 @@ interface DiffTreeViewProps {
   readonly files: readonly DiffFileEntry[];
   readonly selectedPath: string | null;
   readonly onSelect: (entry: DiffFileEntry) => void;
+  readonly collapsedFolders?: ReadonlySet<string>;
+  readonly onToggleFolder?: (path: string) => void;
 }
 
 interface TreeCommonProps {
   readonly selectedPath: string | null;
   readonly onSelect: (entry: DiffFileEntry) => void;
+  readonly collapsedFolders?: ReadonlySet<string>;
+  readonly onToggleFolder?: (path: string) => void;
 }
 
 interface TreeChildrenProps extends TreeCommonProps {
   readonly node: TreeNode;
   readonly depth: number;
+  readonly parentPath: string;
 }
 
 interface TreeFolderProps extends TreeCommonProps {
   readonly dirKey: string;
   readonly node: TreeNode;
   readonly depth: number;
+  readonly parentPath: string;
 }
 
 interface TreeLeafProps extends TreeCommonProps {
@@ -61,21 +67,24 @@ export function buildDiffTree(files: readonly DiffFileEntry[]): TreeNode {
 
 // ─── DiffTreeView (export) ────────────────────────────────────────────────────
 
-export function DiffTreeView({ files, selectedPath, onSelect }: DiffTreeViewProps) {
+export function DiffTreeView({ files, selectedPath, onSelect, collapsedFolders, onToggleFolder }: DiffTreeViewProps) {
   const tree = buildDiffTree(files);
   return (
     <DiffTreeChildren
       node={tree}
       depth={0}
+      parentPath=""
       selectedPath={selectedPath}
       onSelect={onSelect}
+      collapsedFolders={collapsedFolders}
+      onToggleFolder={onToggleFolder}
     />
   );
 }
 
 // ─── 내부 컴포넌트 ─────────────────────────────────────────────────────────────
 
-function DiffTreeChildren({ node, depth, selectedPath, onSelect }: TreeChildrenProps) {
+function DiffTreeChildren({ node, depth, parentPath, selectedPath, onSelect, collapsedFolders, onToggleFolder }: TreeChildrenProps) {
   return (
     <>
       {Object.entries(node.dirs).map(([key, child]) => (
@@ -84,8 +93,11 @@ function DiffTreeChildren({ node, depth, selectedPath, onSelect }: TreeChildrenP
           dirKey={key}
           node={child}
           depth={depth}
+          parentPath={parentPath}
           selectedPath={selectedPath}
           onSelect={onSelect}
+          collapsedFolders={collapsedFolders}
+          onToggleFolder={onToggleFolder}
         />
       ))}
       {node.files.map((f) => (
@@ -101,10 +113,7 @@ function DiffTreeChildren({ node, depth, selectedPath, onSelect }: TreeChildrenP
   );
 }
 
-function DiffTreeFolder({ dirKey, node, depth, selectedPath, onSelect }: TreeFolderProps) {
-  const [collapsed, setCollapsed] = useState(false);
-  const handleToggle = useCallback(() => setCollapsed((c) => !c), []);
-
+function DiffTreeFolder({ dirKey, node, depth, parentPath, selectedPath, onSelect, collapsedFolders, onToggleFolder }: TreeFolderProps) {
   // VS Code 스타일: 자식 디렉터리 하나 + 파일 없음인 체인을 압축해 "a/b" 한 노드로 표시
   let label = dirKey;
   let resolvedNode = node;
@@ -113,6 +122,13 @@ function DiffTreeFolder({ dirKey, node, depth, selectedPath, onSelect }: TreeFol
     label += "/" + onlyKey;
     resolvedNode = resolvedNode.dirs[onlyKey]!;
   }
+  const path = parentPath ? `${parentPath}/${label}` : label;
+  const [localCollapsed, setLocalCollapsed] = useState(false);
+  const collapsed = collapsedFolders ? collapsedFolders.has(path) : localCollapsed;
+  const handleToggle = useCallback(() => {
+    if (onToggleFolder) onToggleFolder(path);
+    else setLocalCollapsed((value) => !value);
+  }, [onToggleFolder, path]);
 
   const indent = depth * 16 + 12;
 
@@ -137,8 +153,11 @@ function DiffTreeFolder({ dirKey, node, depth, selectedPath, onSelect }: TreeFol
         <DiffTreeChildren
           node={resolvedNode}
           depth={depth + 1}
+          parentPath={path}
           selectedPath={selectedPath}
           onSelect={onSelect}
+          collapsedFolders={collapsedFolders}
+          onToggleFolder={onToggleFolder}
         />
       )}
     </div>
