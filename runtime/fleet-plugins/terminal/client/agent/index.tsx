@@ -21,7 +21,7 @@ import "./analysis.css";
 
 import { fetchCarrierSettingsOptions } from "../carriers/api.js";
 import type { CarrierSettingsCliOption } from "../../shared/carrier-settings-types.js";
-import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
+import { createAgentSession, fetchAgentCliDiagnostics, fetchAgentCliState, resumeAgentSession, setAgentCliPath, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
 import { deriveTrackPhase, formatElapsedDuration, isTrackLive, mergeJobIds, resolveCarrierCaptain, resolveToolTone, type TrackPhase } from "./helpers.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore } from "./model-auth-store.js";
@@ -30,7 +30,7 @@ import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPrompt
 import { isTerminalJobStatus } from "./reduce.js";
 import { StreamedMarkdown } from "./streamed-markdown.js";
 import { applySessionUpdate, hydrateAgentClis, removeSession, selectSession, sessionJobs, useAgentState } from "./store.js";
-import type { AgentCliStatus, JobView, SessionInfo, TrackView } from "./types.js";
+import type { AgentCliDiagnosticsEntry, AgentCliStatus, JobView, SessionInfo, TrackView } from "./types.js";
 
 interface SettingToggleRowProps {
   readonly title: string;
@@ -775,17 +775,27 @@ function IdleAgentSessionsSettingsBlock() {
 function AgentCliSection() {
   const t = getT(useTerminalLocale());
   const [clis, setClis] = React.useState<readonly AgentCliStatus[]>([]);
+  const [diagnostics, setDiagnostics] = React.useState<readonly AgentCliDiagnosticsEntry[]>([]);
   const [error, setError] = React.useState<string | null>(null);
+
+  const refresh = React.useCallback(async (signal?: AbortSignal) => {
+    const [nextState, nextDiagnostics] = await Promise.all([
+      fetchAgentCliState(signal),
+      fetchAgentCliDiagnostics(signal),
+    ]);
+    setClis(nextState.clis);
+    setDiagnostics(nextDiagnostics.entries);
+    setError(null);
+  }, []);
 
   React.useEffect(() => {
     const abort = new AbortController();
-    void fetchAgentCliState(abort.signal)
-      .then((next) => setClis(next.clis))
+    void refresh(abort.signal)
       .catch((err) => {
         if (!abort.signal.aborted) setError(err instanceof Error ? err.message : String(err));
       });
     return () => abort.abort();
-  }, []);
+  }, [refresh]);
 
   // 카드를 Fragment로 직접 반환한다. 카드 간 간격은 호스트의 .global-settings-detail(그리드 gap)이
   // 제공하므로, 플러그인은 자체 래퍼로 감싸 그 간격을 가로채지 않는다(간격은 호스트 소관).
@@ -799,7 +809,12 @@ function AgentCliSection() {
         {error ? <p className="settings-error">{error}</p> : null}
         <div className="agent-cli-list">
           {clis.map((cli) => (
-            <AgentCliRow key={cli.id} cli={cli} />
+            <AgentCliRow
+              key={cli.id}
+              cli={cli}
+              diagnostics={diagnostics.find((entry) => entry.cliCommand === cli.id)}
+              onChanged={refresh}
+            />
           ))}
         </div>
         <p className="global-settings-foot">{t("terminal.settings.agentCliFoot")}</p>
@@ -1002,15 +1017,129 @@ function SettingToggleRow({ title, help, onLabel, offLabel, value, disabled, onT
   );
 }
 
-function AgentCliRow({ cli }: { readonly cli: AgentCliStatus }) {
+const AGENT_CLI_PATH_ERROR_KEYS = {
+  path_not_absolute: "terminal.settings.agentCliErrorNotAbsolute",
+  path_not_found: "terminal.settings.agentCliErrorNotFound",
+  path_not_executable: "terminal.settings.agentCliErrorNotExecutable",
+  path_not_file: "terminal.settings.agentCliErrorNotFile",
+  probe_failed: "terminal.settings.agentCliErrorProbeFailed",
+} as const satisfies Record<string, TerminalMessageKey>;
+
+function AgentCliRow({
+  cli,
+  diagnostics,
+  onChanged,
+}: {
+  readonly cli: AgentCliStatus;
+  readonly diagnostics?: AgentCliDiagnosticsEntry;
+  readonly onChanged: (signal?: AbortSignal) => Promise<void>;
+}) {
   const t = getT(useTerminalLocale());
+  const inputId = React.useId();
+  const [editing, setEditing] = React.useState(false);
+  const [pathValue, setPathValue] = React.useState(diagnostics?.configuredPath ?? "");
+  const [busy, setBusy] = React.useState(false);
+  const [pathError, setPathError] = React.useState<TerminalMessageKey | null>(null);
+  const envManaged = diagnostics?.resolutionSource === "env";
+  const userConfigured = diagnostics?.configuredPath !== null && diagnostics?.configuredPath !== undefined;
+  const userInvalid = userConfigured && !envManaged && (!cli.available || !cli.version || diagnostics?.resolutionSource !== "user");
+
+  React.useEffect(() => {
+    if (!editing) setPathValue(diagnostics?.configuredPath ?? "");
+  }, [diagnostics?.configuredPath, editing]);
+
+  const savePath = async (nextPath: string | null) => {
+    setBusy(true);
+    setPathError(null);
+    try {
+      await setAgentCliPath(cli.id, nextPath);
+      await onChanged();
+      setEditing(false);
+    } catch (error) {
+      const key = error instanceof Error ? AGENT_CLI_PATH_ERROR_KEYS[error.message as keyof typeof AGENT_CLI_PATH_ERROR_KEYS] : undefined;
+      setPathError(key ?? "terminal.settings.agentCliErrorProbeFailed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="agent-cli-row">
-      <span className="agent-cli-name">{cli.displayName}</span>
-      <span className="agent-cli-meta">
-        {cli.available && cli.version ? <span className="agent-cli-version">{cli.version}</span> : null}
-        <span className={`agent-cli-status ${cli.available ? "is-on" : ""}`}>{cli.available ? t("terminal.settings.available") : t("terminal.settings.missing")}</span>
-      </span>
+      <div className="agent-cli-summary">
+        <span className="agent-cli-name">{cli.displayName}</span>
+        <span className="agent-cli-meta">
+          {cli.available && cli.version ? <span className="agent-cli-version">{cli.version}</span> : null}
+          <span className={`agent-cli-status ${cli.available ? "is-on" : ""}`}>{cli.available ? t("terminal.settings.available") : t("terminal.settings.missing")}</span>
+        </span>
+      </div>
+      {envManaged ? (
+        <div className="agent-cli-path-form">
+          <span>{t("terminal.settings.agentCliSourceEnv")}</span>
+          <label htmlFor={inputId}>{t("terminal.settings.agentCliPathLabel")}</label>
+          <input
+            id={inputId}
+            className="agent-cli-path-input"
+            value={diagnostics?.configuredPath ?? ""}
+            placeholder={t("terminal.settings.agentCliPathPlaceholder")}
+            disabled
+            readOnly
+          />
+        </div>
+      ) : null}
+      {userConfigured && !envManaged ? (
+        <div className="agent-cli-path-status">
+          <span className="agent-cli-configured-path">{diagnostics.configuredPath}</span>
+          <span className={userInvalid ? "agent-cli-path-invalid" : "agent-cli-path-source"}>
+            {t(userInvalid ? "terminal.settings.agentCliPathInvalid" : "terminal.settings.agentCliSourceUser")}
+          </span>
+          <button type="button" className="agent-cli-path-button" disabled={busy} onClick={() => { void savePath(null); }}>
+            {t("terminal.settings.agentCliPathClear")}
+          </button>
+        </div>
+      ) : null}
+      {!envManaged && editing ? (
+        <form
+          className="agent-cli-path-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void savePath(pathValue);
+          }}
+        >
+          <label htmlFor={inputId}>{t("terminal.settings.agentCliPathLabel")}</label>
+          <input
+            id={inputId}
+            className="agent-cli-path-input"
+            value={pathValue}
+            placeholder={t("terminal.settings.agentCliPathPlaceholder")}
+            disabled={busy}
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(event) => setPathValue(event.target.value)}
+          />
+          <div className="agent-cli-path-actions">
+            <button type="submit" className="agent-cli-path-button is-primary" disabled={busy || pathValue.trim().length === 0}>
+              {t("terminal.settings.agentCliPathConfirm")}
+            </button>
+            <button type="button" className="agent-cli-path-button" disabled={busy} onClick={() => { setEditing(false); setPathError(null); }}>
+              {t("terminal.settings.agentCliPathCancel")}
+            </button>
+          </div>
+        </form>
+      ) : null}
+      {!envManaged && !editing && !userConfigured && !cli.available ? (
+        <button type="button" className="agent-cli-path-button" onClick={() => setEditing(true)}>
+          {t("terminal.settings.agentCliSetPath")}
+        </button>
+      ) : null}
+      {pathError ? <p className="agent-cli-path-error" role="alert">{t(pathError)}</p> : null}
+      {diagnostics && diagnostics.searchedPathEntries.length > 0 ? (
+        <details className="agent-cli-searched-paths">
+          <summary>{t("terminal.settings.agentCliSearchedPaths")}</summary>
+          <ul>
+            {diagnostics.searchedPathEntries.map((entry, index) => <li key={`${index}:${entry}`}>{entry}</li>)}
+          </ul>
+        </details>
+      ) : null}
     </div>
   );
 }

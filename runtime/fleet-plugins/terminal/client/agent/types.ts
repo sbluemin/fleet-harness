@@ -22,6 +22,17 @@ export interface AgentCliState {
   readonly clis: readonly AgentCliStatus[];
 }
 
+export interface AgentCliDiagnosticsEntry {
+  readonly cliCommand: string;
+  readonly configuredPath: string | null;
+  readonly resolutionSource: "env" | "user" | "path" | null;
+  readonly searchedPathEntries: readonly string[];
+}
+
+export interface AgentCliDiagnostics {
+  readonly entries: readonly AgentCliDiagnosticsEntry[];
+}
+
 export interface AgentCliMetadata {
   readonly id: string;
   readonly label: string;
