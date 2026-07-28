@@ -386,7 +386,10 @@
   pointer-events: auto;
   /* 첫 프레임에 좌표를 재기 전까지는 숨긴다 — 이후 추적 루프가 인라인으로 되살린다. */
   visibility: hidden;
-  max-width: min(320px, calc(100vw - var(--space-4)));
+  display: grid;
+  max-width: min(360px, calc(100vw - var(--space-6)));
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
   padding: var(--space-2) var(--space-3);
   overflow: hidden;
   border: 1px solid color-mix(in oklch, var(--positive) 50%, var(--hairline));
@@ -400,9 +403,29 @@
   font-weight: var(--weight-medium);
   line-height: 1.35;
   text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   animation: scuttlebutt-arrival-in var(--duration-base) var(--ease-spring);
+}
+
+.scuttlebutt-arrival-label {
+  color: color-mix(in oklch, var(--positive) 72%, var(--text-secondary));
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+/* 제목은 길이 상한이 없다 — 두 줄까지 흘리고 그 아래만 자른다.
+   "완료"라는 사실은 위 라벨이 고정으로 들고 있으므로 잘려도 소식은 남는다. */
+.scuttlebutt-arrival-detail {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .scuttlebutt-arrival-bubble:focus-visible {
