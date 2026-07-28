@@ -333,66 +333,33 @@ function foldPaletteLabel(label: string): {
   readonly foldMap: readonly number[];
 } {
   const foldedLabel = label.toLocaleLowerCase();
+  if (label.length > 2_000) {
+    return { foldedLabel, foldMap: buildPerCharacterFoldMap(label) };
+  }
+
   const foldMap: number[] = [];
-  let cursor = 0;
-  for (
-    let originalIndex = 0;
-    originalIndex < label.length && cursor < foldedLabel.length;
-    originalIndex += 1
-  ) {
-    const foldedCharacter = label[originalIndex]!.toLocaleLowerCase();
-    if (foldedLabel.startsWith(foldedCharacter, cursor)) {
-      for (let foldedOffset = 0; foldedOffset < foldedCharacter.length; foldedOffset += 1) {
-        foldMap.push(originalIndex);
-      }
-      cursor += foldedCharacter.length;
-      continue;
+  let previousPrefixLength = 0;
+  for (let originalIndex = 0; originalIndex < label.length; originalIndex += 1) {
+    const nextPrefixLength = label.slice(0, originalIndex + 1).toLocaleLowerCase().length;
+    for (let foldedIndex = previousPrefixLength; foldedIndex < nextPrefixLength; foldedIndex += 1) {
+      foldMap.push(originalIndex);
     }
-    if (
-      originalIndex > 0
-      && cursor + 1 < foldedLabel.length
-      && foldedLabel.startsWith(foldedCharacter, cursor + 1)
-    ) {
-      foldMap.push(originalIndex - 1);
-      cursor += 1;
-      if (foldedLabel.startsWith(foldedCharacter, cursor)) {
-        for (let foldedOffset = 0; foldedOffset < foldedCharacter.length; foldedOffset += 1) {
-          foldMap.push(originalIndex);
-        }
-        cursor += foldedCharacter.length;
-        continue;
-      }
-    }
-    let resynchronized = false;
-    for (
-      let additionalCharacters = 1;
-      additionalCharacters <= 4 && originalIndex + 1 + additionalCharacters <= label.length;
-      additionalCharacters += 1
-    ) {
-      const foldedSpan = label
-        .slice(originalIndex, originalIndex + 1 + additionalCharacters)
-        .toLocaleLowerCase();
-      if (!foldedLabel.startsWith(foldedSpan, cursor)) continue;
-      for (let foldedOffset = 0; foldedOffset < foldedSpan.length; foldedOffset += 1) {
-        foldMap.push(originalIndex + foldedOffset);
-      }
-      cursor += foldedSpan.length;
-      originalIndex += additionalCharacters;
-      resynchronized = true;
-      break;
-    }
-    if (resynchronized) continue;
-    foldMap.push(originalIndex);
-    cursor += 1;
+    previousPrefixLength = nextPrefixLength;
   }
-  if (label.length > 0) {
-    const lastOriginalIndex = label.length - 1;
-    while (cursor < foldedLabel.length) {
-      foldMap.push(lastOriginalIndex);
-      cursor += 1;
+  return foldMap.length === foldedLabel.length
+    ? { foldedLabel, foldMap }
+    : { foldedLabel, foldMap: buildPerCharacterFoldMap(label) };
+}
+
+function buildPerCharacterFoldMap(label: string): readonly number[] {
+  const foldMap: number[] = [];
+  for (let originalIndex = 0; originalIndex < label.length; originalIndex += 1) {
+    const foldedLength = label[originalIndex]!.toLocaleLowerCase().length;
+    for (let foldedOffset = 0; foldedOffset < foldedLength; foldedOffset += 1) {
+      foldMap.push(originalIndex);
     }
   }
-  return { foldedLabel, foldMap };
+  return foldMap;
 }
 
 function findBestExactStart(

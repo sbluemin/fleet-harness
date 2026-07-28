@@ -361,6 +361,8 @@ describe("filterPaletteCommands", () => {
       const value = String(this);
       if (locales === undefined) {
         if (value === "ÍXY") return "i̇́xy";
+        if (value === "ÍX") return "i̇́x";
+        if (value === "Í") return "i̇́";
         if (value === "I") return "i";
         if (value === "́") return "́";
         if (value === "X") return "x";
@@ -376,6 +378,43 @@ describe("filterPaletteCommands", () => {
       const yMatch = fuzzyMatchPaletteLabel(label, "y");
       expect(xMatch?.matchedIndices).toEqual([2]);
       expect(yMatch?.matchedIndices).toEqual([3]);
+      const matchedIndices = [
+        ...(xMatch?.matchedIndices ?? []),
+        ...(yMatch?.matchedIndices ?? []),
+      ];
+      expect(matchedIndices.filter((index) => index < 0 || index >= label.length)).toEqual([]);
+    } finally {
+      lowerCaseSpy.mockRestore();
+    }
+  });
+
+  it("maps contraction spans beyond a fixed lookahead without shifting following original indices", () => {
+    const originalToLocaleLowerCase = String.prototype.toLocaleLowerCase;
+    const lowerCaseSpy = vi.spyOn(String.prototype, "toLocaleLowerCase").mockImplementation(function (
+      this: string,
+      locales?: string | string[],
+    ): string {
+      const value = String(this);
+      if (locales === undefined) {
+        if (value === "Ị̣̣̣̇XY") return "ị̣̣̣xy";
+        if (value === "Ị̣̣̣̇X") return "ị̣̣̣x";
+        if (value === "Ị̣̣̣̇") return "ị̣̣̣";
+        if (value === "I") return "ı";
+        if (value === "̣") return "̣";
+        if (value === "̇") return "̇";
+        if (value === "X") return "x";
+        if (value === "Y") return "y";
+      }
+      return locales === undefined
+        ? originalToLocaleLowerCase.call(value)
+        : originalToLocaleLowerCase.call(value, locales);
+    });
+    try {
+      const label = "Ị̣̣̣̇XY";
+      const xMatch = fuzzyMatchPaletteLabel(label, "x");
+      const yMatch = fuzzyMatchPaletteLabel(label, "y");
+      expect(xMatch?.matchedIndices).toEqual([6]);
+      expect(yMatch?.matchedIndices).toEqual([7]);
       const matchedIndices = [
         ...(xMatch?.matchedIndices ?? []),
         ...(yMatch?.matchedIndices ?? []),
