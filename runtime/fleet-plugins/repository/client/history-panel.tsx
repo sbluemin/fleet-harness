@@ -8,7 +8,7 @@ import { FileRow } from "./changed-files.js";
 import { DiffTreeView } from "./repository-tree.js";
 import { GraphGutter, ROW_HEIGHT } from "./graph-gutter.js";
 import { layoutGraph, type GraphLayout, type GraphNode } from "./graph-layout.js";
-import { dropHistoryCache, readHistoryCache, writeHistoryCache } from "./history-cache.js";
+import { dropHistoryCache, readHistoryCache, writeHistoryCache, type HistoryCacheEntry } from "./history-cache.js";
 import { HunkView } from "./hunk-view.js";
 import { getT, localeTag, type RepositoryMessageKey } from "./i18n/index.js";
 import { formatCommitTime, refBadges } from "./log-parse.js";
@@ -23,6 +23,23 @@ type LoadState = { readonly kind: "loading" } | HistoryOkState | { readonly kind
 type CommitTarget = { readonly fullHash: string; readonly entry?: LogCommitEntry };
 type InspectorState = { readonly kind: "loading" } | { readonly kind: "ok"; readonly result: CommitResult } | { readonly kind: "error"; readonly message: string };
 type FilesViewMode = "list" | "tree";
+type HistoryCacheRestore = { readonly state: HistoryOkState; readonly target: CommitTarget | null; readonly filterText: string; readonly scrollTop: number };
+
+function readHistoryCacheRestore(historyCacheKey: string, pendingSearchTargetHash: string | null): HistoryCacheRestore | null {
+  const entry = readHistoryCache(historyCacheKey);
+  if (!entry || (pendingSearchTargetHash && !entry.commits.some((commit) => commit.fullHash === pendingSearchTargetHash))) return null;
+  return buildHistoryCacheRestore(entry);
+}
+
+function buildHistoryCacheRestore(entry: HistoryCacheEntry): HistoryCacheRestore {
+  const targetEntry = entry.targetHash ? entry.commits.find((commit) => commit.fullHash === entry.targetHash) : undefined;
+  return {
+    state: { kind: "ok", commits: entry.commits, checkouts: entry.checkouts, hasMore: entry.hasMore, truncated: entry.truncated },
+    target: entry.targetHash ? { fullHash: entry.targetHash, entry: targetEntry } : null,
+    filterText: entry.filterText,
+    scrollTop: entry.scrollTop,
+  };
+}
 
 export interface HistoryLoadGeneration {
   readonly theaterId: string | null | undefined;
@@ -208,17 +225,16 @@ export function HistoryPanel({ ctx, repoRel, cacheScope = `${ctx.theaterId ?? ""
 function HistoryPanelBody({ ctx, repoRel, cacheScope, active, refFilter, wipFiles, workspace, workspaceMain, workspaceMainVisible, onInspectorOpenChange, onClearRef, onWip }: Required<Pick<HistoryPanelProps, "active" | "cacheScope" | "ctx" | "refFilter" | "repoRel" | "wipFiles" | "workspace" | "workspaceMainVisible">> & Pick<HistoryPanelProps, "workspaceMain" | "onInspectorOpenChange" | "onClearRef" | "onWip">) {
   const t = getT(ctx.language);
   const historyCacheKey = `${cacheScope}::${refFilter ?? ""}`;
-  const [initialCache] = useState(() => readHistoryCache(historyCacheKey));
-  const [state, setState] = useState<LoadState>(() => initialCache ? { kind: "ok", commits: initialCache.commits, checkouts: initialCache.checkouts, hasMore: initialCache.hasMore, truncated: initialCache.truncated } : { kind: "loading" });
-  const [target, setTarget] = useState<CommitTarget | null>(() => {
-    if (!initialCache?.targetHash) return null;
-    return { fullHash: initialCache.targetHash, entry: initialCache.commits.find((commit) => commit.fullHash === initialCache.targetHash) };
-  });
-  const [filterText, setFilterText] = useState(initialCache?.filterText ?? "");
+  const searchTarget = useRepositorySearchTarget();
+  const pendingSearchTargetHash = searchTarget?.theaterId === ctx.theaterId && searchTarget.repoRel === repoRel ? searchTarget.fullHash : null;
+  const [initialRestore] = useState(() => readHistoryCacheRestore(historyCacheKey, pendingSearchTargetHash));
+  const [state, setState] = useState<LoadState>(initialRestore?.state ?? { kind: "loading" });
+  const [target, setTarget] = useState<CommitTarget | null>(initialRestore?.target ?? null);
+  const [filterText, setFilterText] = useState(initialRestore?.filterText ?? "");
   const [refreshToken, setRefreshToken] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
-  const [commitViewport, setCommitViewport] = useState({ scrollTop: initialCache?.scrollTop ?? 0, height: 0 });
+  const [commitViewport, setCommitViewport] = useState({ scrollTop: initialRestore?.scrollTop ?? 0, height: 0 });
   const [logHeight, setLogHeight] = useState(readLogPaneHeight);
   const [dockHeight, setDockHeight] = useState(readWorkspaceDockHeight);
   const [isDragging, setIsDragging] = useState(false);
@@ -226,16 +242,16 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, active, refFilter, wipFile
   const listRef = useRef<HTMLDivElement>(null);
   const commitWindowRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
-  const revealKeyRef = useRef<string | null>(initialCache?.targetHash ? `${initialCache.targetHash}\x00${initialCache.filterText}` : null);
+  const revealKeyRef = useRef<string | null>(initialRestore?.target ? `${initialRestore.target.fullHash}\x00${initialRestore.filterText}` : null);
   const pendingRevealRef = useRef<string | null>(null);
   const loadingMoreRef = useRef(false);
-  const loadedCacheKeyRef = useRef<string | null>(initialCache ? historyCacheKey : null);
-  const stateCacheKeyRef = useRef<string | null>(initialCache ? historyCacheKey : null);
-  const restoredScrollTopRef = useRef<number | null>(initialCache?.scrollTop ?? null);
-  const scrollTopRef = useRef(initialCache?.scrollTop ?? 0);
+  const loadedCacheKeyRef = useRef<string | null>(initialRestore ? historyCacheKey : null);
+  const loadedCommitsRef = useRef<readonly LogCommitEntry[] | null>(initialRestore?.state.commits ?? null);
+  const stateCacheKeyRef = useRef<string | null>(initialRestore ? historyCacheKey : null);
+  const restoredScrollTopRef = useRef<number | null>(initialRestore?.scrollTop ?? null);
+  const scrollTopRef = useRef(initialRestore?.scrollTop ?? 0);
   const previousFilterTextRef = useRef(filterText);
   const previousRefFilterRef = useRef(refFilter);
-  const searchTarget = useRepositorySearchTarget();
   const dragDisposeRef = useRef<(() => void) | null>(null);
   const logHeightRef = useRef(logHeight);
   const dockHeightRef = useRef(dockHeight);
@@ -329,11 +345,39 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, active, refFilter, wipFile
   useEffect(() => { if (active) setEverActive(true); }, [active]);
   useEffect(() => {
     if (!everActive) return;
-    if (loadedCacheKeyRef.current === historyCacheKey && refreshToken === 0) return;
+    if (
+      loadedCacheKeyRef.current === historyCacheKey
+      && refreshToken === 0
+      && (!pendingSearchTargetHash || loadedCommitsRef.current?.some((commit) => commit.fullHash === pendingSearchTargetHash))
+    ) return;
+    if (refreshToken === 0) {
+      const restored = readHistoryCacheRestore(historyCacheKey, pendingSearchTargetHash);
+      if (restored) {
+        loadedCacheKeyRef.current = historyCacheKey;
+        loadedCommitsRef.current = restored.state.commits;
+        stateCacheKeyRef.current = historyCacheKey;
+        restoredScrollTopRef.current = restored.scrollTop;
+        scrollTopRef.current = restored.scrollTop;
+        previousFilterTextRef.current = restored.filterText;
+        revealKeyRef.current = restored.target ? `${restored.target.fullHash}\x00${restored.filterText}` : null;
+        pendingRevealRef.current = null;
+        loadingMoreRef.current = false;
+        setState(restored.state);
+        setTarget(restored.target);
+        setFilterText(restored.filterText);
+        setCommitViewport({ scrollTop: restored.scrollTop, height: 0 });
+        setLoadingMore(false);
+        setLoadMoreError(null);
+        return;
+      }
+    }
     loadedCacheKeyRef.current = null;
+    loadedCommitsRef.current = null;
     stateCacheKeyRef.current = null;
     if (refreshToken > 0) dropHistoryCache(historyCacheKey);
     if (!ctx.theaterId) {
+      loadedCacheKeyRef.current = historyCacheKey;
+      loadedCommitsRef.current = [];
       stateCacheKeyRef.current = historyCacheKey;
       setState({ kind: "ok", commits: [], checkouts: [], hasMore: false, truncated: false });
       return;
@@ -348,6 +392,8 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, active, refFilter, wipFile
       return response.json() as Promise<LogResult>;
     }).then((data) => {
       if (!cancelled) {
+        loadedCacheKeyRef.current = historyCacheKey;
+        loadedCommitsRef.current = data.commits;
         stateCacheKeyRef.current = historyCacheKey;
         setState({ kind: "ok", commits: data.commits, checkouts: data.checkouts, hasMore: data.hasMore, truncated: data.truncated ?? false });
       }
@@ -355,7 +401,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, active, refFilter, wipFile
       if (!cancelled) setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" });
     });
     return () => { cancelled = true; };
-  }, [ctx.api, ctx.theaterId, everActive, historyCacheKey, refreshToken, refFilter, repoRel]);
+  }, [ctx.api, ctx.theaterId, everActive, historyCacheKey, pendingSearchTargetHash, refreshToken, refFilter, repoRel]);
   useEffect(() => {
     if (state.kind !== "ok" || stateCacheKeyRef.current !== historyCacheKey) return;
     const list = listRef.current;
@@ -447,7 +493,10 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, active, refFilter, wipFile
       setState((current) => {
         if (current.kind !== "ok") return current;
         const next = appendHistoryPage(current, data, requestGeneration, generationRef.current);
-        if (next) stateCacheKeyRef.current = historyCacheKey;
+        if (next) {
+          loadedCommitsRef.current = next.commits;
+          stateCacheKeyRef.current = historyCacheKey;
+        }
         return next ?? current;
       });
     }).catch((error: unknown) => {
