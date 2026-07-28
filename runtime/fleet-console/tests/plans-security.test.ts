@@ -71,6 +71,68 @@ describe("Plans handlers — security", () => {
     expect(responses).toEqual([{ status: 403, body: { error: "unsafe_path" } }]);
   });
 
+  it("deletes a conforming workspace Plan", async () => {
+    const filePath = path.join(workspacePlansPath(theaterPath), "delete-me.md");
+    await fs.promises.writeFile(filePath, "# Delete me");
+    const { ctx, responses } = createContext({ theaterId: "theater", name: "delete-me.md" }, () => theaterPath);
+
+    await handlePlansDelete({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
+
+    expect(responses).toEqual([{ status: 200, body: { deleted: true } }]);
+    await expect(fs.promises.stat(filePath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("rejects traversal-shaped and pattern-invalid delete names and preserves the files", async () => {
+    const plansPath = workspacePlansPath(theaterPath);
+    for (const name of ["delete..keep.md", "bad name.md"]) {
+      const filePath = path.join(plansPath, name);
+      await fs.promises.writeFile(filePath, "# Keep me");
+      const { ctx, responses } = createContext({ theaterId: "theater", name }, () => theaterPath);
+
+      await handlePlansDelete({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
+
+      expect(responses).toEqual([{ status: 400, body: { error: "invalid_name" } }]);
+      await expect(fs.promises.readFile(filePath, "utf8")).resolves.toBe("# Keep me");
+    }
+  });
+
+  it("refuses to delete a symlinked Plan and preserves its target", async () => {
+    const plansPath = workspacePlansPath(theaterPath);
+    const targetPath = path.join(tmpDir, "delete-target.md");
+    await fs.promises.writeFile(targetPath, "# Keep target");
+    await fs.promises.symlink(targetPath, path.join(plansPath, "delete-link.md"));
+    const { ctx, responses } = createContext({ theaterId: "theater", name: "delete-link.md" }, () => theaterPath);
+
+    await handlePlansDelete({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
+
+    expect(responses).toEqual([{ status: 403, body: { error: "unsafe_path" } }]);
+    await expect(fs.promises.readFile(targetPath, "utf8")).resolves.toBe("# Keep target");
+  });
+
+  it("allows only POST for Plan deletion", async () => {
+    const { ctx, responses } = createContext({ theaterId: "theater", name: "good.md" }, () => theaterPath);
+
+    await handlePlansDelete({ method: "GET" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
+
+    expect(responses).toEqual([{ status: 405, body: { error: "Method not allowed" } }]);
+  });
+
+  it("rejects legacy relPath input for Plan deletion", async () => {
+    const { ctx, responses } = createContext({ theaterId: "theater", name: "good.md", relPath: null }, () => theaterPath);
+
+    await handlePlansDelete({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
+
+    expect(responses).toEqual([{ status: 400, body: { error: "invalid_request" } }]);
+  });
+
+  it("returns 404 when deleting a missing Plan", async () => {
+    const { ctx, responses } = createContext({ theaterId: "theater", name: "missing-delete.md" }, () => theaterPath);
+
+    await handlePlansDelete({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
+
+    expect(responses).toEqual([{ status: 404, body: { error: "not_found" } }]);
+  });
+
   it("lists an oversized plan without parsing its body", async () => {
     const plansPath = workspacePlansPath(theaterPath);
     const oversizedPath = path.join(plansPath, "huge.md");
@@ -304,4 +366,8 @@ async function handlePlansRead(req: http.IncomingMessage, res: http.ServerRespon
 
 async function handlePlansSearch(req: http.IncomingMessage, res: http.ServerResponse, ctx: PlansTestContext): Promise<void> {
   await ctx.router({ req, res, pathname: "/api/v1/plans/search" });
+}
+
+async function handlePlansDelete(req: http.IncomingMessage, res: http.ServerResponse, ctx: PlansTestContext): Promise<void> {
+  await ctx.router({ req, res, pathname: "/api/v1/plans/delete" });
 }

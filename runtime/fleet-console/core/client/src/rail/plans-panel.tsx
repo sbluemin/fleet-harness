@@ -6,7 +6,7 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import "@fleet-console/markdown/styles.css";
-import { fetchPlanRead, fetchPlansList, fetchPlansSearch, type PlanListItem, type PlanReadResult } from "../api.js";
+import { deletePlan, fetchPlanRead, fetchPlansList, fetchPlansSearch, type PlanListItem, type PlanReadResult } from "../api.js";
 import { diagramHydratorLabels, getT, markdownCopyOptions, useT, type CoreMessageKey } from "../i18n/index.js";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import "./plans.css";
@@ -15,10 +15,15 @@ import { subscribeToPlanChanges } from "./plans-events.js";
 import { activatePlansSearchTarget, consumePlansSearchTarget, type PlansSearchTarget, usePlansSearchTarget } from "./plans-search-navigation.js";
 
 interface PlansListProps {
+  readonly armedDeleteName: string | null;
   readonly revealTarget: PlansSearchTarget | null;
   readonly selectedName: string | null;
   readonly state: PlansListState;
+  readonly theaterId: string | null;
   readonly language: ConsoleLocale;
+  readonly onArmDelete: (name: string) => void;
+  readonly onDeleteSuccess: (name: string) => void;
+  readonly onDisarmDelete: () => void;
   readonly onRetry: () => void;
   readonly onRevealHandled: (target: PlansSearchTarget) => void;
   readonly onSelect: (name: string) => void;
@@ -64,6 +69,7 @@ type PlanReaderState =
   | { readonly kind: "error" };
 
 const PLANS_EXTRA_WIDTH = 360;
+const PLAN_DELETE_ARM_DURATION_MS = 1_500;
 
 export const plansPanel: RailPanelDescriptor = {
   id: "plans",
@@ -96,6 +102,7 @@ function PlansPanelBody(ctx: RailPanelContext) {
   const [selectedPlan, setSelectedPlan] = useState<{ readonly theaterId: string; readonly name: string } | null>(null);
   const [listRetry, setListRetry] = useState(0);
   const [readerRetry, setReaderRetry] = useState(0);
+  const [armedDeleteName, setArmedDeleteName] = useState<string | null>(null);
   const [pulsedNames, setPulsedNames] = useState<ReadonlySet<string>>(() => new Set());
   const [revealTarget, setRevealTarget] = useState<PlansSearchTarget | null>(null);
   const searchTarget = usePlansSearchTarget();
@@ -113,7 +120,9 @@ function PlansPanelBody(ctx: RailPanelContext) {
   // 수동 REFRESH에서 세팅 — 다음 목록 조회 실패를 background로 삼키지 않고 error로 표면화한다.
   const listSurfaceFailureRef = useRef(false);
   const selectedNameRef = useRef<string | null>(null);
+  const armedNameRef = useRef<string | null>(null);
   const pulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deleteArmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedName = selectedPlan?.theaterId === theaterId ? selectedPlan.name : null;
 
   useEffect(() => {
@@ -125,6 +134,27 @@ function PlansPanelBody(ctx: RailPanelContext) {
   useEffect(() => {
     selectedNameRef.current = selectedName;
   }, [selectedName]);
+
+  const clearDeleteArmTimer = useCallback(() => {
+    if (deleteArmTimerRef.current === null) return;
+    clearTimeout(deleteArmTimerRef.current);
+    deleteArmTimerRef.current = null;
+  }, []);
+  const disarmDelete = useCallback(() => {
+    clearDeleteArmTimer();
+    armedNameRef.current = null;
+    setArmedDeleteName(null);
+  }, [clearDeleteArmTimer]);
+  const armDelete = useCallback((name: string) => {
+    clearDeleteArmTimer();
+    armedNameRef.current = name;
+    setArmedDeleteName(name);
+    deleteArmTimerRef.current = setTimeout(() => {
+      deleteArmTimerRef.current = null;
+      armedNameRef.current = null;
+      setArmedDeleteName(null);
+    }, PLAN_DELETE_ARM_DURATION_MS);
+  }, [clearDeleteArmTimer]);
 
   useEffect(() => {
     const requestId = ++listRequestRef.current;
@@ -153,6 +183,8 @@ function PlansPanelBody(ctx: RailPanelContext) {
       }
       listSignaturesRef.current = nextSignatures;
       setListState({ kind: "ready", plans: result.plans });
+      const currentArmedName = armedNameRef.current;
+      if (currentArmedName && !nextSignatures.has(currentArmedName)) disarmDelete();
       // 목록 갱신 완료 시점의 현재 선택(effect 시작 시점 클로저가 아닌)과 reader 반영분을 비교한다.
       const currentSelection = selectedNameRef.current;
       if (currentSelection) {
@@ -169,7 +201,7 @@ function PlansPanelBody(ctx: RailPanelContext) {
     }).catch(() => {
       if (requestId === listRequestRef.current && (!isBackgroundRevalidation || surfaceFailure)) setListState({ kind: "error" });
     });
-  }, [theaterId, listRetry]);
+  }, [disarmDelete, theaterId, listRetry]);
 
   useEffect(() => {
     const requestId = ++readerRequestRef.current;
@@ -219,6 +251,8 @@ function PlansPanelBody(ctx: RailPanelContext) {
     if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
   }, []);
 
+  useEffect(() => clearDeleteArmTimer, [clearDeleteArmTimer]);
+
   useLayoutEffect(() => {
     requestExtraWidth?.(selectedName ? PLANS_EXTRA_WIDTH : null);
     return () => requestExtraWidth?.(null);
@@ -246,19 +280,34 @@ function PlansPanelBody(ctx: RailPanelContext) {
   }, []);
   const retryList = refreshPlans;
   const retryReader = useCallback(() => setReaderRetry((attempt) => attempt + 1), []);
+  const handleDeleteSuccess = useCallback((name: string) => {
+    if (selectedNameRef.current === name) handleClose();
+    refreshPlans();
+  }, [handleClose, refreshPlans]);
 
   return (
     <div className="plans-panel-shell">
       <div className={`plans-root${selectedName ? " is-reader-open" : ""}`} onKeyDown={(event) => {
-        if (event.key === "Escape" && selectedName) handleClose();
+        if (event.key !== "Escape") return;
+        if (armedDeleteName) {
+          event.preventDefault();
+          disarmDelete();
+          return;
+        }
+        if (selectedName) handleClose();
       }}>
         {selectedName && <PlanReader state={readerState} language={language} onClose={handleClose} onRetry={retryReader} />}
         {selectedName && <div className="plans-divider" aria-hidden="true" />}
         <PlansList
+          armedDeleteName={armedDeleteName}
           revealTarget={revealTarget}
           selectedName={selectedName}
           state={listState}
+          theaterId={theaterId}
           language={language}
+          onArmDelete={armDelete}
+          onDeleteSuccess={handleDeleteSuccess}
+          onDisarmDelete={disarmDelete}
           onRetry={retryList}
           onRevealHandled={handleRevealHandled}
           onSelect={handleSelect}
@@ -269,12 +318,29 @@ function PlansPanelBody(ctx: RailPanelContext) {
   );
 }
 
-function PlansList({ revealTarget, selectedName, state, language, onRetry, onRevealHandled, onSelect, pulsedNames }: PlansListProps) {
+function PlansList({
+  armedDeleteName,
+  revealTarget,
+  selectedName,
+  state,
+  theaterId,
+  language,
+  onArmDelete,
+  onDeleteSuccess,
+  onDisarmDelete,
+  onRetry,
+  onRevealHandled,
+  onSelect,
+  pulsedNames,
+}: PlansListProps) {
   const t = useT();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<PlanStatusFilter>("all");
   const [copiedName, setCopiedName] = useState<string | null>(null);
+  const [deleteInFlightKeys, setDeleteInFlightKeys] = useState<ReadonlySet<string>>(() => new Set());
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
+  const deleteRefs = useRef(new Map<string, HTMLButtonElement>());
+  const deleteInFlightRef = useRef<ReadonlySet<string>>(new Set());
   useLayoutEffect(() => {
     if (!revealTarget || state.kind === "loading") return;
     if (state.kind !== "ready") {
@@ -318,11 +384,42 @@ function PlansList({ revealTarget, selectedName, state, language, onRetry, onRev
     const nextIndex = (index + direction + visiblePlans.length) % visiblePlans.length;
     rowRefs.current.get(visiblePlans[nextIndex]?.name ?? "")?.focus();
   };
-  const handleRowKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+  const handleRowKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number, name: string) => {
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       moveFocus(index, event.key === "ArrowDown" ? 1 : -1);
+    } else if (event.key === "Delete") {
+      event.preventDefault();
+      if (theaterId && deleteInFlightRef.current.has(`${theaterId}\0${name}`)) return;
+      onArmDelete(name);
+      deleteRefs.current.get(name)?.focus();
     }
+  };
+  const deletePlanFile = (event: React.MouseEvent<HTMLButtonElement>, name: string) => {
+    event.stopPropagation();
+    const deleteKey = theaterId ? `${theaterId}\0${name}` : null;
+    if (deleteKey && deleteInFlightRef.current.has(deleteKey)) return;
+    if (armedDeleteName !== name) {
+      onArmDelete(name);
+      return;
+    }
+    onDisarmDelete();
+    if (!theaterId || !deleteKey) return;
+    const nextInFlight = new Set(deleteInFlightRef.current);
+    nextInFlight.add(deleteKey);
+    deleteInFlightRef.current = nextInFlight;
+    setDeleteInFlightKeys(nextInFlight);
+    void deletePlan(theaterId, name).then(() => {
+      onDeleteSuccess(name);
+    }).catch(() => {
+      onDisarmDelete();
+      onRetry();
+    }).finally(() => {
+      const remainingInFlight = new Set(deleteInFlightRef.current);
+      remainingInFlight.delete(deleteKey);
+      deleteInFlightRef.current = remainingInFlight;
+      setDeleteInFlightKeys(remainingInFlight);
+    });
   };
   const copyPlanPath = (event: React.MouseEvent<HTMLButtonElement>, name: string) => {
     event.stopPropagation();
@@ -354,18 +451,40 @@ function PlansList({ revealTarget, selectedName, state, language, onRetry, onRev
         {visiblePlans.map((plan, index) => {
           const progress = getProgressPercent(plan.tasksDone, plan.tasksTotal);
           const isComplete = progress === 100;
+          const isDeleteInFlight = theaterId ? deleteInFlightKeys.has(`${theaterId}\0${plan.name}`) : false;
           return (
             <div
               key={plan.name}
               className={`plans-row${selectedName === plan.name ? " is-selected" : ""}${pulsedNames.has(plan.name) ? " is-pulsing" : ""}`}
+              // 터치/펜 포인터는 탭 직후 pointerleave가 발생해 첫 탭의 ARM이 즉시 풀린다 —
+              // hover가 지속되는 마우스 포인터에서만 이탈 해제를 적용한다.
+              onPointerLeave={(event) => {
+                if (event.pointerType === "mouse" && armedDeleteName === plan.name) onDisarmDelete();
+              }}
             >
-              <button ref={(node) => { if (node) rowRefs.current.set(plan.name, node); else rowRefs.current.delete(plan.name); }} type="button" className="plans-row-select" onClick={() => onSelect(plan.name)} onKeyDown={(event) => handleRowKeyDown(event, index)}>
+              <button ref={(node) => { if (node) rowRefs.current.set(plan.name, node); else rowRefs.current.delete(plan.name); }} type="button" className="plans-row-select" onClick={() => onSelect(plan.name)} onKeyDown={(event) => handleRowKeyDown(event, index, plan.name)}>
                 <span className="plans-row-name">{plan.name}</span>
                 <span className="plans-row-meta">
                   {t("rail.plans.rowMeta", { waves: plan.waveCount, done: plan.tasksDone, total: plan.tasksTotal, relative: formatRelativeTime(plan.updatedAt, language) })}
                   {plan.executionMode === "parallel" ? t("rail.plans.rowMetaParallel") : ""}
                 </span>
                 {progress !== null && <span className="plans-progress-track" aria-label={t("rail.plans.progressAria", { progress })}><span className={`plans-progress-fill${isComplete ? " is-complete" : ""}`} style={{ width: `${progress}%` }} /></span>}
+              </button>
+              <button
+                ref={(node) => { if (node) deleteRefs.current.set(plan.name, node); else deleteRefs.current.delete(plan.name); }}
+                type="button"
+                className={`plans-delete${armedDeleteName === plan.name ? " is-armed" : ""}`}
+                onClick={(event) => deletePlanFile(event, plan.name)}
+                disabled={isDeleteInFlight}
+                style={isDeleteInFlight ? { cursor: "default" } : undefined}
+                onBlur={() => {
+                  if (armedDeleteName === plan.name) onDisarmDelete();
+                }}
+                aria-label={armedDeleteName === plan.name ? t("rail.plans.confirmDeleteAria", { name: plan.name }) : t("rail.plans.deleteAria", { name: plan.name })}
+              >
+                {armedDeleteName === plan.name
+                  ? t("rail.plans.deleteArmed")
+                  : <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h16M9 7V5h6v2m-8 0 1 13h8l1-13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
               </button>
               <button type="button" className="plans-copy" onClick={(event) => copyPlanPath(event, plan.name)} aria-label={copiedName === plan.name ? t("rail.plans.copiedAria", { name: plan.name }) : t("rail.plans.copyAria", { name: plan.name })}>
                 {copiedName === plan.name ? t("rail.plans.copied") : t("rail.plans.copy")}

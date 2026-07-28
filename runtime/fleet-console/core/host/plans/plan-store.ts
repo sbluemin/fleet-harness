@@ -122,6 +122,18 @@ export async function readPlanForWorkspace(dataDir: string, cwd: string, name: s
   };
 }
 
+export async function deletePlanForWorkspace(dataDir: string, cwd: string, name: string): Promise<void> {
+  const plansRoot = resolvePlansRoot(dataDir, cwd, false);
+  if (plansRoot === null) throw new PlanStoreError("not_found");
+
+  const file = await resolvePlanFile(plansRoot, name);
+  try {
+    await fs.promises.unlink(file.path);
+  } catch (error) {
+    throw toPlanStoreError(error);
+  }
+}
+
 async function toPlanListItem(plansRoot: PlansRoot, name: string): Promise<PlanListItem> {
   const file = await resolvePlanFile(plansRoot, name);
   // 목록 경로에서도 read 캡을 존중한다 — 초과 파일은 본문을 읽지 않고 구조 정보 없이 나열만 한다.
