@@ -57,7 +57,7 @@
 .command-entry .command-entry-label svg {
   width: 14px;
   height: 14px;
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 kbd {
@@ -101,7 +101,7 @@ kbd {
 .chip-aurora {
   background: color-mix(in oklch, var(--aurora) 12%, transparent);
   border-color: color-mix(in oklch, var(--aurora) 35%, transparent);
-  color: var(--aurora);
+  color: var(--aurora-ink);
 }
 
 .chip-muted {
@@ -207,7 +207,7 @@ kbd {
   display: inline-flex;
   width: 14px;
   height: 14px;
-  color: var(--brass);
+  color: var(--brass-ink);
   transition: transform var(--duration-fast) var(--ease-spring);
 }
 
@@ -766,7 +766,7 @@ kbd {
 .manifest-arrow {
   display: inline-flex;
   flex-shrink: 0;
-  color: var(--brass);
+  color: var(--brass-ink);
   transition: transform var(--duration-base) var(--ease-spring);
 }
 
@@ -802,7 +802,7 @@ kbd {
   border: 1px solid color-mix(in oklch, var(--coral) 45%, transparent);
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--coral) 8%, transparent);
-  color: var(--coral);
+  color: var(--coral-ink);
   padding: var(--space-4);
   margin: 0;
   font-size: var(--font-size-lg);
@@ -844,7 +844,7 @@ kbd {
 }
 
 .command-search svg {
-  color: var(--brass);
+  color: var(--brass-ink);
   flex-shrink: 0;
 }
 
@@ -1233,7 +1233,7 @@ kbd {
 .nav-drydock-icon {
   display: inline-flex;
   align-items: center;
-  color: var(--brass);
+  color: var(--brass-ink);
   flex-shrink: 0;
 }
 
@@ -1837,7 +1837,7 @@ kbd {
 }
 
 .queue-decision-decided--reject {
-  color: var(--coral);
+  color: var(--coral-ink);
   background: color-mix(in oklch, var(--coral) 8%, transparent);
   border: 1px solid color-mix(in oklch, var(--coral) 25%, transparent);
 }
@@ -1887,7 +1887,7 @@ kbd {
 .queue-action-btn--reject {
   background: transparent;
   border: 1px solid color-mix(in oklch, var(--coral) 40%, transparent);
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 .queue-action-btn--reject:not(:disabled):hover {
@@ -1898,7 +1898,7 @@ kbd {
 .queue-action-btn--reject-submit {
   background: color-mix(in oklch, var(--coral) 18%, transparent);
   border: 1px solid color-mix(in oklch, var(--coral) 40%, transparent);
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 .queue-action-btn--reject-submit:not(:disabled):hover {
@@ -1951,7 +1951,7 @@ kbd {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--coral) 8%, transparent);
   border: 1px solid color-mix(in oklch, var(--coral) 25%, transparent);
-  color: var(--coral);
+  color: var(--coral-ink);
   font-size: var(--font-size-sm);
   font-family: var(--font-mono);
 }
@@ -2291,7 +2291,7 @@ kbd {
   background: color-mix(in oklch, var(--aurora) 10%, transparent);
   border: 1px solid color-mix(in oklch, var(--aurora) 25%, transparent);
   border-radius: var(--radius-sm);
-  color: var(--aurora);
+  color: var(--aurora-ink);
   font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.04em;
@@ -2308,7 +2308,7 @@ kbd {
 }
 
 .codex-nav-error {
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 /* ─── Reading Sheet scope overrides ─────────────────────────────────────────── */
@@ -2456,7 +2456,7 @@ kbd {
   animation: cowork-revision-scan 1.8s linear infinite;
 }
 .cowork-revision-head { display: flex; align-items: center; gap: var(--space-2); border-bottom: 1px solid var(--surface-rim); padding: var(--space-2) var(--space-3); }
-.cowork-revision-mark { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border: 1px solid color-mix(in oklch, var(--aurora) 46%, var(--surface-rim)); border-radius: 9px; background: var(--aurora-glow); color: var(--aurora); }
+.cowork-revision-mark { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border: 1px solid color-mix(in oklch, var(--aurora) 46%, var(--surface-rim)); border-radius: 9px; background: var(--aurora-glow); color: var(--aurora-ink); }
 .cowork-revision-copy { display: grid; min-width: 0; gap: 2px; }
 .cowork-revision-head strong { color: var(--text-primary); font-size: var(--font-size-sm); }
 .cowork-revision-head small { color: var(--text-tertiary); font-weight: var(--weight-medium); font-size: var(--font-size-2xs); line-height: 1; font-family: var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
@@ -2503,7 +2503,7 @@ kbd {
 .cowork-revision-output.markdown-body blockquote { padding: var(--space-2) var(--space-3); }
 .cowork-revision-output.markdown-body .code-block code { padding: var(--space-3); }
 .cowork-revision-output.markdown-body .copy-code { font-size: 12px; }
-.cowork-revision-output::before { content: "✳"; position: absolute; left: 1px; top: 1px; color: var(--aurora); }
+.cowork-revision-output::before { content: "✳"; position: absolute; left: 1px; top: 1px; color: var(--aurora-ink); }
 .cowork-revision-status { display: flex; align-items: center; gap: var(--space-2); border-top: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--aurora) 5%, var(--ink-deep)); padding: var(--space-2) var(--space-3); }
 .cowork-revision-status i { position: relative; width: 16px; height: 16px; flex: none; border: 1px solid var(--aurora); border-radius: 50%; animation: cowork-revision-pulse 1.4s var(--ease-glide) infinite; }
 .cowork-revision-status i::after { content: ""; position: absolute; inset: 5px; border-radius: 50%; background: var(--aurora); box-shadow: 0 0 10px var(--aurora-glow); }
@@ -2655,8 +2655,8 @@ kbd {
 }
 .cowork-card footer { display: flex; align-items: center; justify-content: space-between; }
 .cowork-card-status { color: var(--text-tertiary); font-size: var(--font-size-2xs); font-weight: var(--weight-medium); }
-.cowork-card.is-sent .cowork-card-status { color: var(--aurora); }
-.cowork-card.is-done .cowork-card-status { color: var(--positive); }
+.cowork-card.is-sent .cowork-card-status { color: var(--aurora-ink); }
+.cowork-card.is-done .cowork-card-status { color: var(--positive-ink); }
 
 .cowork-config { display: flex; flex-wrap: wrap; gap: var(--space-2); width: auto; }
 .cowork-selector { display: grid; gap: var(--space-1); min-inline-size: 120px; }
@@ -2676,10 +2676,10 @@ kbd {
   font-size: var(--font-size-sm);
   padding: var(--space-3);
 }
-.cowork-summary > span { color: var(--aurora); }
+.cowork-summary > span { color: var(--aurora-ink); }
 .cowork-summary p { flex: 1; margin: 0; max-height: 160px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 
-.cowork-error { width: min(560px, 100%); margin: 0; color: var(--coral); font-size: var(--font-size-xs); text-align: center; }
+.cowork-error { width: min(560px, 100%); margin: 0; color: var(--coral-ink); font-size: var(--font-size-xs); text-align: center; }
 
 /* 렌더드 diff — 본문 자리에서 토글되며, 문서 그대로의 렌더 위에 변경 블록만 표시한다 */
 .cowork-block { border-radius: var(--radius-md); margin-block: var(--space-3); padding: var(--space-2) var(--space-3); }

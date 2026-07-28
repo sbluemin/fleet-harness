@@ -970,7 +970,8 @@ describe("Instrument core design contract", () => {
         expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|canvas|surface|hairline|text|id)[a-z-]*:$/);
       }
     }
-    // Light 테마만 팔레트 + 광학(color-scheme/shadow/scrollbar)을 허용한다.
+    // Light 테마만 팔레트 + 광학(color-scheme/shadow/scrollbar/신호 ink·halo/본문 regular 굵기 보정)을 허용한다.
+    // --weight-regular 단일 예외: 밝은 배경의 얇은 스템 광학 보정 — medium/bold 티어 오버라이드는 계속 차단.
     const lightVariantBlocks = theme.match(/^:root\[data-theme="(?:daywatch|whites|drydock)"\][^{]*\{[^}]*\}/gm) ?? [];
     expect(lightVariantBlocks).toHaveLength(3);
     for (const block of lightVariantBlocks) {
@@ -978,8 +979,13 @@ describe("Instrument core design contract", () => {
       const declarations = block.match(/^\s{2}[^\n:]+:/gm) ?? [];
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
-        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|canvas|surface|hairline|text|id|carrier|shadow|scrollbar)[a-z-]*|color-scheme):$/);
+        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|canvas|surface|hairline|text|id|carrier|shadow|scrollbar)[a-z-]*|--weight-regular|color-scheme):$/);
       }
+    }
+    // 신호 ink 티어는 base에서 별칭으로 존재해 다크 3종이 var 간접으로 base 신호색을 상속한다.
+    for (const ink of ["--brass-ink", "--aurora-ink", "--coral-ink", "--warn-ink", "--positive-ink"]) {
+      expect(base).toContain(`${ink}: var(`);
+      expect(theme.match(new RegExp(`${ink}:`, "g"))).toHaveLength(4);
     }
     expect(theme).not.toMatch(/#fff(?:fff)?\b/i);
     expect(theme).not.toMatch(/body::(?:before|after)/);

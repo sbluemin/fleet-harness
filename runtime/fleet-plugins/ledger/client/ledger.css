@@ -402,20 +402,20 @@
 }
 
 .ledger-source-status {
-  color: var(--positive);
+  color: var(--positive-ink);
 }
 
 .ledger-source-status--bootstrapping {
-  color: var(--aurora);
+  color: var(--aurora-ink);
 }
 
 .ledger-source-status--degraded {
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 .ledger-source-status--unavailable,
 .ledger-source-status--unreadable {
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 .ledger-footer {

@@ -188,6 +188,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       ...(context.kind ? { kind: context.kind } : {}),
       ...(context.cliId ? { cliId: context.cliId } : {}),
       ...(context.resumeSessionId ? { resumeSessionId: context.resumeSessionId } : {}),
+      ...(context.colorScheme ? { colorScheme: context.colorScheme } : {}),
     });
     let pty: TerminalPtyHandle;
     let ptyFds: readonly number[] = [];

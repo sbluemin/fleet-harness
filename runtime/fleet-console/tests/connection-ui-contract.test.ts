@@ -59,8 +59,9 @@ describe("console connection-loss UI contract", () => {
     const layout = source("styles/layout.css");
     const rail = source("styles/rail.css");
 
-    expect(layout).toMatch(/\.command-band-link-chip\[data-link-state="offline"\][^{]*\{[^}]*var\(--coral-glow\)[^}]*var\(--coral\)/s);
-    expect(layout).toMatch(/\.command-band-link-chip\[data-link-state="connecting"\][^{]*\{[^}]*var\(--warn-glow\)[^}]*var\(--warn\)/s);
+    // 신호 틴트 배경 위 텍스트는 신호 ink 티어를 쓴다 — 라이트 테마에서 base 신호색 텍스트는 AA 미달.
+    expect(layout).toMatch(/\.command-band-link-chip\[data-link-state="offline"\][^{]*\{[^}]*var\(--coral-glow\)[^}]*var\(--coral-ink\)/s);
+    expect(layout).toMatch(/\.command-band-link-chip\[data-link-state="connecting"\][^{]*\{[^}]*var\(--warn-glow\)[^}]*var\(--warn-ink\)/s);
     expect(layout).toMatch(/\.console-link-banner \{[^}]*var\(--coral\)[^}]*var\(--coral-glow\)/s);
     // 덮개는 offline일 때만 마운트되므로 상태 전환이 없다 — 진입 페이드는 transition이 아니라
     // animation이 져야 실제로 발화한다.

@@ -139,14 +139,14 @@
 }
 
 .right-rail-float-toggle.is-active {
-  color: var(--brass);
+  color: var(--brass-ink);
   background: var(--brass-glow);
   border-color: color-mix(in oklch, var(--brass) 45%, transparent);
 }
 
 /* 활성 hover는 brass 채널을 유지한 채 테두리만 강화한다(비활성 hover의 veil 덮기 방지). */
 .right-rail-float-toggle.is-active:hover {
-  color: var(--brass);
+  color: var(--brass-ink);
   background: var(--brass-glow);
   border-color: color-mix(in oklch, var(--brass) 70%, transparent);
 }
@@ -184,7 +184,7 @@
 
 .right-rail-opacity-segment.is-active,
 .right-rail-opacity-segment.is-active:hover {
-  color: var(--brass);
+  color: var(--brass-ink);
   background: var(--brass-glow);
 }
 
@@ -240,7 +240,7 @@
   gap: var(--space-2);
   padding: var(--space-4);
   background: color-mix(in oklch, var(--ink-deep) 88%, transparent);
-  color: var(--coral);
+  color: var(--coral-ink);
   text-align: center;
   /* 덮개는 offline일 때만 마운트되므로 상태 전환이 없다 — transition은 발화하지 않고
      진입 페이드는 animation이 진다. */
@@ -307,7 +307,7 @@
 }
 
 .right-rail-ico.is-active {
-  color: var(--brass);
+  color: var(--brass-ink);
   border-color: var(--surface-rim-strong);
   background: var(--ink-deep);
 }

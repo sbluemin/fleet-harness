@@ -38,6 +38,18 @@
   --positive: oklch(76% 0.11 160);
   --positive-glow: oklch(76% 0.11 160 / 13%);
 
+  /* 신호 ink 티어 — 텍스트로 쓰이는 신호색 전용 채널. 다크 3종은 base 신호색을 그대로 별칭하고,
+     라이트 3종만 L 42~46% 리터럴로 오버라이드해 자기 glow 틴트 위에서도 AA(4.5:1)를 지킨다.
+     배경·테두리·도트·비콘은 계속 base 신호 토큰을 쓴다 — ink는 color(텍스트) 선언 전용이다. */
+  --brass-ink: var(--brass);
+  --aurora-ink: var(--aurora);
+  --coral-ink: var(--coral);
+  --warn-ink: var(--warn);
+  --positive-ink: var(--positive);
+  /* 신호 텍스트의 글로우 halo — 라이트 테마는 밝은 종이 위 blur로 읽혀 none으로 단락한다. */
+  --brass-halo: 0 0 18px var(--brass-glow);
+  --positive-halo: 0 0 12px var(--positive-glow);
+
   /* Operations 캔버스(Map)는 bg0 근방의 저채도 심층 계조만 사용한다. */
   --canvas-abyss: oklch(11% 0.014 245);
   --canvas-sea-core: oklch(13% 0.018 245);
@@ -126,8 +138,10 @@
   --space-10: 40px;
   --space-12: 48px;
 
-  --font-display: "Fraunces Variable", "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
-  --font-body: "Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Pretendard Variable은 CJK(한글) 폴백 — 라틴은 앞의 Fraunces/Manrope가 소화하고, 한글이
+     OS 폴백의 얇은 스템 대신 번들 서체로 렌더되어 라틴과 굵기·폭이 정합된다. */
+  --font-display: "Fraunces Variable", "Fraunces", "Pretendard Variable", ui-serif, Georgia, "Times New Roman", serif;
+  --font-body: "Manrope Variable", "Manrope", "Pretendard Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --font-body-size: 14px;
 
@@ -273,9 +287,12 @@
 }
 
 /* Light 테마 4종 — 잉크 스케일을 역할째 반전한 주간(daylight) 변주. 팔레트 + 광학(color-scheme/
-   shadow/scrollbar)만 오버라이드하며 형상은 Instrument 그대로(계약 테스트가 화이트리스트로 고정).
-   신호·brass는 라이트 배경(L≈95%+)에서 AA를 위해 L 44~58% 대역으로 재조율된다 — 다크 값의
-   단순 명도 반전은 신호 5종 전멸(1.7~2.8:1)로 실측 확인됨. */
+   shadow/scrollbar/신호 ink·halo/본문 굵기 보정)만 오버라이드하며 형상은 Instrument 그대로
+   (계약 테스트가 화이트리스트로 고정). 신호·brass는 라이트 배경(L≈95%+)에서 AA를 위해 L 44~58%
+   대역으로 재조율된다 — 다크 값의 단순 명도 반전은 신호 5종 전멸(1.7~2.8:1)로 실측 확인됨.
+   신호색 "텍스트"는 base가 아닌 --*-ink(L 42~46%)를 쓴다 — base 신호색은 자기 glow 틴트 위에서
+   3.3~4.2:1로 AA 미달임이 실측됨. 본문 regular 450은 밝은 배경에서 스템이 가늘어 보이는
+   광학 보정이다(위계 3티어는 불변 — regular 티어의 값만 라이트에서 재조율). */
 :root[data-theme="daywatch"] {
   color-scheme: light;
 
@@ -284,10 +301,12 @@
   --ink-mid: oklch(91.5% 0.012 245);
   --ink-veil: oklch(89% 0.014 245);
   --ink-rim: oklch(80% 0.02 245);
-  --ink-fog: oklch(50% 0.018 245);
-  --ink-muted: oklch(46% 0.02 245);
+  --ink-fog: oklch(46% 0.018 245);
+  --ink-muted: oklch(42% 0.02 245);
   --ink-spectral: oklch(40% 0.022 246);
   --ink-pearl: oklch(24% 0.025 248);
+
+  --weight-regular: 450;
 
   --text-primary: var(--ink-pearl);
   --text-secondary: var(--ink-spectral);
@@ -308,6 +327,14 @@
   --warn-glow: oklch(56% 0.1 80 / 16%);
   --positive: oklch(51% 0.11 158);
   --positive-glow: oklch(51% 0.11 158 / 15%);
+
+  --brass-ink: oklch(45% 0.1 72);
+  --aurora-ink: oklch(43% 0.085 205);
+  --coral-ink: oklch(45% 0.14 25);
+  --warn-ink: oklch(44% 0.095 80);
+  --positive-ink: oklch(43% 0.1 158);
+  --brass-halo: none;
+  --positive-halo: none;
 
   --canvas-abyss: oklch(97.5% 0.006 245);
   --canvas-sea-core: oklch(93% 0.012 240);
@@ -359,10 +386,12 @@
   --ink-mid: oklch(93% 0.007 252);
   --ink-veil: oklch(90.5% 0.009 252);
   --ink-rim: oklch(80% 0.015 252);
-  --ink-fog: oklch(48% 0.03 258);
-  --ink-muted: oklch(44% 0.034 258);
+  --ink-fog: oklch(45% 0.03 258);
+  --ink-muted: oklch(41% 0.034 258);
   --ink-spectral: oklch(37% 0.04 258);
   --ink-pearl: oklch(23% 0.05 260);
+
+  --weight-regular: 450;
 
   --text-primary: var(--ink-pearl);
   --text-secondary: var(--ink-spectral);
@@ -383,6 +412,14 @@
   --warn-glow: oklch(55% 0.11 82 / 16%);
   --positive: oklch(50% 0.12 160);
   --positive-glow: oklch(50% 0.12 160 / 15%);
+
+  --brass-ink: oklch(45% 0.115 82);
+  --aurora-ink: oklch(42% 0.09 210);
+  --coral-ink: oklch(44% 0.15 25);
+  --warn-ink: oklch(44% 0.1 82);
+  --positive-ink: oklch(42% 0.11 160);
+  --brass-halo: none;
+  --positive-halo: none;
 
   --canvas-abyss: oklch(98% 0.003 250);
   --canvas-sea-core: oklch(94% 0.006 250);
@@ -433,10 +470,12 @@
   --ink-mid: oklch(90.5% 0.019 236);
   --ink-veil: oklch(88% 0.022 238);
   --ink-rim: oklch(78% 0.03 240);
-  --ink-fog: oklch(49% 0.04 245);
-  --ink-muted: oklch(45% 0.044 246);
+  --ink-fog: oklch(45.5% 0.04 245);
+  --ink-muted: oklch(41.5% 0.044 246);
   --ink-spectral: oklch(39% 0.047 248);
   --ink-pearl: oklch(24% 0.05 250);
+
+  --weight-regular: 450;
 
   --text-primary: var(--ink-pearl);
   --text-secondary: var(--ink-spectral);
@@ -457,6 +496,14 @@
   --warn-glow: oklch(55% 0.1 80 / 16%);
   --positive: oklch(50% 0.11 155);
   --positive-glow: oklch(50% 0.11 155 / 15%);
+
+  --brass-ink: oklch(45% 0.09 70);
+  --aurora-ink: oklch(42% 0.085 190);
+  --coral-ink: oklch(45% 0.14 25);
+  --warn-ink: oklch(44% 0.09 80);
+  --positive-ink: oklch(42% 0.1 155);
+  --brass-halo: none;
+  --positive-halo: none;
 
   --canvas-abyss: oklch(96.3% 0.012 235);
   --canvas-sea-core: oklch(92.5% 0.02 238);

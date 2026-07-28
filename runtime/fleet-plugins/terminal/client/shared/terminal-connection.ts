@@ -8,6 +8,8 @@ export interface TerminalConnectionOptions {
   readonly terminal: TerminalLike;
   readonly ticketPath: string;
   readonly wsPath: string;
+  /** 콘솔 테마 극성 — ticket 요청에 실려 spawn env COLORFGBG 힌트가 된다(최초 spawn 시점 고정). */
+  readonly colorScheme?: "light" | "dark";
   readonly onStatus?: (status: TerminalConnectionStatus, message?: string) => void;
   readonly onExit?: () => void;
   readonly location?: Pick<Location, "host" | "protocol">;
@@ -69,7 +71,7 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
     while (!abort.signal.aborted) {
       options.onStatus?.("connecting");
       try {
-        const { ticket } = await requestTerminalTicket(options.ticketPath, options.operationId, abort.signal);
+        const { ticket } = await requestTerminalTicket(options.ticketPath, options.operationId, abort.signal, options.colorScheme);
         if (abort.signal.aborted) return;
         await attachSocket(buildTerminalWsUrl(ticket, options.location, options.wsPath), options);
         reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
@@ -145,11 +147,11 @@ export function buildTerminalWsUrl(ticket: string, targetLocation: Pick<Location
   return `${protocol}://${targetLocation.host}${pathname}?ticket=${encodeURIComponent(ticket)}`;
 }
 
-async function requestTerminalTicket(ticketPath: string, operationId: string, signal: AbortSignal): Promise<{ readonly ticket: string; readonly ttlMs: number }> {
+async function requestTerminalTicket(ticketPath: string, operationId: string, signal: AbortSignal, colorScheme?: "light" | "dark"): Promise<{ readonly ticket: string; readonly ttlMs: number }> {
   const response = await fetch(ticketPath, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ operationId }),
+    body: JSON.stringify({ operationId, ...(colorScheme ? { colorScheme } : {}) }),
     signal,
   });
   if (!response.ok) throw new Error(`Terminal ticket request failed: ${response.status}`);

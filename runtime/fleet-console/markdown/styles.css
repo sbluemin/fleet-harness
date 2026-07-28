@@ -251,7 +251,7 @@ code.hljs {
 }
 
 .markdown-body a {
-  color: var(--aurora);
+  color: var(--aurora-ink);
   text-decoration: underline;
   text-decoration-color: color-mix(in oklch, var(--aurora) 35%, transparent);
   text-decoration-thickness: 1px;
@@ -272,11 +272,11 @@ code.hljs {
 }
 
 .markdown-body ul li::marker {
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .markdown-body ol li::marker {
-  color: var(--aurora);
+  color: var(--aurora-ink);
   font-family: var(--font-mono);
   font-size: var(--font-size-lg);
 }
@@ -633,7 +633,7 @@ code.hljs {
 }
 
 :is(.diagram-block, .diagram-lightbox__viewport) svg a {
-  color: var(--aurora);
+  color: var(--aurora-ink);
 }
 
 .diagram-block svg a {
@@ -650,7 +650,7 @@ code.hljs {
 
 .diagram-block[data-diagram-state="error"] {
   border-color: color-mix(in oklch, var(--coral) 36%, var(--surface-rim));
-  color: var(--coral);
+  color: var(--coral-ink);
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   line-height: 1.6;
@@ -661,7 +661,7 @@ code.hljs {
 
 .diagram-block[data-diagram-state="error"]::after {
   content: "MANIFEST · DIAGRAM · ERROR";
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 .diagram-lightbox {

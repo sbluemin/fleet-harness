@@ -495,7 +495,7 @@
 }
 
 .terminal-carriers-tf-status.is-positive {
-  color: var(--positive);
+  color: var(--positive-ink);
 }
 
 .terminal-carriers-tf-remove {
@@ -505,7 +505,7 @@
 .terminal-carriers-tf-remove.is-armed {
   border-color: color-mix(in oklch, var(--coral) 55%, var(--surface-rim));
   background: color-mix(in oklch, var(--coral) 10%, transparent);
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 .terminal-carriers-tf-add-row,
@@ -536,8 +536,8 @@
 }
 
 .terminal-carriers-save-status.is-positive {
-  color: var(--positive);
-  text-shadow: 0 0 12px var(--positive-glow);
+  color: var(--positive-ink);
+  text-shadow: var(--positive-halo);
 }
 
 .terminal-carriers-error {
@@ -546,7 +546,7 @@
   border: 1px solid color-mix(in oklch, var(--coral) 48%, var(--surface-rim));
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--coral) 10%, transparent);
-  color: var(--coral);
+  color: var(--coral-ink);
   font-size: 11px;
   line-height: 1.5;
 }

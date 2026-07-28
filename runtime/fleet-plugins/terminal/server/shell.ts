@@ -3,7 +3,7 @@ import { registerRouter } from "@fleet-console/sdk/plugin/node";
 
 import type { TerminalRuntime } from "./shared/index.js";
 
-type TicketBody = { readonly operationId?: unknown; readonly sessionId?: unknown };
+type TicketBody = { readonly operationId?: unknown; readonly sessionId?: unknown; readonly colorScheme?: unknown };
 
 const OPERATION_RESTORED_EVENT_CHANNEL = "operation:restored";
 const RESTORED_DORMANT_PAYLOAD_KEY = "restoredDormant";
@@ -54,6 +54,7 @@ export function registerShellRoutes(ctx: FleetPluginServerContext, runtime: Term
         ctx.host.http.writeJson(res, 503, { error: "Terminal session capacity exhausted" });
         return true;
       }
+      const colorScheme = body?.colorScheme === "light" || body?.colorScheme === "dark" ? body.colorScheme : undefined;
       ctx.host.http.writeJson(res, 200, runtime.issueTicket({
         cwd: theaterPath,
         sessionId: operationId,
@@ -62,6 +63,7 @@ export function registerShellRoutes(ctx: FleetPluginServerContext, runtime: Term
         pluginId: operation.pluginId,
         theaterId: operation.theaterId,
         kind: "shell",
+        ...(colorScheme ? { colorScheme } : {}),
       }));
       return true;
     });

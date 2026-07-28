@@ -43,7 +43,7 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   padding: var(--space-1) var(--space-4);
   border-bottom: 1px solid color-mix(in oklch, var(--coral) 55%, var(--surface-rim));
   background: var(--coral-glow);
-  color: var(--coral);
+  color: var(--coral-ink);
   font-size: 12px;
   font-weight: var(--weight-medium);
 }
@@ -236,12 +236,12 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 
 .command-band-link-chip[data-link-state="offline"] {
   background: var(--coral-glow);
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 .command-band-link-chip[data-link-state="connecting"] {
   background: var(--warn-glow);
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 /* macOS Desktop은 traffic-light 인셋(좌측 88px)이 첫 트랙 폭을 잠식하므로
@@ -413,7 +413,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 
 .command-band-formation-toggle[aria-pressed="true"] {
   background: color-mix(in oklch, var(--brass) 12%, transparent);
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .command-band-formation-toggle:disabled { cursor: not-allowed; opacity: 0.55; }
@@ -452,7 +452,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 
 .command-band-triage-toggle[aria-pressed="true"] {
   background: color-mix(in oklch, var(--brass) 12%, transparent);
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .command-band-triage-toggle:disabled { cursor: not-allowed; opacity: 0.55; }
@@ -480,7 +480,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   padding: 1px 4px;
   border-radius: var(--radius-xs);
   background: var(--brass-glow);
-  color: var(--brass);
+  color: var(--brass-ink);
   font-size: 9px;
   letter-spacing: 0.06em;
 }
@@ -650,7 +650,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   flex: none;
   width: 14px;
   height: 14px;
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .command-band-menu-check svg {

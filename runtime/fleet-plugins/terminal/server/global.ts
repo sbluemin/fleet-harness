@@ -3,7 +3,7 @@ import { registerRouter } from "@fleet-console/sdk/plugin/node";
 
 import type { TerminalRuntime } from "./shared/index.js";
 
-type TicketBody = { readonly operationId?: unknown; readonly sessionId?: unknown };
+type TicketBody = { readonly operationId?: unknown; readonly sessionId?: unknown; readonly colorScheme?: unknown };
 
 const GLOBAL_SHELL_OPERATION_PREFIX = "global-shell:theater:";
 const GLOBAL_SHELL_OPERATION_TYPE = "shell";
@@ -67,6 +67,7 @@ export function registerGlobalShellRoutes(ctx: FleetPluginServerContext, runtime
     // 세션 매니저는 PTY 종료 시 onExit로 세션 맵에서 자가 제거하므로(종료 세션은 canAttach가 새 세션으로
     // 재생성), ticket 발급 경로에서 별도의 stale 정리를 하지 않는다. 여기서 빈 write로 정리를 시도하면
     // 일시적 write 예외가 살아있는 세션을 오판 종료할 수 있어 오히려 위험하다.
+    const colorScheme = body?.colorScheme === "light" || body?.colorScheme === "dark" ? body.colorScheme : undefined;
     ctx.host.http.writeJson(res, 200, runtime.issueTicket({
       cwd: theaterPath,
       sessionId: operationId,
@@ -75,6 +76,7 @@ export function registerGlobalShellRoutes(ctx: FleetPluginServerContext, runtime
       pluginId: ctx.pluginId,
       theaterId,
       kind: "shell",
+      ...(colorScheme ? { colorScheme } : {}),
     }));
     return true;
   });

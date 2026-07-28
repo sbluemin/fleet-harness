@@ -260,7 +260,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         ctx.host.http.writeJson(res, 401, { error: "Unauthorized" });
         return true;
       }
-      const body = await ctx.host.http.readJsonBody<{ readonly operationId?: unknown }>(req);
+      const body = await ctx.host.http.readJsonBody<{ readonly operationId?: unknown; readonly colorScheme?: unknown }>(req);
       if (typeof body?.operationId !== "string") {
         ctx.host.http.writeJson(res, 400, { error: "terminal_session_not_found" });
         return true;
@@ -281,6 +281,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
         return true;
       }
+      const colorScheme = body?.colorScheme === "light" || body?.colorScheme === "dark" ? body.colorScheme : undefined;
       ctx.host.http.writeJson(res, 200, terminalRuntime.issueTicket({
         cwd,
         sessionId: operation.id,
@@ -289,6 +290,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         pluginId: operation.pluginId,
         theaterId: operation.theaterId,
         cliId: readPayloadString(operation.payload, "cliId") ?? undefined,
+        ...(colorScheme ? { colorScheme } : {}),
       }));
       return true;
     }

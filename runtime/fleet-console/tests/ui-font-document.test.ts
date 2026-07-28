@@ -18,7 +18,7 @@ describe("UI font document application", () => {
 
     expect(root.attributes.get("data-ui-font")).toBe("system");
     expect([...root.attributes.values()]).not.toContain('A "hostile" \\ family');
-    expect(root.style.getPropertyValue("--font-body")).toBe('"A \\"hostile\\" \\\\ family", "Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif');
+    expect(root.style.getPropertyValue("--font-body")).toBe('"A \\"hostile\\" \\\\ family", "Manrope Variable", "Manrope", "Pretendard Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif');
     expect(root.style.getPropertyValue("--font-body-size")).toBe("18px");
     expect(root.style.getPropertyValue("--font-display")).toBe("");
     expect(root.style.getPropertyValue("--font-mono")).toBe("");
