@@ -5,7 +5,10 @@ import {
   buildPaletteCommands,
   commandModeQuery,
   filterPaletteCommands,
+  fuzzyMatchPaletteLabel,
   isCommandModeInput,
+  matchPaletteCommands,
+  type PaletteCommandEntry,
 } from "../core/client/src/palette-commands.js";
 import { getT } from "../core/client/src/i18n/index.js";
 import { DEFAULT_UI_FONT } from "../core/client/src/ui-font.js";
@@ -251,15 +254,69 @@ describe("filterPaletteCommands", () => {
     const commands = buildPaletteCommands(makeState(), RAIL_PANELS, tEn);
     expect(filterPaletteCommands(commands, "switch beta").map((command) => command.commandId)).toEqual(["switch-theater:theater-beta"]);
     expect(filterPaletteCommands(commands, "THEME").map((command) => command.commandId)).toEqual([
-      "switch-theme:instrument",
-      "switch-theme:maritime",
       "switch-theme:carbon",
-      "switch-theme:daywatch",
       "switch-theme:whites",
       "switch-theme:drydock",
+      "switch-theme:maritime",
+      "switch-theme:daywatch",
+      "switch-theme:instrument",
     ]);
     expect(filterPaletteCommands(commands, "theme beta")).toEqual([]);
     expect(filterPaletteCommands(commands, "")).toEqual(commands);
     expect(filterPaletteCommands(commands, "   ")).toEqual(commands);
   });
+
+  it("matches command abbreviations as greedy subsequences", () => {
+    const commands = commandEntries("Rename operation…", "Close operation", "New theater…");
+    expect(filterPaletteCommands(commands, "rnme").map((command) => command.label)).toEqual(["Rename operation…"]);
+    expect(filterPaletteCommands(commands, "clop").map((command) => command.label)).toEqual(["Close operation"]);
+    expect(filterPaletteCommands(commands, "newth").map((command) => command.label)).toEqual(["New theater…"]);
+  });
+
+  it("ranks exact substring matches above fuzzy-only matches", () => {
+    const commands = commandEntries("r-n-m-e", "Rename operation…", "rnme tools");
+    expect(filterPaletteCommands(commands, "rnme").map((command) => command.label)).toEqual([
+      "rnme tools",
+      "Rename operation…",
+      "r-n-m-e",
+    ]);
+  });
+
+  it("ranks consecutive fuzzy glyphs above scattered glyphs", () => {
+    const consecutive = fuzzyMatchPaletteLabel("ab-d-e-", "abde");
+    const scattered = fuzzyMatchPaletteLabel("a-b-d-e", "abde");
+    expect(consecutive?.score).toBeGreaterThan(scattered?.score ?? Number.NEGATIVE_INFINITY);
+  });
+
+  it("adds a bonus when a fuzzy glyph lands on a word boundary", () => {
+    const boundary = fuzzyMatchPaletteLabel("x a-b", "ab");
+    const nonBoundary = fuzzyMatchPaletteLabel("x-a-b", "ab");
+    expect(boundary?.score).toBeGreaterThan(nonBoundary?.score ?? Number.NEGATIVE_INFINITY);
+  });
+
+  it("requires every query token and excludes any token mismatch", () => {
+    const commands = commandEntries("Rename active operation", "Rename theater", "Close active operation");
+    expect(filterPaletteCommands(commands, "rnme act").map((command) => command.label)).toEqual([
+      "Rename active operation",
+    ]);
+    expect(filterPaletteCommands(commands, "rename missing")).toEqual([]);
+  });
+
+  it("preserves original order for empty queries and stable score ties", () => {
+    const commands = commandEntries("Same label", "Same label", "Different");
+    expect(filterPaletteCommands(commands, "   ")).toBe(commands);
+    expect(matchPaletteCommands(commands, "same").map(({ command }) => command.commandId)).toEqual([
+      "command-0",
+      "command-1",
+    ]);
+  });
 });
+
+function commandEntries(...labels: readonly string[]): readonly PaletteCommandEntry[] {
+  return labels.map((label, index) => ({
+    commandId: `command-${index}`,
+    label,
+    current: false,
+    action: { kind: "open-settings" },
+  }));
+}

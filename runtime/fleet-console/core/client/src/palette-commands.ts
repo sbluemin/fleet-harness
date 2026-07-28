@@ -45,6 +45,17 @@ export interface PaletteCommandEntry {
   readonly action: PaletteCommandAction;
 }
 
+export interface PaletteCommandMatch {
+  readonly score: number;
+  readonly matchedIndices: readonly number[];
+}
+
+export interface ScoredPaletteCommand {
+  readonly command: PaletteCommandEntry;
+  readonly score: number;
+  readonly matchedIndices: readonly number[];
+}
+
 type T = Translate<CoreMessageKey>;
 
 export function buildPaletteThemes(t: T): readonly { readonly id: ThemeId; readonly label: string }[] {
@@ -246,13 +257,64 @@ export function buildPaletteCommands(
   return commands;
 }
 
-export function filterPaletteCommands(commands: readonly PaletteCommandEntry[], query: string): readonly PaletteCommandEntry[] {
+export function fuzzyMatchPaletteLabel(label: string, query: string): PaletteCommandMatch | null {
   const tokens = searchTokens(query);
-  if (tokens.length === 0) return commands;
-  return commands.filter((command) => {
-    const haystack = command.label.toLocaleLowerCase();
-    return tokens.every((token) => haystack.includes(token));
-  });
+  if (tokens.length === 0) return null;
+  const lowerLabel = label.toLocaleLowerCase();
+  const matchedIndices = new Set<number>();
+  let score = 0;
+
+  for (const token of tokens) {
+    const exactStart = lowerLabel.indexOf(token);
+    const tokenIndices: number[] = [];
+    if (exactStart !== -1) {
+      for (let offset = 0; offset < token.length; offset += 1) {
+        tokenIndices.push(exactStart + offset);
+      }
+      score += 100;
+    } else {
+      let searchFrom = 0;
+      for (let tokenIndex = 0; tokenIndex < token.length; tokenIndex += 1) {
+        const character = token[tokenIndex]!;
+        const matchedIndex = lowerLabel.indexOf(character, searchFrom);
+        if (matchedIndex === -1) return null;
+        tokenIndices.push(matchedIndex);
+        searchFrom = matchedIndex + 1;
+      }
+    }
+
+    for (let index = 0; index < tokenIndices.length; index += 1) {
+      const matchedIndex = tokenIndices[index]!;
+      const previousMatchedIndex = tokenIndices[index - 1];
+      score += previousMatchedIndex !== undefined && matchedIndex === previousMatchedIndex + 1 ? 3 : 1;
+      if (matchedIndex === 0 || lowerLabel[matchedIndex - 1] === " ") score += 2;
+      matchedIndices.add(matchedIndex);
+    }
+  }
+
+  return {
+    score: score - label.length * 0.01,
+    matchedIndices: [...matchedIndices].sort((left, right) => left - right),
+  };
+}
+
+export function matchPaletteCommands(
+  commands: readonly PaletteCommandEntry[],
+  query: string,
+): readonly ScoredPaletteCommand[] {
+  if (searchTokens(query).length === 0) {
+    return commands.map((command) => ({ command, score: 0, matchedIndices: [] }));
+  }
+  return commands.flatMap((command, originalIndex) => {
+    const match = fuzzyMatchPaletteLabel(command.label, query);
+    return match ? [{ command, ...match, originalIndex }] : [];
+  }).sort((left, right) => right.score - left.score || left.originalIndex - right.originalIndex)
+    .map(({ command, score, matchedIndices }) => ({ command, score, matchedIndices }));
+}
+
+export function filterPaletteCommands(commands: readonly PaletteCommandEntry[], query: string): readonly PaletteCommandEntry[] {
+  if (searchTokens(query).length === 0) return commands;
+  return matchPaletteCommands(commands, query).map(({ command }) => command);
 }
 
 function resolveActiveLocale() {

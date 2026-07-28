@@ -16,8 +16,8 @@ import {
 import {
   buildPaletteCommands,
   commandModeQuery,
-  filterPaletteCommands,
   isCommandModeInput,
+  matchPaletteCommands,
   type PaletteCommandEntry,
 } from "../palette-commands.js";
 import { stashKeyboardShortcutsReturnFocus } from "../keyboard-shortcuts-return-focus.js";
@@ -88,8 +88,8 @@ export function OperationSearch({
     () => buildPaletteCommands(state, railPanels, t, { canUndoLastClose: undoAvailable }),
     [state, railPanels, t, undoAvailable],
   );
-  const filteredCommands = useMemo(
-    () => (commandMode ? filterPaletteCommands(commands, commandModeQuery(query)) : commands),
+  const matchedCommands = useMemo(
+    () => (commandMode ? matchPaletteCommands(commands, commandModeQuery(query)) : []),
     [commandMode, commands, query],
   );
   const tokens = useMemo(() => searchTokens(commandMode ? commandModeQuery(query) : query), [commandMode, query]);
@@ -98,16 +98,16 @@ export function OperationSearch({
     [railSearchGroups],
   );
   const resultCount = commandMode
-    ? filteredCommands.length + railSearchEntries.length
+    ? matchedCommands.length + railSearchEntries.length
     : filteredEntries.length + railSearchEntries.length;
   const clampedSelectedIndex = clampIndex(selectedIndex, resultCount);
   const selectedResultKey = commandMode
-    ? filteredCommands[clampedSelectedIndex]
-      ? commandResultKey(filteredCommands[clampedSelectedIndex]!.commandId)
-      : railSearchEntries[clampedSelectedIndex - filteredCommands.length]
+    ? matchedCommands[clampedSelectedIndex]
+      ? commandResultKey(matchedCommands[clampedSelectedIndex]!.command.commandId)
+      : railSearchEntries[clampedSelectedIndex - matchedCommands.length]
         ? railResultKey(
-          railSearchEntries[clampedSelectedIndex - filteredCommands.length]!.group.panelId,
-          railSearchEntries[clampedSelectedIndex - filteredCommands.length]!.result.id,
+          railSearchEntries[clampedSelectedIndex - matchedCommands.length]!.group.panelId,
+          railSearchEntries[clampedSelectedIndex - matchedCommands.length]!.result.id,
         )
         : undefined
     : filteredEntries[clampedSelectedIndex]
@@ -379,13 +379,13 @@ export function OperationSearch({
     }
     if (event.key === "Enter") {
       if (commandMode) {
-        const selected = filteredCommands[clampedSelectedIndex];
+        const selected = matchedCommands[clampedSelectedIndex];
         if (selected) {
           event.preventDefault();
-          runCommand(selected);
+          runCommand(selected.command);
           return;
         }
-        const panelEntry = railSearchEntries[clampedSelectedIndex - filteredCommands.length];
+        const panelEntry = railSearchEntries[clampedSelectedIndex - matchedCommands.length];
         if (!panelEntry) return;
         event.preventDefault();
         void selectRailResult(panelEntry.group.panelId, panelEntry.result);
@@ -440,11 +440,12 @@ export function OperationSearch({
         </div>
         <div id={LISTBOX_ID} className="operation-search-results" role="listbox" aria-label={commandMode ? t("chrome.operationSearch.commandResults") : t("chrome.operationSearch.operationResults")}>
           {commandMode ? (
-            filteredCommands.length > 0 || railSearchGroups.length > 0 ? <>
-              {filteredCommands.length > 0 ? (
+            matchedCommands.length > 0 || railSearchGroups.length > 0 ? <>
+              {matchedCommands.length > 0 ? (
                 <section className="operation-search-section" role="group" aria-labelledby={COMMAND_GROUP_HEADING_ID}>
                   <h2 id={COMMAND_GROUP_HEADING_ID} className="operation-search-section-heading">{t("chrome.operationSearch.commands")}</h2>
-                  {filteredCommands.map((command, index) => {
+                  {matchedCommands.map((scored, index) => {
+                    const { command } = scored;
                     const active = index === clampedSelectedIndex;
                     const resultKey = commandResultKey(command.commandId);
                     return (
@@ -464,7 +465,7 @@ export function OperationSearch({
                       >
                         <span className="operation-search-command-glyph" aria-hidden="true">›</span>
                         <span className="operation-search-result-text">
-                          <strong>{highlightText(command.label, tokens)}</strong>
+                          <strong>{highlightIndices(command.label, scored.matchedIndices)}</strong>
                         </span>
                         {command.current ? <span className="operation-search-theater">{t("chrome.operationSearch.current")}</span> : null}
                       </button>
@@ -478,7 +479,7 @@ export function OperationSearch({
                   <section className="operation-search-section operation-search-panel-section" key={group.panelId} role="group" aria-labelledby={headingId}>
                     <h2 id={headingId} className="operation-search-section-heading">{group.panelTitle}</h2>
                     {group.results.map((result) => {
-                      const index = filteredCommands.length + railSearchEntries.findIndex((entry) => entry.group.panelId === group.panelId && entry.result === result);
+                      const index = matchedCommands.length + railSearchEntries.findIndex((entry) => entry.group.panelId === group.panelId && entry.result === result);
                       const active = index === clampedSelectedIndex;
                       const resultKey = railResultKey(group.panelId, result.id);
                       return (
@@ -665,6 +666,31 @@ function highlightText(text: string, tokens: readonly string[]): ReactNode {
     segments.push(<mark key={`${match.start}-${match.end}`}>{text.slice(match.start, match.end)}</mark>);
     cursor = match.end;
   }
+  return segments;
+}
+
+function highlightIndices(text: string, indices: readonly number[]): ReactNode {
+  if (indices.length === 0) return text;
+  const segments: ReactNode[] = [];
+  let cursor = 0;
+  let runStart = indices[0]!;
+  let runEnd = runStart + 1;
+
+  for (let index = 1; index <= indices.length; index += 1) {
+    const matchedIndex = indices[index];
+    if (matchedIndex === runEnd) {
+      runEnd += 1;
+      continue;
+    }
+    if (runStart > cursor) segments.push(text.slice(cursor, runStart));
+    segments.push(<mark key={`${runStart}-${runEnd}`}>{text.slice(runStart, runEnd)}</mark>);
+    cursor = runEnd;
+    if (matchedIndex !== undefined) {
+      runStart = matchedIndex;
+      runEnd = matchedIndex + 1;
+    }
+  }
+  if (cursor < text.length) segments.push(text.slice(cursor));
   return segments;
 }
 
