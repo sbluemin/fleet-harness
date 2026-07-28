@@ -106,7 +106,7 @@
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-sm);
   padding: 8px 10px;
-  background: var(--surface-raised);
+  background: var(--surface-glass);
   color: var(--text-primary);
   font-family: var(--font-mono);
 }
@@ -126,7 +126,7 @@
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-sm);
   padding: 6px 10px;
-  background: var(--surface-raised);
+  background: var(--surface-glass);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 10px;

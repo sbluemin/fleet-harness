@@ -17,9 +17,12 @@ import type { AgentCliStatus } from "./agent-cli-types.js";
 import { resolveAgentCliBinary, validateUserAgentCliPath, type AgentCliBinaryResolution, type AgentCliPathError } from "./agent-cli-paths.js";
 
 export interface AgentCliDetectorDeps {
-  readonly env: NodeJS.ProcessEnv;
-  readonly readUserPaths: () => Promise<Readonly<Record<string, string>>>;
-  readonly resolve?: (command: string, userPaths: Readonly<Record<string, string>>) => AgentCliBinaryResolution;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly readUserPaths?: () => Promise<Readonly<Record<string, string>>>;
+  readonly resolve?: (
+    command: string,
+    userPaths: Readonly<Record<string, string>>,
+  ) => AgentCliBinaryResolution | ResolvedBinary | undefined;
   // 주어진 바이너리/인자로 프로세스를 실행해 stdout(또는 stderr)을 반환한다. 실패 시 throw.
   readonly runVersion: (bin: string, args: readonly string[]) => Promise<string>;
 }
@@ -46,7 +49,7 @@ export function createAgentCliDetector(deps: AgentCliDetectorDeps): AgentCliDete
   return {
     detect: async () => {
       const commands = distinctBinaryCommands();
-      const userPaths = await deps.readUserPaths();
+      const userPaths = await (deps.readUserPaths?.() ?? Promise.resolve({}));
       return Promise.all(commands.map((command) => detectOne(command, userPaths, deps)));
     },
   };
@@ -81,9 +84,12 @@ async function detectOne(
   userPaths: Readonly<Record<string, string>>,
   deps: AgentCliDetectorDeps,
 ): Promise<AgentCliStatus> {
-  const resolution = deps.resolve?.(command, userPaths)
-    ?? resolveAgentCliBinary({ cliCommand: command, env: deps.env, userPaths });
-  const resolved = resolution.resolved;
+  // legacy resolver의 undefined는 "미설치"라는 권위적 결과다. 새 기본 resolver로 폴백하면
+  // 기존 테스트/호출자의 격리된 PATH 계약을 깨므로 resolver 존재 여부로 분기한다.
+  const customResolution = deps.resolve?.(command, userPaths);
+  const resolved = deps.resolve
+    ? toResolvedBinary(customResolution)
+    : resolveAgentCliBinary({ cliCommand: command, env: deps.env ?? process.env, userPaths }).resolved;
   const available = resolved !== undefined;
   let version: string | null = null;
   if (resolved) {
@@ -95,6 +101,13 @@ async function detectOne(
     available,
     version,
   };
+}
+
+function toResolvedBinary(
+  resolution: AgentCliBinaryResolution | ResolvedBinary | undefined,
+): ResolvedBinary | undefined {
+  if (!resolution) return undefined;
+  return "resolved" in resolution ? resolution.resolved : resolution;
 }
 
 // 버전 추출은 실패해도 throw하지 않는다(가용성 표시는 유지). Token Boundary 하드룰에 따라
