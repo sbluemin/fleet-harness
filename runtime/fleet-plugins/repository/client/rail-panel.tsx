@@ -12,6 +12,7 @@ import { getT, type RepositoryMessageKey } from "./i18n/index.js";
 import { buildRepoTree, compressRepoFolder, countRepos, type RepoTreeNode } from "./repo-tree.js";
 import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile } from "./repository-view-store.js";
 import { HunkView } from "./hunk-view.js";
+import { dropHistoryCacheForRepository } from "./history-cache.js";
 import { HistoryPanel } from "./history-panel.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, buildDiffGridTemplate, clampListPaneWidth } from "./rail-layout.js";
 import { buildWorkspaceTreeSections, clampWorkspaceTreeWidth, readWorkspaceTreeWidth, saveWorkspaceTreeWidth } from "./workspace-layout.js";
@@ -304,7 +305,13 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     const decision = resolveRepositorySelection(ctx.theaterId, repoRel, next.relPath);
     // 동일 컨텍스트 재선택도 "이 체크아웃의 History" 착지다 — refFilter를 걷어내고 History 패널을
     // epoch 리마운트해 전환 착지와 동일한 초기 상태로 만든다(스코프된 로그·WIP 숨김 잔존 방지).
-    if (!decision.transition) { setRefFilter(null); setHistoryLandingEpoch((value) => value + 1); setSource(decision.landing); return; }
+    if (!decision.transition) {
+      dropHistoryCacheForRepository(`${ctx.theaterId ?? ""}:${next.relPath}`);
+      setRefFilter(null);
+      setHistoryLandingEpoch((value) => value + 1);
+      setSource(decision.landing);
+      return;
+    }
     transitionRepository(next.relPath, true, decision.landing);
   }, [ctx.theaterId, repoRel, setSource, transitionRepository]);
   const handleCloseHunk = useCallback(() => clearSelectedFile(), []);
@@ -362,7 +369,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${treeWidth}px` } as React.CSSProperties}>
         <WorkspaceTree t={t} repos={repos} reposError={reposError} reposTruncated={reposTruncated} scanDepth={scanDepth} worktrees={worktrees} worktreesError={worktreesError} refs={refs} refsError={refsError} changedFiles={changedFiles} selectedRel={repoRel} source={source} refFilter={refFilter} onRepository={handleSelectRepository} onScanDepth={setScanDepth} onRetryRepos={() => setReposRetry((value) => value + 1)} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} onRetryRefs={() => setRefsRetry((value) => value + 1)} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} />
         <div className="repository-divider repository-ws-tree-divider" onPointerDown={handleTreeDividerDown} role="separator" aria-orientation="vertical" aria-label={t("repository.common.resizeSourceTree")} />
-        <HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}:${historyLandingEpoch}`} ctx={ctx} repoRel={repoRel} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
+        <HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}:${historyLandingEpoch}`} cacheScope={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
       </div>
     </div>
   );
