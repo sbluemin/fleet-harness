@@ -16,7 +16,7 @@ import type { TerminalRuntime } from "./shared/index.js";
 import { createDefaultAgentCliDetector, validateAgentCliPathForSave } from "./agent-api/agent-cli-detect.js";
 import { buildAgentCliLaunchKinds } from "./agent-api/agent-cli-launch-kinds.js";
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-api/agent-cli-launch-metadata.js";
-import { AGENT_CLI_COMMANDS, createAgentCliPathStore, resolveAgentCliBinary } from "./agent-api/agent-cli-paths.js";
+import { AGENT_CLI_COMMANDS, createAgentCliPathStore, createCarrierAgentCliLaunchResolver, resolveAgentCliBinary } from "./agent-api/agent-cli-paths.js";
 import type { AgentCliDiagnostics } from "./agent-api/agent-cli-types.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
@@ -84,6 +84,8 @@ export function buildAgentPlanToolRegistrations(dataDir: string) {
 
 function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
   const wikiToolSpecs = createTerminalWikiToolSpecs(ctx.host.paths.fleetDataDir);
+  const agentCliPathStore = createAgentCliPathStore(ctx.host.storage, ctx.pluginId);
+  const readAgentCliPaths = async () => (await agentCliPathStore.read()).paths;
   const runtime = createFleetAgentRuntimeLifecycle({
     authService: deps.authService,
     dataDir: ctx.host.paths.fleetDataDir,
@@ -95,12 +97,11 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     wikiToolSpecs,
     ...buildAgentPlanToolRegistrations(ctx.host.paths.fleetDataDir),
   });
+  runtime.carrierRuntime.setAgentCliLaunchResolver(createCarrierAgentCliLaunchResolver(readAgentCliPaths));
   const observability = createConsoleObservabilityStore({
     canonicalizeTheaterPath: ctx.host.paths.canonicalizeTheaterPath,
     workspaceHash: ctx.host.paths.workspaceHash,
   });
-  const agentCliPathStore = createAgentCliPathStore(ctx.host.storage, ctx.pluginId);
-  const readAgentCliPaths = async () => (await agentCliPathStore.read()).paths;
   const detector = createDefaultAgentCliDetector(readAgentCliPaths);
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();

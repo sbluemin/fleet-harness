@@ -27,6 +27,7 @@ import { applyPostConnectConfig } from "./post-connect.js";
 export interface ExecuteOptions {
   readonly cliType: CliType;
   readonly authEnvResolver: AuthEnvResolver;
+  readonly agentCliLaunchResolver?: AgentCliLaunchResolver;
   readonly request: string;
   readonly cwd: string;
   readonly serverBindings?: AgentServerBindings;
@@ -46,6 +47,17 @@ export interface ExecuteOptions {
 }
 
 export type AuthEnvResolver = (cli: CliType, context?: { readonly model?: string; readonly effort?: string }) => Promise<Record<string, string>>;
+export type AgentCliLaunchResolver = (
+  cli: CliType,
+  context: {
+    readonly env: Readonly<Record<string, string>>;
+    readonly model?: string;
+    readonly effort?: string;
+  },
+) => Promise<{
+  readonly cliPath?: string;
+  readonly env?: Readonly<Record<string, string>>;
+}>;
 
 export type ExecResult = {
   responseText: string;
@@ -158,7 +170,7 @@ export function engineExecuteOneShot(opts: ExecuteOptions): OneShotExecution {
         model: opts.model,
         promptIdleTimeout: opts.promptIdleTimeout,
         effort,
-      }, opts.connectSystemPrompt, opts.authEnvResolver, mcpSetup?.mcpServers));
+      }, opts.connectSystemPrompt, opts.authEnvResolver, opts.agentCliLaunchResolver, mcpSetup?.mcpServers));
       if (opts.resumeSessionId) connectOpts.sessionId = opts.resumeSessionId;
       const connectResult = await raceAbort(raceProviderFailure(client.connect(connectOpts)), opts.signal);
       await raceProviderFailure(applyResolvedEffort(client, opts.cliType, model, effort));
@@ -346,7 +358,7 @@ async function setupExecutorMcp(
   }
 }
 
-async function buildConnectOptions(cli: CliType, cwd: string, overrides: { model?: string; promptIdleTimeout?: number; effort?: string }, systemPrompt: string | null | undefined, authEnvResolver: AuthEnvResolver, mcpServers?: McpServerConfig[]): Promise<UnifiedClientOptions> {
+async function buildConnectOptions(cli: CliType, cwd: string, overrides: { model?: string; promptIdleTimeout?: number; effort?: string }, systemPrompt: string | null | undefined, authEnvResolver: AuthEnvResolver, agentCliLaunchResolver?: AgentCliLaunchResolver, mcpServers?: McpServerConfig[]): Promise<UnifiedClientOptions> {
   const options: UnifiedClientOptions = { cwd, cli, autoApprove: true, clientInfo: CLIENT_INFO, timeout: 0, strictMcp: true, archiveSessionOnDisconnect: true };
   if (overrides.model) options.model = overrides.model;
   if (overrides.effort) options.effort = overrides.effort;
@@ -357,7 +369,14 @@ async function buildConnectOptions(cli: CliType, cwd: string, overrides: { model
     ...(overrides.model ? { model: overrides.model } : {}),
     ...(overrides.effort ? { effort: overrides.effort } : {}),
   });
-  if (Object.keys(env).length) options.env = env;
+  const launch = await agentCliLaunchResolver?.(cli, {
+    env,
+    ...(overrides.model ? { model: overrides.model } : {}),
+    ...(overrides.effort ? { effort: overrides.effort } : {}),
+  });
+  if (launch?.cliPath) options.cliPath = launch.cliPath;
+  const mergedEnv = launch?.env ? { ...env, ...launch.env } : env;
+  if (Object.keys(mergedEnv).length) options.env = mergedEnv;
   return options;
 }
 

@@ -48,7 +48,7 @@ export type {
   ExecutorSessionManager,
   ExecutorSessionRequest,
 } from "./executor-session-manager.js";
-export type { AuthEnvResolver, ExecuteOptions, ExecResult, OneShotExecution, OneShotReady } from "./executor.js";
+export type { AgentCliLaunchResolver, AuthEnvResolver, ExecuteOptions, ExecResult, OneShotExecution, OneShotReady } from "./executor.js";
 export type {
   SelectableThinkingLevel,
 } from "./models.js";

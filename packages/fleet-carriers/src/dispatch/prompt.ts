@@ -5,7 +5,7 @@
  * tool-spec.ts와 taskforce.ts가 단방향으로 참조합니다.
  */
 
-import type { AuthEnvResolver } from "@dotobokuri/core-agent";
+import type { AgentCliLaunchResolver, AuthEnvResolver } from "@dotobokuri/core-agent";
 import type { WorkspaceChangeScanner } from "../jobs/workspace-manifest.js";
 import type { CarrierMetadata, CarrierRequest, RequestBlock } from "./types.js";
 
@@ -27,6 +27,7 @@ export type RequiredBlockValidationResult =
 
 export interface CarrierToolSpecDeps {
   readonly authEnvResolver: AuthEnvResolver;
+  readonly agentCliLaunchResolver?: AgentCliLaunchResolver;
   readonly reservedExternalMcpServerIds?: readonly string[];
   readonly workspaceChangeScanner?: WorkspaceChangeScanner;
 }

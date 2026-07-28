@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { resolvePathBinary, type ResolvedBinary } from "@dotobokuri/core-agent";
+import { resolvePathBinary, type AgentCliLaunchResolver, type ResolvedBinary } from "@dotobokuri/core-agent";
 import type { FleetPluginStorageHost } from "@fleet-console/sdk/plugin";
 
 export const AGENT_CLI_PATHS_STORAGE_KEY = "agent-cli-paths";
@@ -144,6 +144,32 @@ export function applyAgentCliPathEnvOverlay(
   const userPath = userPaths[cliCommand];
   if (!envName || !userPath || (env[envName]?.trim().length ?? 0) > 0) return env;
   return { ...env, [envName]: userPath };
+}
+
+export function createCarrierAgentCliLaunchResolver(
+  readAgentCliPaths: () => Promise<Readonly<Record<string, string>>>,
+  baseEnv: NodeJS.ProcessEnv = process.env,
+): AgentCliLaunchResolver {
+  return async (cliId, context) => {
+    const userPaths = await readAgentCliPaths();
+    const cliCommand = agentCliCommandForId(cliId);
+    if (!cliCommand) throw new Error("agent_cli_unavailable");
+    const effectiveEnv = { ...baseEnv, ...context.env };
+    const resolution = resolveAgentCliBinary({ cliCommand, env: effectiveEnv, userPaths });
+    if (!resolution.resolved) throw new Error("agent_cli_unavailable");
+
+    // Carrier auth env는 core-agent가 따로 병합한다. 여기서는 사용자 경로 때문에 새로 생긴
+    // override만 돌려 기존 env 우선순위를 보존하고, OpenCode/Cursor는 cliPath로 직접 넘긴다.
+    const overlaidEnv = applyAgentCliPathEnvOverlay(effectiveEnv, cliId, userPaths);
+    const env: Record<string, string> = {};
+    for (const [name, value] of Object.entries(overlaidEnv)) {
+      if (value !== undefined && effectiveEnv[name] !== value) env[name] = value;
+    }
+    return {
+      cliPath: resolution.launchPath,
+      ...(Object.keys(env).length > 0 ? { env } : {}),
+    };
+  };
 }
 
 function resolveConfiguredPath(

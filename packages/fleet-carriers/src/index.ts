@@ -1,5 +1,5 @@
 import { registerDefaultCarriers } from "./agent-specs.js";
-import type { AgentToolCtx, AgentToolSpec } from "@dotobokuri/core-agent";
+import type { AgentCliLaunchResolver, AgentToolCtx, AgentToolSpec } from "@dotobokuri/core-agent";
 import { createCarrierRegistry, type CarrierRegistry } from "./dispatch/framework.js";
 import * as dispatchFramework from "./dispatch/framework.js";
 import { DispatchContextRegistry } from "./dispatch/context-registry.js";
@@ -81,6 +81,7 @@ export interface CarrierRuntime {
   dispatchServices: CarrierDispatchServices;
   dispatch: ReturnType<typeof createBoundCarrierDispatch>;
   buildDispatchToolSpec(deps: Parameters<typeof dispatchToolSpec.buildCarrierDispatchToolSpec>[1]): ReturnType<typeof dispatchToolSpec.buildCarrierDispatchToolSpec>;
+  setAgentCliLaunchResolver(resolver: AgentCliLaunchResolver): void;
   jobs: ReturnType<typeof createBoundCarrierJobs>;
   personas: typeof carrierPersonas;
   store: CarrierRuntimeStore;
@@ -154,6 +155,7 @@ export function createCarrierRuntime(): CarrierRuntime {
   const registry = createCarrierRegistry();
   const dispatchContexts = new DispatchContextRegistry();
   const inFlight = new Set<RuntimeInFlightTask>();
+  let agentCliLaunchResolver: AgentCliLaunchResolver | undefined;
   let accepting = true;
   const admission: RuntimeDispatchAdmission = {
     get accepting() {
@@ -182,12 +184,23 @@ export function createCarrierRuntime(): CarrierRuntime {
     dispatchServices,
     dispatch: boundDispatch,
     buildDispatchToolSpec(deps) {
-      return boundDispatch.buildToolSpecs(deps);
+      return boundDispatch.buildToolSpecs({
+        ...deps,
+        // host가 lifecycle 생성 뒤 resolver를 주입해도 이미 등록된 단일 dispatch 도구가
+        // 실행 직전 최신 resolver를 읽도록 runtime 소유 closure로 연결한다.
+        agentCliLaunchResolver: async (cli, context) => {
+          const resolver = agentCliLaunchResolver ?? deps.agentCliLaunchResolver;
+          return resolver ? resolver(cli, context) : {};
+        },
+      });
     },
     jobs: boundCarrierJobs,
     personas: carrierPersonas,
     store: { initStore: carrierStore.initStore },
     stream: boundStream,
+    setAgentCliLaunchResolver(resolver) {
+      agentCliLaunchResolver = resolver;
+    },
     trackInFlight: dispatchServices.trackInFlight,
     async cleanup() {
       accepting = false;
@@ -195,6 +208,7 @@ export function createCarrierRuntime(): CarrierRuntime {
       await Promise.allSettled(tasks.map((task) => task.cancel()));
       await Promise.allSettled(tasks.map((task) => task.completion));
       inFlight.clear();
+      agentCliLaunchResolver = undefined;
       dispatchContexts.dispose();
     },
     registerCarrierDefaults() {

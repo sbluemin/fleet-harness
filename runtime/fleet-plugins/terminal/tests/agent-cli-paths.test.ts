@@ -10,6 +10,7 @@ import {
   AGENT_CLI_PATHS_STORAGE_KEY,
   applyAgentCliPathEnvOverlay,
   createAgentCliPathStore,
+  createCarrierAgentCliLaunchResolver,
   resolveAgentCliBinary,
 } from "../server/agent-api/agent-cli-paths.js";
 
@@ -183,6 +184,45 @@ describe("Agent CLI launch env overlay", () => {
   it("does not invent launch env variables for detection-only CLIs", () => {
     expect(applyAgentCliPathEnvOverlay({}, "opencode", { opencode: "/custom/opencode" })).toEqual({});
     expect(applyAgentCliPathEnvOverlay({}, "cursor-agent", { "cursor-agent": "/custom/cursor-agent" })).toEqual({});
+  });
+});
+
+describe("Carrier Agent CLI launch resolution", () => {
+  it("passes a user path as cliPath and fills only an empty override env", async () => {
+    const resolver = createCarrierAgentCliLaunchResolver(
+      async () => ({ codex: process.execPath }),
+      { PATH: path.dirname(process.execPath) },
+    );
+
+    await expect(resolver("codex", { env: {} })).resolves.toEqual({
+      cliPath: process.execPath,
+      env: { CODEX_BIN: process.execPath },
+    });
+  });
+
+  it("keeps an existing env override ahead of the stored user path", async () => {
+    const userBinary = createFile("user-codex", 0o700);
+    const resolver = createCarrierAgentCliLaunchResolver(
+      async () => ({ codex: userBinary }),
+      { PATH: path.dirname(process.execPath), CODEX_BIN: process.execPath },
+    );
+
+    await expect(resolver("codex", { env: {} })).resolves.toEqual({
+      cliPath: process.execPath,
+    });
+  });
+
+  it("passes OpenCode directly without inventing an env name and reuses Cursor's existing override", async () => {
+    const resolver = createCarrierAgentCliLaunchResolver(
+      async () => ({ opencode: process.execPath, "cursor-agent": process.execPath }),
+      { PATH: path.dirname(process.execPath) },
+    );
+
+    await expect(resolver("opencode-go", { env: {} })).resolves.toEqual({ cliPath: process.execPath });
+    await expect(resolver("cursor", { env: {} })).resolves.toEqual({
+      cliPath: process.execPath,
+      env: { CURSOR_AGENT_BIN: process.execPath },
+    });
   });
 });
 

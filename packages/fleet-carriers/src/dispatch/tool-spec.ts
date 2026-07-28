@@ -312,6 +312,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
       const handle = executeOneShot({
         scopeId: carrierId,
         authEnvResolver: deps.authEnvResolver,
+        agentCliLaunchResolver: deps.agentCliLaunchResolver,
         reservedExternalMcpServerIds: deps.reservedExternalMcpServerIds,
         cliType: trackModelInfo.cliType,
         request,
