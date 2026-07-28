@@ -54,9 +54,10 @@ export function createAgentCliDetector(deps: AgentCliDetectorDeps): AgentCliDete
 
 export function createDefaultAgentCliDetector(
   readUserPaths: () => Promise<Readonly<Record<string, string>>> = async () => ({}),
+  env: NodeJS.ProcessEnv = process.env,
 ): AgentCliDetector {
   return createAgentCliDetector({
-    env: process.env,
+    env,
     readUserPaths,
     runVersion: (bin, args) => execFileVersion(bin, args),
   });

@@ -8,6 +8,7 @@ import type { FleetPluginServerContext, OperationNode } from "@fleet-console/sdk
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 
 import { createDefaultAgentCliDetector } from "./agent-cli-detect.js";
+import { agentCliCommandForId, applyAgentCliPathEnvOverlay, resolveAgentCliBinary } from "./agent-cli-paths.js";
 import { AnalysisRegistry } from "./analysis-registry.js";
 import { ANALYSIS_ERROR_CODES, analysisError, buildAnalysisCatalog, isAnalysisSelection, isMessageBody, type AnalysisCatalog, type AnalysisEvent } from "./analysis-types.js";
 import { readProviderSessionCapture } from "./session-capture.js";
@@ -22,11 +23,18 @@ const SAFE_ARTIFACT_COLOR = /^(?:#[\da-f]{3,8}|(?:rgb|rgba|hsl|hsla|hwb|lab|lch|
 const ARTIFACT_CANVAS_STYLE_PROPERTIES = new Set(["background-color", "background-image", "color", "min-height", "color-scheme"]);
 const ARTIFACT_BODY_CANVAS_STYLE_PROPERTIES = new Set([...ARTIFACT_CANVAS_STYLE_PROPERTIES, "margin"]);
 
+type AnalysisSessionOptions = ConstructorParameters<typeof AnalystSession>[0] & {
+  readonly cliPath?: string;
+  readonly env?: Readonly<Record<string, string>>;
+};
+
 type AnalysisRouteDeps = {
   readonly detect?: () => ReturnType<ReturnType<typeof createDefaultAgentCliDetector>["detect"]>;
-  readonly createSession?: (options: ConstructorParameters<typeof AnalystSession>[0]) => AnalystSession;
+  readonly createSession?: (options: AnalysisSessionOptions) => AnalystSession;
   readonly modelsFor?: typeof getProviderModels;
   readonly readCapture?: typeof readProviderSessionCapture;
+  readonly readAgentCliPaths?: () => Promise<Readonly<Record<string, string>>>;
+  readonly env?: NodeJS.ProcessEnv;
 };
 
 type InFlightStartDeletionMarker = {
@@ -36,7 +44,9 @@ type InFlightStartDeletionMarker = {
 
 export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: AnalysisRouteDeps = {}): void {
   const registry = new AnalysisRegistry();
-  const detect = deps.detect ?? createDefaultAgentCliDetector().detect;
+  const env = deps.env ?? process.env;
+  const readAgentCliPaths = deps.readAgentCliPaths;
+  const detect = deps.detect ?? createDefaultAgentCliDetector(readAgentCliPaths ?? (async () => ({})), env).detect;
   const modelsFor = deps.modelsFor ?? getProviderModels;
   const readCapture = deps.readCapture ?? readProviderSessionCapture;
   const createSession = deps.createSession ?? ((options) => new AnalystSession(options));
@@ -71,7 +81,7 @@ export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: Anal
       const deletionMarker: InFlightStartDeletionMarker = { operationId, deleted: false };
       inFlightStartDeletionMarkers.add(deletionMarker);
       try {
-        return await handleStart(ctx, req, res, operation, registry, catalog, readCapture, createSession, deletionMarker);
+        return await handleStart(ctx, req, res, operation, registry, catalog, readCapture, createSession, readAgentCliPaths, env, deletionMarker);
       } finally {
         inFlightStartDeletionMarkers.delete(deletionMarker);
       }
@@ -344,7 +354,19 @@ async function handleReady(ctx: FleetPluginServerContext, req: http.IncomingMess
   return true;
 }
 
-async function handleStart(ctx: FleetPluginServerContext, req: http.IncomingMessage, res: http.ServerResponse, operation: OperationNode, registry: AnalysisRegistry, catalog: () => Promise<AnalysisCatalog>, readCapture: typeof readProviderSessionCapture, createSession: (options: ConstructorParameters<typeof AnalystSession>[0]) => AnalystSession, deletionMarker: InFlightStartDeletionMarker): Promise<boolean> {
+async function handleStart(
+  ctx: FleetPluginServerContext,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  operation: OperationNode,
+  registry: AnalysisRegistry,
+  catalog: () => Promise<AnalysisCatalog>,
+  readCapture: typeof readProviderSessionCapture,
+  createSession: (options: AnalysisSessionOptions) => AnalystSession,
+  readAgentCliPaths: (() => Promise<Readonly<Record<string, string>>>) | undefined,
+  env: NodeJS.ProcessEnv,
+  deletionMarker: InFlightStartDeletionMarker,
+): Promise<boolean> {
   if (req.method !== "POST") return methodNotAllowed(ctx, res);
   if (!isJsonRequest(req)) return unsupportedMediaType(ctx, res);
   const body = await ctx.host.http.readJsonBody(req);
@@ -373,7 +395,31 @@ async function handleStart(ctx: FleetPluginServerContext, req: http.IncomingMess
     return true;
   }
   try {
-    const result = await registry.start(operation.id, (onEvent) => createSession({ cliId: body.cliId, model: body.model, effort: body.effort || undefined, language: body.language, cwd, capturePath: transcriptPath, onEvent: (event: AnalystEvent) => onEvent(toBrowserEvent(event)) }));
+    let launchOptions: Pick<AnalysisSessionOptions, "cliPath" | "env"> = {};
+    if (readAgentCliPaths) {
+      const userPaths = await readAgentCliPaths();
+      const cliCommand = agentCliCommandForId(body.cliId);
+      const resolution = cliCommand
+        ? resolveAgentCliBinary({ cliCommand, env, userPaths })
+        : null;
+      if (!resolution?.resolved) throw new Error("analysis_cli_unavailable");
+      // Claude/Codex는 기존 override env를 유지하면서 사용자 경로만 빈 자리에 채운다.
+      // OpenCode/Cursor는 새 env 이름 없이 같은 해석 결과의 launchPath를 직접 spawn에 넘긴다.
+      launchOptions = {
+        cliPath: resolution.launchPath,
+        env: definedEnv(applyAgentCliPathEnvOverlay(env, body.cliId, userPaths)),
+      };
+    }
+    const result = await registry.start(operation.id, (onEvent) => createSession({
+      cliId: body.cliId,
+      ...launchOptions,
+      model: body.model,
+      effort: body.effort || undefined,
+      language: body.language,
+      cwd,
+      capturePath: transcriptPath,
+      onEvent: (event: AnalystEvent) => onEvent(toBrowserEvent(event)),
+    }));
     if (result === "exists") writeError(ctx, res, 409, ANALYSIS_ERROR_CODES.sessionExists, "Analysis session already exists.");
     else if (result === "stopped") writeError(ctx, res, 404, ANALYSIS_ERROR_CODES.sessionNotFound, "Analysis session was stopped before it started.");
     else ctx.host.http.writeJson(res, 200, { started: true });
@@ -382,6 +428,14 @@ async function handleStart(ctx: FleetPluginServerContext, req: http.IncomingMess
     else writeError(ctx, res, 503, ANALYSIS_ERROR_CODES.catalogInvalid, "Analysis session could not start.");
   }
   return true;
+}
+
+function definedEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (value !== undefined) result[key] = value;
+  }
+  return result;
 }
 
 async function resolveOperationTranscript(ctx: FleetPluginServerContext, operation: OperationNode, readCapture: typeof readProviderSessionCapture): Promise<{ readonly captureFound: boolean; readonly transcriptPath: string | null }> {

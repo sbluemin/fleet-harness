@@ -29,7 +29,14 @@ it.each([
     disconnect: vi.fn().mockResolvedValue(undefined),
   }) as unknown as IUnifiedAgentClient;
   const build = vi.spyOn(UnifiedAgent, "build").mockResolvedValue(client);
-  const session = new AnalystSession({ capturePath: file, cwd: process.cwd(), cliId, model: "test-model" });
+  const session = new AnalystSession({
+    capturePath: file,
+    cwd: process.cwd(),
+    cliId,
+    cliPath: "/configured/agent-cli",
+    env: { PATH: "/isolated/bin", CLAUDE_BIN: "/configured/agent-cli" },
+    model: "test-model",
+  });
 
   await session.start();
 
@@ -39,6 +46,8 @@ it.each([
     fsAccess: false,
     yoloMode: true,
     strictMcp,
+    cliPath: "/configured/agent-cli",
+    env: { PATH: "/isolated/bin", CLAUDE_BIN: "/configured/agent-cli" },
   }));
   await session.dispose();
 });

@@ -250,7 +250,7 @@ describe("Session Analyst server contract", () => {
     const transcriptPath = join(dir, "captured.jsonl");
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
-    const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    const createSession = vi.fn((_options: unknown) => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
     registerAnalysisRoutes(router.ctx as never, {
       detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
@@ -261,6 +261,65 @@ describe("Session Analyst server contract", () => {
     await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b", language: "ko" });
     expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
     expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ effort: undefined, language: "ko" }));
+  });
+
+  it.each([
+    ["claude", "claude", "CLAUDE_BIN"],
+    ["codex", "codex", "CODEX_BIN"],
+    ["opencode-go", "opencode", null],
+    ["cursor", "cursor-agent", "CURSOR_AGENT_BIN"],
+  ] as const)("uses the configured %s path for Analyst detection and execution", async (cliId, cliCommand, envName) => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-cli-path-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    const readAgentCliPaths = vi.fn(async () => ({ [cliCommand]: process.execPath }));
+    const createSession = vi.fn((_options: unknown) => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    registerAnalysisRoutes(router.ctx as never, {
+      env: { PATH: "" },
+      readAgentCliPaths,
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
+      createSession: createSession as never,
+    });
+
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId, model: "model-b" });
+
+    expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
+    expect(readAgentCliPaths).toHaveBeenCalledTimes(2);
+    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({
+      cliId,
+      cliPath: process.execPath,
+      env: envName ? expect.objectContaining({ [envName]: process.execPath }) : { PATH: "" },
+    }));
+    const options = createSession.mock.calls[0]?.[0] as { readonly env?: Record<string, string> } | undefined;
+    if (!envName) {
+      expect(options?.env).not.toHaveProperty("OPENCODE_BIN");
+    }
+  });
+
+  it("keeps an existing Analyst CLI env override ahead of a stored user path", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-cli-env-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    const readAgentCliPaths = vi.fn(async () => ({ claude: "/stored/path/must-not-win" }));
+    const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    registerAnalysisRoutes(router.ctx as never, {
+      env: { PATH: "", CLAUDE_BIN: process.execPath },
+      readAgentCliPaths,
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
+      createSession: createSession as never,
+    });
+
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+
+    expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
+    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({
+      cliPath: process.execPath,
+      env: { PATH: "", CLAUDE_BIN: process.execPath },
+    }));
   });
 
   it("disposes a registry entry when its Operation is deleted during pending start", async () => {

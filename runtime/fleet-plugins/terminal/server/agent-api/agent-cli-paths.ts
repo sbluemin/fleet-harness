@@ -23,6 +23,7 @@ export interface AgentCliBinaryResolution {
   readonly resolved: ResolvedBinary | undefined;
   readonly source: "env" | "user" | "path" | null;
   readonly error: Exclude<AgentCliPathError, "probe_failed"> | null;
+  readonly launchPath: string | undefined;
   readonly searchedPathEntries: readonly string[];
 }
 
@@ -77,26 +78,27 @@ export function resolveAgentCliBinary(options: {
     const searchedPathEntries = path.isAbsolute(envOverride) ? [] : readPathEntries(options.env, platform);
     const resolved = resolvePathBinary(envOverride, options.env, { platform });
     if (!resolved) {
-      return { resolved: undefined, source: "env", error: "path_not_found", searchedPathEntries };
+      return { resolved: undefined, source: "env", error: "path_not_found", launchPath: envOverride, searchedPathEntries };
     }
     const error = validateResolvedFile(resolved, platform);
-    return { resolved: error ? undefined : resolved, source: "env", error, searchedPathEntries };
+    return { resolved: error ? undefined : resolved, source: "env", error, launchPath: envOverride, searchedPathEntries };
   }
 
   const userPath = options.userPaths[options.cliCommand];
   if (userPath) {
     const checked = resolveConfiguredPath(userPath, options.env, platform);
-    return { ...checked, source: "user", searchedPathEntries: [] };
+    return { ...checked, source: "user", launchPath: userPath, searchedPathEntries: [] };
   }
 
   const searchedPathEntries = readPathEntries(options.env, platform);
   const resolved = resolvePathBinary(options.cliCommand, options.env, { platform });
-  if (!resolved) return { resolved: undefined, source: null, error: null, searchedPathEntries };
+  if (!resolved) return { resolved: undefined, source: null, error: null, launchPath: undefined, searchedPathEntries };
   const error = validateResolvedFile(resolved, platform);
   return {
     resolved: error ? undefined : resolved,
     source: error ? null : "path",
     error,
+    launchPath: undefined,
     searchedPathEntries,
   };
 }
@@ -107,12 +109,14 @@ export function validateUserAgentCliPath(
   platform: NodeJS.Platform = process.platform,
 ): AgentCliBinaryResolution {
   const checked = resolveConfiguredPath(executablePath, env, platform);
-  return { ...checked, source: "user", searchedPathEntries: [] };
+  return { ...checked, source: "user", launchPath: executablePath, searchedPathEntries: [] };
 }
 
 export function agentCliCommandForId(cliId: string | undefined): string | null {
   if (cliId === "claude" || cliId === "claude-kimi") return "claude";
   if (cliId === "codex") return "codex";
+  if (cliId === "opencode-go") return "opencode";
+  if (cliId === "cursor") return "cursor-agent";
   return null;
 }
 
