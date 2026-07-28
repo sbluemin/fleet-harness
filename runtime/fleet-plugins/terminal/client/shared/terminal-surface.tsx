@@ -6,6 +6,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
+import { getT, useTerminalLocale } from "../i18n/index.js";
 import { createImeShiftEnterHandler } from "./ime-shift-enter.js";
 import { createTerminalConnection, type TerminalConnection } from "./terminal-connection.js";
 import { createTerminalCopyOnSelect } from "./terminal-copy-on-select.js";
@@ -224,6 +225,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   // 테마 극성(다크↔라이트) 전환 1회성 안내 — 실행 중 CLI 내부 테마는 강제할 수 없으므로 힌트만 띄운다.
   const [themeHint, setThemeHint] = useState<"light" | "dark" | null>(null);
   const prevPolarityRef = useRef<boolean | null>(null);
+  const t = getT(useTerminalLocale());
   // 터미널 인스턴스는 심볼 폰트 선대기 때문에 비동기로 생성된다. 같은 커밋에서 이미 실행된
   // WebGL/테마/폰트 effect는 null 터미널을 보고 건너뛰므로, 생성 완료를 epoch로 알려 재실행시킨다.
   const [mountedTerminalEpoch, setMountedTerminalEpoch] = useState(0);
@@ -538,8 +540,8 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         <div className="terminal-viewport">
           {themeHint ? (
             <div className="terminal-theme-hint" role="status">
-              <span>Console switched to a {themeHint} theme — relaunch or run <code>/theme</code> in the CLI to match</span>
-              <button type="button" className="terminal-theme-hint-dismiss" aria-label="Dismiss theme hint" onClick={() => setThemeHint(null)}>✕</button>
+              <span>{t(themeHint === "light" ? "terminal.themeHint.light" : "terminal.themeHint.dark")}</span>
+              <button type="button" className="terminal-theme-hint-dismiss" aria-label={t("terminal.themeHint.dismiss")} onClick={() => setThemeHint(null)}>✕</button>
             </div>
           ) : null}
           <div className="terminal-canvas" ref={containerRef} style={zoomStyle} />

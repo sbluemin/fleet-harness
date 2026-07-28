@@ -5616,11 +5616,6 @@
   box-shadow: var(--shadow-soft);
 }
 
-.terminal-theme-hint code {
-  font-family: var(--font-mono);
-  color: var(--text-primary);
-}
-
 .terminal-theme-hint-dismiss {
   flex: 0 0 auto;
   display: grid;
