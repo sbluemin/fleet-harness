@@ -282,6 +282,31 @@ describe("filterPaletteCommands", () => {
     ]);
   });
 
+  it("ranks exact matches above fuzzy-only matches regardless of the label length penalty", () => {
+    const longExactLabel = `Close operation: rnme${"x".repeat(11_000)}`;
+    const commands = commandEntries("Rename operation…", longExactLabel);
+    const matches = matchPaletteCommands(commands, "rnme");
+    expect(matches.map(({ command }) => command.label)).toEqual([longExactLabel, "Rename operation…"]);
+    expect(matches.map(({ exactTokens }) => exactTokens)).toEqual([1, 0]);
+  });
+
+  it("selects the earliest word-boundary exact occurrence", () => {
+    const boundary = fuzzyMatchPaletteLabel("xfoo foo", "foo");
+    const nonBoundary = fuzzyMatchPaletteLabel("xfoo-xxx", "foo");
+    const sameLengthNonBoundary = fuzzyMatchPaletteLabel("xfoo-foo", "foo");
+    expect(boundary?.matchedIndices).toEqual([5, 6, 7]);
+    expect(boundary?.score).toBeGreaterThan(nonBoundary?.score ?? Number.NEGATIVE_INFINITY);
+    expect(boundary?.score).toBeGreaterThan(sameLengthNonBoundary?.score ?? Number.NEGATIVE_INFINITY);
+  });
+
+  it("maps case-folded match indices back into the original label", () => {
+    const label = "Close operation: İX";
+    const match = fuzzyMatchPaletteLabel(label, "x");
+    expect(match).not.toBeNull();
+    expect(match?.matchedIndices.filter((index) => index < 0 || index >= label.length)).toEqual([]);
+    expect(match?.matchedIndices.map((index) => label.slice(index, index + 1)).join("").toLocaleLowerCase()).toBe("x");
+  });
+
   it("ranks consecutive fuzzy glyphs above scattered glyphs", () => {
     const consecutive = fuzzyMatchPaletteLabel("ab-d-e-", "abde");
     const scattered = fuzzyMatchPaletteLabel("a-b-d-e", "abde");

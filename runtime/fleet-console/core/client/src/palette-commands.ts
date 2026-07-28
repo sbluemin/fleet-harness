@@ -47,12 +47,14 @@ export interface PaletteCommandEntry {
 
 export interface PaletteCommandMatch {
   readonly score: number;
+  readonly exactTokens: number;
   readonly matchedIndices: readonly number[];
 }
 
 export interface ScoredPaletteCommand {
   readonly command: PaletteCommandEntry;
   readonly score: number;
+  readonly exactTokens: number;
   readonly matchedIndices: readonly number[];
 }
 
@@ -260,40 +262,46 @@ export function buildPaletteCommands(
 export function fuzzyMatchPaletteLabel(label: string, query: string): PaletteCommandMatch | null {
   const tokens = searchTokens(query);
   if (tokens.length === 0) return null;
-  const lowerLabel = label.toLocaleLowerCase();
+  const { foldedLabel, foldMap } = foldPaletteLabel(label);
   const matchedIndices = new Set<number>();
   let score = 0;
+  let exactTokens = 0;
 
   for (const token of tokens) {
-    const exactStart = lowerLabel.indexOf(token);
-    const tokenIndices: number[] = [];
+    const exactStart = findBestExactStart(foldedLabel, token, label, foldMap);
+    const foldedTokenIndices: number[] = [];
     if (exactStart !== -1) {
       for (let offset = 0; offset < token.length; offset += 1) {
-        tokenIndices.push(exactStart + offset);
+        foldedTokenIndices.push(exactStart + offset);
       }
       score += 100;
+      exactTokens += 1;
     } else {
       let searchFrom = 0;
       for (let tokenIndex = 0; tokenIndex < token.length; tokenIndex += 1) {
         const character = token[tokenIndex]!;
-        const matchedIndex = lowerLabel.indexOf(character, searchFrom);
+        const matchedIndex = foldedLabel.indexOf(character, searchFrom);
         if (matchedIndex === -1) return null;
-        tokenIndices.push(matchedIndex);
+        foldedTokenIndices.push(matchedIndex);
         searchFrom = matchedIndex + 1;
       }
     }
 
+    const tokenIndices = foldedTokenIndices
+      .map((foldedIndex) => foldMap[foldedIndex]!)
+      .filter((originalIndex, index, indices) => index === 0 || originalIndex !== indices[index - 1]);
     for (let index = 0; index < tokenIndices.length; index += 1) {
       const matchedIndex = tokenIndices[index]!;
       const previousMatchedIndex = tokenIndices[index - 1];
       score += previousMatchedIndex !== undefined && matchedIndex === previousMatchedIndex + 1 ? 3 : 1;
-      if (matchedIndex === 0 || lowerLabel[matchedIndex - 1] === " ") score += 2;
+      if (matchedIndex === 0 || label[matchedIndex - 1] === " ") score += 2;
       matchedIndices.add(matchedIndex);
     }
   }
 
   return {
     score: score - label.length * 0.01,
+    exactTokens,
     matchedIndices: [...matchedIndices].sort((left, right) => left - right),
   };
 }
@@ -303,18 +311,56 @@ export function matchPaletteCommands(
   query: string,
 ): readonly ScoredPaletteCommand[] {
   if (searchTokens(query).length === 0) {
-    return commands.map((command) => ({ command, score: 0, matchedIndices: [] }));
+    return commands.map((command) => ({ command, score: 0, exactTokens: 0, matchedIndices: [] }));
   }
   return commands.flatMap((command, originalIndex) => {
     const match = fuzzyMatchPaletteLabel(command.label, query);
     return match ? [{ command, ...match, originalIndex }] : [];
-  }).sort((left, right) => right.score - left.score || left.originalIndex - right.originalIndex)
-    .map(({ command, score, matchedIndices }) => ({ command, score, matchedIndices }));
+  }).sort((left, right) =>
+    right.exactTokens - left.exactTokens
+    || right.score - left.score
+    || left.originalIndex - right.originalIndex)
+    .map(({ command, score, exactTokens, matchedIndices }) => ({ command, score, exactTokens, matchedIndices }));
 }
 
 export function filterPaletteCommands(commands: readonly PaletteCommandEntry[], query: string): readonly PaletteCommandEntry[] {
   if (searchTokens(query).length === 0) return commands;
   return matchPaletteCommands(commands, query).map(({ command }) => command);
+}
+
+function foldPaletteLabel(label: string): {
+  readonly foldedLabel: string;
+  readonly foldMap: readonly number[];
+} {
+  let foldedLabel = "";
+  const foldMap: number[] = [];
+  for (let originalIndex = 0; originalIndex < label.length; originalIndex += 1) {
+    const foldedCharacter = label[originalIndex]!.toLocaleLowerCase();
+    foldedLabel += foldedCharacter;
+    for (let foldedOffset = 0; foldedOffset < foldedCharacter.length; foldedOffset += 1) {
+      foldMap.push(originalIndex);
+    }
+  }
+  return { foldedLabel, foldMap };
+}
+
+function findBestExactStart(
+  foldedLabel: string,
+  token: string,
+  label: string,
+  foldMap: readonly number[],
+): number {
+  let firstStart = -1;
+  let searchFrom = 0;
+  while (searchFrom <= foldedLabel.length - token.length) {
+    const start = foldedLabel.indexOf(token, searchFrom);
+    if (start === -1) break;
+    if (firstStart === -1) firstStart = start;
+    const originalStart = foldMap[start];
+    if (originalStart !== undefined && (originalStart === 0 || label[originalStart - 1] === " ")) return start;
+    searchFrom = start + 1;
+  }
+  return firstStart;
 }
 
 function resolveActiveLocale() {
