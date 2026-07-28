@@ -133,11 +133,6 @@
   pointer-events: auto;
 }
 
-.plans-delete:hover {
-  border-color: color-mix(in srgb, var(--coral) 55%, var(--surface-rim));
-  color: var(--coral);
-}
-
 .plans-delete.is-armed {
   background: color-mix(in oklch, var(--coral) 20%, transparent);
   border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);
@@ -159,6 +154,7 @@
 
 .plans-filter.is-active,
 .plans-refresh:hover,
+.plans-delete:hover,
 .plans-copy:hover {
   border-color: color-mix(in srgb, var(--brass) 58%, var(--surface-rim));
   color: var(--brass);
