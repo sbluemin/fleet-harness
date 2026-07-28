@@ -33,12 +33,16 @@ const OVERRIDE_ENV_BY_COMMAND: Readonly<Record<string, string>> = {
   "cursor-agent": "CURSOR_AGENT_BIN",
 };
 
+// 같은 서버 프로세스의 이 모듈 인스턴스에서 `agent-cli-paths` read+write만 직렬화한다.
+// host/plugin 번들 경계를 넘는 상태 조율은 하지 않는다 — 그 경계는 doctrine상 모듈 singleton으로 묶지 않는다.
+let agentCliPathsWriteTail: Promise<void> = Promise.resolve();
+
 export function createAgentCliPathStore(storage: FleetPluginStorageHost, pluginId: string) {
   return {
     read: async (): Promise<AgentCliPathsData> => normalizeAgentCliPaths(
       await storage.readJson(pluginId, AGENT_CLI_PATHS_STORAGE_KEY),
     ),
-    writePath: async (cliCommand: string, executablePath: string | null): Promise<AgentCliPathsData> => {
+    writePath: (cliCommand: string, executablePath: string | null): Promise<AgentCliPathsData> => serializeAgentCliPathsWrite(async () => {
       const current = normalizeAgentCliPaths(await storage.readJson(pluginId, AGENT_CLI_PATHS_STORAGE_KEY));
       const paths = { ...current.paths };
       const normalized = executablePath ?? "";
@@ -47,8 +51,17 @@ export function createAgentCliPathStore(storage: FleetPluginStorageHost, pluginI
       const next = { version: 1, paths } as const;
       await storage.writeJson(pluginId, AGENT_CLI_PATHS_STORAGE_KEY, next);
       return next;
-    },
+    }),
   };
+}
+
+function serializeAgentCliPathsWrite<T>(write: () => Promise<T>): Promise<T> {
+  const result = agentCliPathsWriteTail.then(write);
+  agentCliPathsWriteTail = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
 }
 
 export function normalizeAgentCliPaths(value: unknown): AgentCliPathsData {

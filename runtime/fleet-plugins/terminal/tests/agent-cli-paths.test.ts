@@ -47,6 +47,30 @@ describe("Agent CLI path storage", () => {
       value: { version: 1, paths: {} },
     });
   });
+
+  it("preserves both paths when separate store adapters write concurrently", async () => {
+    let stored: unknown = null;
+    const storage = {
+      readJson: async () => stored,
+      writeJson: async (_pluginId: string, _key: string, value: unknown) => {
+        stored = value;
+      },
+    } as FleetPluginStorageHost;
+    const firstStore = createAgentCliPathStore(storage, "terminal");
+    const secondStore = createAgentCliPathStore(storage, "terminal");
+
+    const claudeWrite = firstStore.writePath("claude", "/custom/bin/claude");
+    const codexWrite = secondStore.writePath("codex", "/custom/bin/codex");
+    await Promise.all([claudeWrite, codexWrite]);
+
+    expect(await firstStore.read()).toEqual({
+      version: 1,
+      paths: {
+        claude: "/custom/bin/claude",
+        codex: "/custom/bin/codex",
+      },
+    });
+  });
 });
 
 describe("Agent CLI configured path validation", () => {
