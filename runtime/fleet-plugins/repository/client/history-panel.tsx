@@ -347,34 +347,30 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, active, refFilter, wipFile
     if (!everActive) return;
     if (
       loadedCacheKeyRef.current === historyCacheKey
-      && refreshToken === 0
       && (!pendingSearchTargetHash || loadedCommitsRef.current?.some((commit) => commit.fullHash === pendingSearchTargetHash))
     ) return;
-    if (refreshToken === 0) {
-      const restored = readHistoryCacheRestore(historyCacheKey, pendingSearchTargetHash);
-      if (restored) {
-        loadedCacheKeyRef.current = historyCacheKey;
-        loadedCommitsRef.current = restored.state.commits;
-        stateCacheKeyRef.current = historyCacheKey;
-        restoredScrollTopRef.current = restored.scrollTop;
-        scrollTopRef.current = restored.scrollTop;
-        previousFilterTextRef.current = restored.filterText;
-        revealKeyRef.current = restored.target ? `${restored.target.fullHash}\x00${restored.filterText}` : null;
-        pendingRevealRef.current = null;
-        loadingMoreRef.current = false;
-        setState(restored.state);
-        setTarget(restored.target);
-        setFilterText(restored.filterText);
-        setCommitViewport({ scrollTop: restored.scrollTop, height: 0 });
-        setLoadingMore(false);
-        setLoadMoreError(null);
-        return;
-      }
+    const restored = readHistoryCacheRestore(historyCacheKey, pendingSearchTargetHash);
+    if (restored) {
+      loadedCacheKeyRef.current = historyCacheKey;
+      loadedCommitsRef.current = restored.state.commits;
+      stateCacheKeyRef.current = historyCacheKey;
+      restoredScrollTopRef.current = restored.scrollTop;
+      scrollTopRef.current = restored.scrollTop;
+      previousFilterTextRef.current = restored.filterText;
+      revealKeyRef.current = restored.target ? `${restored.target.fullHash}\x00${restored.filterText}` : null;
+      pendingRevealRef.current = null;
+      loadingMoreRef.current = false;
+      setState(restored.state);
+      setTarget(restored.target);
+      setFilterText(restored.filterText);
+      setCommitViewport({ scrollTop: restored.scrollTop, height: 0 });
+      setLoadingMore(false);
+      setLoadMoreError(null);
+      return;
     }
     loadedCacheKeyRef.current = null;
     loadedCommitsRef.current = null;
     stateCacheKeyRef.current = null;
-    if (refreshToken > 0) dropHistoryCache(historyCacheKey);
     if (!ctx.theaterId) {
       loadedCacheKeyRef.current = historyCacheKey;
       loadedCommitsRef.current = [];
@@ -510,6 +506,8 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, active, refFilter, wipFile
   }, [ctx.api, ctx.theaterId, generation, historyCacheKey, refFilter, repoRel, state]);
   const refreshHistory = useCallback(() => {
     dropHistoryCache(historyCacheKey);
+    loadedCacheKeyRef.current = null;
+    loadedCommitsRef.current = null;
     stateCacheKeyRef.current = null;
     setRefreshToken((value) => value + 1);
   }, [historyCacheKey]);
