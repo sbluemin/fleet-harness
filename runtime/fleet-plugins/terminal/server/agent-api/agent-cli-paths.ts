@@ -146,6 +146,20 @@ export function applyAgentCliPathEnvOverlay(
   return { ...env, [envName]: userPath };
 }
 
+export function buildAgentCliClientEnvOverlay(
+  env: NodeJS.ProcessEnv,
+  cliId: string | undefined,
+  userPaths: Readonly<Record<string, string>>,
+): Readonly<Record<string, string>> | undefined {
+  const cliCommand = agentCliCommandForId(cliId);
+  // Provider client는 Codex/OpenCode/Cursor에 cliPath를 직접 넘길 수 있다.
+  // npx bridge를 쓰는 Claude 계열만 기존 CLAUDE_BIN 계약의 최소 오버레이가 필요하다.
+  if (cliCommand !== "claude") return undefined;
+  const userPath = userPaths[cliCommand];
+  if (!userPath || (env.CLAUDE_BIN?.trim().length ?? 0) > 0) return undefined;
+  return { CLAUDE_BIN: userPath };
+}
+
 export function createCarrierAgentCliLaunchResolver(
   readAgentCliPaths: () => Promise<Readonly<Record<string, string>>>,
   baseEnv: NodeJS.ProcessEnv = process.env,
@@ -158,16 +172,10 @@ export function createCarrierAgentCliLaunchResolver(
     const resolution = resolveAgentCliBinary({ cliCommand, env: effectiveEnv, userPaths });
     if (!resolution.resolved) throw new Error("agent_cli_unavailable");
 
-    // Carrier auth env는 core-agent가 따로 병합한다. 여기서는 사용자 경로 때문에 새로 생긴
-    // override만 돌려 기존 env 우선순위를 보존하고, OpenCode/Cursor는 cliPath로 직접 넘긴다.
-    const overlaidEnv = applyAgentCliPathEnvOverlay(effectiveEnv, cliId, userPaths);
-    const env: Record<string, string> = {};
-    for (const [name, value] of Object.entries(overlaidEnv)) {
-      if (value !== undefined && effectiveEnv[name] !== value) env[name] = value;
-    }
+    const env = buildAgentCliClientEnvOverlay(effectiveEnv, cliId, userPaths);
     return {
       cliPath: resolution.launchPath,
-      ...(Object.keys(env).length > 0 ? { env } : {}),
+      ...(env ? { env } : {}),
     };
   };
 }

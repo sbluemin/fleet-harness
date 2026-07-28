@@ -8,7 +8,7 @@ import type { FleetPluginServerContext, OperationNode } from "@fleet-console/sdk
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 
 import { createDefaultAgentCliDetector } from "./agent-cli-detect.js";
-import { agentCliCommandForId, applyAgentCliPathEnvOverlay, resolveAgentCliBinary } from "./agent-cli-paths.js";
+import { agentCliCommandForId, buildAgentCliClientEnvOverlay, resolveAgentCliBinary } from "./agent-cli-paths.js";
 import { AnalysisRegistry } from "./analysis-registry.js";
 import { ANALYSIS_ERROR_CODES, analysisError, buildAnalysisCatalog, isAnalysisSelection, isMessageBody, type AnalysisCatalog, type AnalysisEvent } from "./analysis-types.js";
 import { readProviderSessionCapture } from "./session-capture.js";
@@ -403,11 +403,9 @@ async function handleStart(
         ? resolveAgentCliBinary({ cliCommand, env, userPaths })
         : null;
       if (!resolution?.resolved) throw new Error("analysis_cli_unavailable");
-      // Claude/Codex는 기존 override env를 유지하면서 사용자 경로만 빈 자리에 채운다.
-      // OpenCode/Cursor는 새 env 이름 없이 같은 해석 결과의 launchPath를 직접 spawn에 넘긴다.
       launchOptions = {
         cliPath: resolution.launchPath,
-        env: definedEnv(applyAgentCliPathEnvOverlay(env, body.cliId, userPaths)),
+        env: buildAgentCliClientEnvOverlay(env, body.cliId, userPaths),
       };
     }
     const result = await registry.start(operation.id, (onEvent) => createSession({
@@ -428,14 +426,6 @@ async function handleStart(
     else writeError(ctx, res, 503, ANALYSIS_ERROR_CODES.catalogInvalid, "Analysis session could not start.");
   }
   return true;
-}
-
-function definedEnv(env: NodeJS.ProcessEnv): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const [key, value] of Object.entries(env)) {
-    if (value !== undefined) result[key] = value;
-  }
-  return result;
 }
 
 async function resolveOperationTranscript(ctx: FleetPluginServerContext, operation: OperationNode, readCapture: typeof readProviderSessionCapture): Promise<{ readonly captureFound: boolean; readonly transcriptPath: string | null }> {

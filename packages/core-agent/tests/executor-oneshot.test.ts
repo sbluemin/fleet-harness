@@ -74,6 +74,15 @@ describe("executeOneShot", () => {
     });
     await execution.abort();
   });
+  it("does not add custom env when Carrier launch resolution has no overlay", async () => {
+    const execution = executeOneShot(options("default environment", {
+      agentCliLaunchResolver: async () => ({ cliPath: undefined }),
+    }));
+
+    await execution.readiness;
+    expect(clients[0]!.connectCalls[0]!.env).toBeUndefined();
+    await execution.abort();
+  });
   it("rejects readiness without an unhandled EventEmitter error when the provider fails during connect", async () => {
     let errorListenerCount = 0;
     buildMock.mockImplementationOnce(async () => {

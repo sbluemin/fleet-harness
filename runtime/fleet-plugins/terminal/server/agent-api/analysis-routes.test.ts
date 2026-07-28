@@ -265,9 +265,9 @@ describe("Session Analyst server contract", () => {
 
   it.each([
     ["claude", "claude", "CLAUDE_BIN"],
-    ["codex", "codex", "CODEX_BIN"],
+    ["codex", "codex", null],
     ["opencode-go", "opencode", null],
-    ["cursor", "cursor-agent", "CURSOR_AGENT_BIN"],
+    ["cursor", "cursor-agent", null],
   ] as const)("uses the configured %s path for Analyst detection and execution", async (cliId, cliCommand, envName) => {
     const dir = await mkdtemp(join(tmpdir(), "analysis-cli-path-"));
     const transcriptPath = join(dir, "captured.jsonl");
@@ -290,12 +290,8 @@ describe("Session Analyst server contract", () => {
     expect(createSession).toHaveBeenCalledWith(expect.objectContaining({
       cliId,
       cliPath: process.execPath,
-      env: envName ? expect.objectContaining({ [envName]: process.execPath }) : { PATH: "" },
+      env: envName ? { [envName]: process.execPath } : undefined,
     }));
-    const options = createSession.mock.calls[0]?.[0] as { readonly env?: Record<string, string> } | undefined;
-    if (!envName) {
-      expect(options?.env).not.toHaveProperty("OPENCODE_BIN");
-    }
   });
 
   it("keeps an existing Analyst CLI env override ahead of a stored user path", async () => {
@@ -318,7 +314,36 @@ describe("Session Analyst server contract", () => {
     expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
     expect(createSession).toHaveBeenCalledWith(expect.objectContaining({
       cliPath: process.execPath,
-      env: { PATH: "", CLAUDE_BIN: process.execPath },
+      env: undefined,
+    }));
+  });
+
+  it("passes no custom env when no Agent CLI user path is stored", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-cli-no-path-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    registerAnalysisRoutes(router.ctx as never, {
+      env: {
+        PATH: "",
+        CODEX_BIN: process.execPath,
+        CLAUDECODE: "nested",
+        NODE_OPTIONS: "--inspect",
+        npm_config_user_agent: "must-not-return",
+      },
+      readAgentCliPaths: async () => ({}),
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      readCapture: () => ({ provider: "codex", sessionId: "private", capturedAt: "now", transcriptPath }),
+      createSession: createSession as never,
+    });
+
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "codex", model: "model-b" });
+
+    expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
+    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({
+      cliPath: process.execPath,
+      env: undefined,
     }));
   });
 

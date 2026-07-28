@@ -188,7 +188,7 @@ describe("Agent CLI launch env overlay", () => {
 });
 
 describe("Carrier Agent CLI launch resolution", () => {
-  it("passes a user path as cliPath and fills only an empty override env", async () => {
+  it("passes a Codex user path as cliPath without a custom env", async () => {
     const resolver = createCarrierAgentCliLaunchResolver(
       async () => ({ codex: process.execPath }),
       { PATH: path.dirname(process.execPath) },
@@ -196,7 +196,23 @@ describe("Carrier Agent CLI launch resolution", () => {
 
     await expect(resolver("codex", { env: {} })).resolves.toEqual({
       cliPath: process.execPath,
-      env: { CODEX_BIN: process.execPath },
+    });
+  });
+
+  it("passes only CLAUDE_BIN when a Claude user path needs the bridge override", async () => {
+    const resolver = createCarrierAgentCliLaunchResolver(
+      async () => ({ claude: process.execPath }),
+      {
+        PATH: path.dirname(process.execPath),
+        CLAUDECODE: "nested",
+        NODE_OPTIONS: "--inspect",
+        npm_config_user_agent: "must-not-return",
+      },
+    );
+
+    await expect(resolver("claude", { env: {} })).resolves.toEqual({
+      cliPath: process.execPath,
+      env: { CLAUDE_BIN: process.execPath },
     });
   });
 
@@ -212,17 +228,32 @@ describe("Carrier Agent CLI launch resolution", () => {
     });
   });
 
-  it("passes OpenCode directly without inventing an env name and reuses Cursor's existing override", async () => {
+  it("passes no custom env when no Agent CLI user path is stored", async () => {
+    const directory = createTemporaryDirectory();
+    createFileAt(directory, "codex");
+    const resolver = createCarrierAgentCliLaunchResolver(
+      async () => ({}),
+      {
+        PATH: directory,
+        CLAUDECODE: "nested",
+        NODE_OPTIONS: "--inspect",
+        npm_config_user_agent: "must-not-return",
+      },
+    );
+
+    await expect(resolver("codex", { env: { AUTH_TOKEN: "secret" } })).resolves.toEqual({
+      cliPath: undefined,
+    });
+  });
+
+  it("passes OpenCode and Cursor directly without custom env", async () => {
     const resolver = createCarrierAgentCliLaunchResolver(
       async () => ({ opencode: process.execPath, "cursor-agent": process.execPath }),
       { PATH: path.dirname(process.execPath) },
     );
 
     await expect(resolver("opencode-go", { env: {} })).resolves.toEqual({ cliPath: process.execPath });
-    await expect(resolver("cursor", { env: {} })).resolves.toEqual({
-      cliPath: process.execPath,
-      env: { CURSOR_AGENT_BIN: process.execPath },
-    });
+    await expect(resolver("cursor", { env: {} })).resolves.toEqual({ cliPath: process.execPath });
   });
 });
 
