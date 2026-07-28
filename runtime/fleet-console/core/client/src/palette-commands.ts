@@ -332,14 +332,18 @@ function foldPaletteLabel(label: string): {
   readonly foldedLabel: string;
   readonly foldMap: readonly number[];
 } {
-  let foldedLabel = "";
+  const foldedLabel = label.toLocaleLowerCase();
+  let perCharacterFoldedLabel = "";
   const foldMap: number[] = [];
   for (let originalIndex = 0; originalIndex < label.length; originalIndex += 1) {
     const foldedCharacter = label[originalIndex]!.toLocaleLowerCase();
-    foldedLabel += foldedCharacter;
+    perCharacterFoldedLabel += foldedCharacter;
     for (let foldedOffset = 0; foldedOffset < foldedCharacter.length; foldedOffset += 1) {
       foldMap.push(originalIndex);
     }
+  }
+  if (foldMap.length !== foldedLabel.length) {
+    return { foldedLabel: perCharacterFoldedLabel, foldMap };
   }
   return { foldedLabel, foldMap };
 }

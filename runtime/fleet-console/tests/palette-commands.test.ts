@@ -307,6 +307,15 @@ describe("filterPaletteCommands", () => {
     expect(match?.matchedIndices.map((index) => label.slice(index, index + 1)).join("").toLocaleLowerCase()).toBe("x");
   });
 
+  it("matches context-sensitive whole-string case folds and maps them to the original label", () => {
+    const label = "Theater: ΟΣ";
+    const match = fuzzyMatchPaletteLabel(label, "ος");
+    expect(match).not.toBeNull();
+    expect(match?.matchedIndices.filter((index) => index < 0 || index >= label.length)).toEqual([]);
+    expect(match?.matchedIndices).toEqual([9, 10]);
+    expect(match?.matchedIndices.map((index) => label.slice(index, index + 1)).join("")).toBe("ΟΣ");
+  });
+
   it("ranks consecutive fuzzy glyphs above scattered glyphs", () => {
     const consecutive = fuzzyMatchPaletteLabel("ab-d-e-", "abde");
     const scattered = fuzzyMatchPaletteLabel("a-b-d-e", "abde");
