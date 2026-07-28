@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { hydrateGlobalSettings } from "../core/client/src/global-settings-store.js";
 import {
@@ -314,6 +314,36 @@ describe("filterPaletteCommands", () => {
     expect(match?.matchedIndices.filter((index) => index < 0 || index >= label.length)).toEqual([]);
     expect(match?.matchedIndices).toEqual([9, 10]);
     expect(match?.matchedIndices.map((index) => label.slice(index, index + 1)).join("")).toBe("ΟΣ");
+  });
+
+  it("keeps whole-string folding searchable when contextual casing changes the folded length", () => {
+    const originalToLocaleLowerCase = String.prototype.toLocaleLowerCase;
+    const lowerCaseSpy = vi.spyOn(String.prototype, "toLocaleLowerCase").mockImplementation(function (
+      this: string,
+      locales?: string | string[],
+    ): string {
+      const value = String(this);
+      if (locales === undefined) {
+        if (value === "İX") return "ix";
+        if (value === "İ") return "i";
+        if (value === "I") return "ı";
+        if (value === "̇") return "̇";
+      }
+      return locales === undefined
+        ? originalToLocaleLowerCase.call(value)
+        : originalToLocaleLowerCase.call(value, locales);
+    });
+    try {
+      const label = "İX";
+      const match = fuzzyMatchPaletteLabel(label, "i");
+      expect(match).not.toBeNull();
+      const matchedIndices = match?.matchedIndices ?? [];
+      expect(matchedIndices).not.toHaveLength(0);
+      expect(matchedIndices.filter((index) => index < 0 || index >= label.length)).toEqual([]);
+      expect(["I", "̇"]).toContain(label.slice(matchedIndices[0]!, matchedIndices[0]! + 1));
+    } finally {
+      lowerCaseSpy.mockRestore();
+    }
   });
 
   it("ranks consecutive fuzzy glyphs above scattered glyphs", () => {

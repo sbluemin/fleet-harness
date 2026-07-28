@@ -333,17 +333,30 @@ function foldPaletteLabel(label: string): {
   readonly foldMap: readonly number[];
 } {
   const foldedLabel = label.toLocaleLowerCase();
-  let perCharacterFoldedLabel = "";
   const foldMap: number[] = [];
-  for (let originalIndex = 0; originalIndex < label.length; originalIndex += 1) {
+  let cursor = 0;
+  for (
+    let originalIndex = 0;
+    originalIndex < label.length && cursor < foldedLabel.length;
+    originalIndex += 1
+  ) {
     const foldedCharacter = label[originalIndex]!.toLocaleLowerCase();
-    perCharacterFoldedLabel += foldedCharacter;
-    for (let foldedOffset = 0; foldedOffset < foldedCharacter.length; foldedOffset += 1) {
-      foldMap.push(originalIndex);
+    if (foldedLabel.startsWith(foldedCharacter, cursor)) {
+      for (let foldedOffset = 0; foldedOffset < foldedCharacter.length; foldedOffset += 1) {
+        foldMap.push(originalIndex);
+      }
+      cursor += foldedCharacter.length;
+      continue;
     }
+    foldMap.push(originalIndex);
+    cursor += 1;
   }
-  if (foldMap.length !== foldedLabel.length) {
-    return { foldedLabel: perCharacterFoldedLabel, foldMap };
+  if (label.length > 0) {
+    const lastOriginalIndex = label.length - 1;
+    while (cursor < foldedLabel.length) {
+      foldMap.push(lastOriginalIndex);
+      cursor += 1;
+    }
   }
   return { foldedLabel, foldMap };
 }
