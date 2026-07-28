@@ -18,6 +18,7 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { currentTerminalLocale, getT, useTerminalLocale, type TerminalMessageKey } from "../i18n/index.js";
 import { disposeAnalysisStore, rearmAnalysisArtifacts, useAnalysisStore } from "./analysis-store.js";
 import "./analysis.css";
+import "./agent-cli.css";
 
 import { fetchCarrierSettingsOptions } from "../carriers/api.js";
 import type { CarrierSettingsCliOption } from "../../shared/carrier-settings-types.js";
@@ -1042,7 +1043,7 @@ function AgentCliRow({
   const [pathError, setPathError] = React.useState<TerminalMessageKey | null>(null);
   const envManaged = diagnostics?.resolutionSource === "env";
   const userConfigured = diagnostics?.configuredPath !== null && diagnostics?.configuredPath !== undefined;
-  const userInvalid = userConfigured && !envManaged && (!cli.available || !cli.version || diagnostics?.resolutionSource !== "user");
+  const userInvalid = userConfigured && !envManaged && (!cli.available || diagnostics?.resolutionSource !== "user");
 
   React.useEffect(() => {
     if (!editing) setPathValue(diagnostics?.configuredPath ?? "");
