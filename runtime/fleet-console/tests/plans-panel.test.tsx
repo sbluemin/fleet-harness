@@ -7,12 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlanListItem, PlanReadResult } from "../core/client/src/api.js";
 
 const mocks = vi.hoisted(() => ({
+  deletePlan: vi.fn(),
   fetchPlanRead: vi.fn(),
   fetchPlansList: vi.fn(),
   subscribeToPlanChanges: vi.fn(),
 }));
 
 vi.mock("../core/client/src/api.js", () => ({
+  deletePlan: mocks.deletePlan,
   fetchPlanRead: mocks.fetchPlanRead,
   fetchPlansList: mocks.fetchPlansList,
 }));
@@ -45,6 +47,8 @@ beforeEach(() => {
   document.body.appendChild(container);
   root = createRoot(container);
   invalidatePlans = null;
+  mocks.deletePlan.mockReset();
+  mocks.deletePlan.mockResolvedValue(undefined);
   mocks.fetchPlanRead.mockReset();
   mocks.fetchPlansList.mockReset();
   mocks.subscribeToPlanChanges.mockReset();
@@ -208,6 +212,123 @@ describe("Plans palette target reveal", () => {
   });
 });
 
+describe("Plans row deletion", () => {
+  it("arms on the first click without deleting", async () => {
+    mocks.fetchPlansList.mockResolvedValue({ plans: [listPlan()] });
+
+    await renderPanel();
+    const button = deleteButton();
+    await act(async () => button.click());
+
+    expect(button.textContent).toBe("DELETE?");
+    expect(button.classList.contains("is-armed")).toBe(true);
+    expect(mocks.deletePlan).not.toHaveBeenCalled();
+  });
+
+  it("deletes on the second click and refreshes the list", async () => {
+    mocks.fetchPlansList.mockResolvedValue({ plans: [listPlan()] });
+
+    await renderPanel();
+    const button = deleteButton();
+    await act(async () => button.click());
+    await act(async () => {
+      button.click();
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(mocks.deletePlan).toHaveBeenCalledOnce();
+    expect(mocks.deletePlan).toHaveBeenCalledWith("theater-1", "alpha.md");
+    expect(mocks.fetchPlansList).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores repeated delete activation until the request settles", async () => {
+    const deletion = deferred<void>();
+    mocks.fetchPlansList.mockResolvedValue({ plans: [listPlan()] });
+    mocks.deletePlan.mockReturnValue(deletion.promise);
+
+    await renderPanel();
+    const button = deleteButton();
+    await act(async () => button.click());
+    await act(async () => button.click());
+
+    expect(mocks.deletePlan).toHaveBeenCalledOnce();
+    expect(button.disabled).toBe(true);
+
+    await act(async () => {
+      button.click();
+      container.querySelector<HTMLButtonElement>(".plans-row-select")
+        ?.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true }));
+    });
+    expect(mocks.deletePlan).toHaveBeenCalledOnce();
+    expect(button.classList.contains("is-armed")).toBe(false);
+
+    await act(async () => {
+      deletion.resolve(undefined);
+      await deletion.promise;
+    });
+    await flush();
+    expect(mocks.deletePlan).toHaveBeenCalledOnce();
+  });
+
+  it("disarms a missing row so the same name does not reappear pre-armed", async () => {
+    mocks.fetchPlansList
+      .mockResolvedValueOnce({ plans: [listPlan()] })
+      .mockResolvedValueOnce({ plans: [] })
+      .mockResolvedValueOnce({ plans: [listPlan()] });
+
+    await renderPanel();
+    await act(async () => deleteButton().click());
+    expect(deleteButton().classList.contains("is-armed")).toBe(true);
+
+    await invalidate();
+    expect(container.querySelector(".plans-delete")).toBeNull();
+
+    await invalidate();
+    expect(deleteButton().classList.contains("is-armed")).toBe(false);
+    expect(deleteButton().textContent).not.toBe("DELETE?");
+    expect(mocks.deletePlan).not.toHaveBeenCalled();
+  });
+
+  it("automatically disarms after 1500ms without deleting", async () => {
+    mocks.fetchPlansList.mockResolvedValue({ plans: [listPlan()] });
+    await renderPanel();
+    vi.useFakeTimers();
+    try {
+      const button = deleteButton();
+      await act(async () => button.click());
+
+      act(() => vi.advanceTimersByTime(1_500));
+
+      expect(button.textContent).not.toBe("DELETE?");
+      expect(button.classList.contains("is-armed")).toBe(false);
+      expect(mocks.deletePlan).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("closes the reader when its open Plan is deleted", async () => {
+    mocks.fetchPlansList.mockResolvedValue({ plans: [listPlan()] });
+    mocks.fetchPlanRead.mockResolvedValue(readPlan("Open plan"));
+
+    await renderPanel();
+    await selectPlan();
+    expect(container.querySelector(".plans-reader-pane")).not.toBeNull();
+
+    const button = deleteButton();
+    await act(async () => button.click());
+    await act(async () => {
+      button.click();
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(mocks.deletePlan).toHaveBeenCalledWith("theater-1", "alpha.md");
+    expect(container.querySelector(".plans-reader-pane")).toBeNull();
+  });
+});
+
 async function renderPanel(): Promise<void> {
   await act(async () => {
     root.render(plansPanel.render({
@@ -285,4 +406,10 @@ function setInputValue(input: HTMLInputElement | null, value: string): void {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
   setter?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function deleteButton(): HTMLButtonElement {
+  const button = container.querySelector<HTMLButtonElement>(".plans-delete");
+  if (!button) throw new Error("plans delete button not found");
+  return button;
 }

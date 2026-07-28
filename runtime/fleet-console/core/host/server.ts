@@ -233,6 +233,13 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     gate: "origin-write",
   },
   {
+    method: "POST",
+    path: "/api/v1/plans/delete",
+    summary: "실행 계획 파일을 삭제합니다.",
+    category: "Observer",
+    gate: "origin-write",
+  },
+  {
     method: "GET",
     path: "/api/v1/plans/events",
     summary: "Theater 실행 계획 변경 신호를 스트리밍합니다.",
@@ -672,7 +679,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       runAsyncHandler(handleTheaterFolderGrants(req, res), res);
       return;
     }
-    if (pathname === "/api/v1/plans/list" || pathname === "/api/v1/plans/read" || pathname === "/api/v1/plans/events") {
+    if (pathname === "/api/v1/plans/list" || pathname === "/api/v1/plans/read" || pathname === "/api/v1/plans/delete" || pathname === "/api/v1/plans/events") {
       runAsyncBooleanHandler(plansRouter({ req, res, pathname }), res, () => false);
       return;
     }

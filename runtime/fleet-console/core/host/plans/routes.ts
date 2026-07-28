@@ -1,6 +1,6 @@
 import type http from "node:http";
 
-import { PlanStoreError, isValidPlanName, listPlansForWorkspace, readPlanForWorkspace, resolvePlansWatchDirectory } from "./plan-store.js";
+import { PlanStoreError, deletePlanForWorkspace, isValidPlanName, listPlansForWorkspace, readPlanForWorkspace, resolvePlansWatchDirectory } from "./plan-store.js";
 import { TheaterRootError, resolveTheaterRoot } from "../theater-root.js";
 
 export interface PlansRouteDeps {
@@ -27,6 +27,10 @@ interface PlansReadBody extends PlansListBody {
   readonly name?: unknown;
 }
 
+interface PlansDeleteBody extends PlansListBody {
+  readonly name?: unknown;
+}
+
 interface PlansSearchBody extends PlansListBody {
   readonly query?: unknown;
   readonly limit?: unknown;
@@ -41,6 +45,10 @@ export function createPlansRouter(deps: PlansRouteDeps): (context: PlansRouteCon
     }
     if (pathname === "/api/v1/plans/read") {
       await handlePlansRead(req, res, deps);
+      return true;
+    }
+    if (pathname === "/api/v1/plans/delete") {
+      await handlePlansDelete(req, res, deps);
       return true;
     }
     if (pathname === "/api/v1/plans/search") {
@@ -191,6 +199,38 @@ async function handlePlansRead(req: http.IncomingMessage, res: http.ServerRespon
   try {
     const context = await resolveTheaterRoot(theaterPath);
     deps.writeJson(res, 200, await readPlanForWorkspace(deps.dataDir, context.realRoot, body.name));
+  } catch (error) {
+    writePlanStoreError(res, deps, error);
+  }
+}
+
+async function handlePlansDelete(req: http.IncomingMessage, res: http.ServerResponse, deps: PlansRouteDeps): Promise<void> {
+  if (req.method !== "POST") {
+    deps.writeJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+  if (!deps.isAuthorized(req)) {
+    deps.writeJson(res, 401, { error: "unauthorized" });
+    return;
+  }
+  const body = await deps.readJsonBody<PlansDeleteBody>(req);
+  if (!isPlainObject(body) || typeof body.theaterId !== "string" || "relPath" in body) {
+    deps.writeJson(res, 400, { error: "invalid_request" });
+    return;
+  }
+  if (typeof body.name !== "string" || !isValidPlanName(body.name)) {
+    deps.writeJson(res, 400, { error: "invalid_name" });
+    return;
+  }
+  const theaterPath = deps.resolveTheaterPath(body.theaterId);
+  if (!theaterPath) {
+    deps.writeJson(res, 404, { error: "theater_not_found" });
+    return;
+  }
+  try {
+    const context = await resolveTheaterRoot(theaterPath);
+    await deletePlanForWorkspace(deps.dataDir, context.realRoot, body.name);
+    deps.writeJson(res, 200, { deleted: true });
   } catch (error) {
     writePlanStoreError(res, deps, error);
   }

@@ -229,6 +229,16 @@ export async function fetchPlanRead(theaterId: string, name: string, signal?: Ab
   return await response.json() as PlanReadResult;
 }
 
+export async function deletePlan(theaterId: string, name: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch("/api/v1/plans/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ theaterId, name }),
+    signal,
+  });
+  await assertOk(response);
+}
+
 export async function fetchPlansSearch(theaterId: string, query: string, limit: number, signal?: AbortSignal): Promise<PlansSearchResult> {
   const response = await fetch("/api/v1/plans/search", {
     method: "POST",

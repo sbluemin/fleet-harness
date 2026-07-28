@@ -103,6 +103,60 @@
   letter-spacing: 0.06em;
 }
 
+.plans-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 24px;
+  height: 20px;
+  padding: 4px 6px;
+  /* copy 버튼과의 간격 — 테두리가 붙어 하나의 컨트롤로 읽히는 것을 막는다. */
+  margin-right: 4px;
+  background: transparent;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.plans-row:hover .plans-delete,
+.plans-delete:focus-visible,
+.plans-delete.is-armed {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.plans-delete:hover {
+  border-color: color-mix(in srgb, var(--coral) 55%, var(--surface-rim));
+  color: var(--coral);
+}
+
+.plans-delete.is-armed {
+  background: color-mix(in oklch, var(--coral) 20%, transparent);
+  border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);
+  color: var(--coral);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  width: auto;
+  height: 20px;
+  padding: 0 6px;
+  animation: plans-delete-arm 1.5s linear forwards;
+}
+
+.plans-delete.is-armed:hover,
+.plans-delete.is-armed:focus-visible {
+  background: color-mix(in oklch, var(--coral) 32%, transparent);
+  outline: none;
+}
+
 .plans-filter.is-active,
 .plans-refresh:hover,
 .plans-copy:hover {
@@ -114,7 +168,7 @@
 
 .plans-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   margin: 0;
   padding: 0;
   width: 100%;
@@ -155,6 +209,7 @@
 .plans-retry:focus-visible,
 .plans-filter:focus-visible,
 .plans-refresh:focus-visible,
+.plans-delete:focus-visible,
 .plans-copy:focus-visible,
 .plans-search:focus-visible,
 .plans-wave-heading:focus-visible,
@@ -444,7 +499,21 @@
   100% { background: transparent; }
 }
 
+@keyframes plans-delete-arm {
+  from { opacity: 1; }
+  80% { opacity: 1; }
+  to { opacity: 0.4; }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .plans-delete {
+    transition-duration: 0.01ms;
+  }
+
+  .plans-delete.is-armed {
+    animation: none;
+  }
+
   .plans-row.is-pulsing,
   .plans-heading-flash {
     animation: none;
