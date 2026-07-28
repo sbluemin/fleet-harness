@@ -5,6 +5,41 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.38.0] - 2026-07-28
+
+### fleet-console
+
+#### Added
+- [fleet-console] Delete stale plan files from the Plans rail panel with a two-step ARM button (first click arms, second confirms), backed by the new POST /api/v1/plans/delete route; duplicate in-flight deletes are blocked and an open reader closes when its plan is removed.
+
+#### Changed
+- [fleet-console] Fuzzy-match command palette queries so typos and abbreviations find commands, ranking exact matches first and highlighting matched glyphs.
+- [fleet-console] Bundle Pretendard Variable as the Korean fallback for body, display, and UI font chains, and raise light-theme body weight to 450 to keep Hangul strokes legible on bright backgrounds.
+
+#### Fixed
+- [fleet-console] Restore WCAG AA contrast for signal-colored badge and label text on the Daywatch, Whites, and Drydock light themes with a light-only signal ink tier; dark themes are pixel-identical.
+- [fleet-console] Darken light-theme tertiary and muted text so small uppercase labels stay readable on bright surfaces.
+- [fleet-console] Preserve the codex panel search query, open document, and reading position when switching right-rail panels or reopening the rail, while still resetting them on a real Theater change.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Agent CLI settings let you point a CLI at its executable path when this machine's PATH does not reach it, verify it on the spot, and see which PATH entries were searched.
+- [fleet-console] Pass a COLORFGBG polarity hint to newly spawned shell and agent sessions, and show a one-time hint chip on live terminals when the console theme switches between dark and light.
+
+#### Changed
+- [fleet-console] Repository history keeps the pages you loaded, your scroll position, the selected commit, and the filter when you leave the panel and come back, instead of resetting to the first page.
+- [fleet-console] The history toolbar gains a refresh control, so reloading commits no longer depends on switching rail panels.
+- [fleet-console] Agent CLI detection and launch now share one resolution order: environment override, then a path you set, then PATH. A configured source that fails is reported instead of quietly falling back to another binary.
+
+#### Fixed
+- [fleet-console] Enforce a 4.5:1 terminal contrast floor on light themes so dark-tuned agent CLI truecolor and white ANSI text stay readable while hues are preserved.
+- [fleet-console] Make the Ledger rail panel scroll when the operation list overflows, so the per-CLI device-wide section stays reachable.
+- [fleet-console] Reset the Ledger panel scroll to the top when opening an operation detail and restore the list position on back.
+- [fleet-console] Repository changes and compare lists now actually restore their retained scroll position when you return to the panel; the position was previously tracked on a non-scrolling container and always reset to the top.
+- [fleet-console] The workspace source tree no longer loses its pending scroll restore when branches, worktrees, or change counts finish loading after the panel appears.
+- [fleet-console] The Scuttlebutt completion bubble now carries its "Finished" label on a line of its own and wraps a long Operation title across two lines beneath it, so a long title no longer clips away the part that said an Operation had finished at all.
+
 ## [1.37.1] - 2026-07-28
 
 ### fleet-plugin

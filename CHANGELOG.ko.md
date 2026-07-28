@@ -5,6 +5,41 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.38.0] - 2026-07-28
+
+### fleet-console
+
+#### Added
+- [fleet-console] Plans 레일 패널에서 두 단계 ARM 버튼(첫 클릭 ARM, 두 번째 클릭 확정)으로 오래된 plan 파일을 삭제할 수 있습니다. POST /api/v1/plans/delete 라우트가 추가되었고, 중복 삭제 요청은 차단되며 삭제된 plan을 읽고 있던 리더는 자동으로 닫힙니다.
+
+#### Changed
+- [fleet-console] 커맨드 팔레트 검색을 fuzzy 매칭으로 개선해 오타나 약어로도 명령을 찾을 수 있으며, 정확히 일치하는 결과를 먼저 보여주고 일치 글자를 강조합니다.
+- [fleet-console] 본문·디스플레이·UI 글꼴 체인의 한글 폴백으로 Pretendard Variable을 번들하고, 라이트 테마 본문 굵기를 450으로 올려 밝은 배경에서 한글 획이 또렷하게 보이도록 합니다.
+
+#### Fixed
+- [fleet-console] Daywatch·Whites·Drydock 라이트 테마의 신호색 배지·라벨 텍스트를 라이트 전용 신호 ink 티어로 WCAG AA 대비까지 복원합니다. 다크 테마는 픽셀 단위로 동일합니다.
+- [fleet-console] 라이트 테마의 tertiary·muted 텍스트를 어둡게 조정해 소형 대문자 라벨이 밝은 배경에서도 읽히게 합니다.
+- [fleet-console] 우측 레일 패널을 전환하거나 레일을 다시 열 때 codex 패널의 검색어·열린 문서·읽기 위치를 유지하고, Theater가 실제로 바뀔 때만 초기화합니다.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Agent CLI 설정에서 이 기기의 PATH가 닿지 않는 CLI에 실행 파일 경로를 직접 지정하고 그 자리에서 확인할 수 있으며, 어떤 PATH를 탐색했는지도 볼 수 있습니다.
+- [fleet-console] 새로 시작되는 셸·agent 세션에 COLORFGBG 극성 힌트를 전달하고, 콘솔 테마가 다크·라이트 사이를 전환하면 라이브 터미널에 1회성 안내 칩을 표시합니다.
+
+#### Changed
+- [fleet-console] 저장소 기록이 패널을 벗어났다 돌아와도 불러온 페이지·스크롤 위치·선택한 커밋·필터를 그대로 유지합니다. 더 이상 첫 페이지로 되돌아가지 않습니다.
+- [fleet-console] 기록 툴바에 새로고침 컨트롤이 생겨, 커밋을 다시 불러오려고 rail 패널을 오갈 필요가 없습니다.
+- [fleet-console] Agent CLI 감지와 실행이 하나의 해석 순서를 공유합니다. 환경 변수 override, 지정한 경로, PATH 순이며, 설정한 소스가 실패하면 조용히 다른 바이너리로 넘어가지 않고 그대로 알립니다.
+
+#### Fixed
+- [fleet-console] 라이트 테마 터미널에 4.5:1 대비 하한을 적용해 다크용으로 조율된 agent CLI truecolor와 흰색 ANSI 텍스트가 색상을 유지한 채 읽히게 합니다.
+- [fleet-console] Operation 목록이 넘칠 때 Ledger rail 패널이 스크롤되어 CLI별 기기 전체 섹션에 항상 도달할 수 있습니다.
+- [fleet-console] Operation 상세를 열 때 Ledger 패널 스크롤을 맨 위로 옮기고, 돌아올 때 목록 위치를 복원합니다.
+- [fleet-console] 저장소 변경 파일·비교 목록이 패널 복귀 시 보존한 스크롤 위치를 실제로 복원합니다. 이전에는 스크롤되지 않는 컨테이너를 추적해 항상 맨 위로 되돌아갔습니다.
+- [fleet-console] 워크스페이스 소스 트리가 패널 표시 후 브랜치·워크트리·변경 개수 로딩이 끝나도 대기 중이던 스크롤 복원을 잃지 않습니다.
+- [fleet-console] Scuttlebutt 완료 말풍선이 "작업 완료" 라벨을 별도 행으로 두고 긴 Operation 제목을 그 아래 두 줄로 흘립니다. 제목이 길어도 작업이 끝났다는 사실이 잘려 나가지 않습니다.
+
 ## [1.37.1] - 2026-07-28
 
 ### fleet-plugin
