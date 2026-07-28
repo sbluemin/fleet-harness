@@ -107,7 +107,7 @@
 .plans-refresh:hover,
 .plans-copy:hover {
   border-color: color-mix(in srgb, var(--brass) 58%, var(--surface-rim));
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .plans-refresh { justify-self: start; }
@@ -280,12 +280,12 @@
 
 .plans-wave.is-complete {
   border-color: color-mix(in srgb, var(--positive) 50%, var(--surface-rim));
-  color: var(--positive);
+  color: var(--positive-ink);
 }
 
 .plans-wave.is-in-progress {
   border-color: color-mix(in srgb, var(--warn) 50%, var(--surface-rim));
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 .plans-wave-heading {
@@ -348,7 +348,7 @@
 .plans-heading-flash { animation: plans-heading-flash 1.2s ease-out; }
 
 .plans-lane.is-complete {
-  color: var(--positive);
+  color: var(--positive-ink);
 }
 
 .plans-lane.is-blocked {
@@ -360,7 +360,7 @@
 }
 
 .plans-lane-ready {
-  color: var(--brass);
+  color: var(--brass-ink);
   letter-spacing: 0.12em;
 }
 
@@ -417,7 +417,7 @@
 }
 
 .plans-error-state {
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 .plans-retry {
@@ -425,7 +425,7 @@
   padding: 5px 10px;
   background: color-mix(in srgb, var(--coral) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--coral) 52%, var(--surface-rim));
-  color: var(--coral);
+  color: var(--coral-ink);
   font-family: var(--font-mono);
   font-size: 11px;
 }

@@ -52,7 +52,7 @@
 .alerts-panel-settings-btn:hover,
 .alerts-panel-settings-btn.is-active {
   background: color-mix(in oklch, var(--ink-fog) 12%, transparent);
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 /* ── AlertsIcon 아이콘 컬럼 배지 및 신호 액센트 ── */
@@ -83,7 +83,7 @@
 
 /* awaiting(입력 대기) 상태: warn 계열(--aurora 미사용) */
 .alerts-icon.is-awaiting {
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 .alerts-icon.is-awaiting .alerts-icon-badge {
@@ -125,13 +125,13 @@
 }
 
 .notification-tally.is-input-waiting {
-  color: var(--warn);
+  color: var(--warn-ink);
   background: color-mix(in oklch, var(--warn) 14%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--warn) 34%, transparent);
 }
 
 .notification-tally.is-ended {
-  color: var(--positive);
+  color: var(--positive-ink);
   background: color-mix(in oklch, var(--positive) 14%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--positive) 34%, transparent);
 }
@@ -273,11 +273,11 @@
 }
 
 .notification-row.is-input-waiting .notification-row-state {
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 .notification-row.is-ended .notification-row-state {
-  color: var(--positive);
+  color: var(--positive-ink);
 }
 
 .notification-row-move {

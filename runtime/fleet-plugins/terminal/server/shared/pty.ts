@@ -40,10 +40,10 @@ export function createShellTerminalLaunchResolver(deps: {
   const env = deps.env ?? process.env;
   const homedir = deps.homedir ?? DEFAULT_TERMINAL_CWD_FALLBACK;
   const platform = deps.platform ?? process.platform;
-  return async (selectedCwd) => {
+  return async (selectedCwd, context) => {
     const cwd = selectedCwd || baseCwd || homedir();
     const shell = resolveWindowsLaunchBinary(resolveUserShell(env, platform), [], env, platform, "user shell");
-    return { bin: shell.bin, args: shell.args, cwd, env: buildShellLaunchEnv(env), terminalName: TERMINAL_TERM };
+    return { bin: shell.bin, args: shell.args, cwd, env: buildShellLaunchEnv(env, context?.colorScheme), terminalName: TERMINAL_TERM };
   };
 }
 
@@ -123,9 +123,12 @@ function resolveWindowsLaunchBinary(
   return { bin: resolved.bin, args: [...resolved.prefixArgs, ...args] };
 }
 
-function buildShellLaunchEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+function buildShellLaunchEnv(env: NodeJS.ProcessEnv, colorScheme?: "light" | "dark"): NodeJS.ProcessEnv {
   return {
     ...stripConsoleInternalEnv(env),
     TERM: TERMINAL_TERM,
+    // COLORFGBG는 배경을 질의하지 않는 CLI/TUI를 위한 고전적 극성 힌트다("fg;bg" ANSI 인덱스).
+    // 값이 없으면 변수 자체를 싣지 않아 사용자 셸 환경의 기존 값을 훼손하지 않는다.
+    ...(colorScheme ? { COLORFGBG: colorScheme === "light" ? "0;15" : "15;0" } : {}),
   };
 }

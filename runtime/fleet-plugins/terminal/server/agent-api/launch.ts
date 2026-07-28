@@ -76,7 +76,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
     const cwd = selectedCwd || baseCwd || homedir();
     const testLaunch = (globalThis as { __fleetTerminalLaunch?: TerminalLaunchResolver }).__fleetTerminalLaunch;
     if (testLaunch) return testLaunch(cwd, context);
-    const launchEnv = buildLaunchEnv(env, cwd, context?.sessionId);
+    const launchEnv = buildLaunchEnv(env, cwd, context?.sessionId, context?.colorScheme);
     const override = parseTerminalCommand(env.FLEET_TERMINAL_CMD);
     if (override) {
       const resolvedOverride = resolveWindowsLaunchBinary(
@@ -256,11 +256,13 @@ function parseTerminalCommand(command: string | undefined): { readonly bin: stri
   return { bin, args };
 }
 
-function buildLaunchEnv(env: NodeJS.ProcessEnv, cwd: string, sessionId: string | undefined): NodeJS.ProcessEnv {
+function buildLaunchEnv(env: NodeJS.ProcessEnv, cwd: string, sessionId: string | undefined, colorScheme?: "light" | "dark"): NodeJS.ProcessEnv {
   return {
     ...stripConsoleInternalEnv(env),
     ...(sessionId ? { FLEET_CONSOLE_SESSION_ID: sessionId, INIT_CWD: cwd, PWD: cwd } : {}),
     TERM: TERMINAL_TERM,
+    // 배경을 질의하지 않는 agent CLI를 위한 고전적 테마 극성 힌트 — spawn 시점 값에 고정된다.
+    ...(colorScheme ? { COLORFGBG: colorScheme === "light" ? "0;15" : "15;0" } : {}),
   };
 }
 

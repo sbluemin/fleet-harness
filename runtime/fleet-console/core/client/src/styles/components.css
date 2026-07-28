@@ -99,7 +99,7 @@
 .fc-btn--danger {
   background: none;
   border-color: color-mix(in oklch, var(--coral) 45%, transparent);
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 .fc-btn--primary:hover:not(:disabled) {
@@ -160,7 +160,7 @@
 .global-settings-status {
   flex: none;
   min-height: 16px;
-  color: var(--aurora);
+  color: var(--aurora-ink);
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: var(--weight-bold);
@@ -262,7 +262,7 @@
 .global-settings-nav-group {
   margin: var(--space-2) 0 0;
   padding: 0 var(--space-2);
-  color: var(--brass);
+  color: var(--brass-ink);
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: var(--weight-bold);
@@ -393,7 +393,7 @@
   border: 1px solid color-mix(in oklch, var(--coral) 48%, var(--surface-rim));
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--coral) 10%, transparent);
-  color: var(--coral);
+  color: var(--coral-ink);
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.5;
@@ -438,7 +438,7 @@
 
 .global-settings-toggle.is-on {
   background: color-mix(in oklch, var(--brass) 12%, transparent);
-  color: var(--aurora);
+  color: var(--aurora-ink);
 }
 
 .global-settings-toggle.is-on::before {
@@ -548,7 +548,7 @@
 }
 
 .console-port-hint.is-invalid {
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 .console-port-effective {
@@ -598,7 +598,7 @@
 }
 
 .console-port-effective.is-fallback .console-port-effective-value span {
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 .console-port-warning {
@@ -613,7 +613,7 @@
 }
 
 .console-port-warning strong {
-  color: var(--warn);
+  color: var(--warn-ink);
   font-weight: var(--weight-bold);
 }
 
@@ -723,7 +723,7 @@
   flex: none;
   width: 14px;
   height: 14px;
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .theme-card-check svg {
@@ -812,11 +812,11 @@
 }
 
 .current-readout .cr-value.is-ok {
-  color: var(--positive);
+  color: var(--positive-ink);
 }
 
 .current-readout .cr-value.is-fallback {
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 .current-readout .cr-sep {
@@ -877,7 +877,7 @@
 }
 
 .font-card .fc-check {
-  color: var(--brass);
+  color: var(--brass-ink);
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
@@ -907,7 +907,7 @@
 }
 
 .font-card .fc-bundled {
-  color: var(--positive);
+  color: var(--positive-ink);
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.1em;
@@ -915,7 +915,7 @@
 }
 
 .font-card .fc-addon {
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 .custom-reveal {
@@ -1000,7 +1000,7 @@
 .resolve-chip.is-ok {
   border: 1px solid var(--positive-glow);
   background: var(--positive-glow);
-  color: var(--positive);
+  color: var(--positive-ink);
 }
 
 .resolve-chip.is-ok .rc-dot {
@@ -1011,7 +1011,7 @@
 .resolve-chip.is-fallback {
   border: 1px solid var(--warn-glow);
   background: var(--warn-glow);
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 .resolve-chip.is-fallback .rc-dot {
@@ -1066,7 +1066,7 @@
 
 .segmented-option.is-active {
   background: color-mix(in oklch, var(--brass) 16%, transparent);
-  color: var(--brass);
+  color: var(--brass-ink);
   box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 38%, transparent);
 }
 
@@ -1120,7 +1120,7 @@
 }
 
 .model-auth-status.is-on {
-  color: var(--aurora);
+  color: var(--aurora-ink);
 }
 
 .model-auth-status.is-on::before {
@@ -1196,7 +1196,7 @@
 
 .model-auth-button.is-primary {
   border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .model-auth-button.is-primary:hover:not(:disabled) {
@@ -1280,7 +1280,7 @@
 
 /* available = aurora('살아있는 것'). 미설치는 중립 ink. */
 .agent-cli-status.is-on {
-  color: var(--aurora);
+  color: var(--aurora-ink);
 }
 
 .agent-cli-status.is-on::before {
@@ -1567,7 +1567,7 @@
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-sm);
   background: color-mix(in oklch, var(--surface-glass) 78%, var(--ink-deep));
-  color: var(--brass);
+  color: var(--brass-ink);
   transition:
     color var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
@@ -1621,7 +1621,7 @@
 }
 
 .operation-launch-control .operation-launch-menu-item .theater-menu-check {
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 /* 메뉴 컨테이너는 키보드 탐색용으로만 포커스를 받으므로(첫 항목 자동 강조 회피) 외곽선을 숨긴다. */
@@ -1817,14 +1817,14 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  color: var(--brass);
+  color: var(--brass-ink);
   font-family: var(--font-mono);
   font-size: 10px;
 }
 
 .canvas-triage-rail-current-label {
   flex: none;
-  color: var(--brass);
+  color: var(--brass-ink);
   font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2005,7 +2005,7 @@
 }
 
 .canvas-triage-clear > span {
-  color: var(--brass);
+  color: var(--brass-ink);
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: var(--weight-bold);
@@ -2117,7 +2117,7 @@
   flex: none;
   width: 30px;
   height: 30px;
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .canvas-context-menu-reticle svg {
@@ -2150,7 +2150,7 @@
   font-weight: var(--weight-medium);
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .canvas-context-menu {
@@ -2184,7 +2184,7 @@
 .canvas-shortcuts-group h3 {
   margin: var(--space-1) 0 0;
   padding-left: var(--space-2);
-  color: var(--brass);
+  color: var(--brass-ink);
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: var(--weight-bold);
@@ -2782,7 +2782,7 @@
 
 .side-bar-theater-error {
   margin: var(--space-2);
-  color: var(--coral);
+  color: var(--coral-ink);
   font-family: var(--font-mono);
   font-size: 10px;
   line-height: 1.45;
@@ -2928,7 +2928,7 @@
   border-style: solid;
   border-color: var(--brass);
   background: var(--brass-glow);
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .side-bar-ghost-theater-row:focus-visible {
@@ -2998,7 +2998,7 @@
 .side-bar-status-axis-toggle[aria-pressed="true"] {
   border-color: var(--hairline-strong);
   background: var(--ink-veil);
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .side-bar-status-axis-toggle:focus-visible {
@@ -3404,7 +3404,7 @@
   flex: none;
   background: color-mix(in oklch, var(--coral) 20%, transparent);
   border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);
-  color: var(--coral);
+  color: var(--coral-ink);
   font-family: var(--font-body);
   font-size: 11px;
   font-weight: var(--weight-bold);
@@ -3565,7 +3565,7 @@
   gap: 4px;
   /* 미확인 카운트는 전체 카운트와 함께 우측 끝에 묶는다 — 라벨 옆에 띄우면 두 숫자가 헤더 양端에 갈라진다. */
   margin-left: auto;
-  color: var(--positive);
+  color: var(--positive-ink);
   font-variant-numeric: tabular-nums;
 }
 
@@ -4032,7 +4032,7 @@
 }
 
 .group-context-menu-item--danger {
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 .group-context-menu-item--danger.is-armed {
@@ -4061,7 +4061,7 @@
   flex: none;
   width: 12px;
   height: 12px;
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .group-context-menu-item__new-label {
@@ -4298,7 +4298,7 @@
   padding: 0 6px;
   border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);
   background: color-mix(in oklch, var(--coral) 20%, transparent);
-  color: var(--coral);
+  color: var(--coral-ink);
   font-family: var(--font-body);
   font-size: 11px;
   font-weight: var(--weight-bold);
@@ -4310,7 +4310,7 @@
 .canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close:hover,
 .canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close:focus-visible {
   background: color-mix(in oklch, var(--coral) 32%, transparent);
-  color: var(--coral);
+  color: var(--coral-ink);
   outline: none;
 }
 
@@ -4371,7 +4371,7 @@
   padding: 2px var(--space-1);
   border-radius: var(--radius-pill);
   background: var(--brass-glow);
-  color: var(--brass);
+  color: var(--brass-ink);
   font-family: var(--font-mono);
 }
 
@@ -4391,7 +4391,7 @@
 }
 
 .canvas-operation-glance-hud-keys strong {
-  color: var(--brass);
+  color: var(--brass-ink);
   font-weight: var(--weight-bold);
 }
 
@@ -4405,7 +4405,7 @@
   border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);
   border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--coral) 20%, transparent);
-  color: var(--coral);
+  color: var(--coral-ink);
   font-family: var(--font-mono);
   font-size: calc(var(--font-body-size) * 0.78);
   font-weight: var(--weight-bold);
@@ -4489,7 +4489,7 @@
 }
 
 .canvas-operation-dormant-status {
-  color: var(--brass);
+  color: var(--brass-ink);
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: var(--weight-bold);
@@ -4791,7 +4791,7 @@
 }
 
 .operations-canvas-error {
-  color: var(--coral);
+  color: var(--coral-ink);
   font-family: var(--font-mono);
   font-size: 11px;
 }
@@ -4808,16 +4808,16 @@
 /* 파괴적 항목(coral) — 베이스 .theater-menu-item(--ink-fog)이 파일 후반에 선언되므로
    복합 셀렉터로 특이도를 올려 이긴다. */
 .theater-menu-item.theater-menu-forget {
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 .theater-menu-item.theater-menu-forget .theater-menu-check {
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 .theater-menu-item.theater-menu-forget:hover:not(:disabled),
 .theater-menu-item.theater-menu-forget:focus-visible {
-  color: var(--coral);
+  color: var(--coral-ink);
   background: color-mix(in oklch, var(--coral) 12%, transparent);
 }
 
@@ -4871,7 +4871,7 @@
 
 .job-status--live,
 .track-status--live {
-  color: var(--aurora);
+  color: var(--aurora-ink);
 }
 
 .job-status--ok,
@@ -4881,7 +4881,7 @@
 
 .job-status--bad,
 .track-status--bad {
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 .job-status--idle,
@@ -4937,7 +4937,7 @@
   color: var(--brass-bright);
   font-family: var(--font-body);
   font-size: 36px;
-  text-shadow: 0 0 18px var(--brass-glow);
+  text-shadow: var(--brass-halo);
 }
 
 .stage-waiting,
@@ -5016,7 +5016,7 @@
 
 .track-request-mark {
   flex: none;
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .thought-fold {
@@ -5046,7 +5046,7 @@
 }
 
 .thought-chevron {
-  color: var(--brass);
+  color: var(--brass-ink);
   font-size: 9px;
 }
 
@@ -5094,11 +5094,11 @@
 
 .tool-chip--live {
   border-color: color-mix(in oklch, var(--aurora) 35%, var(--surface-rim));
-  color: var(--aurora);
+  color: var(--aurora-ink);
 }
 
 .tool-chip--live .tool-chip-glyph {
-  color: var(--aurora);
+  color: var(--aurora-ink);
   animation: aurora-pulse 1.4s ease-in-out infinite;
 }
 
@@ -5113,11 +5113,11 @@
 
 .tool-chip--bad {
   border-color: color-mix(in oklch, var(--coral) 40%, var(--surface-rim));
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 .tool-chip--bad .tool-chip-glyph {
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 .tool-chip--idle {
@@ -5180,7 +5180,7 @@
 
 .track-notice {
   margin: var(--space-3) 0 0;
-  color: var(--warn);
+  color: var(--warn-ink);
   font-size: 10px;
 }
 
@@ -5190,7 +5190,7 @@
   border: 1px solid color-mix(in oklch, var(--coral) 35%, transparent);
   border-radius: var(--radius-sm);
   background: var(--coral-glow);
-  color: var(--coral);
+  color: var(--coral-ink);
   font-size: 11px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -5225,7 +5225,7 @@
 }
 
 .timeline-chevron {
-  color: var(--brass);
+  color: var(--brass-ink);
   font-size: 9px;
 }
 
@@ -5342,7 +5342,7 @@
   display: grid;
   place-items: center;
   flex: none;
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .theater-trigger-sigil svg {
@@ -5446,7 +5446,7 @@
   flex: none;
   width: 14px;
   height: 14px;
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .theater-menu-check svg {
@@ -5501,7 +5501,7 @@
 .theater-menu-error {
   margin: var(--space-1) 0 0;
   padding: var(--space-1) var(--space-2);
-  color: var(--coral);
+  color: var(--coral-ink);
   font-family: var(--font-mono);
   font-size: 10px;
   line-height: 1.45;
@@ -5594,6 +5594,46 @@
   height: 8px;
   border-radius: 999px;
   background: var(--warn);
+}
+
+/* 테마 극성 전환(다크↔라이트) 1회성 힌트 — 실행 중 CLI의 내부 테마는 콘솔이 강제할 수 없으므로
+   안내만 한다. 정보 칩이라 신호색이 아닌 중립 표면+텍스트 티어 문법을 쓴다. */
+.terminal-theme-hint {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: min(92%, 420px);
+  padding: var(--space-1) var(--space-2);
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--surface-glass-strong);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-soft);
+}
+
+.terminal-theme-hint code {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.terminal-theme-hint-dismiss {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-xs);
+  color: var(--text-tertiary);
+}
+
+.terminal-theme-hint-dismiss:hover {
+  color: var(--text-primary);
+  background: color-mix(in oklch, var(--ink-mid) 72%, transparent);
 }
 
 /* 줌 보정 레이어: position:relative 기준 박스를 제공해 .terminal-canvas의 역스케일(%-기반)이
@@ -5823,7 +5863,7 @@
 
 .commissioning-step.is-current .commissioning-step-node {
   border-color: color-mix(in oklch, var(--aurora) 54%, var(--surface-rim));
-  color: var(--aurora);
+  color: var(--aurora-ink);
   box-shadow: 0 0 0 1px color-mix(in oklch, var(--aurora) 18%, transparent), 0 0 18px -6px var(--aurora-glow);
 }
 
@@ -5923,7 +5963,7 @@
 }
 
 .commissioning-error {
-  color: var(--coral) !important;
+  color: var(--coral-ink) !important;
   font-family: var(--font-mono);
   font-size: 11px !important;
 }
@@ -6160,7 +6200,7 @@
   width: 20px;
   height: 20px;
   flex: none;
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 #operation-search-input {
@@ -6180,7 +6220,7 @@
 }
 
 #operation-search-input:focus-visible {
-  text-shadow: 0 0 18px var(--brass-glow);
+  text-shadow: var(--brass-halo);
 }
 
 .operation-search-field kbd {
@@ -6354,12 +6394,12 @@
 
 .operation-search-status--awaiting {
   border-color: color-mix(in oklch, var(--coral) 45%, var(--surface-rim));
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 .operation-search-status--running {
   border-color: color-mix(in oklch, var(--warn) 45%, var(--surface-rim));
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 .operation-search-status--dormant {
@@ -6755,7 +6795,7 @@
 .directory-browser-error {
   flex: none;
   margin: 0;
-  color: var(--coral);
+  color: var(--coral-ink);
   font-family: var(--font-mono);
   font-size: 11px;
 }
@@ -6881,7 +6921,7 @@
 }
 
 .directory-browser-state.is-live {
-  color: var(--aurora);
+  color: var(--aurora-ink);
 }
 
 .directory-browser-scan-dot {
@@ -7214,7 +7254,7 @@ body:has([aria-modal="true"]:not([hidden])) .codex-edge-handle {
 .codex-edge-handle:hover,
 .codex-edge-handle:focus-visible {
   transform: translateY(-50%) translateX(-3px);
-  color: var(--brass);
+  color: var(--brass-ink);
   background: color-mix(in oklch, var(--surface-glass) 94%, var(--ink-deep));
   outline: none;
 }
@@ -7275,7 +7315,7 @@ body:has([aria-modal="true"]:not([hidden])) .codex-edge-handle {
 
 /* 접힌 상태 = pane 숨김. brass로 '활성 토글'을 강조(focus-adjacent emphasis). */
 .codex-pane-toggle.is-collapsed {
-  color: var(--brass);
+  color: var(--brass-ink);
   border-color: color-mix(in oklch, var(--brass) 40%, transparent);
   background: color-mix(in oklch, var(--brass) 12%, transparent);
 }
@@ -7399,7 +7439,7 @@ body[data-codex-side="true"] .command-card {
 
 .whatsnew-stale,
 .whatsnew-error {
-  color: var(--warn);
+  color: var(--warn-ink);
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: var(--weight-bold);
@@ -7513,7 +7553,7 @@ body[data-codex-side="true"] .command-card {
 
 .whatsnew-refresh {
   padding: 0 14px;
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .whatsnew-refresh:hover,
@@ -7617,7 +7657,7 @@ body[data-codex-side="true"] .command-card {
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-sm);
   background: color-mix(in oklch, var(--ink-mid) 72%, transparent);
-  color: var(--brass);
+  color: var(--brass-ink);
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: var(--weight-bold);
@@ -8152,7 +8192,7 @@ body[data-codex-side="true"] .command-card {
   padding: var(--space-4) var(--space-4);
   font-family: var(--font-body);
   font-size: 12px;
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 /* Operations 캔버스/SideBar inert — 시트 활성 동안 배경 상호작용 차단 */
@@ -8356,9 +8396,9 @@ body[data-codex-reading="true"] .operations-side-bar {
   font-weight: var(--weight-bold);
 }
 
-.brand-foot-update--live { border-color: color-mix(in oklch, var(--warn) 42%, transparent); background: color-mix(in oklch, var(--warn) 10%, transparent); color: var(--warn); }
+.brand-foot-update--live { border-color: color-mix(in oklch, var(--warn) 42%, transparent); background: color-mix(in oklch, var(--warn) 10%, transparent); color: var(--warn-ink); }
 .brand-foot-update--blocked { border-color: var(--surface-rim); background: transparent; color: var(--text-tertiary); }
-.brand-foot-update--error { border-color: color-mix(in oklch, var(--coral) 42%, transparent); background: color-mix(in oklch, var(--coral) 10%, transparent); color: var(--coral); }
+.brand-foot-update--error { border-color: color-mix(in oklch, var(--coral) 42%, transparent); background: color-mix(in oklch, var(--coral) 10%, transparent); color: var(--coral-ink); }
 .brand-foot-update:disabled { cursor: default; opacity: 0.75; }
 
 .brand-foot-github {
@@ -8496,7 +8536,7 @@ body[data-codex-reading="true"] .operations-side-bar {
 .keyboard-shortcuts-dialog-head button { width: 24px; height: 24px; border-radius: var(--radius-xs); color: var(--text-tertiary); }
 .keyboard-shortcuts-dialog-head button:hover { background: var(--surface-glass); color: var(--text-primary); }
 .keyboard-shortcuts-group { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--surface-rim); }
-.keyboard-shortcuts-group h3 { margin: 0 0 5px; color: var(--brass); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; }
+.keyboard-shortcuts-group h3 { margin: 0 0 5px; color: var(--brass-ink); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; }
 .keyboard-shortcuts-group dl { margin: 0; }
 .keyboard-shortcuts-group dl > div { display: grid; grid-template-columns: minmax(130px, auto) 1fr; gap: 12px; padding: 4px; color: var(--text-secondary); font-size: 12px; }
 .keyboard-shortcuts-group dt { color: var(--text-tertiary); }
@@ -8514,7 +8554,7 @@ body[data-codex-reading="true"] .operations-side-bar {
 
 .page-back-link:hover,
 .page-back-link:focus-visible {
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 /* ── Shared SDK Select listbox grammar (Option B1) ─────────────────────────── */
@@ -8620,7 +8660,7 @@ body[data-codex-reading="true"] .operations-side-bar {
 
 .feature-tour-card h2 {
   margin: 0;
-  color: var(--brass);
+  color: var(--brass-ink);
   font-family: var(--font-body);
   font-size: 17px;
   font-weight: var(--weight-bold);

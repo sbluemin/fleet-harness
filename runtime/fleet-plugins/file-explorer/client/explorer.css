@@ -140,7 +140,7 @@
 }
 
 .fexp-viewer-error {
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 /* ── 파일 트리 컨테이너 (필터 + 트리) ── */
@@ -247,7 +247,7 @@
 }
 
 .fexp-tree-row.is-cur {
-  color: var(--brass);
+  color: var(--brass-ink);
   background: var(--surface-glass-strong);
 }
 
@@ -270,7 +270,7 @@
 }
 
 .fexp-tree-row.is-cur .fexp-tree-icon {
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .fexp-tree-name {
@@ -297,7 +297,7 @@
   color: var(--text-tertiary);
 }
 
-.fexp-tree-error { color: var(--coral); }
+.fexp-tree-error { color: var(--coral-ink); }
 
 /* ── 코드 뷰어 ── */
 .fexp-code-wrap {
@@ -311,7 +311,7 @@
   flex-shrink: 0;
   padding: 4px 12px;
   font-size: 11px;
-  color: var(--warn);
+  color: var(--warn-ink);
   background: color-mix(in oklch, var(--warn) 12%, transparent);
   border-bottom: 1px solid var(--surface-rim);
 }
@@ -348,12 +348,12 @@
 
 /* 구문강조 토큰 팔레트 */
 .syn-key  { color: var(--brass-bright, var(--brass)); font-weight: var(--weight-medium); }
-.syn-str  { color: var(--positive); }
-.syn-num  { color: var(--warn); }
+.syn-str  { color: var(--positive-ink); }
+.syn-num  { color: var(--warn-ink); }
 .syn-com  { color: var(--text-tertiary); font-style: italic; }
-.syn-fn   { color: var(--aurora); }
-.syn-tag  { color: var(--coral); }
-.syn-attr { color: var(--brass); }
+.syn-fn   { color: var(--aurora-ink); }
+.syn-tag  { color: var(--coral-ink); }
+.syn-attr { color: var(--brass-ink); }
 .syn-punct { color: var(--text-tertiary); }
 
 /* ── 마크다운 뷰어 ── */
@@ -475,7 +475,7 @@
 }
 
 .fexp-hidden-toggle.is-active {
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 /* ── 수동 새로고침 버튼 ── */

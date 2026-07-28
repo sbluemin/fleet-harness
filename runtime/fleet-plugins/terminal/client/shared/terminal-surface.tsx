@@ -165,6 +165,18 @@ const WHITES_TERMINAL_THEME: ITheme = {
   brightWhite: "oklch(97% 0.003 250)",
 };
 
+/* 라이트 터미널은 agent CLI가 직접 찍는 다크용 truecolor(회색 #999/#ccc, 연한 액센트)가 팔레트
+   재매핑 밖에서 1.3~2.5:1로 붕괴한다. xterm minimumContrastRatio(4.5)는 WebGL·DOM 렌더러 모두에서
+   truecolor를 포함한 전경색을 hue를 보존하며 바닥 대비까지 어둡게 보정하고 box-drawing 글리프는
+   제외한다. 한계: dim(SGR 2) 셀은 dim 적용 "전" 색으로 floor/2를 판정한 뒤 알파 0.5를 곱하므로
+   색상 dim은 보정을 받지 못한다 — dim 개선은 별도 트랙. 다크 테마는 1(off) 유지. */
+const LIGHT_TERMINAL_THEMES: ReadonlySet<TerminalThemeId> = new Set(["daywatch", "whites", "drydock"]);
+const LIGHT_MINIMUM_CONTRAST_RATIO = 4.5;
+
+function terminalContrastFloorFor(theme: TerminalThemeId): number {
+  return LIGHT_TERMINAL_THEMES.has(theme) ? LIGHT_MINIMUM_CONTRAST_RATIO : 1;
+}
+
 const DRYDOCK_TERMINAL_THEME: ITheme = {
   background: "oklch(92.5% 0.02 238)",
   foreground: "oklch(25% 0.045 250)",
@@ -209,6 +221,9 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   const activeRef = useRef(active);
   activeRef.current = active;
   const [status, setStatus] = useState("connecting");
+  // 테마 극성(다크↔라이트) 전환 1회성 안내 — 실행 중 CLI 내부 테마는 강제할 수 없으므로 힌트만 띄운다.
+  const [themeHint, setThemeHint] = useState<"light" | "dark" | null>(null);
+  const prevPolarityRef = useRef<boolean | null>(null);
   // 터미널 인스턴스는 심볼 폰트 선대기 때문에 비동기로 생성된다. 같은 커밋에서 이미 실행된
   // WebGL/테마/폰트 effect는 null 터미널을 보고 건너뛰므로, 생성 완료를 epoch로 알려 재실행시킨다.
   const [mountedTerminalEpoch, setMountedTerminalEpoch] = useState(0);
@@ -235,6 +250,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         fontFamily: terminalFontSettings.family,
         fontSize: terminalFontSettings.size * appliedZoom,
         theme: terminalTheme,
+        minimumContrastRatio: terminalContrastFloorFor(activeTheme),
       });
       terminalRef.current = terminal;
       const fitAddon = new FitAddon();
@@ -288,6 +304,8 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         operationId,
         ticketPath,
         wsPath,
+        // spawn env COLORFGBG 힌트 — 마운트 시점 극성으로 고정된다(PTY는 최초 spawn 시 env 확정).
+        colorScheme: LIGHT_TERMINAL_THEMES.has(activeTheme) ? "light" : "dark",
         terminal: {
           onData: (listener) => terminal.onData((data) => {
             // xterm's normal scrollOnUserInput behavior resumes follow for every local input,
@@ -442,8 +460,22 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
     if (!terminal || !container) return;
     const terminalTheme = terminalThemeFor(activeTheme);
     terminal.options.theme = terminalTheme;
+    terminal.options.minimumContrastRatio = terminalContrastFloorFor(activeTheme);
     syncTerminalViewportBackground(container, terminalTheme);
   }, [activeTheme, mountedTerminalEpoch]);
+
+  // 극성 전환 감지: 마운트 시점 극성은 기준선으로만 기록하고, 이후 다크↔라이트 전환마다 힌트를 다시 띄운다.
+  useEffect(() => {
+    const isLight = LIGHT_TERMINAL_THEMES.has(activeTheme);
+    if (prevPolarityRef.current === null) {
+      prevPolarityRef.current = isLight;
+      return;
+    }
+    if (prevPolarityRef.current !== isLight) {
+      prevPolarityRef.current = isLight;
+      setThemeHint(isLight ? "light" : "dark");
+    }
+  }, [activeTheme]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -504,6 +536,12 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
           </div>
         ) : null}
         <div className="terminal-viewport">
+          {themeHint ? (
+            <div className="terminal-theme-hint" role="status">
+              <span>Console switched to a {themeHint} theme — relaunch or run <code>/theme</code> in the CLI to match</span>
+              <button type="button" className="terminal-theme-hint-dismiss" aria-label="Dismiss theme hint" onClick={() => setThemeHint(null)}>✕</button>
+            </div>
+          ) : null}
           <div className="terminal-canvas" ref={containerRef} style={zoomStyle} />
         </div>
       </div>

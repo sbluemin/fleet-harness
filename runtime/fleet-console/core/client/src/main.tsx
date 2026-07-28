@@ -8,6 +8,8 @@ import * as sdkReactBrowser from "@fleet-console/sdk/react/browser";
 import "@fontsource-variable/fraunces";
 import "@fontsource-variable/fraunces/standard-italic.css";
 import "@fontsource-variable/manrope";
+// Pretendard dynamic subset: 한글 폴백 서체 — 브라우저가 unicode-range로 필요한 subset woff2만 내려받는다.
+import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import "@fontsource-variable/jetbrains-mono";
 import "@fontsource-variable/cascadia-code";
 import "@fontsource-variable/fira-code";

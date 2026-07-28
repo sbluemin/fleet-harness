@@ -37,7 +37,7 @@
 
 .skills-tab-btn.is-active {
   border-bottom-color: var(--brass);
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -86,7 +86,7 @@
 
 .skills-scope-btn.is-active {
   background: color-mix(in srgb, var(--brass) 20%, transparent);
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .skills-scope-btn:disabled {
@@ -167,7 +167,7 @@
   text-align: left;
 }
 
-.skills-card-name-btn:hover { color: var(--brass); }
+.skills-card-name-btn:hover { color: var(--brass-ink); }
 
 .skills-card-scope-badge {
   border-radius: var(--radius-sm);
@@ -180,7 +180,7 @@
 
 .skills-card-scope-badge--project {
   background: color-mix(in srgb, var(--brass) 15%, transparent);
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .skills-card-scope-badge--global {
@@ -240,7 +240,7 @@
 .skills-btn--primary {
   background: color-mix(in srgb, var(--brass) 20%, transparent);
   border-color: color-mix(in srgb, var(--brass) 40%, transparent);
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .skills-btn--primary:hover {
@@ -254,14 +254,14 @@
 }
 
 .skills-btn--remove:hover {
-  color: var(--coral);
+  color: var(--coral-ink);
   border-color: color-mix(in srgb, var(--coral) 40%, transparent);
 }
 
 .skills-btn--remove.is-armed {
   background: color-mix(in srgb, var(--coral) 15%, transparent);
   border-color: color-mix(in srgb, var(--coral) 40%, transparent);
-  color: var(--coral);
+  color: var(--coral-ink);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -294,9 +294,9 @@
   white-space: nowrap;
 }
 
-.skills-dock-log-done { color: var(--positive); }
+.skills-dock-log-done { color: var(--positive-ink); }
 
-.skills-dock-log-error { color: var(--coral); }
+.skills-dock-log-error { color: var(--coral-ink); }
 
 .skills-dock-summary {
   align-items: center;
@@ -351,9 +351,9 @@
   font-weight: var(--weight-medium);
 }
 
-.skills-dock-label.is-ok { color: var(--positive); }
+.skills-dock-label.is-ok { color: var(--positive-ink); }
 
-.skills-dock-label.is-err { color: var(--coral); }
+.skills-dock-label.is-err { color: var(--coral-ink); }
 
 .skills-dock-count {
   color: var(--text-tertiary);
@@ -382,7 +382,7 @@
   background: color-mix(in srgb, var(--coral) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--coral) 40%, transparent);
   border-radius: var(--radius-md);
-  color: var(--coral);
+  color: var(--coral-ink);
   cursor: pointer;
   font-size: 0.6875rem;
   font-weight: var(--weight-medium);
@@ -442,7 +442,7 @@
 .skills-agent-chip.is-active {
   background: color-mix(in srgb, var(--brass) 15%, transparent);
   border-color: color-mix(in srgb, var(--brass) 40%, transparent);
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .skills-agent-chip:disabled {
@@ -564,7 +564,7 @@
   border: 1px solid color-mix(in srgb, var(--aurora) 35%, transparent);
   border-radius: var(--radius-md);
   bottom: var(--space-3);
-  color: var(--aurora);
+  color: var(--aurora-ink);
   font-size: 0.8125rem;
   font-weight: var(--weight-medium);
   left: var(--space-3);
