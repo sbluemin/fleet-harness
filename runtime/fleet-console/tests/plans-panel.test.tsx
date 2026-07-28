@@ -308,6 +308,38 @@ describe("Plans row deletion", () => {
     }
   });
 
+  it("disarms when a mouse pointer leaves the row", async () => {
+    mocks.fetchPlansList.mockResolvedValue({ plans: [listPlan()] });
+
+    await renderPanel();
+    const button = deleteButton();
+    await act(async () => button.click());
+    expect(button.classList.contains("is-armed")).toBe(true);
+
+    await act(async () => {
+      container.querySelector(".plans-row")?.dispatchEvent(pointerLeave("mouse"));
+    });
+
+    expect(button.classList.contains("is-armed")).toBe(false);
+    expect(mocks.deletePlan).not.toHaveBeenCalled();
+  });
+
+  it("keeps the arm when a touch pointer leaves after the first tap", async () => {
+    mocks.fetchPlansList.mockResolvedValue({ plans: [listPlan()] });
+
+    await renderPanel();
+    const button = deleteButton();
+    await act(async () => button.click());
+    expect(button.classList.contains("is-armed")).toBe(true);
+
+    await act(async () => {
+      container.querySelector(".plans-row")?.dispatchEvent(pointerLeave("touch"));
+    });
+
+    expect(button.classList.contains("is-armed")).toBe(true);
+    expect(button.textContent).toBe("DELETE?");
+  });
+
   it("closes the reader when its open Plan is deleted", async () => {
     mocks.fetchPlansList.mockResolvedValue({ plans: [listPlan()] });
     mocks.fetchPlanRead.mockResolvedValue(readPlan("Open plan"));
@@ -412,4 +444,12 @@ function deleteButton(): HTMLButtonElement {
   const button = container.querySelector<HTMLButtonElement>(".plans-delete");
   if (!button) throw new Error("plans delete button not found");
   return button;
+}
+
+// React는 onPointerLeave를 네이티브 pointerout에서 합성한다 — jsdom에는 PointerEvent가 없어
+// 일반 Event에 pointerType을 심어 발행한다.
+function pointerLeave(pointerType: string): Event {
+  const event = new Event("pointerout", { bubbles: true });
+  Object.assign(event, { pointerType });
+  return event;
 }

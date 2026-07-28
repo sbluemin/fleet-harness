@@ -456,8 +456,10 @@ function PlansList({
             <div
               key={plan.name}
               className={`plans-row${selectedName === plan.name ? " is-selected" : ""}${pulsedNames.has(plan.name) ? " is-pulsing" : ""}`}
-              onPointerLeave={() => {
-                if (armedDeleteName === plan.name) onDisarmDelete();
+              // 터치/펜 포인터는 탭 직후 pointerleave가 발생해 첫 탭의 ARM이 즉시 풀린다 —
+              // hover가 지속되는 마우스 포인터에서만 이탈 해제를 적용한다.
+              onPointerLeave={(event) => {
+                if (event.pointerType === "mouse" && armedDeleteName === plan.name) onDisarmDelete();
               }}
             >
               <button ref={(node) => { if (node) rowRefs.current.set(plan.name, node); else rowRefs.current.delete(plan.name); }} type="button" className="plans-row-select" onClick={() => onSelect(plan.name)} onKeyDown={(event) => handleRowKeyDown(event, index, plan.name)}>
