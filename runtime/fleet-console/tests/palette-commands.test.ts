@@ -449,6 +449,15 @@ describe("filterPaletteCommands", () => {
     }
   });
 
+  it("keeps supplementary-plane matches on complete surrogate-pair boundaries", () => {
+    expect(fuzzyMatchPaletteLabel("😁😃", "😃")?.matchedIndices).toEqual([2, 3]);
+    expect(fuzzyMatchPaletteLabel("😁😃-x", "😃x")?.matchedIndices).toEqual([2, 3, 5]);
+  });
+
+  it("continues matching BMP command text after a supplementary-plane prefix", () => {
+    expect(fuzzyMatchPaletteLabel("😀 deploy", "deploy")).not.toBeNull();
+  });
+
   it("ranks consecutive fuzzy glyphs above scattered glyphs", () => {
     const consecutive = fuzzyMatchPaletteLabel("ab-d-e-", "abde");
     const scattered = fuzzyMatchPaletteLabel("a-b-d-e", "abde");

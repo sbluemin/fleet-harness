@@ -278,12 +278,13 @@ export function fuzzyMatchPaletteLabel(label: string, query: string): PaletteCom
       exactTokens += 1;
     } else {
       let searchFrom = 0;
-      for (let tokenIndex = 0; tokenIndex < token.length; tokenIndex += 1) {
-        const character = token[tokenIndex]!;
+      for (const character of token) {
         const matchedIndex = foldedLabel.indexOf(character, searchFrom);
         if (matchedIndex === -1) return null;
-        foldedTokenIndices.push(matchedIndex);
-        searchFrom = matchedIndex + 1;
+        for (let characterOffset = 0; characterOffset < character.length; characterOffset += 1) {
+          foldedTokenIndices.push(matchedIndex + characterOffset);
+        }
+        searchFrom = matchedIndex + character.length;
       }
     }
 
