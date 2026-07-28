@@ -352,6 +352,40 @@ describe("filterPaletteCommands", () => {
     }
   });
 
+  it("maps context-inserted folded characters without shifting following original indices", () => {
+    const originalToLocaleLowerCase = String.prototype.toLocaleLowerCase;
+    const lowerCaseSpy = vi.spyOn(String.prototype, "toLocaleLowerCase").mockImplementation(function (
+      this: string,
+      locales?: string | string[],
+    ): string {
+      const value = String(this);
+      if (locales === undefined) {
+        if (value === "ÍXY") return "i̇́xy";
+        if (value === "I") return "i";
+        if (value === "́") return "́";
+        if (value === "X") return "x";
+        if (value === "Y") return "y";
+      }
+      return locales === undefined
+        ? originalToLocaleLowerCase.call(value)
+        : originalToLocaleLowerCase.call(value, locales);
+    });
+    try {
+      const label = "ÍXY";
+      const xMatch = fuzzyMatchPaletteLabel(label, "x");
+      const yMatch = fuzzyMatchPaletteLabel(label, "y");
+      expect(xMatch?.matchedIndices).toEqual([2]);
+      expect(yMatch?.matchedIndices).toEqual([3]);
+      const matchedIndices = [
+        ...(xMatch?.matchedIndices ?? []),
+        ...(yMatch?.matchedIndices ?? []),
+      ];
+      expect(matchedIndices.filter((index) => index < 0 || index >= label.length)).toEqual([]);
+    } finally {
+      lowerCaseSpy.mockRestore();
+    }
+  });
+
   it("ranks consecutive fuzzy glyphs above scattered glyphs", () => {
     const consecutive = fuzzyMatchPaletteLabel("ab-d-e-", "abde");
     const scattered = fuzzyMatchPaletteLabel("a-b-d-e", "abde");
