@@ -133,6 +133,14 @@
   pointer-events: auto;
 }
 
+/* hover가 없는 터치 환경에서는 reveal 트리거가 없으므로 항상 노출·활성화한다. */
+@media (hover: none) {
+  .plans-delete {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
 .plans-delete.is-armed {
   background: color-mix(in oklch, var(--coral) 20%, transparent);
   border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);
@@ -153,7 +161,7 @@
 
 .plans-filter.is-active,
 .plans-refresh:hover,
-.plans-delete:hover,
+.plans-delete:hover:not(.is-armed),
 .plans-copy:hover {
   border-color: color-mix(in srgb, var(--brass) 58%, var(--surface-rim));
   color: var(--brass);
