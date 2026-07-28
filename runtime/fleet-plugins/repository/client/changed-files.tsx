@@ -22,6 +22,8 @@ interface ChangedFilesProps {
   readonly onSelect: (entry: DiffFileEntry) => void;
   readonly filterText: string;
   readonly t: Translate<RepositoryMessageKey>;
+  readonly collapsedFolders?: ReadonlySet<string>;
+  readonly onToggleFolder?: (path: string) => void;
 }
 
 interface ListFileRowProps {
@@ -60,7 +62,7 @@ function readCollapsed(key: string): boolean {
   try { return localStorage.getItem(key) === "1"; } catch { return false; }
 }
 
-export function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect, filterText, t }: ChangedFilesProps) {
+export function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect, filterText, t, collapsedFolders, onToggleFolder }: ChangedFilesProps) {
   const [changesCollapsed, setChangesCollapsed] = useState(() => readCollapsed(PREFS_CHANGES_COLLAPSED));
 
   const handleToggleChanges = useCallback(() => {
@@ -125,6 +127,8 @@ export function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect,
                 files={visibleFiles}
                 selectedPath={selectedPath}
                 onSelect={onSelect}
+                collapsedFolders={collapsedFolders}
+                onToggleFolder={onToggleFolder}
               />
             ) : (
               visibleFiles.map((entry) => (

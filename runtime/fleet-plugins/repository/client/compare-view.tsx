@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { Select, type SelectOption } from "@fleet-console/sdk/react/browser";
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
@@ -7,6 +7,7 @@ import type { CompareResult, DiffFileEntry } from "../server/types.js";
 import { ChangedFiles } from "./changed-files.js";
 import { HunkView } from "./hunk-view.js";
 import { getT } from "./i18n/index.js";
+import { readCompareViewState, writeCompareViewState, type CompareResultSnapshot } from "./panel-state-cache.js";
 import { isRemoteHeadRef, type RepositoryRefs } from "./rail-panel.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, buildDiffGridTemplate, clampListPaneWidth, installPointerDragLifecycle } from "./rail-layout.js";
 
@@ -24,9 +25,7 @@ interface CompareViewProps {
 type CompareState =
   | { readonly kind: "idle" }
   | { readonly kind: "loading" }
-  | { readonly kind: "ok"; readonly base: string; readonly head: string; readonly files: readonly DiffFileEntry[]; readonly mergeBase?: string; readonly truncated?: boolean }
-  | { readonly kind: "notice"; readonly reason: "no_git_repo" | "git_unavailable" }
-  | { readonly kind: "error"; readonly message: string };
+  | CompareResultSnapshot;
 
 interface StoredCompareSelection {
   readonly base?: unknown;
@@ -66,14 +65,24 @@ function saveCompareSelection(theaterId: string, repoRel: string, base: string, 
 
 export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs, onFileOpenChange }: CompareViewProps) {
   const t = getT(ctx.language);
+  const [initialCache] = useState(() => ctx.theaterId ? readCompareViewState(ctx.theaterId, repoRel) : null);
+  const initialResult: CompareState = initialCache?.result ?? { kind: "idle" };
   const [base, setBase] = useState("");
   const [head, setHead] = useState("");
-  const [result, setResult] = useState<CompareState>({ kind: "idle" });
-  const [selected, setSelected] = useState<DiffFileEntry | null>(null);
-  const [listPaneWidth, setListPaneWidth] = useState(LIST_PANE_DEFAULT_WIDTH);
+  const [result, setResult] = useState<CompareState>(initialResult);
+  const [selected, setSelected] = useState<DiffFileEntry | null>(() => {
+    if (initialResult.kind !== "ok" || !initialCache?.selectedPath) return null;
+    return initialResult.files.find((entry) => entry.path === initialCache.selectedPath) ?? null;
+  });
+  const [listPaneWidth, setListPaneWidth] = useState(initialCache?.listPaneWidth ?? LIST_PANE_DEFAULT_WIDTH);
+  const [scrollTop, setScrollTop] = useState(initialCache?.scrollTop ?? 0);
   const [isDragging, setIsDragging] = useState(false);
   const listPaneWidthRef = useRef(listPaneWidth);
   const rootRef = useRef<HTMLDivElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const scrollTopRef = useRef(initialCache?.scrollTop ?? 0);
+  const restoredScrollTopRef = useRef<number | null>(initialCache?.scrollTop ?? null);
+  const stateCacheKeyRef = useRef(`${ctx.theaterId ?? ""}\x00${repoRel}`);
   const dragDisposeRef = useRef<(() => void) | null>(null);
   const hydratedRef = useRef(false);
   const requestSeqRef = useRef(0);
@@ -105,6 +114,35 @@ export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs
 
   useEffect(() => { onFileOpenChange?.(selected !== null); }, [onFileOpenChange, selected]);
   useEffect(() => () => dragDisposeRef.current?.(), []);
+  const updateResultsScroll = useCallback(() => {
+    const list = resultsRef.current;
+    if (!list || list.clientHeight <= 0 || list.scrollHeight <= 0) return;
+    if (restoredScrollTopRef.current !== null) {
+      const restoredScrollTop = restoredScrollTopRef.current;
+      if (restoredScrollTop > 0 && list.scrollHeight <= list.clientHeight) return;
+      list.scrollTop = restoredScrollTop;
+      restoredScrollTopRef.current = null;
+    }
+    scrollTopRef.current = list.scrollTop;
+    setScrollTop(list.scrollTop);
+  }, []);
+  useEffect(() => {
+    if (!ctx.theaterId || stateCacheKeyRef.current !== `${ctx.theaterId}\x00${repoRel}` || result.kind === "loading") return;
+    writeCompareViewState(ctx.theaterId, repoRel, {
+      result: result.kind === "idle" ? null : result,
+      selectedPath: result.kind === "ok" && selected && result.files.some((entry) => entry.path === selected.path) ? selected.path : null,
+      listPaneWidth,
+      scrollTop: scrollTopRef.current,
+    });
+  }, [ctx.theaterId, listPaneWidth, repoRel, result, scrollTop, selected]);
+  useLayoutEffect(() => {
+    updateResultsScroll();
+    const list = resultsRef.current;
+    if (!list) return;
+    const observer = new ResizeObserver(updateResultsScroll);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [result, updateResultsScroll]);
 
   const chooseRef = useCallback((side: "base" | "head", value: string) => {
     const nextBase = side === "base" ? value : base;
@@ -202,7 +240,7 @@ export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs
       <div ref={rootRef} className={`repository-root${selected ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={selected ? { gridTemplateColumns: buildDiffGridTemplate(listPaneWidth) } : undefined}>
         {selected && compareSelection ? <div className="repository-hunk-pane"><div className="repository-hunk-head"><span>{selected.path}</span><button type="button" onClick={() => setSelected(null)}>✕</button></div><HunkView ctx={ctx} repoRel={repoRel} file={selected} mode="unified" compare={compareSelection} /></div> : null}
         {selected ? <div className="repository-divider" onPointerDown={handleDividerDown} aria-hidden="true" /> : null}
-        <div className="repository-list-pane repository-compare-results">
+        <div ref={resultsRef} className="repository-list-pane repository-compare-results" onScroll={updateResultsScroll}>
           {result.kind === "idle" && <div className="history-empty">{t("repository.compare.idle")}</div>}
           {result.kind === "loading" && <div className="history-empty">{t("repository.compare.comparing")}</div>}
           {result.kind === "ok" && result.files.length === 0 && <div className="history-empty">{t("repository.compare.noDifferences")}</div>}
