@@ -149,7 +149,6 @@
 .plans-delete.is-armed:hover,
 .plans-delete.is-armed:focus-visible {
   background: color-mix(in oklch, var(--coral) 32%, transparent);
-  outline: none;
 }
 
 .plans-filter.is-active,
