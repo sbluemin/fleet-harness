@@ -129,6 +129,7 @@ export function mountReaderInto(
   let animationFrameId: number | null = null;
   let quietTimerId: ReturnType<typeof setTimeout> | null = null;
   let failsafeTimerId: ReturnType<typeof setTimeout> | null = null;
+  let suspectTimerId: ReturnType<typeof setTimeout> | null = null;
   let observer: ResizeObserver | null = null;
   const userScrollEvents = ["wheel", "touchmove", "keydown"] as const;
 
@@ -139,16 +140,37 @@ export function mountReaderInto(
     if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
     if (quietTimerId !== null) clearTimeout(quietTimerId);
     if (failsafeTimerId !== null) clearTimeout(failsafeTimerId);
+    if (suspectTimerId !== null) clearTimeout(suspectTimerId);
     for (const eventName of userScrollEvents) {
       readSlot.removeEventListener(eventName, cleanup, { capture: true });
     }
+    readSlot.removeEventListener("scroll", handleScroll);
+    tNode.removeEventListener("click", cleanup, { capture: true });
     if (scrollRestoreCleanup === cleanup) scrollRestoreCleanup = null;
+  };
+
+  // scroll anchoring도 scroll 이벤트를 만들지만 콘텐츠 크기 변화를 동반하므로, 짧은 RO
+  // 상관 구간 안에 resize가 없을 때만 사용자의 스크롤바 이동으로 판정한다.
+  const handleScroll = () => {
+    if (!active) return;
+    if (Math.abs(readSlot.scrollTop - targetScrollTop) <= 2) return;
+    if (quietTimerId !== null) {
+      clearTimeout(quietTimerId);
+      quietTimerId = null;
+    }
+    if (suspectTimerId !== null) clearTimeout(suspectTimerId);
+    suspectTimerId = setTimeout(() => {
+      suspectTimerId = null;
+      cleanup();
+    }, 150);
   };
 
   scrollRestoreCleanup = cleanup;
   for (const eventName of userScrollEvents) {
     readSlot.addEventListener(eventName, cleanup, { passive: true, capture: true });
   }
+  readSlot.addEventListener("scroll", handleScroll, { passive: true });
+  tNode.addEventListener("click", cleanup, { capture: true });
 
   const restore = () => {
     if (!active) return;
@@ -173,6 +195,10 @@ export function mountReaderInto(
 
   observer = new ResizeObserver(() => {
     if (!active) return;
+    if (suspectTimerId !== null) {
+      clearTimeout(suspectTimerId);
+      suspectTimerId = null;
+    }
     if (Math.abs(readSlot.scrollTop - targetScrollTop) > 2) {
       restore();
     }

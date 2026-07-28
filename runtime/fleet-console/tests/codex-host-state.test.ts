@@ -167,11 +167,49 @@ describe("Codex host in-memory state", () => {
 
     expect(nextReadSlot.scrollTop).toBe(730);
   });
+
+  it("stops restoring when an unmatched scroll has no resize within 150ms", () => {
+    const { nextReadSlot } = mountRelocatedReader(1_400);
+    vi.advanceTimersByTime(350);
+    nextReadSlot.scrollTop = 936;
+    nextReadSlot.dispatchEvent(new Event("scroll"));
+
+    vi.advanceTimersByTime(149);
+    expect(resizeObserverDisconnects.at(-1)).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(resizeObserverDisconnects.at(-1)).toHaveBeenCalledOnce();
+
+    nextReadSlot.scrollTop = 877;
+    triggerLatestResize();
+    expect(nextReadSlot.scrollTop).toBe(877);
+  });
+
+  it("keeps restoring when resize correlates with a scroll anchoring adjustment", () => {
+    const { nextReadSlot } = mountRelocatedReader(1_800);
+    nextReadSlot.scrollTop = 730;
+    nextReadSlot.dispatchEvent(new Event("scroll"));
+    triggerLatestResize();
+    vi.advanceTimersByTime(150);
+
+    expect(nextReadSlot.scrollTop).toBe(1_800);
+    expect(resizeObserverDisconnects.at(-1)).not.toHaveBeenCalled();
+  });
+
+  it("stops restoring immediately when the TOC is clicked", () => {
+    const { nextReadSlot, nextTocSlot } = mountRelocatedReader(1_400);
+    nextTocSlot.firstElementChild?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(resizeObserverDisconnects.at(-1)).toHaveBeenCalledOnce();
+
+    nextReadSlot.scrollTop = 936;
+    triggerLatestResize();
+    expect(nextReadSlot.scrollTop).toBe(936);
+  });
 });
 
 function mountRelocatedReader(scrollTop: number): {
   readonly firstReadSlot: HTMLDivElement;
   readonly nextReadSlot: HTMLDivElement;
+  readonly nextTocSlot: HTMLDivElement;
 } {
   const firstReadSlot = document.createElement("div");
   const firstTocSlot = document.createElement("div");
@@ -191,7 +229,7 @@ function mountRelocatedReader(scrollTop: number): {
   saveReaderScroll();
   firstReadSlot.remove();
   mountReaderInto(nextReadSlot, nextTocSlot, options);
-  return { firstReadSlot, nextReadSlot };
+  return { firstReadSlot, nextReadSlot, nextTocSlot };
 }
 
 function triggerLatestResize(): void {
