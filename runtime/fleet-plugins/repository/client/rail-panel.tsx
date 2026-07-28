@@ -217,8 +217,34 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
   }, []);
+  const repoViewSnapshotRef = useRef({ theaterId: ctx.theaterId, repoRel, repoViewCacheKey, hydratedRepoViewCacheKey, filterText, refFilter, collapsedChangeFolders });
+  repoViewSnapshotRef.current = { theaterId: ctx.theaterId, repoRel, repoViewCacheKey, hydratedRepoViewCacheKey, filterText, refFilter, collapsedChangeFolders };
+  const flushChangesCache = useCallback(() => {
+    const snapshot = repoViewSnapshotRef.current;
+    if (!snapshot.theaterId || snapshot.hydratedRepoViewCacheKey !== snapshot.repoViewCacheKey) return;
+    writeRepoViewState(snapshot.theaterId, snapshot.repoRel, {
+      filterText: snapshot.filterText,
+      refFilter: snapshot.refFilter,
+      scrollTop: changesScrollTopRef.current,
+      collapsedFolders: [...snapshot.collapsedChangeFolders],
+    });
+  }, []);
+  const scheduleChangesCacheWrite = useCallback(() => {
+    if (changesCacheFrameRef.current !== null) return;
+    changesCacheFrameRef.current = requestAnimationFrame(() => {
+      changesCacheFrameRef.current = null;
+      flushChangesCache();
+    });
+  }, [flushChangesCache]);
   const transitionRepository = useCallback((nextRepoRel: string, persist: boolean, landing: Source = "changes") => {
     if (!ctx.theaterId) return;
+    // rAF로 미뤄둔 이전 스코프의 캐시 write가 있다면 스코프가 바뀌기 전에 동기로 flush한다 —
+    // 전환 후 발화하면 snapshot이 새 스코프로 바뀌어 이전 스코프의 마지막 스크롤/필터가 소실된다.
+    if (changesCacheFrameRef.current !== null) {
+      cancelAnimationFrame(changesCacheFrameRef.current);
+      changesCacheFrameRef.current = null;
+    }
+    flushChangesCache();
     if (persist) saveRepositoryRel(ctx.theaterId, nextRepoRel);
     clearSelectedFile();
     setChangedFiles({ kind: "loading" });
@@ -226,7 +252,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     repoRelRef.current = nextRepoRel;
     setRepoRel(nextRepoRel);
     setSource(landing);
-  }, [ctx.theaterId, setSource]);
+  }, [ctx.theaterId, flushChangesCache, setSource]);
   useEffect(() => {
     if (!searchTarget || searchTarget.theaterId !== ctx.theaterId) return;
     setRefFilter(null);
@@ -320,25 +346,6 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
 
   useLayoutEffect(() => () => clearSelectedFile(), []);
 
-  const repoViewSnapshotRef = useRef({ theaterId: ctx.theaterId, repoRel, repoViewCacheKey, hydratedRepoViewCacheKey, filterText, refFilter, collapsedChangeFolders });
-  repoViewSnapshotRef.current = { theaterId: ctx.theaterId, repoRel, repoViewCacheKey, hydratedRepoViewCacheKey, filterText, refFilter, collapsedChangeFolders };
-  const flushChangesCache = useCallback(() => {
-    const snapshot = repoViewSnapshotRef.current;
-    if (!snapshot.theaterId || snapshot.hydratedRepoViewCacheKey !== snapshot.repoViewCacheKey) return;
-    writeRepoViewState(snapshot.theaterId, snapshot.repoRel, {
-      filterText: snapshot.filterText,
-      refFilter: snapshot.refFilter,
-      scrollTop: changesScrollTopRef.current,
-      collapsedFolders: [...snapshot.collapsedChangeFolders],
-    });
-  }, []);
-  const scheduleChangesCacheWrite = useCallback(() => {
-    if (changesCacheFrameRef.current !== null) return;
-    changesCacheFrameRef.current = requestAnimationFrame(() => {
-      changesCacheFrameRef.current = null;
-      flushChangesCache();
-    });
-  }, [flushChangesCache]);
   const updateChangesScroll = useCallback(() => {
     const list = changesListRef.current;
     if (!list || list.clientHeight <= 0 || list.scrollHeight <= 0) return;
