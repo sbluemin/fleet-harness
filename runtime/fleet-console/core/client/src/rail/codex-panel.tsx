@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
@@ -9,6 +9,7 @@ import {
   mountNavigatorInto,
   mountReaderInto,
   refreshCodexLocale,
+  saveReaderScroll,
   setNavigatorTheater,
   setOnRequestOpenReader,
   teardownCodex,
@@ -24,6 +25,9 @@ interface CodexWorkspaceState {
   readonly hasWiki: boolean;
   readonly id: string | null;
 }
+
+let lastCodexContextKey: string | null = null;
+let lastResolvedWorkspace: CodexWorkspaceState | null = null;
 
 // ─── Rail panel descriptor ───────────────────────────────────────────────────
 
@@ -46,14 +50,18 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
   const tocRef = useRef<HTMLDivElement>(null);
   const latestContextKeyRef = useRef("");
   const localeRef = useRef(locale);
-  const [workspace, setWorkspace] = useState<CodexWorkspaceState | null>(null);
+  const contextKey = theaterId ?? "";
+  const [workspace, setWorkspace] = useState<CodexWorkspaceState | null>(
+    lastResolvedWorkspace && lastResolvedWorkspace.contextKey === contextKey
+      ? lastResolvedWorkspace
+      : null,
+  );
 
   const reader = state.codexReader;
   const hasReader = reader !== null;
   const expanded = state.codexReaderExpanded;
   const activeTheater = state.theaters.find((t) => t.id === state.activeTheaterId) ?? null;
   const hasTheaters = state.theaters.length > 0;
-  const contextKey = theaterId ?? "";
   const workspaceId = workspace?.contextKey === contextKey && workspace.hasWiki ? workspace.id : null;
   const shouldMountCodex = workspaceId !== null;
 
@@ -61,20 +69,29 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
     ? `${reader.kind}:${reader.kind === "entry" ? reader.entryId : reader.kind === "drydock" ? (reader.patchId ?? "") : reader.kind === "conflicts" ? (reader.id ?? "") : (reader.templateId ?? "")}`
     : null;
 
-  // Theater 변경 시 이전 reader가 새 workspace에서 잠시 보이지 않도록 먼저 닫는다.
+  // 실제 Theater가 바뀐 경우에만 이전 reader를 닫고, 같은 패널 재마운트 상태는 보존한다.
   useEffect(() => {
     latestContextKeyRef.current = contextKey;
-    closeCodexReader();
+    if (lastCodexContextKey !== null && lastCodexContextKey !== contextKey) {
+      closeCodexReader();
+    }
+    lastCodexContextKey = contextKey;
     if (!theaterId) {
-      setWorkspace({ contextKey, hasWiki: false, id: null });
+      const nextWorkspace = { contextKey, hasWiki: false, id: null };
+      lastResolvedWorkspace = nextWorkspace;
+      setWorkspace(nextWorkspace);
       return;
     }
     void resolveCodexWorkspace(theaterId).then((result) => {
       if (latestContextKeyRef.current !== contextKey) return;
-      setWorkspace({ contextKey, ...result });
+      const nextWorkspace = { contextKey, ...result };
+      lastResolvedWorkspace = nextWorkspace;
+      setWorkspace(nextWorkspace);
     }).catch(() => {
       if (latestContextKeyRef.current !== contextKey) return;
-      setWorkspace({ contextKey, hasWiki: false, id: null });
+      const nextWorkspace = { contextKey, hasWiki: false, id: null };
+      lastResolvedWorkspace = nextWorkspace;
+      setWorkspace(nextWorkspace);
     });
   }, [contextKey, theaterId]);
 
@@ -84,7 +101,8 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
     if (workspace?.contextKey === contextKey && !workspace.hasWiki) teardownCodex();
   }, [contextKey, workspace]);
 
-  useEffect(() => () => teardownCodex(), []);
+  // 패널 DOM이 detach되기 전에 현재 reader 위치를 싱글톤에 저장한다.
+  useLayoutEffect(() => () => saveReaderScroll(), []);
 
   // navigator 마운트 + onRequest 등록 — hasReader 전환 시 navRef 컨테이너가 바뀌므로 재배치
   // locale을 deps에 넣어 로케일 전환 시 effect를 다시 돌린다(싱글톤은 재배치만; 문구는 refreshCodexLocale).

@@ -16,6 +16,7 @@ export type ReaderSlotOptions = Omit<MountReadingOptions, "tocContainer">;
 let hostNode: HTMLDivElement | null = null;
 let navigatorController: NavigatorController | null = null;
 let onRequestOpenReaderHandler: ((r: NavigatorRequest) => void) | null = null;
+let activeNavigatorWorkspaceId: string | null = null;
 
 // Reader 싱글톤 — split·오버레이 사이를 같은 노드로 relocate하여 콘텐츠·스크롤 보존
 let readerHostNode: HTMLDivElement | null = null;
@@ -25,6 +26,7 @@ let activeReaderKind: "entry" | "drydock" | "conflicts" | "schema" | null = null
 let activeReaderEntryId: string | null = null;
 let activeReaderSubId: string | undefined = undefined;
 let lastReaderScrollTop = 0;
+let scrollRestoreCleanup: (() => void) | null = null;
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -52,6 +54,8 @@ export function mountNavigatorInto(
 }
 
 export function setNavigatorTheater(theaterId: string | null): void {
+  if (theaterId === activeNavigatorWorkspaceId) return;
+  activeNavigatorWorkspaceId = theaterId;
   navigatorController?.setTheater(theaterId);
 }
 
@@ -66,6 +70,7 @@ export function mountReaderInto(
   tocSlot: HTMLElement,
   opts: ReaderSlotOptions,
 ): void {
+  scrollRestoreCleanup?.();
   const rNode = ensureReaderHostNode();
   const tNode = ensureTocHostNode();
   // 같은 엔트리를 split↔오버레이로 relocate할 때 외부 스크롤 컨테이너(.codex-doc-scroll ↔
@@ -76,7 +81,9 @@ export function mountReaderInto(
     opts.kind === "entry" && activeReaderKind === "entry" && opts.initialEntryId === activeReaderEntryId;
   // 이전 컨테이너가 아직 살아 있으면(예: Expand 시 split doc-scroll) 그 scrollTop을 저장한다.
   // Esc 방향(overlay→split)은 overlay 언마운트 전 닫기 핸들러가 saveReaderScroll로 미리 저장.
-  if (prevReadSlot && prevReadSlot !== readSlot) lastReaderScrollTop = prevReadSlot.scrollTop;
+  if (prevReadSlot && prevReadSlot !== readSlot && prevReadSlot.isConnected) {
+    lastReaderScrollTop = prevReadSlot.scrollTop;
+  }
 
   // DOM의 appendChild는 기존 부모에서 자동 detach → split·오버레이 사이를 콘텐츠 보존으로 relocate
   if (rNode.parentElement !== readSlot) readSlot.appendChild(rNode);
@@ -107,14 +114,73 @@ export function mountReaderInto(
     theaterId: opts.theaterId,
   });
 
-  // 같은 엔트리를 split→오버레이(Expand)로 옮길 때는 읽기 위치를 보존한다. 반대 방향
-  // (오버레이→split, Esc)은 오버레이 언마운트로 reader가 먼저 detach되어 위치 복원이
-  // 불안정하므로 상단부터 시작한다(콤팩트 뷰 복귀라 허용). 새 엔트리/뷰도 상단부터.
-  // relocate 직후 reflow 전 set하면 clamp되므로 rAF로 미룬다.
   const targetScrollTop = sameEntry ? lastReaderScrollTop : 0;
-  requestAnimationFrame(() => {
+  if (targetScrollTop <= 0) {
+    requestAnimationFrame(() => {
+      readSlot.scrollTop = targetScrollTop;
+    });
+    return;
+  }
+
+  // 긴 문서는 마크다운 하이드레이션 뒤에도 높이가 바뀌므로 단발 rAF만으로는 읽기 위치가
+  // 밀린다. 다단계 reflow의 임시 geometry에서는 scrollTop 연속 일치도 안정의 증거가
+  // 아니므로 마지막 크기 변화 뒤 quiet window까지 보정하되 사용자 스크롤 시 즉시 포기한다.
+  let active = true;
+  let animationFrameId: number | null = null;
+  let quietTimerId: ReturnType<typeof setTimeout> | null = null;
+  let failsafeTimerId: ReturnType<typeof setTimeout> | null = null;
+  let observer: ResizeObserver | null = null;
+  const userScrollEvents = ["wheel", "touchmove", "keydown"] as const;
+
+  const cleanup = () => {
+    if (!active) return;
+    active = false;
+    observer?.disconnect();
+    if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
+    if (quietTimerId !== null) clearTimeout(quietTimerId);
+    if (failsafeTimerId !== null) clearTimeout(failsafeTimerId);
+    for (const eventName of userScrollEvents) {
+      readSlot.removeEventListener(eventName, cleanup, { capture: true });
+    }
+    if (scrollRestoreCleanup === cleanup) scrollRestoreCleanup = null;
+  };
+
+  scrollRestoreCleanup = cleanup;
+  for (const eventName of userScrollEvents) {
+    readSlot.addEventListener(eventName, cleanup, { passive: true, capture: true });
+  }
+
+  const restore = () => {
+    if (!active) return;
     readSlot.scrollTop = targetScrollTop;
+  };
+  const scheduleQuietCheck = () => {
+    if (quietTimerId !== null) clearTimeout(quietTimerId);
+    quietTimerId = setTimeout(() => {
+      quietTimerId = null;
+      if (!active) return;
+      if (Math.abs(readSlot.scrollTop - targetScrollTop) <= 2) {
+        cleanup();
+        return;
+      }
+      restore();
+      scheduleQuietCheck();
+    }, 400);
+  };
+
+  restore();
+  animationFrameId = requestAnimationFrame(restore);
+
+  observer = new ResizeObserver(() => {
+    if (!active) return;
+    if (Math.abs(readSlot.scrollTop - targetScrollTop) > 2) {
+      restore();
+    }
+    scheduleQuietCheck();
   });
+  observer.observe(rNode);
+  scheduleQuietCheck();
+  failsafeTimerId = setTimeout(cleanup, 5_000);
 }
 
 // 컨테이너 전환(특히 overlay→split) 직전, 아직 살아 있는 reader 컨테이너의 scrollTop을 저장한다.
@@ -125,6 +191,7 @@ export function saveReaderScroll(): void {
 }
 
 export function teardownReaderNodes(): void {
+  scrollRestoreCleanup?.();
   readerController?.destroy();
   readerController = null;
   activeReaderKind = null;
@@ -137,6 +204,7 @@ export function teardownCodex(): void {
   teardownReaderNodes();
   navigatorController?.destroy();
   navigatorController = null;
+  activeNavigatorWorkspaceId = null;
   if (hostNode?.parentElement) hostNode.parentElement.removeChild(hostNode);
 }
 
