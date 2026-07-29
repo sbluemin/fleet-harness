@@ -2357,7 +2357,8 @@
   overflow: visible;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-lg);
-  background: var(--ink-mid);
+  /* 창 프레임은 --surface-frame — 라이트에서 최암면이 되지 않도록 밴드와 같은 크롬 패밀리를 탄다. */
+  background: var(--surface-frame);
   box-shadow: var(--shadow-soft);
   /* 공통 geometry 모션 레이어 — formation/최대화/companion/복원의 재배치가 같은 물리로 움직인다.
      visibility는 0s 즉시(복원·focus layer 즉시 표시), 최소화 시에만 is-minimized가 지연을 소유한다.
@@ -2649,7 +2650,7 @@
 }
 
 .canvas-operation[style*="--user-accent"] .canvas-operation-titlebar {
-  background: color-mix(in oklch, var(--user-accent) 10%, var(--ink-mid));
+  background: color-mix(in oklch, var(--user-accent) 10%, var(--surface-frame));
 }
 
 /* 진행 중 캐리어 스트림을 패널 바깥 아래에 floating으로 띄우는 dock. left/top/width는 패널 geometry를
@@ -3770,7 +3771,7 @@
   border: 1px solid var(--ink-rim);
   border-radius: var(--radius-sm);
   overflow: visible;
-  background: var(--ink-mid);
+  background: var(--surface-frame);
   box-shadow: var(--shadow-soft);
   cursor: grab;
   touch-action: none;
@@ -3785,7 +3786,7 @@
 
 .canvas-operation.is-active .canvas-operation-titlebar {
   border-color: color-mix(in oklch, var(--brass) 62%, var(--ink-rim));
-  background: color-mix(in oklch, var(--brass) 7%, var(--ink-mid));
+  background: color-mix(in oklch, var(--brass) 7%, var(--surface-frame));
 }
 
 .canvas-operation-identity-name,
