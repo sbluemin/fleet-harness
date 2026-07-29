@@ -5,6 +5,22 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.39.0] - 2026-07-29
+
+### fleet-console
+
+#### Changed
+- [fleet-console] Light themes now keep the terminal as the brightest surface: the sidebar and command-band cap sit on a new darker chrome tier, and the canvas and page backgrounds settle below the terminal paper so attention lands on the work area. Dark themes are unchanged.
+- [fleet-console] Operation window frames and titlebars in light themes now share the command band's chrome tone instead of holding the darkest tone on screen. Dark themes are unchanged.
+
+#### Fixed
+- [fleet-console] Brass-filled primary buttons keep WCAG AA 4.5:1 text contrast in all three light themes.
+
+### fleet-plugin
+
+#### Changed
+- [fleet-console] Light terminal backgrounds brighten into the brightest surface on screen while keeping each theme's tinted atmosphere, and bright-white ANSI blocks stay whiter than the page.
+
 ## [1.38.0] - 2026-07-28
 
 ### fleet-console

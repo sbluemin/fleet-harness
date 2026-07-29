@@ -5,6 +5,22 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.39.0] - 2026-07-29
+
+### fleet-console
+
+#### Changed
+- [fleet-console] 라이트 테마에서 터미널이 화면에서 가장 밝은 표면이 되도록 사이드바·커맨드 밴드 캡을 더 어두운 크롬 계층으로 내리고 캔버스·페이지 배경을 터미널 종이 아래로 재정렬해, 시선이 작업 영역에 앉습니다. 다크 테마는 변화가 없습니다.
+- [fleet-console] 라이트 테마의 Operation 창 프레임과 타이틀바가 화면에서 가장 어두운 색 대신 커맨드 밴드와 같은 크롬 톤을 공유합니다. 다크 테마는 변화가 없습니다.
+
+#### Fixed
+- [fleet-console] brass 채움 기본 버튼 텍스트가 라이트 3종 테마 모두에서 WCAG AA 4.5:1 대비를 유지합니다.
+
+### fleet-plugin
+
+#### Changed
+- [fleet-console] 라이트 터미널 배경이 각 테마의 색조 대기를 유지한 채 화면에서 가장 밝은 표면이 되고, bright-white ANSI 블록은 페이지보다 더 희게 유지됩니다.
+
 ## [1.38.0] - 2026-07-28
 
 ### fleet-console
