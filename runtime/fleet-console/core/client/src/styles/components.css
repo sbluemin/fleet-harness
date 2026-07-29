@@ -84,7 +84,7 @@
 }
 .fc-btn--primary {
   background: var(--brass);
-  color: var(--ink-abyss);
+  color: var(--text-on-brass);
   font-weight: var(--weight-bold);
 }
 .fc-btn--secondary {
@@ -2681,7 +2681,8 @@
   min-width: 0;
   height: 100%;
   overflow: hidden;
-  background: var(--surface-glass);
+  /* 크롬 열은 --surface-chrome — 라이트에서 종이(카드·터미널)보다 어두워 시선을 작업면에 양보한다. */
+  background: var(--surface-chrome);
   border: 1px solid var(--surface-rim);
   /* 좌측 가장자리·하단 Global Navigation에 밀착 — 바깥(왼쪽)·하단 모서리는 각지게, 안쪽 상단만 둥글게. */
   border-left: none;

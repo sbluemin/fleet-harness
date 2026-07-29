@@ -119,8 +119,11 @@ const CARBON_TERMINAL_THEME: ITheme = {
 };
 
 // 라이트 터미널의 bright 계열은 밝히지 않고 더 진하게(L −5%p, C +0.02) 간다 — 밝은 배경에서 '밝은' ANSI는 판독 불능이기 때문.
+// 단 brightWhite는 예외로 배경보다 밝게 유지한다(SGR 107 블록이 종이보다 희어야 극성이 산다).
+// 라이트 배경은 화면 최명면이어야 한다: 각 테마의 --canvas-abyss(L 96.8/97.8/95.8%)보다 밝게 고정 —
+// 작업면이 크롬보다 어두워지면 시선이 크롬으로 끌리는 극성 역전이 재발한다(다크는 반대 방향으로 동일 원칙).
 const DAYWATCH_TERMINAL_THEME: ITheme = {
-  background: "oklch(93% 0.01 245)",
+  background: "oklch(98.5% 0.004 245)",
   foreground: "oklch(25% 0.02 248)",
   cursor: "oklch(51% 0.09 205)",
   selectionBackground: "oklch(54% 0.11 72 / 22%)",
@@ -139,12 +142,12 @@ const DAYWATCH_TERMINAL_THEME: ITheme = {
   brightBlue: "oklch(45% 0.1 245)",
   brightMagenta: "oklch(47% 0.12 318)",
   brightCyan: "oklch(46% 0.1 205)",
-  brightWhite: "oklch(96% 0.008 245)",
+  brightWhite: "oklch(99.5% 0.002 245)",
 };
 
 
 const WHITES_TERMINAL_THEME: ITheme = {
-  background: "oklch(95.5% 0.004 250)",
+  background: "oklch(99.2% 0.002 250)",
   foreground: "oklch(22% 0.045 260)",
   cursor: "oklch(50% 0.1 210)",
   selectionBackground: "oklch(56% 0.125 82 / 20%)",
@@ -163,7 +166,7 @@ const WHITES_TERMINAL_THEME: ITheme = {
   brightBlue: "oklch(45% 0.11 250)",
   brightMagenta: "oklch(46% 0.12 318)",
   brightCyan: "oklch(45% 0.11 210)",
-  brightWhite: "oklch(97% 0.003 250)",
+  brightWhite: "oklch(99.8% 0.001 250)",
 };
 
 /* 라이트 터미널은 agent CLI가 직접 찍는 다크용 truecolor(회색 #999/#ccc, 연한 액센트)가 팔레트
@@ -189,7 +192,7 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
 const sessionPolarityBaseline = new Map<string, "light" | "dark">();
 
 const DRYDOCK_TERMINAL_THEME: ITheme = {
-  background: "oklch(92.5% 0.02 238)",
+  background: "oklch(97.8% 0.008 238)",
   foreground: "oklch(25% 0.045 250)",
   cursor: "oklch(50% 0.09 190)",
   selectionBackground: "oklch(54% 0.1 70 / 22%)",
@@ -208,7 +211,7 @@ const DRYDOCK_TERMINAL_THEME: ITheme = {
   brightBlue: "oklch(46% 0.1 250)",
   brightMagenta: "oklch(47% 0.11 318)",
   brightCyan: "oklch(45% 0.1 190)",
-  brightWhite: "oklch(95% 0.012 236)",
+  brightWhite: "oklch(99% 0.004 236)",
 };
 
 export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1 }: TerminalSurfaceProps) {

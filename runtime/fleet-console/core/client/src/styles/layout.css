@@ -148,7 +148,8 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   gap: var(--space-1);
   padding-inline: var(--space-2);
   border-right: 1px solid var(--surface-rim);
-  background: var(--surface-glass);
+  /* 사이드바 상단 캡 — 같은 크롬 표면(--surface-chrome)을 공유해야 한 열로 읽힌다. */
+  background: var(--surface-chrome);
   transition: background 200ms ease, border-color 200ms ease;
 }
 
