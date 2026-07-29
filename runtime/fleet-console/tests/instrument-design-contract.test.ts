@@ -492,7 +492,7 @@ describe("Instrument core design contract", () => {
     expect(markBlock).toContain("width: 8px;");
     expect(markBlock).toContain("height: 14px;");
     expect(markBlock).toContain("background: var(--user-accent);");
-    expect(washBlock).toContain("color-mix(in oklch, var(--user-accent) 10%, var(--ink-mid))");
+    expect(washBlock).toContain("color-mix(in oklch, var(--user-accent) 10%, var(--surface-frame))");
     expect(chipAccentBlock).toContain("width: 3px;");
     expect(chipAccentBlock).toContain("top: 7px;");
     expect(chipAccentBlock).toContain("bottom: 7px;");
@@ -828,6 +828,11 @@ describe("Instrument core design contract", () => {
     // 사이드바도 같은 크롬 표면을 소비해야 캡과 한 열로 읽힌다 — glass 회귀를 여기서 잡는다.
     const sideBarBlock = components.match(/^\.operations-side-bar \{[^}]*\}/m)?.[0] ?? "";
     expect(sideBarBlock).toContain("background: var(--surface-chrome);");
+    // Operation 창 본체·타이틀바는 --surface-frame을 소비한다 — ink-mid 재결합은 라이트 최암면 회귀다.
+    const operationBlock = components.match(/^\.canvas-operation \{[^}]*\}/m)?.[0] ?? "";
+    expect(operationBlock).toContain("background: var(--surface-frame);");
+    const titlebarBlock = components.match(/^\.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
+    expect(titlebarBlock).toContain("background: var(--surface-frame);");
     // 캡이 실재하는 상태로 한정한다 — 풀스크린은 밴드가 fixed로 흐름에서 빠져 자동 은닉되므로
     // 캡이 없고, 사이드바가 뷰포트 최상단에 닿는다. 무조건 해제하면 그 화면에서 마감이 사라진다.
     const expandedSideBarBlock =
@@ -999,7 +1004,7 @@ describe("Instrument core design contract", () => {
     expect(theme).toContain("--surface-chrome: oklch(94.5% 0.009 245);");
     expect(theme).toContain("--surface-chrome: oklch(96% 0.004 250);");
     expect(theme).toContain("--surface-chrome: oklch(93.5% 0.015 235);");
-    // 라이트 캔버스는 종이(터미널 98.5/99.2/97.8%)보다 어둡고 크롬보다 밝은 중간층이다 —
+    // 라이트 캔버스는 종이(터미널 97.2/98.2/96.2%)보다 어둡고 크롬보다 밝은 중간층이다 —
     // 이 순서가 무너지면 작업면 최명면 극성이 다시 뒤집힌다.
     expect(theme).toContain("--canvas-abyss: oklch(96.8% 0.005 245);");
     expect(theme).toContain("--canvas-abyss: oklch(97.8% 0.003 250);");
@@ -1011,6 +1016,11 @@ describe("Instrument core design contract", () => {
     expect(theme).toContain("--text-on-brass: oklch(99% 0.003 245);");
     expect(theme).toContain("--text-on-brass: oklch(99.8% 0.001 250);");
     expect(theme).toContain("--text-on-brass: oklch(98.8% 0.005 235);");
+    // Operation 창 프레임 티어 — 다크는 ink-mid 별칭(기존 렌더 유지), 라이트는 ink-deep 별칭으로
+    // GNB(밴드)와 같은 크롬 패밀리에 정렬해 프레임이 라이트 최암면이 되는 것을 막는다.
+    expect(base).toContain("--surface-frame: var(--ink-mid);");
+    expect(theme.match(/--surface-frame:/g)).toHaveLength(4);
+    expect(theme.match(/--surface-frame: var\(--ink-deep\);/g)).toHaveLength(3);
     expect(theme).not.toMatch(/#fff(?:fff)?\b/i);
     expect(theme).not.toMatch(/body::(?:before|after)/);
   });
@@ -1141,7 +1151,8 @@ describe("Instrument core design contract", () => {
     expect(identityInputBlock).not.toContain("width: 0;");
     expect(components).toContain("top: calc(-1 * var(--space-3));");
     expect(components).toContain("border-radius: 999px;");
-    expect(components).toContain("background: var(--ink-mid);");
+    // 활성 타이틀바는 brass 7% 틴트를 frame 위에 얹는다 — ink-mid 재결합 회귀를 여기서 잡는다.
+    expect(components).toContain("color-mix(in oklch, var(--brass) 7%, var(--surface-frame))");
     expect(components).toContain("color: var(--text-secondary);");
     expect(components).toContain(".canvas-operation.is-active .canvas-operation-titlebar {");
     expect(components).toContain("color-mix(in oklch, var(--brass) 62%, var(--ink-rim))");

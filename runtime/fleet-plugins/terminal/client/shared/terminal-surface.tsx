@@ -122,8 +122,10 @@ const CARBON_TERMINAL_THEME: ITheme = {
 // 단 brightWhite는 예외로 배경보다 밝게 유지한다(SGR 107 블록이 종이보다 희어야 극성이 산다).
 // 라이트 배경은 화면 최명면이어야 한다: 각 테마의 --canvas-abyss(L 96.8/97.8/95.8%)보다 밝게 고정 —
 // 작업면이 크롬보다 어두워지면 시선이 크롬으로 끌리는 극성 역전이 재발한다(다크는 반대 방향으로 동일 원칙).
+// 동시에 chroma는 테마 대기(캔버스~밴드 패밀리)를 따른다 — 최명면 + 최저채도가 겹치면
+// 터미널이 테마 밖 백지로 읽힌다(실사용 피드백으로 확인된 과중화 회귀).
 const DAYWATCH_TERMINAL_THEME: ITheme = {
-  background: "oklch(98.5% 0.004 245)",
+  background: "oklch(97.2% 0.009 245)",
   foreground: "oklch(25% 0.02 248)",
   cursor: "oklch(51% 0.09 205)",
   selectionBackground: "oklch(54% 0.11 72 / 22%)",
@@ -147,7 +149,7 @@ const DAYWATCH_TERMINAL_THEME: ITheme = {
 
 
 const WHITES_TERMINAL_THEME: ITheme = {
-  background: "oklch(99.2% 0.002 250)",
+  background: "oklch(98.2% 0.004 250)",
   foreground: "oklch(22% 0.045 260)",
   cursor: "oklch(50% 0.1 210)",
   selectionBackground: "oklch(56% 0.125 82 / 20%)",
@@ -192,7 +194,7 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
 const sessionPolarityBaseline = new Map<string, "light" | "dark">();
 
 const DRYDOCK_TERMINAL_THEME: ITheme = {
-  background: "oklch(97.8% 0.008 238)",
+  background: "oklch(96.2% 0.015 236)",
   foreground: "oklch(25% 0.045 250)",
   cursor: "oklch(50% 0.09 190)",
   selectionBackground: "oklch(54% 0.1 70 / 22%)",

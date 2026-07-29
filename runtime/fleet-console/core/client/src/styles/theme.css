@@ -107,6 +107,10 @@
      라이트 3종만 종이 표면(카드·터미널)보다 어두운 자체 리터럴로 분화한다(신호 ink 티어와 동형 구조).
      라이트에서 크롬이 종이보다 밝아지면 시선이 크롬으로 끌리는 극성 역전이 재발한다. */
   --surface-chrome: var(--surface-glass);
+  /* Operation 창 프레임(본체·타이틀바) 전용 티어 — 다크 3종은 ink-mid 별칭으로 기존 렌더를 유지하고,
+     라이트 3종은 ink-deep 별칭으로 GNB(밴드)와 같은 크롬 패밀리에 정렬한다. ink-mid 리터럴을 직접
+     밝히면 호버·칩 등 45개 소비처가 함께 움직여 어포던스가 희석되므로 프레임만 분리한다. */
+  --surface-frame: var(--ink-mid);
   --surface-glass-strong: var(--ink-mid);
   --surface-pillar: var(--ink-veil);
   --surface-rim: var(--hairline);
@@ -369,6 +373,7 @@
 
   --surface-glass: oklch(97% 0.008 245 / 72%);
   --surface-chrome: oklch(94.5% 0.009 245);
+  --surface-frame: var(--ink-deep);
   --surface-glass-strong: oklch(95.5% 0.01 245 / 82%);
   --surface-pillar: oklch(98% 0.006 245 / 90%);
   --surface-rim: oklch(40% 0.02 245 / 18%);
@@ -456,6 +461,7 @@
 
   --surface-glass: oklch(98% 0.004 250 / 70%);
   --surface-chrome: oklch(96% 0.004 250);
+  --surface-frame: var(--ink-deep);
   --surface-glass-strong: oklch(96.5% 0.005 250 / 82%);
   --surface-pillar: oklch(98.5% 0.003 250 / 90%);
   --surface-rim: oklch(38% 0.03 256 / 18%);
@@ -542,6 +548,7 @@
 
   --surface-glass: oklch(96.5% 0.013 235 / 74%);
   --surface-chrome: oklch(93.5% 0.015 235);
+  --surface-frame: var(--ink-deep);
   --surface-glass-strong: oklch(95% 0.016 236 / 84%);
   --surface-pillar: oklch(97% 0.011 235 / 90%);
   --surface-rim: oklch(40% 0.04 245 / 18%);
