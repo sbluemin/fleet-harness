@@ -2345,7 +2345,7 @@ kbd {
 }
 .cowork-ghost { background: transparent; color: var(--text-tertiary); }
 .cowork-ghost:hover { background: color-mix(in oklch, var(--ink-pearl) 8%, transparent); color: var(--text-primary); }
-.cowork-solid { background: var(--brass); color: var(--ink-abyss); }
+.cowork-solid { background: var(--brass); color: var(--text-on-brass); }
 .cowork-solid:hover { background: var(--brass-bright); }
 .cowork-solid--danger { background: color-mix(in oklch, var(--coral) 80%, var(--ink-deep)); color: var(--text-primary); }
 .cowork-solid--danger:hover { background: var(--coral); }
@@ -2580,7 +2580,7 @@ kbd {
   border: 0;
   border-radius: var(--radius-sm);
   background: var(--brass);
-  color: var(--ink-abyss);
+  color: var(--text-on-brass);
   cursor: pointer;
   font-size: var(--font-size-sm);
   font-weight: var(--weight-bold);
