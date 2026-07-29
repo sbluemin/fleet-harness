@@ -688,7 +688,7 @@
   border: 0;
   border-radius: var(--radius-sm);
   background: var(--brass);
-  color: var(--ink-abyss);
+  color: var(--text-on-brass);
   cursor: pointer;
   font: inherit;
   font-size: 12.5px;

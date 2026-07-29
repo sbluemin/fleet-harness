@@ -399,6 +399,8 @@ describe("Instrument core design contract", () => {
     expect(css).not.toMatch(/backdrop-filter|--op-accent|--chip-accent/);
     expect(css).toContain("background: var(--surface-glass)");
     expect(css).toContain(":focus-visible");
+    // brass 채움 버튼은 전용 on-brass 텍스트 티어를 소비한다 — abyss 재결합은 라이트 AA 회귀다.
+    expect(css).toMatch(/\.fc-btn--primary \{[^}]*color: var\(--text-on-brass\);/);
   });
 
   // 텍스트 3티어만 대비를 통제하므로 원료 잉크를 color에 직접 쓰면 판독 하한을 한곳에서 보장할 수 없다.
@@ -822,7 +824,10 @@ describe("Instrument core design contract", () => {
     // 있어야 한 열 한가운데의 이중 hairline과 우측 경계선 단절이 재발하지 않는다.
     const commandBandLeftBlock = layout.match(/\.command-band-left \{[^}]*\}/)?.[0] ?? "";
     expect(commandBandLeftBlock).toContain("border-right: 1px solid var(--surface-rim);");
-    expect(commandBandLeftBlock).toContain("background: var(--surface-glass);");
+    expect(commandBandLeftBlock).toContain("background: var(--surface-chrome);");
+    // 사이드바도 같은 크롬 표면을 소비해야 캡과 한 열로 읽힌다 — glass 회귀를 여기서 잡는다.
+    const sideBarBlock = components.match(/^\.operations-side-bar \{[^}]*\}/m)?.[0] ?? "";
+    expect(sideBarBlock).toContain("background: var(--surface-chrome);");
     // 캡이 실재하는 상태로 한정한다 — 풀스크린은 밴드가 fixed로 흐름에서 빠져 자동 은닉되므로
     // 캡이 없고, 사이드바가 뷰포트 최상단에 닿는다. 무조건 해제하면 그 화면에서 마감이 사라진다.
     const expandedSideBarBlock =
@@ -956,9 +961,9 @@ describe("Instrument core design contract", () => {
     expect(theme).toContain("--brass: oklch(78% 0.13 75);");
     expect(theme).toContain("--ink-muted: oklch(75% 0.02 248);");
     expect(theme).toContain("--ink-muted: oklch(72% 0.005 250);");
-    expect(theme).toContain("--ink-abyss: oklch(96% 0.008 245);");
-    expect(theme).toContain("--ink-abyss: oklch(97.3% 0.004 250);");
-    expect(theme).toContain("--ink-abyss: oklch(95% 0.015 235);");
+    expect(theme).toContain("--ink-abyss: oklch(95.5% 0.007 245);");
+    expect(theme).toContain("--ink-abyss: oklch(97% 0.003 250);");
+    expect(theme).toContain("--ink-abyss: oklch(94.5% 0.013 235);");
     expect(theme.match(/^:root \{/gm)).toHaveLength(1);
     // Legacy dark 테마는 팔레트 토큰만 — 광학·color-scheme과 형상·타이포 오버라이드는 진입 불가.
     const darkVariantBlocks = theme.match(/^:root\[data-theme="(?:maritime|carbon)"\][^{]*\{[^}]*\}/gm) ?? [];
@@ -987,6 +992,25 @@ describe("Instrument core design contract", () => {
       expect(base).toContain(`${ink}: var(`);
       expect(theme.match(new RegExp(`${ink}:`, "g"))).toHaveLength(4);
     }
+    // 크롬 표면 티어도 같은 별칭 구조다 — base가 glass 별칭을 제공해 다크 3종이 var 간접으로 상속하고,
+    // 라이트 3종만 종이 표면보다 어두운 자체 리터럴로 분화한다(작업면 최명면 극성).
+    expect(base).toContain("--surface-chrome: var(--surface-glass);");
+    expect(theme.match(/--surface-chrome:/g)).toHaveLength(4);
+    expect(theme).toContain("--surface-chrome: oklch(94.5% 0.009 245);");
+    expect(theme).toContain("--surface-chrome: oklch(96% 0.004 250);");
+    expect(theme).toContain("--surface-chrome: oklch(93.5% 0.015 235);");
+    // 라이트 캔버스는 종이(터미널 98.5/99.2/97.8%)보다 어둡고 크롬보다 밝은 중간층이다 —
+    // 이 순서가 무너지면 작업면 최명면 극성이 다시 뒤집힌다.
+    expect(theme).toContain("--canvas-abyss: oklch(96.8% 0.005 245);");
+    expect(theme).toContain("--canvas-abyss: oklch(97.8% 0.003 250);");
+    expect(theme).toContain("--canvas-abyss: oklch(95.8% 0.011 235);");
+    // brass 채움 위 텍스트 티어 — 다크는 abyss 별칭, 라이트는 페이지 배경과 독립된 자체 리터럴로
+    // AA 4.5:1을 보장한다(abyss 결합 시 페이지 배경 조정이 버튼 대비를 함께 끌어내린다).
+    expect(base).toContain("--text-on-brass: var(--ink-abyss);");
+    expect(theme.match(/--text-on-brass:/g)).toHaveLength(4);
+    expect(theme).toContain("--text-on-brass: oklch(99% 0.003 245);");
+    expect(theme).toContain("--text-on-brass: oklch(99.8% 0.001 250);");
+    expect(theme).toContain("--text-on-brass: oklch(98.8% 0.005 235);");
     expect(theme).not.toMatch(/#fff(?:fff)?\b/i);
     expect(theme).not.toMatch(/body::(?:before|after)/);
   });
