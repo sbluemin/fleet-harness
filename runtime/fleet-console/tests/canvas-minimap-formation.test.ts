@@ -514,6 +514,7 @@ const CANVAS_STATE: ConsoleState = {
   theaterError: null,
   operationsViewActive: true,
   operationSearchOpen: false,
+  operationSearchSeed: null,
   whatsNewOpen: false,
   releaseNotes: [],
   releaseNotesLoading: false,
