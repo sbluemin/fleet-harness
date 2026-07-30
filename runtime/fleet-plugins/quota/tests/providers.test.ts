@@ -312,7 +312,7 @@ describe("Cursor provider requests", () => {
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       calls.push({ url: String(url), init });
       return jsonResponse(String(url).endsWith("/GetPlanInfo")
-        ? { planName: "Pro+" }
+        ? { planInfo: { planName: "Pro+", includedAmountCents: 7000 }, nextUpgrade: { name: "Ultra" } }
         : {
             billingCycleStart: "1783180030000",
             billingCycleEnd: "1785858430000",

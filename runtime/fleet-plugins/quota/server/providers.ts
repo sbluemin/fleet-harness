@@ -384,12 +384,13 @@ export async function fetchCursorUsage(deps: ProviderDeps = {}): Promise<Provide
     if (usage.status === "no_subscription") return { status: "no_subscription", method: credentials.method };
     let plan: string | undefined;
     try {
-      const planInfo = object(await postJson(
+      const planRoot = object(await postJson(
         fetchImpl,
         "https://api2.cursor.sh/aiserver.v1.DashboardService/GetPlanInfo",
         headers,
       ));
-      plan = titleCase(planInfo?.planName);
+      // 응답은 planName을 planInfo 아래에 중첩해 돌려준다. 루트 읽기는 과거 스키마 대비 폴백이다.
+      plan = titleCase(object(planRoot?.planInfo)?.planName ?? planRoot?.planName);
     } catch {
       // Plan metadata is display-only; its failure must not sink the usage snapshot.
       plan = undefined;
