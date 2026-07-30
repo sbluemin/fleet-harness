@@ -34,7 +34,6 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   "Activity Rail",
   "Theater",
   "Codex",
-  "Plans",
   "Console",
   "Terminal",
   // 테마·포트 모드·언어 선택 라벨(고유명)
@@ -56,9 +55,6 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   "Indigo",
   "Plum",
   "Rose",
-  // Plans/뱃지 프로토콜·상태 토큰
-  "PARALLEL",
-  "READY",
   // 모드 커튼 키커(고정 대문자 각인)·투어 진행 표기(숫자 포맷)
   "TRIAGE MODE",
   "FORMATION VIEW",

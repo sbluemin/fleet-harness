@@ -45,7 +45,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     { tag: "constraints", hint: "Source or version requirements, time limits, and areas or sources to exclude.", required: false },
     { tag: "depth", hint: "'quick' for surface scan, 'thorough' for exhaustive. Default: 'medium'.", required: false },
   ],
-  allowedExecutorTools: ["carrier_jobs", "plan_read"],
+  allowedExecutorTools: ["carrier_jobs"],
   allowedBuiltinExternalMcpServers: ["grep_app"],
 
   // ── Tier 2: Composition ──

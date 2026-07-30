@@ -12,7 +12,6 @@
 | `core-infra/` | Authentication, data-root, and durable filesystem gateways |
 | `fleet-carriers/` | Carrier personas, dispatch, detached jobs, and state |
 | `fleet-admiral/` | Admiral prompt, protocol, tool, launch, and runtime policy |
-| `fleet-plans/` | Workspace-scoped Fleet Plan storage, validation, and PlanRef/TaskRef tools |
 | `fleet-wiki/` | Fleet Wiki storage, retrieval, and approval-gated mutation domain |
 
 ## Constraints

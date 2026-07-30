@@ -9,8 +9,8 @@ const railPanelContextMock = vi.hoisted(() => ({ themes: [] as unknown[] }));
 vi.mock("../core/client/src/rail/built-in-panels.js", () => ({
   BUILT_IN_RAIL_PANELS: [
     {
-      id: "plans",
-      title: "PLANS",
+      id: "repository",
+      title: "REPOSITORY",
       defaultWidth: 360,
       icon: "P",
       render: (ctx: { readonly theme?: unknown }) => {
@@ -66,8 +66,8 @@ let root: Root;
 beforeEach(() => {
   Object.defineProperty(window, "innerWidth", { configurable: true, value: 1200 });
   window.localStorage.clear();
-  setActiveRailPanel("plans");
-  requestRailPanelExtraWidth("plans", null);
+  setActiveRailPanel("repository");
+  requestRailPanelExtraWidth("repository", null);
   setRailPanelBehavior("push");
   setRailOverlayAlpha(100);
   railPanelContextMock.themes.length = 0;
@@ -190,7 +190,7 @@ describe("Right Rail stale veil focus boundary", () => {
 
 describe("Right Rail panel width", () => {
   it("resolves remembered width before descriptor defaultWidth and the 312 fallback", () => {
-    window.localStorage.setItem("fleet-console.rail.panelWidths", JSON.stringify({ plans: 508 }));
+    window.localStorage.setItem("fleet-console.rail.panelWidths", JSON.stringify({ repository: 508 }));
     renderRail();
     expect(renderedPanelWidth()).toBe(508);
 
@@ -202,14 +202,14 @@ describe("Right Rail panel width", () => {
   });
 
   it("switches immediately between each panel's remembered or default width", () => {
-    window.localStorage.setItem("fleet-console.rail.panelWidths", JSON.stringify({ plans: 480, alerts: 288 }));
+    window.localStorage.setItem("fleet-console.rail.panelWidths", JSON.stringify({ repository: 480, alerts: 288 }));
     renderRail();
     expect(renderedPanelWidth()).toBe(480);
 
     act(() => setActiveRailPanel("alerts"));
     expect(renderedPanelWidth()).toBe(288);
 
-    act(() => setActiveRailPanel("plans"));
+    act(() => setActiveRailPanel("repository"));
     expect(renderedPanelWidth()).toBe(480);
   });
 
@@ -224,7 +224,7 @@ describe("Right Rail panel width", () => {
     });
 
     expect(renderedPanelWidth()).toBe(460);
-    expect(storedPanelWidths()).toEqual({ plans: 460 });
+    expect(storedPanelWidths()).toEqual({ repository: 460 });
   });
 
   it("keeps the in-progress drag width when extra width changes and clamps only to reduced capacity", () => {
@@ -237,44 +237,44 @@ describe("Right Rail panel width", () => {
     });
     expect(reportedPanelWidth()).toBe(560);
 
-    act(() => requestRailPanelExtraWidth("plans", 300));
+    act(() => requestRailPanelExtraWidth("repository", 300));
     expect(reportedPanelWidth()).toBe(560);
 
-    act(() => requestRailPanelExtraWidth("plans", 650));
+    act(() => requestRailPanelExtraWidth("repository", 650));
     expect(reportedPanelWidth()).toBe(402);
 
     act(() => document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })));
-    expect(storedPanelWidths()).toEqual({ plans: 402 });
+    expect(storedPanelWidths()).toEqual({ repository: 402 });
   });
 
   it("restores the desired width when capacity returns without persisting the temporary clamp", () => {
-    window.localStorage.setItem("fleet-console.rail.panelWidths", JSON.stringify({ plans: 900 }));
+    window.localStorage.setItem("fleet-console.rail.panelWidths", JSON.stringify({ repository: 900 }));
     renderRail();
     expect(reportedPanelWidth()).toBe(900);
 
-    act(() => requestRailPanelExtraWidth("plans", 360));
+    act(() => requestRailPanelExtraWidth("repository", 360));
     expect(reportedPanelWidth()).toBe(692);
-    expect(storedPanelWidths()).toEqual({ plans: 900 });
+    expect(storedPanelWidths()).toEqual({ repository: 900 });
 
-    act(() => requestRailPanelExtraWidth("plans", null));
+    act(() => requestRailPanelExtraWidth("repository", null));
     expect(reportedPanelWidth()).toBe(900);
-    expect(storedPanelWidths()).toEqual({ plans: 900 });
+    expect(storedPanelWidths()).toEqual({ repository: 900 });
   });
 
   it("updates ARIA capacity on viewport resize and restores the desired width without persisting the clamp", () => {
-    window.localStorage.setItem("fleet-console.rail.panelWidths", JSON.stringify({ plans: 900 }));
+    window.localStorage.setItem("fleet-console.rail.panelWidths", JSON.stringify({ repository: 900 }));
     renderRail();
     expect(reportedPanelWidth()).toBe(900);
 
     resizeViewport(1000);
     expect(resizeHandle().getAttribute("aria-valuemax")).toBe("852");
     expect(reportedPanelWidth()).toBe(852);
-    expect(storedPanelWidths()).toEqual({ plans: 900 });
+    expect(storedPanelWidths()).toEqual({ repository: 900 });
 
     resizeViewport(1200);
     expect(resizeHandle().getAttribute("aria-valuemax")).toBe("1052");
     expect(reportedPanelWidth()).toBe(900);
-    expect(storedPanelWidths()).toEqual({ plans: 900 });
+    expect(storedPanelWidths()).toEqual({ repository: 900 });
   });
 
   it("exposes separator values and persists keyboard resizing with the right-rail direction", () => {
@@ -285,8 +285,8 @@ describe("Right Rail panel width", () => {
     });
     expect(handle.getAttribute("role")).toBe("separator");
     expect(handle.getAttribute("aria-orientation")).toBe("vertical");
-    expect(handle.getAttribute("aria-label")).toBe("Resize PLANS panel");
-    expect(handle.getAttribute("aria-controls")).toBe("rail-panel-plans");
+    expect(handle.getAttribute("aria-label")).toBe("Resize REPOSITORY panel");
+    expect(handle.getAttribute("aria-controls")).toBe("rail-panel-repository");
     expect(document.getElementById(handle.getAttribute("aria-controls")!)).toBe(panelBody());
     expect(handle.getAttribute("aria-valuemin")).toBe("240");
     expect(handle.getAttribute("aria-valuemax")).toBe("1052");
@@ -294,7 +294,7 @@ describe("Right Rail panel width", () => {
 
     expect(dispatchResizeKey(handle, "ArrowLeft")).toBe(false);
     expect(renderedPanelWidth()).toBe(376);
-    expect(storedPanelWidths()).toEqual({ plans: 376 });
+    expect(storedPanelWidths()).toEqual({ repository: 376 });
 
     expect(dispatchResizeKey(handle, "ArrowRight", true)).toBe(false);
     expect(renderedPanelWidth()).toBe(312);
@@ -305,7 +305,7 @@ describe("Right Rail panel width", () => {
     dispatchResizeKey(handle, "End");
     expect(renderedPanelWidth()).toBe(1052);
     expect(handle.getAttribute("aria-valuenow")).toBe("1052");
-    expect(storedPanelWidths()).toEqual({ plans: 1052 });
+    expect(storedPanelWidths()).toEqual({ repository: 1052 });
   });
 
   it("migrates the legacy width once to the active panel and removes the legacy key", () => {
@@ -314,7 +314,7 @@ describe("Right Rail panel width", () => {
     renderRail();
 
     expect(renderedPanelWidth()).toBe(500);
-    expect(storedPanelWidths()).toEqual({ plans: 500 });
+    expect(storedPanelWidths()).toEqual({ repository: 500 });
     expect(window.localStorage.getItem("fleet-console.rail.panelWidth")).toBeNull();
 
     act(() => setActiveRailPanel("alerts"));
@@ -326,13 +326,13 @@ describe("Right Rail panel width", () => {
     window.localStorage.setItem("fleet-console.rail.panelWidth", "900");
     renderRail();
 
-    expect(storedPanelWidths()).toEqual({ plans: 900 });
+    expect(storedPanelWidths()).toEqual({ repository: 900 });
     expect(window.localStorage.getItem("fleet-console.rail.panelWidth")).toBeNull();
     expect(reportedPanelWidth()).toBe(360);
 
     resizeViewport(1200);
     expect(reportedPanelWidth()).toBe(900);
-    expect(storedPanelWidths()).toEqual({ plans: 900 });
+    expect(storedPanelWidths()).toEqual({ repository: 900 });
   });
 
   it("preserves legacy width for a missing descriptor and migrates after a valid panel becomes active", () => {
@@ -343,9 +343,9 @@ describe("Right Rail panel width", () => {
     expect(window.localStorage.getItem("fleet-console.rail.panelWidth")).toBe("640");
     expect(window.localStorage.getItem("fleet-console.rail.panelWidths")).toBeNull();
 
-    act(() => setActiveRailPanel("plans"));
+    act(() => setActiveRailPanel("repository"));
     expect(renderedPanelWidth()).toBe(640);
-    expect(storedPanelWidths()).toEqual({ plans: 640 });
+    expect(storedPanelWidths()).toEqual({ repository: 640 });
     expect(window.localStorage.getItem("fleet-console.rail.panelWidth")).toBeNull();
   });
 
@@ -361,9 +361,9 @@ describe("Right Rail panel width", () => {
 
   it.each([
     ["non-JSON record", "not-json"],
-    ["non-number width", JSON.stringify({ plans: "wide" })],
-    ["below-minimum width", JSON.stringify({ plans: 200 })],
-    ["above-maximum width", JSON.stringify({ plans: 1100 })],
+    ["non-number width", JSON.stringify({ repository: "wide" })],
+    ["below-minimum width", JSON.stringify({ repository: 200 })],
+    ["above-maximum width", JSON.stringify({ repository: 1100 })],
   ])("falls back without crashing for a corrupted %s", (_label, stored) => {
     window.localStorage.setItem("fleet-console.rail.panelWidths", stored);
     expect(() => renderRail()).not.toThrow();

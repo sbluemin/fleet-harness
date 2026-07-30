@@ -46,14 +46,11 @@ If the intended Carrier is unavailable or carrier_dispatch rejects the requested
   - <problem> required: The specific question, decision point, or challenge to analyze.
   - <constraints?> optional: Hard constraints, deadlines, compatibility requirements.
   - <artifacts?> optional: Relevant code snippets, file paths, error logs to examine.
-  - <plan_ref?> optional: Optional exact PlanRef for an already host-authored Fleet Plan. Its presence activates read-only Plan assurance; Nimitz never authors or mutates Plan state.
-  - <audit_focus?> optional: Optional Plan sections, Lanes, TaskRefs, risks, or dispatch-readiness concerns to prioritize; applies only when plan_ref is supplied.
 - **genesis** (Genesis · Chief Engineer) — wrap request content in these blocks (? = optional):
   - <objective> required: What needs to be built or achieved. Be specific about the desired end state.
   - <scope> required: Which modules, directories, or subsystems are in play.
   - <constraints?> optional: Hard technical constraints, compatibility requirements, or non-negotiables.
-  - <references?> optional: Prior Nimitz recommendations, host-authored Plans, Nimitz Plan-assurance findings, existing patterns to follow, or design decisions already made.
-  - <task_refs?> optional: Optional newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane. When present, Genesis calls plan_read once at dispatch start with the complete set and executes only the returned selected_tasks; the host owns completion marking after artifact inspection.
+  - <references?> optional: Prior Nimitz recommendations, host-authored planning artifacts, existing patterns to follow, or design decisions already made.
 - **sentinel** (Sentinel · QA & Security Lead) — wrap request content in these blocks (? = optional):
   - <target> required: Which files, modules, PRs, endpoints, or recent changes to inspect.
   - <concern?> optional: Specific suspicion, symptom, or area of worry to focus on.

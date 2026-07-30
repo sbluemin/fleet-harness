@@ -4,9 +4,7 @@ import { createMcpToolRegistry, type AgentToolSpec } from "@dotobokuri/core-agen
 
 import {
   GLOBAL_READONLY_WIKI_TOOL_IDS,
-  HOST_ONLY_PLAN_TOOL_IDS,
   getExecutorMcpTools,
-  isHostOnlyPlanTool,
   isHostOnlyWikiTool,
 } from "../src/tools.js";
 
@@ -61,17 +59,8 @@ describe("host-only executor ACL hard-enforcement", () => {
       expect(isHostOnlyWikiTool(id)).toBe(true);
     }
     // Non-Wiki tools are never affected by the Wiki denylist.
-    expect(isHostOnlyWikiTool("plan_read")).toBe(false);
     expect(isHostOnlyWikiTool("carrier_dispatch")).toBe(false);
     expect(isHostOnlyWikiTool("carrier_jobs")).toBe(false);
-  });
-
-  it("classifies plan_write, plan_verify, and plan_mark_tasks as host-only Plan tools", () => {
-    expect([...HOST_ONLY_PLAN_TOOL_IDS].sort()).toEqual(["plan_mark_tasks", "plan_verify", "plan_write"]);
-    expect(isHostOnlyPlanTool("plan_write")).toBe(true);
-    expect(isHostOnlyPlanTool("plan_verify")).toBe(true);
-    expect(isHostOnlyPlanTool("plan_mark_tasks")).toBe(true);
-    expect(isHostOnlyPlanTool("plan_read")).toBe(false);
   });
 
   it("never grants a host-only Wiki tool to a Carrier even when persona metadata lists it", () => {
@@ -106,31 +95,4 @@ describe("host-only executor ACL hard-enforcement", () => {
     }
   });
 
-  it("never grants host-only Plan tools through custom or Genesis persona metadata", () => {
-    const registry = createMcpToolRegistry();
-    for (const id of ["plan_read", "plan_write", "plan_mark_tasks", "plan_verify"]) {
-      registry.registerAgentTool(fakeSpec(id));
-    }
-    registry.registerExecutorTool(fakeSpec("plan_mark_tasks"), { allowedScopes: [] });
-
-    const cases: ReadonlyArray<{ readonly carrierId: string; readonly allowed: readonly string[] }> = [
-      { carrierId: "rogue", allowed: ["plan_read", "plan_write", "plan_mark_tasks", "plan_verify"] },
-      { carrierId: "genesis", allowed: ["carrier_jobs", "plan_read", "plan_mark_tasks"] },
-      { carrierId: "custom", allowed: ["plan_mark_tasks"] },
-    ];
-    for (const { carrierId, allowed } of cases) {
-      const toolIds = getExecutorMcpTools(
-        registry,
-        stubCarrierRuntime(carrierId, [...allowed]),
-        carrierId,
-      ).map((spec) => spec.id);
-
-      expect(toolIds).not.toContain("plan_mark_tasks");
-      expect(toolIds).not.toContain("plan_write");
-      expect(toolIds).not.toContain("plan_verify");
-      if (allowed.includes("plan_read")) {
-        expect(toolIds).toContain("plan_read");
-      }
-    }
-  });
 });

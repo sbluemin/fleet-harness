@@ -220,36 +220,6 @@ describe("single dispatch context resume", () => {
     expect(details(resumed).context_id).toBe(contextId);
   });
 
-  it("forwards server bindings unchanged through nested-cwd fresh and resumed launches", async () => {
-    runtime = createCarrierRuntime();
-    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
-    vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
-    const tool = runtime.buildDispatchToolSpec(deps);
-    const serverBindings = Object.freeze({ plan_workspace: "/theater" });
-    const nestedCarrierCwd = "/theater/.fleet/worktrees/topic";
-
-    const first = await tool.execute(
-      { carrier_id: "alpha", label: "Nested first", request: "Run." },
-      { cwd: nestedCarrierCwd, toolCallId: "nested-single-1", serverBindings },
-    );
-    const contextId = details(first).context_id;
-    await vi.waitFor(() => expect(runtime!.dispatchContexts.size).toBe(1));
-
-    await tool.execute(
-      { carrier_id: "alpha", label: "Nested resume", request: "Continue.", resume_context_id: contextId },
-      { cwd: nestedCarrierCwd, toolCallId: "nested-single-2", serverBindings },
-    );
-
-    const calls = vi.mocked(executeOneShot).mock.calls.map(([options]) => options);
-    expect(calls).toHaveLength(2);
-    for (const options of calls) {
-      expect(options.cwd).toBe(nestedCarrierCwd);
-      expect(options.serverBindings).toBe(serverBindings);
-    }
-    expect(calls[0]!.resumeSessionId).toBeUndefined();
-    expect(calls[1]!.resumeSessionId).toBe("session-claude");
-  });
-
   it("rejects a second in-flight dispatch that reuses the same resume_context_id", async () => {
     runtime = createCarrierRuntime();
     registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
@@ -473,38 +443,6 @@ describe("Task Force context barrier and resume", () => {
     expect(claudeResume?.resumeSessionId).toBe("session-claude");
     expect(codexResume?.resumeSessionId).toBe("session-codex");
     expect(details(resumed).context_id).toBe(contextId);
-  });
-
-  it("forwards server bindings unchanged to every nested-cwd Task Force backend on fresh and resumed launches", async () => {
-    runtime = createCarrierRuntime();
-    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
-    configureTaskForce(runtime.registry, "alpha");
-    vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
-    const tool = runtime.buildDispatchToolSpec(deps);
-    const serverBindings = Object.freeze({ plan_workspace: "/theater" });
-    const nestedCarrierCwd = "/theater/.fleet/worktrees/topic";
-
-    const first = await tool.execute(
-      { carrier_id: "alpha", label: "Nested Task Force first", request: "Run." },
-      { cwd: nestedCarrierCwd, toolCallId: "nested-taskforce-1", serverBindings },
-    );
-    const contextId = details(first).context_id;
-    await vi.waitFor(() => expect(runtime!.dispatchContexts.size).toBe(1));
-
-    await tool.execute(
-      { carrier_id: "alpha", label: "Nested Task Force resume", request: "Continue.", resume_context_id: contextId },
-      { cwd: nestedCarrierCwd, toolCallId: "nested-taskforce-2", serverBindings },
-    );
-
-    const calls = vi.mocked(executeOneShot).mock.calls.map(([options]) => options);
-    expect(calls).toHaveLength(4);
-    for (const options of calls) {
-      expect(options.cwd).toBe(nestedCarrierCwd);
-      expect(options.serverBindings).toBe(serverBindings);
-    }
-    const resumedCalls = calls.slice(2);
-    expect(resumedCalls.find((options) => options.cliType === "claude")?.resumeSessionId).toBe("session-claude");
-    expect(resumedCalls.find((options) => options.cliType === "codex")?.resumeSessionId).toBe("session-codex");
   });
 
   it("rolls back every prepared Task Force resource when readiness confirmation rejects a resumed binding", async () => {

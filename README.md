@@ -45,13 +45,13 @@ A **Theater** is a project folder. Register as many as you work in — every pan
 
 Operations live on an infinite canvas. Drag them where the task wants them, zoom out through the Map, or press <kbd>Alt</kbd>+<kbd>F</kbd> to tile everything into Formation — grid, columns, or rows. <kbd>Alt</kbd>+<kbd>S</kbd> flips the sidebar into a status board so you can see what is working, waiting, or idle at a glance.
 
-<kbd>⌘</kbd>+<kbd>K</kbd> reaches across the whole console: operations, repository commits, files, plans, and skills, plus the actions you would otherwise hunt for — resume, close, minimize, rename, regroup, recolor, switch Formation.
+<kbd>⌘</kbd>+<kbd>K</kbd> reaches across the whole console: operations, repository commits, files, and skills, plus the actions you would otherwise hunt for — resume, close, minimize, rename, regroup, recolor, switch Formation.
 
 ## Keep project context beside the terminal
 
 <img src=".github/console-repository.png" alt="Fleet Console with the Repository panel open beside two live agent operations" width="100%" />
 
-The Activity Rail ships with seven built-in panels — **Alerts, Codex, Plans, Shell, Files, Repository,** and **Skills** — and installed plugins can contribute their own. The Repository panel alone gives you history, working changes, compare, worktrees, branches, tags, and stashes for the active Theater, without leaving the operation you are supervising. Each panel remembers its own width and can float over the canvas instead of pushing it.
+The Activity Rail ships with six built-in panels — **Alerts, Codex, Shell, Files, Repository,** and **Skills** — and installed plugins can contribute their own. The Repository panel alone gives you history, working changes, compare, worktrees, branches, tags, and stashes for the active Theater, without leaving the operation you are supervising. Each panel remembers its own width and can float over the canvas instead of pushing it.
 
 ## Watch every delegated carrier as it runs
 

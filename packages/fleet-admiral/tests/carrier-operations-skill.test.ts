@@ -60,14 +60,10 @@ describe("carrier-operations skill asset", () => {
     expect(skillContent()).toContain(`All carriers accept an optional \`<prior_jobs>\` block: ${PRIOR_JOBS_REQUEST_HINT}`);
   });
 
-  it("exposes Nimitz optional Plan assurance and Genesis optional TaskRef contracts", () => {
+  it("keeps the surviving Nimitz and Genesis contracts free of removed carrier routing", () => {
     expect(skillContent()).toContain("Nimitz · Strategic Command & Judgment");
-    expect(skillContent()).toContain("<plan_ref?> optional: Optional exact PlanRef for an already host-authored Fleet Plan. Its presence activates read-only Plan assurance");
-    expect(skillContent()).toContain("<audit_focus?> optional: Optional Plan sections, Lanes, TaskRefs, risks, or dispatch-readiness concerns to prioritize; applies only when plan_ref is supplied.");
     expect(skillContent()).not.toContain("**kirov**");
-    expect(skillContent()).not.toContain("<plan_id>");
     expect(skillContent()).not.toContain("<goal>");
-    expect(skillContent()).toContain("<task_refs?> optional: Optional newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane. When present, Genesis calls plan_read once at dispatch start with the complete set");
     expect(skillContent()).not.toContain("**ohio**");
     expect(skillContent()).not.toContain("<execution_scope");
   });

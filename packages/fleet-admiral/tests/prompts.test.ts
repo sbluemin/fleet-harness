@@ -192,13 +192,6 @@ describe("Admiral prompts", () => {
     }).build(false);
 
     expect(prompt).toContain("Live MCP tool descriptions and schemas are authoritative");
-    expect(prompt).toContain("the host owns planning and all Plan mutation, including completion marking after artifact inspection");
-    expect(prompt).toContain("load `plan-operations` before the first host `plan_write` call in a session");
-    expect(prompt).toContain("skip reloading when already in context");
-    expect(prompt).toContain("Nimitz may optionally audit an existing host-authored PlanRef when plan_ref is supplied");
-    expect(prompt).toContain("Host plan_read once per operation for full context");
-    expect(prompt).toContain("Genesis plan_read once per Plan-driven dispatch with one host-authored same-Lane TaskRef group");
-    expect(prompt).toContain("plan_verify proves Plan state, not code correctness");
     expect(prompt).toContain(RETRIEVED_CONTENT_BOUNDARY);
     // 이관된 디스패치 조성 메카닉은 제목·고유 본문 구절 모두 상시 프롬프트에서 제외.
     expect(prompt).not.toContain("Parallel Default");

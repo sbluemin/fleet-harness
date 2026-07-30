@@ -108,27 +108,27 @@ describe("rail search fan-out", () => {
   it("mixes rail matches after commands in command mode and selects them with the shared index", async () => {
     const activate = vi.fn();
     const provider = vi.fn<RailSearchProvider>(async ({ query }) => {
-      expect(query).toBe("plan");
-      return [result("plan-a", "Plan A", activate)];
+      expect(query).toBe("file");
+      return [result("file-a", "File A", activate)];
     });
-    panels = [panel("plans", "Plans", provider)];
+    panels = [panel("files", "Files", provider)];
     renderPalette();
 
-    setInput(">plan");
+    setInput(">file");
     await advanceDebounce();
 
     const headings = [...container.querySelectorAll(".operation-search-section-heading")].map((node) => node.textContent);
-    expect(headings).toEqual(["Commands", "Plans"]);
+    expect(headings).toEqual(["Commands", "Files"]);
     const options = [...container.querySelectorAll<HTMLButtonElement>('[role="option"]')];
     expect(options.map((option) => option.textContent)).toEqual([
-      expect.stringContaining("Open panel: Plans"),
-      expect.stringContaining("Plan A"),
+      expect.stringContaining("Open panel: Files"),
+      expect.stringContaining("File A"),
     ]);
 
     const input = container.querySelector<HTMLInputElement>("#operation-search-input");
     act(() => input!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })));
     expect(options[1]?.getAttribute("aria-selected")).toBe("true");
-    expect(input?.getAttribute("aria-activedescendant")).toBe("operation-search-option-panel-plans-plan-a");
+    expect(input?.getAttribute("aria-activedescendant")).toBe("operation-search-option-panel-files-file-a");
     expect(input?.getAttribute("aria-activedescendant")).toBe(options[1]?.id);
     await act(async () => {
       input!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
@@ -173,13 +173,13 @@ describe("rail search fan-out", () => {
   it("runs activate before routing to Operations and opening the owning panel", async () => {
     let finishActivation: (() => void) | undefined;
     const activate = vi.fn(() => new Promise<void>((resolve) => { finishActivation = resolve; }));
-    panels = [panel("plans", "Plans", async () => [result("plan-a", "Plan A", activate)])];
+    panels = [panel("files", "Files", async () => [result("file-a", "File A", activate)])];
     renderPalette("/settings");
 
-    setInput("plan");
+    setInput("file");
     await advanceDebounce();
     const option = container.querySelector<HTMLButtonElement>(".operation-search-panel-result");
-    expect(option?.textContent).toContain("Plan A");
+    expect(option?.textContent).toContain("File A");
 
     act(() => option!.click());
     expect(activate).toHaveBeenCalledOnce();
@@ -191,7 +191,7 @@ describe("rail search fan-out", () => {
       await Promise.resolve();
     });
     expect(pathname).toBe("/operations");
-    expect(getRailStoreSnapshot()).toMatchObject({ activeRailPanelId: "plans", railChromeExpanded: true });
+    expect(getRailStoreSnapshot()).toMatchObject({ activeRailPanelId: "files", railChromeExpanded: true });
   });
 
   it("keeps matching Operations above panel groups", async () => {

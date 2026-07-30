@@ -131,12 +131,11 @@ const CAPTAINS = [
     role: { ko: "Strategic Command & Judgment", en: "Strategic Command & Judgment" },
     cli: "Claude Code",
     color: "#d4af37",
-    mission: { ko: "방아쇠를 당기지 않는다. 그러나 어디에 어떻게 당길지를 결정하고, 호스트가 작성한 정확한 PlanRef를 선택적으로 감사한다. Read-only 전략 사령관.", en: "Doesn't pull the trigger — decides where and how it should be pulled, and may optionally audit an exact host-authored PlanRef. The read-only strategic commander." },
+    mission: { ko: "방아쇠를 당기지 않는다. 그러나 어디에 어떻게 당길지를 결정한다. Read-only 전략 사령관.", en: "Doesn't pull the trigger — decides where and how it should be pulled. The read-only strategic commander." },
     duties: [
       { ko: "아키텍처 결정 (ADR) — 트레이드오프 및 위험 분석", en: "Architecture decisions (ADRs) — tradeoffs and risk analysis." },
       { ko: "전략 판단 — 대안 비교, 우선순위, 진행 여부", en: "Strategic judgment — alternatives, priorities, go/no-go." },
-      { ko: "선택적 Plan 보증 — 정확한 PlanRef의 PASS · REVISE · BLOCKED 판정", en: "Optional Plan assurance — PASS, REVISE, or BLOCKED judgment for an exact PlanRef." },
-      { ko: "Task Force 합의와 읽기 전용 경계 — 실행·Plan 변경은 호스트에 반환", en: "Task Force consensus and read-only boundary — execution and Plan changes return to the host." },
+      { ko: "Task Force 합의와 읽기 전용 경계 — 실행은 호스트에 반환", en: "Task Force consensus and read-only boundary — execution returns to the host." },
     ],
   },
   {
@@ -144,12 +143,12 @@ const CAPTAINS = [
     role: { ko: "Chief Engineer", en: "Chief Engineer" },
     cli: "Claude Code",
     color: "#ff6b6b",
-    mission: { ko: "직접 구현과 호스트가 작성한 TaskRef 기반 구현을 모두 맡는다. 구현과 Lane QA 증거를 반환하되 Plan 상태는 변경하지 않는 수석 엔지니어.", en: "Owns both direct implementation and execution of host-authored TaskRefs. The chief engineer returns implementation and Lane QA evidence without changing Plan state." },
+    mission: { ko: "직접 구현과 호스트가 작성한 실행 계약 기반 구현을 모두 맡는다. 구현과 QA 증거를 반환하는 수석 엔지니어.", en: "Owns direct implementation and execution of host-authored implementation contracts. The chief engineer returns implementation and QA evidence." },
     duties: [
       { ko: "직접 구현 — 새 기능, 모듈, 시스템 통합", en: "Direct implementation — new features, modules, system integrations." },
-      { ko: "Plan 기반 구현 — 호스트가 작성한 동일 Lane TaskRef만 실행", en: "Plan-driven implementation — executes only host-authored same-Lane TaskRefs." },
-      { ko: "각 wave 후 빌드·테스트·Lane QA 증거 반환", en: "Returns build, test, and Lane QA evidence after each wave." },
-      { ko: "Plan 변경·완료 표시 금지 — 검증 후 호스트가 수행", en: "Never mutates or completes Plan state — the host does so after inspection." },
+      { ko: "구조화된 구현 — 호스트가 작성한 범위와 제약을 그대로 실행", en: "Structured implementation — executes the host-authored scope and constraints." },
+      { ko: "각 wave 후 빌드·테스트·QA 증거 반환", en: "Returns build, test, and QA evidence after each wave." },
+      { ko: "설계 계약 준수 — 대안을 임의로 대체하지 않고 호스트에 반환", en: "Preserves design contracts — returns alternatives to the host instead of substituting them." },
     ],
   },
   {
@@ -274,7 +273,7 @@ const DIFFS = [
     n: "04",
     name: "Architectural Discipline",
     kr: { ko: "아키텍처 규율", en: "Architectural Discipline" },
-    body: { ko: "빌드 게이트는 협상 불가. SSOT(Fleet Plan, AGENTS.md, ADR)는 강제 동기화. 각 wave는 그 자체로 컴파일·테스트를 통과해야 다음으로 진행한다.", en: "Build gates are non-negotiable. SSOT (Fleet Plans, AGENTS.md, ADRs) stays force-synced. Each wave must compile and test on its own to advance." },
+    body: { ko: "빌드 게이트는 협상 불가. SSOT(AGENTS.md, ADR)는 강제 동기화. 각 wave는 그 자체로 컴파일·테스트를 통과해야 다음으로 진행한다.", en: "Build gates are non-negotiable. SSOT (AGENTS.md and ADRs) stays force-synced. Each wave must compile and test on its own to advance." },
   },
 ];
 

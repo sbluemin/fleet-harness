@@ -45,13 +45,13 @@ fleet-console          # 로컬 콘솔을 시작하고 브라우저로 엽니다
 
 Operation은 무한 캔버스 위에 놓입니다. 작업에 맞게 끌어다 두고, Map으로 전체를 조망하고, <kbd>Alt</kbd>+<kbd>F</kbd>로 Formation(그리드·컬럼·로우)에 정렬하세요. <kbd>Alt</kbd>+<kbd>S</kbd>는 사이드바를 상태 보드로 전환해 작업 중·대기·유휴를 한눈에 보여줍니다.
 
-<kbd>⌘</kbd>+<kbd>K</kbd>는 콘솔 전체에 닿습니다. Operation은 물론 저장소 커밋, 파일, Plan, Skill까지 검색하고, 재개·닫기·최소화·이름 변경·그룹 변경·액센트 변경·Formation 전환 같은 동작을 곧바로 실행합니다.
+<kbd>⌘</kbd>+<kbd>K</kbd>는 콘솔 전체에 닿습니다. Operation은 물론 저장소 커밋, 파일, Skill까지 검색하고, 재개·닫기·최소화·이름 변경·그룹 변경·액센트 변경·Formation 전환 같은 동작을 곧바로 실행합니다.
 
 ## 프로젝트 컨텍스트를 터미널 옆에
 
 <img src=".github/console-repository.png" alt="라이브 에이전트 Operation 옆에 Repository 패널이 열린 Fleet Console" width="100%" />
 
-Activity Rail에는 **Alerts, Codex, Plans, Shell, Files, Repository, Skills** 7개 패널이 기본 탑재되며, 설치한 플러그인이 자체 패널을 더할 수 있습니다. Repository 패널 하나로 활성 Theater의 히스토리, 작업 변경분, 비교, 워크트리, 브랜치, 태그, 스태시를 감독 중인 Operation을 떠나지 않고 확인할 수 있습니다. 각 패널은 자기 너비를 기억하며, 캔버스를 밀어내는 대신 그 위에 띄울 수도 있습니다.
+Activity Rail에는 **Alerts, Codex, Shell, Files, Repository, Skills** 6개 패널이 기본 탑재되며, 설치한 플러그인이 자체 패널을 더할 수 있습니다. Repository 패널 하나로 활성 Theater의 히스토리, 작업 변경분, 비교, 워크트리, 브랜치, 태그, 스태시를 감독 중인 Operation을 떠나지 않고 확인할 수 있습니다. 각 패널은 자기 너비를 기억하며, 캔버스를 밀어내는 대신 그 위에 띄울 수도 있습니다.
 
 ## 위임한 Carrier의 작업을 실시간으로
 

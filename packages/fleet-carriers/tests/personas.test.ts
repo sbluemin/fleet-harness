@@ -165,7 +165,7 @@ describe("Vanguard local and remote reconnaissance contract", () => {
       { tag: "constraints", required: false, hint: "Source or version requirements, time limits, and areas or sources to exclude." },
       { tag: "depth", required: false, hint: "'quick' for surface scan, 'thorough' for exhaustive. Default: 'medium'." },
     ]);
-    expect(VANGUARD_METADATA.allowedExecutorTools).toEqual(["carrier_jobs", "plan_read"]);
+    expect(VANGUARD_METADATA.allowedExecutorTools).toEqual(["carrier_jobs"]);
     expect(VANGUARD_METADATA.allowedBuiltinExternalMcpServers).toEqual(["grep_app"]);
   });
 
@@ -195,48 +195,23 @@ describe("Vanguard local and remote reconnaissance contract", () => {
   });
 });
 
-describe("Nimitz Plan assurance and Genesis Plan-driven TaskRef contract", () => {
-  it("keeps Nimitz optional Plan assurance strictly read-only and plan_ref-triggered", () => {
-    const principles = NIMITZ_METADATA.principles ?? [];
-
+describe("Nimitz and Genesis surviving contracts", () => {
+  it("keeps Nimitz strategic and read-only", () => {
     expect(NIMITZ_METADATA.title).toBe("Strategic Command & Judgment");
-    expect(NIMITZ_METADATA.summary).toContain("Optionally audits an existing host-authored Fleet Plan");
     expect(NIMITZ_METADATA.requestBlocks).toEqual([
       expect.objectContaining({ tag: "context", required: true }),
       expect.objectContaining({ tag: "problem", required: true }),
       expect.objectContaining({ tag: "constraints", required: false }),
       expect.objectContaining({ tag: "artifacts", required: false }),
-      expect.objectContaining({
-        tag: "plan_ref",
-        required: false,
-        hint: "Optional exact PlanRef for an already host-authored Fleet Plan. Its presence activates read-only Plan assurance; Nimitz never authors or mutates Plan state.",
-      }),
-      expect.objectContaining({
-        tag: "audit_focus",
-        required: false,
-        hint: "Optional Plan sections, Lanes, TaskRefs, risks, or dispatch-readiness concerns to prioritize; applies only when plan_ref is supplied.",
-      }),
     ]);
-    expect(NIMITZ_METADATA.requestBlocks.map((block) => block.tag)).not.toEqual(expect.arrayContaining(["plan_id", "goal"]));
-    expect(NIMITZ_METADATA.allowedExecutorTools).toEqual(["carrier_jobs", "plan_read"]);
-    expect(NIMITZ_METADATA.permissions.join("\n")).toContain("plan_ref is the sole Plan-assurance trigger");
-    expect(NIMITZ_METADATA.permissions.join("\n")).toContain("MUST NEVER call plan_write");
-    expect(NIMITZ_METADATA.permissions.join("\n")).toContain("never becomes a Genesis prerequisite");
-    expect(NIMITZ_METADATA.outputFormat).toContain("PASS | REVISE | BLOCKED");
-    for (const field of ["**PlanRef**", "**Findings**", "**Dispatch readiness**", "**Host action**"]) {
-      expect(NIMITZ_METADATA.outputFormat).toContain(field);
-    }
-    expect(NIMITZ_METADATA.outputFormat).toContain("For PASS, explicitly report no findings.");
+    expect(NIMITZ_METADATA.allowedExecutorTools).toEqual(["carrier_jobs"]);
     expect(NIMITZ_METADATA.outputFormat).toContain("**Bottom line**");
     expect(NIMITZ_METADATA.outputFormat).toContain("**Action plan** — Numbered strategic next actions for the host.");
-    expect(NIMITZ_METADATA.outputFormat).toContain("Never decompose into implementation tasks, waves, Lanes, or delivery checklists.");
+    expect(NIMITZ_METADATA.outputFormat).toContain("Never decompose into implementation tasks, waves, or delivery checklists.");
     expect(NIMITZ_METADATA.outputFormat).not.toContain("Numbered implementation steps.");
-    expect(principles.join("\n")).toContain("affected Plan section, Lane, or TaskRef");
-    expect(principles.join("\n")).toContain("audit_focus without plan_ref must be ignored");
-    expect(principles.join("\n")).toContain("never replaces host Plan authorship");
   });
 
-  it("Genesis keeps required objective/scope, optional task_refs, and never receives plan_mark_tasks", () => {
+  it("Genesis keeps required objective and scope", () => {
     expect(GENESIS_DEFAULTS.agent.dispatch).toEqual({
       defaultCliType: "claude",
       defaultModel: "sonnet",
@@ -252,27 +227,7 @@ describe("Nimitz Plan assurance and Genesis Plan-driven TaskRef contract", () =>
       hint: "Which modules, directories, or subsystems are in play.",
       required: true,
     });
-    expect(GENESIS_METADATA.requestBlocks).toContainEqual({
-      tag: "task_refs",
-      hint: "Optional newline- or comma-delimited fully qualified TaskRefs from exactly one Plan and one Lane. When present, Genesis calls plan_read once at dispatch start with the complete set and executes only the returned selected_tasks; the host owns completion marking after artifact inspection.",
-      required: false,
-    });
-    expect(GENESIS_METADATA.allowedExecutorTools).toEqual(["carrier_jobs", "plan_read"]);
-    expect(GENESIS_METADATA.allowedExecutorTools).not.toContain("plan_mark_tasks");
-    expect(GENESIS_METADATA.permissions).toContain(
-      "When <task_refs> are present: MUST call plan_read exactly once at the start of each dispatch with the complete assigned TaskRef set. Re-read only after a Plan tool reports a Plan-state conflict or the host explicitly redirects; invalid, missing, cross-Plan, or cross-Lane TaskRefs are blockers.",
-    );
-    expect(GENESIS_METADATA.principles).toContain(
-      "When <task_refs> are present: Treat compact plan_context as the forest: its Objective, topology, current progress, global QA gates, acceptance criteria, documentation updates, and final review loop govern the mission. Treat lane_context and selected_tasks as the only executable scope and write authority.",
-    );
-    expect(GENESIS_METADATA.permissions).toContain(
-      "When <task_refs> are present: MUST run the Lane QA/integration gate and report exact TaskRefs, Lane, and QA evidence. MUST NOT call plan_mark_tasks or edit Plan Markdown or checkbox state through filesystem tools — completion marking is exclusively host-owned after artifact inspection.",
-    );
-    expect(GENESIS_METADATA.permissions.join("\n")).toContain("return every requested Plan wording, topology, ownership, or task change and every unresolved decision to the host");
-    expect(GENESIS_METADATA.outputFormat).toContain("**Host Plan action**");
-    expect(GENESIS_METADATA.outputFormat).toContain("**TaskRefs executed**");
-    expect(GENESIS_METADATA.outputFormat).toContain("**Lane**");
-    expect(GENESIS_METADATA.outputFormat).toContain("**QA results**");
+    expect(GENESIS_METADATA.allowedExecutorTools).toEqual(["carrier_jobs"]);
   });
 });
 

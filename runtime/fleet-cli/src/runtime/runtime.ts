@@ -9,7 +9,6 @@ import type { CarrierRuntime } from "@dotobokuri/fleet-carriers";
 import { createInfraServices, ensureWorkspaceDirectory, withDirectoryLock, type InfraServices } from "@dotobokuri/core-infra";
 import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
-import { getPlanToolSpecs } from "@dotobokuri/fleet-plans";
 
 import { createWorkspaceChangeScanner } from "./workspace-scanner.js";
 
@@ -62,7 +61,6 @@ export function createFleetRuntimeLifecycle(deps: FleetRuntimeLifecycleDeps = {}
 async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRuntime> {
 	const dataDir = deps.dataDir ?? getFleetDataDir();
 	const infraServices = createInfraServices();
-	const planTools = getPlanToolSpecs({ dataDir });
 	const wikiWorkspaceResolver = createWikiWorkspaceResolver({
 		ensureWorkspace: (cwd) => ensureWorkspaceDirectory(dataDir, cwd),
 		withMigrationLock: (workspace, operation) => withDirectoryLock(
@@ -79,7 +77,6 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 		},
 		workspaceChangeScanner: createWorkspaceChangeScanner(),
 		wikiToolSpecs: getWikiToolSpecs(wikiWorkspaceResolver),
-		extraAgentTools: [planTools.read, planTools.write, planTools.verify, planTools.markTasks],
 	});
 
 	return {

@@ -249,7 +249,7 @@ describe("carrier roster rendering", () => {
     expect(roster).toContain("Use for:");
     expect(roster).toContain("NOT for:");
     expect(roster).not.toContain("Request blocks");
-    expect(roster).not.toContain("<task_refs>");
+    expect(roster).not.toContain("<assignment>");
   });
 
   it("renders the contracts tier with request blocks only", () => {
@@ -258,7 +258,7 @@ describe("carrier roster rendering", () => {
 
     const roster = buildCarrierRoster(registry, ["alpha"], { tier: "contracts" });
 
-    expect(roster).toContain("<task_refs> required:");
+    expect(roster).toContain("<assignment> required:");
     expect(roster).toContain("<objective?> optional:");
     expect(roster).not.toContain("Use for:");
     expect(roster).not.toContain("NOT for:");
@@ -282,7 +282,7 @@ describe("carrier roster rendering", () => {
 
     expect(roster).toContain("Use for:");
     expect(roster).toContain("Request blocks — wrap content in these (? = optional):");
-    expect(roster).toContain("<task_refs> required:");
+    expect(roster).toContain("<assignment> required:");
   });
 });
 
@@ -709,7 +709,7 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     setTaskForceBackend(registry, "alpha", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
     const events: CarrierJobStreamEvent[] = [];
     const unregister = registerStreamHandler(registry, (event) => events.push(event));
-    const request = "outside <objective>  exact /tmp/fake & <script>literal</script>  </objective><task_refs>W1</task_refs><task_refs>duplicate</task_refs>";
+    const request = "outside <objective>  exact /tmp/fake & <script>literal</script>  </objective><assignment>W1</assignment><assignment>duplicate</assignment>";
 
     await buildCarrierDispatchToolSpec(registry, testDeps).execute({ carrier_id: "alpha", label: "Request observer", request }, {
       cwd: "/tmp",
@@ -722,10 +722,10 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     for (const begin of begins) {
       expect(begin.request).toEqual({
         blocks: [
-          { tag: "task_refs", hint: "Assigned TaskRefs.", required: true, present: true, body: "W1" },
+          { tag: "assignment", hint: "Assigned work.", required: true, present: true, body: "W1" },
           { tag: "objective", hint: "Optional goal restatement.", required: false, present: true, body: "  exact /tmp/fake & <script>literal</script>  " },
         ],
-        additional: "outside <task_refs>duplicate</task_refs>",
+        additional: "outside <assignment>duplicate</assignment>",
       });
     }
     expect(begins[0]!.request).toBe(begins[1]!.request);
@@ -867,7 +867,7 @@ describe("carrier_dispatch request observer", () => {
     registerCarrier(registry, createConfigWithBlocks("alpha", "Alpha"));
     const events: CarrierJobStreamEvent[] = [];
     const unregister = registerStreamHandler(registry, (event) => events.push(event));
-    const request = "lead <task_refs source=\"host\"> W1 </task_refs> free <unknown>x</unknown>";
+    const request = "lead <assignment source=\"host\"> W1 </assignment> free <unknown>x</unknown>";
 
     await buildCarrierDispatchToolSpec(registry, testDeps).execute({ carrier_id: "alpha", label: "Request observer", request }, {
       cwd: "/tmp",
@@ -880,7 +880,7 @@ describe("carrier_dispatch request observer", () => {
     if (begin?.type !== "track:begin") throw new Error("Single begin event was not emitted.");
     expect(begin.request).toEqual({
       blocks: [
-        { tag: "task_refs", hint: "Assigned TaskRefs.", required: true, present: true, body: " W1 " },
+        { tag: "assignment", hint: "Assigned work.", required: true, present: true, body: " W1 " },
         { tag: "objective", hint: "Optional goal restatement.", required: false, present: false, body: "" },
       ],
       additional: "lead  free <unknown>x</unknown>",
@@ -1021,10 +1021,10 @@ function createConfigWithBlocks(id: string, displayName: string): CarrierConfig 
       outputFormat: "",
       permissions: [],
       requestBlocks: [
-        { tag: "task_refs", required: true, hint: "Assigned TaskRefs." },
+        { tag: "assignment", required: true, hint: "Assigned work." },
         { tag: "objective", required: false, hint: "Optional goal restatement." },
       ],
-      summary: "Executes plan-driven waves",
+      summary: "Executes structured work",
       title: "Operator",
       whenNotToUse: ["single-file edits (→genesis)"],
       whenToUse: ["multi-wave builds"],

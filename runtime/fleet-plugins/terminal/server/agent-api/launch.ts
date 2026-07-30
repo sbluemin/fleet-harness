@@ -5,7 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { resolvePathBinary, type AgentServerBindings } from "@dotobokuri/core-agent";
+import { resolvePathBinary } from "@dotobokuri/core-agent";
 import { createSessionIdentityResolver } from "@dotobokuri/core-unified-agent";
 import {
   createSystemPromptBuilder,
@@ -37,8 +37,6 @@ export interface TerminalLaunchResolverDeps {
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly resolveProfile?: typeof resolveAgentCliProfile;
   readonly createSessionIdentityResolver?: typeof createSessionIdentityResolver;
-  /** Resolves host-owned MCP bindings from the in-memory launch context only. */
-  readonly resolveServerBindings?: (context: TerminalLaunchContext | undefined) => AgentServerBindings | undefined;
   readonly readAgentCliPaths?: () => Promise<Readonly<Record<string, string>>>;
 }
 
@@ -107,7 +105,6 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       cliId: context?.cliId,
       createSessionIdentityResolver: resolveSessionIdentityResolver,
       resumeSessionId: context?.resumeSessionId,
-      serverBindings: deps.resolveServerBindings?.(context),
       sessionId,
     });
   };
@@ -145,7 +142,6 @@ async function createAgentCliLaunchSpec(options: {
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly resolveProfile: typeof resolveAgentCliProfile;
   readonly resumeSessionId?: string;
-  readonly serverBindings?: AgentServerBindings;
   readonly sessionId: string;
 }): Promise<TerminalLaunchSpec> {
   const cleanupStack: Array<() => void | Promise<void>> = [];
@@ -174,7 +170,6 @@ async function createAgentCliLaunchSpec(options: {
       autoNameHookExec: buildConsoleAutoNameHookCommand(options.hookEntry),
       onCleanup: (cleanup) => cleanupStack.push(cleanup),
       resumeSessionId: options.resumeSessionId,
-      serverBindings: options.serverBindings,
       withMarketplaceLock: withConsoleMarketplaceLock,
       mcpSessionLabel: options.sessionId,
     } as Parameters<typeof injectAgentCliProfile>[1] & { readonly mcpSessionLabel: string });

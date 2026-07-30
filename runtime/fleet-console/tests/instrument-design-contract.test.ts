@@ -56,7 +56,6 @@ const OWNED_SOURCES = [
   "styles/layout.css",
   "styles/rail.css",
   "styles/rail-alerts.css",
-  "rail/plans.css",
 ] as const;
 
 const FORBIDDEN_DECORATION = /radar-sweep|operations-radar|BACKGROUND_ANIMATION_STORAGE_KEY|PERIMETER_ANIMATION_STORAGE_KEY|Panel pulse|perimeter-orbit|notification-wake-pulse|AnchorIcon/;

@@ -8,7 +8,6 @@ import {
   resolveAgentCliId,
   resolveAgentCliProfile,
 } from "@dotobokuri/fleet-admiral";
-import { createPlanWorkspaceServerBindings } from "@dotobokuri/fleet-plans";
 
 import {
   assertInputContract,
@@ -81,7 +80,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const runtimeLifecycle = createFleetRuntimeLifecycle();
   const agentCliCleanupCallbacks = new Set<() => void>();
   const runtime = await runtimeLifecycle.start();
-  const planServerBindings = createFleetCliPlanServerBindings(runtime.dataDir, invocationCwd);
   const sessionOptionsRuntime = createSessionOptionsRuntime({
     argv: argvOptions,
     defaults: {
@@ -128,7 +126,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
         dedicatedMcpSession: runtime.dedicatedMcpSession,
         enableMetaphor: (launchOptions ?? sessionOptionsRuntime.getDraft()).enableMetaphor,
         onCleanup: (cleanup) => agentCliCleanupCallbacks.add(cleanup),
-        serverBindings: planServerBindings,
         withMarketplaceLock: withFleetMarketplaceLock,
       }),
     loadedCounts: discoverMissionControlCounts({ dataDir: runtime.dataDir, invocationCwd }),
@@ -270,11 +267,6 @@ function createRunAppArgOptions(options: RunAppOptions): FleetCliOptions {
 
 function resolveInvocationCwd(): string {
   return process.env.INIT_CWD || process.cwd();
-}
-
-/** Creates the immutable Plan storage identity captured by this Fleet CLI process. */
-export function createFleetCliPlanServerBindings(dataDir: string, invocationCwd: string) {
-  return createPlanWorkspaceServerBindings(dataDir, invocationCwd);
 }
 
 function stopApp(

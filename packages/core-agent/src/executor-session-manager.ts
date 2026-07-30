@@ -8,7 +8,7 @@ import {
   type McpRouterRuntime,
   registerExecutorSessionTools,
 } from "./mcp-router.js";
-import { snapshotAgentServerBindings, type AgentServerBindings, type AgentToolSpec } from "./types.js";
+import type { AgentToolSpec } from "./types.js";
 
 export interface ExecutorServerEndpoint {
   readonly name: string;
@@ -23,7 +23,6 @@ export interface ExecutorSessionRequest {
   readonly label: string;
   readonly cwd: string;
   readonly signal?: AbortSignal;
-  readonly serverBindings?: AgentServerBindings;
 }
 
 export interface ExecutorServerToken {
@@ -43,7 +42,6 @@ export interface CoreExecutorMcpSessionRequest {
   readonly specs: readonly AgentToolSpec[];
   readonly cwd: string;
   readonly signal?: AbortSignal;
-  readonly serverBindings?: AgentServerBindings;
 }
 
 export interface ExecutorSessionManager {
@@ -68,7 +66,6 @@ interface ActiveSession {
   readonly tokens: readonly ExecutorServerToken[];
   readonly cwd: string;
   readonly signal?: AbortSignal;
-  readonly serverBindings?: AgentServerBindings;
 }
 
 const DEFAULT_TOOL_TIMEOUT_SECONDS = 1800;
@@ -118,12 +115,10 @@ function createExecutorMcpSession(
   assertNonEmptyExecutorTools(request.serverName, request.specs);
 
   const token = crypto.randomUUID();
-  const serverBindings = snapshotAgentServerBindings(request.serverBindings);
   registerExecutorSessionTools(runtime.runtime, token, [...request.specs]);
   installExecutorToolCallRouter(runtime.runtime, token, {
     cwd,
     signal: request.signal,
-    serverBindings,
   });
 
   return runtime.runtime.server.start().then((url) => ({
@@ -166,7 +161,6 @@ function issueSessionToken(
   }
 
   const tokens: ExecutorServerToken[] = [];
-  const serverBindings = snapshotAgentServerBindings(request.serverBindings);
   try {
     for (const { name, runtime } of deps.runtimes) {
       const tools = runtime.registry.getAllAgentTools();
@@ -177,7 +171,6 @@ function issueSessionToken(
         cwd,
         sessionLabel: label,
         signal: request.signal,
-        serverBindings,
       });
       tokens.push({ name, token });
     }
@@ -190,7 +183,6 @@ function issueSessionToken(
     tokens,
     cwd,
     signal: request.signal,
-    serverBindings,
   });
   return tokens;
 }

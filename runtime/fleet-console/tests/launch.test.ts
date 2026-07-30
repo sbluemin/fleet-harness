@@ -155,27 +155,6 @@ describe("createDefaultTerminalLaunchResolver", () => {
     });
   });
 
-  it("forwards host-only bindings to dedicated MCP without changing the selected execution cwd", async () => {
-    const runtime = createFakeRuntime(() => undefined);
-    const bindings = Object.freeze({ "fleet-plans.workspace-ref": "opaque-workspace" });
-    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, cwd, env: { ...env } }));
-    const injectProfile = vi.fn(async (profile: AgentCliProfile) => profile);
-    const resolve = createDefaultTerminalLaunchResolver({
-      cwd: "/work",
-      env: { PATH: "/bin" } as NodeJS.ProcessEnv,
-      agentRuntime: runtime as never,
-      injectProfile: injectProfile as never,
-      resolveProfile: resolveProfile as never,
-      resolveServerBindings: (context) => context?.theaterId === "theater-a" ? bindings : undefined,
-    });
-
-    const spec = await resolve("/work/.fleet/worktrees/topic", { sessionId: "session-a", theaterId: "theater-a" });
-
-    expect(spec.cwd).toBe("/work/.fleet/worktrees/topic");
-    expect(injectProfile).toHaveBeenCalledWith(expect.any(Object), expect.objectContaining({ serverBindings: bindings }));
-    expect(JSON.stringify(spec)).not.toContain("opaque-workspace");
-  });
-
   it("passes a selected Agent CLI id to fleet-admiral profile resolution", async () => {
     const runtime = createFakeRuntime(() => undefined);
     const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "codex" as const, label: "Codex", cwd, env: { ...env } }));

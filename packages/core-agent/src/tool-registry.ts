@@ -98,7 +98,6 @@ export function createMcpToolRegistry(): McpToolRegistry {
         sessionLabel: ctx?.sessionLabel,
         toolCallId: ctx?.toolCallId,
         signal: ctx?.signal,
-        serverBindings: ctx?.serverBindings,
       };
 
       const spec = primaryToolSpecs.get(name);

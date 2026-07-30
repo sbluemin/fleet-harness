@@ -45,7 +45,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     { tag: "threat_model", hint: "Assumed attacker capability — unauth user, compromised dep, insider (security mode).", required: false },
     { tag: "fix_mode", hint: "'report' (default) for findings only, or 'fix' to apply corrections.", required: false },
   ],
-  allowedExecutorTools: ["carrier_jobs", "plan_read"],
+  allowedExecutorTools: ["carrier_jobs"],
 
   // ── Tier 2: Composition ──
   permissions: [

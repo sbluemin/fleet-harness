@@ -19,7 +19,6 @@ This document is the operational doctrine for Admiral and Carrier agents working
 - TUI rendering, overlays, widgets, and host input routing.
 - Host adapters that consume Admiral prompt/protocol/tool policy from `@dotobokuri/fleet-admiral`.
 - Concrete runtime assembly in `src/runtime/runtime.ts`.
-- Fleet Plan authoring and mutation through host-only `plan_write`, with `plan-operations` loaded before the first call in a session; Nimitz may optionally audit an exact existing host-authored PlanRef without changing Plan state.
 
 `fleet-cli` must not own carrier persona catalogs, host-agnostic infrastructure internals, or generic MCP transport internals.
 
@@ -52,7 +51,7 @@ Forbidden patterns:
 5. For operational work, let the protocol gate select exactly one protocol skill: trivial, standard, high-risk, or multi-agent.
 6. Follow the active protocol's declared checkpoints. Trivial has none and uses Mission Anchor Compact Mode.
 7. Use the reduced protocol cadence: emit `brief: <...>` after readiness checks and `status: executing` when execution begins.
-8. Apply Context Confidence at the active protocol's host-authored planning boundary: standard requires sufficient confidence; high-risk and multi-agent require complete confidence. The host owns all Plan authoring and mutation, may optionally send an exact existing PlanRef to Nimitz for read-only assurance, and hands host-authored same-Lane TaskRefs to Genesis. Genesis returns artifacts and Lane QA evidence without changing Plan state; the host marks the original TaskRefs complete only after artifact inspection and Lane QA.
+8. Apply Context Confidence at the active protocol's host-authored planning boundary: standard requires sufficient confidence; high-risk and multi-agent require complete confidence. The host retains planning and trade-off arbitration, while Genesis executes the bounded implementation contract and returns artifact and QA evidence for host inspection.
 9. Let Result Integrity route verification loops: received results get relevance/completeness/conflict checks, mutating finalized jobs run the Artifact Inspection Gate, speculation goes to Deep Dive, and contradictions with verified facts re-enter Context Confidence.
 10. For mutating carrier jobs, inspect actual artifacts before acceptance: use the `carrier_jobs` summary manifest, direct git diff, and changed files against the dispatch intent and Mission Objective. Read-only jobs skip this gate and route claims through Deep Dive.
 11. Run `pnpm check:protocol-sync` after changing protocol gate text, protocol skill assets, or report-token grammar.
