@@ -59,7 +59,11 @@ function percent(value: unknown): number {
 function validatedString(value: unknown, pattern: RegExp): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
-  return pattern.test(trimmed) ? trimmed : undefined;
+  if (!pattern.test(trimmed)) return undefined;
+  if (/^bearer /i.test(trimmed)) return undefined;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) return undefined;
+  if (/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/.test(trimmed)) return undefined;
+  return trimmed;
 }
 
 function titleCase(value: unknown): string | undefined {

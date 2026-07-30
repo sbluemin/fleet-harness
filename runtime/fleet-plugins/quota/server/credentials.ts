@@ -10,9 +10,8 @@ export interface CredentialResolverDeps {
   readonly platform: NodeJS.Platform;
   readonly homedir: () => string;
   readonly env: NodeJS.ProcessEnv;
-  readonly readFile: (filePath: string, encoding: BufferEncoding) => Promise<string>;
+  readonly readBounded: (filePath: string, maxBytes: number) => Promise<string | null>;
   readonly execFile: (file: string, args: readonly string[], options: { readonly timeout: number }) => Promise<string>;
-  readonly stat?: (filePath: string) => Promise<{ readonly size: number }>;
 }
 
 export interface ClaudeCredentials {
@@ -30,12 +29,35 @@ export interface CodexCredentials {
 const execFileAsync = promisify(nodeExecFile);
 const MAX_CREDENTIAL_BYTES = 65_536;
 
+async function readBoundedFile(filePath: string, maxBytes: number): Promise<string | null> {
+  const handle = await fs.open(filePath, "r");
+  try {
+    const stat = await handle.stat();
+    // Bound during I/O: a stalled network mount or non-regular path (for example, FIFO) must not wedge single-flight.
+    if (!stat.isFile() || stat.size > maxBytes) return null;
+    const buffer = Buffer.allocUnsafe(maxBytes + 1);
+    let totalBytes = 0;
+    while (totalBytes < buffer.byteLength) {
+      const { bytesRead } = await handle.read(
+        buffer,
+        totalBytes,
+        buffer.byteLength - totalBytes,
+        totalBytes,
+      );
+      if (bytesRead === 0) break;
+      totalBytes += bytesRead;
+    }
+    return totalBytes > maxBytes ? null : buffer.subarray(0, totalBytes).toString("utf8");
+  } finally {
+    await handle.close();
+  }
+}
+
 export const defaultCredentialDeps: CredentialResolverDeps = {
   platform: process.platform,
   homedir: os.homedir,
   env: process.env,
-  readFile: (filePath, encoding) => fs.readFile(filePath, encoding),
-  stat: (filePath) => fs.stat(filePath),
+  readBounded: readBoundedFile,
   execFile: async (file, args, options) => {
     const result = await execFileAsync(file, [...args], options);
     return result.stdout;
@@ -75,15 +97,6 @@ function parseClaudeCredentialJson(raw: string, method: CredentialMethod): Claud
   }
 }
 
-async function readCredentialFile(
-  filePath: string,
-  deps: CredentialResolverDeps,
-): Promise<string | null> {
-  if (deps.stat && (await deps.stat(filePath)).size > MAX_CREDENTIAL_BYTES) return null;
-  const raw = await deps.readFile(filePath, "utf8");
-  return raw.length <= MAX_CREDENTIAL_BYTES ? raw : null;
-}
-
 export async function resolveClaudeCredentials(deps: CredentialResolverDeps): Promise<ClaudeCredentials | null> {
   if (deps.platform === "darwin") {
     try {
@@ -102,8 +115,8 @@ export async function resolveClaudeCredentials(deps: CredentialResolverDeps): Pr
   }
   const configDir = deps.env.CLAUDE_CONFIG_DIR || path.join(deps.homedir(), ".claude");
   try {
-    const raw = await readCredentialFile(path.join(configDir, ".credentials.json"), deps);
-    return raw === null ? null : parseClaudeCredentialJson(raw, "file");
+    const raw = await deps.readBounded(path.join(configDir, ".credentials.json"), MAX_CREDENTIAL_BYTES);
+    return raw === null || raw.length > MAX_CREDENTIAL_BYTES ? null : parseClaudeCredentialJson(raw, "file");
   } catch {
     return null;
   }
@@ -112,8 +125,8 @@ export async function resolveClaudeCredentials(deps: CredentialResolverDeps): Pr
 export async function resolveCodexCredentials(deps: CredentialResolverDeps): Promise<CodexCredentials | null> {
   const home = deps.env.CODEX_HOME || path.join(deps.homedir(), ".codex");
   try {
-    const raw = await readCredentialFile(path.join(home, "auth.json"), deps);
-    if (raw === null) return null;
+    const raw = await deps.readBounded(path.join(home, "auth.json"), MAX_CREDENTIAL_BYTES);
+    if (raw === null || raw.length > MAX_CREDENTIAL_BYTES) return null;
     const parsed = record(JSON.parse(raw));
     const tokens = record(parsed?.tokens);
     const accessToken = optionalString(tokens?.access_token);

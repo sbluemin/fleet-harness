@@ -16,7 +16,7 @@ function claudeCredentials(subscriptionType = "max"): CredentialResolverDeps {
     platform: "linux",
     homedir: () => "/users/operator",
     env: {},
-    readFile: async () => JSON.stringify({
+    readBounded: async () => JSON.stringify({
       claudeAiOauth: { accessToken: "secret", subscriptionType },
     }),
     execFile: async () => "",
@@ -92,6 +92,14 @@ describe("provider response parsing", () => {
       { id: "session", usedPercent: 17 },
       { id: "weekly", usedPercent: 9 },
     ]);
+    expect(parseClaudeUsage({
+      five_hour: { resets_at: 2_000_000_000 },
+      limits: [{ kind: "session", percent: 67 }],
+    }).windows).toEqual([{ id: "session", usedPercent: 67 }]);
+    expect(parseClaudeUsage({
+      five_hour: { percent: 0 },
+      limits: [{ kind: "session", percent: 67 }],
+    }).windows).toEqual([{ id: "session", usedPercent: 0 }]);
   });
 
   it("bounds untrusted Claude limits and reset-credit collections", () => {
@@ -140,6 +148,37 @@ describe("provider response parsing", () => {
       now: () => 1,
     });
     expect(invalid.status === "ok" ? invalid.plan : undefined).toBeUndefined();
+  });
+
+  it("rejects credential-shaped plans and model labels while preserving legitimate names", () => {
+    const rejected = [
+      "Bearer abc123",
+      "BEARER abc123",
+      "550e8400-e29b-41d4-a716-446655440000",
+      "e30.e30.sig",
+    ];
+    for (const value of rejected) {
+      expect(parseCodexUsage({ plan_type: value }).plan, value).toBeUndefined();
+      expect(parseClaudeUsage({
+        limits: [{
+          kind: "weekly_scoped",
+          percent: 1,
+          scope: { model: { display_name: value } },
+        }],
+      }).windows[0]?.label, value).toBe("Model");
+    }
+
+    for (const value of ["max", "pro", "Sonnet 4.5", "Fable", "Max 20x"]) {
+      expect(parseCodexUsage({ plan_type: value }).plan, value)
+        .toBe(`${value[0]?.toUpperCase() ?? ""}${value.slice(1)}`);
+      expect(parseClaudeUsage({
+        limits: [{
+          kind: "weekly_scoped",
+          percent: 1,
+          scope: { model: { display_name: value } },
+        }],
+      }).windows[0]?.label, value).toBe(value);
+    }
   });
 
   it("classifies Codex windows by duration and preserves primary/secondary fallback", () => {
@@ -192,7 +231,7 @@ describe("Codex provider requests", () => {
       platform: "win32",
       homedir: () => "C:\\Users\\operator",
       env: { CODEX_HOME: "C:\\codex" },
-      readFile: async () => JSON.stringify({ tokens: { access_token: "secret", account_id: "acct" } }),
+      readBounded: async () => JSON.stringify({ tokens: { access_token: "secret", account_id: "acct" } }),
       execFile: async () => { throw new Error("must not spawn"); },
     };
     const result = await fetchCodexUsage({ credentials, fetch: fetchImpl as typeof fetch, now: () => 42 });
@@ -219,7 +258,7 @@ describe("Codex provider requests", () => {
       platform: "linux",
       homedir: () => "/home/operator",
       env: {},
-      readFile: async () => JSON.stringify({ tokens: { access_token: "secret" } }),
+      readBounded: async () => JSON.stringify({ tokens: { access_token: "secret" } }),
       execFile: async () => { throw new Error("must not spawn"); },
     };
     const result = await fetchCodexUsage({ credentials, fetch: fetchImpl as typeof fetch, now: () => 42 });
