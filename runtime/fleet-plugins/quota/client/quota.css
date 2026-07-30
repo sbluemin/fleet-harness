@@ -52,6 +52,10 @@
   color: var(--carrier-codex);
 }
 
+.quota-provider__mark--cursor {
+  color: var(--carrier-cursor);
+}
+
 .quota-plan {
   margin-left: auto;
   border: 1px solid var(--hairline);

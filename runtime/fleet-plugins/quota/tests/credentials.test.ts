@@ -11,6 +11,7 @@ import {
   readBoundedFile,
   resolveClaudeCredentials,
   resolveCodexCredentials,
+  resolveCursorCredentials,
   type CredentialResolverDeps,
 } from "../server/credentials.js";
 
@@ -75,6 +76,62 @@ describe("credential resolvers", () => {
     expect(result).toEqual({ accessToken: "codex-token", accountId: "account" });
   });
 
+  it("reads the bare Cursor token from the macOS keychain before the auth file", async () => {
+    const execFile = vi.fn(async () => "  cursor-token\n");
+    const readBounded = vi.fn(async () => "");
+    const result = await resolveCursorCredentials(deps({ platform: "darwin", execFile, readBounded }));
+    expect(execFile).toHaveBeenCalledWith(
+      "security",
+      ["find-generic-password", "-s", "cursor-access-token", "-a", "cursor-user", "-w"],
+      { timeout: 5_000 },
+    );
+    expect(readBounded).not.toHaveBeenCalled();
+    expect(result).toEqual({ accessToken: "cursor-token", method: "keychain" });
+  });
+
+  it("falls back to the macOS Cursor auth file and accepts a nested snake-case token", async () => {
+    const readBounded = vi.fn(async () => JSON.stringify({ cursorAuth: { access_token: "file-token" } }));
+    const result = await resolveCursorCredentials(deps({
+      platform: "darwin",
+      homedir: () => "/Users/operator",
+      execFile: vi.fn(async () => " \n"),
+      readBounded,
+    }));
+    expect(readBounded).toHaveBeenCalledWith(path.join("/Users/operator", ".cursor", "auth.json"), 65_536);
+    expect(result).toEqual({ accessToken: "file-token", method: "file" });
+  });
+
+  it("uses APPDATA for Cursor on Windows without spawning security", async () => {
+    const execFile = vi.fn(async () => "");
+    const readBounded = vi.fn(async () => JSON.stringify({ tokens: { accessToken: "win-token" } }));
+    const result = await resolveCursorCredentials(deps({
+      platform: "win32",
+      homedir: () => "C:\\Users\\operator",
+      env: { APPDATA: "D:\\Roaming" },
+      execFile,
+      readBounded,
+    }));
+    expect(execFile).not.toHaveBeenCalled();
+    expect(readBounded).toHaveBeenCalledWith(path.join("D:\\Roaming", "Cursor", "auth.json"), 65_536);
+    expect(result).toEqual({ accessToken: "win-token", method: "file" });
+  });
+
+  it("uses XDG_CONFIG_HOME for Cursor on Linux and accepts root token names", async () => {
+    const readBounded = vi.fn()
+      .mockResolvedValueOnce(JSON.stringify({ accessToken: "camel-token" }))
+      .mockResolvedValueOnce(JSON.stringify({ access_token: "snake-token" }));
+    const cursorDeps = deps({
+      platform: "linux",
+      env: { XDG_CONFIG_HOME: "/xdg/config" },
+      readBounded,
+    });
+    await expect(resolveCursorCredentials(cursorDeps))
+      .resolves.toEqual({ accessToken: "camel-token", method: "file" });
+    await expect(resolveCursorCredentials(cursorDeps))
+      .resolves.toEqual({ accessToken: "snake-token", method: "file" });
+    expect(readBounded).toHaveBeenCalledWith(path.join("/xdg/config", "cursor", "auth.json"), 65_536);
+  });
+
   it("treats missing and malformed files as signed-out inputs", async () => {
     await expect(resolveClaudeCredentials(deps({ readBounded: vi.fn(async () => { throw new Error("missing"); }) }))).resolves.toBeNull();
     await expect(resolveCodexCredentials(deps({ readBounded: vi.fn(async () => "{") }))).resolves.toBeNull();
@@ -100,6 +157,11 @@ describe("credential resolvers", () => {
       readBounded: fileFallback,
     }))).resolves.toMatchObject({ accessToken: "fallback", method: "file" });
     expect(fileFallback).toHaveBeenCalledOnce();
+    await expect(resolveCursorCredentials(deps({
+      platform: "darwin",
+      execFile: vi.fn(async () => oversized),
+      readBounded: vi.fn(async () => null),
+    }))).resolves.toBeNull();
   });
 
   it("uses only injected bounded I/O in resolver tests", async () => {

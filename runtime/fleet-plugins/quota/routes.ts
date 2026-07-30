@@ -6,15 +6,17 @@ import { createQuotaService } from "./server/service.js";
 export default definePlugin({
   id: "quota",
   register(ctx) {
+    const isConnected = async (provider: "claude" | "cursor") => {
+      const value = await ctx.host.storage.readJson("quota", "settings");
+      return value !== null
+        && typeof value === "object"
+        && !Array.isArray(value)
+        && (value as Record<string, unknown>)[`${provider}Connected`] === true;
+    };
     const service = createQuotaService({
       platform: process.platform,
-      isClaudeConnected: async () => {
-        const value = await ctx.host.storage.readJson("quota", "settings");
-        return value !== null
-          && typeof value === "object"
-          && !Array.isArray(value)
-          && (value as { readonly claudeConnected?: unknown }).claudeConnected === true;
-      },
+      isClaudeConnected: () => isConnected("claude"),
+      isCursorConnected: () => isConnected("cursor"),
     });
     registerRouter(ctx, "summary", async ({ req, res }) => {
       await handleSummary(req, res, ctx, service);

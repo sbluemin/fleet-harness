@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 // Built-in plugins cannot import another plugin's client source. These official
-// Claude and Codex paths therefore mirror terminal/client/agent/index.tsx.
+// Claude, Codex, and Cursor paths therefore mirror terminal/client/agent/index.tsx.
 function ClaudeGlyph() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -18,6 +18,16 @@ function CodexGlyph() {
   );
 }
 
-export function providerGlyph(provider: "claude" | "codex"): ReactNode {
-  return provider === "claude" ? <ClaudeGlyph /> : <CodexGlyph />;
+function CursorGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">
+      <path d="M3 2.25v10.9l2.9-2.55 1.8 3.15 1.7-.95-1.8-3.1 3.75-.75Z" />
+    </svg>
+  );
+}
+
+export function providerGlyph(provider: "claude" | "codex" | "cursor"): ReactNode {
+  if (provider === "claude") return <ClaudeGlyph />;
+  if (provider === "cursor") return <CursorGlyph />;
+  return <CodexGlyph />;
 }

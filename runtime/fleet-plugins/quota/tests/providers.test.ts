@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   fetchClaudeUsage,
   fetchCodexUsage,
+  fetchCursorUsage,
   parseClaudeUsage,
   parseCodexUsage,
+  parseCursorUsage,
   parseResetCredits,
   sanitizeProviderError,
 } from "../server/providers.js";
@@ -32,6 +34,42 @@ function jsonResponse(payload: unknown, init: ResponseInit = {}): Response {
 }
 
 describe("provider response parsing", () => {
+  it("parses Cursor numeric-string epochs, measured percentages, and cycle length", () => {
+    expect(parseCursorUsage({
+      billingCycleStart: "1783180030000",
+      billingCycleEnd: "1785858430000",
+      planUsage: {
+        totalSpend: 34_799,
+        limit: 7_000,
+        totalPercentUsed: 38.24065934065934,
+        autoPercentUsed: 36.2275,
+        apiPercentUsed: 52.88181818181818,
+      },
+      enabled: true,
+    })).toEqual({
+      status: "ok",
+      cycleDays: 31,
+      windows: [
+        { id: "cycle", usedPercent: 38, resetsAt: 1_785_858_430_000 },
+        { id: "cycle", label: "Auto", usedPercent: 36, resetsAt: 1_785_858_430_000 },
+        { id: "cycle", label: "API", usedPercent: 53, resetsAt: 1_785_858_430_000 },
+      ],
+    });
+  });
+
+  it("never derives Cursor percentages from cents and identifies no-subscription states", () => {
+    expect(parseCursorUsage({
+      planUsage: { totalSpend: 34_799, limit: 7_000, autoPercentUsed: 12 },
+      enabled: true,
+    })).toEqual({
+      status: "ok",
+      windows: [{ id: "cycle", label: "Auto", usedPercent: 12 }],
+    });
+    expect(parseCursorUsage({ enabled: false, planUsage: { totalPercentUsed: 10 } }))
+      .toEqual({ status: "no_subscription" });
+    expect(parseCursorUsage({ enabled: true })).toEqual({ status: "no_subscription" });
+  });
+
   it("maps Claude session, weekly, and scoped model windows", () => {
     expect(parseClaudeUsage({
       five_hour: { used_percentage: 12.6, resets_at: "2026-08-01T00:00:00Z" },
@@ -268,6 +306,69 @@ describe("Codex provider requests", () => {
   });
 });
 
+describe("Cursor provider requests", () => {
+  it("POSTs exact empty JSON to only the measured endpoints and returns a token-free DTO", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse(String(url).endsWith("/GetPlanInfo")
+        ? { planName: "Pro+" }
+        : {
+            billingCycleStart: "1783180030000",
+            billingCycleEnd: "1785858430000",
+            planUsage: { totalPercentUsed: 38.24065934065934 },
+            enabled: true,
+          });
+    });
+    const credentials: CredentialResolverDeps = {
+      platform: "linux",
+      homedir: () => "/home/operator",
+      env: {},
+      readBounded: async () => JSON.stringify({ accessToken: "cursor-secret" }),
+      execFile: async () => { throw new Error("must not spawn"); },
+    };
+    const result = await fetchCursorUsage({ credentials, fetch: fetchImpl as typeof fetch, now: () => 42 });
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage",
+      "https://api2.cursor.sh/aiserver.v1.DashboardService/GetPlanInfo",
+    ]);
+    expect(calls.every((call) => call.init?.method === "POST")).toBe(true);
+    expect(calls.every((call) => call.init?.body === "{}")).toBe(true);
+    expect(calls.every((call) => call.init?.redirect === "error")).toBe(true);
+    expect(calls.every((call) => new Headers(call.init?.headers).get("Content-Type") === "application/json")).toBe(true);
+    expect(calls.every((call) => new Headers(call.init?.headers).get("Connect-Protocol-Version") === "1")).toBe(true);
+    expect(result).toMatchObject({
+      status: "ok",
+      method: "file",
+      plan: "Pro+",
+      cycleDays: 31,
+      windows: [{ id: "cycle", usedPercent: 38, resetsAt: 1_785_858_430_000 }],
+      fetchedAt: 42,
+    });
+    expect(JSON.stringify(result)).not.toMatch(/cursor-secret|totalSpend|includedSpend|bonusSpend|limit|remaining/);
+  });
+
+  it("keeps Cursor usage when plan metadata fails", async () => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).endsWith("/GetPlanInfo")) return new Response("not found", { status: 404 });
+      return jsonResponse({ enabled: true, planUsage: { totalPercentUsed: 7 } });
+    });
+    const result = await fetchCursorUsage({
+      credentials: {
+        platform: "linux",
+        homedir: () => "/home/operator",
+        env: {},
+        readBounded: async () => JSON.stringify({ tokens: { access_token: "secret" } }),
+        execFile: async () => "",
+      },
+      fetch: fetchImpl as typeof fetch,
+      now: () => 42,
+    });
+    expect(result).toMatchObject({ status: "ok", windows: [{ id: "cycle", usedPercent: 7 }] });
+    expect(result).not.toHaveProperty("plan");
+  });
+});
+
 describe("provider response boundaries", () => {
   it("rejects a response whose final URL differs and surfaces no quota data", async () => {
     const response = jsonResponse({ five_hour: { used_percentage: 99 } });
@@ -279,6 +380,8 @@ describe("provider response boundaries", () => {
         fetch: (async () => response) as typeof fetch,
       }),
       fetchCodex: async () => ({ status: "signed_out" }),
+      isCursorConnected: async () => false,
+      fetchCursor: async () => ({ status: "signed_out" }),
     });
     const result = (await service.getSummary()).providers.claude;
     expect(result.status).not.toBe("ok");

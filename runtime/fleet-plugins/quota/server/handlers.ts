@@ -50,10 +50,26 @@ export async function handleConnect(
   } catch {
     body = null;
   }
-  if (!body || Object.keys(body).length !== 2 || body.provider !== "claude" || typeof body.connected !== "boolean") {
+  if (
+    !body
+    || Object.keys(body).length !== 2
+    || (body.provider !== "claude" && body.provider !== "cursor")
+    || typeof body.connected !== "boolean"
+  ) {
     ctx.host.http.writeJson(res, 400, { error: "invalid_connect_request" });
     return;
   }
-  await ctx.host.storage.writeJson("quota", "settings", { claudeConnected: body.connected });
+  const stored = await ctx.host.storage.readJson("quota", "settings");
+  const settings = stored !== null && typeof stored === "object" && !Array.isArray(stored)
+    ? stored as { readonly claudeConnected?: unknown; readonly cursorConnected?: unknown }
+    : {};
+  const next = {
+    ...(typeof settings.claudeConnected === "boolean" ? { claudeConnected: settings.claudeConnected } : {}),
+    ...(typeof settings.cursorConnected === "boolean" ? { cursorConnected: settings.cursorConnected } : {}),
+    ...(body.provider === "claude"
+      ? { claudeConnected: body.connected }
+      : { cursorConnected: body.connected }),
+  };
+  await ctx.host.storage.writeJson("quota", "settings", next);
   ctx.host.http.writeJson(res, 200, await service.getSummary({ force: true }));
 }

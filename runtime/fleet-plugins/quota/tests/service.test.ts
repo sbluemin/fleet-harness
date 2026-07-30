@@ -13,11 +13,28 @@ describe("quota service", () => {
     const service = createQuotaService({
       platform: "darwin",
       isClaudeConnected: async () => false,
+      isCursorConnected: async () => false,
       fetchClaude,
       fetchCodex: async () => ({ status: "signed_out" }),
+      fetchCursor: async () => ({ status: "signed_out" }),
     });
     expect((await service.getSummary()).providers.claude).toEqual({ status: "not_connected", method: "keychain" });
     expect(fetchClaude).not.toHaveBeenCalled();
+  });
+
+  it("gates Cursor independently with the platform credential method", async () => {
+    const fetchCursor = vi.fn(async () => ok(1));
+    const service = createQuotaService({
+      platform: "darwin",
+      isClaudeConnected: async () => true,
+      isCursorConnected: async () => false,
+      fetchClaude: async () => ({ status: "signed_out" }),
+      fetchCodex: async () => ({ status: "signed_out" }),
+      fetchCursor,
+    });
+    expect((await service.getSummary()).providers.cursor)
+      .toEqual({ status: "not_connected", method: "keychain" });
+    expect(fetchCursor).not.toHaveBeenCalled();
   });
 
   it("uses a 120-second cache, supports force bypass, and single-flights", async () => {
@@ -27,8 +44,10 @@ describe("quota service", () => {
     const service = createQuotaService({
       now: () => now,
       isClaudeConnected: async () => true,
+      isCursorConnected: async () => false,
       fetchClaude,
       fetchCodex: async () => ({ status: "signed_out" }),
+      fetchCursor: async () => ({ status: "signed_out" }),
     });
     const first = service.getSummary();
     const second = service.getSummary();
@@ -54,8 +73,10 @@ describe("quota service", () => {
     const service = createQuotaService({
       now: () => now,
       isClaudeConnected: async () => true,
+      isCursorConnected: async () => false,
       fetchClaude,
       fetchCodex: async () => ({ status: "signed_out" }),
+      fetchCursor: async () => ({ status: "signed_out" }),
     });
     await service.getSummary();
     now += 1_799_999;

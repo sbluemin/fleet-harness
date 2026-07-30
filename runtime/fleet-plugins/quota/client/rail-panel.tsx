@@ -9,7 +9,7 @@ import { getT, type QuotaMessageKey } from "./i18n/index.js";
 import "./quota.css";
 
 type T = Translate<QuotaMessageKey>;
-type ProviderId = "claude" | "codex";
+type ProviderId = "claude" | "codex" | "cursor";
 
 interface RequestGeneration {
   current: number;
@@ -45,13 +45,32 @@ export function formatCountdown(target: number | undefined, now: number): string
   return `${minutes}m`;
 }
 
-function Meter({ window, now, t }: { readonly window: QuotaWindow; readonly now: number; readonly t: T }) {
+function Meter({
+  window,
+  cycleDays,
+  now,
+  t,
+}: {
+  readonly window: QuotaWindow;
+  readonly cycleDays?: number;
+  readonly now: number;
+  readonly t: T;
+}) {
   const severity = window.usedPercent >= 90 ? "critical" : window.usedPercent >= 70 ? "warning" : "normal";
-  const label = window.label ?? t(window.id === "session" ? "quota.meter.session" : "quota.meter.weekly");
+  const label = window.label ?? t(
+    window.id === "session"
+      ? "quota.meter.session"
+      : window.id === "cycle" ? "quota.meter.cycle" : "quota.meter.weekly",
+  );
+  const windowChip = window.id === "session"
+    ? "5h"
+    : window.id === "weekly"
+      ? "7d"
+      : window.id === "cycle" && cycleDays !== undefined ? `${cycleDays}d` : undefined;
   return (
     <div className={`quota-meter quota-meter--${severity}`}>
       <div className="quota-meter__top">
-        <span className="quota-meter__label">{label}<span className="quota-meter__window">{window.id === "session" ? "5h" : "7d"}</span></span>
+        <span className="quota-meter__label">{label}{windowChip ? <span className="quota-meter__window">{windowChip}</span> : null}</span>
         <span className="quota-meter__percent">{t("quota.meter.used", { pct: window.usedPercent })}</span>
       </div>
       <div className="quota-meter__bar" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={window.usedPercent}>
@@ -77,19 +96,22 @@ function ProviderCard({
   readonly provider: ProviderDto;
   readonly now: number;
   readonly t: T;
-  readonly connect: (connected: boolean) => void;
+  readonly connect: (provider: "claude" | "cursor", connected: boolean) => void;
 }) {
-  const name = id === "claude" ? "Claude Code" : "Codex";
-  if (id === "claude" && provider.status === "not_connected") {
+  const name = id === "claude" ? "Claude Code" : id === "codex" ? "Codex" : "Cursor";
+  if ((id === "claude" || id === "cursor") && provider.status === "not_connected") {
+    const titleKey = id === "claude" ? "quota.connect.title" : "quota.connect.title.cursor";
+    const bodyKey = id === "claude" ? "quota.connect.body" : "quota.connect.body.cursor";
+    const actionKey = id === "claude" ? "quota.connect.action" : "quota.connect.action.cursor";
     return (
       <section className="quota-connect-card">
         <h3>
-          <span className="quota-provider__mark quota-provider__mark--claude">{providerGlyph("claude")}</span>
-          {t("quota.connect.title")}
+          <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
+          {t(titleKey)}
         </h3>
-        <p>{t("quota.connect.body")}</p>
+        <p>{t(bodyKey)}</p>
         {provider.method === "keychain" ? <p className="quota-connect-card__hint">{t("quota.connect.keychain")}</p> : null}
-        <button type="button" className="quota-button quota-button--primary" onClick={() => connect(true)}>{t("quota.connect.action")}</button>
+        <button type="button" className="quota-button quota-button--primary" onClick={() => connect(id, true)}>{t(actionKey)}</button>
       </section>
     );
   }
@@ -98,15 +120,16 @@ function ProviderCard({
       <header className="quota-provider__header">
         <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
         <h3>{name}</h3>
-        {id === "claude" ? <button type="button" className="quota-disconnect" onClick={() => connect(false)}>{t("quota.disconnect.action")}</button> : null}
+        {id !== "codex" ? <button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button> : null}
         {provider.plan ? <span className="quota-plan">{provider.plan}</span> : null}
       </header>
-      {provider.status === "signed_out" ? <div className="quota-signed-out">{t(id === "claude" ? "quota.claude.signedOut" : "quota.codex.signedOut")}</div> : null}
-      {provider.status === "expired" ? <StatusStrip kind="expired">{t(id === "claude" ? "quota.expired.claude" : "quota.expired.codex")}</StatusStrip> : null}
+      {provider.status === "signed_out" ? <div className="quota-signed-out">{t(id === "claude" ? "quota.claude.signedOut" : id === "codex" ? "quota.codex.signedOut" : "quota.cursor.signedOut")}</div> : null}
+      {provider.status === "no_subscription" ? <div className="quota-signed-out">{t("quota.noSubscription")}</div> : null}
+      {provider.status === "expired" ? <StatusStrip kind="expired">{t(id === "claude" ? "quota.expired.claude" : id === "codex" ? "quota.expired.codex" : "quota.expired.cursor")}</StatusStrip> : null}
       {provider.status === "stale" ? <StatusStrip kind="stale">{t("quota.stale", { provider: name, t: elapsed(provider.fetchedAt, now) })}</StatusStrip> : null}
       {provider.status === "error" ? <div className="quota-error">{t("quota.error", { provider: name })}</div> : null}
       {(provider.status === "ok" || provider.status === "stale") ? provider.windows?.map((window, index) => (
-        <Meter key={`${window.id}-${window.label ?? index}`} window={window} now={now} t={t} />
+        <Meter key={`${window.id}-${window.label ?? index}`} window={window} cycleDays={provider.cycleDays} now={now} t={t} />
       )) : null}
       {(provider.status === "ok" || provider.status === "stale") && provider.credits ? (
         <div className="quota-credits">
@@ -132,13 +155,13 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
     setRefreshNonce((value) => value + 1);
   }, []);
 
-  const connect = useCallback((connected: boolean) => {
+  const connect = useCallback((provider: "claude" | "cursor", connected: boolean) => {
     const generation = beginRequestGeneration(requestGenerationRef);
     if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(false);
     ctx.api.fetch("quota", "connect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider: "claude", connected }),
+      body: JSON.stringify({ provider, connected }),
     })
       .then((response) => {
         if (!response.ok) throw new Error("connect_failed");
@@ -198,7 +221,11 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
     };
   }, [refresh]);
 
-  const fetchedAt = Math.max(data?.providers.claude.fetchedAt ?? 0, data?.providers.codex.fetchedAt ?? 0);
+  const fetchedAt = Math.max(
+    data?.providers.claude.fetchedAt ?? 0,
+    data?.providers.codex.fetchedAt ?? 0,
+    data?.providers.cursor.fetchedAt ?? 0,
+  );
   const updatedMinutes = Math.max(0, Math.floor((now - fetchedAt) / 60_000));
   return (
     <div className="quota-root">
@@ -209,6 +236,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
           <>
             <ProviderCard id="claude" provider={data.providers.claude} now={now} t={t} connect={connect} />
             <ProviderCard id="codex" provider={data.providers.codex} now={now} t={t} connect={connect} />
+            <ProviderCard id="cursor" provider={data.providers.cursor} now={now} t={t} connect={connect} />
           </>
         ) : null}
       </div>
