@@ -6,7 +6,12 @@ import { describe, expect, it, vi } from "vitest";
 import { handleConnect, handleSummary } from "../server/handlers.js";
 import type { QuotaService } from "../server/service.js";
 
-function harness(method: string, url = "/plugins/quota/summary", body: unknown = null) {
+function harness(
+  method: string,
+  url = "/plugins/quota/summary",
+  body: unknown = null,
+  contentType = "application/json",
+) {
   const writes: Array<{ status: number; payload: unknown }> = [];
   const writeJson = vi.fn(async () => {});
   const ctx = {
@@ -22,7 +27,7 @@ function harness(method: string, url = "/plugins/quota/summary", body: unknown =
   const req = {
     method,
     url,
-    headers: { host: "localhost", "content-type": "application/json" },
+    headers: { host: "localhost", "content-type": contentType },
   } as IncomingMessage;
   const service = {
     getSummary: vi.fn(async () => ({
@@ -61,5 +66,27 @@ describe("quota route handlers", () => {
     const wrongMethod = harness("POST");
     await handleSummary(wrongMethod.req, wrongMethod.res, wrongMethod.ctx, wrongMethod.service);
     expect(wrongMethod.writes[0]?.status).toBe(405);
+  });
+
+  it("requires the exact JSON media type while accepting parameters", async () => {
+    const jsonp = harness(
+      "POST",
+      "/plugins/quota/connect",
+      { provider: "claude", connected: true },
+      "application/jsonp",
+    );
+    await handleConnect(jsonp.req, jsonp.res, jsonp.ctx, jsonp.service);
+    expect(jsonp.writes).toEqual([{ status: 415, payload: { error: "unsupported_media_type" } }]);
+    expect(jsonp.writeJson).not.toHaveBeenCalled();
+
+    const charset = harness(
+      "POST",
+      "/plugins/quota/connect",
+      { provider: "claude", connected: true },
+      "Application/JSON; charset=utf-8",
+    );
+    await handleConnect(charset.req, charset.res, charset.ctx, charset.service);
+    expect(charset.writes[0]?.status).toBe(200);
+    expect(charset.writeJson).toHaveBeenCalledOnce();
   });
 });

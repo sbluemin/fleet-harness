@@ -37,7 +37,10 @@ export async function handleConnect(
     return;
   }
   const contentType = req.headers["content-type"];
-  if (typeof contentType !== "string" || !contentType.toLowerCase().startsWith("application/json")) {
+  const mediaType = typeof contentType === "string"
+    ? contentType.split(";", 1)[0]?.trim().toLowerCase()
+    : undefined;
+  if (mediaType !== "application/json") {
     ctx.host.http.writeJson(res, 415, { error: "unsupported_media_type" });
     return;
   }

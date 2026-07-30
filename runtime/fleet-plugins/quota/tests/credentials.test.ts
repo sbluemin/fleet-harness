@@ -73,4 +73,26 @@ describe("credential resolvers", () => {
     await expect(resolveClaudeCredentials(deps({ readFile: vi.fn(async () => { throw new Error("missing"); }) }))).resolves.toBeNull();
     await expect(resolveCodexCredentials(deps({ readFile: vi.fn(async () => "{") }))).resolves.toBeNull();
   });
+
+  it("rejects oversized credential files before reading them", async () => {
+    const readFile = vi.fn(async () => JSON.stringify({ accessToken: "must-not-read" }));
+    const result = await resolveClaudeCredentials(deps({
+      stat: vi.fn(async () => ({ size: 1_000_000 })),
+      readFile,
+    }));
+    expect(result).toBeNull();
+    expect(readFile).not.toHaveBeenCalled();
+  });
+
+  it("bounds injected file reads and macOS keychain output without stat", async () => {
+    const oversized = "x".repeat(65_537);
+    await expect(resolveCodexCredentials(deps({ readFile: vi.fn(async () => oversized) }))).resolves.toBeNull();
+    const fileFallback = vi.fn(async () => JSON.stringify({ accessToken: "fallback" }));
+    await expect(resolveClaudeCredentials(deps({
+      platform: "darwin",
+      execFile: vi.fn(async () => oversized),
+      readFile: fileFallback,
+    }))).resolves.toMatchObject({ accessToken: "fallback", method: "file" });
+    expect(fileFallback).toHaveBeenCalledOnce();
+  });
 });

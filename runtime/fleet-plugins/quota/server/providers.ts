@@ -7,6 +7,9 @@ import {
 import type { ProviderDto, ProviderResult, QuotaWindow, ResetCredits } from "./types.js";
 
 const REQUEST_TIMEOUT_MS = 10_000;
+const MAX_RESPONSE_BYTES = 262_144;
+const MAX_WINDOWS = 8;
+const MAX_CREDIT_ENTRIES = 256;
 
 export interface ProviderDeps {
   readonly credentials?: CredentialResolverDeps;
@@ -15,8 +18,14 @@ export interface ProviderDeps {
 }
 
 class ProviderHttpError extends Error {
-  constructor(readonly statusCode: number) {
-    super(`Provider request failed (${statusCode})`);
+  constructor(readonly statusCode?: number) {
+    super(statusCode === undefined ? "Provider request failed" : `Provider request failed (${statusCode})`);
+  }
+}
+
+class ProviderResponseTooLargeError extends Error {
+  constructor() {
+    super("Provider response too large");
   }
 }
 
@@ -48,10 +57,20 @@ function percent(value: unknown, fractionAware = false): number {
   return Math.min(100, Math.max(0, Math.round(normalized)));
 }
 
+function validatedString(value: unknown, pattern: RegExp): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return pattern.test(trimmed) ? trimmed : undefined;
+}
+
 function titleCase(value: unknown): string | undefined {
-  if (typeof value !== "string" || value.length === 0) return undefined;
-  const capped = value.slice(0, 80);
-  return `${capped[0]?.toUpperCase() ?? ""}${capped.slice(1)}`;
+  const validated = validatedString(value, /^[A-Za-z0-9][A-Za-z0-9 .+-]{0,23}$/);
+  if (!validated) return undefined;
+  return `${validated[0]?.toUpperCase() ?? ""}${validated.slice(1)}`;
+}
+
+function modelLabel(value: unknown): string {
+  return validatedString(value, /^[A-Za-z0-9][A-Za-z0-9 .+-]{0,39}$/) ?? "Model";
 }
 
 function claudeWindow(id: QuotaWindow["id"], source: unknown, label?: string): QuotaWindow | null {
@@ -59,7 +78,7 @@ function claudeWindow(id: QuotaWindow["id"], source: unknown, label?: string): Q
   if (!row) return null;
   return {
     id,
-    ...(label ? { label: label.slice(0, 80) } : {}),
+    ...(label ? { label } : {}),
     usedPercent: row.used_percentage !== undefined
       ? percent(row.used_percentage)
       : percent(row.utilization, true),
@@ -74,11 +93,17 @@ export function parseClaudeUsage(payload: unknown): { readonly windows: readonly
   const weekly = claudeWindow("weekly", root.seven_day);
   if (session) windows.push(session);
   if (weekly) windows.push(weekly);
-  for (const item of array(root.limits)) {
+  const limits = array(root.limits);
+  for (
+    let index = 0;
+    index < limits.length && index < MAX_CREDIT_ENTRIES && windows.length < MAX_WINDOWS;
+    index += 1
+  ) {
+    const item = limits[index];
     const limit = object(item);
     if (limit?.kind !== "weekly_scoped") continue;
     const model = object(object(limit.scope)?.model);
-    const label = typeof model?.display_name === "string" ? model.display_name : "Model";
+    const label = modelLabel(model?.display_name);
     const row = claudeWindow("model", limit, label);
     if (row) windows.push(row);
   }
@@ -120,14 +145,19 @@ export function parseCodexUsage(payload: unknown): { readonly windows: readonly 
 export function parseResetCredits(payload: unknown): ResetCredits | undefined {
   const root = object(payload);
   if (!root || !Number.isSafeInteger(root.available_count) || (root.available_count as number) < 0) return undefined;
-  const expiries = array(root.credits)
-    .map(object)
-    .filter((credit): credit is Record<string, unknown> => credit?.status === "available")
-    .map((credit) => safeTimestamp(credit.expires_at))
-    .filter((value): value is number => value !== undefined);
+  const credits = array(root.credits);
+  let nextExpiresAt: number | undefined;
+  for (let index = 0; index < credits.length && index < MAX_CREDIT_ENTRIES; index += 1) {
+    const credit = object(credits[index]);
+    if (credit?.status !== "available") continue;
+    const expiry = safeTimestamp(credit.expires_at);
+    if (expiry !== undefined && (nextExpiresAt === undefined || expiry < nextExpiresAt)) {
+      nextExpiresAt = expiry;
+    }
+  }
   return {
     available: root.available_count as number,
-    ...(expiries.length > 0 ? { nextExpiresAt: Math.min(...expiries) } : {}),
+    ...(nextExpiresAt !== undefined ? { nextExpiresAt } : {}),
   };
 }
 
@@ -135,9 +165,47 @@ async function getJson(fetchImpl: typeof fetch, url: string, headers: HeadersIni
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetchImpl(url, { method: "GET", headers, signal: controller.signal });
+    const response = await fetchImpl(url, {
+      method: "GET",
+      headers,
+      signal: controller.signal,
+      redirect: "error",
+    });
+    if (response.url !== "" && response.url !== url) throw new ProviderHttpError();
     if (!response.ok) throw new ProviderHttpError(response.status);
-    return await response.json();
+    const contentLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > MAX_RESPONSE_BYTES) {
+      controller.abort();
+      throw new ProviderResponseTooLargeError();
+    }
+    if (!response.body) {
+      const text = await response.text();
+      if (text.length > MAX_RESPONSE_BYTES) {
+        controller.abort();
+        throw new ProviderResponseTooLargeError();
+      }
+      return JSON.parse(text);
+    }
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_RESPONSE_BYTES) {
+        controller.abort();
+        throw new ProviderResponseTooLargeError();
+      }
+      chunks.push(value);
+    }
+    const body = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      body.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return JSON.parse(new TextDecoder().decode(body));
   } finally {
     clearTimeout(timer);
   }
@@ -218,7 +286,10 @@ export async function fetchCodexUsage(deps: ProviderDeps = {}): Promise<Provider
 }
 
 export function sanitizeProviderError(error: unknown): string {
+  if (error instanceof ProviderResponseTooLargeError) return "Provider response too large";
   if (error instanceof DOMException && error.name === "AbortError") return "Provider request timed out";
-  if (error instanceof ProviderHttpError) return `Provider request failed (${error.statusCode})`;
+  if (error instanceof ProviderHttpError && error.statusCode !== undefined) {
+    return `Provider request failed (${error.statusCode})`;
+  }
   return "Provider request failed";
 }
