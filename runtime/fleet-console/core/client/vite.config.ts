@@ -41,6 +41,7 @@ function fleetPluginsVirtualModule(): Plugin {
       const diffClientEntry = path.resolve(__dirname, "../../../fleet-plugins/repository/client/index.tsx");
       const skillsClientEntry = path.resolve(__dirname, "../../../fleet-plugins/skills/client/index.tsx");
       const ledgerClientEntry = path.resolve(__dirname, "../../../fleet-plugins/ledger/client/index.tsx");
+      const quotaClientEntry = path.resolve(__dirname, "../../../fleet-plugins/quota/client/index.tsx");
       const scuttlebuttClientEntry = path.resolve(__dirname, "../../../fleet-plugins/scuttlebutt/client/index.tsx");
       return [
         `import { plugins as terminalPlugins } from ${JSON.stringify(terminalClientEntry)};`,
@@ -48,8 +49,9 @@ function fleetPluginsVirtualModule(): Plugin {
         `import { plugins as repositoryPlugins } from ${JSON.stringify(diffClientEntry)};`,
         `import { plugins as skillsPlugins } from ${JSON.stringify(skillsClientEntry)};`,
         `import { plugins as ledgerPlugins } from ${JSON.stringify(ledgerClientEntry)};`,
+        `import { plugins as quotaPlugins } from ${JSON.stringify(quotaClientEntry)};`,
         `import { plugins as scuttlebuttPlugins } from ${JSON.stringify(scuttlebuttClientEntry)};`,
-        `export const plugins = [...terminalPlugins, ...fileExplorerPlugins, ...repositoryPlugins, ...skillsPlugins, ...ledgerPlugins, ...scuttlebuttPlugins];`,
+        `export const plugins = [...terminalPlugins, ...fileExplorerPlugins, ...repositoryPlugins, ...skillsPlugins, ...ledgerPlugins, ...quotaPlugins, ...scuttlebuttPlugins];`,
       ].join("\n");
     },
   };
