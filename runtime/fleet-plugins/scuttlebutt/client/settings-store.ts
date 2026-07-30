@@ -4,6 +4,7 @@ export interface ScuttlebuttSettings {
   readonly tori: boolean;
   readonly bori: boolean;
   readonly dori: boolean;
+  readonly departureBell: boolean;
 }
 
 // 실험 기능이라 아무것도 켜지 않은 채로 출발한다 — 상주하는 마스코트는 스스로 골라 들이는 것이다.
@@ -11,6 +12,7 @@ const DEFAULT_SETTINGS: ScuttlebuttSettings = {
   tori: false,
   bori: false,
   dori: false,
+  departureBell: true,
 };
 
 let settings = DEFAULT_SETTINGS;
@@ -57,6 +59,7 @@ function parseSettings(value: Record<string, unknown> | null): ScuttlebuttSettin
     tori: typeof value.tori === "boolean" ? value.tori : false,
     bori: typeof value.bori === "boolean" ? value.bori : false,
     dori: typeof value.dori === "boolean" ? value.dori : false,
+    departureBell: typeof value.departureBell === "boolean" ? value.departureBell : true,
   };
 }
 

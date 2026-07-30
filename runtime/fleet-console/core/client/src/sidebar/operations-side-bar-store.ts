@@ -2,6 +2,7 @@ import { useCallback, useSyncExternalStore } from "react";
 
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
+import { clearDeparture, markDeparture, resetDepartureForTests } from "../operation-departure.js";
 import { clearIdleArrival, markIdleArrival, resetIdleArrivalForTests } from "../operation-idle-arrival.js";
 import { resolveOperationActivity } from "../operation-activity.js";
 import { getState, subscribe } from "../store.js";
@@ -195,12 +196,16 @@ export function trackOperationActivityTransitions(input: {
   movedIds.forEach((id) => pendingStatusLandingIds.add(id));
   for (const operation of input.operations) {
     if (!movedIds.includes(operation.id)) continue;
+    const focusedAndAcknowledged = operation.id === input.activeOperationId
+      && operation.theaterId === input.activeTheaterId
+      && input.activeOperationAcknowledged === true;
+    if (nextStatuses.get(operation.id) === "running") {
+      if (!focusedAndAcknowledged) markDeparture(operation.id);
+    } else {
+      clearDeparture(operation.id);
+    }
     if (nextStatuses.get(operation.id) === "idle") {
-      if (!(operation.id === input.activeOperationId
-        && operation.theaterId === input.activeTheaterId
-        && input.activeOperationAcknowledged === true)) {
-        markIdleArrival(operation.id);
-      }
+      if (!focusedAndAcknowledged) markIdleArrival(operation.id);
     } else {
       clearIdleArrival(operation.id);
     }
@@ -236,6 +241,7 @@ export function resetSideBarStatusSectionCollapseForTests(): void {
 export function resetSideBarStatusRecencyForTests(): void {
   statusTransitionCounter = 0;
   statusTransitionTicks = new Map();
+  resetDepartureForTests();
   resetIdleArrivalForTests();
   previousActivityById = new Map();
   baselinedLiveActivityIds = new Set();

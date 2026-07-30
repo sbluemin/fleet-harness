@@ -4,13 +4,21 @@ import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { FloatingWidgetArrival, FloatingWidgetDescriptor } from "@fleet-console/sdk/floating";
+import type {
+  FloatingWidgetArrival,
+  FloatingWidgetDeparture,
+  FloatingWidgetDescriptor,
+} from "@fleet-console/sdk/floating";
 import type { FleetClientPlugin } from "@fleet-console/sdk/plugin";
 
 import {
   markIdleArrival,
   resetIdleArrivalForTests,
 } from "../core/client/src/operation-idle-arrival.js";
+import {
+  markDeparture,
+  resetDepartureForTests,
+} from "../core/client/src/operation-departure.js";
 import { setState } from "../core/client/src/store.js";
 import type { OperationNode } from "../core/client/src/types.js";
 
@@ -32,6 +40,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   resetIdleArrivalForTests();
+  resetDepartureForTests();
   setState({ operations: [] });
   container = document.createElement("div");
   document.body.append(container);
@@ -41,6 +50,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   resetIdleArrivalForTests();
+  resetDepartureForTests();
   setState({ operations: [] });
   document.body.replaceChildren();
   floatingWidgets = [];
@@ -131,6 +141,51 @@ describe("FloatingWidgetLayer", () => {
     renderLayer([]);
     const updateCountAfterUnmount = received.length;
     act(() => markIdleArrival("charlie"));
+
+    expect(received).toHaveLength(updateCountAfterUnmount);
+  });
+
+  it("delivers titled departures immediately, updates them, and unsubscribes on unmount", () => {
+    const received: (readonly FloatingWidgetDeparture[])[] = [];
+    setState({
+      operations: [
+        operation("alpha", "Alpha launch"),
+        operation("bravo", "Bravo start"),
+        operation("charlie", "Charlie follow-up"),
+      ],
+    });
+    markDeparture("alpha");
+
+    const plugin: FleetClientPlugin = {
+      id: "departures",
+      floatingWidgets: [{
+        id: "observer",
+        render: (context) => {
+          useEffect(
+            () => context.departures.subscribe((departures) => received.push(departures)),
+            [context.departures],
+          );
+          return createElement("span", null, "Departure observer");
+        },
+      }],
+    };
+
+    renderLayer([plugin]);
+
+    expect(received).toEqual([
+      [{ operationId: "alpha", title: "Alpha launch" }],
+    ]);
+
+    act(() => markDeparture("bravo"));
+
+    expect(received.at(-1)).toEqual([
+      { operationId: "alpha", title: "Alpha launch" },
+      { operationId: "bravo", title: "Bravo start" },
+    ]);
+
+    renderLayer([]);
+    const updateCountAfterUnmount = received.length;
+    act(() => markDeparture("charlie"));
 
     expect(received).toHaveLength(updateCountAfterUnmount);
   });

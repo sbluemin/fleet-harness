@@ -17,6 +17,16 @@ export interface FloatingWidgetArrivalsCapability {
   subscribe(listener: (arrivals: readonly FloatingWidgetArrival[]) => void): () => void;
 }
 
+export interface FloatingWidgetDeparture {
+  readonly operationId: string;
+  readonly title: string;
+}
+
+export interface FloatingWidgetDeparturesCapability {
+  list(): readonly FloatingWidgetDeparture[];
+  subscribe(listener: (departures: readonly FloatingWidgetDeparture[]) => void): () => void;
+}
+
 /**
  * 콘솔 전역 상태를 부유 위젯이 읽는 유일한 창구. 개별 Operation의 정체는 넘기지 않고 집계만 넘겨
  * 위젯이 함대 분위기에만 반응하게 한다 — 세부는 여전히 호스트 소유다.
@@ -40,6 +50,7 @@ export interface FloatingWidgetSignalsCapability {
 export interface FloatingWidgetContext {
   readonly api: ClientApiCapability;
   readonly arrivals: FloatingWidgetArrivalsCapability;
+  readonly departures: FloatingWidgetDeparturesCapability;
   readonly signals: FloatingWidgetSignalsCapability;
   readonly lifecycle: ClientLifecycleCapability;
   readonly preferences: ClientPreferencesCapability;

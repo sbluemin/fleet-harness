@@ -54,6 +54,14 @@ function ScuttlebuttSettingsSection() {
           ))}
         </div>
       </SettingsRow>
+      <SettingsRow label={t("departure.started")}>
+        <SettingsToggle
+          label={t("departure.started")}
+          checked={settings.departureBell}
+          disabled={saving}
+          onChange={(enabled) => void save({ departureBell: enabled })}
+        />
+      </SettingsRow>
     </SettingsCard>
   );
 }

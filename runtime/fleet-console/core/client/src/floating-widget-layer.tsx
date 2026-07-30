@@ -3,6 +3,8 @@ import type {
   FloatingWidgetArrival,
   FloatingWidgetArrivalsCapability,
   FloatingWidgetContext,
+  FloatingWidgetDeparture,
+  FloatingWidgetDeparturesCapability,
   FloatingWidgetDescriptor,
   FloatingWidgetFleetSignals,
   FloatingWidgetSignalsCapability,
@@ -13,6 +15,7 @@ import { panelMotionSuppressed } from "./canvas/canvas-store.js";
 import { subscribe as subscribeGlobalSettings } from "./global-settings-store.js";
 import { useConsoleLocale } from "./i18n/index.js";
 import { resolveOperationActivity } from "./operation-activity.js";
+import { getDepartureIds, subscribeDeparture } from "./operation-departure.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "./operation-idle-arrival.js";
 import { createHostCapabilities } from "./plugin-capabilities.js";
 import { usePluginRegistry } from "./plugin-registry.js";
@@ -23,17 +26,20 @@ export function FloatingWidgetLayer() {
   const language = useConsoleLocale();
   const capabilities = useMemo(() => createHostCapabilities(), []);
   const arrivals = useMemo(() => createManagedArrivalsCapability(), []);
+  const departures = useMemo(() => createManagedDeparturesCapability(), []);
   const signals = useMemo(() => createManagedSignalsCapability(), []);
   useEffect(() => () => arrivals.dispose(), [arrivals]);
+  useEffect(() => () => departures.dispose(), [departures]);
   useEffect(() => () => signals.dispose(), [signals]);
   const context = useMemo<FloatingWidgetContext>(() => ({
     api: capabilities.api,
     arrivals: arrivals.capability,
+    departures: departures.capability,
     signals: signals.capability,
     lifecycle: capabilities.lifecycle,
     preferences: capabilities.preferences,
     language,
-  }), [arrivals, capabilities, language, signals]);
+  }), [arrivals, capabilities, departures, language, signals]);
 
   if (floatingWidgets.length === 0) return null;
 
@@ -92,6 +98,63 @@ function createManagedArrivalsCapability(): ManagedArrivalsCapability {
       if (!active) return;
       active = false;
       unsubscribeIdleArrival();
+      unsubscribeStore();
+      activeSubscriptions.delete(unsubscribe);
+    };
+
+    activeSubscriptions.add(unsubscribe);
+    try {
+      listener(previous);
+    } catch (error) {
+      unsubscribe();
+      throw error;
+    }
+    return unsubscribe;
+  };
+
+  return {
+    capability: { list, subscribe },
+    dispose: () => {
+      for (const unsubscribe of [...activeSubscriptions]) unsubscribe();
+    },
+  };
+}
+
+interface ManagedDeparturesCapability {
+  readonly capability: FloatingWidgetDeparturesCapability;
+  readonly dispose: () => void;
+}
+
+function createManagedDeparturesCapability(): ManagedDeparturesCapability {
+  const activeSubscriptions = new Set<() => void>();
+
+  const list = (): readonly FloatingWidgetDeparture[] => {
+    const titlesById = new Map(getState().operations.map((operation) => [operation.id, operation.title]));
+    const departures: FloatingWidgetDeparture[] = [];
+    for (const operationId of getDepartureIds()) {
+      const title = titlesById.get(operationId);
+      if (title !== undefined) departures.push({ operationId, title });
+    }
+    return departures;
+  };
+
+  const subscribe: FloatingWidgetDeparturesCapability["subscribe"] = (listener) => {
+    let previous = list();
+    let active = true;
+
+    const notifyIfChanged = () => {
+      const next = list();
+      if (arrivalsEqual(previous, next)) return;
+      previous = next;
+      listener(next);
+    };
+
+    const unsubscribeDeparture = subscribeDeparture(notifyIfChanged);
+    const unsubscribeStore = subscribeStore(notifyIfChanged);
+    const unsubscribe = () => {
+      if (!active) return;
+      active = false;
+      unsubscribeDeparture();
       unsubscribeStore();
       activeSubscriptions.delete(unsubscribe);
     };
