@@ -50,6 +50,7 @@ describe("CommitRow", () => {
       checkouts: [],
       selected: false,
       graphNode: layoutGraph([COMMIT]).nodes[0]!,
+      laneCount: 1,
       onSelect: vi.fn(),
     });
     const children = row.props.children as readonly ReactNode[];
