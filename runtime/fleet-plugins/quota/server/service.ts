@@ -1,19 +1,24 @@
-import { fetchClaudeUsage, fetchCodexUsage, sanitizeProviderError } from "./providers.js";
+import { fetchClaudeUsage, fetchCodexUsage, fetchCursorUsage, sanitizeProviderError } from "./providers.js";
 import type { ProviderDto, ProviderResult, ProviderSuccess, QuotaSummaryDto } from "./types.js";
 
 const CACHE_TTL_MS = 120_000;
 const STALE_TTL_MS = 1_800_000;
 
-type ProviderId = "claude" | "codex";
+type ProviderId = "claude" | "codex" | "cursor";
 
 export interface QuotaService {
-  getSummary(options?: { readonly force?: boolean }): Promise<QuotaSummaryDto>;
+  getSummary(options?: {
+    readonly force?: boolean;
+    readonly forceProvider?: "claude" | "codex" | "cursor";
+  }): Promise<QuotaSummaryDto>;
 }
 
 export interface QuotaServiceDeps {
   readonly isClaudeConnected: () => Promise<boolean>;
+  readonly isCursorConnected: () => Promise<boolean>;
   readonly fetchClaude?: () => Promise<ProviderResult>;
   readonly fetchCodex?: () => Promise<ProviderResult>;
+  readonly fetchCursor?: () => Promise<ProviderResult>;
   readonly now?: () => number;
   readonly platform?: NodeJS.Platform;
 }
@@ -34,13 +39,17 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
   const fetchers: Record<ProviderId, () => Promise<ProviderResult>> = {
     claude: deps.fetchClaude ?? (() => fetchClaudeUsage()),
     codex: deps.fetchCodex ?? (() => fetchCodexUsage()),
+    cursor: deps.fetchCursor ?? (() => fetchCursorUsage()),
   };
   const cache = new Map<ProviderId, CacheEntry>();
   const lastGood = new Map<ProviderId, ProviderSuccess>();
   const inFlight = new Map<ProviderId, Promise<ProviderDto>>();
 
   async function load(id: ProviderId, force: boolean): Promise<ProviderDto> {
-    if (id === "claude" && !await deps.isClaudeConnected()) {
+    if (
+      (id === "claude" && !await deps.isClaudeConnected())
+      || (id === "cursor" && !await deps.isCursorConnected())
+    ) {
       return { status: "not_connected", method: (deps.platform ?? process.platform) === "darwin" ? "keychain" : "file" };
     }
     const cached = cache.get(id);
@@ -81,11 +90,12 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
 
   return {
     async getSummary(options = {}) {
-      const [claude, codex] = await Promise.all([
-        load("claude", options.force === true),
-        load("codex", options.force === true),
+      const [claude, codex, cursor] = await Promise.all([
+        load("claude", options.force === true || options.forceProvider === "claude"),
+        load("codex", options.force === true || options.forceProvider === "codex"),
+        load("cursor", options.force === true || options.forceProvider === "cursor"),
       ]);
-      return { providers: { claude, codex } };
+      return { providers: { claude, codex, cursor } };
     },
   };
 }

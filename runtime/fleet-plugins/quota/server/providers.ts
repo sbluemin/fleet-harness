@@ -2,6 +2,7 @@ import {
   defaultCredentialDeps,
   resolveClaudeCredentials,
   resolveCodexCredentials,
+  resolveCursorCredentials,
   type CredentialResolverDeps,
 } from "./credentials.js";
 import type { ProviderDto, ProviderResult, QuotaWindow, ResetCredits } from "./types.js";
@@ -43,8 +44,14 @@ function safeTimestamp(value: unknown): number | undefined {
   let result: number | undefined;
   if (typeof value === "number" && Number.isFinite(value)) result = value < 1e12 ? value * 1_000 : value;
   if (typeof value === "string") {
-    const parsed = Date.parse(value);
-    if (Number.isFinite(parsed)) result = parsed;
+    const trimmed = value.trim();
+    if (/^[1-9]\d{9,14}$/.test(trimmed)) {
+      const parsed = Number(trimmed);
+      if (Number.isFinite(parsed)) result = parsed < 1e12 ? parsed * 1_000 : parsed;
+    } else {
+      const parsed = Date.parse(value);
+      if (Number.isFinite(parsed)) result = parsed;
+    }
   }
   if (result === undefined || !Number.isFinite(result) || result < 0) return undefined;
   const rounded = Math.round(result);
@@ -69,6 +76,8 @@ function validatedString(value: unknown, pattern: RegExp): string | undefined {
 function titleCase(value: unknown): string | undefined {
   const validated = validatedString(value, /^[A-Za-z0-9][A-Za-z0-9 .+-]{0,23}$/);
   if (!validated) return undefined;
+  // Plan labels deliberately exclude money, so a bare number must never enter the DTO.
+  if (/^\d+$/.test(validated)) return undefined;
   return `${validated[0]?.toUpperCase() ?? ""}${validated.slice(1)}`;
 }
 
@@ -172,6 +181,42 @@ export function parseCodexUsage(payload: unknown): { readonly windows: readonly 
   };
 }
 
+export function parseCursorUsage(payload: unknown):
+  | { readonly status: "ok"; readonly windows: readonly QuotaWindow[]; readonly cycleDays?: number }
+  | { readonly status: "no_subscription" } {
+  const root = object(payload);
+  const planUsage = object(root?.planUsage);
+  if (root?.enabled === false || !planUsage) return { status: "no_subscription" };
+  const resetsAt = safeTimestamp(root?.billingCycleEnd);
+  const windows: QuotaWindow[] = [];
+  for (const [value, label] of [
+    [planUsage.totalPercentUsed, undefined],
+    [planUsage.autoPercentUsed, "Auto"],
+    [planUsage.apiPercentUsed, "API"],
+  ] as const) {
+    if (typeof value !== "number" || !Number.isFinite(value)) continue;
+    windows.push({
+      id: "cycle",
+      ...(label ? { label } : {}),
+      usedPercent: percent(value),
+      ...(resetsAt !== undefined ? { resetsAt } : {}),
+    });
+  }
+  if (windows.length === 0) return { status: "no_subscription" };
+  const cycleStart = safeTimestamp(root?.billingCycleStart);
+  const cycleEnd = safeTimestamp(root?.billingCycleEnd);
+  let cycleDays: number | undefined;
+  if (cycleStart !== undefined && cycleEnd !== undefined && cycleEnd > cycleStart) {
+    const days = Math.round((cycleEnd - cycleStart) / 86_400_000);
+    if (days >= 1 && days <= 400) cycleDays = days;
+  }
+  return {
+    status: "ok",
+    windows,
+    ...(cycleDays !== undefined ? { cycleDays } : {}),
+  };
+}
+
 export function parseResetCredits(payload: unknown): ResetCredits | undefined {
   const root = object(payload);
   if (!root || !Number.isSafeInteger(root.available_count) || (root.available_count as number) < 0) return undefined;
@@ -191,13 +236,16 @@ export function parseResetCredits(payload: unknown): ResetCredits | undefined {
   };
 }
 
-async function getJson(fetchImpl: typeof fetch, url: string, headers: HeadersInit): Promise<unknown> {
+async function requestJson(
+  fetchImpl: typeof fetch,
+  url: string,
+  init: RequestInit,
+): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await fetchImpl(url, {
-      method: "GET",
-      headers,
+      ...init,
       signal: controller.signal,
       redirect: "error",
     });
@@ -239,6 +287,14 @@ async function getJson(fetchImpl: typeof fetch, url: string, headers: HeadersIni
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function getJson(fetchImpl: typeof fetch, url: string, headers: HeadersInit): Promise<unknown> {
+  return requestJson(fetchImpl, url, { method: "GET", headers });
+}
+
+async function postJson(fetchImpl: typeof fetch, url: string, headers: HeadersInit): Promise<unknown> {
+  return requestJson(fetchImpl, url, { method: "POST", headers, body: "{}" });
 }
 
 function expired(error: unknown): ProviderDto | null {
@@ -311,6 +367,50 @@ export async function fetchCodexUsage(deps: ProviderDeps = {}): Promise<Provider
   } catch (error) {
     const result = expired(error);
     if (result) return result;
+    throw error;
+  }
+}
+
+export async function fetchCursorUsage(deps: ProviderDeps = {}): Promise<ProviderResult> {
+  const credentials = await resolveCursorCredentials(deps.credentials ?? defaultCredentialDeps);
+  if (!credentials) return { status: "signed_out" };
+  const headers = {
+    Authorization: `Bearer ${credentials.accessToken}`,
+    "Content-Type": "application/json",
+    "Connect-Protocol-Version": "1",
+  };
+  try {
+    const fetchImpl = deps.fetch ?? fetch;
+    const usage = parseCursorUsage(await postJson(
+      fetchImpl,
+      "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage",
+      headers,
+    ));
+    if (usage.status === "no_subscription") return { status: "no_subscription", method: credentials.method };
+    let plan: string | undefined;
+    try {
+      const planRoot = object(await postJson(
+        fetchImpl,
+        "https://api2.cursor.sh/aiserver.v1.DashboardService/GetPlanInfo",
+        headers,
+      ));
+      // 응답은 planName을 planInfo 아래에 중첩해 돌려준다. 루트 읽기는 과거 스키마 대비 폴백이다.
+      plan = titleCase(object(planRoot?.planInfo)?.planName ?? planRoot?.planName);
+    } catch {
+      // Plan metadata is display-only; its failure must not sink the usage snapshot.
+      plan = undefined;
+    }
+    return {
+      status: "ok",
+      method: credentials.method,
+      ...(plan ? { plan } : {}),
+      ...(usage.cycleDays !== undefined ? { cycleDays: usage.cycleDays } : {}),
+      windows: usage.windows,
+      fetchedAt: (deps.now ?? Date.now)(),
+    };
+  } catch (error) {
+    const result = expired(error);
+    if (result) return { ...result, method: credentials.method };
     throw error;
   }
 }

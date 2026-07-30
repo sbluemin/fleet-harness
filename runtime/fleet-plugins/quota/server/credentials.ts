@@ -27,6 +27,11 @@ export interface CodexCredentials {
   readonly accountId?: string;
 }
 
+export interface CursorCredentials {
+  readonly accessToken: string;
+  readonly method: CredentialMethod;
+}
+
 const execFileAsync = promisify(nodeExecFile);
 const MAX_CREDENTIAL_BYTES = 65_536;
 
@@ -80,6 +85,12 @@ function record(value: unknown): Record<string, unknown> | null {
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function optionalTrimmedString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function optionalEpoch(value: unknown): number | undefined {
@@ -140,6 +151,57 @@ export async function resolveCodexCredentials(deps: CredentialResolverDeps): Pro
     const accessToken = optionalString(tokens?.access_token);
     if (!accessToken) return null;
     return { accessToken, accountId: optionalString(tokens?.account_id) };
+  } catch {
+    return null;
+  }
+}
+
+function parseCursorCredentialJson(raw: string, method: CredentialMethod): CursorCredentials | null {
+  if (raw.length > MAX_CREDENTIAL_BYTES) return null;
+  try {
+    const parsed = record(JSON.parse(raw));
+    if (!parsed) return null;
+    const tokens = record(parsed.tokens);
+    const cursorAuth = record(parsed.cursorAuth);
+    const accessToken = [
+      parsed.accessToken,
+      parsed.access_token,
+      tokens?.accessToken,
+      tokens?.access_token,
+      cursorAuth?.accessToken,
+      cursorAuth?.access_token,
+    ].map(optionalTrimmedString).find((value) => value !== undefined);
+    return accessToken ? { accessToken, method } : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function resolveCursorCredentials(deps: CredentialResolverDeps): Promise<CursorCredentials | null> {
+  if (deps.platform === "darwin") {
+    try {
+      const raw = await deps.execFile(
+        "security",
+        ["find-generic-password", "-s", "cursor-access-token", "-a", "cursor-user", "-w"],
+        { timeout: 5_000 },
+      );
+      const accessToken = raw.length <= MAX_CREDENTIAL_BYTES ? optionalTrimmedString(raw) : undefined;
+      if (accessToken) return { accessToken, method: "keychain" };
+    } catch {
+      // The auth file is the required macOS fallback.
+    }
+  }
+  const home = deps.homedir();
+  const authFile = deps.platform === "win32"
+    ? path.join(deps.env.APPDATA || path.join(home, "AppData", "Roaming"), "Cursor", "auth.json")
+    : deps.platform === "darwin"
+      ? path.join(home, ".cursor", "auth.json")
+      : path.join(deps.env.XDG_CONFIG_HOME || path.join(home, ".config"), "cursor", "auth.json");
+  try {
+    const raw = await deps.readBounded(authFile, MAX_CREDENTIAL_BYTES);
+    return raw === null || raw.length > MAX_CREDENTIAL_BYTES
+      ? null
+      : parseCursorCredentialJson(raw, "file");
   } catch {
     return null;
   }
