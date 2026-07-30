@@ -117,6 +117,7 @@ export const pagesEn = {
   // shortcuts
   "shortcuts.group.console": "Console",
   "shortcuts.console.searchOps": "Search Operations across Theaters",
+  "shortcuts.console.commandPalette": "Open Command Palette",
   "shortcuts.console.toggleSidebar": "Toggle the left sidebar",
   "shortcuts.console.toggleRail": "Toggle the right activity rail",
   "shortcuts.group.operations": "Operations",
@@ -405,6 +406,7 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
 
   "shortcuts.group.console": "Console",
   "shortcuts.console.searchOps": "Theater 전체에서 Operation 검색",
+  "shortcuts.console.commandPalette": "커맨드 팔레트 열기",
   "shortcuts.console.toggleSidebar": "왼쪽 사이드바 전환",
   "shortcuts.console.toggleRail": "오른쪽 Activity Rail 전환",
   "shortcuts.group.operations": "Operations",

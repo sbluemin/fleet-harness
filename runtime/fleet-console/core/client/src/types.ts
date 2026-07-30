@@ -193,6 +193,7 @@ export interface ConsoleState {
   readonly theaterError: string | null;
   readonly operationsViewActive: boolean;
   readonly operationSearchOpen: boolean;
+  readonly operationSearchSeed: string | null;
   readonly whatsNewOpen: boolean;
   readonly releaseNotes: readonly ReleaseNotes[];
   readonly releaseNotesLoading: boolean;

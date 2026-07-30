@@ -4,6 +4,16 @@ import { getT } from "../core/client/src/i18n/index.js";
 import { buildShortcutGroups } from "../core/client/src/shortcuts-catalog.js";
 
 describe("shortcut catalog", () => {
+  it("lists the command palette immediately after operation search", () => {
+    const consoleGroup = buildShortcutGroups(getT("en"))
+      .find((group) => group.title === "Console")!;
+
+    expect(consoleGroup.entries.slice(0, 2)).toEqual([
+      { combos: [["Mod", "K"]], description: "Search Operations across Theaters" },
+      { combos: [["Mod", "P"]], description: "Open Command Palette" },
+    ]);
+  });
+
   it("appends active companion shortcuts to the end of Operations", () => {
     const operations = buildShortcutGroups(getT("en"), [
       { label: "C", title: "Carrier Streams" },

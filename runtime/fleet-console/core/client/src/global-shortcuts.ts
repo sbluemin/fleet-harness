@@ -4,6 +4,7 @@ import { isKeyboardShortcutsModalOpen } from "./components/keyboard-shortcuts-di
 export interface ConsoleGlobalShortcutDependencies {
   readonly getSideBarCollapsed: () => boolean;
   readonly setSideBarCollapsed: (collapsed: boolean) => void;
+  readonly openOperationSearch: () => void;
   readonly toggleOperationSearch: () => void;
   readonly toggleRailChrome: () => void;
   readonly canUndoLastClose?: () => boolean;
@@ -27,6 +28,12 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       event.preventDefault();
       event.stopImmediatePropagation();
       dependencies.toggleOperationSearch();
+      return;
+    }
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "p") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      dependencies.openOperationSearch();
       return;
     }
     // Mod+Alt+B(rail): macOS는 ⌘(+⌥)로 발화하며 ⌥B의 합성문자(∫)는 무시하고 code로 판정한다.

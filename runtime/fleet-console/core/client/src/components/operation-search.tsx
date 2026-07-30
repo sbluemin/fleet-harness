@@ -77,6 +77,7 @@ export function OperationSearch({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const cardRef = useRef<HTMLElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const operationSearchWasOpenRef = useRef(false);
   const resultRefs = useRef(new Map<string, HTMLButtonElement>());
   const searchGenerationRef = useRef(0);
   const commandMode = isCommandModeInput(query);
@@ -154,6 +155,12 @@ export function OperationSearch({
       previousFocusRef.current?.focus();
     };
   }, [state.operationSearchOpen]);
+
+  useEffect(() => {
+    const opening = state.operationSearchOpen && !operationSearchWasOpenRef.current;
+    operationSearchWasOpenRef.current = state.operationSearchOpen;
+    if (opening) setQuery(state.operationSearchSeed ?? "");
+  }, [state.operationSearchOpen, state.operationSearchSeed]);
 
   useEffect(() => {
     if (!state.operationSearchOpen) {
