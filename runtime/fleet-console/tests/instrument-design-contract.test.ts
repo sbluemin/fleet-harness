@@ -663,7 +663,7 @@ describe("Instrument core design contract", () => {
     expect(rail).toContain(".right-rail.is-switching");
     // Doctrine: the overlay slot ::before composites its glass layers over an opaque
     // var(--ink-deep) final layer — maritime/carbon --surface-glass-strong is a 78~80%
-    // alpha token, so without the underlay the Solid(100) preset can never be opaque.
+    // alpha token, so without the underlay the slider's 100% endpoint can never be opaque.
     expect(rail).toMatch(/\.right-rail\.is-overlay \.right-rail-panel-slot::before \{[^}]*\)\s*,\s*var\(--ink-deep\);/);
     // Doctrine: keep both WebKit and Firefox track styling so the continuous
     // opacity control communicates its filled range in either engine.

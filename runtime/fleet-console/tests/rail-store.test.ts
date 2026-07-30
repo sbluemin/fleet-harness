@@ -240,6 +240,8 @@ describe("rail overlay alpha", () => {
     ["83", 83],
     ["150", 100],
     ["10", 40],
+    ["", 100],
+    ["  ", 100],
   ] as const)("restores stored alpha %s", async (stored, expected) => {
     stubOverlayAlphaStorage(stored);
     const { getRailStoreSnapshot } = await freshStore();

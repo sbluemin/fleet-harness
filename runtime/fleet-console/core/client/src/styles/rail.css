@@ -78,9 +78,9 @@
   z-index: 0;
   border-radius: inherit;
   /* maritime/carbon 테마의 --surface-glass-strong은 78~80% 알파의 반투명 토큰이라 glass 층만으로는
-     Solid(100) 프리셋에서도 Map이 비쳐 보인다. 최하단에 불투명 --ink-deep 언더레이를 깔아
-     프리셋 100=완전 불투명을 보장하고, glass 믹스의 제2 성분이 이미 --ink-deep이므로 색조는 유지된다.
-     감쇠는 ::before 전체 opacity로만 적용되어 프리셋 라벨(100/90/75/60)이 실제 불투명도와 일치한다. */
+     알파 100에서도 Map이 비쳐 보인다. 최하단에 불투명 --ink-deep 언더레이를 깔아 슬라이더
+     최대값 100=완전 불투명을 보장하고, glass 믹스의 제2 성분이 이미 --ink-deep이므로 색조는 유지된다.
+     감쇠는 ::before 전체 opacity로만 적용되어 슬라이더 수치(40–100%)가 실제 불투명도와 일치한다. */
   background:
     radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
     linear-gradient(
@@ -228,6 +228,14 @@
 
 .right-rail-alpha-slider:focus-visible::-moz-range-thumb {
   box-shadow: 0 0 0 2px var(--brass);
+}
+
+/* forced-colors 모드는 box-shadow 포커스 링을 제거하므로 outline으로 병기한다. */
+@media (forced-colors: active) {
+  .right-rail-alpha-slider:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 1px;
+  }
 }
 
 .right-rail-alpha-value {

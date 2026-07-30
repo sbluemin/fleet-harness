@@ -145,8 +145,9 @@ function readStoredPanelBehavior(): "push" | "overlay" {
 function readStoredOverlayAlpha(): RailOverlayAlpha {
   try {
     const stored = localStorage.getItem(PREFS_OVERLAY_ALPHA);
+    if (stored === null || stored.trim() === "") return RAIL_OVERLAY_ALPHA_DEFAULT;
     const parsed = Number(stored);
-    return stored !== null && Number.isFinite(parsed) ? clampRailOverlayAlpha(parsed) : RAIL_OVERLAY_ALPHA_DEFAULT;
+    return Number.isFinite(parsed) ? clampRailOverlayAlpha(parsed) : RAIL_OVERLAY_ALPHA_DEFAULT;
   } catch { return RAIL_OVERLAY_ALPHA_DEFAULT; }
 }
 

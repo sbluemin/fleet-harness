@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const railPanelContextMock = vi.hoisted(() => ({ themes: [] as unknown[] }));
+const railPanelContextMock = vi.hoisted(() => ({ themes: [] as unknown[], renderCount: 0 }));
 
 vi.mock("../core/client/src/rail/built-in-panels.js", () => ({
   BUILT_IN_RAIL_PANELS: [
@@ -14,6 +14,7 @@ vi.mock("../core/client/src/rail/built-in-panels.js", () => ({
       defaultWidth: 360,
       icon: "P",
       render: (ctx: { readonly theme?: unknown }) => {
+        railPanelContextMock.renderCount += 1;
         railPanelContextMock.themes.push(ctx.theme);
         return <button className="test-panel-action">Panel action</button>;
       },
@@ -71,6 +72,7 @@ beforeEach(() => {
   setRailPanelBehavior("push");
   setRailOverlayAlpha(100);
   railPanelContextMock.themes.length = 0;
+  railPanelContextMock.renderCount = 0;
   setState({ connection: "live", connectionLostAt: null, activeTheme: "instrument" });
   container = document.createElement("div");
   document.body.replaceChildren(container);
@@ -113,6 +115,22 @@ describe("Right Rail overlay opacity slider", () => {
 
     expect(getRailStoreSnapshot().overlayAlpha).toBe(100);
     expect(panelSlot().style.getPropertyValue("--right-rail-overlay-alpha")).toBe("1");
+  });
+
+  it("does not re-render the panel body while the opacity slider changes", () => {
+    setRailPanelBehavior("overlay");
+    renderRail();
+
+    const slider = container.querySelector<HTMLInputElement>('input[aria-label="Panel opacity"]')!;
+    const renderCountBeforeChange = railPanelContextMock.renderCount;
+    const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => {
+      setInputValue.call(slider, "65");
+      slider.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(getRailStoreSnapshot().overlayAlpha).toBe(65);
+    expect(railPanelContextMock.renderCount).toBe(renderCountBeforeChange);
   });
 });
 
