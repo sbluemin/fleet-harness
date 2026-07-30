@@ -10,6 +10,19 @@ import "./quota.css";
 type T = Translate<QuotaMessageKey>;
 type ProviderId = "claude" | "codex";
 
+interface RequestGeneration {
+  current: number;
+}
+
+export function beginRequestGeneration(generation: RequestGeneration): number {
+  generation.current += 1;
+  return generation.current;
+}
+
+export function isLatestRequestGeneration(generation: RequestGeneration, captured: number): boolean {
+  return generation.current === captured;
+}
+
 function elapsed(at: number | undefined, now: number): string {
   const delta = Math.max(0, now - (at ?? now));
   const days = Math.floor(delta / 86_400_000);
@@ -108,6 +121,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
   const [now, setNow] = useState(Date.now());
   const [refreshNonce, setRefreshNonce] = useState(0);
   const forceRef = useRef(false);
+  const requestGenerationRef = useRef(0);
 
   const refresh = useCallback((forceRequest = false) => {
     forceRef.current = forceRequest;
@@ -115,7 +129,8 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
   }, []);
 
   const connect = useCallback((connected: boolean) => {
-    setRequestError(false);
+    const generation = beginRequestGeneration(requestGenerationRef);
+    if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(false);
     ctx.api.fetch("quota", "connect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -126,15 +141,20 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
         return response.json() as Promise<QuotaSummaryDto>;
       })
       .then((result) => {
-        setData(result);
-        setNow(Date.now());
+        if (isLatestRequestGeneration(requestGenerationRef, generation)) {
+          setData(result);
+          setRequestError(false);
+          setNow(Date.now());
+        }
       })
-      .catch(() => setRequestError(true));
+      .catch(() => {
+        if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(true);
+      });
   }, [ctx.api]);
 
   useEffect(() => {
-    let cancelled = false;
-    setRequestError(false);
+    const generation = beginRequestGeneration(requestGenerationRef);
+    if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(false);
     const force = forceRef.current;
     forceRef.current = false;
     ctx.api.fetch("quota", force ? "summary?force=1" : "summary")
@@ -143,18 +163,25 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
         return response.json() as Promise<QuotaSummaryDto>;
       })
       .then((result) => {
-        if (!cancelled) {
+        if (isLatestRequestGeneration(requestGenerationRef, generation)) {
           setData(result);
+          setRequestError(false);
           setNow(Date.now());
         }
       })
       .catch(() => {
-        if (!cancelled) setRequestError(true);
+        if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(true);
       });
     return () => {
-      cancelled = true;
+      if (isLatestRequestGeneration(requestGenerationRef, generation)) {
+        beginRequestGeneration(requestGenerationRef);
+      }
     };
   }, [ctx.api, refreshNonce]);
+
+  useEffect(() => () => {
+    beginRequestGeneration(requestGenerationRef);
+  }, []);
 
   useEffect(() => {
     const poll = setInterval(() => {

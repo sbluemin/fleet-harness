@@ -51,10 +51,9 @@ function safeTimestamp(value: unknown): number | undefined {
   return Number.isSafeInteger(rounded) ? rounded : undefined;
 }
 
-function percent(value: unknown, fractionAware = false): number {
+function percent(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return 0;
-  const normalized = fractionAware && value > 0 && value <= 1 ? value * 100 : value;
-  return Math.min(100, Math.max(0, Math.round(normalized)));
+  return Math.min(100, Math.max(0, Math.round(value)));
 }
 
 function validatedString(value: unknown, pattern: RegExp): string | undefined {
@@ -73,44 +72,71 @@ function modelLabel(value: unknown): string {
   return validatedString(value, /^[A-Za-z0-9][A-Za-z0-9 .+-]{0,39}$/) ?? "Model";
 }
 
+function firstClaudePercent(row: Record<string, unknown>): number | undefined {
+  for (const key of ["percent", "used_percentage", "utilization"] as const) {
+    const value = row[key];
+    if (typeof value === "number" && Number.isFinite(value)) return percent(value);
+  }
+  return undefined;
+}
+
 function claudeWindow(id: QuotaWindow["id"], source: unknown, label?: string): QuotaWindow | null {
   const row = object(source);
   if (!row) return null;
+  const usedPercent = firstClaudePercent(row);
+  if (usedPercent === undefined) return null;
+  const resetsAt = safeTimestamp(row.resets_at);
   return {
     id,
     ...(label ? { label } : {}),
-    usedPercent: row.used_percentage !== undefined
-      ? percent(row.used_percentage)
-      : percent(row.utilization, true),
-    ...(safeTimestamp(row.resets_at) !== undefined ? { resetsAt: safeTimestamp(row.resets_at) } : {}),
+    usedPercent,
+    ...(resetsAt !== undefined ? { resetsAt } : {}),
   };
 }
 
 export function parseClaudeUsage(payload: unknown): { readonly windows: readonly QuotaWindow[] } {
   const root = object(payload) ?? {};
-  const windows: QuotaWindow[] = [];
-  const session = claudeWindow("session", root.five_hour);
-  const weekly = claudeWindow("weekly", root.seven_day);
-  if (session) windows.push(session);
-  if (weekly) windows.push(weekly);
+  const namedSession = claudeWindow("session", root.five_hour);
+  const namedWeekly = claudeWindow("weekly", root.seven_day);
+  let fallbackSession: QuotaWindow | null = null;
+  let fallbackWeekly: QuotaWindow | null = null;
+  const modelWindows: QuotaWindow[] = [];
   const limits = array(root.limits);
   for (
     let index = 0;
-    index < limits.length && index < MAX_CREDIT_ENTRIES && windows.length < MAX_WINDOWS;
+    index < limits.length && index < MAX_CREDIT_ENTRIES;
     index += 1
   ) {
     const item = limits[index];
     const limit = object(item);
-    if (limit?.kind !== "weekly_scoped") continue;
-    const model = object(object(limit.scope)?.model);
-    const label = modelLabel(model?.display_name);
-    const row = claudeWindow("model", limit, label);
-    if (row) windows.push(row);
+    if (!limit) continue;
+    if (limit.kind === "session" && !namedSession && !fallbackSession) {
+      fallbackSession = claudeWindow("session", limit);
+      continue;
+    }
+    if (limit.kind === "weekly_all" && !namedWeekly && !fallbackWeekly) {
+      fallbackWeekly = claudeWindow("weekly", limit);
+      continue;
+    }
+    if (limit.kind === "weekly_scoped" && modelWindows.length < MAX_WINDOWS) {
+      const model = object(object(limit.scope)?.model);
+      const row = claudeWindow("model", limit, modelLabel(model?.display_name));
+      if (row) modelWindows.push(row);
+    }
   }
-  if (!windows.some((row) => row.id === "model")) {
-    const fallback = root.fable_weekly ?? root.fable_seven_day ?? root.seven_day_fable;
-    const row = claudeWindow("model", fallback, "Fable");
+  if (modelWindows.length === 0) {
+    for (const alias of [root.fable_weekly, root.fable_seven_day, root.seven_day_fable]) {
+      const row = claudeWindow("model", alias, "Fable");
+      if (row) {
+        modelWindows.push(row);
+        break;
+      }
+    }
+  }
+  const windows: QuotaWindow[] = [];
+  for (const row of [namedSession ?? fallbackSession, namedWeekly ?? fallbackWeekly, ...modelWindows]) {
     if (row) windows.push(row);
+    if (windows.length === MAX_WINDOWS) break;
   }
   return { windows };
 }

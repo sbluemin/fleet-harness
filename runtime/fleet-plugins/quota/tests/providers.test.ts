@@ -44,14 +44,54 @@ describe("provider response parsing", () => {
       }],
     }).windows).toEqual([
       { id: "session", usedPercent: 13, resetsAt: Date.parse("2026-08-01T00:00:00Z") },
-      { id: "weekly", usedPercent: 71, resetsAt: 2_000_000_000_000 },
+      { id: "weekly", usedPercent: 1, resetsAt: 2_000_000_000_000 },
       { id: "model", label: "Sonnet", usedPercent: 100, resetsAt: 2_000_000_000_000 },
     ]);
   });
 
   it("uses the legacy Fable row only when no scoped model rows exist", () => {
     expect(parseClaudeUsage({ seven_day_fable: { utilization: 0.1 } }).windows)
-      .toEqual([{ id: "model", label: "Fable", usedPercent: 10 }]);
+      .toEqual([{ id: "model", label: "Fable", usedPercent: 0 }]);
+    expect(parseClaudeUsage({
+      fable_weekly: {},
+      seven_day_fable: { percent: 55 },
+    }).windows).toEqual([{ id: "model", label: "Fable", usedPercent: 55 }]);
+  });
+
+  it("uses the first finite Claude percentage field without magnitude guessing", () => {
+    expect(parseClaudeUsage({
+      limits: [
+        { kind: "weekly_scoped", percent: 60 },
+        { kind: "weekly_scoped", percent: 10, used_percentage: 20, utilization: 30 },
+        { kind: "weekly_scoped", percent: null, used_percentage: 20 },
+        { kind: "weekly_scoped", percent: Number.NaN, used_percentage: "x", utilization: 44 },
+        { kind: "weekly_scoped" },
+        { kind: "weekly_scoped", utilization: 86 },
+        { kind: "weekly_scoped", utilization: 0.5 },
+      ],
+    }).windows.map((row) => row.usedPercent)).toEqual([60, 10, 20, 44, 86, 1]);
+  });
+
+  it("uses session and weekly limits only as fallbacks to named fields", () => {
+    expect(parseClaudeUsage({
+      limits: [
+        { kind: "session", percent: 5 },
+        { kind: "weekly_all", percent: 9 },
+      ],
+    }).windows).toEqual([
+      { id: "session", usedPercent: 5 },
+      { id: "weekly", usedPercent: 9 },
+    ]);
+    expect(parseClaudeUsage({
+      five_hour: { percent: 17 },
+      limits: [
+        { kind: "session", percent: 5 },
+        { kind: "weekly_all", percent: 9 },
+      ],
+    }).windows).toEqual([
+      { id: "session", usedPercent: 17 },
+      { id: "weekly", usedPercent: 9 },
+    ]);
   });
 
   it("bounds untrusted Claude limits and reset-credit collections", () => {

@@ -63,7 +63,7 @@ describe("quota service", () => {
     expect(stale).toMatchObject({ status: "stale", windows: [{ usedPercent: 41 }] });
     expect(stale.message).not.toContain("super-secret");
     now += 2;
-    const error = (await service.getSummary({ force: true })).providers.claude;
+    const error = (await service.getSummary()).providers.claude;
     expect(error.status).toBe("error");
     expect(error).not.toHaveProperty("windows");
   });

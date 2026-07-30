@@ -44,7 +44,15 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       return { status: "not_connected", method: (deps.platform ?? process.platform) === "darwin" ? "keychain" : "file" };
     }
     const cached = cache.get(id);
-    if (!force && cached && cached.expiresAt > now()) return cached.value;
+    if (!force && cached && cached.expiresAt > now()) {
+      const staleStillValid = cached.value.status !== "stale"
+        || (
+          typeof cached.value.fetchedAt === "number"
+          && now() - cached.value.fetchedAt <= STALE_TTL_MS
+        );
+      if (staleStillValid) return cached.value;
+      cache.delete(id);
+    }
     const pending = inFlight.get(id);
     if (pending) return pending;
     const task = fetchers[id]()
@@ -56,10 +64,14 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       .catch((error: unknown) => {
         const previous = lastGood.get(id);
         const message = sanitizeProviderError(error);
-        const value: ProviderDto = previous && now() - previous.fetchedAt <= STALE_TTL_MS
+        const failedAt = now();
+        const value: ProviderDto = previous && failedAt - previous.fetchedAt <= STALE_TTL_MS
           ? { ...previous, status: "stale", message }
           : { status: "error", message };
-        cache.set(id, { value, expiresAt: now() + CACHE_TTL_MS });
+        const expiresAt = value.status === "stale" && previous
+          ? Math.min(failedAt + CACHE_TTL_MS, previous.fetchedAt + STALE_TTL_MS)
+          : failedAt + CACHE_TTL_MS;
+        cache.set(id, { value, expiresAt });
         return value;
       })
       .finally(() => inFlight.delete(id));
