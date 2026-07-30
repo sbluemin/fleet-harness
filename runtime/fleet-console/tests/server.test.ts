@@ -2766,8 +2766,8 @@ async function startFixture(options: {
 }
 
 function createStubAgentCliDetector(overrides: Record<string, boolean> = {}): AgentCliDetector {
-  // cliCommand 단위 바이너리(claude/codex/opencode/cursor-agent)별 설치 여부를 stub한다. 기본 모두 설치됨.
-  const commands = ["claude", "codex", "opencode", "cursor-agent"];
+  // cliCommand 단위 바이너리(claude/codex/cursor-agent)별 설치 여부를 stub한다. 기본 모두 설치됨.
+  const commands = ["claude", "codex", "cursor-agent"];
   return {
     detect: async () => commands.map((id) => ({
       id,

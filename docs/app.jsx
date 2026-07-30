@@ -31,7 +31,7 @@ const UI = {
   ctaProtocol:  { ko: "Fleet Action Protocol 보기", en: "See the Fleet Action Protocol" },
 
   metaBackends: { ko: "CLI Backends", en: "CLI Backends" },
-  metaBackendsVal: { ko: "Anthropic / OpenAI / Cursor / OSS", en: "Anthropic / OpenAI / Cursor / OSS" },
+  metaBackendsVal: { ko: "Anthropic / OpenAI / Cursor", en: "Anthropic / OpenAI / Cursor" },
   metaCaptains: { ko: "Captains", en: "Captains" },
   metaCaptainsVal: { ko: "명시적 책임 분리", en: "Distinct responsibilities" },
   metaProtocol: { ko: "Protocol", en: "Protocol" },
@@ -41,8 +41,8 @@ const UI = {
   hierarchyTitle: { ko: "3-단 지휘 체계", en: "Three-tier command structure" },
   hierarchyLede:  { ko: "사용자는 코드를 쓰지 않는다. 결정한다. 함대는 그 결정을 작전으로 환원한다.", en: "You don't write code — you decide. The fleet turns each decision into an operation." },
 
-  backendsEy:    { ko: "CLI Backends · 04", en: "CLI Backends · 04" },
-  backendsTitle: { ko: ["네 개의 CLI,", "한 명의 제독."], en: ["Four CLIs,", "one Admiral."] },
+  backendsEy:    { ko: "CLI Backends · 03", en: "CLI Backends · 03" },
+  backendsTitle: { ko: ["세 개의 CLI,", "한 명의 제독."], en: ["Three CLIs,", "one Admiral."] },
   backendsLede:  { ko: "한 모델로 모든 작전을 수행하지 않는다. 각 백엔드는 자신이 가장 잘하는 항해를 맡는다.", en: "No single model runs every mission. Each backend takes the voyage it sails best." },
 
   captainsEy:    { ko: "Captains Roster · 04", en: "Captains Roster · 04" },
@@ -77,7 +77,7 @@ const UI = {
   setSailCmt:  { ko: "# Set sail on your first mission, Admiral.", en: "# Set sail on your first mission, Admiral." },
   footerLine:  { ko: "fleet-harness · Fleet Action Protocol v1", en: "fleet-harness · Fleet Action Protocol v1" },
   builtOn:     { ko: "native CLI orchestration", en: "native CLI orchestration" },
-  countMeta:   { ko: "· 4 CLI · 4 Captains · 4 Modes", en: "· 4 CLI · 4 Captains · 4 Modes" },
+  countMeta:   { ko: "· 3 CLI · 4 Captains · 4 Modes", en: "· 3 CLI · 4 Captains · 4 Modes" },
 };
 
 // ───── Data ─────
@@ -106,7 +106,6 @@ const CLI_BACKENDS = [
   { num: "01", vendor: "Anthropic", name: "Claude Code", tag: { ko: "장기 추론·아키텍처 판단의 표준 백엔드", en: "The standard backend for long-form reasoning and architectural judgment." }, color: "oklch(78% 0.13 75)" },
   { num: "02", vendor: "OpenAI", name: "Codex", tag: { ko: "도구 호출과 실행 위임에 최적화된 작업 함정", en: "A working vessel optimized for tool calls and execution delegation." }, color: "oklch(72% 0.17 25)" },
   { num: "03", vendor: "Cursor", name: "Cursor Agent", tag: { ko: "프론티어 모델 다중 라우팅 함정", en: "A multi-model vessel routing across frontier models." }, color: "oklch(78% 0.14 145)" },
-  { num: "04", vendor: "Open Source", name: "OpenCode Go", tag: { ko: "오픈코어 폴백 · 자체 호스팅 모델 게이트웨이", en: "Open-core fallback — a self-hosted model gateway." }, color: "oklch(74% 0.06 248)" },
 ];
 
 const CAPTAINS = [
@@ -255,7 +254,7 @@ const DIFFS = [
     n: "01",
     name: "Multi-CLI Orchestration",
     kr: { ko: "멀티-CLI 오케스트레이션", en: "Multi-CLI Orchestration" },
-    body: { ko: "단일 인터페이스 아래 4개의 CLI 백엔드 — Claude Code, Codex, Cursor Agent, OpenCode Go — 가 함께 실행된다. 모델별 강점을 작전 단위로 골라 쓴다.", en: "Four CLI backends — Claude Code, Codex, Cursor Agent, OpenCode Go — run together under one interface. Pick each model's strength on a per-operation basis." },
+    body: { ko: "단일 인터페이스 아래 3개의 CLI 백엔드 — Claude Code, Codex, Cursor Agent — 가 함께 실행된다. 모델별 강점을 작전 단위로 골라 쓴다.", en: "Three CLI backends — Claude Code, Codex, Cursor Agent — run together under one interface. Pick each model's strength on a per-operation basis." },
   },
   {
     n: "02",
@@ -313,7 +312,7 @@ const COMPARES = [
     name: "Fleet Action Protocol",
     us: true,
     bullets: [
-      { ko: "4 CLI 백엔드 동시 지휘", en: "Four CLI backends commanded together" },
+      { ko: "3 CLI 백엔드 동시 지휘", en: "Three CLI backends commanded together" },
       { ko: "4 함장 명시적 책임 분리", en: "Four captains, distinct duties" },
       { ko: "적응형 4-모드 프로토콜 게이트", en: "Adaptive four-mode protocol gate" },
     ],
@@ -399,7 +398,7 @@ function Hero() {
             <div className="hero-meta">
               <div className="hero-meta-item">
                 <div className="label">{t(UI.metaBackends)}</div>
-                <div className="value"><em>4</em> · {t(UI.metaBackendsVal)}</div>
+                <div className="value"><em>3</em> · {t(UI.metaBackendsVal)}</div>
               </div>
               <div className="hero-meta-item">
                 <div className="label">{t(UI.metaCaptains)}</div>

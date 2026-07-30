@@ -65,7 +65,6 @@
   --carrier-claude: oklch(78% 0.15 62);
   --carrier-claude-kimi: oklch(75% 0.15 315);
   --carrier-codex: oklch(78% 0.035 248);
-  --carrier-opencode-go: oklch(76% 0.12 184);
   --carrier-cursor: oklch(72% 0.13 238);
   --carrier-taskforce: oklch(78% 0.12 216);
   /* 정체성 톤(--id-*) — Operation accent·그룹색·captain 식별이 공유하는 8톤.
@@ -361,7 +360,6 @@
   --carrier-claude: oklch(54% 0.135 62);
   --carrier-claude-kimi: oklch(52% 0.135 315);
   --carrier-codex: oklch(43% 0.035 255);
-  --carrier-opencode-go: oklch(51% 0.105 184);
   --carrier-cursor: oklch(50% 0.115 238);
   --carrier-taskforce: oklch(51% 0.105 216);
 

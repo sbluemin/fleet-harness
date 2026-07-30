@@ -209,10 +209,6 @@
   color: var(--carrier-codex);
 }
 
-.ledger-operation--opencode .ledger-operation-mark {
-  color: var(--carrier-opencode-go);
-}
-
 .ledger-operation--cursor .ledger-operation-mark {
   color: var(--carrier-cursor);
 }
@@ -358,10 +354,6 @@
 
 .ledger-client-row--codex .ledger-client-mark {
   color: var(--carrier-codex);
-}
-
-.ledger-client-row--opencode .ledger-client-mark {
-  color: var(--carrier-opencode-go);
 }
 
 .ledger-client-row--cursor .ledger-client-mark {

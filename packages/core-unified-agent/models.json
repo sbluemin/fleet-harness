@@ -45,23 +45,6 @@
         { "modelId": "gpt-5.5-fast", "name": "GPT-5.5 Fast", "providerModelId": "gpt-5.5", "serviceTier": "priority", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh"], "default": "high" } }
       ]
     },
-    "opencode-go": {
-      "name": "OpenCode Go",
-      "defaultModel": "opencode-go/deepseek-v4-flash",
-      "models": [
-        { "modelId": "opencode-go/deepseek-v4-flash", "name": "DeepSeek V4 Flash", "effort": { "supported": false } },
-        { "modelId": "opencode-go/deepseek-v4-pro", "name": "DeepSeek V4 Pro", "effort": { "supported": false } },
-        { "modelId": "opencode-go/glm-5.2", "name": "GLM-5.2", "effort": { "supported": false } },
-        { "modelId": "opencode-go/grok-4.5", "name": "Grok 4.5", "effort": { "supported": false } },
-        { "modelId": "opencode-go/kimi-k3", "name": "Kimi K3", "effort": { "supported": false } },
-        { "modelId": "opencode-go/kimi-k2.7-code", "name": "Kimi K2.7 Code", "effort": { "supported": false } },
-        { "modelId": "opencode-go/mimo-v2.5", "name": "MiMo V2.5", "effort": { "supported": false } },
-        { "modelId": "opencode-go/mimo-v2.5-pro", "name": "MiMo V2.5 Pro", "effort": { "supported": false } },
-        { "modelId": "opencode-go/minimax-m3", "name": "MiniMax M3", "effort": { "supported": false } },
-        { "modelId": "opencode-go/qwen3.7-max", "name": "Qwen3.7 Max", "effort": { "supported": false } },
-        { "modelId": "opencode-go/qwen3.7-plus", "name": "Qwen3.7 Plus", "effort": { "supported": false } }
-      ]
-    },
     "cursor": {
       "name": "Cursor Agent",
       "defaultModel": "auto",

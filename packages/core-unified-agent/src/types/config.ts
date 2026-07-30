@@ -131,7 +131,7 @@ export interface UnifiedClientOptions extends ConnectionOptions {
   /** Claude 계열에서만 의미한다. true이면 자식 Claude Code 프로세스에
    * `--strict-mcp-config`를 주입하여 사용자 글로벌·프로젝트의 MCP 자동 로딩을
    * 차단한다. ACP로 명시 등록한 MCP는 유지되며, OAuth 인증 경로에는 영향이 없다.
-   * Claude 외 CLI(codex/opencode-go)는 본 옵션을 무시한다. 기본값 undefined. */
+   * Claude 외 CLI(codex)는 본 옵션을 무시한다. 기본값 undefined. */
   strictMcp?: boolean;
   /** Codex에서만 의미한다. true이면 disconnect 전에 thread/archive를 호출해
    * 세션을 resume picker에서 숨긴다. 재개 시에는 thread/unarchive 후 resume한다.

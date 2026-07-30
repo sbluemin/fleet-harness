@@ -8,7 +8,6 @@
 import { UnifiedClaudeAgentClient } from './UnifiedClaudeAgentClient.js';
 import { UnifiedCodexAgentClient } from './UnifiedCodexAgentClient.js';
 import { UnifiedCursorAgentClient } from './UnifiedCursorAgentClient.js';
-import { UnifiedOpenCodeAgentClient } from './UnifiedOpenCodeAgentClient.js';
 import { CliDetector } from '../detector/CliDetector.js';
 import type { CliType } from '../config/CliConfigs.js';
 import type { UnifiedClientOptions } from '../types/config.js';
@@ -26,8 +25,6 @@ export const UnifiedAgent = {
         return new UnifiedClaudeAgentClient(cli);
       case 'codex':
         return new UnifiedCodexAgentClient();
-      case 'opencode-go':
-        return new UnifiedOpenCodeAgentClient('opencode-go');
       case 'cursor':
         return new UnifiedCursorAgentClient();
     }
@@ -47,7 +44,7 @@ export const UnifiedAgent = {
     const preferred = await new CliDetector().getPreferred();
     if (!preferred) {
       throw new Error(
-        '사용 가능한 CLI가 없습니다. claude, claude-kimi, codex, opencode-go, cursor 중 하나를 설치해주세요.',
+        '사용 가능한 CLI가 없습니다. claude, claude-kimi, codex, cursor 중 하나를 설치해주세요.',
       );
     }
 

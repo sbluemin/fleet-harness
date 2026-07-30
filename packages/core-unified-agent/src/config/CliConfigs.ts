@@ -76,22 +76,6 @@ export const CLI_BACKENDS = {
     usesNpxBridge: false,
     defaultMaxTokens: 100_000,
   },
-  'opencode-go': {
-    id: 'opencode-go',
-    cliCommand: 'opencode',
-    protocol: 'acp',
-    authRequired: false,
-    acpArgs: ['acp'],
-    modes: [
-      { id: 'build', label: 'Build' },
-      { id: 'plan', label: 'Plan' },
-    ],
-    supportsSessionClose: true,
-    supportsSessionLoad: true,
-    requiresModelAtSpawn: true,
-    usesNpxBridge: false,
-    defaultMaxTokens: 128_000,
-  },
   cursor: {
     id: 'cursor',
     cliCommand: 'cursor-agent',
@@ -154,7 +138,7 @@ export function createSpawnConfig(
     };
   }
 
-  // CLI를 직접 spawn하는 경우 (Cursor, OpenCode 계열)
+  // CLI를 직접 spawn하는 경우 (Cursor)
   const command = options.cliPath ?? backend.cliCommand;
   const args = backend.acpArgs ? [...backend.acpArgs] : [];
 
@@ -201,8 +185,6 @@ export function getYoloModeId(cli: CliType): string {
     case 'claude':
     case 'claude-kimi':
       return 'bypassPermissions';
-    case 'opencode-go':
-      return 'build';
     case 'cursor':
       return 'agent';
     case 'codex':

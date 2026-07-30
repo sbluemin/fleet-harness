@@ -8,14 +8,14 @@ interface VersionCall {
 }
 
 describe("agent cli detector", () => {
-  it("reports the four distinct binaries in declaration order (zai/kimi/glm collapse into claude)", async () => {
+  it("reports the three distinct binaries in declaration order (zai/kimi/glm collapse into claude)", async () => {
     const detector = createAgentCliDetector({
       resolve: () => undefined,
       runVersion: async () => "",
     });
     const result = await detector.detect();
-    expect(result.map((cli) => cli.id)).toEqual(["claude", "codex", "opencode", "cursor-agent"]);
-    expect(result.map((cli) => cli.displayName)).toEqual(["Claude Code", "Codex CLI", "OpenCode", "Cursor Agent"]);
+    expect(result.map((cli) => cli.id)).toEqual(["claude", "codex", "cursor-agent"]);
+    expect(result.map((cli) => cli.displayName)).toEqual(["Claude Code", "Codex CLI", "Cursor Agent"]);
   });
 
   it("marks a resolvable binary available and parses its semver version", async () => {
