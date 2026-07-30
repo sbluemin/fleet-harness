@@ -14,7 +14,7 @@
 /* 8.5px 반픽셀 크기는 세로조판 한글 음절을 픽셀 경계 사이에 걸치게 해 획이 뭉개진다(자글자글함의 주원인).
    정수 10px로 올리고, 한글은 모노 폰트 미보유 글리프의 시스템 폴백 대신 본문 산스(Pretendard)로 분기한다. */
 .session-analyst-handle__label { writing-mode: vertical-rl; font-size: 10px; font-weight: var(--weight-medium); letter-spacing: .18em; }
-:lang(ko) .session-analyst-handle__label { font-family: var(--font-body); font-weight: 500; letter-spacing: .05em; }
+:lang(ko) .session-analyst-handle__label { font-family: var(--font-body); font-weight: var(--weight-regular); letter-spacing: .05em; }
 .session-analyst-handle__live { position: relative; width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--aurora); box-shadow: 0 0 10px var(--aurora-glow); }
 .session-analyst-handle__live::after { content: ""; position: absolute; inset: -3px; border: 1px solid var(--aurora); border-radius: 50%; animation: analyst-orbit-pulse 1.8s var(--ease-glide) infinite; }
 .session-analyst-handle.is-live { border-color: color-mix(in oklch, var(--aurora) 48%, var(--hairline-strong)); color: color-mix(in oklch, var(--aurora) 76%, var(--text-secondary)); box-shadow: inset 2px 0 0 color-mix(in oklch, var(--aurora) 38%, transparent); }
