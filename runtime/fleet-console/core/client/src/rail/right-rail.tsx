@@ -9,14 +9,12 @@ import "../styles/rail.css";
 import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
 import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../components/command-band-focus.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
-import type { Translate } from "@fleet-console/sdk/i18n";
-
-import { useT, type CoreMessageKey } from "../i18n/index.js";
+import { useT } from "../i18n/index.js";
 import { ReconnectButton } from "../components/reconnect-button.js";
 import { getState, subscribe } from "../store.js";
 import type { ConnectionState } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
-import { closeRailPanel, requestRailPanelExtraWidth, setRailOverlayAlpha, toggleRailPanel, toggleRailPanelBehavior, useActiveRailPanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelBehavior, useRailPanelExtraWidth, type RailOverlayAlpha } from "./rail-store.js";
+import { closeRailPanel, RAIL_OVERLAY_ALPHA_DEFAULT, RAIL_OVERLAY_ALPHA_MAX, RAIL_OVERLAY_ALPHA_MIN, requestRailPanelExtraWidth, setRailOverlayAlpha, toggleRailPanel, toggleRailPanelBehavior, useActiveRailPanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelBehavior, useRailPanelExtraWidth, type RailOverlayAlpha } from "./rail-store.js";
 import { useRailPanels } from "./rail-registry.js";
 import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
 
@@ -29,15 +27,6 @@ const MIN_PANEL_WIDTH = 240;
 const DEFAULT_PANEL_WIDTH = 312;
 const PREFS_PANEL_WIDTHS = "fleet-console.rail.panelWidths";
 const LEGACY_PREFS_PANEL_WIDTH = "fleet-console.rail.panelWidth";
-
-function buildOverlayAlphaPresets(t: Translate<CoreMessageKey>): readonly { readonly label: string; readonly value: RailOverlayAlpha }[] {
-  return [
-    { label: t("rail.chrome.opacitySolid"), value: 100 },
-    { label: "90", value: 90 },
-    { label: "75", value: 75 },
-    { label: "60", value: 60 },
-  ];
-}
 
 function readStoredPanelWidths(): Record<string, number> {
   try {
@@ -339,7 +328,6 @@ interface RailPanelContentProps {
 // (activePanel·ctx·activeId·panelBehavior·overlayAlpha) props로 memo해 드래그 중 본문 재렌더를 건너뛴다(좌측 SideBar처럼 가벼운 부분만 재렌더).
 const RailPanelContent = memo(function RailPanelContent({ activePanel, activePanelTitle, activeId, ctx, panelBehavior, overlayAlpha, connection, connectionLostAt, language }: RailPanelContentProps) {
   const t = useT();
-  const overlayPresets = buildOverlayAlphaPresets(t);
   const connectionLostTime = connectionLostAt === null ? "" : new Date(connectionLostAt).toLocaleTimeString(language);
   const staleVisible = connection !== "live" && connectionLostAt !== null;
   const panelBodyRef = useRef<HTMLDivElement>(null);
@@ -387,26 +375,26 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activePan
           type="button"
           aria-pressed={panelBehavior === "overlay"}
           aria-label={t("rail.chrome.floatToggle")}
+          title={t("rail.chrome.floatLabel")}
           onClick={toggleRailPanelBehavior}
         >
-          {t("rail.chrome.floatLabel")}
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" /><rect x="7.5" y="7.5" width="5" height="4" rx="1" fill="currentColor" /></svg>
         </button>
         {panelBehavior === "overlay" ? (
-          <div className="right-rail-opacity-segments" role="group" aria-label={t("rail.chrome.opacityAria")}>
-            {overlayPresets.map((preset) => {
-              const isActive = preset.value === overlayAlpha;
-              return (
-                <button
-                  key={preset.value}
-                  className={`right-rail-opacity-segment${isActive ? " is-active" : ""}`}
-                  type="button"
-                  aria-pressed={isActive}
-                  onClick={() => setRailOverlayAlpha(preset.value)}
-                >
-                  {preset.label}
-                </button>
-              );
-            })}
+          <div className="right-rail-alpha">
+            <input
+              className="right-rail-alpha-slider"
+              type="range"
+              min={RAIL_OVERLAY_ALPHA_MIN}
+              max={RAIL_OVERLAY_ALPHA_MAX}
+              step={1}
+              value={overlayAlpha}
+              aria-label={t("rail.chrome.opacityAria")}
+              onChange={(event) => setRailOverlayAlpha(Number(event.currentTarget.value))}
+              onDoubleClick={() => setRailOverlayAlpha(RAIL_OVERLAY_ALPHA_DEFAULT)}
+              style={{ "--alpha-fill": `${((overlayAlpha - RAIL_OVERLAY_ALPHA_MIN) / (RAIL_OVERLAY_ALPHA_MAX - RAIL_OVERLAY_ALPHA_MIN)) * 100}%` } as CSSProperties}
+            />
+            <span className="right-rail-alpha-value" aria-hidden="true">{overlayAlpha}%</span>
           </div>
         ) : null}
         <button

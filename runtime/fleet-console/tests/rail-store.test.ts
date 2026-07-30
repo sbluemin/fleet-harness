@@ -226,7 +226,7 @@ describe("rail overlay alpha", () => {
     return { values, setItem };
   }
 
-  it("defaults to Solid (100) when no value is stored", async () => {
+  it("defaults to 100 when no value is stored", async () => {
     stubOverlayAlphaStorage();
     const { getRailStoreSnapshot } = await freshStore();
     expect(getRailStoreSnapshot().overlayAlpha).toBe(100);
@@ -237,26 +237,34 @@ describe("rail overlay alpha", () => {
     ["90", 90],
     ["75", 75],
     ["60", 60],
+    ["83", 83],
+    ["150", 100],
+    ["10", 40],
   ] as const)("restores stored alpha %s", async (stored, expected) => {
     stubOverlayAlphaStorage(stored);
     const { getRailStoreSnapshot } = await freshStore();
     expect(getRailStoreSnapshot().overlayAlpha).toBe(expected);
   });
 
-  it("persists the selected alpha as an exact string", async () => {
+  it("persists 65 as an exact string", async () => {
     const storage = stubOverlayAlphaStorage();
     const { setRailOverlayAlpha } = await freshStore();
-    setRailOverlayAlpha(75);
-    expect(storage.values.get("fleet-console.rail.overlayAlpha")).toBe("75");
-    expect(storage.setItem).toHaveBeenCalledWith("fleet-console.rail.overlayAlpha", "75");
-
-    setRailOverlayAlpha(100);
-    expect(storage.values.get("fleet-console.rail.overlayAlpha")).toBe("100");
-    expect(storage.setItem).toHaveBeenCalledWith("fleet-console.rail.overlayAlpha", "100");
+    setRailOverlayAlpha(65);
+    expect(storage.values.get("fleet-console.rail.overlayAlpha")).toBe("65");
+    expect(storage.setItem).toHaveBeenCalledWith("fleet-console.rail.overlayAlpha", "65");
   });
 
-  it.each(["0", "59", "74", "89", "101", "solid", "75.0"])("falls back to 100 for invalid stored value %s", async (stored) => {
-    stubOverlayAlphaStorage(stored);
+  it("clamps 37 to 40 before persisting", async () => {
+    const storage = stubOverlayAlphaStorage();
+    const { getRailStoreSnapshot, setRailOverlayAlpha } = await freshStore();
+    setRailOverlayAlpha(37);
+    expect(getRailStoreSnapshot().overlayAlpha).toBe(40);
+    expect(storage.values.get("fleet-console.rail.overlayAlpha")).toBe("40");
+    expect(storage.setItem).toHaveBeenCalledWith("fleet-console.rail.overlayAlpha", "40");
+  });
+
+  it("falls back to 100 for a non-numeric stored value", async () => {
+    stubOverlayAlphaStorage("abc");
     const { getRailStoreSnapshot } = await freshStore();
     expect(getRailStoreSnapshot().overlayAlpha).toBe(100);
   });
