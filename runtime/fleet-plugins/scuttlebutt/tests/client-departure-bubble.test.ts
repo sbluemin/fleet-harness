@@ -40,10 +40,11 @@ describe("departure announcement selector", () => {
 
   it("keeps the three newest queued announcements and dismisses the oldest", () => {
     let state = createDepartureSelectionState([]);
+    // 원장은 만료 전까지 모든 시작을 함께 들고 있다 — 목록도 누적으로 흘러온다.
+    const ledger: FloatingWidgetDeparture[] = [];
     for (let index = 0; index < MAX_DEPARTURE_ANNOUNCEMENTS + 2; index += 1) {
-      state = selectDepartureAnnouncements(state, [
-        departure(`operation-${index}`, `Operation ${index}`),
-      ]);
+      ledger.push(departure(`operation-${index}`, `Operation ${index}`));
+      state = selectDepartureAnnouncements(state, ledger);
     }
 
     expect(state.queue.map((item) => item.arrivals[0]?.operationId)).toEqual([
@@ -54,6 +55,29 @@ describe("departure announcement selector", () => {
     expect(dismissDepartureAnnouncement(state).queue.map((item) => (
       item.arrivals[0]?.operationId
     ))).toEqual(["operation-3", "operation-4"]);
+  });
+
+  it("drops queued announcements whose departures leave the ledger", () => {
+    // quiet 중 큐잉만 된 시작이 만료로 원장에서 빠지면, 뒤늦게 띄울 이유가 없다.
+    const selected = selectDepartureAnnouncements(
+      createDepartureSelectionState([]),
+      [departure("stale", "Stale")],
+    );
+    expect(selected.queue).toHaveLength(1);
+
+    const pruned = selectDepartureAnnouncements(selected, []);
+    expect(pruned.queue).toEqual([]);
+  });
+
+  it("keeps only the still-present operations of a partially stale batch", () => {
+    const selected = selectDepartureAnnouncements(
+      createDepartureSelectionState([]),
+      [departure("gone", "Gone"), departure("fresh", "Fresh")],
+    );
+    expect(selected.queue[0]?.arrivals).toHaveLength(2);
+
+    const pruned = selectDepartureAnnouncements(selected, [departure("fresh", "Fresh")]);
+    expect(pruned.queue[0]?.arrivals.map((item) => item.operationId)).toEqual(["fresh"]);
   });
 });
 

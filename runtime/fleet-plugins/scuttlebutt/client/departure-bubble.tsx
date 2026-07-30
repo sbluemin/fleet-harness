@@ -9,6 +9,7 @@ import {
   createArrivalSelectionState,
   dismissArrivalAnnouncement,
   selectArrivalAnnouncements,
+  type ArrivalSelectionState,
 } from "./arrival-bubble.js";
 import { getT } from "./i18n.js";
 
@@ -16,8 +17,29 @@ export const MAX_DEPARTURE_ANNOUNCEMENTS = 3;
 export const DEPARTURE_VISIBLE_MS = 6_000;
 
 export const createDepartureSelectionState = createArrivalSelectionState;
-export const selectDepartureAnnouncements = selectArrivalAnnouncements;
 export const dismissDepartureAnnouncement = dismissArrivalAnnouncement;
+
+// departure 엔트리는 30초면 원장에서 만료된다 — quiet 중 쌓인 큐가 만료를 넘기면 카드를 닫는
+// 순간 한참 전의 시작을 "방금 시작"처럼 거짓 알린다. 큐에는 원장에 남아 있는 시작만 유지한다.
+export function selectDepartureAnnouncements(
+  state: ArrivalSelectionState,
+  departures: readonly FloatingWidgetDeparture[],
+): ArrivalSelectionState {
+  const present = new Set(departures.map((item) => item.operationId));
+  let pruned = false;
+  const queue = state.queue
+    .map((announcement) => {
+      const arrivals = announcement.arrivals.filter((item) => present.has(item.operationId));
+      if (arrivals.length !== announcement.arrivals.length) pruned = true;
+      return { ...announcement, arrivals };
+    })
+    .filter((announcement) => {
+      if (announcement.arrivals.length === 0) pruned = true;
+      return announcement.arrivals.length > 0;
+    });
+  // 프룬할 게 없으면 원래 상태를 그대로 넘겨 selector의 동일성(identity) 보존을 깨지 않는다.
+  return selectArrivalAnnouncements(pruned ? { ...state, queue } : state, departures);
+}
 
 export function DepartureBubble({
   departures,
