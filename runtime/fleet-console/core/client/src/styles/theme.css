@@ -298,120 +298,35 @@
   --id-rose: oklch(73% 0.05 350);
 }
 
-/* Light 테마 4종 — 잉크 스케일을 역할째 반전한 주간(daylight) 변주. 팔레트 + 광학(color-scheme/
-   shadow/scrollbar/신호 ink·halo/본문 굵기 보정)만 오버라이드하며 형상은 Instrument 그대로
-   (계약 테스트가 화이트리스트로 고정). 신호·brass는 라이트 배경(L≈95%+)에서 AA를 위해 L 44~58%
-   대역으로 재조율된다 — 다크 값의 단순 명도 반전은 신호 5종 전멸(1.7~2.8:1)로 실측 확인됨.
-   신호색 "텍스트"는 base가 아닌 --*-ink(L 42~46%)를 쓴다 — base 신호색은 자기 glow 틴트 위에서
-   3.3~4.2:1로 AA 미달임이 실측됨. 본문 regular 450은 밝은 배경에서 스템이 가늘어 보이는
-   광학 보정이다(위계 3티어는 불변 — regular 티어의 값만 라이트에서 재조율). */
-:root[data-theme="daywatch"] {
-  color-scheme: light;
-
-  --ink-abyss: oklch(95.5% 0.007 245);
-  --ink-deep: oklch(94% 0.01 245);
-  --ink-mid: oklch(91.5% 0.012 245);
-  --ink-veil: oklch(89% 0.014 245);
-  --ink-rim: oklch(80% 0.02 245);
-  --ink-fog: oklch(46% 0.018 245);
-  --ink-muted: oklch(42% 0.02 245);
-  --ink-spectral: oklch(40% 0.022 246);
-  --ink-pearl: oklch(24% 0.025 248);
-
-  --weight-regular: 450;
-
-  --text-primary: var(--ink-pearl);
-  --text-secondary: var(--ink-spectral);
-  --text-tertiary: var(--ink-fog);
-  --text-on-brass: oklch(99% 0.003 245);
-
-  --brass: oklch(54% 0.11 72);
-  --brass-bright: oklch(47% 0.125 74);
-  --brass-deep: oklch(63% 0.09 70);
-  --brass-glow: oklch(54% 0.11 72 / 16%);
-
-  --aurora: oklch(51% 0.09 205);
-  --aurora-deep: oklch(44% 0.095 207);
-  --aurora-glow: oklch(51% 0.09 205 / 15%);
-
-  --coral: oklch(53% 0.15 25);
-  --coral-glow: oklch(53% 0.15 25 / 15%);
-  --warn: oklch(56% 0.1 80);
-  --warn-glow: oklch(56% 0.1 80 / 16%);
-  --positive: oklch(51% 0.11 158);
-  --positive-glow: oklch(51% 0.11 158 / 15%);
-
-  --brass-ink: oklch(45% 0.1 72);
-  --aurora-ink: oklch(43% 0.085 205);
-  --coral-ink: oklch(45% 0.14 25);
-  --warn-ink: oklch(44% 0.095 80);
-  --positive-ink: oklch(43% 0.1 158);
-  --brass-halo: none;
-  --positive-halo: none;
-
-  --canvas-abyss: oklch(96.8% 0.005 245);
-  --canvas-sea-core: oklch(93% 0.012 240);
-  --canvas-sea-near: oklch(94.5% 0.01 242);
-  --canvas-sea-mid: oklch(96% 0.008 245);
-  --canvas-sea-far: oklch(97.2% 0.006 247);
-
-  --carrier-claude: oklch(55% 0.13 62);
-  --carrier-claude-kimi: oklch(53% 0.13 315);
-  --carrier-codex: oklch(45% 0.03 248);
-  --carrier-opencode-go: oklch(52% 0.1 184);
-  --carrier-cursor: oklch(50% 0.11 238);
-  --carrier-taskforce: oklch(52% 0.1 216);
-
-  --id-crimson: oklch(56% 0.09 25);
-  --id-amber: oklch(58% 0.085 70);
-  --id-moss: oklch(55% 0.08 140);
-  --id-teal: oklch(55% 0.075 190);
-  --id-cerulean: oklch(54% 0.08 235);
-  --id-indigo: oklch(52% 0.085 278);
-  --id-plum: oklch(53% 0.085 318);
-  --id-rose: oklch(55% 0.08 350);
-
-  --surface-glass: oklch(97% 0.008 245 / 72%);
-  --surface-chrome: oklch(94.5% 0.009 245);
-  --surface-frame: var(--ink-deep);
-  --surface-glass-strong: oklch(95.5% 0.01 245 / 82%);
-  --surface-pillar: oklch(98% 0.006 245 / 90%);
-  --surface-rim: oklch(40% 0.02 245 / 18%);
-  --surface-rim-strong: oklch(40% 0.02 245 / 30%);
-  --surface-band: var(--ink-deep);
-
-  --hairline: oklch(85% 0.015 245);
-  --hairline-strong: oklch(76% 0.02 245);
-
-  --shadow-soft: 0 1px 0 0 oklch(100% 0 0 / 55%) inset, 0 18px 38px -22px oklch(30% 0.02 245 / 28%);
-  --shadow-floating: 0 1px 0 0 oklch(100% 0 0 / 65%) inset, 0 32px 60px -28px oklch(28% 0.02 245 / 32%);
-  --shadow-anchor: 0 0 0 1px color-mix(in oklch, var(--brass) 22%, transparent), 0 12px 32px -16px color-mix(in oklch, var(--brass) 26%, transparent);
-
-  --scrollbar-thumb: oklch(45% 0.03 245 / 35%);
-  --scrollbar-thumb-hover: oklch(38% 0.035 245 / 55%);
-  --scrollbar-thumb-classic: oklch(45% 0.03 245 / 45%);
-}
-
-
+/* Light 테마 단일종(Whites) — 잉크 스케일을 역할째 반전한 오트밀(warm-neutral) 주간 변주.
+   대기(배경·잉크·헤어라인·표면)는 hue 95~100의 미세 웜 뉴트럴로 통일한다 — 청색(hue 250~260)
+   대기는 라이트에서 시린 백색으로 체감됨이 실측 확인됐고, 기준 이미지 실측도 chroma ≤0.004의
+   거의 무채색 웜이었다(짙은 베이지 과교정 금지 — 지각 축은 hue 이동으로만 옮긴다).
+   팔레트 + 광학(color-scheme/shadow/scrollbar/신호 ink·halo/본문 굵기 보정)만 오버라이드하며
+   형상은 Instrument 그대로(계약 테스트가 화이트리스트로 고정). 신호·brass는 라이트 배경(L≈95%+)에서
+   AA를 위해 L 44~58% 대역으로 재조율된다 — 다크 값의 단순 명도 반전은 신호 5종 전멸(1.7~2.8:1)로
+   실측 확인됨. 신호색 "텍스트"는 base가 아닌 --*-ink(L 42~46%)를 쓴다 — base 신호색은 자기 glow
+   틴트 위에서 3.3~4.2:1로 AA 미달임이 실측됨. 본문 regular 450은 밝은 배경에서 스템이 가늘어
+   보이는 광학 보정이다(위계 3티어는 불변 — regular 티어의 값만 라이트에서 재조율). */
 :root[data-theme="whites"] {
   color-scheme: light;
 
-  --ink-abyss: oklch(97% 0.003 250);
-  --ink-deep: oklch(95.5% 0.005 250);
-  --ink-mid: oklch(93% 0.007 252);
-  --ink-veil: oklch(90.5% 0.009 252);
-  --ink-rim: oklch(80% 0.015 252);
-  --ink-fog: oklch(45% 0.03 258);
-  --ink-muted: oklch(41% 0.034 258);
-  --ink-spectral: oklch(37% 0.04 258);
-  --ink-pearl: oklch(23% 0.05 260);
+  --ink-abyss: oklch(97% 0.003 100);
+  --ink-deep: oklch(95.5% 0.005 100);
+  --ink-mid: oklch(93% 0.007 100);
+  --ink-veil: oklch(90.5% 0.009 100);
+  --ink-rim: oklch(80% 0.012 100);
+  --ink-fog: oklch(45% 0.012 95);
+  --ink-muted: oklch(41% 0.013 95);
+  --ink-spectral: oklch(37% 0.014 95);
+  --ink-pearl: oklch(22.5% 0.012 95);
 
   --weight-regular: 450;
 
   --text-primary: var(--ink-pearl);
   --text-secondary: var(--ink-spectral);
   --text-tertiary: var(--ink-fog);
-  --text-on-brass: oklch(99.8% 0.001 250);
+  --text-on-brass: oklch(99.5% 0.004 95);
 
   --brass: oklch(56% 0.125 82);
   --brass-bright: oklch(49% 0.14 80);
@@ -437,11 +352,11 @@
   --brass-halo: none;
   --positive-halo: none;
 
-  --canvas-abyss: oklch(97.8% 0.003 250);
-  --canvas-sea-core: oklch(94% 0.006 250);
-  --canvas-sea-near: oklch(95.3% 0.005 250);
-  --canvas-sea-mid: oklch(96.5% 0.004 250);
-  --canvas-sea-far: oklch(97.6% 0.003 250);
+  --canvas-abyss: oklch(97.8% 0.003 100);
+  --canvas-sea-core: oklch(94% 0.006 98);
+  --canvas-sea-near: oklch(95.3% 0.005 99);
+  --canvas-sea-mid: oklch(96.5% 0.004 100);
+  --canvas-sea-far: oklch(97.6% 0.003 100);
 
   --carrier-claude: oklch(54% 0.135 62);
   --carrier-claude-kimi: oklch(52% 0.135 315);
@@ -459,112 +374,25 @@
   --id-plum: oklch(51% 0.095 318);
   --id-rose: oklch(53% 0.09 350);
 
-  --surface-glass: oklch(98% 0.004 250 / 70%);
-  --surface-chrome: oklch(96% 0.004 250);
+  --surface-glass: oklch(98% 0.004 100 / 70%);
+  --surface-chrome: oklch(96% 0.004 100);
   --surface-frame: var(--ink-deep);
-  --surface-glass-strong: oklch(96.5% 0.005 250 / 82%);
-  --surface-pillar: oklch(98.5% 0.003 250 / 90%);
-  --surface-rim: oklch(38% 0.03 256 / 18%);
-  --surface-rim-strong: oklch(38% 0.03 256 / 30%);
+  --surface-glass-strong: oklch(96.5% 0.005 100 / 82%);
+  --surface-pillar: oklch(98.5% 0.003 100 / 90%);
+  --surface-rim: oklch(38% 0.02 95 / 18%);
+  --surface-rim-strong: oklch(38% 0.02 95 / 30%);
   --surface-band: var(--ink-deep);
 
-  --hairline: oklch(86% 0.012 252);
-  --hairline-strong: oklch(76% 0.02 254);
+  --hairline: oklch(86% 0.01 100);
+  --hairline-strong: oklch(76% 0.014 100);
 
-  --shadow-soft: 0 1px 0 0 oklch(100% 0 0 / 70%) inset, 0 18px 38px -22px oklch(30% 0.03 256 / 26%);
-  --shadow-floating: 0 1px 0 0 oklch(100% 0 0 / 80%) inset, 0 32px 60px -28px oklch(28% 0.03 256 / 30%);
+  --shadow-soft: 0 1px 0 0 oklch(99.5% 0.004 100 / 70%) inset, 0 18px 38px -22px oklch(30% 0.015 95 / 26%);
+  --shadow-floating: 0 1px 0 0 oklch(99.5% 0.004 100 / 80%) inset, 0 32px 60px -28px oklch(28% 0.015 95 / 30%);
   --shadow-anchor: 0 0 0 1px color-mix(in oklch, var(--brass) 22%, transparent), 0 12px 32px -16px color-mix(in oklch, var(--brass) 26%, transparent);
 
-  --scrollbar-thumb: oklch(44% 0.03 256 / 35%);
-  --scrollbar-thumb-hover: oklch(37% 0.035 256 / 55%);
-  --scrollbar-thumb-classic: oklch(44% 0.03 256 / 45%);
-}
-
-:root[data-theme="drydock"] {
-  color-scheme: light;
-
-  --ink-abyss: oklch(94.5% 0.013 235);
-  --ink-deep: oklch(93% 0.018 236);
-  --ink-mid: oklch(90.5% 0.019 236);
-  --ink-veil: oklch(88% 0.022 238);
-  --ink-rim: oklch(78% 0.03 240);
-  --ink-fog: oklch(45.5% 0.04 245);
-  --ink-muted: oklch(41.5% 0.044 246);
-  --ink-spectral: oklch(39% 0.047 248);
-  --ink-pearl: oklch(24% 0.05 250);
-
-  --weight-regular: 450;
-
-  --text-primary: var(--ink-pearl);
-  --text-secondary: var(--ink-spectral);
-  --text-tertiary: var(--ink-fog);
-  --text-on-brass: oklch(98.8% 0.005 235);
-
-  --brass: oklch(54% 0.1 70);
-  --brass-bright: oklch(47% 0.115 68);
-  --brass-deep: oklch(62% 0.085 70);
-  --brass-glow: oklch(54% 0.1 70 / 16%);
-
-  --aurora: oklch(50% 0.09 190);
-  --aurora-deep: oklch(43% 0.095 192);
-  --aurora-glow: oklch(50% 0.09 190 / 15%);
-
-  --coral: oklch(53% 0.15 25);
-  --coral-glow: oklch(53% 0.15 25 / 15%);
-  --warn: oklch(55% 0.1 80);
-  --warn-glow: oklch(55% 0.1 80 / 16%);
-  --positive: oklch(50% 0.11 155);
-  --positive-glow: oklch(50% 0.11 155 / 15%);
-
-  --brass-ink: oklch(45% 0.09 70);
-  --aurora-ink: oklch(42% 0.085 190);
-  --coral-ink: oklch(45% 0.14 25);
-  --warn-ink: oklch(44% 0.09 80);
-  --positive-ink: oklch(42% 0.1 155);
-  --brass-halo: none;
-  --positive-halo: none;
-
-  --canvas-abyss: oklch(95.8% 0.011 235);
-  --canvas-sea-core: oklch(92.5% 0.02 238);
-  --canvas-sea-near: oklch(93.8% 0.018 237);
-  --canvas-sea-mid: oklch(95% 0.015 236);
-  --canvas-sea-far: oklch(96% 0.013 235);
-
-  --carrier-claude: oklch(54% 0.13 62);
-  --carrier-claude-kimi: oklch(52% 0.13 315);
-  --carrier-codex: oklch(44% 0.04 250);
-  --carrier-opencode-go: oklch(51% 0.1 184);
-  --carrier-cursor: oklch(50% 0.11 240);
-  --carrier-taskforce: oklch(51% 0.1 216);
-
-  --id-crimson: oklch(55% 0.09 25);
-  --id-amber: oklch(57% 0.085 70);
-  --id-moss: oklch(54% 0.08 140);
-  --id-teal: oklch(54% 0.078 185);
-  --id-cerulean: oklch(53% 0.082 235);
-  --id-indigo: oklch(51% 0.085 278);
-  --id-plum: oklch(52% 0.085 318);
-  --id-rose: oklch(54% 0.08 350);
-
-  --surface-glass: oklch(96.5% 0.013 235 / 74%);
-  --surface-chrome: oklch(93.5% 0.015 235);
-  --surface-frame: var(--ink-deep);
-  --surface-glass-strong: oklch(95% 0.016 236 / 84%);
-  --surface-pillar: oklch(97% 0.011 235 / 90%);
-  --surface-rim: oklch(40% 0.04 245 / 18%);
-  --surface-rim-strong: oklch(40% 0.04 245 / 30%);
-  --surface-band: var(--ink-deep);
-
-  --hairline: oklch(82% 0.035 240);
-  --hairline-strong: oklch(72% 0.04 242);
-
-  --shadow-soft: 0 1px 0 0 oklch(99% 0.008 235 / 60%) inset, 0 18px 38px -22px oklch(28% 0.04 245 / 30%);
-  --shadow-floating: 0 1px 0 0 oklch(99% 0.008 235 / 70%) inset, 0 32px 60px -28px oklch(26% 0.04 245 / 34%);
-  --shadow-anchor: 0 0 0 1px color-mix(in oklch, var(--brass) 22%, transparent), 0 12px 32px -16px color-mix(in oklch, var(--brass) 26%, transparent);
-
-  --scrollbar-thumb: oklch(45% 0.04 245 / 35%);
-  --scrollbar-thumb-hover: oklch(38% 0.045 245 / 55%);
-  --scrollbar-thumb-classic: oklch(45% 0.04 245 / 45%);
+  --scrollbar-thumb: oklch(44% 0.015 95 / 35%);
+  --scrollbar-thumb-hover: oklch(37% 0.018 95 / 55%);
+  --scrollbar-thumb-classic: oklch(44% 0.015 95 / 45%);
 }
 
 *,
