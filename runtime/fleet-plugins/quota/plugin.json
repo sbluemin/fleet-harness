@@ -1,0 +1,7 @@
+{
+  "id": "quota",
+  "name": "Quota",
+  "apiVersion": 1,
+  "routes": "routes.ts",
+  "client": "client/index.tsx"
+}
