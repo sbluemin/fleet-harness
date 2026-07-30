@@ -11,7 +11,7 @@
   --text-secondary: oklch(70% 0.012 245);
   --text-tertiary: oklch(64% 0.012 245);
   /* brass 채움 위 텍스트 전용 티어 — 다크 3종은 abyss 별칭(밝은 brass 위 어두운 글자),
-     라이트 3종은 페이지 배경보다 밝은 자체 리터럴로 AA 4.5:1을 보장한다(abyss에 얹혀 타면
+     라이트(Whites)는 페이지 배경보다 밝은 자체 리터럴로 AA 4.5:1을 보장한다(abyss에 얹혀 타면
      페이지 배경 조정이 버튼 대비를 함께 끌어내리는 결합이 재발한다). */
   --text-on-brass: var(--ink-abyss);
 
@@ -43,7 +43,7 @@
   --positive-glow: oklch(76% 0.11 160 / 13%);
 
   /* 신호 ink 티어 — 텍스트로 쓰이는 신호색 전용 채널. 다크 3종은 base 신호색을 그대로 별칭하고,
-     라이트 3종만 L 42~46% 리터럴로 오버라이드해 자기 glow 틴트 위에서도 AA(4.5:1)를 지킨다.
+     라이트(Whites)만 L 42~46% 리터럴로 오버라이드해 자기 glow 틴트 위에서도 AA(4.5:1)를 지킨다.
      배경·테두리·도트·비콘은 계속 base 신호 토큰을 쓴다 — ink는 color(텍스트) 선언 전용이다. */
   --brass-ink: var(--brass);
   --aurora-ink: var(--aurora);
@@ -104,11 +104,11 @@
 
   --surface-glass: var(--ink-deep);
   /* 크롬 열(사이드바·밴드 좌측 캡) 전용 표면 티어 — 다크 3종은 glass 별칭을 var 간접으로 상속하고,
-     라이트 3종만 종이 표면(카드·터미널)보다 어두운 자체 리터럴로 분화한다(신호 ink 티어와 동형 구조).
+     라이트(Whites)만 종이 표면(카드·터미널)보다 어두운 자체 리터럴로 분화한다(신호 ink 티어와 동형 구조).
      라이트에서 크롬이 종이보다 밝아지면 시선이 크롬으로 끌리는 극성 역전이 재발한다. */
   --surface-chrome: var(--surface-glass);
   /* Operation 창 프레임(본체·타이틀바) 전용 티어 — 다크 3종은 ink-mid 별칭으로 기존 렌더를 유지하고,
-     라이트 3종은 ink-deep 별칭으로 GNB(밴드)와 같은 크롬 패밀리에 정렬한다. ink-mid 리터럴을 직접
+     라이트(Whites)는 ink-deep 별칭으로 GNB(밴드)와 같은 크롬 패밀리에 정렬한다. ink-mid 리터럴을 직접
      밝히면 호버·칩 등 45개 소비처가 함께 움직여 어포던스가 희석되므로 프레임만 분리한다. */
   --surface-frame: var(--ink-mid);
   --surface-glass-strong: var(--ink-mid);

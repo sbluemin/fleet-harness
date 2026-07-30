@@ -12,7 +12,7 @@ import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField
 import { renderMessage, useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
-import { setActiveTheme, setActiveUiFont } from "../store.js";
+import { readLastDarkTheme, setActiveTheme, setActiveUiFont } from "../store.js";
 import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_DESCRIPTION_KEYS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
 import type { GlobalSettingsState, ThemeId, UiFontId, UiFontSettings } from "../types.js";
 
@@ -69,26 +69,6 @@ function buildDarkThemeOptions(t: T): readonly ThemeOption[] {
 }
 
 const LIGHT_THEME_ID: ThemeId = "whites";
-const LAST_DARK_THEME_STORAGE_KEY = "fleet-console.last-dark-theme";
-
-// Dark 모드 진입 시 적용할 다크 테마의 브라우저 로컬 기억 — 저장 필드는 theme: ThemeId 단일을
-// 유지하고(모드는 파생 상태), 모드 전환이 "테마 없음" 상태에 착지하지 않게 한다.
-function readLastDarkTheme(): ThemeId {
-  try {
-    const stored = globalThis.localStorage?.getItem(LAST_DARK_THEME_STORAGE_KEY);
-    return stored === "instrument" || stored === "maritime" || stored === "carbon" ? stored : "instrument";
-  } catch {
-    return "instrument";
-  }
-}
-
-function rememberLastDarkTheme(theme: ThemeId): void {
-  try {
-    globalThis.localStorage?.setItem(LAST_DARK_THEME_STORAGE_KEY, theme);
-  } catch {
-    // localStorage 접근 불가 환경에서는 기본 Instrument 폴백으로 충분하다.
-  }
-}
 
 function buildPortModes(t: T): readonly PortModeOption[] {
   return [
@@ -281,10 +261,6 @@ function ThemeCard({
   const darkThemes = buildDarkThemeOptions(t);
   const activeTheme = state?.theme ?? "instrument";
   const isLight = activeTheme === LIGHT_THEME_ID;
-  // 팔레트 커맨드·다른 브라우저 등 어떤 경로로 다크 테마가 되든 마지막 다크 선택을 따라간다.
-  useEffect(() => {
-    if (!isLight) rememberLastDarkTheme(activeTheme);
-  }, [activeTheme, isLight]);
   const selectTheme = (theme: ThemeId) => {
     if (getGlobalSettingsStoreState().savingField !== null) return;
     const previousTheme = activeTheme;
@@ -306,11 +282,12 @@ function ThemeCard({
           <p className="global-settings-help global-settings-theme-cli-note">{t("settings.theme.cliNote")}</p>
         </div>
         <div className="theme-picker" role="group" aria-label={t("settings.theme.aria")}>
-          <div className="theme-mode-seg" role="radiogroup" aria-label={t("settings.theme.aria")}>
+          {/* 상호배타 2버튼이지만 radio 대신 aria-pressed 토글 그룹을 쓴다 — radiogroup은 roving
+              tabindex+화살표 탐색 구현 의무가 생기고, 기존 테마 카드(aria-pressed) 문법과도 일치한다. */}
+          <div className="theme-mode-seg" role="group" aria-label={t("settings.theme.aria")}>
             <button
               type="button"
-              role="radio"
-              aria-checked={isLight}
+              aria-pressed={isLight}
               className={isLight ? "is-active" : ""}
               disabled={saving}
               onClick={() => selectMode("light")}
@@ -320,8 +297,7 @@ function ThemeCard({
             </button>
             <button
               type="button"
-              role="radio"
-              aria-checked={!isLight}
+              aria-pressed={!isLight}
               className={isLight ? "" : "is-active"}
               disabled={saving}
               onClick={() => selectMode("dark")}
