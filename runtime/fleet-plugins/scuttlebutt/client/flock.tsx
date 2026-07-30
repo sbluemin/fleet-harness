@@ -5,6 +5,7 @@ import { ArrivalBubble } from "./arrival-bubble.js";
 import { birdVisual } from "./bird-state.js";
 import { ChatCard } from "./chat-card.js";
 import { createChatSession, type AdmiralId } from "./chat-session.js";
+import { DepartureBubble } from "./departure-bubble.js";
 import { getT, type ScuttlebuttMessageKey } from "./i18n.js";
 import { QuakerFigure } from "./quaker-figure.js";
 import {
@@ -176,6 +177,12 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   const cheerAll = React.useCallback(() => {
     for (const index of activeIndices) {
       triggerOneShot(index, "cheer", CHEER_DURATION_MS);
+    }
+  }, [activeIndices, triggerOneShot]);
+
+  const saluteAll = React.useCallback(() => {
+    for (const index of activeIndices) {
+      triggerOneShot(index, "salute", SALUTE_DURATION_MS);
     }
   }, [activeIndices, triggerOneShot]);
 
@@ -468,6 +475,16 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
           cheerAll();
         }}
       />
+      {settings.departureBell ? (
+        <DepartureBubble
+          departures={context.departures}
+          locale={context.language}
+          mascot={announcerRef}
+          quiet={!openAdmiral && !phases.some((phase) => phase === "starting" || phase === "thinking")}
+          positionRevision={positionRevision}
+          onShow={saluteAll}
+        />
+      ) : null}
       {openAdmiral ? (
         <ChatCard
           admiral={openAdmiral}

@@ -433,6 +433,58 @@
   outline-offset: 2px;
 }
 
+.scuttlebutt-departure-bubble {
+  position: fixed;
+  z-index: 2;
+  pointer-events: auto;
+  visibility: hidden;
+  display: grid;
+  max-width: min(360px, calc(100vw - var(--space-6)));
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  overflow: hidden;
+  /* hairline과 50% 믹스하면 oklch hue 보간이 그린(hue≈160)에 착륙해 positive 채널과 충돌한다 —
+     alpha 조절로 hue 80~90(amber)을 유지한다(awaiting 비콘의 color-mix(aurora, transparent)와 동형). */
+  border: 1px solid color-mix(in oklch, var(--warn) 55%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--warn) 12%, var(--surface-glass-strong));
+  box-shadow: var(--shadow-floating);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  line-height: 1.35;
+  text-align: left;
+  animation: scuttlebutt-arrival-in var(--duration-base) var(--ease-spring);
+}
+
+.scuttlebutt-departure-label {
+  color: var(--warn-ink);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.scuttlebutt-departure-detail {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.scuttlebutt-departure-bubble:focus-visible {
+  outline: 2px solid var(--warn);
+  outline-offset: 2px;
+}
+
 /* 부유 레이어는 클릭을 통과시키므로 실제로 그린 표면만 스스로 되살린다. */
 .scuttlebutt-chat-card {
   position: absolute;
@@ -920,6 +972,7 @@
   .scuttlebutt-qk,
   .scuttlebutt-qk *,
   .scuttlebutt-arrival-bubble,
+  .scuttlebutt-departure-bubble,
   .scuttlebutt-thinking i,
   .scuttlebutt-chat-card {
     animation: none !important;
@@ -950,6 +1003,7 @@
 .reduce-panel-motion .scuttlebutt-qk,
 .reduce-panel-motion .scuttlebutt-qk *,
 .reduce-panel-motion .scuttlebutt-arrival-bubble,
+.reduce-panel-motion .scuttlebutt-departure-bubble,
 .reduce-panel-motion .scuttlebutt-thinking i,
 .reduce-panel-motion .scuttlebutt-chat-card {
   animation: none !important;

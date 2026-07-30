@@ -17,6 +17,7 @@ describe("Scuttlebutt settings store", () => {
       tori: true,
       bori: false,
       dori: false,
+      departureBell: true,
     });
     disconnect();
   });
@@ -29,12 +30,18 @@ describe("Scuttlebutt settings store", () => {
       tori: false,
       bori: false,
       dori: false,
+      departureBell: true,
     });
     disconnect();
   });
 
   it("applies individual admiral switches", async () => {
-    const settings = capability({ tori: false, bori: true, dori: false });
+    const settings = capability({
+      tori: false,
+      bori: true,
+      dori: false,
+      departureBell: false,
+    });
     const disconnect = connectScuttlebuttSettings(settings);
     await settleRead();
 
@@ -42,6 +49,7 @@ describe("Scuttlebutt settings store", () => {
       tori: false,
       bori: true,
       dori: false,
+      departureBell: false,
     });
     await writeScuttlebuttSettings({ bori: false });
     expect(getScuttlebuttSettings().bori).toBe(false);
@@ -49,8 +57,21 @@ describe("Scuttlebutt settings store", () => {
       tori: false,
       bori: false,
       dori: false,
+      departureBell: false,
     });
     disconnect();
+  });
+
+  it("parses the departure bell switch and defaults it on", async () => {
+    const stored = connectScuttlebuttSettings(capability({ departureBell: false }));
+    await settleRead();
+    expect(getScuttlebuttSettings().departureBell).toBe(false);
+    stored();
+
+    const unset = connectScuttlebuttSettings(capability({ departureBell: "false" }));
+    await settleRead();
+    expect(getScuttlebuttSettings().departureBell).toBe(true);
+    unset();
   });
 });
 
