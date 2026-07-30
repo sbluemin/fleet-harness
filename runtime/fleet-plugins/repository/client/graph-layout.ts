@@ -4,7 +4,6 @@ import type { LogCommitEntry } from "../server/types.js";
 
 export interface GraphNode {
   readonly lane: number;
-  readonly activeLaneCount: number;
   readonly collapsed: boolean;
   readonly isHead: boolean;
   readonly connectAbove: boolean;
@@ -96,6 +95,8 @@ export function layoutGraph(commits: readonly LogCommitEntry[]): GraphLayout {
       laneHeads[myLane] = usesCollapsedBucket ? null : (parents[0] ?? null);
       // 나머지 부모: 기존 레인에 이미 기다리는 것이 있으면 재사용, 없으면 새 레인
       for (const parent of parents.slice(1)) {
+        // 목록 밖 부모로는 레인을 열지 않는다 — 이어지지 않는 대각선 스텁을 만들기 때문(connectBelow와 동일 판정)
+        if (!known.has(parent)) continue;
         const existing = laneHeads.indexOf(parent);
         if (existing >= 0) {
           // 이미 다른 레인이 이 해시를 기다리고 있음 — 새 레인 불필요
@@ -118,8 +119,9 @@ export function layoutGraph(commits: readonly LogCommitEntry[]): GraphLayout {
     // passThroughLanes: 이 행 처리 후 활성인 레인 중 myLane이 아닌 것들
     const passThroughLanes = laneHeads
       .map((h, i) => ({ h, i }))
-      // 목록에 없는 부모를 기다리는 레인은 이 목록 안에서 다시 등장하지 않는다 — 유령 세로선을 남기지 않도록 제외한다
-      .filter(({ h, i }) => h !== null && known.has(h) && i !== myLane)
+      // 목록에 없는 부모를 기다리는 레인은 이 목록 안에서 다시 등장하지 않는다 — 유령 세로선을 남기지 않도록 제외한다.
+      // 이 행에서 갓 개설된 분기 레인은 대각선이 담당한다 — 수직선까지 그리면 분기점 위로 돌출된다.
+      .filter(({ h, i }) => h !== null && known.has(h) && i !== myLane && !branchToLanes.includes(i))
       .map(({ i }) => i);
 
     const rowMaxLaneIndex = Math.max(myLane, ...passThroughLanes, ...mergeFromLanes, ...branchToLanes);
@@ -127,7 +129,6 @@ export function layoutGraph(commits: readonly LogCommitEntry[]): GraphLayout {
 
     nodes.push({
       lane: myLane,
-      activeLaneCount: rowMaxLaneIndex + 1,
       collapsed,
       isHead: c.refs.some((r) => r === "HEAD" || r.startsWith("HEAD ->")),
       connectAbove: matched.length > 0,

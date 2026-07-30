@@ -210,7 +210,7 @@ describe("layoutGraph — Phase 2 다중 레인 topology", () => {
     ]);
   });
 
-  it("⑧ 오래된 분기 topology가 나타날 때만 행 폭이 넓어지고 수렴 후 다시 좁아진다", () => {
+  it("⑧ 오래된 분기 topology의 전역 활성 레인 수를 집계한다", () => {
     const layout = layoutGraph([
       makeCommit({ fullHash: "HEAD", parents: ["head-1"], refs: ["HEAD -> refs/heads/main"] }),
       makeCommit({ fullHash: "head-1", parents: ["common"] }),
@@ -219,7 +219,7 @@ describe("layoutGraph — Phase 2 다중 레인 topology", () => {
       makeCommit({ fullHash: "base", parents: [] }),
     ]);
 
-    expect(layout.nodes.map((node) => node.activeLaneCount)).toEqual([1, 1, 2, 2, 1]);
+    expect(layout.activeLaneCount).toBe(2);
     expect(layout.nodes[2]?.passThroughLanes).toEqual([0]);
     expect(layout.nodes[3]?.mergeFromLanes).toEqual([1]);
   });
@@ -230,11 +230,20 @@ describe("layoutGraph — Phase 2 다중 레인 topology", () => {
       makeCommit({ fullHash: "head-1", parents: ["octopus"] }),
       makeCommit({ fullHash: "octopus", parents: ["A", "B", "C", "D", "E", "F", "G", "H", "I"] }),
       makeCommit({ fullHash: "A", parents: [] }),
+      makeCommit({ fullHash: "B", parents: [] }),
+      makeCommit({ fullHash: "C", parents: [] }),
+      makeCommit({ fullHash: "D", parents: [] }),
+      makeCommit({ fullHash: "E", parents: [] }),
+      makeCommit({ fullHash: "F", parents: [] }),
+      makeCommit({ fullHash: "G", parents: [] }),
+      makeCommit({ fullHash: "H", parents: [] }),
+      makeCommit({ fullHash: "I", parents: [] }),
     ]);
 
     expect(layout.collapsed).toBe(true);
-    expect(layout.nodes.map((node) => node.collapsed)).toEqual([false, false, true, true]);
-    expect(layout.nodes[2]?.activeLaneCount).toBe(8);
+    expect(layout.nodes.slice(0, 2).map((node) => node.collapsed)).toEqual([false, false]);
+    expect(layout.nodes.slice(2).every((node) => node.collapsed)).toBe(true);
+    expect(layout.activeLaneCount).toBe(8);
   });
 
   it("⑩ 목록에서 부모가 생략되면 dangling 레인을 재사용하되 연결하지 않는다", () => {
@@ -270,5 +279,28 @@ describe("layoutGraph — Phase 2 다중 레인 topology", () => {
 
     expect(layout.nodes[1]?.passThroughLanes).not.toContain(1);
     expect(layout.nodes[2]?.passThroughLanes).not.toContain(1);
+  });
+
+  it("⑭ merge 행에서 새 분기 레인은 pass-through 수직선과 겹치지 않는다", () => {
+    const layout = layoutGraph([
+      makeCommit({ fullHash: "M", parents: ["A", "B"] }),
+      makeCommit({ fullHash: "A", parents: [] }),
+      makeCommit({ fullHash: "B", parents: [] }),
+    ]);
+    const mergeNode = layout.nodes[0]!;
+
+    expect(mergeNode.branchToLanes).not.toEqual([]);
+    expect(mergeNode.passThroughLanes.filter((lane) => mergeNode.branchToLanes.includes(lane))).toEqual([]);
+  });
+
+  it("⑮ 목록 밖 두 번째 부모에는 분기 레인을 열거나 collapsed 처리하지 않는다", () => {
+    const layout = layoutGraph([
+      makeCommit({ fullHash: "M", parents: ["A", "MISSING"] }),
+      makeCommit({ fullHash: "A", parents: [] }),
+    ]);
+
+    expect(layout.nodes[0]?.branchToLanes).toEqual([]);
+    expect(layout.activeLaneCount).toBe(1);
+    expect(layout.collapsed).toBe(false);
   });
 });
