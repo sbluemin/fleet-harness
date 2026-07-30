@@ -732,6 +732,23 @@
   transition: none;
 }
 
+/* 좁은 화면에서는 슬라이드 전개 대신 줄바꿈 표시로 전환한다 — max-width 클리핑을 유지하면
+   세 번째 다크 카드가 뷰포트 밖으로 잘려 도달 불가가 된다(420px 실측 재현). */
+@media (max-width: 560px) {
+  .theme-dark-tray {
+    flex-wrap: wrap;
+    transition: none;
+  }
+
+  .theme-dark-tray:not(.is-open) {
+    display: none;
+  }
+
+  .theme-dark-tray.is-open {
+    max-width: 100%;
+  }
+}
+
 .theme-card {
   display: inline-flex;
   align-items: center;
