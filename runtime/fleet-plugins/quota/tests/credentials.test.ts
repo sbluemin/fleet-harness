@@ -1,9 +1,14 @@
+import { execFile as nodeExecFile } from "node:child_process";
+import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import { describe, expect, it, vi } from "vitest";
 
 import {
   defaultCredentialDeps,
+  readBoundedFile,
   resolveClaudeCredentials,
   resolveCodexCredentials,
   type CredentialResolverDeps,
@@ -104,6 +109,36 @@ describe("credential resolvers", () => {
       expect(defaultRead).not.toHaveBeenCalled();
     } finally {
       defaultRead.mockRestore();
+    }
+  });
+});
+
+describe.skipIf(process.platform === "win32")("bounded credential reads on POSIX paths", () => {
+  it("rejects a writer-less FIFO instead of blocking on open", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "quota-fifo-"));
+    const fifoPath = path.join(dir, "auth.json");
+    try {
+      await promisify(nodeExecFile)("mkfifo", [fifoPath]);
+      const result = await Promise.race([
+        readBoundedFile(fifoPath, 65_536),
+        new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 2_000)),
+      ]);
+      expect(result).toBeNull();
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reads a regular credential file through the default bounded reader", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "quota-file-"));
+    const filePath = path.join(dir, "auth.json");
+    try {
+      await fs.writeFile(filePath, JSON.stringify({ tokens: { access_token: "value" } }), "utf8");
+      await expect(readBoundedFile(filePath, 65_536))
+        .resolves.toBe(JSON.stringify({ tokens: { access_token: "value" } }));
+      await expect(readBoundedFile(filePath, 4)).resolves.toBeNull();
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
     }
   });
 });
