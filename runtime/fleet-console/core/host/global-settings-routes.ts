@@ -114,7 +114,7 @@ async function mutateGlobalSettings(
   if (
     body.theme !== undefined
     && body.theme !== "instrument" && body.theme !== "maritime" && body.theme !== "carbon"
-    && body.theme !== "daywatch" && body.theme !== "whites" && body.theme !== "drydock"
+    && body.theme !== "whites"
   ) {
     deps.writeJson(res, 400, { error: "invalid_theme" });
     return;
@@ -124,7 +124,7 @@ async function mutateGlobalSettings(
     return;
   }
   const theme = body.theme === "instrument" || body.theme === "maritime" || body.theme === "carbon"
-    || body.theme === "daywatch" || body.theme === "whites" || body.theme === "drydock"
+    || body.theme === "whites"
     ? body.theme
     : undefined;
   const updated = deps.consoleSettingsStore.update((current) => ({

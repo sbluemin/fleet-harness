@@ -8,7 +8,7 @@ import {
 
 import { createConsoleDataPaths, type ConsoleDataPaths } from "./paths.js";
 
-export type ConsoleThemeId = "instrument" | "maritime" | "carbon" | "daywatch" | "whites" | "drydock";
+export type ConsoleThemeId = "instrument" | "maritime" | "carbon" | "whites";
 export type ConsoleUiFontId = "manrope" | "jetbrains-mono" | "source-code-pro";
 export type UiFontSettings =
   | { readonly source: "builtin"; readonly id: ConsoleUiFontId; readonly size: number }
@@ -124,10 +124,14 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ? value.reducePanelMotion
     : undefined;
   const seenFeatureTours = sanitizeSeenFeatureTours(value.seenFeatureTours);
+  // 퇴역 라이트 테마(daywatch/drydock) 저장값은 whites로 무손실 폴백한다 — 라이트 사용자가
+  // 업그레이드 직후 다크 기본값으로 떨어지는 극성 반전을 막는다.
   const theme = value.theme === "instrument" || value.theme === "maritime" || value.theme === "carbon"
-    || value.theme === "daywatch" || value.theme === "whites" || value.theme === "drydock"
+    || value.theme === "whites"
     ? value.theme
-    : undefined;
+    : value.theme === "daywatch" || value.theme === "drydock"
+      ? "whites"
+      : undefined;
   const uiFont = sanitizeUiFontSettings(value.uiFont);
   return {
     ...(consolePortMode !== undefined ? { consolePortMode } : {}),

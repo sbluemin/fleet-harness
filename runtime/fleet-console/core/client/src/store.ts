@@ -200,10 +200,11 @@ export function applyThemeToDocument(theme: ThemeId): void {
 export function readStoredThemeHint(): ThemeId | null {
   try {
     const theme = globalThis.localStorage?.getItem(THEME_HINT_STORAGE_KEY);
-    return theme === "instrument" || theme === "maritime" || theme === "carbon"
-      || theme === "daywatch" || theme === "whites" || theme === "drydock"
-      ? theme
-      : null;
+    if (theme === "instrument" || theme === "maritime" || theme === "carbon" || theme === "whites") {
+      return theme;
+    }
+    // 퇴역 라이트 테마 힌트는 whites로 폴백한다 — 서버 폴백과 극성이 일치해야 첫 페인트가 튀지 않는다.
+    return theme === "daywatch" || theme === "drydock" ? "whites" : null;
   } catch {
     return null;
   }
@@ -213,8 +214,7 @@ export function readServerInjectedTheme(): ThemeId | null {
   if (typeof document === "undefined") return null;
   if (document.documentElement.getAttribute("data-theme-source") !== "server") return null;
   const theme = document.documentElement.getAttribute("data-theme");
-  return theme === "instrument" || theme === "maritime" || theme === "carbon"
-    || theme === "daywatch" || theme === "whites" || theme === "drydock"
+  return theme === "instrument" || theme === "maritime" || theme === "carbon" || theme === "whites"
     ? theme
     : null;
 }
