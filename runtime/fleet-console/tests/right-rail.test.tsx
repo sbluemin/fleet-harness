@@ -136,12 +136,12 @@ describe("Right Rail overlay opacity slider", () => {
 
 describe("Right Rail panel context", () => {
   it("supplies the active Console theme and updates it with the store", () => {
-    setState({ activeTheme: "daywatch" });
+    setState({ activeTheme: "whites" });
     renderRail();
-    expect(railPanelContextMock.themes.at(-1)).toBe("daywatch");
+    expect(railPanelContextMock.themes.at(-1)).toBe("whites");
 
-    act(() => setState({ activeTheme: "drydock" }));
-    expect(railPanelContextMock.themes.at(-1)).toBe("drydock");
+    act(() => setState({ activeTheme: "carbon" }));
+    expect(railPanelContextMock.themes.at(-1)).toBe("carbon");
   });
 });
 

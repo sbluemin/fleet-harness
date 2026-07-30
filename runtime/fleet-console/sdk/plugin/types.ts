@@ -11,7 +11,7 @@ import type { RouteHandler, UpgradeHandler } from "../routing/types.js";
 import type { NotificationKindDescriptor } from "../notifications/types.js";
 import type { SettingsSectionDescriptor } from "../settings/types.js";
 
-export type ConsoleTheme = "instrument" | "maritime" | "carbon" | "daywatch" | "whites" | "drydock";
+export type ConsoleTheme = "instrument" | "maritime" | "carbon" | "whites";
 
 export type OperationActivity = "idle" | "running" | "awaiting" | "dormant";
 

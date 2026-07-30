@@ -498,6 +498,7 @@ describe("console static and terminal ticket boundary", () => {
       beforeCreateServer: ({ carrierStoreDir }) => {
         const settingsFile = path.join(carrierStoreDir, "console", "settings.json");
         fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
+        // 퇴역 daywatch 저장값은 파서 폴백을 거쳐 whites로 주입되어야 한다(라이트 극성 유지 회귀 가드).
         fs.writeFileSync(settingsFile, JSON.stringify({ version: 1, general: { theme: "daywatch" }, plugins: {} }));
       },
     });
@@ -505,7 +506,7 @@ describe("console static and terminal ticket boundary", () => {
     for (const pathname of ["console/", "console/operations"]) {
       const response = await fetch(`${fixture.endpoint}${pathname}`);
       expect(response.status).toBe(200);
-      expect(await response.text()).toContain('data-theme="daywatch" data-theme-source="server"');
+      expect(await response.text()).toContain('data-theme="whites" data-theme-source="server"');
     }
   });
 

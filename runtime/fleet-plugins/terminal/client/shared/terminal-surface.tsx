@@ -16,7 +16,7 @@ import { createTerminalScrollFollow, type TerminalScrollFollowController } from 
 import { createWindowsSelectionCopyHandler } from "./windows-selection-copy.js";
 import { waitForSymbolsNerdFontMono } from "./symbols-font.js";
 
-type TerminalThemeId = "instrument" | "maritime" | "carbon" | "daywatch" | "whites" | "drydock";
+type TerminalThemeId = "instrument" | "maritime" | "carbon" | "whites";
 
 export interface TerminalSurfaceProps {
   readonly operationId: string;
@@ -120,55 +120,33 @@ const CARBON_TERMINAL_THEME: ITheme = {
 
 // 라이트 터미널의 bright 계열은 밝히지 않고 더 진하게(L −5%p, C +0.02) 간다 — 밝은 배경에서 '밝은' ANSI는 판독 불능이기 때문.
 // 단 brightWhite는 예외로 배경보다 밝게 유지한다(SGR 107 블록이 종이보다 희어야 극성이 산다).
-// 라이트 배경은 화면 최명면이어야 한다: 각 테마의 --canvas-abyss(L 96.8/97.8/95.8%)보다 밝게 고정 —
+// 라이트 배경은 화면 최명면이어야 한다: 테마의 --canvas-abyss(L 97.8%)보다 밝게 고정 —
 // 작업면이 크롬보다 어두워지면 시선이 크롬으로 끌리는 극성 역전이 재발한다(다크는 반대 방향으로 동일 원칙).
 // 동시에 chroma는 테마 대기(캔버스~밴드 패밀리)를 따른다 — 최명면 + 최저채도가 겹치면
 // 터미널이 테마 밖 백지로 읽힌다(실사용 피드백으로 확인된 과중화 회귀).
-const DAYWATCH_TERMINAL_THEME: ITheme = {
-  background: "oklch(97.2% 0.009 245)",
-  foreground: "oklch(25% 0.02 248)",
-  cursor: "oklch(51% 0.09 205)",
-  selectionBackground: "oklch(54% 0.11 72 / 22%)",
-  black: "oklch(24% 0.025 248)",
-  brightBlack: "oklch(46% 0.02 245)",
-  red: "oklch(53% 0.15 25)",
-  green: "oklch(51% 0.11 158)",
-  yellow: "oklch(56% 0.1 80)",
-  blue: "oklch(50% 0.09 245)",
-  magenta: "oklch(52% 0.1 318)",
-  cyan: "oklch(51% 0.09 205)",
-  white: "oklch(88% 0.012 245)",
-  brightRed: "oklch(48% 0.17 25)",
-  brightGreen: "oklch(46% 0.13 158)",
-  brightYellow: "oklch(50% 0.12 78)",
-  brightBlue: "oklch(45% 0.1 245)",
-  brightMagenta: "oklch(47% 0.12 318)",
-  brightCyan: "oklch(46% 0.1 205)",
-  brightWhite: "oklch(99.5% 0.002 245)",
-};
-
-
+// 종이·잉크·흑백 rung은 whites의 오트밀 대기(hue 95~100)를 따르고, 유채 ANSI 6색은 CLI 콘텐츠의
+// 의미색이므로 대기 이동과 무관하게 유지한다(cursor=aurora·selection=brass 채널 역할도 불변).
 const WHITES_TERMINAL_THEME: ITheme = {
-  background: "oklch(98.2% 0.004 250)",
-  foreground: "oklch(22% 0.045 260)",
+  background: "oklch(98.2% 0.004 100)",
+  foreground: "oklch(24% 0.012 95)",
   cursor: "oklch(50% 0.1 210)",
   selectionBackground: "oklch(56% 0.125 82 / 20%)",
-  black: "oklch(23% 0.05 260)",
-  brightBlack: "oklch(44% 0.034 258)",
+  black: "oklch(25% 0.014 95)",
+  brightBlack: "oklch(46% 0.012 95)",
   red: "oklch(52% 0.16 25)",
   green: "oklch(50% 0.12 160)",
   yellow: "oklch(55% 0.11 82)",
   blue: "oklch(50% 0.1 250)",
   magenta: "oklch(51% 0.1 318)",
   cyan: "oklch(50% 0.1 210)",
-  white: "oklch(90% 0.005 250)",
+  white: "oklch(89% 0.008 98)",
   brightRed: "oklch(47% 0.18 25)",
   brightGreen: "oklch(45% 0.14 160)",
   brightYellow: "oklch(49% 0.13 80)",
   brightBlue: "oklch(45% 0.11 250)",
   brightMagenta: "oklch(46% 0.12 318)",
   brightCyan: "oklch(45% 0.11 210)",
-  brightWhite: "oklch(99.8% 0.001 250)",
+  brightWhite: "oklch(99.3% 0.003 100)",
 };
 
 /* 라이트 터미널은 agent CLI가 직접 찍는 다크용 truecolor(회색 #999/#ccc, 연한 액센트)가 팔레트
@@ -176,7 +154,7 @@ const WHITES_TERMINAL_THEME: ITheme = {
    truecolor를 포함한 전경색을 hue를 보존하며 바닥 대비까지 어둡게 보정하고 box-drawing 글리프는
    제외한다. 한계: dim(SGR 2) 셀은 dim 적용 "전" 색으로 floor/2를 판정한 뒤 알파 0.5를 곱하므로
    색상 dim은 보정을 받지 못한다 — dim 개선은 별도 트랙. 다크 테마는 1(off) 유지. */
-const LIGHT_TERMINAL_THEMES: ReadonlySet<TerminalThemeId> = new Set(["daywatch", "whites", "drydock"]);
+const LIGHT_TERMINAL_THEMES: ReadonlySet<TerminalThemeId> = new Set(["whites"]);
 const LIGHT_MINIMUM_CONTRAST_RATIO = 4.5;
 
 function terminalContrastFloorFor(theme: TerminalThemeId): number {
@@ -192,29 +170,6 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
    내부의 모듈 상태다 — 번들 경계를 넘는 공유가 아니다. PTY 종료 후 재spawn된 세션은 현재 극성 env를
    받으므로, 닫힌 동안의 전환 + 재spawn이 겹치는 극단 경로에서만 힌트가 한 번 과발화할 수 있다(무해·해제 가능). */
 const sessionPolarityBaseline = new Map<string, "light" | "dark">();
-
-const DRYDOCK_TERMINAL_THEME: ITheme = {
-  background: "oklch(96.2% 0.015 236)",
-  foreground: "oklch(25% 0.045 250)",
-  cursor: "oklch(50% 0.09 190)",
-  selectionBackground: "oklch(54% 0.1 70 / 22%)",
-  black: "oklch(24% 0.05 250)",
-  brightBlack: "oklch(46% 0.04 246)",
-  red: "oklch(53% 0.15 25)",
-  green: "oklch(50% 0.11 155)",
-  yellow: "oklch(55% 0.1 80)",
-  blue: "oklch(51% 0.09 250)",
-  magenta: "oklch(52% 0.09 318)",
-  cyan: "oklch(50% 0.09 190)",
-  white: "oklch(86% 0.015 238)",
-  brightRed: "oklch(48% 0.17 25)",
-  brightGreen: "oklch(45% 0.13 155)",
-  brightYellow: "oklch(49% 0.12 78)",
-  brightBlue: "oklch(46% 0.1 250)",
-  brightMagenta: "oklch(47% 0.11 318)",
-  brightCyan: "oklch(45% 0.1 190)",
-  brightWhite: "oklch(99% 0.004 236)",
-};
 
 export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1 }: TerminalSurfaceProps) {
   const activeTheme = theme;
@@ -582,9 +537,7 @@ function terminalThemeFor(theme: TerminalThemeId): ITheme {
     case "instrument": return INSTRUMENT_TERMINAL_THEME;
     case "maritime": return MARITIME_TERMINAL_THEME;
     case "carbon": return CARBON_TERMINAL_THEME;
-    case "daywatch": return DAYWATCH_TERMINAL_THEME;
     case "whites": return WHITES_TERMINAL_THEME;
-    case "drydock": return DRYDOCK_TERMINAL_THEME;
   }
 }
 

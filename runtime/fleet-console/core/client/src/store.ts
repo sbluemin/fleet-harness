@@ -26,6 +26,7 @@ type Listener = () => void;
 
 const ACTIVE_THEATER_STORAGE_KEY = "fleet-console.activeTheaterId";
 const THEME_HINT_STORAGE_KEY = "fleet-console.theme-hint";
+const LAST_DARK_THEME_STORAGE_KEY = "fleet-console.last-dark-theme";
 // 서버 seenFeatureTours로 일방향 승격하기 위한 legacy migration 읽기·삭제 전용 키다. 새 값은 쓰지 않는다.
 const COMMISSIONING_SEEN_STORAGE_KEY = "fleet-console.commissioningSeen";
 const COMMISSIONING_SEEN_KEY = "commissioning";
@@ -193,18 +194,35 @@ export function applyThemeToDocument(theme: ThemeId): void {
   }
   try {
     globalThis.localStorage?.setItem(THEME_HINT_STORAGE_KEY, theme);
+    // 마지막 다크 테마 기억은 공용 적용 경로에서 갱신한다 — Settings 카드가 마운트돼 있지 않은
+    // 팔레트 커맨드 등 어떤 전환 경로든 Dark 스위치 재진입 시 같은 테마로 복원돼야 한다.
+    if (theme === "instrument" || theme === "maritime" || theme === "carbon") {
+      globalThis.localStorage?.setItem(LAST_DARK_THEME_STORAGE_KEY, theme);
+    }
   } catch {
     // localStorage 접근 불가 환경에서는 DOM 테마만 적용한다.
+  }
+}
+
+// Dark 모드 진입 시 적용할 다크 테마의 브라우저 로컬 기억 — 저장 필드는 theme: ThemeId 단일을
+// 유지하고(모드는 파생 상태), 모드 전환이 "테마 없음" 상태에 착지하지 않게 한다.
+export function readLastDarkTheme(): ThemeId {
+  try {
+    const stored = globalThis.localStorage?.getItem(LAST_DARK_THEME_STORAGE_KEY);
+    return stored === "instrument" || stored === "maritime" || stored === "carbon" ? stored : "instrument";
+  } catch {
+    return "instrument";
   }
 }
 
 export function readStoredThemeHint(): ThemeId | null {
   try {
     const theme = globalThis.localStorage?.getItem(THEME_HINT_STORAGE_KEY);
-    return theme === "instrument" || theme === "maritime" || theme === "carbon"
-      || theme === "daywatch" || theme === "whites" || theme === "drydock"
-      ? theme
-      : null;
+    if (theme === "instrument" || theme === "maritime" || theme === "carbon" || theme === "whites") {
+      return theme;
+    }
+    // 퇴역 라이트 테마 힌트는 whites로 폴백한다 — 서버 폴백과 극성이 일치해야 첫 페인트가 튀지 않는다.
+    return theme === "daywatch" || theme === "drydock" ? "whites" : null;
   } catch {
     return null;
   }
@@ -214,8 +232,7 @@ export function readServerInjectedTheme(): ThemeId | null {
   if (typeof document === "undefined") return null;
   if (document.documentElement.getAttribute("data-theme-source") !== "server") return null;
   const theme = document.documentElement.getAttribute("data-theme");
-  return theme === "instrument" || theme === "maritime" || theme === "carbon"
-    || theme === "daywatch" || theme === "whites" || theme === "drydock"
+  return theme === "instrument" || theme === "maritime" || theme === "carbon" || theme === "whites"
     ? theme
     : null;
 }

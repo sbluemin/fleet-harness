@@ -96,10 +96,7 @@ function serveFallbackIndex(
 function injectActiveTheme(html: string, getActiveTheme?: () => ConsoleThemeId): string {
   if (!getActiveTheme) return html;
   const theme = getActiveTheme();
-  if (
-    theme !== "instrument" && theme !== "maritime" && theme !== "carbon"
-    && theme !== "daywatch" && theme !== "whites" && theme !== "drydock"
-  ) {
+  if (theme !== "instrument" && theme !== "maritime" && theme !== "carbon" && theme !== "whites") {
     return html;
   }
   return html.replace('data-theme="instrument"', `data-theme="${theme}" data-theme-source="server"`);

@@ -40,6 +40,7 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   "Instrument",
   "Maritime",
   "Carbon",
+  "Whites",
   "Auto",
   "English",
   "Dynamic",

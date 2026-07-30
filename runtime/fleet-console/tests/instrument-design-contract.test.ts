@@ -965,15 +965,12 @@ describe("Instrument core design contract", () => {
     expect(base).not.toMatch(/--brass(?:-[a-z-]+)?:\s*oklch\([^;]*\b0\.13\b/);
     expect(theme).toContain(':root[data-theme="maritime"]');
     expect(theme).toContain(':root[data-theme="carbon"]');
-    expect(theme).toContain(':root[data-theme="daywatch"]');
     expect(theme).toContain(':root[data-theme="whites"]');
-    expect(theme).toContain(':root[data-theme="drydock"]');
     expect(theme).toContain("--brass: oklch(78% 0.13 75);");
     expect(theme).toContain("--ink-muted: oklch(75% 0.02 248);");
     expect(theme).toContain("--ink-muted: oklch(72% 0.005 250);");
-    expect(theme).toContain("--ink-abyss: oklch(95.5% 0.007 245);");
-    expect(theme).toContain("--ink-abyss: oklch(97% 0.003 250);");
-    expect(theme).toContain("--ink-abyss: oklch(94.5% 0.013 235);");
+    // 라이트 단일종(Whites)의 대기는 오트밀 웜 뉴트럴(hue 95~100)이다 — 청색(hue 250대) 대기 회귀를 차단한다.
+    expect(theme).toContain("--ink-abyss: oklch(97% 0.003 100);");
     expect(theme.match(/^:root \{/gm)).toHaveLength(1);
     // Legacy dark 테마는 팔레트 토큰만 — 광학·color-scheme과 형상·타이포 오버라이드는 진입 불가.
     const darkVariantBlocks = theme.match(/^:root\[data-theme="(?:maritime|carbon)"\][^{]*\{[^}]*\}/gm) ?? [];
@@ -987,8 +984,8 @@ describe("Instrument core design contract", () => {
     }
     // Light 테마만 팔레트 + 광학(color-scheme/shadow/scrollbar/신호 ink·halo/본문 regular 굵기 보정)을 허용한다.
     // --weight-regular 단일 예외: 밝은 배경의 얇은 스템 광학 보정 — medium/bold 티어 오버라이드는 계속 차단.
-    const lightVariantBlocks = theme.match(/^:root\[data-theme="(?:daywatch|whites|drydock)"\][^{]*\{[^}]*\}/gm) ?? [];
-    expect(lightVariantBlocks).toHaveLength(3);
+    const lightVariantBlocks = theme.match(/^:root\[data-theme="whites"\][^{]*\{[^}]*\}/gm) ?? [];
+    expect(lightVariantBlocks).toHaveLength(1);
     for (const block of lightVariantBlocks) {
       expect(block).toContain("color-scheme: light;");
       const declarations = block.match(/^\s{2}[^\n:]+:/gm) ?? [];
@@ -1000,32 +997,26 @@ describe("Instrument core design contract", () => {
     // 신호 ink 티어는 base에서 별칭으로 존재해 다크 3종이 var 간접으로 base 신호색을 상속한다.
     for (const ink of ["--brass-ink", "--aurora-ink", "--coral-ink", "--warn-ink", "--positive-ink"]) {
       expect(base).toContain(`${ink}: var(`);
-      expect(theme.match(new RegExp(`${ink}:`, "g"))).toHaveLength(4);
+      expect(theme.match(new RegExp(`${ink}:`, "g"))).toHaveLength(2);
     }
     // 크롬 표면 티어도 같은 별칭 구조다 — base가 glass 별칭을 제공해 다크 3종이 var 간접으로 상속하고,
-    // 라이트 3종만 종이 표면보다 어두운 자체 리터럴로 분화한다(작업면 최명면 극성).
+    // 라이트(Whites)만 종이 표면보다 어두운 자체 리터럴로 분화한다(작업면 최명면 극성).
     expect(base).toContain("--surface-chrome: var(--surface-glass);");
-    expect(theme.match(/--surface-chrome:/g)).toHaveLength(4);
-    expect(theme).toContain("--surface-chrome: oklch(94.5% 0.009 245);");
-    expect(theme).toContain("--surface-chrome: oklch(96% 0.004 250);");
-    expect(theme).toContain("--surface-chrome: oklch(93.5% 0.015 235);");
-    // 라이트 캔버스는 종이(터미널 97.2/98.2/96.2%)보다 어둡고 크롬보다 밝은 중간층이다 —
+    expect(theme.match(/--surface-chrome:/g)).toHaveLength(2);
+    expect(theme).toContain("--surface-chrome: oklch(96% 0.004 100);");
+    // 라이트 캔버스는 종이(터미널 98.2%)보다 어둡고 크롬보다 밝은 중간층이다 —
     // 이 순서가 무너지면 작업면 최명면 극성이 다시 뒤집힌다.
-    expect(theme).toContain("--canvas-abyss: oklch(96.8% 0.005 245);");
-    expect(theme).toContain("--canvas-abyss: oklch(97.8% 0.003 250);");
-    expect(theme).toContain("--canvas-abyss: oklch(95.8% 0.011 235);");
+    expect(theme).toContain("--canvas-abyss: oklch(97.8% 0.003 100);");
     // brass 채움 위 텍스트 티어 — 다크는 abyss 별칭, 라이트는 페이지 배경과 독립된 자체 리터럴로
     // AA 4.5:1을 보장한다(abyss 결합 시 페이지 배경 조정이 버튼 대비를 함께 끌어내린다).
     expect(base).toContain("--text-on-brass: var(--ink-abyss);");
-    expect(theme.match(/--text-on-brass:/g)).toHaveLength(4);
-    expect(theme).toContain("--text-on-brass: oklch(99% 0.003 245);");
-    expect(theme).toContain("--text-on-brass: oklch(99.8% 0.001 250);");
-    expect(theme).toContain("--text-on-brass: oklch(98.8% 0.005 235);");
+    expect(theme.match(/--text-on-brass:/g)).toHaveLength(2);
+    expect(theme).toContain("--text-on-brass: oklch(99.5% 0.004 95);");
     // Operation 창 프레임 티어 — 다크는 ink-mid 별칭(기존 렌더 유지), 라이트는 ink-deep 별칭으로
     // GNB(밴드)와 같은 크롬 패밀리에 정렬해 프레임이 라이트 최암면이 되는 것을 막는다.
     expect(base).toContain("--surface-frame: var(--ink-mid);");
-    expect(theme.match(/--surface-frame:/g)).toHaveLength(4);
-    expect(theme.match(/--surface-frame: var\(--ink-deep\);/g)).toHaveLength(3);
+    expect(theme.match(/--surface-frame:/g)).toHaveLength(2);
+    expect(theme.match(/--surface-frame: var\(--ink-deep\);/g)).toHaveLength(1);
     expect(theme).not.toMatch(/#fff(?:fff)?\b/i);
     expect(theme).not.toMatch(/body::(?:before|after)/);
   });
