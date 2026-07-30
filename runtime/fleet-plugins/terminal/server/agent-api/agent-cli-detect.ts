@@ -5,7 +5,7 @@
 // 실행 파일/심볼릭링크와 Windows의 npm `.cmd` shim을 동일한 SSoT로 처리해 `--version` 실행이
 // 양 플랫폼에서 모두 성공한다. 해석 결과의 prefixArgs를 `--version` 앞에 붙여 호출하므로
 // Windows shim 래핑이 버전 조회에도 그대로 적용된다. 표시 대상은 CLI_BACKENDS를 cliCommand
-// 기준으로 중복제거한 4개 바이너리(claude/codex/opencode/cursor-agent)다.
+// 기준으로 중복제거한 3개 바이너리(claude/codex/cursor-agent)다.
 
 import { execFile } from "node:child_process";
 
@@ -35,7 +35,6 @@ export interface AgentCliDetector {
 const BINARY_DISPLAY_NAMES: Record<string, string> = {
   claude: "Claude Code",
   codex: "Codex CLI",
-  opencode: "OpenCode",
   "cursor-agent": "Cursor Agent",
 };
 
@@ -66,7 +65,7 @@ export function createDefaultAgentCliDetector(
   });
 }
 
-// CLI_BACKENDS를 선언 순서 그대로 cliCommand 기준 중복제거한다(claude/codex/opencode/cursor-agent).
+// CLI_BACKENDS를 선언 순서 그대로 cliCommand 기준 중복제거한다(claude/codex/cursor-agent).
 function distinctBinaryCommands(): string[] {
   const seen = new Set<string>();
   const commands: string[] = [];

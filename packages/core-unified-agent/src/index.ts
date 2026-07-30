@@ -26,7 +26,6 @@ export type {
 export { UnifiedClaudeAgentClient } from './client/UnifiedClaudeAgentClient.js';
 export { UnifiedCodexAgentClient } from './client/UnifiedCodexAgentClient.js';
 export { UnifiedCursorAgentClient } from './client/UnifiedCursorAgentClient.js';
-export { UnifiedOpenCodeAgentClient } from './client/UnifiedOpenCodeAgentClient.js';
 
 // === 모델 레지스트리 ===
 export {

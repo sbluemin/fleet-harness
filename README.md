@@ -5,7 +5,7 @@
 <h1 align="center">One console. Every frontier coding agent.</h1>
 
 <p align="center">
-  <strong>Fleet Console runs Claude Code, Codex, OpenCode, and Cursor Agent as live, server-owned operations</strong><br/>
+  <strong>Fleet Console runs Claude Code, Codex, and Cursor Agent as live, server-owned operations</strong><br/>
   you can arrange, observe, and delegate from one local workspace.<br/>
   Native agent runtimes. Official protocols. No API wrapping or proxying.
 </p>
@@ -82,7 +82,6 @@ Every supported CLI brings a model-native agent loop refined by its creator. Fle
 | **Claude Code** | Anthropic | ACP | Deep reasoning and architecture judgment |
 | **Kimi via Claude Code** | Moonshot AI | ACP | Kimi coding models with Claude Code tooling |
 | **Codex CLI** | OpenAI | Codex App Server | Rapid implementation and iterative execution |
-| **OpenCode Go** | OpenCode | ACP | Broad open-model access |
 | **Cursor Agent** | Cursor | ACP | Multi-model routing |
 
 Kimi uses the installed `claude` binary with Moonshot's official Anthropic-compatible endpoint. Register its API key under Settings → Plugins → Terminal → Agent CLI before launching a Kimi session or assigning `claude-kimi` to a Carrier.

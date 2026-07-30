@@ -5,7 +5,7 @@
 <h1 align="center">하나의 콘솔. 모든 프론티어 코딩 에이전트.</h1>
 
 <p align="center">
-  <strong>Fleet Console은 Claude Code, Codex, OpenCode, Cursor Agent를 서버가 소유하는 살아 있는 Operation으로 실행합니다.</strong><br/>
+  <strong>Fleet Console은 Claude Code, Codex, Cursor Agent를 서버가 소유하는 살아 있는 Operation으로 실행합니다.</strong><br/>
   하나의 로컬 워크스페이스에서 배치하고, 관측하고, 위임하세요.<br/>
   네이티브 에이전트 런타임. 공식 프로토콜. API 래핑이나 프록시 없음.
 </p>
@@ -82,7 +82,6 @@ Nimitz와 Vanguard는 여기에 더해 **Task Force**를 지원합니다. 둘 �
 | **Claude Code** | Anthropic | ACP | 심층 추론과 아키텍처 판단 |
 | **Kimi via Claude Code** | Moonshot AI | ACP | Claude Code 도구를 사용하는 Kimi 코딩 모델 |
 | **Codex CLI** | OpenAI | Codex App Server | 빠른 구현과 반복 실행 |
-| **OpenCode Go** | OpenCode | ACP | 폭넓은 오픈 모델 접근 |
 | **Cursor Agent** | Cursor | ACP | 다중 모델 라우팅 |
 
 Kimi는 설치된 `claude` 바이너리와 Moonshot의 공식 Anthropic 호환 엔드포인트를 사용합니다. Kimi 세션을 시작하거나 Carrier에 `claude-kimi`를 지정하기 전에 Settings → Plugins → Terminal → Agent CLI에서 API 키를 등록하세요.

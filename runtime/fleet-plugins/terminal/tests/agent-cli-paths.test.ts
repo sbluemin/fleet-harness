@@ -182,7 +182,6 @@ describe("Agent CLI launch env overlay", () => {
   });
 
   it("does not invent launch env variables for detection-only CLIs", () => {
-    expect(applyAgentCliPathEnvOverlay({}, "opencode", { opencode: "/custom/opencode" })).toEqual({});
     expect(applyAgentCliPathEnvOverlay({}, "cursor-agent", { "cursor-agent": "/custom/cursor-agent" })).toEqual({});
   });
 });
@@ -246,13 +245,12 @@ describe("Carrier Agent CLI launch resolution", () => {
     });
   });
 
-  it("passes OpenCode and Cursor directly without custom env", async () => {
+  it("passes Cursor directly without custom env", async () => {
     const resolver = createCarrierAgentCliLaunchResolver(
-      async () => ({ opencode: process.execPath, "cursor-agent": process.execPath }),
+      async () => ({ "cursor-agent": process.execPath }),
       { PATH: path.dirname(process.execPath) },
     );
 
-    await expect(resolver("opencode-go", { env: {} })).resolves.toEqual({ cliPath: process.execPath });
     await expect(resolver("cursor", { env: {} })).resolves.toEqual({ cliPath: process.execPath });
   });
 });

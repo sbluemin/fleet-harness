@@ -37,7 +37,6 @@ export const ANALYST_CLI_ENTRIES: readonly { readonly binaryId: string; readonly
   { binaryId: "claude", cliId: "claude" },
   { binaryId: "claude", cliId: "claude-kimi", label: "Kimi (Claude Code)" },
   { binaryId: "codex", cliId: "codex" },
-  { binaryId: "opencode", cliId: "opencode-go" },
   { binaryId: "cursor-agent", cliId: "cursor" },
 ];
 

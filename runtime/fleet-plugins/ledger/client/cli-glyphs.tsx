@@ -26,14 +26,6 @@ function KimiGlyph() {
   );
 }
 
-function OpenCodeGlyph() {
-  return (
-    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" aria-hidden="true">
-      <path d="m6.5 3-4 5 4 5M9.5 3l4 5-4 5" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 function CursorGlyph() {
   return (
     <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">
@@ -64,7 +56,6 @@ export function cliGlyph(client: string): ReactNode {
   if (client === "claude") return <ClaudeGlyph />;
   if (client === "codex") return <CodexGlyph />;
   if (client === "kimi") return <KimiGlyph />;
-  if (client === "opencode") return <OpenCodeGlyph />;
   if (client === "cursor") return <CursorGlyph />;
   return <DefaultGlyph />;
 }
@@ -74,7 +65,6 @@ export function cliDisplayName(client: string): string {
     claude: "Claude",
     codex: "Codex",
     kimi: "Kimi",
-    opencode: "OpenCode",
     cursor: "Cursor",
     gemini: "Gemini",
   };
