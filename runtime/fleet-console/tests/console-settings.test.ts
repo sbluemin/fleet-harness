@@ -133,7 +133,7 @@ describe("sanitizeConsoleSettingsData", () => {
   });
 
   it("preserves each supported theme without dropping siblings", () => {
-    for (const theme of ["maritime", "carbon", "instrument", "daywatch", "whites", "drydock"] as const) {
+    for (const theme of ["maritime", "carbon", "instrument", "whites"] as const) {
       expect(sanitizeConsoleSettingsData({ version: 1, general: { theme, language: "ko", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } } })).toEqual({
         version: 1,
         general: { theme, language: "ko", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
@@ -145,6 +145,16 @@ describe("sanitizeConsoleSettingsData", () => {
       general: {},
       plugins: {},
     });
+  });
+
+  it("maps retired light themes to whites without dropping siblings", () => {
+    for (const legacy of ["daywatch", "drydock"]) {
+      expect(sanitizeConsoleSettingsData({ version: 1, general: { theme: legacy, language: "ko" } })).toEqual({
+        version: 1,
+        general: { theme: "whites", language: "ko" },
+        plugins: {},
+      });
+    }
   });
 
   it("snapshots the approved Instrument warn token below accent chroma", () => {

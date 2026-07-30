@@ -633,10 +633,10 @@ describe("Session Analyst server contract", () => {
     const hostileHtml = `<!doctype html><html lang="en" class='artifact-root' data-note="quoted > value" data-theme="artifact" style='scrollbar-gutter:stable;background-color:white!important'><head><style>html,body{background:linear-gradient(white,white)!important;color:white!important;min-height:1px!important;color-scheme:light!important}</style></head><body class="artifact-body" aria-label='Artifact > body' data-layout="report" style='display:grid;padding:24px;font-family:"Artifact Serif";--artifact-label:"alpha;beta";letter-spacing:.1em;margin:40px;background-color:hotpink!important;background-image:linear-gradient(white,white)!important;color:white!important;min-height:1px!important;color-scheme:light!important'><script>globalThis.__artifactRan=true</script><main>Artifact</main></body></html>`;
     emit?.({ type: "artifact", artifact: { id: "hostile", title: "Hostile", html: hostileHtml, createdAt: new Date(0).toISOString() } });
 
-    for (const theme of ["instrument", "maritime", "carbon", "daywatch", "whites", "drydock"] as const) {
+    for (const theme of ["instrument", "maritime", "carbon", "whites"] as const) {
       const path = `/api/v1/plugins/terminal/analysis/artifacts/hostile?theme=${theme}&canvas=${encodeURIComponent("#123456")}&foreground=${encodeURIComponent("#f0f0f0")}`;
       const response = await router.call("GET", path);
-      const expectedColorScheme = ["daywatch", "whites", "drydock"].includes(theme) ? "light" : "dark";
+      const expectedColorScheme = theme === "whites" ? "light" : "dark";
       expect(response.status).toBe(200);
       const document = new DOMParser().parseFromString(response.body, "text/html");
       expect(document.documentElement.getAttribute("data-theme")).toBe(theme);
@@ -657,7 +657,7 @@ describe("Session Analyst server contract", () => {
       expect(document.body.style.getPropertyValue("color")).toBe("rgb(240, 240, 240)");
       expect(document.body.style.getPropertyValue("min-height")).toBe("100%");
       expect(document.body.style.getPropertyValue("color-scheme")).toBe(expectedColorScheme);
-      if (theme === "daywatch") expect(response.body).toContain("color-scheme:light!important");
+      if (theme === "whites") expect(response.body).toContain("color-scheme:light!important");
       expect(document.body.style.getPropertyValue("margin")).toBe("0px");
       for (const property of ["background-color", "background-image", "color", "min-height", "color-scheme", "margin"]) {
         expect(document.body.style.getPropertyPriority(property)).toBe("important");

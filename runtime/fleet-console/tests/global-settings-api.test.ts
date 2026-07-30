@@ -51,7 +51,7 @@ describe("global settings client transport", () => {
   });
 
   it("accepts and sends each supported theme", async () => {
-    for (const theme of ["instrument", "maritime", "carbon", "daywatch", "whites", "drydock"] as const) {
+    for (const theme of ["instrument", "maritime", "carbon", "whites"] as const) {
       const state = { ...SETTINGS, theme };
       const fetchMock = vi.fn(async () => new Response(JSON.stringify({ state })));
       globalThis.fetch = fetchMock as typeof fetch;
