@@ -4,6 +4,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import type { ProviderDto, QuotaSummaryDto, QuotaWindow } from "../server/types.js";
+import { providerGlyph } from "./cli-glyphs.js";
 import { getT, type QuotaMessageKey } from "./i18n/index.js";
 import "./quota.css";
 
@@ -82,7 +83,10 @@ function ProviderCard({
   if (id === "claude" && provider.status === "not_connected") {
     return (
       <section className="quota-connect-card">
-        <h3>{t("quota.connect.title")}</h3>
+        <h3>
+          <span className="quota-provider__mark quota-provider__mark--claude">{providerGlyph("claude")}</span>
+          {t("quota.connect.title")}
+        </h3>
         <p>{t("quota.connect.body")}</p>
         {provider.method === "keychain" ? <p className="quota-connect-card__hint">{t("quota.connect.keychain")}</p> : null}
         <button type="button" className="quota-button quota-button--primary" onClick={() => connect(true)}>{t("quota.connect.action")}</button>
@@ -92,7 +96,7 @@ function ProviderCard({
   return (
     <section className="quota-provider" data-provider={id}>
       <header className="quota-provider__header">
-        <span className={`quota-provider__mark quota-provider__mark--${id}`} />
+        <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
         <h3>{name}</h3>
         {id === "claude" ? <button type="button" className="quota-disconnect" onClick={() => connect(false)}>{t("quota.disconnect.action")}</button> : null}
         {provider.plan ? <span className="quota-plan">{provider.plan}</span> : null}

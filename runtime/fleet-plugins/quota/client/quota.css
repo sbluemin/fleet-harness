@@ -32,18 +32,24 @@
   font-weight: var(--weight-medium);
 }
 
+.quota-connect-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .quota-provider__mark {
-  width: 3px;
-  height: 14px;
-  border-radius: var(--radius-pill);
+  display: grid;
+  place-items: center;
+  color: var(--text-tertiary);
 }
 
 .quota-provider__mark--claude {
-  background: var(--carrier-claude);
+  color: var(--carrier-claude);
 }
 
 .quota-provider__mark--codex {
-  background: var(--carrier-codex);
+  color: var(--carrier-codex);
 }
 
 .quota-plan {
