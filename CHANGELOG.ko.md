@@ -5,6 +5,56 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.40.0] - 2026-07-30
+
+### fleet-cli
+
+#### Removed
+- [fleet-cli] 터미널 호스트에서 Fleet Plans 도구와 워크스페이스 바인딩을 제거합니다.
+- [fleet-cli] opencode-go 캐리어 색상 팔레트 항목을 제거합니다.
+
+### fleet-console
+
+#### Added
+- [fleet-console] Mod+P로 커맨드 모드 프리픽스가 입력된 커맨드 팔레트를 바로 엽니다.
+
+#### Changed
+- [fleet-console] rail 패널 헤더의 "Float over Map" 텍스트 토글을 picture-in-picture 아이콘 버튼으로 교체하고, Solid/90/75/60 불투명도 프리셋을 실시간 % 병기 연속 인라인 슬라이더(40-100)로 대체합니다. 헤더는 최소 패널 폭에서도 한 줄을 유지합니다.
+- [fleet-console] Whites 라이트 테마의 배경·잉크·헤어라인·표면을 청색조 백색에서 따뜻한 오트밀 뉴트럴로 재조율하고, brass·신호·carrier·정체성 색은 그대로 유지합니다.
+- [fleet-console] Settings 테마 피커를 Light|Dark 스위치로 재편해 Dark 선택 시 Instrument·Maritime·Carbon 트레이가 열리고, 브라우저별로 기억된 마지막 다크 테마를 복원합니다.
+
+#### Removed
+- [fleet-console] Plans Activity Rail 패널, 검색 연동, HTTP API를 제거합니다.
+- [fleet-console] Daywatch·Drydock 라이트 테마를 퇴역시키고, 저장된 선택은 모든 부트 경로에서 Whites로 폴백해 첫 페인트의 라이트 극성을 유지합니다.
+- [fleet-console] Agent CLI 탐지, 실행 경로 설정, Session Analyst 프로바이더 선택에서 OpenCode Go를 제거하고 opencode 캐리어 테마 토큰을 삭제합니다.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Scuttlebutt가 작업 시작도 warn 채널 "작업 시작" 말풍선으로 알립니다. 완료 말풍선과 대칭이며, 보고 있는 Operation의 시작은 조용하고, 재시작은 60초 쿨다운을 따릅니다. 새 출발 알림 설정 토글(기본 켜짐)로 끌 수 있습니다.
+- [fleet-console] [fleet-console] Claude Code와 Codex 구독 rate-limit을 보여주는 사용 한도 rail 패널을 추가합니다. 세션·주간·모델별 사용량 막대와 리셋까지 남은 시간, Codex의 rate-limit 재설정 잔여 횟수를 표시합니다.
+- [fleet-console] [fleet-console] Claude는 명시적인 연결 단계를 거친 뒤에만 로컬 CLI 로그인 정보로 사용량을 조회하며, 자격증명은 읽기 전용으로 다루고 요청은 각 공급자에게만 전송합니다.
+- [fleet-console] [fleet-console] 사용 한도 패널에 Cursor를 추가합니다. 청구 주기 기준으로 포함된 사용량과 Auto, API 사용률, 주기가 리셋되기까지 남은 시간, 현재 요금제를 표시합니다.
+
+#### Changed
+- [fleet-console] Whites 터미널의 종이·잉크·무채 ANSI 단계를 오트밀 대기에 맞춰 따뜻하게 조정하고, 유채 ANSI 색은 의미색 그대로 유지합니다.
+- [fleet-console] [fleet-console] 사용량 공급자를 각각 독립적으로 연결하고 해제합니다. 한 공급자를 조작해도 다른 공급자가 갱신되거나 영향을 받지 않습니다.
+
+#### Fixed
+- [fleet-console] [fleet-console] 패널 안 컴패니언 핸들 칩의 한글 라벨을 정수 10px와 본문 산스 폰트로 선명하게 하고, 핸들 스택과 아티팩트 칩 중앙정렬의 반픽셀 블러를 제거합니다.
+- [fleet-console] 저장소 기록에서 merge 커밋의 레인 선이 분기점 위로 튀어나오거나, 로드된 페이지 밖 부모를 향해 끊긴 분기 선이 그려지던 문제를 수정합니다.
+- [fleet-console] 커밋 행의 그래프 거터 폭을 통일해 merge 구간에서 제목이 옆으로 밀리지 않습니다.
+
+#### Removed
+- [fleet-console] Terminal Agent 세션에서 Plan 도구 등록과 워크스페이스 바인딩을 제거합니다.
+- [fleet-console] Ledger에서 과거 opencode 사용량 행을 전용 글리프·색상 대신 기본 글리프와 원시 클라이언트 id로 표시합니다.
+
+### fleet-core
+
+#### Breaking Changes
+- [core-agent][fleet-admiral][fleet-carriers] Fleet Plans 패키지와 Plan 전용 오케스트레이션 계약을 제거합니다.
+- [core-unified-agent][fleet-analyst] opencode-go 프로바이더를 제거합니다. CliType 유니온 멤버, CLI_BACKENDS 항목, 모델 카탈로그, UnifiedOpenCodeAgentClient export가 삭제되며 opencode는 더 이상 Fleet 백엔드로 탐지·실행되지 않습니다.
+
 ## [1.39.0] - 2026-07-29
 
 ### fleet-console

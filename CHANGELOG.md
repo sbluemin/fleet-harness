@@ -5,6 +5,56 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.40.0] - 2026-07-30
+
+### fleet-cli
+
+#### Removed
+- [fleet-cli] Remove Fleet Plans tools and workspace binding from the terminal host.
+- [fleet-cli] Remove the opencode-go carrier color palette entries.
+
+### fleet-console
+
+#### Added
+- [fleet-console] Open the command palette directly with Mod+P, pre-seeded with the command-mode prefix.
+
+#### Changed
+- [fleet-console] Replace the rail panel header's "Float over Map" text toggle with a picture-in-picture icon button and swap the Solid/90/75/60 opacity presets for a continuous inline slider (40-100) with a live percentage readout; the header now stays on a single row even at the minimum panel width.
+- [fleet-console] Retune the Whites light theme from blue-tinted white to a warm oatmeal neutral across backgrounds, ink, hairlines, and surfaces, keeping brass, signal, carrier, and identity colors unchanged.
+- [fleet-console] Rebuild the Settings theme picker as a Light|Dark switch whose Dark side slides open the Instrument, Maritime, and Carbon tray and restores the last dark theme remembered per browser.
+
+#### Removed
+- [fleet-console] Remove the Plans Activity Rail panel, search integration, and HTTP APIs.
+- [fleet-console] Retire the Daywatch and Drydock light themes; stored selections fall back to Whites in every boot path so first paint keeps light polarity.
+- [fleet-console] Remove OpenCode Go from Agent CLI detection, launch-path configuration, and Session Analyst provider selection, and drop the opencode carrier theme tokens.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Scuttlebutt announces operation starts with a warn-channel "Started" bubble, mirroring the finished-work arrival bubble; starts from the operation you are watching stay silent, repeat starts respect a 60-second cooldown, and a new departure bell settings toggle (on by default) controls the signal.
+- [fleet-console] Add a Usage limits rail panel that reports Claude Code and Codex subscription rate limits, showing session, weekly, and model-scoped usage bars with reset countdowns plus the remaining Codex rate-limit reset credits.
+- [fleet-console] Read usage with the local CLI sign-in only after an explicit connect step for Claude, keeping credentials read-only and sending requests solely to each provider.
+- [fleet-console] Add Cursor to the Usage limits panel, showing billing-cycle usage for included, Auto, and API spend with the time left until the cycle resets and the current plan.
+
+#### Changed
+- [fleet-console] Warm the Whites terminal paper, ink, and neutral ANSI rungs to match the oatmeal atmosphere while chromatic ANSI colors stay semantic.
+- [fleet-console] Connect and disconnect each usage provider independently, so acting on one provider no longer refreshes or disturbs the others.
+
+#### Fixed
+- [fleet-console] Sharpen the Korean labels on the in-panel companion handle chips with an integer 10px size and the body sans stack, and remove half-pixel blur from the handle stack and artifacts chip centering.
+- [fleet-console] Repository history no longer draws merge commit lane lines protruding above the branch point or dead-end branch stubs toward parents outside the loaded page.
+- [fleet-console] Commit rows keep a uniform graph gutter width so subjects no longer shift sideways across merge spans.
+
+#### Removed
+- [fleet-console] Remove Plan tool registration and workspace binding from Terminal Agent sessions.
+- [fleet-console] Render historical opencode usage rows in Ledger with the default glyph and raw client id instead of a dedicated glyph and color.
+
+### fleet-core
+
+#### Breaking Changes
+- [core-agent][fleet-admiral][fleet-carriers] Remove the Fleet Plans package and Plan-specific orchestration contracts.
+- [core-unified-agent][fleet-analyst] Remove the opencode-go provider: the CliType union member, CLI_BACKENDS entry, model catalog, and UnifiedOpenCodeAgentClient export are gone, and opencode is no longer detected or launchable as a Fleet backend.
+
 ## [1.39.0] - 2026-07-29
 
 ### fleet-console
