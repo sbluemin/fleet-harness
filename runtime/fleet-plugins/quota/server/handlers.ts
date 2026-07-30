@@ -4,6 +4,8 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import type { QuotaService } from "./service.js";
 
+export type SettingsSerializer = <T>(operation: () => Promise<T>) => Promise<T>;
+
 export async function handleSummary(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -27,6 +29,7 @@ export async function handleConnect(
   res: http.ServerResponse,
   ctx: FleetPluginServerContext,
   service: QuotaService,
+  serializeSettings: SettingsSerializer,
 ): Promise<void> {
   if (req.method !== "POST") {
     ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" });
@@ -59,17 +62,19 @@ export async function handleConnect(
     ctx.host.http.writeJson(res, 400, { error: "invalid_connect_request" });
     return;
   }
-  const stored = await ctx.host.storage.readJson("quota", "settings");
-  const settings = stored !== null && typeof stored === "object" && !Array.isArray(stored)
-    ? stored as { readonly claudeConnected?: unknown; readonly cursorConnected?: unknown }
-    : {};
-  const next = {
-    ...(typeof settings.claudeConnected === "boolean" ? { claudeConnected: settings.claudeConnected } : {}),
-    ...(typeof settings.cursorConnected === "boolean" ? { cursorConnected: settings.cursorConnected } : {}),
-    ...(body.provider === "claude"
-      ? { claudeConnected: body.connected }
-      : { cursorConnected: body.connected }),
-  };
-  await ctx.host.storage.writeJson("quota", "settings", next);
-  ctx.host.http.writeJson(res, 200, await service.getSummary({ force: true }));
+  await serializeSettings(async () => {
+    const stored = await ctx.host.storage.readJson("quota", "settings");
+    const settings = stored !== null && typeof stored === "object" && !Array.isArray(stored)
+      ? stored as { readonly claudeConnected?: unknown; readonly cursorConnected?: unknown }
+      : {};
+    const next = {
+      ...(typeof settings.claudeConnected === "boolean" ? { claudeConnected: settings.claudeConnected } : {}),
+      ...(typeof settings.cursorConnected === "boolean" ? { cursorConnected: settings.cursorConnected } : {}),
+      ...(body.provider === "claude"
+        ? { claudeConnected: body.connected }
+        : { cursorConnected: body.connected }),
+    };
+    await ctx.host.storage.writeJson("quota", "settings", next);
+  });
+  ctx.host.http.writeJson(res, 200, await service.getSummary({ forceProvider: body.provider }));
 }

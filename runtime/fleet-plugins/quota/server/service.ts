@@ -7,7 +7,10 @@ const STALE_TTL_MS = 1_800_000;
 type ProviderId = "claude" | "codex" | "cursor";
 
 export interface QuotaService {
-  getSummary(options?: { readonly force?: boolean }): Promise<QuotaSummaryDto>;
+  getSummary(options?: {
+    readonly force?: boolean;
+    readonly forceProvider?: "claude" | "codex" | "cursor";
+  }): Promise<QuotaSummaryDto>;
 }
 
 export interface QuotaServiceDeps {
@@ -88,9 +91,9 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
   return {
     async getSummary(options = {}) {
       const [claude, codex, cursor] = await Promise.all([
-        load("claude", options.force === true),
-        load("codex", options.force === true),
-        load("cursor", options.force === true),
+        load("claude", options.force === true || options.forceProvider === "claude"),
+        load("codex", options.force === true || options.forceProvider === "codex"),
+        load("cursor", options.force === true || options.forceProvider === "cursor"),
       ]);
       return { providers: { claude, codex, cursor } };
     },

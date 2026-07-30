@@ -45,7 +45,7 @@ function safeTimestamp(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) result = value < 1e12 ? value * 1_000 : value;
   if (typeof value === "string") {
     const trimmed = value.trim();
-    if (/^\d{1,15}$/.test(trimmed)) {
+    if (/^[1-9]\d{9,14}$/.test(trimmed)) {
       const parsed = Number(trimmed);
       if (Number.isFinite(parsed)) result = parsed < 1e12 ? parsed * 1_000 : parsed;
     } else {
@@ -76,6 +76,8 @@ function validatedString(value: unknown, pattern: RegExp): string | undefined {
 function titleCase(value: unknown): string | undefined {
   const validated = validatedString(value, /^[A-Za-z0-9][A-Za-z0-9 .+-]{0,23}$/);
   if (!validated) return undefined;
+  // Plan labels deliberately exclude money, so a bare number must never enter the DTO.
+  if (/^\d+$/.test(validated)) return undefined;
   return `${validated[0]?.toUpperCase() ?? ""}${validated.slice(1)}`;
 }
 
@@ -200,11 +202,14 @@ export function parseCursorUsage(payload: unknown):
       ...(resetsAt !== undefined ? { resetsAt } : {}),
     });
   }
+  if (windows.length === 0) return { status: "no_subscription" };
   const cycleStart = safeTimestamp(root?.billingCycleStart);
   const cycleEnd = safeTimestamp(root?.billingCycleEnd);
-  const cycleDays = cycleStart !== undefined && cycleEnd !== undefined
-    ? Math.min(400, Math.max(1, Math.round((cycleEnd - cycleStart) / 86_400_000)))
-    : undefined;
+  let cycleDays: number | undefined;
+  if (cycleStart !== undefined && cycleEnd !== undefined && cycleEnd > cycleStart) {
+    const days = Math.round((cycleEnd - cycleStart) / 86_400_000);
+    if (days >= 1 && days <= 400) cycleDays = days;
+  }
   return {
     status: "ok",
     windows,

@@ -68,6 +68,44 @@ describe("provider response parsing", () => {
     expect(parseCursorUsage({ enabled: false, planUsage: { totalPercentUsed: 10 } }))
       .toEqual({ status: "no_subscription" });
     expect(parseCursorUsage({ enabled: true })).toEqual({ status: "no_subscription" });
+    expect(parseCursorUsage({ enabled: true, planUsage: { totalPercentUsed: Number.NaN } }))
+      .toEqual({ status: "no_subscription" });
+    expect(parseCursorUsage({ enabled: true, planUsage: {} }))
+      .toEqual({ status: "no_subscription" });
+  });
+
+  it("omits fabricated Cursor cycle lengths while preserving a valid 31-day span", () => {
+    const start = 1_700_000_000_000;
+    const parseCycle = (end: number) => parseCursorUsage({
+      billingCycleStart: start,
+      billingCycleEnd: end,
+      planUsage: { totalPercentUsed: 10 },
+      enabled: true,
+    });
+    for (const end of [start - 86_400_000, start, start + 500 * 86_400_000]) {
+      expect(parseCycle(end)).not.toHaveProperty("cycleDays");
+    }
+    expect(parseCycle(start + 31 * 86_400_000)).toMatchObject({ cycleDays: 31 });
+  });
+
+  it("accepts only canonical numeric-string epochs and preserves date-string parsing", () => {
+    const resetFor = (billingCycleEnd: unknown) => {
+      const parsed = parseCursorUsage({
+        billingCycleEnd,
+        planUsage: { totalPercentUsed: 10 },
+        enabled: true,
+      });
+      return parsed.status === "ok" ? parsed.windows[0]?.resetsAt : undefined;
+    };
+    expect(resetFor("2024")).toBe(Date.parse("2024"));
+    expect(resetFor("1785858430000")).toBe(1_785_858_430_000);
+    expect(resetFor("-1")).toBe(Date.parse("-1"));
+    expect(resetFor("0123456789012")).toBe(
+      Number.isFinite(Date.parse("0123456789012")) ? Date.parse("0123456789012") : undefined,
+    );
+    expect(resetFor("2026-08-01T00:00:00Z")).toBe(Date.parse("2026-08-01T00:00:00Z"));
+    expect(resetFor(2_000_000_000)).toBe(2_000_000_000_000);
+    expect(resetFor(2_000_000_000_000)).toBe(2_000_000_000_000);
   });
 
   it("maps Claude session, weekly, and scoped model windows", () => {
@@ -366,6 +404,28 @@ describe("Cursor provider requests", () => {
     });
     expect(result).toMatchObject({ status: "ok", windows: [{ id: "cycle", usedPercent: 7 }] });
     expect(result).not.toHaveProperty("plan");
+  });
+
+  it("rejects numeric Cursor plan labels without enumerating valid tiers", async () => {
+    const fetchPlan = async (planName: string) => fetchCursorUsage({
+      credentials: {
+        platform: "linux",
+        homedir: () => "/home/operator",
+        env: {},
+        readBounded: async () => JSON.stringify({ accessToken: "secret" }),
+        execFile: async () => "",
+      },
+      fetch: (async (url: string | URL | Request) => jsonResponse(
+        String(url).endsWith("/GetPlanInfo")
+          ? { planInfo: { planName } }
+          : { enabled: true, planUsage: { totalPercentUsed: 7 } },
+      )) as typeof fetch,
+      now: () => 42,
+    });
+    expect(await fetchPlan("7000")).not.toHaveProperty("plan");
+    for (const planName of ["Pro+", "Ultra", "Teams"]) {
+      expect(await fetchPlan(planName)).toHaveProperty("plan", planName);
+    }
   });
 });
 
