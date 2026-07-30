@@ -3,7 +3,6 @@ import path from "node:path";
 import process from "node:process";
 
 import { createCarrierResultReminderRouter, createDelayedPtyWriter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliAuthStatuses, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
-import { createPlanWorkspaceServerBindings, getPlanToolSpecs } from "@dotobokuri/fleet-plans";
 import { getCarrierConfig, resolveAgentCliType } from "@dotobokuri/fleet-carriers";
 import { ensureWorkspaceDirectory, withDirectoryLock, type AuthService, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -75,13 +74,6 @@ export function buildAgentLaunchKindBackfillPatch(operation: AgentLaunchKindBack
   return { payload: { ...operation.payload, launchKindId: cliId } };
 }
 
-export function buildAgentPlanToolRegistrations(dataDir: string) {
-  const planTools = getPlanToolSpecs({ dataDir });
-  return {
-    extraAgentTools: [planTools.read, planTools.write, planTools.verify, planTools.markTasks],
-  } as const;
-}
-
 function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
   const wikiToolSpecs = createTerminalWikiToolSpecs(ctx.host.paths.fleetDataDir);
   const agentCliPathStore = createAgentCliPathStore(ctx.host.storage, ctx.pluginId);
@@ -95,7 +87,6 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     },
     workspaceChangeScanner: createWorkspaceChangeScanner(),
     wikiToolSpecs,
-    ...buildAgentPlanToolRegistrations(ctx.host.paths.fleetDataDir),
   });
   runtime.carrierRuntime.setAgentCliLaunchResolver(createCarrierAgentCliLaunchResolver(readAgentCliPaths));
   const observability = createConsoleObservabilityStore({
@@ -112,14 +103,6 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     dataDir: ctx.host.paths.fleetDataDir,
     infraServices: deps,
     readAgentCliPaths,
-    resolveServerBindings: (launchContext) => {
-      const operationId = launchContext?.operationId;
-      if (!operationId) return undefined;
-      const operation = ctx.host.operations.get(operationId);
-      if (!operation || operation.pluginId !== ctx.pluginId || operation.type !== AGENT_OPERATION_TYPE) return undefined;
-      const theaterRoot = ctx.host.paths.resolveTheaterPath(operation.theaterId);
-      return theaterRoot ? createPlanWorkspaceServerBindings(ctx.host.paths.fleetDataDir, theaterRoot) : undefined;
-    },
     onRuntimeSessionStart: (session) => {
       pendingRuntimeSessions.set(session.sessionId, session);
     },

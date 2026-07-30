@@ -176,43 +176,6 @@ describe("executor session manager", () => {
     manager.cleanup();
   });
 
-  it("dedicated sessions freeze a caller binding snapshot independently of execution cwd", async () => {
-    const registry = createMcpToolRegistry();
-    const snapshotStore = createMcpToolSnapshotStore();
-    const server = createInProcessMcpServer({ toolSnapshotStore: snapshotStore });
-    activeServers.push(server);
-    const runtime: McpRouterRuntime = { registry, server, snapshotStore };
-    const seen: Array<{ cwd: string; bindings: Record<string, string> | undefined; frozen: boolean }> = [];
-    registry.registerAgentTool({
-      ...makeToolSpec("binding_snapshot_probe"),
-      async execute(_args, ctx) {
-        seen.push({ cwd: ctx.cwd, bindings: ctx.serverBindings, frozen: Object.isFrozen(ctx.serverBindings) });
-        return "ok";
-      },
-    });
-    const manager = createExecutorSessionManager({ runtimes: [{ name: "tools", runtime }] });
-    const callerBindings: Record<string, string> = { workspace: "/server-workspace" };
-    const tokens = manager.issueSessionToken({
-      label: "bound-session",
-      cwd: "/execution-worktree",
-      serverBindings: callerBindings,
-    });
-    callerBindings.workspace = "/mutated-caller-value";
-
-    await postJsonRpc(await server.start(), tokens[0]!.token, {
-      jsonrpc: "2.0",
-      id: "call",
-      method: "tools/call",
-      params: { name: "binding_snapshot_probe", arguments: {} },
-    });
-
-    expect(seen).toEqual([{
-      cwd: "/execution-worktree",
-      bindings: { workspace: "/server-workspace" },
-      frozen: true,
-    }]);
-    manager.cleanup();
-  });
 });
 
 function makeToolSpec(id: string): AgentToolSpec {

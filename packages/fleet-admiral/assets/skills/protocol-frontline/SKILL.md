@@ -49,5 +49,5 @@ When composing waves and review loops, select the structured feedback pattern th
 |---------|------|------|
 | **Build → Review** | implementation carrier → review carrier → findings back to implementation carrier → re-review | Standard implementation cycle |
 | **Analyze → Execute** | implementation or refactoring carrier → review carrier verifies | Refactoring workflow |
-| **Decide → Host Plan → Execute** | optional judgment carrier → host-authored Plan → execution carrier | Complex features |
+| **Decide → Host Planning → Execute** | optional judgment carrier → host-authored plan → execution carrier | Complex features |
 | **Research → Act** | reconnaissance carrier → appropriate follow-up carrier from the active roster | Unknown scope tasks |

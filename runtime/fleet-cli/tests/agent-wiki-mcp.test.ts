@@ -42,12 +42,6 @@ const EXPECTED_CARRIER_TOOL_IDS = [
   "carrier_dispatch",
   "carrier_jobs",
 ] as const;
-const EXPECTED_HOST_PLAN_TOOL_IDS = [
-  "plan_read",
-  "plan_write",
-  "plan_verify",
-  "plan_mark_tasks",
-] as const;
 // Fleet Wiki mutation·stage·lint·schema 도구는 전부 host-only —
 // 어떤 캐리어에도 executor로 노출되지 않는다.
 const HOST_ONLY_WIKI_TOOL_IDS = [
@@ -106,18 +100,14 @@ describe("fleet-cli agent CLI MCP registration", () => {
     for (const toolId of EXPECTED_WIKI_TOOL_IDS) {
       expect(fleetToolNames.has(toolId)).toBe(true);
     }
-    for (const toolId of EXPECTED_HOST_PLAN_TOOL_IDS) {
-      expect(fleetToolNames.has(toolId)).toBe(true);
-    }
     expect(
       runtime.mcpRegistry[0]!.getAllAgentTools()
         .filter((spec) => EXPECTED_WIKI_TOOL_IDS.includes(spec.id as typeof EXPECTED_WIKI_TOOL_IDS[number]))
         .map((spec) => ({ id: spec.id, parameters: spec.parameters })),
     ).toEqual(getWikiToolSpecs().map((spec) => ({ id: spec.id, parameters: spec.parameters })));
     expect(fleetToolNames.size).toBe(
-      EXPECTED_CARRIER_TOOL_IDS.length + EXPECTED_WIKI_TOOL_IDS.length + EXPECTED_HOST_PLAN_TOOL_IDS.length,
+      EXPECTED_CARRIER_TOOL_IDS.length + EXPECTED_WIKI_TOOL_IDS.length,
     );
-    expect(fleetToolNames.has("plan_mark_tasks")).toBe(true);
     expect(fleetToolNames.has("mcp__fleet__wiki_query")).toBe(false);
     expect(fleetToolNames.has("mcp__carrier__carrier_dispatch")).toBe(false);
     expect(fleetToolNames.has("mcp__wiki__wiki_query")).toBe(false);
@@ -144,14 +134,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(fleetToolNames.has("wiki_patch_queue")).toBe(true);
 
     expect(ordinaryCarrierTools.has("carrier_jobs")).toBe(true);
-    expect(ordinaryCarrierTools.has("plan_read")).toBe(true);
-    expect(ordinaryCarrierTools.has("plan_write")).toBe(false);
-    expect(ordinaryCarrierTools.has("plan_mark_tasks")).toBe(false);
-    expect(ordinaryCarrierTools.has("plan_verify")).toBe(false);
-    expect(genesisTools.has("plan_read")).toBe(true);
-    expect(genesisTools.has("plan_mark_tasks")).toBe(false);
-    expect(genesisTools.has("plan_write")).toBe(false);
-    expect(genesisTools.has("plan_verify")).toBe(false);
+    expect(genesisTools.has("carrier_jobs")).toBe(true);
 
     // 4개 built-in Carrier 전체 Wiki ACL 고정: 정확히 읽기 전용 4종만 노출, host-only 9종은 전부 차단.
     const ALL_CARRIER_IDS = ["nimitz", "genesis", "sentinel", "vanguard"];
@@ -163,9 +146,6 @@ describe("fleet-cli agent CLI MCP registration", () => {
       for (const denied of DENIED_HOST_ONLY_WIKI_TOOL_IDS) {
         expect(tools.has(denied)).toBe(false);
       }
-      expect(tools.has("plan_write")).toBe(false);
-      expect(tools.has("plan_verify")).toBe(false);
-      expect(tools.has("plan_mark_tasks")).toBe(false);
     }
 
     const systemPrompt = createSystemPromptBuilder({

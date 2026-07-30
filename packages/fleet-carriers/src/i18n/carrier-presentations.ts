@@ -15,7 +15,7 @@ export const CARRIER_PRESENTATIONS: Readonly<Record<string, CarrierPresentationC
   nimitz: {
     ko: {
       title: "전략 지휘·판단",
-      summary: "읽기 전용 전략 지휘 — 구현에 직접 손대지 않고 독트린 판단, 아키텍처 결정, 심층 분석, 트레이드오프 심판으로 기술적 경로를 정합니다. plan_ref가 주어지면 이미 작성된 Fleet Plan을 감사할 수 있습니다.",
+      summary: "읽기 전용 전략 지휘 — 구현에 직접 손대지 않고 독트린 판단, 아키텍처 결정, 심층 분석, 트레이드오프 심판으로 기술적 경로를 정합니다.",
     },
   },
   genesis: {

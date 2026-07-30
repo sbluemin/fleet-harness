@@ -41,7 +41,6 @@
     "@dotobokuri/core-agent": "workspace:*",
     "@dotobokuri/core-infra": "workspace:*",
     "@dotobokuri/fleet-wiki": "workspace:*",
-    "@dotobokuri/fleet-plans": "workspace:*",
     "@xterm/headless": "^5.5.0",
     "node-pty": "^1.0.0"
   },

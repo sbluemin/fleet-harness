@@ -15,56 +15,6 @@ export interface TheaterFolderListResponse {
   readonly truncated?: true;
 }
 
-export interface PlanListItem {
-  readonly name: string;
-  readonly title: string;
-  readonly executionMode: "sequential" | "parallel" | null;
-  readonly waveCount: number;
-  readonly tasksDone: number;
-  readonly tasksTotal: number;
-  readonly updatedAt: string;
-  readonly sizeBytes: number;
-}
-
-export interface PlanLane {
-  readonly id: string | null;
-  readonly heading: string;
-  readonly tasksDone: number;
-  readonly tasksTotal: number;
-}
-
-export interface PlanWave {
-  readonly index: number;
-  readonly heading: string;
-  readonly lanes: readonly PlanLane[];
-  readonly tasksDone: number;
-  readonly tasksTotal: number;
-}
-
-export interface PlanReadResult {
-  readonly name: string;
-  readonly title: string;
-  readonly executionMode: "sequential" | "parallel" | null;
-  readonly updatedAt: string;
-  readonly content: string;
-  readonly waves: readonly PlanWave[];
-  readonly tasksDone: number;
-  readonly tasksTotal: number;
-}
-
-export interface PlansListResult {
-  readonly plans: readonly PlanListItem[];
-}
-
-export interface PlanSearchItem {
-  readonly name: string;
-  readonly title: string;
-}
-
-export interface PlansSearchResult {
-  readonly plans: readonly PlanSearchItem[];
-}
-
 export interface ReleaseNotesFetchOptions {
   readonly force?: boolean;
   readonly locale?: ReleaseNotesLocale;
@@ -205,49 +155,6 @@ export async function issueTheaterFolderGrant(path: string, signal?: AbortSignal
   const payload = (await response.json()) as { folderGrantId?: unknown };
   if (typeof payload.folderGrantId !== "string") throw new ApiError(response.status, "Invalid folder grant response");
   return payload.folderGrantId;
-}
-
-export async function fetchPlansList(theaterId: string, signal?: AbortSignal): Promise<PlansListResult> {
-  const response = await fetch("/api/v1/plans/list", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ theaterId }),
-    signal,
-  });
-  await assertOk(response);
-  return await response.json() as PlansListResult;
-}
-
-export async function fetchPlanRead(theaterId: string, name: string, signal?: AbortSignal): Promise<PlanReadResult> {
-  const response = await fetch("/api/v1/plans/read", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ theaterId, name }),
-    signal,
-  });
-  await assertOk(response);
-  return await response.json() as PlanReadResult;
-}
-
-export async function deletePlan(theaterId: string, name: string, signal?: AbortSignal): Promise<void> {
-  const response = await fetch("/api/v1/plans/delete", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ theaterId, name }),
-    signal,
-  });
-  await assertOk(response);
-}
-
-export async function fetchPlansSearch(theaterId: string, query: string, limit: number, signal?: AbortSignal): Promise<PlansSearchResult> {
-  const response = await fetch("/api/v1/plans/search", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ theaterId, query, limit }),
-    signal,
-  });
-  await assertOk(response);
-  return await response.json() as PlansSearchResult;
 }
 
 export async function forgetTheater(theaterId: string, signal?: AbortSignal): Promise<DeferredDeletionResponse> {

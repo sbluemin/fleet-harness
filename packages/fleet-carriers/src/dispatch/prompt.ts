@@ -76,7 +76,7 @@ export function buildCarrierSystemPrompt(metadata?: CarrierMetadata): string {
  * 필수 requestBlock이 request 텍스트에 정상적으로 존재하는지 검사합니다.
  *
  * opening tag, closing tag, 비어 있지 않은 본문을 모두 확인합니다.
- * 속성이 포함된 태그도 허용합니다: `<task_refs source="host">...</task_refs>`
+ * 속성이 포함된 태그도 허용합니다: `<objective source="host">...</objective>`
  *
  * @param meta carrier 메타데이터
  * @param request 사용자 요청 텍스트

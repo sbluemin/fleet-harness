@@ -8,7 +8,6 @@ import { execFileSync } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { initStore, resetStoreForTests } from "@dotobokuri/fleet-carriers";
-import { ensureWorkspaceDirectory } from "@dotobokuri/core-infra/workspace-dir";
 
 import type { ConsoleLockPayload } from "../core/host/api-types.js";
 import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_FULLSCREEN_PATH } from "../core/host/desktop-fullscreen.js";
@@ -76,10 +75,11 @@ interface FakeConsoleRuntime {
         register(callback: (event: unknown) => void): () => void;
       };
     };
+    setAgentCliLaunchResolver(): void;
   };
   readonly dedicatedMcpSession: {
     getEndpoint(): Promise<{ readonly servers: readonly { readonly name: string; readonly url: string }[] }>;
-    issueSessionToken(request: { readonly label: string; readonly cwd: string; readonly serverBindings?: Readonly<Record<string, string>> }): readonly { readonly name: string; readonly token: string }[];
+    issueSessionToken(request: { readonly label: string; readonly cwd: string }): readonly { readonly name: string; readonly token: string }[];
     releaseSessionToken(label: string): void;
   };
   readonly mcpRegistry: {
@@ -1683,7 +1683,7 @@ describe("console static and terminal ticket boundary", () => {
   });
 
   it("keeps the active Theater identity server-side across initial and resumed Agent launch", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plan-binding-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-theater-context-"));
     tempDirs.push(dir);
     const contexts: Array<TerminalLaunchContext | undefined> = [];
     const ptys: ExitablePty[] = [];
@@ -1718,79 +1718,6 @@ describe("console static and terminal ticket boundary", () => {
       expect(context).toEqual(expect.objectContaining({ operationId: sessionId, theaterId: theater.id }));
     }
     expect(JSON.stringify(contexts)).not.toContain(dir);
-    expect(JSON.stringify(contexts)).not.toContain("serverBindings");
-  });
-
-  it("issues Theater-bound dedicated MCP sessions from the real Agent Operation resolver on launch and resume", async () => {
-    const theaterRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plan-binding-theater-"));
-    const carrierWorktree = path.join(theaterRoot, ".fleet", "worktrees", "carrier-topic");
-    fs.mkdirSync(carrierWorktree, { recursive: true });
-    tempDirs.push(theaterRoot);
-    const theaterRealpath = fs.realpathSync.native(theaterRoot);
-    const theaterId = workspaceHash(theaterRealpath);
-    const tokenRequests: Array<{ readonly label: string; readonly cwd: string; readonly serverBindings?: Readonly<Record<string, string>> }> = [];
-    const runtime = createFakeConsoleRuntime([], [], tokenRequests);
-    fleetAdmiralMock.agentRuntimeQueue.push(runtime);
-    fleetAdmiralMock.resolveProfile = async (_env, cwd) => ({
-      id: "claude" as const,
-      label: "Claude Code",
-      bin: "/bin/claude",
-      args: [],
-      cwd: String(cwd),
-      env: { PATH: "/bin", TERM: "xterm-256color" },
-      messagePolicy: { bracketedPaste: true, multilineStrategy: "paste-mode" },
-      terminalName: "xterm-256color",
-    });
-    const fixture = await startFixture({
-      beforeCreateServer: ({ carrierStoreDir }) => {
-        const consoleDir = path.join(carrierStoreDir, "console");
-        fs.mkdirSync(consoleDir, { recursive: true });
-        fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
-          version: 2,
-          theaters: [{ id: theaterId, path: theaterRoot, realpath: theaterRealpath, label: path.basename(theaterRoot), registeredAt: "2026-07-18T00:00:00.000Z", lastOpenedAt: "2026-07-18T00:00:00.000Z" }],
-          operations: [{
-            id: "resume-session",
-            theaterId,
-            type: "agent",
-            pluginId: "terminal",
-            title: "Carrier",
-            payload: { cwd: carrierWorktree, cliId: "claude", providerSession: { provider: "claude", sessionId: "provider-session-a", capturedAt: "2026-07-18T00:00:00.000Z" } },
-            geometry: null,
-            state: {},
-            ts: { createdAt: 1, updatedAt: 1 },
-          }],
-        }));
-      },
-      terminalStartShell: () => createFakePty(),
-    });
-    expect(fleetAdmiralMock.agentRuntimeQueue).toEqual([]);
-
-    const created = await fetch(`${fixture.endpoint}plugins/terminal/agent/sessions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId, cliId: "claude" }),
-    });
-    const initial = await created.json() as { readonly sessionId: string };
-    const resumed = await fetch(`${fixture.endpoint}plugins/terminal/agent/sessions/resume-session/resume`, { method: "POST" });
-    const operations = await getJson<unknown>(`${fixture.endpoint}api/v1/operations`);
-    const sessions = await getJson<unknown>(`${fixture.endpoint}plugins/terminal/agent/sessions`);
-    const expectedBinding = ensureWorkspaceDirectory(fixture.carrierStoreDir, theaterRealpath).name;
-    const marketplaceRoot = path.join(fixture.carrierStoreDir, "marketplace");
-    const serialized = JSON.stringify({ operations, sessions });
-
-    expect(created.status).toBe(200);
-    expect(resumed.status).toBe(200);
-    expect(tokenRequests).toEqual(expect.arrayContaining([
-      expect.objectContaining({ label: initial.sessionId, cwd: theaterRealpath, serverBindings: { "fleet-plans.workspace-ref": expectedBinding } }),
-      expect.objectContaining({ label: "resume-session", cwd: carrierWorktree, serverBindings: { "fleet-plans.workspace-ref": expectedBinding } }),
-    ]));
-    expect(fs.existsSync(path.join(marketplaceRoot, "plugins"))).toBe(true);
-    expect(fs.realpathSync.native(marketplaceRoot).startsWith(`${fs.realpathSync.native(fixture.carrierStoreDir)}${path.sep}`)).toBe(true);
-    expect(marketplaceRoot.startsWith(`${os.homedir()}${path.sep}`)).toBe(false);
-    expect(serialized).not.toContain(theaterRoot);
-    expect(serialized).not.toContain(carrierWorktree);
-    expect(serialized).not.toContain(expectedBinding);
-    expect(runtime.cleanup).not.toHaveBeenCalled();
   });
 
   it("acknowledges, deduplicates, persists, and sanitizes deferred provider identity refreshes", async () => {
@@ -2962,7 +2889,7 @@ async function fetchWithBlockedPortRetry(request: (fixture: ServerFixture) => Pr
 function createFakeConsoleRuntime(
   issuedLabels: string[],
   releasedLabels: string[],
-  tokenRequests: Array<{ readonly label: string; readonly cwd: string; readonly serverBindings?: Readonly<Record<string, string>> }> = [],
+  tokenRequests: Array<{ readonly label: string; readonly cwd: string }> = [],
 ): FakeConsoleRuntime {
   const handlers = new Set<(event: unknown) => void>();
   return {
@@ -2978,6 +2905,7 @@ function createFakeConsoleRuntime(
           },
         },
       },
+      setAgentCliLaunchResolver() {},
     },
     dedicatedMcpSession: {
       getEndpoint: async () => ({ servers: [{ name: "fleet-tools", url: "http://127.0.0.1/fleet-tools" }] }),

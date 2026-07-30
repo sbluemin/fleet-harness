@@ -320,7 +320,7 @@ describe("filterPaletteCommands", () => {
     const originalToLocaleLowerCase = String.prototype.toLocaleLowerCase;
     const lowerCaseSpy = vi.spyOn(String.prototype, "toLocaleLowerCase").mockImplementation(function (
       this: string,
-      locales?: string | string[],
+      locales?: Intl.LocalesArgument,
     ): string {
       const value = String(this);
       if (locales === undefined) {
@@ -356,7 +356,7 @@ describe("filterPaletteCommands", () => {
     const originalToLocaleLowerCase = String.prototype.toLocaleLowerCase;
     const lowerCaseSpy = vi.spyOn(String.prototype, "toLocaleLowerCase").mockImplementation(function (
       this: string,
-      locales?: string | string[],
+      locales?: Intl.LocalesArgument,
     ): string {
       const value = String(this);
       if (locales === undefined) {
@@ -392,7 +392,7 @@ describe("filterPaletteCommands", () => {
     const originalToLocaleLowerCase = String.prototype.toLocaleLowerCase;
     const lowerCaseSpy = vi.spyOn(String.prototype, "toLocaleLowerCase").mockImplementation(function (
       this: string,
-      locales?: string | string[],
+      locales?: Intl.LocalesArgument,
     ): string {
       const value = String(this);
       if (locales === undefined) {
@@ -431,7 +431,7 @@ describe("filterPaletteCommands", () => {
     const originalToLocaleLowerCase = String.prototype.toLocaleLowerCase;
     const lowerCaseSpy = vi.spyOn(String.prototype, "toLocaleLowerCase").mockImplementation(function (
       this: string,
-      locales?: string | string[],
+      locales?: Intl.LocalesArgument,
     ): string {
       const value = String(this);
       if (locales === undefined && value === label) return foldedLabel;

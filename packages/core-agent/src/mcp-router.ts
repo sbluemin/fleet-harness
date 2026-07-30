@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import type { McpToolRegistry } from "./tool-registry.js";
 import type { McpToolSnapshotStore } from "./tool-snapshot.js";
-import type { AgentServerBindings, AgentToolSpec, McpCallToolResult, McpTool } from "./types.js";
+import type { AgentToolSpec, McpCallToolResult, McpTool } from "./types.js";
 
 export type ToolCallArrivedCallback = (
   toolName: string,
@@ -33,7 +33,7 @@ export function specToMcpTool(spec: AgentToolSpec): McpTool {
 export function installExecutorToolCallRouter(
   runtime: McpRouterRuntime,
   sessionToken: string,
-  ctx: { cwd: string; sessionLabel?: string; signal?: AbortSignal; serverBindings?: AgentServerBindings },
+  ctx: { cwd: string; sessionLabel?: string; signal?: AbortSignal },
 ): void {
   runtime.server.setOnToolCallArrived(sessionToken, (toolName, args) => {
     const toolCallId = crypto.randomUUID();
@@ -42,7 +42,6 @@ export function installExecutorToolCallRouter(
       sessionLabel: ctx.sessionLabel,
       toolCallId,
       signal: ctx.signal,
-      serverBindings: ctx.serverBindings,
     })
       .then((result) => runtime.server.resolveNextToolCall(sessionToken, toolCallId, result))
       .catch((err) => {

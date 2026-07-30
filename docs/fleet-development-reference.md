@@ -10,7 +10,6 @@ Fleet development follows a hard one-way dependency graph:
 - `packages/fleet-carriers` — carrier runtime, personas, jobs (including detached jobs), and carrier state.
 - `packages/core-agent` — host-agnostic executor/session/model runtime engine, builtin external MCP catalog, generic in-process MCP server primitives, and shared register data contract.
 - `packages/core-infra` — host-agnostic auth, data-dir resolution, data-dir/settings, and durable `fs-store` I/O primitives.
-- `packages/fleet-plans` — workspace-scoped Fleet Plan storage, deterministic Markdown validation, and PlanRef/TaskRef Agent tools.
 - `runtime/fleet-console` — standalone loopback Console Service and sole owner of CLI register ingest, REST/SSE/WebSocket, Terminal PTY/provider/plugin runtime, durable state, and static UI serving.
 - `runtime/fleet-desktop` — optional thin Electron native shell; supervises a separately packaged standard Node sidecar and has no renderer, HTTP server, PTY, provider, plugin, or durable-state implementation.
 - `packages/fleet-wiki` and `runtime/fleet-console` Codex — Fleet knowledge package and web UI.
@@ -41,14 +40,6 @@ Put code here only when it concerns Electron main-process lifecycle, one native 
 ### 2.5 `packages/core-agent`
 
 Put code here when it owns the host-agnostic one-shot executor/session/model runtime engine (fresh provider client per call, readiness/session discovery, and explicit resume), builtin external MCP catalog, generic in-process MCP server primitives, or shared register data contracts.
-
-### 2.6 `packages/fleet-plans`
-
-Put code here when it owns Fleet Plan schema validation, PlanRef/TaskRef identity, workspace-scoped Plan persistence, or the `plan_read`, `plan_write`, `plan_mark_tasks`, and `plan_verify` tool contracts. Generic cwd-to-workspace directory resolution remains in `packages/core-infra`.
-
-The host owns Fleet Plan authoring and all mutation. `plan_write`, `plan_verify`, and `plan_mark_tasks` are host-only; load the built-in `plan-operations` skill before the first host `plan_write` call in a session and skip reloading when it is already in context. `plan_read` remains available to the host and metadata-authorized Carriers. Nimitz may optionally provide read-only assurance for an exact existing host-authored PlanRef and never authors or mutates Plan state.
-
-`plan_read` has two deterministic views. A `plan_ref`-only call returns the full linted Markdown for host inspection or optional Nimitz assurance. Any call with `task_refs` returns a compact execution view containing Plan-wide objective, topology, progress, global gates, and acceptance context; the selected Lane contract; and only the selected tasks. Supplying both inputs is valid only when they identify the same Plan. When TaskRefs are supplied, Genesis reads the complete assigned same-Lane set once at dispatch start, executes only that scope, runs Lane QA, and returns artifact evidence without changing Plan state. Re-reading is reserved for a reported Plan-state conflict or explicit host redirection. The host independently inspects the artifacts and QA evidence before calling `plan_mark_tasks` with the original TaskRefs; requested Plan changes and unresolved decisions also return to the host. New Plans use the carrier-neutral full-plan policy, while the exact legacy Ohio policy remains lint-compatible only for existing Plans.
 
 ## 3. Import Rules
 

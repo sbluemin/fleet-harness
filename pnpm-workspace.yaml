@@ -6,7 +6,6 @@ packages:
   - "packages/fleet-admiral"
   - "packages/fleet-analyst"
   - "packages/fleet-carriers"
-  - "packages/fleet-plans"
   - "packages/fleet-wiki"
   - "runtime/fleet-console"
   - "runtime/fleet-desktop"

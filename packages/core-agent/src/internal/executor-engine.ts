@@ -21,7 +21,7 @@ import {
 } from "../mcp-router.js";
 import { executorMcpRuntimeProviderRuntime, executorPortRuntime, type ExecutorMcpSession } from "../executor-port.js";
 import { resolveBuiltinExternalMcpServers } from "../external-mcp.js";
-import { snapshotAgentServerBindings, type AgentServerBindings, type TrackStatus } from "../types.js";
+import type { TrackStatus } from "../types.js";
 import { applyPostConnectConfig } from "./post-connect.js";
 
 export interface ExecuteOptions {
@@ -30,7 +30,6 @@ export interface ExecuteOptions {
   readonly agentCliLaunchResolver?: AgentCliLaunchResolver;
   readonly request: string;
   readonly cwd: string;
-  readonly serverBindings?: AgentServerBindings;
   readonly resumeSessionId?: string;
   readonly scopeId?: string;
   readonly model?: string;
@@ -90,7 +89,6 @@ const MAX_TOOL_CALLS_TO_KEEP = 30;
 
 export function engineExecuteOneShot(opts: ExecuteOptions): OneShotExecution {
   assertAuthEnvResolver(opts.authEnvResolver);
-  const serverBindings = snapshotAgentServerBindings(opts.serverBindings);
   let client: IUnifiedAgentClient | undefined;
   let activeMcpTokens: readonly ExecutorMcpSessionToken[] | undefined;
   let promptStarted = false;
@@ -160,7 +158,6 @@ export function engineExecuteOneShot(opts: ExecuteOptions): OneShotExecution {
         opts.signal,
         opts.scopeId,
         opts.reservedExternalMcpServerIds,
-        serverBindings,
       ));
       activeMcpTokens = mcpSetup?.tokens;
       if (aborted) throw new Error("Aborted");
@@ -178,7 +175,6 @@ export function engineExecuteOneShot(opts: ExecuteOptions): OneShotExecution {
         installActiveExecutorToolCallRouter(activeMcpTokens, {
           cwd: opts.cwd,
           signal: opts.signal,
-          serverBindings,
         });
       }
       sessionId = connectResult.session?.sessionId ?? client.getConnectionInfo().sessionId ?? undefined;
@@ -303,7 +299,7 @@ function cleanupExecutorSessions(tokens: readonly ExecutorMcpSessionToken[]): vo
 
 function installActiveExecutorToolCallRouter(
   tokens: readonly ExecutorMcpSessionToken[],
-  ctx: { cwd: string; signal?: AbortSignal; serverBindings?: AgentServerBindings },
+  ctx: { cwd: string; signal?: AbortSignal },
 ): void {
   for (const { serverName, token } of tokens) {
     const runtime = executorMcpRuntimeProviderRuntime.getExecutorMcpRouterRuntimes().find((entry) => entry.name === serverName)?.runtime;
@@ -316,7 +312,6 @@ async function setupExecutorMcp(
   signal?: AbortSignal,
   scopeId?: string,
   reservedIds: readonly string[] = [],
-  serverBindings?: AgentServerBindings,
 ): Promise<ExecutorMcpSetup | null> {
   if (signal?.aborted) return null;
   const tokens: ExecutorMcpSessionToken[] = [];
@@ -332,7 +327,6 @@ async function setupExecutorMcp(
           specs,
           cwd,
           signal,
-          serverBindings,
         });
         tokens.push({ serverName: name, token: session.token, session });
         mcpServers.push(session.mcpServer);

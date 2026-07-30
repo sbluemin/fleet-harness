@@ -41,7 +41,7 @@ Present a before/after table (files, barrels, lines) and await user approval.
 ### Execution
 
 - **≤ 2 merge groups**: Genesis direct.
-- **≥ 3 merge groups or cross-directory deps**: host-authored Plan → Genesis execution; the host marks TaskRefs complete only after artifact inspection and Lane QA.
+- **≥ 3 merge groups or cross-directory deps**: host-authored execution plan → Genesis execution with artifact inspection and QA after each wave.
 - Wave order: consolidate imported-from directories first. Per wave: relocate → update imports → delete absorbed files → typecheck/test/build → residual grep.
 
 ## Pass 2 — Functional Deduplication

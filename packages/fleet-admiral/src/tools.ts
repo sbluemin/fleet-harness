@@ -17,21 +17,11 @@ export const GLOBAL_READONLY_WIKI_TOOL_IDS = new Set<string>([
   "wiki_resolve",
 ]);
 
-export const HOST_ONLY_PLAN_TOOL_IDS = new Set<string>([
-  "plan_write",
-  "plan_verify",
-  "plan_mark_tasks",
-]);
-
 // host-only Wiki 도구 판정: read-only 4종을 제외한 모든 wiki_* 도구.
 // 페르소나 metadata(allowedExecutorTools)가 host-only ID를 나열해도 executor로 재부여되지 않도록
 // executor 해석 결과에서 강제로 걸러내는 데 쓴다.
 export function isHostOnlyWikiTool(toolId: string): boolean {
   return toolId.startsWith("wiki_") && !GLOBAL_READONLY_WIKI_TOOL_IDS.has(toolId);
-}
-
-export function isHostOnlyPlanTool(toolId: string): boolean {
-  return HOST_ONLY_PLAN_TOOL_IDS.has(toolId);
 }
 
 export function registerAgentToolDefaults(
@@ -54,12 +44,11 @@ export function getExecutorMcpTools(
     ? carrierRuntime.registry.getState().modes.get(carrierId)?.config.carrierMetadata?.allowedExecutorTools ?? []
     : [];
   // getExecutorMcpToolsForScope는 persona metadata에 나열된 ID를 executor 스냅샷에 union한다.
-  // host-only Wiki/Plan 도구는 metadata를 통한 재부여마저 차단한다.
+  // host-only Wiki 도구는 metadata를 통한 재부여마저 차단한다.
   // 글로벌 등록 게이트만으로는 metadata union 경로를 막지 못하므로 executor 해석 결과에서 하드 강제한다.
   return registry
     .getExecutorMcpToolsForScope(carrierId, metadataIds)
     .filter((spec) =>
-      !isHostOnlyWikiTool(spec.id)
-      && !isHostOnlyPlanTool(spec.id),
+      !isHostOnlyWikiTool(spec.id),
     );
 }

@@ -19,7 +19,7 @@ export interface TerminalLaunchContext {
   readonly operationId?: string;
   readonly operationType?: string;
   readonly pluginId?: string;
-  /** Opaque server-owned Theater identity; never a browser path or Plan binding. */
+  /** Opaque server-owned Theater identity; never a browser path. */
   readonly theaterId?: string;
   readonly kind?: "fleet" | "shell";
   readonly cliId?: string;

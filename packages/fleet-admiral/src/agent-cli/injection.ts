@@ -3,7 +3,6 @@ import { chmodSync, closeSync, constants, lstatSync, mkdirSync, mkdtempSync, ope
 import os from "node:os";
 import path from "node:path";
 
-import type { AgentServerBindings } from "@dotobokuri/core-agent";
 import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 
 import { buildClaudeNativeArgs } from "./builders/claude.js";
@@ -25,8 +24,6 @@ export interface InjectAgentCliProfileOptions {
   readonly dataDir?: string;
   readonly dedicatedMcpSession: DedicatedMcpSession;
   readonly mcpSessionLabel?: string;
-  /** Server-only values forwarded exclusively to the dedicated MCP session. */
-  readonly serverBindings?: AgentServerBindings;
   readonly enableMetaphor?: boolean;
   readonly captureSessionHookExec?: FleetHookExec;
   // 턴 시작(UserPromptSubmit)·턴 종료(Stop) 신호 hook. host가 빌드해 주입하며 claude/codex 양쪽에 와이어링된다.
@@ -62,7 +59,7 @@ interface CodexProfileHookExecs {
 
 interface DedicatedMcpSession {
   getEndpoint(): Promise<ExecutorEndpoint>;
-  issueSessionToken(request: { readonly label: string; readonly cwd: string; readonly signal?: AbortSignal; readonly serverBindings?: AgentServerBindings }): readonly ExecutorServerToken[] | Promise<readonly ExecutorServerToken[]>;
+  issueSessionToken(request: { readonly label: string; readonly cwd: string; readonly signal?: AbortSignal }): readonly ExecutorServerToken[] | Promise<readonly ExecutorServerToken[]>;
   releaseSessionToken(label: string): void;
 }
 
@@ -97,7 +94,6 @@ export async function injectAgentCliProfile(
   const tokens = await options.dedicatedMcpSession.issueSessionToken({
     cwd: profile.cwd,
     label: tokenLabel,
-    serverBindings: options.serverBindings,
   });
   const mcpServers = buildAgentCliMcpServerConfigs(endpoint.servers, tokens);
   const doctrine = options.buildSystemPrompt(enableMetaphor);
