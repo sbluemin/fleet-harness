@@ -26,7 +26,7 @@ import { Operations } from "./pages/operations.js";
 import { BUILT_IN_RAIL_PANELS } from "./rail/built-in-panels.js";
 import { toggleRailChrome } from "./rail/rail-store.js";
 import { refreshObserverStatus } from "./operations-sse.js";
-import { closeKeyboardShortcuts, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
+import { closeKeyboardShortcuts, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fetch.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "./sidebar/operations-side-bar-store.js";
 import { useConsoleLocale, useT } from "./i18n/index.js";
@@ -233,6 +233,7 @@ export function App() {
     return installConsoleGlobalShortcuts({
       getSideBarCollapsed: () => getSideBarState().collapsed,
       setSideBarCollapsed,
+      openOperationSearch: () => openOperationSearch(">"),
       toggleOperationSearch,
       toggleRailChrome,
       canUndoLastClose,

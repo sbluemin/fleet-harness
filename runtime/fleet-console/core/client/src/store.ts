@@ -71,6 +71,7 @@ let state: ConsoleState = {
   theaterError: null,
   operationsViewActive: false,
   operationSearchOpen: false,
+  operationSearchSeed: null,
   whatsNewOpen: false,
   releaseNotes: [],
   releaseNotesLoading: false,
@@ -499,16 +500,20 @@ export function compareOperationCreatedAt(left: OperationNode, right: OperationN
   return left.ts.createdAt - right.ts.createdAt || left.id.localeCompare(right.id);
 }
 
-export function openOperationSearch(): void {
-  setState({ operationSearchOpen: true });
+export function openOperationSearch(seed?: string): void {
+  setState({ operationSearchOpen: true, operationSearchSeed: seed ?? null });
 }
 
 export function closeOperationSearch(): void {
-  setState({ operationSearchOpen: false });
+  setState({ operationSearchOpen: false, operationSearchSeed: null });
 }
 
 export function toggleOperationSearch(): void {
-  setState({ operationSearchOpen: !state.operationSearchOpen });
+  const operationSearchOpen = !state.operationSearchOpen;
+  setState({
+    operationSearchOpen,
+    ...(operationSearchOpen ? {} : { operationSearchSeed: null }),
+  });
 }
 
 export function openWhatsNew(): void {

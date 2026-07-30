@@ -15,6 +15,7 @@ describe("Console global shortcuts", () => {
     const cleanup = installConsoleGlobalShortcuts({
       getSideBarCollapsed: () => false,
       setSideBarCollapsed: vi.fn(),
+      openOperationSearch: vi.fn(),
       toggleOperationSearch,
       toggleRailChrome: vi.fn(),
     });
@@ -35,6 +36,7 @@ describe("Console global shortcuts", () => {
     const cleanup = installConsoleGlobalShortcuts({
       getSideBarCollapsed: () => false,
       setSideBarCollapsed: vi.fn(),
+      openOperationSearch: vi.fn(),
       toggleOperationSearch: vi.fn(),
       toggleRailChrome: vi.fn(),
       canUndoLastClose: () => active,
@@ -57,6 +59,42 @@ describe("Console global shortcuts", () => {
     dispatchUndo();
 
     expect(undoLastClose).toHaveBeenCalledOnce();
+    cleanup();
+  });
+
+  it("opens the command palette for Mod+P with optional Shift while rejecting Alt and modal-gated events", () => {
+    const openOperationSearch = vi.fn();
+    const cleanup = installConsoleGlobalShortcuts({
+      getSideBarCollapsed: () => false,
+      setSideBarCollapsed: vi.fn(),
+      openOperationSearch,
+      toggleOperationSearch: vi.fn(),
+      toggleRailChrome: vi.fn(),
+    });
+    const dispatch = (init: KeyboardEventInit) => {
+      const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
+      const stopImmediatePropagation = vi.spyOn(event, "stopImmediatePropagation");
+      window.dispatchEvent(event);
+      return { event, stopImmediatePropagation };
+    };
+
+    const meta = dispatch({ key: "p", metaKey: true });
+    const ctrlShift = dispatch({ key: "P", ctrlKey: true, shiftKey: true });
+    const alt = dispatch({ key: "p", metaKey: true, altKey: true });
+    const dialog = document.createElement("div");
+    dialog.setAttribute("aria-modal", "true");
+    document.body.append(dialog);
+    const modalGated = dispatch({ key: "p", metaKey: true });
+
+    expect(openOperationSearch).toHaveBeenCalledTimes(2);
+    expect(meta.event.defaultPrevented).toBe(true);
+    expect(meta.stopImmediatePropagation).toHaveBeenCalledOnce();
+    expect(ctrlShift.event.defaultPrevented).toBe(true);
+    expect(ctrlShift.stopImmediatePropagation).toHaveBeenCalledOnce();
+    expect(alt.event.defaultPrevented).toBe(false);
+    expect(alt.stopImmediatePropagation).not.toHaveBeenCalled();
+    expect(modalGated.event.defaultPrevented).toBe(false);
+    expect(modalGated.stopImmediatePropagation).not.toHaveBeenCalled();
     cleanup();
   });
 });

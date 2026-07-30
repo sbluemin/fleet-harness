@@ -9,7 +9,7 @@ import { OperationSearch } from "../core/client/src/components/operation-search.
 import { takeKeyboardShortcutsReturnFocus } from "../core/client/src/keyboard-shortcuts-return-focus.js";
 import { useConsoleState } from "../core/client/src/hooks/use-store.js";
 import { getSideBarState, setSideBarCollapsed } from "../core/client/src/sidebar/operations-side-bar-store.js";
-import { getState, setState } from "../core/client/src/store.js";
+import { closeOperationSearch, getState, openOperationSearch, setState, toggleOperationSearch } from "../core/client/src/store.js";
 
 let container: HTMLDivElement | null = null;
 let previousFocus: HTMLButtonElement | null = null;
@@ -58,6 +58,7 @@ beforeEach(() => {
       ts: { createdAt: 1, updatedAt: 1 },
     }],
     operationSearchOpen: true,
+    operationSearchSeed: null,
     pendingOperationFocus: null,
     keyboardFocusRequest: null,
     pendingSideBarAddTheater: false,
@@ -83,6 +84,32 @@ afterEach(() => {
 });
 
 describe("Operation search focus handoff", () => {
+  it("consumes an opening seed once and lets Backspace return to operation search", () => {
+    act(() => setState({ operationSearchOpen: false }));
+    act(() => openOperationSearch(">"));
+
+    const input = document.querySelector<HTMLInputElement>("#operation-search-input");
+    expect(input?.value).toBe(">");
+    expect(input?.selectionStart).toBe(1);
+    expect(document.querySelector("#operation-search-heading-commands")?.textContent).toBe("Commands");
+
+    const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => {
+      setInputValue.call(input, "");
+      input!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    act(() => setState({ operationSearchSeed: ">add theater" }));
+
+    expect(input?.value).toBe("");
+    expect(document.querySelector('[role="option"]')?.textContent).toContain("Operation A");
+
+    act(() => closeOperationSearch());
+    expect(getState()).toMatchObject({ operationSearchOpen: false, operationSearchSeed: null });
+    act(() => openOperationSearch(">"));
+    act(() => toggleOperationSearch());
+    expect(getState()).toMatchObject({ operationSearchOpen: false, operationSearchSeed: null });
+  });
+
   it("does not restore the previous focus after selecting an Operation", () => {
     const restoreFocus = vi.spyOn(previousFocus!, "focus");
     const result = document.querySelector<HTMLButtonElement>('[role="option"]');

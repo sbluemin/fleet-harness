@@ -56,6 +56,7 @@ function makeState(patch: Partial<ConsoleState> = {}): ConsoleState {
     theaterError: null,
     operationsViewActive: false,
     operationSearchOpen: false,
+    operationSearchSeed: null,
     whatsNewOpen: false,
     releaseNotes: [],
     releaseNotesLoading: false,
