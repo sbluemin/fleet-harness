@@ -638,29 +638,98 @@
   opacity: 0.52;
 }
 
-/* Theme selection preserves the prior three-tone card affordance. */
+/* Theme selection: Light|Dark mode switch. Light은 Whites(오트밀) 단일이라 카드가 없고,
+   Dark 선택 시 다크 3종 트레이가 우측으로 전개된다. 트레이 전개는 max-width/opacity/transform만
+   사용하고 reduced-motion·reduce-panel-motion에서는 즉시 상태로 단락한다. */
 .theme-picker {
   display: flex;
   flex: none;
-  flex-direction: column;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-2);
 }
 
-.theme-picker-group {
-  display: flex;
-  flex-wrap: wrap;
-  row-gap: var(--space-1);
-  column-gap: var(--space-2);
+.theme-mode-seg {
+  display: inline-flex;
+  flex: none;
+  overflow: hidden;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass-strong) 55%, transparent);
 }
 
-.theme-picker-group-label {
-  flex-basis: 100%;
+.theme-mode-seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 8px var(--space-3);
+  border: 0;
+  background: transparent;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: var(--weight-medium);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring),
+    box-shadow var(--duration-fast) var(--ease-spring);
+}
+
+.theme-mode-seg button svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+}
+
+.theme-mode-seg button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.theme-mode-seg button:hover:not(:disabled):not(.is-active) {
+  color: var(--text-primary);
+}
+
+.theme-mode-seg button.is-active {
+  color: var(--text-primary);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 42%, transparent);
+}
+
+.theme-dark-tray {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateX(-6px);
+  transition:
+    max-width var(--duration-slow) var(--ease-spring),
+    opacity var(--duration-fast) var(--ease-spring),
+    transform var(--duration-slow) var(--ease-spring);
+}
+
+.theme-dark-tray.is-open {
+  max-width: 480px;
+  opacity: 1;
+  transform: none;
+}
+
+.theme-dark-tray .theme-card {
+  flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-dark-tray {
+    transition: none;
+  }
+}
+
+.reduce-panel-motion .theme-dark-tray {
+  transition: none;
 }
 
 .theme-card {

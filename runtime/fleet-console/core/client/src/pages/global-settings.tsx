@@ -27,12 +27,6 @@ interface ThemeOption {
   readonly swatch: readonly [string, string, string];
 }
 
-interface ThemeGroup {
-  readonly id: "dark" | "light";
-  readonly label: string;
-  readonly themes: readonly ThemeOption[];
-}
-
 interface PortModeOption {
   readonly id: GlobalSettingsState["consolePortMode"];
   readonly label: string;
@@ -64,20 +58,36 @@ interface PluginSettingsNavGroup {
 
 type T = Translate<CoreMessageKey>;
 
-// 테마 선택지 — 각 항목의 3톤 스와치는 해당 테마의 brass/aurora/ink 시그니처를 미리보기로 보존한다(콘텐츠 색이라 역할색 규칙과 무관).
-function buildThemeGroups(t: T): readonly ThemeGroup[] {
+// 다크 테마 선택지 — 각 항목의 3톤 스와치는 해당 테마의 brass/aurora/ink 시그니처를 미리보기로 보존한다(콘텐츠 색이라 역할색 규칙과 무관).
+// 라이트는 Whites(오트밀) 단일 테마라 카드 없이 Light|Dark 모드 스위치의 Light 자체가 선택이다.
+function buildDarkThemeOptions(t: T): readonly ThemeOption[] {
   return [
-    { id: "dark", label: t("settings.theme.group.dark"), themes: [
-      { id: "instrument", label: t("settings.theme.instrument"), swatch: ["oklch(16.5% 0.016 245)", "oklch(80% 0.085 78)", "oklch(77% 0.085 200)"] },
-      { id: "maritime", label: t("settings.theme.maritime"), swatch: ["oklch(20% 0.045 248)", "oklch(78% 0.13 75)", "oklch(82% 0.13 195)"] },
-      { id: "carbon", label: t("settings.theme.carbon"), swatch: ["oklch(18% 0.007 255)", "oklch(76% 0.115 62)", "oklch(80% 0.105 205)"] },
-    ]},
-    { id: "light", label: t("settings.theme.group.light"), themes: [
-      { id: "daywatch", label: t("settings.theme.daywatch"), swatch: ["oklch(94% 0.01 245)", "oklch(54% 0.11 72)", "oklch(51% 0.09 205)"] },
-      { id: "whites", label: t("settings.theme.whites"), swatch: ["oklch(95.5% 0.005 250)", "oklch(56% 0.125 82)", "oklch(50% 0.1 210)"] },
-      { id: "drydock", label: t("settings.theme.drydock"), swatch: ["oklch(93% 0.018 236)", "oklch(54% 0.1 70)", "oklch(50% 0.09 190)"] },
-    ]},
+    { id: "instrument", label: t("settings.theme.instrument"), swatch: ["oklch(16.5% 0.016 245)", "oklch(80% 0.085 78)", "oklch(77% 0.085 200)"] },
+    { id: "maritime", label: t("settings.theme.maritime"), swatch: ["oklch(20% 0.045 248)", "oklch(78% 0.13 75)", "oklch(82% 0.13 195)"] },
+    { id: "carbon", label: t("settings.theme.carbon"), swatch: ["oklch(18% 0.007 255)", "oklch(76% 0.115 62)", "oklch(80% 0.105 205)"] },
   ];
+}
+
+const LIGHT_THEME_ID: ThemeId = "whites";
+const LAST_DARK_THEME_STORAGE_KEY = "fleet-console.last-dark-theme";
+
+// Dark 모드 진입 시 적용할 다크 테마의 브라우저 로컬 기억 — 저장 필드는 theme: ThemeId 단일을
+// 유지하고(모드는 파생 상태), 모드 전환이 "테마 없음" 상태에 착지하지 않게 한다.
+function readLastDarkTheme(): ThemeId {
+  try {
+    const stored = globalThis.localStorage?.getItem(LAST_DARK_THEME_STORAGE_KEY);
+    return stored === "instrument" || stored === "maritime" || stored === "carbon" ? stored : "instrument";
+  } catch {
+    return "instrument";
+  }
+}
+
+function rememberLastDarkTheme(theme: ThemeId): void {
+  try {
+    globalThis.localStorage?.setItem(LAST_DARK_THEME_STORAGE_KEY, theme);
+  } catch {
+    // localStorage 접근 불가 환경에서는 기본 Instrument 폴백으로 충분하다.
+  }
 }
 
 function buildPortModes(t: T): readonly PortModeOption[] {
@@ -268,8 +278,13 @@ function ThemeCard({
   readonly saving: boolean;
 }) {
   const t = useT();
-  const themeGroups = buildThemeGroups(t);
+  const darkThemes = buildDarkThemeOptions(t);
   const activeTheme = state?.theme ?? "instrument";
+  const isLight = activeTheme === LIGHT_THEME_ID;
+  // 팔레트 커맨드·다른 브라우저 등 어떤 경로로 다크 테마가 되든 마지막 다크 선택을 따라간다.
+  useEffect(() => {
+    if (!isLight) rememberLastDarkTheme(activeTheme);
+  }, [activeTheme, isLight]);
   const selectTheme = (theme: ThemeId) => {
     if (getGlobalSettingsStoreState().savingField !== null) return;
     const previousTheme = activeTheme;
@@ -277,6 +292,10 @@ function ThemeCard({
     void setGlobalSettingsField("theme", theme).then((saved) => {
       if (!saved) setActiveTheme(previousTheme);
     });
+  };
+  const selectMode = (mode: "light" | "dark") => {
+    if ((mode === "light") === isLight) return;
+    selectTheme(mode === "light" ? LIGHT_THEME_ID : readLastDarkTheme());
   };
   return (
     <section className="global-settings-card" aria-label={t("settings.theme.aria")}>
@@ -287,30 +306,52 @@ function ThemeCard({
           <p className="global-settings-help global-settings-theme-cli-note">{t("settings.theme.cliNote")}</p>
         </div>
         <div className="theme-picker" role="group" aria-label={t("settings.theme.aria")}>
-          {themeGroups.map((group) => (
-            <div key={group.id} className="theme-picker-group">
-              <span className="theme-picker-group-label">{group.label}</span>
-              {group.themes.map((theme) => {
-                const isActive = theme.id === activeTheme;
-                return (
-                  <button
-                    key={theme.id}
-                    type="button"
-                    aria-pressed={isActive}
-                    className={`theme-card ${isActive ? "is-active" : ""}`}
-                    disabled={saving}
-                    onClick={() => selectTheme(theme.id)}
-                  >
-                    <span className="theme-card-swatch" aria-hidden="true">
-                      {theme.swatch.map((color) => <i key={color} style={{ background: color }} />)}
-                    </span>
-                    <span className="theme-card-label">{theme.label}</span>
-                    <span className="theme-card-check" aria-hidden="true">{isActive ? <CheckIcon /> : null}</span>
-                  </button>
-                );
-              })}
-            </div>
-          ))}
+          <div className="theme-mode-seg" role="radiogroup" aria-label={t("settings.theme.aria")}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={isLight}
+              className={isLight ? "is-active" : ""}
+              disabled={saving}
+              onClick={() => selectMode("light")}
+            >
+              <SunIcon />
+              {t("settings.theme.group.light")}
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!isLight}
+              className={isLight ? "" : "is-active"}
+              disabled={saving}
+              onClick={() => selectMode("dark")}
+            >
+              <MoonIcon />
+              {t("settings.theme.group.dark")}
+            </button>
+          </div>
+          <div className={`theme-dark-tray ${isLight ? "" : "is-open"}`} aria-hidden={isLight}>
+            {darkThemes.map((theme) => {
+              const isActive = theme.id === activeTheme;
+              return (
+                <button
+                  key={theme.id}
+                  type="button"
+                  aria-pressed={isActive}
+                  className={`theme-card ${isActive ? "is-active" : ""}`}
+                  disabled={saving}
+                  tabIndex={isLight ? -1 : 0}
+                  onClick={() => selectTheme(theme.id)}
+                >
+                  <span className="theme-card-swatch" aria-hidden="true">
+                    {theme.swatch.map((color) => <i key={color} style={{ background: color }} />)}
+                  </span>
+                  <span className="theme-card-label">{theme.label}</span>
+                  <span className="theme-card-check" aria-hidden="true">{isActive ? <CheckIcon /> : null}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
       <p className="global-settings-foot">{t("settings.theme.foot")}</p>
@@ -625,6 +666,23 @@ function CheckIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M3.5 8.5 6.5 11.5 12.5 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function SunIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M8 1.2v1.8M8 13v1.8M1.2 8H3M13 8h1.8M3.2 3.2l1.3 1.3M11.5 11.5l1.3 1.3M3.2 12.8l1.3-1.3M11.5 4.5l1.3-1.3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M13.2 9.4A5.6 5.6 0 1 1 6.6 2.8a4.4 4.4 0 0 0 6.6 6.6Z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
     </svg>
   );
 }
