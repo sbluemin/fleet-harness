@@ -1,13 +1,20 @@
 .agent-stream-host .terminal-stage { z-index: 0; }
 /* z-index 4 — 짧은 Operation에서는 세로 중앙의 핸들 스택이 하단 리본(3) 밴드까지 내려온다.
    먼저 있던 이 어포던스가 새 리본보다 위에 있어야 ANALYZE/STREAMS 클릭을 리본이 삼키지 않는다. */
-.session-analyst-handle-stack { position: absolute; z-index: 4; right: 0; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: flex-end; gap: 7px; }
+/* translateY(-50%) 중앙정렬은 스택 높이가 홀수 px일 때 칩 전체를 반픽셀 경계에 올려 라벨 텍스트가
+   번진다 — flex 중앙정렬로 교체한다. 스택이 우측 전폭 스트립을 덮으므로 pointer-events는 핸들로만 좁힌다. */
+.session-analyst-handle-stack { position: absolute; z-index: 4; top: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 7px; pointer-events: none; }
+.session-analyst-handle-stack .session-analyst-handle { pointer-events: auto; }
 .session-analyst-handle { position: relative; display: inline-flex; width: 25px; box-sizing: border-box; flex-direction: column; align-items: center; gap: var(--space-2); border: 1px solid var(--hairline-strong); border-right: none; border-radius: 12px 0 0 12px; background: color-mix(in oklch, var(--ink-deep) 94%, black); color: var(--text-tertiary); font-family: var(--font-mono); padding: 11px 4px 12px 6px; cursor: pointer; box-shadow: inset 1px 0 0 color-mix(in oklch, var(--aurora) 10%, transparent); transition: transform var(--duration-base) var(--ease-glide), background var(--duration-base) var(--ease-glide), color var(--duration-base) var(--ease-glide), border-color var(--duration-base) var(--ease-glide), box-shadow var(--duration-base) var(--ease-glide); }
 .session-analyst-handle:hover { transform: translateX(-2px); background: color-mix(in oklch, var(--ink-mid) 72%, var(--ink-deep)); color: var(--text-secondary); box-shadow: inset 2px 0 0 color-mix(in oklch, var(--aurora) 32%, transparent); }
-.session-analyst-handle--artifacts { position: absolute; z-index: 2; right: 0; top: 50%; transform: translateY(-50%); }
-.session-analyst-handle--artifacts:hover { transform: translate(-2px, -50%); }
+/* translateY(-50%) 대신 abs-pos auto-margin 중앙정렬 — 홀수 높이에서도 반픽셀 블러가 없다.
+   hover 슬라이드는 공용 규칙(.session-analyst-handle:hover)의 translateX(-2px)을 그대로 탄다. */
+.session-analyst-handle--artifacts { position: absolute; z-index: 2; top: 0; right: 0; bottom: 0; height: max-content; margin: auto 0; }
 .session-analyst-handle__chev { font-size: 13px; line-height: 1; }
-.session-analyst-handle__label { writing-mode: vertical-rl; font-size: 8.5px; font-weight: var(--weight-medium); letter-spacing: .18em; }
+/* 8.5px 반픽셀 크기는 세로조판 한글 음절을 픽셀 경계 사이에 걸치게 해 획이 뭉개진다(자글자글함의 주원인).
+   정수 10px로 올리고, 한글은 모노 폰트 미보유 글리프의 시스템 폴백 대신 본문 산스(Pretendard)로 분기한다. */
+.session-analyst-handle__label { writing-mode: vertical-rl; font-size: 10px; font-weight: var(--weight-medium); letter-spacing: .18em; }
+:lang(ko) .session-analyst-handle__label { font-family: var(--font-body); font-weight: var(--weight-regular); letter-spacing: .05em; }
 .session-analyst-handle__live { position: relative; width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--aurora); box-shadow: 0 0 10px var(--aurora-glow); }
 .session-analyst-handle__live::after { content: ""; position: absolute; inset: -3px; border: 1px solid var(--aurora); border-radius: 50%; animation: analyst-orbit-pulse 1.8s var(--ease-glide) infinite; }
 .session-analyst-handle.is-live { border-color: color-mix(in oklch, var(--aurora) 48%, var(--hairline-strong)); color: color-mix(in oklch, var(--aurora) 76%, var(--text-secondary)); box-shadow: inset 2px 0 0 color-mix(in oklch, var(--aurora) 38%, transparent); }
@@ -15,7 +22,6 @@
 .session-analyst-handle__count.is-pulsing { animation: analyst-artifact-count-pulse var(--duration-slow) var(--ease-glide); }
 .session-analyst-handle.is-waiting { opacity: .45; border-color: var(--hairline); color: var(--text-tertiary); cursor: default; box-shadow: none; }
 .session-analyst-handle.is-waiting:hover { transform: none; background: var(--ink-deep); }
-.session-analyst-handle--artifacts.is-waiting:hover { transform: translateY(-50%); }
 .session-analyst-handle--artifacts.is-authoring { opacity: 1; color: var(--aurora-ink); }
 .session-analyst-handle--artifacts.is-authoring .session-analyst-handle__count { border: 1px dashed var(--aurora); animation: analyst-authoring-breathe 1.4s var(--ease-glide) infinite; }
 .session-analyst-handle:focus-visible, .session-analyst__chat-pane button:focus-visible, .session-analyst__artifacts button:focus-visible { outline: 2px solid var(--aurora); outline-offset: 2px; }
@@ -354,7 +360,6 @@
 @media (prefers-reduced-motion: reduce) {
   .session-analyst-handle, .session-analyst__suggestions button, .session-analyst__followups-row button, .session-analyst__queue-item button, .session-analyst__composer-surface, .session-analyst__composer textarea, .session-analyst__selector-strip, .session-analyst__artifact-count, .session-analyst__artifact-count i { transition: none; }
   .session-analyst-handle:hover { transform: none; }
-  .session-analyst-handle--artifacts:hover { transform: translateY(-50%); }
   .session-analyst__suggestions button:hover, .session-analyst__followups-row button:hover { transform: none; }
   .session-analyst__pulse-scan, .session-analyst__composer.is-working .session-analyst__composer-surface::before, .session-analyst__pulse-orbit::after, .session-analyst__pulse, .session-analyst__pulse-copy strong, .session-analyst__receipt, .session-analyst__message--analyst, .session-analyst__queue-item, .session-analyst__followups, .session-analyst__slash, .session-analyst__composer.is-docking, .session-analyst__artifact-menu, .session-analyst__export-menu, .session-analyst-handle__count.is-pulsing, .session-analyst-handle--artifacts.is-authoring .session-analyst-handle__count, .session-analyst__author-card, .session-analyst__author-track span, .session-analyst-handle__live::after, .carrier-sortie-ribbon, .carrier-sortie-ribbon__scan, .carrier-stream-column__scan, .carrier-stream-column__activity-scan, .carrier-stream-column__activity[data-tone="live"] .carrier-stream-column__activity-orbit::after, .carrier-stream-column__reasoning i::after { animation: none; }
 }
