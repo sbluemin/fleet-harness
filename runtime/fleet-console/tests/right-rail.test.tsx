@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const railPanelContextMock = vi.hoisted(() => ({ themes: [] as unknown[] }));
+const railPanelContextMock = vi.hoisted(() => ({ themes: [] as unknown[], renderCount: 0 }));
 
 vi.mock("../core/client/src/rail/built-in-panels.js", () => ({
   BUILT_IN_RAIL_PANELS: [
@@ -14,6 +14,7 @@ vi.mock("../core/client/src/rail/built-in-panels.js", () => ({
       defaultWidth: 360,
       icon: "P",
       render: (ctx: { readonly theme?: unknown }) => {
+        railPanelContextMock.renderCount += 1;
         railPanelContextMock.themes.push(ctx.theme);
         return <button className="test-panel-action">Panel action</button>;
       },
@@ -71,6 +72,7 @@ beforeEach(() => {
   setRailPanelBehavior("push");
   setRailOverlayAlpha(100);
   railPanelContextMock.themes.length = 0;
+  railPanelContextMock.renderCount = 0;
   setState({ connection: "live", connectionLostAt: null, activeTheme: "instrument" });
   container = document.createElement("div");
   document.body.replaceChildren(container);
@@ -83,31 +85,52 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("Right Rail overlay opacity presets", () => {
-  it("renders no opacity group or alpha variable in push mode", () => {
+describe("Right Rail overlay opacity slider", () => {
+  it("renders no opacity slider or alpha variable in push mode", () => {
     renderRail();
 
-    expect(container.querySelector('[role="group"][aria-label="Panel opacity"]')).toBeNull();
+    expect(container.querySelector('input[aria-label="Panel opacity"]')).toBeNull();
     expect(panelSlot().style.getPropertyValue("--right-rail-overlay-alpha")).toBe("");
   });
 
-  it("renders the exact presets in overlay mode and applies selection to the slot background variable", () => {
+  it("renders the slider in overlay mode, applies changes, and resets on double-click", () => {
     setRailPanelBehavior("overlay");
     renderRail();
 
-    const group = container.querySelector<HTMLElement>('[role="group"][aria-label="Panel opacity"]');
-    expect(group).not.toBeNull();
-    const buttons = Array.from(group!.querySelectorAll("button"));
-    expect(buttons.map((button) => button.textContent)).toEqual(["Solid", "90", "75", "60"]);
-    expect(buttons.map((button) => button.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false"]);
+    const slider = container.querySelector<HTMLInputElement>('input[aria-label="Panel opacity"]');
+    expect(slider).not.toBeNull();
     expect(panelSlot().style.getPropertyValue("--right-rail-overlay-alpha")).toBe("1");
 
-    act(() => buttons[2]?.click());
+    const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => {
+      setInputValue.call(slider, "65");
+      slider!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
 
-    expect(getRailStoreSnapshot().overlayAlpha).toBe(75);
-    expect(window.localStorage.getItem("fleet-console.rail.overlayAlpha")).toBe("75");
-    expect(buttons.map((button) => button.getAttribute("aria-pressed"))).toEqual(["false", "false", "true", "false"]);
-    expect(panelSlot().style.getPropertyValue("--right-rail-overlay-alpha")).toBe("0.75");
+    expect(getRailStoreSnapshot().overlayAlpha).toBe(65);
+    expect(window.localStorage.getItem("fleet-console.rail.overlayAlpha")).toBe("65");
+    expect(panelSlot().style.getPropertyValue("--right-rail-overlay-alpha")).toBe("0.65");
+
+    act(() => slider!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+
+    expect(getRailStoreSnapshot().overlayAlpha).toBe(100);
+    expect(panelSlot().style.getPropertyValue("--right-rail-overlay-alpha")).toBe("1");
+  });
+
+  it("does not re-render the panel body while the opacity slider changes", () => {
+    setRailPanelBehavior("overlay");
+    renderRail();
+
+    const slider = container.querySelector<HTMLInputElement>('input[aria-label="Panel opacity"]')!;
+    const renderCountBeforeChange = railPanelContextMock.renderCount;
+    const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => {
+      setInputValue.call(slider, "65");
+      slider.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(getRailStoreSnapshot().overlayAlpha).toBe(65);
+    expect(railPanelContextMock.renderCount).toBe(renderCountBeforeChange);
   });
 });
 

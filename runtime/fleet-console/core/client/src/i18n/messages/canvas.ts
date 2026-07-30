@@ -160,7 +160,6 @@ export const canvasEn = {
   "rail.chrome.floatToggle": "Float panel over the Map",
   "rail.chrome.floatLabel": "Float over Map",
   "rail.chrome.opacityAria": "Panel opacity",
-  "rail.chrome.opacitySolid": "Solid",
   "rail.chrome.closePanel": "Close {title}",
   "rail.theater.fallback": "Theater",
 
@@ -386,7 +385,6 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "rail.chrome.floatToggle": "패널을 Map 위에 띄우기",
   "rail.chrome.floatLabel": "Map 위에 띄우기",
   "rail.chrome.opacityAria": "패널 불투명도",
-  "rail.chrome.opacitySolid": "불투명",
   "rail.chrome.closePanel": "{title} 닫기",
   "rail.theater.fallback": "Theater",
 

@@ -86,6 +86,8 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--right-rail-panel-width",
   // Right Rail TSX injects the user-selected overlay opacity.
   "--right-rail-overlay-alpha",
+  // Right Rail TSX injects the continuous opacity slider's filled-track percentage.
+  "--alpha-fill",
   // Repository Rail TSX injects the user-resized workspace tree width.
   "--ws-tree-width",
   // Terminal Carriers TSX injects the selected captain identity tone.
@@ -661,10 +663,14 @@ describe("Instrument core design contract", () => {
     expect(rail).toContain(".right-rail.is-switching");
     // Doctrine: the overlay slot ::before composites its glass layers over an opaque
     // var(--ink-deep) final layer — maritime/carbon --surface-glass-strong is a 78~80%
-    // alpha token, so without the underlay the Solid(100) preset can never be opaque.
+    // alpha token, so without the underlay the slider's 100% endpoint can never be opaque.
     expect(rail).toMatch(/\.right-rail\.is-overlay \.right-rail-panel-slot::before \{[^}]*\)\s*,\s*var\(--ink-deep\);/);
+    // Doctrine: keep both WebKit and Firefox track styling so the continuous
+    // opacity control communicates its filled range in either engine.
+    expect(rail).toContain(".right-rail-alpha-slider::-moz-range-progress");
     expect(rightRail).toContain("useRailPanelBehavior");
     expect(rightRail).toContain("right-rail-float-toggle");
+    expect(rightRail).toContain("right-rail-alpha-slider");
     expect(rightRail).toContain("is-switching");
     expect(railStore).toContain("fleet-console.rail.panelBehavior");
   });

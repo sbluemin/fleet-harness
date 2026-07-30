@@ -8,7 +8,11 @@ interface RailStore {
   readonly overlayAlpha: RailOverlayAlpha;
 }
 
-export type RailOverlayAlpha = 100 | 90 | 75 | 60;
+export type RailOverlayAlpha = number;
+
+export const RAIL_OVERLAY_ALPHA_MIN = 40;
+export const RAIL_OVERLAY_ALPHA_MAX = 100;
+export const RAIL_OVERLAY_ALPHA_DEFAULT = 100;
 
 type Listener = () => void;
 const PREFS_ACTIVE_PANEL = "fleet-console.rail.activePanelId";
@@ -77,10 +81,11 @@ export function toggleRailPanelBehavior(): void {
   setRailPanelBehavior(store.panelBehavior === "push" ? "overlay" : "push");
 }
 
-export function setRailOverlayAlpha(alpha: RailOverlayAlpha): void {
-  if (store.overlayAlpha === alpha) return;
-  setStore({ ...store, overlayAlpha: alpha });
-  saveStoredOverlayAlpha(alpha);
+export function setRailOverlayAlpha(alpha: number): void {
+  const clamped = clampRailOverlayAlpha(alpha);
+  if (store.overlayAlpha === clamped) return;
+  setStore({ ...store, overlayAlpha: clamped });
+  saveStoredOverlayAlpha(clamped);
 }
 
 export function requestRailPanelExtraWidth(panelId: string, px: number | null): void {
@@ -140,9 +145,14 @@ function readStoredPanelBehavior(): "push" | "overlay" {
 function readStoredOverlayAlpha(): RailOverlayAlpha {
   try {
     const stored = localStorage.getItem(PREFS_OVERLAY_ALPHA);
-    if (stored === "90" || stored === "75" || stored === "60") return Number(stored) as RailOverlayAlpha;
-    return 100;
-  } catch { return 100; }
+    if (stored === null || stored.trim() === "") return RAIL_OVERLAY_ALPHA_DEFAULT;
+    const parsed = Number(stored);
+    return Number.isFinite(parsed) ? clampRailOverlayAlpha(parsed) : RAIL_OVERLAY_ALPHA_DEFAULT;
+  } catch { return RAIL_OVERLAY_ALPHA_DEFAULT; }
+}
+
+function clampRailOverlayAlpha(alpha: number): RailOverlayAlpha {
+  return Math.min(RAIL_OVERLAY_ALPHA_MAX, Math.max(RAIL_OVERLAY_ALPHA_MIN, Math.round(alpha)));
 }
 
 function saveStoredPanelId(id: string | null): void {

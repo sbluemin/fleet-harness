@@ -9,14 +9,12 @@ import "../styles/rail.css";
 import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
 import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../components/command-band-focus.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
-import type { Translate } from "@fleet-console/sdk/i18n";
-
-import { useT, type CoreMessageKey } from "../i18n/index.js";
+import { useT } from "../i18n/index.js";
 import { ReconnectButton } from "../components/reconnect-button.js";
 import { getState, subscribe } from "../store.js";
 import type { ConnectionState } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
-import { closeRailPanel, requestRailPanelExtraWidth, setRailOverlayAlpha, toggleRailPanel, toggleRailPanelBehavior, useActiveRailPanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelBehavior, useRailPanelExtraWidth, type RailOverlayAlpha } from "./rail-store.js";
+import { closeRailPanel, RAIL_OVERLAY_ALPHA_DEFAULT, RAIL_OVERLAY_ALPHA_MAX, RAIL_OVERLAY_ALPHA_MIN, requestRailPanelExtraWidth, setRailOverlayAlpha, toggleRailPanel, toggleRailPanelBehavior, useActiveRailPanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelBehavior, useRailPanelExtraWidth, type RailOverlayAlpha } from "./rail-store.js";
 import { useRailPanels } from "./rail-registry.js";
 import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
 
@@ -29,15 +27,6 @@ const MIN_PANEL_WIDTH = 240;
 const DEFAULT_PANEL_WIDTH = 312;
 const PREFS_PANEL_WIDTHS = "fleet-console.rail.panelWidths";
 const LEGACY_PREFS_PANEL_WIDTH = "fleet-console.rail.panelWidth";
-
-function buildOverlayAlphaPresets(t: Translate<CoreMessageKey>): readonly { readonly label: string; readonly value: RailOverlayAlpha }[] {
-  return [
-    { label: t("rail.chrome.opacitySolid"), value: 100 },
-    { label: "90", value: 90 },
-    { label: "75", value: 75 },
-    { label: "60", value: 60 },
-  ];
-}
 
 function readStoredPanelWidths(): Record<string, number> {
   try {
@@ -302,7 +291,10 @@ export function RightRail({ theaterId, api }: RightRailProps) {
           />
         )}
         {activePanel && (
-          <RailPanelContent activePanel={activePanel} activePanelTitle={activePanelTitle} activeId={activeId} ctx={ctx} panelBehavior={panelBehavior} overlayAlpha={overlayAlpha} connection={connection} connectionLostAt={connectionLostAt} language={language} />
+          <>
+            <RailPanelHead activePanelTitle={activePanelTitle} panelBehavior={panelBehavior} overlayAlpha={overlayAlpha} />
+            <RailPanelBody activePanel={activePanel} activeId={activeId} ctx={ctx} connection={connection} connectionLostAt={connectionLostAt} language={language} />
+          </>
         )}
       </div>
       <nav className="right-rail-icons" aria-label={t("rail.chrome.toolsAria")}>
@@ -322,24 +314,71 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   );
 }
 
-interface RailPanelContentProps {
-  readonly activePanel: RailPanelDescriptor;
+interface RailPanelHeadProps {
   readonly activePanelTitle: string;
-  readonly activeId: string | null;
-  readonly ctx: RailPanelContext;
   readonly panelBehavior: "push" | "overlay";
   readonly overlayAlpha: RailOverlayAlpha;
+}
+
+function RailPanelHead({ activePanelTitle, panelBehavior, overlayAlpha }: RailPanelHeadProps) {
+  const t = useT();
+
+  return (
+    <div className="right-rail-panel-head">
+      <span className="right-rail-panel-title">{activePanelTitle}</span>
+      <button
+        className={`right-rail-float-toggle${panelBehavior === "overlay" ? " is-active" : ""}`}
+        type="button"
+        aria-pressed={panelBehavior === "overlay"}
+        aria-label={t("rail.chrome.floatToggle")}
+        title={t("rail.chrome.floatLabel")}
+        onClick={toggleRailPanelBehavior}
+      >
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" /><rect x="7.5" y="7.5" width="5" height="4" rx="1" fill="currentColor" /></svg>
+      </button>
+      {panelBehavior === "overlay" ? (
+        <div className="right-rail-alpha">
+          <input
+            className="right-rail-alpha-slider"
+            type="range"
+            min={RAIL_OVERLAY_ALPHA_MIN}
+            max={RAIL_OVERLAY_ALPHA_MAX}
+            step={1}
+            value={overlayAlpha}
+            aria-label={t("rail.chrome.opacityAria")}
+            onChange={(event) => setRailOverlayAlpha(Number(event.currentTarget.value))}
+            onDoubleClick={() => setRailOverlayAlpha(RAIL_OVERLAY_ALPHA_DEFAULT)}
+            style={{ "--alpha-fill": `${((overlayAlpha - RAIL_OVERLAY_ALPHA_MIN) / (RAIL_OVERLAY_ALPHA_MAX - RAIL_OVERLAY_ALPHA_MIN)) * 100}%` } as CSSProperties}
+          />
+          <span className="right-rail-alpha-value" aria-hidden="true">{overlayAlpha}%</span>
+        </div>
+      ) : null}
+      <button
+        className="right-rail-close-btn"
+        type="button"
+        aria-label={t("rail.chrome.closePanel", { title: activePanelTitle })}
+        onClick={closeRailPanel}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+interface RailPanelBodyProps {
+  readonly activePanel: RailPanelDescriptor;
+  readonly activeId: string | null;
+  readonly ctx: RailPanelContext;
   readonly connection: ConnectionState;
   readonly connectionLostAt: number | null;
   readonly language: ConsoleLocale;
 }
 
-// 패널 본문은 무거운 플러그인 콘텐츠(파일 트리·diff·Codex)를 렌더한다. 리사이즈 드래그가
-// 매 프레임 RightRail을 재렌더해도 이 본문이 함께 재렌더되면 끊김이 생기므로, 폭과 무관한
-// (activePanel·ctx·activeId·panelBehavior·overlayAlpha) props로 memo해 드래그 중 본문 재렌더를 건너뛴다(좌측 SideBar처럼 가벼운 부분만 재렌더).
-const RailPanelContent = memo(function RailPanelContent({ activePanel, activePanelTitle, activeId, ctx, panelBehavior, overlayAlpha, connection, connectionLostAt, language }: RailPanelContentProps) {
+// 패널 본문은 무거운 플러그인 콘텐츠(파일 트리·diff·Codex)를 렌더한다. 폭·알파와 무관한
+// props만 받는 memo 경계로 리사이즈/알파 드래그 중 본문 재렌더를 건너뛰고, 경량 헤더는
+// 경계 밖에서 자유롭게 재렌더한다(좌측 SideBar처럼 가벼운 부분만 재렌더).
+const RailPanelBody = memo(function RailPanelBody({ activePanel, activeId, ctx, connection, connectionLostAt, language }: RailPanelBodyProps) {
   const t = useT();
-  const overlayPresets = buildOverlayAlphaPresets(t);
   const connectionLostTime = connectionLostAt === null ? "" : new Date(connectionLostAt).toLocaleTimeString(language);
   const staleVisible = connection !== "live" && connectionLostAt !== null;
   const panelBodyRef = useRef<HTMLDivElement>(null);
@@ -379,59 +418,19 @@ const RailPanelContent = memo(function RailPanelContent({ activePanel, activePan
   }, [staleVisible]);
 
   return (
-    <>
-      <div className="right-rail-panel-head">
-        <span className="right-rail-panel-title">{activePanelTitle}</span>
-        <button
-          className={`right-rail-float-toggle${panelBehavior === "overlay" ? " is-active" : ""}`}
-          type="button"
-          aria-pressed={panelBehavior === "overlay"}
-          aria-label={t("rail.chrome.floatToggle")}
-          onClick={toggleRailPanelBehavior}
-        >
-          {t("rail.chrome.floatLabel")}
-        </button>
-        {panelBehavior === "overlay" ? (
-          <div className="right-rail-opacity-segments" role="group" aria-label={t("rail.chrome.opacityAria")}>
-            {overlayPresets.map((preset) => {
-              const isActive = preset.value === overlayAlpha;
-              return (
-                <button
-                  key={preset.value}
-                  className={`right-rail-opacity-segment${isActive ? " is-active" : ""}`}
-                  type="button"
-                  aria-pressed={isActive}
-                  onClick={() => setRailOverlayAlpha(preset.value)}
-                >
-                  {preset.label}
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
-        <button
-          className="right-rail-close-btn"
-          type="button"
-          aria-label={t("rail.chrome.closePanel", { title: activePanelTitle })}
-          onClick={closeRailPanel}
-        >
-          ✕
-        </button>
+    <div ref={panelBodyRef} id={`rail-panel-${activePanel.id}`} className="right-rail-panel-body" role="tabpanel" aria-labelledby={`rail-tab-${activeId}`} tabIndex={-1}>
+      <div ref={panelContentRef} className="right-rail-panel-content" inert={staleVisible || undefined}>
+        {activePanel.render(ctx)}
       </div>
-      <div ref={panelBodyRef} id={`rail-panel-${activePanel.id}`} className="right-rail-panel-body" role="tabpanel" aria-labelledby={`rail-tab-${activeId}`} tabIndex={-1}>
-        <div ref={panelContentRef} className="right-rail-panel-content" inert={staleVisible || undefined}>
-          {activePanel.render(ctx)}
+      {/* 덮개도 배너와 같은 축으로 건다 — 재연결 시도 중에도 패널 값은 여전히 멈춰 있다. */}
+      {staleVisible ? (
+        <div ref={staleVeilRef} className="right-rail-stale-veil">
+          <strong>{t("chrome.link.staleHeadline")}</strong>
+          <span>{t("chrome.link.staleDetail", { time: connectionLostTime })}</span>
+          <ReconnectButton buttonRef={reconnectButtonRef} />
         </div>
-        {/* 덮개도 배너와 같은 축으로 건다 — 재연결 시도 중에도 패널 값은 여전히 멈춰 있다. */}
-        {staleVisible ? (
-          <div ref={staleVeilRef} className="right-rail-stale-veil">
-            <strong>{t("chrome.link.staleHeadline")}</strong>
-            <span>{t("chrome.link.staleDetail", { time: connectionLostTime })}</span>
-            <ReconnectButton buttonRef={reconnectButtonRef} />
-          </div>
-        ) : null}
-      </div>
-    </>
+      ) : null}
+    </div>
   );
 });
 
