@@ -306,7 +306,9 @@ function ThemeCard({
               {t("settings.theme.group.dark")}
             </button>
           </div>
-          <div className={`theme-dark-tray ${isLight ? "" : "is-open"}`} aria-hidden={isLight}>
+          {/* 닫힌 트레이는 inert로 봉인한다 — tabIndex=-1은 팔레트 포커스 복원 같은 프로그램적
+              focus()를 막지 못해 aria-hidden 내부에 포커스가 남는 AT 결함이 생긴다. */}
+          <div className={`theme-dark-tray ${isLight ? "" : "is-open"}`} inert={isLight || undefined}>
             {darkThemes.map((theme) => {
               const isActive = theme.id === activeTheme;
               return (
@@ -316,7 +318,6 @@ function ThemeCard({
                   aria-pressed={isActive}
                   className={`theme-card ${isActive ? "is-active" : ""}`}
                   disabled={saving}
-                  tabIndex={isLight ? -1 : 0}
                   onClick={() => selectTheme(theme.id)}
                 >
                   <span className="theme-card-swatch" aria-hidden="true">
