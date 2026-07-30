@@ -93,4 +93,26 @@ describe("Codex provider requests", () => {
     expect(calls.every((call) => call.init?.method === "GET")).toBe(true);
     expect(JSON.stringify(result)).not.toMatch(/secret|acct|access_token/);
   });
+
+  it("keeps the usage snapshot when the credits endpoint fails", async () => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).endsWith("/usage")) {
+        return new Response(JSON.stringify(
+          { rate_limit: { primary_window: { used_percent: 5, limit_window_seconds: 18_000 } } },
+        ), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    const credentials: CredentialResolverDeps = {
+      platform: "linux",
+      homedir: () => "/home/operator",
+      env: {},
+      readFile: async () => JSON.stringify({ tokens: { access_token: "secret" } }),
+      execFile: async () => { throw new Error("must not spawn"); },
+    };
+    const result = await fetchCodexUsage({ credentials, fetch: fetchImpl as typeof fetch, now: () => 42 });
+    expect(result.status).toBe("ok");
+    expect(result.windows?.map((row) => row.id)).toEqual(["session"]);
+    expect("credits" in result).toBe(false);
+  });
 });

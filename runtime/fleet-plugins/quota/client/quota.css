@@ -2,7 +2,6 @@
   height: 100%;
   overflow-y: auto;
   color: var(--text-primary);
-  background: var(--ink-abyss);
 }
 
 .quota-body {

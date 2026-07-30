@@ -192,11 +192,17 @@ export async function fetchCodexUsage(deps: ProviderDeps = {}): Promise<Provider
   try {
     const fetchImpl = deps.fetch ?? fetch;
     const usage = parseCodexUsage(await getJson(fetchImpl, "https://chatgpt.com/backend-api/wham/usage", headers));
-    const credits = parseResetCredits(await getJson(
-      fetchImpl,
-      "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits",
-      headers,
-    ));
+    let credits: ResetCredits | undefined;
+    try {
+      credits = parseResetCredits(await getJson(
+        fetchImpl,
+        "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits",
+        headers,
+      ));
+    } catch {
+      // Credits are a display-only extra; their failure must not sink the usage snapshot.
+      credits = undefined;
+    }
     return {
       status: "ok",
       plan: usage.plan,

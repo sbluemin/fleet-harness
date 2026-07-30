@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
@@ -107,10 +107,10 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
   const [requestError, setRequestError] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [refreshNonce, setRefreshNonce] = useState(0);
-  const [force, setForce] = useState(false);
+  const forceRef = useRef(false);
 
   const refresh = useCallback((forceRequest = false) => {
-    setForce(forceRequest);
+    forceRef.current = forceRequest;
     setRefreshNonce((value) => value + 1);
   }, []);
 
@@ -135,6 +135,8 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
   useEffect(() => {
     let cancelled = false;
     setRequestError(false);
+    const force = forceRef.current;
+    forceRef.current = false;
     ctx.api.fetch("quota", force ? "summary?force=1" : "summary")
       .then((response) => {
         if (!response.ok) throw new Error("summary_failed");
@@ -143,7 +145,6 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
       .then((result) => {
         if (!cancelled) {
           setData(result);
-          setForce(false);
           setNow(Date.now());
         }
       })
@@ -153,7 +154,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
     return () => {
       cancelled = true;
     };
-  }, [ctx.api, force, refreshNonce]);
+  }, [ctx.api, refreshNonce]);
 
   useEffect(() => {
     const poll = setInterval(() => {
@@ -171,7 +172,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
   return (
     <div className="quota-root">
       <div className="quota-body">
-        {requestError ? <div className="quota-error">{t("quota.error", { provider: "providers" })}</div> : null}
+        {requestError ? <div className="quota-error">{t("quota.error.summary")}</div> : null}
         {!data && !requestError ? <div className="quota-loading" aria-live="polite">…</div> : null}
         {data ? (
           <>
@@ -182,7 +183,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
       </div>
       <footer className="quota-footer">
         <div className="quota-footer__row">
-          <span>{fetchedAt === 0 || updatedMinutes < 1 ? t("quota.updated.now") : t("quota.updated.ago", { m: updatedMinutes })}</span>
+          {fetchedAt > 0 ? <span>{updatedMinutes < 1 ? t("quota.updated.now") : t("quota.updated.ago", { m: updatedMinutes })}</span> : null}
           <button type="button" className="quota-refresh" onClick={() => refresh(true)}>{t("quota.refresh")}</button>
         </div>
         <p>{t("quota.privacy")}</p>
