@@ -2,6 +2,7 @@
 
 import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -146,7 +147,7 @@ describe("FloatingWidgetLayer", () => {
     expect(received).toHaveLength(updateCountAfterUnmount);
   });
 
-  it("wires context.operations.focus to the store focus action", () => {
+  it("wires context.operations.focus to the store focus action and the operations route", () => {
     setState({
       operations: [
         operation("alpha", "Alpha launch"),
@@ -174,6 +175,8 @@ describe("FloatingWidgetLayer", () => {
     expect(state.activeTheaterId).toBe("theater");
     expect(state.activeOperationId).toBe("bravo");
     expect(state.pendingOperationFocus).toBe("bravo");
+    // /operations 밖에서 눌러도 포커스가 보이려면 라우트 이동이 동반되어야 한다.
+    expect(lastPathname).toBe("/operations");
   });
 
   it("delivers titled departures immediately, updates them, and unsubscribes on unmount", () => {
@@ -222,13 +225,25 @@ describe("FloatingWidgetLayer", () => {
   });
 });
 
+let lastPathname = "";
+
+function LocationProbe() {
+  lastPathname = useLocation().pathname;
+  return null;
+}
+
 function renderLayer(plugins: readonly FleetClientPlugin[]): void {
   floatingWidgets = plugins.flatMap((plugin) => (plugin.floatingWidgets ?? []).map((descriptor) => ({
     ...descriptor,
     id: `${plugin.id}:${descriptor.id}`,
   })));
   act(() => {
-    root.render(<FloatingWidgetLayer />);
+    root.render(
+      <MemoryRouter initialEntries={["/settings"]}>
+        <LocationProbe />
+        <FloatingWidgetLayer />
+      </MemoryRouter>,
+    );
   });
 }
 

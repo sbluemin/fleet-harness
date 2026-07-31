@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import type {
   FloatingWidgetArrival,
   FloatingWidgetArrivalsCapability,
@@ -22,12 +23,10 @@ import { createHostCapabilities } from "./plugin-capabilities.js";
 import { usePluginRegistry } from "./plugin-registry.js";
 import { focusOperation, getState, subscribe as subscribeStore } from "./store.js";
 
-// 위젯마다 새로 만들 이유가 없는 정적 capability — 모듈 상수로 둬 context 동일성을 지킨다.
-const OPERATIONS_CAPABILITY: FloatingWidgetOperationsCapability = { focus: focusOperation };
-
 export function FloatingWidgetLayer() {
   const { floatingWidgets } = usePluginRegistry();
   const language = useConsoleLocale();
+  const navigate = useNavigate();
   const capabilities = useMemo(() => createHostCapabilities(), []);
   const arrivals = useMemo(() => createManagedArrivalsCapability(), []);
   const departures = useMemo(() => createManagedDeparturesCapability(), []);
@@ -35,16 +34,24 @@ export function FloatingWidgetLayer() {
   useEffect(() => () => arrivals.dispose(), [arrivals]);
   useEffect(() => () => departures.dispose(), [departures]);
   useEffect(() => () => signals.dispose(), [signals]);
+  // 스토어 갱신만으로는 /operations 밖(설정 등)에서 아무 일도 보이지 않는다 —
+  // pendingOperationFocus는 operations 페이지가 소비하므로 rail 알림·검색과 같은 순서로 이동을 동반한다.
+  const operations = useMemo<FloatingWidgetOperationsCapability>(() => ({
+    focus: (operationId) => {
+      focusOperation(operationId);
+      navigate("/operations");
+    },
+  }), [navigate]);
   const context = useMemo<FloatingWidgetContext>(() => ({
     api: capabilities.api,
     arrivals: arrivals.capability,
     departures: departures.capability,
-    operations: OPERATIONS_CAPABILITY,
+    operations,
     signals: signals.capability,
     lifecycle: capabilities.lifecycle,
     preferences: capabilities.preferences,
     language,
-  }), [arrivals, capabilities, departures, language, signals]);
+  }), [arrivals, capabilities, departures, language, operations, signals]);
 
   if (floatingWidgets.length === 0) return null;
 
