@@ -28,7 +28,8 @@ const FETCH_ARGS = [
   "-c",
   "core.sshCommand=ssh",
   "-c",
-  "core.gitProxy=false",
+  // git이 프록시 우회로 예약한 값은 none뿐 — false 같은 값은 프록시 명령으로 실행된다.
+  "core.gitProxy=none",
   "-c",
   "protocol.allow=user",
   "fetch",
@@ -106,7 +107,8 @@ describe("Repository fetch single-flight", () => {
       makeContext(tmpDir, { theaterId: "theater", ...(secondMode === "auto" ? { mode: "auto" } : {}) }, secondWrites),
     );
     await vi.waitFor(() => {
-      expect(runGitMock.mock.calls.filter(([args]) => (args as readonly string[])[0] === "rev-parse")).toHaveLength(2);
+      // --absolute-git-dir + --git-common-dir 두 번의 rev-parse가 요청마다 실행된다.
+      expect(runGitMock.mock.calls.filter(([args]) => (args as readonly string[])[0] === "rev-parse")).toHaveLength(4);
     });
     releaseFetch.resolve();
     await Promise.all([first, second]);
@@ -132,5 +134,32 @@ describe("Repository fetch single-flight", () => {
 
     expect(result.fetchCalls).toBe(1);
     expect(result.secondWrites).toEqual(result.firstWrites);
+  });
+
+  it("throttles a linked worktree against the shared common dir FETCH_HEAD", async () => {
+    // 메인 .git(common)의 FETCH_HEAD가 신선하면, 자기 gitdir에는 FETCH_HEAD가 없는
+    // linked worktree의 auto 요청도 fetch 없이 throttled로 끝나야 한다(refs·원격 공유).
+    const worktreeGitDir = path.join(gitDir, "worktrees", "linked");
+    await fs.mkdir(worktreeGitDir, { recursive: true });
+    await fs.writeFile(path.join(gitDir, "FETCH_HEAD"), "fetched\n");
+
+    runGitMock.mockImplementation(async (args: readonly string[]) => {
+      if (args[0] !== "rev-parse") throw new Error("fetch must not run");
+      return (args as readonly string[]).includes("--git-common-dir")
+        ? gitResult(`${gitDir}\n`)
+        : gitResult(`${worktreeGitDir}\n`);
+    });
+
+    const writes: JsonWrite[] = [];
+    await handleRepositoryFetch(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(tmpDir, { theaterId: "theater", mode: "auto" }, writes),
+    );
+
+    expect(writes).toEqual([{
+      status: 200,
+      payload: { ok: true, skipped: "throttled", lastFetchAt: expect.any(String) },
+    }]);
   });
 });

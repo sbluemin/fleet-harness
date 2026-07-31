@@ -33,26 +33,41 @@ export function classifyFetchError(stderr: string): FetchErrorToken | null {
   return null;
 }
 
-async function resolveCanonicalGitDir(gitCwd: string): Promise<string> {
-  const gitDir = (await runGit(["rev-parse", "--absolute-git-dir"], { cwd: gitCwd })).stdout.trim();
-  return fs.realpath(path.resolve(gitCwd, gitDir));
+async function resolveGitIdentity(gitCwd: string): Promise<{ readonly gitDir: string; readonly commonDir: string }> {
+  const [gitDirResult, commonDirResult] = await Promise.all([
+    runGit(["rev-parse", "--absolute-git-dir"], { cwd: gitCwd }),
+    runGit(["rev-parse", "--git-common-dir"], { cwd: gitCwd }),
+  ]);
+  // linked worktree의 common dir은 메인 체크아웃의 .git을 가리킨다. refs와 원격은 어느
+  // worktree에서 fetch해도 공유되므로 throttle·single-flight의 좌표는 common dir로 삼는다.
+  const [gitDir, commonDir] = await Promise.all([
+    fs.realpath(path.resolve(gitCwd, gitDirResult.stdout.trim())),
+    fs.realpath(path.resolve(gitCwd, commonDirResult.stdout.trim())),
+  ]);
+  return { gitDir, commonDir };
 }
 
-async function readLastFetchAt(gitDir: string): Promise<Date | null> {
-  try {
-    return (await fs.stat(path.join(gitDir, "FETCH_HEAD"))).mtime;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw error;
+async function readLastFetchAt(gitDirs: readonly string[]): Promise<Date | null> {
+  // FETCH_HEAD는 worktree gitdir마다 따로 쓰이므로, refs를 공유하는 모든 후보 중
+  // 가장 최신 mtime을 "이 저장소의 마지막 fetch"로 본다.
+  let newest: Date | null = null;
+  for (const gitDir of gitDirs) {
+    try {
+      const { mtime } = await fs.stat(path.join(gitDir, "FETCH_HEAD"));
+      if (!newest || mtime.getTime() > newest.getTime()) newest = mtime;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
   }
+  return newest;
 }
 
 function countFetchProgress(stderr: string, marker: string): number {
   return stderr.split(/\r?\n/).filter((line) => line.includes(marker)).length;
 }
 
-async function readThrottleResult(gitDir: string): Promise<FetchResult | null> {
-  const lastFetchAt = await readLastFetchAt(gitDir);
+async function readThrottleResult(gitDirs: readonly string[]): Promise<FetchResult | null> {
+  const lastFetchAt = await readLastFetchAt(gitDirs);
   if (!lastFetchAt || Date.now() - lastFetchAt.getTime() >= AUTO_FETCH_THROTTLE_MS) return null;
   return { ok: true, skipped: "throttled", lastFetchAt: lastFetchAt.toISOString() };
 }
@@ -62,7 +77,8 @@ async function fetchRepository(gitCwd: string): Promise<FetchResult> {
     "-c",
     "core.sshCommand=ssh",
     "-c",
-    "core.gitProxy=false",
+    // git 예약어 none만 프록시 우회다 — 다른 값은 프록시 "명령"으로 실행된다.
+    "core.gitProxy=none",
     "-c",
     "protocol.allow=user",
     "fetch",
@@ -79,25 +95,32 @@ async function fetchRepository(gitCwd: string): Promise<FetchResult> {
   };
 }
 
-async function runAutoFetch(gitCwd: string, gitDir: string): Promise<FetchResult> {
-  const throttled = await readThrottleResult(gitDir);
+type GitIdentity = { readonly gitDir: string; readonly commonDir: string };
+
+function fetchHeadCandidates(identity: GitIdentity): readonly string[] {
+  return identity.gitDir === identity.commonDir ? [identity.gitDir] : [identity.gitDir, identity.commonDir];
+}
+
+async function runAutoFetch(gitCwd: string, identity: GitIdentity): Promise<FetchResult> {
+  const throttled = await readThrottleResult(fetchHeadCandidates(identity));
   return throttled ?? fetchRepository(gitCwd);
 }
 
-async function fetchAutoSingleFlight(gitCwd: string, gitDir: string): Promise<FetchResult> {
-  const existing = autoFetchInFlight.get(gitDir);
+async function fetchAutoSingleFlight(gitCwd: string, identity: GitIdentity): Promise<FetchResult> {
+  const key = identity.commonDir;
+  const existing = autoFetchInFlight.get(key);
   if (existing) {
     await existing;
-    const throttled = await readThrottleResult(gitDir);
+    const throttled = await readThrottleResult(fetchHeadCandidates(identity));
     if (throttled) return throttled;
   }
 
-  const operation = runAutoFetch(gitCwd, gitDir);
-  autoFetchInFlight.set(gitDir, operation);
+  const operation = runAutoFetch(gitCwd, identity);
+  autoFetchInFlight.set(key, operation);
   try {
     return await operation;
   } finally {
-    if (autoFetchInFlight.get(gitDir) === operation) autoFetchInFlight.delete(gitDir);
+    if (autoFetchInFlight.get(key) === operation) autoFetchInFlight.delete(key);
   }
 }
 
@@ -140,10 +163,10 @@ export async function handleRepositoryFetch(
   }
 
   try {
-    const gitDir = await resolveCanonicalGitDir(gitCwd);
+    const identity = await resolveGitIdentity(gitCwd);
     const result = body.mode === "auto"
-      ? await fetchAutoSingleFlight(gitCwd, gitDir)
-      : await (autoFetchInFlight.get(gitDir) ?? fetchRepository(gitCwd));
+      ? await fetchAutoSingleFlight(gitCwd, identity)
+      : await (autoFetchInFlight.get(identity.commonDir) ?? fetchRepository(gitCwd));
     ctx.host.http.writeJson(res, 200, result);
   } catch (error) {
     if (error instanceof GitExecutorError) {
