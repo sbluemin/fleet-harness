@@ -1,0 +1,37 @@
+{
+  "name": "@dotobokuri/core-ai-gateway",
+  "version": "1.40.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sbluemin/fleet-harness.git",
+    "directory": "packages/core-ai-gateway"
+  },
+  "private": true,
+  "author": "sbluemin",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsup && tsc --emitDeclarationOnly --noEmit false -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "tsup": "^8.5.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.0.13"
+  }
+}
