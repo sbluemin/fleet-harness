@@ -8,11 +8,31 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@dotobokuri/fleet-analyst", () => ({ AnalystSession: class {} }));
 
+import { analysisArtifactUrl } from "../../client/agent/analysis-api.js";
 import { AnalysisRegistry, MAX_ANALYSIS_ARTIFACTS, MAX_STOPPED_ANALYSIS_ARTIFACTS } from "./analysis-registry.js";
 import { ANALYSIS_ARTIFACT_CSP, registerAnalysisRoutes } from "./analysis-routes.js";
 import { ANALYSIS_ERROR_CODES, buildAnalysisCatalog, isAnalysisSelection, isMessageBody, type AnalysisEvent, type AnalystCliId } from "./analysis-types.js";
 
+function artifactBaseCss(colors: { readonly canvas: string; readonly surface: string; readonly foreground: string; readonly muted: string; readonly hairline: string; readonly accent: string }): string {
+  return `:root{--fleet-canvas:${colors.canvas};--fleet-surface:${colors.surface};--fleet-ink:${colors.foreground};--fleet-muted:${colors.muted};--fleet-hairline:${colors.hairline};--fleet-accent:${colors.accent}}a{color:var(--fleet-accent)}code{background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:4px;padding:0 .3em}pre{background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:8px;padding:12px;overflow-x:auto}pre code{background:none;border:none;padding:0}blockquote{border-left:3px solid var(--fleet-hairline);color:var(--fleet-muted);margin-left:0;padding-left:1em}hr{border:none;border-top:1px solid var(--fleet-hairline)}th,td{border-color:var(--fleet-hairline)}::selection{background:var(--fleet-accent);color:var(--fleet-canvas)}`;
+}
+
 describe("Session Analyst server contract", () => {
+  it("serializes all Console theme colors into artifact URLs", () => {
+    const url = new URL(analysisArtifactUrl("artifact/id", "carbon", "#101820", "#f2f4f7", "#18212b", "#35404d", "#65d1ff", "#96a0ad"), "http://fleet.invalid");
+
+    expect(url.pathname).toBe("/plugins/terminal/analysis/artifacts/artifact%2Fid");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      theme: "carbon",
+      canvas: "#101820",
+      foreground: "#f2f4f7",
+      surface: "#18212b",
+      hairline: "#35404d",
+      accent: "#65d1ff",
+      muted: "#96a0ad",
+    });
+  });
+
   it("maps detected binaries to a non-sensitive authoritative catalog and rejects stale selections", () => {
     const modelsFor = vi.fn((_cliId: AnalystCliId) => ({ defaultModel: "model-a", models: [{ modelId: "model-a", name: "Model A", effort: { supported: true, levels: ["low"], default: "low" } }] }));
     const catalog = buildAnalysisCatalog([
@@ -567,14 +587,24 @@ describe("Session Analyst server contract", () => {
     const html = "<main>Artifact<script>globalThis.__artifactRan = true</script></main>";
     emit?.({ type: "artifact", artifact: { id: "artifact/id", title: "Artifact", html, createdAt: new Date(0).toISOString() } });
 
-    const response = await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/artifact%2Fid?theme=carbon&canvas=oklch%2833%25%200.006%20252%29&foreground=oklch%2895%25%200.003%20250%29");
+    const response = await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/artifact%2Fid?theme=carbon&canvas=oklch%2833%25%200.006%20252%29&foreground=oklch%2895%25%200.003%20250%29&surface=%2318202b&hairline=%2335404d&accent=%2365d1ff&muted=%2396a0ad");
 
     expect(response).toMatchObject({ status: 200, ended: true });
     expect(response.body).toContain('<html data-theme="carbon" style="background-color:oklch(33% 0.006 252)!important;background-image:none!important;color:oklch(95% 0.003 250)!important;min-height:100%!important;color-scheme:dark!important;">');
     expect(response.body).toContain(`<body style="background-color:oklch(33% 0.006 252)!important;background-image:none!important;color:oklch(95% 0.003 250)!important;min-height:100%!important;color-scheme:dark!important;margin:0!important;">${html}</body>`);
     expect(response.body).toContain("<script>globalThis.__artifactRan = true</script>");
     const fragmentDocument = new DOMParser().parseFromString(response.body, "text/html");
+    const fragmentCss = artifactBaseCss({
+      canvas: "oklch(33% 0.006 252)",
+      surface: "#18202b",
+      foreground: "oklch(95% 0.003 250)",
+      muted: "#96a0ad",
+      hairline: "#35404d",
+      accent: "#65d1ff",
+    });
     expect(fragmentDocument.documentElement.getAttribute("data-theme")).toBe("carbon");
+    expect(response.body).toContain(`<head><style>${fragmentCss}</style></head><body`);
+    expect(fragmentDocument.head.querySelector("style")?.textContent).toBe(fragmentCss);
     expect(fragmentDocument.body.querySelector("main")?.textContent).toBe("ArtifactglobalThis.__artifactRan = true");
     expect(response.headers).toMatchObject({
       "Content-Type": "text/html; charset=utf-8",
@@ -589,11 +619,46 @@ describe("Session Analyst server contract", () => {
     expect(response.headers).not.toHaveProperty("Cross-Origin-Opener-Policy");
     expect(response.headers).not.toHaveProperty("Cross-Origin-Resource-Policy");
 
+    const legacyResponse = await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/artifact%2Fid?canvas=%23101010&foreground=%23efefef");
+    const legacyDocument = new DOMParser().parseFromString(legacyResponse.body, "text/html");
+    expect(legacyDocument.head.querySelector("style")?.textContent).toBe(artifactBaseCss({
+      canvas: "#101010",
+      surface: "#101010",
+      foreground: "#efefef",
+      muted: "#efefef",
+      hairline: "#efefef",
+      accent: "#efefef",
+    }));
+
+    emit?.({ type: "artifact", artifact: { id: "headless", title: "Headless", html: "<!doctype html><html lang=\"en\"><body><main>Headless</main></body></html>", createdAt: new Date(0).toISOString() } });
+    const headlessResponse = await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/headless?canvas=%23101010&foreground=%23efefef");
+    const htmlStart = headlessResponse.body.indexOf("<html");
+    const htmlStartEnd = headlessResponse.body.indexOf(">", htmlStart) + 1;
+    expect(headlessResponse.body.slice(htmlStartEnd)).toMatch(/^<style>:root\{/);
+
+    emit?.({ type: "artifact", artifact: { id: "decoy", title: "Decoy", html: "<!doctype html><html lang=\"en\"><template><head></head></template><body><main>Decoy</main></body></html>", createdAt: new Date(0).toISOString() } });
+    const decoyResponse = await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/decoy?canvas=%23101010&foreground=%23efefef");
+    const decoyHtmlStart = decoyResponse.body.indexOf("<html");
+    const decoyHtmlStartEnd = decoyResponse.body.indexOf(">", decoyHtmlStart) + 1;
+    expect(decoyResponse.body.slice(decoyHtmlStartEnd)).toMatch(/^<style>:root\{/);
+    const decoyDocument = new DOMParser().parseFromString(decoyResponse.body, "text/html");
+    expect(decoyDocument.head.querySelector("style")?.textContent).toContain("--fleet-canvas:#101010");
+    expect(decoyDocument.querySelector("template")?.innerHTML).not.toContain("--fleet-canvas");
+
     await router.call("POST", "/api/v1/plugins/terminal/analysis/op/stop", {});
     const afterStop = await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/artifact%2Fid");
     expect(afterStop).toMatchObject({ status: 200, ended: true });
     expect(afterStop.body).toContain(html);
     expect(afterStop.body).toContain('<html data-theme="instrument" style="background-color:Canvas!important;');
+    const defaultDocument = new DOMParser().parseFromString(afterStop.body, "text/html");
+    expect(defaultDocument.head.querySelector("style")?.textContent).toBe(artifactBaseCss({
+      canvas: "Canvas",
+      surface: "Canvas",
+      foreground: "CanvasText",
+      muted: "CanvasText",
+      hairline: "CanvasText",
+      accent: "CanvasText",
+    }));
     expect(dispose).toHaveBeenCalledOnce();
     dispose.mockClear();
 
@@ -632,11 +697,24 @@ describe("Session Analyst server contract", () => {
     emit?.({ type: "artifact", artifact: { id: "hostile", title: "Hostile", html: hostileHtml, createdAt: new Date(0).toISOString() } });
 
     for (const theme of ["instrument", "maritime", "carbon", "whites"] as const) {
-      const path = `/api/v1/plugins/terminal/analysis/artifacts/hostile?theme=${theme}&canvas=${encodeURIComponent("#123456")}&foreground=${encodeURIComponent("#f0f0f0")}`;
+      const path = `/api/v1/plugins/terminal/analysis/artifacts/hostile?theme=${theme}&canvas=${encodeURIComponent("#123456")}&foreground=${encodeURIComponent("#f0f0f0")}&surface=${encodeURIComponent("#18202b")}&hairline=${encodeURIComponent("#35404d")}&accent=${encodeURIComponent("#65d1ff")}&muted=${encodeURIComponent("#96a0ad")}`;
       const response = await router.call("GET", path);
       const expectedColorScheme = theme === "whites" ? "light" : "dark";
       expect(response.status).toBe(200);
       const document = new DOMParser().parseFromString(response.body, "text/html");
+      const headStyles = document.head.querySelectorAll("style");
+      expect(headStyles).toHaveLength(2);
+      expect(document.head.firstElementChild).toBe(headStyles[0]);
+      expect(headStyles[0]?.textContent).toBe(artifactBaseCss({
+        canvas: "#123456",
+        surface: "#18202b",
+        foreground: "#f0f0f0",
+        muted: "#96a0ad",
+        hairline: "#35404d",
+        accent: "#65d1ff",
+      }));
+      expect(headStyles[0]?.textContent).not.toContain("!important");
+      expect(headStyles[1]?.textContent).toContain("background:linear-gradient(white,white)!important");
       expect(document.documentElement.getAttribute("data-theme")).toBe(theme);
       expect(document.documentElement).toMatchObject({ lang: "en", className: "artifact-root" });
       expect(document.documentElement.getAttribute("data-note")).toBe("quoted > value");
@@ -684,7 +762,16 @@ describe("Session Analyst server contract", () => {
     await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
     emit?.({ type: "artifact", artifact: { id: "safe", title: "Safe", html: "<p>safe</p>", createdAt: new Date(0).toISOString() } });
     const hostile = 'red!important;"><script>globalThis.injected=true</script>';
-    const path = `/api/v1/plugins/terminal/analysis/artifacts/safe?theme=${encodeURIComponent('carbon" onload="alert(1)')}&canvas=${encodeURIComponent(hostile)}&foreground=${encodeURIComponent("x".repeat(101))}`;
+    const query = new URLSearchParams({
+      theme: 'carbon" onload="alert(1)',
+      canvas: hostile,
+      foreground: "x".repeat(101),
+      surface: '#fff";--injected-surface:red',
+      hairline: "rgb(1 2 3);color:red",
+      accent: "url(javascript:alert(1))",
+      muted: "oklch(50% 0 0);}</style><script>globalThis.mutedInjected=true</script>",
+    });
+    const path = `/api/v1/plugins/terminal/analysis/artifacts/safe?${query.toString()}`;
 
     const response = await router.call("GET", path);
 
@@ -693,7 +780,18 @@ describe("Session Analyst server contract", () => {
     expect(document.documentElement.getAttribute("data-theme")).toBe("instrument");
     expect(document.documentElement.style.getPropertyValue("background-color")).toBe("canvas");
     expect(document.documentElement.style.getPropertyValue("color")).toBe("canvastext");
+    expect(document.head.querySelector("style")?.textContent).toBe(artifactBaseCss({
+      canvas: "Canvas",
+      surface: "Canvas",
+      foreground: "CanvasText",
+      muted: "CanvasText",
+      hairline: "CanvasText",
+      accent: "CanvasText",
+    }));
     expect(response.body).not.toContain("globalThis.injected");
+    expect(response.body).not.toContain("mutedInjected");
+    expect(response.body).not.toContain("injected-surface");
+    expect(response.body).not.toContain("javascript:alert");
     expect(document.documentElement.hasAttribute("onload")).toBe(false);
   });
 

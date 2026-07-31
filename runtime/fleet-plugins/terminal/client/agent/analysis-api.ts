@@ -24,8 +24,12 @@ let pendingRecreateTimer: ReturnType<typeof setTimeout> | null = null;
 let recreateDelayMs = RECREATE_BASE_DELAY_MS;
 const operations = new Map<string, OperationRecord>();
 
-export function analysisArtifactUrl(artifactId: string, theme: ConsoleTheme, canvas: string, foreground: string): string {
+export function analysisArtifactUrl(artifactId: string, theme: ConsoleTheme, canvas: string, foreground: string, surface?: string, hairline?: string, accent?: string, muted?: string): string {
   const query = new URLSearchParams({ theme, canvas, foreground });
+  if (surface) query.set("surface", surface);
+  if (hairline) query.set("hairline", hairline);
+  if (accent) query.set("accent", accent);
+  if (muted) query.set("muted", muted);
   return `/plugins/terminal/analysis/artifacts/${encodeURIComponent(artifactId)}?${query.toString()}`;
 }
 
