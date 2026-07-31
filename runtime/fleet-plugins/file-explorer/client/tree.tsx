@@ -13,6 +13,7 @@ import {
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
+import type { GitFileStatus, GitStatusResult } from "../server/git-status.js";
 import type { FolderEntry, FolderListResult } from "../server/types.js";
 import { restoreContextMenuFocus } from "./context-menu.js";
 import type { FileExplorerMessageKey } from "./i18n/index.js";
@@ -67,10 +68,47 @@ const VIRTUALIZE_THRESHOLD = 200;
 const ROW_HEIGHT = 30;
 const OVERSCAN = 5;
 const PREFS_SHOW_HIDDEN = "fleet-console.fileExplorer.showHidden";
+const GIT_STATUS_DEBOUNCE_MS = 500;
 export const FILTER_DIRECTORY_CAP = 500;
+
+export interface GitStatusBadge {
+  readonly text: "M" | "U" | "D";
+  readonly status: GitFileStatus;
+  readonly messageKey:
+    | "fileExplorer.git.modified"
+    | "fileExplorer.git.untracked"
+    | "fileExplorer.git.deleted";
+}
+
+export function mapGitStatusBadge(status: GitFileStatus | undefined): GitStatusBadge | null {
+  if (status === "modified") {
+    return { text: "M", status, messageKey: "fileExplorer.git.modified" };
+  }
+  if (status === "untracked") {
+    return { text: "U", status, messageKey: "fileExplorer.git.untracked" };
+  }
+  if (status === "deleted") {
+    return { text: "D", status, messageKey: "fileExplorer.git.deleted" };
+  }
+  return null;
+}
+
+export function triggerManualRefresh(
+  refreshTree: () => void,
+  refreshGitStatus: () => void | Promise<void>,
+): void {
+  refreshTree();
+  void refreshGitStatus();
+}
 
 export function isCurrentContextRequest(requestContextKey: string, currentContextKey: string): boolean {
   return requestContextKey === currentContextKey;
+}
+
+// 탭 복귀 시 git 배지를 다시 읽을지 판정한다 — 외부 터미널의 add/commit 같은
+// git 메타데이터 전용 변경은 fs.watch가 감지하지 못하므로 focus 복귀가 갱신 기회다.
+export function shouldRefreshGitStatusOnVisibility(visibilityState: string): boolean {
+  return visibilityState === "visible";
 }
 
 export async function loadFilterDescendants({ entries, cachedResults, files, showHidden, isCurrent, onFolderResult }: FilterDescendantLoadOptions): Promise<void> {
@@ -211,10 +249,12 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const [containerHeight, setContainerHeight] = useState(600);
   const [showHidden, setShowHidden] = useState<boolean>(() => readShowHidden());
   const [cursorPath, setCursorPath] = useState<string | null>(null);
+  const [gitStatusResult, setGitStatusResult] = useState<GitStatusResult | null>(null);
   const treeRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingFocusPathRef = useRef<string | null>(null);
   const revealedRequestRef = useRef(0);
+  const gitStatusRequestRef = useRef(0);
 
   // SSE 핸들러가 최신 상태를 참조하도록 ref로 유지
   const expandedDirsRef = useRef<Set<string>>(expandedDirs);
@@ -230,6 +270,28 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const filterRequestRef = useRef(0);
   const isFiltering = Boolean(filterText);
 
+  const refreshGitStatus = useCallback(async () => {
+    if (!theaterId) return;
+    const requestId = ++gitStatusRequestRef.current;
+    const requestContextKey = contextKey;
+    try {
+      const response = await fetch("/plugins/file-explorer/files/git-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theaterId }),
+      });
+      if (!response.ok) return;
+      const nextResult = await response.json() as GitStatusResult;
+      if (
+        requestId !== gitStatusRequestRef.current
+        || !isCurrentContextRequest(requestContextKey, contextKeyRef.current)
+      ) return;
+      setGitStatusResult(nextResult);
+    } catch {
+      // Git 상태는 보조 신호다. 조회 실패는 파일 탐색을 방해하거나 오류 UI를 만들지 않는다.
+    }
+  }, [contextKey, theaterId]);
+
   useEffect(() => {
     if (!theaterId) return;
     setResult(null);
@@ -241,7 +303,38 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     setFilterCollapsedDirs(new Set());
     setScrollTop(0);
     setCursorPath(null);
+    setGitStatusResult(null);
   }, [contextKey, theaterId]);
+
+  useEffect(() => {
+    if (!theaterId) return;
+    void refreshGitStatus();
+    return () => { gitStatusRequestRef.current += 1; };
+  }, [refreshGitStatus, theaterId]);
+
+  useEffect(() => {
+    if (!theaterId) return;
+    // 탭 전환(visibilitychange)과 앱 복귀(window focus) 모두 갱신 기회다.
+    // 나란히 둔 외부 터미널의 git add/commit은 fs.watch가 못 잡으므로.
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        void refreshGitStatus();
+      }, 200);
+    };
+    const handleVisibilityChange = () => {
+      if (shouldRefreshGitStatusOnVisibility(document.visibilityState)) scheduleRefresh();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", scheduleRefresh);
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", scheduleRefresh);
+    };
+  }, [refreshGitStatus, theaterId]);
 
   useEffect(() => {
     if (!theaterId) return;
@@ -330,6 +423,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     if (!theaterId) return;
 
     let isFirstOpen = true;
+    let gitStatusTimer: ReturnType<typeof setTimeout> | null = null;
     const url = `/plugins/file-explorer/files/watch?theaterId=${encodeURIComponent(theaterId)}`;
     const es = new EventSource(url);
 
@@ -345,6 +439,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
 
     const doFullRefresh = () => {
       reloadRoot();
+      // 재연결 풀 리프레시는 놓친 change 이벤트의 조정 경로이므로 git 배지도 함께 갱신한다
+      void refreshGitStatus();
       for (const relPath of expandedDirsRef.current) {
         const requestContextKey = contextKey;
         filesRef.current.listFolder(relPath).then((r) => {
@@ -363,6 +459,11 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         return;
       }
       if (typeof relDir !== "string") return;
+      if (gitStatusTimer !== null) clearTimeout(gitStatusTimer);
+      gitStatusTimer = setTimeout(() => {
+        gitStatusTimer = null;
+        void refreshGitStatus();
+      }, GIT_STATUS_DEBOUNCE_MS);
       // 루트 레벨 변경 또는 현재 탐색 경로 변경
       if (relDir === "" || relDir === currentPathRef.current) {
         reloadRoot();
@@ -387,9 +488,10 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     };
 
     return () => {
+      if (gitStatusTimer !== null) clearTimeout(gitStatusTimer);
       es.close();
     };
-  }, [contextKey, theaterId, files]);
+  }, [contextKey, theaterId, files, refreshGitStatus]);
 
   const handleDirClick = useCallback((entry: FolderEntry) => {
     const relPath = entry.relativePath;
@@ -432,7 +534,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     });
   }, []);
 
-  const handleRefresh = useCallback(() => {
+  const refreshTree = useCallback(() => {
     if (!theaterId) return;
     const requestContextKey = contextKey;
     // 루트 재조회 — 성공 시 stale error를 걷어 에러 화면에서도 복구 가능하게 한다
@@ -454,12 +556,21 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     }
   }, [contextKey, files, currentPath, expandedDirs, theaterId, t]);
 
+  const handleRefresh = useCallback(() => {
+    triggerManualRefresh(refreshTree, refreshGitStatus);
+  }, [refreshGitStatus, refreshTree]);
+
   const low = filterText.toLowerCase();
 
   const flatRows = useMemo(() => {
     if (!result) return [];
     return buildFlatRows(result.entries, 0, selectedPath, expandedDirs, loadingDirs, childResults, low, showHidden, new Set(), filterCollapsedDirs);
   }, [result, selectedPath, expandedDirs, loadingDirs, childResults, low, showHidden, filterCollapsedDirs]);
+  const gitAvailable = gitStatusResult?.gitAvailable === true;
+  const gitStatusByPath = useMemo(
+    () => new Map(gitStatusResult?.statuses.map((entry) => [entry.path, entry.status]) ?? []),
+    [gitStatusResult],
+  );
 
   const hasOnlyHiddenEntries = !showHidden && result !== null && result.entries.length > 0 && flatRows.length === 0 && !filterText;
 
@@ -697,9 +808,12 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
                   row={row}
                   cursor={row.entry.relativePath === renderedCursorPath}
                   rowRefs={rowRefs}
+                  gitAvailable={gitAvailable}
+                  gitStatus={gitStatusByPath.get(row.entry.relativePath)}
                   onEntryClick={handleRowClick}
                   onContextMenu={handleRowContextMenu}
                   onKeyDown={handleTreeItemKeyDown}
+                  t={t}
                 />
               ))}
             </div>
@@ -711,9 +825,12 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
               row={row}
               cursor={row.entry.relativePath === renderedCursorPath}
               rowRefs={rowRefs}
+              gitAvailable={gitAvailable}
+              gitStatus={gitStatusByPath.get(row.entry.relativePath)}
               onEntryClick={handleRowClick}
               onContextMenu={handleRowContextMenu}
               onKeyDown={handleTreeItemKeyDown}
+              t={t}
             />
           ))
         )}
@@ -761,14 +878,21 @@ interface FlatTreeRowProps {
   readonly row: FlatRow;
   readonly cursor: boolean;
   readonly rowRefs: React.MutableRefObject<Map<string, HTMLButtonElement>>;
+  readonly gitAvailable: boolean;
+  readonly gitStatus: GitFileStatus | undefined;
   readonly onEntryClick: (row: FlatRow) => void;
   readonly onContextMenu: (row: FlatRow, event: ReactMouseEvent<HTMLButtonElement>) => void;
   readonly onKeyDown: (row: FlatRow, event: ReactKeyboardEvent<HTMLButtonElement>) => void;
+  readonly t: Translate<FileExplorerMessageKey>;
 }
 
-function FlatTreeRow({ row, cursor, rowRefs, onEntryClick, onContextMenu, onKeyDown }: FlatTreeRowProps) {
+function FlatTreeRow({ row, cursor, rowRefs, gitAvailable, gitStatus, onEntryClick, onContextMenu, onKeyDown, t }: FlatTreeRowProps) {
   const { entry, depth, isSelected, isExpanded, isLoading } = row;
   const isDir = entry.kind === "dir";
+  // 디렉터리형 행이라도 정확 경로에 상태가 있으면 배지를 단다 —
+  // dirty 서브모듈/디렉터리형 심링크는 git이 그 경로 자체를 보고한다.
+  // 일반 디렉터리는 상태 항목 자체가 없어 자연스럽게 묰배지.
+  const gitBadge = gitAvailable ? mapGitStatusBadge(gitStatus) : null;
   const indent = depth * 16;
   const handleClick = useCallback(() => onEntryClick(row), [onEntryClick, row]);
 
@@ -795,6 +919,11 @@ function FlatTreeRow({ row, cursor, rowRefs, onEntryClick, onContextMenu, onKeyD
       </span>
       <span className="fexp-tree-name">{entry.name}</span>
       {isLoading && <span className="fexp-tree-spin" aria-hidden="true">⋯</span>}
+      {gitBadge && (
+        <span className={`fexp-git-badge is-${gitBadge.status}`} aria-label={t(gitBadge.messageKey)}>
+          {gitBadge.text}
+        </span>
+      )}
     </button>
   );
 }

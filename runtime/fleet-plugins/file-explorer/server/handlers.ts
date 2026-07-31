@@ -5,6 +5,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { ClipboardUnavailableError, copyPathToClipboard } from "./clipboard.js";
 import { FileReadError, readFileForTheater } from "./file-reader.js";
 import { FolderBrowserError, listTheaterContents } from "./folder-browser.js";
+import { GitStatusPathError, readTheaterGitStatus } from "./git-status.js";
 import { ImageServeError, readImageForTheater, writeImageResponse } from "./image-server.js";
 import { PathActionError } from "./path-actions.js";
 import { FileActionUnavailableError, revealPath, type FileRevealMode } from "./reveal.js";
@@ -56,6 +57,35 @@ export async function handleFilesList(
     ctx.host.http.writeJson(res, 200, result);
   } catch (error) {
     if (error instanceof FolderBrowserError) {
+      const httpStatus = error.code === "forbidden" ? 403 : error.code === "not_found" ? 404 : 400;
+      ctx.host.http.writeJson(res, httpStatus, { error: error.code });
+      return;
+    }
+    throw error;
+  }
+}
+
+export async function handleFilesGitStatus(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ctx: FleetPluginServerContext,
+): Promise<void> {
+  if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
+  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
+
+  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown }>(req);
+  if (!isPlainObject(body) || typeof body.theaterId !== "string") {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_request" });
+    return;
+  }
+
+  const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
+  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+
+  try {
+    ctx.host.http.writeJson(res, 200, await readTheaterGitStatus(theaterPath));
+  } catch (error) {
+    if (error instanceof GitStatusPathError) {
       const httpStatus = error.code === "forbidden" ? 403 : error.code === "not_found" ? 404 : 400;
       ctx.host.http.writeJson(res, httpStatus, { error: error.code });
       return;
