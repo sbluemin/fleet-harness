@@ -2,6 +2,7 @@ import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
 
 import {
   handleFilesClipboard,
+  handleFilesGitStatus,
   handleFilesImage,
   handleFilesList,
   handleFilesRead,
@@ -15,6 +16,10 @@ export default definePlugin({
   register(ctx) {
     registerRouter(ctx, "files/list", async ({ req, res }) => {
       await handleFilesList(req, res, ctx);
+      return true;
+    });
+    registerRouter(ctx, "files/git-status", async ({ req, res }) => {
+      await handleFilesGitStatus(req, res, ctx);
       return true;
     });
     registerRouter(ctx, "files/read", async ({ req, res }) => {
