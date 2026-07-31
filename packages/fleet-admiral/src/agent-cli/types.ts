@@ -1,6 +1,6 @@
 import type { GlobalOptionsData } from "@dotobokuri/core-infra";
 
-export type AgentCliId = "claude" | "claude-kimi" | "codex";
+export type AgentCliId = "claude" | "claude-kimi" | "claude-gateway" | "codex";
 
 export interface AuthServiceLike {
   getApiKey(providerId: string): Promise<string | undefined>;

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AI_GATEWAY_AUTH_PROVIDER_ID,
   AI_GATEWAY_EXPERIMENTAL_ENV,
+  UPSTREAM_KEY_ENV,
   createAiGatewayRouter,
   registerAiGatewayRoutes,
 } from "../server/ai-gateway-routes.js";
@@ -96,6 +97,7 @@ describe("gateway token", () => {
 
 describe("upstream credential", () => {
   it("refuses to call upstream when no credential is stored, without leaking the provider id", async () => {
+    delete process.env[UPSTREAM_KEY_ENV];
     const gateway = stubGateway();
     const streamSpy = vi.spyOn(gateway, "stream");
     const router = createAiGatewayRouter({ authService: authService(null), gateway });

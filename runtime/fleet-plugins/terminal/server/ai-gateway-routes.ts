@@ -11,6 +11,7 @@ export const AI_GATEWAY_ROUTE_SEGMENT = "ai-gateway";
 export const AI_GATEWAY_AUTH_PROVIDER_ID = "AI Gateway with OpenAI";
 export const AI_GATEWAY_EXPERIMENTAL_ENV = "FLEET_EXPERIMENTAL_AI_GATEWAY";
 export const AI_GATEWAY_MODEL_ENV = "FLEET_AI_GATEWAY_MODEL";
+export const UPSTREAM_KEY_ENV = "OPENAI_API_KEY";
 
 const TOKEN_BYTES = 32;
 
@@ -64,9 +65,16 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       return true;
     }
 
-    const apiKey = await deps.authService.getApiKey(AI_GATEWAY_AUTH_PROVIDER_ID);
+    // 저장된 자격증명이 우선이고, PoC 단계에서는 Console을 띄운 셸의 OPENAI_API_KEY로 폴백한다.
+    // 어느 쪽이든 자식 프로세스에는 전달되지 않고 서버 안에서만 쓰인다.
+    const apiKey = (await deps.authService.getApiKey(AI_GATEWAY_AUTH_PROVIDER_ID)) ?? process.env[UPSTREAM_KEY_ENV];
     if (!apiKey) {
-      writeAnthropicError(res, 401, "authentication_error", "No upstream credential is configured");
+      writeAnthropicError(
+        res,
+        401,
+        "authentication_error",
+        `No upstream credential is configured. Set ${UPSTREAM_KEY_ENV} before starting Fleet Console.`,
+      );
       return true;
     }
 

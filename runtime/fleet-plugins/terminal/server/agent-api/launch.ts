@@ -20,7 +20,15 @@ import { createInfraServices, getFleetDataDir, type AuthService, type GlobalOpti
 import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, runCodexCommand, toCaptureProvider, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
 import { stripConsoleInternalEnv } from "../shared/launch-env.js";
+import type { AiGatewayTokenGrant } from "../ai-gateway-routes.js";
 import { applyAgentCliPathEnvOverlay } from "./agent-cli-paths.js";
+
+/** Experimental AI gateway를 Launch에 잇는 최소 바인딩. 봉인이 닫혀 있으면 주입되지 않는다. */
+export interface AiGatewayLaunchBinding {
+  /** Console 루트 기준 라우트 경로. 예: "/plugins/terminal/ai-gateway" */
+  readonly routePath: string;
+  issueToken(): AiGatewayTokenGrant;
+}
 
 export interface TerminalLaunchResolverDeps {
   readonly cwd?: string;
@@ -33,6 +41,7 @@ export interface TerminalLaunchResolverDeps {
   readonly dataDir?: string;
   readonly infraServices?: { readonly authService: AuthService; readonly globalOptionsService: GlobalOptionsService };
   readonly agentRuntime?: FleetAgentRuntimeLifecycle;
+  readonly aiGateway?: AiGatewayLaunchBinding;
   readonly injectProfile?: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly resolveProfile?: typeof resolveAgentCliProfile;
@@ -94,6 +103,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
     const sessionId = context?.sessionId ?? "default";
     return createAgentCliLaunchSpec({
       agentRuntime,
+      ...(deps.aiGateway ? { aiGateway: deps.aiGateway } : {}),
       cwd,
       dataDir,
       env: launchEnv,
@@ -131,6 +141,7 @@ function hasHookEntryExtension(entryPath: string): boolean {
 
 async function createAgentCliLaunchSpec(options: {
   readonly agentRuntime?: FleetAgentRuntimeLifecycle;
+  readonly aiGateway?: AiGatewayLaunchBinding;
   readonly cliId?: string;
   readonly createSessionIdentityResolver: typeof createSessionIdentityResolver;
   readonly cwd: string;
@@ -180,14 +191,19 @@ async function createAgentCliLaunchSpec(options: {
       mcpToolCount: countMcpTools(agentRuntime),
       sessionId: options.sessionId,
     });
-    const sessionIdentityResolver = options.createSessionIdentityResolver({
-      provider: toCaptureProvider(injectedProfile.id),
-      command: injectedProfile.bin,
-      commandPrefixArgs: injectedProfile.binPrefixArgs,
-      cwd: injectedProfile.cwd,
-      env: injectedProfile.env,
+    const launchProfile = await applyAiGatewayEnv(injectedProfile, {
+      agentRuntime,
+      ...(options.aiGateway ? { aiGateway: options.aiGateway } : {}),
+      onCleanup: (cleanup) => cleanupStack.push(cleanup),
     });
-    return toLaunchSpec(injectedProfile, createOnceCleanup(async () => {
+    const sessionIdentityResolver = options.createSessionIdentityResolver({
+      provider: toCaptureProvider(launchProfile.id),
+      command: launchProfile.bin,
+      commandPrefixArgs: launchProfile.binPrefixArgs,
+      cwd: launchProfile.cwd,
+      env: launchProfile.env,
+    });
+    return toLaunchSpec(launchProfile, createOnceCleanup(async () => {
       for (const cleanup of [...cleanupStack].reverse()) {
         await cleanup();
       }
@@ -202,6 +218,45 @@ async function createAgentCliLaunchSpec(options: {
     }
     throw error;
   }
+}
+
+// claude-gateway는 Console 포트를 알아야 base URL이 정해지므로 정적 프로필이 아니라 여기서 env를 채운다.
+// 자식에게는 세션 bearer만 주고 upstream 자격증명은 서버에 남긴다.
+async function applyAiGatewayEnv(
+  profile: AgentCliProfile,
+  options: {
+    readonly agentRuntime: FleetAgentRuntimeLifecycle;
+    readonly aiGateway?: AiGatewayLaunchBinding;
+    readonly onCleanup: (cleanup: () => void) => void;
+  },
+): Promise<AgentCliProfile> {
+  if (profile.id !== "claude-gateway") return profile;
+  if (!options.aiGateway) {
+    throw new Error(
+      "The experimental AI gateway is disabled. Set FLEET_EXPERIMENTAL_AI_GATEWAY=1 before starting Fleet Console.",
+    );
+  }
+  const endpoint = await options.agentRuntime.dedicatedMcpSession.getEndpoint();
+  const origin = resolveConsoleOrigin(endpoint.servers);
+  const grant = options.aiGateway.issueToken();
+  options.onCleanup(() => grant.revoke());
+  return {
+    ...profile,
+    env: {
+      ...profile.env,
+      // Claude Code가 이 뒤에 /v1/messages를 붙인다.
+      ANTHROPIC_BASE_URL: `${origin}${options.aiGateway.routePath}`,
+      ANTHROPIC_AUTH_TOKEN: grant.token,
+    },
+  };
+}
+
+function resolveConsoleOrigin(servers: readonly { readonly url: string }[]): string {
+  const url = servers[0]?.url;
+  if (!url) {
+    throw new Error("The Console MCP endpoint is unavailable, so the AI gateway URL cannot be derived.");
+  }
+  return new URL(url).origin;
 }
 
 function toLaunchSpec(profile: AgentCliProfile, cleanup: () => Promise<void>, sessionIdentityResolver: TerminalLaunchSpec["sessionIdentityResolver"]): TerminalLaunchSpec {

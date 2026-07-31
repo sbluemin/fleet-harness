@@ -1,6 +1,7 @@
 import type { GlobalOptionsData } from "@dotobokuri/core-infra";
 
 import { claudeCli } from "./claude/claude.js";
+import { claudeGatewayCli } from "./claude/claude-gateway.js";
 import { claudeKimiCli } from "./claude/claude-kimi.js";
 import { codexCli } from "./codex/codex.js";
 import type { AgentCliDefinition, AgentCliId, AgentCliProfile, AuthServiceLike } from "./types.js";
@@ -22,6 +23,7 @@ const DEFAULT_CLI_ID: AgentCliId = "claude";
 const DEFINITIONS: Record<AgentCliId, AgentCliDefinition> = {
   claude: claudeCli,
   "claude-kimi": claudeKimiCli,
+  "claude-gateway": claudeGatewayCli,
   codex: codexCli,
 };
 
@@ -53,8 +55,17 @@ export function getDefaultAgentCliId(): AgentCliId {
   return DEFAULT_CLI_ID;
 }
 
-export function getAgentCliIds(): AgentCliId[] {
-  return Object.keys(DEFINITIONS) as AgentCliId[];
+// Console 호스트에서만 성립하는 CLI. 게이트웨이 라우트가 Console에 마운트되어야 동작하므로
+// 기본 카탈로그(예: Fleet CLI의 Start CLI 목록)에서는 제외한다.
+const CONSOLE_ONLY_CLI_IDS: ReadonlySet<AgentCliId> = new Set<AgentCliId>(["claude-gateway"]);
+
+export interface AgentCliIdListOptions {
+  readonly includeConsoleOnly?: boolean;
+}
+
+export function getAgentCliIds(options: AgentCliIdListOptions = {}): AgentCliId[] {
+  const ids = Object.keys(DEFINITIONS) as AgentCliId[];
+  return options.includeConsoleOnly ? ids : ids.filter((id) => !CONSOLE_ONLY_CLI_IDS.has(id));
 }
 
 export function getAgentCliMetadata(ids: readonly AgentCliId[] = getAgentCliIds()): AgentCliMetadata[] {

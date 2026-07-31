@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 
-import { createCarrierResultReminderRouter, createDelayedPtyWriter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliAuthStatuses, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
+import { createCarrierResultReminderRouter, createDelayedPtyWriter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliAuthStatuses, getAgentCliIds, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
 import { getCarrierConfig, resolveAgentCliType } from "@dotobokuri/fleet-carriers";
 import { ensureWorkspaceDirectory, withDirectoryLock, type AuthService, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -17,6 +17,7 @@ import { buildAgentCliLaunchKinds } from "./agent-api/agent-cli-launch-kinds.js"
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-api/agent-cli-launch-metadata.js";
 import { AGENT_CLI_COMMANDS, createAgentCliPathStore, createCarrierAgentCliLaunchResolver, resolveAgentCliBinary } from "./agent-api/agent-cli-paths.js";
 import type { AgentCliDiagnostics } from "./agent-api/agent-cli-types.js";
+import type { AiGatewayLaunchBinding } from "./agent-api/launch.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
 import { captureSession, readProviderSessionCapture, readProviderSessionCaptureRaw, unlinkProviderSessionCapture, writeProviderSessionCaptureRaw, type ProviderSession } from "./agent-api/session-capture.js";
@@ -42,6 +43,7 @@ type OperationRenamedEvent = {
 interface AgentRouteDeps {
   readonly authService: AuthService;
   readonly globalOptionsService: GlobalOptionsService;
+  readonly aiGateway?: AiGatewayLaunchBinding;
 }
 
 const AGENT_OPERATION_TYPE = "agent";
@@ -100,6 +102,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   const oscActivityTrackers = new Map<string, OscAgentActivityTracker>();
   const launchResolver = createAgentTerminalLaunchResolver({
     agentRuntime: runtime,
+    ...(deps.aiGateway ? { aiGateway: deps.aiGateway } : {}),
     dataDir: ctx.host.paths.fleetDataDir,
     infraServices: deps,
     readAgentCliPaths,
@@ -567,7 +570,9 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   }
 
   async function buildAgentCliLaunchMetadata(): Promise<readonly AgentCliLaunchMetadata[]> {
-    const metadata = getAgentCliMetadata();
+    // Console은 게이트웨이 라우트를 가진 유일한 호스트라 console-only CLI까지 후보로 받는다.
+    // 봉인 여부에 따른 실제 노출은 buildLaunchKinds가 결정한다.
+    const metadata = getAgentCliMetadata(getAgentCliIds({ includeConsoleOnly: true }));
     if ((process.env.FLEET_TERMINAL_CMD ?? "").trim().length > 0) {
       return metadata.map((meta) => ({ id: meta.id, label: meta.label, available: true, signedIn: true }));
     }
@@ -593,7 +598,9 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
 
   async function buildLaunchKinds(): Promise<readonly OperationLaunchKind[]> {
     const metadata = await buildAgentCliLaunchMetadata();
-    return buildAgentCliLaunchKinds(metadata, AGENT_OPERATION_TYPE);
+    // 봉인이 닫힌 experimental CLI는 목록에서 제외한다. admiral 레지스트리는 플래그를 모른다.
+    const visible = deps.aiGateway ? metadata : metadata.filter((entry) => entry.id !== "claude-gateway");
+    return buildAgentCliLaunchKinds(visible, AGENT_OPERATION_TYPE);
   }
 
   function launch(cwd: string | undefined, context: { readonly operationId?: string } | undefined) {
