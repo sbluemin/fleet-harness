@@ -887,7 +887,10 @@ interface FlatTreeRowProps {
 function FlatTreeRow({ row, cursor, rowRefs, gitAvailable, gitStatus, onEntryClick, onContextMenu, onKeyDown, t }: FlatTreeRowProps) {
   const { entry, depth, isSelected, isExpanded, isLoading } = row;
   const isDir = entry.kind === "dir";
-  const gitBadge = !isDir && gitAvailable ? mapGitStatusBadge(gitStatus) : null;
+  // 디렉터리형 행이라도 정확 경로에 상태가 있으면 배지를 단다 —
+  // dirty 서브모듈/디렉터리형 심링크는 git이 그 경로 자체를 보고한다.
+  // 일반 디렉터리는 상태 항목 자체가 없어 자연스럽게 묰배지.
+  const gitBadge = gitAvailable ? mapGitStatusBadge(gitStatus) : null;
   const indent = depth * 16;
   const handleClick = useCallback(() => onEntryClick(row), [onEntryClick, row]);
 
