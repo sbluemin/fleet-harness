@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@dotobokuri/core-agent": "workspace:*",
+    "@dotobokuri/core-ai-gateway": "workspace:*",
     "@dotobokuri/fleet-analyst": "workspace:*",
     "@dotobokuri/core-process": "workspace:*",
     "@dotobokuri/core-unified-agent": "workspace:*",

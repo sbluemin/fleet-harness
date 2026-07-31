@@ -691,6 +691,9 @@ importers:
       '@dotobokuri/core-agent':
         specifier: workspace:*
         version: link:../../../packages/core-agent
+      '@dotobokuri/core-ai-gateway':
+        specifier: workspace:*
+        version: link:../../../packages/core-ai-gateway
       '@dotobokuri/core-infra':
         specifier: workspace:*
         version: link:../../../packages/core-infra

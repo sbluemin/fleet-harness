@@ -5,6 +5,7 @@ import { createCarrierRegistry, initStore, registerDefaultCarriers } from "@doto
 
 import { registerAgentRoutes } from "./server/agent.js";
 import { registerAnalysisRoutes } from "./server/agent-api/analysis-routes.js";
+import { registerAiGatewayRoutes } from "./server/ai-gateway-routes.js";
 import { createAgentCliPathStore } from "./server/agent-api/agent-cli-paths.js";
 import { registerCarrierSettingsRoutes } from "./server/carrier-settings-routes.js";
 import { registerGlobalShellRoutes } from "./server/global.js";
@@ -41,6 +42,8 @@ export default definePlugin({
     registerGlobalShellRoutes(ctx, runtime);
     registerTerminalSettingsRoutes(ctx, { globalOptionsService: infraServices.globalOptionsService });
     registerTerminalModelAuthRoutes(ctx, { authService: infraServices.authService });
+    // Experimental: 봉인이 닫혀 있으면 라우트 자체가 등록되지 않는다. Launch 배선은 후속 단계.
+    registerAiGatewayRoutes(ctx, { authService: infraServices.authService });
     registerCarrierSettingsRoutes(ctx, { registry: carrierRegistry });
     // Agent Operation과 Analyst는 같은 plugin storage 키를 읽되 수명은 각 라우트가 독립 소유한다.
     // store는 무상태 어댑터라 여기서 별도로 만들어도 저장 파일과 우선순위 계약은 하나로 유지된다.
