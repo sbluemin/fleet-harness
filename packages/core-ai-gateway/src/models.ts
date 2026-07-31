@@ -1,6 +1,12 @@
+export type GatewayProvider = "openai" | "cursor";
+
 export interface GatewayModel {
+  /** 게이트웨이가 노출하는 id. picker에는 claude- alias를 씌워 내보낸다. */
   readonly id: string;
   readonly displayName: string;
+  readonly provider: GatewayProvider;
+  /** upstream에 실제로 보낼 id. 생략하면 id를 그대로 쓴다. */
+  readonly upstreamId?: string;
 }
 
 /**
@@ -9,9 +15,9 @@ export interface GatewayModel {
  * 허용되지 않는 ID는 400 "... is not supported when using Codex with a ChatGPT account"로 거절된다.
  */
 export const OPENAI_SUBSCRIPTION_MODELS: readonly GatewayModel[] = [
-  { id: "gpt-5.5", displayName: "GPT-5.5" },
-  { id: "gpt-5.6-sol", displayName: "GPT-5.6 Sol" },
-  { id: "gpt-5.6-luna", displayName: "GPT-5.6 Luna" },
+  { id: "gpt-5.5", displayName: "GPT-5.5", provider: "openai" },
+  { id: "gpt-5.6-sol", displayName: "GPT-5.6 Sol", provider: "openai" },
+  { id: "gpt-5.6-luna", displayName: "GPT-5.6 Luna", provider: "openai" },
 ];
 
 /**
@@ -30,6 +36,29 @@ export function fromGatewayModelAlias(alias: string): string {
     : alias;
 }
 
+/** Cursor 구독이 노출하는 모델. GetUsableModels 실측에서 확인한 대표값. */
+export const CURSOR_SUBSCRIPTION_MODELS: readonly GatewayModel[] = [
+  { id: "cursor-auto", displayName: "Cursor Auto", provider: "cursor", upstreamId: "default" },
+];
+
+/** 게이트웨이가 discovery로 노출하는 전체 카탈로그. */
+export const GATEWAY_MODELS: readonly GatewayModel[] = [
+  ...OPENAI_SUBSCRIPTION_MODELS,
+  ...CURSOR_SUBSCRIPTION_MODELS,
+];
+
+export function findGatewayModel(
+  id: string,
+  catalog: readonly GatewayModel[] = GATEWAY_MODELS,
+): GatewayModel | undefined {
+  const bare = fromGatewayModelAlias(id);
+  return catalog.find((model) => model.id === bare);
+}
+
+export function upstreamModelId(model: GatewayModel): string {
+  return model.upstreamId ?? model.id;
+}
+
 export interface AnthropicModelEntry {
   readonly type: "model";
   readonly id: string;
@@ -46,7 +75,7 @@ export interface AnthropicModelList {
 
 /** Claude Code의 gateway model discovery(GET /v1/models)가 기대하는 Anthropic 목록 형태. */
 export function buildAnthropicModelList(
-  models: readonly GatewayModel[] = OPENAI_SUBSCRIPTION_MODELS,
+  models: readonly GatewayModel[] = GATEWAY_MODELS,
   createdAt = "2026-01-01T00:00:00Z",
 ): AnthropicModelList {
   const data = models.map((model) => ({
@@ -72,7 +101,7 @@ export function resolveGatewayModel(
   options: { readonly override?: string; readonly catalog?: readonly GatewayModel[]; readonly fallback: string },
 ): string {
   if (options.override) return options.override;
-  const catalog = options.catalog ?? OPENAI_SUBSCRIPTION_MODELS;
+  const catalog = options.catalog ?? GATEWAY_MODELS;
   const bare = requested === undefined ? undefined : fromGatewayModelAlias(requested);
   if (bare && catalog.some((model) => model.id === bare)) return bare;
   return options.fallback;

@@ -1,4 +1,5 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,10 +7,14 @@ import path from "node:path";
 import {
   AnthropicMessagesGateway,
   CHATGPT_CODEX_RESPONSES_URL,
-  OPENAI_SUBSCRIPTION_MODELS,
+  CursorAdapter,
+  GATEWAY_MODELS,
   OpenAIResponsesAdapter,
   buildAnthropicModelList,
+  findGatewayModel,
+  upstreamModelId,
 } from "@dotobokuri/core-ai-gateway";
+import type { GatewayModel } from "@dotobokuri/core-ai-gateway";
 import type { AnthropicMessagesRequest } from "@dotobokuri/core-ai-gateway";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
@@ -25,6 +30,20 @@ const TOKEN_BYTES = 32;
 export interface CodexSubscriptionAuth {
   readonly accessToken: string;
   readonly accountId: string;
+}
+
+/** Cursor CLI/IDE 로그인이 keychain에 남긴 구독 토큰. */
+export function readCursorSubscriptionToken(): string | null {
+  try {
+    const token = execFileSync(
+      "security",
+      ["find-generic-password", "-s", "cursor-access-token", "-a", "cursor-user", "-w"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
+    return token.length > 0 ? token : null;
+  } catch {
+    return null;
+  }
 }
 
 export function readCodexSubscriptionAuth(
@@ -64,6 +83,7 @@ export interface AiGatewayRouteDeps {
   readonly gateway?: AnthropicMessagesGateway;
   /** 테스트가 구독 토큰 조회를 대체한다. */
   readonly readAuth?: () => CodexSubscriptionAuth | null;
+  readonly readCursorToken?: () => string | null;
 }
 
 export interface AiGatewayRouter extends AiGatewayTokenIssuer {
@@ -107,18 +127,6 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
       return true;
     }
 
-    // ChatGPT 구독 토큰은 Codex CLI가 저장해 둔 것을 읽는다. 자식에게는 넘기지 않는다.
-    const auth = readAuth();
-    if (!auth) {
-      writeAnthropicError(
-        res,
-        401,
-        "authentication_error",
-        "No ChatGPT subscription token was found. Run `codex login` first.",
-      );
-      return true;
-    }
-
     let body: AnthropicMessagesRequest | null;
     try {
       body = await readJsonBody<AnthropicMessagesRequest>(req);
@@ -137,19 +145,40 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
       + ` msgRoles=${JSON.stringify((body.messages ?? []).map((m) => m.role))}`,
     );
 
+    // 요청이 지목한 모델이 어느 구독으로 가는지 정한다. env 오버라이드가 있으면 그쪽이 이긴다.
+    const requested = process.env[AI_GATEWAY_MODEL_ENV] ?? body.model;
+    const target = findGatewayModel(requested) ?? GATEWAY_MODELS[0]!;
+
+    let credential: string;
+    let chatgptAccountId = "";
+    if (target.provider === "cursor") {
+      const cursorToken = (deps.readCursorToken ?? readCursorSubscriptionToken)();
+      if (!cursorToken) {
+        writeAnthropicError(res, 401, "authentication_error", "No Cursor subscription token was found. Sign in to Cursor first.");
+        return true;
+      }
+      credential = cursorToken;
+    } else {
+      // ChatGPT 구독 토큰은 Codex CLI가 저장해 둔 것을 읽는다. 자식에게는 넘기지 않는다.
+      const auth = readAuth();
+      if (!auth) {
+        writeAnthropicError(res, 401, "authentication_error", "No ChatGPT subscription token was found. Run `codex login` first.");
+        return true;
+      }
+      credential = auth.accessToken;
+      chatgptAccountId = auth.accountId;
+    }
+
     const controller = new AbortController();
     const abort = (): void => controller.abort(new Error("client disconnected"));
     req.once("close", abort);
 
     try {
-      const model = process.env[AI_GATEWAY_MODEL_ENV];
-      const gateway = deps.gateway ?? createSubscriptionGateway(auth);
+      const gateway = deps.gateway ?? createGatewayFor(target, chatgptAccountId);
       const upstream = await gateway.stream(body, {
-        apiKey: auth.accessToken,
+        apiKey: credential,
         signal: controller.signal,
-        // env 오버라이드가 없으면 요청이 지목한 모델을 카탈로그에 비추어 존중한다.
-        catalog: OPENAI_SUBSCRIPTION_MODELS,
-        ...(model ? { model } : {}),
+        model: upstreamModelId(target),
       });
       res.writeHead(upstream.status, headerEntries(upstream.headers));
       for await (const chunk of upstream.body) {
@@ -192,11 +221,14 @@ export function registerAiGatewayRoutes(
   return { enabled: true, issueToken: router.issueToken };
 }
 
-function createSubscriptionGateway(auth: CodexSubscriptionAuth): AnthropicMessagesGateway {
+function createGatewayFor(model: GatewayModel, chatgptAccountId: string): AnthropicMessagesGateway {
+  if (model.provider === "cursor") {
+    return new AnthropicMessagesGateway(new CursorAdapter());
+  }
   return new AnthropicMessagesGateway(new OpenAIResponsesAdapter({
     url: CHATGPT_CODEX_RESPONSES_URL,
     headers: {
-      "chatgpt-account-id": auth.accountId,
+      "chatgpt-account-id": chatgptAccountId,
       originator: "fleet-console",
     },
     // ChatGPT 백엔드는 Platform API용 샘플링 파라미터를 400으로 거절한다.

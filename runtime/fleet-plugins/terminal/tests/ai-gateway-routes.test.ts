@@ -135,7 +135,11 @@ describe("route surface", () => {
 
     expect(res.status).toBe(200);
     const list = JSON.parse(res.body) as { data: Array<{ id: string }> };
-    expect(list.data.map((entry) => entry.id)).toContain("gpt-5.5");
+    const ids = list.data.map((entry) => entry.id);
+    // picker가 버리지 않도록 모든 항목이 claude- alias로 나가야 한다.
+    expect(ids.every((id) => id.startsWith("claude"))).toBe(true);
+    expect(ids).toContain("claude-gateway--gpt-5.5");
+    expect(ids).toContain("claude-gateway--cursor-auto");
   });
 
   it("refuses model discovery without a bearer", async () => {
