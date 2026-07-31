@@ -50,16 +50,6 @@ const GIT_TIMEOUT_MS = 5_000;
 const GIT_MAX_BUFFER = 8 * 1024 * 1024;
 const GIT_STATUS_CAP = 10_000;
 const UNMERGED_STATUS_PAIRS = new Set(["UU", "UD", "DU", "AA", "AU", "UA", "DD"]);
-const BLOCKED_GIT_ENVIRONMENT_KEYS = new Set([
-  "GIT_DIR",
-  "GIT_WORK_TREE",
-  "GIT_INDEX_FILE",
-  "GIT_CONFIG",
-  "GIT_CONFIG_GLOBAL",
-  "GIT_CONFIG_SYSTEM",
-  "GIT_CONFIG_COUNT",
-  "GIT_OPTIONAL_LOCKS",
-]);
 
 export async function readTheaterGitStatus(
   theaterPath: string,
@@ -188,12 +178,10 @@ function executeGit(args: readonly string[], options: GitExecOptions): Promise<s
 function sanitizeGitEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const sanitized: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(environment)) {
-    const normalizedKey = key.toUpperCase();
-    if (
-      BLOCKED_GIT_ENVIRONMENT_KEYS.has(normalizedKey)
-      || normalizedKey.startsWith("GIT_CONFIG_KEY_")
-      || normalizedKey.startsWith("GIT_CONFIG_VALUE_")
-    ) continue;
+    // 저장소 라우팅을 바꾸는 GIT_* 상속은 전부 차단한다(allowlist 방식) —
+    // GIT_COMMON_DIR 같은 변수가 새어나가면 status가 다른 저장소를 가리켜
+    // 배지 전체가 숨겨지거나 잘못된 저장소를 읽는다. 필요한 값만 아래서 재주입.
+    if (key.toUpperCase().startsWith("GIT_")) continue;
     if (value !== undefined) sanitized[key] = value;
   }
   sanitized.GIT_OPTIONAL_LOCKS = "0";

@@ -71,6 +71,9 @@ describe("readTheaterGitStatus", () => {
     const contaminatedEnvironment: NodeJS.ProcessEnv = {
       PATH: "/usr/bin",
       GIT_DIR: "/attacker/git-dir",
+      GIT_COMMON_DIR: "/attacker/common-dir",
+      GIT_OBJECT_DIRECTORY: "/attacker/objects",
+      GIT_CEILING_DIRECTORIES: "/attacker",
       GIT_WORK_TREE: "/attacker/work-tree",
       GIT_INDEX_FILE: "/attacker/index",
       GIT_CONFIG: "/attacker/config",
@@ -106,6 +109,9 @@ describe("readTheaterGitStatus", () => {
       expect(options.killSignal).toBe("SIGKILL");
       expect(options.env).toMatchObject({ PATH: "/usr/bin", GIT_OPTIONAL_LOCKS: "0" });
       expect(options.env).not.toHaveProperty("GIT_DIR");
+      expect(options.env).not.toHaveProperty("GIT_COMMON_DIR");
+      expect(options.env).not.toHaveProperty("GIT_OBJECT_DIRECTORY");
+      expect(options.env).not.toHaveProperty("GIT_CEILING_DIRECTORIES");
       expect(options.env).not.toHaveProperty("GIT_WORK_TREE");
       expect(options.env).not.toHaveProperty("GIT_INDEX_FILE");
       expect(options.env).not.toHaveProperty("GIT_CONFIG");
