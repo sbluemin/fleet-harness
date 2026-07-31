@@ -36,6 +36,7 @@ export type ContextMenuKeyboardAction =
   | { readonly kind: "focus"; readonly index: number }
   | { readonly kind: "activate"; readonly index: number }
   | { readonly kind: "dismiss" }
+  | { readonly kind: "close" }
   | { readonly kind: "none" };
 
 interface Point {
@@ -76,6 +77,9 @@ export function resolveContextMenuKeyboardAction(
   itemCount: number,
 ): ContextMenuKeyboardAction {
   if (key === "Escape") return { kind: "dismiss" };
+  // Tab은 포커스 이동을 막지 않고 메뉴를 닫기만 한다 — 포커스가 빠진 채
+  // 열린 오버레이는 Escape 경로도 잃어 패널 위에 갇히기 때문이다.
+  if (key === "Tab") return { kind: "close" };
   if (itemCount <= 0) return { kind: "none" };
   if (key === "ArrowDown") return { kind: "focus", index: (currentIndex + 1) % itemCount };
   if (key === "ArrowUp") {
@@ -217,6 +221,11 @@ export function FileContextMenu({
   };
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const action = resolveContextMenuKeyboardAction(activeIndex, event.key, ACTION_ENTRIES.length);
+    if (action.kind === "close") {
+      // preventDefault 없이 닫는다 — Tab의 자연스러운 포커스 이동을 보존.
+      onClose();
+      return;
+    }
     if (action.kind === "none") return;
     event.preventDefault();
     event.stopPropagation();

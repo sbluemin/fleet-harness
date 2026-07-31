@@ -111,6 +111,11 @@ describe("file explorer row context menu", () => {
     expect(writeText).toHaveBeenCalledWith("src/file.ts");
     expect(feedback).toBe("fileExplorer.menu.relativePathCopied");
   });
+  it("closes on Tab without trapping focus", () => {
+    expect(resolveContextMenuKeyboardAction(0, "Tab", 4)).toEqual({ kind: "close" });
+    expect(resolveContextMenuKeyboardAction(2, "Tab", 4)).toEqual({ kind: "close" });
+    expect(resolveContextMenuKeyboardAction(0, "Tab", 0)).toEqual({ kind: "close" });
+  });
 });
 
 function createKeyboardHarness() {
@@ -158,6 +163,7 @@ function createKeyboardHarness() {
     origin,
     key(key: string) {
       const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+
       document.activeElement?.dispatchEvent(event);
       return event;
     },
