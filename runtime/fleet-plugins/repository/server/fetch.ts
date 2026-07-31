@@ -80,7 +80,9 @@ async function fetchRepository(gitCwd: string): Promise<FetchResult> {
     // git 예약어 none만 프록시 우회다 — 다른 값은 프록시 "명령"으로 실행된다.
     "core.gitProxy=none",
     "-c",
-    "protocol.allow=user",
+    // protocol.allow=user는 ext를 never에서 허용으로 뒤집는다(GIT_PROTOCOL_FROM_USER unset) —
+    // 기본 정책을 유지한 채 실행형 transport만 명시 차단한다.
+    "protocol.ext.allow=never",
     "fetch",
     "--prune",
     "--no-tags",
@@ -97,12 +99,23 @@ async function fetchRepository(gitCwd: string): Promise<FetchResult> {
 
 type GitIdentity = { readonly gitDir: string; readonly commonDir: string };
 
-function fetchHeadCandidates(identity: GitIdentity): readonly string[] {
-  return identity.gitDir === identity.commonDir ? [identity.gitDir] : [identity.gitDir, identity.commonDir];
+async function fetchHeadCandidates(identity: GitIdentity): Promise<readonly string[]> {
+  const candidates = new Set([identity.gitDir, identity.commonDir]);
+  try {
+    // 형제 linked worktree의 FETCH_HEAD(<common>/worktrees/*/FETCH_HEAD)도 같은 refs를
+    // 공유하는 저장소의 fetch 증거이므로 throttle 후보에 함께 본다.
+    const worktreesDir = path.join(identity.commonDir, "worktrees");
+    for (const entry of await fs.readdir(worktreesDir, { withFileTypes: true })) {
+      if (entry.isDirectory()) candidates.add(path.join(worktreesDir, entry.name));
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  return [...candidates];
 }
 
 async function runAutoFetch(gitCwd: string, identity: GitIdentity): Promise<FetchResult> {
-  const throttled = await readThrottleResult(fetchHeadCandidates(identity));
+  const throttled = await readThrottleResult(await fetchHeadCandidates(identity));
   return throttled ?? fetchRepository(gitCwd);
 }
 
@@ -111,7 +124,7 @@ async function fetchAutoSingleFlight(gitCwd: string, identity: GitIdentity): Pro
   const existing = autoFetchInFlight.get(key);
   if (existing) {
     await existing;
-    const throttled = await readThrottleResult(fetchHeadCandidates(identity));
+    const throttled = await readThrottleResult(await fetchHeadCandidates(identity));
     if (throttled) return throttled;
   }
 

@@ -31,7 +31,8 @@ const FETCH_ARGS = [
   // git이 프록시 우회로 예약한 값은 none뿐 — false 같은 값은 프록시 명령으로 실행된다.
   "core.gitProxy=none",
   "-c",
-  "protocol.allow=user",
+  // protocol.allow=user는 ext를 허용으로 뒤집으므로 금지 — 실행형 transport만 차단한다.
+  "protocol.ext.allow=never",
   "fetch",
   "--prune",
   "--no-tags",
@@ -148,6 +149,35 @@ describe("Repository fetch single-flight", () => {
       return (args as readonly string[]).includes("--git-common-dir")
         ? gitResult(`${gitDir}\n`)
         : gitResult(`${worktreeGitDir}\n`);
+    });
+
+    const writes: JsonWrite[] = [];
+    await handleRepositoryFetch(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(tmpDir, { theaterId: "theater", mode: "auto" }, writes),
+    );
+
+    expect(writes).toEqual([{
+      status: 200,
+      payload: { ok: true, skipped: "throttled", lastFetchAt: expect.any(String) },
+    }]);
+  });
+
+  it("throttles against a sibling linked worktree's FETCH_HEAD", async () => {
+    // 형제 worktree A가 방금 fetch했다면(<common>/worktrees/A/FETCH_HEAD), B의 auto 요청도
+    // 같은 저장소의 네트워크 fetch를 다시 하지 않고 건너뛴다.
+    const siblingGitDir = path.join(gitDir, "worktrees", "a");
+    const ownGitDir = path.join(gitDir, "worktrees", "b");
+    await fs.mkdir(siblingGitDir, { recursive: true });
+    await fs.mkdir(ownGitDir, { recursive: true });
+    await fs.writeFile(path.join(siblingGitDir, "FETCH_HEAD"), "fetched\n");
+
+    runGitMock.mockImplementation(async (args: readonly string[]) => {
+      if (args[0] !== "rev-parse") throw new Error("fetch must not run");
+      return (args as readonly string[]).includes("--git-common-dir")
+        ? gitResult(`${gitDir}\n`)
+        : gitResult(`${ownGitDir}\n`);
     });
 
     const writes: JsonWrite[] = [];
