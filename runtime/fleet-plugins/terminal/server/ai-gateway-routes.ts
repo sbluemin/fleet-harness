@@ -1,19 +1,48 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import { readFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
-import { AnthropicMessagesGateway } from "@dotobokuri/core-ai-gateway";
+import {
+  AnthropicMessagesGateway,
+  CHATGPT_CODEX_RESPONSES_URL,
+  OPENAI_SUBSCRIPTION_MODELS,
+  OpenAIResponsesAdapter,
+  buildAnthropicModelList,
+} from "@dotobokuri/core-ai-gateway";
 import type { AnthropicMessagesRequest } from "@dotobokuri/core-ai-gateway";
-import type { AuthService } from "@dotobokuri/core-infra";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 
 export const AI_GATEWAY_ROUTE_SEGMENT = "ai-gateway";
-export const AI_GATEWAY_AUTH_PROVIDER_ID = "AI Gateway with OpenAI";
 export const AI_GATEWAY_EXPERIMENTAL_ENV = "FLEET_EXPERIMENTAL_AI_GATEWAY";
 export const AI_GATEWAY_MODEL_ENV = "FLEET_AI_GATEWAY_MODEL";
-export const UPSTREAM_KEY_ENV = "OPENAI_API_KEY";
 
 const TOKEN_BYTES = 32;
+
+/** Codex CLI가 ChatGPT 구독 로그인으로 저장해 둔 토큰. */
+export interface CodexSubscriptionAuth {
+  readonly accessToken: string;
+  readonly accountId: string;
+}
+
+export function readCodexSubscriptionAuth(
+  authPath: string = path.join(os.homedir(), ".codex", "auth.json"),
+): CodexSubscriptionAuth | null {
+  try {
+    const parsed = JSON.parse(readFileSync(authPath, "utf8")) as {
+      readonly tokens?: { readonly access_token?: unknown; readonly account_id?: unknown };
+    };
+    const accessToken = parsed.tokens?.access_token;
+    const accountId = parsed.tokens?.account_id;
+    if (typeof accessToken !== "string" || accessToken.length === 0) return null;
+    if (typeof accountId !== "string" || accountId.length === 0) return null;
+    return { accessToken, accountId };
+  } catch {
+    return null;
+  }
+}
 
 export interface AiGatewayTokenGrant {
   readonly token: string;
@@ -31,9 +60,10 @@ export interface AiGatewayRoutes extends AiGatewayTokenIssuer {
 }
 
 export interface AiGatewayRouteDeps {
-  readonly authService: Pick<AuthService, "getApiKey">;
   /** 테스트가 upstream을 대체할 수 있도록 주입 가능하게 둔다. */
   readonly gateway?: AnthropicMessagesGateway;
+  /** 테스트가 구독 토큰 조회를 대체한다. */
+  readonly readAuth?: () => CodexSubscriptionAuth | null;
 }
 
 export interface AiGatewayRouter extends AiGatewayTokenIssuer {
@@ -44,15 +74,27 @@ export function isAiGatewayEnabled(): boolean {
   return process.env[AI_GATEWAY_EXPERIMENTAL_ENV] === "1";
 }
 
-export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter {
+export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayRouter {
   const tokens = new Set<string>();
-  const gateway = deps.gateway ?? new AnthropicMessagesGateway();
+  const readAuth = deps.readAuth ?? (() => readCodexSubscriptionAuth());
 
   const handle: RouteHandler = async ({ req, res, pathname }) => {
+    // Experimental 진단: Claude Code가 실제로 무엇을 호출하는지 관찰한다.
+    console.log(`[ai-gateway] ${req.method} ${pathname} auth=${req.headers.authorization ? "yes" : "no"}`);
     // Claude Code는 base URL 뒤에 자기 경로를 붙인다. 연결 프로브는 /api/hello다.
     if (pathname.endsWith("/api/hello")) {
       res.writeHead(200, { "content-type": "application/json" });
       res.end("{}");
+      return true;
+    }
+    // Claude Code의 gateway model discovery. 이게 있어야 /model picker에 GPT가 뜬다.
+    if (pathname.endsWith("/v1/models")) {
+      if (!authorize(req.headers.authorization, tokens)) {
+        writeAnthropicError(res, 401, "authentication_error", "Invalid gateway token");
+        return true;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(buildAnthropicModelList()));
       return true;
     }
     if (!pathname.endsWith("/v1/messages")) return false;
@@ -65,15 +107,14 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       return true;
     }
 
-    // 저장된 자격증명이 우선이고, PoC 단계에서는 Console을 띄운 셸의 OPENAI_API_KEY로 폴백한다.
-    // 어느 쪽이든 자식 프로세스에는 전달되지 않고 서버 안에서만 쓰인다.
-    const apiKey = (await deps.authService.getApiKey(AI_GATEWAY_AUTH_PROVIDER_ID)) ?? process.env[UPSTREAM_KEY_ENV];
-    if (!apiKey) {
+    // ChatGPT 구독 토큰은 Codex CLI가 저장해 둔 것을 읽는다. 자식에게는 넘기지 않는다.
+    const auth = readAuth();
+    if (!auth) {
       writeAnthropicError(
         res,
         401,
         "authentication_error",
-        `No upstream credential is configured. Set ${UPSTREAM_KEY_ENV} before starting Fleet Console.`,
+        "No ChatGPT subscription token was found. Run `codex login` first.",
       );
       return true;
     }
@@ -90,15 +131,24 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       return true;
     }
 
+    console.log(
+      `[ai-gateway] body keys=${JSON.stringify(Object.keys(body))}`
+      + ` system=${Array.isArray(body.system) ? `array(${body.system.length})` : typeof body.system}`
+      + ` msgRoles=${JSON.stringify((body.messages ?? []).map((m) => m.role))}`,
+    );
+
     const controller = new AbortController();
     const abort = (): void => controller.abort(new Error("client disconnected"));
     req.once("close", abort);
 
     try {
       const model = process.env[AI_GATEWAY_MODEL_ENV];
+      const gateway = deps.gateway ?? createSubscriptionGateway(auth);
       const upstream = await gateway.stream(body, {
-        apiKey,
+        apiKey: auth.accessToken,
         signal: controller.signal,
+        // env 오버라이드가 없으면 요청이 지목한 모델을 카탈로그에 비추어 존중한다.
+        catalog: OPENAI_SUBSCRIPTION_MODELS,
         ...(model ? { model } : {}),
       });
       res.writeHead(upstream.status, headerEntries(upstream.headers));
@@ -131,7 +181,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
 
 export function registerAiGatewayRoutes(
   ctx: FleetPluginServerContext,
-  deps: AiGatewayRouteDeps,
+  deps: AiGatewayRouteDeps = {},
 ): AiGatewayRoutes {
   // Fail-closed: 봉인이 닫혀 있으면 라우트를 등록하지 않아 404로 떨어진다.
   if (!isAiGatewayEnabled()) {
@@ -140,6 +190,18 @@ export function registerAiGatewayRoutes(
   const router = createAiGatewayRouter(deps);
   registerRouter(ctx, AI_GATEWAY_ROUTE_SEGMENT, router.handle);
   return { enabled: true, issueToken: router.issueToken };
+}
+
+function createSubscriptionGateway(auth: CodexSubscriptionAuth): AnthropicMessagesGateway {
+  return new AnthropicMessagesGateway(new OpenAIResponsesAdapter({
+    url: CHATGPT_CODEX_RESPONSES_URL,
+    headers: {
+      "chatgpt-account-id": auth.accountId,
+      originator: "fleet-console",
+    },
+    // ChatGPT 백엔드는 Platform API용 샘플링 파라미터를 400으로 거절한다.
+    dropSamplingParams: true,
+  }));
 }
 
 function rejectIssue(): never {

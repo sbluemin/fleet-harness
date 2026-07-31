@@ -5,16 +5,15 @@ import type { RouteHandler, RouteHandlerContext } from "@fleet-console/sdk/routi
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  AI_GATEWAY_AUTH_PROVIDER_ID,
   AI_GATEWAY_EXPERIMENTAL_ENV,
-  UPSTREAM_KEY_ENV,
   createAiGatewayRouter,
   registerAiGatewayRoutes,
 } from "../server/ai-gateway-routes.js";
 
 const BASE = "/plugins/terminal/ai-gateway";
 const MESSAGES = `${BASE}/v1/messages`;
-const STORED_KEY = "sk-upstream-secret";
+const SUBSCRIPTION_TOKEN = "chatgpt-subscription-access-token";
+const ACCOUNT_ID = "11111111-2222-3333-4444-555555555555";
 
 afterEach(() => {
   delete process.env[AI_GATEWAY_EXPERIMENTAL_ENV];
@@ -23,7 +22,7 @@ afterEach(() => {
 describe("experimental seal", () => {
   it("does not register any route while the seal is closed", () => {
     const registerRouter = vi.fn();
-    const routes = registerAiGatewayRoutes(pluginCtx(registerRouter), { authService: authService() });
+    const routes = registerAiGatewayRoutes(pluginCtx(registerRouter));
 
     expect(routes.enabled).toBe(false);
     expect(registerRouter).not.toHaveBeenCalled();
@@ -33,7 +32,7 @@ describe("experimental seal", () => {
   it("registers the route once the seal is opened", () => {
     process.env[AI_GATEWAY_EXPERIMENTAL_ENV] = "1";
     const registerRouter = vi.fn();
-    const routes = registerAiGatewayRoutes(pluginCtx(registerRouter), { authService: authService() });
+    const routes = registerAiGatewayRoutes(pluginCtx(registerRouter));
 
     expect(routes.enabled).toBe(true);
     expect(registerRouter).toHaveBeenCalledTimes(1);
@@ -43,7 +42,7 @@ describe("experimental seal", () => {
 
 describe("gateway token", () => {
   it("rejects a request that carries no bearer", async () => {
-    const router = createAiGatewayRouter({ authService: authService(), gateway: stubGateway() });
+    const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
     const res = response();
     await router.handle(ctx({ res }));
 
@@ -55,7 +54,7 @@ describe("gateway token", () => {
   });
 
   it("rejects a bearer that was never issued", async () => {
-    const router = createAiGatewayRouter({ authService: authService(), gateway: stubGateway() });
+    const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
     const res = response();
     await router.handle(ctx({ res, token: "f".repeat(64) }));
 
@@ -63,7 +62,7 @@ describe("gateway token", () => {
   });
 
   it("accepts an issued bearer and streams the upstream body through", async () => {
-    const router = createAiGatewayRouter({ authService: authService(), gateway: stubGateway() });
+    const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
     const grant = router.issueToken();
     const res = response();
     await router.handle(ctx({ res, token: grant.token }));
@@ -74,7 +73,7 @@ describe("gateway token", () => {
   });
 
   it("stops accepting a revoked bearer", async () => {
-    const router = createAiGatewayRouter({ authService: authService(), gateway: stubGateway() });
+    const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
     const grant = router.issueToken();
     grant.revoke();
     const res = response();
@@ -84,7 +83,7 @@ describe("gateway token", () => {
   });
 
   it("keeps one operation's bearer from being replaced by another's", async () => {
-    const router = createAiGatewayRouter({ authService: authService(), gateway: stubGateway() });
+    const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
     const first = router.issueToken();
     const second = router.issueToken();
     second.revoke();
@@ -96,48 +95,66 @@ describe("gateway token", () => {
 });
 
 describe("upstream credential", () => {
-  it("refuses to call upstream when no credential is stored, without leaking the provider id", async () => {
-    delete process.env[UPSTREAM_KEY_ENV];
+  it("refuses to call upstream when no subscription token is present", async () => {
     const gateway = stubGateway();
     const streamSpy = vi.spyOn(gateway, "stream");
-    const router = createAiGatewayRouter({ authService: authService(null), gateway });
+    const router = createAiGatewayRouter({ gateway, readAuth: () => null });
     const grant = router.issueToken();
     const res = response();
     await router.handle(ctx({ res, token: grant.token }));
 
     expect(res.status).toBe(401);
     expect(streamSpy).not.toHaveBeenCalled();
-    expect(res.body).not.toContain(AI_GATEWAY_AUTH_PROVIDER_ID);
+    expect(res.body).toContain("codex login");
   });
 
-  it("never echoes the stored upstream key back to the caller", async () => {
-    const router = createAiGatewayRouter({ authService: authService(), gateway: stubGateway() });
+  it("never echoes the subscription token back to the caller", async () => {
+    const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
     const grant = router.issueToken();
     const res = response();
     await router.handle(ctx({ res, token: grant.token }));
 
-    expect(`${JSON.stringify(res.headers)}${res.body}`).not.toContain(STORED_KEY);
+    expect(`${JSON.stringify(res.headers)}${res.body}`).not.toContain(SUBSCRIPTION_TOKEN);
   });
 });
 
 describe("route surface", () => {
   it("answers the Claude Code connectivity probe", async () => {
-    const router = createAiGatewayRouter({ authService: authService(), gateway: stubGateway() });
+    const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
     const res = response();
     await router.handle(ctx({ res, pathname: `${BASE}/api/hello`, method: "HEAD" }));
 
     expect(res.status).toBe(200);
   });
 
+  it("serves model discovery to an authorized caller", async () => {
+    const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
+    const grant = router.issueToken();
+    const res = response();
+    await router.handle(ctx({ res, token: grant.token, pathname: `${BASE}/v1/models`, method: "GET" }));
+
+    expect(res.status).toBe(200);
+    const list = JSON.parse(res.body) as { data: Array<{ id: string }> };
+    expect(list.data.map((entry) => entry.id)).toContain("gpt-5.5");
+  });
+
+  it("refuses model discovery without a bearer", async () => {
+    const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
+    const res = response();
+    await router.handle(ctx({ res, pathname: `${BASE}/v1/models`, method: "GET" }));
+
+    expect(res.status).toBe(401);
+  });
+
   it("declines unknown sub-paths so the host can 404 them", async () => {
-    const router = createAiGatewayRouter({ authService: authService(), gateway: stubGateway() });
-    const handled = await router.handle(ctx({ res: response(), pathname: `${BASE}/v1/models` }));
+    const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
+    const handled = await router.handle(ctx({ res: response(), pathname: `${BASE}/v1/embeddings` }));
 
     expect(handled).toBe(false);
   });
 
   it("rejects a non-POST call to the messages endpoint", async () => {
-    const router = createAiGatewayRouter({ authService: authService(), gateway: stubGateway() });
+    const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
     const res = response();
     await router.handle(ctx({ res, method: "GET" }));
 
@@ -145,9 +162,8 @@ describe("route surface", () => {
   });
 });
 
-// null은 "저장된 자격증명 없음"을 뜻한다. undefined를 쓰면 기본 매개변수가 되살아나 케이스가 사라진다.
-function authService(key: string | null = STORED_KEY) {
-  return { getApiKey: async () => key ?? undefined };
+function readAuth() {
+  return { accessToken: SUBSCRIPTION_TOKEN, accountId: ACCOUNT_ID };
 }
 
 function pluginCtx(registerRouter: (path: string, handler: RouteHandler) => void): FleetPluginServerContext {

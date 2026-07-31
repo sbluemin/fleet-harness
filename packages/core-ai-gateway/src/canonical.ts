@@ -1,6 +1,7 @@
 export interface CanonicalInputMessage {
   type: "message";
-  role: "user" | "assistant";
+  // ChatGPT Codex 백엔드는 role:"system"을 400으로 거절한다. system 성격 메시지는 developer로 싣는다.
+  role: "user" | "assistant" | "developer";
   content: string;
 }
 

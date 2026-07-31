@@ -172,6 +172,7 @@ function createHarness() {
         },
         registerSseChannel: () => () => {},
       },
+      server: { origin: () => null },
       paths: {
         fleetDataDir,
         capturesDir: fleetDataDir,

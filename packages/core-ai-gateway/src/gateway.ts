@@ -24,7 +24,10 @@ export class AnthropicMessagesGateway {
     request: AnthropicMessagesRequest,
     options: AnthropicGatewayCallOptions
   ): Promise<AnthropicGatewayResponse> {
-    const canonical = translateAnthropicRequest(request, { model: options.model });
+    const canonical = translateAnthropicRequest(request, {
+      ...(options.model ? { model: options.model } : {}),
+      ...(options.catalog ? { catalog: options.catalog } : {}),
+    });
     const upstream = await this.adapter.stream(canonical, {
       apiKey: options.apiKey,
       signal: options.signal

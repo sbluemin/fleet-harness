@@ -386,6 +386,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       },
       registerSseChannel: () => () => undefined,
     },
+    server: {
+      origin: () => {
+        const activePort = lockHandle?.payload.port ?? port;
+        return activePort ? `http://127.0.0.1:${activePort}` : null;
+      },
+    },
     paths: {
       fleetDataDir,
       capturesDir: durablePaths.capturesDir,

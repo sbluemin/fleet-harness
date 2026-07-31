@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   AnthropicMessagesGateway,
+  OPENAI_SUBSCRIPTION_MODELS,
+  buildAnthropicModelList,
+  resolveGatewayModel,
   DEFAULT_OPENAI_MODEL,
   OPENAI_RESPONSES_URL,
   OpenAIResponsesAdapter,
@@ -109,6 +112,32 @@ describe("Anthropic request translation", () => {
         output: "# Fleet"
       }
     ]);
+  });
+});
+
+describe("model catalog", () => {
+  it("keeps a requested model that the catalog advertises", () => {
+    expect(resolveGatewayModel("gpt-5.6-sol", { fallback: "gpt-5.5" })).toBe("gpt-5.6-sol");
+  });
+
+  it("falls back when Claude Code sends its own model name", () => {
+    expect(resolveGatewayModel("claude-sonnet-4-6", { fallback: "gpt-5.5" })).toBe("gpt-5.5");
+  });
+
+  it("lets an explicit override win over the request", () => {
+    expect(resolveGatewayModel("gpt-5.6-sol", { override: "gpt-5.5", fallback: "gpt-5.5" })).toBe("gpt-5.5");
+  });
+
+  it("advertises the catalog in the Anthropic list shape", () => {
+    const list = buildAnthropicModelList();
+    expect(list.has_more).toBe(false);
+    expect(list.data.map((entry) => entry.id)).toEqual(OPENAI_SUBSCRIPTION_MODELS.map((m) => m.id));
+    expect(list.data[0]).toMatchObject({ type: "model", display_name: expect.any(String) });
+  });
+
+  it("routes a catalog model through translation untouched", () => {
+    const request = { ...baseRequest(), model: "gpt-5.6-luna" };
+    expect(translateAnthropicRequest(request, { catalog: OPENAI_SUBSCRIPTION_MODELS }).model).toBe("gpt-5.6-luna");
   });
 });
 

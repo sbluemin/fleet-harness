@@ -11,8 +11,22 @@ import type {
 } from "./canonical.js";
 
 export const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
+/** ChatGPT 구독으로 Codex가 호출하는 백엔드. Platform API와 다른 표면이다. */
+export const CHATGPT_CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
 export const DEFAULT_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
 export const DEFAULT_UPSTREAM_IDLE_TIMEOUT_MS = 30_000;
+
+// ChatGPT 백엔드는 Platform API가 받는 샘플링 파라미터를 400으로 거절한다.
+// 실측으로 확정한 거부 목록. metadata는 "Unsupported parameter", 샘플링 필드는 400으로 돌아온다.
+// instructions/tools/tool_choice/parallel_tool_calls는 허용된다.
+const CHATGPT_UNSUPPORTED_FIELDS = [
+  "max_output_tokens",
+  "temperature",
+  "top_p",
+  "stop",
+  "user",
+  "metadata",
+] as const;
 
 export type FetchLike = (
   input: string | URL | Request,
@@ -23,6 +37,12 @@ export interface OpenAIResponsesAdapterOptions {
   fetch?: FetchLike;
   maxBodyBytes?: number;
   idleTimeoutMs?: number;
+  /** 기본은 Platform API. 구독 경로는 CHATGPT_CODEX_RESPONSES_URL을 넘긴다. */
+  url?: string;
+  /** 구독 경로가 요구하는 chatgpt-account-id 등 추가 헤더. */
+  headers?: Readonly<Record<string, string>>;
+  /** ChatGPT 백엔드가 거절하는 샘플링 필드를 제거한다. */
+  dropSamplingParams?: boolean;
 }
 
 export class UpstreamBodyLimitError extends Error {
@@ -50,8 +70,14 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
   private readonly fetchImpl: FetchLike;
   private readonly maxBodyBytes: number;
   private readonly idleTimeoutMs: number;
+  private readonly url: string;
+  private readonly extraHeaders: Readonly<Record<string, string>>;
+  private readonly dropSamplingParams: boolean;
 
   constructor(options: OpenAIResponsesAdapterOptions = {}) {
+    this.url = options.url ?? OPENAI_RESPONSES_URL;
+    this.extraHeaders = options.headers ?? {};
+    this.dropSamplingParams = options.dropSamplingParams ?? false;
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.maxBodyBytes = positiveInteger(
       options.maxBodyBytes ?? DEFAULT_MAX_UPSTREAM_BODY_BYTES,
@@ -76,14 +102,15 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
     let response: Response;
 
     try {
-      response = await this.fetchImpl(OPENAI_RESPONSES_URL, {
+      response = await this.fetchImpl(this.url, {
         method: "POST",
         headers: {
           accept: "text/event-stream",
           authorization: `Bearer ${options.apiKey}`,
-          "content-type": "application/json"
+          "content-type": "application/json",
+          ...this.extraHeaders
         },
-        body: JSON.stringify(request),
+        body: JSON.stringify(this.dropSamplingParams ? forChatGptBackend(request) : request),
         signal: controller.signal
       });
     } catch (error) {
@@ -92,6 +119,11 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
     }
 
     if (!response.ok) {
+      if (process.env.FLEET_AI_GATEWAY_DEBUG === "1") {
+        const payload = this.dropSamplingParams ? forChatGptBackend(request) : request;
+        const roles = payload.input.map((item) => ("role" in item ? item.role : item.type));
+        console.error(`[ai-gateway] upstream ${response.status} input roles=${JSON.stringify(roles)} keys=${JSON.stringify(Object.keys(payload))}`);
+      }
       try {
         const body = await readBoundedBody(response.body, {
           controller,
@@ -121,6 +153,16 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
       })
     };
   }
+}
+
+function forChatGptBackend(request: CanonicalResponseRequest): CanonicalResponseRequest {
+  const copy: Record<string, unknown> = { ...request };
+  for (const field of CHATGPT_UNSUPPORTED_FIELDS) {
+    delete copy[field];
+  }
+  // 백엔드가 명시적으로 요구한다: 생략하면 400 "Store must be set to false".
+  copy.store = false;
+  return copy as unknown as CanonicalResponseRequest;
 }
 
 interface ReadOptions {

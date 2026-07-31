@@ -27,6 +27,8 @@ import { applyAgentCliPathEnvOverlay } from "./agent-cli-paths.js";
 export interface AiGatewayLaunchBinding {
   /** Console 루트 기준 라우트 경로. 예: "/plugins/terminal/ai-gateway" */
   readonly routePath: string;
+  /** Console이 리슨 중인 origin. MCP는 별도 포트라 여기서 유도하면 안 된다. */
+  origin(): string | null;
   issueToken(): AiGatewayTokenGrant;
 }
 
@@ -236,8 +238,10 @@ async function applyAiGatewayEnv(
       "The experimental AI gateway is disabled. Set FLEET_EXPERIMENTAL_AI_GATEWAY=1 before starting Fleet Console.",
     );
   }
-  const endpoint = await options.agentRuntime.dedicatedMcpSession.getEndpoint();
-  const origin = resolveConsoleOrigin(endpoint.servers);
+  const origin = options.aiGateway.origin();
+  if (!origin) {
+    throw new Error("Fleet Console has not bound a port yet, so the AI gateway URL cannot be derived.");
+  }
   const grant = options.aiGateway.issueToken();
   options.onCleanup(() => grant.revoke());
   return {
@@ -247,16 +251,10 @@ async function applyAiGatewayEnv(
       // Claude Code가 이 뒤에 /v1/messages를 붙인다.
       ANTHROPIC_BASE_URL: `${origin}${options.aiGateway.routePath}`,
       ANTHROPIC_AUTH_TOKEN: grant.token,
+      // 이게 있어야 /model picker가 게이트웨이의 GET /v1/models를 조회한다.
+      CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
     },
   };
-}
-
-function resolveConsoleOrigin(servers: readonly { readonly url: string }[]): string {
-  const url = servers[0]?.url;
-  if (!url) {
-    throw new Error("The Console MCP endpoint is unavailable, so the AI gateway URL cannot be derived.");
-  }
-  return new URL(url).origin;
 }
 
 function toLaunchSpec(profile: AgentCliProfile, cleanup: () => Promise<void>, sessionIdentityResolver: TerminalLaunchSpec["sessionIdentityResolver"]): TerminalLaunchSpec {

@@ -215,6 +215,7 @@ function createHarness(body: Record<string, unknown>) {
         },
         registerSseChannel: () => () => {},
       },
+      server: { origin: () => null },
       paths: {
         fleetDataDir,
         capturesDir: fleetDataDir,

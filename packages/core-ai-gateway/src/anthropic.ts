@@ -1,9 +1,12 @@
 import type {
   CanonicalFunctionCallOutputItem,
+  CanonicalInputMessage,
   CanonicalResponseEvent,
   CanonicalResponseRequest,
   CanonicalToolChoice
 } from "./canonical.js";
+import { resolveGatewayModel } from "./models.js";
+import type { GatewayModel } from "./models.js";
 
 export const DEFAULT_OPENAI_MODEL = "gpt-5.5";
 
@@ -47,7 +50,8 @@ export type AnthropicMessageBlock =
   | AnthropicThinkingBlock;
 
 export interface AnthropicMessage {
-  role: "user" | "assistant";
+  // Claude Code는 스펙 문서와 달리 messages 안에 role:"system"을 실어 보낸다(실측).
+  role: "user" | "assistant" | "system";
   content: string | AnthropicMessageBlock[];
 }
 
@@ -85,7 +89,10 @@ export interface AnthropicMessagesRequest {
 }
 
 export interface TranslateAnthropicRequestOptions {
+  /** 지정하면 요청이 지목한 모델을 무시하고 이 값으로 고정한다. */
   model?: string;
+  /** 게이트웨이가 discovery로 노출한 모델. 요청이 이 중 하나면 그대로 통과시킨다. */
+  catalog?: readonly GatewayModel[];
 }
 
 export class UnsupportedAnthropicContentError extends TypeError {
@@ -107,7 +114,11 @@ export function translateAnthropicRequest(
   }
 
   const canonical: CanonicalResponseRequest = {
-    model: options.model ?? DEFAULT_OPENAI_MODEL,
+    model: resolveGatewayModel(request.model, {
+      ...(options.model ? { override: options.model } : {}),
+      ...(options.catalog ? { catalog: options.catalog } : {}),
+      fallback: DEFAULT_OPENAI_MODEL,
+    }),
     input: request.messages.flatMap(translateMessage),
     max_output_tokens: request.max_tokens,
     stream: true
@@ -141,8 +152,9 @@ export function translateAnthropicRequest(
 }
 
 function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["input"] {
+  const role = canonicalRole(message.role);
   if (typeof message.content === "string") {
-    return [{ type: "message", role: message.role, content: message.content }];
+    return [{ type: "message", role, content: message.content }];
   }
 
   const items: CanonicalResponseRequest["input"] = [];
@@ -152,7 +164,7 @@ function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["
     if (text.length === 0) {
       return;
     }
-    items.push({ type: "message", role: message.role, content: text });
+    items.push({ type: "message", role, content: text });
     text = "";
   };
 
@@ -192,6 +204,10 @@ function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["
 
   flushText();
   return items;
+}
+
+function canonicalRole(role: AnthropicMessage["role"]): CanonicalInputMessage["role"] {
+  return role === "system" ? "developer" : role;
 }
 
 function toolResultText(content: AnthropicToolResultBlock["content"]): string {
