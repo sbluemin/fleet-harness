@@ -56,13 +56,28 @@ function localDateFromDayKey(day: string): Date {
   return date;
 }
 
-function fillDailyPoints(observed: readonly LedgerDailyPoint[]): LedgerDailyPoint[] {
-  if (observed.length <= 1) return [...observed];
-  const lastDay = observed[observed.length - 1]!.day;
+function derivedDailyRange(window: LedgerWindow, generatedAtMs: number): { readonly firstDay: string; readonly lastDay: string } {
+  const lastDay = localDayKey(generatedAtMs);
+  const firstDate = localDateFromDayKey(lastDay);
+  if (window === "week") firstDate.setDate(firstDate.getDate() - 6);
+  if (window === "month") firstDate.setDate(1);
+  return { firstDay: localDayKey(firstDate.getTime()), lastDay };
+}
+
+function fillDailyPoints(
+  observed: readonly LedgerDailyPoint[],
+  derived: { readonly firstDay: string; readonly lastDay: string },
+): LedgerDailyPoint[] {
+  if (observed.length === 0) return [];
+  // 파생 경계만 쓰면 upstream이 더 넓게 반환한 데이터를 자를 수 있고, 관측 범위만 쓰면 축이
+  // 활동일만 설명하므로 두 범위의 합집합을 써야 어느 month 의미에서도 실제 데이터와 기간을 보존한다.
+  let firstDay = observed[0]!.day < derived.firstDay ? observed[0]!.day : derived.firstDay;
+  const observedLastDay = observed[observed.length - 1]!.day;
+  const lastDay = observedLastDay > derived.lastDay ? observedLastDay : derived.lastDay;
   const cutoffDate = localDateFromDayKey(lastDay);
   cutoffDate.setDate(cutoffDate.getDate() - (MAX_DAILY_DAYS - 1));
   const cutoffDay = localDayKey(cutoffDate.getTime());
-  const firstDay = observed[0]!.day < cutoffDay ? cutoffDay : observed[0]!.day;
+  if (firstDay < cutoffDay) firstDay = cutoffDay;
   const costs = new Map(observed.map((point) => [point.day, point.costUsd]));
   const daily: LedgerDailyPoint[] = [];
   const current = localDateFromDayKey(firstDay);
@@ -217,7 +232,7 @@ function buildSummaryUnchecked(
   const observedDaily: LedgerDailyPoint[] = [...dailyMap.entries()]
     .map(([day, costUsd]) => ({ day, costUsd }))
     .sort((a, b) => a.day < b.day ? -1 : a.day > b.day ? 1 : 0);
-  const daily = fillDailyPoints(observedDaily);
+  const daily = fillDailyPoints(observedDaily, derivedDailyRange(scope.window, generatedAtMs));
 
   return {
     schemaVersion: 1,

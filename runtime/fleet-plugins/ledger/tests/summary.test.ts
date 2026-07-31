@@ -68,10 +68,50 @@ describe("buildSummary matching", () => {
     const dto = buildSummary([
       { ...sessions[0]!, lastActive: morning, costUsd: 1.25 },
       { ...sessions[1]!, lastActive: evening, costUsd: 2.75 },
-    ], [], { theaterId: null, window: "week" });
+    ], [], { theaterId: null, window: "today" }, "ok", evening);
 
     expect(localDayKey(morning)).toBe("2026-07-15");
-    expect(dto.daily).toEqual([{ day: "2026-07-15", costUsd: 4 }]);
+    expect(dto.daily).toEqual([{ day: localDayKey(evening), costUsd: 4 }]);
+  });
+
+  it("fills a week through its final generated day when only that day has a session", () => {
+    const generatedAtMs = new Date(2026, 6, 31, 12).getTime();
+    const firstDay = shiftLocalDate(generatedAtMs, -6);
+    const dto = buildSummary([
+      { ...sessions[0]!, lastActive: generatedAtMs, costUsd: 7 },
+    ], [], { theaterId: null, window: "week" }, "ok", generatedAtMs);
+
+    expect(dto.daily).toEqual(Array.from({ length: 7 }, (_, index) => ({
+      day: localDayKey(shiftLocalDate(firstDay, index)),
+      costUsd: index === 6 ? 7 : 0,
+    })));
+  });
+
+  it("fills a month from its first local day through the generated day", () => {
+    const generatedAtMs = new Date(2026, 6, 15, 12).getTime();
+    const firstDay = new Date(generatedAtMs);
+    firstDay.setDate(1);
+    const dto = buildSummary([
+      { ...sessions[0]!, lastActive: generatedAtMs, costUsd: 5 },
+    ], [], { theaterId: null, window: "month" }, "ok", generatedAtMs);
+
+    expect(dto.daily).toEqual(Array.from({ length: 15 }, (_, index) => ({
+      day: localDayKey(shiftLocalDate(firstDay.getTime(), index)),
+      costUsd: index === 14 ? 5 : 0,
+    })));
+  });
+
+  it("preserves an observed day earlier than the derived window start", () => {
+    const generatedAtMs = new Date(2026, 6, 31, 12).getTime();
+    const observedAtMs = shiftLocalDate(generatedAtMs, -8);
+    const dto = buildSummary([
+      { ...sessions[0]!, lastActive: observedAtMs, costUsd: 4 },
+    ], [], { theaterId: null, window: "week" }, "ok", generatedAtMs);
+
+    expect(dto.daily).toEqual(Array.from({ length: 9 }, (_, index) => ({
+      day: localDayKey(shiftLocalDate(observedAtMs, index)),
+      costUsd: index === 0 ? 4 : 0,
+    })));
   });
 
   it("fills an interior local-day gap with a zero-cost point in ascending order", () => {
@@ -81,7 +121,7 @@ describe("buildSummary matching", () => {
     const dto = buildSummary([
       { ...sessions[0]!, lastActive: later, costUsd: 3 },
       { ...sessions[1]!, lastActive: earlier, costUsd: 1 },
-    ], [], { theaterId: null, window: "week" });
+    ], [], { theaterId: null, window: "today" }, "ok", later);
 
     expect(dto.daily).toEqual([
       { day: localDayKey(earlier), costUsd: 1 },
@@ -96,7 +136,7 @@ describe("buildSummary matching", () => {
     const dto = buildSummary([
       { ...sessions[0]!, lastActive: second, costUsd: 3 },
       { ...sessions[1]!, lastActive: first, costUsd: 1 },
-    ], [], { theaterId: null, window: "week" });
+    ], [], { theaterId: null, window: "today" }, "ok", second);
 
     expect(dto.daily).toEqual([
       { day: localDayKey(first), costUsd: 1 },
@@ -112,7 +152,7 @@ describe("buildSummary matching", () => {
       { ...sessions[0]!, lastActive: stale, costUsd: 1 },
       { ...sessions[1]!, lastActive: cutoff, costUsd: 2 },
       { ...sessions[2]!, lastActive: latest, costUsd: 3 },
-    ], [], { theaterId: null, window: "month" });
+    ], [], { theaterId: null, window: "today" }, "ok", latest);
 
     expect(dto.daily).toHaveLength(366);
     expect(dto.daily[0]).toEqual({ day: localDayKey(cutoff), costUsd: 2 });
@@ -121,8 +161,9 @@ describe("buildSummary matching", () => {
     expect(dto.daily.some((point) => point.day === localDayKey(stale))).toBe(false);
   });
 
-  it("returns no daily points for an empty session set", () => {
-    expect(buildSummary([], [], { theaterId: null, window: "week" }).daily).toEqual([]);
+  it("returns no daily points for an empty session set instead of a derived all-zero window", () => {
+    const generatedAtMs = new Date(2026, 6, 31, 12).getTime();
+    expect(buildSummary([], [], { theaterId: null, window: "week" }, "ok", generatedAtMs).daily).toEqual([]);
   });
 
   it("fails closed when daily cost accumulation overflows", () => {
@@ -130,7 +171,7 @@ describe("buildSummary matching", () => {
     const dto = buildSummary([
       { ...sessions[0]!, lastActive, costUsd: Number.MAX_VALUE },
       { ...sessions[1]!, lastActive, costUsd: Number.MAX_VALUE },
-    ], [], { theaterId: null, window: "week" });
+    ], [], { theaterId: null, window: "today" }, "ok", lastActive);
 
     expect(dto).toMatchObject({
       totals: { costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0 },
@@ -187,8 +228,9 @@ describe("buildSummary matching", () => {
       operation("a", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 100),
       operation("b", "theater-b", "codex", "019f9ab4-7d11-7000-8000-123456789abc", 200),
     ];
-    const scoped = buildSummary(sessions, operations, { theaterId: "theater-a", window: "week" });
-    const all = buildSummary(sessions, operations, { theaterId: null, window: "week" });
+    const generatedAtMs = Math.max(...sessions.map((session) => session.lastActive));
+    const scoped = buildSummary(sessions, operations, { theaterId: "theater-a", window: "week" }, "ok", generatedAtMs);
+    const all = buildSummary(sessions, operations, { theaterId: null, window: "week" }, "ok", generatedAtMs);
     expect(scoped.clients).toEqual(all.clients);
     expect(scoped.daily).toEqual(all.daily);
     expect(scoped.clients).toEqual([
@@ -295,7 +337,7 @@ describe("buildSummary matching", () => {
     const dto = buildSummary(overflowSessions, [
       operation("first", "theater-a", "claude", sessions[0]!.sessionId, 1),
       operation("second", "theater-a", "claude", secondSessionId, 1),
-    ], { theaterId: null, window: "week" });
+    ], { theaterId: null, window: "week" }, "ok", Math.max(...overflowSessions.map((session) => session.lastActive)));
     expect(dto.source).toMatchObject({ status: "unreadable", skippedSessions: 2 });
     expect(dto.totals).toEqual({ costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0 });
     expect(dto.daily).toEqual([]);
