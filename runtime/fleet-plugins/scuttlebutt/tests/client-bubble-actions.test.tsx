@@ -104,6 +104,56 @@ describe("ArrivalBubble operation deep link", () => {
     expect(operations.focused).toEqual([]);
     expect(container.querySelector(".scuttlebutt-arrival-bubble")).toBeNull();
   });
+
+  it("keeps the bubble when Escape was already handled by a foreground surface", () => {
+    const arrivals = createArrivals([]);
+    const operations = createOperations();
+
+    renderArrival(arrivals.capability, operations);
+    act(() => arrivals.push([arrival("op-1", "Build finished")]));
+
+    act(() => {
+      const event = new KeyboardEvent("keydown", { key: "Escape", cancelable: true });
+      event.preventDefault();
+      window.dispatchEvent(event);
+    });
+
+    expect(container.querySelector(".scuttlebutt-arrival-bubble")).not.toBeNull();
+  });
+
+  it("keeps the bubble while a modal owns input", () => {
+    const arrivals = createArrivals([]);
+    const operations = createOperations();
+
+    renderArrival(arrivals.capability, operations);
+    act(() => arrivals.push([arrival("op-1", "Build finished")]));
+
+    const modal = document.createElement("div");
+    modal.setAttribute("aria-modal", "true");
+    document.body.append(modal);
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    modal.remove();
+
+    expect(container.querySelector(".scuttlebutt-arrival-bubble")).not.toBeNull();
+  });
+
+  it("keeps the departure bubble when Escape was already handled", () => {
+    const departures = createDepartures([]);
+    const operations = createOperations();
+
+    renderDeparture(departures.capability, operations);
+    act(() => departures.push([departure("op-9", "Deploy started")]));
+
+    act(() => {
+      const event = new KeyboardEvent("keydown", { key: "Escape", cancelable: true });
+      event.preventDefault();
+      window.dispatchEvent(event);
+    });
+
+    expect(container.querySelector(".scuttlebutt-departure-bubble")).not.toBeNull();
+  });
 });
 
 describe("DepartureBubble operation deep link", () => {

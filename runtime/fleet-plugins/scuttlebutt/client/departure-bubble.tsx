@@ -111,9 +111,10 @@ export function DepartureBubble({
   React.useEffect(() => {
     if (!quiet || !active) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setSelection((state) => dismissDepartureAnnouncement(state));
-      }
+      // 도착 버블과 같은 경계 — 전면 표면이 처리했거나 모달이 입력을 독점 중이면 받지 않는다.
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      setSelection((state) => dismissDepartureAnnouncement(state));
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

@@ -147,9 +147,11 @@ export function ArrivalBubble({
   React.useEffect(() => {
     if (!quiet || !active) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setSelection((state) => dismissArrivalAnnouncement(state));
-      }
+      // 전면 표면이 처리한 Escape(기본 동작 취소됨)나 모달 입력 독점 중에는 버블이 받지 않는다 —
+      // 모달 아래 위젯의 포인터 입력을 막는 layout.css 계약과 같은 경계다.
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      setSelection((state) => dismissArrivalAnnouncement(state));
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
