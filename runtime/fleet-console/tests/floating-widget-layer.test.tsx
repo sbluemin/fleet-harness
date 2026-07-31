@@ -6,6 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import type {
   FloatingWidgetArrival,
+  FloatingWidgetContext,
   FloatingWidgetDeparture,
   FloatingWidgetDescriptor,
 } from "@fleet-console/sdk/floating";
@@ -19,7 +20,7 @@ import {
   markDeparture,
   resetDepartureForTests,
 } from "../core/client/src/operation-departure.js";
-import { setState } from "../core/client/src/store.js";
+import { getState, setState } from "../core/client/src/store.js";
 import type { OperationNode } from "../core/client/src/types.js";
 
 let floatingWidgets: readonly FloatingWidgetDescriptor[] = [];
@@ -143,6 +144,36 @@ describe("FloatingWidgetLayer", () => {
     act(() => markIdleArrival("charlie"));
 
     expect(received).toHaveLength(updateCountAfterUnmount);
+  });
+
+  it("wires context.operations.focus to the store focus action", () => {
+    setState({
+      operations: [
+        operation("alpha", "Alpha launch"),
+        operation("bravo", "Bravo finish"),
+      ],
+    });
+    let captured: FloatingWidgetContext | null = null;
+    const plugin: FleetClientPlugin = {
+      id: "operations",
+      floatingWidgets: [{
+        id: "probe",
+        render: (context) => {
+          captured = context;
+          return null;
+        },
+      }],
+    };
+
+    renderLayer([plugin]);
+    expect(captured?.operations).toBeDefined();
+
+    act(() => captured!.operations.focus("bravo"));
+
+    const state = getState();
+    expect(state.activeTheaterId).toBe("theater");
+    expect(state.activeOperationId).toBe("bravo");
+    expect(state.pendingOperationFocus).toBe("bravo");
   });
 
   it("delivers titled departures immediately, updates them, and unsubscribes on unmount", () => {

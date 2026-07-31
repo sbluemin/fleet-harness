@@ -388,8 +388,8 @@
   visibility: hidden;
   display: grid;
   max-width: min(360px, calc(100vw - var(--space-6)));
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px var(--space-2);
   padding: var(--space-2) var(--space-3);
   overflow: hidden;
   border: 1px solid color-mix(in oklch, var(--positive) 50%, var(--hairline));
@@ -397,13 +397,62 @@
   background: color-mix(in oklch, var(--positive) 12%, var(--surface-glass-strong));
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
-  cursor: pointer;
-  font: inherit;
   font-size: 12px;
   font-weight: var(--weight-medium);
   line-height: 1.35;
   text-align: left;
   animation: scuttlebutt-arrival-in var(--duration-base) var(--ease-spring);
+}
+
+.scuttlebutt-arrival-body {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+}
+
+/* 본문 액션은 카드 표면 위의 텍스트 행이다 — 버튼 크롬을 벗기고 호버만 veil로 알린다. */
+.scuttlebutt-arrival-open {
+  display: grid;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.scuttlebutt-arrival-open:hover {
+  background: var(--ink-veil);
+}
+
+.scuttlebutt-arrival-dismiss {
+  align-self: start;
+  display: inline-flex;
+  min-width: 24px;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-arrival-dismiss:hover {
+  background: var(--ink-veil);
+  color: var(--text-primary);
+}
+
+.scuttlebutt-arrival-more {
+  color: var(--text-tertiary);
 }
 
 .scuttlebutt-arrival-label {
@@ -428,7 +477,8 @@
   white-space: normal;
 }
 
-.scuttlebutt-arrival-bubble:focus-visible {
+.scuttlebutt-arrival-open:focus-visible,
+.scuttlebutt-arrival-dismiss:focus-visible {
   outline: 2px solid var(--positive);
   outline-offset: 2px;
 }
@@ -440,8 +490,8 @@
   visibility: hidden;
   display: grid;
   max-width: min(360px, calc(100vw - var(--space-6)));
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px var(--space-2);
   padding: var(--space-2) var(--space-3);
   overflow: hidden;
   /* hairline과 50% 믹스하면 oklch hue 보간이 그린(hue≈160)에 착륙해 positive 채널과 충돌한다 —
@@ -451,13 +501,61 @@
   background: color-mix(in oklch, var(--warn) 12%, var(--surface-glass-strong));
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
-  cursor: pointer;
-  font: inherit;
   font-size: 12px;
   font-weight: var(--weight-medium);
   line-height: 1.35;
   text-align: left;
   animation: scuttlebutt-arrival-in var(--duration-base) var(--ease-spring);
+}
+
+.scuttlebutt-departure-body {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+}
+
+.scuttlebutt-departure-open {
+  display: grid;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.scuttlebutt-departure-open:hover {
+  background: var(--ink-veil);
+}
+
+.scuttlebutt-departure-dismiss {
+  align-self: start;
+  display: inline-flex;
+  min-width: 24px;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-departure-dismiss:hover {
+  background: var(--ink-veil);
+  color: var(--text-primary);
+}
+
+.scuttlebutt-departure-more {
+  color: var(--text-tertiary);
 }
 
 .scuttlebutt-departure-label {
@@ -480,7 +578,8 @@
   white-space: normal;
 }
 
-.scuttlebutt-departure-bubble:focus-visible {
+.scuttlebutt-departure-open:focus-visible,
+.scuttlebutt-departure-dismiss:focus-visible {
   outline: 2px solid var(--warn);
   outline-offset: 2px;
 }

@@ -7,6 +7,7 @@ import type {
   FloatingWidgetDeparturesCapability,
   FloatingWidgetDescriptor,
   FloatingWidgetFleetSignals,
+  FloatingWidgetOperationsCapability,
   FloatingWidgetSignalsCapability,
 } from "@fleet-console/sdk/floating";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
@@ -19,7 +20,10 @@ import { getDepartureIds, subscribeDeparture } from "./operation-departure.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "./operation-idle-arrival.js";
 import { createHostCapabilities } from "./plugin-capabilities.js";
 import { usePluginRegistry } from "./plugin-registry.js";
-import { getState, subscribe as subscribeStore } from "./store.js";
+import { focusOperation, getState, subscribe as subscribeStore } from "./store.js";
+
+// 위젯마다 새로 만들 이유가 없는 정적 capability — 모듈 상수로 둬 context 동일성을 지킨다.
+const OPERATIONS_CAPABILITY: FloatingWidgetOperationsCapability = { focus: focusOperation };
 
 export function FloatingWidgetLayer() {
   const { floatingWidgets } = usePluginRegistry();
@@ -35,6 +39,7 @@ export function FloatingWidgetLayer() {
     api: capabilities.api,
     arrivals: arrivals.capability,
     departures: departures.capability,
+    operations: OPERATIONS_CAPABILITY,
     signals: signals.capability,
     lifecycle: capabilities.lifecycle,
     preferences: capabilities.preferences,

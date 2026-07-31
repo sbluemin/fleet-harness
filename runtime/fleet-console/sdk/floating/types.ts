@@ -27,6 +27,12 @@ export interface FloatingWidgetDeparturesCapability {
   subscribe(listener: (departures: readonly FloatingWidgetDeparture[]) => void): () => void;
 }
 
+/** 부유 위젯이 호스트에 요청할 수 있는 Operation 동작. 상태 읽기는 허용하지 않는다. */
+export interface FloatingWidgetOperationsCapability {
+  /** 해당 Operation이 속한 Theater로 전환하고 Operation을 활성화한다. */
+  focus(operationId: string): void;
+}
+
 /**
  * 콘솔 전역 상태를 부유 위젯이 읽는 유일한 창구. 개별 Operation의 정체는 넘기지 않고 집계만 넘겨
  * 위젯이 함대 분위기에만 반응하게 한다 — 세부는 여전히 호스트 소유다.
@@ -51,6 +57,7 @@ export interface FloatingWidgetContext {
   readonly api: ClientApiCapability;
   readonly arrivals: FloatingWidgetArrivalsCapability;
   readonly departures: FloatingWidgetDeparturesCapability;
+  readonly operations: FloatingWidgetOperationsCapability;
   readonly signals: FloatingWidgetSignalsCapability;
   readonly lifecycle: ClientLifecycleCapability;
   readonly preferences: ClientPreferencesCapability;

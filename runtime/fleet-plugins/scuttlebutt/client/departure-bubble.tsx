@@ -1,6 +1,7 @@
 import type {
   FloatingWidgetDeparture,
   FloatingWidgetDeparturesCapability,
+  FloatingWidgetOperationsCapability,
 } from "@fleet-console/sdk/floating";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
@@ -43,6 +44,7 @@ export function selectDepartureAnnouncements(
 
 export function DepartureBubble({
   departures,
+  operations,
   locale,
   mascot,
   quiet,
@@ -50,13 +52,14 @@ export function DepartureBubble({
   onShow,
 }: {
   readonly departures: FloatingWidgetDeparturesCapability;
+  readonly operations: FloatingWidgetOperationsCapability;
   readonly locale?: ConsoleLocale;
   readonly mascot: React.RefObject<HTMLButtonElement | null>;
   readonly quiet: boolean;
   readonly positionRevision: number;
   readonly onShow: () => void;
 }) {
-  const bubbleRef = React.useRef<HTMLButtonElement>(null);
+  const bubbleRef = React.useRef<HTMLDivElement>(null);
   const shownRef = React.useRef(new Set<string>());
   const onShowRef = React.useRef(onShow);
   React.useEffect(() => {
@@ -73,7 +76,7 @@ export function DepartureBubble({
     const mascotElement = mascot.current;
     const bubble = bubbleRef.current;
     if (!mascotElement || !bubble) return;
-    const arrival = document.querySelector<HTMLButtonElement>(".scuttlebutt-arrival-bubble");
+    const arrival = document.querySelector<HTMLElement>(".scuttlebutt-arrival-bubble");
     placeDepartureBubble({
       bubble,
       mascot: mascotElement,
@@ -105,25 +108,62 @@ export function DepartureBubble({
     return () => window.clearTimeout(timeout);
   }, [active, quiet]);
 
+  React.useEffect(() => {
+    if (!quiet || !active) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelection((state) => dismissDepartureAnnouncement(state));
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [active, quiet]);
+
   if (!quiet || !active) return null;
   const t = getT(locale);
+  const dismissActive = () => {
+    setSelection((state) => dismissDepartureAnnouncement(state));
+  };
+  const openOperation = (operationId: string) => {
+    operations.focus(operationId);
+    dismissActive();
+  };
   const currentDepartures = active.arrivals as readonly FloatingWidgetDeparture[];
-  const detail = currentDepartures.length === 1
-    ? currentDepartures[0]?.title ?? ""
-    : t("departure.manyCount", { count: currentDepartures.length });
+  const visibleDepartures = currentDepartures.slice(0, MAX_DEPARTURE_ANNOUNCEMENTS);
+  const remainder = currentDepartures.length - visibleDepartures.length;
   return (
-    <button
+    <div
       ref={bubbleRef}
-      type="button"
       className="scuttlebutt-departure-bubble"
-      tabIndex={-1}
       aria-live="polite"
       onPointerDown={(event) => event.preventDefault()}
-      onClick={() => setSelection((state) => dismissDepartureAnnouncement(state))}
     >
-      <span className="scuttlebutt-departure-label">{t("departure.started")}</span>
-      <span className="scuttlebutt-departure-detail">{detail}</span>
-    </button>
+      <div className="scuttlebutt-departure-body">
+        <span className="scuttlebutt-departure-label">{t("departure.started")}</span>
+        {visibleDepartures.map((departure) => (
+          <button
+            key={departure.operationId}
+            type="button"
+            className="scuttlebutt-departure-open"
+            title={t("departure.open")}
+            onClick={() => openOperation(departure.operationId)}
+          >
+            <span className="scuttlebutt-departure-detail">{departure.title}</span>
+          </button>
+        ))}
+        {remainder > 0 ? (
+          <span className="scuttlebutt-departure-more">{t("departure.manyCount", { count: remainder })}</span>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        className="scuttlebutt-departure-dismiss"
+        aria-label={t("bubble.dismiss")}
+        onClick={dismissActive}
+      >
+        ✕
+      </button>
+    </div>
   );
 }
 
@@ -134,9 +174,9 @@ export function placeDepartureBubble({
   viewportWidth,
   viewportHeight,
 }: {
-  readonly bubble: HTMLButtonElement;
+  readonly bubble: HTMLElement;
   readonly mascot: HTMLButtonElement;
-  readonly arrival: HTMLButtonElement | null;
+  readonly arrival: HTMLElement | null;
   readonly viewportWidth: number;
   readonly viewportHeight: number;
 }): void {

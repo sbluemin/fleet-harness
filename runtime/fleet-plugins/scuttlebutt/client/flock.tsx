@@ -467,6 +467,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
       })}
       <ArrivalBubble
         arrivals={context.arrivals}
+        operations={context.operations}
         locale={context.language}
         mascot={announcerRef}
         quiet={!openAdmiral && !phases.some((phase) => phase === "starting" || phase === "thinking")}
@@ -478,6 +479,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
       {settings.departureBell ? (
         <DepartureBubble
           departures={context.departures}
+          operations={context.operations}
           locale={context.language}
           mascot={announcerRef}
           quiet={!openAdmiral && !phases.some((phase) => phase === "starting" || phase === "thinking")}
