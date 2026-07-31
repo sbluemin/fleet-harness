@@ -93,6 +93,14 @@ export function mapGitStatusBadge(status: GitFileStatus | undefined): GitStatusB
   return null;
 }
 
+export function triggerManualRefresh(
+  refreshTree: () => void,
+  refreshGitStatus: () => void | Promise<void>,
+): void {
+  refreshTree();
+  void refreshGitStatus();
+}
+
 export function isCurrentContextRequest(requestContextKey: string, currentContextKey: string): boolean {
   return requestContextKey === currentContextKey;
 }
@@ -494,7 +502,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     });
   }, []);
 
-  const handleRefresh = useCallback(() => {
+  const refreshTree = useCallback(() => {
     if (!theaterId) return;
     const requestContextKey = contextKey;
     // 루트 재조회 — 성공 시 stale error를 걷어 에러 화면에서도 복구 가능하게 한다
@@ -515,6 +523,10 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       }).catch(() => {});
     }
   }, [contextKey, files, currentPath, expandedDirs, theaterId, t]);
+
+  const handleRefresh = useCallback(() => {
+    triggerManualRefresh(refreshTree, refreshGitStatus);
+  }, [refreshGitStatus, refreshTree]);
 
   const low = filterText.toLowerCase();
 

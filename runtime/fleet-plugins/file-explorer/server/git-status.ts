@@ -13,6 +13,7 @@ export interface GitStatusResult {
   readonly ok: true;
   readonly gitAvailable: boolean;
   readonly statuses: readonly GitStatusEntry[];
+  readonly truncated?: true;
 }
 
 export type GitStatusPathErrorCode = "invalid_path" | "not_found" | "forbidden";
@@ -33,18 +34,38 @@ interface ParsedGitStatusEntry {
 }
 
 interface GitStatusDependencies {
-  readonly realpath?: typeof fs.realpath;
-  readonly execGit?: (theaterRootAbs: string, args: readonly string[]) => Promise<string>;
+  readonly realpath?: (target: string) => Promise<string>;
+  readonly execGit?: (args: readonly string[], options: GitExecOptions) => Promise<string>;
+  readonly environment?: NodeJS.ProcessEnv;
+}
+
+interface GitExecOptions {
+  readonly env: NodeJS.ProcessEnv;
+  readonly killSignal: "SIGKILL";
+  readonly maxBuffer: number;
+  readonly timeout: number;
 }
 
 const GIT_TIMEOUT_MS = 5_000;
 const GIT_MAX_BUFFER = 8 * 1024 * 1024;
+const GIT_STATUS_CAP = 10_000;
+const UNMERGED_STATUS_PAIRS = new Set(["UU", "UD", "DU", "AA", "AU", "UA", "DD"]);
+const BLOCKED_GIT_ENVIRONMENT_KEYS = new Set([
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_INDEX_FILE",
+  "GIT_CONFIG",
+  "GIT_CONFIG_GLOBAL",
+  "GIT_CONFIG_SYSTEM",
+  "GIT_CONFIG_COUNT",
+  "GIT_OPTIONAL_LOCKS",
+]);
 
 export async function readTheaterGitStatus(
   theaterPath: string,
   deps: GitStatusDependencies = {},
 ): Promise<GitStatusResult> {
-  const realpath = deps.realpath ?? fs.realpath;
+  const realpath = deps.realpath ?? ((target: string) => fs.realpath(target));
   const execGit = deps.execGit ?? executeGit;
   let theaterRootAbs: string;
   try {
@@ -54,15 +75,32 @@ export async function readTheaterGitStatus(
   }
 
   try {
+    const options: GitExecOptions = {
+      env: sanitizeGitEnvironment(deps.environment ?? process.env),
+      killSignal: "SIGKILL",
+      maxBuffer: GIT_MAX_BUFFER,
+      timeout: GIT_TIMEOUT_MS,
+    };
+    const gitArgs = (args: readonly string[]) => [
+      "-c",
+      "core.fsmonitor=false",
+      "--no-optional-locks",
+      "-C",
+      theaterRootAbs,
+      ...args,
+    ];
     const [prefixOutput, statusOutput] = await Promise.all([
-      execGit(theaterRootAbs, ["rev-parse", "--show-prefix"]),
-      execGit(theaterRootAbs, ["status", "--porcelain=v1", "-z", "--untracked-files=normal"]),
+      execGit(gitArgs(["rev-parse", "--show-prefix"]), options),
+      execGit(gitArgs(["status", "--porcelain=v1", "-z", "--untracked-files=all"]), options),
     ]);
     const prefix = stripTrailingLineBreak(prefixOutput);
+    const statuses = scopeGitStatusesToTheater(parseGitStatusPorcelainV1Z(statusOutput), prefix);
+    const truncated = statuses.length > GIT_STATUS_CAP;
     return {
       ok: true,
       gitAvailable: true,
-      statuses: scopeGitStatusesToTheater(parseGitStatusPorcelainV1Z(statusOutput), prefix),
+      statuses: statuses.slice(0, GIT_STATUS_CAP),
+      ...(truncated ? { truncated: true as const } : {}),
     };
   } catch {
     return { ok: true, gitAvailable: false, statuses: [] };
@@ -114,6 +152,7 @@ export function scopeGitStatusesToTheater(
 
 function classifyGitStatus(statusPair: string): GitFileStatus | null {
   if (statusPair === "??") return "untracked";
+  if (UNMERGED_STATUS_PAIRS.has(statusPair)) return "modified";
   if (statusPair.includes("D")) return "deleted";
   if ([...statusPair].some((status) => status === "A" || status === "M" || status === "R" || status === "C")) {
     return "modified";
@@ -121,18 +160,18 @@ function classifyGitStatus(statusPair: string): GitFileStatus | null {
   return null;
 }
 
-function executeGit(theaterRootAbs: string, args: readonly string[]): Promise<string> {
+function executeGit(args: readonly string[], options: GitExecOptions): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
       "git",
-      ["-C", theaterRootAbs, ...args],
+      [...args],
       {
         encoding: "utf8",
-        // Background status reads must not refresh the index and feed their own file-watch loop.
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-        maxBuffer: GIT_MAX_BUFFER,
+        env: options.env,
+        killSignal: options.killSignal,
+        maxBuffer: options.maxBuffer,
         shell: false,
-        timeout: GIT_TIMEOUT_MS,
+        timeout: options.timeout,
         windowsHide: true,
       },
       (error, stdout) => {
@@ -144,6 +183,21 @@ function executeGit(theaterRootAbs: string, args: readonly string[]): Promise<st
       },
     );
   });
+}
+
+function sanitizeGitEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const sanitized: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(environment)) {
+    const normalizedKey = key.toUpperCase();
+    if (
+      BLOCKED_GIT_ENVIRONMENT_KEYS.has(normalizedKey)
+      || normalizedKey.startsWith("GIT_CONFIG_KEY_")
+      || normalizedKey.startsWith("GIT_CONFIG_VALUE_")
+    ) continue;
+    if (value !== undefined) sanitized[key] = value;
+  }
+  sanitized.GIT_OPTIONAL_LOCKS = "0";
+  return sanitized;
 }
 
 function stripTrailingLineBreak(output: string): string {

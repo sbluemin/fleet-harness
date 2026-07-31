@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { mapGitStatusBadge } from "../client/tree.js";
+import { mapGitStatusBadge, triggerManualRefresh } from "../client/tree.js";
 
 describe("mapGitStatusBadge", () => {
   it("maps git states to their fixed badge letter and accessible message key", () => {
@@ -20,5 +20,17 @@ describe("mapGitStatusBadge", () => {
       messageKey: "fileExplorer.git.deleted",
     });
     expect(mapGitStatusBadge(undefined)).toBeNull();
+  });
+});
+
+describe("triggerManualRefresh", () => {
+  it("refreshes both the file tree and Git status immediately", () => {
+    const refreshTree = vi.fn();
+    const refreshGitStatus = vi.fn();
+
+    triggerManualRefresh(refreshTree, refreshGitStatus);
+
+    expect(refreshTree).toHaveBeenCalledOnce();
+    expect(refreshGitStatus).toHaveBeenCalledOnce();
   });
 });
