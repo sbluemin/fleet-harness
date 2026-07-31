@@ -439,6 +439,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
 
     const doFullRefresh = () => {
       reloadRoot();
+      // 재연결 풀 리프레시는 놓친 change 이벤트의 조정 경로이므로 git 배지도 함께 갱신한다
+      void refreshGitStatus();
       for (const relPath of expandedDirsRef.current) {
         const requestContextKey = contextKey;
         filesRef.current.listFolder(relPath).then((r) => {
