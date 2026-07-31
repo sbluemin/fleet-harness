@@ -24,6 +24,7 @@ beforeEach(async () => {
   theaterPath = path.join(temporaryDirectory, "theater");
   await fs.mkdir(path.join(theaterPath, "src"), { recursive: true });
   await fs.writeFile(path.join(theaterPath, "src", "file.ts"), "export {};");
+  await fs.symlink(path.join(theaterPath, "src", "file.ts"), path.join(theaterPath, "file-link.ts"));
   await fs.writeFile(path.join(temporaryDirectory, "outside.txt"), "secret");
   await fs.symlink(path.join(temporaryDirectory, "outside.txt"), path.join(theaterPath, "escape.txt"));
 });
@@ -97,11 +98,11 @@ describe("file action routes", () => {
 });
 
 describe("clipboard process arguments and containment", () => {
-  it("pipes only the contained absolute path to pbcopy without shell arguments", async () => {
+  it("pipes the logical row path to pbcopy after real-path containment", async () => {
     const runWithInput = vi.fn(async () => undefined);
-    await copyPathToClipboard(theaterPath, "src/file.ts", { platform: "darwin", runWithInput });
+    await copyPathToClipboard(theaterPath, "file-link.ts", { platform: "darwin", runWithInput });
 
-    expect(runWithInput).toHaveBeenCalledWith("pbcopy", [], path.join(theaterPath, "src", "file.ts"));
+    expect(runWithInput).toHaveBeenCalledWith("pbcopy", [], path.join(theaterPath, "file-link.ts"));
   });
 
   it("detects Linux clipboard tools in wl-copy, xclip, xsel order", async () => {
@@ -158,10 +159,10 @@ describe("reveal process arguments and containment", () => {
     expect(resolveRevealCommand("win32", "open", absolutePath)).toEqual({ file: "explorer", args: [absolutePath] });
   });
 
-  it("launches only after resolving a contained real path", async () => {
+  it("launches with the contained real path rather than the logical symlink path", async () => {
     const launch = vi.fn(async () => undefined);
-    await revealPath(theaterPath, "src/file.ts", "reveal", { platform: "darwin", launch });
-    expect(launch).toHaveBeenCalledWith("open", ["-R", path.join(theaterPath, "src", "file.ts")]);
+    await revealPath(theaterPath, "file-link.ts", "reveal", { platform: "darwin", launch });
+    expect(launch).toHaveBeenCalledWith("open", ["-R", await fs.realpath(path.join(theaterPath, "file-link.ts"))]);
   });
 
   it.each(["../outside.txt", "escape.txt"])("rejects escaping reveal path %s before spawn", async (relativePath) => {

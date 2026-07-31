@@ -13,7 +13,15 @@ export class PathActionError extends Error {
   }
 }
 
-export async function resolveContainedActionPath(theaterPath: string, relativePath: string): Promise<string> {
+export interface ResolvedActionPath {
+  readonly logicalPath: string;
+  readonly realPath: string;
+}
+
+export async function resolveContainedActionPath(
+  theaterPath: string,
+  relativePath: string,
+): Promise<ResolvedActionPath> {
   if (path.isAbsolute(relativePath)) throw new PathActionError("path_outside_theater");
   const rootPath = path.resolve(theaterPath);
   const candidatePath = path.resolve(rootPath, relativePath);
@@ -36,9 +44,12 @@ export async function resolveContainedActionPath(theaterPath: string, relativePa
     throw new PathActionError("path_outside_theater");
   }
 
-  // The logical Theater path preserves the row the user acted on (including a safe in-Theater symlink),
-  // while the real path above is used only to prove that the target cannot escape the Theater.
-  return candidatePath;
+  return {
+    // Preserve the row the user acted on for display-only actions such as copying path text.
+    logicalPath: candidatePath,
+    // Process-launch actions must use the same resolved path that passed containment.
+    realPath: realCandidatePath,
+  };
 }
 
 function isPathContained(rootPath: string, candidatePath: string): boolean {

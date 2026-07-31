@@ -34,8 +34,8 @@ export async function revealPath(
   dependencies: Partial<RevealActionDependencies> = {},
 ): Promise<void> {
   const deps = { ...DEFAULT_DEPENDENCIES, ...dependencies };
-  const absolutePath = await resolveContainedActionPath(theaterPath, relativePath);
-  const command = resolveRevealCommand(deps.platform, mode, absolutePath);
+  const { realPath } = await resolveContainedActionPath(theaterPath, relativePath);
+  const command = resolveRevealCommand(deps.platform, mode, realPath);
   if (!command) throw new FileActionUnavailableError();
 
   try {

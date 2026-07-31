@@ -41,12 +41,12 @@ export async function copyPathToClipboard(
   dependencies: Partial<ClipboardActionDependencies> = {},
 ): Promise<void> {
   const deps = { ...DEFAULT_DEPENDENCIES, ...dependencies };
-  const absolutePath = await resolveContainedActionPath(theaterPath, relativePath);
+  const { logicalPath } = await resolveContainedActionPath(theaterPath, relativePath);
   const command = await resolveClipboardCommand(deps.platform, deps.findExecutable);
   if (!command) throw new ClipboardUnavailableError();
 
   try {
-    await deps.runWithInput(command.file, command.args, absolutePath);
+    await deps.runWithInput(command.file, command.args, logicalPath);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new ClipboardUnavailableError();
     throw error;
