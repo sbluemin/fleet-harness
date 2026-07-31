@@ -36,8 +36,11 @@ const FETCH_ARGS = [
   "fetch",
   // 로컬 transport는 repo config의 remote.<name>.uploadpack을 그대로 실행한다 — 표준 명령 강제.
   "--upload-pack=git-upload-pack",
+  "--no-recurse-submodules",
   "--prune",
   "--no-tags",
+  // fetch.pruneTags=true와 --prune이 결합하면 로컬 전용 태그가 지워진다 — 명시 차단.
+  "--no-prune-tags",
 ] as const;
 
 function deferred(): Deferred {

@@ -95,8 +95,12 @@ async function fetchRepository(gitCwd: string): Promise<FetchResult> {
     "fetch",
     // repo config의 remote.<name>.uploadpack이 로컬 transport에서 명령 실행되므로 표준 명령을 강제한다.
     "--upload-pack=git-upload-pack",
+    // 하드닝된 상위 fetch를 빠져나가는 재귀(중첩 네트워크+하위 upload-pack)를 끊는다.
+    "--no-recurse-submodules",
     "--prune",
     "--no-tags",
+    // fetch.pruneTags=true인 저장소가 --prune과 결합해 로컬 전용 태그를 지우는 것을 막는다.
+    "--no-prune-tags",
   ], { cwd: gitCwd });
   const fetchedAt = new Date().toISOString();
   return {
