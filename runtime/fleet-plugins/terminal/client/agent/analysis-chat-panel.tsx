@@ -8,7 +8,10 @@ import type { AnalysisActivity, AnalysisState } from "./analysis-state.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { diagramHydratorLabels, getT, translateServerMessage, type TerminalMessageKey } from "../i18n/index.js";
 import { useAnalysisStore } from "./analysis-store.js";
+import { ANALYST_ARTIFACTS_COMPANION_ID, closeAnalystCompanionPanels } from "./analysis-visibility.js";
 import { StreamedMarkdown } from "./streamed-markdown.js";
+
+export { ANALYST_ARTIFACTS_COMPANION_ID };
 
 const SUGGESTIONS = [
   { icon: "◈", tone: "aurora", textKey: "terminal.analyst.suggestion.walkthrough" },
@@ -42,7 +45,6 @@ const SLASH_COMMANDS = [
   readonly descriptionKey: TerminalMessageKey;
   readonly templateKey: TerminalMessageKey;
 }[];
-export const ANALYST_ARTIFACTS_COMPANION_ID = "session-analyst-artifacts";
 
 export function AnalystChatPanel({ context }: { readonly context: OperationRenderContext }) {
   const { state, dispatch, send, stop, reset } = useAnalysisStore(context);
@@ -257,7 +259,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
               ))}
             </div>
           ) : null}
-          {!hasInteracted ? <div className="session-analyst__selector-strip" aria-label={t("terminal.analyst.initialSettings")}>
+          {!hasInteracted ? <div className="session-analyst__selector-strip" aria-label={t("terminal.analyst.initialSettings")} onFocusCapture={() => setSlashDismissed(true)}>
             <span className="session-analyst__select">
               <Select
                 compact
@@ -319,6 +321,17 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                 setSlashDismissed(false);
               }}
               onKeyDown={(event) => {
+                if (event.key === "Escape" && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  if (slashOpen) {
+                    setSlashDismissed(true);
+                  } else if (state.draft) {
+                    dispatch({ type: "set-draft", draft: "" });
+                  } else {
+                    closeAnalystCompanionPanels(context);
+                  }
+                  return;
+                }
                 if (slashOpen && !event.nativeEvent.isComposing) {
                   if (event.key === "ArrowDown") {
                     event.preventDefault();
@@ -333,11 +346,6 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                   if (event.key === "Enter") {
                     event.preventDefault();
                     selectSlashCommand(Math.min(slashSelection, slashMatches.length - 1));
-                    return;
-                  }
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    setSlashDismissed(true);
                     return;
                   }
                 }

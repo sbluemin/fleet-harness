@@ -12,8 +12,17 @@ import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE
 import { useTerminalPrefs, setInstalledTerminalFont, setTerminalRenderer, setTerminalFont, setTerminalFontSize } from "../shared/terminal-prefs-store.js";
 import type { TerminalFontId, TerminalFontSettings, TerminalRenderer } from "../shared/types.js";
 import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
-import { ANALYST_ARTIFACTS_COMPANION_ID, AnalystChatPanel } from "./analysis-chat-panel.js";
+import { AnalystChatPanel } from "./analysis-chat-panel.js";
 import { fetchAnalysisReady } from "./analysis-api.js";
+import {
+  ANALYST_ARTIFACTS_COMPANION_ID,
+  ANALYST_CHAT_COMPANION_ID,
+  ANALYST_COMPANION_IDS,
+  CARRIER_STREAMS_COMPANION_ID,
+  closeAnalystCompanionPanels,
+  countRemainingVisibleCompanionPanels,
+  isCompanionPanelVisible,
+} from "./analysis-visibility.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { currentTerminalLocale, getT, useTerminalLocale, type TerminalMessageKey } from "../i18n/index.js";
 import { disposeAnalysisStore, rearmAnalysisArtifacts, useAnalysisStore } from "./analysis-store.js";
@@ -32,6 +41,8 @@ import { isTerminalJobStatus } from "./reduce.js";
 import { StreamedMarkdown } from "./streamed-markdown.js";
 import { applySessionUpdate, hydrateAgentClis, removeSession, selectSession, sessionJobs, useAgentState } from "./store.js";
 import type { AgentCliDiagnosticsEntry, AgentCliStatus, JobView, SessionInfo, TrackView } from "./types.js";
+
+export { CARRIER_STREAMS_COMPANION_ID };
 
 interface SettingToggleRowProps {
   readonly title: string;
@@ -66,10 +77,6 @@ const FONT_META_KEYS = {
   "source-code-pro": "terminal.settings.fontMetaSourceCodePro",
 } as const satisfies Record<TerminalFontId, TerminalMessageKey>;
 const ANALYSIS_READY_POLL_MS = 5_000;
-export const CARRIER_STREAMS_COMPANION_ID = "carrier-streams";
-const ANALYST_CHAT_COMPANION_ID = "session-analyst-chat";
-const ANALYST_COMPANION_IDS = [ANALYST_CHAT_COMPANION_ID, ANALYST_ARTIFACTS_COMPANION_ID] as const;
-const AGENT_COMPANION_IDS = [CARRIER_STREAMS_COMPANION_ID, ANALYST_CHAT_COMPANION_ID, ANALYST_ARTIFACTS_COMPANION_ID] as const;
 type AnalysisReadiness = "unknown" | "ready" | "not-ready";
 
 const TRACK_PHASE_COPY_KEYS = {
@@ -292,19 +299,6 @@ function useAnalysisReady(context: OperationRenderContext): AnalysisReadiness {
   return readiness;
 }
 
-function isCompanionPanelVisible(context: OperationRenderContext, companionId: string): boolean {
-  return Boolean(context.companionsOpen) && !(context.hiddenCompanionPanelIds ?? []).includes(companionId);
-}
-
-function countRemainingVisibleCompanionPanels(
-  context: OperationRenderContext,
-  hiddenIds: readonly string[],
-): number {
-  return AGENT_COMPANION_IDS
-    .filter((id) => !hiddenIds.includes(id) && isCompanionPanelVisible(context, id))
-    .length;
-}
-
 // 리본은 상태 표면이지 토글이 아니다 — 접근성 이름이 "열기"인 컨트롤이 닫으면 안 된다.
 // 여닫는 것은 우측 STREAMS 핸들의 역할이고, 리본은 멱등하게 열기만 한다.
 function openCompanionPanel(context: OperationRenderContext, companionId: string): void {
@@ -454,12 +448,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   React.useEffect(() => {
     if (analysisReadiness !== "not-ready" || !context.companionsOpen || !context.onSetCompanionPanelVisible) return;
     // 단축키는 disabled 핸들 가드를 거치지 않으므로, 준비 전 진입이 빈 companion 배치를 남기지 않게 호스트 레이어까지 함께 정리한다.
-    for (const id of ANALYST_COMPANION_IDS) {
-      if (isCompanionPanelVisible(context, id)) context.onSetCompanionPanelVisible(id, false);
-    }
-    if (countRemainingVisibleCompanionPanels(context, ANALYST_COMPANION_IDS) === 0) {
-      context.onRequestCompanions?.(false);
-    }
+    closeAnalystCompanionPanels(context);
   }, [
     analysisReadiness,
     context.companionsOpen,

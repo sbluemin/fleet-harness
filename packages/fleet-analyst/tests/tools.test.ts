@@ -22,6 +22,10 @@ describe("AnalystTools", () => {
       description: expect.stringContaining("Required before answering any question about current work"),
       whenNotToUse: expect.any(Array),
     });
+    expect(byId.get("publish_artifact")).toMatchObject({
+      description: expect.stringContaining("--fleet-canvas, --fleet-surface, --fleet-ink, --fleet-muted, --fleet-hairline, --fleet-accent"),
+    });
+    expect(byId.get("publish_artifact")?.description).toContain("var(--fleet-surface, #f5f5f5)");
     expect(await byId.get("session_read")!.execute({ ref: "e1", radius: 999 }, {} as never)).toMatchObject({ events: [{ ref: "e1" }] });
     expect(await byId.get("publish_artifact")!.execute({ title: "A", html: "<p>x</p>" }, {} as never)).toMatchObject({ artifact: { title: "A" } });
     await expect(byId.get("publish_artifact")!.execute({ title: "A", html: "x".repeat(50 * 1024 + 1) }, {} as never)).rejects.toThrow("50 KiB"); expect(events).toEqual(["artifact"]);

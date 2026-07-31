@@ -37,7 +37,12 @@ vi.mock("./analysis-store.js", () => ({
   useAnalysisStore: () => ({ state: storeState, dispatch, send, stop, reset }),
 }));
 
-import { ANALYST_ARTIFACTS_COMPANION_ID, AnalystChatPanel } from "./analysis-chat-panel.js";
+import { AnalystChatPanel } from "./analysis-chat-panel.js";
+import {
+  ANALYST_ARTIFACTS_COMPANION_ID,
+  ANALYST_CHAT_COMPANION_ID,
+  CARRIER_STREAMS_COMPANION_ID,
+} from "./analysis-visibility.js";
 
 const catalog = { clis: [{ cliId: "codex", label: "Codex", available: true, defaultModel: "gpt", models: [{ id: "gpt", label: "GPT", effortLevels: ["medium"], defaultEffort: "medium" }] }] };
 
@@ -480,6 +485,123 @@ describe("Session Analyst Evidence Pulse", () => {
     act(() => timeline.click());
     expect(storeState.draft).toBe("Walk me through how this session unfolded.");
     expect(send).not.toHaveBeenCalled();
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("dismisses the slash listbox when focus enters the initial selector strip", () => {
+    storeState = {
+      ...initialAnalysisState,
+      catalog,
+      cliId: "codex",
+      model: "gpt",
+      effort: "medium",
+      draft: "/",
+    };
+    const { container, root } = renderPanel();
+    const textarea = container.querySelector("textarea")!;
+    const trigger = container.querySelector<HTMLButtonElement>(".session-analyst__selector-strip .fc-select__trigger")!;
+
+    expect(container.querySelector('[role="listbox"]')).not.toBeNull();
+    act(() => trigger.focus());
+    expect(document.activeElement).toBe(trigger);
+    expect(container.querySelector('[role="listbox"]')).toBeNull();
+    expect(textarea.getAttribute("aria-expanded")).toBe("false");
+    expect(storeState.draft).toBe("/");
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("dismisses only the slash listbox on the first Escape", () => {
+    storeState = { ...initialAnalysisState, draft: "/" };
+    const { container, root } = renderPanel();
+    const textarea = container.querySelector("textarea")!;
+
+    expect(container.querySelector('[role="listbox"]')).not.toBeNull();
+    act(() => textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    expect(container.querySelector('[role="listbox"]')).toBeNull();
+    expect(storeState.draft).toBe("/");
+    expect(textarea.value).toBe("/");
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("clears a non-empty draft on Escape when the slash listbox is closed", () => {
+    const onRequestCompanions = vi.fn();
+    const onSetCompanionPanelVisible = vi.fn();
+    storeState = { ...initialAnalysisState, draft: "Keep this draft" };
+    const { container, root } = renderPanel({
+      operationId: "chat-test",
+      companionsOpen: true,
+      hiddenCompanionPanelIds: [CARRIER_STREAMS_COMPANION_ID, ANALYST_ARTIFACTS_COMPANION_ID],
+      onRequestCompanions,
+      onSetCompanionPanelVisible,
+    } as OperationRenderContext);
+    const textarea = container.querySelector("textarea")!;
+
+    act(() => textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    expect(storeState.draft).toBe("");
+    expect(textarea.value).toBe("");
+    expect(onSetCompanionPanelVisible).not.toHaveBeenCalled();
+    expect(onRequestCompanions).not.toHaveBeenCalled();
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("closes both Analyst companions and the empty companion layer on Escape", () => {
+    const onRequestCompanions = vi.fn();
+    const onSetCompanionPanelVisible = vi.fn();
+    storeState = {
+      ...initialAnalysisState,
+      artifacts: [{ id: "artifact", title: "Artifact", html: "<p>artifact</p>", createdAt: 1 }],
+    };
+    const { container, root } = renderPanel({
+      operationId: "chat-test",
+      companionsOpen: true,
+      hiddenCompanionPanelIds: [CARRIER_STREAMS_COMPANION_ID],
+      onRequestCompanions,
+      onSetCompanionPanelVisible,
+    } as OperationRenderContext);
+    const textarea = container.querySelector("textarea")!;
+
+    act(() => textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    expect(onSetCompanionPanelVisible.mock.calls).toEqual([
+      [ANALYST_CHAT_COMPANION_ID, false],
+      [ANALYST_ARTIFACTS_COMPANION_ID, false],
+    ]);
+    expect(onRequestCompanions).toHaveBeenCalledOnce();
+    expect(onRequestCompanions).toHaveBeenCalledWith(false);
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("keeps the companion layer open on Escape when Carrier Streams remains visible", () => {
+    const onRequestCompanions = vi.fn();
+    const onSetCompanionPanelVisible = vi.fn();
+    storeState = {
+      ...initialAnalysisState,
+      artifacts: [{ id: "artifact", title: "Artifact", html: "<p>artifact</p>", createdAt: 1 }],
+    };
+    const { container, root } = renderPanel({
+      operationId: "chat-test",
+      companionsOpen: true,
+      hiddenCompanionPanelIds: [],
+      onRequestCompanions,
+      onSetCompanionPanelVisible,
+    } as OperationRenderContext);
+    const textarea = container.querySelector("textarea")!;
+
+    act(() => textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    expect(onSetCompanionPanelVisible.mock.calls).toEqual([
+      [ANALYST_CHAT_COMPANION_ID, false],
+      [ANALYST_ARTIFACTS_COMPANION_ID, false],
+    ]);
+    expect(onRequestCompanions).not.toHaveBeenCalled();
 
     act(() => root.unmount());
     container.remove();

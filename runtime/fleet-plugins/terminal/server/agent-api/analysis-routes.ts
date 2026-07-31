@@ -130,14 +130,21 @@ function artifactDocument(html: string, requestUrl: string | undefined): string 
   const theme = safeArtifactTheme(query.get("theme"));
   const canvas = safeArtifactColor(query.get("canvas"), "Canvas");
   const foreground = safeArtifactColor(query.get("foreground"), "CanvasText");
+  const surface = safeArtifactColor(query.get("surface"), canvas);
+  const hairline = safeArtifactColor(query.get("hairline"), foreground);
+  const accent = safeArtifactColor(query.get("accent"), foreground);
+  const muted = safeArtifactColor(query.get("muted"), foreground);
   const canvasStyle = `background-color:${canvas}!important;background-image:none!important;color:${foreground}!important;min-height:100%!important;color-scheme:${ANALYSIS_ARTIFACT_LIGHT_THEMES.has(theme) ? "light" : "dark"}!important;`;
+  const baseStylesheet = `<style>:root{--fleet-canvas:${canvas};--fleet-surface:${surface};--fleet-ink:${foreground};--fleet-muted:${muted};--fleet-hairline:${hairline};--fleet-accent:${accent}}a{color:var(--fleet-accent)}code{background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:4px;padding:0 .3em}pre{background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:8px;padding:12px;overflow-x:auto}pre code{background:none;border:none;padding:0}blockquote{border-left:3px solid var(--fleet-hairline);color:var(--fleet-muted);margin-left:0;padding-left:1em}hr{border:none;border-top:1px solid var(--fleet-hairline)}th,td{border-color:var(--fleet-hairline)}::selection{background:var(--fleet-accent);color:var(--fleet-canvas)}</style>`;
   const documentTags = findArtifactDocumentTags(html);
   if (documentTags) {
     const htmlTag = withArtifactAttribute(withArtifactAttribute(documentTags.htmlTag.source, "data-theme", theme), "style", canvasStyle, ARTIFACT_CANVAS_STYLE_PROPERTIES);
     const bodyTag = withArtifactAttribute(documentTags.bodyTag.source, "style", `${canvasStyle}margin:0!important;`, ARTIFACT_BODY_CANVAS_STYLE_PROPERTIES);
-    return `${html.slice(0, documentTags.htmlTag.start)}${htmlTag}${html.slice(documentTags.htmlTag.end, documentTags.bodyTag.start)}${bodyTag}${html.slice(documentTags.bodyTag.end)}`;
+    // 베이스 시트는 항상 재작성된 <html> 시작 태그 직후에 둔다 — 파서가 head로 hoist하므로
+    // <template> 안의 가짜 <head> 같은 decoy가 주입을 삼키는 경로가 성립하지 않는다.
+    return `${html.slice(0, documentTags.htmlTag.start)}${htmlTag}${baseStylesheet}${html.slice(documentTags.htmlTag.end, documentTags.bodyTag.start)}${bodyTag}${html.slice(documentTags.bodyTag.end)}`;
   }
-  return `<!doctype html><html data-theme="${theme}" style="${canvasStyle}"><head></head><body style="${canvasStyle}margin:0!important;">${html}</body></html>`;
+  return `<!doctype html><html data-theme="${theme}" style="${canvasStyle}"><head>${baseStylesheet}</head><body style="${canvasStyle}margin:0!important;">${html}</body></html>`;
 }
 
 type HtmlStartTag = { readonly start: number; readonly end: number; readonly source: string };
@@ -328,7 +335,7 @@ function safeArtifactTheme(value: string | null): string {
   return value !== null && ANALYSIS_ARTIFACT_THEMES.has(value) ? value : "instrument";
 }
 
-function safeArtifactColor(value: string | null, fallback: "Canvas" | "CanvasText"): string {
+function safeArtifactColor(value: string | null, fallback: string): string {
   return value !== null && value.length <= 100 && SAFE_ARTIFACT_COLOR.test(value) ? value : fallback;
 }
 

@@ -137,8 +137,11 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
   const openActiveInNewTab = () => {
     if (!active) return;
     closeExport(true);
-    const { canvas, foreground } = getArtifactColors();
-    window.open(analysisArtifactUrl(active.id, context.theme, canvas, foreground), "_blank", "noopener");
+    const { canvas, foreground, surface, hairline, accent, muted } = getArtifactColors();
+    const url = surface || hairline || accent || muted
+      ? analysisArtifactUrl(active.id, context.theme, canvas, foreground, surface, hairline, accent, muted)
+      : analysisArtifactUrl(active.id, context.theme, canvas, foreground);
+    window.open(url, "_blank", "noopener");
   };
   const handleExportMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
@@ -214,20 +217,29 @@ export function AnalystArtifactsPanel({ context }: { readonly context: Operation
 function ActiveArtifact({ artifact, theme, language }: { readonly artifact: AnalysisArtifact; readonly theme: ConsoleTheme; readonly language: ConsoleLocale }) {
   if (!artifact.id) return null;
   const t = getT(language);
-  const { canvas, foreground } = getArtifactColors();
+  const { canvas, foreground, surface, hairline, accent, muted } = getArtifactColors();
+  const frame = surface || hairline || accent || muted
+    ? <iframe title={artifact.title} src={analysisArtifactUrl(artifact.id, theme, canvas, foreground, surface, hairline, accent, muted)} sandbox="allow-scripts" />
+    : <iframe title={artifact.title} src={analysisArtifactUrl(artifact.id, theme, canvas, foreground)} sandbox="allow-scripts" />;
   return (
     <article aria-label={t("terminal.artifacts.selectedPreview")}>
       <header><span className="session-analyst__artifact-title">{artifact.title}</span><ArtifactTime createdAt={artifact.createdAt} language={language} /></header>
-      <iframe title={artifact.title} src={analysisArtifactUrl(artifact.id, theme, canvas, foreground)} sandbox="allow-scripts" />
+      {frame}
     </article>
   );
 }
 
-function getArtifactColors(): { readonly canvas: string; readonly foreground: string } {
+function getArtifactColors(): { readonly canvas: string; readonly foreground: string; readonly surface: string; readonly hairline: string; readonly accent: string; readonly muted: string } {
   const consoleStyle = getComputedStyle(document.documentElement);
+  const canvas = consoleStyle.getPropertyValue("--ink-veil").trim() || "Canvas";
+  const foreground = consoleStyle.getPropertyValue("--ink-pearl").trim() || "CanvasText";
   return {
-    canvas: consoleStyle.getPropertyValue("--ink-veil").trim() || "Canvas",
-    foreground: consoleStyle.getPropertyValue("--ink-pearl").trim() || "CanvasText",
+    canvas,
+    foreground,
+    surface: consoleStyle.getPropertyValue("--ink-deep").trim(),
+    hairline: consoleStyle.getPropertyValue("--hairline").trim(),
+    accent: consoleStyle.getPropertyValue("--aurora").trim(),
+    muted: consoleStyle.getPropertyValue("--ink-muted").trim(),
   };
 }
 
