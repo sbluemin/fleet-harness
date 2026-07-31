@@ -25,6 +25,7 @@
 
 /* ── 루트 레이아웃 — 트리 단독 ↔ 뷰어+트리 2단계 전환 ── */
 .fexp-root {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
@@ -38,6 +39,10 @@
 @media (prefers-reduced-motion: reduce) {
   .fexp-root {
     transition-duration: 0.01ms;
+  }
+
+  .fexp-inline-toast {
+    animation: none;
   }
 }
 
@@ -75,6 +80,98 @@
 
 .fexp-divider:active {
   background: color-mix(in oklch, var(--brass) 80%, transparent);
+}
+
+/* ── 파일 행 컨텍스트 메뉴 ── */
+.fexp-context-menu {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: max-content;
+  min-width: 196px;
+  max-width: calc(100% - 8px);
+  max-height: calc(100% - 8px);
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  /* 팝업 판독성 계약: glass 믹스 아래 불투명 ink 언더레이. */
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep)),
+      color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep))
+    ),
+    var(--ink-deep);
+  box-shadow: var(--shadow-anchor);
+}
+
+.fexp-context-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 9px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.fexp-context-menu-item:hover {
+  border-color: color-mix(in oklch, var(--ink-fog) 20%, transparent);
+  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
+}
+
+.fexp-context-menu-item:focus-visible {
+  outline: none;
+  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
+  background: var(--brass-glow);
+}
+
+.fexp-context-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--surface-rim);
+}
+
+.fexp-inline-toast {
+  position: absolute;
+  z-index: 15;
+  bottom: 12px;
+  left: 50%;
+  max-width: calc(100% - 24px);
+  padding: 6px 10px;
+  transform: translateX(-50%);
+  border: 1px solid color-mix(in oklch, var(--brass) 36%, var(--surface-rim));
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--brass) 12%, var(--surface-glass-strong)),
+      color-mix(in oklch, var(--brass) 12%, var(--surface-glass-strong))
+    ),
+    var(--ink-deep);
+  box-shadow: var(--shadow-anchor);
+  color: var(--text-secondary);
+  font-size: 12px;
+  pointer-events: none;
+  text-align: center;
+  animation: fexp-toast-enter var(--duration-fast) var(--ease-spring);
+}
+
+@keyframes fexp-toast-enter {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 4px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }
 
 .fexp-viewer-pane {

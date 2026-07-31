@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
@@ -19,6 +28,7 @@ interface FileTreeProps {
   readonly selectedPath: string | null;
   readonly revealTarget?: FileSearchTarget | null;
   readonly onSelect: (entry: FolderEntry) => void;
+  readonly onContextMenu: (entry: FolderEntry, returnFocus: HTMLElement, x: number, y: number) => void;
   readonly t: Translate<FileExplorerMessageKey>;
 }
 
@@ -178,7 +188,7 @@ export function resolveTreeNavigation(rows: readonly FlatRow[], index: number, k
   return { kind: "none" };
 }
 
-export function FileTree({ contextKey, files, theaterId, selectedPath, revealTarget, onSelect, t }: FileTreeProps) {
+export function FileTree({ contextKey, files, theaterId, selectedPath, revealTarget, onSelect, onContextMenu, t }: FileTreeProps) {
   const [result, setResult] = useState<FolderListResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState<string>("");
@@ -571,6 +581,12 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, revealTar
     activateRow(row);
   };
 
+  const handleRowContextMenu = (row: FlatRow, event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    setCursorPath(row.entry.relativePath);
+    onContextMenu(row.entry, event.currentTarget, event.clientX, event.clientY);
+  };
+
   if (!theaterId) return <div className="fexp-tree-empty">{t("fileExplorer.status.selectTheater")}</div>;
   // 전체 에러 화면은 보여줄 트리가 아예 없을 때(초기 로드 실패)만 —
   // 이전 result가 있으면 트리를 유지해 ↻ 재시도 경로를 보존한다
@@ -662,6 +678,7 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, revealTar
                   cursor={row.entry.relativePath === renderedCursorPath}
                   rowRefs={rowRefs}
                   onEntryClick={handleRowClick}
+                  onContextMenu={handleRowContextMenu}
                   onKeyDown={handleTreeItemKeyDown}
                 />
               ))}
@@ -675,6 +692,7 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, revealTar
               cursor={row.entry.relativePath === renderedCursorPath}
               rowRefs={rowRefs}
               onEntryClick={handleRowClick}
+              onContextMenu={handleRowContextMenu}
               onKeyDown={handleTreeItemKeyDown}
             />
           ))
@@ -724,10 +742,11 @@ interface FlatTreeRowProps {
   readonly cursor: boolean;
   readonly rowRefs: React.MutableRefObject<Map<string, HTMLButtonElement>>;
   readonly onEntryClick: (row: FlatRow) => void;
+  readonly onContextMenu: (row: FlatRow, event: ReactMouseEvent<HTMLButtonElement>) => void;
   readonly onKeyDown: (row: FlatRow, event: ReactKeyboardEvent<HTMLButtonElement>) => void;
 }
 
-function FlatTreeRow({ row, cursor, rowRefs, onEntryClick, onKeyDown }: FlatTreeRowProps) {
+function FlatTreeRow({ row, cursor, rowRefs, onEntryClick, onContextMenu, onKeyDown }: FlatTreeRowProps) {
   const { entry, depth, isSelected, isExpanded, isLoading } = row;
   const isDir = entry.kind === "dir";
   const indent = depth * 16;
@@ -744,9 +763,11 @@ function FlatTreeRow({ row, cursor, rowRefs, onEntryClick, onKeyDown }: FlatTree
       type="button"
       role="treeitem"
       tabIndex={cursor ? 0 : -1}
+      aria-haspopup="menu"
       aria-selected={isSelected}
       aria-expanded={isDir ? isExpanded : undefined}
       onClick={handleClick}
+      onContextMenu={(event) => onContextMenu(row, event)}
       onKeyDown={(event) => onKeyDown(row, event)}
     >
       <span className="fexp-tree-icon" aria-hidden="true">

@@ -1,9 +1,14 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import type { FileReadResult, FileSearchResult, FolderEntry, FolderListResult } from "../server/types.js";
 import "./explorer.css";
+import {
+  FileContextMenu,
+  performFileContextAction,
+  type FileContextAction,
+} from "./context-menu.js";
 import { getT } from "./i18n/index.js";
 import { translateServerError } from "./i18n/server-errors.js";
 import { FileTree, type PluginFilesClient } from "./tree.js";
@@ -21,6 +26,19 @@ import { setSelectedPath, setTreePaneWidth, setViewState, useFileExplorerViewSta
 import { activateFileSearchTarget, consumeFileSearchTarget, useFileSearchTarget, type FileSearchTarget } from "./search-navigation.js";
 
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
+const FEEDBACK_DURATION_MS = 2_500;
+
+interface ActiveContextMenu {
+  readonly id: number;
+  readonly entry: FolderEntry;
+  readonly anchor: { readonly x: number; readonly y: number };
+  readonly returnFocus: HTMLElement;
+}
+
+interface InlineFeedback {
+  readonly id: number;
+  readonly message: string;
+}
 
 export const fileExplorerPanel: RailPanelDescriptor = {
   id: "file-explorer",
@@ -72,8 +90,11 @@ function FileExplorerPanel(ctx: RailPanelContext) {
   const treePaneWidthRef = useRef(treePaneWidth);
   treePaneWidthRef.current = treePaneWidth;
   const rootRef = useRef<HTMLDivElement>(null);
+  const nextTransientIdRef = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
   const [revealTarget, setRevealTarget] = useState<FileSearchTarget | null>(null);
+  const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
+  const [feedback, setFeedback] = useState<InlineFeedback | null>(null);
   const searchTarget = useFileSearchTarget();
 
   // theaterId 변경마다 새 클라이언트 인스턴스를 생성한다(PluginFilesClient는 stateless).
@@ -138,6 +159,49 @@ function FileExplorerPanel(ctx: RailPanelContext) {
     setViewState(contextScope, { kind: "none" });
     setSelectedPath(contextScope, null);
   }, [contextScope]);
+
+  const showFeedback = useCallback((message: string) => {
+    nextTransientIdRef.current += 1;
+    setFeedback({ id: nextTransientIdRef.current, message });
+  }, []);
+
+  useEffect(() => {
+    if (!feedback) return;
+    const timer = setTimeout(() => setFeedback((current) => current?.id === feedback.id ? null : current), FEEDBACK_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, [feedback]);
+
+  useEffect(() => {
+    setActiveContextMenu(null);
+    setFeedback(null);
+  }, [contextScope]);
+
+  const handleOpenContextMenu = useCallback((
+    entry: FolderEntry,
+    returnFocus: HTMLElement,
+    x: number,
+    y: number,
+  ) => {
+    nextTransientIdRef.current += 1;
+    setActiveContextMenu({
+      id: nextTransientIdRef.current,
+      entry,
+      anchor: { x, y },
+      returnFocus,
+    });
+  }, []);
+
+  const handleContextAction = useCallback((action: FileContextAction, entry: FolderEntry) => {
+    if (!theaterId) {
+      showFeedback(t("fileExplorer.menu.actionUnavailable"));
+      return;
+    }
+    void performFileContextAction(action, theaterId, entry.relativePath)
+      .then((feedbackKey) => {
+        if (feedbackKey) showFeedback(t(feedbackKey));
+      })
+      .catch(() => showFeedback(t("fileExplorer.menu.actionUnavailable")));
+  }, [showFeedback, t, theaterId]);
 
   const handleDividerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -233,9 +297,26 @@ function FileExplorerPanel(ctx: RailPanelContext) {
           selectedPath={selectedPath}
           revealTarget={revealTarget}
           onSelect={handleSelect}
+          onContextMenu={handleOpenContextMenu}
           t={t}
         />
       </div>
+      {activeContextMenu && (
+        <FileContextMenu
+          key={activeContextMenu.id}
+          anchor={activeContextMenu.anchor}
+          boundaryRef={rootRef}
+          returnFocus={activeContextMenu.returnFocus}
+          t={t}
+          onAction={(action) => handleContextAction(action, activeContextMenu.entry)}
+          onClose={() => setActiveContextMenu(null)}
+        />
+      )}
+      {feedback && (
+        <div key={feedback.id} className="fexp-inline-toast" role="status" aria-live="polite">
+          {feedback.message}
+        </div>
+      )}
     </div>
   );
 }

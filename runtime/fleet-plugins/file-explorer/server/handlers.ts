@@ -2,10 +2,24 @@ import type http from "node:http";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
+import { ClipboardUnavailableError, copyPathToClipboard } from "./clipboard.js";
 import { FileReadError, readFileForTheater } from "./file-reader.js";
 import { FolderBrowserError, listTheaterContents } from "./folder-browser.js";
 import { ImageServeError, readImageForTheater, writeImageResponse } from "./image-server.js";
+import { PathActionError } from "./path-actions.js";
+import { FileActionUnavailableError, revealPath, type FileRevealMode } from "./reveal.js";
 import { watcherRegistry } from "./watcher.js";
+
+interface ClipboardHandlerDependencies {
+  readonly copyPath: typeof copyPathToClipboard;
+}
+
+interface RevealHandlerDependencies {
+  readonly revealPath: typeof revealPath;
+}
+
+const DEFAULT_CLIPBOARD_DEPENDENCIES: ClipboardHandlerDependencies = { copyPath: copyPathToClipboard };
+const DEFAULT_REVEAL_DEPENDENCIES: RevealHandlerDependencies = { revealPath };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -111,6 +125,83 @@ export async function handleFilesImage(
   }
 }
 
+export async function handleFilesClipboard(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ctx: FleetPluginServerContext,
+  dependencies: ClipboardHandlerDependencies = DEFAULT_CLIPBOARD_DEPENDENCIES,
+): Promise<void> {
+  if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
+  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
+
+  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly relativePath?: unknown }>(req);
+  if (!isPlainObject(body) || typeof body.theaterId !== "string" || typeof body.relativePath !== "string") {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_request" });
+    return;
+  }
+
+  const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
+  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+
+  try {
+    await dependencies.copyPath(theaterPath, body.relativePath);
+    writeNoContent(res);
+  } catch (error) {
+    if (error instanceof PathActionError) {
+      writePathActionError(res, ctx, error);
+      return;
+    }
+    if (error instanceof ClipboardUnavailableError) {
+      ctx.host.http.writeJson(res, 501, { error: "clipboard_unavailable" });
+      return;
+    }
+    ctx.host.http.writeJson(res, 500, { error: "clipboard_failed" });
+  }
+}
+
+export async function handleFilesReveal(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ctx: FleetPluginServerContext,
+  dependencies: RevealHandlerDependencies = DEFAULT_REVEAL_DEPENDENCIES,
+): Promise<void> {
+  if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
+  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
+
+  const body = await ctx.host.http.readJsonBody<{
+    readonly theaterId?: unknown;
+    readonly relativePath?: unknown;
+    readonly mode?: unknown;
+  }>(req);
+  if (
+    !isPlainObject(body)
+    || typeof body.theaterId !== "string"
+    || typeof body.relativePath !== "string"
+    || !isFileRevealMode(body.mode)
+  ) {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_request" });
+    return;
+  }
+
+  const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
+  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+
+  try {
+    await dependencies.revealPath(theaterPath, body.relativePath, body.mode);
+    writeNoContent(res);
+  } catch (error) {
+    if (error instanceof PathActionError) {
+      writePathActionError(res, ctx, error);
+      return;
+    }
+    if (error instanceof FileActionUnavailableError) {
+      ctx.host.http.writeJson(res, 501, { error: "action_unavailable" });
+      return;
+    }
+    ctx.host.http.writeJson(res, 500, { error: "action_failed" });
+  }
+}
+
 export function handleFilesWatch(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -156,4 +247,22 @@ export function handleFilesWatch(
     unsubscribe();
     try { res.end(); } catch { /* 이미 종료된 경우 무시 */ }
   });
+}
+
+function isFileRevealMode(value: unknown): value is FileRevealMode {
+  return value === "reveal" || value === "open";
+}
+
+function writeNoContent(res: http.ServerResponse): void {
+  res.statusCode = 204;
+  res.end();
+}
+
+function writePathActionError(
+  res: http.ServerResponse,
+  ctx: FleetPluginServerContext,
+  error: PathActionError,
+): void {
+  const status = error.code === "not_found" ? 404 : 403;
+  ctx.host.http.writeJson(res, status, { error: error.code });
 }
