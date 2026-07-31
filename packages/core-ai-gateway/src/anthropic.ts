@@ -85,7 +85,8 @@ export interface AnthropicMessagesRequest {
   max_tokens: number;
   thinking?: Record<string, unknown>;
   context_management?: Record<string, unknown>;
-  stream: true;
+  /** Claude Code는 일부 요청을 비스트리밍으로 보낸다. 없거나 false면 응답을 단일 JSON으로 돌려줘야 한다. */
+  stream?: boolean;
 }
 
 export interface TranslateAnthropicRequestOptions {
@@ -106,9 +107,6 @@ export function translateAnthropicRequest(
   request: AnthropicMessagesRequest,
   options: TranslateAnthropicRequestOptions = {}
 ): CanonicalResponseRequest {
-  if (request.stream !== true) {
-    throw new TypeError("Anthropic Messages requests must use stream: true");
-  }
   if (!Number.isInteger(request.max_tokens) || request.max_tokens <= 0) {
     throw new TypeError("max_tokens must be a positive integer");
   }
@@ -257,6 +255,87 @@ interface OpenBlock {
   kind: "text" | "tool_use";
   accumulatedJson: string;
   closed: boolean;
+}
+
+/** 비스트리밍 요청에 돌려줄 Anthropic Messages 응답 본문을 이벤트에서 조립한다. */
+export async function collectAnthropicMessage(
+  events: AsyncIterable<CanonicalResponseEvent>,
+  fallbackModel: string
+): Promise<Record<string, unknown>> {
+  const content: Array<Record<string, unknown>> = [];
+  const toolArgs = new Map<string, { index: number; text: string }>();
+  let id = "msg_gateway";
+  let model = fallbackModel;
+  let text = "";
+  let stopReason = "end_turn";
+  let outputTokens = 0;
+  let inputTokens = 0;
+
+  for await (const event of events) {
+    switch (event.type) {
+      case "response.created":
+        id = event.response.id;
+        model = event.response.model;
+        inputTokens = event.response.usage?.input_tokens ?? 0;
+        break;
+      case "response.output_text.delta":
+        text += event.delta;
+        break;
+      case "response.output_item.added":
+        if (event.item.type === "function_call") {
+          stopReason = "tool_use";
+          const index = content.length;
+          content.push({ type: "tool_use", id: event.item.call_id, name: event.item.name, input: {} });
+          toolArgs.set(event.item.id, { index, text: "" });
+        }
+        break;
+      case "response.function_call_arguments.delta": {
+        const entry = toolArgs.get(event.item_id);
+        if (entry) entry.text += event.delta;
+        break;
+      }
+      case "response.function_call_arguments.done": {
+        const entry = toolArgs.get(event.item_id);
+        if (entry) entry.text = event.arguments;
+        break;
+      }
+      case "response.completed":
+        outputTokens = event.response.usage?.output_tokens ?? 0;
+        break;
+      case "response.failed":
+        throw new Error(event.response.error.message);
+      case "error":
+        throw new Error(event.error.message);
+      default:
+        break;
+    }
+  }
+
+  for (const entry of toolArgs.values()) {
+    const block = content[entry.index];
+    if (block) block.input = safeJson(entry.text);
+  }
+  if (text.length > 0) content.unshift({ type: "text", text });
+
+  return {
+    id,
+    type: "message",
+    role: "assistant",
+    content,
+    model,
+    stop_reason: stopReason,
+    stop_sequence: null,
+    usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+  };
+}
+
+function safeJson(text: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
 }
 
 export async function* encodeAnthropicSse(

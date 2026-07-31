@@ -1,4 +1,4 @@
-import { encodeAnthropicSse, translateAnthropicRequest } from "./anthropic.js";
+import { collectAnthropicMessage, encodeAnthropicSse, translateAnthropicRequest } from "./anthropic.js";
 import type {
   AnthropicMessagesRequest,
   TranslateAnthropicRequestOptions
@@ -47,13 +47,23 @@ export class AnthropicMessagesGateway {
       };
     }
 
+    if (request.stream === true) {
+      return {
+        status: upstream.status,
+        headers: new Headers({
+          "cache-control": "no-cache",
+          "content-type": "text/event-stream; charset=utf-8"
+        }),
+        body: encodeAnthropicSse(upstream.events)
+      };
+    }
+
+    // Claude Code는 일부 요청을 비스트리밍으로 보낸다. 그때는 이벤트를 모아 단일 Messages 응답을 준다.
+    const message = await collectAnthropicMessage(upstream.events, canonical.model);
     return {
       status: upstream.status,
-      headers: new Headers({
-        "cache-control": "no-cache",
-        "content-type": "text/event-stream; charset=utf-8"
-      }),
-      body: encodeAnthropicSse(upstream.events)
+      headers: new Headers({ "content-type": "application/json" }),
+      body: oneChunk(new TextEncoder().encode(JSON.stringify(message)))
     };
   }
 }

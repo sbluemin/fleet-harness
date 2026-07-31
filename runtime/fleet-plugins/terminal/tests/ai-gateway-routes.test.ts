@@ -12,6 +12,7 @@ import {
 
 const BASE = "/plugins/terminal/ai-gateway";
 const MESSAGES = `${BASE}/v1/messages`;
+const ANTHROPIC_CRED = "sk-ant-oat01-caller";
 const SUBSCRIPTION_TOKEN = "chatgpt-subscription-access-token";
 const ACCOUNT_ID = "11111111-2222-3333-4444-555555555555";
 
@@ -40,8 +41,8 @@ describe("experimental seal", () => {
   });
 });
 
-describe("gateway token", () => {
-  it("rejects a request that carries no bearer", async () => {
+describe("caller credential", () => {
+  it("rejects a request that carries no credential", async () => {
     const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
     const res = response();
     await router.handle(ctx({ res }));
@@ -49,11 +50,11 @@ describe("gateway token", () => {
     expect(res.status).toBe(401);
     expect(JSON.parse(res.body)).toEqual({
       type: "error",
-      error: { type: "authentication_error", message: "Invalid gateway token" },
+      error: { type: "authentication_error", message: "Missing Anthropic credential" },
     });
   });
 
-  it("rejects a bearer that was never issued", async () => {
+  it("rejects a bearer that is not an Anthropic credential", async () => {
     const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
     const res = response();
     await router.handle(ctx({ res, token: "f".repeat(64) }));
@@ -61,36 +62,28 @@ describe("gateway token", () => {
     expect(res.status).toBe(401);
   });
 
-  it("accepts an issued bearer and streams the upstream body through", async () => {
+  it("accepts Claude Code's own credential and streams the upstream body through", async () => {
     const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
-    const grant = router.issueToken();
     const res = response();
-    await router.handle(ctx({ res, token: grant.token }));
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED }));
 
     expect(res.status).toBe(200);
     expect(res.headers["content-type"]).toContain("text/event-stream");
     expect(res.body).toContain("message_stop");
   });
 
-  it("stops accepting a revoked bearer", async () => {
+  it("accepts an x-api-key credential too", async () => {
     const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
-    const grant = router.issueToken();
-    grant.revoke();
     const res = response();
-    await router.handle(ctx({ res, token: grant.token }));
+    await router.handle(ctx({ res, apiKey: ANTHROPIC_CRED }));
 
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(200);
   });
 
-  it("keeps one operation's bearer from being replaced by another's", async () => {
+  it("never issues a gateway bearer of its own", () => {
     const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
-    const first = router.issueToken();
-    const second = router.issueToken();
-    second.revoke();
-
-    const res = response();
-    await router.handle(ctx({ res, token: first.token }));
-    expect(res.status).toBe(200);
+    // Claude Code가 자기 OAuth를 계속 쓰도록 자체 토큰을 주입하지 않는다.
+    expect(router.issueToken().token).toBe("");
   });
 });
 
@@ -99,9 +92,8 @@ describe("upstream credential", () => {
     const gateway = stubGateway();
     const streamSpy = vi.spyOn(gateway, "stream");
     const router = createAiGatewayRouter({ gateway, readAuth: () => null });
-    const grant = router.issueToken();
     const res = response();
-    await router.handle(ctx({ res, token: grant.token }));
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED }));
 
     expect(res.status).toBe(401);
     expect(streamSpy).not.toHaveBeenCalled();
@@ -110,9 +102,8 @@ describe("upstream credential", () => {
 
   it("never echoes the subscription token back to the caller", async () => {
     const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
-    const grant = router.issueToken();
     const res = response();
-    await router.handle(ctx({ res, token: grant.token }));
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED }));
 
     expect(`${JSON.stringify(res.headers)}${res.body}`).not.toContain(SUBSCRIPTION_TOKEN);
   });
@@ -125,28 +116,26 @@ describe("anthropic passthrough", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("event: message_stop\n\n", { status: 200, headers: { "content-type": "text/event-stream" } }),
     );
-    const router = createAiGatewayRouter({ gateway, readAuth, readAnthropicToken: () => "oauth-token" });
-    const grant = router.issueToken();
+    const router = createAiGatewayRouter({ gateway, readAuth });
     const res = response();
-    await router.handle(ctx({ res, token: grant.token, model: "claude-sonnet-4-6" }));
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED, model: "claude-sonnet-4-6" }));
 
     expect(res.status).toBe(200);
     // 번역 게이트웨이는 건드리지 않는다.
     expect(streamSpy).not.toHaveBeenCalled();
     const [url, init] = fetchSpy.mock.calls[0] ?? [];
     expect(String(url)).toContain("api.anthropic.com");
-    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer oauth-token");
+    // 자격증명을 교체하지 않고 호출자 것을 그대로 실어 보낸다.
+    expect(new Headers(init?.headers).get("authorization")).toBe(`Bearer ${ANTHROPIC_CRED}`);
     fetchSpy.mockRestore();
   });
 
-  it("refuses a claude model when no subscription token is present", async () => {
-    const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth, readAnthropicToken: () => null });
-    const grant = router.issueToken();
+  it("refuses a request that carries no Anthropic credential", async () => {
+    const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
     const res = response();
-    await router.handle(ctx({ res, token: grant.token, model: "claude-sonnet-4-6" }));
+    await router.handle(ctx({ res, model: "claude-sonnet-4-6" }));
 
     expect(res.status).toBe(401);
-    expect(res.body).toContain("Anthropic subscription");
   });
 });
 
@@ -161,9 +150,8 @@ describe("route surface", () => {
 
   it("serves model discovery to an authorized caller", async () => {
     const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
-    const grant = router.issueToken();
     const res = response();
-    await router.handle(ctx({ res, token: grant.token, pathname: `${BASE}/v1/models`, method: "GET" }));
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED, pathname: `${BASE}/v1/models`, method: "GET" }));
 
     expect(res.status).toBe(200);
     const list = JSON.parse(res.body) as { data: Array<{ id: string }> };
@@ -275,6 +263,7 @@ function ctx(options: {
   readonly pathname?: string;
   readonly method?: string;
   readonly model?: string;
+  readonly apiKey?: string;
 }): RouteHandlerContext {
   const payload = JSON.stringify({
     model: options.model ?? "claude-gateway--gpt-5.5",
@@ -284,7 +273,10 @@ function ctx(options: {
   });
   const req = {
     method: options.method ?? "POST",
-    headers: options.token === undefined ? {} : { authorization: `Bearer ${options.token}` },
+    headers: {
+      ...(options.token === undefined ? {} : { authorization: `Bearer ${options.token}` }),
+      ...(options.apiKey === undefined ? {} : { "x-api-key": options.apiKey }),
+    },
     once: () => undefined,
     off: () => undefined,
     async *[Symbol.asyncIterator]() {

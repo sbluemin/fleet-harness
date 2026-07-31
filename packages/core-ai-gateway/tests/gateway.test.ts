@@ -15,6 +15,7 @@ import {
   translateAnthropicRequest
 } from "../src/index.js";
 import type {
+  AiGatewayAdapter,
   AnthropicMessagesRequest,
   CanonicalResponseEvent,
   FetchLike
@@ -385,6 +386,36 @@ describe("OpenAI Responses adapter", () => {
 
     controller.abort(new Error("cancelled by caller"));
     await expect(collectEvents(result.events)).rejects.toThrow("cancelled by caller");
+  });
+});
+
+describe("non-streaming requests", () => {
+  it("returns a single Messages response when the caller did not ask for a stream", async () => {
+    const adapter: AiGatewayAdapter = {
+      async stream() {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          events: iterable<CanonicalResponseEvent>([
+            { type: "response.created", response: { id: "resp_json", model: "gpt-5.5", usage: { input_tokens: 3, output_tokens: 0 } } },
+            { type: "response.output_text.delta", item_id: "m", output_index: 0, content_index: 0, delta: "hi" },
+            { type: "response.completed", response: { id: "resp_json", model: "gpt-5.5", usage: { input_tokens: 3, output_tokens: 4 } } },
+          ]),
+        };
+      },
+    };
+    const { stream: _drop, ...rest } = baseRequest();
+    const response = await new AnthropicMessagesGateway(adapter).stream(rest as AnthropicMessagesRequest, { apiKey: "k" });
+
+    expect(response.headers.get("content-type")).toBe("application/json");
+    expect(JSON.parse(await collectBody(response.body))).toMatchObject({
+      type: "message",
+      role: "assistant",
+      content: [{ type: "text", text: "hi" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 3, output_tokens: 4 },
+    });
   });
 });
 

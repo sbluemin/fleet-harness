@@ -1,4 +1,3 @@
-import { randomBytes, timingSafeEqual } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import os from "node:os";
@@ -24,8 +23,6 @@ export const AI_GATEWAY_ROUTE_SEGMENT = "ai-gateway";
 export const AI_GATEWAY_EXPERIMENTAL_ENV = "FLEET_EXPERIMENTAL_AI_GATEWAY";
 export const AI_GATEWAY_MODEL_ENV = "FLEET_AI_GATEWAY_MODEL";
 
-const TOKEN_BYTES = 32;
-
 /** Codex CLI가 ChatGPT 구독 로그인으로 저장해 둔 토큰. */
 export interface CodexSubscriptionAuth {
   readonly accessToken: string;
@@ -33,6 +30,8 @@ export interface CodexSubscriptionAuth {
 }
 
 export const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
+/** Claude Code가 claude.ai 구독으로 붙일 때 보내는 자격증명 접두. OAuth 토큰도 이 접두를 쓴다. */
+const ANTHROPIC_CREDENTIAL_PREFIX = "sk-ant-";
 
 /** Claude Code의 claude.ai 구독 로그인이 keychain에 남긴 OAuth 토큰. */
 export function readAnthropicSubscriptionToken(): string | null {
@@ -114,7 +113,6 @@ export function isAiGatewayEnabled(): boolean {
 }
 
 export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayRouter {
-  const tokens = new Set<string>();
   const readAuth = deps.readAuth ?? (() => readCodexSubscriptionAuth());
 
   const handle: RouteHandler = async ({ req, res, pathname }) => {
@@ -128,8 +126,8 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
     }
     // Claude Code의 gateway model discovery. 이게 있어야 /model picker에 GPT가 뜬다.
     if (pathname.endsWith("/v1/models")) {
-      if (!authorize(req.headers.authorization, tokens)) {
-        writeAnthropicError(res, 401, "authentication_error", "Invalid gateway token");
+      if (!callerAnthropicCredential(req.headers)) {
+        writeAnthropicError(res, 401, "authentication_error", "Missing Anthropic credential");
         return true;
       }
       res.writeHead(200, { "content-type": "application/json" });
@@ -141,8 +139,9 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
       writeAnthropicError(res, 405, "invalid_request_error", "Method not allowed");
       return true;
     }
-    if (!authorize(req.headers.authorization, tokens)) {
-      writeAnthropicError(res, 401, "authentication_error", "Invalid gateway token");
+    const callerCredential = callerAnthropicCredential(req.headers);
+    if (!callerCredential) {
+      writeAnthropicError(res, 401, "authentication_error", "Missing Anthropic credential");
       return true;
     }
 
@@ -168,14 +167,9 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
     const requested = process.env[AI_GATEWAY_MODEL_ENV] ?? body.model;
     const target = findGatewayModel(requested);
 
-    // 카탈로그 밖의 모델은 Anthropic 자기 모델이다. 변환 없이 구독으로 원문 중계한다.
+    // 카탈로그 밖의 모델은 Anthropic 자기 모델이다. 호출자의 자격증명을 그대로 실어 원문 중계한다.
     if (!target) {
-      const anthropicToken = (deps.readAnthropicToken ?? readAnthropicSubscriptionToken)();
-      if (!anthropicToken) {
-        writeAnthropicError(res, 401, "authentication_error", "No Anthropic subscription token was found. Run `claude` and sign in first.");
-        return true;
-      }
-      await proxyToAnthropic(req, res, body, anthropicToken);
+      await proxyToAnthropic(req, res, body);
       return true;
     }
 
@@ -231,9 +225,8 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
   return {
     handle,
     issueToken(): AiGatewayTokenGrant {
-      const token = randomBytes(TOKEN_BYTES).toString("hex");
-      tokens.add(token);
-      return { token, revoke: () => void tokens.delete(token) };
+      // 자체 bearer를 더 이상 쓰지 않는다. Launch 바인딩 계약을 위해 형태만 유지한다.
+      return { token: "", revoke: () => undefined };
     },
   };
 }
@@ -262,15 +255,16 @@ async function proxyToAnthropic(
     readonly headersSent: boolean;
   },
   body: AnthropicMessagesRequest,
-  token: string,
 ): Promise<void> {
   const headers: Record<string, string> = {
-    authorization: `Bearer ${token}`,
     "content-type": "application/json",
     "anthropic-version": typeof req.headers["anthropic-version"] === "string" ? req.headers["anthropic-version"] : "2023-06-01",
   };
-  const beta = req.headers["anthropic-beta"];
-  if (typeof beta === "string") headers["anthropic-beta"] = beta;
+  // 자격증명을 교체하지 않는다. 청구 주체는 호출자로 남는다.
+  for (const name of ["authorization", "x-api-key", "anthropic-beta", "user-agent"]) {
+    const value = req.headers[name];
+    if (typeof value === "string") headers[name] = value;
+  }
 
   const upstream = await fetch(ANTHROPIC_MESSAGES_URL, {
     method: "POST",
@@ -315,18 +309,17 @@ function rejectIssue(): never {
   throw new Error("The experimental AI gateway is disabled.");
 }
 
-function authorize(header: string | undefined, tokens: ReadonlySet<string>): boolean {
-  if (!header?.startsWith("Bearer ")) return false;
-  const presented = Buffer.from(header.slice("Bearer ".length));
-  let matched = false;
-  // Loopback은 인가가 아니다. 등록된 토큰 전체를 constant-time으로 대조한다.
-  for (const token of tokens) {
-    const candidate = Buffer.from(token);
-    if (candidate.length === presented.length && timingSafeEqual(candidate, presented)) {
-      matched = true;
-    }
-  }
-  return matched;
+/**
+ * 호출자가 Claude Code 자신인지 판정한다.
+ * 게이트웨이가 자체 bearer를 주입하지 않으므로, 정품 요청은 Claude Code가 들고 있는
+ * Anthropic 자격증명(sk-ant-*)을 그대로 실어 온다. 그 값은 Anthropic 원문 중계에도 쓰인다.
+ */
+export function callerAnthropicCredential(headers: Record<string, unknown>): string | null {
+  const raw = headers.authorization;
+  const bearer = typeof raw === "string" && /^bearer /i.test(raw) ? raw.slice(7).trim() : "";
+  if (bearer.startsWith(ANTHROPIC_CREDENTIAL_PREFIX)) return bearer;
+  const apiKey = typeof headers["x-api-key"] === "string" ? headers["x-api-key"].trim() : "";
+  return apiKey.startsWith(ANTHROPIC_CREDENTIAL_PREFIX) ? apiKey : null;
 }
 
 async function readJsonBody<T>(req: {

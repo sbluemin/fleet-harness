@@ -242,19 +242,18 @@ async function applyAiGatewayEnv(
   if (!origin) {
     throw new Error("Fleet Console has not bound a port yet, so the AI gateway URL cannot be derived.");
   }
-  const grant = options.aiGateway.issueToken();
-  options.onCleanup(() => grant.revoke());
-  return {
-    ...profile,
-    env: {
-      ...profile.env,
-      // Claude Code가 이 뒤에 /v1/messages를 붙인다.
-      ANTHROPIC_BASE_URL: `${origin}${options.aiGateway.routePath}`,
-      ANTHROPIC_AUTH_TOKEN: grant.token,
-      // 이게 있어야 /model picker가 게이트웨이의 GET /v1/models를 조회한다.
-      CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
-    },
+  const env: Record<string, string> = {
+    ...profile.env,
+    // Claude Code가 이 뒤에 /v1/messages를 붙인다.
+    ANTHROPIC_BASE_URL: `${origin}${options.aiGateway.routePath}`,
+    // 이게 있어야 /model picker가 게이트웨이의 GET /v1/models를 조회한다.
+    CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
   };
+  // 자체 bearer를 주입하지 않는다. 주입하면 Claude Code가 claude.ai OAuth 대신 그것을 보내고,
+  // Anthropic 모델을 원문 중계할 자격증명이 사라져 게이트웨이가 토큰을 대신 읽는 우회가 된다.
+  delete env.ANTHROPIC_AUTH_TOKEN;
+  delete env.ANTHROPIC_API_KEY;
+  return { ...profile, env };
 }
 
 function toLaunchSpec(profile: AgentCliProfile, cleanup: () => Promise<void>, sessionIdentityResolver: TerminalLaunchSpec["sessionIdentityResolver"]): TerminalLaunchSpec {
