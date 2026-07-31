@@ -1008,13 +1008,29 @@
 @media (prefers-reduced-motion: reduce) { .history-segmented button { transition-duration: .01ms; } }
 /* Repository sources mirror the approved unified explorer. */
 .repository-unified { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; container-type: inline-size; }
-.repository-identity { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 72%, transparent); color: var(--text-secondary); }
+.repository-identity { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 72%, transparent); color: var(--text-secondary); flex: none; }
 .repository-identity.is-subcontext { box-shadow: inset 2px 0 0 var(--brass); }
 .repository-identity svg { width: 15px; height: 15px; flex: none; opacity: .85; }
 .repository-identity strong { min-width: 0; overflow: hidden; color: var(--text-primary); font-size: 12.5px; font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
 /* 브랜치는 정체의 일부라 이름 옆에 붙인다 — margin-left:auto로 밀면 넓은 레일에서 이름과의 연관이 끊긴다.
    brass는 location 채널이므로 "어느 체크아웃인가"를 칠하는 데 쓴다. */
 .repository-identity span { min-width: 0; overflow: hidden; color: var(--brass-ink); flex: 0 1 auto; font-family: var(--font-mono); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.repository-sync-button { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 4px 7px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-tertiary); cursor: pointer; flex: none; font: inherit; font-size: 12px; }
+.repository-sync-button:hover:not(:disabled) { border-color: var(--surface-rim); background: color-mix(in oklch, var(--ink-fog) 9%, transparent); color: var(--text-primary); }
+.repository-sync-button:disabled { cursor: default; opacity: .7; }
+.repository-identity .repository-sync-icon { display: inline-block; min-width: auto; overflow: visible; color: inherit; flex: none; font: inherit; font-size: 13px; line-height: 1; }
+.repository-sync-button.is-syncing .repository-sync-icon { animation: repository-sync-spin 800ms linear infinite; }
+@keyframes repository-sync-spin { to { transform: rotate(360deg); } }
+.repository-sync-status { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 5px 12px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 35%, transparent); color: var(--text-tertiary); flex: none; font-family: var(--font-mono); font-size: 11px; line-height: 17px; }
+.repository-sync-status::before { width: 6px; height: 6px; border-radius: 999px; background: var(--text-tertiary); content: ""; flex: none; }
+.repository-sync-status.is-stale { color: var(--warn-ink); }
+.repository-sync-status.is-stale::before { background: var(--warn); }
+.repository-sync-status.is-fresh { color: var(--positive-ink); }
+.repository-sync-status.is-fresh::before { background: var(--positive); }
+.repository-sync-status.is-error { color: var(--coral-ink); }
+.repository-sync-status.is-error::before { background: var(--coral); }
+.repository-sync-status.is-syncing::before { background: var(--text-tertiary); }
+@media (prefers-reduced-motion: reduce) { .repository-sync-button.is-syncing .repository-sync-icon { animation: none; } }
 /* 숨김-마운트 래퍼가 높이 문맥을 끊으면 history-root의 height:100%가 내용 높이로 풀려 내부 스크롤이 죽는다 */
 .repository-source-fill { height: 100%; min-height: 0; }
 .repository-discovery { display: flex; align-items: center; gap: 8px; flex: none; padding: 6px 10px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 55%, transparent); }

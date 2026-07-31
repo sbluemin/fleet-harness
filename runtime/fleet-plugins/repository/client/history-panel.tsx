@@ -207,6 +207,7 @@ interface HistoryPanelProps {
   readonly ctx: RailPanelContext;
   readonly repoRel: string;
   readonly cacheScope?: string;
+  readonly externalRefreshToken?: number;
   readonly active?: boolean;
   readonly refFilter?: string | null;
   readonly wipFiles: readonly DiffFileEntry[];
@@ -218,11 +219,11 @@ interface HistoryPanelProps {
   readonly onWip?: () => void;
 }
 
-export function HistoryPanel({ ctx, repoRel, cacheScope = `${ctx.theaterId ?? ""}:${repoRel}`, active = true, refFilter = null, wipFiles, workspace = false, workspaceMain, workspaceMainVisible = false, onInspectorOpenChange, onClearRef, onWip }: HistoryPanelProps) {
-  return <HistoryPanelBody key={cacheScope} ctx={ctx} repoRel={repoRel} cacheScope={cacheScope} active={active} refFilter={refFilter} wipFiles={wipFiles} workspace={workspace} workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} onInspectorOpenChange={onInspectorOpenChange} onClearRef={onClearRef} onWip={onWip} />;
+export function HistoryPanel({ ctx, repoRel, cacheScope = `${ctx.theaterId ?? ""}:${repoRel}`, externalRefreshToken = 0, active = true, refFilter = null, wipFiles, workspace = false, workspaceMain, workspaceMainVisible = false, onInspectorOpenChange, onClearRef, onWip }: HistoryPanelProps) {
+  return <HistoryPanelBody key={cacheScope} ctx={ctx} repoRel={repoRel} cacheScope={cacheScope} externalRefreshToken={externalRefreshToken} active={active} refFilter={refFilter} wipFiles={wipFiles} workspace={workspace} workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} onInspectorOpenChange={onInspectorOpenChange} onClearRef={onClearRef} onWip={onWip} />;
 }
 
-function HistoryPanelBody({ ctx, repoRel, cacheScope, active, refFilter, wipFiles, workspace, workspaceMain, workspaceMainVisible, onInspectorOpenChange, onClearRef, onWip }: Required<Pick<HistoryPanelProps, "active" | "cacheScope" | "ctx" | "refFilter" | "repoRel" | "wipFiles" | "workspace" | "workspaceMainVisible">> & Pick<HistoryPanelProps, "workspaceMain" | "onInspectorOpenChange" | "onClearRef" | "onWip">) {
+function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, active, refFilter, wipFiles, workspace, workspaceMain, workspaceMainVisible, onInspectorOpenChange, onClearRef, onWip }: Required<Pick<HistoryPanelProps, "active" | "cacheScope" | "ctx" | "externalRefreshToken" | "refFilter" | "repoRel" | "wipFiles" | "workspace" | "workspaceMainVisible">> & Pick<HistoryPanelProps, "workspaceMain" | "onInspectorOpenChange" | "onClearRef" | "onWip">) {
   const t = getT(ctx.language);
   const historyCacheKey = `${cacheScope}::${refFilter ?? ""}`;
   const searchTarget = useRepositorySearchTarget();
@@ -246,6 +247,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, active, refFilter, wipFile
   const pendingRevealRef = useRef<string | null>(null);
   const loadingMoreRef = useRef(false);
   const loadedCacheKeyRef = useRef<string | null>(initialRestore ? historyCacheKey : null);
+  const loadedExternalRefreshTokenRef = useRef(externalRefreshToken);
   const loadedCommitsRef = useRef<readonly LogCommitEntry[] | null>(initialRestore?.state.commits ?? null);
   const stateCacheKeyRef = useRef<string | null>(initialRestore ? historyCacheKey : null);
   const restoredScrollTopRef = useRef<number | null>(initialRestore?.scrollTop ?? null);
@@ -255,7 +257,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, active, refFilter, wipFile
   const dragDisposeRef = useRef<(() => void) | null>(null);
   const logHeightRef = useRef(logHeight);
   const dockHeightRef = useRef(dockHeight);
-  const generation = useMemo<HistoryLoadGeneration>(() => ({ theaterId: ctx.theaterId, repoRel, refFilter, refreshToken }), [ctx.theaterId, refFilter, refreshToken, repoRel]);
+  const generation = useMemo<HistoryLoadGeneration>(() => ({ theaterId: ctx.theaterId, repoRel, refFilter, refreshToken: refreshToken + externalRefreshToken }), [ctx.theaterId, externalRefreshToken, refFilter, refreshToken, repoRel]);
   const generationRef = useRef(generation);
   generationRef.current = generation;
   const visible = useMemo(() => state.kind === "ok" ? filterHistoryCommits(state.commits, filterText) : [], [filterText, state]);
@@ -345,11 +347,17 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, active, refFilter, wipFile
   useEffect(() => { if (active) setEverActive(true); }, [active]);
   useEffect(() => {
     if (!everActive) return;
+    const externalRefreshRequested = loadedExternalRefreshTokenRef.current !== externalRefreshToken;
+    loadedExternalRefreshTokenRef.current = externalRefreshToken;
+    const preservedExternalScrollTop = externalRefreshRequested
+      ? listRef.current?.scrollTop ?? scrollTopRef.current
+      : null;
     if (
-      loadedCacheKeyRef.current === historyCacheKey
+      !externalRefreshRequested
+      && loadedCacheKeyRef.current === historyCacheKey
       && (!pendingSearchTargetHash || loadedCommitsRef.current?.some((commit) => commit.fullHash === pendingSearchTargetHash))
     ) return;
-    const restored = readHistoryCacheRestore(historyCacheKey, pendingSearchTargetHash);
+    const restored = externalRefreshRequested ? null : readHistoryCacheRestore(historyCacheKey, pendingSearchTargetHash);
     if (restored) {
       loadedCacheKeyRef.current = historyCacheKey;
       loadedCommitsRef.current = restored.state.commits;
@@ -391,13 +399,17 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, active, refFilter, wipFile
         loadedCacheKeyRef.current = historyCacheKey;
         loadedCommitsRef.current = data.commits;
         stateCacheKeyRef.current = historyCacheKey;
+        if (preservedExternalScrollTop !== null) {
+          restoredScrollTopRef.current = preservedExternalScrollTop;
+          scrollTopRef.current = preservedExternalScrollTop;
+        }
         setState({ kind: "ok", commits: data.commits, checkouts: data.checkouts, hasMore: data.hasMore, truncated: data.truncated ?? false });
       }
     }).catch((error: unknown) => {
       if (!cancelled) setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" });
     });
     return () => { cancelled = true; };
-  }, [ctx.api, ctx.theaterId, everActive, historyCacheKey, pendingSearchTargetHash, refreshToken, refFilter, repoRel]);
+  }, [ctx.api, ctx.theaterId, everActive, externalRefreshToken, historyCacheKey, pendingSearchTargetHash, refreshToken, refFilter, repoRel]);
   useEffect(() => {
     if (state.kind !== "ok" || stateCacheKeyRef.current !== historyCacheKey) return;
     const list = listRef.current;
@@ -420,7 +432,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, active, refFilter, wipFile
     const observer = new ResizeObserver(updateCommitViewport);
     observer.observe(list);
     return () => observer.disconnect();
-  }, [showWip, updateCommitViewport, visible.length]);
+  }, [showWip, updateCommitViewport, visible.length, workspaceMainVisible]);
   // 저장된 dock 높이는 현재 컨테이너 기준으로 정규화해 축소된 창에서 주 영역이 잘리지 않게 한다(저장값 자체는 보존).
   useLayoutEffect(() => {
     if (!workspace || target === null) return;

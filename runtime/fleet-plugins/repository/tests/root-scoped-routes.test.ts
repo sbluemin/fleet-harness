@@ -10,6 +10,7 @@ import { handleRepositoryCommitFile } from "../server/commit-file.js";
 import { handleRepositoryCompare } from "../server/compare.js";
 import { handleRepositoryCompareFile } from "../server/compare-file.js";
 import { handleRepositoryChanged, handleRepositoryFile } from "../server/diff.js";
+import { handleRepositoryFetch } from "../server/fetch.js";
 import { runGit } from "../server/git-executor.js";
 import { handleRepositoryLog } from "../server/log.js";
 import { handleRepositoryRefs } from "../server/refs.js";
@@ -49,6 +50,7 @@ interface LogPayload {
 const handlers = [
   ["worktrees", handleRepositoryWorktrees, { theaterId: "theater" }],
   ["changed", handleRepositoryChanged, { theaterId: "theater" }],
+  ["fetch", handleRepositoryFetch, { theaterId: "theater" }],
   ["file", handleRepositoryFile, { theaterId: "theater", filePath: "file", mode: "unified" }],
   ["commit", handleRepositoryCommit, { theaterId: "theater", ref: "1234567" }],
   ["commit-file", handleRepositoryCommitFile, { theaterId: "theater", ref: "1234567", filePath: "file" }],

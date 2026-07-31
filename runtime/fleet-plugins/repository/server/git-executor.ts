@@ -19,11 +19,28 @@ export class GitExecutorError extends Error {
 
 export interface GitRunResult {
   readonly stdout: string;
+  readonly stderr: string;
   readonly truncated: boolean;
+  readonly stderrTruncated: boolean;
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_BUFFER = 8 * 1024 * 1024;
+const STDERR_MAX_BUFFER = 1024 * 1024;
+const GIT_HARDENING_PREFIX = ["-c", "core.fsmonitor=false", "--no-optional-locks"] as const;
+
+function sanitizeGitEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const sanitized: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(environment)) {
+    const normalizedKey = key.toUpperCase();
+    if (normalizedKey.startsWith("GIT_") || normalizedKey === "LC_ALL") continue;
+    if (value !== undefined) sanitized[key] = value;
+  }
+  sanitized.GIT_OPTIONAL_LOCKS = "0";
+  sanitized.GIT_TERMINAL_PROMPT = "0";
+  sanitized.LC_ALL = "C";
+  return sanitized;
+}
 
 export function runGit(
   args: readonly string[],
@@ -31,6 +48,7 @@ export function runGit(
 ): Promise<GitRunResult> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxBuffer = opts.maxBuffer ?? DEFAULT_MAX_BUFFER;
+  const hardenedArgs = [...GIT_HARDENING_PREFIX, ...args];
 
   return new Promise((resolve, reject) => {
     if (opts.signal?.aborted) {
@@ -40,7 +58,11 @@ export function runGit(
     let child;
     try {
       // Windows에서 자식 프로세스 콘솔 창이 깜빡이며 떴다 사라지는 현상 방지
-      child = spawn("git", args as string[], withHidden({ cwd: opts.cwd, shell: false }));
+      child = spawn("git", hardenedArgs, withHidden({
+        cwd: opts.cwd,
+        env: sanitizeGitEnvironment(process.env),
+        shell: false,
+      }));
     } catch (error) {
       // spawn 동기 예외에서도 ENOENT는 git 바이너리 미설치로 분류한다(방어적 처리).
       const code = (error as NodeJS.ErrnoException).code === "ENOENT" ? "git_unavailable" : "spawn_failed";
@@ -51,7 +73,9 @@ export function runGit(
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     let stdoutLen = 0;
+    let stderrLen = 0;
     let truncated = false;
+    let stderrTruncated = false;
     let timedOut = false;
 
     const abort = () => {
@@ -83,7 +107,16 @@ export function runGit(
     });
 
     child.stderr.on("data", (chunk: Buffer) => {
-      stderrChunks.push(chunk);
+      if (stderrTruncated) return;
+      const remaining = STDERR_MAX_BUFFER - stderrLen;
+      if (chunk.length >= remaining) {
+        stderrChunks.push(chunk.subarray(0, remaining));
+        stderrLen += remaining;
+        stderrTruncated = true;
+      } else {
+        stderrChunks.push(chunk);
+        stderrLen += chunk.length;
+      }
     });
 
     child.on("error", (error) => {
@@ -100,7 +133,7 @@ export function runGit(
       if (code !== 0) {
         if (code !== null && (opts.allowExitCodes?.includes(code) ?? false)) {
           const stdout = Buffer.concat(stdoutChunks).toString("utf8");
-          resolve({ stdout, truncated });
+          resolve({ stdout, stderr, truncated, stderrTruncated });
           return;
         }
         // macOS git diff는 "Not a git repository"(대문자 N)로 출력하므로 대소문자 무관하게 비교
@@ -109,7 +142,7 @@ export function runGit(
         return;
       }
       const stdout = Buffer.concat(stdoutChunks).toString("utf8");
-      resolve({ stdout, truncated });
+      resolve({ stdout, stderr, truncated, stderrTruncated });
     });
   });
 }
