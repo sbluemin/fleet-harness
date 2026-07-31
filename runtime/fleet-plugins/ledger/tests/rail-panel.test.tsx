@@ -148,6 +148,17 @@ describe("Ledger rail status rendering", () => {
     ]);
   });
 
+  it("anchors daily tooltips proportionally across the chart", async () => {
+    await renderWith(dto("ok", "week", 12.34, 0, [
+      { day: "2026-07-28", costUsd: 1.25 },
+      { day: "2026-07-29", costUsd: 2.5 },
+      { day: "2026-07-30", costUsd: 3.75 },
+    ]));
+
+    expect([...container.querySelectorAll<HTMLElement>(".ledger-trend-bar")]
+      .map((bar) => bar.style.getPropertyValue("--ledger-bar-pos"))).toEqual(["0", "0.5", "1"]);
+  });
+
   it("renders a finite daily average when the unscaled sum would overflow", async () => {
     await expect(renderWith(dto("ok", "week", 12.34, 0, [
       { day: "2026-07-28", costUsd: Number.MAX_VALUE },

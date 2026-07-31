@@ -298,6 +298,7 @@
 }
 
 .ledger-trend-bars {
+  position: relative;
   display: flex;
   align-items: flex-end;
   height: 88px;
@@ -305,7 +306,8 @@
 }
 
 .ledger-trend-bar {
-  position: relative;
+  --ledger-bar-pos: 0;
+
   flex: 1 1 0;
   min-width: 0;
   min-height: 3px;
@@ -327,10 +329,10 @@
   position: absolute;
   z-index: 1;
   bottom: calc(100% + var(--space-1));
-  left: 50%;
+  left: calc(var(--ledger-bar-pos) * 100%);
   visibility: hidden;
   padding: 3px var(--space-1);
-  transform: translateX(-50%);
+  transform: translateX(calc(var(--ledger-bar-pos) * -100%));
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-xs);
   background: var(--ink-veil);

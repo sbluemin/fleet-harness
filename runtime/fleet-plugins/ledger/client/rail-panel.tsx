@@ -97,13 +97,20 @@ function TrendSection({ daily, language, t }: {
       <h3>{t("ledger.trend.title")}</h3>
       <p className="ledger-trend-description">{t("ledger.trend.explanation")}</p>
       <div className="ledger-trend-bars" role="group" aria-label={t("ledger.trend.aria")}>
-        {daily.map((point) => {
+        {daily.map((point, index) => {
           const day = formatDay(point.day);
           const cost = formatCost(point.costUsd);
           const label = t("ledger.trend.day", { day, cost });
           const height = `${Math.max(3, maxCost > 0 ? (point.costUsd / maxCost) * 100 : 0)}%`;
           return (
-            <span key={point.day} className="ledger-trend-bar" style={{ height }} tabIndex={0} role="img" aria-label={label}>
+            <span
+              key={point.day}
+              className="ledger-trend-bar"
+              style={{ height, ["--ledger-bar-pos" as string]: String(index / (daily.length - 1)) }}
+              tabIndex={0}
+              role="img"
+              aria-label={label}
+            >
               <span className="ledger-trend-tooltip" aria-hidden="true">{label}</span>
             </span>
           );
