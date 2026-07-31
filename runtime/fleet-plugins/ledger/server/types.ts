@@ -44,6 +44,11 @@ export interface LedgerClientDto {
   readonly costUsd: number;
 }
 
+export interface LedgerDailyPoint {
+  readonly day: string;
+  readonly costUsd: number;
+}
+
 export interface LedgerSummaryDto {
   readonly schemaVersion: 1;
   readonly scope: { readonly theaterId: string | null; readonly window: LedgerWindow };
@@ -52,6 +57,8 @@ export interface LedgerSummaryDto {
   readonly operations: LedgerOperationDto[];
   /** Theater와 Operation 귀속 여부에 무관한 이 기기 전체의 CLI별 사용량이다. */
   readonly clients: LedgerClientDto[];
+  /** Theater와 Operation 귀속 여부에 무관한 이 기기 전체의 일별 비용이다. */
+  readonly daily: readonly LedgerDailyPoint[];
   /** 사용량 수집에 쓰는 외부 도구는 구현 세부이므로 브라우저 payload에 이름·버전을 싣지 않는다. */
   readonly source: {
     readonly status: LedgerSourceStatus;

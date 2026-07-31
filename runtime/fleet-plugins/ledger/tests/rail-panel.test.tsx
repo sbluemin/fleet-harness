@@ -30,6 +30,7 @@ function dto(
   window: LedgerWindow = "week",
   costUsd = 12.34,
   skippedSessions = 0,
+  daily: LedgerSummaryDto["daily"] = [],
 ): LedgerSummaryDto {
   return {
     schemaVersion: 1,
@@ -54,6 +55,7 @@ function dto(
       usage: { input: 1_000, output: 200, cacheRead: 300 },
       costUsd,
     }],
+    daily,
     source: { status, skippedSessions },
   };
 }
@@ -98,6 +100,75 @@ describe("Ledger rail status rendering", () => {
     expect(container.textContent).toContain("Some records could not be read and were excluded (3).");
     expect(container.querySelector("[data-ledger-source-status=degraded]")).not.toBeNull();
     expect(container.textContent).not.toContain("tokscale 4.7.0");
+  });
+
+  it("renders a device-wide daily trend before the CLI rows with peak summary text", async () => {
+    await renderWith(dto("ok", "week", 12.34, 0, [
+      { day: "2026-07-28", costUsd: 1.25 },
+      { day: "2026-07-29", costUsd: 3.75 },
+    ]));
+
+    const trend = container.querySelector(".ledger-trend");
+    expect(trend).not.toBeNull();
+    expect(container.querySelector(".ledger-clients")?.firstElementChild).toBe(trend);
+    expect(trend?.querySelectorAll(".ledger-trend-bar")).toHaveLength(2);
+    expect(trend?.querySelector(".ledger-trend-description")?.textContent).toBe(
+      "Each session's cost counts on the day it was last active, so a session spanning midnight lands entirely on the later day.",
+    );
+    expect(trend?.textContent).toContain("Peak Jul 29 · $3.75");
+    expect(trend?.textContent).toContain("Daily avg $2.50");
+  });
+
+  it.each([
+    ["zero", []],
+    ["one", [{ day: "2026-07-29", costUsd: 3.75 }]],
+  ] satisfies ReadonlyArray<readonly [string, LedgerSummaryDto["daily"]]>)
+  ("does not render the trend for %s daily points", async (_label, daily) => {
+    await renderWith(dto("ok", "week", 12.34, 0, daily));
+    expect(container.querySelector(".ledger-trend")).toBeNull();
+  });
+
+  it("labels every daily bar for assistive technology", async () => {
+    await renderWith(dto("ok", "week", 12.34, 0, [
+      { day: "2026-07-28", costUsd: 1.25 },
+      { day: "2026-07-29", costUsd: 3.75 },
+    ]));
+
+    const barsContainer = container.querySelector(".ledger-trend-bars");
+    const bars = [...container.querySelectorAll<HTMLElement>(".ledger-trend-bar")];
+    expect(barsContainer?.getAttribute("role")).toBe("group");
+    expect(barsContainer?.getAttribute("aria-label")).toBe("Daily cost bar chart");
+    expect(bars.map((bar) => ({ tag: bar.tagName, role: bar.getAttribute("role"), tabIndex: bar.tabIndex }))).toEqual([
+      { tag: "SPAN", role: "img", tabIndex: 0 },
+      { tag: "SPAN", role: "img", tabIndex: 0 },
+    ]);
+    expect(bars.map((bar) => bar.getAttribute("aria-label"))).toEqual([
+      "Jul 28 · $1.25",
+      "Jul 29 · $3.75",
+    ]);
+  });
+
+  it("anchors daily tooltips proportionally across the chart", async () => {
+    await renderWith(dto("ok", "week", 12.34, 0, [
+      { day: "2026-07-28", costUsd: 1.25 },
+      { day: "2026-07-29", costUsd: 2.5 },
+      { day: "2026-07-30", costUsd: 3.75 },
+    ]));
+
+    expect([...container.querySelectorAll<HTMLElement>(".ledger-trend-bar")]
+      .map((bar) => bar.style.getPropertyValue("--ledger-bar-pos"))).toEqual(["0", "0.5", "1"]);
+  });
+
+  it("renders a finite daily average when the unscaled sum would overflow", async () => {
+    await expect(renderWith(dto("ok", "week", 12.34, 0, [
+      { day: "2026-07-28", costUsd: Number.MAX_VALUE },
+      { day: "2026-07-29", costUsd: Number.MAX_VALUE },
+    ]))).resolves.toBeUndefined();
+
+    expect(container.querySelector(".ledger-trend")).not.toBeNull();
+    expect(container.querySelector(".ledger-trend-summary")?.textContent)
+      .toContain(`Daily avg $${Number.MAX_VALUE.toFixed(2)}`);
+    expect(container.querySelector(".ledger-trend-summary")?.textContent).not.toContain("Daily avg $0.00");
   });
 
   it.each([
