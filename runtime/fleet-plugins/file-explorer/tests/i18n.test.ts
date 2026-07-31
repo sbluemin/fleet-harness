@@ -27,6 +27,11 @@ describe("file explorer message catalogs", () => {
       "fileExplorer.menu.actionUnavailable": "이 플랫폼에서는 지원되지 않는 동작입니다",
     });
   });
+
+  it("preserves the fixed divider label in both locales", () => {
+    expect(fileExplorerEn["fileExplorer.divider.resizeAria"]).toBe("Resize file panes");
+    expect(fileExplorerKo["fileExplorer.divider.resizeAria"]).toBe("파일 창 크기 조절");
+  });
 });
 
 function pickMenuMessages(messages: Record<string, string>): Record<string, string> {

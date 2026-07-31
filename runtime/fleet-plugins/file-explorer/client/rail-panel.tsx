@@ -20,6 +20,10 @@ import {
   buildSplitGridTemplate,
   canResizeTreePane,
   clampTreePaneWidth,
+  getTreePaneMaxWidth,
+  getTreePaneWidthForContainer,
+  MIN_TREE_PX,
+  resizeTreePaneWithKeyboard,
   resolveExtraWidth,
 } from "./layout.js";
 import { setSelectedPath, setTreePaneWidth, setViewState, useFileExplorerViewState } from "./view-store.js";
@@ -95,6 +99,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
   const [revealTarget, setRevealTarget] = useState<FileSearchTarget | null>(null);
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [feedback, setFeedback] = useState<InlineFeedback | null>(null);
+  const [splitContainerWidth, setSplitContainerWidth] = useState(0);
   const searchTarget = useFileSearchTarget();
 
   // theaterId 변경마다 새 클라이언트 인스턴스를 생성한다(PluginFilesClient는 stateless).
@@ -230,11 +235,42 @@ function FileExplorerPanel(ctx: RailPanelContext) {
     document.addEventListener("pointerup", onUp);
   }, []);
 
+  const handleDividerKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    event.stopPropagation();
+    const container = rootRef.current;
+    if (!container) return;
+    const containerWidth = container.getBoundingClientRect().width;
+    const nextWidth = resizeTreePaneWithKeyboard(treePaneWidthRef.current, event.key, containerWidth);
+    if (nextWidth === treePaneWidthRef.current) return;
+    treePaneWidthRef.current = nextWidth;
+    setTreePaneWidth(nextWidth);
+  }, []);
+
   const isViewerActive = viewState.kind !== "none";
+
+  useLayoutEffect(() => {
+    if (!isViewerActive) {
+      setSplitContainerWidth(0);
+      return;
+    }
+    const container = rootRef.current;
+    if (!container) return;
+    const measure = () => setSplitContainerWidth(container.getBoundingClientRect().width);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [isViewerActive]);
 
   useLayoutEffect(() => {
     ctx.requestExtraWidth?.(resolveExtraWidth(isViewerActive));
   }, [ctx, isViewerActive]);
+
+  const dividerMax = Math.floor(getTreePaneMaxWidth(splitContainerWidth));
+  const dividerValue = getTreePaneWidthForContainer(treePaneWidth, splitContainerWidth);
 
   return (
     <div
@@ -284,7 +320,14 @@ function FileExplorerPanel(ctx: RailPanelContext) {
           <div
             className="fexp-divider"
             onPointerDown={handleDividerDown}
-            aria-hidden="true"
+            onKeyDown={handleDividerKeyDown}
+            role="separator"
+            tabIndex={0}
+            aria-orientation="vertical"
+            aria-valuenow={dividerValue}
+            aria-valuemin={MIN_TREE_PX}
+            aria-valuemax={dividerMax}
+            aria-label={t("fileExplorer.divider.resizeAria")}
           />
         </>
       )}

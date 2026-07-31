@@ -82,6 +82,12 @@
   background: color-mix(in oklch, var(--brass) 80%, transparent);
 }
 
+.fexp-divider:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: -2px;
+  background: color-mix(in oklch, var(--brass) 50%, transparent);
+}
+
 /* ── 파일 행 컨텍스트 메뉴 ── */
 .fexp-context-menu {
   position: absolute;
