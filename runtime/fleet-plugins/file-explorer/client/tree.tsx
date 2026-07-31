@@ -1,6 +1,8 @@
 import {
+  forwardRef,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -12,6 +14,7 @@ import {
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { FolderEntry, FolderListResult } from "../server/types.js";
+import { restoreContextMenuFocus } from "./context-menu.js";
 import type { FileExplorerMessageKey } from "./i18n/index.js";
 import { translateServerError } from "./i18n/server-errors.js";
 import type { FileSearchTarget } from "./search-navigation.js";
@@ -28,8 +31,12 @@ interface FileTreeProps {
   readonly selectedPath: string | null;
   readonly revealTarget?: FileSearchTarget | null;
   readonly onSelect: (entry: FolderEntry) => void;
-  readonly onContextMenu: (entry: FolderEntry, returnFocus: HTMLElement, x: number, y: number) => void;
+  readonly onContextMenu: (entry: FolderEntry, x: number, y: number) => void;
   readonly t: Translate<FileExplorerMessageKey>;
+}
+
+export interface FileTreeHandle {
+  readonly restoreContextMenuFocus: (relativePath: string) => HTMLElement | null;
 }
 
 export interface FlatRow {
@@ -188,7 +195,10 @@ export function resolveTreeNavigation(rows: readonly FlatRow[], index: number, k
   return { kind: "none" };
 }
 
-export function FileTree({ contextKey, files, theaterId, selectedPath, revealTarget, onSelect, onContextMenu, t }: FileTreeProps) {
+export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
+  { contextKey, files, theaterId, selectedPath, revealTarget, onSelect, onContextMenu, t },
+  ref,
+) {
   const [result, setResult] = useState<FolderListResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState<string>("");
@@ -497,6 +507,15 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, revealTar
     revealedRequestRef.current = revealTarget.requestId;
   }, [endIdx, flatRows, revealTarget, shouldVirtualize, startIdx, visibleRows]);
 
+  useImperativeHandle(ref, () => ({
+    restoreContextMenuFocus: (relativePath) => restoreContextMenuFocus(
+      relativePath,
+      rowRefs.current,
+      renderedCursorPath,
+      treeRef.current,
+    ),
+  }), [renderedCursorPath]);
+
   const focusRow = (rowIndex: number) => {
     const row = flatRows[rowIndex];
     if (!row) return;
@@ -584,7 +603,7 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, revealTar
   const handleRowContextMenu = (row: FlatRow, event: ReactMouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     setCursorPath(row.entry.relativePath);
-    onContextMenu(row.entry, event.currentTarget, event.clientX, event.clientY);
+    onContextMenu(row.entry, event.clientX, event.clientY);
   };
 
   if (!theaterId) return <div className="fexp-tree-empty">{t("fileExplorer.status.selectTheater")}</div>;
@@ -655,6 +674,7 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, revealTar
         ref={treeRef}
         className="fexp-tree"
         role="tree"
+        tabIndex={-1}
         aria-label={t("fileExplorer.tree.aria")}
         onScroll={shouldVirtualize ? handleScroll : undefined}
       >
@@ -709,7 +729,7 @@ export function FileTree({ contextKey, files, theaterId, selectedPath, revealTar
       </div>
     </div>
   );
-}
+});
 
 function hasFilterMatch(
   entries: readonly FolderEntry[],

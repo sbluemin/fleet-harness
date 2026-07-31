@@ -47,6 +47,31 @@ describe("file explorer row context menu", () => {
     expect(document.activeElement).toBe(harness.origin);
   });
 
+  it("falls back to the current cursor row, then the tree, when virtualization unmounts the origin", () => {
+    document.body.replaceChildren();
+    const tree = document.createElement("div");
+    tree.setAttribute("role", "tree");
+    tree.tabIndex = -1;
+    const origin = document.createElement("button");
+    const cursor = document.createElement("button");
+    tree.append(origin, cursor);
+    document.body.append(tree);
+    const rowRefs = new Map<string, HTMLElement>([
+      ["origin.ts", origin],
+      ["cursor.ts", cursor],
+    ]);
+
+    origin.remove();
+    restoreContextMenuFocus("origin.ts", rowRefs, "cursor.ts", tree);
+    expect(document.activeElement).toBe(cursor);
+    expect(document.activeElement).not.toBe(document.body);
+
+    cursor.remove();
+    restoreContextMenuFocus("origin.ts", rowRefs, "cursor.ts", tree);
+    expect(document.activeElement).toBe(tree);
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
   it("clamps the rendered menu within every panel edge", () => {
     const bounds = { left: 100, top: 50, width: 300, height: 220 };
     const size = { width: 196, height: 150 };
@@ -90,8 +115,12 @@ describe("file explorer row context menu", () => {
 
 function createKeyboardHarness() {
   document.body.replaceChildren();
+  const tree = document.createElement("div");
+  tree.setAttribute("role", "tree");
+  tree.tabIndex = -1;
   const origin = document.createElement("button");
   origin.dataset.path = "src/file.ts";
+  tree.append(origin);
   const menu = document.createElement("div");
   menu.setAttribute("role", "menu");
   const items = Array.from({ length: 4 }, (_, index) => {
@@ -101,7 +130,7 @@ function createKeyboardHarness() {
     menu.append(item);
     return item;
   });
-  document.body.append(origin, menu);
+  document.body.append(tree, menu);
   const activated = vi.fn();
   let activeIndex = 0;
 
@@ -118,7 +147,7 @@ function createKeyboardHarness() {
     else if (action.kind === "activate") activated(action.index);
     else {
       menu.remove();
-      restoreContextMenuFocus(origin);
+      restoreContextMenuFocus("src/file.ts", new Map([["src/file.ts", origin]]), "src/file.ts", tree);
     }
   });
   focusItem(0);

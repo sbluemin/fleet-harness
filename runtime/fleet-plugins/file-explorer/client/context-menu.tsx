@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -57,10 +58,11 @@ interface Size {
 interface FileContextMenuProps {
   readonly anchor: Point;
   readonly boundaryRef: RefObject<HTMLElement | null>;
-  readonly returnFocus: HTMLElement;
+  readonly returnFocusPath: string;
   readonly t: Translate<FileExplorerMessageKey>;
   readonly onAction: (action: FileContextAction) => void;
   readonly onClose: () => void;
+  readonly onRestoreFocus: (relativePath: string) => void;
 }
 
 interface FileContextActionDependencies {
@@ -99,8 +101,28 @@ export function clampContextMenuPosition(
   };
 }
 
-export function restoreContextMenuFocus(target: HTMLElement | null): void {
-  if (target?.isConnected) target.focus();
+export function resolveContextMenuFocusTarget(
+  relativePath: string,
+  rowRefs: ReadonlyMap<string, HTMLElement>,
+  cursorPath: string | null,
+  tree: HTMLElement | null,
+): HTMLElement | null {
+  const currentRow = rowRefs.get(relativePath);
+  if (currentRow?.isConnected) return currentRow;
+  const cursorRow = cursorPath ? rowRefs.get(cursorPath) : null;
+  if (cursorRow?.isConnected) return cursorRow;
+  return tree?.isConnected ? tree : null;
+}
+
+export function restoreContextMenuFocus(
+  relativePath: string,
+  rowRefs: ReadonlyMap<string, HTMLElement>,
+  cursorPath: string | null,
+  tree: HTMLElement | null,
+): HTMLElement | null {
+  const target = resolveContextMenuFocusTarget(relativePath, rowRefs, cursorPath, tree);
+  target?.focus();
+  return target;
 }
 
 export async function performFileContextAction(
@@ -136,10 +158,11 @@ export async function performFileContextAction(
 export function FileContextMenu({
   anchor,
   boundaryRef,
-  returnFocus,
+  returnFocusPath,
   t,
   onAction,
   onClose,
+  onRestoreFocus,
 }: FileContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -168,22 +191,23 @@ export function FileContextMenu({
     return () => window.cancelAnimationFrame(focusFrame);
   }, []);
 
+  const closeAndRestoreFocus = useCallback(() => {
+    onClose();
+    onRestoreFocus(returnFocusPath);
+  }, [onClose, onRestoreFocus, returnFocusPath]);
+
   useEffect(() => {
     const handleOutsidePointer = (event: PointerEvent) => {
       const target = event.target;
-      if (target instanceof Node && !menuRef.current?.contains(target)) onClose();
+      if (target instanceof Node && !menuRef.current?.contains(target)) closeAndRestoreFocus();
     };
     document.addEventListener("pointerdown", handleOutsidePointer, true);
     return () => document.removeEventListener("pointerdown", handleOutsidePointer, true);
-  }, [onClose]);
+  }, [closeAndRestoreFocus]);
 
   const focusItem = (index: number) => {
     setActiveIndex(index);
     itemRefs.current[index]?.focus();
-  };
-  const closeAndRestoreFocus = () => {
-    onClose();
-    restoreContextMenuFocus(returnFocus);
   };
   const activate = (index: number) => {
     const entry = ACTION_ENTRIES[index];

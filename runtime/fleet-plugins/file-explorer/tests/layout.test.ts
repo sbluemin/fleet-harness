@@ -10,6 +10,7 @@ import {
   canResizeTreePane,
   clampTreePaneWidth,
   getTreePaneMaxWidth,
+  getTreePaneSeparatorState,
   getTreePaneWidthForContainer,
   resizeTreePaneWithKeyboard,
   resolveExtraWidth,
@@ -27,9 +28,19 @@ describe("file explorer rail layout", () => {
     expect(clampTreePaneWidth(248, -80, 700)).toBe(328);
   });
 
-  it("컨테이너가 최소폭 합보다 좁으면 드래그를 no-op으로 처리한다", () => {
+  it("360px 컨테이너에서는 실제 156px 트리 폭을 보고하고 리사이즈를 비활성화한다", () => {
     expect(canResizeTreePane(360)).toBe(false);
     expect(clampTreePaneWidth(248, -80, 360)).toBe(248);
+    expect(getTreePaneMaxWidth(360)).toBe(156);
+    expect(getTreePaneWidthForContainer(248, 360)).toBe(156);
+    expect(getTreePaneSeparatorState(248, 360)).toEqual({
+      currentWidth: 156,
+      minWidth: 156,
+      maxWidth: 156,
+      canResize: false,
+      tabIndex: -1,
+      ariaDisabled: true,
+    });
   });
 
   it("저장된 트리 폭을 viewer 최소폭 보존 CSS clamp로 감싼다", () => {
@@ -48,6 +59,14 @@ describe("file explorer rail layout", () => {
 
   it("키보드 폭과 WAI separator 값을 최소·최대 경계에 클램프한다", () => {
     expect(getTreePaneMaxWidth(700)).toBe(496);
+    expect(getTreePaneSeparatorState(248, 700)).toEqual({
+      currentWidth: 248,
+      minWidth: MIN_TREE_PX,
+      maxWidth: 496,
+      canResize: true,
+      tabIndex: 0,
+      ariaDisabled: undefined,
+    });
     expect(getTreePaneWidthForContainer(900, 700)).toBe(496);
     expect(getTreePaneWidthForContainer(80, 700)).toBe(MIN_TREE_PX);
     expect(resizeTreePaneWithKeyboard(496, "ArrowLeft", 700)).toBe(496);

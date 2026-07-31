@@ -11,7 +11,7 @@ import {
 } from "./context-menu.js";
 import { getT } from "./i18n/index.js";
 import { translateServerError } from "./i18n/server-errors.js";
-import { FileTree, type PluginFilesClient } from "./tree.js";
+import { FileTree, type FileTreeHandle, type PluginFilesClient } from "./tree.js";
 import { BinaryViewer } from "./viewer/binary.js";
 import { CodeViewer } from "./viewer/code.js";
 import { ImageViewer } from "./viewer/image.js";
@@ -20,9 +20,7 @@ import {
   buildSplitGridTemplate,
   canResizeTreePane,
   clampTreePaneWidth,
-  getTreePaneMaxWidth,
-  getTreePaneWidthForContainer,
-  MIN_TREE_PX,
+  getTreePaneSeparatorState,
   resizeTreePaneWithKeyboard,
   resolveExtraWidth,
 } from "./layout.js";
@@ -36,7 +34,7 @@ interface ActiveContextMenu {
   readonly id: number;
   readonly entry: FolderEntry;
   readonly anchor: { readonly x: number; readonly y: number };
-  readonly returnFocus: HTMLElement;
+  readonly returnFocusPath: string;
 }
 
 interface InlineFeedback {
@@ -94,6 +92,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
   const treePaneWidthRef = useRef(treePaneWidth);
   treePaneWidthRef.current = treePaneWidth;
   const rootRef = useRef<HTMLDivElement>(null);
+  const fileTreeRef = useRef<FileTreeHandle | null>(null);
   const nextTransientIdRef = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
   const [revealTarget, setRevealTarget] = useState<FileSearchTarget | null>(null);
@@ -183,7 +182,6 @@ function FileExplorerPanel(ctx: RailPanelContext) {
 
   const handleOpenContextMenu = useCallback((
     entry: FolderEntry,
-    returnFocus: HTMLElement,
     x: number,
     y: number,
   ) => {
@@ -192,8 +190,14 @@ function FileExplorerPanel(ctx: RailPanelContext) {
       id: nextTransientIdRef.current,
       entry,
       anchor: { x, y },
-      returnFocus,
+      returnFocusPath: entry.relativePath,
     });
+  }, []);
+
+  const handleRestoreContextMenuFocus = useCallback((relativePath: string) => {
+    const restored = fileTreeRef.current?.restoreContextMenuFocus(relativePath);
+    if (restored) return;
+    rootRef.current?.querySelector<HTMLElement>('[role="tree"]')?.focus();
   }, []);
 
   const handleContextAction = useCallback((action: FileContextAction, entry: FolderEntry) => {
@@ -269,8 +273,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
     ctx.requestExtraWidth?.(resolveExtraWidth(isViewerActive));
   }, [ctx, isViewerActive]);
 
-  const dividerMax = Math.floor(getTreePaneMaxWidth(splitContainerWidth));
-  const dividerValue = getTreePaneWidthForContainer(treePaneWidth, splitContainerWidth);
+  const dividerState = getTreePaneSeparatorState(treePaneWidth, splitContainerWidth);
 
   return (
     <div
@@ -322,11 +325,12 @@ function FileExplorerPanel(ctx: RailPanelContext) {
             onPointerDown={handleDividerDown}
             onKeyDown={handleDividerKeyDown}
             role="separator"
-            tabIndex={0}
+            tabIndex={dividerState.tabIndex}
+            aria-disabled={dividerState.ariaDisabled}
             aria-orientation="vertical"
-            aria-valuenow={dividerValue}
-            aria-valuemin={MIN_TREE_PX}
-            aria-valuemax={dividerMax}
+            aria-valuenow={dividerState.currentWidth}
+            aria-valuemin={dividerState.minWidth}
+            aria-valuemax={dividerState.maxWidth}
             aria-label={t("fileExplorer.divider.resizeAria")}
           />
         </>
@@ -334,6 +338,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
       <div className="fexp-tree-pane">
         <FileTree
           key={contextScope}
+          ref={fileTreeRef}
           files={files}
           theaterId={theaterId}
           contextKey={contextScope}
@@ -349,10 +354,11 @@ function FileExplorerPanel(ctx: RailPanelContext) {
           key={activeContextMenu.id}
           anchor={activeContextMenu.anchor}
           boundaryRef={rootRef}
-          returnFocus={activeContextMenu.returnFocus}
+          returnFocusPath={activeContextMenu.returnFocusPath}
           t={t}
           onAction={(action) => handleContextAction(action, activeContextMenu.entry)}
           onClose={() => setActiveContextMenu(null)}
+          onRestoreFocus={handleRestoreContextMenuFocus}
         />
       )}
       {feedback && (
