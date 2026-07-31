@@ -14,6 +14,22 @@ export const OPENAI_SUBSCRIPTION_MODELS: readonly GatewayModel[] = [
   { id: "gpt-5.6-luna", displayName: "GPT-5.6 Luna" },
 ];
 
+/**
+ * Claude Code는 discovery 응답에서 id가 "claude"로 시작하지 않는 모델을 picker에서 버린다(실측).
+ * 게이트웨이 모델은 이 접두를 달아 노출하고, 요청이 돌아오면 벗겨서 실제 id로 되돌린다.
+ */
+export const GATEWAY_MODEL_ALIAS_PREFIX = "claude-gateway--";
+
+export function toGatewayModelAlias(modelId: string): string {
+  return `${GATEWAY_MODEL_ALIAS_PREFIX}${modelId}`;
+}
+
+export function fromGatewayModelAlias(alias: string): string {
+  return alias.startsWith(GATEWAY_MODEL_ALIAS_PREFIX)
+    ? alias.slice(GATEWAY_MODEL_ALIAS_PREFIX.length)
+    : alias;
+}
+
 export interface AnthropicModelEntry {
   readonly type: "model";
   readonly id: string;
@@ -35,7 +51,7 @@ export function buildAnthropicModelList(
 ): AnthropicModelList {
   const data = models.map((model) => ({
     type: "model" as const,
-    id: model.id,
+    id: toGatewayModelAlias(model.id),
     display_name: model.displayName,
     created_at: createdAt,
   }));
@@ -57,6 +73,7 @@ export function resolveGatewayModel(
 ): string {
   if (options.override) return options.override;
   const catalog = options.catalog ?? OPENAI_SUBSCRIPTION_MODELS;
-  if (requested && catalog.some((model) => model.id === requested)) return requested;
+  const bare = requested === undefined ? undefined : fromGatewayModelAlias(requested);
+  if (bare && catalog.some((model) => model.id === bare)) return bare;
   return options.fallback;
 }

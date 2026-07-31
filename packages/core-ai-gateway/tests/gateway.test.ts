@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   AnthropicMessagesGateway,
+  GATEWAY_MODEL_ALIAS_PREFIX,
   OPENAI_SUBSCRIPTION_MODELS,
   buildAnthropicModelList,
   resolveGatewayModel,
+  toGatewayModelAlias,
   DEFAULT_OPENAI_MODEL,
   OPENAI_RESPONSES_URL,
   OpenAIResponsesAdapter,
@@ -128,11 +130,18 @@ describe("model catalog", () => {
     expect(resolveGatewayModel("gpt-5.6-sol", { override: "gpt-5.5", fallback: "gpt-5.5" })).toBe("gpt-5.5");
   });
 
-  it("advertises the catalog in the Anthropic list shape", () => {
+  it("advertises every model under a claude- alias so the picker keeps it", () => {
     const list = buildAnthropicModelList();
     expect(list.has_more).toBe(false);
-    expect(list.data.map((entry) => entry.id)).toEqual(OPENAI_SUBSCRIPTION_MODELS.map((m) => m.id));
-    expect(list.data[0]).toMatchObject({ type: "model", display_name: expect.any(String) });
+    expect(list.data.map((entry) => entry.id)).toEqual(
+      OPENAI_SUBSCRIPTION_MODELS.map((m) => `${GATEWAY_MODEL_ALIAS_PREFIX}${m.id}`),
+    );
+    // Claude Code는 claude로 시작하지 않는 id를 discovery 결과에서 버린다.
+    expect(list.data.every((entry) => entry.id.startsWith("claude"))).toBe(true);
+  });
+
+  it("unwraps the alias a picked model comes back as", () => {
+    expect(resolveGatewayModel(toGatewayModelAlias("gpt-5.6-luna"), { fallback: "gpt-5.5" })).toBe("gpt-5.6-luna");
   });
 
   it("routes a catalog model through translation untouched", () => {
