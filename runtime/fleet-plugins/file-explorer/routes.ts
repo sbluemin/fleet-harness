@@ -1,6 +1,13 @@
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
 
-import { handleFilesImage, handleFilesList, handleFilesRead, handleFilesWatch } from "./server/handlers.js";
+import {
+  handleFilesClipboard,
+  handleFilesImage,
+  handleFilesList,
+  handleFilesRead,
+  handleFilesReveal,
+  handleFilesWatch,
+} from "./server/handlers.js";
 import { handleFilesSearch } from "./server/search.js";
 
 export default definePlugin({
@@ -16,6 +23,14 @@ export default definePlugin({
     });
     registerRouter(ctx, "files/image", async ({ req, res }) => {
       await handleFilesImage(req, res, ctx);
+      return true;
+    });
+    registerRouter(ctx, "files/clipboard", async ({ req, res }) => {
+      await handleFilesClipboard(req, res, ctx);
+      return true;
+    });
+    registerRouter(ctx, "files/reveal", async ({ req, res }) => {
+      await handleFilesReveal(req, res, ctx);
       return true;
     });
     registerRouter(ctx, "files/watch", ({ req, res }) => {

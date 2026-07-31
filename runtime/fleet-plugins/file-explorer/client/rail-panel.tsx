@@ -1,12 +1,17 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import type { FileReadResult, FileSearchResult, FolderEntry, FolderListResult } from "../server/types.js";
 import "./explorer.css";
+import {
+  FileContextMenu,
+  performFileContextAction,
+  type FileContextAction,
+} from "./context-menu.js";
 import { getT } from "./i18n/index.js";
 import { translateServerError } from "./i18n/server-errors.js";
-import { FileTree, type PluginFilesClient } from "./tree.js";
+import { FileTree, type FileTreeHandle, type PluginFilesClient } from "./tree.js";
 import { BinaryViewer } from "./viewer/binary.js";
 import { CodeViewer } from "./viewer/code.js";
 import { ImageViewer } from "./viewer/image.js";
@@ -15,12 +20,27 @@ import {
   buildSplitGridTemplate,
   canResizeTreePane,
   clampTreePaneWidth,
+  getTreePaneSeparatorState,
+  resizeTreePaneWithKeyboard,
   resolveExtraWidth,
 } from "./layout.js";
 import { setSelectedPath, setTreePaneWidth, setViewState, useFileExplorerViewState } from "./view-store.js";
 import { activateFileSearchTarget, consumeFileSearchTarget, useFileSearchTarget, type FileSearchTarget } from "./search-navigation.js";
 
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
+const FEEDBACK_DURATION_MS = 2_500;
+
+interface ActiveContextMenu {
+  readonly id: number;
+  readonly entry: FolderEntry;
+  readonly anchor: { readonly x: number; readonly y: number };
+  readonly returnFocusPath: string;
+}
+
+interface InlineFeedback {
+  readonly id: number;
+  readonly message: string;
+}
 
 export const fileExplorerPanel: RailPanelDescriptor = {
   id: "file-explorer",
@@ -72,8 +92,13 @@ function FileExplorerPanel(ctx: RailPanelContext) {
   const treePaneWidthRef = useRef(treePaneWidth);
   treePaneWidthRef.current = treePaneWidth;
   const rootRef = useRef<HTMLDivElement>(null);
+  const fileTreeRef = useRef<FileTreeHandle | null>(null);
+  const nextTransientIdRef = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
   const [revealTarget, setRevealTarget] = useState<FileSearchTarget | null>(null);
+  const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
+  const [feedback, setFeedback] = useState<InlineFeedback | null>(null);
+  const [splitContainerWidth, setSplitContainerWidth] = useState(0);
   const searchTarget = useFileSearchTarget();
 
   // theaterId 변경마다 새 클라이언트 인스턴스를 생성한다(PluginFilesClient는 stateless).
@@ -139,6 +164,54 @@ function FileExplorerPanel(ctx: RailPanelContext) {
     setSelectedPath(contextScope, null);
   }, [contextScope]);
 
+  const showFeedback = useCallback((message: string) => {
+    nextTransientIdRef.current += 1;
+    setFeedback({ id: nextTransientIdRef.current, message });
+  }, []);
+
+  useEffect(() => {
+    if (!feedback) return;
+    const timer = setTimeout(() => setFeedback((current) => current?.id === feedback.id ? null : current), FEEDBACK_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, [feedback]);
+
+  useEffect(() => {
+    setActiveContextMenu(null);
+    setFeedback(null);
+  }, [contextScope]);
+
+  const handleOpenContextMenu = useCallback((
+    entry: FolderEntry,
+    x: number,
+    y: number,
+  ) => {
+    nextTransientIdRef.current += 1;
+    setActiveContextMenu({
+      id: nextTransientIdRef.current,
+      entry,
+      anchor: { x, y },
+      returnFocusPath: entry.relativePath,
+    });
+  }, []);
+
+  const handleRestoreContextMenuFocus = useCallback((relativePath: string) => {
+    const restored = fileTreeRef.current?.restoreContextMenuFocus(relativePath);
+    if (restored) return;
+    rootRef.current?.querySelector<HTMLElement>('[role="tree"]')?.focus();
+  }, []);
+
+  const handleContextAction = useCallback((action: FileContextAction, entry: FolderEntry) => {
+    if (!theaterId) {
+      showFeedback(t("fileExplorer.menu.actionUnavailable"));
+      return;
+    }
+    void performFileContextAction(action, theaterId, entry.relativePath)
+      .then((feedbackKey) => {
+        if (feedbackKey) showFeedback(t(feedbackKey));
+      })
+      .catch(() => showFeedback(t("fileExplorer.menu.actionUnavailable")));
+  }, [showFeedback, t, theaterId]);
+
   const handleDividerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     const container = rootRef.current;
@@ -166,11 +239,41 @@ function FileExplorerPanel(ctx: RailPanelContext) {
     document.addEventListener("pointerup", onUp);
   }, []);
 
+  const handleDividerKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    event.stopPropagation();
+    const container = rootRef.current;
+    if (!container) return;
+    const containerWidth = container.getBoundingClientRect().width;
+    const nextWidth = resizeTreePaneWithKeyboard(treePaneWidthRef.current, event.key, containerWidth);
+    if (nextWidth === treePaneWidthRef.current) return;
+    treePaneWidthRef.current = nextWidth;
+    setTreePaneWidth(nextWidth);
+  }, []);
+
   const isViewerActive = viewState.kind !== "none";
+
+  useLayoutEffect(() => {
+    if (!isViewerActive) {
+      setSplitContainerWidth(0);
+      return;
+    }
+    const container = rootRef.current;
+    if (!container) return;
+    const measure = () => setSplitContainerWidth(container.getBoundingClientRect().width);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [isViewerActive]);
 
   useLayoutEffect(() => {
     ctx.requestExtraWidth?.(resolveExtraWidth(isViewerActive));
   }, [ctx, isViewerActive]);
+
+  const dividerState = getTreePaneSeparatorState(treePaneWidth, splitContainerWidth);
 
   return (
     <div
@@ -220,22 +323,49 @@ function FileExplorerPanel(ctx: RailPanelContext) {
           <div
             className="fexp-divider"
             onPointerDown={handleDividerDown}
-            aria-hidden="true"
+            onKeyDown={handleDividerKeyDown}
+            role="separator"
+            tabIndex={dividerState.tabIndex}
+            aria-disabled={dividerState.ariaDisabled}
+            aria-orientation="vertical"
+            aria-valuenow={dividerState.currentWidth}
+            aria-valuemin={dividerState.minWidth}
+            aria-valuemax={dividerState.maxWidth}
+            aria-label={t("fileExplorer.divider.resizeAria")}
           />
         </>
       )}
       <div className="fexp-tree-pane">
         <FileTree
           key={contextScope}
+          ref={fileTreeRef}
           files={files}
           theaterId={theaterId}
           contextKey={contextScope}
           selectedPath={selectedPath}
           revealTarget={revealTarget}
           onSelect={handleSelect}
+          onContextMenu={handleOpenContextMenu}
           t={t}
         />
       </div>
+      {activeContextMenu && (
+        <FileContextMenu
+          key={activeContextMenu.id}
+          anchor={activeContextMenu.anchor}
+          boundaryRef={rootRef}
+          returnFocusPath={activeContextMenu.returnFocusPath}
+          t={t}
+          onAction={(action) => handleContextAction(action, activeContextMenu.entry)}
+          onClose={() => setActiveContextMenu(null)}
+          onRestoreFocus={handleRestoreContextMenuFocus}
+        />
+      )}
+      {feedback && (
+        <div key={feedback.id} className="fexp-inline-toast" role="status" aria-live="polite">
+          {feedback.message}
+        </div>
+      )}
     </div>
   );
 }
