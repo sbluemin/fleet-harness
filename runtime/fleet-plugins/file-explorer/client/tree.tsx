@@ -105,6 +105,12 @@ export function isCurrentContextRequest(requestContextKey: string, currentContex
   return requestContextKey === currentContextKey;
 }
 
+// 탭 복귀 시 git 배지를 다시 읽을지 판정한다 — 외부 터미널의 add/commit 같은
+// git 메타데이터 전용 변경은 fs.watch가 감지하지 못하므로 focus 복귀가 갱신 기회다.
+export function shouldRefreshGitStatusOnVisibility(visibilityState: string): boolean {
+  return visibilityState === "visible";
+}
+
 export async function loadFilterDescendants({ entries, cachedResults, files, showHidden, isCurrent, onFolderResult }: FilterDescendantLoadOptions): Promise<void> {
   const pending: FolderEntry[] = [];
   const knownResults = new Map(cachedResults);
@@ -304,6 +310,15 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     if (!theaterId) return;
     void refreshGitStatus();
     return () => { gitStatusRequestRef.current += 1; };
+  }, [refreshGitStatus, theaterId]);
+
+  useEffect(() => {
+    if (!theaterId) return;
+    const handleVisibilityChange = () => {
+      if (shouldRefreshGitStatusOnVisibility(document.visibilityState)) void refreshGitStatus();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [refreshGitStatus, theaterId]);
 
   useEffect(() => {

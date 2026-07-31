@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { mapGitStatusBadge, triggerManualRefresh } from "../client/tree.js";
+import { mapGitStatusBadge, shouldRefreshGitStatusOnVisibility, triggerManualRefresh } from "../client/tree.js";
 
 describe("mapGitStatusBadge", () => {
   it("maps git states to their fixed badge letter and accessible message key", () => {
@@ -32,5 +32,13 @@ describe("triggerManualRefresh", () => {
 
     expect(refreshTree).toHaveBeenCalledOnce();
     expect(refreshGitStatus).toHaveBeenCalledOnce();
+  });
+});
+
+describe("shouldRefreshGitStatusOnVisibility", () => {
+  it("refreshes only when the tab becomes visible", () => {
+    expect(shouldRefreshGitStatusOnVisibility("visible")).toBe(true);
+    expect(shouldRefreshGitStatusOnVisibility("hidden")).toBe(false);
+    expect(shouldRefreshGitStatusOnVisibility("prerender")).toBe(false);
   });
 });
