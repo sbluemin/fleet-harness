@@ -118,6 +118,38 @@ describe("upstream credential", () => {
   });
 });
 
+describe("anthropic passthrough", () => {
+  it("relays a claude model to the Anthropic subscription without translating", async () => {
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("event: message_stop\n\n", { status: 200, headers: { "content-type": "text/event-stream" } }),
+    );
+    const router = createAiGatewayRouter({ gateway, readAuth, readAnthropicToken: () => "oauth-token" });
+    const grant = router.issueToken();
+    const res = response();
+    await router.handle(ctx({ res, token: grant.token, model: "claude-sonnet-4-6" }));
+
+    expect(res.status).toBe(200);
+    // 번역 게이트웨이는 건드리지 않는다.
+    expect(streamSpy).not.toHaveBeenCalled();
+    const [url, init] = fetchSpy.mock.calls[0] ?? [];
+    expect(String(url)).toContain("api.anthropic.com");
+    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer oauth-token");
+    fetchSpy.mockRestore();
+  });
+
+  it("refuses a claude model when no subscription token is present", async () => {
+    const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth, readAnthropicToken: () => null });
+    const grant = router.issueToken();
+    const res = response();
+    await router.handle(ctx({ res, token: grant.token, model: "claude-sonnet-4-6" }));
+
+    expect(res.status).toBe(401);
+    expect(res.body).toContain("Anthropic subscription");
+  });
+});
+
 describe("route surface", () => {
   it("answers the Claude Code connectivity probe", async () => {
     const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
@@ -242,9 +274,10 @@ function ctx(options: {
   readonly token?: string;
   readonly pathname?: string;
   readonly method?: string;
+  readonly model?: string;
 }): RouteHandlerContext {
   const payload = JSON.stringify({
-    model: "claude-sonnet-4-6",
+    model: options.model ?? "claude-gateway--gpt-5.5",
     messages: [{ role: "user", content: "Hello" }],
     max_tokens: 128,
     stream: true,

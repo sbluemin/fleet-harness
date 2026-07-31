@@ -32,6 +32,24 @@ export interface CodexSubscriptionAuth {
   readonly accountId: string;
 }
 
+export const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
+
+/** Claude Code의 claude.ai 구독 로그인이 keychain에 남긴 OAuth 토큰. */
+export function readAnthropicSubscriptionToken(): string | null {
+  try {
+    const raw = execFileSync(
+      "security",
+      ["find-generic-password", "-s", "Claude Code-credentials", "-w"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    );
+    const parsed = JSON.parse(raw) as { readonly claudeAiOauth?: { readonly accessToken?: unknown } };
+    const token = parsed.claudeAiOauth?.accessToken;
+    return typeof token === "string" && token.length > 0 ? token : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Cursor CLI/IDE 로그인이 keychain에 남긴 구독 토큰. */
 export function readCursorSubscriptionToken(): string | null {
   try {
@@ -84,6 +102,7 @@ export interface AiGatewayRouteDeps {
   /** 테스트가 구독 토큰 조회를 대체한다. */
   readonly readAuth?: () => CodexSubscriptionAuth | null;
   readonly readCursorToken?: () => string | null;
+  readonly readAnthropicToken?: () => string | null;
 }
 
 export interface AiGatewayRouter extends AiGatewayTokenIssuer {
@@ -147,7 +166,18 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
 
     // 요청이 지목한 모델이 어느 구독으로 가는지 정한다. env 오버라이드가 있으면 그쪽이 이긴다.
     const requested = process.env[AI_GATEWAY_MODEL_ENV] ?? body.model;
-    const target = findGatewayModel(requested) ?? GATEWAY_MODELS[0]!;
+    const target = findGatewayModel(requested);
+
+    // 카탈로그 밖의 모델은 Anthropic 자기 모델이다. 변환 없이 구독으로 원문 중계한다.
+    if (!target) {
+      const anthropicToken = (deps.readAnthropicToken ?? readAnthropicSubscriptionToken)();
+      if (!anthropicToken) {
+        writeAnthropicError(res, 401, "authentication_error", "No Anthropic subscription token was found. Run `claude` and sign in first.");
+        return true;
+      }
+      await proxyToAnthropic(req, res, body, anthropicToken);
+      return true;
+    }
 
     let credential: string;
     let chatgptAccountId = "";
@@ -219,6 +249,51 @@ export function registerAiGatewayRoutes(
   const router = createAiGatewayRouter(deps);
   registerRouter(ctx, AI_GATEWAY_ROUTE_SEGMENT, router.handle);
   return { enabled: true, issueToken: router.issueToken };
+}
+
+/** Anthropic 모델은 번역하지 않는다. 요청 본문과 응답 스트림을 그대로 통과시킨다. */
+async function proxyToAnthropic(
+  req: { readonly headers: Record<string, unknown> },
+  res: {
+    writeHead(status: number, headers: Record<string, string>): unknown;
+    write(chunk: Uint8Array): boolean;
+    end(body?: string): unknown;
+    once(event: "drain", listener: () => void): unknown;
+    readonly headersSent: boolean;
+  },
+  body: AnthropicMessagesRequest,
+  token: string,
+): Promise<void> {
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${token}`,
+    "content-type": "application/json",
+    "anthropic-version": typeof req.headers["anthropic-version"] === "string" ? req.headers["anthropic-version"] : "2023-06-01",
+  };
+  const beta = req.headers["anthropic-beta"];
+  if (typeof beta === "string") headers["anthropic-beta"] = beta;
+
+  const upstream = await fetch(ANTHROPIC_MESSAGES_URL, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+  const passthroughHeaders: Record<string, string> = {};
+  upstream.headers.forEach((value, key) => {
+    if (key === "content-encoding" || key === "content-length" || key === "transfer-encoding") return;
+    passthroughHeaders[key] = value;
+  });
+  res.writeHead(upstream.status, passthroughHeaders);
+  if (!upstream.body) {
+    res.end();
+    return;
+  }
+  const reader = upstream.body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!res.write(value)) await drain(res);
+  }
+  res.end();
 }
 
 function createGatewayFor(model: GatewayModel, chatgptAccountId: string): AnthropicMessagesGateway {
