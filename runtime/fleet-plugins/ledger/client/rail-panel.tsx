@@ -95,6 +95,7 @@ function TrendSection({ daily, language, t }: {
   return (
     <div className="ledger-trend">
       <h3>{t("ledger.trend.title")}</h3>
+      <p className="ledger-trend-description">{t("ledger.trend.explanation")}</p>
       <div className="ledger-trend-bars" role="group" aria-label={t("ledger.trend.aria")}>
         {daily.map((point) => {
           const day = formatDay(point.day);

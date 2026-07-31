@@ -21,6 +21,8 @@ interface Accumulator {
 
 class AggregateOverflowError extends Error {}
 
+const MAX_DAILY_DAYS = 366;
+
 function emptyAccumulator(): Accumulator {
   return { input: 0, output: 0, cacheRead: 0, costUsd: 0, messages: 0 };
 }
@@ -45,6 +47,31 @@ export function localDayKey(atMs: number): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function localDateFromDayKey(day: string): Date {
+  const date = new Date(0);
+  date.setFullYear(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)));
+  date.setHours(12, 0, 0, 0);
+  return date;
+}
+
+function fillDailyPoints(observed: readonly LedgerDailyPoint[]): LedgerDailyPoint[] {
+  if (observed.length <= 1) return [...observed];
+  const lastDay = observed[observed.length - 1]!.day;
+  const cutoffDate = localDateFromDayKey(lastDay);
+  cutoffDate.setDate(cutoffDate.getDate() - (MAX_DAILY_DAYS - 1));
+  const cutoffDay = localDayKey(cutoffDate.getTime());
+  const firstDay = observed[0]!.day < cutoffDay ? cutoffDay : observed[0]!.day;
+  const costs = new Map(observed.map((point) => [point.day, point.costUsd]));
+  const daily: LedgerDailyPoint[] = [];
+  const current = localDateFromDayKey(firstDay);
+  while (true) {
+    const day = localDayKey(current.getTime());
+    daily.push({ day, costUsd: costs.get(day) ?? 0 });
+    if (day === lastDay) return daily;
+    current.setDate(current.getDate() + 1);
+  }
 }
 
 function usageOf(value: Accumulator): LedgerUsage {
@@ -187,9 +214,10 @@ function buildSummaryUnchecked(
       costUsd: value.totals.costUsd,
     }))
     .sort((a, b) => b.costUsd - a.costUsd || (a.client < b.client ? -1 : a.client > b.client ? 1 : 0));
-  const daily: LedgerDailyPoint[] = [...dailyMap.entries()]
+  const observedDaily: LedgerDailyPoint[] = [...dailyMap.entries()]
     .map(([day, costUsd]) => ({ day, costUsd }))
     .sort((a, b) => a.day < b.day ? -1 : a.day > b.day ? 1 : 0);
+  const daily = fillDailyPoints(observedDaily);
 
   return {
     schemaVersion: 1,

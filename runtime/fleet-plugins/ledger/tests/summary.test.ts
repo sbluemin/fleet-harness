@@ -11,6 +11,12 @@ import { buildSummary, localDayKey } from "../server/summary.js";
 const fixture = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "tokscale-report.json"), "utf8");
 const sessions = parseTokscaleOutput(fixture).sessions;
 
+function shiftLocalDate(atMs: number, days: number): number {
+  const date = new Date(atMs);
+  date.setDate(date.getDate() + days);
+  return date.getTime();
+}
+
 function operation(
   id: string,
   theaterId: string,
@@ -68,18 +74,51 @@ describe("buildSummary matching", () => {
     expect(dto.daily).toEqual([{ day: "2026-07-15", costUsd: 4 }]);
   });
 
-  it("sorts separate local-day points in ascending order", () => {
+  it("fills an interior local-day gap with a zero-cost point in ascending order", () => {
     const earlier = new Date(2026, 6, 14, 12).getTime();
-    const later = new Date(2026, 6, 16, 12).getTime();
+    const middle = shiftLocalDate(earlier, 1);
+    const later = shiftLocalDate(earlier, 2);
     const dto = buildSummary([
       { ...sessions[0]!, lastActive: later, costUsd: 3 },
       { ...sessions[1]!, lastActive: earlier, costUsd: 1 },
     ], [], { theaterId: null, window: "week" });
 
     expect(dto.daily).toEqual([
-      { day: "2026-07-14", costUsd: 1 },
-      { day: "2026-07-16", costUsd: 3 },
+      { day: localDayKey(earlier), costUsd: 1 },
+      { day: localDayKey(middle), costUsd: 0 },
+      { day: localDayKey(later), costUsd: 3 },
     ]);
+  });
+
+  it("keeps adjacent local days without inserting extra points", () => {
+    const first = new Date(2026, 6, 14, 12).getTime();
+    const second = shiftLocalDate(first, 1);
+    const dto = buildSummary([
+      { ...sessions[0]!, lastActive: second, costUsd: 3 },
+      { ...sessions[1]!, lastActive: first, costUsd: 1 },
+    ], [], { theaterId: null, window: "week" });
+
+    expect(dto.daily).toEqual([
+      { day: localDayKey(first), costUsd: 1 },
+      { day: localDayKey(second), costUsd: 3 },
+    ]);
+  });
+
+  it("clips spans over 366 local days before filling the most recent contiguous run", () => {
+    const latest = new Date(2026, 6, 15, 12).getTime();
+    const cutoff = shiftLocalDate(latest, -365);
+    const stale = shiftLocalDate(latest, -400);
+    const dto = buildSummary([
+      { ...sessions[0]!, lastActive: stale, costUsd: 1 },
+      { ...sessions[1]!, lastActive: cutoff, costUsd: 2 },
+      { ...sessions[2]!, lastActive: latest, costUsd: 3 },
+    ], [], { theaterId: null, window: "month" });
+
+    expect(dto.daily).toHaveLength(366);
+    expect(dto.daily[0]).toEqual({ day: localDayKey(cutoff), costUsd: 2 });
+    expect(dto.daily[1]).toEqual({ day: localDayKey(shiftLocalDate(cutoff, 1)), costUsd: 0 });
+    expect(dto.daily.at(-1)).toEqual({ day: localDayKey(latest), costUsd: 3 });
+    expect(dto.daily.some((point) => point.day === localDayKey(stale))).toBe(false);
   });
 
   it("returns no daily points for an empty session set", () => {

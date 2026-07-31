@@ -112,6 +112,9 @@ describe("Ledger rail status rendering", () => {
     expect(trend).not.toBeNull();
     expect(container.querySelector(".ledger-clients")?.firstElementChild).toBe(trend);
     expect(trend?.querySelectorAll(".ledger-trend-bar")).toHaveLength(2);
+    expect(trend?.querySelector(".ledger-trend-description")?.textContent).toBe(
+      "Each session's cost counts on the day it was last active, so a session spanning midnight lands entirely on the later day.",
+    );
     expect(trend?.textContent).toContain("Peak Jul 29 · $3.75");
     expect(trend?.textContent).toContain("Daily avg $2.50");
   });
