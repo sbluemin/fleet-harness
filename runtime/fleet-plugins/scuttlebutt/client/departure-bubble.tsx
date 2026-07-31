@@ -114,7 +114,13 @@ export function DepartureBubble({
       // 도착 버블과 같은 경계 — 전면 표면이 처리했거나 모달이 입력을 독점 중이면 받지 않는다.
       if (event.key !== "Escape" || event.defaultPrevented) return;
       if (document.querySelector('[aria-modal="true"]')) return;
-      setSelection((state) => dismissDepartureAnnouncement(state));
+      // 같은 window에 나중에 등록된 전면 핸들러(컨텍스트 메뉴·팝오버)는 이 시점에 아직
+      // preventDefault를 부르지 않았을 수 있다 — 디스패치 완료 후 다시 확인해 한 번의
+      // Escape가 전면 표면과 버블을 함께 닫지 않게 한다.
+      window.setTimeout(() => {
+        if (event.defaultPrevented) return;
+        setSelection((state) => dismissDepartureAnnouncement(state));
+      }, 0);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

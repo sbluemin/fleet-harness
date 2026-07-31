@@ -151,7 +151,13 @@ export function ArrivalBubble({
       // 모달 아래 위젯의 포인터 입력을 막는 layout.css 계약과 같은 경계다.
       if (event.key !== "Escape" || event.defaultPrevented) return;
       if (document.querySelector('[aria-modal="true"]')) return;
-      setSelection((state) => dismissArrivalAnnouncement(state));
+      // 같은 window에 나중에 등록된 전면 핸들러(컨텍스트 메뉴·팝오버)는 이 시점에 아직
+      // preventDefault를 부르지 않았을 수 있다 — 디스패치 완료 후 다시 확인해 한 번의
+      // Escape가 전면 표면과 버블을 함께 닫지 않게 한다.
+      window.setTimeout(() => {
+        if (event.defaultPrevented) return;
+        setSelection((state) => dismissArrivalAnnouncement(state));
+      }, 0);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

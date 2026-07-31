@@ -89,7 +89,7 @@ describe("ArrivalBubble operation deep link", () => {
     expect(container.querySelector(".scuttlebutt-arrival-bubble")).toBeNull();
   });
 
-  it("dismisses the visible bubble on Escape", () => {
+  it("dismisses the visible bubble on Escape", async () => {
     const arrivals = createArrivals([]);
     const operations = createOperations();
 
@@ -97,12 +97,35 @@ describe("ArrivalBubble operation deep link", () => {
     act(() => arrivals.push([arrival("op-1", "Build finished")]));
     expect(container.querySelector(".scuttlebutt-arrival-bubble")).not.toBeNull();
 
-    act(() => {
+    // 판정은 디스패치 완료 후로 지연된다 — macrotask를 한 번 비워 확정시킨다.
+    await act(async () => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      await new Promise((resolve) => setTimeout(resolve, 10));
     });
 
     expect(operations.focused).toEqual([]);
     expect(container.querySelector(".scuttlebutt-arrival-bubble")).toBeNull();
+  });
+
+  it("ignores Escape preempted by a window handler registered after the bubble", async () => {
+    const arrivals = createArrivals([]);
+    const operations = createOperations();
+
+    renderArrival(arrivals.capability, operations);
+    act(() => arrivals.push([arrival("op-1", "Build finished")]));
+
+    // 컨텍스트 메뉴·팝오버처럼 버블보다 늦게 등록된 전면 핸들러가 preventDefault로 선점한다.
+    const foreground = (event: KeyboardEvent) => {
+      if (event.key === "Escape") event.preventDefault();
+    };
+    window.addEventListener("keydown", foreground);
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", cancelable: true }));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    window.removeEventListener("keydown", foreground);
+
+    expect(container.querySelector(".scuttlebutt-arrival-bubble")).not.toBeNull();
   });
 
   it("keeps the bubble when Escape was already handled by a foreground surface", () => {
