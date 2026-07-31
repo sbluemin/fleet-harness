@@ -91,7 +91,7 @@ export async function readTheaterGitStatus(
     ];
     const [prefixOutput, statusOutput] = await Promise.all([
       execGit(gitArgs(["rev-parse", "--show-prefix"]), options),
-      execGit(gitArgs(["status", "--porcelain=v1", "-z", "--untracked-files=all"]), options),
+      execGit(gitArgs(["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "."]), options),
     ]);
     const prefix = stripTrailingLineBreak(prefixOutput);
     const statuses = scopeGitStatusesToTheater(parseGitStatusPorcelainV1Z(statusOutput), prefix);
@@ -154,7 +154,7 @@ function classifyGitStatus(statusPair: string): GitFileStatus | null {
   if (statusPair === "??") return "untracked";
   if (UNMERGED_STATUS_PAIRS.has(statusPair)) return "modified";
   if (statusPair.includes("D")) return "deleted";
-  if ([...statusPair].some((status) => status === "A" || status === "M" || status === "R" || status === "C")) {
+  if ([...statusPair].some((status) => status === "A" || status === "M" || status === "R" || status === "C" || status === "T")) {
     return "modified";
   }
   return null;

@@ -314,11 +314,26 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
 
   useEffect(() => {
     if (!theaterId) return;
+    // 탭 전환(visibilitychange)과 앱 복귀(window focus) 모두 갱신 기회다.
+    // 나란히 둔 외부 터미널의 git add/commit은 fs.watch가 못 잡으므로.
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        void refreshGitStatus();
+      }, 200);
+    };
     const handleVisibilityChange = () => {
-      if (shouldRefreshGitStatusOnVisibility(document.visibilityState)) void refreshGitStatus();
+      if (shouldRefreshGitStatusOnVisibility(document.visibilityState)) scheduleRefresh();
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", scheduleRefresh);
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", scheduleRefresh);
+    };
   }, [refreshGitStatus, theaterId]);
 
   useEffect(() => {

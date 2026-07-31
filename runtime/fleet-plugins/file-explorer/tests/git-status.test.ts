@@ -19,6 +19,7 @@ describe("git status porcelain parser", () => {
       "R  새 이름.ts",
       "old name.ts",
       "A  added.ts",
+      " T type-changed.sh",
       "!! ignored.log",
       "",
     ].join("\0");
@@ -30,6 +31,7 @@ describe("git status porcelain parser", () => {
       { gitPath: "worktree-deleted.ts", status: "deleted" },
       { gitPath: "새 이름.ts", status: "modified" },
       { gitPath: "added.ts", status: "modified" },
+      { gitPath: "type-changed.sh", status: "modified" },
     ]);
   });
 
