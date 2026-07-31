@@ -6,7 +6,7 @@ import type { OperationNode } from "@fleet-console/sdk/operations";
 import { describe, expect, it } from "vitest";
 
 import { parseTokscaleOutput } from "../server/parser.js";
-import { buildSummary } from "../server/summary.js";
+import { buildSummary, localDayKey } from "../server/summary.js";
 
 const fixture = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "tokscale-report.json"), "utf8");
 const sessions = parseTokscaleOutput(fixture).sessions;
@@ -54,6 +54,52 @@ describe("buildSummary matching", () => {
     const dto = buildSummary(sessions, [], { theaterId: null, window: "week" });
     expect(dto.operations).toEqual([]);
     expect(dto.clients.map((entry) => entry.client)).toEqual(["claude", "codex", "opencode"]);
+  });
+
+  it("merges session costs from the same local day into one daily point", () => {
+    const morning = new Date(2026, 6, 15, 8).getTime();
+    const evening = new Date(2026, 6, 15, 20).getTime();
+    const dto = buildSummary([
+      { ...sessions[0]!, lastActive: morning, costUsd: 1.25 },
+      { ...sessions[1]!, lastActive: evening, costUsd: 2.75 },
+    ], [], { theaterId: null, window: "week" });
+
+    expect(localDayKey(morning)).toBe("2026-07-15");
+    expect(dto.daily).toEqual([{ day: "2026-07-15", costUsd: 4 }]);
+  });
+
+  it("sorts separate local-day points in ascending order", () => {
+    const earlier = new Date(2026, 6, 14, 12).getTime();
+    const later = new Date(2026, 6, 16, 12).getTime();
+    const dto = buildSummary([
+      { ...sessions[0]!, lastActive: later, costUsd: 3 },
+      { ...sessions[1]!, lastActive: earlier, costUsd: 1 },
+    ], [], { theaterId: null, window: "week" });
+
+    expect(dto.daily).toEqual([
+      { day: "2026-07-14", costUsd: 1 },
+      { day: "2026-07-16", costUsd: 3 },
+    ]);
+  });
+
+  it("returns no daily points for an empty session set", () => {
+    expect(buildSummary([], [], { theaterId: null, window: "week" }).daily).toEqual([]);
+  });
+
+  it("fails closed when daily cost accumulation overflows", () => {
+    const lastActive = new Date(2026, 6, 15, 12).getTime();
+    const dto = buildSummary([
+      { ...sessions[0]!, lastActive, costUsd: Number.MAX_VALUE },
+      { ...sessions[1]!, lastActive, costUsd: Number.MAX_VALUE },
+    ], [], { theaterId: null, window: "week" });
+
+    expect(dto).toMatchObject({
+      totals: { costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0 },
+      operations: [],
+      clients: [],
+      daily: [],
+      source: { status: "unreadable", skippedSessions: 2 },
+    });
   });
 
   it("aggregates linked and unclaimed sessions together in the same client total", () => {
@@ -105,6 +151,7 @@ describe("buildSummary matching", () => {
     const scoped = buildSummary(sessions, operations, { theaterId: "theater-a", window: "week" });
     const all = buildSummary(sessions, operations, { theaterId: null, window: "week" });
     expect(scoped.clients).toEqual(all.clients);
+    expect(scoped.daily).toEqual(all.daily);
     expect(scoped.clients).toEqual([
       { client: "claude", sessions: 1, usage: { input: 1_200_000, output: 42_000, cacheRead: 900_000 }, costUsd: 2.25 },
       { client: "codex", sessions: 1, usage: { input: 800_000, output: 30_000, cacheRead: 100_000 }, costUsd: 1.75 },
@@ -212,6 +259,7 @@ describe("buildSummary matching", () => {
     ], { theaterId: null, window: "week" });
     expect(dto.source).toMatchObject({ status: "unreadable", skippedSessions: 2 });
     expect(dto.totals).toEqual({ costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0 });
+    expect(dto.daily).toEqual([]);
     expect(JSON.stringify(dto)).not.toContain('"costUsd":null');
   });
 

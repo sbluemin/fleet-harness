@@ -1,7 +1,7 @@
 import type { OperationNode } from "@fleet-console/sdk/operations";
 
 import { TOKSCALE_VERSION } from "./cli.js";
-import type { LedgerClientDto, LedgerOperationDto, LedgerSourceStatus, LedgerSummaryDto, LedgerUsage, LedgerWindow, TokscaleSession } from "./types.js";
+import type { LedgerClientDto, LedgerDailyPoint, LedgerOperationDto, LedgerSourceStatus, LedgerSummaryDto, LedgerUsage, LedgerWindow, TokscaleSession } from "./types.js";
 
 interface OperationClaim {
   readonly operation: OperationNode;
@@ -37,6 +37,14 @@ function addFinite(left: number, right: number): number {
   const result = left + right;
   if (!Number.isFinite(result)) throw new AggregateOverflowError("ledger aggregate overflow");
   return result;
+}
+
+export function localDayKey(atMs: number): string {
+  const date = new Date(atMs);
+  const year = String(date.getFullYear()).padStart(4, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function usageOf(value: Accumulator): LedgerUsage {
@@ -93,6 +101,7 @@ export function buildSummary(
       totals: { costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0 },
       operations: [],
       clients: [],
+      daily: [],
       source: {
         status: "unreadable",
         skippedSessions: skippedSessions + sessions.length,
@@ -161,11 +170,14 @@ function buildSummaryUnchecked(
     totalValues.messages = addFinite(totalValues.messages, operation.messages);
   }
   const clientMap = new Map<string, { sessions: number; totals: Accumulator }>();
+  const dailyMap = new Map<string, number>();
   for (const session of sessions) {
     const client = clientMap.get(session.client) ?? { sessions: 0, totals: emptyAccumulator() };
     client.sessions = addFinite(client.sessions, 1);
     addSession(client.totals, session);
     clientMap.set(session.client, client);
+    const day = localDayKey(session.lastActive);
+    dailyMap.set(day, addFinite(dailyMap.get(day) ?? 0, session.costUsd));
   }
   const clients: LedgerClientDto[] = [...clientMap.entries()]
     .map(([client, value]) => ({
@@ -175,6 +187,9 @@ function buildSummaryUnchecked(
       costUsd: value.totals.costUsd,
     }))
     .sort((a, b) => b.costUsd - a.costUsd || (a.client < b.client ? -1 : a.client > b.client ? 1 : 0));
+  const daily: LedgerDailyPoint[] = [...dailyMap.entries()]
+    .map(([day, costUsd]) => ({ day, costUsd }))
+    .sort((a, b) => a.day < b.day ? -1 : a.day > b.day ? 1 : 0);
 
   return {
     schemaVersion: 1,
@@ -183,6 +198,7 @@ function buildSummaryUnchecked(
     totals: { ...usageOf(totalValues), costUsd: totalValues.costUsd, messages: totalValues.messages },
     operations: operationDtos,
     clients,
+    daily,
     source: { status, skippedSessions },
   };
 }

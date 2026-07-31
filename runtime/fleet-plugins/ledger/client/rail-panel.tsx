@@ -58,6 +58,68 @@ function ValueAmount({ parts, tier, className = "" }: {
   );
 }
 
+const TREND_DAY_MARKER = "{ledgerTrendDayValue}";
+const TREND_COST_MARKER = "{ledgerTrendCostValue}";
+const TREND_VALUE_MARKERS = /(\{ledgerTrendDayValue\}|\{ledgerTrendCostValue\})/;
+
+function TrendSummaryText({ t, message, day, cost }: {
+  readonly t: T;
+  readonly message: "ledger.trend.peak" | "ledger.trend.average";
+  readonly day?: string;
+  readonly cost: string;
+}) {
+  const text = t(message, { day: TREND_DAY_MARKER, cost: TREND_COST_MARKER });
+  return (
+    <span>
+      {text.split(TREND_VALUE_MARKERS).map((part, index) => {
+        if (part === TREND_DAY_MARKER) return <strong key={`${part}-${index}`}>{day}</strong>;
+        if (part === TREND_COST_MARKER) return <strong key={`${part}-${index}`}>{cost}</strong>;
+        return part;
+      })}
+    </span>
+  );
+}
+
+function TrendSection({ daily, language, t }: {
+  readonly daily: LedgerSummaryDto["daily"];
+  readonly language: RailPanelContext["language"];
+  readonly t: T;
+}) {
+  const dayFormatter = new Intl.DateTimeFormat(language, { month: "short", day: "numeric" });
+  const formatDay = (day: string) => dayFormatter.format(new Date(day + "T12:00:00"));
+  const maxCost = Math.max(...daily.map((point) => point.costUsd));
+  const peak = daily.reduce((current, point) => point.costUsd > current.costUsd ? point : current);
+  const average = daily.reduce((total, point) => total + point.costUsd / daily.length, 0);
+  const averageCost = formatCost(Number.isFinite(average) ? average : 0);
+
+  return (
+    <div className="ledger-trend">
+      <h3>{t("ledger.trend.title")}</h3>
+      <div className="ledger-trend-bars" role="group" aria-label={t("ledger.trend.aria")}>
+        {daily.map((point) => {
+          const day = formatDay(point.day);
+          const cost = formatCost(point.costUsd);
+          const label = t("ledger.trend.day", { day, cost });
+          const height = `${Math.max(3, maxCost > 0 ? (point.costUsd / maxCost) * 100 : 0)}%`;
+          return (
+            <span key={point.day} className="ledger-trend-bar" style={{ height }} tabIndex={0} role="img" aria-label={label}>
+              <span className="ledger-trend-tooltip" aria-hidden="true">{label}</span>
+            </span>
+          );
+        })}
+      </div>
+      <div className="ledger-trend-axis">
+        <span>{formatDay(daily[0]!.day)}</span>
+        <span>{formatDay(daily[daily.length - 1]!.day)}</span>
+      </div>
+      <div className="ledger-trend-summary">
+        <TrendSummaryText t={t} message="ledger.trend.peak" day={formatDay(peak.day)} cost={formatCost(peak.costUsd)} />
+        <TrendSummaryText t={t} message="ledger.trend.average" cost={averageCost} />
+      </div>
+    </div>
+  );
+}
+
 function LoadingState({ t }: { readonly t: T }) {
   return (
     <div className="ledger-state ledger-source-notice" data-ledger-source-status="bootstrapping">
@@ -259,6 +321,7 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
           </section>
 
           <section className="ledger-clients">
+            {visibleData.daily.length >= 2 ? <TrendSection daily={visibleData.daily} language={ctx.language} t={t} /> : null}
             <h3>{t("ledger.section.clients")}</h3>
             <p className="ledger-clients-description">{t("ledger.clients.explanation")}</p>
             <div className="ledger-client-list">

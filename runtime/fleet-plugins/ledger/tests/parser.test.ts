@@ -31,6 +31,28 @@ describe("parseTokscaleOutput", () => {
     expect(result.skippedSessions).toBe(1);
   });
 
+  it.each([
+    ["Number.MAX_SAFE_INTEGER", Number.MAX_SAFE_INTEGER],
+    ["a five-digit local year", new Date(10000, 0, 1, 12).getTime()],
+  ])("skips a session whose last_active is %s", (_label, lastActive) => {
+    const raw = JSON.parse(fixture) as Array<Record<string, unknown>>;
+    raw[0]!.last_active = lastActive;
+    const result = parseTokscaleOutput(JSON.stringify(raw));
+    expect(result.status).toBe("degraded");
+    expect(result.sessions).toHaveLength(2);
+    expect(result.skippedSessions).toBe(1);
+  });
+
+  it("accepts a timestamp at the four-digit local-year boundary", () => {
+    const boundary = new Date(9999, 11, 31, 12).getTime();
+    const [row] = JSON.parse(fixture) as Array<Record<string, unknown>>;
+    row!.created_at = boundary;
+    row!.last_active = boundary;
+    const result = parseTokscaleOutput(JSON.stringify([row]));
+    expect(result.status).toBe("ok");
+    expect(result.sessions[0]).toMatchObject({ createdAt: boundary, lastActive: boundary });
+  });
+
   // 실측: tokscale은 workspace를 판정하지 못한 세션(이 기기에서는 kimi 2건)에 null을 준다.
   // Theater 스코프는 Operation.theaterId로 걸므로 이 필드는 쓰지 않는다 — 필수로 요구하면
   // 콘솔이 실제로 기동하는 CLI의 사용량이 통째로 사라진다.

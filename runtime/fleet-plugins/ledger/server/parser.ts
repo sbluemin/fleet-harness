@@ -16,6 +16,14 @@ function isNonNegativeSafeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
+function isRepresentableTimestamp(value: unknown): value is number {
+  if (!isNonNegativeSafeInteger(value)) return false;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return false;
+  const localYear = date.getFullYear();
+  return localYear >= 0 && localYear <= 9999;
+}
+
 function isNonNegativeFinite(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
@@ -47,8 +55,8 @@ function parseSession(value: unknown): TokscaleSession | null {
     // workspace/workspace_label은 요구하지 않는다 — Theater 스코프는 Operation.theaterId로 걸므로
     // 이 필드를 쓰지 않고, tokscale은 workspace를 판정하지 못하면 null을 준다(실측: kimi 세션).
     // 필수로 두면 쓰지도 않는 필드 때문에 정상 사용량을 통째로 버리게 된다.
-    || !isNonNegativeSafeInteger(value.created_at)
-    || !isNonNegativeSafeInteger(value.last_active)
+    || !isRepresentableTimestamp(value.created_at)
+    || !isRepresentableTimestamp(value.last_active)
     || !isNonNegativeSafeInteger(value.total_input_tokens)
     || !isNonNegativeSafeInteger(value.total_output_tokens)
     || !isNonNegativeSafeInteger(value.total_cache_read)
