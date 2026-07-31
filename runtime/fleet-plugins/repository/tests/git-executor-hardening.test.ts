@@ -62,11 +62,14 @@ describe("runGit hardening", () => {
     const environment = (options as { readonly env?: NodeJS.ProcessEnv }).env ?? {};
     expect(environment.GIT_OPTIONAL_LOCKS).toBe("0");
     expect(environment.GIT_TERMINAL_PROMPT).toBe("0");
+    // 알 수 없는 remote helper의 zero-click 실행을 막는 default-deny transport allowlist.
+    expect(environment.GIT_ALLOW_PROTOCOL).toBe("ssh:git:http:https:file");
     expect(environment.LC_ALL).toBe("C");
     expect(environment).not.toHaveProperty("GIT_DIR");
     expect(environment).not.toHaveProperty("git_work_tree");
     expect(environment).not.toHaveProperty("GIT_CONFIG_COUNT");
     expect(Object.keys(environment).filter((key) => key.toUpperCase().startsWith("GIT_")).sort()).toEqual([
+      "GIT_ALLOW_PROTOCOL",
       "GIT_OPTIONAL_LOCKS",
       "GIT_TERMINAL_PROMPT",
     ]);

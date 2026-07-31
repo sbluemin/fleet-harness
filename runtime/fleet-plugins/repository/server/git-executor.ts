@@ -38,6 +38,9 @@ function sanitizeGitEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessE
   }
   sanitized.GIT_OPTIONAL_LOCKS = "0";
   sanitized.GIT_TERMINAL_PROMPT = "0";
+  // repo config으로 덮을 수 없는 default-deny transport allowlist — 알 수 없는
+  // remote helper(`<vcs>::` URL, remote.<name>.vcs)의 zero-click 실행을 막는다.
+  sanitized.GIT_ALLOW_PROTOCOL = "ssh:git:http:https:file";
   sanitized.LC_ALL = "C";
   return sanitized;
 }

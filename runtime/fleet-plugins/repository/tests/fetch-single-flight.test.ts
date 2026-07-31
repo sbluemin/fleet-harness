@@ -192,4 +192,30 @@ describe("Repository fetch single-flight", () => {
       payload: { ok: true, skipped: "throttled", lastFetchAt: expect.any(String) },
     }]);
   });
+
+  it("treats an empty FETCH_HEAD as a failed fetch and runs again", async () => {
+    // 실패한 fetch가 남긴 0바이트 FETCH_HEAD는 성공 증거가 아니다 — throttle하지 않고
+    // 다음 auto 요청이 실제 fetch를 실행해야 한다.
+    await fs.writeFile(path.join(gitDir, "FETCH_HEAD"), "");
+
+    let fetchCalls = 0;
+    runGitMock.mockImplementation(async (args: readonly string[]) => {
+      if (args[0] === "rev-parse") return gitResult(`${gitDir}\n`);
+      fetchCalls += 1;
+      return gitResult("", "");
+    });
+
+    const writes: JsonWrite[] = [];
+    await handleRepositoryFetch(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(tmpDir, { theaterId: "theater", mode: "auto" }, writes),
+    );
+
+    expect(fetchCalls).toBe(1);
+    expect(writes).toEqual([{
+      status: 200,
+      payload: expect.objectContaining({ ok: true, fetchedAt: expect.any(String) }),
+    }]);
+  });
 });

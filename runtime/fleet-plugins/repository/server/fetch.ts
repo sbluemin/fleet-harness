@@ -53,8 +53,11 @@ async function readLastFetchAt(gitDirs: readonly string[]): Promise<Date | null>
   let newest: Date | null = null;
   for (const gitDir of gitDirs) {
     try {
-      const { mtime } = await fs.stat(path.join(gitDir, "FETCH_HEAD"));
-      if (!newest || mtime.getTime() > newest.getTime()) newest = mtime;
+      const stats = await fs.stat(path.join(gitDir, "FETCH_HEAD"));
+      // 실패한 fetch도 FETCH_HEAD를 0바이트로 갱신한다 — 비어 있으면 성공 증거가 아니므로
+      // throttle 증거에서 제외한다(그대로면 5분간 거짓 "동기화됨"이 된다).
+      if (stats.size === 0) continue;
+      if (!newest || stats.mtime.getTime() > newest.getTime()) newest = stats.mtime;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
