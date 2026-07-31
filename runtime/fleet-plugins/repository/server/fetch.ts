@@ -15,6 +15,9 @@ type FetchResult =
   | { readonly ok: true; readonly fetchedAt: string; readonly lastFetchAt: string; readonly pruned: number; readonly newRefs: number };
 
 const autoFetchInFlight = new Map<string, Promise<FetchResult>>();
+// 성공한 fetch의 시각(common dir 기준) — refs가 0개인 원격은 성공해도 FETCH_HEAD가
+// 0바이트라 파일 증거만으로는 실패와 구분되지 않는다. 데몬 수명 내에서만 유효한 보조 증거다.
+const lastSuccessfulFetchAt = new Map<string, number>();
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -69,10 +72,13 @@ function countFetchProgress(stderr: string, marker: string): number {
   return stderr.split(/\r?\n/).filter((line) => line.includes(marker)).length;
 }
 
-async function readThrottleResult(gitDirs: readonly string[]): Promise<FetchResult | null> {
-  const lastFetchAt = await readLastFetchAt(gitDirs);
-  if (!lastFetchAt || Date.now() - lastFetchAt.getTime() >= AUTO_FETCH_THROTTLE_MS) return null;
-  return { ok: true, skipped: "throttled", lastFetchAt: lastFetchAt.toISOString() };
+async function readThrottleResult(gitDirs: readonly string[], commonDir: string): Promise<FetchResult | null> {
+  const fsNewest = await readLastFetchAt(gitDirs);
+  const recorded = lastSuccessfulFetchAt.get(commonDir);
+  let newest = fsNewest;
+  if (recorded !== undefined && (!newest || recorded > newest.getTime())) newest = new Date(recorded);
+  if (!newest || Date.now() - newest.getTime() >= AUTO_FETCH_THROTTLE_MS) return null;
+  return { ok: true, skipped: "throttled", lastFetchAt: newest.toISOString() };
 }
 
 async function fetchRepository(gitCwd: string): Promise<FetchResult> {
@@ -87,6 +93,8 @@ async function fetchRepository(gitCwd: string): Promise<FetchResult> {
     // 기본 정책을 유지한 채 실행형 transport만 명시 차단한다.
     "protocol.ext.allow=never",
     "fetch",
+    // repo config의 remote.<name>.uploadpack이 로컬 transport에서 명령 실행되므로 표준 명령을 강제한다.
+    "--upload-pack=git-upload-pack",
     "--prune",
     "--no-tags",
   ], { cwd: gitCwd });
@@ -118,7 +126,7 @@ async function fetchHeadCandidates(identity: GitIdentity): Promise<readonly stri
 }
 
 async function runAutoFetch(gitCwd: string, identity: GitIdentity): Promise<FetchResult> {
-  const throttled = await readThrottleResult(await fetchHeadCandidates(identity));
+  const throttled = await readThrottleResult(await fetchHeadCandidates(identity), identity.commonDir);
   return throttled ?? fetchRepository(gitCwd);
 }
 
@@ -127,7 +135,7 @@ async function fetchAutoSingleFlight(gitCwd: string, identity: GitIdentity): Pro
   const existing = autoFetchInFlight.get(key);
   if (existing) {
     await existing;
-    const throttled = await readThrottleResult(await fetchHeadCandidates(identity));
+    const throttled = await readThrottleResult(await fetchHeadCandidates(identity), identity.commonDir);
     if (throttled) return throttled;
   }
 
@@ -183,6 +191,7 @@ export async function handleRepositoryFetch(
     const result = body.mode === "auto"
       ? await fetchAutoSingleFlight(gitCwd, identity)
       : await (autoFetchInFlight.get(identity.commonDir) ?? fetchRepository(gitCwd));
+    if ("fetchedAt" in result) lastSuccessfulFetchAt.set(identity.commonDir, Date.parse(result.fetchedAt));
     ctx.host.http.writeJson(res, 200, result);
   } catch (error) {
     if (error instanceof GitExecutorError) {

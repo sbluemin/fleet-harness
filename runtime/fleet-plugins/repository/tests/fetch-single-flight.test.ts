@@ -34,6 +34,8 @@ const FETCH_ARGS = [
   // protocol.allow=user는 ext를 허용으로 뒤집으므로 금지 — 실행형 transport만 차단한다.
   "protocol.ext.allow=never",
   "fetch",
+  // 로컬 transport는 repo config의 remote.<name>.uploadpack을 그대로 실행한다 — 표준 명령 강제.
+  "--upload-pack=git-upload-pack",
   "--prune",
   "--no-tags",
 ] as const;
@@ -216,6 +218,36 @@ describe("Repository fetch single-flight", () => {
     expect(writes).toEqual([{
       status: 200,
       payload: expect.objectContaining({ ok: true, fetchedAt: expect.any(String) }),
+    }]);
+  });
+
+  it("throttles after a successful fetch that leaves FETCH_HEAD empty", async () => {
+    // refs 0개 원격처럼 성공해도 FETCH_HEAD가 0바이트로 남는 경우 — 성공 기록(in-process)으로
+    // 다음 auto 요청은 throttle되어야 한다(fetchCalls가 1에서 멈춤).
+    let fetchCalls = 0;
+    runGitMock.mockImplementation(async (args: readonly string[]) => {
+      if (args[0] === "rev-parse") return gitResult(`${gitDir}\n`);
+      fetchCalls += 1;
+      return gitResult("", "");
+    });
+
+    const firstWrites: JsonWrite[] = [];
+    await handleRepositoryFetch(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(tmpDir, { theaterId: "theater", mode: "auto" }, firstWrites),
+    );
+    const secondWrites: JsonWrite[] = [];
+    await handleRepositoryFetch(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(tmpDir, { theaterId: "theater", mode: "auto" }, secondWrites),
+    );
+
+    expect(fetchCalls).toBe(1);
+    expect(secondWrites).toEqual([{
+      status: 200,
+      payload: { ok: true, skipped: "throttled", lastFetchAt: expect.any(String) },
     }]);
   });
 });
