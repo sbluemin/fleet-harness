@@ -1,6 +1,7 @@
 import type {
   FloatingWidgetArrival,
   FloatingWidgetArrivalsCapability,
+  FloatingWidgetOperationsCapability,
 } from "@fleet-console/sdk/floating";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
@@ -66,6 +67,7 @@ export function dismissArrivalAnnouncement(state: ArrivalSelectionState): Arriva
 
 export function ArrivalBubble({
   arrivals,
+  operations,
   locale,
   mascot,
   quiet,
@@ -73,13 +75,14 @@ export function ArrivalBubble({
   onShow,
 }: {
   readonly arrivals: FloatingWidgetArrivalsCapability;
+  readonly operations: FloatingWidgetOperationsCapability;
   readonly locale?: ConsoleLocale;
   readonly mascot: React.RefObject<HTMLButtonElement | null>;
   readonly quiet: boolean;
   readonly positionRevision: number;
   readonly onShow: () => void;
 }) {
-  const bubbleRef = React.useRef<HTMLButtonElement>(null);
+  const bubbleRef = React.useRef<HTMLDivElement>(null);
   const shownRef = React.useRef(new Set<string>());
   const onShowRef = React.useRef(onShow);
   React.useEffect(() => {
@@ -140,24 +143,72 @@ export function ArrivalBubble({
     return () => window.clearTimeout(timeout);
   }, [active, quiet]);
 
+  // 포커스는 pointerdown 기본 동작을 막아 터미널 쪽에 남겨 두므로 Escape는 창 단위로 받는다.
+  React.useEffect(() => {
+    if (!quiet || !active) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      // 전면 표면이 처리한 Escape(기본 동작 취소됨)나 모달 입력 독점 중에는 버블이 받지 않는다 —
+      // 모달 아래 위젯의 포인터 입력을 막는 layout.css 계약과 같은 경계다.
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      // 같은 window에 나중에 등록된 전면 핸들러(컨텍스트 메뉴·팝오버)는 이 시점에 아직
+      // preventDefault를 부르지 않았을 수 있다 — 디스패치 완료 후 다시 확인해 한 번의
+      // Escape가 전면 표면과 버블을 함께 닫지 않게 한다.
+      window.setTimeout(() => {
+        if (event.defaultPrevented) return;
+        setSelection((state) => dismissArrivalAnnouncement(state));
+      }, 0);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [active, quiet]);
+
   if (!quiet || !active) return null;
   const t = getT(locale);
-  const detail = active.arrivals.length === 1
-    ? active.arrivals[0]?.title ?? ""
-    : t("arrival.manyCount", { count: active.arrivals.length });
+  const dismissActive = () => {
+    setSelection((state) => dismissArrivalAnnouncement(state));
+  };
+  // 연 Operation으로 시선이 옮겨갔으니 알림은 그 자리에서 닫는다 — 남겨 두면 이미 본 소식이 계속 떠 있다.
+  const openOperation = (operationId: string) => {
+    operations.focus(operationId);
+    dismissActive();
+  };
+  // 한 번에 몰린 도착은 행으로 전개하되 카드가 길어지지 않게 큐 상한과 같은 수에서 자른다.
+  const visibleArrivals = active.arrivals.slice(0, MAX_ARRIVAL_ANNOUNCEMENTS);
+  const remainder = active.arrivals.length - visibleArrivals.length;
   return (
-    <button
+    <div
       ref={bubbleRef}
-      type="button"
       className="scuttlebutt-arrival-bubble"
-      tabIndex={-1}
       aria-live="polite"
       onPointerDown={(event) => event.preventDefault()}
-      onClick={() => setSelection((state) => dismissArrivalAnnouncement(state))}
     >
-      <span className="scuttlebutt-arrival-label">{t("arrival.done")}</span>
-      <span className="scuttlebutt-arrival-detail">{detail}</span>
-    </button>
+      <div className="scuttlebutt-arrival-body">
+        <span className="scuttlebutt-arrival-label">{t("arrival.done")}</span>
+        {visibleArrivals.map((arrival) => (
+          <button
+            key={arrival.operationId}
+            type="button"
+            className="scuttlebutt-arrival-open"
+            title={t("arrival.open")}
+            onClick={() => openOperation(arrival.operationId)}
+          >
+            <span className="scuttlebutt-arrival-detail">{arrival.title}</span>
+          </button>
+        ))}
+        {remainder > 0 ? (
+          <span className="scuttlebutt-arrival-more">{t("arrival.manyCount", { count: remainder })}</span>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        className="scuttlebutt-arrival-dismiss"
+        aria-label={t("bubble.dismiss")}
+        onClick={dismissActive}
+      >
+        ✕
+      </button>
+    </div>
   );
 }
 

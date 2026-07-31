@@ -2,10 +2,12 @@
 
 import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   FloatingWidgetArrival,
+  FloatingWidgetContext,
   FloatingWidgetDeparture,
   FloatingWidgetDescriptor,
 } from "@fleet-console/sdk/floating";
@@ -19,7 +21,7 @@ import {
   markDeparture,
   resetDepartureForTests,
 } from "../core/client/src/operation-departure.js";
-import { setState } from "../core/client/src/store.js";
+import { getState, setState } from "../core/client/src/store.js";
 import type { OperationNode } from "../core/client/src/types.js";
 
 let floatingWidgets: readonly FloatingWidgetDescriptor[] = [];
@@ -145,6 +147,38 @@ describe("FloatingWidgetLayer", () => {
     expect(received).toHaveLength(updateCountAfterUnmount);
   });
 
+  it("wires context.operations.focus to the store focus action and the operations route", () => {
+    setState({
+      operations: [
+        operation("alpha", "Alpha launch"),
+        operation("bravo", "Bravo finish"),
+      ],
+    });
+    let captured: FloatingWidgetContext | null = null;
+    const plugin: FleetClientPlugin = {
+      id: "operations",
+      floatingWidgets: [{
+        id: "probe",
+        render: (context) => {
+          captured = context;
+          return null;
+        },
+      }],
+    };
+
+    renderLayer([plugin]);
+    expect(captured?.operations).toBeDefined();
+
+    act(() => captured!.operations.focus("bravo"));
+
+    const state = getState();
+    expect(state.activeTheaterId).toBe("theater");
+    expect(state.activeOperationId).toBe("bravo");
+    expect(state.pendingOperationFocus).toBe("bravo");
+    // /operations 밖에서 눌러도 포커스가 보이려면 라우트 이동이 동반되어야 한다.
+    expect(lastPathname).toBe("/operations");
+  });
+
   it("delivers titled departures immediately, updates them, and unsubscribes on unmount", () => {
     const received: (readonly FloatingWidgetDeparture[])[] = [];
     setState({
@@ -191,13 +225,25 @@ describe("FloatingWidgetLayer", () => {
   });
 });
 
+let lastPathname = "";
+
+function LocationProbe() {
+  lastPathname = useLocation().pathname;
+  return null;
+}
+
 function renderLayer(plugins: readonly FleetClientPlugin[]): void {
   floatingWidgets = plugins.flatMap((plugin) => (plugin.floatingWidgets ?? []).map((descriptor) => ({
     ...descriptor,
     id: `${plugin.id}:${descriptor.id}`,
   })));
   act(() => {
-    root.render(<FloatingWidgetLayer />);
+    root.render(
+      <MemoryRouter initialEntries={["/settings"]}>
+        <LocationProbe />
+        <FloatingWidgetLayer />
+      </MemoryRouter>,
+    );
   });
 }
 
