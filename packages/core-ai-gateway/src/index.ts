@@ -1,5 +1,6 @@
 export * from "./anthropic.js";
 export * from "./canonical.js";
+export * from "./claude-context.js";
 export * from "./cursor-adapter.js";
 export * from "./gateway.js";
 export * from "./models.js";

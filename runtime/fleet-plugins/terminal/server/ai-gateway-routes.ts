@@ -8,6 +8,7 @@ import {
   CHATGPT_CODEX_RESPONSES_URL,
   CursorAdapter,
   CursorRequestBudgetError,
+  CursorSessionIdentityError,
   GATEWAY_MODEL_ALIAS_PREFIX,
   GATEWAY_MODELS,
   OpenAIResponsesAdapter,
@@ -15,6 +16,8 @@ import {
   buildAnthropicModelList,
   clampReasoningEffort,
   findGatewayModel,
+  hasClaudeOneMillionMarker,
+  projectAnthropicResponseUsage,
   reasoningEffortFromOutputConfig,
   upstreamModelId,
 } from "@dotobokuri/core-ai-gateway";
@@ -183,12 +186,19 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
         await proxyToAnthropic(req.headers, res, body, fetchImpl, controller.signal);
         return true;
       }
+      // Only marker-aware Claude Code sessions consume the projected 1M usage
+      // coordinate. Legacy unmarked ids remain on Claude's conservative 200k
+      // accounting path while still routing to the same provider model.
+      const claudeContextWindow = hasClaudeOneMillionMarker(body.model)
+        ? target.contextWindow
+        : undefined;
       if (target.provider === "kimi") {
         await proxyToKimi(
           req.headers,
           res,
           body,
           upstreamModelId(target),
+          claudeContextWindow,
           credential,
           fetchImpl,
           controller.signal,
@@ -202,7 +212,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
       );
       const upstream = await gateway.stream(body, {
         apiKey: credential,
-        ...(target.contextWindow ? { contextWindow: target.contextWindow } : {}),
+        ...(claudeContextWindow ? { contextWindow: claudeContextWindow } : {}),
         signal: controller.signal,
         model: upstreamModelId(target),
         ...(target.serviceTier ? { serviceTier: target.serviceTier } : {}),
@@ -224,6 +234,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
         res.end();
       } else {
         const invalidRequest = error instanceof CursorRequestBudgetError
+          || error instanceof CursorSessionIdentityError
           || error instanceof UnsupportedReasoningEffortError;
         writeAnthropicError(
           res,
@@ -290,6 +301,7 @@ async function proxyToKimi(
   res: GatewayProxyResponse,
   body: AnthropicMessagesRequest,
   model: string,
+  contextWindow: number | undefined,
   apiKey: string,
   fetchImpl: typeof fetch,
   signal: AbortSignal,
@@ -306,6 +318,7 @@ async function proxyToKimi(
     if (typeof value === "string") headers[name] = value;
   }
   await proxyAnthropicMessages(res, kimiRequestBody(body, model), {
+    contextWindow,
     fetchImpl,
     headers,
     signal,
@@ -340,6 +353,7 @@ interface GatewayProxyResponse {
 }
 
 interface AnthropicProxyOptions {
+  readonly contextWindow?: number;
   readonly fetchImpl: typeof fetch;
   readonly headers: Readonly<Record<string, string>>;
   readonly signal: AbortSignal;
@@ -379,17 +393,32 @@ async function proxyAnthropicMessages(
     res.end();
     return;
   }
-  const reader = upstream.body.getReader();
+  const rawBody = readResponseBody(upstream.body);
+  const responseBody = options.contextWindow === undefined
+    ? rawBody
+    : projectAnthropicResponseUsage(rawBody, {
+        contentType: upstream.headers.get("content-type"),
+        contextWindow: options.contextWindow,
+      });
+  for await (const chunk of responseBody) {
+    if (!res.write(chunk)) await drain(res);
+  }
+  res.end();
+}
+
+async function* readResponseBody(
+  body: ReadableStream<Uint8Array>,
+): AsyncGenerator<Uint8Array> {
+  const reader = body.getReader();
   try {
     for (;;) {
       const { done, value } = await reader.read();
-      if (done) break;
-      if (!res.write(value)) await drain(res);
+      if (done) return;
+      yield value;
     }
   } finally {
     reader.releaseLock();
   }
-  res.end();
 }
 
 function createGatewayFor(

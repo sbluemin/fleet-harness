@@ -470,14 +470,55 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(spec.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined();
     expect(cache.baseUrl).toBe(spec.env.ANTHROPIC_BASE_URL);
     expect(cache.fetchedAt).toEqual(expect.any(Number));
-    expect(cache.models).toHaveLength(23);
+    expect(cache.models).toHaveLength(17);
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast[1m]");
-    expect(ids).toContain("claude-gateway--cursor--auto");
-    expect(ids).toContain("claude-gateway--cursor--gpt-5.6-luna[1m]");
-    expect(ids).not.toContain("claude-gateway--cursor--gpt-5.6-luna-low[1m]");
+    expect(ids).toContain("claude-gateway--cursor--auto[1m]");
+    expect(ids).toContain("claude-gateway--cursor--kimi-k3");
+    expect(ids).toContain("claude-gateway--cursor--kimi-k3-1m[1m]");
+    expect(ids).not.toContain("claude-gateway--cursor--gpt-5.6-luna[1m]");
     expect(ids).toContain("claude-gateway--kimi--k3[1m]");
+    expect(ids).toContain("claude-gateway--kimi--k3-256k");
+    expect(ids.some((id) => id.includes("--codex--") && id.endsWith("[1m]"))).toBe(true);
+    expect(cache.models).toContainEqual(expect.objectContaining({
+      id: "claude-gateway--cursor--kimi-k3-1m[1m]",
+      display_name: "Cursor-Kimi-K3-1M (1M Context)",
+    }));
+    expect(cache.models).toContainEqual(expect.objectContaining({
+      id: "claude-gateway--kimi--k3[1m]",
+      display_name: "Moonshot-Kimi-K3-1M (1M Context)",
+    }));
     expect(cache.models.every((model) => model.id.startsWith("claude"))).toBe(true);
-    expect(cache.models.every((model) => /^(Codex|Cursor|Kimi)-/.test(model.display_name))).toBe(true);
+    expect(cache.models.every((model) => /^(Codex|Cursor|Moonshot-Kimi)-/.test(model.display_name))).toBe(true);
+  });
+
+  it("preserves an explicit Claude Code auto-compact window for gateway launches", async () => {
+    const claudeConfigDir = makeTempDir("fleet-claude-gateway-");
+    const resolve = createDefaultTerminalLaunchResolver({
+      cwd: "/work",
+      env: {
+        CLAUDE_CONFIG_DIR: claudeConfigDir,
+        CLAUDE_CODE_AUTO_COMPACT_WINDOW: "850000",
+        PATH: "/bin",
+      } as NodeJS.ProcessEnv,
+      agentRuntime: createFakeRuntime() as never,
+      aiGateway: {
+        routePath: "/plugins/terminal/ai-gateway",
+        origin: () => "http://127.0.0.1:43210",
+      },
+      infraServices: createFakeInfraServices() as never,
+      injectProfile: (async (profile: AgentCliProfile) => profile) as never,
+      resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
+        ...baseProfile,
+        id: "claude-gateway",
+        label: "Claude (Gateway • Experimental)",
+        cwd,
+        env: { ...env },
+      })) as never,
+    });
+
+    const spec = await resolve("/work", { sessionId: "session-gateway", cliId: "claude-gateway" });
+
+    expect(spec.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("850000");
   });
 
   it("does not bind an identity resolver for an explicit shell override", async () => {

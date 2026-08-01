@@ -250,9 +250,10 @@ function applyAiGatewayEnv(
     // 이게 있어야 /model picker가 게이트웨이의 GET /v1/models를 조회한다.
     CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
   };
-  // Keep Claude Code's auto-compact policy model-relative. The gateway projects
-  // each marked model's response usage onto Claude's 1M compatibility window,
-  // so a process-wide compact threshold would make picker models disagree.
+  // Marked provider usage is projected onto Claude Code's 1M coordinate, so its
+  // native auto policy remains model-relative. Do not inject the process-wide
+  // compact-window override: it would also retune built-in Claude models. An
+  // explicit user value already present in profile.env remains untouched above.
   try {
     writeClaudeGatewayModelCache(baseUrl, env);
   } catch (error) {

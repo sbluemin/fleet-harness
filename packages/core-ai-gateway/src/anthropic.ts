@@ -2,6 +2,8 @@ import type {
   CanonicalFunctionCallOutputItem,
   CanonicalInputContentPart,
   CanonicalInputMessage,
+  CanonicalNativeTool,
+  CanonicalNativeToolName,
   CanonicalReasoning,
   CanonicalResponseEvent,
   CanonicalResponseRequest,
@@ -13,9 +15,9 @@ import {
   normalizeCanonicalMessageContent,
   REASONING_EFFORTS,
 } from "./canonical.js";
+import { projectClaudeContextInputTokens } from "./claude-context.js";
 import {
   gatewayProviderDefault,
-  projectClaudeContextInputTokens,
   resolveGatewayModel,
   upstreamModelId,
 } from "./models.js";
@@ -92,6 +94,18 @@ export interface AnthropicTool {
   cache_control?: unknown;
 }
 
+/** Anthropic executes this tool server-side; there is deliberately no input_schema. */
+export interface AnthropicWebSearchTool {
+  type: "web_search_20250305";
+  name: "web_search";
+  allowed_domains?: string[];
+  blocked_domains?: string[];
+  max_uses?: number;
+  cache_control?: unknown;
+}
+
+export type AnthropicToolDefinition = AnthropicTool | AnthropicWebSearchTool;
+
 export type AnthropicToolChoice =
   | {
       type: "auto" | "any" | "none";
@@ -107,7 +121,7 @@ export interface AnthropicMessagesRequest {
   model: string;
   messages: AnthropicMessage[];
   system?: AnthropicSystemTextBlock[];
-  tools?: AnthropicTool[];
+  tools?: AnthropicToolDefinition[];
   tool_choice?: AnthropicToolChoice;
   metadata?: Record<string, unknown>;
   max_tokens: number;
@@ -127,6 +141,8 @@ export interface TranslateAnthropicRequestOptions {
   serviceTier?: "priority";
   /** Reasoning ladder supported by the selected upstream model. */
   reasoningEfforts?: readonly ReasoningEffort[];
+  /** Provider-owned tools supported by the selected adapter. */
+  nativeTools?: readonly CanonicalNativeToolName[];
 }
 
 export class UnsupportedAnthropicContentError extends TypeError {
@@ -158,19 +174,24 @@ export function translateAnthropicRequest(
   if (request.system !== undefined) {
     canonical.instructions = request.system.map((block) => block.text).join("\n\n");
   }
-  if (request.tools !== undefined && request.tools.length > 0) {
-    canonical.tools = request.tools.map((tool) => ({
-      type: "function",
-      name: tool.name,
-      ...(tool.description === undefined ? {} : { description: tool.description }),
-      parameters: tool.input_schema,
-      ...(tool.strict === undefined ? {} : { strict: tool.strict })
-    }));
+  const translatedTools = translateAnthropicTools(request, options.nativeTools);
+  if (translatedTools.functions.length > 0) {
+    canonical.tools = translatedTools.functions;
+  }
+  if (translatedTools.native.length > 0) {
+    canonical.native_tools = translatedTools.native;
   }
   if (request.tool_choice !== undefined) {
-    canonical.tool_choice = translateToolChoice(request.tool_choice);
-    if (request.tool_choice.disable_parallel_tool_use !== undefined) {
-      canonical.parallel_tool_calls = !request.tool_choice.disable_parallel_tool_use;
+    const selectedToolName = request.tool_choice.type === "tool"
+      ? request.tool_choice.name
+      : undefined;
+    const selectsNativeTool = selectedToolName !== undefined
+      && translatedTools.native.some((tool) => tool.type === selectedToolName);
+    if (!selectsNativeTool) {
+      canonical.tool_choice = translateToolChoice(request.tool_choice);
+      if (request.tool_choice.disable_parallel_tool_use !== undefined) {
+        canonical.parallel_tool_calls = !request.tool_choice.disable_parallel_tool_use;
+      }
     }
   }
 
@@ -188,6 +209,79 @@ export function translateAnthropicRequest(
   }
 
   return canonical;
+}
+
+interface TranslatedAnthropicTools {
+  readonly functions: NonNullable<CanonicalResponseRequest["tools"]>;
+  readonly native: CanonicalNativeTool[];
+}
+
+function translateAnthropicTools(
+  request: Pick<AnthropicMessagesRequest, "tools" | "tool_choice">,
+  supportedNativeTools: readonly CanonicalNativeToolName[] | undefined,
+): TranslatedAnthropicTools {
+  const supported = new Set(supportedNativeTools ?? []);
+  const functions: NonNullable<CanonicalResponseRequest["tools"]> = [];
+  const native: CanonicalNativeTool[] = [];
+
+  for (const tool of request.tools ?? []) {
+    if (isAnthropicFunctionTool(tool)) {
+      functions.push({
+        type: "function",
+        name: tool.name,
+        ...(tool.description === undefined ? {} : { description: tool.description }),
+        parameters: tool.input_schema,
+        ...(tool.strict === undefined ? {} : { strict: tool.strict }),
+      });
+      continue;
+    }
+    if (tool.type === "web_search_20250305" && tool.name === "web_search") {
+      if (!supported.has("web_search")) {
+        throw new TypeError("Selected adapter does not support Anthropic server tool web_search_20250305");
+      }
+      native.push({
+        type: "web_search",
+        ...validatedWebSearchDomains("allowed_domains", tool.allowed_domains),
+        ...validatedWebSearchDomains("blocked_domains", tool.blocked_domains),
+        ...validatedWebSearchMaxUses(tool.max_uses),
+        ...(request.tool_choice?.type === "tool" && request.tool_choice.name === "web_search"
+          ? { required: true }
+          : {}),
+      });
+      continue;
+    }
+    const type = "type" in tool && typeof tool.type === "string" ? tool.type : "function";
+    throw new TypeError(`Unsupported Anthropic tool definition: ${type}`);
+  }
+
+  return { functions, native };
+}
+
+function isAnthropicFunctionTool(tool: AnthropicToolDefinition): tool is AnthropicTool {
+  return "input_schema" in tool && isRecord(tool.input_schema);
+}
+
+const WEB_SEARCH_DOMAIN = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
+
+function validatedWebSearchDomains(
+  field: "allowed_domains" | "blocked_domains",
+  value: string[] | undefined,
+): Partial<Pick<CanonicalNativeTool & Record<string, unknown>, typeof field>> {
+  if (value === undefined) return {};
+  if (!Array.isArray(value) || value.some((domain) => (
+    typeof domain !== "string" || !WEB_SEARCH_DOMAIN.test(domain)
+  ))) {
+    throw new TypeError(`${field} must contain only valid web search hostnames`);
+  }
+  return { [field]: [...value] };
+}
+
+function validatedWebSearchMaxUses(maxUses: number | undefined): { max_uses?: number } {
+  if (maxUses === undefined) return {};
+  if (!Number.isSafeInteger(maxUses) || maxUses <= 0) {
+    throw new TypeError("web_search max_uses must be a positive integer");
+  }
+  return { max_uses: maxUses };
 }
 
 const REASONING_EFFORT_SET = new Set<unknown>(REASONING_EFFORTS);
@@ -393,7 +487,7 @@ interface OpenBlock {
 }
 
 export interface ClaudeResponseCompatibilityOptions {
-  /** Authoritative provider window used to project usage onto Claude's 1M marker. */
+  /** Picker-advertised window that decides whether Claude uses its 1M compatibility path. */
   readonly contextWindow?: number;
 }
 
@@ -411,6 +505,7 @@ export async function collectAnthropicMessage(
   let stopReason = "end_turn";
   let outputTokens = 0;
   let inputTokens = 0;
+  let upstreamContextWindow: number | undefined;
 
   for await (const event of events) {
     switch (event.type) {
@@ -418,6 +513,7 @@ export async function collectAnthropicMessage(
         id = event.response.id;
         model = event.response.model;
         inputTokens = event.response.usage?.input_tokens ?? 0;
+        upstreamContextWindow = event.response.usage?.context_window;
         break;
       case "response.output_text.delta":
         text += event.delta;
@@ -443,6 +539,7 @@ export async function collectAnthropicMessage(
       case "response.completed":
         inputTokens = event.response.usage?.input_tokens ?? inputTokens;
         outputTokens = event.response.usage?.output_tokens ?? 0;
+        upstreamContextWindow = event.response.usage?.context_window ?? upstreamContextWindow;
         break;
       case "response.failed":
         throw new Error(event.response.error.message);
@@ -468,7 +565,11 @@ export async function collectAnthropicMessage(
     stop_reason: stopReason,
     stop_sequence: null,
     usage: {
-      input_tokens: projectClaudeContextInputTokens(inputTokens, options.contextWindow),
+      input_tokens: projectClaudeContextInputTokens(
+        inputTokens,
+        options.contextWindow,
+        upstreamContextWindow,
+      ),
       output_tokens: outputTokens,
     },
   };
@@ -546,6 +647,7 @@ export async function* encodeAnthropicSse(
                 input_tokens: projectClaudeContextInputTokens(
                   event.response.usage?.input_tokens ?? 0,
                   options.contextWindow,
+                  event.response.usage?.context_window,
                 ),
                 output_tokens: 0
               }
@@ -678,6 +780,7 @@ export async function* encodeAnthropicSse(
             input_tokens: projectClaudeContextInputTokens(
               event.response.usage?.input_tokens ?? 0,
               options.contextWindow,
+              event.response.usage?.context_window,
             ),
             output_tokens: event.response.usage?.output_tokens ?? 0,
             cache_read_input_tokens: 0,

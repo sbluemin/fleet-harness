@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fromBinary, toJson } from "@bufbuild/protobuf";
+import { fromBinary, fromJson, toBinary, toJson, type JsonValue } from "@bufbuild/protobuf";
 import { ValueSchema } from "@bufbuild/protobuf/wkt";
 
 import {
@@ -8,12 +8,15 @@ import {
   CURSOR_EXTERNAL_ROOT_BYTE_LIMIT,
   CURSOR_TOOL_BYTES_LIMIT,
   CURSOR_TOOL_COUNT_LIMIT,
+  CursorAdapter,
+  CursorReplayBudgetError,
   CursorRequestBudgetError,
-  UnsupportedReasoningEffortError,
   buildCursorRunPlan,
+  translateAnthropicRequest,
 } from "../src/index.js";
-import type { CanonicalResponseRequest } from "../src/index.js";
+import type { AnthropicMessagesRequest, CanonicalResponseRequest } from "../src/index.js";
 import {
+  AgentClientMessageSchema,
   ConversationStepSchema,
   ConversationTurnStructureSchema,
   UserMessageSchema,
@@ -24,11 +27,16 @@ describe("Cursor request budgets", () => {
     expect(CURSOR_CLIENT_VERSION).toBe("cli-2026.07.08-0c04a8a");
   });
 
+  it("advertises provider-native web search to the Anthropic gateway", () => {
+    expect(new CursorAdapter().capabilities.nativeTools).toEqual(["web_search"]);
+  });
+
   it.each([
-    ["gpt-5.6-luna", "low", "gpt-5.6-luna-low"],
-    ["gpt-5.6-luna", "ultra", "gpt-5.6-luna-max"],
     ["kimi-k3", "medium", "kimi-k3-low"],
     ["kimi-k3", "xhigh", "kimi-k3-high"],
+    ["kimi-k3-1m", "low", "kimi-k3-max"],
+    ["claude-opus-5", "xhigh", "claude-opus-5-thinking-xhigh"],
+    ["claude-opus-5", "max", "claude-opus-5-thinking-max"],
     ["grok-4.5-fast", "low", "cursor-grok-4.5-low-fast"],
   ] as const)("writes Cursor model %s with effort %s as %s", (model, effort, expected) => {
     const plan = buildCursorRunPlan(request({
@@ -42,14 +50,50 @@ describe("Cursor request budgets", () => {
   it("uses the registry default when a Cursor reasoning model has no explicit effort", () => {
     const plan = buildCursorRunPlan(request({ model: "kimi-k3" }), "conversation-default-effort");
 
-    expect(runRequest(plan).modelDetails.modelId).toBe("kimi-k3-max");
+    expect(runRequest(plan).modelDetails.modelId).toBe("kimi-k3-high");
   });
 
-  it("rejects an explicit effort when the model has no supported lower rung", () => {
-    expect(() => buildCursorRunPlan(request({
-      model: "glm-5.2",
-      reasoning: { summary: "auto", effort: "medium" },
-    }), "conversation-no-lower-effort")).toThrow(UnsupportedReasoningEffortError);
+  it("encodes Cursor Max Mode for the fixed Kimi K3 1M catalog model", () => {
+    const plan = buildCursorRunPlan(request({ model: "kimi-k3-1m" }), "conversation-kimi-1m");
+
+    expect(encodedRunRequest(plan).modelDetails).toMatchObject({
+      modelId: "kimi-k3-max",
+      maxMode: true,
+    });
+  });
+
+  it("keeps the standard Kimi K3 catalog model out of Cursor Max Mode", () => {
+    const plan = buildCursorRunPlan(request({ model: "kimi-k3" }), "conversation-kimi-standard");
+
+    expect(encodedRunRequest(plan).modelDetails).toMatchObject({ modelId: "kimi-k3-high" });
+    expect(encodedRunRequest(plan).modelDetails).not.toHaveProperty("maxMode");
+  });
+
+  it("encodes Cursor Max Mode when explicitly enabled", () => {
+    const plan = buildCursorRunPlan(request(), "conversation-max-mode", { maxMode: true });
+
+    expect(encodedRunRequest(plan).modelDetails.maxMode).toBe(true);
+  });
+
+  it("omits Cursor Max Mode by default", () => {
+    const plan = buildCursorRunPlan(request(), "conversation-default-mode");
+
+    expect(runRequest(plan).modelDetails).not.toHaveProperty("maxMode");
+    expect(encodedRunRequest(plan).modelDetails).not.toHaveProperty("maxMode");
+  });
+
+  it("omits Cursor Max Mode when explicitly disabled", () => {
+    const deterministicRequest = request({ input: [] });
+    const defaultPlan = buildCursorRunPlan(deterministicRequest, "conversation-standard-mode");
+    const disabledPlan = buildCursorRunPlan(
+      deterministicRequest,
+      "conversation-standard-mode",
+      { maxMode: false },
+    );
+
+    expect(runRequest(disabledPlan).modelDetails).not.toHaveProperty("maxMode");
+    expect(encodedRunRequest(disabledPlan).modelDetails).not.toHaveProperty("maxMode");
+    expect(encodeRunPlan(disabledPlan)).toEqual(encodeRunPlan(defaultPlan));
   });
 
   it("encodes tool schemas as protobuf Value bytes for Cursor's binary transport", () => {
@@ -68,18 +112,61 @@ describe("Cursor request budgets", () => {
     expect(systemText(plan)).toContain("including every required field");
   });
 
+  it("routes Anthropic WebSearch through Cursor native search instead of MCP protobuf", () => {
+    const anthropic = {
+      model: "claude-gateway--cursor--grok-4.5-fast",
+      system: [{ type: "text", text: "Perform a web search." }],
+      messages: [{ role: "user", content: "Search current Cursor provider docs." }],
+      tools: [{
+        type: "web_search_20250305",
+        name: "web_search",
+        allowed_domains: ["github.com"],
+        max_uses: 8,
+      }],
+      tool_choice: { type: "tool", name: "web_search" },
+      max_tokens: 1024,
+      stream: true,
+    } as unknown as AnthropicMessagesRequest;
+    const canonical = translateAnthropicRequest(anthropic, {
+      model: "grok-4.5-fast",
+      nativeTools: ["web_search"],
+    } as Parameters<typeof translateAnthropicRequest>[1]);
+
+    const plan = buildCursorRunPlan(canonical, "conversation-native-web-search");
+
+    expect(runRequest(plan).mcpTools).toBeUndefined();
+    expect(systemText(plan)).toContain("Cursor-native web search is available");
+    expect(systemText(plan)).toContain("github.com");
+    expect(systemText(plan)).toContain("no more than 8 searches");
+  });
+
   it("directs gateway models to prefer dedicated client tools over Bash", () => {
     const plan = buildCursorRunPlan(request({
       tools: [tool("Bash"), tool("Edit"), tool("Read"), tool("Write")],
     }), "conversation-tool-discipline");
     const instructions = systemText(plan);
+    const wireNames = runRequest(plan).mcpTools?.mcpTools.map((entry) => entry.toolName) ?? [];
+    const [bash, edit, read] = wireNames;
 
     expect(instructions).toContain("Do not invoke Cursor-native tools in gateway mode");
-    expect(instructions).toContain("Prefer purpose-built client tools over `Bash`");
-    expect(instructions).toContain("`Read` for reading files");
-    expect(instructions).toContain("`Edit` for exact file changes");
-    expect(instructions).toContain("Never use `Bash` with Python, sed, perl, or heredocs");
+    expect(instructions).toContain(`Prefer purpose-built client tools over \`${bash}\``);
+    expect(instructions).toContain(`\`${read}\` for reading files`);
+    expect(instructions).toContain(`\`${edit}\` for exact file changes`);
+    expect(instructions).toContain(`Never use \`${bash}\` with Python, sed, perl, or heredocs`);
     expect(instructions).toContain("neither `Grep` nor `Glob` is advertised");
+  });
+
+  it("isolates PascalCase Claude tools from Cursor's native tool namespace", () => {
+    const plan = buildCursorRunPlan(request({
+      tools: [tool("Read"), tool("read_file")],
+    }), "conversation-tool-alias");
+    const wireTools = runRequest(plan).mcpTools?.mcpTools ?? [];
+
+    expect(wireTools[0]?.name).toMatch(/^cc_read_[a-f0-9]{8}$/);
+    expect(wireTools[0]?.toolName).toBe(wireTools[0]?.name);
+    expect(wireTools[0]).not.toHaveProperty("clientName");
+    expect(wireTools[0]).not.toHaveProperty("inputSchemaValue");
+    expect(wireTools[1]?.toolName).toBe("read_file");
   });
 
   it("caps every tool catalog while retaining execution-critical tools", () => {
@@ -132,39 +219,43 @@ describe("Cursor request budgets", () => {
     }), "conversation-selected-tool")).toThrow(CursorRequestBudgetError);
   });
 
-  it("keeps the newest complete external-model turns under the root count ceiling", () => {
+  it("rejects external replay over the root count ceiling instead of dropping history", () => {
     const input: CanonicalResponseRequest["input"] = [];
     for (let index = 0; index < 220; index += 1) {
       input.push({ type: "message", role: "user", content: `user-${index}` });
       input.push({ type: "message", role: "assistant", content: `assistant-${index}` });
     }
     input.push({ type: "message", role: "user", content: "active-user" });
-    const plan = buildCursorRunPlan(request({ input }), "conversation-roots");
-    const roots = rootValues(plan);
+    const build = () => buildCursorRunPlan(request({ input }), "conversation-roots");
 
-    expect(roots.length).toBeLessThanOrEqual(CURSOR_EXTERNAL_ROOT_BLOB_LIMIT);
-    expect(roots[1]).toMatchObject({ role: "user" });
-    expect(JSON.stringify(roots)).not.toContain("user-0");
-    expect(JSON.stringify(roots)).toContain("assistant-219");
-    expect(JSON.stringify(roots)).not.toContain("active-user");
+    expect(build).toThrow(CursorReplayBudgetError);
+    expect(build).toThrow(/^Prompt is too long:/);
   });
 
-  it("retains and UTF-8-safely truncates an active trailing tool result", () => {
-    const plan = buildCursorRunPlan(request({
+  it("rejects an oversized trailing tool result instead of truncating it", () => {
+    const build = () => buildCursorRunPlan(request({
       input: [
         { type: "message", role: "user", content: "run the tool" },
         { type: "function_call", call_id: "call-1", name: "exec_command", arguments: "{}" },
         { type: "function_call_output", call_id: "call-1", output: "🧪".repeat(180_000) },
       ],
     }), "conversation-tool-result");
-    const roots = rootValues(plan);
-    const serializedRoots = roots.map((root) => JSON.stringify(root));
 
-    expect(serializedRoots.join("\n")).toContain("truncated for Cursor external replay budget");
-    expect(serializedRoots.join("\n")).not.toContain("�");
-    expect(Buffer.byteLength(serializedRoots.join(""), "utf8")).toBeLessThanOrEqual(
-      CURSOR_EXTERNAL_ROOT_BYTE_LIMIT,
-    );
+    expect(build).toThrow(CursorReplayBudgetError);
+    expect(build).toThrow(/^Prompt is too long:/);
+  });
+
+  it("preflights an active user message against its next-turn replay budget", () => {
+    const build = () => buildCursorRunPlan(request({
+      input: [{
+        type: "message",
+        role: "user",
+        content: "x".repeat(CURSOR_EXTERNAL_ROOT_BYTE_LIMIT),
+      }],
+    }), "conversation-active-replay");
+
+    expect(build).toThrow(CursorReplayBudgetError);
+    expect(build).toThrow(/^Prompt is too long:/);
   });
 
   it("fails explicitly when the required system prompt alone exceeds the root budget", () => {
@@ -302,6 +393,46 @@ describe("Cursor request budgets", () => {
     expect(toJson(ValueSchema, fromBinary(ValueSchema, Buffer.from(encodedCommand!, "base64")))).toBe("pwd");
     expect(JSON.stringify(rootValues(plan))).toContain("is_error: false");
   });
+
+  it("replays an external-model tool result through the same structured tool step", () => {
+    const plan = buildCursorRunPlan(request({
+      model: "kimi-k3",
+      input: [
+        { type: "message", role: "user", content: "Run pwd" },
+        { type: "function_call", call_id: "call-pwd", name: "exec_command", arguments: '{"cmd":"pwd"}' },
+        { type: "function_call_output", call_id: "call-pwd", output: "/workspace/project\n" },
+      ],
+    }), "conversation-external-result");
+    const turns = runRequest(plan).conversationState.turns.map((turnId) => (
+      decodeBlob(plan, turnId, ConversationTurnStructureSchema)
+    )) as Array<{
+      readonly agentConversationTurn?: { readonly steps?: readonly string[] };
+    }>;
+    const stepId = turns[0]?.agentConversationTurn?.steps?.[0];
+    if (!stepId) throw new Error("Missing external-model Cursor tool step");
+    const step = decodeBlob(plan, stepId, ConversationStepSchema) as {
+      readonly toolCall?: {
+        readonly mcpToolCall?: {
+          readonly args?: { readonly toolName?: string; readonly args?: Record<string, string> };
+          readonly result?: { readonly success?: { readonly content?: unknown } };
+        };
+      };
+    };
+
+    expect(step).toMatchObject({
+      toolCall: {
+        mcpToolCall: {
+          args: { toolName: "exec_command" },
+          result: { success: { content: [{ text: { text: "/workspace/project\n" } }] } },
+        },
+      },
+    });
+    const encodedCommand = step.toolCall?.mcpToolCall?.args?.args?.cmd;
+    expect(toJson(ValueSchema, fromBinary(ValueSchema, Buffer.from(encodedCommand!, "base64")))).toBe("pwd");
+    const turnSteps = turns.flatMap((turn) => turn.agentConversationTurn?.steps ?? [])
+      .map((id) => decodeBlob(plan, id, ConversationStepSchema));
+    expect(JSON.stringify(turnSteps)).not.toContain("[Tool Result]");
+  });
 });
 
 function request(overrides: Partial<CanonicalResponseRequest> = {}): CanonicalResponseRequest {
@@ -327,6 +458,7 @@ function tool(
 }
 
 interface WireTool {
+  readonly name: string;
   readonly toolName: string;
   readonly inputSchema: string;
 }
@@ -334,6 +466,7 @@ interface WireTool {
 interface RunRequest {
   readonly modelDetails: {
     readonly modelId: string;
+    readonly maxMode?: boolean;
   };
   readonly conversationState: {
     readonly rootPromptMessagesJson: readonly string[];
@@ -359,6 +492,22 @@ interface RunRequest {
 
 function runRequest(plan: ReturnType<typeof buildCursorRunPlan>): RunRequest {
   return (plan.payload as { readonly runRequest: RunRequest }).runRequest;
+}
+
+function encodeRunPlan(plan: ReturnType<typeof buildCursorRunPlan>): Uint8Array {
+  return toBinary(
+    AgentClientMessageSchema,
+    fromJson(AgentClientMessageSchema, plan.payload as JsonValue),
+  );
+}
+
+function encodedRunRequest(plan: ReturnType<typeof buildCursorRunPlan>): RunRequest {
+  const encoded = encodeRunPlan(plan);
+  const decoded = toJson(
+    AgentClientMessageSchema,
+    fromBinary(AgentClientMessageSchema, encoded),
+  );
+  return (decoded as unknown as { readonly runRequest: RunRequest }).runRequest;
 }
 
 function rootValues(plan: ReturnType<typeof buildCursorRunPlan>): Array<Record<string, unknown>> {

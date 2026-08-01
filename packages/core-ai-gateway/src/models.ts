@@ -2,6 +2,12 @@ import modelsData from "../models.json" with { type: "json" };
 import { z } from "zod";
 
 import { clampReasoningEffort, type ReasoningEffort } from "./canonical.js";
+import {
+  canProjectClaudeContextWindow,
+  hasClaudeOneMillionMarker,
+  isClaudeOneMillionContextWindow,
+  stripClaudeOneMillionMarker,
+} from "./claude-context.js";
 
 export const GATEWAY_PROVIDERS = ["codex", "cursor", "kimi"] as const;
 export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
@@ -16,12 +22,18 @@ export const GATEWAY_REASONING_EFFORTS = [
 ] as const;
 export type GatewayReasoningEffort = typeof GATEWAY_REASONING_EFFORTS[number];
 
+const GatewayEffortUpstreamModelIdsSchema = z.partialRecord(
+  z.enum(GATEWAY_REASONING_EFFORTS),
+  z.string().min(1),
+);
+
 const GatewayModelEffortSchema = z.discriminatedUnion("supported", [
   z.object({
     supported: z.literal(true),
     levels: z.array(z.enum(GATEWAY_REASONING_EFFORTS)).min(1),
     default: z.enum(GATEWAY_REASONING_EFFORTS),
     upstreamModelIdTemplate: z.string().min(1).optional(),
+    upstreamModelIds: GatewayEffortUpstreamModelIdsSchema.optional(),
   }).strict(),
   z.object({
     supported: z.literal(false),
@@ -34,6 +46,7 @@ const GatewayModelEntrySchema = z.object({
   description: z.string().min(1).optional(),
   providerModelId: z.string().min(1).optional(),
   serviceTier: z.literal("priority").optional(),
+  cursorMaxMode: z.literal(true).optional(),
   aliases: z.array(z.string().min(1)).optional(),
   contextWindow: z.number().int().positive().optional(),
   effort: GatewayModelEffortSchema.optional(),
@@ -67,6 +80,8 @@ export type GatewayModelEffort =
       readonly default: GatewayReasoningEffort;
       /** Cursor wire id with one `{effort}` placeholder, resolved immediately before transport. */
       readonly upstreamModelIdTemplate?: string;
+      /** Exact Cursor wire ids for effort tiers that do not follow the model's common template. */
+      readonly upstreamModelIds?: Readonly<Partial<Record<GatewayReasoningEffort, string>>>;
     };
 
 const UNSUPPORTED_GATEWAY_MODEL_EFFORT = Object.freeze({ supported: false as const });
@@ -80,6 +95,8 @@ export interface GatewayModel {
   /** Model id sent to the selected upstream provider. */
   readonly upstreamId?: string;
   readonly serviceTier?: "priority";
+  /** Cursor Run's modelDetails.maxMode flag; omitted for standard-mode models. */
+  readonly cursorMaxMode?: true;
   readonly description?: string;
   /** Authoritative input context window reported by the provider/reference catalog. */
   readonly contextWindow?: number;
@@ -112,96 +129,108 @@ export const KIMI_SUBSCRIPTION_MODELS = providerModels("kimi");
 
 /**
  * Claude Code currently filters discovered models whose id does not start with `claude`.
- * The gateway therefore exposes a Claude-compatible alias and removes it on lookup.
+ * The gateway therefore exposes and accepts exact Claude-compatible aliases.
  */
 export const GATEWAY_MODEL_ALIAS_PREFIX = "claude-gateway--";
-const CLAUDE_GATEWAY_CONTEXT_FLOOR = 200_000;
-const CLAUDE_GATEWAY_COMPAT_CONTEXT_WINDOW = 1_000_000;
 const CLAUDE_ONE_MILLION_MARKER = "[1m]";
+const CLAUDE_ONE_MILLION_DISPLAY_SUFFIX = " (1M Context)";
 
 export function toGatewayModelAlias(modelId: string): string {
   return `${GATEWAY_MODEL_ALIAS_PREFIX}${modelId}`;
 }
 
-export function fromGatewayModelAlias(alias: string): string {
-  const unwrapped = alias.startsWith(GATEWAY_MODEL_ALIAS_PREFIX)
-    ? alias.slice(GATEWAY_MODEL_ALIAS_PREFIX.length)
-    : alias;
-  return unwrapped.replace(/\[1m\]$/i, "");
-}
-
 /**
- * Claude Code only has built-in accounting for its default 200K window and a
- * 1M model variant. Translated models above 200K use the 1M variant; their
- * response usage is projected onto that virtual window by
- * projectClaudeContextInputTokens. Native Kimi passthrough can only use the
- * marker when its real window is at least 1M because its usage stays untouched.
+ * Claude Code only understands its default 200k coordinate and a `[1m]`
+ * coordinate. Translated models above 200k use the latter while the gateway
+ * projects their response usage. Native Kimi passthrough only opts in when its
+ * real window is at least 1M, so a synthetic long-context beta never reaches a
+ * sub-1M Anthropic-compatible upstream.
  */
 export function toClaudeGatewayModelId(model: GatewayModel): string {
   const alias = toGatewayModelAlias(model.id);
-  const window = model.contextWindow;
-  const canProjectUsage = model.provider !== "kimi";
   if (
-    typeof window === "number"
-    && window > CLAUDE_GATEWAY_CONTEXT_FLOOR
-    && (canProjectUsage || window >= CLAUDE_GATEWAY_COMPAT_CONTEXT_WINDOW)
+    canProjectClaudeContextWindow(model.contextWindow)
+    && (model.provider !== "kimi" || isClaudeOneMillionContextWindow(model.contextWindow))
   ) {
     return `${alias}${CLAUDE_ONE_MILLION_MARKER}`;
   }
   return alias;
 }
 
-/**
- * Project provider input usage onto the 1M coordinate system selected by the
- * Claude compatibility marker. This keeps Claude Code's context percentage and
- * native auto-compaction model-relative without changing provider-side usage.
- */
-export function projectClaudeContextInputTokens(
-  inputTokens: number,
-  contextWindow: number | undefined,
-): number {
-  if (
-    !Number.isFinite(inputTokens)
-    || inputTokens < 0
-    || typeof contextWindow !== "number"
-    || !Number.isFinite(contextWindow)
-    || contextWindow <= CLAUDE_GATEWAY_CONTEXT_FLOOR
-  ) {
-    return inputTokens;
-  }
-  return Math.ceil(inputTokens * CLAUDE_GATEWAY_COMPAT_CONTEXT_WINDOW / contextWindow);
+function toClaudeGatewayModelDisplayName(model: GatewayModel): string {
+  return isClaudeOneMillionContextWindow(model.contextWindow)
+    ? `${model.displayName}${CLAUDE_ONE_MILLION_DISPLAY_SUFFIX}`
+    : model.displayName;
 }
 
 export function findGatewayModel(
   id: string,
   catalog: readonly GatewayModel[] = GATEWAY_MODELS,
 ): GatewayModel | undefined {
-  const lookupId = fromGatewayModelAlias(id);
-  return catalog.find((model) => model.id === lookupId || model.aliases?.includes(lookupId));
+  if (id.startsWith(GATEWAY_MODEL_ALIAS_PREFIX)) {
+    const scopedId = stripClaudeOneMillionMarker(id).slice(GATEWAY_MODEL_ALIAS_PREFIX.length);
+    const model = catalog.find((candidate) => candidate.id === scopedId);
+    if (!model) return undefined;
+    // Unmarked aliases remain valid for sessions saved before context projection.
+    // A fabricated marker for a genuinely unmarked 200k model would make Claude
+    // undercount its context, so accept a marker only when discovery emits one.
+    return hasClaudeOneMillionMarker(id)
+      && !hasClaudeOneMillionMarker(toClaudeGatewayModelId(model))
+      ? undefined
+      : model;
+  }
+  return catalog.find((model) => model.id === id || model.aliases?.includes(id));
 }
 
 export function upstreamModelId(model: GatewayModel): string {
   return model.upstreamId ?? model.id;
 }
 
-/** Resolve one picker-visible Cursor base model to its exact effort-qualified wire id. */
+export interface CursorModelSelection {
+  readonly upstreamModelId: string;
+  readonly maxMode: boolean;
+}
+
+/** Resolve one picker-visible Cursor model to its exact wire id and billing/context mode. */
+export function resolveCursorModelSelection(
+  modelId: string,
+  requestedEffort?: ReasoningEffort,
+  catalog: readonly GatewayModel[] = CURSOR_SUBSCRIPTION_MODELS,
+): CursorModelSelection {
+  const model = findGatewayModel(modelId, catalog)
+    ?? catalog.find((candidate) => candidate.provider === "cursor" && (
+      candidate.id === scopedModelId("cursor", modelId)
+      || upstreamModelId(candidate) === modelId
+    ));
+  if (!model || model.provider !== "cursor") {
+    return { upstreamModelId: modelId, maxMode: false };
+  }
+
+  const upstreamId = upstreamModelId(model);
+  if (!model.effort.supported) {
+    return { upstreamModelId: upstreamId, maxMode: model.cursorMaxMode === true };
+  }
+  const effort = clampReasoningEffort(
+    requestedEffort ?? model.effort.default,
+    model.effort.levels,
+    upstreamId,
+  ) as GatewayReasoningEffort;
+  const exactModelId = model.effort.upstreamModelIds?.[effort];
+  return {
+    upstreamModelId: exactModelId
+      ?? model.effort.upstreamModelIdTemplate?.replace("{effort}", effort)
+      ?? upstreamId,
+    maxMode: model.cursorMaxMode === true,
+  };
+}
+
+/** Backwards-compatible wire-id-only view of {@link resolveCursorModelSelection}. */
 export function resolveCursorUpstreamModelId(
   modelId: string,
   requestedEffort?: ReasoningEffort,
   catalog: readonly GatewayModel[] = CURSOR_SUBSCRIPTION_MODELS,
 ): string {
-  const model = findGatewayModel(modelId, catalog)
-    ?? catalog.find((candidate) => candidate.provider === "cursor" && upstreamModelId(candidate) === modelId);
-  if (!model || model.provider !== "cursor") return modelId;
-
-  const upstreamId = upstreamModelId(model);
-  if (!model.effort.supported || !model.effort.upstreamModelIdTemplate) return upstreamId;
-  const effort = clampReasoningEffort(
-    requestedEffort ?? model.effort.default,
-    model.effort.levels,
-    upstreamId,
-  );
-  return model.effort.upstreamModelIdTemplate.replace("{effort}", effort);
+  return resolveCursorModelSelection(modelId, requestedEffort, catalog).upstreamModelId;
 }
 
 export function gatewayProviderDefault(provider: GatewayProvider): GatewayModel {
@@ -278,7 +307,7 @@ export function buildAnthropicModelList(
   const data = models.map((model) => ({
     type: "model" as const,
     id: toClaudeGatewayModelId(model),
-    display_name: model.displayName,
+    display_name: toClaudeGatewayModelDisplayName(model),
     created_at: createdAt,
     capabilities: anthropicModelCapabilities(model.effort),
     max_input_tokens: model.contextWindow ?? null,
@@ -292,7 +321,7 @@ export function buildAnthropicModelList(
   };
 }
 
-/** Resolve a gateway id or compatibility alias to the provider's wire model id. */
+/** Resolve a canonical gateway id or current provider alias to its wire model id. */
 export function resolveGatewayModel(
   requested: string | undefined,
   options: { readonly override?: string; readonly catalog?: readonly GatewayModel[]; readonly fallback: string },
@@ -318,6 +347,7 @@ function toGatewayModel(
     provider,
     upstreamId: entry.providerModelId ?? entry.modelId,
     ...(entry.serviceTier ? { serviceTier: entry.serviceTier } : {}),
+    ...(entry.cursorMaxMode ? { cursorMaxMode: entry.cursorMaxMode } : {}),
     ...(entry.description ? { description: entry.description } : {}),
     ...(entry.contextWindow ? { contextWindow: entry.contextWindow } : {}),
     effort: freezeGatewayModelEffort(entry.effort),
@@ -348,6 +378,9 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       if (model.serviceTier && provider !== "codex") {
         throw new Error(`Gateway service tier is only supported by Codex: ${provider}/${model.modelId}`);
       }
+      if (model.cursorMaxMode && provider !== "cursor") {
+        throw new Error(`Gateway Cursor Max Mode is only supported by Cursor: ${provider}/${model.modelId}`);
+      }
       if (model.effort?.supported) {
         if (!model.effort.levels.includes(model.effort.default)) {
           throw new Error(`Gateway effort default is missing from levels: ${provider}/${model.modelId}`);
@@ -356,8 +389,9 @@ function validateRegistry(value: GatewayModelsRegistry): void {
           throw new Error(`Gateway effort levels contain duplicates: ${provider}/${model.modelId}`);
         }
         const template = model.effort.upstreamModelIdTemplate;
-        if (provider === "cursor" && !template) {
-          throw new Error(`Cursor effort model requires an upstream model id template: ${provider}/${model.modelId}`);
+        const exactModelIds = model.effort.upstreamModelIds;
+        if (provider === "cursor" && !template && !exactModelIds) {
+          throw new Error(`Cursor effort model requires an upstream model id template or overrides: ${provider}/${model.modelId}`);
         }
         if (template) {
           if (provider !== "cursor") {
@@ -365,6 +399,22 @@ function validateRegistry(value: GatewayModelsRegistry): void {
           }
           if (template.split("{effort}").length !== 2) {
             throw new Error(`Gateway effort model id template must contain one {effort}: ${provider}/${model.modelId}`);
+          }
+        }
+        if (exactModelIds) {
+          if (provider !== "cursor") {
+            throw new Error(`Gateway effort model id overrides are only supported by Cursor: ${provider}/${model.modelId}`);
+          }
+          for (const effort of Object.keys(exactModelIds) as GatewayReasoningEffort[]) {
+            if (!model.effort.levels.includes(effort)) {
+              throw new Error(`Gateway effort model id override is not an advertised level: ${provider}/${model.modelId}/${effort}`);
+            }
+          }
+        }
+        if (provider === "cursor" && !template) {
+          const missing = model.effort.levels.find((effort) => !exactModelIds?.[effort]);
+          if (missing) {
+            throw new Error(`Cursor effort model has no upstream model id for level: ${provider}/${model.modelId}/${missing}`);
           }
         }
       }
@@ -405,6 +455,9 @@ function freezeGatewayModelEffort(
     default: effort.default,
     ...(effort.upstreamModelIdTemplate
       ? { upstreamModelIdTemplate: effort.upstreamModelIdTemplate }
+      : {}),
+    ...(effort.upstreamModelIds
+      ? { upstreamModelIds: Object.freeze({ ...effort.upstreamModelIds }) }
       : {}),
   });
 }

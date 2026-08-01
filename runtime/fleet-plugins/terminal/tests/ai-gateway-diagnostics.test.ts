@@ -21,8 +21,14 @@ describe("Cursor diagnostic log", () => {
     const log = createCursorDiagnosticLog(root);
     const event = diagnosticEvent({
       event: "server.frame",
+      model: "claude-opus-5",
+      wireModel: "claude-opus-5-thinking-xhigh",
+      requestedEffort: "xhigh",
       frame: "interactionUpdate.toolCallStarted",
       sequence: 1,
+      contextTokens: 42_000,
+      contextWindow: 300_000,
+      argumentRepairCount: 1,
     });
     log.write({
       ...event,
@@ -34,8 +40,14 @@ describe("Cursor diagnostic log", () => {
     const contents = await readFile(log.path, "utf8");
     expect(JSON.parse(contents)).toEqual(expect.objectContaining({
       event: "server.frame",
+      model: "claude-opus-5",
+      wireModel: "claude-opus-5-thinking-xhigh",
+      requestedEffort: "xhigh",
       frame: "interactionUpdate.toolCallStarted",
       sequence: 1,
+      contextTokens: 42_000,
+      contextWindow: 300_000,
+      argumentRepairCount: 1,
     }));
     expect(contents).not.toContain("SECRET_PROMPT");
     expect(contents).not.toContain("SECRET_TOOL_ARGUMENTS");
@@ -62,6 +74,53 @@ describe("Cursor diagnostic log", () => {
     expect(backup.trim().split("\n")).toHaveLength(1);
     expect(JSON.parse(active).sequence).toBe(3);
     expect(JSON.parse(backup).sequence).toBe(2);
+  });
+
+  it("persists semantic stall timeouts for hung Cursor turns", async () => {
+    const root = await temporaryDirectory();
+    const log = createCursorDiagnosticLog(root);
+
+    log.write(diagnosticEvent({
+      event: "transport.semantic_timeout",
+      model: "claude-fable-5",
+      wireModel: "claude-fable-5-high",
+      requestedEffort: "high",
+      outcome: "semantic_stall_timeout",
+    }));
+    await log.flush();
+
+    expect(JSON.parse(await readFile(log.path, "utf8"))).toMatchObject({
+      event: "transport.semantic_timeout",
+      model: "claude-fable-5",
+      wireModel: "claude-fable-5-high",
+      requestedEffort: "high",
+      outcome: "semantic_stall_timeout",
+    });
+  });
+
+  it("persists mid-session model switches without raw session identifiers", async () => {
+    const root = await temporaryDirectory();
+    const log = createCursorDiagnosticLog(root);
+
+    log.write(diagnosticEvent({
+      event: "model.switch",
+      model: "claude-opus-5",
+      wireModel: "claude-opus-5-thinking-max",
+      previousWireModel: "claude-opus-5-thinking-xhigh",
+      turn: "prompt",
+    }));
+    await log.flush();
+
+    const contents = await readFile(log.path, "utf8");
+    expect(JSON.parse(contents)).toEqual(expect.objectContaining({
+      event: "model.switch",
+      model: "claude-opus-5",
+      wireModel: "claude-opus-5-thinking-max",
+      previousWireModel: "claude-opus-5-thinking-xhigh",
+      turn: "prompt",
+    }));
+    expect(contents).not.toContain("claude-session");
+    expect(contents).not.toContain("user_id");
   });
 });
 

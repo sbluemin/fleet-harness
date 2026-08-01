@@ -88,6 +88,22 @@ export interface CanonicalFunctionTool {
   strict?: boolean;
 }
 
+export const CANONICAL_NATIVE_TOOL_NAMES = ["web_search"] as const;
+
+export type CanonicalNativeToolName = typeof CANONICAL_NATIVE_TOOL_NAMES[number];
+
+/** Provider-owned web search. It must never be serialized as a client function tool. */
+export interface CanonicalNativeWebSearchTool {
+  type: "web_search";
+  allowed_domains?: string[];
+  blocked_domains?: string[];
+  max_uses?: number;
+  /** The inbound tool choice selected this provider-owned tool explicitly. */
+  required?: boolean;
+}
+
+export type CanonicalNativeTool = CanonicalNativeWebSearchTool;
+
 export type CanonicalToolChoice =
   | "auto"
   | "required"
@@ -152,6 +168,8 @@ export interface CanonicalResponseRequest {
   input: CanonicalInputItem[];
   instructions?: string;
   tools?: CanonicalFunctionTool[];
+  /** Provider-owned tools handled outside the client function/MCP bridge. */
+  native_tools?: CanonicalNativeTool[];
   tool_choice?: CanonicalToolChoice;
   parallel_tool_calls?: boolean;
   max_output_tokens?: number;
@@ -164,6 +182,8 @@ export interface CanonicalResponseRequest {
 export interface CanonicalUsage {
   input_tokens: number;
   output_tokens: number;
+  /** Provider-reported total context limit for this concrete model turn, when available. */
+  context_window?: number;
 }
 
 export interface CanonicalResponseSnapshot {
@@ -279,7 +299,13 @@ export interface FailedAdapterResponse {
 
 export type AdapterResponse = SuccessfulAdapterResponse | FailedAdapterResponse;
 
+export interface AiGatewayAdapterCapabilities {
+  /** Provider-owned tools the adapter can execute without a client function round-trip. */
+  readonly nativeTools?: readonly CanonicalNativeToolName[];
+}
+
 export interface AiGatewayAdapter {
+  readonly capabilities?: AiGatewayAdapterCapabilities;
   stream(
     request: CanonicalResponseRequest,
     options: AdapterCallOptions

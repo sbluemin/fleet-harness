@@ -16,9 +16,11 @@ import type {
   AdapterResponse,
   AiGatewayAdapter,
   CanonicalInputItem,
+  CanonicalNativeTool,
   CanonicalResponseEvent,
   CanonicalResponseRequest,
   CanonicalUsage,
+  ReasoningEffort,
 } from "./canonical.js";
 import {
   canonicalMessageImages,
@@ -36,7 +38,7 @@ import {
   ConversationTurnStructureSchema,
   UserMessageSchema,
 } from "./generated/cursor-agent-protobuf.js";
-import { resolveCursorUpstreamModelId } from "./models.js";
+import { resolveCursorModelSelection } from "./models.js";
 import { estimateTokens } from "./token-estimate.js";
 
 export const CURSOR_API_ORIGIN = "https://api2.cursor.sh";
@@ -58,7 +60,6 @@ export const CONNECT_FLAG_END_STREAM = 0x02;
 const CURSOR_UNKNOWN_EXEC_FIELDS = Symbol("cursorUnknownExecFields");
 
 const CURSOR_TOOL_LIMIT_NOTE_PREFIX = "[fleet-ai-gateway]";
-const CURSOR_ROOT_TRUNCATION_MARKER = "\n…[truncated for Cursor external replay budget]";
 
 export class CursorRequestBudgetError extends Error {
   constructor(message: string) {
@@ -67,12 +68,39 @@ export class CursorRequestBudgetError extends Error {
   }
 }
 
+/** Claude Code recognizes this prefix and routes the failed turn through reactive compaction. */
+export class CursorReplayBudgetError extends CursorRequestBudgetError {
+  constructor(message: string) {
+    super(`Prompt is too long: ${message}`);
+    this.name = "CursorReplayBudgetError";
+  }
+}
+
+/**
+ * Cursor 경로는 Claude session `metadata.user_id`로 conversation/x-session-id를 고정한다.
+ * 값이 없으면 턴마다 새 대화를 열게 되므로 요청을 거절한다.
+ */
+export class CursorSessionIdentityError extends Error {
+  constructor(message = "Cursor gateway requests require metadata.user_id") {
+    super(message);
+    this.name = "CursorSessionIdentityError";
+  }
+}
+
 export interface CursorAdapterOptions {
   readonly origin?: string;
   readonly clientVersion?: string;
   readonly idleTimeoutMs?: number;
-  /** 대화 연속성 키. 같은 값을 유지하면 Cursor가 서버측 대화를 이어간다. */
+  /** Opt in to Cursor Max Mode for this adapter instance. Omitted by default. */
+  readonly maxMode?: boolean;
+  /**
+   * 테스트용 conversationId 덮어쓰기. 운영 경로에서는 `metadata.user_id`에서 유도한 값을 쓴다.
+   */
   readonly conversationId?: string;
+  /**
+   * 테스트용 x-session-id 덮어쓰기. 운영 경로에서는 `metadata.user_id`에서 결정적으로 유도한다.
+   */
+  readonly sessionId?: string;
   /** 테스트나 임베디드 transport가 HTTP/2 연결을 대체하는 명시적 seam. */
   readonly connect?: typeof http2.connect;
   /** 병렬 sibling tool call을 한 프레임 늦게 받는 경우를 위한 짧은 종료 유예. */
@@ -88,6 +116,7 @@ export interface CursorAdapterOptions {
 
 export type CursorDiagnosticEventName =
   | "turn.start"
+  | "model.switch"
   | "transport.dial"
   | "transport.connected"
   | "transport.timeout"
@@ -103,6 +132,10 @@ export type CursorDiagnosticEventName =
   | "server.frame"
   | "turn.finish";
 
+/** Mid-session wire-model switches keyed by derived conversation id. Package-owned; no raw user_id. */
+const CURSOR_WIRE_MODEL_BY_CONVERSATION = new Map<string, string>();
+const CURSOR_WIRE_MODEL_MEMORY_LIMIT = 512;
+
 /**
  * Safe-by-construction Cursor diagnostic shape. It intentionally has no prompt, output, tool
  * payload, credential, or upstream/session/call identifier fields.
@@ -113,6 +146,10 @@ export interface CursorDiagnosticEvent {
   readonly event: CursorDiagnosticEventName;
   readonly elapsedMs: number;
   readonly model?: string;
+  readonly wireModel?: string;
+  /** Previous Cursor wire model for mid-session switches. Never a raw user/session id. */
+  readonly previousWireModel?: string;
+  readonly requestedEffort?: ReasoningEffort;
   readonly turn?: "prompt" | "tool-continuation";
   readonly frame?: string;
   readonly reply?: string;
@@ -121,7 +158,13 @@ export interface CursorDiagnosticEvent {
   readonly frameCount?: number;
   readonly lastFrame?: string;
   readonly toolCount?: number;
+  /** Count of schema-guided scalar repairs; never includes argument names or values. */
+  readonly argumentRepairCount?: number;
   readonly estimatedInputTokens?: number;
+  /** Cursor checkpoint's absolute occupied-context count. */
+  readonly contextTokens?: number;
+  /** Cursor checkpoint's runtime context limit for the concrete routed model. */
+  readonly contextWindow?: number;
   readonly outcome?: string;
   readonly error?: string;
 }
@@ -242,11 +285,15 @@ export interface CursorRunPlan {
   readonly payload: unknown;
   readonly blobs: BlobStore;
   readonly tools: readonly CursorWireTool[];
+  readonly wireModelId: string;
   /** Request-local estimate from the exact root/action text sent to Cursor. */
   readonly estimatedInputTokens: number;
 }
 
 interface CursorWireTool {
+  readonly clientName: string;
+  /** Original client schema retained only for response-side compatibility repair. */
+  readonly inputSchemaValue: Record<string, unknown>;
   readonly name: string;
   readonly toolName: string;
   readonly description: string;
@@ -269,12 +316,21 @@ interface CursorRootEntry {
 export function buildCursorRunPlan(
   request: CanonicalResponseRequest,
   conversationId: string,
+  options: { readonly maxMode?: boolean } = {},
 ): CursorRunPlan {
-  const wireModelId = resolveCursorUpstreamModelId(request.model, request.reasoning?.effort);
+  const modelSelection = resolveCursorModelSelection(request.model, request.reasoning?.effort);
+  const wireModelId = modelSelection.upstreamModelId;
+  const maxMode = options.maxMode ?? modelSelection.maxMode;
   const blobs = new BlobStore();
   const toolBudget = applyCursorToolBudget(request);
   const limitNote = cursorToolLimitNote(toolBudget);
-  const instructions = [request.instructions?.trim(), cursorToolGuidance(toolBudget.tools), limitNote]
+  const nativeTools = request.native_tools ?? [];
+  const instructions = [
+    request.instructions?.trim(),
+    cursorNativeToolGuidance(nativeTools),
+    cursorToolGuidance(toolBudget.tools, nativeTools),
+    limitNote,
+  ]
     .filter((part): part is string => Boolean(part))
     .join("\n\n");
   const roots: CursorRootEntry[] = [rootEntry({
@@ -300,16 +356,20 @@ export function buildCursorRunPlan(
     if (entry) roots.push(entry);
   }
 
-  const selectedRoots = applyCursorRootBudget(roots, wireModelId);
-  const rootIds = selectedRoots.map((entry) => blobs.putSerialized(entry.serialized));
-  const turnIds = buildCursorConversationTurns(request, blobs, activeIndex);
-
   const activeMessage = activeIndex >= 0 ? request.input[activeIndex] : undefined;
+  const activeReplayRoot = activeMessage ? historyRoot(activeMessage, toolNames) : null;
+  assertCursorRootBudget(
+    activeReplayRoot ? [...roots, activeReplayRoot] : roots,
+    wireModelId,
+  );
+  const rootIds = roots.map((entry) => blobs.putSerialized(entry.serialized));
+  const turnIds = buildCursorConversationTurns(request, blobs, activeIndex, toolBudget.tools);
+
   const activeText = messageText(activeMessage);
   const activeImages = messageImages(activeMessage);
   const estimatedInputTokens = estimateTokens(
     [
-      ...selectedRoots.map((entry) => entry.serialized),
+      ...roots.map((entry) => entry.serialized),
       ...(activeText.length > 0 ? [activeText] : []),
     ].join("\n"),
     wireModelId,
@@ -332,14 +392,21 @@ export function buildCursorRunPlan(
       displayModelId: wireModelId,
       displayName: wireModelId,
       displayNameShort: wireModelId,
+      ...(maxMode ? { maxMode: true } : {}),
     },
   };
   if (toolBudget.tools.length > 0) {
     runRequest.mcpTools = {
-      mcpTools: toolBudget.tools,
+      mcpTools: toolBudget.tools.map(cursorWireToolDefinition),
     };
   }
-  return { payload: { runRequest }, blobs, tools: toolBudget.tools, estimatedInputTokens };
+  return {
+    payload: { runRequest },
+    blobs,
+    tools: toolBudget.tools,
+    wireModelId,
+    estimatedInputTokens,
+  };
 }
 
 function lastUserIndex(input: readonly CanonicalInputItem[]): number {
@@ -433,8 +500,8 @@ function buildCursorConversationTurns(
   request: CanonicalResponseRequest,
   blobs: BlobStore,
   activeIndex: number,
+  tools: readonly CursorWireTool[],
 ): string[] {
-  const nativeModel = isCursorNativeModel(request.model);
   const history = activeIndex < 0 ? request.input : request.input.slice(0, activeIndex);
   const turns: string[] = [];
   const pendingCalls = new Map<string, Extract<CanonicalInputItem, { type: "function_call" }>>();
@@ -442,10 +509,8 @@ function buildCursorConversationTurns(
 
   const flush = (): void => {
     if (!current) return;
-    if (nativeModel) {
-      for (const call of pendingCalls.values()) {
-        current.steps.push(storeCursorToolCallStep(blobs, call));
-      }
+    for (const call of pendingCalls.values()) {
+      current.steps.push(storeCursorToolCallStep(blobs, call, tools));
     }
     const turn = fromJson(ConversationTurnStructureSchema, {
       agentConversationTurn: {
@@ -488,8 +553,8 @@ function buildCursorConversationTurns(
     }
 
     const call = pendingCalls.get(item.call_id);
-    if (nativeModel && call) {
-      current.steps.push(storeCursorToolCallStep(blobs, call, item.output));
+    if (call) {
+      current.steps.push(storeCursorToolCallStep(blobs, call, tools, item.output));
       pendingCalls.delete(item.call_id);
     } else {
       current.steps.push(storeCursorAssistantStep(blobs, `[Tool Result]\n${item.output}`));
@@ -507,14 +572,16 @@ function storeCursorAssistantStep(blobs: BlobStore, text: string): string {
 function storeCursorToolCallStep(
   blobs: BlobStore,
   call: Extract<CanonicalInputItem, { type: "function_call" }>,
+  tools: readonly CursorWireTool[],
   output?: string,
 ): string {
+  const wireName = cursorWireNameForClient(call.name, tools);
   const step = fromJson(ConversationStepSchema, {
     toolCall: {
       mcpToolCall: {
         args: {
-          name: call.name,
-          toolName: call.name,
+          name: wireName,
+          toolName: wireName,
           toolCallId: call.call_id,
           providerIdentifier: CURSOR_TOOL_PROVIDER_IDENTIFIER,
           args: cursorToolArgumentBytes(call.arguments),
@@ -633,7 +700,10 @@ function applyCursorToolBudget(request: CanonicalResponseRequest): CursorToolBud
 
   const tryKeep = (candidate: typeof candidates[number]): void => {
     if (keptIndexes.has(candidate.index) || keptWire.length >= CURSOR_TOOL_COUNT_LIMIT) return;
-    const candidateBytes = Buffer.byteLength(JSON.stringify(candidate.wire), "utf8")
+    const candidateBytes = Buffer.byteLength(
+      JSON.stringify(cursorWireToolDefinition(candidate.wire)),
+      "utf8",
+    )
       + (keptWire.length === 0 ? 0 : 1);
     if (byteLength + candidateBytes > CURSOR_TOOL_BYTES_LIMIT) return;
     keptIndexes.add(candidate.index);
@@ -670,9 +740,12 @@ function applyCursorToolBudget(request: CanonicalResponseRequest): CursorToolBud
 function toCursorWireTool(
   tool: NonNullable<CanonicalResponseRequest["tools"]>[number],
 ): CursorWireTool {
+  const wireName = cursorWireToolName(tool.name);
   return {
-    name: tool.name,
-    toolName: tool.name,
+    clientName: tool.name,
+    inputSchemaValue: tool.parameters,
+    name: wireName,
+    toolName: wireName,
     description: tool.description ?? "",
     providerIdentifier: CURSOR_TOOL_PROVIDER_IDENTIFIER,
     // The plan uses protobuf's JSON representation, where bytes are base64. The binary
@@ -684,8 +757,49 @@ function toCursorWireTool(
   };
 }
 
+const CURSOR_PASSTHROUGH_TOOL_NAME = /^[a-z][a-z0-9_-]*$/;
+
+/**
+ * Cursor reserves several title-cased names for native tools. Claude Code exposes its own tools
+ * with those same names, so isolate unsafe names behind a stable lowercase wire alias and map them
+ * back at the adapter boundary.
+ */
+function cursorWireToolName(clientName: string): string {
+  if (CURSOR_PASSTHROUGH_TOOL_NAME.test(clientName)) return clientName;
+  const slug = clientName
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40) || "tool";
+  const digest = createHash("sha256").update(clientName).digest("hex").slice(0, 8);
+  return `cc_${slug}_${digest}`;
+}
+
+function cursorWireToolDefinition(
+  tool: CursorWireTool,
+): Omit<CursorWireTool, "clientName" | "inputSchemaValue"> {
+  return {
+    name: tool.name,
+    toolName: tool.toolName,
+    description: tool.description,
+    providerIdentifier: tool.providerIdentifier,
+    inputSchema: tool.inputSchema,
+  };
+}
+
+function cursorWireNameForClient(
+  clientName: string,
+  tools: readonly CursorWireTool[],
+): string {
+  return tools.find((tool) => tool.clientName === clientName)?.toolName
+    ?? cursorWireToolName(clientName);
+}
+
 function cursorToolPayloadBytes(tools: readonly CursorWireTool[]): number {
-  return Buffer.byteLength(JSON.stringify({ mcpTools: { mcpTools: tools } }), "utf8");
+  return Buffer.byteLength(JSON.stringify({
+    mcpTools: { mcpTools: tools.map(cursorWireToolDefinition) },
+  }), "utf8");
 }
 
 function cursorToolPriority(name: string, selectedName: string | undefined): number {
@@ -706,33 +820,63 @@ function cursorToolLimitNote(budget: CursorToolBudget): string | undefined {
   const names = budget.omittedNames.slice(0, 12);
   const remainder = budget.omittedNames.length - names.length;
   const summary = `${names.join(", ")}${remainder > 0 ? `, and ${remainder} more` : ""}`;
-  const recoverable = budget.tools.some((tool) => cursorToolLeafName(tool.toolName) === "tool_search");
+  const recoverable = budget.tools.some((tool) => cursorToolLeafName(tool.clientName) === "tool_search");
   const total = budget.tools.length + budget.omittedNames.length;
   return recoverable
     ? `${CURSOR_TOOL_LIMIT_NOTE_PREFIX} Cursor transport limits expose ${budget.tools.length} of ${total} tools this turn. Omitted: ${summary}. Use tool_search to load an omitted tool when needed.`
     : `${CURSOR_TOOL_LIMIT_NOTE_PREFIX} Cursor transport limits expose ${budget.tools.length} of ${total} tools this turn. Omitted and unavailable this turn: ${summary}.`;
 }
 
-function cursorToolGuidance(tools: readonly CursorWireTool[]): string | undefined {
+function cursorNativeToolGuidance(tools: readonly CanonicalNativeTool[]): string | undefined {
+  const webSearch = tools.find((tool) => tool.type === "web_search");
+  if (!webSearch) return undefined;
+  const guidance = [
+    "Cursor-native web search is available for this request.",
+    webSearch.required
+      ? "Use native web search before answering this request."
+      : "Use native web search when the request requires current web information.",
+  ];
+  if (webSearch.allowed_domains && webSearch.allowed_domains.length > 0) {
+    guidance.push(`Restrict results to these domains: ${webSearch.allowed_domains.join(", ")}.`);
+  }
+  if (webSearch.blocked_domains && webSearch.blocked_domains.length > 0) {
+    guidance.push(`Exclude results from these domains: ${webSearch.blocked_domains.join(", ")}.`);
+  }
+  if (webSearch.max_uses !== undefined) {
+    guidance.push(`Use no more than ${webSearch.max_uses} searches.`);
+  }
+  return guidance.join(" ");
+}
+
+function cursorToolGuidance(
+  tools: readonly CursorWireTool[],
+  nativeTools: readonly CanonicalNativeTool[],
+): string | undefined {
   if (tools.length === 0) return undefined;
   const names = tools.map((tool) => `\`${tool.toolName}\``).join(", ");
   return [
     `Cursor tool calls: available tool names are exactly ${names}.`,
     "Use the current tool catalog as ground truth and call only those exact names with their listed argument keys.",
     "Every tool call must include valid JSON arguments satisfying its input schema, including every required field.",
-    cursorClientToolDiscipline(tools),
+    cursorClientToolDiscipline(tools, nativeTools),
   ].join(" ");
 }
 
-function cursorClientToolDiscipline(tools: readonly CursorWireTool[]): string {
+function cursorClientToolDiscipline(
+  tools: readonly CursorWireTool[],
+  nativeTools: readonly CanonicalNativeTool[],
+): string {
   const bash = findCursorToolName(tools, ["Bash", "shell_command", "exec_command"]);
   const read = findCursorToolName(tools, ["Read"]);
   const edit = findCursorToolName(tools, ["Edit", "apply_patch"]);
   const write = findCursorToolName(tools, ["Write", "apply_patch"]);
   const grep = findCursorToolName(tools, ["Grep"]);
   const glob = findCursorToolName(tools, ["Glob"]);
+  const nativeWebSearch = nativeTools.some((tool) => tool.type === "web_search");
   const guidance = [
-    "Do not invoke Cursor-native tools in gateway mode; call the advertised client bridge tools directly.",
+    nativeWebSearch
+      ? "Do not invoke Cursor-native filesystem, shell, or editing tools in gateway mode; native web search is the only exception. Call the advertised client bridge tools for every other action."
+      : "Do not invoke Cursor-native tools in gateway mode; call the advertised client bridge tools directly.",
   ];
   const dedicated = [
     read ? `\`${read}\` for reading files` : undefined,
@@ -763,19 +907,20 @@ function findCursorToolName(
   candidates: readonly string[],
 ): string | undefined {
   for (const candidate of candidates) {
-    const match = tools.find((tool) => cursorToolLeafName(tool.toolName).toLowerCase() === candidate.toLowerCase());
+    const match = tools.find((tool) => (
+      cursorToolLeafName(tool.clientName).toLowerCase() === candidate.toLowerCase()
+    ));
     if (match) return match.toolName;
   }
   return undefined;
 }
 
-function applyCursorRootBudget(
+function assertCursorRootBudget(
   roots: readonly CursorRootEntry[],
   modelId: string,
-): readonly CursorRootEntry[] {
-  if (isCursorNativeModel(modelId)) return roots;
+): void {
+  if (isCursorNativeModel(modelId)) return;
   const systemEntries = roots.filter((entry) => entry.role === "system");
-  const history = roots.slice(systemEntries.length);
   const systemBytes = rootBytes(systemEntries);
   if (
     systemEntries.length > CURSOR_EXTERNAL_ROOT_BLOB_LIMIT
@@ -785,52 +930,15 @@ function applyCursorRootBudget(
       `Cursor system prompt exceeds the external-model root budget (${systemBytes} bytes; limit ${CURSOR_EXTERNAL_ROOT_BYTE_LIMIT})`,
     );
   }
+  const totalBytes = rootBytes(roots);
   if (
-    roots.length <= CURSOR_EXTERNAL_ROOT_BLOB_LIMIT
-    && rootBytes(roots) <= CURSOR_EXTERNAL_ROOT_BYTE_LIMIT
+    roots.length > CURSOR_EXTERNAL_ROOT_BLOB_LIMIT
+    || totalBytes > CURSOR_EXTERNAL_ROOT_BYTE_LIMIT
   ) {
-    return roots;
+    throw new CursorReplayBudgetError(
+      `Cursor external replay exceeds its transport budget (${roots.length} roots, ${totalBytes} bytes; limits ${CURSOR_EXTERNAL_ROOT_BLOB_LIMIT} roots and ${CURSOR_EXTERNAL_ROOT_BYTE_LIMIT} bytes)`,
+    );
   }
-
-  const historyLimit = CURSOR_EXTERNAL_ROOT_BLOB_LIMIT - systemEntries.length;
-  const historyByteLimit = CURSOR_EXTERNAL_ROOT_BYTE_LIMIT - systemBytes;
-  let activeStart = history.length;
-  while (activeStart > 0 && history[activeStart - 1]?.role === "toolResult") {
-    activeStart -= 1;
-  }
-  const active = history
-    .slice(activeStart)
-    .map((entry) => truncateToolResultRoot(entry, historyByteLimit))
-    .filter((entry): entry is CursorRootEntry => entry !== null);
-  while (active.length > historyLimit) active.shift();
-  while (active.length > 1 && rootBytes(active) > historyByteLimit) active.shift();
-  if (active.length === 1 && rootBytes(active) > historyByteLimit) {
-    const truncated = truncateToolResultRoot(active[0]!, historyByteLimit);
-    active.splice(0, 1, ...(truncated ? [truncated] : []));
-  }
-
-  const prior = history.slice(0, activeStart);
-  const keptPrior: CursorRootEntry[] = [];
-  let priorBytes = 0;
-  let index = prior.length - 1;
-  while (index >= 0 && keptPrior.length + active.length < historyLimit) {
-    let turnStart = index;
-    while (turnStart > 0 && prior[turnStart]?.role !== "user") turnStart -= 1;
-    if (prior[turnStart]?.role !== "user") break;
-    const turn = prior.slice(turnStart, index + 1);
-    const turnBytes = rootBytes(turn);
-    if (
-      keptPrior.length + active.length + turn.length > historyLimit
-      || priorBytes + rootBytes(active) + turnBytes > historyByteLimit
-    ) {
-      break;
-    }
-    keptPrior.unshift(...turn);
-    priorBytes += turnBytes;
-    index = turnStart - 1;
-  }
-
-  return [...systemEntries, ...keptPrior, ...active];
 }
 
 function isCursorNativeModel(modelId: string): boolean {
@@ -841,75 +949,30 @@ function rootBytes(entries: readonly CursorRootEntry[]): number {
   return entries.reduce((total, entry) => total + entry.byteLength, 0);
 }
 
-function truncateToolResultRoot(
-  entry: CursorRootEntry,
-  maxBytes: number,
-): CursorRootEntry | null {
-  if (entry.byteLength <= maxBytes) return entry;
-  if (entry.role !== "toolResult" || entry.text === undefined) return null;
-  const markerOnly = rootEntry(
-    { role: "user", content: [{ type: "text", text: CURSOR_ROOT_TRUNCATION_MARKER.trimStart() }] },
-    "toolResult",
-    CURSOR_ROOT_TRUNCATION_MARKER.trimStart(),
-  );
-  if (markerOnly.byteLength > maxBytes) return null;
-
-  const source = Buffer.from(entry.text, "utf8");
-  let low = 0;
-  let high = source.byteLength;
-  let best = markerOnly;
-  while (low <= high) {
-    const middle = Math.floor((low + high) / 2);
-    const prefix = decodeUtf8Prefix(source, middle);
-    const text = `${prefix}${CURSOR_ROOT_TRUNCATION_MARKER}`;
-    const candidate = rootEntry(
-      { role: "user", content: [{ type: "text", text }] },
-      "toolResult",
-      text,
-    );
-    if (candidate.byteLength <= maxBytes) {
-      best = candidate;
-      low = middle + 1;
-    } else {
-      high = middle - 1;
-    }
-  }
-  return best;
-}
-
-function decodeUtf8Prefix(source: Buffer, requestedEnd: number): string {
-  let end = Math.min(requestedEnd, source.byteLength);
-  const decoder = new TextDecoder("utf-8", { fatal: true });
-  while (end > 0) {
-    try {
-      return decoder.decode(source.subarray(0, end));
-    } catch {
-      end -= 1;
-    }
-  }
-  return "";
-}
-
 export class CursorAdapter implements AiGatewayAdapter {
+  readonly capabilities = { nativeTools: ["web_search"] } as const;
   private readonly origin: string;
   private readonly clientVersion: string;
   private readonly idleTimeoutMs: number;
+  private readonly maxMode: boolean | undefined;
   private readonly connect: typeof http2.connect;
   private readonly toolFinalizeGraceMs: number;
   private readonly clientHeartbeatMs: number;
   private readonly diagnostics: CursorDiagnosticSink | undefined;
-  private readonly sessionId = randomUUID();
-  private readonly conversationId: string;
+  private readonly conversationIdOverride: string | undefined;
+  private readonly sessionIdOverride: string | undefined;
 
   constructor(options: CursorAdapterOptions = {}) {
     this.origin = options.origin ?? CURSOR_API_ORIGIN;
     this.clientVersion = options.clientVersion ?? CURSOR_CLIENT_VERSION;
     this.idleTimeoutMs = options.idleTimeoutMs ?? 180_000;
+    this.maxMode = options.maxMode;
     this.connect = options.connect ?? http2.connect;
     this.toolFinalizeGraceMs = options.toolFinalizeGraceMs ?? CURSOR_TOOL_FINALIZE_GRACE_MS;
     this.clientHeartbeatMs = options.clientHeartbeatMs ?? CURSOR_CLIENT_HEARTBEAT_MS;
     this.diagnostics = options.diagnostics;
-    this.conversationId = options.conversationId ?? `cursor_${randomUUID().replace(/-/g, "")}`;
+    this.conversationIdOverride = options.conversationId;
+    this.sessionIdOverride = options.sessionId;
   }
 
   async stream(
@@ -917,16 +980,36 @@ export class CursorAdapter implements AiGatewayAdapter {
     options: AdapterCallOptions,
   ): Promise<AdapterResponse> {
     const report = createCursorDiagnosticReporter(this.diagnostics);
-    const plan = buildCursorRunPlan(request, cursorConversationId(request, this.conversationId));
+    const identity = resolveCursorSessionIdentity(request, {
+      conversationId: this.conversationIdOverride,
+      sessionId: this.sessionIdOverride,
+    });
+    const plan = buildCursorRunPlan(request, identity.conversationId, {
+      maxMode: this.maxMode,
+    });
     const model = cursorDiagnosticLabel(request.model);
+    const wireModel = cursorDiagnosticLabel(plan.wireModelId);
+    const previousWireModel = rememberCursorWireModel(identity.conversationId, plan.wireModelId);
     report("turn.start", {
       model,
+      wireModel,
+      requestedEffort: request.reasoning?.effort,
       turn: request.input.at(-1)?.type === "function_call_output"
         ? "tool-continuation"
         : "prompt",
       toolCount: plan.tools.length,
       estimatedInputTokens: plan.estimatedInputTokens,
     });
+    if (previousWireModel !== undefined && previousWireModel !== plan.wireModelId) {
+      report("model.switch", {
+        model,
+        wireModel,
+        previousWireModel: cursorDiagnosticLabel(previousWireModel),
+        turn: request.input.at(-1)?.type === "function_call_output"
+          ? "tool-continuation"
+          : "prompt",
+      });
+    }
 
     report("transport.dial", { model });
     let session: http2.ClientHttp2Session;
@@ -957,7 +1040,7 @@ export class CursorAdapter implements AiGatewayAdapter {
         "x-cursor-client-version": this.clientVersion,
         "x-cursor-client-type": "cli",
         "x-request-id": randomUUID(),
-        "x-session-id": this.sessionId,
+        "x-session-id": identity.sessionId,
       });
     } catch (error) {
       report("turn.finish", {
@@ -1077,18 +1160,77 @@ function cursorDiagnosticError(error: unknown): string {
   return "unknown_error";
 }
 
-function cursorConversationId(
+interface CursorSessionIdentity {
+  readonly conversationId: string;
+  readonly sessionId: string;
+}
+
+/**
+ * Claude session `metadata.user_id`를 Cursor conversation/x-session-id로 결정적으로 유도한다.
+ * 같은 user_id면 adapter 인스턴스가 바뀌어도 식별자가 유지된다.
+ */
+export function resolveCursorSessionIdentity(
   request: CanonicalResponseRequest,
-  fallback: string,
-): string {
+  overrides: {
+    readonly conversationId?: string;
+    readonly sessionId?: string;
+  } = {},
+): CursorSessionIdentity {
   const userId = request.metadata?.user_id?.trim();
-  if (!userId) return fallback;
+  if (!userId) {
+    throw new CursorSessionIdentityError();
+  }
+  return {
+    conversationId: overrides.conversationId ?? cursorConversationIdFromUserId(userId),
+    sessionId: overrides.sessionId ?? cursorSessionIdFromUserId(userId),
+  };
+}
+
+function cursorConversationIdFromUserId(userId: string): string {
   const digest = createHash("sha256")
     .update("fleet:cursor:claude-session:")
     .update(userId)
     .digest("hex")
     .slice(0, 32);
   return `cursor_${digest}`;
+}
+
+function cursorSessionIdFromUserId(userId: string): string {
+  const digest = createHash("sha256")
+    .update("fleet:cursor:x-session:")
+    .update(userId)
+    .digest("hex");
+  return [
+    digest.slice(0, 8),
+    digest.slice(8, 12),
+    digest.slice(12, 16),
+    digest.slice(16, 20),
+    digest.slice(20, 32),
+  ].join("-");
+}
+
+/**
+ * conversation 단위로 직전 wire model을 기억한다. 식별자 자체는 로그하지 않고,
+ * 모델 전환 여부만 관측한다. 테스트에서만 리셋한다.
+ */
+function rememberCursorWireModel(
+  conversationId: string,
+  wireModelId: string,
+): string | undefined {
+  const previous = CURSOR_WIRE_MODEL_BY_CONVERSATION.get(conversationId);
+  if (CURSOR_WIRE_MODEL_BY_CONVERSATION.has(conversationId)) {
+    CURSOR_WIRE_MODEL_BY_CONVERSATION.delete(conversationId);
+  } else if (CURSOR_WIRE_MODEL_BY_CONVERSATION.size >= CURSOR_WIRE_MODEL_MEMORY_LIMIT) {
+    const oldest = CURSOR_WIRE_MODEL_BY_CONVERSATION.keys().next().value;
+    if (oldest !== undefined) CURSOR_WIRE_MODEL_BY_CONVERSATION.delete(oldest);
+  }
+  CURSOR_WIRE_MODEL_BY_CONVERSATION.set(conversationId, wireModelId);
+  return previous;
+}
+
+/** 테스트용: mid-session model switch 메모리를 비운다. */
+export function resetCursorWireModelMemory(): void {
+  CURSOR_WIRE_MODEL_BY_CONVERSATION.clear();
 }
 
 /**
@@ -1118,6 +1260,7 @@ function mapCursorStream(
   let failure: Error | null = null;
   let outputIndex = 0;
   let contextTokens: number | undefined;
+  let contextWindow: number | undefined;
   let reportedOutputTokens = 0;
   let outputText = "";
   let frameCount = 0;
@@ -1133,6 +1276,7 @@ function mapCursorStream(
         ? estimatedInputTokens
         : Math.max(0, contextTokens - outputTokens),
       output_tokens: outputTokens,
+      ...(contextWindow === undefined ? {} : { context_window: contextWindow }),
     };
   };
 
@@ -1263,19 +1407,28 @@ function mapCursorStream(
     frameCount += 1;
     const unknownExecFields = frame[CURSOR_UNKNOWN_EXEC_FIELDS] ?? [];
     lastFrame = describeCursorServerFrame(frame, unknownExecFields);
+    const tokenDetails = isRecord(frame.conversationCheckpointUpdate)
+      && isRecord(frame.conversationCheckpointUpdate.tokenDetails)
+      ? frame.conversationCheckpointUpdate.tokenDetails
+      : undefined;
+    const checkpointContextTokens = positiveTokenCount(tokenDetails?.usedTokens);
+    const checkpointContextWindow = positiveTokenCount(tokenDetails?.maxTokens);
     report("server.frame", {
       model: diagnosticModel,
       frame: lastFrame,
       sequence: frameCount,
+      ...(checkpointContextTokens === undefined
+        ? {}
+        : { contextTokens: checkpointContextTokens }),
+      ...(checkpointContextWindow === undefined
+        ? {}
+        : { contextWindow: checkpointContextWindow }),
     });
     if (isRecord(frame.conversationCheckpointUpdate)) {
-      const tokenDetails = isRecord(frame.conversationCheckpointUpdate.tokenDetails)
-        ? frame.conversationCheckpointUpdate.tokenDetails
-        : undefined;
-      const usedTokens = positiveTokenCount(tokenDetails?.usedTokens);
-      if (usedTokens !== undefined) {
-        contextTokens = Math.max(contextTokens ?? 0, usedTokens);
+      if (checkpointContextTokens !== undefined) {
+        contextTokens = Math.max(contextTokens ?? 0, checkpointContextTokens);
       }
+      if (checkpointContextWindow !== undefined) contextWindow = checkpointContextWindow;
       return;
     }
     if (isRecord(frame.kvServerMessage)) {
@@ -1313,7 +1466,8 @@ function mapCursorStream(
         report("client.reply", { model: diagnosticModel, reply: "exec.requestContext" });
         return;
       }
-      const call = mcpCallFromExecMessage(frame.execServerMessage);
+      const wireCall = mcpCallFromExecMessage(frame.execServerMessage);
+      const call = wireCall ? cursorClientMcpCall(wireCall, tools) : null;
       if (call?.providerIdentifier === CURSOR_TOOL_PROVIDER_IDENTIFIER) {
         clearToolTurnFinish();
         ensureToolItem(call).suspended = true;
@@ -1321,13 +1475,19 @@ function mapCursorStream(
         // Cursor will not send turnEnded here: it is synchronously waiting for an
         // mcpResult. The real result returns in the next Anthropic request, so end
         // this bridge turn and cancel the run without fabricating a result.
-        report("client.reply", { model: diagnosticModel, reply: "exec.clientToolSuspend" });
+        report("client.reply", {
+          model: diagnosticModel,
+          reply: "exec.clientToolSuspend",
+          ...(call.argumentRepairCount === undefined
+            ? {}
+            : { argumentRepairCount: call.argumentRepairCount }),
+        });
         rescheduleToolTurnFinish();
         return;
       }
       const policyReplies = cursorNativeExecPolicyReplies(
         frame.execServerMessage,
-        tools.map((tool) => tool.toolName),
+        tools.map((tool) => ({ clientName: tool.clientName, wireName: tool.toolName })),
       );
       for (const reply of policyReplies ?? []) {
         stream.write(encodeCursorClientMessage(reply));
@@ -1375,7 +1535,8 @@ function mapCursorStream(
       return;
     }
     if (isRecord(update.toolCallStarted)) {
-      const call = mcpCallFromToolUpdate(update.toolCallStarted);
+      const wireCall = mcpCallFromToolUpdate(update.toolCallStarted);
+      const call = wireCall ? cursorClientMcpCall(wireCall, tools) : null;
       if (call) {
         clearToolTurnFinish();
         ensureToolItem(call);
@@ -1384,7 +1545,8 @@ function mapCursorStream(
       return;
     }
     if (isRecord(update.partialToolCall)) {
-      const call = mcpCallFromToolUpdate(update.partialToolCall);
+      const wireCall = mcpCallFromToolUpdate(update.partialToolCall);
+      const call = wireCall ? cursorClientMcpCall(wireCall, tools) : null;
       if (!call) return;
       clearToolTurnFinish();
       const entry = ensureToolItem(call);
@@ -1396,7 +1558,8 @@ function mapCursorStream(
       return;
     }
     if (isRecord(update.toolCallCompleted)) {
-      const call = mcpCallFromToolUpdate(update.toolCallCompleted);
+      const wireCall = mcpCallFromToolUpdate(update.toolCallCompleted);
+      const call = wireCall ? cursorClientMcpCall(wireCall, tools) : null;
       if (!call) return;
       clearToolTurnFinish();
       const entry = ensureToolItem(call);
@@ -1675,7 +1838,7 @@ function cursorRequestContextReply(
       ...(typeof exec.execId === "string" && exec.execId.length > 0 ? { execId: exec.execId } : {}),
       requestContextResult: {
         success: {
-          requestContext: { tools },
+          requestContext: { tools: tools.map(cursorWireToolDefinition) },
         },
       },
     },
@@ -1696,6 +1859,109 @@ interface CursorMcpCall {
   readonly name: string;
   readonly providerIdentifier?: string;
   readonly arguments?: string;
+  readonly argumentRepairCount?: number;
+}
+
+const CURSOR_MCP_DISPLAY_PREFIX = `mcp_${CURSOR_TOOL_PROVIDER_IDENTIFIER}_`;
+
+function cursorClientMcpCall(
+  call: CursorMcpCall,
+  tools: readonly CursorWireTool[],
+): CursorMcpCall {
+  const wireName = call.name.startsWith(CURSOR_MCP_DISPLAY_PREFIX)
+    ? call.name.slice(CURSOR_MCP_DISPLAY_PREFIX.length)
+    : call.name;
+  const tool = tools.find((candidate) => (
+    candidate.name === wireName
+    || candidate.toolName === wireName
+    || candidate.clientName === call.name
+  ));
+  if (!tool) return call;
+  const repaired = call.arguments === undefined
+    ? undefined
+    : repairCursorToolArguments(call.arguments, tool.inputSchemaValue);
+  return {
+    ...call,
+    name: tool.clientName,
+    ...(repaired === undefined
+      ? {}
+      : {
+          arguments: repaired.arguments,
+          argumentRepairCount: repaired.count,
+        }),
+  };
+}
+
+interface CursorArgumentRepair {
+  readonly value: unknown;
+  readonly count: number;
+}
+
+/**
+ * Cursor models can serialize numeric-looking opaque IDs as JSON numbers. Repair only lossless
+ * safe integers at schema positions that exclusively accept strings; all other validation remains
+ * the client's responsibility.
+ */
+function repairCursorToolArguments(
+  argumentsText: string,
+  schema: Record<string, unknown>,
+): { readonly arguments: string; readonly count: number } | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(argumentsText);
+  } catch {
+    return undefined;
+  }
+  const repaired = repairCursorArgumentValue(parsed, schema);
+  return repaired.count === 0
+    ? undefined
+    : { arguments: JSON.stringify(repaired.value), count: repaired.count };
+}
+
+function repairCursorArgumentValue(value: unknown, schema: unknown): CursorArgumentRepair {
+  if (
+    typeof value === "number"
+    && Number.isSafeInteger(value)
+    && cursorSchemaRequiresString(schema)
+  ) {
+    return { value: String(value), count: 1 };
+  }
+  if (Array.isArray(value)) {
+    const itemSchema = isRecord(schema) ? schema.items : undefined;
+    if (itemSchema === undefined) return { value, count: 0 };
+    let repairedValues: unknown[] | undefined;
+    let count = 0;
+    value.forEach((item, index) => {
+      const repaired = repairCursorArgumentValue(item, itemSchema);
+      if (repaired.count === 0) return;
+      repairedValues ??= [...value];
+      repairedValues[index] = repaired.value;
+      count += repaired.count;
+    });
+    return { value: repairedValues ?? value, count };
+  }
+  if (!isRecord(value) || !isRecord(schema) || !isRecord(schema.properties)) {
+    return { value, count: 0 };
+  }
+  let repairedValue: Record<string, unknown> | undefined;
+  let count = 0;
+  for (const [name, propertySchema] of Object.entries(schema.properties)) {
+    if (!Object.hasOwn(value, name)) continue;
+    const repaired = repairCursorArgumentValue(value[name], propertySchema);
+    if (repaired.count === 0) continue;
+    repairedValue ??= { ...value };
+    repairedValue[name] = repaired.value;
+    count += repaired.count;
+  }
+  return { value: repairedValue ?? value, count };
+}
+
+function cursorSchemaRequiresString(schema: unknown): boolean {
+  if (!isRecord(schema)) return false;
+  if (schema.type === "string") return true;
+  return Array.isArray(schema.type)
+    && schema.type.includes("string")
+    && schema.type.every((type) => type === "string" || type === "null");
 }
 
 function mcpCallFromToolUpdate(value: Record<string, unknown>): CursorMcpCall | null {

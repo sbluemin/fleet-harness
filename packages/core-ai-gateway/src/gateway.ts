@@ -8,7 +8,7 @@ import { OpenAIResponsesAdapter } from "./openai-responses-adapter.js";
 
 export interface AnthropicGatewayCallOptions extends TranslateAnthropicRequestOptions {
   apiKey: string;
-  /** Selected provider model's authoritative context window. */
+  /** Real provider window when the caller selected Claude Code's `[1m]` coordinate. */
   contextWindow?: number;
   signal?: AbortSignal;
 }
@@ -31,6 +31,9 @@ export class AnthropicMessagesGateway {
       ...(options.catalog ? { catalog: options.catalog } : {}),
       ...(options.serviceTier ? { serviceTier: options.serviceTier } : {}),
       ...(options.reasoningEfforts ? { reasoningEfforts: options.reasoningEfforts } : {}),
+      ...(this.adapter.capabilities?.nativeTools
+        ? { nativeTools: this.adapter.capabilities.nativeTools }
+        : {}),
     });
     const upstream = await this.adapter.stream(canonical, {
       apiKey: options.apiKey,

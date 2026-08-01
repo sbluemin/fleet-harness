@@ -4,13 +4,17 @@ import http2 from "node:http2";
 import { fromBinary, fromJson, toBinary, toJson, type JsonValue } from "@bufbuild/protobuf";
 import { ValueSchema } from "@bufbuild/protobuf/wkt";
 import { BinaryReader, BinaryWriter, WireType } from "@bufbuild/protobuf/wire";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   CURSOR_TOOL_PROVIDER_IDENTIFIER,
   CursorAdapter,
+  CursorSessionIdentityError,
+  buildCursorRunPlan,
   decodeConnectFrames,
   encodeConnectFrame,
+  resetCursorWireModelMemory,
+  resolveCursorSessionIdentity,
 } from "../src/index.js";
 import type {
   CanonicalResponseEvent,
@@ -66,10 +70,116 @@ describe("Cursor client tool suspension", () => {
     });
     expect(first.conversationId).toBe(second.conversationId);
     expect(first.conversationId).not.toBe(other.conversationId);
+    expect(first.sessionId).toBe(second.sessionId);
+    expect(first.sessionId).not.toBe(other.sessionId);
+    expect(first.sessionId).toBe(resolveCursorSessionIdentity(request("claude-session-a")).sessionId);
+    expect(first.conversationId).toBe(
+      resolveCursorSessionIdentity(request("claude-session-a")).conversationId,
+    );
+  });
+
+  it("repairs numeric values for client tool arguments declared as strings", async () => {
+    const diagnostics: CursorDiagnosticEvent[] = [];
+    const taskRequest = taskUpdateRequest();
+    const wireName = firstCursorWireToolName(taskRequest);
+    const callId = "call-task-update-1";
+    const { events } = await runSyntheticCursorTurn([
+      {
+        interactionUpdate: {
+          toolCallStarted: {
+            callId,
+            toolCall: {
+              mcpToolCall: {
+                args: {
+                  name: wireName,
+                  toolCallId: callId,
+                  providerIdentifier: CURSOR_TOOL_PROVIDER_IDENTIFIER,
+                  toolName: wireName,
+                },
+              },
+            },
+          },
+        },
+      },
+      {
+        execServerMessage: {
+          id: 13,
+          execId: "mcp-task-update-13",
+          mcpArgs: {
+            name: wireName,
+            toolCallId: callId,
+            providerIdentifier: CURSOR_TOOL_PROVIDER_IDENTIFIER,
+            toolName: wireName,
+            args: {
+              taskId: cursorValue(1),
+              status: cursorValue("in_progress"),
+              attempt: cursorValue(2),
+            },
+          },
+        },
+      },
+    ], taskRequest, {
+      diagnostics: (event) => diagnostics.push(event),
+    });
+
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "response.output_item.done",
+      item: {
+        id: callId,
+        type: "function_call",
+        call_id: callId,
+        name: "TaskUpdate",
+        arguments: JSON.stringify({ taskId: "1", status: "in_progress", attempt: 2 }),
+      },
+    }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      event: "client.reply",
+      reply: "exec.clientToolSuspend",
+      argumentRepairCount: 1,
+    }));
+  });
+
+  it("rejects Cursor turns that omit metadata.user_id", async () => {
+    await expect(runSyntheticCursorTurn([], {
+      model: "default",
+      instructions: "Call probe_tool.",
+      input: [{ type: "message", role: "user", content: "Call the tool now." }],
+      stream: true,
+    })).rejects.toBeInstanceOf(CursorSessionIdentityError);
+  });
+
+  it("emits model.switch when the same Claude session changes Cursor wire models", async () => {
+    const diagnostics: CursorDiagnosticEvent[] = [];
+    const frames = [
+      { interactionUpdate: { textDelta: { text: "ok" } } },
+      { interactionUpdate: { turnEnded: {} } },
+    ];
+
+    await runSyntheticCursorTurn(frames, {
+      ...request("claude-session-model-switch"),
+      model: "kimi-k3",
+      reasoning: { summary: "auto", effort: "low" },
+    }, { diagnostics: (event) => diagnostics.push(event) });
+    await runSyntheticCursorTurn(frames, {
+      ...request("claude-session-model-switch"),
+      model: "kimi-k3",
+      reasoning: { summary: "auto", effort: "high" },
+    }, { diagnostics: (event) => diagnostics.push(event) });
+
+    expect(diagnostics.filter((event) => event.event === "model.switch")).toEqual([
+      expect.objectContaining({
+        event: "model.switch",
+        model: "kimi-k3",
+        previousWireModel: "kimi-k3-low",
+        wireModel: "kimi-k3-high",
+      }),
+    ]);
   });
 
   it("rejects native exec without leaking placeholder tools, then completes a client tool turn", async () => {
     const callId = "call-read-1";
+    const wireName = firstCursorWireToolName(readRequest());
+    expect(wireName).toMatch(/^cc_read_[a-f0-9]{8}$/);
     const { events, stream } = await runSyntheticCursorTurn([
       {
         interactionUpdate: {
@@ -100,10 +210,10 @@ describe("Cursor client tool suspension", () => {
             toolCall: {
               mcpToolCall: {
                 args: {
-                  name: "Read",
+                  name: wireName,
                   toolCallId: callId,
                   providerIdentifier: CURSOR_TOOL_PROVIDER_IDENTIFIER,
-                  toolName: "Read",
+                  toolName: wireName,
                 },
               },
             },
@@ -115,10 +225,10 @@ describe("Cursor client tool suspension", () => {
           id: 13,
           execId: "mcp-13",
           mcpArgs: {
-            name: "Read",
+            name: wireName,
             toolCallId: callId,
             providerIdentifier: CURSOR_TOOL_PROVIDER_IDENTIFIER,
-            toolName: "Read",
+            toolName: wireName,
             args: { file_path: cursorValue("README.md") },
           },
         },
@@ -151,7 +261,7 @@ describe("Cursor client tool suspension", () => {
       execClientMessage: {
         id: 11,
         execId: "grep-11",
-        grepResult: { error: { error: expect.stringContaining("`Read`") } },
+        grepResult: { error: { error: expect.stringContaining(`\`${wireName}\``) } },
       },
     }));
     expect(replies).toContainEqual(expect.objectContaining({
@@ -363,6 +473,32 @@ describe("Cursor client tool suspension", () => {
     expect(events.at(-1)?.type).toBe("response.completed");
   });
 
+  it("approves Cursor-native web search and lets the turn return text", async () => {
+    const { events, stream } = await runSyntheticCursorTurn([
+      {
+        interactionQuery: {
+          id: 29,
+          webSearchRequestQuery: {},
+        },
+      },
+      { interactionUpdate: { textDelta: { text: "Search result with https://example.com/source\n" } } },
+      { interactionUpdate: { turnEnded: {} } },
+    ], request("claude-session-native-web-search"));
+
+    const replies = stream.writes.slice(1).map(decodeCursorClientFrame);
+    expect(replies).toContainEqual({
+      interactionResponse: {
+        id: 29,
+        webSearchRequestResponse: { approved: {} },
+      },
+    });
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "response.output_text.delta",
+      delta: "Search result with https://example.com/source\n",
+    }));
+    expect(events.at(-1)?.type).toBe("response.completed");
+  });
+
   it("reports payload-free transport diagnostics without affecting the turn", async () => {
     const diagnostics: CursorDiagnosticEvent[] = [];
     const secretPlan = "SECRET_PLAN_PAYLOAD";
@@ -396,13 +532,20 @@ describe("Cursor client tool suspension", () => {
       },
       { interactionUpdate: { textDelta: { text: secretOutput } } },
       { interactionUpdate: { turnEnded: {} } },
-    ], request("SECRET_SESSION_ID"), {
+    ], {
+      ...request("SECRET_SESSION_ID"),
+      model: "claude-opus-5",
+      reasoning: { summary: "auto", effort: "xhigh" },
+    }, {
       diagnostics: (event) => diagnostics.push(event),
     });
 
     expect(events.at(-1)?.type).toBe("response.completed");
     expect(diagnostics).toContainEqual(expect.objectContaining({
       event: "turn.start",
+      model: "claude-opus-5",
+      wireModel: "claude-opus-5-thinking-xhigh",
+      requestedEffort: "xhigh",
       turn: "prompt",
       toolCount: 1,
     }));
@@ -448,12 +591,15 @@ describe("Cursor client tool suspension", () => {
   });
 
   it("reports Cursor's absolute checkpoint as cumulative context usage", async () => {
+    const diagnostics: CursorDiagnosticEvent[] = [];
     const { events } = await runSyntheticCursorTurn([
       { interactionUpdate: { textDelta: { text: "checkpointed output" } } },
       { interactionUpdate: { tokenDelta: { tokens: 7 } } },
-      { conversationCheckpointUpdate: { tokenDetails: { usedTokens: 4_200 } } },
+      { conversationCheckpointUpdate: { tokenDetails: { usedTokens: 4_200, maxTokens: 256_000 } } },
       { interactionUpdate: { turnEnded: {} } },
-    ], request("claude-session-checkpoint"));
+    ], request("claude-session-checkpoint"), {
+      diagnostics: (event) => diagnostics.push(event),
+    });
 
     const completed = events.at(-1);
     expect(completed?.type).toBe("response.completed");
@@ -461,14 +607,23 @@ describe("Cursor client tool suspension", () => {
     expect(completed.response.usage).toEqual({
       input_tokens: 4_193,
       output_tokens: 7,
+      context_window: 256_000,
     });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      event: "server.frame",
+      frame: "conversationCheckpointUpdate",
+      contextTokens: 4_200,
+      contextWindow: 256_000,
+    }));
   });
+
 });
 
 async function runSyntheticToolTurn(userId: string): Promise<{
   readonly events: readonly CanonicalResponseEvent[];
   readonly stream: FakeCursorStream;
   readonly conversationId: string;
+  readonly sessionId: string;
   readonly requestContextReply: unknown;
   readonly contentType: unknown;
 }> {
@@ -539,11 +694,14 @@ async function runSyntheticToolTurn(userId: string): Promise<{
   };
   const conversationId = initial.runRequest?.conversationId;
   if (typeof conversationId !== "string") throw new Error("Synthetic Cursor request had no conversation id");
+  const sessionId = requestHeaders?.["x-session-id"];
+  if (typeof sessionId !== "string") throw new Error("Synthetic Cursor request had no x-session-id");
   const requestContextReply = decodeCursorClientFrame(stream.writes[1] ?? Buffer.alloc(0));
   return {
     events,
     stream,
     conversationId,
+    sessionId,
     requestContextReply,
     contentType: requestHeaders?.["content-type"],
   };
@@ -635,6 +793,43 @@ function readRequest(): CanonicalResponseRequest {
     metadata: { user_id: "claude-session-native-retry" },
     stream: true,
   };
+}
+
+function taskUpdateRequest(): CanonicalResponseRequest {
+  return {
+    model: "grok-4.5-fast",
+    instructions: "Update task 1.",
+    input: [{ type: "message", role: "user", content: "Mark task 1 in progress." }],
+    tools: [{
+      type: "function",
+      name: "TaskUpdate",
+      description: "Update a task",
+      parameters: {
+        type: "object",
+        properties: {
+          taskId: { type: "string" },
+          status: { type: "string", enum: ["pending", "in_progress", "completed"] },
+          attempt: { type: "number" },
+        },
+        required: ["taskId", "status"],
+        additionalProperties: false,
+      },
+    }],
+    metadata: { user_id: "claude-session-task-update" },
+    stream: true,
+  };
+}
+
+function firstCursorWireToolName(request: CanonicalResponseRequest): string {
+  const plan = buildCursorRunPlan(request, "conversation-wire-name");
+  const runRequest = (plan.payload as {
+    readonly runRequest?: {
+      readonly mcpTools?: { readonly mcpTools?: ReadonlyArray<{ readonly toolName?: string }> };
+    };
+  }).runRequest;
+  const wireName = runRequest?.mcpTools?.mcpTools?.find((tool) => tool.toolName)?.toolName;
+  if (!wireName) throw new Error("Missing Cursor wire tool");
+  return wireName;
 }
 
 function cursorValue(value: JsonValue): string {

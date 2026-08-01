@@ -8,6 +8,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 
+import { REASONING_EFFORTS } from "@dotobokuri/core-ai-gateway";
 import type {
   CursorDiagnosticEvent,
   CursorDiagnosticEventName,
@@ -16,11 +17,14 @@ import type {
 
 const DEFAULT_CURSOR_DIAGNOSTIC_MAX_BYTES = 4 * 1024 * 1024;
 const CURSOR_DIAGNOSTIC_FILE = "cursor-diagnostics.jsonl";
+const CURSOR_DIAGNOSTIC_EFFORTS = new Set<string>(REASONING_EFFORTS);
 const CURSOR_DIAGNOSTIC_EVENTS = new Set<CursorDiagnosticEventName>([
   "turn.start",
+  "model.switch",
   "transport.dial",
   "transport.connected",
   "transport.timeout",
+  "transport.semantic_timeout",
   "transport.abort",
   "transport.session_error",
   "transport.stream_error",
@@ -125,6 +129,11 @@ function serializeCursorDiagnosticEvent(event: CursorDiagnosticEvent): string | 
     elapsedMs: safeNumber(event.elapsedMs),
   };
   addString(record, "model", event.model, 128);
+  addString(record, "wireModel", event.wireModel, 128);
+  addString(record, "previousWireModel", event.previousWireModel, 128);
+  if (event.requestedEffort && CURSOR_DIAGNOSTIC_EFFORTS.has(event.requestedEffort)) {
+    record.requestedEffort = event.requestedEffort;
+  }
   if (event.turn === "prompt" || event.turn === "tool-continuation") record.turn = event.turn;
   addString(record, "frame", event.frame, 128);
   addString(record, "reply", event.reply, 128);
@@ -133,7 +142,10 @@ function serializeCursorDiagnosticEvent(event: CursorDiagnosticEvent): string | 
   addNumber(record, "frameCount", event.frameCount);
   addString(record, "lastFrame", event.lastFrame, 128);
   addNumber(record, "toolCount", event.toolCount);
+  addNumber(record, "argumentRepairCount", event.argumentRepairCount);
   addNumber(record, "estimatedInputTokens", event.estimatedInputTokens);
+  addNumber(record, "contextTokens", event.contextTokens);
+  addNumber(record, "contextWindow", event.contextWindow);
   addString(record, "outcome", event.outcome, 128);
   addString(record, "error", event.error, 128);
   return `${JSON.stringify(record)}\n`;

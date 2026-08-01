@@ -3,6 +3,11 @@ const CLIENT_TOOL_RETRY =
 
 type ExecMessage = Record<string, unknown>;
 
+export interface CursorClientToolReference {
+  readonly clientName: string;
+  readonly wireName: string;
+}
+
 /**
  * Cursor can choose its built-in tools even when client tools are advertised. The gateway must
  * acknowledge those exec requests or Cursor leaves the agent turn open forever. Local execution
@@ -11,15 +16,15 @@ type ExecMessage = Record<string, unknown>;
  */
 export function cursorNativeExecPolicyReplies(
   exec: ExecMessage,
-  clientToolNames: readonly string[],
+  clientTools: readonly (string | CursorClientToolReference)[],
 ): readonly unknown[] | null {
-  const readMessage = retryMessage(clientToolNames, [
+  const readMessage = retryMessage(clientTools, [
     "Read",
     "Bash",
     "shell_command",
     "exec_command",
   ]);
-  const listMessage = retryMessage(clientToolNames, [
+  const listMessage = retryMessage(clientTools, [
     "Glob",
     "LS",
     "Read",
@@ -27,14 +32,14 @@ export function cursorNativeExecPolicyReplies(
     "shell_command",
     "exec_command",
   ]);
-  const grepMessage = retryMessage(clientToolNames, [
+  const grepMessage = retryMessage(clientTools, [
     "Grep",
     "Bash",
     "shell_command",
     "exec_command",
     "Read",
   ]);
-  const mutationMessage = `${retryMessage(clientToolNames, [
+  const mutationMessage = `${retryMessage(clientTools, [
     "Edit",
     "Write",
     "apply_patch",
@@ -42,8 +47,8 @@ export function cursorNativeExecPolicyReplies(
     "shell_command",
     "exec_command",
   ])} No file was changed.`;
-  const shellMessage = retryMessage(clientToolNames, ["Bash", "shell_command", "exec_command"]);
-  const networkMessage = retryMessage(clientToolNames, [
+  const shellMessage = retryMessage(clientTools, ["Bash", "shell_command", "exec_command"]);
+  const networkMessage = retryMessage(clientTools, [
     "WebFetch",
     "Fetch",
     "Bash",
@@ -114,32 +119,32 @@ export function cursorNativeExecPolicyReplies(
     return [execReply(exec, "diagnosticsResult", {
       error: {
         path: stringValue(exec.diagnosticsArgs.path),
-        error: retryMessage(clientToolNames, ["ReadLints", "Read", "Grep"]),
+        error: retryMessage(clientTools, ["ReadLints", "Read", "Grep"]),
       },
     })];
   }
   if (isRecord(exec.listMcpResourcesExecArgs)) {
     return [execReply(exec, "listMcpResourcesExecResult", {
-      error: { error: retryMessage(clientToolNames, ["ListMcpResources", "list_mcp_resources"]) },
+      error: { error: retryMessage(clientTools, ["ListMcpResources", "list_mcp_resources"]) },
     })];
   }
   if (isRecord(exec.readMcpResourceExecArgs)) {
     return [execReply(exec, "readMcpResourceExecResult", {
       error: {
         uri: stringValue(exec.readMcpResourceExecArgs.uri),
-        error: retryMessage(clientToolNames, ["ReadMcpResource", "read_mcp_resource"]),
+        error: retryMessage(clientTools, ["ReadMcpResource", "read_mcp_resource"]),
       },
     })];
   }
   if (isRecord(exec.recordScreenArgs)) {
     return [execReply(exec, "recordScreenResult", {
-      failure: { error: retryMessage(clientToolNames, ["record_screen", "computer_use"]) },
+      failure: { error: retryMessage(clientTools, ["record_screen", "computer_use"]) },
     })];
   }
   if (isRecord(exec.computerUseArgs)) {
     return [execReply(exec, "computerUseResult", {
       error: {
-        error: retryMessage(clientToolNames, ["computer_use"]),
+        error: retryMessage(clientTools, ["computer_use"]),
         actionCount: 0,
         durationMs: 0,
         log: "",
@@ -148,7 +153,7 @@ export function cursorNativeExecPolicyReplies(
   }
   if (isRecord(exec.mcpArgs)) {
     return [execReply(exec, "mcpResult", {
-      error: { error: retryMessage(clientToolNames, []) },
+      error: { error: retryMessage(clientTools, []) },
     })];
   }
   return null;
@@ -179,15 +184,20 @@ function shellFailure(args: ExecMessage, message: string): unknown {
   };
 }
 
-function retryMessage(clientToolNames: readonly string[], candidates: readonly string[]): string {
+function retryMessage(
+  clientTools: readonly (string | CursorClientToolReference)[],
+  candidates: readonly string[],
+): string {
   const matches: string[] = [];
   const seen = new Set<string>();
   for (const candidate of candidates) {
-    for (const clientToolName of clientToolNames) {
-      if (seen.has(clientToolName)) continue;
+    for (const clientTool of clientTools) {
+      const clientToolName = typeof clientTool === "string" ? clientTool : clientTool.clientName;
+      const wireName = typeof clientTool === "string" ? clientTool : clientTool.wireName;
+      if (seen.has(wireName)) continue;
       if (toolLeafName(clientToolName).toLowerCase() !== candidate.toLowerCase()) continue;
-      seen.add(clientToolName);
-      matches.push(clientToolName);
+      seen.add(wireName);
+      matches.push(wireName);
     }
   }
   const exactNames = matches.length > 0

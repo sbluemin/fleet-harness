@@ -1,4 +1,7 @@
-import { AnthropicMessagesGateway } from "@dotobokuri/core-ai-gateway";
+import {
+  AnthropicMessagesGateway,
+  CURSOR_EXTERNAL_ROOT_BYTE_LIMIT,
+} from "@dotobokuri/core-ai-gateway";
 import type {
   AdapterResponse,
   AiGatewayAdapter,
@@ -100,7 +103,7 @@ describe("upstream credential", () => {
     await router.handle(ctx({
       res,
       token: ANTHROPIC_CRED,
-      model: "claude-gateway--codex--gpt-5.6-sol-fast",
+      model: "claude-gateway--codex--gpt-5.6-sol-fast[1m]",
     }));
 
     expect(streamSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
@@ -110,6 +113,26 @@ describe("upstream credential", () => {
       serviceTier: "priority",
       reasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
     }));
+  });
+
+  it("keeps a scoped unmarked model id as a legacy route without 1M usage projection", async () => {
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const fetchMock = vi.fn<typeof fetch>();
+    const router = createAiGatewayRouter({ gateway, fetch: fetchMock, readAuth });
+    const res = response();
+
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--codex--gpt-5.6-luna",
+    }));
+
+    expect(res.status).toBe(200);
+    expect(streamSpy).toHaveBeenCalledWith(expect.anything(), expect.not.objectContaining({
+      contextWindow: expect.anything(),
+    }));
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("clamps an explicit Luna ultra request to the model's max rung", async () => {
@@ -158,7 +181,7 @@ describe("upstream credential", () => {
     expect(streamSpy.mock.calls[0]?.[1]).not.toHaveProperty("reasoningEfforts");
   });
 
-  it("rejects a Cursor effort when the model has no supported lower rung", async () => {
+  it("rejects a removed Cursor model instead of forwarding it to Anthropic", async () => {
     const router = createAiGatewayRouter({
       readAuth,
       readCursorToken: () => "cursor-subscription-token",
@@ -168,13 +191,58 @@ describe("upstream credential", () => {
     await router.handle(ctx({
       res,
       token: ANTHROPIC_CRED,
-      model: "claude-gateway--cursor--glm-5.2[1m]",
+      model: "claude-gateway--cursor--glm-5.2",
       thinking: { type: "adaptive" },
       outputConfig: { effort: "medium" },
     }));
 
     expect(res.status).toBe(400);
-    expect(res.body).toContain("no supported reasoning effort at or below");
+    expect(res.body).toContain("Unknown AI gateway model");
+  });
+
+  it("rejects a Cursor request that omits metadata.user_id", async () => {
+    const router = createAiGatewayRouter({
+      readAuth,
+      readCursorToken: () => "cursor-subscription-token",
+    });
+    const res = response();
+
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--cursor--kimi-k3-1m[1m]",
+      metadata: null,
+    }));
+
+    expect(res.status).toBe(400);
+    expect(res.body).toContain("metadata.user_id");
+  });
+
+  it("returns Claude's prompt-too-long contract for unreplayable Cursor input", async () => {
+    const router = createAiGatewayRouter({
+      readAuth,
+      readCursorToken: () => "cursor-subscription-token",
+    });
+    const res = response();
+
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--cursor--grok-4.5-fast",
+      messages: [{
+        role: "user",
+        content: "x".repeat(CURSOR_EXTERNAL_ROOT_BYTE_LIMIT),
+      }],
+    }));
+
+    expect(res.status).toBe(400);
+    expect(JSON.parse(res.body)).toEqual({
+      type: "error",
+      error: {
+        type: "invalid_request_error",
+        message: expect.stringMatching(/^Prompt is too long:/),
+      },
+    });
   });
 });
 
@@ -193,7 +261,7 @@ describe("Kimi passthrough", () => {
     await router.handle(ctx({
       res,
       token: ANTHROPIC_CRED,
-      model: "claude-gateway--k3[1m]",
+      model: "claude-gateway--kimi--k3[1m]",
       thinking: { type: "adaptive" },
       outputConfig: { effort: "xhigh", retain: "preserved" },
     }));
@@ -284,6 +352,57 @@ describe("Kimi passthrough", () => {
     expect(res.body).toContain("Kimi API key");
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("passes sub-1M cache-aware SSE usage through without projection", async () => {
+    const upstreamBody = [
+      "event: message_start\r\n",
+      `data: ${JSON.stringify({
+        type: "message_start",
+        message: {
+          id: "msg_kimi",
+          usage: {
+            input_tokens: 32_768,
+            cache_read_input_tokens: 32_768,
+            cache_creation_input_tokens: 0,
+            output_tokens: 2,
+          },
+        },
+      })}\r\n\r\n`,
+      "event: message_stop\r\n",
+      `data: ${JSON.stringify({ type: "message_stop" })}\r\n\r\n`,
+    ].join("");
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      upstreamBody,
+      { status: 200, headers: { "content-type": "text/event-stream; charset=utf-8" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readKimiApiKey: async () => "kimi-secret",
+    });
+    const res = response();
+
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--kimi--k3-256k",
+    }));
+
+    const payload = res.body
+      .split(/\r?\n/)
+      .find((line) => line.startsWith("data: "))
+      ?.slice(6);
+    expect(JSON.parse(payload ?? "null")).toMatchObject({
+      message: {
+        usage: {
+          input_tokens: 32_768,
+          cache_read_input_tokens: 32_768,
+          cache_creation_input_tokens: 0,
+          output_tokens: 2,
+        },
+      },
+    });
+  });
 });
 
 describe("anthropic passthrough", () => {
@@ -305,6 +424,31 @@ describe("anthropic passthrough", () => {
     // 자격증명을 교체하지 않고 호출자 것을 그대로 실어 보낸다.
     expect(new Headers(init?.headers).get("authorization")).toBe(`Bearer ${ANTHROPIC_CRED}`);
     fetchSpy.mockRestore();
+  });
+
+  it("keeps native Anthropic usage payloads byte-for-byte unchanged", async () => {
+    const raw = [
+      "event: message_delta\r\n",
+      `data: ${JSON.stringify({
+        type: "message_delta",
+        usage: {
+          input_tokens: 17,
+          cache_read_input_tokens: 23,
+          cache_creation_input_tokens: 5,
+          output_tokens: 3,
+        },
+      })}\r\n\r\n`,
+    ].join("");
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      raw,
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({ fetch: fetchMock, readAuth });
+    const res = response();
+
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED, model: "claude-sonnet-4-6" }));
+
+    expect(res.body).toBe(raw);
   });
 
   it("refuses a request that carries no Anthropic credential", async () => {
@@ -335,11 +479,23 @@ describe("route surface", () => {
     const ids = list.data.map((entry) => entry.id);
     // picker가 버리지 않도록 모든 항목이 claude- alias로 나가야 한다.
     expect(ids.every((id) => id.startsWith("claude"))).toBe(true);
-    expect(list.data).toHaveLength(23);
+    expect(list.data).toHaveLength(17);
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast[1m]");
-    expect(ids).toContain("claude-gateway--cursor--auto");
+    expect(ids).toContain("claude-gateway--cursor--auto[1m]");
+    expect(ids).toContain("claude-gateway--cursor--kimi-k3");
+    expect(ids).toContain("claude-gateway--cursor--kimi-k3-1m[1m]");
     expect(ids).toContain("claude-gateway--kimi--k3[1m]");
-    expect(list.data.every((entry) => /^(Codex|Cursor|Kimi)-/.test(entry.display_name))).toBe(true);
+    expect(ids).toContain("claude-gateway--kimi--k3-256k");
+    expect(ids.some((id) => id.includes("--codex--") && id.endsWith("[1m]"))).toBe(true);
+    expect(list.data).toContainEqual(expect.objectContaining({
+      id: "claude-gateway--cursor--kimi-k3-1m[1m]",
+      display_name: "Cursor-Kimi-K3-1M (1M Context)",
+    }));
+    expect(list.data).toContainEqual(expect.objectContaining({
+      id: "claude-gateway--kimi--k3[1m]",
+      display_name: "Moonshot-Kimi-K3-1M (1M Context)",
+    }));
+    expect(list.data.every((entry) => /^(Codex|Cursor|Moonshot-Kimi)-/.test(entry.display_name))).toBe(true);
   });
 
   it("refuses model discovery without a bearer", async () => {
@@ -469,13 +625,18 @@ function ctx(options: {
   readonly apiKey?: string;
   readonly thinking?: Record<string, unknown>;
   readonly outputConfig?: Record<string, unknown>;
+  readonly metadata?: Record<string, unknown> | null;
+  readonly messages?: ReadonlyArray<Record<string, unknown>>;
 }): RouteHandlerContext {
   const payload = JSON.stringify({
     model: options.model ?? "claude-gateway--codex--gpt-5.6-sol",
-    messages: [{ role: "user", content: "Hello" }],
+    messages: options.messages ?? [{ role: "user", content: "Hello" }],
     max_tokens: 128,
     ...(options.thinking ? { thinking: options.thinking } : {}),
     ...(options.outputConfig ? { output_config: options.outputConfig } : {}),
+    ...(options.metadata === null
+      ? {}
+      : { metadata: options.metadata ?? { user_id: "claude-session-test" } }),
     stream: true,
   });
   const req = {
