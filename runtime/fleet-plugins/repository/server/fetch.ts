@@ -83,7 +83,8 @@ function countFetchUpdatedRefs(stderr: string): number {
 class NoRemoteError extends Error {}
 
 // repo-local `credential.helper=!<명령>`·경로 helper의 zero-click 실행을 막기 위한
-// 비실행 helper 화이트리스트 — 이름(첫 토큰의 basename)이 여기 없으면 helper를 박탈한다.
+// 비실행 helper 화이트리스트 — bare 이름(경로 구분자·인자 없음)만 허용한다.
+// basename 정규화는 /tmp/git-credential-manager 같은 repo 선택 파일을 통과시키므로 금지.
 const SAFE_CREDENTIAL_HELPERS = new Set([
   "cache",
   "store",
@@ -99,9 +100,8 @@ async function resolveCredentialHelperArgs(gitCwd: string): Promise<readonly str
   const raw = (await runGit(["config", "--get-all", "credential.helper"], { cwd: gitCwd, allowExitCodes: [1] })).stdout;
   const helpers = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const kept = helpers.filter((helper) => {
-    const firstToken = helper.split(/\s+/)[0] ?? "";
-    const name = firstToken.includes("/") ? firstToken.slice(firstToken.lastIndexOf("/") + 1) : firstToken;
-    return SAFE_CREDENTIAL_HELPERS.has(name) || SAFE_CREDENTIAL_HELPERS.has(name.replace(/^git-credential-/, ""));
+    if (!/^[A-Za-z0-9-]+$/.test(helper)) return false;
+    return SAFE_CREDENTIAL_HELPERS.has(helper) || SAFE_CREDENTIAL_HELPERS.has(helper.replace(/^git-credential-/, ""));
   });
   // 첫 빈 값이 configured helper 목록 전체를 리셋하고, 그 뒤 안전한 것만 다시 쌓는다.
   // core.askPass도 비워 repo config의 askpass 프로그램 실행을 막는다(env SSH_ASKPASS는 executor가 제거).
@@ -112,7 +112,8 @@ async function resolveDefaultRemote(gitCwd: string): Promise<string | null> {
   const branch = (await runGit(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: gitCwd })).stdout.trim();
   if (branch && branch !== "HEAD") {
     const upstream = (await runGit(["config", "--get", `branch.${branch}.remote`], { cwd: gitCwd, allowExitCodes: [1] })).stdout.trim();
-    if (upstream) return upstream;
+    // "."은 같은 저장소의 로컬 브랜치 트래킹이라 fetch 대상이 아니다 — 실제 원격으로 폴한다.
+    if (upstream && upstream !== ".") return upstream;
   }
   const remotes = (await runGit(["remote"], { cwd: gitCwd })).stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   // bare fetch의 기본 원격 규칙을 따라 origin을 우선한다.

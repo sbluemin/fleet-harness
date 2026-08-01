@@ -299,7 +299,7 @@ describe("Repository fetch single-flight", () => {
     expect(writes).toEqual([{ status: 422, payload: { error: "no_remote" } }]);
   });
 
-  it("strips shell credential helpers but keeps allowlisted ones", async () => {
+  it("strips shell and path credential helpers but keeps allowlisted bare names", async () => {
     let captured: readonly string[] = [];
     runGitMock.mockImplementation(async (args: readonly string[]) => {
       if (args[0] === "rev-parse") {
@@ -307,7 +307,7 @@ describe("Repository fetch single-flight", () => {
       }
       if (args[0] === "config") {
         return (args as readonly string[]).includes("credential.helper")
-          ? gitResult("!touch /tmp/pwned\nosxkeychain\n/usr/local/bin/git-credential-manager\n")
+          ? gitResult("!touch /tmp/pwned\nosxkeychain\n/tmp/git-credential-manager\ncache --timeout=300\n")
           : gitResult("");
       }
       if (args[0] === "remote") return gitResult("origin\n");
@@ -325,8 +325,33 @@ describe("Repository fetch single-flight", () => {
     expect(writes[0]?.status).toBe(200);
     expect(captured).toContain("credential.helper=");
     expect(captured).toContain("credential.helper=osxkeychain");
-    expect(captured).toContain("credential.helper=/usr/local/bin/git-credential-manager");
     expect(captured).toContain("core.askPass=");
+    // `!cmd`·경로 형태(/tmp/git-credential-manager)·인자 형태(cache --timeout=300)는 전부 박탈.
     expect(captured.some((value) => String(value).includes("!touch"))).toBe(false);
+    expect(captured.some((value) => String(value).includes("/tmp/"))).toBe(false);
+    expect(captured.some((value) => String(value).includes("--timeout"))).toBe(false);
+  });
+
+  it("falls back to a real remote when the branch tracks a local branch", async () => {
+    let captured: readonly string[] = [];
+    runGitMock.mockImplementation(async (args: readonly string[]) => {
+      if (args[0] === "rev-parse") {
+        return (args as readonly string[]).includes("--abbrev-ref") ? gitResult("main\n") : gitResult(`${gitDir}\n`);
+      }
+      if (args[0] === "config") return gitResult(".\n");
+      if (args[0] === "remote") return gitResult("origin\n");
+      captured = args;
+      return gitResult("", "");
+    });
+
+    const writes: JsonWrite[] = [];
+    await handleRepositoryFetch(
+      { method: "POST" } as never,
+      {} as never,
+      makeContext(tmpDir, { theaterId: "theater", mode: "auto" }, writes),
+    );
+
+    expect(writes[0]?.status).toBe(200);
+    expect(captured).toEqual(FETCH_ARGS);
   });
 });
