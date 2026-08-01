@@ -107,17 +107,8 @@ describe("Repository design grammar", () => {
     }
   });
 
-  it("uses the approved signal channels for repository sync status", () => {
-    expect(blockOf(".repository-sync-status")).toContain("font-family: var(--font-mono)");
-    expect(blockOf(".repository-sync-status")).toContain("font-size: 11px");
-    expect(blockOf(".repository-sync-status::before")).toContain("width: 6px");
-    expect(blockOf(".repository-sync-status::before")).toContain("border-radius: 999px");
-    expect(blockOf(".repository-sync-status.is-stale")).toContain("var(--warn-ink)");
-    expect(blockOf(".repository-sync-status.is-stale::before")).toContain("var(--warn)");
-    expect(blockOf(".repository-sync-status.is-fresh")).toContain("var(--positive-ink)");
-    expect(blockOf(".repository-sync-status.is-fresh::before")).toContain("var(--positive)");
-    expect(blockOf(".repository-sync-status.is-error")).toContain("var(--coral-ink)");
-    expect(blockOf(".repository-sync-status.is-error::before")).toContain("var(--coral)");
+  it("keeps the sync button spin animation reducible and omits the status strip", () => {
+    expect(css).not.toContain(".repository-sync-status");
     expect(blocksOf(".repository-sync-button.is-syncing .repository-sync-icon").some((body) => body.includes("animation: none"))).toBe(true);
   });
 

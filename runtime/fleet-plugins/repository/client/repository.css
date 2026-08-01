@@ -1021,15 +1021,6 @@
 .repository-identity .repository-sync-icon { display: inline-block; min-width: auto; overflow: visible; color: inherit; flex: none; font: inherit; font-size: 13px; line-height: 1; }
 .repository-sync-button.is-syncing .repository-sync-icon { animation: repository-sync-spin 800ms linear infinite; }
 @keyframes repository-sync-spin { to { transform: rotate(360deg); } }
-.repository-sync-status { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 5px 12px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 35%, transparent); color: var(--text-tertiary); flex: none; font-family: var(--font-mono); font-size: 11px; line-height: 17px; }
-.repository-sync-status::before { width: 6px; height: 6px; border-radius: 999px; background: var(--text-tertiary); content: ""; flex: none; }
-.repository-sync-status.is-stale { color: var(--warn-ink); }
-.repository-sync-status.is-stale::before { background: var(--warn); }
-.repository-sync-status.is-fresh { color: var(--positive-ink); }
-.repository-sync-status.is-fresh::before { background: var(--positive); }
-.repository-sync-status.is-error { color: var(--coral-ink); }
-.repository-sync-status.is-error::before { background: var(--coral); }
-.repository-sync-status.is-syncing::before { background: var(--text-tertiary); }
 @media (prefers-reduced-motion: reduce) { .repository-sync-button.is-syncing .repository-sync-icon { animation: none; } }
 /* 숨김-마운트 래퍼가 높이 문맥을 끊으면 history-root의 height:100%가 내용 높이로 풀려 내부 스크롤이 죽는다 */
 .repository-source-fill { height: 100%; min-height: 0; }
