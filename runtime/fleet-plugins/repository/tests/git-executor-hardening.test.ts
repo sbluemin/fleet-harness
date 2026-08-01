@@ -29,6 +29,7 @@ describe("runGit hardening", () => {
     vi.stubEnv("GIT_OPTIONAL_LOCKS", "1");
     vi.stubEnv("GIT_TERMINAL_PROMPT", "1");
     vi.stubEnv("LC_ALL", "ko_KR.UTF-8");
+    vi.stubEnv("SSH_ASKPASS", "/usr/libexec/ssh-askpass");
   });
 
   afterEach(() => {
@@ -68,6 +69,7 @@ describe("runGit hardening", () => {
     expect(environment).not.toHaveProperty("GIT_DIR");
     expect(environment).not.toHaveProperty("git_work_tree");
     expect(environment).not.toHaveProperty("GIT_CONFIG_COUNT");
+    expect(environment).not.toHaveProperty("SSH_ASKPASS");
     expect(Object.keys(environment).filter((key) => key.toUpperCase().startsWith("GIT_")).sort()).toEqual([
       "GIT_ALLOW_PROTOCOL",
       "GIT_OPTIONAL_LOCKS",

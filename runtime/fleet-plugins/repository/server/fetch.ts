@@ -12,7 +12,7 @@ const AUTO_FETCH_THROTTLE_MS = 300_000;
 type FetchErrorToken = "auth_failed" | "network" | "no_remote";
 type FetchResult =
   | { readonly ok: true; readonly skipped: "throttled"; readonly lastFetchAt: string }
-  | { readonly ok: true; readonly fetchedAt: string; readonly lastFetchAt: string; readonly pruned: number; readonly newRefs: number };
+  | { readonly ok: true; readonly fetchedAt: string; readonly lastFetchAt: string; readonly pruned: number; readonly newRefs: number; readonly updatedRefs: number };
 
 const autoFetchInFlight = new Map<string, Promise<FetchResult>>();
 // 성공한 fetch의 시각(common dir 기준) — refs가 0개인 원격은 성공해도 FETCH_HEAD가
@@ -72,6 +72,54 @@ function countFetchProgress(stderr: string, marker: string): number {
   return stderr.split(/\r?\n/).filter((line) => line.includes(marker)).length;
 }
 
+function countFetchUpdatedRefs(stderr: string): number {
+  // "   old..new branch -> origin/branch"(fast-forward)·" + old...new (forced)" 갱신행.
+  // 이걸 세지 않으면 커밋이 실제로 전진해도 pruned/newRefs가 0이라 "최신 상태"로 거짓 보고된다.
+  return stderr.split(/\r?\n/).filter((line) =>
+    line.includes(" -> ") && /\S+\.\.\S+/.test(line) && !line.includes("[deleted]") && !line.includes("[new "),
+  ).length;
+}
+
+class NoRemoteError extends Error {}
+
+// repo-local `credential.helper=!<명령>`·경로 helper의 zero-click 실행을 막기 위한
+// 비실행 helper 화이트리스트 — 이름(첫 토큰의 basename)이 여기 없으면 helper를 박탈한다.
+const SAFE_CREDENTIAL_HELPERS = new Set([
+  "cache",
+  "store",
+  "osxkeychain",
+  "wincred",
+  "libsecret",
+  "gnome-libsecret",
+  "manager",
+  "manager-core",
+]);
+
+async function resolveCredentialHelperArgs(gitCwd: string): Promise<readonly string[]> {
+  const raw = (await runGit(["config", "--get-all", "credential.helper"], { cwd: gitCwd, allowExitCodes: [1] })).stdout;
+  const helpers = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const kept = helpers.filter((helper) => {
+    const firstToken = helper.split(/\s+/)[0] ?? "";
+    const name = firstToken.includes("/") ? firstToken.slice(firstToken.lastIndexOf("/") + 1) : firstToken;
+    return SAFE_CREDENTIAL_HELPERS.has(name) || SAFE_CREDENTIAL_HELPERS.has(name.replace(/^git-credential-/, ""));
+  });
+  // 첫 빈 값이 configured helper 목록 전체를 리셋하고, 그 뒤 안전한 것만 다시 쌓는다.
+  // core.askPass도 비워 repo config의 askpass 프로그램 실행을 막는다(env SSH_ASKPASS는 executor가 제거).
+  return ["-c", "credential.helper=", ...kept.flatMap((helper) => ["-c", `credential.helper=${helper}`]), "-c", "core.askPass="];
+}
+
+async function resolveDefaultRemote(gitCwd: string): Promise<string | null> {
+  const branch = (await runGit(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: gitCwd })).stdout.trim();
+  if (branch && branch !== "HEAD") {
+    const upstream = (await runGit(["config", "--get", `branch.${branch}.remote`], { cwd: gitCwd, allowExitCodes: [1] })).stdout.trim();
+    if (upstream) return upstream;
+  }
+  const remotes = (await runGit(["remote"], { cwd: gitCwd })).stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  // bare fetch의 기본 원격 규칙을 따라 origin을 우선한다.
+  if (remotes.includes("origin")) return "origin";
+  return remotes[0] ?? null;
+}
+
 async function readThrottleResult(gitDirs: readonly string[], commonDir: string): Promise<FetchResult | null> {
   const fsNewest = await readLastFetchAt(gitDirs);
   const recorded = lastSuccessfulFetchAt.get(commonDir);
@@ -82,6 +130,9 @@ async function readThrottleResult(gitDirs: readonly string[], commonDir: string)
 }
 
 async function fetchRepository(gitCwd: string): Promise<FetchResult> {
+  const remote = await resolveDefaultRemote(gitCwd);
+  if (!remote) throw new NoRemoteError();
+  const credentialArgs = await resolveCredentialHelperArgs(gitCwd);
   const result = await runGit([
     "-c",
     "core.sshCommand=ssh",
@@ -92,7 +143,15 @@ async function fetchRepository(gitCwd: string): Promise<FetchResult> {
     // protocol.allow=user는 ext를 never에서 허용으로 뒤집는다(GIT_PROTOCOL_FROM_USER unset) —
     // 기본 정책을 유지한 채 실행형 transport만 명시 차단한다.
     "protocol.ext.allow=never",
+    "-c",
+    // ref transaction 훅(reference-transaction 등)의 zero-click 실행을 플랫폼 널 장치로 차단한다.
+    `core.hooksPath=${process.platform === "win32" ? "NUL" : "/dev/null"}`,
+    ...credentialArgs,
     "fetch",
+    remote,
+    // 명시 refspec이 configured refspec을 대체한다 — prune의 파괴 범위를
+    // refs/remotes/<remote>/ 아래로 고정해 로컬 refs를 보호한다.
+    `+refs/heads/*:refs/remotes/${remote}/*`,
     // repo config의 remote.<name>.uploadpack이 로컬 transport에서 명령 실행되므로 표준 명령을 강제한다.
     "--upload-pack=git-upload-pack",
     // 하드닝된 상위 fetch를 빠져나가는 재귀(중첩 네트워크+하위 upload-pack)를 끊는다.
@@ -109,6 +168,7 @@ async function fetchRepository(gitCwd: string): Promise<FetchResult> {
     lastFetchAt: fetchedAt,
     pruned: countFetchProgress(result.stderr, " - [deleted] "),
     newRefs: countFetchProgress(result.stderr, " * [new branch] "),
+    updatedRefs: countFetchUpdatedRefs(result.stderr),
   };
 }
 
@@ -198,6 +258,10 @@ export async function handleRepositoryFetch(
     if ("fetchedAt" in result) lastSuccessfulFetchAt.set(identity.commonDir, Date.parse(result.fetchedAt));
     ctx.host.http.writeJson(res, 200, result);
   } catch (error) {
+    if (error instanceof NoRemoteError) {
+      ctx.host.http.writeJson(res, 422, { error: "no_remote" });
+      return;
+    }
     if (error instanceof GitExecutorError) {
       if (error.code === "timeout") {
         ctx.host.http.writeJson(res, 422, { error: "timeout" });

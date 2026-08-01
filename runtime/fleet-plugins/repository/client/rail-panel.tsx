@@ -26,12 +26,12 @@ type ViewMode = "list" | "tree";
 type RepositorySyncState =
   | { readonly kind: "stale"; readonly lastFetchAt: string | null }
   | { readonly kind: "syncing" }
-  | { readonly kind: "fresh"; readonly lastFetchAt: string; readonly pruned: number; readonly newRefs: number; readonly skipped: boolean }
+  | { readonly kind: "fresh"; readonly lastFetchAt: string; readonly pruned: number; readonly newRefs: number; readonly updatedRefs: number; readonly skipped: boolean }
   | { readonly kind: "error"; readonly error: string };
 
 type RepositoryFetchResult =
   | { readonly ok: true; readonly skipped: "throttled"; readonly lastFetchAt: string }
-  | { readonly ok: true; readonly fetchedAt: string; readonly lastFetchAt: string; readonly pruned: number; readonly newRefs: number };
+  | { readonly ok: true; readonly fetchedAt: string; readonly lastFetchAt: string; readonly pruned: number; readonly newRefs: number; readonly updatedRefs: number };
 
 interface RepositoryPanelProps {
   readonly ctx: RailPanelContext;
@@ -75,11 +75,10 @@ function syncStatusMessage(state: RepositorySyncState, t: T, locale: ConsoleLoca
     return t("repository.sync.status.failed");
   }
   if (state.kind === "fresh") {
-    return state.skipped
-      ? t("repository.sync.status.skipped", { age: formatSyncAge(state.lastFetchAt, locale) })
-      : state.pruned === 0 && state.newRefs === 0
-        ? t("repository.sync.status.upToDate")
-        : t("repository.sync.status.fresh", { pruned: state.pruned, newRefs: state.newRefs });
+    if (state.skipped) return t("repository.sync.status.skipped", { age: formatSyncAge(state.lastFetchAt, locale) });
+    return state.pruned === 0 && state.newRefs === 0 && state.updatedRefs === 0
+      ? t("repository.sync.status.upToDate")
+      : t("repository.sync.status.fresh", { pruned: state.pruned, newRefs: state.newRefs, updatedRefs: state.updatedRefs });
   }
   return state.lastFetchAt
     ? t("repository.sync.status.local", { age: formatSyncAge(state.lastFetchAt, locale) })
@@ -429,11 +428,11 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     }
     const result = payload;
     if ("skipped" in result) {
-      setSyncState({ kind: "fresh", lastFetchAt: result.lastFetchAt, pruned: 0, newRefs: 0, skipped: true });
+      setSyncState({ kind: "fresh", lastFetchAt: result.lastFetchAt, pruned: 0, newRefs: 0, updatedRefs: 0, skipped: true });
       return;
     }
     refreshRepositoryData();
-    setSyncState({ kind: "fresh", lastFetchAt: result.lastFetchAt, pruned: result.pruned, newRefs: result.newRefs, skipped: false });
+    setSyncState({ kind: "fresh", lastFetchAt: result.lastFetchAt, pruned: result.pruned, newRefs: result.newRefs, updatedRefs: result.updatedRefs, skipped: false });
   }, [ctx.theaterId, refreshRepositoryData, repoRel]);
   useEffect(() => {
     if (!ctx.theaterId) return;

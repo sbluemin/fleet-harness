@@ -33,7 +33,8 @@ function sanitizeGitEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessE
   const sanitized: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(environment)) {
     const normalizedKey = key.toUpperCase();
-    if (normalizedKey.startsWith("GIT_") || normalizedKey === "LC_ALL") continue;
+    // GIT_* 전량 + askpass 프로그램 환경변수는 zero-click 실행 경로라 차단한다.
+    if (normalizedKey.startsWith("GIT_") || normalizedKey === "LC_ALL" || normalizedKey === "SSH_ASKPASS" || normalizedKey === "SSH_ASKPASS_REQUIRE") continue;
     if (value !== undefined) sanitized[key] = value;
   }
   sanitized.GIT_OPTIONAL_LOCKS = "0";
