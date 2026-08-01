@@ -19,10 +19,13 @@ import {
   hasClaudeOneMillionMarker,
   projectAnthropicResponseUsage,
   reasoningEffortFromOutputConfig,
+  toClaudeGatewayModelId,
   upstreamModelId,
 } from "@dotobokuri/core-ai-gateway";
 import type {
+  AnthropicMessage,
   AnthropicMessagesRequest,
+  AnthropicToolDefinition,
   CursorDiagnosticSink,
   GatewayModel,
   ReasoningEffort,
@@ -91,11 +94,19 @@ export interface AiGatewayRouteDeps {
 
 export interface AiGatewayRouter {
   readonly handle: RouteHandler;
+  /** Dispose only router-owned provider state; injected gateways remain externally owned. */
+  dispose(): void;
 }
 
 export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayRouter {
   const readAuth = deps.readAuth ?? (() => readCodexSubscriptionAuth());
   const fetchImpl = deps.fetch ?? globalThis.fetch.bind(globalThis);
+  const ownedCursorAdapter = deps.gateway
+    ? undefined
+    : new CursorAdapter({ diagnostics: deps.cursorDiagnostics });
+  const ownedCursorGateway = ownedCursorAdapter
+    ? new AnthropicMessagesGateway(ownedCursorAdapter)
+    : undefined;
 
   const handle: RouteHandler = async ({ req, res, pathname }) => {
     // Claude Code는 base URL 뒤에 자기 경로를 붙인다. 연결 프로브는 /api/hello다.
@@ -186,10 +197,11 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
         await proxyToAnthropic(req.headers, res, body, fetchImpl, controller.signal);
         return true;
       }
-      // Only marker-aware Claude Code sessions consume the projected 1M usage
-      // coordinate. Legacy unmarked ids remain on Claude's conservative 200k
-      // accounting path while still routing to the same provider model.
-      const claudeContextWindow = hasClaudeOneMillionMarker(body.model)
+      // Claude Code may strip the discovery-only `[1m]` suffix before sending a
+      // request. Derive its accounting coordinate from the resolved registry
+      // model so every alias for the same Cursor/Codex model projects usage in
+      // the same way.
+      const claudeContextWindow = hasClaudeOneMillionMarker(toClaudeGatewayModelId(target))
         ? target.contextWindow
         : undefined;
       if (target.provider === "kimi") {
@@ -205,11 +217,10 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
         );
         return true;
       }
-      const gateway = deps.gateway ?? createGatewayFor(
-        target,
-        chatgptAccountId,
-        deps.cursorDiagnostics,
-      );
+      const gateway = deps.gateway
+        ?? (target.provider === "cursor"
+          ? ownedCursorGateway!
+          : createGatewayFor(target, chatgptAccountId));
       const upstream = await gateway.stream(body, {
         apiKey: credential,
         ...(claudeContextWindow ? { contextWindow: claudeContextWindow } : {}),
@@ -249,7 +260,10 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
     return true;
   };
 
-  return { handle };
+  return {
+    handle,
+    dispose: () => ownedCursorAdapter?.dispose(),
+  };
 }
 
 export function registerAiGatewayRoutes(
@@ -263,9 +277,10 @@ export function registerAiGatewayRoutes(
     ...deps,
     cursorDiagnostics: deps.cursorDiagnostics ?? ownedDiagnostics?.write,
   });
-  if (ownedDiagnostics) {
-    ctx.host.lifecycle.registerCleanup(() => ownedDiagnostics.flush());
-  }
+  ctx.host.lifecycle.registerCleanup(() => {
+    router.dispose();
+    return ownedDiagnostics?.flush();
+  });
   registerRouter(ctx, AI_GATEWAY_ROUTE_SEGMENT, router.handle);
 }
 
@@ -330,17 +345,48 @@ const KIMI_REASONING_EFFORTS = ["low", "high", "max"] as const satisfies readonl
 
 /** K3 accepts three native effort tiers; normalize Claude Code's wider picker ladder. */
 function kimiRequestBody(body: AnthropicMessagesRequest, model: string): AnthropicMessagesRequest {
-  const effort = reasoningEffortFromOutputConfig(body.output_config);
-  if (effort === undefined) {
-    return { ...body, model };
-  }
-  return {
+  const eagerBody: AnthropicMessagesRequest = {
     ...body,
     model,
+    messages: body.messages.map(kimiEagerMessage),
+    ...(body.tools === undefined ? {} : { tools: body.tools.map(kimiEagerTool) }),
+  };
+  const effort = reasoningEffortFromOutputConfig(body.output_config);
+  if (effort === undefined) {
+    return eagerBody;
+  }
+  return {
+    ...eagerBody,
     output_config: {
       ...body.output_config,
       effort: clampReasoningEffort(effort, KIMI_REASONING_EFFORTS, model),
     },
+  };
+}
+
+function kimiEagerTool(tool: AnthropicToolDefinition): AnthropicToolDefinition {
+  if (!("input_schema" in tool)) return tool;
+  const { defer_loading: _deferLoading, ...eagerTool } = tool;
+  return eagerTool;
+}
+
+function kimiEagerMessage(message: AnthropicMessage): AnthropicMessage {
+  if (typeof message.content === "string") return message;
+  return {
+    ...message,
+    content: message.content.map((block) => {
+      if (block.type !== "tool_result" || !Array.isArray(block.content)) return block;
+      return {
+        ...block,
+        content: block.content.map((result) => {
+          if (result.type !== "tool_reference") return result;
+          const toolName = typeof result.tool_name === "string" && result.tool_name.length > 0
+            ? result.tool_name
+            : "(invalid reference)";
+          return { type: "text" as const, text: `Tool available: ${toolName}` };
+        }),
+      };
+    }),
   };
 }
 
@@ -424,11 +470,7 @@ async function* readResponseBody(
 function createGatewayFor(
   model: GatewayModel,
   chatgptAccountId: string,
-  cursorDiagnostics: CursorDiagnosticSink | undefined,
 ): AnthropicMessagesGateway {
-  if (model.provider === "cursor") {
-    return new AnthropicMessagesGateway(new CursorAdapter({ diagnostics: cursorDiagnostics }));
-  }
   if (model.provider !== "codex") {
     throw new TypeError(`Unsupported translated gateway provider: ${model.provider}`);
   }

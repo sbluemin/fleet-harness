@@ -99,6 +99,7 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
 
     const controller = new AbortController();
     const unlinkAbort = linkAbortSignal(options.signal, controller);
+    const payload = forOpenAIResponsesBackend(request, this.dropSamplingParams);
     let response: Response;
 
     try {
@@ -110,7 +111,7 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
           "content-type": "application/json",
           ...this.extraHeaders
         },
-        body: JSON.stringify(this.dropSamplingParams ? forChatGptBackend(request) : request),
+        body: JSON.stringify(payload),
         signal: controller.signal
       });
     } catch (error) {
@@ -120,7 +121,6 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
 
     if (!response.ok) {
       if (process.env.FLEET_AI_GATEWAY_DEBUG === "1") {
-        const payload = this.dropSamplingParams ? forChatGptBackend(request) : request;
         const roles = payload.input.map((item) => ("role" in item ? item.role : item.type));
         console.error(`[ai-gateway] upstream ${response.status} input roles=${JSON.stringify(roles)} keys=${JSON.stringify(Object.keys(payload))}`);
       }
@@ -153,6 +153,29 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
       })
     };
   }
+}
+
+function forOpenAIResponsesBackend(
+  request: CanonicalResponseRequest,
+  dropSamplingParams: boolean,
+): CanonicalResponseRequest {
+  const payload = dropSamplingParams ? forChatGptBackend(request) : { ...request };
+  payload.input = request.input.map((item) => {
+    if (item.type !== "function_call_output") return item;
+    const {
+      is_error: _isError,
+      tool_references: _toolReferences,
+      ...wireItem
+    } = item;
+    return wireItem;
+  });
+  if (request.tools !== undefined) {
+    payload.tools = request.tools.map((tool) => {
+      const { defer_loading: _deferLoading, ...wireTool } = tool;
+      return wireTool;
+    });
+  }
+  return payload;
 }
 
 function forChatGptBackend(request: CanonicalResponseRequest): CanonicalResponseRequest {

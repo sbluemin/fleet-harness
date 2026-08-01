@@ -122,6 +122,31 @@ describe("Cursor diagnostic log", () => {
     expect(contents).not.toContain("claude-session");
     expect(contents).not.toContain("user_id");
   });
+
+  it("persists payload-free live bridge lifecycle diagnostics", async () => {
+    const root = await temporaryDirectory();
+    const log = createCursorDiagnosticLog(root);
+
+    log.write({
+      ...diagnosticEvent({
+        event: "bridge.mismatch",
+        outcome: "credential",
+        count: 2,
+      }),
+      apiKey: "SECRET_API_KEY",
+      toolOutput: "SECRET_TOOL_OUTPUT",
+      conversationId: "SECRET_CONVERSATION",
+    } as CursorDiagnosticEvent);
+    await log.flush();
+
+    const contents = await readFile(log.path, "utf8");
+    expect(JSON.parse(contents)).toMatchObject({
+      event: "bridge.mismatch",
+      outcome: "credential",
+      count: 2,
+    });
+    expect(contents).not.toContain("SECRET_");
+  });
 });
 
 function diagnosticEvent(

@@ -27,6 +27,8 @@ import {
 } from "../src/generated/cursor-agent-protobuf.js";
 import { cursorNativeExecPolicyReplies } from "../src/cursor-native-exec-policy.js";
 
+afterEach(() => resetCursorWireModelMemory());
+
 describe("Cursor client tool suspension", () => {
   it("completes the turn at execServerMessage instead of waiting forever for turnEnded", async () => {
     const first = await runSyntheticToolTurn("claude-session-a");
@@ -139,6 +141,73 @@ describe("Cursor client tool suspension", () => {
     }));
   });
 
+  it("maps the Cursor wire alias back to Claude Code's ToolSearch name", async () => {
+    const toolRequest: CanonicalResponseRequest = {
+      model: "grok-4.5-fast",
+      instructions: "Find the requested deferred tool with ToolSearch.",
+      input: [{ type: "message", role: "user", content: "Find fleet carrier_dispatch." }],
+      tools: [{
+        type: "function",
+        name: "ToolSearch",
+        description: "Load deferred client tools",
+        parameters: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
+          additionalProperties: false,
+        },
+      }],
+      metadata: { user_id: "claude-session-tool-search" },
+      stream: true,
+    };
+    const wireName = firstCursorWireToolName(toolRequest);
+    const callId = "call-tool-search-1";
+    const { events } = await runSyntheticCursorTurn([
+      {
+        interactionUpdate: {
+          toolCallStarted: {
+            callId,
+            toolCall: {
+              mcpToolCall: {
+                args: {
+                  name: wireName,
+                  toolCallId: callId,
+                  providerIdentifier: CURSOR_TOOL_PROVIDER_IDENTIFIER,
+                  toolName: wireName,
+                },
+              },
+            },
+          },
+        },
+      },
+      {
+        execServerMessage: {
+          id: 17,
+          execId: "mcp-tool-search-17",
+          mcpArgs: {
+            name: wireName,
+            toolCallId: callId,
+            providerIdentifier: CURSOR_TOOL_PROVIDER_IDENTIFIER,
+            toolName: wireName,
+            args: { query: cursorValue("select:mcp__fleet__carrier_dispatch") },
+          },
+        },
+      },
+    ], toolRequest);
+
+    expect(wireName).toMatch(/^cc_tool_search_[a-f0-9]{8}$/);
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "response.output_item.done",
+      item: {
+        id: callId,
+        type: "function_call",
+        call_id: callId,
+        name: "ToolSearch",
+        arguments: JSON.stringify({ query: "select:mcp__fleet__carrier_dispatch" }),
+      },
+    }));
+  });
+
   it("rejects Cursor turns that omit metadata.user_id", async () => {
     await expect(runSyntheticCursorTurn([], {
       model: "default",
@@ -150,17 +219,24 @@ describe("Cursor client tool suspension", () => {
 
   it("emits model.switch when the same Claude session changes Cursor wire models", async () => {
     const diagnostics: CursorDiagnosticEvent[] = [];
-    const frames = [
+    const firstFrames = [
       { interactionUpdate: { textDelta: { text: "ok" } } },
+      { interactionUpdate: { tokenDelta: { tokens: 2 } } },
+      { conversationCheckpointUpdate: { tokenDetails: { usedTokens: 90_000, maxTokens: 256_000 } } },
+      { interactionUpdate: { turnEnded: {} } },
+    ];
+    const secondFrames = [
+      { interactionUpdate: { textDelta: { text: "ok" } } },
+      { interactionUpdate: { tokenDelta: { tokens: 2 } } },
       { interactionUpdate: { turnEnded: {} } },
     ];
 
-    await runSyntheticCursorTurn(frames, {
+    await runSyntheticCursorTurn(firstFrames, {
       ...request("claude-session-model-switch"),
       model: "kimi-k3",
       reasoning: { summary: "auto", effort: "low" },
     }, { diagnostics: (event) => diagnostics.push(event) });
-    await runSyntheticCursorTurn(frames, {
+    const second = await runSyntheticCursorTurn(secondFrames, {
       ...request("claude-session-model-switch"),
       model: "kimi-k3",
       reasoning: { summary: "auto", effort: "high" },
@@ -174,6 +250,8 @@ describe("Cursor client tool suspension", () => {
         wireModel: "kimi-k3-high",
       }),
     ]);
+    expect(completedCursorUsage(second.events).input_tokens).toBeLessThan(90_000);
+    expect(completedCursorUsage(second.events)).not.toHaveProperty("context_window");
   });
 
   it("rejects native exec without leaking placeholder tools, then completes a client tool turn", async () => {
@@ -617,6 +695,43 @@ describe("Cursor client tool suspension", () => {
     }));
   });
 
+  it("keeps the last Cursor checkpoint across turns until a new checkpoint rebases it", async () => {
+    const sessionRequest = request("claude-session-context-continuity");
+    const first = await runSyntheticCursorTurn([
+      { interactionUpdate: { textDelta: { text: "ok" } } },
+      { interactionUpdate: { tokenDelta: { tokens: 10 } } },
+      { conversationCheckpointUpdate: { tokenDetails: { usedTokens: 100_000, maxTokens: 256_000 } } },
+      { interactionUpdate: { turnEnded: {} } },
+    ], sessionRequest);
+    const withoutCheckpoint = await runSyntheticCursorTurn([
+      { interactionUpdate: { textDelta: { text: "ok" } } },
+      { interactionUpdate: { tokenDelta: { tokens: 10 } } },
+      { interactionUpdate: { turnEnded: {} } },
+    ], sessionRequest);
+    const afterAuthoritativeRebase = await runSyntheticCursorTurn([
+      { interactionUpdate: { textDelta: { text: "ok" } } },
+      { interactionUpdate: { tokenDelta: { tokens: 10 } } },
+      { conversationCheckpointUpdate: { tokenDetails: { usedTokens: 40_000, maxTokens: 256_000 } } },
+      { interactionUpdate: { turnEnded: {} } },
+    ], sessionRequest);
+
+    expect(completedCursorUsage(first.events)).toEqual({
+      input_tokens: 99_990,
+      output_tokens: 10,
+      context_window: 256_000,
+    });
+    expect(completedCursorUsage(withoutCheckpoint.events)).toEqual({
+      input_tokens: 100_000,
+      output_tokens: 10,
+      context_window: 256_000,
+    });
+    expect(completedCursorUsage(afterAuthoritativeRebase.events)).toEqual({
+      input_tokens: 39_990,
+      output_tokens: 10,
+      context_window: 256_000,
+    });
+  });
+
 });
 
 async function runSyntheticToolTurn(userId: string): Promise<{
@@ -747,6 +862,14 @@ async function runSyntheticCursorTurn(
   const events: CanonicalResponseEvent[] = [];
   for await (const event of response.events) events.push(event);
   return { events, stream, requestHeaders };
+}
+
+function completedCursorUsage(events: readonly CanonicalResponseEvent[]) {
+  const completed = events.at(-1);
+  if (completed?.type !== "response.completed" || completed.response.usage == null) {
+    throw new Error("Synthetic Cursor turn did not complete with usage");
+  }
+  return completed.response.usage;
 }
 
 function request(userId: string): CanonicalResponseRequest {

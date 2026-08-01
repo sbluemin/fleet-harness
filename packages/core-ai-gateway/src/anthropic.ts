@@ -232,6 +232,7 @@ function translateAnthropicTools(
         ...(tool.description === undefined ? {} : { description: tool.description }),
         parameters: tool.input_schema,
         ...(tool.strict === undefined ? {} : { strict: tool.strict }),
+        ...(tool.defer_loading === undefined ? {} : { defer_loading: tool.defer_loading }),
       });
       continue;
     }
@@ -373,14 +374,20 @@ function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["
           arguments: JSON.stringify(block.input)
         });
         break;
-      case "tool_result":
+      case "tool_result": {
         flushParts();
+        const result = translateToolResult(block.content);
         items.push({
           type: "function_call_output",
           call_id: block.tool_use_id,
-          output: toolResultText(block.content)
+          output: result.output,
+          ...(block.is_error === undefined ? {} : { is_error: block.is_error }),
+          ...(result.toolReferences === undefined
+            ? {}
+            : { tool_references: result.toolReferences }),
         });
         break;
+      }
       case "thinking":
       case "redacted_thinking":
         break;
@@ -434,14 +441,20 @@ function canonicalRole(role: AnthropicMessage["role"]): CanonicalInputMessage["r
   return role === "system" ? "developer" : role;
 }
 
-function toolResultText(content: AnthropicToolResultBlock["content"]): string {
+interface TranslatedToolResult {
+  readonly output: string;
+  readonly toolReferences?: string[];
+}
+
+function translateToolResult(content: AnthropicToolResultBlock["content"]): TranslatedToolResult {
   if (content === undefined) {
-    return "";
+    return { output: "" };
   }
   if (typeof content === "string") {
-    return content;
+    return { output: content };
   }
-  return content
+  const toolReferences: string[] = [];
+  const output = content
     .map((block) => {
       if (block.type === "text" && typeof block.text === "string") {
         return block.text;
@@ -449,9 +462,21 @@ function toolResultText(content: AnthropicToolResultBlock["content"]): string {
       if (block.type === "image") {
         return "[image]";
       }
-      return JSON.stringify(block);
+      if (
+        block.type === "tool_reference"
+        && typeof block.tool_name === "string"
+        && block.tool_name.length > 0
+        && !toolReferences.includes(block.tool_name)
+      ) {
+        toolReferences.push(block.tool_name);
+      }
+      return JSON.stringify(block) ?? "";
     })
     .join("");
+  return {
+    output,
+    ...(toolReferences.length === 0 ? {} : { toolReferences }),
+  };
 }
 
 function translateToolChoice(toolChoice: AnthropicToolChoice): CanonicalToolChoice {

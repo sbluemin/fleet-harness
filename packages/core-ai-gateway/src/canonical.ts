@@ -73,6 +73,10 @@ export interface CanonicalFunctionCallOutput {
   type: "function_call_output";
   call_id: string;
   output: string;
+  /** Client tool failures remain successful bridge replies with an error-marked result payload. */
+  is_error?: boolean;
+  /** Tool names selected by a client-side discovery tool for use on the following turn. */
+  tool_references?: string[];
 }
 
 export type CanonicalInputItem =
@@ -86,6 +90,8 @@ export interface CanonicalFunctionTool {
   description?: string;
   parameters: Record<string, unknown>;
   strict?: boolean;
+  /** The client may omit this definition until a discovery result references it. */
+  defer_loading?: boolean;
 }
 
 export const CANONICAL_NATIVE_TOOL_NAMES = ["web_search"] as const;

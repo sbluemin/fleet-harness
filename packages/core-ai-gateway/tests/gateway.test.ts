@@ -83,6 +83,37 @@ describe("Anthropic request translation", () => {
     });
   });
 
+  it("preserves Claude Code deferred-tool metadata in the canonical request", () => {
+    const request: AnthropicMessagesRequest = {
+      ...baseRequest(),
+      tools: [
+        {
+          name: "ToolSearch",
+          input_schema: { type: "object", properties: {} },
+        },
+        {
+          name: "mcp__fleet__carrier_dispatch",
+          input_schema: { type: "object", properties: {} },
+          defer_loading: true,
+        },
+      ],
+    };
+
+    expect(translateAnthropicRequest(request).tools).toEqual([
+      {
+        type: "function",
+        name: "ToolSearch",
+        parameters: { type: "object", properties: {} },
+      },
+      {
+        type: "function",
+        name: "mcp__fleet__carrier_dispatch",
+        parameters: { type: "object", properties: {} },
+        defer_loading: true,
+      },
+    ]);
+  });
+
   it("separates Anthropic web search server tools from client function tools", () => {
     const request = {
       ...baseRequest(),
@@ -272,7 +303,8 @@ describe("Anthropic request translation", () => {
             {
               type: "tool_result",
               tool_use_id: "call_preserved",
-              content: [{ type: "text", text: "# Fleet" }]
+              content: [{ type: "text", text: "# Fleet" }],
+              is_error: true,
             }
           ]
         }
@@ -292,9 +324,42 @@ describe("Anthropic request translation", () => {
       {
         type: "function_call_output",
         call_id: "call_preserved",
-        output: "# Fleet"
+        output: "# Fleet",
+        is_error: true,
       }
     ]);
+  });
+
+  it("preserves tool references returned by Claude Code ToolSearch", () => {
+    const request: AnthropicMessagesRequest = {
+      ...baseRequest(),
+      messages: [{
+        role: "user",
+        content: [{
+          type: "tool_result",
+          tool_use_id: "call-tool-search",
+          content: [
+            { type: "tool_reference", tool_name: "mcp__fleet__carrier_dispatch" },
+            { type: "tool_reference", tool_name: "mcp__fleet__carrier_jobs" },
+            { type: "tool_reference", tool_name: "mcp__fleet__carrier_dispatch" },
+          ],
+        }],
+      }],
+    };
+
+    expect(translateAnthropicRequest(request).input).toEqual([{
+      type: "function_call_output",
+      call_id: "call-tool-search",
+      output: [
+        '{"type":"tool_reference","tool_name":"mcp__fleet__carrier_dispatch"}',
+        '{"type":"tool_reference","tool_name":"mcp__fleet__carrier_jobs"}',
+        '{"type":"tool_reference","tool_name":"mcp__fleet__carrier_dispatch"}',
+      ].join(""),
+      tool_references: [
+        "mcp__fleet__carrier_dispatch",
+        "mcp__fleet__carrier_jobs",
+      ],
+    }]);
   });
 
   it("maps Anthropic image blocks into Responses input_image parts", () => {
@@ -985,6 +1050,71 @@ describe("Anthropic SSE encoding", () => {
 });
 
 describe("OpenAI Responses adapter", () => {
+  it("keeps canonical tool failure metadata provider-private", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => new Response(
+      JSON.stringify({ error: { message: "stop after capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+
+    await adapter.stream({
+      model: "gpt-5.5",
+      input: [{
+        type: "function_call_output",
+        call_id: "call-failed",
+        output: "failed",
+        is_error: true,
+      }],
+      stream: true,
+    }, { apiKey: "platform-key" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body)) as CanonicalResponseRequest;
+    expect(body.input).toEqual([{
+      type: "function_call_output",
+      call_id: "call-failed",
+      output: "failed",
+    }]);
+  });
+
+  it("keeps deferred tools eager while stripping ToolSearch metadata from OpenAI wire payloads", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => new Response(
+      JSON.stringify({ error: { message: "stop after capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+
+    await adapter.stream({
+      model: "gpt-5.6-sol",
+      input: [{
+        type: "function_call_output",
+        call_id: "call-tool-search",
+        output: '{"type":"tool_reference","tool_name":"mcp__fleet__carrier_dispatch"}',
+        tool_references: ["mcp__fleet__carrier_dispatch"],
+      }],
+      tools: [{
+        type: "function",
+        name: "mcp__fleet__carrier_dispatch",
+        parameters: { type: "object", properties: {} },
+        defer_loading: true,
+      }],
+      stream: true,
+    }, { apiKey: "platform-key" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body.input).toEqual([{
+      type: "function_call_output",
+      call_id: "call-tool-search",
+      output: '{"type":"tool_reference","tool_name":"mcp__fleet__carrier_dispatch"}',
+    }]);
+    expect(body.tools).toEqual([{
+      type: "function",
+      name: "mcp__fleet__carrier_dispatch",
+      parameters: { type: "object", properties: {} },
+    }]);
+  });
+
   it("forwards a Codex Fast service tier to the ChatGPT Responses backend", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => new Response(
       JSON.stringify({ error: { message: "stop after capture" } }),

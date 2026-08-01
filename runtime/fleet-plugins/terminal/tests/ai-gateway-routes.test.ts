@@ -1,6 +1,7 @@
 import {
   AnthropicMessagesGateway,
   CURSOR_EXTERNAL_ROOT_BYTE_LIMIT,
+  CursorAdapter,
 } from "@dotobokuri/core-ai-gateway";
 import type {
   AdapterResponse,
@@ -30,6 +31,51 @@ describe("route registration", () => {
 
     expect(registerRouter).toHaveBeenCalledTimes(1);
     expect(registerRouter.mock.calls[0]?.[0]).toBe("ai-gateway");
+  });
+
+  it("reuses one router-owned Cursor adapter and disposes it explicitly", async () => {
+    const adapters: CursorAdapter[] = [];
+    const streamSpy = vi.spyOn(CursorAdapter.prototype, "stream").mockImplementation(
+      async function (this: CursorAdapter) {
+        adapters.push(this);
+        return successfulAdapterResponse();
+      },
+    );
+    const disposeSpy = vi.spyOn(CursorAdapter.prototype, "dispose");
+    const router = createAiGatewayRouter({
+      readAuth,
+      readCursorToken: () => "cursor-subscription-token",
+    });
+
+    try {
+      for (let turn = 0; turn < 2; turn += 1) {
+        await router.handle(ctx({
+          res: response(),
+          token: ANTHROPIC_CRED,
+          model: "claude-gateway--cursor--kimi-k3",
+        }));
+      }
+      expect(adapters).toHaveLength(2);
+      expect(adapters[0]).toBe(adapters[1]);
+
+      router.dispose();
+      expect(disposeSpy).toHaveBeenCalledWith();
+    } finally {
+      router.dispose();
+      streamSpy.mockRestore();
+      disposeSpy.mockRestore();
+    }
+  });
+
+  it("does not dispose provider state when the gateway is injected", () => {
+    const disposeSpy = vi.spyOn(CursorAdapter.prototype, "dispose");
+    const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
+    try {
+      router.dispose();
+      expect(disposeSpy).not.toHaveBeenCalled();
+    } finally {
+      disposeSpy.mockRestore();
+    }
   });
 });
 
@@ -115,7 +161,7 @@ describe("upstream credential", () => {
     }));
   });
 
-  it("keeps a scoped unmarked model id as a legacy route without 1M usage projection", async () => {
+  it("projects Codex usage from the registry when Claude strips the 1M marker", async () => {
     const gateway = stubGateway();
     const streamSpy = vi.spyOn(gateway, "stream");
     const fetchMock = vi.fn<typeof fetch>();
@@ -129,8 +175,8 @@ describe("upstream credential", () => {
     }));
 
     expect(res.status).toBe(200);
-    expect(streamSpy).toHaveBeenCalledWith(expect.anything(), expect.not.objectContaining({
-      contextWindow: expect.anything(),
+    expect(streamSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      contextWindow: 372_000,
     }));
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -179,6 +225,26 @@ describe("upstream credential", () => {
     expect(canonical?.model).toBe("kimi-k3");
     expect(canonical?.reasoning).toEqual({ summary: "auto", effort: "medium" });
     expect(streamSpy.mock.calls[0]?.[1]).not.toHaveProperty("reasoningEfforts");
+  });
+
+  it("projects Cursor usage from the registry when Claude strips the 1M marker", async () => {
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({
+      gateway,
+      readAuth,
+      readCursorToken: () => "cursor-subscription-token",
+    });
+
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--cursor--grok-4.5-fast",
+    }));
+
+    expect(streamSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      contextWindow: 256_000,
+    }));
   });
 
   it("rejects a removed Cursor model instead of forwarding it to Anthropic", async () => {
@@ -278,6 +344,57 @@ describe("Kimi passthrough", () => {
       output_config: { effort: "high", retain: "preserved" },
     });
     expect(`${JSON.stringify(res.headers)}${res.body}`).not.toContain("kimi-secret");
+  });
+
+  it("keeps Claude Code deferred tools eager and normalizes ToolSearch references", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "event: message_stop\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readKimiApiKey: async () => "kimi-secret",
+    });
+
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--kimi--k3-256k",
+      tools: [
+        {
+          name: "ToolSearch",
+          input_schema: { type: "object", properties: {} },
+        },
+        {
+          name: "mcp__fleet__carrier_dispatch",
+          input_schema: { type: "object", properties: {} },
+          defer_loading: true,
+        },
+      ],
+      messages: [{
+        role: "user",
+        content: [{
+          type: "tool_result",
+          tool_use_id: "call-tool-search",
+          content: [{
+            type: "tool_reference",
+            tool_name: "mcp__fleet__carrier_dispatch",
+          }],
+        }],
+      }],
+    }));
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      readonly messages?: ReadonlyArray<{ readonly content?: ReadonlyArray<Record<string, unknown>> }>;
+      readonly tools?: ReadonlyArray<Record<string, unknown>>;
+    };
+    expect(body.tools).toHaveLength(2);
+    expect(body.tools?.every((tool) => !("defer_loading" in tool))).toBe(true);
+    expect(body.messages?.[0]?.content?.[0]).toMatchObject({
+      type: "tool_result",
+      content: [{ type: "text", text: "Tool available: mcp__fleet__carrier_dispatch" }],
+    });
   });
 
   it.each([
@@ -556,28 +673,32 @@ function stubGateway(onRequest?: (request: CanonicalResponseRequest) => void): A
   const adapter: AiGatewayAdapter = {
     async stream(request): Promise<AdapterResponse> {
       onRequest?.(request);
-      return {
-        ok: true,
-        status: 200,
-        headers: new Headers({ "content-type": "text/event-stream" }),
-        events: (async function* () {
-          yield {
-            type: "response.created",
-            response: { id: "resp_stub", model: "gpt-5.5", usage: null },
-          } as const;
-          yield {
-            type: "response.completed",
-            response: {
-              id: "resp_stub",
-              model: "gpt-5.5",
-              usage: { input_tokens: 1, output_tokens: 1 },
-            },
-          } as const;
-        })(),
-      };
+      return successfulAdapterResponse();
     },
   };
   return new AnthropicMessagesGateway(adapter);
+}
+
+function successfulAdapterResponse(): AdapterResponse {
+  return {
+    ok: true,
+    status: 200,
+    headers: new Headers({ "content-type": "text/event-stream" }),
+    events: (async function* () {
+      yield {
+        type: "response.created",
+        response: { id: "resp_stub", model: "gpt-5.5", usage: null },
+      } as const;
+      yield {
+        type: "response.completed",
+        response: {
+          id: "resp_stub",
+          model: "gpt-5.5",
+          usage: { input_tokens: 1, output_tokens: 1 },
+        },
+      } as const;
+    })(),
+  };
 }
 
 interface ResponseStub {
@@ -627,6 +748,7 @@ function ctx(options: {
   readonly outputConfig?: Record<string, unknown>;
   readonly metadata?: Record<string, unknown> | null;
   readonly messages?: ReadonlyArray<Record<string, unknown>>;
+  readonly tools?: ReadonlyArray<Record<string, unknown>>;
 }): RouteHandlerContext {
   const payload = JSON.stringify({
     model: options.model ?? "claude-gateway--codex--gpt-5.6-sol",
@@ -637,6 +759,7 @@ function ctx(options: {
     ...(options.metadata === null
       ? {}
       : { metadata: options.metadata ?? { user_id: "claude-session-test" } }),
+    ...(options.tools ? { tools: options.tools } : {}),
     stream: true,
   });
   const req = {

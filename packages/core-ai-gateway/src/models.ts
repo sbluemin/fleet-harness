@@ -171,9 +171,10 @@ export function findGatewayModel(
     const scopedId = stripClaudeOneMillionMarker(id).slice(GATEWAY_MODEL_ALIAS_PREFIX.length);
     const model = catalog.find((candidate) => candidate.id === scopedId);
     if (!model) return undefined;
-    // Unmarked aliases remain valid for sessions saved before context projection.
-    // A fabricated marker for a genuinely unmarked 200k model would make Claude
-    // undercount its context, so accept a marker only when discovery emits one.
+    // Claude Code may omit the discovery-only marker from the request, so both
+    // forms resolve to the same registry model. A fabricated marker for a
+    // genuinely unmarked 200k model would make Claude undercount its context,
+    // so accept a marker only when discovery emits one.
     return hasClaudeOneMillionMarker(id)
       && !hasClaudeOneMillionMarker(toClaudeGatewayModelId(model))
       ? undefined

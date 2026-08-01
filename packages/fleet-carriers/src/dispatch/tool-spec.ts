@@ -168,7 +168,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         ` load it before composing a dispatch (skip reloading if its content is already in context).` +
         ` Missing required tags cause hard-error rejection that echoes the carrier's block contract.`,
       `Every successful fresh dispatch returns context_id. To continue that real provider session later,` +
-        ` wait for completion and pass that value as resume_context_id; omit resume_context_id to start fresh.`,
+        ` wait for completion and pass that value as resume_context_id; omit resume_context_id to start fresh and never send an empty string.`,
       CARRIER_REQUEST_BREVITY_GUIDELINE,
     ],
     guardrails: [
@@ -204,6 +204,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         })),
         resume_context_id: Type.Optional(Type.String({
           description: RESUME_CONTEXT_ID_DESCRIPTION,
+          minLength: 1,
         })),
       });
     },

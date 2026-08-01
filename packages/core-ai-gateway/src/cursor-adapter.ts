@@ -54,6 +54,8 @@ export const CURSOR_EXTERNAL_ROOT_BYTE_LIMIT = 512 * 1024;
 export const CURSOR_TOOL_PROVIDER_IDENTIFIER = "fleet-gateway";
 export const CURSOR_TOOL_FINALIZE_GRACE_MS = 50;
 export const CURSOR_CLIENT_HEARTBEAT_MS = 5_000;
+export const CURSOR_PENDING_LIVE_RUN_TTL_MS = 5 * 60_000;
+export const CURSOR_PENDING_LIVE_RUN_CAPACITY = 64;
 export const CONNECT_FLAG_COMPRESSED = 0x01;
 export const CONNECT_FLAG_END_STREAM = 0x02;
 
@@ -107,6 +109,10 @@ export interface CursorAdapterOptions {
   readonly toolFinalizeGraceMs?: number;
   /** Cursor agent stream liveness interval. Exposed for deterministic transport tests. */
   readonly clientHeartbeatMs?: number;
+  /** Maximum time a client-tool-suspended Run remains attachable. */
+  readonly pendingLiveRunTtlMs?: number;
+  /** Maximum number of parked Runs retained by this adapter instance. */
+  readonly pendingLiveRunCapacity?: number;
   /**
    * Payload-free transport diagnostics. Implementations must not throw; the adapter also isolates
    * callback failures so observability can never affect a model turn.
@@ -130,11 +136,30 @@ export type CursorDiagnosticEventName =
   | "client.heartbeat"
   | "client.reply"
   | "server.frame"
+  | "bridge.park"
+  | "bridge.attach"
+  | "bridge.expire"
+  | "bridge.mismatch"
   | "turn.finish";
 
-/** Mid-session wire-model switches keyed by derived conversation id. Package-owned; no raw user_id. */
-const CURSOR_WIRE_MODEL_BY_CONVERSATION = new Map<string, string>();
-const CURSOR_WIRE_MODEL_MEMORY_LIMIT = 512;
+/** Mid-session wire-model switches keyed by credential-partitioned conversation identity. */
+const CURSOR_WIRE_MODEL_BY_STATE = new Map<string, string>();
+interface CursorContextCheckpoint {
+  readonly contextTokens: number;
+  readonly contextWindow?: number;
+}
+
+interface StoredCursorContextCheckpoint extends CursorContextCheckpoint {
+  readonly wireModelId: string;
+  readonly credentialFingerprint: string;
+}
+
+/** Last authoritative Cursor checkpoint for a credential-partitioned conversation and wire model. */
+const CURSOR_CONTEXT_CHECKPOINT_BY_STATE = new Map<
+  string,
+  StoredCursorContextCheckpoint
+>();
+const CURSOR_CONVERSATION_MEMORY_LIMIT = 512;
 
 /**
  * Safe-by-construction Cursor diagnostic shape. It intentionally has no prompt, output, tool
@@ -554,7 +579,13 @@ function buildCursorConversationTurns(
 
     const call = pendingCalls.get(item.call_id);
     if (call) {
-      current.steps.push(storeCursorToolCallStep(blobs, call, tools, item.output));
+      current.steps.push(storeCursorToolCallStep(
+        blobs,
+        call,
+        tools,
+        item.output,
+        item.is_error === true,
+      ));
       pendingCalls.delete(item.call_id);
     } else {
       current.steps.push(storeCursorAssistantStep(blobs, `[Tool Result]\n${item.output}`));
@@ -574,6 +605,7 @@ function storeCursorToolCallStep(
   call: Extract<CanonicalInputItem, { type: "function_call" }>,
   tools: readonly CursorWireTool[],
   output?: string,
+  isError = false,
 ): string {
   const wireName = cursorWireNameForClient(call.name, tools);
   const step = fromJson(ConversationStepSchema, {
@@ -591,7 +623,7 @@ function storeCursorToolCallStep(
           : {
             result: {
               success: {
-                isError: false,
+                isError,
                 content: [{ text: { text: output } }],
               },
             },
@@ -645,7 +677,7 @@ function historyRoot(
       "[tool_result]",
       `call_id: ${item.call_id}`,
       ...(toolName ? [`name: ${toolName}`] : []),
-      "is_error: false",
+      `is_error: ${item.is_error === true}`,
       "output:",
       item.output,
     ].join("\n");
@@ -677,7 +709,19 @@ function runtimeTimeZone(): string {
 }
 
 function applyCursorToolBudget(request: CanonicalResponseRequest): CursorToolBudget {
-  const sourceTools = request.tools ?? [];
+  const declaredTools = request.tools ?? [];
+  const selectedName = typeof request.tool_choice === "object" ? request.tool_choice.name : undefined;
+  const referencedNames = cursorReferencedToolNames(request.input);
+  const supportsDeferredLoading = declaredTools.some((tool) => isCursorToolSearchName(tool.name));
+  // Preserve legacy callers that attach defer_loading metadata without exposing ToolSearch.
+  const sourceTools = supportsDeferredLoading
+    ? declaredTools.filter((tool) => (
+        tool.defer_loading !== true
+        || isCursorToolSearchName(tool.name)
+        || referencedNames.has(tool.name)
+        || cursorToolMatches(tool.name, selectedName)
+      ))
+    : declaredTools;
   const wireTools = sourceTools.map(toCursorWireTool);
   if (
     wireTools.length <= CURSOR_TOOL_COUNT_LIMIT
@@ -686,11 +730,10 @@ function applyCursorToolBudget(request: CanonicalResponseRequest): CursorToolBud
     return { tools: wireTools, omittedNames: [] };
   }
 
-  const selectedName = typeof request.tool_choice === "object" ? request.tool_choice.name : undefined;
   const candidates = sourceTools
     .map((tool, index) => ({
       index,
-      priority: cursorToolPriority(tool.name, selectedName),
+      priority: cursorToolPriority(tool.name, selectedName, referencedNames.has(tool.name)),
       wire: wireTools[index]!,
     }))
     .sort((left, right) => left.priority - right.priority || left.index - right.index);
@@ -719,9 +762,7 @@ function applyCursorToolBudget(request: CanonicalResponseRequest): CursorToolBud
   }
 
   if (selectedName) {
-    const selectedIndex = sourceTools.findIndex((tool) => (
-      tool.name === selectedName || cursorToolLeafName(tool.name) === cursorToolLeafName(selectedName)
-    ));
+    const selectedIndex = sourceTools.findIndex((tool) => cursorToolMatches(tool.name, selectedName));
     if (selectedIndex >= 0 && !keptIndexes.has(selectedIndex)) {
       throw new CursorRequestBudgetError(
         `Selected Cursor tool "${selectedName}" exceeds the transport budget`,
@@ -802,13 +843,32 @@ function cursorToolPayloadBytes(tools: readonly CursorWireTool[]): number {
   }), "utf8");
 }
 
-function cursorToolPriority(name: string, selectedName: string | undefined): number {
+function cursorToolPriority(
+  name: string,
+  selectedName: string | undefined,
+  loadedFromToolSearch: boolean,
+): number {
   const leafName = cursorToolLeafName(name);
   if (leafName === "exec_command" || leafName === "shell_command") return 0;
   if (leafName === "apply_patch") return 1;
-  if (selectedName && (name === selectedName || leafName === cursorToolLeafName(selectedName))) return 2;
-  if (leafName === "tool_search") return 3;
+  if (cursorToolMatches(name, selectedName)) return 2;
+  if (loadedFromToolSearch || isCursorToolSearchName(name)) return 3;
   return name.includes("__") ? 5 : 4;
+}
+
+function cursorToolMatches(name: string, selectedName: string | undefined): boolean {
+  return selectedName !== undefined
+    && (name === selectedName || cursorToolLeafName(name) === cursorToolLeafName(selectedName));
+}
+
+function cursorReferencedToolNames(input: readonly CanonicalInputItem[]): ReadonlySet<string> {
+  return new Set(input.flatMap((item) => (
+    item.type === "function_call_output" ? item.tool_references ?? [] : []
+  )));
+}
+
+function isCursorToolSearchName(name: string): boolean {
+  return cursorToolLeafName(name).replace(/[_-]/g, "").toLowerCase() === "toolsearch";
 }
 
 function cursorToolLeafName(name: string): string {
@@ -820,10 +880,10 @@ function cursorToolLimitNote(budget: CursorToolBudget): string | undefined {
   const names = budget.omittedNames.slice(0, 12);
   const remainder = budget.omittedNames.length - names.length;
   const summary = `${names.join(", ")}${remainder > 0 ? `, and ${remainder} more` : ""}`;
-  const recoverable = budget.tools.some((tool) => cursorToolLeafName(tool.clientName) === "tool_search");
+  const toolSearch = budget.tools.find((tool) => isCursorToolSearchName(tool.clientName));
   const total = budget.tools.length + budget.omittedNames.length;
-  return recoverable
-    ? `${CURSOR_TOOL_LIMIT_NOTE_PREFIX} Cursor transport limits expose ${budget.tools.length} of ${total} tools this turn. Omitted: ${summary}. Use tool_search to load an omitted tool when needed.`
+  return toolSearch
+    ? `${CURSOR_TOOL_LIMIT_NOTE_PREFIX} Cursor transport limits expose ${budget.tools.length} of ${total} tools this turn. Omitted: ${summary}. Use ${toolSearch.toolName} to load an omitted tool when needed.`
     : `${CURSOR_TOOL_LIMIT_NOTE_PREFIX} Cursor transport limits expose ${budget.tools.length} of ${total} tools this turn. Omitted and unavailable this turn: ${summary}.`;
 }
 
@@ -872,12 +932,18 @@ function cursorClientToolDiscipline(
   const write = findCursorToolName(tools, ["Write", "apply_patch"]);
   const grep = findCursorToolName(tools, ["Grep"]);
   const glob = findCursorToolName(tools, ["Glob"]);
+  const toolSearch = tools.find((tool) => isCursorToolSearchName(tool.clientName))?.toolName;
   const nativeWebSearch = nativeTools.some((tool) => tool.type === "web_search");
   const guidance = [
     nativeWebSearch
       ? "Do not invoke Cursor-native filesystem, shell, or editing tools in gateway mode; native web search is the only exception. Call the advertised client bridge tools for every other action."
       : "Do not invoke Cursor-native tools in gateway mode; call the advertised client bridge tools directly.",
   ];
+  if (toolSearch) {
+    guidance.push(
+      `\`${toolSearch}\` is Claude Code's ToolSearch bridge. Use it to load deferred client tools, then call only a tool name returned by that search on the next turn.`,
+    );
+  }
   const dedicated = [
     read ? `\`${read}\` for reading files` : undefined,
     edit ? `\`${edit}\` for exact file changes` : undefined,
@@ -945,6 +1011,123 @@ function isCursorNativeModel(modelId: string): boolean {
   return modelId === "default" || modelId === "auto" || modelId.startsWith("composer-");
 }
 
+/** Explicit provider semantics: Auto/default, Composer, and Grok retain cold continuation. */
+function supportsCursorLiveToolBridge(wireModelId: string): boolean {
+  return !isCursorNativeModel(wireModelId)
+    && !wireModelId.startsWith("cursor-grok-")
+    && !wireModelId.startsWith("grok-");
+}
+
+interface CursorLiveRunDescriptor {
+  readonly conversationId: string;
+  readonly sessionId: string;
+  readonly credentialFingerprint: string;
+  readonly requestModel: string;
+  readonly wireModelId: string;
+  readonly effort?: ReasoningEffort;
+  readonly toolCatalogFingerprint: string;
+}
+
+interface CursorPendingToolCorrelation {
+  /** Anthropic-visible tool_use id. */
+  readonly callId: string;
+  /** Cursor MCP id sealed from mcpArgs. */
+  readonly toolCallId: string;
+  /** Cursor exec envelope id sealed from execServerMessage. */
+  readonly messageId: number;
+  readonly execId: string;
+}
+
+type CursorCanonicalToolResult = Extract<CanonicalInputItem, { type: "function_call_output" }>;
+
+interface CursorLiveRun {
+  readonly descriptor: CursorLiveRunDescriptor;
+  readonly initialEvents: AsyncIterable<CanonicalResponseEvent>;
+  readonly report: CursorDiagnosticReporter;
+  attach(
+    results: readonly CursorCanonicalToolResult[],
+    signal: AbortSignal | undefined,
+    estimatedInputTokens: number,
+  ): AsyncIterable<CanonicalResponseEvent>;
+  dispose(outcome: string, error?: Error): void;
+}
+
+interface CursorPendingLiveRun {
+  readonly run: CursorLiveRun;
+  readonly calls: readonly CursorPendingToolCorrelation[];
+  readonly timer: ReturnType<typeof setTimeout>;
+}
+
+function cursorCredentialFingerprint(apiKey: string): string {
+  return createHash("sha256")
+    .update("fleet:cursor:credential:\0")
+    .update(apiKey)
+    .digest("hex");
+}
+
+function cursorConversationStateKey(
+  credentialFingerprint: string,
+  conversationId: string,
+): string {
+  return `${credentialFingerprint}:${conversationId}`;
+}
+
+function cursorToolCatalogFingerprint(
+  requestTools: readonly NonNullable<CanonicalResponseRequest["tools"]>[number][],
+  wireTools: readonly CursorWireTool[],
+): string {
+  return createHash("sha256")
+    .update("fleet:cursor:tool-catalog:\0")
+    .update(JSON.stringify({
+      requestTools,
+      wireTools: wireTools.map(cursorWireToolDefinition),
+    }))
+    .digest("hex");
+}
+
+function trailingCursorToolResults(
+  input: readonly CanonicalInputItem[],
+): readonly CursorCanonicalToolResult[] | undefined {
+  if (input.at(-1)?.type !== "function_call_output") return undefined;
+  let start = input.length - 1;
+  while (start > 0 && input[start - 1]?.type === "function_call_output") start -= 1;
+  const preceding = input.slice(0, start);
+  let lastCallIndex = -1;
+  for (let index = preceding.length - 1; index >= 0; index -= 1) {
+    if (preceding[index]?.type !== "function_call") continue;
+    lastCallIndex = index;
+    break;
+  }
+  if (lastCallIndex < 0 || lastUserIndex(preceding) > lastCallIndex) return undefined;
+  return input.slice(start) as readonly CursorCanonicalToolResult[];
+}
+
+function cursorLiveRunMismatch(
+  pending: CursorPendingLiveRun,
+  descriptor: CursorLiveRunDescriptor,
+  results: readonly CursorCanonicalToolResult[] | undefined,
+): string | undefined {
+  if (!results) return "superseded_by_prompt";
+  const expected = pending.run.descriptor;
+  if (descriptor.conversationId !== expected.conversationId) return "conversation";
+  if (descriptor.sessionId !== expected.sessionId) return "session";
+  if (descriptor.credentialFingerprint !== expected.credentialFingerprint) return "credential";
+  if (descriptor.requestModel !== expected.requestModel) return "model";
+  if (descriptor.wireModelId !== expected.wireModelId) return "wire_model";
+  if (descriptor.effort !== expected.effort) return "effort";
+  if (descriptor.toolCatalogFingerprint !== expected.toolCatalogFingerprint) return "tool_catalog";
+  if (!supportsCursorLiveToolBridge(descriptor.wireModelId)) return "ineligible_model";
+
+  const resultIds = results.map((result) => result.call_id);
+  if (new Set(resultIds).size !== resultIds.length) return "duplicate_result";
+  const expectedIds = pending.calls.map((call) => call.callId);
+  if (resultIds.length !== expectedIds.length) {
+    return resultIds.length < expectedIds.length ? "partial_results" : "extra_results";
+  }
+  const expectedSet = new Set(expectedIds);
+  return resultIds.every((callId) => expectedSet.has(callId)) ? undefined : "stale_results";
+}
+
 function rootBytes(entries: readonly CursorRootEntry[]): number {
   return entries.reduce((total, entry) => total + entry.byteLength, 0);
 }
@@ -958,9 +1141,14 @@ export class CursorAdapter implements AiGatewayAdapter {
   private readonly connect: typeof http2.connect;
   private readonly toolFinalizeGraceMs: number;
   private readonly clientHeartbeatMs: number;
+  private readonly pendingLiveRunTtlMs: number;
+  private readonly pendingLiveRunCapacity: number;
   private readonly diagnostics: CursorDiagnosticSink | undefined;
   private readonly conversationIdOverride: string | undefined;
   private readonly sessionIdOverride: string | undefined;
+  private readonly pendingLiveRuns = new Map<string, CursorPendingLiveRun>();
+  private readonly liveRuns = new Set<CursorLiveRun>();
+  private disposed = false;
 
   constructor(options: CursorAdapterOptions = {}) {
     this.origin = options.origin ?? CURSOR_API_ORIGIN;
@@ -970,6 +1158,16 @@ export class CursorAdapter implements AiGatewayAdapter {
     this.connect = options.connect ?? http2.connect;
     this.toolFinalizeGraceMs = options.toolFinalizeGraceMs ?? CURSOR_TOOL_FINALIZE_GRACE_MS;
     this.clientHeartbeatMs = options.clientHeartbeatMs ?? CURSOR_CLIENT_HEARTBEAT_MS;
+    this.pendingLiveRunTtlMs = cursorPositiveIntegerOption(
+      options.pendingLiveRunTtlMs,
+      CURSOR_PENDING_LIVE_RUN_TTL_MS,
+      "pendingLiveRunTtlMs",
+    );
+    this.pendingLiveRunCapacity = cursorPositiveIntegerOption(
+      options.pendingLiveRunCapacity,
+      CURSOR_PENDING_LIVE_RUN_CAPACITY,
+      "pendingLiveRunCapacity",
+    );
     this.diagnostics = options.diagnostics;
     this.conversationIdOverride = options.conversationId;
     this.sessionIdOverride = options.sessionId;
@@ -979,17 +1177,191 @@ export class CursorAdapter implements AiGatewayAdapter {
     request: CanonicalResponseRequest,
     options: AdapterCallOptions,
   ): Promise<AdapterResponse> {
-    const report = createCursorDiagnosticReporter(this.diagnostics);
+    if (this.disposed) throw new Error("Cursor adapter is disposed");
     const identity = resolveCursorSessionIdentity(request, {
       conversationId: this.conversationIdOverride,
       sessionId: this.sessionIdOverride,
     });
-    const plan = buildCursorRunPlan(request, identity.conversationId, {
-      maxMode: this.maxMode,
-    });
+    const credentialFingerprint = cursorCredentialFingerprint(options.apiKey);
+    const conversationStateKey = cursorConversationStateKey(
+      credentialFingerprint,
+      identity.conversationId,
+    );
+    const results = trailingCursorToolResults(request.input);
+    const earlyPending = this.pendingLiveRuns.get(conversationStateKey);
+    if (!results && earlyPending && this.claimPendingLiveRun(earlyPending)) {
+      earlyPending.run.report("bridge.mismatch", {
+        model: cursorDiagnosticLabel(request.model),
+        outcome: "superseded_by_prompt",
+      });
+      earlyPending.run.dispose("bridge_mismatch_superseded_by_prompt");
+    }
+    let plan: CursorRunPlan;
+    try {
+      plan = buildCursorRunPlan(request, identity.conversationId, {
+        maxMode: this.maxMode,
+      });
+    } catch (error) {
+      const pending = this.pendingLiveRuns.get(conversationStateKey);
+      if (pending && this.claimPendingLiveRun(pending)) {
+        pending.run.report("bridge.mismatch", {
+          model: cursorDiagnosticLabel(request.model),
+          outcome: "invalid_continuation",
+        });
+        pending.run.dispose("bridge_mismatch_invalid_continuation");
+      }
+      throw error;
+    }
+    const descriptor: CursorLiveRunDescriptor = {
+      conversationId: identity.conversationId,
+      sessionId: identity.sessionId,
+      credentialFingerprint,
+      requestModel: request.model,
+      wireModelId: plan.wireModelId,
+      ...(request.reasoning?.effort === undefined ? {} : { effort: request.reasoning.effort }),
+      toolCatalogFingerprint: cursorToolCatalogFingerprint(request.tools ?? [], plan.tools),
+    };
+    const pending = this.pendingLiveRuns.get(conversationStateKey);
+    if (pending) {
+      const mismatch = cursorLiveRunMismatch(pending, descriptor, results);
+      if (mismatch === undefined && results && this.claimPendingLiveRun(pending)) {
+        rememberCursorWireModel(
+          identity.conversationId,
+          descriptor.credentialFingerprint,
+          plan.wireModelId,
+        );
+        pending.run.report("turn.start", {
+          model: cursorDiagnosticLabel(request.model),
+          wireModel: cursorDiagnosticLabel(plan.wireModelId),
+          requestedEffort: request.reasoning?.effort,
+          turn: "tool-continuation",
+          toolCount: plan.tools.length,
+          estimatedInputTokens: plan.estimatedInputTokens,
+        });
+        pending.run.report("bridge.attach", {
+          model: cursorDiagnosticLabel(request.model),
+          outcome: "exact_match",
+          count: results.length,
+        });
+        return cursorSuccessfulResponse(pending.run.attach(
+          results,
+          options.signal,
+          plan.estimatedInputTokens,
+        ));
+      }
+      if (this.claimPendingLiveRun(pending)) {
+        pending.run.report("bridge.mismatch", {
+          model: cursorDiagnosticLabel(request.model),
+          outcome: mismatch ?? "concurrent_claim",
+        });
+        pending.run.dispose(`bridge_mismatch_${mismatch ?? "concurrent_claim"}`);
+      }
+    }
+
+    return this.openRun(request, options, identity, plan, descriptor);
+  }
+
+  /** Close every adapter-owned parked Run. Safe to call more than once. */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    const parkedRuns = new Set<CursorLiveRun>();
+    for (const pending of [...this.pendingLiveRuns.values()]) {
+      if (!this.claimPendingLiveRun(pending)) continue;
+      parkedRuns.add(pending.run);
+      pending.run.report("bridge.expire", { outcome: "adapter_dispose" });
+    }
+    for (const run of [...this.liveRuns]) {
+      if (!parkedRuns.has(run)) run.report("bridge.expire", { outcome: "adapter_dispose" });
+      run.dispose("adapter_dispose", new Error("Cursor adapter disposed"));
+    }
+    this.liveRuns.clear();
+  }
+
+  private claimPendingLiveRun(pending: CursorPendingLiveRun): boolean {
+    const key = cursorConversationStateKey(
+      pending.run.descriptor.credentialFingerprint,
+      pending.run.descriptor.conversationId,
+    );
+    if (this.pendingLiveRuns.get(key) !== pending) return false;
+    this.pendingLiveRuns.delete(key);
+    clearTimeout(pending.timer);
+    return true;
+  }
+
+  private parkLiveRun(
+    run: CursorLiveRun,
+    calls: readonly CursorPendingToolCorrelation[],
+  ): void {
+    if (this.disposed) {
+      run.dispose("adapter_dispose");
+      return;
+    }
+    const key = cursorConversationStateKey(
+      run.descriptor.credentialFingerprint,
+      run.descriptor.conversationId,
+    );
+    const existing = this.pendingLiveRuns.get(key);
+    if (existing && this.claimPendingLiveRun(existing)) {
+      existing.run.report("bridge.expire", { outcome: "superseded_pending_run" });
+      existing.run.dispose("superseded_pending_run");
+    }
+    while (this.pendingLiveRuns.size >= this.pendingLiveRunCapacity) {
+      const oldest = [...this.pendingLiveRuns.values()].find((pending) => (
+        pending.run.descriptor.credentialFingerprint === run.descriptor.credentialFingerprint
+      ));
+      if (!oldest) {
+        run.report("bridge.expire", { outcome: "capacity_rejected" });
+        run.dispose("capacity_rejected");
+        return;
+      }
+      if (!this.claimPendingLiveRun(oldest)) continue;
+      oldest.run.report("bridge.expire", { outcome: "capacity_eviction" });
+      oldest.run.dispose("capacity_eviction");
+    }
+    let pending: CursorPendingLiveRun;
+    const timer = setTimeout(() => {
+      if (!this.claimPendingLiveRun(pending)) return;
+      run.report("bridge.expire", { outcome: "ttl" });
+      run.dispose("ttl_expired");
+    }, this.pendingLiveRunTtlMs);
+    timer.unref?.();
+    pending = { run, calls, timer };
+    this.pendingLiveRuns.set(key, pending);
+    run.report("bridge.park", { outcome: "client_tool_suspended", count: calls.length });
+  }
+
+  private releaseLiveRun(run: CursorLiveRun): void {
+    this.liveRuns.delete(run);
+    const key = cursorConversationStateKey(
+      run.descriptor.credentialFingerprint,
+      run.descriptor.conversationId,
+    );
+    const pending = this.pendingLiveRuns.get(key);
+    if (pending?.run === run) this.claimPendingLiveRun(pending);
+  }
+
+  private async openRun(
+    request: CanonicalResponseRequest,
+    options: AdapterCallOptions,
+    identity: CursorSessionIdentity,
+    plan: CursorRunPlan,
+    descriptor: CursorLiveRunDescriptor,
+  ): Promise<AdapterResponse> {
+    if (options.signal?.aborted) throw new Error("cancelled by caller");
+    const report = createCursorDiagnosticReporter(this.diagnostics);
     const model = cursorDiagnosticLabel(request.model);
     const wireModel = cursorDiagnosticLabel(plan.wireModelId);
-    const previousWireModel = rememberCursorWireModel(identity.conversationId, plan.wireModelId);
+    const previousWireModel = rememberCursorWireModel(
+      identity.conversationId,
+      descriptor.credentialFingerprint,
+      plan.wireModelId,
+    );
+    const previousContextCheckpoint = recallCursorContextCheckpoint(
+      identity.conversationId,
+      plan.wireModelId,
+      descriptor.credentialFingerprint,
+    );
     report("turn.start", {
       model,
       wireModel,
@@ -1053,57 +1425,99 @@ export class CursorAdapter implements AiGatewayAdapter {
       session.close();
       throw error;
     }
+    let heartbeatCount = 0;
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+    const stopHeartbeat = (): void => {
+      if (heartbeat) clearInterval(heartbeat);
+      heartbeat = undefined;
+    };
+    let liveRun: CursorLiveRun;
+    liveRun = createCursorLiveRun({
+      stream,
+      session,
+      descriptor,
+      model: request.model,
+      blobs: plan.blobs,
+      tools: plan.tools,
+      estimatedInputTokens: plan.estimatedInputTokens,
+      previousContextCheckpoint,
+      onContextCheckpoint: (checkpoint) => rememberCursorContextCheckpoint(
+        identity.conversationId,
+        plan.wireModelId,
+        descriptor.credentialFingerprint,
+        checkpoint,
+      ),
+      toolFinalizeGraceMs: this.toolFinalizeGraceMs,
+      semanticStallTimeoutMs: this.idleTimeoutMs,
+      bridgeEnabled: supportsCursorLiveToolBridge(plan.wireModelId),
+      initialSignal: options.signal,
+      report,
+      stopHeartbeat,
+      onPark: (calls) => this.parkLiveRun(liveRun, calls),
+      onTerminal: () => this.releaseLiveRun(liveRun),
+    });
+    this.liveRuns.add(liveRun);
     session.on("error", (error: Error) => {
       report("transport.session_error", { model, error: cursorDiagnosticError(error) });
-      stream.destroy(error);
+      liveRun.dispose("session_error", error);
     });
     stream.setTimeout(this.idleTimeoutMs, () => {
+      const error = new Error("cursor stream idle timeout");
       report("transport.timeout", { model, outcome: "idle_timeout" });
-      stream.destroy(new Error("cursor stream idle timeout"));
+      liveRun.dispose("idle_timeout", error);
     });
-    const abort = (): void => {
-      report("transport.abort", { model, outcome: "caller_abort" });
-      stream.destroy(new Error("cancelled by caller"));
-      session.close();
-    };
-    options.signal?.addEventListener("abort", abort, { once: true });
-    // 스트림을 닫지 않는다. KV 응답과 interaction 응답을 같은 스트림으로 계속 써야 한다.
-    stream.write(encodeCursorClientMessage(plan.payload));
-    report("client.request", { model, reply: "run" });
-    let heartbeatCount = 0;
-    const heartbeat = setInterval(() => {
+    heartbeat = setInterval(() => {
       if (stream.closed || stream.destroyed || stream.writableEnded) return;
-      stream.write(encodeCursorClientMessage({ clientHeartbeat: {} }));
-      heartbeatCount += 1;
-      report("client.heartbeat", { model, sequence: heartbeatCount });
+      try {
+        stream.write(encodeCursorClientMessage({ clientHeartbeat: {} }));
+        heartbeatCount += 1;
+        report("client.heartbeat", { model, sequence: heartbeatCount });
+      } catch (error) {
+        liveRun.dispose(
+          "heartbeat_write_error",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
     }, this.clientHeartbeatMs);
     heartbeat.unref();
-    const stopHeartbeat = (): void => clearInterval(heartbeat);
     stream.once("close", stopHeartbeat);
     stream.once("end", stopHeartbeat);
     stream.once("error", stopHeartbeat);
+    try {
+      // KV, interaction, heartbeat, and later mcpResult messages share this request stream.
+      stream.write(encodeCursorClientMessage(plan.payload));
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(String(error));
+      liveRun.dispose("request_write_error", failure);
+      throw failure;
+    }
+    report("client.request", { model, reply: "run" });
 
-    return {
-      ok: true,
-      status: 200,
-      headers: new Headers({ "content-type": "text/event-stream" }),
-      events: mapCursorStream(
-        stream,
-        request.model,
-        plan.blobs,
-        plan.tools,
-        plan.estimatedInputTokens,
-        this.toolFinalizeGraceMs,
-        this.idleTimeoutMs,
-        report,
-        () => {
-          stopHeartbeat();
-          options.signal?.removeEventListener("abort", abort);
-          session.close();
-        },
-      ),
-    };
+    return cursorSuccessfulResponse(liveRun.initialEvents);
   }
+}
+
+function cursorPositiveIntegerOption(
+  value: number | undefined,
+  fallback: number,
+  name: string,
+): number {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved) || resolved <= 0 || !Number.isFinite(resolved)) {
+    throw new RangeError(`${name} must be a finite positive integer`);
+  }
+  return resolved;
+}
+
+function cursorSuccessfulResponse(
+  events: AsyncIterable<CanonicalResponseEvent>,
+): AdapterResponse {
+  return {
+    ok: true,
+    status: 200,
+    headers: new Headers({ "content-type": "text/event-stream" }),
+    events,
+  };
 }
 
 type CursorDiagnosticFields = Omit<
@@ -1215,22 +1629,66 @@ function cursorSessionIdFromUserId(userId: string): string {
  */
 function rememberCursorWireModel(
   conversationId: string,
+  credentialFingerprint: string,
   wireModelId: string,
 ): string | undefined {
-  const previous = CURSOR_WIRE_MODEL_BY_CONVERSATION.get(conversationId);
-  if (CURSOR_WIRE_MODEL_BY_CONVERSATION.has(conversationId)) {
-    CURSOR_WIRE_MODEL_BY_CONVERSATION.delete(conversationId);
-  } else if (CURSOR_WIRE_MODEL_BY_CONVERSATION.size >= CURSOR_WIRE_MODEL_MEMORY_LIMIT) {
-    const oldest = CURSOR_WIRE_MODEL_BY_CONVERSATION.keys().next().value;
-    if (oldest !== undefined) CURSOR_WIRE_MODEL_BY_CONVERSATION.delete(oldest);
+  const key = cursorConversationStateKey(credentialFingerprint, conversationId);
+  const previous = CURSOR_WIRE_MODEL_BY_STATE.get(key);
+  if (CURSOR_WIRE_MODEL_BY_STATE.has(key)) {
+    CURSOR_WIRE_MODEL_BY_STATE.delete(key);
+  } else if (CURSOR_WIRE_MODEL_BY_STATE.size >= CURSOR_CONVERSATION_MEMORY_LIMIT) {
+    const oldest = CURSOR_WIRE_MODEL_BY_STATE.keys().next().value;
+    if (oldest !== undefined) CURSOR_WIRE_MODEL_BY_STATE.delete(oldest);
   }
-  CURSOR_WIRE_MODEL_BY_CONVERSATION.set(conversationId, wireModelId);
+  CURSOR_WIRE_MODEL_BY_STATE.set(key, wireModelId);
   return previous;
 }
 
-/** 테스트용: mid-session model switch 메모리를 비운다. */
+function recallCursorContextCheckpoint(
+  conversationId: string,
+  wireModelId: string,
+  credentialFingerprint: string,
+): CursorContextCheckpoint | undefined {
+  const key = cursorConversationStateKey(credentialFingerprint, conversationId);
+  const checkpoint = CURSOR_CONTEXT_CHECKPOINT_BY_STATE.get(key);
+  if (!checkpoint) return undefined;
+  CURSOR_CONTEXT_CHECKPOINT_BY_STATE.delete(key);
+  if (
+    checkpoint.wireModelId !== wireModelId
+    || checkpoint.credentialFingerprint !== credentialFingerprint
+  ) {
+    return undefined;
+  }
+  CURSOR_CONTEXT_CHECKPOINT_BY_STATE.set(key, checkpoint);
+  return checkpoint;
+}
+
+function rememberCursorContextCheckpoint(
+  conversationId: string,
+  wireModelId: string,
+  credentialFingerprint: string,
+  checkpoint: CursorContextCheckpoint,
+): void {
+  const key = cursorConversationStateKey(credentialFingerprint, conversationId);
+  if (CURSOR_CONTEXT_CHECKPOINT_BY_STATE.has(key)) {
+    CURSOR_CONTEXT_CHECKPOINT_BY_STATE.delete(key);
+  } else if (
+    CURSOR_CONTEXT_CHECKPOINT_BY_STATE.size >= CURSOR_CONVERSATION_MEMORY_LIMIT
+  ) {
+    const oldest = CURSOR_CONTEXT_CHECKPOINT_BY_STATE.keys().next().value;
+    if (oldest !== undefined) CURSOR_CONTEXT_CHECKPOINT_BY_STATE.delete(oldest);
+  }
+  CURSOR_CONTEXT_CHECKPOINT_BY_STATE.set(key, {
+    wireModelId,
+    credentialFingerprint,
+    ...checkpoint,
+  });
+}
+
+/** 테스트용: conversation 단위의 wire-model 및 context 메모리를 비운다. */
 export function resetCursorWireModelMemory(): void {
-  CURSOR_WIRE_MODEL_BY_CONVERSATION.clear();
+  CURSOR_WIRE_MODEL_BY_STATE.clear();
+  CURSOR_CONTEXT_CHECKPOINT_BY_STATE.clear();
 }
 
 /**
@@ -1238,72 +1696,145 @@ export function resetCursorWireModelMemory(): void {
  * 당길 때까지 멈추는데, 서버는 그 응답이 올 때까지 블록하므로 곧장 stall로 이어진다.
  * 그래서 프레임은 data 리스너에서 즉시 처리하고, 모델 이벤트만 큐를 통해 흘려보낸다.
  */
-function mapCursorStream(
-  stream: http2.ClientHttp2Stream,
-  model: string,
-  blobs: BlobStore,
-  tools: readonly CursorWireTool[],
-  estimatedInputTokens: number,
-  toolFinalizeGraceMs: number,
-  semanticStallTimeoutMs: number,
-  report: CursorDiagnosticReporter,
-  onClose: () => void,
-): AsyncGenerator<CanonicalResponseEvent> {
-  const responseId = `cursor_${randomUUID()}`;
-  const itemId = `msg_${randomUUID()}`;
+interface CursorLiveRunOptions {
+  readonly stream: http2.ClientHttp2Stream;
+  readonly session: http2.ClientHttp2Session;
+  readonly descriptor: CursorLiveRunDescriptor;
+  readonly model: string;
+  readonly blobs: BlobStore;
+  readonly tools: readonly CursorWireTool[];
+  readonly estimatedInputTokens: number;
+  readonly previousContextCheckpoint: CursorContextCheckpoint | undefined;
+  readonly onContextCheckpoint: (checkpoint: CursorContextCheckpoint) => void;
+  readonly toolFinalizeGraceMs: number;
+  readonly semanticStallTimeoutMs: number;
+  readonly bridgeEnabled: boolean;
+  readonly initialSignal: AbortSignal | undefined;
+  readonly report: CursorDiagnosticReporter;
+  readonly stopHeartbeat: () => void;
+  readonly onPark: (calls: readonly CursorPendingToolCorrelation[]) => void;
+  readonly onTerminal: () => void;
+}
+
+type CursorLiveRunState = "attached" | "parked" | "completed" | "closed";
+
+interface CursorResponseSegment {
+  readonly responseId: string;
+  readonly itemId: string;
+  readonly queue: CanonicalResponseEvent[];
+  readonly waiters: Array<() => void>;
+  readonly toolItems: Set<CursorToolItem>;
+  readonly toolItemsByIdentifier: Map<string, CursorToolItem>;
+  readonly contextCheckpointAtStart: CursorContextCheckpoint | undefined;
+  readonly contextWindowAtStart: number | undefined;
+  started: boolean;
+  finished: boolean;
+  failure: Error | null;
+  correlationInvalid: boolean;
+  outputIndex: number;
+  contextOutputTokens: number;
+  outputText: string;
+  estimatedInputTokens: number;
+  checkpointVersionAtStart: number;
+  contextWindowVersionAtStart: number;
+  toolFinalizeTimer?: ReturnType<typeof setTimeout>;
+  signal?: AbortSignal;
+  abort?: () => void;
+}
+
+function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
+  const {
+    stream,
+    session,
+    descriptor,
+    model,
+    blobs,
+    tools,
+    estimatedInputTokens,
+    previousContextCheckpoint,
+    toolFinalizeGraceMs,
+    semanticStallTimeoutMs,
+    report,
+  } = options;
   const diagnosticModel = cursorDiagnosticLabel(model);
-  const queue: CanonicalResponseEvent[] = [];
-  const waiters: Array<() => void> = [];
+  let state: CursorLiveRunState = "attached";
+  let activeSegment: CursorResponseSegment;
+  let parkedCalls: readonly CursorPendingToolCorrelation[] | undefined;
   let buffer: Buffer = Buffer.alloc(0);
-  let started = false;
-  let finished = false;
-  let failure: Error | null = null;
-  let outputIndex = 0;
-  let contextTokens: number | undefined;
-  let contextWindow: number | undefined;
-  let reportedOutputTokens = 0;
-  let outputText = "";
+  let latestContextCheckpoint = previousContextCheckpoint;
+  let contextWindow = previousContextCheckpoint?.contextWindow;
+  let checkpointVersion = 0;
+  let contextWindowVersion = 0;
   let frameCount = 0;
   let lastFrame = "none";
-  let toolFinalizeTimer: ReturnType<typeof setTimeout> | undefined;
   let semanticStallTimer: ReturnType<typeof setTimeout> | undefined;
-  const toolItems = new Map<string, CursorToolItem>();
+  let transportClosed = false;
+  let terminalNotified = false;
 
-  const usage = (): CanonicalUsage => {
-    const outputTokens = Math.max(reportedOutputTokens, estimateTokens(outputText, model));
+  const usage = (segment: CursorResponseSegment): CanonicalUsage => {
+    const outputTokens = Math.max(
+      segment.contextOutputTokens,
+      estimateTokens(segment.outputText, model),
+    );
+    const checkpointInputTokens = latestContextCheckpoint === undefined
+      || checkpointVersion <= segment.checkpointVersionAtStart
+      ? undefined
+      : Math.max(0, latestContextCheckpoint.contextTokens - outputTokens);
+    const usageContextWindow = contextWindowVersion > segment.contextWindowVersionAtStart
+      ? contextWindow
+      : segment.contextWindowAtStart;
     return {
-      input_tokens: contextTokens === undefined
-        ? estimatedInputTokens
-        : Math.max(0, contextTokens - outputTokens),
+      input_tokens: checkpointInputTokens
+        ?? Math.max(
+          segment.estimatedInputTokens,
+          segment.contextCheckpointAtStart?.contextTokens ?? 0,
+        ),
       output_tokens: outputTokens,
-      ...(contextWindow === undefined ? {} : { context_window: contextWindow }),
+      ...(usageContextWindow === undefined ? {} : { context_window: usageContextWindow }),
     };
   };
 
-  const wake = (): void => {
-    while (waiters.length > 0) waiters.shift()?.();
+  const wake = (segment: CursorResponseSegment): void => {
+    while (segment.waiters.length > 0) segment.waiters.shift()?.();
   };
-  const emit = (event: CanonicalResponseEvent): void => {
-    if (!started) {
-      started = true;
-      queue.push({ type: "response.created", response: { id: responseId, model, usage: usage() } });
+
+  const detachAbort = (segment: CursorResponseSegment): void => {
+    if (segment.signal && segment.abort) {
+      segment.signal.removeEventListener("abort", segment.abort);
     }
-    queue.push(event);
-    wake();
+    segment.signal = undefined;
+    segment.abort = undefined;
   };
-  const finish = (error?: Error, outcome = error ? "error" : "completed"): void => {
-    if (finished) return;
-    finished = true;
-    if (toolFinalizeTimer) {
-      clearTimeout(toolFinalizeTimer);
-      toolFinalizeTimer = undefined;
+
+  const clearToolFinalize = (segment: CursorResponseSegment): void => {
+    if (!segment.toolFinalizeTimer) return;
+    clearTimeout(segment.toolFinalizeTimer);
+    segment.toolFinalizeTimer = undefined;
+  };
+
+  const clearSemanticStall = (): void => {
+    if (!semanticStallTimer) return;
+    clearTimeout(semanticStallTimer);
+    semanticStallTimer = undefined;
+  };
+
+  const finishSegment = (
+    segment: CursorResponseSegment,
+    error?: Error,
+    outcome = error ? "error" : "completed",
+  ): void => {
+    if (segment.finished) return;
+    segment.finished = true;
+    clearToolFinalize(segment);
+    clearSemanticStall();
+    detachAbort(segment);
+    if (error) segment.failure = error;
+    else if (segment.started) {
+      segment.queue.push({
+        type: "response.completed",
+        response: { id: segment.responseId, model, usage: usage(segment) },
+      });
     }
-    if (semanticStallTimer) {
-      clearTimeout(semanticStallTimer);
-      semanticStallTimer = undefined;
-    }
-    if (error) failure = error;
-    else if (started) queue.push({ type: "response.completed", response: { id: responseId, model, usage: usage() } });
     report("turn.finish", {
       model: diagnosticModel,
       outcome,
@@ -1311,56 +1842,209 @@ function mapCursorStream(
       lastFrame,
       ...(error ? { error: cursorDiagnosticError(error) } : {}),
     });
-    wake();
+    wake(segment);
   };
 
-  // Cursor heartbeats keep the HTTP/2 stream active even when the server is blocked waiting for a
-  // client reply. Track meaningful protocol progress separately so heartbeats cannot mask a stall.
+  const notifyTerminal = (): void => {
+    if (terminalNotified) return;
+    terminalNotified = true;
+    options.onTerminal();
+  };
+
+  const closeTransport = (cancel: boolean, error?: Error): void => {
+    if (transportClosed) return;
+    transportClosed = true;
+    clearSemanticStall();
+    clearToolFinalize(activeSegment);
+    detachAbort(activeSegment);
+    options.stopHeartbeat();
+    try {
+      if (error) stream.destroy(error);
+      else stream.close(cancel ? http2.constants.NGHTTP2_CANCEL : http2.constants.NGHTTP2_NO_ERROR);
+    } catch {
+      try {
+        stream.destroy(error);
+      } catch {
+        // The transport is already gone.
+      }
+    }
+    try {
+      session.close();
+    } catch {
+      // The session is already gone.
+    }
+    notifyTerminal();
+  };
+
+  const dispose = (outcome: string, error?: Error): void => {
+    if (state === "closed") return;
+    state = "closed";
+    if (!activeSegment.finished) finishSegment(activeSegment, error, outcome);
+    closeTransport(outcome !== "completed", error);
+  };
+
   const noteSemanticProgress = (): void => {
+    if (state !== "attached") return;
     if (!Number.isFinite(semanticStallTimeoutMs) || semanticStallTimeoutMs <= 0) return;
-    if (semanticStallTimer) clearTimeout(semanticStallTimer);
+    clearSemanticStall();
     semanticStallTimer = setTimeout(() => {
       semanticStallTimer = undefined;
+      if (state !== "attached") return;
       const error = new Error("cursor stream semantic stall timeout");
       report("transport.semantic_timeout", {
         model: diagnosticModel,
         outcome: "semantic_stall_timeout",
       });
-      finish(error, "semantic_stall_timeout");
-      stream.destroy(error);
+      dispose("semantic_stall_timeout", error);
     }, semanticStallTimeoutMs);
     semanticStallTimer.unref?.();
   };
 
-  const clearToolTurnFinish = (): void => {
-    if (!toolFinalizeTimer) return;
-    clearTimeout(toolFinalizeTimer);
-    toolFinalizeTimer = undefined;
+  const emit = (event: CanonicalResponseEvent): void => {
+    if (state !== "attached" || activeSegment.finished) return;
+    if (!activeSegment.started) {
+      activeSegment.started = true;
+      activeSegment.queue.push({
+        type: "response.created",
+        response: {
+          id: activeSegment.responseId,
+          model,
+          usage: usage(activeSegment),
+        },
+      });
+    }
+    activeSegment.queue.push(event);
+    wake(activeSegment);
+  };
+
+  const createSegment = (
+    signal: AbortSignal | undefined,
+    segmentEstimatedInputTokens: number,
+  ): CursorResponseSegment => {
+    const segment: CursorResponseSegment = {
+      responseId: `cursor_${randomUUID()}`,
+      itemId: `msg_${randomUUID()}`,
+      queue: [],
+      waiters: [],
+      toolItems: new Set(),
+      toolItemsByIdentifier: new Map(),
+      contextCheckpointAtStart: latestContextCheckpoint === undefined
+        ? undefined
+        : { ...latestContextCheckpoint },
+      contextWindowAtStart: contextWindow,
+      started: false,
+      finished: false,
+      failure: null,
+      correlationInvalid: false,
+      outputIndex: 0,
+      contextOutputTokens: 0,
+      outputText: "",
+      estimatedInputTokens: segmentEstimatedInputTokens,
+      checkpointVersionAtStart: checkpointVersion,
+      contextWindowVersionAtStart: contextWindowVersion,
+    };
+    activeSegment = segment;
+    state = "attached";
+    if (signal) {
+      const abort = (): void => {
+        const error = new Error("cancelled by caller");
+        report("transport.abort", { model: diagnosticModel, outcome: "caller_abort" });
+        dispose("caller_abort", error);
+      };
+      segment.signal = signal;
+      segment.abort = abort;
+      if (signal.aborted) abort();
+      else signal.addEventListener("abort", abort, { once: true });
+    }
+    noteSemanticProgress();
+    return segment;
+  };
+
+  const invalidateToolCorrelation = (entries: Iterable<CursorToolItem>): void => {
+    activeSegment.correlationInvalid = true;
+    for (const entry of entries) entry.correlationInvalid = true;
   };
 
   const ensureToolItem = (call: CursorMcpCall): CursorToolItem => {
-    const existing = toolItems.get(call.callId);
+    const identifiers = [...new Set([
+      call.publicCallId,
+      call.toolCallId,
+    ].filter((identifier): identifier is string => identifier !== undefined))];
+    const matches = new Set(
+      identifiers.flatMap((identifier) => {
+        const entry = activeSegment.toolItemsByIdentifier.get(identifier);
+        return entry ? [entry] : [];
+      }),
+    );
+    if (matches.size > 1) {
+      invalidateToolCorrelation(matches);
+      return matches.values().next().value!;
+    }
+
+    const existing = matches.values().next().value as CursorToolItem | undefined;
     if (existing) {
+      const publicCallIdConflict = call.publicCallId !== undefined
+        && existing.publicCallId !== undefined
+        && call.publicCallId !== existing.publicCallId;
+      const toolCallIdConflict = call.toolCallId !== undefined
+        && existing.toolCallId !== undefined
+        && call.toolCallId !== existing.toolCallId;
+      const unsafePublicAlias = call.publicCallId !== undefined
+        && existing.publicCallId === undefined
+        && (
+          call.toolCallId === undefined
+          || activeSegment.toolItemsByIdentifier.get(call.toolCallId) !== existing
+        );
+      const unsafeToolAlias = call.toolCallId !== undefined
+        && existing.toolCallId === undefined
+        && (
+          call.publicCallId === undefined
+          || activeSegment.toolItemsByIdentifier.get(call.publicCallId) !== existing
+        );
+      if (
+        publicCallIdConflict
+        || toolCallIdConflict
+        || unsafePublicAlias
+        || unsafeToolAlias
+      ) {
+        invalidateToolCorrelation([existing]);
+        return existing;
+      }
       if (existing.name === "tool" && call.name !== "tool") existing.name = call.name;
+      if (existing.publicCallId === undefined && call.publicCallId !== undefined) {
+        existing.publicCallId = call.publicCallId;
+      }
+      if (existing.toolCallId === undefined && call.toolCallId !== undefined) {
+        existing.toolCallId = call.toolCallId;
+      }
+      for (const identifier of identifiers) {
+        activeSegment.toolItemsByIdentifier.set(identifier, existing);
+      }
       return existing;
     }
-    outputIndex += 1;
+
+    activeSegment.outputIndex += 1;
     const entry: CursorToolItem = {
-      itemId: call.callId,
-      index: outputIndex,
+      itemId: call.publicCallId ?? call.toolCallId ?? call.callId,
+      index: activeSegment.outputIndex,
       name: call.name,
       arguments: "",
       completed: false,
       suspended: false,
+      ...(call.publicCallId === undefined ? {} : { publicCallId: call.publicCallId }),
+      ...(call.toolCallId === undefined ? {} : { toolCallId: call.toolCallId }),
     };
-    toolItems.set(call.callId, entry);
+    activeSegment.toolItems.add(entry);
+    for (const identifier of identifiers) {
+      activeSegment.toolItemsByIdentifier.set(identifier, entry);
+    }
     emit({
       type: "response.output_item.added",
       output_index: entry.index,
       item: {
         id: entry.itemId,
         type: "function_call",
-        call_id: call.callId,
+        call_id: entry.itemId,
         name: call.name,
         arguments: "",
       },
@@ -1368,39 +2052,85 @@ function mapCursorStream(
     return entry;
   };
 
-  const completeToolItem = (call: CursorMcpCall): void => {
-    const entry = ensureToolItem(call);
+  const completeToolItem = (entry: CursorToolItem, call: CursorMcpCall): void => {
     if (entry.completed) return;
     const argumentsText = call.arguments ?? completeJson(entry.arguments) ?? "{}";
     entry.arguments = argumentsText;
     entry.completed = true;
-    outputText += `\n${entry.name}\n${argumentsText}`;
+    activeSegment.outputText += `\n${entry.name}\n${argumentsText}`;
     emit({
       type: "response.output_item.done",
       output_index: entry.index,
       item: {
         id: entry.itemId,
         type: "function_call",
-        call_id: call.callId,
+        call_id: entry.itemId,
         name: entry.name,
         arguments: argumentsText,
       },
     });
   };
 
+  const sealPendingCalls = (): readonly CursorPendingToolCorrelation[] | undefined => {
+    const entries = [...activeSegment.toolItems.values()];
+    if (
+      activeSegment.correlationInvalid
+      || entries.length === 0
+      || entries.some((entry) => (
+        !entry.suspended || !entry.correlation || entry.correlationInvalid === true
+      ))
+    ) {
+      return undefined;
+    }
+    const calls = entries.map((entry) => entry.correlation!);
+    const unique = (values: readonly (string | number)[]): boolean => (
+      new Set(values).size === values.length
+    );
+    return unique(calls.map((call) => call.callId))
+      && unique(calls.map((call) => call.toolCallId))
+      && unique(calls.map((call) => call.execId))
+      && unique(calls.map((call) => call.messageId))
+      ? calls
+      : undefined;
+  };
+
+  const suspendSegment = (): void => {
+    const calls = sealPendingCalls();
+    if (options.bridgeEnabled && calls) {
+      parkedCalls = calls;
+      state = "parked";
+      finishSegment(activeSegment, undefined, "client_tool_suspended");
+      options.onPark(calls);
+      return;
+    }
+    if (options.bridgeEnabled) {
+      report("bridge.mismatch", { model: diagnosticModel, outcome: "invalid_correlation" });
+    }
+    state = "completed";
+    finishSegment(activeSegment, undefined, "client_tool_suspended");
+    closeTransport(true);
+  };
+
   const rescheduleToolTurnFinish = (): void => {
-    clearToolTurnFinish();
-    if (toolItems.size === 0 || [...toolItems.values()].some((entry) => !entry.suspended)) return;
-    toolFinalizeTimer = setTimeout(() => {
-      toolFinalizeTimer = undefined;
-      finish(undefined, "client_tool_suspended");
-      try {
-        stream.close(http2.constants.NGHTTP2_CANCEL);
-      } catch {
-        stream.destroy();
-      }
+    clearToolFinalize(activeSegment);
+    if (
+      activeSegment.toolItems.size === 0
+      || [...activeSegment.toolItems.values()].some((entry) => !entry.suspended)
+    ) {
+      return;
+    }
+    const segment = activeSegment;
+    segment.toolFinalizeTimer = setTimeout(() => {
+      segment.toolFinalizeTimer = undefined;
+      if (state === "attached" && activeSegment === segment) suspendSegment();
     }, toolFinalizeGraceMs);
-    toolFinalizeTimer.unref?.();
+    segment.toolFinalizeTimer.unref?.();
+  };
+
+  const completeRun = (outcome: string): void => {
+    if (state !== "attached") return;
+    state = "completed";
+    finishSegment(activeSegment, undefined, outcome);
   };
 
   const handleFrame = (frame: CursorServerFrame): void => {
@@ -1417,18 +2147,22 @@ function mapCursorStream(
       model: diagnosticModel,
       frame: lastFrame,
       sequence: frameCount,
-      ...(checkpointContextTokens === undefined
-        ? {}
-        : { contextTokens: checkpointContextTokens }),
-      ...(checkpointContextWindow === undefined
-        ? {}
-        : { contextWindow: checkpointContextWindow }),
+      ...(checkpointContextTokens === undefined ? {} : { contextTokens: checkpointContextTokens }),
+      ...(checkpointContextWindow === undefined ? {} : { contextWindow: checkpointContextWindow }),
     });
     if (isRecord(frame.conversationCheckpointUpdate)) {
-      if (checkpointContextTokens !== undefined) {
-        contextTokens = Math.max(contextTokens ?? 0, checkpointContextTokens);
+      if (checkpointContextWindow !== undefined) {
+        contextWindow = checkpointContextWindow;
+        contextWindowVersion += 1;
       }
-      if (checkpointContextWindow !== undefined) contextWindow = checkpointContextWindow;
+      if (checkpointContextTokens !== undefined) {
+        latestContextCheckpoint = {
+          contextTokens: checkpointContextTokens,
+          ...(contextWindow === undefined ? {} : { contextWindow }),
+        };
+        checkpointVersion += 1;
+        options.onContextCheckpoint(latestContextCheckpoint);
+      }
       return;
     }
     if (isRecord(frame.kvServerMessage)) {
@@ -1443,11 +2177,11 @@ function mapCursorStream(
       const reply = cursorInteractionQueryReply(frame.interactionQuery);
       stream.write(encodeCursorClientMessage(reply.message));
       report("client.reply", { model: diagnosticModel, reply: reply.replyKind });
-      if (reply.planText) {
-        outputText += reply.planText;
+      if (reply.planText && state === "attached") {
+        activeSegment.outputText += reply.planText;
         emit({
           type: "response.output_text.delta",
-          item_id: itemId,
+          item_id: activeSegment.itemId,
           output_index: 0,
           content_index: 0,
           delta: reply.planText,
@@ -1456,10 +2190,20 @@ function mapCursorStream(
       return;
     }
     if (isRecord(frame.error)) {
-      emit({ type: "error", error: cursorError(frame.error) });
-      finish(undefined, "server_error");
+      if (state === "attached") {
+        emit({ type: "error", error: cursorError(frame.error) });
+        completeRun("server_error");
+      } else {
+        dispose("server_error_while_parked", new Error("Cursor failed while awaiting mcpResult"));
+      }
       return;
     }
+    if (state === "parked") {
+      if (isCursorHeartbeatFrame(frame)) return;
+      dispose("protocol_frame_while_parked", new Error("Cursor sent progress while awaiting mcpResult"));
+      return;
+    }
+    if (state !== "attached") return;
     if (isRecord(frame.execServerMessage)) {
       if (isRecord(frame.execServerMessage.requestContextArgs)) {
         stream.write(encodeCursorClientMessage(cursorRequestContextReply(frame.execServerMessage, tools)));
@@ -1469,12 +2213,26 @@ function mapCursorStream(
       const wireCall = mcpCallFromExecMessage(frame.execServerMessage);
       const call = wireCall ? cursorClientMcpCall(wireCall, tools) : null;
       if (call?.providerIdentifier === CURSOR_TOOL_PROVIDER_IDENTIFIER) {
-        clearToolTurnFinish();
-        ensureToolItem(call).suspended = true;
-        completeToolItem(call);
-        // Cursor will not send turnEnded here: it is synchronously waiting for an
-        // mcpResult. The real result returns in the next Anthropic request, so end
-        // this bridge turn and cancel the run without fabricating a result.
+        clearToolFinalize(activeSegment);
+        const entry = ensureToolItem(call);
+        if (entry.suspended) invalidateToolCorrelation([entry]);
+        entry.suspended = true;
+        if (
+          call.toolCallId
+          && call.execId
+          && call.messageId !== undefined
+          && Number.isSafeInteger(call.messageId)
+        ) {
+          entry.correlation = activeSegment.correlationInvalid || entry.correlationInvalid
+            ? undefined
+            : {
+              callId: entry.itemId,
+              toolCallId: call.toolCallId,
+              execId: call.execId,
+              messageId: call.messageId,
+            };
+        }
+        completeToolItem(entry, call);
         report("client.reply", {
           model: diagnosticModel,
           reply: "exec.clientToolSuspend",
@@ -1489,9 +2247,7 @@ function mapCursorStream(
         frame.execServerMessage,
         tools.map((tool) => ({ clientName: tool.clientName, wireName: tool.toolName })),
       );
-      for (const reply of policyReplies ?? []) {
-        stream.write(encodeCursorClientMessage(reply));
-      }
+      for (const reply of policyReplies ?? []) stream.write(encodeCursorClientMessage(reply));
       if (policyReplies) {
         report("client.reply", {
           model: diagnosticModel,
@@ -1500,9 +2256,7 @@ function mapCursorStream(
         });
       } else {
         const fallback = cursorUnknownExecReply(frame.execServerMessage, unknownExecFields);
-        for (const payload of fallback.payloads) {
-          stream.write(encodeConnectFrame(payload));
-        }
+        for (const payload of fallback.payloads) stream.write(encodeConnectFrame(payload));
         report("client.reply", {
           model: diagnosticModel,
           reply: fallback.replyKind,
@@ -1515,10 +2269,10 @@ function mapCursorStream(
     const update = isRecord(frame.interactionUpdate) ? frame.interactionUpdate : undefined;
     if (update === undefined) return;
     if (isRecord(update.textDelta) && typeof update.textDelta.text === "string") {
-      outputText += update.textDelta.text;
+      activeSegment.outputText += update.textDelta.text;
       emit({
         type: "response.output_text.delta",
-        item_id: itemId,
+        item_id: activeSegment.itemId,
         output_index: 0,
         content_index: 0,
         delta: update.textDelta.text,
@@ -1526,19 +2280,19 @@ function mapCursorStream(
       return;
     }
     if (isRecord(update.thinkingDelta) && typeof update.thinkingDelta.text === "string") {
-      outputText += update.thinkingDelta.text;
+      activeSegment.outputText += update.thinkingDelta.text;
       return;
     }
     if (isRecord(update.tokenDelta)) {
       const tokens = positiveTokenCount(update.tokenDelta.tokens);
-      if (tokens !== undefined) reportedOutputTokens += tokens;
+      if (tokens !== undefined) activeSegment.contextOutputTokens += tokens;
       return;
     }
     if (isRecord(update.toolCallStarted)) {
       const wireCall = mcpCallFromToolUpdate(update.toolCallStarted);
       const call = wireCall ? cursorClientMcpCall(wireCall, tools) : null;
       if (call) {
-        clearToolTurnFinish();
+        clearToolFinalize(activeSegment);
         ensureToolItem(call);
         rescheduleToolTurnFinish();
       }
@@ -1548,7 +2302,7 @@ function mapCursorStream(
       const wireCall = mcpCallFromToolUpdate(update.partialToolCall);
       const call = wireCall ? cursorClientMcpCall(wireCall, tools) : null;
       if (!call) return;
-      clearToolTurnFinish();
+      clearToolFinalize(activeSegment);
       const entry = ensureToolItem(call);
       const cumulative = typeof update.partialToolCall.argsTextDelta === "string"
         ? update.partialToolCall.argsTextDelta
@@ -1561,14 +2315,85 @@ function mapCursorStream(
       const wireCall = mcpCallFromToolUpdate(update.toolCallCompleted);
       const call = wireCall ? cursorClientMcpCall(wireCall, tools) : null;
       if (!call) return;
-      clearToolTurnFinish();
+      clearToolFinalize(activeSegment);
       const entry = ensureToolItem(call);
       const argumentsText = call.arguments ?? completeJson(entry.arguments);
-      if (argumentsText !== undefined) completeToolItem({ ...call, arguments: argumentsText });
+      if (argumentsText !== undefined) {
+        completeToolItem(entry, { ...call, arguments: argumentsText });
+      }
       rescheduleToolTurnFinish();
       return;
     }
-    if (isRecord(update.turnEnded)) finish(undefined, "turn_ended");
+    if (isRecord(update.turnEnded)) completeRun("turn_ended");
+  };
+
+  const eventsFor = (segment: CursorResponseSegment): AsyncIterable<CanonicalResponseEvent> => (
+    (async function* () {
+      try {
+        for (;;) {
+          while (segment.queue.length > 0) {
+            const next = segment.queue.shift();
+            if (next) yield next;
+          }
+          if (segment.failure) throw segment.failure;
+          if (segment.finished) return;
+          await new Promise<void>((resolve) => segment.waiters.push(resolve));
+        }
+      } finally {
+        if (!segment.finished && state !== "closed") {
+          dispose("segment_consumer_detached", new Error("Cursor response segment detached"));
+        } else if (state === "completed" && activeSegment === segment) {
+          state = "closed";
+          closeTransport(false);
+        }
+      }
+    })()
+  );
+
+  const attach = (
+    results: readonly CursorCanonicalToolResult[],
+    signal: AbortSignal | undefined,
+    continuationEstimatedInputTokens: number,
+  ): AsyncIterable<CanonicalResponseEvent> => {
+    if (state !== "parked" || !parkedCalls) {
+      throw new Error("Cursor live Run is not parked");
+    }
+    const resultById = new Map(results.map((result) => [result.call_id, result]));
+    if (resultById.size !== parkedCalls.length || results.length !== parkedCalls.length) {
+      const error = new Error("Cursor live Run result batch changed after claim");
+      dispose("attach_protocol_mismatch", error);
+      throw error;
+    }
+    const calls = parkedCalls;
+    parkedCalls = undefined;
+    const segment = createSegment(signal, continuationEstimatedInputTokens);
+    try {
+      for (const call of calls) {
+        const result = resultById.get(call.callId);
+        if (!result) throw new Error("Cursor live Run result batch changed after claim");
+        stream.write(encodeCursorClientMessage({
+          execClientMessage: {
+            id: call.messageId,
+            execId: call.execId,
+            mcpResult: {
+              success: {
+                content: [{ text: { text: result.output } }],
+                isError: result.is_error === true,
+              },
+            },
+          },
+        }));
+      }
+      report("client.reply", {
+        model: diagnosticModel,
+        reply: "exec.mcpResult",
+        count: calls.length,
+      });
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(String(error));
+      dispose("mcp_result_write_error", failure);
+    }
+    return eventsFor(segment);
   };
 
   stream.on("data", (chunk: Uint8Array) => {
@@ -1580,23 +2405,16 @@ function mapCursorStream(
         if ((frame.flags & CONNECT_FLAG_COMPRESSED) === CONNECT_FLAG_COMPRESSED) {
           frameCount += 1;
           lastFrame = "connect.compressed";
-          report("server.frame", {
-            model: diagnosticModel,
-            frame: lastFrame,
-            sequence: frameCount,
-          });
+          report("server.frame", { model: diagnosticModel, frame: lastFrame, sequence: frameCount });
           throw new Error("Compressed Cursor Connect frames are not supported");
         }
         if ((frame.flags & CONNECT_FLAG_END_STREAM) === CONNECT_FLAG_END_STREAM) {
           frameCount += 1;
           lastFrame = "connect.endStream";
-          report("server.frame", {
-            model: diagnosticModel,
-            frame: lastFrame,
-            sequence: frameCount,
-          });
+          report("server.frame", { model: diagnosticModel, frame: lastFrame, sequence: frameCount });
           const error = parseConnectEndStreamError(frame.payload);
-          finish(error ?? undefined, error ? "connect_end_stream_error" : "connect_end_stream");
+          if (error) dispose("connect_end_stream_error", error);
+          else completeRun("connect_end_stream");
           continue;
         }
         const decodedFrame = decodeCursorServerMessage(frame.payload);
@@ -1604,40 +2422,35 @@ function mapCursorStream(
         handleFrame(decodedFrame);
       }
     } catch (error) {
-      finish(error instanceof Error ? error : new Error(String(error)), "decode_error");
+      dispose("decode_error", error instanceof Error ? error : new Error(String(error)));
     }
   });
   stream.on("error", (error: Error) => {
     report("transport.stream_error", { model: diagnosticModel, error: cursorDiagnosticError(error) });
-    finish(error, "stream_error");
+    dispose("stream_error", error);
   });
   stream.on("end", () => {
     report("transport.end", { model: diagnosticModel, frameCount, lastFrame });
-    finish(undefined, "stream_end");
+    if (state === "attached") completeRun("stream_end");
+    if (state === "parked") dispose("stream_end_while_parked");
+    closeTransport(false);
   });
   stream.on("close", () => {
     report("transport.close", { model: diagnosticModel, frameCount, lastFrame });
-    finish(undefined, "stream_close");
+    if (state === "attached") completeRun("stream_close");
+    if (state === "parked") dispose("stream_close_while_parked");
+    closeTransport(false);
   });
-  noteSemanticProgress();
 
-  return (async function* () {
-    try {
-      for (;;) {
-        while (queue.length > 0) {
-          const next = queue.shift();
-          if (next) yield next;
-        }
-        if (failure) throw failure;
-        if (finished) return;
-        await new Promise<void>((resolve) => waiters.push(resolve));
-      }
-    } finally {
-      if (toolFinalizeTimer) clearTimeout(toolFinalizeTimer);
-      if (semanticStallTimer) clearTimeout(semanticStallTimer);
-      onClose();
-    }
-  })();
+  const initialSegment = createSegment(options.initialSignal, estimatedInputTokens);
+  const run: CursorLiveRun = {
+    descriptor,
+    initialEvents: eventsFor(initialSegment),
+    report,
+    attach,
+    dispose,
+  };
+  return run;
 }
 
 const CURSOR_INTERACTION_UPDATE_CASES = [
@@ -1852,10 +2665,18 @@ interface CursorToolItem {
   arguments: string;
   completed: boolean;
   suspended: boolean;
+  publicCallId?: string;
+  toolCallId?: string;
+  correlation?: CursorPendingToolCorrelation;
+  correlationInvalid?: boolean;
 }
 
 interface CursorMcpCall {
   readonly callId: string;
+  readonly publicCallId?: string;
+  readonly toolCallId?: string;
+  readonly messageId?: number;
+  readonly execId?: string;
   readonly name: string;
   readonly providerIdentifier?: string;
   readonly arguments?: string;
@@ -1968,10 +2789,14 @@ function mcpCallFromToolUpdate(value: Record<string, unknown>): CursorMcpCall | 
   const toolCall = isRecord(value.toolCall) ? value.toolCall : undefined;
   const args = toolCall ? mcpArgsFromToolCall(toolCall) : undefined;
   if (!args) return null;
-  const callId = stringValue(value.callId) ?? stringValue(args?.toolCallId);
+  const publicCallId = stringValue(value.callId);
+  const toolCallId = stringValue(args.toolCallId);
+  const callId = publicCallId ?? toolCallId;
   if (!callId) return null;
   return {
     callId,
+    ...(publicCallId ? { publicCallId } : {}),
+    ...(toolCallId ? { toolCallId } : {}),
     name: stringValue(args?.toolName) ?? stringValue(args?.name) ?? "tool",
     ...(stringValue(args?.providerIdentifier)
       ? { providerIdentifier: stringValue(args?.providerIdentifier)! }
@@ -1983,10 +2808,17 @@ function mcpCallFromToolUpdate(value: Record<string, unknown>): CursorMcpCall | 
 function mcpCallFromExecMessage(value: Record<string, unknown>): CursorMcpCall | null {
   const args = isRecord(value.mcpArgs) ? value.mcpArgs : undefined;
   if (!args) return null;
-  const callId = stringValue(args.toolCallId);
-  if (!callId) return null;
+  const toolCallId = stringValue(args.toolCallId);
+  if (!toolCallId) return null;
+  const messageId = typeof value.id === "number" && Number.isSafeInteger(value.id)
+    ? value.id
+    : undefined;
+  const execId = stringValue(value.execId);
   return {
-    callId,
+    callId: toolCallId,
+    toolCallId,
+    ...(messageId === undefined ? {} : { messageId }),
+    ...(execId ? { execId } : {}),
     name: stringValue(args.toolName) ?? stringValue(args.name) ?? "tool",
     ...(stringValue(args.providerIdentifier)
       ? { providerIdentifier: stringValue(args.providerIdentifier)! }

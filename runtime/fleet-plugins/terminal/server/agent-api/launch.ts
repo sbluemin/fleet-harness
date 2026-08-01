@@ -230,7 +230,7 @@ async function createAgentCliLaunchSpec(options: {
 }
 
 // claude-gateway는 Console 포트를 알아야 base URL이 정해지므로 정적 프로필이 아니라 여기서 env를 채운다.
-function applyAiGatewayEnv(
+export function applyAiGatewayEnv(
   profile: AgentCliProfile,
   aiGateway: AiGatewayLaunchBinding | undefined,
 ): AgentCliProfile {
@@ -249,6 +249,9 @@ function applyAiGatewayEnv(
     ANTHROPIC_BASE_URL: baseUrl,
     // 이게 있어야 /model picker가 게이트웨이의 GET /v1/models를 조회한다.
     CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
+    // Gateway가 tool_reference 계약을 보존한다. Cursor는 이를 지연 catalog 선택에 쓰고,
+    // 호환 프로바이더 경계는 각자의 eager wire 형식으로 정규화한다.
+    ENABLE_TOOL_SEARCH: "true",
   };
   // Marked provider usage is projected onto Claude Code's 1M coordinate, so its
   // native auto policy remains model-relative. Do not inject the process-wide

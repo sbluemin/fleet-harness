@@ -169,6 +169,65 @@ describe("Cursor request budgets", () => {
     expect(wireTools[1]?.toolName).toBe("read_file");
   });
 
+  it("loads only ToolSearch-selected deferred tools into the next Cursor catalog", () => {
+    const tools = [
+      tool("ToolSearch"),
+      tool("Read"),
+      { ...tool("mcp__fleet__carrier_dispatch"), defer_loading: true },
+      { ...tool("mcp__fleet__carrier_jobs"), defer_loading: true },
+      { ...tool("mcp__fleet__carrier_result"), defer_loading: true },
+    ];
+    const initialPlan = buildCursorRunPlan(request({ tools }), "conversation-tool-search-initial");
+    const initialNames = runRequest(initialPlan).mcpTools?.mcpTools.map((entry) => entry.toolName) ?? [];
+    const toolSearchWireName = initialNames.find((name) => name.startsWith("cc_tool_search_"));
+
+    expect(toolSearchWireName).toMatch(/^cc_tool_search_[a-f0-9]{8}$/);
+    expect(initialNames).toHaveLength(2);
+    expect(initialNames).not.toContain("mcp__fleet__carrier_dispatch");
+    expect(systemText(initialPlan)).toContain(`\`${toolSearchWireName}\` is Claude Code's ToolSearch bridge`);
+
+    const continuationPlan = buildCursorRunPlan(request({
+      tools,
+      input: [
+        { type: "message", role: "user", content: "Use fleet carrier_dispatch." },
+        {
+          type: "function_call",
+          call_id: "call-tool-search",
+          name: "ToolSearch",
+          arguments: '{"query":"select:mcp__fleet__carrier_dispatch,mcp__fleet__carrier_jobs"}',
+        },
+        {
+          type: "function_call_output",
+          call_id: "call-tool-search",
+          output: "selected",
+          tool_references: [
+            "mcp__fleet__carrier_dispatch",
+            "mcp__fleet__carrier_jobs",
+          ],
+        },
+      ],
+    }), "conversation-tool-search-continuation");
+    const continuationNames = runRequest(continuationPlan).mcpTools?.mcpTools
+      .map((entry) => entry.toolName) ?? [];
+
+    expect(continuationNames).toEqual(expect.arrayContaining([
+      toolSearchWireName,
+      "mcp__fleet__carrier_dispatch",
+      "mcp__fleet__carrier_jobs",
+    ]));
+    expect(continuationNames).not.toContain("mcp__fleet__carrier_result");
+  });
+
+  it("keeps deferred tools eager when the client did not advertise ToolSearch", () => {
+    const plan = buildCursorRunPlan(request({
+      tools: [{ ...tool("mcp__fleet__carrier_dispatch"), defer_loading: true }],
+    }), "conversation-no-tool-search");
+
+    expect(runRequest(plan).mcpTools?.mcpTools.map((entry) => entry.toolName)).toEqual([
+      "mcp__fleet__carrier_dispatch",
+    ]);
+  });
+
   it("caps every tool catalog while retaining execution-critical tools", () => {
     const filler = Array.from({ length: CURSOR_TOOL_COUNT_LIMIT + 20 }, (_, index) => tool(`mcp__filler__tool_${index}`));
     const tools = [
@@ -362,7 +421,12 @@ describe("Cursor request budgets", () => {
       input: [
         { type: "message", role: "user", content: "Run pwd" },
         { type: "function_call", call_id: "call-pwd", name: "exec_command", arguments: '{"cmd":"pwd"}' },
-        { type: "function_call_output", call_id: "call-pwd", output: "/workspace/project\n" },
+        {
+          type: "function_call_output",
+          call_id: "call-pwd",
+          output: "/workspace/project\n",
+          is_error: true,
+        },
       ],
     }), "conversation-auto-result");
     const turnId = runRequest(plan).conversationState.turns[0];
@@ -385,13 +449,18 @@ describe("Cursor request budgets", () => {
       toolCall: {
         mcpToolCall: {
           args: { toolName: "exec_command" },
-          result: { success: { content: [{ text: { text: "/workspace/project\n" } }] } },
+          result: {
+            success: {
+              content: [{ text: { text: "/workspace/project\n" } }],
+              isError: true,
+            },
+          },
         },
       },
     });
     const encodedCommand = step.toolCall?.mcpToolCall?.args?.args?.cmd;
     expect(toJson(ValueSchema, fromBinary(ValueSchema, Buffer.from(encodedCommand!, "base64")))).toBe("pwd");
-    expect(JSON.stringify(rootValues(plan))).toContain("is_error: false");
+    expect(JSON.stringify(rootValues(plan))).toContain("is_error: true");
   });
 
   it("replays an external-model tool result through the same structured tool step", () => {
@@ -432,6 +501,7 @@ describe("Cursor request budgets", () => {
     const turnSteps = turns.flatMap((turn) => turn.agentConversationTurn?.steps ?? [])
       .map((id) => decodeBlob(plan, id, ConversationStepSchema));
     expect(JSON.stringify(turnSteps)).not.toContain("[Tool Result]");
+    expect(JSON.stringify(rootValues(plan))).toContain("is_error: false");
   });
 });
 

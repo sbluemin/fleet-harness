@@ -34,6 +34,10 @@ const CURSOR_DIAGNOSTIC_EVENTS = new Set<CursorDiagnosticEventName>([
   "client.heartbeat",
   "client.reply",
   "server.frame",
+  "bridge.park",
+  "bridge.attach",
+  "bridge.expire",
+  "bridge.mismatch",
   "turn.finish",
 ]);
 
