@@ -32,10 +32,8 @@ export type AnalysisEvent =
   | { readonly type: "complete" }
   | { readonly type: "error"; readonly error: { readonly code: string; readonly message: string } };
 
-// 하나의 설치 바이너리가 여러 Analyst CLI를 제공할 수 있다 — claude 바이너리는 claude-kimi 백엔드도 구동한다.
 export const ANALYST_CLI_ENTRIES: readonly { readonly binaryId: string; readonly cliId: AnalystCliId; readonly label?: string }[] = [
   { binaryId: "claude", cliId: "claude" },
-  { binaryId: "claude", cliId: "claude-kimi", label: "Kimi (Claude Code)" },
   { binaryId: "codex", cliId: "codex" },
   { binaryId: "cursor-agent", cliId: "cursor" },
 ];

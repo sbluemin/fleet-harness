@@ -33,32 +33,6 @@ export const CLI_BACKENDS = {
     usesNpxBridge: true,
     defaultMaxTokens: 16_384,
   },
-  'claude-kimi': {
-    id: 'claude-kimi',
-    cliCommand: 'claude',
-    protocol: 'acp',
-    authRequired: true,
-    npxPackage: '@agentclientprotocol/claude-agent-acp@0.33.1',
-    modes: [
-      { id: 'default', label: 'Default' },
-      { id: 'plan', label: 'Plan' },
-      { id: 'bypassPermissions', label: 'YOLO' },
-    ],
-    supportsSessionClose: true,
-    supportsSessionLoad: true,
-    requiresModelAtSpawn: false,
-    usesNpxBridge: true,
-    defaultMaxTokens: 262_144,
-    defaultEnv: {
-      ANTHROPIC_BASE_URL: 'https://api.kimi.com/coding/',
-      ANTHROPIC_MODEL: 'kimi-for-coding',
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'kimi-for-coding',
-      ANTHROPIC_DEFAULT_SONNET_MODEL: 'kimi-for-coding',
-      ANTHROPIC_DEFAULT_OPUS_MODEL: 'kimi-for-coding',
-      CLAUDE_CODE_SUBAGENT_MODEL: 'kimi-for-coding',
-      API_TIMEOUT_MS: '3000000',
-    },
-  },
   codex: {
     id: 'codex',
     cliCommand: 'codex',
@@ -170,8 +144,8 @@ export function getBackendConfig(cli: CliType): CliBackendConfig {
  * @param cli - CLI 종류
  * @returns Claude 계열 여부
  */
-export function isClaudeFamily(cli: CliType): cli is 'claude' | 'claude-kimi' {
-  return cli === 'claude' || cli === 'claude-kimi';
+export function isClaudeFamily(cli: CliType): cli is 'claude' {
+  return cli === 'claude';
 }
 
 /**
@@ -183,7 +157,6 @@ export function isClaudeFamily(cli: CliType): cli is 'claude' | 'claude-kimi' {
 export function getYoloModeId(cli: CliType): string {
   switch (cli) {
     case 'claude':
-    case 'claude-kimi':
       return 'bypassPermissions';
     case 'cursor':
       return 'agent';

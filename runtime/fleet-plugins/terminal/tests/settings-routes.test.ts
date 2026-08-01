@@ -24,7 +24,7 @@ describe("terminal settings routes", () => {
       data: { version: 1, enableMetaphor: false },
     });
     await harness.handle({ req: req("GET"), res: res(), pathname: "/plugins/terminal/settings" });
-    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: false, kimiModel: null, agentIdleDormantMinutes: 60 } }]);
+    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: false, agentIdleDormantMinutes: 60 } }]);
     expect(harness.writes[0]?.body).not.toHaveProperty("consolePortMode");
   });
 
@@ -34,7 +34,7 @@ describe("terminal settings routes", () => {
       data: { version: 1, enableMetaphor: false },
     });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
-    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: true, kimiModel: null, agentIdleDormantMinutes: 60 } }]);
+    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: true, agentIdleDormantMinutes: 60 } }]);
     expect(harness.currentData()).toEqual({ version: 1, enableMetaphor: true });
   });
 
@@ -68,7 +68,7 @@ describe("terminal settings routes", () => {
 
   it("PUT /plugins/terminal/settings rejects payloads with multiple known keys", async () => {
     const harness = createRouteHarness({
-      body: { enableMetaphor: true, kimiModel: { model: "k3" } },
+      body: { enableMetaphor: true, agentIdleDormantMinutes: 60 },
     });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes[0]?.status).toBe(400);
@@ -81,7 +81,7 @@ describe("terminal settings routes", () => {
       data: { version: 1 },
     });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
-    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: false, kimiModel: null, agentIdleDormantMinutes: 120 } }]);
+    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: false, agentIdleDormantMinutes: 120 } }]);
     expect(harness.currentData()).toEqual({ version: 1, agentIdleDormantMinutes: 120 });
   });
 
@@ -91,7 +91,7 @@ describe("terminal settings routes", () => {
       data: { version: 1, agentIdleDormantMinutes: 60 },
     });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
-    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: false, kimiModel: null, agentIdleDormantMinutes: null } }]);
+    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: false, agentIdleDormantMinutes: null } }]);
     expect(harness.currentData()).toEqual({ version: 1, agentIdleDormantMinutes: null });
   });
 
@@ -113,56 +113,7 @@ describe("terminal settings routes", () => {
   it("GET /plugins/terminal/settings returns default agentIdleDormantMinutes when unset", async () => {
     const harness = createRouteHarness({ data: { version: 1 } });
     await harness.handle({ req: req("GET"), res: res(), pathname: "/plugins/terminal/settings" });
-    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: false, kimiModel: null, agentIdleDormantMinutes: 60 } }]);
-  });
-
-  it("PUT /plugins/terminal/settings updates the Kimi default model in global options", async () => {
-    const harness = createRouteHarness({
-      body: { kimiModel: { model: "k3", effort: "max" } },
-      data: { version: 1, enableMetaphor: false },
-    });
-    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
-    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: false, kimiModel: { model: "k3", effort: "max" }, agentIdleDormantMinutes: 60 } }]);
-    expect(harness.currentData()).toEqual({ version: 1, enableMetaphor: false, kimiModel: { model: "k3", effort: "max" } });
-  });
-
-  it("PUT /plugins/terminal/settings accepts a Kimi default model without effort", async () => {
-    const harness = createRouteHarness({
-      body: { kimiModel: { model: "kimi-for-coding-highspeed" } },
-      data: { version: 1 },
-    });
-    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
-    expect(harness.writes[0]?.status).toBe(200);
-    expect(harness.currentData()).toEqual({ version: 1, kimiModel: { model: "kimi-for-coding-highspeed" } });
-  });
-
-  it("PUT /plugins/terminal/settings rejects unknown Kimi models", async () => {
-    const harness = createRouteHarness({ body: { kimiModel: { model: "not-a-real-model" } } });
-    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
-    expect(harness.writes[0]?.status).toBe(400);
-    expect(harness.updateCalls).toBe(0);
-  });
-
-  it("PUT /plugins/terminal/settings rejects effort for Kimi models without effort support", async () => {
-    const harness = createRouteHarness({ body: { kimiModel: { model: "kimi-for-coding", effort: "high" } } });
-    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
-    expect(harness.writes[0]?.status).toBe(400);
-    expect(harness.updateCalls).toBe(0);
-  });
-
-  it("PUT /plugins/terminal/settings rejects effort levels the Kimi model does not support", async () => {
-    const harness = createRouteHarness({ body: { kimiModel: { model: "k3", effort: "ultra" } } });
-    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
-    expect(harness.writes[0]?.status).toBe(400);
-    expect(harness.updateCalls).toBe(0);
-  });
-
-  it("GET /plugins/terminal/settings returns the stored Kimi default model", async () => {
-    const harness = createRouteHarness({
-      data: { version: 1, kimiModel: { model: "k3[1m]", effort: "high" } },
-    });
-    await harness.handle({ req: req("GET"), res: res(), pathname: "/plugins/terminal/settings" });
-    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: false, kimiModel: { model: "k3[1m]", effort: "high" }, agentIdleDormantMinutes: 60 } }]);
+    expect(harness.writes).toEqual([{ status: 200, body: { enableMetaphor: false, agentIdleDormantMinutes: 60 } }]);
   });
 
   it("PUT /plugins/terminal/settings enforces terminal-origin authorization", async () => {

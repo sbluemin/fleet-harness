@@ -17,11 +17,11 @@ describe("console terminal host hooks", () => {
     });
   });
 
-  it("captures Kimi via Claude Code with the Claude session parser", () => {
+  it("captures AI Gateway sessions with the Claude session parser", () => {
     const exec = buildConsoleCaptureHookCommand({
       entryPath: "/app/fleet-console/dist/cli.mjs",
       execPath: "/usr/local/bin/node",
-    }, "claude-kimi");
+    }, "claude-gateway");
 
     expect(exec.args).toEqual([
       "/app/fleet-console/dist/cli.mjs",

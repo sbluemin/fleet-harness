@@ -38,6 +38,13 @@ importers:
         version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
 
   packages/core-ai-gateway:
+    dependencies:
+      '@bufbuild/protobuf':
+        specifier: ^2.12.0
+        version: 2.13.0
+      zod:
+        specifier: ^4.3.6
+        version: 4.4.1
     devDependencies:
       '@types/node':
         specifier: ^24.10.0
@@ -119,9 +126,6 @@ importers:
       '@dotobokuri/core-infra':
         specifier: workspace:*
         version: link:../core-infra
-      '@dotobokuri/core-unified-agent':
-        specifier: workspace:*
-        version: link:../core-unified-agent
       '@dotobokuri/fleet-carriers':
         specifier: workspace:*
         version: link:../fleet-carriers
@@ -953,6 +957,9 @@ packages:
   '@bramus/specificity@2.4.2':
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
+
+  '@bufbuild/protobuf@2.13.0':
+    resolution: {integrity: sha512-acq7c49vxfm1ggJ95P70TX7ABDM0vxr1SYD3BB0o0jnBLB4OAqeHyKuN+cD3w80gXEDQ2zxHpR6CUeA+O/aU9g==}
 
   '@chevrotain/cst-dts-gen@12.0.0':
     resolution: {integrity: sha512-fSL4KXjTl7cDgf0B5Rip9Q05BOrYvkJV/RrBTE/bKDN096E4hN/ySpcBK5B24T76dlQ2i32Zc3PAE27jFnFrKg==}
@@ -4207,6 +4214,8 @@ snapshots:
     dependencies:
       css-tree: 3.2.1
     optional: true
+
+  '@bufbuild/protobuf@2.13.0': {}
 
   '@chevrotain/cst-dts-gen@12.0.0':
     dependencies:

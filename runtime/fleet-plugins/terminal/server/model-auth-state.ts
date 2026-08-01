@@ -4,7 +4,7 @@ import {
 import type { AuthService } from "@dotobokuri/core-infra";
 
 export interface TerminalModelAuthProviderState {
-  readonly cli: "claude-kimi";
+  readonly provider: "kimi";
   readonly displayName: string;
   readonly signedIn: boolean;
 }
@@ -19,8 +19,8 @@ export async function buildModelAuthState(
   const signedInIds = new Set(await authService.listProviderIds());
   return {
     providers: [{
-      cli: "claude-kimi",
-      displayName: "Kimi via Claude Code",
+      provider: "kimi",
+      displayName: "Kimi for AI Gateway",
       signedIn: signedInIds.has(KIMI_AUTH_PROVIDER_ID),
     }],
   };

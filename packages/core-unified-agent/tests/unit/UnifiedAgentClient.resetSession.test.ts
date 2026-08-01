@@ -228,7 +228,7 @@ describe('resetSession()', () => {
     expect(mockSendPrompt).toHaveBeenCalledWith('new-session-after-reset', '리셋 후 요청');
   });
 
-  it('replace mode를 미지원 백엔드로 요청하면 정확한 에러로 거부한다', async () => {
+  it('Claude 클라이언트로 다른 백엔드를 요청하면 정확한 에러로 거부한다', async () => {
     const client = new UnifiedClaudeAgentClient();
 
     await expect(client.connect({
@@ -236,9 +236,7 @@ describe('resetSession()', () => {
       cli: 'codex',
       systemPrompt: '대체 지침',
       systemPromptMode: 'replace',
-    })).rejects.toThrow(
-      'system prompt replacement is not supported by the "codex" backend',
-    );
+    })).rejects.toThrow('UnifiedClaudeAgentClient는 claude CLI만 지원합니다.');
     expect(mockConnect).not.toHaveBeenCalled();
   });
 

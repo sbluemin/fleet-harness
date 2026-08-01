@@ -75,9 +75,6 @@ export const ModelEntrySchema = z.object({
   }
 });
 
-/** 모델 매핑 스키마 (modelId → 실제 모델명) */
-export const ModelsMappingSchema = z.record(z.string(), z.string());
-
 /** 프로바이더 스키마 (교차 필드 검증 포함) */
 export const ProviderSchema = z.object({
   /** 프로바이더 표시 이름 */
@@ -86,8 +83,6 @@ export const ProviderSchema = z.object({
   defaultModel: z.string(),
   /** 사용 가능한 모델 목록 */
   models: z.array(ModelEntrySchema).min(1),
-  /** modelId와 연관된 매핑 모델 (선택) */
-  modelsMapping: ModelsMappingSchema.optional(),
 }).check((ctx) => {
   const ids = new Set(ctx.value.models.map((m) => m.modelId));
 
@@ -138,9 +133,6 @@ export type ThinkingLevel = z.infer<typeof EffortLevelSchema>;
 
 /** effort 허용 토큰 (호환 alias) */
 export type EffortLevel = ThinkingLevel;
-
-/** 모델 매핑 (modelId → 실제 모델명) */
-export type ModelsMapping = z.infer<typeof ModelsMappingSchema>;
 
 /** 프로바이더 모델 정보 */
 export type ProviderModelInfo = z.infer<typeof ProviderSchema>;

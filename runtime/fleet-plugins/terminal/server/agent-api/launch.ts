@@ -6,8 +6,10 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { resolvePathBinary } from "@dotobokuri/core-agent";
+import { buildAnthropicModelList } from "@dotobokuri/core-ai-gateway";
 import { createSessionIdentityResolver } from "@dotobokuri/core-unified-agent";
 import {
+  createSessionCaptureHookExec,
   createSystemPromptBuilder,
   injectAgentCliProfile,
   resolveAgentCliProfile,
@@ -15,21 +17,24 @@ import {
   type AgentCliProfile,
   type FleetAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
-import { createInfraServices, getFleetDataDir, type AuthService, type GlobalOptionsService } from "@dotobokuri/core-infra";
+import {
+  createInfraServices,
+  getFleetDataDir,
+  writeAtomicSync,
+  type GlobalOptionsService,
+} from "@dotobokuri/core-infra";
 
 import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, runCodexCommand, toCaptureProvider, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
 import { stripConsoleInternalEnv } from "../shared/launch-env.js";
-import type { AiGatewayTokenGrant } from "../ai-gateway-routes.js";
 import { applyAgentCliPathEnvOverlay } from "./agent-cli-paths.js";
 
-/** Experimental AI gateway를 Launch에 잇는 최소 바인딩. 봉인이 닫혀 있으면 주입되지 않는다. */
+/** AI gateway를 Console의 실제 listening origin에 연결하는 launch 바인딩. */
 export interface AiGatewayLaunchBinding {
   /** Console 루트 기준 라우트 경로. 예: "/plugins/terminal/ai-gateway" */
   readonly routePath: string;
   /** Console이 리슨 중인 origin. MCP는 별도 포트라 여기서 유도하면 안 된다. */
   origin(): string | null;
-  issueToken(): AiGatewayTokenGrant;
 }
 
 export interface TerminalLaunchResolverDeps {
@@ -41,7 +46,7 @@ export interface TerminalLaunchResolverDeps {
   readonly entryPath?: string;
   readonly tsxLoaderPath?: string;
   readonly dataDir?: string;
-  readonly infraServices?: { readonly authService: AuthService; readonly globalOptionsService: GlobalOptionsService };
+  readonly infraServices?: { readonly globalOptionsService: GlobalOptionsService };
   readonly agentRuntime?: FleetAgentRuntimeLifecycle;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly injectProfile?: typeof injectAgentCliProfile;
@@ -111,6 +116,8 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       env: launchEnv,
       hookEntry,
       infraServices,
+      createSessionCaptureHookExec,
+      createSystemPromptBuilder,
       injectProfile,
       onRuntimeSessionStart: deps.onRuntimeSessionStart,
       resolveProfile,
@@ -145,12 +152,14 @@ async function createAgentCliLaunchSpec(options: {
   readonly agentRuntime?: FleetAgentRuntimeLifecycle;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly cliId?: string;
+  readonly createSessionCaptureHookExec: typeof createSessionCaptureHookExec;
   readonly createSessionIdentityResolver: typeof createSessionIdentityResolver;
+  readonly createSystemPromptBuilder: typeof createSystemPromptBuilder;
   readonly cwd: string;
   readonly dataDir: string;
   readonly env: NodeJS.ProcessEnv;
   readonly hookEntry: ConsoleHookCommandEntry;
-  readonly infraServices: { readonly authService: AuthService; readonly globalOptionsService: GlobalOptionsService };
+  readonly infraServices: { readonly globalOptionsService: GlobalOptionsService };
   readonly injectProfile: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly resolveProfile: typeof resolveAgentCliProfile;
@@ -164,19 +173,21 @@ async function createAgentCliLaunchSpec(options: {
       throw new Error("Fleet Console agent runtime is unavailable.");
     }
     const profile = await options.resolveProfile(options.env, options.cwd, {
-      authService: options.infraServices.authService,
       cliId: options.cliId,
-      globalOptionsService: options.infraServices.globalOptionsService,
       resumeSessionId: options.resumeSessionId,
     });
     const globalSettings = readGlobalSettingsSnapshot(options.infraServices);
     const injectedProfile = await options.injectProfile(profile, {
-      buildSystemPrompt: (injectTone) => createSystemPromptBuilder({ carrierRuntime: agentRuntime.carrierRuntime }).build(injectTone),
+      buildSystemPrompt: (injectTone) => options.createSystemPromptBuilder({ carrierRuntime: agentRuntime.carrierRuntime }).build(injectTone),
       codexCommandRunner: runCodexCommand,
       dataDir: options.dataDir,
       dedicatedMcpSession: agentRuntime.dedicatedMcpSession,
       enableMetaphor: globalSettings.enableMetaphor,
-      captureSessionHookExec: buildConsoleCaptureHookCommand(options.hookEntry, profile.id),
+      captureSessionHookExec: buildConsoleCaptureHookCommand(
+        options.hookEntry,
+        profile.id,
+        options.createSessionCaptureHookExec,
+      ),
       turnStartHookExec: buildConsoleTurnHookCommand(options.hookEntry, "start"),
       turnEndHookExec: buildConsoleTurnHookCommand(options.hookEntry, "end"),
       inputWaitingHookExec: buildConsoleAttentionHookCommand(options.hookEntry),
@@ -193,11 +204,7 @@ async function createAgentCliLaunchSpec(options: {
       mcpToolCount: countMcpTools(agentRuntime),
       sessionId: options.sessionId,
     });
-    const launchProfile = await applyAiGatewayEnv(injectedProfile, {
-      agentRuntime,
-      ...(options.aiGateway ? { aiGateway: options.aiGateway } : {}),
-      onCleanup: (cleanup) => cleanupStack.push(cleanup),
-    });
+    const launchProfile = applyAiGatewayEnv(injectedProfile, options.aiGateway);
     const sessionIdentityResolver = options.createSessionIdentityResolver({
       provider: toCaptureProvider(launchProfile.id),
       command: launchProfile.bin,
@@ -223,37 +230,62 @@ async function createAgentCliLaunchSpec(options: {
 }
 
 // claude-gateway는 Console 포트를 알아야 base URL이 정해지므로 정적 프로필이 아니라 여기서 env를 채운다.
-// 자식에게는 세션 bearer만 주고 upstream 자격증명은 서버에 남긴다.
-async function applyAiGatewayEnv(
+function applyAiGatewayEnv(
   profile: AgentCliProfile,
-  options: {
-    readonly agentRuntime: FleetAgentRuntimeLifecycle;
-    readonly aiGateway?: AiGatewayLaunchBinding;
-    readonly onCleanup: (cleanup: () => void) => void;
-  },
-): Promise<AgentCliProfile> {
+  aiGateway: AiGatewayLaunchBinding | undefined,
+): AgentCliProfile {
   if (profile.id !== "claude-gateway") return profile;
-  if (!options.aiGateway) {
-    throw new Error(
-      "The experimental AI gateway is disabled. Set FLEET_EXPERIMENTAL_AI_GATEWAY=1 before starting Fleet Console.",
-    );
+  if (!aiGateway) {
+    throw new Error("The AI gateway launch binding is unavailable.");
   }
-  const origin = options.aiGateway.origin();
+  const origin = aiGateway.origin();
   if (!origin) {
     throw new Error("Fleet Console has not bound a port yet, so the AI gateway URL cannot be derived.");
   }
+  const baseUrl = `${origin}${aiGateway.routePath}`;
   const env: Record<string, string> = {
     ...profile.env,
     // Claude Code가 이 뒤에 /v1/messages를 붙인다.
-    ANTHROPIC_BASE_URL: `${origin}${options.aiGateway.routePath}`,
+    ANTHROPIC_BASE_URL: baseUrl,
     // 이게 있어야 /model picker가 게이트웨이의 GET /v1/models를 조회한다.
     CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
   };
+  // Keep Claude Code's auto-compact policy model-relative. The gateway projects
+  // each marked model's response usage onto Claude's 1M compatibility window,
+  // so a process-wide compact threshold would make picker models disagree.
+  try {
+    writeClaudeGatewayModelCache(baseUrl, env);
+  } catch (error) {
+    console.warn("[terminal] Claude Code gateway model cache refresh failed; /model may show stale entries.", error);
+  }
   // 자체 bearer를 주입하지 않는다. 주입하면 Claude Code가 claude.ai OAuth 대신 그것을 보내고,
   // Anthropic 모델을 원문 중계할 자격증명이 사라져 게이트웨이가 토큰을 대신 읽는 우회가 된다.
   delete env.ANTHROPIC_AUTH_TOKEN;
   delete env.ANTHROPIC_API_KEY;
   return { ...profile, env };
+}
+
+/**
+ * Claude Code does not refresh gateway discovery while it relies on its own
+ * subscription credential. Pre-write the cache schema it reads in that mode.
+ */
+export function writeClaudeGatewayModelCache(
+  baseUrl: string,
+  env: Readonly<NodeJS.ProcessEnv>,
+  homeDir = os.homedir(),
+): string {
+  const configDir = env.CLAUDE_CONFIG_DIR && env.CLAUDE_CONFIG_DIR.length > 0
+    ? env.CLAUDE_CONFIG_DIR
+    : path.join(homeDir, ".claude");
+  const cacheDir = path.join(configDir, "cache");
+  const cachePath = path.join(cacheDir, "gateway-models.json");
+  const models = buildAnthropicModelList().data
+    .filter((model) => /^(claude|anthropic)/i.test(model.id))
+    .map((model) => ({ id: model.id, display_name: model.display_name }));
+
+  fs.mkdirSync(cacheDir, { recursive: true, mode: 0o700 });
+  writeAtomicSync(cachePath, JSON.stringify({ baseUrl, fetchedAt: Date.now(), models }), { mode: 0o600 });
+  return cachePath;
 }
 
 function toLaunchSpec(profile: AgentCliProfile, cleanup: () => Promise<void>, sessionIdentityResolver: TerminalLaunchSpec["sessionIdentityResolver"]): TerminalLaunchSpec {

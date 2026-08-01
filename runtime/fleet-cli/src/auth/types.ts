@@ -9,4 +9,4 @@ export interface AuthCommandIo {
   readonly stderr: Pick<NodeJS.WriteStream, "write">;
 }
 
-export type AuthCliId = "claude-kimi";
+export type AuthCliId = "kimi";

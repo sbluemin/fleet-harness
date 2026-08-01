@@ -1,10 +1,4 @@
-import type { GlobalOptionsData } from "@dotobokuri/core-infra";
-
-export type AgentCliId = "claude" | "claude-kimi" | "claude-gateway" | "codex";
-
-export interface AuthServiceLike {
-  getApiKey(providerId: string): Promise<string | undefined>;
-}
+export type AgentCliId = "claude" | "claude-gateway" | "codex";
 
 export interface AgentCliProfile {
   readonly id: AgentCliId;
@@ -46,10 +40,8 @@ export interface AgentCliDefinition {
 }
 
 export interface AgentCliProfileOptions {
-  readonly authService?: AuthServiceLike;
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
-  readonly globalOptionsService?: { load(): GlobalOptionsData };
   readonly model?: string;
   readonly resumeSessionId?: string;
 }

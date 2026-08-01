@@ -115,7 +115,7 @@ describe('AcpConnection Claude session metadata', () => {
     const conn = new TestAcpConnection({
       command: 'claude',
       args: ['--acp'],
-      cliType: 'claude-kimi',
+      cliType: 'claude',
       cwd: process.cwd(),
     }) as unknown as TestableAcpConnection;
     const mockAgent = createMockAgent();

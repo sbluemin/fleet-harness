@@ -249,7 +249,6 @@ function createHarness(body: Record<string, unknown>) {
   const previousTerminalCommand = process.env.FLEET_TERMINAL_CMD;
   process.env.FLEET_TERMINAL_CMD = "test-terminal";
   registerAgentRoutes(ctx, terminalRuntime, {
-    authService: {} as never,
     globalOptionsService: {
       load: () => ({ version: 1, agentIdleDormantMinutes: null }),
       save: (data) => data,

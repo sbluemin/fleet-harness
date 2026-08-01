@@ -1,11 +1,15 @@
 import { AnthropicMessagesGateway } from "@dotobokuri/core-ai-gateway";
-import type { AdapterResponse, AiGatewayAdapter } from "@dotobokuri/core-ai-gateway";
+import type {
+  AdapterResponse,
+  AiGatewayAdapter,
+  CanonicalResponseRequest,
+} from "@dotobokuri/core-ai-gateway";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { RouteHandler, RouteHandlerContext } from "@fleet-console/sdk/routing";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
-  AI_GATEWAY_EXPERIMENTAL_ENV,
+  KIMI_MESSAGES_URL,
   createAiGatewayRouter,
   registerAiGatewayRoutes,
 } from "../server/ai-gateway-routes.js";
@@ -16,26 +20,11 @@ const ANTHROPIC_CRED = "sk-ant-oat01-caller";
 const SUBSCRIPTION_TOKEN = "chatgpt-subscription-access-token";
 const ACCOUNT_ID = "11111111-2222-3333-4444-555555555555";
 
-afterEach(() => {
-  delete process.env[AI_GATEWAY_EXPERIMENTAL_ENV];
-});
-
-describe("experimental seal", () => {
-  it("does not register any route while the seal is closed", () => {
+describe("route registration", () => {
+  it("always registers the AI gateway route", () => {
     const registerRouter = vi.fn();
-    const routes = registerAiGatewayRoutes(pluginCtx(registerRouter));
+    registerAiGatewayRoutes(pluginCtx(registerRouter));
 
-    expect(routes.enabled).toBe(false);
-    expect(registerRouter).not.toHaveBeenCalled();
-    expect(() => routes.issueToken()).toThrow(/disabled/);
-  });
-
-  it("registers the route once the seal is opened", () => {
-    process.env[AI_GATEWAY_EXPERIMENTAL_ENV] = "1";
-    const registerRouter = vi.fn();
-    const routes = registerAiGatewayRoutes(pluginCtx(registerRouter));
-
-    expect(routes.enabled).toBe(true);
     expect(registerRouter).toHaveBeenCalledTimes(1);
     expect(registerRouter.mock.calls[0]?.[0]).toBe("ai-gateway");
   });
@@ -80,11 +69,6 @@ describe("caller credential", () => {
     expect(res.status).toBe(200);
   });
 
-  it("never issues a gateway bearer of its own", () => {
-    const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
-    // Claude Code가 자기 OAuth를 계속 쓰도록 자체 토큰을 주입하지 않는다.
-    expect(router.issueToken().token).toBe("");
-  });
 });
 
 describe("upstream credential", () => {
@@ -106,6 +90,199 @@ describe("upstream credential", () => {
     await router.handle(ctx({ res, token: ANTHROPIC_CRED }));
 
     expect(`${JSON.stringify(res.headers)}${res.body}`).not.toContain(SUBSCRIPTION_TOKEN);
+  });
+
+  it("passes Codex Fast as a base model with priority service tier", async () => {
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({ gateway, readAuth });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--codex--gpt-5.6-sol-fast",
+    }));
+
+    expect(streamSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      apiKey: SUBSCRIPTION_TOKEN,
+      contextWindow: 372_000,
+      model: "gpt-5.6-sol",
+      serviceTier: "priority",
+      reasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+    }));
+  });
+
+  it("clamps an explicit Luna ultra request to the model's max rung", async () => {
+    let canonical: CanonicalResponseRequest | undefined;
+    const router = createAiGatewayRouter({
+      gateway: stubGateway((request) => {
+        canonical = request;
+      }),
+      readAuth,
+    });
+
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--codex--gpt-5.6-luna[1m]",
+      thinking: { type: "adaptive" },
+      outputConfig: { effort: "ultra" },
+    }));
+
+    expect(canonical?.model).toBe("gpt-5.6-luna");
+    expect(canonical?.reasoning).toEqual({ summary: "auto", effort: "max" });
+  });
+
+  it("preserves Cursor effort until the adapter resolves its wire model suffix", async () => {
+    let canonical: CanonicalResponseRequest | undefined;
+    const gateway = stubGateway((request) => {
+      canonical = request;
+    });
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({
+      gateway,
+      readAuth,
+      readCursorToken: () => "cursor-subscription-token",
+    });
+
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--cursor--kimi-k3",
+      thinking: { type: "adaptive" },
+      outputConfig: { effort: "medium" },
+    }));
+
+    expect(canonical?.model).toBe("kimi-k3");
+    expect(canonical?.reasoning).toEqual({ summary: "auto", effort: "medium" });
+    expect(streamSpy.mock.calls[0]?.[1]).not.toHaveProperty("reasoningEfforts");
+  });
+
+  it("rejects a Cursor effort when the model has no supported lower rung", async () => {
+    const router = createAiGatewayRouter({
+      readAuth,
+      readCursorToken: () => "cursor-subscription-token",
+    });
+    const res = response();
+
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--cursor--glm-5.2[1m]",
+      thinking: { type: "adaptive" },
+      outputConfig: { effort: "medium" },
+    }));
+
+    expect(res.status).toBe(400);
+    expect(res.body).toContain("no supported reasoning effort at or below");
+  });
+});
+
+describe("Kimi passthrough", () => {
+  it("rewrites the model and replaces caller authentication with the stored Kimi key", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "event: message_stop\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readKimiApiKey: async () => "kimi-secret",
+    });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--k3[1m]",
+      thinking: { type: "adaptive" },
+      outputConfig: { effort: "xhigh", retain: "preserved" },
+    }));
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    const headers = new Headers(init?.headers);
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(String(url)).toBe(KIMI_MESSAGES_URL);
+    expect(headers.get("x-api-key")).toBe("kimi-secret");
+    expect(headers.get("authorization")).toBeNull();
+    expect(body).toMatchObject({
+      model: "k3",
+      thinking: { type: "adaptive" },
+      output_config: { effort: "high", retain: "preserved" },
+    });
+    expect(`${JSON.stringify(res.headers)}${res.body}`).not.toContain("kimi-secret");
+  });
+
+  it.each([
+    ["low", "low"],
+    ["medium", "low"],
+    ["high", "high"],
+    ["xhigh", "high"],
+    ["max", "max"],
+    ["ultra", "max"],
+  ])("normalizes Claude Code /effort %s to K3 %s", async (effort, expected) => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "event: message_stop\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readKimiApiKey: async () => "kimi-secret",
+    });
+
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--kimi--k3-256k",
+      thinking: { type: "adaptive" },
+      outputConfig: { effort },
+    }));
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      output_config?: { effort?: string };
+    };
+    expect(body.output_config?.effort).toBe(expected);
+  });
+
+  it("rejects a K3 effort below its lowest supported rung", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readKimiApiKey: async () => "kimi-secret",
+    });
+    const res = response();
+
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--kimi--k3-256k",
+      thinking: { type: "adaptive" },
+      outputConfig: { effort: "minimal" },
+    }));
+
+    expect(res.status).toBe(400);
+    expect(res.body).toContain("no supported reasoning effort at or below");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not contact Kimi without a stored API key", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readKimiApiKey: async () => undefined,
+    });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--kimi--k3-256k",
+    }));
+
+    expect(res.status).toBe(401);
+    expect(res.body).toContain("Kimi API key");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
@@ -154,12 +331,15 @@ describe("route surface", () => {
     await router.handle(ctx({ res, token: ANTHROPIC_CRED, pathname: `${BASE}/v1/models`, method: "GET" }));
 
     expect(res.status).toBe(200);
-    const list = JSON.parse(res.body) as { data: Array<{ id: string }> };
+    const list = JSON.parse(res.body) as { data: Array<{ id: string; display_name: string }> };
     const ids = list.data.map((entry) => entry.id);
     // picker가 버리지 않도록 모든 항목이 claude- alias로 나가야 한다.
     expect(ids.every((id) => id.startsWith("claude"))).toBe(true);
-    expect(ids).toContain("claude-gateway--gpt-5.5");
-    expect(ids).toContain("claude-gateway--cursor-auto");
+    expect(list.data).toHaveLength(23);
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast[1m]");
+    expect(ids).toContain("claude-gateway--cursor--auto");
+    expect(ids).toContain("claude-gateway--kimi--k3[1m]");
+    expect(list.data.every((entry) => /^(Codex|Cursor|Kimi)-/.test(entry.display_name))).toBe(true);
   });
 
   it("refuses model discovery without a bearer", async () => {
@@ -184,6 +364,20 @@ describe("route surface", () => {
 
     expect(res.status).toBe(405);
   });
+
+  it("rejects an unknown id reserved for the gateway instead of leaking it to Anthropic", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    const router = createAiGatewayRouter({ fetch: fetchMock, readAuth });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--cursor--does-not-exist",
+    }));
+
+    expect(res.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
 
 function readAuth() {
@@ -191,12 +385,21 @@ function readAuth() {
 }
 
 function pluginCtx(registerRouter: (path: string, handler: RouteHandler) => void): FleetPluginServerContext {
-  return { pluginId: "terminal", basePath: "/plugins/terminal", registerRouter } as unknown as FleetPluginServerContext;
+  return {
+    pluginId: "terminal",
+    basePath: "/plugins/terminal",
+    registerRouter,
+    host: {
+      paths: { pluginDataDir: () => "/tmp/fleet-console-test/plugins/terminal" },
+      lifecycle: { registerCleanup: () => () => undefined },
+    },
+  } as unknown as FleetPluginServerContext;
 }
 
-function stubGateway(): AnthropicMessagesGateway {
+function stubGateway(onRequest?: (request: CanonicalResponseRequest) => void): AnthropicMessagesGateway {
   const adapter: AiGatewayAdapter = {
-    async stream(): Promise<AdapterResponse> {
+    async stream(request): Promise<AdapterResponse> {
+      onRequest?.(request);
       return {
         ok: true,
         status: 200,
@@ -264,11 +467,15 @@ function ctx(options: {
   readonly method?: string;
   readonly model?: string;
   readonly apiKey?: string;
+  readonly thinking?: Record<string, unknown>;
+  readonly outputConfig?: Record<string, unknown>;
 }): RouteHandlerContext {
   const payload = JSON.stringify({
-    model: options.model ?? "claude-gateway--gpt-5.5",
+    model: options.model ?? "claude-gateway--codex--gpt-5.6-sol",
     messages: [{ role: "user", content: "Hello" }],
     max_tokens: 128,
+    ...(options.thinking ? { thinking: options.thinking } : {}),
+    ...(options.outputConfig ? { output_config: options.outputConfig } : {}),
     stream: true,
   });
   const req = {

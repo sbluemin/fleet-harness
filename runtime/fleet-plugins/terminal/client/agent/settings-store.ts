@@ -58,8 +58,6 @@ export async function setSystemPromptSettingsField<Field extends SystemPromptSet
 ): Promise<boolean> {
   const current = snapshot.state;
   if (!current) return false;
-  // kimiModel은 null(미설정) 값을 서버가 받지 않으므로 null 저장 요청은 무시한다.
-  if (field === "kimiModel" && value === null) return false;
   // 진행 중인 로드 응답이 이 저장 결과를 덮지 않도록 세대값을 올린다.
   loadGeneration += 1;
   const optimistic = { ...current, [field]: value };
@@ -77,8 +75,7 @@ export async function setSystemPromptSettingsField<Field extends SystemPromptSet
 
 function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptSettingsState): SystemPromptSettingsUpdate {
   if (field === "enableMetaphor") return { enableMetaphor: state.enableMetaphor };
-  if (field === "agentIdleDormantMinutes") return { agentIdleDormantMinutes: state.agentIdleDormantMinutes };
-  return { kimiModel: state.kimiModel! };
+  return { agentIdleDormantMinutes: state.agentIdleDormantMinutes };
 }
 
 function setSnapshot(patch: Partial<SystemPromptSettingsStoreState>): void {

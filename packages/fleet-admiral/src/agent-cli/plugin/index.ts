@@ -140,7 +140,7 @@ function renderPluginRoot(
     writePrivateJson(path.join(stagedPluginRoot, ".claude-plugin", "plugin.json"), claudeManifest(bundle), stagedPluginRoot);
     switch (bundle.source) {
       case "asset":
-        if (options.cliId === "claude" || options.cliId === "claude-kimi") {
+        if (options.cliId === "claude" || options.cliId === "claude-gateway") {
           ensurePrivateDir(path.join(stagedPluginRoot, "agents"), stagedPluginRoot);
         }
         ensurePrivateDir(path.join(stagedPluginRoot, "skills"), stagedPluginRoot);

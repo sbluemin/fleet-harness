@@ -74,7 +74,7 @@ export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): str
     "",
     section("COMMANDS", colorEnabled),
     `  ${command("console", colorEnabled)}             ${dim("Open Fleet Console, or manage the console server (start|stop|status).", colorEnabled)}`,
-    `  ${command("auth", colorEnabled)}                ${dim("Manage Kimi via Claude Code authentication.", colorEnabled)}`,
+    `  ${command("auth", colorEnabled)}                ${dim("Manage Kimi AI Gateway authentication.", colorEnabled)}`,
     ...(release.channel === "local" ? [`  ${command("desktop", colorEnabled)}             ${dim("Start Fleet Console Desktop from this workspace.", colorEnabled)}`] : []),
     `  ${command("update", colorEnabled)}              ${dim("Update Fleet CLI packages.", colorEnabled)}`,
     "",

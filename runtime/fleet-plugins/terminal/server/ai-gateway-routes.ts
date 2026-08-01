@@ -7,20 +7,30 @@ import {
   AnthropicMessagesGateway,
   CHATGPT_CODEX_RESPONSES_URL,
   CursorAdapter,
+  CursorRequestBudgetError,
+  GATEWAY_MODEL_ALIAS_PREFIX,
   GATEWAY_MODELS,
   OpenAIResponsesAdapter,
+  UnsupportedReasoningEffortError,
   buildAnthropicModelList,
+  clampReasoningEffort,
   findGatewayModel,
+  reasoningEffortFromOutputConfig,
   upstreamModelId,
 } from "@dotobokuri/core-ai-gateway";
-import type { GatewayModel } from "@dotobokuri/core-ai-gateway";
-import type { AnthropicMessagesRequest } from "@dotobokuri/core-ai-gateway";
+import type {
+  AnthropicMessagesRequest,
+  CursorDiagnosticSink,
+  GatewayModel,
+  ReasoningEffort,
+} from "@dotobokuri/core-ai-gateway";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 
+import { createCursorDiagnosticLog } from "./ai-gateway-diagnostics.js";
+
 export const AI_GATEWAY_ROUTE_SEGMENT = "ai-gateway";
-export const AI_GATEWAY_EXPERIMENTAL_ENV = "FLEET_EXPERIMENTAL_AI_GATEWAY";
 export const AI_GATEWAY_MODEL_ENV = "FLEET_AI_GATEWAY_MODEL";
 
 /** Codex CLI가 ChatGPT 구독 로그인으로 저장해 둔 토큰. */
@@ -30,24 +40,9 @@ export interface CodexSubscriptionAuth {
 }
 
 export const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
+export const KIMI_MESSAGES_URL = "https://api.kimi.com/coding/v1/messages";
 /** Claude Code가 claude.ai 구독으로 붙일 때 보내는 자격증명 접두. OAuth 토큰도 이 접두를 쓴다. */
 const ANTHROPIC_CREDENTIAL_PREFIX = "sk-ant-";
-
-/** Claude Code의 claude.ai 구독 로그인이 keychain에 남긴 OAuth 토큰. */
-export function readAnthropicSubscriptionToken(): string | null {
-  try {
-    const raw = execFileSync(
-      "security",
-      ["find-generic-password", "-s", "Claude Code-credentials", "-w"],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-    );
-    const parsed = JSON.parse(raw) as { readonly claudeAiOauth?: { readonly accessToken?: unknown } };
-    const token = parsed.claudeAiOauth?.accessToken;
-    return typeof token === "string" && token.length > 0 ? token : null;
-  } catch {
-    return null;
-  }
-}
 
 /** Cursor CLI/IDE 로그인이 keychain에 남긴 구독 토큰. */
 export function readCursorSubscriptionToken(): string | null {
@@ -80,44 +75,26 @@ export function readCodexSubscriptionAuth(
   }
 }
 
-export interface AiGatewayTokenGrant {
-  readonly token: string;
-  readonly revoke: () => void;
-}
-
-export interface AiGatewayTokenIssuer {
-  /** Launch마다 1회용 bearer를 발급한다. Operation이 끝나면 revoke를 호출한다. */
-  issueToken(): AiGatewayTokenGrant;
-}
-
-export interface AiGatewayRoutes extends AiGatewayTokenIssuer {
-  /** Experimental 봉인이 열려 라우트가 실제로 등록되었는지. */
-  readonly enabled: boolean;
-}
-
 export interface AiGatewayRouteDeps {
   /** 테스트가 upstream을 대체할 수 있도록 주입 가능하게 둔다. */
   readonly gateway?: AnthropicMessagesGateway;
   /** 테스트가 구독 토큰 조회를 대체한다. */
   readonly readAuth?: () => CodexSubscriptionAuth | null;
   readonly readCursorToken?: () => string | null;
-  readonly readAnthropicToken?: () => string | null;
+  readonly readKimiApiKey?: () => Promise<string | undefined>;
+  readonly cursorDiagnostics?: CursorDiagnosticSink;
+  readonly fetch?: typeof fetch;
 }
 
-export interface AiGatewayRouter extends AiGatewayTokenIssuer {
+export interface AiGatewayRouter {
   readonly handle: RouteHandler;
-}
-
-export function isAiGatewayEnabled(): boolean {
-  return process.env[AI_GATEWAY_EXPERIMENTAL_ENV] === "1";
 }
 
 export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayRouter {
   const readAuth = deps.readAuth ?? (() => readCodexSubscriptionAuth());
+  const fetchImpl = deps.fetch ?? globalThis.fetch.bind(globalThis);
 
   const handle: RouteHandler = async ({ req, res, pathname }) => {
-    // Experimental 진단: Claude Code가 실제로 무엇을 호출하는지 관찰한다.
-    console.log(`[ai-gateway] ${req.method} ${pathname} auth=${req.headers.authorization ? "yes" : "no"}`);
     // Claude Code는 base URL 뒤에 자기 경로를 붙인다. 연결 프로브는 /api/hello다.
     if (pathname.endsWith("/api/hello")) {
       res.writeHead(200, { "content-type": "application/json" });
@@ -156,33 +133,29 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
       writeAnthropicError(res, 400, "invalid_request_error", "Request body must be a JSON object");
       return true;
     }
-
-    console.log(
-      `[ai-gateway] body keys=${JSON.stringify(Object.keys(body))}`
-      + ` system=${Array.isArray(body.system) ? `array(${body.system.length})` : typeof body.system}`
-      + ` msgRoles=${JSON.stringify((body.messages ?? []).map((m) => m.role))}`,
-    );
+    if (typeof body.model !== "string" || body.model.trim().length === 0) {
+      writeAnthropicError(res, 400, "invalid_request_error", "Request model must be a non-empty string");
+      return true;
+    }
 
     // 요청이 지목한 모델이 어느 구독으로 가는지 정한다. env 오버라이드가 있으면 그쪽이 이긴다.
     const requested = process.env[AI_GATEWAY_MODEL_ENV] ?? body.model;
     const target = findGatewayModel(requested);
-
-    // 카탈로그 밖의 모델은 Anthropic 자기 모델이다. 호출자의 자격증명을 그대로 실어 원문 중계한다.
-    if (!target) {
-      await proxyToAnthropic(req, res, body);
+    if (!target && requested.startsWith(GATEWAY_MODEL_ALIAS_PREFIX)) {
+      writeAnthropicError(res, 400, "invalid_request_error", `Unknown AI gateway model: ${requested}`);
       return true;
     }
 
-    let credential: string;
+    let credential = "";
     let chatgptAccountId = "";
-    if (target.provider === "cursor") {
+    if (target?.provider === "cursor") {
       const cursorToken = (deps.readCursorToken ?? readCursorSubscriptionToken)();
       if (!cursorToken) {
         writeAnthropicError(res, 401, "authentication_error", "No Cursor subscription token was found. Sign in to Cursor first.");
         return true;
       }
       credential = cursorToken;
-    } else {
+    } else if (target?.provider === "codex") {
       // ChatGPT 구독 토큰은 Codex CLI가 저장해 둔 것을 읽는다. 자식에게는 넘기지 않는다.
       const auth = readAuth();
       if (!auth) {
@@ -191,6 +164,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
       }
       credential = auth.accessToken;
       chatgptAccountId = auth.accountId;
+    } else if (target?.provider === "kimi") {
+      const kimiApiKey = await deps.readKimiApiKey?.();
+      if (!kimiApiKey) {
+        writeAnthropicError(res, 401, "authentication_error", "No Kimi API key was found. Sign in to Kimi Code first.");
+        return true;
+      }
+      credential = kimiApiKey;
     }
 
     const controller = new AbortController();
@@ -198,11 +178,40 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
     req.once("close", abort);
 
     try {
-      const gateway = deps.gateway ?? createGatewayFor(target, chatgptAccountId);
+      if (!target) {
+        // Native Anthropic models keep the caller-owned credential and wire request unchanged.
+        await proxyToAnthropic(req.headers, res, body, fetchImpl, controller.signal);
+        return true;
+      }
+      if (target.provider === "kimi") {
+        await proxyToKimi(
+          req.headers,
+          res,
+          body,
+          upstreamModelId(target),
+          credential,
+          fetchImpl,
+          controller.signal,
+        );
+        return true;
+      }
+      const gateway = deps.gateway ?? createGatewayFor(
+        target,
+        chatgptAccountId,
+        deps.cursorDiagnostics,
+      );
       const upstream = await gateway.stream(body, {
         apiKey: credential,
+        ...(target.contextWindow ? { contextWindow: target.contextWindow } : {}),
         signal: controller.signal,
         model: upstreamModelId(target),
+        ...(target.serviceTier ? { serviceTier: target.serviceTier } : {}),
+        // Cursor encodes effort in its wire model id and owns its model-specific
+        // strict downward clamp in the adapter. Preserve Claude Code's raw effort
+        // until that boundary instead of clamping it twice.
+        ...(target.provider !== "cursor" && target.effort.supported
+          ? { reasoningEfforts: target.effort.levels }
+          : {}),
       });
       res.writeHead(upstream.status, headerEntries(upstream.headers));
       for await (const chunk of upstream.body) {
@@ -214,7 +223,14 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
       if (res.headersSent) {
         res.end();
       } else {
-        writeAnthropicError(res, 502, "api_error", errorMessage(error));
+        const invalidRequest = error instanceof CursorRequestBudgetError
+          || error instanceof UnsupportedReasoningEffortError;
+        writeAnthropicError(
+          res,
+          invalidRequest ? 400 : 502,
+          invalidRequest ? "invalid_request_error" : "api_error",
+          errorMessage(error),
+        );
       }
     } finally {
       req.off("close", abort);
@@ -222,77 +238,170 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
     return true;
   };
 
-  return {
-    handle,
-    issueToken(): AiGatewayTokenGrant {
-      // 자체 bearer를 더 이상 쓰지 않는다. Launch 바인딩 계약을 위해 형태만 유지한다.
-      return { token: "", revoke: () => undefined };
-    },
-  };
+  return { handle };
 }
 
 export function registerAiGatewayRoutes(
   ctx: FleetPluginServerContext,
   deps: AiGatewayRouteDeps = {},
-): AiGatewayRoutes {
-  // Fail-closed: 봉인이 닫혀 있으면 라우트를 등록하지 않아 404로 떨어진다.
-  if (!isAiGatewayEnabled()) {
-    return { enabled: false, issueToken: rejectIssue };
+): void {
+  const ownedDiagnostics = deps.cursorDiagnostics
+    ? undefined
+    : createCursorDiagnosticLog(ctx.host.paths.pluginDataDir(ctx.pluginId));
+  const router = createAiGatewayRouter({
+    ...deps,
+    cursorDiagnostics: deps.cursorDiagnostics ?? ownedDiagnostics?.write,
+  });
+  if (ownedDiagnostics) {
+    ctx.host.lifecycle.registerCleanup(() => ownedDiagnostics.flush());
   }
-  const router = createAiGatewayRouter(deps);
   registerRouter(ctx, AI_GATEWAY_ROUTE_SEGMENT, router.handle);
-  return { enabled: true, issueToken: router.issueToken };
 }
 
 /** Anthropic 모델은 번역하지 않는다. 요청 본문과 응답 스트림을 그대로 통과시킨다. */
 async function proxyToAnthropic(
-  req: { readonly headers: Record<string, unknown> },
-  res: {
-    writeHead(status: number, headers: Record<string, string>): unknown;
-    write(chunk: Uint8Array): boolean;
-    end(body?: string): unknown;
-    once(event: "drain", listener: () => void): unknown;
-    readonly headersSent: boolean;
-  },
+  requestHeaders: Record<string, unknown>,
+  res: GatewayProxyResponse,
   body: AnthropicMessagesRequest,
+  fetchImpl: typeof fetch,
+  signal: AbortSignal,
 ): Promise<void> {
   const headers: Record<string, string> = {
     "content-type": "application/json",
-    "anthropic-version": typeof req.headers["anthropic-version"] === "string" ? req.headers["anthropic-version"] : "2023-06-01",
+    "anthropic-version": typeof requestHeaders["anthropic-version"] === "string"
+      ? requestHeaders["anthropic-version"]
+      : "2023-06-01",
   };
   // 자격증명을 교체하지 않는다. 청구 주체는 호출자로 남는다.
   for (const name of ["authorization", "x-api-key", "anthropic-beta", "user-agent"]) {
-    const value = req.headers[name];
+    const value = requestHeaders[name];
     if (typeof value === "string") headers[name] = value;
   }
-
-  const upstream = await fetch(ANTHROPIC_MESSAGES_URL, {
-    method: "POST",
+  await proxyAnthropicMessages(res, body, {
+    fetchImpl,
     headers,
+    signal,
+    url: ANTHROPIC_MESSAGES_URL,
+  });
+}
+
+async function proxyToKimi(
+  requestHeaders: Record<string, unknown>,
+  res: GatewayProxyResponse,
+  body: AnthropicMessagesRequest,
+  model: string,
+  apiKey: string,
+  fetchImpl: typeof fetch,
+  signal: AbortSignal,
+): Promise<void> {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "anthropic-version": typeof requestHeaders["anthropic-version"] === "string"
+      ? requestHeaders["anthropic-version"]
+      : "2023-06-01",
+    "x-api-key": apiKey,
+  };
+  for (const name of ["anthropic-beta", "user-agent"]) {
+    const value = requestHeaders[name];
+    if (typeof value === "string") headers[name] = value;
+  }
+  await proxyAnthropicMessages(res, kimiRequestBody(body, model), {
+    fetchImpl,
+    headers,
+    signal,
+    url: KIMI_MESSAGES_URL,
+  });
+}
+
+const KIMI_REASONING_EFFORTS = ["low", "high", "max"] as const satisfies readonly ReasoningEffort[];
+
+/** K3 accepts three native effort tiers; normalize Claude Code's wider picker ladder. */
+function kimiRequestBody(body: AnthropicMessagesRequest, model: string): AnthropicMessagesRequest {
+  const effort = reasoningEffortFromOutputConfig(body.output_config);
+  if (effort === undefined) {
+    return { ...body, model };
+  }
+  return {
+    ...body,
+    model,
+    output_config: {
+      ...body.output_config,
+      effort: clampReasoningEffort(effort, KIMI_REASONING_EFFORTS, model),
+    },
+  };
+}
+
+interface GatewayProxyResponse {
+  writeHead(status: number, headers: Record<string, string>): unknown;
+  write(chunk: Uint8Array): boolean;
+  end(body?: string): unknown;
+  once(event: "drain", listener: () => void): unknown;
+  readonly headersSent: boolean;
+}
+
+interface AnthropicProxyOptions {
+  readonly fetchImpl: typeof fetch;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly signal: AbortSignal;
+  readonly url: string;
+}
+
+const HOP_BY_HOP_HEADERS = new Set([
+  "connection",
+  "content-encoding",
+  "content-length",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+]);
+
+async function proxyAnthropicMessages(
+  res: GatewayProxyResponse,
+  body: AnthropicMessagesRequest,
+  options: AnthropicProxyOptions,
+): Promise<void> {
+  const upstream = await options.fetchImpl(options.url, {
+    method: "POST",
+    headers: options.headers,
     body: JSON.stringify(body),
+    signal: options.signal,
   });
-  const passthroughHeaders: Record<string, string> = {};
+  const responseHeaders: Record<string, string> = {};
   upstream.headers.forEach((value, key) => {
-    if (key === "content-encoding" || key === "content-length" || key === "transfer-encoding") return;
-    passthroughHeaders[key] = value;
+    if (!HOP_BY_HOP_HEADERS.has(key)) responseHeaders[key] = value;
   });
-  res.writeHead(upstream.status, passthroughHeaders);
+  res.writeHead(upstream.status, responseHeaders);
   if (!upstream.body) {
     res.end();
     return;
   }
   const reader = upstream.body.getReader();
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!res.write(value)) await drain(res);
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!res.write(value)) await drain(res);
+    }
+  } finally {
+    reader.releaseLock();
   }
   res.end();
 }
 
-function createGatewayFor(model: GatewayModel, chatgptAccountId: string): AnthropicMessagesGateway {
+function createGatewayFor(
+  model: GatewayModel,
+  chatgptAccountId: string,
+  cursorDiagnostics: CursorDiagnosticSink | undefined,
+): AnthropicMessagesGateway {
   if (model.provider === "cursor") {
-    return new AnthropicMessagesGateway(new CursorAdapter());
+    return new AnthropicMessagesGateway(new CursorAdapter({ diagnostics: cursorDiagnostics }));
+  }
+  if (model.provider !== "codex") {
+    throw new TypeError(`Unsupported translated gateway provider: ${model.provider}`);
   }
   return new AnthropicMessagesGateway(new OpenAIResponsesAdapter({
     url: CHATGPT_CODEX_RESPONSES_URL,
@@ -303,10 +412,6 @@ function createGatewayFor(model: GatewayModel, chatgptAccountId: string): Anthro
     // ChatGPT 백엔드는 Platform API용 샘플링 파라미터를 400으로 거절한다.
     dropSamplingParams: true,
   }));
-}
-
-function rejectIssue(): never {
-  throw new Error("The experimental AI gateway is disabled.");
 }
 
 /**

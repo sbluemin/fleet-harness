@@ -80,11 +80,11 @@ Nimitz와 Vanguard는 여기에 더해 **Task Force**를 지원합니다. 둘 �
 | CLI | 제공자 | 프로토콜 | 대표 강점 |
 |---|---|---|---|
 | **Claude Code** | Anthropic | ACP | 심층 추론과 아키텍처 판단 |
-| **Kimi via Claude Code** | Moonshot AI | ACP | Claude Code 도구를 사용하는 Kimi 코딩 모델 |
+| **Claude (Gateway • Experimental)** | OpenAI, Cursor, Moonshot AI | Claude Code gateway | 하나의 Claude Code 표면에서 최신 GPT·Cursor·Kimi K3 모델 사용 |
 | **Codex CLI** | OpenAI | Codex App Server | 빠른 구현과 반복 실행 |
 | **Cursor Agent** | Cursor | ACP | 다중 모델 라우팅 |
 
-Kimi는 설치된 `claude` 바이너리와 Moonshot의 공식 Anthropic 호환 엔드포인트를 사용합니다. Kimi 세션을 시작하거나 Carrier에 `claude-kimi`를 지정하기 전에 Settings → Plugins → Terminal → Agent CLI에서 API 키를 등록하세요.
+Kimi K3는 AI Gateway의 Claude Code 모델 피커에서 선택합니다. Settings → Plugins → Terminal → Agent CLI에서 API 키를 등록하면 자격 증명은 로컬 게이트웨이에만 남고 Claude Code 프로세스에는 주입되지 않습니다.
 
 Fleet은 이를 명확한 지휘 체계로 표현합니다. 사용자는 **Admiral of the Navy(대원수)**, 워크스페이스 호스트는 **Admiral(제독)**, 각 전문 **Carrier**는 Captain 페르소나가 지휘합니다. 이 메타포는 장식이 아니라 소유권·위임·검증을 명확하게 만드는 운용 언어입니다.
 

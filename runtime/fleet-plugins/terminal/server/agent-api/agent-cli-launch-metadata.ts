@@ -20,23 +20,16 @@ export interface AgentCliInstallStatus {
   readonly available: boolean;
 }
 
-export interface AgentCliAuthStatus {
-  readonly cli: string;
-  readonly signedIn: boolean;
-}
-
 export function combineAgentCliLaunchMetadata(
   metadata: readonly { readonly id: AgentCliId; readonly label: string }[],
   installStatuses: readonly AgentCliInstallStatus[],
-  authStatuses: readonly AgentCliAuthStatus[],
 ): AgentCliLaunchMetadata[] {
   const availableByCommand = new Map(installStatuses.map((entry) => [entry.id, entry.available]));
-  const signedInByCli = new Map(authStatuses.map((entry) => [entry.cli, entry.signedIn]));
   return metadata.map((meta) => ({
     id: meta.id,
     label: meta.label,
     available: availableByCommand.get(resolveCliCommand(meta.id)) ?? false,
-    signedIn: signedInByCli.has(meta.id) ? (signedInByCli.get(meta.id) ?? false) : true,
+    signedIn: true,
   }));
 }
 

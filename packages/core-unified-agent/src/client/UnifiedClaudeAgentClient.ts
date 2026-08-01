@@ -38,7 +38,7 @@ import {
   type CliType,
 } from '../config/CliConfigs.js';
 import { cleanEnvironment } from '../utils/env.js';
-import { getProviderModels, getProviderModelsMapping } from '../models/ModelRegistry.js';
+import { getProviderModels } from '../models/ModelRegistry.js';
 import type { ProviderModelInfo } from '../models/schemas.js';
 
 /**
@@ -54,12 +54,7 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
   private firstPromptPending: string | null = null;
   private currentEffort: string | null = null;
   private detector = new CliDetector();
-  private readonly cliType: Extract<CliType, 'claude' | 'claude-kimi'>;
-
-  constructor(cliType: Extract<CliType, 'claude' | 'claude-kimi'> = 'claude') {
-    super();
-    this.cliType = cliType;
-  }
+  private readonly cliType = 'claude' as const satisfies CliType;
 
   on<K extends keyof UnifiedClientEvents>(
     event: K,
@@ -92,16 +87,6 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
   async connect(options: UnifiedClientOptions): Promise<ConnectResult> {
     await this.disconnect();
     const systemPromptMode = options.systemPromptMode ?? 'prepend';
-    const requestedCli = options.cli ?? this.cliType;
-    if (
-      systemPromptMode === 'replace'
-      && requestedCli !== 'claude'
-      && requestedCli !== 'claude-kimi'
-    ) {
-      throw new Error(
-        `system prompt replacement is not supported by the "${requestedCli}" backend`,
-      );
-    }
     if (options.cli && options.cli !== this.cliType) {
       throw new Error(`UnifiedClaudeAgentClient는 ${this.cliType} CLI만 지원합니다.`);
     }
@@ -109,27 +94,10 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
     const acpMcpServers = this.resolveMcpServers(options.mcpServers);
     const spawnConfig = createSpawnConfig(this.cliType, options);
 
-    // modelsMapping에서 환경변수 기본값 생성
-    const modelsMapping = getProviderModelsMapping(this.cliType);
-    const mappingEnv: Record<string, string> = {};
-    if (modelsMapping) {
-      // modelId → ANTHROPIC_DEFAULT_*_MODEL 환경변수 매핑
-      for (const [modelId, mappedModel] of Object.entries(modelsMapping)) {
-        const envKey = `ANTHROPIC_DEFAULT_${modelId.toUpperCase()}_MODEL`;
-        mappingEnv[envKey] = mappedModel;
-      }
-    }
-
-    // 백엔드 기본 환경변수 (프록시 설정 등)
+    // 백엔드 기본 환경변수보다 호출자 설정을 우선합니다.
     const backendConfig = getBackendConfig(this.cliType);
     const defaultEnv = backendConfig.defaultEnv ?? {};
-
-    // 사용자 설정(options.env) > modelsMapping 기본값(mappingEnv) > 백엔드 기본값(defaultEnv) > process.env
-    const cleanEnv = cleanEnvironment(process.env, { ...defaultEnv, ...mappingEnv, ...options.env });
-    if (this.cliType === 'claude-kimi') {
-      // Kimi uses ANTHROPIC_API_KEY; do not leak an inherited Anthropic bearer token to its endpoint.
-      delete cleanEnv.ANTHROPIC_AUTH_TOKEN;
-    }
+    const cleanEnv = cleanEnvironment(process.env, { ...defaultEnv, ...options.env });
 
     // Anthropic 호환 커스텀 백엔드는 별도 API 토큰이 필요합니다.
     if (

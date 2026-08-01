@@ -1,15 +1,10 @@
-import type { GlobalOptionsData } from "@dotobokuri/core-infra";
-
 import { claudeCli } from "./claude/claude.js";
 import { claudeGatewayCli } from "./claude/claude-gateway.js";
-import { claudeKimiCli } from "./claude/claude-kimi.js";
 import { codexCli } from "./codex/codex.js";
-import type { AgentCliDefinition, AgentCliId, AgentCliProfile, AuthServiceLike } from "./types.js";
+import type { AgentCliDefinition, AgentCliId, AgentCliProfile } from "./types.js";
 
 export interface ResolveAgentCliProfileOptions {
-  readonly authService?: AuthServiceLike;
   readonly cliId?: string;
-  readonly globalOptionsService?: { load(): GlobalOptionsData };
   readonly model?: string;
   readonly resumeSessionId?: string;
 }
@@ -20,11 +15,11 @@ export interface AgentCliMetadata {
 }
 
 const DEFAULT_CLI_ID: AgentCliId = "claude";
+// Console 캔버스 제어 메뉴 순서를 고정한다: Claude → Codex → Claude (Gateway).
 const DEFINITIONS: Record<AgentCliId, AgentCliDefinition> = {
   claude: claudeCli,
-  "claude-kimi": claudeKimiCli,
-  "claude-gateway": claudeGatewayCli,
   codex: codexCli,
+  "claude-gateway": claudeGatewayCli,
 };
 
 export async function resolveAgentCliProfile(
@@ -34,10 +29,8 @@ export async function resolveAgentCliProfile(
 ): Promise<AgentCliProfile> {
   const id = resolveAgentCliId(env, options);
   return DEFINITIONS[id].createProfile({
-    authService: options.authService,
     cwd,
     env,
-    globalOptionsService: options.globalOptionsService,
     model: options.model,
     resumeSessionId: options.resumeSessionId,
   });

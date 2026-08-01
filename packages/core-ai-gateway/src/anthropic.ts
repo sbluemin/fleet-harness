@@ -1,14 +1,27 @@
 import type {
   CanonicalFunctionCallOutputItem,
+  CanonicalInputContentPart,
   CanonicalInputMessage,
+  CanonicalReasoning,
   CanonicalResponseEvent,
   CanonicalResponseRequest,
-  CanonicalToolChoice
+  CanonicalToolChoice,
+  ReasoningEffort,
 } from "./canonical.js";
-import { resolveGatewayModel } from "./models.js";
+import {
+  clampReasoningEffort,
+  normalizeCanonicalMessageContent,
+  REASONING_EFFORTS,
+} from "./canonical.js";
+import {
+  gatewayProviderDefault,
+  projectClaudeContextInputTokens,
+  resolveGatewayModel,
+  upstreamModelId,
+} from "./models.js";
 import type { GatewayModel } from "./models.js";
 
-export const DEFAULT_OPENAI_MODEL = "gpt-5.5";
+export const DEFAULT_CODEX_MODEL = upstreamModelId(gatewayProviderDefault("codex"));
 
 export interface AnthropicSystemTextBlock {
   type: "text";
@@ -22,6 +35,20 @@ export interface AnthropicTextBlock {
   cache_control?: unknown;
 }
 
+export interface AnthropicImageBlock {
+  type: "image";
+  source:
+    | {
+        type: "base64";
+        media_type: string;
+        data: string;
+      }
+    | {
+        type: "url";
+        url: string;
+      };
+}
+
 export interface AnthropicToolUseBlock {
   type: "tool_use";
   id: string;
@@ -32,7 +59,7 @@ export interface AnthropicToolUseBlock {
 export interface AnthropicToolResultBlock {
   type: "tool_result";
   tool_use_id: string;
-  content?: string | Array<AnthropicTextBlock | Record<string, unknown>>;
+  content?: string | Array<AnthropicTextBlock | AnthropicImageBlock | Record<string, unknown>>;
   is_error?: boolean;
 }
 
@@ -45,6 +72,7 @@ export interface AnthropicThinkingBlock {
 
 export type AnthropicMessageBlock =
   | AnthropicTextBlock
+  | AnthropicImageBlock
   | AnthropicToolUseBlock
   | AnthropicToolResultBlock
   | AnthropicThinkingBlock;
@@ -84,6 +112,7 @@ export interface AnthropicMessagesRequest {
   metadata?: Record<string, unknown>;
   max_tokens: number;
   thinking?: Record<string, unknown>;
+  output_config?: Record<string, unknown>;
   context_management?: Record<string, unknown>;
   /** Claude Code는 일부 요청을 비스트리밍으로 보낸다. 없거나 false면 응답을 단일 JSON으로 돌려줘야 한다. */
   stream?: boolean;
@@ -94,6 +123,10 @@ export interface TranslateAnthropicRequestOptions {
   model?: string;
   /** 게이트웨이가 discovery로 노출한 모델. 요청이 이 중 하나면 그대로 통과시킨다. */
   catalog?: readonly GatewayModel[];
+  /** Provider-specific service tier selected by a catalog alias. */
+  serviceTier?: "priority";
+  /** Reasoning ladder supported by the selected upstream model. */
+  reasoningEfforts?: readonly ReasoningEffort[];
 }
 
 export class UnsupportedAnthropicContentError extends TypeError {
@@ -115,7 +148,7 @@ export function translateAnthropicRequest(
     model: resolveGatewayModel(request.model, {
       ...(options.model ? { override: options.model } : {}),
       ...(options.catalog ? { catalog: options.catalog } : {}),
-      fallback: DEFAULT_OPENAI_MODEL,
+      fallback: DEFAULT_CODEX_MODEL,
     }),
     input: request.messages.flatMap(translateMessage),
     max_output_tokens: request.max_tokens,
@@ -141,12 +174,70 @@ export function translateAnthropicRequest(
     }
   }
 
+  const reasoning = translateAnthropicReasoning(request, options.reasoningEfforts);
+  if (reasoning !== undefined) {
+    canonical.reasoning = reasoning;
+  }
+
   const metadata = stringMetadata(request.metadata);
   if (metadata !== undefined) {
     canonical.metadata = metadata;
   }
+  if (options.serviceTier) {
+    canonical.service_tier = options.serviceTier;
+  }
 
   return canonical;
+}
+
+const REASONING_EFFORT_SET = new Set<unknown>(REASONING_EFFORTS);
+
+/** Translate Claude Code's adaptive `/effort` wire into the Responses reasoning shape. */
+export function translateAnthropicReasoning(
+  request: Pick<AnthropicMessagesRequest, "thinking" | "output_config">,
+  supportedEfforts?: readonly ReasoningEffort[],
+): CanonicalReasoning | undefined {
+  const thinking = isRecord(request.thinking) ? request.thinking : undefined;
+  if (thinking?.type === "disabled") {
+    return undefined;
+  }
+
+  const configuredEffort = reasoningEffortFromOutputConfig(request.output_config);
+  if (thinking === undefined && configuredEffort === undefined) {
+    return undefined;
+  }
+
+  const requestedEffort = configuredEffort ?? reasoningEffortFromThinkingBudget(thinking);
+  const effort = requestedEffort === undefined
+    ? undefined
+    : clampReasoningEffort(requestedEffort, supportedEfforts);
+  return {
+    summary: "auto",
+    ...(effort === undefined ? {} : { effort }),
+  };
+}
+
+export function reasoningEffortFromOutputConfig(outputConfig: unknown): ReasoningEffort | undefined {
+  if (!isRecord(outputConfig)) {
+    return undefined;
+  }
+  const effort = outputConfig.effort;
+  return REASONING_EFFORT_SET.has(effort) ? effort as ReasoningEffort : undefined;
+}
+
+function reasoningEffortFromThinkingBudget(
+  thinking: Record<string, unknown> | undefined,
+): ReasoningEffort | undefined {
+  if (thinking?.type !== "enabled" || typeof thinking.budget_tokens !== "number") {
+    return undefined;
+  }
+  if (thinking.budget_tokens <= 4_096) return "low";
+  if (thinking.budget_tokens <= 16_384) return "medium";
+  return "high";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["input"] {
@@ -156,23 +247,31 @@ function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["
   }
 
   const items: CanonicalResponseRequest["input"] = [];
-  let text = "";
+  const parts: CanonicalInputContentPart[] = [];
 
-  const flushText = (): void => {
-    if (text.length === 0) {
+  const flushParts = (): void => {
+    if (parts.length === 0) {
       return;
     }
-    items.push({ type: "message", role, content: text });
-    text = "";
+    items.push({
+      type: "message",
+      role,
+      content: normalizeCanonicalMessageContent(parts.splice(0, parts.length)),
+    });
   };
 
   for (const block of message.content) {
     switch (block.type) {
       case "text":
-        text += block.text;
+        if (block.text.length > 0) {
+          parts.push({ type: "input_text", text: block.text });
+        }
+        break;
+      case "image":
+        parts.push(translateImageBlock(block));
         break;
       case "tool_use":
-        flushText();
+        flushParts();
         items.push({
           type: "function_call",
           call_id: block.id,
@@ -181,7 +280,7 @@ function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["
         });
         break;
       case "tool_result":
-        flushText();
+        flushParts();
         items.push({
           type: "function_call_output",
           call_id: block.tool_use_id,
@@ -200,8 +299,41 @@ function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["
     }
   }
 
-  flushText();
+  flushParts();
   return items;
+}
+
+function translateImageBlock(block: AnthropicImageBlock): CanonicalInputContentPart {
+  const source: unknown = block.source;
+  if (!isRecord(source) || typeof source.type !== "string") {
+    throw new UnsupportedAnthropicContentError("image");
+  }
+  if (source.type === "base64") {
+    if (
+      typeof source.media_type !== "string"
+      || typeof source.data !== "string"
+      || !source.media_type.startsWith("image/")
+      || source.data.length === 0
+    ) {
+      throw new UnsupportedAnthropicContentError("image");
+    }
+    return {
+      type: "input_image",
+      image_url: `data:${source.media_type};base64,${source.data}`,
+      detail: "auto",
+    };
+  }
+  if (source.type === "url") {
+    if (typeof source.url !== "string" || source.url.length === 0) {
+      throw new UnsupportedAnthropicContentError("image");
+    }
+    return {
+      type: "input_image",
+      image_url: source.url,
+      detail: "auto",
+    };
+  }
+  throw new UnsupportedAnthropicContentError(`image:${source.type}`);
 }
 
 function canonicalRole(role: AnthropicMessage["role"]): CanonicalInputMessage["role"] {
@@ -219,6 +351,9 @@ function toolResultText(content: AnthropicToolResultBlock["content"]): string {
     .map((block) => {
       if (block.type === "text" && typeof block.text === "string") {
         return block.text;
+      }
+      if (block.type === "image") {
+        return "[image]";
       }
       return JSON.stringify(block);
     })
@@ -257,10 +392,16 @@ interface OpenBlock {
   closed: boolean;
 }
 
+export interface ClaudeResponseCompatibilityOptions {
+  /** Authoritative provider window used to project usage onto Claude's 1M marker. */
+  readonly contextWindow?: number;
+}
+
 /** 비스트리밍 요청에 돌려줄 Anthropic Messages 응답 본문을 이벤트에서 조립한다. */
 export async function collectAnthropicMessage(
   events: AsyncIterable<CanonicalResponseEvent>,
-  fallbackModel: string
+  fallbackModel: string,
+  options: ClaudeResponseCompatibilityOptions = {},
 ): Promise<Record<string, unknown>> {
   const content: Array<Record<string, unknown>> = [];
   const toolArgs = new Map<string, { index: number; text: string }>();
@@ -300,6 +441,7 @@ export async function collectAnthropicMessage(
         break;
       }
       case "response.completed":
+        inputTokens = event.response.usage?.input_tokens ?? inputTokens;
         outputTokens = event.response.usage?.output_tokens ?? 0;
         break;
       case "response.failed":
@@ -325,7 +467,10 @@ export async function collectAnthropicMessage(
     model,
     stop_reason: stopReason,
     stop_sequence: null,
-    usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+    usage: {
+      input_tokens: projectClaudeContextInputTokens(inputTokens, options.contextWindow),
+      output_tokens: outputTokens,
+    },
   };
 }
 
@@ -339,7 +484,8 @@ function safeJson(text: string): Record<string, unknown> {
 }
 
 export async function* encodeAnthropicSse(
-  events: AsyncIterable<CanonicalResponseEvent>
+  events: AsyncIterable<CanonicalResponseEvent>,
+  options: ClaudeResponseCompatibilityOptions = {},
 ): AsyncGenerator<Uint8Array> {
   const encoder = new TextEncoder();
   const blocks = new Map<string, OpenBlock>();
@@ -397,7 +543,10 @@ export async function* encodeAnthropicSse(
               stop_reason: null,
               stop_sequence: null,
               usage: {
-                input_tokens: event.response.usage?.input_tokens ?? 0,
+                input_tokens: projectClaudeContextInputTokens(
+                  event.response.usage?.input_tokens ?? 0,
+                  options.contextWindow,
+                ),
                 output_tokens: 0
               }
             }
@@ -523,7 +672,16 @@ export async function* encodeAnthropicSse(
             stop_sequence: null
           },
           usage: {
-            output_tokens: event.response.usage?.output_tokens ?? 0
+            // Claude Code updates context occupancy from the terminal cumulative
+            // usage frame. Sending output-only leaves Responses-backed models at
+            // zero input usage even though Kimi's native Anthropic stream works.
+            input_tokens: projectClaudeContextInputTokens(
+              event.response.usage?.input_tokens ?? 0,
+              options.contextWindow,
+            ),
+            output_tokens: event.response.usage?.output_tokens ?? 0,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0
           }
         });
         yield encode("message_stop", { type: "message_stop" });

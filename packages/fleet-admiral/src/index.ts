@@ -16,7 +16,6 @@ export {
   type AgentCliMcpServerArg,
   type AgentCliProfile,
   type AgentCliProfileOptions,
-  type AuthServiceLike,
   type CliMessagePolicy,
   type CodexCommandResult,
   type CodexPluginRegistrationCommand,
@@ -25,20 +24,11 @@ export {
 } from "./agent-cli/types.js";
 
 export {
-  CLI_TO_AUTH_PROVIDER_ID,
   KIMI_AUTH_PROVIDER_ID,
-  getAgentCliAuthStatuses,
-  resolveAgentCliAuthEnv,
-  validateAgentCliAuthKey,
-  type AgentCliAuthStatus,
-} from "./agent-cli/auth.js";
-
-// Kimi 프로바이더 기본 모델 선택 해석
-export {
-  buildKimiModelEnv,
-  resolveKimiModelSelection,
-  type KimiModelSelection,
-} from "./agent-cli/kimi-model.js";
+  KIMI_CODE_API_BASE_URL,
+  KIMI_CODE_MODEL,
+  validateKimiAuthKey,
+} from "./ai-gateway/auth.js";
 
 // Agent CLI 프로파일/레지스트리 해석기
 export {

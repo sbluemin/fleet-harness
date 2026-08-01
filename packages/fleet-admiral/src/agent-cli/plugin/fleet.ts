@@ -20,7 +20,7 @@ export function renderAssetPluginRoot(
   options: CreateAgentCliPluginOptions,
 ): void {
   renderEmbeddedSkillAssets(pluginRoot);
-  if (options.cliId === "claude" || options.cliId === "claude-kimi") {
+  if (options.cliId === "claude" || options.cliId === "claude-gateway") {
     writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), claudeHooks(options), pluginRoot);
   }
 }

@@ -189,7 +189,7 @@ export async function injectAgentCliProfile(
 }
 
 function isClaudeFamilyProfile(profile: AgentCliProfile): boolean {
-  return profile.id === "claude" || profile.id === "claude-kimi" || profile.id === "claude-gateway";
+  return profile.id === "claude" || profile.id === "claude-gateway";
 }
 
 function buildAgentCliMcpServerConfigs(

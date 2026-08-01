@@ -2,6 +2,7 @@ import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { definePlugin, registerLaunchCatalog, registerWsHandler } from "@fleet-console/sdk/plugin/node";
 import { createInfraServices } from "@dotobokuri/core-infra";
 import { createCarrierRegistry, initStore, registerDefaultCarriers } from "@dotobokuri/fleet-carriers";
+import { KIMI_AUTH_PROVIDER_ID } from "@dotobokuri/fleet-admiral";
 
 import { registerAgentRoutes } from "./server/agent.js";
 import { registerAnalysisRoutes } from "./server/agent-api/analysis-routes.js";
@@ -42,8 +43,9 @@ export default definePlugin({
     registerGlobalShellRoutes(ctx, runtime);
     registerTerminalSettingsRoutes(ctx, { globalOptionsService: infraServices.globalOptionsService });
     registerTerminalModelAuthRoutes(ctx, { authService: infraServices.authService });
-    // Experimental: 봉인이 닫혀 있으면 라우트가 등록되지 않고 Launch 바인딩도 만들어지지 않는다.
-    const aiGateway = registerAiGatewayRoutes(ctx);
+    registerAiGatewayRoutes(ctx, {
+      readKimiApiKey: () => infraServices.authService.getApiKey(KIMI_AUTH_PROVIDER_ID),
+    });
     registerCarrierSettingsRoutes(ctx, { registry: carrierRegistry });
     // Agent Operation과 Analyst는 같은 plugin storage 키를 읽되 수명은 각 라우트가 독립 소유한다.
     // store는 무상태 어댑터라 여기서 별도로 만들어도 저장 파일과 우선순위 계약은 하나로 유지된다.
@@ -52,17 +54,11 @@ export default definePlugin({
       readAgentCliPaths: async () => (await agentCliPathStore.read()).paths,
     });
     const agentLaunchKinds = registerAgentRoutes(ctx, runtime, {
-      authService: infraServices.authService,
       globalOptionsService: infraServices.globalOptionsService,
-      ...(aiGateway.enabled
-        ? {
-          aiGateway: {
-            routePath: `${ctx.basePath}/${AI_GATEWAY_ROUTE_SEGMENT}`,
-            origin: () => ctx.host.server.origin(),
-            issueToken: aiGateway.issueToken,
-          },
-        }
-        : {}),
+      aiGateway: {
+        routePath: `${ctx.basePath}/${AI_GATEWAY_ROUTE_SEGMENT}`,
+        origin: () => ctx.host.server.origin(),
+      },
     });
     registerLaunchCatalog(ctx, async () => [...await agentLaunchKinds(), SHELL_LAUNCH_KIND]);
   },

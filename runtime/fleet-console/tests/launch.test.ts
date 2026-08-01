@@ -1,10 +1,11 @@
-import { closeSync, mkdtempSync, openSync, rmSync } from "node:fs";
+import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentCliProfile, InjectAgentCliProfileOptions } from "@dotobokuri/fleet-admiral";
+import { createCarrierRuntime } from "@dotobokuri/fleet-carriers";
 
 import { createDefaultTerminalLaunchResolver } from "../../fleet-plugins/terminal/server/agent-api/launch.js";
 import { createShellTerminalLaunchResolver, resolveNodePtyModulePath, resolveUseConptyDll } from "../../fleet-plugins/terminal/server/shared/pty.js";
@@ -172,6 +173,99 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "codex" }));
   });
 
+  it("uses the shared Admiral dependencies for gateway and standard operations", async () => {
+    const claudeConfigDir = makeTempDir("fleet-gateway-admiral-routing-");
+    const sharedResolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string, options: { readonly cliId?: string }) => ({
+      ...baseProfile,
+      id: options.cliId === "claude-gateway" ? "claude-gateway" as const : "codex" as const,
+      label: options.cliId === "claude-gateway" ? "Claude (Gateway • Experimental)" : "Codex",
+      cwd,
+      env: { ...env },
+    }));
+    const sharedInjectProfile = vi.fn(async (profile: AgentCliProfile) => profile);
+    const resolve = createDefaultTerminalLaunchResolver({
+      cwd: "/work",
+      env: { CLAUDE_CONFIG_DIR: claudeConfigDir, PATH: "/bin" } as NodeJS.ProcessEnv,
+      agentRuntime: createFakeRuntime() as never,
+      aiGateway: {
+        routePath: "/plugins/terminal/ai-gateway",
+        origin: () => "http://127.0.0.1:43210",
+      },
+      infraServices: createFakeInfraServices() as never,
+      injectProfile: sharedInjectProfile as never,
+      resolveProfile: sharedResolveProfile as never,
+    });
+
+    await resolve("/work", { sessionId: "session-gateway-admiral", cliId: "claude-gateway" });
+    expect(sharedResolveProfile).toHaveBeenCalledTimes(1);
+    expect(sharedInjectProfile).toHaveBeenCalledTimes(1);
+
+    await resolve("/work", { sessionId: "session-standard-admiral", cliId: "codex" });
+    expect(sharedResolveProfile).toHaveBeenCalledTimes(2);
+    expect(sharedInjectProfile).toHaveBeenCalledTimes(2);
+  });
+
+  it("launches claude-gateway through the real shared Admiral package", async () => {
+    const root = makeTempDir("fleet-gateway-admiral-integration-");
+    const carrierRuntime = createCarrierRuntime();
+    carrierRuntime.registerCarrierDefaults();
+    const releasedLabels: string[] = [];
+    const resolve = createDefaultTerminalLaunchResolver({
+      agentRuntime: {
+        carrierRuntime,
+        dedicatedMcpSession: {
+          async getEndpoint() {
+            return { servers: [{ name: "fleet", url: "http://127.0.0.1:48123/mcp" }] };
+          },
+          issueSessionToken() {
+            return [{ name: "fleet", token: "gateway-token" }];
+          },
+          releaseSessionToken(label: string) {
+            releasedLabels.push(label);
+          },
+        },
+        mcpRegistry: { getAllAgentTools: () => [] },
+        async cleanup() {
+          await carrierRuntime.cleanup();
+        },
+      } as never,
+      aiGateway: {
+        routePath: "/plugins/terminal/ai-gateway",
+        origin: () => "http://127.0.0.1:43210",
+      },
+      createSessionIdentityResolver: (() => ({ resolve: async () => null })) as never,
+      cwd: root,
+      dataDir: root,
+      entryPath: "/console/cli.mjs",
+      env: {
+        CLAUDE_BIN: process.execPath,
+        CLAUDE_CONFIG_DIR: path.join(root, "claude-config"),
+        PATH: process.env.PATH,
+      },
+      execPath: process.execPath,
+      infraServices: createFakeInfraServices() as never,
+    });
+
+    const spec = await resolve(root, {
+      cliId: "claude-gateway",
+      sessionId: "gateway-integration",
+    });
+    const pluginRoot = spec.args[spec.args.indexOf("--plugin-dir") + 1];
+    const promptPath = spec.args[spec.args.indexOf("--append-system-prompt-file") + 1];
+
+    expect(spec.bin).toBe(process.execPath);
+    expect(spec.env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:43210/plugins/terminal/ai-gateway");
+    expect(pluginRoot).toBe(path.join(root, "marketplace", "plugins", "fleet"));
+    expect(existsSync(path.join(pluginRoot!, ".claude-plugin", "plugin.json"))).toBe(true);
+    expect(existsSync(path.join(pluginRoot!, ".codex-plugin", "plugin.json"))).toBe(true);
+    expect(existsSync(promptPath!)).toBe(true);
+
+    await spec.cleanup?.();
+    expect(existsSync(promptPath!)).toBe(false);
+    expect(releasedLabels).toEqual(["gateway-integration"]);
+    await carrierRuntime.cleanup();
+  });
+
   it("honors a FLEET_TERMINAL_CMD override verbatim as an explicit operator override", async () => {
     const resolveProfile = vi.fn();
     const resolve = createDefaultTerminalLaunchResolver({
@@ -319,22 +413,71 @@ describe("createDefaultTerminalLaunchResolver", () => {
     }));
   });
 
-  it("maps a Claude-family CLI to the Claude provider identity resolver", async () => {
+  it("maps the Claude gateway profile to the Claude provider identity resolver", async () => {
+    const claudeConfigDir = makeTempDir("fleet-gateway-identity-");
     const createResolver = vi.fn(() => ({ resolve: async () => null }));
     const resolve = createDefaultTerminalLaunchResolver({
       cwd: "/work",
-      env: { PATH: "/bin" } as NodeJS.ProcessEnv,
+      env: { CLAUDE_CONFIG_DIR: claudeConfigDir, PATH: "/bin" } as NodeJS.ProcessEnv,
       agentRuntime: createFakeRuntime() as never,
+      aiGateway: {
+        routePath: "/plugins/terminal/ai-gateway",
+        origin: () => "http://127.0.0.1:43210",
+      },
+      infraServices: createFakeInfraServices() as never,
       injectProfile: (async (profile: AgentCliProfile) => profile) as never,
-      resolveProfile: (async () => ({ ...baseProfile, id: "claude-kimi", label: "Kimi (Claude Code)" })) as never,
+      resolveProfile: (async () => ({ ...baseProfile, id: "claude-gateway", label: "Claude (Gateway • Experimental)" })) as never,
       createSessionIdentityResolver: createResolver as never,
     });
 
-    await resolve("/work", { sessionId: "session-a", cliId: "claude-kimi" });
+    await resolve("/work", { sessionId: "session-a", cliId: "claude-gateway" });
 
     expect(createResolver).toHaveBeenCalledWith(expect.objectContaining({
       provider: "claude",
     }));
+  });
+
+  it("prewrites the complete Claude Code gateway model cache before launch", async () => {
+    const claudeConfigDir = makeTempDir("fleet-claude-gateway-");
+    const resolve = createDefaultTerminalLaunchResolver({
+      cwd: "/work",
+      env: { CLAUDE_CONFIG_DIR: claudeConfigDir, PATH: "/bin" } as NodeJS.ProcessEnv,
+      agentRuntime: createFakeRuntime() as never,
+      aiGateway: {
+        routePath: "/plugins/terminal/ai-gateway",
+        origin: () => "http://127.0.0.1:43210",
+      },
+      infraServices: createFakeInfraServices() as never,
+      injectProfile: (async (profile: AgentCliProfile) => profile) as never,
+      resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
+        ...baseProfile,
+        id: "claude-gateway",
+        label: "Claude (Gateway • Experimental)",
+        cwd,
+        env: { ...env },
+      })) as never,
+    });
+
+    const spec = await resolve("/work", { sessionId: "session-gateway", cliId: "claude-gateway" });
+    const cache = JSON.parse(readFileSync(path.join(claudeConfigDir, "cache", "gateway-models.json"), "utf8")) as {
+      readonly baseUrl: string;
+      readonly fetchedAt: number;
+      readonly models: ReadonlyArray<{ readonly id: string; readonly display_name: string }>;
+    };
+    const ids = cache.models.map((model) => model.id);
+
+    expect(spec.env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:43210/plugins/terminal/ai-gateway");
+    expect(spec.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined();
+    expect(cache.baseUrl).toBe(spec.env.ANTHROPIC_BASE_URL);
+    expect(cache.fetchedAt).toEqual(expect.any(Number));
+    expect(cache.models).toHaveLength(23);
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast[1m]");
+    expect(ids).toContain("claude-gateway--cursor--auto");
+    expect(ids).toContain("claude-gateway--cursor--gpt-5.6-luna[1m]");
+    expect(ids).not.toContain("claude-gateway--cursor--gpt-5.6-luna-low[1m]");
+    expect(ids).toContain("claude-gateway--kimi--k3[1m]");
+    expect(cache.models.every((model) => model.id.startsWith("claude"))).toBe(true);
+    expect(cache.models.every((model) => /^(Codex|Cursor|Kimi)-/.test(model.display_name))).toBe(true);
   });
 
   it("does not bind an identity resolver for an explicit shell override", async () => {

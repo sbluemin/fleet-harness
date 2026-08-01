@@ -8,6 +8,8 @@ import { OpenAIResponsesAdapter } from "./openai-responses-adapter.js";
 
 export interface AnthropicGatewayCallOptions extends TranslateAnthropicRequestOptions {
   apiKey: string;
+  /** Selected provider model's authoritative context window. */
+  contextWindow?: number;
   signal?: AbortSignal;
 }
 
@@ -27,6 +29,8 @@ export class AnthropicMessagesGateway {
     const canonical = translateAnthropicRequest(request, {
       ...(options.model ? { model: options.model } : {}),
       ...(options.catalog ? { catalog: options.catalog } : {}),
+      ...(options.serviceTier ? { serviceTier: options.serviceTier } : {}),
+      ...(options.reasoningEfforts ? { reasoningEfforts: options.reasoningEfforts } : {}),
     });
     const upstream = await this.adapter.stream(canonical, {
       apiKey: options.apiKey,
@@ -54,12 +58,14 @@ export class AnthropicMessagesGateway {
           "cache-control": "no-cache",
           "content-type": "text/event-stream; charset=utf-8"
         }),
-        body: encodeAnthropicSse(upstream.events)
+        body: encodeAnthropicSse(upstream.events, { contextWindow: options.contextWindow })
       };
     }
 
     // Claude Code는 일부 요청을 비스트리밍으로 보낸다. 그때는 이벤트를 모아 단일 Messages 응답을 준다.
-    const message = await collectAnthropicMessage(upstream.events, canonical.model);
+    const message = await collectAnthropicMessage(upstream.events, canonical.model, {
+      contextWindow: options.contextWindow,
+    });
     return {
       status: upstream.status,
       headers: new Headers({ "content-type": "application/json" }),

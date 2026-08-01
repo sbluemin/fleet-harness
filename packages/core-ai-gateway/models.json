@@ -1,0 +1,284 @@
+{
+  "version": 1,
+  "updatedAt": "2026-08-01T00:00:00Z",
+  "providers": {
+    "codex": {
+      "name": "Codex",
+      "defaultModel": "gpt-5.6-sol",
+      "source": "codex app-server model/list (codex-cli 0.146.0, 2026-08-01)",
+      "models": [
+        {
+          "modelId": "gpt-5.6-sol",
+          "name": "GPT-5.6-Sol",
+          "contextWindow": 372000,
+          "effort": {
+            "supported": true,
+            "levels": ["low", "medium", "high", "xhigh", "max", "ultra"],
+            "default": "low"
+          },
+          "aliases": [
+            "gpt-5.6-sol"
+          ]
+        },
+        {
+          "modelId": "gpt-5.6-sol-fast",
+          "name": "GPT-5.6-Sol-Fast",
+          "providerModelId": "gpt-5.6-sol",
+          "serviceTier": "priority",
+          "contextWindow": 372000,
+          "effort": {
+            "supported": true,
+            "levels": ["low", "medium", "high", "xhigh", "max", "ultra"],
+            "default": "low"
+          },
+          "aliases": [
+            "gpt-5.6-sol-fast"
+          ]
+        },
+        {
+          "modelId": "gpt-5.6-terra",
+          "name": "GPT-5.6-Terra",
+          "contextWindow": 372000,
+          "effort": {
+            "supported": true,
+            "levels": ["low", "medium", "high", "xhigh", "max", "ultra"],
+            "default": "medium"
+          },
+          "aliases": [
+            "gpt-5.6-terra"
+          ]
+        },
+        {
+          "modelId": "gpt-5.6-terra-fast",
+          "name": "GPT-5.6-Terra-Fast",
+          "providerModelId": "gpt-5.6-terra",
+          "serviceTier": "priority",
+          "contextWindow": 372000,
+          "effort": {
+            "supported": true,
+            "levels": ["low", "medium", "high", "xhigh", "max", "ultra"],
+            "default": "medium"
+          },
+          "aliases": [
+            "gpt-5.6-terra-fast"
+          ]
+        },
+        {
+          "modelId": "gpt-5.6-luna",
+          "name": "GPT-5.6-Luna",
+          "contextWindow": 372000,
+          "effort": {
+            "supported": true,
+            "levels": ["low", "medium", "high", "xhigh", "max"],
+            "default": "medium"
+          },
+          "aliases": [
+            "gpt-5.6-luna"
+          ]
+        },
+        {
+          "modelId": "gpt-5.6-luna-fast",
+          "name": "GPT-5.6-Luna-Fast",
+          "providerModelId": "gpt-5.6-luna",
+          "serviceTier": "priority",
+          "contextWindow": 372000,
+          "effort": {
+            "supported": true,
+            "levels": ["low", "medium", "high", "xhigh", "max"],
+            "default": "medium"
+          },
+          "aliases": [
+            "gpt-5.6-luna-fast"
+          ]
+        }
+      ]
+    },
+    "cursor": {
+      "name": "Cursor",
+      "defaultModel": "auto",
+      "source": "cursor-agent --list-models (2026.07.23-e383d2b, 2026-08-01)",
+      "models": [
+        {
+          "modelId": "auto",
+          "name": "Auto",
+          "providerModelId": "default",
+          "contextWindow": 200000,
+          "aliases": [
+            "cursor-auto"
+          ]
+        },
+        {
+          "modelId": "claude-fable-5",
+          "name": "Fable-5",
+          "description": "NO ZDR",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": ["low", "medium", "high", "xhigh", "max"],
+            "default": "high",
+            "upstreamModelIdTemplate": "claude-fable-5-{effort}"
+          }
+        },
+        {
+          "modelId": "claude-opus-5",
+          "name": "Opus-5",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": ["low", "medium", "high", "xhigh", "max"],
+            "default": "high",
+            "upstreamModelIdTemplate": "claude-opus-5-{effort}"
+          }
+        },
+        {
+          "modelId": "claude-sonnet-5",
+          "name": "Sonnet-5",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": ["low", "medium", "high", "xhigh", "max"],
+            "default": "high",
+            "upstreamModelIdTemplate": "claude-sonnet-5-{effort}"
+          }
+        },
+        {
+          "modelId": "composer-2.5",
+          "name": "Composer-2.5",
+          "contextWindow": 200000
+        },
+        {
+          "modelId": "composer-2.5-fast",
+          "name": "Composer-2.5-Fast",
+          "contextWindow": 200000
+        },
+        {
+          "modelId": "grok-4.5",
+          "name": "Grok-4.5",
+          "contextWindow": 500000,
+          "effort": {
+            "supported": true,
+            "levels": ["low", "medium", "high"],
+            "default": "high",
+            "upstreamModelIdTemplate": "cursor-grok-4.5-{effort}"
+          }
+        },
+        {
+          "modelId": "grok-4.5-fast",
+          "name": "Grok-4.5-Fast",
+          "contextWindow": 500000,
+          "effort": {
+            "supported": true,
+            "levels": ["low", "medium", "high"],
+            "default": "high",
+            "upstreamModelIdTemplate": "cursor-grok-4.5-{effort}-fast"
+          }
+        },
+        {
+          "modelId": "gemini-3.1-pro",
+          "name": "Gemini-3.1-Pro",
+          "contextWindow": 1048576
+        },
+        {
+          "modelId": "gemini-3.6-flash",
+          "name": "Gemini-3.6-Flash",
+          "contextWindow": 1048576,
+          "effort": {
+            "supported": true,
+            "levels": ["low", "medium", "high"],
+            "default": "high",
+            "upstreamModelIdTemplate": "gemini-3.6-flash-{effort}"
+          }
+        },
+        {
+          "modelId": "glm-5.2",
+          "name": "GLM-5.2",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": ["high", "max"],
+            "default": "high",
+            "upstreamModelIdTemplate": "glm-5.2-{effort}"
+          }
+        },
+        {
+          "modelId": "gpt-5.6-luna",
+          "name": "GPT-5.6-Luna",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": ["low", "medium", "high", "xhigh", "max"],
+            "default": "medium",
+            "upstreamModelIdTemplate": "gpt-5.6-luna-{effort}"
+          }
+        },
+        {
+          "modelId": "gpt-5.6-sol",
+          "name": "GPT-5.6-Sol",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": ["low", "medium", "high", "xhigh", "max"],
+            "default": "medium",
+            "upstreamModelIdTemplate": "gpt-5.6-sol-{effort}"
+          }
+        },
+        {
+          "modelId": "gpt-5.6-terra",
+          "name": "GPT-5.6-Terra",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": ["low", "medium", "high", "xhigh", "max"],
+            "default": "medium",
+            "upstreamModelIdTemplate": "gpt-5.6-terra-{effort}"
+          }
+        },
+        {
+          "modelId": "kimi-k3",
+          "name": "Kimi-K3",
+          "contextWindow": 262144,
+          "effort": {
+            "supported": true,
+            "levels": ["low", "high", "max"],
+            "default": "max",
+            "upstreamModelIdTemplate": "kimi-k3-{effort}"
+          }
+        }
+      ]
+    },
+    "kimi": {
+      "name": "Kimi",
+      "defaultModel": "k3-256k",
+      "source": "https://www.kimi.com/code/docs/en/kimi-code/models.html (2026-08-01)",
+      "models": [
+        {
+          "modelId": "k3",
+          "name": "K3-1M",
+          "contextWindow": 1048576,
+          "effort": {
+            "supported": true,
+            "levels": ["low", "high", "max"],
+            "default": "high"
+          },
+          "aliases": [
+            "k3",
+            "k3[1m]"
+          ]
+        },
+        {
+          "modelId": "k3-256k",
+          "name": "K3-256K",
+          "contextWindow": 262144,
+          "effort": {
+            "supported": true,
+            "levels": ["low", "high", "max"],
+            "default": "high"
+          },
+          "aliases": [
+            "k3-256k"
+          ]
+        }
+      ]
+    }
+  }
+}

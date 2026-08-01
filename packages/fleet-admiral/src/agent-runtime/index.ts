@@ -11,9 +11,7 @@ import {
 	type McpToolRegistry,
 	type McpToolSnapshotStore,
 	type RegisterExecutorToolOptions,
-	type AuthEnvResolver,
 } from "@dotobokuri/core-agent";
-import type { AuthService, GlobalOptionsService } from "@dotobokuri/core-infra";
 import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 import {
 	createCarrierRuntime,
@@ -21,19 +19,12 @@ import {
 	type WorkspaceChangeScanner,
 } from "@dotobokuri/fleet-carriers";
 
-import { getProviderModelIds } from "@dotobokuri/core-unified-agent";
-
 import {
 	FLEET_MCP_SERVER_NAME,
 	GLOBAL_READONLY_WIKI_TOOL_IDS,
 	getExecutorMcpTools,
 	registerAgentToolDefaults,
 } from "../tools.js";
-import { resolveAgentCliAuthEnv } from "../agent-cli/auth.js";
-import {
-	resolveKimiModelSelection,
-	resolveKimiModelSelectionFromOverride,
-} from "../agent-cli/kimi-model.js";
 
 export interface FleetAgentRuntimeToolRegistration {
 	readonly spec: AgentToolSpec;
@@ -42,8 +33,6 @@ export interface FleetAgentRuntimeToolRegistration {
 
 export interface FleetAgentRuntimeLifecycleDeps {
 	readonly dataDir?: string;
-	readonly authService?: AuthService;
-	readonly globalOptionsService?: GlobalOptionsService;
 	readonly workspaceChangeScanner?: WorkspaceChangeScanner;
 	readonly extraAgentTools?: readonly AgentToolSpec[];
 	readonly extraExecutorTools?: readonly FleetAgentRuntimeToolRegistration[];
@@ -123,23 +112,6 @@ export function createFleetAgentRuntimeLifecycle(
 	};
 }
 
-export function createAuthEnvResolver(
-	globalOptionsService: GlobalOptionsService | undefined,
-	authService?: AuthService,
-): AuthEnvResolver {
-	return async (cli, context): Promise<Record<string, string>> => {
-		if (cli === "claude-kimi") {
-			// 명시적 모델 컨텍스트(캐리어별 선택)가 유효하면 우선 적용하고,
-			// 그렇지 않으면 전역 설정의 프로바이더 기본 모델을 사용한다.
-			const selection = context?.model && getProviderModelIds("claude-kimi").includes(context.model)
-				? resolveKimiModelSelectionFromOverride(context.model, context.effort)
-				: resolveKimiModelSelection(globalOptionsService);
-			return resolveAgentCliAuthEnv(cli, authService, selection);
-		}
-		return {};
-	};
-}
-
 function createFleetAgentRuntimeMcpServices(): FleetAgentRuntimeMcpServices {
 	const mcpRegistry = createMcpToolRegistry();
 	const mcpToolSnapshotStore = createMcpToolSnapshotStore();
@@ -181,7 +153,7 @@ function registerFleetAgentRuntimeTools(
 	deps: FleetAgentRuntimeLifecycleDeps,
 ): void {
 	registerAgentToolDefaults(mcpRegistry, carrierRuntime, {
-		authEnvResolver: createAuthEnvResolver(deps.globalOptionsService, deps.authService),
+		authEnvResolver: async () => ({}),
 		reservedExternalMcpServerIds: buildReservedExternalMcpServerIds(deps.reservedExternalMcpServerIds),
 		workspaceChangeScanner: deps.workspaceChangeScanner,
 	});

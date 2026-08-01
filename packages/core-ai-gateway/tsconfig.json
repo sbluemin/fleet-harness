@@ -8,6 +8,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "isolatedModules": true,
+    "resolveJsonModule": true,
     "skipLibCheck": true,
     "noEmit": true,
     "types": ["node"]

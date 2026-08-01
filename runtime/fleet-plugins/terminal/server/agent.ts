@@ -2,9 +2,9 @@ import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 
-import { createCarrierResultReminderRouter, createDelayedPtyWriter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliAuthStatuses, getAgentCliIds, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
+import { createCarrierResultReminderRouter, createDelayedPtyWriter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliIds, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
 import { getCarrierConfig, resolveAgentCliType } from "@dotobokuri/fleet-carriers";
-import { ensureWorkspaceDirectory, withDirectoryLock, type AuthService, type GlobalOptionsService } from "@dotobokuri/core-infra";
+import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 import type { OperationLaunchKind, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
@@ -41,7 +41,6 @@ type OperationRenamedEvent = {
   readonly previousTitle: string;
 };
 interface AgentRouteDeps {
-  readonly authService: AuthService;
   readonly globalOptionsService: GlobalOptionsService;
   readonly aiGateway?: AiGatewayLaunchBinding;
 }
@@ -81,9 +80,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   const agentCliPathStore = createAgentCliPathStore(ctx.host.storage, ctx.pluginId);
   const readAgentCliPaths = async () => (await agentCliPathStore.read()).paths;
   const runtime = createFleetAgentRuntimeLifecycle({
-    authService: deps.authService,
     dataDir: ctx.host.paths.fleetDataDir,
-    globalOptionsService: deps.globalOptionsService,
     onMcpServerStartError: (error) => {
       console.error("[fleet-console] Failed to start MCP server", error);
     },
@@ -122,7 +119,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       const session = observability.getTerminalSessionInfo(sessionId);
       if (!session) return;
       const cliId = session.cliId;
-      if (cliId !== "claude" && cliId !== "claude-kimi" && cliId !== "codex") return;
+      if (cliId !== "claude" && cliId !== "claude-gateway" && cliId !== "codex") return;
       tracker = createOscAgentActivityTracker({
         cliId,
         cwdBasename: session.cwdLabel,
@@ -571,14 +568,12 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
 
   async function buildAgentCliLaunchMetadata(): Promise<readonly AgentCliLaunchMetadata[]> {
     // Console은 게이트웨이 라우트를 가진 유일한 호스트라 console-only CLI까지 후보로 받는다.
-    // 봉인 여부에 따른 실제 노출은 buildLaunchKinds가 결정한다.
     const metadata = getAgentCliMetadata(getAgentCliIds({ includeConsoleOnly: true }));
     if ((process.env.FLEET_TERMINAL_CMD ?? "").trim().length > 0) {
       return metadata.map((meta) => ({ id: meta.id, label: meta.label, available: true, signedIn: true }));
     }
     const detected = await detector.detect();
-    const authStatuses = await getAgentCliAuthStatuses(deps.authService);
-    return combineAgentCliLaunchMetadata(metadata, detected, authStatuses);
+    return combineAgentCliLaunchMetadata(metadata, detected);
   }
 
   async function buildAgentCliDiagnostics(): Promise<AgentCliDiagnostics> {
@@ -598,9 +593,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
 
   async function buildLaunchKinds(): Promise<readonly OperationLaunchKind[]> {
     const metadata = await buildAgentCliLaunchMetadata();
-    // 봉인이 닫힌 experimental CLI는 목록에서 제외한다. admiral 레지스트리는 플래그를 모른다.
-    const visible = deps.aiGateway ? metadata : metadata.filter((entry) => entry.id !== "claude-gateway");
-    return buildAgentCliLaunchKinds(visible, AGENT_OPERATION_TYPE);
+    return buildAgentCliLaunchKinds(metadata, AGENT_OPERATION_TYPE);
   }
 
   function launch(cwd: string | undefined, context: { readonly operationId?: string } | undefined) {

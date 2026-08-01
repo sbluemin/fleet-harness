@@ -4,5 +4,5 @@ import { createClaudeFamilyCliDefinition } from "./factory.js";
 // Console 포트를 아는 host가 launch 시점에 주입하므로 여기서는 정적 env를 두지 않는다.
 export const claudeGatewayCli = createClaudeFamilyCliDefinition({
   id: "claude-gateway",
-  label: "AI Gateway (Experimental)",
+  label: "Claude (Gateway • Experimental)",
 });

@@ -1,7 +1,6 @@
 export interface GlobalOptionsData {
   readonly version: 1;
   readonly enableMetaphor?: boolean;
-  readonly kimiModel?: { readonly model: string; readonly effort?: string };
   /** Idle agent auto-DORMANT threshold in minutes. `null` disables; key absent means server default. */
   readonly agentIdleDormantMinutes?: number | null;
 }

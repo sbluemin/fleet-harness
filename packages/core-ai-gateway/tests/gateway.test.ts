@@ -1,12 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   AnthropicMessagesGateway,
-  GATEWAY_MODEL_ALIAS_PREFIX,
   GATEWAY_MODELS,
+  CODEX_SUBSCRIPTION_MODELS,
+  CURSOR_SUBSCRIPTION_MODELS,
+  KIMI_SUBSCRIPTION_MODELS,
+  UnsupportedReasoningEffortError,
   buildAnthropicModelList,
+  clampReasoningEffort,
+  findGatewayModel,
+  parseGatewayModelsRegistry,
+  resolveCursorUpstreamModelId,
   resolveGatewayModel,
+  projectClaudeContextInputTokens,
+  toClaudeGatewayModelId,
   toGatewayModelAlias,
-  DEFAULT_OPENAI_MODEL,
+  DEFAULT_CODEX_MODEL,
+  CHATGPT_CODEX_RESPONSES_URL,
   OPENAI_RESPONSES_URL,
   OpenAIResponsesAdapter,
   UpstreamBodyLimitError,
@@ -44,12 +54,13 @@ describe("Anthropic request translation", () => {
       metadata: { user_id: "user-1", ignored_number: 42 },
       max_tokens: 4096,
       thinking: { type: "adaptive" },
+      output_config: { effort: "high" },
       context_management: { edits: [] },
       stream: true
     };
 
     expect(translateAnthropicRequest(request)).toEqual({
-      model: DEFAULT_OPENAI_MODEL,
+      model: DEFAULT_CODEX_MODEL,
       input: [{ type: "message", role: "user", content: "Inspect the repository." }],
       instructions: "You are a coding agent.\n\nWork carefully.",
       tools: [
@@ -66,8 +77,68 @@ describe("Anthropic request translation", () => {
       ],
       max_output_tokens: 4096,
       metadata: { user_id: "user-1" },
+      reasoning: { summary: "auto", effort: "high" },
       stream: true
     });
+  });
+
+  it.each(["minimal", "low", "medium", "high", "xhigh", "max", "ultra"])(
+    "maps Claude Code adaptive /effort %s to Responses reasoning",
+    (effort) => {
+      expect(translateAnthropicRequest({
+        ...baseRequest(),
+        thinking: { type: "adaptive" },
+        output_config: { effort },
+      }).reasoning).toEqual({ summary: "auto", effort });
+    },
+  );
+
+  it("keeps Sol ultra but clamps Luna ultra to its max rung", () => {
+    const sol = findGatewayModel("codex--gpt-5.6-sol");
+    const luna = findGatewayModel("codex--gpt-5.6-luna");
+    if (!sol?.effort.supported || !luna?.effort.supported) {
+      throw new Error("Expected Codex GPT-5.6 effort metadata");
+    }
+    const request = {
+      ...baseRequest(),
+      thinking: { type: "adaptive" },
+      output_config: { effort: "ultra" },
+    };
+
+    expect(translateAnthropicRequest(request, {
+      reasoningEfforts: sol.effort.levels,
+    }).reasoning).toEqual({ summary: "auto", effort: "ultra" });
+    expect(translateAnthropicRequest(request, {
+      reasoningEfforts: luna.effort.levels,
+    }).reasoning).toEqual({ summary: "auto", effort: "max" });
+  });
+
+  it("maps legacy thinking budgets and lets output_config effort take precedence", () => {
+    expect(translateAnthropicRequest({
+      ...baseRequest(),
+      thinking: { type: "enabled", budget_tokens: 1_024 },
+    }).reasoning).toEqual({ summary: "auto", effort: "low" });
+    expect(translateAnthropicRequest({
+      ...baseRequest(),
+      thinking: { type: "enabled", budget_tokens: 8_192 },
+    }).reasoning).toEqual({ summary: "auto", effort: "medium" });
+    expect(translateAnthropicRequest({
+      ...baseRequest(),
+      thinking: { type: "enabled", budget_tokens: 30_000 },
+      output_config: { effort: "xhigh" },
+    }).reasoning).toEqual({ summary: "auto", effort: "xhigh" });
+  });
+
+  it("omits reasoning when thinking is disabled or the effort is unknown", () => {
+    expect(translateAnthropicRequest({
+      ...baseRequest(),
+      thinking: { type: "disabled" },
+      output_config: { effort: "high" },
+    })).not.toHaveProperty("reasoning");
+    expect(translateAnthropicRequest({
+      ...baseRequest(),
+      output_config: { effort: "future-tier" },
+    })).not.toHaveProperty("reasoning");
   });
 
   it("maps a second-turn tool_result back to the preserved function call id", () => {
@@ -116,10 +187,205 @@ describe("Anthropic request translation", () => {
       }
     ]);
   });
+
+  it("maps Anthropic image blocks into Responses input_image parts", () => {
+    const request: AnthropicMessagesRequest = {
+      model: "claude-sonnet-4-6",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "이미지도 읽을수 있어?" },
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: "image/png",
+                data: "aW1hZ2U=",
+              },
+            },
+            {
+              type: "image",
+              source: {
+                type: "url",
+                url: "https://example.com/shot.png",
+              },
+            },
+          ],
+        },
+      ],
+      max_tokens: 1024,
+      stream: true,
+    };
+
+    expect(translateAnthropicRequest(request).input).toEqual([
+      {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "이미지도 읽을수 있어?" },
+          {
+            type: "input_image",
+            image_url: "data:image/png;base64,aW1hZ2U=",
+            detail: "auto",
+          },
+          {
+            type: "input_image",
+            image_url: "https://example.com/shot.png",
+            detail: "auto",
+          },
+        ],
+      },
+    ]);
+  });
 });
 
 describe("model catalog", () => {
-  it("keeps a requested model that the catalog advertises", () => {
+  it("rejects malformed registry data at module boundaries", () => {
+    const extraField = minimalRegistry() as Record<string, unknown>;
+    extraField.unexpected = true;
+    expect(() => parseGatewayModelsRegistry(extraField)).toThrow();
+
+    const duplicate = minimalRegistry();
+    duplicate.providers.cursor.models.push({ modelId: "auto", name: "Again" });
+    expect(() => parseGatewayModelsRegistry(duplicate)).toThrow(/Duplicate gateway model id/);
+
+    const invalidTier = minimalRegistry();
+    invalidTier.providers.cursor.models[0] = {
+      modelId: "auto",
+      name: "Auto",
+      providerModelId: "default",
+      serviceTier: "priority",
+    };
+    expect(() => parseGatewayModelsRegistry(invalidTier)).toThrow(/only supported by Codex/);
+
+    const invalidEffortDefault = minimalRegistry();
+    invalidEffortDefault.providers.codex.models[0] = {
+      modelId: "codex-model",
+      name: "Model",
+      effort: { supported: true, levels: ["low", "high"], default: "max" },
+    };
+    expect(() => parseGatewayModelsRegistry(invalidEffortDefault)).toThrow(/default is missing/);
+
+    const duplicateEffort = minimalRegistry();
+    duplicateEffort.providers.codex.models[0] = {
+      modelId: "codex-model",
+      name: "Model",
+      effort: { supported: true, levels: ["low", "low"], default: "low" },
+    };
+    expect(() => parseGatewayModelsRegistry(duplicateEffort)).toThrow(/levels contain duplicates/);
+
+    const missingCursorTemplate = minimalRegistry();
+    missingCursorTemplate.providers.cursor.models[0] = {
+      modelId: "cursor-model",
+      name: "Model",
+      effort: { supported: true, levels: ["low", "high"], default: "high" },
+    };
+    missingCursorTemplate.providers.cursor.defaultModel = "cursor-model";
+    expect(() => parseGatewayModelsRegistry(missingCursorTemplate)).toThrow(/requires an upstream model id template/);
+
+    const invalidTemplate = minimalRegistry();
+    invalidTemplate.providers.cursor.models[0] = {
+      modelId: "cursor-model",
+      name: "Model",
+      effort: {
+        supported: true,
+        levels: ["low", "high"],
+        default: "high",
+        upstreamModelIdTemplate: "cursor-model",
+      },
+    };
+    invalidTemplate.providers.cursor.defaultModel = "cursor-model";
+    expect(() => parseGatewayModelsRegistry(invalidTemplate)).toThrow(/must contain one \{effort\}/);
+  });
+
+  it("contains only the approved latest provider families", () => {
+    expect(CODEX_SUBSCRIPTION_MODELS).toHaveLength(6);
+    expect(CURSOR_SUBSCRIPTION_MODELS).toHaveLength(15);
+    expect(KIMI_SUBSCRIPTION_MODELS).toHaveLength(2);
+    expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.upstreamId?.startsWith("gpt-5.6-"))).toBe(true);
+    expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.contextWindow === 372_000)).toBe(true);
+    expect(CURSOR_SUBSCRIPTION_MODELS.map((model) => model.upstreamId)).toEqual([
+      "default",
+      "claude-fable-5",
+      "claude-opus-5",
+      "claude-sonnet-5",
+      "composer-2.5",
+      "composer-2.5-fast",
+      "grok-4.5",
+      "grok-4.5-fast",
+      "gemini-3.1-pro",
+      "gemini-3.6-flash",
+      "glm-5.2",
+      "gpt-5.6-luna",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "kimi-k3",
+    ]);
+    expect(KIMI_SUBSCRIPTION_MODELS.map((model) => model.upstreamId)).toEqual(["k3", "k3-256k"]);
+  });
+
+  it("keeps the approved GPT-5.6 and K3 effort ladders in the gateway registry", () => {
+    const efforts = Object.fromEntries(GATEWAY_MODELS.map((model) => [model.id, model.effort]));
+
+    expect(efforts["codex--gpt-5.6-sol"]).toEqual({
+      supported: true,
+      levels: ["low", "medium", "high", "xhigh", "max", "ultra"],
+      default: "low",
+    });
+    expect(efforts["codex--gpt-5.6-terra"]).toEqual({
+      supported: true,
+      levels: ["low", "medium", "high", "xhigh", "max", "ultra"],
+      default: "medium",
+    });
+    expect(efforts["codex--gpt-5.6-luna"]).toEqual({
+      supported: true,
+      levels: ["low", "medium", "high", "xhigh", "max"],
+      default: "medium",
+    });
+    expect(efforts["codex--gpt-5.6-sol-fast"]).toEqual(efforts["codex--gpt-5.6-sol"]);
+    expect(efforts["codex--gpt-5.6-terra-fast"]).toEqual(efforts["codex--gpt-5.6-terra"]);
+    expect(efforts["codex--gpt-5.6-luna-fast"]).toEqual(efforts["codex--gpt-5.6-luna"]);
+    expect(efforts["kimi--k3"]).toEqual({
+      supported: true,
+      levels: ["low", "high", "max"],
+      default: "high",
+    });
+    expect(efforts["cursor--gpt-5.6-luna"]).toEqual({
+      supported: true,
+      levels: ["low", "medium", "high", "xhigh", "max"],
+      default: "medium",
+      upstreamModelIdTemplate: "gpt-5.6-luna-{effort}",
+    });
+    expect(efforts["cursor--kimi-k3"]).toEqual({
+      supported: true,
+      levels: ["low", "high", "max"],
+      default: "max",
+      upstreamModelIdTemplate: "kimi-k3-{effort}",
+    });
+    expect(efforts["cursor--auto"]).toEqual({ supported: false });
+  });
+
+  it.each([
+    ["gpt-5.6-luna", "low", "gpt-5.6-luna-low"],
+    ["gpt-5.6-luna", "ultra", "gpt-5.6-luna-max"],
+    ["kimi-k3", "medium", "kimi-k3-low"],
+    ["kimi-k3", "xhigh", "kimi-k3-high"],
+    ["kimi-k3", undefined, "kimi-k3-max"],
+    ["grok-4.5-fast", "low", "cursor-grok-4.5-low-fast"],
+    ["composer-2.5", "high", "composer-2.5"],
+    ["unknown-model", "high", "unknown-model"],
+  ] as const)("resolves Cursor base model %s at effort %s to %s", (model, effort, expected) => {
+    expect(resolveCursorUpstreamModelId(model, effort)).toBe(expected);
+  });
+
+  it("never raises a requested effort while clamping a sparse ladder", () => {
+    expect(clampReasoningEffort("xhigh", ["low", "medium", "high", "max"])).toBe("high");
+    expect(() => resolveCursorUpstreamModelId("glm-5.2", "medium"))
+      .toThrow(UnsupportedReasoningEffortError);
+  });
+
+  it("resolves a compatibility alias to its provider wire id", () => {
     expect(resolveGatewayModel("gpt-5.6-sol", { fallback: "gpt-5.5" })).toBe("gpt-5.6-sol");
   });
 
@@ -131,28 +397,116 @@ describe("model catalog", () => {
     expect(resolveGatewayModel("gpt-5.6-sol", { override: "gpt-5.5", fallback: "gpt-5.5" })).toBe("gpt-5.5");
   });
 
-  it("includes both subscription providers in the catalog", () => {
-    expect(GATEWAY_MODELS.some((m) => m.provider === "openai")).toBe(true);
-    expect(GATEWAY_MODELS.some((m) => m.provider === "cursor")).toBe(true);
+  it("includes every provider with collision-free ids and provider-prefixed labels", () => {
+    expect(new Set(GATEWAY_MODELS.map((model) => model.provider))).toEqual(
+      new Set(["codex", "cursor", "kimi"]),
+    );
+    expect(new Set(GATEWAY_MODELS.map((model) => model.id)).size).toBe(GATEWAY_MODELS.length);
+    expect(GATEWAY_MODELS.every((model) => model.id.startsWith(`${model.provider}--`))).toBe(true);
+    expect(GATEWAY_MODELS.every((model) => model.displayName.startsWith(
+      `${model.provider === "codex" ? "Codex" : model.provider === "cursor" ? "Cursor" : "Kimi"}-`,
+    ))).toBe(true);
   });
 
   it("advertises every model under a claude- alias so the picker keeps it", () => {
     const list = buildAnthropicModelList();
     expect(list.has_more).toBe(false);
     expect(list.data.map((entry) => entry.id)).toEqual(
-      GATEWAY_MODELS.map((m) => `${GATEWAY_MODEL_ALIAS_PREFIX}${m.id}`),
+      GATEWAY_MODELS.map(toClaudeGatewayModelId),
     );
     // Claude Code는 claude로 시작하지 않는 id를 discovery 결과에서 버린다.
     expect(list.data.every((entry) => entry.id.startsWith("claude"))).toBe(true);
+    expect(list.data.find((entry) => entry.id.includes("gpt-5.6-sol[1m]"))).toMatchObject({
+      max_input_tokens: 372_000,
+    });
+    expect(list.data.find((entry) => entry.id.includes("cursor--kimi-k3[1m]"))).toMatchObject({
+      max_input_tokens: 262_144,
+    });
+  });
+
+  it("projects provider usage onto Claude Code's 1M compatibility window", () => {
+    expect(projectClaudeContextInputTokens(302_572, 372_000)).toBe(813_366);
+    expect(projectClaudeContextInputTokens(250_000, 500_000)).toBe(500_000);
+    expect(projectClaudeContextInputTokens(50_000, 200_000)).toBe(50_000);
+    expect(projectClaudeContextInputTokens(50_000, undefined)).toBe(50_000);
+  });
+
+  it("advertises the official Anthropic effort capability per gateway model", () => {
+    const entries = new Map(buildAnthropicModelList().data.map((entry) => [entry.id, entry]));
+    const sol = entries.get("claude-gateway--codex--gpt-5.6-sol[1m]");
+    const luna = entries.get("claude-gateway--codex--gpt-5.6-luna[1m]");
+    const kimi = entries.get("claude-gateway--kimi--k3[1m]");
+    const cursor = entries.get("claude-gateway--cursor--auto");
+    const cursorLuna = entries.get("claude-gateway--cursor--gpt-5.6-luna[1m]");
+    const cursorComposer = entries.get("claude-gateway--cursor--composer-2.5-fast");
+
+    expect(sol?.capabilities.effort).toEqual({
+      supported: true,
+      low: { supported: true },
+      medium: { supported: true },
+      high: { supported: true },
+      max: { supported: true },
+      xhigh: { supported: true },
+    });
+    expect(sol?.capabilities.effort).not.toHaveProperty("ultra");
+    expect(luna?.capabilities.effort).toEqual(sol?.capabilities.effort);
+    expect(kimi?.capabilities.effort).toEqual({
+      supported: true,
+      low: { supported: true },
+      medium: { supported: false },
+      high: { supported: true },
+      max: { supported: true },
+      xhigh: { supported: false },
+    });
+    expect(cursor?.capabilities.effort).toEqual({
+      supported: false,
+      low: { supported: false },
+      medium: { supported: false },
+      high: { supported: false },
+      max: { supported: false },
+      xhigh: null,
+    });
+    expect(cursor?.capabilities.thinking.supported).toBe(false);
+    expect(cursorComposer?.max_input_tokens).toBe(200_000);
+    expect(cursorLuna?.capabilities.effort).toEqual({
+      supported: true,
+      low: { supported: true },
+      medium: { supported: true },
+      high: { supported: true },
+      max: { supported: true },
+      xhigh: { supported: true },
+    });
   });
 
   it("unwraps the alias a picked model comes back as", () => {
-    expect(resolveGatewayModel(toGatewayModelAlias("gpt-5.6-luna"), { fallback: "gpt-5.5" })).toBe("gpt-5.6-luna");
+    expect(resolveGatewayModel(toGatewayModelAlias("codex--gpt-5.6-luna"), { fallback: "gpt-5.5" })).toBe("gpt-5.6-luna");
   });
 
-  it("routes a catalog model through translation untouched", () => {
-    const request = { ...baseRequest(), model: "gpt-5.6-luna" };
+  it("routes a scoped catalog model through translation to its wire id", () => {
+    const request = { ...baseRequest(), model: "codex--gpt-5.6-luna" };
     expect(translateAnthropicRequest(request, { catalog: GATEWAY_MODELS }).model).toBe("gpt-5.6-luna");
+  });
+
+  it("maps Codex Fast variants to priority service tier", () => {
+    const model = findGatewayModel("claude-gateway--codex--gpt-5.6-sol-fast");
+    expect(model).toMatchObject({ upstreamId: "gpt-5.6-sol", serviceTier: "priority" });
+    expect(translateAnthropicRequest(baseRequest(), {
+      model: model?.upstreamId,
+      serviceTier: model?.serviceTier,
+    })).toMatchObject({ model: "gpt-5.6-sol", service_tier: "priority" });
+  });
+
+  it("advertises and accepts the Claude context marker for K3 1M", () => {
+    const model = findGatewayModel("claude-gateway--k3[1m]");
+    expect(model).toMatchObject({ id: "kimi--k3", upstreamId: "k3" });
+    expect(buildAnthropicModelList().data).toContainEqual(expect.objectContaining({
+      id: "claude-gateway--kimi--k3[1m]",
+      max_input_tokens: 1_048_576,
+    }));
+    expect(buildAnthropicModelList().data).toContainEqual(expect.objectContaining({
+      id: "claude-gateway--kimi--k3-256k",
+      max_input_tokens: 262_144,
+    }));
   });
 });
 
@@ -223,12 +577,80 @@ describe("Anthropic SSE encoding", () => {
     expect(frames[5]?.data).toEqual({
       type: "message_delta",
       delta: { stop_reason: "end_turn", stop_sequence: null },
-      usage: { output_tokens: 2 }
+      usage: {
+        input_tokens: 12,
+        output_tokens: 2,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0
+      }
+    });
+  });
+
+  it("projects streaming input occupancy while preserving output usage", async () => {
+    const events = iterable<CanonicalResponseEvent>([
+      {
+        type: "response.created",
+        response: {
+          id: "resp_projected",
+          model: "gpt-5.6-sol",
+          usage: { input_tokens: 302_572, output_tokens: 0 },
+        },
+      },
+      {
+        type: "response.completed",
+        response: {
+          id: "resp_projected",
+          model: "gpt-5.6-sol",
+          usage: { input_tokens: 302_572, output_tokens: 6_277 },
+        },
+      },
+    ]);
+
+    const frames = parseSse(await collectBody(encodeAnthropicSse(events, {
+      contextWindow: 372_000,
+    })));
+
+    expect(frames[0]?.data).toMatchObject({
+      message: { usage: { input_tokens: 813_366, output_tokens: 0 } },
+    });
+    expect(frames[1]?.data).toMatchObject({
+      usage: { input_tokens: 813_366, output_tokens: 6_277 },
     });
   });
 });
 
 describe("OpenAI Responses adapter", () => {
+  it("forwards a Codex Fast service tier to the ChatGPT Responses backend", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => new Response(
+      JSON.stringify({ error: { message: "stop after capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    const adapter = new OpenAIResponsesAdapter({
+      fetch: fetchMock,
+      url: CHATGPT_CODEX_RESPONSES_URL,
+      dropSamplingParams: true,
+    });
+
+    await adapter.stream({
+      model: "gpt-5.6-sol",
+      input: [],
+      max_output_tokens: 128,
+      reasoning: { summary: "auto", effort: "xhigh" },
+      service_tier: "priority",
+      stream: true,
+    }, { apiKey: "subscription-token" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      model: "gpt-5.6-sol",
+      reasoning: { summary: "auto", effort: "xhigh" },
+      service_tier: "priority",
+      store: false,
+    });
+    expect(body).not.toHaveProperty("max_output_tokens");
+  });
+
   it("streams function-call arguments into Anthropic tool_use deltas with the call id intact", async () => {
     const upstreamSse = [
       frame("response.created", {
@@ -417,6 +839,31 @@ describe("non-streaming requests", () => {
       usage: { input_tokens: 3, output_tokens: 4 },
     });
   });
+
+  it("reports model-relative input occupancy to Claude without changing output usage", async () => {
+    const adapter: AiGatewayAdapter = {
+      async stream() {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          events: iterable<CanonicalResponseEvent>([
+            { type: "response.created", response: { id: "resp_virtual", model: "gpt-5.6-sol", usage: null } },
+            { type: "response.completed", response: { id: "resp_virtual", model: "gpt-5.6-sol", usage: { input_tokens: 302_572, output_tokens: 6_277 } } },
+          ]),
+        };
+      },
+    };
+    const { stream: _drop, ...rest } = baseRequest();
+    const response = await new AnthropicMessagesGateway(adapter).stream(
+      rest as AnthropicMessagesRequest,
+      { apiKey: "k", contextWindow: 372_000 },
+    );
+
+    expect(JSON.parse(await collectBody(response.body))).toMatchObject({
+      usage: { input_tokens: 813_366, output_tokens: 6_277 },
+    });
+  });
 });
 
 describe("upstream errors", () => {
@@ -462,6 +909,22 @@ function baseRequest(): AnthropicMessagesRequest {
     messages: [{ role: "user", content: "Hello" }],
     max_tokens: 128,
     stream: true
+  };
+}
+
+function minimalRegistry() {
+  const provider = (name: string, modelId: string) => {
+    const models: Array<Record<string, unknown>> = [{ modelId, name: "Model" }];
+    return { name, defaultModel: modelId, source: "test fixture", models };
+  };
+  return {
+    version: 1,
+    updatedAt: "2026-08-01T00:00:00Z",
+    providers: {
+      codex: provider("Codex", "codex-model"),
+      cursor: provider("Cursor", "auto"),
+      kimi: provider("Kimi", "k3"),
+    },
   };
 }
 
