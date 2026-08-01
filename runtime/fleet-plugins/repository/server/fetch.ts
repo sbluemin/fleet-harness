@@ -1,0 +1,285 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import type http from "node:http";
+
+import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
+
+import { InvalidRepoError, resolveGitCwd } from "./diff.js";
+import { GitExecutorError, runGit } from "./git-executor.js";
+
+const AUTO_FETCH_THROTTLE_MS = 300_000;
+
+type FetchErrorToken = "auth_failed" | "network" | "no_remote";
+type FetchResult =
+  | { readonly ok: true; readonly skipped: "throttled"; readonly lastFetchAt: string }
+  | { readonly ok: true; readonly fetchedAt: string; readonly lastFetchAt: string; readonly pruned: number; readonly newRefs: number; readonly updatedRefs: number };
+
+const autoFetchInFlight = new Map<string, Promise<FetchResult>>();
+// 성공한 fetch의 시각(common dir 기준) — refs가 0개인 원격은 성공해도 FETCH_HEAD가
+// 0바이트라 파일 증거만으로는 실패와 구분되지 않는다. 데몬 수명 내에서만 유효한 보조 증거다.
+const lastSuccessfulFetchAt = new Map<string, number>();
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function classifyFetchError(stderr: string): FetchErrorToken | null {
+  if (/permission denied|authentication failed|could not read username|terminal prompts disabled|repository not found/i.test(stderr)) {
+    return "auth_failed";
+  }
+  if (/could not resolve host|failed to connect|connection (refused|reset)|operation timed out|network is unreachable/i.test(stderr)) {
+    return "network";
+  }
+  if (/no remote repository specified|does not appear to be a git repository/i.test(stderr)) {
+    return "no_remote";
+  }
+  return null;
+}
+
+async function resolveGitIdentity(gitCwd: string): Promise<{ readonly gitDir: string; readonly commonDir: string }> {
+  const [gitDirResult, commonDirResult] = await Promise.all([
+    runGit(["rev-parse", "--absolute-git-dir"], { cwd: gitCwd }),
+    runGit(["rev-parse", "--git-common-dir"], { cwd: gitCwd }),
+  ]);
+  // linked worktree의 common dir은 메인 체크아웃의 .git을 가리킨다. refs와 원격은 어느
+  // worktree에서 fetch해도 공유되므로 throttle·single-flight의 좌표는 common dir로 삼는다.
+  const [gitDir, commonDir] = await Promise.all([
+    fs.realpath(path.resolve(gitCwd, gitDirResult.stdout.trim())),
+    fs.realpath(path.resolve(gitCwd, commonDirResult.stdout.trim())),
+  ]);
+  return { gitDir, commonDir };
+}
+
+async function readLastFetchAt(gitDirs: readonly string[]): Promise<Date | null> {
+  // FETCH_HEAD는 worktree gitdir마다 따로 쓰이므로, refs를 공유하는 모든 후보 중
+  // 가장 최신 mtime을 "이 저장소의 마지막 fetch"로 본다.
+  let newest: Date | null = null;
+  for (const gitDir of gitDirs) {
+    try {
+      const stats = await fs.stat(path.join(gitDir, "FETCH_HEAD"));
+      // 실패한 fetch도 FETCH_HEAD를 0바이트로 갱신한다 — 비어 있으면 성공 증거가 아니므로
+      // throttle 증거에서 제외한다(그대로면 5분간 거짓 "동기화됨"이 된다).
+      if (stats.size === 0) continue;
+      if (!newest || stats.mtime.getTime() > newest.getTime()) newest = stats.mtime;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  return newest;
+}
+
+function countFetchProgress(stderr: string, marker: string): number {
+  return stderr.split(/\r?\n/).filter((line) => line.includes(marker)).length;
+}
+
+function countFetchUpdatedRefs(stderr: string): number {
+  // "   old..new branch -> origin/branch"(fast-forward)·" + old...new (forced)" 갱신행.
+  // 이걸 세지 않으면 커밋이 실제로 전진해도 pruned/newRefs가 0이라 "최신 상태"로 거짓 보고된다.
+  return stderr.split(/\r?\n/).filter((line) =>
+    line.includes(" -> ") && /\S+\.\.\S+/.test(line) && !line.includes("[deleted]") && !line.includes("[new "),
+  ).length;
+}
+
+class NoRemoteError extends Error {}
+
+// repo-local `credential.helper=!<명령>`·경로 helper의 zero-click 실행을 막기 위한
+// 비실행 helper 화이트리스트 — bare 이름(경로 구분자·인자 없음)만 허용한다.
+// basename 정규화는 /tmp/git-credential-manager 같은 repo 선택 파일을 통과시키므로 금지.
+const SAFE_CREDENTIAL_HELPERS = new Set([
+  "cache",
+  "store",
+  "osxkeychain",
+  "wincred",
+  "libsecret",
+  "gnome-libsecret",
+  "manager",
+  "manager-core",
+]);
+
+async function resolveCredentialHelperArgs(gitCwd: string): Promise<readonly string[]> {
+  const raw = (await runGit(["config", "--get-all", "credential.helper"], { cwd: gitCwd, allowExitCodes: [1] })).stdout;
+  const helpers = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const kept = helpers.filter((helper) => {
+    if (!/^[A-Za-z0-9-]+$/.test(helper)) return false;
+    return SAFE_CREDENTIAL_HELPERS.has(helper) || SAFE_CREDENTIAL_HELPERS.has(helper.replace(/^git-credential-/, ""));
+  });
+  // 첫 빈 값이 configured helper 목록 전체를 리셋하고, 그 뒤 안전한 것만 다시 쌓는다.
+  // core.askPass도 비워 repo config의 askpass 프로그램 실행을 막는다(env SSH_ASKPASS는 executor가 제거).
+  return ["-c", "credential.helper=", ...kept.flatMap((helper) => ["-c", `credential.helper=${helper}`]), "-c", "core.askPass="];
+}
+
+async function resolveDefaultRemote(gitCwd: string): Promise<string | null> {
+  const branch = (await runGit(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: gitCwd })).stdout.trim();
+  if (branch && branch !== "HEAD") {
+    const upstream = (await runGit(["config", "--get", `branch.${branch}.remote`], { cwd: gitCwd, allowExitCodes: [1] })).stdout.trim();
+    // "."은 같은 저장소의 로컬 브랜치 트래킹이라 fetch 대상이 아니다 — 실제 원격으로 폴한다.
+    if (upstream && upstream !== ".") return upstream;
+  }
+  const remotes = (await runGit(["remote"], { cwd: gitCwd })).stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  // bare fetch의 기본 원격 규칙을 따라 origin을 우선한다.
+  if (remotes.includes("origin")) return "origin";
+  return remotes[0] ?? null;
+}
+
+async function readThrottleResult(gitDirs: readonly string[], commonDir: string): Promise<FetchResult | null> {
+  const fsNewest = await readLastFetchAt(gitDirs);
+  const recorded = lastSuccessfulFetchAt.get(commonDir);
+  let newest = fsNewest;
+  if (recorded !== undefined && (!newest || recorded > newest.getTime())) newest = new Date(recorded);
+  if (!newest || Date.now() - newest.getTime() >= AUTO_FETCH_THROTTLE_MS) return null;
+  return { ok: true, skipped: "throttled", lastFetchAt: newest.toISOString() };
+}
+
+async function fetchRepository(gitCwd: string): Promise<FetchResult> {
+  const remote = await resolveDefaultRemote(gitCwd);
+  if (!remote) throw new NoRemoteError();
+  const credentialArgs = await resolveCredentialHelperArgs(gitCwd);
+  const result = await runGit([
+    "-c",
+    "core.sshCommand=ssh",
+    "-c",
+    // git 예약어 none만 프록시 우회다 — 다른 값은 프록시 "명령"으로 실행된다.
+    "core.gitProxy=none",
+    "-c",
+    // protocol.allow=user는 ext를 never에서 허용으로 뒤집는다(GIT_PROTOCOL_FROM_USER unset) —
+    // 기본 정책을 유지한 채 실행형 transport만 명시 차단한다.
+    "protocol.ext.allow=never",
+    "-c",
+    // ref transaction 훅(reference-transaction 등)의 zero-click 실행을 플랫폼 널 장치로 차단한다.
+    `core.hooksPath=${process.platform === "win32" ? "NUL" : "/dev/null"}`,
+    ...credentialArgs,
+    "fetch",
+    remote,
+    // 명시 refspec이 configured refspec을 대체한다 — prune의 파괴 범위를
+    // refs/remotes/<remote>/ 아래로 고정해 로컬 refs를 보호한다.
+    `+refs/heads/*:refs/remotes/${remote}/*`,
+    // repo config의 remote.<name>.uploadpack이 로컬 transport에서 명령 실행되므로 표준 명령을 강제한다.
+    "--upload-pack=git-upload-pack",
+    // 하드닝된 상위 fetch를 빠져나가는 재귀(중첩 네트워크+하위 upload-pack)를 끊는다.
+    "--no-recurse-submodules",
+    "--prune",
+    "--no-tags",
+    // fetch.pruneTags=true인 저장소가 --prune과 결합해 로컬 전용 태그를 지우는 것을 막는다.
+    "--no-prune-tags",
+  ], { cwd: gitCwd });
+  const fetchedAt = new Date().toISOString();
+  return {
+    ok: true,
+    fetchedAt,
+    lastFetchAt: fetchedAt,
+    pruned: countFetchProgress(result.stderr, " - [deleted] "),
+    newRefs: countFetchProgress(result.stderr, " * [new branch] "),
+    updatedRefs: countFetchUpdatedRefs(result.stderr),
+  };
+}
+
+type GitIdentity = { readonly gitDir: string; readonly commonDir: string };
+
+async function fetchHeadCandidates(identity: GitIdentity): Promise<readonly string[]> {
+  const candidates = new Set([identity.gitDir, identity.commonDir]);
+  try {
+    // 형제 linked worktree의 FETCH_HEAD(<common>/worktrees/*/FETCH_HEAD)도 같은 refs를
+    // 공유하는 저장소의 fetch 증거이므로 throttle 후보에 함께 본다.
+    const worktreesDir = path.join(identity.commonDir, "worktrees");
+    for (const entry of await fs.readdir(worktreesDir, { withFileTypes: true })) {
+      if (entry.isDirectory()) candidates.add(path.join(worktreesDir, entry.name));
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  return [...candidates];
+}
+
+async function runAutoFetch(gitCwd: string, identity: GitIdentity): Promise<FetchResult> {
+  const throttled = await readThrottleResult(await fetchHeadCandidates(identity), identity.commonDir);
+  return throttled ?? fetchRepository(gitCwd);
+}
+
+async function fetchAutoSingleFlight(gitCwd: string, identity: GitIdentity): Promise<FetchResult> {
+  const key = identity.commonDir;
+  const existing = autoFetchInFlight.get(key);
+  if (existing) {
+    await existing;
+    const throttled = await readThrottleResult(await fetchHeadCandidates(identity), identity.commonDir);
+    if (throttled) return throttled;
+  }
+
+  const operation = runAutoFetch(gitCwd, identity);
+  autoFetchInFlight.set(key, operation);
+  try {
+    return await operation;
+  } finally {
+    if (autoFetchInFlight.get(key) === operation) autoFetchInFlight.delete(key);
+  }
+}
+
+export async function handleRepositoryFetch(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ctx: FleetPluginServerContext,
+): Promise<void> {
+  if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
+  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
+
+  const body = await ctx.host.http.readJsonBody<{
+    readonly theaterId?: unknown;
+    readonly repoRel?: unknown;
+    readonly mode?: unknown;
+    readonly subPath?: unknown;
+  }>(req);
+  if (
+    !isPlainObject(body)
+    || "subPath" in body
+    || typeof body.theaterId !== "string"
+    || (body.mode !== undefined && body.mode !== "auto")
+  ) {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_request" });
+    return;
+  }
+
+  const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
+  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+
+  let gitCwd: string;
+  try {
+    // A selected Theater subdirectory is the Repository panel's current repo context
+    // and has the same trust level as its Terminal PTY. Containment prevents repoRel
+    // path escape; fetching an intentionally selected parent repo remains allowed.
+    ({ gitCwd } = await resolveGitCwd(theaterPath, body.repoRel));
+  } catch (error) {
+    if (error instanceof InvalidRepoError) { ctx.host.http.writeJson(res, 400, { error: error.code }); return; }
+    throw error;
+  }
+
+  try {
+    const identity = await resolveGitIdentity(gitCwd);
+    const result = body.mode === "auto"
+      ? await fetchAutoSingleFlight(gitCwd, identity)
+      : await (autoFetchInFlight.get(identity.commonDir) ?? fetchRepository(gitCwd));
+    if ("fetchedAt" in result) lastSuccessfulFetchAt.set(identity.commonDir, Date.parse(result.fetchedAt));
+    ctx.host.http.writeJson(res, 200, result);
+  } catch (error) {
+    if (error instanceof NoRemoteError) {
+      ctx.host.http.writeJson(res, 422, { error: "no_remote" });
+      return;
+    }
+    if (error instanceof GitExecutorError) {
+      if (error.code === "timeout") {
+        ctx.host.http.writeJson(res, 422, { error: "timeout" });
+        return;
+      }
+      const classified = classifyFetchError(error.stderr);
+      if (classified) {
+        ctx.host.http.writeJson(res, 422, { error: classified });
+        return;
+      }
+      if (error.code === "no_git_repo" || error.code === "git_unavailable") {
+        ctx.host.http.writeJson(res, 422, { error: error.code });
+        return;
+      }
+      ctx.host.http.writeJson(res, 500, { error: "git_failed" });
+      return;
+    }
+    throw error;
+  }
+}

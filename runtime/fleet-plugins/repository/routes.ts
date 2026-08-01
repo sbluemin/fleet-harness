@@ -5,6 +5,7 @@ import { handleRepositoryCommitFile } from "./server/commit-file.js";
 import { handleRepositoryCompare } from "./server/compare.js";
 import { handleRepositoryCompareFile } from "./server/compare-file.js";
 import { handleRepositoryChanged, handleRepositoryFile } from "./server/diff.js";
+import { handleRepositoryFetch } from "./server/fetch.js";
 import { handleRepositoryLog } from "./server/log.js";
 import { handleRepositoryRefs } from "./server/refs.js";
 import { handleRepositoryRepos } from "./server/repos.js";
@@ -24,6 +25,10 @@ export default definePlugin({
     });
     registerRouter(ctx, "changed", async ({ req, res }) => {
       await handleRepositoryChanged(req, res, ctx);
+      return true;
+    });
+    registerRouter(ctx, "fetch", async ({ req, res }) => {
+      await handleRepositoryFetch(req, res, ctx);
       return true;
     });
     registerRouter(ctx, "file", async ({ req, res }) => {

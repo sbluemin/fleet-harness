@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import type { DiffFileEntry, DiffFileMode, DiffListResult, RepoCandidate, RepositorySearchResult, ReposResult, WorktreeCandidate, WorktreesResult } from "../server/types.js";
@@ -23,6 +23,16 @@ type T = Translate<RepositoryMessageKey>;
 
 type ViewMode = "list" | "tree";
 
+type RepositorySyncState =
+  | { readonly kind: "stale"; readonly lastFetchAt: string | null }
+  | { readonly kind: "syncing" }
+  | { readonly kind: "fresh"; readonly lastFetchAt: string; readonly pruned: number; readonly newRefs: number; readonly updatedRefs: number; readonly skipped: boolean }
+  | { readonly kind: "error"; readonly error: string };
+
+type RepositoryFetchResult =
+  | { readonly ok: true; readonly skipped: "throttled"; readonly lastFetchAt: string }
+  | { readonly ok: true; readonly fetchedAt: string; readonly lastFetchAt: string; readonly pruned: number; readonly newRefs: number; readonly updatedRefs: number };
+
 interface RepositoryPanelProps {
   readonly ctx: RailPanelContext;
 }
@@ -37,6 +47,43 @@ const SCAN_DEPTH_MAX = 8;
 const SCAN_DEPTH_DEFAULT = 3;
 const LIST_PANE_DEFAULT_WIDTH = 248;
 const LIST_PANE_MIN_WIDTH = 220;
+
+export function formatSyncAge(lastFetchAt: string, locale: ConsoleLocale | undefined, now = Date.now()): string {
+  const parsed = Date.parse(lastFetchAt);
+  const elapsed = Number.isFinite(parsed) ? Math.max(0, now - parsed) : 0;
+  const korean = locale === "ko";
+  if (elapsed < 60_000) return korean ? "방금" : "just now";
+  if (elapsed < 3_600_000) {
+    const minutes = Math.floor(elapsed / 60_000);
+    return korean ? `${minutes}분 전` : `${minutes}m ago`;
+  }
+  if (elapsed < 86_400_000) {
+    const hours = Math.floor(elapsed / 3_600_000);
+    return korean ? `${hours}시간 전` : `${hours}h ago`;
+  }
+  const days = Math.floor(elapsed / 86_400_000);
+  return korean ? `${days}일 전` : `${days}d ago`;
+}
+
+function syncStatusMessage(state: RepositorySyncState, t: T, locale: ConsoleLocale | undefined): string {
+  if (state.kind === "syncing") return t("repository.sync.status.fetching");
+  if (state.kind === "error") {
+    if (state.error === "auth_failed") return t("repository.sync.status.authError");
+    if (state.error === "no_remote") return t("repository.sync.status.noRemote");
+    if (state.error === "timeout") return t("repository.sync.status.timeout");
+    if (state.error === "network") return t("repository.sync.status.networkError");
+    return t("repository.sync.status.failed");
+  }
+  if (state.kind === "fresh") {
+    if (state.skipped) return t("repository.sync.status.skipped", { age: formatSyncAge(state.lastFetchAt, locale) });
+    return state.pruned === 0 && state.newRefs === 0 && state.updatedRefs === 0
+      ? t("repository.sync.status.upToDate")
+      : t("repository.sync.status.fresh", { pruned: state.pruned, newRefs: state.newRefs, updatedRefs: state.updatedRefs });
+  }
+  return state.lastFetchAt
+    ? t("repository.sync.status.local", { age: formatSyncAge(state.lastFetchAt, locale) })
+    : t("repository.sync.status.neverFetched");
+}
 
 function readViewMode(): ViewMode {
   try {
@@ -170,6 +217,10 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [refsError, setRefsError] = useState(false); const [refsRetry, setRefsRetry] = useState(0);
   const [changedFiles, setChangedFiles] = useState<ChangedFilesState>({ kind: "loading" });
   const [changedFilesRetry, setChangedFilesRetry] = useState(0);
+  const [historyExternalRefreshToken, setHistoryExternalRefreshToken] = useState(0);
+  const [syncState, setSyncState] = useState<RepositorySyncState>({ kind: "stale", lastFetchAt: null });
+  const syncRequestIdRef = useRef(0);
+  const autoSyncTheaterRef = useRef<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
   const [filterText, setFilterText] = useState(initialRepoViewState?.filterText ?? "");
   const [collapsedChangeFolders, setCollapsedChangeFolders] = useState(() => new Set(initialRepoViewState?.collapsedFolders ?? []));
@@ -247,6 +298,8 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     flushChangesCache();
     if (persist) saveRepositoryRel(ctx.theaterId, nextRepoRel);
     clearSelectedFile();
+    syncRequestIdRef.current += 1;
+    setSyncState({ kind: "stale", lastFetchAt: null });
     setChangedFiles({ kind: "loading" });
     setRefs({ branches: [], remotes: [], tags: [], stashes: [] });
     repoRelRef.current = nextRepoRel;
@@ -344,6 +397,51 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     return () => { cancelled = true; };
   }, [changedFilesRetry, ctx.theaterId, repoRel]);
 
+  const refreshRepositoryData = useCallback(() => {
+    setRefsRetry((value) => value + 1);
+    setWorktreesRetry((value) => value + 1);
+    setChangedFilesRetry((value) => value + 1);
+    setReposRetry((value) => value + 1);
+    setHistoryExternalRefreshToken((value) => value + 1);
+  }, []);
+  const syncRepository = useCallback(async (mode?: "auto") => {
+    if (!ctx.theaterId) return;
+    const requestId = ++syncRequestIdRef.current;
+    setSyncState({ kind: "syncing" });
+    let response: Response;
+    try {
+      response = await fetch("/plugins/repository/fetch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ...(mode ? { mode } : {}) }),
+      });
+    } catch {
+      if (requestId !== syncRequestIdRef.current) return;
+      setSyncState({ kind: "error", error: "network" });
+      return;
+    }
+    const payload = await response.json().catch(() => ({})) as RepositoryFetchResult | { readonly error?: string };
+    if (requestId !== syncRequestIdRef.current) return;
+    if (!response.ok || !("ok" in payload) || payload.ok !== true) {
+      setSyncState({ kind: "error", error: "error" in payload ? payload.error ?? "git_failed" : "git_failed" });
+      return;
+    }
+    const result = payload;
+    if ("skipped" in result) {
+      setSyncState({ kind: "fresh", lastFetchAt: result.lastFetchAt, pruned: 0, newRefs: 0, updatedRefs: 0, skipped: true });
+      return;
+    }
+    refreshRepositoryData();
+    setSyncState({ kind: "fresh", lastFetchAt: result.lastFetchAt, pruned: result.pruned, newRefs: result.newRefs, updatedRefs: result.updatedRefs, skipped: false });
+  }, [ctx.theaterId, refreshRepositoryData, repoRel]);
+  useEffect(() => {
+    if (!ctx.theaterId) return;
+    const contextKey = `${ctx.theaterId}:${repoRel}`;
+    if (autoSyncTheaterRef.current === contextKey) return;
+    autoSyncTheaterRef.current = contextKey;
+    void syncRepository("auto");
+  }, [ctx.theaterId, repoRel, syncRepository]);
+
   useLayoutEffect(() => () => clearSelectedFile(), []);
 
   const updateChangesScroll = useCallback(() => {
@@ -439,6 +537,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   }, []);
   const wipFiles = changedFiles.kind === "ok" ? changedFiles.files : [];
   const selectedRepo = repos.find((repo) => repo.relPath === repoRel) ?? worktrees.find((worktree) => worktree.relPath === repoRel);
+  const syncStatus = syncStatusMessage(syncState, t, ctx.language);
   const changesView = <div ref={rootRef} className={`repository-root${selectedFile ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={selectedFile ? { gridTemplateColumns: buildDiffGridTemplate(listPaneWidth) } : undefined}>
     {selectedFile && hunkMode ? <div className="repository-hunk-pane"><div className="repository-hunk-head"><span>{selectedFile.entry.path}</span><button type="button" onClick={handleCloseHunk}>✕</button></div><HunkView ctx={ctx} repoRel={repoRel} file={selectedFile.entry} mode={hunkMode} /></div> : null}
     {selectedFile ? <div className="repository-divider" onPointerDown={handleDividerDown} aria-hidden="true" /> : null}
@@ -456,11 +555,12 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   </>;
   return (
     <div className="repository-unified is-workspace">
-      <div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? t("repository.panel.title")}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}</div>
+      <div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? t("repository.panel.title")}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}<button type="button" className={`repository-sync-button${syncState.kind === "syncing" ? " is-syncing" : ""}`} title={t("repository.sync.title")} aria-label={t("repository.sync.title")} disabled={syncState.kind === "syncing"} onClick={() => { void syncRepository(); }}><span className="repository-sync-icon" aria-hidden="true">↻</span>{t("repository.sync.button")}</button></div>
+      <div className={`repository-sync-status is-${syncState.kind}`} role="status">{syncStatus}</div>
       <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${treeWidth}px` } as React.CSSProperties}>
         <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} repos={repos} reposError={reposError} reposTruncated={reposTruncated} scanDepth={scanDepth} worktrees={worktrees} worktreesError={worktreesError} refs={refs} refsError={refsError} changedFiles={changedFiles} selectedRel={repoRel} source={source} refFilter={refFilter} onRepository={handleSelectRepository} onScanDepth={setScanDepth} onRetryRepos={() => setReposRetry((value) => value + 1)} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} onRetryRefs={() => setRefsRetry((value) => value + 1)} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} />
         <div className="repository-divider repository-ws-tree-divider" onPointerDown={handleTreeDividerDown} role="separator" aria-orientation="vertical" aria-label={t("repository.common.resizeSourceTree")} />
-        <HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}:${historyLandingEpoch}`} cacheScope={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
+        <HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}:${historyLandingEpoch}`} cacheScope={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} externalRefreshToken={historyExternalRefreshToken} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
       </div>
     </div>
   );

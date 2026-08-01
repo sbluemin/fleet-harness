@@ -64,7 +64,7 @@ describe("Repository design grammar", () => {
     expect(blockOf(".repository-ref-row.is-current")).toContain("var(--text-primary)");
     expect(blockOf(".repository-ref-row.is-current")).not.toContain("var(--brass)");
     expect(blockOf(".repository-ref-row.is-current:hover")).not.toContain("var(--brass)");
-    expect(blockOf(".repository-ref-row.is-current .repository-ref-sub")).toContain("var(--brass)");
+    expect(blockOf(".repository-ref-row.is-current .repository-ref-sub")).toContain("var(--brass-ink)");
 
     const selectedFile = blockOf(".repository-file-row.is-cur");
     expect(selectedFile).toContain("color-mix(in oklch, var(--ink-fog) 12%, transparent)");
@@ -95,8 +95,8 @@ describe("Repository design grammar", () => {
       expect(blockOf(selector), selector).toContain("var(--surface-band) 72%");
     }
     expect(css).not.toContain(".repository-scan-foot");
-    expect(blockOf(".repository-ref-mark")).toContain("var(--brass)");
-    expect(blockOf(".repository-ref-hl")).toContain("var(--brass)");
+    expect(blockOf(".repository-ref-mark")).toContain("var(--brass-ink)");
+    expect(blockOf(".repository-ref-hl")).toContain("var(--brass-ink)");
     // .history-detail-pane은 스택 레이아웃 재선언 포함 2개 규칙 — background를 선언하는 모든 규칙이 glass를 소비해야 한다.
     const detailPanes = blocksOf(".history-detail-pane").filter((body) => body.includes("background"));
     expect(detailPanes.length).toBeGreaterThanOrEqual(2);
@@ -105,6 +105,20 @@ describe("Repository design grammar", () => {
     for (const selector of [".repository-filter-input", ".history-filter-input", ".repository-view-toggle"]) {
       expect(blockOf(selector), selector).toContain("var(--ink-abyss) 35%");
     }
+  });
+
+  it("uses the approved signal channels for repository sync status", () => {
+    expect(blockOf(".repository-sync-status")).toContain("font-family: var(--font-mono)");
+    expect(blockOf(".repository-sync-status")).toContain("font-size: 11px");
+    expect(blockOf(".repository-sync-status::before")).toContain("width: 6px");
+    expect(blockOf(".repository-sync-status::before")).toContain("border-radius: 999px");
+    expect(blockOf(".repository-sync-status.is-stale")).toContain("var(--warn-ink)");
+    expect(blockOf(".repository-sync-status.is-stale::before")).toContain("var(--warn)");
+    expect(blockOf(".repository-sync-status.is-fresh")).toContain("var(--positive-ink)");
+    expect(blockOf(".repository-sync-status.is-fresh::before")).toContain("var(--positive)");
+    expect(blockOf(".repository-sync-status.is-error")).toContain("var(--coral-ink)");
+    expect(blockOf(".repository-sync-status.is-error::before")).toContain("var(--coral)");
+    expect(blocksOf(".repository-sync-button.is-syncing .repository-sync-icon").some((body) => body.includes("animation: none"))).toBe(true);
   });
 
   it("keeps workspace section header buttons within the interaction grammar", () => {

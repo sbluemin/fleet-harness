@@ -1,6 +1,19 @@
 export const repositoryEn = {
   // panel / identity
   "repository.panel.title": "Repository",
+  "repository.sync.button": "Sync",
+  "repository.sync.title": "Fetch --prune from origin, then refresh",
+  "repository.sync.status.local": "Local data · last fetch {age}",
+  "repository.sync.status.neverFetched": "Local data · never fetched",
+  "repository.sync.status.fetching": "Fetching from origin…",
+  "repository.sync.status.fresh": "Synced just now · {pruned} pruned, {newRefs} new, {updatedRefs} updated",
+  "repository.sync.status.upToDate": "Synced just now · up to date",
+  "repository.sync.status.skipped": "Synced {age} · auto-sync skipped",
+  "repository.sync.status.authError": "Couldn't reach origin (authentication) — showing local data",
+  "repository.sync.status.networkError": "Couldn't reach origin (network) — showing local data",
+  "repository.sync.status.noRemote": "No remote configured — showing local data",
+  "repository.sync.status.timeout": "Fetch timed out — showing local data",
+  "repository.sync.status.failed": "Fetch failed — showing local data",
 
   // workspace tree sections
   "repository.section.context": "CONTEXT",
@@ -111,6 +124,19 @@ export const repositoryEn = {
 
 export const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.panel.title": "저장소",
+  "repository.sync.button": "동기화",
+  "repository.sync.title": "origin에서 fetch --prune 후 새로고침",
+  "repository.sync.status.local": "로컬 데이터 · 마지막 fetch {age}",
+  "repository.sync.status.neverFetched": "로컬 데이터 · fetch 기록 없음",
+  "repository.sync.status.fetching": "origin에서 가져오는 중…",
+  "repository.sync.status.fresh": "방금 동기화됨 · {pruned}개 정리, {newRefs}개 추가, {updatedRefs}개 갱신",
+  "repository.sync.status.upToDate": "방금 동기화됨 · 최신 상태",
+  "repository.sync.status.skipped": "{age} 동기화됨 · 자동 동기화 건너뜀",
+  "repository.sync.status.authError": "origin에 연결할 수 없음(인증) — 로컬 데이터 표시",
+  "repository.sync.status.networkError": "origin에 연결할 수 없음(네트워크) — 로컬 데이터 표시",
+  "repository.sync.status.noRemote": "원격 저장소가 설정되지 않음 — 로컬 데이터 표시",
+  "repository.sync.status.timeout": "fetch 시간 초과 — 로컬 데이터 표시",
+  "repository.sync.status.failed": "fetch 실패 — 로컬 데이터 표시",
 
   "repository.section.context": "컨텍스트",
   "repository.section.working": "작업",
