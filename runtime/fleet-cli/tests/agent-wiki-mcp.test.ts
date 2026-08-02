@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createSystemPromptBuilder,
   injectAgentCliProfile,
+  isHostSessionToolAllowed,
   type CodexPluginRegistrationCommand,
 } from "@dotobokuri/fleet-admiral";
 import {
@@ -161,6 +162,31 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(systemPrompt).toContain('<fleet section="standing-orders"');
     expect(systemPrompt).not.toContain('<fleet section="tool-guide"');
     expect(roughTokens).toBeLessThanOrEqual(8_500);
+  });
+
+  it("keeps a gateway-filtered host session non-empty and free of carrier tools", async () => {
+    // gateway doctrine 세션은 캐리어 도구 2종을 배제한다. 실 런타임 구성(wiki 도구 동반)에서
+    // 필터 후 스냅샷이 비지 않아야 세션 토큰 발급이 성공하고 gateway CLI가 기동한다.
+    lifecycle = createFleetRuntimeLifecycle();
+    const runtime = await lifecycle.start();
+    const endpoint = await runtime.dedicatedMcpSession.getEndpoint();
+    const tokens = await runtime.dedicatedMcpSession.issueSessionToken({
+      label: "agent:test-gateway",
+      cwd: process.cwd(),
+      includeTool: (toolId) => isHostSessionToolAllowed(toolId, "gateway"),
+    });
+    const fleet = endpoint.servers.find((server) => server.name === "fleet");
+    const token = tokens.find((entry) => entry.name === "fleet")?.token;
+    expect(token).toBeDefined();
+
+    const fleetToolNames = await listMcpTools(fleet!.url, token!);
+    for (const toolId of EXPECTED_CARRIER_TOOL_IDS) {
+      expect(fleetToolNames.has(toolId)).toBe(false);
+    }
+    for (const toolId of EXPECTED_WIKI_TOOL_IDS) {
+      expect(fleetToolNames.has(toolId)).toBe(true);
+    }
+    expect(fleetToolNames.size).toBe(EXPECTED_WIKI_TOOL_IDS.length);
   });
 
   it("migrates root legacy Wiki knowledge into the runtime data directory on first tool use", async () => {
