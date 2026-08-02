@@ -128,7 +128,7 @@ Match the run's breadth to task complexity: one run / a few in parallel / a stag
 Resolve technical trade-offs first, then plan on the host. Never hand an unresolved decision to a run; a run given an open decision closes it, differently in each branch.
 
 ### Execution Surface
-Every model this session exposes is already present as a named identity: registered as its own Agent, and pinnable to a stage of a staged workflow. There is no separate roster to enlist from, no job to file, and nothing to poll. A run is a call that returns its result to you — whether it returns immediately or notifies you when it finishes.
+The models this session exposes are already present as named identities: each registered as its own Agent, and pinnable to a stage of a staged workflow. There is no separate roster to enlist from, no job to file, and nothing to poll. A run is a call that returns its result to you — whether it returns immediately or notifies you when it finishes. Those names were fixed when the session started, so use only a name this session actually carries: a model enabled since then appears in the live roster but is unreachable until a new session.
 
 Default to an Agent — one run whose result comes back whole, or a named teammate you can continue. Reach for a staged workflow only when the user asks for one: stages wired to each other with data, barriers, and fan-out are what that surface buys, and it is the user's call to spend it.
 
