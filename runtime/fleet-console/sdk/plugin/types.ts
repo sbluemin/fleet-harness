@@ -8,7 +8,7 @@ import type { OperationCatalogPlugin, OperationCreateInput, OperationLaunchCatal
 import type { RailPanelDescriptor } from "../rail/types.js";
 import type { RouteHandler, UpgradeHandler } from "../routing/types.js";
 import type { NotificationKindDescriptor } from "../notifications/types.js";
-import type { SettingsSectionDescriptor } from "../settings/browser.js";
+import type { SettingsSectionDescriptor } from "../settings/types.js";
 
 export interface LaunchContext {
   readonly theaterId: string;

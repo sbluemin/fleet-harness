@@ -43,9 +43,9 @@
       "default": "./plugin/node.ts"
     },
     "./settings": {
-      "types": "./settings/browser.tsx",
-      "import": "./settings/browser.tsx",
-      "default": "./settings/browser.tsx"
+      "types": "./settings/types.ts",
+      "import": "./settings/types.ts",
+      "default": "./settings/types.ts"
     },
     "./settings/browser": {
       "types": "./settings/browser.tsx",

@@ -91,7 +91,8 @@ export function createGlobalOptionsStore(deps: CreateGlobalOptionsStoreDeps = {}
   };
 }
 
-export function createEmptyGlobalOptionsData(): GlobalOptionsData {
+// 내부 구현용 심볼 — `./data-dir/settings` 서브패스의 공개 표면에 올리지 않는다.
+function createEmptyGlobalOptionsData(): GlobalOptionsData {
   return {
     version: GLOBAL_OPTIONS_VERSION,
   };
