@@ -72,6 +72,93 @@ describe("Cursor live client-tool Run bridge", () => {
     },
   );
 
+  it("keeps an enabled diagnostic reporter through a disabled tool continuation", async () => {
+    const call = cursorCall("call-diagnostics-on", 22);
+    const stream = new BridgeCursorStream(
+      cursorToolFrames([call]),
+      cursorCompletionFrames("diagnosed Run completed"),
+      1,
+    );
+    const diagnostics: CursorDiagnosticEvent[] = [];
+    const harness = cursorHarness([stream], {
+      diagnostics: (event) => diagnostics.push(event),
+    });
+    const initial = cursorRequest("session-diagnostics-on", "kimi-k3-1m");
+
+    try {
+      await collectCursorResponseWithDiagnostics(harness.adapter, initial, true);
+      await collectCursorResponseWithDiagnostics(
+        harness.adapter,
+        cursorContinuation(initial, [call], [cursorResult(call, "README contents")]),
+        false,
+      );
+
+      expect(diagnostics.filter((event) => event.event === "turn.start")).toHaveLength(2);
+      expect(diagnostics).toContainEqual(expect.objectContaining({
+        event: "bridge.attach",
+        outcome: "exact_match",
+      }));
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("keeps a disabled diagnostic reporter through an enabled tool continuation", async () => {
+    const call = cursorCall("call-diagnostics-off", 23);
+    const stream = new BridgeCursorStream(
+      cursorToolFrames([call]),
+      cursorCompletionFrames("quiet Run completed"),
+      1,
+    );
+    const diagnostics: CursorDiagnosticEvent[] = [];
+    const harness = cursorHarness([stream], {
+      diagnostics: (event) => diagnostics.push(event),
+    });
+    const initial = cursorRequest("session-diagnostics-off", "kimi-k3-1m");
+
+    try {
+      await collectCursorResponseWithDiagnostics(harness.adapter, initial, false);
+      await collectCursorResponseWithDiagnostics(
+        harness.adapter,
+        cursorContinuation(initial, [call], [cursorResult(call, "README contents")]),
+        true,
+      );
+
+      expect(diagnostics).toEqual([]);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("applies a changed diagnostic policy to the next newly opened Run", async () => {
+    const diagnostics: CursorDiagnosticEvent[] = [];
+    const harness = cursorHarness([
+      new BridgeCursorStream(cursorCompletionFrames("quiet Run completed")),
+      new BridgeCursorStream(cursorCompletionFrames("diagnosed Run completed")),
+    ], {
+      diagnostics: (event) => diagnostics.push(event),
+    });
+
+    try {
+      await collectCursorResponseWithDiagnostics(
+        harness.adapter,
+        cursorRequest("session-diagnostics-next-off", "kimi-k3"),
+        false,
+      );
+      expect(diagnostics).toEqual([]);
+
+      await collectCursorResponseWithDiagnostics(
+        harness.adapter,
+        cursorRequest("session-diagnostics-next-on", "kimi-k3"),
+        true,
+      );
+      expect(diagnostics).toContainEqual(expect.objectContaining({ event: "turn.start" }));
+      expect(harness.openedStreams).toBe(2);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
   it("injects an exact parallel batch once and preserves is_error as success.isError", async () => {
     const calls = [cursorCall("call-a", 31), cursorCall("call-b", 32)];
     const stream = new BridgeCursorStream(
@@ -1014,6 +1101,17 @@ async function collectCursorResponse(
   signal?: AbortSignal,
 ): Promise<readonly CanonicalResponseEvent[]> {
   return collectAdapterEvents(await adapter.stream(request, { apiKey, signal }));
+}
+
+async function collectCursorResponseWithDiagnostics(
+  adapter: CursorAdapter,
+  request: CanonicalResponseRequest,
+  diagnosticsEnabled: boolean,
+): Promise<readonly CanonicalResponseEvent[]> {
+  return collectAdapterEvents(await adapter.stream(request, {
+    apiKey: "cursor-test-token",
+    diagnosticsEnabled,
+  }));
 }
 
 async function collectAdapterEvents(

@@ -16,10 +16,16 @@ describe("ai-gateway settings store", () => {
       version: 1,
       models: [{ id: "" }, { id: 7 }, { id: "cursor--auto", effort: "max" }, "kimi--k3"],
       defaultModel: "",
+      cursorDiagnosticsEnabled: true,
     })).toEqual({
       version: 1,
       models: [{ id: "cursor--auto" }],
+      cursorDiagnosticsEnabled: true,
     });
+    expect(normalizeAiGatewaySettings({
+      version: 1,
+      cursorDiagnosticsEnabled: false,
+    })).toEqual({ version: 1 });
   });
 
   it("persists under the terminal plugin storage slot", async () => {
@@ -36,12 +42,25 @@ describe("ai-gateway settings store", () => {
       models: [{ id: "cursor--claude-opus-5" }],
       defaultModel: "cursor--claude-opus-5",
     });
+    await store.writeCursorDiagnosticsEnabled(true);
     expect(await store.read()).toEqual({
       version: 1,
       models: [{ id: "cursor--claude-opus-5" }],
       defaultModel: "cursor--claude-opus-5",
+      cursorDiagnosticsEnabled: true,
+    });
+    await store.write({ models: [{ id: "cursor--auto" }] });
+    expect(await store.read()).toEqual({
+      version: 1,
+      models: [{ id: "cursor--auto" }],
+      cursorDiagnosticsEnabled: true,
     });
     await store.write(undefined);
+    expect(await store.read()).toEqual({
+      version: 1,
+      cursorDiagnosticsEnabled: true,
+    });
+    await store.writeCursorDiagnosticsEnabled(false);
     expect(await store.read()).toEqual({ version: 1 });
   });
 

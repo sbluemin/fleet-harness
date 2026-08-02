@@ -112,9 +112,18 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
     : undefined;
   // 설정 리더가 있으면 노출은 opt-in(켠 모델만)이다. 미주입(테스트 하네스 등)일 때만
   // 전체 카탈로그로 동작한다 — Console 배선(routes.ts)은 항상 리더를 주입한다.
-  const gatewaySelection = async () => (deps.readAiGatewaySettings
-    ? resolveAiGatewaySelection(await deps.readAiGatewaySettings())
-    : undefined);
+  const gatewaySettings = async (): Promise<AiGatewayStoredSettings | undefined> => (
+    deps.readAiGatewaySettings ? deps.readAiGatewaySettings() : undefined
+  );
+  const cursorDiagnosticsEnabled = async (): Promise<boolean | undefined> => {
+    if (!deps.readAiGatewaySettings) return undefined;
+    try {
+      return (await deps.readAiGatewaySettings()).cursorDiagnosticsEnabled === true;
+    } catch {
+      // 진단 설정 판독 실패는 모델 요청을 막지 않고 안전한 기본값 Off로 단락한다.
+      return false;
+    }
+  };
 
   const handle: RouteHandler = async ({ req, res, pathname }) => {
     // Claude Code는 base URL 뒤에 자기 경로를 붙인다. 연결 프로브는 /api/hello다.
@@ -130,7 +139,10 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
         return true;
       }
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify(buildAnthropicModelList((await gatewaySelection())?.models ?? GATEWAY_MODELS)));
+      const settings = await gatewaySettings();
+      res.end(JSON.stringify(buildAnthropicModelList(
+        settings ? resolveAiGatewaySelection(settings).models : GATEWAY_MODELS,
+      )));
       return true;
     }
     if (!pathname.endsWith("/v1/messages")) return false;
@@ -229,9 +241,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
         ?? (target.provider === "cursor"
           ? ownedCursorGateway!
           : createGatewayFor(target, chatgptAccountId));
+      const diagnosticsEnabled = target.provider === "cursor"
+        ? await cursorDiagnosticsEnabled()
+        : undefined;
       const upstream = await gateway.stream(body, {
         apiKey: credential,
         ...(claudeContextWindow ? { contextWindow: claudeContextWindow } : {}),
+        ...(diagnosticsEnabled === undefined ? {} : { diagnosticsEnabled }),
         signal: controller.signal,
         model: upstreamModelId(target),
         ...(target.serviceTier ? { serviceTier: target.serviceTier } : {}),

@@ -232,6 +232,71 @@ describe("upstream credential", () => {
     expect(streamSpy.mock.calls[0]?.[1]).not.toHaveProperty("reasoningEfforts");
   });
 
+  it.each([
+    [{ version: 1 } satisfies AiGatewayStoredSettings, false],
+    [{ version: 1, cursorDiagnosticsEnabled: true } satisfies AiGatewayStoredSettings, true],
+  ])("passes stored Cursor diagnostics opt-in %s to newly started traces", async (settings, expected) => {
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({
+      gateway,
+      readAiGatewaySettings: aiGatewaySettingsStub(settings),
+      readAuth,
+      readCursorToken: () => "cursor-subscription-token",
+    });
+
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--cursor--grok-4.5-fast",
+    }));
+
+    expect(streamSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      diagnosticsEnabled: expected,
+    }));
+  });
+
+  it("preserves the package default when no Console settings reader is injected", async () => {
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({
+      gateway,
+      readAuth,
+      readCursorToken: () => "cursor-subscription-token",
+    });
+
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--cursor--grok-4.5-fast",
+    }));
+
+    expect(streamSpy.mock.calls[0]?.[1]).not.toHaveProperty("diagnosticsEnabled");
+  });
+
+  it("fails closed for diagnostics without blocking Cursor when settings cannot be read", async () => {
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({
+      gateway,
+      readAiGatewaySettings: async () => { throw new Error("settings unavailable"); },
+      readAuth,
+      readCursorToken: () => "cursor-subscription-token",
+    });
+    const res = response();
+
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--cursor--grok-4.5-fast",
+    }));
+
+    expect(res.status).toBe(200);
+    expect(streamSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      diagnosticsEnabled: false,
+    }));
+  });
+
   it("projects Cursor usage from the registry when Claude strips the 1M marker", async () => {
     const gateway = stubGateway();
     const streamSpy = vi.spyOn(gateway, "stream");

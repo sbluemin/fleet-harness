@@ -809,6 +809,7 @@ function AgentCliSection() {
       </section>
       <ModelAuthBlock />
       <AiGatewayModelsCard />
+      <AiGatewayDiagnosticsCard />
     </>
   );
 }
@@ -828,6 +829,41 @@ const AI_GATEWAY_PROVIDER_SUB_KEYS = {
 function formatAiGatewayContextWindow(contextWindow: number | null): string | null {
   if (contextWindow === null) return null;
   return contextWindow >= 1_000_000 ? "1M" : `${Math.round(contextWindow / 1000)}K`;
+}
+
+function AiGatewayDiagnosticsCard() {
+  const t = getT(useTerminalLocale());
+  const settings = useSystemPromptSettingsStore();
+  const state = settings.state;
+  const saving = settings.savingField !== null;
+
+  if (!state) {
+    return (
+      <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayDiagnostics")}>
+        <p className="global-settings-resp-title">{t("terminal.settings.aiGatewayDiagnostics")}</p>
+        <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayDiagnostics")}>
+      {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
+      <SettingToggleRow
+        title={t("terminal.settings.aiGatewayDiagnostics")}
+        help={t("terminal.settings.aiGatewayDiagnosticsHelp")}
+        onLabel={t("terminal.settings.enabled")}
+        offLabel={t("terminal.settings.off")}
+        value={state.cursorDiagnosticsEnabled}
+        disabled={saving}
+        onToggle={() => void setSystemPromptSettingsField(
+          "cursorDiagnosticsEnabled",
+          !state.cursorDiagnosticsEnabled,
+        )}
+      />
+      <p className="global-settings-foot">{t("terminal.settings.aiGatewayDiagnosticsFoot")}</p>
+    </section>
+  );
 }
 
 function AiGatewayModelsCard() {

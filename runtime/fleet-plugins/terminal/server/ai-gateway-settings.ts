@@ -21,6 +21,8 @@ export interface AiGatewayStoredSettings {
   readonly version: 1;
   readonly models?: readonly { readonly id: string }[];
   readonly defaultModel?: string;
+  /** 부재/false는 기본 Off. 저장 정규형은 opt-in인 true만 보존한다. */
+  readonly cursorDiagnosticsEnabled?: boolean;
 }
 
 export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSettings {
@@ -38,6 +40,7 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
     version: 1,
     ...(models.length > 0 ? { models } : {}),
     ...(defaultModel !== undefined ? { defaultModel } : {}),
+    ...(value.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
   };
 }
 
@@ -46,7 +49,10 @@ let aiGatewaySettingsWriteTail: Promise<void> = Promise.resolve();
 
 export interface AiGatewaySettingsStore {
   readonly read: () => Promise<AiGatewayStoredSettings>;
+  /** 진단 opt-in은 보존하고 모델 선별만 교체한다. */
   readonly write: (value: AiGatewayUpdateValue | undefined) => Promise<AiGatewayStoredSettings>;
+  /** 모델 선별은 보존하고 진단 opt-in만 갱신한다. */
+  readonly writeCursorDiagnosticsEnabled: (enabled: boolean) => Promise<AiGatewayStoredSettings>;
 }
 
 export interface AiGatewayUpdateValue {
@@ -55,12 +61,27 @@ export interface AiGatewayUpdateValue {
 }
 
 export function createAiGatewaySettingsStore(storage: FleetPluginStorageHost, pluginId: string): AiGatewaySettingsStore {
+  const read = async (): Promise<AiGatewayStoredSettings> => normalizeAiGatewaySettings(
+    await storage.readJson(pluginId, AI_GATEWAY_SETTINGS_STORAGE_KEY),
+  );
   return {
-    read: async () => normalizeAiGatewaySettings(
-      await storage.readJson(pluginId, AI_GATEWAY_SETTINGS_STORAGE_KEY),
-    ),
+    read,
     write: (value) => serializeAiGatewaySettingsWrite(async () => {
-      const next = normalizeAiGatewaySettings({ version: 1, ...(value ?? {}) });
+      const current = await read();
+      const next = normalizeAiGatewaySettings({
+        version: 1,
+        ...(current.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
+        ...(value ?? {}),
+      });
+      await storage.writeJson(pluginId, AI_GATEWAY_SETTINGS_STORAGE_KEY, next);
+      return next;
+    }),
+    writeCursorDiagnosticsEnabled: (enabled) => serializeAiGatewaySettingsWrite(async () => {
+      const current = await read();
+      const next = normalizeAiGatewaySettings({
+        ...current,
+        cursorDiagnosticsEnabled: enabled,
+      });
       await storage.writeJson(pluginId, AI_GATEWAY_SETTINGS_STORAGE_KEY, next);
       return next;
     }),
