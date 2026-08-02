@@ -82,26 +82,31 @@ describe("gateway loadout", () => {
     expect(loadout.providers.map((entry) => entry.id)).toContain("claude");
   });
 
-  it("keeps the parent baseline even when no allowance could be read at all", () => {
+  it("keeps the parent allowance listed even when nothing could be read at all", () => {
     // 쿼터 조회가 실패하면 claude는 노출 프로바이더가 아니어서 목록에서 통째로 빠질 수
     // 있다. 그러면 호스트는 "읽지 못했다"와 "그런 예산이 없다"를 구별하지 못한다.
     const loadout = buildGatewayLoadout({ exposed: [model("kimi--k3")] });
     const parent = loadout.providers.find((entry) => entry.id === "claude");
     expect(parent?.quota.status).toBe("unsupported");
-    expect(parent?.isInheritedBaseline).toBe(true);
   });
 
-  it("moves the inherited baseline onto the session default model's provider", () => {
-    // 세션 기본 모델이 지정되면 런치가 그것을 ANTHROPIC_MODEL로 심으므로, 고정하지 않은
-    // Phase는 부모 구독이 아니라 그 모델의 예산을 소모한다.
-    const loadout = buildGatewayLoadout({
+  it("does not claim which allowance an unpinned stage spends", () => {
+    // 세션의 시작 모델은 런치 시점 환경으로 정해지고 세션 안에서 바뀔 수 있는데, 이
+    // 도구는 런타임당 한 번 등록되어 어느 세션이 무엇으로 떴는지 볼 수 없다. 설정값을
+    // 기준선으로 발표하면 이미 떠 있는 세션과 어긋난 답을 자신 있게 내놓게 된다.
+    const settled = buildGatewayLoadout({
       exposed: [model("kimi--k3"), model("cursor--grok-4.5-fast")],
       defaultModel: model("kimi--k3"),
     });
-    const baselines = loadout.providers.filter((entry) => entry.isInheritedBaseline);
-    expect(baselines.map((entry) => entry.id)).toEqual(["kimi"]);
-    // 부모 구독은 기준선이 아니어도 남는다 — 세션 중 모델을 되돌리면 다시 소모된다.
-    expect(loadout.providers.map((entry) => entry.id)).toContain("claude");
+    for (const provider of settled.providers) {
+      expect(Object.keys(provider)).toEqual(["id", "quota"]);
+    }
+    // 기본 모델이 무엇이든 프로바이더 목록 자체는 달라지지 않는다.
+    const undefaulted = buildGatewayLoadout({
+      exposed: [model("kimi--k3"), model("cursor--grok-4.5-fast")],
+    });
+    expect(settled.providers.map((entry) => entry.id))
+      .toEqual(undefaulted.providers.map((entry) => entry.id));
   });
 
   it("moves the revision when exposure changes but not when a reading does", () => {
