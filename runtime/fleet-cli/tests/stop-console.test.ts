@@ -9,10 +9,14 @@ interface StringWriter {
   toString(): string;
 }
 
-const resolveMock = vi.hoisted(() => vi.fn<(specifier: string) => string>());
+const resolvePathBinaryMock = vi.hoisted(() =>
+  vi.fn<(command: string, env: NodeJS.ProcessEnv) => { bin: string; prefixArgs: readonly string[] } | undefined>(),
+);
 
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
-vi.mock("node:module", () => ({ createRequire: () => ({ resolve: resolveMock }) }));
+vi.mock("@dotobokuri/core-agent", () => ({
+  resolvePathBinary: (...args: Parameters<typeof resolvePathBinaryMock>) => resolvePathBinaryMock(...args),
+}));
 
 const { stopRunningConsoleBeforeUpdate } = await import("../src/update/stop-console.js");
 const mockedSpawn = vi.mocked(spawn);
@@ -26,9 +30,32 @@ describe("stopRunningConsoleBeforeUpdate", () => {
     vi.useRealTimers();
   });
 
-  it("stops the running console and announces it before updating", async () => {
+  it("stops the running console via the PATH fleet-console binary before updating", async () => {
     const child = makeChild();
-    resolveMock.mockReturnValue("/global/@dotobokuri/fleet-console/dist/cli.mjs");
+    resolvePathBinaryMock.mockReturnValue({ bin: "/usr/local/bin/fleet-console", prefixArgs: [] });
+    mockedSpawn.mockImplementation(() => {
+      queueMicrotask(() => child.emit("exit", 0, null));
+      return child as ReturnType<typeof spawn>;
+    });
+    const io = createIo();
+
+    await stopRunningConsoleBeforeUpdate(io);
+
+    expect(resolvePathBinaryMock).toHaveBeenCalledWith("fleet-console", process.env);
+    expect(mockedSpawn).toHaveBeenCalledWith(
+      "/usr/local/bin/fleet-console",
+      ["stop"],
+      { stdio: "ignore" },
+    );
+    expect(io.stdout.toString()).toContain("Stopping the running Fleet Console");
+  });
+
+  it("preserves Windows shim prefix args when stopping fleet-console", async () => {
+    const child = makeChild();
+    resolvePathBinaryMock.mockReturnValue({
+      bin: "C:\\Windows\\System32\\cmd.exe",
+      prefixArgs: ["/d", "/s", "/c", "call", "C:\\Users\\me\\AppData\\Roaming\\npm\\fleet-console.cmd"],
+    });
     mockedSpawn.mockImplementation(() => {
       queueMicrotask(() => child.emit("exit", 0, null));
       return child as ReturnType<typeof spawn>;
@@ -38,17 +65,14 @@ describe("stopRunningConsoleBeforeUpdate", () => {
     await stopRunningConsoleBeforeUpdate(io);
 
     expect(mockedSpawn).toHaveBeenCalledWith(
-      process.execPath,
-      ["/global/@dotobokuri/fleet-console/dist/cli.mjs", "stop"],
+      "C:\\Windows\\System32\\cmd.exe",
+      ["/d", "/s", "/c", "call", "C:\\Users\\me\\AppData\\Roaming\\npm\\fleet-console.cmd", "stop"],
       { stdio: "ignore" },
     );
-    expect(io.stdout.toString()).toContain("Stopping the running Fleet Console");
   });
 
-  it("skips silently when fleet-console cannot be resolved", async () => {
-    resolveMock.mockImplementation(() => {
-      throw new Error("Cannot find module '@dotobokuri/fleet-console/cli'");
-    });
+  it("skips silently when fleet-console is not on PATH", async () => {
+    resolvePathBinaryMock.mockReturnValue(undefined);
     const io = createIo();
 
     await stopRunningConsoleBeforeUpdate(io);
@@ -59,7 +83,7 @@ describe("stopRunningConsoleBeforeUpdate", () => {
 
   it("continues without throwing when the stop process errors", async () => {
     const child = makeChild();
-    resolveMock.mockReturnValue("/path/cli.mjs");
+    resolvePathBinaryMock.mockReturnValue({ bin: "/usr/local/bin/fleet-console", prefixArgs: [] });
     mockedSpawn.mockImplementation(() => {
       queueMicrotask(() => child.emit("error", new Error("spawn failed")));
       return child as ReturnType<typeof spawn>;
@@ -73,7 +97,7 @@ describe("stopRunningConsoleBeforeUpdate", () => {
   it("kills the stop process and continues after the timeout", async () => {
     vi.useFakeTimers();
     const child = makeChild();
-    resolveMock.mockReturnValue("/path/cli.mjs");
+    resolvePathBinaryMock.mockReturnValue({ bin: "/usr/local/bin/fleet-console", prefixArgs: [] });
     mockedSpawn.mockReturnValue(child as ReturnType<typeof spawn>);
     const io = createIo();
 
