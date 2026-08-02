@@ -2,7 +2,8 @@ import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 
-import { createCarrierResultReminderRouter, createDelayedPtyWriter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliIds, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
+import { buildGatewayModelsToolSpec, createCarrierResultReminderRouter, createDelayedPtyWriter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliIds, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
+import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { getCarrierConfig, resolveAgentCliType } from "@dotobokuri/fleet-carriers";
 import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -17,6 +18,8 @@ import { buildAgentCliLaunchKinds } from "./agent-api/agent-cli-launch-kinds.js"
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-api/agent-cli-launch-metadata.js";
 import { AGENT_CLI_COMMANDS, createAgentCliPathStore, createCarrierAgentCliLaunchResolver, resolveAgentCliBinary } from "./agent-api/agent-cli-paths.js";
 import type { AgentCliDiagnostics } from "./agent-api/agent-cli-types.js";
+import { readConsoleQuotaSnapshot } from "./agent-api/gateway-loadout.js";
+import { resolveAiGatewaySelection } from "./ai-gateway-settings.js";
 import type { AiGatewayLaunchBinding } from "./agent-api/launch.js";
 import type { AiGatewayStoredSettings } from "./ai-gateway-settings.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
@@ -76,6 +79,26 @@ export function buildAgentLaunchKindBackfillPatch(operation: AgentLaunchKindBack
   return { payload: { ...operation.payload, launchKindId: cliId } };
 }
 
+// 로스터는 호출 시점에 해석한다. 노출 선별은 세션이 도는 동안에도 사용자가 바꿀 수 있고,
+// 등록 시점에 고정하면 호스트가 이미 꺼진 모델을 오류 없이 계속 배치하게 된다.
+function buildGatewayLoadoutTools(deps: AgentRouteDeps): readonly AgentToolSpec[] {
+  const readAiGatewaySettings = deps.readAiGatewaySettings;
+  if (!readAiGatewaySettings) return [];
+  const aiGateway = deps.aiGateway;
+  return [buildGatewayModelsToolSpec({
+    readSelection: async () => {
+      const selection = resolveAiGatewaySelection(await readAiGatewaySettings());
+      return {
+        models: selection.models,
+        ...(selection.defaultModel ? { defaultModel: selection.defaultModel } : {}),
+      };
+    },
+    ...(aiGateway
+      ? { readQuota: () => readConsoleQuotaSnapshot(aiGateway.origin()) }
+      : {}),
+  })];
+}
+
 function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
   const wikiToolSpecs = createTerminalWikiToolSpecs(ctx.host.paths.fleetDataDir);
   const agentCliPathStore = createAgentCliPathStore(ctx.host.storage, ctx.pluginId);
@@ -87,6 +110,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     },
     workspaceChangeScanner: createWorkspaceChangeScanner(),
     wikiToolSpecs,
+    extraAgentTools: buildGatewayLoadoutTools(deps),
   });
   runtime.carrierRuntime.setAgentCliLaunchResolver(createCarrierAgentCliLaunchResolver(readAgentCliPaths));
   const observability = createConsoleObservabilityStore({

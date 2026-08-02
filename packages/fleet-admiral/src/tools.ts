@@ -5,6 +5,7 @@ import {
 } from "@dotobokuri/fleet-carriers";
 import type { AgentToolSpec, McpToolRegistry } from "@dotobokuri/core-agent";
 
+import { GATEWAY_MODELS_TOOL_ID } from "./ai-gateway/gateway-models-tool.js";
 import type { AdmiralDoctrine } from "./protocols/doctrine.js";
 
 export const FLEET_MCP_SERVER_NAME = "fleet";
@@ -15,9 +16,17 @@ export const CARRIER_OPERATION_TOOL_IDS = new Set<string>([
   "carrier_jobs",
 ]);
 
+// 게이트웨이 로스터 도구. classic doctrine 세션은 게이트웨이를 거치지 않으므로
+// 여기서 얻은 모델 id를 그대로 쓰면 상류가 알지 못하는 이름이 되어 실패한다.
+export const GATEWAY_DOCTRINE_TOOL_IDS = new Set<string>([
+  GATEWAY_MODELS_TOOL_ID,
+]);
+
 /** 해당 doctrine 호스트 세션이 이 도구를 받아야 하는지 판정한다. */
 export function isHostSessionToolAllowed(toolId: string, doctrine: AdmiralDoctrine): boolean {
-  return doctrine === "gateway" ? !CARRIER_OPERATION_TOOL_IDS.has(toolId) : true;
+  return doctrine === "gateway"
+    ? !CARRIER_OPERATION_TOOL_IDS.has(toolId)
+    : !GATEWAY_DOCTRINE_TOOL_IDS.has(toolId);
 }
 
 // 모든 캐리어에 글로벌로 노출되는 무조건 읽기 전용 Wiki 도구.

@@ -45,6 +45,30 @@ export {
   validateKimiAuthKey,
 } from "./ai-gateway/auth.js";
 
+// AI Gateway 모델 로드아웃 — 호스트가 Phase에 모델/강도를 배치할 때 참조하는 로스터
+export {
+  GATEWAY_MODELS_TOOL_ID,
+  buildGatewayModelsToolSpec,
+  type GatewayModelsSelection,
+  type GatewayModelsToolDeps,
+} from "./ai-gateway/gateway-models-tool.js";
+export {
+  buildGatewayLoadout,
+  type GatewayLoadout,
+  type GatewayLoadoutModel,
+  type GatewayLoadoutProvider,
+  type GatewayProviderQuota,
+  type GatewayQuotaSnapshot,
+  type GatewayQuotaWindow,
+} from "./ai-gateway/model-loadout.js";
+export {
+  declaredRoleFitIdentities,
+  gatewayRoleFit,
+  type GatewayRoleAxis,
+  type GatewayRoleFit,
+  type GatewayRoleFitEntry,
+} from "./ai-gateway/role-fit.js";
+
 // Agent CLI 프로파일/레지스트리 해석기
 export {
   type AgentCliMetadata,
