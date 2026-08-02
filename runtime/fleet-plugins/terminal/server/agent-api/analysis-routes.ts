@@ -11,7 +11,7 @@ import { createDefaultAgentCliDetector } from "./agent-cli-detect.js";
 import { agentCliCommandForId, buildAgentCliClientEnvOverlay, resolveAgentCliBinary } from "./agent-cli-paths.js";
 import { AnalysisRegistry } from "./analysis-registry.js";
 import { ANALYSIS_ERROR_CODES, analysisError, buildAnalysisCatalog, isAnalysisSelection, isMessageBody, type AnalysisCatalog, type AnalysisEvent } from "./analysis-types.js";
-import { readProviderSession } from "./provider-session.js";
+import { readAnalysisProviderSession } from "./provider-session.js";
 
 const AGENT_OPERATION_TYPE = "agent";
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
@@ -433,7 +433,7 @@ async function handleStart(
 }
 
 async function resolveOperationTranscript(operation: OperationNode): Promise<{ readonly captureFound: boolean; readonly transcriptPath: string | null }> {
-  const providerSession = readProviderSession(operation.payload);
+  const providerSession = readAnalysisProviderSession(operation.payload?.providerSession);
   if (!providerSession) return { captureFound: false, transcriptPath: null };
   const transcriptPath = providerSession.transcriptPath
     ? await resolveTranscriptPath(providerSession.transcriptPath, operation.ts.createdAt)

@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { validateAgentCliPathForSave } from "../server/agent-api/agent-cli-detect.js";
 import {
   AGENT_CLI_PATHS_STORAGE_KEY,
+  agentCliCommandForId,
   applyAgentCliPathEnvOverlay,
   createAgentCliPathStore,
   createCarrierAgentCliLaunchResolver,
@@ -190,7 +191,19 @@ describe("Agent CLI launch env overlay", () => {
 });
 
 describe("Carrier Agent CLI launch resolution", () => {
+  it("resolves Codex from PATH only for the preserved Carrier backend", async () => {
+    const directory = createTemporaryDirectory();
+    createFileAt(directory, "codex");
+    const resolver = createCarrierAgentCliLaunchResolver(
+      async () => ({}),
+      { PATH: directory },
+    );
 
+    await expect(resolver("codex", { env: {} })).resolves.toEqual({
+      cliPath: undefined,
+    });
+    expect(agentCliCommandForId("codex")).toBeNull();
+  });
 
   it("passes only CLAUDE_BIN when a Claude user path needs the bridge override", async () => {
     const resolver = createCarrierAgentCliLaunchResolver(

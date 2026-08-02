@@ -61,7 +61,7 @@ describe("migrateLegacyCaptures", () => {
     expect(fs.existsSync(path.join(consoleDataDir, "captures"))).toBe(false);
   });
 
-  it("retains a removed-provider capture for a live Operation without injecting payload", () => {
+  it("migrates a removed-provider capture into analysis-readable durable state", () => {
     const { consoleDataDir, operations, get, patchCalls } = createHarness([
       makeOperation("op-a", {}),
     ]);
@@ -74,9 +74,14 @@ describe("migrateLegacyCaptures", () => {
 
     migrateLegacyCaptures({ consoleDataDir, operations });
 
-    expect(patchCalls).toHaveLength(0);
-    expect(get("op-a")?.payload.providerSession).toBeUndefined();
-    expect(fs.existsSync(path.join(consoleDataDir, "captures", "op-a.json"))).toBe(true);
+    expect(patchCalls).toHaveLength(1);
+    expect(get("op-a")?.payload.providerSession).toEqual({
+      provider: "codex",
+      sessionId: "provider-session-secret",
+      transcriptPath: "/secret/transcript.jsonl",
+      capturedAt: "2026-06-16T00:00:00.000Z",
+    });
+    expect(fs.existsSync(path.join(consoleDataDir, "captures"))).toBe(false);
   });
 
   it("deletes orphan capture files without injecting payload", () => {
@@ -200,6 +205,33 @@ describe("migrateLegacyCaptures", () => {
     expect(fs.existsSync(path.join(consoleDataDir, "captures", "op-deferred.json"))).toBe(true);
   });
 
+  it("migrates a retained capture after its tombstoned Operation is restored", () => {
+    const tombstoned = makeOperation("op-deferred", {});
+    const { consoleDataDir, operations, get, patchCalls, restore } = createHarness([]);
+    writeCapture(consoleDataDir, "op-deferred", {
+      provider: "codex",
+      sessionId: "provider-session-secret",
+      transcriptPath: "/secret/transcript.jsonl",
+      capturedAt: "2026-06-16T00:00:00.000Z",
+    });
+
+    migrateLegacyCaptures({
+      consoleDataDir,
+      operations,
+      tombstonedOperations: [tombstoned],
+    });
+    restore(tombstoned);
+    migrateLegacyCaptures({ consoleDataDir, operations });
+
+    expect(patchCalls).toHaveLength(1);
+    expect(get("op-deferred")?.payload.providerSession).toMatchObject({
+      provider: "codex",
+      sessionId: "provider-session-secret",
+      transcriptPath: "/secret/transcript.jsonl",
+    });
+    expect(fs.existsSync(path.join(consoleDataDir, "captures"))).toBe(false);
+  });
+
   it("deletes captures/ when a tombstoned operation already has providerSession", () => {
     const { consoleDataDir, operations, patchCalls } = createHarness([]);
     writeCapture(consoleDataDir, "op-deferred", {
@@ -297,6 +329,7 @@ function createHarness(initial: OperationNode[]) {
     operations,
     patchCalls,
     get: (id: string) => nodes.get(id) ?? null,
+    restore: (node: OperationNode) => nodes.set(node.id, node),
   };
 }
 
