@@ -13,7 +13,7 @@ import {
   SENTINEL_METADATA,
   VANGUARD_DEFAULTS,
   VANGUARD_METADATA,
-} from "./personas/index.js";
+} from "./personas/catalog.js";
 
 interface DefaultCarrierRegistration {
   readonly defaults: CarrierPersonaDefaults;

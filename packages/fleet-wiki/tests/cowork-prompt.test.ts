@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { COWORK_SYSTEM_PROMPT } from "../src/cowork/prompt.js";
+import { COWORK_SYSTEM_PROMPT } from "../src/cowork/store.js";
 
 describe("Fleet Wiki Cowork prompt contract", () => {
   it("identifies its subject, authority, limits, and relationship to the host and user", () => {

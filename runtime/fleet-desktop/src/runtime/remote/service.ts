@@ -1,7 +1,7 @@
 import { RemoteRuntimeError } from "./contracts.js";
 import { inspectRemoteLock, type RemoteConsoleLock, type RemoteLockOwner } from "./lock.js";
 import type { OpenSshAdapter } from "./ssh.js";
-import type { ValidatedSshTarget } from "./target.js";
+import type { ValidatedSshTarget } from "./contracts.js";
 
 export interface RemoteServiceLaunch {
   readonly serviceRootRel: string;

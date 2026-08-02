@@ -6,8 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as sdkPluginBrowser from "@fleet-console/sdk/plugin/browser";
 
-import { createPluginClientAssets } from "../core/host/plugin-host/client-assets.js";
-import type { DiscoveredFleetPlugin } from "../core/host/plugin-host/types.js";
+import { createPluginClientAssets } from "../core/host/plugin-host/plugin-host.js";
+import type { DiscoveredFleetPlugin } from "../core/host/plugin-host/plugin-host.js";
 
 const tempDirs: string[] = [];
 

@@ -16,7 +16,7 @@ import type {
   AcpToolCallUpdate,
 } from '../types/acp.js';
 import type { CodexJsonValue, CodexUserInput } from '../types/codex-app-server.js';
-import type { ConnectionState, StructuredLogEntry } from '../types/common.js';
+import type { ConnectionState, StructuredLogEntry } from '../types/config.js';
 import type {
   ConnectResult,
   ConnectionInfo,
@@ -32,8 +32,8 @@ import {
   mcpServerConfigsToCodexArgs,
 } from '../config/CliConfigs.js';
 import { cleanEnvironment } from '../utils/env.js';
-import { getProviderModels } from '../models/ModelRegistry.js';
-import type { ProviderModelInfo } from '../models/schemas.js';
+import { getProviderModels } from '../models/registry.js';
+import type { ProviderModelInfo } from '../models/registry.js';
 
 interface CodexPendingOverrides {
   model?: CodexModelSelection;

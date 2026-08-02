@@ -6,7 +6,7 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OperationSearch } from "../core/client/src/components/operation-search.js";
-import { takeKeyboardShortcutsReturnFocus } from "../core/client/src/keyboard-shortcuts-return-focus.js";
+import { takeKeyboardShortcutsReturnFocus } from "../core/client/src/focus-guards.js";
 import { useConsoleState } from "../core/client/src/hooks/use-store.js";
 import { getSideBarState, setSideBarCollapsed } from "../core/client/src/sidebar/operations-side-bar-store.js";
 import { closeOperationSearch, getState, openOperationSearch, setState, toggleOperationSearch } from "../core/client/src/store.js";

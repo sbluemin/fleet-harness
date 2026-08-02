@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 
-import { FLEET_WIKI_BOUNDARY_GUIDELINES, wrapWikiEntryBoundary } from "../boundaries.js";
+import { FLEET_WIKI_BOUNDARY_GUIDELINES, wrapWikiEntryBoundary } from "../store.js";
 import { runDryDock } from "../drydock.js";
 import { formatLogEntry, parseLog } from "../log.js";
 import { listQueue } from "../patch.js";

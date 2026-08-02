@@ -13,7 +13,7 @@ import {
 import type { FeatureTour } from "../core/client/src/feature-tour-catalog.js";
 import { FEATURE_TOURS } from "../core/client/src/feature-tour-catalog.js";
 import { CORE_MESSAGES } from "../core/client/src/i18n/index.js";
-import { sanitizeSeenFeatureTours } from "../core/host/console-settings.js";
+import { sanitizeSeenFeatureTours } from "../core/host/settings/settings-domain.js";
 
 const TOUR: FeatureTour = {
   id: "example",

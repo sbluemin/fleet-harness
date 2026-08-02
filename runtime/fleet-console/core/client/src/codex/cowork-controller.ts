@@ -15,7 +15,7 @@ import { diffDraftBlocks, diffDraftLines } from "./cowork-diff.js";
 import type { DraftLine } from "./cowork-diff.js";
 import { CoworkSettingsSelect } from "./cowork-settings-select.js";
 import { entryPath } from "./router.js";
-import { escapeAttribute, escapeHtml } from "./utils/html.js";
+import { escapeAttribute, escapeHtml } from "./utils.js";
 
 function resolveActiveLocale() {
   const preference = getGlobalSettingsStoreState().state?.language ?? "auto";

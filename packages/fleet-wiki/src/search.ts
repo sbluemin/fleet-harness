@@ -1,9 +1,9 @@
 import path from "node:path";
 
-import { wrapWikiEntryBoundary } from "./boundaries.js";
-import { normalizeLimit, normalizeTopic } from "./internal-utils.js";
-import { collectRetrievalLexicalMatches, tokenizeRetrievalTopic } from "./lexical.js";
-import { buildBacklinksIndex } from "./links.js";
+import { wrapWikiEntryBoundary } from "./store.js";
+import { normalizeLimit, normalizeTopic } from "./briefing.js";
+import { collectRetrievalLexicalMatches, tokenizeRetrievalTopic } from "./briefing.js";
+import { buildBacklinksIndex } from "./store.js";
 import { listWiki, loadIndex } from "./store.js";
 import type { BriefingHit, MemoryPaths, WikiEntry, WikiEntryStatus } from "./types.js";
 

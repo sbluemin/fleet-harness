@@ -24,8 +24,8 @@ import type { MenuPanel } from "../menu/panel-stack.js";
 import { maxVisibleWidth, padEndVisible } from "../layout.js";
 import { centerText } from "../welcome.js";
 
-import { buildModelEffortTransition } from "./model-flow.js";
-import { getAvailableModels, getModelEffort } from "./model-info.js";
+import { buildModelEffortTransition } from "./types.js";
+import { getAvailableModels, getModelEffort } from "./types.js";
 import type {
   CliModelInfo,
   ModelEffort,

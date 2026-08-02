@@ -53,8 +53,8 @@ import {
   setTriageActive,
 } from "../core/client/src/canvas/triage-store.js";
 import type { OperationNode } from "../core/client/src/types.js";
-import { TriageClearPlate } from "../core/client/src/canvas/triage-clear-plate.js";
-import { triageStageGeometryFor } from "../core/client/src/canvas/triage-geometry.js";
+import { TriageClearPlate } from "../core/client/src/canvas/canvas-overlays.js";
+import { triageStageGeometryFor } from "../core/client/src/canvas/coordinates.js";
 
 const THEATER_ID = "theater-a";
 const OPERATIONS = [operation("picked", 1), operation("next", 2)];

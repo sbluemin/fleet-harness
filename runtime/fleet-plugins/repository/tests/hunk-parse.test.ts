@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { highlightEscapedDiffCode, parseHunk } from "../client/hunk-parse.js";
+import { highlightEscapedDiffCode, parseHunk } from "../client/repository-parsers.js";
 
 const SAMPLE_UNIFIED = [
   "diff --git a/src/foo.ts b/src/foo.ts",

@@ -1,6 +1,6 @@
 import { matchesKey } from "../../controls/index.js";
 
-import type { RenameState } from "./render-types.js";
+import type { RenameState } from "./types.js";
 import type { OverlayState } from "./types.js";
 
 export interface CarrierStatusInputController {

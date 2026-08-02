@@ -6,10 +6,23 @@
  */
 
 import type { AdmiralDoctrine } from "../doctrine.js";
-import type { StandingOrder } from "./types.js";
 
 import { STANDING_ORDERS_CLASSIC } from "./classic.js";
 import { STANDING_ORDERS_GATEWAY } from "./gateway.js";
+
+// ─────────────────────────────────────────────────────────
+// 타입
+// ─────────────────────────────────────────────────────────
+
+/** Standing Order — 프로토콜 전환과 무관하게 항상 시스템 프롬프트에 포함되는 지침 */
+export interface StandingOrder {
+  /** 고유 식별자 (예: "carrier-operations-policy", "deep-dive") */
+  id: string;
+  /** 표시 이름 (예: "Carrier Operations Policy", "Deep Dive") */
+  name: string;
+  /** 프롬프트 본문 */
+  prompt: string;
+}
 
 // ─────────────────────────────────────────────────────────
 // 함수

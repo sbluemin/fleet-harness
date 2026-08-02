@@ -4,7 +4,7 @@ import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
 import type { DiffFileEntry, DiffFileMode, DiffHunkResult } from "../server/types.js";
 import { getT } from "./i18n/index.js";
-import { highlightEscapedDiffCode, parseHunk } from "./hunk-parse.js";
+import { highlightEscapedDiffCode, parseHunk } from "./repository-parsers.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 

@@ -26,12 +26,12 @@ import {
 import {
   runCodexCommand,
   withFleetMarketplaceLock,
-} from "./agent-cli/host-hooks.js";
+} from "./runtime/host-hooks.js";
 import type { FleetCliOptions } from "./cli-args.js";
 import { createMissionControlController } from "./mission-control/controller.js";
 import { discoverMissionControlCounts } from "./mission-control/loaded-counts.js";
 import { createSessionOptionsRuntime } from "./mission-control/options/runtime.js";
-import type { SessionOptions } from "./mission-control/options/types.js";
+import type { SessionOptions } from "./mission-control/options/runtime.js";
 import type { CreateMissionControlControllerOptions } from "./mission-control/types.js";
 import { createMissionBridgeController } from "./mission-bridge/controller.js";
 import { readFleetCliRelease } from "./release.js";

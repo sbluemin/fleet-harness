@@ -1,6 +1,4 @@
-import { claudeCli } from "./claude/claude.js";
-import { claudeGatewayCli } from "./claude/claude-gateway.js";
-import { claudeNativeCli } from "./claude/claude-native.js";
+import { claudeCli, claudeGatewayCli, claudeNativeCli } from "./claude/definitions.js";
 import { codexCli } from "./codex/codex.js";
 import type { AgentCliDefinition, AgentCliId, AgentCliProfile } from "./types.js";
 

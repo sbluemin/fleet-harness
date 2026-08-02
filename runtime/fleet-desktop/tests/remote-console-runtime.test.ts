@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { formatDesktopResourceRootMarker } from "@fleet-console/desktop-protocol";
 
 import { ensureRemoteConsole } from "../src/runtime/remote/console-runtime.js";
-import { parseSshTarget } from "../src/runtime/remote/target.js";
+import { parseSshTarget } from "../src/runtime/remote/contracts.js";
 
 const node = { root: ".fleet/desktop/runtime/node", nodeBin: ".fleet/desktop/runtime/node/bin/node", npmCli: ".fleet/desktop/runtime/node/lib/node_modules/npm/bin/npm-cli.js", version: "22.23.1" };
 const linuxPlatform = { targetKey: "linux-x64", system: "linux", architecture: "x64", archive: { archive: "node-v22.23.1-linux-x64.tar.xz", sha256: "x64" } } as const;

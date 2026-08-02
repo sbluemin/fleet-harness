@@ -6,7 +6,7 @@ import { provisionRemoteRuntime, type ProvisionRemoteRuntimeDependencies } from 
 import { startRemoteService, stopOwnedRemoteService, type RemoteServiceLaunch } from "./service.js";
 import type { OpenSshAdapter } from "./ssh.js";
 import { openSamePortTunnel, openTunnelWithReroll, type RemoteTunnel } from "./tunnel.js";
-import { parseSshTarget, type ValidatedSshTarget } from "./target.js";
+import { parseSshTarget, type ValidatedSshTarget } from "./contracts.js";
 
 const PAIRING_IDENTITY_PATH = "/api/v1/pairing-identity";
 const PAIRING_RETRY_MS = 200;

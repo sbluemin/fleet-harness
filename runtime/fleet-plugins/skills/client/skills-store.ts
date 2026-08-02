@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { SkillListItem, SkillSearchItem } from "../server/types.js";
+import type { SkillListItem, SkillSearchItem } from "../server/skill-types.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 

@@ -2,8 +2,8 @@ import type http from "node:http";
 
 import { describe, expect, it } from "vitest";
 
-import { createGlobalSettingsRouter } from "../core/host/global-settings-routes.js";
-import type { ConsoleSettingsData, ConsoleGeneralSettings } from "../core/host/console-settings.js";
+import { createGlobalSettingsRouter } from "../core/host/settings/settings-domain.js";
+import type { ConsoleSettingsData, ConsoleGeneralSettings } from "../core/host/settings/settings-domain.js";
 
 interface WriteJsonCall {
   readonly status: number;

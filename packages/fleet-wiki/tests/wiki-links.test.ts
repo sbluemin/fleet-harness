@@ -7,7 +7,7 @@ import {
   extractMarkdownLinkTargets,
   extractWikiLinks,
   replaceWikiLinksWithMarkdown,
-} from "../src/links.js";
+} from "../src/store.js";
 
 describe("wiki links", () => {
   it("extracts canonical wiki links with occurrence order", () => {

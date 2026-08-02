@@ -12,7 +12,7 @@ import { inspectRemoteLock } from "./lock.js";
 import { detectRemotePlatform, readRemoteNodeRuntime } from "./node-runtime.js";
 import { connectManagedRemote, type ManagedRemoteSession, type PairingIdentityFetcher } from "./orchestrator.js";
 import { createOpenSshAdapter, type OpenSshAdapter } from "./ssh.js";
-import { parseSshTarget } from "./target.js";
+import { parseSshTarget } from "./contracts.js";
 
 const CHECKPOINTS = [
   "architecture_detected",

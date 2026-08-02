@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { initStore, resetStoreForTests } from "@dotobokuri/fleet-carriers";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "../core/host/api-catalog.js";
-import type { ConsoleLockPayload } from "../core/host/api-types.js";
+import type { ConsoleLockPayload } from "../core/host/console-contract-types.js";
 import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-detect.js";
 import { createConsoleLock } from "../core/host/lock.js";
 import { createConsoleServer, PAIRING_IDENTITY, PAIRING_IDENTITY_PATH, type ConsoleServer } from "../core/host/server.js";

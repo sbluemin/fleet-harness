@@ -1,4 +1,4 @@
-import type { SkillSearchItem } from "./types.js";
+import type { SkillSearchItem } from "./skill-types.js";
 
 // ─── constants ───────────────────────────────────────────────────────────────
 

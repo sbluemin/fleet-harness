@@ -9,15 +9,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { initStore, resetStoreForTests } from "@dotobokuri/fleet-carriers";
 
-import type { ConsoleLockPayload } from "../core/host/api-types.js";
-import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_FULLSCREEN_PATH } from "../core/host/desktop-fullscreen.js";
-import { DESKTOP_THEME_EVENTS_PATH, DESKTOP_THEME_PATH } from "../core/host/desktop-theme.js";
+import type { ConsoleLockPayload } from "../core/host/console-contract-types.js";
+import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_FULLSCREEN_PATH } from "../core/host/desktop-contract.js";
+import { DESKTOP_THEME_EVENTS_PATH, DESKTOP_THEME_PATH } from "../core/host/desktop-contract.js";
 import { createConsoleLock } from "../core/host/lock.js";
 import { createConsoleObservabilityStore } from "../../fleet-plugins/terminal/server/agent-api/observability-store.js";
 import { createConsoleServer, SERVER_API_CATALOG, type ConsoleServer, type ConsoleServerDeps } from "../core/host/server.js";
 import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-detect.js";
-import { workspaceHash } from "../core/host/theater.js";
-import { TheaterRegistry } from "../core/host/theaters.js";
+import { workspaceHash } from "../core/host/theaters/theater-domain.js";
+import { TheaterRegistry } from "../core/host/theaters/theater-domain.js";
 import { WorkspaceRegistry } from "../core/host/codex/workspaces.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "../../fleet-plugins/terminal/server/shared/terminal-types.js";
 import { createPluginTerminalUpgradeHandler } from "../../fleet-plugins/terminal/server/shared/ws.js";

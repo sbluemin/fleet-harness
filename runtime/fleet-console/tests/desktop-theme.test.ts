@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { desktopThemeSnapshot } from "../core/host/desktop-theme.js";
+import { desktopThemeSnapshot } from "../core/host/desktop-contract.js";
 
 const CONSOLE_PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 

@@ -3,7 +3,7 @@ import { sanitizeOneLineText } from "@dotobokuri/fleet-carriers";
 import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 
 import { renderChoiceBlock, renderKeyValueBlock, type ChoiceBlockRow, type KeyValueBlockRow } from "../layout.js";
-import { MISSION_CONTROL_THEME } from "../theme.js";
+import { MISSION_CONTROL_THEME } from "../renderer.js";
 import { centerText } from "../welcome.js";
 import { createActionListPanel } from "./action-list-panel.js";
 import { isDown, isEnter, isEscape, isUp, renderBreadcrumbs, type MenuPanel, type PanelStack } from "./panel-stack.js";

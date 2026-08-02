@@ -8,7 +8,7 @@ import {
   exitAltScreen,
   moveCursorTo,
 } from "./ansi.js";
-import { getTerminalSize } from "./terminal-size.js";
+import { getTerminalSize } from "./layout.js";
 import { truncateToWidth, visibleWidth } from "./primitives/cell-width.js";
 import type { Component, CursorAnchor, InputListener, TerminalSize } from "./types.js";
 

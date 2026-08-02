@@ -12,7 +12,7 @@ describe("Session Analyst contract", () => {
   it("keeps the approved visible-copy and motion contracts in separate companion panels", () => {
     const chat = readFileSync(new URL("./analysis-chat-panel.tsx", import.meta.url), "utf8");
     const artifacts = readFileSync(new URL("./analysis-artifacts-panel.tsx", import.meta.url), "utf8");
-    const messages = readFileSync(new URL("../i18n/messages.ts", import.meta.url), "utf8");
+    const messages = readFileSync(new URL("../i18n/index.ts", import.meta.url), "utf8");
     const css = readFileSync(new URL("./analysis.css", import.meta.url), "utf8");
     expect(chat).toContain("terminal.analyst.suggestion.walkthrough");
     expect(messages).toContain('"Walk me through how this session unfolded"');

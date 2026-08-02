@@ -12,9 +12,9 @@ import {
 } from "../../styles/carriers.js";
 import { maxVisibleWidth, padEndVisible } from "../layout.js";
 import { centerText } from "../welcome.js";
-import { getCarrierActionLabels } from "./carrier-actions.js";
+import { getCarrierActionLabels } from "./types.js";
 
-import type { RenameState, StatusOverlayViewModel } from "./render-types.js";
+import type { RenameState, StatusOverlayViewModel } from "./types.js";
 import type { BatchCliChoice, CarrierCliType, CarrierStatusEntry, CliModelInfo, OverlayState } from "./types.js";
 
 export interface CarrierStatusRenderModel {

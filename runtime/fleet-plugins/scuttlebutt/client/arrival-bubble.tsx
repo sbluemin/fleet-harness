@@ -6,7 +6,7 @@ import type {
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
-import { getT } from "./i18n.js";
+import { getT } from "./scuttlebutt-catalog.js";
 
 export const MAX_ARRIVAL_ANNOUNCEMENTS = 3;
 export const ARRIVAL_VISIBLE_MS = 6_000;

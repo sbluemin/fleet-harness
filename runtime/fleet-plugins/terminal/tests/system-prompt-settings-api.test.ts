@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fetchSystemPromptSettings, saveSystemPromptSettings } from "../client/agent/settings-api.js";
+import { fetchSystemPromptSettings, saveSystemPromptSettings } from "../client/agent/settings.js";
 
 const EMPTY_CATALOG = { providers: [] };
 const CATALOG = {

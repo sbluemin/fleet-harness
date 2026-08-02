@@ -1,0 +1,208 @@
+export interface AiGatewayModelSelection {
+  readonly id: string;
+}
+
+export interface AiGatewaySettings {
+  readonly models?: readonly AiGatewayModelSelection[];
+  readonly defaultModel?: string;
+}
+
+export type AiGatewayProviderId = "codex" | "cursor" | "kimi";
+
+export interface AiGatewayCatalogModel {
+  readonly id: string;
+  readonly name: string;
+  readonly contextWindow: number | null;
+  readonly oneMillion: boolean;
+  readonly maxMode: boolean;
+  readonly fast: boolean;
+  readonly description: string | null;
+  readonly effort: { readonly levels: readonly string[] } | null;
+}
+
+export interface AiGatewayCatalogProvider {
+  readonly id: AiGatewayProviderId;
+  readonly models: readonly AiGatewayCatalogModel[];
+}
+
+export interface AiGatewayCatalog {
+  readonly providers: readonly AiGatewayCatalogProvider[];
+}
+
+export interface SystemPromptSettingsState {
+  readonly enableMetaphor: boolean;
+  readonly agentIdleDormantMinutes: number | null;
+  readonly aiGateway: AiGatewaySettings | null;
+  readonly aiGatewayCatalog: AiGatewayCatalog;
+  readonly cursorDiagnosticsEnabled: boolean;
+}
+
+export type SystemPromptSettingsUpdate =
+  | { readonly enableMetaphor: boolean }
+  | { readonly agentIdleDormantMinutes: number | null }
+  | { readonly aiGateway: AiGatewaySettings | null }
+  | { readonly cursorDiagnosticsEnabled: boolean };
+
+export class TerminalSettingsApiError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "TerminalSettingsApiError";
+    this.status = status;
+  }
+}
+
+export async function fetchSystemPromptSettings(signal?: AbortSignal): Promise<SystemPromptSettingsState> {
+  const response = await fetch("/plugins/terminal/settings", { signal });
+  await assertOk(response);
+  return assertSystemPromptSettingsState(await response.json(), response.status);
+}
+
+export async function saveSystemPromptSettings(settings: SystemPromptSettingsUpdate, signal?: AbortSignal): Promise<SystemPromptSettingsState> {
+  const response = await fetch("/plugins/terminal/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+    signal,
+  });
+  await assertOk(response);
+  return assertSystemPromptSettingsState(await response.json(), response.status);
+}
+
+async function assertOk(response: Response): Promise<void> {
+  if (response.ok) return;
+  let message = response.statusText || `HTTP ${response.status}`;
+  try {
+    const payload = await response.json() as { readonly error?: unknown };
+    if (typeof payload.error === "string") message = payload.error;
+  } catch {
+    // 응답 본문이 JSON이 아니면 statusText를 사용한다.
+  }
+  throw new TerminalSettingsApiError(response.status, message);
+}
+
+function assertSystemPromptSettingsState(value: unknown, status: number): SystemPromptSettingsState {
+  const payload = value as Partial<SystemPromptSettingsState>;
+  if (
+    !payload
+    || typeof payload.enableMetaphor !== "boolean"
+    || !isAgentIdleDormantMinutes(payload.agentIdleDormantMinutes)
+    || !isAiGatewayCatalog(payload.aiGatewayCatalog)
+    || typeof payload.cursorDiagnosticsEnabled !== "boolean"
+  ) {
+    throw new TerminalSettingsApiError(status, "Invalid Terminal settings response");
+  }
+  return {
+    enableMetaphor: payload.enableMetaphor,
+    agentIdleDormantMinutes: payload.agentIdleDormantMinutes,
+    aiGateway: payload.aiGateway ?? null,
+    aiGatewayCatalog: payload.aiGatewayCatalog,
+    cursorDiagnosticsEnabled: payload.cursorDiagnosticsEnabled,
+  };
+}
+
+function isAiGatewayCatalog(value: unknown): value is AiGatewayCatalog {
+  if (!value || typeof value !== "object") return false;
+  const providers = (value as AiGatewayCatalog).providers;
+  return Array.isArray(providers) && providers.every((provider) =>
+    provider && typeof provider.id === "string" && Array.isArray(provider.models));
+}
+
+function isAgentIdleDormantMinutes(value: unknown): value is number | null {
+  if (value === null) return true;
+  return typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value > 0;
+}
+
+import { React } from "@fleet-console/sdk/plugin/browser";
+
+
+// aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
+export type SystemPromptSettingsField = "enableMetaphor" | "agentIdleDormantMinutes" | "aiGateway" | "cursorDiagnosticsEnabled";
+
+interface SystemPromptSettingsStoreState {
+  readonly loading: boolean;
+  readonly state: SystemPromptSettingsState | null;
+  readonly savingField: SystemPromptSettingsField | null;
+  readonly error: string | null;
+}
+
+type Listener = () => void;
+
+const listeners = new Set<Listener>();
+let snapshot: SystemPromptSettingsStoreState = {
+  loading: false,
+  state: null,
+  savingField: null,
+  error: null,
+};
+// 로드 세대값. 저장(낙관적 갱신)이 시작되면 증가시켜, 그 이전에 출발한 in-flight GET 응답을 폐기한다.
+let loadGeneration = 0;
+
+export function useSystemPromptSettingsStore(): SystemPromptSettingsStoreState {
+  return React.useSyncExternalStore(subscribe, getSystemPromptSettingsStoreState, getSystemPromptSettingsStoreState);
+}
+
+export function getSystemPromptSettingsStoreState(): SystemPromptSettingsStoreState {
+  return snapshot;
+}
+
+export function subscribe(listener: Listener): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+export async function loadSystemPromptSettings(signal?: AbortSignal): Promise<void> {
+  const generation = ++loadGeneration;
+  setSnapshot({ loading: true, error: null });
+  try {
+    const state = await fetchSystemPromptSettings(signal);
+    // 저장이 끼어들어 세대가 바뀌었으면 stale 응답이므로 저장 결과를 덮지 않는다.
+    if (generation !== loadGeneration) return;
+    setSnapshot({ loading: false, state, error: null });
+  } catch (error) {
+    if (signal?.aborted || generation !== loadGeneration) return;
+    setSnapshot({ loading: false, error: toErrorMessage(error) });
+  }
+}
+
+export async function setSystemPromptSettingsField<Field extends SystemPromptSettingsField>(
+  field: Field,
+  value: SystemPromptSettingsState[Field],
+): Promise<boolean> {
+  const current = snapshot.state;
+  if (!current) return false;
+  // 진행 중인 로드 응답이 이 저장 결과를 덮지 않도록 세대값을 올린다.
+  loadGeneration += 1;
+  const optimistic = { ...current, [field]: value };
+  const update = toSettingsUpdate(field, optimistic);
+  setSnapshot({ state: optimistic, savingField: field, error: null });
+  try {
+    const state = await saveSystemPromptSettings(update);
+    setSnapshot({ state, savingField: null, error: null });
+    return true;
+  } catch (error) {
+    setSnapshot({ state: current, savingField: null, error: toErrorMessage(error) });
+    return false;
+  }
+}
+
+function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptSettingsState): SystemPromptSettingsUpdate {
+  if (field === "enableMetaphor") return { enableMetaphor: state.enableMetaphor };
+  if (field === "aiGateway") return { aiGateway: state.aiGateway };
+  if (field === "cursorDiagnosticsEnabled") {
+    return { cursorDiagnosticsEnabled: state.cursorDiagnosticsEnabled };
+  }
+  return { agentIdleDormantMinutes: state.agentIdleDormantMinutes };
+}
+
+function setSnapshot(patch: Partial<SystemPromptSettingsStoreState>): void {
+  snapshot = { ...snapshot, ...patch };
+  for (const listener of listeners) listener();
+}
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

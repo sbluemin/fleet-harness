@@ -1,5 +1,5 @@
 import { renderKeyValueBlock, type KeyValueBlockRow } from "../layout.js";
-import { MISSION_CONTROL_THEME } from "../theme.js";
+import { MISSION_CONTROL_THEME } from "../renderer.js";
 import { centerText } from "../welcome.js";
 import type { FleetCliRelease, MissionControlCounts } from "../types.js";
 import { renderBreadcrumbs, type MenuPanel, type PanelStack } from "./panel-stack.js";

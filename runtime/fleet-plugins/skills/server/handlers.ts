@@ -9,7 +9,7 @@ import { type CliExecutor, defaultCwd, stripAnsi } from "./cli.js";
 import { appendChunk, createJob, finishJob, getJobResult } from "./jobs.js";
 import { ProjectPathError, resolveProjectCwd } from "./project-path.js";
 import { searchRegistry } from "./registry-search.js";
-import type { AgentId, Scope, SkillListItem } from "./types.js";
+import type { AgentId, Scope, SkillListItem } from "./skill-types.js";
 import { isPlainObject, validateAgent, validateScope, validateSkill, validateSource } from "./validation.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────

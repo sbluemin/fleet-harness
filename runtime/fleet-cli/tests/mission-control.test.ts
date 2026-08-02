@@ -14,7 +14,7 @@ import { renderMissionControl } from "../src/mission-control/renderer.js";
 import { buildFleetBanner, gradientLine } from "../src/mission-control/welcome.js";
 import type { MissionControlCliOption, MissionControlLaunchProfile, MissionControlShimmerOptions, MissionControlShimmerTimer } from "../src/mission-control/types.js";
 import type { FleetCliRelease, MissionControlCounts } from "../src/mission-control/types.js";
-import type { ResolvedSessionOptions, SessionOptions, SessionOptionsRuntime } from "../src/mission-control/options/types.js";
+import type { ResolvedSessionOptions, SessionOptions, SessionOptionsRuntime } from "../src/mission-control/options/runtime.js";
 
 interface FakeHost extends PtyHost {
   readonly writes: string[];

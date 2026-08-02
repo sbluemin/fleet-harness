@@ -1,6 +1,6 @@
 import fs from "node:fs";
 
-import type { ConsoleLockPayload } from "./api-types.js";
+import type { ConsoleLockPayload } from "./console-contract-types.js";
 
 export interface ConsoleStaleDeps {
   readonly fs?: typeof fs;

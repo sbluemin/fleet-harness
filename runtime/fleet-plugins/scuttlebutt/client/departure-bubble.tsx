@@ -12,7 +12,7 @@ import {
   selectArrivalAnnouncements,
   type ArrivalSelectionState,
 } from "./arrival-bubble.js";
-import { getT } from "./i18n.js";
+import { getT } from "./scuttlebutt-catalog.js";
 
 export const MAX_DEPARTURE_ANNOUNCEMENTS = 3;
 export const DEPARTURE_VISIBLE_MS = 6_000;

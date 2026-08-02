@@ -4,7 +4,7 @@ import { resolveDoctrineFromCliId, type AdmiralDoctrine } from "../../protocols/
 import { EMBEDDED_AGENT_CLI_SKILL_ASSETS } from "../assets.generated.js";
 import { writePrivateFile, writePrivateJson } from "./fs.js";
 import type { FleetHookExec } from "../types.js";
-import type { AssetPluginBundle, CreateAgentCliPluginOptions } from "./types.js";
+import type { AssetPluginBundle, CreateAgentCliPluginOptions } from "../types.js";
 
 /** Classic and gateway asset roots must coexist under the same marketplace. */
 export const ASSET_PLUGIN_DIRECTORY_NAMES = ["fleet", "fleet-gateway", "fleet-native"] as const;

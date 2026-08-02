@@ -7,7 +7,7 @@ import type { CompareResult, DiffFileEntry } from "../server/types.js";
 import { ChangedFiles } from "./changed-files.js";
 import { HunkView } from "./hunk-view.js";
 import { getT } from "./i18n/index.js";
-import { readCompareViewState, writeCompareViewState, type CompareResultSnapshot } from "./panel-state-cache.js";
+import { readCompareViewState, writeCompareViewState, type CompareResultSnapshot } from "./repository-state.js";
 import { isRemoteHeadRef, type RepositoryRefs } from "./rail-panel.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, buildDiffGridTemplate, clampListPaneWidth, installPointerDragLifecycle } from "./rail-layout.js";
 

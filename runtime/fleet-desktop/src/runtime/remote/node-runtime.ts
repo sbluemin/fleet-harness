@@ -5,7 +5,7 @@ import path from "node:path";
 import { downloadVerifiedNodeArchive, type NodeRuntimeManifest, type NodeRuntimeTarget } from "../node-bootstrap.js";
 import type { RemoteRuntimePhaseCallback } from "./contracts.js";
 import type { OpenSshAdapter } from "./ssh.js";
-import type { ValidatedSshTarget } from "./target.js";
+import type { ValidatedSshTarget } from "./contracts.js";
 
 export const REMOTE_RUNTIME_ROOT = ".fleet/desktop/runtime";
 export const REMOTE_NODE_ROOT = `${REMOTE_RUNTIME_ROOT}/node`;

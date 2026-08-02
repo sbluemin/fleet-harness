@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { readRepositoryRel, saveRepositoryRel } from "../client/rail-panel.js";
-import { clearSelectedFile, getSelectedFile, setSelectedFile } from "../client/repository-view-store.js";
+import { clearSelectedFile, getSelectedFile, setSelectedFile } from "../client/repository-state.js";
 import type { RepoCandidate, WorktreeCandidate } from "../server/types.js";
 
 const repos: readonly RepoCandidate[] = [

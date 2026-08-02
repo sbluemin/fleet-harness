@@ -1,6 +1,6 @@
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import type { RepositoryMessageKey } from "./i18n/messages.js";
+import type { RepositoryMessageKey } from "./i18n/index.js";
 
 export const WORKSPACE_DOCK_DEFAULT_HEIGHT = 230;
 export const WORKSPACE_DOCK_MIN_HEIGHT = 160;

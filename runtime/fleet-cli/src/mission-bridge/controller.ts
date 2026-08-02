@@ -1,14 +1,50 @@
+import type { CarrierRuntime } from "@dotobokuri/fleet-carriers";
+
 import {
   createFleetPtyApi,
   createFleetPtyViewport,
   type Component,
+  type FleetPtyApi,
   type FleetPtySection,
 } from "../controls/index.js";
-import { FleetStatusSection } from "./fleet-status-section.js";
-import { subscribeJobBar } from "./job-bar/register.js";
+import { DIM_COLOR } from "../styles/tokens.js";
+import { paint } from "../styles/index.js";
+
 import { createJobBarSections } from "./job-bar/section.js";
-import { createJobBarState } from "./job-bar/state.js";
-import type { CreateMissionBridgeControllerOptions, MissionBridgeController } from "./types.js";
+import { createJobBarState, subscribeJobBar, type JobBarState } from "./job-bar/state.js";
+
+export interface MissionBridgeController {
+  readonly component: Component;
+  readonly ptyApi: FleetPtyApi;
+  readonly jobBarState: JobBarState;
+  start(): void;
+  dispose(): void;
+}
+
+export interface CreateMissionBridgeControllerOptions {
+  readonly addInputListener: (listener: (data: string) => void) => () => void;
+  readonly carrierRuntime: CarrierRuntime;
+  readonly getColumns: () => number;
+  readonly getRows: () => number;
+  readonly onJobBarRenderRequest: () => void;
+  readonly requestResize: () => void;
+  readonly requestRender: () => void;
+}
+
+const BORDER_CHAR = "─";
+
+export class FleetStatusSection implements Component {
+	invalidate(): void {}
+
+	render(width: number): string[] {
+		return [renderBorder(width, DIM_COLOR)];
+	}
+}
+
+function renderBorder(width: number, color: string): string {
+	if (width <= 0) return "";
+	return paint(color, BORDER_CHAR.repeat(width), true);
+}
 
 export function createMissionBridgeController(options: CreateMissionBridgeControllerOptions): MissionBridgeController {
   const jobBarState = createJobBarState({

@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { TheaterRegistry, type TheaterRegistration } from "../core/host/theaters.js";
+import { TheaterRegistry, type TheaterRegistration } from "../core/host/theaters/theater-domain.js";
 
 const tempDirs: string[] = [];
 

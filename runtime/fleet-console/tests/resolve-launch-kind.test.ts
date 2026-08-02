@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { OperationCatalogPlugin, OperationNode } from "@fleet-console/sdk/operations";
 
-import { resolveOperationLaunchKind } from "../core/client/src/sidebar/resolve-launch-kind.js";
+import { resolveOperationLaunchKind } from "../core/client/src/sidebar/interaction.js";
 
 const CATALOG: readonly OperationCatalogPlugin[] = [
   {

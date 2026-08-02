@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CLI_BACKENDS, getEffort, getProviderModels, type CliType } from "@dotobokuri/core-unified-agent";
 import { initStore, resetStoreForTests } from "@dotobokuri/fleet-carriers";
 
-import type { ConsoleLockPayload } from "../core/host/api-types.js";
+import type { ConsoleLockPayload } from "../core/host/console-contract-types.js";
 import { createConsoleLock } from "../core/host/lock.js";
 import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../core/host/server.js";
 

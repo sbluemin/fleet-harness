@@ -14,7 +14,7 @@ import type {
 import type {
   ConnectionState,
   StructuredLogEntry,
-} from '../types/common.js';
+} from '../types/config.js';
 import type {
   CodexAgentMessageDeltaNotification,
   CodexApprovalDecision,

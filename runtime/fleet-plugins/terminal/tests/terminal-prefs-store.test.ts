@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ClientSettingsCapability } from "@fleet-console/sdk/plugin";
 
-import { connectTerminalSettings, getTerminalPrefsSnapshot, mergeTerminalSettingsRecord, migrateLegacyTerminalPrefs, setInstalledTerminalFont, setTerminalFont, setTerminalFontSize } from "../client/shared/terminal-prefs-store.js";
+import { connectTerminalSettings, getTerminalPrefsSnapshot, mergeTerminalSettingsRecord, migrateLegacyTerminalPrefs, setInstalledTerminalFont, setTerminalFont, setTerminalFontSize } from "../client/shared/terminal-preferences.js";
 
 const RENDERER_KEY = "fleet-plugin.terminal.renderer";
 const FONT_KEY = "fleet-plugin.terminal.font";

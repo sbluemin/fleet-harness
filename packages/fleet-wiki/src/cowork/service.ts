@@ -6,9 +6,9 @@ import { getWikiToolSpecs } from "../agent-specs.js";
 import type { MemoryPaths, Patch, WikiEntry } from "../types.js";
 import type { WikiWorkspaceResolver } from "../workspace-resolver.js";
 import { join } from "node:path";
-import { COWORK_SYSTEM_PROMPT } from "./prompt.js";
+import { COWORK_SYSTEM_PROMPT } from "./store.js";
 import type { CoworkStore } from "./store.js";
-import type { CoworkAnnotationDto, CoworkSessionDto, CoworkSessionRecord, CoworkStoredEvent } from "./types.js";
+import type { CoworkAnnotationDto, CoworkSessionDto, CoworkSessionRecord, CoworkStoredEvent } from "./store.js";
 
 /** The per-session registry is deliberately not shared with global Wiki tools. */
 export function createCoworkMcpRuntime(store: CoworkStore, workspaceId: string, sessionId: string, resolver?: WikiWorkspaceResolver) {

@@ -14,7 +14,7 @@ import {
   type CompareViewState,
   type RepoViewState,
   type WorkspaceTreeState,
-} from "../client/panel-state-cache.js";
+} from "../client/repository-state.js";
 
 const theaterIds = new Set<string>();
 const repoScopes = new Set<readonly [string, string]>();

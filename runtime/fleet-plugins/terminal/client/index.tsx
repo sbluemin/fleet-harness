@@ -5,7 +5,7 @@ import { carrierSettingsSection } from "./carriers/section.js";
 import { globalShellPanel } from "./global-shell/rail-panel.js";
 import { shellOperationKind, shellPlugin } from "./shell/index.js";
 import { preloadSymbolsNerdFontMono } from "./shared/symbols-font.js";
-import { connectTerminalSettings } from "./shared/terminal-prefs-store.js";
+import { connectTerminalSettings } from "./shared/terminal-preferences.js";
 import "./assets/fonts/symbols-nerd-font-mono.css";
 import "./carriers/styles.css";
 

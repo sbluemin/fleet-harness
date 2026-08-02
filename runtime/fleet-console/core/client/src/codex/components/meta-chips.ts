@@ -2,7 +2,7 @@ import type { EntryFrontmatter, SearchEntry } from "../api";
 import { getGlobalSettingsStoreState } from "../../global-settings-store.js";
 import { formatDate, getT } from "../../i18n/index.js";
 import { resolveConsoleLanguage } from "../../whatsnew-i18n.js";
-import { escapeAttribute, escapeHtml } from "../utils/html";
+import { escapeAttribute, escapeHtml } from "../utils";
 
 function resolveActiveLocale() {
   const preference = getGlobalSettingsStoreState().state?.language ?? "auto";

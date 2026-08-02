@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { RouteRegistry } from "../core/host/route-registry/route-registry.js";
-import { UpgradeRegistry } from "../core/host/route-registry/upgrade-registry.js";
+import { RouteRegistry } from "../core/host/route-registry/registry.js";
+import { UpgradeRegistry } from "../core/host/route-registry/registry.js";
 
 describe("route registries", () => {
   it("dispatches HTTP routes by exact prefix order", async () => {

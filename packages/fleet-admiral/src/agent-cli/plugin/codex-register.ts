@@ -10,7 +10,7 @@ import type {
   CodexCommandRunner,
   CodexPluginRegistration,
   CodexPluginRegistrationCommand,
-} from "./types.js";
+} from "../types.js";
 
 export interface DeprecatedCodexPluginCleanupTargets {
   readonly homeMarketplaceName: string;

@@ -3,7 +3,7 @@ import { describe, it } from "vitest";
 import type { IPty } from "node-pty";
 
 import { createPtyHost } from "../../src/controls/pty.js";
-import { resolveUseConptyDll } from "../../src/controls/pty/shell.js";
+import { resolveUseConptyDll } from "../../src/controls/pty.js";
 import type { PtyExitEvent, PtyLaunchConfig } from "../../src/controls/types.js";
 
 interface FakePty extends IPty {

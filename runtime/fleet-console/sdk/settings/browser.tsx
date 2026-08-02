@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { Select } from "../components/select.js";
+import { Select } from "../react/browser.js";
 import type { SettingsSectionDescriptor } from "./types.js";
 
 export interface SettingsCardProps {

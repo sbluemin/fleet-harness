@@ -6,7 +6,7 @@ import type http from "node:http";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { handleFilesSearch, searchTheaterFiles } from "../server/search.js";
+import { handleFilesSearch, searchTheaterFiles } from "../server/tree-services.js";
 
 let temporaryDirectory: string;
 let theaterPath: string;

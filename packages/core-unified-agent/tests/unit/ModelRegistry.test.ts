@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { getModelContextWindow, getProviderModels, resolveCursorSpawnModel } from '../../src/models/ModelRegistry.js';
-import { ModelsRegistrySchema } from '../../src/models/schemas.js';
+import { getModelContextWindow, getProviderModels, resolveCursorSpawnModel } from '../../src/models/registry.js';
+import { ModelsRegistrySchema } from '../../src/models/registry.js';
 
 describe('ModelRegistry', () => {
   it('Claude 정적 모델 목록에 Opus 1M 변형들을 포함한다', () => {

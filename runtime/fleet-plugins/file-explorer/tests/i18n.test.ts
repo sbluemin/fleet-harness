@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fileExplorerEn, fileExplorerKo } from "../client/i18n/messages.js";
+import { fileExplorerEn, fileExplorerKo } from "../client/i18n/index.js";
 
 describe("file explorer message catalogs", () => {
   it("keeps English and Korean keys in parity", () => {

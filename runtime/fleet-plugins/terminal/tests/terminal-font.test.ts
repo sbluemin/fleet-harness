@@ -8,7 +8,7 @@ import {
   parseTerminalFontSettingsValue,
   resolveTerminalFont,
   serializeTerminalFontSettings,
-} from "../client/shared/terminal-font.js";
+} from "../client/shared/terminal-preferences.js";
 
 describe("terminal font settings", () => {
   afterEach(() => {

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { Scope } from "../server/types.js";
+import type { Scope } from "../server/skill-types.js";
 
 export interface SkillSearchTarget {
   readonly theaterId: string;

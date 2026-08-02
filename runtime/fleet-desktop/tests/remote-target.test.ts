@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseSshTarget } from "../src/runtime/remote/target.js";
+import { parseSshTarget } from "../src/runtime/remote/contracts.js";
 
 describe("SSH target parsing", () => {
   it("accepts only the fixed host or user@host grammar", () => {

@@ -21,7 +21,7 @@ import type {
   AcpToolCall,
   AcpToolCallUpdate,
 } from '../types/acp.js';
-import type { ConnectionState, StructuredLogEntry } from '../types/common.js';
+import type { ConnectionState, StructuredLogEntry } from '../types/config.js';
 import type {
   ConnectResult,
   ConnectionInfo,
@@ -38,8 +38,8 @@ import {
   type CliType,
 } from '../config/CliConfigs.js';
 import { cleanEnvironment } from '../utils/env.js';
-import { getProviderModels } from '../models/ModelRegistry.js';
-import type { ProviderModelInfo } from '../models/schemas.js';
+import { getProviderModels } from '../models/registry.js';
+import type { ProviderModelInfo } from '../models/registry.js';
 
 /**
  * Claude Code ACP 전용 내부 클라이언트.

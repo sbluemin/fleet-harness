@@ -1,7 +1,7 @@
 import path from "node:path";
 
-import type { WorkspaceMetadata } from "./api-types.js";
-import { canonicalizeTheaterPath, workspaceHash } from "../theater.js";
+import type { WorkspaceMetadata } from "./contracts.js";
+import { canonicalizeTheaterPath, workspaceHash } from "../theaters/theater-domain.js";
 
 export interface WorkspaceRegistration {
   id: string;

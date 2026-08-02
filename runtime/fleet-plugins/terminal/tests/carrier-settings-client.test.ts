@@ -4,13 +4,13 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fetchCarrierSettingsState } from "../client/carriers/api.js";
+import { fetchCarrierSettingsState } from "../client/carriers/settings.js";
 import {
   getCarrierSettingsStoreState,
   loadCarrierSettings,
   saveCarrierPatch,
   selectCarrierSettingsCarrier,
-} from "../client/carriers/store.js";
+} from "../client/carriers/settings.js";
 import { carrierSettingsSection } from "../client/carriers/section.js";
 
 const state = {

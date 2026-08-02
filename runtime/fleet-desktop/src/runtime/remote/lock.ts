@@ -2,7 +2,7 @@ import { DESKTOP_PROTOCOL_VERSION, isCompatibleDesktopOwner, type ConsoleOwnerMe
 
 import { RemoteRuntimeError } from "./contracts.js";
 import type { OpenSshAdapter } from "./ssh.js";
-import type { ValidatedSshTarget } from "./target.js";
+import type { ValidatedSshTarget } from "./contracts.js";
 
 const MAX_LOCK_BYTES = 64 * 1024;
 

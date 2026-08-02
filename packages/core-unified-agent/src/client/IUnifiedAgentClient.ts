@@ -30,8 +30,8 @@ import type {
   AcpToolCall,
   AcpToolCallUpdate,
 } from "../types/acp.js";
-import type { ConnectionState, StructuredLogEntry } from "../types/common.js";
-import type { ProviderModelInfo } from "../models/schemas.js";
+import type { ConnectionState, StructuredLogEntry } from "../types/config.js";
+import type { ProviderModelInfo } from "../models/registry.js";
 
 // ─── 이벤트 맵 ────────────────────────────────────────────
 

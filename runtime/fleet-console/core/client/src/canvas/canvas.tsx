@@ -6,8 +6,8 @@ import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { CompanionPanelDescriptor, ConsoleTheme, FleetClientPlugin, OperationActivity, OperationKindDescriptor, OperationRenderContext } from "@fleet-console/sdk/plugin";
 
 import { fetchOperations } from "../api.js";
-import { isBlockingDialogOpen } from "../blocking-dialog.js";
 import { availableCompanionPanels } from "../companion-shortcut.js";
+import { isBlockingDialogOpen } from "../focus-guards.js";
 import { flattenGroupedOrder, focusCycleOperationIds, hydrateOperations, requestOperationKeyboardFocus, requestOperationLaunchMenu, setActiveOperation } from "../store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
@@ -23,15 +23,12 @@ import { escapeSelectorValue, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { resolveAccentColor } from "./operation-accent.js";
-import { CanvasGrid } from "./canvas-grid.js";
-import { TriageClearPlate } from "./triage-clear-plate.js";
+import { CanvasGrid, RubberBand, TriageClearPlate } from "./canvas-overlays.js";
 import { resolveGlanceHudModel, type GlanceHudModel } from "./glance-hud.js";
 import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
-import { RubberBand } from "./rubber-band.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
-import { screenToCanvas, type CanvasPoint, type CanvasRect } from "./coordinates.js";
-import { modeSlotGeometryFor, triageStageGeometryFor } from "./triage-geometry.js";
+import { modeSlotGeometryFor, screenToCanvas, triageStageGeometryFor, type CanvasPoint, type CanvasRect } from "./coordinates.js";
 import { disarmTriageSetAside, dismissTriageOperation, getTriageCleared, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
 
 interface OperationsCanvasProps {

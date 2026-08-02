@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildRepoTree, compressRepoFolder, countRepos } from "../client/repo-tree.js";
+import { buildRepoTree, compressRepoFolder, countRepos } from "../client/repository-parsers.js";
 import type { RepoCandidate } from "../server/types.js";
 
 function repo(relPath: string, name?: string): RepoCandidate {

@@ -5,7 +5,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import { currentExchange, type ChatState } from "./chat-store.js";
 import type { AdmiralId } from "./chat-session.js";
 import { placeCard, type CardPlacement } from "./geometry.js";
-import { getT } from "./i18n.js";
+import { getT } from "./scuttlebutt-catalog.js";
 
 export function ChatCard({
   state,

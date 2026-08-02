@@ -14,7 +14,7 @@ import {
   DEFAULT_BODY_H,
   TOKEN_COUNTUP_EASING_FACTOR,
   TOKEN_COUNTUP_MIN_STEP,
-} from "./constants.js";
+} from "./renderer.js";
 import type { ColBlock, ColStatus, ColumnTrack, PanelJob, PanelRunViewModelSource } from "./view-model.js";
 
 export interface FooterModelInfo {
@@ -122,6 +122,19 @@ type TrackFinalizedEventWithFinishedAt = Extract<CarrierJobStreamEvent, { type: 
 };
 
 export const PANEL_JOB_RETENTION = 8;
+
+export interface JobBarRegistrationOptions {
+  readonly jobBarState: JobBarState;
+}
+
+export function subscribeJobBar(options: JobBarRegistrationOptions): () => void {
+  const unsubscribe = options.jobBarState.carrierRuntime.jobs.streaming.register((event) => options.jobBarState.handleCarrierJobStreamEvent(event));
+
+  return () => {
+    unsubscribe();
+    options.jobBarState.dispose();
+  };
+}
 
 export function createJobBarState(options: JobBarStateOptions): JobBarState {
   let stateValue: AgentPanelState | null = null;

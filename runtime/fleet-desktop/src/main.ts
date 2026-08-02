@@ -25,7 +25,7 @@ import { createConsoleInstallerDependencies, installConsole, reconcileConsoleIns
 import { bootstrapNodeRuntime, isManagedNodeRuntimeValid, reconcileNodeRuntime, satisfiesNodeEngine, type NodeRuntimeManifest } from "./runtime/node-bootstrap.js";
 import { createRegistryChecker } from "./runtime/registry-check.js";
 import { resolveRuntimePaths } from "./runtime/runtime-paths.js";
-import { createRemoteLastTargetStore } from "./runtime/remote/last-target.js";
+import { createRemoteLastTargetStore } from "./runtime-pairing.js";
 import { connectManagedRemote } from "./runtime/remote/orchestrator.js";
 import { createOpenSshAdapter } from "./runtime/remote/ssh.js";
 import { SidecarSupervisor, type SidecarRuntime } from "./sidecar-supervisor.js";

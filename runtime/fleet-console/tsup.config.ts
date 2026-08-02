@@ -29,7 +29,7 @@ export default defineConfig([
     noExternal: [/^@dotobokuri\/core-process(\/|$)/, /^@dotobokuri\//, /^@fleet-console\/(sdk|markdown|font-picker|desktop-protocol)(\/|$)/],
     // esbuild는 plugin-host의 dev .ts 로더에서만 동적 import되는 devDependency다.
     // 번들에 인라인하면 esbuild 내부 CJS의 require("fs")가 ESM 출력에서 boot 시 throw하므로 external로 남긴다.
-    external: ["esbuild", "font-list"],
+    external: ["esbuild", "font-list", "node:http"],
     esbuildOptions(options) {
       options.alias = {
         ...options.alias,
@@ -39,6 +39,9 @@ export default defineConfig([
         "@dotobokuri/fleet-admiral": path.join(workspaceRoot, "packages/fleet-admiral/src"),
         "@dotobokuri/fleet-analyst": path.join(workspaceRoot, "packages/fleet-analyst/src"),
         "@dotobokuri/fleet-carriers": path.join(workspaceRoot, "packages/fleet-carriers/src"),
+        "@dotobokuri/core-infra/data-dir/settings": path.join(workspaceRoot, "packages/core-infra/src/data-dir/settings/store.ts"),
+        "@dotobokuri/core-infra/data-dir": path.join(workspaceRoot, "packages/core-infra/src/data-dir/paths.ts"),
+        "@dotobokuri/core-infra/workspace-dir": path.join(workspaceRoot, "packages/core-infra/src/workspace-dir/workspace-dir.ts"),
         "@dotobokuri/core-infra": path.join(workspaceRoot, "packages/core-infra/src"),
         "@dotobokuri/fleet-wiki": path.join(workspaceRoot, "packages/fleet-wiki/src"),
       };

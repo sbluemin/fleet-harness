@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import { createConflict } from "../conflicts.js";
-import { mergeRawSourceRefs, normalizeComparableText } from "../internal-utils.js";
+import { mergeRawSourceRefs, normalizeComparableText } from "../briefing.js";
 import { appendLog } from "../log.js";
 import { enqueuePatch } from "../patch.js";
 import { resolveMemoryPaths, resolveToolMemoryPaths } from "../paths.js";
@@ -12,7 +12,7 @@ import {
   WIKI_INGEST_PROMPT_SNIPPET,
   buildWikiIngestSchema,
 } from "../prompts.js";
-import { assertNoUnsafeSecret, findUnsafeMemoryText } from "../safety.js";
+import { assertNoUnsafeSecret, findUnsafeMemoryText } from "../store.js";
 import { assertSafeEntryId, computeContentHash, listWiki, readPatchFile, readRawSourceEntry, readWikiEntry, writeRawSourceEntry } from "../store.js";
 import type {
   ConflictReason,

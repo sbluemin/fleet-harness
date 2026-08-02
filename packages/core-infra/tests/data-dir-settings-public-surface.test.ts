@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createDurableJsonStore, withDirectoryLock, writeAtomicSync } from "../src/fs-store/index.js";
-import { createGlobalOptionsService, createGlobalOptionsStore } from "../src/data-dir/settings/index.js";
+import { createGlobalOptionsService, createGlobalOptionsStore } from "../src/data-dir/settings/store.js";
 import * as rootBarrel from "../src/index.js";
 import { createInfraServices } from "../src/index.js";
 

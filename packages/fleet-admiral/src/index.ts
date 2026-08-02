@@ -14,7 +14,7 @@ export {
 export {
   FLEET_PROTOCOL_GATE_PROMPT,
   getProtocolGatePrompt,
-} from "./protocols/index.js";
+} from "./protocols/fleet-action.js";
 export {
   CARRIER_OPERATION_TOOL_IDS,
   FLEET_MCP_SERVER_NAME,

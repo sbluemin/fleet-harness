@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { PATCH_FILENAME, PATCH_META_FILENAME } from "../constants.js";
+import { PATCH_FILENAME, PATCH_META_FILENAME } from "../patch.js";
 import { appendLog } from "../log.js";
 import { assertSafeQueueId, parsePatch, rewriteQueuedPatch, serializePatch } from "../patch.js";
 import { resolveMemoryPaths, resolveToolMemoryPaths } from "../paths.js";

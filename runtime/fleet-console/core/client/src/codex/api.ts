@@ -17,7 +17,7 @@ import type {
   SearchResponse,
   SchemaCatalogResponse,
   SchemaDocumentResponse,
-} from "../../../host/codex/api-types";
+} from "../../../host/codex/contracts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

@@ -13,11 +13,11 @@ import {
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import type { GitFileStatus, GitStatusResult } from "../server/git-status.js";
+import type { GitFileStatus, GitStatusResult } from "../server/tree-services.js";
 import type { FolderEntry, FolderListResult } from "../server/types.js";
 import { restoreContextMenuFocus } from "./context-menu.js";
 import type { FileExplorerMessageKey } from "./i18n/index.js";
-import { translateServerError } from "./i18n/server-errors.js";
+import { translateServerError } from "./i18n/index.js";
 import type { FileSearchTarget } from "./search-navigation.js";
 
 import { FileIcon, FolderIcon } from "./file-icon.js";

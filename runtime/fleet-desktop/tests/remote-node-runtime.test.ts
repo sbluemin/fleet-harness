@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { detectRemotePlatform, ensureRemoteNode } from "../src/runtime/remote/node-runtime.js";
-import { parseSshTarget } from "../src/runtime/remote/target.js";
+import { parseSshTarget } from "../src/runtime/remote/contracts.js";
 
 const manifest = { version: "22.23.1", source: "https://node.invalid", targets: { "darwin-arm64": { archive: "node-v22.23.1-darwin-arm64.tar.gz", sha256: "darwin-arm64" }, "darwin-x64": { archive: "node-v22.23.1-darwin-x64.tar.gz", sha256: "darwin-x64" }, "linux-arm64": { archive: "node-v22.23.1-linux-arm64.tar.xz", sha256: "0294e8b915ab75f92c7513d2fcb830ae06e10684e6c603e99a87dbf8835389c1" }, "linux-x64": { archive: "node-v22.23.1-linux-x64.tar.xz", sha256: "x64" } } };
 

@@ -5,11 +5,11 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { discoverFleetPlugins } from "../core/host/plugin-host/discovery.js";
-import { createFleetPluginHost } from "../core/host/plugin-host/host.js";
-import { RouteRegistry } from "../core/host/route-registry/route-registry.js";
-import { UpgradeRegistry } from "../core/host/route-registry/upgrade-registry.js";
-import type { FleetPluginHostCapabilities } from "../core/host/plugin-host/types.js";
+import { discoverFleetPlugins } from "../core/host/plugin-host/plugin-host.js";
+import { createFleetPluginHost } from "../core/host/plugin-host/plugin-host.js";
+import { RouteRegistry } from "../core/host/route-registry/registry.js";
+import { UpgradeRegistry } from "../core/host/route-registry/registry.js";
+import type { FleetPluginHostCapabilities } from "../core/host/plugin-host/plugin-host.js";
 
 const tempDirs: string[] = [];
 const noopHostCapabilities: FleetPluginHostCapabilities = {

@@ -1,0 +1,288 @@
+import { z } from 'zod';
+import modelsData from '../../models.json' with { type: 'json' };
+import type { CliType } from '../config/CliConfigs.js';
+
+/**
+ * 모델 레지스트리 Zod 스키마 및 타입 정의
+ * models.json의 구조를 검증하고 타입을 추론합니다.
+ */
+
+// Zod 추론 타입은 아래 스키마 const를 기반으로 계산되므로,
+// 이 파일은 예외적으로 스키마 상수를 타입 선언보다 먼저 둡니다.
+/** effort 허용 토큰 스키마 */
+export const EffortLevelSchema: z.ZodType<string> = z.enum([
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+  'ultra',
+]);
+
+/** effort 지원 스키마 (discriminated union) */
+export const EffortSchema = z.union([
+  z.object({
+    supported: z.literal(true),
+    levels: z.array(EffortLevelSchema).min(1),
+    default: EffortLevelSchema,
+  }).strict(),
+  z.object({
+    supported: z.literal(false),
+  }).strict(),
+]);
+
+/** 개별 모델 항목 스키마 */
+export const ModelEntrySchema = z.object({
+  /** 모델 고유 식별자 (session/set_model에 전달되는 값) */
+  modelId: z.string(),
+  /** 사람이 읽을 수 있는 모델 이름 */
+  name: z.string(),
+  /** 모델 설명 (선택) */
+  description: z.string().optional(),
+  /** spawn 시 실제 CLI 모델 ID를 조립해야 하는 경우의 템플릿 */
+  spawnModelTemplate: z.string().optional(),
+  /** 카탈로그 ID와 실제 provider 모델 ID가 다른 경우의 원본 모델 ID */
+  providerModelId: z.string().optional(),
+  /** provider가 모델과 별도로 받는 서비스 티어 */
+  serviceTier: z.string().optional(),
+  /** 모델의 컨텍스트 윈도우 크기 (토큰) */
+  contextWindow: z.number().int().positive().optional(),
+  /** 모델별 effort 설정 */
+  effort: EffortSchema,
+}).check((ctx) => {
+  const effort = ctx.value.effort;
+  if (effort.supported && !effort.levels.includes(effort.default)) {
+    ctx.issues.push({
+      code: 'custom',
+      input: effort.default,
+      message: `effort.default "${effort.default}"은(는) levels 목록에 존재해야 합니다`,
+      path: ['effort', 'default'],
+    });
+  }
+  if (effort.supported && ctx.value.spawnModelTemplate && !ctx.value.spawnModelTemplate.includes('{effort}')) {
+    ctx.issues.push({
+      code: 'custom',
+      input: ctx.value.spawnModelTemplate,
+      message: 'effort 지원 모델의 spawnModelTemplate은 "{effort}" 플레이스홀더를 포함해야 합니다',
+      path: ['spawnModelTemplate'],
+    });
+  }
+  if (ctx.value.serviceTier && !ctx.value.providerModelId) {
+    ctx.issues.push({
+      code: 'custom',
+      input: ctx.value.serviceTier,
+      message: 'serviceTier를 지정한 모델은 providerModelId도 지정해야 합니다',
+      path: ['serviceTier'],
+    });
+  }
+});
+
+/** 프로바이더 스키마 (교차 필드 검증 포함) */
+export const ProviderSchema = z.object({
+  /** 프로바이더 표시 이름 */
+  name: z.string(),
+  /** 기본 모델 ID */
+  defaultModel: z.string(),
+  /** 사용 가능한 모델 목록 */
+  models: z.array(ModelEntrySchema).min(1),
+}).check((ctx) => {
+  const ids = new Set(ctx.value.models.map((m) => m.modelId));
+
+  if (!ids.has(ctx.value.defaultModel)) {
+    ctx.issues.push({
+      code: 'custom',
+      input: ctx.value.defaultModel,
+      message: `defaultModel "${ctx.value.defaultModel}"은(는) models 목록에 존재해야 합니다`,
+      path: ['defaultModel'],
+    });
+  }
+});
+
+/** 모델 매핑 스키마 (modelId → 실제 모델명) */
+export const ModelMappingSchema = z.record(z.string(), z.string());
+
+/** modelsMapper 개별 항목 스키마 */
+export const ModelsMapperEntrySchema = z.object({
+  /** modelId와 연관된 매핑 모델 */
+  modelMapping: ModelMappingSchema,
+  /** 추가 환경변수 (선택) */
+  env: z.record(z.string(), z.string()).optional(),
+});
+
+/** modelsMapper 전체 스키마 */
+export const ModelsMapperSchema = z.record(z.string(), ModelsMapperEntrySchema);
+
+/** 모델 레지스트리 전체 스키마 */
+export const ModelsRegistrySchema = z.object({
+  /** 스키마 버전 */
+  version: z.number().int().positive(),
+  /** 최종 업데이트 시각 */
+  updatedAt: z.string(),
+  /** 프로바이더별 모델 정보 */
+  providers: z.record(z.string(), ProviderSchema),
+});
+
+// ─── 타입 추론 ─────────────────────────────────────────
+
+/** 개별 모델 항목 */
+export type ModelEntry = z.infer<typeof ModelEntrySchema>;
+
+/** effort 설정 */
+export type Effort = z.infer<typeof EffortSchema>;
+
+/** raw thinking level 허용 토큰 */
+export type ThinkingLevel = z.infer<typeof EffortLevelSchema>;
+
+/** effort 허용 토큰 (호환 alias) */
+export type EffortLevel = ThinkingLevel;
+
+/** 프로바이더 모델 정보 */
+export type ProviderModelInfo = z.infer<typeof ProviderSchema>;
+
+/** 모델 레지스트리 전체 */
+export type ModelsRegistry = z.infer<typeof ModelsRegistrySchema>;
+
+/**
+ * 정적 모델 레지스트리
+ * models.json에서 빌드 시 인라인된 데이터를 검증하여 제공합니다.
+ */
+
+// 빌드 시 인라인, 한 번만 검증 후 동결
+const registry: ModelsRegistry = Object.freeze(ModelsRegistrySchema.parse(modelsData));
+
+/**
+ * 전체 모델 레지스트리의 복사본을 반환합니다.
+ */
+export function getModelsRegistry(): ModelsRegistry {
+  return structuredClone(registry);
+}
+
+/**
+ * 특정 CLI(프로바이더)의 모델 정보를 반환합니다.
+ * 내부 데이터 보호를 위해 복사본을 반환합니다.
+ *
+ * @param cli - CLI 타입 (claude, codex, cursor)
+ * @returns 프로바이더 모델 정보
+ * @throws 존재하지 않는 프로바이더인 경우
+ */
+export function getProviderModels(cli: CliType): ProviderModelInfo {
+  const provider = registry.providers[cli];
+  if (!provider) {
+    throw new Error(`알 수 없는 프로바이더: "${cli}"`);
+  }
+  return structuredClone(provider);
+}
+
+/**
+ * 특정 CLI의 사용 가능한 모델 ID 목록을 반환합니다.
+ *
+ * @param cli - CLI 타입
+ * @returns 모델 ID 배열
+ */
+export function getProviderModelIds(cli: CliType): string[] {
+  return getProviderModels(cli).models.map((m) => m.modelId);
+}
+
+/**
+ * 특정 CLI/모델의 effort 설정을 반환합니다.
+ *
+ * @param cli - CLI 타입
+ * @param modelId - 모델 ID
+ * @returns effort 설정
+ * @throws 존재하지 않는 모델인 경우
+ */
+export function getEffort(cli: CliType, modelId: string): Effort {
+  const model = findProviderModel(cli, modelId);
+  return structuredClone(model.effort);
+}
+
+/**
+ * Cursor 모델의 spawn-time effort 적용 가능 여부를 반환합니다.
+ *
+ * @param modelId - 카탈로그 모델 ID
+ * @returns spawn template과 effort 지원 정보
+ */
+export function getCursorSpawnEffortInfo(modelId: string): {
+  supported: boolean;
+  levels: string[];
+  default: string | null;
+} {
+  const model = findProviderModel('cursor', modelId);
+  if (!model.spawnModelTemplate || !model.effort.supported) {
+    return { supported: false, levels: [], default: null };
+  }
+
+  return {
+    supported: true,
+    levels: [...model.effort.levels],
+    default: model.effort.default,
+  };
+}
+
+/**
+ * Cursor 모델을 cursor-agent CLI에 전달할 실제 모델 ID로 변환합니다.
+ *
+ * @param modelId - 카탈로그 모델 ID
+ * @param effort - 요청된 effort (없으면 모델 기본값)
+ * @returns cursor-agent CLI 모델 ID
+ */
+export function resolveCursorSpawnModel(modelId: string, effort?: string): string {
+  const model = findProviderModel('cursor', modelId);
+  if (!model.spawnModelTemplate) {
+    return model.modelId;
+  }
+
+  if (!model.effort.supported) {
+    return model.spawnModelTemplate;
+  }
+
+  const level = effort ?? model.effort.default;
+  const resolvedLevel = model.effort.levels.includes(level) ? level : model.effort.default;
+  if (!model.effort.levels.includes(resolvedLevel)) {
+    throw new Error(
+      `cursor/${modelId} 모델은 effort "${level}"을(를) 지원하지 않습니다. 사용 가능: ${model.effort.levels.join(', ')}`,
+    );
+  }
+
+  return model.spawnModelTemplate.replace('{effort}', resolvedLevel);
+}
+
+/**
+ * 특정 CLI/모델의 effort 레벨 목록을 반환합니다.
+ *
+ * @param cli - CLI 타입
+ * @param modelId - 모델 ID
+ * @returns 레벨 배열 (미지원 시 null)
+ */
+export function getEffortLevels(cli: CliType, modelId: string): string[] | null {
+  const effort = getEffort(cli, modelId);
+  if (!effort.supported) {
+    return null;
+  }
+  return effort.levels;
+}
+
+/**
+ * 특정 CLI/모델의 컨텍스트 윈도우 크기를 반환합니다.
+ *
+ * @param cli - CLI 타입
+ * @param modelId - 모델 ID
+ * @returns 컨텍스트 윈도우 크기 (토큰, 미설정 시 null)
+ */
+export function getModelContextWindow(cli: CliType, modelId: string): number | null {
+  const model = findProviderModel(cli, modelId);
+  return model.contextWindow ?? null;
+}
+
+function findProviderModel(cli: CliType, modelId: string): ModelEntry {
+  const provider = registry.providers[cli];
+  if (!provider) {
+    throw new Error(`알 수 없는 프로바이더: "${cli}"`);
+  }
+
+  const model = provider.models.find((m) => m.modelId === modelId);
+  if (!model) {
+    throw new Error(`알 수 없는 모델: "${cli}/${modelId}"`);
+  }
+  return model;
+}

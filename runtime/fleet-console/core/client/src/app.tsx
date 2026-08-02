@@ -9,7 +9,7 @@ import { CommandBand } from "./components/command-band.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
 import { FeatureTourOverlay } from "./components/feature-tour.js";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog.js";
-import { takeKeyboardShortcutsReturnFocus } from "./keyboard-shortcuts-return-focus.js";
+import { takeKeyboardShortcutsReturnFocus } from "./focus-guards.js";
 import { OperationSearch } from "./components/operation-search.js";
 import { ReconnectButton } from "./components/reconnect-button.js";
 import { Toast } from "./components/toast.js";

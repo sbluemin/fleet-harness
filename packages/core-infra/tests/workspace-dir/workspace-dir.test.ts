@@ -16,7 +16,7 @@ import {
   findWorkspaceDirectory,
   resolveWorkspaceDirectoryByName,
   toWorkspaceDirectoryName,
-} from "../../src/workspace-dir/index.js";
+} from "../../src/workspace-dir/workspace-dir.js";
 
 const cleanupPaths: string[] = [];
 

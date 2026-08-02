@@ -12,7 +12,7 @@ import type {
 } from '../types/config.js';
 import { resolveNpxPath, buildNpxArgs } from '../utils/npx.js';
 import { cleanEnvironment } from '../utils/env.js';
-import { resolveCursorSpawnModel } from '../models/ModelRegistry.js';
+import { resolveCursorSpawnModel } from '../models/registry.js';
 
 /** CLI 백엔드 설정 전체 맵 */
 export const CLI_BACKENDS = {

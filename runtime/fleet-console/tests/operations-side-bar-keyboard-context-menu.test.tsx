@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadForTheater } from "../core/client/src/canvas/canvas-store.js";
-import { requestSideBarOperationAction } from "../core/client/src/sidebar/operation-action-request.js";
+import { requestSideBarOperationAction } from "../core/client/src/sidebar/interaction.js";
 import { OperationsSideBar } from "../core/client/src/sidebar/operations-side-bar.js";
 import { setSideBarCollapsed, setTheaterCollapsed } from "../core/client/src/sidebar/operations-side-bar-store.js";
 import type { OperationGroup, OperationNode, TheaterInfo } from "../core/client/src/types.js";

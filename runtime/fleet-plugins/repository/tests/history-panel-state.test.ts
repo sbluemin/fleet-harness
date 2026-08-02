@@ -2,8 +2,8 @@ import type { ReactElement, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { appendHistoryPage, calculateHistoryWindow, CommitRow, findDetachedCheckout, getHistoryWindowRows, type HistoryLoadGeneration, type HistoryOkState } from "../client/history-panel.js";
-import { ROW_HEIGHT } from "../client/graph-gutter.js";
-import { layoutGraph } from "../client/graph-layout.js";
+import { ROW_HEIGHT } from "../client/graph.js";
+import { layoutGraph } from "../client/graph.js";
 import type { LogCommitEntry, WorktreeCheckout } from "../server/types.js";
 
 // ─── constants ───────────────────────────────────────────────────────────────

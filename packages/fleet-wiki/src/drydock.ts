@@ -8,14 +8,14 @@ import {
   PATCH_FILENAME,
   PATCH_META_FILENAME,
   REQUIRED_WIKI_FRONTMATTER_KEYS,
-} from "./constants.js";
+} from "./patch.js";
 import { listConflicts, readConflict } from "./conflicts.js";
-import { dedupeStrings } from "./internal-utils.js";
-import { extractLegacyMarkdownWikiLinks, extractWikiLinks } from "./links.js";
+import { dedupeStrings } from "./briefing.js";
+import { extractLegacyMarkdownWikiLinks, extractWikiLinks } from "./store.js";
 import { appendLog, parseLog } from "./log.js";
-import { PATCH_SET_DIRNAME, readPatchSet } from "./patch-set.js";
+import { PATCH_SET_DIRNAME, readPatchSet } from "./patch.js";
 import { getIndexMarkdownFile, getLogFile } from "./paths.js";
-import { findUnsafeMemoryText } from "./safety.js";
+import { findUnsafeMemoryText } from "./store.js";
 import {
   REQUIRED_WORKSPACE_SCHEMA_SECTIONS,
   WORKSPACE_SCHEMA_AGENTS_FILENAME,

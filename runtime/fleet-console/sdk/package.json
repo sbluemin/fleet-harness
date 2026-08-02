@@ -20,11 +20,6 @@
       "import": "./version.ts",
       "default": "./version.ts"
     },
-    "./launch": {
-      "types": "./launch/types.ts",
-      "import": "./launch/types.ts",
-      "default": "./launch/types.ts"
-    },
     "./floating": {
       "types": "./floating/types.ts",
       "import": "./floating/types.ts",

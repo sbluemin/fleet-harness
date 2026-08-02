@@ -10,6 +10,45 @@ import {
 } from "./mcp-router.js";
 import type { AgentToolSpec } from "./types.js";
 
+export interface ExecutorMcpRouterRuntime {
+  readonly name: string;
+  readonly runtime: McpRouterRuntime;
+}
+
+export interface ExecutorPort {
+  getScopeExternalMcpServerIds(scopeId?: string): readonly string[];
+  getExecutorMcpTools(serverName: string, scopeId?: string): readonly AgentToolSpec[];
+}
+
+export interface ExecutorPortRuntime extends ExecutorPort {
+  register(port: ExecutorPort): void;
+  getPort(): ExecutorPort;
+}
+
+export interface ExecutorMcpRuntimeProvider {
+  getExecutorMcpRouterRuntimes(): readonly ExecutorMcpRouterRuntime[];
+  createExecutorMcpSession?(request: ExecutorMcpSessionRequest): Promise<ExecutorMcpSession>;
+}
+
+export interface ExecutorMcpSessionRequest {
+  readonly serverName: string;
+  readonly specs: readonly AgentToolSpec[];
+  readonly cwd: string;
+  readonly signal?: AbortSignal;
+}
+
+export interface ExecutorMcpSession {
+  readonly serverName: string;
+  readonly token: string;
+  readonly mcpServer: McpServerConfig;
+  cleanup(): void;
+}
+
+export interface ExecutorMcpRuntimeProviderRuntime extends ExecutorMcpRuntimeProvider {
+  register(provider: ExecutorMcpRuntimeProvider): void;
+  getProvider(): ExecutorMcpRuntimeProvider;
+}
+
 export interface ExecutorServerEndpoint {
   readonly name: string;
   readonly url: string;
@@ -74,6 +113,57 @@ interface ActiveSession {
 }
 
 const DEFAULT_TOOL_TIMEOUT_SECONDS = 1800;
+
+export function createExecutorPortRuntime(): ExecutorPortRuntime {
+  let portRef: ExecutorPort | undefined;
+
+  function getPort(): ExecutorPort {
+    if (!portRef) {
+      throw new Error("Agent executor port is not registered. Register an executor policy port before executor use.");
+    }
+
+    return portRef;
+  }
+
+  return {
+    register(port) {
+      portRef = port;
+    },
+    getPort,
+    getScopeExternalMcpServerIds(scopeId) {
+      return getPort().getScopeExternalMcpServerIds(scopeId);
+    },
+    getExecutorMcpTools(serverName, scopeId) {
+      return getPort().getExecutorMcpTools(serverName, scopeId);
+    },
+  };
+}
+
+export function createExecutorMcpRuntimeProviderRuntime(): ExecutorMcpRuntimeProviderRuntime {
+  let providerRef: ExecutorMcpRuntimeProvider | undefined;
+
+  function getProvider(): ExecutorMcpRuntimeProvider {
+    if (!providerRef) {
+      throw new Error("Agent executor MCP runtime provider is not registered. Register executor MCP runtimes before executor use.");
+    }
+
+    return providerRef;
+  }
+
+  return {
+    register(provider) {
+      providerRef = provider;
+    },
+    getProvider,
+    getExecutorMcpRouterRuntimes() {
+      return getProvider().getExecutorMcpRouterRuntimes();
+    },
+  };
+}
+
+// fleet-admiral과 core-agent executor engine 사이의 등록 채널이다.
+export const executorPortRuntime = createExecutorPortRuntime();
+export const executorMcpRuntimeProviderRuntime = createExecutorMcpRuntimeProviderRuntime();
 
 export function createExecutorSessionManager(deps: CreateExecutorSessionManagerDeps): ExecutorSessionManager {
   const sessionTokensByLabel = new Map<string, ActiveSession>();

@@ -1,6 +1,6 @@
 import { RemoteRuntimeError, type RemoteCandidateSession, type RemoteCancellation, type RemoteProcessHandle } from "./contracts.js";
 import type { OpenSshAdapter, OpenSshProcess } from "./ssh.js";
-import type { ValidatedSshTarget } from "./target.js";
+import type { ValidatedSshTarget } from "./contracts.js";
 
 export const MAX_TUNNEL_ATTEMPTS = 5;
 const SETTLE_MS = 500;

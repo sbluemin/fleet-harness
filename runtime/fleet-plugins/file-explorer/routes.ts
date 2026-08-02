@@ -8,8 +8,8 @@ import {
   handleFilesRead,
   handleFilesReveal,
   handleFilesWatch,
-} from "./server/handlers.js";
-import { handleFilesSearch } from "./server/search.js";
+} from "./server/tree-services.js";
+import { handleFilesSearch } from "./server/tree-services.js";
 
 export default definePlugin({
   id: "file-explorer",

@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createDeferredDeletionCoordinator, DeferredDeletionError } from "../core/host/deferred-deletion.js";
 import type { DurableDeletionTombstone } from "../core/host/durable-state.js";
-import { createOperationStore } from "../core/host/operations/store.js";
-import { TheaterRegistry, type TheaterRegistration } from "../core/host/theaters.js";
+import { createOperationStore } from "../core/host/operations/operations-domain.js";
+import { TheaterRegistry, type TheaterRegistration } from "../core/host/theaters/theater-domain.js";
 
 const THEATER: TheaterRegistration = {
   id: "theater",

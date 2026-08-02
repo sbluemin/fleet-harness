@@ -5,7 +5,7 @@ import {
 
 import { buildBriefingToolConfig } from "./tools/briefing.js";
 import { buildCompileSourceToolConfig } from "./tools/compile-source.js";
-import { buildDryDockToolConfig } from "./tools/drydock.js";
+import { buildDryDockToolConfig } from "./tools/briefing.js";
 import { buildIngestToolConfig } from "./tools/ingest.js";
 import { buildOrientToolConfig } from "./tools/orient.js";
 import { buildPatchEditToolConfig } from "./tools/patch-edit.js";
@@ -13,9 +13,9 @@ import { buildPatchQueueToolConfig } from "./tools/patch-queue.js";
 import { buildQueryToolConfig } from "./tools/query.js";
 import { buildReadToolConfig } from "./tools/read.js";
 import { buildResolveToolConfig } from "./tools/resolve.js";
-import { buildSchemaCreateToolConfig } from "./tools/schema-create.js";
-import { buildSchemaListToolConfig } from "./tools/schema-list.js";
-import { buildSchemaReadToolConfig } from "./tools/schema-read.js";
+import { buildSchemaCreateToolConfig } from "./tools/schema.js";
+import { buildSchemaListToolConfig } from "./tools/schema.js";
+import { buildSchemaReadToolConfig } from "./tools/schema.js";
 import type { MemoryPaths } from "./types.js";
 import type { WikiWorkspaceResolver } from "./workspace-resolver.js";
 

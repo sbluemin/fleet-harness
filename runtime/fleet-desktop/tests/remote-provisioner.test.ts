@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { formatDesktopResourceRootMarker } from "@fleet-console/desktop-protocol";
 
 import { provisionRemoteRuntime } from "../src/runtime/remote/provisioner.js";
-import { parseSshTarget } from "../src/runtime/remote/target.js";
+import { parseSshTarget } from "../src/runtime/remote/contracts.js";
 
 describe("remote provisioner", () => {
   it("composes Node then Console through injected SSH and registry seams", async () => {

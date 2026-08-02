@@ -1,7 +1,7 @@
-import { DESKTOP_FULLSCREEN_API_CATALOG } from "./desktop-fullscreen-routes.js";
-import { DESKTOP_THEME_API_CATALOG } from "./desktop-theme-routes.js";
-import { GLOBAL_SETTINGS_API_CATALOG } from "./global-settings-routes.js";
-import { PLUGIN_SETTINGS_API_CATALOG } from "./plugin-settings-routes.js";
+import { DESKTOP_FULLSCREEN_API_CATALOG } from "./desktop-contract.js";
+import { DESKTOP_THEME_API_CATALOG } from "./desktop-contract.js";
+import { GLOBAL_SETTINGS_API_CATALOG } from "./settings/settings-domain.js";
+import { PLUGIN_SETTINGS_API_CATALOG } from "./settings/settings-domain.js";
 import { SERVER_API_CATALOG } from "./server.js";
 import { SYSTEM_FONTS_API_CATALOG } from "./system-fonts-routes.js";
 

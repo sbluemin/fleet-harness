@@ -34,14 +34,14 @@
       "require": "./dist/auth.cjs"
     },
     "./data-dir": {
-      "types": "./dist/data-dir/index.d.ts",
-      "import": "./dist/data-dir.js",
-      "require": "./dist/data-dir.cjs"
+      "types": "./dist/data-dir/paths.d.ts",
+      "import": "./dist/data-dir/paths.js",
+      "require": "./dist/data-dir/paths.cjs"
     },
     "./data-dir/settings": {
-      "types": "./dist/data-dir/settings/index.d.ts",
-      "import": "./dist/data-dir/settings.js",
-      "require": "./dist/data-dir/settings.cjs"
+      "types": "./dist/data-dir/settings/store.d.ts",
+      "import": "./dist/data-dir/settings/store.js",
+      "require": "./dist/data-dir/settings/store.cjs"
     },
     "./fs-store": {
       "types": "./dist/fs-store/index.d.ts",
@@ -49,9 +49,9 @@
       "require": "./dist/fs-store.cjs"
     },
     "./workspace-dir": {
-      "types": "./dist/workspace-dir/index.d.ts",
-      "import": "./dist/workspace-dir.js",
-      "require": "./dist/workspace-dir.cjs"
+      "types": "./dist/workspace-dir/workspace-dir.d.ts",
+      "import": "./dist/workspace-dir/workspace-dir.js",
+      "require": "./dist/workspace-dir/workspace-dir.cjs"
     }
   },
   "typesVersions": {
@@ -60,16 +60,16 @@
         "dist/auth/index.d.ts"
       ],
       "data-dir": [
-        "dist/data-dir/index.d.ts"
+        "dist/data-dir/paths.d.ts"
       ],
       "data-dir/settings": [
-        "dist/data-dir/settings/index.d.ts"
+        "dist/data-dir/settings/store.d.ts"
       ],
       "fs-store": [
         "dist/fs-store/index.d.ts"
       ],
       "workspace-dir": [
-        "dist/workspace-dir/index.d.ts"
+        "dist/workspace-dir/workspace-dir.d.ts"
       ]
     }
   },

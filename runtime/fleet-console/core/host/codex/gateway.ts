@@ -10,7 +10,7 @@ import { CoworkService, CoworkStore } from "@dotobokuri/fleet-wiki/cowork";
 import type { CoworkConnector } from "@dotobokuri/fleet-wiki/cowork";
 import { UnifiedAgent } from "@dotobokuri/core-unified-agent";
 import type { UnifiedClientOptions } from "@dotobokuri/core-unified-agent";
-import type { AllowedAccessSets } from "./types.js";
+import type { AllowedAccessSets } from "./contracts.js";
 import { WorkspaceRegistry } from "./workspaces.js";
 import type { WorkspaceRegistration } from "./workspaces.js";
 import { withSecurityHeaders } from "../security-headers.js";

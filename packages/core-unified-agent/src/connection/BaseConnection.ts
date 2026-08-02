@@ -8,7 +8,7 @@ import { EventEmitter } from 'events';
 import { Readable, Writable } from 'node:stream';
 import { ndJsonStream, type Stream } from '@agentclientprotocol/sdk';
 import { withHidden } from '@dotobokuri/core-process';
-import type { ConnectionState, StructuredLogEntry } from '../types/common.js';
+import type { ConnectionState, StructuredLogEntry } from '../types/config.js';
 import { isWindows } from '../utils/env.js';
 import { killProcess } from '../utils/process.js';
 

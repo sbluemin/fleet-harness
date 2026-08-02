@@ -4,9 +4,9 @@ import { parseAgentCliId } from "@dotobokuri/fleet-admiral";
 import type { GlobalOptionsData } from "@dotobokuri/core-infra/data-dir/settings";
 
 import { parseFleetCliOptions } from "../src/cli-args.js";
-import { resolveSessionOptions } from "../src/mission-control/options/resolver.js";
+import { resolveSessionOptions } from "../src/mission-control/options/runtime.js";
 import { createSessionOptionsRuntime } from "../src/mission-control/options/runtime.js";
-import type { SessionOptions } from "../src/mission-control/options/types.js";
+import type { SessionOptions } from "../src/mission-control/options/runtime.js";
 
 const DEFAULTS: SessionOptions = {
   cliId: "claude",
