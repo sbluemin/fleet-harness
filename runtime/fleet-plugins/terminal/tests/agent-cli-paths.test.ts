@@ -7,11 +7,13 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { validateAgentCliPathForSave } from "../server/agent-api/agent-cli-detect.js";
 import {
+  AGENT_CLI_COMMANDS,
   AGENT_CLI_PATHS_STORAGE_KEY,
   agentCliCommandForId,
   applyAgentCliPathEnvOverlay,
   createAgentCliPathStore,
   createCarrierAgentCliLaunchResolver,
+  normalizeAgentCliPaths,
   resolveAgentCliBinary,
 } from "../server/agent-api/agent-cli-paths.js";
 
@@ -47,6 +49,24 @@ describe("Agent CLI path storage", () => {
       pluginId: "terminal",
       key: AGENT_CLI_PATHS_STORAGE_KEY,
       value: { version: 1, paths: {} },
+    });
+  });
+
+  it("retains a legacy Codex path without restoring it to the detection catalog", () => {
+    expect(AGENT_CLI_COMMANDS).not.toContain("codex");
+    expect(normalizeAgentCliPaths({
+      version: 1,
+      paths: {
+        claude: "/custom/claude",
+        codex: "/custom/codex",
+        removed: "/custom/removed",
+      },
+    })).toEqual({
+      version: 1,
+      paths: {
+        claude: "/custom/claude",
+        codex: "/custom/codex",
+      },
     });
   });
 
@@ -203,6 +223,27 @@ describe("Carrier Agent CLI launch resolution", () => {
       cliPath: undefined,
     });
     expect(agentCliCommandForId("codex")).toBeNull();
+  });
+
+  it("keeps Codex env and stored path overrides for Carrier launches", async () => {
+    const storedBinary = createFile("stored-codex", 0o700);
+    const envBinary = createFile("env-codex", 0o700);
+    const resolver = createCarrierAgentCliLaunchResolver(
+      async () => ({ codex: storedBinary }),
+      { PATH: "", CODEX_BIN: envBinary },
+    );
+
+    await expect(resolver("codex", { env: {} })).resolves.toEqual({
+      cliPath: envBinary,
+    });
+
+    const storedResolver = createCarrierAgentCliLaunchResolver(
+      async () => ({ codex: storedBinary }),
+      { PATH: "" },
+    );
+    await expect(storedResolver("codex", { env: {} })).resolves.toEqual({
+      cliPath: storedBinary,
+    });
   });
 
   it("passes only CLAUDE_BIN when a Claude user path needs the bridge override", async () => {

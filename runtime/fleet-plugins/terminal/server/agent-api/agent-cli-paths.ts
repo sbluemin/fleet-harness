@@ -6,6 +6,7 @@ import type { FleetPluginStorageHost } from "@fleet-console/sdk/plugin";
 
 export const AGENT_CLI_PATHS_STORAGE_KEY = "agent-cli-paths";
 export const AGENT_CLI_COMMANDS = ["claude", "cursor-agent"] as const;
+const STORED_AGENT_CLI_COMMANDS = ["claude", "codex", "cursor-agent"] as const;
 
 export type AgentCliPathError =
   | "path_not_absolute"
@@ -29,6 +30,7 @@ export interface AgentCliBinaryResolution {
 
 const OVERRIDE_ENV_BY_COMMAND: Readonly<Record<string, string>> = {
   claude: "CLAUDE_BIN",
+  codex: "CODEX_BIN",
   "cursor-agent": "CURSOR_AGENT_BIN",
 };
 
@@ -68,7 +70,7 @@ export function normalizeAgentCliPaths(value: unknown): AgentCliPathsData {
     return { version: 1, paths: {} };
   }
   const paths: Record<string, string> = {};
-  for (const command of AGENT_CLI_COMMANDS) {
+  for (const command of STORED_AGENT_CLI_COMMANDS) {
     const candidate = value.paths[command];
     if (typeof candidate === "string" && candidate.length > 0) paths[command] = candidate;
   }
