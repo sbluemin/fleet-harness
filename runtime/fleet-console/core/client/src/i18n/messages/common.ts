@@ -28,14 +28,14 @@ export const commonEn = {
   "featureTour.skip": "Skip",
   "featureTour.gotIt": "Got it",
   "featureTour.progress": "{current} / {total}",
-  "featureTour.triage.spotlightTitle": "Triage mode is new",
-  "featureTour.triage.spotlightBody": "It stands up one waiting item at a time so you can clear them back to back. Click here, or press Alt+T.",
   "featureTour.triage.step1Title": "One at a time",
   "featureTour.triage.step1Body": "Only what is waiting stays. Answer it and the next item takes the same spot.",
   "featureTour.triage.step2Title": "You can jump the queue",
   "featureTour.triage.step2Body": "Click anything in the left list or the rail below to bring it up now. The rail also shows what is next.",
   "featureTour.triage.step3Title": "Turn it off and nothing is lost",
   "featureTour.triage.step3Body": "Press it again, or Alt+T, and every panel returns to its coordinates.",
+  "featureTour.claudeGateway.spotlightTitle": "Claude Gateway is available",
+  "featureTour.claudeGateway.spotlightBody": "Start Claude Code through AI Gateway to use the models enabled in Settings. It is well suited to large-scale workloads. You can switch models later with /model.",
 } as const;
 
 export const commonKo: Record<keyof typeof commonEn, string> = {
@@ -68,12 +68,12 @@ export const commonKo: Record<keyof typeof commonEn, string> = {
   "featureTour.skip": "건너뛰기",
   "featureTour.gotIt": "알겠습니다",
   "featureTour.progress": "{current} / {total}",
-  "featureTour.triage.spotlightTitle": "선별 처리 모드가 추가되었습니다",
-  "featureTour.triage.spotlightBody": "답을 기다리는 작업만 한 건씩 세워 연속으로 처리합니다. 눌러서 켜거나 Alt+T를 누르십시오.",
   "featureTour.triage.step1Title": "한 번에 하나만 세웁니다",
   "featureTour.triage.step1Body": "답을 기다리는 작업만 남습니다. 답을 보내면 다음 건이 같은 자리에 섭니다.",
   "featureTour.triage.step2Title": "순서는 가로챌 수 있습니다",
   "featureTour.triage.step2Body": "좌측 목록이나 아래 대기 레일에서 무엇이든 클릭하면 그 건이 바로 올라옵니다. 레일이 다음 순서도 함께 보여줍니다.",
   "featureTour.triage.step3Title": "끄면 원래 화면 그대로입니다",
   "featureTour.triage.step3Body": "다시 누르거나 Alt+T를 누르면 패널이 원래 자리로 돌아갑니다.",
+  "featureTour.claudeGateway.spotlightTitle": "Claude Gateway를 사용할 수 있습니다",
+  "featureTour.claudeGateway.spotlightBody": "Claude Code를 AI Gateway로 시작하면 설정에서 켠 모델을 사용할 수 있습니다. 대규모 워크로드에 적합합니다. 실행 후 /model로 모델을 바꿀 수도 있습니다.",
 };

@@ -221,14 +221,14 @@ describe("global settings routes", () => {
   it("PUT /global-settings stores seen Feature Tour keys through the global settings path", async () => {
     const harness = createRouterHarness({
       authorized: true,
-      body: { seenFeatureTours: ["triage.spotlight", "triage.walkthrough"] },
+      body: { seenFeatureTours: ["example.spotlight", "example.walkthrough"] },
       general: { language: "ko" },
     });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
 
-    expect(harness.currentGeneral()?.seenFeatureTours).toEqual(["triage.spotlight", "triage.walkthrough"]);
+    expect(harness.currentGeneral()?.seenFeatureTours).toEqual(["example.spotlight", "example.walkthrough"]);
     expect(harness.writes[0]?.body).toMatchObject({
-      state: { seenFeatureTours: ["triage.spotlight", "triage.walkthrough"] },
+      state: { seenFeatureTours: ["example.spotlight", "example.walkthrough"] },
     });
   });
 

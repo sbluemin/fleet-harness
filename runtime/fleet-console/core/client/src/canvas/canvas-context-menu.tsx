@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 
+import { FEATURE_TOUR_BOUNDARY_ATTRIBUTE, FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import { useT } from "../i18n/index.js";
 
 interface CanvasContextMenuProps {
@@ -49,7 +50,9 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
 
   useEffect(() => {
     const handlePointer = (event: MouseEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) onClose();
+      const target = event.target as Node;
+      if (containerRef.current?.contains(target) || document.querySelector(FEATURE_TOUR_LAYER_SELECTOR)?.contains(target)) return;
+      onClose();
     };
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -74,7 +77,14 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
       style={clampedAnchorStyle(anchor, viewportBounds, placement, menuSize)}
       data-canvas-blocker
     >
-      <div className="operation-launch-menu theater-menu canvas-context-menu" role="dialog" aria-label={t("canvas.menu.aria")} tabIndex={-1} ref={menuRef}>
+      <div
+        className="operation-launch-menu theater-menu canvas-context-menu"
+        role="dialog"
+        aria-label={t("canvas.menu.aria")}
+        tabIndex={-1}
+        ref={menuRef}
+        {...{ [FEATURE_TOUR_BOUNDARY_ATTRIBUTE]: "" }}
+      >
         <div className="canvas-context-menu-head">
           <span className="canvas-context-menu-reticle" aria-hidden="true"><CommandReticleIcon /></span>
           <span className="canvas-context-menu-head-text">
@@ -94,6 +104,9 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                   type="button"
                   role="menuitem"
                   className="theater-menu-item canvas-context-menu-item operation-launch-menu-item"
+                  // 실행 종류의 안정 식별자. 기능 투어처럼 특정 항목을 짚어야 하는 바깥 선택자가
+                  // 번역 가능한 title/label 문자열 대신 이 속성에 걸리도록 한다.
+                  data-operation-launch-kind={kind.id}
                   disabled={disabled}
                   title={kind.disabledReason}
                   onClick={() => onLaunchKind(plugin.id, kind)}

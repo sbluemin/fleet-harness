@@ -40,7 +40,7 @@ describe("global settings client transport", () => {
   });
 
   it("requires and sends the seen Feature Tour keys", async () => {
-    const seenFeatureTours = ["triage.spotlight"] as const;
+    const seenFeatureTours = ["example.spotlight"] as const;
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ state: { ...SETTINGS, seenFeatureTours } })));
     globalThis.fetch = fetchMock as typeof fetch;
 
