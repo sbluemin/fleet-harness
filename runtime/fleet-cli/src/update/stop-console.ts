@@ -28,7 +28,13 @@ export async function stopRunningConsoleBeforeUpdate(
 ): Promise<void> {
   const env = deps.env ?? process.env;
   const resolveBinary = deps.resolveBinary ?? ((command, processEnv) => resolvePathBinary(command, processEnv));
-  const consoleBin = resolveBinary(CONSOLE_BIN, env);
+  let consoleBin: ResolvedBinary | undefined;
+  try {
+    consoleBin = resolveBinary(CONSOLE_BIN, env);
+  } catch {
+    // Windows shim 경로의 %/^ 거부처럼 resolver 실패도 best-effort로 통과한다.
+    return;
+  }
   if (!consoleBin) {
     // fleet-console가 PATH에 없으면 정지할 데몬도 없다 — 조용히 통과.
     return;

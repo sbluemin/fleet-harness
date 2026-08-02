@@ -81,6 +81,17 @@ describe("stopRunningConsoleBeforeUpdate", () => {
     expect(io.stdout.toString()).toBe("");
   });
 
+  it("skips silently when PATH resolution throws (best-effort)", async () => {
+    resolvePathBinaryMock.mockImplementation(() => {
+      throw new Error("Refusing to run Windows shim path with cmd.exe expansion-sensitive characters (% or ^): C:\\Users\\%me%\\fleet-console.cmd");
+    });
+    const io = createIo();
+
+    await expect(stopRunningConsoleBeforeUpdate(io)).resolves.toBeUndefined();
+    expect(mockedSpawn).not.toHaveBeenCalled();
+    expect(io.stdout.toString()).toBe("");
+  });
+
   it("continues without throwing when the stop process errors", async () => {
     const child = makeChild();
     resolvePathBinaryMock.mockReturnValue({ bin: "/usr/local/bin/fleet-console", prefixArgs: [] });
