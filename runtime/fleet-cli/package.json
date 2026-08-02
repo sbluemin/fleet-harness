@@ -1,7 +1,7 @@
 {
   "name": "@dotobokuri/fleet-cli",
   "version": "1.44.1",
-  "description": "Fleet CLI — a multi-LLM orchestration kit that operates Claude Code and Codex CLI through a single unified interface.",
+  "description": "Fleet CLI — an orchestration kit that operates Claude Code through a unified terminal interface.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sbluemin/fleet-harness.git",

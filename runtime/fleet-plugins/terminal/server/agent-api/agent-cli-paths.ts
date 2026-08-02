@@ -5,7 +5,8 @@ import { resolvePathBinary, type AgentCliLaunchResolver, type ResolvedBinary } f
 import type { FleetPluginStorageHost } from "@fleet-console/sdk/plugin";
 
 export const AGENT_CLI_PATHS_STORAGE_KEY = "agent-cli-paths";
-export const AGENT_CLI_COMMANDS = ["claude", "codex", "cursor-agent"] as const;
+export const AGENT_CLI_COMMANDS = ["claude", "cursor-agent"] as const;
+const STORED_AGENT_CLI_COMMANDS = ["claude", "codex", "cursor-agent"] as const;
 
 export type AgentCliPathError =
   | "path_not_absolute"
@@ -69,7 +70,7 @@ export function normalizeAgentCliPaths(value: unknown): AgentCliPathsData {
     return { version: 1, paths: {} };
   }
   const paths: Record<string, string> = {};
-  for (const command of AGENT_CLI_COMMANDS) {
+  for (const command of STORED_AGENT_CLI_COMMANDS) {
     const candidate = value.paths[command];
     if (typeof candidate === "string" && candidate.length > 0) paths[command] = candidate;
   }
@@ -127,7 +128,6 @@ export function validateUserAgentCliPath(
 
 export function agentCliCommandForId(cliId: string | undefined): string | null {
   if (cliId === "claude" || cliId === "claude-native" || cliId === "claude-gateway") return "claude";
-  if (cliId === "codex") return "codex";
   if (cliId === "cursor") return "cursor-agent";
   return null;
 }
@@ -151,7 +151,7 @@ export function buildAgentCliClientEnvOverlay(
   userPaths: Readonly<Record<string, string>>,
 ): Readonly<Record<string, string>> | undefined {
   const cliCommand = agentCliCommandForId(cliId);
-  // Provider client는 Codex/Cursor에 cliPath를 직접 넘길 수 있다.
+  // Provider client는 Cursor에 cliPath를 직접 넘길 수 있다.
   // npx bridge를 쓰는 Claude 계열만 기존 CLAUDE_BIN 계약의 최소 오버레이가 필요하다.
   if (cliCommand !== "claude") return undefined;
   const userPath = userPaths[cliCommand];
@@ -165,7 +165,8 @@ export function createCarrierAgentCliLaunchResolver(
 ): AgentCliLaunchResolver {
   return async (cliId, context) => {
     const userPaths = await readAgentCliPaths();
-    const cliCommand = agentCliCommandForId(cliId);
+    // Codex Agent Operation은 제거됐지만 Carrier backend는 provider client로 계속 지원한다.
+    const cliCommand = cliId === "codex" ? "codex" : agentCliCommandForId(cliId);
     if (!cliCommand) throw new Error("agent_cli_unavailable");
     const effectiveEnv = { ...baseEnv, ...context.env };
     const resolution = resolveAgentCliBinary({ cliCommand, env: effectiveEnv, userPaths });

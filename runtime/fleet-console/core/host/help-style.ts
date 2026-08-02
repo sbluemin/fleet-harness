@@ -1,5 +1,5 @@
 // SSoT: runtime/fleet-cli/src/styles (ansi/help-tokens/palette/brand) 및
-// Console과 Codex 호환 CLI가 공유하는 자체 CLI-help 스타일 헬퍼.
+// Console CLI-help 스타일 헬퍼.
 // 독트린상 이 파일은 fleet-cli/packages/*를 import할 수 없는 CLI-help 전용 self-hosted
 // 사본이므로, fleet-cli styles 쪽 브랜드/SGR 변경 시 이 파일에도 수동 동기화가 필요하다.
 

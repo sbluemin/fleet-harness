@@ -12,6 +12,7 @@ import { analysisArtifactUrl } from "../../client/agent/analysis-api.js";
 import { AnalysisRegistry, MAX_ANALYSIS_ARTIFACTS, MAX_STOPPED_ANALYSIS_ARTIFACTS } from "./analysis-registry.js";
 import { ANALYSIS_ARTIFACT_CSP, registerAnalysisRoutes } from "./analysis-routes.js";
 import { ANALYSIS_ERROR_CODES, buildAnalysisCatalog, isAnalysisSelection, isMessageBody, type AnalysisEvent, type AnalystCliId } from "./analysis-types.js";
+import { readProviderSession } from "./provider-session.js";
 
 function artifactBaseCss(colors: { readonly canvas: string; readonly surface: string; readonly foreground: string; readonly muted: string; readonly hairline: string; readonly accent: string }): string {
   return `:root{--fleet-canvas:${colors.canvas};--fleet-surface:${colors.surface};--fleet-ink:${colors.foreground};--fleet-muted:${colors.muted};--fleet-hairline:${colors.hairline};--fleet-accent:${colors.accent}}a{color:var(--fleet-accent)}code{background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:4px;padding:0 .3em}pre{background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:8px;padding:12px;overflow-x:auto}pre code{background:none;border:none;padding:0}blockquote{border-left:3px solid var(--fleet-hairline);color:var(--fleet-muted);margin-left:0;padding-left:1em}hr{border:none;border-top:1px solid var(--fleet-hairline)}th,td{border-color:var(--fleet-hairline)}::selection{background:var(--fleet-accent);color:var(--fleet-canvas)}`;
@@ -37,14 +38,13 @@ describe("Session Analyst server contract", () => {
     const modelsFor = vi.fn((_cliId: AnalystCliId) => ({ defaultModel: "model-a", models: [{ modelId: "model-a", name: "Model A", effort: { supported: true, levels: ["low"], default: "low" } }] }));
     const catalog = buildAnalysisCatalog([
       { id: "claude", displayName: "Claude Code", available: true, version: "1.2.3" },
-      { id: "codex", displayName: "Codex CLI", available: true, version: "1.2.3" },
       { id: "cursor-agent", displayName: "Cursor Agent", available: true, version: "1.2.3" },
     ], modelsFor);
-    expect(catalog.clis.map((cli) => cli.cliId)).toEqual(["claude", "codex", "cursor"]);
+    expect(catalog.clis.map((cli) => cli.cliId)).toEqual(["claude", "cursor"]);
     expect(catalog.clis).toEqual(expect.arrayContaining([expect.objectContaining({ cliId: "claude", available: true })]));
     expect(JSON.stringify(catalog)).not.toMatch(/path|version|session/i);
-    expect(modelsFor.mock.calls.map(([cliId]) => cliId)).toEqual(["claude", "codex", "cursor"]);
-    for (const cliId of ["claude", "codex", "cursor"] as const) {
+    expect(modelsFor.mock.calls.map(([cliId]) => cliId)).toEqual(["claude", "cursor"]);
+    for (const cliId of ["claude", "cursor"] as const) {
       expect(isAnalysisSelection(catalog, { cliId, model: "model-a", effort: "low" })).toBe(true);
       expect(isAnalysisSelection(catalog, { cliId, model: "model-a", effort: "low", language: "ko" })).toBe(true);
     }
@@ -282,7 +282,6 @@ describe("Session Analyst server contract", () => {
 
   it.each([
     ["claude", "claude", "CLAUDE_BIN"],
-    ["codex", "codex", null],
     ["cursor", "cursor-agent", null],
   ] as const)("uses the configured %s path for Analyst detection and execution", async (cliId, cliCommand, envName) => {
     const dir = await mkdtemp(join(tmpdir(), "analysis-cli-path-"));
@@ -334,17 +333,19 @@ describe("Session Analyst server contract", () => {
     }));
   });
 
+
+
   it("passes no custom env when no Agent CLI user path is stored", async () => {
     const dir = await mkdtemp(join(tmpdir(), "analysis-cli-no-path-"));
     const transcriptPath = join(dir, "captured.jsonl");
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
     const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
-    router.setProviderSession({ provider: "codex", sessionId: "private", capturedAt: "now", transcriptPath });
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
     registerAnalysisRoutes(router.ctx as never, {
       env: {
         PATH: "",
-        CODEX_BIN: process.execPath,
+        CLAUDE_BIN: process.execPath,
         CLAUDECODE: "nested",
         NODE_OPTIONS: "--inspect",
         npm_config_user_agent: "must-not-return",
@@ -354,7 +355,7 @@ describe("Session Analyst server contract", () => {
       createSession: createSession as never,
     });
 
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "codex", model: "model-b" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
 
     expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
     expect(createSession).toHaveBeenCalledWith(expect.objectContaining({
@@ -499,6 +500,28 @@ describe("Session Analyst server contract", () => {
 
     expect(router.responses.at(-1)).toEqual({ status: 200, body: { ready: true } });
     expect(JSON.stringify(router.responses.at(-1))).not.toContain(transcriptPath);
+  });
+
+  it("reads a durable Codex transcript only through the analysis path", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-codex-durable-"));
+    const transcriptPath = join(dir, "captured.jsonl");
+    await writeFile(transcriptPath, "{}\n");
+    const router = createRouterHarness(true);
+    const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    router.setProviderSession({ provider: "codex", sessionId: "legacy-private", capturedAt: "now", transcriptPath });
+    registerAnalysisRoutes(router.ctx as never, {
+      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
+      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+      createSession: createSession as never,
+    });
+
+    await router.call("GET", "/api/v1/plugins/terminal/analysis/op/ready");
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+
+    expect(router.responses.at(-2)).toEqual({ status: 200, body: { ready: true } });
+    expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
+    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ capturePath: transcriptPath }));
+    expect(readProviderSession(router.operation.payload)).toBeUndefined();
   });
 
   it("reports analysis as ready when transcript fallback resolution succeeds", async () => {
@@ -1039,7 +1062,7 @@ function createRouterHarness(initialHostAllowance: boolean) {
     },
   };
   return {
-    ctx, responses,
+    ctx, operation: state.operation, responses,
     get allowHost() { return state.allowHost; }, set allowHost(value: boolean) { state.allowHost = value; },
     setProviderSession(providerSession: { readonly provider: "claude" | "codex"; readonly sessionId: string; readonly capturedAt: string; readonly transcriptPath?: string; readonly source?: string }) {
       state.operation.payload = { ...state.operation.payload, providerSession };

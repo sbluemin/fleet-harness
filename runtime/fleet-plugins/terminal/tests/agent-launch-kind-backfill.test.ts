@@ -13,7 +13,7 @@ describe("buildAgentLaunchKindBackfillPatch", () => {
   });
 
   it("launchKindId가 이미 있으면 no-op이다", () => {
-    const operation = makeOperation({ payload: { cliId: "claude", launchKindId: "codex" } });
+    const operation = makeOperation({ payload: { cliId: "claude", launchKindId: "claude-native" } });
 
     expect(buildAgentLaunchKindBackfillPatch(operation)).toBeNull();
   });

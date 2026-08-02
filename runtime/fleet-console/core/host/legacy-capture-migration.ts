@@ -99,7 +99,8 @@ function processCaptureFile(
     const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as unknown;
     const providerSession = sanitizeProviderSession(parsed);
     if (!providerSession) return { migrated: false, retained: false };
-
+    // 제거된 provider도 분석용 transcript 매핑은 durable payload로 이관한다.
+    // 실행과 Resume 가능 여부는 provider-specific consumer가 별도로 제한한다.
     deps.operations.patch(operationId, {
       payload: { ...operation.payload, providerSession },
     });

@@ -9,7 +9,6 @@ const CATALOG: readonly OperationCatalogPlugin[] = [
     title: "Terminal",
     kinds: [
       { id: "claude", type: "agent", title: "Claude" },
-      { id: "codex", type: "agent", title: "Codex" },
       { id: "shell", type: "shell", title: "Shell" },
     ],
   },
@@ -20,20 +19,18 @@ describe("resolveOperationLaunchKind", () => {
     expect(resolveOperationLaunchKind(CATALOG, operation({ type: "agent", launchKindId: "claude" }))?.id).toBe("claude");
   });
 
-  it("matches Codex agent operations by launchKindId", () => {
-    expect(resolveOperationLaunchKind(CATALOG, operation({ type: "agent", launchKindId: "codex" }))?.id).toBe("codex");
-  });
 
-  it("returns null when launchKindId is absent and multiple kinds share the operation type", () => {
-    expect(resolveOperationLaunchKind(CATALOG, operation({ type: "agent" }))).toBeNull();
+
+  it("returns the sole agent kind when launchKindId is absent", () => {
+    expect(resolveOperationLaunchKind(CATALOG, operation({ type: "agent" }))?.id).toBe("claude");
   });
 
   it("returns the single matching kind when exactly one kind shares the operation type", () => {
     expect(resolveOperationLaunchKind(CATALOG, operation({ type: "shell" }))?.id).toBe("shell");
   });
 
-  it("returns null when launchKindId does not match and multiple kinds share the operation type", () => {
-    expect(resolveOperationLaunchKind(CATALOG, operation({ type: "agent", launchKindId: "openai" }))).toBeNull();
+  it("falls back to the sole agent kind when a removed launchKindId does not match", () => {
+    expect(resolveOperationLaunchKind(CATALOG, operation({ type: "agent", launchKindId: "removed" }))?.id).toBe("claude");
   });
 
   it("returns null when plugin or type does not match the catalog", () => {

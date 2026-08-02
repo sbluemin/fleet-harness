@@ -13,7 +13,6 @@ export const assetBundle: AssetPluginBundle = {
   description: "Fleet carrier delegation and wiki evidence plugin",
   directoryName: "fleet",
   displayName: "Fleet",
-  hashFileName: ".fleet-codex-plugin.hash",
   name: "fleet",
   source: "asset",
 };

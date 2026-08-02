@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   createCarrierResultReminderRouter,
@@ -41,38 +41,9 @@ describe("carrier reminder encoding parity", () => {
     expect(formatCarrierResultReminderMessage(policy, text, "darwin")).toEqual(formatProgrammaticMessage(policy, text, "darwin"));
   });
 
-  it("matches Windows ConPTY paste-burst chunks", () => {
-    const policy: CliMessagePolicy = {
-      bracketedPaste: true,
-      conptyPasteBurst: true,
-      lineTerminator: "\r",
-      multilineStrategy: "paste-mode",
-    };
-    const text = "line 1\nline 2";
 
-    expect(formatCarrierResultReminderMessage(policy, text, "win32")).toEqual(formatProgrammaticMessage(policy, text, "win32"));
-  });
 
-  it("delays programmatic Windows ConPTY submission", () => {
-    vi.useFakeTimers();
-    try {
-      const writes: string[] = [];
-      const policy: CliMessagePolicy = {
-        bracketedPaste: true,
-        conptyPasteBurst: true,
-        lineTerminator: "\r",
-        multilineStrategy: "paste-mode",
-      };
 
-      createProgrammaticInput(createWriteOnlyPtyHost(writes), { messagePolicy: policy }, "win32").sendMessage("line 1\nline 2");
-
-      expect(writes).toEqual(["line 1\nline 2"]);
-      vi.advanceTimersByTime(250);
-      expect(writes).toEqual(["line 1\nline 2", "\r"]);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
 
   it("writes encoded chunks through the two-pane sink", () => {
     const twoPaneWrites: string[] = [];

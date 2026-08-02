@@ -238,7 +238,7 @@ describe("connectTerminalSettings / server hydration", () => {
   });
 
   it("preserves the Analyst selection when writing font settings", async () => {
-    const selection = { cliId: "codex", model: "gpt-5", effort: "high" };
+    const selection = { cliId: "cursor", model: "auto", effort: "high" };
     const cap = makeCapability({ serverValue: { analyst: { selection } } });
     connectTerminalSettings(cap);
     setTerminalFont("jetbrains");
@@ -259,7 +259,7 @@ describe("connectTerminalSettings / server hydration", () => {
       write: async (_pluginId, value) => { record = value; },
     };
     const font = { source: "curated", id: "jetbrains", customName: "", size: 16 };
-    const analyst = { selection: { cliId: "codex", model: "gpt-5", effort: "high" } };
+    const analyst = { selection: { cliId: "cursor", model: "auto", effort: "high" } };
 
     await Promise.all([
       mergeTerminalSettingsRecord(settings, { font }),

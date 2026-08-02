@@ -44,7 +44,7 @@ import {
   CARRIER_STREAMS_COMPANION_ID,
 } from "./analysis-visibility.js";
 
-const catalog = { clis: [{ cliId: "codex", label: "Codex", available: true, defaultModel: "gpt", models: [{ id: "gpt", label: "GPT", effortLevels: ["medium"], defaultEffort: "medium" }] }] };
+const catalog = { clis: [{ cliId: "claude", label: "Claude", available: true, defaultModel: "gpt", models: [{ id: "gpt", label: "GPT", effortLevels: ["medium"], defaultEffort: "medium" }] }] };
 
 describe("Session Analyst Evidence Pulse", () => {
   beforeEach(() => {
@@ -65,7 +65,7 @@ describe("Session Analyst Evidence Pulse", () => {
     storeState = {
       ...initialAnalysisState,
       catalog,
-      cliId: "codex",
+      cliId: "claude",
       model: "gpt",
       effort: "medium",
     };
@@ -96,7 +96,7 @@ describe("Session Analyst Evidence Pulse", () => {
     storeState = {
       ...initialAnalysisState,
       catalog,
-      cliId: "codex",
+      cliId: "claude",
       model: "gpt",
       effort: "medium",
       selectionSaved: true,
@@ -132,7 +132,7 @@ describe("Session Analyst Evidence Pulse", () => {
     storeState = {
       ...initialAnalysisState,
       catalog,
-      cliId: "codex",
+      cliId: "claude",
       model: "gpt",
       effort: "medium",
       selectionLocked: true,
@@ -155,7 +155,7 @@ describe("Session Analyst Evidence Pulse", () => {
     storeState = {
       ...initialAnalysisState,
       catalog,
-      cliId: "codex",
+      cliId: "claude",
       model: "gpt",
       effort: "medium",
       started: true,
@@ -366,7 +366,7 @@ describe("Session Analyst Evidence Pulse", () => {
     storeState = {
       ...initialAnalysisState,
       catalog,
-      cliId: "codex",
+      cliId: "claude",
       model: "gpt",
       effort: "medium",
       started: true,
@@ -388,7 +388,7 @@ describe("Session Analyst Evidence Pulse", () => {
     storeState = {
       ...initialAnalysisState,
       catalog,
-      cliId: "codex",
+      cliId: "claude",
       model: "gpt",
       effort: "medium",
     };
@@ -494,7 +494,7 @@ describe("Session Analyst Evidence Pulse", () => {
     storeState = {
       ...initialAnalysisState,
       catalog,
-      cliId: "codex",
+      cliId: "claude",
       model: "gpt",
       effort: "medium",
       draft: "/",
@@ -759,7 +759,7 @@ describe("Session Analyst Evidence Pulse", () => {
     storeState = {
       ...initialAnalysisState,
       catalog,
-      cliId: "codex",
+      cliId: "claude",
       model: "gpt",
       effort: "medium",
     };

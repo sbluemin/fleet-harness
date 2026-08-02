@@ -127,7 +127,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
   it("passes resumeSessionId and capture hook exec to fleet-admiral injection", async () => {
     const runtime = createFakeRuntime(() => undefined);
     const injectedOptions: InjectAgentCliProfileOptions[] = [];
-    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "codex" as const, label: "Codex", cwd, env: { ...env } }));
+    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude" as const, label: "Claude", cwd, env: { ...env } }));
     const injectProfile = vi.fn(async (profile: AgentCliProfile, options: InjectAgentCliProfileOptions) => {
       injectedOptions.push(options);
       return { ...profile, args: [...profile.args, "resume", "provider-session-a"] };
@@ -143,22 +143,22 @@ describe("createDefaultTerminalLaunchResolver", () => {
       resolveProfile: resolveProfile as never,
     });
 
-    await resolve("/work/project", { sessionId: "fleet-session-a", cliId: "codex", resumeSessionId: "provider-session-a" });
+    await resolve("/work/project", { sessionId: "fleet-session-a", cliId: "claude", resumeSessionId: "provider-session-a" });
 
     expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({
-      cliId: "codex",
+      cliId: "claude",
       resumeSessionId: "provider-session-a",
     }));
     expect(injectedOptions[0]).toMatchObject({ resumeSessionId: "provider-session-a" });
     expect(injectedOptions[0]?.captureSessionHookExec).toEqual({
       command: "/node",
-      args: ["--import", pathToFileURL("/loader/tsx.mjs").href, "/console/cli.ts", "hook", "capture-session", "codex"],
+      args: ["--import", pathToFileURL("/loader/tsx.mjs").href, "/console/cli.ts", "hook", "capture-session", "claude"],
     });
   });
 
   it("passes a selected Agent CLI id to fleet-admiral profile resolution", async () => {
     const runtime = createFakeRuntime(() => undefined);
-    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "codex" as const, label: "Codex", cwd, env: { ...env } }));
+    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude" as const, label: "Claude", cwd, env: { ...env } }));
     const injectProfile = vi.fn(async (profile) => profile);
     const resolve = createDefaultTerminalLaunchResolver({
       cwd: "/work",
@@ -168,17 +168,17 @@ describe("createDefaultTerminalLaunchResolver", () => {
       resolveProfile: resolveProfile as never,
     });
 
-    await resolve("/work/project", { sessionId: "session-a", cliId: "codex" });
+    await resolve("/work/project", { sessionId: "session-a", cliId: "claude" });
 
-    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "codex" }));
+    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "claude" }));
   });
 
   it("uses the shared Admiral dependencies for gateway and standard operations", async () => {
     const claudeConfigDir = makeTempDir("fleet-gateway-admiral-routing-");
     const sharedResolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string, options: { readonly cliId?: string }) => ({
       ...baseProfile,
-      id: options.cliId === "claude-gateway" ? "claude-gateway" as const : "codex" as const,
-      label: options.cliId === "claude-gateway" ? "Claude (Gateway • Experimental)" : "Codex",
+      id: options.cliId === "claude-gateway" ? "claude-gateway" as const : "claude" as const,
+      label: options.cliId === "claude-gateway" ? "Claude (Gateway • Experimental)" : "Claude",
       cwd,
       env: { ...env },
     }));
@@ -200,7 +200,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(sharedResolveProfile).toHaveBeenCalledTimes(1);
     expect(sharedInjectProfile).toHaveBeenCalledTimes(1);
 
-    await resolve("/work", { sessionId: "session-standard-admiral", cliId: "codex" });
+    await resolve("/work", { sessionId: "session-standard-admiral", cliId: "claude" });
     expect(sharedResolveProfile).toHaveBeenCalledTimes(2);
     expect(sharedInjectProfile).toHaveBeenCalledTimes(2);
   });
@@ -255,9 +255,9 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
     expect(spec.bin).toBe(process.execPath);
     expect(spec.env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:43210/plugins/terminal/ai-gateway");
-    expect(pluginRoot).toBe(path.join(root, "marketplace", "plugins", "fleet"));
+    expect(pluginRoot).toBe(path.join(root, "marketplace", "plugins", "fleet-gateway"));
     expect(existsSync(path.join(pluginRoot!, ".claude-plugin", "plugin.json"))).toBe(true);
-    expect(existsSync(path.join(pluginRoot!, ".codex-plugin", "plugin.json"))).toBe(true);
+    expect(existsSync(path.join(pluginRoot!, ".codex-plugin", "plugin.json"))).toBe(false);
     expect(existsSync(promptPath!)).toBe(true);
 
     await spec.cleanup?.();
@@ -284,14 +284,14 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
   it("wraps a FLEET_TERMINAL_CMD Windows shim through ComSpec", async () => {
     const binDir = makeTempDir();
-    const codexShim = touch(path.join(binDir, "codex.cmd"));
+    const customShim = touch(path.join(binDir, "custom-agent.cmd"));
     const comSpec = "C:\\Windows\\System32\\cmd.exe";
     const resolveProfile = vi.fn();
     const resolve = createDefaultTerminalLaunchResolver({
       cwd: "/work",
       env: {
         ComSpec: comSpec,
-        FLEET_TERMINAL_CMD: "codex --resume",
+        FLEET_TERMINAL_CMD: "custom-agent --resume",
         PATH: binDir,
         PATHEXT: ".cmd",
       } as NodeJS.ProcessEnv,
@@ -302,7 +302,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const spec = await resolve("/work");
 
     expect(spec.bin).toBe(comSpec);
-    expect(spec.args).toEqual(["/d", "/s", "/c", "call", `${codexShim} `, "--resume"]);
+    expect(spec.args).toEqual(["/d", "/s", "/c", "call", `${customShim} `, "--resume"]);
     expect(resolveProfile).not.toHaveBeenCalled();
   });
 
@@ -398,7 +398,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       env: { PATH: "/bin" } as NodeJS.ProcessEnv,
       agentRuntime: createFakeRuntime() as never,
       injectProfile: (async (profile: AgentCliProfile) => profile) as never,
-      resolveProfile: (async () => ({ ...baseProfile, id: "codex", bin: "/custom/codex-wrapper", binPrefixArgs: ["--wrapper-prefix"] })) as never,
+      resolveProfile: (async () => ({ ...baseProfile, id: "claude", bin: "/custom/claude-wrapper", binPrefixArgs: ["--wrapper-prefix"] })) as never,
       createSessionIdentityResolver: createResolver as never,
     });
 
@@ -406,8 +406,8 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
     expect(spec.sessionIdentityResolver).toMatchObject({ resolve: expect.any(Function) });
     expect(createResolver).toHaveBeenCalledWith(expect.objectContaining({
-      provider: "codex",
-      command: "/custom/codex-wrapper",
+      provider: "claude",
+      command: "/custom/claude-wrapper",
       commandPrefixArgs: ["--wrapper-prefix"],
       cwd: "/work",
     }));

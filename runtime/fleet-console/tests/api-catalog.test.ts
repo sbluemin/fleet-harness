@@ -156,7 +156,6 @@ function createStubAgentCliDetector(): AgentCliDetector {
   return {
     detect: async () => [
       { id: "claude", displayName: "Claude Code", available: true, version: null },
-      { id: "codex", displayName: "Codex CLI", available: true, version: null },
       { id: "cursor-agent", displayName: "Cursor Agent", available: true, version: null },
     ],
   };

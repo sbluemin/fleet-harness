@@ -23,7 +23,7 @@ describe("shared analysis store reducer", () => {
 
   it("prefers Claude Sonnet at medium and restores that selection on reset", () => {
     const preferredCatalog = { clis: [
-      { cliId: "codex", label: "Codex", available: true, defaultModel: "gpt", models: [{ id: "gpt", label: "GPT", effortLevels: ["high"], defaultEffort: "high" }] },
+      { cliId: "cursor", label: "Cursor", available: true, defaultModel: "gpt", models: [{ id: "gpt", label: "GPT", effortLevels: ["high"], defaultEffort: "high" }] },
       { cliId: "claude", label: "Claude Code", available: true, defaultModel: "opus[1m]", models: [
         { id: "opus[1m]", label: "Claude Opus [1M]", effortLevels: ["high", "xhigh"], defaultEffort: "xhigh" },
         { id: "sonnet", label: "Claude Sonnet", effortLevels: ["low", "medium", "high"], defaultEffort: "medium" },
@@ -65,16 +65,16 @@ describe("shared analysis store reducer", () => {
         { id: "sonnet", label: "Sonnet", effortLevels: ["low", "medium", "high"], defaultEffort: "medium" },
         { id: "opus", label: "Opus", effortLevels: ["high"], defaultEffort: "high" },
       ] },
-      { cliId: "codex", label: "Codex", available: true, defaultModel: "gpt", models: [
+      { cliId: "cursor", label: "Cursor", available: true, defaultModel: "gpt", models: [
         { id: "gpt", label: "GPT", effortLevels: [], defaultEffort: undefined },
       ] },
     ] };
     const hydrated = analysisReducer(initialAnalysisState, {
       type: "catalog",
       catalog: hydrationCatalog,
-      selection: { cliId: "codex", model: "removed", effort: "high" },
+      selection: { cliId: "cursor", model: "removed", effort: "high" },
     });
-    expect(hydrated).toMatchObject({ cliId: "codex", model: "gpt", effort: "" });
+    expect(hydrated).toMatchObject({ cliId: "cursor", model: "gpt", effort: "" });
 
     const reset = analysisReducer({ ...hydrated, started: true, entries: [{ role: "user", text: "Question" }] }, {
       type: "reset",
@@ -88,7 +88,7 @@ describe("shared analysis store reducer", () => {
       { cliId: "claude", label: "Claude", available: false, defaultModel: "sonnet", models: [
         { id: "sonnet", label: "Sonnet", effortLevels: ["medium"], defaultEffort: "medium" },
       ] },
-      { cliId: "codex", label: "Codex", available: true, defaultModel: "shared", models: [
+      { cliId: "claude", label: "Claude", available: true, defaultModel: "shared", models: [
         { id: "shared", label: "Shared Codex", effortLevels: ["high"], defaultEffort: "high" },
       ] },
       { cliId: "cursor", label: "Cursor", available: true, defaultModel: "auto", models: [
@@ -166,7 +166,7 @@ describe("shared analysis store reducer", () => {
 
     const stillAuthoring = analysisReducer(authoring, {
       type: "event",
-      event: { type: "tool", title: "codex__publish_artifact", status: "in_progress" },
+      event: { type: "tool", title: "analyst__publish_artifact", status: "in_progress" },
       now: 3_000,
     });
     expect(stillAuthoring.artifactAuthoring).toEqual({ startedAt: 2_000 });

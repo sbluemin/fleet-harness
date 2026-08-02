@@ -7,10 +7,13 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { validateAgentCliPathForSave } from "../server/agent-api/agent-cli-detect.js";
 import {
+  AGENT_CLI_COMMANDS,
   AGENT_CLI_PATHS_STORAGE_KEY,
+  agentCliCommandForId,
   applyAgentCliPathEnvOverlay,
   createAgentCliPathStore,
   createCarrierAgentCliLaunchResolver,
+  normalizeAgentCliPaths,
   resolveAgentCliBinary,
 } from "../server/agent-api/agent-cli-paths.js";
 
@@ -49,6 +52,24 @@ describe("Agent CLI path storage", () => {
     });
   });
 
+  it("retains a legacy Codex path without restoring it to the detection catalog", () => {
+    expect(AGENT_CLI_COMMANDS).not.toContain("codex");
+    expect(normalizeAgentCliPaths({
+      version: 1,
+      paths: {
+        claude: "/custom/claude",
+        codex: "/custom/codex",
+        removed: "/custom/removed",
+      },
+    })).toEqual({
+      version: 1,
+      paths: {
+        claude: "/custom/claude",
+        codex: "/custom/codex",
+      },
+    });
+  });
+
   it("preserves both paths when separate store adapters write concurrently", async () => {
     let stored: unknown = null;
     const storage = {
@@ -61,14 +82,14 @@ describe("Agent CLI path storage", () => {
     const secondStore = createAgentCliPathStore(storage, "terminal");
 
     const claudeWrite = firstStore.writePath("claude", "/custom/bin/claude");
-    const codexWrite = secondStore.writePath("codex", "/custom/bin/codex");
-    await Promise.all([claudeWrite, codexWrite]);
+    const cursorWrite = secondStore.writePath("cursor-agent", "/custom/bin/cursor-agent");
+    await Promise.all([claudeWrite, cursorWrite]);
 
     expect(await firstStore.read()).toEqual({
       version: 1,
       paths: {
         claude: "/custom/bin/claude",
-        codex: "/custom/bin/codex",
+        "cursor-agent": "/custom/bin/cursor-agent",
       },
     });
   });
@@ -190,14 +211,38 @@ describe("Agent CLI launch env overlay", () => {
 });
 
 describe("Carrier Agent CLI launch resolution", () => {
-  it("passes a Codex user path as cliPath without a custom env", async () => {
+  it("resolves Codex from PATH only for the preserved Carrier backend", async () => {
+    const directory = createTemporaryDirectory();
+    createFileAt(directory, "codex");
     const resolver = createCarrierAgentCliLaunchResolver(
-      async () => ({ codex: process.execPath }),
-      { PATH: path.dirname(process.execPath) },
+      async () => ({}),
+      { PATH: directory },
     );
 
     await expect(resolver("codex", { env: {} })).resolves.toEqual({
-      cliPath: process.execPath,
+      cliPath: undefined,
+    });
+    expect(agentCliCommandForId("codex")).toBeNull();
+  });
+
+  it("keeps Codex env and stored path overrides for Carrier launches", async () => {
+    const storedBinary = createFile("stored-codex", 0o700);
+    const envBinary = createFile("env-codex", 0o700);
+    const resolver = createCarrierAgentCliLaunchResolver(
+      async () => ({ codex: storedBinary }),
+      { PATH: "", CODEX_BIN: envBinary },
+    );
+
+    await expect(resolver("codex", { env: {} })).resolves.toEqual({
+      cliPath: envBinary,
+    });
+
+    const storedResolver = createCarrierAgentCliLaunchResolver(
+      async () => ({ codex: storedBinary }),
+      { PATH: "" },
+    );
+    await expect(storedResolver("codex", { env: {} })).resolves.toEqual({
+      cliPath: storedBinary,
     });
   });
 
@@ -218,21 +263,25 @@ describe("Carrier Agent CLI launch resolution", () => {
     });
   });
 
+
+
+
+
   it("keeps an existing env override ahead of the stored user path", async () => {
-    const userBinary = createFile("user-codex", 0o700);
+    const userBinary = createFile("user-claude", 0o700);
     const resolver = createCarrierAgentCliLaunchResolver(
-      async () => ({ codex: userBinary }),
-      { PATH: path.dirname(process.execPath), CODEX_BIN: process.execPath },
+      async () => ({ claude: userBinary }),
+      { PATH: path.dirname(process.execPath), CLAUDE_BIN: process.execPath },
     );
 
-    await expect(resolver("codex", { env: {} })).resolves.toEqual({
+    await expect(resolver("claude", { env: {} })).resolves.toEqual({
       cliPath: process.execPath,
     });
   });
 
   it("passes no custom env when no Agent CLI user path is stored", async () => {
     const directory = createTemporaryDirectory();
-    createFileAt(directory, "codex");
+    createFileAt(directory, "cursor-agent");
     const resolver = createCarrierAgentCliLaunchResolver(
       async () => ({}),
       {
@@ -243,7 +292,7 @@ describe("Carrier Agent CLI launch resolution", () => {
       },
     );
 
-    await expect(resolver("codex", { env: { AUTH_TOKEN: "secret" } })).resolves.toEqual({
+    await expect(resolver("cursor", { env: { AUTH_TOKEN: "secret" } })).resolves.toEqual({
       cliPath: undefined,
     });
   });

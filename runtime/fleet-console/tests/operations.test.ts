@@ -98,6 +98,22 @@ describe("operations platform", () => {
     expect(plainDto.payload?.resumeAvailable).toBeUndefined();
   });
 
+  it("does not expose Resume for a removed provider's preserved durable session", () => {
+    const store = createOperationStore({ now: () => 10 });
+    const removedProvider = store.create({
+      id: "op-removed-provider",
+      theaterId: "theater",
+      type: "agent",
+      pluginId: "terminal",
+      title: "Legacy agent",
+      payload: { providerSession: { provider: "codex", sessionId: "provider-secret" } },
+    });
+
+    const dto = createSanitizedOpDto(removedProvider);
+    expect(dto.payload?.resumeAvailable).toBeUndefined();
+    expect(JSON.stringify(dto)).not.toContain("provider-secret");
+  });
+
   it("strips a caller-supplied resumeAvailable marker so only the host derives it", () => {
     const store = createOperationStore({ now: () => 10 });
     const spoofed = store.create({

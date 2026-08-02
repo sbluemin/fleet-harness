@@ -1,5 +1,4 @@
 import { claudeCli, claudeGatewayCli, claudeNativeCli } from "./claude/definitions.js";
-import { codexCli } from "./codex/codex.js";
 import type { AgentCliDefinition, AgentCliId, AgentCliProfile } from "./types.js";
 
 export interface ResolveAgentCliProfileOptions {
@@ -14,11 +13,10 @@ export interface AgentCliMetadata {
 }
 
 const DEFAULT_CLI_ID: AgentCliId = "claude";
-// Console 캔버스 제어 메뉴 순서를 고정한다: Claude (Native) → Claude → Codex → Claude (Gateway).
+// Console 캔버스 제어 메뉴 순서를 고정한다: Claude (Native) → Claude → Claude (Gateway).
 const DEFINITIONS: Record<AgentCliId, AgentCliDefinition> = {
   "claude-native": claudeNativeCli,
   claude: claudeCli,
-  codex: codexCli,
   "claude-gateway": claudeGatewayCli,
 };
 

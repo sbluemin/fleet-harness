@@ -187,7 +187,6 @@ function baseInjectOptions(
 ): Parameters<typeof injectAgentCliProfile>[1] {
   return {
     buildSystemPrompt: () => "Fleet doctrine",
-    codexCommandRunner: () => ({ status: 0, stderr: "", stdout: "" }),
     dataDir: path.join(root, "data"),
     dedicatedMcpSession: {
       async getEndpoint() {

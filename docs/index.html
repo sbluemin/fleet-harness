@@ -267,15 +267,15 @@ body::after {
 .chip-coral  { background: oklch(72% 0.17 25 / 12%); border-color: oklch(72% 0.17 25 / 35%); color: var(--coral); }
 
 /* ───── Animations ───── */
-@keyframes codex-rise {
+@keyframes fleet-rise {
   from { opacity: 0; transform: translateY(14px); filter: blur(6px); }
   to   { opacity: 1; transform: none; filter: none; }
 }
-@keyframes codex-glow {
+@keyframes fleet-glow {
   0%, 100% { opacity: 0.55; }
   50%       { opacity: 1; }
 }
-@keyframes codex-pop {
+@keyframes fleet-pop {
   from { opacity: 0; transform: scale(0.96) translateY(8px); }
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
@@ -291,7 +291,7 @@ body::after {
   50%      { transform: scale(1.5); opacity: 0.5; }
 }
 
-.section { animation: codex-rise 720ms var(--ease-spring) both; }
+.section { animation: fleet-rise 720ms var(--ease-spring) both; }
 .section:nth-of-type(1) { animation-delay: 0ms; }
 .section:nth-of-type(2) { animation-delay: 80ms; }
 .section:nth-of-type(3) { animation-delay: 160ms; }
@@ -910,7 +910,7 @@ section {
   border-radius: 50%;
   background: radial-gradient(circle, oklch(82% 0.13 195 / 22%), transparent 70%);
   pointer-events: none;
-  animation: codex-glow 6s var(--ease-glide) infinite;
+  animation: fleet-glow 6s var(--ease-glide) infinite;
 }
 .order-status {
   display: inline-flex; align-items: center; gap: 6px;

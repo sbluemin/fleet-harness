@@ -7,7 +7,6 @@ export interface PtyWriteSink {
 }
 
 const DEFAULT_BRACKETED_PASTE = false;
-const DEFAULT_CONPTY_PASTE_BURST = false;
 const DEFAULT_LINE_TERMINATOR = "\r";
 const DEFAULT_MULTILINE_STRATEGY = "literal";
 const BRACKETED_PASTE_START = "\x1b[200~";
@@ -15,8 +14,6 @@ const BRACKETED_PASTE_END = "\x1b[201~";
 const C1_BRACKETED_PASTE_END = "\x9B201~";
 const CONTROL_CHARS_EXCEPT_INPUT_WHITESPACE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\x80-\x9F]/g;
 const LINE_BREAK_PATTERN = /[\r\n]/;
-// Windows crossterm reads INPUT_RECORD rather than bracketed paste, then Codex suppresses Enter during its paste burst window.
-const WINDOWS_CONPTY_SUBMIT_DELAY_MS = 250;
 
 export interface PtyMessageDeliveryOptions {
   readonly submitDelayMs?: number;
@@ -128,7 +125,6 @@ export function formatCarrierResultReminderMessage(
 function resolveMessagePolicy(policy: CliMessagePolicy): Required<CliMessagePolicy> {
   return {
     bracketedPaste: policy.bracketedPaste ?? DEFAULT_BRACKETED_PASTE,
-    conptyPasteBurst: policy.conptyPasteBurst ?? DEFAULT_CONPTY_PASTE_BURST,
     lineTerminator: policy.lineTerminator ?? DEFAULT_LINE_TERMINATOR,
     multilineStrategy: policy.multilineStrategy ?? DEFAULT_MULTILINE_STRATEGY,
   };
@@ -141,12 +137,9 @@ function applyMessagePolicy(
   delivery: PtyMessageDeliveryOptions,
 ): PtyInputChunk[] {
   const usePasteMode = policy.bracketedPaste || (policy.multilineStrategy === "paste-mode" && LINE_BREAK_PATTERN.test(text));
-  const useConptyPasteBurst = policy.conptyPasteBurst && platform === "win32" && usePasteMode;
-  const payload = useConptyPasteBurst
-    ? text
-    : usePasteMode
-      ? `${BRACKETED_PASTE_START}${text}${BRACKETED_PASTE_END}`
-      : text;
+  const payload = usePasteMode
+    ? `${BRACKETED_PASTE_START}${text}${BRACKETED_PASTE_END}`
+    : text;
 
   if (delivery.submitDelayMs !== undefined) {
     return [
@@ -155,12 +148,6 @@ function applyMessagePolicy(
     ];
   }
 
-  if (useConptyPasteBurst) {
-    return [
-      { data: text },
-      { data: policy.lineTerminator, submitDelayMs: WINDOWS_CONPTY_SUBMIT_DELAY_MS },
-    ];
-  }
 
   return [{
     data: `${payload}${policy.lineTerminator}`,

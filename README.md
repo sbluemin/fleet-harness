@@ -5,8 +5,8 @@
 <h1 align="center">One console. Every frontier coding agent.</h1>
 
 <p align="center">
-  <strong>Fleet Console runs Claude Code, Codex, and Cursor Agent as live, server-owned operations</strong><br/>
-  you can arrange, observe, and delegate from one local workspace.<br/>
+  <strong>Fleet Console runs Claude Code and Claude Gateway as live, server-owned operations</strong><br/>
+  you can arrange, observe, and delegate from one local workspace, with Cursor Agent available to Session Analyst.<br/>
   Native agent runtimes. Official protocols. No API wrapping or proxying.
 </p>
 
@@ -16,8 +16,6 @@
   <br/>
   <a href="README.md">English</a> · <a href="README.ko.md">한국어</a>
 </p>
-
-<img src=".github/console-formation.png" alt="Fleet Console in Formation view with a Claude Code operation, a Codex operation, and a shell running side by side" width="100%" />
 
 ## Start in one command
 
@@ -75,14 +73,14 @@ Nimitz and Vanguard additionally support **Task Force**: give either one two or 
 
 ## Native runtimes, coordinated — not replaced
 
-Every supported CLI brings a model-native agent loop refined by its creator. Fleet launches the actual CLI binary and speaks its supported protocol, preserving the capabilities and authentication you already use.
+Every supported CLI brings a model-native agent loop refined by its creator. Fleet launches the actual CLI binary in its declared product surface and speaks its supported protocol, preserving the capabilities and authentication you already use.
 
-| CLI | Provider | Protocol | Typical strength |
+| CLI | Provider | Protocol | Product surface |
 |---|---|---|---|
-| **Claude Code** | Anthropic | ACP | Deep reasoning and architecture judgment |
-| **Claude (Gateway • Experimental)** | OpenAI, Cursor, Moonshot AI | Claude Code gateway | Latest GPT, Cursor, and Kimi K3 models in one Claude Code surface |
-| **Codex CLI** | OpenAI | Codex App Server | Rapid implementation and iterative execution |
-| **Cursor Agent** | Cursor | ACP | Multi-model routing |
+| **Claude Code** | Anthropic | ACP | Live Agent Operations |
+| **Claude (Gateway • Experimental)** | OpenAI, Cursor, Moonshot AI | Claude Code gateway | Live Agent Operations with GPT, Cursor, and Kimi K3 models |
+| **Codex CLI** | OpenAI | Codex App Server | Carrier and Task Force backends |
+| **Cursor Agent** | Cursor | ACP | Session Analyst |
 
 Kimi K3 is selected from AI Gateway's Claude Code model picker. Register its API key under Settings → Plugins → Terminal → Agent CLI; the credential stays in the local gateway and is never injected into the Claude Code process.
 

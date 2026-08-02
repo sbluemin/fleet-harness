@@ -20,7 +20,7 @@ describe("session options resolver", () => {
   it("resolves env, global options, and defaults in priority order", () => {
     const resolved = resolveSessionOptions({
       argv: parseFleetCliOptions([], {}),
-      cliIdOverride: "codex",
+      cliIdOverride: "claude-native",
       defaults: DEFAULTS,
       env: {
         FLEET_AGENT_CLI: "claude",
@@ -34,7 +34,7 @@ describe("session options resolver", () => {
     });
 
     expect(resolved.values).toEqual({
-      cliId: "codex",
+      cliId: "claude-native",
       enableMetaphor: true,
     });
     expect(resolved.sources).toEqual({
@@ -48,7 +48,7 @@ describe("session options resolver", () => {
     const resolved = resolveSessionOptions({
       argv: parseFleetCliOptions([], {}),
       defaults: DEFAULTS,
-      env: { FLEET_AGENT_CLI: "codex" },
+      env: { FLEET_AGENT_CLI: "claude-native" },
       globalOptions: {
         version: 1,
         enableMetaphor: true,
@@ -56,7 +56,7 @@ describe("session options resolver", () => {
       parseCliId: parseAgentCliId,
     });
 
-    expect(resolved.values.cliId).toBe("codex");
+    expect(resolved.values.cliId).toBe("claude-native");
     expect(resolved.sources.cliId).toBe("env");
     expect(resolved.sources.enableMetaphor).toBe("global-options");
   });
@@ -163,10 +163,10 @@ describe("session options runtime", () => {
     });
 
     runtime.setModel("gpt-5.5");
-    runtime.selectCli("codex");
+    runtime.selectCli("claude-native");
 
     expect(runtime.getDraft()).toMatchObject({
-      cliId: "codex",
+      cliId: "claude-native",
       model: "gpt-5.5",
     });
     expect(runtime.getResolved().sources.cliId).toBe("session");

@@ -30,6 +30,29 @@ afterEach(() => {
 });
 
 describe("dormant resume feedback", () => {
+  it("keeps a preserved removed-provider Operation dormant without offering Resume or Start fresh", async () => {
+    const fetch = vi.fn();
+    await renderOperation(fetch, { cliId: "codex" });
+
+    expect(container?.querySelector(".canvas-operation-dormant-status")?.textContent).toBe("Dormant");
+    expect(container?.querySelector("button.canvas-operation-dormant")).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("offers Start fresh for a supported Operation without captured resume metadata", async () => {
+    const fetch = vi.fn().mockResolvedValue(sessionResponse("live"));
+    await renderOperation(fetch, { cliId: "claude" });
+
+    const button = dormantButton();
+    expect(button.textContent).toContain("Start fresh");
+    await act(async () => { button.click(); });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const init = fetch.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({ fresh: true });
+    expect(container?.querySelector(".terminal-surface-stub")).not.toBeNull();
+  });
+
   it("shows a pending state while resume is in flight", async () => {
     let resolveResume: ((response: Response) => void) | undefined;
     const fetch = vi.fn().mockImplementation(() => new Promise<Response>((resolve) => { resolveResume = resolve; }));
@@ -111,6 +134,27 @@ describe("dormant resume feedback", () => {
   });
 });
 
+async function renderOperation(
+  fetch: ReturnType<typeof vi.fn>,
+  payload: Record<string, unknown>,
+): Promise<{ readonly notifications: ClientNotificationsCapability & { emit: ReturnType<typeof vi.fn> } }> {
+  vi.stubGlobal("fetch", fetch);
+  const notifications = { emit: vi.fn(), dismiss: vi.fn() };
+  if (!container) {
+    container = document.createElement("div");
+    document.body.append(container);
+  }
+  root ??= createRoot(container);
+  const render = agentOperationKind.render;
+  if (!render) throw new Error("Agent operation renderer must exist.");
+  await act(async () => {
+    root?.render(render(createContext(notifications, payload)) as React.ReactNode);
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  return { notifications };
+}
+
 async function renderDormant(fetch: ReturnType<typeof vi.fn>): Promise<{ readonly notifications: ClientNotificationsCapability & { emit: ReturnType<typeof vi.fn> } }> {
   vi.stubGlobal("fetch", fetch);
   const notifications = { emit: vi.fn(), dismiss: vi.fn() };
@@ -140,7 +184,10 @@ async function renderDormant(fetch: ReturnType<typeof vi.fn>): Promise<{ readonl
   return { notifications };
 }
 
-function createContext(notifications: ClientNotificationsCapability): OperationRenderContext {
+function createContext(
+  notifications: ClientNotificationsCapability,
+  payload: Record<string, unknown> = {},
+): OperationRenderContext {
   return {
     operationId: OPERATION_ID,
     theaterId: "theater",
@@ -152,7 +199,7 @@ function createContext(notifications: ClientNotificationsCapability): OperationR
       type: "agent",
       theaterId: "theater",
       title: "Dormant test",
-      payload: {},
+      payload,
       ts: { createdAt: 1, updatedAt: 1 },
     },
     api: { fetch: vi.fn(), subscribe: () => () => undefined, resync: vi.fn() } as ClientApiCapability,

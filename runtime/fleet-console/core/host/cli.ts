@@ -55,7 +55,7 @@ export interface ConsoleStopDeps {
 }
 
 export type ConsoleHookCommand =
-  | { readonly command: "capture-session"; readonly provider: "claude" | "codex" }
+  | { readonly command: "capture-session"; readonly provider: "claude" }
   | { readonly command: "turn-start" }
   | { readonly command: "turn-end" }
   | { readonly command: "attention" }
@@ -112,7 +112,7 @@ export function parseConsoleHookCommand(argv: readonly string[]): ConsoleHookCom
   if (commandName === "turn-end" && rest.length === 0) return { command: "turn-end" };
   if (commandName === "attention" && rest.length === 0) return { command: "attention" };
   if (commandName === "auto-name" && rest.length === 0) return { command: "auto-name" };
-  if (commandName === "capture-session" && rest.length === 1 && (rest[0] === "claude" || rest[0] === "codex")) return { command: "capture-session", provider: rest[0] };
+  if (commandName === "capture-session" && rest.length === 1 && rest[0] === "claude") return { command: "capture-session", provider: rest[0] };
   throw new Error("Unknown fleet-console hook command");
 }
 
@@ -308,7 +308,7 @@ export async function main(): Promise<void> {
   if (process.argv[2] === "hook") {
     const hookCommand = parseConsoleHookCommand(process.argv.slice(3));
     if (hookCommand.command === "turn-start" || hookCommand.command === "turn-end") {
-      // 턴 상태 hook은 항상 무출력·exit 0 best-effort다(codex Stop exit2=continuation, claude block 출력 금지).
+      // 턴 상태 hook은 항상 무출력·exit 0 best-effort다(hook continuation과 block 출력 금지).
       await postAgentHook(`/sessions/${readHookSessionId(process.env)}/turn`, { phase: hookCommand.command === "turn-start" ? "start" : "end" }, process.env);
       return;
     }

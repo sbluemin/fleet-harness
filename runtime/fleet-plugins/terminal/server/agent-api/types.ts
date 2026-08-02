@@ -21,7 +21,7 @@ export interface AgentProviderTitleMarker {
 }
 
 export interface AgentProviderSession {
-  readonly provider: "claude" | "codex";
+  readonly provider: "claude";
   readonly sessionId: string;
   readonly transcriptPath?: string;
   readonly source?: string;

@@ -1,15 +1,8 @@
-import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { withHidden } from "@dotobokuri/core-process";
-
-import type {
-  CodexCommandResult,
-  CodexPluginRegistrationCommand,
-  FleetHookExec,
-} from "@dotobokuri/fleet-admiral";
+import type { FleetHookExec } from "@dotobokuri/fleet-admiral";
 import { createSessionCaptureHookExec, type AgentCliId } from "@dotobokuri/fleet-admiral";
 import { withDirectoryLock } from "@dotobokuri/core-infra";
 
@@ -19,7 +12,7 @@ export interface ConsoleHookCommandEntry {
   readonly tsxLoaderPath?: string;
 }
 
-export type ConsoleCaptureProvider = "claude" | "codex";
+export type ConsoleCaptureProvider = "claude";
 
 export type ConsoleTurnPhase = "start" | "end";
 
@@ -67,17 +60,7 @@ export function buildConsoleCaptureHookCommand(
 }
 
 export function toCaptureProvider(cliId: AgentCliId): ConsoleCaptureProvider {
-  if (cliId === "codex") return "codex";
   return "claude";
-}
-
-export function runCodexCommand(command: CodexPluginRegistrationCommand): CodexCommandResult {
-  const result = spawnSync(command.bin, command.args, withHidden({ cwd: command.cwd, encoding: "utf8" as const, env: command.env }));
-  return {
-    status: result.status,
-    stderr: result.stderr ?? "",
-    stdout: result.stdout ?? "",
-  };
 }
 
 export function withConsoleMarketplaceLock<T>(target: string, fn: () => T): T {

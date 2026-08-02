@@ -24,11 +24,11 @@ afterEach(async () => {
 describe("agent provider capture grace", () => {
   it("cancels pending OSC activity when a session is removed", async () => {
     vi.useFakeTimers();
-    const harness = createHarness({ cliId: "codex" });
+    const harness = createHarness({ cliId: "claude" });
     await harness.postSessions();
     const sessionId = harness.operations[0]!.id;
     harness.emitTitle(sessionId, "⠏ theater");
-    harness.emitTitle(sessionId, "theater");
+    harness.emitTitle(sessionId, "✳ theater");
 
     await harness.deleteSession(sessionId);
     vi.advanceTimersByTime(400);
@@ -38,12 +38,12 @@ describe("agent provider capture grace", () => {
 
   it("cancels pending OSC activity before a PTY exit makes the session dormant", async () => {
     vi.useFakeTimers();
-    const harness = createHarness({ cliId: "codex" });
+    const harness = createHarness({ cliId: "claude" });
     await harness.postSessions();
     const sessionId = harness.operations[0]!.id;
     harness.markProviderSession(sessionId);
     harness.emitTitle(sessionId, "⠏ theater");
-    harness.emitTitle(sessionId, "theater");
+    harness.emitTitle(sessionId, "✳ theater");
 
     await harness.emitExit(sessionId);
     vi.advanceTimersByTime(400);
@@ -56,12 +56,12 @@ describe("agent provider capture grace", () => {
 
   it("cancels pending OSC activity before resume spawns a replacement PTY", async () => {
     vi.useFakeTimers();
-    const harness = createHarness({ cliId: "codex" });
+    const harness = createHarness({ cliId: "claude" });
     await harness.postSessions();
     const sessionId = harness.operations[0]!.id;
     harness.markProviderSession(sessionId);
     harness.emitTitle(sessionId, "⠏ theater");
-    harness.emitTitle(sessionId, "theater");
+    harness.emitTitle(sessionId, "✳ theater");
 
     await harness.resumeSession(sessionId);
     vi.advanceTimersByTime(400);
@@ -70,28 +70,60 @@ describe("agent provider capture grace", () => {
     expect((await harness.getSessions())[0]).not.toHaveProperty("modelActivity");
   });
 
-  it("resets tracker state on a turn transition before recommitting the same Codex bare title", async () => {
-    vi.useFakeTimers();
-    const harness = createHarness({ cliId: "codex", phase: "start" });
+  it("returns only invalid_agent_cli when a removed provider Operation is resumed", async () => {
+    const harness = createHarness({ cliId: "claude" });
     await harness.postSessions();
     const sessionId = harness.operations[0]!.id;
-    harness.emitTitle(sessionId, "⠏ theater");
-    harness.emitTitle(sessionId, "theater");
-    vi.advanceTimersByTime(400);
-    expect((await harness.getSessions())[0]).toMatchObject({ modelActivity: "not-working" });
+    harness.operations[0]!.payload.cliId = "codex";
+    harness.markProviderSession(sessionId);
 
-    await harness.turnSession(sessionId);
-    expect((await harness.getSessions())[0]).toMatchObject({ turnState: "running" });
-    expect((await harness.getSessions())[0]).not.toHaveProperty("modelActivity");
+    await harness.resumeSession(sessionId);
 
-    harness.emitTitle(sessionId, "theater");
-    vi.advanceTimersByTime(400);
-    expect((await harness.getSessions())[0]).not.toHaveProperty("modelActivity");
+    expect(harness.responses).toEqual([
+      { status: 200, body: expect.objectContaining({ sessionId }) },
+      { status: 400, body: { error: "invalid_agent_cli" } },
+    ]);
+    expect(harness.attach).toHaveBeenCalledTimes(1);
+  });
 
-    harness.emitTitle(sessionId, "⠏ theater");
-    harness.emitTitle(sessionId, "theater");
-    vi.advanceTimersByTime(400);
-    expect((await harness.getSessions())[0]).toMatchObject({ modelActivity: "not-working" });
+  it("preserves legacy Codex transcript metadata when a restored Operation is renamed", () => {
+    const harness = createHarness({ cliId: "claude" });
+    const providerSession = {
+      provider: "codex",
+      sessionId: "legacy-codex-session",
+      transcriptPath: "/legacy/codex/transcript.jsonl",
+      source: "legacy-capture",
+      capturedAt: "2026-07-25T00:00:00.000Z",
+    } as const;
+    harness.operations.push({
+      id: "legacy-codex-operation",
+      theaterId: "theater-1",
+      type: "agent",
+      pluginId: "terminal",
+      title: "Legacy Codex",
+      payload: {
+        cliId: "codex",
+        cwd: path.join(harness.fleetDataDir, "✳ theater"),
+        providerSession,
+      },
+      geometry: null,
+      ts: { createdAt: 1, updatedAt: 1 },
+    });
+
+    harness.emitHostEvent("operation:restored", {
+      operationId: "legacy-codex-operation",
+      pluginId: "terminal",
+      type: "agent",
+    });
+    harness.emitHostEvent("operation:renamed", {
+      operationId: "legacy-codex-operation",
+      pluginId: "terminal",
+      type: "agent",
+      title: "Renamed legacy Codex",
+      previousTitle: "Legacy Codex",
+    });
+
+    expect(harness.operations[0]!.payload.providerSession).toEqual(providerSession);
   });
 });
 
@@ -198,7 +230,7 @@ function createHarness(body: Record<string, unknown>) {
       paths: {
         fleetDataDir,
         pluginDataDir: () => fleetDataDir,
-        resolveTheaterPath: (theaterId: string) => theaterId === "theater-1" ? path.join(fleetDataDir, "theater") : null,
+        resolveTheaterPath: (theaterId: string) => theaterId === "theater-1" ? path.join(fleetDataDir, "✳ theater") : null,
         canonicalizeTheaterPath: (cwd: string) => cwd,
         workspaceHash: () => "theater-1",
       },
@@ -296,9 +328,20 @@ function createHarness(body: Record<string, unknown>) {
     },
     resumeSession: async (sessionId: string) => {
       if (!route) throw new Error("Agent route was not registered");
+      let status = 200;
+      const res = {
+        writeHead: (nextStatus: number) => {
+          status = nextStatus;
+          return res;
+        },
+        end: (data?: string) => {
+          responses.push({ status, body: data ? JSON.parse(data) as unknown : undefined });
+          return res;
+        },
+      } as unknown as http.ServerResponse;
       await route({
         req: { method: "POST", url: `/plugins/terminal/agent/sessions/${sessionId}/resume` } as http.IncomingMessage,
-        res: {} as http.ServerResponse,
+        res,
         pathname: `/plugins/terminal/agent/sessions/${sessionId}/resume`,
       });
     },

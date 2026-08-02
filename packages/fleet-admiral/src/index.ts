@@ -32,8 +32,6 @@ export {
   type AgentCliProfile,
   type AgentCliProfileOptions,
   type CliMessagePolicy,
-  type CodexCommandResult,
-  type CodexPluginRegistrationCommand,
   type FleetHookExec,
   type PtyInputChunk,
 } from "./agent-cli/types.js";

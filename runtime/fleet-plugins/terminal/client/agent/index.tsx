@@ -173,7 +173,6 @@ export const agentPlugin = definePlugin({
   },
   renderLaunchIcon: (kind) => {
     if (kind.id === "claude" || kind.id === "claude-native" || kind.id === "claude-gateway") return <ClaudeGlyph />;
-    if (kind.id === "codex") return <CodexGlyph />;
     return <AgentGlyph />;
   },
 });
@@ -468,7 +467,9 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     return (
       <div className="agent-stream-host">
         {handles}
-        <DormantOperationView context={context} session={session} />
+        {session.resumeAvailable || isSupportedAgentOperationCliId(session.cliId)
+          ? <DormantOperationView context={context} session={session} />
+          : <div className="canvas-operation-dormant"><span className="canvas-operation-dormant-status">{getT(context.language ?? "en")("terminal.dormant.status")}</span></div>}
       </div>
     );
   }
@@ -1370,6 +1371,7 @@ async function resumeSession(sessionId: string, options?: { readonly fresh?: boo
 // Alerts 알림(agent.resume-failed) 두 경로로 표면화한다 — 어느 쪽도 침묵하지 않는다.
 function DormantOperationView({ context, session }: { readonly context: OperationRenderContext; readonly session: SessionInfo }) {
   const t = getT(context.language ?? "en");
+  const freshOnly = !session.resumeAvailable;
   const [resumeState, setResumeState] = React.useState<"idle" | "resuming" | "error">("idle");
   const resume = React.useCallback(async (fresh: boolean) => {
     setResumeState("resuming");
@@ -1392,14 +1394,18 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
       <div className="canvas-operation-dormant canvas-operation-dormant--error" role="alert">
         <span className="canvas-operation-dormant-status">{t("terminal.dormant.status")}</span>
         <p className="canvas-operation-dormant-error">
-          {t("terminal.dormant.resumeFailedBody", { name: session.label || session.cwdLabel })}
+          {freshOnly
+            ? t("terminal.dormant.startFreshFailedBody", { name: session.label || session.cwdLabel })
+            : t("terminal.dormant.resumeFailedBody", { name: session.label || session.cwdLabel })}
         </p>
         <div className="canvas-operation-dormant-error-actions">
-          <button type="button" className="canvas-operation-dormant-action" onClick={() => { void resume(false); }}>
-            {t("terminal.dormant.tryAgain")}
-          </button>
+          {freshOnly ? null : (
+            <button type="button" className="canvas-operation-dormant-action" onClick={() => { void resume(false); }}>
+              {t("terminal.dormant.tryAgain")}
+            </button>
+          )}
           <button type="button" className="canvas-operation-dormant-action canvas-operation-dormant-action--ghost" onClick={() => { void resume(true); }}>
-            {t("terminal.dormant.startFresh")}
+            {freshOnly ? t("terminal.dormant.tryAgain") : t("terminal.dormant.startFresh")}
           </button>
         </div>
       </div>
@@ -1407,13 +1413,19 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
   }
 
   return (
-    <button type="button" className="canvas-operation-dormant" disabled={resumeState === "resuming"} onClick={() => { void resume(false); }}>
+    <button type="button" className="canvas-operation-dormant" disabled={resumeState === "resuming"} onClick={() => { void resume(freshOnly); }}>
       <span className="canvas-operation-dormant-status">{t("terminal.dormant.status")}</span>
       <span className={`canvas-operation-dormant-action${resumeState === "resuming" ? " canvas-operation-dormant-action--pending" : ""}`}>
-        {resumeState === "resuming" ? t("terminal.dormant.resuming") : t("terminal.dormant.resume")}
+        {resumeState === "resuming"
+          ? t(freshOnly ? "terminal.dormant.startingFresh" : "terminal.dormant.resuming")
+          : t(freshOnly ? "terminal.dormant.startFresh" : "terminal.dormant.resume")}
       </span>
     </button>
   );
+}
+
+function isSupportedAgentOperationCliId(value: string | undefined): boolean {
+  return value === "claude" || value === "claude-native" || value === "claude-gateway";
 }
 
 function sessionFromOperation(context: OperationRenderContext): SessionInfo {
@@ -1430,7 +1442,7 @@ function sessionFromOperation(context: OperationRenderContext): SessionInfo {
     theaterId: context.theaterId,
     tenantId: readPayloadString(context.operation.payload, "tenantId") ?? undefined,
     registrationId: readPayloadString(context.operation.payload, "registrationId") ?? undefined,
-    resumeAvailable: true,
+    resumeAvailable: context.operation.payload.resumeAvailable === true,
   };
 }
 

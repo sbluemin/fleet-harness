@@ -829,7 +829,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     try {
-      writeJson(res, 200, await deletionCoordinator.restore(deletionId));
+      const restored = await deletionCoordinator.restore(deletionId);
+      migrateLegacyCaptureState();
+      writeJson(res, 200, restored);
     } catch (error) {
       if (error instanceof DeferredDeletionError) {
         writeJson(res, error.status, { error: error.message });
@@ -1076,6 +1078,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     deletionCoordinator.load(state.deletionTombstones ?? []);
     // Legacy captures/ → state.json providerSession one-shot migration (best-effort).
     // Runs after durable load so save preserves tombstones already restored into the coordinator.
+    migrateLegacyCaptureState();
+    try {
+      deletionCoordinator.sweepExpired();
+    } catch (error) {
+      console.warn(`[fleet-console] Expired deletion sweep deferred: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    // Codex WorkspaceRegistry는 인메모리이므로 durable Theater를 메타데이터만 복원한다.
+    await restoreCodexWorkspaces();
+  }
+
+  function migrateLegacyCaptureState(): void {
     migrateLegacyCaptures({
       consoleDataDir: durablePaths.dir,
       operations,
@@ -1085,13 +1098,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       )),
       save: () => saveDurableState(deletionCoordinator.list()),
     });
-    try {
-      deletionCoordinator.sweepExpired();
-    } catch (error) {
-      console.warn(`[fleet-console] Expired deletion sweep deferred: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    // Codex WorkspaceRegistry는 인메모리이므로 durable Theater를 메타데이터만 복원한다.
-    await restoreCodexWorkspaces();
   }
 
   async function restoreCodexWorkspaces(): Promise<void> {

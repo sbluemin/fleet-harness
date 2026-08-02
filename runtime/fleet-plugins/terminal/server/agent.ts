@@ -28,7 +28,7 @@ import { createAgentTerminalLaunchResolver, type ConsoleRuntimeSessionInfo } fro
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./agent-api/osc-agent-activity.js";
 import { writeAggregateObserverEvents } from "./agent-api/observability-routes.js";
-import { readProviderSession } from "./agent-api/provider-session.js";
+import { readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./agent-api/provider-session.js";
 import type { AgentProviderSession, AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
 import { CARRIER_JOB_FINALIZED_GRACE_MS, isCarrierJobActiveForIdle, startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown };
@@ -145,7 +145,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       const session = observability.getTerminalSessionInfo(sessionId);
       if (!session) return;
       const cliId = session.cliId;
-      if (cliId !== "claude" && cliId !== "claude-native" && cliId !== "claude-gateway" && cliId !== "codex") return;
+      if (cliId !== "claude" && cliId !== "claude-native" && cliId !== "claude-gateway") return;
       tracker = createOscAgentActivityTracker({
         cliId,
         cwdBasename: session.cwdLabel,
@@ -184,7 +184,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       const operation = ctx.host.operations.get(payload.operationId);
       if (operation) {
         const cwd = readPayloadString(operation.payload, "cwd") || ctx.host.paths.resolveTheaterPath(operation.theaterId) || "";
-        const providerSession = readProviderSession(operation.payload);
+        const providerSession = readAnalysisProviderSession(operation.payload.providerSession);
         // 빈 리네임(reset)이면 updated.label이 비므로 title도 기본 표시명(cwdLabel=basename)으로 되돌린다.
         // core PATCH의 빈 title은 기존 title로 normalize되어 사용자 옛 이름이 남기 때문에, 여기서 명시적으로 복원한다.
         // 이 patch는 store.patch(HTTP 미경유)라 operation:renamed를 재발행하지 않아 구독 루프를 만들지 않는다.
@@ -441,8 +441,9 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     const node = ctx.host.operations.get(sessionId);
     const payload = node?.payload;
     const cliId = readOptionalAgentCliId(payload?.cliId, res);
+    if (cliId === false) return true;
     const providerSession = readProviderSession(payload);
-    if (!node || cliId === false || !cliId || (!fresh && !providerSession)) {
+    if (!node || !cliId || (!fresh && !providerSession)) {
       ctx.host.http.writeJson(res, node ? 409 : 404, { error: node ? "resume_unavailable" : "session_not_found" });
       return true;
     }
@@ -458,8 +459,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         // stale provider 상태는 spawn 전에 observability와 payload에서 모두 떼어낸다 —
         // attach 도중 새 CLI의 capture hook이 먼저 완료되면 attach 후 정리가 새
         // providerSession까지 지우고, payload에 구 세션이 남으면 성공 patch가 그것을 다시
-        // 심는다(Codex P1). attach 실패 시에는 catch에서 payload providerSession을 원복해
-        // 일반 resume 재시도와 Session Analyst의 transcript 접근을 보존한다(Codex P2).
+        // 심는다. attach 실패 시에는 catch에서 payload providerSession을 원복해
+        // 일반 resume 재시도와 Session Analyst의 transcript 접근을 보존한다.
         observability.clearTerminalSessionProviderSession(sessionId);
         const payloadWithoutProvider = { ...node.payload };
         delete payloadWithoutProvider.providerSession;
@@ -480,7 +481,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       const resumed = runtimeSession ? observability.registerTerminalRuntimeSession(runtimeSession) ?? starting : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? starting;
       observability.notifySessionUpdated(resumed);
       // fresh 성공 patch는 attach 중 자식이 capture한 새 providerSession만 보존한다 —
-      // payload는 spawn 전에 비워 두었으므로, 읽히는 세션은 반드시 자식의 신규 capture다(Codex P1).
+      // payload는 spawn 전에 비워 두었으므로, 읽히는 세션은 반드시 자식의 신규 capture다.
       const currentPayload = fresh ? ctx.host.operations.get(sessionId)?.payload : node.payload;
       const effectiveProviderSession = fresh ? readProviderSession(currentPayload) : providerSession;
       ctx.host.operations.patch(sessionId, { payload: toOperationPayload(currentPayload ?? node.payload, cwd, resumed, effectiveProviderSession, observability.getDurableOperation(sessionId)?.providerTitle) });
@@ -489,7 +490,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       resetOscActivity(sessionId);
       if (fresh && providerSession) {
         // 실패 롤백: spawn 전에 떼어낸 payload providerSession과 observability 세션을
-        // 복원한다 — payload의 providerSession이 resume과 Analyst transcript의 단일 권위다(Codex P2).
+        // 복원한다 — payload의 providerSession이 resume과 Analyst transcript의 단일 권위다.
         const rollbackPayload = { ...(ctx.host.operations.get(sessionId)?.payload ?? {}) };
         rollbackPayload.providerSession = providerSession;
         ctx.host.operations.patch(sessionId, { payload: rollbackPayload });
@@ -795,7 +796,7 @@ export function createTerminalWikiToolSpecs(fleetDataDir: string) {
   return getWikiToolSpecs(resolver);
 }
 
-function toOperationPayload(existing: Record<string, unknown> | undefined, cwd: string, session: AgentTerminalSessionInfo, providerSession?: AgentProviderSession, providerTitle?: AgentProviderTitleMarker): Record<string, unknown> {
+function toOperationPayload(existing: Record<string, unknown> | undefined, cwd: string, session: AgentTerminalSessionInfo, providerSession?: AgentProviderSession | AnalysisProviderSession, providerTitle?: AgentProviderTitleMarker): Record<string, unknown> {
   const payload = { ...(existing ?? {}) };
   for (const key of ["cwd", "cliId", "launchKindId", "cliLabel", "providerSession", "labelSource", "providerTitle"]) {
     delete payload[key];
@@ -840,7 +841,7 @@ function readOptionalAgentCliId(value: unknown, res: Parameters<FleetPluginServe
 
 function parseCaptureHookInput(provider: string, input: string): AgentProviderSession | undefined {
   try {
-    if (provider !== "claude" && provider !== "codex") throw new Error("invalid_provider");
+    if (provider !== "claude") throw new Error("invalid_provider");
     const parsed = JSON.parse(input) as unknown;
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("invalid_hook_input");
     const candidate = parsed as { readonly session_id?: unknown; readonly transcript_path?: unknown; readonly source?: unknown };

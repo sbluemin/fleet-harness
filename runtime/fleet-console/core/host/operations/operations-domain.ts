@@ -98,14 +98,11 @@ export function createSanitizedOpDto(node: OperationNode, options: OperationSani
   };
 }
 
-// resume 라우트의 readProviderSession보다 느슨한 도메인 중립 최소형: provider/sessionId가
-// 비어있지 않은 문자열이면 마커를 허용한다. 그 이상의 형태 미스매치 잔여분은 Resume 시
-// 프레임의 실패 카드(I1)가 사용자에게 표면화한다.
+// resume 라우트가 현재 지원하는 provider/sessionId 최소형과 동일하게 판정한다.
+// 제거된 provider의 durable payload는 보존하되, 실행 불가능한 Resume 표면은 노출하지 않는다.
 function isResumableProviderSession(value: unknown): boolean {
   if (!isRecord(value)) return false;
-  const provider = value.provider;
-  const sessionId = value.sessionId;
-  return typeof provider === "string" && provider.length > 0 && typeof sessionId === "string" && sessionId.length > 0;
+  return value.provider === "claude" && typeof value.sessionId === "string" && value.sessionId.length > 0;
 }
 
 function sanitizeRecord(value: Record<string, unknown>, sensitiveFields: ReadonlySet<string>): Record<string, unknown> {

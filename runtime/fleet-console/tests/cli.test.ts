@@ -88,7 +88,7 @@ describe("fleet console CLI", () => {
 
   it("parses hook capture-session commands", () => {
     expect(parseConsoleHookCommand(["capture-session", "claude"])).toEqual({ command: "capture-session", provider: "claude" });
-    expect(parseConsoleHookCommand(["capture-session", "codex"])).toEqual({ command: "capture-session", provider: "codex" });
+    expect(() => parseConsoleHookCommand(["capture-session", "codex"])).toThrow("Unknown fleet-console hook command");
     expect(parseConsoleHookCommand(["attention"])).toEqual({ command: "attention" });
     expect(() => parseConsoleHookCommand(["attention", "extra"])).toThrow("Unknown fleet-console hook command");
     expect(() => parseConsoleHookCommand(["capture-session"])).toThrow("Unknown fleet-console hook command");
