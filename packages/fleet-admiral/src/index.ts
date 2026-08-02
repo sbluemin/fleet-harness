@@ -95,10 +95,8 @@ export {
 } from "./agent-cli/injection.js";
 
 export {
-  GATEWAY_DISABLED_BUILTIN_AGENTS,
   GENERAL_PURPOSE_AGENT_PROMPT,
   buildGatewayCustomAgents,
-  buildGatewayDisallowedAgentTools,
   toGatewayAgentName,
   type ClaudeCustomAgentDefinition,
   type ClaudeCustomAgents,

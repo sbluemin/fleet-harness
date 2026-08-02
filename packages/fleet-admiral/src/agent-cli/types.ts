@@ -65,8 +65,6 @@ export interface AgentCliInjectionContext {
     readonly model: string;
     readonly effort?: string;
   }>>;
-  /** Claude Code `--disallowedTools` entries (e.g. `Task(Explore)`). */
-  readonly disallowedAgentTools?: readonly string[];
   readonly mcpServers: readonly AgentCliMcpServerArg[];
   readonly pluginRoot: string;
   readonly pluginRoots: readonly string[];

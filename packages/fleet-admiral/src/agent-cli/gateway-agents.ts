@@ -1,10 +1,13 @@
 /**
- * gateway-agents — claude-gateway 스폰 시 주입하는 커스텀 Agent 정의와
- * 내장 Agent 비활성화 목록.
+ * gateway-agents — claude-gateway 스폰 시 주입하는 커스텀 Agent 정의.
  *
- * 파일 영속화 없이 `--agents` / `--disallowedTools`로만 전달한다. 모델 id는 반드시
+ * 파일 영속화 없이 `--agents`로만 전달한다. 모델 id는 반드시
  * `claude-gateway--*` 형태(toClaudeGatewayModelId)다. effort를 지원하는 모델은
  * ladder의 각 강도마다 Agent를 하나씩 만든다.
+ *
+ * 게이트웨이 정의는 Claude Code 내장 Agent를 대체하지 않고 그 옆에 놓인다.
+ * 내장 Agent를 끄면 상속(unpinned) 위임 자체가 막혀, 게이트웨이 세션에서
+ * 세션 자신의 모델로 도는 작업을 아예 만들 수 없게 된다.
  */
 
 import {
@@ -13,14 +16,6 @@ import {
   type GatewayModel,
   type GatewayReasoningEffort,
 } from "@dotobokuri/core-ai-gateway";
-
-/** gateway 스폰에서 끄는 Claude Code 내장 Agent 타입. */
-export const GATEWAY_DISABLED_BUILTIN_AGENTS = [
-  "claude",
-  "Explore",
-  "general-purpose",
-  "Plan",
-] as const;
 
 /**
  * Claude Code 내장 general-purpose Agent의 시스템 프롬프트와 동일한 본문.
@@ -88,16 +83,6 @@ export function buildGatewayCustomAgents(
     };
   }
   return agents;
-}
-
-/** `--disallowedTools`에 넣을 구·신 Agent 선택자 목록. */
-export function buildGatewayDisallowedAgentTools(
-  agentTypes: readonly string[] = GATEWAY_DISABLED_BUILTIN_AGENTS,
-): string[] {
-  return agentTypes.flatMap((agentType) => [
-    `Task(${agentType})`,
-    `Agent(${agentType})`,
-  ]);
 }
 
 /**

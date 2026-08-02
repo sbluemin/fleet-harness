@@ -85,7 +85,6 @@ describe("claude-native injection", () => {
     expect(injected.args).toContain("--mcp-config");
     expect(injected.args).toContain("--dangerously-skip-permissions");
     expect(injected.args).not.toContain("--agents");
-    expect(injected.args).not.toContain("--disallowedTools");
 
     const mcpIndex = injected.args.indexOf("--mcp-config");
     const mcpJson = JSON.parse(injected.args[mcpIndex + 1] as string) as {

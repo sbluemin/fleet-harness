@@ -8,7 +8,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   GENERAL_PURPOSE_AGENT_PROMPT,
   buildGatewayCustomAgents,
-  buildGatewayDisallowedAgentTools,
   injectAgentCliProfile,
   resolveAgentCliProfile,
   toGatewayAgentName,
@@ -50,19 +49,6 @@ describe("claude-gateway profile", () => {
 });
 
 describe("claude-gateway custom agents", () => {
-  it("builds legacy and current deny entries for the built-in agents", () => {
-    expect(buildGatewayDisallowedAgentTools()).toEqual([
-      "Task(claude)",
-      "Agent(claude)",
-      "Task(Explore)",
-      "Agent(Explore)",
-      "Task(general-purpose)",
-      "Agent(general-purpose)",
-      "Task(Plan)",
-      "Agent(Plan)",
-    ]);
-  });
-
   it("expands exposed models into claude-gateway-- agents with GP prompt", () => {
     const model = requireGatewayModel("cursor--claude-opus-5");
     const agents = buildGatewayCustomAgents([model]);
@@ -82,7 +68,7 @@ describe("claude-gateway custom agents", () => {
     expect(toGatewayAgentName(agents[withEffort!]!.model, "high")).toBe(withEffort);
   });
 
-  it("injects --disallowedTools and --agents only for claude-gateway", async () => {
+  it("injects --agents only for claude-gateway, and never disables a built-in agent", async () => {
     const root = createTempRoot("fleet-admiral-gateway-agents-");
     const model = requireGatewayModel("cursor--claude-opus-5");
     const gateway = baseProfile("claude-gateway", {
@@ -103,18 +89,9 @@ describe("claude-gateway custom agents", () => {
       gatewayExposedModels: [model],
     }));
 
-    const disallowedIndex = injectedGateway.args.indexOf("--disallowedTools");
-    expect(disallowedIndex).toBeGreaterThanOrEqual(0);
-    expect(injectedGateway.args.slice(disallowedIndex + 1, disallowedIndex + 9)).toEqual([
-      "Task(claude)",
-      "Agent(claude)",
-      "Task(Explore)",
-      "Agent(Explore)",
-      "Task(general-purpose)",
-      "Agent(general-purpose)",
-      "Task(Plan)",
-      "Agent(Plan)",
-    ]);
+    // 게이트웨이 정의는 내장 Agent를 대체하지 않고 그 옆에 놓인다. 내장을 끄면
+    // 상속(unpinned) 위임이 막혀 세션 자신의 모델로 도는 작업을 만들 수 없다.
+    expect(injectedGateway.args).not.toContain("--disallowedTools");
 
     const agentsIndex = injectedGateway.args.indexOf("--agents");
     expect(agentsIndex).toBeGreaterThanOrEqual(0);
@@ -138,7 +115,7 @@ describe("claude-gateway custom agents", () => {
     injectedClassic.cleanup?.();
   });
 
-  it("still disables built-ins when no gateway models are exposed", async () => {
+  it("injects neither flag when no gateway models are exposed", async () => {
     const root = createTempRoot("fleet-admiral-gateway-agents-empty-");
     const profile = baseProfile("claude-gateway", {
       args: [],
@@ -146,8 +123,9 @@ describe("claude-gateway custom agents", () => {
       env: { HOME: root },
     });
     const injected = await injectAgentCliProfile(profile, baseInjectOptions(root));
-    expect(injected.args).toContain("--disallowedTools");
+    // 노출 모델이 없으면 게이트웨이 세션은 내장 Agent만 가진 평범한 세션이다.
     expect(injected.args).not.toContain("--agents");
+    expect(injected.args).not.toContain("--disallowedTools");
     injected.cleanup?.();
   });
 });
