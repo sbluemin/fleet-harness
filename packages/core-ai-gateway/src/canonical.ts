@@ -286,6 +286,8 @@ export interface CanonicalError {
 
 export interface AdapterCallOptions {
   apiKey: string;
+  /** 새로 여는 provider trace가 진단 이벤트를 낼지 결정한다. 생략하면 adapter 기본값을 유지한다. */
+  diagnosticsEnabled?: boolean;
   signal?: AbortSignal;
 }
 

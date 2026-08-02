@@ -10,6 +10,8 @@ export interface AnthropicGatewayCallOptions extends TranslateAnthropicRequestOp
   apiKey: string;
   /** Real provider window when the caller selected Claude Code's `[1m]` coordinate. */
   contextWindow?: number;
+  /** 새로 여는 provider trace가 진단 이벤트를 낼지 결정한다. 생략하면 adapter 기본값을 유지한다. */
+  diagnosticsEnabled?: boolean;
   signal?: AbortSignal;
 }
 
@@ -37,6 +39,9 @@ export class AnthropicMessagesGateway {
     });
     const upstream = await this.adapter.stream(canonical, {
       apiKey: options.apiKey,
+      ...(options.diagnosticsEnabled === undefined
+        ? {}
+        : { diagnosticsEnabled: options.diagnosticsEnabled }),
       signal: options.signal
     });
 

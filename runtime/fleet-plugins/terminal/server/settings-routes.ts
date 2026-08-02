@@ -22,12 +22,14 @@ interface TerminalSettingsBody {
   readonly enableMetaphor?: unknown;
   readonly agentIdleDormantMinutes?: unknown;
   readonly aiGateway?: unknown;
+  readonly cursorDiagnosticsEnabled?: unknown;
 }
 
 type TerminalSettingsUpdate =
   | { readonly enableMetaphor: boolean }
   | { readonly agentIdleDormantMinutes: number | null }
-  | { readonly aiGateway: AiGatewayUpdateValue | undefined };
+  | { readonly aiGateway: AiGatewayUpdateValue | undefined }
+  | { readonly cursorDiagnosticsEnabled: boolean };
 
 export const DEFAULT_AGENT_IDLE_DORMANT_MINUTES = 60;
 
@@ -36,6 +38,7 @@ export interface TerminalSettingsState {
   readonly agentIdleDormantMinutes: number | null;
   readonly aiGateway: AiGatewayUpdateValue | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
+  readonly cursorDiagnosticsEnabled: boolean;
 }
 
 export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, deps: TerminalSettingsRouteDeps): void {
@@ -66,6 +69,13 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(deps.globalOptionsService.load(), stored));
         return true;
       }
+      if ("cursorDiagnosticsEnabled" in update) {
+        const stored = await deps.aiGatewayStore.writeCursorDiagnosticsEnabled(
+          update.cursorDiagnosticsEnabled,
+        );
+        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(deps.globalOptionsService.load(), stored));
+        return true;
+      }
       const updated = deps.globalOptionsService.update((current) => ({ ...current, ...update }));
       ctx.host.http.writeJson(res, 200, toTerminalSettingsState(updated, await deps.aiGatewayStore.read()));
       return true;
@@ -89,6 +99,7 @@ export function toTerminalSettingsState(data: GlobalOptionsData, aiGateway: AiGa
       }
       : null,
     aiGatewayCatalog: buildAiGatewayCatalog(),
+    cursorDiagnosticsEnabled: aiGateway.cursorDiagnosticsEnabled === true,
   };
 }
 
@@ -115,6 +126,11 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
   if (keys[0] === "aiGateway") {
     const parsed = parseAiGatewayUpdate(body.aiGateway);
     return parsed.ok ? { aiGateway: parsed.value } : null;
+  }
+  if (keys[0] === "cursorDiagnosticsEnabled") {
+    return typeof body.cursorDiagnosticsEnabled === "boolean"
+      ? { cursorDiagnosticsEnabled: body.cursorDiagnosticsEnabled }
+      : null;
   }
   return null;
 }

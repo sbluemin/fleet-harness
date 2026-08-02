@@ -27,7 +27,12 @@ describe("terminal settings routes", () => {
     });
     await harness.handle({ req: req("GET"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes[0]?.status).toBe(200);
-    expect(harness.writes[0]?.body).toMatchObject({ enableMetaphor: false, agentIdleDormantMinutes: 60, aiGateway: null });
+    expect(harness.writes[0]?.body).toMatchObject({
+      enableMetaphor: false,
+      agentIdleDormantMinutes: 60,
+      aiGateway: null,
+      cursorDiagnosticsEnabled: false,
+    });
     expect(harness.writes[0]?.body).not.toHaveProperty("consolePortMode");
   });
 
@@ -177,6 +182,56 @@ describe("terminal settings routes", () => {
     expect(harness.currentData()).toEqual({ version: 1 });
   });
 
+  it("PUT /plugins/terminal/settings toggles Cursor diagnostics without changing models", async () => {
+    const harness = createRouteHarness({
+      body: { cursorDiagnosticsEnabled: true },
+      aiGateway: {
+        version: 1,
+        models: [{ id: "cursor--claude-opus-5" }],
+        defaultModel: "cursor--claude-opus-5",
+      },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+
+    expect(harness.writes[0]).toMatchObject({
+      status: 200,
+      body: {
+        cursorDiagnosticsEnabled: true,
+        aiGateway: {
+          models: [{ id: "cursor--claude-opus-5" }],
+          defaultModel: "cursor--claude-opus-5",
+        },
+      },
+    });
+    expect(harness.currentAiGateway()).toEqual({
+      version: 1,
+      models: [{ id: "cursor--claude-opus-5" }],
+      defaultModel: "cursor--claude-opus-5",
+      cursorDiagnosticsEnabled: true,
+    });
+  });
+
+  it("PUT /plugins/terminal/settings preserves Cursor diagnostics while changing models", async () => {
+    const harness = createRouteHarness({
+      body: { aiGateway: { models: [{ id: "cursor--auto" }] } },
+      aiGateway: { version: 1, cursorDiagnosticsEnabled: true },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+
+    expect(harness.currentAiGateway()).toEqual({
+      version: 1,
+      models: [{ id: "cursor--auto" }],
+      cursorDiagnosticsEnabled: true,
+    });
+  });
+
+  it("PUT /plugins/terminal/settings rejects non-boolean Cursor diagnostics values", async () => {
+    const harness = createRouteHarness({ body: { cursorDiagnosticsEnabled: "yes" } });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.status).toBe(400);
+    expect(harness.updateCalls).toBe(0);
+  });
+
   it("PUT /plugins/terminal/settings normalizes gateway alias ids to scoped ids", async () => {
     const harness = createRouteHarness({
       body: { aiGateway: { models: [{ id: "cursor-auto" }] } },
@@ -271,7 +326,21 @@ function createRouteHarness(options: HarnessOptions = {}) {
       read: async () => aiGateway,
       write: async (value) => {
         updateCalls += 1;
-        aiGateway = normalizeAiGatewaySettings({ version: 1, ...(value ?? {}) });
+        aiGateway = normalizeAiGatewaySettings({
+          version: 1,
+          ...(aiGateway.cursorDiagnosticsEnabled === true
+            ? { cursorDiagnosticsEnabled: true }
+            : {}),
+          ...(value ?? {}),
+        });
+        return aiGateway;
+      },
+      writeCursorDiagnosticsEnabled: async (enabled) => {
+        updateCalls += 1;
+        aiGateway = normalizeAiGatewaySettings({
+          ...aiGateway,
+          cursorDiagnosticsEnabled: enabled,
+        });
         return aiGateway;
       },
     },

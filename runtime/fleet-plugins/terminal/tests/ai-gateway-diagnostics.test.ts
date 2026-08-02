@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -16,6 +16,35 @@ afterEach(async () => {
 });
 
 describe("Cursor diagnostic log", () => {
+  it("does not create its directory until an enabled trace writes an event", async () => {
+    const root = await temporaryDirectory();
+    const log = createCursorDiagnosticLog(root);
+
+    await log.flush();
+
+    await expect(stat(path.dirname(log.path))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("leaves existing active and backup files untouched without new events", async () => {
+    const root = await temporaryDirectory();
+    const directory = path.join(root, "ai-gateway");
+    const activePath = path.join(directory, "cursor-diagnostics.jsonl");
+    const backupPath = `${activePath}.1`;
+    await mkdir(directory, { recursive: true });
+    await writeFile(activePath, "active evidence\n");
+    await writeFile(backupPath, "backup evidence\n");
+    const activeBefore = await stat(activePath);
+    const backupBefore = await stat(backupPath);
+
+    const log = createCursorDiagnosticLog(root);
+    await log.flush();
+
+    expect(await readFile(activePath, "utf8")).toBe("active evidence\n");
+    expect(await readFile(backupPath, "utf8")).toBe("backup evidence\n");
+    expect((await stat(activePath)).mtimeMs).toBe(activeBefore.mtimeMs);
+    expect((await stat(backupPath)).mtimeMs).toBe(backupBefore.mtimeMs);
+  });
+
   it("persists only allowlisted fields with private filesystem permissions", async () => {
     const root = await temporaryDirectory();
     const log = createCursorDiagnosticLog(root);

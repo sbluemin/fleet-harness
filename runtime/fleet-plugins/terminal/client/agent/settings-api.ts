@@ -34,12 +34,14 @@ export interface SystemPromptSettingsState {
   readonly agentIdleDormantMinutes: number | null;
   readonly aiGateway: AiGatewaySettings | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
+  readonly cursorDiagnosticsEnabled: boolean;
 }
 
 export type SystemPromptSettingsUpdate =
   | { readonly enableMetaphor: boolean }
   | { readonly agentIdleDormantMinutes: number | null }
-  | { readonly aiGateway: AiGatewaySettings | null };
+  | { readonly aiGateway: AiGatewaySettings | null }
+  | { readonly cursorDiagnosticsEnabled: boolean };
 
 export class TerminalSettingsApiError extends Error {
   readonly status: number;
@@ -87,6 +89,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     || typeof payload.enableMetaphor !== "boolean"
     || !isAgentIdleDormantMinutes(payload.agentIdleDormantMinutes)
     || !isAiGatewayCatalog(payload.aiGatewayCatalog)
+    || typeof payload.cursorDiagnosticsEnabled !== "boolean"
   ) {
     throw new TerminalSettingsApiError(status, "Invalid Terminal settings response");
   }
@@ -95,6 +98,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     agentIdleDormantMinutes: payload.agentIdleDormantMinutes,
     aiGateway: payload.aiGateway ?? null,
     aiGatewayCatalog: payload.aiGatewayCatalog,
+    cursorDiagnosticsEnabled: payload.cursorDiagnosticsEnabled,
   };
 }
 

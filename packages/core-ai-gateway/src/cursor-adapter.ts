@@ -1349,7 +1349,11 @@ export class CursorAdapter implements AiGatewayAdapter {
     descriptor: CursorLiveRunDescriptor,
   ): Promise<AdapterResponse> {
     if (options.signal?.aborted) throw new Error("cancelled by caller");
-    const report = createCursorDiagnosticReporter(this.diagnostics);
+    // Cursor Run을 열 때 기록 정책을 고정한다. tool continuation은 이 Run에 붙어 reporter를
+    // 재사용하므로 설정을 바꿔도 trace가 중간부터 잘려 기록되지 않는다.
+    const report = createCursorDiagnosticReporter(
+      options.diagnosticsEnabled === false ? undefined : this.diagnostics,
+    );
     const model = cursorDiagnosticLabel(request.model);
     const wireModel = cursorDiagnosticLabel(plan.wireModelId);
     const previousWireModel = rememberCursorWireModel(
