@@ -90,16 +90,19 @@ export function buildGatewayCustomAgents(
   return agents;
 }
 
-/** `--disallowedTools`에 넣을 `Task(name)` 목록. Claude Code는 Agent 비활성화를 이 문법으로 받는다. */
+/** `--disallowedTools`에 넣을 구·신 Agent 선택자 목록. */
 export function buildGatewayDisallowedAgentTools(
   agentTypes: readonly string[] = GATEWAY_DISABLED_BUILTIN_AGENTS,
 ): string[] {
-  return agentTypes.map((agentType) => `Task(${agentType})`);
+  return agentTypes.flatMap((agentType) => [
+    `Task(${agentType})`,
+    `Agent(${agentType})`,
+  ]);
 }
 
 /**
  * Claude Code Agent 타입 키로 쓸 안전한 이름.
- * `claude-gateway--cursor--claude-opus-5[1m]` + `high` → `gw-cursor-claude-opus-5-1m-high`
+ * `claude-gateway--cursor--claude-opus-5[1m]` + `high` → `cursor-claude-opus-5-1m-high`
  */
 export function toGatewayAgentName(modelId: string, effort?: GatewayReasoningEffort): string {
   const stripped = modelId.startsWith("claude-gateway--")
@@ -111,7 +114,7 @@ export function toGatewayAgentName(modelId: string, effort?: GatewayReasoningEff
     .replace(/^-+|-+$/g, "")
     .toLowerCase();
   const stem = base.length > 0 ? base : "model";
-  return effort === undefined ? `gw-${stem}` : `gw-${stem}-${effort}`;
+  return effort === undefined ? stem : `${stem}-${effort}`;
 }
 
 function gatewayAgentDescription(

@@ -50,12 +50,16 @@ describe("claude-gateway profile", () => {
 });
 
 describe("claude-gateway custom agents", () => {
-  it("builds Task(name) deny entries for the built-in agents", () => {
+  it("builds legacy and current deny entries for the built-in agents", () => {
     expect(buildGatewayDisallowedAgentTools()).toEqual([
       "Task(claude)",
+      "Agent(claude)",
       "Task(Explore)",
+      "Agent(Explore)",
       "Task(general-purpose)",
+      "Agent(general-purpose)",
       "Task(Plan)",
+      "Agent(Plan)",
     ]);
   });
 
@@ -66,7 +70,8 @@ describe("claude-gateway custom agents", () => {
     expect(names.length).toBeGreaterThan(0);
     for (const name of names) {
       const agent = agents[name]!;
-      expect(name.startsWith("gw-")).toBe(true);
+      expect(name.startsWith("gw-")).toBe(false);
+      expect(name.startsWith("cursor-")).toBe(true);
       expect(agent.model.startsWith("claude-gateway--")).toBe(true);
       expect(agent.prompt).toBe(GENERAL_PURPOSE_AGENT_PROMPT);
       expect(agent.description).toContain("gateway_models");
@@ -100,11 +105,15 @@ describe("claude-gateway custom agents", () => {
 
     const disallowedIndex = injectedGateway.args.indexOf("--disallowedTools");
     expect(disallowedIndex).toBeGreaterThanOrEqual(0);
-    expect(injectedGateway.args.slice(disallowedIndex + 1, disallowedIndex + 5)).toEqual([
+    expect(injectedGateway.args.slice(disallowedIndex + 1, disallowedIndex + 9)).toEqual([
       "Task(claude)",
+      "Agent(claude)",
       "Task(Explore)",
+      "Agent(Explore)",
       "Task(general-purpose)",
+      "Agent(general-purpose)",
       "Task(Plan)",
+      "Agent(Plan)",
     ]);
 
     const agentsIndex = injectedGateway.args.indexOf("--agents");
