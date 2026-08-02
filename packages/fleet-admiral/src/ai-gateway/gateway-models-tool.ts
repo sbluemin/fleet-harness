@@ -4,7 +4,7 @@
  *
  * The tool reports facts and stops there. When to pin a model at all, and what
  * counts as a reason, is doctrine and lives in the Standing Orders and the
- * model-loadout skill; stating it twice would let the two drift apart.
+ * `workflow` skill; stating it twice would let the two drift apart.
  */
 
 import type { AgentToolSpec } from "@dotobokuri/core-agent";

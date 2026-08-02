@@ -13,7 +13,8 @@ Prompt policy that classifies work and composes the active Fleet operating mode.
 
 - The protocol gate, `protocol-*` skills, and the metaphor persona/tone overlays are classic-doctrine only. Gateway doctrine renders no protocol-gate block, no carrier roster, no carrier operations instruction, and no metaphor overlay; do not reintroduce any of them into the gateway path.
 - Classic and gateway prompt bodies are deliberately duplicated rather than shared: one file per doctrine holds all six Standing Order bodies outright. Do not refactor them back into shared fragments, per-order modules, or doctrine conditionals inside one body.
-- Gateway doctrine names delegated executors `subagent`; carrier vocabulary stays out of that path entirely.
+- Gateway doctrine names no executor: execution is described as workflow `stage`s, and both carrier and subagent vocabulary stay out of that path — the prompt bodies and every skill asset the path renders.
+- Naming which execution surface a staged run requires is routing and belongs in gateway doctrine; that surface's arguments, script syntax, and accepted values stay in live tool metadata.
 - Operational work under classic doctrine selects exactly one protocol mode; auxiliary skills may support but never replace that mode. Conversational work does not require a mode.
 - Do not add a protocol registry, runtime switching API, persistent selector, or HUD selector.
 - Standing Orders are always on and consume checkpoints declared by the active protocol; they do not redefine protocol checkpoints.

@@ -60,7 +60,7 @@ the metaphor overlays entirely:
 - `<fleet section="preamble">` then `<fleet section="role">`
 - `<fleet section="standing-orders" type="<id>">` — six blocks, ids
   `command-integrity`, `mission-anchor`, `context-confidence`,
-  `delegation-policy`, `deep-dive`, `result-integrity`
+  `orchestration-policy`, `deep-dive`, `result-integrity`
 - **No** `protocol-gate`, `roster`, `persona`, or `tone` block. `enableMetaphor`
   has no effect on this path — both settings produce a byte-identical prompt.
 
@@ -96,18 +96,22 @@ Doctrine resolution is owned by `resolveDoctrineFromCliId`:
   whole binding doctrine, and the role block says so directly.
 - No roster block is rendered; carrier selection metadata, `carrier_dispatch`,
   `carrier_jobs`, `carrier_id`, and the `carrier-operations` skill are absent
-  from the prompt. Delegation mechanics come from live tool metadata only.
+  from the prompt. Doctrine names which execution surface a staged run requires;
+  that surface's arguments and script syntax come from live tool metadata only.
 - No Persona or Tone overlay is rendered, so the gateway path carries no naval
   ranks or forms of address regardless of `enableMetaphor`.
 - Standing Order bodies live solely in
   `src/protocols/standing-orders/gateway.ts`, the doctrine peer of
   `standing-orders/classic.ts`; each file holds all six order bodies outright.
-  `carrier-operations-policy` is replaced by a tool-neutral `delegation-policy`,
-  every carrier term becomes the neutral `subagent`, and Mission Anchor and
-  Context Confidence speak in decision boundaries instead of protocol
-  checkpoints.
-- Plugin skill render installs only `assumption-audit` (from the
-  `gateway/assumption-audit` overlay) and `wiki-operations`. The `gateway/`
+  `carrier-operations-policy` is replaced by `orchestration-policy`, which names
+  no executor at all: execution is described as workflow stages, and both carrier
+  and subagent vocabulary are absent. Mission Anchor and Context Confidence speak
+  in decision boundaries instead of protocol checkpoints.
+- Plugin skill render installs `assumption-audit` and `wiki-operations` plus the
+  gateway-only run skills — `workflow`, `architecture-review`,
+  `codebase-research`, `implementation-run`, and `quality-review`. Each run skill
+  owns the shape of one stage skeleton; `workflow` owns executing any of them,
+  including model and reasoning-effort assignment per stage. The `gateway/`
   authoring prefix is never exposed as a live skill path.
 - The `carrier_dispatch` and `carrier_jobs` MCP tools are withheld from the
   session itself, not merely from the prompt: `injectAgentCliProfile` passes an

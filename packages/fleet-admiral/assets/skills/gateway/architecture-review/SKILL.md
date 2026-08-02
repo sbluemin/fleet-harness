@@ -7,7 +7,7 @@ description: Decide a design or architecture question by generating several inde
 
 A decision procedure, not a survey. The run must **end with one committed approach and a stated cost**, because an even-handed list of options leaves the judgment undone.
 
-Model and effort assignment belongs to `model-loadout`; this skill owns the shape of the run.
+Executing this skeleton — the surface it runs on, the wiring between stages, and model and effort assignment — belongs to `workflow`; this skill owns the shape of the run.
 
 ## When Not To Use
 
