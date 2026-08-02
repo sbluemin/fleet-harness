@@ -223,7 +223,7 @@ describe("agent CLI plugin marketplace rendering", () => {
     // gateway 전용 오버레이는 대응하는 base 자산이 없어도 렌더된다.
     // 캐리어 페르소나가 맡던 역할은 gateway에서 작전별 워크플로 스킬이 대신한다.
     for (const skill of [
-      "model-loadout",
+      "workflow",
       "architecture-review",
       "implementation-run",
       "quality-review",
@@ -231,12 +231,26 @@ describe("agent CLI plugin marketplace rendering", () => {
     ]) {
       expect(existsSync(path.join(skillsRoot, skill, "SKILL.md")), skill).toBe(true);
     }
+    // 모델·effort 배정은 workflow 스킬이 흡수했으므로 별도 스킬로 렌더되지 않는다.
+    expect(existsSync(path.join(skillsRoot, "model-loadout"))).toBe(false);
 
     // gateway/assumption-audit 오버레이가 base 자산을 대체하고 protocol 참조를 남기지 않는다.
     const assumptionAudit = readFileSync(path.join(skillsRoot, "assumption-audit", "SKILL.md"), "utf8");
     expect(assumptionAudit).not.toContain("protocol mode");
     expect(assumptionAudit).not.toContain("Protocol Gate");
-    expect(assumptionAudit).not.toContain("carrier");
+
+    // gateway 경로가 렌더하는 모든 스킬은 프롬프트와 같은 어휘 계약을 따른다:
+    // 실행자를 지칭하지 않고 워크플로 스테이지로만 실행을 기술한다.
+    const renderedSkills = readdirSync(skillsRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+    expect(renderedSkills.length).toBeGreaterThan(0);
+    for (const skill of renderedSkills) {
+      const body = readFileSync(path.join(skillsRoot, skill, "SKILL.md"), "utf8");
+      for (const pattern of [/\bcarriers?\b/i, /\bsubagents?\b/i, /\bdelegat\w*/i]) {
+        expect(body, `${skill}/SKILL.md`).not.toMatch(pattern);
+      }
+    }
   });
 
   it("keeps classic plugin render including carrier-operations", async () => {
@@ -256,7 +270,7 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(existsSync(path.join(skillsRoot, "protocol-baseline", "SKILL.md"))).toBe(true);
     // classic은 캐리어 페르소나로 위임하므로 작전 워크플로 스킬을 렌더하지 않는다.
     for (const skill of [
-      "model-loadout",
+      "workflow",
       "architecture-review",
       "implementation-run",
       "quality-review",

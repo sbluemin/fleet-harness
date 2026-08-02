@@ -47,12 +47,12 @@ const STANDING_ORDER_IDS = [
   "result-integrity",
 ] as const;
 
-// gateway doctrine은 캐리어 운용 지침을 담지 않으므로 위임 규율 오더를 중립 명칭으로 대체한다.
+// gateway doctrine은 캐리어 운용 지침을 담지 않으므로 위임 규율 오더를 스테이지 명칭으로 대체한다.
 const GATEWAY_STANDING_ORDER_IDS = [
   "command-integrity",
   "mission-anchor",
   "context-confidence",
-  "delegation-policy",
+  "orchestration-policy",
   "deep-dive",
   "result-integrity",
 ] as const;
@@ -66,6 +66,9 @@ const CARRIER_OPERATION_MARKERS = [
   "Carrier",
   "carrier",
 ] as const;
+
+// gateway doctrine은 실행자를 아예 지칭하지 않는다 — 스테이지 어휘만 남는다.
+const EXECUTOR_NAMING_MARKERS = ["subagent", "Subagent", "delegate", "Delegate", "delegation", "Delegation"] as const;
 
 describe("Admiral prompts", () => {
   function createRuntimeWithDefaults() {
@@ -195,7 +198,7 @@ describe("Admiral prompts", () => {
     expect(resolveDoctrineFromCliId("codex")).toBe("classic");
   });
 
-  it("keeps six standing orders per doctrine with the carrier policy renamed under gateway", () => {
+  it("keeps six standing orders per doctrine with the carrier policy renamed to orchestration under gateway", () => {
     expect(getAllStandingOrders("classic").map((order) => order.id)).toEqual([...STANDING_ORDER_IDS]);
     expect(getStandingOrdersForDoctrine("gateway").map((order) => order.id)).toEqual([...GATEWAY_STANDING_ORDER_IDS]);
     expect(getAllStandingOrders("gateway")).toHaveLength(getAllStandingOrders("classic").length);
@@ -219,6 +222,9 @@ describe("Admiral prompts", () => {
       expect(gatewayMetaphor).not.toContain(marker);
     }
     for (const marker of CARRIER_OPERATION_MARKERS) {
+      expect(gatewayMetaphor).not.toContain(marker);
+    }
+    for (const marker of EXECUTOR_NAMING_MARKERS) {
       expect(gatewayMetaphor).not.toContain(marker);
     }
   });
@@ -249,13 +255,22 @@ describe("Admiral prompts", () => {
     for (const id of GATEWAY_STANDING_ORDER_IDS) {
       expect(prompt).toContain(`<fleet section="standing-orders" type="${id}">`);
     }
-    expect(prompt).toContain("## Delegation Policy");
+    expect(prompt).toContain("## Orchestration Policy");
     expect(prompt).toContain("assumption-audit");
-    // 위임 어휘는 중립 용어 subagent로 통일된다.
-    expect(prompt).toContain("Delegate execution to subagents");
-    expect(prompt).toContain("which subagent role you delegated it to");
-    expect(prompt).toContain("Mutating subagent run finalized");
-    expect(prompt).toContain("### Cross-Subagent Feedback");
+    // 실행자를 지칭하는 어휘 없이 워크플로 스테이지로만 실행을 기술한다.
+    for (const marker of EXECUTOR_NAMING_MARKERS) {
+      expect(prompt).not.toContain(marker);
+    }
+    expect(prompt).toContain("Execution runs as workflow stages");
+    expect(prompt).toContain("which stages ran and what each was for");
+    expect(prompt).toContain("Mutating stage finalized");
+    expect(prompt).toContain("### Cross-Stage Feedback");
+    // 실행 표면이 opt-in 게이트에 막힌 경우를 unavailable과 동일하게 처리한다.
+    expect(prompt).toContain("### Execution Surface");
+    expect(prompt).toContain("refuses to run without explicit user opt-in is unavailable for this purpose");
+    expect(prompt).toContain("Do not silently collapse a staged run into one context instead.");
+    // 스킬 라우팅이 프롬프트에서 workflow 스킬을 지목한다.
+    expect(prompt).toContain("Load the `workflow` skill");
   });
 
   it("keeps the classic prompt unchanged by the gateway split", () => {
@@ -352,8 +367,9 @@ describe("Admiral prompts", () => {
     expect(builder.build(false).length).toBeLessThanOrEqual(25226);
     expect(builder.build(true).length).toBeLessThanOrEqual(27300);
     // gateway는 protocol gate·roster·캐리어 운용 지침을 담지 않아 예산이 훨씬 낮다.
-    expect(builder.build({ enableMetaphor: false, doctrine: "gateway" }).length).toBeLessThanOrEqual(15600);
-    expect(builder.build({ enableMetaphor: true, doctrine: "gateway" }).length).toBeLessThanOrEqual(15600);
+    // 15600 → 15900: Orchestration Policy가 실행 표면 게이트와 스킬 라우팅을 명시하면서 늘어난 몫.
+    expect(builder.build({ enableMetaphor: false, doctrine: "gateway" }).length).toBeLessThanOrEqual(15900);
+    expect(builder.build({ enableMetaphor: true, doctrine: "gateway" }).length).toBeLessThanOrEqual(15900);
   });
 
   it("teaches idempotent per-session skill loading in the protocol gate", () => {

@@ -7,7 +7,7 @@ description: Review existing code or a change set by splitting the work into ind
 
 The output is a **judged finding list, not a fix list**. A reviewer that also repairs what it finds loses the independence that made the finding worth having, and repairs things that were never broken.
 
-Model and effort assignment belongs to `model-loadout`; this skill owns the shape of the run.
+Executing this skeleton — the surface it runs on, the wiring between stages, and model and effort assignment — belongs to `workflow`; this skill owns the shape of the run.
 
 ## When Not To Use
 

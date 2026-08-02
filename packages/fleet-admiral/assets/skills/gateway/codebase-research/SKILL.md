@@ -7,7 +7,7 @@ description: Answer a question about a codebase or an external subject by fannin
 
 Reconnaissance whose product is **evidence, not a summary**. The run's value comes from covering angles a single reader would miss and from being explicit about what it failed to establish.
 
-Model and effort assignment belongs to `model-loadout`; this skill owns the shape of the run.
+Executing this skeleton — the surface it runs on, the wiring between stages, and model and effort assignment — belongs to `workflow`; this skill owns the shape of the run.
 
 ## When Not To Use
 
@@ -46,4 +46,4 @@ Stop when a full sweep round adds no source you had not already read. Do not kee
 
 - **Symptom:** A cited file path or symbol does not exist.
   **Action:** Treat the whole finding as unverified and re-read the source before keeping it.
-  **Why:** A subagent that could not reach a source may still produce a plausible path; requiring a verbatim quote is what makes this detectable.
+  **Why:** A stage that could not reach a source may still produce a plausible path; requiring a verbatim quote is what makes this detectable.
