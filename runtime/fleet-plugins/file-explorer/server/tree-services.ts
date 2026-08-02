@@ -332,10 +332,17 @@ function sanitizeGitEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessE
     // 저장소 라우팅을 바꾸는 GIT_* 상속은 전부 차단한다(allowlist 방식) —
     // GIT_COMMON_DIR 같은 변수가 새어나가면 status가 다른 저장소를 가리켜
     // 배지 전체가 숨겨지거나 잘못된 저장소를 읽는다. 필요한 값만 아래서 재주입.
-    if (key.toUpperCase().startsWith("GIT_")) continue;
+    // askpass 프로그램 환경변수도 zero-click 실행 경로라 함께 차단한다.
+    const normalizedKey = key.toUpperCase();
+    if (normalizedKey.startsWith("GIT_") || normalizedKey === "LC_ALL" || normalizedKey === "SSH_ASKPASS" || normalizedKey === "SSH_ASKPASS_REQUIRE") continue;
     if (value !== undefined) sanitized[key] = value;
   }
   sanitized.GIT_OPTIONAL_LOCKS = "0";
+  sanitized.GIT_TERMINAL_PROMPT = "0";
+  // repo config으로 덮을 수 없는 default-deny transport allowlist — 알 수 없는
+  // remote helper(`<vcs>::` URL, remote.<name>.vcs)의 zero-click 실행을 막는다.
+  sanitized.GIT_ALLOW_PROTOCOL = "ssh:git:http:https:file";
+  sanitized.LC_ALL = "C";
   return sanitized;
 }
 

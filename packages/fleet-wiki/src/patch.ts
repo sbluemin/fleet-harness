@@ -611,12 +611,27 @@ function escapeFrontmatter(value: string): string {
     .replace(/"/g, "\\\"");
 }
 
+// escapeFrontmatter의 역변환. 단일 패스로 풀어 순서 의존을 제거한다 —
+// 순차 replace를 쓰면 직렬화된 `\\n`(literal `\n`)이 실제 newline으로
+// 잘못 변환되어 원본이 손상된다.
+function decodeFrontmatter(value: string): string {
+  return value.replace(/\\(.)/g, (_, ch: string) => {
+    switch (ch) {
+      case "r": return "\r";
+      case "n": return "\n";
+      case "\"": return "\"";
+      case "\\": return "\\";
+      default: return `\\${ch}`;
+    }
+  });
+}
+
 function parseInlineArray(value: string): string[] {
   const trimmed = value.trim();
   if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return [];
   const inner = trimmed.slice(1, -1).trim();
   if (!inner) return [];
-  return inner.split(",").map((item) => item.trim().replace(/^"(.*)"$/, "$1"));
+  return inner.split(",").map((item) => decodeFrontmatter(item.trim().replace(/^"(.*)"$/, "$1")));
 }
 
 async function archiveQueueEntry(id: string, paths: MemoryPaths, meta: PatchMeta): Promise<void> {
