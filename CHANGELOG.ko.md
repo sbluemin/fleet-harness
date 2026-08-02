@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.43.0] - 2026-08-02
+
+### fleet-core
+
+#### Changed
+- [fleet-admiral] 게이트웨이 세션에서 Claude Code 내장 에이전트를 비활성화하지 않습니다. 게이트웨이 모델 에이전트가 내장 에이전트를 대체하지 않고 함께 놓이므로, 세션 자신의 모델로 위임하는 경로가 다시 열립니다.
+- [core-unified-agent] 기본 테스트 실행에서 실제 Claude/Codex e2e 스위트를 제거하고, 동일 계약을 mock 단위 테스트로 유지합니다.
+
 ## [1.42.0] - 2026-08-02
 
 ### fleet-console

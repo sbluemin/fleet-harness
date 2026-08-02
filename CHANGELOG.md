@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.43.0] - 2026-08-02
+
+### fleet-core
+
+#### Changed
+- [fleet-admiral] Stop disabling Claude Code's built-in agents in a gateway session. The gateway model agents now sit alongside them instead of replacing them, so delegation to the session's own model is available again.
+- [core-unified-agent] Drop live Claude/Codex e2e suites from the default test run and keep the same contracts under mocked unit coverage.
+
 ## [1.42.0] - 2026-08-02
 
 ### fleet-console
