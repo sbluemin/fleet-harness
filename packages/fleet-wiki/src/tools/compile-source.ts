@@ -1,11 +1,11 @@
 import path from "node:path";
 
-import { wrapWikiRawSourceBoundary } from "../boundaries.js";
+import { wrapWikiRawSourceBoundary } from "../store.js";
 import { briefingQuery } from "../briefing.js";
-import { mergeRawSourceRefs, normalizeComparableText, truncateSummary } from "../internal-utils.js";
-import { extractWikiLinks } from "../links.js";
+import { mergeRawSourceRefs, normalizeComparableText, truncateSummary } from "../briefing.js";
+import { extractWikiLinks } from "../store.js";
 import { appendLog } from "../log.js";
-import { buildPatchSetId, writePatchSet } from "../patch-set.js";
+import { buildPatchSetId, writePatchSet } from "../patch.js";
 import { enqueuePatch } from "../patch.js";
 import { resolveMemoryPaths, resolveToolMemoryPaths } from "../paths.js";
 import {
@@ -14,7 +14,7 @@ import {
   WIKI_COMPILE_SOURCE_PROMPT_SNIPPET,
   buildWikiCompileSourceSchema,
 } from "../prompts.js";
-import { assertNoUnsafeSecret } from "../safety.js";
+import { assertNoUnsafeSecret } from "../store.js";
 import { assertSafeEntryId, computeContentHash, listWiki, pathExists, readPatchFile, readRawSourceEntry, writeRawSourceEntry } from "../store.js";
 import type { Patch, RawSourceEntry, WikiEntry } from "../types.js";
 

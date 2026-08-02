@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 
-import { FLEET_WIKI_BOUNDARY_GUIDELINES } from "./boundaries.js";
+import { FLEET_WIKI_BOUNDARY_GUIDELINES } from "./store.js";
 
 export const WIKI_SCHEMA_PROMPT_NOTE =
   "Workspace common rules live in `.fleet/knowledge/schema/wiki-schema.md`; body sections live in `.fleet/knowledge/schema/template-*.md`.";

@@ -6,7 +6,7 @@ import {
   FLEET_WIKI_RAW_SOURCE_END,
   wrapWikiEntryBoundary,
   wrapWikiRawSourceBoundary,
-} from "../src/boundaries.js";
+} from "../src/store.js";
 
 describe("wiki boundaries", () => {
   it("wraps curated wiki entries with escaped attributes", () => {

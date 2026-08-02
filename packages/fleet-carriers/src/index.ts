@@ -12,12 +12,12 @@ import * as jobDispatch from "./jobs/dispatch.js";
 import * as jobLifecycle from "./jobs/lifecycle.js";
 import * as jobSanitize from "./jobs/sanitize.js";
 import * as jobTypes from "./jobs/types.js";
-import * as carrierPersonas from "./personas/index.js";
+import * as carrierPersonas from "./personas/catalog.js";
 import * as carrierStore from "./store/index.js";
 
 export { DEFAULT_CARRIER_COUNT, registerDefaultCarriers } from "./agent-specs.js";
 export * from "./constants.js";
-export * as personas from "./personas/index.js";
+export * as personas from "./personas/catalog.js";
 export * from "./dispatch/framework.js";
 export * from "./dispatch/context-registry.js";
 export * from "./dispatch/prompt.js";
@@ -72,7 +72,7 @@ export type {
   CarrierModelDefaults,
   ResolvedCarrierState,
 } from "./store/index.js";
-export * from "./personas/index.js";
+export * from "./personas/catalog.js";
 
 export interface CarrierRuntime {
   registry: CarrierRegistry;

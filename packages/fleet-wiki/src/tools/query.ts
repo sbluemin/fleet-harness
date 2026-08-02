@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { dedupeStrings, truncateSummary } from "../internal-utils.js";
+import { dedupeStrings, truncateSummary } from "../briefing.js";
 import { enqueuePatch } from "../patch.js";
 import { resolveMemoryPaths, resolveToolMemoryPaths } from "../paths.js";
 import {

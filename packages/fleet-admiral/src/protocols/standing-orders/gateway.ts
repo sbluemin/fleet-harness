@@ -11,7 +11,7 @@
  * 나머지 5종은 id를 유지한다.
  */
 
-import type { StandingOrder } from "./types.js";
+import type { StandingOrder } from "./index.js";
 
 // ─────────────────────────────────────────────────────────
 // 상수

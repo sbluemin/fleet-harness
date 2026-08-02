@@ -18,7 +18,7 @@ import type {
   MarketplaceTarget,
   PluginBundle,
   RenderablePluginBundle,
-} from "./types.js";
+} from "../types.js";
 
 export { cleanupDeprecatedCodexPluginState, ensureCodexPluginRegistered } from "./codex-register.js";
 export type { DeprecatedCodexPluginCleanupTargets } from "./codex-register.js";
@@ -30,7 +30,7 @@ export type {
   CodexPluginRegistration,
   CodexPluginRegistrationCommand,
   CreateAgentCliPluginOptions,
-} from "./types.js";
+} from "../types.js";
 
 export const FLEET_MARKETPLACE_NAME = "fleet-harness";
 

@@ -6,7 +6,7 @@ import { getFinalized, hasFinalizedJobArchive, hasJobArchive, serializeJobArchiv
 import { cancelJob, getActiveJob, listActiveJobs } from "./lifecycle.js";
 import { getJobSummary, listJobSummaries } from "./summary-cache.js";
 import { isCarrierJobId, CARRIER_JOBS_FULL_RESULT_BYTE_CAP, CARRIER_JOBS_GLOBAL_BYTE_CAP, CARRIER_JOBS_PER_SUBOP_BYTE_CAP, type ArchiveBlock, type CarrierJobRecord, type CarrierJobStatus, type CarrierJobSummary, type JobArchive, type CarrierJobsAvailability, type CarrierJobsFormat, type CarrierJobsParams } from "./types.js";
-import { extractFinalReport } from "./report-extract.js";
+import { extractFinalReport } from "./archive.js";
 import { buildStatLine } from "./workspace-manifest.js";
 
 // summary cache / launch-response는 하위 모듈로 분리됨 — 기존 소비자를 위한 동명 re-export

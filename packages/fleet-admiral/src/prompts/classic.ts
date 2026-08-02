@@ -19,7 +19,7 @@ import {
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
 
-import { getProtocolGatePrompt } from "../protocols/index.js";
+import { getProtocolGatePrompt } from "../protocols/fleet-action.js";
 import { getAllStandingOrders } from "../protocols/standing-orders/index.js";
 
 // ─────────────────────────────────────────────────────────

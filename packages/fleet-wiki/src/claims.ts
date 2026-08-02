@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import { findUnsafeMemoryText } from "./safety.js";
+import { findUnsafeMemoryText } from "./store.js";
 import { assertSafeEntryId, listFileNames, pathExists, readJsonFile, writeJsonFile } from "./store.js";
 import type {
   Claim,

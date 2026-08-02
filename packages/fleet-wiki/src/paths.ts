@@ -12,7 +12,7 @@ import {
   RAW_DIRNAME,
   SCHEMA_DIRNAME,
   WIKI_DIRNAME,
-} from "./constants.js";
+} from "./patch.js";
 import { ensureWorkspaceDoctrine, ensureWorkspaceSchema } from "./schema.js";
 import type { MemoryPaths } from "./types.js";
 

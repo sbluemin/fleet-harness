@@ -38,7 +38,7 @@ interface ExtractedFrontmatter {
   content: string;
 }
 
-// SSoT: packages/fleet-wiki/src/links.ts WIKI_LINK_PATTERN
+// SSoT: packages/fleet-wiki/src/store.ts WIKI_LINK_PATTERN
 // Inlined here because the client (Vite SPA) bundle cannot transitively pull
 // fleet-wiki's Node-only modules (fs/path/crypto). Keep these two regexes in sync.
 const WIKI_LINK_PATTERN = /\[\[wiki:([^\]]+)\]\]/g;

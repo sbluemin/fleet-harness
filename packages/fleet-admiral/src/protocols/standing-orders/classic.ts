@@ -5,7 +5,7 @@
  * gateway 본문은 `gateway.ts`가 소유하며, 두 파일은 본문을 공유하지 않는다(중복 허용).
  */
 
-import type { StandingOrder } from "./types.js";
+import type { StandingOrder } from "./index.js";
 
 // ─────────────────────────────────────────────────────────
 // 상수

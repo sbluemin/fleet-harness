@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractFinalReport } from "../../src/jobs/report-extract.js";
+import { extractFinalReport } from "../../src/jobs/archive.js";
 
 describe("extractFinalReport", () => {
   it("정상 추출 — <report> 블록 본문을 반환한다", () => {

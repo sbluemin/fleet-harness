@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { listConflicts, readConflict } from "../src/conflicts.js";
-import { buildPatchSetId, writePatchSet } from "../src/patch-set.js";
+import { buildPatchSetId, writePatchSet } from "../src/patch.js";
 import { approvePatch, approvePatchSet, enqueuePatch, listQueue, parsePatch, rejectPatch, resolveQueueSelection, showQueue, validatePatch } from "../src/patch.js";
 import { resolveMemoryPaths } from "../src/paths.js";
 import { computeContentHash, pathExists, readJsonFile, readPatchFile, writeWikiEntry } from "../src/store.js";

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { readPatchSet } from "../src/patch-set.js";
+import { readPatchSet } from "../src/patch.js";
 import { showQueue } from "../src/patch.js";
 import { resolveMemoryPaths } from "../src/paths.js";
 import { pathExists, readJsonFile, writeWikiEntry } from "../src/store.js";

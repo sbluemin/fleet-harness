@@ -4,14 +4,14 @@ import os from "node:os";
 import path from "node:path";
 
 import { createConflict } from "../src/conflicts.js";
-import { buildPatchSetId, writePatchSet } from "../src/patch-set.js";
+import { buildPatchSetId, writePatchSet } from "../src/patch.js";
 import { runDryDock } from "../src/drydock.js";
-import { PATCH_FILENAME } from "../src/constants.js";
+import { PATCH_FILENAME } from "../src/patch.js";
 import { enqueuePatch, parsePatch } from "../src/patch.js";
 import { ensureMemoryRoot, getIndexMarkdownFile, getLogFile, resolveMemoryPaths } from "../src/paths.js";
 import { WORKSPACE_SCHEMA_AGENTS_FILENAME, WORKSPACE_SCHEMA_FILENAME } from "../src/schema.js";
 import { rebuildIndex, writeRawSourceEntry, writeWikiEntry } from "../src/store.js";
-import { buildDryDockToolConfig } from "../src/tools/drydock.js";
+import { buildDryDockToolConfig } from "../src/tools/briefing.js";
 
 const cleanupPaths: string[] = [];
 
