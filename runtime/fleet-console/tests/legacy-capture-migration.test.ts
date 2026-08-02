@@ -123,6 +123,7 @@ function makeOperation(id: string, payload: Record<string, unknown>): OperationN
     pluginId: "terminal",
     type: "agent",
     title: id,
+    geometry: null,
     payload,
     ts: { createdAt: 1, updatedAt: 1 },
   };
