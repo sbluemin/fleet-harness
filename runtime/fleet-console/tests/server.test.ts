@@ -2292,7 +2292,7 @@ describe("console static and terminal ticket boundary", () => {
     expect((listed.agentClis ?? []).map((cli) => ({ id: cli.id, label: cli.label }))).toEqual([
       { id: "claude", label: "Claude" },
       { id: "codex", label: "Codex" },
-      { id: "claude-gateway", label: "Claude (Gateway)" },
+      { id: "claude-gateway", label: "Claude (Gateway • Experimental)" },
     ]);
     for (const cli of listed.agentClis ?? []) {
       expect(typeof cli.available).toBe("boolean");

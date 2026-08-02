@@ -115,7 +115,6 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                 >
                   <span className="theater-menu-check" aria-hidden="true">{renderKindIcon(plugin.id, kind) ?? <FallbackGlyph />}</span>
                   <span className="theater-menu-label">{kind.title}</span>
-                  {annotation?.badgeKey ? <span className="operation-launch-menu-badge">{t(annotation.badgeKey)}</span> : null}
                   {/* 비활성 사유가 있으면 그것이 먼저다 — 지금 실행할 수 없다는 사실이 종류 설명보다 급하다. */}
                   {kind.disabledReason
                     ? <span className="operation-launch-menu-reason">{kind.disabledReason}</span>

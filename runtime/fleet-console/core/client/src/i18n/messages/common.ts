@@ -40,10 +40,6 @@ export const commonEn = {
   "featureTour.claudeOperations.step2Body": "This is the Operation you already run. Admiral standing orders and Carrier dispatch load with it. Nothing about it changed — only the name gained (Classic).",
   "featureTour.claudeOperations.step3Title": "Claude, on other models",
   "featureTour.claudeOperations.step3Body": "New and experimental. Runs Claude Code through the local AI Gateway so it can use the models you enabled in Settings. It suits large workloads, and you can switch models later with /model.",
-  // 배지는 대문자를 값에 담는다 — text-transform으로 올리면 한글 로케일에서 변환이 무효라
-  // 자간만 남아 자글자글해진다.
-  "launchKind.badge.new": "NEW",
-  "launchKind.badge.newExperimental": "NEW · EXPERIMENTAL",
   "launchKind.claudeNative.description": "Plain Claude Code, without the Admiral prompt",
   "launchKind.claude.description": "The one you know — Admiral standing orders and Carrier dispatch",
   "launchKind.claudeGateway.description": "Runs Claude Code on the models you enabled in Settings",
@@ -91,10 +87,6 @@ export const commonKo: Record<keyof typeof commonEn, string> = {
   "featureTour.claudeOperations.step2Body": "쓰시던 Operation 그대로입니다. Admiral 상비 명령과 Carrier 위임이 함께 실립니다. 달라진 것은 없고, 이름에 (Classic)만 붙었습니다.",
   "featureTour.claudeOperations.step3Title": "다른 모델로 도는 Claude입니다",
   "featureTour.claudeOperations.step3Body": "새로 추가된 실험 기능입니다. 로컬 AI Gateway를 거쳐 설정에서 켠 모델로 Claude Code를 실행합니다. 대규모 작업에 적합하고, 실행 후 /model로 모델을 바꿀 수 있습니다.",
-  // 배지는 두 로케일이 같은 라틴 대문자를 쓴다 — 표식은 읽는 문장이 아니라 눈에 걸리는 표시이고,
-  // 로케일마다 길이가 달라지면 같은 메뉴가 로케일에 따라 다른 폭으로 접힌다.
-  "launchKind.badge.new": "NEW",
-  "launchKind.badge.newExperimental": "NEW · EXPERIMENTAL",
   "launchKind.claudeNative.description": "Admiral 프롬프트 없는 순정 Claude Code",
   "launchKind.claude.description": "Admiral 상비 명령과 Carrier 위임을 함께 싣는 기존 방식",
   "launchKind.claudeGateway.description": "설정에서 켠 다른 모델로 Claude Code를 실행",
