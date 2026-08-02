@@ -47,7 +47,7 @@ Never leave a choice to a stage behind phrases like "match the existing style", 
 
 ## Scope Warning
 
-Measurement covered only **local, well-precedented edits** — a couple of files with an obvious existing pattern to follow. Every model tested handled those correctly. Nothing establishes that this holds for sweeping or cross-package work, where convention drift compounds and each branch sees only its own slice. Treat wide runs as unproven: keep groups small, inspect every diff, and prefer the session model where the change is structural rather than mechanical.
+Measurement covered only **local, well-precedented edits** — a couple of files with an obvious existing pattern to follow. Every model tested handled those correctly. Nothing establishes that this holds for sweeping or cross-package work, where convention drift compounds and each branch sees only its own slice. Treat wide runs as unproven: keep groups small, inspect every diff, and keep a structural change on the host rather than spreading it across branches that each see one slice.
 
 ## Stopping
 

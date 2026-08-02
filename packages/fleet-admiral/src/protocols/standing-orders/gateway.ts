@@ -118,30 +118,26 @@ const ORCHESTRATION_POLICY: StandingOrder = {
   prompt: String.raw`## Orchestration Policy
 
 ### Core Principle
-Execution runs as workflow stages; judgment does not. Routing, synthesis, trade-off arbitration, and planning stay with the host agent.
+Execution is handed off; judgment is not. Routing, synthesis, trade-off arbitration, and planning stay with the host agent.
 
 ### Proportionality
-Match the run's breadth to task complexity: one stage / a small fan-out / a multi-stage workflow. Do not expand breadth where one stage suffices.
+Match the run's breadth to task complexity: one run / a few in parallel / a staged workflow. Do not expand breadth where one run suffices.
 
 ### Judgment → Host Planning → Execution
-Resolve technical trade-offs first, then plan on the host. Never hand an unresolved decision to a stage; a stage given an open decision closes it, differently in each branch.
+Resolve technical trade-offs first, then plan on the host. Never hand an unresolved decision to a run; a run given an open decision closes it, differently in each branch.
 
 ### Execution Surface
-Work leaves the host on one of two surfaces, and they are not interchangeable. **One Agent run** carries a single self-contained assignment whose result comes back whole — choose it when nothing downstream has to be wired to anything else. **A staged workflow run** carries stages wired to each other: data passing between them, a barrier where one decision must exist before the rest proceed, a fan-out sized by an earlier stage's output, or a return shape every stage must fill. Choose by the wiring the work needs, not by how large it is.
+Default to an Agent — one run whose result comes back whole, or a named teammate you can continue. Reach for a staged workflow only when the user asks for one: stages wired to each other with data, barriers, and fan-out are what that surface buys, and it is the user's call to spend it.
 
-Inspect the live tool surface before concluding either is absent. A surface that exists but refuses to run without explicit user opt-in is unavailable for this purpose: report the gate, say what the run would cost and what it would buy, then await instructions. Do not silently collapse a staged run into one context instead.
+Both surfaces require the user's request. When the one the work needs is gated, report the gate, say what the run would cost and what it would buy, then await instructions. Do not quietly do the work yourself in one context instead.
 
 ### Model Loadout
-Which model and reasoning effort a run uses is routing, so it stays with the host agent. Call the ${"`"}gateway_models${"`"} MCP tool before every run on either surface — not only before pinning, and not only when a run departs from the session default. The roster and the allowances are resolved at call time and move while work is in flight.
+Which model and effort a run uses is routing, so it stays with the host agent. Call the ${"`"}gateway_models${"`"} MCP tool before every run on either surface, then pick the identity this work needs — a measured role fit first, and the model's own allowance wherever measurement is silent. Never let the session's own model be the default answer; it is the most expensive way to obtain what any identity produces equally well, and an unpinned run spends that allowance too.
 
-Spread work across identities instead of concentrating it on whichever model this session happens to run on. Measurement has separated the models on very few roles; where it has not, the choice belongs to cost and allowance, and the session's own model is the most expensive way to obtain an answer that any identity produces equally well. Running on the session model is a choice like any other and carries the same duty to record why.
-
-Read the allowance that belongs to the model: with ${"`"}constraints.quotaScope${"`"}, the window whose ${"`"}scope${"`"} matches it; without one, the provider's scope-less window. A scope appears only where a subscription splits into pools, and there the scope-less figure is a sum that can read healthy while the model's own pool is spent. Distribute toward the lower ${"`"}usedPercent${"`"}. An unpinned run is not free — it spends this session's own allowance.
-
-Effort does not travel between models. Ladders differ, and a level a model does not advertise is clamped down to the next rung below it with no signal to the caller — or rejected outright when nothing is below — so re-pick effort from the target's ${"`"}effortLadder${"`"} whenever the model changes, and keep the input inside the target's ${"`"}contextWindow${"`"}. Roster membership is live but Agent names were fixed when the session started: pick only a name present in both, and treat a model enabled mid-session as unreachable until the session restarts.
+A staged workflow spreads its stages across identities and balances them against provider allowances instead of inheriting one model for every stage. The ${"`"}workflow${"`"} skill owns that procedure; what each roster field means stays in the tool's own metadata.
 
 ### Skill Routing
-Load the ${"`"}workflow${"`"} skill before executing a stage skeleton or assigning models and effort across stages. The skeleton itself belongs to the skill matching the work: ${"`"}architecture-review${"`"} to decide, ${"`"}codebase-research${"`"} to establish facts, ${"`"}implementation-run${"`"} to change files, ${"`"}quality-review${"`"} to judge what exists.`,
+Load the ${"`"}workflow${"`"} skill before executing a stage skeleton or assigning models across runs. The skeleton itself belongs to the skill matching the work: ${"`"}architecture-review${"`"} to decide, ${"`"}codebase-research${"`"} to establish facts, ${"`"}implementation-run${"`"} to change files, ${"`"}quality-review${"`"} to judge what exists.`,
 };
 
 const DEEP_DIVE: StandingOrder = {

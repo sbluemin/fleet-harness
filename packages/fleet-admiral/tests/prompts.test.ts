@@ -261,34 +261,37 @@ describe("Admiral prompts", () => {
     for (const marker of EXECUTOR_NAMING_MARKERS) {
       expect(prompt).not.toContain(marker);
     }
-    expect(prompt).toContain("Execution runs as workflow stages");
+    expect(prompt).toContain("Execution is handed off; judgment is not");
     expect(prompt).toContain("which stages ran and what each was for");
     expect(prompt).toContain("Mutating stage finalized");
     expect(prompt).toContain("### Cross-Stage Feedback");
-    // 실행 표면이 opt-in 게이트에 막힌 경우를 unavailable과 동일하게 처리한다.
+    // 기본 실행 표면은 Agent(단일 실행 또는 이어갈 수 있는 teammate)이고,
+    // staged workflow 는 사용자가 요청했을 때만 꺼내는 상위 옵션이다.
     expect(prompt).toContain("### Execution Surface");
-    expect(prompt).toContain("refuses to run without explicit user opt-in is unavailable for this purpose");
-    expect(prompt).toContain("Do not silently collapse a staged run into one context instead.");
+    expect(prompt).toContain("Default to an Agent");
+    expect(prompt).toContain("a named teammate you can continue");
+    expect(prompt).toContain("Reach for a staged workflow only when the user asks for one");
+    expect(prompt).toContain("Both surfaces require the user's request.");
+    // 게이트에 막히면 보고 후 대기한다. 호스트가 한 컨텍스트에서 대신 해치우지 않는다.
+    expect(prompt).toContain("report the gate");
+    expect(prompt).toContain("Do not quietly do the work yourself in one context instead.");
     // 스킬 라우팅이 프롬프트에서 workflow 스킬을 지목한다.
     expect(prompt).toContain("Load the `workflow` skill");
-    // 두 실행 표면을 구분하고, 선택 기준을 배선(wiring)으로 못박는다.
-    expect(prompt).toContain("One Agent run");
-    expect(prompt).toContain("A staged workflow run");
-    expect(prompt).toContain("Choose by the wiring the work needs");
     // 실행 전 live roster 조회는 무조건이다 — 핀 여부나 세션 기본값과의 차이로 한정하지 않는다.
     expect(prompt).toContain("Call the `gateway_models` MCP tool before every run on either surface");
-    expect(prompt).toContain("not only before pinning");
+    // 세션 모델이 기본 답이 되어서는 안 되고, 상속도 할당량을 쓴다.
+    expect(prompt).toContain("Never let the session's own model be the default answer");
+    expect(prompt).toContain("an unpinned run spends that allowance too");
+    // 워크플로는 스테이지를 여러 identity 로 흩고 provider allowance 로 균형을 잡는다.
+    expect(prompt).toContain("spreads its stages across identities and balances them against provider allowances");
     // 조건절이 되살아나면 잡는다. toContain 접두만 고정하면 한정어 복귀를 감지하지 못한다.
     expect(prompt).not.toContain("whose model or effort differs from the session default");
     expect(prompt).not.toContain("Inheriting the session's model is the default");
-    // 쿼터 배분: 모델 자신의 풀을 읽고 합산 창에 기대지 않는다.
-    expect(prompt).toContain("constraints.quotaScope");
-    expect(prompt).toContain("Distribute toward the lower `usedPercent`");
-    expect(prompt).toContain("An unpinned run is not free");
-    // 모델을 바꾸면 effort는 목표 모델의 사다리에서 다시 고른다.
-    expect(prompt).toContain("Effort does not travel between models");
-    // 세션 시작 시점에 고정된 Agent 이름과 live roster의 교집합만 선택 가능하다.
-    expect(prompt).toContain("pick only a name present in both");
+    // 필드 의미와 배정 절차는 각각 tool metadata 와 workflow 스킬이 소유한다.
+    // Standing Order 가 다시 떠안으면 SSoT 가 깨지고 프롬프트가 불어난다.
+    expect(prompt).not.toContain("constraints.quotaScope");
+    expect(prompt).not.toContain("effortLadder");
+    expect(prompt).not.toContain("contextWindow");
   });
 
   it("keeps the classic prompt unchanged by the gateway split", () => {
@@ -387,12 +390,12 @@ describe("Admiral prompts", () => {
     // gateway는 protocol gate·roster·캐리어 운용 지침을 담지 않아 예산이 훨씬 낮다.
     // 15600 → 15900: Orchestration Policy가 실행 표면 게이트와 스킬 라우팅을 명시하면서 늘어난 몫.
     // 15900 → 16100: Model Loadout가 staged Agent 선택 전 gateway_models 호출을 강제하면서 늘어난 몫.
-    // 16100 → 17500: Execution Surface가 단일 Agent 실행과 staged 실행을 구분하고, Model Loadout이
-    //   무조건 사전 조회·분산 기본·쿼터 창 선택·effort 재선택·roster 교집합을 규정하면서 늘어난 몫.
-    // 17500 → 17700: quotaScope를 선언하지 않는 프로바이더의 창 선택과, 아래 rung이 없을 때의
-    //   effort 거절을 문언에 담으면서 늘어난 몫. 둘 다 빠지면 규칙이 실행 불가능해진다.
-    expect(builder.build({ enableMetaphor: false, doctrine: "gateway" }).length).toBeLessThanOrEqual(17700);
-    expect(builder.build({ enableMetaphor: true, doctrine: "gateway" }).length).toBeLessThanOrEqual(17700);
+    // 16100 → 16300: 기본 표면이 Agent이고 staged workflow는 사용자가 요청할 때라는 규칙,
+    //   그리고 무조건 사전 조회와 분산 기본이 들어온 몫. 로스터 필드 의미(quotaScope·
+    //   effortLadder·contextWindow)와 배정 절차는 각각 tool metadata와 workflow 스킬이
+    //   도로 가져갔으므로, 규칙이 늘었는데도 총량은 200자만 늘었다.
+    expect(builder.build({ enableMetaphor: false, doctrine: "gateway" }).length).toBeLessThanOrEqual(16300);
+    expect(builder.build({ enableMetaphor: true, doctrine: "gateway" }).length).toBeLessThanOrEqual(16300);
   });
 
   it("teaches idempotent per-session skill loading in the protocol gate", () => {

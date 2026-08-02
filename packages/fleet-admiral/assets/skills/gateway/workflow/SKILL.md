@@ -13,7 +13,7 @@ A skeleton that is never executed as stages is not a cheaper version of the run.
 
 Staged execution requires the workflow execution surface — the one that runs a script of stages, wires them together, and lets each stage carry its own model and effort. Inspect the live tool surface before concluding anything about it; tools may be lazy-loaded.
 
-This skill covers that surface only. A single self-contained assignment whose result comes back whole belongs on the one-Agent surface instead, and the choice between the two is the Orchestration Policy Standing Order's — decide it there, then come here to execute. Model and effort assignment below applies to both.
+This skill covers that surface only, and that surface is not the default. An Agent — one run, or a named teammate you can continue — carries work that needs no wiring between its parts, and the Orchestration Policy Standing Order makes it the default for exactly that reason. A staged run is what the user asks for on top of it, and what it buys is the wiring: data flowing between stages, barriers, fan-out, and a fleet of different models working the same problem at once. Model and effort assignment below applies to both surfaces.
 
 **A surface gated behind user opt-in is unavailable until that opt-in exists.** Some workflow surfaces refuse to run unless the user explicitly asked for a multi-agent run. That refusal is not a defect and it is not a reason to quietly do the whole thing yourself in one context. Report the gate, say what the staged run would cost and what it would buy, and wait — the same way you would report any unavailable surface.
 

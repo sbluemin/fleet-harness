@@ -86,8 +86,10 @@ describe("gateway workflow skill asset", () => {
   it("hands the surface choice back to the Orchestration Policy Standing Order", () => {
     const content = skillContent();
 
-    expect(content).toContain("This skill covers that surface only.");
-    expect(content).toContain("Orchestration Policy Standing Order's");
+    expect(content).toContain("This skill covers that surface only, and that surface is not the default.");
+    expect(content).toContain("makes it the default for exactly that reason");
+    // 워크플로가 사는 이유는 배선이다 — 여러 모델을 한 문제에 동시에 붙이는 것을 포함한다.
+    expect(content).toContain("a fleet of different models working the same problem at once");
   });
 
   it("records that exhaustion has no status of its own", () => {

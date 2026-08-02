@@ -19,7 +19,13 @@
  * covers its service-tier siblings without being restated.
  */
 
-/** Stage roles a measurement has actually separated models on. */
+/**
+ * Stage roles a measurement has actually separated models on.
+ *
+ * `tokenEfficiency` was measured on closed tasks — ones with a single correct
+ * answer, so spend can be compared at held quality. It does not carry to
+ * open-ended generation, where a model that spends less may be answering less.
+ */
 export type GatewayRoleAxis = "map" | "tokenEfficiency";
 
 export interface GatewayRoleFitEntry {
@@ -41,7 +47,7 @@ const ROLE_FIT: Readonly<Record<string, GatewayRoleFit>> = Object.freeze({
     }),
     tokenEfficiency: Object.freeze({
       fit: "unfit",
-      evidence: "Spent 5.20M total tokens over 29 tool calls mapping 12 files, an answer kimi::k3-256k produced identically on 176k over 5 calls — 29x the spend for no measured quality gain.",
+      evidence: "Spent 5.20M total tokens over 29 tool calls mapping 12 files, an answer kimi::k3-256k produced identically on 176k over 5; the 29x gap survives cache-read doubt because output alone ran 7.4k against 1.7k and the call count is 6x.",
       measuredAt: "2026-08-02",
     }),
   }),
@@ -55,7 +61,7 @@ const ROLE_FIT: Readonly<Record<string, GatewayRoleFit>> = Object.freeze({
   "codex::gpt-5.6-luna": Object.freeze({
     tokenEfficiency: Object.freeze({
       fit: "unfit",
-      evidence: "Took 47 tool calls, the most of 12 identities measured, and 3.54M total tokens on the 12-file map that kimi::k3-256k completed correctly in 5 calls and 176k.",
+      evidence: "Took 47 tool calls, the most of 12 identities measured, and 3.54M total tokens with 20.1k of output on the 12-file map that kimi::k3-256k completed correctly in 5 calls, 176k, and 1.7k of output.",
       measuredAt: "2026-08-02",
     }),
   }),
