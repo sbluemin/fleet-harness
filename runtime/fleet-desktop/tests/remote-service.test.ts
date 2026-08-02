@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { startRemoteService, stopOwnedRemoteService } from "../src/runtime/remote/service.js";
-import { parseSshTarget } from "../src/runtime/remote/target.js";
+import { parseSshTarget } from "../src/runtime/remote/contracts.js";
 import type { OpenSshAdapter } from "../src/runtime/remote/ssh.js";
 
 const target = parseSshTarget("host"); const owner = "9b77d0ec-a591-4a47-8d87-76b1074a0571";

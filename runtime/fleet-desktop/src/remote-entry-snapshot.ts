@@ -1,6 +1,6 @@
 import type { EntryPageSnapshot, EntryStepSnapshot } from "./entry-page.js";
 import type { RemoteRuntimePhase } from "./runtime/remote/contracts.js";
-import type { ValidatedSshTarget } from "./runtime/remote/target.js";
+import type { ValidatedSshTarget } from "./runtime/remote/contracts.js";
 
 const FOOT = "managed SSH runtime";
 

@@ -4,7 +4,7 @@ import { PassThrough } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 
 import { MAX_TUNNEL_ATTEMPTS, RemoteTunnelPortCollision, RemoteTunnelPortConflictExhausted, openSamePortTunnel, openTunnelWithReroll } from "../src/runtime/remote/tunnel.js";
-import { parseSshTarget } from "../src/runtime/remote/target.js";
+import { parseSshTarget } from "../src/runtime/remote/contracts.js";
 import type { OpenSshAdapter, OpenSshProcess } from "../src/runtime/remote/ssh.js";
 
 function process(): OpenSshProcess & { readonly stderr: PassThrough; exit(code?: number): void } {

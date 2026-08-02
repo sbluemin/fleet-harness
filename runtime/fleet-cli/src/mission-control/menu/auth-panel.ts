@@ -5,7 +5,7 @@ import {
 import type { AuthService } from "@dotobokuri/core-infra";
 
 import { renderChoiceBlock, type ChoiceBlockRow } from "../layout.js";
-import { MISSION_CONTROL_THEME } from "../theme.js";
+import { MISSION_CONTROL_THEME } from "../renderer.js";
 import { centerText } from "../welcome.js";
 import { createActionListPanel } from "./action-list-panel.js";
 import { createInputModal } from "./input-modal.js";

@@ -1,5 +1,5 @@
 import { truncateToWidth } from "../../controls/index.js";
-import { MISSION_CONTROL_THEME } from "../theme.js";
+import { MISSION_CONTROL_THEME } from "../renderer.js";
 import { centerText } from "../welcome.js";
 import { isEnter, isEscape, isPrintable, type MenuPanel } from "./panel-stack.js";
 

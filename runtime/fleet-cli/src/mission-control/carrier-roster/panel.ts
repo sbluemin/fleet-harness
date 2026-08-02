@@ -25,9 +25,9 @@ import {
   type Focusable,
 } from "../../controls/index.js";
 
-import { buildModelEffortTransition } from "./model-flow.js";
-import { getCarrierActions } from "./carrier-actions.js";
-import { getAvailableModels, getModelEffort } from "./model-info.js";
+import { buildModelEffortTransition } from "./types.js";
+import { getCarrierActions } from "./types.js";
+import { getAvailableModels, getModelEffort } from "./types.js";
 import { handleCarrierStatusOverlayInput } from "./input.js";
 import {
   clampCarrierStatusOverlayRows,
@@ -35,7 +35,7 @@ import {
   getCarrierStatusFocusLine,
   renderCarrierStatusOverlay,
 } from "./renderer.js";
-import type { CarrierStatusOverlayOptions, EntrySnapshot, RenameState } from "./render-types.js";
+import type { CarrierStatusOverlayOptions, EntrySnapshot, RenameState } from "./types.js";
 import {
   buildStatusEntries,
   buildStatusOverlayViewModel,

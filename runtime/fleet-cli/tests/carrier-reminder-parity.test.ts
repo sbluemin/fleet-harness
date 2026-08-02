@@ -7,7 +7,7 @@ import {
 } from "@dotobokuri/fleet-admiral";
 
 import { createProgrammaticInput, type PtyHost } from "../src/controls/index.js";
-import { formatProgrammaticInputMessage, type CliMessagePolicy as ProgrammaticCliMessagePolicy } from "../src/controls/input/programmatic.js";
+import { formatProgrammaticInputMessage, type CliMessagePolicy as ProgrammaticCliMessagePolicy } from "../src/controls/input.js";
 
 describe("carrier reminder encoding parity", () => {
   it("matches programmatic input chunks for bracketed paste profiles", () => {

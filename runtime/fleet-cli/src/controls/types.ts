@@ -1,12 +1,12 @@
 import type { Component as PrimitiveComponent, TerminalSize } from "../tui/types.js";
-import type { DesiredHeight, PaneSize, ResizeReason, ResizeRequest } from "../tui/layout/split-pane.js";
-import type { RoutedMouseInput } from "./mouse/parser.js";
+import type { DesiredHeight, PaneSize, ResizeReason, ResizeRequest } from "../tui/layout.js";
+import type { RoutedMouseInput } from "./mouse.js";
 
 export type MouseProtocolName = "none" | "x10" | "vt200" | "drag" | "any";
 export type MouseEncodingName = "default" | "sgr" | "sgr-pixels";
 
 export type { DesiredHeight, PaneSize, ResizeReason, ResizeRequest };
-export type { InputRouterLayout, MouseWheelDirection, RoutedMouseInput, SgrMouseInput } from "./mouse/parser.js";
+export type { InputRouterLayout, MouseWheelDirection, RoutedMouseInput, SgrMouseInput } from "./mouse.js";
 
 export interface KeyboardProtocolState {
   readonly outerEnabled: boolean;

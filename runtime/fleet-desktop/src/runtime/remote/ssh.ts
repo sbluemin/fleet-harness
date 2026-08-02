@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams, type SpawnOptionsWithoutStdio } from "node:child_process";
 
 import { RemoteRuntimeError, type RemoteCancellation, type RemoteCommand, type RemoteCommandResult, type RemoteOperation, type RemoteProcessHandle } from "./contracts.js";
-import type { ValidatedSshTarget } from "./target.js";
+import type { ValidatedSshTarget } from "./contracts.js";
 
 const CONNECT_TIMEOUT_SECONDS = 10;
 const MAX_OUTPUT_BYTES = 64 * 1024;

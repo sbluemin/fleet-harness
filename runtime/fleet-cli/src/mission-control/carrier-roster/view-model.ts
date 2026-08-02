@@ -12,8 +12,8 @@ import {
 } from "@dotobokuri/fleet-carriers";
 import { sanitizeToolBlockLabel } from "@dotobokuri/fleet-carriers";
 
-import { getAvailableModels } from "./model-info.js";
-import type { GroupedEntries, StatusOverlayViewModel } from "./render-types.js";
+import { getAvailableModels } from "./types.js";
+import type { GroupedEntries, StatusOverlayViewModel } from "./types.js";
 import type { CarrierCliType, CarrierStatusEntry, FleetStoreSnapshot } from "./types.js";
 
 const ANSI_DIM = "\x1b[38;2;100;100;100m";

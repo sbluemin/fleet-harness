@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { inspectRemoteLock, parseRemoteConsoleLock } from "../src/runtime/remote/lock.js";
-import { parseSshTarget } from "../src/runtime/remote/target.js";
+import { parseSshTarget } from "../src/runtime/remote/contracts.js";
 import type { OpenSshAdapter } from "../src/runtime/remote/ssh.js";
 
 const target = parseSshTarget("host");

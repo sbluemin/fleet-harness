@@ -1,7 +1,14 @@
 import * as React from "react";
+import type { ReactNode } from "react";
 
-import { Select } from "../components/select.js";
-import type { SettingsSectionDescriptor } from "./types.js";
+import { Select } from "../react/browser.js";
+import type { LocalizedText } from "../i18n/types.js";
+
+export interface SettingsSectionDescriptor {
+  readonly id: string;
+  readonly title: LocalizedText;
+  readonly render?: () => ReactNode;
+}
 
 export interface SettingsCardProps {
   readonly title?: string;

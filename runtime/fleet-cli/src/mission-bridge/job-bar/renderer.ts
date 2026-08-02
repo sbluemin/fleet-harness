@@ -1,32 +1,55 @@
 import {
   CLI_DISPLAY_NAMES,
   getEffectiveTaskForceBackends,
+  getRegisteredCarrierConfig,
   getRegisteredOrder,
   readCarriersSnapshot,
+  resolveAgentCliType,
   resolveCarrierDisplayName,
   TASKFORCE_MIN_BACKENDS,
+  type CarrierRegistry,
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
 import { truncateToWidth, visibleWidth, type FleetPtyTheme } from "../../controls/index.js";
 import { ANSI_RESET } from "../../styles/ansi.js";
 import {
+  getCarrierAnsi,
   PROVIDER_ANSI_COLORS,
+  PROVIDER_RGBS,
   TASKFORCE_BADGE_COLOR,
   TASKFORCE_BADGE_RGB,
 } from "../../styles/carriers.js";
 
-import {
-  resolveCarrierColor,
-  resolveCarrierRgb,
-} from "./carrier-helpers.js";
-import {
-  BREATHING_CYCLE_FRAMES,
-  PANEL_DIM_COLOR,
-  SYM_INDICATOR,
-  SYM_THINKING,
-} from "./constants.js";
 import type { CarrierJobGroupViewModel, ColBlock, PanelJob, PanelJobViewModel, PanelRunViewModelSource, PanelTrackViewModel } from "./view-model.js";
 import { buildCarrierJobGroups, buildPanelViewModel } from "./view-model.js";
+
+export const ANIM_INTERVAL_MS = 100;
+export const BREATHING_CYCLE_FRAMES = 10;
+export const TOKEN_COUNTUP_EASING_FACTOR = 0.25;
+export const TOKEN_COUNTUP_MIN_STEP = 8;
+
+export const PANEL_DIM_COLOR = "\x1b[38;2;160;150;180m";
+
+export const SYM_INDICATOR = "⏺";
+export const SYM_THINKING = "◇";
+
+export const DEFAULT_BODY_H = 6;
+
+const DEFAULT_CARRIER_RGB: [number, number, number] = [180, 160, 220];
+
+export function resolveCarrierColor(registry: CarrierRegistry, carrierId: string): string {
+  return getCarrierAnsi(resolveCarrierCliType(registry, carrierId));
+}
+
+export function resolveCarrierRgb(registry: CarrierRegistry, carrierId: string): [number, number, number] {
+  const rgb = PROVIDER_RGBS[resolveCarrierCliType(registry, carrierId)];
+  return rgb ? [...rgb] : DEFAULT_CARRIER_RGB;
+}
+
+function resolveCarrierCliType(registry: CarrierRegistry, carrierId: string): string {
+  const config = getRegisteredCarrierConfig(registry, carrierId);
+  return config ? resolveAgentCliType(carrierId, config.defaultCliType) : carrierId;
+}
 
 export interface CarrierHudTile {
   readonly activeJobCount: number;

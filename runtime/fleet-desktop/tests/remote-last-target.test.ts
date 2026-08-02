@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createRemoteLastTargetStore } from "../src/runtime/remote/last-target.js";
+import { createRemoteLastTargetStore } from "../src/runtime-pairing.js";
 
 const temporaryDirectories: string[] = [];
 

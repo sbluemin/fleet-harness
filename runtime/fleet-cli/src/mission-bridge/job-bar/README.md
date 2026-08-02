@@ -8,12 +8,9 @@ The interactive Carrier Roster lives under `../../mission-control/carrier-roster
 
 Files:
 
-- `register.ts`
 - `renderer.ts`
 - `section.ts`
 - `state.ts`
 - `view-model.ts`
-- `carrier-helpers.ts`
-- `constants.ts`
 
-There is no facade module. Internal modules import constants, carrier helpers, and fleet-carriers APIs directly.
+There is no facade module. Internal modules import fleet-carriers APIs directly.

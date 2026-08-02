@@ -1,4 +1,4 @@
-import type { TerminalSize } from "../types.js";
+import type { TerminalSize } from "./types.js";
 
 export type DesiredHeight = number;
 
@@ -41,4 +41,14 @@ function clampRows(value: number, min: number, max: number): number {
   }
 
   return Math.min(max, Math.max(min, Math.floor(value)));
+}
+
+const DEFAULT_COLUMNS = 80;
+const DEFAULT_ROWS = 24;
+
+export function getTerminalSize(): TerminalSize {
+  return {
+    columns: process.stdout.columns ?? DEFAULT_COLUMNS,
+    rows: process.stdout.rows ?? DEFAULT_ROWS,
+  };
 }

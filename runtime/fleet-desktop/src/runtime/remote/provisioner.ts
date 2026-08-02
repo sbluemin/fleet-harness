@@ -3,7 +3,7 @@ import type { RegistryChecker } from "../registry-check.js";
 import type { RemoteRuntimePhaseCallback } from "./contracts.js";
 import { detectRemotePlatform, ensureRemoteNode, type RemoteNodeDependencies, type RemoteNodeRuntime } from "./node-runtime.js";
 import { ensureRemoteConsole, type RemoteConsoleDependencies, type RemoteConsoleRuntime } from "./console-runtime.js";
-import type { ValidatedSshTarget } from "./target.js";
+import type { ValidatedSshTarget } from "./contracts.js";
 
 export interface ProvisionRemoteRuntimeDependencies extends RemoteNodeDependencies, RemoteConsoleDependencies { readonly manifest: NodeRuntimeManifest; }
 export interface ProvisionedRemoteRuntime { readonly node: RemoteNodeRuntime; readonly console: RemoteConsoleRuntime; }

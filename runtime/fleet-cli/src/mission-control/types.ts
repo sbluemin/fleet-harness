@@ -4,7 +4,7 @@ import type { AuthService } from "@dotobokuri/core-infra";
 
 import type { Component, PtyExitEvent, PtyHost, PtyLaunchProfile } from "../controls/index.js";
 import type { PtyView } from "../controls/terminal-view.js";
-import type { SessionOptions, SessionOptionsRuntime } from "./options/types.js";
+import type { SessionOptions, SessionOptionsRuntime } from "./options/runtime.js";
 import type { FleetCliRelease } from "../release.js";
 import type { MissionControlCounts } from "./loaded-counts.js";
 

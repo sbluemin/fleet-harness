@@ -5,7 +5,7 @@ import { satisfiesNodeEngine } from "../node-bootstrap.js";
 import type { RemoteRuntimePhaseCallback } from "./contracts.js";
 import { REMOTE_RUNTIME_ROOT, RemoteProvisionError, remoteRuntimePath, type RemoteNodeRuntime, type RemotePlatform } from "./node-runtime.js";
 import type { OpenSshAdapter } from "./ssh.js";
-import type { ValidatedSshTarget } from "./target.js";
+import type { ValidatedSshTarget } from "./contracts.js";
 
 const PACKAGE_NAME = "@dotobokuri/fleet-console";
 const PACKAGE_SPEC = "@dotobokuri/fleet-console@latest";
