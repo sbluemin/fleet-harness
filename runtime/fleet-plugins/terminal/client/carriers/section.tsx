@@ -11,7 +11,7 @@ import {
   saveTaskForceBackend,
   selectCarrierSettingsCarrier,
   useCarrierSettingsStore,
-} from "./store.js";
+} from "./settings.js";
 import type { CarrierSettingsCarrier, CarrierSettingsCliOption, CarrierSettingsModelOption } from "../../shared/carrier-settings-types.js";
 
 type CaptainColorStyle = CSSProperties & { "--cap-color": string };

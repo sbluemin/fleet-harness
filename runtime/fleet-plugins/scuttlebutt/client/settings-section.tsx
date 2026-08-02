@@ -6,7 +6,7 @@ import {
   defineSettingsSection,
 } from "@fleet-console/sdk/settings/browser";
 
-import { getT } from "./i18n.js";
+import { getT } from "./scuttlebutt-catalog.js";
 import {
   getScuttlebuttSettings,
   subscribeScuttlebuttSettings,

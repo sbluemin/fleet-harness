@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { SkillListItem } from "../server/types.js";
+import type { SkillListItem } from "../server/skill-types.js";
 import {
   getSkillsStateForTest,
   resetProjectContextState,

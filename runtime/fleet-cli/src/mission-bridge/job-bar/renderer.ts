@@ -11,7 +11,7 @@ import {
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
 import { truncateToWidth, visibleWidth, type FleetPtyTheme } from "../../controls/index.js";
-import { ANSI_RESET } from "../../styles/ansi.js";
+import { ANSI_RESET } from "../../styles/tokens.js";
 import {
   getCarrierAnsi,
   PROVIDER_ANSI_COLORS,

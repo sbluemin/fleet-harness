@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import type { SkillListItem } from "../server/types.js";
+import type { SkillListItem } from "../server/skill-types.js";
 import type { SkillsMessageKey } from "./i18n/index.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────

@@ -10,7 +10,7 @@ import {
   type FileContextAction,
 } from "./context-menu.js";
 import { getT } from "./i18n/index.js";
-import { translateServerError } from "./i18n/server-errors.js";
+import { translateServerError } from "./i18n/index.js";
 import { FileTree, type FileTreeHandle, type PluginFilesClient } from "./tree.js";
 import { BinaryViewer } from "./viewer/binary.js";
 import { CodeViewer } from "./viewer/code.js";

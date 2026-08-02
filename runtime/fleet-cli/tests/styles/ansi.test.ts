@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 
-import { ANSI_RESET, paint, stripAnsi } from "../../src/styles/ansi.js";
+import { ANSI_RESET, paint, stripAnsi } from "../../src/styles/tokens.js";
 
 describe("stripAnsi", () => {
   it("removes terminal control sequences beyond SGR", () => {

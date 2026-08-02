@@ -7,7 +7,7 @@ import {
   type FleetPtyApi,
   type FleetPtySection,
 } from "../controls/index.js";
-import { DIM_COLOR } from "../styles/palette.js";
+import { DIM_COLOR } from "../styles/tokens.js";
 import { paint } from "../styles/index.js";
 
 import { createJobBarSections } from "./job-bar/section.js";

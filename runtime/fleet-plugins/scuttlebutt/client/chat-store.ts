@@ -1,7 +1,7 @@
 import type { ChatStreamEvent } from "./sse-client.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
-import { getT } from "./i18n.js";
+import { getT } from "./scuttlebutt-catalog.js";
 
 export type ChatEntry =
   | { readonly id: string; readonly kind: "user" | "assistant"; readonly text: string }

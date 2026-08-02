@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getT } from "../client/i18n.js";
+import { getT } from "../client/scuttlebutt-catalog.js";
 
 describe("Scuttlebutt translations", () => {
   it("uses the frozen English and Korean catalogs", () => {

@@ -6,7 +6,7 @@ import { birdVisual } from "./bird-state.js";
 import { ChatCard } from "./chat-card.js";
 import { createChatSession, type AdmiralId } from "./chat-session.js";
 import { DepartureBubble } from "./departure-bubble.js";
-import { getT, type ScuttlebuttMessageKey } from "./i18n.js";
+import { getT, type ScuttlebuttMessageKey } from "./scuttlebutt-catalog.js";
 import { QuakerFigure } from "./quaker-figure.js";
 import {
   BIRD_HALF_HEIGHT,

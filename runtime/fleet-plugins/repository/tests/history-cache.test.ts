@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { dropHistoryCache, dropHistoryCacheForRepository, HISTORY_CACHE_LIMIT, readHistoryCache, writeHistoryCache, type HistoryCacheEntry } from "../client/history-cache.js";
+import { dropHistoryCache, dropHistoryCacheForRepository, HISTORY_CACHE_LIMIT, readHistoryCache, writeHistoryCache, type HistoryCacheEntry } from "../client/repository-state.js";
 import type { LogCommitEntry } from "../server/types.js";
 
 const scopes = new Set<string>();

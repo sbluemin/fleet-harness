@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import type { Scope, SkillListItem, SkillSearchItem } from "../server/types.js";
+import type { Scope, SkillListItem, SkillSearchItem } from "../server/skill-types.js";
 import type { SkillsMessageKey } from "./i18n/index.js";
 import { InstallFlow } from "./install-flow.js";
-import { JobStatusDock } from "./job-status-dock.js";
+import { JobStatusDock } from "./skill-feedback.js";
 import {
   setInstallFormOpenId,
   setSearchQuery,

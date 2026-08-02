@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import type { AgentId, Scope } from "../server/types.js";
+import type { AgentId, Scope } from "../server/skill-types.js";
 import type { SkillsMessageKey } from "./i18n/index.js";
 import type { UseJobLogReturn } from "./use-job-log.js";
 

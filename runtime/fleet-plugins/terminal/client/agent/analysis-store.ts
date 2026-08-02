@@ -4,7 +4,7 @@ import type { ClientApiCapability, ClientSettingsCapability, OperationRenderCont
 import { AnalysisApiError, clearAnalysisArtifacts, fetchAnalysisCatalog, sendAnalysisMessage, startAnalysis, stopAnalysis, subscribeAnalysis } from "./analysis-api.js";
 import { analysisReducer, initialAnalysisState, type AnalysisAction, type AnalysisState } from "./analysis-state.js";
 import type { AnalysisSelection } from "./analysis-types.js";
-import { mergeTerminalSettingsRecord } from "../shared/terminal-prefs-store.js";
+import { mergeTerminalSettingsRecord } from "../shared/terminal-preferences.js";
 
 export interface AnalysisStore {
   readonly getSnapshot: () => AnalysisState;

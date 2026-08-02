@@ -26,7 +26,7 @@ import {
 import {
   runCodexCommand,
   withFleetMarketplaceLock,
-} from "./agent-cli/host-hooks.js";
+} from "./runtime/host-hooks.js";
 import type { FleetCliOptions } from "./cli-args.js";
 import { createMissionControlController } from "./mission-control/controller.js";
 import { discoverMissionControlCounts } from "./mission-control/loaded-counts.js";

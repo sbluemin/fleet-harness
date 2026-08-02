@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatCommitTime, refBadges } from "../client/log-parse.js";
+import { formatCommitTime, refBadges } from "../client/repository-parsers.js";
 import type { LogCommitEntry } from "../server/types.js";
 
 function makeEntry(overrides: Partial<LogCommitEntry> = {}): LogCommitEntry {

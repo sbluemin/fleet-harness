@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseHunk } from "../client/hunk-parse.js";
+import { parseHunk } from "../client/repository-parsers.js";
 
 const MULTI_FILE_PATCH = [
   "diff --git a/src/a.ts b/src/a.ts",

@@ -57,7 +57,7 @@ vi.mock("../client/shared/terminal-connection.js", () => ({
 vi.mock("../client/shared/terminal-copy-on-select.js", () => ({
   createTerminalCopyOnSelect: () => ({ dispose() {} }),
 }));
-vi.mock("../client/shared/terminal-prefs-store.js", () => ({
+vi.mock("../client/shared/terminal-preferences.js", () => ({
   useTerminalPrefs: () => ({ renderer: "dom", font: { family: "monospace", size: 14 } }),
 }));
 vi.mock("../client/shared/terminal-scroll-follow.js", () => ({

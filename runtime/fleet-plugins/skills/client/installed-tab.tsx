@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef } from "react";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 
-import type { SkillListItem } from "../server/types.js";
+import type { SkillListItem } from "../server/skill-types.js";
 import type { SkillsMessageKey } from "./i18n/index.js";
-import { JobStatusDock } from "./job-status-dock.js";
+import { JobStatusDock } from "./skill-feedback.js";
 import { SkillCard } from "./skill-card.js";
 import {
   hasInstalledStateForContext,

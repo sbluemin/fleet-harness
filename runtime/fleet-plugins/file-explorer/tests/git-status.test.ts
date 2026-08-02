@@ -6,8 +6,8 @@ import path from "node:path";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { describe, expect, it, vi } from "vitest";
 
-import { handleFilesGitStatus } from "../server/handlers.js";
-import { parseGitStatusPorcelainV1Z, readTheaterGitStatus, scopeGitStatusesToTheater } from "../server/git-status.js";
+import { handleFilesGitStatus } from "../server/tree-services.js";
+import { parseGitStatusPorcelainV1Z, readTheaterGitStatus, scopeGitStatusesToTheater } from "../server/tree-services.js";
 
 describe("git status porcelain parser", () => {
   it("parses spaces, Unicode, rename, untracked, and both deleted columns", () => {

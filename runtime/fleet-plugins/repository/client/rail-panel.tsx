@@ -7,17 +7,17 @@ import type { DiffFileEntry, DiffFileMode, DiffListResult, RepoCandidate, Reposi
 import "./repository.css";
 import { ChangedFiles, type ChangedFilesState } from "./changed-files.js";
 import { CompareView } from "./compare-view.js";
-import { fuzzyMatch } from "./fuzzy.js";
+import { fuzzyMatch } from "./repository-parsers.js";
 import { getT, type RepositoryMessageKey } from "./i18n/index.js";
-import { buildRepoTree, compressRepoFolder, countRepos, type RepoTreeNode } from "./repo-tree.js";
-import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile } from "./repository-view-store.js";
+import { buildRepoTree, compressRepoFolder, countRepos, type RepoTreeNode } from "./repository-parsers.js";
+import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile } from "./repository-state.js";
 import { HunkView } from "./hunk-view.js";
-import { dropHistoryCacheForRepository } from "./history-cache.js";
+import { dropHistoryCacheForRepository } from "./repository-state.js";
 import { HistoryPanel } from "./history-panel.js";
-import { dropRepoViewState, readRepoViewState, readWorkspaceTreeState, writeRepoViewState, writeWorkspaceTreeState } from "./panel-state-cache.js";
+import { dropRepoViewState, readRepoViewState, readWorkspaceTreeState, writeRepoViewState, writeWorkspaceTreeState } from "./repository-state.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, buildDiffGridTemplate, clampListPaneWidth } from "./rail-layout.js";
 import { buildWorkspaceTreeSections, clampWorkspaceTreeWidth, readWorkspaceTreeWidth, saveWorkspaceTreeWidth } from "./workspace-layout.js";
-import { activateRepositorySearchTarget, useRepositorySearchTarget } from "./search-navigation.js";
+import { activateRepositorySearchTarget, useRepositorySearchTarget } from "./repository-state.js";
 
 type T = Translate<RepositoryMessageKey>;
 

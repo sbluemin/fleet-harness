@@ -6,15 +6,15 @@ import type { RailPanelContext } from "@fleet-console/sdk/rail";
 import type { CommitResult, DiffFileEntry, LogCommitEntry, LogResult, WorktreeCheckout } from "../server/types.js";
 import { FileRow } from "./changed-files.js";
 import { DiffTreeView } from "./repository-tree.js";
-import { GraphGutter, ROW_HEIGHT } from "./graph-gutter.js";
-import { layoutGraph, type GraphLayout, type GraphNode } from "./graph-layout.js";
-import { dropHistoryCache, readHistoryCache, writeHistoryCache, type HistoryCacheEntry } from "./history-cache.js";
+import { GraphGutter, ROW_HEIGHT } from "./graph.js";
+import { layoutGraph, type GraphLayout, type GraphNode } from "./graph.js";
+import { dropHistoryCache, readHistoryCache, writeHistoryCache, type HistoryCacheEntry } from "./repository-state.js";
 import { HunkView } from "./hunk-view.js";
 import { getT, localeTag, type RepositoryMessageKey } from "./i18n/index.js";
-import { formatCommitTime, refBadges } from "./log-parse.js";
+import { formatCommitTime, refBadges } from "./repository-parsers.js";
 import { DIFF_DIVIDER_WIDTH, HISTORY_DETAIL_PANE_MIN_HEIGHT, HISTORY_LOG_PANE_MIN_HEIGHT, buildHistoryStackTemplate, buildInspectorChangesGridTemplate, buildInspectorDetailsGridTemplate, clampSplitPaneSize, installPointerDragLifecycle } from "./rail-layout.js";
 import { buildWorkspaceDockTemplate, clampWorkspaceDockHeight, normalizeWorkspaceDockHeight, readWorkspaceDockHeight, saveWorkspaceDockHeight } from "./workspace-layout.js";
-import { consumeRepositorySearchTarget, useRepositorySearchTarget } from "./search-navigation.js";
+import { consumeRepositorySearchTarget, useRepositorySearchTarget } from "./repository-state.js";
 
 type T = Translate<RepositoryMessageKey>;
 
@@ -144,7 +144,7 @@ export function shouldShowWip(wip: { readonly files: number }, filterText: strin
 
 function CheckoutIcon({ current }: { readonly current: boolean }) { return current ? <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2L5 8.7L9.5 3.5" stroke="currentColor" strokeWidth="1.5" /></svg> : <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none"><path d="M1.5 3.4h3l1 1.1h5v5.1a.9.9 0 01-.9.9H2.4a.9.9 0 01-.9-.9V4.3a.9.9 0 01.9-.9z" stroke="currentColor" strokeWidth="1.2" /></svg>; }
 
-export function CommitRow({ entry, checkouts, selected, graphNode, laneCount, onSelect, rowRef, locale }: { readonly entry: LogCommitEntry; readonly checkouts: readonly WorktreeCheckout[]; readonly selected: boolean; readonly graphNode: import("./graph-layout.js").GraphNode; readonly laneCount: number; readonly onSelect: (entry: LogCommitEntry) => void; readonly rowRef?: (node: HTMLButtonElement | null) => void; readonly locale?: ConsoleLocale }) {
+export function CommitRow({ entry, checkouts, selected, graphNode, laneCount, onSelect, rowRef, locale }: { readonly entry: LogCommitEntry; readonly checkouts: readonly WorktreeCheckout[]; readonly selected: boolean; readonly graphNode: import("./graph.js").GraphNode; readonly laneCount: number; readonly onSelect: (entry: LogCommitEntry) => void; readonly rowRef?: (node: HTMLButtonElement | null) => void; readonly locale?: ConsoleLocale }) {
   const t = getT(locale);
   const badges = refBadges(entry); const detached = findDetachedCheckout(entry, checkouts);
   // Fork 문법: refs 뱃지는 제목 왼쪽(그래프 바로 뒤)에서 커밋의 정체를 먼저 알린다.

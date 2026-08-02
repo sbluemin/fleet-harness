@@ -1,5 +1,5 @@
-export { ANSI_BOLD, ANSI_DIM, ANSI_RESET, paint, stripAnsi } from "./ansi.js";
-export { ASCII_FLEET_BANNER } from "./brand.js";
+export { ANSI_BOLD, ANSI_DIM, ANSI_RESET, paint, stripAnsi } from "./tokens.js";
+export { ASCII_FLEET_BANNER } from "./tokens.js";
 export {
   PROVIDER_BG_ANSI_COLORS,
   PROVIDER_ANSI_COLORS,
@@ -16,7 +16,7 @@ export {
   GRADIENT_COLORS,
   GRADIENT_RGBS,
   type RgbTuple,
-} from "./palette.js";
+} from "./tokens.js";
 export {
   command,
   dim,
@@ -24,4 +24,4 @@ export {
   resolveColorEnabled,
   section,
   type ResolveColorEnabledOptions,
-} from "./help-tokens.js";
+} from "./tokens.js";

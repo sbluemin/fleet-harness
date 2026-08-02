@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { terminalEn, terminalKo } from "../client/i18n/messages.js";
+import { terminalEn, terminalKo } from "../client/i18n/index.js";
 
 const NEW_MESSAGE_KEYS = [
   "terminal.settings.idleAgent",

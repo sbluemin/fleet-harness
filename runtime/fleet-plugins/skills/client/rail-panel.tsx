@@ -2,7 +2,7 @@ import { useCallback, useLayoutEffect, useState } from "react";
 
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
-import type { InstalledSkillSearchResult, Scope, SkillListItem } from "../server/types.js";
+import type { InstalledSkillSearchResult, Scope, SkillListItem } from "../server/skill-types.js";
 import { FindTab } from "./find-tab.js";
 import { getT } from "./i18n/index.js";
 import { InstalledTab } from "./installed-tab.js";
@@ -19,7 +19,7 @@ import {
   useSkillsStore,
 } from "./skills-store.js";
 import { activateSkillSearchTarget, consumeSkillSearchTarget, useSkillSearchTarget } from "./search-navigation.js";
-import { Toast } from "./toast.js";
+import { Toast } from "./skill-feedback.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 

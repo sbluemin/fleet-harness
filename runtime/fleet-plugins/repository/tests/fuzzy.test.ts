@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fuzzyMatch } from "../client/fuzzy.js";
+import { fuzzyMatch } from "../client/repository-parsers.js";
 
 describe("fuzzyMatch", () => {
   it("greedily matches a subsequence", () => {

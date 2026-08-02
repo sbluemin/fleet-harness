@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { layoutGraph } from "../client/graph-layout.js";
+import { layoutGraph } from "../client/graph.js";
 import type { LogCommitEntry } from "../server/types.js";
 
 function makeCommit(overrides: Partial<LogCommitEntry> = {}): LogCommitEntry {

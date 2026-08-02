@@ -6,10 +6,10 @@ import path from "node:path";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ClipboardUnavailableError, copyPathToClipboard } from "../server/clipboard.js";
-import { handleFilesClipboard, handleFilesReveal } from "../server/handlers.js";
+import { ClipboardUnavailableError, copyPathToClipboard } from "../server/path-actions.js";
+import { handleFilesClipboard, handleFilesReveal } from "../server/tree-services.js";
 import { PathActionError } from "../server/path-actions.js";
-import { revealPath, resolveRevealCommand } from "../server/reveal.js";
+import { revealPath, resolveRevealCommand } from "../server/path-actions.js";
 
 interface JsonWrite {
   readonly status: number;

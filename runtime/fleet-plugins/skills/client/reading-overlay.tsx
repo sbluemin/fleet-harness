@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 
-import type { SkillListItem } from "../server/types.js";
+import type { SkillListItem } from "../server/skill-types.js";
 import type { SkillsMessageKey } from "./i18n/index.js";
 import { MarkdownView } from "./markdown-view.js";
 
