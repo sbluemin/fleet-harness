@@ -10,10 +10,7 @@ import { resolveDoctrineFromCliId } from "../protocols/doctrine.js";
 import { isHostSessionToolAllowed } from "../tools.js";
 import type { SystemPromptBuildOptions } from "../prompts/index.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
-import {
-  buildGatewayCustomAgents,
-  buildGatewayDisallowedAgentTools,
-} from "./gateway-agents.js";
+import { buildGatewayCustomAgents } from "./gateway-agents.js";
 import { createAgentCliPlugin } from "./plugin/index.js";
 import type {
   AgentCliInjectionContext,
@@ -125,10 +122,7 @@ export async function injectAgentCliProfile(
     });
     options.onCleanup?.(cleanup);
     const gatewayAgents = profile.id === "claude-gateway"
-      ? {
-          customAgents: buildGatewayCustomAgents(options.gatewayExposedModels ?? []),
-          disallowedAgentTools: buildGatewayDisallowedAgentTools(),
-        }
+      ? { customAgents: buildGatewayCustomAgents(options.gatewayExposedModels ?? []) }
       : {};
     const context: AgentCliInjectionContext = {
       cliId: profile.id,
