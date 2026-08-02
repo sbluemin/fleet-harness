@@ -162,6 +162,69 @@ describe("migrateLegacyCaptures", () => {
       process.chdir(previousCwd);
     }
   });
+
+  it("retains captures/ for a tombstoned operation missing providerSession", () => {
+    const { consoleDataDir, operations, patchCalls } = createHarness([]);
+    writeCapture(consoleDataDir, "op-deferred", {
+      provider: "claude",
+      sessionId: "provider-session-secret",
+      transcriptPath: "/secret/transcript.jsonl",
+      capturedAt: "2026-06-16T00:00:00.000Z",
+    });
+
+    migrateLegacyCaptures({
+      consoleDataDir,
+      operations,
+      tombstonedOperations: [makeOperation("op-deferred", {})],
+    });
+
+    expect(patchCalls).toHaveLength(0);
+    expect(fs.existsSync(path.join(consoleDataDir, "captures", "op-deferred.json"))).toBe(true);
+  });
+
+  it("deletes captures/ when a tombstoned operation already has providerSession", () => {
+    const { consoleDataDir, operations, patchCalls } = createHarness([]);
+    writeCapture(consoleDataDir, "op-deferred", {
+      provider: "claude",
+      sessionId: "from-file",
+      capturedAt: "2026-06-16T00:00:00.000Z",
+    });
+
+    migrateLegacyCaptures({
+      consoleDataDir,
+      operations,
+      tombstonedOperations: [makeOperation("op-deferred", {
+        providerSession: {
+          provider: "claude",
+          sessionId: "already-in-tombstone",
+          capturedAt: "2026-06-15T00:00:00.000Z",
+        },
+      })],
+    });
+
+    expect(patchCalls).toHaveLength(0);
+    expect(fs.existsSync(path.join(consoleDataDir, "captures"))).toBe(false);
+  });
+
+  it("retains captures/ for operations nested in a theater tombstone", () => {
+    const { consoleDataDir, operations, patchCalls } = createHarness([]);
+    writeCapture(consoleDataDir, "op-theater-child", {
+      provider: "codex",
+      sessionId: "provider-session-secret",
+      transcriptPath: "/secret/transcript.jsonl",
+      capturedAt: "2026-06-16T00:00:00.000Z",
+    });
+
+    migrateLegacyCaptures({
+      consoleDataDir,
+      operations,
+      // theater tombstone의 operations 배열을 flatten한 결과와 동일하게 전달한다.
+      tombstonedOperations: [makeOperation("op-theater-child", {})],
+    });
+
+    expect(patchCalls).toHaveLength(0);
+    expect(fs.existsSync(path.join(consoleDataDir, "captures", "op-theater-child.json"))).toBe(true);
+  });
 });
 
 function createHarness(initial: OperationNode[]) {

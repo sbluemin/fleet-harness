@@ -1079,6 +1079,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     migrateLegacyCaptures({
       consoleDataDir: durablePaths.dir,
       operations,
+      // 삭제 유예 중인 Operation은 live store에 없으므로 tombstone에서 flatten해 넘긴다.
+      tombstonedOperations: deletionCoordinator.list().flatMap((tombstone) => (
+        tombstone.kind === "operation" ? [tombstone.operation] : tombstone.operations
+      )),
       save: () => saveDurableState(deletionCoordinator.list()),
     });
     try {
