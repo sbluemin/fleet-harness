@@ -12,7 +12,7 @@ Provider-neutral SDK for supported Agent CLI backends.
 | `src/models/` | Model registry and validation |
 | `src/types/`, `src/service-status/` | Shared protocol and status contracts |
 | `src/detector/`, `src/utils/` | CLI discovery and process support |
-| `tests/unit/`, `tests/e2e/`, `tests/manual/` | Isolated, real-CLI, and manual verification |
+| `tests/unit/`, `tests/manual/` | Isolated mocked verification and optional manual real-CLI scripts |
 
 ## Constraints
 

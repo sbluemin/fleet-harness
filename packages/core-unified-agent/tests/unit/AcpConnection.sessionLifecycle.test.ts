@@ -13,6 +13,8 @@ interface TestableAcpConnection {
     sessionId?: string,
     mcpServers?: unknown[],
     systemPrompt?: string,
+    strictMcp?: boolean,
+    effort?: string,
   ) => Promise<NewSessionResponse>;
   endSession: (sessionId: string) => Promise<void>;
   pushStderr: (chunk: string) => void;
@@ -130,6 +132,76 @@ describe('AcpConnection Claude session metadata', () => {
       _meta: {
         systemPrompt: 'Tier-2 지침',
       },
+    });
+  });
+
+  it('strictMcp=true는 claudeCode.options.extraArgs에 strict-mcp-config를 주입한다', async () => {
+    const conn = new TestAcpConnection({
+      command: 'claude',
+      args: ['--acp'],
+      cliType: 'claude',
+      cwd: process.cwd(),
+    }) as unknown as TestableAcpConnection;
+    const mockAgent = createMockAgent();
+    conn.agentProxy = mockAgent;
+
+    await conn.createSession('/workspace', undefined, [], undefined, true);
+
+    expect(mockAgent.newSession).toHaveBeenCalledWith({
+      cwd: '/workspace',
+      mcpServers: [],
+      _meta: {
+        claudeCode: {
+          options: {
+            extraArgs: {
+              'strict-mcp-config': null,
+            },
+          },
+        },
+      },
+    });
+  });
+
+  it('effort는 claudeCode.options.effort로 주입한다', async () => {
+    const conn = new TestAcpConnection({
+      command: 'claude',
+      args: ['--acp'],
+      cliType: 'claude',
+      cwd: process.cwd(),
+    }) as unknown as TestableAcpConnection;
+    const mockAgent = createMockAgent();
+    conn.agentProxy = mockAgent;
+
+    await conn.createSession('/workspace', undefined, [], undefined, undefined, 'max');
+
+    expect(mockAgent.newSession).toHaveBeenCalledWith({
+      cwd: '/workspace',
+      mcpServers: [],
+      _meta: {
+        claudeCode: {
+          options: {
+            effort: 'max',
+          },
+        },
+      },
+    });
+  });
+
+  it('strictMcp=false이고 effort도 없으면 _meta를 생략한다', async () => {
+    const conn = new TestAcpConnection({
+      command: 'claude',
+      args: ['--acp'],
+      cliType: 'claude',
+      cwd: process.cwd(),
+    }) as unknown as TestableAcpConnection;
+    const mockAgent = createMockAgent();
+    conn.agentProxy = mockAgent;
+
+    await conn.createSession('/workspace', undefined, [], undefined, false);
+
+    expect(mockAgent.newSession).toHaveBeenCalledWith({
+      cwd: '/workspace',
+      mcpServers: [],
     });
   });
 });

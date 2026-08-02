@@ -517,6 +517,53 @@ describe('CodexAppServerConnection lifecycle', () => {
     expect((child as MockChildProcess & { __intentionalKill?: boolean }).__intentionalKill).toBe(true);
   });
 
+  describe('App Server exit 분류 회귀', () => {
+    it('정상 exit(0)은 turn 완료 전 false crash로 reject하지 않는다', async () => {
+      await establishSession(connection, child);
+      const sendPromise = connection.sendMessage([
+        { type: 'text', text: 'hi', text_elements: [] },
+      ]);
+      await flushMicrotask();
+      child.stdout.emit('data', `${jsonRpcResult(3, { turn: { id: 'turn-1' } })}\n`);
+      child.exitCode = 0;
+      child.emit('exit', 0, null);
+      await expect(sendPromise).resolves.toBeUndefined();
+    });
+
+    it('intentional disconnect는 active turn을 false crash로 reject하지 않는다', async () => {
+      await establishSession(connection, child);
+      const sendPromise = connection.sendMessage([
+        { type: 'text', text: 'hi', text_elements: [] },
+      ]);
+      await flushMicrotask();
+      child.stdout.emit('data', `${jsonRpcResult(3, { turn: { id: 'turn-1' } })}\n`);
+      await expect(connection.disconnect()).resolves.toBeUndefined();
+      await expect(sendPromise).resolves.toBeUndefined();
+    });
+
+    it('비정상 signal kill은 진단 정보를 포함해 reject한다', async () => {
+      await establishSession(connection, child);
+      const sendPromise = connection.sendMessage([
+        { type: 'text', text: 'hi', text_elements: [] },
+      ]);
+      await flushMicrotask();
+      child.stdout.emit('data', `${jsonRpcNotification('turn/started', {
+        threadId: 'thread-1',
+        turn: { id: 'turn-1' },
+      })}\n`);
+      for (let index = 0; index < 25; index += 1) {
+        child.stderr.emit('data', `stderr-${index}\n`);
+      }
+      child.emit('exit', null, 'SIGTERM');
+
+      await expect(sendPromise).rejects.toThrow(/code=null, signal=SIGTERM/);
+      await expect(sendPromise).rejects.toThrow(/lastNotification=turn\/started/);
+      await expect(sendPromise).rejects.toThrow(/pendingRequests=3/);
+      await expect(sendPromise).rejects.toThrow(/stderr-24/);
+      await expect(sendPromise).rejects.not.toThrow(/stderr-0/);
+    });
+  });
+
   it('loadSession이 archived rollout을 path fallback으로 재개한다', async () => {
     const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-home-'));
     const threadId = '019dc235-e9a5-78a3-ab26-6653be26ac17';

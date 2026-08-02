@@ -4,12 +4,12 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['tests/e2e/**/*.test.ts', 'tests/unit/**/*.test.ts'],
+    include: ['tests/unit/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
       exclude: ['src/index.ts'],
     },
-    testTimeout: 180_000,
+    testTimeout: 30_000,
   },
 });
