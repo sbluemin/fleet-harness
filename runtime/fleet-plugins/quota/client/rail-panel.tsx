@@ -9,7 +9,34 @@ import { getT, type QuotaMessageKey } from "./i18n/index.js";
 import "./quota.css";
 
 type T = Translate<QuotaMessageKey>;
-type ProviderId = "claude" | "codex" | "cursor";
+type ProviderId = "claude" | "codex" | "cursor" | "kimi";
+/** Providers whose credential read is gated behind an explicit connect. */
+type ConnectableProviderId = "claude" | "cursor";
+
+const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
+  claude: "Claude Code",
+  codex: "Codex",
+  cursor: "Cursor",
+  kimi: "Kimi",
+};
+
+const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
+  claude: "quota.claude.signedOut",
+  codex: "quota.codex.signedOut",
+  cursor: "quota.cursor.signedOut",
+  kimi: "quota.kimi.signedOut",
+};
+
+const EXPIRED_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
+  claude: "quota.expired.claude",
+  codex: "quota.expired.codex",
+  cursor: "quota.expired.cursor",
+  kimi: "quota.expired.kimi",
+};
+
+function isConnectable(id: ProviderId): id is ConnectableProviderId {
+  return id === "claude" || id === "cursor";
+}
 
 interface RequestGeneration {
   current: number;
@@ -96,10 +123,10 @@ function ProviderCard({
   readonly provider: ProviderDto;
   readonly now: number;
   readonly t: T;
-  readonly connect: (provider: "claude" | "cursor", connected: boolean) => void;
+  readonly connect: (provider: ConnectableProviderId, connected: boolean) => void;
 }) {
-  const name = id === "claude" ? "Claude Code" : id === "codex" ? "Codex" : "Cursor";
-  if ((id === "claude" || id === "cursor") && provider.status === "not_connected") {
+  const name = PROVIDER_NAME[id];
+  if (isConnectable(id) && provider.status === "not_connected") {
     const titleKey = id === "claude" ? "quota.connect.title" : "quota.connect.title.cursor";
     const bodyKey = id === "claude" ? "quota.connect.body" : "quota.connect.body.cursor";
     const actionKey = id === "claude" ? "quota.connect.action" : "quota.connect.action.cursor";
@@ -120,12 +147,12 @@ function ProviderCard({
       <header className="quota-provider__header">
         <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
         <h3>{name}</h3>
-        {id !== "codex" ? <button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button> : null}
+        {isConnectable(id) ? <button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button> : null}
         {provider.plan ? <span className="quota-plan">{provider.plan}</span> : null}
       </header>
-      {provider.status === "signed_out" ? <div className="quota-signed-out">{t(id === "claude" ? "quota.claude.signedOut" : id === "codex" ? "quota.codex.signedOut" : "quota.cursor.signedOut")}</div> : null}
+      {provider.status === "signed_out" ? <div className="quota-signed-out">{t(SIGNED_OUT_KEY[id])}</div> : null}
       {provider.status === "no_subscription" ? <div className="quota-signed-out">{t("quota.noSubscription")}</div> : null}
-      {provider.status === "expired" ? <StatusStrip kind="expired">{t(id === "claude" ? "quota.expired.claude" : id === "codex" ? "quota.expired.codex" : "quota.expired.cursor")}</StatusStrip> : null}
+      {provider.status === "expired" ? <StatusStrip kind="expired">{t(EXPIRED_KEY[id])}</StatusStrip> : null}
       {provider.status === "stale" ? <StatusStrip kind="stale">{t("quota.stale", { provider: name, t: elapsed(provider.fetchedAt, now) })}</StatusStrip> : null}
       {provider.status === "error" ? <div className="quota-error">{t("quota.error", { provider: name })}</div> : null}
       {(provider.status === "ok" || provider.status === "stale") ? provider.windows?.map((window, index) => (
@@ -155,7 +182,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
     setRefreshNonce((value) => value + 1);
   }, []);
 
-  const connect = useCallback((provider: "claude" | "cursor", connected: boolean) => {
+  const connect = useCallback((provider: ConnectableProviderId, connected: boolean) => {
     const generation = beginRequestGeneration(requestGenerationRef);
     if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(false);
     ctx.api.fetch("quota", "connect", {
@@ -225,6 +252,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
     data?.providers.claude.fetchedAt ?? 0,
     data?.providers.codex.fetchedAt ?? 0,
     data?.providers.cursor.fetchedAt ?? 0,
+    data?.providers.kimi.fetchedAt ?? 0,
   );
   const updatedMinutes = Math.max(0, Math.floor((now - fetchedAt) / 60_000));
   return (
@@ -237,6 +265,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
             <ProviderCard id="claude" provider={data.providers.claude} now={now} t={t} connect={connect} />
             <ProviderCard id="codex" provider={data.providers.codex} now={now} t={t} connect={connect} />
             <ProviderCard id="cursor" provider={data.providers.cursor} now={now} t={t} connect={connect} />
+            <ProviderCard id="kimi" provider={data.providers.kimi} now={now} t={t} connect={connect} />
           </>
         ) : null}
       </div>

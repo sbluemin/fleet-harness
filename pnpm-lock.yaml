@@ -123,6 +123,9 @@ importers:
       '@dotobokuri/core-agent':
         specifier: workspace:*
         version: link:../core-agent
+      '@dotobokuri/core-ai-gateway':
+        specifier: workspace:*
+        version: link:../core-ai-gateway
       '@dotobokuri/core-infra':
         specifier: workspace:*
         version: link:../core-infra
@@ -565,6 +568,12 @@ importers:
 
   runtime/fleet-plugins/quota:
     dependencies:
+      '@dotobokuri/core-ai-gateway':
+        specifier: workspace:*
+        version: link:../../../packages/core-ai-gateway
+      '@dotobokuri/core-infra':
+        specifier: workspace:*
+        version: link:../../../packages/core-infra
       '@fleet-console/sdk':
         specifier: workspace:*
         version: link:../../fleet-console/sdk

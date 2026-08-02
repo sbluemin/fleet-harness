@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 // Built-in plugins cannot import another plugin's client source. These official
-// Claude, Codex, and Cursor paths therefore mirror terminal/client/agent/index.tsx.
+// Claude, Codex, Cursor, and Kimi paths therefore mirror terminal/client/agent/index.tsx.
 function ClaudeGlyph() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -26,8 +26,18 @@ function CursorGlyph() {
   );
 }
 
-export function providerGlyph(provider: "claude" | "codex" | "cursor"): ReactNode {
+// Kimi는 kimi.com 아이콘 번들(statics.moonshot.cn/kimi-web-seo, "TabKimi_f") 출처다.
+function KimiGlyph() {
+  return (
+    <svg viewBox="0 0 1024 1024" width="16" height="16" aria-hidden="true">
+      <path fillRule="evenodd" d="M525.019429 157.257143c-201.984 0-365.714286 163.730286-365.714286 365.714286 0 70.326857 19.858286 136.118857 54.345143 191.926857L174.811429 807.570286A58.514286 58.514286 0 0 0 228.790857 888.685714h296.228572c201.947429 0 365.714286-163.730286 365.714285-365.714285s-163.766857-365.714286-365.714285-365.714286z m138.422857 180.114286a45.458286 45.458286 0 0 1 51.2 38.875428l12.361143 90.441143a45.458286 45.458286 0 0 1-90.075429 12.324571l-12.361143-90.441142a45.458286 45.458286 0 0 1 38.875429-51.2z m-195.876572 24.137142a45.458286 45.458286 0 0 1 51.2 38.838858l12.361143 90.441142a45.458286 45.458286 0 1 1-90.038857 12.324572l-12.361143-90.441143a45.458286 45.458286 0 0 1 38.838857-51.2" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function providerGlyph(provider: "claude" | "codex" | "cursor" | "kimi"): ReactNode {
   if (provider === "claude") return <ClaudeGlyph />;
   if (provider === "cursor") return <CursorGlyph />;
+  if (provider === "kimi") return <KimiGlyph />;
   return <CodexGlyph />;
 }

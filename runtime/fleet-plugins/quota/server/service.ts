@@ -1,15 +1,21 @@
-import { fetchClaudeUsage, fetchCodexUsage, fetchCursorUsage, sanitizeProviderError } from "./providers.js";
+import {
+  fetchClaudeUsage,
+  fetchCodexUsage,
+  fetchCursorUsage,
+  fetchKimiUsage,
+  sanitizeProviderError,
+} from "./providers.js";
 import type { ProviderDto, ProviderResult, ProviderSuccess, QuotaSummaryDto } from "./types.js";
 
 const CACHE_TTL_MS = 120_000;
 const STALE_TTL_MS = 1_800_000;
 
-type ProviderId = "claude" | "codex" | "cursor";
+type ProviderId = "claude" | "codex" | "cursor" | "kimi";
 
 export interface QuotaService {
   getSummary(options?: {
     readonly force?: boolean;
-    readonly forceProvider?: "claude" | "codex" | "cursor";
+    readonly forceProvider?: ProviderId;
   }): Promise<QuotaSummaryDto>;
 }
 
@@ -19,6 +25,7 @@ export interface QuotaServiceDeps {
   readonly fetchClaude?: () => Promise<ProviderResult>;
   readonly fetchCodex?: () => Promise<ProviderResult>;
   readonly fetchCursor?: () => Promise<ProviderResult>;
+  readonly fetchKimi?: () => Promise<ProviderResult>;
   readonly now?: () => number;
   readonly platform?: NodeJS.Platform;
 }
@@ -40,6 +47,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     claude: deps.fetchClaude ?? (() => fetchClaudeUsage()),
     codex: deps.fetchCodex ?? (() => fetchCodexUsage()),
     cursor: deps.fetchCursor ?? (() => fetchCursorUsage()),
+    kimi: deps.fetchKimi ?? (() => fetchKimiUsage()),
   };
   const cache = new Map<ProviderId, CacheEntry>();
   const lastGood = new Map<ProviderId, ProviderSuccess>();
@@ -90,12 +98,13 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
 
   return {
     async getSummary(options = {}) {
-      const [claude, codex, cursor] = await Promise.all([
+      const [claude, codex, cursor, kimi] = await Promise.all([
         load("claude", options.force === true || options.forceProvider === "claude"),
         load("codex", options.force === true || options.forceProvider === "codex"),
         load("cursor", options.force === true || options.forceProvider === "cursor"),
+        load("kimi", options.force === true || options.forceProvider === "kimi"),
       ]);
-      return { providers: { claude, codex, cursor } };
+      return { providers: { claude, codex, cursor, kimi } };
     },
   };
 }

@@ -9,7 +9,10 @@
   "private": true,
   "author": "sbluemin",
   "type": "module",
-  "files": ["dist", "AGENTS.md"],
+  "files": [
+    "dist",
+    "AGENTS.md"
+  ],
   "engines": {
     "node": ">=18.0.0"
   },
@@ -30,6 +33,7 @@
   },
   "dependencies": {
     "@dotobokuri/core-agent": "workspace:*",
+    "@dotobokuri/core-ai-gateway": "workspace:*",
     "@dotobokuri/core-infra": "workspace:*",
     "@dotobokuri/fleet-carriers": "workspace:*"
   },

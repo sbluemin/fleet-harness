@@ -13,6 +13,7 @@ describe("quota service", () => {
     const service = createQuotaService({
       platform: "darwin",
       isClaudeConnected: async () => false,
+      fetchKimi: async () => ({ status: "signed_out" }),
       isCursorConnected: async () => false,
       fetchClaude,
       fetchCodex: async () => ({ status: "signed_out" }),
@@ -27,6 +28,7 @@ describe("quota service", () => {
     const service = createQuotaService({
       platform: "darwin",
       isClaudeConnected: async () => true,
+      fetchKimi: async () => ({ status: "signed_out" }),
       isCursorConnected: async () => false,
       fetchClaude: async () => ({ status: "signed_out" }),
       fetchCodex: async () => ({ status: "signed_out" }),
@@ -44,6 +46,7 @@ describe("quota service", () => {
     const service = createQuotaService({
       now: () => now,
       isClaudeConnected: async () => true,
+      fetchKimi: async () => ({ status: "signed_out" }),
       isCursorConnected: async () => false,
       fetchClaude,
       fetchCodex: async () => ({ status: "signed_out" }),
@@ -75,6 +78,7 @@ describe("quota service", () => {
     const service = createQuotaService({
       now: () => 1_000,
       isClaudeConnected: async () => true,
+      fetchKimi: async () => ({ status: "signed_out" }),
       isCursorConnected: async () => true,
       fetchClaude,
       fetchCodex,
@@ -98,6 +102,7 @@ describe("quota service", () => {
     const service = createQuotaService({
       now: () => now,
       isClaudeConnected: async () => true,
+      fetchKimi: async () => ({ status: "signed_out" }),
       isCursorConnected: async () => false,
       fetchClaude,
       fetchCodex: async () => ({ status: "signed_out" }),

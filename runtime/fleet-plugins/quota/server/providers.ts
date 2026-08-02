@@ -1,3 +1,6 @@
+import { KIMI_AUTH_PROVIDER_ID, KIMI_CODE_API_BASE_URL } from "@dotobokuri/core-ai-gateway";
+import { createAuthService, DEFAULT_AUTH_PATH, type AuthService } from "@dotobokuri/core-infra";
+
 import {
   defaultCredentialDeps,
   resolveClaudeCredentials,
@@ -5,7 +8,7 @@ import {
   resolveCursorCredentials,
   type CredentialResolverDeps,
 } from "./credentials.js";
-import type { ProviderDto, ProviderResult, QuotaWindow, ResetCredits } from "./types.js";
+import type { ProviderDto, ProviderResult, QuotaWindow, ResetCredits, WindowId } from "./types.js";
 
 const REQUEST_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BYTES = 262_144;
@@ -16,6 +19,18 @@ export interface ProviderDeps {
   readonly credentials?: CredentialResolverDeps;
   readonly fetch?: typeof fetch;
   readonly now?: () => number;
+  /**
+   * Kimi is reached with the key Fleet itself stores, not another CLI's
+   * credential file, so it reads through core-infra's auth surface — which owns
+   * the file's shape and its symlink-guarded read — instead of parsing the file here.
+   */
+  readonly authService?: AuthService;
+}
+
+let sharedAuthService: AuthService | undefined;
+
+function authServiceFor(deps: ProviderDeps): AuthService {
+  return deps.authService ?? (sharedAuthService ??= createAuthService({ authPath: DEFAULT_AUTH_PATH }));
 }
 
 class ProviderHttpError extends Error {
@@ -189,14 +204,18 @@ export function parseCursorUsage(payload: unknown):
   if (root?.enabled === false || !planUsage) return { status: "no_subscription" };
   const resetsAt = safeTimestamp(root?.billingCycleEnd);
   const windows: QuotaWindow[] = [];
-  for (const [value, label] of [
-    [planUsage.totalPercentUsed, undefined],
-    [planUsage.autoPercentUsed, "Auto"],
-    [planUsage.apiPercentUsed, "API"],
+  // Cursor bills one subscription through two pools. The scope-less window is
+  // their sum: a caller picking an API-tier model must read the `api` window,
+  // because the total can sit well below the pool that model actually draws from.
+  for (const [value, scope, label] of [
+    [planUsage.totalPercentUsed, undefined, undefined],
+    [planUsage.autoPercentUsed, "auto", "Auto"],
+    [planUsage.apiPercentUsed, "api", "API"],
   ] as const) {
     if (typeof value !== "number" || !Number.isFinite(value)) continue;
     windows.push({
       id: "cycle",
+      ...(scope ? { scope } : {}),
       ...(label ? { label } : {}),
       usedPercent: percent(value),
       ...(resetsAt !== undefined ? { resetsAt } : {}),
@@ -215,6 +234,88 @@ export function parseCursorUsage(payload: unknown):
     windows,
     ...(cycleDays !== undefined ? { cycleDays } : {}),
   };
+}
+
+// Kimi reports every quantity as a decimal string ("100", "47"). `percent()`
+// takes numbers only and answers 0 for anything else, so a raw field reaching it
+// would silently render a full allowance as untouched.
+function numeric(value: unknown): number | undefined {
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!/^\d{1,15}$/.test(trimmed)) return undefined;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+const KIMI_TIME_UNIT_MINUTES: Readonly<Record<string, number>> = {
+  TIME_UNIT_MINUTE: 1,
+  TIME_UNIT_HOUR: 60,
+  TIME_UNIT_DAY: 1_440,
+};
+
+// Only durations that land exactly on a Fleet window are mapped. An unrecognized
+// unit or an off-grid duration is skipped rather than rounded to the nearest
+// window: labelling an hourly allowance `session` would misreport it as the 5h one.
+const KIMI_WINDOW_BY_MINUTES: Readonly<Record<number, WindowId>> = {
+  300: "session",
+  10_080: "weekly",
+};
+
+function kimiWindow(id: WindowId, detail: unknown): QuotaWindow | null {
+  const row = object(detail);
+  if (!row) return null;
+  const limit = numeric(row.limit);
+  if (limit === undefined || limit <= 0) return null;
+  const remaining = numeric(row.remaining);
+  const used = numeric(row.used) ?? (remaining === undefined ? undefined : limit - remaining);
+  if (used === undefined) return null;
+  const resetsAt = safeTimestamp(row.resetTime ?? row.resetAt);
+  return {
+    id,
+    usedPercent: percent((used / limit) * 100),
+    ...(resetsAt !== undefined ? { resetsAt } : {}),
+  };
+}
+
+// `LEVEL_ADVANCED` / `TYPE_PURCHASE` carry an underscore, which the shared plan
+// validator rejects; strip the enum prefix before it is offered as a label.
+function kimiPlan(payload: Record<string, unknown>): string | undefined {
+  const level = object(object(payload.user)?.membership)?.level;
+  for (const candidate of [level, payload.subType]) {
+    if (typeof candidate !== "string") continue;
+    const bare = candidate.slice(candidate.indexOf("_") + 1).toLowerCase();
+    const plan = titleCase(bare);
+    if (plan) return plan;
+  }
+  return undefined;
+}
+
+export function parseKimiUsage(payload: unknown):
+  | { readonly status: "ok"; readonly windows: readonly QuotaWindow[]; readonly plan?: string }
+  | { readonly status: "no_subscription" } {
+  const root = object(payload);
+  if (!root) return { status: "no_subscription" };
+  const windows: QuotaWindow[] = [];
+  // The top-level block declares no duration anywhere in the payload, so it is
+  // reported as the renewal cycle rather than asserting a length it never states.
+  const cycle = kimiWindow("cycle", root.usage);
+  if (cycle) windows.push(cycle);
+  const limits = array(root.limits);
+  for (let index = 0; index < limits.length && windows.length < MAX_WINDOWS; index += 1) {
+    const entry = object(limits[index]);
+    const frame = object(entry?.window);
+    const duration = numeric(frame?.duration);
+    const unit = typeof frame?.timeUnit === "string" ? KIMI_TIME_UNIT_MINUTES[frame.timeUnit] : undefined;
+    if (duration === undefined || unit === undefined) continue;
+    const id = KIMI_WINDOW_BY_MINUTES[duration * unit];
+    if (!id || windows.some((window) => window.id === id)) continue;
+    const window = kimiWindow(id, entry?.detail);
+    if (window) windows.push(window);
+  }
+  if (windows.length === 0) return { status: "no_subscription" };
+  const plan = kimiPlan(root);
+  return { status: "ok", windows, ...(plan ? { plan } : {}) };
 }
 
 export function parseResetCredits(payload: unknown): ResetCredits | undefined {
@@ -411,6 +512,29 @@ export async function fetchCursorUsage(deps: ProviderDeps = {}): Promise<Provide
   } catch (error) {
     const result = expired(error);
     if (result) return { ...result, method: credentials.method };
+    throw error;
+  }
+}
+
+export async function fetchKimiUsage(deps: ProviderDeps = {}): Promise<ProviderResult> {
+  const apiKey = await authServiceFor(deps).getApiKey(KIMI_AUTH_PROVIDER_ID);
+  if (!apiKey) return { status: "signed_out" };
+  try {
+    const usage = parseKimiUsage(await getJson(
+      deps.fetch ?? fetch,
+      `${KIMI_CODE_API_BASE_URL}/v1/usages`,
+      { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+    ));
+    if (usage.status === "no_subscription") return { status: "no_subscription" };
+    return {
+      status: "ok",
+      ...(usage.plan ? { plan: usage.plan } : {}),
+      windows: usage.windows,
+      fetchedAt: (deps.now ?? Date.now)(),
+    };
+  } catch (error) {
+    const result = expired(error);
+    if (result) return result;
     throw error;
   }
 }
