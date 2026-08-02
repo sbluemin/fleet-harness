@@ -53,7 +53,9 @@ describe("claude-gateway custom agents", () => {
     expect(GENERAL_PURPOSE_AGENT_PROMPT).toContain("Fleet execution agent");
     expect(GENERAL_PURPOSE_AGENT_PROMPT).toContain("Pick ONE mode");
     expect(GENERAL_PURPOSE_AGENT_PROMPT).toContain("binding contracts");
-    expect(GENERAL_PURPOSE_AGENT_PROMPT).toMatch(/depth=medium unless the host asks for thorough/);
+    // depth는 Vanguard의 carrier_dispatch request-block 태그다. gateway 세션은 캐리어 도구를
+    // 받지 않아 호스트가 채울 수 없으므로, 프롬프트가 참조할 수 없는 어휘로 남지 않게 한다.
+    expect(GENERAL_PURPOSE_AGENT_PROMPT).not.toMatch(/depth=/);
     expect(GENERAL_PURPOSE_AGENT_PROMPT).not.toMatch(/search broadly/i);
     expect(GENERAL_PURPOSE_AGENT_PROMPT).not.toMatch(/Be thorough/i);
     expect(GENERAL_PURPOSE_AGENT_PROMPT).not.toMatch(/multiple search strategies/i);
@@ -73,6 +75,9 @@ describe("claude-gateway custom agents", () => {
       expect(agent.model.startsWith("claude-gateway--")).toBe(true);
       expect(agent.prompt).toBe(GENERAL_PURPOSE_AGENT_PROMPT);
       expect(agent.description).toContain("gateway_models");
+      // 호스트가 읽는 유일한 선택 신호이므로 프롬프트와 같은 모드 어휘를 써야 한다.
+      expect(agent.description).toContain("recon, decide, implement, or verify");
+      expect(agent.description).not.toMatch(/researching complex questions/i);
     }
     const withEffort = names.find((name) => name.endsWith("-high"));
     expect(withEffort).toBeDefined();
