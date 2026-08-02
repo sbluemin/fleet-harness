@@ -394,7 +394,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     paths: {
       fleetDataDir,
-      capturesDir: durablePaths.capturesDir,
       pluginDataDir: (pluginId) => path.join(durablePaths.dir, "plugins", pluginId),
       resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.realpath ?? null,
       canonicalizeTheaterPath: canonicalizeTheaterPathSync,

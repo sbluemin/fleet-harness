@@ -14,7 +14,6 @@ export interface ConsolePaths {
 export interface ConsoleDataPaths {
   readonly dir: string;
   readonly stateFile: string;
-  readonly capturesDir: string;
   readonly settingsFile: string;
 }
 
@@ -36,7 +35,6 @@ const CONSOLE_RUNTIME_DIR_NAME = "console";
 const CONSOLE_DATA_DIR_NAME = "console";
 const CONSOLE_STATE_FILE_NAME = "state.json";
 const CONSOLE_SETTINGS_FILE_NAME = "settings.json";
-const CONSOLE_CAPTURES_DIR_NAME = "captures";
 
 export function createConsolePaths(deps: CreateConsolePathsDeps = {}): ConsolePaths {
   const env = deps.env ?? process.env;
@@ -51,7 +49,6 @@ export function createConsoleDataPaths(deps: CreateConsoleDataPathsDeps = {}): C
     dir,
     stateFile: path.join(dir, CONSOLE_STATE_FILE_NAME),
     settingsFile: path.join(dir, CONSOLE_SETTINGS_FILE_NAME),
-    capturesDir: path.join(dir, CONSOLE_CAPTURES_DIR_NAME),
   };
 }
 
@@ -80,7 +77,7 @@ function defaultConsoleDataBaseDir(deps: CreateConsoleDataPathsDeps): string {
 
   // 2순위: FLEET_CONSOLE_DIR escape hatch. lock(createConsolePaths)과 동일하게 durable state도
   // override 슬롯에 co-locate한다 — read-only 체크아웃에서 쓰기 가능 런타임 슬롯을 지정하는 경우 등에
-  // state/captures가 체크아웃이 아닌 선택된 데몬 디렉터리에 격리되도록 보장한다.
+  // state가 체크아웃이 아닌 선택된 데몬 디렉터리에 격리되도록 보장한다.
   const env = deps.env ?? process.env;
   if (env.FLEET_CONSOLE_DIR) {
     return env.FLEET_CONSOLE_DIR;
