@@ -25,6 +25,7 @@ export function migrateLegacyCaptures(deps: MigrateLegacyCapturesDeps): void {
 }
 
 function migrateLegacyCapturesStrict(deps: MigrateLegacyCapturesDeps): void {
+  if (!path.isAbsolute(deps.consoleDataDir)) return;
   const capturesDir = path.join(deps.consoleDataDir, LEGACY_CAPTURES_DIR_NAME);
   if (!fs.existsSync(capturesDir)) return;
 
@@ -45,18 +46,24 @@ function migrateLegacyCapturesStrict(deps: MigrateLegacyCapturesDeps): void {
     console.warn(`[fleet-console] Legacy capture directory read failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 
+  let saved = false;
   if (migrated) {
     try {
       deps.save?.();
+      saved = true;
     } catch (error) {
       console.warn(`[fleet-console] Legacy capture migration save failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  try {
-    fs.rmSync(capturesDir, { recursive: true, force: true });
-  } catch (error) {
-    console.warn(`[fleet-console] Legacy captures directory removal failed: ${error instanceof Error ? error.message : String(error)}`);
+  // Keep captures/ when in-memory patches were not durably saved — otherwise the next
+  // restart loses both state.json and the legacy files.
+  if (!migrated || saved) {
+    try {
+      fs.rmSync(capturesDir, { recursive: true, force: true });
+    } catch (error) {
+      console.warn(`[fleet-console] Legacy captures directory removal failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 }
 

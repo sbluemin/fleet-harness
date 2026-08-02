@@ -90,6 +90,78 @@ describe("migrateLegacyCaptures", () => {
 
     expect(fs.existsSync(path.join(consoleDataDir, "captures"))).toBe(false);
   });
+
+  it("keeps captures/ when save throws after a successful in-memory migration", () => {
+    const { consoleDataDir, operations, get } = createHarness([
+      makeOperation("op-a", {}),
+    ]);
+    writeCapture(consoleDataDir, "op-a", {
+      provider: "claude",
+      sessionId: "provider-session-secret",
+      capturedAt: "2026-06-16T00:00:00.000Z",
+    });
+    const saveCalls: number[] = [];
+
+    migrateLegacyCaptures({
+      consoleDataDir,
+      operations,
+      save: () => {
+        saveCalls.push(1);
+        throw new Error("disk full");
+      },
+    });
+
+    expect(saveCalls).toHaveLength(1);
+    expect(get("op-a")?.payload.providerSession).toMatchObject({ sessionId: "provider-session-secret" });
+    expect(fs.existsSync(path.join(consoleDataDir, "captures", "op-a.json"))).toBe(true);
+  });
+
+  it("deletes captures/ without calling save when nothing was migrated", () => {
+    const { consoleDataDir, operations } = createHarness([]);
+    writeCapture(consoleDataDir, "orphan-op", {
+      provider: "claude",
+      sessionId: "orphan-session",
+      capturedAt: "2026-06-16T00:00:00.000Z",
+    });
+    let saveCalled = false;
+
+    migrateLegacyCaptures({
+      consoleDataDir,
+      operations,
+      save: () => {
+        saveCalled = true;
+      },
+    });
+
+    expect(saveCalled).toBe(false);
+    expect(fs.existsSync(path.join(consoleDataDir, "captures"))).toBe(false);
+  });
+
+  it("no-ops when consoleDataDir is not an absolute path", () => {
+    const absoluteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-legacy-capture-relative-"));
+    tempDirs.push(absoluteRoot);
+    const previousCwd = process.cwd();
+    process.chdir(absoluteRoot);
+    try {
+      fs.mkdirSync("captures", { recursive: true });
+      fs.writeFileSync(path.join("captures", "op-a.json"), JSON.stringify({
+        provider: "claude",
+        sessionId: "provider-session-secret",
+        capturedAt: "2026-06-16T00:00:00.000Z",
+      }));
+      const operations = {
+        get: () => makeOperation("op-a", {}),
+        patch: () => null,
+      };
+
+      migrateLegacyCaptures({ consoleDataDir: "relative-console", operations });
+
+      expect(fs.existsSync(path.join(absoluteRoot, "captures", "op-a.json"))).toBe(true);
+      expect(fs.existsSync(path.join(absoluteRoot, "relative-console"))).toBe(false);
+    } finally {
+      process.chdir(previousCwd);
+    }
+  });
 });
 
 function createHarness(initial: OperationNode[]) {
