@@ -9,7 +9,7 @@ import type { OperationNode } from "../types.js";
 import {
   subscribeSideBarOperationAction,
   type SideBarOperationMenuAction,
-} from "./operation-action-request.js";
+} from "./interaction.js";
 
 export interface SideBarEntry {
   readonly operation: OperationNode;

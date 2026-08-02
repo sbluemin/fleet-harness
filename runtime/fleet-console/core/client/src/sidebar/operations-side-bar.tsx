@@ -9,7 +9,7 @@ import { getT, useT, type CoreMessageKey } from "../i18n/index.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-idle-arrival.js";
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../types.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
-import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../components/command-band-focus.js";
+import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../focus-guards.js";
 import { DirectoryBrowserModal } from "../components/directory-browser-modal.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
@@ -23,7 +23,7 @@ import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
 import {
   subscribeSideBarOperationAction,
   type SideBarOperationMenuAction,
-} from "./operation-action-request.js";
+} from "./interaction.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
 import {
@@ -42,7 +42,7 @@ import {
   useSideBarStatusSectionCollapsed,
   type SideBarStatus,
 } from "./operations-side-bar-store.js";
-import { resolveOperationLaunchKind } from "./resolve-launch-kind.js";
+import { resolveOperationLaunchKind } from "./interaction.js";
 
 interface OperationsSideBarProps {
   readonly theaters: readonly TheaterInfo[];

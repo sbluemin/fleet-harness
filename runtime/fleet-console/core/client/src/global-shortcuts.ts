@@ -1,4 +1,4 @@
-import { isBlockingDialogOpen } from "./blocking-dialog.js";
+import { isBlockingDialogOpen } from "./focus-guards.js";
 import { isKeyboardShortcutsModalOpen } from "./components/keyboard-shortcuts-dialog.js";
 
 export interface ConsoleGlobalShortcutDependencies {

@@ -1,6 +1,6 @@
 import { useEffect, type RefObject } from "react";
 
-import type { SideBarOperationMenuAction } from "./operation-action-request.js";
+import type { SideBarOperationMenuAction } from "./interaction.js";
 
 const MENU_ITEM_SELECTOR = 'button[role^="menuitem"]:not(:disabled)';
 // accent 섹션 판별은 data 마커로만 한다 — 접근 이름 문구는 다듬을 수 있는 표현이라 근거로 삼으면 조용히 깨진다.

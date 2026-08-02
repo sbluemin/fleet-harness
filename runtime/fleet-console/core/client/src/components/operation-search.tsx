@@ -20,7 +20,7 @@ import {
   matchPaletteCommands,
   type PaletteCommandEntry,
 } from "../palette-commands.js";
-import { stashKeyboardShortcutsReturnFocus } from "../keyboard-shortcuts-return-focus.js";
+import { stashKeyboardShortcutsReturnFocus } from "../focus-guards.js";
 import { closeOperationCompletely } from "../operation-close.js";
 import { forgetTheaterCompletely } from "../theater-forget.js";
 import type { DeferredDeletionReceipt } from "../api.js";
@@ -29,7 +29,7 @@ import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageA
 import { getViewModeSnapshot } from "../view-mode-store.js";
 import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
-import { requestSideBarOperationAction, type SideBarOperationAction } from "../sidebar/operation-action-request.js";
+import { requestSideBarOperationAction, type SideBarOperationAction } from "../sidebar/interaction.js";
 import {
   closeOperationSearch,
   focusOperation,

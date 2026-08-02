@@ -27,7 +27,7 @@ import { mountCoworkInline } from "./cowork-controller.js";
 import type { CoworkController } from "./cowork-controller.js";
 import { entryPath } from "./router.js";
 import { getState } from "./state.js";
-import { escapeAttribute, escapeHtml } from "./utils/html.js";
+import { escapeAttribute, escapeHtml } from "./utils.js";
 
 type T = Translate<CoreMessageKey>;
 

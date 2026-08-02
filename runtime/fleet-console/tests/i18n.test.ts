@@ -6,8 +6,8 @@ import { createTranslator, resolveLocalizedText } from "../sdk/i18n/translate.js
 import type { MessageCatalog } from "../sdk/i18n/types.js";
 import { formatRelativeTime } from "../core/client/src/i18n/format.js";
 import { CORE_MESSAGES, getT } from "../core/client/src/i18n/index.js";
-import { renderMessage } from "../core/client/src/i18n/rich.js";
-import { translateServerError } from "../core/client/src/i18n/server-errors.js";
+import { renderMessage } from "../core/client/src/i18n/ui.js";
+import { translateServerError } from "../core/client/src/i18n/ui.js";
 
 /**
  * en===ko가 허용되는 값 목록.

@@ -43,7 +43,7 @@ const SDK_VERSION_PATH = new URL("../sdk/version.ts", import.meta.url);
 const OWNED_SOURCES = [
   "app.tsx",
   "canvas/canvas-store.ts",
-  "canvas/canvas-grid.tsx",
+  "canvas/canvas-overlays.tsx",
   "canvas/canvas-context-menu.tsx",
   "canvas/canvas-minimap.tsx",
   "canvas/canvas.tsx",
