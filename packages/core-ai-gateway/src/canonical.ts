@@ -190,6 +190,14 @@ export interface CanonicalUsage {
   output_tokens: number;
   /** Provider-reported total context limit for this concrete model turn, when available. */
   context_window?: number;
+  /** Subset of input_tokens served from an upstream prompt-cache hit. */
+  cached_input_tokens?: number;
+  /** Subset of input_tokens spent writing a new upstream prompt-cache entry. */
+  cache_write_input_tokens?: number;
+  /** Subset of output_tokens spent on hidden reasoning traces. */
+  reasoning_output_tokens?: number;
+  /** Provider-reported input_tokens + output_tokens total, when available. */
+  total_tokens?: number;
 }
 
 export interface CanonicalResponseSnapshot {

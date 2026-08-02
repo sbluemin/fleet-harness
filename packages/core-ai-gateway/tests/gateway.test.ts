@@ -24,6 +24,8 @@ import {
   OpenAIResponsesAdapter,
   UpstreamBodyLimitError,
   UpstreamIdleTimeoutError,
+  UpstreamProtocolError,
+  collectAnthropicMessage,
   encodeAnthropicSse,
   translateAnthropicRequest
 } from "../src/index.js";
@@ -1119,6 +1121,56 @@ describe("Anthropic SSE encoding", () => {
       usage: { input_tokens: 250_000, output_tokens: 1 },
     });
   });
+
+  it("preserves the projected input total when a cache breakdown rides the 1M coordinate", async () => {
+    const events = iterable<CanonicalResponseEvent>([
+      {
+        type: "response.created",
+        response: {
+          id: "resp_proj_cache",
+          model: "gpt-5.6-sol",
+          usage: {
+            input_tokens: 302_572,
+            output_tokens: 0,
+            cached_input_tokens: 100_000,
+            cache_write_input_tokens: 50_000,
+          },
+        },
+      },
+      {
+        type: "response.completed",
+        response: {
+          id: "resp_proj_cache",
+          model: "gpt-5.6-sol",
+          usage: {
+            input_tokens: 302_572,
+            output_tokens: 6_277,
+            cached_input_tokens: 100_000,
+            cache_write_input_tokens: 50_000,
+          },
+        },
+      },
+    ]);
+
+    const frames = parseSse(await collectBody(encodeAnthropicSse(events, { contextWindow: 372_000 })));
+    const messageDelta = frames.find((item) => item.event === "message_delta");
+    const usage = messageDelta?.data.usage as {
+      input_tokens: number;
+      cache_read_input_tokens: number;
+      cache_creation_input_tokens: number;
+      output_tokens: number;
+    };
+
+    // Same total as the plain (non-cache-aware) 1M projection test above: the
+    // breakdown must land on the identical coordinate, never inflate or shrink it.
+    expect(usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens).toBe(813_366);
+    expect(usage).toEqual({
+      input_tokens: 410_141,
+      cache_read_input_tokens: 268_817,
+      cache_creation_input_tokens: 134_408,
+      output_tokens: 6_277,
+    });
+  });
 });
 
 describe("OpenAI Responses adapter", () => {
@@ -1314,6 +1366,244 @@ describe("OpenAI Responses adapter", () => {
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe(OPENAI_RESPONSES_URL);
     expect(new Headers(init?.headers).get("authorization")).toBe("Bearer injected-key");
+  });
+
+  it("carries a real OpenAI usage envelope end-to-end into matching streaming and non-streaming Anthropic usage", async () => {
+    const upstreamSse = [
+      frame("response.created", {
+        type: "response.created",
+        response: {
+          id: "resp_usage",
+          model: "gpt-5.6-sol",
+          usage: {
+            input_tokens: 1_000,
+            output_tokens: 0,
+            input_tokens_details: { cached_tokens: 400, cache_write_tokens: 100 }
+          }
+        }
+      }),
+      frame("response.completed", {
+        type: "response.completed",
+        response: {
+          id: "resp_usage",
+          model: "gpt-5.6-sol",
+          usage: {
+            input_tokens: 1_000,
+            output_tokens: 200,
+            input_tokens_details: { cached_tokens: 400, cache_write_tokens: 100 },
+            output_tokens_details: { reasoning_tokens: 50 },
+            total_tokens: 1_200
+          }
+        }
+      })
+    ].join("");
+    const fetchMock = vi.fn<FetchLike>(async () => sseResponse(upstreamSse));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+    const result = await adapter.stream(
+      { model: "gpt-5.6-sol", input: [], stream: true },
+      { apiKey: "k" }
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error("expected a successful stream");
+    }
+    const events: CanonicalResponseEvent[] = [];
+    for await (const event of result.events) events.push(event);
+    const completed = events.find((event) => event.type === "response.completed");
+
+    expect(completed?.type).toBe("response.completed");
+    if (completed?.type !== "response.completed") {
+      throw new Error("expected a response.completed event");
+    }
+    // Parser field mapping: OpenAI's input_tokens_details/output_tokens_details/total_tokens
+    // land on the canonical event exactly as documented on CanonicalUsage.
+    expect(completed.response.usage).toEqual({
+      input_tokens: 1_000,
+      output_tokens: 200,
+      cached_input_tokens: 400,
+      cache_write_input_tokens: 100,
+      reasoning_output_tokens: 50,
+      total_tokens: 1_200
+    });
+
+    // Encoder mapping: OpenAI's input_tokens counts cache tokens as a subset, so the
+    // Anthropic encoder must remove them from input_tokens and surface them as
+    // cache_read/cache_creation instead, so Claude Code's own summation does not double
+    // count. reasoning_tokens/total_tokens must never reappear on the Anthropic wire.
+    const expectedAnthropicUsage = {
+      input_tokens: 500,
+      cache_read_input_tokens: 400,
+      cache_creation_input_tokens: 100,
+      output_tokens: 200
+    };
+
+    const streamedFrames = parseSse(await collectBody(encodeAnthropicSse(iterable(events))));
+    const messageStart = streamedFrames.find((item) => item.event === "message_start");
+    const messageDelta = streamedFrames.find((item) => item.event === "message_delta");
+    const collected = await collectAnthropicMessage(iterable(events), "gpt-5.6-sol");
+
+    expect(messageStart?.data).toMatchObject({
+      message: {
+        usage: {
+          cache_read_input_tokens: 400,
+          cache_creation_input_tokens: 100,
+          output_tokens: 0
+        }
+      }
+    });
+    // Streaming/non-streaming shape parity: both consumers of the same canonical
+    // events must agree on the final cache-aware Anthropic usage shape.
+    expect(messageDelta?.data).toMatchObject({ usage: expectedAnthropicUsage });
+    expect(collected.usage).toEqual(expectedAnthropicUsage);
+    expect(messageStart?.data).not.toHaveProperty("message.usage.reasoning_tokens");
+    expect(messageDelta?.data).not.toHaveProperty("usage.reasoning_tokens");
+    expect(messageDelta?.data).not.toHaveProperty("usage.total_tokens");
+    expect(collected.usage).not.toHaveProperty("reasoning_tokens");
+    expect(collected.usage).not.toHaveProperty("total_tokens");
+  });
+
+  it("tolerates an OpenAI usage envelope that omits every optional detail field", async () => {
+    const upstreamSse = frame("response.completed", {
+      type: "response.completed",
+      response: {
+        id: "resp_minimal",
+        model: "gpt-5.5",
+        usage: { input_tokens: 10, output_tokens: 5 }
+      }
+    });
+    const fetchMock = vi.fn<FetchLike>(async () => sseResponse(upstreamSse));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+    const result = await adapter.stream(
+      { model: "gpt-5.5", input: [], stream: true },
+      { apiKey: "k" }
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error("expected a successful stream");
+    }
+    const events: CanonicalResponseEvent[] = [];
+    for await (const event of result.events) events.push(event);
+    const completed = events.find((event) => event.type === "response.completed");
+
+    expect(completed?.type).toBe("response.completed");
+    if (completed?.type !== "response.completed") {
+      throw new Error("expected a response.completed event");
+    }
+    expect(completed.response.usage).toEqual({ input_tokens: 10, output_tokens: 5 });
+  });
+
+  it.each([
+    [
+      "input_tokens_details.cached_tokens has the wrong type",
+      { input_tokens: 100, output_tokens: 10, input_tokens_details: { cached_tokens: "90" } }
+    ],
+    [
+      "input_tokens_details.cache_write_tokens is negative",
+      { input_tokens: 100, output_tokens: 10, input_tokens_details: { cache_write_tokens: -20 } }
+    ],
+    [
+      "output_tokens_details.reasoning_tokens is negative",
+      { input_tokens: 100, output_tokens: 10, output_tokens_details: { reasoning_tokens: -1 } }
+    ],
+    [
+      "output_tokens_details is not an object",
+      { input_tokens: 100, output_tokens: 10, output_tokens_details: "none" }
+    ],
+    [
+      "total_tokens has the wrong type",
+      { input_tokens: 100, output_tokens: 10, total_tokens: "1200" }
+    ]
+  ])("rejects a malformed OpenAI usage envelope: %s", async (_label, usage) => {
+    const upstreamSse = frame("response.completed", {
+      type: "response.completed",
+      response: { id: "resp_bad", model: "gpt-5.5", usage }
+    });
+    const fetchMock = vi.fn<FetchLike>(async () => sseResponse(upstreamSse));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+    const result = await adapter.stream(
+      { model: "gpt-5.5", input: [], stream: true },
+      { apiKey: "k" }
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error("expected a successful stream");
+    }
+    await expect(collectEvents(result.events)).rejects.toThrow(UpstreamProtocolError);
+  });
+
+  it("preserves a self-inconsistent but well-typed OpenAI usage envelope instead of failing the response", async () => {
+    // The real ChatGPT subscription backend has not been observed to guarantee that
+    // cached/cache_write are mutually exclusive subsets of input_tokens, that
+    // reasoning_tokens never exceeds output_tokens, or that total_tokens always equals
+    // input_tokens + output_tokens, so a well-typed but arithmetically inconsistent envelope
+    // must be parsed through unchanged rather than failing the whole response.
+    // reasoning_tokens/total_tokens never reach the Anthropic wire. cached_tokens/
+    // cache_write_tokens do reach it when consistent with input_tokens, but here
+    // cached (90) + cache_write (20) exceeds input_tokens (100), so the Anthropic
+    // conversion must not invent a read-over-write truncation priority: it falls back to
+    // the authoritative parent input total with no cache breakdown at all.
+    const upstreamSse = frame("response.completed", {
+      type: "response.completed",
+      response: {
+        id: "resp_inconsistent",
+        model: "gpt-5.5",
+        usage: {
+          input_tokens: 100,
+          output_tokens: 10,
+          input_tokens_details: { cached_tokens: 90, cache_write_tokens: 20 },
+          output_tokens_details: { reasoning_tokens: 11 },
+          total_tokens: 999
+        }
+      }
+    });
+    const fetchMock = vi.fn<FetchLike>(async () => sseResponse(upstreamSse));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+    const result = await adapter.stream(
+      { model: "gpt-5.5", input: [], stream: true },
+      { apiKey: "k" }
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error("expected a successful stream");
+    }
+    const events: CanonicalResponseEvent[] = [];
+    for await (const event of result.events) events.push(event);
+    const completed = events.find((event) => event.type === "response.completed");
+
+    expect(completed?.type).toBe("response.completed");
+    if (completed?.type !== "response.completed") {
+      throw new Error("expected a response.completed event");
+    }
+    // The canonical layer preserves the self-inconsistent detail values as parsed.
+    expect(completed.response.usage).toEqual({
+      input_tokens: 100,
+      output_tokens: 10,
+      cached_input_tokens: 90,
+      cache_write_input_tokens: 20,
+      reasoning_output_tokens: 11,
+      total_tokens: 999
+    });
+
+    const expectedFallbackUsage = {
+      input_tokens: 100,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 10
+    };
+
+    const streamedFrames = parseSse(await collectBody(encodeAnthropicSse(iterable(events))));
+    const messageDelta = streamedFrames.find((item) => item.event === "message_delta");
+    const collected = await collectAnthropicMessage(iterable(events), "gpt-5.5");
+
+    // The Anthropic wire falls back to the parent input total with a zeroed cache
+    // breakdown, in both the streaming and non-streaming paths, instead of silently
+    // truncating cached/cache_write into a fabricated read-over-write split.
+    expect(messageDelta?.data).toMatchObject({ usage: expectedFallbackUsage });
+    expect(collected.usage).toEqual(expectedFallbackUsage);
   });
 
   it("bounds the total upstream stream body size", async () => {
