@@ -5,4 +5,3 @@ export * from "./cursor-adapter.js";
 export * from "./gateway.js";
 export * from "./models.js";
 export * from "./openai-responses-adapter.js";
-export * from "./provider-auth.js";

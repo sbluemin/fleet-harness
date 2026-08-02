@@ -19,10 +19,13 @@ import {
   installExecutorToolCallRouter,
   registerExecutorSessionTools,
 } from "../mcp-router.js";
-import { executorMcpRuntimeProviderRuntime, executorPortRuntime, type ExecutorMcpSession } from "../executor-port.js";
 import { resolveBuiltinExternalMcpServers } from "../external-mcp.js";
+import {
+  executorMcpRuntimeProviderRuntime,
+  executorPortRuntime,
+  type ExecutorMcpSession,
+} from "../executor-session-manager.js";
 import type { TrackStatus } from "../types.js";
-import { applyPostConnectConfig } from "./post-connect.js";
 
 export interface ExecuteOptions {
   readonly cliType: CliType;
@@ -87,7 +90,7 @@ interface ExecutorMcpSetup { readonly tokens: readonly ExecutorMcpSessionToken[]
 const CLIENT_INFO = { name: "core-agent", version: "1.0.0" } as const;
 const MAX_TOOL_CALLS_TO_KEEP = 30;
 
-export function engineExecuteOneShot(opts: ExecuteOptions): OneShotExecution {
+export function executeOneShot(opts: ExecuteOptions): OneShotExecution {
   assertAuthEnvResolver(opts.authEnvResolver);
   let client: IUnifiedAgentClient | undefined;
   let activeMcpTokens: readonly ExecutorMcpSessionToken[] | undefined;
@@ -252,6 +255,48 @@ export function engineExecuteOneShot(opts: ExecuteOptions): OneShotExecution {
     startPrompt() { if (!aborted && !promptStarted) releasePrompt(); },
     abort: async () => { await abort(); await completion; },
   };
+}
+
+interface ConfigClient {
+  setConfigOption(configId: string, value: string): Promise<void>;
+}
+
+/** 연결 후 effort 등을 세션에 적용 */
+async function applyPostConnectConfig(
+  client: ConfigClient,
+  cli: CliType,
+  model: string,
+  overrides?: { effort?: string },
+): Promise<boolean> {
+  if (overrides?.effort) {
+    const modelEffort = getEffort(cli, model);
+    if (modelEffort.supported && modelEffort.levels.includes(overrides.effort)) {
+      try {
+        await client.setConfigOption("effort", overrides.effort);
+        return true;
+      } catch (err) {
+        const errorObj = typeof err === "object" && err !== null
+          ? (err as {
+              code?: unknown;
+              message?: unknown;
+              data?: { details?: unknown };
+            })
+          : null;
+        console.warn("[acp] setConfigOption 실패", {
+          cli,
+          model,
+          option: "effort",
+          value: overrides.effort,
+          code: errorObj?.code,
+          details: errorObj?.data?.details,
+          message: typeof errorObj?.message === "string"
+            ? errorObj.message
+            : String(err),
+        });
+      }
+    }
+  }
+  return false;
 }
 
 function resolveEffort(cliType: CliType, model: string, explicit?: string): string | undefined {

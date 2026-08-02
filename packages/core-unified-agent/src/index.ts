@@ -35,7 +35,7 @@ export {
   getEffort,
   getEffortLevels,
   getModelContextWindow,
-} from './models/ModelRegistry.js';
+} from './models/registry.js';
 
 export type {
   ModelsRegistry,
@@ -44,7 +44,7 @@ export type {
   Effort,
   ThinkingLevel,
   EffortLevel,
-} from './models/schemas.js';
+} from './models/registry.js';
 
 // === 연결 모듈 ===
 export { BaseConnection, type BaseConnectionOptions } from './connection/BaseConnection.js';
@@ -63,7 +63,7 @@ export type {
   ServiceSnapshot,
   HealthStatus,
   ProviderKey,
-} from './service-status/index.js';
+} from './types/service-status.js';
 
 // === CLI 설정 ===
 export {
@@ -96,7 +96,7 @@ export type {
   ClientInfo,
   ConnectionEvents,
   StructuredLogEntry,
-} from './types/common.js';
+} from './types/config.js';
 
 export type {
   // ACP (공식 SDK alias)

@@ -5,13 +5,59 @@ import { getFleetDataDir } from "../data-dir/paths.js";
 import { writeAtomicSync } from "../fs-store/atomic-write.js";
 import { ensureSafeDirectory, NOFOLLOW_FLAG, SECURE_FILE_MODE } from "../fs-store/secure-fs.js";
 import { withDirectoryLock } from "../fs-store/directory-lock.js";
-import { readAuthStoreFile } from "./auth-store-file.js";
-import type { AuthService, AuthStorageData, CreateAuthServiceDeps } from "./types.js";
+import type {
+  AuthService,
+  AuthStorageData,
+  AuthValidationFailureMessageInput,
+  CreateAuthServiceDeps,
+} from "./types.js";
 
 export const DEFAULT_AUTH_PATH = path.join(getFleetDataDir(), "auth.json");
 
 const AUTH_LOCK_OWNER_FILE_NAME = "owner.json";
 const AUTH_LOCK_TIMEOUT_MS = 5_000;
+
+/**
+ * fd 기반 안전 읽기: O_RDONLY|O_NOFOLLOW + fstatSync isFile 검증.
+ * 심볼릭링크(ELOOP)·권한(EACCES)·파싱 오류는 모두 삼키고 빈 store({})를 반환한다.
+ * auth-storage(서비스 읽기 경로)가 공유하는 symlink 방어 읽기의 단일 구현이다.
+ */
+export function readAuthStoreFile(filePath: string): AuthStorageData {
+  let fd: number | undefined;
+  try {
+    fd = fs.openSync(filePath, fs.constants.O_RDONLY | NOFOLLOW_FLAG);
+    if (!fs.fstatSync(fd).isFile()) {
+      return {};
+    }
+    return JSON.parse(fs.readFileSync(fd, "utf-8")) as AuthStorageData;
+  } catch {
+    return {};
+  } finally {
+    if (fd !== undefined) {
+      try { fs.closeSync(fd); } catch { /* ignore */ }
+    }
+  }
+}
+
+export function formatAuthValidationFailureMessage(input: AuthValidationFailureMessageInput): string {
+  const detail = input.detail ? ` Detail: ${input.detail}` : "";
+  if (input.status === "unauthorized") {
+    return `Auth token was rejected (providerId: '${input.providerId}'). Check the token and try again.${detail}`;
+  }
+  if (input.status === "forbidden") {
+    return `Auth token is not allowed for this provider (providerId: '${input.providerId}'). Check the token permissions.${detail}`;
+  }
+  if (input.status === "timeout") {
+    return `Auth token validation timed out (providerId: '${input.providerId}'). Check the connection and try again.${detail}`;
+  }
+  if (input.status === "network") {
+    return `Auth token validation failed due to a network error (providerId: '${input.providerId}'). Check the connection and try again.${detail}`;
+  }
+  if (input.status === "server") {
+    return `Auth token validation failed because the provider returned an error (providerId: '${input.providerId}'). Try again later.${detail}`;
+  }
+  return `Auth token validation failed (providerId: '${input.providerId}'). Check the token and try again.${detail}`;
+}
 
 /**
  * DI factory — authPath는 인자 기본값으로 처리되며 모듈 가변 상태 없음.

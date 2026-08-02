@@ -12,15 +12,6 @@ export type {
   TrackStatus,
 } from "./types.js";
 export type {
-  ExecutorMcpRuntimeProvider,
-  ExecutorMcpRuntimeProviderRuntime,
-  ExecutorMcpRouterRuntime,
-  ExecutorMcpSession,
-  ExecutorMcpSessionRequest,
-  ExecutorPort,
-  ExecutorPortRuntime,
-} from "./executor-port.js";
-export type {
   McpRouterRuntime,
   McpRouterServer,
   ToolCallArrivedCallback,
@@ -40,6 +31,13 @@ export type {
   CoreExecutorMcpSession,
   CoreExecutorMcpSessionRequest,
   CreateExecutorSessionManagerDeps,
+  ExecutorMcpRuntimeProvider,
+  ExecutorMcpRuntimeProviderRuntime,
+  ExecutorMcpRouterRuntime,
+  ExecutorMcpSession,
+  ExecutorMcpSessionRequest,
+  ExecutorPort,
+  ExecutorPortRuntime,
   ExecutorEndpoint,
   ExecutorRuntime,
   ExecutorServerEndpoint,
@@ -47,7 +45,7 @@ export type {
   ExecutorSessionManager,
   ExecutorSessionRequest,
 } from "./executor-session-manager.js";
-export type { AgentCliLaunchResolver, AuthEnvResolver, ExecuteOptions, ExecResult, OneShotExecution, OneShotReady } from "./executor.js";
+export type { AgentCliLaunchResolver, AuthEnvResolver, ExecuteOptions, ExecResult, OneShotExecution, OneShotReady } from "./internal/executor-engine.js";
 export type {
   SelectableThinkingLevel,
 } from "./models.js";
@@ -99,14 +97,12 @@ export {
   createInProcessMcpServer,
 } from "./mcp-jsonrpc.js";
 export {
-  createExecutorSessionManager,
-} from "./executor-session-manager.js";
-export {
   createExecutorMcpRuntimeProviderRuntime,
   createExecutorPortRuntime,
+  createExecutorSessionManager,
   executorMcpRuntimeProviderRuntime,
   executorPortRuntime,
-} from "./executor-port.js";
+} from "./executor-session-manager.js";
 export {
   getCliModels,
   getCliEffortLevels,
@@ -120,7 +116,7 @@ export {
   resolveBinary,
   resolvePathBinary,
 } from "@dotobokuri/core-process";
-export { executeOneShot } from "./executor.js";
+export { executeOneShot } from "./internal/executor-engine.js";
 export {
   fetchLatestVersion,
   isVersionGreater,

@@ -166,3 +166,7 @@ function parsePathExt(pathExt: string | undefined): string[] {
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
 }
+
+export function withHidden<T extends object>(options?: T): T & { windowsHide: true } {
+  return { ...(options ?? {}), windowsHide: true } as T & { windowsHide: true };
+}

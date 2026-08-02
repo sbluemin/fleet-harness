@@ -4,10 +4,10 @@ export default defineConfig({
   entry: {
     index: "src/index.ts",
     auth: "src/auth/index.ts",
-    "data-dir": "src/data-dir/index.ts",
-    "data-dir/settings": "src/data-dir/settings/index.ts",
+    "data-dir/paths": "src/data-dir/paths.ts",
+    "data-dir/settings/store": "src/data-dir/settings/store.ts",
     "fs-store": "src/fs-store/index.ts",
-    "workspace-dir": "src/workspace-dir/index.ts",
+    "workspace-dir/workspace-dir": "src/workspace-dir/workspace-dir.ts",
   },
   format: ["esm", "cjs"],
   dts: false,

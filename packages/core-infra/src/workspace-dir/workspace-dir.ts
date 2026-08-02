@@ -8,10 +8,17 @@ import {
   withDirectoryLock,
   writeAtomicSync,
 } from "../fs-store/index.js";
-import type {
-  WorkspaceDirectory,
-  WorkspaceDirectoryIdentity,
-} from "./types.js";
+export interface WorkspaceDirectory {
+  readonly cwd: string;
+  readonly identityPath: string;
+  readonly name: string;
+  readonly path: string;
+  readonly root: string;
+}
+
+export interface WorkspaceDirectoryIdentity {
+  readonly cwd: string;
+}
 
 const WORKSPACES_DIRECTORY_NAME = "workspaces";
 const WORKSPACE_IDENTITY_FILE_NAME = "cwd.json";

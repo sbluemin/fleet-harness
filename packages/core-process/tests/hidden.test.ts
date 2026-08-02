@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { withHidden } from "../src/hidden.js";
+import { withHidden } from "../src/bin-resolver.js";
 
 describe("withHidden", () => {
   it("빈 인자 호출 시 windowsHide:true 반환", () => {

@@ -4,7 +4,7 @@ import type {
   AuthValidationResult,
 } from "./types.js";
 
-import { formatAuthValidationFailureMessage } from "./messages.js";
+import { formatAuthValidationFailureMessage } from "./auth-storage.js";
 
 const DEFAULT_AUTH_VALIDATION_TIMEOUT_MS = 5_000;
 

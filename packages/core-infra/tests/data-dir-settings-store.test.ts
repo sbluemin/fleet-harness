@@ -4,7 +4,7 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createGlobalOptionsService, createGlobalOptionsStore, sanitizeGlobalOptionsData } from "../src/data-dir/settings/index.js";
+import { createGlobalOptionsService, createGlobalOptionsStore, sanitizeGlobalOptionsData } from "../src/data-dir/settings/store.js";
 
 const tempDirs: string[] = [];
 

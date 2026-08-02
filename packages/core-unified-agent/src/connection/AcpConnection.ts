@@ -37,7 +37,7 @@ import {
 import type { ChildProcess } from 'child_process';
 import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import type { ConnectionState, StructuredLogEntry } from '../types/common.js';
+import type { ConnectionState, StructuredLogEntry } from '../types/config.js';
 import type {
   AcpAvailableCommand,
   AcpAvailableCommandsUpdate,

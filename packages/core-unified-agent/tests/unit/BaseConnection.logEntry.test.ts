@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { BaseConnection } from '../../src/connection/BaseConnection.js';
-import type { StructuredLogEntry } from '../../src/types/common.js';
+import type { StructuredLogEntry } from '../../src/types/config.js';
 
 class TestConnection extends BaseConnection {
   constructor() {

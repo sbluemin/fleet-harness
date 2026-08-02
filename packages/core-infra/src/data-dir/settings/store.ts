@@ -2,7 +2,31 @@ import * as path from "node:path";
 
 import { getFleetDataDir } from "../paths.js";
 import { createDurableJsonStore } from "../../fs-store/json-store.js";
-import type { GlobalOptionsData, GlobalOptionsStore, GlobalOptionsValidationResult } from "./types.js";
+
+export interface GlobalOptionsData {
+  readonly version: 1;
+  readonly enableMetaphor?: boolean;
+  /** Idle agent auto-DORMANT threshold in minutes. `null` disables; key absent means server default. */
+  readonly agentIdleDormantMinutes?: number | null;
+}
+
+export interface GlobalOptionsValidationResult {
+  readonly data: GlobalOptionsData;
+  readonly changed: boolean;
+}
+
+export interface GlobalOptionsStore {
+  readonly path: string;
+  readonly load: () => GlobalOptionsData;
+  readonly save: (data: GlobalOptionsData) => void;
+  readonly update: (mutate: (current: GlobalOptionsData) => GlobalOptionsData) => GlobalOptionsData;
+}
+
+export interface GlobalOptionsService {
+  readonly load: () => GlobalOptionsData;
+  readonly save: (data: GlobalOptionsData) => GlobalOptionsData;
+  readonly update: (mutate: (current: GlobalOptionsData) => GlobalOptionsData) => GlobalOptionsData;
+}
 
 interface CreateGlobalOptionsStoreDeps {
   readonly dataDir?: string;
@@ -16,6 +40,31 @@ const GLOBAL_OPTIONS_FILE_NAME = "settings.json";
 const LOCK_DIR_NAME = "settings.json.lock";
 const LOCK_OWNER_FILE_NAME = "owner";
 const TEMP_FILE_PREFIX = `.tmp-${GLOBAL_OPTIONS_FILE_NAME}-`;
+
+interface CreateGlobalOptionsServiceDeps {
+  readonly store?: GlobalOptionsStore;
+  readonly dataDir?: string;
+}
+
+export function createGlobalOptionsService(deps: CreateGlobalOptionsServiceDeps = {}): GlobalOptionsService {
+  const store = deps.store ?? createGlobalOptionsStore({ dataDir: deps.dataDir });
+
+  return {
+    load: () => store.load(),
+    save: (data) => {
+      store.save(data);
+      return store.load();
+    },
+    update: (mutate) => updateGlobalOptions(store, mutate),
+  };
+}
+
+function updateGlobalOptions(
+  store: GlobalOptionsStore,
+  mutate: (current: GlobalOptionsData) => GlobalOptionsData,
+): GlobalOptionsData {
+  return store.update(mutate);
+}
 
 export function createGlobalOptionsStore(deps: CreateGlobalOptionsStoreDeps = {}): GlobalOptionsStore {
   const dataDir = deps.dataDir ?? getFleetDataDir();
