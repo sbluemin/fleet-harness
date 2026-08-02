@@ -7,6 +7,7 @@ import type { CompanionPanelDescriptor, ConsoleTheme, FleetClientPlugin, Operati
 
 import { fetchOperations } from "../api.js";
 import { isBlockingDialogOpen } from "../blocking-dialog.js";
+import { availableCompanionPanels } from "../companion-shortcut.js";
 import { flattenGroupedOrder, focusCycleOperationIds, hydrateOperations, requestOperationKeyboardFocus, requestOperationLaunchMenu, setActiveOperation } from "../store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
@@ -424,8 +425,11 @@ export function OperationsCanvas({
   const panelMaximized = maximizedOperationExists ? maximizedOperationId : null;
   const currentCompanionOperation = companionOperationId === null ? undefined : theaterOperations.find((operation) => operation.id === companionOperationId && !minimizedSet.has(operation.id));
   const currentCompanionDescriptor = currentCompanionOperation ? operationKindRegistry.find((kind) => kind.pluginId === currentCompanionOperation.pluginId && kind.type === currentCompanionOperation.type) : undefined;
+  const currentAvailableCompanionPanels = currentCompanionOperation
+    ? availableCompanionPanels(currentCompanionDescriptor?.companions ?? [], currentCompanionOperation)
+    : [];
   if (companionOperationId === null) lastValidCompanionRef.current = null;
-  if (currentCompanionOperation && currentCompanionDescriptor?.companions?.length) {
+  if (currentCompanionOperation && currentCompanionDescriptor && currentAvailableCompanionPanels.length > 0) {
     lastValidCompanionRef.current = { operation: currentCompanionOperation, descriptor: currentCompanionDescriptor };
   }
   const preservedCompanion = !currentCompanionOperation && lastValidCompanionRef.current?.operation.id === companionOperationId
@@ -434,10 +438,11 @@ export function OperationsCanvas({
   const companionOperation = currentCompanionOperation ?? preservedCompanion?.operation;
   const companionDescriptor = currentCompanionDescriptor ?? preservedCompanion?.descriptor;
   const companionPanels = companionDescriptor?.companions ?? [];
-  const visibleCompanionPanels = companionPanels.filter((panel) => companionPanelVisibilityOverrides[panel.id] ?? !panel.defaultHidden);
+  const availablePanels = companionOperation ? availableCompanionPanels(companionPanels, companionOperation) : [];
+  const visibleCompanionPanels = availablePanels.filter((panel) => companionPanelVisibilityOverrides[panel.id] ?? !panel.defaultHidden);
   const hiddenCompanionPanelIds = companionPanels.filter((panel) => !visibleCompanionPanels.includes(panel)).map((panel) => panel.id);
-  const panelCompanion = companionOperation && companionPanels.length > 0 ? companionOperation.id : null;
-  const currentPanelCompanion = currentCompanionOperation && currentCompanionDescriptor?.companions?.length ? currentCompanionOperation.id : null;
+  const panelCompanion = companionOperation && availablePanels.length > 0 ? companionOperation.id : null;
+  const currentPanelCompanion = currentCompanionOperation && currentAvailableCompanionPanels.length > 0 ? currentCompanionOperation.id : null;
   const pluginOperations = companionOperation && !theaterOperations.some((operation) => operation.id === companionOperation.id)
     ? [...theaterOperations, companionOperation]
     : theaterOperations;

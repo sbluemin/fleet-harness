@@ -1,3 +1,4 @@
+import type { OperationNode } from "@fleet-console/sdk/operations";
 import type { CompanionPanelDescriptor } from "@fleet-console/sdk/plugin";
 
 // core가 플러그인보다 먼저 소비하는 키는 선언을 허용하면 도움말과 실제 디스패치가 어긋난다.
@@ -14,6 +15,13 @@ export interface CompanionShortcutToggle {
   readonly openLayer: boolean;
   readonly closeLayer: boolean;
   readonly visibilityChanges: readonly CompanionVisibilityChange[];
+}
+
+export function availableCompanionPanels(
+  companions: readonly CompanionPanelDescriptor[],
+  operation: OperationNode,
+): readonly CompanionPanelDescriptor[] {
+  return companions.filter((companion) => companion.available?.(operation) ?? true);
 }
 
 export function usableCompanionShortcuts(

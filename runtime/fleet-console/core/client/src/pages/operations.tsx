@@ -21,7 +21,7 @@ import { toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
-import { resolveCompanionShortcutToggle, usableCompanionShortcuts } from "../companion-shortcut.js";
+import { availableCompanionPanels, resolveCompanionShortcutToggle, usableCompanionShortcuts } from "../companion-shortcut.js";
 import { resolveOperationsArrowShortcutAction } from "../operations-arrow-shortcut.js";
 import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
@@ -140,15 +140,19 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       const activeKind = activeOperation
         ? registry.operationKinds.find((kind) => kind.pluginId === activeOperation.pluginId && kind.type === activeOperation.type)
         : null;
-      const companion = activeKind?.companions
-        ? usableCompanionShortcuts(activeKind.companions).find((candidate) => candidate.shortcut?.code === event.code)
-        : undefined;
-      if (activeOperation && activeKind?.companions && companion?.shortcut) {
+      // 이 작전에서 사용 불가한 companion은 디스패치 대상에서 먼저 걷어낸다. 남겨두면 존재하지 않는
+      // 패널로 향하는 Alt 단축키가 살아 있고, 토글의 remaining-visible 계산도 그 패널을 세게 된다.
+      const activeCompanions = activeOperation
+        ? availableCompanionPanels(activeKind?.companions ?? [], activeOperation)
+        : [];
+      const companion = usableCompanionShortcuts(activeCompanions)
+        .find((candidate) => candidate.shortcut?.code === event.code);
+      if (activeOperation && companion?.shortcut) {
         event.preventDefault();
         event.stopImmediatePropagation();
         if (event.repeat) return;
         const toggle = resolveCompanionShortcutToggle({
-          companions: activeKind.companions,
+          companions: activeCompanions,
           targetId: companion.id,
           clusterIds: companion.shortcut.clusterIds,
           companionsOpen: getCompanionOperationId() === activeOperation.id,
@@ -571,8 +575,13 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
     const operation = getState().operations.find((candidate) => candidate.id === operationId);
     const operationWasMinimized = getCanvasSnapshot().minimized.includes(operationId);
     const descriptor = operation && operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
+    // 이 작전에서 사용 가능한 companion이 하나도 없으면 layer를 여는 것 자체가 빈 껍데기다.
+    // 선언 목록이 아니라 availability를 통과한 목록으로 판단한다.
+    const descriptorCompanions = operation && descriptor
+      ? availableCompanionPanels(descriptor.companions ?? [], operation)
+      : [];
     let canOpenCompanions = true;
-    if (operation && descriptor?.companions?.length && descriptor.canOpenCompanions) {
+    if (operation && descriptorCompanions.length > 0 && descriptor && descriptor.canOpenCompanions) {
       try {
         canOpenCompanions = await descriptor.canOpenCompanions({ api, operation });
       } catch {
@@ -584,7 +593,7 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
       const operationWasHidden = !operationWasMinimized && getCanvasSnapshot().minimized.includes(operationId);
       if (requestEpochRef.current !== requestEpoch || getFocusLayerRevision() !== focusLayerRevision || getCompanionOperationId() !== currentCompanionOperationId || liveState.activeTheaterId !== operation.theaterId || getLoadedTheaterId() !== operation.theaterId || operationWasHidden || closingOperationIds.has(operationId) || !liveOperation || liveOperation.pluginId !== operation.pluginId || liveOperation.type !== operation.type || liveOperation.theaterId !== operation.theaterId) return;
     }
-    if (operation && (!descriptor || !descriptor.companions?.length || !canOpenCompanions)) {
+    if (operation && (!descriptor || descriptorCompanions.length === 0 || !canOpenCompanions)) {
       forceDropCompanionOperationId();
       if (getFormationView()) {
         if (getCanvasSnapshot().minimized.includes(operationId)) playRestoreFlight(operationId);
