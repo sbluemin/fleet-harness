@@ -466,9 +466,42 @@ function responseSnapshot(value: unknown): CanonicalResponseSnapshot {
 
 function usage(value: unknown): CanonicalUsage {
   const parsed = record(value, "usage");
+  const inputTokens = number(parsed.input_tokens, "usage.input_tokens");
+  const outputTokens = number(parsed.output_tokens, "usage.output_tokens");
+
+  const inputDetails = optionalRecord(parsed.input_tokens_details, "usage.input_tokens_details");
+  const cachedInputTokens = inputDetails === undefined
+    ? undefined
+    : optionalNonNegativeNumber(inputDetails.cached_tokens, "usage.input_tokens_details.cached_tokens");
+  const cacheWriteInputTokens = inputDetails === undefined
+    ? undefined
+    : optionalNonNegativeNumber(inputDetails.cache_write_tokens, "usage.input_tokens_details.cache_write_tokens");
+
+  const outputDetails = optionalRecord(parsed.output_tokens_details, "usage.output_tokens_details");
+  const reasoningOutputTokens = outputDetails === undefined
+    ? undefined
+    : optionalNonNegativeNumber(outputDetails.reasoning_tokens, "usage.output_tokens_details.reasoning_tokens");
+
+  const totalTokens = optionalNonNegativeNumber(parsed.total_tokens, "usage.total_tokens");
+
+  // cached_tokens/cache_write_tokens/reasoning_tokens are documented as subsets of their
+  // parent totals and total_tokens as their sum, but the ChatGPT subscription backend's
+  // real envelopes have not been observed to guarantee that arithmetic. Reject only
+  // malformed shape (wrong type / negative / non-finite) here; a self-inconsistent but
+  // well-typed envelope is preserved as-is on the canonical event rather than failing the
+  // whole response. reasoning_tokens/total_tokens never reach the Anthropic wire at all.
+  // cached_tokens/cache_write_tokens do reach it when consistent with input_tokens, but the
+  // Anthropic conversion layer (see toAnthropicCacheAwareUsage in anthropic.ts) falls back
+  // to the authoritative parent input total with no cache breakdown when the two exceed it,
+  // rather than inventing a read-over-write truncation priority.
+
   return {
-    input_tokens: number(parsed.input_tokens, "usage.input_tokens"),
-    output_tokens: number(parsed.output_tokens, "usage.output_tokens")
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    ...(cachedInputTokens === undefined ? {} : { cached_input_tokens: cachedInputTokens }),
+    ...(cacheWriteInputTokens === undefined ? {} : { cache_write_input_tokens: cacheWriteInputTokens }),
+    ...(reasoningOutputTokens === undefined ? {} : { reasoning_output_tokens: reasoningOutputTokens }),
+    ...(totalTokens === undefined ? {} : { total_tokens: totalTokens })
   };
 }
 
@@ -540,6 +573,14 @@ function record(value: unknown, name: string): Record<string, unknown> {
   return value;
 }
 
+/** Optional nested detail object. Absent or null means the field was never reported. */
+function optionalRecord(value: unknown, name: string): Record<string, unknown> | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return record(value, name);
+}
+
 function string(value: unknown, name: string): string {
   if (typeof value !== "string") {
     throw new UpstreamProtocolError(`${name} must be a string`);
@@ -550,6 +591,17 @@ function string(value: unknown, name: string): string {
 function number(value: unknown, name: string): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new UpstreamProtocolError(`${name} must be a number`);
+  }
+  return value;
+}
+
+/** Optional finite nonnegative detail count. Absent or null means the field was never reported. */
+function optionalNonNegativeNumber(value: unknown, name: string): number | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new UpstreamProtocolError(`${name} must be a finite nonnegative number`);
   }
   return value;
 }

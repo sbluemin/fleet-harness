@@ -8,6 +8,7 @@ import type {
   CanonicalResponseEvent,
   CanonicalResponseRequest,
   CanonicalToolChoice,
+  CanonicalUsage,
   ReasoningEffort,
 } from "./canonical.js";
 import {
@@ -518,6 +519,114 @@ export interface ClaudeResponseCompatibilityOptions {
   readonly model?: string;
 }
 
+interface AnthropicCacheAwareUsage {
+  readonly input_tokens: number;
+  readonly cache_read_input_tokens: number;
+  readonly cache_creation_input_tokens: number;
+  readonly output_tokens: number;
+}
+
+/**
+ * Convert an upstream input/output/cache breakdown into the Anthropic Messages usage shape.
+ *
+ * OpenAI's `input_tokens` already counts cache hits and cache writes as a subset, but
+ * Anthropic expects those tokens removed from `input_tokens` and reported separately
+ * through `cache_read_input_tokens` / `cache_creation_input_tokens` — Claude Code sums all
+ * three, so leaving the subset inside `input_tokens` would double count it. Both streaming
+ * (message_start, message_delta) and non-streaming callers share this conversion so their
+ * usage shapes never drift apart.
+ *
+ * When the 1M compatibility projection is active, the three input coordinates are scaled
+ * together (by the same ratio used for the plain input-only path) so their sum still equals
+ * the projected total input exactly.
+ */
+function toAnthropicCacheAwareUsage(
+  rawInputTokens: number,
+  cachedInputTokens: number | undefined,
+  cacheWriteInputTokens: number | undefined,
+  outputTokens: number,
+  advertisedContextWindow: number | undefined,
+  upstreamContextWindow: number | undefined,
+): AnthropicCacheAwareUsage {
+  const safeInputTokens = Number.isFinite(rawInputTokens) && rawInputTokens > 0 ? rawInputTokens : 0;
+
+  const projectedTotal = projectClaudeContextInputTokens(
+    safeInputTokens,
+    advertisedContextWindow,
+    upstreamContextWindow,
+  );
+
+  if (safeInputTokens === 0) {
+    return {
+      input_tokens: 0,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: outputTokens,
+    };
+  }
+
+  const safeCacheRead = nonNegativeCacheValue(cachedInputTokens);
+  const safeCacheCreation = nonNegativeCacheValue(cacheWriteInputTokens);
+
+  // The upstream envelope can be self-inconsistent (cached + cache-write exceeding the
+  // parent input total) while still being well-typed; the canonical layer preserves that
+  // as-is rather than rejecting it. There is no principled way to decide which of
+  // cached/cache-write "wins" a truncation here, so inventing a read-over-write priority
+  // would just fabricate a number. Fall back to the authoritative parent total (raw, or
+  // projected when the 1M coordinate is active) with no cache breakdown at all instead.
+  if (safeCacheRead + safeCacheCreation > safeInputTokens) {
+    return {
+      input_tokens: projectedTotal,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: outputTokens,
+    };
+  }
+
+  if (projectedTotal === safeInputTokens) {
+    return {
+      input_tokens: safeInputTokens - safeCacheRead - safeCacheCreation,
+      cache_read_input_tokens: safeCacheRead,
+      cache_creation_input_tokens: safeCacheCreation,
+      output_tokens: outputTokens,
+    };
+  }
+
+  // Scale each cache coordinate by the same ratio as the total, flooring so the three
+  // parts can never overshoot the projected total; the remainder lands on input_tokens.
+  const scaledCacheRead = Math.floor((safeCacheRead * projectedTotal) / safeInputTokens);
+  const scaledCacheCreation = Math.floor((safeCacheCreation * projectedTotal) / safeInputTokens);
+  return {
+    input_tokens: projectedTotal - scaledCacheRead - scaledCacheCreation,
+    cache_read_input_tokens: scaledCacheRead,
+    cache_creation_input_tokens: scaledCacheCreation,
+    output_tokens: outputTokens,
+  };
+}
+
+function nonNegativeCacheValue(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value) || value <= 0) {
+    return 0;
+  }
+  return value;
+}
+
+/** Build the shared usage shape directly from a canonical response snapshot's usage. */
+function anthropicUsageFromCanonical(
+  usage: CanonicalUsage | null | undefined,
+  advertisedContextWindow: number | undefined,
+  options: { forceOutputZero?: boolean } = {},
+): AnthropicCacheAwareUsage {
+  return toAnthropicCacheAwareUsage(
+    usage?.input_tokens ?? 0,
+    usage?.cached_input_tokens,
+    usage?.cache_write_input_tokens,
+    options.forceOutputZero ? 0 : usage?.output_tokens ?? 0,
+    advertisedContextWindow,
+    usage?.context_window,
+  );
+}
+
 /** 비스트리밍 요청에 돌려줄 Anthropic Messages 응답 본문을 이벤트에서 조립한다. */
 export async function collectAnthropicMessage(
   events: AsyncIterable<CanonicalResponseEvent>,
@@ -532,6 +641,8 @@ export async function collectAnthropicMessage(
   let stopReason = "end_turn";
   let outputTokens = 0;
   let inputTokens = 0;
+  let cachedInputTokens: number | undefined;
+  let cacheWriteInputTokens: number | undefined;
   let upstreamContextWindow: number | undefined;
 
   for await (const event of events) {
@@ -540,6 +651,8 @@ export async function collectAnthropicMessage(
         id = event.response.id;
         model = options.model ?? event.response.model;
         inputTokens = event.response.usage?.input_tokens ?? 0;
+        cachedInputTokens = event.response.usage?.cached_input_tokens;
+        cacheWriteInputTokens = event.response.usage?.cache_write_input_tokens;
         upstreamContextWindow = event.response.usage?.context_window;
         break;
       case "response.output_text.delta":
@@ -566,6 +679,8 @@ export async function collectAnthropicMessage(
       case "response.completed":
         inputTokens = event.response.usage?.input_tokens ?? inputTokens;
         outputTokens = event.response.usage?.output_tokens ?? 0;
+        cachedInputTokens = event.response.usage?.cached_input_tokens ?? cachedInputTokens;
+        cacheWriteInputTokens = event.response.usage?.cache_write_input_tokens ?? cacheWriteInputTokens;
         upstreamContextWindow = event.response.usage?.context_window ?? upstreamContextWindow;
         break;
       case "response.failed":
@@ -591,14 +706,14 @@ export async function collectAnthropicMessage(
     model,
     stop_reason: stopReason,
     stop_sequence: null,
-    usage: {
-      input_tokens: projectClaudeContextInputTokens(
-        inputTokens,
-        options.contextWindow,
-        upstreamContextWindow,
-      ),
-      output_tokens: outputTokens,
-    },
+    usage: toAnthropicCacheAwareUsage(
+      inputTokens,
+      cachedInputTokens,
+      cacheWriteInputTokens,
+      outputTokens,
+      options.contextWindow,
+      upstreamContextWindow,
+    ),
   };
 }
 
@@ -670,14 +785,9 @@ export async function* encodeAnthropicSse(
               model: options.model ?? event.response.model,
               stop_reason: null,
               stop_sequence: null,
-              usage: {
-                input_tokens: projectClaudeContextInputTokens(
-                  event.response.usage?.input_tokens ?? 0,
-                  options.contextWindow,
-                  event.response.usage?.context_window,
-                ),
-                output_tokens: 0
-              }
+              usage: anthropicUsageFromCanonical(event.response.usage, options.contextWindow, {
+                forceOutputZero: true,
+              })
             }
           });
         }
@@ -800,19 +910,10 @@ export async function* encodeAnthropicSse(
             stop_reason: sawToolUse ? "tool_use" : "end_turn",
             stop_sequence: null
           },
-          usage: {
-            // Claude Code updates context occupancy from the terminal cumulative
-            // usage frame. Sending output-only leaves Responses-backed models at
-            // zero input usage even though Kimi's native Anthropic stream works.
-            input_tokens: projectClaudeContextInputTokens(
-              event.response.usage?.input_tokens ?? 0,
-              options.contextWindow,
-              event.response.usage?.context_window,
-            ),
-            output_tokens: event.response.usage?.output_tokens ?? 0,
-            cache_read_input_tokens: 0,
-            cache_creation_input_tokens: 0
-          }
+          // Claude Code updates context occupancy from the terminal cumulative
+          // usage frame. Sending output-only leaves Responses-backed models at
+          // zero input usage even though Kimi's native Anthropic stream works.
+          usage: anthropicUsageFromCanonical(event.response.usage, options.contextWindow)
         });
         yield encode("message_stop", { type: "message_stop" });
         messageStopped = true;
