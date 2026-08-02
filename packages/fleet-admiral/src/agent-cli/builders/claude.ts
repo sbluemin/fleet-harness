@@ -10,8 +10,22 @@ export function buildClaudeNativeArgs(context: AgentCliInjectionContext): string
       pluginRoot,
     ]),
     ...(context.mcpServers.length > 0 ? ["--mcp-config", buildClaudeMcpConfig(context.mcpServers)] : []),
+    ...buildDisallowedAgentToolArgs(context.disallowedAgentTools),
+    ...buildCustomAgentsArgs(context.customAgents),
     "--dangerously-skip-permissions",
   ];
+}
+
+function buildDisallowedAgentToolArgs(tools: readonly string[] | undefined): string[] {
+  if (tools === undefined || tools.length === 0) return [];
+  return ["--disallowedTools", ...tools];
+}
+
+function buildCustomAgentsArgs(
+  agents: AgentCliInjectionContext["customAgents"],
+): string[] {
+  if (agents === undefined || Object.keys(agents).length === 0) return [];
+  return ["--agents", JSON.stringify(agents)];
 }
 
 function buildResumeArgs(resumeSessionId: string | undefined): string[] {

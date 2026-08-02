@@ -94,6 +94,16 @@ export {
   type InjectAgentCliProfileOptions,
 } from "./agent-cli/injection.js";
 
+export {
+  GATEWAY_DISABLED_BUILTIN_AGENTS,
+  GENERAL_PURPOSE_AGENT_PROMPT,
+  buildGatewayCustomAgents,
+  buildGatewayDisallowedAgentTools,
+  toGatewayAgentName,
+  type ClaudeCustomAgentDefinition,
+  type ClaudeCustomAgents,
+} from "./agent-cli/gateway-agents.js";
+
 // Fleet 에이전트 in-process MCP 런타임 라이프사이클
 export {
   createFleetAgentRuntimeLifecycle,

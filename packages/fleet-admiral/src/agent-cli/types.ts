@@ -55,6 +55,18 @@ export interface AgentCliMcpServerArg {
 export interface AgentCliInjectionContext {
   readonly cliId: AgentCliId;
   readonly codexProfileName?: string;
+  /**
+   * Claude Code `--agents` JSON object. Gateway sessions inject AI Gateway
+   * model/effort agents here without writing agent files.
+   */
+  readonly customAgents?: Readonly<Record<string, {
+    readonly description: string;
+    readonly prompt: string;
+    readonly model: string;
+    readonly effort?: string;
+  }>>;
+  /** Claude Code `--disallowedTools` entries (e.g. `Task(Explore)`). */
+  readonly disallowedAgentTools?: readonly string[];
   readonly mcpServers: readonly AgentCliMcpServerArg[];
   readonly pluginRoot: string;
   readonly pluginRoots: readonly string[];
