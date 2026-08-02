@@ -34,28 +34,67 @@ Fleet Wiki mutation are performed directly by the Admiral through the
 
 ## 2. System Prompt Shape
 
-`createSystemPromptBuilder(...).build(enableMetaphor)` in
-`packages/fleet-admiral/src/prompts.ts` assembles the Admiral prompt. The static
-prompt includes:
+`createSystemPromptBuilder(...).build(...)` in
+`packages/fleet-admiral/src/prompts.ts` assembles the Admiral prompt. The builder
+accepts the legacy `build(enableMetaphor)` overload (classic doctrine) or
+`build({ enableMetaphor, doctrine })`. The static prompt includes:
 
 - `<fleet section="preamble">` — always injected first
 - `<fleet section="persona">` — injected before role only when metaphor is enabled
 - `<fleet section="role">` — always injected
 - `<fleet section="tone">` — injected after role only when metaphor is enabled
 - `<fleet section="roster">` when carriers are registered, rendered at the
-  routing tier only (selection metadata — summary, `Use for`, `NOT for`); each
-  carrier's request-block contract, the shared `<prior_jobs>` hint, and the
-  dispatch composition rules (parallel sequencing, failure handling) live in
-  the on-demand `carrier-operations` skill, and the roster preamble points to it
-- `<fleet section="protocol-gate">` containing the always-on intent gate, mode gate, standard fallback, and downward guard for irreversible, structural, multi-module, or doctrine/prompt-policy work
-- `<fleet section="standing-orders" type="<id>">` as six separate always-on Standing Order blocks, with Command Integrity injected first as the order-reception contract upstream of Mission Anchor
+  routing tier only (selection metadata — summary, `Use for`, `NOT for`); the
+  roster preamble is doctrine-specific (see §2.1)
+- `<fleet section="protocol-gate">` containing the always-on intent gate, mode gate, standard fallback, and downward guard for irreversible, structural, multi-module, or doctrine/prompt-policy work; Intent/Mode wording is doctrine-specific while the gate structure is shared
+- `<fleet section="standing-orders" type="<id>">` as six separate always-on Standing Order blocks, with Command Integrity injected first as the order-reception contract upstream of Mission Anchor; order ids and injection order are invariant across doctrines, while selected bodies override for gateway
+
+### 2.1 Classic vs Gateway Dual Doctrine
+
+Metaphor and doctrine are orthogonal axes:
+
+| Axis | Values | Controls |
+|---|---|---|
+| Metaphor | `enableMetaphor` boolean | Persona + Tone overlays only |
+| Doctrine | `classic` \| `gateway` | Roster preamble, protocol-gate wording, selected Standing Order bodies, and which skill assets the Fleet plugin renders |
+
+Doctrine resolution is owned by `resolveDoctrineFromCliId`:
+`claude-gateway` → `gateway`; every other Agent CLI id → `classic`.
+`injectAgentCliProfile` passes `{ enableMetaphor, doctrine }` into
+`buildSystemPrompt` and forwards the same doctrine into plugin rendering.
+
+**Classic doctrine** retains the carrier_dispatch path:
+
+- Roster preamble points at the on-demand `carrier-operations` skill and
+  instructs loading it before the first `carrier_dispatch`.
+- Protocol gate Intent Gate names carrier dispatch as workspace action; Mode
+  Gate / Downward Guard / Mode Mapping speak in Carrier / multi-carrier terms.
+- Standing Order bodies for Carrier Operations Policy, Deep Dive, and Result
+  Integrity keep `carrier_dispatch` / `carrier_jobs` wording.
+- Plugin skill render includes classic `protocol-*` skills plus
+  `carrier-operations`, and omits the `gateway/` authoring tree.
+
+**Gateway doctrine** is Workflow-first:
+
+- Roster preamble is a role catalog only; orchestration uses the live Workflow
+  tool surface and must not treat `carrier_dispatch` or `carrier-operations` as
+  the canonical path.
+- Protocol gate Intent Gate names Workflow orchestration; Mode Gate / Downward
+  Guard / Mode Mapping speak in multi-stream Workflow terms.
+- Standing Order ids stay identical, but Carrier Operations Policy, Deep Dive,
+  and Result Integrity override bodies to Workflow agent stages / Workflow
+  orchestration and drop `carrier_jobs`.
+- Plugin skill render substitutes `assets/skills/gateway/protocol-*` into the
+  live `skills/protocol-*` paths and omits `carrier-operations` entirely. The
+  `gateway/` authoring prefix is never exposed as a live skill path.
 
 `enableMetaphor` controls role-playing as one coherent option: enabling it adds
 both the naval Persona and Tone overlays; disabling it adds neither. The
 always-on role, protocol gate, Standing Orders, protocol skills, and carrier
 routing metadata use neutral actor terms so the disabled path does not retain
 naval ranks or forms of address. `Fleet`, `Carrier`, and registered carrier names
-remain functional product identifiers in both modes.
+remain functional product identifiers in both modes. Metaphor never changes
+doctrine selection, and doctrine never injects or removes Persona/Tone.
 
 When enabled, the Persona carries an explicit semantic role map: `user` →
 Admiral of the Navy, `host agent`/`you` → Admiral, and `Carrier` → Captain. The
@@ -71,9 +110,10 @@ functional identifiers such as skill IDs and report-token keys remain fixed.
 The full protocol workflows are not inlined into the static Admiral prompt.
 Operational requests load exactly one built-in protocol skill on demand:
 `protocol-baseline`, `protocol-midline`,
-`protocol-redline`, or `protocol-frontline`. The per-carrier request-block
-contracts and dispatch composition rules are likewise on-demand via the
-`carrier-operations` skill. Skill
+`protocol-redline`, or `protocol-frontline`. Under classic doctrine, the
+per-carrier request-block contracts and dispatch composition rules remain
+on-demand via the `carrier-operations` skill; under gateway doctrine that skill
+is not rendered and Workflow tool metadata owns orchestration mechanics. Skill
 loading is idempotent per session: content already in context is applied
 without reloading. `packages/fleet-admiral` owns those packaged skill assets and Fleet plugin/persona/marketplace rendering; `fleet-cli` and `fleet-console` consume them through the public root package API. `fleet-admiral` owns the prompt gate and Standing Order policy. There is still no protocol
 registry, persisted mode setting, runtime switching API, or Fleet CLI protocol
@@ -98,9 +138,9 @@ Context Confidence thresholds are differentiated by protocol boundary. Baseline
 mode has no planning micro-check, midline requires sufficient confidence, and
 redline plus frontline require complete confidence. Result Integrity owns
 the verification-loop routing table: received results run the three integrity
-checks, mutating finalized jobs run the Artifact Inspection Gate, speculation
-routes to Deep Dive, and contradictions with verified facts route back to
-Context Confidence.
+checks, mutating finalized jobs or Workflow stages run the Artifact Inspection
+Gate, speculation routes to Deep Dive, and contradictions with verified facts
+route back to Context Confidence.
 
 Command Integrity completes the integrity pipeline upstream: order reception
 (Command Integrity) → evidence sufficiency (Context Confidence) → outcome
@@ -119,7 +159,7 @@ Command Integrity pre-engagement trigger.
 Runtime state is read through direct owners:
 
 - Protocol gate and Standing Order policy: `packages/fleet-admiral/src/protocols/**`
-- Built-in protocol skill assets: committed source at `packages/fleet-admiral/assets/skills/{protocol-baseline,protocol-midline,protocol-redline,protocol-frontline,assumption-audit,carrier-operations}/SKILL.md`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_SKILL_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`. The `carrier-operations` contracts section mirrors the registry's contracts-tier roster render and is locked by a sync test in `packages/fleet-admiral/tests/carrier-operations-skill.test.ts`
+- Built-in protocol skill assets: classic source at `packages/fleet-admiral/assets/skills/{protocol-baseline,protocol-midline,protocol-redline,protocol-frontline,assumption-audit,carrier-operations}/SKILL.md`, plus gateway protocol variants under `packages/fleet-admiral/assets/skills/gateway/protocol-*/SKILL.md`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_SKILL_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`. The `carrier-operations` contracts section mirrors the registry's contracts-tier roster render and is locked by a sync test in `packages/fleet-admiral/tests/carrier-operations-skill.test.ts`. Gateway doctrine plugin render omits `carrier-operations` and remaps `gateway/protocol-*` onto the live `skills/protocol-*` paths.
 - Carrier registry and display state: `@dotobokuri/fleet-carriers`
 - Carrier store, job stream state, and per-job workspace change manifest policy: `@dotobokuri/fleet-carriers`
 - Workspace git-status scanner implementation: `runtime/fleet-cli`

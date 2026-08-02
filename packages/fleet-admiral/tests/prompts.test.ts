@@ -4,7 +4,11 @@ import { describe, expect, it } from "vitest";
 
 import { createCarrierRuntime } from "@dotobokuri/fleet-carriers";
 
-import { createSystemPromptBuilder } from "../src/index.js";
+import {
+  createSystemPromptBuilder,
+  getStandingOrdersForDoctrine,
+  resolveDoctrineFromCliId,
+} from "../src/index.js";
 import { getAllStandingOrders } from "../src/protocols/standing-orders/index.js";
 
 const ROLEPLAY_MARKERS = [
@@ -31,6 +35,15 @@ const GOVERNING_DOCTRINE_EXCEPTION =
 const APPLICABLE_AGENTS_DOCTRINE_REQUIREMENT =
   "Before touching any directory, load the AGENTS.md doctrine files that scope it, recursively from the repo root down; the deepest applicable file wins on conflict.";
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
+
+const STANDING_ORDER_IDS = [
+  "command-integrity",
+  "mission-anchor",
+  "context-confidence",
+  "carrier-operations-policy",
+  "deep-dive",
+  "result-integrity",
+] as const;
 
 describe("Admiral prompts", () => {
   function createRuntimeWithDefaults() {
@@ -89,10 +102,10 @@ describe("Admiral prompts", () => {
     expect(prompt).not.toContain('<fleet section="subagents">');
   });
 
-  it("keeps the roster at the routing tier with a carrier-operations skill pointer", () => {
+  it("keeps classic roster at the routing tier with carrier_dispatch and carrier-operations pointers", () => {
     const prompt = createSystemPromptBuilder({
       carrierRuntime: createRuntimeWithDefaults(),
-    }).build(false);
+    }).build({ enableMetaphor: false, doctrine: "classic" });
 
     // 라우팅 계층은 상시 유지된다.
     expect(prompt).toContain("Use for:");
@@ -101,7 +114,9 @@ describe("Admiral prompts", () => {
     expect(prompt).not.toContain("Request blocks — wrap content in these");
     expect(prompt).not.toContain("<prior_jobs>");
     expect(prompt).toContain("`carrier-operations` skill");
+    expect(prompt).toContain("load it before composing your first carrier_dispatch");
     expect(prompt).toContain("skip reloading if its content is already in context");
+    expect(prompt).toContain("carrier dispatch");
   });
 
   it("renders static doctrine without per-tool guide blocks", () => {
@@ -119,13 +134,16 @@ describe("Admiral prompts", () => {
     expect(getAllStandingOrders()).toHaveLength(6);
   });
 
-  it("renders the intent and mode gate instead of the old full protocol body", () => {
+  it("renders the classic intent and mode gate instead of the old full protocol body", () => {
     const prompt = createSystemPromptBuilder({
       carrierRuntime: createRuntimeWithDefaults(),
     }).build(false);
 
+    expect(prompt).toContain("## Procedure");
+    expect(prompt).not.toContain("## Workflow\n");
     expect(prompt).toContain("Conversational");
     expect(prompt).toContain("answer normally without loading a protocol skill");
+    expect(prompt).toContain("carrier dispatch");
     expect(prompt).toContain("protocol-baseline");
     expect(prompt).toContain("protocol-midline");
     expect(prompt).toContain("protocol-redline");
@@ -137,20 +155,75 @@ describe("Admiral prompts", () => {
     expect(prompt).not.toContain("# Fleet Action Protocol — Operational Doctrine");
   });
 
+  it("resolves claude-gateway to gateway doctrine and keeps other CLIs classic", () => {
+    expect(resolveDoctrineFromCliId("claude-gateway")).toBe("gateway");
+    expect(resolveDoctrineFromCliId("claude")).toBe("classic");
+    expect(resolveDoctrineFromCliId("codex")).toBe("classic");
+  });
+
+  it("keeps standing order ids and injection order invariant across doctrines", () => {
+    expect(getAllStandingOrders("classic").map((order) => order.id)).toEqual([...STANDING_ORDER_IDS]);
+    expect(getStandingOrdersForDoctrine("gateway").map((order) => order.id)).toEqual([...STANDING_ORDER_IDS]);
+    expect(getAllStandingOrders("gateway").map((order) => order.id)).toEqual(
+      getAllStandingOrders("classic").map((order) => order.id),
+    );
+  });
+
+  it("keeps metaphor × doctrine orthogonal for classic and gateway", () => {
+    const classicMetaphor = createSystemPromptBuilder({
+      carrierRuntime: createRuntimeWithDefaults(),
+    }).build({ enableMetaphor: true, doctrine: "classic" });
+    const gatewayMetaphor = createSystemPromptBuilder({
+      carrierRuntime: createRuntimeWithDefaults(),
+    }).build({ enableMetaphor: true, doctrine: "gateway" });
+    const gatewayPlain = createSystemPromptBuilder({
+      carrierRuntime: createRuntimeWithDefaults(),
+    }).build({ enableMetaphor: false, doctrine: "gateway" });
+
+    expect(classicMetaphor).toContain('<fleet section="persona">');
+    expect(gatewayMetaphor).toContain('<fleet section="persona">');
+    expect(gatewayPlain).not.toContain('<fleet section="persona">');
+
+    expect(classicMetaphor).toContain("`carrier-operations` skill");
+    expect(classicMetaphor).toContain("load it before composing your first carrier_dispatch");
+    expect(gatewayMetaphor).toContain("role catalog for selection and routing only");
+    expect(gatewayMetaphor).toContain("Orchestration uses the live Workflow tool surface");
+    expect(gatewayMetaphor).not.toContain("`carrier-operations` skill");
+    expect(gatewayMetaphor).toContain("do not treat carrier_dispatch as the canonical path");
+    expect(gatewayMetaphor).toContain("Workflow-first orchestration");
+    expect(gatewayMetaphor).toContain("multi-stream Workflow coordination");
+    expect(gatewayMetaphor).toContain("Workflow agent stage");
+    expect(gatewayMetaphor).toContain("Mutating Workflow stage finalized");
+    expect(gatewayMetaphor).not.toContain("carrier_jobs");
+  });
+
+  it("keeps gateway doctrine Workflow-first without carrier_dispatch as canonical", () => {
+    const prompt = createSystemPromptBuilder({
+      carrierRuntime: createRuntimeWithDefaults(),
+    }).build({ enableMetaphor: false, doctrine: "gateway" });
+
+    expect(prompt).toContain("## Procedure");
+    expect(prompt).toContain("Workflow orchestration");
+    expect(prompt).toContain("multi-stream Workflow coordination");
+    expect(prompt).toContain("role catalog for selection and routing only");
+    expect(prompt).toContain("Orchestration uses the live Workflow tool surface");
+    expect(prompt).not.toContain("`carrier-operations` skill");
+    expect(prompt).not.toContain("load it before composing your first carrier_dispatch");
+    expect(prompt).toContain("do not treat carrier_dispatch as the canonical path");
+    expect(prompt).toContain("Workflow-first orchestration");
+    expect(prompt).toContain("Workflow agent stage");
+    expect(prompt).toContain("Mutating Workflow stage finalized");
+    expect(prompt).not.toContain("carrier_jobs");
+    expect(prompt).not.toContain('<fleet section="persona">');
+  });
+
   it("renders each standing order as its own type-scoped block without a shared wrapper", () => {
     const prompt = createSystemPromptBuilder({
       carrierRuntime: createRuntimeWithDefaults(),
     }).build(false);
 
     // Lock the six-order identity and ordering against silent reorder/rename regressions.
-    expect(getAllStandingOrders().map((order) => order.id)).toEqual([
-      "command-integrity",
-      "mission-anchor",
-      "context-confidence",
-      "carrier-operations-policy",
-      "deep-dive",
-      "result-integrity",
-    ]);
+    expect(getAllStandingOrders().map((order) => order.id)).toEqual([...STANDING_ORDER_IDS]);
     for (const order of getAllStandingOrders()) {
       expect(prompt).toContain(`<fleet section="standing-orders" type="${order.id}">`);
     }
@@ -217,7 +290,7 @@ describe("Admiral prompts", () => {
     expect(prompt).toContain("never overwrite or revert changes made by others");
   });
 
-  it("keeps the system prompt within the approved size budget", () => {
+  it("keeps classic and gateway system prompts within approved size budgets", () => {
     const builder = createSystemPromptBuilder({
       carrierRuntime: createRuntimeWithDefaults(),
     });
@@ -225,6 +298,8 @@ describe("Admiral prompts", () => {
     // Retain the approved static-prompt ceilings after moving Wiki operations on demand.
     expect(builder.build(false).length).toBeLessThanOrEqual(25226);
     expect(builder.build(true).length).toBeLessThanOrEqual(27300);
+    expect(builder.build({ enableMetaphor: false, doctrine: "gateway" }).length).toBeLessThanOrEqual(26000);
+    expect(builder.build({ enableMetaphor: true, doctrine: "gateway" }).length).toBeLessThanOrEqual(28000);
   });
 
   it("teaches idempotent per-session skill loading in the protocol gate", () => {

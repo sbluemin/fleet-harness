@@ -200,6 +200,81 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(existsSync(stalePluginDir)).toBe(false);
     expect(existsSync(path.join(dataDir, "marketplace", "plugins", "fleet"))).toBe(true);
   });
+
+  it("renders gateway protocol skills and omits carrier-operations for gateway doctrine", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-gateway-doctrine-"));
+    tempDirs.push(root);
+
+    const plugin = await createAgentCliPlugin({
+      cliId: "claude-gateway",
+      cwd: path.join(root, "project"),
+      dataDir: path.join(root, "data"),
+      withMarketplaceLock: async (_target, fn) => fn(),
+    });
+
+    const skillsRoot = path.join(plugin.pluginRoot, "skills");
+    expect(existsSync(path.join(skillsRoot, "carrier-operations", "SKILL.md"))).toBe(false);
+    expect(existsSync(path.join(skillsRoot, "gateway"))).toBe(false);
+    expect(existsSync(path.join(skillsRoot, "protocol-baseline", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(skillsRoot, "protocol-frontline", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(skillsRoot, "protocol-midline", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(skillsRoot, "protocol-redline", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(skillsRoot, "wiki-operations", "SKILL.md"))).toBe(true);
+
+    const baseline = readFileSync(path.join(skillsRoot, "protocol-baseline", "SKILL.md"), "utf8");
+    expect(baseline).toContain("Workflow tool as the canonical path");
+    expect(baseline).not.toContain("carrier_dispatch");
+  });
+
+  it("keeps classic plugin render including carrier-operations", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-classic-doctrine-"));
+    tempDirs.push(root);
+
+    const plugin = await createAgentCliPlugin({
+      cliId: "claude",
+      cwd: path.join(root, "project"),
+      dataDir: path.join(root, "data"),
+      withMarketplaceLock: async (_target, fn) => fn(),
+    });
+
+    const skillsRoot = path.join(plugin.pluginRoot, "skills");
+    expect(existsSync(path.join(skillsRoot, "carrier-operations", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(skillsRoot, "gateway"))).toBe(false);
+    expect(existsSync(path.join(skillsRoot, "protocol-baseline", "SKILL.md"))).toBe(true);
+  });
+
+  it("keeps classic and gateway asset roots isolated under the same dataDir", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-doctrine-roots-"));
+    tempDirs.push(root);
+    const dataDir = path.join(root, "data");
+    const cwd = path.join(root, "project");
+    mkdirSync(cwd, { recursive: true });
+    const withMarketplaceLock = async <T>(_target: string, fn: () => T | Promise<T>): Promise<T> => fn();
+    const classicRoot = path.join(dataDir, "marketplace", "plugins", "fleet");
+    const gatewayRoot = path.join(dataDir, "marketplace", "plugins", "fleet-gateway");
+
+    for (const order of [
+      ["claude", "claude-gateway"],
+      ["claude-gateway", "claude"],
+    ] as const) {
+      let classicPluginRoot = "";
+      let gatewayPluginRoot = "";
+      for (const cliId of order) {
+        const plugin = await createAgentCliPlugin({ cliId, cwd, dataDir, withMarketplaceLock });
+        if (cliId === "claude") classicPluginRoot = plugin.pluginRoot;
+        else gatewayPluginRoot = plugin.pluginRoot;
+      }
+
+      expect(classicPluginRoot).toBe(classicRoot);
+      expect(gatewayPluginRoot).toBe(gatewayRoot);
+      expect(existsSync(classicRoot)).toBe(true);
+      expect(existsSync(gatewayRoot)).toBe(true);
+      expect(existsSync(path.join(classicRoot, "skills", "carrier-operations", "SKILL.md"))).toBe(true);
+      expect(existsSync(path.join(gatewayRoot, "skills", "carrier-operations", "SKILL.md"))).toBe(false);
+      expect(readFileSync(path.join(gatewayRoot, "skills", "protocol-baseline", "SKILL.md"), "utf8"))
+        .toContain("Workflow tool as the canonical path");
+    }
+  });
 });
 
 describe("deprecated codex plugin cleanup", () => {

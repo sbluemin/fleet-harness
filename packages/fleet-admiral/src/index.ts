@@ -1,7 +1,20 @@
 export {
   createSystemPromptBuilder,
   type SystemPromptBuilder,
+  type SystemPromptBuildOptions,
 } from "./prompts.js";
+export {
+  resolveDoctrineFromCliId,
+  type AdmiralDoctrine,
+} from "./protocols/doctrine.js";
+export {
+  getAllStandingOrders,
+  getStandingOrdersForDoctrine,
+} from "./protocols/standing-orders/index.js";
+export {
+  FLEET_PROTOCOL_GATE_PROMPT,
+  getProtocolGatePrompt,
+} from "./protocols/index.js";
 export {
   FLEET_MCP_SERVER_NAME,
   getExecutorMcpTools,

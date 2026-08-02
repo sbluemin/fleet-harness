@@ -32,6 +32,6 @@ Confirm each readiness check below before the Procedure. Work through them in or
 
 1. Objective statement: state the Mission Anchor objective in one line.
 2. Exact fact/file verification: verify the exact file, command, or fact needed for the request.
-3. Execution: make the smallest reversible change or run the exact requested command.
-4. Result verification: check the touched surface or command result.
+3. Execution: make the smallest reversible change or run the exact requested command. When orchestration or fan-out is needed, use the Workflow tool as the canonical path.
+4. Result verification: check the touched surface, command result, or Workflow stage artifacts.
 5. One-line report: report what changed, verification, and any skipped escalation trigger.

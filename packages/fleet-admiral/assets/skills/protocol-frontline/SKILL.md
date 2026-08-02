@@ -15,12 +15,12 @@ Decomposition, Dispatch, Integration, Verification.
 
 As you move through this protocol, report progress to the user in order — each step on its own line with its report token.
 
-1. Brief how the Workflow will proceed — name (a) the Workflow steps that will run, (b) each carrier's file or responsibility ownership, and (c) the dispatch wave sequencing. → report `brief: <…>`
-2. State that execution is beginning and run the Workflow. → report `status: executing`
+1. Brief how the Procedure will proceed — name (a) the Procedure steps that will run, (b) each carrier's file or responsibility ownership, and (c) the dispatch wave sequencing. → report `brief: <…>`
+2. State that execution is beginning and run the Procedure. → report `status: executing`
 
 ## General Quarters
 
-Confirm each readiness check below before the Workflow. Work through them in order and report each as you confirm it, then proceed to reconnaissance and decomposition. These checks prepare the work; they do not gate entry.
+Confirm each readiness check below before the Procedure. Work through them in order and report each as you confirm it, then proceed to reconnaissance and decomposition. These checks prepare the work; they do not gate entry.
 
 - [ ] **Common** — objective stated (Mission Anchor), mode-fit holds (Mode Gate), Standing Orders binding. → report `common: ready`
 - [ ] **Impact radius** — flag public-surface or API impact, irreversibility, and any security-sensitive surface. → report `impact: <…>`
@@ -30,7 +30,7 @@ Confirm each readiness check below before the Workflow. Work through them in ord
 - [ ] **Shared resources** — flag shared mutable resources (same files, lock files, or a singleton test environment). → report `shared: <…|none>`
 - [ ] **Dependencies** — pre-classify parallel versus sequential work before decomposition and dispatch. → report `dependencies: <parallel|sequenced: …>`
 
-## Workflow
+## Procedure
 
 1. Reconnaissance and decomposition: audit known facts, identify gaps, map affected surfaces, and split work into independently verifiable missions.
 2. Ownership graph: assign each Carrier a clear file or responsibility boundary, note dependencies, and identify shared mutable resources.

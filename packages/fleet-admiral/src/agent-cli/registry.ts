@@ -77,5 +77,5 @@ function parseEnvCliId(value: string | undefined): AgentCliId | undefined {
     return value as AgentCliId;
   }
 
-  throw new Error(`Unsupported agent CLI "${value}". Expected one of: ${getAgentCliIds().join(", ")}`);
+  throw new Error(`Unsupported agent CLI "${value}". Expected one of: ${getAgentCliIds({ includeConsoleOnly: true }).join(", ")}`);
 }

@@ -47,7 +47,7 @@ afterEach(() => {
 
 describe("agent CLI session resume and capture hooks", () => {
   it("defaults metaphor off and forwards explicit opt-in to the prompt builder", async () => {
-    const observed: boolean[] = [];
+    const observed: Array<{ enableMetaphor: boolean; doctrine: string }> = [];
 
     for (const enableMetaphor of [undefined, true] as const) {
       const root = createTempRoot(`fleet-admiral-metaphor-${enableMetaphor ?? false}-`);
@@ -58,7 +58,10 @@ describe("agent CLI session resume and capture hooks", () => {
       });
       const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
         buildSystemPrompt: (value) => {
-          observed.push(value);
+          const options = typeof value === "boolean"
+            ? { enableMetaphor: value, doctrine: "classic" as const }
+            : value;
+          observed.push({ enableMetaphor: options.enableMetaphor, doctrine: options.doctrine ?? "classic" });
           return "Fleet doctrine";
         },
         ...(enableMetaphor === undefined ? {} : { enableMetaphor }),
@@ -66,7 +69,33 @@ describe("agent CLI session resume and capture hooks", () => {
       injected.cleanup?.();
     }
 
-    expect(observed).toEqual([false, true]);
+    expect(observed).toEqual([
+      { enableMetaphor: false, doctrine: "classic" },
+      { enableMetaphor: true, doctrine: "classic" },
+    ]);
+  });
+
+  it("selects gateway doctrine from claude-gateway profile id", async () => {
+    const observed: Array<{ enableMetaphor: boolean; doctrine: string }> = [];
+    const root = createTempRoot("fleet-admiral-gateway-doctrine-");
+    const profile = baseProfile("claude-gateway", {
+      args: [],
+      cwd: root,
+      env: { HOME: root },
+    });
+    const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
+      buildSystemPrompt: (value) => {
+        const options = typeof value === "boolean"
+          ? { enableMetaphor: value, doctrine: "classic" as const }
+          : value;
+        observed.push({ enableMetaphor: options.enableMetaphor, doctrine: options.doctrine ?? "classic" });
+        return "Fleet doctrine";
+      },
+      enableMetaphor: true,
+    }));
+    injected.cleanup?.();
+
+    expect(observed).toEqual([{ enableMetaphor: true, doctrine: "gateway" }]);
   });
 
   it("places Claude --resume before Fleet injection flags", async () => {
@@ -393,7 +422,7 @@ function baseProfile(
 function baseInjectOptions(
   root: string,
   overrides: {
-    readonly buildSystemPrompt?: (enableMetaphor: boolean) => string;
+    readonly buildSystemPrompt?: Parameters<typeof injectAgentCliProfile>[1]["buildSystemPrompt"];
     readonly autoNameHookExec?: FleetHookExec;
     readonly captureSessionHookExec?: FleetHookExec;
     readonly dedicatedMcpSession?: TestDedicatedMcpSession;

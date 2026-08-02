@@ -8,6 +8,8 @@ import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
 import { buildHostShellCommand, buildPowerShellCommand, escapeTomlBasicString, escapeTomlMultilineString } from "./builders/toml.js";
+import { resolveDoctrineFromCliId } from "../protocols/doctrine.js";
+import type { SystemPromptBuildOptions } from "../prompts.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
 import { cleanupDeprecatedCodexPluginState, createAgentCliPlugin, ensureCodexPluginRegistered, FLEET_MARKETPLACE_NAME } from "./plugin/index.js";
 import type {
@@ -20,7 +22,7 @@ import type {
 } from "./types.js";
 
 export interface InjectAgentCliProfileOptions {
-  readonly buildSystemPrompt: (enableMetaphor: boolean) => string;
+  readonly buildSystemPrompt: (options: boolean | SystemPromptBuildOptions) => string;
   readonly dataDir?: string;
   readonly dedicatedMcpSession: DedicatedMcpSession;
   readonly mcpSessionLabel?: string;
@@ -89,6 +91,7 @@ export async function injectAgentCliProfile(
   }
 
   const enableMetaphor = options.enableMetaphor ?? false;
+  const doctrine = resolveDoctrineFromCliId(profile.id);
   const endpoint = await options.dedicatedMcpSession.getEndpoint();
   const tokenLabel = options.mcpSessionLabel ?? `agent:${profile.id}:${crypto.randomUUID()}`;
   const tokens = await options.dedicatedMcpSession.issueSessionToken({
@@ -96,14 +99,15 @@ export async function injectAgentCliProfile(
     label: tokenLabel,
   });
   const mcpServers = buildAgentCliMcpServerConfigs(endpoint.servers, tokens);
-  const doctrine = options.buildSystemPrompt(enableMetaphor);
+  const systemPrompt = options.buildSystemPrompt({ enableMetaphor, doctrine });
   const tempCleanups: Array<() => void> = [];
   try {
     const systemPromptFile = isClaudeFamilyProfile(profile)
-      ? writeSystemPromptFile(profile.id, doctrine, (cleanup) => tempCleanups.push(cleanup))
+      ? writeSystemPromptFile(profile.id, systemPrompt, (cleanup) => tempCleanups.push(cleanup))
       : undefined;
     const plugin = await createAgentCliPlugin({
       cliId: profile.id,
+      doctrine,
       codexCommandRunner: options.codexCommandRunner,
       cwd: profile.cwd,
       dataDir: options.dataDir,
@@ -117,7 +121,7 @@ export async function injectAgentCliProfile(
     });
     const codexPluginKeys = plugin.codexRegistrations.map((registration) => `${registration.pluginName}@${registration.marketplaceName}`);
     const codexProfile = profile.id === "codex"
-      ? writeCodexFleetProfile(profile.env, doctrine, codexPluginKeys, {
+      ? writeCodexFleetProfile(profile.env, systemPrompt, codexPluginKeys, {
           captureSessionHookExec: options.captureSessionHookExec,
           turnStartHookExec: options.turnStartHookExec,
           turnEndHookExec: options.turnEndHookExec,
@@ -224,7 +228,7 @@ function writeSystemPromptFile(
 
 function writeCodexFleetProfile(
   env: Readonly<Record<string, string>>,
-  doctrine: string,
+  systemPrompt: string,
   pluginKeys: readonly string[],
   hookExecs: CodexProfileHookExecs,
 ): CodexFleetProfile {
@@ -236,10 +240,10 @@ function writeCodexFleetProfile(
   const hookTrustState = readCodexFleetHookTrustState(profilePath);
   writeFileNoFollow(profilePath, [
     CODEX_FLEET_PROFILE_MARKER,
-    // doctrine를 멀티라인 TOML 문자열로 직렬화해 실제 줄바꿈을 보존(pretty)한다.
+    // system prompt를 멀티라인 TOML 문자열로 직렬화해 실제 줄바꿈을 보존(pretty)한다.
     // 여는 """ 바로 뒤의 줄바꿈은 TOML 파서가 제거하므로 본문은 다음 줄부터 시작한다.
     `developer_instructions = """`,
-    escapeTomlMultilineString(doctrine),
+    escapeTomlMultilineString(systemPrompt),
     `"""`,
     "",
     "[features]",
