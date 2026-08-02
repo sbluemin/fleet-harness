@@ -201,7 +201,7 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(existsSync(path.join(dataDir, "marketplace", "plugins", "fleet"))).toBe(true);
   });
 
-  it("renders gateway protocol skills and omits carrier-operations for gateway doctrine", async () => {
+  it("omits protocol skills and carrier-operations for gateway doctrine", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-gateway-doctrine-"));
     tempDirs.push(root);
 
@@ -215,15 +215,17 @@ describe("agent CLI plugin marketplace rendering", () => {
     const skillsRoot = path.join(plugin.pluginRoot, "skills");
     expect(existsSync(path.join(skillsRoot, "carrier-operations", "SKILL.md"))).toBe(false);
     expect(existsSync(path.join(skillsRoot, "gateway"))).toBe(false);
-    expect(existsSync(path.join(skillsRoot, "protocol-baseline", "SKILL.md"))).toBe(true);
-    expect(existsSync(path.join(skillsRoot, "protocol-frontline", "SKILL.md"))).toBe(true);
-    expect(existsSync(path.join(skillsRoot, "protocol-midline", "SKILL.md"))).toBe(true);
-    expect(existsSync(path.join(skillsRoot, "protocol-redline", "SKILL.md"))).toBe(true);
+    for (const mode of ["protocol-baseline", "protocol-frontline", "protocol-midline", "protocol-redline"]) {
+      expect(existsSync(path.join(skillsRoot, mode, "SKILL.md"))).toBe(false);
+    }
     expect(existsSync(path.join(skillsRoot, "wiki-operations", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(skillsRoot, "assumption-audit", "SKILL.md"))).toBe(true);
 
-    const baseline = readFileSync(path.join(skillsRoot, "protocol-baseline", "SKILL.md"), "utf8");
-    expect(baseline).toContain("Workflow tool as the canonical path");
-    expect(baseline).not.toContain("carrier_dispatch");
+    // gateway/assumption-audit 오버레이가 base 자산을 대체하고 protocol 참조를 남기지 않는다.
+    const assumptionAudit = readFileSync(path.join(skillsRoot, "assumption-audit", "SKILL.md"), "utf8");
+    expect(assumptionAudit).not.toContain("protocol mode");
+    expect(assumptionAudit).not.toContain("Protocol Gate");
+    expect(assumptionAudit).not.toContain("carrier");
   });
 
   it("keeps classic plugin render including carrier-operations", async () => {
@@ -271,8 +273,8 @@ describe("agent CLI plugin marketplace rendering", () => {
       expect(existsSync(gatewayRoot)).toBe(true);
       expect(existsSync(path.join(classicRoot, "skills", "carrier-operations", "SKILL.md"))).toBe(true);
       expect(existsSync(path.join(gatewayRoot, "skills", "carrier-operations", "SKILL.md"))).toBe(false);
-      expect(readFileSync(path.join(gatewayRoot, "skills", "protocol-baseline", "SKILL.md"), "utf8"))
-        .toContain("Workflow tool as the canonical path");
+      expect(existsSync(path.join(classicRoot, "skills", "protocol-baseline", "SKILL.md"))).toBe(true);
+      expect(existsSync(path.join(gatewayRoot, "skills", "protocol-baseline", "SKILL.md"))).toBe(false);
     }
   });
 });

@@ -2,7 +2,7 @@ export {
   createSystemPromptBuilder,
   type SystemPromptBuilder,
   type SystemPromptBuildOptions,
-} from "./prompts.js";
+} from "./prompts/index.js";
 export {
   resolveDoctrineFromCliId,
   type AdmiralDoctrine,
@@ -16,8 +16,10 @@ export {
   getProtocolGatePrompt,
 } from "./protocols/index.js";
 export {
+  CARRIER_OPERATION_TOOL_IDS,
   FLEET_MCP_SERVER_NAME,
   getExecutorMcpTools,
+  isHostSessionToolAllowed,
   registerAgentToolDefaults,
 } from "./tools.js";
 
