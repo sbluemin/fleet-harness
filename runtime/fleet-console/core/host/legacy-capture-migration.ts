@@ -51,6 +51,9 @@ function migrateLegacyCapturesStrict(deps: MigrateLegacyCapturesDeps): void {
         if (outcome.migrated) migrated = true;
         if (outcome.retained) retained = true;
       } catch (error) {
+        // 일시적 읽기 오류나 손상 JSON으로 실패한 파일은 유일한 legacy 매핑일 수 있으므로
+        // 다른 파일의 이관 성공에 휩쓸려 삭제되지 않도록 보존하고 다음 부팅에 재시도한다.
+        retained = true;
         console.warn(`[fleet-console] Legacy capture migrate failed for ${entry}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }

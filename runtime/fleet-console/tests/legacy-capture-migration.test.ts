@@ -225,6 +225,25 @@ describe("migrateLegacyCaptures", () => {
     expect(patchCalls).toHaveLength(0);
     expect(fs.existsSync(path.join(consoleDataDir, "captures", "op-theater-child.json"))).toBe(true);
   });
+
+  it("retains captures/ when a single file fails to migrate", () => {
+    const { consoleDataDir, operations, get } = createHarness([
+      makeOperation("op-a", {}),
+      makeOperation("op-broken", {}),
+    ]);
+    writeCapture(consoleDataDir, "op-a", {
+      provider: "claude",
+      sessionId: "provider-session-secret",
+      capturedAt: "2026-06-16T00:00:00.000Z",
+    });
+    // 손상 JSON은 파싱에서 throw되어 per-file catch로 떨어진다.
+    fs.writeFileSync(path.join(consoleDataDir, "captures", "op-broken.json"), "{ not json");
+
+    migrateLegacyCaptures({ consoleDataDir, operations });
+
+    expect(get("op-a")?.payload.providerSession).toBeDefined();
+    expect(fs.existsSync(path.join(consoleDataDir, "captures", "op-broken.json"))).toBe(true);
+  });
 });
 
 function createHarness(initial: OperationNode[]) {
