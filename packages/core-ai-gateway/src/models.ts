@@ -39,6 +39,9 @@ const GatewayModelEffortSchema = z.discriminatedUnion("supported", [
   }).strict(),
 ]);
 
+export const GATEWAY_QUOTA_SCOPES = ["auto", "api"] as const;
+export type GatewayQuotaScope = typeof GATEWAY_QUOTA_SCOPES[number];
+
 const GatewayModelEntrySchema = z.object({
   modelId: z.string().min(1),
   name: z.string().min(1),
@@ -46,6 +49,7 @@ const GatewayModelEntrySchema = z.object({
   providerModelId: z.string().min(1).optional(),
   serviceTier: z.literal("priority").optional(),
   cursorMaxMode: z.literal(true).optional(),
+  quotaScope: z.enum(GATEWAY_QUOTA_SCOPES).optional(),
   aliases: z.array(z.string().min(1)).optional(),
   contextWindow: z.number().int().positive().optional(),
   autoCompactThreshold: z.number().int().positive().optional(),
@@ -96,6 +100,13 @@ export interface GatewayModel {
   readonly serviceTier?: "priority";
   /** Cursor Run's modelDetails.maxMode flag; omitted for standard-mode models. */
   readonly cursorMaxMode?: true;
+  /**
+   * Sub-allowance this model is billed against, when its provider splits one
+   * subscription across pools. Cursor spends Auto-tier and API-tier models from
+   * separate budgets, so the provider's combined usage figure cannot tell a
+   * caller whether this particular model still has room.
+   */
+  readonly quotaScope?: GatewayQuotaScope;
   readonly description?: string;
   /** Authoritative input context window reported by the provider/reference catalog. */
   readonly contextWindow?: number;
@@ -213,6 +224,61 @@ export function findGatewayModel(
 
 export function upstreamModelId(model: GatewayModel): string {
   return model.upstreamId ?? model.id;
+}
+
+/**
+ * The upstream model a catalog entry actually reaches, as `provider::upstreamId`.
+ *
+ * Several entries are the same model under different service terms — Codex's
+ * `-fast` variants are the priority tier of an identical upstream id — so a fact
+ * measured about one holds for its siblings. Entries that merely share a vendor
+ * name do not collapse: Cursor's `kimi-k3` and Moonshot's `k3` reach different
+ * upstreams through different transports and keep separate identities.
+ */
+export function gatewayModelIdentity(model: GatewayModel): string {
+  return `${model.provider}::${upstreamModelId(model)}`;
+}
+
+/**
+ * Facts a caller must respect when routing work to a model. Everything here is
+ * derived from the catalog, so a newly added model carries them without further
+ * declaration — unlike suitability, which is a judgement and lives elsewhere.
+ */
+export interface GatewayModelConstraints {
+  readonly identity: string;
+  readonly provider: GatewayProvider;
+  readonly contextWindow?: number;
+  /**
+   * Reasoning levels a caller may actually request. This is the model's ladder
+   * narrowed to the rungs discovery advertises, so a level absent here is
+   * silently clamped upstream rather than honoured.
+   */
+  readonly effortLadder: readonly GatewayReasoningEffort[];
+  readonly effortSupported: boolean;
+  /**
+   * True when the model shares Anthropic's lineage, and therefore its blind
+   * spots, with a Claude Code session's own model. Such a model can move spend
+   * off the parent's subscription, but adds nothing to a panel that depends on
+   * independent judgement. Vendors keep the `claude-` prefix stable, so new
+   * Anthropic entries are recognized without further declaration.
+   */
+  readonly homolineage: boolean;
+  readonly quotaScope?: GatewayQuotaScope;
+}
+
+export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelConstraints {
+  const ladder = model.effort.supported
+    ? model.effort.levels.filter((level) => ANTHROPIC_EFFORT_RUNGS.has(level))
+    : [];
+  return {
+    identity: gatewayModelIdentity(model),
+    provider: model.provider,
+    ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
+    effortLadder: Object.freeze([...ladder]),
+    effortSupported: ladder.length > 0,
+    homolineage: upstreamModelId(model).toLowerCase().startsWith("claude"),
+    ...(model.quotaScope ? { quotaScope: model.quotaScope } : {}),
+  };
 }
 
 export interface CursorModelSelection {
@@ -380,6 +446,7 @@ function toGatewayModel(
     upstreamId: entry.providerModelId ?? entry.modelId,
     ...(entry.serviceTier ? { serviceTier: entry.serviceTier } : {}),
     ...(entry.cursorMaxMode ? { cursorMaxMode: entry.cursorMaxMode } : {}),
+    ...(entry.quotaScope ? { quotaScope: entry.quotaScope } : {}),
     ...(entry.description ? { description: entry.description } : {}),
     ...(entry.contextWindow ? { contextWindow: entry.contextWindow } : {}),
     ...(entry.autoCompactThreshold ? { autoCompactThreshold: entry.autoCompactThreshold } : {}),
@@ -413,6 +480,12 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       }
       if (model.cursorMaxMode && provider !== "cursor") {
         throw new Error(`Gateway Cursor Max Mode is only supported by Cursor: ${provider}/${model.modelId}`);
+      }
+      // Cursor is the only provider observed to split one subscription across
+      // pools. Declaring a scope elsewhere would invite a caller to look for a
+      // per-pool window that provider's usage response never reports.
+      if (model.quotaScope && provider !== "cursor") {
+        throw new Error(`Gateway quota scope is only supported by Cursor: ${provider}/${model.modelId}`);
       }
       // 회계 창이 실제 창을 넘으면 Claude Code가 점유를 과소 보고해, 컴팩트 대신
       // 사전 차단 가드에 부딪힌다. 임계는 창의 부분집합이어야만 의미가 있으므로

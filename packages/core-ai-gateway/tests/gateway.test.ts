@@ -6,9 +6,11 @@ import {
   CURSOR_SUBSCRIPTION_MODELS,
   KIMI_SUBSCRIPTION_MODELS,
   buildAnthropicModelList,
+  buildGatewayModelConstraints,
   clampReasoningEffort,
   claudeAccountingWindow,
   findGatewayModel,
+  gatewayModelIdentity,
   parseGatewayModelsRegistry,
   projectAnthropicResponseUsage,
   resolveCursorUpstreamModelId,
@@ -519,6 +521,63 @@ describe("model catalog", () => {
     };
     invalidOverride.providers.cursor.defaultModel = "cursor-model";
     expect(() => parseGatewayModelsRegistry(invalidOverride)).toThrow(/override is not an advertised level/);
+  });
+
+  it("collapses service-tier siblings onto one identity without merging distinct upstreams", () => {
+    const identityOf = (id: string) => {
+      const model = findGatewayModel(id);
+      if (!model) throw new Error(`missing catalog model: ${id}`);
+      return gatewayModelIdentity(model);
+    };
+    // `-fast` is the priority tier of an identical upstream model, so a fact
+    // measured about one sibling holds for the other.
+    expect(identityOf("codex--gpt-5.6-sol-fast")).toBe(identityOf("codex--gpt-5.6-sol"));
+    expect(identityOf("codex--gpt-5.6-terra-fast")).toBe(identityOf("codex--gpt-5.6-terra"));
+    // Same vendor name, different transport and upstream — these stay separate.
+    expect(identityOf("cursor--kimi-k3")).not.toBe(identityOf("kimi--k3"));
+    expect(identityOf("cursor--grok-4.5-fast")).not.toBe(identityOf("cursor--grok-4.5"));
+  });
+
+  it("derives routing constraints every Cursor model can be scoped by", () => {
+    // A Cursor model with no declared pool would send a caller to the combined
+    // window, which can read as healthy while that model's own pool is spent.
+    for (const model of CURSOR_SUBSCRIPTION_MODELS) {
+      expect(buildGatewayModelConstraints(model).quotaScope).toBeDefined();
+    }
+    for (const model of [...CODEX_SUBSCRIPTION_MODELS, ...KIMI_SUBSCRIPTION_MODELS]) {
+      expect(buildGatewayModelConstraints(model).quotaScope).toBeUndefined();
+    }
+  });
+
+  it("advertises only reachable effort rungs and flags Anthropic-lineage models", () => {
+    const constraintsFor = (id: string) => {
+      const model = findGatewayModel(id);
+      if (!model) throw new Error(`missing catalog model: ${id}`);
+      return buildGatewayModelConstraints(model);
+    };
+    // `ultra` exists in the Codex ladder but discovery never advertises it, so a
+    // caller offered that rung would have it silently clamped upstream.
+    const codex = constraintsFor("codex--gpt-5.6-sol");
+    expect(codex.effortLadder).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(codex.effortSupported).toBe(true);
+    // Kimi's ladder has no `medium`; assuming one would be clamped without notice.
+    expect(constraintsFor("kimi--k3").effortLadder).toEqual(["low", "high", "max"]);
+    expect(constraintsFor("cursor--auto")).toMatchObject({ effortLadder: [], effortSupported: false });
+    // Same lineage as a Claude session's own model: useful for moving spend,
+    // worthless for a panel that needs independent judgement.
+    expect(constraintsFor("cursor--claude-opus-5").homolineage).toBe(true);
+    expect(constraintsFor("cursor--grok-4.5").homolineage).toBe(false);
+    expect(constraintsFor("kimi--k3").homolineage).toBe(false);
+  });
+
+  it("rejects a quota scope on a provider that bills from one pool", () => {
+    const scopedCodex = minimalRegistry();
+    scopedCodex.providers.codex.models[0] = {
+      modelId: "codex-model",
+      name: "Model",
+      quotaScope: "api",
+    };
+    expect(() => parseGatewayModelsRegistry(scopedCodex)).toThrow(/quota scope is only supported by Cursor/);
   });
 
   it("contains only the approved latest provider families", () => {
