@@ -16,7 +16,6 @@ import {
   UnsupportedReasoningEffortError,
   buildAnthropicModelList,
   clampReasoningEffort,
-  claudeAccountingWindow,
   findGatewayModel,
   hasClaudeOneMillionMarker,
   projectAnthropicResponseUsage,
@@ -220,12 +219,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
         return true;
       }
       // Claude Code may strip the discovery-only `[1m]` suffix before sending a
-      // request. Derive its accounting coordinate from the resolved registry
+      // request. Derive the projection denominator from the resolved registry
       // model so every alias for the same Cursor/Codex model projects usage in
-      // the same way. The coordinate is the accounting window, not the real one:
-      // a provider that compacts below its hard limit meters against that budget.
+      // the same way. It is the model's real window: projecting against anything
+      // smaller maps the remaining capacity above 100% of the 1M coordinate,
+      // which Claude Code reads as an exceeded context and will not compact.
       const claudeContextWindow = hasClaudeOneMillionMarker(toClaudeGatewayModelId(target))
-        ? claudeAccountingWindow(target)
+        ? target.contextWindow
         : undefined;
       if (target.provider === "kimi") {
         await proxyToKimi(
@@ -247,9 +247,8 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
       const diagnosticsEnabled = target.provider === "cursor"
         ? await cursorDiagnosticsEnabled()
         : undefined;
-      // The real usable window is independent of the `[1m]` accounting coordinate:
-      // a 200000-window Cursor model carries no marker but still needs the guard,
-      // and a Codex model meters against a lower budget than it can actually hold.
+      // The guard runs regardless of the `[1m]` coordinate: a 200000-window Cursor
+      // model carries no marker but still needs to be refused before it overflows.
       const modelContextWindow = typeof target.contextWindow === "number"
         && Number.isFinite(target.contextWindow)
         && target.contextWindow > 0

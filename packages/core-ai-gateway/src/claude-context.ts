@@ -54,6 +54,14 @@ export function stripClaudeOneMillionMarker(modelId: string): string {
 /**
  * Project a marked provider model's input usage onto Claude Code's 1M coordinate.
  * The projection preserves the provider model's occupied-context ratio.
+ *
+ * The result is capped at the coordinate itself. Claude Code has no representation
+ * for an occupancy above the window it was told the model has: past that point it
+ * reports `Context exceeds the 1m-token limit` and stops auto-compacting, leaving
+ * the session recoverable only by a manual `/compact`. A denominator that
+ * understates the real window — or an upstream that reports more input than the
+ * catalog claims the model holds — would otherwise push the session into that
+ * state, so the cap is a floor under the whole projection, not a rounding detail.
  */
 export function projectClaudeContextInputTokens(
   inputTokens: number,
@@ -70,7 +78,10 @@ export function projectClaudeContextInputTokens(
   const projectionWindow = positiveContextWindow(upstreamContextWindow)
     ?? positiveContextWindow(advertisedContextWindow);
   if (projectionWindow === undefined) return inputTokens;
-  return Math.ceil(inputTokens * CLAUDE_COMPAT_CONTEXT_WINDOW / projectionWindow);
+  return Math.min(
+    CLAUDE_COMPAT_CONTEXT_WINDOW,
+    Math.ceil(inputTokens * CLAUDE_COMPAT_CONTEXT_WINDOW / projectionWindow),
+  );
 }
 
 /**
