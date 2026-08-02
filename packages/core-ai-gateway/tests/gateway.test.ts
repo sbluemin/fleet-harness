@@ -230,6 +230,22 @@ describe("Anthropic request translation", () => {
     );
   });
 
+  it("rejects web search requests that set both allowed_domains and blocked_domains", () => {
+    const request: AnthropicMessagesRequest = {
+      ...baseRequest(),
+      tools: [{
+        type: "web_search_20250305",
+        name: "web_search",
+        allowed_domains: ["github.com"],
+        blocked_domains: ["spam.example"],
+      }],
+    };
+
+    expect(() => translateAnthropicRequest(request, { nativeTools: ["web_search"] })).toThrow(
+      "web_search allowed_domains and blocked_domains are mutually exclusive",
+    );
+  });
+
   it.each(["minimal", "low", "medium", "high", "xhigh", "max", "ultra"])(
     "maps Claude Code adaptive /effort %s to Responses reasoning",
     (effort) => {
@@ -1230,9 +1246,256 @@ describe("Anthropic SSE encoding", () => {
       output_tokens: 6_277,
     });
   });
+
+  it("emits server_tool_use then web_search_tool_result for a completed web search, keeping stop_reason at end_turn", async () => {
+    const events = iterable<CanonicalResponseEvent>([
+      {
+        type: "response.created",
+        response: { id: "resp_search", model: "gpt-5.5", usage: { input_tokens: 5, output_tokens: 0 } }
+      },
+      {
+        type: "response.output_item.done",
+        output_index: 0,
+        item: {
+          id: "ws_1",
+          type: "web_search_call",
+          status: "completed",
+          action: {
+            type: "search",
+            query: "fleet harness",
+            sources: [
+              { type: "url", url: "https://example.com/a", title: "Example A" },
+              { type: "url", url: "https://example.com/b" },
+            ],
+          },
+        },
+      },
+      {
+        type: "response.completed",
+        response: { id: "resp_search", model: "gpt-5.5", usage: { input_tokens: 5, output_tokens: 3 } }
+      },
+    ]);
+
+    const frames = parseSse(await collectBody(encodeAnthropicSse(events)));
+
+    expect(frames.map((frame) => frame.event)).toEqual([
+      "message_start",
+      "content_block_start",
+      "content_block_delta",
+      "content_block_stop",
+      "content_block_start",
+      "content_block_stop",
+      "message_delta",
+      "message_stop",
+    ]);
+    expect(frames[1]?.data).toMatchObject({
+      content_block: { type: "server_tool_use", id: "ws_1", name: "web_search", input: {} },
+    });
+    expect(frames[2]?.data).toMatchObject({
+      delta: { type: "input_json_delta", partial_json: JSON.stringify({ query: "fleet harness" }) },
+    });
+    expect(frames[4]?.data).toMatchObject({
+      content_block: {
+        type: "web_search_tool_result",
+        tool_use_id: "ws_1",
+        content: [
+          { type: "web_search_result", url: "https://example.com/a", title: "Example A" },
+          { type: "web_search_result", url: "https://example.com/b", title: "https://example.com/b" },
+        ],
+      },
+    });
+    expect(frames[6]?.data).toMatchObject({ delta: { stop_reason: "end_turn" } });
+  });
+
+  it("emits a web_search_tool_result_error instead of a disguised empty success when status is failed", async () => {
+    const events = iterable<CanonicalResponseEvent>([
+      {
+        type: "response.created",
+        response: { id: "resp_search_failed", model: "gpt-5.5", usage: { input_tokens: 5, output_tokens: 0 } }
+      },
+      {
+        type: "response.output_item.done",
+        output_index: 0,
+        item: {
+          id: "ws_failed",
+          type: "web_search_call",
+          status: "failed",
+          action: { type: "search", query: "fleet harness" },
+        },
+      },
+      {
+        type: "response.completed",
+        response: { id: "resp_search_failed", model: "gpt-5.5", usage: { input_tokens: 5, output_tokens: 1 } }
+      },
+    ]);
+
+    const frames = parseSse(await collectBody(encodeAnthropicSse(events)));
+
+    // server_tool_use/query block is preserved even on failure to keep the tool_use_id linkage intact.
+    expect(frames[1]?.data).toMatchObject({
+      content_block: { type: "server_tool_use", id: "ws_failed", name: "web_search", input: {} },
+    });
+    expect(frames[2]?.data).toMatchObject({
+      delta: { type: "input_json_delta", partial_json: JSON.stringify({ query: "fleet harness" }) },
+    });
+    expect(frames[4]?.data).toMatchObject({
+      content_block: {
+        type: "web_search_tool_result",
+        tool_use_id: "ws_failed",
+        content: { type: "web_search_tool_result_error", error_code: "unavailable" },
+      },
+    });
+    // A server-side search failure is not a client tool_use round-trip: stop_reason stays end_turn.
+    expect(frames[6]?.data).toMatchObject({ delta: { stop_reason: "end_turn" } });
+  });
+
+  it("keeps a completed web search with no sources as a genuine empty success result, not an error", async () => {
+    const events = iterable<CanonicalResponseEvent>([
+      {
+        type: "response.created",
+        response: { id: "resp_search_empty", model: "gpt-5.5", usage: { input_tokens: 5, output_tokens: 0 } }
+      },
+      {
+        type: "response.output_item.done",
+        output_index: 0,
+        item: {
+          id: "ws_empty",
+          type: "web_search_call",
+          status: "completed",
+          action: { type: "search", query: "no results here" },
+        },
+      },
+      {
+        type: "response.completed",
+        response: { id: "resp_search_empty", model: "gpt-5.5", usage: { input_tokens: 5, output_tokens: 1 } }
+      },
+    ]);
+
+    const frames = parseSse(await collectBody(encodeAnthropicSse(events)));
+
+    expect(frames[4]?.data).toMatchObject({
+      content_block: {
+        type: "web_search_tool_result",
+        tool_use_id: "ws_empty",
+        content: [],
+      },
+    });
+  });
+
+  it("does not open a block on response.output_item.added for a web search item, only on done", async () => {
+    const events = iterable<CanonicalResponseEvent>([
+      { type: "response.created", response: { id: "resp_added", model: "gpt-5.5", usage: null } },
+      {
+        type: "response.output_item.added",
+        output_index: 0,
+        item: { id: "ws_partial", type: "web_search_call", status: "in_progress" },
+      },
+      {
+        type: "response.output_item.done",
+        output_index: 0,
+        item: {
+          id: "ws_partial",
+          type: "web_search_call",
+          status: "completed",
+          action: { type: "search", query: "done now" },
+        },
+      },
+      {
+        type: "response.completed",
+        response: { id: "resp_added", model: "gpt-5.5", usage: { input_tokens: 1, output_tokens: 1 } }
+      },
+    ]);
+
+    const frames = parseSse(await collectBody(encodeAnthropicSse(events)));
+
+    expect(frames.map((frame) => frame.event)).toEqual([
+      "message_start",
+      "content_block_start",
+      "content_block_delta",
+      "content_block_stop",
+      "content_block_start",
+      "content_block_stop",
+      "message_delta",
+      "message_stop",
+    ]);
+  });
+
+  it("handles two separate web search calls independently with distinct block indices", async () => {
+    const events = iterable<CanonicalResponseEvent>([
+      { type: "response.created", response: { id: "resp_multi", model: "gpt-5.5", usage: null } },
+      {
+        type: "response.output_item.done",
+        output_index: 0,
+        item: { id: "ws_a", type: "web_search_call", action: { type: "search", query: "first" } },
+      },
+      {
+        type: "response.output_item.done",
+        output_index: 1,
+        item: { id: "ws_b", type: "web_search_call", action: { type: "search", query: "second" } },
+      },
+      {
+        type: "response.completed",
+        response: { id: "resp_multi", model: "gpt-5.5", usage: { input_tokens: 1, output_tokens: 1 } }
+      },
+    ]);
+
+    const frames = parseSse(await collectBody(encodeAnthropicSse(events)));
+    const starts = frames.filter((frame) => frame.event === "content_block_start");
+    expect(starts).toHaveLength(4);
+    expect(starts.map((frame) => (frame.data.content_block as Record<string, unknown>).type)).toEqual([
+      "server_tool_use",
+      "web_search_tool_result",
+      "server_tool_use",
+      "web_search_tool_result",
+    ]);
+    expect(starts.map((frame) => frame.data.index)).toEqual([0, 1, 2, 3]);
+    const deltas = frames.filter((frame) => frame.event === "content_block_delta");
+    expect(deltas.map((frame) => (frame.data.delta as { partial_json: string }).partial_json)).toEqual([
+      JSON.stringify({ query: "first" }),
+      JSON.stringify({ query: "second" }),
+    ]);
+  });
+
+  it("derives a stable fallback query for open_page and find_in_page actions without fabricating data", async () => {
+    const events = iterable<CanonicalResponseEvent>([
+      { type: "response.created", response: { id: "resp_fallback", model: "gpt-5.5", usage: null } },
+      {
+        type: "response.output_item.done",
+        output_index: 0,
+        item: { id: "ws_open", type: "web_search_call", action: { type: "open_page", url: "https://example.com/doc" } },
+      },
+      {
+        type: "response.output_item.done",
+        output_index: 1,
+        item: {
+          id: "ws_find",
+          type: "web_search_call",
+          action: { type: "find_in_page", pattern: "release notes", url: "https://example.com/doc" },
+        },
+      },
+      {
+        type: "response.completed",
+        response: { id: "resp_fallback", model: "gpt-5.5", usage: { input_tokens: 1, output_tokens: 1 } }
+      },
+    ]);
+
+    const frames = parseSse(await collectBody(encodeAnthropicSse(events)));
+    const deltas = frames.filter((frame) => frame.event === "content_block_delta");
+    expect(JSON.parse((deltas[0]?.data.delta as { partial_json: string }).partial_json)).toEqual({
+      query: "https://example.com/doc",
+    });
+    expect(JSON.parse((deltas[1]?.data.delta as { partial_json: string }).partial_json)).toEqual({
+      query: "release notes https://example.com/doc",
+    });
+  });
 });
 
 describe("OpenAI Responses adapter", () => {
+  it("advertises native web search support", () => {
+    const adapter = new OpenAIResponsesAdapter();
+    expect(adapter.capabilities).toEqual({ nativeTools: ["web_search"] });
+  });
+
   it("keeps canonical tool failure metadata provider-private", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => new Response(
       JSON.stringify({ error: { message: "stop after capture" } }),
@@ -1327,6 +1590,433 @@ describe("OpenAI Responses adapter", () => {
       store: false,
     });
     expect(body).not.toHaveProperty("max_output_tokens");
+  });
+
+  it("merges a canonical web_search native tool into the outbound tools array and drops native_tools", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => new Response(
+      JSON.stringify({ error: { message: "stop after capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+
+    await adapter.stream({
+      model: "gpt-5.5",
+      input: [{ type: "message", role: "user", content: "What's new today?" }],
+      native_tools: [{ type: "web_search" }],
+      stream: true,
+    }, { apiKey: "platform-key" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body.tools).toEqual([{ type: "web_search" }]);
+    expect(body).not.toHaveProperty("native_tools");
+  });
+
+  it("merges native web_search into the outbound tools array on the ChatGPT subscription backend too", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => new Response(
+      JSON.stringify({ error: { message: "stop after capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    const adapter = new OpenAIResponsesAdapter({
+      fetch: fetchMock,
+      url: CHATGPT_CODEX_RESPONSES_URL,
+      dropSamplingParams: true,
+    });
+
+    await adapter.stream({
+      model: "gpt-5.6-sol",
+      input: [],
+      native_tools: [{ type: "web_search" }],
+      stream: true,
+    }, { apiKey: "subscription-token" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body.tools).toEqual([{ type: "web_search" }]);
+    expect(body).not.toHaveProperty("native_tools");
+    expect(body).toMatchObject({ store: false });
+  });
+
+  it("forwards allowed_domains as an OpenAI web search filter", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => new Response(
+      JSON.stringify({ error: { message: "stop after capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+
+    await adapter.stream({
+      model: "gpt-5.5",
+      input: [],
+      native_tools: [{ type: "web_search", allowed_domains: ["github.com", "arxiv.org"] }],
+      stream: true,
+    }, { apiKey: "platform-key" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body.tools).toEqual([{
+      type: "web_search",
+      filters: { allowed_domains: ["github.com", "arxiv.org"] },
+    }]);
+  });
+
+  it("forwards blocked_domains as an OpenAI web search filter (live-probe confirmed: HTTP 200, 17 sources)", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => new Response(
+      JSON.stringify({ error: { message: "stop after capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+
+    await adapter.stream({
+      model: "gpt-5.5",
+      input: [],
+      native_tools: [{ type: "web_search", blocked_domains: ["spam.example"] }],
+      stream: true,
+    }, { apiKey: "platform-key" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body.tools).toEqual([{
+      type: "web_search",
+      filters: { blocked_domains: ["spam.example"] },
+    }]);
+  });
+
+  it("drops max_uses rather than inventing an OpenAI wire field for it", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => new Response(
+      JSON.stringify({ error: { message: "stop after capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+
+    await adapter.stream({
+      model: "gpt-5.5",
+      input: [],
+      native_tools: [{
+        type: "web_search",
+        max_uses: 8,
+        allowed_domains: ["github.com"],
+      }],
+      stream: true,
+    }, { apiKey: "platform-key" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    const wireTools = body.tools as Array<Record<string, unknown>>;
+    expect(wireTools).toEqual([{ type: "web_search", filters: { allowed_domains: ["github.com"] } }]);
+    expect(wireTools[0]).not.toHaveProperty("max_uses");
+  });
+
+  it("maps a required native web search into the OpenAI hosted tool_choice selector", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => new Response(
+      JSON.stringify({ error: { message: "stop after capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+
+    await adapter.stream({
+      model: "gpt-5.5",
+      input: [],
+      native_tools: [{ type: "web_search", required: true }],
+      stream: true,
+    }, { apiKey: "platform-key" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body.tool_choice).toEqual({ type: "web_search" });
+  });
+
+  it("keeps client function tools alongside the merged native web search tool", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => new Response(
+      JSON.stringify({ error: { message: "stop after capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+
+    await adapter.stream({
+      model: "gpt-5.5",
+      input: [],
+      tools: [{
+        type: "function",
+        name: "read_file",
+        parameters: { type: "object", properties: { path: { type: "string" } } },
+      }],
+      native_tools: [{ type: "web_search" }],
+      stream: true,
+    }, { apiKey: "platform-key" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body.tools).toEqual([
+      {
+        type: "function",
+        name: "read_file",
+        parameters: { type: "object", properties: { path: { type: "string" } } },
+      },
+      { type: "web_search" },
+    ]);
+  });
+
+  it("carries Claude Code's web_search_20250305 tool through the gateway to the OpenAI wire body", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => new Response(
+      JSON.stringify({ error: { message: "stop after capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+    const gateway = new AnthropicMessagesGateway(adapter);
+    const request = {
+      ...baseRequest(),
+      tools: [
+        {
+          type: "web_search_20250305",
+          name: "web_search",
+          allowed_domains: ["github.com"],
+          max_uses: 5,
+        },
+        {
+          name: "read_file",
+          input_schema: { type: "object", properties: { path: { type: "string" } } },
+        },
+      ],
+      tool_choice: { type: "tool", name: "web_search" },
+    } as unknown as AnthropicMessagesRequest;
+
+    await gateway.stream(request, { apiKey: "platform-key" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body).not.toHaveProperty("native_tools");
+    expect(body.tools).toEqual([
+      {
+        type: "function",
+        name: "read_file",
+        parameters: { type: "object", properties: { path: { type: "string" } } },
+      },
+      { type: "web_search", filters: { allowed_domains: ["github.com"] } },
+    ]);
+    expect(body.tool_choice).toEqual({ type: "web_search" });
+    const webSearchWireTool = (body.tools as Array<Record<string, unknown>>)[1];
+    expect(webSearchWireTool).not.toHaveProperty("max_uses");
+  });
+
+  it("requests web_search_call.action.sources via include when native web_search is present", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => new Response(
+      JSON.stringify({ error: { message: "stop after capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+
+    await adapter.stream({
+      model: "gpt-5.5",
+      input: [],
+      native_tools: [{ type: "web_search" }],
+      stream: true,
+    }, { apiKey: "platform-key" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body.include).toEqual(["web_search_call.action.sources"]);
+  });
+
+  it("does not add include when there is no native web_search tool", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => new Response(
+      JSON.stringify({ error: { message: "stop after capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+
+    await adapter.stream({
+      model: "gpt-5.5",
+      input: [],
+      stream: true,
+    }, { apiKey: "platform-key" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body).not.toHaveProperty("include");
+  });
+
+  it("preserves and dedupes a pre-existing include list when merging web_search_call.action.sources", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => new Response(
+      JSON.stringify({ error: { message: "stop after capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+
+    await adapter.stream({
+      model: "gpt-5.5",
+      input: [],
+      native_tools: [{ type: "web_search" }],
+      stream: true,
+      include: ["file_search_call.results", "web_search_call.action.sources"],
+    } as unknown as CanonicalResponseRequest, { apiKey: "platform-key" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body.include).toEqual(["file_search_call.results", "web_search_call.action.sources"]);
+  });
+
+  it("parses a completed web_search_call output item with sources into canonical form", async () => {
+    const upstreamSse = [
+      frame("response.created", {
+        type: "response.created",
+        response: { id: "resp_search", model: "gpt-5.5", usage: null }
+      }),
+      frame("response.output_item.done", {
+        type: "response.output_item.done",
+        output_index: 0,
+        item: {
+          type: "web_search_call",
+          id: "ws_1",
+          status: "completed",
+          action: {
+            type: "search",
+            query: "fleet harness release notes",
+            sources: [
+              { type: "url", url: "https://example.com/a", title: "Example A" },
+              { type: "url", url: "https://example.com/b" },
+              { not_a_url: true }
+            ]
+          }
+        }
+      }),
+      frame("response.completed", {
+        type: "response.completed",
+        response: { id: "resp_search", model: "gpt-5.5", usage: { input_tokens: 10, output_tokens: 2 } }
+      })
+    ].join("");
+    const fetchMock = vi.fn<FetchLike>(async () => sseResponse(upstreamSse));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+    const result = await adapter.stream(
+      { model: "gpt-5.5", input: [], stream: true },
+      { apiKey: "key" }
+    );
+    if (!result.ok) {
+      throw new Error("expected a successful stream");
+    }
+    const events: CanonicalResponseEvent[] = [];
+    for await (const event of result.events) events.push(event);
+    const done = events.find((event) => event.type === "response.output_item.done");
+
+    expect(done).toMatchObject({
+      item: {
+        id: "ws_1",
+        type: "web_search_call",
+        status: "completed",
+        action: {
+          type: "search",
+          query: "fleet harness release notes",
+          sources: [
+            { type: "url", url: "https://example.com/a", title: "Example A" },
+            { type: "url", url: "https://example.com/b" }
+          ]
+        }
+      }
+    });
+  });
+
+  it("drops invalid source entries instead of fabricating them", async () => {
+    const upstreamSse = [
+      frame("response.created", {
+        type: "response.created",
+        response: { id: "resp_search_invalid", model: "gpt-5.5", usage: null }
+      }),
+      frame("response.output_item.done", {
+        type: "response.output_item.done",
+        output_index: 0,
+        item: {
+          type: "web_search_call",
+          id: "ws_2",
+          action: {
+            type: "search",
+            query: "q",
+            sources: [{ type: "url" }, { url: 123 }, "not-an-object"]
+          }
+        }
+      }),
+      frame("response.completed", {
+        type: "response.completed",
+        response: { id: "resp_search_invalid", model: "gpt-5.5", usage: { input_tokens: 1, output_tokens: 1 } }
+      })
+    ].join("");
+    const fetchMock = vi.fn<FetchLike>(async () => sseResponse(upstreamSse));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+    const result = await adapter.stream(
+      { model: "gpt-5.5", input: [], stream: true },
+      { apiKey: "key" }
+    );
+    if (!result.ok) {
+      throw new Error("expected a successful stream");
+    }
+    const events: CanonicalResponseEvent[] = [];
+    for await (const event of result.events) events.push(event);
+    const done = events.find((event) => event.type === "response.output_item.done");
+
+    expect(done).toMatchObject({ item: { id: "ws_2", action: { type: "search", query: "q" } } });
+    if (done?.type === "response.output_item.done" && done.item.type === "web_search_call") {
+      expect(done.item.action?.sources).toBeUndefined();
+    } else {
+      throw new Error("expected a web_search_call output item");
+    }
+  });
+
+  it("delivers a complete web search result to Claude Code end-to-end through the gateway", async () => {
+    const upstreamSse = [
+      frame("response.created", {
+        type: "response.created",
+        response: { id: "resp_e2e_search", model: "gpt-5.5", usage: { input_tokens: 20, output_tokens: 0 } }
+      }),
+      frame("response.output_item.done", {
+        type: "response.output_item.done",
+        output_index: 0,
+        item: {
+          type: "web_search_call",
+          id: "ws_e2e",
+          status: "completed",
+          action: {
+            type: "search",
+            query: "latest fleet-harness release",
+            sources: [{ type: "url", url: "https://example.com/release", title: "Release notes" }]
+          }
+        }
+      }),
+      frame("response.completed", {
+        type: "response.completed",
+        response: { id: "resp_e2e_search", model: "gpt-5.5", usage: { input_tokens: 20, output_tokens: 6 } }
+      })
+    ].join("");
+    const fetchMock = vi.fn<FetchLike>(async () => sseResponse(upstreamSse));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+    const gateway = new AnthropicMessagesGateway(adapter);
+    const request = {
+      ...baseRequest(),
+      tools: [{ type: "web_search_20250305", name: "web_search" }],
+    } as unknown as AnthropicMessagesRequest;
+
+    const response = await gateway.stream(request, { apiKey: "platform-key" });
+    const frames = parseSse(await collectBody(response.body));
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const outboundBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(outboundBody.tools).toEqual([{ type: "web_search" }]);
+    expect(outboundBody.include).toEqual(["web_search_call.action.sources"]);
+
+    const searchStart = frames.find((item) => item.event === "content_block_start"
+      && (item.data.content_block as Record<string, unknown>).type === "server_tool_use");
+    const resultStart = frames.find((item) => item.event === "content_block_start"
+      && (item.data.content_block as Record<string, unknown>).type === "web_search_tool_result");
+    const messageDelta = frames.find((item) => item.event === "message_delta");
+
+    expect(searchStart?.data).toMatchObject({
+      content_block: { type: "server_tool_use", id: "ws_e2e", name: "web_search", input: {} },
+    });
+    expect(resultStart?.data).toMatchObject({
+      content_block: {
+        type: "web_search_tool_result",
+        tool_use_id: "ws_e2e",
+        content: [{ type: "web_search_result", url: "https://example.com/release", title: "Release notes" }],
+      },
+    });
+    expect(messageDelta?.data).toMatchObject({ delta: { stop_reason: "end_turn" } });
   });
 
   it("streams function-call arguments into Anthropic tool_use deltas with the call id intact", async () => {
@@ -1810,6 +2500,90 @@ describe("non-streaming requests", () => {
 
     expect(JSON.parse(await collectBody(response.body))).toMatchObject({
       usage: { input_tokens: 250_000, output_tokens: 1 },
+    });
+  });
+
+  it("includes a completed web search's blocks in the non-streaming response, without setting stop_reason to tool_use", async () => {
+    const adapter: AiGatewayAdapter = {
+      async stream() {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          events: iterable<CanonicalResponseEvent>([
+            { type: "response.created", response: { id: "resp_json_search", model: "gpt-5.5", usage: { input_tokens: 9, output_tokens: 0 } } },
+            {
+              type: "response.output_item.done",
+              output_index: 0,
+              item: {
+                id: "ws_json",
+                type: "web_search_call",
+                status: "completed",
+                action: {
+                  type: "search",
+                  query: "fleet harness changelog",
+                  sources: [{ type: "url", url: "https://example.com/changelog" }],
+                },
+              },
+            },
+            { type: "response.completed", response: { id: "resp_json_search", model: "gpt-5.5", usage: { input_tokens: 9, output_tokens: 5 } } },
+          ]),
+        };
+      },
+    };
+    const { stream: _drop, ...rest } = baseRequest();
+    const response = await new AnthropicMessagesGateway(adapter).stream(rest as AnthropicMessagesRequest, { apiKey: "k" });
+
+    expect(JSON.parse(await collectBody(response.body))).toMatchObject({
+      stop_reason: "end_turn",
+      content: [
+        { type: "server_tool_use", id: "ws_json", name: "web_search", input: { query: "fleet harness changelog" } },
+        {
+          type: "web_search_tool_result",
+          tool_use_id: "ws_json",
+          content: [{ type: "web_search_result", url: "https://example.com/changelog", title: "https://example.com/changelog" }],
+        },
+      ],
+    });
+  });
+
+  it("reports a failed web search as web_search_tool_result_error in the non-streaming response, without setting stop_reason to tool_use", async () => {
+    const adapter: AiGatewayAdapter = {
+      async stream() {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          events: iterable<CanonicalResponseEvent>([
+            { type: "response.created", response: { id: "resp_json_search_failed", model: "gpt-5.5", usage: { input_tokens: 9, output_tokens: 0 } } },
+            {
+              type: "response.output_item.done",
+              output_index: 0,
+              item: {
+                id: "ws_json_failed",
+                type: "web_search_call",
+                status: "failed",
+                action: { type: "search", query: "fleet harness changelog" },
+              },
+            },
+            { type: "response.completed", response: { id: "resp_json_search_failed", model: "gpt-5.5", usage: { input_tokens: 9, output_tokens: 5 } } },
+          ]),
+        };
+      },
+    };
+    const { stream: _drop, ...rest } = baseRequest();
+    const response = await new AnthropicMessagesGateway(adapter).stream(rest as AnthropicMessagesRequest, { apiKey: "k" });
+
+    expect(JSON.parse(await collectBody(response.body))).toMatchObject({
+      stop_reason: "end_turn",
+      content: [
+        { type: "server_tool_use", id: "ws_json_failed", name: "web_search", input: { query: "fleet harness changelog" } },
+        {
+          type: "web_search_tool_result",
+          tool_use_id: "ws_json_failed",
+          content: { type: "web_search_tool_result_error", error_code: "unavailable" },
+        },
+      ],
     });
   });
 });

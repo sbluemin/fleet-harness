@@ -7,7 +7,11 @@ import type {
   CanonicalResponseEvent,
   CanonicalResponseRequest,
   CanonicalResponseSnapshot,
-  CanonicalUsage
+  CanonicalToolChoice,
+  CanonicalUsage,
+  CanonicalWebSearchAction,
+  CanonicalWebSearchCallOutputItem,
+  CanonicalWebSearchSource
 } from "./canonical.js";
 
 export const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
@@ -32,6 +36,45 @@ export type FetchLike = (
   input: string | URL | Request,
   init?: RequestInit
 ) => Promise<Response>;
+
+/**
+ * OpenAI Responses wire shapes. The canonical model keeps `native_tools` as a
+ * provider-neutral list and `tool_choice` as a small closed union that has no member
+ * for a hosted tool selector, so this adapter's outbound payload is its own honest
+ * type rather than a reuse of `CanonicalResponseRequest`. `native_tools` never reaches
+ * the wire: it is merged into `tools`/`tool_choice` below and dropped.
+ */
+interface OpenAIResponsesWireFunctionTool {
+  type: "function";
+  name: string;
+  description?: string;
+  parameters: Record<string, unknown>;
+  strict?: boolean;
+}
+
+/**
+ * Live-probe confirmed (HTTP 200, one `web_search_call` with 17 sources): the OpenAI Responses
+ * hosted web search filter accepts either `allowed_domains` or `blocked_domains`, mirroring
+ * Anthropic's own mutually-exclusive pair. `max_uses` still has no confirmed wire field and is dropped.
+ */
+interface OpenAIResponsesWireWebSearchTool {
+  type: "web_search";
+  filters?: { allowed_domains: string[] } | { blocked_domains: string[] };
+}
+
+type OpenAIResponsesWireTool = OpenAIResponsesWireFunctionTool | OpenAIResponsesWireWebSearchTool;
+
+type OpenAIResponsesWireToolChoice = CanonicalToolChoice | { type: "web_search" };
+
+type OpenAIResponsesWireRequest = Omit<
+  CanonicalResponseRequest,
+  "tools" | "tool_choice" | "native_tools"
+> & {
+  tools?: OpenAIResponsesWireTool[];
+  tool_choice?: OpenAIResponsesWireToolChoice;
+  /** Requests extra output fields, e.g. `web_search_call.action.sources` for hosted web search results. */
+  include?: string[];
+};
 
 export interface OpenAIResponsesAdapterOptions {
   fetch?: FetchLike;
@@ -67,6 +110,7 @@ export class UpstreamProtocolError extends Error {
 }
 
 export class OpenAIResponsesAdapter implements AiGatewayAdapter {
+  readonly capabilities = { nativeTools: ["web_search"] } as const;
   private readonly fetchImpl: FetchLike;
   private readonly maxBodyBytes: number;
   private readonly idleTimeoutMs: number;
@@ -158,8 +202,16 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
 function forOpenAIResponsesBackend(
   request: CanonicalResponseRequest,
   dropSamplingParams: boolean,
-): CanonicalResponseRequest {
-  const payload = dropSamplingParams ? forChatGptBackend(request) : { ...request };
+): OpenAIResponsesWireRequest {
+  const source = dropSamplingParams ? forChatGptBackend(request) : { ...request };
+  const {
+    tools: canonicalTools,
+    tool_choice: canonicalToolChoice,
+    native_tools: nativeTools,
+    ...rest
+  } = source;
+  const payload: OpenAIResponsesWireRequest = { ...rest };
+
   payload.input = request.input.map((item) => {
     if (item.type !== "function_call_output") return item;
     const {
@@ -169,12 +221,53 @@ function forOpenAIResponsesBackend(
     } = item;
     return wireItem;
   });
-  if (request.tools !== undefined) {
-    payload.tools = request.tools.map((tool) => {
-      const { defer_loading: _deferLoading, ...wireTool } = tool;
-      return wireTool;
-    });
+
+  const wireTools: OpenAIResponsesWireTool[] = (canonicalTools ?? []).map((tool) => {
+    const { defer_loading: _deferLoading, ...wireTool } = tool;
+    return wireTool;
+  });
+
+  // native_tools is canonical-only: it must never reach the OpenAI wire body as-is.
+  // Provider-owned web search is merged into `tools` as a hosted tool selector instead.
+  let requiresHostedWebSearch = false;
+  let hasHostedWebSearch = false;
+  for (const nativeTool of nativeTools ?? []) {
+    const webSearchTool: OpenAIResponsesWireWebSearchTool = { type: "web_search" };
+    if (nativeTool.allowed_domains !== undefined && nativeTool.allowed_domains.length > 0) {
+      webSearchTool.filters = { allowed_domains: [...nativeTool.allowed_domains] };
+    } else if (nativeTool.blocked_domains !== undefined && nativeTool.blocked_domains.length > 0) {
+      webSearchTool.filters = { blocked_domains: [...nativeTool.blocked_domains] };
+    }
+    // max_uses has no confirmed OpenAI Responses wire field. Dropping it here
+    // (rather than inventing a shape) is deliberate; allowed/blocked_domains are anthropic's
+    // own mutually-exclusive pair, so translateAnthropicTools rejects requests that set both.
+    wireTools.push(webSearchTool);
+    hasHostedWebSearch = true;
+    if (nativeTool.required === true) {
+      requiresHostedWebSearch = true;
+    }
   }
+
+  if (wireTools.length > 0) {
+    payload.tools = wireTools;
+  }
+
+  if (requiresHostedWebSearch) {
+    payload.tool_choice = { type: "web_search" };
+  } else if (canonicalToolChoice !== undefined) {
+    payload.tool_choice = canonicalToolChoice;
+  }
+
+  // Hosted web search only reports its sources when explicitly requested via `include`.
+  // Without this, `response.output_item.done` for `web_search_call` arrives with no `action.sources`.
+  if (hasHostedWebSearch) {
+    const rawInclude = (source as { include?: unknown }).include;
+    const existingInclude = Array.isArray(rawInclude)
+      ? rawInclude.filter((entry): entry is string => typeof entry === "string")
+      : [];
+    payload.include = Array.from(new Set([...existingInclude, "web_search_call.action.sources"]));
+  }
+
   return payload;
 }
 
@@ -524,7 +617,71 @@ function outputItem(value: unknown): CanonicalOutputItem | undefined {
       arguments: typeof item.arguments === "string" ? item.arguments : ""
     };
   }
+  if (item.type === "web_search_call") {
+    const result: CanonicalWebSearchCallOutputItem = {
+      id: string(item.id, "item.id"),
+      type: "web_search_call"
+    };
+    if (typeof item.status === "string") {
+      result.status = item.status;
+    }
+    const action = webSearchAction(item.action);
+    if (action !== undefined) {
+      result.action = action;
+    }
+    return result;
+  }
   return undefined;
+}
+
+/** Parses the OpenAI live `web_search_call.action` shape leniently: unknown/missing fields are just omitted. */
+function webSearchAction(value: unknown): CanonicalWebSearchAction | undefined {
+  if (!isRecord(value) || typeof value.type !== "string") {
+    return undefined;
+  }
+  const action: CanonicalWebSearchAction = { type: value.type };
+  if (typeof value.query === "string") {
+    action.query = value.query;
+  }
+  if (Array.isArray(value.queries)) {
+    const queries = value.queries.filter((entry): entry is string => typeof entry === "string");
+    if (queries.length > 0) {
+      action.queries = queries;
+    }
+  }
+  if (typeof value.url === "string") {
+    action.url = value.url;
+  }
+  if (typeof value.pattern === "string") {
+    action.pattern = value.pattern;
+  }
+  const sources = webSearchSources(value.sources);
+  if (sources !== undefined) {
+    action.sources = sources;
+  }
+  return action;
+}
+
+/** Invalid or incomplete source entries are dropped, never fabricated with placeholder values. */
+function webSearchSources(value: unknown): CanonicalWebSearchSource[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const sources: CanonicalWebSearchSource[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry) || typeof entry.url !== "string" || entry.url.length === 0) {
+      continue;
+    }
+    const source: CanonicalWebSearchSource = {
+      type: typeof entry.type === "string" ? entry.type : "url",
+      url: entry.url
+    };
+    if (typeof entry.title === "string" && entry.title.length > 0) {
+      source.title = entry.title;
+    }
+    sources.push(source);
+  }
+  return sources.length > 0 ? sources : undefined;
 }
 
 function canonicalError(value: unknown): CanonicalError {

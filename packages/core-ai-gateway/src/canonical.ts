@@ -220,9 +220,36 @@ export interface CanonicalFunctionCallOutputItem {
   arguments: string;
 }
 
+/** A source cited by a completed provider web search. Never fabricated: only what the provider reported. */
+export interface CanonicalWebSearchSource {
+  type: string;
+  url: string;
+  /** The provider's real page title, when it reported one. */
+  title?: string;
+}
+
+/** Provider-owned web search action. Shape varies by action type (search/open_page/find_in_page/...). */
+export interface CanonicalWebSearchAction {
+  type: string;
+  query?: string;
+  queries?: string[];
+  url?: string;
+  pattern?: string;
+  sources?: CanonicalWebSearchSource[];
+}
+
+/** A completed provider-executed web search, translated from the wire's `web_search_call` output item. */
+export interface CanonicalWebSearchCallOutputItem {
+  id: string;
+  type: "web_search_call";
+  status?: string;
+  action?: CanonicalWebSearchAction;
+}
+
 export type CanonicalOutputItem =
   | CanonicalMessageOutputItem
-  | CanonicalFunctionCallOutputItem;
+  | CanonicalFunctionCallOutputItem
+  | CanonicalWebSearchCallOutputItem;
 
 export type CanonicalResponseEvent =
   | {

@@ -9,6 +9,7 @@ import type {
   CanonicalResponseRequest,
   CanonicalToolChoice,
   CanonicalUsage,
+  CanonicalWebSearchAction,
   ReasoningEffort,
 } from "./canonical.js";
 import {
@@ -240,6 +241,11 @@ function translateAnthropicTools(
     if (tool.type === "web_search_20250305" && tool.name === "web_search") {
       if (!supported.has("web_search")) {
         throw new TypeError("Selected adapter does not support Anthropic server tool web_search_20250305");
+      }
+      // Anthropic's own contract treats allowed_domains and blocked_domains as mutually
+      // exclusive; the OpenAI wire filter mirrors that (one filter, allow XOR block).
+      if (tool.allowed_domains !== undefined && tool.blocked_domains !== undefined) {
+        throw new TypeError("web_search allowed_domains and blocked_domains are mutually exclusive");
       }
       native.push({
         type: "web_search",
@@ -676,6 +682,25 @@ export async function collectAnthropicMessage(
         if (entry) entry.text = event.arguments;
         break;
       }
+      case "response.output_item.done":
+        // Provider-executed web search arrives whole at `done` — there is no argument-delta
+        // stream to accumulate the way client function calls have. It does not set tool_use
+        // as the stop reason: this is a server-side tool, not a client round-trip.
+        if (event.item.type === "web_search_call") {
+          const query = derivedWebSearchQuery(event.item.action);
+          content.push({
+            type: "server_tool_use",
+            id: event.item.id,
+            name: "web_search",
+            input: { query }
+          });
+          content.push({
+            type: "web_search_tool_result",
+            tool_use_id: event.item.id,
+            content: webSearchResultContent(event.item.status, event.item.action?.sources)
+          });
+        }
+        break;
       case "response.completed":
         inputTokens = event.response.usage?.input_tokens ?? inputTokens;
         outputTokens = event.response.usage?.output_tokens ?? 0;
@@ -895,6 +920,40 @@ export async function* encodeAnthropicSse(
           if (stop !== undefined) {
             yield stop;
           }
+        } else if (event.item.type === "web_search_call") {
+          // Provider-executed search arrives whole at `done` (never at `added`, which would
+          // race a partial action). It never marks sawToolUse: server tools keep stop_reason
+          // at end_turn, unlike a client tool_use round-trip.
+          const query = derivedWebSearchQuery(event.item.action);
+          const searchIndex = nextBlockIndex++;
+          yield encode("content_block_start", {
+            type: "content_block_start",
+            index: searchIndex,
+            content_block: {
+              type: "server_tool_use",
+              id: event.item.id,
+              name: "web_search",
+              input: {}
+            }
+          });
+          yield encode("content_block_delta", {
+            type: "content_block_delta",
+            index: searchIndex,
+            delta: { type: "input_json_delta", partial_json: JSON.stringify({ query }) }
+          });
+          yield encode("content_block_stop", { type: "content_block_stop", index: searchIndex });
+
+          const resultIndex = nextBlockIndex++;
+          yield encode("content_block_start", {
+            type: "content_block_start",
+            index: resultIndex,
+            content_block: {
+              type: "web_search_tool_result",
+              tool_use_id: event.item.id,
+              content: webSearchResultContent(event.item.status, event.item.action?.sources)
+            }
+          });
+          yield encode("content_block_stop", { type: "content_block_stop", index: resultIndex });
         }
         break;
       case "response.completed":
@@ -948,6 +1007,68 @@ function requiredToolBlock(blocks: Map<string, OpenBlock>, itemId: string): Open
 
 function remainingArguments(accumulated: string, complete: string): string {
   return complete.startsWith(accumulated) ? complete.slice(accumulated.length) : "";
+}
+
+/**
+ * Prefers the action's own query; falls back through the OpenAI live shape's other
+ * action variants without ever inventing a value. Information-lossless and stable
+ * so the same action always derives the same query.
+ */
+function derivedWebSearchQuery(action: CanonicalWebSearchAction | undefined): string {
+  if (action === undefined) {
+    return "";
+  }
+  if (typeof action.query === "string" && action.query.length > 0) {
+    return action.query;
+  }
+  if (Array.isArray(action.queries) && typeof action.queries[0] === "string" && action.queries[0].length > 0) {
+    return action.queries[0];
+  }
+  if (action.type === "open_page" && typeof action.url === "string") {
+    return action.url;
+  }
+  if (action.type === "find_in_page") {
+    if (typeof action.pattern === "string" && typeof action.url === "string") {
+      return `${action.pattern} ${action.url}`;
+    }
+    if (typeof action.pattern === "string") {
+      return action.pattern;
+    }
+  }
+  if (typeof action.url === "string") {
+    return action.url;
+  }
+  if (typeof action.pattern === "string") {
+    return action.pattern;
+  }
+  return "";
+}
+
+type WebSearchResultBlockContent =
+  | Array<{ type: "web_search_result"; url: string; title: string }>
+  | { type: "web_search_tool_result_error"; error_code: "unavailable" };
+
+/**
+ * OpenAI's confirmed schema allows `web_search_call.status` to land as anything but
+ * `completed` (`in_progress`/`searching`/`failed`) on `response.output_item.done`, and there
+ * is no item-level error code to translate. An explicit non-completed status is reported as
+ * Anthropic's `web_search_tool_result_error` (`unavailable`) rather than disguised as a
+ * successful empty result. `status === undefined` keeps the pre-existing success path for
+ * backward compatibility; `completed` with no sources is a genuine empty success result.
+ * `title` is the source's real reported title; a missing title falls back to the URL, never a fabricated string.
+ */
+function webSearchResultContent(
+  status: string | undefined,
+  sources: CanonicalWebSearchAction["sources"],
+): WebSearchResultBlockContent {
+  if (status !== undefined && status !== "completed") {
+    return { type: "web_search_tool_result_error", error_code: "unavailable" };
+  }
+  return (sources ?? []).map((source) => ({
+    type: "web_search_result" as const,
+    url: source.url,
+    title: source.title !== undefined && source.title.length > 0 ? source.title : source.url,
+  }));
 }
 
 function functionCallStart(item: CanonicalFunctionCallOutputItem, index: number): {
