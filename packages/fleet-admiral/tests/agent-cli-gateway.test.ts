@@ -49,6 +49,18 @@ describe("claude-gateway profile", () => {
 });
 
 describe("claude-gateway custom agents", () => {
+  it("uses the Fleet mode-switch GP prompt, not Claude Code thorough-search GP", () => {
+    expect(GENERAL_PURPOSE_AGENT_PROMPT).toContain("Fleet execution agent");
+    expect(GENERAL_PURPOSE_AGENT_PROMPT).toContain("Pick ONE mode");
+    expect(GENERAL_PURPOSE_AGENT_PROMPT).toContain("binding contracts");
+    expect(GENERAL_PURPOSE_AGENT_PROMPT).toMatch(/depth=medium unless the host asks for thorough/);
+    expect(GENERAL_PURPOSE_AGENT_PROMPT).not.toMatch(/search broadly/i);
+    expect(GENERAL_PURPOSE_AGENT_PROMPT).not.toMatch(/Be thorough/i);
+    expect(GENERAL_PURPOSE_AGENT_PROMPT).not.toMatch(/multiple search strategies/i);
+    expect(GENERAL_PURPOSE_AGENT_PROMPT).not.toContain("<report>");
+    expect(GENERAL_PURPOSE_AGENT_PROMPT).not.toContain("carrier_jobs");
+  });
+
   it("expands exposed models into claude-gateway-- agents with GP prompt", () => {
     const model = requireGatewayModel("cursor--claude-opus-5");
     const agents = buildGatewayCustomAgents([model]);
