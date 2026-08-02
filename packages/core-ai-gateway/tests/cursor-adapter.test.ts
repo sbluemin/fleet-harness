@@ -228,6 +228,56 @@ describe("Cursor request budgets", () => {
     ]);
   });
 
+  it("reports only the tools Cursor actually puts on the wire", () => {
+    const canonical = request({
+      tools: [
+        tool("ToolSearch"),
+        tool("Read"),
+        { ...tool("mcp__fleet__carrier_dispatch"), defer_loading: true },
+        { ...tool("mcp__fleet__carrier_jobs"), defer_loading: true },
+      ],
+    });
+    const plan = buildCursorRunPlan(canonical, "conversation-wire-tools");
+
+    // The pre-flight sizing view must agree with the payload, not the declaration.
+    expect(new CursorAdapter().wireTools(canonical).map((entry) => entry.name)).toEqual([
+      "ToolSearch",
+      "Read",
+    ]);
+    expect(runRequest(plan).mcpTools?.mcpTools).toHaveLength(2);
+  });
+
+  it("reports the capped survivors when the declared catalog overruns the byte budget", () => {
+    const canonical = request({
+      tools: [
+        tool("ToolSearch"),
+        ...Array.from(
+          { length: 40 },
+          (_, index) => tool(`mcp__bulk__tool_${index}`, "d".repeat(8_000)),
+        ),
+      ],
+    });
+
+    const reported = new CursorAdapter().wireTools(canonical);
+    const wire = runRequest(buildCursorRunPlan(canonical, "conversation-wire-cap"))
+      .mcpTools?.mcpTools ?? [];
+
+    expect(reported.length).toBeLessThan(41);
+    expect(reported).toHaveLength(wire.length);
+  });
+
+  it("defers a tool-budget rejection to the streaming path instead of pre-flight sizing", () => {
+    const canonical = request({
+      // The selected tool alone overruns the byte budget, so no catalog can carry it.
+      tools: [tool("mcp__bulk__oversized", "d".repeat(CURSOR_TOOL_BYTES_LIMIT + 1))],
+      tool_choice: { type: "function", name: "mcp__bulk__oversized" },
+    });
+
+    expect(() => buildCursorRunPlan(canonical, "conversation-wire-throw"))
+      .toThrow(CursorRequestBudgetError);
+    expect(new CursorAdapter().wireTools(canonical)).toEqual([]);
+  });
+
   it("caps every tool catalog while retaining execution-critical tools", () => {
     const filler = Array.from({ length: CURSOR_TOOL_COUNT_LIMIT + 20 }, (_, index) => tool(`mcp__filler__tool_${index}`));
     const tools = [

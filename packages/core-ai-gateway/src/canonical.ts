@@ -314,6 +314,13 @@ export interface AiGatewayAdapterCapabilities {
 
 export interface AiGatewayAdapter {
   readonly capabilities?: AiGatewayAdapterCapabilities;
+  /**
+   * The declared tools this adapter actually serializes upstream for the request.
+   * Adapters that drop or cap the declared catalog must implement it so pre-flight
+   * sizing measures the real upstream payload instead of the canonical declaration.
+   * Omitting it means every declared tool reaches the wire unchanged.
+   */
+  wireTools?(request: CanonicalResponseRequest): readonly CanonicalFunctionTool[];
   stream(
     request: CanonicalResponseRequest,
     options: AdapterCallOptions

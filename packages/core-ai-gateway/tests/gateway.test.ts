@@ -17,6 +17,8 @@ import {
   toGatewayModelAlias,
   DEFAULT_CODEX_MODEL,
   CHATGPT_CODEX_RESPONSES_URL,
+  ContextWindowExceededError,
+  CursorAdapter,
   OPENAI_RESPONSES_URL,
   OpenAIResponsesAdapter,
   UpstreamBodyLimitError,
@@ -1460,6 +1462,212 @@ describe("upstream errors", () => {
 
     expect(response.status).toBe(529);
     expect(await collectBody(response.body)).toBe(raw);
+  });
+});
+
+describe("pre-flight context window guard", () => {
+  /** Claude Code 2.1.220's own extraction regex for reactive compaction. */
+  const CLAUDE_OVERFLOW_RE = /prompt is too long[^0-9]*(\d+)\s*tokens?\s*>\s*(\d+)/i;
+  /** 4 chars/token for a non-code model id, so this estimates 300_000 tokens. */
+  const OVERFLOW_CHARS = 1_200_000;
+
+  function guardedGateway(): {
+    gateway: AnthropicMessagesGateway;
+    calls: () => number;
+  } {
+    let calls = 0;
+    const adapter: AiGatewayAdapter = {
+      async stream() {
+        calls += 1;
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          events: iterable<CanonicalResponseEvent>([
+            { type: "response.created", response: { id: "resp_guard", model: "gpt-5.6-sol", usage: null } },
+            { type: "response.completed", response: { id: "resp_guard", model: "gpt-5.6-sol", usage: { input_tokens: 1, output_tokens: 1 } } },
+          ]),
+        };
+      },
+    };
+    return { gateway: new AnthropicMessagesGateway(adapter), calls: () => calls };
+  }
+
+  function requestOfChars(chars: number): AnthropicMessagesRequest {
+    return {
+      model: "claude-sonnet-4-6",
+      messages: [{ role: "user", content: "x".repeat(chars) }],
+      max_tokens: 128,
+      stream: true,
+    };
+  }
+
+  it("refuses a turn whose estimate exceeds the model's real window", async () => {
+    const { gateway, calls } = guardedGateway();
+
+    await expect(gateway.stream(requestOfChars(OVERFLOW_CHARS), {
+      apiKey: "k",
+      modelContextWindow: 272_000,
+    })).rejects.toBeInstanceOf(ContextWindowExceededError);
+    // Upstream must never see the overflowing turn.
+    expect(calls()).toBe(0);
+  });
+
+  it("emits the exact literal Claude Code classifies for reactive compaction", async () => {
+    const { gateway } = guardedGateway();
+
+    const error = await gateway.stream(requestOfChars(OVERFLOW_CHARS), {
+      apiKey: "k",
+      modelContextWindow: 272_000,
+    }).then(() => undefined, (thrown: unknown) => thrown);
+
+    expect(error).toBeInstanceOf(ContextWindowExceededError);
+    const overflow = error as ContextWindowExceededError;
+    expect(overflow.name).toBe("ContextWindowExceededError");
+    expect(overflow.message).toMatch(/^Prompt is too long: \d+ tokens > \d+ maximum$/);
+    // Claude Code's three classifiers: prefix, lowercased substring, numeric extraction.
+    expect(overflow.message.startsWith("Prompt is too long")).toBe(true);
+    expect(overflow.message.toLowerCase()).toContain("prompt is too long");
+    const match = CLAUDE_OVERFLOW_RE.exec(overflow.message);
+    expect(match).not.toBeNull();
+    expect(Number(match?.[1])).toBe(overflow.requestTokens);
+    expect(Number(match?.[2])).toBe(overflow.contextWindow);
+    expect(overflow.contextWindow).toBe(272_000);
+    expect(overflow.requestTokens).toBeGreaterThan(272_000);
+  });
+
+  it("passes a turn that fits inside the model's real window", async () => {
+    const { gateway, calls } = guardedGateway();
+
+    const response = await gateway.stream(requestOfChars(4_000), {
+      apiKey: "k",
+      modelContextWindow: 272_000,
+    });
+
+    expect(response.status).toBe(200);
+    expect(calls()).toBe(1);
+  });
+
+  it("is skipped entirely when no model window is supplied", async () => {
+    const { gateway, calls } = guardedGateway();
+
+    const response = await gateway.stream(requestOfChars(OVERFLOW_CHARS), { apiKey: "k" });
+
+    expect(response.status).toBe(200);
+    expect(calls()).toBe(1);
+  });
+
+  it("is skipped for a non-positive model window", async () => {
+    const { gateway, calls } = guardedGateway();
+
+    await gateway.stream(requestOfChars(OVERFLOW_CHARS), { apiKey: "k", modelContextWindow: 0 });
+
+    expect(calls()).toBe(1);
+  });
+
+  it("counts system instructions and tool definitions, not only messages", async () => {
+    const { gateway, calls } = guardedGateway();
+    const request: AnthropicMessagesRequest = {
+      model: "claude-sonnet-4-6",
+      system: [{ type: "text", text: "s".repeat(80_000) }],
+      messages: [{ role: "user", content: "x".repeat(20_000) }],
+      tools: [{
+        name: "read_file",
+        description: "d".repeat(80_000),
+        input_schema: { type: "object", properties: {} },
+      }],
+      max_tokens: 128,
+      stream: true,
+    };
+
+    // Messages alone estimate ~5_000 tokens, well under the window.
+    await expect(gateway.stream(request, { apiKey: "k", modelContextWindow: 10_000 }))
+      .rejects.toBeInstanceOf(ContextWindowExceededError);
+    expect(calls()).toBe(0);
+
+    await expect(gateway.stream(requestOfChars(20_000), { apiKey: "k", modelContextWindow: 10_000 }))
+      .resolves.toMatchObject({ status: 200 });
+  });
+
+  it("charges only the tools the adapter reports as reaching the wire", async () => {
+    const seen: string[][] = [];
+    const narrowed: AiGatewayAdapter = {
+      wireTools(canonical) {
+        const tools = canonical.tools ?? [];
+        seen.push(tools.map((entry) => entry.name));
+        return tools.filter((entry) => entry.name === "kept");
+      },
+      async stream() {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          events: iterable<CanonicalResponseEvent>([
+            { type: "response.created", response: { id: "resp_wire", model: "m", usage: null } },
+          ]),
+        };
+      },
+    };
+    const request: AnthropicMessagesRequest = {
+      model: "claude-sonnet-4-6",
+      messages: [{ role: "user", content: "hi" }],
+      tools: [
+        { name: "kept", description: "d", input_schema: { type: "object", properties: {} } },
+        { name: "dropped", description: "d".repeat(200_000), input_schema: { type: "object", properties: {} } },
+      ],
+      max_tokens: 128,
+      stream: true,
+    };
+
+    // The dropped tool alone estimates ~50_000 tokens; charging it would refuse the turn.
+    await expect(new AnthropicMessagesGateway(narrowed).stream(request, {
+      apiKey: "k",
+      modelContextWindow: 10_000,
+    })).resolves.toMatchObject({ status: 200 });
+    expect(seen).toEqual([["kept", "dropped"]]);
+  });
+
+  it("does not lock a Cursor model out over a catalog Cursor never sends", async () => {
+    const cursor = new CursorAdapter();
+    let calls = 0;
+    const adapter: AiGatewayAdapter = {
+      capabilities: cursor.capabilities,
+      wireTools: (canonical) => cursor.wireTools(canonical),
+      async stream() {
+        calls += 1;
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          events: iterable<CanonicalResponseEvent>([
+            { type: "response.created", response: { id: "resp_cursor", model: "composer-2.5", usage: null } },
+          ]),
+        };
+      },
+    };
+    // ToolSearch plus a deferred catalog far larger than the window, and a two-character turn.
+    const request: AnthropicMessagesRequest = {
+      model: "claude-sonnet-4-6",
+      messages: [{ role: "user", content: "hi" }],
+      tools: [
+        { name: "ToolSearch", description: "search", input_schema: { type: "object", properties: {} } },
+        ...Array.from({ length: 200 }, (_, index) => ({
+          name: `mcp__deferred__tool_${index}`,
+          description: "d".repeat(7_700),
+          input_schema: { type: "object" as const, properties: {} },
+          defer_loading: true,
+        })),
+      ],
+      max_tokens: 128,
+      stream: true,
+    };
+
+    // Compaction shrinks the conversation, never the catalog, so charging it is unrecoverable.
+    await expect(new AnthropicMessagesGateway(adapter).stream(request, {
+      apiKey: "k",
+      modelContextWindow: 200_000,
+    })).resolves.toMatchObject({ status: 200 });
+    expect(calls).toBe(1);
   });
 });
 

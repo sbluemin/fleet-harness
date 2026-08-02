@@ -15,6 +15,7 @@ import type {
   AdapterCallOptions,
   AdapterResponse,
   AiGatewayAdapter,
+  CanonicalFunctionTool,
   CanonicalInputItem,
   CanonicalNativeTool,
   CanonicalResponseEvent,
@@ -1171,6 +1172,25 @@ export class CursorAdapter implements AiGatewayAdapter {
     this.diagnostics = options.diagnostics;
     this.conversationIdOverride = options.conversationId;
     this.sessionIdOverride = options.sessionId;
+  }
+
+  /**
+   * Cursor drops every `defer_loading` tool once the client advertises ToolSearch and
+   * then caps the survivors by count and bytes, so the declared catalog is far larger
+   * than the wire payload. Report only the survivors; charging a request for tools that
+   * never leave the gateway would refuse turns the provider would have accepted.
+   */
+  wireTools(request: CanonicalResponseRequest): readonly CanonicalFunctionTool[] {
+    const declared = request.tools ?? [];
+    if (declared.length === 0) return [];
+    let keptNames: ReadonlySet<string>;
+    try {
+      keptNames = new Set(applyCursorToolBudget(request).tools.map((tool) => tool.clientName));
+    } catch {
+      // A budget rejection belongs to `stream`, which raises it with the real diagnosis.
+      return [];
+    }
+    return declared.filter((tool) => keptNames.has(tool.name));
   }
 
   async stream(

@@ -3,13 +3,40 @@ import type {
   AnthropicMessagesRequest,
   TranslateAnthropicRequestOptions
 } from "./anthropic.js";
-import type { AiGatewayAdapter } from "./canonical.js";
+import { canonicalMessageText } from "./canonical.js";
+import type {
+  AiGatewayAdapter,
+  CanonicalFunctionTool,
+  CanonicalResponseRequest,
+} from "./canonical.js";
 import { OpenAIResponsesAdapter } from "./openai-responses-adapter.js";
+import { estimateTokens } from "./token-estimate.js";
+
+/** Claude Code recognizes this prefix and routes the failed turn through reactive compaction. */
+export class ContextWindowExceededError extends Error {
+  constructor(
+    readonly requestTokens: number,
+    readonly contextWindow: number,
+  ) {
+    super(`Prompt is too long: ${requestTokens} tokens > ${contextWindow} maximum`);
+    this.name = "ContextWindowExceededError";
+  }
+}
 
 export interface AnthropicGatewayCallOptions extends TranslateAnthropicRequestOptions {
   apiKey: string;
-  /** Real provider window when the caller selected Claude Code's `[1m]` coordinate. */
+  /**
+   * Projection denominator for Claude Code's own context meter. Set ONLY when the
+   * caller selected Claude Code's `[1m]` coordinate; it rescales reported usage
+   * onto the 1M axis and is never a limit.
+   */
   contextWindow?: number;
+  /**
+   * The model's real usable context window. Always set by the caller, regardless of
+   * whether the `[1m]` coordinate applies, and used only by the pre-flight overflow
+   * guard — never as a projection denominator.
+   */
+  modelContextWindow?: number;
   /** 새로 여는 provider trace가 진단 이벤트를 낼지 결정한다. 생략하면 adapter 기본값을 유지한다. */
   diagnosticsEnabled?: boolean;
   signal?: AbortSignal;
@@ -37,6 +64,7 @@ export class AnthropicMessagesGateway {
         ? { nativeTools: this.adapter.capabilities.nativeTools }
         : {}),
     });
+    guardModelContextWindow(canonical, options.modelContextWindow, this.adapter);
     const upstream = await this.adapter.stream(canonical, {
       apiKey: options.apiKey,
       ...(options.diagnosticsEnabled === undefined
@@ -88,6 +116,68 @@ export class AnthropicMessagesGateway {
 
 async function* oneChunk(body: Uint8Array): AsyncGenerator<Uint8Array> {
   yield body;
+}
+
+/**
+ * Pre-flight overflow guard.
+ *
+ * Upstream providers report an overflow in provider-specific wire shapes we do not
+ * translate, so a turn that exceeds the model window can die without any text Claude
+ * Code can classify. Refusing the turn locally with the literal `Prompt is too long:`
+ * prefix keeps reactive compaction reachable.
+ *
+ * The estimate is a conservative character-based heuristic (see `estimateTokens`), not
+ * a tokenizer. It is a last-resort backstop behind correct window accounting, never the
+ * primary defence, so it only fires when the estimate is strictly over the window.
+ *
+ * Only the tools the adapter actually serializes upstream are counted. Cursor drops
+ * deferred tools and caps the rest, so counting the declared catalog would refuse turns
+ * whose real request is far under the window — and, because the catalog is re-declared
+ * every turn while reactive compaction only shrinks the conversation, a catalog large
+ * enough to overflow on its own would lock the model out permanently instead of
+ * degrading.
+ */
+function guardModelContextWindow(
+  canonical: CanonicalResponseRequest,
+  modelContextWindow: number | undefined,
+  adapter: AiGatewayAdapter,
+): void {
+  if (
+    typeof modelContextWindow !== "number"
+    || !Number.isFinite(modelContextWindow)
+    || modelContextWindow <= 0
+  ) {
+    return;
+  }
+  const wireTools = adapter.wireTools?.(canonical) ?? canonical.tools ?? [];
+  const requestTokens = estimateCanonicalRequestTokens(canonical, wireTools);
+  if (requestTokens > modelContextWindow) {
+    throw new ContextWindowExceededError(requestTokens, modelContextWindow);
+  }
+}
+
+/** Deterministic character-based input estimate over instructions, input items, and tools. */
+function estimateCanonicalRequestTokens(
+  canonical: CanonicalResponseRequest,
+  wireTools: readonly CanonicalFunctionTool[],
+): number {
+  const parts: string[] = [];
+  if (canonical.instructions !== undefined) parts.push(canonical.instructions);
+  for (const item of canonical.input) {
+    if (item.type === "message") {
+      parts.push(canonicalMessageText(item.content));
+    } else if (item.type === "function_call") {
+      parts.push(item.name, item.arguments);
+    } else {
+      parts.push(item.output);
+    }
+  }
+  for (const tool of wireTools) {
+    parts.push(tool.name);
+    if (tool.description !== undefined) parts.push(tool.description);
+    parts.push(JSON.stringify(tool.parameters));
+  }
+  return estimateTokens(parts.join("\n"), canonical.model);
 }
 
 function translateUpstreamError(body: Uint8Array): {
