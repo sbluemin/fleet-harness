@@ -1629,7 +1629,7 @@
 .operation-launch-control--canvas .operation-launch-menu {
   top: 0;
   /* 'Canvas controls' 헤더가 한 줄에 들어가고, 실행 종류의 한 줄 설명이 두 줄 안에 끝나도록 넓힌다. */
-  min-width: 296px;
+  min-width: 340px;
 }
 
 /* 런처로 연 경우 메뉴를 컨테이너 바닥에 정렬해 위로 펼친다(아래 FAB/Dock과 겹치지 않게). */
@@ -5577,13 +5577,6 @@
   letter-spacing: 0.1em;
   line-height: 1.8;
   white-space: nowrap;
-}
-
-/* 한글 배지는 라틴 전제 자간을 그대로 쓰면 글자가 흩어져 읽힌다. */
-.operation-launch-menu-badge:lang(ko) {
-  font-family: var(--font-body);
-  font-size: 10px;
-  letter-spacing: 0.02em;
 }
 
 .theater-menu-error {

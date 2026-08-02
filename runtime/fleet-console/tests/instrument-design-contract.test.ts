@@ -1097,9 +1097,8 @@ describe("Instrument core design contract", () => {
     expect(badgeBlock).toContain("color: var(--brass-ink);");
     // 예외는 brass 한 채널까지다. 상태 채널을 함께 끌어 쓰면 배지가 상태로 오독된다.
     expect(badgeBlock).not.toMatch(/--(?:aurora|warn|coral|positive)/);
-    // 대문자는 값이 들고 있다 — text-transform은 한글 로케일에서 무효라 자간만 남는다.
+    // 대문자는 i18n 값이 들고 있다 — text-transform은 한글 로케일에서 무효라 자간만 남는다.
     expect(badgeBlock).not.toContain("text-transform");
-    expect(components).toContain(".operation-launch-menu-badge:lang(ko) {");
 
     expect(descriptionBlock).toContain("color: var(--text-tertiary);");
     expect(descriptionBlock).toContain("font-family: var(--font-body);");

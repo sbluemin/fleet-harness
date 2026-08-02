@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  advanceFeatureTourStep,
   availableFeatureTourSteps,
   featureTourCompletionBase,
   persistFeatureTourSeen,
@@ -118,6 +119,16 @@ describe("feature tour", () => {
       .toBe("Claude (Classic)");
 
     expect(resolveNextFeatureTour(FEATURE_TOURS, ["claude-operations.walkthrough"], document)).toBeNull();
+  });
+
+  it("never advances past the last step, so the progress count cannot exceed the total", () => {
+    expect(advanceFeatureTourStep(0, 3)).toBe(1);
+    expect(advanceFeatureTourStep(1, 3)).toBe(2);
+    // 리렌더 전 연타: 마지막 스텝에서 더 눌러도 인덱스는 그 자리에 머문다 — 넘어가면 "4 / 3"이 뜬다.
+    expect(advanceFeatureTourStep(2, 3)).toBe(2);
+    expect(advanceFeatureTourStep(9, 3)).toBe(2);
+    expect(advanceFeatureTourStep(0, 1)).toBe(0);
+    expect(advanceFeatureTourStep(0, 0)).toBe(0);
   });
 
   it("does not open the Claude walkthrough before the launch menu exists", () => {

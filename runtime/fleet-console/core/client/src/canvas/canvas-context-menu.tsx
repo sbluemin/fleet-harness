@@ -19,7 +19,7 @@ interface CanvasContextMenuProps {
   readonly onClose: () => void;
 }
 
-const MENU_WIDTH = 296;
+const MENU_WIDTH = 340;
 const MENU_MAX_HEIGHT = 520;
 const MENU_MIN_HEIGHT = 120;
 const MENU_MARGIN = 12;

@@ -154,7 +154,7 @@ export function FeatureTourOverlay() {
                     if (lastStep) {
                       void finish();
                     } else {
-                      setStepIndex((index) => index + 1);
+                      setStepIndex((index) => advanceFeatureTourStep(index, resolved.steps.length));
                     }
                   }}
                   type="button"
@@ -214,6 +214,13 @@ export function featureTourCompletionBase(
   return phase === "walkthrough" && tour.spotlight
     ? appendSeenFeatureTour(seen, featureTourSeenKey(tour.id, "spotlight"))
     : seen;
+}
+
+// 다음 스텝은 마지막 스텝을 넘지 않는다 — 진행 버튼의 '마지막인가' 판정은 렌더 시점 값이라,
+// 리렌더 전에 두 번 눌리면 두 번 다 '마지막이 아니다'로 읽혀 인덱스가 총수를 넘어간다.
+// 본문은 어차피 clamp되지만 진행 표시는 그대로 새어 나가 "4 / 3"이 된다.
+export function advanceFeatureTourStep(index: number, total: number): number {
+  return Math.min(index + 1, Math.max(0, total - 1));
 }
 
 export function featureTourSeenKey(tourId: string, phase: FeatureTourPhase): string {
