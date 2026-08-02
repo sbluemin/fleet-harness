@@ -437,6 +437,36 @@ describe("model catalog", () => {
     };
     expect(() => parseGatewayModelsRegistry(invalidTier)).toThrow(/only supported by Codex/);
 
+    // 임계는 실제 창의 부분집합일 때만 의미가 있다. 창 없이 선언하거나 창을 넘기면
+    // Claude Code가 도달 불가능한 예산으로 계측하게 되므로 파싱에서 막는다.
+    const thresholdWithoutWindow = minimalRegistry();
+    thresholdWithoutWindow.providers.codex.models[0] = {
+      modelId: "codex-model",
+      name: "Model",
+      autoCompactThreshold: 258_400,
+    };
+    expect(() => parseGatewayModelsRegistry(thresholdWithoutWindow))
+      .toThrow(/auto-compact threshold requires contextWindow/);
+
+    const thresholdOverWindow = minimalRegistry();
+    thresholdOverWindow.providers.codex.models[0] = {
+      modelId: "codex-model",
+      name: "Model",
+      contextWindow: 200_000,
+      autoCompactThreshold: 258_400,
+    };
+    expect(() => parseGatewayModelsRegistry(thresholdOverWindow))
+      .toThrow(/auto-compact threshold exceeds contextWindow/);
+
+    const thresholdAtWindow = minimalRegistry();
+    thresholdAtWindow.providers.codex.models[0] = {
+      modelId: "codex-model",
+      name: "Model",
+      contextWindow: 258_400,
+      autoCompactThreshold: 258_400,
+    };
+    expect(() => parseGatewayModelsRegistry(thresholdAtWindow)).not.toThrow();
+
     const legacyEffortDefault = minimalRegistry();
     legacyEffortDefault.providers.codex.models[0] = {
       modelId: "codex-model",

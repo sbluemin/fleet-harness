@@ -414,6 +414,17 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       if (model.cursorMaxMode && provider !== "cursor") {
         throw new Error(`Gateway Cursor Max Mode is only supported by Cursor: ${provider}/${model.modelId}`);
       }
+      // 회계 창이 실제 창을 넘으면 Claude Code가 점유를 과소 보고해, 컴팩트 대신
+      // 사전 차단 가드에 부딪힌다. 임계는 창의 부분집합이어야만 의미가 있으므로
+      // 잘못된 레지스트리 편집을 조용히 통과시키지 않고 파싱 시점에 세운다.
+      if (model.autoCompactThreshold !== undefined) {
+        if (model.contextWindow === undefined) {
+          throw new Error(`Gateway auto-compact threshold requires contextWindow: ${provider}/${model.modelId}`);
+        }
+        if (model.autoCompactThreshold > model.contextWindow) {
+          throw new Error(`Gateway auto-compact threshold exceeds contextWindow: ${provider}/${model.modelId}`);
+        }
+      }
       if (model.effort?.supported) {
         if (new Set(model.effort.levels).size !== model.effort.levels.length) {
           throw new Error(`Gateway effort levels contain duplicates: ${provider}/${model.modelId}`);
