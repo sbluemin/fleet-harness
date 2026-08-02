@@ -14,8 +14,8 @@ describe("buildAgentCliLaunchKinds", () => {
     );
 
     expect(result).toEqual([
-      { id: "claude", type: "agent", title: "Claude" },
-      { id: "codex", type: "agent", title: "Codex" },
+      { id: "claude", type: "agent", title: "Claude (Classic)" },
+      { id: "codex", type: "agent", title: "Codex (Classic)" },
       { id: "claude-gateway", type: "agent", title: "Claude (Gateway • Experimental)" },
     ]);
   });
@@ -30,8 +30,8 @@ describe("buildAgentCliLaunchKinds", () => {
     );
 
     expect(result).toEqual([
-      { id: "claude", type: "agent", title: "Claude", disabled: true, disabledReason: "Not installed" },
-      { id: "codex", type: "agent", title: "Codex", disabled: true, disabledReason: "Sign in required" },
+      { id: "claude", type: "agent", title: "Claude (Classic)", disabled: true, disabledReason: "Not installed" },
+      { id: "codex", type: "agent", title: "Codex (Classic)", disabled: true, disabledReason: "Sign in required" },
     ]);
   });
 });
