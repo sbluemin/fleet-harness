@@ -401,6 +401,42 @@ describe("Cursor live client-tool Run bridge", () => {
     }
   });
 
+  it("drops a carried checkpoint once the conversation shrinks below it", async () => {
+    // 소비 측은 보관 체크포인트를 입력 토큰의 바닥으로 쓴다. Claude Code가 컴팩트해
+    // 대화가 급감해도 바닥이 남아 있으면 계기가 세션이 끝날 때까지 그 값에 고정된다.
+    const largeStream = new BridgeCursorStream([
+      {
+        conversationCheckpointUpdate: {
+          tokenDetails: { usedTokens: 120_000, maxTokens: 256_000 },
+        },
+      },
+      ...cursorCompletionFrames("large turn complete"),
+    ]);
+    const compactedStream = new BridgeCursorStream(
+      cursorCompletionFrames("compacted turn complete"),
+    );
+    const harness = cursorHarness([largeStream, compactedStream]);
+    const base = cursorRequest("session-checkpoint-staleness", "kimi-k3-1m");
+    const large: CanonicalResponseRequest = {
+      ...base,
+      input: [{ type: "message", role: "user", content: "x".repeat(60_000) }],
+    };
+
+    try {
+      const largeUsage = cursorCompletedUsage(
+        await collectCursorResponse(harness.adapter, large),
+      );
+      expect(largeUsage?.input_tokens).toBeGreaterThan(100_000);
+
+      const compactedUsage = cursorCompletedUsage(
+        await collectCursorResponse(harness.adapter, base),
+      );
+      expect(compactedUsage?.input_tokens).toBeLessThan(10_000);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
   it.each(["partial", "extra", "duplicate", "stale"])(
     "rejects a %s result batch without injecting and falls back cold",
     async (kind) => {
