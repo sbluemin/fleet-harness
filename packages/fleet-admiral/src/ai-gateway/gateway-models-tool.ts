@@ -41,17 +41,17 @@ const GATEWAY_MODELS_DOCTRINE = {
   promptSnippet:
     `gateway_models — Live roster of assignable gateway models: constraints, measured role fit, and provider allowances.`,
   whenToUse: [
-    `Call gateway_models before authoring a workflow that pins a model or a reasoning effort for any stage.`,
-    `Call it again before a later dispatch in the same session if the roster may have changed since the last read; compare the returned revision.`,
+    `Call gateway_models before every run that leaves the host — a staged workflow or a single Agent — not only when a run pins a model or a reasoning effort.`,
+    `Call it again before a later dispatch in the same session; the roster is re-read from Settings on every call, and allowances move while work is in flight.`,
   ],
   whenNotToUse: [
-    `Do not call gateway_models when every stage will inherit the session model, which needs no roster.`,
+    `Do not carry an earlier read forward as if it were still current. The revision tracks roster and default changes only, never allowance movement, so equal revisions do not mean equal quotas.`,
     `Do not treat the response as a recommendation to act on unread. It reports facts; the choice and its justification stay with you.`,
   ],
   usageGuidelines: [
     `models[] contains only the exposed models. A model absent here is one the user turned off — the gateway still executes it, so pinning it would quietly override that choice with no error.`,
     `constraints.effortLadder lists the only reasoning levels that survive; a level outside it is clamped upstream without notice. Ladders differ per model, and some models have no effort control at all.`,
-    `roleFit is null when the axis was never measured. Unmeasured is not unsuitable, and it is not a reason to pin.`,
+    `roleFit is null when the axis was never measured. Unmeasured is not unsuitable — it means quality gives no reason to prefer one identity, so the choice falls to allowance rather than back to the session's own model.`,
     `constraints.quotaScope names the sub-allowance a model is billed against. Read the provider window whose scope matches it; the scope-less window is the sum of pools and can look healthy while that model's own pool is spent.`,
     `A provider quota of status "unsupported" means the allowance cannot be read, never that it is plentiful.`,
     `An unpinned stage spends whatever this session is currently running on, so its provider is the baseline an offload is measured against. The roster cannot identify that provider — it is registered once per runtime and cannot see which model a given session launched with — so match it yourself against the model you are running, and read that provider's window.`,

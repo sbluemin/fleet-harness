@@ -47,11 +47,13 @@ describe("gateway workflow skill asset", () => {
     expect(content).toContain("Not once per session");
   });
 
-  it("routes allowance reads to the model's own pool", () => {
+  it("routes allowance reads to the model's own pool, with and without a declared scope", () => {
     const content = skillContent();
 
-    expect(content).toContain("`scope` matches the model's `constraints.quotaScope`");
-    expect(content).toContain("never the provider's scope-less total");
+    expect(content).toContain("whose `scope` matches `constraints.quotaScope` when the model declares one");
+    // quotaScope는 Cursor만 선언한다. scope-less 창을 일괄 금지하면 codex/kimi/claude의
+    // allowance를 읽을 창이 사라져 분산 정책의 입력 자체가 없어진다.
+    expect(content).toContain("the provider's scope-less window when it does not");
     expect(content).toContain("lower `usedPercent`");
   });
 

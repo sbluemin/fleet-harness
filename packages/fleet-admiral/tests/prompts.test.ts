@@ -389,8 +389,10 @@ describe("Admiral prompts", () => {
     // 15900 → 16100: Model Loadout가 staged Agent 선택 전 gateway_models 호출을 강제하면서 늘어난 몫.
     // 16100 → 17500: Execution Surface가 단일 Agent 실행과 staged 실행을 구분하고, Model Loadout이
     //   무조건 사전 조회·분산 기본·쿼터 창 선택·effort 재선택·roster 교집합을 규정하면서 늘어난 몫.
-    expect(builder.build({ enableMetaphor: false, doctrine: "gateway" }).length).toBeLessThanOrEqual(17500);
-    expect(builder.build({ enableMetaphor: true, doctrine: "gateway" }).length).toBeLessThanOrEqual(17500);
+    // 17500 → 17700: quotaScope를 선언하지 않는 프로바이더의 창 선택과, 아래 rung이 없을 때의
+    //   effort 거절을 문언에 담으면서 늘어난 몫. 둘 다 빠지면 규칙이 실행 불가능해진다.
+    expect(builder.build({ enableMetaphor: false, doctrine: "gateway" }).length).toBeLessThanOrEqual(17700);
+    expect(builder.build({ enableMetaphor: true, doctrine: "gateway" }).length).toBeLessThanOrEqual(17700);
   });
 
   it("teaches idempotent per-session skill loading in the protocol gate", () => {
