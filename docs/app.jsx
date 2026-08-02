@@ -41,8 +41,8 @@ const UI = {
   hierarchyTitle: { ko: "3-단 지휘 체계", en: "Three-tier command structure" },
   hierarchyLede:  { ko: "사용자는 코드를 쓰지 않는다. 결정한다. 함대는 그 결정을 작전으로 환원한다.", en: "You don't write code — you decide. The fleet turns each decision into an operation." },
 
-  backendsEy:    { ko: "Runtime Paths · 03", en: "Runtime Paths · 03" },
-  backendsTitle: { ko: ["세 개의 런타임 경로,", "한 명의 제독."], en: ["Three runtime paths,", "one Admiral."] },
+  backendsEy:    { ko: "Runtime Paths · 04", en: "Runtime Paths · 04" },
+  backendsTitle: { ko: ["네 개의 런타임 경로,", "한 명의 제독."], en: ["Four runtime paths,", "one Admiral."] },
   backendsLede:  { ko: "한 모델로 모든 작업을 수행하지 않는다. 각 경로는 자신이 가장 잘하는 역할을 맡는다.", en: "No single model handles every task. Each path takes the role it serves best." },
 
   captainsEy:    { ko: "Captains Roster · 04", en: "Captains Roster · 04" },
@@ -77,7 +77,7 @@ const UI = {
   setSailCmt:  { ko: "# Set sail on your first mission, Admiral.", en: "# Set sail on your first mission, Admiral." },
   footerLine:  { ko: "fleet-harness · Fleet Action Protocol v1", en: "fleet-harness · Fleet Action Protocol v1" },
   builtOn:     { ko: "native CLI orchestration", en: "native CLI orchestration" },
-  countMeta:   { ko: "· 3 Paths · 4 Captains · 4 Modes", en: "· 3 Paths · 4 Captains · 4 Modes" },
+  countMeta:   { ko: "· 4 Paths · 4 Captains · 4 Modes", en: "· 4 Paths · 4 Captains · 4 Modes" },
 };
 
 // ───── Data ─────
@@ -105,7 +105,8 @@ const HIERARCHY = [
 const CLI_BACKENDS = [
   { num: "01", vendor: "Anthropic", name: "Claude Code", tag: { ko: "장기 추론·아키텍처 판단의 표준 백엔드", en: "The standard backend for long-form reasoning and architectural judgment." }, color: "oklch(78% 0.13 75)" },
   { num: "02", vendor: "OpenAI · Cursor · Moonshot AI", name: "Claude Gateway", tag: { ko: "여러 프론티어 모델을 Claude Code 표면에서 라우팅하는 실험적 백엔드", en: "An experimental backend routing frontier models through the Claude Code surface." }, color: "oklch(72% 0.17 25)" },
-  { num: "03", vendor: "Cursor", name: "Cursor Agent", tag: { ko: "Session Analyst를 위한 다중 모델 분석 백엔드", en: "A multi-model analysis backend for Session Analyst." }, color: "oklch(78% 0.14 145)" },
+  { num: "03", vendor: "OpenAI", name: "Codex CLI", tag: { ko: "Carrier와 Task Force를 위한 실행 백엔드", en: "An execution backend for Carriers and Task Forces." }, color: "oklch(72% 0.03 250)" },
+  { num: "04", vendor: "Cursor", name: "Cursor Agent", tag: { ko: "Session Analyst를 위한 다중 모델 분석 백엔드", en: "A multi-model analysis backend for Session Analyst." }, color: "oklch(78% 0.14 145)" },
 ];
 
 const CAPTAINS = [
@@ -254,7 +255,7 @@ const DIFFS = [
     n: "01",
     name: "Multi-CLI Orchestration",
     kr: { ko: "멀티-CLI 오케스트레이션", en: "Multi-CLI Orchestration" },
-    body: { ko: "Claude Code와 Claude Gateway는 Operation을 실행하고, Cursor Agent는 Session Analyst를 구동한다. 한 인터페이스에서 작업에 맞는 모델 경로를 고른다.", en: "Claude Code and Claude Gateway run operations, while Cursor Agent powers Session Analyst. Choose the model path that fits the task from one interface." },
+    body: { ko: "Claude Code와 Claude Gateway는 Operation을 실행하고, Codex CLI는 Carrier와 Task Force를 구동하며, Cursor Agent는 Session Analyst를 맡는다.", en: "Claude Code and Claude Gateway run operations, Codex CLI powers Carriers and Task Forces, and Cursor Agent serves Session Analyst." },
   },
   {
     n: "02",
@@ -312,7 +313,7 @@ const COMPARES = [
     name: "Fleet Action Protocol",
     us: true,
     bullets: [
-      { ko: "세 런타임 경로 통합 지휘", en: "Three runtime paths coordinated together" },
+      { ko: "네 런타임 경로 통합 지휘", en: "Four runtime paths coordinated together" },
       { ko: "4 함장 명시적 책임 분리", en: "Four captains, distinct duties" },
       { ko: "적응형 4-모드 프로토콜 게이트", en: "Adaptive four-mode protocol gate" },
     ],

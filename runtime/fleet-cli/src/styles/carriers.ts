@@ -1,10 +1,12 @@
 export const PROVIDER_RGBS: Record<string, readonly [number, number, number]> = {
   claude: [255, 149, 0],
+  codex: [169, 169, 169],
   cursor: [0, 122, 204],
 };
 
 const PROVIDER_BG_RGBS: Record<string, readonly [number, number, number]> = {
   claude: [40, 25, 8],
+  codex: [35, 35, 35],
   cursor: [10, 25, 41],
 };
 
