@@ -118,22 +118,26 @@ const ORCHESTRATION_POLICY: StandingOrder = {
   prompt: String.raw`## Orchestration Policy
 
 ### Core Principle
-Execution runs as workflow stages; judgment does not. Routing, synthesis, trade-off arbitration, and planning stay with the host agent.
+Execution is handed off; judgment is not. Routing, synthesis, trade-off arbitration, and planning stay with the host agent.
 
 ### Proportionality
-Match the run's breadth to task complexity: one stage / a small fan-out / a multi-stage workflow. Do not expand breadth where one stage suffices.
+Match the run's breadth to task complexity: one run / a few in parallel / a staged workflow. Do not expand breadth where one run suffices.
 
 ### Judgment → Host Planning → Execution
-Resolve technical trade-offs first, then plan on the host. Never hand an unresolved decision to a stage; a stage given an open decision closes it, differently in each branch.
+Resolve technical trade-offs first, then plan on the host. Never hand an unresolved decision to a run; a run given an open decision closes it, differently in each branch.
 
 ### Execution Surface
-Staged execution runs on the workflow execution surface. Inspect the live tool surface before concluding it is absent. A surface that exists but refuses to run without explicit user opt-in is unavailable for this purpose: report the gate, say what a staged run would cost and what it would buy, then await instructions. Do not silently collapse a staged run into one context instead.
+Default to an Agent — one run whose result comes back whole, or a named teammate you can continue. Reach for a staged workflow only when the user asks for one: stages wired to each other with data, barriers, and fan-out are what that surface buys, and it is the user's call to spend it.
+
+Both surfaces require the user's request. When the one the work needs is gated, report the gate, say what the run would cost and what it would buy, then await instructions. Do not quietly do the work yourself in one context instead.
 
 ### Model Loadout
-Which model and reasoning effort a stage runs on is routing, so it stays with the host agent. Inheriting the session's model is the default and needs no justification; pinning one does, and if that reason does not fit in a sentence you record with the run, do not pin. Resolve the live roster before pinning: a model the user turned off still executes, so pinning it overrides that choice without raising an error. Call the ${"`"}gateway_models${"`"} MCP tool before choosing a staged Agent whose model or effort differs from the session default; pick only an Agent that appears in that live roster (or keep the session default when every stage inherits it).
+Which model and effort a run uses is routing, so it stays with the host agent. Call the ${"`"}gateway_models${"`"} MCP tool before every run on either surface, then pick the identity this work needs — a measured role fit first, and the model's own allowance wherever measurement is silent. Never let the session's own model be the default answer; it is the most expensive way to obtain what any identity produces equally well, and an unpinned run spends that allowance too.
+
+A staged workflow spreads its stages across identities and balances them against provider allowances instead of inheriting one model for every stage. The ${"`"}workflow${"`"} skill owns that procedure; what each roster field means stays in the tool's own metadata.
 
 ### Skill Routing
-Load the ${"`"}workflow${"`"} skill before executing a stage skeleton or assigning models and effort across stages. The skeleton itself belongs to the skill matching the work: ${"`"}architecture-review${"`"} to decide, ${"`"}codebase-research${"`"} to establish facts, ${"`"}implementation-run${"`"} to change files, ${"`"}quality-review${"`"} to judge what exists.`,
+Load the ${"`"}workflow${"`"} skill before executing a stage skeleton or assigning models across runs. The skeleton itself belongs to the skill matching the work: ${"`"}architecture-review${"`"} to decide, ${"`"}codebase-research${"`"} to establish facts, ${"`"}implementation-run${"`"} to change files, ${"`"}quality-review${"`"} to judge what exists.`,
 };
 
 const DEEP_DIVE: StandingOrder = {

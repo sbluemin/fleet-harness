@@ -41,8 +41,21 @@ describe("gateway role fit declarations", () => {
 
   it("reaches a model through its service-tier sibling's identity", () => {
     // codex--gpt-5.6-sol-fast는 sol과 같은 upstream이므로 sol에 대한 측정이 그대로 적용된다.
-    expect(gatewayRoleFit(gatewayModelIdentity(model("codex--gpt-5.6-sol-fast"))))
-      .toEqual(gatewayRoleFit(gatewayModelIdentity(model("codex--gpt-5.6-sol"))));
+    const sol = gatewayRoleFit(gatewayModelIdentity(model("codex--gpt-5.6-sol")));
+    // 선언이 사라지면 양쪽이 undefined가 되어 toEqual이 그대로 통과한다.
+    // sibling 전파를 검사하려면 원본이 존재한다는 것부터 고정해야 한다.
+    expect(sol).toBeDefined();
+    expect(gatewayRoleFit(gatewayModelIdentity(model("codex--gpt-5.6-sol-fast")))).toEqual(sol);
+  });
+
+  it("still declares the measurements the table was written to carry", () => {
+    // 위 두 검사는 declaredRoleFitIdentities()를 순회하므로 ROLE_FIT이 비면 루프가 0회 돌고
+    // vacuous pass한다 — 측정을 통째로 지워도 green이었다. 표가 비지 않았음을 직접 고정한다.
+    const identities = declaredRoleFitIdentities();
+    expect(identities.length).toBeGreaterThan(0);
+    for (const identity of identities) {
+      expect(Object.keys(gatewayRoleFit(identity) ?? {}).length).toBeGreaterThan(0);
+    }
   });
 });
 
@@ -166,5 +179,39 @@ describe("gateway_models tool", () => {
     // 조회가 실패해도 기준선과 노출 프로바이더가 모두 남고, 각자 읽지 못했음을 밝힌다.
     expect(result.details.providers.map((entry) => entry.id)).toEqual(["claude", "kimi"]);
     expect(result.details.providers.every((entry) => entry.quota.status === "unsupported")).toBe(true);
+  });
+});
+
+// 이 텍스트는 모델이 실제로 읽는 live tool metadata다. Standing Order와 어긋나면 실무에서는
+// 이쪽이 이긴다 — 실제로 "핀할 때만 호출하라"는 구 지침이 새 doctrine을 무효화한 채 남아 있었고,
+// 그 모순을 잡아낸 테스트가 하나도 없었다. 여기서 고정한다.
+describe("gateway_models tool doctrine", () => {
+  function doctrine() {
+    return buildGatewayModelsToolSpec({ readSelection: () => ({ models: [] }) });
+  }
+
+  it("requires a read before every run rather than only before pinning", () => {
+    const spec = doctrine();
+    expect(spec.whenToUse.join("\n")).toContain("before every run that leaves the host");
+    // 구 지침은 호출 의무를 핀 여부로 한정했다. 그 한정이 돌아오면 분산 기본이 죽는다.
+    expect(spec.whenToUse.join("\n")).not.toContain("before authoring a workflow that pins");
+  });
+
+  it("does not restore the inherit-shortcut that skipped the roster entirely", () => {
+    const spec = doctrine();
+    expect(spec.whenNotToUse.join("\n")).not.toContain("when every stage will inherit the session model");
+  });
+
+  it("sends an unmeasured axis to allowance instead of back to the session model", () => {
+    const guidelines = doctrine().usageGuidelines.join("\n");
+    expect(guidelines).toContain("Unmeasured is not unsuitable");
+    expect(guidelines).toContain("the choice falls to allowance");
+    expect(guidelines).not.toContain("it is not a reason to pin");
+  });
+
+  it("keeps the scope-matching rule tied to a declared quotaScope", () => {
+    // quotaScope는 Cursor만 선언한다. 이 문장이 전 프로바이더 규칙으로 읽히면
+    // codex/kimi/claude는 읽을 창이 없어진다.
+    expect(doctrine().usageGuidelines.join("\n")).toContain("constraints.quotaScope names the sub-allowance");
   });
 });
