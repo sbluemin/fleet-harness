@@ -1,6 +1,7 @@
 import {
   AnthropicMessagesGateway,
   CURSOR_EXTERNAL_ROOT_BYTE_LIMIT,
+  ContextWindowExceededError,
   CursorAdapter,
 } from "@dotobokuri/core-ai-gateway";
 import type {
@@ -377,6 +378,155 @@ describe("upstream credential", () => {
       error: {
         type: "invalid_request_error",
         message: expect.stringMatching(/^Prompt is too long:/),
+      },
+    });
+  });
+});
+
+describe("model context window", () => {
+  it.each([
+    // The real usable window travels for every translated model, marked or not.
+    ["claude-gateway--codex--gpt-5.6-sol", 372_000, 372_000],
+    ["claude-gateway--cursor--grok-4.5-fast", 256_000, 256_000],
+    // A 200000-window Cursor native model earns no `[1m]` marker, so it gets no
+    // projection denominator — but the guard still needs its real window.
+    ["claude-gateway--cursor--kimi-k3", 200_000, undefined],
+  ])("passes %s's real window as modelContextWindow", async (model, expected, projected) => {
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({
+      gateway,
+      readAuth,
+      readCursorToken: () => "cursor-subscription-token",
+    });
+
+    await router.handle(ctx({ res: response(), token: ANTHROPIC_CRED, model }));
+
+    expect(streamSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      modelContextWindow: expected,
+    }));
+    const options = streamSpy.mock.calls[0]?.[1];
+    if (projected === undefined) {
+      expect(options).not.toHaveProperty("contextWindow");
+    } else {
+      expect(options).toHaveProperty("contextWindow", projected);
+    }
+  });
+
+  it("answers a pre-flight overflow with Claude's prompt-too-long contract", async () => {
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({ gateway, readAuth });
+    const res = response();
+
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--codex--gpt-5.6-sol",
+      // 4 chars/token puts this at ~500_000 tokens against a 372_000 window.
+      messages: [{ role: "user", content: "x".repeat(2_000_000) }],
+    }));
+
+    expect(res.status).toBe(400);
+    expect(JSON.parse(res.body)).toEqual({
+      type: "error",
+      error: {
+        type: "invalid_request_error",
+        message: expect.stringMatching(/^Prompt is too long: \d+ tokens > 372000 maximum$/),
+      },
+    });
+    // The guard runs inside the gateway, so upstream was still spared the turn.
+    expect(streamSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("mid-stream failure", () => {
+  function failingGateway(error: unknown): AnthropicMessagesGateway {
+    return {
+      async stream() {
+        return {
+          status: 200,
+          headers: new Headers({ "content-type": "text/event-stream" }),
+          body: (async function* () {
+            yield new TextEncoder().encode("event: message_start\ndata: {}\n\n");
+            throw error;
+          })(),
+        };
+      },
+    } as unknown as AnthropicMessagesGateway;
+  }
+
+  function errorFrame(body: string): unknown {
+    const data = body.split("event: error\ndata: ")[1]?.split("\n\n")[0];
+    return JSON.parse(data ?? "null");
+  }
+
+  it("emits a terminal SSE error frame instead of a bare end", async () => {
+    const router = createAiGatewayRouter({
+      gateway: failingGateway(new Error('upstream died: "quoted"\nsecond line')),
+      readAuth,
+    });
+    const res = response();
+
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED }));
+
+    expect(res.status).toBe(200);
+    expect(res.body).toContain("event: message_start");
+    expect(res.body).toContain("event: error\n");
+    // Hand-concatenation would break on the quote and the newline.
+    expect(errorFrame(res.body)).toEqual({
+      type: "error",
+      error: { type: "api_error", message: 'upstream died: "quoted"\nsecond line' },
+    });
+  });
+
+  it("keeps the error frame out of a truncated passthrough chunk", async () => {
+    // Passthrough forwards raw upstream chunks, so the last one can stop mid-frame.
+    const truncated = 'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,'
+      + '"delta":{"type":"text_delta","text":"Hel';
+    const router = createAiGatewayRouter({
+      gateway: {
+        async stream() {
+          return {
+            status: 200,
+            headers: new Headers({ "content-type": "text/event-stream" }),
+            body: (async function* () {
+              yield new TextEncoder().encode(truncated);
+              throw new Error("upstream socket reset");
+            })(),
+          };
+        },
+      } as unknown as AnthropicMessagesGateway,
+      readAuth,
+    });
+    const res = response();
+
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED }));
+
+    const blocks = res.body.split("\n\n").filter((block) => block.length > 0);
+    // Without a leading separator the two would fuse into one unparseable frame.
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]).toBe(truncated);
+    expect(JSON.parse(blocks[1]?.split("data: ")[1] ?? "null")).toEqual({
+      type: "error",
+      error: { type: "api_error", message: "upstream socket reset" },
+    });
+  });
+
+  it("marks a mid-stream context overflow as an invalid request", async () => {
+    const router = createAiGatewayRouter({
+      gateway: failingGateway(new ContextWindowExceededError(300_000, 272_000)),
+      readAuth,
+    });
+    const res = response();
+
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED }));
+
+    expect(errorFrame(res.body)).toEqual({
+      type: "error",
+      error: {
+        type: "invalid_request_error",
+        message: "Prompt is too long: 300000 tokens > 272000 maximum",
       },
     });
   });
