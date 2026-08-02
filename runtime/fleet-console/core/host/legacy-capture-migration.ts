@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import type { OperationNode, OperationStore } from "./operations/types.js";
+import type { OperationNode, OperationStore } from "./operations/operations-domain.js";
 
 const LEGACY_CAPTURES_DIR_NAME = "captures";
 

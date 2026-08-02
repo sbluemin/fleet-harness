@@ -9,7 +9,7 @@ import {
   sanitizeConsoleSettingsData,
   emptyConsoleSettingsData,
   type ConsoleSettingsData,
-} from "../core/host/console-settings.js";
+} from "../core/host/settings/settings-domain.js";
 import type { ConsoleDataPaths } from "../core/host/paths.js";
 
 const tempDirs: string[] = [];

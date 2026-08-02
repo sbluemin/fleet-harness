@@ -29,7 +29,7 @@ export default defineConfig([
     noExternal: [/^@dotobokuri\/core-process(\/|$)/, /^@dotobokuri\//, /^@fleet-console\/(sdk|markdown|font-picker|desktop-protocol)(\/|$)/],
     // esbuild는 plugin-host의 dev .ts 로더에서만 동적 import되는 devDependency다.
     // 번들에 인라인하면 esbuild 내부 CJS의 require("fs")가 ESM 출력에서 boot 시 throw하므로 external로 남긴다.
-    external: ["esbuild", "font-list"],
+    external: ["esbuild", "font-list", "node:http"],
     esbuildOptions(options) {
       options.alias = {
         ...options.alias,

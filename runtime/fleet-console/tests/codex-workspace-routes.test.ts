@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createCodexGateway } from "../core/host/codex/gateway.js";
 import { createCodexWorkspaceRouter } from "../core/host/codex/workspace-routes.js";
-import { workspaceHash } from "../core/host/theater.js";
+import { workspaceHash } from "../core/host/theaters/theater-domain.js";
 
 const WORKSPACE_ID = "0123456789ab";
 

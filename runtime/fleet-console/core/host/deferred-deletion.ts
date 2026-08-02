@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
 
 import type { DurableDeletionTombstone, DurableOperationGroup } from "./durable-state.js";
-import type { OperationNode, OperationStore } from "./operations/types.js";
-import { DELETION_GRACE_MS } from "./operations/types.js";
-import type { TheaterRegistration } from "./theaters.js";
-import type { TheaterRegistry } from "./theaters.js";
+import type { OperationNode, OperationStore } from "./operations/operations-domain.js";
+import { DELETION_GRACE_MS } from "./operations/operations-domain.js";
+import type { TheaterRegistration } from "./theaters/theater-domain.js";
+import type { TheaterRegistry } from "./theaters/theater-domain.js";
 
 export interface DeferredDeletionReceipt {
   readonly deletionId: string;

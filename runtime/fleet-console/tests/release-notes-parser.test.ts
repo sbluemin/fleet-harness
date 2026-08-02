@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseConsoleReleaseNotes } from "../core/host/release-notes/parser.js";
+import { parseConsoleReleaseNotes } from "../core/host/release-notes/release-notes.js";
 
 const CHANGELOG = `# Changelog
 

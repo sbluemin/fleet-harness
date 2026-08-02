@@ -1,4 +1,4 @@
-import type { ConsoleHealth, ConsoleLockPayload } from "./api-types.js";
+import type { ConsoleHealth, ConsoleLockPayload } from "./console-contract-types.js";
 
 export interface ConsoleProbeResult {
   readonly healthy: boolean;

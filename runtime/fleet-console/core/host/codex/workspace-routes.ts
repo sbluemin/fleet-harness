@@ -1,6 +1,6 @@
 import type http from "node:http";
 
-import type { TheaterRegistration } from "../theaters.js";
+import type { TheaterRegistration } from "../theaters/theater-domain.js";
 import type { CodexWorkspaceResolution } from "./gateway.js";
 
 export interface CodexWorkspaceRouteDeps {

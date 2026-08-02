@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ConsoleLockPayload } from "../core/host/api-types.js";
+import type { ConsoleLockPayload } from "../core/host/console-contract-types.js";
 import {
   buildConsoleHelpText,
   assertCliCanControlDaemon,

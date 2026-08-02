@@ -1,9 +1,322 @@
+import type {
+  OperationCreateInput as SdkOperationCreateInput,
+  OperationNode as SdkOperationNode,
+  OperationPatchInput as SdkOperationPatchInput,
+} from "@fleet-console/sdk/operations";
+
+export type { OperationGeometry, OperationTimestamps } from "@fleet-console/sdk/operations";
+
+export interface OperationGroup {
+  readonly id: string;
+  readonly name: string;
+  readonly color: string;
+  readonly order: number;
+  readonly theaterId: string;
+  readonly createdAt: number;
+}
+
+export interface OperationGroupCreateInput {
+  readonly id?: string;
+  readonly name: string;
+  readonly color: string;
+  readonly order?: number;
+  readonly theaterId: string;
+}
+
+export interface OperationGroupPatchInput {
+  readonly name?: string;
+  readonly color?: string;
+  readonly order?: number;
+}
+
+export interface OperationNode extends SdkOperationNode {
+  readonly accent?: string;
+  readonly groupId?: string | null;
+}
+
+export interface OperationCreateInput extends SdkOperationCreateInput {
+  readonly accent?: string;
+  readonly groupId?: string | null;
+}
+
+export interface OperationPatchInput extends SdkOperationPatchInput {
+  readonly accent?: string | null;
+  readonly groupId?: string | null;
+}
+
+export interface OperationStore {
+  list(): readonly OperationNode[];
+  listByTheater(theaterId: string): readonly OperationNode[];
+  get(id: string): OperationNode | null;
+  create(input: OperationCreateInput): OperationNode;
+  upsert(input: OperationCreateInput): OperationNode;
+  patch(id: string, input: OperationPatchInput): OperationNode | null;
+  delete(id: string): boolean;
+  deleteByTheater(theaterId: string): number;
+  replace(nodes: readonly OperationNode[]): void;
+  createGroup(input: OperationGroupCreateInput): OperationGroup;
+  updateGroup(id: string, input: OperationGroupPatchInput): OperationGroup | null;
+  deleteGroup(id: string): boolean;
+  listGroups(theaterId: string): readonly OperationGroup[];
+  listAllGroups(): readonly OperationGroup[];
+  deleteGroupsByTheater(theaterId: string): number;
+  replaceGroups(groups: readonly OperationGroup[]): void;
+}
+
+// 그룹 이름 최대 길이 — durable sanitize(영속 검증)와 store(생성/수정) 양쪽이 공유하는 단일 제한.
+export const MAX_GROUP_NAME_LENGTH = 64;
+export const DELETION_GRACE_MS = 8000;
+
+export interface OperationSanitizeOptions {
+  readonly sensitiveFields?: readonly string[];
+}
+
+const FIXED_SENSITIVE_OPERATION_FIELDS = new Set([
+  "canonicalCwd",
+  "cwd",
+  "persona",
+  "prompt",
+  "providerSession",
+  "ticket",
+  "token",
+  "toolAllowlist",
+  "transcriptPath",
+]);
+
+export function createSanitizedOpDto(node: OperationNode, options: OperationSanitizeOptions = {}): OperationNode {
+  const sensitiveFields = new Set([...FIXED_SENSITIVE_OPERATION_FIELDS, ...(options.sensitiveFields ?? [])]);
+  const payload = sanitizeRecord(node.payload, sensitiveFields);
+  // providerSession은 브라우저에 못 나가지만, "재개 가능한 저장 세션이 있다"는 사실 자체는
+  // 비민감 파생 정보다 — 복원 op의 dormant 분류(I2)가 이 마커에 의존한다.
+  // 호스트 소유 상태이므로 호출자 주입분은 먼저 지우고, 형태 검증을 통과한 providerSession에서만
+  // 파생한다(Codex P2) — 빈 객철만으로는 resume이 성립하지 않으므로 마커도 심지 않는다.
+  delete payload.resumeAvailable;
+  if (isResumableProviderSession(node.payload?.providerSession)) payload.resumeAvailable = true;
+  return {
+    ...node,
+    payload,
+  };
+}
+
+// resume 라우트의 readProviderSession보다 느슨한 도메인 중립 최소형: provider/sessionId가
+// 비어있지 않은 문자열이면 마커를 허용한다. 그 이상의 형태 미스매치 잔여분은 Resume 시
+// 프레임의 실패 카드(I1)가 사용자에게 표면화한다.
+function isResumableProviderSession(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const provider = value.provider;
+  const sessionId = value.sessionId;
+  return typeof provider === "string" && provider.length > 0 && typeof sessionId === "string" && sessionId.length > 0;
+}
+
+function sanitizeRecord(value: Record<string, unknown>, sensitiveFields: ReadonlySet<string>): Record<string, unknown> {
+  const output: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (sensitiveFields.has(key)) continue;
+    output[key] = sanitizeValue(item, sensitiveFields);
+  }
+  return output;
+}
+
+function sanitizeValue(value: unknown, sensitiveFields: ReadonlySet<string>): unknown {
+  if (Array.isArray(value)) return value.map((item) => sanitizeValue(item, sensitiveFields));
+  if (!isRecord(value)) return value;
+  return sanitizeRecord(value, sensitiveFields);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+import crypto from "node:crypto";
+
+export function createOperationStore(deps: { readonly now?: () => number } = {}): OperationStore {
+  const now = deps.now ?? Date.now;
+  const nodes = new Map<string, OperationNode>();
+  const groups = new Map<string, OperationGroup>();
+
+  function list(): readonly OperationNode[] {
+    return Array.from(nodes.values()).sort(compareOperationNodes);
+  }
+
+  function listByTheater(theaterId: string): readonly OperationNode[] {
+    return list().filter((node) => node.theaterId === theaterId);
+  }
+
+  function get(id: string): OperationNode | null {
+    return nodes.get(id) ?? null;
+  }
+
+  function create(input: OperationCreateInput): OperationNode {
+    const id = input.id ?? crypto.randomUUID();
+    if (nodes.has(id)) throw new Error("operation_exists");
+    const node = normalizeCreateInput(input, id, now());
+    nodes.set(node.id, node);
+    return node;
+  }
+
+  function upsert(input: OperationCreateInput): OperationNode {
+    const existing = input.id ? nodes.get(input.id) : null;
+    if (!existing) return create(input);
+    const updated = normalizePatch(existing, {
+      title: input.title,
+      accent: input.accent ?? existing.accent,
+      geometry: input.geometry ?? existing.geometry,
+      payload: input.payload ?? existing.payload,
+    }, now());
+    nodes.set(existing.id, updated);
+    return updated;
+  }
+
+  function patch(id: string, input: OperationPatchInput): OperationNode | null {
+    const existing = nodes.get(id);
+    if (!existing) return null;
+    const updated = normalizePatch(existing, input, now());
+    nodes.set(id, updated);
+    return updated;
+  }
+
+  function deleteNode(id: string): boolean {
+    if (!nodes.has(id)) return false;
+    nodes.delete(id);
+    return true;
+  }
+
+  function deleteByTheater(theaterId: string): number {
+    let deleted = 0;
+    for (const node of Array.from(nodes.values())) {
+      if (node.theaterId !== theaterId) continue;
+      nodes.delete(node.id);
+      deleted += 1;
+    }
+    deleteGroupsByTheater(theaterId);
+    return deleted;
+  }
+
+  function replace(nextNodes: readonly OperationNode[]): void {
+    nodes.clear();
+    const validNodes = sanitizeReplacementNodes(nextNodes);
+    for (const node of validNodes) nodes.set(node.id, node);
+  }
+
+  function createGroup(input: OperationGroupCreateInput): OperationGroup {
+    const id = input.id ?? crypto.randomUUID();
+    if (groups.has(id)) throw new Error("group_exists");
+    const order = input.order ?? groups.size;
+    const group: OperationGroup = {
+      id,
+      theaterId: input.theaterId,
+      name: input.name.trim().slice(0, MAX_GROUP_NAME_LENGTH) || "Group",
+      color: input.color,
+      order,
+      createdAt: now(),
+    };
+    groups.set(id, group);
+    return group;
+  }
+
+  function updateGroup(id: string, input: OperationGroupPatchInput): OperationGroup | null {
+    const existing = groups.get(id);
+    if (!existing) return null;
+    const updated: OperationGroup = {
+      ...existing,
+      ...(input.name !== undefined ? { name: input.name.trim().slice(0, MAX_GROUP_NAME_LENGTH) || existing.name } : {}),
+      ...(input.color !== undefined ? { color: input.color } : {}),
+      ...(input.order !== undefined ? { order: input.order } : {}),
+    };
+    groups.set(id, updated);
+    return updated;
+  }
+
+  function deleteGroup(id: string): boolean {
+    if (!groups.has(id)) return false;
+    groups.delete(id);
+    for (const [nodeId, node] of nodes.entries()) {
+      if (node.groupId === id) nodes.set(nodeId, { ...node, groupId: null });
+    }
+    return true;
+  }
+
+  function listGroups(theaterId: string): readonly OperationGroup[] {
+    return Array.from(groups.values())
+      .filter((g) => g.theaterId === theaterId)
+      .sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
+  }
+
+  function listAllGroups(): readonly OperationGroup[] {
+    return Array.from(groups.values()).sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
+  }
+
+  function deleteGroupsByTheater(theaterId: string): number {
+    let deleted = 0;
+    for (const [id, group] of Array.from(groups.entries())) {
+      if (group.theaterId !== theaterId) continue;
+      groups.delete(id);
+      deleted += 1;
+    }
+    return deleted;
+  }
+
+  function replaceGroups(nextGroups: readonly OperationGroup[]): void {
+    groups.clear();
+    for (const group of nextGroups) {
+      if (!groups.has(group.id)) groups.set(group.id, group);
+    }
+  }
+
+  return { list, listByTheater, get, create, upsert, patch, delete: deleteNode, deleteByTheater, replace, createGroup, updateGroup, deleteGroup, listGroups, listAllGroups, deleteGroupsByTheater, replaceGroups };
+}
+
+function normalizeCreateInput(input: OperationCreateInput, id: string, timestamp: number): OperationNode {
+  return {
+    id,
+    theaterId: input.theaterId,
+    type: input.type,
+    pluginId: input.pluginId,
+    title: input.title.trim() || "Untitled Operation",
+    ...(input.accent ? { accent: input.accent.trim() } : {}),
+    ...(input.groupId !== undefined ? { groupId: input.groupId } : {}),
+    payload: input.payload ?? {},
+    geometry: input.geometry ?? null,
+    ts: {
+      createdAt: input.createdAt ?? timestamp,
+      updatedAt: timestamp,
+    },
+  };
+}
+
+function normalizePatch(existing: OperationNode, input: OperationPatchInput, timestamp: number): OperationNode {
+  const title = input.title?.trim();
+  return {
+    ...existing,
+    ...(title !== undefined ? { title: title.length > 0 ? title : existing.title } : {}),
+    ...(input.accent !== undefined ? { accent: input.accent && input.accent.trim() ? input.accent.trim() : undefined } : {}),
+    ...(input.groupId !== undefined ? { groupId: input.groupId } : {}),
+    ...(input.payload !== undefined ? { payload: input.payload } : {}),
+    ...(input.geometry !== undefined ? { geometry: input.geometry } : {}),
+    ts: { ...existing.ts, updatedAt: timestamp },
+  };
+}
+
+function compareOperationNodes(a: OperationNode, b: OperationNode): number {
+  return a.ts.createdAt - b.ts.createdAt || a.id.localeCompare(b.id);
+}
+
+function sanitizeReplacementNodes(nextNodes: readonly OperationNode[]): readonly OperationNode[] {
+  const seen = new Set<string>();
+  const result: OperationNode[] = [];
+  for (const node of nextNodes) {
+    if (!seen.has(node.id)) {
+      seen.add(node.id);
+      result.push(node);
+    }
+  }
+  return result;
+}
+
 import type http from "node:http";
 
 import type { DeferredDeletionReceipt } from "../deferred-deletion.js";
-import type { OperationCatalogPlugin } from "../plugin-host/types.js";
-import type { OperationCreateInput, OperationGroup, OperationGroupCreateInput, OperationGroupPatchInput, OperationNode, OperationStore } from "./types.js";
-import { createSanitizedOpDto } from "./sanitize.js";
+import type { OperationCatalogPlugin } from "../plugin-host/plugin-host.js";
 
 export interface OperationsRouterDeps {
   readonly store: OperationStore;
@@ -284,6 +597,3 @@ function readRequestUrl(req: http.IncomingMessage): URL {
   return new URL(req.url ?? "/", "http://127.0.0.1");
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}

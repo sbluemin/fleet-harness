@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { migrateLegacyCaptures } from "../core/host/legacy-capture-migration.js";
-import type { OperationNode } from "../core/host/operations/types.js";
+import type { OperationNode } from "../core/host/operations/operations-domain.js";
 
 const tempDirs: string[] = [];
 

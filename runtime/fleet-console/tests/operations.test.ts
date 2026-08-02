@@ -6,11 +6,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { assertOperationNode } from "@fleet-console/sdk/operations/browser";
 import { createConsoleLock } from "../core/host/lock.js";
-import { createOperationsRouter } from "../core/host/operations/routes.js";
-import { createSanitizedOpDto } from "../core/host/operations/sanitize.js";
-import { createOperationStore } from "../core/host/operations/store.js";
+import { createOperationsRouter } from "../core/host/operations/operations-domain.js";
+import { createSanitizedOpDto } from "../core/host/operations/operations-domain.js";
+import { createOperationStore } from "../core/host/operations/operations-domain.js";
 import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../core/host/server.js";
-import type { OperationCreateInput, OperationNode } from "../core/host/operations/types.js";
+import type { OperationCreateInput, OperationNode } from "../core/host/operations/operations-domain.js";
 
 const tempDirs: string[] = [];
 const servers: ConsoleServer[] = [];

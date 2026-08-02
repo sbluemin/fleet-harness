@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { withHidden } from "@dotobokuri/core-process";
 
-import type { ConsoleLockPayload } from "./api-types.js";
+import type { ConsoleLockPayload } from "./console-contract-types.js";
 import { openBrowser, type OpenBrowserDeps } from "./browser.js";
 import { createConsoleHealthClient } from "./health.js";
 import {

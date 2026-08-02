@@ -2,8 +2,8 @@ import type http from "node:http";
 
 import { describe, expect, it } from "vitest";
 
-import { DESKTOP_FULLSCREEN_PATH } from "../core/host/desktop-fullscreen.js";
-import { createDesktopFullscreenRouter, DESKTOP_FULLSCREEN_API_CATALOG } from "../core/host/desktop-fullscreen-routes.js";
+import { DESKTOP_FULLSCREEN_PATH } from "../core/host/desktop-contract.js";
+import { createDesktopFullscreenRouter, DESKTOP_FULLSCREEN_API_CATALOG } from "../core/host/desktop-contract.js";
 
 describe("desktop fullscreen route", () => {
   it("declares the visual-only PUT endpoint as origin-strict", () => {

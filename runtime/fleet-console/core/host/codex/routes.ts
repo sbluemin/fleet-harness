@@ -38,8 +38,8 @@ import type {
   SearchResponse,
   SchemaCatalogResponse,
   SchemaDocumentResponse,
-} from "./api-types.js";
-import { withSecurityHeaders } from "./security-headers.js";
+} from "./contracts.js";
+import { withSecurityHeaders } from "./contracts.js";
 import { handleCoworkRequest } from "./cowork/routes.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────

@@ -1,0 +1,618 @@
+import type {
+  DiscoveredFleetPlugin as SdkDiscoveredFleetPlugin,
+} from "@fleet-console/sdk/plugin";
+
+export interface DiscoveredFleetPlugin extends SdkDiscoveredFleetPlugin {
+  readonly external: boolean;
+}
+
+export type {
+  FleetPluginDefinition,
+  FleetPluginEventsHost,
+  FleetPluginHostCapabilities,
+  FleetPluginHttpHost,
+  FleetPluginLifecycleHost,
+  FleetPluginManifest,
+  FleetPluginOperationsHost,
+  FleetPluginPathsHost,
+  FleetPluginRouteExport,
+  FleetPluginRouteModule,
+  FleetPluginSecurityHost,
+  FleetPluginServerContext,
+  FleetPluginStorageHost,
+  OperationCatalogPlugin,
+  OperationLaunchCatalogProvider,
+  OperationLaunchKind,
+} from "@fleet-console/sdk/plugin";
+import type { FleetPluginHostCapabilities, FleetPluginManifest, FleetPluginRouteModule, FleetPluginServerContext } from "@fleet-console/sdk/plugin";
+
+import { existsSync, realpathSync } from "node:fs";
+import fs from "node:fs";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { builtinModules } from "node:module";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+import { SDK_API_VERSION } from "@fleet-console/sdk/version";
+import type { Plugin } from "esbuild";
+
+import { SHIM_NAMED_EXPORTS } from "./shim-keys.generated.js";
+
+export interface DiscoverFleetPluginsOptions {
+  readonly cwd?: string;
+  readonly builtInSourceRoot?: string;
+  readonly builtInDistRoot?: string;
+  readonly homeDir?: string;
+}
+
+export function discoverFleetPlugins(options: DiscoverFleetPluginsOptions = {}): readonly DiscoveredFleetPlugin[] {
+  const builtInSourceRoot = options.builtInSourceRoot ?? (options.cwd ? path.resolve(options.cwd, "runtime/fleet-plugins") : null);
+  const roots = [
+    ...(builtInSourceRoot ? [{ root: builtInSourceRoot, builtInDistRoot: options.builtInDistRoot ?? null, external: false }] : []),
+    { root: path.join(options.homeDir ?? os.homedir(), ".fleet", "plugins"), builtInDistRoot: null, external: true },
+  ];
+  const sourcePlugins = roots.flatMap((root) => discoverPluginRoot(root.root, root.builtInDistRoot, root.external));
+  const sourcePluginIds = new Set(sourcePlugins.map((plugin) => plugin.manifest.id));
+  const distPlugins = options.builtInDistRoot ? discoverDistPluginRoot(options.builtInDistRoot).filter((plugin) => !sourcePluginIds.has(plugin.manifest.id)) : [];
+  return [...sourcePlugins, ...distPlugins];
+}
+
+export function parseFleetPluginManifest(value: unknown): FleetPluginManifest | null {
+  if (!isRecord(value)) return null;
+  const id = readPluginId(value.id);
+  if (!id) return null;
+  return {
+    id,
+    ...(typeof value.apiVersion === "number" ? { apiVersion: value.apiVersion } : {}),
+    ...(typeof value.name === "string" ? { name: value.name } : {}),
+    ...(typeof value.client === "string" ? { client: value.client } : {}),
+    ...(typeof value.routes === "string" ? { routes: value.routes } : {}),
+    ...(Array.isArray(value.sensitiveFields) ? { sensitiveFields: value.sensitiveFields.filter((field): field is string => typeof field === "string") } : {}),
+  };
+}
+
+function discoverPluginRoot(root: string, builtInDistRoot: string | null, external: boolean): readonly DiscoveredFleetPlugin[] {
+  if (!fs.existsSync(root)) return [];
+  const entries = fs.readdirSync(root, { withFileTypes: true });
+  const plugins: DiscoveredFleetPlugin[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === "shared") continue;
+    const pluginRoot = path.join(root, entry.name);
+    const manifestPath = path.join(pluginRoot, "plugin.json");
+    if (!fs.existsSync(manifestPath)) continue;
+    const manifest = readManifest(manifestPath);
+    if (!manifest) continue;
+    const clientEntry = resolveOptionalManifestEntry(pluginRoot, manifest.client, "client");
+    if (clientEntry === false) continue;
+    const routesEntry = resolveRoutesEntry(pluginRoot, manifest, builtInDistRoot);
+    if (routesEntry === false) continue;
+    plugins.push({ root: pluginRoot, manifest, clientEntry, routesEntry, external });
+  }
+  return plugins;
+}
+
+function discoverDistPluginRoot(root: string): readonly DiscoveredFleetPlugin[] {
+  if (!fs.existsSync(root)) return [];
+  const entries = fs.readdirSync(root, { withFileTypes: true });
+  const plugins: DiscoveredFleetPlugin[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === "shared") continue;
+    const pluginRoot = path.join(root, entry.name);
+    const manifestPath = path.join(pluginRoot, "plugin.json");
+    const manifest = fs.existsSync(manifestPath) ? readManifest(manifestPath) : readDistPluginManifest(entry.name);
+    if (!manifest) continue;
+    const clientEntry = resolveOptionalManifestEntry(pluginRoot, manifest.client, "client");
+    if (clientEntry === false) continue;
+    const routesEntry = resolveDistRoutesEntry(pluginRoot, manifest);
+    if (!routesEntry) continue;
+    plugins.push({ root: pluginRoot, manifest, clientEntry, routesEntry, external: false });
+  }
+  return plugins;
+}
+
+function readManifest(manifestPath: string): FleetPluginManifest | null {
+  try {
+    const manifest = parseFleetPluginManifest(JSON.parse(fs.readFileSync(manifestPath, "utf8")));
+    if (!manifest) console.warn(`[fleet-console] Plugin manifest skipped: invalid manifest at ${manifestPath}`);
+    return manifest;
+  } catch (error) {
+    console.warn(`[fleet-console] Plugin manifest skipped: ${manifestPath}: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
+function resolveRoutesEntry(pluginRoot: string, manifest: FleetPluginManifest, builtInDistRoot: string | null): string | false | null {
+  if (manifest.routes) {
+    const manifestRoute = resolveOptionalManifestEntry(pluginRoot, manifest.routes, "routes");
+    if (manifestRoute === false) return false;
+    if (manifestRoute) return manifestRoute;
+  }
+  const manifestRoute = path.join(pluginRoot, "routes.ts");
+  if (fs.existsSync(manifestRoute)) return manifestRoute;
+  if (!builtInDistRoot) return null;
+  const builtRoute = path.join(builtInDistRoot, manifest.id, "routes.mjs");
+  return fs.existsSync(builtRoute) ? builtRoute : null;
+}
+
+function resolveDistRoutesEntry(pluginRoot: string, manifest: FleetPluginManifest): string | null {
+  const routesEntry = resolveOptionalManifestEntry(pluginRoot, manifest.routes ?? "routes.mjs", "routes");
+  if (routesEntry === false) return null;
+  return routesEntry;
+}
+
+function resolveOptionalManifestEntry(pluginRoot: string, entryPath: string | undefined, label: string): string | false | null {
+  if (!entryPath) return null;
+  if (!isSafeRelativeEntry(entryPath)) {
+    console.warn(`[fleet-console] Plugin ${label} entry skipped: unsafe relative path ${entryPath}`);
+    return false;
+  }
+  const candidate = path.resolve(pluginRoot, entryPath);
+  if (!fs.existsSync(candidate)) return null;
+  const rootRealpath = fs.realpathSync.native(pluginRoot);
+  const entryRealpath = fs.realpathSync.native(candidate);
+  if (!isSubpath(rootRealpath, entryRealpath)) {
+    console.warn(`[fleet-console] Plugin ${label} entry skipped: path escapes plugin root ${entryPath}`);
+    return false;
+  }
+  return entryRealpath;
+}
+
+function readPluginId(value: unknown): string | null {
+  return typeof value === "string" && /^[a-z0-9][a-z0-9-]*$/u.test(value) ? value : null;
+}
+
+function readDistPluginManifest(id: string): FleetPluginManifest | null {
+  const pluginId = readPluginId(id);
+  return pluginId ? { id: pluginId, routes: "routes.mjs" } : null;
+}
+
+function isSafeRelativeEntry(entryPath: string): boolean {
+  if (path.isAbsolute(entryPath)) return false;
+  return entryPath.split(/[\\/]+/u).every((segment) => segment !== "..");
+}
+
+function isSubpath(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export interface PluginClientAssetsDeps {
+  readonly plugins: readonly DiscoveredFleetPlugin[];
+}
+
+export interface PluginClientManifestDto {
+  readonly plugins: readonly PluginClientManifestEntryDto[];
+}
+
+export interface PluginClientManifestEntryDto {
+  readonly id: string;
+  readonly name?: string;
+  readonly clientUrl: string;
+  readonly apiVersion: number;
+}
+
+export interface PluginClientAssets {
+  prepare(): Promise<void>;
+  manifest(): PluginClientManifestDto;
+  getClient(id: string): string | null;
+  getShim(name: string): string | null;
+}
+
+interface ShimDefinition {
+  readonly name: string;
+  readonly specifier: string;
+  readonly globalKey: string;
+  readonly namedExports: readonly string[];
+}
+
+const SHIM_DEFINITIONS: readonly ShimDefinition[] = [
+  { name: "react", specifier: "react", globalKey: "react", namedExports: SHIM_NAMED_EXPORTS["react"] ?? [] },
+  { name: "react-jsx-runtime", specifier: "react/jsx-runtime", globalKey: "react/jsx-runtime", namedExports: SHIM_NAMED_EXPORTS["react/jsx-runtime"] ?? [] },
+  { name: "sdk-plugin-browser", specifier: "@fleet-console/sdk/plugin/browser", globalKey: "@fleet-console/sdk/plugin/browser", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/plugin/browser"] ?? [] },
+  { name: "sdk-settings-browser", specifier: "@fleet-console/sdk/settings/browser", globalKey: "@fleet-console/sdk/settings/browser", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/settings/browser"] ?? [] },
+  { name: "sdk-operations-browser", specifier: "@fleet-console/sdk/operations/browser", globalKey: "@fleet-console/sdk/operations/browser", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/operations/browser"] ?? [] },
+  { name: "sdk-notifications-browser", specifier: "@fleet-console/sdk/notifications/browser", globalKey: "@fleet-console/sdk/notifications/browser", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/notifications/browser"] ?? [] },
+  { name: "sdk-react-browser", specifier: "@fleet-console/sdk/react/browser", globalKey: "@fleet-console/sdk/react/browser", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/react/browser"] ?? [] },
+];
+const SHIM_URL_BY_SPECIFIER = new Map(SHIM_DEFINITIONS.map((definition) => [definition.specifier, `/plugin-runtime/shim/${definition.name}.mjs`]));
+const SHIM_BY_NAME = new Map(SHIM_DEFINITIONS.map((definition) => [definition.name, definition]));
+const NODE_BUILTINS = new Set([
+  ...builtinModules,
+  ...builtinModules.map((name) => `node:${name}`),
+]);
+
+export function createPluginClientAssets(deps: PluginClientAssetsDeps): PluginClientAssets {
+  const clientSources = new Map<string, string>();
+  const preparedPlugins = new Set<string>();
+
+  async function prepare(): Promise<void> {
+    clientSources.clear();
+    preparedPlugins.clear();
+    for (const plugin of deps.plugins) {
+      if (!plugin.external || !plugin.clientEntry) continue;
+      try {
+        const source = await readClientSource(plugin.clientEntry, plugin.root);
+        clientSources.set(plugin.manifest.id, source);
+        preparedPlugins.add(plugin.manifest.id);
+      } catch (error) {
+        console.warn(`[fleet-console] Plugin ${plugin.manifest.id} client skipped: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+
+  function manifest(): PluginClientManifestDto {
+    return {
+      plugins: deps.plugins.filter((plugin) => plugin.external && !!plugin.clientEntry && preparedPlugins.has(plugin.manifest.id)).map((plugin) => ({
+        id: plugin.manifest.id,
+        ...(plugin.manifest.name ? { name: plugin.manifest.name } : {}),
+        clientUrl: `/plugin-runtime/client/${plugin.manifest.id}.mjs`,
+        apiVersion: plugin.manifest.apiVersion ?? SDK_API_VERSION,
+      })),
+    };
+  }
+
+  function getClient(id: string): string | null {
+    return clientSources.get(id) ?? null;
+  }
+
+  function getShim(name: string): string | null {
+    const definition = SHIM_BY_NAME.get(name);
+    return definition ? renderShim(definition) : null;
+  }
+
+  return { prepare, manifest, getClient, getShim };
+}
+
+async function readClientSource(entry: string, pluginRoot: string): Promise<string> {
+  if (entry.endsWith(".ts") || entry.endsWith(".tsx")) return bundleClientSource(entry, pluginRoot);
+  if (entry.endsWith(".js") || entry.endsWith(".mjs")) return await readFile(entry, "utf8");
+  throw new Error("unsupported_client_entry");
+}
+
+async function bundleClientSource(entry: string, pluginRoot: string): Promise<string> {
+  const { build } = await import("esbuild");
+  // 번들 주석에 절대 경로(사용자 홈/계정명)가 새지 않도록 plugin root realpath를 작업 디렉터리로 고정한다.
+  // 이렇게 하면 esbuild 모듈 경로 주석이 plugin root 기준 상대경로가 되어 브라우저 페이로드에 raw path가 노출되지 않는다.
+  const rootRealpath = realpathSync.native(pluginRoot);
+  const output = await build({
+    entryPoints: [entry],
+    bundle: true,
+    format: "esm",
+    platform: "browser",
+    target: "es2022",
+    jsx: "automatic",
+    sourcemap: false,
+    write: false,
+    logLevel: "silent",
+    absWorkingDir: rootRealpath,
+    plugins: [createShimExternalsPlugin(rootRealpath)],
+  });
+  const bundled = output.outputFiles[0]?.text;
+  if (!bundled) throw new Error("plugin_client_bundle_failed");
+  return bundled;
+}
+
+function createShimExternalsPlugin(rootRealpath: string): Plugin {
+  return {
+    name: "fleet-console-plugin-client-shim-externals",
+    setup(build) {
+      build.onResolve({ filter: /.*/ }, (args) => {
+        const shimUrl = SHIM_URL_BY_SPECIFIER.get(args.path);
+        if (shimUrl) return { path: shimUrl, external: true };
+        if (NODE_BUILTINS.has(args.path)) throw new Error(`Node builtin import is not allowed in plugin client: ${args.path}`);
+        return null;
+      });
+      build.onLoad({ filter: /.*/, namespace: "file" }, (args) => {
+        const targetRealpath = realpathSync.native(args.path);
+        if (isSubpath(rootRealpath, targetRealpath)) return undefined;
+        return {
+          errors: [{ text: `plugin client import escapes plugin root: ${args.path}` }],
+        };
+      });
+    },
+  };
+}
+
+function renderShim(definition: ShimDefinition): string {
+  // namedExports는 generate 단계에서 이미 필터링·정렬된 상태다.
+  return [
+    `const ns = globalThis.__fleetConsoleRuntime__?.[${JSON.stringify(definition.globalKey)}];`,
+    `if (!ns) throw new Error(${JSON.stringify(`Fleet Console runtime shim unavailable: ${definition.globalKey}`)});`,
+    ...definition.namedExports.map((key) => `export const ${key} = ns[${JSON.stringify(key)}];`),
+    "export default ns.default;",
+    "",
+  ].join("\n");
+}
+
+
+import type { RouteHandler, RouteRegistry } from "../route-registry/registry.js";
+import type { UpgradeHandler, UpgradeRegistry } from "../route-registry/registry.js";
+
+export interface FleetPluginHostDeps extends DiscoverFleetPluginsOptions {
+  readonly routes: RouteRegistry;
+  readonly upgrades: UpgradeRegistry;
+  readonly host: FleetPluginHostCapabilities;
+  readonly importModule?: (entry: string) => Promise<FleetPluginRouteModule>;
+  readonly bundleCacheDir?: string;
+  readonly isProcessAlive?: (pid: number) => boolean;
+  readonly removeBundleDir?: (dir: string) => Promise<void>;
+}
+
+export interface FleetPluginHost {
+  readonly plugins: readonly DiscoveredFleetPlugin[];
+  readonly sensitiveFieldsByPluginId: ReadonlyMap<string, readonly string[]>;
+  boot(): Promise<void>;
+  cleanup(): Promise<void>;
+}
+
+interface PluginBundleOwner {
+  readonly pid: number;
+}
+
+const PLUGIN_DEV_EXTERNALS = [
+  "node:*",
+  "fs",
+  "path",
+  "os",
+  "crypto",
+  "stream",
+  "events",
+  "child_process",
+  "node-pty",
+  "ws",
+  "@fleet-plugins/*",
+];
+const PLUGIN_BUNDLE_DIR_PREFIX = "fleet-console-plugin-";
+const PLUGIN_BUNDLE_OWNER_FILE = ".fleet-console-plugin-owner.json";
+const PLUGIN_BUNDLE_PID_PATTERN = /^fleet-console-plugin-(\d+)-/u;
+const MAX_PLUGIN_BUNDLE_OWNER_PID = 0x7fff_ffff;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHost {
+  const plugins = filterDiscoveredPlugins(discoverFleetPlugins(deps));
+  const sensitiveFieldsByPluginId = new Map(plugins.map((plugin) => [plugin.manifest.id, plugin.manifest.sensitiveFields ?? []]));
+  const generatedBundleDirs = new Set<string>();
+  const isProcessAlive = deps.isProcessAlive ?? isPluginBundleOwnerAlive;
+  const removeBundleDir = deps.removeBundleDir ?? removePluginBundleDir;
+  const importModule = deps.importModule ?? ((entry) => importPluginModule(entry, deps.bundleCacheDir, generatedBundleDirs));
+
+  async function boot(): Promise<void> {
+    await removeStalePluginBundleDirs(deps.bundleCacheDir, isProcessAlive, removeBundleDir);
+    for (const plugin of plugins) {
+      if (!plugin.routesEntry) continue;
+      if (!plugin.external) {
+        await bootPluginRoutes(plugin);
+        continue;
+      }
+      try {
+        await bootPluginRoutes(plugin);
+      } catch (error) {
+        console.warn(`[fleet-console] Plugin ${plugin.manifest.id} routes skipped: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+
+  async function cleanup(): Promise<void> {
+    const dirs = [...generatedBundleDirs];
+    const cleanupResults = await Promise.allSettled(dirs.map((dir) => removeBundleDir(dir)));
+    for (const [index, result] of cleanupResults.entries()) {
+      const dir = dirs[index]!;
+      if (result.status === "fulfilled") {
+        generatedBundleDirs.delete(dir);
+        continue;
+      }
+      if (result.status === "rejected") {
+        console.warn(`[fleet-console] Plugin bundle cache cleanup failed: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+      }
+    }
+  }
+
+  return { plugins, sensitiveFieldsByPluginId, boot, cleanup };
+
+  async function bootPluginRoutes(plugin: DiscoveredFleetPlugin): Promise<void> {
+    const mod = await importModule(plugin.routesEntry!);
+    const register = resolveRegister(mod);
+    if (!register) return;
+    await register({
+      pluginId: plugin.manifest.id,
+      manifest: plugin.manifest,
+      basePath: `/plugins/${plugin.manifest.id}`,
+      wsBasePath: `/plugins/${plugin.manifest.id}/ws`,
+      host: deps.host,
+      registerRouter: createScopedRouteRegistrar(deps.routes, `/plugins/${plugin.manifest.id}`, `/api/v1/plugins/${plugin.manifest.id}`),
+      registerWsHandler: createScopedUpgradeRegistrar(deps.upgrades, `/plugins/${plugin.manifest.id}/ws`),
+    });
+  }
+}
+
+function filterDiscoveredPlugins(plugins: readonly DiscoveredFleetPlugin[]): readonly DiscoveredFleetPlugin[] {
+  const accepted: DiscoveredFleetPlugin[] = [];
+  const seen = new Set<string>();
+  for (const plugin of plugins) {
+    const id = plugin.manifest.id;
+    if (seen.has(id)) {
+      console.warn(`[fleet-console] Plugin ${id} skipped: duplicate id (${plugin.root})`);
+      continue;
+    }
+    if (plugin.external && plugin.manifest.apiVersion !== SDK_API_VERSION) {
+      console.warn(`[fleet-console] Plugin ${id} skipped: unsupported apiVersion (${String(plugin.manifest.apiVersion)})`);
+      continue;
+    }
+    seen.add(id);
+    accepted.push(plugin);
+  }
+  return accepted;
+}
+
+async function importPluginModule(entry: string, bundleCacheDir: string | undefined, generatedBundleDirs: Set<string>): Promise<FleetPluginRouteModule> {
+  if (entry.endsWith(".ts")) {
+    const { build } = await import("esbuild");
+    const output = await build({
+      entryPoints: [entry],
+      bundle: true,
+      format: "esm",
+      platform: "node",
+      target: "node20",
+      write: false,
+      sourcemap: false,
+      external: PLUGIN_DEV_EXTERNALS,
+      nodePaths: [resolveConsolePackageNodeModules()].filter((value): value is string => value !== null),
+    });
+    const bundled = output.outputFiles[0]?.text;
+    if (!bundled) throw new Error("plugin_bundle_failed");
+    const bundledPath = await writeTemporaryPluginBundle(entry, bundled, bundleCacheDir, generatedBundleDirs);
+    return await import(pathToFileURL(bundledPath).href) as FleetPluginRouteModule;
+  }
+  return await import(pathToFileURL(entry).href) as FleetPluginRouteModule;
+}
+
+async function writeTemporaryPluginBundle(entry: string, source: string, bundleCacheDir: string | undefined, generatedBundleDirs: Set<string>): Promise<string> {
+  const cacheRoot = bundleCacheDir ?? path.join(resolvePluginBundleNodeModules(entry), ".cache");
+  await mkdir(cacheRoot, { recursive: true });
+  const dir = await mkdtemp(path.join(cacheRoot, `${PLUGIN_BUNDLE_DIR_PREFIX}${process.pid}-`));
+  if (bundleCacheDir) {
+    generatedBundleDirs.add(dir);
+    await writePluginBundleOwner(dir, process.pid);
+  }
+  const file = path.join(dir, "routes.mjs");
+  await writeFile(file, source, "utf8");
+  return file;
+}
+
+async function removeStalePluginBundleDirs(bundleCacheDir: string | undefined, isProcessAlive: (pid: number) => boolean, removeBundleDir: (dir: string) => Promise<void>): Promise<void> {
+  if (!bundleCacheDir) return;
+  try {
+    await mkdir(bundleCacheDir, { recursive: true });
+    const entries = await readdir(bundleCacheDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.name.startsWith(PLUGIN_BUNDLE_DIR_PREFIX)) continue;
+      const entryPath = path.join(bundleCacheDir, entry.name);
+      const ownerPid = await readPluginBundleOwnerPid(entryPath, entry.name);
+      if (ownerPid !== null && isProcessAlive(ownerPid)) continue;
+      try {
+        await removeBundleDir(entryPath);
+      } catch (error) {
+        console.warn(`[fleet-console] Plugin bundle cache startup cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  } catch (error) {
+    console.warn(`[fleet-console] Plugin bundle cache startup cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+async function removePluginBundleDir(dir: string): Promise<void> {
+  await rm(dir, { recursive: true, force: true });
+}
+
+async function writePluginBundleOwner(dir: string, pid: number): Promise<void> {
+  await writeFile(path.join(dir, PLUGIN_BUNDLE_OWNER_FILE), JSON.stringify({ pid }), "utf8");
+}
+
+async function readPluginBundleOwnerPid(dir: string, name: string): Promise<number | null> {
+  try {
+    const parsed = JSON.parse(await readFile(path.join(dir, PLUGIN_BUNDLE_OWNER_FILE), "utf8")) as PluginBundleOwner;
+    if (isPluginBundleOwnerPid(parsed.pid)) return parsed.pid;
+  } catch {
+    // Marker write can be interrupted; fall back to the PID embedded in the directory name.
+  }
+  const pid = Number(PLUGIN_BUNDLE_PID_PATTERN.exec(name)?.[1]);
+  return isPluginBundleOwnerPid(pid) ? pid : null;
+}
+
+function isPluginBundleOwnerAlive(pid: number): boolean {
+  if (!isPluginBundleOwnerPid(pid)) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return Boolean(error && typeof error === "object" && "code" in error && error.code === "EPERM");
+  }
+}
+
+function isPluginBundleOwnerPid(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 && value <= MAX_PLUGIN_BUNDLE_OWNER_PID;
+}
+
+function resolvePluginBundleNodeModules(entry: string): string {
+  const packageNodeModules = resolveConsolePackageNodeModules();
+  let dir = path.dirname(entry);
+  let fallback: string | null = packageNodeModules;
+  while (true) {
+    const workspaceConsoleNodeModules = path.join(dir, "runtime", "fleet-console", "node_modules");
+    if (hasFleetConsoleSdk(workspaceConsoleNodeModules)) return workspaceConsoleNodeModules;
+    const candidate = path.join(dir, "node_modules");
+    if (hasFleetConsoleSdk(candidate)) return candidate;
+    if (fallback === null && existsSync(candidate)) fallback = candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) return fallback ?? path.join(path.dirname(entry), "node_modules");
+    dir = parent;
+  }
+}
+
+function resolveConsolePackageNodeModules(): string | null {
+  for (const candidate of [
+    path.resolve(__dirname, "..", "node_modules"),
+    path.resolve(__dirname, "..", "..", "..", "node_modules"),
+  ]) {
+    if (hasFleetConsoleSdk(candidate)) return candidate;
+  }
+  return null;
+}
+
+function hasFleetConsoleSdk(nodeModules: string): boolean {
+  return existsSync(path.join(nodeModules, "@fleet-console", "sdk"));
+}
+
+function resolveRegister(mod: FleetPluginRouteModule): ((ctx: FleetPluginServerContext) => void | Promise<void>) | null {
+  if (mod.register) return mod.register;
+  if (typeof mod.default === "function") return mod.default;
+  return mod.default?.register ?? null;
+}
+
+function createScopedRouteRegistrar(routes: RouteRegistry, basePath: string, apiBasePath: string): FleetPluginServerContext["registerRouter"] {
+  return (requestedPath: string, handler: RouteHandler) => {
+    const prefix = resolveScopedPrefix(basePath, requestedPath, apiBasePath);
+    assertNoRouteOverlap(prefix, routes.list().map((route) => route.prefix));
+    routes.register(prefix, handler);
+  };
+}
+
+function createScopedUpgradeRegistrar(upgrades: UpgradeRegistry, basePath: string): FleetPluginServerContext["registerWsHandler"] {
+  return (requestedPath: string, handler: UpgradeHandler) => {
+    const prefix = resolveScopedPrefix(basePath, requestedPath);
+    assertNoRouteOverlap(prefix, upgrades.list().map((upgrade) => upgrade.prefix));
+    upgrades.register(prefix, handler);
+  };
+}
+
+function resolveScopedPrefix(basePath: string, requestedPath: string, apiBasePath?: string): string {
+  if (requestedPath.split("/").some((segment) => segment === "." || segment === "..")) throw new Error("plugin_route_outside_scope");
+  const normalizedBase = normalizePrefix(basePath);
+  if (!requestedPath.startsWith("/")) return normalizePrefix(`${normalizedBase}/${requestedPath}`);
+  const normalizedRequest = normalizePrefix(requestedPath);
+  if (normalizedRequest === normalizedBase || normalizedRequest.startsWith(`${normalizedBase}/`)) return normalizedRequest;
+  const normalizedApiBase = apiBasePath ? normalizePrefix(apiBasePath) : null;
+  if (normalizedApiBase && (normalizedRequest === normalizedApiBase || normalizedRequest.startsWith(`${normalizedApiBase}/`))) return normalizedRequest;
+  if (normalizedRequest === "/") return normalizedBase;
+  throw new Error("plugin_route_outside_scope");
+}
+
+function assertNoRouteOverlap(prefix: string, existingPrefixes: readonly string[]): void {
+  for (const existingPrefix of existingPrefixes) {
+    if (prefixesOverlap(prefix, normalizePrefix(existingPrefix))) throw new Error("plugin_route_prefix_conflict");
+  }
+}
+
+function prefixesOverlap(left: string, right: string): boolean {
+  return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
+}
+
+function normalizePrefix(prefix: string): string {
+  if (!prefix.startsWith("/")) return normalizePrefix(`/${prefix}`);
+  return prefix.length > 1 && prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+}

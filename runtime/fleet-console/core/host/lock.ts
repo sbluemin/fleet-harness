@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import type { ConsoleLockPayload } from "./api-types.js";
+import type { ConsoleLockPayload } from "./console-contract-types.js";
 import type { ConsoleOwnerMetadata } from "./desktop-protocol.js";
 
 export interface ConsoleLockDeps {

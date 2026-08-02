@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { createOperationStore } from "../core/host/operations/store.js";
-import { MAX_GROUP_NAME_LENGTH } from "../core/host/operations/types.js";
+import { createOperationStore } from "../core/host/operations/operations-domain.js";
+import { MAX_GROUP_NAME_LENGTH } from "../core/host/operations/operations-domain.js";
 
 function makeStore() {
   let ts = 1000;

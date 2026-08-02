@@ -2,7 +2,7 @@ import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 
-import type { ConsoleThemeId } from "./console-settings.js";
+import type { ConsoleThemeId } from "./settings/settings-domain.js";
 import { withSecurityHeaders } from "./security-headers.js";
 
 const MIME_TYPES: Readonly<Record<string, string>> = {

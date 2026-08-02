@@ -1,3 +1,5 @@
+import type { ConsoleThemeId, UiFontSettings } from "./settings/settings-domain.js";
+
 export interface ConsoleLockPayload {
   readonly pid: number;
   readonly host: string;
@@ -250,4 +252,21 @@ export interface ConsoleOperationsResponse {
 
 export interface ConsoleOperationResponse {
   readonly operation: ConsoleOperationNode;
+}
+
+// 브라우저로 나가는 General 설정 DTO. console-settings.ts의 ConsoleSettingsData에서
+// 내부 격리 키(version)를 제외하고 flat으로 변환해 표면화한다.
+
+export interface GlobalSettingsState {
+  readonly consolePortMode: "dynamic" | "static";
+  readonly consoleStaticPort: number | null;
+  readonly language: "auto" | "en" | "ko";
+  readonly reducePanelMotion: boolean;
+  readonly seenFeatureTours: readonly string[];
+  readonly theme: ConsoleThemeId;
+  readonly uiFont: UiFontSettings;
+}
+
+export interface GlobalSettingsMutationResult {
+  readonly state: GlobalSettingsState;
 }

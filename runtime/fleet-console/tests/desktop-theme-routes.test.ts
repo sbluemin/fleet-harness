@@ -2,8 +2,8 @@ import type http from "node:http";
 
 import { describe, expect, it } from "vitest";
 
-import { DESKTOP_THEME_EVENTS_PATH, DESKTOP_THEME_PATH, desktopThemeSnapshot } from "../core/host/desktop-theme.js";
-import { createDesktopThemeRouter, DESKTOP_THEME_API_CATALOG } from "../core/host/desktop-theme-routes.js";
+import { DESKTOP_THEME_EVENTS_PATH, DESKTOP_THEME_PATH, desktopThemeSnapshot } from "../core/host/desktop-contract.js";
+import { createDesktopThemeRouter, DESKTOP_THEME_API_CATALOG } from "../core/host/desktop-contract.js";
 
 describe("desktop theme routes", () => {
   it("declares snapshot and SSE endpoints as exact-origin only", () => {
