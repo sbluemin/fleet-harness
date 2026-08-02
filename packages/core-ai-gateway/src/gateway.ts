@@ -11,6 +11,7 @@ import type {
 } from "./canonical.js";
 import { OpenAIResponsesAdapter } from "./openai-responses-adapter.js";
 import { estimateTokens } from "./token-estimate.js";
+import { logCanonicalEvents, wireLog, wireLogEnabled } from "./wire-log.js";
 
 /** Claude Code recognizes this prefix and routes the failed turn through reactive compaction. */
 export class ContextWindowExceededError extends Error {
@@ -55,6 +56,16 @@ export class AnthropicMessagesGateway {
     request: AnthropicMessagesRequest,
     options: AnthropicGatewayCallOptions
   ): Promise<AnthropicGatewayResponse> {
+    // Inbound Anthropic tool catalog, verbatim. This is the only place the client's own
+    // `input_schema` (its `required` array and any `strict` flag) is visible before any
+    // translation touches it.
+    wireLog("anthropic.request", {
+      model: request.model,
+      resolvedModel: options.model,
+      stream: request.stream,
+      tool_choice: request.tool_choice,
+      tools: request.tools,
+    });
     const canonical = translateAnthropicRequest(request, {
       ...(options.model ? { model: options.model } : {}),
       ...(options.catalog ? { catalog: options.catalog } : {}),
@@ -63,6 +74,13 @@ export class AnthropicMessagesGateway {
       ...(this.adapter.capabilities?.nativeTools
         ? { nativeTools: this.adapter.capabilities.nativeTools }
         : {}),
+    });
+    wireLog("canonical.request", {
+      model: canonical.model,
+      tool_choice: canonical.tool_choice,
+      parallel_tool_calls: canonical.parallel_tool_calls,
+      reasoning: canonical.reasoning,
+      tools: canonical.tools,
     });
     guardModelContextWindow(canonical, options.modelContextWindow, this.adapter);
     const upstream = await this.adapter.stream(canonical, {
@@ -74,6 +92,10 @@ export class AnthropicMessagesGateway {
     });
 
     if (!upstream.ok) {
+      wireLog("upstream.error", {
+        status: upstream.status,
+        body: new TextDecoder().decode(upstream.body),
+      });
       const translated = translateUpstreamError(upstream.body);
       const headers = new Headers(upstream.headers);
       if (translated.changed) {
@@ -87,6 +109,12 @@ export class AnthropicMessagesGateway {
       };
     }
 
+    // One wrapper at the canonical boundary covers every adapter, and carries the argument
+    // JSON the model actually produced for each tool call.
+    const events = wireLogEnabled()
+      ? logCanonicalEvents(upstream.events, "canonical.event")
+      : upstream.events;
+
     if (request.stream === true) {
       return {
         status: upstream.status,
@@ -94,7 +122,7 @@ export class AnthropicMessagesGateway {
           "cache-control": "no-cache",
           "content-type": "text/event-stream; charset=utf-8"
         }),
-        body: encodeAnthropicSse(upstream.events, {
+        body: encodeAnthropicSse(events, {
           contextWindow: options.contextWindow,
           model: request.model,
         })
@@ -102,7 +130,7 @@ export class AnthropicMessagesGateway {
     }
 
     // Claude Code는 일부 요청을 비스트리밍으로 보낸다. 그때는 이벤트를 모아 단일 Messages 응답을 준다.
-    const message = await collectAnthropicMessage(upstream.events, request.model, {
+    const message = await collectAnthropicMessage(events, request.model, {
       contextWindow: options.contextWindow,
       model: request.model,
     });
