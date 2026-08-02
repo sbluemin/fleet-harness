@@ -5,6 +5,73 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.41.0] - 2026-08-02
+
+### fleet-cli
+
+#### Removed
+- [fleet-cli] `fleet console`와 local 전용 `fleet desktop` 서브커맨드를 제거해 Fleet CLI가 Console 패키지에 의존하거나 중계하지 않도록 합니다. 대신 독립 `fleet-console` 바이너리를 사용하세요. `fleet update`는 패키지 의존성을 되돌리지 않고 PATH의 독립 `fleet-console` 실행 파일을 찾아 실행 중인 Console을 먼저 정지합니다.
+
+### fleet-console
+
+#### Added
+- [fleet-console] 캔버스 제어에서 Claude Gateway 첫 실행을 안내하고 선별 처리 안내는 실제 모드 진입 시에만 표시합니다.
+
+#### Changed
+- [fleet-console] agent CLI 세션 캡처 정보를 별도 captures 디렉터리 대신 콘솔 상태 파일에만 보관합니다.
+- [fleet-console] 기존 캡처 파일을 시작 시 콘솔 상태 파일로 이관한 뒤 남은 captures 디렉터리를 정리합니다.
+
+#### Fixed
+- [fleet-console] npm/pnpm 글로벌 bin symlink와 macOS `/var`·`/private/var` 별칭을 CLI direct-run 가드 전에 풀어, 설치된 `fleet-console` 바이너리가 조용히 종료되지 않고 `main()`에 진입하도록 고칩니다.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Ledger 패널이 CLI별 합계 위에 기기 전체 일별 비용 차트를 표시합니다. 선택한 기간 전체를 포괄해 사용량이 없는 날도 0으로 읽히며, 날짜별 상세를 hover·포커스로 보여주고 최고일과 일 평균을 함께 제공합니다. 선택한 기간이 이틀 미만이면 차트를 표시하지 않습니다.
+- [fleet-console] Ledger 일별 차트가 각 세션의 비용을 마지막으로 활동한 날짜에 합산한다는 규칙을 함께 표시해, 자정을 넘긴 세션을 오해 없이 읽을 수 있습니다.
+- [fleet-console] Ledger가 4자리 연도의 로컬 날짜를 만들 수 없는 사용 기록을 건너뛰어, 잘못된 데이터가 패널을 망가뜨리지 않고 일부 데이터 누락으로만 처리됩니다.
+- [fleet-console] File Explorer 행에 git 상태 배지(M/U/D)를 표시하고, 마운트·파일 감시 이벤트·수동 새로고침 시 갱신합니다.
+- [fleet-console] Session Analyst 컴포저의 Escape 키가 세 단계로 동작합니다: slash 명령 리스트박스 닫기, 드래프트 지우기, Analyst 컴패니언 묶음 닫기(다른 컴패니언은 유지).
+- [fleet-console] Session Analyst 아티팩트 제공 문서에 테마 토큰 기반 베이스 스타일시트를 주입해 --fleet-canvas/surface/ink/muted/hairline/accent 변수로 아티팩트가 활성 콘솔 테마를 따릅니다.
+- [fleet-console] File Explorer 행에 우클릭 컨텍스트 메뉴를 추가해 경로 복사, 상대 경로 복사, 파일 관리자에서 보기, 기본 앱으로 열기를 제공합니다.
+- [fleet-console] File Explorer 창 구분선을 방향키로 조절할 수 있게 하고 separator ARIA 의미를 온전히 제공합니다.
+- [fleet-console] 저장소 패널에 동기화 동작을 추가합니다 — 한 번의 클릭으로 현재 저장소 컨텍스트에 `git fetch --prune --no-tags`를 실행하고 브랜치·기록·워크트리·변경을 갱신합니다.
+- [fleet-console] 마지막 fetch가 5분보다 오래됐다면 저장소 패널을 여는 것만으로 자동 동기화됩니다. 실패해도 로컬 데이터는 그대로 표시됩니다.
+- [fleet-console] Claude Code를 로컬 AI Gateway로 구동하는 Claude (Gateway) 런치를 추가합니다 — 모델별 호출을 Codex(ChatGPT 구독)·Cursor(구독)·Kimi(API key) 백엔드로 중계하고, 네이티브 Claude 모델은 원문 그대로 통과합니다.
+- [fleet-console] Terminal 설정의 Agent CLI 섹션을 AI Gateway로 개편하고 프로바이더별 모델 로드아웃을 추가합니다 — 켠 모델만 /model 픽커에 노출(opt-in)되며 Claude 기본 모델 아래에서 Codex → Cursor → Kimi 순으로 정렬되고, ★ 지정 모델이 세션 기본값이 되며, 행에 컨텍스트 윈도우·effort 사다리·Fast·Max Mode 칩이 표시됩니다. 선별 상태는 콘솔의 terminal 플러그인 상태에 저장됩니다.
+- [fleet-console] AI Gateway 설정에 opt-in 진단 제어를 추가합니다 — 기본값은 Off이며 새로 시작하는 trace의 payload 없는 Cursor 전송 이벤트를 기록하고, 비활성화해도 기존 순환 로그를 보존합니다.
+- [fleet-console] AI Gateway가 컨텍스트를 소진한 턴에 Claude Code가 컴팩트 후 이어가는 데 필요한 `Prompt is too long: N tokens > M maximum` 신호로 응답하고, 각 모델의 실제 사용 가능 창을 `[1m]` 회계 좌표와 무관하게 전달해 Cursor 네이티브 모델도 보호합니다.
+- [fleet-console] 응답 헤더 전송 후 발생한 게이트웨이 실패가 스트림을 무음으로 자르지 않고, 사유를 담은 종단 SSE `error` 프레임으로 종료됩니다.
+- [fleet-console] 사용 한도 패널에 Kimi를 네 번째 공급자로 추가합니다 — Fleet에 이미 등록된 Kimi API key로 사용량을 조회합니다.
+- [fleet-console] Cursor의 Auto 한도와 API 한도를 별도 창으로 추적합니다. 한 풀에서 과금되는 모델은 합산 수치가 아니라 그 풀 기준으로 판단됩니다.
+- [fleet-console] Claude (Gateway) 세션에 gateway_models 도구를 추가합니다 — 실행 단계에 배치할 수 있는 모델과 각 모델의 컨텍스트 윈도우·effort 사다리·쿼터 풀·실측 역할 적합도, 그리고 현재 공급자 한도를 보고합니다. 로스터는 호출마다 다시 해석되며 설정에서 켠 모델만 나열합니다.
+- [fleet-console] Claude Gateway Operations는 스폰 시점에 AI Gateway 모델·강도 Agent를 주입하고, 해당 경로의 Claude Code 내장 Agent 로스터를 끕니다.
+
+#### Changed
+- [fleet-console] Scuttlebutt 버블에서 완료되거나 시작된 Operation을 바로 엽니다. 버블 본문이 해당 Operation을 포커스하고, 닫기는 별도 액션으로 분리됩니다.
+- [fleet-console] 동시에 몰린 Scuttlebutt 알림을 한 줄 요약 대신 Operation별 행으로 펼쳐 각각 포커스할 수 있습니다.
+- [fleet-console] 카탈로그 선택기에 포커스가 이동하면 Session Analyst slash 명령 리스트박스를 닫아 두 추천 레이어가 겹치지 않습니다.
+- [fleet-console] 기존 Claude와 Codex 캔버스 Operation을 AI Gateway Operation과 구분해 표시합니다.
+
+#### Removed
+- [fleet-console] 직결 Kimi (Claude Code) 런치와 기본 모델·effort 옵션을 제거합니다. Kimi 세션은 이제 AI Gateway를 통해 실행되며, 추론 강도는 Claude Code의 /effort와 /model 픽커에서 제어합니다.
+
+### fleet-core
+
+#### Added
+- [core-ai-gateway] Anthropic Messages 요청을 하나의 모델 카탈로그로부터 Codex Responses·Cursor Connect·Kimi 업스트림 호출로 번역하는 core AI gateway 패키지를 추가합니다 — 스트리밍, 도구 브리징, 컨텍스트 윈도우 투영, 추론 강도 클램프를 포함합니다.
+- [core-ai-gateway] Cursor 도구 continuation 전체에서 안정적으로 유지되면서 새로 시작하는 각 trace에는 현재 설정을 적용하는 trace별 진단 정책 경계를 추가합니다.
+- [core-ai-gateway] 게이트웨이가 창을 넘는 턴을 상류 호출 전에 거절하며, 어댑터가 실제로 직렬화하는 툴만 계산해 선언된 툴 카탈로그가 크다는 이유로 모델이 잠기지 않습니다.
+- [core-ai-gateway] 카탈로그에서 모델별 라우팅 제약을 도출합니다 — 서비스 티어 변형을 하나로 묶는 업스트림 식별자, 디스커버리가 실제로 광고하는 추론 레벨, Anthropic 계보 여부, Cursor 모델이 과금되는 쿼터 풀입니다.
+- [fleet-admiral] Claude (Gateway) 호스트가 단계별 모델·강도 선택을 스스로 판단하도록 규정합니다 — 세션 모델 상속이 기본이고, 다른 모델 고정에는 실행 기록에 남기는 명시적 근거가 필요하며, 온디맨드 workflow 스킬이 판단 절차와 실측 근거, 그리고 단계 뼈대를 실제로 실행하는 방법을 싣습니다.
+- [fleet-admiral] Claude (Gateway) 세션에 작전별 온디맨드 스킬 네 종(architecture-review·implementation-run·quality-review·codebase-research)을 추가합니다 — 각 스킬이 단계 뼈대와 단계별 산출 계약, 실행 종료 규칙을 정의하므로, 단계마다 모델이나 CLI를 지정하지 않아도 오케스트레이션이 성립합니다.
+- [core-ai-gateway] 스트리밍 및 비스트리밍 응답에서 Anthropic 토큰 회계를 일관되게 유지하면서 Codex 캐시 및 추론 사용량 세부 정보를 보존합니다.
+- [core-ai-gateway] Codex Responses를 통해 Claude Code `Web Search`를 지원하며 도메인 필터, 출처 결과, 명시적인 제공자 검색 오류를 전달합니다.
+
+#### Changed
+- [fleet-admiral] Claude Gateway 세션은 프로토콜 스킬·프로토콜 게이트·캐리어 로스터·해군 페르소나와 톤 오버레이·carrier_dispatch 및 carrier_jobs 도구 없이 Standing Order만으로 동작하고, 기존 Agent CLI 세션은 프로토콜 게이트·메타포 오버레이·carrier_dispatch 안내를 유지하도록 Admiral 프롬프트 독트린을 분리합니다.
+- [fleet-admiral] Gateway Orchestration Policy는 세션 기본값과 다른 모델·강도의 staged Agent를 고르기 전에 `gateway_models` MCP 도구를 쓰도록 요구합니다.
+
 ## [1.40.0] - 2026-07-30
 
 ### fleet-cli

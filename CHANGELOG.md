@@ -5,6 +5,73 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.41.0] - 2026-08-02
+
+### fleet-cli
+
+#### Removed
+- [fleet-cli] Remove the `fleet console` and local-only `fleet desktop` subcommands so Fleet CLI no longer depends on or relays into the Console package; use the standalone `fleet-console` binary instead. `fleet update` still stops a running Console beforehand by resolving the independent `fleet-console` executable on PATH, without restoring a package dependency.
+
+### fleet-console
+
+#### Added
+- [fleet-console] Guide the first Claude Gateway launch from Canvas Controls while keeping Triage guidance tied to entering Triage mode.
+
+#### Changed
+- [fleet-console] Keep agent CLI session capture data only in the Console state file instead of a separate captures directory.
+- [fleet-console] Migrate existing capture files into the Console state file on startup and then remove the leftover captures directory.
+
+#### Fixed
+- [fleet-console] Resolve npm/pnpm global bin symlinks (and macOS `/var` vs `/private/var` aliases) before the CLI direct-run guard so installed `fleet-console` binaries actually enter `main()` instead of exiting silently.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] The Ledger panel charts device-wide daily cost above the per-CLI totals, covering the whole selected window so days without usage still read as zero, with hover and focus details per day plus peak and daily-average lines, and stays hidden when the selected window covers less than two days.
+- [fleet-console] The Ledger daily chart states that each session's cost counts on the day it was last active, so a session spanning midnight is read correctly.
+- [fleet-console] Ledger skips usage records whose timestamps cannot form a four-digit local date, so malformed data degrades the report instead of breaking the panel.
+- [fleet-console] Show git status badges (M/U/D) on File Explorer rows, refreshed on mount, file-watch events, and manual refresh.
+- [fleet-console] Step the Session Analyst composer Escape key through three layers: dismiss the slash-command listbox, clear the draft, then close the Analyst companion cluster while leaving other companions untouched.
+- [fleet-console] Inject a theme-token base stylesheet into served Session Analyst artifacts, exposing --fleet-canvas/surface/ink/muted/hairline/accent so artifact content follows the active console theme.
+- [fleet-console] Add a right-click context menu to File Explorer rows with Copy Path, Copy Relative Path, Reveal in File Manager, and Open with Default App actions.
+- [fleet-console] Make the File Explorer pane divider keyboard-operable with arrow-key resizing and full separator ARIA semantics.
+- [fleet-console] Add a Sync action to the Repository panel: one click runs `git fetch --prune --no-tags` against the current repository context, then refreshes branches, history, worktrees, and changes.
+- [fleet-console] Opening the Repository panel now auto-syncs when the last fetch is older than 5 minutes; failures always keep showing local data.
+- [fleet-console] Add a Claude (Gateway) launch that drives Claude Code through a local AI Gateway, routing each model call to the Codex (ChatGPT subscription), Cursor (subscription), or Kimi (API key) backend while native Claude models pass through untouched.
+- [fleet-console] Rework the Terminal settings Agent CLI section into AI Gateway with a per-provider model loadout: only enabled models reach the /model picker (opt-in), sorted by provider (Codex, then Cursor, then Kimi) under Claude Code's built-ins; a starred model becomes the session default, and rows surface context window, effort ladder, Fast, and Max Mode chips. The selection persists in the console's terminal plugin state.
+- [fleet-console] Add an opt-in Diagnostics control to AI Gateway settings that records payload-free Cursor transport events for newly started traces, defaults to Off, and preserves existing rotating logs when disabled.
+- [fleet-console] The AI Gateway answers a context-exhausted turn with the `Prompt is too long: N tokens > M maximum` signal Claude Code needs to compact and continue, and carries each model's real usable window independently of the `[1m]` accounting coordinate so a native Cursor model is guarded too.
+- [fleet-console] A gateway failure that happens after the response headers were sent now ends with a terminal SSE `error` frame carrying the reason, instead of silently truncating the stream.
+- [fleet-console] Report Kimi usage in the Usage limits panel as a fourth provider, read with the Kimi API key already registered in Fleet.
+- [fleet-console] Track the Cursor Auto and API allowances as separate windows, so a model billed from one pool is judged against that pool rather than the combined figure.
+- [fleet-console] Give a Claude (Gateway) session a gateway_models tool that reports the models it may assign to a run's stages, each model's context window, reasoning-effort ladder, quota pool, and measured role fit, plus current provider allowances. The roster is resolved on each call and lists only models enabled in Settings.
+- [fleet-console] Claude Gateway Operations inject AI Gateway model and effort Agents at spawn, and disable the built-in Claude Code Agent roster for that path.
+
+#### Changed
+- [fleet-console] Open the finished or started operation directly from a scuttlebutt bubble: the bubble body now focuses the operation, and a separate dismiss action closes the announcement.
+- [fleet-console] Expand simultaneous scuttlebutt announcements into one focusable row per operation instead of a single summary line.
+- [fleet-console] Dismiss the Session Analyst slash-command listbox when a catalog selector gains focus, so the two suggestion layers no longer stack.
+- [fleet-console] Distinguish classic Claude and Codex canvas Operations from AI Gateway Operations.
+
+#### Removed
+- [fleet-console] Remove the direct Kimi (Claude Code) launch and its default model and effort options; Kimi sessions now run through the AI Gateway, and reasoning effort is controlled inside Claude Code via /effort and the /model picker.
+
+### fleet-core
+
+#### Added
+- [core-ai-gateway] Add a core AI gateway package that translates Anthropic Messages requests into Codex Responses, Cursor Connect, and Kimi upstream calls from one model catalog, including streaming, tool bridging, context-window projection, and reasoning-effort clamping.
+- [core-ai-gateway] Add a per-trace diagnostics policy seam that remains stable across Cursor tool continuations while allowing each newly started trace to adopt the current setting.
+- [core-ai-gateway] The gateway refuses an over-window turn before calling upstream, and sizes only the tools an adapter actually serializes so a large declared tool catalog cannot lock a model out.
+- [core-ai-gateway] Derive per-model routing constraints from the catalog: the upstream identity that collapses service-tier variants, the reasoning levels discovery actually advertises, Anthropic lineage, and the quota pool a Cursor model is billed from.
+- [fleet-admiral] Direct a Claude (Gateway) host to keep stage model and effort selection as its own decision: inheriting the session model is the default, pinning one requires a stated reason recorded with the run, and the on-demand workflow skill carries the reasoning procedure, the measured evidence behind it, and how a stage skeleton is actually executed.
+- [fleet-admiral] Add four on-demand operation skills for Claude (Gateway) sessions (architecture-review, implementation-run, quality-review, codebase-research), each defining the stage skeleton, the contract every stage returns, and the rule that ends the run, so orchestrated work no longer requires naming a model or CLI per stage.
+- [core-ai-gateway] Preserve Codex cache and reasoning usage details while keeping Anthropic token accounting consistent across streaming and non-streaming responses.
+- [core-ai-gateway] Support Claude Code `Web Search` through Codex Responses with domain filters, source results, and explicit provider search errors.
+
+#### Changed
+- [fleet-admiral] Split Admiral prompt doctrine so Claude Gateway sessions run on standing orders alone, without protocol skills, the protocol gate, the carrier roster, the naval persona and tone overlays, or the carrier_dispatch and carrier_jobs tools, while classic Agent CLI sessions keep the protocol gate, metaphor overlays, and carrier_dispatch guidance.
+- [fleet-admiral] Gateway Orchestration Policy now requires the `gateway_models` MCP tool before choosing a staged Agent whose model or effort differs from the session default.
+
 ## [1.40.0] - 2026-07-30
 
 ### fleet-cli
