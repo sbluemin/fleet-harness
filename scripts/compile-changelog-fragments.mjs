@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const SECTIONS = ['Added', 'Changed', 'Fixed', 'Removed', 'Breaking Changes'];
 const PRODUCTS = ['fleet-cli', 'fleet-console', 'fleet-desktop', 'fleet-plugin', 'fleet-core'];
-const TAGS = ['core-process', 'core-agent', 'core-unified-agent', 'core-infra', 'fleet-admiral', 'fleet-analyst', 'fleet-carriers', 'fleet-wiki', 'fleet-console', 'fleet-cli'];
+const TAGS = ['core-process', 'core-agent', 'core-ai-gateway', 'core-unified-agent', 'core-infra', 'fleet-admiral', 'fleet-analyst', 'fleet-carriers', 'fleet-wiki', 'fleet-console', 'fleet-cli'];
 const RETIRED_TAGS = ['core', 'wiki', 'wiki-web', 'agent-core', 'unified-agent', 'mcp-server', 'agent', 'carriers', 'fleet-infra'];
 const DEFAULT_CHANGELOG = 'CHANGELOG.md';
 const DEFAULT_CHANGELOG_KO = 'CHANGELOG.ko.md';
