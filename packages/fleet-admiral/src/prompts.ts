@@ -29,8 +29,7 @@ export interface SystemPromptBuildOptions {
 }
 
 export interface SystemPromptBuilder {
-  build(enableMetaphor: boolean): string;
-  build(options: SystemPromptBuildOptions): string;
+  build(input: boolean | SystemPromptBuildOptions): string;
 }
 
 interface SystemPromptBuilderDeps {
