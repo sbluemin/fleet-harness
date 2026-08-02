@@ -266,7 +266,6 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       return true;
     }
     if (path === "/sessions") return handleSessions(req, res);
-    if (path === "/capture") return handleCapture(req, res, "");
     const sessionMatch = path.match(/^\/sessions\/([^/]+)(?:\/([^/]+))?$/);
     if (sessionMatch) return handleSessionItem(req, res, decodeURIComponent(sessionMatch[1] ?? ""), sessionMatch[2] ?? "");
     if (path === "/ticket") {
