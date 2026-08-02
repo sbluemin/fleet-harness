@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
-import { FEATURE_TOURS, type FeatureTour, type FeatureTourStep } from "../feature-tour-catalog.js";
+import {
+  FEATURE_TOURS,
+  FEATURE_TOUR_BOUNDARY_SELECTOR,
+  FEATURE_TOUR_LAYER_ATTRIBUTE,
+  type FeatureTour,
+  type FeatureTourStep,
+} from "../feature-tour-catalog.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
 
@@ -82,21 +88,16 @@ export function FeatureTourOverlay() {
     }
     anchor.classList.add("is-feature-tour-anchor");
     const updatePosition = () => {
-      const rect = anchor.getBoundingClientRect();
+      const boundary = anchor.closest<HTMLElement>(FEATURE_TOUR_BOUNDARY_SELECTOR);
       const card = cardRef.current?.getBoundingClientRect();
-      const cardWidth = card?.width ?? 320;
-      const cardHeight = card?.height ?? 180;
-      const gap = 12;
-      const margin = 12;
-      const below = rect.bottom + gap;
-      const top = below + cardHeight <= window.innerHeight - margin
-        ? below
-        : Math.max(margin, rect.top - cardHeight - gap);
-      const left = Math.min(
-        window.innerWidth - cardWidth - margin,
-        Math.max(margin, rect.left + rect.width / 2 - cardWidth / 2),
-      );
-      setPosition({ left, top, centered: false });
+      setPosition(resolveFeatureTourCardPosition({
+        anchor: anchor.getBoundingClientRect(),
+        boundary: boundary?.getBoundingClientRect() ?? null,
+        cardWidth: card?.width ?? 320,
+        cardHeight: card?.height ?? 180,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      }));
     };
     updatePosition();
     return () => anchor.classList.remove("is-feature-tour-anchor");
@@ -105,9 +106,7 @@ export function FeatureTourOverlay() {
   const finish = useCallback(async () => {
     if (!resolved) return;
     const key = featureTourSeenKey(resolved.tour.id, resolved.phase);
-    const completionBase = resolved.phase === "walkthrough"
-      ? appendSeenFeatureTour(seen, featureTourSeenKey(resolved.tour.id, "spotlight"))
-      : seen;
+    const completionBase = featureTourCompletionBase(seen, resolved.tour, resolved.phase);
     setLockedTour(null);
     setStepIndex(0);
     await persistFeatureTourSeen(completionBase, key, (next) => setGlobalSettingsField("seenFeatureTours", next));
@@ -122,6 +121,7 @@ export function FeatureTourOverlay() {
   return (
     <div
       className={`feature-tour-layer is-${resolved.phase} ${position.centered ? "is-centered" : ""}`}
+      {...{ [FEATURE_TOUR_LAYER_ATTRIBUTE]: "" }}
       data-feature-tour-id={resolved.tour.id}
       data-feature-tour-phase={resolved.phase}
     >
@@ -166,6 +166,54 @@ export function FeatureTourOverlay() {
       </section>
     </div>
   );
+}
+
+export function resolveFeatureTourCardPosition(options: {
+  readonly anchor: Pick<DOMRect, "left" | "right" | "top" | "bottom" | "width">;
+  readonly boundary: Pick<DOMRect, "left" | "right" | "top" | "bottom" | "width" | "height"> | null;
+  readonly cardWidth: number;
+  readonly cardHeight: number;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+}): CardPosition {
+  const { anchor, boundary, cardWidth, cardHeight, viewportWidth, viewportHeight } = options;
+  const gap = 12;
+  const margin = 12;
+  const clampLeft = (left: number) => Math.min(viewportWidth - cardWidth - margin, Math.max(margin, left));
+  const clampTop = (top: number) => Math.min(viewportHeight - cardHeight - margin, Math.max(margin, top));
+  if (boundary) {
+    const centeredTop = clampTop(boundary.top + boundary.height / 2 - cardHeight / 2);
+    if (boundary.right + gap + cardWidth <= viewportWidth - margin) {
+      return { left: boundary.right + gap, top: centeredTop, centered: false };
+    }
+    if (boundary.left - gap - cardWidth >= margin) {
+      return { left: boundary.left - gap - cardWidth, top: centeredTop, centered: false };
+    }
+    const centeredLeft = clampLeft(boundary.left + boundary.width / 2 - cardWidth / 2);
+    if (boundary.bottom + gap + cardHeight <= viewportHeight - margin) {
+      return { left: centeredLeft, top: boundary.bottom + gap, centered: false };
+    }
+    return { left: centeredLeft, top: Math.max(margin, boundary.top - cardHeight - gap), centered: false };
+  }
+  const below = anchor.bottom + gap;
+  const top = below + cardHeight <= viewportHeight - margin
+    ? below
+    : Math.max(margin, anchor.top - cardHeight - gap);
+  return {
+    left: clampLeft(anchor.left + anchor.width / 2 - cardWidth / 2),
+    top,
+    centered: false,
+  };
+}
+
+export function featureTourCompletionBase(
+  seen: readonly string[],
+  tour: FeatureTour,
+  phase: FeatureTourPhase,
+): readonly string[] {
+  return phase === "walkthrough" && tour.spotlight
+    ? appendSeenFeatureTour(seen, featureTourSeenKey(tour.id, "spotlight"))
+    : seen;
 }
 
 export function featureTourSeenKey(tourId: string, phase: FeatureTourPhase): string {
