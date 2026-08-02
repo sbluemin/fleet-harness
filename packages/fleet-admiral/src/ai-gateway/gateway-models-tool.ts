@@ -54,7 +54,7 @@ const GATEWAY_MODELS_DOCTRINE = {
     `roleFit is null when the axis was never measured. Unmeasured is not unsuitable, and it is not a reason to pin.`,
     `constraints.quotaScope names the sub-allowance a model is billed against. Read the provider window whose scope matches it; the scope-less window is the sum of pools and can look healthy while that model's own pool is spent.`,
     `A provider quota of status "unsupported" means the allowance cannot be read, never that it is plentiful.`,
-    `The claude provider serves no gateway model. It is the allowance an unpinned stage spends, and therefore the baseline any offload is measured against.`,
+    `The provider marked isInheritedBaseline holds the allowance an unpinned stage spends, and is therefore what an offload is measured against. It is the parent subscription unless a session default model is configured, in which case that model's provider carries it. This reflects the session's starting model, so re-read it rather than assuming the parent.`,
     `constraints.homolineage marks a model sharing the parent session's lineage. It can move spend off that allowance, but adds no independence to a panel whose value comes from differing judgement.`,
     `constraints.identity collapses service-tier siblings, so a measurement recorded against one covers the other.`,
   ],

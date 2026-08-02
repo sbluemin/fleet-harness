@@ -88,6 +88,20 @@ describe("gateway loadout", () => {
     const loadout = buildGatewayLoadout({ exposed: [model("kimi--k3")] });
     const parent = loadout.providers.find((entry) => entry.id === "claude");
     expect(parent?.quota.status).toBe("unsupported");
+    expect(parent?.isInheritedBaseline).toBe(true);
+  });
+
+  it("moves the inherited baseline onto the session default model's provider", () => {
+    // 세션 기본 모델이 지정되면 런치가 그것을 ANTHROPIC_MODEL로 심으므로, 고정하지 않은
+    // Phase는 부모 구독이 아니라 그 모델의 예산을 소모한다.
+    const loadout = buildGatewayLoadout({
+      exposed: [model("kimi--k3"), model("cursor--grok-4.5-fast")],
+      defaultModel: model("kimi--k3"),
+    });
+    const baselines = loadout.providers.filter((entry) => entry.isInheritedBaseline);
+    expect(baselines.map((entry) => entry.id)).toEqual(["kimi"]);
+    // 부모 구독은 기준선이 아니어도 남는다 — 세션 중 모델을 되돌리면 다시 소모된다.
+    expect(loadout.providers.map((entry) => entry.id)).toContain("claude");
   });
 
   it("moves the revision when exposure changes but not when a reading does", () => {

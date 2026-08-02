@@ -65,6 +65,37 @@ describe("console quota snapshot", () => {
     expect(snapshot?.claude?.status).toBe("ok");
   });
 
+  it("waits longer than the summary's own worst-case provider wait", async () => {
+    // 요약은 네 프로바이더를 모두 기다리고, 각 요청은 10초까지 버티며 일부는 두 번
+    // 순차 호출한다(최악 20초). 그보다 먼저 끊으면 이미 성공한 프로바이더의 결과까지
+    // 버려지고 전부 unsupported가 된다.
+    const SUMMARY_WORST_CASE_MS = 20_000;
+    let observedTimeoutMs: number | undefined;
+    const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+      const signal = init?.signal;
+      const started = Date.now();
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 0);
+        signal?.addEventListener("abort", () => {
+          observedTimeoutMs = Date.now() - started;
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+      return jsonResponse(summary);
+    }) as typeof fetch;
+    vi.useFakeTimers();
+    try {
+      const pending = readConsoleQuotaSnapshot("http://127.0.0.1:57333", fetchImpl);
+      await vi.advanceTimersByTimeAsync(SUMMARY_WORST_CASE_MS);
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
+    // 최악 대기 시점에 아직 abort되지 않았어야 한다.
+    expect(observedTimeoutMs).toBeUndefined();
+  });
+
   it("degrades to no snapshot when the Console has no port or the route fails", async () => {
     expect(await readConsoleQuotaSnapshot(null)).toBeUndefined();
     expect(await readConsoleQuotaSnapshot(

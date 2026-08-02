@@ -60,6 +60,13 @@ export interface GatewayLoadoutProvider {
    * never that the allowance is healthy.
    */
   readonly quota: GatewayProviderQuota | { readonly status: "unsupported" };
+  /**
+   * Marks the allowance an unpinned stage is expected to spend, and therefore
+   * the baseline an offload is measured against. It follows the session's
+   * starting model: the parent subscription by default, but a provider's own
+   * allowance once a session default model is configured.
+   */
+  readonly isInheritedBaseline?: true;
 }
 
 export interface GatewayLoadout {
@@ -91,7 +98,7 @@ export function buildGatewayLoadout(input: BuildGatewayLoadoutInput): GatewayLoa
     revision: loadoutRevision(models),
     catalogUpdatedAt: GATEWAY_MODELS_UPDATED_AT,
     models,
-    providers: buildProviders(input.exposed, input.quota),
+    providers: buildProviders(input.exposed, input.quota, input.defaultModel),
   };
 }
 
@@ -108,19 +115,29 @@ function toLoadoutModel(model: GatewayModel, defaultModel?: GatewayModel): Gatew
 function buildProviders(
   exposed: readonly GatewayModel[],
   quota: GatewayQuotaSnapshot | undefined,
+  defaultModel: GatewayModel | undefined,
 ): readonly GatewayLoadoutProvider[] {
-  // 부모 세션의 예산은 게이트웨이 모델을 하나도 제공하지 않지만, 고정하지 않은 Phase가
-  // 소모하는 예산이므로 항상 자리를 지킨다. 쿼터 조회가 실패했을 때 이 항목이 빠지면
-  // 호스트는 "읽지 못했다"와 "그런 예산이 없다"를 구별할 수 없게 되고, 오프로드 판단의
-  // 기준선 자체를 잃는다.
-  const ids: string[] = [PARENT_PROVIDER_ID];
+  // 상속 예산은 세션의 시작 모델을 따라간다. 세션 기본 모델이 지정되면 런치가 그것을
+  // ANTHROPIC_MODEL로 심으므로, 고정하지 않은 Phase는 부모 구독이 아니라 그 모델의
+  // 프로바이더 예산을 소모한다. 이 축을 claude로 못박으면 오프로드 판단이 엉뚱한
+  // 기준선을 상대로 이루어진다.
+  const baselineId = defaultModel?.provider ?? PARENT_PROVIDER_ID;
+  // 부모 구독은 기준선이 아닐 때도 목록에 남는다. 세션 중 모델을 되돌리면 다시
+  // 그쪽을 소모하고, 쿼터 조회가 실패했을 때 항목이 통째로 빠지면 호스트가
+  // "읽지 못했다"와 "그런 예산이 없다"를 구별할 수 없게 된다.
+  const ids: string[] = [baselineId];
+  if (!ids.includes(PARENT_PROVIDER_ID)) ids.push(PARENT_PROVIDER_ID);
   for (const model of exposed) {
     if (!ids.includes(model.provider)) ids.push(model.provider);
   }
   for (const id of Object.keys(quota ?? {})) {
     if (!ids.includes(id)) ids.push(id);
   }
-  return ids.map((id) => ({ id, quota: quota?.[id] ?? UNSUPPORTED_QUOTA }));
+  return ids.map((id) => ({
+    id,
+    quota: quota?.[id] ?? UNSUPPORTED_QUOTA,
+    ...(id === baselineId ? { isInheritedBaseline: true as const } : {}),
+  }));
 }
 
 // Quota is deliberately excluded: it moves on its own and would make every

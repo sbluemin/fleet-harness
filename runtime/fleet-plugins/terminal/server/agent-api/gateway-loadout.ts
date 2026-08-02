@@ -5,7 +5,11 @@ import type { GatewayQuotaSnapshot } from "@dotobokuri/fleet-admiral";
 // HTTP 라우트를 콘솔 내부에서 호출한다. 게이트웨이 base URL을 콘솔 origin에서 얻는 것과
 // 같은 경로다.
 const QUOTA_SUMMARY_PATH = "/plugins/quota/summary";
-const QUOTA_REQUEST_TIMEOUT_MS = 5_000;
+// 요약은 네 프로바이더를 모두 기다린 뒤에야 응답한다. 각 프로바이더 요청은 10초까지
+// 버티고 일부는 엔드포인트를 두 번 순차 호출하므로, 캐시가 비어 있는 첫 조회의 최악
+// 대기는 20초에 이른다. 그보다 짧게 끊으면 이미 성공한 프로바이더의 결과까지 함께
+// 버려져 전부 unsupported로 보고된다. 이 값은 그 최악 대기를 넘겨야 한다.
+const QUOTA_REQUEST_TIMEOUT_MS = 25_000;
 const QUOTA_MAX_RESPONSE_BYTES = 65_536;
 
 /**
