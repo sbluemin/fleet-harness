@@ -21,12 +21,13 @@ import type { AiGatewayLaunchBinding } from "./agent-api/launch.js";
 import type { AiGatewayStoredSettings } from "./ai-gateway-settings.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
-import { captureSession, readProviderSessionCapture, readProviderSessionCaptureRaw, unlinkProviderSessionCapture, writeProviderSessionCaptureRaw, type ProviderSession } from "./agent-api/session-capture.js";
+import { captureSession, readProviderSessionCapture, readProviderSessionCaptureRaw, unlinkProviderSessionCapture, writeProviderSessionCaptureRaw } from "./agent-api/session-capture.js";
 import { createAgentTerminalLaunchResolver, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./agent-api/osc-agent-activity.js";
 import { writeAggregateObserverEvents } from "./agent-api/observability-routes.js";
-import type { AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
+import { readProviderSession } from "./agent-api/provider-session.js";
+import type { AgentProviderSession, AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
 import { CARRIER_JOB_FINALIZED_GRACE_MS, isCarrierJobActiveForIdle, startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown };
 type HookTurnBody = { readonly phase?: unknown };
@@ -792,7 +793,7 @@ export function createTerminalWikiToolSpecs(fleetDataDir: string) {
   return getWikiToolSpecs(resolver);
 }
 
-function toOperationPayload(existing: Record<string, unknown> | undefined, cwd: string, session: AgentTerminalSessionInfo, providerSession?: ProviderSession, providerTitle?: AgentProviderTitleMarker): Record<string, unknown> {
+function toOperationPayload(existing: Record<string, unknown> | undefined, cwd: string, session: AgentTerminalSessionInfo, providerSession?: AgentProviderSession, providerTitle?: AgentProviderTitleMarker): Record<string, unknown> {
   const payload = { ...(existing ?? {}) };
   for (const key of ["cwd", "cliId", "launchKindId", "cliLabel", "providerSession", "labelSource", "providerTitle"]) {
     delete payload[key];
@@ -833,20 +834,6 @@ function readOptionalAgentCliId(value: unknown, res: Parameters<FleetPluginServe
     res.end(JSON.stringify({ error: "invalid_agent_cli" }));
     return false;
   }
-}
-
-function readProviderSession(value: Record<string, unknown> | undefined): ProviderSession | undefined {
-  const providerSession = value?.providerSession;
-  if (!providerSession || typeof providerSession !== "object") return undefined;
-  const candidate = providerSession as { readonly provider?: unknown; readonly sessionId?: unknown; readonly capturedAt?: unknown; readonly transcriptPath?: unknown; readonly source?: unknown };
-  if ((candidate.provider !== "claude" && candidate.provider !== "codex") || typeof candidate.sessionId !== "string" || typeof candidate.capturedAt !== "string") return undefined;
-  return {
-    provider: candidate.provider,
-    sessionId: candidate.sessionId,
-    capturedAt: candidate.capturedAt,
-    ...(typeof candidate.transcriptPath === "string" ? { transcriptPath: candidate.transcriptPath } : {}),
-    ...(typeof candidate.source === "string" ? { source: candidate.source } : {}),
-  };
 }
 
 function readProviderTitle(value: Record<string, unknown> | undefined): AgentProviderTitleMarker | undefined {
