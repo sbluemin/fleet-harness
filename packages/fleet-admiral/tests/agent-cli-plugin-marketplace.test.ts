@@ -221,7 +221,16 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(existsSync(path.join(skillsRoot, "wiki-operations", "SKILL.md"))).toBe(true);
     expect(existsSync(path.join(skillsRoot, "assumption-audit", "SKILL.md"))).toBe(true);
     // gateway 전용 오버레이는 대응하는 base 자산이 없어도 렌더된다.
-    expect(existsSync(path.join(skillsRoot, "model-loadout", "SKILL.md"))).toBe(true);
+    // 캐리어 페르소나가 맡던 역할은 gateway에서 작전별 워크플로 스킬이 대신한다.
+    for (const skill of [
+      "model-loadout",
+      "architecture-review",
+      "implementation-run",
+      "quality-review",
+      "codebase-research",
+    ]) {
+      expect(existsSync(path.join(skillsRoot, skill, "SKILL.md")), skill).toBe(true);
+    }
 
     // gateway/assumption-audit 오버레이가 base 자산을 대체하고 protocol 참조를 남기지 않는다.
     const assumptionAudit = readFileSync(path.join(skillsRoot, "assumption-audit", "SKILL.md"), "utf8");
@@ -245,8 +254,16 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(existsSync(path.join(skillsRoot, "carrier-operations", "SKILL.md"))).toBe(true);
     expect(existsSync(path.join(skillsRoot, "gateway"))).toBe(false);
     expect(existsSync(path.join(skillsRoot, "protocol-baseline", "SKILL.md"))).toBe(true);
-    // classic 세션은 게이트웨이를 거치지 않으므로 로스터 지침이 가리킬 대상이 없다.
-    expect(existsSync(path.join(skillsRoot, "model-loadout", "SKILL.md"))).toBe(false);
+    // classic은 캐리어 페르소나로 위임하므로 작전 워크플로 스킬을 렌더하지 않는다.
+    for (const skill of [
+      "model-loadout",
+      "architecture-review",
+      "implementation-run",
+      "quality-review",
+      "codebase-research",
+    ]) {
+      expect(existsSync(path.join(skillsRoot, skill, "SKILL.md")), skill).toBe(false);
+    }
   });
 
   it("keeps classic and gateway asset roots isolated under the same dataDir", async () => {
