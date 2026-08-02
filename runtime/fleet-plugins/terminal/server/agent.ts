@@ -21,7 +21,6 @@ import type { AiGatewayLaunchBinding } from "./agent-api/launch.js";
 import type { AiGatewayStoredSettings } from "./ai-gateway-settings.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
-import { captureSession, readProviderSessionCapture, readProviderSessionCaptureRaw, unlinkProviderSessionCapture, writeProviderSessionCaptureRaw } from "./agent-api/session-capture.js";
 import { createAgentTerminalLaunchResolver, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./agent-api/osc-agent-activity.js";
@@ -51,7 +50,6 @@ interface AgentRouteDeps {
 const AGENT_OPERATION_TYPE = "agent";
 const CONSOLE_PTY_MESSAGE_DELIVERY = { submitDelayMs: 250 } as const;
 const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
-const OPERATION_PURGED_EVENT_CHANNEL = "operation:purged";
 const OPERATION_RESTORED_EVENT_CHANNEL = "operation:restored";
 const TERMINAL_PLUGIN_ID = "terminal";
 
@@ -171,10 +169,6 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     }
     injectRenameCommand(payload.operationId, payload.title);
   });
-  const unsubscribePurge = ctx.host.events.subscribe(OPERATION_PURGED_EVENT_CHANNEL, (payload) => {
-    if (!isOperationRestoredEvent(payload) || payload.pluginId !== ctx.pluginId || payload.type !== AGENT_OPERATION_TYPE) return;
-    unlinkProviderSessionCapture(payload.operationId, { capturesDir: ctx.host.paths.capturesDir });
-  });
   const unsubscribeRestore = ctx.host.events.subscribe(OPERATION_RESTORED_EVENT_CHANNEL, (payload) => {
     if (!isOperationRestoredEvent(payload) || payload.pluginId !== ctx.pluginId || payload.type !== AGENT_OPERATION_TYPE) return;
     const operation = ctx.host.operations.get(payload.operationId);
@@ -188,10 +182,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     loadGlobalOptions: () => deps.globalOptionsService.load(),
     listTerminalSessions: () => observability.listTerminalSessions(),
     getSessionLastActivityAt: (sessionId) => terminalRuntime.getSessionLastActivityAt(sessionId),
-    hasProviderSessionCapture: (sessionId) => (
-      readProviderSessionCapture(sessionId, { capturesDir: ctx.host.paths.capturesDir }) !== null
-      || readProviderSession(ctx.host.operations.get(sessionId)?.payload) !== undefined
-    ),
+    hasProviderSessionCapture: (sessionId) => readProviderSession(ctx.host.operations.get(sessionId)?.payload) !== undefined,
     // tenantId(=cliRunId)로 세션-job이 연결된다. 활성·finalize grace 안 job이 있으면 reminder용 PTY를 지킨다.
     // job.updatedAt은 wall-clock(Date.now) 기준이므로 grace 비교도 동일 시계를 쓴다.
     hasActiveCarrierJob: (sessionId) => {
@@ -434,7 +425,6 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     }
     resetOscActivity(sessionId);
     const starting = observability.updateTerminalSessionStatus(sessionId, "starting") ?? injectOperation(node);
-    const staleCapture = fresh ? readProviderSessionCaptureRaw(sessionId, { capturesDir: ctx.host.paths.capturesDir }) : null;
     try {
       const cwd = readPayloadString(node.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(node.theaterId);
       if (!cwd) {
@@ -442,12 +432,11 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         return true;
       }
       if (fresh) {
-        // stale provider 상태는 spawn 전에 모두 떼어낸다(capture 파일, observability, payload) —
-        // attach 도중 새 CLI의 capture hook이 먼저 완료되면 attach 후 정리가 새 capture까지 지우고,
-        // payload에 구 세션이 남으면 성공 patch가 그것을 다시 심는다(Codex P1). attach 실패 시에는
-        // catch에서 capture 파일과 payload providerSession을 원복해 일반 resume 재시도와
-        // Session Analyst의 transcript 접근을 보존한다(Codex P2).
-        unlinkProviderSessionCapture(sessionId, { capturesDir: ctx.host.paths.capturesDir });
+        // stale provider 상태는 spawn 전에 observability와 payload에서 모두 떼어낸다 —
+        // attach 도중 새 CLI의 capture hook이 먼저 완료되면 attach 후 정리가 새
+        // providerSession까지 지우고, payload에 구 세션이 남으면 성공 patch가 그것을 다시
+        // 심는다(Codex P1). attach 실패 시에는 catch에서 payload providerSession을 원복해
+        // 일반 resume 재시도와 Session Analyst의 transcript 접근을 보존한다(Codex P2).
         observability.clearTerminalSessionProviderSession(sessionId);
         const payloadWithoutProvider = { ...node.payload };
         delete payloadWithoutProvider.providerSession;
@@ -476,12 +465,11 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     } catch {
       resetOscActivity(sessionId);
       if (fresh && providerSession) {
-        // 실패 롤백: spawn 전에 떼어낸 capture 파일·payload providerSession·observability 세션을
-        // 모두 복원한다 — payload만 복원하면 resume은 되지만 Analyst가 transcript를 잃는다(Codex P2).
+        // 실패 롤백: spawn 전에 떼어낸 payload providerSession과 observability 세션을
+        // 복원한다 — payload의 providerSession이 resume과 Analyst transcript의 단일 권위다(Codex P2).
         const rollbackPayload = { ...(ctx.host.operations.get(sessionId)?.payload ?? {}) };
         rollbackPayload.providerSession = providerSession;
         ctx.host.operations.patch(sessionId, { payload: rollbackPayload });
-        if (staleCapture) writeProviderSessionCaptureRaw(sessionId, staleCapture, { capturesDir: ctx.host.paths.capturesDir });
         observability.updateTerminalSessionProviderSession(sessionId, providerSession);
       }
       pendingRuntimeSessions.delete(sessionId);
@@ -550,23 +538,17 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       ctx.host.http.writeJson(res, 400, { error: "invalid_capture" });
       return true;
     }
-    const result = captureSession({
-      diagnostics: process.stderr,
-      env: { ...process.env, FLEET_CONSOLE_SESSION_ID: sessionId },
-      input: body.input,
-      paths: ctx.host.paths,
-      provider: body.provider,
-    });
-    if (result) {
-      observability.updateTerminalSessionProviderSession(sessionId, result.providerSession);
+    const providerSession = parseCaptureHookInput(body.provider, body.input);
+    if (providerSession) {
+      observability.updateTerminalSessionProviderSession(sessionId, providerSession);
       const operation = ctx.host.operations.get(sessionId);
       if (operation) {
-        ctx.host.operations.patch(sessionId, { payload: { ...operation.payload, providerSession: result.providerSession } });
+        ctx.host.operations.patch(sessionId, { payload: { ...operation.payload, providerSession } });
       } else {
         console.warn(`[fleet-console] capture-session persisted without operation payload: ${sessionId}`);
       }
     }
-    ctx.host.http.writeJson(res, 200, { ok: result !== null });
+    ctx.host.http.writeJson(res, 200, { ok: providerSession !== undefined });
     return true;
   }
 
@@ -620,7 +602,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     reminderWriter.cancel(operationId);
     resetOscActivity(operationId);
     pendingRuntimeSessions.delete(operationId);
-    const providerSession = readProviderSessionCapture(operationId, { capturesDir: ctx.host.paths.capturesDir }) ?? readProviderSession(ctx.host.operations.get(operationId)?.payload);
+    const providerSession = readProviderSession(ctx.host.operations.get(operationId)?.payload);
     if (providerSession) {
       observability.updateTerminalSessionProviderSession(operationId, providerSession);
       const dormant = observability.transitionTerminalSessionToDormant(operationId, providerSession);
@@ -644,15 +626,12 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     pendingRuntimeSessions.delete(sessionId);
     observability.removeTerminalSession(sessionId);
     ctx.host.operations.delete(sessionId);
-    // capture는 여기서 지우지 않는다 — 삭제가 유예되는 동안 undo가 복원해도 transcript가 없는
-    // 껍데기가 되기 때문이다. 실제 정리는 유예가 만료되는 operation:purged에서 한다.
   }
 
   async function cleanup(): Promise<void> {
     reminderWriter.cancelAll();
     unsubscribeRename();
     unsubscribeRestore();
-    unsubscribePurge();
     unsubscribeReminder();
     unsubscribeStream();
     unsubscribeTitle();
@@ -833,6 +812,26 @@ function readOptionalAgentCliId(value: unknown, res: Parameters<FleetPluginServe
     res.writeHead(400, { "content-type": "application/json" });
     res.end(JSON.stringify({ error: "invalid_agent_cli" }));
     return false;
+  }
+}
+
+function parseCaptureHookInput(provider: string, input: string): AgentProviderSession | undefined {
+  try {
+    if (provider !== "claude" && provider !== "codex") throw new Error("invalid_provider");
+    const parsed = JSON.parse(input) as unknown;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("invalid_hook_input");
+    const candidate = parsed as { readonly session_id?: unknown; readonly transcript_path?: unknown; readonly source?: unknown };
+    if (typeof candidate.session_id !== "string" || candidate.session_id.length === 0) throw new Error("missing_provider_session_id");
+    return {
+      provider,
+      sessionId: candidate.session_id,
+      ...(typeof candidate.transcript_path === "string" && candidate.transcript_path.length > 0 ? { transcriptPath: candidate.transcript_path } : {}),
+      ...(typeof candidate.source === "string" && candidate.source.length > 0 ? { source: candidate.source } : {}),
+      capturedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    process.stderr.write(`[fleet-console] capture-session skipped: ${error instanceof Error ? error.message : String(error)}\n`);
+    return undefined;
   }
 }
 
