@@ -6,6 +6,9 @@ import { writePrivateFile, writePrivateJson } from "./fs.js";
 import type { FleetHookExec } from "../types.js";
 import type { AssetPluginBundle, CreateAgentCliPluginOptions } from "./types.js";
 
+/** Classic and gateway asset roots must coexist under the same marketplace. */
+export const ASSET_PLUGIN_DIRECTORY_NAMES = ["fleet", "fleet-gateway"] as const;
+
 export const assetBundle: AssetPluginBundle = {
   description: "Fleet carrier delegation and wiki evidence plugin",
   directoryName: "fleet",
@@ -14,6 +17,10 @@ export const assetBundle: AssetPluginBundle = {
   name: "fleet",
   source: "asset",
 };
+
+export function resolveAssetPluginDirectoryName(doctrine: AdmiralDoctrine): string {
+  return doctrine === "gateway" ? "fleet-gateway" : "fleet";
+}
 
 export function renderAssetPluginRoot(
   pluginRoot: string,

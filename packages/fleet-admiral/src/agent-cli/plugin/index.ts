@@ -4,7 +4,13 @@ import path from "node:path";
 
 import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 
-import { assetBundle, renderAssetPluginRoot } from "./fleet.js";
+import { resolveDoctrineFromCliId } from "../../protocols/doctrine.js";
+import {
+  ASSET_PLUGIN_DIRECTORY_NAMES,
+  assetBundle,
+  renderAssetPluginRoot,
+  resolveAssetPluginDirectoryName,
+} from "./fleet.js";
 import { cleanupPrivateRoot, ensurePrivateDir, removePrivatePath, writePrivateJson } from "./fs.js";
 import type {
   AgentCliPlugin,
@@ -62,7 +68,7 @@ export async function createAgentCliPlugin(
   options: CreateAgentCliPluginOptions,
 ): Promise<AgentCliPlugin> {
   const fleetRoot = options.rootDir ?? options.dataDir ?? getFleetDataDir();
-  const renderableBundles = resolveRenderablePluginBundles(fleetRoot);
+  const renderableBundles = resolveRenderablePluginBundles(fleetRoot, options);
   const marketplaceBundles = groupRenderableBundlesByMarketplace(renderableBundles);
   const pluginRoots = new Map<PluginBundle, string>();
   const contentHashes = new Map<string, string>();
@@ -99,9 +105,16 @@ export async function createAgentCliPlugin(
 
 function resolveRenderablePluginBundles(
   fleetRoot: string,
+  options: CreateAgentCliPluginOptions,
 ): readonly RenderablePluginBundle[] {
   const homeMarketplace = homeMarketplaceTarget(fleetRoot);
-  return PLUGIN_BUNDLES.map((bundle) => ({ bundle, target: homeMarketplace }));
+  const doctrine = options.doctrine ?? resolveDoctrineFromCliId(options.cliId);
+  return PLUGIN_BUNDLES.map((bundle) => ({
+    bundle: bundle.source === "asset"
+      ? { ...bundle, directoryName: resolveAssetPluginDirectoryName(doctrine) }
+      : bundle,
+    target: homeMarketplace,
+  }));
 }
 
 function homeMarketplaceTarget(fleetRoot: string): MarketplaceTarget {
@@ -180,10 +193,20 @@ function pruneMarketplaceRoot(target: MarketplaceTarget): void {
 
 // 이번 렌더에 포함되지 않은 번들의 잔재 디렉터리(예: 과거에 렌더된 fleet-global)를 plugins/ 아래에서 제거한다.
 // 제거된 번들의 stale 디렉터리가 marketplace 콘텐츠 해시에 섞여 불필요한 재등록을 유발하는 것을 막는다.
+// asset 번들은 doctrine별 루트(fleet / fleet-gateway)가 공존해야 하므로 둘 다 활성으로 취급한다.
 function pruneStalePluginDirs(target: MarketplaceTarget, bundles: readonly PluginBundle[]): void {
   const pluginsDir = path.join(target.root, PLUGIN_BUNDLES_DIR_NAME);
   if (!existsSync(pluginsDir)) return;
-  const activeDirectoryNames = new Set(bundles.map((bundle) => bundle.directoryName));
+  const activeDirectoryNames = new Set<string>();
+  for (const bundle of bundles) {
+    if (bundle.source === "asset") {
+      for (const directoryName of ASSET_PLUGIN_DIRECTORY_NAMES) {
+        activeDirectoryNames.add(directoryName);
+      }
+      continue;
+    }
+    activeDirectoryNames.add(bundle.directoryName);
+  }
   for (const entry of readdirSync(pluginsDir)) {
     if (activeDirectoryNames.has(entry)) continue;
     removePrivatePath(path.join(pluginsDir, entry), target.root);

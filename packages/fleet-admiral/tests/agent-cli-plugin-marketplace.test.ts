@@ -242,6 +242,39 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(existsSync(path.join(skillsRoot, "gateway"))).toBe(false);
     expect(existsSync(path.join(skillsRoot, "protocol-baseline", "SKILL.md"))).toBe(true);
   });
+
+  it("keeps classic and gateway asset roots isolated under the same dataDir", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-doctrine-roots-"));
+    tempDirs.push(root);
+    const dataDir = path.join(root, "data");
+    const cwd = path.join(root, "project");
+    mkdirSync(cwd, { recursive: true });
+    const withMarketplaceLock = async <T>(_target: string, fn: () => T | Promise<T>): Promise<T> => fn();
+    const classicRoot = path.join(dataDir, "marketplace", "plugins", "fleet");
+    const gatewayRoot = path.join(dataDir, "marketplace", "plugins", "fleet-gateway");
+
+    for (const order of [
+      ["claude", "claude-gateway"],
+      ["claude-gateway", "claude"],
+    ] as const) {
+      let classicPluginRoot = "";
+      let gatewayPluginRoot = "";
+      for (const cliId of order) {
+        const plugin = await createAgentCliPlugin({ cliId, cwd, dataDir, withMarketplaceLock });
+        if (cliId === "claude") classicPluginRoot = plugin.pluginRoot;
+        else gatewayPluginRoot = plugin.pluginRoot;
+      }
+
+      expect(classicPluginRoot).toBe(classicRoot);
+      expect(gatewayPluginRoot).toBe(gatewayRoot);
+      expect(existsSync(classicRoot)).toBe(true);
+      expect(existsSync(gatewayRoot)).toBe(true);
+      expect(existsSync(path.join(classicRoot, "skills", "carrier-operations", "SKILL.md"))).toBe(true);
+      expect(existsSync(path.join(gatewayRoot, "skills", "carrier-operations", "SKILL.md"))).toBe(false);
+      expect(readFileSync(path.join(gatewayRoot, "skills", "protocol-baseline", "SKILL.md"), "utf8"))
+        .toContain("Workflow tool as the canonical path");
+    }
+  });
 });
 
 describe("deprecated codex plugin cleanup", () => {
