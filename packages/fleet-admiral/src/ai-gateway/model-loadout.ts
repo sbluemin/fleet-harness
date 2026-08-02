@@ -82,6 +82,9 @@ export interface BuildGatewayLoadoutInput {
 
 const UNSUPPORTED_QUOTA = Object.freeze({ status: "unsupported" as const });
 
+/** The session's own subscription — what an unpinned stage spends. */
+const PARENT_PROVIDER_ID = "claude";
+
 export function buildGatewayLoadout(input: BuildGatewayLoadoutInput): GatewayLoadout {
   const models = input.exposed.map((model) => toLoadoutModel(model, input.defaultModel));
   return {
@@ -106,12 +109,14 @@ function buildProviders(
   exposed: readonly GatewayModel[],
   quota: GatewayQuotaSnapshot | undefined,
 ): readonly GatewayLoadoutProvider[] {
-  const ids: string[] = [];
+  // 부모 세션의 예산은 게이트웨이 모델을 하나도 제공하지 않지만, 고정하지 않은 Phase가
+  // 소모하는 예산이므로 항상 자리를 지킨다. 쿼터 조회가 실패했을 때 이 항목이 빠지면
+  // 호스트는 "읽지 못했다"와 "그런 예산이 없다"를 구별할 수 없게 되고, 오프로드 판단의
+  // 기준선 자체를 잃는다.
+  const ids: string[] = [PARENT_PROVIDER_ID];
   for (const model of exposed) {
     if (!ids.includes(model.provider)) ids.push(model.provider);
   }
-  // The parent session's own allowance is reported even with no gateway model
-  // behind it, because offloading is only justified against that baseline.
   for (const id of Object.keys(quota ?? {})) {
     if (!ids.includes(id)) ids.push(id);
   }

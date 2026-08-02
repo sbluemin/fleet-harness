@@ -82,6 +82,14 @@ describe("gateway loadout", () => {
     expect(loadout.providers.map((entry) => entry.id)).toContain("claude");
   });
 
+  it("keeps the parent baseline even when no allowance could be read at all", () => {
+    // 쿼터 조회가 실패하면 claude는 노출 프로바이더가 아니어서 목록에서 통째로 빠질 수
+    // 있다. 그러면 호스트는 "읽지 못했다"와 "그런 예산이 없다"를 구별하지 못한다.
+    const loadout = buildGatewayLoadout({ exposed: [model("kimi--k3")] });
+    const parent = loadout.providers.find((entry) => entry.id === "claude");
+    expect(parent?.quota.status).toBe("unsupported");
+  });
+
   it("moves the revision when exposure changes but not when a reading does", () => {
     const one = buildGatewayLoadout({ exposed: [model("kimi--k3")] });
     const two = buildGatewayLoadout({ exposed: [model("kimi--k3"), model("cursor--grok-4.5-fast")] });
@@ -130,10 +138,12 @@ describe("gateway_models tool", () => {
     });
     const result = await spec.execute({}, {} as never) as {
       isError: boolean;
-      details: { models: unknown[]; providers: Array<{ quota: { status: string } }> };
+      details: { models: unknown[]; providers: Array<{ id: string; quota: { status: string } }> };
     };
     expect(result.isError).toBe(false);
     expect(result.details.models).toHaveLength(1);
-    expect(result.details.providers[0]?.quota.status).toBe("unsupported");
+    // 조회가 실패해도 기준선과 노출 프로바이더가 모두 남고, 각자 읽지 못했음을 밝힌다.
+    expect(result.details.providers.map((entry) => entry.id)).toEqual(["claude", "kimi"]);
+    expect(result.details.providers.every((entry) => entry.quota.status === "unsupported")).toBe(true);
   });
 });
