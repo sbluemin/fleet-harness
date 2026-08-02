@@ -8,6 +8,8 @@ import {
   buildAnthropicModelList,
   buildGatewayModelConstraints,
   clampReasoningEffort,
+  CLAUDE_DEFAULT_CONTEXT_WINDOW,
+  hasClaudeOneMillionMarker,
   findGatewayModel,
   gatewayModelIdentity,
   parseGatewayModelsRegistry,
@@ -711,6 +713,12 @@ describe("model catalog", () => {
     // a `claude-gateway--` id would name a model no upstream serves.
     expect(native.map(toClaudeGatewayModelId)).toEqual(["haiku", "sonnet", "opus"]);
     expect(native.every((model) => !model.aliases)).toBe(true);
+
+    // 창은 모델의 최댓값이 아니라 이 id가 실제로 받는 좌표다. Claude Code는 [1m]
+    // 마커로만 장문맥을 표현하므로, 마커 없는 alias에 1M을 실으면 호출자가 핀한 id가
+    // 낼 수 없는 용량에 맞춰 입력을 배정하게 된다.
+    expect(native.every((model) => model.contextWindow === CLAUDE_DEFAULT_CONTEXT_WINDOW)).toBe(true);
+    expect(native.every((model) => !hasClaudeOneMillionMarker(toClaudeGatewayModelId(model)))).toBe(true);
 
     // Shares the parent session's lineage even though the bare alias carries no vendor prefix.
     expect(native.every((model) => buildGatewayModelConstraints(model).homolineage)).toBe(true);

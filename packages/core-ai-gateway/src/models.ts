@@ -128,6 +128,13 @@ export interface GatewayModel {
    * no adapter for it. It is catalogued anyway so a host balancing work across
    * provider allowances can see it and its constraints alongside the rest, which
    * is the only place the two kinds are compared.
+   *
+   * Its `contextWindow` is the coordinate the id in {@link toClaudeGatewayModelId}
+   * actually receives, which is not the model's maximum. Claude Code expresses a
+   * long-context model only through the `[1m]` marker, so an unmarked alias sits
+   * on {@link CLAUDE_DEFAULT_CONTEXT_WINDOW} however large the model itself is.
+   * Declaring the maximum here would let a caller size a stage's input against
+   * capacity the pinned id cannot offer.
    */
   readonly hostNative?: true;
 }

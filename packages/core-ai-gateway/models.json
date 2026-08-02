@@ -6,7 +6,7 @@
       "name": "Claude",
       "defaultModel": "opus",
       "hostNative": true,
-      "source": "Claude Code built-in model aliases; context windows and effort ladders from the Anthropic model catalog (2026-08-03)",
+      "source": "Claude Code built-in model aliases; effort ladders from the Anthropic model catalog (2026-08-03). contextWindow is the coordinate the bare alias actually receives, not the model's maximum: Claude Code expresses a long-context model only through the [1m] marker, so an unmarked alias sits on CLAUDE_DEFAULT_CONTEXT_WINDOW",
       "models": [
         {
           "modelId": "haiku",
@@ -18,7 +18,7 @@
           "modelId": "sonnet",
           "name": "Sonnet",
           "description": "Balanced Anthropic tier.",
-          "contextWindow": 1000000,
+          "contextWindow": 200000,
           "effort": {
             "supported": true,
             "levels": [
@@ -34,7 +34,7 @@
           "modelId": "opus",
           "name": "Opus",
           "description": "Most capable Anthropic tier.",
-          "contextWindow": 1000000,
+          "contextWindow": 200000,
           "effort": {
             "supported": true,
             "levels": [

@@ -57,7 +57,7 @@ const GATEWAY_MODELS_DOCTRINE = {
     `An unpinned stage spends whatever this session is currently running on, so its provider is the baseline an offload is measured against. The roster cannot identify that provider — it is registered once per runtime and cannot see which model a given session launched with — so match it yourself against the model you are running, and read that provider's window.`,
     `isSessionDefault reflects what Settings currently designates, not necessarily what an already-running session launched with; the two diverge when the setting is changed mid-session.`,
     `constraints.homolineage marks a model sharing the parent session's lineage. It can move spend off that allowance, but adds no independence to a panel whose value comes from differing judgement.`,
-    `Some exposed models are the host's own — they run on this session's subscription instead of a gateway provider's, so they spend the same allowance an unpinned stage does rather than moving work off it. Their provider entry is the one to read before assigning them, and they are homolineage by construction.`,
+    `Some exposed models are the host's own rather than a gateway provider's: they bill the "claude" provider, so that is the window to read before assigning one, and they are homolineage by construction. Whether pinning one moves spend off the inherited baseline depends on what this session is currently running — the rule above governs that, and it is not answered by the model being the host's own.`,
     `constraints.identity collapses service-tier siblings, so a measurement recorded against one covers the other.`,
   ],
 };
