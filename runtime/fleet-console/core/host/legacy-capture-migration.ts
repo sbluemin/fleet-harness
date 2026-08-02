@@ -58,6 +58,9 @@ function migrateLegacyCapturesStrict(deps: MigrateLegacyCapturesDeps): void {
       }
     }
   } catch (error) {
+    // 목록 조회 자체가 실패하면 어떤 파일도 검사하지 못한 것이므로, 통째로 지우는 대신
+    // 보존하고 다음 부팅에 재시도한다.
+    retained = true;
     console.warn(`[fleet-console] Legacy capture directory read failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 

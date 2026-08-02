@@ -244,6 +244,18 @@ describe("migrateLegacyCaptures", () => {
     expect(get("op-a")?.payload.providerSession).toBeDefined();
     expect(fs.existsSync(path.join(consoleDataDir, "captures", "op-broken.json"))).toBe(true);
   });
+
+  it("retains the captures path when directory enumeration fails", () => {
+    const { consoleDataDir, operations, patchCalls } = createHarness([]);
+    // captures가 디렉터리가 아니면 readdirSync가 ENOTDIR로 throw한다 — 목록을 전혀 못 읽은 경우다.
+    const capturesPath = path.join(consoleDataDir, "captures");
+    fs.writeFileSync(capturesPath, "not a directory");
+
+    migrateLegacyCaptures({ consoleDataDir, operations });
+
+    expect(patchCalls).toHaveLength(0);
+    expect(fs.existsSync(capturesPath)).toBe(true);
+  });
 });
 
 function createHarness(initial: OperationNode[]) {
