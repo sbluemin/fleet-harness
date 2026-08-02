@@ -85,6 +85,46 @@ describe("agent provider capture grace", () => {
     ]);
     expect(harness.attach).toHaveBeenCalledTimes(1);
   });
+
+  it("preserves legacy Codex transcript metadata when a restored Operation is renamed", () => {
+    const harness = createHarness({ cliId: "claude" });
+    const providerSession = {
+      provider: "codex",
+      sessionId: "legacy-codex-session",
+      transcriptPath: "/legacy/codex/transcript.jsonl",
+      source: "legacy-capture",
+      capturedAt: "2026-07-25T00:00:00.000Z",
+    } as const;
+    harness.operations.push({
+      id: "legacy-codex-operation",
+      theaterId: "theater-1",
+      type: "agent",
+      pluginId: "terminal",
+      title: "Legacy Codex",
+      payload: {
+        cliId: "codex",
+        cwd: path.join(harness.fleetDataDir, "✳ theater"),
+        providerSession,
+      },
+      geometry: null,
+      ts: { createdAt: 1, updatedAt: 1 },
+    });
+
+    harness.emitHostEvent("operation:restored", {
+      operationId: "legacy-codex-operation",
+      pluginId: "terminal",
+      type: "agent",
+    });
+    harness.emitHostEvent("operation:renamed", {
+      operationId: "legacy-codex-operation",
+      pluginId: "terminal",
+      type: "agent",
+      title: "Renamed legacy Codex",
+      previousTitle: "Legacy Codex",
+    });
+
+    expect(harness.operations[0]!.payload.providerSession).toEqual(providerSession);
+  });
 });
 
 function createHarness(body: Record<string, unknown>) {

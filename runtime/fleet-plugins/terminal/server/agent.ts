@@ -28,7 +28,7 @@ import { createAgentTerminalLaunchResolver, type ConsoleRuntimeSessionInfo } fro
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./agent-api/osc-agent-activity.js";
 import { writeAggregateObserverEvents } from "./agent-api/observability-routes.js";
-import { readProviderSession } from "./agent-api/provider-session.js";
+import { readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./agent-api/provider-session.js";
 import type { AgentProviderSession, AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
 import { CARRIER_JOB_FINALIZED_GRACE_MS, isCarrierJobActiveForIdle, startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown };
@@ -184,7 +184,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       const operation = ctx.host.operations.get(payload.operationId);
       if (operation) {
         const cwd = readPayloadString(operation.payload, "cwd") || ctx.host.paths.resolveTheaterPath(operation.theaterId) || "";
-        const providerSession = readProviderSession(operation.payload);
+        const providerSession = readAnalysisProviderSession(operation.payload.providerSession);
         // 빈 리네임(reset)이면 updated.label이 비므로 title도 기본 표시명(cwdLabel=basename)으로 되돌린다.
         // core PATCH의 빈 title은 기존 title로 normalize되어 사용자 옛 이름이 남기 때문에, 여기서 명시적으로 복원한다.
         // 이 patch는 store.patch(HTTP 미경유)라 operation:renamed를 재발행하지 않아 구독 루프를 만들지 않는다.
@@ -796,7 +796,7 @@ export function createTerminalWikiToolSpecs(fleetDataDir: string) {
   return getWikiToolSpecs(resolver);
 }
 
-function toOperationPayload(existing: Record<string, unknown> | undefined, cwd: string, session: AgentTerminalSessionInfo, providerSession?: AgentProviderSession, providerTitle?: AgentProviderTitleMarker): Record<string, unknown> {
+function toOperationPayload(existing: Record<string, unknown> | undefined, cwd: string, session: AgentTerminalSessionInfo, providerSession?: AgentProviderSession | AnalysisProviderSession, providerTitle?: AgentProviderTitleMarker): Record<string, unknown> {
   const payload = { ...(existing ?? {}) };
   for (const key of ["cwd", "cliId", "launchKindId", "cliLabel", "providerSession", "labelSource", "providerTitle"]) {
     delete payload[key];
