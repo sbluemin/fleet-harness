@@ -207,8 +207,8 @@ describe("fleet console CLI", () => {
 
   it("documents the usage entry points and subcommands in help text", () => {
     const helpText = buildConsoleHelpText();
-    expect(helpText).toContain("fleet console");
     expect(helpText).toContain("fleet-console");
+    expect(helpText).not.toContain("fleet console");
     expect(helpText).toContain("start");
     expect(helpText).toContain("stop");
     expect(helpText).toContain("restart");

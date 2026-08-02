@@ -51,8 +51,7 @@ Codex/Fleet Wiki routes preserve the migrated wiki security boundary: Host allow
 ## Usage
 
 ```bash
-fleet console        # via fleet-cli
-fleet-console        # standalone binary
+fleet-console
 fleet-console status
 fleet-console stop
 ```

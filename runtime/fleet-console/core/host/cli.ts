@@ -93,12 +93,12 @@ export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
   } else if (first === "status") {
     mode = "status";
   } else {
-    throw new Error(`Unknown fleet console command: ${first}\nRun 'fleet console --help' for usage.`);
+    throw new Error(`Unknown fleet console command: ${first}\nRun 'fleet-console --help' for usage.`);
   }
 
   for (const arg of rest) {
     if (arg === "--help" || arg === "-h") return "help";
-    throw new Error(`Unknown fleet console option: ${arg}\nRun 'fleet console --help' for usage.`);
+    throw new Error(`Unknown fleet console option: ${arg}\nRun 'fleet-console --help' for usage.`);
   }
   return mode;
 }
@@ -128,8 +128,7 @@ export function buildConsoleHelpText(options: BuildConsoleHelpTextOptions = {}):
     dim("Observe carrier jobs, live output streams, and console-owned terminal sessions.", colorEnabled),
     "",
     section("USAGE", colorEnabled),
-    `  ${command("fleet console", colorEnabled)} ${dim("[start|stop|restart|status] [--help]", colorEnabled)}`,
-    `  ${dim("Standalone binary:", colorEnabled)} ${command("fleet-console", colorEnabled)} ${dim("[start|stop|restart|status]", colorEnabled)}`,
+    `  ${command("fleet-console", colorEnabled)} ${dim("[start|stop|restart|status] [--help]", colorEnabled)}`,
     "",
     section("COMMANDS", colorEnabled),
     `  ${command("start", colorEnabled)}   ${dim("Ensure the local Fleet Console server, then open it in your browser. (default)", colorEnabled)}`,
@@ -141,10 +140,10 @@ export function buildConsoleHelpText(options: BuildConsoleHelpTextOptions = {}):
     `  ${option("--help, -h", colorEnabled)}  ${dim("Show this help message and exit.", colorEnabled)}`,
     "",
     section("EXAMPLES", colorEnabled),
-    `  ${command("fleet console", colorEnabled)}`,
-    `  ${command("fleet console status", colorEnabled)}`,
-    `  ${command("fleet console restart", colorEnabled)}`,
-    `  ${command("fleet console stop", colorEnabled)}`,
+    `  ${command("fleet-console", colorEnabled)}`,
+    `  ${command("fleet-console status", colorEnabled)}`,
+    `  ${command("fleet-console restart", colorEnabled)}`,
+    `  ${command("fleet-console stop", colorEnabled)}`,
     "",
   ];
   const text = lines.join("\n");
