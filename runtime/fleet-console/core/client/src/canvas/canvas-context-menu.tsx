@@ -3,6 +3,7 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 
 import { FEATURE_TOUR_BOUNDARY_ATTRIBUTE, FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import { useT } from "../i18n/index.js";
+import { resolveLaunchKindAnnotation } from "../launch-kind-annotations.js";
 
 interface CanvasContextMenuProps {
   // 캔버스(<main>) 기준 화면 좌표. 메뉴를 이 지점에 띄운다.
@@ -18,7 +19,7 @@ interface CanvasContextMenuProps {
   readonly onClose: () => void;
 }
 
-const MENU_WIDTH = 288;
+const MENU_WIDTH = 340;
 const MENU_MAX_HEIGHT = 520;
 const MENU_MIN_HEIGHT = 120;
 const MENU_MARGIN = 12;
@@ -98,12 +99,13 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
             <p className="canvas-context-menu-plugin">{plugin.title}</p>
             {plugin.kinds.map((kind) => {
               const disabled = kind.disabled === true || !canLaunch;
+              const annotation = resolveLaunchKindAnnotation(kind.id);
               return (
                 <button
                   key={`${plugin.id}:${kind.id}`}
                   type="button"
                   role="menuitem"
-                  className="theater-menu-item canvas-context-menu-item operation-launch-menu-item"
+                  className={`theater-menu-item canvas-context-menu-item operation-launch-menu-item${annotation ? " operation-launch-menu-item--annotated" : ""}`}
                   // 실행 종류의 안정 식별자. 기능 투어처럼 특정 항목을 짚어야 하는 바깥 선택자가
                   // 번역 가능한 title/label 문자열 대신 이 속성에 걸리도록 한다.
                   data-operation-launch-kind={kind.id}
@@ -113,7 +115,11 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                 >
                   <span className="theater-menu-check" aria-hidden="true">{renderKindIcon(plugin.id, kind) ?? <FallbackGlyph />}</span>
                   <span className="theater-menu-label">{kind.title}</span>
-                  {kind.disabledReason ? <span className="operation-launch-menu-reason">{kind.disabledReason}</span> : null}
+                  {annotation?.badgeKey ? <span className="operation-launch-menu-badge">{t(annotation.badgeKey)}</span> : null}
+                  {/* 비활성 사유가 있으면 그것이 먼저다 — 지금 실행할 수 없다는 사실이 종류 설명보다 급하다. */}
+                  {kind.disabledReason
+                    ? <span className="operation-launch-menu-reason">{kind.disabledReason}</span>
+                    : annotation ? <span className="operation-launch-menu-description">{t(annotation.descriptionKey)}</span> : null}
                 </button>
               );
             })}

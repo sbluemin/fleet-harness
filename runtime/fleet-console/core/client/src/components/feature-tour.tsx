@@ -87,6 +87,10 @@ export function FeatureTourOverlay() {
       return;
     }
     anchor.classList.add("is-feature-tour-anchor");
+    // 스크롤되는 메뉴 안에서는 앵커가 보이는 영역 밖에 있을 수 있다. 가리키는 대상이 보이지 않으면
+    // 안내가 성립하지 않으므로, 카드 자리를 잡기 전에 가장 가까운 보이는 위치로 끌어온다.
+    // nearest는 이미 보이는 앵커에는 아무 일도 하지 않아 평소 배치를 흔들지 않는다.
+    anchor.scrollIntoView?.({ block: "nearest", inline: "nearest" });
     const updatePosition = () => {
       const boundary = anchor.closest<HTMLElement>(FEATURE_TOUR_BOUNDARY_SELECTOR);
       const card = cardRef.current?.getBoundingClientRect();
@@ -154,7 +158,7 @@ export function FeatureTourOverlay() {
                     if (lastStep) {
                       void finish();
                     } else {
-                      setStepIndex((index) => index + 1);
+                      setStepIndex((index) => advanceFeatureTourStep(index, resolved.steps.length));
                     }
                   }}
                   type="button"
@@ -214,6 +218,13 @@ export function featureTourCompletionBase(
   return phase === "walkthrough" && tour.spotlight
     ? appendSeenFeatureTour(seen, featureTourSeenKey(tour.id, "spotlight"))
     : seen;
+}
+
+// 다음 스텝은 마지막 스텝을 넘지 않는다 — 진행 버튼의 '마지막인가' 판정은 렌더 시점 값이라,
+// 리렌더 전에 두 번 눌리면 두 번 다 '마지막이 아니다'로 읽혀 인덱스가 총수를 넘어간다.
+// 본문은 어차피 clamp되지만 진행 표시는 그대로 새어 나가 "4 / 3"이 된다.
+export function advanceFeatureTourStep(index: number, total: number): number {
+  return Math.min(index + 1, Math.max(0, total - 1));
 }
 
 export function featureTourSeenKey(tourId: string, phase: FeatureTourPhase): string {

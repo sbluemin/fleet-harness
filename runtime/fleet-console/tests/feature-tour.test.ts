@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  advanceFeatureTourStep,
   availableFeatureTourSteps,
   featureTourCompletionBase,
   persistFeatureTourSeen,
@@ -48,7 +49,7 @@ describe("feature tour", () => {
   });
 
   it("ships Triage as an entry-only walkthrough without a button spotlight", () => {
-    expect(FEATURE_TOURS.map((tour) => tour.id)).toEqual(["triage", "claude-gateway"]);
+    expect(FEATURE_TOURS.map((tour) => tour.id)).toEqual(["triage", "claude-operations"]);
 
     const triage = FEATURE_TOURS.find((tour) => tour.id === "triage");
     expect(triage?.spotlight).toBeNull();
@@ -59,14 +60,18 @@ describe("feature tour", () => {
     ]);
   });
 
-  it("ships the Claude Gateway tour as a spotlight with no walkthrough", () => {
-    const gateway = FEATURE_TOURS.find((tour) => tour.id === "claude-gateway");
-    expect(gateway?.walkthrough).toEqual([]);
-    expect(gateway?.spotlight).toEqual({
-      anchor: '[data-operation-launch-kind="claude-gateway"]',
-      titleKey: "featureTour.claudeGateway.spotlightTitle",
-      bodyKey: "featureTour.claudeGateway.spotlightBody",
-    });
+  it("walks the three Claude launch kinds in menu order without a spotlight", () => {
+    const claude = FEATURE_TOURS.find((tour) => tour.id === "claude-operations");
+    expect(claude?.spotlight).toBeNull();
+    expect(claude?.walkthrough.map((step) => step.anchor)).toEqual([
+      '[data-operation-launch-kind="claude-native"]',
+      '[data-operation-launch-kind="claude"]',
+      '[data-operation-launch-kind="claude-gateway"]',
+    ]);
+    // 앵커는 번역되는 라벨이 아니라 안정 식별자에 걸려야 한다.
+    for (const step of claude?.walkthrough ?? []) {
+      expect(step.anchor).not.toMatch(/Classic|Native|Gateway •|Experimental/);
+    }
   });
 
   it("does not show Triage onboarding for the button before mode entry", () => {
@@ -91,30 +96,54 @@ describe("feature tour", () => {
     expect(resolveNextFeatureTour(FEATURE_TOURS, ["triage.walkthrough"], document)).toBeNull();
   });
 
-  it("resolves the shipped Claude Gateway catalog as a spotlight on its semantic launch attribute", () => {
-    const gateway = FEATURE_TOURS.find((tour) => tour.id === "claude-gateway");
-    const anchor = gateway?.spotlight?.anchor ?? "";
+  it("resolves the shipped Claude walkthrough on the open launch menu, step by step", () => {
+    const claude = FEATURE_TOURS.find((tour) => tour.id === "claude-operations");
     document.body.innerHTML = [
-      '<button data-operation-launch-kind="claude">Claude Code (Classic)</button>',
-      '<button data-operation-launch-kind="claude-gateway">Claude (Gateway • Experimental)</button>',
-      '<button data-operation-launch-kind="codex">Codex (Classic)</button>',
+      '<button data-operation-launch-kind="claude-native">Claude (Native)</button>',
+      '<button data-operation-launch-kind="claude">Claude (Classic)</button>',
+      '<button data-operation-launch-kind="codex">Codex</button>',
+      '<button data-operation-launch-kind="claude-gateway">Claude (Gateway)</button>',
     ].join("");
 
     const presentation = resolveNextFeatureTour(FEATURE_TOURS, [], document);
-    expect(presentation?.tour.id).toBe("claude-gateway");
-    expect(presentation?.phase).toBe("spotlight");
-    expect(presentation?.steps).toEqual([gateway?.spotlight]);
-    const matches = document.querySelectorAll(anchor);
-    expect(matches).toHaveLength(1);
-    expect(matches[0]?.getAttribute("data-operation-launch-kind")).toBe("claude-gateway");
-    expect(anchor).not.toMatch(/Gateway •|Experimental/);
+    expect(presentation?.tour.id).toBe("claude-operations");
+    expect(presentation?.phase).toBe("walkthrough");
+    expect(presentation?.steps).toEqual(claude?.walkthrough);
+
+    // "claude" 앵커는 정확 일치라 claude-native·claude-gateway를 함께 집지 않는다.
+    for (const step of claude?.walkthrough ?? []) {
+      const matches = document.querySelectorAll(step.anchor ?? "");
+      expect(matches).toHaveLength(1);
+    }
+    expect(document.querySelector('[data-operation-launch-kind="claude"]')?.textContent)
+      .toBe("Claude (Classic)");
+
+    expect(resolveNextFeatureTour(FEATURE_TOURS, ["claude-operations.walkthrough"], document)).toBeNull();
   });
 
-  it("describes Claude Gateway as suitable for large-scale workloads in both locales", () => {
-    expect(CORE_MESSAGES.en["featureTour.claudeGateway.spotlightBody"])
-      .toContain("well suited to large-scale workloads");
-    expect(CORE_MESSAGES.ko["featureTour.claudeGateway.spotlightBody"])
-      .toContain("대규모 워크로드에 적합합니다");
+  it("never advances past the last step, so the progress count cannot exceed the total", () => {
+    expect(advanceFeatureTourStep(0, 3)).toBe(1);
+    expect(advanceFeatureTourStep(1, 3)).toBe(2);
+    // 리렌더 전 연타: 마지막 스텝에서 더 눌러도 인덱스는 그 자리에 머문다 — 넘어가면 "4 / 3"이 뜬다.
+    expect(advanceFeatureTourStep(2, 3)).toBe(2);
+    expect(advanceFeatureTourStep(9, 3)).toBe(2);
+    expect(advanceFeatureTourStep(0, 1)).toBe(0);
+    expect(advanceFeatureTourStep(0, 0)).toBe(0);
+  });
+
+  it("does not open the Claude walkthrough before the launch menu exists", () => {
+    document.body.innerHTML = "";
+
+    expect(resolveNextFeatureTour(FEATURE_TOURS, [], document)).toBeNull();
+  });
+
+  it("names each Claude launch kind by what it loads, in both locales", () => {
+    expect(CORE_MESSAGES.en["featureTour.claudeOperations.step1Body"]).toContain("no Admiral prompt");
+    expect(CORE_MESSAGES.ko["featureTour.claudeOperations.step1Body"]).toContain("Admiral 프롬프트도 Carrier도");
+    expect(CORE_MESSAGES.en["featureTour.claudeOperations.step2Body"]).toContain("Carrier dispatch");
+    expect(CORE_MESSAGES.ko["featureTour.claudeOperations.step2Body"]).toContain("Carrier 위임");
+    expect(CORE_MESSAGES.en["featureTour.claudeOperations.step3Body"]).toContain("/model");
+    expect(CORE_MESSAGES.ko["featureTour.claudeOperations.step3Body"]).toContain("/model");
   });
 
   it("keeps every shipped tour message key present in both locale catalogs", () => {

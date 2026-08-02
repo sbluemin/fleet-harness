@@ -9,16 +9,17 @@ describe("buildAgentCliLaunchKinds", () => {
         { id: "claude-native", label: "Claude (Native)", available: true, signedIn: true },
         { id: "claude", label: "Claude", available: true, signedIn: true },
         { id: "codex", label: "Codex", available: true, signedIn: true },
-        { id: "claude-gateway", label: "Claude (Gateway • Experimental)", available: true, signedIn: true },
+        { id: "claude-gateway", label: "Claude (Gateway)", available: true, signedIn: true },
       ],
       "agent",
     );
 
+    // (Classic)은 같은 CLI에 다른 변형이 있는 Claude에만 붙는다 — Codex는 대비할 변형이 없다.
     expect(result).toEqual([
       { id: "claude-native", type: "agent", title: "Claude (Native)" },
       { id: "claude", type: "agent", title: "Claude (Classic)" },
-      { id: "codex", type: "agent", title: "Codex (Classic)" },
-      { id: "claude-gateway", type: "agent", title: "Claude (Gateway • Experimental)" },
+      { id: "codex", type: "agent", title: "Codex" },
+      { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
     ]);
   });
 
@@ -33,7 +34,7 @@ describe("buildAgentCliLaunchKinds", () => {
 
     expect(result).toEqual([
       { id: "claude", type: "agent", title: "Claude (Classic)", disabled: true, disabledReason: "Not installed" },
-      { id: "codex", type: "agent", title: "Codex (Classic)", disabled: true, disabledReason: "Sign in required" },
+      { id: "codex", type: "agent", title: "Codex", disabled: true, disabledReason: "Sign in required" },
     ]);
   });
 });

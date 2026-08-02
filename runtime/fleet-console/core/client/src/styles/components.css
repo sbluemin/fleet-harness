@@ -1628,8 +1628,8 @@
 
 .operation-launch-control--canvas .operation-launch-menu {
   top: 0;
-  /* 'Canvas controls' 헤더가 한 줄에 들어가도록 폭을 넓힌다. */
-  min-width: 256px;
+  /* 'Canvas controls' 헤더가 한 줄에 들어가고, 실행 종류의 한 줄 설명이 두 줄 안에 끝나도록 넓힌다. */
+  min-width: 340px;
 }
 
 /* 런처로 연 경우 메뉴를 컨테이너 바닥에 정렬해 위로 펼친다(아래 FAB/Dock과 겹치지 않게). */
@@ -5516,6 +5516,75 @@
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+/* 설명·배지가 붙는 실행 종류 항목은 그리드로 둔다. 배지를 라벨과 같은 행에 흘려두면 설명이
+   배지 폭만큼 좁아져 세 줄로 접히므로, 라벨·배지는 한 행에 두고 설명은 그 아래 전체 폭을 쓴다. */
+.operation-launch-menu-item--annotated {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: var(--space-2);
+  row-gap: 2px;
+}
+
+.operation-launch-menu-item--annotated .theater-menu-check {
+  grid-row: 1;
+  margin-top: 1px;
+}
+
+.operation-launch-menu-item--annotated .theater-menu-label {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.operation-launch-menu-item--annotated .operation-launch-menu-badge {
+  grid-column: 3;
+  grid-row: 1;
+  margin-left: 0;
+  padding-left: 0;
+}
+
+/* 비활성 사유는 배지와 같은 칸을 두고 다투지 않도록 설명이 서던 아래 줄로 내린다 —
+   같은 칸에 두면 사유가 배지에 완전히 가려, 미설치 사용자가 정작 필요한 이유를 읽지 못한다. */
+.operation-launch-menu-item--annotated .operation-launch-menu-reason {
+  grid-column: 2 / -1;
+  grid-row: 2;
+  margin-left: 0;
+  padding-left: 0;
+}
+
+.operation-launch-menu-item--annotated .operation-launch-menu-description {
+  grid-column: 2 / -1;
+  grid-row: 2;
+}
+
+/* 한 줄 설명은 본문 서체로 한 티어 낮은 잉크에 둔다 — mono 라벨과 같은 서체로 두면 이름과
+   설명이 한 덩어리로 뭉쳐 어디까지가 종류 이름인지 읽히지 않는다. */
+.operation-launch-menu-description {
+  color: var(--text-tertiary);
+  font-family: var(--font-body);
+  font-size: 11px;
+  letter-spacing: 0;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+/* Doctrine 예외 — 신규 표식 배지는 brass 채널을 빌린다.
+   brass는 위치/포커스/hover 채널이고 signal 토큰(aurora/warn/coral/positive)은 상태 채널인데,
+   '최근에 추가된 종류'는 둘 중 어느 축도 아니다. 축 하나를 새로 만드는 대신 항목을 지목하는
+   성격이 가장 가까운 brass를 저채도로 빌린다. 종류가 익숙해지면 통째로 걷어내는 한시적 장치다. */
+.operation-launch-menu-badge {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid color-mix(in oklch, var(--brass) 48%, var(--hairline));
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  color: var(--brass-ink);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  line-height: 1.8;
+  white-space: nowrap;
 }
 
 .theater-menu-error {

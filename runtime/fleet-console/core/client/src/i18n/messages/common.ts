@@ -34,8 +34,19 @@ export const commonEn = {
   "featureTour.triage.step2Body": "Click anything in the left list or the rail below to bring it up now. The rail also shows what is next.",
   "featureTour.triage.step3Title": "Turn it off and nothing is lost",
   "featureTour.triage.step3Body": "Press it again, or Alt+T, and every panel returns to its coordinates.",
-  "featureTour.claudeGateway.spotlightTitle": "Claude Gateway is available",
-  "featureTour.claudeGateway.spotlightBody": "Start Claude Code through AI Gateway to use the models enabled in Settings. It is well suited to large-scale workloads. You can switch models later with /model.",
+  "featureTour.claudeOperations.step1Title": "Claude, plain",
+  "featureTour.claudeOperations.step1Body": "New here. Claude Code as it ships — no Admiral prompt, no Carriers. Console hooks and Wiki skills are all that get added. Pick it when you want the CLI you already know.",
+  "featureTour.claudeOperations.step2Title": "Claude, with the fleet",
+  "featureTour.claudeOperations.step2Body": "This is the Operation you already run. Admiral standing orders and Carrier dispatch load with it. Nothing about it changed — only the name gained (Classic).",
+  "featureTour.claudeOperations.step3Title": "Claude, on other models",
+  "featureTour.claudeOperations.step3Body": "New and experimental. Runs Claude Code through the local AI Gateway so it can use the models you enabled in Settings. It suits large workloads, and you can switch models later with /model.",
+  // 배지는 대문자를 값에 담는다 — text-transform으로 올리면 한글 로케일에서 변환이 무효라
+  // 자간만 남아 자글자글해진다.
+  "launchKind.badge.new": "NEW",
+  "launchKind.badge.newExperimental": "NEW · EXPERIMENTAL",
+  "launchKind.claudeNative.description": "Plain Claude Code, without the Admiral prompt",
+  "launchKind.claude.description": "The one you know — Admiral standing orders and Carrier dispatch",
+  "launchKind.claudeGateway.description": "Runs Claude Code on the models you enabled in Settings",
 } as const;
 
 export const commonKo: Record<keyof typeof commonEn, string> = {
@@ -74,6 +85,17 @@ export const commonKo: Record<keyof typeof commonEn, string> = {
   "featureTour.triage.step2Body": "좌측 목록이나 아래 대기 레일에서 무엇이든 클릭하면 그 건이 바로 올라옵니다. 레일이 다음 순서도 함께 보여줍니다.",
   "featureTour.triage.step3Title": "끄면 원래 화면 그대로입니다",
   "featureTour.triage.step3Body": "다시 누르거나 Alt+T를 누르면 패널이 원래 자리로 돌아갑니다.",
-  "featureTour.claudeGateway.spotlightTitle": "Claude Gateway를 사용할 수 있습니다",
-  "featureTour.claudeGateway.spotlightBody": "Claude Code를 AI Gateway로 시작하면 설정에서 켠 모델을 사용할 수 있습니다. 대규모 워크로드에 적합합니다. 실행 후 /model로 모델을 바꿀 수도 있습니다.",
+  "featureTour.claudeOperations.step1Title": "순정 Claude입니다",
+  "featureTour.claudeOperations.step1Body": "새로 추가됐습니다. Admiral 프롬프트도 Carrier도 싣지 않은 Claude Code 그대로입니다. Console 훅과 Wiki 스킬만 붙습니다. CLI를 쓰던 대로 쓰고 싶을 때 고르세요.",
+  "featureTour.claudeOperations.step2Title": "함대를 실은 Claude입니다",
+  "featureTour.claudeOperations.step2Body": "쓰시던 Operation 그대로입니다. Admiral 상비 명령과 Carrier 위임이 함께 실립니다. 달라진 것은 없고, 이름에 (Classic)만 붙었습니다.",
+  "featureTour.claudeOperations.step3Title": "다른 모델로 도는 Claude입니다",
+  "featureTour.claudeOperations.step3Body": "새로 추가된 실험 기능입니다. 로컬 AI Gateway를 거쳐 설정에서 켠 모델로 Claude Code를 실행합니다. 대규모 작업에 적합하고, 실행 후 /model로 모델을 바꿀 수 있습니다.",
+  // 배지는 두 로케일이 같은 라틴 대문자를 쓴다 — 표식은 읽는 문장이 아니라 눈에 걸리는 표시이고,
+  // 로케일마다 길이가 달라지면 같은 메뉴가 로케일에 따라 다른 폭으로 접힌다.
+  "launchKind.badge.new": "NEW",
+  "launchKind.badge.newExperimental": "NEW · EXPERIMENTAL",
+  "launchKind.claudeNative.description": "Admiral 프롬프트 없는 순정 Claude Code",
+  "launchKind.claude.description": "Admiral 상비 명령과 Carrier 위임을 함께 싣는 기존 방식",
+  "launchKind.claudeGateway.description": "설정에서 켠 다른 모델로 Claude Code를 실행",
 };

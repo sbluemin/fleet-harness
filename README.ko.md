@@ -80,7 +80,7 @@ Nimitz와 Vanguard는 여기에 더해 **Task Force**를 지원합니다. 둘 �
 | CLI | 제공자 | 프로토콜 | 대표 강점 |
 |---|---|---|---|
 | **Claude Code** | Anthropic | ACP | 심층 추론과 아키텍처 판단 |
-| **Claude (Gateway • Experimental)** | OpenAI, Cursor, Moonshot AI | Claude Code gateway | 하나의 Claude Code 표면에서 최신 GPT·Cursor·Kimi K3 모델 사용 |
+| **Claude (Gateway)** | OpenAI, Cursor, Moonshot AI | Claude Code gateway | 하나의 Claude Code 표면에서 최신 GPT·Cursor·Kimi K3 모델 사용 |
 | **Codex CLI** | OpenAI | Codex App Server | 빠른 구현과 반복 실행 |
 | **Cursor Agent** | Cursor | ACP | 다중 모델 라우팅 |
 
