@@ -153,6 +153,11 @@ interface CursorContextCheckpoint {
 interface StoredCursorContextCheckpoint extends CursorContextCheckpoint {
   readonly wireModelId: string;
   readonly credentialFingerprint: string;
+  /**
+   * 이 체크포인트를 측정한 요청 자체의 입력 추정치. 대화가 그만큼 크다는 전제가
+   * 무너졌는지 판정하는 기준선이며, 체크포인트 값과는 다른 좌표다.
+   */
+  readonly requestInputTokens: number;
 }
 
 /** Last authoritative Cursor checkpoint for a credential-partitioned conversation and wire model. */
@@ -1385,6 +1390,7 @@ export class CursorAdapter implements AiGatewayAdapter {
       identity.conversationId,
       plan.wireModelId,
       descriptor.credentialFingerprint,
+      plan.estimatedInputTokens,
     );
     report("turn.start", {
       model,
@@ -1469,6 +1475,7 @@ export class CursorAdapter implements AiGatewayAdapter {
         identity.conversationId,
         plan.wireModelId,
         descriptor.credentialFingerprint,
+        plan.estimatedInputTokens,
         checkpoint,
       ),
       toolFinalizeGraceMs: this.toolFinalizeGraceMs,
@@ -1668,10 +1675,17 @@ function rememberCursorWireModel(
   return previous;
 }
 
+/**
+ * 보관된 체크포인트는 그것을 측정한 대화가 계속 자라는 동안에만 이 요청을 설명한다.
+ * Claude Code가 컴팩트하면 입력이 급감하는데, 낡은 값은 그 요청보다 큰 점유를 주장하고
+ * 소비 측이 그것을 바닥으로 쓰기 때문에 계기가 세션이 끝날 때까지 고정된다. 요청이
+ * 기준선보다 작아졌다면 대화가 줄어든 것이므로 체크포인트를 폐기한다.
+ */
 function recallCursorContextCheckpoint(
   conversationId: string,
   wireModelId: string,
   credentialFingerprint: string,
+  requestInputTokens: number,
 ): CursorContextCheckpoint | undefined {
   const key = cursorConversationStateKey(credentialFingerprint, conversationId);
   const checkpoint = CURSOR_CONTEXT_CHECKPOINT_BY_STATE.get(key);
@@ -1680,6 +1694,7 @@ function recallCursorContextCheckpoint(
   if (
     checkpoint.wireModelId !== wireModelId
     || checkpoint.credentialFingerprint !== credentialFingerprint
+    || requestInputTokens < checkpoint.requestInputTokens
   ) {
     return undefined;
   }
@@ -1691,6 +1706,7 @@ function rememberCursorContextCheckpoint(
   conversationId: string,
   wireModelId: string,
   credentialFingerprint: string,
+  requestInputTokens: number,
   checkpoint: CursorContextCheckpoint,
 ): void {
   const key = cursorConversationStateKey(credentialFingerprint, conversationId);
@@ -1705,6 +1721,7 @@ function rememberCursorContextCheckpoint(
   CURSOR_CONTEXT_CHECKPOINT_BY_STATE.set(key, {
     wireModelId,
     credentialFingerprint,
+    requestInputTokens,
     ...checkpoint,
   });
 }
