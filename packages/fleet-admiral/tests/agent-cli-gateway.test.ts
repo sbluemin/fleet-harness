@@ -82,6 +82,31 @@ describe("claude-gateway custom agents", () => {
     expect(toGatewayAgentName(agents[withEffort!]!.model, "high")).toBe(withEffort);
   });
 
+  it("names host-native agents from the catalog id but pins them to the bare alias", () => {
+    const opus = requireGatewayModel("claude--opus");
+    const haiku = requireGatewayModel("claude--haiku");
+    const agents = buildGatewayCustomAgents([opus, haiku]);
+
+    // 이름은 scoped 카탈로그 id에서 온다 — 와이어 id(`opus`)를 쓰면 Agent 타입 이름이
+    // 일반 어휘와 충돌한다.
+    expect(Object.keys(agents)).toEqual([
+      "claude-opus-low",
+      "claude-opus-medium",
+      "claude-opus-high",
+      "claude-opus-xhigh",
+      "claude-opus-max",
+      "claude-haiku",
+    ]);
+    // 모델은 Claude Code가 이미 아는 alias 그대로다.
+    expect(agents["claude-opus-high"]!.model).toBe("opus");
+    expect(agents["claude-opus-high"]!.effort).toBe("high");
+    expect(agents["claude-haiku"]!.model).toBe("haiku");
+    expect(agents["claude-haiku"]!.effort).toBeUndefined();
+    expect(agents["claude-opus-high"]!.prompt).toBe(GENERAL_PURPOSE_AGENT_PROMPT);
+    // 어느 예산을 쓰는지가 이 항목을 고르는 근거이므로 설명에 남긴다.
+    expect(agents["claude-opus-high"]!.description).toContain("own Anthropic subscription");
+  });
+
   it("injects --disallowedTools and --agents only for claude-gateway", async () => {
     const root = createTempRoot("fleet-admiral-gateway-agents-");
     const model = requireGatewayModel("cursor--claude-opus-5");

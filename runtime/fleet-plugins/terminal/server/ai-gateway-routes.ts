@@ -213,8 +213,12 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
     req.once("close", abort);
 
     try {
-      if (!target) {
-        // Native Anthropic models keep the caller-owned credential and wire request unchanged.
+      // Native Anthropic models keep the caller-owned credential and wire request
+      // unchanged. Host-native catalog entries join them here: the catalog knows
+      // them so a host can weigh them against the translated providers, but no
+      // adapter serves them, and Claude Code puts its own resolved model id on the
+      // wire rather than the catalog id anyway.
+      if (!target || target.hostNative) {
         await proxyToAnthropic(req.headers, res, body, fetchImpl, controller.signal);
         return true;
       }

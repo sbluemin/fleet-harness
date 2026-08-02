@@ -137,6 +137,22 @@ describe("gateway loadout", () => {
     expect(one.revision).toBe(requoted.revision);
   });
 
+  it("reports a host-native model under the id a caller actually passes through", () => {
+    const loadout = buildGatewayLoadout({ exposed: [model("claude--opus"), model("claude--haiku")] });
+
+    // 로스터의 id는 그대로 model 인자로 넘어간다. gateway alias를 실으면 어느 상류도
+    // 서비스하지 않는 모델을 지목하게 된다.
+    expect(loadout.models.map((entry) => entry.id)).toEqual(["opus", "haiku"]);
+    expect(loadout.models.map((entry) => entry.constraints.identity))
+      .toEqual(["claude::opus", "claude::haiku"]);
+    // 세션 자신의 구독을 쓰므로 언제나 동계(homolineage)다.
+    expect(loadout.models.every((entry) => entry.constraints.homolineage)).toBe(true);
+    expect(loadout.models[1]?.constraints.effortSupported).toBe(false);
+
+    // 이 모델들이 청구되는 창은 상속(unpinned) 단계가 쓰는 바로 그 claude 창이다.
+    expect(loadout.providers.filter((entry) => entry.id === "claude")).toHaveLength(1);
+  });
+
   it("carries the pool a Cursor model is billed against", () => {
     for (const cursorModel of CURSOR_SUBSCRIPTION_MODELS) {
       const loadout = buildGatewayLoadout({ exposed: [cursorModel] });

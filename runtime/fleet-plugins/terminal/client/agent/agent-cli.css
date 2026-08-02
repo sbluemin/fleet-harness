@@ -191,6 +191,7 @@
 .ai-gateway-provider.is-codex { --ai-gateway-provider-tone: var(--carrier-codex); }
 .ai-gateway-provider.is-cursor { --ai-gateway-provider-tone: var(--carrier-cursor); }
 .ai-gateway-provider.is-kimi { --ai-gateway-provider-tone: var(--id-plum); }
+.ai-gateway-provider.is-claude { --ai-gateway-provider-tone: var(--carrier-claude); }
 
 .ai-gateway-provider-head {
   display: flex;

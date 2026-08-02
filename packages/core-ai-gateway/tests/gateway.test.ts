@@ -688,20 +688,47 @@ describe("model catalog", () => {
 
   it("includes every provider with collision-free ids and provider-prefixed labels", () => {
     expect(new Set(GATEWAY_MODELS.map((model) => model.provider))).toEqual(
-      new Set(["codex", "cursor", "kimi"]),
+      new Set(["claude", "codex", "cursor", "kimi"]),
     );
     expect(new Set(GATEWAY_MODELS.map((model) => model.id)).size).toBe(GATEWAY_MODELS.length);
     expect(GATEWAY_MODELS.every((model) => model.id.startsWith(`${model.provider}--`))).toBe(true);
+    const providerLabels: Record<string, string> = {
+      claude: "Claude",
+      codex: "Codex",
+      cursor: "Cursor",
+      kimi: "Moonshot-Kimi",
+    };
     expect(GATEWAY_MODELS.every((model) => model.displayName.startsWith(
-      `${model.provider === "codex" ? "Codex" : model.provider === "cursor" ? "Cursor" : "Moonshot-Kimi"}-`,
+      `${providerLabels[model.provider]}-`,
     ))).toBe(true);
+  });
+
+  it("catalogs the host's own models but keeps them out of discovery and translation", () => {
+    const native = GATEWAY_MODELS.filter((model) => model.hostNative);
+    expect(native.map((model) => model.id)).toEqual(["claude--haiku", "claude--sonnet", "claude--opus"]);
+
+    // The id a caller passes through is the bare alias Claude Code already knows;
+    // a `claude-gateway--` id would name a model no upstream serves.
+    expect(native.map(toClaudeGatewayModelId)).toEqual(["haiku", "sonnet", "opus"]);
+    expect(native.every((model) => !model.aliases)).toBe(true);
+
+    // Shares the parent session's lineage even though the bare alias carries no vendor prefix.
+    expect(native.every((model) => buildGatewayModelConstraints(model).homolineage)).toBe(true);
+    expect(buildGatewayModelConstraints(native[0]!).effortSupported).toBe(false);
+    expect(buildGatewayModelConstraints(native[2]!).effortLadder)
+      .toEqual(["low", "medium", "high", "xhigh", "max"]);
+
+    const discovered = buildAnthropicModelList().data.map((entry) => entry.id);
+    for (const id of ["haiku", "sonnet", "opus", "claude-gateway--claude--opus"]) {
+      expect(discovered).not.toContain(id);
+    }
   });
 
   it("advertises every model under a claude- alias so the picker keeps it", () => {
     const list = buildAnthropicModelList();
     expect(list.has_more).toBe(false);
     expect(list.data.map((entry) => entry.id)).toEqual(
-      GATEWAY_MODELS.map(toClaudeGatewayModelId),
+      GATEWAY_MODELS.filter((model) => !model.hostNative).map(toClaudeGatewayModelId),
     );
     // Claude Code는 claude로 시작하지 않는 id를 discovery 결과에서 버린다.
     expect(list.data.every((entry) => entry.id.startsWith("claude"))).toBe(true);
@@ -723,7 +750,9 @@ describe("model catalog", () => {
       display_name: "Moonshot-Kimi-K3-256K",
       max_input_tokens: 262_144,
     });
-    expect(GATEWAY_MODELS.every((model) => (
+    // The marker is the gateway's own projection device, so it applies only to
+    // models the gateway meters — a host-native model meters itself.
+    expect(GATEWAY_MODELS.filter((model) => !model.hostNative).every((model) => (
       toClaudeGatewayModelId(model).endsWith("[1m]")
       === (
         (model.contextWindow ?? 0) > 200_000
@@ -2877,6 +2906,7 @@ function minimalRegistry() {
     version: 1,
     updatedAt: "2026-08-01T00:00:00Z",
     providers: {
+      claude: { ...provider("Claude", "opus"), hostNative: true },
       codex: provider("Codex", "codex-model"),
       cursor: provider("Cursor", "auto"),
       kimi: provider("Kimi", "k3"),

@@ -86,6 +86,20 @@ const ROLE_FIT: Readonly<Record<string, GatewayRoleFit>> = Object.freeze({
       measuredAt: "2026-08-02",
     }),
   }),
+  "claude::opus": Object.freeze({
+    tokenEfficiency: Object.freeze({
+      fit: "fit",
+      evidence: "Cheapest and fully correct on an 11-file map (exact line counts and export symbols): 372k total tokens, 2.8k output, 6 tool calls, against codex::gpt-5.6-sol's 1.19M, 9.3k, and 15 on the identical task. It reached the counts with wc -l instead of opening all 11 files; claude::sonnet answered the same task correctly but spent 610k over 13 calls, so the two are not interchangeable on cost.",
+      measuredAt: "2026-08-03",
+    }),
+  }),
+  "claude::haiku": Object.freeze({
+    map: Object.freeze({
+      fit: "unfit",
+      evidence: "Listed all 11 files of a subsystem and their exports, but reported every one of the 11 line counts exactly one higher than wc -l, while claude::opus, claude::sonnet, and codex::gpt-5.6-sol each matched exactly on the identical task. It opened all 11 files rather than measuring them, so the error is not a sampling gap — the numbers a map is read for were wrong at full coverage.",
+      measuredAt: "2026-08-03",
+    }),
+  }),
   "cursor::kimi-k3-max": Object.freeze({
     tokenEfficiency: Object.freeze({
       fit: "fit",

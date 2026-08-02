@@ -9,7 +9,11 @@ import {
   stripClaudeOneMillionMarker,
 } from "./claude-context.js";
 
-export const GATEWAY_PROVIDERS = ["codex", "cursor", "kimi"] as const;
+// Declaration order is the order the Console settings UI groups providers in, and
+// the order discovery advertises models in. `claude` leads because it is the
+// session's own provider; it is absent from discovery, so the translated
+// providers keep the relative order Claude Code's picker has always shown.
+export const GATEWAY_PROVIDERS = ["claude", "codex", "cursor", "kimi"] as const;
 export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
 
 export const GATEWAY_REASONING_EFFORTS = [
@@ -59,6 +63,8 @@ const GatewayProviderSchema = z.object({
   name: z.string().min(1),
   defaultModel: z.string().min(1),
   source: z.string().min(1),
+  /** Declares a provider the gateway catalogs but never executes. See {@link GatewayModel.hostNative}. */
+  hostNative: z.literal(true).optional(),
   models: z.array(GatewayModelEntrySchema).min(1),
 }).strict();
 
@@ -69,6 +75,7 @@ export const GatewayModelsRegistrySchema = z.object({
     codex: GatewayProviderSchema,
     cursor: GatewayProviderSchema,
     kimi: GatewayProviderSchema,
+    claude: GatewayProviderSchema,
   }).strict(),
 }).strict();
 
@@ -113,6 +120,16 @@ export interface GatewayModel {
   readonly effort: GatewayModelEffort;
   /** Accepted request ids that are intentionally omitted from discovery. */
   readonly aliases?: readonly string[];
+  /**
+   * True when the client already reaches this model on its own credential, so the
+   * gateway catalogs it without ever executing it. Such a model is deliberately
+   * absent from discovery — it is already in Claude Code's built-in picker, and a
+   * second entry would route the same model through a translation path that has
+   * no adapter for it. It is catalogued anyway so a host balancing work across
+   * provider allowances can see it and its constraints alongside the rest, which
+   * is the only place the two kinds are compared.
+   */
+  readonly hostNative?: true;
 }
 
 const registry = parseGatewayModelsRegistry(modelsData);
@@ -135,7 +152,9 @@ export const GATEWAY_PROVIDER_NAMES: Readonly<Record<GatewayProvider, string>> =
 export const GATEWAY_MODELS: readonly GatewayModel[] = Object.freeze(
   GATEWAY_PROVIDERS.flatMap((provider) => {
     const definition = registry.providers[provider];
-    return definition.models.map((entry) => Object.freeze(toGatewayModel(provider, definition.name, entry)));
+    return definition.models.map((entry) => Object.freeze(
+      toGatewayModel(provider, definition.name, entry, definition.hostNative === true),
+    ));
   }),
 );
 
@@ -171,6 +190,11 @@ export function toGatewayModelAlias(modelId: string): string {
  * synthetic long-context beta never reaches a sub-1M Anthropic-compatible upstream.
  */
 export function toClaudeGatewayModelId(model: GatewayModel): string {
+  // A host-native model is requested by the id its own client already knows, not
+  // by a gateway alias. Handing back a `claude-gateway--` id would name a model
+  // no upstream serves, and the 1M projection below is the gateway's own
+  // accounting device — the client meters this model itself.
+  if (model.hostNative) return upstreamModelId(model);
   const alias = toGatewayModelAlias(model.id);
   if (
     canProjectClaudeContextWindow(model.contextWindow)
@@ -261,7 +285,10 @@ export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelC
     ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
     effortLadder: Object.freeze([...ladder]),
     effortSupported: ladder.length > 0,
-    homolineage: upstreamModelId(model).toLowerCase().startsWith("claude"),
+    // A host-native Anthropic model reaches Claude under a bare alias, so the
+    // vendor prefix is absent and the flag has to carry it.
+    homolineage: model.hostNative === true
+      || upstreamModelId(model).toLowerCase().startsWith("claude"),
     ...(model.quotaScope ? { quotaScope: model.quotaScope } : {}),
   };
 }
@@ -387,7 +414,10 @@ export function buildAnthropicModelList(
   models: readonly GatewayModel[] = GATEWAY_MODELS,
   createdAt = GATEWAY_MODELS_UPDATED_AT,
 ): AnthropicModelList {
-  const data = models.map((model) => ({
+  // Host-native models are filtered here rather than at each call site: discovery
+  // is the one boundary where advertising them would take effect, and a caller
+  // that forgets would publish an id the gateway cannot execute.
+  const data = models.filter((model) => !model.hostNative).map((model) => ({
     type: "model" as const,
     id: toClaudeGatewayModelId(model),
     display_name: toClaudeGatewayModelDisplayName(model),
@@ -423,9 +453,11 @@ function toGatewayModel(
   provider: GatewayProvider,
   providerName: string,
   entry: GatewayModelEntry,
+  hostNative: boolean,
 ): GatewayModel {
   return {
     id: scopedModelId(provider, entry.modelId),
+    ...(hostNative ? { hostNative: true as const } : {}),
     displayName: `${providerName}-${entry.name}`,
     provider,
     upstreamId: entry.providerModelId ?? entry.modelId,
@@ -449,6 +481,12 @@ function validateRegistry(value: GatewayModelsRegistry): void {
     const definition = value.providers[provider];
     const modelIds = new Set<string>();
     for (const model of definition.models) {
+      // Aliases exist to accept ids a client puts on the wire. A host-native
+      // model is never requested through the gateway by its catalog id, so an
+      // alias here could only capture some other model's real wire id.
+      if (definition.hostNative && model.aliases) {
+        throw new Error(`Host-native gateway model must not declare aliases: ${provider}/${model.modelId}`);
+      }
       if (model.modelId.includes("--")) {
         throw new Error(`Gateway model id contains reserved separator: ${provider}/${model.modelId}`);
       }

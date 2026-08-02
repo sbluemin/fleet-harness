@@ -820,12 +820,14 @@ const AI_GATEWAY_PROVIDER_LABEL_KEYS = {
   codex: "terminal.settings.aiGatewayProviderCodex",
   cursor: "terminal.settings.aiGatewayProviderCursor",
   kimi: "terminal.settings.aiGatewayProviderKimi",
+  claude: "terminal.settings.aiGatewayProviderClaude",
 } as const;
 
 const AI_GATEWAY_PROVIDER_SUB_KEYS = {
   codex: "terminal.settings.aiGatewaySubCodex",
   cursor: "terminal.settings.aiGatewaySubCursor",
   kimi: "terminal.settings.aiGatewaySubKimi",
+  claude: "terminal.settings.aiGatewaySubClaude",
 } as const;
 
 function formatAiGatewayContextWindow(contextWindow: number | null): string | null {
@@ -1099,6 +1101,7 @@ function AiGatewayModelChips({ model }: { readonly model: AiGatewayCatalogModel 
 function AiGatewayProviderGlyph({ provider }: { readonly provider: AiGatewayProviderId }) {
   if (provider === "codex") return <CodexGlyph />;
   if (provider === "cursor") return <CursorGlyph />;
+  if (provider === "claude") return <ClaudeGlyph />;
   return <KimiGlyph />;
 }
 

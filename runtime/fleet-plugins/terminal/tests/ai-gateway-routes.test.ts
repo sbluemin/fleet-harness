@@ -796,6 +796,46 @@ describe("anthropic passthrough", () => {
 
     expect(res.status).toBe(401);
   });
+
+  it("relays a host-native catalog model instead of translating it", async () => {
+    // 카탈로그가 아는 id라도 host-native면 번역 대상이 아니다 — 어댑터가 없고,
+    // 청구 주체도 호출자 자신이다.
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "event: message_stop\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({ gateway, fetch: fetchMock, readAuth });
+    const res = response();
+
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED, model: "claude--opus" }));
+
+    expect(res.status).toBe(200);
+    expect(streamSpy).not.toHaveBeenCalled();
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toContain("api.anthropic.com");
+    expect(new Headers(init?.headers).get("authorization")).toBe(`Bearer ${ANTHROPIC_CRED}`);
+    // 본문의 model도 바꾸지 않는다.
+    expect(JSON.parse(String(init?.body)).model).toBe("claude--opus");
+  });
+
+  it("keeps host-native models out of discovery", async () => {
+    const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      method: "GET",
+      pathname: "/plugins/terminal/ai-gateway/v1/models",
+    }));
+
+    const ids = (JSON.parse(res.body) as { data: { id: string }[] }).data.map((entry) => entry.id);
+    expect(ids.length).toBeGreaterThan(0);
+    for (const id of ["opus", "sonnet", "haiku", "claude-gateway--claude--opus"]) {
+      expect(ids).not.toContain(id);
+    }
+  });
 });
 
 describe("route surface", () => {

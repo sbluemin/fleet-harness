@@ -43,12 +43,15 @@ describe("terminal settings routes", () => {
       readonly aiGatewayCatalog: { readonly providers: readonly { readonly id: string; readonly models: readonly { readonly id: string; readonly maxMode: boolean; readonly fast: boolean; readonly effort: unknown }[] }[] };
     };
     const providers = body.aiGatewayCatalog.providers;
-    expect(providers.map((provider) => provider.id)).toEqual(["codex", "cursor", "kimi"]);
+    // 세션 자체 프로바이더인 Claude가 먼저 오고, 번역 프로바이더가 뒤를 잇는다.
+    expect(providers.map((provider) => provider.id)).toEqual(["claude", "codex", "cursor", "kimi"]);
     const allIds = providers.flatMap((provider) => provider.models.map((model) => model.id));
     // Cursor 경유 Kimi와 Kimi 프로바이더는 다른 경로다 — 둘 다 노출한다.
     expect(allIds).toContain("cursor--kimi-k3-1m");
     expect(allIds).toContain("kimi--k3");
-    const cursorKimi = providers[1]?.models.find((model) => model.id === "cursor--kimi-k3-1m");
+    expect(allIds).toContain("claude--opus");
+    const cursorKimi = providers.find((provider) => provider.id === "cursor")
+      ?.models.find((model) => model.id === "cursor--kimi-k3-1m");
     expect(cursorKimi?.maxMode).toBe(true);
     const fastIds = allIds.filter((id) => id.endsWith("-fast"));
     expect(fastIds.length).toBeGreaterThan(0);

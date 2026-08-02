@@ -37,9 +37,10 @@ export interface GatewayProviderQuota {
 }
 
 /**
- * Quota keyed by provider id. `claude` is meaningful here even though it serves
- * no gateway model: it is the allowance an inherited (unpinned) stage spends,
- * and therefore the baseline any offload is measured against.
+ * Quota keyed by provider id. `claude` is listed whether or not any Claude model
+ * is exposed: it is the allowance an inherited (unpinned) stage spends, and
+ * therefore the baseline any offload is measured against. When Claude models are
+ * exposed, that same window is also the one they are billed against.
  */
 export type GatewayQuotaSnapshot = Readonly<Record<string, GatewayProviderQuota>>;
 

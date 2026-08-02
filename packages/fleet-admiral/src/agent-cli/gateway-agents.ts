@@ -67,10 +67,16 @@ export function buildGatewayCustomAgents(
   const agents: Record<string, ClaudeCustomAgentDefinition> = {};
   for (const model of exposed) {
     const modelId = toClaudeGatewayModelId(model);
+    // A host-native model's wire id is a bare alias (`opus`), which would make an
+    // Agent type named after it collide with ordinary vocabulary. Names come from
+    // the scoped catalog id instead, so `claude--opus` reads as `claude-opus`;
+    // translated models keep deriving theirs from the wire id so existing Agent
+    // type names — which callers pin — stay byte-identical.
+    const nameSource = model.hostNative ? model.id : modelId;
     const constraints = buildGatewayModelConstraints(model);
     if (constraints.effortSupported) {
       for (const effort of constraints.effortLadder) {
-        const name = toGatewayAgentName(modelId, effort);
+        const name = toGatewayAgentName(nameSource, effort);
         agents[name] = {
           description: gatewayAgentDescription(model, modelId, effort),
           prompt: GENERAL_PURPOSE_AGENT_PROMPT,
@@ -80,7 +86,7 @@ export function buildGatewayCustomAgents(
       }
       continue;
     }
-    const name = toGatewayAgentName(modelId);
+    const name = toGatewayAgentName(nameSource);
     agents[name] = {
       description: gatewayAgentDescription(model, modelId),
       prompt: GENERAL_PURPOSE_AGENT_PROMPT,
@@ -123,8 +129,11 @@ function gatewayAgentDescription(
   effort?: GatewayReasoningEffort,
 ): string {
   const effortPart = effort === undefined ? "no effort control" : `effort ${effort}`;
+  const lead = model.hostNative
+    ? `${model.displayName} (${modelId}), ${effortPart}. Runs on this session's own Anthropic subscription rather than a gateway provider's.`
+    : `Gateway model ${model.displayName} (${modelId}), ${effortPart}.`;
   return [
-    `Gateway model ${model.displayName} (${modelId}), ${effortPart}.`,
+    lead,
     "General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks.",
     "Use after calling gateway_models when this roster entry fits the stage.",
   ].join(" ");

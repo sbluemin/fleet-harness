@@ -2,6 +2,52 @@
   "version": 1,
   "updatedAt": "2026-08-01T00:00:00Z",
   "providers": {
+    "claude": {
+      "name": "Claude",
+      "defaultModel": "opus",
+      "hostNative": true,
+      "source": "Claude Code built-in model aliases; context windows and effort ladders from the Anthropic model catalog (2026-08-03)",
+      "models": [
+        {
+          "modelId": "haiku",
+          "name": "Haiku",
+          "description": "Fastest Anthropic tier; no reasoning-effort control.",
+          "contextWindow": 200000
+        },
+        {
+          "modelId": "sonnet",
+          "name": "Sonnet",
+          "description": "Balanced Anthropic tier.",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        },
+        {
+          "modelId": "opus",
+          "name": "Opus",
+          "description": "Most capable Anthropic tier.",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        }
+      ]
+    },
     "codex": {
       "name": "Codex",
       "defaultModel": "gpt-5.6-sol",
