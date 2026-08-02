@@ -4,7 +4,7 @@
 // 명시적 사용자 동작에서만 조회되는 진단 DTO로 나간다.
 
 export interface AgentCliStatus {
-  // 바이너리 식별자(= CLI_BACKENDS의 cliCommand). 예: "claude", "codex", "cursor-agent".
+  // 바이너리 식별자(= CLI_BACKENDS의 cliCommand). 예: "claude", "cursor-agent".
   readonly id: string;
   readonly displayName: string;
   readonly available: boolean;

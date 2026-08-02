@@ -36,7 +36,7 @@ describe("console terminal host hooks", () => {
       entryPath: "/app/fleet-console/core/host/cli.ts",
       execPath: "/usr/local/bin/node",
       tsxLoaderPath: "/app/fleet-console/node_modules/tsx/dist/loader.mjs",
-    }, "codex");
+    }, "claude");
 
     expect(exec).toEqual({
       command: "/usr/local/bin/node",
@@ -46,7 +46,7 @@ describe("console terminal host hooks", () => {
         "/app/fleet-console/core/host/cli.ts",
         "hook",
         "capture-session",
-        "codex",
+        "claude",
       ],
     });
   });

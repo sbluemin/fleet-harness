@@ -15,7 +15,7 @@ export async function runTurnStateHook(
   options: TurnStateHookOptions = {},
 ): Promise<void> {
   // 턴 상태 알림은 best-effort UI 신호다. 락 부재·서버 미응답·타임아웃 등 어떤 실패도
-  // provider 턴 진행을 막거나 hook 출력(codex Stop의 exit2/JSON, claude block)으로 새어나가선 안 된다.
+  // provider 턴 진행을 막거나 provider별 hook 오류 출력으로 새어나가선 안 된다.
   try {
     await postTurnState(phase, env, options);
   } catch {

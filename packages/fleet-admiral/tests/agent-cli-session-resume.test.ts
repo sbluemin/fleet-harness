@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -21,23 +21,7 @@ interface TestDedicatedMcpSession {
   releaseSessionToken(label: string): void;
 }
 
-interface CodexPluginManifest {
-  readonly version?: unknown;
-  readonly hooks?: {
-    readonly hooks?: {
-      readonly UserPromptSubmit?: readonly {
-        readonly hooks?: readonly {
-          readonly args?: unknown;
-          readonly command?: unknown;
-          readonly type?: unknown;
-        }[];
-      }[];
-    };
-  };
-}
-
 const tempDirs: string[] = [];
-const CODEX_FLEET_PROFILE_MARKER = "# Fleet-managed Codex profile";
 
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
@@ -116,48 +100,12 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(indexOfSequence(injected.args, ["--resume", "claude-session-123"])).toBeLessThan(indexOfSequence(injected.args, ["--dangerously-skip-permissions"]));
   });
 
-  it("places Codex resume after bin prefix and before global/profile/config flags", async () => {
-    const root = createTempRoot("fleet-admiral-codex-resume-");
-    const codexHome = path.join(root, "codex-home");
-    const profile = baseProfile("codex", {
-      args: ["/shim/codex", "--no-alt-screen", "--model", "gpt-5.5"],
-      binPrefixArgs: ["/shim/codex"],
-      cwd: root,
-      env: { CODEX_HOME: codexHome, HOME: root },
-    });
-    const captureSessionHookExec = hookExec("node", ["console.js", "hook", "capture-session", "codex"]);
-    const expectedCaptureCommand = escapeTomlBasicString(
-      buildHostShellCommand([captureSessionHookExec.command, ...captureSessionHookExec.args]),
-    );
-    const expectedCaptureWindowsCommand = escapeTomlBasicString(
-      buildPowerShellCommand([captureSessionHookExec.command, ...captureSessionHookExec.args]),
-    );
-    const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
-      captureSessionHookExec,
-      resumeSessionId: "codex-session-456",
-    }));
-    const profileName = injected.args[injected.args.indexOf("--profile") + 1];
-    const profilePath = path.join(codexHome, "fleet.config.toml");
-    const toml = readFileSync(profilePath, "utf8");
 
-    expect(profileName).toBe("fleet");
-    expect(injected.args.slice(0, 6)).toEqual(["/shim/codex", "resume", "codex-session-456", "--no-alt-screen", "--model", "gpt-5.5"]);
-    expect(indexOfSequence(injected.args, ["resume", "codex-session-456"])).toBeLessThan(indexOfSequence(injected.args, ["--no-alt-screen"]));
-    expect(indexOfSequence(injected.args, ["resume", "codex-session-456"])).toBeLessThan(indexOfSequence(injected.args, ["--profile"]));
-    expect(indexOfSequence(injected.args, ["resume", "codex-session-456"])).toBeLessThan(indexOfSequence(injected.args, ["-c"]));
-    expect(indexOfSequence(injected.args, ["resume", "codex-session-456"])).toBeLessThan(indexOfSequence(injected.args, ["--enable"]));
-    expect(indexOfSequence(injected.args, ["--enable", "hooks"])).toBeGreaterThan(indexOfSequence(injected.args, ["resume", "codex-session-456"]));
-    expect(injected.args).not.toContain("--dangerously-bypass-hook-trust");
-    expect(toml).toContain("[features]\nhooks = true");
-    expect(toml).toContain("[hooks]\n");
-    expect(toml).toContain(`UserPromptSubmit = [{ hooks = [{ type = "command", command = "${expectedCaptureCommand}", command_windows = "${expectedCaptureWindowsCommand}" }] }]`);
-    expect(toml).not.toContain("args =");
-  });
 
   it("exports createSessionCaptureHookExec from the root only", () => {
     const exec = Admiral.createSessionCaptureHookExec({
       entryPath: "/tmp/fleet-console/src/cli.ts",
-      provider: "codex",
+      provider: "claude",
       tsxLoader: "/tmp/fleet-console/node_modules/tsx/dist/loader.mjs",
     });
     const packageJson = JSON.parse(readFileSync(path.join(process.cwd(), "package.json"), "utf8")) as {
@@ -172,7 +120,7 @@ describe("agent CLI session resume and capture hooks", () => {
         "/tmp/fleet-console/src/cli.ts",
         "hook",
         "capture-session",
-        "codex",
+        "claude",
       ],
     });
     expect(packageJson.exports && Object.keys(packageJson.exports)).toEqual(["."]);
@@ -208,187 +156,22 @@ describe("agent CLI session resume and capture hooks", () => {
         readonly UserPromptSubmit: readonly { readonly hooks: readonly unknown[] }[];
       };
     };
-    const codexPluginJson = JSON.parse(readFileSync(path.join(plugin.pluginRoot, ".codex-plugin", "plugin.json"), "utf8")) as CodexPluginManifest;
 
     expect(hooksJson.hooks.SessionStart).toBeUndefined();
     expect(hooksJson.hooks.UserPromptSubmit).toHaveLength(1);
     expect(hooksJson.hooks.UserPromptSubmit[0]?.hooks).toEqual([
       { args: ["console.js", "hook", "capture-session", "claude"], command: "node", type: "command" },
     ]);
-    expect(codexPluginJson.hooks).toBeUndefined();
+    expect(existsSync(path.join(plugin.pluginRoot, ".codex-plugin", "plugin.json"))).toBe(false);
   });
 
-  it("writes Codex UserPromptSubmit capture command in the fixed Fleet profile without plugin inline hooks", async () => {
-    const root = createTempRoot("fleet-admiral-codex-hooks-");
-    const codexHome = path.join(root, "codex-home");
-    const profile = baseProfile("codex", {
-      args: ["--no-alt-screen"],
-      cwd: root,
-      env: { CODEX_HOME: codexHome, HOME: root },
-    });
-    const captureSessionHookExec = hookExec("/opt/fleet node", ["console path.js", "hook", "capture-session", "codex"]);
-    const expectedCaptureCommand = escapeTomlBasicString(
-      buildHostShellCommand([captureSessionHookExec.command, ...captureSessionHookExec.args]),
-    );
-    const expectedCaptureWindowsCommand = escapeTomlBasicString(
-      buildPowerShellCommand([captureSessionHookExec.command, ...captureSessionHookExec.args]),
-    );
-    const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
-      captureSessionHookExec,
-    }));
-    const profileName = injected.args[injected.args.indexOf("--profile") + 1];
-    const profilePath = path.join(codexHome, "fleet.config.toml");
-    const toml = readFileSync(profilePath, "utf8");
-    const pluginJson = JSON.parse(readFileSync(path.join(root, "data", "marketplace", "plugins", "fleet", ".codex-plugin", "plugin.json"), "utf8")) as CodexPluginManifest;
 
-    expect(profileName).toBe("fleet");
-    expect(readdirSync(codexHome).filter((entry) => entry.endsWith(".config.toml"))).toEqual(["fleet.config.toml"]);
-    expect(indexOfSequence(injected.args, ["--enable", "hooks"])).toBeGreaterThanOrEqual(0);
-    expect(injected.args).not.toContain("--dangerously-bypass-hook-trust");
-    expect(toml).toContain("[features]\nhooks = true");
-    expect(toml).toContain("[hooks]\n");
-    expect(toml).toContain(`UserPromptSubmit = [{ hooks = [{ type = "command", command = "${expectedCaptureCommand}", command_windows = "${expectedCaptureWindowsCommand}" }] }]`);
-    expect(toml).not.toContain("args =");
-    expect(pluginJson.hooks).toBeUndefined();
-    expect(pluginJson.version).toMatch(/^0\.0\.0\+[0-9a-f]{12}$/);
-  });
 
-  it("keeps existing Codex handlers in place and adds a synchronous PermissionRequest hook", async () => {
-    const root = createTempRoot("fleet-admiral-codex-all-hooks-");
-    const codexHome = path.join(root, "codex-home");
-    const hookExecs = [
-      hookExec("capture", ["session"]),
-      hookExec("turn-start", []),
-      hookExec("auto-name", []),
-      hookExec("turn-end", []),
-      hookExec("attention", []),
-    ];
-    const profile = baseProfile("codex", {
-      args: [],
-      cwd: root,
-      env: { CODEX_HOME: codexHome, HOME: root },
-    });
 
-    await injectAgentCliProfile(profile, baseInjectOptions(root, {
-      autoNameHookExec: hookExecs[2],
-      captureSessionHookExec: hookExecs[0],
-      turnEndHookExec: hookExecs[3],
-      turnStartHookExec: hookExecs[1],
-      inputWaitingHookExec: hookExecs[4],
-    }));
 
-    const toml = readFileSync(path.join(codexHome, "fleet.config.toml"), "utf8");
-    expect(readTomlBasicStringValues(toml, "command")).toEqual(hookExecs.map((exec) =>
-      buildHostShellCommand([exec.command, ...exec.args])));
-    expect(toml).toContain(`UserPromptSubmit = ${inlineCodexHooks(hookExecs.slice(0, 3))}`);
-    expect(toml).toContain(`Stop = ${inlineCodexHooks([hookExecs[3]!])}`);
-    expect(toml).toContain(`PermissionRequest = ${inlineCodexHooks([hookExecs[4]!])}`);
-    expect(toml).not.toContain("async =");
-  });
 
-  it.skipIf(process.platform !== "win32")("writes and executes a PowerShell-safe command_windows override for every Codex hook", async () => {
-    const root = createTempRoot("fleet-admiral-codex-windows-hooks-");
-    const codexHome = path.join(root, "codex-home");
-    const hookExecs = [
-      hookExec(process.execPath, ["-e", "process.exit(0)", "capture argument with spaces", "O'Brien"]),
-      hookExec(process.execPath, ["-e", "process.exit(0)", "turn start argument with spaces", "O'Brien"]),
-      hookExec(process.execPath, ["-e", "process.exit(0)", "auto name argument with spaces", "O'Brien"]),
-      hookExec(process.execPath, ["-e", "process.exit(0)", "turn end argument with spaces", "O'Brien"]),
-    ];
-    const profile = baseProfile("codex", {
-      args: ["--no-alt-screen"],
-      cwd: root,
-      env: { CODEX_HOME: codexHome, HOME: root },
-    });
 
-    await injectAgentCliProfile(profile, baseInjectOptions(root, {
-      autoNameHookExec: hookExecs[2],
-      captureSessionHookExec: hookExecs[0],
-      turnEndHookExec: hookExecs[3],
-      turnStartHookExec: hookExecs[1],
-    }));
-    const toml = readFileSync(path.join(codexHome, "fleet.config.toml"), "utf8");
-    const commandWindows = readTomlBasicStringValues(toml, "command_windows");
-    const expectedCommandWindows = hookExecs.map((exec) => buildPowerShellCommand([exec.command, ...exec.args]));
 
-    expect(commandWindows).toEqual(expectedCommandWindows);
-    for (const command of commandWindows) {
-      expect(command.startsWith("& '")).toBe(true);
-      const result = spawnSync("pwsh", ["-NoProfile", "-NonInteractive", "-Command", command], { encoding: "utf8" });
-      expect(result.error).toBeUndefined();
-      expect(result.status).toBe(0);
-    }
-  });
-
-  it("preserves Codex hook trust state while rewriting the fixed Fleet profile", async () => {
-    const root = createTempRoot("fleet-admiral-codex-trust-state-");
-    const codexHome = path.join(root, "codex-home");
-    const profilePath = path.join(codexHome, "fleet.config.toml");
-    mkdirSync(codexHome, { recursive: true });
-    writeFileSync(profilePath, [
-      CODEX_FLEET_PROFILE_MARKER,
-      'developer_instructions = """',
-      "old doctrine",
-      '"""',
-      "",
-      '[hooks.state."/Users/sbluemin/.codex/fleet.config.toml:user_prompt_submit:0:0"]',
-      'trusted_hash = "sha256:user-prompt-submit"',
-      "",
-      '[plugins."stale@marketplace"]',
-      "enabled = true",
-      "",
-      '[hooks.state."/Users/sbluemin/.codex/fleet.config.toml:stop:0:0"]',
-      'trusted_hash = "sha256:stop"',
-      "",
-    ].join("\n"), { encoding: "utf8" });
-    const profile = baseProfile("codex", {
-      args: ["--no-alt-screen"],
-      cwd: root,
-      env: { CODEX_HOME: codexHome, HOME: root },
-    });
-
-    await injectAgentCliProfile(profile, baseInjectOptions(root, {
-      captureSessionHookExec: hookExec("node", ["console.js", "hook", "capture-session", "codex"]),
-    }));
-    const toml = readFileSync(profilePath, "utf8");
-
-    expect(toml).toContain("[hooks]\n");
-    expect(toml).toContain("[hooks.state.\"/Users/sbluemin/.codex/fleet.config.toml:user_prompt_submit:0:0\"]");
-    expect(toml).toContain('trusted_hash = "sha256:user-prompt-submit"');
-    expect(toml).toContain("[hooks.state.\"/Users/sbluemin/.codex/fleet.config.toml:stop:0:0\"]");
-    expect(toml).toContain('trusted_hash = "sha256:stop"');
-    expect(toml).not.toContain('[plugins."stale@marketplace"]');
-  });
-
-  it("does not preserve hook trust state from a non-Fleet fixed profile", async () => {
-    const root = createTempRoot("fleet-admiral-codex-user-profile-");
-    const codexHome = path.join(root, "codex-home");
-    const profilePath = path.join(codexHome, "fleet.config.toml");
-    mkdirSync(codexHome, { recursive: true });
-    writeFileSync(profilePath, [
-      "# User-managed Codex profile",
-      "[features]",
-      "hooks = true",
-      "",
-      '[hooks.state."/Users/sbluemin/.codex/fleet.config.toml:user_prompt_submit:0:0"]',
-      'trusted_hash = "sha256:user-managed"',
-      "",
-    ].join("\n"), { encoding: "utf8" });
-    const profile = baseProfile("codex", {
-      args: ["--no-alt-screen"],
-      cwd: root,
-      env: { CODEX_HOME: codexHome, HOME: root },
-    });
-
-    await injectAgentCliProfile(profile, baseInjectOptions(root, {
-      captureSessionHookExec: hookExec("node", ["console.js", "hook", "capture-session", "codex"]),
-    }));
-    const toml = readFileSync(profilePath, "utf8");
-
-    expect(toml.startsWith(CODEX_FLEET_PROFILE_MARKER)).toBe(true);
-    expect(toml).not.toContain("[hooks.state.");
-    expect(toml).not.toContain("trusted_hash");
-  });
 });
 
 function createTempRoot(prefix: string): string {
@@ -436,7 +219,6 @@ function baseInjectOptions(
 ): Parameters<typeof injectAgentCliProfile>[1] {
   return {
     buildSystemPrompt: overrides.buildSystemPrompt ?? (() => "Fleet doctrine"),
-    codexCommandRunner: () => ({ status: 0, stderr: "", stdout: "" }),
     dataDir: path.join(root, "data"),
     dedicatedMcpSession: overrides.dedicatedMcpSession ?? createDedicatedMcpSession(),
     ...(overrides.autoNameHookExec ? { autoNameHookExec: overrides.autoNameHookExec } : {}),
@@ -488,38 +270,9 @@ function hookExec(command: string, args: readonly string[]): FleetHookExec {
   return { args, command };
 }
 
-function inlineCodexHooks(execs: readonly FleetHookExec[]): string {
-  const handlers = execs.map((exec) => {
-    const command = escapeTomlBasicString(buildHostShellCommand([exec.command, ...exec.args]));
-    const commandWindows = escapeTomlBasicString(buildPowerShellCommand([exec.command, ...exec.args]));
-    return `{ type = "command", command = "${command}", command_windows = "${commandWindows}" }`;
-  }).join(", ");
-  return `[{ hooks = [${handlers}] }]`;
-}
-
 function indexOfSequence(values: readonly string[], sequence: readonly string[]): number {
   const index = values.findIndex((_, candidateIndex) =>
     sequence.every((expected, sequenceIndex) => values[candidateIndex + sequenceIndex] === expected));
   expect(index).toBeGreaterThanOrEqual(0);
   return index;
-}
-
-function readTomlBasicStringValues(toml: string, key: string): string[] {
-  const matcher = new RegExp(`${key} = "((?:\\\\.|[^"\\\\])*)"`, "g");
-  return [...toml.matchAll(matcher)].map((match) => decodeTomlBasicString(match[1] ?? ""));
-}
-
-function decodeTomlBasicString(value: string): string {
-  return value.replace(/\\(?:[btnfr"\\]|u[0-9a-fA-F]{4})/g, (escape) => {
-    switch (escape) {
-      case "\\b": return "\b";
-      case "\\t": return "\t";
-      case "\\n": return "\n";
-      case "\\f": return "\f";
-      case "\\r": return "\r";
-      case "\\\"": return "\"";
-      case "\\\\": return "\\";
-      default: return String.fromCharCode(Number.parseInt(escape.slice(2), 16));
-    }
-  });
 }

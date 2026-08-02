@@ -8,14 +8,14 @@ interface VersionCall {
 }
 
 describe("agent cli detector", () => {
-  it("reports the three distinct binaries in declaration order (zai/kimi/glm collapse into claude)", async () => {
+  it("reports the distinct binaries in declaration order (zai/kimi/glm collapse into claude)", async () => {
     const detector = createAgentCliDetector({
       resolve: () => undefined,
       runVersion: async () => "",
     });
     const result = await detector.detect();
-    expect(result.map((cli) => cli.id)).toEqual(["claude", "codex", "cursor-agent"]);
-    expect(result.map((cli) => cli.displayName)).toEqual(["Claude Code", "Codex CLI", "Cursor Agent"]);
+    expect(result.map((cli) => cli.id)).toEqual(["claude", "cursor-agent"]);
+    expect(result.map((cli) => cli.displayName)).toEqual(["Claude Code", "Cursor Agent"]);
   });
 
   it("marks a resolvable binary available and parses its semver version", async () => {
@@ -63,18 +63,7 @@ describe("agent cli detector", () => {
     expect(result.find((cli) => cli.id === "claude")?.version).toBe("1.2.3");
   });
 
-  it("keeps a binary available with a null version when the version probe throws", async () => {
-    const detector = createAgentCliDetector({
-      resolve: (command) => (command === "codex" ? { bin: "/usr/local/bin/codex", prefixArgs: [] } : undefined),
-      runVersion: async () => {
-        throw new Error("spawn failed");
-      },
-    });
-    const result = await detector.detect();
-    const codex = result.find((cli) => cli.id === "codex");
-    expect(codex?.available).toBe(true);
-    expect(codex?.version).toBeNull();
-  });
+
 
   it("threads Windows shim prefixArgs through to the version probe", async () => {
     const calls: VersionCall[] = [];

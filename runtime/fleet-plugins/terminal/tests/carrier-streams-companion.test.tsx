@@ -739,7 +739,6 @@ describe("Carrier Streams companion", () => {
     expect(operationSupportsCarrierStreams(operation({ payload: { cliId: "claude-native" } }))).toBe(false);
     expect(operationSupportsCarrierStreams(operation({ payload: { cliId: "claude-gateway" } }))).toBe(false);
     expect(operationSupportsCarrierStreams(operation({ payload: { cliId: "claude" } }))).toBe(true);
-    expect(operationSupportsCarrierStreams(operation({ payload: { cliId: "codex" } }))).toBe(true);
     expect(operationSupportsCarrierStreams(operation({ payload: {} }))).toBe(true);
 
     installSession([]);

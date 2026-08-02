@@ -173,7 +173,6 @@ export const agentPlugin = definePlugin({
   },
   renderLaunchIcon: (kind) => {
     if (kind.id === "claude" || kind.id === "claude-native" || kind.id === "claude-gateway") return <ClaudeGlyph />;
-    if (kind.id === "codex") return <CodexGlyph />;
     return <AgentGlyph />;
   },
 });
@@ -468,7 +467,9 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     return (
       <div className="agent-stream-host">
         {handles}
-        <DormantOperationView context={context} session={session} />
+        {session.resumeAvailable
+          ? <DormantOperationView context={context} session={session} />
+          : <div className="canvas-operation-dormant"><span className="canvas-operation-dormant-status">{getT(context.language ?? "en")("terminal.dormant.status")}</span></div>}
       </div>
     );
   }
@@ -1430,7 +1431,7 @@ function sessionFromOperation(context: OperationRenderContext): SessionInfo {
     theaterId: context.theaterId,
     tenantId: readPayloadString(context.operation.payload, "tenantId") ?? undefined,
     registrationId: readPayloadString(context.operation.payload, "registrationId") ?? undefined,
-    resumeAvailable: true,
+    resumeAvailable: context.operation.payload.resumeAvailable === true,
   };
 }
 

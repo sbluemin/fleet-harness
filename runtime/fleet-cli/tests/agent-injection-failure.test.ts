@@ -1,4 +1,4 @@
-import { closeSync, mkdtempSync, openSync, readdirSync, rmSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -8,26 +8,25 @@ import { injectAgentCliProfile, type AgentCliProfile } from "@dotobokuri/fleet-a
 
 const TEST_PROFILE: AgentCliProfile = {
   args: [],
-  bin: "codex",
+  bin: "claude",
   cwd: process.cwd(),
   env: {},
-  id: "codex",
-  label: "Codex",
+  id: "claude",
+  label: "Claude",
   terminalName: "xterm-256color",
 };
 
 describe("agent CLI injection failure cleanup", () => {
   it("releases the MCP token when plugin rendering fails", async () => {
-    const codexHome = mkdtempSync(path.join(os.tmpdir(), "fleet-codex-home-"));
-    const invalidPluginRoot = path.join(codexHome, "not-a-directory");
+    const dataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-agent-injection-"));
+    const invalidPluginRoot = path.join(dataDir, "not-a-directory");
     closeSync(openSync(invalidPluginRoot, "w"));
     const releaseSessionToken = vi.fn();
 
     try {
-      await expect(injectAgentCliProfile({ ...TEST_PROFILE, env: { CODEX_HOME: codexHome } }, {
+      await expect(injectAgentCliProfile(TEST_PROFILE, {
         buildSystemPrompt: () => "prompt",
-        codexCommandRunner: () => ({ status: 0, stderr: "", stdout: "" }),
-        dataDir: codexHome,
+        dataDir,
         dedicatedMcpSession: {
           getEndpoint: async () => ({
             servers: [{ name: "fleet", url: "http://127.0.0.1:1000/fleet" }],
@@ -38,12 +37,11 @@ describe("agent CLI injection failure cleanup", () => {
         pluginRootDir: invalidPluginRoot,
         withMarketplaceLock: (_target, fn) => fn(),
       })).rejects.toThrow();
-      expect(readdirSync(codexHome).filter((entry) => /^fleet-.*\.config\.toml$/.test(entry))).toEqual([]);
     } finally {
-      rmSync(codexHome, { recursive: true, force: true });
+      rmSync(dataDir, { recursive: true, force: true });
     }
 
     expect(releaseSessionToken).toHaveBeenCalledTimes(1);
-    expect(releaseSessionToken.mock.calls[0]?.[0]).toMatch(/^agent:codex:[0-9a-f-]{36}$/);
+    expect(releaseSessionToken.mock.calls[0]?.[0]).toMatch(/^agent:claude:[0-9a-f-]{36}$/);
   });
 });

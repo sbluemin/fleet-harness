@@ -12,7 +12,6 @@ interface WriteJsonCall {
 
 const SAMPLE: readonly AgentCliStatus[] = [
   { id: "claude", displayName: "Claude Code", available: true, version: "2.1.0" },
-  { id: "codex", displayName: "Codex CLI", available: false, version: null },
 ];
 
 describe("agent cli routes", () => {

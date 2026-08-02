@@ -145,7 +145,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       const session = observability.getTerminalSessionInfo(sessionId);
       if (!session) return;
       const cliId = session.cliId;
-      if (cliId !== "claude" && cliId !== "claude-native" && cliId !== "claude-gateway" && cliId !== "codex") return;
+      if (cliId !== "claude" && cliId !== "claude-native" && cliId !== "claude-gateway") return;
       tracker = createOscAgentActivityTracker({
         cliId,
         cwdBasename: session.cwdLabel,
@@ -441,8 +441,9 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     const node = ctx.host.operations.get(sessionId);
     const payload = node?.payload;
     const cliId = readOptionalAgentCliId(payload?.cliId, res);
+    if (cliId === false) return true;
     const providerSession = readProviderSession(payload);
-    if (!node || cliId === false || !cliId || (!fresh && !providerSession)) {
+    if (!node || !cliId || (!fresh && !providerSession)) {
       ctx.host.http.writeJson(res, node ? 409 : 404, { error: node ? "resume_unavailable" : "session_not_found" });
       return true;
     }
@@ -458,8 +459,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
         // stale provider 상태는 spawn 전에 observability와 payload에서 모두 떼어낸다 —
         // attach 도중 새 CLI의 capture hook이 먼저 완료되면 attach 후 정리가 새
         // providerSession까지 지우고, payload에 구 세션이 남으면 성공 patch가 그것을 다시
-        // 심는다(Codex P1). attach 실패 시에는 catch에서 payload providerSession을 원복해
-        // 일반 resume 재시도와 Session Analyst의 transcript 접근을 보존한다(Codex P2).
+        // 심는다. attach 실패 시에는 catch에서 payload providerSession을 원복해
+        // 일반 resume 재시도와 Session Analyst의 transcript 접근을 보존한다.
         observability.clearTerminalSessionProviderSession(sessionId);
         const payloadWithoutProvider = { ...node.payload };
         delete payloadWithoutProvider.providerSession;
@@ -480,7 +481,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       const resumed = runtimeSession ? observability.registerTerminalRuntimeSession(runtimeSession) ?? starting : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? starting;
       observability.notifySessionUpdated(resumed);
       // fresh 성공 patch는 attach 중 자식이 capture한 새 providerSession만 보존한다 —
-      // payload는 spawn 전에 비워 두었으므로, 읽히는 세션은 반드시 자식의 신규 capture다(Codex P1).
+      // payload는 spawn 전에 비워 두었으므로, 읽히는 세션은 반드시 자식의 신규 capture다.
       const currentPayload = fresh ? ctx.host.operations.get(sessionId)?.payload : node.payload;
       const effectiveProviderSession = fresh ? readProviderSession(currentPayload) : providerSession;
       ctx.host.operations.patch(sessionId, { payload: toOperationPayload(currentPayload ?? node.payload, cwd, resumed, effectiveProviderSession, observability.getDurableOperation(sessionId)?.providerTitle) });
@@ -489,7 +490,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       resetOscActivity(sessionId);
       if (fresh && providerSession) {
         // 실패 롤백: spawn 전에 떼어낸 payload providerSession과 observability 세션을
-        // 복원한다 — payload의 providerSession이 resume과 Analyst transcript의 단일 권위다(Codex P2).
+        // 복원한다 — payload의 providerSession이 resume과 Analyst transcript의 단일 권위다.
         const rollbackPayload = { ...(ctx.host.operations.get(sessionId)?.payload ?? {}) };
         rollbackPayload.providerSession = providerSession;
         ctx.host.operations.patch(sessionId, { payload: rollbackPayload });
@@ -840,7 +841,7 @@ function readOptionalAgentCliId(value: unknown, res: Parameters<FleetPluginServe
 
 function parseCaptureHookInput(provider: string, input: string): AgentProviderSession | undefined {
   try {
-    if (provider !== "claude" && provider !== "codex") throw new Error("invalid_provider");
+    if (provider !== "claude") throw new Error("invalid_provider");
     const parsed = JSON.parse(input) as unknown;
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("invalid_hook_input");
     const candidate = parsed as { readonly session_id?: unknown; readonly transcript_path?: unknown; readonly source?: unknown };

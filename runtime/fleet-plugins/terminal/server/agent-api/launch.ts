@@ -25,7 +25,7 @@ import {
   type GlobalOptionsService,
 } from "@dotobokuri/core-infra";
 
-import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, runCodexCommand, toCaptureProvider, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
+import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, toCaptureProvider, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import { resolveAiGatewaySelection, type AiGatewaySelection, type AiGatewayStoredSettings } from "../ai-gateway-settings.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
 import { stripConsoleInternalEnv } from "../shared/launch-env.js";
@@ -189,7 +189,6 @@ async function createAgentCliLaunchSpec(options: {
       : undefined;
     const injectedProfile = await options.injectProfile(profile, {
       buildSystemPrompt: (injectTone) => options.createSystemPromptBuilder({ carrierRuntime: agentRuntime.carrierRuntime }).build(injectTone),
-      codexCommandRunner: runCodexCommand,
       dataDir: options.dataDir,
       dedicatedMcpSession: agentRuntime.dedicatedMcpSession,
       enableMetaphor: globalSettings.enableMetaphor,

@@ -23,7 +23,6 @@ const CLAUDE_NOT_WORKING = 0x2733;
 export function classifyOscAgentActivity(
   cliId: AgentCliId,
   title: string,
-  codexWorkingBaseline?: string,
 ): OscAgentActivityClassification {
   const first = title.codePointAt(0);
   if (first === undefined) return "unknown";
@@ -31,22 +30,17 @@ export function classifyOscAgentActivity(
   if (cliId === "claude" || cliId === "claude-native" || cliId === "claude-gateway") {
     return first === CLAUDE_NOT_WORKING ? "not-working" : "unknown";
   }
-  if (codexWorkingBaseline === undefined) return "unknown";
-  return title === codexWorkingBaseline ? "not-working" : "unknown";
+  return "unknown";
 }
 
 export function createOscAgentActivityTracker(options: OscAgentActivityTrackerOptions): OscAgentActivityTracker {
-  let codexWorkingBaseline: string | undefined;
   let committed: AgentModelActivity | undefined;
   let pendingNotWorking: ReturnType<typeof setTimeout> | undefined;
 
   function observeTitle(title: string): void {
-    const classification = classifyOscAgentActivity(options.cliId, title, codexWorkingBaseline);
+    const classification = classifyOscAgentActivity(options.cliId, title);
     if (classification === "unknown") return;
     if (classification === "working") {
-      if (options.cliId === "codex" && readWorkingTitleBody(title) === options.cwdBasename) {
-        codexWorkingBaseline = options.cwdBasename;
-      }
       cancelPendingNotWorking();
       committed = "working";
       options.onActivity("working");
@@ -73,15 +67,8 @@ export function createOscAgentActivityTracker(options: OscAgentActivityTrackerOp
 
   function reset(): void {
     cancelPendingNotWorking();
-    codexWorkingBaseline = undefined;
     committed = undefined;
   }
 
   return { observeTitle, reset };
-}
-
-function readWorkingTitleBody(title: string): string {
-  const first = title.codePointAt(0);
-  if (first === undefined) return "";
-  return title.slice(String.fromCodePoint(first).length).trimStart();
 }

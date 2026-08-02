@@ -30,6 +30,28 @@ afterEach(() => {
 });
 
 describe("dormant resume feedback", () => {
+  it("keeps a preserved non-resumable Operation dormant without offering Resume", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const notifications = { emit: vi.fn(), dismiss: vi.fn() };
+    if (!container) {
+      container = document.createElement("div");
+      document.body.append(container);
+    }
+    root ??= createRoot(container);
+    const render = agentOperationKind.render;
+    if (!render) throw new Error("Agent operation renderer must exist.");
+
+    await act(async () => {
+      root?.render(render(createContext(notifications)) as React.ReactNode);
+      await Promise.resolve();
+    });
+
+    expect(container?.querySelector(".canvas-operation-dormant-status")?.textContent).toBe("Dormant");
+    expect(container?.querySelector("button.canvas-operation-dormant")).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("shows a pending state while resume is in flight", async () => {
     let resolveResume: ((response: Response) => void) | undefined;
     const fetch = vi.fn().mockImplementation(() => new Promise<Response>((resolve) => { resolveResume = resolve; }));

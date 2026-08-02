@@ -61,7 +61,6 @@ describe("claude-native injection", () => {
         builtPrompt = true;
         return "Fleet doctrine";
       },
-      codexCommandRunner: () => ({ status: 0, stderr: "", stdout: "" }),
       dataDir: path.join(root, "data"),
       dedicatedMcpSession: {
         async getEndpoint() {

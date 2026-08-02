@@ -47,12 +47,12 @@ describe("OSC title session wiring", () => {
   it("keeps raw titles private and emits once per semantic transition across repeated spinner frames", async () => {
     const ptys = new Map<string, MockPty>();
     const store = createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });
-    store.createPendingTerminalSession({ sessionId: "agent-private", cwd: "/work", cliId: "codex", createdAt: 1_000 });
+    store.createPendingTerminalSession({ sessionId: "agent-private", cwd: "/work", cliId: "claude", createdAt: 1_000 });
     const frames: unknown[] = [];
     const activityCalls: string[] = [];
     store.subscribeAll((event) => frames.push(event));
     const tracker = createOscAgentActivityTracker({
-      cliId: "codex",
+      cliId: "claude",
       cwdBasename: "work",
       onActivity: (activity) => {
         activityCalls.push(activity);
@@ -71,7 +71,7 @@ describe("OSC title session wiring", () => {
     });
     const socket = createMockSocket();
     await manager.attach(socket, { sessionId: "agent-private", cwd: "/work", operationType: "agent" });
-    const privateBody = "private-conversation-codexlab";
+    const privateBody = "private-conversation-project";
     const rawTitle = `⠏ ${privateBody}`;
 
     for (let index = 0; index < 10; index += 1) {

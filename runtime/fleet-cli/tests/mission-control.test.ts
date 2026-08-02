@@ -45,7 +45,7 @@ const TEST_PROFILE: AgentCliProfile = {
 };
 const CLI_OPTIONS = [
   { id: "claude" as const, label: "Claude" },
-  { id: "codex" as const, label: "Codex" },
+  { id: "claude-native" as const, label: "Claude (Native)" },
 ];
 const ALL_CLI_OPTIONS = getAgentCliMetadata();
 const ANSI_PATTERN = new RegExp(String.raw`\x1b\[[0-9;?]*[ -/]*[@-~]`, "g");
@@ -104,7 +104,7 @@ describe("Mission Control controller", () => {
   it("keeps narrow Mission Control frames within visible width for long ANSI/CJK labels", () => {
     const cliOptions = [
       { id: "claude" as const, label: LONG_ANSI_CJK_LABEL },
-      { id: "codex" as const, label: "Codex" },
+      { id: "claude-native" as const, label: "Claude (Native)" },
     ];
 
     for (const width of [24, 30]) {
@@ -407,6 +407,7 @@ describe("Mission Control controller", () => {
     expect(sessionOptions.calls).toEqual([]);
   });
 
+
   it("moves launcher selection with arrows only and ignores vim keys", async () => {
     const hosts: FakeHost[] = [];
     const controller = createTestController({ hosts });
@@ -419,13 +420,13 @@ describe("Mission Control controller", () => {
     controller.ptyHost.write("\x1b");
 
     controller.ptyHost.write("\x1b[B");
-    expect(renderPlain(controller)).toContain("▸ Codex");
+    expect(renderPlain(controller)).toContain("▸ Claude (Native)");
 
     controller.ptyHost.write("j");
-    expect(renderPlain(controller)).toContain("▸ Codex");
+    expect(renderPlain(controller)).toContain("▸ Claude (Native)");
 
     controller.ptyHost.write("k");
-    expect(renderPlain(controller)).toContain("▸ Codex");
+    expect(renderPlain(controller)).toContain("▸ Claude (Native)");
 
     controller.ptyHost.write("\x1b[A");
     expect(renderPlain(controller)).toContain("▸ Claude");
@@ -603,7 +604,7 @@ describe("Mission Control controller", () => {
       hosts,
       injectProfile: (profile) => Promise.resolve({
         ...profile,
-        launchWarnings: ["Fleet Codex plugin registration failed: plugin add failed"],
+        launchWarnings: ["Fleet plugin rendering warning"],
       }),
     });
 
@@ -611,7 +612,7 @@ describe("Mission Control controller", () => {
 
     expect(controller.getState()).toMatchObject({
       kind: "active",
-      lastLaunchWarning: "Fleet Codex plugin registration failed: plugin add failed",
+      lastLaunchWarning: "Fleet plugin rendering warning",
     });
     expect(hosts).toHaveLength(1);
   });
@@ -858,7 +859,8 @@ describe("Mission Control controller", () => {
     expect(controller.getState().kind).toBe("active");
   });
 
-  it("launches Codex directly from the Start CLI list", async () => {
+
+  it("launches the selected supported CLI directly from the Start CLI list", async () => {
     const launched: AgentCliId[] = [];
     const controller = createTestController({
       resolveProfile: (cliId) => {
@@ -872,8 +874,8 @@ describe("Mission Control controller", () => {
     controller.ptyHost.write("\r");
     await waitForAsyncLaunch();
 
-    expect(launched).toEqual(["codex"]);
-    expect(controller.getState().cliId).toBe("codex");
+    expect(launched).toEqual(["claude-native"]);
+    expect(controller.getState().cliId).toBe("claude-native");
     expect(controller.hasActivePanel()).toBe(false);
   });
 
@@ -883,7 +885,7 @@ describe("Mission Control controller", () => {
     const sessionOptions = {
       ...createFakeSessionOptionsRuntime(),
       getDraft: () => ({
-        cliId: "codex" as const,
+        cliId: "claude-native" as const,
         enableMetaphor: true,
         model: "draft-model",
       }),
@@ -910,14 +912,15 @@ describe("Mission Control controller", () => {
 
     await controller.launchSelected();
 
-    expect(resolved).toEqual(["codex"]);
+    expect(resolved).toEqual(["claude-native"]);
     expect(injected).toEqual([sessionOptions.getDraft()]);
   });
+
 
   it("moves Start CLI selection with arrow keys, ignores vim keys, and launches the selected row", async () => {
     const launched: AgentCliId[] = [];
     const controller = createTestController({
-      cliOptions: ALL_CLI_OPTIONS,
+      cliOptions: CLI_OPTIONS,
       resolveProfile: (cliId) => {
         launched.push(cliId);
         return Promise.resolve({ ...TEST_PROFILE, id: cliId, label: cliId });
@@ -928,48 +931,38 @@ describe("Mission Control controller", () => {
     expect(renderPlain(controller)).toContain("▸ Claude");
 
     controller.ptyHost.write("\x1b[B");
-    expect(renderPlain(controller)).toContain("▸ Codex");
+    expect(renderPlain(controller)).toContain("▸ Claude (Native)");
 
     controller.ptyHost.write("j");
-    expect(renderPlain(controller)).toContain("▸ Codex");
+    expect(renderPlain(controller)).toContain("▸ Claude (Native)");
 
     controller.ptyHost.write("\x1b[13u");
     await waitForAsyncLaunch();
     controller.ptyHost.write("\x1bOA");
 
-    expect(launched).toEqual(["codex"]);
+    expect(launched).toEqual(["claude-native"]);
     expect(controller.getState().kind).toBe("active");
   });
 
   it("builds app-level profile config with registry parity", async () => {
     const config = createMissionControlProfileConfig({
       env: {
-        CODEX_BIN: process.execPath,
-        FLEET_AGENT_CLI: "codex",
+        CLAUDE_BIN: process.execPath,
+        FLEET_AGENT_CLI: "claude",
       },
       invocationCwd: "/tmp/mission-control",
     });
 
-    expect(config.initialCliId).toBe("codex");
-    expect(config.cliOptions).toEqual(expect.arrayContaining([
+    expect(config.initialCliId).toBe("claude");
+    expect(config.cliOptions).toEqual([
       { id: "claude", label: "Claude" },
-      { id: "codex", label: "Codex" },
-    ]));
+    ]);
 
-    const profile = await config.resolveProfile("codex");
+    const profile = await config.resolveProfile("claude");
 
-    expect(profile.id).toBe("codex");
+    expect(profile.id).toBe("claude");
     expect(profile.bin).toBe(process.execPath);
     expect(profile.cwd).toBe("/tmp/mission-control");
-    expect(profile.args).toEqual(["--no-alt-screen"]);
-
-    const launchProfile = await config.resolveProfile("codex", {
-      cliId: "codex",
-      enableMetaphor: true,
-      model: "draft-test",
-    });
-
-    expect(launchProfile.args).toEqual(["--no-alt-screen", "--model", "draft-test"]);
   });
 });
 

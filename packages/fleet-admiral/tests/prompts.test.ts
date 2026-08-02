@@ -210,7 +210,6 @@ describe("Admiral prompts", () => {
     expect(resolveDoctrineFromCliId("claude-gateway")).toBe("gateway");
     expect(resolveDoctrineFromCliId("claude-native")).toBe("native");
     expect(resolveDoctrineFromCliId("claude")).toBe("classic");
-    expect(resolveDoctrineFromCliId("codex")).toBe("classic");
   });
 
   it("keeps six standing orders per doctrine with the carrier policy renamed to orchestration under gateway", () => {

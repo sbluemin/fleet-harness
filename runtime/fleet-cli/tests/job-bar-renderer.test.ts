@@ -525,7 +525,7 @@ describe("job bar renderer", () => {
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Vanguard`);
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Taskforce · Coordinate backends`);
     expect(rendered).toContain(`${PROVIDER_ANSI_COLORS.claude}${firstModel("claude")} - medium`);
-    expect(rendered).toContain(`${PROVIDER_ANSI_COLORS.codex}${firstModel("codex")} - high`);
+    expect(rendered).toContain(`${PROVIDER_ANSI_COLORS.claude}${firstModel("codex")} - high`);
     expect(text).not.toContain("[1:2]");
   });
 

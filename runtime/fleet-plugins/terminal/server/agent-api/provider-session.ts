@@ -4,7 +4,7 @@ export function readProviderSession(value: Record<string, unknown> | undefined):
   const providerSession = value?.providerSession;
   if (!providerSession || typeof providerSession !== "object" || Array.isArray(providerSession)) return undefined;
   const candidate = providerSession as { readonly provider?: unknown; readonly sessionId?: unknown; readonly capturedAt?: unknown; readonly transcriptPath?: unknown; readonly source?: unknown };
-  if ((candidate.provider !== "claude" && candidate.provider !== "codex") || typeof candidate.sessionId !== "string" || typeof candidate.capturedAt !== "string") return undefined;
+  if (candidate.provider !== "claude" || typeof candidate.sessionId !== "string" || typeof candidate.capturedAt !== "string") return undefined;
   return {
     provider: candidate.provider,
     sessionId: candidate.sessionId,

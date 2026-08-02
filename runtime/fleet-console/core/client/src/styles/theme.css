@@ -514,7 +514,7 @@ a {
   }
 }
 
-@keyframes codex-pop {
+@keyframes fleet-pop {
   from {
     opacity: 0;
     transform: translateY(-8px) scale(0.96);

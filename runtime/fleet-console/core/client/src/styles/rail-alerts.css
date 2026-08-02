@@ -310,7 +310,7 @@
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--surface-pillar) 84%, transparent);
   border: 1px solid var(--surface-rim);
-  animation: codex-pop var(--duration-base) var(--ease-spring) both;
+  animation: fleet-pop var(--duration-base) var(--ease-spring) both;
 }
 
 .notification-cluster-settings-eyebrow {

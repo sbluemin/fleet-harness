@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, statSync } from "node:fs";
 import path from "node:path";
 
@@ -20,15 +19,9 @@ import type {
   RenderablePluginBundle,
 } from "../types.js";
 
-export { cleanupDeprecatedCodexPluginState, ensureCodexPluginRegistered } from "./codex-register.js";
-export type { DeprecatedCodexPluginCleanupTargets } from "./codex-register.js";
 export type {
   AgentCliPlugin,
   AgentCliPluginMarketplaceLock,
-  CodexCommandResult,
-  CodexCommandRunner,
-  CodexPluginRegistration,
-  CodexPluginRegistrationCommand,
   CreateAgentCliPluginOptions,
 } from "../types.js";
 
@@ -38,21 +31,16 @@ const MARKETPLACE_DIR_NAME = "marketplace";
 const PLUGIN_BUNDLES_DIR_NAME = "plugins";
 const PLUGIN_BUNDLES: readonly PluginBundle[] = [assetBundle];
 const MARKETPLACE_MANAGED_ENTRIES = [
-  ".agents",
   ".claude-plugin",
-  ".codex-plugin",
   "hooks",
   "skills",
   "agents",
   "mcp.json",
   "claude",
-  "codex-marketplace",
   "plugins",
 ] as const;
 const MARKETPLACE_PRUNE_ENTRIES = [
-  ".agents",
   ".claude-plugin",
-  ".codex-plugin",
   // 기존 Cursor marketplace 산출물은 Fleet이 관리하던 잔재이므로 다음 렌더에서 제거한다.
   ".cursor-plugin",
   "hooks",
@@ -60,9 +48,7 @@ const MARKETPLACE_PRUNE_ENTRIES = [
   "agents",
   "mcp.json",
   "claude",
-  "codex-marketplace",
 ] as const;
-const HASH_IGNORED_RELATIVE_PATHS = new Set(PLUGIN_BUNDLES.map((bundle) => bundle.hashFileName));
 
 export async function createAgentCliPlugin(
   options: CreateAgentCliPluginOptions,
@@ -71,7 +57,6 @@ export async function createAgentCliPlugin(
   const renderableBundles = resolveRenderablePluginBundles(fleetRoot, options);
   const marketplaceBundles = groupRenderableBundlesByMarketplace(renderableBundles);
   const pluginRoots = new Map<PluginBundle, string>();
-  const contentHashes = new Map<string, string>();
   for (const marketplace of marketplaceBundles) {
     await options.withMarketplaceLock(marketplace.target.root, () => {
       for (const { bundle, target } of marketplace.bundles) {
@@ -80,7 +65,6 @@ export async function createAgentCliPlugin(
         pluginRoots.set(bundle, pluginRoot);
       }
       renderMarketplaceRoot(marketplace.target, marketplace.bundles.map(({ bundle }) => bundle));
-      contentHashes.set(marketplace.target.root, buildContentHash(marketplace.target));
     });
   }
   const resolvedPluginRoots = renderableBundles.map(({ bundle }) => pluginRoots.get(bundle)!);
@@ -88,16 +72,6 @@ export async function createAgentCliPlugin(
   options.onCleanup?.(cleanup);
   return {
     cleanup,
-    codexRegistrations: options.cliId === "codex"
-      ? renderableBundles.map(({ bundle, target }, index) => ({
-        contentHash: contentHashes.get(target.root)!,
-        hashPath: path.join(target.root, bundle.hashFileName),
-        marketplaceDir: target.root,
-        marketplaceName: target.name,
-        pluginName: bundle.name,
-        pluginRoot: resolvedPluginRoots[index]!,
-      }))
-      : [],
     pluginRoot: resolvedPluginRoots[0]!,
     pluginRoots: resolvedPluginRoots,
   };
@@ -160,7 +134,6 @@ function renderPluginRoot(
         renderAssetPluginRoot(stagedPluginRoot, bundle, options);
         break;
     }
-    writePrivateJson(path.join(stagedPluginRoot, ".codex-plugin", "plugin.json"), codexManifest(bundle, stagedPluginRoot), stagedPluginRoot);
     removePrivatePath(pluginRoot, parentRoot);
     renameSync(stagedPluginRoot, pluginRoot);
   } finally {
@@ -173,7 +146,6 @@ function renderMarketplaceRoot(target: MarketplaceTarget, bundles: readonly Plug
   ensurePrivateDir(marketplaceRoot, marketplaceRoot);
   const stagedRoot = createStagingDir(marketplaceRoot);
   try {
-    writePrivateJson(path.join(stagedRoot, ".agents", "plugins", "marketplace.json"), codexMarketplace(target, bundles), stagedRoot);
     writePrivateJson(path.join(stagedRoot, ".claude-plugin", "marketplace.json"), claudeMarketplace(target, bundles), stagedRoot);
     pruneMarketplaceRoot(target);
     pruneStalePluginDirs(target, bundles);
@@ -213,20 +185,6 @@ function pruneStalePluginDirs(target: MarketplaceTarget, bundles: readonly Plugi
   }
 }
 
-function buildContentHash(target: MarketplaceTarget): string {
-  const hash = crypto.createHash("sha256");
-  for (const filePath of listRenderableFiles(target)) {
-    const relativePath = path.relative(target.root, filePath);
-    hash.update(relativePath);
-    hash.update("\0");
-    // 심볼릭 링크는 타깃 경로가 아니라 링크가 가리키는 실제 파일 내용을 해시한다.
-    // (readFileSync는 링크를 따라가 원본 내용을 읽으므로 .fleet 소스 내용 변경이 해시에 반영된다.)
-    hash.update(readFileSync(filePath));
-    hash.update("\0");
-  }
-  return hash.digest("hex");
-}
-
 function createStagingDir(rootPath: string): string {
   const stageRoot = mkdtempSync(path.join(rootPath, `.fleet-stage-${process.pid}-${Date.now()}-`));
   return stageRoot;
@@ -258,7 +216,6 @@ function collectRenderableFiles(
   for (const entry of readdirSync(currentPath)) {
     const entryPath = path.join(currentPath, entry);
     const relativePath = path.relative(rootPath, entryPath);
-    if (HASH_IGNORED_RELATIVE_PATHS.has(relativePath)) continue;
     const stat = lstatSync(entryPath);
     if (stat.isSymbolicLink()) {
       collectSymlinkedRenderable(rootPath, entryPath, files, ancestorRealDirs);
@@ -300,21 +257,6 @@ function collectSymlinkedRenderable(
   }
 }
 
-function codexMarketplace(target: MarketplaceTarget, bundles: readonly PluginBundle[]): unknown {
-  return {
-    name: target.name,
-    plugins: bundles.map((bundle) => ({
-      name: bundle.name,
-      displayName: bundle.displayName,
-      source: {
-        source: "local",
-        path: marketplacePluginPath(target, bundle),
-      },
-      description: bundle.description,
-    })),
-  };
-}
-
 function claudeMarketplace(target: MarketplaceTarget, bundles: readonly PluginBundle[]): unknown {
   return {
     name: target.name,
@@ -340,39 +282,6 @@ function pluginRootForTarget(target: MarketplaceTarget, bundle: PluginBundle): s
 
 function marketplacePluginPath(target: MarketplaceTarget, bundle: PluginBundle): string {
   return `./${PLUGIN_BUNDLES_DIR_NAME}/${bundle.directoryName}`;
-}
-
-function codexManifest(bundle: PluginBundle, pluginRoot: string): unknown {
-  return {
-    name: bundle.name,
-    version: codexManifestVersion(bundle, pluginRoot),
-    description: bundle.description,
-    skills: "./skills/",
-  };
-}
-
-function codexManifestVersion(bundle: PluginBundle, pluginRoot: string): string {
-  const hash = crypto.createHash("sha256");
-  hash.update(bundle.name);
-  hash.update("\0");
-  hash.update(bundle.description);
-  hash.update("\0");
-  for (const filePath of listCodexEffectivePluginFiles(pluginRoot)) {
-    const relativePath = path.relative(pluginRoot, filePath);
-    hash.update(relativePath);
-    hash.update("\0");
-    hash.update(readFileSync(filePath));
-    hash.update("\0");
-  }
-  return `0.0.0+${hash.digest("hex").slice(0, 12)}`;
-}
-
-function listCodexEffectivePluginFiles(pluginRoot: string): string[] {
-  const skillsPath = path.join(pluginRoot, "skills");
-  if (!existsSync(skillsPath)) return [];
-  const files: string[] = [];
-  collectRenderableFiles(pluginRoot, skillsPath, files, new Set());
-  return files.sort();
 }
 
 function claudeManifest(bundle: PluginBundle): unknown {

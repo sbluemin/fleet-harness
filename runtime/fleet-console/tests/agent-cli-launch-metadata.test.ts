@@ -4,7 +4,6 @@ import { combineAgentCliLaunchMetadata } from "../../fleet-plugins/terminal/serv
 
 const METADATA = [
   { id: "claude", label: "Claude" },
-  { id: "codex", label: "Codex" },
   { id: "claude-gateway", label: "Claude (Gateway • Experimental)" },
 ] as const;
 
@@ -14,14 +13,12 @@ describe("combineAgentCliLaunchMetadata", () => {
       METADATA,
       [
         { id: "claude", available: true },
-        { id: "codex", available: true },
         { id: "cursor-agent", available: true },
       ],
     );
 
     expect(result).toEqual([
       { id: "claude", label: "Claude", available: true, signedIn: true },
-      { id: "codex", label: "Codex", available: true, signedIn: true },
       { id: "claude-gateway", label: "Claude (Gateway • Experimental)", available: true, signedIn: true },
     ]);
   });
@@ -31,13 +28,11 @@ describe("combineAgentCliLaunchMetadata", () => {
       METADATA,
       [
         { id: "claude", available: false },
-        { id: "codex", available: true },
         { id: "cursor-agent", available: true },
       ],
     );
 
     expect(result.find((cli) => cli.id === "claude")?.available).toBe(false);
-    expect(result.find((cli) => cli.id === "codex")?.available).toBe(true);
   });
 
   it("탐지 입력이 비면 available=false, signedIn=true로 둔다", () => {

@@ -6223,7 +6223,7 @@
   place-items: start center;
   padding: 14vh var(--space-5) var(--space-5);
   background: color-mix(in oklch, var(--ink-abyss) 66%, transparent);
-  animation: codex-pop 280ms var(--ease-spring) both;
+  animation: fleet-pop 280ms var(--ease-spring) both;
 }
 
 .operation-search-card {

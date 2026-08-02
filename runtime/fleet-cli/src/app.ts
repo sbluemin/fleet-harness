@@ -23,10 +23,7 @@ import {
   type PtyHost,
   type TuiPtyManager,
 } from "./controls/index.js";
-import {
-  runCodexCommand,
-  withFleetMarketplaceLock,
-} from "./runtime/host-hooks.js";
+import { withFleetMarketplaceLock } from "./runtime/host-hooks.js";
 import type { FleetCliOptions } from "./cli-args.js";
 import { createMissionControlController } from "./mission-control/controller.js";
 import { discoverMissionControlCounts } from "./mission-control/loaded-counts.js";
@@ -114,7 +111,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     injectProfile: (profile, launchOptions) =>
       injectAgentCliProfile(profile, {
         buildSystemPrompt,
-        codexCommandRunner: runCodexCommand,
         dataDir: runtime.dataDir,
         dedicatedMcpSession: runtime.dedicatedMcpSession,
         enableMetaphor: (launchOptions ?? sessionOptionsRuntime.getDraft()).enableMetaphor,

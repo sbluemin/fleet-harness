@@ -23,19 +23,11 @@ describe("agent CLI catalog", () => {
   it("includes dedicated Agent CLI profiles", () => {
     expect(getAgentCliIds()).toEqual([
       "claude",
-      "codex",
     ]);
   });
 
-  it("parses --cli, --cli=, and FLEET_AGENT_CLI values", async () => {
-    const env = createEnvWithBins();
-
-    await expect(resolveAgentCliProfile(env, "/tmp", { cliId: "codex" })).resolves.toMatchObject({
-      id: "codex",
-    });
-    await expect(resolveAgentCliProfile({ ...env, FLEET_AGENT_CLI: "codex" }, "/tmp")).resolves.toMatchObject({
-      id: "codex",
-    });
+  it("rejects removed Codex CLI values", () => {
+    expect(() => parseAgentCliId("codex")).toThrow('Unsupported agent CLI "codex"');
   });
 
   it("rejects inherited object keys as CLI IDs", () => {
@@ -56,17 +48,7 @@ describe("agent CLI catalog", () => {
     });
   });
 
-  it("enables the Codex ConPTY paste-burst workaround", async () => {
-    const env = createEnvWithBins();
-    const codex = await resolveAgentCliProfile(env, "/tmp", { cliId: "codex" });
 
-    expect(codex.messagePolicy).toEqual({
-      bracketedPaste: true,
-      conptyPasteBurst: true,
-      lineTerminator: "\r",
-      multilineStrategy: "paste-mode",
-    });
-  });
 
   it("does not mutate process.env while creating profiles", async () => {
     const env = createEnvWithBins();
@@ -77,31 +59,13 @@ describe("agent CLI catalog", () => {
     expect(process.env).toEqual(before);
   });
 
-  it("forwards model values into agent CLI profile args", async () => {
-    const env = createEnvWithBins();
 
-    const profile = await resolveAgentCliProfile(env, "/tmp", { cliId: "codex", model: "gpt-5.2" });
 
-    expect(profile.args).toContain("--model");
-    expect(profile.args).toContain("gpt-5.2");
 
-  });
-
-  it("omits model args when no model is provided", async () => {
-    const env = createEnvWithBins();
-
-    const profile = await resolveAgentCliProfile(env, "/tmp", { cliId: "codex" });
-
-    expect(profile.args).not.toContain("--model");
-  });
 
   it("uses native injection builders for dedicated profiles", () => {
     expect(getAgentCliInjectionCapability("claude")).toEqual({
       builderId: "claude-native",
-      enabled: true,
-    });
-    expect(getAgentCliInjectionCapability("codex")).toEqual({
-      builderId: "codex-native",
       enabled: true,
     });
   });
@@ -110,7 +74,7 @@ describe("agent CLI catalog", () => {
 function createEnvWithBins(): NodeJS.ProcessEnv {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-cli-"));
   tempRoots.push(tempRoot);
-  for (const bin of ["claude", "codex"]) {
+  for (const bin of ["claude"]) {
     const binPath = path.join(tempRoot, bin);
     fs.writeFileSync(binPath, "");
     fs.chmodSync(binPath, 0o755);
