@@ -4,9 +4,11 @@ import {
   fetchClaudeUsage,
   fetchCodexUsage,
   fetchCursorUsage,
+  fetchKimiUsage,
   parseClaudeUsage,
   parseCodexUsage,
   parseCursorUsage,
+  parseKimiUsage,
   parseResetCredits,
   sanitizeProviderError,
 } from "../server/providers.js";
@@ -51,10 +53,24 @@ describe("provider response parsing", () => {
       cycleDays: 31,
       windows: [
         { id: "cycle", usedPercent: 38, resetsAt: 1_785_858_430_000 },
-        { id: "cycle", label: "Auto", usedPercent: 36, resetsAt: 1_785_858_430_000 },
-        { id: "cycle", label: "API", usedPercent: 53, resetsAt: 1_785_858_430_000 },
+        { id: "cycle", scope: "auto", label: "Auto", usedPercent: 36, resetsAt: 1_785_858_430_000 },
+        { id: "cycle", scope: "api", label: "API", usedPercent: 53, resetsAt: 1_785_858_430_000 },
       ],
     });
+  });
+
+  it("scopes each Cursor pool so a model's own allowance is readable apart from the total", () => {
+    // 2026-08-02 실측: 합산은 65%인데 API 풀은 92%로 거의 고갈이었다. 합산만 노출하면
+    // API 티어 모델을 고르는 호출자가 여유가 있다고 오독한다.
+    const parsed = parseCursorUsage({
+      enabled: true,
+      planUsage: { totalPercentUsed: 65, autoPercentUsed: 62, apiPercentUsed: 92 },
+    });
+    expect(parsed.status).toBe("ok");
+    const windows = parsed.status === "ok" ? parsed.windows : [];
+    expect(windows.find((window) => window.scope === undefined)?.usedPercent).toBe(65);
+    expect(windows.find((window) => window.scope === "auto")?.usedPercent).toBe(62);
+    expect(windows.find((window) => window.scope === "api")?.usedPercent).toBe(92);
   });
 
   it("never derives Cursor percentages from cents and identifies no-subscription states", () => {
@@ -63,7 +79,7 @@ describe("provider response parsing", () => {
       enabled: true,
     })).toEqual({
       status: "ok",
-      windows: [{ id: "cycle", label: "Auto", usedPercent: 12 }],
+      windows: [{ id: "cycle", scope: "auto", label: "Auto", usedPercent: 12 }],
     });
     expect(parseCursorUsage({ enabled: false, planUsage: { totalPercentUsed: 10 } }))
       .toEqual({ status: "no_subscription" });
@@ -72,6 +88,63 @@ describe("provider response parsing", () => {
       .toEqual({ status: "no_subscription" });
     expect(parseCursorUsage({ enabled: true, planUsage: {} }))
       .toEqual({ status: "no_subscription" });
+  });
+
+  // Captured from GET https://api.kimi.com/coding/v1/usages (2026-08-02), identifiers removed.
+  const kimiUsagePayload = {
+    user: { region: "REGION_OVERSEA", membership: { level: "LEVEL_ADVANCED" }, businessId: "" },
+    usage: { limit: "100", used: "47", remaining: "53", resetTime: "2026-08-03T13:23:35.825319Z" },
+    limits: [{
+      window: { duration: 300, timeUnit: "TIME_UNIT_MINUTE" },
+      detail: { limit: "100", used: "7", remaining: "93", resetTime: "2026-08-02T11:23:35.825319Z" },
+    }],
+    parallel: { limit: "30" },
+    totalQuota: {},
+    authentication: { method: "METHOD_API_KEY", scope: "FEATURE_CODING" },
+    subType: "TYPE_PURCHASE",
+    domain: "DOMAIN_NEXUS",
+  };
+
+  it("parses Kimi string quantities, ISO reset times, and declared window durations", () => {
+    // 모든 수치가 문자열로 도착하고 resetTime은 ISO-8601이다. 강제 변환을 빠뜨리면
+    // percent()가 비-숫자에 0을 돌려주어 소진된 할당량이 미사용으로 보인다.
+    expect(parseKimiUsage(kimiUsagePayload)).toEqual({
+      status: "ok",
+      plan: "Advanced",
+      windows: [
+        { id: "cycle", usedPercent: 47, resetsAt: Date.parse("2026-08-03T13:23:35.825319Z") },
+        { id: "session", usedPercent: 7, resetsAt: Date.parse("2026-08-02T11:23:35.825319Z") },
+      ],
+    });
+  });
+
+  it("maps a Kimi window only when its declared duration lands exactly on a Fleet window", () => {
+    const withWindow = (duration: number, timeUnit: string) => parseKimiUsage({
+      limits: [{ window: { duration, timeUnit }, detail: { limit: "100", used: "10" } }],
+    });
+    expect(withWindow(5, "TIME_UNIT_HOUR")).toEqual({
+      status: "ok",
+      windows: [{ id: "session", usedPercent: 10 }],
+    });
+    expect(withWindow(7, "TIME_UNIT_DAY")).toEqual({
+      status: "ok",
+      windows: [{ id: "weekly", usedPercent: 10 }],
+    });
+    // 60분짜리를 최근접 규칙으로 session에 붙이면 5시간 창으로 오표기된다.
+    expect(withWindow(60, "TIME_UNIT_MINUTE")).toEqual({ status: "no_subscription" });
+    expect(withWindow(300, "TIME_UNIT_UNSPECIFIED")).toEqual({ status: "no_subscription" });
+  });
+
+  it("derives Kimi usage from remaining and refuses windows it cannot quantify", () => {
+    expect(parseKimiUsage({ usage: { limit: "200", remaining: "50" } })).toEqual({
+      status: "ok",
+      windows: [{ id: "cycle", usedPercent: 75 }],
+    });
+    expect(parseKimiUsage({ usage: { limit: "0", used: "0" } })).toEqual({ status: "no_subscription" });
+    expect(parseKimiUsage({ usage: { limit: "100" } })).toEqual({ status: "no_subscription" });
+    expect(parseKimiUsage({ usage: { limit: "1e3", used: "5" } })).toEqual({ status: "no_subscription" });
+    expect(parseKimiUsage({})).toEqual({ status: "no_subscription" });
+    expect(parseKimiUsage(null)).toEqual({ status: "no_subscription" });
   });
 
   it("omits fabricated Cursor cycle lengths while preserving a valid 31-day span", () => {
@@ -429,12 +502,63 @@ describe("Cursor provider requests", () => {
   });
 });
 
+describe("Kimi provider requests", () => {
+  const authService = (key: string | undefined) => ({
+    getApiKey: async () => key,
+    setApiKey: async () => undefined,
+    deleteApiKey: async () => false,
+    listProviderIds: async () => [],
+  });
+
+  it("GETs the usages endpoint with the stored key and returns a key-free DTO", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        usage: { limit: "100", used: "47", resetTime: "2026-08-03T13:23:35.825319Z" },
+        user: { userId: "should-not-leak", membership: { level: "LEVEL_ADVANCED" } },
+      });
+    });
+    const result = await fetchKimiUsage({
+      authService: authService("sk-kimi-secret"),
+      fetch: fetchImpl as typeof fetch,
+      now: () => 42,
+    });
+    expect(calls.map((call) => call.url)).toEqual(["https://api.kimi.com/coding/v1/usages"]);
+    expect(calls[0]?.init?.method).toBe("GET");
+    expect(new Headers(calls[0]?.init?.headers).get("Authorization")).toBe("Bearer sk-kimi-secret");
+    expect(result).toMatchObject({
+      status: "ok",
+      plan: "Advanced",
+      windows: [{ id: "cycle", usedPercent: 47 }],
+      fetchedAt: 42,
+    });
+    expect(JSON.stringify(result)).not.toMatch(/sk-kimi-secret|should-not-leak|remaining|limit/);
+  });
+
+  it("reports a missing key as signed out without reaching the network", async () => {
+    const fetchImpl = vi.fn(async () => { throw new Error("must not fetch"); });
+    expect(await fetchKimiUsage({ authService: authService(undefined), fetch: fetchImpl as typeof fetch }))
+      .toEqual({ status: "signed_out" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("maps a rejected key to expired rather than a generic failure", async () => {
+    const result = await fetchKimiUsage({
+      authService: authService("sk-stale"),
+      fetch: (async () => new Response("{}", { status: 401 })) as typeof fetch,
+    });
+    expect(result).toEqual({ status: "expired" });
+  });
+});
+
 describe("provider response boundaries", () => {
   it("rejects a response whose final URL differs and surfaces no quota data", async () => {
     const response = jsonResponse({ five_hour: { used_percentage: 99 } });
     Object.defineProperty(response, "url", { value: "https://redirected.example/usage" });
     const service = createQuotaService({
       isClaudeConnected: async () => true,
+      fetchKimi: async () => ({ status: "signed_out" }),
       fetchClaude: () => fetchClaudeUsage({
         credentials: claudeCredentials(),
         fetch: (async () => response) as typeof fetch,

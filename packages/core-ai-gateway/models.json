@@ -141,6 +141,7 @@
         {
           "modelId": "auto",
           "name": "Auto",
+          "quotaScope": "auto",
           "providerModelId": "default",
           "contextWindow": 256000,
           "aliases": [
@@ -150,16 +151,19 @@
         {
           "modelId": "composer-2.5",
           "name": "Composer-2.5",
+          "quotaScope": "auto",
           "contextWindow": 200000
         },
         {
           "modelId": "composer-2.5-fast",
           "name": "Composer-2.5-Fast",
+          "quotaScope": "auto",
           "contextWindow": 200000
         },
         {
           "modelId": "grok-4.5",
           "name": "Grok-4.5",
+          "quotaScope": "auto",
           "contextWindow": 256000,
           "effort": {
             "supported": true,
@@ -174,6 +178,7 @@
         {
           "modelId": "grok-4.5-fast",
           "name": "Grok-4.5-Fast",
+          "quotaScope": "auto",
           "contextWindow": 256000,
           "effort": {
             "supported": true,
@@ -188,6 +193,7 @@
         {
           "modelId": "claude-opus-5",
           "name": "Opus-5",
+          "quotaScope": "api",
           "contextWindow": 300000,
           "effort": {
             "supported": true,
@@ -208,6 +214,7 @@
         {
           "modelId": "claude-fable-5",
           "name": "Fable-5",
+          "quotaScope": "api",
           "description": "NO ZDR",
           "contextWindow": 300000,
           "effort": {
@@ -225,6 +232,7 @@
         {
           "modelId": "kimi-k3-1m",
           "name": "Kimi-K3-1M",
+          "quotaScope": "api",
           "providerModelId": "kimi-k3-max",
           "contextWindow": 1048576,
           "cursorMaxMode": true
@@ -232,6 +240,7 @@
         {
           "modelId": "kimi-k3",
           "name": "Kimi-K3",
+          "quotaScope": "api",
           "contextWindow": 200000,
           "effort": {
             "supported": true,

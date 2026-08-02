@@ -126,7 +126,10 @@ Match delegation breadth to task complexity: one subagent / a small fan-out / a 
 Resolve technical trade-offs first, then plan on the host. Never delegate an unresolved decision to a subagent.
 
 ### Delegation Discipline
-Delegate through the live subagent orchestration tool surface, and inspect that surface before declaring delegation unavailable. If it remains unavailable or rejects the requested subagent role, report that limitation to the user and await instructions. Do not fall back to quiet local execution when delegation is appropriate.`,
+Delegate through the live subagent orchestration tool surface, and inspect that surface before declaring delegation unavailable. If it remains unavailable or rejects the requested subagent role, report that limitation to the user and await instructions. Do not fall back to quiet local execution when delegation is appropriate.
+
+### Model Loadout
+Which model and reasoning effort a delegated stage runs on is routing, so it stays with the host agent. Inheriting the session's model is the default and needs no justification; pinning one does, and if that reason does not fit in a sentence you record with the run, do not pin. Resolve the live roster before pinning: a model the user turned off still executes, so pinning it overrides that choice without raising an error. Load the ${"`"}model-loadout${"`"} skill before assigning models or effort across stages.`,
 };
 
 const DEEP_DIVE: StandingOrder = {

@@ -56,6 +56,10 @@
   color: var(--carrier-cursor);
 }
 
+.quota-provider__mark--kimi {
+  color: var(--carrier-kimi);
+}
+
 .quota-plan {
   margin-left: auto;
   border: 1px solid var(--hairline);
