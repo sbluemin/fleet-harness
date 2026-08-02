@@ -1,11 +1,45 @@
+export interface AiGatewayModelSelection {
+  readonly id: string;
+}
+
+export interface AiGatewaySettings {
+  readonly models?: readonly AiGatewayModelSelection[];
+  readonly defaultModel?: string;
+}
+
+export type AiGatewayProviderId = "codex" | "cursor" | "kimi";
+
+export interface AiGatewayCatalogModel {
+  readonly id: string;
+  readonly name: string;
+  readonly contextWindow: number | null;
+  readonly oneMillion: boolean;
+  readonly maxMode: boolean;
+  readonly fast: boolean;
+  readonly description: string | null;
+  readonly effort: { readonly levels: readonly string[] } | null;
+}
+
+export interface AiGatewayCatalogProvider {
+  readonly id: AiGatewayProviderId;
+  readonly models: readonly AiGatewayCatalogModel[];
+}
+
+export interface AiGatewayCatalog {
+  readonly providers: readonly AiGatewayCatalogProvider[];
+}
+
 export interface SystemPromptSettingsState {
   readonly enableMetaphor: boolean;
   readonly agentIdleDormantMinutes: number | null;
+  readonly aiGateway: AiGatewaySettings | null;
+  readonly aiGatewayCatalog: AiGatewayCatalog;
 }
 
 export type SystemPromptSettingsUpdate =
   | { readonly enableMetaphor: boolean }
-  | { readonly agentIdleDormantMinutes: number | null };
+  | { readonly agentIdleDormantMinutes: number | null }
+  | { readonly aiGateway: AiGatewaySettings | null };
 
 export class TerminalSettingsApiError extends Error {
   readonly status: number;
@@ -52,13 +86,23 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     !payload
     || typeof payload.enableMetaphor !== "boolean"
     || !isAgentIdleDormantMinutes(payload.agentIdleDormantMinutes)
+    || !isAiGatewayCatalog(payload.aiGatewayCatalog)
   ) {
     throw new TerminalSettingsApiError(status, "Invalid Terminal settings response");
   }
   return {
     enableMetaphor: payload.enableMetaphor,
     agentIdleDormantMinutes: payload.agentIdleDormantMinutes,
+    aiGateway: payload.aiGateway ?? null,
+    aiGatewayCatalog: payload.aiGatewayCatalog,
   };
+}
+
+function isAiGatewayCatalog(value: unknown): value is AiGatewayCatalog {
+  if (!value || typeof value !== "object") return false;
+  const providers = (value as AiGatewayCatalog).providers;
+  return Array.isArray(providers) && providers.every((provider) =>
+    provider && typeof provider.id === "string" && Array.isArray(provider.models));
 }
 
 function isAgentIdleDormantMinutes(value: unknown): value is number | null {

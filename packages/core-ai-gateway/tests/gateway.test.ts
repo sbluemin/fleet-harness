@@ -433,19 +433,20 @@ describe("model catalog", () => {
     };
     expect(() => parseGatewayModelsRegistry(invalidTier)).toThrow(/only supported by Codex/);
 
-    const invalidEffortDefault = minimalRegistry();
-    invalidEffortDefault.providers.codex.models[0] = {
+    const legacyEffortDefault = minimalRegistry();
+    legacyEffortDefault.providers.codex.models[0] = {
       modelId: "codex-model",
       name: "Model",
-      effort: { supported: true, levels: ["low", "high"], default: "max" },
+      // 모델별 기본 effort는 폐기된 개념이다 — 잔존 필드는 strict 스키마가 거부한다.
+      effort: { supported: true, levels: ["low", "high"], default: "high" },
     };
-    expect(() => parseGatewayModelsRegistry(invalidEffortDefault)).toThrow(/default is missing/);
+    expect(() => parseGatewayModelsRegistry(legacyEffortDefault)).toThrow();
 
     const duplicateEffort = minimalRegistry();
     duplicateEffort.providers.codex.models[0] = {
       modelId: "codex-model",
       name: "Model",
-      effort: { supported: true, levels: ["low", "low"], default: "low" },
+      effort: { supported: true, levels: ["low", "low"] },
     };
     expect(() => parseGatewayModelsRegistry(duplicateEffort)).toThrow(/levels contain duplicates/);
 
@@ -453,7 +454,7 @@ describe("model catalog", () => {
     missingCursorTemplate.providers.cursor.models[0] = {
       modelId: "cursor-model",
       name: "Model",
-      effort: { supported: true, levels: ["low", "high"], default: "high" },
+      effort: { supported: true, levels: ["low", "high"] },
     };
     missingCursorTemplate.providers.cursor.defaultModel = "cursor-model";
     expect(() => parseGatewayModelsRegistry(missingCursorTemplate)).toThrow(/requires an upstream model id template/);
@@ -465,7 +466,6 @@ describe("model catalog", () => {
       effort: {
         supported: true,
         levels: ["low", "high"],
-        default: "high",
         upstreamModelIdTemplate: "cursor-model",
       },
     };
@@ -479,7 +479,6 @@ describe("model catalog", () => {
       effort: {
         supported: true,
         levels: ["low", "high"],
-        default: "high",
         upstreamModelIdTemplate: "cursor-model-{effort}",
         upstreamModelIds: { max: "cursor-model-thinking-max" },
       },
@@ -530,17 +529,14 @@ describe("model catalog", () => {
     expect(efforts["codex--gpt-5.6-sol"]).toEqual({
       supported: true,
       levels: ["low", "medium", "high", "xhigh", "max", "ultra"],
-      default: "low",
     });
     expect(efforts["codex--gpt-5.6-terra"]).toEqual({
       supported: true,
       levels: ["low", "medium", "high", "xhigh", "max", "ultra"],
-      default: "medium",
     });
     expect(efforts["codex--gpt-5.6-luna"]).toEqual({
       supported: true,
       levels: ["low", "medium", "high", "xhigh", "max"],
-      default: "medium",
     });
     expect(efforts["codex--gpt-5.6-sol-fast"]).toEqual(efforts["codex--gpt-5.6-sol"]);
     expect(efforts["codex--gpt-5.6-terra-fast"]).toEqual(efforts["codex--gpt-5.6-terra"]);
@@ -548,19 +544,16 @@ describe("model catalog", () => {
     expect(efforts["kimi--k3"]).toEqual({
       supported: true,
       levels: ["low", "high", "max"],
-      default: "high",
     });
     expect(efforts["cursor--kimi-k3"]).toEqual({
       supported: true,
       levels: ["low", "high"],
-      default: "high",
       upstreamModelIdTemplate: "kimi-k3-{effort}",
     });
     expect(efforts["cursor--kimi-k3-1m"]).toEqual({ supported: false });
     expect(efforts["cursor--claude-opus-5"]).toEqual({
       supported: true,
       levels: ["low", "medium", "high", "xhigh", "max"],
-      default: "high",
       upstreamModelIdTemplate: "claude-opus-5-{effort}",
       upstreamModelIds: {
         xhigh: "claude-opus-5-thinking-xhigh",

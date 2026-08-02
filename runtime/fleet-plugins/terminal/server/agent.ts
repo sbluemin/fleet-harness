@@ -18,6 +18,7 @@ import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./ag
 import { AGENT_CLI_COMMANDS, createAgentCliPathStore, createCarrierAgentCliLaunchResolver, resolveAgentCliBinary } from "./agent-api/agent-cli-paths.js";
 import type { AgentCliDiagnostics } from "./agent-api/agent-cli-types.js";
 import type { AiGatewayLaunchBinding } from "./agent-api/launch.js";
+import type { AiGatewayStoredSettings } from "./ai-gateway-settings.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
 import { captureSession, readProviderSessionCapture, readProviderSessionCaptureRaw, unlinkProviderSessionCapture, writeProviderSessionCaptureRaw, type ProviderSession } from "./agent-api/session-capture.js";
@@ -43,6 +44,7 @@ type OperationRenamedEvent = {
 interface AgentRouteDeps {
   readonly globalOptionsService: GlobalOptionsService;
   readonly aiGateway?: AiGatewayLaunchBinding;
+  readonly readAiGatewaySettings?: () => Promise<AiGatewayStoredSettings>;
 }
 
 const AGENT_OPERATION_TYPE = "agent";
@@ -100,6 +102,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   const launchResolver = createAgentTerminalLaunchResolver({
     agentRuntime: runtime,
     ...(deps.aiGateway ? { aiGateway: deps.aiGateway } : {}),
+    ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
     dataDir: ctx.host.paths.fleetDataDir,
     infraServices: deps,
     readAgentCliPaths,

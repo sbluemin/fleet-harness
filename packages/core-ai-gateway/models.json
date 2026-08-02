@@ -13,8 +13,14 @@
           "contextWindow": 372000,
           "effort": {
             "supported": true,
-            "levels": ["low", "medium", "high", "xhigh", "max", "ultra"],
-            "default": "low"
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max",
+              "ultra"
+            ]
           },
           "aliases": [
             "gpt-5.6-sol"
@@ -28,8 +34,14 @@
           "contextWindow": 372000,
           "effort": {
             "supported": true,
-            "levels": ["low", "medium", "high", "xhigh", "max", "ultra"],
-            "default": "low"
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max",
+              "ultra"
+            ]
           },
           "aliases": [
             "gpt-5.6-sol-fast"
@@ -41,8 +53,14 @@
           "contextWindow": 372000,
           "effort": {
             "supported": true,
-            "levels": ["low", "medium", "high", "xhigh", "max", "ultra"],
-            "default": "medium"
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max",
+              "ultra"
+            ]
           },
           "aliases": [
             "gpt-5.6-terra"
@@ -56,8 +74,14 @@
           "contextWindow": 372000,
           "effort": {
             "supported": true,
-            "levels": ["low", "medium", "high", "xhigh", "max", "ultra"],
-            "default": "medium"
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max",
+              "ultra"
+            ]
           },
           "aliases": [
             "gpt-5.6-terra-fast"
@@ -69,8 +93,13 @@
           "contextWindow": 372000,
           "effort": {
             "supported": true,
-            "levels": ["low", "medium", "high", "xhigh", "max"],
-            "default": "medium"
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
           },
           "aliases": [
             "gpt-5.6-luna"
@@ -84,8 +113,13 @@
           "contextWindow": 372000,
           "effort": {
             "supported": true,
-            "levels": ["low", "medium", "high", "xhigh", "max"],
-            "default": "medium"
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
           },
           "aliases": [
             "gpt-5.6-luna-fast"
@@ -123,8 +157,11 @@
           "contextWindow": 256000,
           "effort": {
             "supported": true,
-            "levels": ["low", "medium", "high"],
-            "default": "high",
+            "levels": [
+              "low",
+              "medium",
+              "high"
+            ],
             "upstreamModelIdTemplate": "cursor-grok-4.5-{effort}"
           }
         },
@@ -134,8 +171,11 @@
           "contextWindow": 256000,
           "effort": {
             "supported": true,
-            "levels": ["low", "medium", "high"],
-            "default": "high",
+            "levels": [
+              "low",
+              "medium",
+              "high"
+            ],
             "upstreamModelIdTemplate": "cursor-grok-4.5-{effort}-fast"
           }
         },
@@ -145,8 +185,13 @@
           "contextWindow": 300000,
           "effort": {
             "supported": true,
-            "levels": ["low", "medium", "high", "xhigh", "max"],
-            "default": "high",
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
             "upstreamModelIdTemplate": "claude-opus-5-{effort}",
             "upstreamModelIds": {
               "xhigh": "claude-opus-5-thinking-xhigh",
@@ -161,8 +206,13 @@
           "contextWindow": 300000,
           "effort": {
             "supported": true,
-            "levels": ["low", "medium", "high", "xhigh", "max"],
-            "default": "high",
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
             "upstreamModelIdTemplate": "claude-fable-5-{effort}"
           }
         },
@@ -179,8 +229,10 @@
           "contextWindow": 200000,
           "effort": {
             "supported": true,
-            "levels": ["low", "high"],
-            "default": "high",
+            "levels": [
+              "low",
+              "high"
+            ],
             "upstreamModelIdTemplate": "kimi-k3-{effort}"
           }
         }
@@ -197,8 +249,11 @@
           "contextWindow": 1048576,
           "effort": {
             "supported": true,
-            "levels": ["low", "high", "max"],
-            "default": "high"
+            "levels": [
+              "low",
+              "high",
+              "max"
+            ]
           },
           "aliases": [
             "k3"
@@ -210,8 +265,11 @@
           "contextWindow": 262144,
           "effort": {
             "supported": true,
-            "levels": ["low", "high", "max"],
-            "default": "high"
+            "levels": [
+              "low",
+              "high",
+              "max"
+            ]
           },
           "aliases": [
             "k3-256k"

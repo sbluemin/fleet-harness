@@ -35,6 +35,7 @@ import { registerRouter } from "@fleet-console/sdk/plugin/node";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 
 import { createCursorDiagnosticLog } from "./ai-gateway-diagnostics.js";
+import { resolveAiGatewaySelection, type AiGatewayStoredSettings } from "./ai-gateway-settings.js";
 
 export const AI_GATEWAY_ROUTE_SEGMENT = "ai-gateway";
 export const AI_GATEWAY_MODEL_ENV = "FLEET_AI_GATEWAY_MODEL";
@@ -82,6 +83,8 @@ export function readCodexSubscriptionAuth(
 }
 
 export interface AiGatewayRouteDeps {
+  /** 콘솔 durable state의 노출 모델 선별을 읽는다. 미주입(테스트 하네스)이면 전체 카탈로그를 노출한다. */
+  readonly readAiGatewaySettings?: () => Promise<AiGatewayStoredSettings>;
   /** 테스트가 upstream을 대체할 수 있도록 주입 가능하게 둔다. */
   readonly gateway?: AnthropicMessagesGateway;
   /** 테스트가 구독 토큰 조회를 대체한다. */
@@ -107,6 +110,11 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
   const ownedCursorGateway = ownedCursorAdapter
     ? new AnthropicMessagesGateway(ownedCursorAdapter)
     : undefined;
+  // 설정 리더가 있으면 노출은 opt-in(켠 모델만)이다. 미주입(테스트 하네스 등)일 때만
+  // 전체 카탈로그로 동작한다 — Console 배선(routes.ts)은 항상 리더를 주입한다.
+  const gatewaySelection = async () => (deps.readAiGatewaySettings
+    ? resolveAiGatewaySelection(await deps.readAiGatewaySettings())
+    : undefined);
 
   const handle: RouteHandler = async ({ req, res, pathname }) => {
     // Claude Code는 base URL 뒤에 자기 경로를 붙인다. 연결 프로브는 /api/hello다.
@@ -122,7 +130,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
         return true;
       }
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify(buildAnthropicModelList()));
+      res.end(JSON.stringify(buildAnthropicModelList((await gatewaySelection())?.models ?? GATEWAY_MODELS)));
       return true;
     }
     if (!pathname.endsWith("/v1/messages")) return false;

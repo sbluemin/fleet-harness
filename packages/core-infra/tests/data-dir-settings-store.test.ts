@@ -132,6 +132,17 @@ describe("data-dir settings store", () => {
     });
   });
 
+  it("drops the relocated aiGateway key from global options", () => {
+    // AI Gateway 선별은 콘솔 durable state(plugins.terminal["ai-gateway"])로 이전됐다.
+    expect(sanitizeGlobalOptionsData({
+      version: 1,
+      aiGateway: { models: [{ id: "cursor--claude-opus-5" }] },
+    })).toEqual({
+      changed: true,
+      data: { version: 1 },
+    });
+  });
+
   it("drops legacy codex launch modes", () => {
     expect(sanitizeGlobalOptionsData({
       version: 1,

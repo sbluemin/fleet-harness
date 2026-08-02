@@ -17,6 +17,11 @@ import {
   createAiGatewayRouter,
   registerAiGatewayRoutes,
 } from "../server/ai-gateway-routes.js";
+import type { AiGatewayStoredSettings } from "../server/ai-gateway-settings.js";
+
+function aiGatewaySettingsStub(settings: AiGatewayStoredSettings): () => Promise<AiGatewayStoredSettings> {
+  return () => Promise.resolve(settings);
+}
 
 const BASE = "/plugins/terminal/ai-gateway";
 const MESSAGES = `${BASE}/v1/messages`;
@@ -613,6 +618,48 @@ describe("route surface", () => {
       display_name: "Moonshot-Kimi-K3-1M (1M Context)",
     }));
     expect(list.data.every((entry) => /^(Codex|Cursor|Moonshot-Kimi)-/.test(entry.display_name))).toBe(true);
+  });
+
+  it("filters model discovery to the curated allowlist", async () => {
+    const router = createAiGatewayRouter({
+      gateway: stubGateway(),
+      readAuth,
+      readAiGatewaySettings: aiGatewaySettingsStub({
+        version: 1,
+        models: [
+          { id: "cursor--claude-opus-5" },
+          // Cursor 경유 Kimi와 Kimi 프로바이더는 별개 경로 — 동시 노출을 보존한다.
+          { id: "cursor--kimi-k3-1m" },
+          { id: "kimi--k3-256k" },
+          { id: "kimi--no-longer-in-catalog" },
+        ],
+      }),
+    });
+    const res = response();
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED, pathname: `${BASE}/v1/models`, method: "GET" }));
+
+    expect(res.status).toBe(200);
+    const list = JSON.parse(res.body) as { data: Array<{ id: string }> };
+    expect(list.data.map((entry) => entry.id)).toEqual([
+      "claude-gateway--cursor--claude-opus-5[1m]",
+      "claude-gateway--cursor--kimi-k3-1m[1m]",
+      "claude-gateway--kimi--k3-256k",
+    ]);
+  });
+
+  it("exposes no gateway models until the settings enable some (opt-in)", async () => {
+    const router = createAiGatewayRouter({
+      gateway: stubGateway(),
+      readAuth,
+      readAiGatewaySettings: aiGatewaySettingsStub({ version: 1 }),
+    });
+    const res = response();
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED, pathname: `${BASE}/v1/models`, method: "GET" }));
+
+    expect(res.status).toBe(200);
+    const list = JSON.parse(res.body) as { data: Array<{ id: string }> };
+    // 게이트웨이 세션은 Claude Code 내장 모델만 보게 된다.
+    expect(list.data).toHaveLength(0);
   });
 
   it("refuses model discovery without a bearer", async () => {

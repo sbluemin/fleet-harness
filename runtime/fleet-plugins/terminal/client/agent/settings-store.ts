@@ -2,7 +2,8 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 import { fetchSystemPromptSettings, saveSystemPromptSettings, type SystemPromptSettingsState, type SystemPromptSettingsUpdate } from "./settings-api.js";
 
-export type SystemPromptSettingsField = keyof SystemPromptSettingsState;
+// aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
+export type SystemPromptSettingsField = "enableMetaphor" | "agentIdleDormantMinutes" | "aiGateway";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -75,6 +76,7 @@ export async function setSystemPromptSettingsField<Field extends SystemPromptSet
 
 function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptSettingsState): SystemPromptSettingsUpdate {
   if (field === "enableMetaphor") return { enableMetaphor: state.enableMetaphor };
+  if (field === "aiGateway") return { aiGateway: state.aiGateway };
   return { agentIdleDormantMinutes: state.agentIdleDormantMinutes };
 }
 

@@ -31,7 +31,6 @@ const GatewayModelEffortSchema = z.discriminatedUnion("supported", [
   z.object({
     supported: z.literal(true),
     levels: z.array(z.enum(GATEWAY_REASONING_EFFORTS)).min(1),
-    default: z.enum(GATEWAY_REASONING_EFFORTS),
     upstreamModelIdTemplate: z.string().min(1).optional(),
     upstreamModelIds: GatewayEffortUpstreamModelIdsSchema.optional(),
   }).strict(),
@@ -77,7 +76,6 @@ export type GatewayModelEffort =
   | {
       readonly supported: true;
       readonly levels: readonly GatewayReasoningEffort[];
-      readonly default: GatewayReasoningEffort;
       /** Cursor wire id with one `{effort}` placeholder, resolved immediately before transport. */
       readonly upstreamModelIdTemplate?: string;
       /** Exact Cursor wire ids for effort tiers that do not follow the model's common template. */
@@ -115,6 +113,13 @@ export function parseGatewayModelsRegistry(value: unknown): GatewayModelsRegistr
 }
 
 export const GATEWAY_MODELS_UPDATED_AT = registry.updatedAt;
+
+/** Human-readable provider names as declared by the model registry (e.g. `Moonshot-Kimi`). */
+export const GATEWAY_PROVIDER_NAMES: Readonly<Record<GatewayProvider, string>> = Object.freeze(
+  Object.fromEntries(
+    GATEWAY_PROVIDERS.map((provider) => [provider, registry.providers[provider].name]),
+  ) as Record<GatewayProvider, string>,
+);
 
 export const GATEWAY_MODELS: readonly GatewayModel[] = Object.freeze(
   GATEWAY_PROVIDERS.flatMap((provider) => {
@@ -211,8 +216,11 @@ export function resolveCursorModelSelection(
   if (!model.effort.supported) {
     return { upstreamModelId: upstreamId, maxMode: model.cursorMaxMode === true };
   }
+  // 카탈로그는 모델별 기본 effort를 정의하지 않는다. Claude Code는 effort 미설정 세션에도
+  // 항상 자기 세션 기본값 "high"를 명시해 보내므로(2026-08-02 실측), effort를 생략하는
+  // 드문 호출자에게도 같은 기준을 적용해 사다리 안으로 하향 클램프한다.
   const effort = clampReasoningEffort(
-    requestedEffort ?? model.effort.default,
+    requestedEffort ?? "high",
     model.effort.levels,
     upstreamId,
   ) as GatewayReasoningEffort;
@@ -383,9 +391,6 @@ function validateRegistry(value: GatewayModelsRegistry): void {
         throw new Error(`Gateway Cursor Max Mode is only supported by Cursor: ${provider}/${model.modelId}`);
       }
       if (model.effort?.supported) {
-        if (!model.effort.levels.includes(model.effort.default)) {
-          throw new Error(`Gateway effort default is missing from levels: ${provider}/${model.modelId}`);
-        }
         if (new Set(model.effort.levels).size !== model.effort.levels.length) {
           throw new Error(`Gateway effort levels contain duplicates: ${provider}/${model.modelId}`);
         }
@@ -453,7 +458,6 @@ function freezeGatewayModelEffort(
   return Object.freeze({
     supported: true as const,
     levels: Object.freeze([...effort.levels]),
-    default: effort.default,
     ...(effort.upstreamModelIdTemplate
       ? { upstreamModelIdTemplate: effort.upstreamModelIdTemplate }
       : {}),

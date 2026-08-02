@@ -6,7 +6,8 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { resolvePathBinary } from "@dotobokuri/core-agent";
-import { buildAnthropicModelList } from "@dotobokuri/core-ai-gateway";
+import { GATEWAY_MODELS, buildAnthropicModelList, toClaudeGatewayModelId } from "@dotobokuri/core-ai-gateway";
+import type { GatewayModel } from "@dotobokuri/core-ai-gateway";
 import { createSessionIdentityResolver } from "@dotobokuri/core-unified-agent";
 import {
   createSessionCaptureHookExec,
@@ -25,6 +26,7 @@ import {
 } from "@dotobokuri/core-infra";
 
 import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, runCodexCommand, toCaptureProvider, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
+import { resolveAiGatewaySelection, type AiGatewaySelection, type AiGatewayStoredSettings } from "../ai-gateway-settings.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
 import { stripConsoleInternalEnv } from "../shared/launch-env.js";
 import { applyAgentCliPathEnvOverlay } from "./agent-cli-paths.js";
@@ -54,6 +56,7 @@ export interface TerminalLaunchResolverDeps {
   readonly resolveProfile?: typeof resolveAgentCliProfile;
   readonly createSessionIdentityResolver?: typeof createSessionIdentityResolver;
   readonly readAgentCliPaths?: () => Promise<Readonly<Record<string, string>>>;
+  readonly readAiGatewaySettings?: () => Promise<AiGatewayStoredSettings>;
 }
 
 export interface ConsoleRuntimeSessionInfo {
@@ -111,6 +114,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
     return createAgentCliLaunchSpec({
       agentRuntime,
       ...(deps.aiGateway ? { aiGateway: deps.aiGateway } : {}),
+      ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
       cwd,
       dataDir,
       env: launchEnv,
@@ -151,6 +155,7 @@ function hasHookEntryExtension(entryPath: string): boolean {
 async function createAgentCliLaunchSpec(options: {
   readonly agentRuntime?: FleetAgentRuntimeLifecycle;
   readonly aiGateway?: AiGatewayLaunchBinding;
+  readonly readAiGatewaySettings?: () => Promise<AiGatewayStoredSettings>;
   readonly cliId?: string;
   readonly createSessionCaptureHookExec: typeof createSessionCaptureHookExec;
   readonly createSessionIdentityResolver: typeof createSessionIdentityResolver;
@@ -204,7 +209,13 @@ async function createAgentCliLaunchSpec(options: {
       mcpToolCount: countMcpTools(agentRuntime),
       sessionId: options.sessionId,
     });
-    const launchProfile = applyAiGatewayEnv(injectedProfile, options.aiGateway);
+    const launchProfile = applyAiGatewayEnv(
+      injectedProfile,
+      options.aiGateway,
+      injectedProfile.id === "claude-gateway" && options.readAiGatewaySettings
+        ? resolveAiGatewaySelection(await options.readAiGatewaySettings())
+        : undefined,
+    );
     const sessionIdentityResolver = options.createSessionIdentityResolver({
       provider: toCaptureProvider(launchProfile.id),
       command: launchProfile.bin,
@@ -233,6 +244,8 @@ async function createAgentCliLaunchSpec(options: {
 export function applyAiGatewayEnv(
   profile: AgentCliProfile,
   aiGateway: AiGatewayLaunchBinding | undefined,
+  // 노출은 opt-in: 켠 모델만 캐시에 남는다. 설정 없이 호출되면(테스트 하네스) 전체 카탈로그로 동작한다.
+  selection?: AiGatewaySelection,
 ): AgentCliProfile {
   if (profile.id !== "claude-gateway") return profile;
   if (!aiGateway) {
@@ -257,8 +270,12 @@ export function applyAiGatewayEnv(
   // native auto policy remains model-relative. Do not inject the process-wide
   // compact-window override: it would also retune built-in Claude models. An
   // explicit user value already present in profile.env remains untouched above.
+  if (selection?.defaultModel && !env.ANTHROPIC_MODEL) {
+    // AI Gateway 설정의 세션 기본 모델. 프로필 env가 명시한 값이 항상 이긴다.
+    env.ANTHROPIC_MODEL = toClaudeGatewayModelId(selection.defaultModel);
+  }
   try {
-    writeClaudeGatewayModelCache(baseUrl, env);
+    writeClaudeGatewayModelCache(baseUrl, env, undefined, selection?.models ?? GATEWAY_MODELS);
   } catch (error) {
     console.warn("[terminal] Claude Code gateway model cache refresh failed; /model may show stale entries.", error);
   }
@@ -277,13 +294,14 @@ export function writeClaudeGatewayModelCache(
   baseUrl: string,
   env: Readonly<NodeJS.ProcessEnv>,
   homeDir = os.homedir(),
+  exposedModels: readonly GatewayModel[] = GATEWAY_MODELS,
 ): string {
   const configDir = env.CLAUDE_CONFIG_DIR && env.CLAUDE_CONFIG_DIR.length > 0
     ? env.CLAUDE_CONFIG_DIR
     : path.join(homeDir, ".claude");
   const cacheDir = path.join(configDir, "cache");
   const cachePath = path.join(cacheDir, "gateway-models.json");
-  const models = buildAnthropicModelList().data
+  const models = buildAnthropicModelList(exposedModels).data
     .filter((model) => /^(claude|anthropic)/i.test(model.id))
     .map((model) => ({ id: model.id, display_name: model.display_name }));
 
