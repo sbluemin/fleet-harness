@@ -23,6 +23,7 @@ import {
   CARRIER_STREAMS_COMPANION_ID,
   agentOperationKind,
 } from "../client/agent/index.js";
+import { operationSupportsCarrierStreams } from "../client/agent/analysis-visibility.js";
 import {
   deriveTrackPhase,
   describeToolTarget,
@@ -722,6 +723,39 @@ describe("Carrier Streams companion", () => {
     expect(handles?.[1]?.classList.contains("is-live")).toBe(true);
     expect(handles?.[1]?.querySelector(".session-analyst-handle__live")).not.toBeNull();
   });
+
+  it("declares the availability predicate on Carrier Streams only, never on the Analyst panels", () => {
+    const [streams, chat, artifacts] = agentOperationKind.companions ?? [];
+    // 소스 문자열이 아니라 등록된 descriptor로 확인한다 — 세 패널이 같은 리터럴을 공유하도록
+    // 리팩터되면 문자열 핀은 통과하면서 Analyst 패널까지 doctrine 작전에서 사라진다.
+    expect(streams?.available?.(operation({ payload: { cliId: "claude-gateway" } }))).toBe(false);
+    expect(streams?.available?.(operation({ payload: { cliId: "claude" } }))).toBe(true);
+    for (const analyst of [chat, artifacts]) {
+      expect(analyst?.available).toBeUndefined();
+    }
+  });
+
+  it("gates the whole Carrier Streams surface for doctrine cliIds while keeping the Analyst handle", async () => {
+    expect(operationSupportsCarrierStreams(operation({ payload: { cliId: "claude-native" } }))).toBe(false);
+    expect(operationSupportsCarrierStreams(operation({ payload: { cliId: "claude-gateway" } }))).toBe(false);
+    expect(operationSupportsCarrierStreams(operation({ payload: { cliId: "claude" } }))).toBe(true);
+    expect(operationSupportsCarrierStreams(operation({ payload: { cliId: "codex" } }))).toBe(true);
+    expect(operationSupportsCarrierStreams(operation({ payload: {} }))).toBe(true);
+
+    installSession([]);
+    await renderOperation(createContext({ operation: operation({ payload: { cliId: "claude-gateway" } }) }));
+    expectStreamsSurfaceAbsent();
+    // 라이브 잡이 도착해도 리본이 살아나지 않아야 한다 — 게이트는 잡 유무가 아니라 작전의 cliId에 걸린다.
+    await act(async () => {
+      installSession([makeJob("job-gateway-live", "active", [makeTrack("gateway-live-track")], "genesis")]);
+      await Promise.resolve();
+    });
+    expectStreamsSurfaceAbsent();
+
+    await renderOperation(createContext({ operation: operation({ payload: { cliId: "claude" } }) }));
+    expect(container?.querySelectorAll(".session-analyst-handle")).toHaveLength(2);
+    expect(container?.querySelector(".session-analyst-handle--streams")).not.toBeNull();
+  });
 });
 
 describe("Carrier Streams helpers", () => {
@@ -779,6 +813,14 @@ async function renderCompanion(context: OperationRenderContext = createContext()
   const descriptor = agentOperationKind.companions?.[0];
   if (!descriptor) throw new Error("Carrier Streams companion must be registered first.");
   await render(descriptor.render(context) as React.ReactNode);
+}
+
+function expectStreamsSurfaceAbsent(): void {
+  // 핸들 스택에는 Analyst 하나만 남아야 한다 — 스트림 핸들이 사라진 자리를 개수로 고정한다.
+  const handles = container?.querySelectorAll(".session-analyst-handle");
+  expect(handles).toHaveLength(1);
+  expect(handles?.[0]?.classList.contains("session-analyst-handle--streams")).toBe(false);
+  expect(container?.querySelector(".carrier-sortie-ribbon")).toBeNull();
 }
 
 async function renderOperation(context: OperationRenderContext): Promise<void> {

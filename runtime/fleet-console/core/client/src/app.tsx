@@ -31,7 +31,7 @@ import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fet
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "./sidebar/operations-side-bar-store.js";
 import { useConsoleLocale, useT } from "./i18n/index.js";
 import type { CompanionShortcutEntry } from "./shortcuts-catalog.js";
-import { usableCompanionShortcuts } from "./companion-shortcut.js";
+import { availableCompanionPanels, usableCompanionShortcuts } from "./companion-shortcut.js";
 import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
@@ -75,7 +75,10 @@ export function App() {
     if (!activeOperation) return [];
     const activeKind = registry.operationKinds.find((kind) =>
       kind.pluginId === activeOperation.pluginId && kind.type === activeOperation.type);
-    return usableCompanionShortcuts(activeKind?.companions ?? []).flatMap((companion) => companion.shortcut
+    // 도움말은 실제 디스패치와 같은 목록을 읽어야 한다 — 이 작전에서 사용 불가한 패널이 남으면
+    // 누를 수 없는 단축키가 단축키 대화상자에 계속 실린다.
+    const activeCompanions = availableCompanionPanels(activeKind?.companions ?? [], activeOperation);
+    return usableCompanionShortcuts(activeCompanions).flatMap((companion) => companion.shortcut
       ? [{
           label: companion.shortcut.label,
           title: resolveLocalizedText(companion.title, consoleLocale),

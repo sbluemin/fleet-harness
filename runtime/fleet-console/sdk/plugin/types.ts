@@ -124,6 +124,12 @@ export interface CompanionPanelDescriptor {
   readonly hideCaption?: boolean;
   readonly defaultHidden?: boolean;
   readonly shortcut?: CompanionPanelShortcut;
+  /**
+   * Omitted means always available. An unavailable panel is not rendered, carries no keyboard shortcut,
+   * and is absent from shortcut help, while the host still reports its id through `hiddenCompanionPanelIds`
+   * so plugin-side visibility checks stay correct.
+   */
+  readonly available?: (operation: OperationNode) => boolean;
   readonly render: (context: OperationRenderContext) => unknown;
 }
 

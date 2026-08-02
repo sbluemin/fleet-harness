@@ -22,6 +22,7 @@ import {
   closeAnalystCompanionPanels,
   countRemainingVisibleCompanionPanels,
   isCompanionPanelVisible,
+  operationSupportsCarrierStreams,
 } from "./analysis-visibility.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { currentTerminalLocale, getT, useTerminalLocale, type TerminalMessageKey } from "../i18n/index.js";
@@ -99,7 +100,7 @@ export const agentOperationKind = defineOperationKind({
   render: (context) => <AgentOperationView context={context} />,
   canOpenCompanions: () => true,
   companions: [
-    { id: CARRIER_STREAMS_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.carrierStreams"), hideCaption: true, defaultHidden: true, shortcut: { code: "KeyC", label: "C" }, render: (context) => <CarrierStreamsPanel context={context} /> },
+    { id: CARRIER_STREAMS_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.carrierStreams"), hideCaption: true, defaultHidden: true, available: operationSupportsCarrierStreams, shortcut: { code: "KeyC", label: "C" }, render: (context) => <CarrierStreamsPanel context={context} /> },
     { id: ANALYST_CHAT_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.sessionAnalyst"), hideCaption: true, defaultHidden: true, shortcut: { code: "KeyA", label: "A", clusterIds: ANALYST_COMPANION_IDS }, render: (context) => <AnalystChatPanel context={context} /> },
     { id: ANALYST_ARTIFACTS_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.artifacts"), hideCaption: true, defaultHidden: true, render: (context) => <AnalystArtifactsPanel context={context} /> },
   ],
@@ -432,6 +433,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   const { state: analysisState } = useAnalysisStore(context);
   const jobs = sessionJobs(session);
   const liveTrackCount = countLiveTracks(jobs);
+  const streamsSupported = operationSupportsCarrierStreams(context.operation);
   // 초기값 true: 닫힘 상태로 마운트해도 첫 effect가 re-arm한다(force-drop과 동시 언마운트로
   // EXIT 전이를 관찰하지 못한 경우 복구). Theater 복귀는 companionsOpen=true 마운트라 disarm이 보존된다.
   const previousCompanionsOpenRef = React.useRef(true);
@@ -457,7 +459,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
 
   const handles = (
     <div className="session-analyst-handle-stack">
-      <CarrierStreamsHandle context={context} live={liveTrackCount > 0} />
+      {streamsSupported ? <CarrierStreamsHandle context={context} live={liveTrackCount > 0} /> : null}
       <SessionAnalystHandle context={context} ready={analysisReadiness === "ready"} working={analysisState.busy} />
     </div>
   );
@@ -484,7 +486,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         theme={context.theme}
         onExit={() => removeSession(session.sessionId)}
       />
-      <CarrierSortieRibbon context={context} jobs={jobs} />
+      {streamsSupported ? <CarrierSortieRibbon context={context} jobs={jobs} /> : null}
     </div>
   );
 }
