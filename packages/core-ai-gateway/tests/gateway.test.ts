@@ -7,6 +7,7 @@ import {
   KIMI_SUBSCRIPTION_MODELS,
   buildAnthropicModelList,
   clampReasoningEffort,
+  claudeAccountingWindow,
   findGatewayModel,
   parseGatewayModelsRegistry,
   projectAnthropicResponseUsage,
@@ -31,7 +32,8 @@ import type {
   AnthropicMessagesRequest,
   CanonicalResponseRequest,
   CanonicalResponseEvent,
-  FetchLike
+  FetchLike,
+  GatewayModel
 } from "../src/index.js";
 
 describe("Anthropic request translation", () => {
@@ -495,6 +497,8 @@ describe("model catalog", () => {
     expect(KIMI_SUBSCRIPTION_MODELS).toHaveLength(2);
     expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.upstreamId?.startsWith("gpt-5.6-"))).toBe(true);
     expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.contextWindow === 372_000)).toBe(true);
+    // Codex compacts well below the window its backend accepts, so the two differ.
+    expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.autoCompactThreshold === 258_400)).toBe(true);
     expect(CURSOR_SUBSCRIPTION_MODELS.map((model) => model.upstreamId)).toEqual([
       "default",
       "composer-2.5",
@@ -755,6 +759,49 @@ describe("model catalog", () => {
       id: "claude-gateway--kimi--k3-256k",
       max_input_tokens: 262_144,
     }));
+  });
+});
+
+describe("Claude accounting window", () => {
+  const model = (over: Partial<GatewayModel>): GatewayModel => ({
+    id: "codex--probe",
+    displayName: "Codex-Probe",
+    provider: "codex",
+    effort: { supported: false, levels: [] },
+    ...over,
+  } as GatewayModel);
+
+  it("meters against the declared compaction threshold, not the real window", () => {
+    expect(claudeAccountingWindow(model({ contextWindow: 372_000, autoCompactThreshold: 258_400 })))
+      .toBe(258_400);
+  });
+
+  it("falls back to the real window when no threshold is declared", () => {
+    expect(claudeAccountingWindow(model({ contextWindow: 256_000 }))).toBe(256_000);
+    expect(claudeAccountingWindow(model({}))).toBeUndefined();
+  });
+
+  it("keeps the 1M marker on a Codex model whose threshold still clears 200k", () => {
+    const codex = CODEX_SUBSCRIPTION_MODELS[0]!;
+    expect(codex.autoCompactThreshold).toBe(258_400);
+    expect(toClaudeGatewayModelId(codex).endsWith("[1m]")).toBe(true);
+  });
+
+  it("withholds the 1M marker when the threshold drops to Claude's default coordinate", () => {
+    // The marker must follow the projection denominator. A model whose real window
+    // clears 200k but whose accounting window does not would otherwise make Claude
+    // Code meter on the 1M axis while usage was scaled by a sub-200k window.
+    const throttled = model({ id: "codex--throttled", contextWindow: 372_000, autoCompactThreshold: 200_000 });
+    expect(claudeAccountingWindow(throttled)).toBe(200_000);
+    expect(toClaudeGatewayModelId(throttled).endsWith("[1m]")).toBe(false);
+  });
+
+  it("projects a full accounting window onto Claude Code's 1M coordinate", () => {
+    // Claude Code compacts at 967_000 of its 1M axis, which is 249_872 real tokens
+    // here — inside the 235k-247k band real Codex sessions were measured to occupy,
+    // and far below the 372_000 the backend would still accept.
+    expect(projectClaudeContextInputTokens(258_400, 258_400)).toBe(1_000_000);
+    expect(Math.floor(967_000 * 258_400 / 1_000_000)).toBe(249_872);
   });
 });
 

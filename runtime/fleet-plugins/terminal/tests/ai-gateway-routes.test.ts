@@ -160,7 +160,7 @@ describe("upstream credential", () => {
 
     expect(streamSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       apiKey: SUBSCRIPTION_TOKEN,
-      contextWindow: 372_000,
+      contextWindow: 258_400,
       model: "gpt-5.6-sol",
       serviceTier: "priority",
       reasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
@@ -182,7 +182,7 @@ describe("upstream credential", () => {
 
     expect(res.status).toBe(200);
     expect(streamSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      contextWindow: 372_000,
+      contextWindow: 258_400,
     }));
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -385,8 +385,10 @@ describe("upstream credential", () => {
 
 describe("model context window", () => {
   it.each([
-    // The real usable window travels for every translated model, marked or not.
-    ["claude-gateway--codex--gpt-5.6-sol", 372_000, 372_000],
+    // The guard always gets the real window; the projection gets the accounting
+    // window. Codex meters against its reference client's compaction budget, so the
+    // two differ; a model without a declared threshold keeps them equal.
+    ["claude-gateway--codex--gpt-5.6-sol", 372_000, 258_400],
     ["claude-gateway--cursor--grok-4.5-fast", 256_000, 256_000],
     // A 200000-window Cursor native model earns no `[1m]` marker, so it gets no
     // projection denominator — but the guard still needs its real window.

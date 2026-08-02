@@ -48,6 +48,7 @@ const GatewayModelEntrySchema = z.object({
   cursorMaxMode: z.literal(true).optional(),
   aliases: z.array(z.string().min(1)).optional(),
   contextWindow: z.number().int().positive().optional(),
+  autoCompactThreshold: z.number().int().positive().optional(),
   effort: GatewayModelEffortSchema.optional(),
 }).strict();
 
@@ -98,6 +99,12 @@ export interface GatewayModel {
   readonly description?: string;
   /** Authoritative input context window reported by the provider/reference catalog. */
   readonly contextWindow?: number;
+  /**
+   * Occupancy at which the provider's own reference client compacts, when it operates
+   * below the model's real window. It is the coordinate Claude Code is told to meter
+   * against — never the hard limit, which stays {@link contextWindow}.
+   */
+  readonly autoCompactThreshold?: number;
   /** Model-specific reasoning ladder. Missing registry metadata is treated as unsupported. */
   readonly effort: GatewayModelEffort;
   /** Accepted request ids that are intentionally omitted from discovery. */
@@ -145,16 +152,32 @@ export function toGatewayModelAlias(modelId: string): string {
 }
 
 /**
+ * The window Claude Code is told to meter its context against.
+ *
+ * A provider whose reference client compacts below the model's real window
+ * publishes that budget as `autoCompactThreshold`; metering against it makes a
+ * gateway session compact where a native session of that provider would, instead
+ * of running into the hard limit. Everything else keeps metering against the real
+ * window. This is an accounting coordinate, never a limit — the pre-flight
+ * overflow guard still measures against {@link GatewayModel.contextWindow}.
+ */
+export function claudeAccountingWindow(model: GatewayModel): number | undefined {
+  return model.autoCompactThreshold ?? model.contextWindow;
+}
+
+/**
  * Claude Code only understands its default 200k coordinate and a `[1m]`
- * coordinate. Translated models above 200k use the latter while the gateway
- * projects their response usage. Native Kimi passthrough only opts in when its
- * real window is at least 1M, so a synthetic long-context beta never reaches a
- * sub-1M Anthropic-compatible upstream.
+ * coordinate. Translated models whose accounting window is above 200k use the
+ * latter while the gateway projects their response usage onto it. The marker must
+ * follow the same quantity the projection divides by, or Claude Code would meter
+ * on the 1M axis while usage was scaled by a different window. Native Kimi
+ * passthrough additionally requires a real window of at least 1M, so a synthetic
+ * long-context beta never reaches a sub-1M Anthropic-compatible upstream.
  */
 export function toClaudeGatewayModelId(model: GatewayModel): string {
   const alias = toGatewayModelAlias(model.id);
   if (
-    canProjectClaudeContextWindow(model.contextWindow)
+    canProjectClaudeContextWindow(claudeAccountingWindow(model))
     && (model.provider !== "kimi" || isClaudeOneMillionContextWindow(model.contextWindow))
   ) {
     return `${alias}${CLAUDE_ONE_MILLION_MARKER}`;
@@ -359,6 +382,7 @@ function toGatewayModel(
     ...(entry.cursorMaxMode ? { cursorMaxMode: entry.cursorMaxMode } : {}),
     ...(entry.description ? { description: entry.description } : {}),
     ...(entry.contextWindow ? { contextWindow: entry.contextWindow } : {}),
+    ...(entry.autoCompactThreshold ? { autoCompactThreshold: entry.autoCompactThreshold } : {}),
     effort: freezeGatewayModelEffort(entry.effort),
     ...(entry.aliases ? { aliases: Object.freeze([...entry.aliases]) } : {}),
   };
