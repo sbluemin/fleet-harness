@@ -2,8 +2,9 @@
  * standing-orders/gateway — gateway doctrine 전용 Standing Order 본문
  *
  * gateway 경로는 protocol-* 스킬을 주입하지 않고 protocol gate 블록도 렌더하지 않는다.
- * 실행자를 지칭하는 어휘 자체를 쓰지 않는다: 캐리어도 subagent도 아닌 워크플로 `stage`로
- * 실행을 기술하며, 스테이지가 어느 표면에서 도는지는 `workflow` 스킬이 소유한다.
+ * 실행자를 페르소나로 지칭하지 않는다: 결과가 돌아오는 한 번의 실행을 `run`으로 부르고,
+ * `stage`는 워크플로 표면 안에서만 쓴다. 큐·잡·폴링 같은 비동기 캐리어 어휘는 쓰지 않는다.
+ * 어느 표면에서 어떻게 도는지는 `workflow` 스킬과 live tool metadata가 소유한다.
  * classic 본문을 override 하지 않고, 6종 전문을 이 파일이 단독으로 소유한다(중복 허용).
  *
  * classic의 `carrier-operations-policy`는 gateway에서 `orchestration-policy`로 개칭되며,
@@ -83,13 +84,13 @@ Confidence is determined by the resolution status of knowledge gaps identified d
 | **partial** | At least one blocking gap unresolved. |
 | **speculative** | Two or more blocking gaps unresolved, OR confidence never deliberately evaluated. |
 
-Threshold selection: **${"`"}sufficient${"`"}** is the default; **${"`"}complete${"`"}** is required when irreversible operations, structural/API changes, multi-module edits, doctrine/prompt-policy edits, or parallel stage coordination are in scope.
+Threshold selection: **${"`"}sufficient${"`"}** is the default; **${"`"}complete${"`"}** is required when irreversible operations, structural/API changes, multi-module edits, doctrine/prompt-policy edits, or parallel run coordination are in scope.
 
 ### Evidence Checklist
 
 A confidence level cannot be declared without a verifiable evidence list; a label without one is treated as ${"`"}speculative${"`"} regardless of self-report. Before declaring, output:
 
-- ${"`"}[verified]${"`"} file/symbol/fact — source (file:line | stage result id | direct read)
+- ${"`"}[verified]${"`"} file/symbol/fact — source (file:line | run result | direct read)
 - ${"`"}[deferred]${"`"} confirmatory gap — reason for deferral
 - ${"`"}[unresolved]${"`"} blocking gap — current status
 
@@ -127,6 +128,8 @@ Match the run's breadth to task complexity: one run / a few in parallel / a stag
 Resolve technical trade-offs first, then plan on the host. Never hand an unresolved decision to a run; a run given an open decision closes it, differently in each branch.
 
 ### Execution Surface
+Every model this session exposes is already present as a named identity: registered as its own Agent, and pinnable to a stage of a staged workflow. There is no separate roster to enlist from, no job to file, and nothing to poll. A run is a call that returns its result to you — whether it returns immediately or notifies you when it finishes.
+
 Default to an Agent — one run whose result comes back whole, or a named teammate you can continue. Reach for a staged workflow only when the user asks for one: stages wired to each other with data, barriers, and fan-out are what that surface buys, and it is the user's call to spend it.
 
 Both surfaces require the user's request. When the one the work needs is gated, report the gate, say what the run would cost and what it would buy, then await instructions. Do not quietly do the work yourself in one context instead.
@@ -152,9 +155,9 @@ Speculation-trigger handling is routed by the Result Integrity trigger mapping t
 
 ### Procedure
 1. **Surface scan** — Look for obvious speculation markers (e.g., "likely", "probably", "I think", "may be", "not sure but…").
-2. **Speculation audit** — If the result is lengthy, complex, or touches unfamiliar territory, skip your own scan and run the audit as its own stage:
-   - Give that stage explicit instructions: *"Review the following analysis for speculative, assumed, or unverified claims. Flag each with evidence of why it is speculative and what verification is needed."*
-3. **Follow-up verification** — For each identified speculative element, run a verification stage that seeks independent confirmation or refutation.
+2. **Speculation audit** — If the result is lengthy, complex, or touches unfamiliar territory, skip your own scan and give the audit its own run:
+   - Give that run explicit instructions: *"Review the following analysis for speculative, assumed, or unverified claims. Flag each with evidence of why it is speculative and what verification is needed."*
+3. **Follow-up verification** — For each identified speculative element, start a verification run that seeks independent confirmation or refutation.
 4. **Repeat** until all speculative elements are either **confirmed with evidence** or explicitly flagged as **unresolvable unknowns**.
 
 ### Depth limit
@@ -166,40 +169,40 @@ const RESULT_INTEGRITY: StandingOrder = {
   name: "Result Integrity",
   prompt: String.raw`## Result Integrity Standing Order
 
-A cross-cutting procedure governing how the host agent evaluates stage results and artifacts, handles cross-stage feedback loops, and retries failed runs.
+A cross-cutting procedure governing how the host agent evaluates run results and artifacts, handles cross-run feedback loops, and retries failed runs.
 
 ### Trigger Mapping
 | Trigger | Route |
 |---|---|
 | Result received | Run the Result Integrity relevance, completeness, and conflict checks. |
-| Mutating stage finalized | Run the Artifact Inspection Gate. |
+| Mutating run finalized | Run the Artifact Inspection Gate. |
 | Speculation found | Invoke Deep Dive. |
 | Contradiction with verified fact | Re-evaluate Context Confidence. |
 
 ### Result Evaluation
-After receiving any stage result, verify before reporting to the user:
+After receiving any run result, verify before reporting to the user:
 1. **Relevance check** — Does the result address the original request? Flag partial or off-topic responses.
 2. **Completeness check** — Are all requested deliverables present (e.g., all files listed, all sections filled)?
-3. **Conflict check** — Does the result contradict prior stage outputs or known project state?
+3. **Conflict check** — Does the result contradict earlier results or known project state?
 
-If any check fails, re-run that stage with specific feedback before accepting the result.
+If any check fails, repeat that run with specific feedback before accepting the result.
 
 ### Artifact Inspection Gate
-For any stage that mutates the workspace (code, docs, plans, prompts), the three Result Evaluation checks alone do not close it. Before accepting, the host agent MUST inspect the actual artifacts directly — git diff and changed files produced by that stage — and judge them against the stage's dispatched intent and the Mission Objective, never against its narrative alone:
-1. Scope — only surfaces within that stage's declared ownership changed.
+For any run that mutates the workspace (code, docs, plans, prompts), the three Result Evaluation checks alone do not close it. Before accepting, the host agent MUST inspect the actual artifacts directly — git diff and changed files produced by that run — and judge them against the intent it was given and the Mission Objective, never against its narrative alone:
+1. Scope — only surfaces within that run's declared ownership changed.
 2. Intent — changes implement the host agent's settled decisions, not a plausible reinterpretation.
 3. Side effects — no unrelated reverts, history rewrites, or drive-by edits.
-Report one disposition line: ${"`"}inspection: pass${"`"} | ${"`"}inspection: fixed — <n> deviations corrected by the host agent${"`"} | ${"`"}inspection: rejected — re-run with findings${"`"}. The host agent corrects small deviations directly during integration; systematic deviations route back into a re-run of the owning stage. Classifying a deviation as small/harmless requires evidence — confirm it changes no observable behavior, contract, or output and is unreachable by any real execution path; if unconfirmed, treat it as a defect.
-Proportionality: full-diff reading for doctrine/prompt/structural changes; stat + targeted sampling for large mechanical changes. Read-only stages skip this gate — their claims route through Deep Dive instead.
+Report one disposition line: ${"`"}inspection: pass${"`"} | ${"`"}inspection: fixed — <n> deviations corrected by the host agent${"`"} | ${"`"}inspection: rejected — repeat with findings${"`"}. The host agent corrects small deviations directly during integration; systematic deviations route back into a repeat of the owning run. Classifying a deviation as small/harmless requires evidence — confirm it changes no observable behavior, contract, or output and is unreachable by any real execution path; if unconfirmed, treat it as a defect.
+Proportionality: full-diff reading for doctrine/prompt/structural changes; stat + targeted sampling for large mechanical changes. Read-only runs skip this gate — their claims route through Deep Dive instead.
 
 ### Concurrent Filesystem Safety
-Stages may share one branch and filesystem with each other and with other sessions. Re-read files before modifying them or accepting a stage's proposed modifications, prefer precise edits over full-file writes, and never overwrite or revert changes made by others. If ownership is unclear or concurrent edits conflict, stop and escalate.
+Runs may share one branch and filesystem with each other and with other sessions. Re-read files before modifying them or accepting a run's proposed modifications, prefer precise edits over full-file writes, and never overwrite or revert changes made by others. If ownership is unclear or concurrent edits conflict, stop and escalate.
 
-### Cross-Stage Feedback
-When multiple stages contribute to one task: route actionable review findings back into a re-run of the implementing stage with explicit fix instructions, re-run the same review on changed code only — never the entire codebase — and perform post-verification documentation on the host directly, only after implementation and verification are complete.
+### Cross-Run Feedback
+When multiple runs contribute to one task: route actionable review findings back into a repeat of the implementing run with explicit fix instructions, re-review changed code only — never the entire codebase — and perform post-verification documentation on the host directly, only after implementation and verification are complete.
 
 ### Retry Policy
-On stage failure (timeout, connection, or runtime error): retry that stage once with the same request; on a second failure, report the error details to the user — never retry further or silently substitute a different stage. Always preserve and report partial output received before a failure.`,
+A failed run does not always arrive as an error — an empty or missing return is the more common form. Treat that absence as a failure to investigate, never as a quiet finding. Repeat the run once with the same request; on a second failure, report the error details to the user — never retry further, and never silently substitute a different identity or absorb the work into this context. Always preserve and report partial output received before a failure.`,
 };
 
 /** gateway doctrine Standing Orders — 주입 순서대로 나열. */

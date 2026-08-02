@@ -67,8 +67,19 @@ const CARRIER_OPERATION_MARKERS = [
   "carrier",
 ] as const;
 
-// gateway doctrine은 실행자를 아예 지칭하지 않는다 — 스테이지 어휘만 남는다.
+// gateway doctrine은 실행자를 페르소나로 지칭하지 않는다 — run(과 워크플로 한정 stage) 어휘만 남는다.
 const EXECUTOR_NAMING_MARKERS = ["subagent", "Subagent", "delegate", "Delegate", "delegation", "Delegation"] as const;
+
+// 게이트웨이 모델은 세션에 이미 Agent로 등록되어 있다. 잡을 걸고 완료 신호를 기다리던
+// MCP 비동기 캐리어 어휘가 되살아나면 잡는다.
+const ASYNC_JOB_MARKERS = [
+  "<system-reminder>",
+  "system reminders",
+  "background job",
+  "job completion",
+  "detached",
+  "MCP resources",
+] as const;
 
 describe("Admiral prompts", () => {
   function createRuntimeWithDefaults() {
@@ -266,9 +277,19 @@ describe("Admiral prompts", () => {
       expect(prompt).not.toContain(marker);
     }
     expect(prompt).toContain("Execution is handed off; judgment is not");
-    expect(prompt).toContain("which stages ran and what each was for");
-    expect(prompt).toContain("Mutating stage finalized");
-    expect(prompt).toContain("### Cross-Stage Feedback");
+    expect(prompt).toContain("which runs executed, on which identity, and what each was for");
+    expect(prompt).toContain("Mutating run finalized");
+    expect(prompt).toContain("### Cross-Run Feedback");
+    // 비동기 캐리어 잡 어휘는 전량 사라진다 — 실행은 결과를 돌려주는 호출이다.
+    for (const marker of ASYNC_JOB_MARKERS) {
+      expect(prompt).not.toContain(marker);
+    }
+    expect(prompt).toContain("There is no separate roster to enlist from, no job to file, and nothing to poll.");
+    expect(prompt).toContain("A run is a call that returns its result to you");
+    // 실패는 에러가 아니라 부재로 도착한다 — 조용한 발견으로 접수하지 않는다.
+    expect(prompt).toContain("A failed run does not always arrive as an error");
+    expect(prompt).toContain("Treat that absence as a failure to investigate, never as a quiet finding.");
+    expect(prompt).toContain("never silently substitute a different identity or absorb the work into this context");
     // 기본 실행 표면은 Agent(단일 실행 또는 이어갈 수 있는 teammate)이고,
     // staged workflow 는 사용자가 요청했을 때만 꺼내는 상위 옵션이다.
     expect(prompt).toContain("### Execution Surface");
@@ -398,8 +419,11 @@ describe("Admiral prompts", () => {
     //   그리고 무조건 사전 조회와 분산 기본이 들어온 몫. 로스터 필드 의미(quotaScope·
     //   effortLadder·contextWindow)와 배정 절차는 각각 tool metadata와 workflow 스킬이
     //   도로 가져갔으므로, 규칙이 늘었는데도 총량은 200자만 늘었다.
-    expect(builder.build({ enableMetaphor: false, doctrine: "gateway" }).length).toBeLessThanOrEqual(16300);
-    expect(builder.build({ enableMetaphor: true, doctrine: "gateway" }).length).toBeLessThanOrEqual(16300);
+    // 16300 → 16400: 게이트웨이 모델이 세션에 이미 Agent로 등록되어 있다는 사실과, 실패가
+    //   에러가 아니라 부재로 도착한다는 Retry Policy가 들어온 몫. `<system-reminder>` 안내
+    //   문단을 서문에서 통째로 걷어내 상쇄했으므로 순증은 100자다.
+    expect(builder.build({ enableMetaphor: false, doctrine: "gateway" }).length).toBeLessThanOrEqual(16400);
+    expect(builder.build({ enableMetaphor: true, doctrine: "gateway" }).length).toBeLessThanOrEqual(16400);
   });
 
   it("teaches idempotent per-session skill loading in the protocol gate", () => {
