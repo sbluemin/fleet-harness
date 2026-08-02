@@ -78,18 +78,18 @@ describe("CanvasContextMenu launch kind attribute", () => {
         title: "Terminal",
         kinds: [
           { id: "claude", type: "agent", title: "Claude Code (Classic)" },
-          { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
+          { id: "claude-gateway", type: "agent", title: "Claude (Gateway • Experimental)" },
         ],
       },
     ]);
 
     const gateway = document.querySelectorAll<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]');
     expect(gateway).toHaveLength(1);
-    expect(gateway[0]?.textContent).toContain("Claude (Gateway)");
+    expect(gateway[0]?.textContent).toContain("Claude (Gateway • Experimental)");
     expect(document.querySelector('[data-operation-launch-kind="claude"]')).not.toBeNull();
   });
 
-  it("annotates the Claude launch kinds with a description and marks the new ones", () => {
+  it("annotates the Claude launch kinds with a description and no extra decoration", () => {
     renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [
       {
         id: "terminal",
@@ -98,7 +98,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
           { id: "claude-native", type: "agent", title: "Claude (Native)" },
           { id: "claude", type: "agent", title: "Claude (Classic)" },
           { id: "codex", type: "agent", title: "Codex" },
-          { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
+          { id: "claude-gateway", type: "agent", title: "Claude (Gateway • Experimental)" },
           { id: "shell", type: "shell", title: "Shell" },
         ],
       },
@@ -106,8 +106,6 @@ describe("CanvasContextMenu launch kind attribute", () => {
 
     const descriptionOf = (kindId: string) =>
       document.querySelector(`[data-operation-launch-kind="${kindId}"] .operation-launch-menu-description`)?.textContent;
-    const badgeOf = (kindId: string) =>
-      document.querySelector(`[data-operation-launch-kind="${kindId}"] .operation-launch-menu-badge`)?.textContent;
 
     expect(descriptionOf("claude-native")).toBe("Plain Claude Code, without the Admiral prompt");
     expect(descriptionOf("claude")).toContain("Admiral standing orders");
@@ -116,9 +114,10 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(descriptionOf("codex")).toBeUndefined();
     expect(descriptionOf("shell")).toBeUndefined();
 
-    expect(badgeOf("claude-native")).toBe("NEW");
-    expect(badgeOf("claude-gateway")).toBe("NEW · EXPERIMENTAL");
-    expect(badgeOf("claude")).toBeUndefined();
+    // 신규·실험 여부는 라벨 괄호 안이 들고 있다 — 항목에 별도 표식을 덧붙이지 않는다.
+    expect(document.querySelector(".operation-launch-menu-badge")).toBeNull();
+    expect(document.querySelector('[data-operation-launch-kind="claude-gateway"]')?.textContent)
+      .toContain("Claude (Gateway • Experimental)");
   });
 
   it("shows the disabled reason instead of the description when the CLI cannot launch", () => {
@@ -135,8 +134,6 @@ describe("CanvasContextMenu launch kind attribute", () => {
     const item = document.querySelector('[data-operation-launch-kind="claude-native"]');
     expect(item?.querySelector(".operation-launch-menu-reason")?.textContent).toBe("Not installed");
     expect(item?.querySelector(".operation-launch-menu-description")).toBeNull();
-    // 배지는 사유와 함께 남는다 — 아직 설치하지 않았어도 새 종류라는 사실은 그대로다.
-    expect(item?.querySelector(".operation-launch-menu-badge")?.textContent).toBe("NEW");
   });
 
   it("marks the rendered menu box as the tour placement boundary", () => {
