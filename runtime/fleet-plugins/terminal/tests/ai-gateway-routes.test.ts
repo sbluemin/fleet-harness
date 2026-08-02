@@ -864,6 +864,33 @@ describe("route surface", () => {
     ]);
   });
 
+  it("sorts an interleaved allowlist into provider clusters for /v1/models", async () => {
+    const router = createAiGatewayRouter({
+      gateway: stubGateway(),
+      readAuth,
+      readAiGatewaySettings: aiGatewaySettingsStub({
+        version: 1,
+        models: [
+          { id: "kimi--k3" },
+          { id: "codex--gpt-5.6-luna-fast" },
+          { id: "cursor--grok-4.5-fast" },
+          { id: "codex--gpt-5.6-sol-fast" },
+        ],
+      }),
+    });
+    const res = response();
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED, pathname: `${BASE}/v1/models`, method: "GET" }));
+
+    expect(res.status).toBe(200);
+    const list = JSON.parse(res.body) as { data: Array<{ id: string }> };
+    expect(list.data.map((entry) => entry.id)).toEqual([
+      "claude-gateway--codex--gpt-5.6-sol-fast[1m]",
+      "claude-gateway--codex--gpt-5.6-luna-fast[1m]",
+      "claude-gateway--cursor--grok-4.5-fast[1m]",
+      "claude-gateway--kimi--k3[1m]",
+    ]);
+  });
+
   it("exposes no gateway models until the settings enable some (opt-in)", async () => {
     const router = createAiGatewayRouter({
       gateway: stubGateway(),

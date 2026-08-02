@@ -82,6 +82,43 @@ describe("Claude gateway launch environment", () => {
     ]);
   });
 
+  it("writes the discovery cache in provider clusters even when membership was interleaved", () => {
+    const configDir = mkdtempSync(path.join(os.tmpdir(), "fleet-ai-gateway-claude-"));
+    temporaryDirectories.push(configDir);
+
+    const selection = resolveAiGatewaySelection({
+      version: 1,
+      models: [
+        { id: "cursor--grok-4.5-fast" },
+        { id: "codex--gpt-5.6-sol-fast" },
+        { id: "kimi--k3" },
+        { id: "codex--gpt-5.6-luna-fast" },
+      ],
+    });
+    applyAiGatewayEnv({
+      id: "claude-gateway",
+      label: "Claude Gateway",
+      bin: "claude",
+      args: [],
+      cwd: "/workspace",
+      env: { CLAUDE_CONFIG_DIR: configDir },
+      terminalName: "xterm-256color",
+    } as const, {
+      routePath: "/plugins/terminal/ai-gateway",
+      origin: () => "http://127.0.0.1:4310",
+    }, selection);
+
+    const cache = JSON.parse(readFileSync(path.join(configDir, "cache", "gateway-models.json"), "utf8")) as {
+      readonly models: readonly { readonly id: string }[];
+    };
+    expect(cache.models.map((model) => model.id)).toEqual([
+      "claude-gateway--codex--gpt-5.6-sol-fast[1m]",
+      "claude-gateway--codex--gpt-5.6-luna-fast[1m]",
+      "claude-gateway--cursor--grok-4.5-fast[1m]",
+      "claude-gateway--kimi--k3[1m]",
+    ]);
+  });
+
   it("writes an empty cache when the settings enable no models (opt-in)", () => {
     const configDir = mkdtempSync(path.join(os.tmpdir(), "fleet-ai-gateway-claude-"));
     temporaryDirectories.push(configDir);

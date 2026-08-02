@@ -120,9 +120,23 @@ export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | un
     if (!model || enabled.includes(model)) continue;
     enabled.push(model);
   }
+  // Claude Code's /model picker preserves discovery order under its built-ins.
+  // Settings UI is already grouped by GATEWAY_PROVIDERS; expose the same grammar
+  // on the wire regardless of Add-click membership order.
+  const models = sortGatewayModelsByProvider(enabled);
   const configuredDefault = settings?.defaultModel ? findGatewayModel(settings.defaultModel) : undefined;
-  const defaultModel = configuredDefault && enabled.includes(configuredDefault) ? configuredDefault : undefined;
-  return { models: enabled, defaultModel };
+  const defaultModel = configuredDefault && models.includes(configuredDefault) ? configuredDefault : undefined;
+  return { models, defaultModel };
+}
+
+/** Stable provider clusters (codex → cursor → kimi), then catalog order within each. */
+function sortGatewayModelsByProvider(models: readonly GatewayModel[]): GatewayModel[] {
+  return [...models].sort((left, right) => {
+    const providerDelta =
+      GATEWAY_PROVIDERS.indexOf(left.provider) - GATEWAY_PROVIDERS.indexOf(right.provider);
+    if (providerDelta !== 0) return providerDelta;
+    return GATEWAY_MODELS.indexOf(left) - GATEWAY_MODELS.indexOf(right);
+  });
 }
 
 /** 설정 PUT 본문의 aiGateway 값을 카탈로그에 대조 검증한다. `undefined` 값은 설정 해제를 뜻한다. */

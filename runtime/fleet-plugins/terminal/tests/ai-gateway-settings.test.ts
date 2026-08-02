@@ -73,4 +73,24 @@ describe("ai-gateway settings store", () => {
     expect(selection.models.map((model) => model.id)).toEqual(["cursor--claude-opus-5"]);
     expect(selection.defaultModel).toBeUndefined();
   });
+
+  it("exposes enabled models in GATEWAY_PROVIDERS order, not Add-click order", () => {
+    const selection = resolveAiGatewaySelection({
+      version: 1,
+      models: [
+        { id: "cursor--grok-4.5-fast" },
+        { id: "codex--gpt-5.6-sol-fast" },
+        { id: "kimi--k3" },
+        { id: "codex--gpt-5.6-luna-fast" },
+      ],
+      defaultModel: "cursor--grok-4.5-fast",
+    });
+    expect(selection.models.map((model) => model.id)).toEqual([
+      "codex--gpt-5.6-sol-fast",
+      "codex--gpt-5.6-luna-fast",
+      "cursor--grok-4.5-fast",
+      "kimi--k3",
+    ]);
+    expect(selection.defaultModel?.id).toBe("cursor--grok-4.5-fast");
+  });
 });
