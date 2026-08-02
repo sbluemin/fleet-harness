@@ -5,7 +5,9 @@ description: Use the risk-controlled Fleet protocol mode for irreversible, struc
 
 # Fleet Protocol: Redline
 
-Use this mode when any Downward Guard trigger defined in the Protocol Gate is in scope, for security-sensitive work, or for any operational request needing explicit risk controls. Escalate to `protocol-frontline` when multiple Carriers or parallel ownership boundaries are required.
+Use this mode when any Downward Guard trigger defined in the Protocol Gate is in scope, for security-sensitive work, or for any operational request needing explicit risk controls. Escalate to `protocol-frontline` when multi-stream Workflow coordination or parallel ownership boundaries are required.
+
+The `Workflow` tool is the canonical orchestration and fan-out path for delegated work under gateway doctrine.
 
 ## Checkpoints
 
@@ -26,7 +28,7 @@ Confirm each readiness check below before the Procedure. Work through them in or
 - [ ] **Doctrine** — enumerate the applicable AGENTS.md files to load for the affected scope. → report `doctrine: <…>`
 - [ ] **Impact radius** — flag public-surface or API impact, irreversibility, and any security-sensitive surface. → report `impact: <…>`
 - [ ] **Rollback** — identify a rollback-safe checkpoint and any user approval point before execution begins. → report `rollback: <…>`
-- [ ] **Escalation** — if multiple carriers or parallel ownership boundaries are required, re-classify under frontline. → report `escalation: clear`
+- [ ] **Escalation** — if multi-stream Workflow coordination or parallel ownership boundaries are required, re-classify under frontline. → report `escalation: clear`
 
 ## Procedure
 
@@ -34,7 +36,7 @@ Confirm each readiness check below before the Procedure. Work through them in or
 2. Architecture and risk review: identify public-surface impact, dependency constraints, rollback risk, security risk, and user approval requirements.
 3. Host-authored structured planning boundary: `Apply the Context Confidence Standing Order — entry requires complete`. The host does not plan with unresolved blocking or confirmatory gaps.
 4. Host-authored risk-controlled plan: define file ownership, small execution batches, verification commands, rollback-safe checkpoints, and any approval point.
-5. Small-batch execution: edit narrowly, re-read before modifying shared files, and pause on unexpected diffs or scope expansion.
+5. Small-batch execution: edit narrowly, re-read before modifying shared files, and pause on unexpected diffs or scope expansion. Prefer `Workflow` orchestration when fan-out is required.
 6. Refactor gate: refactor only touched code when duplication, complexity, or convention drift appears, only with user approval or when pre-declared in the brief.
-7. Correctness and security review (may run as a single combined review dispatch): review changed behavior and risk controls; apply Deep Dive to speculative findings and repeat after fixes.
+7. Correctness and security review: review changed behavior and risk controls via Workflow agent stages when useful; apply Deep Dive to speculative findings and repeat after fixes.
 8. Documentation and completion report: update directly affected operator docs and report changes, QA, risk controls, and residual uncertainty.

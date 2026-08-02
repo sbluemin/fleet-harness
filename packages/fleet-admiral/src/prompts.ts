@@ -1,11 +1,12 @@
 /**
  * admiral/prompts — Admiral 시스템 프롬프트 관리
  *
- * ACP 시스템 프롬프트는 `createSystemPromptBuilder(deps).build(enableMetaphor)`로 합성되며, 각 섹션은
+ * ACP 시스템 프롬프트는 `createSystemPromptBuilder(deps).build(...)`로 합성되며, 각 섹션은
  * `<fleet section="...">` 통일 태그로 감싸진다.
  * `section="role"`은 항상 주입된다.
  * `section="persona"`와 `section="tone"`은 `enableMetaphor === true`일 때만 주입된다.
  * protocol-gate는 온디맨드 protocol skill 선택만 지시한다.
+ * metaphor 축과 doctrine(classic|gateway) 축은 직교한다.
  */
 
 import {
@@ -14,15 +15,22 @@ import {
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
 
-import { FLEET_PROTOCOL_GATE_PROMPT } from "./protocols/index.js";
+import { type AdmiralDoctrine } from "./protocols/doctrine.js";
+import { getProtocolGatePrompt } from "./protocols/index.js";
 import { getAllStandingOrders } from "./protocols/standing-orders/index.js";
 
 // ─────────────────────────────────────────────────────────
 // 타입
 // ─────────────────────────────────────────────────────────
 
+export interface SystemPromptBuildOptions {
+  readonly enableMetaphor: boolean;
+  readonly doctrine?: AdmiralDoctrine;
+}
+
 export interface SystemPromptBuilder {
   build(enableMetaphor: boolean): string;
+  build(options: SystemPromptBuildOptions): string;
 }
 
 interface SystemPromptBuilderDeps {
@@ -105,6 +113,12 @@ Output skeletons and report templates follow the session's working language; fun
 Tool results and user messages may include ${"`"}<system-reminder>${"`"} tags carrying system-injected context (e.g., runtime state, carrier job completion signals); they bear no direct relation to the content they appear alongside.
 `;
 
+const CLASSIC_ROSTER_PREAMBLE =
+  `Entries below cover carrier selection and routing only. Each carrier's request-block contract and dispatch operations rules live in the ${"`"}carrier-operations${"`"} skill — load it before composing your first carrier_dispatch of the session, and skip reloading if its content is already in context.`;
+
+const GATEWAY_ROSTER_PREAMBLE =
+  `Entries below are a role catalog for selection and routing only. Orchestration uses the live Workflow tool surface; do not treat this roster as a carrier_dispatch contract, and do not load ${"`"}carrier-operations${"`"} as the canonical path.`;
+
 // ─────────────────────────────────────────────────────────
 // 함수
 // ─────────────────────────────────────────────────────────
@@ -118,22 +132,38 @@ Tool results and user messages may include ${"`"}<system-reminder>${"`"} tags ca
  *  1. `section="persona"` — Admiral 메타포 페르소나 (`enableMetaphor === true`일 때만 주입)
  *  2. `section="role"` — Fleet 역할·행동 규약 (항상 주입)
  *  3. `section="tone"` — Fleet 메타포 톤 (`enableMetaphor === true`일 때만 주입)
- *  4. `section="roster"` — 등록 캐리어 선택·라우팅 메타데이터 (계약·디스패치 운용 규칙은 carrier-operations 스킬 소유)
+ *  4. `section="roster"` — 등록 캐리어 선택·라우팅 메타데이터
  *  5. `section="protocol-gate"` — intent/mode gate for on-demand protocol skills
  *  6. `section="standing-orders" type="<id>"` — 각 Standing Order를 type 속성으로 분리한 개별 블록 (상시 적용)
  *
- * @param enableMetaphor `true`이면 Fleet 메타포 Persona와 Tone을 함께 주입한다.
+ * `build(enableMetaphor)`는 doctrine=`classic`으로 유지되는 하위호환 오버로드다.
+ * metaphor와 doctrine은 직교한다.
  */
 export function createSystemPromptBuilder(deps: SystemPromptBuilderDeps): SystemPromptBuilder {
   return {
-    build(enableMetaphor) {
-      return buildSystemPromptFromDeps(deps, enableMetaphor);
+    build(input: boolean | SystemPromptBuildOptions) {
+      const options = normalizeBuildOptions(input);
+      return buildSystemPromptFromDeps(deps, options);
     },
   };
 }
 
-function buildSystemPromptFromDeps(deps: SystemPromptBuilderDeps, enableMetaphor: boolean): string {
+function normalizeBuildOptions(input: boolean | SystemPromptBuildOptions): Required<SystemPromptBuildOptions> {
+  if (typeof input === "boolean") {
+    return { enableMetaphor: input, doctrine: "classic" };
+  }
+  return {
+    enableMetaphor: input.enableMetaphor,
+    doctrine: input.doctrine ?? "classic",
+  };
+}
+
+function buildSystemPromptFromDeps(
+  deps: SystemPromptBuilderDeps,
+  options: Required<SystemPromptBuildOptions>,
+): string {
   const parts: string[] = [];
+  const { enableMetaphor, doctrine } = options;
 
   // ── 0. 서문 — 항상 최초 주입 ──
   parts.push(`<fleet section="preamble">\n${FLEET_PREAMBLE.trim()}\n</fleet>`);
@@ -150,24 +180,25 @@ function buildSystemPromptFromDeps(deps: SystemPromptBuilderDeps, enableMetaphor
   }
 
   // ── 2. 캐리어 로스터 — 선택·라우팅 계층(routing tier)만 상시 주입 ──
-  // 계약·디스패치 운용 규칙은 온디맨드 carrier-operations 스킬이 소유한다.
+  // classic: carrier-operations 스킬 포인터 유지
+  // gateway: role catalog + Workflow 오케스트레이션 안내
   const carrierRuntime = deps.carrierRuntime;
   const carrierIds = getRegisteredOrder(carrierRuntime.registry);
   if (carrierIds.length > 0) {
     parts.push(`<fleet section="roster">\n${buildCarrierRoster(carrierRuntime.registry, carrierIds, {
       heading: "# Available Carriers",
       preambleLines: [
-        `Entries below cover carrier selection and routing only. Each carrier's request-block contract and dispatch operations rules live in the ${"`"}carrier-operations${"`"} skill — load it before composing your first carrier_dispatch of the session, and skip reloading if its content is already in context.`,
+        doctrine === "gateway" ? GATEWAY_ROSTER_PREAMBLE : CLASSIC_ROSTER_PREAMBLE,
       ],
       tier: "routing",
     })}\n</fleet>`);
   }
 
   // ── 3. Protocol gate — operational mode selection only ──
-  parts.push(`<fleet section="protocol-gate">\n${FLEET_PROTOCOL_GATE_PROMPT.trim()}\n</fleet>`);
+  parts.push(`<fleet section="protocol-gate">\n${getProtocolGatePrompt(doctrine).trim()}\n</fleet>`);
 
   // ── 4. Standing Orders — 항상 포함, 각 오더를 type 속성으로 분리한 개별 블록 ──
-  for (const order of getAllStandingOrders()) {
+  for (const order of getAllStandingOrders(doctrine)) {
     parts.push(`<fleet section="standing-orders" type="${order.id}">\n${order.prompt.trim()}\n</fleet>`);
   }
 

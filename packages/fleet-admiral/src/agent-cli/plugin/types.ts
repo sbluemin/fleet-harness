@@ -1,3 +1,4 @@
+import type { AdmiralDoctrine } from "../../protocols/doctrine.js";
 import type { CodexCommandResult, CodexPluginRegistrationCommand, FleetHookExec } from "../types.js";
 export type { CodexCommandResult, CodexPluginRegistrationCommand } from "../types.js";
 
@@ -12,6 +13,7 @@ export interface CodexCommandRunner {
 export interface CreateAgentCliPluginOptions {
   readonly captureSessionHookExec?: FleetHookExec;
   readonly cliId: string;
+  readonly doctrine?: AdmiralDoctrine;
   readonly codexCommandRunner?: CodexCommandRunner;
   readonly cwd: string;
   readonly dataDir?: string;

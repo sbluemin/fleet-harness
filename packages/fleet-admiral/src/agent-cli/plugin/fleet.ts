@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import { resolveDoctrineFromCliId, type AdmiralDoctrine } from "../../protocols/doctrine.js";
 import { EMBEDDED_AGENT_CLI_SKILL_ASSETS } from "../assets.generated.js";
 import { writePrivateFile, writePrivateJson } from "./fs.js";
 import type { FleetHookExec } from "../types.js";
@@ -19,7 +20,8 @@ export function renderAssetPluginRoot(
   bundle: AssetPluginBundle,
   options: CreateAgentCliPluginOptions,
 ): void {
-  renderEmbeddedSkillAssets(pluginRoot);
+  const doctrine = options.doctrine ?? resolveDoctrineFromCliId(options.cliId);
+  renderEmbeddedSkillAssets(pluginRoot, doctrine);
   if (options.cliId === "claude" || options.cliId === "claude-gateway") {
     writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), claudeHooks(options), pluginRoot);
   }
@@ -73,8 +75,34 @@ function claudeCommandHook(hookExec: FleetHookExec): unknown {
   };
 }
 
-function renderEmbeddedSkillAssets(pluginRoot: string): void {
-  for (const asset of EMBEDDED_AGENT_CLI_SKILL_ASSETS) {
+function renderEmbeddedSkillAssets(pluginRoot: string, doctrine: AdmiralDoctrine): void {
+  for (const asset of selectSkillAssetsForDoctrine(doctrine)) {
     writePrivateFile(path.join(pluginRoot, "skills", asset.relativePath), asset.content, pluginRoot);
   }
+}
+
+function selectSkillAssetsForDoctrine(
+  doctrine: AdmiralDoctrine,
+): ReadonlyArray<{ readonly relativePath: string; readonly content: string }> {
+  if (doctrine === "gateway") {
+    const rendered: Array<{ relativePath: string; content: string }> = [];
+    for (const asset of EMBEDDED_AGENT_CLI_SKILL_ASSETS) {
+      if (asset.relativePath.startsWith("carrier-operations/")) continue;
+      if (asset.relativePath.startsWith("gateway/")) {
+        // gateway/protocol-*/SKILL.md → skills/protocol-*/SKILL.md
+        rendered.push({
+          relativePath: asset.relativePath.slice("gateway/".length),
+          content: asset.content,
+        });
+        continue;
+      }
+      if (asset.relativePath.startsWith("protocol-")) continue;
+      rendered.push(asset);
+    }
+    return rendered;
+  }
+
+  return EMBEDDED_AGENT_CLI_SKILL_ASSETS.filter(
+    (asset) => !asset.relativePath.startsWith("gateway/"),
+  );
 }

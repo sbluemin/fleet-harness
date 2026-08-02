@@ -7,5 +7,11 @@
  */
 
 export {
+  type AdmiralDoctrine,
+  resolveDoctrineFromCliId,
+} from "./doctrine.js";
+
+export {
   FLEET_PROTOCOL_GATE_PROMPT,
+  getProtocolGatePrompt,
 } from "./fleet-action.js";
