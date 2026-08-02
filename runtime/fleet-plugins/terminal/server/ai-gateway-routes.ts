@@ -16,6 +16,7 @@ import {
   UnsupportedReasoningEffortError,
   buildAnthropicModelList,
   clampReasoningEffort,
+  claudeAccountingWindow,
   findGatewayModel,
   hasClaudeOneMillionMarker,
   projectAnthropicResponseUsage,
@@ -221,9 +222,10 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
       // Claude Code may strip the discovery-only `[1m]` suffix before sending a
       // request. Derive its accounting coordinate from the resolved registry
       // model so every alias for the same Cursor/Codex model projects usage in
-      // the same way.
+      // the same way. The coordinate is the accounting window, not the real one:
+      // a provider that compacts below its hard limit meters against that budget.
       const claudeContextWindow = hasClaudeOneMillionMarker(toClaudeGatewayModelId(target))
-        ? target.contextWindow
+        ? claudeAccountingWindow(target)
         : undefined;
       if (target.provider === "kimi") {
         await proxyToKimi(
@@ -246,7 +248,8 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
         ? await cursorDiagnosticsEnabled()
         : undefined;
       // The real usable window is independent of the `[1m]` accounting coordinate:
-      // a 200000-window Cursor model carries no marker but still needs the guard.
+      // a 200000-window Cursor model carries no marker but still needs the guard,
+      // and a Codex model meters against a lower budget than it can actually hold.
       const modelContextWindow = typeof target.contextWindow === "number"
         && Number.isFinite(target.contextWindow)
         && target.contextWindow > 0

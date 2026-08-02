@@ -5,12 +5,13 @@
     "codex": {
       "name": "Codex",
       "defaultModel": "gpt-5.6-sol",
-      "source": "codex app-server model/list (codex-cli 0.146.0, 2026-08-01)",
+      "source": "codex app-server model/list (codex-cli 0.146.0, 2026-08-01); autoCompactThreshold = context_window x effective_context_window_percent from codex debug models (codex-cli 0.146.0, 2026-08-02)",
       "models": [
         {
           "modelId": "gpt-5.6-sol",
           "name": "GPT-5.6-Sol",
           "contextWindow": 372000,
+          "autoCompactThreshold": 258400,
           "effort": {
             "supported": true,
             "levels": [
@@ -32,6 +33,7 @@
           "providerModelId": "gpt-5.6-sol",
           "serviceTier": "priority",
           "contextWindow": 372000,
+          "autoCompactThreshold": 258400,
           "effort": {
             "supported": true,
             "levels": [
@@ -51,6 +53,7 @@
           "modelId": "gpt-5.6-terra",
           "name": "GPT-5.6-Terra",
           "contextWindow": 372000,
+          "autoCompactThreshold": 258400,
           "effort": {
             "supported": true,
             "levels": [
@@ -72,6 +75,7 @@
           "providerModelId": "gpt-5.6-terra",
           "serviceTier": "priority",
           "contextWindow": 372000,
+          "autoCompactThreshold": 258400,
           "effort": {
             "supported": true,
             "levels": [
@@ -91,6 +95,7 @@
           "modelId": "gpt-5.6-luna",
           "name": "GPT-5.6-Luna",
           "contextWindow": 372000,
+          "autoCompactThreshold": 258400,
           "effort": {
             "supported": true,
             "levels": [
@@ -111,6 +116,7 @@
           "providerModelId": "gpt-5.6-luna",
           "serviceTier": "priority",
           "contextWindow": 372000,
+          "autoCompactThreshold": 258400,
           "effort": {
             "supported": true,
             "levels": [
