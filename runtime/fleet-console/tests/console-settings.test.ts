@@ -30,7 +30,6 @@ function makeFakePaths(dir: string): ConsoleDataPaths {
     dir,
     stateFile: path.join(dir, "state.json"),
     settingsFile: path.join(dir, "settings.json"),
-    capturesDir: path.join(dir, "captures"),
   };
 }
 

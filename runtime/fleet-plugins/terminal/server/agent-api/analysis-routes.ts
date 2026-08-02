@@ -11,7 +11,7 @@ import { createDefaultAgentCliDetector } from "./agent-cli-detect.js";
 import { agentCliCommandForId, buildAgentCliClientEnvOverlay, resolveAgentCliBinary } from "./agent-cli-paths.js";
 import { AnalysisRegistry } from "./analysis-registry.js";
 import { ANALYSIS_ERROR_CODES, analysisError, buildAnalysisCatalog, isAnalysisSelection, isMessageBody, type AnalysisCatalog, type AnalysisEvent } from "./analysis-types.js";
-import { readProviderSessionCapture } from "./session-capture.js";
+import { readProviderSession } from "./provider-session.js";
 
 const AGENT_OPERATION_TYPE = "agent";
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
@@ -32,7 +32,6 @@ type AnalysisRouteDeps = {
   readonly detect?: () => ReturnType<ReturnType<typeof createDefaultAgentCliDetector>["detect"]>;
   readonly createSession?: (options: AnalysisSessionOptions) => AnalystSession;
   readonly modelsFor?: typeof getProviderModels;
-  readonly readCapture?: typeof readProviderSessionCapture;
   readonly readAgentCliPaths?: () => Promise<Readonly<Record<string, string>>>;
   readonly env?: NodeJS.ProcessEnv;
 };
@@ -48,7 +47,6 @@ export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: Anal
   const readAgentCliPaths = deps.readAgentCliPaths;
   const detect = deps.detect ?? createDefaultAgentCliDetector(readAgentCliPaths ?? (async () => ({})), env).detect;
   const modelsFor = deps.modelsFor ?? getProviderModels;
-  const readCapture = deps.readCapture ?? readProviderSessionCapture;
   const createSession = deps.createSession ?? ((options) => new AnalystSession(options));
   const catalog = async (): Promise<AnalysisCatalog> => buildAnalysisCatalog(await detect(), modelsFor);
   const inFlightStartDeletionMarkers = new Set<InFlightStartDeletionMarker>();
@@ -76,12 +74,12 @@ export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: Anal
       writeError(ctx, res, 404, ANALYSIS_ERROR_CODES.sessionNotFound, "Analysis operation was not found.");
       return true;
     }
-    if (action === "ready") return handleReady(ctx, req, res, operation, readCapture);
+    if (action === "ready") return handleReady(ctx, req, res, operation);
     if (action === "start") {
       const deletionMarker: InFlightStartDeletionMarker = { operationId, deleted: false };
       inFlightStartDeletionMarkers.add(deletionMarker);
       try {
-        return await handleStart(ctx, req, res, operation, registry, catalog, readCapture, createSession, readAgentCliPaths, env, deletionMarker);
+        return await handleStart(ctx, req, res, operation, registry, catalog, createSession, readAgentCliPaths, env, deletionMarker);
       } finally {
         inFlightStartDeletionMarkers.delete(deletionMarker);
       }
@@ -350,10 +348,10 @@ function handleClearArtifacts(ctx: FleetPluginServerContext, req: http.IncomingM
   return true;
 }
 
-async function handleReady(ctx: FleetPluginServerContext, req: http.IncomingMessage, res: http.ServerResponse, operation: OperationNode, readCapture: typeof readProviderSessionCapture): Promise<boolean> {
+async function handleReady(ctx: FleetPluginServerContext, req: http.IncomingMessage, res: http.ServerResponse, operation: OperationNode): Promise<boolean> {
   if (req.method !== "GET") return methodNotAllowed(ctx, res);
   try {
-    const { transcriptPath } = await resolveOperationTranscript(ctx, operation, readCapture);
+    const { transcriptPath } = await resolveOperationTranscript(operation);
     ctx.host.http.writeJson(res, 200, { ready: transcriptPath !== null });
   } catch {
     ctx.host.http.writeJson(res, 200, { ready: false });
@@ -368,7 +366,6 @@ async function handleStart(
   operation: OperationNode,
   registry: AnalysisRegistry,
   catalog: () => Promise<AnalysisCatalog>,
-  readCapture: typeof readProviderSessionCapture,
   createSession: (options: AnalysisSessionOptions) => AnalystSession,
   readAgentCliPaths: (() => Promise<Readonly<Record<string, string>>>) | undefined,
   env: NodeJS.ProcessEnv,
@@ -382,7 +379,7 @@ async function handleStart(
     writeError(ctx, res, 400, ANALYSIS_ERROR_CODES.catalogInvalid, "Analysis selection is unavailable.");
     return true;
   }
-  const transcript = await resolveOperationTranscript(ctx, operation, readCapture);
+  const transcript = await resolveOperationTranscript(operation);
   if (!transcript.captureFound) {
     writeError(ctx, res, 409, ANALYSIS_ERROR_CODES.captureMissing, "Analysis capture is unavailable.");
     return true;
@@ -435,11 +432,11 @@ async function handleStart(
   return true;
 }
 
-async function resolveOperationTranscript(ctx: FleetPluginServerContext, operation: OperationNode, readCapture: typeof readProviderSessionCapture): Promise<{ readonly captureFound: boolean; readonly transcriptPath: string | null }> {
-  const capture = readCapture(operation.id, { capturesDir: ctx.host.paths.capturesDir });
-  if (!capture) return { captureFound: false, transcriptPath: null };
-  const transcriptPath = capture.transcriptPath
-    ? await resolveTranscriptPath(capture.transcriptPath, operation.ts.createdAt)
+async function resolveOperationTranscript(operation: OperationNode): Promise<{ readonly captureFound: boolean; readonly transcriptPath: string | null }> {
+  const providerSession = readProviderSession(operation.payload);
+  if (!providerSession) return { captureFound: false, transcriptPath: null };
+  const transcriptPath = providerSession.transcriptPath
+    ? await resolveTranscriptPath(providerSession.transcriptPath, operation.ts.createdAt)
     : null;
   return { captureFound: true, transcriptPath };
 }

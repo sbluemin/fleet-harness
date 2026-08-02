@@ -20,7 +20,6 @@ import {
 } from "../core/host/cli.js";
 import { createConsoleLock } from "../core/host/lock.js";
 import { createConsolePaths } from "../core/host/paths.js";
-import { captureSession } from "../../fleet-plugins/terminal/server/agent-api/session-capture.js";
 
 const LOCK: ConsoleLockPayload = {
   pid: 1234,
@@ -97,42 +96,6 @@ describe("fleet console CLI", () => {
     expect(() => parseConsoleHookCommand(["subagents-context"])).toThrow("Unknown fleet-console hook command");
   });
 
-  it("records capture-session hook stdin to the fleet session capture path atomically", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-capture-cli-"));
-    TEMP_DIRS.push(dir);
-    const paths = {
-      dir: path.join(dir, "console"),
-      stateFile: path.join(dir, "console", "state.json"),
-      capturesDir: path.join(dir, "console", "captures"),
-    };
-
-    const result = captureSession({
-      env: { FLEET_CONSOLE_SESSION_ID: "fleet-session-a" } as NodeJS.ProcessEnv,
-      input: JSON.stringify({
-        session_id: "provider-session-secret",
-        transcript_path: "/secret/transcript.jsonl",
-        cwd: "/ignored",
-        source: "startup",
-      }),
-      now: () => new Date("2026-06-16T00:00:00.000Z"),
-      paths,
-      provider: "claude",
-    });
-    const files = fs.readdirSync(paths.capturesDir);
-    const written = JSON.parse(fs.readFileSync(path.join(paths.capturesDir, "fleet-session-a.json"), "utf8")) as Record<string, unknown>;
-
-    if (!result) throw new Error("expected capture result");
-    expect(result.path).toBe(path.join(paths.capturesDir, "fleet-session-a.json"));
-    expect(written).toEqual({
-      provider: "claude",
-      sessionId: "provider-session-secret",
-      transcriptPath: "/secret/transcript.jsonl",
-      source: "startup",
-      capturedAt: "2026-06-16T00:00:00.000Z",
-    });
-    expect(files).toEqual(["fleet-session-a.json"]);
-  });
-
   it("posts capture-session hooks to the session-scoped capture endpoint", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-capture-hook-"));
     TEMP_DIRS.push(dir);
@@ -173,36 +136,6 @@ describe("fleet console CLI", () => {
     expect(calls[0]?.init?.method).toBe("POST");
     expect((calls[0]?.init?.headers as Record<string, string>).authorization).toBe(`Bearer ${lock.payload.token}`);
     expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({ provider: "claude" });
-  });
-
-  it("skips capture-session without fleet env or with an invalid provider without writing a capture", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-capture-cli-"));
-    TEMP_DIRS.push(dir);
-    const paths = {
-      dir: path.join(dir, "console"),
-      stateFile: path.join(dir, "console", "state.json"),
-      capturesDir: path.join(dir, "console", "captures"),
-    };
-    const input = JSON.stringify({ session_id: "provider-session-secret", source: "startup" });
-    const diagnostics: string[] = [];
-
-    expect(captureSession({
-      diagnostics: { write: (chunk: string | Uint8Array) => { diagnostics.push(String(chunk)); return true; } },
-      env: {},
-      input,
-      paths,
-      provider: "claude",
-    })).toBeNull();
-    expect(captureSession({
-      diagnostics: { write: (chunk: string | Uint8Array) => { diagnostics.push(String(chunk)); return true; } },
-      env: { FLEET_CONSOLE_SESSION_ID: "fleet-session-a" },
-      input,
-      paths,
-      provider: "bad",
-    })).toBeNull();
-    expect(fs.existsSync(paths.capturesDir)).toBe(false);
-    expect(diagnostics.join("")).toContain("missing_fleet_session_id");
-    expect(diagnostics.join("")).toContain("invalid_provider");
   });
 
   it("documents the usage entry points and subcommands in help text", () => {

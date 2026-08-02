@@ -27,6 +27,7 @@ import { createOperationsRouter } from "./operations/routes.js";
 import { createSanitizedOpDto } from "./operations/sanitize.js";
 import { createOperationStore } from "./operations/store.js";
 import type { OperationNode } from "./operations/types.js";
+import { migrateLegacyCaptures } from "./legacy-capture-migration.js";
 import { createConsoleDataPaths } from "./paths.js";
 import { createPluginClientAssets } from "./plugin-host/client-assets.js";
 import { createFleetPluginHost } from "./plugin-host/host.js";
@@ -394,7 +395,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     paths: {
       fleetDataDir,
-      capturesDir: durablePaths.capturesDir,
       pluginDataDir: (pluginId) => path.join(durablePaths.dir, "plugins", pluginId),
       resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.realpath ?? null,
       canonicalizeTheaterPath: canonicalizeTheaterPathSync,
@@ -1074,6 +1074,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       operations.replaceGroups([]);
     }
     deletionCoordinator.load(state.deletionTombstones ?? []);
+    // Legacy captures/ → state.json providerSession one-shot migration (best-effort).
+    // Runs after durable load so save preserves tombstones already restored into the coordinator.
+    migrateLegacyCaptures({
+      consoleDataDir: durablePaths.dir,
+      operations,
+      // 삭제 유예 중인 Operation은 live store에 없으므로 tombstone에서 flatten해 넘긴다.
+      tombstonedOperations: deletionCoordinator.list().flatMap((tombstone) => (
+        tombstone.kind === "operation" ? [tombstone.operation] : tombstone.operations
+      )),
+      save: () => saveDurableState(deletionCoordinator.list()),
+    });
     try {
       deletionCoordinator.sweepExpired();
     } catch (error) {

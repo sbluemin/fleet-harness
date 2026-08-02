@@ -9,7 +9,6 @@ import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { registerAgentRoutes } from "../server/agent.js";
-import { writeProviderSessionCaptureRaw } from "../server/agent-api/session-capture.js";
 import type { TerminalRuntime } from "../server/shared/index.js";
 import { createPluginTerminalTicketRegistry } from "../server/shared/tickets.js";
 import type { TerminalTicketContext } from "../server/shared/terminal-types.js";
@@ -175,7 +174,6 @@ function createHarness() {
       server: { origin: () => null },
       paths: {
         fleetDataDir,
-        capturesDir: fleetDataDir,
         pluginDataDir: () => fleetDataDir,
         resolveTheaterPath: (theaterId: string) => theaterId === "theater-1" ? path.join(fleetDataDir, "theater") : null,
         canonicalizeTheaterPath: (cwd: string) => cwd,
@@ -237,11 +235,6 @@ function createHarness() {
       sessionId: "provider-session-1",
       capturedAt: "2026-07-25T00:00:00.000Z",
     };
-    writeProviderSessionCaptureRaw(sessionId, JSON.stringify({
-      provider: "claude",
-      sessionId: "provider-session-1",
-      capturedAt: "2026-07-25T00:00:00.000Z",
-    }), { capturesDir: fleetDataDir });
     return sessionId;
   }
 
