@@ -268,10 +268,10 @@ describe("Session Analyst server contract", () => {
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
     const createSession = vi.fn((_options: unknown) => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
     registerAnalysisRoutes(router.ctx as never, {
       detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
       createSession: createSession as never,
     });
 
@@ -291,11 +291,11 @@ describe("Session Analyst server contract", () => {
     const router = createRouterHarness(true);
     const readAgentCliPaths = vi.fn(async () => ({ [cliCommand]: process.execPath }));
     const createSession = vi.fn((_options: unknown) => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
     registerAnalysisRoutes(router.ctx as never, {
       env: { PATH: "" },
       readAgentCliPaths,
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
       createSession: createSession as never,
     });
 
@@ -317,11 +317,11 @@ describe("Session Analyst server contract", () => {
     const router = createRouterHarness(true);
     const readAgentCliPaths = vi.fn(async () => ({ claude: "/stored/path/must-not-win" }));
     const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
     registerAnalysisRoutes(router.ctx as never, {
       env: { PATH: "", CLAUDE_BIN: process.execPath },
       readAgentCliPaths,
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
       createSession: createSession as never,
     });
 
@@ -340,6 +340,7 @@ describe("Session Analyst server contract", () => {
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
     const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    router.setProviderSession({ provider: "codex", sessionId: "private", capturedAt: "now", transcriptPath });
     registerAnalysisRoutes(router.ctx as never, {
       env: {
         PATH: "",
@@ -350,7 +351,6 @@ describe("Session Analyst server contract", () => {
       },
       readAgentCliPaths: async () => ({}),
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      readCapture: () => ({ provider: "codex", sessionId: "private", capturedAt: "now", transcriptPath }),
       createSession: createSession as never,
     });
 
@@ -375,10 +375,10 @@ describe("Session Analyst server contract", () => {
       send: async () => undefined,
       dispose,
     }));
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
     registerAnalysisRoutes(router.ctx as never, {
       detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
       createSession: createSession as never,
     });
 
@@ -405,10 +405,10 @@ describe("Session Analyst server contract", () => {
       send: async () => undefined,
       dispose,
     }));
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
     registerAnalysisRoutes(router.ctx as never, {
       detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
       createSession: createSession as never,
     });
 
@@ -432,10 +432,10 @@ describe("Session Analyst server contract", () => {
     const detection = new Promise<typeof statuses>((resolve) => { resolveDetect = resolve; });
     const detect = vi.fn(() => detection);
     const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
     registerAnalysisRoutes(router.ctx as never, {
       detect,
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
       createSession: createSession as never,
     });
 
@@ -459,10 +459,10 @@ describe("Session Analyst server contract", () => {
     const detection = new Promise<typeof statuses>((resolve) => { resolveDetect = resolve; });
     const detect = vi.fn(() => detection);
     const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
     registerAnalysisRoutes(router.ctx as never, {
       detect,
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
       createSession: createSession as never,
     });
 
@@ -480,7 +480,7 @@ describe("Session Analyst server contract", () => {
 
   it("reports analysis as not ready when no provider capture exists", async () => {
     const router = createRouterHarness(true);
-    registerAnalysisRoutes(router.ctx as never, { readCapture: () => null });
+    registerAnalysisRoutes(router.ctx as never);
 
     await router.call("GET", "/api/v1/plugins/terminal/analysis/op/ready");
 
@@ -492,9 +492,8 @@ describe("Session Analyst server contract", () => {
     const transcriptPath = join(dir, "captured.jsonl");
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
-    registerAnalysisRoutes(router.ctx as never, {
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
-    });
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
+    registerAnalysisRoutes(router.ctx as never);
 
     await router.call("GET", "/api/v1/plugins/terminal/analysis/op/ready");
 
@@ -507,9 +506,8 @@ describe("Session Analyst server contract", () => {
     const fallbackPath = join(dir, "active-session.jsonl");
     await writeFile(fallbackPath, "{}\n");
     const router = createRouterHarness(true);
-    registerAnalysisRoutes(router.ctx as never, {
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath: join(dir, "missing-session.jsonl") }),
-    });
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath: join(dir, "missing-session.jsonl") });
+    registerAnalysisRoutes(router.ctx as never);
 
     await router.call("GET", "/api/v1/plugins/terminal/analysis/op/ready");
 
@@ -523,10 +521,10 @@ describe("Session Analyst server contract", () => {
     await writeFile(join(dir, "session-b.jsonl"), "{}\n");
     const router = createRouterHarness(true);
     const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath: join(dir, "hook-session.jsonl") });
     registerAnalysisRoutes(router.ctx as never, {
       detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath: join(dir, "hook-session.jsonl") }),
       createSession: createSession as never,
     });
 
@@ -541,10 +539,10 @@ describe("Session Analyst server contract", () => {
     await writeFile(activePath, "{}\n");
     const router = createRouterHarness(true);
     const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath: join(dir, "hook-session.jsonl") });
     registerAnalysisRoutes(router.ctx as never, {
       detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath: join(dir, "hook-session.jsonl") }),
       createSession: createSession as never,
     });
 
@@ -572,10 +570,10 @@ describe("Session Analyst server contract", () => {
     const router = createRouterHarness(true);
     let emit: ((event: { type: "artifact"; artifact: { id: string; title: string; html: string; createdAt: string } }) => void) | undefined;
     const dispose = vi.fn(async () => undefined);
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
     registerAnalysisRoutes(router.ctx as never, {
       detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
       createSession: ((options: { onEvent: typeof emit }) => {
         emit = options.onEvent;
         return { start: async () => undefined, send: async () => undefined, dispose };
@@ -681,10 +679,10 @@ describe("Session Analyst server contract", () => {
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
     let emit: ((event: { type: "artifact"; artifact: { id: string; title: string; html: string; createdAt: string } }) => void) | undefined;
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
     registerAnalysisRoutes(router.ctx as never, {
       detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
       createSession: ((options: { onEvent: typeof emit }) => {
         emit = options.onEvent;
         return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined };
@@ -748,10 +746,10 @@ describe("Session Analyst server contract", () => {
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
     let emit: ((event: { type: "artifact"; artifact: { id: string; title: string; html: string; createdAt: string } }) => void) | undefined;
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
     registerAnalysisRoutes(router.ctx as never, {
       detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
       createSession: ((options: { onEvent: typeof emit }) => {
         emit = options.onEvent;
         return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined };
@@ -807,10 +805,10 @@ describe("Session Analyst server contract", () => {
 
   it("validates Host before route work and never reveals unavailable capture paths", async () => {
     const router = createRouterHarness(false);
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now" });
     registerAnalysisRoutes(router.ctx as never, {
       detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
       modelsFor: () => ({ defaultModel: "model-a", models: [{ modelId: "model-a", name: "Model A", effort: { supported: true, levels: ["low"], default: "low" } }] }) as never,
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now" }),
     });
     await router.call("GET", "/api/v1/plugins/terminal/analysis/catalog");
     expect(router.responses.at(-1)).toMatchObject({ status: 403, body: { error: { code: "analysis_catalog_invalid" } } });
@@ -824,7 +822,8 @@ describe("Session Analyst server contract", () => {
   it("rejects a malicious Origin through the shared gate for every analysis action", async () => {
     const detect = vi.fn(async () => []);
     const router = createRouterHarness(true);
-    registerAnalysisRoutes(router.ctx as never, { detect });
+    registerAnalysisRoutes(router.ctx as never, { detect 
+    });
     const requests = [
       ["GET", "/api/v1/plugins/terminal/analysis/catalog"],
       ["GET", "/api/v1/plugins/terminal/analysis/stream"],
@@ -881,10 +880,10 @@ describe("Session Analyst server contract", () => {
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
     const emitters = new Map<string, (event: AnalysisEvent) => void>();
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
     registerAnalysisRoutes(router.ctx as never, {
       detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
       createSession: ((options: { onEvent: (event: AnalysisEvent) => void; capturePath?: string }) => {
         emitters.set(options.capturePath ?? "default", options.onEvent);
         return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined };
@@ -928,10 +927,10 @@ describe("Session Analyst server contract", () => {
     const transcriptPath = join(dir, "captured.jsonl");
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
     registerAnalysisRoutes(router.ctx as never, {
       detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
       createSession: () => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }) as never,
     });
     const response = await router.call("GET", "/api/v1/plugins/terminal/analysis/stream");
@@ -947,10 +946,10 @@ describe("Session Analyst server contract", () => {
     const transcriptPath = join(dir, "captured.jsonl");
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
     registerAnalysisRoutes(router.ctx as never, {
       detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
       createSession: () => ({
         start: async () => undefined,
         send: async () => { throw new Error("/Users/alice/private token"); },
@@ -975,10 +974,10 @@ describe("Session Analyst server contract", () => {
     const router = createRouterHarness(true);
     let emit: ((event: AnalysisEvent) => void) | undefined;
     const dispose = vi.fn(async () => undefined);
+    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
     registerAnalysisRoutes(router.ctx as never, {
       detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
       modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      readCapture: () => ({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath }),
       createSession: ((options: { onEvent: typeof emit }) => {
         emit = options.onEvent;
         return { start: async () => undefined, send: async () => undefined, dispose };
@@ -1017,7 +1016,7 @@ function createRouterHarness(initialHostAllowance: boolean) {
   let handler: ((context: { req: EventEmitter & { method: string; headers: Record<string, string>; socket: { localPort: number } }; res: EventEmitter; pathname: string }) => Promise<boolean>) | undefined;
   const operationLifecycleHandlers = new Map<string, (payload: unknown) => void>();
   const responses: Array<{ status: number; body: unknown }> = [];
-  const operation = { id: "op", pluginId: "terminal", type: "agent", theaterId: "theater", payload: {}, ts: { createdAt: 0, updatedAt: 0 } };
+  const operation = { id: "op", pluginId: "terminal", type: "agent", theaterId: "theater", payload: {} as Record<string, unknown>, ts: { createdAt: 0, updatedAt: 0 } };
   const state = { allowHost: initialHostAllowance, operationPresent: true, operation };
   const ctx = {
     pluginId: "terminal", basePath: "/api/v1/plugins/terminal",
@@ -1029,7 +1028,7 @@ function createRouterHarness(initialHostAllowance: boolean) {
       },
       http: { writeJson: (_res: EventEmitter, status: number, body: unknown) => responses.push({ status, body }), readJsonBody: async (req: EventEmitter & { body?: unknown }) => req.body ?? null },
       operations: { get: (id: string) => state.operationPresent && id === "op" ? state.operation : null },
-      paths: { capturesDir: "/capture", resolveTheaterPath: () => "/theater" },
+      paths: { resolveTheaterPath: () => "/theater" },
       events: {
         subscribe: (channel: string, subscriber: (payload: unknown) => void) => {
           operationLifecycleHandlers.set(channel, subscriber);
@@ -1042,6 +1041,9 @@ function createRouterHarness(initialHostAllowance: boolean) {
   return {
     ctx, responses,
     get allowHost() { return state.allowHost; }, set allowHost(value: boolean) { state.allowHost = value; },
+    setProviderSession(providerSession: { readonly provider: "claude" | "codex"; readonly sessionId: string; readonly capturedAt: string; readonly transcriptPath?: string; readonly source?: string }) {
+      state.operation.payload = { ...state.operation.payload, providerSession };
+    },
     deleteOperation() { state.operationPresent = false; },
     recreateOperation() {
       state.operation = { ...operation, theaterId: "replacement-theater", ts: { createdAt: 1, updatedAt: 1 } };

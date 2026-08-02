@@ -153,7 +153,6 @@ describe("durable console state", () => {
       dir: "/tmp/fleet/console",
       stateFile: "/tmp/fleet/console/state.json",
       settingsFile: "/tmp/fleet/console/settings.json",
-      capturesDir: "/tmp/fleet/console/captures",
     };
 
     const store = createConsoleDurableStateStore({

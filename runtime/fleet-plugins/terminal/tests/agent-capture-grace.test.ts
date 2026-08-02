@@ -1,7 +1,6 @@
 import http from "node:http";
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
-import fs from "node:fs";
 import path from "node:path";
 
 import type { OperationCreateInput, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
@@ -9,9 +8,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createAgentSession } from "../client/agent/api.js";
 import { registerAgentRoutes } from "../server/agent.js";
-import { writeProviderSessionCaptureRaw } from "../server/agent-api/session-capture.js";
 import type { TerminalRuntime } from "../server/shared/index.js";
 
 const cleanups: Array<() => void | Promise<void>> = [];
@@ -25,24 +22,6 @@ afterEach(async () => {
 });
 
 describe("agent provider capture grace", () => {
-  it("keeps the provider capture until the deferred deletion is purged", async () => {
-    const harness = createHarness({ initialPrompt: "hello" });
-    await harness.postSessions();
-    const sessionId = harness.operations[0]!.id;
-    harness.markProviderSession(sessionId);
-    const capturePath = path.join(harness.fleetDataDir, `${sessionId}.json`);
-    writeProviderSessionCaptureRaw(sessionId, JSON.stringify({ provider: "claude" }), { capturesDir: harness.fleetDataDir });
-    expect(fs.existsSync(capturePath)).toBe(true);
-
-    await harness.deleteSession(sessionId);
-
-    // 삭제는 유예되므로 undo가 복원할 transcript가 남아 있어야 한다.
-    expect(fs.existsSync(capturePath)).toBe(true);
-
-    harness.emitHostEvent("operation:purged", { operationId: sessionId, pluginId: "terminal", type: "agent" });
-    expect(fs.existsSync(capturePath)).toBe(false);
-  });
-
   it("cancels pending OSC activity when a session is removed", async () => {
     vi.useFakeTimers();
     const harness = createHarness({ cliId: "codex" });
@@ -218,7 +197,6 @@ function createHarness(body: Record<string, unknown>) {
       server: { origin: () => null },
       paths: {
         fleetDataDir,
-        capturesDir: fleetDataDir,
         pluginDataDir: () => fleetDataDir,
         resolveTheaterPath: (theaterId: string) => theaterId === "theater-1" ? path.join(fleetDataDir, "theater") : null,
         canonicalizeTheaterPath: (cwd: string) => cwd,

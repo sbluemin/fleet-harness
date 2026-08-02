@@ -45,7 +45,7 @@ describe("createConsoleDataPaths", () => {
     expect(lock.dir).toBe(path.join(os.tmpdir(), `fleet-console-${TEST_UID}-stable`));
     expect(data.dir).toBe(path.join(fleetDataDir, "console"));
     expect(data.stateFile).toBe(path.join(fleetDataDir, "console", "state.json"));
-    expect(data.capturesDir).toBe(path.join(fleetDataDir, "console", "captures"));
+    expect(data.settingsFile).toBe(path.join(fleetDataDir, "console", "settings.json"));
   });
 
   it("uses stable durable data without a Desktop release channel", () => {
@@ -66,7 +66,7 @@ describe("createConsoleDataPaths", () => {
     expect(data.dir).toBe(expectedLocalDir);
     expect(data.dir).toBe(lock.dir);
     expect(data.stateFile).toBe(path.join(expectedLocalDir, "state.json"));
-    expect(data.capturesDir).toBe(path.join(expectedLocalDir, "captures"));
+    expect(data.settingsFile).toBe(path.join(expectedLocalDir, "settings.json"));
   });
 
   it("honors FLEET_CONSOLE_DIR for durable state regardless of channel, co-located with the lock", () => {
@@ -83,7 +83,7 @@ describe("createConsoleDataPaths", () => {
     expect(stable.dir).toBe(overrideDir);
     expect(local.dir).toBe(lock.dir);
     expect(local.stateFile).toBe(path.join(overrideDir, "state.json"));
-    expect(local.capturesDir).toBe(path.join(overrideDir, "captures"));
+    expect(local.settingsFile).toBe(path.join(overrideDir, "settings.json"));
   });
 
   it("lets an explicit fleetDataDir take precedence over both the channel and FLEET_CONSOLE_DIR", () => {

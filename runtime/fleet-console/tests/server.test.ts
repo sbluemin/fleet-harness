@@ -1560,8 +1560,7 @@ describe("console static and terminal ticket boundary", () => {
     const fixture = await startFixture({
       beforeCreateServer: ({ carrierStoreDir }) => {
         const consoleDir = path.join(carrierStoreDir, "console");
-        const capturesDir = path.join(consoleDir, "captures");
-        fs.mkdirSync(capturesDir, { recursive: true });
+        fs.mkdirSync(consoleDir, { recursive: true });
         fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
           version: 2,
           theaters: [{
@@ -1591,13 +1590,6 @@ describe("console static and terminal ticket boundary", () => {
             },
             ts: { createdAt: 1_000, updatedAt: 1_000 },
           }],
-        }));
-        fs.writeFileSync(path.join(capturesDir, "session-a.json"), JSON.stringify({
-          provider: "claude",
-          sessionId: "provider-session-secret",
-          transcriptPath: "/secret/transcript.jsonl",
-          source: "startup",
-          capturedAt: "2026-06-16T00:00:02.000Z",
         }));
       },
       terminalStartShell: (launch) => {
@@ -1642,7 +1634,6 @@ describe("console static and terminal ticket boundary", () => {
       body: JSON.stringify({ theaterId: theater.id, cliId: "claude" }),
     });
     const session = await created.json() as { readonly sessionId: string };
-    const capturePath = path.join(fixture.carrierStoreDir, "console", "captures", `${session.sessionId}.json`);
 
     const capture = await fetch(`${fixture.endpoint}plugins/terminal/agent/sessions/${encodeURIComponent(session.sessionId)}/capture`, {
       method: "POST",
@@ -1664,7 +1655,7 @@ describe("console static and terminal ticket boundary", () => {
     expect(created.status).toBe(200);
     expect(capture.status).toBe(200);
     expect(captureBody).toEqual({ ok: true });
-    expect(JSON.parse(fs.readFileSync(capturePath, "utf8"))).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
+    expect(fs.existsSync(path.join(fixture.carrierStoreDir, "console", "captures"))).toBe(false);
     const capturedState = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly payload?: { readonly providerSession?: unknown; readonly status?: unknown } }> };
     const operationsResponse = await getJson<{ readonly operations: ReadonlyArray<{ readonly payload?: Record<string, unknown> }> }>(`${fixture.endpoint}api/v1/operations`);
     const serializedOperations = JSON.stringify(operationsResponse);
@@ -2054,10 +2045,9 @@ describe("console static and terminal ticket boundary", () => {
       agentRuntime: runtime as never,
       beforeCreateServer: ({ carrierStoreDir }) => {
         const consoleDir = path.join(carrierStoreDir, "console");
-        const capturesDir = path.join(consoleDir, "captures");
-        fs.mkdirSync(capturesDir, { recursive: true });
+        fs.mkdirSync(consoleDir, { recursive: true });
         fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
-          version: 1,
+          version: 2,
           theaters: [{
             id: theaterId,
             path: dir,
@@ -2067,21 +2057,25 @@ describe("console static and terminal ticket boundary", () => {
             lastOpenedAt: "2026-06-16T00:00:01.000Z",
           }],
           operations: [{
-            sessionId: "session-a",
+            id: "session-a",
             theaterId,
-            cwd: dir,
-            cwdLabel: path.basename(dir),
-            cliId: "claude",
-            cliLabel: "Claude",
-            createdAt: 1_000,
+            pluginId: "terminal",
+            type: "agent",
+            title: path.basename(dir),
+            payload: {
+              cwd: dir,
+              cliId: "claude",
+              cliLabel: "Claude",
+              providerSession: {
+                provider: "claude",
+                sessionId: "provider-session-secret",
+                transcriptPath: "/secret/transcript.jsonl",
+                source: "resume",
+                capturedAt: "2026-06-16T00:00:02.000Z",
+              },
+            },
+            ts: { createdAt: 1_000, updatedAt: 1_000 },
           }],
-        }));
-        fs.writeFileSync(path.join(capturesDir, "session-a.json"), JSON.stringify({
-          provider: "claude",
-          sessionId: "provider-session-secret",
-          transcriptPath: "/secret/transcript.jsonl",
-          source: "resume",
-          capturedAt: "2026-06-16T00:00:02.000Z",
         }));
       },
       terminalStartShell: (launch) => {
@@ -2089,12 +2083,11 @@ describe("console static and terminal ticket boundary", () => {
         return createMockPty();
       },
     });
-    const capturePath = path.join(fixture.carrierStoreDir, "console", "captures", "session-a.json");
 
     const before = await getJson<{ readonly sessions: ReadonlyArray<{ readonly sessionId: string; readonly status: string; readonly resumeAvailable: boolean }> }>(`${fixture.endpoint}terminal/sessions`);
     const resumed = await fetch(`${fixture.endpoint}terminal/sessions/session-a/resume`, { method: "POST" });
     const body = await resumed.json() as Record<string, unknown>;
-    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly providerSession?: unknown }> };
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly payload?: { readonly providerSession?: unknown } }> };
     const serialized = JSON.stringify(body);
 
     expect(before.sessions[0]).toMatchObject({ sessionId: "session-a", status: "dormant", resumeAvailable: true });
@@ -2102,15 +2095,14 @@ describe("console static and terminal ticket boundary", () => {
     expect(body).toMatchObject({ sessionId: "session-a", status: "registered", resumeAvailable: true });
     expect(injectedResumeIds).toEqual(["provider-session-secret"]);
     expect(launchedArgs).toEqual([["--resume-from-admiral"]]);
-    expect(state.operations[0]?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
-    expect(fs.existsSync(capturePath)).toBe(false);
+    expect(state.operations[0]?.payload?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
     expect(serialized).not.toContain(dir);
     expect(serialized).not.toContain("provider-session-secret");
     expect(serialized).not.toContain("transcript");
     expect(serialized).not.toContain("providerSession");
   });
 
-  it.skip("forgets dormant terminal sessions from durable state and capture files", async () => {
+  it.skip("forgets dormant terminal sessions from durable state", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-dormant-delete-"));
     tempDirs.push(dir);
     const realpath = fs.realpathSync.native(dir);
@@ -2118,10 +2110,9 @@ describe("console static and terminal ticket boundary", () => {
     const fixture = await startFixture({
       beforeCreateServer: ({ carrierStoreDir }) => {
         const consoleDir = path.join(carrierStoreDir, "console");
-        const capturesDir = path.join(consoleDir, "captures");
-        fs.mkdirSync(capturesDir, { recursive: true });
+        fs.mkdirSync(consoleDir, { recursive: true });
         fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
-          version: 1,
+          version: 2,
           theaters: [{
             id: theaterId,
             path: dir,
@@ -2131,23 +2122,22 @@ describe("console static and terminal ticket boundary", () => {
             lastOpenedAt: "2026-06-16T00:00:01.000Z",
           }],
           operations: [{
-            sessionId: "session-a",
+            id: "session-a",
             theaterId,
-            cwd: dir,
-            cwdLabel: path.basename(dir),
-            cliId: "claude",
-            createdAt: 1_000,
-            providerSession: {
-              provider: "claude",
-              sessionId: "provider-session-secret",
-              capturedAt: "2026-06-16T00:00:02.000Z",
+            pluginId: "terminal",
+            type: "agent",
+            title: path.basename(dir),
+            payload: {
+              cwd: dir,
+              cliId: "claude",
+              providerSession: {
+                provider: "claude",
+                sessionId: "provider-session-secret",
+                capturedAt: "2026-06-16T00:00:02.000Z",
+              },
             },
+            ts: { createdAt: 1_000, updatedAt: 1_000 },
           }],
-        }));
-        fs.writeFileSync(path.join(capturesDir, "session-a.json"), JSON.stringify({
-          provider: "claude",
-          sessionId: "provider-session-secret",
-          capturedAt: "2026-06-16T00:00:02.000Z",
         }));
       },
     });
@@ -2159,10 +2149,9 @@ describe("console static and terminal ticket boundary", () => {
     expect(deleted.status).toBe(200);
     expect(sessions.sessions).toEqual([]);
     expect(state.operations).toEqual([]);
-    expect(fs.existsSync(path.join(fixture.carrierStoreDir, "console", "captures", "session-a.json"))).toBe(false);
   });
 
-  it.skip("forgets a Theater with its child operations and capture files", async () => {
+  it.skip("forgets a Theater with its child operations", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-theater-delete-"));
     tempDirs.push(dir);
     const realpath = fs.realpathSync.native(dir);
@@ -2170,8 +2159,7 @@ describe("console static and terminal ticket boundary", () => {
     const fixture = await startFixture({
       beforeCreateServer: ({ carrierStoreDir }) => {
         const consoleDir = path.join(carrierStoreDir, "console");
-        const capturesDir = path.join(consoleDir, "captures");
-        fs.mkdirSync(capturesDir, { recursive: true });
+        fs.mkdirSync(consoleDir, { recursive: true });
         fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
           version: 2,
           theaters: [{
@@ -2207,11 +2195,6 @@ describe("console static and terminal ticket boundary", () => {
             },
           ],
         }));
-        fs.writeFileSync(path.join(capturesDir, "session-a.json"), JSON.stringify({
-          provider: "claude",
-          sessionId: "provider-session-secret",
-          capturedAt: "2026-06-16T00:00:02.000Z",
-        }));
       },
     });
 
@@ -2225,7 +2208,6 @@ describe("console static and terminal ticket boundary", () => {
     expect(sessions.sessions).toEqual([]);
     expect(state.theaters).toEqual([]);
     expect(state.operations).toEqual([]);
-    expect(fs.existsSync(path.join(fixture.carrierStoreDir, "console", "captures", "session-a.json"))).toBe(false);
   });
 
   it.skip("moves a resumed live session with provider state back to dormant on natural PTY exit", async () => {
