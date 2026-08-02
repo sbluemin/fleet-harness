@@ -5,6 +5,47 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.42.0] - 2026-08-02
+
+### fleet-console
+
+#### Added
+- [fleet-console] 플러그인이 특정 작전에서 companion 패널을 사용 불가로 표시할 수 있게 하여, 그 작전에서는 패널과 키보드 단축키, 단축키 도움말 항목이 함께 사라집니다.
+- [fleet-console] 캔버스 제어의 Claude 실행 종류마다 한 줄 설명을 붙여, 고를 때마다 차이를 확인할 수 있습니다.
+
+#### Changed
+- [fleet-console] 캔버스 제어를 처음 열면 Claude 세 종류를 메뉴 순서대로 안내합니다. 기존 Claude Gateway 단독 안내를 대체해 Native와 Classic도 Gateway와 함께 소개합니다.
+
+#### Fixed
+- [fleet-console] 기능 안내에서 카드가 넘어가기 전에 다음 버튼을 연달아 눌러도 진행 표시가 전체 개수를 넘지 않습니다.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Claude Code를 재사용하되 wiki 스킬·Console 훅·wiki MCP만 싣는 Claude (Native) 캔버스 제어 런치를 추가합니다. 세션이 캐리어 도구를 받지 않으므로 이 작전에는 Carrier Streams 표면이 없습니다.
+
+#### Changed
+- [fleet-console] 캐리어 도구를 받지 않아 채워질 수 없던 Claude (Gateway) 작전에서 Carrier Streams 패널, STREAMS 핸들, 라이브 출격 리본, Alt+C 단축키를 제거합니다.
+
+#### Fixed
+- [fleet-console] 대비할 Native·Gateway 변형이 없는 Codex 실행 항목에서 (Classic) 접미를 제거합니다.
+
+### fleet-core
+
+#### Added
+- [fleet-admiral] Admiral 시스템 프롬프트와 캐리어/게이트웨이 도구를 생략하는 `native` doctrine의 Console 전용 `claude-native` Agent CLI를 도입합니다.
+- [core-ai-gateway] `FLEET_GATEWAY_WIRE_LOG`로 켜는 게이트웨이 통신 로깅을 추가합니다. 수신한 도구 목록, 프로바이더 요청 본문, 모든 응답 이벤트를 한 파일에 기록해 프로바이더별 동작 차이를 진단할 수 있으며, 변수에 경로를 지정하지 않으면 동작하지 않습니다.
+
+#### Changed
+- [fleet-admiral] 게이트웨이 독트린에서 작업을 기본적으로 Agent에 맡기고, staged 워크플로는 요청했을 때만 사용합니다.
+- [fleet-admiral] 위임 실행마다 게이트웨이 로스터를 먼저 조회하고 세션 모델을 재사용하는 대신 측정된 적합도와 프로바이더 할당량으로 모델을 고르므로, 워크플로 스테이지가 한 모델에 몰리지 않고 여러 모델로 분산됩니다.
+- [fleet-admiral] 노출된 모든 모델이 이미 세션에 이름 붙은 Agent로 등록되어 있으므로, 게이트웨이 독트린이 실행을 결과가 돌아오는 run으로 기술하고, background job 완료 신호를 설명하던 `<system-reminder>` 서문을 제거합니다.
+- [fleet-admiral] 게이트웨이 run의 실패가 대개 빈 반환이나 누락으로 도착한다고 보고 이를 조사 대상으로 다루며, 두 번 실패한 run을 보고 없이 호스트 세션이 대신 처리하는 길을 막습니다.
+
+#### Fixed
+- [fleet-admiral] 기본 Claude Code 에이전트를 구형 및 현재 선택자로 차단하고 게이트웨이 커스텀 에이전트 이름을 간소화합니다.
+- [core-ai-gateway] 게이트웨이 모델이 보내달라고 하지 않은 선택적 도구 인자를 임의로 채우지 않으므로, 게이트웨이 모델로 고정한 서브에이전트가 모르는 사이 Claude 모델로 바뀌어 실행되거나 파일 읽기가 없는 인자 때문에 실패하지 않습니다.
+
 ## [1.41.0] - 2026-08-02
 
 ### fleet-cli

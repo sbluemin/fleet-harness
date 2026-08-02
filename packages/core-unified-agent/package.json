@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/core-unified-agent",
-  "version": "1.41.0",
+  "version": "1.42.0",
   "private": true,
   "description": "여러 Agent CLI 백엔드를 통합하는 TypeScript SDK",
   "repository": {

@@ -5,6 +5,47 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.42.0] - 2026-08-02
+
+### fleet-console
+
+#### Added
+- [fleet-console] Let a plugin mark a companion panel as unavailable for a given Operation, so the panel, its keyboard shortcut, and its shortcut-help entry all disappear together for that Operation.
+- [fleet-console] Describe each Claude launch kind with a one-line summary in Canvas Controls, so the difference stays readable every time you choose.
+
+#### Changed
+- [fleet-console] Walk the three Claude launch kinds in menu order on the first Canvas Controls open, replacing the single Claude Gateway spotlight so Native and Classic are introduced alongside Gateway.
+
+#### Fixed
+- [fleet-console] Keep the feature tour progress count within its total when the next button is pressed repeatedly before the card advances.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Add a Claude (Native) Canvas Controls launch that reuses Claude Code with wiki skills, Console hooks, and wiki MCP only. The Operation carries no Carrier Streams surface, because the session never receives carrier tools.
+
+#### Changed
+- [fleet-console] Drop the Carrier Streams panel, its STREAMS handle, the live sortie ribbon, and the Alt+C shortcut from Claude (Gateway) Operations, whose sessions never receive carrier tools and so could never fill that panel.
+
+#### Fixed
+- [fleet-console] Drop the (Classic) suffix from the Codex launch entry, which has no Native or Gateway variant to contrast with.
+
+### fleet-core
+
+#### Added
+- [fleet-admiral] Introduce a console-only `claude-native` Agent CLI with `native` doctrine that skips the Admiral system prompt and carrier/gateway tools.
+- [core-ai-gateway] Add opt-in gateway wire logging behind `FLEET_GATEWAY_WIRE_LOG`, which records the inbound tool catalog, provider request bodies, and every response event to one file so provider behaviour differences can be diagnosed. It stays off unless the variable names a path.
+
+#### Changed
+- [fleet-admiral] Hand work to an Agent by default under gateway doctrine and reserve staged workflows for when you ask for one.
+- [fleet-admiral] Read the live gateway roster before every delegated run and pick the model by measured fit and provider allowance instead of reusing the session model, so workflow stages spread across models rather than concentrating on one.
+- [fleet-admiral] Describe execution in gateway doctrine as a run that returns its result, now that every exposed model is already a named Agent in the session, and drop the `<system-reminder>` preamble that existed to explain background job completion signals.
+- [fleet-admiral] Treat an empty or missing return as the normal shape of a failed gateway run, and forbid absorbing a twice-failed run into the host session instead of reporting it.
+
+#### Fixed
+- [fleet-admiral] Deny built-in Claude Code agents with legacy and current selectors while simplifying gateway custom agent names.
+- [core-ai-gateway] Gateway-backed models no longer fill in optional tool arguments they were never asked to send, so a subagent pinned to a gateway model is no longer rerouted to a Claude model behind your back, and a file read no longer fails on a fabricated argument.
+
 ## [1.41.0] - 2026-08-02
 
 ### fleet-cli
