@@ -1532,7 +1532,8 @@ describe("OpenAI Responses adapter", () => {
     expect(body.tools).toEqual([{
       type: "function",
       name: "mcp__fleet__carrier_dispatch",
-      parameters: { type: "object", properties: {} },
+      parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+      strict: true,
     }]);
   });
 
@@ -1725,7 +1726,13 @@ describe("OpenAI Responses adapter", () => {
       {
         type: "function",
         name: "read_file",
-        parameters: { type: "object", properties: { path: { type: "string" } } },
+        parameters: {
+          type: "object",
+          properties: { path: { type: ["string", "null"] } },
+          required: ["path"],
+          additionalProperties: false,
+        },
+        strict: true,
       },
       { type: "web_search" },
     ]);
@@ -1764,7 +1771,13 @@ describe("OpenAI Responses adapter", () => {
       {
         type: "function",
         name: "read_file",
-        parameters: { type: "object", properties: { path: { type: "string" } } },
+        parameters: {
+          type: "object",
+          properties: { path: { type: ["string", "null"] } },
+          required: ["path"],
+          additionalProperties: false,
+        },
+        strict: true,
       },
       { type: "web_search", filters: { allowed_domains: ["github.com"] } },
     ]);

@@ -13,6 +13,7 @@ import type {
   CanonicalWebSearchCallOutputItem,
   CanonicalWebSearchSource
 } from "./canonical.js";
+import { wireLog } from "./wire-log.js";
 
 export const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 /** ChatGPT 구독으로 Codex가 호출하는 백엔드. Platform API와 다른 표면이다. */
@@ -144,6 +145,8 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
     const controller = new AbortController();
     const unlinkAbort = linkAbortSignal(options.signal, controller);
     const payload = forOpenAIResponsesBackend(request, this.dropSamplingParams);
+    // Exact JSON body sent upstream, including each tool's `parameters` and any `strict` flag.
+    wireLog("openai.wire.request", { url: this.url, payload });
     let response: Response;
 
     try {
@@ -224,7 +227,15 @@ function forOpenAIResponsesBackend(
 
   const wireTools: OpenAIResponsesWireTool[] = (canonicalTools ?? []).map((tool) => {
     const { defer_loading: _deferLoading, ...wireTool } = tool;
-    return wireTool;
+    // A schema outside strict mode's subset is rejected with a 400 that fails the whole
+    // request, not just that tool, so an incompatible tool keeps its original schema and
+    // forfeits the guarantee rather than taking every other tool down with it.
+    if (!strictCompatible(wireTool.parameters)) return wireTool;
+    return {
+      ...wireTool,
+      parameters: strictParameters(wireTool.parameters),
+      strict: true,
+    };
   });
 
   // native_tools is canonical-only: it must never reach the OpenAI wire body as-is.
@@ -515,19 +526,18 @@ function canonicalEvent(value: unknown): CanonicalResponseEvent | undefined {
         item
       };
     }
+    // Argument deltas are dropped: a partial JSON fragment cannot have its nulls stripped, and
+    // forwarding raw fragments would let the client reassemble the un-stripped text. The `.done`
+    // event below carries the whole argument object, which downstream treats as the remainder
+    // when nothing was streamed ahead of it.
     case "response.function_call_arguments.delta":
-      return {
-        type: value.type,
-        item_id: string(value.item_id, "item_id"),
-        output_index: number(value.output_index, "output_index"),
-        delta: string(value.delta, "delta")
-      };
+      return undefined;
     case "response.function_call_arguments.done":
       return {
         type: value.type,
         item_id: string(value.item_id, "item_id"),
         output_index: number(value.output_index, "output_index"),
-        arguments: string(value.arguments, "arguments")
+        arguments: stripNullArguments(string(value.arguments, "arguments"))
       };
     case "response.completed":
       return { type: value.type, response: responseSnapshot(value.response) };
@@ -598,6 +608,180 @@ function usage(value: unknown): CanonicalUsage {
   };
 }
 
+/**
+ * OpenAI strict mode admits no optional property: every key must appear in `required`, and
+ * "not provided" is expressed as an explicit null rather than omission.
+ *
+ * Without it the model fabricates values for omitted optional fields — empty strings for
+ * free-form strings, an arbitrary member for enums — and those reach the client as real
+ * arguments. A fabricated `Agent.model` silently overrides the subagent's pinned model, and a
+ * fabricated `Read.pages` fails the call outright.
+ *
+ * `stripNullArguments` is the inverse: the nulls this transform makes representable are
+ * removed again before the call reaches the client, restoring omission semantics.
+ */
+/**
+ * Keywords known to survive strict mode. An allowlist rather than a denylist: an unknown
+ * keyword is far more likely to be one strict rejects than one it accepts, and the cost is
+ * asymmetric — an over-strict verdict costs a single tool its guarantee, while a wrong
+ * permissive verdict costs the whole request a 400 that fails every tool with it.
+ */
+const STRICT_ALLOWED_KEYWORDS = new Set([
+  "type",
+  "properties",
+  "required",
+  "additionalProperties",
+  "items",
+  "enum",
+  "anyOf",
+  "$defs",
+  "$ref",
+  "description",
+  "title",
+  "format",
+  "pattern",
+  "minimum",
+  "maximum",
+  "exclusiveMinimum",
+  "exclusiveMaximum",
+  "multipleOf",
+  "minLength",
+  "maxLength",
+  "minItems",
+  "maxItems",
+  // Dropped by `strictSchema` before the schema reaches the wire.
+  "$schema",
+  "default",
+]);
+
+/** Whether every subschema stays inside the subset strict mode accepts. */
+function strictCompatible(schema: unknown): boolean {
+  if (!isRecord(schema)) return true;
+
+  for (const key of Object.keys(schema)) {
+    if (!STRICT_ALLOWED_KEYWORDS.has(key)) return false;
+  }
+  // Strict mode requires every subschema to declare what it accepts.
+  if (!("type" in schema) && !Array.isArray(schema.anyOf) && typeof schema.$ref !== "string") {
+    return false;
+  }
+  // A free-form object cannot satisfy strict mode, which requires every key to be declared
+  // with `additionalProperties: false`; an array must say what it holds.
+  if (schema.type === "object" && !isRecord(schema.properties)) return false;
+  if (schema.type === "array" && !isRecord(schema.items)) return false;
+
+  if (isRecord(schema.properties)) {
+    for (const value of Object.values(schema.properties)) {
+      if (!strictCompatible(value)) return false;
+    }
+  }
+  if (isRecord(schema.$defs)) {
+    for (const value of Object.values(schema.$defs)) {
+      if (!strictCompatible(value)) return false;
+    }
+  }
+  if (isRecord(schema.items) && !strictCompatible(schema.items)) return false;
+  if (Array.isArray(schema.anyOf)) {
+    for (const branch of schema.anyOf) {
+      if (!strictCompatible(branch)) return false;
+    }
+  }
+  return true;
+}
+
+function strictParameters(schema: Record<string, unknown>): Record<string, unknown> {
+  const converted = strictSchema(schema);
+  return isRecord(converted) ? converted : schema;
+}
+
+function strictSchema(schema: unknown): unknown {
+  if (!isRecord(schema)) return schema;
+  const next: Record<string, unknown> = { ...schema };
+
+  // Metadata strict mode has no use for: `$schema` is a dialect marker it does not accept, and
+  // `default` is meaningless once every property is required.
+  delete next.$schema;
+  delete next.default;
+
+  for (const key of ["anyOf", "oneOf", "allOf"] as const) {
+    const branches = next[key];
+    if (Array.isArray(branches)) next[key] = branches.map(strictSchema);
+  }
+  if (isRecord(next.items)) next.items = strictSchema(next.items);
+
+  const properties = next.properties;
+  if (isRecord(properties)) {
+    const required = new Set(
+      Array.isArray(next.required)
+        ? next.required.filter((name): name is string => typeof name === "string")
+        : [],
+    );
+    const rewritten: Record<string, unknown> = {};
+    for (const [name, value] of Object.entries(properties)) {
+      const child = strictSchema(value);
+      rewritten[name] = required.has(name) ? child : nullableSchema(child);
+    }
+    next.properties = rewritten;
+    next.required = Object.keys(rewritten);
+    next.additionalProperties = false;
+  }
+  return next;
+}
+
+/**
+ * Widens a schema so an explicit null is valid, which is how strict mode spells "absent".
+ *
+ * Naming that null in each property's description was measured and dropped: it changed
+ * nothing. Under strict mode a model still supplies the default quoted in the description
+ * rather than declining, and the instruction only grew the tool catalog. What strict does buy
+ * is that a value the model was told not to send is now omittable at all — which is what
+ * stopped `Agent.model` from overriding a pinned subagent model.
+ */
+function nullableSchema(schema: unknown): unknown {
+  if (!isRecord(schema)) return schema;
+  const next: Record<string, unknown> = { ...schema };
+
+  if (Array.isArray(next.enum) && !next.enum.includes(null)) {
+    next.enum = [...next.enum, null];
+  }
+  if (Array.isArray(next.anyOf)) {
+    next.anyOf = [...next.anyOf, { type: "null" }];
+    return next;
+  }
+  const type = next.type;
+  if (typeof type === "string") {
+    if (type !== "null") next.type = [type, "null"];
+  } else if (Array.isArray(type)) {
+    if (!type.includes("null")) next.type = [...type, "null"];
+  }
+  return next;
+}
+
+/**
+ * Removes the nulls strict mode requires, so the client sees an omitted argument rather than
+ * an explicit null. Anthropic tool schemas treat absence — not null — as "not provided".
+ */
+function stripNullArguments(raw: string): string {
+  if (raw.length === 0 || !raw.includes("null")) return raw;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+  if (!isRecord(parsed)) return raw;
+  return JSON.stringify(withoutNulls(parsed));
+}
+
+function withoutNulls(value: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry === null) continue;
+    out[key] = isRecord(entry) ? withoutNulls(entry) : entry;
+  }
+  return out;
+}
+
 function outputItem(value: unknown): CanonicalOutputItem | undefined {
   const item = record(value, "item");
   if (item.type === "message") {
@@ -614,7 +798,7 @@ function outputItem(value: unknown): CanonicalOutputItem | undefined {
       type: "function_call",
       call_id: typeof item.call_id === "string" ? item.call_id : id,
       name: string(item.name, "item.name"),
-      arguments: typeof item.arguments === "string" ? item.arguments : ""
+      arguments: typeof item.arguments === "string" ? stripNullArguments(item.arguments) : ""
     };
   }
   if (item.type === "web_search_call") {

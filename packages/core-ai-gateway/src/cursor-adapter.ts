@@ -28,6 +28,7 @@ import {
   canonicalMessageText,
 } from "./canonical.js";
 import { cursorNativeExecPolicyReplies } from "./cursor-native-exec-policy.js";
+import { wireLog } from "./wire-log.js";
 import {
   cursorUnknownExecCaseName,
   cursorUnknownExecReply,
@@ -1237,6 +1238,9 @@ export class CursorAdapter implements AiGatewayAdapter {
       }
       throw error;
     }
+    // Cursor rewrites and caps the declared catalog before it reaches the wire; this is the
+    // post-rewrite tool set plus the resolved model coordinate.
+    wireLog("cursor.wire.plan", plan);
     const descriptor: CursorLiveRunDescriptor = {
       conversationId: identity.conversationId,
       sessionId: identity.sessionId,
