@@ -104,9 +104,16 @@ Doctrine resolution is owned by `resolveDoctrineFromCliId`:
   `src/protocols/standing-orders/gateway.ts`, the doctrine peer of
   `standing-orders/classic.ts`; each file holds all six order bodies outright.
   `carrier-operations-policy` is replaced by `orchestration-policy`, which names
-  no executor at all: execution is described as workflow stages, and both carrier
-  and subagent vocabulary are absent. Mission Anchor and Context Confidence speak
-  in decision boundaries instead of protocol checkpoints.
+  no executor persona: one execution that returns its result is a `run`, `stage`
+  is reserved for the workflow surface, and both carrier and subagent vocabulary
+  are absent. Because every exposed model is already registered as a named Agent
+  in the session, the doctrine describes a run as a call that returns; the
+  asynchronous job vocabulary of the carrier path — queue, file a job, poll for
+  completion — is absent, and so is the `<system-reminder>` preamble paragraph
+  that explained carrier job completion signals. Result Integrity instead states
+  that a failed run usually arrives as an empty or missing return rather than an
+  error. Mission Anchor and Context Confidence speak in decision boundaries
+  instead of protocol checkpoints.
 - Plugin skill render installs `assumption-audit` and `wiki-operations` plus the
   gateway-only run skills — `workflow`, `architecture-review`,
   `codebase-research`, `implementation-run`, and `quality-review`. Each run skill

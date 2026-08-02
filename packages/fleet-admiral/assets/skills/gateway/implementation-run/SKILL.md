@@ -28,7 +28,7 @@ Discover and Apply pipeline naturally, but **Decide is a barrier by necessity** 
 
 ## Decisions Travel as Literals
 
-Before dispatching, close every judgment gap. Ask both:
+Before starting any branch, close every judgment gap. Ask both:
 
 1. Must the stage choose a concrete value?
 2. Does it lack the doctrine or convention context to justify that choice?
@@ -42,7 +42,7 @@ Never leave a choice to a stage behind phrases like "match the existing style", 
 - **Isolate every writing branch.** Parallel edits to a shared tree corrupt each other. Worktree isolation costs setup time and disk; pay it whenever more than one branch writes.
 - **Inspect artifacts, never narratives.** Read the actual diff for each site. A stage's summary of what it did is evidence of what it believed, not of what it wrote.
 - **Verbatim match or defect.** A literal you sent must appear exactly. An equivalent-looking substitution — a synonym token, a reformatted path, a renamed key — is a defect, not a variation.
-- **A site that needs a new decision stops.** When Apply discovers a case Decide did not cover, it returns that fact instead of choosing. Resolve it on the host and re-dispatch; do not let one branch set precedent for the rest.
+- **A site that needs a new decision stops.** When Apply discovers a case Decide did not cover, it returns that fact instead of choosing. Resolve it on the host and start that branch again with the value; do not let one branch set precedent for the rest.
 - **Reject rather than patch.** A branch whose output drifted is re-run with a sharper prompt. Fixing its output by hand hides that the prompt was insufficient, and the next site will drift the same way.
 
 ## Scope Warning
@@ -56,11 +56,11 @@ Stop when every discovered site is either accepted or explicitly deferred with a
 ## Gotchas
 
 - **Symptom:** Tests pass and the build is green, but the change reads as foreign to the surrounding code.
-  **Action:** Diff the produced values against the literals you dispatched. Re-run the drifted sites with the literal spelled out.
+  **Action:** Diff the produced values against the literals you sent. Re-run the drifted sites with the literal spelled out.
   **Why:** Green checks confirm the code runs, not that it belongs; convention is invisible to a compiler.
 
 - **Symptom:** Different sites solved the same sub-problem differently.
-  **Action:** That sub-problem belonged in Decide. Choose once on the host and re-dispatch the affected sites.
+  **Action:** That sub-problem belonged in Decide. Choose once on the host and re-run the affected sites with the value.
   **Why:** Each branch resolved an open decision independently, which is exactly what the Decide barrier exists to prevent.
 
 - **Symptom:** A branch reports success but changed nothing.

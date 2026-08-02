@@ -27,7 +27,7 @@ Two things stay out of this skill on purpose:
 Every gateway skeleton is a table of `Stage | Role | Fan | Returns`. Read it as an execution plan:
 
 - **Role** is the one-word job — map, propose, implement, verify, synthesize, transform. It is also the input to model assignment below.
-- **Fan** is how many parallel branches that stage runs. `1` is one branch. `one per <item>` is a fan-out sized by the previous stage's output, not by a number you pick. **`host only` is not a stage you dispatch** — it is a barrier where you do the work yourself, and dispatching it defeats the skeleton.
+- **Fan** is how many parallel branches that stage runs. `1` is one branch. `one per <item>` is a fan-out sized by the previous stage's output, not by a number you pick. **`host only` is not a stage you hand off** — it is a barrier where you do the work yourself, and handing it off defeats the skeleton.
 - **Returns** is the contract. When a stage returns structured data, declare the schema rather than parsing prose; a stage that must fill a shape will retry against it, while a stage asked to write prose will improvise.
 
 ## Pipeline by Default
@@ -45,7 +45,7 @@ Each skill's skeleton already names its own barriers, and they are the load-bear
 Fan-out helpers routinely turn a failed branch into an empty result rather than an error. A run that lost three of eight branches then looks like a run that found less, which is indistinguishable from a thorough run over a quiet subject.
 
 - Have each stage **return its failure as a value** — a result that says it failed and why — instead of throwing into the helper.
-- Before synthesizing, check the branch count against what you dispatched. A missing branch is a finding.
+- Before synthesizing, check the branch count against what you started. A missing branch is a finding.
 - Never report coverage you did not verify. If the run capped, sampled, or dropped anything, say so in the report; silent truncation reads as completeness.
 
 ## Model and Effort Assignment
@@ -113,5 +113,5 @@ A stage running on another model has no feel for this repository's conventions, 
   **Why:** Staging buys overlap; a skeleton executed as a sequence of barriers pays the coordination cost and collects none of it back.
 
 - **Symptom:** A stage came back asking what to do, or made a choice the skeleton reserved for the host.
-  **Action:** Move that decision to the preceding host-only barrier and re-dispatch with the value spelled out.
+  **Action:** Move that decision to the preceding host-only barrier and run the stage again with the value spelled out.
   **Why:** A stage handed an open decision always closes it, differently in each branch — which is the failure the barrier was placed there to prevent.
