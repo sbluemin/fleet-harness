@@ -33,8 +33,8 @@ export function combineAgentCliLaunchMetadata(
   }));
 }
 
-// claude-gateway는 Launch 전용이라 CLI_BACKENDS(Carrier/Analyst 전송 카탈로그)에 등재하지 않는다.
+// claude-native / claude-gateway는 Launch 전용이라 CLI_BACKENDS(Carrier/Analyst 전송 카탈로그)에 등재하지 않는다.
 // 실행 바이너리는 claude와 같으므로 설치 판정도 claude를 따른다.
 function resolveCliCommand(id: AgentCliId): string {
-  return id === "claude-gateway" ? "claude" : CLI_BACKENDS[id].cliCommand;
+  return id === "claude-gateway" || id === "claude-native" ? "claude" : CLI_BACKENDS[id].cliCommand;
 }

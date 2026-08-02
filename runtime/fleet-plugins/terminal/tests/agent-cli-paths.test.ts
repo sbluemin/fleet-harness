@@ -176,6 +176,9 @@ describe("Agent CLI launch env overlay", () => {
     expect(applyAgentCliPathEnvOverlay({ PATH: "/usr/bin" }, "claude-gateway", { claude: "/custom/claude" })).toMatchObject({
       CLAUDE_BIN: "/custom/claude",
     });
+    expect(applyAgentCliPathEnvOverlay({ PATH: "/usr/bin" }, "claude-native", { claude: "/custom/claude" })).toMatchObject({
+      CLAUDE_BIN: "/custom/claude",
+    });
     expect(applyAgentCliPathEnvOverlay({ CLAUDE_BIN: "/managed/claude" }, "claude", { claude: "/custom/claude" })).toEqual({
       CLAUDE_BIN: "/managed/claude",
     });

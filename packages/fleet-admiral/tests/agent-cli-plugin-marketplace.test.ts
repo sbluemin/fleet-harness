@@ -280,6 +280,27 @@ describe("agent CLI plugin marketplace rendering", () => {
     }
   });
 
+  it("renders wiki-operations only for native doctrine", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-native-doctrine-"));
+    tempDirs.push(root);
+
+    const plugin = await createAgentCliPlugin({
+      cliId: "claude-native",
+      cwd: path.join(root, "project"),
+      dataDir: path.join(root, "data"),
+      captureSessionHookExec: { command: "node", args: ["cli.mjs", "hook", "capture-session", "claude"] },
+      withMarketplaceLock: async (_target, fn) => fn(),
+    });
+
+    expect(plugin.pluginRoot).toBe(path.join(root, "data", "marketplace", "plugins", "fleet-native"));
+    const skillsRoot = path.join(plugin.pluginRoot, "skills");
+    expect(existsSync(path.join(skillsRoot, "wiki-operations", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(skillsRoot, "carrier-operations", "SKILL.md"))).toBe(false);
+    expect(existsSync(path.join(skillsRoot, "assumption-audit", "SKILL.md"))).toBe(false);
+    expect(existsSync(path.join(skillsRoot, "protocol-baseline", "SKILL.md"))).toBe(false);
+    expect(existsSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"))).toBe(true);
+  });
+
   it("keeps classic and gateway asset roots isolated under the same dataDir", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-doctrine-roots-"));
     tempDirs.push(root);
@@ -289,27 +310,35 @@ describe("agent CLI plugin marketplace rendering", () => {
     const withMarketplaceLock = async <T>(_target: string, fn: () => T | Promise<T>): Promise<T> => fn();
     const classicRoot = path.join(dataDir, "marketplace", "plugins", "fleet");
     const gatewayRoot = path.join(dataDir, "marketplace", "plugins", "fleet-gateway");
+    const nativeRoot = path.join(dataDir, "marketplace", "plugins", "fleet-native");
 
     for (const order of [
-      ["claude", "claude-gateway"],
-      ["claude-gateway", "claude"],
+      ["claude", "claude-gateway", "claude-native"],
+      ["claude-native", "claude-gateway", "claude"],
     ] as const) {
       let classicPluginRoot = "";
       let gatewayPluginRoot = "";
+      let nativePluginRoot = "";
       for (const cliId of order) {
         const plugin = await createAgentCliPlugin({ cliId, cwd, dataDir, withMarketplaceLock });
         if (cliId === "claude") classicPluginRoot = plugin.pluginRoot;
-        else gatewayPluginRoot = plugin.pluginRoot;
+        else if (cliId === "claude-gateway") gatewayPluginRoot = plugin.pluginRoot;
+        else nativePluginRoot = plugin.pluginRoot;
       }
 
       expect(classicPluginRoot).toBe(classicRoot);
       expect(gatewayPluginRoot).toBe(gatewayRoot);
+      expect(nativePluginRoot).toBe(nativeRoot);
       expect(existsSync(classicRoot)).toBe(true);
       expect(existsSync(gatewayRoot)).toBe(true);
+      expect(existsSync(nativeRoot)).toBe(true);
       expect(existsSync(path.join(classicRoot, "skills", "carrier-operations", "SKILL.md"))).toBe(true);
       expect(existsSync(path.join(gatewayRoot, "skills", "carrier-operations", "SKILL.md"))).toBe(false);
+      expect(existsSync(path.join(nativeRoot, "skills", "carrier-operations", "SKILL.md"))).toBe(false);
       expect(existsSync(path.join(classicRoot, "skills", "protocol-baseline", "SKILL.md"))).toBe(true);
       expect(existsSync(path.join(gatewayRoot, "skills", "protocol-baseline", "SKILL.md"))).toBe(false);
+      expect(existsSync(path.join(nativeRoot, "skills", "wiki-operations", "SKILL.md"))).toBe(true);
+      expect(existsSync(path.join(nativeRoot, "skills", "assumption-audit", "SKILL.md"))).toBe(false);
     }
   });
 });

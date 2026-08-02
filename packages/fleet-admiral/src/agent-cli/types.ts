@@ -1,4 +1,4 @@
-export type AgentCliId = "claude" | "claude-gateway" | "codex";
+export type AgentCliId = "claude" | "claude-native" | "claude-gateway" | "codex";
 
 export interface AgentCliProfile {
   readonly id: AgentCliId;

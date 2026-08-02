@@ -3,8 +3,7 @@ import type { AgentCliInjectionContext, AgentCliMcpServerArg } from "../types.js
 export function buildClaudeNativeArgs(context: AgentCliInjectionContext): string[] {
   return [
     ...buildResumeArgs(context.resumeSessionId),
-    "--append-system-prompt-file",
-    requireSystemPromptFile(context),
+    ...buildSystemPromptArgs(context),
     ...context.pluginRoots.flatMap((pluginRoot) => [
       "--plugin-dir",
       pluginRoot,
@@ -32,6 +31,12 @@ function buildResumeArgs(resumeSessionId: string | undefined): string[] {
   return resumeSessionId === undefined ? [] : ["--resume", resumeSessionId];
 }
 
+function buildSystemPromptArgs(context: AgentCliInjectionContext): string[] {
+  // native 세션은 Admiral 시스템 프롬프트를 붙이지 않는다.
+  if (context.systemPromptFile === undefined) return [];
+  return ["--append-system-prompt-file", context.systemPromptFile];
+}
+
 function buildClaudeMcpConfig(servers: readonly AgentCliMcpServerArg[]): string {
   return JSON.stringify({
     mcpServers: Object.fromEntries(
@@ -44,9 +49,4 @@ function buildClaudeMcpConfig(servers: readonly AgentCliMcpServerArg[]): string 
       }]),
     ),
   });
-}
-
-function requireSystemPromptFile(context: AgentCliInjectionContext): string {
-  if (context.systemPromptFile) return context.systemPromptFile;
-  throw new Error("Claude system prompt file is required for native injection");
 }

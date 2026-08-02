@@ -7,7 +7,7 @@ import type { FleetHookExec } from "../types.js";
 import type { AssetPluginBundle, CreateAgentCliPluginOptions } from "./types.js";
 
 /** Classic and gateway asset roots must coexist under the same marketplace. */
-export const ASSET_PLUGIN_DIRECTORY_NAMES = ["fleet", "fleet-gateway"] as const;
+export const ASSET_PLUGIN_DIRECTORY_NAMES = ["fleet", "fleet-gateway", "fleet-native"] as const;
 
 export const assetBundle: AssetPluginBundle = {
   description: "Fleet carrier delegation and wiki evidence plugin",
@@ -19,7 +19,9 @@ export const assetBundle: AssetPluginBundle = {
 };
 
 export function resolveAssetPluginDirectoryName(doctrine: AdmiralDoctrine): string {
-  return doctrine === "gateway" ? "fleet-gateway" : "fleet";
+  if (doctrine === "gateway") return "fleet-gateway";
+  if (doctrine === "native") return "fleet-native";
+  return "fleet";
 }
 
 export function renderAssetPluginRoot(
@@ -29,7 +31,7 @@ export function renderAssetPluginRoot(
 ): void {
   const doctrine = options.doctrine ?? resolveDoctrineFromCliId(options.cliId);
   renderEmbeddedSkillAssets(pluginRoot, doctrine);
-  if (options.cliId === "claude" || options.cliId === "claude-gateway") {
+  if (options.cliId === "claude" || options.cliId === "claude-native" || options.cliId === "claude-gateway") {
     writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), claudeHooks(options), pluginRoot);
   }
 }
@@ -91,6 +93,13 @@ function renderEmbeddedSkillAssets(pluginRoot: string, doctrine: AdmiralDoctrine
 function selectSkillAssetsForDoctrine(
   doctrine: AdmiralDoctrine,
 ): ReadonlyArray<{ readonly relativePath: string; readonly content: string }> {
+  if (doctrine === "native") {
+    // native는 wiki-operations만 렌더한다. Console 훅은 별도로 유지된다.
+    return EMBEDDED_AGENT_CLI_SKILL_ASSETS.filter(
+      (asset) => asset.relativePath.startsWith("wiki-operations/"),
+    );
+  }
+
   if (doctrine === "gateway") {
     // gateway 경로는 protocol-* 스킬과 carrier-operations를 렌더하지 않는다.
     // gateway/<name>/SKILL.md는 접두를 벗겨 동일 이름의 base 자산을 대체한다.

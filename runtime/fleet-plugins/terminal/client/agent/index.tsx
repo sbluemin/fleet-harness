@@ -171,7 +171,7 @@ export const agentPlugin = definePlugin({
     return { id: session.sessionId };
   },
   renderLaunchIcon: (kind) => {
-    if (kind.id === "claude" || kind.id === "claude-gateway") return <ClaudeGlyph />;
+    if (kind.id === "claude" || kind.id === "claude-native" || kind.id === "claude-gateway") return <ClaudeGlyph />;
     if (kind.id === "codex") return <CodexGlyph />;
     return <AgentGlyph />;
   },

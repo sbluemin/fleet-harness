@@ -133,11 +133,13 @@ describe("gateway loadout", () => {
 });
 
 describe("gateway_models tool", () => {
-  it("is withheld from classic sessions that cannot route its ids", () => {
+  it("is withheld from classic and native sessions that cannot route its ids", () => {
     expect(isHostSessionToolAllowed(GATEWAY_MODELS_TOOL_ID, "gateway")).toBe(true);
     expect(isHostSessionToolAllowed(GATEWAY_MODELS_TOOL_ID, "classic")).toBe(false);
+    expect(isHostSessionToolAllowed(GATEWAY_MODELS_TOOL_ID, "native")).toBe(false);
     expect(isHostSessionToolAllowed("carrier_dispatch", "classic")).toBe(true);
     expect(isHostSessionToolAllowed("carrier_dispatch", "gateway")).toBe(false);
+    expect(isHostSessionToolAllowed("carrier_dispatch", "native")).toBe(false);
   });
 
   it("resolves the roster on every call rather than at registration", async () => {
