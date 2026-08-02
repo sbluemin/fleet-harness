@@ -92,19 +92,26 @@ function selectSkillAssetsForDoctrine(
   doctrine: AdmiralDoctrine,
 ): ReadonlyArray<{ readonly relativePath: string; readonly content: string }> {
   if (doctrine === "gateway") {
+    // gateway 경로는 protocol-* 스킬과 carrier-operations를 렌더하지 않는다.
+    // gateway/<name>/SKILL.md는 접두를 벗겨 동일 이름의 base 자산을 대체한다.
+    const overlays = new Map<string, string>();
+    for (const asset of EMBEDDED_AGENT_CLI_SKILL_ASSETS) {
+      if (!asset.relativePath.startsWith("gateway/")) continue;
+      overlays.set(asset.relativePath.slice("gateway/".length), asset.content);
+    }
     const rendered: Array<{ relativePath: string; content: string }> = [];
     for (const asset of EMBEDDED_AGENT_CLI_SKILL_ASSETS) {
+      if (asset.relativePath.startsWith("gateway/")) continue;
       if (asset.relativePath.startsWith("carrier-operations/")) continue;
-      if (asset.relativePath.startsWith("gateway/")) {
-        // gateway/protocol-*/SKILL.md → skills/protocol-*/SKILL.md
-        rendered.push({
-          relativePath: asset.relativePath.slice("gateway/".length),
-          content: asset.content,
-        });
-        continue;
-      }
       if (asset.relativePath.startsWith("protocol-")) continue;
-      rendered.push(asset);
+      rendered.push({
+        relativePath: asset.relativePath,
+        content: overlays.get(asset.relativePath) ?? asset.content,
+      });
+      overlays.delete(asset.relativePath);
+    }
+    for (const [relativePath, content] of overlays) {
+      rendered.push({ content, relativePath });
     }
     return rendered;
   }

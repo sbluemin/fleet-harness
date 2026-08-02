@@ -23,6 +23,11 @@ export interface ExecutorSessionRequest {
   readonly label: string;
   readonly cwd: string;
   readonly signal?: AbortSignal;
+  /**
+   * Narrows which registered agent tools this host session may call.
+   * Omit to expose every registered agent tool.
+   */
+  readonly includeTool?: (toolId: string) => boolean;
 }
 
 export interface ExecutorServerToken {
@@ -163,7 +168,10 @@ function issueSessionToken(
   const tokens: ExecutorServerToken[] = [];
   try {
     for (const { name, runtime } of deps.runtimes) {
-      const tools = runtime.registry.getAllAgentTools();
+      const allTools = runtime.registry.getAllAgentTools();
+      const tools = request.includeTool
+        ? allTools.filter((tool) => request.includeTool?.(tool.id) ?? true)
+        : allTools;
       assertNonEmptyExecutorTools(name, tools);
       const token = crypto.randomUUID();
       registerExecutorSessionTools(runtime, token, tools);

@@ -9,7 +9,8 @@ import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
 import { buildHostShellCommand, buildPowerShellCommand, escapeTomlBasicString, escapeTomlMultilineString } from "./builders/toml.js";
 import { resolveDoctrineFromCliId } from "../protocols/doctrine.js";
-import type { SystemPromptBuildOptions } from "../prompts.js";
+import { isHostSessionToolAllowed } from "../tools.js";
+import type { SystemPromptBuildOptions } from "../prompts/index.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
 import { cleanupDeprecatedCodexPluginState, createAgentCliPlugin, ensureCodexPluginRegistered, FLEET_MARKETPLACE_NAME } from "./plugin/index.js";
 import type {
@@ -61,7 +62,12 @@ interface CodexProfileHookExecs {
 
 interface DedicatedMcpSession {
   getEndpoint(): Promise<ExecutorEndpoint>;
-  issueSessionToken(request: { readonly label: string; readonly cwd: string; readonly signal?: AbortSignal }): readonly ExecutorServerToken[] | Promise<readonly ExecutorServerToken[]>;
+  issueSessionToken(request: {
+    readonly label: string;
+    readonly cwd: string;
+    readonly signal?: AbortSignal;
+    readonly includeTool?: (toolId: string) => boolean;
+  }): readonly ExecutorServerToken[] | Promise<readonly ExecutorServerToken[]>;
   releaseSessionToken(label: string): void;
 }
 
@@ -96,6 +102,8 @@ export async function injectAgentCliProfile(
   const tokenLabel = options.mcpSessionLabel ?? `agent:${profile.id}:${crypto.randomUUID()}`;
   const tokens = await options.dedicatedMcpSession.issueSessionToken({
     cwd: profile.cwd,
+    // gateway doctrine 세션에는 캐리어 운용 도구를 노출하지 않는다.
+    includeTool: (toolId) => isHostSessionToolAllowed(toolId, doctrine),
     label: tokenLabel,
   });
   const mcpServers = buildAgentCliMcpServerConfigs(endpoint.servers, tokens);

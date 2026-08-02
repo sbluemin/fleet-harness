@@ -5,8 +5,10 @@ import { describe, expect, it } from "vitest";
 import { createCarrierRuntime } from "@dotobokuri/fleet-carriers";
 
 import {
+  CARRIER_OPERATION_TOOL_IDS,
   createSystemPromptBuilder,
   getStandingOrdersForDoctrine,
+  isHostSessionToolAllowed,
   resolveDoctrineFromCliId,
 } from "../src/index.js";
 import { getAllStandingOrders } from "../src/protocols/standing-orders/index.js";
@@ -43,6 +45,26 @@ const STANDING_ORDER_IDS = [
   "carrier-operations-policy",
   "deep-dive",
   "result-integrity",
+] as const;
+
+// gateway doctrine은 캐리어 운용 지침을 담지 않으므로 위임 규율 오더를 중립 명칭으로 대체한다.
+const GATEWAY_STANDING_ORDER_IDS = [
+  "command-integrity",
+  "mission-anchor",
+  "context-confidence",
+  "delegation-policy",
+  "deep-dive",
+  "result-integrity",
+] as const;
+
+// gateway 프롬프트에서 완전히 사라져야 하는 캐리어 운용 어휘.
+const CARRIER_OPERATION_MARKERS = [
+  "carrier_dispatch",
+  "carrier_jobs",
+  "carrier-operations",
+  "carrier_id",
+  "Carrier",
+  "carrier",
 ] as const;
 
 describe("Admiral prompts", () => {
@@ -155,66 +177,97 @@ describe("Admiral prompts", () => {
     expect(prompt).not.toContain("# Fleet Action Protocol — Operational Doctrine");
   });
 
+  it("withholds carrier operation tools from gateway host sessions only", () => {
+    expect([...CARRIER_OPERATION_TOOL_IDS].sort()).toEqual(["carrier_dispatch", "carrier_jobs"]);
+    for (const toolId of CARRIER_OPERATION_TOOL_IDS) {
+      expect(isHostSessionToolAllowed(toolId, "classic")).toBe(true);
+      expect(isHostSessionToolAllowed(toolId, "gateway")).toBe(false);
+    }
+    for (const toolId of ["wiki_read", "wiki_briefing"]) {
+      expect(isHostSessionToolAllowed(toolId, "classic")).toBe(true);
+      expect(isHostSessionToolAllowed(toolId, "gateway")).toBe(true);
+    }
+  });
+
   it("resolves claude-gateway to gateway doctrine and keeps other CLIs classic", () => {
     expect(resolveDoctrineFromCliId("claude-gateway")).toBe("gateway");
     expect(resolveDoctrineFromCliId("claude")).toBe("classic");
     expect(resolveDoctrineFromCliId("codex")).toBe("classic");
   });
 
-  it("keeps standing order ids and injection order invariant across doctrines", () => {
+  it("keeps six standing orders per doctrine with the carrier policy renamed under gateway", () => {
     expect(getAllStandingOrders("classic").map((order) => order.id)).toEqual([...STANDING_ORDER_IDS]);
-    expect(getStandingOrdersForDoctrine("gateway").map((order) => order.id)).toEqual([...STANDING_ORDER_IDS]);
-    expect(getAllStandingOrders("gateway").map((order) => order.id)).toEqual(
-      getAllStandingOrders("classic").map((order) => order.id),
-    );
+    expect(getStandingOrdersForDoctrine("gateway").map((order) => order.id)).toEqual([...GATEWAY_STANDING_ORDER_IDS]);
+    expect(getAllStandingOrders("gateway")).toHaveLength(getAllStandingOrders("classic").length);
   });
 
-  it("keeps metaphor × doctrine orthogonal for classic and gateway", () => {
-    const classicMetaphor = createSystemPromptBuilder({
-      carrierRuntime: createRuntimeWithDefaults(),
-    }).build({ enableMetaphor: true, doctrine: "classic" });
-    const gatewayMetaphor = createSystemPromptBuilder({
-      carrierRuntime: createRuntimeWithDefaults(),
-    }).build({ enableMetaphor: true, doctrine: "gateway" });
-    const gatewayPlain = createSystemPromptBuilder({
-      carrierRuntime: createRuntimeWithDefaults(),
-    }).build({ enableMetaphor: false, doctrine: "gateway" });
+  it("keeps metaphor overlays classic-only and identical across gateway metaphor settings", () => {
+    const builder = createSystemPromptBuilder({ carrierRuntime: createRuntimeWithDefaults() });
+    const classicMetaphor = builder.build({ enableMetaphor: true, doctrine: "classic" });
+    const gatewayMetaphor = builder.build({ enableMetaphor: true, doctrine: "gateway" });
+    const gatewayPlain = builder.build({ enableMetaphor: false, doctrine: "gateway" });
 
     expect(classicMetaphor).toContain('<fleet section="persona">');
-    expect(gatewayMetaphor).toContain('<fleet section="persona">');
-    expect(gatewayPlain).not.toContain('<fleet section="persona">');
-
     expect(classicMetaphor).toContain("`carrier-operations` skill");
     expect(classicMetaphor).toContain("load it before composing your first carrier_dispatch");
-    expect(gatewayMetaphor).toContain("role catalog for selection and routing only");
-    expect(gatewayMetaphor).toContain("Orchestration uses the live Workflow tool surface");
-    expect(gatewayMetaphor).not.toContain("`carrier-operations` skill");
-    expect(gatewayMetaphor).toContain("do not treat carrier_dispatch as the canonical path");
-    expect(gatewayMetaphor).toContain("Workflow-first orchestration");
-    expect(gatewayMetaphor).toContain("multi-stream Workflow coordination");
-    expect(gatewayMetaphor).toContain("Workflow agent stage");
-    expect(gatewayMetaphor).toContain("Mutating Workflow stage finalized");
-    expect(gatewayMetaphor).not.toContain("carrier_jobs");
+
+    // gateway 경로는 metaphor 축 자체가 없다 — 두 결과가 완전히 동일하다.
+    expect(gatewayMetaphor).toBe(gatewayPlain);
+    expect(gatewayMetaphor).not.toContain('<fleet section="persona">');
+    expect(gatewayMetaphor).not.toContain('<fleet section="tone">');
+    for (const marker of ROLEPLAY_MARKERS) {
+      expect(gatewayMetaphor).not.toContain(marker);
+    }
+    for (const marker of CARRIER_OPERATION_MARKERS) {
+      expect(gatewayMetaphor).not.toContain(marker);
+    }
   });
 
-  it("keeps gateway doctrine Workflow-first without carrier_dispatch as canonical", () => {
+  it("drops the protocol gate, roster, and every carrier operations instruction under gateway doctrine", () => {
     const prompt = createSystemPromptBuilder({
       carrierRuntime: createRuntimeWithDefaults(),
     }).build({ enableMetaphor: false, doctrine: "gateway" });
 
-    expect(prompt).toContain("## Procedure");
-    expect(prompt).toContain("Workflow orchestration");
-    expect(prompt).toContain("multi-stream Workflow coordination");
-    expect(prompt).toContain("role catalog for selection and routing only");
-    expect(prompt).toContain("Orchestration uses the live Workflow tool surface");
-    expect(prompt).not.toContain("`carrier-operations` skill");
-    expect(prompt).not.toContain("load it before composing your first carrier_dispatch");
-    expect(prompt).toContain("do not treat carrier_dispatch as the canonical path");
-    expect(prompt).toContain("Workflow-first orchestration");
-    expect(prompt).toContain("Workflow agent stage");
-    expect(prompt).toContain("Mutating Workflow stage finalized");
-    expect(prompt).not.toContain("carrier_jobs");
+    // protocol-* 스킬을 주입하지 않으므로 게이트 블록과 모드 어휘가 모두 사라진다.
+    expect(prompt).not.toContain('<fleet section="protocol-gate">');
+    expect(prompt).not.toContain("## Mode Gate");
+    expect(prompt).not.toContain("## Intent Gate");
+    expect(prompt).not.toContain("protocol-baseline");
+    expect(prompt).not.toContain("protocol-midline");
+    expect(prompt).not.toContain("protocol-redline");
+    expect(prompt).not.toContain("protocol-frontline");
+    // 캐리어 로스터와 캐리어 운용 어휘 전량 제거.
+    expect(prompt).not.toContain('<fleet section="roster">');
+    expect(prompt).not.toContain("# Available Carriers");
+    for (const marker of CARRIER_OPERATION_MARKERS) {
+      expect(prompt).not.toContain(marker);
+    }
+    // 남는 것은 서문·역할·Standing Orders뿐이다.
+    expect(prompt).toContain('<fleet section="preamble">');
+    expect(prompt).toContain('<fleet section="role">');
     expect(prompt).not.toContain('<fleet section="persona">');
+    for (const id of GATEWAY_STANDING_ORDER_IDS) {
+      expect(prompt).toContain(`<fleet section="standing-orders" type="${id}">`);
+    }
+    expect(prompt).toContain("## Delegation Policy");
+    expect(prompt).toContain("assumption-audit");
+    // 위임 어휘는 중립 용어 subagent로 통일된다.
+    expect(prompt).toContain("Delegate execution to subagents");
+    expect(prompt).toContain("which subagent role you delegated it to");
+    expect(prompt).toContain("Mutating subagent run finalized");
+    expect(prompt).toContain("### Cross-Subagent Feedback");
+  });
+
+  it("keeps the classic prompt unchanged by the gateway split", () => {
+    const prompt = createSystemPromptBuilder({
+      carrierRuntime: createRuntimeWithDefaults(),
+    }).build({ enableMetaphor: false, doctrine: "classic" });
+
+    expect(prompt).toContain('<fleet section="protocol-gate">');
+    expect(prompt).toContain('<fleet section="roster">');
+    expect(prompt).toContain("carrier_dispatch");
+    expect(prompt).toContain("## Carrier Operations Policy");
+    expect(prompt).not.toContain("## Delegation Policy");
   });
 
   it("renders each standing order as its own type-scoped block without a shared wrapper", () => {
@@ -298,8 +351,9 @@ describe("Admiral prompts", () => {
     // Retain the approved static-prompt ceilings after moving Wiki operations on demand.
     expect(builder.build(false).length).toBeLessThanOrEqual(25226);
     expect(builder.build(true).length).toBeLessThanOrEqual(27300);
-    expect(builder.build({ enableMetaphor: false, doctrine: "gateway" }).length).toBeLessThanOrEqual(26000);
-    expect(builder.build({ enableMetaphor: true, doctrine: "gateway" }).length).toBeLessThanOrEqual(28000);
+    // gateway는 protocol gate·roster·캐리어 운용 지침을 담지 않아 예산이 훨씬 낮다.
+    expect(builder.build({ enableMetaphor: false, doctrine: "gateway" }).length).toBeLessThanOrEqual(15600);
+    expect(builder.build({ enableMetaphor: true, doctrine: "gateway" }).length).toBeLessThanOrEqual(15600);
   });
 
   it("teaches idempotent per-session skill loading in the protocol gate", () => {

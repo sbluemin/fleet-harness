@@ -5,7 +5,20 @@ import {
 } from "@dotobokuri/fleet-carriers";
 import type { AgentToolSpec, McpToolRegistry } from "@dotobokuri/core-agent";
 
+import type { AdmiralDoctrine } from "./protocols/doctrine.js";
+
 export const FLEET_MCP_SERVER_NAME = "fleet";
+
+// 캐리어 운용 도구. gateway doctrine 호스트 세션에는 노출하지 않는다.
+export const CARRIER_OPERATION_TOOL_IDS = new Set<string>([
+  "carrier_dispatch",
+  "carrier_jobs",
+]);
+
+/** 해당 doctrine 호스트 세션이 이 도구를 받아야 하는지 판정한다. */
+export function isHostSessionToolAllowed(toolId: string, doctrine: AdmiralDoctrine): boolean {
+  return doctrine === "gateway" ? !CARRIER_OPERATION_TOOL_IDS.has(toolId) : true;
+}
 
 // 모든 캐리어에 글로벌로 노출되는 무조건 읽기 전용 Wiki 도구.
 // 이 집합에 없는 Wiki 도구(ingest/drydock/patch_edit/compile_source/query/schema_*/patch_queue)는

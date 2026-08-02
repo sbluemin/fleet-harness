@@ -1,52 +1,15 @@
 /**
  * standing-orders/index — Standing Order 레지스트리
  *
- * 등록된 모든 Standing Order를 관리하고 반환한다.
- * doctrine별 override는 id·주입 순서를 유지한 채 본문만 교체한다.
+ * doctrine별 Standing Order 목록을 반환한다. 본문은 각각 `classic.ts`와 `gateway.ts`가
+ * 단독으로 소유하며, 두 파일은 본문을 공유하지 않는다.
  */
 
 import type { AdmiralDoctrine } from "../doctrine.js";
 import type { StandingOrder } from "./types.js";
 
-import {
-  CARRIER_OPERATIONS_POLICY,
-  CARRIER_OPERATIONS_POLICY_FOR_GATEWAY,
-} from "./carrier-operations-policy.js";
-import { COMMAND_INTEGRITY } from "./command-integrity.js";
-import { CONTEXT_CONFIDENCE } from "./context-confidence.js";
-import {
-  DEEP_DIVE,
-  DEEP_DIVE_FOR_GATEWAY,
-} from "./deep-dive.js";
-import { MISSION_ANCHOR } from "./mission-anchor.js";
-import {
-  RESULT_INTEGRITY,
-  RESULT_INTEGRITY_FOR_GATEWAY,
-} from "./result-integrity.js";
-
-// ─────────────────────────────────────────────────────────
-// 상수
-// ─────────────────────────────────────────────────────────
-
-/** classic doctrine Standing Orders — 주입 순서대로 나열. */
-const STANDING_ORDERS_CLASSIC: readonly StandingOrder[] = [
-  COMMAND_INTEGRITY,
-  MISSION_ANCHOR,
-  CONTEXT_CONFIDENCE,
-  CARRIER_OPERATIONS_POLICY,
-  DEEP_DIVE,
-  RESULT_INTEGRITY,
-];
-
-/** gateway doctrine Standing Orders — 동일 id·순서를 유지하고 override 본문만 교체. */
-const STANDING_ORDERS_GATEWAY: readonly StandingOrder[] = [
-  COMMAND_INTEGRITY,
-  MISSION_ANCHOR,
-  CONTEXT_CONFIDENCE,
-  CARRIER_OPERATIONS_POLICY_FOR_GATEWAY,
-  DEEP_DIVE_FOR_GATEWAY,
-  RESULT_INTEGRITY_FOR_GATEWAY,
-];
+import { STANDING_ORDERS_CLASSIC } from "./classic.js";
+import { STANDING_ORDERS_GATEWAY } from "./gateway.js";
 
 // ─────────────────────────────────────────────────────────
 // 함수
