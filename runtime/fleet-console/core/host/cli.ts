@@ -93,12 +93,12 @@ export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
   } else if (first === "status") {
     mode = "status";
   } else {
-    throw new Error(`Unknown fleet console command: ${first}\nRun 'fleet console --help' for usage.`);
+    throw new Error(`Unknown fleet console command: ${first}\nRun 'fleet-console --help' for usage.`);
   }
 
   for (const arg of rest) {
     if (arg === "--help" || arg === "-h") return "help";
-    throw new Error(`Unknown fleet console option: ${arg}\nRun 'fleet console --help' for usage.`);
+    throw new Error(`Unknown fleet console option: ${arg}\nRun 'fleet-console --help' for usage.`);
   }
   return mode;
 }
@@ -128,8 +128,7 @@ export function buildConsoleHelpText(options: BuildConsoleHelpTextOptions = {}):
     dim("Observe carrier jobs, live output streams, and console-owned terminal sessions.", colorEnabled),
     "",
     section("USAGE", colorEnabled),
-    `  ${command("fleet console", colorEnabled)} ${dim("[start|stop|restart|status] [--help]", colorEnabled)}`,
-    `  ${dim("Standalone binary:", colorEnabled)} ${command("fleet-console", colorEnabled)} ${dim("[start|stop|restart|status]", colorEnabled)}`,
+    `  ${command("fleet-console", colorEnabled)} ${dim("[start|stop|restart|status] [--help]", colorEnabled)}`,
     "",
     section("COMMANDS", colorEnabled),
     `  ${command("start", colorEnabled)}   ${dim("Ensure the local Fleet Console server, then open it in your browser. (default)", colorEnabled)}`,
@@ -141,10 +140,10 @@ export function buildConsoleHelpText(options: BuildConsoleHelpTextOptions = {}):
     `  ${option("--help, -h", colorEnabled)}  ${dim("Show this help message and exit.", colorEnabled)}`,
     "",
     section("EXAMPLES", colorEnabled),
-    `  ${command("fleet console", colorEnabled)}`,
-    `  ${command("fleet console status", colorEnabled)}`,
-    `  ${command("fleet console restart", colorEnabled)}`,
-    `  ${command("fleet console stop", colorEnabled)}`,
+    `  ${command("fleet-console", colorEnabled)}`,
+    `  ${command("fleet-console status", colorEnabled)}`,
+    `  ${command("fleet-console restart", colorEnabled)}`,
+    `  ${command("fleet-console stop", colorEnabled)}`,
     "",
   ];
   const text = lines.join("\n");
@@ -409,8 +408,19 @@ function readStdinBestEffort(): Promise<string> {
   });
 }
 
-const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-if (isDirectRun) {
+// npm/pnpm 글로벌 bin은 dist/cli.mjs로의 symlink다. path.resolve는 symlink를
+// 풀지 않으므로 argv[1]과 import.meta.url이 달라 main()이 영영 스킵된다.
+// /var vs /private/var 같은 플랫폼 alias도 realpath로 정규화한다.
+export function isCliDirectRun(argv1: string | undefined, moduleUrl: string = import.meta.url): boolean {
+  if (!argv1) return false;
+  try {
+    return fs.realpathSync(path.resolve(argv1)) === fs.realpathSync(fileURLToPath(moduleUrl));
+  } catch {
+    return false;
+  }
+}
+
+if (isCliDirectRun(process.argv[1])) {
   await main().catch((error: unknown) => {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;

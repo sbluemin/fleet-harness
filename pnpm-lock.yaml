@@ -232,9 +232,6 @@ importers:
       '@dotobokuri/fleet-carriers':
         specifier: workspace:*
         version: link:../../packages/fleet-carriers
-      '@dotobokuri/fleet-console':
-        specifier: workspace:*
-        version: link:../fleet-console
       '@dotobokuri/fleet-wiki':
         specifier: workspace:*
         version: link:../../packages/fleet-wiki

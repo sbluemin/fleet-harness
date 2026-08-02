@@ -1,29 +1,12 @@
-import { spawn } from "node:child_process";
-import { createRequire } from "node:module";
 import { createInfraServices } from "@dotobokuri/core-infra";
 
 import { runApp } from "./app.js";
 import { dispatchAuthCommand } from "./auth/dispatcher.js";
 import { buildFleetHelpText, parseFleetCliOptions } from "./cli-args.js";
-import { runDesktopDev } from "./desktop-command.js";
-import { readFleetCliRelease } from "./release.js";
 import { dispatchUpdateCommand } from "./update/dispatcher.js";
 
 const HELP_HINT = "Run 'fleet --help' for usage.";
-const require = createRequire(import.meta.url);
 const argv = process.argv.slice(2);
-
-if (argv[0] === "console") {
-  process.exit(await relayToPackageCli("@dotobokuri/fleet-console/cli", argv.slice(1)));
-}
-
-if (argv[0] === "desktop" && readFleetCliRelease().channel === "local") {
-  if (argv.length > 1) {
-    process.stderr.write(`Unknown fleet desktop option: ${argv[1]}\n${HELP_HINT}\n`);
-    process.exit(1);
-  }
-  process.exit(await runDesktopDev());
-}
 
 if (argv[0] === "update") {
   const status = await dispatchUpdateCommand(argv, {
@@ -70,29 +53,4 @@ function parseFleetCliOptionsOrExit(argv: readonly string[]): ReturnType<typeof 
     process.stderr.write(`${message}\n`);
     process.exit(1);
   }
-}
-
-async function relayToPackageCli(specifier: string, args: readonly string[]): Promise<number> {
-  const cliPath = require.resolve(specifier);
-  const child = spawn(process.execPath, [cliPath, ...args], {
-    stdio: "inherit",
-    cwd: process.env.INIT_CWD || process.cwd(),
-  });
-  return new Promise<number>((resolve) => {
-    child.on("error", (error) => {
-      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-      resolve(1);
-    });
-    child.on("exit", (code, signal) => {
-      if (typeof code === "number") {
-        resolve(code);
-        return;
-      }
-      if (signal) {
-        resolve(1);
-        return;
-      }
-      resolve(0);
-    });
-  });
 }

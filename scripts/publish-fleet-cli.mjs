@@ -10,12 +10,7 @@ const PKG_DIR = path.dirname(PKG_PATH);
 const args = process.argv.slice(2);
 const tag = args.find((a) => a.startsWith("--tag="))?.split("=")[1] ?? "beta";
 const version = args.find((a) => a.startsWith("--version="))?.split("=")[1];
-const consoleVersion = args.find((a) => a.startsWith("--console-version="))?.split("=")[1];
 const dryRun = args.includes("--dry-run");
-
-const isPrerelease = version && version.includes("-");
-const consoleRange = consoleVersion
-  ?? (isPrerelease ? version : "^1.3.0");
 
 // 배포 산출물에서 external로 유지할 패키지 이름 목록 — 버전은 원본 package.json에서 읽는다.
 const EXTERNAL_DEP_NAMES = ["@clack/prompts", "@xterm/headless", "node-pty"];
@@ -25,9 +20,7 @@ const originalPkg = JSON.parse(original);
 const pkgName = originalPkg.name;
 const targetVersion = version ?? originalPkg.version;
 
-const EXTERNAL_DEPS = {
-  "@dotobokuri/fleet-console": consoleRange,
-};
+const EXTERNAL_DEPS = {};
 for (const name of EXTERNAL_DEP_NAMES) {
   const range = originalPkg.dependencies?.[name];
   if (!range) {

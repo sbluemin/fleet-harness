@@ -40,8 +40,8 @@ describe("fleet CLI args", () => {
     expect(helpText).toContain("USAGE");
     expect(helpText).toContain("COMMANDS");
     expect(helpText).toContain("OPTIONS");
-    expect(helpText).toContain("console");
-    expect(helpText).toContain("Open Fleet Console, or manage the console server");
+    expect(helpText).not.toContain("console");
+    expect(helpText).not.toContain("desktop");
     expect(helpText).toContain("-h, --help");
     expect(helpText).not.toContain("--native");
     expect(helpText).not.toContain("Run the selected Agent CLI in the real terminal");
@@ -51,13 +51,14 @@ describe("fleet CLI args", () => {
     expect(helpText).not.toContain("fleet —");
   });
 
-  it("documents the Desktop development command only for local workspace runs", () => {
+  it("does not document console or desktop commands in any channel", () => {
     const local = buildFleetHelpText({ env: { NO_COLOR: "1" }, isTTY: true, release: { version: "0.0.0-test", channel: "local" } });
     const stable = buildFleetHelpText({ env: { NO_COLOR: "1" }, isTTY: true, release: { version: "1.23.0", channel: "stable" } });
 
-    expect(local).toContain("fleet desktop");
-    expect(local).toContain("Start Fleet Console Desktop from this workspace.");
+    expect(local).not.toContain("fleet desktop");
+    expect(local).not.toContain("fleet console");
     expect(stable).not.toContain("fleet desktop");
+    expect(stable).not.toContain("fleet console");
   });
 
   it("rejects unknown flags", () => {

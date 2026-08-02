@@ -21,5 +21,5 @@
 - A Fleet CLI process has one in-process Fleet MCP runtime; main and executor isolation is session- and token-based, not server-per-session.
 - The host embeds an upper Agent CLI PTY over a lower Fleet pane.
 - After launch, input belongs to the active child PTY. Do not introduce Fleet-owned global mode or exit shortcuts.
-- Fleet Console is a peer host; the Console subcommand delegates to its CLI rather than embedding Console lifecycle here.
+- Fleet Console is a peer host; Fleet CLI must not embed Console lifecycle or depend on the Console package for CLI commands.
 - Treat `process.env` as read-only; derive child-specific environment copies instead of mutating process-global state.

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -8,6 +9,7 @@ import type { ConsoleLockPayload } from "../core/host/api-types.js";
 import {
   buildConsoleHelpText,
   assertCliCanControlDaemon,
+  isCliDirectRun,
   isLockProcessAlive,
   main,
   openFleetConsole,
@@ -36,6 +38,21 @@ afterEach(() => {
 });
 
 describe("fleet console CLI", () => {
+  it("treats symlink and platform-alias argv paths as a direct CLI run", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-direct-run-"));
+    TEMP_DIRS.push(dir);
+    const target = path.join(dir, "cli.mjs");
+    const link = path.join(dir, "fleet-console");
+    fs.writeFileSync(target, "// fixture\n");
+    fs.symlinkSync(target, link);
+
+    expect(isCliDirectRun(undefined)).toBe(false);
+    expect(isCliDirectRun(target, pathToFileURL(target).href)).toBe(true);
+    expect(isCliDirectRun(link, pathToFileURL(target).href)).toBe(true);
+    expect(isCliDirectRun(path.join(dir, "missing"), pathToFileURL(target).href)).toBe(false);
+    expect(isCliDirectRun(path.join(dir, "other.mjs"), pathToFileURL(target).href)).toBe(false);
+  });
+
   it("allows stop or restart control of a desktop-provenance daemon", () => {
     expect(() => assertCliCanControlDaemon({
       ...LOCK,
@@ -190,8 +207,8 @@ describe("fleet console CLI", () => {
 
   it("documents the usage entry points and subcommands in help text", () => {
     const helpText = buildConsoleHelpText();
-    expect(helpText).toContain("fleet console");
     expect(helpText).toContain("fleet-console");
+    expect(helpText).not.toContain("fleet console");
     expect(helpText).toContain("start");
     expect(helpText).toContain("stop");
     expect(helpText).toContain("restart");
