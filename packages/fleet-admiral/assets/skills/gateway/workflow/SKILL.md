@@ -13,6 +13,8 @@ A skeleton that is never executed as stages is not a cheaper version of the run.
 
 Staged execution requires the workflow execution surface — the one that runs a script of stages, wires them together, and lets each stage carry its own model and effort. Inspect the live tool surface before concluding anything about it; tools may be lazy-loaded.
 
+This skill covers that surface only. A single self-contained assignment whose result comes back whole belongs on the one-Agent surface instead, and the choice between the two is the Orchestration Policy Standing Order's — decide it there, then come here to execute. Model and effort assignment below applies to both.
+
 **A surface gated behind user opt-in is unavailable until that opt-in exists.** Some workflow surfaces refuse to run unless the user explicitly asked for a multi-agent run. That refusal is not a defect and it is not a reason to quietly do the whole thing yourself in one context. Report the gate, say what the staged run would cost and what it would buy, and wait — the same way you would report any unavailable surface.
 
 Two things stay out of this skill on purpose:
@@ -48,22 +50,31 @@ Fan-out helpers routinely turn a failed branch into an empty result rather than 
 
 ## Model and Effort Assignment
 
-Inheriting the session model is the default and needs no justification. Pinning carries the burden of proof — the binding rule is in the Orchestration Policy Standing Order. This is the procedure that discharges it.
+Distribution is the default. Concentrating a run on the model this session happens to run on is the exception, and the exception carries the burden of proof — the binding rule is in the Orchestration Policy Standing Order. This is the procedure that discharges it.
 
-Work through these in order. Steps 3 and 4 are the gate; the rest exist to make them answerable.
+**Call `gateway_models` first, every time.** Not once per session: allowances move while work is in flight, and a roster entry can be enabled or disabled between two runs.
+
+Work through these in order.
 
 1. **Name the role.** Take it from the skeleton's Role column. If you cannot name it in one word, the stage boundary is wrong; fix the split before choosing a model.
 2. **Name the dominant risk.** What would ruin *this* stage: too little context, unreliable tool use, correlated judgment, drift from repository convention, or incomplete coverage. One risk, not a list.
-3. **Decide whether to pin.** Does some model withstand that specific risk *structurally* better than the session model? No, or unsure → inherit. **Unsure is not a reason to pin.**
-4. **Write the reason.** One sentence. If you cannot write it, you have not earned the pin. Put the sentence in the run's progress record so the choice can be judged afterwards.
-5. **Check the allowance.** Read the window matching the model's own pool. If it is short, take the next-best fit and record that you substituted.
-6. **Diversify only where disagreement is the product.** A majority-vote or judging stage wants different lineages. A model sharing the session model's lineage adds no independence there — though it is the cleanest way to move spend off that allowance.
-7. **Resolve the roster before pinning.** A model the user turned off still executes when pinned, so pinning it overrides that choice without raising an error. `400 unknown model` means re-read the roster; `502 resource_exhausted` means that pool is spent — switch pools or providers rather than retrying.
-8. **Never pin the load-bearing stage.** When everything downstream rests on one stage's output — the contract survey, the final synthesis, the integrating judgment — inherit.
+3. **Look for a measured fit.** Read `roleFit` for that risk. A declared `fit` is a reason to prefer an identity and a declared `unfit` a reason to avoid it. `null` means unmeasured: it says nothing about quality, and it is never a reason to fall back to the session model.
+4. **Spread the rest by allowance.** For every stage with no measured fit, choose by cost. Read the window whose `scope` matches the model's `constraints.quotaScope` — never the provider's scope-less total, which can look healthy while the pool beneath it is spent — and send stages toward the lower `usedPercent`. Move off a provider as it approaches exhaustion instead of discovering it mid-run.
+5. **Re-pick effort for the model you chose.** Ladders differ between identities, and a level a model does not advertise is clamped down with no signal to you. Take a rung the target's `effortLadder` actually lists, and check the stage's input against the target's `contextWindow`.
+6. **Diversify where disagreement is the product.** A majority-vote or judging stage wants different lineages — a verifier sharing its subject's lineage inherits the same blind spots. `homolineage: true` marks an identity sharing the parent Claude session's lineage: useful for moving spend, useless for independence.
+7. **Confirm the name exists on both sides.** Roster membership resolves live, but Agent names were fixed when the session started. Pick only a name present in both; a model enabled mid-session is unreachable until restart. `400 unknown model` means re-read the roster.
+8. **Do not choose the load-bearing stage by allowance alone.** When everything downstream rests on one stage — the contract survey, the final synthesis, the integrating judgment — let measured fit and lineage independence decide it, and let cost break ties only after those.
+9. **Record the split.** One line per run: which identities carried which stages, and what decided it. A distribution nobody can audit is indistinguishable from a random one.
 
 ### What Measurement Actually Showed
 
-Three gateway models were measured against seven stage roles on 2026-08-02. They were **indistinguishable on five of them**: structured output, repository search, adversarial judgment, mechanical transformation, and a small implementation task. Treat that as the prior. The roster declares fit on the two axes that did separate, and reports `null` everywhere else — `null` means unmeasured, never unsuitable.
+Two measurements, both on 2026-08-02.
+
+Three models against seven stage roles were **indistinguishable on five of them**: structured output, repository search, adversarial judgment, mechanical transformation, and a small implementation task.
+
+Twelve identities were then given one identical mapping task — twelve files, exact line counts, exact export symbols. **All twelve answered it perfectly**: full coverage, no fabricated file, and every one caught the trap entry whose correct answer was an empty list. What separated them was spend. The cheapest finished on 176k total tokens over 5 tool calls; the most expensive spent 5.20M over 29 for the same answer. Output tokens alone ran 1.7k to 20.3k, so this is not a cache-read artifact.
+
+Read the two together. Quality parity is the prior — and parity is exactly what makes cost the deciding axis. **Indistinguishable never meant "inherit"; it means the expensive choice buys nothing.** The roster declares fit only where a measurement separated the models, and reports `null` everywhere else — `null` means unmeasured, never unsuitable.
 
 ### Rules That Measurement Refuted
 
@@ -85,9 +96,17 @@ A stage running on another model has no feel for this repository's conventions, 
   **Action:** Read that model's ladder from the roster and request a level it actually advertises.
   **Why:** Ladders are not uniform — some models have no `medium`, others no effort control at all — and an off-ladder level is clamped upstream without any signal.
 
-- **Symptom:** A provider looked like it had room, but its requests began failing as exhausted.
-  **Action:** Read the window whose pool matches the model, not the provider's combined figure.
+- **Symptom:** A provider looked like it had room, but its requests began failing.
+  **Action:** Read the window whose `scope` matches the model's `quotaScope`, not the provider's combined figure.
   **Why:** One subscription can bill through separate pools; the sum can read comfortable while the pool a given model draws from is nearly spent.
+
+- **Symptom:** A stage returned nothing at all — no result, no error you can quote — while other stages on the same provider succeeded.
+  **Action:** Treat a high `usedPercent` on that model's own window as the explanation and move those stages to another provider. Do not wait for a message that says exhausted.
+  **Why:** There is no exhaustion status. `status` distinguishes *reading* failures — not connected, signed out, expired, no subscription, stale, error — and a spent pool is visible only as `usedPercent` near 100. A stage dying after retries with an empty return is what exhaustion actually looks like from here.
+
+- **Symptom:** A model you just enabled is in `gateway_models` but every attempt to run a stage on it fails as an unknown Agent.
+  **Action:** Use only names present in both the live roster and the Agent names this session started with. Reaching a newly enabled model requires a new session.
+  **Why:** The roster re-reads the user's selection on every call, but Agent names were serialized once at session start. The two drift apart the moment settings change mid-session.
 
 - **Symptom:** The run took as long as doing it yourself, with the same total cost.
   **Action:** Count the barriers. Each one that no stage actually needed becomes wall-clock spent waiting for the slowest branch.

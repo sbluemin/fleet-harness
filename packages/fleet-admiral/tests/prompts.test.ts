@@ -271,9 +271,24 @@ describe("Admiral prompts", () => {
     expect(prompt).toContain("Do not silently collapse a staged run into one context instead.");
     // 스킬 라우팅이 프롬프트에서 workflow 스킬을 지목한다.
     expect(prompt).toContain("Load the `workflow` skill");
-    // staged Agent 선택 전에 live roster(gateway_models)를 읽도록 강제한다.
-    expect(prompt).toContain("Call the `gateway_models` MCP tool before choosing a staged Agent");
-    expect(prompt).toContain("pick only an Agent that appears in that live roster");
+    // 두 실행 표면을 구분하고, 선택 기준을 배선(wiring)으로 못박는다.
+    expect(prompt).toContain("One Agent run");
+    expect(prompt).toContain("A staged workflow run");
+    expect(prompt).toContain("Choose by the wiring the work needs");
+    // 실행 전 live roster 조회는 무조건이다 — 핀 여부나 세션 기본값과의 차이로 한정하지 않는다.
+    expect(prompt).toContain("Call the `gateway_models` MCP tool before every run on either surface");
+    expect(prompt).toContain("not only before pinning");
+    // 조건절이 되살아나면 잡는다. toContain 접두만 고정하면 한정어 복귀를 감지하지 못한다.
+    expect(prompt).not.toContain("whose model or effort differs from the session default");
+    expect(prompt).not.toContain("Inheriting the session's model is the default");
+    // 쿼터 배분: 모델 자신의 풀을 읽고 합산 창에 기대지 않는다.
+    expect(prompt).toContain("constraints.quotaScope");
+    expect(prompt).toContain("Distribute toward the lower `usedPercent`");
+    expect(prompt).toContain("An unpinned run is not free");
+    // 모델을 바꾸면 effort는 목표 모델의 사다리에서 다시 고른다.
+    expect(prompt).toContain("Effort does not travel between models");
+    // 세션 시작 시점에 고정된 Agent 이름과 live roster의 교집합만 선택 가능하다.
+    expect(prompt).toContain("pick only a name present in both");
   });
 
   it("keeps the classic prompt unchanged by the gateway split", () => {
@@ -372,8 +387,10 @@ describe("Admiral prompts", () => {
     // gateway는 protocol gate·roster·캐리어 운용 지침을 담지 않아 예산이 훨씬 낮다.
     // 15600 → 15900: Orchestration Policy가 실행 표면 게이트와 스킬 라우팅을 명시하면서 늘어난 몫.
     // 15900 → 16100: Model Loadout가 staged Agent 선택 전 gateway_models 호출을 강제하면서 늘어난 몫.
-    expect(builder.build({ enableMetaphor: false, doctrine: "gateway" }).length).toBeLessThanOrEqual(16100);
-    expect(builder.build({ enableMetaphor: true, doctrine: "gateway" }).length).toBeLessThanOrEqual(16100);
+    // 16100 → 17500: Execution Surface가 단일 Agent 실행과 staged 실행을 구분하고, Model Loadout이
+    //   무조건 사전 조회·분산 기본·쿼터 창 선택·effort 재선택·roster 교집합을 규정하면서 늘어난 몫.
+    expect(builder.build({ enableMetaphor: false, doctrine: "gateway" }).length).toBeLessThanOrEqual(17500);
+    expect(builder.build({ enableMetaphor: true, doctrine: "gateway" }).length).toBeLessThanOrEqual(17500);
   });
 
   it("teaches idempotent per-session skill loading in the protocol gate", () => {
