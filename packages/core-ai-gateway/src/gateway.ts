@@ -61,13 +61,17 @@ export class AnthropicMessagesGateway {
           "cache-control": "no-cache",
           "content-type": "text/event-stream; charset=utf-8"
         }),
-        body: encodeAnthropicSse(upstream.events, { contextWindow: options.contextWindow })
+        body: encodeAnthropicSse(upstream.events, {
+          contextWindow: options.contextWindow,
+          model: request.model,
+        })
       };
     }
 
     // Claude Code는 일부 요청을 비스트리밍으로 보낸다. 그때는 이벤트를 모아 단일 Messages 응답을 준다.
-    const message = await collectAnthropicMessage(upstream.events, canonical.model, {
+    const message = await collectAnthropicMessage(upstream.events, request.model, {
       contextWindow: options.contextWindow,
+      model: request.model,
     });
     return {
       status: upstream.status,

@@ -514,6 +514,8 @@ interface OpenBlock {
 export interface ClaudeResponseCompatibilityOptions {
   /** Picker-advertised window that decides whether Claude uses its 1M compatibility path. */
   readonly contextWindow?: number;
+  /** Rewrites the echoed response model to the client-requested id. */
+  readonly model?: string;
 }
 
 /** 비스트리밍 요청에 돌려줄 Anthropic Messages 응답 본문을 이벤트에서 조립한다. */
@@ -536,7 +538,7 @@ export async function collectAnthropicMessage(
     switch (event.type) {
       case "response.created":
         id = event.response.id;
-        model = event.response.model;
+        model = options.model ?? event.response.model;
         inputTokens = event.response.usage?.input_tokens ?? 0;
         upstreamContextWindow = event.response.usage?.context_window;
         break;
@@ -665,7 +667,7 @@ export async function* encodeAnthropicSse(
               type: "message",
               role: "assistant",
               content: [],
-              model: event.response.model,
+              model: options.model ?? event.response.model,
               stop_reason: null,
               stop_sequence: null,
               usage: {

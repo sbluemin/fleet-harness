@@ -1386,6 +1386,46 @@ describe("non-streaming requests", () => {
   });
 });
 
+describe("response model rewrite", () => {
+  const adapterEchoing = (): AiGatewayAdapter => ({
+    async stream() {
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        events: iterable<CanonicalResponseEvent>([
+          { type: "response.created", response: { id: "resp_model", model: "grok-4.5-fast", usage: null } },
+          { type: "response.output_text.delta", item_id: "m", output_index: 0, content_index: 0, delta: "hi" },
+          {
+            type: "response.completed",
+            response: { id: "resp_model", model: "grok-4.5-fast", usage: { input_tokens: 3, output_tokens: 4 } },
+          },
+        ]),
+      };
+    },
+  });
+
+  it("rewrites the streamed message_start model to the client-requested id", async () => {
+    const request = { ...baseRequest(), model: "claude-gateway--cursor--grok-4.5-fast[1m]" };
+    const response = await new AnthropicMessagesGateway(adapterEchoing()).stream(request, { apiKey: "k" });
+    const frames = parseSse(await collectBody(response.body));
+    const start = frames.find((item) => item.event === "message_start");
+
+    expect(start?.data).toMatchObject({
+      message: { model: "claude-gateway--cursor--grok-4.5-fast[1m]" },
+    });
+  });
+
+  it("rewrites the non-streaming response model to the client-requested id", async () => {
+    const request = { ...baseRequest(), model: "claude-gateway--cursor--grok-4.5-fast[1m]", stream: false };
+    const response = await new AnthropicMessagesGateway(adapterEchoing()).stream(request, { apiKey: "k" });
+
+    expect(JSON.parse(await collectBody(response.body))).toMatchObject({
+      model: "claude-gateway--cursor--grok-4.5-fast[1m]",
+    });
+  });
+});
+
 describe("upstream errors", () => {
   it("maps an OpenAI error to Anthropic shape while preserving its HTTP status", async () => {
     const adapter = new OpenAIResponsesAdapter({
