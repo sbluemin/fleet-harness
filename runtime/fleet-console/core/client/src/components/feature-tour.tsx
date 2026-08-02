@@ -87,6 +87,10 @@ export function FeatureTourOverlay() {
       return;
     }
     anchor.classList.add("is-feature-tour-anchor");
+    // 스크롤되는 메뉴 안에서는 앵커가 보이는 영역 밖에 있을 수 있다. 가리키는 대상이 보이지 않으면
+    // 안내가 성립하지 않으므로, 카드 자리를 잡기 전에 가장 가까운 보이는 위치로 끌어온다.
+    // nearest는 이미 보이는 앵커에는 아무 일도 하지 않아 평소 배치를 흔들지 않는다.
+    anchor.scrollIntoView?.({ block: "nearest", inline: "nearest" });
     const updatePosition = () => {
       const boundary = anchor.closest<HTMLElement>(FEATURE_TOUR_BOUNDARY_SELECTOR);
       const card = cardRef.current?.getBoundingClientRect();

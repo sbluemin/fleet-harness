@@ -5538,10 +5538,18 @@
   grid-row: 1;
 }
 
-.operation-launch-menu-item--annotated .operation-launch-menu-badge,
-.operation-launch-menu-item--annotated .operation-launch-menu-reason {
+.operation-launch-menu-item--annotated .operation-launch-menu-badge {
   grid-column: 3;
   grid-row: 1;
+  margin-left: 0;
+  padding-left: 0;
+}
+
+/* 비활성 사유는 배지와 같은 칸을 두고 다투지 않도록 설명이 서던 아래 줄로 내린다 —
+   같은 칸에 두면 사유가 배지에 완전히 가려, 미설치 사용자가 정작 필요한 이유를 읽지 못한다. */
+.operation-launch-menu-item--annotated .operation-launch-menu-reason {
+  grid-column: 2 / -1;
+  grid-row: 2;
   margin-left: 0;
   padding-left: 0;
 }

@@ -1100,6 +1100,13 @@ describe("Instrument core design contract", () => {
     // 대문자는 i18n 값이 들고 있다 — text-transform은 한글 로케일에서 무효라 자간만 남는다.
     expect(badgeBlock).not.toContain("text-transform");
 
+    // 배지와 비활성 사유는 서로 다른 줄을 차지해야 한다 — 같은 칸에 두면 사유가 배지에 가려 읽히지 않는다.
+    const badgeCell = components.match(/\.operation-launch-menu-item--annotated \.operation-launch-menu-badge \{[^}]*\}/)?.[0] ?? "";
+    const reasonCell = components.match(/\.operation-launch-menu-item--annotated \.operation-launch-menu-reason \{[^}]*\}/)?.[0] ?? "";
+    expect(badgeCell).toContain("grid-row: 1;");
+    expect(reasonCell).toContain("grid-row: 2;");
+    expect(reasonCell).toContain("grid-column: 2 / -1;");
+
     expect(descriptionBlock).toContain("color: var(--text-tertiary);");
     expect(descriptionBlock).toContain("font-family: var(--font-body);");
     expect(descriptionBlock).not.toMatch(/font-weight:\s*\d/);
