@@ -280,4 +280,50 @@ describe('resetSession()', () => {
     expect(mockSendPrompt).toHaveBeenNthCalledWith(1, 'initial-session', '재개 요청');
     expect(mockSendPrompt).toHaveBeenNthCalledWith(2, 'loaded-session', '로드 요청');
   });
+
+  it('disconnect 후 연결 정보를 초기화하고 재전송을 거부한다', async () => {
+    mockConnect.mockResolvedValue(initialSession);
+    mockDisconnect.mockResolvedValue(undefined);
+    mockEndSession.mockResolvedValue(undefined);
+    const client = new UnifiedClaudeAgentClient();
+
+    await client.connect({ cwd: '/workspace', cli: 'claude' });
+    expect(client.getConnectionInfo()).toMatchObject({
+      cli: 'claude',
+      protocol: 'acp',
+      sessionId: 'initial-session',
+      state: 'ready',
+    });
+
+    await client.disconnect();
+
+    expect(client.getConnectionInfo()).toMatchObject({
+      cli: null,
+      protocol: null,
+      sessionId: null,
+      state: 'disconnected',
+    });
+    await expect(client.sendMessage('1+1')).rejects.toThrow('연결되어 있지 않습니다');
+  });
+
+  it('strictMcp와 effort를 connect()에서 AcpConnection으로 전달한다', async () => {
+    mockConnect.mockResolvedValue(initialSession);
+    const client = new UnifiedClaudeAgentClient();
+
+    await client.connect({
+      cwd: '/workspace',
+      cli: 'claude',
+      strictMcp: true,
+      effort: 'max',
+    });
+
+    expect(mockConnect).toHaveBeenCalledWith(
+      '/workspace',
+      undefined,
+      [],
+      undefined,
+      true,
+      'max',
+    );
+  });
 });
