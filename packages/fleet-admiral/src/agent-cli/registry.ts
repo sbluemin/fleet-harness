@@ -1,5 +1,6 @@
 import { claudeCli } from "./claude/claude.js";
 import { claudeGatewayCli } from "./claude/claude-gateway.js";
+import { claudeNativeCli } from "./claude/claude-native.js";
 import { codexCli } from "./codex/codex.js";
 import type { AgentCliDefinition, AgentCliId, AgentCliProfile } from "./types.js";
 
@@ -15,8 +16,9 @@ export interface AgentCliMetadata {
 }
 
 const DEFAULT_CLI_ID: AgentCliId = "claude";
-// Console 캔버스 제어 메뉴 순서를 고정한다: Claude → Codex → Claude (Gateway).
+// Console 캔버스 제어 메뉴 순서를 고정한다: Claude (Native) → Claude → Codex → Claude (Gateway).
 const DEFINITIONS: Record<AgentCliId, AgentCliDefinition> = {
+  "claude-native": claudeNativeCli,
   claude: claudeCli,
   codex: codexCli,
   "claude-gateway": claudeGatewayCli,
@@ -50,7 +52,7 @@ export function getDefaultAgentCliId(): AgentCliId {
 
 // Console 호스트에서만 성립하는 CLI. 게이트웨이 라우트가 Console에 마운트되어야 동작하므로
 // 기본 카탈로그(예: Fleet CLI의 Start CLI 목록)에서는 제외한다.
-const CONSOLE_ONLY_CLI_IDS: ReadonlySet<AgentCliId> = new Set<AgentCliId>(["claude-gateway"]);
+const CONSOLE_ONLY_CLI_IDS: ReadonlySet<AgentCliId> = new Set<AgentCliId>(["claude-native", "claude-gateway"]);
 
 export interface AgentCliIdListOptions {
   readonly includeConsoleOnly?: boolean;

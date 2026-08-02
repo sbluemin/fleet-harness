@@ -28,7 +28,7 @@ export function classifyOscAgentActivity(
   const first = title.codePointAt(0);
   if (first === undefined) return "unknown";
   if (first >= BRAILLE_START && first <= BRAILLE_END) return "working";
-  if (cliId === "claude" || cliId === "claude-gateway") {
+  if (cliId === "claude" || cliId === "claude-native" || cliId === "claude-gateway") {
     return first === CLAUDE_NOT_WORKING ? "not-working" : "unknown";
   }
   if (codexWorkingBaseline === undefined) return "unknown";

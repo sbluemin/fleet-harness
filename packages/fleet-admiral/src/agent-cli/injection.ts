@@ -112,15 +112,19 @@ export async function injectAgentCliProfile(
   const tokenLabel = options.mcpSessionLabel ?? `agent:${profile.id}:${crypto.randomUUID()}`;
   const tokens = await options.dedicatedMcpSession.issueSessionToken({
     cwd: profile.cwd,
-    // gateway doctrine 세션에는 캐리어 운용 도구를 노출하지 않는다.
+    // gateway/native doctrine 세션에는 캐리어 운용 도구를 노출하지 않는다.
+    // native는 위키 MCP만 남긴다.
     includeTool: (toolId) => isHostSessionToolAllowed(toolId, doctrine),
     label: tokenLabel,
   });
   const mcpServers = buildAgentCliMcpServerConfigs(endpoint.servers, tokens);
-  const systemPrompt = options.buildSystemPrompt({ enableMetaphor, doctrine });
+  // native는 Admiral 시스템 프롬프트를 붙이지 않는다.
+  const systemPrompt = doctrine === "native"
+    ? undefined
+    : options.buildSystemPrompt({ enableMetaphor, doctrine });
   const tempCleanups: Array<() => void> = [];
   try {
-    const systemPromptFile = isClaudeFamilyProfile(profile)
+    const systemPromptFile = systemPrompt !== undefined && isClaudeFamilyProfile(profile)
       ? writeSystemPromptFile(profile.id, systemPrompt, (cleanup) => tempCleanups.push(cleanup))
       : undefined;
     const plugin = await createAgentCliPlugin({
@@ -138,7 +142,7 @@ export async function injectAgentCliProfile(
       withMarketplaceLock: options.withMarketplaceLock,
     });
     const codexPluginKeys = plugin.codexRegistrations.map((registration) => `${registration.pluginName}@${registration.marketplaceName}`);
-    const codexProfile = profile.id === "codex"
+    const codexProfile = profile.id === "codex" && systemPrompt !== undefined
       ? writeCodexFleetProfile(profile.env, systemPrompt, codexPluginKeys, {
           captureSessionHookExec: options.captureSessionHookExec,
           turnStartHookExec: options.turnStartHookExec,
@@ -218,7 +222,7 @@ export async function injectAgentCliProfile(
 }
 
 function isClaudeFamilyProfile(profile: AgentCliProfile): boolean {
-  return profile.id === "claude" || profile.id === "claude-gateway";
+  return profile.id === "claude" || profile.id === "claude-native" || profile.id === "claude-gateway";
 }
 
 function buildAgentCliMcpServerConfigs(

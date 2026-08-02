@@ -180,20 +180,24 @@ describe("Admiral prompts", () => {
     expect(prompt).not.toContain("# Fleet Action Protocol — Operational Doctrine");
   });
 
-  it("withholds carrier operation tools from gateway host sessions only", () => {
+  it("withholds carrier operation tools from gateway and native host sessions", () => {
     expect([...CARRIER_OPERATION_TOOL_IDS].sort()).toEqual(["carrier_dispatch", "carrier_jobs"]);
     for (const toolId of CARRIER_OPERATION_TOOL_IDS) {
       expect(isHostSessionToolAllowed(toolId, "classic")).toBe(true);
       expect(isHostSessionToolAllowed(toolId, "gateway")).toBe(false);
+      expect(isHostSessionToolAllowed(toolId, "native")).toBe(false);
     }
     for (const toolId of ["wiki_read", "wiki_briefing"]) {
       expect(isHostSessionToolAllowed(toolId, "classic")).toBe(true);
       expect(isHostSessionToolAllowed(toolId, "gateway")).toBe(true);
+      expect(isHostSessionToolAllowed(toolId, "native")).toBe(true);
     }
+    expect(isHostSessionToolAllowed("gateway_models", "native")).toBe(false);
   });
 
-  it("resolves claude-gateway to gateway doctrine and keeps other CLIs classic", () => {
+  it("resolves claude-native to native doctrine and keeps classic/gateway mappings", () => {
     expect(resolveDoctrineFromCliId("claude-gateway")).toBe("gateway");
+    expect(resolveDoctrineFromCliId("claude-native")).toBe("native");
     expect(resolveDoctrineFromCliId("claude")).toBe("classic");
     expect(resolveDoctrineFromCliId("codex")).toBe("classic");
   });

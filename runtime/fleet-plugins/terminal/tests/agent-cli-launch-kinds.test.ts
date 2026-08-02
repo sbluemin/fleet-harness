@@ -6,6 +6,7 @@ describe("buildAgentCliLaunchKinds", () => {
   it("모든 CLI를 Operation Controls 목록에 포함한다", () => {
     const result = buildAgentCliLaunchKinds(
       [
+        { id: "claude-native", label: "Claude (Native)", available: true, signedIn: true },
         { id: "claude", label: "Claude", available: true, signedIn: true },
         { id: "codex", label: "Codex", available: true, signedIn: true },
         { id: "claude-gateway", label: "Claude (Gateway • Experimental)", available: true, signedIn: true },
@@ -14,6 +15,7 @@ describe("buildAgentCliLaunchKinds", () => {
     );
 
     expect(result).toEqual([
+      { id: "claude-native", type: "agent", title: "Claude (Native)" },
       { id: "claude", type: "agent", title: "Claude (Classic)" },
       { id: "codex", type: "agent", title: "Codex (Classic)" },
       { id: "claude-gateway", type: "agent", title: "Claude (Gateway • Experimental)" },

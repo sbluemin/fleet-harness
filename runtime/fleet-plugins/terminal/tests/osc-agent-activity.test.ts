@@ -10,6 +10,7 @@ describe("OSC Agent activity classification", () => {
   it("keeps Claude not-working independent from the working title body", () => {
     expect(classifyOscAgentActivity("claude", "⠐ Write sentences for numbers 1 to 120")).toBe("working");
     expect(classifyOscAgentActivity("claude-gateway", "✳ Claude Code")).toBe("not-working");
+    expect(classifyOscAgentActivity("claude-native", "✳ Claude Code")).toBe("not-working");
     expect(classifyOscAgentActivity("claude", "✳ 1부터 200까지 숫자별 문장 작성")).toBe("not-working");
     expect(classifyOscAgentActivity("claude", "project")).toBe("unknown");
   });

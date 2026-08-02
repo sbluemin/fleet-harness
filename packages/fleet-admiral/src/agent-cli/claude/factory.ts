@@ -3,7 +3,7 @@ import { createChildEnv, resolveBinary } from "@dotobokuri/core-agent";
 import type { AgentCliDefinition, AgentCliId, AgentCliProfileOptions } from "../types.js";
 
 interface ClaudeFamilyCliFactoryOptions {
-  readonly id: Extract<AgentCliId, "claude" | "claude-gateway">;
+  readonly id: Extract<AgentCliId, "claude" | "claude-native" | "claude-gateway">;
   readonly label: string;
 }
 

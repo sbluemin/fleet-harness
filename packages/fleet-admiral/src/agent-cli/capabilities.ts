@@ -5,6 +5,10 @@ const AGENT_CLI_INJECTION_CAPABILITIES: Record<AgentCliId, AgentCliInjectionCapa
     builderId: "claude-native",
     enabled: true,
   },
+  "claude-native": {
+    builderId: "claude-native",
+    enabled: true,
+  },
   "claude-gateway": {
     builderId: "claude-native",
     enabled: true,

@@ -145,7 +145,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       const session = observability.getTerminalSessionInfo(sessionId);
       if (!session) return;
       const cliId = session.cliId;
-      if (cliId !== "claude" && cliId !== "claude-gateway" && cliId !== "codex") return;
+      if (cliId !== "claude" && cliId !== "claude-native" && cliId !== "claude-gateway" && cliId !== "codex") return;
       tracker = createOscAgentActivityTracker({
         cliId,
         cwdBasename: session.cwdLabel,

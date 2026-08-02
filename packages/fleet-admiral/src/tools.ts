@@ -24,6 +24,10 @@ export const GATEWAY_DOCTRINE_TOOL_IDS = new Set<string>([
 
 /** 해당 doctrine 호스트 세션이 이 도구를 받아야 하는지 판정한다. */
 export function isHostSessionToolAllowed(toolId: string, doctrine: AdmiralDoctrine): boolean {
+  if (doctrine === "native") {
+    // Native는 위키 MCP만 남긴다. 캐리어 운용과 게이트웨이 로스터는 제외한다.
+    return toolId.startsWith("wiki_") && !CARRIER_OPERATION_TOOL_IDS.has(toolId) && !GATEWAY_DOCTRINE_TOOL_IDS.has(toolId);
+  }
   return doctrine === "gateway"
     ? !CARRIER_OPERATION_TOOL_IDS.has(toolId)
     : !GATEWAY_DOCTRINE_TOOL_IDS.has(toolId);
