@@ -220,6 +220,8 @@ describe("agent CLI plugin marketplace rendering", () => {
     }
     expect(existsSync(path.join(skillsRoot, "wiki-operations", "SKILL.md"))).toBe(true);
     expect(existsSync(path.join(skillsRoot, "assumption-audit", "SKILL.md"))).toBe(true);
+    // gateway 전용 오버레이는 대응하는 base 자산이 없어도 렌더된다.
+    expect(existsSync(path.join(skillsRoot, "model-loadout", "SKILL.md"))).toBe(true);
 
     // gateway/assumption-audit 오버레이가 base 자산을 대체하고 protocol 참조를 남기지 않는다.
     const assumptionAudit = readFileSync(path.join(skillsRoot, "assumption-audit", "SKILL.md"), "utf8");
@@ -243,6 +245,8 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(existsSync(path.join(skillsRoot, "carrier-operations", "SKILL.md"))).toBe(true);
     expect(existsSync(path.join(skillsRoot, "gateway"))).toBe(false);
     expect(existsSync(path.join(skillsRoot, "protocol-baseline", "SKILL.md"))).toBe(true);
+    // classic 세션은 게이트웨이를 거치지 않으므로 로스터 지침이 가리킬 대상이 없다.
+    expect(existsSync(path.join(skillsRoot, "model-loadout", "SKILL.md"))).toBe(false);
   });
 
   it("keeps classic and gateway asset roots isolated under the same dataDir", async () => {
