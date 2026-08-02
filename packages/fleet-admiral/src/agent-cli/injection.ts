@@ -3,6 +3,7 @@ import { chmodSync, closeSync, constants, lstatSync, mkdirSync, mkdtempSync, ope
 import os from "node:os";
 import path from "node:path";
 
+import type { GatewayModel } from "@dotobokuri/core-ai-gateway";
 import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 
 import { buildClaudeNativeArgs } from "./builders/claude.js";
@@ -12,6 +13,10 @@ import { resolveDoctrineFromCliId } from "../protocols/doctrine.js";
 import { isHostSessionToolAllowed } from "../tools.js";
 import type { SystemPromptBuildOptions } from "../prompts/index.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
+import {
+  buildGatewayCustomAgents,
+  buildGatewayDisallowedAgentTools,
+} from "./gateway-agents.js";
 import { cleanupDeprecatedCodexPluginState, createAgentCliPlugin, ensureCodexPluginRegistered, FLEET_MARKETPLACE_NAME } from "./plugin/index.js";
 import type {
   AgentCliInjectionContext,
@@ -41,6 +46,11 @@ export interface InjectAgentCliProfileOptions {
   readonly pluginRootDir?: string;
   readonly resumeSessionId?: string;
   readonly withMarketplaceLock: AgentCliPluginMarketplaceLock;
+  /**
+   * claude-gateway 전용: AI Gateway에 노출된 모델로 `--agents` JSON을 조립한다.
+   * 파일 영속화 없이 런치 인자로만 주입한다. classic Claude 경로에는 전달하지 않는다.
+   */
+  readonly gatewayExposedModels?: readonly GatewayModel[];
 }
 
 interface AgentCliPluginMarketplaceLock {
@@ -175,6 +185,12 @@ export async function injectAgentCliProfile(
       options.dedicatedMcpSession.releaseSessionToken(tokenLabel);
     });
     options.onCleanup?.(cleanup);
+    const gatewayAgents = profile.id === "claude-gateway"
+      ? {
+          customAgents: buildGatewayCustomAgents(options.gatewayExposedModels ?? []),
+          disallowedAgentTools: buildGatewayDisallowedAgentTools(),
+        }
+      : {};
     const context: AgentCliInjectionContext = {
       cliId: profile.id,
       mcpServers,
@@ -183,6 +199,7 @@ export async function injectAgentCliProfile(
       codexProfileName: codexProfile?.profileName,
       resumeSessionId: options.resumeSessionId,
       systemPromptFile,
+      ...gatewayAgents,
     };
     const injectedArgs = buildAgentCliArgs(capability.builderId, context);
     return {

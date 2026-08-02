@@ -271,6 +271,9 @@ describe("Admiral prompts", () => {
     expect(prompt).toContain("Do not silently collapse a staged run into one context instead.");
     // 스킬 라우팅이 프롬프트에서 workflow 스킬을 지목한다.
     expect(prompt).toContain("Load the `workflow` skill");
+    // staged Agent 선택 전에 live roster(gateway_models)를 읽도록 강제한다.
+    expect(prompt).toContain("Call the `gateway_models` MCP tool before choosing a staged Agent");
+    expect(prompt).toContain("pick only an Agent that appears in that live roster");
   });
 
   it("keeps the classic prompt unchanged by the gateway split", () => {
@@ -368,8 +371,9 @@ describe("Admiral prompts", () => {
     expect(builder.build(true).length).toBeLessThanOrEqual(27300);
     // gateway는 protocol gate·roster·캐리어 운용 지침을 담지 않아 예산이 훨씬 낮다.
     // 15600 → 15900: Orchestration Policy가 실행 표면 게이트와 스킬 라우팅을 명시하면서 늘어난 몫.
-    expect(builder.build({ enableMetaphor: false, doctrine: "gateway" }).length).toBeLessThanOrEqual(15900);
-    expect(builder.build({ enableMetaphor: true, doctrine: "gateway" }).length).toBeLessThanOrEqual(15900);
+    // 15900 → 16100: Model Loadout가 staged Agent 선택 전 gateway_models 호출을 강제하면서 늘어난 몫.
+    expect(builder.build({ enableMetaphor: false, doctrine: "gateway" }).length).toBeLessThanOrEqual(16100);
+    expect(builder.build({ enableMetaphor: true, doctrine: "gateway" }).length).toBeLessThanOrEqual(16100);
   });
 
   it("teaches idempotent per-session skill loading in the protocol gate", () => {

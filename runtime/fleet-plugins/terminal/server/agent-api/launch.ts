@@ -182,6 +182,11 @@ async function createAgentCliLaunchSpec(options: {
       resumeSessionId: options.resumeSessionId,
     });
     const globalSettings = readGlobalSettingsSnapshot(options.infraServices);
+    // gateway Agent 주입과 ANTHROPIC_MODEL/cache는 같은 selection을 공유한다.
+    // inject보다 먼저 읽어 `--agents`에 노출 모델×effort를 스폰 인자로만 실는다.
+    const gatewaySelection = profile.id === "claude-gateway" && options.readAiGatewaySettings
+      ? resolveAiGatewaySelection(await options.readAiGatewaySettings())
+      : undefined;
     const injectedProfile = await options.injectProfile(profile, {
       buildSystemPrompt: (injectTone) => options.createSystemPromptBuilder({ carrierRuntime: agentRuntime.carrierRuntime }).build(injectTone),
       codexCommandRunner: runCodexCommand,
@@ -201,6 +206,7 @@ async function createAgentCliLaunchSpec(options: {
       resumeSessionId: options.resumeSessionId,
       withMarketplaceLock: withConsoleMarketplaceLock,
       mcpSessionLabel: options.sessionId,
+      ...(gatewaySelection ? { gatewayExposedModels: gatewaySelection.models } : {}),
     } as Parameters<typeof injectAgentCliProfile>[1] & { readonly mcpSessionLabel: string });
     options.onRuntimeSessionStart?.({
       cliId: injectedProfile.id,
@@ -212,9 +218,7 @@ async function createAgentCliLaunchSpec(options: {
     const launchProfile = applyAiGatewayEnv(
       injectedProfile,
       options.aiGateway,
-      injectedProfile.id === "claude-gateway" && options.readAiGatewaySettings
-        ? resolveAiGatewaySelection(await options.readAiGatewaySettings())
-        : undefined,
+      gatewaySelection,
     );
     const sessionIdentityResolver = options.createSessionIdentityResolver({
       provider: toCaptureProvider(launchProfile.id),
