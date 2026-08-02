@@ -27,6 +27,7 @@ import { createOperationsRouter } from "./operations/routes.js";
 import { createSanitizedOpDto } from "./operations/sanitize.js";
 import { createOperationStore } from "./operations/store.js";
 import type { OperationNode } from "./operations/types.js";
+import { migrateLegacyCaptures } from "./legacy-capture-migration.js";
 import { createConsoleDataPaths } from "./paths.js";
 import { createPluginClientAssets } from "./plugin-host/client-assets.js";
 import { createFleetPluginHost } from "./plugin-host/host.js";
@@ -1073,6 +1074,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       operations.replaceGroups([]);
     }
     deletionCoordinator.load(state.deletionTombstones ?? []);
+    // Legacy captures/ → state.json providerSession one-shot migration (best-effort).
+    // Runs after durable load so save preserves tombstones already restored into the coordinator.
+    migrateLegacyCaptures({
+      consoleDataDir: durablePaths.dir,
+      operations,
+      save: () => saveDurableState(deletionCoordinator.list()),
+    });
     try {
       deletionCoordinator.sweepExpired();
     } catch (error) {
