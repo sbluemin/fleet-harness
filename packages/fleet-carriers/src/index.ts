@@ -29,26 +29,7 @@ export * from "./dispatch/tool-spec.js";
 export * from "./dispatch/types.js";
 export * from "./i18n/carrier-presentations.js";
 export { getActiveBackgroundJobCount } from "./jobs/lifecycle.js";
-// extractFinalReport 는 dispatch 전용 파서다 — 배럴로 올리면 패키지 공개 계약이 넓어진다.
-export {
-  appendBlock,
-  createJobArchive,
-  createJobStreamArchiveStore,
-  detachJobArchive,
-  finalizeJobArchive,
-  getFinalized,
-  hasFinalizedJobArchive,
-  hasJobArchive,
-  redactSecrets,
-  resetJobArchivesForTest,
-  sanitizeArchiveText,
-  serializeJobArchive,
-  toArchiveBlock,
-  toMessageArchiveBlock,
-  toThoughtArchiveBlock,
-  toToolCallArchiveBlock,
-} from "./jobs/archive.js";
-export type { JobStreamArchiveStore, SerializeJobArchiveOptions } from "./jobs/archive.js";
+export * from "./jobs/archive.js";
 export * from "./jobs/dispatch.js";
 export * from "./jobs/lifecycle.js";
 export * from "./jobs/sanitize.js";
