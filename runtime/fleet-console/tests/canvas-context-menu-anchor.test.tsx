@@ -78,15 +78,65 @@ describe("CanvasContextMenu launch kind attribute", () => {
         title: "Terminal",
         kinds: [
           { id: "claude", type: "agent", title: "Claude Code (Classic)" },
-          { id: "claude-gateway", type: "agent", title: "Claude (Gateway • Experimental)" },
+          { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
         ],
       },
     ]);
 
     const gateway = document.querySelectorAll<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]');
     expect(gateway).toHaveLength(1);
-    expect(gateway[0]?.textContent).toContain("Claude (Gateway • Experimental)");
+    expect(gateway[0]?.textContent).toContain("Claude (Gateway)");
     expect(document.querySelector('[data-operation-launch-kind="claude"]')).not.toBeNull();
+  });
+
+  it("annotates the Claude launch kinds with a description and marks the new ones", () => {
+    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [
+      {
+        id: "terminal",
+        title: "Terminal",
+        kinds: [
+          { id: "claude-native", type: "agent", title: "Claude (Native)" },
+          { id: "claude", type: "agent", title: "Claude (Classic)" },
+          { id: "codex", type: "agent", title: "Codex" },
+          { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
+          { id: "shell", type: "shell", title: "Shell" },
+        ],
+      },
+    ]);
+
+    const descriptionOf = (kindId: string) =>
+      document.querySelector(`[data-operation-launch-kind="${kindId}"] .operation-launch-menu-description`)?.textContent;
+    const badgeOf = (kindId: string) =>
+      document.querySelector(`[data-operation-launch-kind="${kindId}"] .operation-launch-menu-badge`)?.textContent;
+
+    expect(descriptionOf("claude-native")).toBe("Plain Claude Code, without the Admiral prompt");
+    expect(descriptionOf("claude")).toContain("Admiral standing orders");
+    expect(descriptionOf("claude-gateway")).toContain("models you enabled in Settings");
+    // 설명은 Claude 세 갈래에만 붙는다 — 대비가 필요 없는 종류까지 늘리면 메뉴만 길어진다.
+    expect(descriptionOf("codex")).toBeUndefined();
+    expect(descriptionOf("shell")).toBeUndefined();
+
+    expect(badgeOf("claude-native")).toBe("NEW");
+    expect(badgeOf("claude-gateway")).toBe("NEW · EXPERIMENTAL");
+    expect(badgeOf("claude")).toBeUndefined();
+  });
+
+  it("shows the disabled reason instead of the description when the CLI cannot launch", () => {
+    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [
+      {
+        id: "terminal",
+        title: "Terminal",
+        kinds: [
+          { id: "claude-native", type: "agent", title: "Claude (Native)", disabled: true, disabledReason: "Not installed" },
+        ],
+      },
+    ]);
+
+    const item = document.querySelector('[data-operation-launch-kind="claude-native"]');
+    expect(item?.querySelector(".operation-launch-menu-reason")?.textContent).toBe("Not installed");
+    expect(item?.querySelector(".operation-launch-menu-description")).toBeNull();
+    // 배지는 사유와 함께 남는다 — 아직 설치하지 않았어도 새 종류라는 사실은 그대로다.
+    expect(item?.querySelector(".operation-launch-menu-badge")?.textContent).toBe("NEW");
   });
 
   it("marks the rendered menu box as the tour placement boundary", () => {

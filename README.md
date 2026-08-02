@@ -80,7 +80,7 @@ Every supported CLI brings a model-native agent loop refined by its creator. Fle
 | CLI | Provider | Protocol | Typical strength |
 |---|---|---|---|
 | **Claude Code** | Anthropic | ACP | Deep reasoning and architecture judgment |
-| **Claude (Gateway • Experimental)** | OpenAI, Cursor, Moonshot AI | Claude Code gateway | Latest GPT, Cursor, and Kimi K3 models in one Claude Code surface |
+| **Claude (Gateway)** | OpenAI, Cursor, Moonshot AI | Claude Code gateway | Latest GPT, Cursor, and Kimi K3 models in one Claude Code surface |
 | **Codex CLI** | OpenAI | Codex App Server | Rapid implementation and iterative execution |
 | **Cursor Agent** | Cursor | ACP | Multi-model routing |
 

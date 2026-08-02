@@ -178,7 +178,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const sharedResolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string, options: { readonly cliId?: string }) => ({
       ...baseProfile,
       id: options.cliId === "claude-gateway" ? "claude-gateway" as const : "codex" as const,
-      label: options.cliId === "claude-gateway" ? "Claude (Gateway • Experimental)" : "Codex",
+      label: options.cliId === "claude-gateway" ? "Claude (Gateway)" : "Codex",
       cwd,
       env: { ...env },
     }));
@@ -426,7 +426,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       },
       infraServices: createFakeInfraServices() as never,
       injectProfile: (async (profile: AgentCliProfile) => profile) as never,
-      resolveProfile: (async () => ({ ...baseProfile, id: "claude-gateway", label: "Claude (Gateway • Experimental)" })) as never,
+      resolveProfile: (async () => ({ ...baseProfile, id: "claude-gateway", label: "Claude (Gateway)" })) as never,
       createSessionIdentityResolver: createResolver as never,
     });
 
@@ -452,7 +452,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
         ...baseProfile,
         id: "claude-gateway",
-        label: "Claude (Gateway • Experimental)",
+        label: "Claude (Gateway)",
         cwd,
         env: { ...env },
       })) as never,
@@ -510,7 +510,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
         ...baseProfile,
         id: "claude-gateway",
-        label: "Claude (Gateway • Experimental)",
+        label: "Claude (Gateway)",
         cwd,
         env: { ...env },
       })) as never,

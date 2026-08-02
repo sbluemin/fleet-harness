@@ -1084,6 +1084,28 @@ describe("Instrument core design contract", () => {
     expect(terminalAnalysisCss).not.toContain("--captain-tempest");
   });
 
+  it("pins the launch-kind annotation grammar and its recorded brass exception", () => {
+    const components = source("styles/components.css");
+    // 줄머리 앵커가 필요하다 — 앵커 없이는 `--annotated` 하위 배치 규칙이 먼저 잡힌다.
+    const badgeBlock = components.match(/^\.operation-launch-menu-badge \{[^}]*\}/m)?.[0] ?? "";
+    const descriptionBlock = components.match(/^\.operation-launch-menu-description \{[^}]*\}/m)?.[0] ?? "";
+
+    // 신규 표식은 brass를 빌리는 기록된 예외다 — 예외 사유는 CSS 규칙 옆 doctrine 주석이 소유한다.
+    expect(components).toContain("/* Doctrine 예외 — 신규 표식 배지는 brass 채널을 빌린다.");
+    expect(badgeBlock).toContain("border: 1px solid color-mix(in oklch, var(--brass) 48%, var(--hairline));");
+    expect(badgeBlock).toContain("background: color-mix(in oklch, var(--brass) 12%, transparent);");
+    expect(badgeBlock).toContain("color: var(--brass-ink);");
+    // 예외는 brass 한 채널까지다. 상태 채널을 함께 끌어 쓰면 배지가 상태로 오독된다.
+    expect(badgeBlock).not.toMatch(/--(?:aurora|warn|coral|positive)/);
+    // 대문자는 값이 들고 있다 — text-transform은 한글 로케일에서 무효라 자간만 남는다.
+    expect(badgeBlock).not.toContain("text-transform");
+    expect(components).toContain(".operation-launch-menu-badge:lang(ko) {");
+
+    expect(descriptionBlock).toContain("color: var(--text-tertiary);");
+    expect(descriptionBlock).toContain("font-family: var(--font-body);");
+    expect(descriptionBlock).not.toMatch(/font-weight:\s*\d/);
+  });
+
   it("keeps the v4 navigation, Theater, map, CLI, and rail visual producers", () => {
     const brandFoot = source("components/side-bar-brand-foot.tsx");
     const sidebar = source("sidebar/operations-side-bar.tsx");
