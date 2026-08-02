@@ -8,7 +8,6 @@ import {
   buildAnthropicModelList,
   buildGatewayModelConstraints,
   clampReasoningEffort,
-  claudeAccountingWindow,
   findGatewayModel,
   gatewayModelIdentity,
   parseGatewayModelsRegistry,
@@ -457,35 +456,16 @@ describe("model catalog", () => {
     };
     expect(() => parseGatewayModelsRegistry(invalidTier)).toThrow(/only supported by Codex/);
 
-    // 임계는 실제 창의 부분집합일 때만 의미가 있다. 창 없이 선언하거나 창을 넘기면
-    // Claude Code가 도달 불가능한 예산으로 계측하게 되므로 파싱에서 막는다.
-    const thresholdWithoutWindow = minimalRegistry();
-    thresholdWithoutWindow.providers.codex.models[0] = {
+    const legacyAutoCompactThreshold = minimalRegistry();
+    legacyAutoCompactThreshold.providers.codex.models[0] = {
       modelId: "codex-model",
       name: "Model",
+      contextWindow: 272_000,
+      // 컴팩션 예산 분모는 폐기된 개념이다. 실제 창보다 작은 분모는 남은 용량을
+      // 1M 좌표의 100% 위로 밀어내 Claude Code가 컴팩트할 수 없는 상태를 만든다.
       autoCompactThreshold: 258_400,
     };
-    expect(() => parseGatewayModelsRegistry(thresholdWithoutWindow))
-      .toThrow(/auto-compact threshold requires contextWindow/);
-
-    const thresholdOverWindow = minimalRegistry();
-    thresholdOverWindow.providers.codex.models[0] = {
-      modelId: "codex-model",
-      name: "Model",
-      contextWindow: 200_000,
-      autoCompactThreshold: 258_400,
-    };
-    expect(() => parseGatewayModelsRegistry(thresholdOverWindow))
-      .toThrow(/auto-compact threshold exceeds contextWindow/);
-
-    const thresholdAtWindow = minimalRegistry();
-    thresholdAtWindow.providers.codex.models[0] = {
-      modelId: "codex-model",
-      name: "Model",
-      contextWindow: 258_400,
-      autoCompactThreshold: 258_400,
-    };
-    expect(() => parseGatewayModelsRegistry(thresholdAtWindow)).not.toThrow();
+    expect(() => parseGatewayModelsRegistry(legacyAutoCompactThreshold)).toThrow();
 
     const legacyEffortDefault = minimalRegistry();
     legacyEffortDefault.providers.codex.models[0] = {
@@ -603,9 +583,7 @@ describe("model catalog", () => {
     expect(CURSOR_SUBSCRIPTION_MODELS).toHaveLength(9);
     expect(KIMI_SUBSCRIPTION_MODELS).toHaveLength(2);
     expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.upstreamId?.startsWith("gpt-5.6-"))).toBe(true);
-    expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.contextWindow === 372_000)).toBe(true);
-    // Codex compacts well below the window its backend accepts, so the two differ.
-    expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.autoCompactThreshold === 258_400)).toBe(true);
+    expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.contextWindow === 272_000)).toBe(true);
     expect(CURSOR_SUBSCRIPTION_MODELS.map((model) => model.upstreamId)).toEqual([
       "default",
       "composer-2.5",
@@ -729,7 +707,7 @@ describe("model catalog", () => {
     expect(list.data.every((entry) => entry.id.startsWith("claude"))).toBe(true);
     expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-sol[1m]")).toMatchObject({
       display_name: "Codex-GPT-5.6-Sol",
-      max_input_tokens: 372_000,
+      max_input_tokens: 272_000,
     });
     expect(list.data.some((entry) => entry.id.includes("--codex--") && entry.id.endsWith("[1m]")))
       .toBe(true);
@@ -760,11 +738,20 @@ describe("model catalog", () => {
   it("projects every marked provider window onto Claude Code's 1M coordinate", () => {
     expect(projectClaudeContextInputTokens(65_536, 1_048_576)).toBe(62_500);
     expect(projectClaudeContextInputTokens(50_000, 1_000_000, 800_000)).toBe(62_500);
-    expect(projectClaudeContextInputTokens(302_572, 372_000)).toBe(813_366);
+    expect(projectClaudeContextInputTokens(221_000, 272_000)).toBe(812_500);
     expect(projectClaudeContextInputTokens(250_000, 500_000)).toBe(500_000);
     expect(projectClaudeContextInputTokens(50_000, 256_000, 200_000)).toBe(250_000);
     expect(projectClaudeContextInputTokens(50_000, 200_000)).toBe(50_000);
     expect(projectClaudeContextInputTokens(50_000, undefined)).toBe(50_000);
+  });
+
+  it("never projects past the 1M coordinate Claude Code was told to meter against", () => {
+    // Claude Code reads any occupancy above the advertised window as
+    // "Context exceeds the 1m-token limit" and stops auto-compacting, so an
+    // upstream reporting more input than the catalog window must still land at 100%.
+    expect(projectClaudeContextInputTokens(272_000, 272_000)).toBe(1_000_000);
+    expect(projectClaudeContextInputTokens(300_000, 272_000)).toBe(1_000_000);
+    expect(projectClaudeContextInputTokens(2_000_000, 1_048_576)).toBe(1_000_000);
   });
 
   it("advertises the official Anthropic effort capability per gateway model", () => {
@@ -869,7 +856,7 @@ describe("model catalog", () => {
   });
 });
 
-describe("Claude accounting window", () => {
+describe("Claude context coordinate", () => {
   const model = (over: Partial<GatewayModel>): GatewayModel => ({
     id: "codex--probe",
     displayName: "Codex-Probe",
@@ -878,37 +865,25 @@ describe("Claude accounting window", () => {
     ...over,
   } as GatewayModel);
 
-  it("meters against the declared compaction threshold, not the real window", () => {
-    expect(claudeAccountingWindow(model({ contextWindow: 372_000, autoCompactThreshold: 258_400 })))
-      .toBe(258_400);
-  });
-
-  it("falls back to the real window when no threshold is declared", () => {
-    expect(claudeAccountingWindow(model({ contextWindow: 256_000 }))).toBe(256_000);
-    expect(claudeAccountingWindow(model({}))).toBeUndefined();
-  });
-
-  it("keeps the 1M marker on a Codex model whose threshold still clears 200k", () => {
+  it("marks a model whose real window clears Claude's default coordinate", () => {
     const codex = CODEX_SUBSCRIPTION_MODELS[0]!;
-    expect(codex.autoCompactThreshold).toBe(258_400);
+    expect(codex.contextWindow).toBe(272_000);
     expect(toClaudeGatewayModelId(codex).endsWith("[1m]")).toBe(true);
   });
 
-  it("withholds the 1M marker when the threshold drops to Claude's default coordinate", () => {
-    // The marker must follow the projection denominator. A model whose real window
-    // clears 200k but whose accounting window does not would otherwise make Claude
-    // Code meter on the 1M axis while usage was scaled by a sub-200k window.
-    const throttled = model({ id: "codex--throttled", contextWindow: 372_000, autoCompactThreshold: 200_000 });
-    expect(claudeAccountingWindow(throttled)).toBe(200_000);
-    expect(toClaudeGatewayModelId(throttled).endsWith("[1m]")).toBe(false);
+  it("withholds the marker when there is no window above Claude's default coordinate", () => {
+    expect(toClaudeGatewayModelId(model({ contextWindow: 200_000 })).endsWith("[1m]")).toBe(false);
+    expect(toClaudeGatewayModelId(model({})).endsWith("[1m]")).toBe(false);
   });
 
-  it("projects a full accounting window onto Claude Code's 1M coordinate", () => {
-    // Claude Code compacts at 967_000 of its 1M axis, which is 249_872 real tokens
-    // here — inside the 235k-247k band real Codex sessions were measured to occupy,
-    // and far below the 372_000 the backend would still accept.
-    expect(projectClaudeContextInputTokens(258_400, 258_400)).toBe(1_000_000);
-    expect(Math.floor(967_000 * 258_400 / 1_000_000)).toBe(249_872);
+  it("keeps auto-compact reachable inside the real window", () => {
+    // Claude Code compacts at 967_000 of its 1M axis. Dividing by the real window
+    // puts that at 263_024 real tokens — under the 272_000 the backend accepts, so
+    // the session compacts instead of pinning at an exceeded context. A smaller
+    // denominator (Codex's own 258_400 compaction budget) would instead map the
+    // remaining capacity above 100%, where Claude Code refuses to auto-compact.
+    expect(projectClaudeContextInputTokens(272_000, 272_000)).toBe(1_000_000);
+    expect(Math.floor(967_000 * 272_000 / 1_000_000)).toBe(263_024);
   });
 });
 
@@ -1140,7 +1115,7 @@ describe("Anthropic SSE encoding", () => {
         response: {
           id: "resp_projected",
           model: "gpt-5.6-sol",
-          usage: { input_tokens: 302_572, output_tokens: 0 },
+          usage: { input_tokens: 221_000, output_tokens: 0 },
         },
       },
       {
@@ -1148,20 +1123,20 @@ describe("Anthropic SSE encoding", () => {
         response: {
           id: "resp_projected",
           model: "gpt-5.6-sol",
-          usage: { input_tokens: 302_572, output_tokens: 6_277 },
+          usage: { input_tokens: 221_000, output_tokens: 6_277 },
         },
       },
     ]);
 
     const frames = parseSse(await collectBody(encodeAnthropicSse(events, {
-      contextWindow: 372_000,
+      contextWindow: 272_000,
     })));
 
     expect(frames[0]?.data).toMatchObject({
-      message: { usage: { input_tokens: 813_366, output_tokens: 0 } },
+      message: { usage: { input_tokens: 812_500, output_tokens: 0 } },
     });
     expect(frames[1]?.data).toMatchObject({
-      usage: { input_tokens: 813_366, output_tokens: 6_277 },
+      usage: { input_tokens: 812_500, output_tokens: 6_277 },
     });
   });
 
@@ -1205,7 +1180,7 @@ describe("Anthropic SSE encoding", () => {
           id: "resp_proj_cache",
           model: "gpt-5.6-sol",
           usage: {
-            input_tokens: 302_572,
+            input_tokens: 221_000,
             output_tokens: 0,
             cached_input_tokens: 100_000,
             cache_write_input_tokens: 50_000,
@@ -1218,7 +1193,7 @@ describe("Anthropic SSE encoding", () => {
           id: "resp_proj_cache",
           model: "gpt-5.6-sol",
           usage: {
-            input_tokens: 302_572,
+            input_tokens: 221_000,
             output_tokens: 6_277,
             cached_input_tokens: 100_000,
             cache_write_input_tokens: 50_000,
@@ -1227,7 +1202,7 @@ describe("Anthropic SSE encoding", () => {
       },
     ]);
 
-    const frames = parseSse(await collectBody(encodeAnthropicSse(events, { contextWindow: 372_000 })));
+    const frames = parseSse(await collectBody(encodeAnthropicSse(events, { contextWindow: 272_000 })));
     const messageDelta = frames.find((item) => item.event === "message_delta");
     const usage = messageDelta?.data.usage as {
       input_tokens: number;
@@ -1238,11 +1213,11 @@ describe("Anthropic SSE encoding", () => {
 
     // Same total as the plain (non-cache-aware) 1M projection test above: the
     // breakdown must land on the identical coordinate, never inflate or shrink it.
-    expect(usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens).toBe(813_366);
+    expect(usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens).toBe(812_500);
     expect(usage).toEqual({
-      input_tokens: 410_141,
-      cache_read_input_tokens: 268_817,
-      cache_creation_input_tokens: 134_408,
+      input_tokens: 261_030,
+      cache_read_input_tokens: 367_647,
+      cache_creation_input_tokens: 183_823,
       output_tokens: 6_277,
     });
   });
@@ -2455,7 +2430,7 @@ describe("non-streaming requests", () => {
           headers: new Headers(),
           events: iterable<CanonicalResponseEvent>([
             { type: "response.created", response: { id: "resp_virtual", model: "gpt-5.6-sol", usage: null } },
-            { type: "response.completed", response: { id: "resp_virtual", model: "gpt-5.6-sol", usage: { input_tokens: 302_572, output_tokens: 6_277 } } },
+            { type: "response.completed", response: { id: "resp_virtual", model: "gpt-5.6-sol", usage: { input_tokens: 221_000, output_tokens: 6_277 } } },
           ]),
         };
       },
@@ -2463,11 +2438,11 @@ describe("non-streaming requests", () => {
     const { stream: _drop, ...rest } = baseRequest();
     const response = await new AnthropicMessagesGateway(adapter).stream(
       rest as AnthropicMessagesRequest,
-      { apiKey: "k", contextWindow: 372_000 },
+      { apiKey: "k", contextWindow: 272_000 },
     );
 
     expect(JSON.parse(await collectBody(response.body))).toMatchObject({
-      usage: { input_tokens: 813_366, output_tokens: 6_277 },
+      usage: { input_tokens: 812_500, output_tokens: 6_277 },
     });
   });
 

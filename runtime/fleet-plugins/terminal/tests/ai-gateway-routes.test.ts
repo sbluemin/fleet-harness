@@ -160,7 +160,7 @@ describe("upstream credential", () => {
 
     expect(streamSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       apiKey: SUBSCRIPTION_TOKEN,
-      contextWindow: 258_400,
+      contextWindow: 272_000,
       model: "gpt-5.6-sol",
       serviceTier: "priority",
       reasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
@@ -182,7 +182,7 @@ describe("upstream credential", () => {
 
     expect(res.status).toBe(200);
     expect(streamSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      contextWindow: 258_400,
+      contextWindow: 272_000,
     }));
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -385,10 +385,9 @@ describe("upstream credential", () => {
 
 describe("model context window", () => {
   it.each([
-    // The guard always gets the real window; the projection gets the accounting
-    // window. Codex meters against its reference client's compaction budget, so the
-    // two differ; a model without a declared threshold keeps them equal.
-    ["claude-gateway--codex--gpt-5.6-sol", 372_000, 258_400],
+    // The guard and the projection both take the model's real window, so a marked
+    // model's occupancy can never be reported above the 1M coordinate.
+    ["claude-gateway--codex--gpt-5.6-sol", 272_000, 272_000],
     ["claude-gateway--cursor--grok-4.5-fast", 256_000, 256_000],
     // A 200000-window Cursor native model earns no `[1m]` marker, so it gets no
     // projection denominator — but the guard still needs its real window.
@@ -425,7 +424,7 @@ describe("model context window", () => {
       res,
       token: ANTHROPIC_CRED,
       model: "claude-gateway--codex--gpt-5.6-sol",
-      // 4 chars/token puts this at ~500_000 tokens against a 372_000 window.
+      // 4 chars/token puts this at ~500_000 tokens against a 272_000 window.
       messages: [{ role: "user", content: "x".repeat(2_000_000) }],
     }));
 
@@ -434,7 +433,7 @@ describe("model context window", () => {
       type: "error",
       error: {
         type: "invalid_request_error",
-        message: expect.stringMatching(/^Prompt is too long: \d+ tokens > 372000 maximum$/),
+        message: expect.stringMatching(/^Prompt is too long: \d+ tokens > 272000 maximum$/),
       },
     });
     // The guard runs inside the gateway, so upstream was still spared the turn.

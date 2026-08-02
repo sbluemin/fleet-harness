@@ -5,13 +5,12 @@
     "codex": {
       "name": "Codex",
       "defaultModel": "gpt-5.6-sol",
-      "source": "codex app-server model/list (codex-cli 0.146.0, 2026-08-01) for model/effort/service-tier only; contextWindow=372000 is a retained operational value pending authenticated backend verification; autoCompactThreshold=258400 is a reproducible accounting threshold from codex debug models (codex-cli 0.146.0, 2026-08-02): 272000 x 95%",
+      "source": "codex app-server model/list (codex-cli 0.146.0, 2026-08-01) for model/effort/service-tier; contextWindow=272000 is codex debug models context_window/max_context_window (codex-cli 0.146.0, 2026-08-02)",
       "models": [
         {
           "modelId": "gpt-5.6-sol",
           "name": "GPT-5.6-Sol",
-          "contextWindow": 372000,
-          "autoCompactThreshold": 258400,
+          "contextWindow": 272000,
           "effort": {
             "supported": true,
             "levels": [
@@ -32,8 +31,7 @@
           "name": "GPT-5.6-Sol-Fast",
           "providerModelId": "gpt-5.6-sol",
           "serviceTier": "priority",
-          "contextWindow": 372000,
-          "autoCompactThreshold": 258400,
+          "contextWindow": 272000,
           "effort": {
             "supported": true,
             "levels": [
@@ -52,8 +50,7 @@
         {
           "modelId": "gpt-5.6-terra",
           "name": "GPT-5.6-Terra",
-          "contextWindow": 372000,
-          "autoCompactThreshold": 258400,
+          "contextWindow": 272000,
           "effort": {
             "supported": true,
             "levels": [
@@ -74,8 +71,7 @@
           "name": "GPT-5.6-Terra-Fast",
           "providerModelId": "gpt-5.6-terra",
           "serviceTier": "priority",
-          "contextWindow": 372000,
-          "autoCompactThreshold": 258400,
+          "contextWindow": 272000,
           "effort": {
             "supported": true,
             "levels": [
@@ -94,8 +90,7 @@
         {
           "modelId": "gpt-5.6-luna",
           "name": "GPT-5.6-Luna",
-          "contextWindow": 372000,
-          "autoCompactThreshold": 258400,
+          "contextWindow": 272000,
           "effort": {
             "supported": true,
             "levels": [
@@ -115,8 +110,7 @@
           "name": "GPT-5.6-Luna-Fast",
           "providerModelId": "gpt-5.6-luna",
           "serviceTier": "priority",
-          "contextWindow": 372000,
-          "autoCompactThreshold": 258400,
+          "contextWindow": 272000,
           "effort": {
             "supported": true,
             "levels": [
