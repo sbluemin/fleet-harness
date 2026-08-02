@@ -2,7 +2,8 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 import { fetchSystemPromptSettings, saveSystemPromptSettings, type SystemPromptSettingsState, type SystemPromptSettingsUpdate } from "./settings-api.js";
 
-export type SystemPromptSettingsField = keyof SystemPromptSettingsState;
+// aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
+export type SystemPromptSettingsField = "enableMetaphor" | "agentIdleDormantMinutes" | "aiGateway";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -58,8 +59,6 @@ export async function setSystemPromptSettingsField<Field extends SystemPromptSet
 ): Promise<boolean> {
   const current = snapshot.state;
   if (!current) return false;
-  // kimiModel은 null(미설정) 값을 서버가 받지 않으므로 null 저장 요청은 무시한다.
-  if (field === "kimiModel" && value === null) return false;
   // 진행 중인 로드 응답이 이 저장 결과를 덮지 않도록 세대값을 올린다.
   loadGeneration += 1;
   const optimistic = { ...current, [field]: value };
@@ -77,8 +76,8 @@ export async function setSystemPromptSettingsField<Field extends SystemPromptSet
 
 function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptSettingsState): SystemPromptSettingsUpdate {
   if (field === "enableMetaphor") return { enableMetaphor: state.enableMetaphor };
-  if (field === "agentIdleDormantMinutes") return { agentIdleDormantMinutes: state.agentIdleDormantMinutes };
-  return { kimiModel: state.kimiModel! };
+  if (field === "aiGateway") return { aiGateway: state.aiGateway };
+  return { agentIdleDormantMinutes: state.agentIdleDormantMinutes };
 }
 
 function setSnapshot(patch: Partial<SystemPromptSettingsStoreState>): void {

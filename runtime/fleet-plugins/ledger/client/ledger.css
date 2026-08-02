@@ -203,7 +203,7 @@
 }
 
 .ledger-operation--kimi .ledger-operation-mark {
-  color: var(--carrier-claude-kimi);
+  color: var(--carrier-kimi);
 }
 
 .ledger-operation--codex .ledger-operation-mark {
@@ -437,7 +437,7 @@
 }
 
 .ledger-client-row--kimi .ledger-client-mark {
-  color: var(--carrier-claude-kimi);
+  color: var(--carrier-kimi);
 }
 
 .ledger-client-row--codex .ledger-client-mark {

@@ -20,7 +20,7 @@ vi.mock("@dotobokuri/fleet-admiral", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@dotobokuri/fleet-admiral")>();
   return {
     ...actual,
-    validateAgentCliAuthKey: mocks.validate,
+    validateKimiAuthKey: mocks.validate,
   };
 });
 
@@ -33,15 +33,15 @@ describe("Kimi auth login flow", () => {
 
   it("validates before saving the Kimi API key", async () => {
     const io = createIo();
-    await expect(runAuthLoginFlow(["claude-kimi"], io, createDeps())).resolves.toBe(0);
-    expect(mocks.validate).toHaveBeenCalledWith("claude-kimi", "kimi-secret");
+    await expect(runAuthLoginFlow(["kimi"], io, createDeps())).resolves.toBe(0);
+    expect(mocks.validate).toHaveBeenCalledWith("kimi-secret");
     expect(mocks.setApiKey).toHaveBeenCalledWith("Claude Code with Moonshot Kimi", "kimi-secret");
   });
 
   it("does not save a rejected key", async () => {
     const io = createIo();
     mocks.validate.mockResolvedValue({ providerId: "Claude Code with Moonshot Kimi", status: "unauthorized" });
-    await expect(runAuthLoginFlow(["claude-kimi"], io, createDeps())).resolves.toBe(1);
+    await expect(runAuthLoginFlow(["kimi"], io, createDeps())).resolves.toBe(1);
     expect(mocks.setApiKey).not.toHaveBeenCalled();
     expect(io.stderr.output).toContain("rejected");
   });

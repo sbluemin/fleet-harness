@@ -3,7 +3,6 @@ import {
   getProviderModels,
   type CliType,
 } from "@dotobokuri/core-unified-agent";
-import { createGlobalOptionsStore } from "@dotobokuri/core-infra/data-dir/settings";
 import {
   sanitizeAgentCli,
   sanitizeAgentCliSelectionForCliType,
@@ -188,43 +187,17 @@ function resolveSelectionForCliType(
   const allowedModels = new Set(provider.models.map((model) => model.modelId));
   const defaultModelIsValid = !!defaults?.defaultModel && allowedModels.has(defaults.defaultModel);
   const storedModelIsValid = !!stored?.model && allowedModels.has(stored.model);
-  // 캐리어별/페르소나 기본 모델이 모두 없을 때만 프로바이더 기본 모델(전역 설정)을 참조합니다.
-  const providerDefault = storedModelIsValid || defaultModelIsValid
-    ? undefined
-    : readKimiProviderDefaultSelection(cliType, allowedModels);
   const model = storedModelIsValid
     ? stored!.model
     : defaultModelIsValid
       ? defaults!.defaultModel!
-      : providerDefault?.model ?? provider.defaultModel;
+      : provider.defaultModel;
   const modelEffort = getEffort(cliType, model);
   if (!modelEffort.supported) return { model };
   const effort = storedModelIsValid && stored?.effort && modelEffort.levels.includes(stored.effort)
     ? stored.effort
     : defaults?.defaultEffort && modelEffort.levels.includes(defaults.defaultEffort)
       ? defaults.defaultEffort
-      : providerDefault?.effort && modelEffort.levels.includes(providerDefault.effort)
-        ? providerDefault.effort
-        : modelEffort.default;
+      : modelEffort.default;
   return { model, effort };
-}
-
-/** 기본 fleet 데이터 디렉터리의 전역 설정(settings.json)에서 Kimi 프로바이더 기본 모델을 읽습니다. 오류/무효값은 undefined로 폴백합니다. */
-function readKimiProviderDefaultSelection(
-  cliType: CliType,
-  allowedModels: ReadonlySet<string>,
-): { readonly model: string; readonly effort?: string } | undefined {
-  if (cliType !== "claude-kimi") return undefined;
-  try {
-    // 전역 설정은 fleet-cli/모든 Console 채널이 공유하는 기본 fleet 데이터 디렉터리 기준이다
-    // (enableMetaphor/auth.json과 동일 축). 채널 스코프는 carriers.json만 해당한다.
-    const kimiModel = createGlobalOptionsStore().load().kimiModel;
-    if (!kimiModel || !allowedModels.has(kimiModel.model)) return undefined;
-    return {
-      model: kimiModel.model,
-      ...(typeof kimiModel.effort === "string" ? { effort: kimiModel.effort } : {}),
-    };
-  } catch {
-    return undefined;
-  }
 }

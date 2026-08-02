@@ -44,6 +44,21 @@ describe("DispatchContextRegistry", () => {
     await runtime.cleanup();
   });
 
+  it("declares resume_context_id as a non-empty optional string", async () => {
+    const runtime = createCarrierRuntime();
+    const tool = runtime.buildDispatchToolSpec({} as Parameters<typeof runtime.buildDispatchToolSpec>[0]);
+    const resumeContextId = (
+      tool.parameters as {
+        properties: { resume_context_id: { description?: string; minLength?: number } };
+      }
+    ).properties.resume_context_id;
+
+    expect(resumeContextId.minLength).toBe(1);
+    expect(resumeContextId.description).toContain("never pass an empty string");
+
+    await runtime.cleanup();
+  });
+
   it("claims synchronously, commits atomically, and resumes only matching bindings", () => {
     const registry = new DispatchContextRegistry();
     const first = registry.claim("context-1", binding);

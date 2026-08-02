@@ -186,6 +186,25 @@ describe("single dispatch context resume", () => {
     await vi.waitFor(() => expect(runtime!.dispatchContexts.size).toBe(1));
   });
 
+  it.each(["", "   "])("treats a blank resume_context_id (%j) as a fresh single dispatch", async (resumeContextId) => {
+    runtime = createCarrierRuntime();
+    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
+    vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
+    const tool = runtime.buildDispatchToolSpec(deps);
+
+    const result = await tool.execute({
+      carrier_id: "alpha",
+      label: "Blank resume",
+      request: "Run fresh.",
+      resume_context_id: resumeContextId,
+    }, { cwd: "/tmp", toolCallId: `blank-${resumeContextId.length}` });
+
+    expect(details(result)).toMatchObject({ accepted: true });
+    expect(details(result).context_id).toMatch(/^ctx:/);
+    expect(executeOneShot).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(executeOneShot).mock.calls[0]![0].resumeSessionId).toBeUndefined();
+  });
+
   it("forwards the Agent CLI launch resolver to a single Carrier execution", async () => {
     runtime = createCarrierRuntime();
     registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
@@ -286,6 +305,28 @@ describe("single dispatch context resume", () => {
 });
 
 describe("Task Force context barrier and resume", () => {
+  it("treats a blank resume_context_id as a fresh Task Force dispatch", async () => {
+    runtime = createCarrierRuntime();
+    registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));
+    configureTaskForce(runtime.registry, "alpha");
+    vi.mocked(executeOneShot).mockImplementation((opts) => resolvedHandle(opts.cliType as CliType));
+    const tool = runtime.buildDispatchToolSpec(deps);
+
+    const result = await tool.execute({
+      carrier_id: "alpha",
+      label: "Blank Task Force resume",
+      request: "Run fresh.",
+      resume_context_id: "",
+    }, { cwd: "/tmp", toolCallId: "taskforce-blank" });
+
+    expect(details(result)).toMatchObject({ accepted: true });
+    expect(details(result).context_id).toMatch(/^ctx:/);
+    expect(executeOneShot).toHaveBeenCalledTimes(2);
+    for (const [options] of vi.mocked(executeOneShot).mock.calls) {
+      expect(options.resumeSessionId).toBeUndefined();
+    }
+  });
+
   it("forwards the Agent CLI launch resolver to every Task Force backend", async () => {
     runtime = createCarrierRuntime();
     registerCarrier(runtime.registry, createConfig("alpha", "Alpha"));

@@ -42,18 +42,12 @@ function DefaultGlyph() {
   );
 }
 
-/**
- * Operation의 CLI 식별자를 마크 키로 정규화한다.
- * Kimi는 Claude Code와 같은 바이너리·같은 기록 디렉터리를 쓰므로 사용량 원본에서는 `claude`로 분류된다.
- * Console은 Operation의 `cliId`로 둘을 구분하므로, Operation 행에서는 이 값을 마크의 근거로 삼는다.
- */
 export function markKeyFromCliId(cliId: string): string {
-  if (cliId === "claude-kimi") return "kimi";
   return cliId;
 }
 
 export function cliGlyph(client: string): ReactNode {
-  if (client === "claude") return <ClaudeGlyph />;
+  if (client === "claude" || client === "claude-gateway") return <ClaudeGlyph />;
   if (client === "codex") return <CodexGlyph />;
   if (client === "kimi") return <KimiGlyph />;
   if (client === "cursor") return <CursorGlyph />;

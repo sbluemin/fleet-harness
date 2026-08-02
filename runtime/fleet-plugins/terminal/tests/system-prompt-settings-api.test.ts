@@ -2,28 +2,59 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { fetchSystemPromptSettings, saveSystemPromptSettings } from "../client/agent/settings-api.js";
 
+const EMPTY_CATALOG = { providers: [] };
+const CATALOG = {
+  providers: [
+    {
+      id: "cursor",
+      models: [
+        {
+          id: "cursor--claude-opus-5",
+          name: "Opus-5",
+          contextWindow: 300000,
+          oneMillion: true,
+          maxMode: false,
+          fast: false,
+          description: null,
+          effort: { levels: ["low", "medium", "high", "xhigh", "max"] },
+        },
+      ],
+    },
+  ],
+};
+
 describe("system prompt settings api", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
   it("loads Terminal prompt settings from the plugin route", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({ enableMetaphor: false, agentIdleDormantMinutes: 60 }));
+    const fetchMock = vi.fn(async () => jsonResponse({
+      enableMetaphor: false,
+      agentIdleDormantMinutes: 60,
+      aiGateway: null,
+      aiGatewayCatalog: CATALOG,
+    }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(fetchSystemPromptSettings()).resolves.toEqual({
       enableMetaphor: false,
-      kimiModel: null,
       agentIdleDormantMinutes: 60,
+      aiGateway: null,
+      aiGatewayCatalog: CATALOG,
     });
     expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", { signal: undefined });
   });
 
   it("saves the prompt boolean to the plugin route", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({ enableMetaphor: true, agentIdleDormantMinutes: 60 }));
-    vi.stubGlobal("fetch", fetchMock);
-    await expect(saveSystemPromptSettings({ enableMetaphor: true })).resolves.toEqual({
+    const fetchMock = vi.fn(async () => jsonResponse({
       enableMetaphor: true,
-      kimiModel: null,
+      agentIdleDormantMinutes: 60,
+      aiGateway: null,
+      aiGatewayCatalog: EMPTY_CATALOG,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(saveSystemPromptSettings({ enableMetaphor: true })).resolves.toMatchObject({
+      enableMetaphor: true,
       agentIdleDormantMinutes: 60,
     });
     expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", {
@@ -35,65 +66,57 @@ describe("system prompt settings api", () => {
   });
 
   it("rejects responses missing a required settings field", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ kimiModel: null })));
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ agentIdleDormantMinutes: 60, aiGatewayCatalog: EMPTY_CATALOG })));
     await expect(fetchSystemPromptSettings()).rejects.toThrow("Invalid Terminal settings response");
   });
 
   it("rejects responses missing agentIdleDormantMinutes", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ enableMetaphor: false, kimiModel: null })));
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ enableMetaphor: false, aiGatewayCatalog: EMPTY_CATALOG })));
     await expect(fetchSystemPromptSettings()).rejects.toThrow("Invalid Terminal settings response");
   });
 
-  it("loads the stored Kimi default model from the plugin route", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({
-      enableMetaphor: false,
-      kimiModel: { model: "k3", effort: "low" },
-      agentIdleDormantMinutes: 60,
-    }));
-    vi.stubGlobal("fetch", fetchMock);
-    await expect(fetchSystemPromptSettings()).resolves.toEqual({
-      enableMetaphor: false,
-      kimiModel: { model: "k3", effort: "low" },
-      agentIdleDormantMinutes: 60,
-    });
-  });
-
-  it("saves the Kimi default model to the plugin route", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({
-      enableMetaphor: false,
-      kimiModel: { model: "k3[1m]", effort: "high" },
-      agentIdleDormantMinutes: 60,
-    }));
-    vi.stubGlobal("fetch", fetchMock);
-    await expect(saveSystemPromptSettings({ kimiModel: { model: "k3[1m]", effort: "high" } })).resolves.toEqual({
-      enableMetaphor: false,
-      kimiModel: { model: "k3[1m]", effort: "high" },
-      agentIdleDormantMinutes: 60,
-    });
-    expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kimiModel: { model: "k3[1m]", effort: "high" } }),
-      signal: undefined,
-    });
+  it("rejects responses missing the gateway catalog", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ enableMetaphor: false, agentIdleDormantMinutes: 60 })));
+    await expect(fetchSystemPromptSettings()).rejects.toThrow("Invalid Terminal settings response");
   });
 
   it("saves agentIdleDormantMinutes including null Off", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({
       enableMetaphor: false,
-      kimiModel: null,
       agentIdleDormantMinutes: null,
+      aiGateway: null,
+      aiGatewayCatalog: EMPTY_CATALOG,
     }));
     vi.stubGlobal("fetch", fetchMock);
-    await expect(saveSystemPromptSettings({ agentIdleDormantMinutes: null })).resolves.toEqual({
+    await expect(saveSystemPromptSettings({ agentIdleDormantMinutes: null })).resolves.toMatchObject({
       enableMetaphor: false,
-      kimiModel: null,
       agentIdleDormantMinutes: null,
     });
     expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ agentIdleDormantMinutes: null }),
+      signal: undefined,
+    });
+  });
+
+  it("saves the aiGateway selection to the plugin route", async () => {
+    const aiGateway = {
+      models: [{ id: "cursor--claude-opus-5" }],
+      defaultModel: "cursor--claude-opus-5",
+    };
+    const fetchMock = vi.fn(async () => jsonResponse({
+      enableMetaphor: false,
+      agentIdleDormantMinutes: 60,
+      aiGateway,
+      aiGatewayCatalog: CATALOG,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(saveSystemPromptSettings({ aiGateway })).resolves.toMatchObject({ aiGateway });
+    expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ aiGateway }),
       signal: undefined,
     });
   });

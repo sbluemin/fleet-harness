@@ -231,7 +231,7 @@ function freezeSession(session: DispatchBackendSession): DispatchBackendSession 
 
 /** Public `resume_context_id` parameter guidance — shared by the tool schema and prompt snippet. */
 export const RESUME_CONTEXT_ID_DESCRIPTION =
-  "Optional context_id returned by an earlier successful carrier_dispatch. Pass it to resume that real provider session in a fresh process; omit it to start a fresh session and receive a new context_id.";
+  "Optional context_id returned by an earlier successful carrier_dispatch. Pass it to resume that real provider session in a fresh process. If no valid returned context_id is available, omit this property to start fresh and receive a new context_id; never pass an empty string.";
 
 export type DispatchClaimOutcome =
   | { readonly ok: true; readonly contextId?: string; readonly lease?: DispatchContextLease; readonly resumeSessions?: ReadonlyMap<CliType, string> }
@@ -250,14 +250,15 @@ export function claimDispatchContext(
   binding: DispatchContextBindingInput,
 ): DispatchClaimOutcome {
   if (!registry) return { ok: true };
-  const contextId = rawResumeContextId === undefined ? createContextId() : validateContextId(rawResumeContextId);
+  const resumeContextId = rawResumeContextId?.trim().length ? rawResumeContextId : undefined;
+  const contextId = resumeContextId === undefined ? createContextId() : validateContextId(resumeContextId);
   if (!contextId) {
     return {
       ok: false,
       error: "Invalid resume_context_id: pass the context_id returned by a prior successful carrier_dispatch.",
     };
   }
-  const claim = registry.claim(contextId, binding, Date.now(), rawResumeContextId !== undefined);
+  const claim = registry.claim(contextId, binding, Date.now(), resumeContextId !== undefined);
   if (!claim.accepted) return { ok: false, error: describeClaimError(claim.error) };
   return { ok: true, contextId, lease: claim.lease, resumeSessions: claim.resumeSessions };
 }

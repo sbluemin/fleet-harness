@@ -20,22 +20,21 @@ export interface AgentCliInstallStatus {
   readonly available: boolean;
 }
 
-export interface AgentCliAuthStatus {
-  readonly cli: string;
-  readonly signedIn: boolean;
-}
-
 export function combineAgentCliLaunchMetadata(
   metadata: readonly { readonly id: AgentCliId; readonly label: string }[],
   installStatuses: readonly AgentCliInstallStatus[],
-  authStatuses: readonly AgentCliAuthStatus[],
 ): AgentCliLaunchMetadata[] {
   const availableByCommand = new Map(installStatuses.map((entry) => [entry.id, entry.available]));
-  const signedInByCli = new Map(authStatuses.map((entry) => [entry.cli, entry.signedIn]));
   return metadata.map((meta) => ({
     id: meta.id,
     label: meta.label,
-    available: availableByCommand.get(CLI_BACKENDS[meta.id].cliCommand) ?? false,
-    signedIn: signedInByCli.has(meta.id) ? (signedInByCli.get(meta.id) ?? false) : true,
+    available: availableByCommand.get(resolveCliCommand(meta.id)) ?? false,
+    signedIn: true,
   }));
+}
+
+// claude-gateway는 Launch 전용이라 CLI_BACKENDS(Carrier/Analyst 전송 카탈로그)에 등재하지 않는다.
+// 실행 바이너리는 claude와 같으므로 설치 판정도 claude를 따른다.
+function resolveCliCommand(id: AgentCliId): string {
+  return id === "claude-gateway" ? "claude" : CLI_BACKENDS[id].cliCommand;
 }

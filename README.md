@@ -80,11 +80,11 @@ Every supported CLI brings a model-native agent loop refined by its creator. Fle
 | CLI | Provider | Protocol | Typical strength |
 |---|---|---|---|
 | **Claude Code** | Anthropic | ACP | Deep reasoning and architecture judgment |
-| **Kimi via Claude Code** | Moonshot AI | ACP | Kimi coding models with Claude Code tooling |
+| **Claude (Gateway • Experimental)** | OpenAI, Cursor, Moonshot AI | Claude Code gateway | Latest GPT, Cursor, and Kimi K3 models in one Claude Code surface |
 | **Codex CLI** | OpenAI | Codex App Server | Rapid implementation and iterative execution |
 | **Cursor Agent** | Cursor | ACP | Multi-model routing |
 
-Kimi uses the installed `claude` binary with Moonshot's official Anthropic-compatible endpoint. Register its API key under Settings → Plugins → Terminal → Agent CLI before launching a Kimi session or assigning `claude-kimi` to a Carrier.
+Kimi K3 is selected from AI Gateway's Claude Code model picker. Register its API key under Settings → Plugins → Terminal → Agent CLI; the credential stays in the local gateway and is never injected into the Claude Code process.
 
 Fleet maps that system into a clear command chain: you are the **Admiral of the Navy**, the workspace host acts as **Admiral**, and each specialized **Carrier** is commanded by a Captain persona. The metaphor is more than decoration — it makes ownership, delegation, and verification explicit.
 

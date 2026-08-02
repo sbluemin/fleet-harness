@@ -173,7 +173,7 @@ describe("resolveAgentCliBinary", () => {
 
 describe("Agent CLI launch env overlay", () => {
   it("maps Claude variants to CLAUDE_BIN and does not overwrite existing env", () => {
-    expect(applyAgentCliPathEnvOverlay({ PATH: "/usr/bin" }, "claude-kimi", { claude: "/custom/claude" })).toMatchObject({
+    expect(applyAgentCliPathEnvOverlay({ PATH: "/usr/bin" }, "claude-gateway", { claude: "/custom/claude" })).toMatchObject({
       CLAUDE_BIN: "/custom/claude",
     });
     expect(applyAgentCliPathEnvOverlay({ CLAUDE_BIN: "/managed/claude" }, "claude", { claude: "/custom/claude" })).toEqual({

@@ -29,14 +29,13 @@ import { disposeAnalysisStore, rearmAnalysisArtifacts, useAnalysisStore } from "
 import "./analysis.css";
 import "./agent-cli.css";
 
-import { fetchCarrierSettingsOptions } from "../carriers/api.js";
-import type { CarrierSettingsCliOption } from "../../shared/carrier-settings-types.js";
 import { createAgentSession, fetchAgentCliDiagnostics, fetchAgentCliState, resumeAgentSession, setAgentCliPath, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
 import { deriveTrackPhase, formatElapsedDuration, isTrackLive, mergeJobIds, resolveCarrierCaptain, resolveToolTone, type TrackPhase } from "./helpers.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore } from "./model-auth-store.js";
 import type { ModelAuthProviderState } from "./model-auth-api.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings-store.js";
+import type { AiGatewayCatalogModel, AiGatewayCatalogProvider, AiGatewayProviderId, AiGatewaySettings } from "./settings-api.js";
 import { isTerminalJobStatus } from "./reduce.js";
 import { StreamedMarkdown } from "./streamed-markdown.js";
 import { applySessionUpdate, hydrateAgentClis, removeSession, selectSession, sessionJobs, useAgentState } from "./store.js";
@@ -172,8 +171,7 @@ export const agentPlugin = definePlugin({
     return { id: session.sessionId };
   },
   renderLaunchIcon: (kind) => {
-    if (kind.id === "claude-kimi") return <KimiGlyph />;
-    if (kind.id === "claude") return <ClaudeGlyph />;
+    if (kind.id === "claude" || kind.id === "claude-gateway") return <ClaudeGlyph />;
     if (kind.id === "codex") return <CodexGlyph />;
     return <AgentGlyph />;
   },
@@ -810,47 +808,271 @@ function AgentCliSection() {
         <p className="global-settings-foot">{t("terminal.settings.agentCliFoot")}</p>
       </section>
       <ModelAuthBlock />
+      <AiGatewayModelsCard />
     </>
   );
 }
 
-function ModelAuthBlock() {
+const AI_GATEWAY_PROVIDER_LABEL_KEYS = {
+  codex: "terminal.settings.aiGatewayProviderCodex",
+  cursor: "terminal.settings.aiGatewayProviderCursor",
+  kimi: "terminal.settings.aiGatewayProviderKimi",
+} as const;
+
+const AI_GATEWAY_PROVIDER_SUB_KEYS = {
+  codex: "terminal.settings.aiGatewaySubCodex",
+  cursor: "terminal.settings.aiGatewaySubCursor",
+  kimi: "terminal.settings.aiGatewaySubKimi",
+} as const;
+
+function formatAiGatewayContextWindow(contextWindow: number | null): string | null {
+  if (contextWindow === null) return null;
+  return contextWindow >= 1_000_000 ? "1M" : `${Math.round(contextWindow / 1000)}K`;
+}
+
+function AiGatewayModelsCard() {
   const t = getT(useTerminalLocale());
-  const store = useModelAuthStore();
   const settings = useSystemPromptSettingsStore();
-  const [kimiOptions, setKimiOptions] = React.useState<CarrierSettingsCliOption | null>(null);
+  const state = settings.state;
+  const saving = settings.savingField !== null;
 
-  React.useEffect(() => {
-    const controller = new AbortController();
-    void loadModelAuth(controller.signal);
-    return () => controller.abort();
-  }, []);
-
-  // 프로바이더 기본 모델 카탈로그는 Carriers 섹션과 같은 options 엔드포인트에서 가져온다.
-  React.useEffect(() => {
-    const controller = new AbortController();
-    void fetchCarrierSettingsOptions(controller.signal)
-      .then((options) => setKimiOptions(options.cliTypes.find((cli) => cli.id === "claude-kimi") ?? null))
-      .catch(() => undefined);
-    return () => controller.abort();
-  }, []);
-
-  // 현재 저장값은 terminal settings 스토어의 kimiModel 필드에서 읽는다.
   React.useEffect(() => {
     const controller = new AbortController();
     void loadSystemPromptSettings(controller.signal);
     return () => controller.abort();
   }, []);
 
-  const storedKimiModel = settings.state?.kimiModel ?? null;
-  const selectedModelId = storedKimiModel?.model ?? kimiOptions?.defaultModel;
-  const selectedModel = kimiOptions?.models.find((model) => model.modelId === selectedModelId);
-  const selectedEffort = storedKimiModel?.effort ?? selectedModel?.effort?.default;
-  const saving = settings.savingField !== null;
+  if (!state) {
+    return (
+      <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayModels")}>
+        <p className="global-settings-resp-title">{t("terminal.settings.aiGatewayModels")}</p>
+        <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
+      </section>
+    );
+  }
 
-  const saveKimiModel = (model: string, effort?: string) => {
-    void setSystemPromptSettingsField("kimiModel", effort ? { model, effort } : { model });
+  const selection = state.aiGateway ?? {};
+  const enabled = selection.models ?? [];
+
+  const save = (next: AiGatewaySettings): void => {
+    const models = next.models ?? [];
+    const normalized = models.length === 0 && next.defaultModel === undefined ? null : {
+      ...(models.length > 0 ? { models } : {}),
+      ...(next.defaultModel !== undefined ? { defaultModel: next.defaultModel } : {}),
+    };
+    void setSystemPromptSettingsField("aiGateway", normalized);
   };
+
+  const addModel = (model: AiGatewayCatalogModel): void => {
+    if (enabled.some((entry) => entry.id === model.id)) return;
+    save({ ...selection, models: [...enabled, { id: model.id }] });
+  };
+  const removeModel = (id: string): void => {
+    save({
+      models: enabled.filter((entry) => entry.id !== id),
+      ...(selection.defaultModel !== undefined && selection.defaultModel !== id
+        ? { defaultModel: selection.defaultModel }
+        : {}),
+    });
+  };
+  const setDefaultModel = (id: string): void => {
+    save({ ...selection, defaultModel: id });
+  };
+
+  return (
+    <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayModels")}>
+      <div className="agent-cli-head">
+        <p className="global-settings-resp-title">{t("terminal.settings.aiGatewayModels")}</p>
+      </div>
+      <p className="global-settings-help">{t("terminal.settings.aiGatewayModelsHelp")}</p>
+      {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
+      {enabled.length === 0 ? (
+        <p className="global-settings-help">{t("terminal.settings.aiGatewayAllExposed")}</p>
+      ) : selection.defaultModel === undefined ? (
+        <p className="global-settings-help">{t("terminal.settings.aiGatewayDefaultUnset")}</p>
+      ) : null}
+      {state.aiGatewayCatalog.providers.map((provider) => (
+        <AiGatewayProviderBlock
+          key={provider.id}
+          provider={provider}
+          selection={selection}
+          saving={saving}
+          onAdd={addModel}
+          onRemove={removeModel}
+          onSetDefault={setDefaultModel}
+        />
+      ))}
+      <p className="global-settings-foot">{t("terminal.settings.aiGatewayModelsFoot")}</p>
+    </section>
+  );
+}
+
+interface AiGatewayProviderBlockProps {
+  readonly provider: AiGatewayCatalogProvider;
+  readonly selection: AiGatewaySettings;
+  readonly saving: boolean;
+  readonly onAdd: (model: AiGatewayCatalogModel) => void;
+  readonly onRemove: (id: string) => void;
+  readonly onSetDefault: (id: string) => void;
+}
+
+function AiGatewayProviderBlock({ provider, selection, saving, onAdd, onRemove, onSetDefault }: AiGatewayProviderBlockProps) {
+  const t = getT(useTerminalLocale());
+  const baseModels = provider.models.filter((model) => !model.fast);
+  const [draftBase, setDraftBase] = React.useState(baseModels[0]?.id ?? "");
+  const [draftFast, setDraftFast] = React.useState(false);
+
+  const enabledRows = (selection.models ?? [])
+    .map((entry) => provider.models.find((model) => model.id === entry.id))
+    .filter((model): model is AiGatewayCatalogModel => model !== undefined);
+
+  const draftBaseModel = provider.models.find((model) => model.id === draftBase) ?? baseModels[0];
+  const hasFastPair = draftBaseModel !== undefined
+    && provider.models.some((model) => model.id === `${draftBaseModel.id}-fast`);
+  const draftModel = draftBaseModel === undefined
+    ? undefined
+    : draftFast && hasFastPair
+      ? provider.models.find((model) => model.id === `${draftBaseModel.id}-fast`)
+      : draftBaseModel;
+  const draftEnabled = draftModel !== undefined && (selection.models ?? []).some((entry) => entry.id === draftModel.id);
+  const providerLabel = t(AI_GATEWAY_PROVIDER_LABEL_KEYS[provider.id as AiGatewayProviderId]);
+
+  return (
+    <div className={`ai-gateway-provider is-${provider.id}`}>
+      <div className="ai-gateway-provider-head">
+        <span className="ai-gateway-provider-glyph" aria-hidden="true"><AiGatewayProviderGlyph provider={provider.id as AiGatewayProviderId} /></span>
+        <span className="ai-gateway-provider-name">{providerLabel}</span>
+        <span className="ai-gateway-provider-sub">
+          {t(AI_GATEWAY_PROVIDER_SUB_KEYS[provider.id as AiGatewayProviderId])}
+          {" · "}
+          {t("terminal.settings.aiGatewayInCatalog", { count: provider.models.length })}
+        </span>
+      </div>
+      {enabledRows.length === 0 ? (
+        <p className="global-settings-help">{t("terminal.settings.aiGatewayNone")}</p>
+      ) : (
+        <div className="ai-gateway-rows">
+          {enabledRows.map((model) => (
+            <AiGatewayModelRow
+              key={model.id}
+              model={model}
+              isDefault={selection.defaultModel === model.id}
+              saving={saving}
+              onRemove={() => onRemove(model.id)}
+              onSetDefault={() => onSetDefault(model.id)}
+            />
+          ))}
+        </div>
+      )}
+      <div className="ai-gateway-composer">
+        <span className="ai-gateway-field-label">{t("terminal.settings.aiGatewayAddModel")}</span>
+        <Select
+          aria-label={t("terminal.settings.aiGatewayAddAria", { provider: providerLabel })}
+          value={draftBaseModel?.id ?? ""}
+          disabled={saving || baseModels.length === 0}
+          options={baseModels.map((model) => ({ value: model.id, label: model.name }))}
+          onChange={(value) => {
+            setDraftBase(value);
+            setDraftFast(false);
+          }}
+        />
+        {hasFastPair ? (
+          <button
+            type="button"
+            className={`ai-gateway-axis-toggle ${draftFast ? "is-on" : ""}`}
+            aria-pressed={draftFast}
+            disabled={saving}
+            onClick={() => setDraftFast((fast) => !fast)}
+          >
+            {t("terminal.settings.aiGatewayFast")}
+          </button>
+        ) : null}
+        {draftModel ? <AiGatewayModelChips model={draftModel} /> : null}
+        {draftEnabled ? <span className="ai-gateway-composer-note">{t("terminal.settings.aiGatewayAlreadyEnabled")}</span> : null}
+        <button
+          type="button"
+          className="ai-gateway-add-button"
+          disabled={saving || draftModel === undefined || draftEnabled}
+          onClick={() => { if (draftModel) onAdd(draftModel); }}
+        >
+          {t("terminal.settings.aiGatewayAddModel")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface AiGatewayModelRowProps {
+  readonly model: AiGatewayCatalogModel;
+  readonly isDefault: boolean;
+  readonly saving: boolean;
+  readonly onRemove: () => void;
+  readonly onSetDefault: () => void;
+}
+
+function AiGatewayModelRow({ model, isDefault, saving, onRemove, onSetDefault }: AiGatewayModelRowProps) {
+  const t = getT(useTerminalLocale());
+  return (
+    <div className="ai-gateway-model-row">
+      <button
+        type="button"
+        className={`ai-gateway-default-star ${isDefault ? "is-on" : ""}`}
+        aria-pressed={isDefault}
+        aria-label={t("terminal.settings.aiGatewayDefaultAria", { name: model.name })}
+        disabled={saving}
+        onClick={onSetDefault}
+      >
+        ★
+      </button>
+      <span className="ai-gateway-model-text">
+        <span className="ai-gateway-model-name">{model.name}</span>
+        <span className="ai-gateway-model-id">{model.id}</span>
+      </span>
+      <AiGatewayModelChips model={model} />
+      <button
+        type="button"
+        className="ai-gateway-remove"
+        aria-label={t("terminal.settings.aiGatewayRemoveAria", { name: model.name })}
+        disabled={saving}
+        onClick={onRemove}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+function AiGatewayModelChips({ model }: { readonly model: AiGatewayCatalogModel }) {
+  const t = getT(useTerminalLocale());
+  const contextLabel = formatAiGatewayContextWindow(model.contextWindow);
+  return (
+    <span className="ai-gateway-chips">
+      {contextLabel ? <span className="ai-gateway-chip">{contextLabel}</span> : null}
+      {model.effort ? (
+        <span className="ai-gateway-chip">{`effort ${model.effort.levels[0]}–${model.effort.levels[model.effort.levels.length - 1]}`}</span>
+      ) : null}
+      {model.fast ? <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayFast")}</span> : null}
+      {model.maxMode ? <span className="ai-gateway-chip is-strong">{t("terminal.settings.aiGatewayMaxMode")}</span> : null}
+      {model.description ? <span className="ai-gateway-chip">{model.description}</span> : null}
+    </span>
+  );
+}
+
+function AiGatewayProviderGlyph({ provider }: { readonly provider: AiGatewayProviderId }) {
+  if (provider === "codex") return <CodexGlyph />;
+  if (provider === "cursor") return <CursorGlyph />;
+  return <KimiGlyph />;
+}
+
+function ModelAuthBlock() {
+  const t = getT(useTerminalLocale());
+  const store = useModelAuthStore();
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void loadModelAuth(controller.signal);
+    return () => controller.abort();
+  }, []);
 
   return (
     <section className="global-settings-card" aria-label={t("terminal.auth.modelSignInAria")}>
@@ -861,41 +1083,8 @@ function ModelAuthBlock() {
       {store.error ? <p className="global-settings-error" role="alert">{store.error}</p> : null}
       {store.loading && !store.state ? <p className="global-settings-help">{t("terminal.auth.loadingSignIn")}</p> : null}
       {store.state?.providers.map((provider) => (
-        <ProviderRow key={provider.cli} provider={provider} busy={store.busyCli === provider.cli} />
+        <ProviderRow key={provider.provider} provider={provider} busy={store.busyProvider === provider.provider} />
       ))}
-      {kimiOptions && selectedModelId ? (
-        <div className="model-auth-row">
-          <div className="terminal-carriers-runtime-row">
-            <div className="terminal-carriers-field">
-              <span className="terminal-carriers-label" id="kimi-default-model-label">{t("terminal.auth.defaultModel")}</span>
-              <Select
-                aria-labelledby="kimi-default-model-label"
-                value={selectedModelId}
-                disabled={saving || !settings.state}
-                options={kimiOptions.models.map((model) => ({ value: model.modelId, label: model.name }))}
-                onChange={(nextModelId) => {
-                  const nextModel = kimiOptions.models.find((model) => model.modelId === nextModelId);
-                  if (!nextModel) return;
-                  saveKimiModel(nextModel.modelId, nextModel.effort ? (storedKimiModel?.effort ?? nextModel.effort.default) : undefined);
-                }}
-              />
-            </div>
-            {selectedModel?.effort ? (
-              <div className="terminal-carriers-field">
-                <span className="terminal-carriers-label" id="kimi-default-effort-label">{t("terminal.auth.defaultEffort")}</span>
-                <Select
-                  aria-labelledby="kimi-default-effort-label"
-                  value={selectedEffort ?? selectedModel.effort.default}
-                  disabled={saving || !settings.state}
-                  options={selectedModel.effort.levels.map((level) => ({ value: level, label: level }))}
-                  onChange={(effort) => saveKimiModel(selectedModel.modelId, effort)}
-                />
-              </div>
-            ) : null}
-          </div>
-          <p className="global-settings-help">{t("terminal.auth.kimiModelHelp")}</p>
-        </div>
-      ) : null}
       <p className="global-settings-foot">{t("terminal.auth.signInFoot")}</p>
     </section>
   );
@@ -906,7 +1095,7 @@ function ProviderRow({ provider, busy }: ProviderRowProps) {
   const [apiKey, setApiKey] = React.useState("");
 
   const handleSignIn = async () => {
-    const ok = await signInModel(provider.cli, apiKey);
+    const ok = await signInModel(provider.provider, apiKey);
     if (ok) setApiKey("");
   };
 
@@ -920,7 +1109,7 @@ function ProviderRow({ provider, busy }: ProviderRowProps) {
       </div>
       {provider.signedIn ? (
         <div className="model-auth-actions">
-          <button type="button" className="model-auth-button" disabled={busy} onClick={() => void signOutModel(provider.cli)}>
+          <button type="button" className="model-auth-button" disabled={busy} onClick={() => void signOutModel(provider.provider)}>
             {busy ? t("terminal.auth.working") : t("terminal.auth.signOut")}
           </button>
         </div>
@@ -1366,9 +1555,16 @@ function CodexGlyph() {
   );
 }
 
-// Kimi(Moonshot AI) 공식 브라우저 탭/앱 심볼 — 두 눈이 음각으로 뚫린 말풍선 마크.
-// 이전에는 claude-kimi가 ClaudeGlyph를 재사용해 Claude와 구분되지 않았다.
-// 출처: kimi.com 아이콘 번들(statics.moonshot.cn/kimi-web-seo, "TabKimi_f").
+// AI Gateway provider glyphs. Cursor는 quota/ledger 플러그인이 미러링하는 공식 경로와 동일하고,
+// Kimi는 kimi.com 아이콘 번들(statics.moonshot.cn/kimi-web-seo, "TabKimi_f") 출처다.
+function CursorGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23" fill="currentColor" />
+    </svg>
+  );
+}
+
 function KimiGlyph() {
   return (
     <svg viewBox="0 0 1024 1024" aria-hidden="true">

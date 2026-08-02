@@ -2,9 +2,12 @@ import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { definePlugin, registerLaunchCatalog, registerWsHandler } from "@fleet-console/sdk/plugin/node";
 import { createInfraServices } from "@dotobokuri/core-infra";
 import { createCarrierRegistry, initStore, registerDefaultCarriers } from "@dotobokuri/fleet-carriers";
+import { KIMI_AUTH_PROVIDER_ID } from "@dotobokuri/fleet-admiral";
 
 import { registerAgentRoutes } from "./server/agent.js";
 import { registerAnalysisRoutes } from "./server/agent-api/analysis-routes.js";
+import { AI_GATEWAY_ROUTE_SEGMENT, registerAiGatewayRoutes } from "./server/ai-gateway-routes.js";
+import { createAiGatewaySettingsStore } from "./server/ai-gateway-settings.js";
 import { createAgentCliPathStore } from "./server/agent-api/agent-cli-paths.js";
 import { registerCarrierSettingsRoutes } from "./server/carrier-settings-routes.js";
 import { registerGlobalShellRoutes } from "./server/global.js";
@@ -39,8 +42,14 @@ export default definePlugin({
     ctx.host.lifecycle.registerCleanup(unsubscribeDelete);
     registerShellRoutes(ctx, runtime);
     registerGlobalShellRoutes(ctx, runtime);
-    registerTerminalSettingsRoutes(ctx, { globalOptionsService: infraServices.globalOptionsService });
+    // AI Gateway 선별은 콘솔 durable state(plugins.terminal["ai-gateway"]) 소유 — Fleet 전역 옵션이 아니다.
+    const aiGatewayStore = createAiGatewaySettingsStore(ctx.host.storage, ctx.pluginId);
+    registerTerminalSettingsRoutes(ctx, { globalOptionsService: infraServices.globalOptionsService, aiGatewayStore });
     registerTerminalModelAuthRoutes(ctx, { authService: infraServices.authService });
+    registerAiGatewayRoutes(ctx, {
+      readAiGatewaySettings: aiGatewayStore.read,
+      readKimiApiKey: () => infraServices.authService.getApiKey(KIMI_AUTH_PROVIDER_ID),
+    });
     registerCarrierSettingsRoutes(ctx, { registry: carrierRegistry });
     // Agent Operation과 Analyst는 같은 plugin storage 키를 읽되 수명은 각 라우트가 독립 소유한다.
     // store는 무상태 어댑터라 여기서 별도로 만들어도 저장 파일과 우선순위 계약은 하나로 유지된다.
@@ -49,8 +58,12 @@ export default definePlugin({
       readAgentCliPaths: async () => (await agentCliPathStore.read()).paths,
     });
     const agentLaunchKinds = registerAgentRoutes(ctx, runtime, {
-      authService: infraServices.authService,
       globalOptionsService: infraServices.globalOptionsService,
+      readAiGatewaySettings: aiGatewayStore.read,
+      aiGateway: {
+        routePath: `${ctx.basePath}/${AI_GATEWAY_ROUTE_SEGMENT}`,
+        origin: () => ctx.host.server.origin(),
+      },
     });
     registerLaunchCatalog(ctx, async () => [...await agentLaunchKinds(), SHELL_LAUNCH_KIND]);
   },

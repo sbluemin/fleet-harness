@@ -40,13 +40,11 @@ describe("Session Analyst server contract", () => {
       { id: "codex", displayName: "Codex CLI", available: true, version: "1.2.3" },
       { id: "cursor-agent", displayName: "Cursor Agent", available: true, version: "1.2.3" },
     ], modelsFor);
-    expect(catalog.clis.map((cli) => cli.cliId)).toEqual(["claude", "claude-kimi", "codex", "cursor"]);
+    expect(catalog.clis.map((cli) => cli.cliId)).toEqual(["claude", "codex", "cursor"]);
     expect(catalog.clis).toEqual(expect.arrayContaining([expect.objectContaining({ cliId: "claude", available: true })]));
-    // claude 바이너리 하나가 claude-kimi 백엔드도 제공한다 — 카탈로그에 함께 광고돼야 한다.
-    expect(catalog.clis).toEqual(expect.arrayContaining([expect.objectContaining({ cliId: "claude-kimi", label: "Kimi (Claude Code)", available: true })]));
     expect(JSON.stringify(catalog)).not.toMatch(/path|version|session/i);
-    expect(modelsFor.mock.calls.map(([cliId]) => cliId)).toEqual(["claude", "claude-kimi", "codex", "cursor"]);
-    for (const cliId of ["claude", "claude-kimi", "codex", "cursor"] as const) {
+    expect(modelsFor.mock.calls.map(([cliId]) => cliId)).toEqual(["claude", "codex", "cursor"]);
+    for (const cliId of ["claude", "codex", "cursor"] as const) {
       expect(isAnalysisSelection(catalog, { cliId, model: "model-a", effort: "low" })).toBe(true);
       expect(isAnalysisSelection(catalog, { cliId, model: "model-a", effort: "low", language: "ko" })).toBe(true);
     }

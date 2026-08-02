@@ -7,7 +7,6 @@ import modelsData from '../../models.json' with { type: 'json' };
 import { ModelsRegistrySchema } from './schemas.js';
 import type {
   ModelEntry,
-  ModelsMapping,
   ModelsRegistry,
   ProviderModelInfo,
   Effort,
@@ -28,7 +27,7 @@ export function getModelsRegistry(): ModelsRegistry {
  * 특정 CLI(프로바이더)의 모델 정보를 반환합니다.
  * 내부 데이터 보호를 위해 복사본을 반환합니다.
  *
- * @param cli - CLI 타입 (claude, claude-kimi, codex, cursor)
+ * @param cli - CLI 타입 (claude, codex, cursor)
  * @returns 프로바이더 모델 정보
  * @throws 존재하지 않는 프로바이더인 경우
  */
@@ -127,20 +126,6 @@ export function getEffortLevels(cli: CliType, modelId: string): string[] | null 
     return null;
   }
   return effort.levels;
-}
-
-/**
- * 특정 CLI(프로바이더)의 modelsMapping을 반환합니다.
- *
- * @param cli - CLI 타입
- * @returns modelsMapping (없으면 null)
- */
-export function getProviderModelsMapping(cli: CliType): ModelsMapping | null {
-  const provider = registry.providers[cli];
-  if (!provider) {
-    throw new Error(`알 수 없는 프로바이더: "${cli}"`);
-  }
-  return provider.modelsMapping ? structuredClone(provider.modelsMapping) : null;
 }
 
 /**

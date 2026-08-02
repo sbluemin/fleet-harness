@@ -16,7 +16,6 @@ afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 it.each([
   ["claude", true],
-  ["claude-kimi", true],
   ["codex", false],
   ["cursor", false],
 ] as const)("builds the selected %s Analyst provider with capability-aware isolation", async (cliId, strictMcp) => {

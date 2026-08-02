@@ -14,31 +14,7 @@ describe('ModelRegistry', () => {
     expect(modelIds).not.toContain('sonnet[1m]');
   });
 
-  it('Kimi via Claude Code는 전 요금제 기본 모델과 상위 요금제 모델을 노출한다', () => {
-    const provider = getProviderModels('claude-kimi');
-    const modelIds = provider.models.map((model) => model.modelId);
-    const efforts = Object.fromEntries(
-      provider.models.map((model) => [model.modelId, model.effort]),
-    );
-
-    expect(provider.defaultModel).toBe('kimi-for-coding');
-    expect(modelIds).toEqual([
-      'kimi-for-coding',
-      'k3',
-      'k3[1m]',
-      'kimi-for-coding-highspeed',
-    ]);
-    expect(efforts['kimi-for-coding']).toEqual({ supported: false });
-    expect(efforts['kimi-for-coding-highspeed']).toEqual({ supported: false });
-    expect(efforts.k3).toEqual({ supported: true, levels: ['low', 'high', 'max'], default: 'high' });
-    expect(efforts['k3[1m]']).toEqual({ supported: true, levels: ['low', 'high', 'max'], default: 'high' });
-  });
-
-  it('Kimi via Claude Code 모델들은 컨텍스트 윈도우 크기를 노출한다', () => {
-    expect(getModelContextWindow('claude-kimi', 'kimi-for-coding')).toBe(262144);
-    expect(getModelContextWindow('claude-kimi', 'k3')).toBe(262144);
-    expect(getModelContextWindow('claude-kimi', 'k3[1m]')).toBe(1048576);
-    expect(getModelContextWindow('claude-kimi', 'kimi-for-coding-highspeed')).toBe(262144);
+  it('모델별 컨텍스트 윈도우 미설정은 null을 반환한다', () => {
     expect(getModelContextWindow('claude', 'opus')).toBeNull();
   });
 

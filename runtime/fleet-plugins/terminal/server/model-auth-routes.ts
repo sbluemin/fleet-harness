@@ -2,7 +2,7 @@ import type http from "node:http";
 
 import {
   KIMI_AUTH_PROVIDER_ID,
-  validateAgentCliAuthKey,
+  validateKimiAuthKey,
 } from "@dotobokuri/fleet-admiral";
 import type { AuthService, AuthValidationFailureResult } from "@dotobokuri/core-infra";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
@@ -16,7 +16,7 @@ type AuthKeyValidation =
 
 interface TerminalModelAuthRouteDeps {
   readonly authService: Pick<AuthService, "setApiKey" | "deleteApiKey" | "listProviderIds">;
-  readonly validateApiKey: (cli: "claude-kimi", apiKey: string) => Promise<AuthKeyValidation>;
+  readonly validateApiKey: (apiKey: string) => Promise<AuthKeyValidation>;
 }
 
 interface SignInBody {
@@ -31,7 +31,7 @@ export function registerTerminalModelAuthRoutes(
 ): void {
   registerRouter(ctx, "model-auth", createTerminalModelAuthRouter(ctx, {
     ...deps,
-    validateApiKey: validateAgentCliAuthKey,
+    validateApiKey: validateKimiAuthKey,
   }));
 }
 
@@ -49,9 +49,9 @@ export function createTerminalModelAuthRouter(
       ctx.host.http.writeJson(res, 200, await buildModelAuthState(deps.authService));
       return true;
     }
-    const cli = parseProviderPath(path);
-    if (!cli) return false;
-    if (cli !== "claude-kimi") {
+    const providerId = parseProviderPath(path);
+    if (!providerId) return false;
+    if (providerId !== "kimi") {
       ctx.host.http.writeJson(res, 404, { error: "provider_not_found" });
       return true;
     }
@@ -98,7 +98,7 @@ async function signInProvider(
     return;
   }
   const apiKey = body.apiKey.trim();
-  const validation = await deps.validateApiKey(provider.cli, apiKey);
+  const validation = await deps.validateApiKey(apiKey);
   if (validation.status !== "success") {
     ctx.host.http.writeJson(res, UPSTREAM_FAILURE_STATUSES.has(validation.status) ? 502 : 400, {
       error: formatSignInFailureMessage(provider.displayName, validation.status),

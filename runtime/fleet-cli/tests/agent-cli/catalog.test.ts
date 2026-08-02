@@ -23,7 +23,6 @@ describe("agent CLI catalog", () => {
   it("includes dedicated Agent CLI profiles", () => {
     expect(getAgentCliIds()).toEqual([
       "claude",
-      "claude-kimi",
       "codex",
     ]);
   });
@@ -51,33 +50,6 @@ describe("agent CLI catalog", () => {
 
     expect(claude.terminalName).toBe("xterm-256color");
     expect(claude.messagePolicy).toEqual({
-      bracketedPaste: true,
-      lineTerminator: "\r",
-      multilineStrategy: "paste-mode",
-    });
-  });
-
-  it("launches Kimi through Claude Code with a Fleet-owned API key", async () => {
-    const env = { ...createEnvWithBins(), ANTHROPIC_AUTH_TOKEN: "anthropic-secret" };
-    const profile = await resolveAgentCliProfile(env, "/tmp", {
-      cliId: "claude-kimi",
-      authService: {
-        getApiKey: async () => "kimi-secret",
-      },
-    });
-
-    expect(profile).toMatchObject({
-      id: "claude-kimi",
-      label: "Kimi (Claude Code)",
-      env: {
-        ANTHROPIC_API_KEY: "kimi-secret",
-        ANTHROPIC_BASE_URL: "https://api.kimi.com/coding/",
-        ANTHROPIC_MODEL: "kimi-for-coding",
-      },
-    });
-    expect(profile.bin).toContain("claude");
-    expect(profile.env).not.toHaveProperty("ANTHROPIC_AUTH_TOKEN");
-    expect(profile.messagePolicy).toEqual({
       bracketedPaste: true,
       lineTerminator: "\r",
       multilineStrategy: "paste-mode",
@@ -125,10 +97,6 @@ describe("agent CLI catalog", () => {
 
   it("uses native injection builders for dedicated profiles", () => {
     expect(getAgentCliInjectionCapability("claude")).toEqual({
-      builderId: "claude-native",
-      enabled: true,
-    });
-    expect(getAgentCliInjectionCapability("claude-kimi")).toEqual({
       builderId: "claude-native",
       enabled: true,
     });

@@ -7,7 +7,7 @@ import { hydrateAgentClis } from "./store.js";
 interface ModelAuthStoreState {
   readonly loading: boolean;
   readonly state: ModelAuthState | null;
-  readonly busyCli: string | null;
+  readonly busyProvider: string | null;
   readonly error: string | null;
 }
 
@@ -17,7 +17,7 @@ const listeners = new Set<Listener>();
 let snapshot: ModelAuthStoreState = {
   loading: false,
   state: null,
-  busyCli: null,
+  busyProvider: null,
   error: null,
 };
 let requestGeneration = 0;
@@ -48,34 +48,34 @@ export async function loadModelAuth(signal?: AbortSignal): Promise<void> {
   }
 }
 
-export async function signInModel(cli: string, apiKey: string): Promise<boolean> {
+export async function signInModel(provider: string, apiKey: string): Promise<boolean> {
   const generation = ++requestGeneration;
-  setSnapshot({ busyCli: cli, error: null });
+  setSnapshot({ busyProvider: provider, error: null });
   try {
-    const result = await signInModelProvider(cli, apiKey);
+    const result = await signInModelProvider(provider, apiKey);
     if (generation !== requestGeneration) return true;
-    setSnapshot({ state: result.state, busyCli: null, error: null });
+    setSnapshot({ state: result.state, busyProvider: null, error: null });
     await refreshLaunchMetadata();
     return true;
   } catch (error) {
     if (generation !== requestGeneration) return false;
-    setSnapshot({ busyCli: null, error: toErrorMessage(error) });
+    setSnapshot({ busyProvider: null, error: toErrorMessage(error) });
     return false;
   }
 }
 
-export async function signOutModel(cli: string): Promise<boolean> {
+export async function signOutModel(provider: string): Promise<boolean> {
   const generation = ++requestGeneration;
-  setSnapshot({ busyCli: cli, error: null });
+  setSnapshot({ busyProvider: provider, error: null });
   try {
-    const result = await signOutModelProvider(cli);
+    const result = await signOutModelProvider(provider);
     if (generation !== requestGeneration) return true;
-    setSnapshot({ state: result.state, busyCli: null, error: null });
+    setSnapshot({ state: result.state, busyProvider: null, error: null });
     await refreshLaunchMetadata();
     return true;
   } catch (error) {
     if (generation !== requestGeneration) return false;
-    setSnapshot({ busyCli: null, error: toErrorMessage(error) });
+    setSnapshot({ busyProvider: null, error: toErrorMessage(error) });
     return false;
   }
 }

@@ -2,9 +2,9 @@ import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 
-import { createCarrierResultReminderRouter, createDelayedPtyWriter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliAuthStatuses, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
+import { createCarrierResultReminderRouter, createDelayedPtyWriter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliIds, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
 import { getCarrierConfig, resolveAgentCliType } from "@dotobokuri/fleet-carriers";
-import { ensureWorkspaceDirectory, withDirectoryLock, type AuthService, type GlobalOptionsService } from "@dotobokuri/core-infra";
+import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 import type { OperationLaunchKind, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
@@ -17,6 +17,8 @@ import { buildAgentCliLaunchKinds } from "./agent-api/agent-cli-launch-kinds.js"
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-api/agent-cli-launch-metadata.js";
 import { AGENT_CLI_COMMANDS, createAgentCliPathStore, createCarrierAgentCliLaunchResolver, resolveAgentCliBinary } from "./agent-api/agent-cli-paths.js";
 import type { AgentCliDiagnostics } from "./agent-api/agent-cli-types.js";
+import type { AiGatewayLaunchBinding } from "./agent-api/launch.js";
+import type { AiGatewayStoredSettings } from "./ai-gateway-settings.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
 import { captureSession, readProviderSessionCapture, readProviderSessionCaptureRaw, unlinkProviderSessionCapture, writeProviderSessionCaptureRaw, type ProviderSession } from "./agent-api/session-capture.js";
@@ -40,8 +42,9 @@ type OperationRenamedEvent = {
   readonly previousTitle: string;
 };
 interface AgentRouteDeps {
-  readonly authService: AuthService;
   readonly globalOptionsService: GlobalOptionsService;
+  readonly aiGateway?: AiGatewayLaunchBinding;
+  readonly readAiGatewaySettings?: () => Promise<AiGatewayStoredSettings>;
 }
 
 const AGENT_OPERATION_TYPE = "agent";
@@ -79,9 +82,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   const agentCliPathStore = createAgentCliPathStore(ctx.host.storage, ctx.pluginId);
   const readAgentCliPaths = async () => (await agentCliPathStore.read()).paths;
   const runtime = createFleetAgentRuntimeLifecycle({
-    authService: deps.authService,
     dataDir: ctx.host.paths.fleetDataDir,
-    globalOptionsService: deps.globalOptionsService,
     onMcpServerStartError: (error) => {
       console.error("[fleet-console] Failed to start MCP server", error);
     },
@@ -100,6 +101,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   const oscActivityTrackers = new Map<string, OscAgentActivityTracker>();
   const launchResolver = createAgentTerminalLaunchResolver({
     agentRuntime: runtime,
+    ...(deps.aiGateway ? { aiGateway: deps.aiGateway } : {}),
+    ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
     dataDir: ctx.host.paths.fleetDataDir,
     infraServices: deps,
     readAgentCliPaths,
@@ -119,7 +122,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       const session = observability.getTerminalSessionInfo(sessionId);
       if (!session) return;
       const cliId = session.cliId;
-      if (cliId !== "claude" && cliId !== "claude-kimi" && cliId !== "codex") return;
+      if (cliId !== "claude" && cliId !== "claude-gateway" && cliId !== "codex") return;
       tracker = createOscAgentActivityTracker({
         cliId,
         cwdBasename: session.cwdLabel,
@@ -567,13 +570,13 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   }
 
   async function buildAgentCliLaunchMetadata(): Promise<readonly AgentCliLaunchMetadata[]> {
-    const metadata = getAgentCliMetadata();
+    // Console은 게이트웨이 라우트를 가진 유일한 호스트라 console-only CLI까지 후보로 받는다.
+    const metadata = getAgentCliMetadata(getAgentCliIds({ includeConsoleOnly: true }));
     if ((process.env.FLEET_TERMINAL_CMD ?? "").trim().length > 0) {
       return metadata.map((meta) => ({ id: meta.id, label: meta.label, available: true, signedIn: true }));
     }
     const detected = await detector.detect();
-    const authStatuses = await getAgentCliAuthStatuses(deps.authService);
-    return combineAgentCliLaunchMetadata(metadata, detected, authStatuses);
+    return combineAgentCliLaunchMetadata(metadata, detected);
   }
 
   async function buildAgentCliDiagnostics(): Promise<AgentCliDiagnostics> {

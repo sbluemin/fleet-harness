@@ -206,10 +206,19 @@ export interface FleetPluginHostCapabilities {
   readonly operations: FleetPluginOperationsHost;
   readonly events: FleetPluginEventsHost;
   readonly paths: FleetPluginPathsHost;
+  readonly server: FleetPluginServerHost;
   readonly storage: FleetPluginStorageHost;
   readonly http: FleetPluginHttpHost;
   readonly security: FleetPluginSecurityHost;
   readonly lifecycle: FleetPluginLifecycleHost;
+}
+
+export interface FleetPluginServerHost {
+  /**
+   * Console이 실제로 리슨 중인 loopback origin. 리슨 확정 전에는 null.
+   * 자식 프로세스에 Console 주소를 넘겨야 하는 플러그인이 포트를 추측하지 않도록 한다.
+   */
+  origin(): string | null;
 }
 
 export interface FleetPluginOperationsHost {

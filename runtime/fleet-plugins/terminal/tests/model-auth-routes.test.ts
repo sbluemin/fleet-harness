@@ -15,7 +15,7 @@ interface RouterHarnessOptions {
 
 const BASE_PATH = "/plugins/terminal";
 const KIMI_PROVIDER_ID = "Claude Code with Moonshot Kimi";
-const KIMI_PATH = `${BASE_PATH}/model-auth/providers/claude-kimi`;
+const KIMI_PATH = `${BASE_PATH}/model-auth/providers/kimi`;
 
 describe("terminal Kimi auth routes", () => {
   it("returns browser-safe boolean state", async () => {
@@ -24,7 +24,7 @@ describe("terminal Kimi auth routes", () => {
 
     expect(harness.writes[0]).toMatchObject({
       status: 200,
-      body: { providers: [{ cli: "claude-kimi", displayName: "Kimi via Claude Code", signedIn: true }] },
+      body: { providers: [{ provider: "kimi", displayName: "Kimi for AI Gateway", signedIn: true }] },
     });
     const serialized = JSON.stringify(harness.writes);
     expect(serialized).not.toContain(KIMI_PROVIDER_ID);
@@ -95,7 +95,7 @@ function createRouterHarness(options: RouterHarnessOptions = {}) {
       deleteApiKey: async (providerId) => store.delete(providerId),
       listProviderIds: async () => [...store.keys()],
     },
-    validateApiKey: async (_cli, apiKey) => {
+    validateApiKey: async (apiKey) => {
       validatedKeys.push(apiKey);
       return { providerId: KIMI_PROVIDER_ID, status: options.validationStatus ?? "success" };
     },

@@ -4,8 +4,8 @@ import { combineAgentCliLaunchMetadata } from "../../fleet-plugins/terminal/serv
 
 const METADATA = [
   { id: "claude", label: "Claude" },
-  { id: "claude-kimi", label: "Kimi (Claude Code)" },
   { id: "codex", label: "Codex" },
+  { id: "claude-gateway", label: "Claude (Gateway • Experimental)" },
 ] as const;
 
 describe("combineAgentCliLaunchMetadata", () => {
@@ -17,13 +17,12 @@ describe("combineAgentCliLaunchMetadata", () => {
         { id: "codex", available: true },
         { id: "cursor-agent", available: true },
       ],
-      [],
     );
 
     expect(result).toEqual([
       { id: "claude", label: "Claude", available: true, signedIn: true },
-      { id: "claude-kimi", label: "Kimi (Claude Code)", available: true, signedIn: true },
       { id: "codex", label: "Codex", available: true, signedIn: true },
+      { id: "claude-gateway", label: "Claude (Gateway • Experimental)", available: true, signedIn: true },
     ]);
   });
 
@@ -35,39 +34,23 @@ describe("combineAgentCliLaunchMetadata", () => {
         { id: "codex", available: true },
         { id: "cursor-agent", available: true },
       ],
-      [],
     );
 
     expect(result.find((cli) => cli.id === "claude")?.available).toBe(false);
     expect(result.find((cli) => cli.id === "codex")?.available).toBe(true);
   });
 
-  it("탐지/auth 입력이 비면 available=false, signedIn=true로 둔다", () => {
-    const result = combineAgentCliLaunchMetadata(METADATA, [], []);
+  it("탐지 입력이 비면 available=false, signedIn=true로 둔다", () => {
+    const result = combineAgentCliLaunchMetadata(METADATA, []);
     expect(result.every((cli) => cli.available === false)).toBe(true);
     expect(result.every((cli) => cli.signedIn === true)).toBe(true);
   });
 
-  it("authStatuses에 명시적 미로그인이 있으면 해당 CLI의 signedIn=false가 된다", () => {
-    const result = combineAgentCliLaunchMetadata(
-      METADATA,
-      [{ id: "claude", available: true }],
-      [{ cli: "claude", signedIn: false }],
-    );
-    expect(result.find((cli) => cli.id === "claude")?.signedIn).toBe(false);
-    // authStatuses에 없는 CLI는 signedIn=true로 둔다.
-    expect(result.find((cli) => cli.id === "codex")?.signedIn).toBe(true);
-  });
-
-  it("Kimi는 Claude 바이너리 설치 상태를 공유하고 별도 sign-in 상태를 적용한다", () => {
-    const result = combineAgentCliLaunchMetadata(
-      METADATA,
-      [{ id: "claude", available: true }],
-      [{ cli: "claude-kimi", signedIn: false }],
-    );
-    expect(result.find((cli) => cli.id === "claude-kimi")).toMatchObject({
+  it("AI Gateway는 Claude 바이너리 설치 상태를 공유한다", () => {
+    const result = combineAgentCliLaunchMetadata(METADATA, [{ id: "claude", available: true }]);
+    expect(result.find((cli) => cli.id === "claude-gateway")).toMatchObject({
       available: true,
-      signedIn: false,
+      signedIn: true,
     });
   });
 });

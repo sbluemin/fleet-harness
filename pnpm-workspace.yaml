@@ -3,6 +3,7 @@ packages:
   - "packages/core-process"
   - "packages/core-unified-agent"
   - "packages/core-infra"
+  - "packages/core-ai-gateway"
   - "packages/fleet-admiral"
   - "packages/fleet-analyst"
   - "packages/fleet-carriers"

@@ -1,5 +1,5 @@
 export interface ModelAuthProviderState {
-  readonly cli: string;
+  readonly provider: string;
   readonly displayName: string;
   readonly signedIn: boolean;
 }
@@ -28,8 +28,8 @@ export async function fetchModelAuthState(signal?: AbortSignal): Promise<ModelAu
   return assertModelAuthState(await response.json(), response.status);
 }
 
-export async function signInModelProvider(cli: string, apiKey: string, signal?: AbortSignal): Promise<ModelAuthMutationResult> {
-  const response = await fetch(`/plugins/terminal/model-auth/providers/${encodeURIComponent(cli)}`, {
+export async function signInModelProvider(provider: string, apiKey: string, signal?: AbortSignal): Promise<ModelAuthMutationResult> {
+  const response = await fetch(`/plugins/terminal/model-auth/providers/${encodeURIComponent(provider)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ apiKey }),
@@ -39,8 +39,8 @@ export async function signInModelProvider(cli: string, apiKey: string, signal?: 
   return assertMutationResult(await response.json(), response.status);
 }
 
-export async function signOutModelProvider(cli: string, signal?: AbortSignal): Promise<ModelAuthMutationResult> {
-  const response = await fetch(`/plugins/terminal/model-auth/providers/${encodeURIComponent(cli)}`, {
+export async function signOutModelProvider(provider: string, signal?: AbortSignal): Promise<ModelAuthMutationResult> {
+  const response = await fetch(`/plugins/terminal/model-auth/providers/${encodeURIComponent(provider)}`, {
     method: "DELETE",
     signal,
   });
@@ -79,14 +79,14 @@ function assertModelAuthState(value: unknown, status: number): ModelAuthState {
 function assertProviderState(value: unknown, status: number): ModelAuthProviderState {
   const payload = value as Partial<ModelAuthProviderState>;
   if (
-    typeof payload.cli !== "string"
+    typeof payload.provider !== "string"
     || typeof payload.displayName !== "string"
     || typeof payload.signedIn !== "boolean"
   ) {
     throw new TerminalModelAuthApiError(status, "Invalid model auth provider response");
   }
   return {
-    cli: payload.cli,
+    provider: payload.provider,
     displayName: payload.displayName,
     signedIn: payload.signedIn,
   };

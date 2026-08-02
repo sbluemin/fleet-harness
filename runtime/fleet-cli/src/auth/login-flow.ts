@@ -1,13 +1,13 @@
 import { cancel, isCancel, password, select } from "@clack/prompts";
 import {
-  CLI_TO_AUTH_PROVIDER_ID,
-  validateAgentCliAuthKey,
+  KIMI_AUTH_PROVIDER_ID,
+  validateKimiAuthKey,
 } from "@dotobokuri/fleet-admiral";
 
 import type { AuthCliId, AuthCommandDeps, AuthCommandIo } from "./types.js";
 
 const AUTH_CLI_OPTIONS: readonly { readonly value: AuthCliId; readonly label: string }[] = [
-  { value: "claude-kimi", label: "Kimi via Claude Code" },
+  { value: "kimi", label: "Kimi for AI Gateway" },
 ];
 
 export async function runAuthLoginFlow(
@@ -26,19 +26,14 @@ export async function runAuthLoginFlow(
     return cancelAuthCommand();
   }
 
-  const validation = await validateAgentCliAuthKey(selectedCli, apiKey.trim());
+  const validation = await validateKimiAuthKey(apiKey.trim());
   if (validation.status !== "success") {
     io.stderr.write(`${formatValidationFailure(validation.status)}\n`);
     return 1;
   }
 
-  const providerId = CLI_TO_AUTH_PROVIDER_ID[selectedCli];
-  if (!providerId) {
-    io.stderr.write(`Authentication is unavailable for '${selectedCli}'.\n`);
-    return 1;
-  }
-  await deps.authService.setApiKey(providerId, apiKey.trim());
-  io.stdout.write("Kimi via Claude Code signed in.\n");
+  await deps.authService.setApiKey(KIMI_AUTH_PROVIDER_ID, apiKey.trim());
+  io.stdout.write("Kimi for AI Gateway signed in.\n");
   return 0;
 }
 
@@ -47,7 +42,7 @@ export function getAuthCliOptions(): readonly AuthCliId[] {
 }
 
 export function parseAuthCliId(value: string | undefined): AuthCliId | undefined {
-  return value === "claude-kimi" ? value : undefined;
+  return value === "kimi" ? value : undefined;
 }
 
 async function promptForCli(): Promise<AuthCliId | undefined> {

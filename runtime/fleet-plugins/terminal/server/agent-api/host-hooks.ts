@@ -39,10 +39,14 @@ export function buildConsoleAutoNameHookCommand(entry: ConsoleHookCommandEntry):
   return buildConsoleCliHookExec(entry, ["hook", "auto-name"]);
 }
 
-export function buildConsoleCaptureHookCommand(entry: ConsoleHookCommandEntry, cliId: AgentCliId): FleetHookExec {
+export function buildConsoleCaptureHookCommand(
+  entry: ConsoleHookCommandEntry,
+  cliId: AgentCliId,
+  createCaptureHook: typeof createSessionCaptureHookExec = createSessionCaptureHookExec,
+): FleetHookExec {
   const extension = path.extname(entry.entryPath);
   if (JAVASCRIPT_ENTRY_EXTENSIONS.has(extension)) {
-    return createSessionCaptureHookExec({
+    return createCaptureHook({
       entryPath: entry.entryPath,
       execPath: entry.execPath,
       provider: toCaptureProvider(cliId),
@@ -52,7 +56,7 @@ export function buildConsoleCaptureHookCommand(entry: ConsoleHookCommandEntry, c
     if (!entry.tsxLoaderPath) {
       throw new Error("Fleet Console capture session hook requires a tsx loader path");
     }
-    return createSessionCaptureHookExec({
+    return createCaptureHook({
       entryPath: entry.entryPath,
       execPath: entry.execPath,
       provider: toCaptureProvider(cliId),

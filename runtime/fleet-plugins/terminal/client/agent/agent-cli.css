@@ -176,3 +176,236 @@
 .agent-cli-searched-paths li {
   overflow-wrap: anywhere;
 }
+
+/* AI Gateway 모델 선별 카드. 프로바이더 정체성은 mark+wash 문법으로만 칠하고,
+   칩은 속성 정보라 신호 토큰 없이 중립 ink 톤을 유지한다. */
+.ai-gateway-provider {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid color-mix(in oklch, var(--surface-rim) 80%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-abyss) 35%, transparent);
+}
+
+.ai-gateway-provider.is-codex { --ai-gateway-provider-tone: var(--carrier-codex); }
+.ai-gateway-provider.is-cursor { --ai-gateway-provider-tone: var(--carrier-cursor); }
+.ai-gateway-provider.is-kimi { --ai-gateway-provider-tone: var(--id-plum); }
+
+.ai-gateway-provider-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.ai-gateway-provider-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: 1px solid color-mix(in oklch, var(--ai-gateway-provider-tone) 32%, transparent);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--ai-gateway-provider-tone) 12%, transparent);
+  color: var(--ai-gateway-provider-tone);
+}
+
+.ai-gateway-provider-glyph svg {
+  width: 14px;
+  height: 14px;
+}
+
+.ai-gateway-provider-name {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.ai-gateway-provider-sub {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.ai-gateway-rows {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.ai-gateway-model-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--surface-rim) 70%, transparent);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--ink-veil) 40%, transparent);
+}
+
+.ai-gateway-model-text {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ai-gateway-model-name {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+}
+
+.ai-gateway-model-id {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.ai-gateway-chips {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.ai-gateway-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border: 1px solid color-mix(in oklch, var(--surface-rim) 90%, transparent);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Max Mode는 별도 과금 모드지만 상태가 아닌 속성이므로 신호색 없이 강조 ink만 올린다. */
+.ai-gateway-chip.is-strong {
+  border-color: var(--surface-rim-strong);
+  color: var(--text-primary);
+}
+
+.ai-gateway-field-label {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.ai-gateway-default-star {
+  flex: none;
+  padding: var(--space-1);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ai-gateway-default-star:hover:not(:disabled),
+.ai-gateway-default-star.is-on {
+  color: var(--brass);
+}
+
+.ai-gateway-remove {
+  flex: none;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ai-gateway-remove:hover:not(:disabled) {
+  color: var(--coral);
+}
+
+.ai-gateway-composer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px dashed color-mix(in oklch, var(--surface-rim-strong) 80%, transparent);
+  border-radius: var(--radius-xs);
+}
+
+.ai-gateway-axis-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+
+.ai-gateway-axis-toggle::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--ink-rim);
+  transition: background var(--duration-fast) var(--ease-spring);
+}
+
+.ai-gateway-axis-toggle.is-on {
+  border-color: color-mix(in oklch, var(--brass) 40%, transparent);
+  color: var(--brass-ink);
+}
+
+.ai-gateway-axis-toggle.is-on::before {
+  background: var(--brass);
+}
+
+.ai-gateway-composer-note {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.ai-gateway-add-button {
+  margin-left: auto;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid color-mix(in oklch, var(--brass) 40%, var(--surface-rim));
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  color: var(--brass-ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.ai-gateway-add-button:disabled,
+.ai-gateway-axis-toggle:disabled,
+.ai-gateway-default-star:disabled,
+.ai-gateway-remove:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

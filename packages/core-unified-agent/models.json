@@ -15,22 +15,6 @@
         { "modelId": "claude-opus-4-8[1m]", "name": "Claude Opus 4.8 [1M]", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "high" } }
       ]
     },
-    "claude-kimi": {
-      "name": "Kimi via Claude Code",
-      "defaultModel": "kimi-for-coding",
-      "models": [
-        { "modelId": "kimi-for-coding", "name": "Kimi for Coding", "description": "Available on every Kimi Code membership tier (262K context)", "effort": { "supported": false }, "contextWindow": 262144 },
-        { "modelId": "k3", "name": "Kimi K3", "description": "Available on Moderato and higher tiers (262K context)", "effort": { "supported": true, "levels": ["low", "high", "max"], "default": "high" }, "contextWindow": 262144 },
-        { "modelId": "k3[1m]", "name": "Kimi K3 [1M]", "description": "Available on Allegretto and higher tiers (1M context)", "effort": { "supported": true, "levels": ["low", "high", "max"], "default": "high" }, "contextWindow": 1048576 },
-        { "modelId": "kimi-for-coding-highspeed", "name": "Kimi for Coding Highspeed", "description": "Available on Allegretto and higher tiers (262K context)", "effort": { "supported": false }, "contextWindow": 262144 }
-      ],
-      "modelsMapping": {
-        "haiku": "kimi-for-coding",
-        "sonnet": "kimi-for-coding",
-        "opus": "kimi-for-coding",
-        "fable": "kimi-for-coding"
-      }
-    },
     "codex": {
       "name": "Codex",
       "defaultModel": "gpt-5.6-sol",

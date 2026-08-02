@@ -74,66 +74,6 @@ describe("data-dir settings store", () => {
     });
   });
 
-  it("preserves valid kimi model selections and drops malformed shapes", () => {
-    expect(sanitizeGlobalOptionsData({
-      version: 1,
-      kimiModel: { model: "k3" },
-    })).toEqual({
-      changed: false,
-      data: {
-        version: 1,
-        kimiModel: { model: "k3" },
-      },
-    });
-    expect(sanitizeGlobalOptionsData({
-      version: 1,
-      kimiModel: { model: "k3[1m]", effort: "high" },
-    })).toEqual({
-      changed: false,
-      data: {
-        version: 1,
-        kimiModel: { model: "k3[1m]", effort: "high" },
-      },
-    });
-    expect(sanitizeGlobalOptionsData({
-      version: 1,
-      kimiModel: { model: 42, effort: "high" },
-    })).toEqual({
-      changed: true,
-      data: {
-        version: 1,
-      },
-    });
-    expect(sanitizeGlobalOptionsData({
-      version: 1,
-      kimiModel: { model: "" },
-    })).toEqual({
-      changed: true,
-      data: {
-        version: 1,
-      },
-    });
-    expect(sanitizeGlobalOptionsData({
-      version: 1,
-      kimiModel: "k3",
-    })).toEqual({
-      changed: true,
-      data: {
-        version: 1,
-      },
-    });
-    expect(sanitizeGlobalOptionsData({
-      version: 1,
-      kimiModel: { model: "k3", effort: 3 },
-    })).toEqual({
-      changed: false,
-      data: {
-        version: 1,
-        kimiModel: { model: "k3" },
-      },
-    });
-  });
-
   it("preserves valid agentIdleDormantMinutes and drops invalid values", () => {
     expect(sanitizeGlobalOptionsData({
       version: 1,
@@ -186,6 +126,17 @@ describe("data-dir settings store", () => {
     expect(sanitizeGlobalOptionsData({
       version: 1,
       agentIdleDormantMinutes: "60",
+    })).toEqual({
+      changed: true,
+      data: { version: 1 },
+    });
+  });
+
+  it("drops the relocated aiGateway key from global options", () => {
+    // AI Gateway 선별은 콘솔 durable state(plugins.terminal["ai-gateway"])로 이전됐다.
+    expect(sanitizeGlobalOptionsData({
+      version: 1,
+      aiGateway: { models: [{ id: "cursor--claude-opus-5" }] },
     })).toEqual({
       changed: true,
       data: { version: 1 },

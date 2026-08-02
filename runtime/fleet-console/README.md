@@ -34,7 +34,7 @@ The built-in terminal plugin lives at `runtime/fleet-plugins/terminal` (`@fleet-
 
 ## Session Binding
 
-When the Terminal plugin creates a terminal session, it generates a session id, resolves the selected Agent CLI through the shared fleet-admiral runtime, and keeps the selected absolute cwd server-side. The plugin records non-secret session metadata for observer hydration through generic console operation and event capabilities.
+When the Terminal plugin creates a terminal session, it generates a session id and resolves every Agent CLI, including AI Gateway operations, through the shared fleet-admiral runtime. It keeps the selected absolute cwd server-side and records non-secret session metadata for observer hydration through generic console operation and event capabilities.
 
 Folder selection is handled entirely in the browser UI: the React directory browser modal calls the console-owned `POST /theaters/folders/list` route to browse the server's local filesystem, then calls `POST /theaters/folders/grants` once the operator confirms a directory. The resulting one-use grant is consumed by Theater registration; Shell and Agent launches resolve cwd from the Theater server-side. No OS-native dialog or child process is involved. The browser modal works in remote and headless browser sessions without any OS-level dialog support.
 

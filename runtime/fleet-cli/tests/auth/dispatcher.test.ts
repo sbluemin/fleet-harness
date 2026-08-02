@@ -9,8 +9,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../src/auth/login-flow.js", () => ({
-  getAuthCliOptions: () => ["claude-kimi"],
-  parseAuthCliId: (value: string | undefined) => value === "claude-kimi" ? value : undefined,
+  getAuthCliOptions: () => ["kimi"],
+  parseAuthCliId: (value: string | undefined) => value === "kimi" ? value : undefined,
   runAuthLoginFlow: mocks.runAuthLoginFlow,
 }));
 
@@ -25,19 +25,19 @@ describe("auth dispatcher", () => {
   it("documents the Kimi-only auth surface", async () => {
     const io = createIo();
     await expect(dispatchAuthCommand(["auth", "--help"], io, createDeps())).resolves.toBe(0);
-    expect(io.stdout.output).toContain("fleet auth login [claude-kimi]");
+    expect(io.stdout.output).toContain("fleet auth login [kimi]");
   });
 
   it("dispatches Kimi login", async () => {
     const io = createIo();
     const deps = createDeps();
-    await expect(dispatchAuthCommand(["auth", "login", "claude-kimi"], io, deps)).resolves.toBe(0);
-    expect(mocks.runAuthLoginFlow).toHaveBeenCalledWith(["claude-kimi"], io, deps);
+    await expect(dispatchAuthCommand(["auth", "login", "kimi"], io, deps)).resolves.toBe(0);
+    expect(mocks.runAuthLoginFlow).toHaveBeenCalledWith(["kimi"], io, deps);
   });
 
   it("logs out the stable Kimi provider ID", async () => {
     const io = createIo();
-    await expect(dispatchAuthCommand(["auth", "logout", "claude-kimi"], io, createDeps())).resolves.toBe(0);
+    await expect(dispatchAuthCommand(["auth", "logout", "kimi"], io, createDeps())).resolves.toBe(0);
     expect(mocks.deleteApiKey).toHaveBeenCalledWith("Claude Code with Moonshot Kimi");
     expect(io.stdout.output).toContain("signed out");
   });

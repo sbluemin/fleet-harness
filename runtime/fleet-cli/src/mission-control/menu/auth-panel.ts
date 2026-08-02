@@ -1,6 +1,6 @@
 import {
-  CLI_TO_AUTH_PROVIDER_ID,
-  validateAgentCliAuthKey,
+  KIMI_AUTH_PROVIDER_ID,
+  validateKimiAuthKey,
 } from "@dotobokuri/fleet-admiral";
 import type { AuthService } from "@dotobokuri/core-infra";
 
@@ -18,7 +18,7 @@ export interface AuthPanelDeps {
 }
 
 interface ProviderRow {
-  readonly cli: "claude-kimi";
+  readonly cli: "kimi";
   readonly providerId: string;
   readonly label: string;
   configured: boolean;
@@ -95,7 +95,7 @@ export function createAuthPanel(deps: AuthPanelDeps): MenuPanel {
       validate: (value) => value.trim() ? undefined : "API key is required.",
       onCancel: () => deps.stack.pop(),
       onSubmit: async (value) => {
-        const validation = await validateAgentCliAuthKey(row.cli, value.trim());
+        const validation = await validateKimiAuthKey(value.trim());
         if (validation.status !== "success") {
           throw new Error(formatValidationFailure(validation.status));
         }
@@ -151,14 +151,13 @@ export function createAuthPanel(deps: AuthPanelDeps): MenuPanel {
 }
 
 function createProviderRows(): ProviderRow[] {
-  const providerId = CLI_TO_AUTH_PROVIDER_ID["claude-kimi"];
-  return providerId ? [{
-    cli: "claude-kimi",
+  return [{
+    cli: "kimi",
     configured: false,
-    label: "Kimi via Claude Code",
-    providerId,
+    label: "Kimi for AI Gateway",
+    providerId: KIMI_AUTH_PROVIDER_ID,
     status: "Checking",
-  }] : [];
+  }];
 }
 
 function renderProviderRows(rows: readonly ProviderRow[], selected: number, width: number): string[] {

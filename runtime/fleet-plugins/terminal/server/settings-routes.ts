@@ -1,38 +1,48 @@
 import type http from "node:http";
 
 import type { GlobalOptionsData, GlobalOptionsService } from "@dotobokuri/core-infra";
-import { getEffortLevels, getProviderModelIds } from "@dotobokuri/core-unified-agent";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 
+import {
+  buildAiGatewayCatalog,
+  parseAiGatewayUpdate,
+  type AiGatewayCatalog,
+  type AiGatewaySettingsStore,
+  type AiGatewayStoredSettings,
+  type AiGatewayUpdateValue,
+} from "./ai-gateway-settings.js";
+
 interface TerminalSettingsRouteDeps {
   readonly globalOptionsService: GlobalOptionsService;
+  readonly aiGatewayStore: AiGatewaySettingsStore;
 }
 
 interface TerminalSettingsBody {
   readonly enableMetaphor?: unknown;
-  readonly kimiModel?: unknown;
   readonly agentIdleDormantMinutes?: unknown;
+  readonly aiGateway?: unknown;
 }
 
 type TerminalSettingsUpdate =
   | { readonly enableMetaphor: boolean }
-  | { readonly kimiModel: { readonly model: string; readonly effort?: string } }
-  | { readonly agentIdleDormantMinutes: number | null };
+  | { readonly agentIdleDormantMinutes: number | null }
+  | { readonly aiGateway: AiGatewayUpdateValue | undefined };
 
 export const DEFAULT_AGENT_IDLE_DORMANT_MINUTES = 60;
 
 export interface TerminalSettingsState {
   readonly enableMetaphor: boolean;
-  readonly kimiModel: { readonly model: string; readonly effort?: string } | null;
   readonly agentIdleDormantMinutes: number | null;
+  readonly aiGateway: AiGatewayUpdateValue | null;
+  readonly aiGatewayCatalog: AiGatewayCatalog;
 }
 
 export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, deps: TerminalSettingsRouteDeps): void {
   registerRouter(ctx, "settings", async ({ req, res }) => {
     if (req.method === "GET") {
       // 상류 host 게이트(server.ts:423)로 loopback이 보장된다. 플러그인 컨텍스트에는 콘솔 포트가 없다.
-      ctx.host.http.writeJson(res, 200, toTerminalSettingsState(deps.globalOptionsService.load()));
+      ctx.host.http.writeJson(res, 200, toTerminalSettingsState(deps.globalOptionsService.load(), await deps.aiGatewayStore.read()));
       return true;
     }
     if (req.method === "PUT") {
@@ -45,15 +55,19 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
         return true;
       }
       const body = await ctx.host.http.readJsonBody<TerminalSettingsBody>(req);
-      if (!isTerminalSettingsBody(body)) {
+      const update = parseTerminalSettingsBody(body);
+      if (!update) {
         ctx.host.http.writeJson(res, 400, { error: "invalid_terminal_settings" });
         return true;
       }
-      const updated = deps.globalOptionsService.update((current) => ({
-        ...current,
-        ...body,
-      }));
-      ctx.host.http.writeJson(res, 200, toTerminalSettingsState(updated));
+      if ("aiGateway" in update) {
+        // AI Gateway 선별은 Fleet 전역 옵션이 아니라 콘솔 durable state의 플러그인 슬롯 소유다.
+        const stored = await deps.aiGatewayStore.write(update.aiGateway);
+        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(deps.globalOptionsService.load(), stored));
+        return true;
+      }
+      const updated = deps.globalOptionsService.update((current) => ({ ...current, ...update }));
+      ctx.host.http.writeJson(res, 200, toTerminalSettingsState(updated, await deps.aiGatewayStore.read()));
       return true;
     }
     ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
@@ -61,13 +75,20 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
   });
 }
 
-export function toTerminalSettingsState(data: GlobalOptionsData): TerminalSettingsState {
+export function toTerminalSettingsState(data: GlobalOptionsData, aiGateway: AiGatewayStoredSettings): TerminalSettingsState {
+  const configured = (aiGateway.models?.length ?? 0) > 0 || aiGateway.defaultModel !== undefined;
   return {
     enableMetaphor: data.enableMetaphor ?? false,
-    kimiModel: data.kimiModel ?? null,
     agentIdleDormantMinutes: data.agentIdleDormantMinutes === undefined
       ? DEFAULT_AGENT_IDLE_DORMANT_MINUTES
       : data.agentIdleDormantMinutes,
+    aiGateway: configured
+      ? {
+        ...(aiGateway.models?.length ? { models: aiGateway.models } : {}),
+        ...(aiGateway.defaultModel !== undefined ? { defaultModel: aiGateway.defaultModel } : {}),
+      }
+      : null,
+    aiGatewayCatalog: buildAiGatewayCatalog(),
   };
 }
 
@@ -77,32 +98,30 @@ export function resolveAgentIdleDormantMinutes(data: GlobalOptionsData): number 
     : data.agentIdleDormantMinutes;
 }
 
-function isTerminalSettingsBody(value: unknown): value is TerminalSettingsUpdate {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   // 계약: 알려진 설정 키 중 정확히 하나만 허용한다(추가 키와 복수 키는 거부).
   const keys = Object.keys(value);
-  if (keys.length !== 1) return false;
+  if (keys.length !== 1) return null;
   const body = value as TerminalSettingsBody;
-  if (keys[0] === "enableMetaphor") return typeof body.enableMetaphor === "boolean";
-  if (keys[0] === "agentIdleDormantMinutes") return isAgentIdleDormantMinutes(body.agentIdleDormantMinutes);
-  return keys[0] === "kimiModel" && isKimiModelSetting(body.kimiModel);
+  if (keys[0] === "enableMetaphor") {
+    return typeof body.enableMetaphor === "boolean" ? { enableMetaphor: body.enableMetaphor } : null;
+  }
+  if (keys[0] === "agentIdleDormantMinutes") {
+    return isAgentIdleDormantMinutes(body.agentIdleDormantMinutes)
+      ? { agentIdleDormantMinutes: body.agentIdleDormantMinutes }
+      : null;
+  }
+  if (keys[0] === "aiGateway") {
+    const parsed = parseAiGatewayUpdate(body.aiGateway);
+    return parsed.ok ? { aiGateway: parsed.value } : null;
+  }
+  return null;
 }
 
 function isAgentIdleDormantMinutes(value: unknown): value is number | null {
   if (value === null) return true;
   return typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value > 0;
-}
-
-// Kimi 프로바이더 기본 모델 설정 검증: 모델은 레지스트리 ID여야 하고,
-// effort는 모델이 effort를 지원할 때만 허용 레벨 내 값이어야 한다.
-function isKimiModelSetting(value: unknown): value is { readonly model: string; readonly effort?: string } {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const record = value as { model?: unknown; effort?: unknown };
-  if (typeof record.model !== "string" || !getProviderModelIds("claude-kimi").includes(record.model)) return false;
-  const levels = getEffortLevels("claude-kimi", record.model);
-  if (record.effort === undefined) return true;
-  if (!levels || typeof record.effort !== "string") return false;
-  return levels.includes(record.effort);
 }
 
 function isJsonRequest(req: http.IncomingMessage): boolean {

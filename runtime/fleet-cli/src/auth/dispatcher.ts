@@ -1,5 +1,5 @@
 import { cancel, isCancel, select } from "@clack/prompts";
-import { CLI_TO_AUTH_PROVIDER_ID } from "@dotobokuri/fleet-admiral";
+import { KIMI_AUTH_PROVIDER_ID } from "@dotobokuri/fleet-admiral";
 
 import { getAuthCliOptions, parseAuthCliId, runAuthLoginFlow } from "./login-flow.js";
 import type { AuthCommandDeps, AuthCommandIo } from "./types.js";
@@ -7,9 +7,9 @@ import type { AuthCommandDeps, AuthCommandIo } from "./types.js";
 const AUTH_HELP_TEXT = `fleet auth — Authentication
 
 Usage:
-  fleet auth login [claude-kimi]
+  fleet auth login [kimi]
   fleet auth list
-  fleet auth logout [claude-kimi]
+  fleet auth logout [kimi]
 `;
 
 export async function dispatchAuthCommand(
@@ -51,20 +51,15 @@ async function logoutAuthProvider(
     cancel("Authentication cancelled.");
     return 1;
   }
-  const providerId = CLI_TO_AUTH_PROVIDER_ID[selectedCli];
-  if (!providerId) {
-    io.stderr.write(`Authentication is unavailable for '${selectedCli}'.\n`);
-    return 1;
-  }
-  await deps.authService.deleteApiKey(providerId);
-  io.stdout.write("Kimi via Claude Code signed out.\n");
+  await deps.authService.deleteApiKey(KIMI_AUTH_PROVIDER_ID);
+  io.stdout.write("Kimi for AI Gateway signed out.\n");
   return 0;
 }
 
 async function promptForLogoutCli(): Promise<ReturnType<typeof parseAuthCliId>> {
   const selected = await select({
     message: "Select an authentication provider",
-    options: getAuthCliOptions().map((value) => ({ value, label: "Kimi via Claude Code" })),
+    options: getAuthCliOptions().map((value) => ({ value, label: "Kimi for AI Gateway" })),
   });
   return isCancel(selected) ? undefined : parseAuthCliId(String(selected));
 }

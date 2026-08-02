@@ -6,8 +6,11 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { resolvePathBinary } from "@dotobokuri/core-agent";
+import { GATEWAY_MODELS, buildAnthropicModelList, toClaudeGatewayModelId } from "@dotobokuri/core-ai-gateway";
+import type { GatewayModel } from "@dotobokuri/core-ai-gateway";
 import { createSessionIdentityResolver } from "@dotobokuri/core-unified-agent";
 import {
+  createSessionCaptureHookExec,
   createSystemPromptBuilder,
   injectAgentCliProfile,
   resolveAgentCliProfile,
@@ -15,12 +18,26 @@ import {
   type AgentCliProfile,
   type FleetAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
-import { createInfraServices, getFleetDataDir, type AuthService, type GlobalOptionsService } from "@dotobokuri/core-infra";
+import {
+  createInfraServices,
+  getFleetDataDir,
+  writeAtomicSync,
+  type GlobalOptionsService,
+} from "@dotobokuri/core-infra";
 
 import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, runCodexCommand, toCaptureProvider, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
+import { resolveAiGatewaySelection, type AiGatewaySelection, type AiGatewayStoredSettings } from "../ai-gateway-settings.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
 import { stripConsoleInternalEnv } from "../shared/launch-env.js";
 import { applyAgentCliPathEnvOverlay } from "./agent-cli-paths.js";
+
+/** AI gateway를 Console의 실제 listening origin에 연결하는 launch 바인딩. */
+export interface AiGatewayLaunchBinding {
+  /** Console 루트 기준 라우트 경로. 예: "/plugins/terminal/ai-gateway" */
+  readonly routePath: string;
+  /** Console이 리슨 중인 origin. MCP는 별도 포트라 여기서 유도하면 안 된다. */
+  origin(): string | null;
+}
 
 export interface TerminalLaunchResolverDeps {
   readonly cwd?: string;
@@ -31,13 +48,15 @@ export interface TerminalLaunchResolverDeps {
   readonly entryPath?: string;
   readonly tsxLoaderPath?: string;
   readonly dataDir?: string;
-  readonly infraServices?: { readonly authService: AuthService; readonly globalOptionsService: GlobalOptionsService };
+  readonly infraServices?: { readonly globalOptionsService: GlobalOptionsService };
   readonly agentRuntime?: FleetAgentRuntimeLifecycle;
+  readonly aiGateway?: AiGatewayLaunchBinding;
   readonly injectProfile?: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly resolveProfile?: typeof resolveAgentCliProfile;
   readonly createSessionIdentityResolver?: typeof createSessionIdentityResolver;
   readonly readAgentCliPaths?: () => Promise<Readonly<Record<string, string>>>;
+  readonly readAiGatewaySettings?: () => Promise<AiGatewayStoredSettings>;
 }
 
 export interface ConsoleRuntimeSessionInfo {
@@ -94,11 +113,15 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
     const sessionId = context?.sessionId ?? "default";
     return createAgentCliLaunchSpec({
       agentRuntime,
+      ...(deps.aiGateway ? { aiGateway: deps.aiGateway } : {}),
+      ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
       cwd,
       dataDir,
       env: launchEnv,
       hookEntry,
       infraServices,
+      createSessionCaptureHookExec,
+      createSystemPromptBuilder,
       injectProfile,
       onRuntimeSessionStart: deps.onRuntimeSessionStart,
       resolveProfile,
@@ -131,13 +154,17 @@ function hasHookEntryExtension(entryPath: string): boolean {
 
 async function createAgentCliLaunchSpec(options: {
   readonly agentRuntime?: FleetAgentRuntimeLifecycle;
+  readonly aiGateway?: AiGatewayLaunchBinding;
+  readonly readAiGatewaySettings?: () => Promise<AiGatewayStoredSettings>;
   readonly cliId?: string;
+  readonly createSessionCaptureHookExec: typeof createSessionCaptureHookExec;
   readonly createSessionIdentityResolver: typeof createSessionIdentityResolver;
+  readonly createSystemPromptBuilder: typeof createSystemPromptBuilder;
   readonly cwd: string;
   readonly dataDir: string;
   readonly env: NodeJS.ProcessEnv;
   readonly hookEntry: ConsoleHookCommandEntry;
-  readonly infraServices: { readonly authService: AuthService; readonly globalOptionsService: GlobalOptionsService };
+  readonly infraServices: { readonly globalOptionsService: GlobalOptionsService };
   readonly injectProfile: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly resolveProfile: typeof resolveAgentCliProfile;
@@ -151,19 +178,21 @@ async function createAgentCliLaunchSpec(options: {
       throw new Error("Fleet Console agent runtime is unavailable.");
     }
     const profile = await options.resolveProfile(options.env, options.cwd, {
-      authService: options.infraServices.authService,
       cliId: options.cliId,
-      globalOptionsService: options.infraServices.globalOptionsService,
       resumeSessionId: options.resumeSessionId,
     });
     const globalSettings = readGlobalSettingsSnapshot(options.infraServices);
     const injectedProfile = await options.injectProfile(profile, {
-      buildSystemPrompt: (injectTone) => createSystemPromptBuilder({ carrierRuntime: agentRuntime.carrierRuntime }).build(injectTone),
+      buildSystemPrompt: (injectTone) => options.createSystemPromptBuilder({ carrierRuntime: agentRuntime.carrierRuntime }).build(injectTone),
       codexCommandRunner: runCodexCommand,
       dataDir: options.dataDir,
       dedicatedMcpSession: agentRuntime.dedicatedMcpSession,
       enableMetaphor: globalSettings.enableMetaphor,
-      captureSessionHookExec: buildConsoleCaptureHookCommand(options.hookEntry, profile.id),
+      captureSessionHookExec: buildConsoleCaptureHookCommand(
+        options.hookEntry,
+        profile.id,
+        options.createSessionCaptureHookExec,
+      ),
       turnStartHookExec: buildConsoleTurnHookCommand(options.hookEntry, "start"),
       turnEndHookExec: buildConsoleTurnHookCommand(options.hookEntry, "end"),
       inputWaitingHookExec: buildConsoleAttentionHookCommand(options.hookEntry),
@@ -180,14 +209,21 @@ async function createAgentCliLaunchSpec(options: {
       mcpToolCount: countMcpTools(agentRuntime),
       sessionId: options.sessionId,
     });
+    const launchProfile = applyAiGatewayEnv(
+      injectedProfile,
+      options.aiGateway,
+      injectedProfile.id === "claude-gateway" && options.readAiGatewaySettings
+        ? resolveAiGatewaySelection(await options.readAiGatewaySettings())
+        : undefined,
+    );
     const sessionIdentityResolver = options.createSessionIdentityResolver({
-      provider: toCaptureProvider(injectedProfile.id),
-      command: injectedProfile.bin,
-      commandPrefixArgs: injectedProfile.binPrefixArgs,
-      cwd: injectedProfile.cwd,
-      env: injectedProfile.env,
+      provider: toCaptureProvider(launchProfile.id),
+      command: launchProfile.bin,
+      commandPrefixArgs: launchProfile.binPrefixArgs,
+      cwd: launchProfile.cwd,
+      env: launchProfile.env,
     });
-    return toLaunchSpec(injectedProfile, createOnceCleanup(async () => {
+    return toLaunchSpec(launchProfile, createOnceCleanup(async () => {
       for (const cleanup of [...cleanupStack].reverse()) {
         await cleanup();
       }
@@ -202,6 +238,76 @@ async function createAgentCliLaunchSpec(options: {
     }
     throw error;
   }
+}
+
+// claude-gateway는 Console 포트를 알아야 base URL이 정해지므로 정적 프로필이 아니라 여기서 env를 채운다.
+export function applyAiGatewayEnv(
+  profile: AgentCliProfile,
+  aiGateway: AiGatewayLaunchBinding | undefined,
+  // 노출은 opt-in: 켠 모델만 캐시에 남는다. 설정 없이 호출되면(테스트 하네스) 전체 카탈로그로 동작한다.
+  selection?: AiGatewaySelection,
+): AgentCliProfile {
+  if (profile.id !== "claude-gateway") return profile;
+  if (!aiGateway) {
+    throw new Error("The AI gateway launch binding is unavailable.");
+  }
+  const origin = aiGateway.origin();
+  if (!origin) {
+    throw new Error("Fleet Console has not bound a port yet, so the AI gateway URL cannot be derived.");
+  }
+  const baseUrl = `${origin}${aiGateway.routePath}`;
+  const env: Record<string, string> = {
+    ...profile.env,
+    // Claude Code가 이 뒤에 /v1/messages를 붙인다.
+    ANTHROPIC_BASE_URL: baseUrl,
+    // 이게 있어야 /model picker가 게이트웨이의 GET /v1/models를 조회한다.
+    CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
+    // Gateway가 tool_reference 계약을 보존한다. Cursor는 이를 지연 catalog 선택에 쓰고,
+    // 호환 프로바이더 경계는 각자의 eager wire 형식으로 정규화한다.
+    ENABLE_TOOL_SEARCH: "true",
+  };
+  // Marked provider usage is projected onto Claude Code's 1M coordinate, so its
+  // native auto policy remains model-relative. Do not inject the process-wide
+  // compact-window override: it would also retune built-in Claude models. An
+  // explicit user value already present in profile.env remains untouched above.
+  if (selection?.defaultModel && !env.ANTHROPIC_MODEL) {
+    // AI Gateway 설정의 세션 기본 모델. 프로필 env가 명시한 값이 항상 이긴다.
+    env.ANTHROPIC_MODEL = toClaudeGatewayModelId(selection.defaultModel);
+  }
+  try {
+    writeClaudeGatewayModelCache(baseUrl, env, undefined, selection?.models ?? GATEWAY_MODELS);
+  } catch (error) {
+    console.warn("[terminal] Claude Code gateway model cache refresh failed; /model may show stale entries.", error);
+  }
+  // 자체 bearer를 주입하지 않는다. 주입하면 Claude Code가 claude.ai OAuth 대신 그것을 보내고,
+  // Anthropic 모델을 원문 중계할 자격증명이 사라져 게이트웨이가 토큰을 대신 읽는 우회가 된다.
+  delete env.ANTHROPIC_AUTH_TOKEN;
+  delete env.ANTHROPIC_API_KEY;
+  return { ...profile, env };
+}
+
+/**
+ * Claude Code does not refresh gateway discovery while it relies on its own
+ * subscription credential. Pre-write the cache schema it reads in that mode.
+ */
+export function writeClaudeGatewayModelCache(
+  baseUrl: string,
+  env: Readonly<NodeJS.ProcessEnv>,
+  homeDir = os.homedir(),
+  exposedModels: readonly GatewayModel[] = GATEWAY_MODELS,
+): string {
+  const configDir = env.CLAUDE_CONFIG_DIR && env.CLAUDE_CONFIG_DIR.length > 0
+    ? env.CLAUDE_CONFIG_DIR
+    : path.join(homeDir, ".claude");
+  const cacheDir = path.join(configDir, "cache");
+  const cachePath = path.join(cacheDir, "gateway-models.json");
+  const models = buildAnthropicModelList(exposedModels).data
+    .filter((model) => /^(claude|anthropic)/i.test(model.id))
+    .map((model) => ({ id: model.id, display_name: model.display_name }));
+
+  fs.mkdirSync(cacheDir, { recursive: true, mode: 0o700 });
+  writeAtomicSync(cachePath, JSON.stringify({ baseUrl, fetchedAt: Date.now(), models }), { mode: 0o600 });
+  return cachePath;
 }
 
 function toLaunchSpec(profile: AgentCliProfile, cleanup: () => Promise<void>, sessionIdentityResolver: TerminalLaunchSpec["sessionIdentityResolver"]): TerminalLaunchSpec {

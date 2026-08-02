@@ -30,6 +30,7 @@ const noopHostCapabilities: FleetPluginHostCapabilities = {
     subscribe: () => () => {},
     registerSseChannel: () => () => {},
   },
+  server: { origin: () => null },
   paths: {
     fleetDataDir: "/tmp/fleet-console-test",
     capturesDir: "/tmp/fleet-console-test/captures",
