@@ -186,6 +186,7 @@ function UpdateApplyControl({ latestVersion }: { readonly latestVersion: string 
   return (
     <button
       type="button"
+      role="menuitem"
       className={`command-band-update command-band-update--${copy.tone}`}
       onClick={handleApply}
       disabled={copy.disabled}
