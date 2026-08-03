@@ -190,6 +190,7 @@ function installAgentPlugin(ctx: PluginInstallContext): () => void {
     operations: ctx.operations,
     notifications: ctx.notifications,
     status: ctx.status,
+    statusDetail: ctx.statusDetail,
     refreshOperations: ctx.api.resync,
   });
   return () => {

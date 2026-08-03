@@ -2046,6 +2046,161 @@
   line-height: 1.55;
 }
 
+.canvas-triage-deck {
+  position: absolute;
+  inset: 26px 26px 74px;
+  z-index: 80;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  pointer-events: auto;
+}
+
+.canvas-triage-deck-caption {
+  min-width: 0;
+  color: var(--brass-ink);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.canvas-triage-deck-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
+  grid-auto-rows: minmax(120px, 144px);
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.canvas-triage-deck-card {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px 16px;
+  overflow: hidden;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass) 84%, transparent);
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-glide),
+    background var(--duration-fast) var(--ease-glide),
+    opacity var(--duration-fast) var(--ease-glide);
+}
+
+.canvas-triage-deck-card:hover,
+.canvas-triage-deck-card:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 7%, var(--surface-glass));
+  outline: none;
+}
+
+.canvas-triage-deck-card.is-idle,
+.canvas-triage-deck-card.is-dormant {
+  opacity: 0.68;
+}
+
+.canvas-triage-deck-card-spine {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 2px;
+  border-radius: var(--radius-pill);
+  pointer-events: none;
+}
+
+.canvas-triage-deck-card-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.canvas-triage-deck-card-status time {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.canvas-triage-deck-card-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--ink-fog);
+}
+
+.canvas-triage-deck-card.is-running .canvas-triage-deck-card-dot {
+  background: var(--warn);
+  box-shadow: 0 0 0 0 var(--warn-glow);
+  animation: triage-deck-running-pulse calc(var(--duration-slow) * 6.6667) var(--ease-glide) infinite;
+}
+
+.canvas-triage-deck-card.is-awaiting .canvas-triage-deck-card-dot {
+  background: var(--aurora);
+  box-shadow: 0 0 10px var(--aurora-glow);
+}
+
+.canvas-triage-deck-card.is-dormant .canvas-triage-deck-card-dot {
+  background: var(--surface-rim-strong);
+}
+
+.canvas-triage-deck-card > strong,
+.canvas-triage-deck-card-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-triage-deck-card > strong {
+  align-self: end;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: var(--weight-bold);
+}
+
+.canvas-triage-deck-card-detail {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.canvas-triage-deck-card.is-landed {
+  animation: triage-deck-landed-flash calc(var(--duration-slow) * 2.5) var(--ease-glide) 1;
+}
+
+@keyframes triage-deck-running-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--warn-glow); opacity: 0.72; }
+  50% { box-shadow: 0 0 12px 3px var(--warn-glow); opacity: 1; }
+}
+
+@keyframes triage-deck-landed-flash {
+  0%, 100% { border-color: var(--surface-rim); box-shadow: none; }
+  45% { border-color: var(--positive); box-shadow: 0 0 16px var(--positive-glow); }
+}
+
 @keyframes triage-bracket-nw { from { transform: translate(-18px, -18px); } to { transform: translate(0, 0); } }
 @keyframes triage-bracket-ne { from { transform: translate(18px, -18px); } to { transform: translate(0, 0); } }
 @keyframes triage-bracket-sw { from { transform: translate(-18px, 18px); } to { transform: translate(0, 0); } }
@@ -2101,6 +2256,8 @@
 @media (prefers-reduced-motion: reduce) {
   .canvas-triage-sweep,
   .canvas-triage-scan,
+  .canvas-triage-deck-card.is-running .canvas-triage-deck-card-dot,
+  .canvas-triage-deck-card.is-landed,
   .operations-canvas.is-triage-entering .canvas-operation.is-triage-stage,
   .operations-canvas.is-formation-entering .canvas-mode-bracket,
   .operations-canvas.is-formation-entering .canvas-formation-guide,

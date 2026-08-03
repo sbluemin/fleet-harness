@@ -1,17 +1,18 @@
 import type { OperationNode } from "@fleet-console/sdk/operations";
-import type { ClientNotificationsCapability, ClientOperationStatusCapability, ClientOperationsCapability, OperationActivity } from "@fleet-console/sdk/plugin";
+import type { ClientNotificationsCapability, ClientOperationStatusCapability, ClientOperationStatusDetailCapability, ClientOperationsCapability, OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { currentTerminalLocale, getT } from "../i18n/index.js";
 import { fetchAgentState, fetchJobs, fetchOperationsSnapshot, fetchSessions, fetchTenants } from "./api.js";
 import { isTerminalJobStatus } from "./reduce.js";
 import { createSseFrameParser, interpretObserverFrame } from "./sse.js";
 import { applyJobsSnapshot, applyObservedEvent, applySessionUpdate, applyTenantSnapshot, applyTruncation, getAgentState, hydrateAgentClis, hydrateSessions, sessionJobs, setAgentState } from "./store.js";
-import type { SessionInfo } from "./types.js";
+import type { JobView, SessionInfo } from "./types.js";
 
 export interface AgentConnectionOptions {
   readonly operations: ClientOperationsCapability;
   readonly notifications: ClientNotificationsCapability;
   readonly status: ClientOperationStatusCapability;
+  readonly statusDetail: ClientOperationStatusDetailCapability;
   readonly refreshOperations: () => void;
 }
 
@@ -78,7 +79,8 @@ async function consumeStream(reader: ReadableStreamDefaultReader<Uint8Array>, si
         continue;
       }
       if (interpreted.event) {
-        applyObservedEvent(interpreted.event, interpreted.tenantLabel);
+        const { job } = applyObservedEvent(interpreted.event, interpreted.tenantLabel);
+        applyStatusDetailForTenant(options, interpreted.event.tenantId, statusDetailFromJob(job));
         // 캐리어 job 상태 변화는 세션 activity(턴 종료 + 스트리밍 = running)에 영향을 주므로 재평가한다.
         reevaluateSessionsForTenant(options, interpreted.event.tenantId);
       }
@@ -137,6 +139,42 @@ export function reevaluateSessionsForTenant(options: AgentConnectionOptions, ten
   }
 }
 
+export function extractStatusDetail(value: string): string | null {
+  const stripped = value
+    .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "")
+    .replace(/\x1b(?:P|X|\^|_)[\s\S]*?\x1b\\/g, "")
+    .replace(/(?:\x1b\[|\x9b)[0-?]*[ -\/]*[@-~]/g, "")
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, "");
+  const lines = stripped.split(/\r?\n/).map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
+  const detail = lines.at(-1);
+  if (!detail) return null;
+  return detail.slice(0, 120).trim();
+}
+
+export function statusDetailFromJob(job: JobView): string | null {
+  const tracks = job.trackOrder
+    .map((trackId) => job.tracks[trackId])
+    .filter((track): track is NonNullable<typeof track> => Boolean(track))
+    .sort((left, right) => right.lastEventId - left.lastEventId);
+  for (const track of tracks) {
+    const liveTool = [...track.tools].reverse().find((tool) => {
+      const status = tool.status;
+      return status !== "done" && status !== "completed" && status !== "error" && status !== "failed";
+    });
+    const detail = extractStatusDetail(liveTool?.name ?? track.latestLine ?? track.text);
+    if (detail) return detail;
+  }
+  return extractStatusDetail(job.summary ?? job.error ?? "");
+}
+
+function applyStatusDetailForTenant(options: AgentConnectionOptions, tenantId: string, detail: string | null): void {
+  if (!detail) return;
+  const { sessions } = getAgentState();
+  for (const session of Object.values(sessions)) {
+    if (session.tenantId === tenantId) options.statusDetail.set(session.sessionId, detail);
+  }
+}
+
 async function resyncSnapshots(signal: AbortSignal, options: AgentConnectionOptions): Promise<void> {
   const [agentClis, sessions, tenants, jobs, operationsSnapshot] = await Promise.all([
     fetchAgentState(signal),
@@ -151,7 +189,14 @@ async function resyncSnapshots(signal: AbortSignal, options: AgentConnectionOpti
   applyJobsSnapshot(jobs);
   // activity 평가는 job 스냅샷 적용 이후에 한다 — tenantJobs가 비어있으면 hasActiveCarrierStream이
   // 항상 false가 되어, 스트리밍 중인 세션이 재연결 직후 idle로 오판되고 허위 알림이 발생한다.
-  for (const session of sessions) applyActivity(options, session.sessionId, sessionActivity(session));
+  for (const session of sessions) {
+    applyActivity(options, session.sessionId, sessionActivity(session));
+    const detail = [...sessionJobs(session)]
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+      .map(statusDetailFromJob)
+      .find((value): value is string => value !== null);
+    if (detail) options.statusDetail.set(session.sessionId, detail);
+  }
   // resync 시 이전 agent.streaming orphan 패널을 조용히 제거한다(최선 노력, 실패 무시).
   pruneOrphanStreamingOperations(operationsSnapshot.operations, options);
 }

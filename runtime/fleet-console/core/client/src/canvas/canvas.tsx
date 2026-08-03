@@ -19,11 +19,12 @@ import type { ConsoleState, OperationNode } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
 import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, minimizeOperation, panelMotionSuppressed, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
-import { escapeSelectorValue, playMinimizeFlight } from "./panel-motion.js";
+import { escapeSelectorValue, flyPanelMotionGhost, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { resolveAccentColor } from "./operation-accent.js";
 import { CanvasGrid, RubberBand, TriageClearPlate } from "./canvas-overlays.js";
+import { flashTriageDeckCard, getTriageDeckCardRect, TriageWatchDeck } from "./triage-watch-deck.js";
 import { resolveGlanceHudModel, type GlanceHudModel } from "./glance-hud.js";
 import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
@@ -111,6 +112,8 @@ export function OperationsCanvas({
   const [formationEntering, setFormationEntering] = useState(false);
   const [, setTriageFocusRevision] = useState(0);
   const previousTriageStageRef = useRef<string | null>(null);
+  const previousTriageDeckStageRef = useRef<string | null>(null);
+  const triageStageRectRef = useRef(new Map<string, DOMRect>());
   const triageStageActivityRef = useRef<{
     readonly theaterId: string;
     readonly operationId: string;
@@ -293,6 +296,36 @@ export function OperationsCanvas({
   const triageStage = triageActive ? triageDisplayQueue[0] ?? null : null;
   const triageStageId = triageStage?.operation.id ?? null;
   const setAsideArmedId = state.activeTheaterId ? getTriageSetAsideArmedId(state.activeTheaterId) : null;
+  useLayoutEffect(() => {
+    if (!triageActive) {
+      previousTriageDeckStageRef.current = null;
+      triageStageRectRef.current.clear();
+      return;
+    }
+    const previousStageId = previousTriageDeckStageRef.current;
+    if (triageStageId) {
+      const stage = canvasRef.current?.querySelector<HTMLElement>(`.canvas-operation[data-operation-id="${escapeSelectorValue(triageStageId)}"]`) ?? null;
+      if (stage) triageStageRectRef.current.set(triageStageId, stage.getBoundingClientRect());
+      if (previousStageId === null && !triageEntering) {
+        const from = getTriageDeckCardRect(triageStageId);
+        if (from) {
+          window.requestAnimationFrame(() => {
+            const target = canvasRef.current?.querySelector<HTMLElement>(`.canvas-operation[data-operation-id="${escapeSelectorValue(triageStageId)}"]`) ?? null;
+            if (target) flyPanelMotionGhost(from, target.getBoundingClientRect());
+          });
+        }
+      }
+    } else if (previousStageId && theaterOperations.length > 0 && !triageEntering) {
+      const from = triageStageRectRef.current.get(previousStageId) ?? null;
+      if (from) {
+        window.requestAnimationFrame(() => {
+          const to = getTriageDeckCardRect(previousStageId);
+          if (to) flyPanelMotionGhost(from, to, () => flashTriageDeckCard(previousStageId));
+        });
+      }
+    }
+    previousTriageDeckStageRef.current = triageStageId;
+  }, [theaterOperations.length, triageActive, triageEntering, triageStageId]);
   useEffect(() => {
     if (state.activeOperationId
       && minimizedSet.has(state.activeOperationId)
@@ -755,7 +788,15 @@ export function OperationsCanvas({
           ) : null}
         </>
       ) : null}
-      <TriageClearPlate active={triageActive} entering={triageEntering} hasContent={hasContent} idleCount={triageIdleCount} />
+      <TriageWatchDeck
+        active={triageActive && triageStage === null}
+        entering={triageEntering}
+        theaterId={state.activeTheaterId}
+        operations={theaterOperations}
+        operationStatus={state.operationStatus}
+        operationAccent={canvas.operationAccent}
+      />
+      <TriageClearPlate active={triageActive && theaterOperations.length === 0} entering={triageEntering} hasContent={hasContent} idleCount={triageIdleCount} />
       {!triageActive && !hasContent && !formationEntering ? (
         <OperationsCanvasEmptyState
           activeTheaterId={state.activeTheaterId}
@@ -1107,6 +1148,7 @@ function PluginOperationRenderer({
     preferences: capabilities.preferences,
     settings: capabilities.settings,
     status: capabilities.status,
+    statusDetail: capabilities.statusDetail,
     onActivate,
     onClose,
     onGeometryChange,

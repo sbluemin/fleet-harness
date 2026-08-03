@@ -546,6 +546,9 @@ describe("Instrument core design contract", () => {
     // (e) 안무 표면(칩 도착 맥동·고스트)도 reduced-motion 블록 안에서 무효화된다.
     expect(reducedMotionBlock).toContain(".side-bar-chip.is-arrival-pulse {");
     expect(reducedMotionBlock).toContain(".panel-motion-ghost {");
+    // Watch Deck 상태 맥동과 착지 flash도 같은 reduced-motion 봉인을 공유한다.
+    expect(reducedMotionBlock).toContain(".canvas-triage-deck-card.is-running .canvas-triage-deck-card-dot,");
+    expect(reducedMotionBlock).toContain(".canvas-triage-deck-card.is-landed,");
   });
 
   it("pins the dormant resume feedback grammar — pending pulse, error card, and reduced-motion fallback", () => {

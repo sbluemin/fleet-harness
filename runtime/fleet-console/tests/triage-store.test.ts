@@ -54,7 +54,9 @@ import {
 } from "../core/client/src/canvas/triage-store.js";
 import type { OperationNode } from "../core/client/src/types.js";
 import { TriageClearPlate } from "../core/client/src/canvas/canvas-overlays.js";
+import { TriageWatchDeck } from "../core/client/src/canvas/triage-watch-deck.js";
 import { triageStageGeometryFor } from "../core/client/src/canvas/coordinates.js";
+import { getOperationStatusDetailSnapshot, recordOperationActivityTransition, setOperationStatusDetail } from "../core/client/src/operation-status-detail-store.js";
 
 const THEATER_ID = "theater-a";
 const OPERATIONS = [operation("picked", 1), operation("next", 2)];
@@ -690,6 +692,45 @@ describe("triage store", () => {
 
     expect(container.querySelector(".canvas-triage-clear p")?.textContent)
       .toBe("Nothing is waiting on you. 2 idle panels sit in the left list. Click one to bring it up.");
+  });
+
+  it("renders every Operation in the Watch Deck and promotes a clicked idle card", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    triagePlateRoot = createRoot(container);
+    setOperationStatusDetail("picked", "Inspecting the latest output");
+    recordOperationActivityTransition("picked", "running", 0);
+
+    act(() => {
+      triagePlateRoot?.render(createElement(TriageWatchDeck, {
+        active: true,
+        entering: false,
+        theaterId: THEATER_ID,
+        operations: OPERATIONS,
+        operationStatus: { picked: "running", next: "idle" },
+        operationAccent: {},
+      }));
+    });
+
+    expect([...container.querySelectorAll("[data-triage-deck-card]")].map((card) => card.getAttribute("data-triage-deck-card")))
+      .toEqual(["picked", "next"]);
+    expect(container.querySelector('[data-triage-deck-card="picked"] .canvas-triage-deck-card-detail')?.textContent)
+      .toBe("Inspecting the latest output");
+    expect(container.querySelector(".canvas-triage-clear")).toBeNull();
+
+    act(() => (container.querySelector('[data-triage-deck-card="next"]') as HTMLButtonElement).click());
+    expect(getTriagePick(THEATER_ID)).toBe("next");
+  });
+
+  it("records detail and activity transition timestamps independently", () => {
+    setOperationStatusDetail("detail-only", "Latest line");
+    recordOperationActivityTransition("detail-only", "running", 1_500);
+    recordOperationActivityTransition("detail-only", "running", 2_500);
+
+    expect(getOperationStatusDetailSnapshot("detail-only")).toEqual({
+      detail: "Latest line",
+      activityChangedAt: 1_500,
+    });
   });
 
   it("closes inherited companions on entry and stage changes but preserves an explicitly opened companion", () => {
