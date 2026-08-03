@@ -260,7 +260,7 @@ describe("terminal session manager", () => {
     ]);
   });
 
-  it("answers terminal device queries before replay ack, delegates after ack, and resumes after detach", async () => {
+  it("delegates live terminal device queries and answers them after detach", async () => {
     const ptys = new Map<string, MockPty>();
     const manager = createTerminalSessionManager({
       launch: async (cwd, context) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } }),
@@ -277,18 +277,17 @@ describe("terminal session manager", () => {
     await manager.attach(socket, { sessionId: "session-a", cwd: "/a" });
     socket.emitMessage(Buffer.from(JSON.stringify({ type: "resize", cols: 120, rows: 40 }), "utf8"), false);
     ptys.get("session-a")?.emitData(queryOutput);
-    expect(ptys.get("session-a")?.writes).toEqual(responses);
-
-    socket.emitMessage(Buffer.from(JSON.stringify({ type: "replay_ack" }), "utf8"), false);
-    ptys.get("session-a")?.emitData(queryOutput);
-    expect(ptys.get("session-a")?.writes).toEqual(responses);
-
-    socket.emitClose();
-    ptys.get("session-a")?.emitData(queryOutput);
-    expect(ptys.get("session-a")?.writes).toEqual([...responses, ...responses]);
+    expect(ptys.get("session-a")?.writes).toEqual([]);
     expect(socket.sent.map((chunk) => chunk.toString("utf8"))).toEqual([
       JSON.stringify({ type: "replay_end" }),
       queryOutput,
+    ]);
+
+    socket.emitClose();
+    ptys.get("session-a")?.emitData(queryOutput);
+    expect(ptys.get("session-a")?.writes).toEqual(responses);
+    expect(socket.sent.map((chunk) => chunk.toString("utf8"))).toEqual([
+      JSON.stringify({ type: "replay_end" }),
       queryOutput,
     ]);
   });

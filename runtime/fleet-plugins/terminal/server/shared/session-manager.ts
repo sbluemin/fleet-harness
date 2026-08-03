@@ -33,7 +33,6 @@ interface TerminalSession {
   readonly titleListener?: TerminalTitleListener;
   readonly titleParser?: OscTitleParser;
   activeSocket: TerminalSocket | null;
-  clientInputLive: boolean;
   cols: number;
   rows: number;
   // theater-shell(캔버스 순정 셸) 전용: 소켓 단절 후 PTY 정리까지의 grace 타이머. 재연결 시 취소된다.
@@ -90,7 +89,6 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       session.activeSocket.close(4000, "terminal_replaced");
     }
     session.activeSocket = socket;
-    session.clientInputLive = false;
     touchActivity(session);
     session.pty.resize(session.cols, session.rows);
     replayScrollback(session, socket);
@@ -219,7 +217,6 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       titleListener,
       ...(titleListener ? { titleParser: createOscTitleParser() } : {}),
       activeSocket: null,
-      clientInputLive: false,
       cols: DEFAULT_COLS,
       rows: DEFAULT_ROWS,
       graceTimer: null,
@@ -250,8 +247,9 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     touchActivity(session);
     const buffer = Buffer.from(data, "utf8");
     const liveSocket = session.activeSocket?.readyState === WS_OPEN_STATE ? session.activeSocket : null;
-    // 미접속·ack 이전에는 서버가 응답하고, ack 이후에는 입력 구독이 열린 클라이언트만 응답해 정확히 한 번 전달한다.
-    if (liveSocket && session.clientInputLive) {
+    // replay_end는 attach와 같은 동기 블록에서 전송되므로 라이브 소켓 존재가 곧 마커 이후 경계다.
+    // 이후 질의는 WebSocket 메시지와 xterm write 큐 순서대로 파싱되어 입력 활성화 뒤 클라이언트가 응답하고, 서버는 미접속 구간만 맡는다.
+    if (liveSocket) {
       session.terminalQueryResidual = "";
     } else {
       respondToTerminalQueries(session, buffer);
@@ -297,10 +295,6 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     } catch {
       return;
     }
-    if (isReplayAckFrame(frame)) {
-      session.clientInputLive = true;
-      return;
-    }
     if (!isResizeFrame(frame)) return;
     session.cols = frame.cols;
     session.rows = frame.rows;
@@ -313,7 +307,6 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     // 죽은 소켓으로의 전송을 막고, 출력은 scrollback에 계속 쌓여 재연결 시 attach가 그대로 재생한다.
     // PTY는 오직 PTY 자가종료·운영자 terminate·서버 stop에서만 죽는다(자동 종료 grace 타이머는 제거됨).
     session.activeSocket = null;
-    session.clientInputLive = false;
     // 예외: theater-shell(캔버스 순정 셸)은 "상태 미유지" 요구에 따라 소켓 단절 후 짧은 grace 뒤 PTY를 정리한다.
     // 패널 닫기·새로고침이 이 경로로 흘러 orphan PTY를 막는다. 재연결이 들어오면 attach가 타이머를 취소한다.
     if (isTheaterShell(session.id)) {
@@ -495,10 +488,6 @@ function toBuffer(data: TerminalSocketData): Buffer {
   if (Buffer.isBuffer(data)) return data;
   if (Array.isArray(data)) return Buffer.concat(data);
   return Buffer.from(data);
-}
-
-function isReplayAckFrame(value: unknown): value is { readonly type: "replay_ack" } {
-  return !!value && typeof value === "object" && (value as { readonly type?: unknown }).type === "replay_ack";
 }
 
 function isResizeFrame(value: unknown): value is { readonly type: "resize"; readonly cols: number; readonly rows: number } {

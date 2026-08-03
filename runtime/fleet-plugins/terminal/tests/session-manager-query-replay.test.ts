@@ -8,22 +8,19 @@ const DA_RESPONSE = "\x1b[?1;2c";
 const CONTEXT = { sessionId: "session-a", cwd: "/work" } as const;
 
 describe("session-manager terminal query replay", () => {
-  it("answers before replay ack, delegates after ack, and answers again after detach", async () => {
+  it("delegates live terminal queries and answers again after detach", async () => {
     const { manager, pty } = await createHarness();
     const socket = createMockSocket();
     await manager.attach(socket, CONTEXT);
 
     pty.emitData(DA_QUERY);
-    expect(pty.written).toEqual([DA_RESPONSE]);
-
-    socket.emitMessage(Buffer.from(JSON.stringify({ type: "replay_ack" }), "utf8"), false);
-    pty.emitData(DA_QUERY);
-    expect(pty.written).toEqual([DA_RESPONSE]);
+    expect(pty.written).toEqual([]);
+    expect(socket.sent.filter((frame) => frame.binary).map((frame) => frame.data.toString("utf8"))).toEqual([DA_QUERY]);
 
     socket.emitClose();
     pty.emitData(DA_QUERY);
-    expect(pty.written).toEqual([DA_RESPONSE, DA_RESPONSE]);
-    expect(socket.sent.filter((frame) => frame.binary).map((frame) => frame.data.toString("utf8"))).toEqual([DA_QUERY, DA_QUERY]);
+    expect(pty.written).toEqual([DA_RESPONSE]);
+    expect(socket.sent.filter((frame) => frame.binary).map((frame) => frame.data.toString("utf8"))).toEqual([DA_QUERY]);
     await manager.stop();
   });
 

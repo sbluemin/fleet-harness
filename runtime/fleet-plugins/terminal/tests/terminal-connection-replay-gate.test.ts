@@ -42,17 +42,13 @@ describe("terminal connection replay input gate", () => {
     expect(terminal.pendingDrains).toHaveLength(1);
     terminal.emitData("while-draining");
     expect(socket!.sent).toHaveLength(1);
-    expect(socket!.sent).not.toContain(JSON.stringify({ type: "replay_ack" }));
 
     terminal.releaseDrain();
-    expect(socket!.sent).toEqual([
-      JSON.stringify({ type: "resize", cols: 120, rows: 40 }),
-      JSON.stringify({ type: "replay_ack" }),
-    ]);
+    expect(socket!.sent).toEqual([JSON.stringify({ type: "resize", cols: 120, rows: 40 })]);
     terminal.emitData("live-input");
-    expect(socket!.sent).toHaveLength(3);
-    expect(socket!.sent[2]).toBeInstanceOf(Uint8Array);
-    expect(new TextDecoder().decode(socket!.sent[2] as Uint8Array)).toBe("live-input");
+    expect(socket!.sent).toHaveLength(2);
+    expect(socket!.sent[1]).toBeInstanceOf(Uint8Array);
+    expect(new TextDecoder().decode(socket!.sent[1] as Uint8Array)).toBe("live-input");
 
     connection.dispose();
   });

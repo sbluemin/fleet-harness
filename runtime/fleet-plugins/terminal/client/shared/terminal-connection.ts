@@ -108,7 +108,6 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
         if (!isReplayEndFrame(frame)) return;
         connectionOptions.terminal.drain(() => {
           if (socket !== ws || ws.readyState !== OPEN_READY_STATE || inputSubscription) return;
-          ws.send(JSON.stringify({ type: "replay_ack" }));
           disposeInput();
           inputSubscription = connectionOptions.terminal.onData((data) => {
             if (ws.readyState === OPEN_READY_STATE) ws.send(encoder.encode(data));
