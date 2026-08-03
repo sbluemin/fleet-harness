@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../i18n/index.js";
+import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
 import { operationActivityLabel, operationActivityVisual, resolveOperationActivity } from "../operation-activity.js";
 import { getOperationStatusDetailSnapshot, useOperationStatusDetails } from "../operation-status-detail-store.js";
 import type { OperationNode } from "../types.js";
@@ -16,6 +17,8 @@ interface TriageWatchDeckProps {
   readonly operationStatus: Readonly<Record<string, OperationActivity>>;
   readonly operationAccent: Readonly<Record<string, string>>;
   readonly arrivingOperationId?: string | null;
+  /** 카드 본문 라이브 프리뷰용 pool 슬롯 config 빌더 — 핸들러 배선은 canvas가 단일 소유한다. */
+  readonly previewConfigFor?: (operation: OperationNode) => OperationBodyConfig;
 }
 
 export interface TriageDeckArrivalDwell {
@@ -79,10 +82,12 @@ export function TriageWatchDeck({
   operationStatus,
   operationAccent,
   arrivingOperationId = null,
+  previewConfigFor,
 }: TriageWatchDeckProps) {
   const t = useT();
   const gridRef = useRef<HTMLDivElement | null>(null);
   const [now, setNow] = useState(Date.now());
+  const poolAvailable = useOperationBodyPoolAvailable();
   useOperationStatusDetails();
   const visible = active && !entering && theaterId !== null && operations.length > 0;
 
@@ -148,9 +153,10 @@ export function TriageWatchDeck({
           const statusDetail = getOperationStatusDetailSnapshot(operation.id);
           const accentKey = operationAccent[operation.id] ?? operationAccentFromNode(operation);
           const accentColor = accentKey ? resolveAccentColor(accentKey) : null;
+          const previewConfig = poolAvailable && previewConfigFor ? previewConfigFor(operation) : null;
           return (
             <button
-              className={`canvas-triage-deck-card is-${visual} ${arrivingOperationId === operation.id ? "is-arriving" : ""}`}
+              className={`canvas-triage-deck-card is-${visual} ${previewConfig ? "has-preview" : ""} ${arrivingOperationId === operation.id ? "is-arriving" : ""}`}
               data-triage-deck-card={operation.id}
               key={operation.id}
               type="button"
@@ -164,14 +170,72 @@ export function TriageWatchDeck({
                 <time>{formatElapsed(now, statusDetail.activityChangedAt)}</time>
               </span>
               <strong title={operation.title}>{operation.title}</strong>
-              <span className="canvas-triage-deck-card-detail" title={statusDetail.detail ?? label}>
-                {statusDetail.detail ?? label}
-              </span>
+              {previewConfig ? (
+                <TriageDeckCardPreview config={previewConfig} operationId={operation.id} />
+              ) : (
+                <span className="canvas-triage-deck-card-detail" title={statusDetail.detail ?? label}>
+                  {statusDetail.detail ?? label}
+                </span>
+              )}
             </button>
           );
         })}
       </div>
     </section>
+  );
+}
+
+// 라이브 프리뷰 — pool 슬롯이 실제 패널 body를 카드 안으로 끌어온다. 내부 박스는 패널의 원래
+// 픽셀 크기를 고정 유지한 채 transform scale로만 축소한다: FitAddon이 카드 크기를 측정하면
+// PTY cols/rows가 타일 크기로 리사이즈되어 실세션 레이아웃이 깨지므로, 측정 크기 불변이 계약이다.
+// 패널 전체를 min 비율로 fit해 중앙 배치한다 — 한 축 크롭은 신선한 셸(상단 프롬프트)이나
+// 긴 세션(하단 최신 줄) 중 한쪽을 반드시 가리므로 전체 표시가 유일하게 안전하다.
+function TriageDeckCardPreview({ operationId, config }: {
+  readonly operationId: string;
+  readonly config: OperationBodyConfig;
+}) {
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const [fit, setFit] = useState<{ scale: number; left: number; top: number } | null>(null);
+  const innerWidth = Math.max(320, config.geometry.width);
+  const innerHeight = Math.max(240, config.geometry.height);
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const measure = () => {
+      const width = viewport.clientWidth;
+      const height = viewport.clientHeight;
+      if (width <= 0 || height <= 0) {
+        setFit(null);
+        return;
+      }
+      const scale = Math.min(width / innerWidth, height / innerHeight);
+      setFit({
+        scale,
+        left: Math.max(0, (width - innerWidth * scale) / 2),
+        top: Math.max(0, (height - innerHeight * scale) / 2),
+      });
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [innerHeight, innerWidth]);
+  return (
+    <span className="canvas-triage-deck-card-preview" ref={viewportRef} aria-hidden="true" inert>
+      {fit ? (
+        <span
+          className="canvas-triage-deck-card-preview-inner"
+          style={{
+            width: innerWidth,
+            height: innerHeight,
+            transform: `translate(${fit.left}px, ${fit.top}px) scale(${fit.scale})`,
+          } as CSSProperties}
+        >
+          <OperationBodySlot className="canvas-triage-deck-card-preview-slot" config={config} operationId={operationId} />
+        </span>
+      ) : null}
+    </span>
   );
 }
 

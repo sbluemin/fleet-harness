@@ -67,9 +67,10 @@ export function createTerminalStatusDetailReporter(options: StatusDetailReporter
     lastReported = pending;
     options.report(pending);
   };
+  // trailing throttle — 활성 타이머는 리셋하지 않는다. push마다 타이머를 재시작하면(디바운스)
+  // 연속 출력 동안 보고가 굶어 스트리밍 중에는 tail이 영영 안 갱신된다.
   const schedule = () => {
-    cancelTimer();
-    if (disposed || !pending || pending === lastReported) return;
+    if (disposed || timer !== null || !pending || pending === lastReported) return;
     timer = setTimer(flush, delayMs);
   };
 

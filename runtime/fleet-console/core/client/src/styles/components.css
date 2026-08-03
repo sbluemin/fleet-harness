@@ -2070,8 +2070,8 @@
 
 .canvas-triage-deck-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
-  grid-auto-rows: minmax(120px, 144px);
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
+  grid-auto-rows: minmax(150px, 210px);
   gap: 10px;
   min-width: 0;
   min-height: 0;
@@ -2189,6 +2189,43 @@
 
 .canvas-triage-deck-card.is-landed {
   animation: triage-deck-landed-flash calc(var(--duration-slow) * 2.5) var(--ease-glide) 1;
+}
+
+/* 라이브 프리뷰 카드 — 제목이 상단에 붙고 프리뷰가 남은 높이를 차지한다. */
+.canvas-triage-deck-card.has-preview {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.canvas-triage-deck-card.has-preview > strong {
+  align-self: start;
+}
+
+.canvas-triage-deck-card-preview {
+  position: relative;
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklch, var(--hairline) 70%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--canvas-abyss);
+  pointer-events: none;
+}
+
+/* 내부 박스는 패널의 원래 픽셀 크기를 유지한 채 transform으로만 축소된다(PTY 리사이즈 금지 계약).
+   translate+scale은 JS가 min 비율 fit으로 계산해 전체 패널을 중앙 배치한다. */
+.canvas-triage-deck-card-preview-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  transform-origin: left top;
+}
+
+.canvas-triage-deck-card-preview-slot {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .canvas-triage-deck-card.is-arriving {
