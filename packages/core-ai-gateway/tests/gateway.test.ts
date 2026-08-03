@@ -1537,6 +1537,105 @@ describe("OpenAI Responses adapter", () => {
     }]);
   });
 
+  it("strips format hints during the strict rewrite instead of forfeiting it or the request", async () => {
+    // Observed rejection: 400 "Invalid schema for function 'WebFetch': In context=
+    // ('properties', 'url'), 'uri' is not a valid format." Strict mode validates `format`
+    // against a closed value set, so the hint must not reach the wire.
+    const fetchMock = vi.fn<FetchLike>(async () => new Response(
+      JSON.stringify({ error: { message: "stop after capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+
+    await adapter.stream({
+      model: "gpt-5.6-sol",
+      input: [],
+      tools: [{
+        type: "function",
+        name: "WebFetch",
+        parameters: {
+          type: "object",
+          properties: {
+            url: { type: "string", format: "uri" },
+            prompt: { type: "string" },
+          },
+          required: ["url", "prompt"],
+          additionalProperties: false,
+        },
+      }],
+      stream: true,
+    }, { apiKey: "platform-key" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body.tools).toEqual([{
+      type: "function",
+      name: "WebFetch",
+      parameters: {
+        type: "object",
+        properties: {
+          url: { type: "string" },
+          prompt: { type: "string" },
+        },
+        required: ["url", "prompt"],
+        additionalProperties: false,
+      },
+      strict: true,
+    }]);
+  });
+
+  it("rewrites $defs subschemas with the same strict cleanup as inline subschemas", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => new Response(
+      JSON.stringify({ error: { message: "stop after capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+
+    await adapter.stream({
+      model: "gpt-5.6-sol",
+      input: [],
+      tools: [{
+        type: "function",
+        name: "open_link",
+        parameters: {
+          type: "object",
+          properties: { link: { $ref: "#/$defs/link" } },
+          required: ["link"],
+          $defs: {
+            link: {
+              type: "object",
+              properties: { href: { type: "string", format: "uri", default: "" } },
+              required: ["href"],
+            },
+          },
+        },
+      }],
+      stream: true,
+    }, { apiKey: "platform-key" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body.tools).toEqual([{
+      type: "function",
+      name: "open_link",
+      parameters: {
+        type: "object",
+        properties: { link: { $ref: "#/$defs/link" } },
+        required: ["link"],
+        additionalProperties: false,
+        $defs: {
+          link: {
+            type: "object",
+            properties: { href: { type: "string" } },
+            required: ["href"],
+            additionalProperties: false,
+          },
+        },
+      },
+      strict: true,
+    }]);
+  });
+
   it("forwards a Codex Fast service tier to the ChatGPT Responses backend", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => new Response(
       JSON.stringify({ error: { message: "stop after capture" } }),

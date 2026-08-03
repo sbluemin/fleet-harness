@@ -638,7 +638,6 @@ const STRICT_ALLOWED_KEYWORDS = new Set([
   "$ref",
   "description",
   "title",
-  "format",
   "pattern",
   "minimum",
   "maximum",
@@ -652,6 +651,7 @@ const STRICT_ALLOWED_KEYWORDS = new Set([
   // Dropped by `strictSchema` before the schema reaches the wire.
   "$schema",
   "default",
+  "format",
 ]);
 
 /** Whether every subschema stays inside the subset strict mode accepts. */
@@ -699,15 +699,25 @@ function strictSchema(schema: unknown): unknown {
   const next: Record<string, unknown> = { ...schema };
 
   // Metadata strict mode has no use for: `$schema` is a dialect marker it does not accept, and
-  // `default` is meaningless once every property is required.
+  // `default` is meaningless once every property is required. `format` is validated against a
+  // closed set of values strict mode enumerates — `uri` (WebFetch.url) is rejected with a
+  // request-wide 400 — so the advisory hint is stripped rather than gambling the request on it.
   delete next.$schema;
   delete next.default;
+  delete next.format;
 
   for (const key of ["anyOf", "oneOf", "allOf"] as const) {
     const branches = next[key];
     if (Array.isArray(branches)) next[key] = branches.map(strictSchema);
   }
   if (isRecord(next.items)) next.items = strictSchema(next.items);
+  if (isRecord(next.$defs)) {
+    const rewrittenDefs: Record<string, unknown> = {};
+    for (const [name, value] of Object.entries(next.$defs)) {
+      rewrittenDefs[name] = strictSchema(value);
+    }
+    next.$defs = rewrittenDefs;
+  }
 
   const properties = next.properties;
   if (isRecord(properties)) {
