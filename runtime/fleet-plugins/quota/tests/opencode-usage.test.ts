@@ -29,7 +29,17 @@ describe("opencode go window math", () => {
     );
     const session = result.windows.find((window) => window.id === "session");
     // $6/12 = 50%: 6시간 전 행은 창 밖이다.
-    expect(session).toEqual({ id: "session", usedPercent: 50, resetsAt: NOW - 4 * HOUR + 5 * HOUR });
+    expect(session).toEqual({
+      id: "session",
+      usedPercent: 50,
+      resetsAt: NOW - 4 * HOUR + 5 * HOUR,
+      period: {
+        durationMs: 5 * HOUR,
+        durationBasis: "catalog",
+        startsAt: NOW - 4 * HOUR,
+        startsAtBasis: "derived",
+      },
+    });
   });
 
   it("bounds the weekly window to the UTC Monday week", () => {
@@ -44,7 +54,17 @@ describe("opencode go window math", () => {
     );
     const weekly = result.windows.find((window) => window.id === "weekly");
     // 일요일 밤 $30은 지난주다 — 이번 주는 $15/30 = 50%.
-    expect(weekly).toEqual({ id: "weekly", usedPercent: 50, resetsAt: monday + 7 * DAY });
+    expect(weekly).toEqual({
+      id: "weekly",
+      usedPercent: 50,
+      resetsAt: monday + 7 * DAY,
+      period: {
+        durationMs: 7 * DAY,
+        durationBasis: "catalog",
+        startsAt: monday,
+        startsAtBasis: "derived",
+      },
+    });
   });
 
   it("anchors the monthly cycle to the earliest usage's day of month", () => {
@@ -63,6 +83,12 @@ describe("opencode go window math", () => {
       id: "cycle",
       usedPercent: 50,
       resetsAt: Date.UTC(2026, 7, 20, 9, 30),
+      period: {
+        durationMs: Date.UTC(2026, 7, 20, 9, 30) - Date.UTC(2026, 6, 20, 9, 30),
+        durationBasis: "catalog",
+        startsAt: Date.UTC(2026, 6, 20, 9, 30),
+        startsAtBasis: "derived",
+      },
     });
     expect(result.cycleDays).toBe(31);
   });

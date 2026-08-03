@@ -152,11 +152,43 @@ export function computeOpencodeGoWindows(
   const month = anchoredMonthBounds(nowMs, anchorMs);
   const monthlySpend = sumRange(costs, month.start, month.end);
 
+  // period: 캡과 창 경계는 공개된 플랜 지식(catalog)이고, 시작 시각은 그 규칙에서
+  // 계산(derived)했다. 금액(amounts)은 달러 단위라 계약상 제외한다.
   return {
     windows: [
-      { id: "session", usedPercent: percent(sessionSpend, OPENCODE_GO_SESSION_CAP_USD), resetsAt: sessionResetsAt },
-      { id: "weekly", usedPercent: percent(weeklySpend, OPENCODE_GO_WEEKLY_CAP_USD), resetsAt: weekEnd },
-      { id: "cycle", usedPercent: percent(monthlySpend, OPENCODE_GO_MONTHLY_CAP_USD), resetsAt: month.end },
+      {
+        id: "session",
+        usedPercent: percent(sessionSpend, OPENCODE_GO_SESSION_CAP_USD),
+        resetsAt: sessionResetsAt,
+        period: {
+          durationMs: SESSION_MS,
+          durationBasis: "catalog",
+          startsAt: sessionResetsAt - SESSION_MS,
+          startsAtBasis: "derived",
+        },
+      },
+      {
+        id: "weekly",
+        usedPercent: percent(weeklySpend, OPENCODE_GO_WEEKLY_CAP_USD),
+        resetsAt: weekEnd,
+        period: {
+          durationMs: WEEK_MS,
+          durationBasis: "catalog",
+          startsAt: weekStart,
+          startsAtBasis: "derived",
+        },
+      },
+      {
+        id: "cycle",
+        usedPercent: percent(monthlySpend, OPENCODE_GO_MONTHLY_CAP_USD),
+        resetsAt: month.end,
+        period: {
+          durationMs: month.end - month.start,
+          durationBasis: "catalog",
+          startsAt: month.start,
+          startsAtBasis: "derived",
+        },
+      },
     ],
     cycleDays: Math.round((month.end - month.start) / 86_400_000),
   };
