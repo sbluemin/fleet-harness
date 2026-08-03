@@ -1143,6 +1143,7 @@ describe("Instrument core design contract", () => {
     expect(sidebar).toContain("hasCustomGroups && section.entries.length > 0");
     expect(sidebar).toContain("theaterInitials(theater.label)");
     expect(chip).toContain("side-bar-chip-status");
+    expect(chip).toContain('if (visual === "background") return "tenant-beacon is-background"');
     expect(chip).toContain('if (visual === "awaiting") return "tenant-beacon is-awaiting"');
     expect(chip).not.toContain("is-attention");
     expect(components).toContain(".side-bar-chip:focus-within .side-bar-chip-close");

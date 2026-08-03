@@ -58,6 +58,8 @@ export type ConsoleHookCommand =
   | { readonly command: "capture-session"; readonly provider: "claude" }
   | { readonly command: "turn-start" }
   | { readonly command: "turn-end" }
+  | { readonly command: "background-spawn" }
+  | { readonly command: "background-stop" }
   | { readonly command: "attention" }
   | { readonly command: "auto-name" };
 
@@ -75,7 +77,7 @@ export interface BuildConsoleHelpTextOptions {
 const FIXED_HOST = "127.0.0.1";
 const HELP_BANNER_INDENT = "  ";
 const DEFAULT_HELP_RELEASE = "local";
-const CONSOLE_HOOK_COMMANDS = new Set(["capture-session", "turn-start", "turn-end", "attention", "auto-name"]);
+const CONSOLE_HOOK_COMMANDS = new Set(["capture-session", "turn-start", "turn-end", "background-spawn", "background-stop", "attention", "auto-name"]);
 
 export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
   // 인자가 없으면 기본 동작은 start(서버 보장 + 브라우저 열기)다.
@@ -110,6 +112,8 @@ export function parseConsoleHookCommand(argv: readonly string[]): ConsoleHookCom
   }
   if (commandName === "turn-start" && rest.length === 0) return { command: "turn-start" };
   if (commandName === "turn-end" && rest.length === 0) return { command: "turn-end" };
+  if (commandName === "background-spawn" && rest.length === 0) return { command: "background-spawn" };
+  if (commandName === "background-stop" && rest.length === 0) return { command: "background-stop" };
   if (commandName === "attention" && rest.length === 0) return { command: "attention" };
   if (commandName === "auto-name" && rest.length === 0) return { command: "auto-name" };
   if (commandName === "capture-session" && rest.length === 1 && rest[0] === "claude") return { command: "capture-session", provider: rest[0] };
@@ -310,6 +314,10 @@ export async function main(): Promise<void> {
     if (hookCommand.command === "turn-start" || hookCommand.command === "turn-end") {
       // 턴 상태 hook은 항상 무출력·exit 0 best-effort다(hook continuation과 block 출력 금지).
       await postAgentHook(`/sessions/${readHookSessionId(process.env)}/turn`, { phase: hookCommand.command === "turn-start" ? "start" : "end" }, process.env);
+      return;
+    }
+    if (hookCommand.command === "background-spawn" || hookCommand.command === "background-stop") {
+      await postAgentHook(`/sessions/${readHookSessionId(process.env)}/background`, { event: hookCommand.command === "background-spawn" ? "spawn" : "stop" }, process.env);
       return;
     }
     if (hookCommand.command === "attention") {

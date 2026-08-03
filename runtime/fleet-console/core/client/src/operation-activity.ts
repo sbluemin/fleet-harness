@@ -5,7 +5,7 @@ import { getT } from "./i18n/index.js";
 import type { OperationNode } from "./types.js";
 import { resolveConsoleLanguage } from "./whatsnew-i18n.js";
 
-export type OperationActivityVisual = "running" | "awaiting" | "dormant" | "idle";
+export type OperationActivityVisual = "running" | "background" | "awaiting" | "dormant" | "idle";
 
 // 활동 맵에 항목이 없는 Operation의 분류 폭백. 플러그인이 아직 status를 심지 않은 복원 Operation은
 // doctrine상 "dormant until explicitly relaunched"이다. providerSession 자체는 브라우저 DTO에서
@@ -23,6 +23,7 @@ export function resolveOperationActivity(
 
 export function operationActivityVisual(status: OperationActivity | undefined): OperationActivityVisual {
   if (status === "running") return "running";
+  if (status === "background") return "background";
   if (status === "awaiting") return "awaiting";
   if (status === "dormant") return "dormant";
   return "idle";
@@ -41,6 +42,7 @@ export function operationActivityLabel(status: OperationActivity | undefined): s
   const t = getT(resolveActiveLocale());
   const visual = operationActivityVisual(status);
   if (visual === "running") return t("activity.running");
+  if (visual === "background") return t("activity.background");
   if (visual === "awaiting") return t("activity.awaiting");
   if (visual === "dormant") return t("activity.dormant");
   return t("activity.idle");

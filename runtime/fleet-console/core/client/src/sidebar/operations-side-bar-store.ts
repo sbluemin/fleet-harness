@@ -42,7 +42,7 @@ let previousActivityById = new Map<string, SideBarStatus>();
 let baselinedLiveActivityIds = new Set<string>();
 let pendingStatusLandingIds = new Set<string>();
 
-export type SideBarStatus = "awaiting" | "running" | "idle" | "dormant";
+export type SideBarStatus = "awaiting" | "running" | "background" | "idle" | "dormant";
 
 export function useSideBarState(): SideBarState {
   return useSyncExternalStore(subscribeSideBarState, getSideBarState, getSideBarState);

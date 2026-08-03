@@ -70,6 +70,27 @@ describe("agent provider capture grace", () => {
     expect((await harness.getSessions())[0]).not.toHaveProperty("modelActivity");
   });
 
+  it("accepts background hook events and projects the pending state", async () => {
+    const harness = createHarness({ cliId: "claude", event: "spawn" });
+    await harness.postSessions();
+    const sessionId = harness.operations[0]!.id;
+
+    await harness.backgroundSession(sessionId);
+
+    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { ok: true } });
+    expect((await harness.getSessions())[0]).toMatchObject({ sessionId, backgroundPending: true });
+  });
+
+  it("rejects invalid background hook events", async () => {
+    const harness = createHarness({ cliId: "claude", event: "invalid" });
+    await harness.postSessions();
+    const sessionId = harness.operations[0]!.id;
+
+    await harness.backgroundSession(sessionId);
+
+    expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "invalid_event" } });
+  });
+
   it("returns only invalid_agent_cli when a removed provider Operation is resumed", async () => {
     const harness = createHarness({ cliId: "claude" });
     await harness.postSessions();
@@ -351,6 +372,14 @@ function createHarness(body: Record<string, unknown>) {
         req: { method: "POST", url: `/plugins/terminal/agent/sessions/${sessionId}/turn` } as http.IncomingMessage,
         res: {} as http.ServerResponse,
         pathname: `/plugins/terminal/agent/sessions/${sessionId}/turn`,
+      });
+    },
+    backgroundSession: async (sessionId: string) => {
+      if (!route) throw new Error("Agent route was not registered");
+      await route({
+        req: { method: "POST", url: `/plugins/terminal/agent/sessions/${sessionId}/background` } as http.IncomingMessage,
+        res: {} as http.ServerResponse,
+        pathname: `/plugins/terminal/agent/sessions/${sessionId}/background`,
       });
     },
   };

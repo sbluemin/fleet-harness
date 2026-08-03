@@ -1530,6 +1530,15 @@
   box-shadow: 0 0 10px var(--warn-glow);
 }
 
+/* background — 턴은 끝났지만 백그라운드 서브에이전트/워크플로우 작업이 남아있음. running(--warn 채움)의 중공 변형. */
+.tenant-beacon.is-background {
+  background: none;
+  border: 1.5px solid var(--warn);
+  border-radius: 2px;
+  box-sizing: border-box;
+  box-shadow: 0 0 8px var(--warn-glow);
+}
+
 /* idle — 그린(--positive). 유휴 상태(턴 미진행/종료). 정적 dot, 외곽 애니메이션 없음. */
 .tenant-beacon.is-idle {
   background: var(--positive);
@@ -2686,6 +2695,12 @@
 
 /* 인디케이터 색 추종 — turn: warn/amber(에이전트 턴 진행 또는 캐리어 스트리밍) */
 .canvas-operation.is-running--turn {
+  --uw-tint: var(--warn);
+  --uw-glow: var(--warn-glow);
+}
+
+/* 인디케이터 색 추종 — background: 턴은 끝났지만 백그라운드 작업 진행 중 */
+.canvas-operation.is-running--background {
   --uw-tint: var(--warn);
   --uw-glow: var(--warn-glow);
 }

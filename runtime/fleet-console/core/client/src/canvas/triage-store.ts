@@ -288,7 +288,7 @@ export function recordTriageActivity(
       changed = true;
     }
     const activity = resolveOperationActivity(operation, operationStatus);
-    if ((activity === "running" || activity === "dormant") && deferredAt.delete(operation.id)) {
+    if ((activity === "running" || activity === "background" || activity === "dormant") && deferredAt.delete(operation.id)) {
       changed = true;
     }
     if (activityByOperation.get(operation.id) === activity) continue;
@@ -314,7 +314,7 @@ export function isTriageClearedTransition(
   current: OperationActivity,
 ): boolean {
   return (previous === "awaiting" || previous === "idle")
-    && (current === "running" || current === "dormant");
+    && (current === "running" || current === "background" || current === "dormant");
 }
 
 export function isTriageWaitingOperation(

@@ -33,6 +33,7 @@ import type { AgentProviderSession, AgentProviderTitleMarker, AgentTerminalSessi
 import { CARRIER_JOB_FINALIZED_GRACE_MS, isCarrierJobActiveForIdle, startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown };
 type HookTurnBody = { readonly phase?: unknown };
+type HookBackgroundBody = { readonly event?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
 type HookAutoNameBody = { readonly input?: unknown; readonly prompt?: unknown };
 type HookCaptureBody = { readonly provider?: unknown; readonly input?: unknown };
@@ -370,6 +371,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
 
   async function handleSessionItem(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string, action: string): Promise<boolean> {
     if (action === "turn") return handleTurn(req, res, sessionId);
+    if (action === "background") return handleBackground(req, res, sessionId);
     if (action === "attention") return handleAttention(req, res, sessionId);
     if (action === "auto-name") return handleAutoName(req, res, sessionId);
     if (action === "capture") return handleCapture(req, res, sessionId);
@@ -522,6 +524,25 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     observability.notifySessionUpdated(updated);
     ctx.host.http.writeJson(res, 200, { ok: true });
     if (turnState === "ended") scheduleIdentityRefresh(sessionId);
+    return true;
+  }
+
+  async function handleBackground(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
+    if (req.method !== "POST") return methodNotAllowed(res);
+    if (!ctx.host.security.isLockAuthorized(req)) return unauthorized(res);
+    const body = await ctx.host.http.readJsonBody<HookBackgroundBody>(req);
+    const event = body?.event === "spawn" || body?.event === "stop" ? body.event : null;
+    if (event === null) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_event" });
+      return true;
+    }
+    const updated = observability.setTerminalSessionBackgroundEvent(sessionId, event);
+    if (!updated) {
+      ctx.host.http.writeJson(res, 404, { error: "terminal_session_not_found" });
+      return true;
+    }
+    observability.notifySessionUpdated(updated);
+    ctx.host.http.writeJson(res, 200, { ok: true });
     return true;
   }
 

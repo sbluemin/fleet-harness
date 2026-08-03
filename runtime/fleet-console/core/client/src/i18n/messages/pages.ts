@@ -161,6 +161,7 @@ export const pagesEn = {
 
   // activity
   "activity.running": "Running",
+  "activity.background": "Background",
   "activity.awaiting": "Awaiting input",
   "activity.dormant": "Dormant",
   "activity.idle": "Idle",
@@ -275,6 +276,7 @@ export const pagesEn = {
   "mobile.operations.hasAlert": "Has alert",
   "mobile.status.awaiting": "Awaiting input",
   "mobile.status.running": "Running",
+  "mobile.status.background": "Background",
   "mobile.status.idle": "Idle",
   "mobile.status.dormant": "Dormant",
   "mobile.session.backAria": "Back to operations",
@@ -444,6 +446,7 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "whatsnew.tab.preProductGrouping": "제품 분류 이전 업데이트",
 
   "activity.running": "실행 중",
+  "activity.background": "백그라운드",
   "activity.awaiting": "입력 대기",
   "activity.dormant": "휴면",
   "activity.idle": "대기",
@@ -554,6 +557,7 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "mobile.operations.hasAlert": "알림 있음",
   "mobile.status.awaiting": "입력 대기",
   "mobile.status.running": "진행 중",
+  "mobile.status.background": "백그라운드",
   "mobile.status.idle": "유휴",
   "mobile.status.dormant": "휴면",
   "mobile.session.backAria": "작업 목록으로 돌아가기",

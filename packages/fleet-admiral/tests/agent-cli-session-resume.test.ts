@@ -140,6 +140,34 @@ describe("agent CLI session resume and capture hooks", () => {
     });
   });
 
+  it("passes background hook execs through profile injection", async () => {
+    const root = createTempRoot("fleet-admiral-background-hooks-");
+    const profile = baseProfile("claude", {
+      args: [],
+      cwd: root,
+      env: { HOME: root },
+    });
+    const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
+      backgroundSpawnHookExec: hookExec("node", ["console.js", "hook", "background-spawn"]),
+      backgroundStopHookExec: hookExec("node", ["console.js", "hook", "background-stop"]),
+    }));
+    const pluginRootIndex = injected.args.indexOf("--plugin-dir") + 1;
+    const pluginRoot = injected.args[pluginRootIndex];
+    expect(pluginRootIndex).toBeGreaterThan(0);
+    expect(typeof pluginRoot).toBe("string");
+    const hooksJson = JSON.parse(readFileSync(path.join(pluginRoot as string, "hooks", "hooks.json"), "utf8")) as {
+      readonly hooks: Record<string, unknown>;
+    };
+
+    expect(hooksJson.hooks.PreToolUse).toEqual([
+      { matcher: "Task|Agent|Workflow", hooks: [{ type: "command", command: "node", args: ["console.js", "hook", "background-spawn"] }] },
+    ]);
+    expect(hooksJson.hooks.SubagentStop).toEqual([
+      { hooks: [{ type: "command", command: "node", args: ["console.js", "hook", "background-stop"] }] },
+    ]);
+    injected.cleanup?.();
+  });
+
   it("renders Claude capture on UserPromptSubmit", async () => {
     const root = createTempRoot("fleet-admiral-claude-hooks-");
     const dataDir = path.join(root, "data");
@@ -207,6 +235,8 @@ function baseInjectOptions(
   overrides: {
     readonly buildSystemPrompt?: Parameters<typeof injectAgentCliProfile>[1]["buildSystemPrompt"];
     readonly autoNameHookExec?: FleetHookExec;
+    readonly backgroundSpawnHookExec?: FleetHookExec;
+    readonly backgroundStopHookExec?: FleetHookExec;
     readonly captureSessionHookExec?: FleetHookExec;
     readonly dedicatedMcpSession?: TestDedicatedMcpSession;
     readonly enableMetaphor?: boolean;
@@ -222,6 +252,8 @@ function baseInjectOptions(
     dataDir: path.join(root, "data"),
     dedicatedMcpSession: overrides.dedicatedMcpSession ?? createDedicatedMcpSession(),
     ...(overrides.autoNameHookExec ? { autoNameHookExec: overrides.autoNameHookExec } : {}),
+    ...(overrides.backgroundSpawnHookExec ? { backgroundSpawnHookExec: overrides.backgroundSpawnHookExec } : {}),
+    ...(overrides.backgroundStopHookExec ? { backgroundStopHookExec: overrides.backgroundStopHookExec } : {}),
     ...(overrides.captureSessionHookExec ? { captureSessionHookExec: overrides.captureSessionHookExec } : {}),
     ...(overrides.enableMetaphor === undefined ? {} : { enableMetaphor: overrides.enableMetaphor }),
     ...(overrides.gatewayExposedModels ? { gatewayExposedModels: overrides.gatewayExposedModels } : {}),

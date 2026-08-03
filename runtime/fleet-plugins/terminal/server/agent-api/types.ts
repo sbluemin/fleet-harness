@@ -53,6 +53,7 @@ export interface AgentTerminalSessionInfo {
   readonly turnState: AgentTurnState;
   readonly modelActivity?: AgentModelActivity;
   readonly attentionPending?: boolean;
+  readonly backgroundPending?: boolean;
   readonly createdAt: number;
   readonly theaterId: string;
   readonly registrationId?: string;

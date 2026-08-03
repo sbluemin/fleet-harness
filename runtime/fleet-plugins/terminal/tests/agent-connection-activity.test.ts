@@ -25,10 +25,19 @@ describe("Agent connection activity state machine", () => {
       createdAt: 1_000,
       modelActivity: "unexpected",
       attentionPending: "yes",
+      backgroundPending: "yes",
     }, 200)).toMatchObject({
       modelActivity: undefined,
       attentionPending: undefined,
+      backgroundPending: undefined,
     });
+    expect(assertSessionInfo({
+      sessionId: "background-session",
+      cwdLabel: "project",
+      status: "registered",
+      createdAt: 1_000,
+      backgroundPending: true,
+    }, 200)).toMatchObject({ backgroundPending: true });
   });
 
   it("composes attention, working, not-working, dormant, and legacy turn state in fixed priority order", () => {
@@ -40,8 +49,17 @@ describe("Agent connection activity state machine", () => {
     expect(sessionActivity(makeSession({ turnState: "ended" }))).toBe("idle");
   });
 
-  it("keeps not-working sessions running while a Carrier stream is active", () => {
-    const session = makeSession({ sessionId: "carrier-active", tenantId: "tenant-carrier", modelActivity: "not-working" });
+  it("maps background-pending ended and not-working sessions to background", () => {
+    expect(sessionActivity(makeSession({ backgroundPending: true, turnState: "ended" }))).toBe("background");
+    expect(sessionActivity(makeSession({ backgroundPending: true, modelActivity: "not-working" }))).toBe("background");
+  });
+
+  it("keeps background-pending working sessions running", () => {
+    expect(sessionActivity(makeSession({ backgroundPending: true, modelActivity: "working" }))).toBe("running");
+  });
+
+  it("keeps background-pending sessions running while a Carrier stream is active", () => {
+    const session = makeSession({ sessionId: "carrier-active", tenantId: "tenant-carrier", backgroundPending: true, modelActivity: "not-working" });
     applyJobsSnapshot([{
       tenantId: "tenant-carrier",
       jobs: [{ jobId: "job-a", status: "active", updatedAt: 1_000, events: [] }],
@@ -50,7 +68,27 @@ describe("Agent connection activity state machine", () => {
     expect(sessionActivity(session)).toBe("running");
   });
 
-  it("moves awaiting to running on working and to idle on not-working without duplicate notifications", () => {
+  it("keeps not-working sessions running while a Carrier stream is active", () => {
+    const session = makeSession({ sessionId: "carrier-active-no-background", tenantId: "tenant-carrier-no-background", modelActivity: "not-working" });
+    applyJobsSnapshot([{
+      tenantId: "tenant-carrier-no-background",
+      jobs: [{ jobId: "job-a", status: "active", updatedAt: 1_000, events: [] }],
+    }]);
+
+    expect(sessionActivity(session)).toBe("running");
+  });
+
+  it("does not notify when entering background and notifies when it returns idle", () => {
+    const { options, notifications } = createOptions();
+    const sessionId = "background-transition";
+
+    applyActivity(options, sessionId, "background");
+    applyActivity(options, sessionId, "idle");
+
+    expect(notifications.mock.calls.map((call) => call[0].kind)).toEqual(["agent.ended"]);
+  });
+
+  it("moves awaiting to running and to idle without duplicate notifications", () => {
     const { options, statusSet, notifications } = createOptions();
     const sessionId = "activity-transitions";
 

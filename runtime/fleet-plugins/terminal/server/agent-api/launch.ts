@@ -25,7 +25,7 @@ import {
   type GlobalOptionsService,
 } from "@dotobokuri/core-infra";
 
-import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, toCaptureProvider, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
+import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleBackgroundHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, toCaptureProvider, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import { resolveAiGatewaySelection, type AiGatewaySelection, type AiGatewayStoredSettings } from "../ai-gateway-settings.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
 import { stripConsoleInternalEnv } from "../shared/launch-env.js";
@@ -199,6 +199,8 @@ async function createAgentCliLaunchSpec(options: {
       ),
       turnStartHookExec: buildConsoleTurnHookCommand(options.hookEntry, "start"),
       turnEndHookExec: buildConsoleTurnHookCommand(options.hookEntry, "end"),
+      backgroundSpawnHookExec: buildConsoleBackgroundHookCommand(options.hookEntry, "spawn"),
+      backgroundStopHookExec: buildConsoleBackgroundHookCommand(options.hookEntry, "stop"),
       inputWaitingHookExec: buildConsoleAttentionHookCommand(options.hookEntry),
       autoNameHookExec: buildConsoleAutoNameHookCommand(options.hookEntry),
       onCleanup: (cleanup) => cleanupStack.push(cleanup),
