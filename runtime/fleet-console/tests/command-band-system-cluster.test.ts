@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { resolveUpdateApplyCopy, SideBarBrandFoot } from "../core/client/src/components/side-bar-brand-foot.js";
+import { CommandBandSystemCluster, resolveUpdateApplyCopy } from "../core/client/src/components/command-band-system-cluster.js";
 import { getT } from "../core/client/src/i18n/index.js";
 
 let root: Root | null = null;
@@ -33,18 +33,18 @@ afterEach(() => {
   window.requestAnimationFrame = originalRequestAnimationFrame;
 });
 
-function mountFoot() {
+function mountCluster() {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
-  act(() => root!.render(createElement(MemoryRouter, null, createElement(SideBarBrandFoot))));
+  act(() => root!.render(createElement(MemoryRouter, null, createElement(CommandBandSystemCluster))));
 }
 
 function menuItems(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
 }
 
-describe("SideBarBrandFoot System Menu", () => {
+describe("CommandBandSystemCluster", () => {
   it("gives managed installation updates an actionable Desktop relaunch instruction instead of retry", () => {
     expect(resolveUpdateApplyCopy("blocked", "managed_runtime_update_requires_relaunch", "1.2.3", getT("en"))).toEqual({
       label: "Update and Restart",
@@ -54,47 +54,40 @@ describe("SideBarBrandFoot System Menu", () => {
     });
   });
 
-  it("focuses the first System Menu item on open and cycles with arrow keys", () => {
-    mountFoot();
-    const trigger = document.querySelector<HTMLButtonElement>(".brand-foot-system-trigger")!;
-    act(() => trigger.click());
-
-    const items = menuItems();
-    expect(items).toHaveLength(1);
-    expect(document.activeElement).toBe(items[0]);
-
-    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" })); });
-    expect(document.activeElement).toBe(items[0]);
-    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "End" })); });
-    expect(document.activeElement).toBe(items[0]);
+  it("keeps Settings a direct one-click action without a menu", () => {
+    mountCluster();
+    const settings = document.querySelector<HTMLButtonElement>(".command-band-settings")!;
+    expect(settings.getAttribute("aria-label")).toBe("Settings");
+    expect(settings.getAttribute("aria-haspopup")).toBeNull();
+    expect(document.querySelector(".command-band-system-menu")).toBeNull();
   });
 
-  it("closes on Escape and returns focus to the trigger", () => {
-    mountFoot();
-    const trigger = document.querySelector<HTMLButtonElement>(".brand-foot-system-trigger")!;
-    act(() => trigger.click());
-    expect(menuItems()).toHaveLength(1);
-
-    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); });
-    expect(menuItems()).toHaveLength(0);
-    expect(document.activeElement).toBe(trigger);
-  });
-
-  it("shares Arrow/Home/End cycling with Help and includes GitHub links", () => {
-    mountFoot();
-    const trigger = document.querySelector<HTMLButtonElement>(".brand-foot-help-trigger")!;
+  it("opens the Help menu with focus on the first enabled item and cycles with arrow keys", () => {
+    mountCluster();
+    const trigger = document.querySelector<HTMLButtonElement>(".command-band-help")!;
     act(() => trigger.click());
 
     const items = menuItems();
     expect(items).toHaveLength(4);
+    // What's New stays disabled while release notes are empty, so focus starts on Keyboard Shortcuts.
     expect(document.activeElement).toBe(items[1]);
     expect(items[2]?.getAttribute("aria-label")).toBe("Open GitHub repository");
-    expect(document.querySelector(".brand-foot-github-version")?.textContent).toMatch(/^v/);
-    expect(document.querySelector(".brand-foot-menu-version")).toBeNull();
+    expect(document.querySelector(".command-band-github-version")?.textContent).toMatch(/^v/);
 
     act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "End" })); });
     expect(document.activeElement).toBe(items[3]);
     act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" })); });
     expect(document.activeElement).toBe(items[1]);
+  });
+
+  it("closes the Help menu on Escape and returns focus to the trigger", () => {
+    mountCluster();
+    const trigger = document.querySelector<HTMLButtonElement>(".command-band-help")!;
+    act(() => trigger.click());
+    expect(menuItems()).toHaveLength(4);
+
+    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); });
+    expect(menuItems()).toHaveLength(0);
+    expect(document.activeElement).toBe(trigger);
   });
 });

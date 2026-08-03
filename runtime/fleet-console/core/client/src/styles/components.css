@@ -8376,68 +8376,27 @@ body[data-codex-reading="true"] .operations-side-bar {
 }
 
 /* ── v5: 사이드바 브랜드 푸터 — GNB 퇴역 후 콘솔 크롬의 상주 진입점 ── */
-.side-bar-brand-foot {
+/* 시스템 클러스터 — 설정(직행)·도움말(메뉴)은 커맨드 밴드 우측 상주 크롬이다. 사이드바
+   접힘·라우트 전환과 무관하게 항상 도달 가능해야 하며, 뷰 컨트롤 가족과 구분되도록
+   rim 헤어라인으로 가족 경계를 긋는다. */
+.command-band-system-cluster {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-1);
   flex: none;
-  padding: 7px 10px;
-  border-top: 1px solid var(--surface-rim);
-  white-space: nowrap;
+  margin-left: var(--space-1);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--surface-rim);
 }
 
-.brand-foot-home {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 8px 4px 5px;
-  border-radius: var(--radius-xs);
-  color: var(--text-primary);
-}
-
-.brand-foot-home:hover,
-.brand-foot-home:focus-visible {
-  background: var(--surface-glass);
-}
-
-.brand-foot-glyph {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  border-radius: var(--radius-xs);
-}
-
-.brand-foot-wordmark {
-  font-family: var(--font-display);
-  font-size: 13px;
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.01em;
-}
-
-.brand-foot-version {
+.command-band-settings {
   position: relative;
-  padding: 4px 8px;
-  border-radius: var(--radius-xs);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-}
-
-.brand-foot-version:hover:not(:disabled),
-.brand-foot-version:focus-visible {
-  background: var(--surface-glass);
-  color: var(--text-secondary);
-}
-
-.brand-foot-version:disabled {
-  opacity: 0.6;
-  cursor: default;
 }
 
 /* 업데이트 준비됨 = 완료 상태 신호(positive). 정보 뱃지가 아니라 실제 상태만 색을 갖는다. */
-.brand-foot-version-dot {
+.command-band-update-dot {
   position: absolute;
-  top: 3px;
+  top: 2px;
   right: 2px;
   width: 5px;
   height: 5px;
@@ -8445,82 +8404,19 @@ body[data-codex-reading="true"] .operations-side-bar {
   background: var(--positive);
 }
 
-/* 대기 중 업데이트 안내는 정보다 — 중립 잉크. 진행(live)=warn, 실패(error)=coral만 신호로 발화. */
-.brand-foot-update {
-  padding: 3px 8px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--ink-spectral) 6%, transparent);
-  color: var(--text-secondary);
-  font-size: 10.5px;
-  font-weight: var(--weight-bold);
-}
-
-.brand-foot-update--live { border-color: color-mix(in oklch, var(--warn) 42%, transparent); background: color-mix(in oklch, var(--warn) 10%, transparent); color: var(--warn-ink); }
-.brand-foot-update--blocked { border-color: var(--surface-rim); background: transparent; color: var(--text-tertiary); }
-.brand-foot-update--error { border-color: color-mix(in oklch, var(--coral) 42%, transparent); background: color-mix(in oklch, var(--coral) 10%, transparent); color: var(--coral-ink); }
-.brand-foot-update:disabled { cursor: default; opacity: 0.75; }
-
-.brand-foot-github {
-  display: flex;
-  align-items: center;
-  gap: 1px;
-}
-
-.brand-foot-github-link,
-.brand-foot-more {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-xs);
-  color: var(--text-tertiary);
-}
-
-.brand-foot-github-link svg,
-.brand-foot-more svg { width: 13px; height: 13px; }
-
-.brand-foot-github-stars {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 24px;
-  padding: 0 6px;
-  border-radius: var(--radius-xs);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-}
-
-.brand-foot-github-stars svg { width: 12px; height: 12px; }
-
-.brand-foot-github-link:hover,
-.brand-foot-github-link:focus-visible,
-.brand-foot-github-stars:hover,
-.brand-foot-github-stars:focus-visible,
-.brand-foot-more:hover,
-.brand-foot-more:focus-visible {
-  background: var(--surface-glass);
-  color: var(--text-secondary);
-}
-
-.brand-foot-dropup {
+.command-band-system-anchor {
   position: relative;
+  display: flex;
 }
 
-/* Help 드롭업만 우측 밀착 — System Menu는 푸터 좌측에 밀착한다. */
-.brand-foot-help-menu {
-  margin-left: auto;
-}
-
-.brand-foot-dropup-menu {
+.command-band-system-menu {
   position: absolute;
   right: 0;
-  bottom: 32px;
+  top: calc(100% + 6px);
   z-index: 40;
   display: flex;
   flex-direction: column;
-  min-width: 150px;
+  min-width: 180px;
   max-width: min(280px, calc(100vw - 16px));
   padding: 4px;
   border: 1px solid var(--surface-rim-strong);
@@ -8532,14 +8428,8 @@ body[data-codex-reading="true"] .operations-side-bar {
   box-shadow: var(--shadow-floating);
 }
 
-/* 좌측 푸터의 System Menu는 trigger 좌측에 붙여 뷰포트 밖으로 밀리지 않게 한다. */
-.brand-foot-system-menu .brand-foot-dropup-menu {
-  right: auto;
-  left: 0;
-}
-
 /* 메뉴 항목은 theater-menu-item과 같은 mono 대문자 문법을 쓴다 — 콘솔 메뉴 단일 방언. */
-.brand-foot-dropup-menu button {
+.command-band-system-menu button {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -8552,43 +8442,68 @@ body[data-codex-reading="true"] .operations-side-bar {
   text-align: left;
 }
 
-.brand-foot-dropup-menu button:hover,
-.brand-foot-dropup-menu button:focus-visible {
+.command-band-system-menu button:hover,
+.command-band-system-menu button:focus-visible {
   background: var(--surface-pillar);
   color: var(--text-primary);
 }
 
-.brand-foot-dropup-menu svg { width: 13px; height: 13px; }
+.command-band-system-menu svg { width: 13px; height: 13px; }
+.command-band-system-menu-divider { height: 1px; margin: 4px 6px; background: var(--surface-rim); }
 
-.brand-foot-system-trigger,
-.brand-foot-help-trigger {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 28px;
-  padding: 5px 8px;
-  border-radius: var(--radius-xs);
-  color: var(--text-tertiary);
-  font-size: 12px;
+/* 대기 중 업데이트 안내는 정보다 — 중립 잉크. 진행(live)=warn, 실패(error)=coral만 신호로 발화. */
+.command-band-update {
+  padding: 3px 8px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--ink-spectral) 6%, transparent);
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  font-weight: var(--weight-bold);
 }
 
-.brand-foot-help-trigger {
+.command-band-update--live { border-color: color-mix(in oklch, var(--warn) 42%, transparent); background: color-mix(in oklch, var(--warn) 10%, transparent); color: var(--warn-ink); }
+.command-band-update--blocked { border-color: var(--surface-rim); background: transparent; color: var(--text-tertiary); }
+.command-band-update--error { border-color: color-mix(in oklch, var(--coral) 42%, transparent); background: color-mix(in oklch, var(--coral) 10%, transparent); color: var(--coral-ink); }
+.command-band-update:disabled { cursor: default; opacity: 0.75; }
+.command-band-system-menu .command-band-update { width: calc(100% - 12px); margin: 2px 6px; text-align: left; }
+
+.command-band-github { display: flex; align-items: center; padding: 2px 6px; }
+
+.command-band-github-link {
   display: grid;
   place-items: center;
-  width: 28px;
-  margin-left: auto;
-  padding: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-xs);
+  color: var(--text-tertiary);
 }
 
-.brand-foot-system-trigger:hover,
-.brand-foot-system-trigger:focus-visible,
-.brand-foot-help-trigger:hover,
-.brand-foot-help-trigger:focus-visible { background: var(--surface-glass); color: var(--text-primary); }
-.brand-foot-system-trigger svg, .brand-foot-help-trigger svg { width: 14px; height: 14px; }
-.brand-foot-menu-divider { height: 1px; margin: 4px 6px; background: var(--surface-rim); }
-.brand-foot-dropup-menu .brand-foot-update { width: calc(100% - 12px); margin: 2px 6px; text-align: left; }
-.brand-foot-help-dropup-menu .brand-foot-github { display: flex; align-items: center; padding: 2px 6px; }
-.brand-foot-github-version { margin-left: auto; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; white-space: nowrap; }
+.command-band-github-link svg { width: 13px; height: 13px; }
+
+.command-band-github-stars {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: var(--radius-xs);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.command-band-github-stars svg { width: 12px; height: 12px; }
+
+.command-band-github-link:hover,
+.command-band-github-link:focus-visible,
+.command-band-github-stars:hover,
+.command-band-github-stars:focus-visible {
+  background: var(--surface-glass);
+  color: var(--text-secondary);
+}
+
+.command-band-github-version { margin-left: auto; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; white-space: nowrap; }
 
 .keyboard-shortcuts-scrim { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: color-mix(in oklch, var(--ink-abyss) 64%, transparent); }
 .keyboard-shortcuts-dialog { width: min(520px, calc(100vw - 48px)); max-height: min(680px, calc(100vh - 64px)); overflow: auto; padding: 12px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: var(--ink-deep); box-shadow: var(--shadow-floating); outline: none; }

@@ -49,7 +49,7 @@ const OWNED_SOURCES = [
   "canvas/canvas.tsx",
   "pages/operations.tsx",
   "components/command-band.tsx",
-  "components/side-bar-brand-foot.tsx",
+  "components/command-band-system-cluster.tsx",
   "sidebar/operations-side-bar.tsx",
   "styles/theme.css",
   "styles/components.css",
@@ -692,7 +692,7 @@ describe("Instrument core design contract", () => {
       ".directory-browser-card",
       ".codex-reading-sheet",
       ".app-toast",
-      ".brand-foot-dropup-menu",
+      ".command-band-system-menu",
       ".group-context-menu-card",
       ".accent-popover-card",
       ".theater-menu",
@@ -725,7 +725,8 @@ describe("Instrument core design contract", () => {
     expect(layout).not.toContain("is-focus-mode");
     expect(theme).toContain("--chrome-band-height: 44px;");
     expect(commandBand).toContain('className="command-band-button command-band-sidebar-toggle"');
-    expect(commandBand).toContain('<FleetBrandHome className="command-band-brand" />');
+    expect(commandBand).toContain("<BrandHome />");
+    expect(commandBand).toContain("<CommandBandSystemCluster />");
     expect(commandBand).toContain("onClick={() => setSideBarCollapsed(!sideBar.collapsed)}");
     expect(commandBand).toContain('className="command-band-button command-band-search"');
     expect(commandBand).toContain("onClick={toggleOperationSearch}");
@@ -1065,12 +1066,15 @@ describe("Instrument core design contract", () => {
 
   it("keeps real GNB and captain producers aligned with the static CSS gates", () => {
     const components = source("styles/components.css");
-    const brandFoot = source("components/side-bar-brand-foot.tsx");
+    const layout = source("styles/layout.css");
+    const commandBand = source("components/command-band.tsx");
     const terminalAgent = externalSource(TERMINAL_AGENT_PATH);
     const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
     const skillsCss = externalSource(SKILLS_CSS_PATH);
-    expect(components.match(/font-family:\s*var\(--font-display\)/g)).toHaveLength(1);
-    expect(brandFoot).toContain('className="brand-foot-wordmark"');
+    // 디스플레이 서체 생산자는 커맨드 밴드의 브랜드 워드마크 하나뿐이다 — layout.css 단독 소유.
+    expect(components).not.toMatch(/font-family:\s*var\(--font-display\)/);
+    expect(layout.match(/font-family:\s*var\(--font-display\)/g)).toHaveLength(1);
+    expect(commandBand).toContain('className="command-band-brand-wordmark"');
     expect(components).not.toMatch(/data-sidebar-state="(?:rail|list|detail)"/);
     expect(components).not.toContain("global-navigation");
     expect(components).not.toContain("data-signature");
@@ -1120,7 +1124,7 @@ describe("Instrument core design contract", () => {
   });
 
   it("keeps the v4 navigation, Theater, map, CLI, and rail visual producers", () => {
-    const brandFoot = source("components/side-bar-brand-foot.tsx");
+    const systemCluster = source("components/command-band-system-cluster.tsx");
     const sidebar = source("sidebar/operations-side-bar.tsx");
     const chip = source("sidebar/operations-side-bar-chip.tsx");
     const minimap = source("canvas/canvas-minimap.tsx");
@@ -1129,11 +1133,12 @@ describe("Instrument core design contract", () => {
     const rail = source("styles/rail.css");
 
     expect(source("canvas/canvas-context-menu.tsx")).not.toContain("CanvasContextMenuMode");
-    expect(brandFoot).toContain('className="brand-foot-dropup-menu" role="menu"');
-    expect(brandFoot).toContain('t("chrome.brandFoot.systemMenu")');
-    expect(brandFoot).toContain('t("chrome.brandFoot.keyboardShortcuts")');
-    expect(brandFoot).toContain("openWhatsNew");
-    expect(components).toContain(".side-bar-brand-foot {");
+    expect(systemCluster).toContain('className="command-band-system-menu" role="menu"');
+    expect(systemCluster).toContain('t("chrome.system.settings")');
+    expect(systemCluster).toContain('t("chrome.system.keyboardShortcuts")');
+    expect(systemCluster).toContain("openWhatsNew");
+    expect(components).toContain(".command-band-system-cluster {");
+    expect(components).not.toContain(".side-bar-brand-foot");
 
     expect(sidebar).toContain("hasCustomGroups && section.entries.length > 0");
     expect(sidebar).toContain("theaterInitials(theater.label)");

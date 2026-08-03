@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent } from "react";
+import { Link } from "react-router-dom";
 
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
@@ -7,7 +8,7 @@ import { animateViewportTo, fitAllOperations, selectFormationLayout, useCanvasSt
 import { enterTriage, focusedTriageOperationId, setTriageActive, useTriageActive } from "../canvas/triage-store.js";
 import { COMMAND_BAND_RAIL_STRIP_PX, commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandMapControlsAnchor, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
-import { FleetBrandHome } from "./side-bar-brand-foot.js";
+import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { toggleRailChrome, useRailChromeExpanded } from "../rail/rail-store.js";
@@ -393,7 +394,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         onBlur={handleInteractionBlur}
       >
       <div ref={bandLeftRef} className={`command-band-left${requestedOperationsViewVisible && sideBar.collapsed ? " is-collapsed" : ""}`}>
-        <FleetBrandHome className="command-band-brand" />
+        <BrandHome />
         {state.channel === "local" ? <div className="command-band-environment">
           <button ref={environmentTriggerRef} type="button" className="command-band-local-chip" aria-haspopup="dialog" aria-expanded={environmentOpen} onClick={() => { setSwitcherMenu(null); discardEnvironmentState(); setEnvironmentOpen((open) => !open); }}>
           <span className="command-band-local-dot" aria-hidden="true" />
@@ -520,6 +521,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         <button type="button" className="command-band-button command-band-viewmode" onClick={cycleViewModePreference} aria-label={viewModeLabel} aria-pressed={viewMode.preference !== "auto"} title={viewModeLabel}>
           {viewMode.preference === "auto" ? <ViewModeAutoIcon /> : viewMode.preference === "mobile" ? <ViewModeMobileIcon /> : <ViewModeDesktopIcon />}
         </button>
+        <CommandBandSystemCluster />
         {operationsViewVisible ? <button type="button" className="command-band-button command-band-rail-toggle" onClick={toggleRailChrome} aria-label={t(railChromeExpanded ? "chrome.commandBand.collapseActivityRail" : "chrome.commandBand.expandActivityRail", { shortcut: railShortcut })} title={t(railChromeExpanded ? "chrome.commandBand.collapseActivityRail" : "chrome.commandBand.expandActivityRail", { shortcut: railShortcut })}>
           <PanelToggleIcon side="right" />
         </button> : null}
@@ -565,6 +567,25 @@ function buildEnvironmentRows(
     [t("chrome.commandBand.env.runtimeLock"), environment.lockFile],
     ...(desktopShell ? [[t("chrome.commandBand.env.desktopData"), `${environment.dataDir}/desktop`] as [string, string]] : []),
   ];
+}
+
+function BrandHome() {
+  const t = useT();
+  return <Link className="command-band-brand" to="/operations" aria-label={t("chrome.commandBand.operations")}><BrandMarkIcon /><span className="command-band-brand-wordmark">Fleet</span></Link>;
+}
+
+// 제품 favicon(bearing-scope 마크)의 인라인 축약판 — 브랜드 글리프는 파비콘과 동일 조형을 쓴다.
+function BrandMarkIcon() {
+  return (
+    <svg className="command-band-brand-glyph" viewBox="0 0 64 64" aria-hidden="true">
+      <rect x="2" y="2" width="60" height="60" rx="14" fill="var(--ink-deep)" stroke="var(--surface-rim-strong)" strokeWidth="2" />
+      <circle cx="32" cy="32" r="18.5" fill="none" stroke="var(--brass)" strokeWidth="3.5" />
+      <circle cx="32" cy="32" r="10.5" fill="none" stroke="var(--brass)" strokeWidth="1.8" opacity="0.55" />
+      <path d="M32 9v8M32 47v8M9 32h8M47 32h8" stroke="var(--brass)" strokeWidth="3" strokeLinecap="round" />
+      <circle cx="32" cy="32" r="3" fill="var(--brass)" />
+      <circle cx="44.7" cy="19.3" r="5" fill="var(--aurora)" />
+    </svg>
+  );
 }
 
 function resolveModLabel(): string {
