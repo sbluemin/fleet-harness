@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const codexMocks = vi.hoisted(() => ({
+  readerMountOptions: [] as Array<{ onEntryRendered?: (entryId: string) => void }>,
   navigatorController: {
     destroy: vi.fn(),
     refreshHealth: vi.fn(),
@@ -24,7 +25,10 @@ vi.mock("../core/client/src/codex/main.js", () => ({
 }));
 
 vi.mock("../core/client/src/codex/reading-controller.js", () => ({
-  mountReadingInto: vi.fn(() => codexMocks.readerController),
+  mountReadingInto: vi.fn((_container: HTMLElement, options: { onEntryRendered?: (entryId: string) => void }) => {
+    codexMocks.readerMountOptions.push(options);
+    return codexMocks.readerController;
+  }),
 }));
 
 import {
@@ -48,6 +52,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   teardownCodex();
   vi.clearAllMocks();
+  codexMocks.readerMountOptions.length = 0;
   document.body.replaceChildren();
   resizeObserverCallbacks = [];
   resizeObserverDisconnects = [];
@@ -164,6 +169,37 @@ describe("Codex host in-memory state", () => {
 
     expect(readSlot.scrollTop).toBe(240);
     expect(getCodexReaderHistoryState()).toEqual({ canGoBack: false, canGoForward: false });
+  });
+
+  it("resumes session scroll saving when a pending restore is superseded", () => {
+    localStorage.setItem(
+      "fleet.codex.reader.session.theater-a",
+      JSON.stringify({ entryId: "entry-restored", scrollTop: 240 }),
+    );
+    expect(restoreCodexReaderSession("theater-a")).toBe("entry-restored");
+
+    const readSlot = document.createElement("div");
+    const tocSlot = document.createElement("div");
+    document.body.append(readSlot, tocSlot);
+    const options = {
+      kind: "entry" as const,
+      theaterId: "workspace-a",
+      sessionTheaterId: "theater-a",
+      onRelatedClick: vi.fn(),
+      onClose: vi.fn(),
+    };
+    mountReaderInto(readSlot, tocSlot, { ...options, initialEntryId: "entry-restored" });
+    mountReaderInto(readSlot, tocSlot, { ...options, initialEntryId: "entry-new" });
+    codexMocks.readerMountOptions.at(-1)?.onEntryRendered?.("entry-new");
+
+    readSlot.scrollTop = 480;
+    readSlot.dispatchEvent(new Event("scroll"));
+    vi.advanceTimersByTime(500);
+
+    expect(JSON.parse(localStorage.getItem("fleet.codex.reader.session.theater-a") ?? "null")).toEqual({
+      entryId: "entry-new",
+      scrollTop: 480,
+    });
   });
 
   it("keeps the saved reader position when its previous slot was already detached", () => {

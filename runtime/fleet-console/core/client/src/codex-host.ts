@@ -153,6 +153,9 @@ export function mountReaderInto(
     opts.kind === "entry" && pendingSessionRestore?.entryId === opts.initialEntryId
       ? pendingSessionRestore
       : null;
+  if (opts.kind === "entry" && pendingSessionRestore && !sessionRestore) {
+    pendingSessionRestore = null;
+  }
   if (opts.kind === "entry" && opts.initialEntryId) {
     if (pendingHistoryEntryId === opts.initialEntryId) {
       pendingHistoryEntryId = null;
@@ -282,10 +285,9 @@ function emitHistoryState(): void {
 }
 
 function handleEntryRendered(entryId: string): void {
-  if (pendingSessionRestore?.entryId === entryId) {
-    pendingSessionRestore = null;
-    return;
-  }
+  const completedSessionRestore = pendingSessionRestore?.entryId === entryId;
+  pendingSessionRestore = null;
+  if (completedSessionRestore) return;
   const scrollTop = readerHostNode?.parentElement?.scrollTop ?? 0;
   persistCurrentReaderSession(scrollTop);
 }
