@@ -11,6 +11,33 @@ export type WindowId = "session" | "weekly" | "model" | "cycle";
  */
 export type QuotaScope = "auto" | "api";
 
+/**
+ * Where a window's time boundary came from. `upstream` is a value the provider
+ * stated; `catalog` is Fleet's knowledge of the product (e.g. Claude's 5-hour
+ * session), which can go stale silently if the product changes; `derived` is
+ * arithmetic over the other two (e.g. start = reset − duration), which assumes
+ * a contiguous fixed window. Consumers may weight trust by this tag.
+ */
+export type WindowDurationBasis = "upstream" | "catalog";
+export type WindowStartBasis = "upstream" | "derived";
+
+export interface QuotaWindowPeriod {
+  readonly durationMs: number;
+  readonly durationBasis: WindowDurationBasis;
+  readonly startsAt?: number;
+  readonly startsAtBasis?: WindowStartBasis;
+}
+
+/**
+ * Absolute usage as decimal strings, exactly as the provider quantifies them.
+ * Emitted only where the upstream unit is a plain count (never money); Cursor's
+ * spend figures stay excluded because they track billing amounts.
+ */
+export interface QuotaWindowAmounts {
+  readonly used: string;
+  readonly limit: string;
+}
+
 export interface QuotaWindow {
   readonly id: WindowId;
   /** Absent when the window covers the provider's whole allowance. */
@@ -18,6 +45,17 @@ export interface QuotaWindow {
   readonly label?: string;
   readonly usedPercent: number;
   readonly resetsAt?: number;
+  /**
+   * The window's time boundary. Without it, `usedPercent` values from windows
+   * that reset on different clocks (5h vs weekly vs monthly) are incomparable.
+   */
+  readonly period?: QuotaWindowPeriod;
+  /**
+   * Marks a window whose figure is the sum of sibling scoped windows rather
+   * than a pool of its own; headroom math must not count it twice.
+   */
+  readonly isAggregate?: true;
+  readonly amounts?: QuotaWindowAmounts;
 }
 
 export interface ResetCredits {

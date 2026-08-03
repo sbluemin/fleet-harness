@@ -55,9 +55,12 @@ export {
   type GatewayLoadout,
   type GatewayLoadoutModel,
   type GatewayLoadoutProvider,
+  type GatewayLoadoutProviderQuota,
+  type GatewayLoadoutQuotaWindow,
   type GatewayProviderQuota,
   type GatewayQuotaSnapshot,
   type GatewayQuotaWindow,
+  type GatewayWindowPressure,
 } from "./ai-gateway/model-loadout.js";
 export {
   declaredRoleFitIdentities,

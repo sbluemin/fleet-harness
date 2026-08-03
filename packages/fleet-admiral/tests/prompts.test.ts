@@ -317,6 +317,9 @@ describe("Admiral prompts", () => {
     expect(prompt).toContain("an unpinned run spends that allowance too");
     // 워크플로는 스테이지를 여러 identity 로 흩고 provider allowance 로 균형을 잡는다.
     expect(prompt).toContain("spreads its stages across identities and balances them against provider allowances");
+    // 균형은 로스터가 내린 판정을 읽는 것이지, 리셋 주기가 다른 창의 원시 퍼센트를
+    // 직접 비교하는 것이 아니다. 판정·주기 필드의 의미는 여전히 tool metadata 소유다.
+    expect(prompt).toContain("comparing raw percentages across windows that reset on different clocks");
     // 조건절이 되살아나면 잡는다. toContain 접두만 고정하면 한정어 복귀를 감지하지 못한다.
     expect(prompt).not.toContain("whose model or effort differs from the session default");
     expect(prompt).not.toContain("Inheriting the session's model is the default");
@@ -433,8 +436,11 @@ describe("Admiral prompts", () => {
     // 16400 → 16600: Agent 이름은 launch 때 고정되고 로스터만 매 호출 갱신된다는 사실.
     //   workflow 스킬이 이미 담고 있지만 그 스킬은 staged 실행에서만 실리므로, 기본
     //   표면인 단일 Agent 실행에서도 닿으려면 Standing Order 가 직접 져야 한다.
-    expect(builder.build({ enableMetaphor: false, doctrine: "gateway" }).length).toBeLessThanOrEqual(16600);
-    expect(builder.build({ enableMetaphor: true, doctrine: "gateway" }).length).toBeLessThanOrEqual(16600);
+    // 16600 → 16800: allowance 균형은 로스터의 판정을 읽는 것이지 리셋 주기가 다른
+    //   창의 원시 퍼센트 비교가 아니라는 정책 한 줄. 판정·주기 필드의 의미 자체는
+    //   tool metadata 와 workflow 스킬이 소유하므로 순증은 이 한 문장뿐이다.
+    expect(builder.build({ enableMetaphor: false, doctrine: "gateway" }).length).toBeLessThanOrEqual(16800);
+    expect(builder.build({ enableMetaphor: true, doctrine: "gateway" }).length).toBeLessThanOrEqual(16800);
   });
 
   it("teaches idempotent per-session skill loading in the protocol gate", () => {

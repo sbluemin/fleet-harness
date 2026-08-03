@@ -8,12 +8,46 @@ import {
   resolveCursorCredentials,
   type CredentialResolverDeps,
 } from "./credentials.js";
-import type { ProviderDto, ProviderResult, QuotaWindow, ResetCredits, WindowId } from "./types.js";
+import type {
+  ProviderDto,
+  ProviderResult,
+  QuotaWindow,
+  QuotaWindowPeriod,
+  ResetCredits,
+  WindowDurationBasis,
+  WindowId,
+} from "./types.js";
 
 const REQUEST_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BYTES = 262_144;
 const MAX_WINDOWS = 8;
 const MAX_CREDIT_ENTRIES = 256;
+
+const HOUR_MS = 3_600_000;
+const WEEK_MS = 7 * 24 * HOUR_MS;
+// Claude states its window lengths only as block names (`five_hour`,
+// `seven_day`), never as numbers, so these are product knowledge and ship with
+// `durationBasis: "catalog"` — visibly an assumption that can go stale.
+const CLAUDE_SESSION_MS = 5 * HOUR_MS;
+const MAX_WINDOW_DURATION_MS = 400 * 24 * HOUR_MS;
+
+function windowPeriod(
+  durationMs: number,
+  durationBasis: WindowDurationBasis,
+  resetsAt?: number,
+): QuotaWindowPeriod | undefined {
+  if (!Number.isFinite(durationMs) || durationMs <= 0 || durationMs > MAX_WINDOW_DURATION_MS) return undefined;
+  const rounded = Math.round(durationMs);
+  // A fixed contiguous window starts one duration before it resets; the
+  // `derived` tag keeps that assumption visible instead of passing it off as
+  // an observed start.
+  const startsAt = resetsAt !== undefined && resetsAt > rounded ? resetsAt - rounded : undefined;
+  return {
+    durationMs: rounded,
+    durationBasis,
+    ...(startsAt !== undefined ? { startsAt, startsAtBasis: "derived" as const } : {}),
+  };
+}
 
 export interface ProviderDeps {
   readonly credentials?: CredentialResolverDeps;
@@ -108,24 +142,31 @@ function firstClaudePercent(row: Record<string, unknown>): number | undefined {
   return undefined;
 }
 
-function claudeWindow(id: QuotaWindow["id"], source: unknown, label?: string): QuotaWindow | null {
+function claudeWindow(
+  id: QuotaWindow["id"],
+  source: unknown,
+  durationMs: number,
+  label?: string,
+): QuotaWindow | null {
   const row = object(source);
   if (!row) return null;
   const usedPercent = firstClaudePercent(row);
   if (usedPercent === undefined) return null;
   const resetsAt = safeTimestamp(row.resets_at);
+  const period = windowPeriod(durationMs, "catalog", resetsAt);
   return {
     id,
     ...(label ? { label } : {}),
     usedPercent,
     ...(resetsAt !== undefined ? { resetsAt } : {}),
+    ...(period ? { period } : {}),
   };
 }
 
 export function parseClaudeUsage(payload: unknown): { readonly windows: readonly QuotaWindow[] } {
   const root = object(payload) ?? {};
-  const namedSession = claudeWindow("session", root.five_hour);
-  const namedWeekly = claudeWindow("weekly", root.seven_day);
+  const namedSession = claudeWindow("session", root.five_hour, CLAUDE_SESSION_MS);
+  const namedWeekly = claudeWindow("weekly", root.seven_day, WEEK_MS);
   let fallbackSession: QuotaWindow | null = null;
   let fallbackWeekly: QuotaWindow | null = null;
   const modelWindows: QuotaWindow[] = [];
@@ -139,22 +180,22 @@ export function parseClaudeUsage(payload: unknown): { readonly windows: readonly
     const limit = object(item);
     if (!limit) continue;
     if (limit.kind === "session" && !namedSession && !fallbackSession) {
-      fallbackSession = claudeWindow("session", limit);
+      fallbackSession = claudeWindow("session", limit, CLAUDE_SESSION_MS);
       continue;
     }
     if (limit.kind === "weekly_all" && !namedWeekly && !fallbackWeekly) {
-      fallbackWeekly = claudeWindow("weekly", limit);
+      fallbackWeekly = claudeWindow("weekly", limit, WEEK_MS);
       continue;
     }
     if (limit.kind === "weekly_scoped" && modelWindows.length < MAX_WINDOWS) {
       const model = object(object(limit.scope)?.model);
-      const row = claudeWindow("model", limit, modelLabel(model?.display_name));
+      const row = claudeWindow("model", limit, WEEK_MS, modelLabel(model?.display_name));
       if (row) modelWindows.push(row);
     }
   }
   if (modelWindows.length === 0) {
     for (const alias of [root.fable_weekly, root.fable_seven_day, root.seven_day_fable]) {
-      const row = claudeWindow("model", alias, "Fable");
+      const row = claudeWindow("model", alias, WEEK_MS, "Fable");
       if (row) {
         modelWindows.push(row);
         break;
@@ -172,15 +213,21 @@ export function parseClaudeUsage(payload: unknown): { readonly windows: readonly
 function codexWindow(source: unknown, fallbackId: "session" | "weekly"): QuotaWindow | null {
   const row = object(source);
   if (!row) return null;
-  const seconds = typeof row.limit_window_seconds === "number" ? row.limit_window_seconds : 0;
+  const seconds = typeof row.limit_window_seconds === "number" && Number.isFinite(row.limit_window_seconds)
+    ? row.limit_window_seconds
+    : 0;
   const minutes = seconds / 60;
   const id = minutes >= 240 && minutes <= 360
     ? "session"
     : minutes >= 8_064 && minutes <= 12_096 ? "weekly" : fallbackId;
+  const resetsAt = safeTimestamp(row.reset_at);
+  // The upstream states the window length itself, so it ships as `upstream`.
+  const period = seconds > 0 ? windowPeriod(seconds * 1_000, "upstream", resetsAt) : undefined;
   return {
     id,
     usedPercent: percent(row.used_percent),
-    ...(safeTimestamp(row.reset_at) !== undefined ? { resetsAt: safeTimestamp(row.reset_at) } : {}),
+    ...(resetsAt !== undefined ? { resetsAt } : {}),
+    ...(period ? { period } : {}),
   };
 }
 
@@ -203,6 +250,23 @@ export function parseCursorUsage(payload: unknown):
   const planUsage = object(root?.planUsage);
   if (root?.enabled === false || !planUsage) return { status: "no_subscription" };
   const resetsAt = safeTimestamp(root?.billingCycleEnd);
+  const cycleStart = safeTimestamp(root?.billingCycleStart);
+  let cycleDays: number | undefined;
+  let period: QuotaWindowPeriod | undefined;
+  if (cycleStart !== undefined && resetsAt !== undefined && resetsAt > cycleStart) {
+    const days = Math.round((resetsAt - cycleStart) / 86_400_000);
+    if (days >= 1 && days <= 400) {
+      cycleDays = days;
+      // Both boundaries are upstream facts, so the month-length variation of a
+      // billing cycle is preserved rather than approximated by a constant.
+      period = {
+        durationMs: resetsAt - cycleStart,
+        durationBasis: "upstream",
+        startsAt: cycleStart,
+        startsAtBasis: "upstream",
+      };
+    }
+  }
   const windows: QuotaWindow[] = [];
   // Cursor bills one subscription through two pools. The scope-less window is
   // their sum: a caller picking an API-tier model must read the `api` window,
@@ -219,19 +283,19 @@ export function parseCursorUsage(payload: unknown):
       ...(label ? { label } : {}),
       usedPercent: percent(value),
       ...(resetsAt !== undefined ? { resetsAt } : {}),
+      ...(period ? { period } : {}),
     });
   }
   if (windows.length === 0) return { status: "no_subscription" };
-  const cycleStart = safeTimestamp(root?.billingCycleStart);
-  const cycleEnd = safeTimestamp(root?.billingCycleEnd);
-  let cycleDays: number | undefined;
-  if (cycleStart !== undefined && cycleEnd !== undefined && cycleEnd > cycleStart) {
-    const days = Math.round((cycleEnd - cycleStart) / 86_400_000);
-    if (days >= 1 && days <= 400) cycleDays = days;
-  }
+  // Saying in-band that the scope-less figure sums the pools keeps headroom
+  // math from counting the same allowance twice. A scope-less window with no
+  // scoped sibling is the whole allowance, not a sum, so it stays untagged.
+  const taggedWindows = windows.some((window) => window.scope !== undefined)
+    ? windows.map((window) => window.scope === undefined ? { ...window, isAggregate: true as const } : window)
+    : windows;
   return {
     status: "ok",
-    windows,
+    windows: taggedWindows,
     ...(cycleDays !== undefined ? { cycleDays } : {}),
   };
 }
@@ -262,7 +326,11 @@ const KIMI_WINDOW_BY_MINUTES: Readonly<Record<number, WindowId>> = {
   10_080: "weekly",
 };
 
-function kimiWindow(id: WindowId, detail: unknown): QuotaWindow | null {
+function kimiWindow(
+  id: WindowId,
+  detail: unknown,
+  duration?: { readonly ms: number; readonly basis: WindowDurationBasis },
+): QuotaWindow | null {
   const row = object(detail);
   if (!row) return null;
   const limit = numeric(row.limit);
@@ -271,10 +339,15 @@ function kimiWindow(id: WindowId, detail: unknown): QuotaWindow | null {
   const used = numeric(row.used) ?? (remaining === undefined ? undefined : limit - remaining);
   if (used === undefined) return null;
   const resetsAt = safeTimestamp(row.resetTime ?? row.resetAt);
+  const period = duration ? windowPeriod(duration.ms, duration.basis, resetsAt) : undefined;
   return {
     id,
     usedPercent: percent((used / limit) * 100),
     ...(resetsAt !== undefined ? { resetsAt } : {}),
+    ...(period ? { period } : {}),
+    // Kimi quantifies in plain counts, never money, so the absolute figures may
+    // ship; they are what lets a consumer size one more run against the bucket.
+    amounts: { used: String(Math.max(0, used)), limit: String(limit) },
   };
 }
 
@@ -297,9 +370,10 @@ export function parseKimiUsage(payload: unknown):
   const root = object(payload);
   if (!root) return { status: "no_subscription" };
   const windows: QuotaWindow[] = [];
-  // The top-level block declares no duration anywhere in the payload, so it is
-  // reported as the renewal cycle rather than asserting a length it never states.
-  const cycle = kimiWindow("cycle", root.usage);
+  // The top-level block declares no duration anywhere in the payload. Fleet's
+  // product knowledge says the renewal cycle is the weekly total, so the length
+  // ships tagged `catalog` — visibly an assumption, never an upstream fact.
+  const cycle = kimiWindow("cycle", root.usage, { ms: WEEK_MS, basis: "catalog" });
   if (cycle) windows.push(cycle);
   const limits = array(root.limits);
   for (let index = 0; index < limits.length && windows.length < MAX_WINDOWS; index += 1) {
@@ -310,7 +384,7 @@ export function parseKimiUsage(payload: unknown):
     if (duration === undefined || unit === undefined) continue;
     const id = KIMI_WINDOW_BY_MINUTES[duration * unit];
     if (!id || windows.some((window) => window.id === id)) continue;
-    const window = kimiWindow(id, entry?.detail);
+    const window = kimiWindow(id, entry?.detail, { ms: duration * unit * 60_000, basis: "upstream" });
     if (window) windows.push(window);
   }
   if (windows.length === 0) return { status: "no_subscription" };

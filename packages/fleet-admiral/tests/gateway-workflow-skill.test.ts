@@ -54,7 +54,25 @@ describe("gateway workflow skill asset", () => {
     // quotaScope는 Cursor만 선언한다. scope-less 창을 일괄 금지하면 codex/kimi/claude의
     // allowance를 읽을 창이 사라져 분산 정책의 입력 자체가 없어진다.
     expect(content).toContain("the provider's scope-less window when it does not");
-    expect(content).toContain("lower `usedPercent`");
+  });
+
+  it("ranks windows by the server verdict and confines percent comparison to a shared cadence", () => {
+    const content = skillContent();
+
+    // 리셋 주기가 다른 창의 usedPercent 직접 비교는 순위를 뒤집는다 — 주 초반 49%가
+    // 월말 78%보다 뜨거운 실측 케이스. 판정(pressure)이 앞서고, percent는 같은
+    // cadence 안의 타이브레이크로만 남는다.
+    expect(content).toContain('prefer windows at `pressure: "ok"`');
+    expect(content).toContain("share a `cadence` by the lower `usedPercent`");
+    expect(content).toContain("never compare percentages across cadences");
+    // 합산 창을 헤드룸 계산에 넣으면 같은 할당이 두 번 세어진다.
+    expect(content).toContain("`isAggregate`");
+    // 구 절차가 되살아나면 주기 무시 나이브 비교가 복귀한다.
+    expect(content).not.toContain("then send stages toward the lower `usedPercent`");
+    // 파생 필드 없는 구형 판독의 fallback도 cycle 다의성(cursor 월간 vs kimi 주간)을
+    // 넘어가면 안 된다 — id 공유는 길이 공유가 아니므로 프로바이더 내부 비교로 한정한다.
+    expect(content).toContain("comparable only within a single provider's windows");
+    expect(content).not.toContain("between windows of the same id only");
   });
 
   it("forces an effort re-pick and a context-window check when the model changes", () => {
