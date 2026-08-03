@@ -403,6 +403,23 @@ describe("agent activity observability state", () => {
     vi.useRealTimers();
   });
 
+  it("ignores late background events for dormant sessions instead of resurrecting the badge", () => {
+    vi.useFakeTimers();
+    const store = createStore();
+    store.transitionTerminalSessionToDormant("session-a", {
+      provider: "claude",
+      sessionId: "provider-session",
+      capturedAt: "2026-07-25T00:00:00.000Z",
+    });
+
+    // 전이 시점에 in-flight였던 best-effort hook이 뒤늦게 도착해도 무시된다.
+    expect(store.setTerminalSessionBackgroundEvent("session-a", "spawn")).toBeNull();
+    expect(store.getTerminalSessionInfo("session-a")).not.toHaveProperty("backgroundPending");
+    vi.advanceTimersByTime(30 * 60_000);
+    expect(store.getTerminalSessionInfo("session-a")).not.toHaveProperty("backgroundPending");
+    vi.useRealTimers();
+  });
+
   it("clears both transient axes on either turn phase and falls back to the hook turn state", () => {
     const store = createStore();
     const initial = store.getTerminalSessionInfo("session-a")!;

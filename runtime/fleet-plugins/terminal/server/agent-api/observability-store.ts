@@ -330,6 +330,9 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   function setTerminalSessionBackgroundEvent(sessionId: string, event: "spawn" | "stop"): AgentTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
+    // dormant/closed/error 세션에 뒤늦게 도착한 best-effort hook은 무시한다 — 라이프사이클 정리
+    // (clearTerminalSessionBackgroundPending) 뒤에 카운트·타이머를 되살리면 resume 후 거짓 배지가 남는다.
+    if (session.status === "dormant" || session.status === "closed" || session.status === "error") return null;
     const count = session.backgroundPendingCount ?? 0;
     session.backgroundPendingCount = event === "spawn" ? count + 1 : Math.max(0, count - 1);
     if (session.backgroundPendingExpiry) clearTimeout(session.backgroundPendingExpiry);
