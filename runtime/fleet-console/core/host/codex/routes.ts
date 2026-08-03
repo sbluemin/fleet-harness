@@ -18,7 +18,7 @@ import {
   showQueue,
 } from "@dotobokuri/fleet-wiki";
 import { PATCH_FILENAME, PATCH_META_FILENAME } from "@dotobokuri/fleet-wiki";
-import type { MemoryPaths, PatchMeta, WikiEntry, WikiEntryFrontmatter } from "@dotobokuri/fleet-wiki";
+import type { BriefingHit, MemoryPaths, PatchMeta, WikiEntry, WikiEntryFrontmatter } from "@dotobokuri/fleet-wiki";
 import type { CoworkService } from "@dotobokuri/fleet-wiki/cowork";
 
 import type {
@@ -301,7 +301,7 @@ async function handleSearch(url: URL, response: ServerResponse, context: RouteCo
       rawSourceRef: hit.rawSourceRef,
       rawSourceRefs: hit.rawSourceRefs,
       score: hit.score,
-      excerpt: hit.excerpt,
+      excerpt: buildSearchExcerpt(hit, query),
       reason: hit.reason,
       aliases: hit.aliases,
       type: hit.type,
@@ -564,6 +564,34 @@ async function runDecisionAction(
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
+
+function buildSearchExcerpt(hit: BriefingHit, query: string): string {
+  const candidates = [
+    ...(hit.matchedSnippets?.map((match) => match.snippet) ?? []),
+    hit.excerpt,
+  ].map(sanitizeSearchExcerpt).filter(Boolean);
+  const normalizedQuery = query.trim().toLowerCase();
+  const matched = normalizedQuery
+    ? candidates.find((candidate) => candidate.toLowerCase().includes(normalizedQuery))
+    : undefined;
+  return centerSearchExcerpt(matched ?? candidates[0] ?? "", query);
+}
+
+function sanitizeSearchExcerpt(value: string): string {
+  return value
+    .replace(/^<<<FLEET_WIKI_[A-Z0-9_]+(?:\s[^\r\n]*)?>>>\s*$/gm, "")
+    .replace(/^\s*---\s*\r?\n[\s\S]*?\r?\n---\s*(?:\r?\n|$)/, "")
+    .trim();
+}
+
+function centerSearchExcerpt(value: string, query: string): string {
+  const maxLength = 180;
+  if (value.length <= maxLength) return value;
+  const matchIndex = value.toLowerCase().indexOf(query.trim().toLowerCase());
+  if (matchIndex === -1) return value.slice(0, maxLength).trim();
+  const start = Math.max(0, Math.min(matchIndex - 50, value.length - maxLength));
+  return value.slice(start, start + maxLength).trim();
+}
 
 async function readRequestBody(request: IncomingMessage): Promise<string | null | typeof BODY_TOO_LARGE> {
   return new Promise((resolve) => {

@@ -33,6 +33,12 @@ describe("security routes", () => {
     await mkdir(path.join(archiveDir, VALID_PATCH_ID), { recursive: true });
     await mkdir(path.join(conflictsDir, "conflict-alpha"), { recursive: true });
     await writeEntry(wikiDir, "valid-id", "Valid Entry", "Body", "raw/sample.md");
+    await writeEntry(
+      wikiDir,
+      "search-excerpt",
+      "Search Excerpt",
+      `${"introductory context ".repeat(12)}Drydock approval keeps proposed changes behind a human review gate.`,
+    );
     await writeFile(path.join(rawDir, "sample.md"), "raw content body", "utf8");
     await writeFile(path.join(conflictsDir, "conflict-alpha", "meta.json"), JSON.stringify({
       id: "conflict-alpha",
@@ -83,6 +89,18 @@ describe("security routes", () => {
     const tagsResponse = await fetch(`${baseUrl}/api/search?tags=${tooManyTags}`);
     expect(queryResponse.status).toBe(400);
     expect(tagsResponse.status).toBe(400);
+  });
+
+  it("returns a query-centered search excerpt without Fleet Wiki scaffolding", async () => {
+    const response = await fetch(`${baseUrl}/api/search?q=drydock`);
+    expect(response.status).toBe(200);
+    const data = await response.json() as { entries: Array<{ id: string; excerpt?: string }> };
+    const excerpt = data.entries.find((entry) => entry.id === "search-excerpt")?.excerpt;
+
+    expect(excerpt?.toLowerCase()).toContain("drydock");
+    expect(excerpt).not.toContain("<<<FLEET_WIKI_ENTRY_BEGIN");
+    expect(excerpt).not.toContain("<<<FLEET_WIKI_ENTRY_END>>>");
+    expect(excerpt).not.toMatch(/^---/);
   });
 
   it("rejects non-GET and non-HEAD methods at the server boundary", async () => {
