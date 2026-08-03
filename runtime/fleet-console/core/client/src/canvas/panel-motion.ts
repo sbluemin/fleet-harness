@@ -24,7 +24,7 @@ export function playMinimizeFlight(operationId: string): void {
   window.requestAnimationFrame(() => {
     const chip = chipElement(operationId);
     if (!isVisiblyRendered(chip)) return;
-    flyGhost(from, chip.getBoundingClientRect(), () => pulseChip(chip));
+    flyPanelMotionGhost(from, chip.getBoundingClientRect(), () => pulseChip(chip));
   });
 }
 
@@ -38,7 +38,7 @@ export function playRestoreFlight(operationId: string): void {
   window.requestAnimationFrame(() => {
     const panel = panelElement(operationId);
     if (!isVisiblyRendered(panel)) return;
-    flyGhost(from, panel.getBoundingClientRect());
+    flyPanelMotionGhost(from, panel.getBoundingClientRect());
   });
 }
 
@@ -63,7 +63,8 @@ export function escapeSelectorValue(value: string): string {
   return value.replace(/["\\]/g, "\\$&");
 }
 
-function flyGhost(from: DOMRect, to: DOMRect, onArrive?: () => void): void {
+export function flyPanelMotionGhost(from: DOMRect, to: DOMRect, onArrive?: () => void): void {
+  if (typeof document === "undefined" || panelMotionSuppressed()) return;
   if (from.width <= 0 || from.height <= 0 || to.width <= 0 || to.height <= 0) return;
   const ghost = document.createElement("div");
   ghost.className = "panel-motion-ghost";

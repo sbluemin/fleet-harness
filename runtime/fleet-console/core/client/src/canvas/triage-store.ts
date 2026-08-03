@@ -4,6 +4,7 @@ import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { clearIdleArrival, getIdleArrivalIds, setIdleArrivalAcknowledgementSuspended } from "../operation-idle-arrival.js";
 import { resolveOperationActivity } from "../operation-activity.js";
+import { clearOperationStatusDetail, recordOperationActivityTransition } from "../operation-status-detail-store.js";
 import { getSideBarStatusAxis, setSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import { getState, setActiveOperation } from "../store.js";
 import type { OperationNode } from "../types.js";
@@ -207,6 +208,7 @@ export function forgetTriageOperation(operationId: string): void {
   deferredAt.delete(operationId);
   seenAt.delete(operationId);
   activityByOperation.delete(operationId);
+  clearOperationStatusDetail(operationId);
   operationTheater.delete(operationId);
   if (theaterId && pickedByTheater.get(theaterId) === operationId) {
     pickedByTheater.delete(theaterId);
@@ -293,6 +295,7 @@ export function recordTriageActivity(
     }
     if (activityByOperation.get(operation.id) === activity) continue;
     activityByOperation.set(operation.id, activity);
+    recordOperationActivityTransition(operation.id, activity, now);
     seenAt.set(operation.id, now);
     changed = true;
   }

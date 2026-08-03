@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { applyActivity, reevaluateSessionsForTenant, sessionActivity, type AgentConnectionOptions } from "../client/agent/connection.js";
+import { extractStatusDetail } from "../client/shared/status-detail.js";
 import { assertSessionInfo } from "../client/agent/api.js";
 import { applyJobsSnapshot, hydrateSessions } from "../client/agent/store.js";
 import type { SessionInfo } from "../client/agent/types.js";
@@ -117,6 +118,13 @@ describe("Agent connection activity state machine", () => {
     expect(statusSet).toHaveBeenCalledTimes(1);
     expect(statusSet).toHaveBeenLastCalledWith(session.sessionId, "awaiting");
   });
+
+  it("sanitizes and caps the latest non-empty output line", () => {
+    expect(extractStatusDetail("first\n[31m latest   line [0m\n")).toBe("latest line");
+    expect(extractStatusDetail(" \n\t ")).toBeNull();
+    expect(extractStatusDetail("x".repeat(180))).toHaveLength(120);
+  });
+
 });
 
 function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {

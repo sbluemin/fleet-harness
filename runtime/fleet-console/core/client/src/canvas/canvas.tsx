@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
@@ -19,11 +19,12 @@ import type { ConsoleState, OperationNode } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
 import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, minimizeOperation, panelMotionSuppressed, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
-import { escapeSelectorValue, playMinimizeFlight } from "./panel-motion.js";
+import { escapeSelectorValue, flyPanelMotionGhost, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { resolveAccentColor } from "./operation-accent.js";
 import { CanvasGrid, RubberBand, TriageClearPlate } from "./canvas-overlays.js";
+import { flashTriageDeckCard, getTriageDeckCardRect, resolveTriageDeckPromotion, TriageWatchDeck, type TriageDeckArrivalDwell } from "./triage-watch-deck.js";
 import { resolveGlanceHudModel, type GlanceHudModel } from "./glance-hud.js";
 import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
@@ -72,6 +73,8 @@ const DEFAULT_SHELL_WIDTH = 560;
 const DEFAULT_SHELL_HEIGHT = 360;
 /* components.css의 .canvas-operation-titlebar top(-1 * --space-3)과 짝을 이루는 상수. */
 const TITLEBAR_OUTSET_PX = 12;
+// 프리뷰 config는 identity 비교로 재발행이 억제되므로 공유 불변 배열을 쓴다.
+const EMPTY_HIDDEN_COMPANION_IDS: readonly string[] = [];
 
 export function OperationsCanvas({
   state,
@@ -108,9 +111,13 @@ export function OperationsCanvas({
   const triageActive = useTriageActive(state.activeTheaterId);
   useSyncExternalStore(subscribeTriage, getTriageSnapshot, getTriageSnapshot);
   const [triageEntering, setTriageEntering] = useState(false);
+  const [, setTriageDeckDwellRevision] = useState(0);
   const [formationEntering, setFormationEntering] = useState(false);
   const [, setTriageFocusRevision] = useState(0);
   const previousTriageStageRef = useRef<string | null>(null);
+  const previousTriageDeckStageRef = useRef<string | null>(null);
+  const triageDeckArrivalDwellRef = useRef<TriageDeckArrivalDwell | null>(null);
+  const triageStageRectRef = useRef(new Map<string, DOMRect>());
   const triageStageActivityRef = useRef<{
     readonly theaterId: string;
     readonly operationId: string;
@@ -290,9 +297,127 @@ export function OperationsCanvas({
   const triageDisplayQueue = retainedTriageEntry && !pickedDifferentOperation && automaticTriageStage?.operation.id !== retainedTriageEntry.operation.id
     ? [retainedTriageEntry, ...triageQueue.filter((entry) => entry.operation.id !== retainedTriageEntry.operation.id)]
     : triageQueue;
-  const triageStage = triageActive ? triageDisplayQueue[0] ?? null : null;
+  const candidateTriageStage = triageActive ? triageDisplayQueue[0] ?? null : null;
+  // 선별 처리의 관심사는 살아있는 함대다 — 휴면(dormant) Operation은 deck에 올리지 않는다.
+  const triageDeckOperations = triageActive
+    ? theaterOperations.filter((operation) => resolveOperationActivity(operation, state.operationStatus) !== "dormant")
+    : theaterOperations;
+  const triageDeckOperationIdSet = new Set(triageDeckOperations.map((operation) => operation.id));
+  const deckWasVisible = triageActive
+    && !triageEntering
+    && previousTriageDeckStageRef.current === null
+    && triageDeckOperations.length > 0;
+  const deckPromotion = resolveTriageDeckPromotion({
+    operationId: candidateTriageStage?.operation.id ?? null,
+    picked: candidateTriageStage?.picked === true,
+    deckVisible: deckWasVisible,
+    dwell: triageDeckArrivalDwellRef.current,
+    now: Date.now(),
+    suppressed: panelMotionSuppressed(),
+  });
+  triageDeckArrivalDwellRef.current = deckPromotion.dwell;
+  const triageStage = deckPromotion.promote ? candidateTriageStage : null;
   const triageStageId = triageStage?.operation.id ?? null;
+  const triageDeckArrivingOperationId = deckPromotion.arrivingOperationId;
+  useEffect(() => {
+    const dwell = triageDeckArrivalDwellRef.current;
+    if (!dwell || triageStageId !== null || panelMotionSuppressed()) return;
+    const remaining = Math.max(0, dwell.deadline - Date.now());
+    if (remaining === 0) {
+      setTriageDeckDwellRevision((revision) => revision + 1);
+      return;
+    }
+    const timer = window.setTimeout(() => setTriageDeckDwellRevision((revision) => revision + 1), remaining);
+    return () => window.clearTimeout(timer);
+  }, [candidateTriageStage?.operation.id, candidateTriageStage?.picked, triageStageId]);
+  // deck는 무대가 떠 있어도 mount를 유지한다(visibility 은닉) — 비무대 body의 거처를 카드
+  // 슬롯 하나로 고정해 무대 전환마다 전 세션에 PTY 리사이즈가 퍼지는 churn을 막는다.
+  const triageDeckMounted = triageActive && !triageEntering && triageDeckOperations.length > 0;
+  // 프리뷰 config의 핸들러는 최신 상태를 ref로 참조한다 — config 객체 identity가 렌더마다 바뀌면
+  // pool publish가 매 렌더 revision을 올려 재렌더 루프가 되므로, memo 수명 동안 identity를 고정한다.
+  const triagePreviewHandlersRef = useRef({ activate: (_operationId: string) => {}, close: (_operationId: string) => {} });
+  triagePreviewHandlersRef.current = {
+    activate: (operationId) => {
+      if (state.activeTheaterId) pickTriageOperation(state.activeTheaterId, operationId);
+    },
+    close: (operationId) => {
+      if (state.activeTheaterId) dismissTriageOperation(state.activeTheaterId, operationId);
+      if (state.activeOperationId === operationId) setActiveOperation(null);
+      onClose(operationId);
+    },
+  };
+  const triagePreviewConfigFor = useMemo(() => {
+    if (!triageActive) return undefined;
+    const handlers = triagePreviewHandlersRef;
+    const configs = new Map<string, OperationBodyConfig>();
+    for (const operation of theaterOperations) {
+      // render가 없는 kind는 pool이 body를 만들지 못한다 — 빈 프리뷰 박스 대신 tail 폴백으로 내린다.
+      const descriptor = registry.operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
+      if (!descriptor?.render) continue;
+      configs.set(operation.id, {
+        active: false,
+        geometry: canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation),
+        operation,
+        theme: state.activeTheme,
+        language,
+        zoom: 1,
+        onActivate: () => handlers.current.activate(operation.id),
+        onClose: () => handlers.current.close(operation.id),
+        onGeometryChange: () => {},
+        onRequestCompanions: () => {},
+        companionsOpen: false,
+        hiddenCompanionPanelIds: EMPTY_HIDDEN_COMPANION_IDS,
+        onSetCompanionPanelVisible: () => {},
+      });
+    }
+    return (operation: OperationNode) => configs.get(operation.id) ?? null;
+  }, [canvas.operations, language, registry.operationKinds, state.activeTheme, theaterOperations, triageActive]);
   const setAsideArmedId = state.activeTheaterId ? getTriageSetAsideArmedId(state.activeTheaterId) : null;
+  useLayoutEffect(() => {
+    if (!triageActive) {
+      previousTriageDeckStageRef.current = null;
+      triageStageRectRef.current.clear();
+      return;
+    }
+    const previousStageId = previousTriageDeckStageRef.current;
+    if (triageStageId) {
+      const stage = canvasRef.current?.querySelector<HTMLElement>(`.canvas-operation[data-operation-id="${escapeSelectorValue(triageStageId)}"]`) ?? null;
+      if (stage) triageStageRectRef.current.set(triageStageId, stage.getBoundingClientRect());
+      if (previousStageId === null && !triageEntering) {
+        const from = getTriageDeckCardRect(triageStageId);
+        if (from) {
+          window.requestAnimationFrame(() => {
+            const target = canvasRef.current?.querySelector<HTMLElement>(`.canvas-operation[data-operation-id="${escapeSelectorValue(triageStageId)}"]`) ?? null;
+            if (target) flyPanelMotionGhost(from, target.getBoundingClientRect());
+          });
+        }
+      }
+    } else if (previousStageId && triageDeckOperations.length > 0 && !triageEntering) {
+      const from = triageStageRectRef.current.get(previousStageId) ?? null;
+      if (from) {
+        window.requestAnimationFrame(() => {
+          const to = getTriageDeckCardRect(previousStageId);
+          if (to) flyPanelMotionGhost(from, to, () => flashTriageDeckCard(previousStageId));
+        });
+      }
+    }
+    previousTriageDeckStageRef.current = triageStageId;
+    // 무대 체류 중 캔버스 리사이즈/컴패니언 개폐로 무대 rect가 변한다 — 최초 캡처본만 들고 있으면
+    // 이후 복귀 flight가 옛 좌표에서 발사되므로, 체류 동안 관측해 캐시를 신선하게 유지한다.
+    if (!triageStageId) return;
+    const stageElement = canvasRef.current?.querySelector<HTMLElement>(`.canvas-operation[data-operation-id="${escapeSelectorValue(triageStageId)}"]`) ?? null;
+    if (!stageElement) return;
+    const refreshStageRect = () => {
+      triageStageRectRef.current.set(triageStageId, stageElement.getBoundingClientRect());
+    };
+    const stageObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(refreshStageRect);
+    stageObserver?.observe(stageElement);
+    window.addEventListener("resize", refreshStageRect);
+    return () => {
+      stageObserver?.disconnect();
+      window.removeEventListener("resize", refreshStageRect);
+    };
+  }, [triageDeckOperations.length, triageActive, triageEntering, triageStageId]);
   useEffect(() => {
     if (state.activeOperationId
       && minimizedSet.has(state.activeOperationId)
@@ -644,6 +769,7 @@ export function OperationsCanvas({
             formation: formationView || triageActive,
             focusLayerHidden,
             operationBodyPoolAvailable,
+            bodyYieldedToDeck: triageDeckMounted && triageDeckOperationIdSet.has(operation.id) && !operationTriageStage,
             onRenderHiddenFocus: () => {
               const focusTarget = canvasRef.current?.querySelector<HTMLElement>("[data-focus-layer-target='true']");
               if (focusTarget) {
@@ -755,7 +881,18 @@ export function OperationsCanvas({
           ) : null}
         </>
       ) : null}
-      <TriageClearPlate active={triageActive} entering={triageEntering} hasContent={hasContent} idleCount={triageIdleCount} />
+      <TriageWatchDeck
+        active={triageActive}
+        entering={triageEntering}
+        theaterId={state.activeTheaterId}
+        operations={triageDeckOperations}
+        operationStatus={state.operationStatus}
+        operationAccent={canvas.operationAccent}
+        arrivingOperationId={triageDeckArrivingOperationId}
+        stagedOperationId={triageStageId}
+        previewConfigFor={triagePreviewConfigFor}
+      />
+      <TriageClearPlate active={triageActive && triageDeckOperations.length === 0} entering={triageEntering} hasContent={hasContent} idleCount={triageIdleCount} />
       {!triageActive && !hasContent && !formationEntering ? (
         <OperationsCanvasEmptyState
           activeTheaterId={state.activeTheaterId}
@@ -941,6 +1078,8 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly formation: boolean;
   readonly focusLayerHidden: boolean;
   readonly operationBodyPoolAvailable: boolean;
+  /** Watch Deck가 이 Operation의 body를 카드 프리뷰 슬롯으로 끌어간 동안 프레임은 슬롯을 양보한다. */
+  readonly bodyYieldedToDeck: boolean;
   readonly onRenderHiddenFocus: () => void;
   readonly topEdge: boolean;
   readonly accentKey: string | null;
@@ -999,6 +1138,9 @@ function renderPluginOperation(operation: OperationNode, options: {
         onRenderHiddenFocus={options.onRenderHiddenFocus}
       >
         {options.operationBodyPoolAvailable ? (
+          // Deck 프리뷰가 body를 점유한 동안 프레임 슬롯을 비운다 — 슬롯은 op당 하나만 살아 있어야
+          // pool 중재 없이도 결정적으로 이동한다. 프레임 자체는 rect/모션을 위해 mount를 유지한다.
+          options.bodyYieldedToDeck ? null : (
           <OperationBodySlot
             operationId={operation.id}
             className="canvas-operation-body-slot"
@@ -1019,6 +1161,7 @@ function renderPluginOperation(operation: OperationNode, options: {
               onSetCompanionPanelVisible,
             } satisfies OperationBodyConfig}
           />
+          )
         ) : (
           <PluginErrorBoundary fallback={<PluginRenderError messageKey="canvas.plugin.operationFailed" />}>
             <PluginOperationRenderer
@@ -1107,6 +1250,7 @@ function PluginOperationRenderer({
     preferences: capabilities.preferences,
     settings: capabilities.settings,
     status: capabilities.status,
+    statusDetail: capabilities.statusDetail,
     onActivate,
     onClose,
     onGeometryChange,

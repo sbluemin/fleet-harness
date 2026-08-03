@@ -53,6 +53,7 @@ export interface PluginInstallContext {
   readonly preferences: ClientPreferencesCapability;
   readonly settings: ClientSettingsCapability;
   readonly status: ClientOperationStatusCapability;
+  readonly statusDetail: ClientOperationStatusDetailCapability;
 }
 
 export interface ClientApiCapability {
@@ -76,6 +77,11 @@ export interface ClientNotificationsCapability {
 
 export interface ClientOperationStatusCapability {
   set(operationId: string, status: OperationActivity): void;
+  clear(operationId: string): void;
+}
+
+export interface ClientOperationStatusDetailCapability {
+  set(operationId: string, detail: string): void;
   clear(operationId: string): void;
 }
 
@@ -168,6 +174,7 @@ export interface OperationRenderContext extends OperationContext {
   readonly preferences: ClientPreferencesCapability;
   readonly settings: ClientSettingsCapability;
   readonly status: ClientOperationStatusCapability;
+  readonly statusDetail: ClientOperationStatusDetailCapability;
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;

@@ -132,6 +132,10 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
       set: () => undefined,
       clear: () => undefined,
     },
+    statusDetail: {
+      set: () => undefined,
+      clear: () => undefined,
+    },
   };
 }
 
