@@ -145,6 +145,154 @@ describe("gateway loadout", () => {
   });
 });
 
+describe("gateway loadout derived quota metrics", () => {
+  const WEEK_MS = 604_800_000;
+  const AT = 1_700_000_000_000;
+
+  function weeklyWindow(usedPercent: number, elapsedFraction: number) {
+    const startsAt = AT - Math.round(WEEK_MS * elapsedFraction);
+    return {
+      id: "weekly",
+      usedPercent,
+      resetsAt: startsAt + WEEK_MS,
+      period: { durationMs: WEEK_MS, durationBasis: "catalog", startsAt, startsAtBasis: "derived" },
+    };
+  }
+
+  function firstWindow(loadout: ReturnType<typeof buildGatewayLoadout>, providerId: string) {
+    const quota = loadout.providers.find((entry) => entry.id === providerId)?.quota;
+    return quota && "windows" in quota ? quota.windows?.[0] : undefined;
+  }
+
+  it("normalizes burn pace to the window's own clock so naive percent ranking inverts", () => {
+    // 2026-08-03 실측 반례를 그대로 고정한다: 주 후반의 44%는 페이스 0.46(여유)이고
+    // 주 초반의 49%는 페이스 1.42(경보 직전)다. usedPercent 직접 비교는 이 순위를
+    // 정반대로 읽는다 — 이 역전이 파생지표가 존재하는 이유다.
+    const loadout = buildGatewayLoadout({
+      exposed: [model("kimi--k3")],
+      quota: {
+        claude: { status: "ok", windows: [weeklyWindow(44, 0.955)], fetchedAt: AT },
+        codex: { status: "ok", windows: [weeklyWindow(49, 0.345)], fetchedAt: AT },
+      },
+    });
+    const claude = firstWindow(loadout, "claude");
+    const codex = firstWindow(loadout, "codex");
+    expect(claude).toMatchObject({
+      cadence: "weekly",
+      paceRatio: 0.46,
+      recoveryHalfLifeMs: WEEK_MS / 2,
+      pressure: "ok",
+    });
+    // 페이스가 1 미만이면 리셋 전에 100%에 닿지 않는다 — 부재가 "안전"의 표현이다.
+    expect(claude).not.toHaveProperty("projectedExhaustionAt");
+    expect(codex).toMatchObject({ cadence: "weekly", paceRatio: 1.42, pressure: "elevated" });
+    expect(codex?.projectedExhaustionAt).toBeDefined();
+    expect(codex?.projectedExhaustionAt ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(codex?.resetsAt ?? 0);
+  });
+
+  it("omits the pace family instead of clamping when the window is too young", () => {
+    const loadout = buildGatewayLoadout({
+      exposed: [model("kimi--k3")],
+      quota: { kimi: { status: "ok", windows: [weeklyWindow(2, 0.01)], fetchedAt: AT } },
+    });
+    const window = firstWindow(loadout, "kimi");
+    // 경과율 1%에서의 페이스 2.0은 신호가 아니라 노이즈다. clamp된 값은 진짜 신호로
+    // 오독되므로 필드 자체를 생략한다.
+    expect(window).not.toHaveProperty("paceRatio");
+    expect(window).not.toHaveProperty("projectedExhaustionAt");
+    expect(window).toMatchObject({ cadence: "weekly", pressure: "ok" });
+  });
+
+  it("still issues a percent-band pressure verdict when no period is known", () => {
+    const loadout = buildGatewayLoadout({
+      exposed: [model("kimi--k3")],
+      quota: {
+        cursor: {
+          status: "ok",
+          windows: [
+            { id: "cycle", usedPercent: 97, scope: "api" },
+            { id: "cycle", usedPercent: 85, scope: "auto" },
+            { id: "cycle", usedPercent: 40, isAggregate: true },
+          ],
+          fetchedAt: AT,
+        },
+      },
+    });
+    const quota = loadout.providers.find((entry) => entry.id === "cursor")?.quota;
+    const windows = quota && "windows" in quota ? quota.windows ?? [] : [];
+    // 기간이 없어도 판정은 항상 실린다 — 소비자가 산술 없이 읽을 단일 축이다.
+    expect(windows.map((window) => window.pressure)).toEqual(["critical", "elevated", "ok"]);
+    expect(windows.map((window) => window.cadence)).toEqual([undefined, undefined, undefined]);
+    // 사실 필드는 파생을 붙여도 그대로 살아남는다.
+    expect(windows[2]?.isAggregate).toBe(true);
+  });
+
+  it("does not fabricate pace from a reading taken after the window reset", () => {
+    const startsAt = AT - WEEK_MS * 2;
+    const loadout = buildGatewayLoadout({
+      exposed: [model("kimi--k3")],
+      quota: {
+        codex: {
+          status: "ok",
+          // 관측(fetchedAt=AT)이 resetsAt 이후다: 이 percent는 이미 끝난 회차의 것이다.
+          windows: [{
+            id: "weekly",
+            usedPercent: 60,
+            resetsAt: startsAt + WEEK_MS,
+            period: { durationMs: WEEK_MS, durationBasis: "upstream", startsAt, startsAtBasis: "derived" },
+          }],
+          fetchedAt: AT,
+        },
+      },
+    });
+    const window = firstWindow(loadout, "codex");
+    expect(window).not.toHaveProperty("paceRatio");
+    expect(window).toMatchObject({ cadence: "weekly", pressure: "ok" });
+  });
+
+  it("treats startsAt plus duration as the reset boundary when resetsAt is absent", () => {
+    // resetsAt이 빠진 판독이라도 startsAt+durationMs는 같은 경계를 말한다. 이 가드가
+    // 없으면 몇 주 지난 관측이 elapsed=1로 clamp되어 낮은 pace로 위장한다.
+    const loadout = buildGatewayLoadout({
+      exposed: [model("kimi--k3")],
+      quota: {
+        codex: {
+          status: "ok",
+          windows: [{
+            id: "weekly",
+            usedPercent: 60,
+            period: {
+              durationMs: WEEK_MS,
+              durationBasis: "upstream",
+              startsAt: AT - WEEK_MS * 2,
+              startsAtBasis: "upstream",
+            },
+          }],
+          fetchedAt: AT,
+        },
+      },
+    });
+    const window = firstWindow(loadout, "codex");
+    expect(window).not.toHaveProperty("paceRatio");
+    expect(window).toMatchObject({ cadence: "weekly", pressure: "ok" });
+  });
+
+  it("measures elapsed time at fetchedAt, not at the wall clock of the call", () => {
+    // 요약은 캐시된다. 벽시계로 경과율을 재면 같은 판독이 조회 시각에 따라 다른
+    // 페이스를 내놓는다 — 관측 시각이 pace의 유일한 기준점이다.
+    const window = weeklyWindow(50, 0.5);
+    const atFetch = buildGatewayLoadout({
+      exposed: [model("kimi--k3")],
+      quota: { codex: { status: "ok", windows: [window], fetchedAt: AT } },
+      now: () => AT + WEEK_MS,
+    });
+    const enriched = firstWindow(atFetch, "codex");
+    expect(enriched?.paceRatio).toBe(1);
+    // 정확히 리셋 시점에 100%에 닿는 궤도는 조기 고갈이 아니다 — 경계는 엄격 미만이다.
+    expect(enriched).not.toHaveProperty("projectedExhaustionAt");
+  });
+});
+
 describe("gateway_models tool", () => {
   it("is withheld from classic and native sessions that cannot route its ids", () => {
     expect(isHostSessionToolAllowed(GATEWAY_MODELS_TOOL_ID, "gateway")).toBe(true);

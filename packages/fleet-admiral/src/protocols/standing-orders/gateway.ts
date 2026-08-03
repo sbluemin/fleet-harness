@@ -137,7 +137,7 @@ Both surfaces require the user's request. When the one the work needs is gated, 
 ### Model Loadout
 Which model and effort a run uses is routing, so it stays with the host agent. Call the ${"`"}gateway_models${"`"} MCP tool before every run on either surface, then pick the identity this work needs — a measured role fit first, and the model's own allowance wherever measurement is silent. Never let the session's own model be the default answer; it is the most expensive way to obtain what any identity produces equally well, and an unpinned run spends that allowance too.
 
-A staged workflow spreads its stages across identities and balances them against provider allowances instead of inheriting one model for every stage. The ${"`"}workflow${"`"} skill owns that procedure; what each roster field means stays in the tool's own metadata.
+A staged workflow spreads its stages across identities and balances them against provider allowances instead of inheriting one model for every stage — reading each allowance's own reported verdict rather than comparing raw percentages across windows that reset on different clocks. The ${"`"}workflow${"`"} skill owns that procedure; what each roster field means stays in the tool's own metadata.
 
 ### Skill Routing
 Load the ${"`"}workflow${"`"} skill before executing a stage skeleton or assigning models across runs. The skeleton itself belongs to the skill matching the work: ${"`"}architecture-review${"`"} to decide, ${"`"}codebase-research${"`"} to establish facts, ${"`"}implementation-run${"`"} to change files, ${"`"}quality-review${"`"} to judge what exists.`,

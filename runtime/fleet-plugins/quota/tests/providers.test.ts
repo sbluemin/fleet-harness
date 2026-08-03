@@ -37,6 +37,14 @@ function jsonResponse(payload: unknown, init: ResponseInit = {}): Response {
 
 describe("provider response parsing", () => {
   it("parses Cursor numeric-string epochs, measured percentages, and cycle length", () => {
+    // 두 경계 모두 상류 사실이므로 period는 upstream으로 태그되고, scope-less 총합
+    // 창은 자매 풀이 있을 때 isAggregate로 표시되어 이중 계산을 막는다.
+    const cyclePeriod = {
+      durationMs: 1_785_858_430_000 - 1_783_180_030_000,
+      durationBasis: "upstream",
+      startsAt: 1_783_180_030_000,
+      startsAtBasis: "upstream",
+    };
     expect(parseCursorUsage({
       billingCycleStart: "1783180030000",
       billingCycleEnd: "1785858430000",
@@ -52,11 +60,22 @@ describe("provider response parsing", () => {
       status: "ok",
       cycleDays: 31,
       windows: [
-        { id: "cycle", usedPercent: 38, resetsAt: 1_785_858_430_000 },
-        { id: "cycle", scope: "auto", label: "Auto", usedPercent: 36, resetsAt: 1_785_858_430_000 },
-        { id: "cycle", scope: "api", label: "API", usedPercent: 53, resetsAt: 1_785_858_430_000 },
+        { id: "cycle", usedPercent: 38, resetsAt: 1_785_858_430_000, period: cyclePeriod, isAggregate: true },
+        { id: "cycle", scope: "auto", label: "Auto", usedPercent: 36, resetsAt: 1_785_858_430_000, period: cyclePeriod },
+        { id: "cycle", scope: "api", label: "API", usedPercent: 53, resetsAt: 1_785_858_430_000, period: cyclePeriod },
       ],
     });
+  });
+
+  it("tags the Cursor total as an aggregate only when scoped pools accompany it", () => {
+    // scope-less 창이 단독이면 그 자체가 전체 할당이다. 그때도 aggregate로 표시하면
+    // 헤드룸 계산에서 제외되어 읽을 창이 사라진다.
+    const withPools = parseCursorUsage({ enabled: true, planUsage: { totalPercentUsed: 10, apiPercentUsed: 20 } });
+    const pools = withPools.status === "ok" ? withPools.windows : [];
+    expect(pools.find((window) => window.scope === undefined)?.isAggregate).toBe(true);
+    expect(pools.find((window) => window.scope === "api")?.isAggregate).toBeUndefined();
+    const alone = parseCursorUsage({ enabled: true, planUsage: { totalPercentUsed: 10 } });
+    expect(alone.status === "ok" ? alone.windows[0]?.isAggregate : "unreachable").toBeUndefined();
   });
 
   it("scopes each Cursor pool so a model's own allowance is readable apart from the total", () => {
@@ -108,12 +127,38 @@ describe("provider response parsing", () => {
   it("parses Kimi string quantities, ISO reset times, and declared window durations", () => {
     // 모든 수치가 문자열로 도착하고 resetTime은 ISO-8601이다. 강제 변환을 빠뜨리면
     // percent()가 비-숫자에 0을 돌려주어 소진된 할당량이 미사용으로 보인다.
+    // 상세 창의 기간은 상류가 선언하므로 upstream, 최상위 총량 창의 주간 기간은
+    // 제품 지식이므로 catalog로 태그된다. 절대량은 개수 단위라 그대로 실린다.
+    const cycleResetsAt = Date.parse("2026-08-03T13:23:35.825319Z");
+    const sessionResetsAt = Date.parse("2026-08-02T11:23:35.825319Z");
     expect(parseKimiUsage(kimiUsagePayload)).toEqual({
       status: "ok",
       plan: "Advanced",
       windows: [
-        { id: "cycle", usedPercent: 47, resetsAt: Date.parse("2026-08-03T13:23:35.825319Z") },
-        { id: "session", usedPercent: 7, resetsAt: Date.parse("2026-08-02T11:23:35.825319Z") },
+        {
+          id: "cycle",
+          usedPercent: 47,
+          resetsAt: cycleResetsAt,
+          period: {
+            durationMs: 604_800_000,
+            durationBasis: "catalog",
+            startsAt: cycleResetsAt - 604_800_000,
+            startsAtBasis: "derived",
+          },
+          amounts: { used: "47", limit: "100" },
+        },
+        {
+          id: "session",
+          usedPercent: 7,
+          resetsAt: sessionResetsAt,
+          period: {
+            durationMs: 18_000_000,
+            durationBasis: "upstream",
+            startsAt: sessionResetsAt - 18_000_000,
+            startsAtBasis: "derived",
+          },
+          amounts: { used: "7", limit: "100" },
+        },
       ],
     });
   });
@@ -124,11 +169,21 @@ describe("provider response parsing", () => {
     });
     expect(withWindow(5, "TIME_UNIT_HOUR")).toEqual({
       status: "ok",
-      windows: [{ id: "session", usedPercent: 10 }],
+      windows: [{
+        id: "session",
+        usedPercent: 10,
+        period: { durationMs: 18_000_000, durationBasis: "upstream" },
+        amounts: { used: "10", limit: "100" },
+      }],
     });
     expect(withWindow(7, "TIME_UNIT_DAY")).toEqual({
       status: "ok",
-      windows: [{ id: "weekly", usedPercent: 10 }],
+      windows: [{
+        id: "weekly",
+        usedPercent: 10,
+        period: { durationMs: 604_800_000, durationBasis: "upstream" },
+        amounts: { used: "10", limit: "100" },
+      }],
     });
     // 60분짜리를 최근접 규칙으로 session에 붙이면 5시간 창으로 오표기된다.
     expect(withWindow(60, "TIME_UNIT_MINUTE")).toEqual({ status: "no_subscription" });
@@ -138,7 +193,12 @@ describe("provider response parsing", () => {
   it("derives Kimi usage from remaining and refuses windows it cannot quantify", () => {
     expect(parseKimiUsage({ usage: { limit: "200", remaining: "50" } })).toEqual({
       status: "ok",
-      windows: [{ id: "cycle", usedPercent: 75 }],
+      windows: [{
+        id: "cycle",
+        usedPercent: 75,
+        period: { durationMs: 604_800_000, durationBasis: "catalog" },
+        amounts: { used: "150", limit: "200" },
+      }],
     });
     expect(parseKimiUsage({ usage: { limit: "0", used: "0" } })).toEqual({ status: "no_subscription" });
     expect(parseKimiUsage({ usage: { limit: "100" } })).toEqual({ status: "no_subscription" });
@@ -182,6 +242,9 @@ describe("provider response parsing", () => {
   });
 
   it("maps Claude session, weekly, and scoped model windows", () => {
+    // Claude 상류는 기간을 숫자로 선언하지 않고 블록명(five_hour/seven_day)으로만
+    // 시사하므로, 5h/7d 길이는 catalog로 태그된 제품 지식으로 실린다.
+    const sessionResetsAt = Date.parse("2026-08-01T00:00:00Z");
     expect(parseClaudeUsage({
       five_hour: { used_percentage: 12.6, resets_at: "2026-08-01T00:00:00Z" },
       seven_day: { utilization: 0.714, resets_at: 2_000_000_000 },
@@ -192,19 +255,51 @@ describe("provider response parsing", () => {
         resets_at: 2_000_000_000_000,
       }],
     }).windows).toEqual([
-      { id: "session", usedPercent: 13, resetsAt: Date.parse("2026-08-01T00:00:00Z") },
-      { id: "weekly", usedPercent: 1, resetsAt: 2_000_000_000_000 },
-      { id: "model", label: "Sonnet", usedPercent: 100, resetsAt: 2_000_000_000_000 },
+      {
+        id: "session",
+        usedPercent: 13,
+        resetsAt: sessionResetsAt,
+        period: {
+          durationMs: 18_000_000,
+          durationBasis: "catalog",
+          startsAt: sessionResetsAt - 18_000_000,
+          startsAtBasis: "derived",
+        },
+      },
+      {
+        id: "weekly",
+        usedPercent: 1,
+        resetsAt: 2_000_000_000_000,
+        period: {
+          durationMs: 604_800_000,
+          durationBasis: "catalog",
+          startsAt: 2_000_000_000_000 - 604_800_000,
+          startsAtBasis: "derived",
+        },
+      },
+      {
+        id: "model",
+        label: "Sonnet",
+        usedPercent: 100,
+        resetsAt: 2_000_000_000_000,
+        period: {
+          durationMs: 604_800_000,
+          durationBasis: "catalog",
+          startsAt: 2_000_000_000_000 - 604_800_000,
+          startsAtBasis: "derived",
+        },
+      },
     ]);
   });
 
   it("uses the legacy Fable row only when no scoped model rows exist", () => {
+    const weeklyCatalogPeriod = { durationMs: 604_800_000, durationBasis: "catalog" };
     expect(parseClaudeUsage({ seven_day_fable: { utilization: 0.1 } }).windows)
-      .toEqual([{ id: "model", label: "Fable", usedPercent: 0 }]);
+      .toEqual([{ id: "model", label: "Fable", usedPercent: 0, period: weeklyCatalogPeriod }]);
     expect(parseClaudeUsage({
       fable_weekly: {},
       seven_day_fable: { percent: 55 },
-    }).windows).toEqual([{ id: "model", label: "Fable", usedPercent: 55 }]);
+    }).windows).toEqual([{ id: "model", label: "Fable", usedPercent: 55, period: weeklyCatalogPeriod }]);
   });
 
   it("uses the first finite Claude percentage field without magnitude guessing", () => {
@@ -222,14 +317,16 @@ describe("provider response parsing", () => {
   });
 
   it("uses session and weekly limits only as fallbacks to named fields", () => {
+    const sessionPeriod = { durationMs: 18_000_000, durationBasis: "catalog" };
+    const weeklyPeriod = { durationMs: 604_800_000, durationBasis: "catalog" };
     expect(parseClaudeUsage({
       limits: [
         { kind: "session", percent: 5 },
         { kind: "weekly_all", percent: 9 },
       ],
     }).windows).toEqual([
-      { id: "session", usedPercent: 5 },
-      { id: "weekly", usedPercent: 9 },
+      { id: "session", usedPercent: 5, period: sessionPeriod },
+      { id: "weekly", usedPercent: 9, period: weeklyPeriod },
     ]);
     expect(parseClaudeUsage({
       five_hour: { percent: 17 },
@@ -238,17 +335,17 @@ describe("provider response parsing", () => {
         { kind: "weekly_all", percent: 9 },
       ],
     }).windows).toEqual([
-      { id: "session", usedPercent: 17 },
-      { id: "weekly", usedPercent: 9 },
+      { id: "session", usedPercent: 17, period: sessionPeriod },
+      { id: "weekly", usedPercent: 9, period: weeklyPeriod },
     ]);
     expect(parseClaudeUsage({
       five_hour: { resets_at: 2_000_000_000 },
       limits: [{ kind: "session", percent: 67 }],
-    }).windows).toEqual([{ id: "session", usedPercent: 67 }]);
+    }).windows).toEqual([{ id: "session", usedPercent: 67, period: sessionPeriod }]);
     expect(parseClaudeUsage({
       five_hour: { percent: 0 },
       limits: [{ kind: "session", percent: 67 }],
-    }).windows).toEqual([{ id: "session", usedPercent: 0 }]);
+    }).windows).toEqual([{ id: "session", usedPercent: 0, period: sessionPeriod }]);
   });
 
   it("bounds untrusted Claude limits and reset-credit collections", () => {
@@ -331,6 +428,7 @@ describe("provider response parsing", () => {
   });
 
   it("classifies Codex windows by duration and preserves primary/secondary fallback", () => {
+    // Codex는 limit_window_seconds로 기간을 직접 선언하므로 period는 upstream이다.
     expect(parseCodexUsage({
       plan_type: "pro",
       rate_limit: {
@@ -340,8 +438,28 @@ describe("provider response parsing", () => {
     })).toEqual({
       plan: "Pro",
       windows: [
-        { id: "session", usedPercent: 10, resetsAt: 2_000_000_000_000 },
-        { id: "weekly", usedPercent: 0, resetsAt: 2_000_000_000_000 },
+        {
+          id: "session",
+          usedPercent: 10,
+          resetsAt: 2_000_000_000_000,
+          period: {
+            durationMs: 18_000_000,
+            durationBasis: "upstream",
+            startsAt: 2_000_000_000_000 - 18_000_000,
+            startsAtBasis: "derived",
+          },
+        },
+        {
+          id: "weekly",
+          usedPercent: 0,
+          resetsAt: 2_000_000_000_000,
+          period: {
+            durationMs: 604_800_000,
+            durationBasis: "upstream",
+            startsAt: 2_000_000_000_000 - 604_800_000,
+            startsAtBasis: "derived",
+          },
+        },
       ],
     });
     expect(parseCodexUsage({
@@ -530,10 +648,12 @@ describe("Kimi provider requests", () => {
     expect(result).toMatchObject({
       status: "ok",
       plan: "Advanced",
-      windows: [{ id: "cycle", usedPercent: 47 }],
+      windows: [{ id: "cycle", usedPercent: 47, amounts: { used: "47", limit: "100" } }],
       fetchedAt: 42,
     });
-    expect(JSON.stringify(result)).not.toMatch(/sk-kimi-secret|should-not-leak|remaining|limit/);
+    // 절대량(amounts.used/limit)은 개수 단위라 의도적으로 노출한다. 비밀 누출 금지는
+    // 그대로 유지된다 — 키·계정 식별자가 DTO에 실리면 안 된다는 단언이다.
+    expect(JSON.stringify(result)).not.toMatch(/sk-kimi-secret|should-not-leak/);
   });
 
   it("reports a missing key as signed out without reaching the network", async () => {
