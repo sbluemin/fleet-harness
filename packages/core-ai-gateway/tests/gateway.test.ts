@@ -2204,6 +2204,57 @@ describe("OpenAI Responses adapter", () => {
     expect(new Headers(init?.headers).get("authorization")).toBe("Bearer injected-key");
   });
 
+  it("strips synthetic nulls from objects inside array arguments while keeping null elements", async () => {
+    const upstreamSse = [
+      frame("response.created", {
+        type: "response.created",
+        response: { id: "resp_array_nulls", model: "gpt-5.5", usage: null }
+      }),
+      frame("response.output_item.added", {
+        type: "response.output_item.added",
+        output_index: 0,
+        item: {
+          type: "function_call",
+          id: "fc_array",
+          call_id: "call_array",
+          name: "open_links",
+          arguments: ""
+        }
+      }),
+      frame("response.output_item.done", {
+        type: "response.output_item.done",
+        output_index: 0,
+        item: {
+          type: "function_call",
+          id: "fc_array",
+          call_id: "call_array",
+          name: "open_links",
+          arguments: '{"links":[{"href":"https://a.example","label":null}],"tags":["a",null]}'
+        }
+      }),
+      frame("response.completed", {
+        type: "response.completed",
+        response: { id: "resp_array_nulls", model: "gpt-5.5", usage: { input_tokens: 5, output_tokens: 3 } }
+      })
+    ].join("");
+    const fetchMock = vi.fn<FetchLike>(async () => sseResponse(upstreamSse));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+    const result = await adapter.stream(
+      { model: "gpt-5.5", input: [], stream: true },
+      { apiKey: "injected-key" }
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error("expected a successful stream");
+    }
+    const frames = parseSse(await collectBody(encodeAnthropicSse(result.events)));
+    const deltas = frames.filter((item) => item.event === "content_block_delta");
+    expect(
+      deltas.map((item) => (item.data.delta as { partial_json: string }).partial_json).join("")
+    ).toBe('{"links":[{"href":"https://a.example"}],"tags":["a",null]}');
+  });
+
   it("carries a real OpenAI usage envelope end-to-end into matching streaming and non-streaming Anthropic usage", async () => {
     const upstreamSse = [
       frame("response.created", {

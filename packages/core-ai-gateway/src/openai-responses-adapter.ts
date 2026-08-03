@@ -787,9 +787,18 @@ function withoutNulls(value: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value)) {
     if (entry === null) continue;
-    out[key] = isRecord(entry) ? withoutNulls(entry) : entry;
+    out[key] = withoutNullMembers(entry);
   }
   return out;
+}
+
+// strict 재작성의 정확한 역변환: 재작성이 표현 가능하게 만든 것은 객체 프로퍼티 위치의
+// null뿐이므로 배열 속 객체까지 내려가 그 null만 제거하고, 배열 원소 자체의 null은
+// 재작성이 만든 값이 아니라 모델이 실제로 보낸 데이터이므로 보존한다.
+function withoutNullMembers(entry: unknown): unknown {
+  if (isRecord(entry)) return withoutNulls(entry);
+  if (Array.isArray(entry)) return entry.map(withoutNullMembers);
+  return entry;
 }
 
 function outputItem(value: unknown): CanonicalOutputItem | undefined {
