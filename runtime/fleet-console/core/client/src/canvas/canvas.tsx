@@ -298,10 +298,15 @@ export function OperationsCanvas({
     ? [retainedTriageEntry, ...triageQueue.filter((entry) => entry.operation.id !== retainedTriageEntry.operation.id)]
     : triageQueue;
   const candidateTriageStage = triageActive ? triageDisplayQueue[0] ?? null : null;
+  // 선별 처리의 관심사는 살아있는 함대다 — 휴면(dormant) Operation은 deck에 올리지 않는다.
+  const triageDeckOperations = triageActive
+    ? theaterOperations.filter((operation) => resolveOperationActivity(operation, state.operationStatus) !== "dormant")
+    : theaterOperations;
+  const triageDeckOperationIdSet = new Set(triageDeckOperations.map((operation) => operation.id));
   const deckWasVisible = triageActive
     && !triageEntering
     && previousTriageDeckStageRef.current === null
-    && theaterOperations.length > 0;
+    && triageDeckOperations.length > 0;
   const deckPromotion = resolveTriageDeckPromotion({
     operationId: candidateTriageStage?.operation.id ?? null,
     picked: candidateTriageStage?.picked === true,
@@ -325,7 +330,9 @@ export function OperationsCanvas({
     const timer = window.setTimeout(() => setTriageDeckDwellRevision((revision) => revision + 1), remaining);
     return () => window.clearTimeout(timer);
   }, [candidateTriageStage?.operation.id, candidateTriageStage?.picked, triageStageId]);
-  const triageDeckVisible = triageActive && triageStageId === null && !triageEntering && theaterOperations.length > 0;
+  // deck는 무대가 떠 있어도 mount를 유지한다(visibility 은닉) — 비무대 body의 거처를 카드
+  // 슬롯 하나로 고정해 무대 전환마다 전 세션에 PTY 리사이즈가 퍼지는 churn을 막는다.
+  const triageDeckMounted = triageActive && !triageEntering && triageDeckOperations.length > 0;
   // 프리뷰 config의 핸들러는 최신 상태를 ref로 참조한다 — config 객체 identity가 렌더마다 바뀌면
   // pool publish가 매 렌더 revision을 올려 재렌더 루프가 되므로, memo 수명 동안 identity를 고정한다.
   const triagePreviewHandlersRef = useRef({ activate: (_operationId: string) => {}, close: (_operationId: string) => {} });
@@ -344,6 +351,9 @@ export function OperationsCanvas({
     const handlers = triagePreviewHandlersRef;
     const configs = new Map<string, OperationBodyConfig>();
     for (const operation of theaterOperations) {
+      // render가 없는 kind는 pool이 body를 만들지 못한다 — 빈 프리뷰 박스 대신 tail 폴백으로 내린다.
+      const descriptor = registry.operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
+      if (!descriptor?.render) continue;
       configs.set(operation.id, {
         active: false,
         geometry: canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation),
@@ -360,22 +370,8 @@ export function OperationsCanvas({
         onSetCompanionPanelVisible: () => {},
       });
     }
-    return (operation: OperationNode) => configs.get(operation.id) ?? {
-      active: false,
-      geometry: ensurePluginGeometry(operation),
-      operation,
-      theme: state.activeTheme,
-      language,
-      zoom: 1,
-      onActivate: () => handlers.current.activate(operation.id),
-      onClose: () => handlers.current.close(operation.id),
-      onGeometryChange: () => {},
-      onRequestCompanions: () => {},
-      companionsOpen: false,
-      hiddenCompanionPanelIds: EMPTY_HIDDEN_COMPANION_IDS,
-      onSetCompanionPanelVisible: () => {},
-    };
-  }, [canvas.operations, language, state.activeTheme, theaterOperations, triageActive]);
+    return (operation: OperationNode) => configs.get(operation.id) ?? null;
+  }, [canvas.operations, language, registry.operationKinds, state.activeTheme, theaterOperations, triageActive]);
   const setAsideArmedId = state.activeTheaterId ? getTriageSetAsideArmedId(state.activeTheaterId) : null;
   useLayoutEffect(() => {
     if (!triageActive) {
@@ -396,7 +392,7 @@ export function OperationsCanvas({
           });
         }
       }
-    } else if (previousStageId && theaterOperations.length > 0 && !triageEntering) {
+    } else if (previousStageId && triageDeckOperations.length > 0 && !triageEntering) {
       const from = triageStageRectRef.current.get(previousStageId) ?? null;
       if (from) {
         window.requestAnimationFrame(() => {
@@ -421,7 +417,7 @@ export function OperationsCanvas({
       stageObserver?.disconnect();
       window.removeEventListener("resize", refreshStageRect);
     };
-  }, [theaterOperations.length, triageActive, triageEntering, triageStageId]);
+  }, [triageDeckOperations.length, triageActive, triageEntering, triageStageId]);
   useEffect(() => {
     if (state.activeOperationId
       && minimizedSet.has(state.activeOperationId)
@@ -773,7 +769,7 @@ export function OperationsCanvas({
             formation: formationView || triageActive,
             focusLayerHidden,
             operationBodyPoolAvailable,
-            bodyYieldedToDeck: triageDeckVisible,
+            bodyYieldedToDeck: triageDeckMounted && triageDeckOperationIdSet.has(operation.id) && !operationTriageStage,
             onRenderHiddenFocus: () => {
               const focusTarget = canvasRef.current?.querySelector<HTMLElement>("[data-focus-layer-target='true']");
               if (focusTarget) {
@@ -886,16 +882,17 @@ export function OperationsCanvas({
         </>
       ) : null}
       <TriageWatchDeck
-        active={triageActive && triageStage === null}
+        active={triageActive}
         entering={triageEntering}
         theaterId={state.activeTheaterId}
-        operations={theaterOperations}
+        operations={triageDeckOperations}
         operationStatus={state.operationStatus}
         operationAccent={canvas.operationAccent}
         arrivingOperationId={triageDeckArrivingOperationId}
+        stagedOperationId={triageStageId}
         previewConfigFor={triagePreviewConfigFor}
       />
-      <TriageClearPlate active={triageActive && theaterOperations.length === 0} entering={triageEntering} hasContent={hasContent} idleCount={triageIdleCount} />
+      <TriageClearPlate active={triageActive && triageDeckOperations.length === 0} entering={triageEntering} hasContent={hasContent} idleCount={triageIdleCount} />
       {!triageActive && !hasContent && !formationEntering ? (
         <OperationsCanvasEmptyState
           activeTheaterId={state.activeTheaterId}

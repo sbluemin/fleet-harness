@@ -17,8 +17,11 @@ interface TriageWatchDeckProps {
   readonly operationStatus: Readonly<Record<string, OperationActivity>>;
   readonly operationAccent: Readonly<Record<string, string>>;
   readonly arrivingOperationId?: string | null;
-  /** 카드 본문 라이브 프리뷰용 pool 슬롯 config 빌더 — 핸들러 배선은 canvas가 단일 소유한다. */
-  readonly previewConfigFor?: (operation: OperationNode) => OperationBodyConfig;
+  /** 무대에 오른 Operation — 그 카드만 슬롯을 무대 프레임에 넘기고, deck는 은닉된 채 mount를 유지한다. */
+  readonly stagedOperationId?: string | null;
+  /** 카드 본문 라이브 프리뷰용 pool 슬롯 config 빌더 — 핸들러 배선은 canvas가 단일 소유한다.
+      렌더 가능한 kind가 아니면 null을 반환하고 카드는 tail 폴백으로 내려간다. */
+  readonly previewConfigFor?: (operation: OperationNode) => OperationBodyConfig | null;
 }
 
 export interface TriageDeckArrivalDwell {
@@ -82,6 +85,7 @@ export function TriageWatchDeck({
   operationStatus,
   operationAccent,
   arrivingOperationId = null,
+  stagedOperationId = null,
   previewConfigFor,
 }: TriageWatchDeckProps) {
   const t = useT();
@@ -89,7 +93,11 @@ export function TriageWatchDeck({
   const [now, setNow] = useState(Date.now());
   const poolAvailable = useOperationBodyPoolAvailable();
   useOperationStatusDetails();
+  // 무대가 떠 있는 동안에도 deck는 mount를 유지하고 visibility로만 숨는다 — 비무대 body가
+  // 카드(고정 크기)와 숨김 프레임(크롬 제외 크기) 사이를 오가며 전 세션에 PTY 리사이즈를
+  // 뿌리는 churn을 없애기 위해서다. 리사이즈는 무대에 오른 Operation에만 남는다.
   const visible = active && !entering && theaterId !== null && operations.length > 0;
+  const underStage = stagedOperationId !== null;
 
   useLayoutEffect(() => {
     if (!visible) return;
@@ -141,7 +149,7 @@ export function TriageWatchDeck({
   const idle = activities.filter((activity) => activity === "idle").length;
 
   return (
-    <section className="canvas-triage-deck" data-canvas-blocker>
+    <section className={`canvas-triage-deck ${underStage ? "is-under-stage" : ""}`} data-canvas-blocker>
       <div className="canvas-triage-deck-caption">
         {t("canvas.triage.deckCaption", { running, idle })}
       </div>
@@ -153,7 +161,9 @@ export function TriageWatchDeck({
           const statusDetail = getOperationStatusDetailSnapshot(operation.id);
           const accentKey = operationAccent[operation.id] ?? operationAccentFromNode(operation);
           const accentColor = accentKey ? resolveAccentColor(accentKey) : null;
-          const previewConfig = poolAvailable && previewConfigFor ? previewConfigFor(operation) : null;
+          const previewConfig = poolAvailable && previewConfigFor && operation.id !== stagedOperationId
+            ? previewConfigFor(operation)
+            : null;
           return (
             <button
               className={`canvas-triage-deck-card is-${visual} ${previewConfig ? "has-preview" : ""} ${arrivingOperationId === operation.id ? "is-arriving" : ""}`}
@@ -188,8 +198,9 @@ export function TriageWatchDeck({
 // 라이브 프리뷰 — pool 슬롯이 실제 패널 body를 카드 안으로 끌어온다. 내부 박스는 패널의 원래
 // 픽셀 크기를 고정 유지한 채 transform scale로만 축소한다: FitAddon이 카드 크기를 측정하면
 // PTY cols/rows가 타일 크기로 리사이즈되어 실세션 레이아웃이 깨지므로, 측정 크기 불변이 계약이다.
-// 패널 전체를 min 비율로 fit해 중앙 배치한다 — 한 축 크롭은 신선한 셸(상단 프롬프트)이나
-// 긴 세션(하단 최신 줄) 중 한쪽을 반드시 가리므로 전체 표시가 유일하게 안전하다.
+// 레터박스 없이 카드 영역을 채우는 cover-fit — max 비율로 확대하고 넘치는 축은 크롭한다.
+// 크롭 앵커는 가로 중앙·세로 하단: 터미널의 최신 출력과 입력줄은 항상 하단에 있으므로
+// 모니터링 가치가 있는 영역이 살아남는다(빈 셸이 비어 보이는 것은 정직한 상태 표현이다).
 function TriageDeckCardPreview({ operationId, config }: {
   readonly operationId: string;
   readonly config: OperationBodyConfig;
@@ -208,11 +219,11 @@ function TriageDeckCardPreview({ operationId, config }: {
         setFit(null);
         return;
       }
-      const scale = Math.min(width / innerWidth, height / innerHeight);
+      const scale = Math.max(width / innerWidth, height / innerHeight);
       setFit({
         scale,
-        left: Math.max(0, (width - innerWidth * scale) / 2),
-        top: Math.max(0, (height - innerHeight * scale) / 2),
+        left: (width - innerWidth * scale) / 2,
+        top: height - innerHeight * scale,
       });
     };
     measure();

@@ -2058,6 +2058,13 @@
   pointer-events: auto;
 }
 
+/* 무대가 떠 있는 동안 deck는 은닉된 채 mount를 유지한다 — 카드 슬롯이 비무대 body의 고정
+   거처로 남아 무대 전환마다 body가 프레임과 카드를 오가며 PTY를 리사이즈하는 churn을 막는다. */
+.canvas-triage-deck.is-under-stage {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .canvas-triage-deck-caption {
   min-width: 0;
   color: var(--brass-ink);
