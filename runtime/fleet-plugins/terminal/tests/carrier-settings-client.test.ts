@@ -135,7 +135,7 @@ describe("Terminal Carrier Settings client", () => {
   it("exports the reserved Settings section identity", () => {
     expect(carrierSettingsSection.id).toBe("carriers");
     const title = carrierSettingsSection.title;
-    expect(typeof title === "function" ? title("en") : title).toBe("Carriers");
+    expect(typeof title === "function" ? title("en") : title).toBe("AI Classic");
   });
 
   it("renders and operates the Captain chip strip with a single detail card", async () => {
