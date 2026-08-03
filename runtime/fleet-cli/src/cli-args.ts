@@ -71,7 +71,7 @@ export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): str
     `  ${command("fleet update", colorEnabled)}`,
     "",
     section("COMMANDS", colorEnabled),
-    `  ${command("auth", colorEnabled)}                ${dim("Manage Kimi AI Gateway authentication.", colorEnabled)}`,
+    `  ${command("auth", colorEnabled)}                ${dim("Manage AI Gateway provider authentication.", colorEnabled)}`,
     `  ${command("update", colorEnabled)}              ${dim("Update Fleet CLI packages.", colorEnabled)}`,
     "",
     section("OPTIONS", colorEnabled),

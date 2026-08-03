@@ -37,6 +37,7 @@ describe("provider status copy", () => {
       codex: "Codex",
       cursor: "Cursor",
       kimi: "Kimi",
+      opencode: "OpenCode Go",
     };
     for (const map of [SIGNED_OUT_KEY, EXPIRED_KEY]) {
       for (const [provider, key] of Object.entries(map)) {

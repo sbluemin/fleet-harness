@@ -40,8 +40,13 @@ export {
   KIMI_AUTH_PROVIDER_ID,
   KIMI_CODE_API_BASE_URL,
   KIMI_CODE_MODEL,
+  OPENCODE_AUTH_PROVIDER_ID,
+  OPENCODE_GO_API_BASE_URL,
+  OPENCODE_GO_MODEL,
   validateKimiAuthKey,
+  validateOpencodeGoAuthKey,
 } from "./ai-gateway/auth.js";
+export type { AuthKeyValidationResult } from "./ai-gateway/auth.js";
 
 // AI Gateway 모델 로드아웃 — 호스트가 Phase에 모델/강도를 배치할 때 참조하는 로스터
 export {

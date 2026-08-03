@@ -25,8 +25,32 @@ export const KIMI_AUTH_PROVIDER_ID = "Claude Code with Moonshot Kimi";
 export const KIMI_CODE_API_BASE_URL = "https://api.kimi.com/coding";
 export const KIMI_CODE_MODEL = "k3";
 
-export const GATEWAY_PROVIDERS = ["codex", "cursor", "kimi"] as const;
+export const GATEWAY_PROVIDERS = ["codex", "cursor", "kimi", "opencode"] as const;
 export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
+
+/**
+ * The upstream wire protocol a model is served over. Only the OpenCode Go
+ * provider declares this today: its subscription exposes Anthropic, OpenAI
+ * Responses, and Chat Completions endpoints side by side, and each model is
+ * native to exactly one of them. Omission means `anthropic`.
+ */
+export const GATEWAY_MODEL_WIRES = ["anthropic", "responses", "chat-completions"] as const;
+export type GatewayModelWire = typeof GATEWAY_MODEL_WIRES[number];
+
+/**
+ * Whether a model's requests stay in Anthropic Messages form end to end (no
+ * canonical translation). The `[1m]` discovery marker for such models
+ * additionally requires a real 1M window: Claude Code attaches its long-context
+ * beta to `[1m]` models, and that synthetic beta must never reach a sub-1M
+ * Anthropic-compatible upstream. Translated-wire models are exempt — the beta
+ * never leaves the gateway on those paths.
+ */
+export function isAnthropicPassthroughModel(
+  model: Pick<GatewayModel, "provider" | "wire">,
+): boolean {
+  if (model.provider === "kimi") return true;
+  return model.provider === "opencode" && (model.wire ?? "anthropic") === "anthropic";
+}
 
 export const GATEWAY_REASONING_EFFORTS = [
   "low",
@@ -66,6 +90,7 @@ const GatewayModelEntrySchema = z.object({
   serviceTier: z.literal("priority").optional(),
   cursorMaxMode: z.literal(true).optional(),
   quotaScope: z.enum(GATEWAY_QUOTA_SCOPES).optional(),
+  wire: z.enum(GATEWAY_MODEL_WIRES).optional(),
   aliases: z.array(z.string().min(1)).optional(),
   contextWindow: z.number().int().positive().optional(),
   effort: GatewayModelEffortSchema.optional(),
@@ -85,6 +110,7 @@ export const GatewayModelsRegistrySchema = z.object({
     codex: GatewayProviderSchema,
     cursor: GatewayProviderSchema,
     kimi: GatewayProviderSchema,
+    opencode: GatewayProviderSchema,
   }).strict(),
 }).strict();
 
@@ -122,6 +148,8 @@ export interface GatewayModel {
    * caller whether this particular model still has room.
    */
   readonly quotaScope?: GatewayQuotaScope;
+  /** Upstream wire protocol; OpenCode Go only. Omission means `anthropic`. */
+  readonly wire?: GatewayModelWire;
   readonly description?: string;
   /** Authoritative input context window reported by the provider/reference catalog. */
   readonly contextWindow?: number;
@@ -158,6 +186,7 @@ export const GATEWAY_MODELS: readonly GatewayModel[] = Object.freeze(
 export const CODEX_SUBSCRIPTION_MODELS = providerModels("codex");
 export const CURSOR_SUBSCRIPTION_MODELS = providerModels("cursor");
 export const KIMI_SUBSCRIPTION_MODELS = providerModels("kimi");
+export const OPENCODE_SUBSCRIPTION_MODELS = providerModels("opencode");
 
 /**
  * Claude Code currently filters discovered models whose id does not start with `claude`.
@@ -183,14 +212,16 @@ export function toGatewayModelAlias(modelId: string): string {
  * auto-compact out of. Metering against the real window instead lets Claude Code's
  * own reserve compact the session while capacity remains.
  *
- * Native Kimi passthrough additionally requires a real window of at least 1M, so a
- * synthetic long-context beta never reaches a sub-1M Anthropic-compatible upstream.
+ * Anthropic passthrough models (Kimi, and OpenCode's anthropic-wire entries)
+ * additionally require a real window of at least 1M, so a synthetic long-context
+ * beta never reaches a sub-1M Anthropic-compatible upstream.
  */
 export function toClaudeGatewayModelId(model: GatewayModel): string {
   const alias = toGatewayModelAlias(model.id);
   if (
     canProjectClaudeContextWindow(model.contextWindow)
-    && (model.provider !== "kimi" || isClaudeOneMillionContextWindow(model.contextWindow))
+    && (!isAnthropicPassthroughModel(model)
+      || isClaudeOneMillionContextWindow(model.contextWindow))
   ) {
     return `${alias}${CLAUDE_ONE_MILLION_MARKER}`;
   }
@@ -448,6 +479,7 @@ function toGatewayModel(
     ...(entry.serviceTier ? { serviceTier: entry.serviceTier } : {}),
     ...(entry.cursorMaxMode ? { cursorMaxMode: entry.cursorMaxMode } : {}),
     ...(entry.quotaScope ? { quotaScope: entry.quotaScope } : {}),
+    ...(entry.wire ? { wire: entry.wire } : {}),
     ...(entry.description ? { description: entry.description } : {}),
     ...(entry.contextWindow ? { contextWindow: entry.contextWindow } : {}),
     effort: freezeGatewayModelEffort(entry.effort),
@@ -486,6 +518,11 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       // per-pool window that provider's usage response never reports.
       if (model.quotaScope && provider !== "cursor") {
         throw new Error(`Gateway quota scope is only supported by Cursor: ${provider}/${model.modelId}`);
+      }
+      // OpenCode Go is the only provider serving one subscription over several
+      // wire protocols; elsewhere a wire declaration would be dead metadata.
+      if (model.wire && provider !== "opencode") {
+        throw new Error(`Gateway model wire is only supported by OpenCode: ${provider}/${model.modelId}`);
       }
       if (model.effort?.supported) {
         if (new Set(model.effort.levels).size !== model.effort.levels.length) {

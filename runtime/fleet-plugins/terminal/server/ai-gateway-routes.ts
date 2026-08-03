@@ -34,7 +34,24 @@ import { registerRouter } from "@fleet-console/sdk/plugin/node";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 
 import { createCursorDiagnosticLog } from "./ai-gateway-diagnostics.js";
+import {
+  createOpencodeGateway,
+  isOpencodeAnthropicPassthrough,
+  opencodeGoWire,
+  proxyToOpencode,
+} from "./ai-gateway-opencode.js";
+import {
+  drain,
+  eagerAnthropicRequestBody,
+  errorMessage,
+  proxyAnthropicMessages,
+  writeAnthropicError,
+  writeSseErrorFrame,
+  type GatewayProxyResponse,
+} from "./ai-gateway-proxy.js";
 import { resolveAiGatewaySelection, type AiGatewayStoredSettings } from "./ai-gateway-settings.js";
+
+export { OPENCODE_GO_MESSAGES_URL as OPENCODE_MESSAGES_URL } from "@dotobokuri/core-ai-gateway";
 
 export const AI_GATEWAY_ROUTE_SEGMENT = "ai-gateway";
 export const AI_GATEWAY_MODEL_ENV = "FLEET_AI_GATEWAY_MODEL";
@@ -85,6 +102,7 @@ export interface AiGatewayRouteDeps {
   readonly readAuth?: () => CodexSubscriptionAuth | null | Promise<CodexSubscriptionAuth | null>;
   readonly readCursorToken?: () => string | null | Promise<string | null>;
   readonly readKimiApiKey?: () => Promise<string | undefined>;
+  readonly readOpencodeApiKey?: () => Promise<string | undefined>;
   readonly cursorDiagnostics?: CursorDiagnosticSink;
   readonly fetch?: typeof fetch;
 }
@@ -199,6 +217,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
         return true;
       }
       credential = kimiApiKey;
+    } else if (target?.provider === "opencode") {
+      const opencodeApiKey = await deps.readOpencodeApiKey?.();
+      if (!opencodeApiKey) {
+        writeAnthropicError(res, 401, "authentication_error", "No OpenCode Go API key was found. Sign in to OpenCode Go first.");
+        return true;
+      }
+      credential = opencodeApiKey;
     }
 
     const controller = new AbortController();
@@ -233,10 +258,25 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
         );
         return true;
       }
+      if (target.provider === "opencode" && isOpencodeAnthropicPassthrough(target)) {
+        await proxyToOpencode(
+          req.headers,
+          res,
+          body,
+          upstreamModelId(target),
+          claudeContextWindow,
+          credential,
+          fetchImpl,
+          controller.signal,
+        );
+        return true;
+      }
       const gateway = deps.gateway
         ?? (target.provider === "cursor"
           ? ownedCursorGateway!
-          : createGatewayFor(target, chatgptAccountId));
+          : target.provider === "opencode"
+            ? createOpencodeGateway(opencodeGoWire(target) as "responses" | "chat-completions")
+            : createGatewayFor(target, chatgptAccountId));
       const diagnosticsEnabled = target.provider === "cursor"
         ? await cursorDiagnosticsEnabled()
         : undefined;
@@ -373,12 +413,7 @@ const KIMI_REASONING_EFFORTS = ["low", "high", "max"] as const satisfies readonl
 
 /** K3 accepts three native effort tiers; normalize Claude Code's wider picker ladder. */
 function kimiRequestBody(body: AnthropicMessagesRequest, model: string): AnthropicMessagesRequest {
-  const eagerBody: AnthropicMessagesRequest = {
-    ...body,
-    model,
-    messages: body.messages.map(kimiEagerMessage),
-    ...(body.tools === undefined ? {} : { tools: body.tools.map(kimiEagerTool) }),
-  };
+  const eagerBody = eagerAnthropicRequestBody(body, model);
   const effort = reasoningEffortFromOutputConfig(body.output_config);
   if (effort === undefined) {
     return eagerBody;
@@ -390,109 +425,6 @@ function kimiRequestBody(body: AnthropicMessagesRequest, model: string): Anthrop
       effort: clampReasoningEffort(effort, KIMI_REASONING_EFFORTS, model),
     },
   };
-}
-
-function kimiEagerTool(tool: AnthropicToolDefinition): AnthropicToolDefinition {
-  if (!("input_schema" in tool)) return tool;
-  const { defer_loading: _deferLoading, ...eagerTool } = tool;
-  return eagerTool;
-}
-
-function kimiEagerMessage(message: AnthropicMessage): AnthropicMessage {
-  if (typeof message.content === "string") return message;
-  return {
-    ...message,
-    content: message.content.map((block) => {
-      if (block.type !== "tool_result" || !Array.isArray(block.content)) return block;
-      return {
-        ...block,
-        content: block.content.map((result) => {
-          if (result.type !== "tool_reference") return result;
-          const toolName = typeof result.tool_name === "string" && result.tool_name.length > 0
-            ? result.tool_name
-            : "(invalid reference)";
-          return { type: "text" as const, text: `Tool available: ${toolName}` };
-        }),
-      };
-    }),
-  };
-}
-
-interface GatewayProxyResponse {
-  writeHead(status: number, headers: Record<string, string>): unknown;
-  write(chunk: Uint8Array): boolean;
-  end(body?: string): unknown;
-  once(event: "drain", listener: () => void): unknown;
-  readonly headersSent: boolean;
-}
-
-interface AnthropicProxyOptions {
-  readonly contextWindow?: number;
-  readonly fetchImpl: typeof fetch;
-  readonly headers: Readonly<Record<string, string>>;
-  readonly signal: AbortSignal;
-  readonly url: string;
-}
-
-const HOP_BY_HOP_HEADERS = new Set([
-  "connection",
-  "content-encoding",
-  "content-length",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-]);
-
-async function proxyAnthropicMessages(
-  res: GatewayProxyResponse,
-  body: AnthropicMessagesRequest,
-  options: AnthropicProxyOptions,
-): Promise<void> {
-  const upstream = await options.fetchImpl(options.url, {
-    method: "POST",
-    headers: options.headers,
-    body: JSON.stringify(body),
-    signal: options.signal,
-  });
-  const responseHeaders: Record<string, string> = {};
-  upstream.headers.forEach((value, key) => {
-    if (!HOP_BY_HOP_HEADERS.has(key)) responseHeaders[key] = value;
-  });
-  res.writeHead(upstream.status, responseHeaders);
-  if (!upstream.body) {
-    res.end();
-    return;
-  }
-  const rawBody = readResponseBody(upstream.body);
-  const responseBody = options.contextWindow === undefined
-    ? rawBody
-    : projectAnthropicResponseUsage(rawBody, {
-        contentType: upstream.headers.get("content-type"),
-        contextWindow: options.contextWindow,
-      });
-  for await (const chunk of responseBody) {
-    if (!res.write(chunk)) await drain(res);
-  }
-  res.end();
-}
-
-async function* readResponseBody(
-  body: ReadableStream<Uint8Array>,
-): AsyncGenerator<Uint8Array> {
-  const reader = body.getReader();
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) return;
-      yield value;
-    }
-  } finally {
-    reader.releaseLock();
-  }
 }
 
 function createGatewayFor(
@@ -543,45 +475,4 @@ function headerEntries(headers: Headers): Record<string, string> {
     entries[key] = value;
   });
   return entries;
-}
-
-async function drain(res: { once(event: "drain", listener: () => void): unknown }): Promise<void> {
-  await new Promise<void>((resolve) => res.once("drain", resolve));
-}
-
-function writeAnthropicError(
-  res: {
-    writeHead(status: number, headers: Record<string, string>): unknown;
-    end(body: string): unknown;
-  },
-  status: number,
-  type: string,
-  message: string,
-): void {
-  res.writeHead(status, { "content-type": "application/json" });
-  res.end(JSON.stringify({ type: "error", error: { type, message } }));
-}
-
-/**
- * 헤더 전송 후의 유일한 통지 수단. 메시지에 따옴표/개행이 있어도 안전하도록 JSON.stringify로만 만든다.
- *
- * 선행 `\n\n`은 생략할 수 없다. passthrough 경로는 상류 네트워크 청크를 그대로 흘리므로
- * 마지막 청크가 프레임 중간에서 끊길 수 있고, 그 뒤에 곧바로 이어 붙이면 잘린 data 줄에
- * 융합되어 클라이언트 JSON 파싱이 깨진다. 이미 경계에 있을 때 덧붙는 빈 줄은 무해하다.
- */
-function writeSseErrorFrame(
-  res: { write(chunk: string): boolean },
-  type: string,
-  message: string,
-): void {
-  try {
-    const data = JSON.stringify({ type: "error", error: { type, message } });
-    res.write(`\n\nevent: error\ndata: ${data}\n\n`);
-  } catch {
-    // 프레임 작성 자체가 실패해도 응답 종료는 막지 않는다.
-  }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

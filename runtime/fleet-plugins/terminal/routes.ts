@@ -2,7 +2,7 @@ import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { definePlugin, registerLaunchCatalog, registerWsHandler } from "@fleet-console/sdk/plugin/node";
 import { createInfraServices } from "@dotobokuri/core-infra";
 import { createCarrierRegistry, initStore, registerDefaultCarriers } from "@dotobokuri/fleet-carriers";
-import { KIMI_AUTH_PROVIDER_ID } from "@dotobokuri/fleet-admiral";
+import { KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID } from "@dotobokuri/fleet-admiral";
 
 import { registerAgentRoutes } from "./server/agent.js";
 import { registerAnalysisRoutes } from "./server/agent-api/analysis-routes.js";
@@ -49,6 +49,7 @@ export default definePlugin({
     registerAiGatewayRoutes(ctx, {
       readAiGatewaySettings: aiGatewayStore.read,
       readKimiApiKey: () => infraServices.authService.getApiKey(KIMI_AUTH_PROVIDER_ID),
+      readOpencodeApiKey: () => infraServices.authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
     });
     registerCarrierSettingsRoutes(ctx, { registry: carrierRegistry });
     // Agent Operation과 Analyst는 같은 plugin storage 키를 읽되 수명은 각 라우트가 독립 소유한다.

@@ -1,0 +1,88 @@
+import {
+  AnthropicMessagesGateway,
+  OPENCODE_GO_MESSAGES_URL,
+  createOpencodeGoAdapter,
+  opencodeGoWire,
+} from "@dotobokuri/core-ai-gateway";
+import type {
+  AnthropicMessagesRequest,
+  GatewayModel,
+  GatewayModelWire,
+} from "@dotobokuri/core-ai-gateway";
+
+import {
+  eagerAnthropicRequestBody,
+  proxyAnthropicMessages,
+  type GatewayProxyResponse,
+} from "./ai-gateway-proxy.js";
+
+/**
+ * OpenCode Go provider의 서버측 소유 모듈.
+ *
+ * 레지스트리가 선언한 모델별 wire에 따라 두 경로로 갈라진다:
+ * - `anthropic` — 네이티브 Anthropic 모델. canonical 번역 없이 `/zen/go/v1/messages`로
+ *   passthrough한다(서버측 트랜스코더는 이 모델들에서만 신뢰 가능).
+ * - `responses`/`chat-completions` — 네이티브 OpenAI 계열 모델. 기존 번역 경로에
+ *   해당 wire의 어댑터를 끼워 canonical로 오간다. Anthropic `/messages` 트랜스코더는
+ *   이 모델들에서 스트림 프레이밍이 깨지므로(2026-08-03 실측) 쓰지 않는다.
+ */
+
+export { OPENCODE_GO_MESSAGES_URL, opencodeGoWire };
+
+export function isOpencodeAnthropicPassthrough(model: Pick<GatewayModel, "wire">): boolean {
+  return opencodeGoWire(model) === "anthropic";
+}
+
+/** 번역 경로용 게이트웨이. 요청마다 생성해도 되는 무상태 어댑터를 감싼다. */
+export function createOpencodeGateway(
+  wire: Exclude<GatewayModelWire, "anthropic">,
+): AnthropicMessagesGateway {
+  return new AnthropicMessagesGateway(createOpencodeGoAdapter(wire));
+}
+
+export async function proxyToOpencode(
+  requestHeaders: Record<string, unknown>,
+  res: GatewayProxyResponse,
+  body: AnthropicMessagesRequest,
+  model: string,
+  contextWindow: number | undefined,
+  apiKey: string,
+  fetchImpl: typeof fetch,
+  signal: AbortSignal,
+): Promise<void> {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "anthropic-version": typeof requestHeaders["anthropic-version"] === "string"
+      ? requestHeaders["anthropic-version"]
+      : "2023-06-01",
+    "x-api-key": apiKey,
+  };
+  for (const name of ["anthropic-beta", "user-agent"]) {
+    const value = requestHeaders[name];
+    if (typeof value === "string") headers[name] = value;
+  }
+  await proxyAnthropicMessages(res, opencodeRequestBody(body, model), {
+    contextWindow,
+    fetchImpl,
+    headers,
+    signal,
+    url: OPENCODE_GO_MESSAGES_URL,
+  });
+}
+
+/**
+ * Go의 Anthropic-wire 모델별 effort 수용 범위가 문서화돼 있지 않아, 미지의 upstream
+ * 400을 피하기 위해 `output_config.effort`를 제거하고 나머지 output_config만 유지한다.
+ */
+export function opencodeRequestBody(
+  body: AnthropicMessagesRequest,
+  model: string,
+): AnthropicMessagesRequest {
+  const eagerBody = eagerAnthropicRequestBody(body, model);
+  if (body.output_config === undefined) return eagerBody;
+  const { effort: _effort, ...outputConfig } = body.output_config;
+  const { output_config: _outputConfig, ...withoutOutputConfig } = eagerBody;
+  return Object.keys(outputConfig).length > 0
+    ? { ...withoutOutputConfig, output_config: outputConfig }
+    : withoutOutputConfig;
+}

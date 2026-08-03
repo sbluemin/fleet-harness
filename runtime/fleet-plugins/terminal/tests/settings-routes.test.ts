@@ -43,7 +43,7 @@ describe("terminal settings routes", () => {
       readonly aiGatewayCatalog: { readonly providers: readonly { readonly id: string; readonly models: readonly { readonly id: string; readonly maxMode: boolean; readonly fast: boolean; readonly effort: unknown }[] }[] };
     };
     const providers = body.aiGatewayCatalog.providers;
-    expect(providers.map((provider) => provider.id)).toEqual(["codex", "cursor", "kimi"]);
+    expect(providers.map((provider) => provider.id)).toEqual(["codex", "cursor", "kimi", "opencode"]);
     const allIds = providers.flatMap((provider) => provider.models.map((model) => model.id));
     // Cursor 경유 Kimi와 Kimi 프로바이더는 다른 경로다 — 둘 다 노출한다.
     expect(allIds).toContain("cursor--kimi-k3-1m");

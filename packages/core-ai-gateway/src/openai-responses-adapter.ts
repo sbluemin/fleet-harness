@@ -13,7 +13,24 @@ import type {
   CanonicalWebSearchCallOutputItem,
   CanonicalWebSearchSource
 } from "./canonical.js";
+import {
+  UpstreamBodyLimitError,
+  UpstreamIdleTimeoutError,
+  UpstreamProtocolError,
+  linkAbortSignal,
+  nextEventBoundary,
+  parseSseFrameFields,
+  positiveInteger,
+  readBoundedBody,
+  readWithIdleTimeout,
+  type FetchLike,
+  type UpstreamReadOptions,
+} from "./upstream-sse.js";
 import { wireLog } from "./wire-log.js";
+
+// 전송 계층은 upstream-sse.ts와 공유한다. 기존 배럴 소비자를 위해 그대로 재수출한다.
+export { UpstreamBodyLimitError, UpstreamIdleTimeoutError, UpstreamProtocolError };
+export type { FetchLike };
 
 export const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 /** ChatGPT 구독으로 Codex가 호출하는 백엔드. Platform API와 다른 표면이다. */
@@ -32,11 +49,6 @@ const CHATGPT_UNSUPPORTED_FIELDS = [
   "user",
   "metadata",
 ] as const;
-
-export type FetchLike = (
-  input: string | URL | Request,
-  init?: RequestInit
-) => Promise<Response>;
 
 /**
  * OpenAI Responses wire shapes. The canonical model keeps `native_tools` as a
@@ -87,27 +99,6 @@ export interface OpenAIResponsesAdapterOptions {
   headers?: Readonly<Record<string, string>>;
   /** ChatGPT 백엔드가 거절하는 샘플링 필드를 제거한다. */
   dropSamplingParams?: boolean;
-}
-
-export class UpstreamBodyLimitError extends Error {
-  constructor(readonly maxBodyBytes: number) {
-    super(`OpenAI response exceeded ${maxBodyBytes} bytes`);
-    this.name = "UpstreamBodyLimitError";
-  }
-}
-
-export class UpstreamIdleTimeoutError extends Error {
-  constructor(readonly idleTimeoutMs: number) {
-    super(`OpenAI response was idle for ${idleTimeoutMs}ms`);
-    this.name = "UpstreamIdleTimeoutError";
-  }
-}
-
-export class UpstreamProtocolError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "UpstreamProtocolError";
-  }
 }
 
 export class OpenAIResponsesAdapter implements AiGatewayAdapter {
@@ -292,47 +283,7 @@ function forChatGptBackend(request: CanonicalResponseRequest): CanonicalResponse
   return copy as unknown as CanonicalResponseRequest;
 }
 
-interface ReadOptions {
-  controller: AbortController;
-  idleTimeoutMs: number;
-  maxBodyBytes: number;
-}
-
-async function readBoundedBody(
-  body: ReadableStream<Uint8Array> | null,
-  options: ReadOptions
-): Promise<Uint8Array> {
-  if (body === null) {
-    return new Uint8Array();
-  }
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let byteLength = 0;
-  try {
-    while (true) {
-      const result = await readWithIdleTimeout(reader, options);
-      if (result.done) {
-        break;
-      }
-      byteLength += result.value.byteLength;
-      if (byteLength > options.maxBodyBytes) {
-        const error = new UpstreamBodyLimitError(options.maxBodyBytes);
-        options.controller.abort(error);
-        throw error;
-      }
-      chunks.push(result.value);
-    }
-  } finally {
-    await reader.cancel().catch(() => undefined);
-  }
-  const bodyBytes = new Uint8Array(byteLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bodyBytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bodyBytes;
-}
+type ReadOptions = UpstreamReadOptions;
 
 async function* parseOpenAIEventStream(
   body: ReadableStream<Uint8Array> | null,
@@ -386,83 +337,15 @@ async function* parseOpenAIEventStream(
   }
 }
 
-async function readWithIdleTimeout(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  options: ReadOptions
-): Promise<ReadableStreamReadResult<Uint8Array>> {
-  return await new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = <T>(callback: (value: T) => void, value: T): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timeout);
-      options.controller.signal.removeEventListener("abort", abort);
-      callback(value);
-    };
-    const abort = (): void => {
-      const reason =
-        options.controller.signal.reason instanceof Error
-          ? options.controller.signal.reason
-          : new DOMException("The operation was aborted", "AbortError");
-      void reader.cancel(reason).catch(() => undefined);
-      finish(reject, reason);
-    };
-    const timeout = setTimeout(() => {
-      const error = new UpstreamIdleTimeoutError(options.idleTimeoutMs);
-      options.controller.abort(error);
-    }, options.idleTimeoutMs);
-
-    options.controller.signal.addEventListener("abort", abort, { once: true });
-    if (options.controller.signal.aborted) {
-      abort();
-      return;
-    }
-
-    reader.read().then(
-      (result) => {
-        finish(resolve, result);
-      },
-      (error: unknown) => {
-        finish(reject, error);
-      }
-    );
-  });
-}
-
-function nextEventBoundary(buffer: string): { index: number; length: number } | undefined {
-  const match = /\r\n\r\n|\n\n|\r\r/.exec(buffer);
-  return match === null ? undefined : { index: match.index, length: match[0].length };
-}
-
 function parseEventFrame(frame: string): CanonicalResponseEvent | undefined {
-  let eventName: string | undefined;
-  const data: string[] = [];
-  for (const line of frame.split(/\r\n|\n|\r/)) {
-    if (line.startsWith(":")) {
-      continue;
-    }
-    const separator = line.indexOf(":");
-    const field = separator === -1 ? line : line.slice(0, separator);
-    let value = separator === -1 ? "" : line.slice(separator + 1);
-    if (value.startsWith(" ")) {
-      value = value.slice(1);
-    }
-    if (field === "event") {
-      eventName = value;
-    } else if (field === "data") {
-      data.push(value);
-    }
-  }
-
-  if (data.length === 0 || data.join("\n") === "[DONE]") {
+  const { event: eventName, data } = parseSseFrameFields(frame);
+  if (data.length === 0 || data === "[DONE]") {
     return undefined;
   }
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(data.join("\n"));
+    parsed = JSON.parse(data);
   } catch (error) {
     throw new UpstreamProtocolError(
       `OpenAI SSE contained invalid JSON: ${error instanceof Error ? error.message : String(error)}`
@@ -897,29 +780,6 @@ function canonicalError(value: unknown): CanonicalError {
         ? error.code
         : "api_error";
   return { type, message };
-}
-
-function linkAbortSignal(
-  signal: AbortSignal | undefined,
-  controller: AbortController
-): () => void {
-  if (signal === undefined) {
-    return () => undefined;
-  }
-  const abort = (): void => controller.abort(signal.reason);
-  if (signal.aborted) {
-    abort();
-    return () => undefined;
-  }
-  signal.addEventListener("abort", abort, { once: true });
-  return () => signal.removeEventListener("abort", abort);
-}
-
-function positiveInteger(value: number, name: string): number {
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new TypeError(`${name} must be a positive integer`);
-  }
-  return value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -7,4 +7,6 @@ export * from "./provider-credentials.js";
 export { AnthropicMessagesGateway, ContextWindowExceededError } from "./gateway.js";
 export type { AnthropicGatewayCallOptions, AnthropicGatewayResponse } from "./gateway.js";
 export * from "./models.js";
+export * from "./openai-chat-adapter.js";
 export * from "./openai-responses-adapter.js";
+export * from "./opencode-go.js";

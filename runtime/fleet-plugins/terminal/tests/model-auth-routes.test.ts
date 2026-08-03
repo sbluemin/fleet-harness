@@ -9,25 +9,34 @@ interface WriteJsonCall { readonly status: number; readonly body: unknown }
 interface RouterHarnessOptions {
   readonly authorized?: boolean;
   readonly signedIn?: boolean;
+  readonly opencodeSignedIn?: boolean;
   readonly body?: unknown;
   readonly validationStatus?: "success" | "unauthorized" | "network";
 }
 
 const BASE_PATH = "/plugins/terminal";
 const KIMI_PROVIDER_ID = "Claude Code with Moonshot Kimi";
+const OPENCODE_PROVIDER_ID = "Claude Code with OpenCode Go";
 const KIMI_PATH = `${BASE_PATH}/model-auth/providers/kimi`;
+const OPENCODE_PATH = `${BASE_PATH}/model-auth/providers/opencode`;
 
-describe("terminal Kimi auth routes", () => {
+describe("terminal model auth routes", () => {
   it("returns browser-safe boolean state", async () => {
     const harness = createRouterHarness({ signedIn: true });
     await harness.router({ req: req("GET"), res: res(), pathname: `${BASE_PATH}/model-auth/state` });
 
     expect(harness.writes[0]).toMatchObject({
       status: 200,
-      body: { providers: [{ provider: "kimi", displayName: "Kimi for AI Gateway", signedIn: true }] },
+      body: {
+        providers: [
+          { provider: "kimi", displayName: "Kimi for AI Gateway", signedIn: true },
+          { provider: "opencode", displayName: "OpenCode Go for AI Gateway", signedIn: false },
+        ],
+      },
     });
     const serialized = JSON.stringify(harness.writes);
     expect(serialized).not.toContain(KIMI_PROVIDER_ID);
+    expect(serialized).not.toContain(OPENCODE_PROVIDER_ID);
     expect(serialized).not.toContain("stored-key");
   });
 
@@ -35,9 +44,27 @@ describe("terminal Kimi auth routes", () => {
     const harness = createRouterHarness({ body: { apiKey: "  kimi-secret  " } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: KIMI_PATH });
 
-    expect(harness.validatedKeys).toEqual(["kimi-secret"]);
+    expect(harness.validatedKeys).toEqual([["kimi", "kimi-secret"]]);
     expect(harness.store.get(KIMI_PROVIDER_ID)).toBe("kimi-secret");
     expect(harness.writes[0]?.status).toBe(200);
+  });
+
+  it("stores an OpenCode Go key under its own provider id", async () => {
+    const harness = createRouterHarness({ body: { apiKey: "opencode-secret" } });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: OPENCODE_PATH });
+
+    expect(harness.validatedKeys).toEqual([["opencode", "opencode-secret"]]);
+    expect(harness.store.get(OPENCODE_PROVIDER_ID)).toBe("opencode-secret");
+    expect(harness.store.has(KIMI_PROVIDER_ID)).toBe(false);
+    expect(harness.writes[0]?.status).toBe(200);
+  });
+
+  it("deletes only the OpenCode Go key on opencode sign-out", async () => {
+    const harness = createRouterHarness({ signedIn: true, opencodeSignedIn: true });
+    await harness.router({ req: req("DELETE"), res: res(), pathname: OPENCODE_PATH });
+    expect(harness.store.has(OPENCODE_PROVIDER_ID)).toBe(false);
+    expect(harness.store.has(KIMI_PROVIDER_ID)).toBe(true);
+    expect(harness.writes[0]).toMatchObject({ status: 200 });
   });
 
   it("does not store a rejected key or leak the storage provider ID", async () => {
@@ -82,8 +109,11 @@ describe("terminal Kimi auth routes", () => {
 
 function createRouterHarness(options: RouterHarnessOptions = {}) {
   const writes: WriteJsonCall[] = [];
-  const validatedKeys: string[] = [];
-  const store = new Map<string, string>(options.signedIn ? [[KIMI_PROVIDER_ID, "stored-key"]] : []);
+  const validatedKeys: [string, string][] = [];
+  const store = new Map<string, string>([
+    ...(options.signedIn ? [[KIMI_PROVIDER_ID, "stored-key"] as const] : []),
+    ...(options.opencodeSignedIn ? [[OPENCODE_PROVIDER_ID, "stored-key"] as const] : []),
+  ]);
   const ctx = createContext({
     writes,
     authorized: options.authorized ?? true,
@@ -95,8 +125,8 @@ function createRouterHarness(options: RouterHarnessOptions = {}) {
       deleteApiKey: async (providerId) => store.delete(providerId),
       listProviderIds: async () => [...store.keys()],
     },
-    validateApiKey: async (apiKey) => {
-      validatedKeys.push(apiKey);
+    validateApiKey: async (provider, apiKey) => {
+      validatedKeys.push([provider, apiKey]);
       return { providerId: KIMI_PROVIDER_ID, status: options.validationStatus ?? "success" };
     },
   });

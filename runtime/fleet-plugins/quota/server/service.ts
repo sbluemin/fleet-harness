@@ -3,6 +3,7 @@ import {
   fetchCodexUsage,
   fetchCursorUsage,
   fetchKimiUsage,
+  fetchOpencodeUsage,
   sanitizeProviderError,
 } from "./providers.js";
 import type { ProviderDto, ProviderResult, ProviderSuccess, QuotaSummaryDto } from "./types.js";
@@ -10,7 +11,7 @@ import type { ProviderDto, ProviderResult, ProviderSuccess, QuotaSummaryDto } fr
 const CACHE_TTL_MS = 120_000;
 const STALE_TTL_MS = 1_800_000;
 
-type ProviderId = "claude" | "codex" | "cursor" | "kimi";
+type ProviderId = "claude" | "codex" | "cursor" | "kimi" | "opencode";
 
 export interface QuotaService {
   getSummary(options?: {
@@ -26,6 +27,7 @@ export interface QuotaServiceDeps {
   readonly fetchCodex?: () => Promise<ProviderResult>;
   readonly fetchCursor?: () => Promise<ProviderResult>;
   readonly fetchKimi?: () => Promise<ProviderResult>;
+  readonly fetchOpencode?: () => Promise<ProviderResult>;
   readonly now?: () => number;
   readonly platform?: NodeJS.Platform;
 }
@@ -48,6 +50,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     codex: deps.fetchCodex ?? (() => fetchCodexUsage()),
     cursor: deps.fetchCursor ?? (() => fetchCursorUsage()),
     kimi: deps.fetchKimi ?? (() => fetchKimiUsage()),
+    opencode: deps.fetchOpencode ?? (() => fetchOpencodeUsage()),
   };
   const cache = new Map<ProviderId, CacheEntry>();
   const lastGood = new Map<ProviderId, ProviderSuccess>();
@@ -98,13 +101,14 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
 
   return {
     async getSummary(options = {}) {
-      const [claude, codex, cursor, kimi] = await Promise.all([
+      const [claude, codex, cursor, kimi, opencode] = await Promise.all([
         load("claude", options.force === true || options.forceProvider === "claude"),
         load("codex", options.force === true || options.forceProvider === "codex"),
         load("cursor", options.force === true || options.forceProvider === "cursor"),
         load("kimi", options.force === true || options.forceProvider === "kimi"),
+        load("opencode", options.force === true || options.forceProvider === "opencode"),
       ]);
-      return { providers: { claude, codex, cursor, kimi } };
+      return { providers: { claude, codex, cursor, kimi, opencode } };
     },
   };
 }

@@ -5,6 +5,8 @@ import {
   CODEX_SUBSCRIPTION_MODELS,
   CURSOR_SUBSCRIPTION_MODELS,
   KIMI_SUBSCRIPTION_MODELS,
+  OPENCODE_SUBSCRIPTION_MODELS,
+  isAnthropicPassthroughModel,
   buildAnthropicModelList,
   buildGatewayModelConstraints,
   clampReasoningEffort,
@@ -612,6 +614,36 @@ describe("model catalog", () => {
     expect(CURSOR_SUBSCRIPTION_MODELS.find((model) => model.id === "cursor--kimi-k3-1m"))
       .toMatchObject({ cursorMaxMode: true });
     expect(KIMI_SUBSCRIPTION_MODELS.map((model) => model.upstreamId)).toEqual(["k3", "k3-256k"]);
+    // OpenCode Go의 서비스 가능 전 모델(2026-08-03 라이브 프로브). wire 미선언 =
+    // Anthropic passthrough, 그 외에는 선언된 네이티브 wire의 번역 경로를 탄다.
+    expect(OPENCODE_SUBSCRIPTION_MODELS.map((model) => [model.upstreamId, model.wire ?? "anthropic"])).toEqual([
+      ["minimax-m3", "anthropic"],
+      ["minimax-m2.7", "anthropic"],
+      ["minimax-m2.5", "anthropic"],
+      ["qwen3.8-max", "anthropic"],
+      ["qwen3.7-max", "anthropic"],
+      ["qwen3.7-plus", "anthropic"],
+      ["qwen3.6-plus", "anthropic"],
+      ["qwen3.5-plus", "anthropic"],
+      ["gpt-5.6-luna", "responses"],
+      ["grok-4.5", "responses"],
+      ["deepseek-v4-flash", "chat-completions"],
+      ["deepseek-v4-pro", "chat-completions"],
+      ["glm-5.2", "chat-completions"],
+      ["glm-5.1", "chat-completions"],
+      ["glm-5", "chat-completions"],
+      ["kimi-k3", "chat-completions"],
+      ["kimi-k2.7-code", "chat-completions"],
+      ["kimi-k2.6", "chat-completions"],
+      ["kimi-k2.5", "chat-completions"],
+      ["mimo-v2.5-pro", "chat-completions"],
+      ["mimo-v2.5", "chat-completions"],
+      ["hy3", "chat-completions"],
+    ]);
+    // effort는 reasoning 파라미터를 실측으로 수용한 responses wire에서만 연다.
+    expect(OPENCODE_SUBSCRIPTION_MODELS.every((model) => (
+      model.effort.supported === ((model.wire ?? "anthropic") === "responses")
+    ))).toBe(true);
   });
 
   it("keeps the approved GPT-5.6 and K3 effort ladders in the gateway registry", () => {
@@ -688,12 +720,18 @@ describe("model catalog", () => {
 
   it("includes every provider with collision-free ids and provider-prefixed labels", () => {
     expect(new Set(GATEWAY_MODELS.map((model) => model.provider))).toEqual(
-      new Set(["codex", "cursor", "kimi"]),
+      new Set(["codex", "cursor", "kimi", "opencode"]),
     );
     expect(new Set(GATEWAY_MODELS.map((model) => model.id)).size).toBe(GATEWAY_MODELS.length);
     expect(GATEWAY_MODELS.every((model) => model.id.startsWith(`${model.provider}--`))).toBe(true);
+    const providerLabels = {
+      codex: "Codex",
+      cursor: "Cursor",
+      kimi: "Moonshot-Kimi",
+      opencode: "OpenCode",
+    } as const;
     expect(GATEWAY_MODELS.every((model) => model.displayName.startsWith(
-      `${model.provider === "codex" ? "Codex" : model.provider === "cursor" ? "Cursor" : "Moonshot-Kimi"}-`,
+      `${providerLabels[model.provider]}-`,
     ))).toBe(true);
   });
 
@@ -723,11 +761,14 @@ describe("model catalog", () => {
       display_name: "Moonshot-Kimi-K3-256K",
       max_input_tokens: 262_144,
     });
+    // Anthropic passthrough models require a real 1M window for the marker:
+    // Claude Code's long-context beta must not reach a sub-1M compatible upstream.
+    // Translated wires (opencode responses/chat) project like Codex/Cursor instead.
     expect(GATEWAY_MODELS.every((model) => (
       toClaudeGatewayModelId(model).endsWith("[1m]")
       === (
         (model.contextWindow ?? 0) > 200_000
-        && (model.provider !== "kimi" || (model.contextWindow ?? 0) >= 1_000_000)
+        && (!isAnthropicPassthroughModel(model) || (model.contextWindow ?? 0) >= 1_000_000)
       )
     ))).toBe(true);
     expect(list.data.every((entry) => (
@@ -3030,6 +3071,7 @@ function minimalRegistry() {
       codex: provider("Codex", "codex-model"),
       cursor: provider("Cursor", "auto"),
       kimi: provider("Kimi", "k3"),
+      opencode: provider("OpenCode", "minimax-m3"),
     },
   };
 }
