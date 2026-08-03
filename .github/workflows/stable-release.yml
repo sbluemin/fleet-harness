@@ -361,31 +361,44 @@ jobs:
   # 별도 이벤트 트리거가 아니라 호출로 같은 런에 이어붙인다(GITHUB_TOKEN 이벤트는 워크플로를 트리거하지 못함).
   #
   # 원자성 전략(atomic release):
-  #   npm publish는 되돌릴 수 없으므로(unpublish는 사실상 불가) 여기서는 새 버전을 'latest'가 아니라
-  #   'next' 스테이징 태그로만 올린다. 이러면 기본 설치 경로(`npm i`)는 계속 이전 정상 버전을 받는다.
-  #   모든 산출물이 준비되면 마지막 publish-release 잡이 'latest'를 새 버전으로 승격(가역 연산)하면서
-  #   GitHub Release도 공개한다 — 이 dist-tag 이동이 진짜 커밋 지점이다. 실패 시 latest는 안 움직인다.
+  #   npm publish는 되돌릴 수 없으므로(unpublish는 사실상 불가) 되돌릴 수 없는 연산을 파이프라인
+  #   마지막으로 몬다: desktop 산출물이 초안 Release에 모두 붙은 뒤에야 npm에 'latest'로 직접 올린다.
+  #   desktop이 실패하면 npm publish가 아예 실행되지 않아 기본 설치 경로(`npm i`)는 이전 버전에 머문다.
+  #
+  #   과거에는 'next'로 스테이징한 뒤 dist-tag로 'latest' 승격하는 2단계였으나, npm이 2FA 우회
+  #   granular access token의 dist-tag write를 차단하면서(2026-08 시행) 승격 단계가 403으로 막혔다.
+  #   publish는 버전당 한 번뿐이라 이미 올라간 버전의 태그를 나중에 옮길 방법이 없으므로 처음부터
+  #   latest로 올린다. 롤백은 dist-tag 이동이 아니라 `npm deprecate` + 다음 패치 릴리스로 처리한다.
 
-  # fleet-console → npm (staging: next 태그. 공개 시 publish-release가 latest로 승격)
+  # fleet-console → npm (latest 직접 게시). desktop 산출물이 준비된 뒤에만 실행된다.
+  # desktop 두 잡은 상호배타라 정확히 하나만 성공하면 된다(needs에 skipped 잡이 섞이므로
+  # !cancelled() + 명시적 result 체크가 필수).
   console:
-    needs: release
-    if: needs.release.outputs.should_release == 'true'
+    needs: [release, desktop-build, desktop-carry]
+    if: >-
+      !cancelled() &&
+      needs.release.outputs.should_release == 'true' &&
+      (needs.desktop-build.result == 'success' || needs.desktop-carry.result == 'success')
     uses: ./.github/workflows/console-release.yml
     with:
       ref: ${{ needs.release.outputs.release_sha }}
       version: ${{ needs.release.outputs.next_version }}
-      dist_tag: next
+      dist_tag: latest
     secrets: inherit
 
-  # fleet-cli → npm (같은 버전의 fleet-console에 의존하므로 console 배포 후 실행. staging: next 태그)
+  # fleet-cli → npm (같은 버전의 fleet-console에 의존하므로 console 배포 후 실행)
   cli:
-    needs: [release, console]
-    if: needs.release.outputs.should_release == 'true'
+    needs: [release, console, desktop-build, desktop-carry]
+    if: >-
+      !cancelled() &&
+      needs.release.outputs.should_release == 'true' &&
+      needs.console.result == 'success' &&
+      (needs.desktop-build.result == 'success' || needs.desktop-carry.result == 'success')
     uses: ./.github/workflows/cli-release.yml
     with:
       ref: ${{ needs.release.outputs.release_sha }}
       version: ${{ needs.release.outputs.next_version }}
-      dist_tag: next
+      dist_tag: latest
     secrets: inherit
 
   # desktop 셸 → 마지막 성공 빌드(desktop-v* 태그) 이후 변경이 있을 때만 네이티브 러너 매트릭스로
@@ -448,38 +461,22 @@ jobs:
           fi
           gh api "repos/${{ github.repository }}/git/refs" -f ref="refs/tags/$DESKTOP_TAG" -f sha="$RELEASE_SHA"
 
-  # 릴리스의 커밋 지점(commit point). 모든 산출물(npm next 태그 + desktop 아티팩트)이 준비된 뒤에만 실행된다.
-  # console/cli가 실패하거나 desktop-build/desktop-carry 중 실행된 쪽이 실패하면 이 잡은 실행되지
-  # 않아 → npm latest는 안 움직이고 Release는 draft로 남는다. desktop 두 잡은 상호배타라 정확히
-  # 하나만 성공하면 된다(needs에 skipped 잡이 섞이므로 !cancelled() + 명시적 result 체크가 필수).
-  # 여기서 하는 두 연산(npm latest 승격, draft 공개)은 모두 가역이라 사후 롤백이 가능하다:
-  #   - 롤백: npm dist-tag add <pkg>@<이전버전> latest  (+ 필요시 npm deprecate <나쁜버전>). unpublish는 쓰지 않는다.
-  #   - 두 스텝 모두 멱등이라(이미 latest면 no-op) 부분 실패 시 이 잡만 재실행하면 수렴한다.
+  # 릴리스의 마무리 단계. npm 게시(latest)까지 끝난 뒤 초안 Release를 공개한다.
+  # console/cli가 실패하면 이 잡은 실행되지 않아 Release는 draft로 남는다(desktop 실패는 console
+  # 단계에서 이미 걸러진다). 진짜 커밋 지점은 npm publish 쪽으로 옮겨갔고, 여기 남은 draft 공개는
+  # 가역(다시 draft로 되돌릴 수 있음)이자 멱등이라 부분 실패 시 이 잡만 재실행하면 수렴한다.
+  # npm 산출물에 문제가 있으면 `npm deprecate <나쁜버전>` + 다음 패치 릴리스로 대응한다(unpublish는 쓰지 않는다).
   publish-release:
-    needs: [release, console, cli, desktop-build, desktop-carry]
+    needs: [release, console, cli]
     if: >-
       !cancelled() &&
       needs.release.outputs.should_release == 'true' &&
       needs.console.result == 'success' &&
-      needs.cli.result == 'success' &&
-      (needs.desktop-build.result == 'success' || needs.desktop-carry.result == 'success')
+      needs.cli.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      # npm 승격에는 레지스트리 인증(.npmrc)만 필요하다 — checkout/install 불필요.
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
-      - name: Promote npm packages to latest
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          VERSION: ${{ needs.release.outputs.next_version }}
-        run: |
-          # next 태그로 스테이징된 새 버전을 latest로 승격한다(기본 설치 경로를 새 버전으로 확정).
-          npm dist-tag add @dotobokuri/fleet-console@"$VERSION" latest
-          npm dist-tag add @dotobokuri/fleet-cli@"$VERSION" latest
       - name: Publish the draft release
         env:
           GH_TOKEN: ${{ github.token }}
