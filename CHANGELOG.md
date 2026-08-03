@@ -5,6 +5,41 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.45.0] - 2026-08-03
+
+### fleet-cli
+
+#### Removed
+- [fleet-cli] Remove Codex CLI from the Fleet launch catalog.
+
+### fleet-console
+
+#### Removed
+- [fleet-console] Drop the `@fleet-console/sdk/launch` subpath; `LaunchContext` now ships from `@fleet-console/sdk/plugin`.
+- [fleet-console] Remove Codex Agent Operations while preserving legacy session data and Fleet Wiki Codex.
+
+### fleet-plugin
+
+#### Fixed
+- [fleet-console] The File Explorer git badges now run git with the same environment denial the Repository panel already used, so an inherited askpass program, terminal prompt, or unknown transport helper cannot run from a badge refresh.
+- [fleet-console] Session Analyst routes accept a JSON request whose `Content-Type` carries a charset parameter or uppercase media type, matching the other terminal routes.
+- [fleet-console] The AI Gateway now finds the Cursor subscription token on Linux and Windows, not only macOS. It reads the platform auth file (`%APPDATA%/Cursor/auth.json` on Windows, `$XDG_CONFIG_HOME` or `~/.config` under `cursor/auth.json` on Linux) when the macOS keychain is unavailable, so Cursor model calls no longer fail with a 401 that reported no subscription token.
+- [fleet-console] The AI Gateway now honors `CODEX_HOME` when it looks for the ChatGPT subscription token, so a relocated Codex home no longer makes Codex model calls fail with a 401 that reported no subscription token while the Usage limits panel found the same login.
+
+#### Removed
+- [fleet-console] Remove Codex Agent Operation launch, resume, capture, and activity integration from the Terminal plugin.
+
+### fleet-core
+
+#### Added
+- [core-ai-gateway] Add Cursor and Codex credential procurement as shared package API, so every caller resolves a subscription token through one platform-aware implementation instead of its own copy.
+
+#### Fixed
+- [fleet-wiki] A queued patch keeps tags containing a newline, quote, or backslash intact, because the inline frontmatter array is now decoded with the same escaping its writer applies.
+
+#### Removed
+- [fleet-admiral] Remove Codex CLI profiles, injection, and plugin registration from Admiral.
+
 ## [1.44.1] - 2026-08-02
 
 Release v1.44.1

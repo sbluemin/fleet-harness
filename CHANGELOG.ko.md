@@ -5,6 +5,41 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.45.0] - 2026-08-03
+
+### fleet-cli
+
+#### Removed
+- [fleet-cli] Fleet 실행 카탈로그에서 Codex CLI를 제거합니다.
+
+### fleet-console
+
+#### Removed
+- [fleet-console] `@fleet-console/sdk/launch` 서브패스를 제거했습니다. `LaunchContext`는 이제 `@fleet-console/sdk/plugin`에서 제공합니다.
+- [fleet-console] 기존 세션 데이터와 Fleet Wiki Codex는 보존하면서 Codex Agent Operation을 제거합니다.
+
+### fleet-plugin
+
+#### Fixed
+- [fleet-console] File Explorer의 git 배지가 이제 Repository 패널과 동일한 환경 차단으로 git을 실행합니다. 상속된 askpass 프로그램, 터미널 프롬프트, 알 수 없는 전송 helper가 배지 갱신에서 실행될 수 없습니다.
+- [fleet-console] Session Analyst 라우트가 `Content-Type`에 charset 파라미터가 붙거나 미디어 타입이 대문자인 JSON 요청도 수용합니다. 다른 터미널 라우트와 동작이 같아집니다.
+- [fleet-console] AI Gateway가 이제 macOS뿐 아니라 Linux와 Windows에서도 Cursor 구독 토큰을 찾습니다. macOS 키체인을 쓸 수 없을 때 플랫폼별 auth 파일(Windows는 `%APPDATA%/Cursor/auth.json`, Linux는 `$XDG_CONFIG_HOME` 또는 `~/.config` 아래 `cursor/auth.json`)을 읽으므로, 구독 토큰이 없다고 알리던 401로 Cursor 모델 호출이 실패하지 않습니다.
+- [fleet-console] AI Gateway가 ChatGPT 구독 토큰을 찾을 때 `CODEX_HOME`을 존중합니다. Codex 홈을 옮겨 두어도 Usage limits 패널만 로그인을 찾고 Codex 모델 호출은 구독 토큰이 없다는 401로 실패하던 문제가 없어집니다.
+
+#### Removed
+- [fleet-console] Terminal 플러그인에서 Codex Agent Operation의 실행, 재개, 캡처, 활동 연동을 제거합니다.
+
+### fleet-core
+
+#### Added
+- [core-ai-gateway] Cursor와 Codex 자격증명 조달을 공유 패키지 API로 추가했습니다. 모든 호출자가 각자의 복사본 대신 플랫폼을 인지하는 단일 구현으로 구독 토큰을 조달합니다.
+
+#### Fixed
+- [fleet-wiki] 대기 중인 패치가 개행·따옴표·역슬래시가 포함된 태그를 그대로 보존합니다. 인라인 frontmatter 배열을 기록할 때 적용한 이스케이프와 동일한 규칙으로 해제하기 때문입니다.
+
+#### Removed
+- [fleet-admiral] Admiral에서 Codex CLI 프로필, 주입, 플러그인 등록을 제거합니다.
+
 ## [1.44.1] - 2026-08-02
 
 Release v1.44.1
