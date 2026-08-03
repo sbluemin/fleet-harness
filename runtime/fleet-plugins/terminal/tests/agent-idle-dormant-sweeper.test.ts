@@ -40,6 +40,22 @@ describe("idle agent dormant sweeper", () => {
     expect(terminate).not.toHaveBeenCalled();
   });
 
+  it("skips sessions with pending background subagent work", () => {
+    const terminate = vi.fn();
+    sweepIdleAgentSessions({
+      loadGlobalOptions: () => ({ version: 1, agentIdleDormantMinutes: 60 }),
+      listTerminalSessions: () => [
+        liveSession({ sessionId: "background", modelActivity: "not-working", turnState: "ended", backgroundPending: true }),
+      ],
+      getSessionLastActivityAt: () => 0,
+      hasProviderSessionCapture: () => true,
+      hasActiveCarrierJob: () => false,
+      terminate,
+      now: () => 60 * 60_000,
+    });
+    expect(terminate).not.toHaveBeenCalled();
+  });
+
   it("terminates not-working sessions even when turnState is still running", () => {
     const terminate = vi.fn(() => true);
     sweepIdleAgentSessions({

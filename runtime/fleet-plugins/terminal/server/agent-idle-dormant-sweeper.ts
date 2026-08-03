@@ -64,6 +64,8 @@ export function sweepIdleAgentSessions(deps: IdleAgentDormantSweepDeps): void {
     // turnState는 OSC가 의견 없을 때(modelActivity 부재)의 폴백만 쓴다.
     // not-working이 확정되면 turn end hook 지연/유실과 무관하게 후속 가드로 진행한다.
     if (session.modelActivity === undefined && session.turnState === "running") continue;
+    // 백그라운드 서브에이전트/워크플로우가 남아있는 세션을 dormant로 내리면 진행 중인 작업째 죽는다.
+    if (session.backgroundPending === true) continue;
     // detached carrier job이 돌면 reminder 주입용 live PTY를 유지해야 한다.
     if (deps.hasActiveCarrierJob(session.sessionId)) continue;
     if (!deps.hasProviderSessionCapture(session.sessionId)) continue;
