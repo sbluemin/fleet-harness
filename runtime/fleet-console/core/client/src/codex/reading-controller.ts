@@ -93,6 +93,8 @@ export function mountReadingInto(
   opts: MountReadingOptions,
 ): ReadingController {
   let destroyed = false;
+  let entryRequestEpoch = 0;
+  let subRequestEpoch = 0;
   let schemaRequestEpoch = 0;
   let cleanupSpy: (() => void) | null = null;
   let coworkController: CoworkController | null = null;
@@ -246,13 +248,15 @@ export function mountReadingInto(
 
   async function renderEntryView(entryId: string): Promise<void> {
     if (destroyed) return;
+    const requestEpoch = ++entryRequestEpoch;
+    currentEntryId = entryId;
     showLoading(readContainer, opts.tocContainer);
     opts.onTocChanged?.(0);
     cleanupReader();
 
     try {
       const entry = await fetchEntry(liveOpts.theaterId, entryId);
-      if (destroyed) return;
+      if (destroyed || requestEpoch !== entryRequestEpoch || entryId !== currentEntryId) return;
 
       const { index } = getState();
       const t = consoleT();
@@ -296,12 +300,24 @@ export function mountReadingInto(
       }
       opts.onEntryRendered?.(entryId);
     } catch (error) {
-      if (!destroyed) showError(readContainer, opts.tocContainer, error);
+      if (!destroyed && requestEpoch === entryRequestEpoch && entryId === currentEntryId) {
+        showError(readContainer, opts.tocContainer, error);
+      }
     }
+  }
+
+  function isCurrentSubRequest(
+    kind: "drydock" | "conflicts",
+    subId: string | undefined,
+    requestEpoch: number,
+  ): boolean {
+    return !destroyed && opts.kind === kind && currentSubId === subId && requestEpoch === subRequestEpoch;
   }
 
   async function renderDrydockView(patchId: string | undefined): Promise<void> {
     if (destroyed) return;
+    const requestEpoch = ++subRequestEpoch;
+    currentSubId = patchId;
     showLoading(readContainer, opts.tocContainer);
     opts.onTocChanged?.(0);
     cleanupReader();
@@ -315,7 +331,7 @@ export function mountReadingInto(
     try {
       if (patchId) {
         const detail = await fetchDrydockDetail(liveOpts.theaterId, patchId);
-        if (destroyed) return;
+        if (!isCurrentSubRequest("drydock", patchId, requestEpoch)) return;
 
         currentDetailMeta = detail.meta;
         currentDetailPatchId = patchId;
@@ -336,18 +352,22 @@ export function mountReadingInto(
         }
       } else {
         const list = await fetchDrydock(liveOpts.theaterId, "pending");
-        if (destroyed) return;
+        if (!isCurrentSubRequest("drydock", patchId, requestEpoch)) return;
         opts.tocContainer.innerHTML = "";
         opts.onTocChanged?.(0);
         readContainer.innerHTML = renderDrydockList(list.items, consoleT()("codex.reading.reviewQueuePending"));
       }
     } catch (error) {
-      if (!destroyed) showError(readContainer, opts.tocContainer, error);
+      if (isCurrentSubRequest("drydock", patchId, requestEpoch)) {
+        showError(readContainer, opts.tocContainer, error);
+      }
     }
   }
 
   async function renderConflictsView(conflictId: string | undefined): Promise<void> {
     if (destroyed) return;
+    const requestEpoch = ++subRequestEpoch;
+    currentSubId = conflictId;
     showLoading(readContainer, opts.tocContainer);
     opts.onTocChanged?.(0);
     cleanupReader();
@@ -355,25 +375,28 @@ export function mountReadingInto(
     try {
       if (conflictId) {
         const detail = await fetchConflictDetail(liveOpts.theaterId, conflictId);
-        if (destroyed) return;
+        if (!isCurrentSubRequest("conflicts", conflictId, requestEpoch)) return;
         opts.tocContainer.innerHTML = "";
         opts.onTocChanged?.(0);
         readContainer.innerHTML = renderConflictDetail(detail);
       } else {
         const conflicts = await fetchConflicts(liveOpts.theaterId);
-        if (destroyed) return;
+        if (!isCurrentSubRequest("conflicts", conflictId, requestEpoch)) return;
         opts.tocContainer.innerHTML = "";
         opts.onTocChanged?.(0);
         readContainer.innerHTML = renderConflictList(conflicts);
       }
     } catch (error) {
-      if (!destroyed) showError(readContainer, opts.tocContainer, error);
+      if (isCurrentSubRequest("conflicts", conflictId, requestEpoch)) {
+        showError(readContainer, opts.tocContainer, error);
+      }
     }
   }
 
   async function renderSchemaView(templateId: string | undefined): Promise<void> {
     const requestEpoch = ++schemaRequestEpoch;
     const theaterId = liveOpts.theaterId;
+    currentSubId = templateId;
     showLoading(readContainer, opts.tocContainer);
     opts.onTocChanged?.(0);
     cleanupReader();
@@ -405,17 +428,17 @@ export function mountReadingInto(
   return {
     destroy(): void {
       destroyed = true;
+      entryRequestEpoch += 1;
+      subRequestEpoch += 1;
       schemaRequestEpoch += 1;
       readContainer.removeEventListener("click", handleClick);
       cleanupReader();
       coworkController?.destroy();
     },
     async setEntry(entryId: string): Promise<void> {
-      currentEntryId = entryId;
       await renderEntryView(entryId);
     },
     async navigateSub(subId: string | undefined): Promise<void> {
-      currentSubId = subId;
       if (opts.kind === "drydock") {
         await renderDrydockView(subId);
       } else if (opts.kind === "conflicts") {
@@ -575,7 +598,7 @@ function renderPatchDetail(detail: DrydockDetailResponse, markdownHtml: string):
         </nav>
         <button type="button" class="queue-back-btn" data-drydock-action="back">${escapeHtml(t("codex.reading.backQueue"))}</button>
         <h1><span class="op-badge">${glyph}</span> ${escapeHtml(wikiEntry.title)}</h1>
-        <p class="eyebrow">${escapeHtml(patch.frontmatter.target)} · v${wikiEntry.version} · ${escapeHtml(targetLabel)}</p>
+        <p class="eyebrow">${escapeHtml(patch.frontmatter.target)} · v${escapeHtml(String(wikiEntry.version))} · ${escapeHtml(targetLabel)}</p>
         ${renderPatchMetaChips(patch.frontmatter.proposer, wikiEntry.tags)}
       </header>
       <div class="markdown-body" id="codex-reader-body">

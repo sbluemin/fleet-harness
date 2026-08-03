@@ -155,6 +155,69 @@ describe("Codex schema UI contract", () => {
     controller.destroy();
   });
 
+  it("keeps the latest entry when an older request resolves last", async () => {
+    vi.resetModules();
+    const staleEntry = deferred<{
+      frontmatter: {
+        id: string;
+        title: string;
+        tags: string[];
+        created: string;
+        updated: string;
+        version: number;
+      };
+      body: string;
+    }>();
+    apiMocks.fetchEntry.mockImplementation((_theaterId: string | null, entryId: string) => {
+      if (entryId === "entry-old") return staleEntry.promise;
+      return Promise.resolve({
+        frontmatter: {
+          id: entryId,
+          title: "Latest entry",
+          tags: [],
+          created: "2026-08-04T00:00:00.000Z",
+          updated: "2026-08-04T00:00:00.000Z",
+          version: 1,
+        },
+        body: "latest body",
+      });
+    });
+    const { mountReadingInto } = await import("../core/client/src/codex/reading-controller.js");
+    const root = document.body.appendChild(document.createElement("div"));
+    const toc = document.body.appendChild(document.createElement("div"));
+    const onEntryRendered = vi.fn();
+    const controller = mountReadingInto(root, {
+      initialEntryId: "entry-old",
+      kind: "entry",
+      theaterId: "workspace-a",
+      onRelatedClick: vi.fn(),
+      onEntryRendered,
+      onClose: vi.fn(),
+      tocContainer: toc,
+    });
+
+    await controller.setEntry("entry-latest");
+    expect(root.querySelector("h1")?.textContent).toBe("Latest entry");
+    staleEntry.resolve({
+      frontmatter: {
+        id: "entry-old",
+        title: "Stale entry",
+        tags: [],
+        created: "2026-08-03T00:00:00.000Z",
+        updated: "2026-08-03T00:00:00.000Z",
+        version: 1,
+      },
+      body: "stale body",
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(root.querySelector("h1")?.textContent).toBe("Latest entry");
+    expect(onEntryRendered).toHaveBeenCalledTimes(1);
+    expect(onEntryRendered).toHaveBeenCalledWith("entry-latest");
+    controller.destroy();
+  });
+
   it("opens conflict detail from a focusable list row", async () => {
     vi.resetModules();
     apiMocks.fetchConflicts.mockResolvedValue([{ id: "conflict-a", title: "Conflict A", status: "open" }]);
