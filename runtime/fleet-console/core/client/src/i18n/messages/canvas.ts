@@ -99,6 +99,7 @@ export const canvasEn = {
   // ── sidebar ─────────────────────────────────────────────────────────────
   "sidebar.status.awaiting": "AWAITING",
   "sidebar.status.running": "RUNNING",
+  "sidebar.status.background": "BACKGROUND",
   "sidebar.status.idle": "IDLE",
   "sidebar.status.dormant": "DORMANT",
   "sidebar.status.expandSection": "Expand section {label}",
@@ -288,6 +289,7 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
 
   "sidebar.status.awaiting": "대기",
   "sidebar.status.running": "실행 중",
+  "sidebar.status.background": "백그라운드",
   "sidebar.status.idle": "유휴",
   "sidebar.status.dormant": "휴면",
   "sidebar.status.expandSection": "{label} 섹션 펼치기",

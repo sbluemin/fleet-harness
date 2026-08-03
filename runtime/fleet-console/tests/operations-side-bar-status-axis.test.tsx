@@ -84,6 +84,7 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(Array.from(container?.querySelectorAll(".side-bar-status-header__label") ?? []).map((node) => node.textContent)).toEqual([
       "AWAITING",
       "RUNNING",
+      "BACKGROUND",
       "IDLE",
       "DORMANT",
     ]);
@@ -103,14 +104,14 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(required<HTMLElement>('[data-side-bar-chip-id="awaiting"]').dataset.reorderEnabled).toBe("false");
   });
 
-  it("pins all four slots, defaults empty sections collapsed, and toggles empty and occupied sections independently", () => {
+  it("pins all five slots, defaults empty sections collapsed, and toggles empty and occupied sections independently", () => {
     setConsoleState({ operationStatus: { only: "running" } });
     setSideBarStatusAxis(true);
     renderSideBar([makeOperation("only", null)]);
 
     const sections = Array.from(container?.querySelectorAll<HTMLElement>(".side-bar-status-section") ?? []);
-    expect(sections).toHaveLength(4);
-    expect(sections.map((section) => section.querySelector(".side-bar-status-header__count")?.textContent)).toEqual(["0", "1", "0", "0"]);
+    expect(sections).toHaveLength(5);
+    expect(sections.map((section) => section.querySelector(".side-bar-status-header__count")?.textContent)).toEqual(["0", "1", "0", "0", "0"]);
 
     const awaiting = required<HTMLElement>(".side-bar-status-section--awaiting");
     expect(awaiting.className).toContain("side-bar-status-section--empty");

@@ -209,6 +209,7 @@ function buildStatusSectionOrder(t: Translate<CoreMessageKey>): readonly Omit<St
   return [
     { status: "awaiting", label: t("sidebar.status.awaiting") },
     { status: "running", label: t("sidebar.status.running") },
+    { status: "background", label: t("sidebar.status.background") },
     { status: "idle", label: t("sidebar.status.idle") },
     { status: "dormant", label: t("sidebar.status.dormant") },
   ];

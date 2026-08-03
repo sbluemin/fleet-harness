@@ -4,7 +4,7 @@ import { useT } from "../i18n/index.js";
 import { operationActivityVisual, resolveOperationActivity } from "../operation-activity.js";
 import type { OperationNode } from "../types.js";
 
-const STATUS_ORDER: readonly OperationActivity[] = ["awaiting", "running", "idle", "dormant"];
+const STATUS_ORDER: readonly OperationActivity[] = ["awaiting", "running", "background", "idle", "dormant"];
 
 export function MobileOperationList({ operations, operationStatus, notificationIds, onOpen }: {
   readonly operations: readonly OperationNode[];
@@ -63,6 +63,7 @@ export function MobileOperationList({ operations, operationStatus, notificationI
 function beaconClass(status: OperationActivity): string {
   const visual = operationActivityVisual(status);
   if (visual === "running") return "tenant-beacon is-turn-running";
+  if (visual === "background") return "tenant-beacon is-background";
   if (visual === "awaiting") return "tenant-beacon is-awaiting";
   if (visual === "dormant") return "tenant-beacon is-dormant";
   return "tenant-beacon is-idle";

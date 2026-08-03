@@ -506,6 +506,7 @@ function resizeGeometry(geometry: OperationGeometry, direction: ResizeDirection,
 function frameStatusClass(status: OperationActivity | undefined): string {
   const visual = operationActivityVisual(status);
   if (visual === "running") return "is-running is-running--turn";
+  if (visual === "background") return "is-running is-running--background";
   if (visual === "awaiting") return "is-running is-running--awaiting";
   return "";
 }
@@ -513,6 +514,7 @@ function frameStatusClass(status: OperationActivity | undefined): string {
 function beaconStatusClass(status: OperationActivity | undefined): string {
   const visual = operationActivityVisual(status);
   if (visual === "running") return "tenant-beacon is-turn-running";
+  if (visual === "background") return "tenant-beacon is-background";
   if (visual === "awaiting") return "tenant-beacon is-awaiting";
   if (visual === "dormant") return "tenant-beacon is-dormant";
   return "tenant-beacon is-idle";

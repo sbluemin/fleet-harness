@@ -89,6 +89,10 @@ describe("fleet console CLI", () => {
   it("parses hook capture-session commands", () => {
     expect(parseConsoleHookCommand(["capture-session", "claude"])).toEqual({ command: "capture-session", provider: "claude" });
     expect(() => parseConsoleHookCommand(["capture-session", "codex"])).toThrow("Unknown fleet-console hook command");
+    expect(parseConsoleHookCommand(["background-spawn"])).toEqual({ command: "background-spawn" });
+    expect(parseConsoleHookCommand(["background-stop"])).toEqual({ command: "background-stop" });
+    expect(() => parseConsoleHookCommand(["background-spawn", "extra"])).toThrow("Unknown fleet-console hook command");
+    expect(() => parseConsoleHookCommand(["background-stop", "extra"])).toThrow("Unknown fleet-console hook command");
     expect(parseConsoleHookCommand(["attention"])).toEqual({ command: "attention" });
     expect(() => parseConsoleHookCommand(["attention", "extra"])).toThrow("Unknown fleet-console hook command");
     expect(() => parseConsoleHookCommand(["capture-session"])).toThrow("Unknown fleet-console hook command");
@@ -136,6 +140,61 @@ describe("fleet console CLI", () => {
     expect(calls[0]?.init?.method).toBe("POST");
     expect((calls[0]?.init?.headers as Record<string, string>).authorization).toBe(`Bearer ${lock.payload.token}`);
     expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({ provider: "claude" });
+  });
+
+  it("posts background hooks to the session-scoped background endpoint", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-background-hook-"));
+    TEMP_DIRS.push(dir);
+    const paths = createConsolePaths({ env: { FLEET_CONSOLE_DIR: dir } });
+    createConsoleLock().writeLock({
+      dir: paths.dir,
+      lockFile: paths.lockFile,
+      pid: process.pid,
+      port: 51240,
+      endpoint: "http://127.0.0.1:51240/",
+      version: "test",
+    });
+    const calls: Array<{ readonly url: string; readonly init: RequestInit | undefined }> = [];
+    const originalArgv = process.argv;
+    const originalFetch = globalThis.fetch;
+    const originalConsoleDir = process.env.FLEET_CONSOLE_DIR;
+    const originalSessionId = process.env.FLEET_CONSOLE_SESSION_ID;
+    globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(url), init });
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+    process.env.FLEET_CONSOLE_DIR = dir;
+    process.env.FLEET_CONSOLE_SESSION_ID = "session-background";
+    try {
+      for (const command of ["background-spawn", "background-stop"] as const) {
+        process.argv = ["node", "fleet-console", "hook", command];
+        await main();
+      }
+    } finally {
+      process.argv = originalArgv;
+      globalThis.fetch = originalFetch;
+      if (originalConsoleDir === undefined) delete process.env.FLEET_CONSOLE_DIR;
+      else process.env.FLEET_CONSOLE_DIR = originalConsoleDir;
+      if (originalSessionId === undefined) delete process.env.FLEET_CONSOLE_SESSION_ID;
+      else process.env.FLEET_CONSOLE_SESSION_ID = originalSessionId;
+    }
+
+    expect(calls.map((call) => ({
+      url: call.url,
+      method: call.init?.method,
+      body: JSON.parse(String(call.init?.body)) as unknown,
+    }))).toEqual([
+      {
+        url: "http://127.0.0.1:51240/plugins/terminal/agent/sessions/session-background/background",
+        method: "POST",
+        body: { event: "spawn" },
+      },
+      {
+        url: "http://127.0.0.1:51240/plugins/terminal/agent/sessions/session-background/background",
+        method: "POST",
+        body: { event: "stop" },
+      },
+    ]);
   });
 
   it("documents the usage entry points and subcommands in help text", () => {

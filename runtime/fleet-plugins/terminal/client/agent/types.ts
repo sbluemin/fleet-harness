@@ -51,6 +51,7 @@ export interface SessionInfo {
   readonly turnState: TurnState;
   readonly modelActivity?: ModelActivity;
   readonly attentionPending?: boolean;
+  readonly backgroundPending?: boolean;
   readonly createdAt: number;
   readonly theaterId?: string;
   readonly tenantId?: string;

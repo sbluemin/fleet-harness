@@ -66,6 +66,8 @@ interface PendingTerminalSessionState {
   turnState?: AgentTurnState;
   modelActivity?: AgentModelActivity;
   attentionPending?: boolean;
+  backgroundPendingCount?: number;
+  backgroundPendingExpiry?: ReturnType<typeof setTimeout>;
   registrationId?: string;
   cliRunId?: string;
   providerSession?: AgentProviderSession;
@@ -96,6 +98,7 @@ const JOB_EVENT_LIMIT = 200;
 const TENANT_FINALIZED_JOB_LIMIT = 100;
 const TENANT_JOB_LIMIT = 200;
 const EVENT_TEXT_RETENTION_LIMIT = 8_192;
+const BACKGROUND_PENDING_TTL_MS = 30 * 60_000;
 const REDACTED_REQUEST_PATH = "[redacted path]";
 
 export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreDeps = {}) {
@@ -222,6 +225,8 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     const createdAt = input.createdAt ?? now();
     const canonicalCwd = canonicalizeTheaterPath(input.cwd);
     const theaterId = workspaceHash(canonicalCwd);
+    const previous = terminalSessionsById.get(input.sessionId);
+    if (previous) clearTerminalSessionBackgroundPending(previous);
     const state: PendingTerminalSessionState = {
       sessionId: input.sessionId,
       cwd: input.cwd,
@@ -238,6 +243,8 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   }
 
   function injectDormantOperation(operation: DormantOperationInput): AgentTerminalSessionInfo {
+    const previous = terminalSessionsById.get(operation.sessionId);
+    if (previous) clearTerminalSessionBackgroundPending(previous);
     const state: PendingTerminalSessionState = {
       sessionId: operation.sessionId,
       cwd: operation.cwd,
@@ -305,6 +312,9 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       delete session.modelActivity;
       delete session.attentionPending;
     }
+    if (status === "dormant" || status === "closed" || status === "error") {
+      clearTerminalSessionBackgroundPending(session);
+    }
     return toTerminalSessionInfo(session);
   }
 
@@ -314,6 +324,21 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     session.turnState = turnState;
     delete session.modelActivity;
     delete session.attentionPending;
+    return toTerminalSessionInfo(session);
+  }
+
+  function setTerminalSessionBackgroundEvent(sessionId: string, event: "spawn" | "stop"): AgentTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    if (!session) return null;
+    const count = session.backgroundPendingCount ?? 0;
+    session.backgroundPendingCount = event === "spawn" ? count + 1 : Math.max(0, count - 1);
+    if (session.backgroundPendingExpiry) clearTimeout(session.backgroundPendingExpiry);
+    session.backgroundPendingExpiry = setTimeout(() => {
+      session.backgroundPendingCount = 0;
+      delete session.backgroundPendingExpiry;
+      notifySessionUpdated(toTerminalSessionInfo(session));
+    }, BACKGROUND_PENDING_TTL_MS);
+    if (typeof session.backgroundPendingExpiry.unref === "function") session.backgroundPendingExpiry.unref();
     return toTerminalSessionInfo(session);
   }
 
@@ -338,6 +363,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     session.status = "dormant";
     session.providerSession = providerSession;
     delete session.modelActivity;
+    clearTerminalSessionBackgroundPending(session);
     // attentionPending은 보존한다 — dormant 사이드바 "입력 대기" 배지가 Resume 전까지 유지되어야 한다.
     // resume 실패 롤백용 updateTerminalSessionStatus("dormant") 분기는 기존처럼 attention을 지운다.
     return toTerminalSessionInfo(session);
@@ -426,7 +452,15 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     for (const listener of allListeners) listener(event);
   }
 
+  function clearTerminalSessionBackgroundPending(session: PendingTerminalSessionState): void {
+    if (session.backgroundPendingExpiry) clearTimeout(session.backgroundPendingExpiry);
+    delete session.backgroundPendingExpiry;
+    session.backgroundPendingCount = 0;
+  }
+
   function removeTerminalSession(sessionId: string): boolean {
+    const session = terminalSessionsById.get(sessionId);
+    if (session) clearTerminalSessionBackgroundPending(session);
     const workspace = workspacesByCliRunId.get(sessionId);
     if (workspace?.terminalSessionId === sessionId) {
       removeWorkspaceIndexes(workspace);
@@ -436,6 +470,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   }
 
   function clear(): void {
+    for (const session of terminalSessionsById.values()) clearTerminalSessionBackgroundPending(session);
     workspacesByCliRunId.clear();
     workspacesByRegistrationId.clear();
     eventsByTenant.clear();
@@ -473,6 +508,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     clearTerminalSessionProviderSession,
     updateTerminalSessionStatus,
     setTerminalSessionTurnState,
+    setTerminalSessionBackgroundEvent,
     setTerminalSessionModelActivity,
     transitionTerminalSessionToDormant,
     removeTerminalSession,
@@ -552,6 +588,7 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): AgentTermina
     turnState: state.turnState ?? "none",
     ...(state.modelActivity ? { modelActivity: state.modelActivity } : {}),
     ...(state.attentionPending === true ? { attentionPending: true } : {}),
+    ...(state.backgroundPendingCount && state.backgroundPendingCount > 0 ? { backgroundPending: true } : {}),
     createdAt: state.createdAt,
     theaterId: state.theaterId,
     registrationId: state.registrationId,

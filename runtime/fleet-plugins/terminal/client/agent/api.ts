@@ -138,6 +138,7 @@ export function assertSessionInfo(value: unknown, status: number): SessionInfo {
     turnState: payload.turnState === "running" || payload.turnState === "ended" ? payload.turnState : "none",
     modelActivity: payload.modelActivity === "working" || payload.modelActivity === "not-working" ? payload.modelActivity : undefined,
     attentionPending: typeof payload.attentionPending === "boolean" ? payload.attentionPending : undefined,
+    backgroundPending: typeof payload.backgroundPending === "boolean" ? payload.backgroundPending : undefined,
     createdAt: payload.createdAt,
     theaterId: typeof payload.theaterId === "string" ? payload.theaterId : undefined,
     tenantId: typeof payload.tenantId === "string" ? payload.tenantId : undefined,

@@ -47,6 +47,18 @@ function claudeHooks(options: CreateAgentCliPluginOptions): unknown {
   // (idle_prompt(정상 유휴 대기, 차단 아님)·auth_success·elicitation_complete/response 등 비대기 타입 제외).
   // 한 번의 대기가 PreToolUse와 Notification 두 경로로 동시에 들어올 수 있어, 최종 중복 제거는 클라이언트(store)에서 세션별로 한다.
   const inputWaitingExec = options.inputWaitingHookExec;
+  // spawn/stop 훅은 Stop(턴 종료) 뒤에도 계속되는 백그라운드 subagent/workflow 작업을 추적하고,
+  // SubagentStop은 pending 개수를 감소시킨다.
+  const preToolUse = [
+    ...(inputWaitingExec ? [{
+      matcher: "AskUserQuestion",
+      hooks: [claudeCommandHook(inputWaitingExec)],
+    }] : []),
+    ...(options.backgroundSpawnHookExec ? [{
+      matcher: "Task|Agent|Workflow",
+      hooks: [claudeCommandHook(options.backgroundSpawnHookExec)],
+    }] : []),
+  ];
   return {
     hooks: {
       ...(userPromptSubmitExecs.length > 0 ? {
@@ -59,14 +71,16 @@ function claudeHooks(options: CreateAgentCliPluginOptions): unknown {
           hooks: stopExecs.map(claudeCommandHook),
         }],
       } : {}),
+      ...(preToolUse.length > 0 ? { PreToolUse: preToolUse } : {}),
       ...(inputWaitingExec ? {
-        PreToolUse: [{
-          matcher: "AskUserQuestion",
-          hooks: [claudeCommandHook(inputWaitingExec)],
-        }],
         Notification: [{
           matcher: "permission_prompt|elicitation_dialog",
           hooks: [claudeCommandHook(inputWaitingExec)],
+        }],
+      } : {}),
+      ...(options.backgroundStopHookExec ? {
+        SubagentStop: [{
+          hooks: [claudeCommandHook(options.backgroundStopHookExec)],
         }],
       } : {}),
     },

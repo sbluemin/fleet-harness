@@ -19,7 +19,7 @@ export interface LaunchContext {
 
 export type ConsoleTheme = "instrument" | "maritime" | "carbon" | "whites";
 
-export type OperationActivity = "idle" | "running" | "awaiting" | "dormant";
+export type OperationActivity = "idle" | "running" | "awaiting" | "dormant" | "background";
 
 export interface TerminalTicket {
   readonly ticket: string;

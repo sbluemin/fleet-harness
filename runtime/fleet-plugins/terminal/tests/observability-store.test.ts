@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { sessionActivity } from "../client/agent/connection.js";
 import { reduceSnapshotJob } from "../client/agent/reduce.js";
@@ -353,6 +353,54 @@ describe("agent activity observability state", () => {
     expect(serialized).not.toContain("raw title");
     expect(JSON.stringify(store.listDurableOperations())).not.toContain("modelActivity");
     expect(JSON.stringify(store.listDurableOperations())).not.toContain("attentionPending");
+  });
+
+  it("tracks background spawn and stop events, clamps at zero, and survives turn transitions", () => {
+    const store = createStore();
+
+    expect(store.setTerminalSessionBackgroundEvent("missing", "spawn")).toBeNull();
+    expect(store.setTerminalSessionBackgroundEvent("session-a", "spawn")).toMatchObject({ backgroundPending: true });
+    expect(store.setTerminalSessionBackgroundEvent("session-a", "spawn")).toMatchObject({ backgroundPending: true });
+    expect(store.setTerminalSessionTurnState("session-a", "ended")).toMatchObject({ backgroundPending: true });
+    expect(store.setTerminalSessionBackgroundEvent("session-a", "stop")).toMatchObject({ backgroundPending: true });
+    expect(store.setTerminalSessionBackgroundEvent("session-a", "stop")).not.toHaveProperty("backgroundPending");
+    expect(store.setTerminalSessionBackgroundEvent("session-a", "stop")).not.toHaveProperty("backgroundPending");
+  });
+
+  it("expires background pending after 30 minutes and emits an updated session", () => {
+    vi.useFakeTimers();
+    const store = createStore();
+    const frames: unknown[] = [];
+    store.subscribeAll((event) => frames.push(event));
+
+    store.setTerminalSessionBackgroundEvent("session-a", "spawn");
+    vi.advanceTimersByTime(29 * 60_000);
+    expect(store.getTerminalSessionInfo("session-a")).toMatchObject({ backgroundPending: true });
+    vi.advanceTimersByTime(60_000);
+
+    expect(store.getTerminalSessionInfo("session-a")).not.toHaveProperty("backgroundPending");
+    expect(frames).toEqual([
+      expect.objectContaining({ type: "session:updated", session: expect.not.objectContaining({ backgroundPending: true }) }),
+    ]);
+    vi.useRealTimers();
+  });
+
+  it("clears background pending and its expiry timer when a session becomes dormant", () => {
+    vi.useFakeTimers();
+    const store = createStore();
+    const frames: unknown[] = [];
+    store.subscribeAll((event) => frames.push(event));
+    store.setTerminalSessionBackgroundEvent("session-a", "spawn");
+
+    const dormant = store.transitionTerminalSessionToDormant("session-a", {
+      provider: "claude",
+      sessionId: "provider-session",
+      capturedAt: "2026-07-25T00:00:00.000Z",
+    });
+    expect(dormant).not.toHaveProperty("backgroundPending");
+    vi.advanceTimersByTime(30 * 60_000);
+    expect(frames).toEqual([]);
+    vi.useRealTimers();
   });
 
   it("clears both transient axes on either turn phase and falls back to the hook turn state", () => {
