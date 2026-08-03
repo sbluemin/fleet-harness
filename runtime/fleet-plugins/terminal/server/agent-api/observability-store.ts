@@ -335,6 +335,11 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     if (session.status === "dormant" || session.status === "closed" || session.status === "error") return null;
     const count = session.backgroundPendingCount ?? 0;
     session.backgroundPendingCount = event === "spawn" ? count + 1 : Math.max(0, count - 1);
+    if (session.backgroundPendingCount === 0) {
+      // 0으로 돌아오면 만료 타이머도 함께 정리한다 — 30분 뒤 무의미한 0→0 notify를 남기지 않는다.
+      clearTerminalSessionBackgroundPending(session);
+      return toTerminalSessionInfo(session);
+    }
     if (session.backgroundPendingExpiry) clearTimeout(session.backgroundPendingExpiry);
     session.backgroundPendingExpiry = setTimeout(() => {
       session.backgroundPendingCount = 0;
