@@ -5,35 +5,33 @@ import {
   credentialRecord,
   defaultCredentialDeps,
   readBoundedFile,
+  resolveCodexCredentials,
   resolveCursorCredentials,
 } from "@dotobokuri/core-ai-gateway";
 import type {
+  CodexCredentials,
   CredentialResolverDeps,
   CursorCredentials,
 } from "@dotobokuri/core-ai-gateway";
 
 import type { CredentialMethod } from "./types.js";
 
-// Cursor 자격증명 조달은 core-ai-gateway가 단일 출처다. Console AI gateway 라우트도 같은
-// 구현을 쓰므로, 여기서 다시 구현하면 플랫폼 분기가 한쪽에만 반영되는 과거 불일치가 되살아난다.
+// Cursor/Codex 자격증명 조달은 core-ai-gateway가 단일 출처다. Console AI gateway 라우트도 같은
+// 구현을 쓰므로, 여기서 다시 구현하면 조달 규칙이 한쪽에만 반영되는 과거 불일치가 되살아난다.
 export {
   MAX_CREDENTIAL_BYTES,
   defaultCredentialDeps,
   readBoundedFile,
+  resolveCodexCredentials,
   resolveCursorCredentials,
 };
-export type { CredentialResolverDeps, CursorCredentials };
+export type { CodexCredentials, CredentialResolverDeps, CursorCredentials };
 
 export interface ClaudeCredentials {
   readonly accessToken: string;
   readonly expiresAt?: number;
   readonly subscriptionType?: string;
   readonly method: CredentialMethod;
-}
-
-export interface CodexCredentials {
-  readonly accessToken: string;
-  readonly accountId?: string;
 }
 
 function optionalString(value: unknown): string | undefined {
@@ -83,21 +81,6 @@ export async function resolveClaudeCredentials(deps: CredentialResolverDeps): Pr
   try {
     const raw = await deps.readBounded(path.join(configDir, ".credentials.json"), MAX_CREDENTIAL_BYTES);
     return raw === null || raw.length > MAX_CREDENTIAL_BYTES ? null : parseClaudeCredentialJson(raw, "file");
-  } catch {
-    return null;
-  }
-}
-
-export async function resolveCodexCredentials(deps: CredentialResolverDeps): Promise<CodexCredentials | null> {
-  const home = deps.env.CODEX_HOME || path.join(deps.homedir(), ".codex");
-  try {
-    const raw = await deps.readBounded(path.join(home, "auth.json"), MAX_CREDENTIAL_BYTES);
-    if (raw === null || raw.length > MAX_CREDENTIAL_BYTES) return null;
-    const parsed = credentialRecord(JSON.parse(raw));
-    const tokens = credentialRecord(parsed?.tokens);
-    const accessToken = optionalString(tokens?.access_token);
-    if (!accessToken) return null;
-    return { accessToken, accountId: optionalString(tokens?.account_id) };
   } catch {
     return null;
   }

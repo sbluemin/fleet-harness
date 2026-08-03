@@ -1,10 +1,11 @@
 /**
- * Provider credential procurement for the Cursor subscription token.
+ * Provider credential procurement for the subscription tokens the gateway spends.
  *
- * Where Cursor leaves its login is provider knowledge, not Fleet knowledge, so
- * every consumer that needs the token — the Console AI gateway route and the
- * quota plugin — resolves it through this one module. Keeping a second copy is
- * what let the gateway stay macOS-only while quota already worked everywhere.
+ * Where a provider CLI leaves its login is provider knowledge, not Fleet
+ * knowledge, so every consumer that needs a token — the Console AI gateway route
+ * and the quota plugin — resolves it through this one module. Keeping a second
+ * copy is what let the gateway stay macOS-only for Cursor while quota already
+ * worked everywhere, and what left the gateway blind to `CODEX_HOME`.
  */
 
 import { execFile as nodeExecFile } from "node:child_process";
@@ -27,6 +28,16 @@ export interface CredentialResolverDeps {
 export interface CursorCredentials {
   readonly accessToken: string;
   readonly method: CredentialMethod;
+}
+
+export interface CodexCredentials {
+  readonly accessToken: string;
+  /**
+   * Absent when the login left no account id. Callers that must send the
+   * `chatgpt-account-id` header treat that as no usable credential; the quota
+   * reader does not need it.
+   */
+  readonly accountId?: string;
 }
 
 const execFileAsync = promisify(nodeExecFile);
@@ -79,6 +90,10 @@ export function credentialRecord(value: unknown): Record<string, unknown> | null
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
+}
+
+function optionalNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 export function optionalTrimmedString(value: unknown): string | undefined {
@@ -143,6 +158,31 @@ export async function resolveCursorCredentials(deps: CredentialResolverDeps): Pr
     return raw === null || raw.length > MAX_CREDENTIAL_BYTES
       ? null
       : parseCursorCredentialJson(raw, "file");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The auth file Codex CLI's ChatGPT login writes. `CODEX_HOME` relocates the
+ * whole Codex home, so ignoring it reads the wrong path for anyone who set it.
+ */
+export function codexAuthFilePath(deps: CredentialResolverDeps): string {
+  return path.join(deps.env.CODEX_HOME || path.join(deps.homedir(), ".codex"), "auth.json");
+}
+
+export async function resolveCodexCredentials(deps: CredentialResolverDeps): Promise<CodexCredentials | null> {
+  try {
+    const raw = await deps.readBounded(codexAuthFilePath(deps), MAX_CREDENTIAL_BYTES);
+    if (raw === null || raw.length > MAX_CREDENTIAL_BYTES) return null;
+    const parsed = credentialRecord(JSON.parse(raw));
+    const tokens = credentialRecord(parsed?.tokens);
+    // Both former copies stored the token verbatim; trimming here would silently
+    // change the credential the gateway sends upstream.
+    const accessToken = optionalNonEmptyString(tokens?.access_token);
+    if (!accessToken) return null;
+    const accountId = optionalNonEmptyString(tokens?.account_id);
+    return accountId === undefined ? { accessToken } : { accessToken, accountId };
   } catch {
     return null;
   }

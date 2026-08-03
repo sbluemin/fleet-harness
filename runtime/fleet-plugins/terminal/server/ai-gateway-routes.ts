@@ -1,7 +1,3 @@
-import { readFileSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
-
 import {
   AnthropicMessagesGateway,
   CHATGPT_CODEX_RESPONSES_URL,
@@ -20,6 +16,7 @@ import {
   hasClaudeOneMillionMarker,
   projectAnthropicResponseUsage,
   reasoningEffortFromOutputConfig,
+  resolveCodexCredentials,
   resolveCursorCredentials,
   toClaudeGatewayModelId,
   upstreamModelId,
@@ -65,21 +62,18 @@ export async function readCursorSubscriptionToken(): Promise<string | null> {
   return credentials?.accessToken ?? null;
 }
 
-export function readCodexSubscriptionAuth(
-  authPath: string = path.join(os.homedir(), ".codex", "auth.json"),
-): CodexSubscriptionAuth | null {
-  try {
-    const parsed = JSON.parse(readFileSync(authPath, "utf8")) as {
-      readonly tokens?: { readonly access_token?: unknown; readonly account_id?: unknown };
-    };
-    const accessToken = parsed.tokens?.access_token;
-    const accountId = parsed.tokens?.account_id;
-    if (typeof accessToken !== "string" || accessToken.length === 0) return null;
-    if (typeof accountId !== "string" || accountId.length === 0) return null;
-    return { accessToken, accountId };
-  } catch {
-    return null;
-  }
+/**
+ * Codex CLI 로그인이 남긴 ChatGPT 구독 토큰.
+ *
+ * 조달 경로는 core-ai-gateway가 단일 출처다. 여기서 직접 `~/.codex/auth.json`을 읽으면
+ * `CODEX_HOME`으로 Codex 홈을 옮긴 사용자의 파일을 놓친다 — quota 플러그인은 이미 그 변수를
+ * 존중하고 있었다. 게이트웨이는 `chatgpt-account-id` 헤더가 필요하므로 account id가 없는
+ * 자격증명은 여기서 사용 불가로 판정한다.
+ */
+export async function readCodexSubscriptionAuth(): Promise<CodexSubscriptionAuth | null> {
+  const credentials = await resolveCodexCredentials(defaultCredentialDeps);
+  if (!credentials?.accountId) return null;
+  return { accessToken: credentials.accessToken, accountId: credentials.accountId };
 }
 
 export interface AiGatewayRouteDeps {
@@ -88,7 +82,7 @@ export interface AiGatewayRouteDeps {
   /** 테스트가 upstream을 대체할 수 있도록 주입 가능하게 둔다. */
   readonly gateway?: AnthropicMessagesGateway;
   /** 테스트가 구독 토큰 조회를 대체한다. */
-  readonly readAuth?: () => CodexSubscriptionAuth | null;
+  readonly readAuth?: () => CodexSubscriptionAuth | null | Promise<CodexSubscriptionAuth | null>;
   readonly readCursorToken?: () => string | null | Promise<string | null>;
   readonly readKimiApiKey?: () => Promise<string | undefined>;
   readonly cursorDiagnostics?: CursorDiagnosticSink;
@@ -191,7 +185,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
       credential = cursorToken;
     } else if (target?.provider === "codex") {
       // ChatGPT 구독 토큰은 Codex CLI가 저장해 둔 것을 읽는다. 자식에게는 넘기지 않는다.
-      const auth = readAuth();
+      const auth = await readAuth();
       if (!auth) {
         writeAnthropicError(res, 401, "authentication_error", "No ChatGPT subscription token was found. Run `codex login` first.");
         return true;
