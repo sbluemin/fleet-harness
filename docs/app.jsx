@@ -41,7 +41,7 @@ const UI = {
   hierarchyTitle: { ko: "3-단 지휘 체계", en: "Three-tier command structure" },
   hierarchyLede:  { ko: "사용자는 코드를 쓰지 않는다. 결정한다. 함대는 그 결정을 작전으로 환원한다.", en: "You don't write code — you decide. The fleet turns each decision into an operation." },
 
-  backendsEy:    { ko: "Runtime Paths · 04", en: "Runtime Paths · 04" },
+  backendsEy:    { ko: "Runtime Paths · 03", en: "Runtime Paths · 03" },
   backendsTitle: { ko: ["세 개의 런타임 경로,", "한 명의 제독."], en: ["Three runtime paths,", "one Admiral."] },
   backendsLede:  { ko: "한 모델로 모든 작업을 수행하지 않는다. 각 경로는 자신이 가장 잘하는 역할을 맡는다.", en: "No single model handles every task. Each path takes the role it serves best." },
 
@@ -77,7 +77,7 @@ const UI = {
   setSailCmt:  { ko: "# Set sail on your first mission, Admiral.", en: "# Set sail on your first mission, Admiral." },
   footerLine:  { ko: "fleet-harness · Fleet Action Protocol v1", en: "fleet-harness · Fleet Action Protocol v1" },
   builtOn:     { ko: "native CLI orchestration", en: "native CLI orchestration" },
-  countMeta:   { ko: "· 4 Paths · 4 Captains · 4 Modes", en: "· 4 Paths · 4 Captains · 4 Modes" },
+  countMeta:   { ko: "· 3 Paths · 4 Captains · 4 Modes", en: "· 3 Paths · 4 Captains · 4 Modes" },
 };
 
 // ───── Data ─────
