@@ -8,6 +8,7 @@ import {
   briefingQuery,
   listQueue,
   listWiki,
+  parseLog,
   parsePatch,
   readSchemaCatalog,
   readSchemaDocument,
@@ -21,6 +22,7 @@ import type { MemoryPaths, PatchMeta, WikiEntry, WikiEntryFrontmatter } from "@d
 import type { CoworkService } from "@dotobokuri/fleet-wiki/cowork";
 
 import type {
+  CodexHealthResponse,
   ConflictDetailResponse,
   ConflictListItem,
   DrydockDetailResponse,
@@ -173,6 +175,9 @@ async function routeGet(url: URL, response: ServerResponse, context: RouteContex
   }
   if (url.pathname === "/api/search") {
     return handleSearch(url, response, context);
+  }
+  if (url.pathname === "/api/health") {
+    return handleHealth(response, context);
   }
   const entryMatch = url.pathname.match(/^\/api\/entry\/([^/]+)$/);
   if (entryMatch) {
@@ -363,6 +368,32 @@ async function handleEntry(rawSegment: string, url: URL, response: ServerRespons
     ...(raw !== undefined ? { raw } : {}),
   };
   sendJson(response, 200, responseBody);
+}
+
+async function handleHealth(response: ServerResponse, context: RouteContext): Promise<void> {
+  const [logEntries, conflicts, pending] = await Promise.all([
+    parseLog(context.paths).catch(() => []),
+    listConflictSummaries(context.paths),
+    listQueue(context.paths),
+  ]);
+  const latest = logEntries.findLast((entry) => entry.event === "drydock run") ?? null;
+  const numberPayload = (key: string): number => {
+    const value = latest?.payload[key];
+    return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  };
+  const lastDrydock = latest ? {
+    at: latest.timestamp,
+    ok: latest.payload.ok === true,
+    errorCount: numberPayload("error_count"),
+    warningCount: numberPayload("warning_count"),
+    infoCount: numberPayload("info_count"),
+    issueCount: numberPayload("issue_count"),
+  } : null;
+  sendJson(response, 200, {
+    lastDrydock,
+    conflictCount: conflicts.filter((item) => item.status === "open").length,
+    pendingCount: pending.length,
+  } satisfies CodexHealthResponse);
 }
 
 async function handleDrydockList(url: URL, response: ServerResponse, context: RouteContext): Promise<void> {

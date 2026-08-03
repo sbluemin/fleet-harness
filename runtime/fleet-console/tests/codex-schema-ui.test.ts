@@ -3,10 +3,11 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiMocks = vi.hoisted(() => ({
   fetchSearch: vi.fn(),
+  fetchHealth: vi.fn(),
   fetchDrydock: vi.fn(),
   fetchSchemaCatalog: vi.fn(),
   fetchConflicts: vi.fn(),
@@ -29,6 +30,10 @@ afterEach(() => {
 });
 
 describe("Codex schema UI contract", () => {
+  beforeEach(() => {
+    apiMocks.fetchHealth.mockReset();
+    apiMocks.fetchHealth.mockResolvedValue({ lastDrydock: null, conflictCount: 0, pendingCount: 0 });
+  });
   it("offers Entries/Schema navigation and sanitized schema readers", async () => {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
     const navigator = await readFile(path.join(root, "core/client/src/codex/components/navigator.ts"), "utf8");
@@ -73,6 +78,7 @@ describe("Codex schema UI contract", () => {
     vi.useFakeTimers();
     const remoteSearch = deferred<{ entries: Array<{ id: string; title: string; tags: string[]; updated: string; excerpt?: string }> }>();
     apiMocks.fetchSearch.mockReturnValue(remoteSearch.promise);
+    apiMocks.fetchHealth.mockResolvedValue({ lastDrydock: null, conflictCount: 0, pendingCount: 0 });
     const state = await import("../core/client/src/codex/state.js");
     const { mountNavigatorInto } = await import("../core/client/src/codex/components/navigator.js");
     Object.assign(state.getState(), {
@@ -107,6 +113,45 @@ describe("Codex schema UI contract", () => {
     expect(root.querySelector(".snippet")?.innerHTML).toContain("&lt;script&gt;<mark>needle</mark>&lt;/script&gt;");
     expect(root.querySelector(".snippet script")).toBeNull();
     expect(root.querySelector("#codex-nav-eyebrow")?.textContent).toContain("2");
+    controller.destroy();
+  });
+
+  it("shows health details without navigating and closes them on Escape", async () => {
+    vi.resetModules();
+    apiMocks.fetchHealth.mockResolvedValue({
+      lastDrydock: {
+        at: "2026-08-03T02:03:04.000Z",
+        ok: false,
+        errorCount: 1,
+        warningCount: 2,
+        infoCount: 3,
+        issueCount: 6,
+      },
+      conflictCount: 1,
+      pendingCount: 2,
+    });
+    const state = await import("../core/client/src/codex/state.js");
+    const { mountNavigatorInto } = await import("../core/client/src/codex/components/navigator.js");
+    Object.assign(state.getState(), { error: null, index: [], loading: false, pendingPatchCount: 2 });
+    const onRequest = vi.fn();
+    const root = document.body.appendChild(document.createElement("div"));
+    const controller = mountNavigatorInto(root, { initialTheaterId: "workspace-a", onRequest });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const strip = root.querySelector<HTMLElement>(".codex-nav-health")!;
+    expect(strip.hidden).toBe(false);
+    expect(strip.textContent).toContain("drydock issues 6");
+    expect(strip.querySelector(".codex-nav-health-dot")?.classList.contains("is-coral")).toBe(true);
+    const detail = strip.querySelector<HTMLButtonElement>("[data-health-detail]")!;
+    detail.click();
+    expect(strip.querySelector("[data-health-detail]")?.getAttribute("aria-expanded")).toBe("true");
+    expect(strip.querySelector(".codex-nav-health-popover")?.textContent).toContain("Errors1");
+    expect(onRequest).not.toHaveBeenCalled();
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(strip.querySelector(".codex-nav-health-popover")).toBeNull();
+    expect(onRequest).not.toHaveBeenCalled();
     controller.destroy();
   });
 

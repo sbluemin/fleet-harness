@@ -2220,6 +2220,103 @@ kbd {
   line-height: 1;
 }
 
+.codex-nav-health {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 6px var(--space-3);
+  border-bottom: 1px solid var(--surface-rim);
+  background: color-mix(in oklch, var(--warn) 5%, transparent);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.codex-nav-health[hidden] {
+  display: none;
+}
+
+.codex-nav-health-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--warn);
+  box-shadow: 0 0 8px color-mix(in oklch, var(--warn) 45%, transparent);
+}
+
+.codex-nav-health-dot.is-coral {
+  background: var(--coral);
+  box-shadow: 0 0 8px color-mix(in oklch, var(--coral) 45%, transparent);
+}
+
+.codex-nav-health-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-nav-health-detail {
+  flex: none;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--brass-bright);
+  font: inherit;
+  cursor: pointer;
+}
+
+.codex-nav-health-detail:hover,
+.codex-nav-health-detail:focus-visible,
+.codex-nav-health-detail[aria-expanded="true"] {
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+}
+
+.codex-nav-health-detail:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--brass) 68%, transparent);
+  outline-offset: 1px;
+}
+
+.codex-nav-health-popover {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + var(--space-1));
+  right: var(--space-2);
+  display: grid;
+  min-width: 190px;
+  padding: var(--space-3);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background: var(--ink-deep);
+  box-shadow: var(--shadow-soft);
+  color: var(--text-secondary);
+}
+
+.codex-nav-health-popover div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 3px 0;
+}
+
+.codex-nav-health-popover strong {
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+}
+
+.codex-nav-health-popover p {
+  margin: var(--space-2) 0 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--surface-rim);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
 .codex-nav-list-header {
   display: flex;
   align-items: center;

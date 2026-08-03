@@ -1,10 +1,10 @@
 import { getGlobalSettingsStoreState } from "../../global-settings-store.js";
 import { getT } from "../../i18n/index.js";
 import { resolveConsoleLanguage } from "../../whatsnew-i18n.js";
-import { fetchSearch } from "../api.js";
+import { fetchHealth, fetchSearch } from "../api.js";
 import { getState, subscribeState } from "../state.js";
 import type { AppState } from "../state.js";
-import type { SearchEntry, WikiIndexEntry } from "../api.js";
+import type { CodexHealthResponse, SearchEntry, WikiIndexEntry } from "../api.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -173,7 +173,11 @@ export function mountNavigatorInto(
   let mode: "entries" | "schema" = "entries";
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let searchController: AbortController | null = null;
+  let healthController: AbortController | null = null;
   let searchEpoch = 0;
+  let healthEpoch = 0;
+  let health: CodexHealthResponse | null = null;
+  let healthPopoverOpen = false;
 
   function renderShell(): void {
     const t = consoleT();
@@ -200,6 +204,7 @@ export function mountNavigatorInto(
         </button>
         <button class="codex-nav-quick" data-action="conflicts" type="button">${escapeHtml(t("codex.nav.conflicts"))}</button>
       </div>
+      <div class="codex-nav-health" hidden></div>
       <div class="codex-nav-list-header">
         <div class="codex-nav-list-summary">
           <span class="codex-nav-list-eyebrow" id="codex-nav-eyebrow">${escapeHtml(t("codex.nav.entriesCount", { count: 0 }))}</span>
@@ -225,6 +230,55 @@ export function mountNavigatorInto(
   const drydockBadge = root.querySelector<HTMLElement>("#codex-nav-drydock-badge")!;
   const activeFilterButton = root.querySelector<HTMLButtonElement>("[data-clear-tag]")!;
   const sortControls = root.querySelector<HTMLElement>(".codex-nav-sort")!;
+  const healthStrip = root.querySelector<HTMLElement>(".codex-nav-health")!;
+
+  function renderHealth(): void {
+    const t = consoleT();
+    const drydock = health?.lastDrydock ?? null;
+    const conflictCount = health?.conflictCount ?? 0;
+    const pendingCount = health?.pendingCount ?? 0;
+    const issueCount = drydock?.issueCount ?? 0;
+    const visible = health !== null && !((drydock === null || (drydock.ok && issueCount === 0)) && conflictCount === 0 && pendingCount === 0);
+    healthStrip.hidden = !visible;
+    if (!visible || !health) {
+      healthStrip.innerHTML = "";
+      return;
+    }
+    const tone = (drydock?.errorCount ?? 0) > 0 ? "coral" : "warn";
+    const timestamp = drydock ? new Date(drydock.at).toLocaleString(resolveActiveLocale()) : t("codex.nav.healthNever");
+    healthStrip.innerHTML = `
+      <span class="codex-nav-health-dot is-${tone}" aria-hidden="true"></span>
+      <span class="codex-nav-health-summary">${escapeHtml(t("codex.nav.healthSummary", { issues: issueCount, conflicts: health.conflictCount, pending: health.pendingCount }))}</span>
+      <button class="codex-nav-health-detail" data-health-detail type="button" aria-expanded="${String(healthPopoverOpen)}">${escapeHtml(t("codex.nav.healthDetails"))}</button>
+      ${healthPopoverOpen ? `<div class="codex-nav-health-popover" role="dialog" aria-label="${escapeHtml(t("codex.nav.healthDetailsAria"))}">
+        <div><span>${escapeHtml(t("codex.nav.healthErrors"))}</span><strong>${drydock?.errorCount ?? 0}</strong></div>
+        <div><span>${escapeHtml(t("codex.nav.healthWarnings"))}</span><strong>${drydock?.warningCount ?? 0}</strong></div>
+        <div><span>${escapeHtml(t("codex.nav.healthInfos"))}</span><strong>${drydock?.infoCount ?? 0}</strong></div>
+        <div><span>${escapeHtml(t("codex.nav.healthConflicts"))}</span><strong>${health.conflictCount}</strong></div>
+        <div><span>${escapeHtml(t("codex.nav.healthPending"))}</span><strong>${health.pendingCount}</strong></div>
+        <p>${escapeHtml(t("codex.nav.healthRanAt", { at: timestamp }))}</p>
+      </div>` : ""}
+    `;
+  }
+
+  function loadHealth(): void {
+    healthController?.abort();
+    healthController = null;
+    healthEpoch += 1;
+    health = null;
+    healthPopoverOpen = false;
+    renderHealth();
+    if (!activeTheaterId) return;
+    const requestEpoch = healthEpoch;
+    const theaterId = activeTheaterId;
+    const controller = new AbortController();
+    healthController = controller;
+    void fetchHealth(theaterId, controller.signal).then((result) => {
+      if (controller.signal.aborted || requestEpoch !== healthEpoch || theaterId !== activeTheaterId) return;
+      health = result;
+      renderHealth();
+    }).catch(() => {});
+  }
 
   function renderList(state: AppState): void {
     const t = consoleT();
@@ -327,6 +381,14 @@ export function mountNavigatorInto(
     const target = event.target;
     if (!(target instanceof Element)) return;
 
+    const healthDetail = target.closest<HTMLElement>("[data-health-detail]");
+    if (healthDetail) {
+      event.stopPropagation();
+      healthPopoverOpen = !healthPopoverOpen;
+      renderHealth();
+      return;
+    }
+
     const modeBtn = target.closest<HTMLElement>("[data-mode]");
     if (modeBtn?.dataset.mode === "entries" || modeBtn?.dataset.mode === "schema") {
       mode = modeBtn.dataset.mode;
@@ -375,6 +437,19 @@ export function mountNavigatorInto(
     }
   }
 
+  function handleDocumentClick(event: MouseEvent): void {
+    if (!healthPopoverOpen || healthStrip.contains(event.target as Node)) return;
+    healthPopoverOpen = false;
+    renderHealth();
+  }
+
+  function handleDocumentKeyDown(event: KeyboardEvent): void {
+    if (event.key !== "Escape" || !healthPopoverOpen) return;
+    healthPopoverOpen = false;
+    renderHealth();
+    root.querySelector<HTMLButtonElement>("[data-health-detail]")?.focus();
+  }
+
   function handleSearchInput(): void {
     if (debounceTimer !== null) clearTimeout(debounceTimer);
     searchController?.abort();
@@ -390,17 +465,23 @@ export function mountNavigatorInto(
 
   root.addEventListener("click", handleClick);
   searchInput.addEventListener("input", handleSearchInput);
+  document.addEventListener("click", handleDocumentClick);
+  document.addEventListener("keydown", handleDocumentKeyDown);
 
   const unsubscribe = subscribeState((state) => renderList(state));
   renderList(getState());
+  loadHealth();
 
   return {
     destroy(): void {
       unsubscribe();
       root.removeEventListener("click", handleClick);
       searchInput.removeEventListener("input", handleSearchInput);
+      document.removeEventListener("click", handleDocumentClick);
+      document.removeEventListener("keydown", handleDocumentKeyDown);
       if (debounceTimer !== null) clearTimeout(debounceTimer);
       searchController?.abort();
+      healthController?.abort();
       root.innerHTML = "";
     },
     setTheater(theaterId: string | null): void {
@@ -415,6 +496,7 @@ export function mountNavigatorInto(
       if (debounceTimer !== null) clearTimeout(debounceTimer);
       searchInput.value = "";
       renderList(getState());
+      loadHealth();
     },
     setCurrentEntry(entryId: string | null): void {
       if (currentEntryId === entryId) return;
@@ -439,6 +521,7 @@ export function mountNavigatorInto(
       }
       const conflictsBtn = root.querySelector<HTMLElement>('[data-action="conflicts"]');
       if (conflictsBtn) conflictsBtn.textContent = t("codex.nav.conflicts");
+      renderHealth();
       sortControls.setAttribute("aria-label", t("codex.nav.sortAria"));
       const updatedSort = root.querySelector<HTMLElement>('[data-sort="updated"]');
       if (updatedSort) updatedSort.textContent = t("codex.nav.sortUpdated");

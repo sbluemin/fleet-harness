@@ -5,6 +5,7 @@ import type {
   CoworkEventDto,
   CoworkOptionsResponse,
   CoworkSessionDto,
+  CodexHealthResponse,
   ConflictDetailResponse,
   ConflictListItem,
   DrydockDetailResponse,
@@ -26,6 +27,7 @@ export type {
   CoworkEventDto,
   CoworkOptionsResponse,
   CoworkSessionDto,
+  CodexHealthResponse,
   ConflictDetailResponse,
   ConflictListItem,
   DrydockDetailResponse,
@@ -75,6 +77,10 @@ export async function fetchSearch(theaterId: string | null, opts?: SearchOptions
 export async function fetchEntry(theaterId: string | null, id: string, opts?: EntryOptions): Promise<EntryResponse> {
   const suffix = opts?.includeRaw ? "?include=raw" : "";
   return fetchJson<EntryResponse>(apiPath(theaterId, `/entry/${encodeURIComponent(id)}${suffix}`));
+}
+
+export async function fetchHealth(theaterId: string | null, signal?: AbortSignal): Promise<CodexHealthResponse> {
+  return fetchJson<CodexHealthResponse>(apiPath(theaterId, "/health"), signal);
 }
 
 export async function fetchDrydock(theaterId: string | null, status: "pending" | "archived" | "all" = "pending"): Promise<DrydockListResponse> {

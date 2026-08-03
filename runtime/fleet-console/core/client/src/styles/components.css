@@ -6497,6 +6497,24 @@
   text-transform: uppercase;
 }
 
+.operation-search-codex-section {
+  border-top: 1px solid color-mix(in oklch, var(--surface-rim) 72%, transparent);
+}
+
+.operation-search-source-badge {
+  flex: none;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in oklch, var(--brass) 34%, var(--surface-rim));
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--brass) 8%, transparent);
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+}
+
 .operation-search-empty {
   margin: 0;
   padding: var(--space-5) var(--space-4);

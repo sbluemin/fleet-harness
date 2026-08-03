@@ -175,6 +175,19 @@ export interface ConflictDetailResponse {
   rawSource: string | null;
 }
 
+export interface CodexHealthResponse {
+  lastDrydock: {
+    at: string;
+    ok: boolean;
+    errorCount: number;
+    warningCount: number;
+    infoCount: number;
+    issueCount: number;
+  } | null;
+  conflictCount: number;
+  pendingCount: number;
+}
+
 export interface AllowedAccessSets {
   allowedHosts: Set<string>;
   allowedOrigins: Set<string>;
