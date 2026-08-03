@@ -28,41 +28,6 @@
         { "modelId": "gpt-5.5", "name": "GPT-5.5", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh"], "default": "high" } },
         { "modelId": "gpt-5.5-fast", "name": "GPT-5.5 Fast", "providerModelId": "gpt-5.5", "serviceTier": "priority", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh"], "default": "high" } }
       ]
-    },
-    "cursor": {
-      "name": "Cursor Agent",
-      "defaultModel": "auto",
-      "models": [
-        { "modelId": "auto", "name": "Auto", "effort": { "supported": false } },
-        { "modelId": "composer-2.5", "name": "Composer 2.5", "effort": { "supported": false } },
-        { "modelId": "composer-2.5-fast", "name": "Composer 2.5 Fast", "effort": { "supported": false } },
-        { "modelId": "gpt-5.6-sol", "name": "GPT-5.6 Sol", "spawnModelTemplate": "gpt-5.6-sol-{effort}", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "medium" } },
-        { "modelId": "gpt-5.6-sol-fast", "name": "GPT-5.6 Sol Fast", "spawnModelTemplate": "gpt-5.6-sol-{effort}-fast", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "medium" } },
-        { "modelId": "gpt-5.6-sol-none", "name": "GPT-5.6 Sol None", "effort": { "supported": false } },
-        { "modelId": "gpt-5.6-sol-none-fast", "name": "GPT-5.6 Sol None Fast", "effort": { "supported": false } },
-        { "modelId": "gpt-5.6-luna", "name": "GPT-5.6 Luna", "spawnModelTemplate": "gpt-5.6-luna-{effort}", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "medium" } },
-        { "modelId": "gpt-5.6-luna-fast", "name": "GPT-5.6 Luna Fast", "spawnModelTemplate": "gpt-5.6-luna-{effort}-fast", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "medium" } },
-        { "modelId": "gpt-5.6-luna-none", "name": "GPT-5.6 Luna None", "effort": { "supported": false } },
-        { "modelId": "gpt-5.6-luna-none-fast", "name": "GPT-5.6 Luna None Fast", "effort": { "supported": false } },
-        { "modelId": "gpt-5.6-terra", "name": "GPT-5.6 Terra", "spawnModelTemplate": "gpt-5.6-terra-{effort}", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "medium" } },
-        { "modelId": "gpt-5.6-terra-fast", "name": "GPT-5.6 Terra Fast", "spawnModelTemplate": "gpt-5.6-terra-{effort}-fast", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "medium" } },
-        { "modelId": "gpt-5.6-terra-none", "name": "GPT-5.6 Terra None", "effort": { "supported": false } },
-        { "modelId": "gpt-5.6-terra-none-fast", "name": "GPT-5.6 Terra None Fast", "effort": { "supported": false } },
-        { "modelId": "cursor-grok-4.5", "name": "Cursor Grok 4.5", "spawnModelTemplate": "cursor-grok-4.5-{effort}", "effort": { "supported": true, "levels": ["low", "medium", "high"], "default": "high" } },
-        { "modelId": "cursor-grok-4.5-fast", "name": "Cursor Grok 4.5 Fast", "spawnModelTemplate": "cursor-grok-4.5-{effort}-fast", "effort": { "supported": true, "levels": ["low", "medium", "high"], "default": "high" } },
-        { "modelId": "claude-opus-4-8", "name": "Claude Opus 4.8", "spawnModelTemplate": "claude-opus-4-8-{effort}", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "high" } },
-        { "modelId": "claude-opus-4-8-fast", "name": "Claude Opus 4.8 Fast", "spawnModelTemplate": "claude-opus-4-8-{effort}-fast", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "high" } },
-        { "modelId": "claude-opus-4-8-thinking", "name": "Claude Opus 4.8 Thinking", "spawnModelTemplate": "claude-opus-4-8-thinking-{effort}", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "xhigh" } },
-        { "modelId": "claude-opus-4-8-thinking-fast", "name": "Claude Opus 4.8 Thinking Fast", "spawnModelTemplate": "claude-opus-4-8-thinking-{effort}-fast", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "xhigh" } },
-        { "modelId": "claude-sonnet-5", "name": "Claude Sonnet 5", "spawnModelTemplate": "claude-sonnet-5-{effort}", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "high" } },
-        { "modelId": "claude-sonnet-5-thinking", "name": "Claude Sonnet 5 Thinking", "spawnModelTemplate": "claude-sonnet-5-thinking-{effort}", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "xhigh" } },
-        { "modelId": "claude-fable-5", "name": "Claude Fable 5", "description": "NO ZDR per cursor-agent model list", "spawnModelTemplate": "claude-fable-5-{effort}", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "high" } },
-        { "modelId": "claude-fable-5-thinking", "name": "Claude Fable 5 Thinking", "description": "NO ZDR per cursor-agent model list", "spawnModelTemplate": "claude-fable-5-thinking-{effort}", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "xhigh" } },
-        { "modelId": "gemini-3.1-pro", "name": "Gemini 3.1 Pro", "effort": { "supported": false } },
-        { "modelId": "gemini-3.5-flash", "name": "Gemini 3.5 Flash", "effort": { "supported": false } },
-        { "modelId": "kimi-k2.7-code", "name": "Kimi K2.7 Code", "effort": { "supported": false } },
-        { "modelId": "glm-5.2", "name": "GLM 5.2", "spawnModelTemplate": "glm-5.2-{effort}", "effort": { "supported": true, "levels": ["high", "max"], "default": "max" } }
-      ]
     }
   }
 }

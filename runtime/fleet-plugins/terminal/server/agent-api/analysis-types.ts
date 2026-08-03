@@ -34,7 +34,6 @@ export type AnalysisEvent =
 
 export const ANALYST_CLI_ENTRIES: readonly { readonly binaryId: string; readonly cliId: AnalystCliId; readonly label?: string }[] = [
   { binaryId: "claude", cliId: "claude" },
-  { binaryId: "cursor-agent", cliId: "cursor" },
 ];
 
 export function buildAnalysisCatalog(

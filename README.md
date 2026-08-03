@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Fleet Console runs Claude Code and Claude Gateway as live, server-owned operations</strong><br/>
-  you can arrange, observe, and delegate from one local workspace, with Cursor Agent available to Session Analyst.<br/>
+  you can arrange, observe, and delegate from one local workspace.<br/>
   Native agent runtimes. Official protocols. No API wrapping or proxying.
 </p>
 
@@ -80,7 +80,6 @@ Every supported CLI brings a model-native agent loop refined by its creator. Fle
 | **Claude Code** | Anthropic | ACP | Live Agent Operations |
 | **Claude (Gateway • Experimental)** | OpenAI, Cursor, Moonshot AI | Claude Code gateway | Live Agent Operations with GPT, Cursor, and Kimi K3 models |
 | **Codex CLI** | OpenAI | Codex App Server | Carrier and Task Force backends |
-| **Cursor Agent** | Cursor | ACP | Session Analyst |
 
 Kimi K3 is selected from AI Gateway's Claude Code model picker. Register its API key under Settings → Plugins → Terminal → Agent CLI; the credential stays in the local gateway and is never injected into the Claude Code process.
 

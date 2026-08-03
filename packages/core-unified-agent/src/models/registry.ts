@@ -39,8 +39,6 @@ export const ModelEntrySchema = z.object({
   name: z.string(),
   /** 모델 설명 (선택) */
   description: z.string().optional(),
-  /** spawn 시 실제 CLI 모델 ID를 조립해야 하는 경우의 템플릿 */
-  spawnModelTemplate: z.string().optional(),
   /** 카탈로그 ID와 실제 provider 모델 ID가 다른 경우의 원본 모델 ID */
   providerModelId: z.string().optional(),
   /** provider가 모델과 별도로 받는 서비스 티어 */
@@ -57,14 +55,6 @@ export const ModelEntrySchema = z.object({
       input: effort.default,
       message: `effort.default "${effort.default}"은(는) levels 목록에 존재해야 합니다`,
       path: ['effort', 'default'],
-    });
-  }
-  if (effort.supported && ctx.value.spawnModelTemplate && !ctx.value.spawnModelTemplate.includes('{effort}')) {
-    ctx.issues.push({
-      code: 'custom',
-      input: ctx.value.spawnModelTemplate,
-      message: 'effort 지원 모델의 spawnModelTemplate은 "{effort}" 플레이스홀더를 포함해야 합니다',
-      path: ['spawnModelTemplate'],
     });
   }
   if (ctx.value.serviceTier && !ctx.value.providerModelId) {
@@ -161,7 +151,7 @@ export function getModelsRegistry(): ModelsRegistry {
  * 특정 CLI(프로바이더)의 모델 정보를 반환합니다.
  * 내부 데이터 보호를 위해 복사본을 반환합니다.
  *
- * @param cli - CLI 타입 (claude, codex, cursor)
+ * @param cli - CLI 타입 (claude, codex)
  * @returns 프로바이더 모델 정보
  * @throws 존재하지 않는 프로바이더인 경우
  */
@@ -194,57 +184,6 @@ export function getProviderModelIds(cli: CliType): string[] {
 export function getEffort(cli: CliType, modelId: string): Effort {
   const model = findProviderModel(cli, modelId);
   return structuredClone(model.effort);
-}
-
-/**
- * Cursor 모델의 spawn-time effort 적용 가능 여부를 반환합니다.
- *
- * @param modelId - 카탈로그 모델 ID
- * @returns spawn template과 effort 지원 정보
- */
-export function getCursorSpawnEffortInfo(modelId: string): {
-  supported: boolean;
-  levels: string[];
-  default: string | null;
-} {
-  const model = findProviderModel('cursor', modelId);
-  if (!model.spawnModelTemplate || !model.effort.supported) {
-    return { supported: false, levels: [], default: null };
-  }
-
-  return {
-    supported: true,
-    levels: [...model.effort.levels],
-    default: model.effort.default,
-  };
-}
-
-/**
- * Cursor 모델을 cursor-agent CLI에 전달할 실제 모델 ID로 변환합니다.
- *
- * @param modelId - 카탈로그 모델 ID
- * @param effort - 요청된 effort (없으면 모델 기본값)
- * @returns cursor-agent CLI 모델 ID
- */
-export function resolveCursorSpawnModel(modelId: string, effort?: string): string {
-  const model = findProviderModel('cursor', modelId);
-  if (!model.spawnModelTemplate) {
-    return model.modelId;
-  }
-
-  if (!model.effort.supported) {
-    return model.spawnModelTemplate;
-  }
-
-  const level = effort ?? model.effort.default;
-  const resolvedLevel = model.effort.levels.includes(level) ? level : model.effort.default;
-  if (!model.effort.levels.includes(resolvedLevel)) {
-    throw new Error(
-      `cursor/${modelId} 모델은 effort "${level}"을(를) 지원하지 않습니다. 사용 가능: ${model.effort.levels.join(', ')}`,
-    );
-  }
-
-  return model.spawnModelTemplate.replace('{effort}', resolvedLevel);
 }
 
 /**

@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Fleet Console은 Claude Code와 Claude Gateway를 서버가 소유하는 살아 있는 Operation으로 실행합니다.</strong><br/>
-  하나의 로컬 워크스페이스에서 배치하고, 관측하고, 위임하며, Session Analyst에서는 Cursor Agent도 사용할 수 있습니다.<br/>
+  하나의 로컬 워크스페이스에서 배치하고, 관측하고, 위임할 수 있습니다.<br/>
   네이티브 에이전트 런타임. 공식 프로토콜. API 래핑이나 프록시 없음.
 </p>
 
@@ -80,7 +80,6 @@ Nimitz와 Vanguard는 여기에 더해 **Task Force**를 지원합니다. 둘 �
 | **Claude Code** | Anthropic | ACP | 라이브 Agent Operation |
 | **Claude (Gateway • Experimental)** | OpenAI, Cursor, Moonshot AI | Claude Code gateway | GPT·Cursor·Kimi K3 모델을 사용하는 라이브 Agent Operation |
 | **Codex CLI** | OpenAI | Codex App Server | Carrier 및 Task Force 백엔드 |
-| **Cursor Agent** | Cursor | ACP | Session Analyst |
 
 Kimi K3는 AI Gateway의 Claude Code 모델 피커에서 선택합니다. Settings → Plugins → Terminal → Agent CLI에서 API 키를 등록하면 자격 증명은 로컬 게이트웨이에만 남고 Claude Code 프로세스에는 주입되지 않습니다.
 

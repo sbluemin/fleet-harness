@@ -17,7 +17,6 @@ afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 it.each([
   ["claude", true],
   ["codex", false],
-  ["cursor", false],
 ] as const)("builds the selected %s Analyst provider with capability-aware isolation", async (cliId, strictMcp) => {
   const file = join(await mkdtemp(join(tmpdir(), "analyst-provider-")), "capture.jsonl");
   await writeFile(file, "");

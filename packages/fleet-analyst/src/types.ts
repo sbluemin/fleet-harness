@@ -29,7 +29,7 @@ export type AnalystEvent =
 export interface TranscriptIndexerOptions { readonly maxReadBytes?: number; }
 export interface SessionToolOptions { readonly capturePath: string; readonly cwd: string; readonly onEvent?: (event: AnalystEvent) => void; }
 export interface AnalystSessionOptions extends SessionToolOptions {
-  readonly cliId: "claude" | "codex" | "cursor";
+  readonly cliId: "claude" | "codex";
   readonly cliPath?: string;
   readonly env?: Readonly<Record<string, string>>;
   readonly model: string;

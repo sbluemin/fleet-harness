@@ -82,14 +82,14 @@ describe("Agent CLI path storage", () => {
     const secondStore = createAgentCliPathStore(storage, "terminal");
 
     const claudeWrite = firstStore.writePath("claude", "/custom/bin/claude");
-    const cursorWrite = secondStore.writePath("cursor-agent", "/custom/bin/cursor-agent");
-    await Promise.all([claudeWrite, cursorWrite]);
+    const codexWrite = secondStore.writePath("codex", "/custom/bin/codex");
+    await Promise.all([claudeWrite, codexWrite]);
 
     expect(await firstStore.read()).toEqual({
       version: 1,
       paths: {
         claude: "/custom/bin/claude",
-        "cursor-agent": "/custom/bin/cursor-agent",
+        codex: "/custom/bin/codex",
       },
     });
   });
@@ -279,9 +279,8 @@ describe("Carrier Agent CLI launch resolution", () => {
     });
   });
 
-  it("passes no custom env when no Agent CLI user path is stored", async () => {
+  it("rejects a Claude launch when the binary cannot be resolved", async () => {
     const directory = createTemporaryDirectory();
-    createFileAt(directory, "cursor-agent");
     const resolver = createCarrierAgentCliLaunchResolver(
       async () => ({}),
       {
@@ -292,18 +291,9 @@ describe("Carrier Agent CLI launch resolution", () => {
       },
     );
 
-    await expect(resolver("cursor", { env: { AUTH_TOKEN: "secret" } })).resolves.toEqual({
-      cliPath: undefined,
-    });
-  });
-
-  it("passes Cursor directly without custom env", async () => {
-    const resolver = createCarrierAgentCliLaunchResolver(
-      async () => ({ "cursor-agent": process.execPath }),
-      { PATH: path.dirname(process.execPath) },
+    await expect(resolver("claude", { env: { AUTH_TOKEN: "secret" } })).rejects.toThrow(
+      "agent_cli_unavailable",
     );
-
-    await expect(resolver("cursor", { env: {} })).resolves.toEqual({ cliPath: process.execPath });
   });
 });
 

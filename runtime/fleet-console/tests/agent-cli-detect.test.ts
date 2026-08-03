@@ -14,8 +14,8 @@ describe("agent cli detector", () => {
       runVersion: async () => "",
     });
     const result = await detector.detect();
-    expect(result.map((cli) => cli.id)).toEqual(["claude", "cursor-agent"]);
-    expect(result.map((cli) => cli.displayName)).toEqual(["Claude Code", "Cursor Agent"]);
+    expect(result.map((cli) => cli.id)).toEqual(["claude"]);
+    expect(result.map((cli) => cli.displayName)).toEqual(["Claude Code"]);
   });
 
   it("marks a resolvable binary available and parses its semver version", async () => {
@@ -86,17 +86,12 @@ describe("agent cli detector", () => {
     ]);
   });
 
-  it("keeps Cursor Agent in the distinct binary catalog", async () => {
+  it("ignores removed Cursor Agent binaries from the distinct catalog", async () => {
     const detector = createAgentCliDetector({
       resolve: (command) => (command === "cursor-agent" ? { bin: "/usr/local/bin/cursor-agent", prefixArgs: [] } : undefined),
       runVersion: async () => "2026.07.01-41b2de7",
     });
     const result = await detector.detect();
-    expect(result.find((cli) => cli.id === "cursor-agent")).toEqual({
-      id: "cursor-agent",
-      displayName: "Cursor Agent",
-      available: true,
-      version: "2026.07.01",
-    });
+    expect(result.find((cli) => cli.id === "cursor-agent")).toBeUndefined();
   });
 });

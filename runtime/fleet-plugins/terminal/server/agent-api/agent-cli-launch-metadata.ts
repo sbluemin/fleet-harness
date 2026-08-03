@@ -15,7 +15,7 @@ export interface AgentCliLaunchMetadata {
 }
 
 export interface AgentCliInstallStatus {
-  // 탐지 단위인 바이너리 명령(cliCommand): claude/cursor-agent.
+  // 탐지 단위인 바이너리 명령(cliCommand): claude.
   readonly id: string;
   readonly available: boolean;
 }
