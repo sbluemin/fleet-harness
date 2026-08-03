@@ -207,8 +207,10 @@ function TriageDeckCardPreview({ operationId, config }: {
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [fit, setFit] = useState<{ scale: number; left: number; top: number } | null>(null);
+  // 하한은 패널 리사이즈 최소값(operation-resize.tsx의 320×200)과 일치시킨다 — 이보다 크게
+  // 올려 잡으면 지원되는 작은 패널의 프리뷰 컨테이너가 실제 geometry보다 커져 refit을 유발한다.
   const innerWidth = Math.max(320, config.geometry.width);
-  const innerHeight = Math.max(240, config.geometry.height);
+  const innerHeight = Math.max(200, config.geometry.height);
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
