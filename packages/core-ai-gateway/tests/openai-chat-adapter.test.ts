@@ -105,16 +105,21 @@ describe("chat completions request translation", () => {
     expect(headers.get("authorization")).toBe("Bearer k");
   });
 
-  it("keeps tool results adjacent to their call even when same-turn text trails the call", async () => {
-    // Anthropic은 한 assistant 메시지에서 tool_use 뒤에 텍스트가 올 수 있고 canonical
-    // 번역은 그 순서를 보존한다. Chat 와이어에서는 tool 응답이 tool_calls 메시지 바로
-    // 뒤여야 하므로, 후행 텍스트가 호출 블록보다 앞으로 배치되어야 한다.
+  it.each([
+    // assistant 턴의 tool_use 뒤 후행 텍스트.
+    [{ type: "message", role: "assistant", content: "calling now" } as const],
+    // 다음 user 턴의 tool_result 앞 선행 텍스트.
+    [{ type: "message", role: "user", content: "here you go" } as const],
+  ])("keeps tool results adjacent to their call across an intervening %o", async (intervening) => {
+    // Anthropic은 tool_use 뒤 후행 텍스트도, tool_result 앞 선행 텍스트도 허용하고
+    // canonical 번역은 그 블록 순서를 보존한다. Chat 와이어에서는 tool 응답이
+    // tool_calls 메시지 바로 뒤여야 하므로, 낀 메시지는 호출 블록보다 앞으로 간다.
     const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
     await adapter(fetchMock).stream(request({
       input: [
         { type: "message", role: "user", content: "go" },
         { type: "function_call", call_id: "call-a", name: "ToolA", arguments: "{}" },
-        { type: "message", role: "assistant", content: "calling now" },
+        intervening,
         { type: "function_call_output", call_id: "call-a", output: "done" },
       ],
     }), { apiKey: "k" });
@@ -124,7 +129,7 @@ describe("chat completions request translation", () => {
     };
     expect(body.messages.map((message) => [message.role, "tool_calls" in message])).toEqual([
       ["user", false],
-      ["assistant", false],
+      [intervening.role, false],
       ["assistant", true],
       ["tool", false],
     ]);
@@ -224,17 +229,25 @@ describe("chat completions stream translation", () => {
     const events = await collect(response.events);
 
     expect(events.some((event) => event.type === "response.function_call_arguments.delta")).toBe(false);
-    expect(events.find((event) => event.type === "response.output_item.done")).toEqual({
-      type: "response.output_item.done",
-      output_index: 1,
-      item: {
-        id: "call-x",
-        type: "function_call",
-        call_id: "call-x",
-        name: "Read",
+    // added→arguments.done→done 3종: 스트리밍 변환과 비스트리밍 collect가 모두 소비한다.
+    const item = {
+      id: "call-x",
+      type: "function_call" as const,
+      call_id: "call-x",
+      name: "Read",
+      arguments: "{\"path\":\"a.ts\"}",
+    };
+    expect(events.filter((event) => event.type.startsWith("response.output_item")
+      || event.type === "response.function_call_arguments.done")).toEqual([
+      { type: "response.output_item.added", output_index: 1, item: { ...item, arguments: "" } },
+      {
+        type: "response.function_call_arguments.done",
+        item_id: "call-x",
+        output_index: 1,
         arguments: "{\"path\":\"a.ts\"}",
       },
-    });
+      { type: "response.output_item.done", output_index: 1, item },
+    ]);
     expect(events.at(-1)).toMatchObject({
       type: "response.completed",
       // usage 청크가 없는 백엔드는 0-usage로 완결한다 — 하류 message_delta의 필수 필드.

@@ -174,10 +174,10 @@ function forChatCompletionsBackend(request: CanonicalResponseRequest): ChatWireR
 
   // Chat Completions는 tool 응답이 tool_calls를 실은 assistant 메시지 바로 뒤에 오기를
   // 요구한다. 연속한 canonical function_call들을 하나의 assistant 메시지로 합치고,
-  // 플러시는 결과 직전(또는 user/developer 턴 경계)까지 미룬다 — Anthropic 원문은
-  // 한 assistant 메시지 안에서 tool_use 뒤에 텍스트가 올 수 있고, canonical 번역이
-  // 그 블록 순서를 보존하므로, 같은 턴의 후행 텍스트는 호출 블록보다 앞에 배치해
-  // 호출과 결과의 인접성을 지킨다.
+  // 플러시는 오직 결과 직전과 입력의 끝에서만 한다 — Anthropic 원문은 assistant 턴의
+  // tool_use 뒤 후행 텍스트도, 다음 user 턴의 tool_result 앞 선행 텍스트도 허용하고
+  // canonical 번역이 그 블록 순서를 보존하므로, 중간에 낀 메시지는 전부 호출 블록보다
+  // 앞에 배치해 호출과 결과의 인접성을 지킨다.
   let pendingToolCalls: ChatWireToolCall[] = [];
   const flushToolCalls = (): void => {
     if (pendingToolCalls.length === 0) return;
@@ -199,7 +199,6 @@ function forChatCompletionsBackend(request: CanonicalResponseRequest): ChatWireR
       messages.push({ role: "tool", tool_call_id: item.call_id, content: item.output });
       continue;
     }
-    if (item.role !== "assistant") flushToolCalls();
     messages.push(chatWireMessage(item));
   }
   flushToolCalls();
@@ -393,18 +392,25 @@ async function* translateChatCompletionsStream(
         throw new UpstreamProtocolError(`Chat Completions tool call ${index} ended without a name`);
       }
       const id = pending.id ?? `chat_call_${index}`;
-      // 하류(anthropic 변환)는 done만으로 tool_use 블록을 합성·완결한다.
-      yield {
-        type: "response.output_item.done",
-        output_index: outputIndex++,
-        item: {
-          id,
-          type: "function_call",
-          call_id: id,
-          name: pending.name,
-          arguments: pending.arguments,
-        },
+      // added→arguments.done→done 3종을 모두 낸다. 스트리밍 변환은 어느 조합이든
+      // 합성하지만, 비스트리밍 collect는 added에서만 client tool_use 블록을 만들므로
+      // done 단독 방출은 tool call을 통째로 삼킨다.
+      const item = {
+        id,
+        type: "function_call" as const,
+        call_id: id,
+        name: pending.name,
+        arguments: pending.arguments,
       };
+      yield { type: "response.output_item.added", output_index: outputIndex, item: { ...item, arguments: "" } };
+      yield {
+        type: "response.function_call_arguments.done",
+        item_id: id,
+        output_index: outputIndex,
+        arguments: pending.arguments,
+      };
+      yield { type: "response.output_item.done", output_index: outputIndex, item };
+      outputIndex += 1;
     }
     yield {
       type: "response.completed",

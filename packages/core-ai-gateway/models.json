@@ -289,7 +289,7 @@
     "opencode": {
       "name": "OpenCode",
       "defaultModel": "minimax-m3",
-      "source": "live GET https://opencode.ai/zen/go/v1/models + per-model wire probes on /messages, /responses, /chat/completions (2026-08-03); contextWindow from oh-my-pi packages/catalog/src/models.json opencode-go entries (2026-08-03). Excluded: mimo-v2-pro/mimo-v2-omni (upstream server_error), hy3-preview (listed but Router.ModelNotFound)",
+      "source": "live GET https://opencode.ai/zen/go/v1/models + per-model wire probes on /messages, /responses, /chat/completions (2026-08-03); contextWindow cross-checked against models.dev api.json opencode-go entries and oh-my-pi packages/catalog/src/models.json (2026-08-03, both agree). Excluded: mimo-v2-pro/mimo-v2-omni (upstream server_error), hy3-preview (listed but Router.ModelNotFound)",
       "models": [
         {
           "modelId": "minimax-m3",
@@ -308,7 +308,8 @@
         },
         {
           "modelId": "qwen3.8-max",
-          "name": "Qwen3.8-Max"
+          "name": "Qwen3.8-Max",
+          "contextWindow": 1000000
         },
         {
           "modelId": "qwen3.7-max",
