@@ -289,7 +289,7 @@
     "opencode": {
       "name": "OpenCode",
       "defaultModel": "minimax-m3",
-      "source": "https://opencode.ai/docs/go/ Anthropic-protocol model table (2026-08-03); contextWindow from oh-my-pi packages/catalog/src/models.json opencode-go entries (2026-08-03)",
+      "source": "live GET https://opencode.ai/zen/go/v1/models + per-model wire probes on /messages, /responses, /chat/completions (2026-08-03); contextWindow from oh-my-pi packages/catalog/src/models.json opencode-go entries (2026-08-03). Excluded: mimo-v2-pro/mimo-v2-omni (upstream server_error), hy3-preview (listed but Router.ModelNotFound)",
       "models": [
         {
           "modelId": "minimax-m3",
@@ -324,6 +324,113 @@
           "modelId": "qwen3.6-plus",
           "name": "Qwen3.6-Plus",
           "contextWindow": 1000000
+        },
+        {
+          "modelId": "qwen3.5-plus",
+          "name": "Qwen3.5-Plus",
+          "contextWindow": 262144
+        },
+        {
+          "modelId": "gpt-5.6-luna",
+          "name": "GPT-5.6-Luna",
+          "wire": "responses",
+          "contextWindow": 1050000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        },
+        {
+          "modelId": "grok-4.5",
+          "name": "Grok-4.5",
+          "wire": "responses",
+          "contextWindow": 500000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        },
+        {
+          "modelId": "deepseek-v4-flash",
+          "name": "DeepSeek-V4-Flash",
+          "wire": "chat-completions",
+          "contextWindow": 1000000
+        },
+        {
+          "modelId": "deepseek-v4-pro",
+          "name": "DeepSeek-V4-Pro",
+          "wire": "chat-completions",
+          "contextWindow": 1000000
+        },
+        {
+          "modelId": "glm-5.2",
+          "name": "GLM-5.2",
+          "wire": "chat-completions",
+          "contextWindow": 1000000
+        },
+        {
+          "modelId": "glm-5.1",
+          "name": "GLM-5.1",
+          "wire": "chat-completions",
+          "contextWindow": 202752
+        },
+        {
+          "modelId": "glm-5",
+          "name": "GLM-5",
+          "wire": "chat-completions",
+          "contextWindow": 202752
+        },
+        {
+          "modelId": "kimi-k3",
+          "name": "Kimi-K3",
+          "wire": "chat-completions",
+          "contextWindow": 1048576
+        },
+        {
+          "modelId": "kimi-k2.7-code",
+          "name": "Kimi-K2.7-Code",
+          "wire": "chat-completions",
+          "contextWindow": 262144
+        },
+        {
+          "modelId": "kimi-k2.6",
+          "name": "Kimi-K2.6",
+          "wire": "chat-completions",
+          "contextWindow": 262144
+        },
+        {
+          "modelId": "kimi-k2.5",
+          "name": "Kimi-K2.5",
+          "wire": "chat-completions",
+          "contextWindow": 262144
+        },
+        {
+          "modelId": "mimo-v2.5-pro",
+          "name": "MiMo-V2.5-Pro",
+          "wire": "chat-completions",
+          "contextWindow": 1048576
+        },
+        {
+          "modelId": "mimo-v2.5",
+          "name": "MiMo-V2.5",
+          "wire": "chat-completions",
+          "contextWindow": 1000000
+        },
+        {
+          "modelId": "hy3",
+          "name": "HY3",
+          "wire": "chat-completions",
+          "contextWindow": 256000
         }
       ]
     }

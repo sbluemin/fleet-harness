@@ -1,4 +1,8 @@
-import { KIMI_AUTH_PROVIDER_ID, KIMI_CODE_API_BASE_URL } from "@dotobokuri/core-ai-gateway";
+import {
+  KIMI_AUTH_PROVIDER_ID,
+  KIMI_CODE_API_BASE_URL,
+  OPENCODE_AUTH_PROVIDER_ID,
+} from "@dotobokuri/core-ai-gateway";
 import { createAuthService, DEFAULT_AUTH_PATH, type AuthService } from "@dotobokuri/core-infra";
 
 import {
@@ -611,6 +615,24 @@ export async function fetchKimiUsage(deps: ProviderDeps = {}): Promise<ProviderR
     if (result) return result;
     throw error;
   }
+}
+
+/**
+ * OpenCode Go는 API 키로 접근 가능한 사용량 엔드포인트를 노출하지 않는다(2026-08-03
+ * 확정 — `/zen/go/v1` 라우트 소스의 표면은 models/messages/responses/chat뿐이고 usage
+ * 후보 경로는 전부 SPA 폴백). 잔량은 opencode 콘솔 워크스페이스(웹 세션)에서만 볼 수
+ * 있다. 따라서 이 리더는 저장된 자격증명 존재만 판정하고 창 없는 ok를 반환하며,
+ * 클라이언트가 그 상태를 "사용량 API 미제공" 안내로 그린다. 가짜 창을 합성하지 않는다.
+ */
+export async function fetchOpencodeUsage(deps: ProviderDeps = {}): Promise<ProviderResult> {
+  const apiKey = await authServiceFor(deps).getApiKey(OPENCODE_AUTH_PROVIDER_ID);
+  if (!apiKey) return { status: "signed_out" };
+  return {
+    status: "ok",
+    plan: "Go",
+    windows: [],
+    fetchedAt: (deps.now ?? Date.now)(),
+  };
 }
 
 export function sanitizeProviderError(error: unknown): string {

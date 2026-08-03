@@ -606,6 +606,43 @@ describe("OpenCode Go passthrough", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(res.body).toContain("OpenCode Go");
   });
+
+  it("routes translated-wire opencode models through the gateway, not the passthrough proxy", async () => {
+    // responses/chat wire 모델은 canonical 번역 경로를 타야 한다 — passthrough fetch가
+    // 불리면 그 자체가 회귀다.
+    const proxyFetch = vi.fn<typeof fetch>();
+    const seen: string[] = [];
+    const router = createAiGatewayRouter({
+      fetch: proxyFetch,
+      readAuth,
+      readOpencodeApiKey: async () => "opencode-secret",
+      gateway: stubGateway((request) => seen.push(request.model)),
+    });
+
+    for (const model of [
+      "claude-gateway--opencode--gpt-5.6-luna[1m]",
+      "claude-gateway--opencode--deepseek-v4-flash[1m]",
+    ]) {
+      const res = response();
+      await router.handle(ctx({ res, token: ANTHROPIC_CRED, model }));
+      expect(res.status).toBe(200);
+    }
+
+    expect(seen).toEqual(["gpt-5.6-luna", "deepseek-v4-flash"]);
+    expect(proxyFetch).not.toHaveBeenCalled();
+  });
+
+  it("still refuses translated-wire opencode models without a stored key", async () => {
+    const router = createAiGatewayRouter({ readAuth, gateway: stubGateway() });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--opencode--gpt-5.6-luna[1m]",
+    }));
+    expect(res.status).toBe(401);
+    expect(res.body).toContain("OpenCode Go");
+  });
 });
 
 describe("Kimi passthrough", () => {
@@ -892,7 +929,7 @@ describe("route surface", () => {
     const ids = list.data.map((entry) => entry.id);
     // picker가 버리지 않도록 모든 항목이 claude- alias로 나가야 한다.
     expect(ids.every((id) => id.startsWith("claude"))).toBe(true);
-    expect(list.data).toHaveLength(24);
+    expect(list.data).toHaveLength(39);
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast[1m]");
     expect(ids).toContain("claude-gateway--cursor--auto[1m]");
     expect(ids).toContain("claude-gateway--cursor--kimi-k3");

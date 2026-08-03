@@ -9,7 +9,7 @@ import { getT, type QuotaMessageKey } from "./i18n/index.js";
 import "./quota.css";
 
 type T = Translate<QuotaMessageKey>;
-type ProviderId = "claude" | "codex" | "cursor" | "kimi";
+type ProviderId = "claude" | "codex" | "cursor" | "kimi" | "opencode";
 /** Providers whose credential read is gated behind an explicit connect. */
 type ConnectableProviderId = "claude" | "cursor";
 
@@ -18,6 +18,7 @@ const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
   codex: "Codex",
   cursor: "Cursor",
   kimi: "Kimi",
+  opencode: "OpenCode Go",
 };
 
 export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
@@ -25,6 +26,7 @@ export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   codex: "quota.codex.signedOut",
   cursor: "quota.cursor.signedOut",
   kimi: "quota.kimi.signedOut",
+  opencode: "quota.opencode.signedOut",
 };
 
 export const EXPIRED_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
@@ -32,15 +34,17 @@ export const EXPIRED_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   codex: "quota.expired.codex",
   cursor: "quota.expired.cursor",
   kimi: "quota.expired.kimi",
+  opencode: "quota.expired.opencode",
 };
 
 // Cursor와 Kimi만 이 상태에 도달하지만(claude·codex 파서는 반환하지 않는다), 프로바이더별
-// 안내를 공용 문구로 대신하면 다른 공급자의 지시를 보여주게 되므로 나머지 둘도 명시한다.
+// 안내를 공용 문구로 대신하면 다른 공급자의 지시를 보여주게 되므로 나머지도 명시한다.
 export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   claude: "quota.noSubscription",
   codex: "quota.noSubscription",
   cursor: "quota.noSubscription",
   kimi: "quota.kimi.noSubscription",
+  opencode: "quota.noSubscription",
 };
 
 function isConnectable(id: ProviderId): id is ConnectableProviderId {
@@ -167,6 +171,11 @@ function ProviderCard({
       {(provider.status === "ok" || provider.status === "stale") ? provider.windows?.map((window, index) => (
         <Meter key={`${window.id}-${window.label ?? index}`} window={window} cycleDays={provider.cycleDays} now={now} t={t} />
       )) : null}
+      {/* OpenCode Go는 키 인증 사용량 API가 없어 창을 만들 수 없다 — 상태만 정직하게 알린다. */}
+      {id === "opencode" && (provider.status === "ok" || provider.status === "stale")
+        && (provider.windows?.length ?? 0) === 0
+        ? <div className="quota-signed-out">{t("quota.opencode.noUsageApi")}</div>
+        : null}
       {(provider.status === "ok" || provider.status === "stale") && provider.credits ? (
         <div className="quota-credits">
           <span>{t("quota.credits", { n: provider.credits.available })}</span>
@@ -262,6 +271,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
     data?.providers.codex.fetchedAt ?? 0,
     data?.providers.cursor.fetchedAt ?? 0,
     data?.providers.kimi.fetchedAt ?? 0,
+    data?.providers.opencode.fetchedAt ?? 0,
   );
   const updatedMinutes = Math.max(0, Math.floor((now - fetchedAt) / 60_000));
   return (
@@ -275,6 +285,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
             <ProviderCard id="codex" provider={data.providers.codex} now={now} t={t} connect={connect} />
             <ProviderCard id="cursor" provider={data.providers.cursor} now={now} t={t} connect={connect} />
             <ProviderCard id="kimi" provider={data.providers.kimi} now={now} t={t} connect={connect} />
+            <ProviderCard id="opencode" provider={data.providers.opencode} now={now} t={t} connect={connect} />
           </>
         ) : null}
       </div>

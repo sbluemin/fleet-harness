@@ -35,9 +35,20 @@ function KimiGlyph() {
   );
 }
 
-export function providerGlyph(provider: "claude" | "codex" | "cursor" | "kimi"): ReactNode {
+// OpenCode는 공식 벡터 마크 배포 경로가 없어 터미널 프롬프트 형태의 단순화 마크를 쓴다
+// (terminal/client/agent/index.tsx의 OpencodeGlyph 미러).
+function OpencodeGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path d="M4 3.5h16A1.5 1.5 0 0 1 21.5 5v14a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 19V5A1.5 1.5 0 0 1 4 3.5zm0 1.5v14h16V5H4zm3.03 3.03 3.94 3.47a.66.66 0 0 1 0 1L7.03 16 6 14.88 9.27 12 6 9.12l1.03-1.09zM12.5 14.9h5.5v1.6h-5.5v-1.6z" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function providerGlyph(provider: "claude" | "codex" | "cursor" | "kimi" | "opencode"): ReactNode {
   if (provider === "claude") return <ClaudeGlyph />;
   if (provider === "cursor") return <CursorGlyph />;
   if (provider === "kimi") return <KimiGlyph />;
+  if (provider === "opencode") return <OpencodeGlyph />;
   return <CodexGlyph />;
 }

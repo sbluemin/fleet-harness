@@ -6,6 +6,7 @@ import {
   CURSOR_SUBSCRIPTION_MODELS,
   KIMI_SUBSCRIPTION_MODELS,
   OPENCODE_SUBSCRIPTION_MODELS,
+  isAnthropicPassthroughModel,
   buildAnthropicModelList,
   buildGatewayModelConstraints,
   clampReasoningEffort,
@@ -613,18 +614,36 @@ describe("model catalog", () => {
     expect(CURSOR_SUBSCRIPTION_MODELS.find((model) => model.id === "cursor--kimi-k3-1m"))
       .toMatchObject({ cursorMaxMode: true });
     expect(KIMI_SUBSCRIPTION_MODELS.map((model) => model.upstreamId)).toEqual(["k3", "k3-256k"]);
-    // OpenCode Go의 Anthropic 프로토콜 모델만 노출한다 — OpenAI 계열 Go 모델은
-    // passthrough 경로로 서비스할 수 없다 (https://opencode.ai/docs/go/, 2026-08-03).
-    expect(OPENCODE_SUBSCRIPTION_MODELS.map((model) => model.upstreamId)).toEqual([
-      "minimax-m3",
-      "minimax-m2.7",
-      "minimax-m2.5",
-      "qwen3.8-max",
-      "qwen3.7-max",
-      "qwen3.7-plus",
-      "qwen3.6-plus",
+    // OpenCode Go의 서비스 가능 전 모델(2026-08-03 라이브 프로브). wire 미선언 =
+    // Anthropic passthrough, 그 외에는 선언된 네이티브 wire의 번역 경로를 탄다.
+    expect(OPENCODE_SUBSCRIPTION_MODELS.map((model) => [model.upstreamId, model.wire ?? "anthropic"])).toEqual([
+      ["minimax-m3", "anthropic"],
+      ["minimax-m2.7", "anthropic"],
+      ["minimax-m2.5", "anthropic"],
+      ["qwen3.8-max", "anthropic"],
+      ["qwen3.7-max", "anthropic"],
+      ["qwen3.7-plus", "anthropic"],
+      ["qwen3.6-plus", "anthropic"],
+      ["qwen3.5-plus", "anthropic"],
+      ["gpt-5.6-luna", "responses"],
+      ["grok-4.5", "responses"],
+      ["deepseek-v4-flash", "chat-completions"],
+      ["deepseek-v4-pro", "chat-completions"],
+      ["glm-5.2", "chat-completions"],
+      ["glm-5.1", "chat-completions"],
+      ["glm-5", "chat-completions"],
+      ["kimi-k3", "chat-completions"],
+      ["kimi-k2.7-code", "chat-completions"],
+      ["kimi-k2.6", "chat-completions"],
+      ["kimi-k2.5", "chat-completions"],
+      ["mimo-v2.5-pro", "chat-completions"],
+      ["mimo-v2.5", "chat-completions"],
+      ["hy3", "chat-completions"],
     ]);
-    expect(OPENCODE_SUBSCRIPTION_MODELS.every((model) => !model.effort.supported)).toBe(true);
+    // effort는 reasoning 파라미터를 실측으로 수용한 responses wire에서만 연다.
+    expect(OPENCODE_SUBSCRIPTION_MODELS.every((model) => (
+      model.effort.supported === ((model.wire ?? "anthropic") === "responses")
+    ))).toBe(true);
   });
 
   it("keeps the approved GPT-5.6 and K3 effort ladders in the gateway registry", () => {
@@ -742,14 +761,14 @@ describe("model catalog", () => {
       display_name: "Moonshot-Kimi-K3-256K",
       max_input_tokens: 262_144,
     });
-    // Anthropic passthrough providers require a real 1M window for the marker:
+    // Anthropic passthrough models require a real 1M window for the marker:
     // Claude Code's long-context beta must not reach a sub-1M compatible upstream.
-    const anthropicPassthrough = new Set(["kimi", "opencode"]);
+    // Translated wires (opencode responses/chat) project like Codex/Cursor instead.
     expect(GATEWAY_MODELS.every((model) => (
       toClaudeGatewayModelId(model).endsWith("[1m]")
       === (
         (model.contextWindow ?? 0) > 200_000
-        && (!anthropicPassthrough.has(model.provider) || (model.contextWindow ?? 0) >= 1_000_000)
+        && (!isAnthropicPassthroughModel(model) || (model.contextWindow ?? 0) >= 1_000_000)
       )
     ))).toBe(true);
     expect(list.data.every((entry) => (
