@@ -5,6 +5,7 @@ import type {
   CoworkEventDto,
   CoworkOptionsResponse,
   CoworkSessionDto,
+  CodexHealthResponse,
   ConflictDetailResponse,
   ConflictListItem,
   DrydockDetailResponse,
@@ -26,6 +27,7 @@ export type {
   CoworkEventDto,
   CoworkOptionsResponse,
   CoworkSessionDto,
+  CodexHealthResponse,
   ConflictDetailResponse,
   ConflictListItem,
   DrydockDetailResponse,
@@ -47,6 +49,7 @@ export interface SearchOptions {
   q?: string;
   tags?: string[];
   limit?: number;
+  signal?: AbortSignal;
 }
 
 export interface EntryOptions {
@@ -68,12 +71,16 @@ export async function fetchSearch(theaterId: string | null, opts?: SearchOptions
   if (opts?.tags && opts.tags.length > 0) params.set("tags", opts.tags.join(","));
   if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
   const suffix = params.toString();
-  return fetchJson<SearchResponse>(apiPath(theaterId, `/search${suffix ? `?${suffix}` : ""}`));
+  return fetchJson<SearchResponse>(apiPath(theaterId, `/search${suffix ? `?${suffix}` : ""}`), opts?.signal);
 }
 
 export async function fetchEntry(theaterId: string | null, id: string, opts?: EntryOptions): Promise<EntryResponse> {
   const suffix = opts?.includeRaw ? "?include=raw" : "";
   return fetchJson<EntryResponse>(apiPath(theaterId, `/entry/${encodeURIComponent(id)}${suffix}`));
+}
+
+export async function fetchHealth(theaterId: string | null, signal?: AbortSignal): Promise<CodexHealthResponse> {
+  return fetchJson<CodexHealthResponse>(apiPath(theaterId, "/health"), signal);
 }
 
 export async function fetchDrydock(theaterId: string | null, status: "pending" | "archived" | "all" = "pending"): Promise<DrydockListResponse> {
@@ -187,9 +194,10 @@ function apiPath(theaterId: string | null, path: string): string {
     : `/console/codex/api${normalized}`;
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
+async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(url, {
     headers: { accept: "application/json" },
+    signal,
   });
   if (!response.ok) {
     throw new Error(await buildRequestError(url, response));

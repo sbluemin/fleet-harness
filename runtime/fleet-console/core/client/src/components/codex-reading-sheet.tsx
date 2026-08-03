@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
-import { mountReaderInto, saveReaderScroll } from "../codex-host.js";
+import {
+  getCodexReaderHistoryState,
+  mountReaderInto,
+  navigateCodexReaderHistory,
+  refreshCodexHealth,
+  saveReaderScroll,
+  subscribeCodexReaderHistory,
+} from "../codex-host.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useT } from "../i18n/index.js";
 import { collapseCodexReader, expandCodexReader, openCodexReader } from "../store.js";
@@ -16,6 +23,11 @@ const FOCUSABLE =
 
 export function CodexReadingSheet() {
   const t = useT();
+  const history = useSyncExternalStore(
+    subscribeCodexReaderHistory,
+    getCodexReaderHistoryState,
+    getCodexReaderHistoryState,
+  );
   const {
     codexReader: reader,
     codexReaderExpanded: expanded,
@@ -75,7 +87,7 @@ export function CodexReadingSheet() {
         document.querySelector<HTMLElement>('[data-codex-expand="true"]') ??
         (entryId
           ? document.querySelector<HTMLElement>(
-              `.codex-nav-entry.is-current[data-entry-id="${entryId}"]`,
+              `.codex-nav-entry.is-current[data-entry-id="${entryId}"] .t`,
             )
           : null) ??
         document.querySelector<HTMLElement>(".codex-navigator .codex-nav-search-input");
@@ -97,6 +109,7 @@ export function CodexReadingSheet() {
       kind,
       subId,
       theaterId,
+      sessionTheaterId: theaterId,
       // 오버레이(크게 보기) 안에서 related 링크 클릭은 오버레이를 유지한 채 문서만 교체한다
       // (split의 onRelatedClick은 split에 머문다 — codex-panel.tsx). expandCodexReader가
       // openCodexReader의 expanded:false를 즉시 true로 되돌려 같은 read 모드를 유지.
@@ -109,8 +122,13 @@ export function CodexReadingSheet() {
         openCodexReader({ kind: "drydock", patchId: pid });
         expandCodexReader();
       },
+      onConflictOpen: (id) => {
+        openCodexReader({ kind: "conflicts", id });
+        expandCodexReader();
+      },
       onDecided: () => {
         void loadInitialData();
+        refreshCodexHealth();
         openCodexReader({ kind: "drydock", patchId: undefined });
         expandCodexReader();
       },
@@ -140,6 +158,26 @@ export function CodexReadingSheet() {
         aria-label={t("chrome.codexReading.dialogAria")}
       >
         <div className="codex-reading-sheet-head">
+          <div className="codex-reader-history">
+            <button
+              className="codex-reader-history-btn"
+              type="button"
+              aria-label={t("codex.nav.backAria")}
+              disabled={!history.canGoBack}
+              onClick={() => navigateCodexReaderHistory(-1)}
+            >
+              ←
+            </button>
+            <button
+              className="codex-reader-history-btn"
+              type="button"
+              aria-label={t("codex.nav.forwardAria")}
+              disabled={!history.canGoForward}
+              onClick={() => navigateCodexReaderHistory(1)}
+            >
+              →
+            </button>
+          </div>
           <span className="codex-reading-sheet-eyebrow">{t("chrome.codexReading.eyebrow")}</span>
           <button
             data-sheet-initial-focus

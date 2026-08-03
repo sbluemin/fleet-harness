@@ -6512,6 +6512,24 @@
   text-transform: uppercase;
 }
 
+.operation-search-codex-section {
+  border-top: 1px solid color-mix(in oklch, var(--surface-rim) 72%, transparent);
+}
+
+.operation-search-source-badge {
+  flex: none;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in oklch, var(--brass) 34%, var(--surface-rim));
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--brass) 8%, transparent);
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+}
+
 .operation-search-empty {
   margin: 0;
   padding: var(--space-5) var(--space-4);
@@ -8175,6 +8193,43 @@ body[data-codex-side="true"] .command-card {
   border-bottom: 1px solid var(--surface-rim);
 }
 
+.codex-reader-history {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-right: auto;
+}
+
+.codex-reader-history-btn {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition:
+    color var(--duration-fast),
+    border-color var(--duration-fast),
+    background var(--duration-fast);
+}
+
+.codex-reader-history-btn:hover:not(:disabled),
+.codex-reader-history-btn:focus-visible {
+  color: var(--brass-bright);
+  border-color: var(--brass-deep);
+  background: color-mix(in oklch, var(--brass) 8%, transparent);
+}
+
+.codex-reader-history-btn:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+  opacity: 0.55;
+}
+
 .codex-reading-sheet-eyebrow {
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
@@ -8376,11 +8431,94 @@ body[data-codex-reading="true"] .operations-side-bar {
   max-inline-size: none;
 }
 
-/* split 좌측은 문서 본문이 전체 높이를 갖고 스크롤되도록, 인라인 ToC 슬롯은 숨긴다
-   (ToC 내비게이션은 Expand 오버레이의 200px ToC rail이 담당 — 중복 슬롯이 doc 높이를
-   잠식하던 문제 제거). */
-.codex-doc-toc-inline {
+.codex-doc-outline {
+  /* 콘텐츠 높이만 차지하되 pane의 40%를 상한으로 — 고정 basis는 높은 pane에서 빈 공간을 만든다 */
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 34px;
+  max-height: 40%;
+  border-bottom: 1px solid var(--surface-rim);
+  background: color-mix(in oklch, var(--surface-glass) 74%, transparent);
+  overflow: hidden;
+}
+
+.codex-doc-outline[data-toc-count="0"] {
   display: none;
+}
+
+.codex-doc-outline-toggle {
+  flex: none;
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.codex-doc-outline-toggle:hover,
+.codex-doc-outline-toggle:focus-visible {
+  color: var(--brass-bright);
+  background: color-mix(in oklch, var(--brass) 6%, transparent);
+}
+
+.codex-doc-outline-chevron {
+  display: inline-grid;
+  place-items: center;
+  transition: transform var(--duration-fast) var(--ease-spring);
+}
+
+.codex-doc-outline[data-collapsed="true"] {
+  flex-basis: 34px;
+}
+
+.codex-doc-outline[data-collapsed="true"] .codex-doc-outline-chevron {
+  transform: rotate(-90deg);
+}
+
+.codex-doc-outline[data-collapsed="true"] .codex-doc-toc-inline {
+  display: none;
+}
+
+.codex-doc-toc-inline {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 var(--space-4) var(--space-3);
+}
+
+.codex-doc-toc-inline .ti {
+  display: block;
+  padding: var(--space-1) 0 var(--space-1) var(--space-3);
+  border-left: 2px solid transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-body);
+  font-size: 11px;
+  text-decoration: none;
+  transition: color var(--duration-fast);
+}
+
+.codex-doc-toc-inline .ti:hover {
+  color: var(--text-secondary);
+}
+
+.codex-doc-toc-inline .ti.active {
+  color: var(--brass-bright);
+  border-left-color: var(--brass);
+}
+
+.codex-doc-toc-inline .toc-level-3 {
+  padding-left: calc(var(--space-3) + var(--space-4));
 }
 
 .codex-nav-pane {

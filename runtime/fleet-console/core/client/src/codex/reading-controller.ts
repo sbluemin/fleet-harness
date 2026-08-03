@@ -54,7 +54,7 @@ export interface ReadingController {
   destroy(): void;
   setEntry(entryId: string): Promise<void>;
   navigateSub(subId: string | undefined): Promise<void>;
-  refreshCallbacks(next: Partial<Pick<MountReadingOptions, "onPatchOpen" | "onDecided" | "onRelatedClick" | "onClose" | "theaterId">>): void;
+  refreshCallbacks(next: Partial<Pick<MountReadingOptions, "onPatchOpen" | "onConflictOpen" | "onDecided" | "onRelatedClick" | "onClose" | "theaterId">>): void;
   /** 로케일 변경 시 현재 문서·스크롤을 유지한 채 문구만 다시 그린다. */
   refreshLocale(): Promise<void>;
 }
@@ -68,8 +68,11 @@ export interface MountReadingOptions {
   readonly onClose: () => void;
   /** 패치 행 클릭(상세 진입) 또는 뒤로가기(undefined) 콜백 */
   readonly onPatchOpen?: (patchId: string | undefined) => void;
+  readonly onConflictOpen?: (conflictId: string | undefined) => void;
   /** 승인/반려 결정 완료 후 목록 갱신을 트리거하는 콜백 */
   readonly onDecided?: () => void;
+  readonly onEntryRendered?: (entryId: string) => void;
+  readonly onTocChanged?: (count: number) => void;
   readonly tocContainer: HTMLElement;
 }
 
@@ -90,6 +93,8 @@ export function mountReadingInto(
   opts: MountReadingOptions,
 ): ReadingController {
   let destroyed = false;
+  let entryRequestEpoch = 0;
+  let subRequestEpoch = 0;
   let schemaRequestEpoch = 0;
   let cleanupSpy: (() => void) | null = null;
   let coworkController: CoworkController | null = null;
@@ -111,12 +116,41 @@ export function mountReadingInto(
     const target = event.target;
     if (!(target instanceof Element)) return;
 
+    const copyButton = target.closest<HTMLElement>('[data-action="copy-code"]');
+    if (copyButton) {
+      const code = copyButton.closest("pre")?.getAttribute("data-code");
+      if (code) copyCodeToClipboard(copyButton, code);
+      return;
+    }
+
+    const wikiLink = target.closest<HTMLAnchorElement>('a[href^="/entry/"]');
+    if (wikiLink) {
+      event.preventDefault();
+      const entryId = decodeURIComponent(wikiLink.pathname.slice("/entry/".length));
+      if (entryId) liveOpts.onRelatedClick(entryId);
+      return;
+    }
+
     // 패치 행 클릭 (목록 → 상세 또는 뒤로가기)
     const patchRowBtn = target.closest<HTMLElement>("[data-patch-id]");
     if (patchRowBtn) {
       event.preventDefault();
       const patchId = patchRowBtn.dataset.patchId || undefined;
       liveOpts.onPatchOpen?.(patchId);
+      return;
+    }
+
+    const conflictActionBtn = target.closest<HTMLElement>("[data-conflict-action]");
+    if (conflictActionBtn?.dataset.conflictAction === "back") {
+      event.preventDefault();
+      liveOpts.onConflictOpen?.(undefined);
+      return;
+    }
+
+    const conflictRowBtn = target.closest<HTMLElement>("[data-conflict-id]");
+    if (conflictRowBtn) {
+      event.preventDefault();
+      liveOpts.onConflictOpen?.(conflictRowBtn.dataset.conflictId || undefined);
       return;
     }
 
@@ -221,12 +255,15 @@ export function mountReadingInto(
 
   async function renderEntryView(entryId: string): Promise<void> {
     if (destroyed) return;
+    const requestEpoch = ++entryRequestEpoch;
+    currentEntryId = entryId;
     showLoading(readContainer, opts.tocContainer);
+    opts.onTocChanged?.(0);
     cleanupReader();
 
     try {
       const entry = await fetchEntry(liveOpts.theaterId, entryId);
-      if (destroyed) return;
+      if (destroyed || requestEpoch !== entryRequestEpoch || entryId !== currentEntryId) return;
 
       const { index } = getState();
       const t = consoleT();
@@ -251,6 +288,7 @@ export function mountReadingInto(
       `;
 
       opts.tocContainer.innerHTML = renderTocSheet(toc);
+      opts.onTocChanged?.(toc.length);
       const article = readContainer.querySelector<HTMLElement>("article");
       if (article && toc.length > 0) {
         cleanupSpy = installTocScrollSpy(article, toc, opts.tocContainer);
@@ -267,14 +305,28 @@ export function mountReadingInto(
           onApplied: () => { void renderEntryView(entryId); },
         });
       }
+      opts.onEntryRendered?.(entryId);
     } catch (error) {
-      if (!destroyed) showError(readContainer, opts.tocContainer, error);
+      if (!destroyed && requestEpoch === entryRequestEpoch && entryId === currentEntryId) {
+        showError(readContainer, opts.tocContainer, error);
+      }
     }
+  }
+
+  function isCurrentSubRequest(
+    kind: "drydock" | "conflicts",
+    subId: string | undefined,
+    requestEpoch: number,
+  ): boolean {
+    return !destroyed && opts.kind === kind && currentSubId === subId && requestEpoch === subRequestEpoch;
   }
 
   async function renderDrydockView(patchId: string | undefined): Promise<void> {
     if (destroyed) return;
+    const requestEpoch = ++subRequestEpoch;
+    currentSubId = patchId;
     showLoading(readContainer, opts.tocContainer);
+    opts.onTocChanged?.(0);
     cleanupReader();
 
     // 새 뷰 진입 시 결정 상태 초기화
@@ -286,7 +338,7 @@ export function mountReadingInto(
     try {
       if (patchId) {
         const detail = await fetchDrydockDetail(liveOpts.theaterId, patchId);
-        if (destroyed) return;
+        if (!isCurrentSubRequest("drydock", patchId, requestEpoch)) return;
 
         currentDetailMeta = detail.meta;
         currentDetailPatchId = patchId;
@@ -307,41 +359,53 @@ export function mountReadingInto(
         }
       } else {
         const list = await fetchDrydock(liveOpts.theaterId, "pending");
-        if (destroyed) return;
+        if (!isCurrentSubRequest("drydock", patchId, requestEpoch)) return;
         opts.tocContainer.innerHTML = "";
+        opts.onTocChanged?.(0);
         readContainer.innerHTML = renderDrydockList(list.items, consoleT()("codex.reading.reviewQueuePending"));
       }
     } catch (error) {
-      if (!destroyed) showError(readContainer, opts.tocContainer, error);
+      if (isCurrentSubRequest("drydock", patchId, requestEpoch)) {
+        showError(readContainer, opts.tocContainer, error);
+      }
     }
   }
 
   async function renderConflictsView(conflictId: string | undefined): Promise<void> {
     if (destroyed) return;
+    const requestEpoch = ++subRequestEpoch;
+    currentSubId = conflictId;
     showLoading(readContainer, opts.tocContainer);
+    opts.onTocChanged?.(0);
     cleanupReader();
 
     try {
       if (conflictId) {
         const detail = await fetchConflictDetail(liveOpts.theaterId, conflictId);
-        if (destroyed) return;
+        if (!isCurrentSubRequest("conflicts", conflictId, requestEpoch)) return;
         opts.tocContainer.innerHTML = "";
+        opts.onTocChanged?.(0);
         readContainer.innerHTML = renderConflictDetail(detail);
       } else {
         const conflicts = await fetchConflicts(liveOpts.theaterId);
-        if (destroyed) return;
+        if (!isCurrentSubRequest("conflicts", conflictId, requestEpoch)) return;
         opts.tocContainer.innerHTML = "";
+        opts.onTocChanged?.(0);
         readContainer.innerHTML = renderConflictList(conflicts);
       }
     } catch (error) {
-      if (!destroyed) showError(readContainer, opts.tocContainer, error);
+      if (isCurrentSubRequest("conflicts", conflictId, requestEpoch)) {
+        showError(readContainer, opts.tocContainer, error);
+      }
     }
   }
 
   async function renderSchemaView(templateId: string | undefined): Promise<void> {
     const requestEpoch = ++schemaRequestEpoch;
     const theaterId = liveOpts.theaterId;
+    currentSubId = templateId;
     showLoading(readContainer, opts.tocContainer);
+    opts.onTocChanged?.(0);
     cleanupReader();
     try {
       const document = await fetchSchemaDocument(theaterId, templateId);
@@ -371,17 +435,17 @@ export function mountReadingInto(
   return {
     destroy(): void {
       destroyed = true;
+      entryRequestEpoch += 1;
+      subRequestEpoch += 1;
       schemaRequestEpoch += 1;
       readContainer.removeEventListener("click", handleClick);
       cleanupReader();
       coworkController?.destroy();
     },
     async setEntry(entryId: string): Promise<void> {
-      currentEntryId = entryId;
       await renderEntryView(entryId);
     },
     async navigateSub(subId: string | undefined): Promise<void> {
-      currentSubId = subId;
       if (opts.kind === "drydock") {
         await renderDrydockView(subId);
       } else if (opts.kind === "conflicts") {
@@ -541,7 +605,7 @@ function renderPatchDetail(detail: DrydockDetailResponse, markdownHtml: string):
         </nav>
         <button type="button" class="queue-back-btn" data-drydock-action="back">${escapeHtml(t("codex.reading.backQueue"))}</button>
         <h1><span class="op-badge">${glyph}</span> ${escapeHtml(wikiEntry.title)}</h1>
-        <p class="eyebrow">${escapeHtml(patch.frontmatter.target)} · v${wikiEntry.version} · ${escapeHtml(targetLabel)}</p>
+        <p class="eyebrow">${escapeHtml(patch.frontmatter.target)} · v${escapeHtml(String(wikiEntry.version))} · ${escapeHtml(targetLabel)}</p>
         ${renderPatchMetaChips(patch.frontmatter.proposer, wikiEntry.tags)}
       </header>
       <div class="markdown-body" id="codex-reader-body">
@@ -621,6 +685,7 @@ function renderConflictDetail(detail: ConflictDetailResponse): string {
         <nav class="breadcrumb" aria-label="${escapeAttribute(t("codex.reading.entryLocationAria"))}">
           <ol><li><span>Codex</span></li><li><span>${escapeHtml(t("codex.reading.conflicts"))}</span></li></ol>
         </nav>
+        <button type="button" class="queue-back-btn" data-conflict-action="back" aria-label="${escapeAttribute(t("codex.reading.backConflicts"))}">${escapeHtml(t("codex.reading.backConflicts"))}</button>
         <h1>${escapeHtml(detail.id)}</h1>
         <p class="eyebrow">${escapeHtml(t("codex.reading.conflictEyebrow", { status }))}</p>
       </header>
@@ -630,6 +695,25 @@ function renderConflictDetail(detail: ConflictDetailResponse): string {
       </div>
     </article>
   `;
+}
+
+function copyCodeToClipboard(button: HTMLElement, code: string): void {
+  const clipboard = navigator.clipboard;
+  if (!clipboard) return;
+  let write: Promise<void>;
+  try {
+    write = clipboard.writeText(code);
+  } catch {
+    return;
+  }
+  const original = button.textContent;
+  void write.then(() => {
+    if (!button.isConnected) return;
+    button.textContent = consoleT()("codex.cowork.copied");
+    window.setTimeout(() => {
+      if (button.isConnected) button.textContent = original;
+    }, 1_200);
+  }).catch(() => undefined);
 }
 
 function renderConflictList(conflicts: ConflictListItem[]): string {
@@ -648,8 +732,12 @@ function renderConflictList(conflicts: ConflictListItem[]): string {
             .map(
               (item) =>
                 `<li class="queue-item">
-                  <strong>${escapeHtml(item.title || item.id)}</strong>
-                  <span class="eyebrow">${escapeHtml(item.status)}</span>
+                  <button class="queue-row conflict-row" type="button" data-conflict-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(t("codex.reading.openConflict", { title: item.title || item.id }))}">
+                    <span class="queue-row-body">
+                      <strong class="queue-row-target">${escapeHtml(item.title || item.id)}</strong>
+                      <span class="eyebrow">${escapeHtml(item.status)}</span>
+                    </span>
+                  </button>
                 </li>`,
             )
             .join("")}

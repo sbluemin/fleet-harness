@@ -673,9 +673,9 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     if (revisionOutput) event.stopPropagation();
     const copyButton = event.target.closest<HTMLElement>('[data-action="copy-code"]');
     if (copyButton) {
+      event.stopPropagation();
       const code = copyButton.closest("pre")?.getAttribute("data-code");
-      if (!code) return;
-      copyCodeToClipboard(copyButton, code);
+      if (code) copyCodeToClipboard(copyButton, code);
       return;
     }
     if (revisionOutput) return;
@@ -800,6 +800,7 @@ function copyCodeToClipboard(button: HTMLElement, code: string): void {
     window.setTimeout(() => { if (button.isConnected) button.textContent = original; }, 1_200);
   }).catch(() => undefined);
 }
+
 // 소스 라인이 아닌 "렌더된 문서" 관점의 diff — 변경 블록은 하이라이트, 삭제 블록은
 // 흐림+취소선으로 문서 흐름 안에 표시된다.
 function renderRenderedDiff(base: string, draft: string): string {
