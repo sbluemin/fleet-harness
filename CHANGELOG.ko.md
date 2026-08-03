@@ -5,6 +5,68 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.46.0] - 2026-08-03
+
+### fleet-cli
+
+#### Added
+- [fleet-cli] `fleet auth login`/`fleet auth logout`이 `kimi|opencode`를 받도록 확장하고, mission-control 인증 패널에 두 provider를 모두 표시합니다.
+
+### fleet-console
+
+#### Added
+- [fleet-console] 선별 처리 모드에서 큐가 비면 라이브 Watch Deck를 표시합니다. 휴면이 아닌 모든 Operation이 activity 상태·마지막 activity 변화 이후 경과 시간을 담은 카드로 나타나고, 패널 body를 렌더하는 kind는 실제 패널의 라이브 축소 프리뷰를, 그 외 kind는 최신 상태 줄을 보여줍니다. 카드를 클릭하면 고스트 flight 애니메이션과 함께 해당 Operation이 무대로 올라갑니다. 큐에 오른 작업은 카드에서 잠시 맥동한 뒤 무대로 확대되어 직전 처리의 착지 플래시가 끝까지 보입니다.
+- [fleet-console] 턴이 끝난 뒤에도 백그라운드 서브에이전트나 워크플로우가 남아있으면 Operation을 Background 상태로 표시합니다. 중공 warn 비콘, 사이드바 STATUS 슬롯, 로케일 라벨을 함께 제공합니다.
+- [fleet-console] Codex 검색이 이제 항목 본문까지 매칭하며 결과 목록에 하이라이트된 문맥 스니펫을 보여줍니다.
+- [fleet-console] Codex 리더에 뒤로/앞으로 탐색 히스토리가 추가되고, Theater별로 마지막으로 읽던 항목과 스크롤 위치가 새로고침 후 복원됩니다.
+- [fleet-console] Codex split 뷰에 접을 수 있는 문서 개요가 추가되어 스크롤에 따라 현재 섹션을 표시합니다.
+- [fleet-console] Codex 항목 카드가 상대 시간으로 갱신 시점을 표시하고, 목록에 최신순/이름순 정렬과 태그 칩 필터가 추가됩니다.
+- [fleet-console] 커맨드 팔레트에서 Codex 위키 항목을 검색해 어디서든 문서를 열 수 있으며, 선택 시 Codex rail이 자동으로 열립니다.
+- [fleet-console] Codex 내비게이터에 마지막 drydock 실행·충돌·검토 대기 요약을 보여주는 위키 상태 스트립이 추가되며, 상세는 읽던 문서를 유지하는 팝오버로 표시됩니다.
+
+#### Changed
+- [fleet-console] 시스템 컨트롤을 커맨드 밴드 상주 클러스터로 이전합니다. 기어는 설정을 1클릭으로 열고 "?" 메뉴가 새 소식·키보드 단축키·업데이트 실행·GitHub 링크를 담아, 어느 라우트에서나 사이드바가 접힌 상태에서도 항상 도달할 수 있습니다. 사이드바 푸터의 System Menu와 브랜드 푸터는 제거되며, 대기 중 업데이트는 기어의 상태 도트로 표시됩니다.
+
+#### Fixed
+- [fleet-console] 사이드바를 접으면 커맨드 밴드의 맵 컨트롤(Formation view, Triage)이 이전 사이드바 폭 위치에 떠 있지 않고 hairline 구분선과 함께 좌측 컨트롤군에 도킹됩니다. 앵커 전환은 200ms 글라이드로 이동하며 reduced motion 설정을 존중합니다.
+- [fleet-console] Codex 충돌 목록 행에서 상세 화면이 열리며, drydock과 schema 문서의 코드 복사 버튼이 동작합니다.
+- [fleet-console] Codex 리더가 빠른 탐색 중 뒤늦게 도착한 응답을 무시하고, 패치 메타데이터를 렌더링 전에 이스케이프합니다.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Repository 비교 뷰가 base를 저장소 기본 브랜치(origin/HEAD, main/master 폴백)로, head를 현재 브랜치로 프리필하고 진입 시 비교를 자동 실행합니다. 교환 버튼으로 base와 head를 맞바꿀 수 있습니다.
+- [fleet-console] Repository 패널의 브랜치 행에 hover 비교 액션과 컨텍스트 메뉴(현재 브랜치와 비교·베이스와 비교)가 추가되어, 비교 뷰가 프리필된 상태로 즉시 실행됩니다.
+- [fleet-console] 쿼터 창이 리셋 주기와 그 출처(프로바이더 제공 또는 카탈로그 지식)를 밝히고, Cursor 총합 창을 풀 합산으로 표시하며, Kimi 절대 사용량 개수를 함께 실어 리셋 주기가 다른 할당량을 비교할 수 있게 합니다.
+- [fleet-console] 터미널 플러그인이 새 statusDetail 채널로 세션별 최신 트랜스크립트 줄(정화 처리)을 보고하며, 선별 처리 Watch Deck 카드는 라이브 프리뷰 본문이 없는 패널에서 이 줄로 폴백합니다.
+- [fleet-console] 새 Claude spawn/stop 훅으로 백그라운드 서브에이전트 작업을 추적해, 잔여 카운트가 소진되거나 30분 TTL이 만료되거나 세션이 라이브 수명주기를 벗어날 때까지 에이전트 세션에 backgroundPending을 노출합니다.
+- [fleet-console] Terminal model-auth 카드를 "AI Gateway용 API key"로 일반화해 provider별 행을 제공하며, Kimi 옆에 OpenCode Go 로그인/로그아웃을 추가합니다.
+- [fleet-console] 사용 한도 패널에 OpenCode Go 카드를 추가합니다. OpenCode CLI의 로컬 사용 기록을 공개된 Go 캡과 대조해 세션·주간·월간 미터를 계산하고, 수치가 로컬 관측 스펜딩(다른 기기·Fleet 게이트웨이 사용분 미집계)임을 명시합니다.
+
+#### Changed
+- [fleet-console] 설정의 "Carriers" 섹션 명칭을 두 로케일 모두 "AI Classic"으로 변경합니다.
+
+#### Fixed
+- [fleet-console] Shell 패널을 다시 열어 scrollback이 재생될 때 터미널 장치 질의 응답이 셸 프롬프트에 입력되던 문제를 수정합니다. 이제 입력은 재생 파싱이 끝난 뒤에만 활성화되고, 서버는 승인된 클라이언트가 없는 동안에만 질의에 응답해 각 질의는 정확히 한 번 응답을 받습니다.
+- [fleet-console] 기본 레일 폭에서 비교 실행 버튼이 화면 밖으로 잘리던 문제를 수리했습니다. 좁은 페인에서는 컨트롤이 줄바꿈되고 긴 ref 라벨은 말줄임됩니다.
+- [fleet-console] Repository hunk 엔드포인트가 --no-ext-diff와 --no-textconv를 사용해, 저장소-로컬 diff driver와 textconv 명령이 브라우저에서 유발된 diff로 실행될 수 없습니다.
+
+#### Removed
+- [fleet-console] SDK 프로바이더 제거에 맞춰 Terminal 플러그인의 analyst·에이전트 런치 카탈로그와 CLI 감지에서 Cursor Agent를 제거합니다.
+
+### fleet-core
+
+#### Added
+- [fleet-admiral] gateway_models가 창마다 정규화된 cadence, 자체 리셋 클록 대비 소진 페이스, 예상 고갈 시각, 회복 비용, ok/elevated/critical pressure 판정을 서버에서 파생하고, workflow 독트린이 리셋 주기가 다른 창의 원시 퍼센트 비교 대신 그 판정으로 할당량을 서열화합니다.
+- [core-ai-gateway] OpenCode Go를 AI Gateway provider로 추가합니다. 구독 모델 22종을 각자의 네이티브 wire로 서비스합니다 — Anthropic 네이티브 모델은 `/zen/go/v1/messages` passthrough, OpenAI Responses 모델은 `/zen/go/v1/responses`로 기존 Responses 어댑터 재사용, Chat Completions 모델은 신규 canonical Chat Completions 어댑터로 스트리밍합니다.
+- [fleet-admiral] 기존 Kimi 검증과 나란히, OpenCode Go API key를 저장 전에 Anthropic 호환 실검증으로 확인합니다.
+
+#### Fixed
+- [core-ai-gateway] OpenAI strict 도구 스키마에서 JSON Schema `format` 힌트(WebFetch `url`의 `format: "uri"` 등)를 제거하고 `$defs` 하위 스키마에도 동일한 strict 정화를 적용하여, OpenAI가 허용하지 않는 format 값이 Codex 경로에서 요청 전체를 400 스키마 오류로 실패시키지 않도록 수정했습니다.
+
+#### Removed
+- [core-unified-agent] 통합 Agent CLI SDK에서 Cursor ACP 프로바이더를 제거합니다. `UnifiedCursorAgentClient`, spawn 설정, cursor 모델 레지스트리가 사라지고 analyst `cliId`는 남은 claude·codex 백엔드로 좁혀집니다. Cursor는 독립 AI 게이트웨이 어댑터로 계속 제공됩니다.
+
 ## [1.45.0] - 2026-08-03
 
 ### fleet-cli

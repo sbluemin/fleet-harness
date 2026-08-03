@@ -5,6 +5,68 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.46.0] - 2026-08-03
+
+### fleet-cli
+
+#### Added
+- [fleet-cli] Extend `fleet auth login` and `fleet auth logout` to accept `kimi|opencode`, and list both providers in the mission-control authentication panel.
+
+### fleet-console
+
+#### Added
+- [fleet-console] Triage mode now shows a live Watch Deck when the queue is empty: every non-dormant Operation appears as a card with its activity state and elapsed time since the last activity change, kinds that render a panel body get a live scaled-down preview while other kinds show their latest status line, and clicking a card raises that Operation to the stage with a ghost-flight animation. Queued arrivals pulse on their card briefly before growing to the stage so the previous clear's landing flash stays visible.
+- [fleet-console] Add a Background operation activity state that keeps an operation visibly active while background subagents or workflows outlive the finished turn, with a hollow warn beacon, a sidebar STATUS slot, and localized labels.
+- [fleet-console] Codex search now matches entry body text and shows highlighted context snippets in the result list.
+- [fleet-console] Codex reader gains back/forward navigation history, and the last read entry and scroll position are restored per Theater after a reload.
+- [fleet-console] The Codex split view shows a collapsible document outline with scroll-tracked current section.
+- [fleet-console] Codex entry cards show relative update times, and the list gains newest/name sorting and tag-chip filtering.
+- [fleet-console] The command palette lists Codex wiki entries so a document can be opened from anywhere, expanding the Codex rail automatically.
+- [fleet-console] The Codex navigator shows a wiki health strip summarizing the last drydock run, conflicts, and pending reviews, with details in a popover that keeps the open document intact.
+
+#### Changed
+- [fleet-console] Move the system controls into a persistent command-band cluster: the gear opens Settings in one click and the "?" menu carries What's New, keyboard shortcuts, the update action, and GitHub links, so they stay reachable on every route and while the sidebar is collapsed. The sidebar-footer System Menu and its brand foot are removed, and a pending update now shows as a status dot on the gear.
+
+#### Fixed
+- [fleet-console] Dock the command band map controls (Formation view, Triage) to the left control cluster with a hairline divider when the sidebar is collapsed, instead of leaving them floating at the stale sidebar width; the anchor swap glides over 200ms and honors reduced motion.
+- [fleet-console] Codex conflict list rows now open their detail view, and code copy buttons work in drydock and schema documents.
+- [fleet-console] The Codex reader ignores stale responses during rapid navigation and escapes patch metadata before rendering.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] The Repository Compare view now prefills the base with the repository default branch (origin/HEAD, falling back to main/master) and the head with the current branch, then runs the comparison automatically on entry; a swap button exchanges base and head.
+- [fleet-console] Branch rows in the Repository panel gain a hover compare action and a context menu (compare with current branch, compare with base) that open the Compare view prefilled and already run.
+- [fleet-console] Quota windows now state their reset period with its provenance (provider-stated or catalog knowledge), mark the Cursor total as an aggregate of its pools, and carry Kimi absolute usage counts, so consumers can compare allowances that reset on different clocks.
+- [fleet-console] The terminal plugin reports each session's latest sanitized transcript line through the new statusDetail channel; triage Watch Deck cards fall back to this line when a panel has no live preview body.
+- [fleet-console] Track background subagent work through new Claude spawn and stop hooks so agent sessions expose backgroundPending until the pending count drains, a 30-minute TTL expires, or the session leaves the live lifecycle.
+- [fleet-console] Generalize the Terminal model-auth card into "API keys for AI Gateway" with per-provider rows, adding OpenCode Go sign-in and sign-out next to Kimi.
+- [fleet-console] Show an OpenCode Go card in the Usage limits panel with session, weekly, and monthly meters computed from the OpenCode CLI's local usage logs against the published Go caps, with an explicit note that the figures are local-observed spend (usage from other machines or Fleet's gateway is not counted).
+
+#### Changed
+- [fleet-console] Rename the Settings "Carriers" section title to "AI Classic" in both locales.
+
+#### Fixed
+- [fleet-console] Stop terminal device-query responses from being typed into the shell prompt when a Shell panel is reopened and its scrollback is replayed; input now arms only after replay is fully parsed, and the server answers queries only while no acknowledged client is attached, so each query gets exactly one answer.
+- [fleet-console] The Compare run button no longer clips off-screen at the default rail width; controls wrap on narrow panes and long ref labels ellipsize.
+- [fleet-console] Repository hunk endpoints now pass --no-ext-diff and --no-textconv, so repository-local diff drivers and textconv commands can no longer execute from browser-triggered diffs.
+
+#### Removed
+- [fleet-console] Remove Cursor Agent from the Terminal plugin analyst and agent-launch catalogs and from CLI detection, matching the SDK provider removal.
+
+### fleet-core
+
+#### Added
+- [fleet-admiral] gateway_models now derives per-window verdicts on the server (a normalized cadence, burn pace against the window's own clock, projected exhaustion, recovery cost, and an ok/elevated/critical pressure label), and the workflow doctrine ranks allowances by that verdict instead of comparing raw percentages across windows that reset on different clocks.
+- [core-ai-gateway] Add OpenCode Go as an AI Gateway provider serving 22 subscription models over their native wires: Anthropic-native models pass through `/zen/go/v1/messages`, OpenAI Responses models reuse the Responses adapter against `/zen/go/v1/responses`, and Chat Completions models stream through a new canonical Chat Completions adapter.
+- [fleet-admiral] Validate OpenCode Go API keys with a live Anthropic-compatible probe before storing them, alongside the existing Kimi validation.
+
+#### Fixed
+- [core-ai-gateway] Strip JSON Schema `format` hints (such as `format: "uri"` on WebFetch's `url`) from OpenAI strict tool schemas, and apply the same strict cleanup to `$defs` subschemas, so a format value outside OpenAI's accepted set no longer fails the whole request with a 400 schema error on the Codex path.
+
+#### Removed
+- [core-unified-agent] Remove the Cursor ACP provider from the unified Agent CLI SDK: the `UnifiedCursorAgentClient`, its spawn configuration, and the cursor model registry are gone, and the analyst `cliId` narrows to the remaining claude and codex backends. Cursor remains available through the standalone AI gateway adapter.
+
 ## [1.45.0] - 2026-08-03
 
 ### fleet-cli
