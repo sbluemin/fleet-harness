@@ -292,6 +292,52 @@ describe("Codex schema UI contract", () => {
     controller.destroy();
   });
 
+  it("returns from conflict detail to the conflict list", async () => {
+    vi.resetModules();
+    apiMocks.fetchConflictDetail.mockResolvedValue({
+      id: "conflict-a",
+      meta: { status: "open" },
+      current: "current",
+      proposed: "proposed",
+      rawSource: null,
+    });
+    apiMocks.fetchConflicts.mockResolvedValue([{
+      id: "conflict-a",
+      title: "Conflict A",
+      updated: "2026-08-04T00:00:00.000Z",
+      status: "open",
+      path: "conflicts/conflict-a.md",
+    }]);
+    const { mountReadingInto } = await import("../core/client/src/codex/reading-controller.js");
+    const root = document.body.appendChild(document.createElement("div"));
+    const toc = document.body.appendChild(document.createElement("div"));
+    let controller: ReturnType<typeof mountReadingInto>;
+    controller = mountReadingInto(root, {
+      initialEntryId: "",
+      kind: "conflicts",
+      subId: "conflict-a",
+      theaterId: "workspace-a",
+      onRelatedClick: vi.fn(),
+      onConflictOpen: (id) => { void controller.navigateSub(id); },
+      onClose: vi.fn(),
+      tocContainer: toc,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const back = root.querySelector<HTMLButtonElement>('[data-conflict-action="back"]');
+    expect(back?.tagName).toBe("BUTTON");
+    expect(back?.getAttribute("aria-label")).toBe("‹ Conflicts");
+    back?.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(apiMocks.fetchConflicts).toHaveBeenCalledWith("workspace-a");
+    expect(root.querySelector('[data-conflict-id="conflict-a"]')).not.toBeNull();
+    expect(root.querySelector('[data-conflict-action="back"]')).toBeNull();
+    controller.destroy();
+  });
+
   it("copies code from schema markdown at the reader root", async () => {
     vi.resetModules();
     const writeText = vi.fn(async () => undefined);

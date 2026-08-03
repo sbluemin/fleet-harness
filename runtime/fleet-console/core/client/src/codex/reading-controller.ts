@@ -140,6 +140,13 @@ export function mountReadingInto(
       return;
     }
 
+    const conflictActionBtn = target.closest<HTMLElement>("[data-conflict-action]");
+    if (conflictActionBtn?.dataset.conflictAction === "back") {
+      event.preventDefault();
+      liveOpts.onConflictOpen?.(undefined);
+      return;
+    }
+
     const conflictRowBtn = target.closest<HTMLElement>("[data-conflict-id]");
     if (conflictRowBtn) {
       event.preventDefault();
@@ -678,6 +685,7 @@ function renderConflictDetail(detail: ConflictDetailResponse): string {
         <nav class="breadcrumb" aria-label="${escapeAttribute(t("codex.reading.entryLocationAria"))}">
           <ol><li><span>Codex</span></li><li><span>${escapeHtml(t("codex.reading.conflicts"))}</span></li></ol>
         </nav>
+        <button type="button" class="queue-back-btn" data-conflict-action="back" aria-label="${escapeAttribute(t("codex.reading.backConflicts"))}">${escapeHtml(t("codex.reading.backConflicts"))}</button>
         <h1>${escapeHtml(detail.id)}</h1>
         <p class="eyebrow">${escapeHtml(t("codex.reading.conflictEyebrow", { status }))}</p>
       </header>
