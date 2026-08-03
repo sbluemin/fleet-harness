@@ -190,7 +190,6 @@ function installAgentPlugin(ctx: PluginInstallContext): () => void {
     operations: ctx.operations,
     notifications: ctx.notifications,
     status: ctx.status,
-    statusDetail: ctx.statusDetail,
     refreshOperations: ctx.api.resync,
   });
   return () => {
@@ -486,6 +485,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         keyboardFocusRequestId={context.keyboardFocusRequestId}
         zoom={context.zoom}
         theme={context.theme}
+        onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
         onExit={() => removeSession(session.sessionId)}
       />
       {streamsSupported ? <CarrierSortieRibbon context={context} jobs={jobs} /> : null}

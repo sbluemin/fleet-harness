@@ -549,6 +549,7 @@ describe("Instrument core design contract", () => {
     // Watch Deck 상태 맥동과 착지 flash도 같은 reduced-motion 봉인을 공유한다.
     expect(reducedMotionBlock).toContain(".canvas-triage-deck-card.is-running .canvas-triage-deck-card-dot,");
     expect(reducedMotionBlock).toContain(".canvas-triage-deck-card.is-landed,");
+    expect(reducedMotionBlock).toContain(".canvas-triage-deck-card.is-arriving,");
   });
 
   it("pins the dormant resume feedback grammar — pending pulse, error card, and reduced-motion fallback", () => {

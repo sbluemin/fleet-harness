@@ -2191,6 +2191,10 @@
   animation: triage-deck-landed-flash calc(var(--duration-slow) * 2.5) var(--ease-glide) 1;
 }
 
+.canvas-triage-deck-card.is-arriving {
+  animation: triage-deck-arrival-pulse calc(var(--duration-slow) * 3.0556) var(--ease-glide) 1;
+}
+
 @keyframes triage-deck-running-pulse {
   0%, 100% { box-shadow: 0 0 0 0 var(--warn-glow); opacity: 0.72; }
   50% { box-shadow: 0 0 12px 3px var(--warn-glow); opacity: 1; }
@@ -2199,6 +2203,11 @@
 @keyframes triage-deck-landed-flash {
   0%, 100% { border-color: var(--surface-rim); box-shadow: none; }
   45% { border-color: var(--positive); box-shadow: 0 0 16px var(--positive-glow); }
+}
+
+@keyframes triage-deck-arrival-pulse {
+  0%, 100% { border-color: var(--surface-rim); box-shadow: none; }
+  48% { border-color: var(--aurora); box-shadow: 0 0 16px var(--aurora-glow); }
 }
 
 @keyframes triage-bracket-nw { from { transform: translate(-18px, -18px); } to { transform: translate(0, 0); } }
@@ -2258,6 +2267,7 @@
   .canvas-triage-scan,
   .canvas-triage-deck-card.is-running .canvas-triage-deck-card-dot,
   .canvas-triage-deck-card.is-landed,
+  .canvas-triage-deck-card.is-arriving,
   .operations-canvas.is-triage-entering .canvas-operation.is-triage-stage,
   .operations-canvas.is-formation-entering .canvas-mode-bracket,
   .operations-canvas.is-formation-entering .canvas-formation-guide,

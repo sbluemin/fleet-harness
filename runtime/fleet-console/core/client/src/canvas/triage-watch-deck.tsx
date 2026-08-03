@@ -15,8 +15,21 @@ interface TriageWatchDeckProps {
   readonly operations: readonly OperationNode[];
   readonly operationStatus: Readonly<Record<string, OperationActivity>>;
   readonly operationAccent: Readonly<Record<string, string>>;
+  readonly arrivingOperationId?: string | null;
 }
 
+export interface TriageDeckArrivalDwell {
+  readonly operationId: string;
+  readonly deadline: number;
+}
+
+interface TriageDeckPromotionDecision {
+  readonly promote: boolean;
+  readonly arrivingOperationId: string | null;
+  readonly dwell: TriageDeckArrivalDwell | null;
+}
+
+export const TRIAGE_DECK_ARRIVAL_DWELL_MS = 1_100;
 const deckCardRects = new Map<string, DOMRect>();
 const CARD_FLASH_DURATION_MS = 900;
 
@@ -33,6 +46,31 @@ export function flashTriageDeckCard(operationId: string): void {
   window.setTimeout(() => card.classList.remove("is-landed"), CARD_FLASH_DURATION_MS);
 }
 
+export function resolveTriageDeckPromotion(input: {
+  readonly operationId: string | null;
+  readonly picked: boolean;
+  readonly deckVisible: boolean;
+  readonly dwell: TriageDeckArrivalDwell | null;
+  readonly now: number;
+  readonly suppressed: boolean;
+}): TriageDeckPromotionDecision {
+  if (!input.operationId || !input.deckVisible) {
+    return { promote: input.operationId !== null, arrivingOperationId: null, dwell: null };
+  }
+  if (input.picked || input.suppressed) {
+    return { promote: true, arrivingOperationId: null, dwell: null };
+  }
+  const dwell = input.dwell?.operationId === input.operationId
+    ? input.dwell
+    : { operationId: input.operationId, deadline: input.now + TRIAGE_DECK_ARRIVAL_DWELL_MS };
+  const promote = input.now >= dwell.deadline;
+  return {
+    promote,
+    arrivingOperationId: promote ? null : input.operationId,
+    dwell: promote ? null : dwell,
+  };
+}
+
 export function TriageWatchDeck({
   active,
   entering,
@@ -40,6 +78,7 @@ export function TriageWatchDeck({
   operations,
   operationStatus,
   operationAccent,
+  arrivingOperationId = null,
 }: TriageWatchDeckProps) {
   const t = useT();
   const gridRef = useRef<HTMLDivElement | null>(null);
@@ -97,7 +136,7 @@ export function TriageWatchDeck({
           const accentColor = accentKey ? resolveAccentColor(accentKey) : null;
           return (
             <button
-              className={`canvas-triage-deck-card is-${visual}`}
+              className={`canvas-triage-deck-card is-${visual} ${arrivingOperationId === operation.id ? "is-arriving" : ""}`}
               data-triage-deck-card={operation.id}
               key={operation.id}
               type="button"

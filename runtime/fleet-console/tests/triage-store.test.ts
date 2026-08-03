@@ -54,7 +54,7 @@ import {
 } from "../core/client/src/canvas/triage-store.js";
 import type { OperationNode } from "../core/client/src/types.js";
 import { TriageClearPlate } from "../core/client/src/canvas/canvas-overlays.js";
-import { TriageWatchDeck } from "../core/client/src/canvas/triage-watch-deck.js";
+import { resolveTriageDeckPromotion, TRIAGE_DECK_ARRIVAL_DWELL_MS, TriageWatchDeck } from "../core/client/src/canvas/triage-watch-deck.js";
 import { triageStageGeometryFor } from "../core/client/src/canvas/coordinates.js";
 import { getOperationStatusDetailSnapshot, recordOperationActivityTransition, setOperationStatusDetail } from "../core/client/src/operation-status-detail-store.js";
 
@@ -720,6 +720,54 @@ describe("triage store", () => {
 
     act(() => (container.querySelector('[data-triage-deck-card="next"]') as HTMLButtonElement).click());
     expect(getTriagePick(THEATER_ID)).toBe("next");
+  });
+
+  it("holds automatic deck arrivals but lets picks, stage advancement, and suppressed motion promote immediately", () => {
+    const started = resolveTriageDeckPromotion({
+      operationId: "awaiting",
+      picked: false,
+      deckVisible: true,
+      dwell: null,
+      now: 1_000,
+      suppressed: false,
+    });
+    expect(started).toEqual({
+      promote: false,
+      arrivingOperationId: "awaiting",
+      dwell: { operationId: "awaiting", deadline: 1_000 + TRIAGE_DECK_ARRIVAL_DWELL_MS },
+    });
+    expect(resolveTriageDeckPromotion({
+      operationId: "awaiting",
+      picked: false,
+      deckVisible: true,
+      dwell: started.dwell,
+      now: 1_000 + TRIAGE_DECK_ARRIVAL_DWELL_MS,
+      suppressed: false,
+    }).promote).toBe(true);
+    expect(resolveTriageDeckPromotion({ operationId: "picked", picked: true, deckVisible: true, dwell: started.dwell, now: 1_001, suppressed: false }).promote).toBe(true);
+    expect(resolveTriageDeckPromotion({ operationId: "next", picked: false, deckVisible: false, dwell: null, now: 1_001, suppressed: false }).promote).toBe(true);
+    expect(resolveTriageDeckPromotion({ operationId: "awaiting", picked: false, deckVisible: true, dwell: null, now: 1_001, suppressed: true }).promote).toBe(true);
+  });
+
+  it("marks the dwelling Watch Deck card as arriving", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    triagePlateRoot = createRoot(container);
+
+    act(() => {
+      triagePlateRoot?.render(createElement(TriageWatchDeck, {
+        active: true,
+        entering: false,
+        theaterId: THEATER_ID,
+        operations: OPERATIONS,
+        operationStatus: { picked: "awaiting", next: "idle" },
+        operationAccent: {},
+        arrivingOperationId: "picked",
+      }));
+    });
+
+    expect(container.querySelector('[data-triage-deck-card="picked"]')?.classList.contains("is-arriving")).toBe(true);
+    expect(container.querySelector('[data-triage-deck-card="next"]')?.classList.contains("is-arriving")).toBe(false);
   });
 
   it("records detail and activity transition timestamps independently", () => {

@@ -24,7 +24,7 @@ import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { resolveAccentColor } from "./operation-accent.js";
 import { CanvasGrid, RubberBand, TriageClearPlate } from "./canvas-overlays.js";
-import { flashTriageDeckCard, getTriageDeckCardRect, TriageWatchDeck } from "./triage-watch-deck.js";
+import { flashTriageDeckCard, getTriageDeckCardRect, resolveTriageDeckPromotion, TriageWatchDeck, type TriageDeckArrivalDwell } from "./triage-watch-deck.js";
 import { resolveGlanceHudModel, type GlanceHudModel } from "./glance-hud.js";
 import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
@@ -109,10 +109,12 @@ export function OperationsCanvas({
   const triageActive = useTriageActive(state.activeTheaterId);
   useSyncExternalStore(subscribeTriage, getTriageSnapshot, getTriageSnapshot);
   const [triageEntering, setTriageEntering] = useState(false);
+  const [, setTriageDeckDwellRevision] = useState(0);
   const [formationEntering, setFormationEntering] = useState(false);
   const [, setTriageFocusRevision] = useState(0);
   const previousTriageStageRef = useRef<string | null>(null);
   const previousTriageDeckStageRef = useRef<string | null>(null);
+  const triageDeckArrivalDwellRef = useRef<TriageDeckArrivalDwell | null>(null);
   const triageStageRectRef = useRef(new Map<string, DOMRect>());
   const triageStageActivityRef = useRef<{
     readonly theaterId: string;
@@ -293,8 +295,34 @@ export function OperationsCanvas({
   const triageDisplayQueue = retainedTriageEntry && !pickedDifferentOperation && automaticTriageStage?.operation.id !== retainedTriageEntry.operation.id
     ? [retainedTriageEntry, ...triageQueue.filter((entry) => entry.operation.id !== retainedTriageEntry.operation.id)]
     : triageQueue;
-  const triageStage = triageActive ? triageDisplayQueue[0] ?? null : null;
+  const candidateTriageStage = triageActive ? triageDisplayQueue[0] ?? null : null;
+  const deckWasVisible = triageActive
+    && !triageEntering
+    && previousTriageDeckStageRef.current === null
+    && theaterOperations.length > 0;
+  const deckPromotion = resolveTriageDeckPromotion({
+    operationId: candidateTriageStage?.operation.id ?? null,
+    picked: candidateTriageStage?.picked === true,
+    deckVisible: deckWasVisible,
+    dwell: triageDeckArrivalDwellRef.current,
+    now: Date.now(),
+    suppressed: panelMotionSuppressed(),
+  });
+  triageDeckArrivalDwellRef.current = deckPromotion.dwell;
+  const triageStage = deckPromotion.promote ? candidateTriageStage : null;
   const triageStageId = triageStage?.operation.id ?? null;
+  const triageDeckArrivingOperationId = deckPromotion.arrivingOperationId;
+  useEffect(() => {
+    const dwell = triageDeckArrivalDwellRef.current;
+    if (!dwell || triageStageId !== null || panelMotionSuppressed()) return;
+    const remaining = Math.max(0, dwell.deadline - Date.now());
+    if (remaining === 0) {
+      setTriageDeckDwellRevision((revision) => revision + 1);
+      return;
+    }
+    const timer = window.setTimeout(() => setTriageDeckDwellRevision((revision) => revision + 1), remaining);
+    return () => window.clearTimeout(timer);
+  }, [candidateTriageStage?.operation.id, candidateTriageStage?.picked, triageStageId]);
   const setAsideArmedId = state.activeTheaterId ? getTriageSetAsideArmedId(state.activeTheaterId) : null;
   useLayoutEffect(() => {
     if (!triageActive) {
@@ -795,6 +823,7 @@ export function OperationsCanvas({
         operations={theaterOperations}
         operationStatus={state.operationStatus}
         operationAccent={canvas.operationAccent}
+        arrivingOperationId={triageDeckArrivingOperationId}
       />
       <TriageClearPlate active={triageActive && theaterOperations.length === 0} entering={triageEntering} hasContent={hasContent} idleCount={triageIdleCount} />
       {!triageActive && !hasContent && !formationEntering ? (

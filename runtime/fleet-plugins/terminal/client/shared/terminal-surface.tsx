@@ -13,6 +13,7 @@ import { createTerminalCopyOnSelect } from "./terminal-copy-on-select.js";
 import { TERMINAL_OPTIONS } from "./terminal-options.js";
 import { useTerminalPrefs } from "./terminal-preferences.js";
 import { createTerminalScrollFollow, type TerminalScrollFollowController } from "./terminal-scroll-follow.js";
+import { createTerminalStatusDetailReporter, type TerminalStatusDetailReporter } from "./status-detail.js";
 import { createWindowsSelectionCopyHandler } from "./windows-selection-copy.js";
 import { waitForSymbolsNerdFontMono } from "./symbols-font.js";
 
@@ -32,6 +33,7 @@ export interface TerminalSurfaceProps {
   // zoom≠1에서 커서/선택 위치가 어긋난다(분자=scale 반영 화면거리, 분모=scale 미반영 cellWidth). 이를
   // 터미널 마운트 단의 역스케일(scale(1/zoom)) + fontSize×zoom으로 net scale=1을 만들어 좌표를 정정한다.
   readonly zoom?: number;
+  readonly onStatusDetail?: (detail: string) => void;
 }
 
 interface TerminalOutputScheduler {
@@ -172,7 +174,7 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
    받으므로, 닫힌 동안의 전환 + 재spawn이 겹치는 극단 경로에서만 힌트가 한 번 과발화할 수 있다(무해·해제 가능). */
 const sessionPolarityBaseline = new Map<string, "light" | "dark">();
 
-export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1 }: TerminalSurfaceProps) {
+export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail }: TerminalSurfaceProps) {
   const activeTheme = theme;
   const { renderer: terminalRenderer, font: terminalFontSettings } = useTerminalPrefs();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -180,6 +182,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   const connectionRef = useRef<TerminalConnection | null>(null);
   const webglAddonRef = useRef<WebglAddon | null>(null);
   const outputSchedulerRef = useRef<TerminalOutputScheduler | null>(null);
+  const statusDetailReporterRef = useRef<TerminalStatusDetailReporter | null>(null);
   const scrollFollowRef = useRef<TerminalScrollFollowController | null>(null);
   // 줌 보정 effect에서 fit()을 재호출하기 위해 마운트 effect의 지역 FitAddon을 ref로 끌어올린다.
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -189,6 +192,8 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   // onExit는 매 렌더 새 함수일 수 있으므로 ref로 고정해 connection effect의 의존성에서 제외한다.
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
+  const onStatusDetailRef = useRef(onStatusDetail);
+  onStatusDetailRef.current = onStatusDetail;
   // 비활성 Map 패널의 마운트 자동 포커스를 억제하기 위해 최신 active를 ref로 들고 있는다(마운트 effect는 재실행하지 않음).
   const activeRef = useRef(active);
   activeRef.current = active;
@@ -276,6 +281,10 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
       );
       const outputScheduler = createTerminalOutputScheduler(terminal, activeRef.current !== false, scrollFollow.restoreAfterOutputParsing);
       outputSchedulerRef.current = outputScheduler;
+      const statusDetailReporter = createTerminalStatusDetailReporter({
+        report: (detail) => onStatusDetailRef.current?.(detail),
+      });
+      statusDetailReporterRef.current = statusDetailReporter;
       const connection = createTerminalConnection({
         operationId,
         ticketPath,
@@ -289,7 +298,10 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
             scrollFollow.resumeFollowing();
             listener(data);
           }),
-          write: outputScheduler.write,
+          write: (data) => {
+            statusDetailReporter.push(data);
+            outputScheduler.write(data);
+          },
           drain: outputScheduler.drain,
         },
         onExit: () => onExitRef.current?.(),
@@ -342,10 +354,12 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         copyOnSelect.dispose();
         scrollGesture.dispose();
         outputScheduler.dispose();
+        statusDetailReporter.dispose();
         scrollFollow.dispose();
         terminalRef.current = null;
         connectionRef.current = null;
         outputSchedulerRef.current = null;
+        statusDetailReporterRef.current = null;
         scrollFollowRef.current = null;
         fitAddonRef.current = null;
         // xterm WebglAddon(0.19.0)은 terminal.dispose() 시 AddonManager가 addon을 자동 정리하는
