@@ -173,8 +173,11 @@ function forChatCompletionsBackend(request: CanonicalResponseRequest): ChatWireR
   }
 
   // Chat Completions는 tool 응답이 tool_calls를 실은 assistant 메시지 바로 뒤에 오기를
-  // 요구한다. 연속한 canonical function_call들을 하나의 assistant 메시지로 합쳐 그
-  // 인접성을 보존한다.
+  // 요구한다. 연속한 canonical function_call들을 하나의 assistant 메시지로 합치고,
+  // 플러시는 결과 직전(또는 user/developer 턴 경계)까지 미룬다 — Anthropic 원문은
+  // 한 assistant 메시지 안에서 tool_use 뒤에 텍스트가 올 수 있고, canonical 번역이
+  // 그 블록 순서를 보존하므로, 같은 턴의 후행 텍스트는 호출 블록보다 앞에 배치해
+  // 호출과 결과의 인접성을 지킨다.
   let pendingToolCalls: ChatWireToolCall[] = [];
   const flushToolCalls = (): void => {
     if (pendingToolCalls.length === 0) return;
@@ -191,11 +194,12 @@ function forChatCompletionsBackend(request: CanonicalResponseRequest): ChatWireR
       });
       continue;
     }
-    flushToolCalls();
     if (item.type === "function_call_output") {
+      flushToolCalls();
       messages.push({ role: "tool", tool_call_id: item.call_id, content: item.output });
       continue;
     }
+    if (item.role !== "assistant") flushToolCalls();
     messages.push(chatWireMessage(item));
   }
   flushToolCalls();

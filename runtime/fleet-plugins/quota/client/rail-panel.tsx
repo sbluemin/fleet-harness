@@ -171,10 +171,12 @@ function ProviderCard({
       {(provider.status === "ok" || provider.status === "stale") ? provider.windows?.map((window, index) => (
         <Meter key={`${window.id}-${window.label ?? index}`} window={window} cycleDays={provider.cycleDays} now={now} t={t} />
       )) : null}
-      {/* OpenCode Go는 키 인증 사용량 API가 없어 창을 만들 수 없다 — 상태만 정직하게 알린다. */}
+      {/* OpenCode Go에는 키 인증 사용량 API가 없다. 창은 이 기기 opencode CLI 로그의
+          관측 스펜딩이고(OpenUsage 방식), 로컬 데이터가 없으면 그 사실만 정직하게 알린다. */}
       {id === "opencode" && (provider.status === "ok" || provider.status === "stale")
-        && (provider.windows?.length ?? 0) === 0
-        ? <div className="quota-signed-out">{t("quota.opencode.noUsageApi")}</div>
+        ? (provider.windows?.length ?? 0) === 0
+          ? <div className="quota-signed-out">{t("quota.opencode.noLocalData")}</div>
+          : <div className="quota-signed-out">{t("quota.opencode.observedLocal")}</div>
         : null}
       {(provider.status === "ok" || provider.status === "stale") && provider.credits ? (
         <div className="quota-credits">

@@ -105,6 +105,31 @@ describe("chat completions request translation", () => {
     expect(headers.get("authorization")).toBe("Bearer k");
   });
 
+  it("keeps tool results adjacent to their call even when same-turn text trails the call", async () => {
+    // Anthropic은 한 assistant 메시지에서 tool_use 뒤에 텍스트가 올 수 있고 canonical
+    // 번역은 그 순서를 보존한다. Chat 와이어에서는 tool 응답이 tool_calls 메시지 바로
+    // 뒤여야 하므로, 후행 텍스트가 호출 블록보다 앞으로 배치되어야 한다.
+    const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
+    await adapter(fetchMock).stream(request({
+      input: [
+        { type: "message", role: "user", content: "go" },
+        { type: "function_call", call_id: "call-a", name: "ToolA", arguments: "{}" },
+        { type: "message", role: "assistant", content: "calling now" },
+        { type: "function_call_output", call_id: "call-a", output: "done" },
+      ],
+    }), { apiKey: "k" });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      messages: Array<Record<string, unknown>>;
+    };
+    expect(body.messages.map((message) => [message.role, "tool_calls" in message])).toEqual([
+      ["user", false],
+      ["assistant", false],
+      ["assistant", true],
+      ["tool", false],
+    ]);
+  });
+
   it("maps user image parts and folds assistant parts to text", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
     await adapter(fetchMock).stream(request({

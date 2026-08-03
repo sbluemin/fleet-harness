@@ -12,6 +12,7 @@ import {
   resolveCursorCredentials,
   type CredentialResolverDeps,
 } from "./credentials.js";
+import { scanOpencodeGoWindows, type OpencodeGoWindowsResult } from "./opencode-usage.js";
 import type {
   ProviderDto,
   ProviderResult,
@@ -63,6 +64,8 @@ export interface ProviderDeps {
    * the file's shape and its symlink-guarded read — instead of parsing the file here.
    */
   readonly authService?: AuthService;
+  /** 테스트가 opencode 로컬 사용량 스캔을 대체한다. */
+  readonly scanOpencodeGoWindows?: () => Promise<OpencodeGoWindowsResult | null>;
 }
 
 let sharedAuthService: AuthService | undefined;
@@ -620,18 +623,34 @@ export async function fetchKimiUsage(deps: ProviderDeps = {}): Promise<ProviderR
 /**
  * OpenCode Go는 API 키로 접근 가능한 사용량 엔드포인트를 노출하지 않는다(2026-08-03
  * 확정 — `/zen/go/v1` 라우트 소스의 표면은 models/messages/responses/chat뿐이고 usage
- * 후보 경로는 전부 SPA 폴백). 잔량은 opencode 콘솔 워크스페이스(웹 세션)에서만 볼 수
- * 있다. 따라서 이 리더는 저장된 자격증명 존재만 판정하고 창 없는 ok를 반환하며,
- * 클라이언트가 그 상태를 "사용량 API 미제공" 안내로 그린다. 가짜 창을 합성하지 않는다.
+ * 후보 경로는 전부 SPA 폴백). 따라서 OpenUsage와 같은 방식으로 opencode CLI의 로컬
+ * SQLite 로그에서 관측 스펜딩을 합산해 플랜 캡 대비 창을 만든다(opencode-usage.ts).
+ * 로컬 데이터가 없거나 읽기 실패하면 창 없는 ok로 강등하고, 클라이언트가 그 상태를
+ * 안내로 그린다. 가짜 창은 합성하지 않는다.
  */
 export async function fetchOpencodeUsage(deps: ProviderDeps = {}): Promise<ProviderResult> {
   const apiKey = await authServiceFor(deps).getApiKey(OPENCODE_AUTH_PROVIDER_ID);
   if (!apiKey) return { status: "signed_out" };
+  const now = deps.now ?? Date.now;
+  try {
+    const scan = await (deps.scanOpencodeGoWindows ?? (() => scanOpencodeGoWindows({ now })))();
+    if (scan !== null) {
+      return {
+        status: "ok",
+        plan: "Go",
+        cycleDays: scan.cycleDays,
+        windows: scan.windows,
+        fetchedAt: now(),
+      };
+    }
+  } catch {
+    // DB가 존재하는데 읽지 못했다 — 0 사용량으로 오독하느니 창 없는 상태로 강등한다.
+  }
   return {
     status: "ok",
     plan: "Go",
     windows: [],
-    fetchedAt: (deps.now ?? Date.now)(),
+    fetchedAt: now(),
   };
 }
 
