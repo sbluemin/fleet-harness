@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
@@ -6,12 +6,16 @@ import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
 import { getT, useConsoleLocale, useT } from "../i18n/index.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import {
+  getCodexReaderHistoryState,
   mountNavigatorInto,
   mountReaderInto,
+  navigateCodexReaderHistory,
   refreshCodexLocale,
+  restoreCodexReaderSession,
   saveReaderScroll,
   setNavigatorTheater,
   setOnRequestOpenReader,
+  subscribeCodexReaderHistory,
   teardownCodex,
   teardownReaderNodes,
 } from "../codex-host.js";
@@ -43,6 +47,11 @@ export const codexPanel: RailPanelDescriptor = {
 
 function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
   const t = useT();
+  const history = useSyncExternalStore(
+    subscribeCodexReaderHistory,
+    getCodexReaderHistoryState,
+    getCodexReaderHistoryState,
+  );
   const locale = useConsoleLocale();
   const state = useConsoleState();
   const navRef = useRef<HTMLDivElement>(null);
@@ -56,6 +65,7 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
       ? lastResolvedWorkspace
       : null,
   );
+  const [outlineCollapsed, setOutlineCollapsed] = useState(readOutlineCollapsed);
 
   const reader = state.codexReader;
   const hasReader = reader !== null;
@@ -122,12 +132,17 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
     };
   }, [shouldMountCodex, workspaceId, hasReader, locale]);
 
-  // Theater 해석으로 결정된 workspace 전환 시 navigator 데이터 소스를 바꾼다.
+  // Theater 해석으로 결정된 workspace 전환 시 navigator 데이터 소스를 바꾸고,
+  // 저장된 reader session은 최초 1회만 정상 entry 요청 경로로 복원한다.
   useEffect(() => {
     if (shouldMountCodex && workspaceId) {
       setNavigatorTheater(workspaceId);
+      if (!hasReader && theaterId) {
+        const entryId = restoreCodexReaderSession(theaterId);
+        if (entryId) openCodexReader({ kind: "entry", entryId });
+      }
     }
-  }, [shouldMountCodex, workspaceId]);
+  }, [shouldMountCodex, workspaceId, theaterId]);
 
   // split reader mount — expanded=true면 오버레이가 처리 중이므로 건너뜀
   useEffect(() => {
@@ -140,9 +155,11 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
       kind,
       subId,
       theaterId: workspaceId,
+      sessionTheaterId: theaterId,
       onRelatedClick: (id) => openCodexReader({ kind: "entry", entryId: id }),
       onClose: () => closeCodexReader(),
       onPatchOpen: (pid) => openCodexReader({ kind: "drydock", patchId: pid }),
+      onConflictOpen: (id) => openCodexReader({ kind: "conflicts", id }),
       onDecided: () => {
         void loadInitialData();
         openCodexReader({ kind: "drydock", patchId: undefined });
@@ -174,6 +191,7 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
     <div className="codex-rail-host is-split">
       <div className="codex-doc-pane">
         <div className="codex-doc-pane-head">
+          <ReaderHistoryButtons history={history} />
           <button
             className="codex-doc-expand"
             type="button"
@@ -192,10 +210,60 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
             ✕
           </button>
         </div>
+        <section
+          className="codex-doc-outline"
+          data-codex-outline
+          data-collapsed={outlineCollapsed}
+          data-toc-count="0"
+        >
+          <button
+            className="codex-doc-outline-toggle"
+            type="button"
+            aria-expanded={!outlineCollapsed}
+            onClick={() => {
+              const next = !outlineCollapsed;
+              setOutlineCollapsed(next);
+              writeOutlineCollapsed(next);
+            }}
+          >
+            <span>{t("codex.nav.outline")} · <span data-codex-outline-count>0</span></span>
+            <span className="codex-doc-outline-chevron" aria-hidden="true">⌄</span>
+          </button>
+          <div ref={tocRef} className="codex-doc-toc-inline" />
+        </section>
         <div ref={readRef} className="codex-doc-scroll" />
-        <div ref={tocRef} className="codex-doc-toc-inline" />
       </div>
       <div ref={navRef} className="codex-nav-pane" />
+    </div>
+  );
+}
+
+function ReaderHistoryButtons({
+  history,
+}: {
+  readonly history: { readonly canGoBack: boolean; readonly canGoForward: boolean };
+}) {
+  const t = useT();
+  return (
+    <div className="codex-reader-history">
+      <button
+        className="codex-reader-history-btn"
+        type="button"
+        aria-label={t("codex.nav.backAria")}
+        disabled={!history.canGoBack}
+        onClick={() => navigateCodexReaderHistory(-1)}
+      >
+        ←
+      </button>
+      <button
+        className="codex-reader-history-btn"
+        type="button"
+        aria-label={t("codex.nav.forwardAria")}
+        disabled={!history.canGoForward}
+        onClick={() => navigateCodexReaderHistory(1)}
+      >
+        →
+      </button>
     </div>
   );
 }
@@ -234,6 +302,22 @@ async function resolveCodexWorkspace(theaterId: string): Promise<Omit<CodexWorks
   });
   if (!response.ok) throw new Error("codex_workspace_unavailable");
   return assertCodexWorkspace(await response.json());
+}
+
+function readOutlineCollapsed(): boolean {
+  try {
+    return localStorage.getItem("fleet.codex.outline.collapsed") === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeOutlineCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem("fleet.codex.outline.collapsed", String(collapsed));
+  } catch {
+    // Storage is optional.
+  }
 }
 
 function assertCodexWorkspace(value: unknown): Omit<CodexWorkspaceState, "contextKey"> {

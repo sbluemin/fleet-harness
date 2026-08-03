@@ -6,6 +6,7 @@ const codexMocks = vi.hoisted(() => ({
   navigatorController: {
     destroy: vi.fn(),
     refreshLocale: vi.fn(),
+    setCurrentEntry: vi.fn(),
     setTheater: vi.fn(),
   },
   readerController: {
@@ -26,8 +27,11 @@ vi.mock("../core/client/src/codex/reading-controller.js", () => ({
 }));
 
 import {
+  getCodexReaderHistoryState,
   mountNavigatorInto,
   mountReaderInto,
+  navigateCodexReaderHistory,
+  restoreCodexReaderSession,
   saveReaderScroll,
   setNavigatorTheater,
   teardownCodex,
@@ -97,6 +101,61 @@ describe("Codex host in-memory state", () => {
     expect(codexMocks.navigatorController.setTheater).toHaveBeenLastCalledWith("workspace-b");
   });
 
+  it("reopens history entries and truncates the forward branch after a new entry", () => {
+    const readSlot = document.createElement("div");
+    const tocSlot = document.createElement("div");
+    document.body.append(readSlot, tocSlot);
+    const requestEntry = vi.fn();
+    const options = {
+      initialEntryId: "entry-a",
+      kind: "entry" as const,
+      theaterId: "workspace-a",
+      sessionTheaterId: "theater-a",
+      onRelatedClick: requestEntry,
+      onClose: vi.fn(),
+    };
+
+    mountNavigatorInto(document.body.appendChild(document.createElement("div")), "workspace-a");
+    mountReaderInto(readSlot, tocSlot, options);
+    mountReaderInto(readSlot, tocSlot, { ...options, initialEntryId: "entry-b" });
+    mountReaderInto(readSlot, tocSlot, { ...options, initialEntryId: "entry-c" });
+    expect(codexMocks.navigatorController.setCurrentEntry).toHaveBeenLastCalledWith("entry-c");
+    expect(getCodexReaderHistoryState()).toEqual({ canGoBack: true, canGoForward: false });
+
+    navigateCodexReaderHistory(-1);
+    expect(requestEntry).toHaveBeenLastCalledWith("entry-b");
+    mountReaderInto(readSlot, tocSlot, { ...options, initialEntryId: "entry-b" });
+    expect(getCodexReaderHistoryState()).toEqual({ canGoBack: true, canGoForward: true });
+
+    mountReaderInto(readSlot, tocSlot, { ...options, initialEntryId: "entry-d" });
+    expect(getCodexReaderHistoryState()).toEqual({ canGoBack: true, canGoForward: false });
+    navigateCodexReaderHistory(1);
+    expect(requestEntry).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores the saved entry without adding it to history", () => {
+    localStorage.setItem(
+      "fleet.codex.reader.session.theater-a",
+      JSON.stringify({ entryId: "entry-restored", scrollTop: 240 }),
+    );
+    expect(restoreCodexReaderSession("theater-a")).toBe("entry-restored");
+
+    const readSlot = document.createElement("div");
+    const tocSlot = document.createElement("div");
+    document.body.append(readSlot, tocSlot);
+    mountReaderInto(readSlot, tocSlot, {
+      initialEntryId: "entry-restored",
+      kind: "entry",
+      theaterId: "workspace-a",
+      sessionTheaterId: "theater-a",
+      onRelatedClick: vi.fn(),
+      onClose: vi.fn(),
+    });
+
+    expect(readSlot.scrollTop).toBe(240);
+    expect(getCodexReaderHistoryState()).toEqual({ canGoBack: false, canGoForward: false });
+  });
+
   it("keeps the saved reader position when its previous slot was already detached", () => {
     const firstReadSlot = document.createElement("div");
     const firstTocSlot = document.createElement("div");
@@ -107,6 +166,7 @@ describe("Codex host in-memory state", () => {
       initialEntryId: "entry-a",
       kind: "entry" as const,
       theaterId: "workspace-a",
+      sessionTheaterId: "theater-a",
       onRelatedClick: vi.fn(),
       onClose: vi.fn(),
     };
@@ -220,6 +280,7 @@ function mountRelocatedReader(scrollTop: number): {
     initialEntryId: "entry-a",
     kind: "entry" as const,
     theaterId: "workspace-a",
+    sessionTheaterId: "theater-a",
     onRelatedClick: vi.fn(),
     onClose: vi.fn(),
   };

@@ -17,6 +17,7 @@ export type NavigatorRequest =
 export interface NavigatorController {
   destroy(): void;
   setTheater(theaterId: string | null): void;
+  setCurrentEntry(entryId: string | null): void;
   /** 로케일 변경 시 셸·목록 문구를 다시 그린다(검색·선택 상태 유지). */
   refreshLocale(): void;
 }
@@ -413,6 +414,11 @@ export function mountNavigatorInto(
       searchController = null;
       if (debounceTimer !== null) clearTimeout(debounceTimer);
       searchInput.value = "";
+      renderList(getState());
+    },
+    setCurrentEntry(entryId: string | null): void {
+      if (currentEntryId === entryId) return;
+      currentEntryId = entryId;
       renderList(getState());
     },
     refreshLocale(): void {

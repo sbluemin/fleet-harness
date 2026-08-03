@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const panelMocks = vi.hoisted(() => ({
+  historyState: { canGoBack: false, canGoForward: false },
   closeCodexReader: vi.fn(),
   mountNavigatorInto: vi.fn(),
   saveReaderScroll: vi.fn(),
@@ -13,12 +14,16 @@ const panelMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../core/client/src/codex-host.js", () => ({
+  getCodexReaderHistoryState: () => panelMocks.historyState,
   mountNavigatorInto: panelMocks.mountNavigatorInto,
   mountReaderInto: vi.fn(),
+  navigateCodexReaderHistory: vi.fn(),
   refreshCodexLocale: vi.fn(),
+  restoreCodexReaderSession: vi.fn(() => null),
   saveReaderScroll: panelMocks.saveReaderScroll,
   setNavigatorTheater: panelMocks.setNavigatorTheater,
   setOnRequestOpenReader: vi.fn(),
+  subscribeCodexReaderHistory: vi.fn(() => () => undefined),
   teardownCodex: panelMocks.teardownCodex,
   teardownReaderNodes: vi.fn(),
 }));

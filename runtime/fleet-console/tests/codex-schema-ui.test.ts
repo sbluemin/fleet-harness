@@ -110,6 +110,61 @@ describe("Codex schema UI contract", () => {
     controller.destroy();
   });
 
+  it("opens conflict detail from a focusable list row", async () => {
+    vi.resetModules();
+    apiMocks.fetchConflicts.mockResolvedValue([{ id: "conflict-a", title: "Conflict A", status: "open" }]);
+    const { mountReadingInto } = await import("../core/client/src/codex/reading-controller.js");
+    const root = document.body.appendChild(document.createElement("div"));
+    const toc = document.body.appendChild(document.createElement("div"));
+    const onConflictOpen = vi.fn();
+    const controller = mountReadingInto(root, {
+      initialEntryId: "",
+      kind: "conflicts",
+      theaterId: "workspace-a",
+      onRelatedClick: vi.fn(),
+      onConflictOpen,
+      onClose: vi.fn(),
+      tocContainer: toc,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const row = root.querySelector<HTMLButtonElement>('[data-conflict-id="conflict-a"]');
+    expect(row?.tagName).toBe("BUTTON");
+    row?.click();
+    expect(onConflictOpen).toHaveBeenCalledWith("conflict-a");
+    controller.destroy();
+  });
+
+  it("copies code from schema markdown at the reader root", async () => {
+    vi.resetModules();
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    apiMocks.fetchSchemaDocument.mockResolvedValue({ content: "code", ref: "schema/wiki-schema.md" });
+    const markdown = await import("@fleet-console/markdown/core");
+    vi.mocked(markdown.renderMarkdown).mockReturnValue({
+      html: '<pre class="code-block" data-code="fleet copy"><button data-action="copy-code">Copy</button></pre>',
+      toc: [],
+    });
+    const { mountReadingInto } = await import("../core/client/src/codex/reading-controller.js");
+    const root = document.body.appendChild(document.createElement("div"));
+    const toc = document.body.appendChild(document.createElement("div"));
+    const controller = mountReadingInto(root, {
+      initialEntryId: "",
+      kind: "schema",
+      theaterId: "workspace-a",
+      onRelatedClick: vi.fn(),
+      onClose: vi.fn(),
+      tocContainer: toc,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    root.querySelector<HTMLButtonElement>('[data-action="copy-code"]')?.click();
+    expect(writeText).toHaveBeenCalledWith("fleet copy");
+    controller.destroy();
+  });
+
   it("persists sorting, formats relative dates, and filters without opening an entry", async () => {
     vi.resetModules();
     const state = await import("../core/client/src/codex/state.js");

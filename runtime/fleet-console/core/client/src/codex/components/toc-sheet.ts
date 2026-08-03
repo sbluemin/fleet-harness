@@ -52,7 +52,7 @@ export function installTocScrollSpy(
 
   if (links.length === 0 || headings.length === 0) return () => {};
 
-  const scrollRoot = article.closest<HTMLElement>(".codex-reading-sheet-read");
+  const scrollRoot = article.closest<HTMLElement>(".codex-reading-sheet-read, .codex-doc-scroll");
   const visibleHeadings = new Set<string>();
 
   const observer = new IntersectionObserver(
