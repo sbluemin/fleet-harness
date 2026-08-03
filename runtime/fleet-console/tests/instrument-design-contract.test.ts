@@ -81,6 +81,8 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--whatsnew-delay",
   // Command Band TSX injects the measured left sidebar width.
   "--command-band-left-width",
+  // Command Band TSX injects the state-dependent map-controls anchor (sidebar seam ↔ docked left cluster).
+  "--command-band-map-anchor",
   // Right Rail TSX injects the current panel width.
   "--right-rail-panel-width",
   // Right Rail TSX injects the user-selected overlay opacity.
@@ -731,7 +733,10 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain('className="command-band-button command-band-rail-toggle"');
     expect(commandBand).toContain("onClick={toggleRailChrome}");
     expect(commandBand).toContain(`      </div>
-      {operationsViewVisible ? <div ref={mapControlsRef} className="command-band-map-controls">`);
+      {operationsViewVisible ? <div ref={mapControlsRef} className={\`command-band-map-controls\${sideBar.collapsed ? " is-docked" : ""}\`}>`);
+    // 접힘 도킹 구분선은 맵 컨트롤의 첫 플로우 자식이다 — 도킹 상태에서만 display로 나타나
+    // 좌측 컨트롤군과 클러스터를 formation-divider 문법의 hairline으로 잇는다.
+    expect(commandBand).toContain('<span className="command-band-dock-divider" aria-hidden="true" />');
     expect(commandBand).toContain('aria-label={t("chrome.commandBand.resetCanvasView")}');
     expect(commandBand).toContain("<ResetViewIcon />");
     expect(commandBand).toContain("onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })}");
@@ -763,7 +768,17 @@ describe("Instrument core design contract", () => {
     // 맵 컨트롤 클러스터는 컨테이너 플로우 배치다 — 개별 절대 위치 + 매직 오프셋(구 116px)은
     // 버튼 추가 시 겹침으로 깨지므로(선별 처리 아이콘 덮임 사고) 다시 도입하지 않는다.
     expect(layout).toContain(".command-band-map-controls {");
-    expect(layout).toContain("left: calc(var(--command-band-left-width, 280px) + var(--space-2));");
+    // 앵커는 상태 이원제다: 펼침 = 사이드바 경계선(폭 미러), 접힘 = 좌측 컨트롤군 끝(도킹 앵커).
+    // 옛 사이드바 폭에 고정하면 접힘 시 경계 없는 밴드 한가운데에 떠 보인다(2026-08 부유 사고).
+    expect(layout).toContain("left: calc(var(--command-band-map-anchor, var(--command-band-left-width, 280px)) + var(--space-2));");
+    expect(commandBand).toContain('"--command-band-map-anchor": `${mapControlsAnchor}px`,');
+    expect(commandBand).toContain("const mapControlsAnchor = commandBandMapControlsAnchor(sideBar.collapsed, sideBar.width, leftContentEnd);");
+    expect(commandBand).toContain("const centerGutter = commandBandCenterGutter(mapControlsAnchor - stageLeftWidth, mapControlsWidth);");
+    // 글라이드는 접힘/펼침 앵커 전환 전용 — 드래그 리사이즈는 :has 게이트로 즉시 추종을 유지한다.
+    expect(layout).toContain("transition: left 200ms ease;");
+    expect(layout).toContain('body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls { transition: none; }');
+    expect(layout).toContain(".command-band-dock-divider {");
+    expect(layout).toContain(".command-band-map-controls.is-docked .command-band-dock-divider {");
     expect(layout).not.toContain(".command-band-triage-toggle {\n  position: absolute;");
     expect(layout).not.toContain(".command-band-formation-group .command-band-formation-seg + .command-band-formation-seg {");
     // 데스크톱은 사이드바 폭을 그대로 미러하고, 모바일 셸에는 미러할 사이드바가 없으므로
@@ -945,8 +960,10 @@ describe("Instrument core design contract", () => {
     const reducedMotionBlock = layout.slice(layout.indexOf("@media (prefers-reduced-motion: reduce)"));
     expect(reducedMotionBlock).toContain(".operations-side-bar,");
     expect(reducedMotionBlock).toContain(".right-rail,");
+    expect(reducedMotionBlock).toContain(".command-band-map-controls,");
     expect(reducedMotionBlock).toContain(".command-band-left {");
     expect(reducedMotionBlock).toContain("transition: none !important;");
+    expect(reducedMotionBlock).toContain(".command-band-dock-divider { animation: none !important; }");
   });
 
   it("keeps the Instrument base tokens and selector while blocking legacy palette escapes", () => {

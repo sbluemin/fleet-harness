@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "../core/client/src/components/command-band-guards.js";
+import { commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandMapControlsAnchor, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "../core/client/src/components/command-band-guards.js";
 import type { OperationGroup, OperationNode } from "../core/client/src/types.js";
 
 describe("Command Band v2 guards", () => {
@@ -107,8 +107,19 @@ describe("Command Band center visibility measurements", () => {
 
   it("derives the gutter from the measured map control width", () => {
     expect(commandBandCenterGutter(0, 163)).toBe(8 + 163 + 12);
-    // 사이드바를 접으면 좌측 캡(280px)이 스테이지 원점보다 앞서므로 그만큼 하한이 커진다.
-    expect(commandBandCenterGutter(280, 163)).toBe(280 + 8 + 163 + 12);
+    // 접힘 시 lead는 도킹 앵커(좌측 컨트롤군 끝 기준) 그대로다 — 스테이지 원점이 0이므로.
+    expect(commandBandCenterGutter(185, 163)).toBe(185 + 8 + 163 + 12);
+  });
+
+  it("docks the map controls to the measured left-cluster end only while collapsed", () => {
+    // 펼침: 앵커 = 사이드바 폭(경계선 옆) — 기존 문법 그대로.
+    expect(commandBandMapControlsAnchor(false, 280, 183)).toBe(280);
+    // 접힘: 앵커 = 콘텐츠 끝 + 구분선 리드(10) - CSS 인셋(8) → 구분선이 정확히 콘텐츠 끝 + 10에 놓인다.
+    expect(commandBandMapControlsAnchor(true, 280, 183)).toBe(183 + 10 - 8);
+    // 사이드바를 넓혀도 접힘 앵커는 사이드바 폭과 무관하다 — 넓힌-뒤-접기 부유가 소멸한다.
+    expect(commandBandMapControlsAnchor(true, 460, 183)).toBe(183 + 10 - 8);
+    // 미측정(0 이하) 폴백: 기존 사이드바 폭 앵커를 유지해 첫 페인트가 흔들리지 않는다.
+    expect(commandBandMapControlsAnchor(true, 280, 0)).toBe(280);
   });
 
   it("keeps the center visible while the track is unmeasured", () => {

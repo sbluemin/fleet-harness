@@ -55,12 +55,29 @@ export function commandBandMenuClampedLeft(
 // 맵 컨트롤 클러스터(.command-band-map-controls)는 절대 배치라 그리드가 그 폭을 모른다.
 // 매직 오프셋 상수는 버튼이 늘 때마다 겹침으로 깨졌으므로(구 116px 사고) 실측 폭에서 계산한다.
 // 좌우 여백 트랙은 반드시 같은 하한을 쓴다 — 값이 어긋나면 하한이 물리는 순간 중앙이 밀린다.
-// 사이드바를 접으면 밴드 좌측 캡은 자리를 지키지만 스테이지 좌단은 0으로 내려간다. 그 차이가
-// mapControlsLead — 하한은 스테이지 원점 기준으로 재야 접힌 상태에서도 겹치지 않는다.
+// mapControlsLead는 스테이지 원점에서 앵커까지의 거리다 — 펼침이면 앵커=사이드바 폭=스테이지
+// 원점이라 0, 접힘이면 스테이지 원점이 0이라 도킹 앵커 그대로다. 하한은 스테이지 원점 기준으로
+// 재야 접힌 상태에서도 겹치지 않는다.
 export const COMMAND_BAND_MAP_CONTROLS_INSET_PX = 8;
 export const COMMAND_BAND_CENTER_BREATHING_PX = 12;
 export const COMMAND_BAND_CENTER_GUTTER_FLOOR_PX = 44;
 export const COMMAND_BAND_CENTER_MIN_PX = 168;
+
+// 접힘 도킹 앵커 — 사이드바가 접히면 맵 컨트롤의 정박 경계(사이드바 우측 경계선)가 사라지므로,
+// 좌측 컨트롤군의 실측 콘텐츠 끝을 새 앵커로 쓴다(브레드크럼이 이미 쓰는 "정렬 앵커는 실제
+// 스테이지 경계" 원칙의 클러스터 판). CSS가 앵커에 INSET(--space-2)을 다시 더해 도킹 구분선이
+// 정확히 콘텐츠 끝 + DOCK_DIVIDER_LEAD에 놓인다. 미측정(0 이하)이면 사이드바 폭 앵커로
+// 폴백해 첫 페인트가 기존 문법과 동일하게 남는다.
+export const COMMAND_BAND_DOCK_DIVIDER_LEAD_PX = 10;
+
+export function commandBandMapControlsAnchor(
+  collapsed: boolean,
+  sideBarWidth: number,
+  leftContentEnd: number,
+): number {
+  if (!collapsed || leftContentEnd <= 0) return sideBarWidth;
+  return leftContentEnd + COMMAND_BAND_DOCK_DIVIDER_LEAD_PX - COMMAND_BAND_MAP_CONTROLS_INSET_PX;
+}
 
 // Activity Rail의 고정 스트립 폭. 패널 폭은 포함하지 않는다 — PR #302가 밴드를 레일
 // 크기 조절에서 떼어냈고, 여기서 예약하는 것은 접히지 않은 레일이 늘 차지하는 스트립뿐이다.

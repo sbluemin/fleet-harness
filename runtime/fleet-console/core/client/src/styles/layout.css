@@ -362,15 +362,40 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 }
 
 /* 맵 컨트롤 클러스터(보기 초기화·전체 맞춤·Formation·선별 처리)는 한 컨테이너의 플로우 형제다 —
-   개별 절대 위치 + 매직 오프셋(116px)은 버튼 추가 시 겹침으로 깨졌다(fit-all 도입 당시 선별 처리 아이콘 덮임). */
+   개별 절대 위치 + 매직 오프셋(116px)은 버튼 추가 시 겹침으로 깨졌다(fit-all 도입 당시 선별 처리 아이콘 덮임).
+   앵커는 접힘 여부에 따라 갈린다: 펼침 = 사이드바 경계선 옆, 접힘 = 좌측 컨트롤군 끝(도킹) —
+   접힌 사이드바의 옛 폭에 남겨두면 아무 경계도 없는 밴드 한가운데에 떠 보인다. */
 .command-band-map-controls {
   position: absolute;
-  left: calc(var(--command-band-left-width, 280px) + var(--space-2));
+  left: calc(var(--command-band-map-anchor, var(--command-band-left-width, 280px)) + var(--space-2));
   top: 50%;
   transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  /* 글라이드는 접힘/펼침 앵커 전환 전용 — 드래그 리사이즈는 아래 :has 게이트가 즉시 추종으로 끊는다. */
+  transition: left 200ms ease;
+}
+
+body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls { transition: none; }
+
+/* 접힘 도킹 구분선 — 클러스터가 좌측 컨트롤군에 붙을 때만 나타나는 hairline(formation-divider 문법).
+   플로우 형제라 도킹 해제 시 display로 제거해야 gap이 유령 폭을 남기지 않는다. */
+.command-band-dock-divider {
+  display: none;
+  align-self: stretch;
+  flex: none;
+  width: 1px;
+  background: var(--surface-rim);
+}
+
+.command-band-map-controls.is-docked .command-band-dock-divider {
+  display: block;
+  animation: command-band-dock-divider-in 200ms ease;
+}
+
+@keyframes command-band-dock-divider-in {
+  from { opacity: 0; }
 }
 
 .command-band-formation-group {
@@ -738,10 +763,12 @@ html[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band-le
   .console-shell,
   .operations-side-bar,
   .right-rail,
+  .command-band-map-controls,
   .command-band-left {
     transition: none !important;
   }
 
   .right-rail-stale-veil { animation: none !important; }
+  .command-band-dock-divider { animation: none !important; }
   .command-band.is-fullscreen { transition: none !important; }
 }
