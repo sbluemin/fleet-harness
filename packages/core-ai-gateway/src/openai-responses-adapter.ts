@@ -638,7 +638,6 @@ const STRICT_ALLOWED_KEYWORDS = new Set([
   "$ref",
   "description",
   "title",
-  "format",
   "pattern",
   "minimum",
   "maximum",
@@ -652,6 +651,7 @@ const STRICT_ALLOWED_KEYWORDS = new Set([
   // Dropped by `strictSchema` before the schema reaches the wire.
   "$schema",
   "default",
+  "format",
 ]);
 
 /** Whether every subschema stays inside the subset strict mode accepts. */
@@ -699,15 +699,25 @@ function strictSchema(schema: unknown): unknown {
   const next: Record<string, unknown> = { ...schema };
 
   // Metadata strict mode has no use for: `$schema` is a dialect marker it does not accept, and
-  // `default` is meaningless once every property is required.
+  // `default` is meaningless once every property is required. `format` is validated against a
+  // closed set of values strict mode enumerates — `uri` (WebFetch.url) is rejected with a
+  // request-wide 400 — so the advisory hint is stripped rather than gambling the request on it.
   delete next.$schema;
   delete next.default;
+  delete next.format;
 
   for (const key of ["anyOf", "oneOf", "allOf"] as const) {
     const branches = next[key];
     if (Array.isArray(branches)) next[key] = branches.map(strictSchema);
   }
   if (isRecord(next.items)) next.items = strictSchema(next.items);
+  if (isRecord(next.$defs)) {
+    const rewrittenDefs: Record<string, unknown> = {};
+    for (const [name, value] of Object.entries(next.$defs)) {
+      rewrittenDefs[name] = strictSchema(value);
+    }
+    next.$defs = rewrittenDefs;
+  }
 
   const properties = next.properties;
   if (isRecord(properties)) {
@@ -777,9 +787,18 @@ function withoutNulls(value: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value)) {
     if (entry === null) continue;
-    out[key] = isRecord(entry) ? withoutNulls(entry) : entry;
+    out[key] = withoutNullMembers(entry);
   }
   return out;
+}
+
+// strict 재작성의 정확한 역변환: 재작성이 표현 가능하게 만든 것은 객체 프로퍼티 위치의
+// null뿐이므로 배열 속 객체까지 내려가 그 null만 제거하고, 배열 원소 자체의 null은
+// 재작성이 만든 값이 아니라 모델이 실제로 보낸 데이터이므로 보존한다.
+function withoutNullMembers(entry: unknown): unknown {
+  if (isRecord(entry)) return withoutNulls(entry);
+  if (Array.isArray(entry)) return entry.map(withoutNullMembers);
+  return entry;
 }
 
 function outputItem(value: unknown): CanonicalOutputItem | undefined {

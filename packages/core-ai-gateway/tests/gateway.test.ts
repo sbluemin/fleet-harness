@@ -1537,6 +1537,105 @@ describe("OpenAI Responses adapter", () => {
     }]);
   });
 
+  it("strips format hints during the strict rewrite instead of forfeiting it or the request", async () => {
+    // Observed rejection: 400 "Invalid schema for function 'WebFetch': In context=
+    // ('properties', 'url'), 'uri' is not a valid format." Strict mode validates `format`
+    // against a closed value set, so the hint must not reach the wire.
+    const fetchMock = vi.fn<FetchLike>(async () => new Response(
+      JSON.stringify({ error: { message: "stop after capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+
+    await adapter.stream({
+      model: "gpt-5.6-sol",
+      input: [],
+      tools: [{
+        type: "function",
+        name: "WebFetch",
+        parameters: {
+          type: "object",
+          properties: {
+            url: { type: "string", format: "uri" },
+            prompt: { type: "string" },
+          },
+          required: ["url", "prompt"],
+          additionalProperties: false,
+        },
+      }],
+      stream: true,
+    }, { apiKey: "platform-key" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body.tools).toEqual([{
+      type: "function",
+      name: "WebFetch",
+      parameters: {
+        type: "object",
+        properties: {
+          url: { type: "string" },
+          prompt: { type: "string" },
+        },
+        required: ["url", "prompt"],
+        additionalProperties: false,
+      },
+      strict: true,
+    }]);
+  });
+
+  it("rewrites $defs subschemas with the same strict cleanup as inline subschemas", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => new Response(
+      JSON.stringify({ error: { message: "stop after capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+
+    await adapter.stream({
+      model: "gpt-5.6-sol",
+      input: [],
+      tools: [{
+        type: "function",
+        name: "open_link",
+        parameters: {
+          type: "object",
+          properties: { link: { $ref: "#/$defs/link" } },
+          required: ["link"],
+          $defs: {
+            link: {
+              type: "object",
+              properties: { href: { type: "string", format: "uri", default: "" } },
+              required: ["href"],
+            },
+          },
+        },
+      }],
+      stream: true,
+    }, { apiKey: "platform-key" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body.tools).toEqual([{
+      type: "function",
+      name: "open_link",
+      parameters: {
+        type: "object",
+        properties: { link: { $ref: "#/$defs/link" } },
+        required: ["link"],
+        additionalProperties: false,
+        $defs: {
+          link: {
+            type: "object",
+            properties: { href: { type: "string" } },
+            required: ["href"],
+            additionalProperties: false,
+          },
+        },
+      },
+      strict: true,
+    }]);
+  });
+
   it("forwards a Codex Fast service tier to the ChatGPT Responses backend", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => new Response(
       JSON.stringify({ error: { message: "stop after capture" } }),
@@ -2103,6 +2202,57 @@ describe("OpenAI Responses adapter", () => {
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe(OPENAI_RESPONSES_URL);
     expect(new Headers(init?.headers).get("authorization")).toBe("Bearer injected-key");
+  });
+
+  it("strips synthetic nulls from objects inside array arguments while keeping null elements", async () => {
+    const upstreamSse = [
+      frame("response.created", {
+        type: "response.created",
+        response: { id: "resp_array_nulls", model: "gpt-5.5", usage: null }
+      }),
+      frame("response.output_item.added", {
+        type: "response.output_item.added",
+        output_index: 0,
+        item: {
+          type: "function_call",
+          id: "fc_array",
+          call_id: "call_array",
+          name: "open_links",
+          arguments: ""
+        }
+      }),
+      frame("response.output_item.done", {
+        type: "response.output_item.done",
+        output_index: 0,
+        item: {
+          type: "function_call",
+          id: "fc_array",
+          call_id: "call_array",
+          name: "open_links",
+          arguments: '{"links":[{"href":"https://a.example","label":null}],"tags":["a",null]}'
+        }
+      }),
+      frame("response.completed", {
+        type: "response.completed",
+        response: { id: "resp_array_nulls", model: "gpt-5.5", usage: { input_tokens: 5, output_tokens: 3 } }
+      })
+    ].join("");
+    const fetchMock = vi.fn<FetchLike>(async () => sseResponse(upstreamSse));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+    const result = await adapter.stream(
+      { model: "gpt-5.5", input: [], stream: true },
+      { apiKey: "injected-key" }
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error("expected a successful stream");
+    }
+    const frames = parseSse(await collectBody(encodeAnthropicSse(result.events)));
+    const deltas = frames.filter((item) => item.event === "content_block_delta");
+    expect(
+      deltas.map((item) => (item.data.delta as { partial_json: string }).partial_json).join("")
+    ).toBe('{"links":[{"href":"https://a.example"}],"tags":["a",null]}');
   });
 
   it("carries a real OpenAI usage envelope end-to-end into matching streaming and non-streaming Anthropic usage", async () => {
