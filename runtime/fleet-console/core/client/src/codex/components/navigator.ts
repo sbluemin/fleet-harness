@@ -239,7 +239,8 @@ export function mountNavigatorInto(
     const conflictCount = health?.conflictCount ?? 0;
     const pendingCount = health?.pendingCount ?? 0;
     const issueCount = drydock?.issueCount ?? 0;
-    const visible = health !== null && !((drydock === null || (drydock.ok && issueCount === 0)) && conflictCount === 0 && pendingCount === 0);
+    const logUnreadable = health?.logUnreadable === true;
+    const visible = health !== null && (logUnreadable || !((drydock === null || (drydock.ok && issueCount === 0)) && conflictCount === 0 && pendingCount === 0));
     healthStrip.hidden = !visible;
     if (!visible || !health) {
       healthStrip.innerHTML = "";
@@ -249,9 +250,10 @@ export function mountNavigatorInto(
     const timestamp = drydock ? new Date(drydock.at).toLocaleString(resolveActiveLocale()) : t("codex.nav.healthNever");
     healthStrip.innerHTML = `
       <span class="codex-nav-health-dot is-${tone}" aria-hidden="true"></span>
-      <span class="codex-nav-health-summary">${escapeHtml(t("codex.nav.healthSummary", { issues: issueCount, conflicts: health.conflictCount, pending: health.pendingCount }))}</span>
+      <span class="codex-nav-health-summary">${escapeHtml(logUnreadable ? t("codex.nav.healthLogUnreadable") : t("codex.nav.healthSummary", { issues: issueCount, conflicts: health.conflictCount, pending: health.pendingCount }))}</span>
       <button class="codex-nav-health-detail" data-health-detail type="button" aria-expanded="${String(healthPopoverOpen)}">${escapeHtml(t("codex.nav.healthDetails"))}</button>
       ${healthPopoverOpen ? `<div class="codex-nav-health-popover" role="dialog" aria-label="${escapeHtml(t("codex.nav.healthDetailsAria"))}">
+        ${logUnreadable ? `<div><span>${escapeHtml(t("codex.nav.healthLogUnreadable"))}</span><strong>${escapeHtml(t("codex.nav.healthAttention"))}</strong></div>` : ""}
         <div><span>${escapeHtml(t("codex.nav.healthErrors"))}</span><strong>${drydock?.errorCount ?? 0}</strong></div>
         <div><span>${escapeHtml(t("codex.nav.healthWarnings"))}</span><strong>${drydock?.warningCount ?? 0}</strong></div>
         <div><span>${escapeHtml(t("codex.nav.healthInfos"))}</span><strong>${drydock?.infoCount ?? 0}</strong></div>

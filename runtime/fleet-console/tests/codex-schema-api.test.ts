@@ -56,6 +56,21 @@ describe("Codex schema API", () => {
     expect(await get("/api/schema/templates/missing")).toEqual({ status: 404, body: '{"error":"template_not_found"}' });
   });
 
+  it("marks a malformed wiki log as unreadable without hiding other counts", async () => {
+    await mkdir(paths.root, { recursive: true });
+    await writeFile(path.join(paths.root, "log.md"), "## 2026-08-04T00:00:00.000Z — future event\n\n", "utf8");
+
+    const response = await get("/api/health");
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body)).toEqual({
+      lastDrydock: null,
+      conflictCount: 0,
+      pendingCount: 0,
+      logUnreadable: true,
+    });
+  });
+
   it("reports the latest drydock and open workspace queue counts", async () => {
     await mkdir(path.join(paths.queueDir, "2026-08-03T01-02-03-004Z-1234abcd"), { recursive: true });
     await writeFile(path.join(paths.queueDir, "2026-08-03T01-02-03-004Z-1234abcd", "meta.json"), JSON.stringify({

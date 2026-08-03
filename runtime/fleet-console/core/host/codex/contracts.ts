@@ -186,6 +186,7 @@ export interface CodexHealthResponse {
   } | null;
   conflictCount: number;
   pendingCount: number;
+  logUnreadable?: true;
 }
 
 export interface AllowedAccessSets {

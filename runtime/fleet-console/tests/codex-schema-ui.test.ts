@@ -139,6 +139,31 @@ describe("Codex schema UI contract", () => {
     controller.destroy();
   });
 
+  it("shows an unreadable wiki log even when all health counts are zero", async () => {
+    vi.resetModules();
+    apiMocks.fetchHealth.mockResolvedValue({
+      lastDrydock: null,
+      conflictCount: 0,
+      pendingCount: 0,
+      logUnreadable: true,
+    });
+    const state = await import("../core/client/src/codex/state.js");
+    const { mountNavigatorInto } = await import("../core/client/src/codex/components/navigator.js");
+    Object.assign(state.getState(), { error: null, index: [], loading: false, pendingPatchCount: 0 });
+    const root = document.body.appendChild(document.createElement("div"));
+    const controller = mountNavigatorInto(root, { initialTheaterId: "workspace-a", onRequest: vi.fn() });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const strip = root.querySelector<HTMLElement>(".codex-nav-health")!;
+    expect(strip.hidden).toBe(false);
+    expect(strip.textContent).toContain("Wiki log unreadable");
+    expect(strip.querySelector(".codex-nav-health-dot")?.classList.contains("is-coral")).toBe(false);
+    strip.querySelector<HTMLButtonElement>("[data-health-detail]")?.click();
+    expect(strip.querySelector(".codex-nav-health-popover")?.textContent).toContain("Wiki log unreadableCheck");
+    controller.destroy();
+  });
+
   it("shows health details without navigating and closes them on Escape", async () => {
     vi.resetModules();
     apiMocks.fetchHealth.mockResolvedValue({

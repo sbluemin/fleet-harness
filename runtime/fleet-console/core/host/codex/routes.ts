@@ -371,8 +371,12 @@ async function handleEntry(rawSegment: string, url: URL, response: ServerRespons
 }
 
 async function handleHealth(response: ServerResponse, context: RouteContext): Promise<void> {
+  let logUnreadable = false;
   const [logEntries, conflicts, pending] = await Promise.all([
-    parseLog(context.paths).catch(() => []),
+    parseLog(context.paths).catch(() => {
+      logUnreadable = true;
+      return [];
+    }),
     listConflictSummaries(context.paths),
     listQueue(context.paths),
   ]);
@@ -393,6 +397,7 @@ async function handleHealth(response: ServerResponse, context: RouteContext): Pr
     lastDrydock,
     conflictCount: conflicts.filter((item) => item.status === "open").length,
     pendingCount: pending.length,
+    ...(logUnreadable ? { logUnreadable: true as const } : {}),
   } satisfies CodexHealthResponse);
 }
 
