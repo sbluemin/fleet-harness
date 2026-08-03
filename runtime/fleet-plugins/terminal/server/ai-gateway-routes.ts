@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -16,10 +15,12 @@ import {
   UnsupportedReasoningEffortError,
   buildAnthropicModelList,
   clampReasoningEffort,
+  defaultCredentialDeps,
   findGatewayModel,
   hasClaudeOneMillionMarker,
   projectAnthropicResponseUsage,
   reasoningEffortFromOutputConfig,
+  resolveCursorCredentials,
   toClaudeGatewayModelId,
   upstreamModelId,
 } from "@dotobokuri/core-ai-gateway";
@@ -52,18 +53,16 @@ export const KIMI_MESSAGES_URL = "https://api.kimi.com/coding/v1/messages";
 /** Claude Code가 claude.ai 구독으로 붙일 때 보내는 자격증명 접두. OAuth 토큰도 이 접두를 쓴다. */
 const ANTHROPIC_CREDENTIAL_PREFIX = "sk-ant-";
 
-/** Cursor CLI/IDE 로그인이 keychain에 남긴 구독 토큰. */
-export function readCursorSubscriptionToken(): string | null {
-  try {
-    const token = execFileSync(
-      "security",
-      ["find-generic-password", "-s", "cursor-access-token", "-a", "cursor-user", "-w"],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-    ).trim();
-    return token.length > 0 ? token : null;
-  } catch {
-    return null;
-  }
+/**
+ * Cursor CLI/IDE 로그인이 남긴 구독 토큰.
+ *
+ * 조달 경로는 core-ai-gateway가 단일 출처다. macOS는 keychain을 먼저 보고, Linux/Windows는
+ * 각 플랫폼의 auth.json을 읽는다. 여기서 keychain만 보면 `security`가 없는 Linux/WSL에서
+ * 항상 토큰 없음으로 떨어져 Cursor 모델 호출이 401이 된다.
+ */
+export async function readCursorSubscriptionToken(): Promise<string | null> {
+  const credentials = await resolveCursorCredentials(defaultCredentialDeps);
+  return credentials?.accessToken ?? null;
 }
 
 export function readCodexSubscriptionAuth(
@@ -90,7 +89,7 @@ export interface AiGatewayRouteDeps {
   readonly gateway?: AnthropicMessagesGateway;
   /** 테스트가 구독 토큰 조회를 대체한다. */
   readonly readAuth?: () => CodexSubscriptionAuth | null;
-  readonly readCursorToken?: () => string | null;
+  readonly readCursorToken?: () => string | null | Promise<string | null>;
   readonly readKimiApiKey?: () => Promise<string | undefined>;
   readonly cursorDiagnostics?: CursorDiagnosticSink;
   readonly fetch?: typeof fetch;
@@ -184,7 +183,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
     let credential = "";
     let chatgptAccountId = "";
     if (target?.provider === "cursor") {
-      const cursorToken = (deps.readCursorToken ?? readCursorSubscriptionToken)();
+      const cursorToken = await (deps.readCursorToken ?? readCursorSubscriptionToken)();
       if (!cursorToken) {
         writeAnthropicError(res, 401, "authentication_error", "No Cursor subscription token was found. Sign in to Cursor first.");
         return true;
