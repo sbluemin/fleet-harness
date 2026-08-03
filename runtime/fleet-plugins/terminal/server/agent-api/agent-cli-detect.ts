@@ -5,7 +5,7 @@
 // 실행 파일/심볼릭링크와 Windows의 npm `.cmd` shim을 동일한 SSoT로 처리해 `--version` 실행이
 // 양 플랫폼에서 모두 성공한다. 해석 결과의 prefixArgs를 `--version` 앞에 붙여 호출하므로
 // Windows shim 래핑이 버전 조회에도 그대로 적용된다. 표시 대상은 CLI_BACKENDS를 cliCommand
-// 기준으로 중복제거한 바이너리(claude/cursor-agent)다.
+// 기준으로 중복제거한 바이너리(claude)다.
 
 import { execFile } from "node:child_process";
 
@@ -34,7 +34,6 @@ export interface AgentCliDetector {
 // cliCommand → 바이너리 표시명. provider 변형(zai/kimi/glm)이 아닌 바이너리 정체성을 담백하게 표기한다.
 const BINARY_DISPLAY_NAMES: Record<string, string> = {
   claude: "Claude Code",
-  "cursor-agent": "Cursor Agent",
 };
 
 // `--version` 실행 타임아웃(ms). 미설치/무응답이어도 설정 화면 로드를 막지 않도록 짧게 잡는다.

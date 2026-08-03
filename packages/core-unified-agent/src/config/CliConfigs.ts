@@ -12,7 +12,6 @@ import type {
 } from '../types/config.js';
 import { resolveNpxPath, buildNpxArgs } from '../utils/npx.js';
 import { cleanEnvironment } from '../utils/env.js';
-import { resolveCursorSpawnModel } from '../models/registry.js';
 
 /** CLI 백엔드 설정 전체 맵 */
 export const CLI_BACKENDS = {
@@ -49,21 +48,6 @@ export const CLI_BACKENDS = {
     requiresModelAtSpawn: false,
     usesNpxBridge: false,
     defaultMaxTokens: 100_000,
-  },
-  cursor: {
-    id: 'cursor',
-    cliCommand: 'cursor-agent',
-    protocol: 'acp',
-    authRequired: true,
-    acpArgs: ['acp'],
-    modes: [
-      { id: 'agent', label: 'Agent' },
-    ],
-    supportsSessionClose: false,
-    supportsSessionLoad: true,
-    requiresModelAtSpawn: true,
-    usesNpxBridge: false,
-    defaultMaxTokens: 200_000,
   },
 } as const satisfies Record<string, CliBackendConfig>;
 
@@ -112,14 +96,9 @@ export function createSpawnConfig(
     };
   }
 
-  // CLI를 직접 spawn하는 경우 (Cursor)
+  // CLI를 직접 spawn하는 경우
   const command = options.cliPath ?? backend.cliCommand;
   const args = backend.acpArgs ? [...backend.acpArgs] : [];
-
-  if (cli === 'cursor' && options.model) {
-    // Cursor global option은 acp subcommand 앞에 와야 하므로 기존 acp 인자 앞에 삽입합니다.
-    args.unshift('--model', resolveCursorSpawnModel(options.model, options.effort));
-  }
 
   return {
     command,
@@ -158,8 +137,6 @@ export function getYoloModeId(cli: CliType): string {
   switch (cli) {
     case 'claude':
       return 'bypassPermissions';
-    case 'cursor':
-      return 'agent';
     case 'codex':
       return 'yolo';
   }

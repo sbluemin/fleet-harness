@@ -5,8 +5,8 @@ import { resolvePathBinary, type AgentCliLaunchResolver, type ResolvedBinary } f
 import type { FleetPluginStorageHost } from "@fleet-console/sdk/plugin";
 
 export const AGENT_CLI_PATHS_STORAGE_KEY = "agent-cli-paths";
-export const AGENT_CLI_COMMANDS = ["claude", "cursor-agent"] as const;
-const STORED_AGENT_CLI_COMMANDS = ["claude", "codex", "cursor-agent"] as const;
+export const AGENT_CLI_COMMANDS = ["claude"] as const;
+const STORED_AGENT_CLI_COMMANDS = ["claude", "codex"] as const;
 
 export type AgentCliPathError =
   | "path_not_absolute"
@@ -31,7 +31,6 @@ export interface AgentCliBinaryResolution {
 const OVERRIDE_ENV_BY_COMMAND: Readonly<Record<string, string>> = {
   claude: "CLAUDE_BIN",
   codex: "CODEX_BIN",
-  "cursor-agent": "CURSOR_AGENT_BIN",
 };
 
 // 같은 서버 프로세스의 이 모듈 인스턴스에서 `agent-cli-paths` read+write만 직렬화한다.
@@ -128,7 +127,6 @@ export function validateUserAgentCliPath(
 
 export function agentCliCommandForId(cliId: string | undefined): string | null {
   if (cliId === "claude" || cliId === "claude-native" || cliId === "claude-gateway") return "claude";
-  if (cliId === "cursor") return "cursor-agent";
   return null;
 }
 
@@ -151,7 +149,6 @@ export function buildAgentCliClientEnvOverlay(
   userPaths: Readonly<Record<string, string>>,
 ): Readonly<Record<string, string>> | undefined {
   const cliCommand = agentCliCommandForId(cliId);
-  // Provider client는 Cursor에 cliPath를 직접 넘길 수 있다.
   // npx bridge를 쓰는 Claude 계열만 기존 CLAUDE_BIN 계약의 최소 오버레이가 필요하다.
   if (cliCommand !== "claude") return undefined;
   const userPath = userPaths[cliCommand];

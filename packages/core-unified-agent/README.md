@@ -1,6 +1,6 @@
 # @dotobokuri/core-unified-agent
 
-> A TypeScript SDK that unifies Codex, Claude Code, and Cursor Agent under a single interface.
+> A TypeScript SDK that unifies Codex and Claude Code under a single interface.
 
 Within this monorepo, Fleet consumes `@dotobokuri/core-unified-agent` through `workspace:*` from `packages/core-unified-agent/`. It is the core engine for all Fleet agents and shares the same build and release flow as the other workspace packages.
 
@@ -15,7 +15,6 @@ single event-based TypeScript interface.
 |-----|----------|---------------|
 | **Claude** | ACP | `npx --package=@agentclientprotocol/claude-agent-acp@0.33.1 claude-agent-acp` |
 | **Codex** | App Server | `codex app-server --listen stdio://` |
-| **Cursor Agent** | ACP | `cursor-agent acp` |
 
 ### Prerequisites
 
@@ -158,7 +157,6 @@ Closes the connection and terminates the child process.
 UnifiedAgent
   +-- UnifiedClaudeAgentClient
   +-- UnifiedCodexAgentClient
-  +-- UnifiedCursorAgentClient
 ```
 
 ## License

@@ -38,16 +38,13 @@ describe("Session Analyst server contract", () => {
     const modelsFor = vi.fn((_cliId: AnalystCliId) => ({ defaultModel: "model-a", models: [{ modelId: "model-a", name: "Model A", effort: { supported: true, levels: ["low"], default: "low" } }] }));
     const catalog = buildAnalysisCatalog([
       { id: "claude", displayName: "Claude Code", available: true, version: "1.2.3" },
-      { id: "cursor-agent", displayName: "Cursor Agent", available: true, version: "1.2.3" },
     ], modelsFor);
-    expect(catalog.clis.map((cli) => cli.cliId)).toEqual(["claude", "cursor"]);
+    expect(catalog.clis.map((cli) => cli.cliId)).toEqual(["claude"]);
     expect(catalog.clis).toEqual(expect.arrayContaining([expect.objectContaining({ cliId: "claude", available: true })]));
     expect(JSON.stringify(catalog)).not.toMatch(/path|version|session/i);
-    expect(modelsFor.mock.calls.map(([cliId]) => cliId)).toEqual(["claude", "cursor"]);
-    for (const cliId of ["claude", "cursor"] as const) {
-      expect(isAnalysisSelection(catalog, { cliId, model: "model-a", effort: "low" })).toBe(true);
-      expect(isAnalysisSelection(catalog, { cliId, model: "model-a", effort: "low", language: "ko" })).toBe(true);
-    }
+    expect(modelsFor.mock.calls.map(([cliId]) => cliId)).toEqual(["claude"]);
+    expect(isAnalysisSelection(catalog, { cliId: "claude", model: "model-a", effort: "low" })).toBe(true);
+    expect(isAnalysisSelection(catalog, { cliId: "claude", model: "model-a", effort: "low", language: "ko" })).toBe(true);
     expect(isAnalysisSelection(catalog, { cliId: "claude", model: "model-a", effort: "low", language: "ja" })).toBe(false);
     expect(isAnalysisSelection(catalog, { cliId: "claude", model: "model-a" })).toBe(false);
     expect(isAnalysisSelection(catalog, { cliId: "claude", model: "removed", effort: "low" })).toBe(false);
@@ -280,15 +277,12 @@ describe("Session Analyst server contract", () => {
     expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ effort: undefined, language: "ko" }));
   });
 
-  it.each([
-    ["claude", "claude", "CLAUDE_BIN"],
-    ["cursor", "cursor-agent", null],
-  ] as const)("uses the configured %s path for Analyst detection and execution", async (cliId, cliCommand, envName) => {
+  it("uses the configured Claude path for Analyst detection and execution", async () => {
     const dir = await mkdtemp(join(tmpdir(), "analysis-cli-path-"));
     const transcriptPath = join(dir, "captured.jsonl");
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
-    const readAgentCliPaths = vi.fn(async () => ({ [cliCommand]: process.execPath }));
+    const readAgentCliPaths = vi.fn(async () => ({ claude: process.execPath }));
     const createSession = vi.fn((_options: unknown) => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
     registerAnalysisRoutes(router.ctx as never, {
@@ -298,14 +292,14 @@ describe("Session Analyst server contract", () => {
       createSession: createSession as never,
     });
 
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId, model: "model-b" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
 
     expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
     expect(readAgentCliPaths).toHaveBeenCalledTimes(2);
     expect(createSession).toHaveBeenCalledWith(expect.objectContaining({
-      cliId,
+      cliId: "claude",
       cliPath: process.execPath,
-      env: envName ? { [envName]: process.execPath } : undefined,
+      env: { CLAUDE_BIN: process.execPath },
     }));
   });
 
