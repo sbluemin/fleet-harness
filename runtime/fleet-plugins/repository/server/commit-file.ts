@@ -45,8 +45,8 @@ export async function handleRepositoryCommitFile(req: http.IncomingMessage, res:
   if (!relativePath || (body.oldPath !== undefined && !oldPath)) { ctx.host.http.writeJson(res, 403, { error: "path_outside_theater" }); return; }
   try {
     const result = await runGit(oldPath
-      ? ["show", "--first-parent", body.ref, "-M", "--format=", "--unified=3", "--", literalPathspec(oldPath), literalPathspec(relativePath)]
-      : ["show", "--first-parent", body.ref, "--format=", "--unified=3", "--", literalPathspec(relativePath)], { cwd: cwdResult.gitCwd });
+      ? ["show", "--no-ext-diff", "--no-textconv", "--first-parent", body.ref, "-M", "--format=", "--unified=3", "--", literalPathspec(oldPath), literalPathspec(relativePath)]
+      : ["show", "--no-ext-diff", "--no-textconv", "--first-parent", body.ref, "--format=", "--unified=3", "--", literalPathspec(relativePath)], { cwd: cwdResult.gitCwd });
     ctx.host.http.writeJson(res, 200, { content: result.stdout, ...(result.truncated ? { truncated: true } : {}) });
   } catch (error) {
     if (error instanceof GitExecutorError) {

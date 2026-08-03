@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
@@ -121,10 +121,11 @@ type RefSource = "branches" | "tags" | "stashes";
 type SourceIconKind = Source | RefSource | "repositories" | "worktrees";
 export type RepositoryRefItem = { label: string; ref: string; current: boolean };
 export type RepositoryStash = { name: string; subject: string };
-export type RepositoryRefs = { branches: RepositoryRefItem[]; remotes: RepositoryRefItem[]; tags: RepositoryRefItem[]; stashes: RepositoryStash[] };
+export type RepositoryRefs = { branches: RepositoryRefItem[]; remotes: RepositoryRefItem[]; tags: RepositoryRefItem[]; stashes: RepositoryStash[]; readonly defaultBase?: string };
 export type RepositoryRefRow = { key: string; source: RefSource; primary: string; sub?: string; ref: string | null; current: boolean };
 export type RepositoryRefGroup = { label?: "LOCAL" | "REMOTES"; rows: RepositoryRefRow[] };
 type Refs = RepositoryRefs;
+type RefContextMenuState = { readonly row: RepositoryRefRow; readonly anchor: { readonly x: number; readonly y: number } };
 
 // 사용자 제스처 선택의 착지 결정 — 컨텍스트 전환 여부와 무관하게 History로 착지한다(refs 선택과 동일 문법).
 export function resolveRepositorySelection(theaterId: string | null, currentRel: string, nextRel: string): { readonly transition: boolean; readonly landing: Source } {
@@ -175,6 +176,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [changedFiles, setChangedFiles] = useState<ChangedFilesState>({ kind: "loading" });
   const [changedFilesRetry, setChangedFilesRetry] = useState(0);
   const [historyExternalRefreshToken, setHistoryExternalRefreshToken] = useState(0);
+  const [compareRequest, setCompareRequest] = useState<{ base: string; head: string; seq: number } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const syncRequestIdRef = useRef(0);
   const autoSyncTheaterRef = useRef<string | null>(null);
@@ -258,6 +260,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     syncRequestIdRef.current += 1;
     setSyncing(false);
     setChangedFiles({ kind: "loading" });
+    setCompareRequest(null);
     setRefs({ branches: [], remotes: [], tags: [], stashes: [] });
     repoRelRef.current = nextRepoRel;
     setRepoRel(nextRepoRel);
@@ -475,6 +478,11 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     document.addEventListener("pointerup", onUp);
   }, []);
 
+  const openCompare = useCallback((base: string, head: string) => {
+    setSource("compare");
+    setCompareRequest((prev) => ({ base, head, seq: (prev?.seq ?? 0) + 1 }));
+  }, [setSource]);
+
   const hunkMode = selectedFile ? getHunkMode(selectedFile) : null;
   const retryChangedFiles = useCallback(() => setChangedFilesRetry((value) => value + 1), []);
   const handleToggleChangeFolder = useCallback((path: string) => {
@@ -495,7 +503,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       <ChangedFiles state={changedFiles} onRetry={retryChangedFiles} viewMode={viewMode} selectedPath={selectedFile?.entry.path ?? null} onSelect={handleSelectFile} filterText={filterText} t={t} collapsedFolders={collapsedChangeFolders} onToggleFolder={handleToggleChangeFolder} scrollContainerRef={changesListRef} onScroll={updateChangesScroll} />
     </div>
   </div>;
-  const compareView = <CompareView key={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} refs={refs} refsError={refsError} onRetryRefs={() => setRefsRetry((value) => value + 1)} />;
+  const compareView = <CompareView key={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} refs={refs} request={compareRequest} refsError={refsError} onRetryRefs={() => setRefsRetry((value) => value + 1)} />;
   // 컴팩트 레이아웃과 동일하게 Changes/Compare를 hidden으로 상시 마운트해 섹션 전환에도 내부 상태를 보존한다.
   const workspaceMainVisible = source === "changes" || source === "compare";
   const workspaceMain = <>
@@ -506,7 +514,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     <div className="repository-unified is-workspace">
       <div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? t("repository.panel.title")}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}<button type="button" className={`repository-sync-button${syncing ? " is-syncing" : ""}`} title={t("repository.sync.title")} aria-label={t("repository.sync.title")} disabled={syncing} onClick={() => { void syncRepository(); }}><span className="repository-sync-icon" aria-hidden="true">↻</span>{t("repository.sync.button")}</button></div>
       <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${treeWidth}px` } as React.CSSProperties}>
-        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} repos={repos} reposError={reposError} reposTruncated={reposTruncated} scanDepth={scanDepth} worktrees={worktrees} worktreesError={worktreesError} refs={refs} refsError={refsError} changedFiles={changedFiles} selectedRel={repoRel} source={source} refFilter={refFilter} onRepository={handleSelectRepository} onScanDepth={setScanDepth} onRetryRepos={() => setReposRetry((value) => value + 1)} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} onRetryRefs={() => setRefsRetry((value) => value + 1)} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} />
+        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} repos={repos} reposError={reposError} reposTruncated={reposTruncated} scanDepth={scanDepth} worktrees={worktrees} worktreesError={worktreesError} refs={refs} refsError={refsError} changedFiles={changedFiles} selectedRel={repoRel} source={source} refFilter={refFilter} onRepository={handleSelectRepository} onScanDepth={setScanDepth} onRetryRepos={() => setReposRetry((value) => value + 1)} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} onRetryRefs={() => setRefsRetry((value) => value + 1)} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} />
         <div className="repository-divider repository-ws-tree-divider" onPointerDown={handleTreeDividerDown} role="separator" aria-orientation="vertical" aria-label={t("repository.common.resizeSourceTree")} />
         <HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}:${historyLandingEpoch}`} cacheScope={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} externalRefreshToken={historyExternalRefreshToken} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
       </div>
@@ -536,13 +544,16 @@ interface WorkspaceTreeProps {
   readonly onRetryRefs: () => void;
   readonly onSource: (source: Source) => void;
   readonly onRef: (ref: string) => void;
+  readonly onCompare: (base: string, head: string) => void;
 }
 
-export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTruncated, scanDepth, worktrees, worktreesError, refs, refsError, changedFiles, selectedRel, source, refFilter, onRepository, onScanDepth, onRetryRepos, onRetryWorktrees, onRetryRefs, onSource, onRef }: WorkspaceTreeProps) {
+export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTruncated, scanDepth, worktrees, worktreesError, refs, refsError, changedFiles, selectedRel, source, refFilter, onRepository, onScanDepth, onRetryRepos, onRetryWorktrees, onRetryRefs, onSource, onRef, onCompare }: WorkspaceTreeProps) {
   const [initialTreeState] = useState(() => readWorkspaceTreeState(theaterId));
   const [query, setQuery] = useState(initialTreeState?.query ?? "");
   const [collapsedSections, setCollapsedSections] = useState(() => new Set(initialTreeState?.collapsedSections ?? ["tags", "stashes"]));
   const [collapsedFolders, setCollapsedFolders] = useState(() => new Set(initialTreeState?.collapsedFolders ?? []));
+  const [refContextMenu, setRefContextMenu] = useState<RefContextMenuState | null>(null);
+  const [treeRef] = useState<RefObject<HTMLElement | null>>(() => ({ current: null }));
   const handleToggleRepoFolder = (path: string) => {
     setCollapsedFolders((current) => {
       const next = new Set(current);
@@ -586,13 +597,28 @@ export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTrunc
       <span>{section.label}</span><i>{section.count}</i>
     </button>;
   };
+  const currentBranchRef = refs.branches.find((item) => item.current)?.ref ?? null;
   const refRows = (refSource: RefSource) => buildRefListGroups(refSource, refs).map((group) => <div key={group.label ?? refSource} className="repository-ws-ref-group">
     {group.label && <span className="repository-ws-ref-subhead">{t(group.label === "LOCAL" ? "repository.refs.local" : "repository.refs.remotes")}</span>}
-    {group.rows.map((row) => <button type="button" key={row.key} className={`repository-ws-tree-row${row.current ? " is-current" : ""}${source === "history" && row.ref === refFilter ? " is-active" : ""}`} disabled={row.ref === null} onClick={() => row.ref && onRef(row.ref)}>
+    {/* 브랜치 행은 role=button 자손에 interactive content가 금지되므로(ARIA-in-HTML)
+        래퍼 div + 형제 네이티브 버튼 2개(행 본체·비교 액션)로 구성한다 */}
+    {group.rows.map((row) => row.source === "branches" && row.ref ? <div
+      key={row.key}
+      className={`repository-ws-tree-row is-branch${row.current ? " is-current" : ""}${source === "history" && row.ref === refFilter ? " is-active" : ""}`}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        setRefContextMenu({ row, anchor: { x: event.clientX, y: event.clientY } });
+      }}
+    >
+      <button type="button" className="repository-ws-tree-row-main" onClick={() => onRef(row.ref!)}>
+        <SourceIcon source={row.source} /><span>{row.primary}</span>{row.current && <i>HEAD</i>}
+      </button>
+      {refs.defaultBase && row.ref !== refs.defaultBase ? <button type="button" className="repository-tree-action" title={t("repository.compare.withBase")} aria-label={t("repository.compare.withBase")} onClick={() => onCompare(refs.defaultBase!, row.ref!)}>⇆</button> : null}
+    </div> : <button type="button" key={row.key} className={`repository-ws-tree-row${row.current ? " is-current" : ""}${source === "history" && row.ref === refFilter ? " is-active" : ""}`} disabled={row.ref === null} onClick={() => row.ref && onRef(row.ref)}>
       <SourceIcon source={row.source} /><span>{row.primary}</span>{row.current && <i>HEAD</i>}{row.sub && <i>{row.sub}</i>}
     </button>)}
   </div>);
-  return <aside className="repository-ws-tree">
+  return <aside ref={treeRef} className="repository-ws-tree">
     <RepositoryDiscovery t={t} query={query} onQuery={setQuery} totalCount={repos.length} matchedCount={matchedCount} scanDepth={scanDepth} onScanDepth={onScanDepth} truncated={reposTruncated} onEnter={() => {
       const first = rootMatches[0] ?? nestedMatches[0];
       if (first) onRepository(first);
@@ -621,7 +647,87 @@ export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTrunc
       <section className={`repository-ws-section${collapsedSections.has("tags") ? " is-collapsed" : ""}`}>{sectionHeader("tags")}{!collapsedSections.has("tags") && !refsError && refRows("tags")}</section>
       <section className={`repository-ws-section${collapsedSections.has("stashes") ? " is-collapsed" : ""}`}>{sectionHeader("stashes")}{!collapsedSections.has("stashes") && !refsError && refRows("stashes")}</section>
     </WorkspaceTreeScroll>
+    {refContextMenu ? <RepositoryRefContextMenu
+      key={`${refContextMenu.row.key}:${refContextMenu.anchor.x}:${refContextMenu.anchor.y}`}
+      anchor={refContextMenu.anchor}
+      boundaryRef={treeRef}
+      rowRef={refContextMenu.row.ref!}
+      currentRef={currentBranchRef}
+      defaultBase={refs.defaultBase}
+      t={t}
+      onCompare={onCompare}
+      onClose={() => setRefContextMenu(null)}
+    /> : null}
   </aside>;
+}
+
+function clampRepositoryContextMenuPosition(anchor: { readonly x: number; readonly y: number }, bounds: DOMRect, menuSize: DOMRect, margin = 4) {
+  const requestedLeft = anchor.x - bounds.left;
+  const requestedTop = anchor.y - bounds.top;
+  return {
+    x: Math.max(margin, Math.min(requestedLeft, Math.max(margin, bounds.width - menuSize.width - margin))),
+    y: Math.max(margin, Math.min(requestedTop, Math.max(margin, bounds.height - menuSize.height - margin))),
+  };
+}
+
+function RepositoryRefContextMenu({ anchor, boundaryRef, rowRef, currentRef, defaultBase, t, onCompare, onClose }: {
+  readonly anchor: { readonly x: number; readonly y: number };
+  readonly boundaryRef: RefObject<HTMLElement | null>;
+  readonly rowRef: string;
+  readonly currentRef: string | null;
+  readonly defaultBase?: string;
+  readonly t: T;
+  readonly onCompare: (base: string, head: string) => void;
+  readonly onClose: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ readonly x: number; readonly y: number } | null>(null);
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    const boundary = boundaryRef.current;
+    if (!menu || !boundary) return;
+    const updatePosition = () => setPosition(clampRepositoryContextMenuPosition(anchor, boundary.getBoundingClientRect(), menu.getBoundingClientRect()));
+    updatePosition();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(updatePosition);
+    observer.observe(menu);
+    observer.observe(boundary);
+    return () => observer.disconnect();
+  }, [anchor, boundaryRef]);
+  useEffect(() => {
+    const focusFrame = window.requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus());
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, []);
+  useEffect(() => {
+    const handleOutsidePointer = (event: PointerEvent) => {
+      if (event.target instanceof Node && !menuRef.current?.contains(event.target)) onClose();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    };
+    const handleScroll = () => onClose();
+    document.addEventListener("pointerdown", handleOutsidePointer, true);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("scroll", handleScroll, true);
+    return () => {
+      document.removeEventListener("pointerdown", handleOutsidePointer, true);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("scroll", handleScroll, true);
+    };
+  }, [onClose]);
+  const style: CSSProperties = position ? { left: position.x, top: position.y } : { left: 0, top: 0, visibility: "hidden" };
+  const activate = (base: string | null | undefined) => {
+    if (!base || base === rowRef) return;
+    onClose();
+    onCompare(base, rowRef);
+  };
+  return <div ref={menuRef} className="repository-context-menu" role="menu" style={style}>
+    <button type="button" className="repository-context-menu-item" role="menuitem" disabled={!currentRef || currentRef === rowRef} onClick={() => activate(currentRef)}>{t("repository.compare.withCurrent")}</button>
+    <button type="button" className="repository-context-menu-item" role="menuitem" disabled={!defaultBase || defaultBase === rowRef} onClick={() => activate(defaultBase)}>{t("repository.compare.withBase")}</button>
+  </div>;
 }
 
 function WorkspaceTreeScroll({ theaterId, query, collapsedSections, collapsedFolders, initialScrollTop, contentVersion, children }: {

@@ -93,6 +93,7 @@ function renderWorkspaceTree(): ReactElement<ElementProps> {
     onRetryRefs: vi.fn(),
     onSource: vi.fn(),
     onRef: vi.fn(),
+    onCompare: vi.fn(),
   });
 }
 

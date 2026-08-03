@@ -99,6 +99,9 @@ export const repositoryEn = {
 
   // compare
   "repository.compare.run": "Compare",
+  "repository.compare.swap": "Swap base and head",
+  "repository.compare.baseBadge": "base",
+  "repository.compare.resultsAnnounce": "Comparison finished — {count} files",
   "repository.compare.baseRef": "Base ref",
   "repository.compare.headRef": "Head ref",
   "repository.compare.selectBase": "Select base…",
@@ -111,6 +114,8 @@ export const repositoryEn = {
   "repository.compare.noMergeBase": "The selected refs share no common history.",
   "repository.compare.mergeBase": "merge-base",
   "repository.compare.capped": "Comparison capped — file list truncated.",
+  "repository.compare.withBase": "Compare with base",
+  "repository.compare.withCurrent": "Compare with current branch",
 
   // hunk
   "repository.hunk.diffTruncated": "Diff truncated",
@@ -201,6 +206,9 @@ export const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.time.yesterday": "어제 {time}",
 
   "repository.compare.run": "비교",
+  "repository.compare.swap": "base와 head 교환",
+  "repository.compare.baseBadge": "베이스",
+  "repository.compare.resultsAnnounce": "비교 완료 — 파일 {count}개",
   "repository.compare.baseRef": "Base ref",
   "repository.compare.headRef": "Head ref",
   "repository.compare.selectBase": "base 선택…",
@@ -213,6 +221,8 @@ export const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.compare.noMergeBase": "선택한 refs에 공통 이력이 없습니다.",
   "repository.compare.mergeBase": "merge-base",
   "repository.compare.capped": "비교 한도 — 파일 목록이 잘렸습니다.",
+  "repository.compare.withBase": "베이스와 비교",
+  "repository.compare.withCurrent": "현재 브랜치와 비교",
 
   "repository.hunk.diffTruncated": "Diff가 잘림",
 };

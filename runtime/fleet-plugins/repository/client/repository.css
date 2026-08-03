@@ -1,5 +1,14 @@
 /* Diff rail panel styles */
 
+.repository-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 /* ── 루트 레이아웃 ── */
 .repository-root {
   display: grid;
@@ -1023,7 +1032,7 @@
 @keyframes repository-sync-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .repository-sync-button.is-syncing .repository-sync-icon { animation: none; } }
 /* 숨김-마운트 래퍼가 높이 문맥을 끊으면 history-root의 height:100%가 내용 높이로 풀려 내부 스크롤이 죽는다 */
-.repository-source-fill { height: 100%; min-height: 0; }
+.repository-source-fill { height: 100%; min-width: 0; min-height: 0; }
 .repository-discovery { display: flex; align-items: center; gap: 8px; flex: none; padding: 6px 10px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 55%, transparent); }
 .repository-discovery-depth { display: inline-flex; align-items: center; gap: 3px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
 .repository-depth-step { border: 0; background: none; color: var(--text-tertiary); cursor: pointer; font-family: var(--font-mono); font-size: 12px; padding: 0 3px; }
@@ -1071,6 +1080,8 @@
 }
 
 .repository-ws-tree {
+  /* 컨텍스트 메뉴(absolute)의 containing block — 없으면 상위 positioned 조상 기준으로 오배치된다 */
+  position: relative;
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -1157,9 +1168,26 @@
   transition: color var(--duration-base) var(--ease-spring), background var(--duration-base) var(--ease-spring);
 }
 
-.repository-ws-tree-row:hover:not(:disabled) {
+.repository-ws-tree-row:hover:not(:disabled),
+.repository-ws-tree-row.is-branch:focus-within {
   background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
   color: var(--text-primary);
+}
+
+/* 브랜치 행 본체 버튼 — 래퍼의 레이아웃/색을 그대로 잇는 투명 필 버튼 */
+.repository-ws-tree-row-main {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
 }
 
 .repository-ws-tree-row.is-active {
@@ -1177,21 +1205,24 @@
   color: var(--text-tertiary);
 }
 
-.repository-ws-tree-row > svg {
+.repository-ws-tree-row > svg,
+.repository-ws-tree-row-main > svg {
   width: 13px;
   height: 13px;
   flex: none;
   opacity: .85;
 }
 
-.repository-ws-tree-row > span {
+.repository-ws-tree-row > span,
+.repository-ws-tree-row-main > span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.repository-ws-tree-row > i {
+.repository-ws-tree-row > i,
+.repository-ws-tree-row-main > i {
   margin-left: auto;
   overflow: hidden;
   color: var(--text-tertiary);
@@ -1205,6 +1236,101 @@
 
 .repository-ws-tree-row.is-current > i {
   color: var(--brass-ink);
+}
+
+.repository-tree-action {
+  display: none;
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.repository-tree-action:hover,
+.repository-tree-action:focus-visible {
+  border-color: var(--surface-rim);
+  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
+  color: var(--text-primary);
+  outline: none;
+}
+
+@media (hover: hover) {
+  .repository-ws-tree-row:hover > .repository-tree-action,
+  .repository-ws-tree-row:focus-within > .repository-tree-action {
+    display: inline-grid;
+    place-items: center;
+  }
+}
+
+@media (hover: none) {
+  .repository-tree-action {
+    display: inline-grid;
+    place-items: center;
+  }
+}
+
+.repository-context-menu {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: max-content;
+  min-width: 196px;
+  max-width: calc(100% - 8px);
+  max-height: calc(100% - 8px);
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep)),
+      color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep))
+    ),
+    var(--ink-deep);
+  box-shadow: var(--shadow-anchor);
+}
+
+.repository-context-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 9px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.repository-context-menu-item:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--ink-fog) 20%, transparent);
+  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
+}
+
+.repository-context-menu-item:focus-visible {
+  outline: none;
+  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
+  background: var(--brass-glow);
+}
+
+.repository-context-menu-item:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+  opacity: .5;
 }
 
 .repository-ws-ref-group {
@@ -1344,11 +1470,15 @@
 }
 
 /* ── Compare 뷰 ── */
-.repository-compare { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; }
-.repository-compare-controls { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 55%, transparent); }
+.repository-compare { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-width: 0; min-height: 0; container-type: inline-size; }
+.repository-compare-controls { display: flex; align-items: center; flex-wrap: wrap; min-width: 0; gap: 6px; padding: 7px 10px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 55%, transparent); }
 .repository-compare-controls .fc-select { flex: 1; min-width: 0; }
-.repository-compare-arrow { flex: none; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 12px; }
+.repository-compare-controls .fc-select__value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.repository-compare-swap { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); background: none; color: var(--text-tertiary); cursor: pointer; flex: none; font-size: 12px; }
+.repository-compare-swap:hover:not(:disabled) { color: var(--text-secondary); }
+.repository-compare-swap:disabled,
 .repository-compare-run:disabled { opacity: .5; cursor: default; }
+@container (max-width: 359px) { .repository-compare-controls .repository-compare-run { flex: 1 0 100%; } }
 .repository-compare-results { display: flex; flex-direction: column; }
 .repository-compare-results .repository-sections { flex: 1; min-height: 0; }
 .repository-compare-results .history-truncated { flex: none; }

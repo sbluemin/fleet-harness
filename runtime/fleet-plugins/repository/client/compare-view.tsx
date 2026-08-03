@@ -17,6 +17,7 @@ interface CompareViewProps {
   readonly ctx: RailPanelContext;
   readonly repoRel: string;
   readonly refs: RepositoryRefs;
+  readonly request?: { base: string; head: string; seq: number } | null;
   readonly refsError?: boolean;
   readonly onRetryRefs?: () => void;
   readonly onFileOpenChange?: (open: boolean) => void;
@@ -63,7 +64,7 @@ function saveCompareSelection(theaterId: string, repoRel: string, base: string, 
 
 // ─── CompareView ─────────────────────────────────────────────────────────────
 
-export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs, onFileOpenChange }: CompareViewProps) {
+export function CompareView({ ctx, repoRel, refs, request, refsError = false, onRetryRefs, onFileOpenChange }: CompareViewProps) {
   const t = getT(ctx.language);
   const [initialCache] = useState(() => ctx.theaterId ? readCompareViewState(ctx.theaterId, repoRel) : null);
   const initialResult: CompareState = initialCache?.result ?? { kind: "idle" };
@@ -85,7 +86,9 @@ export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs
   const cacheFrameRef = useRef<number | null>(null);
   const dragDisposeRef = useRef<(() => void) | null>(null);
   const hydratedRef = useRef(false);
+  const autoRanRef = useRef(false);
   const requestSeqRef = useRef(0);
+  const handledRequestSeqRef = useRef(0);
 
   const remoteRefs = useMemo(() => refs.remotes.filter((item) => !isRemoteHeadRef(item.ref)), [refs.remotes]);
   const currentBranch = refs.branches.find((item) => item.current) ?? null;
@@ -98,19 +101,23 @@ export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs
   // refs 도착 후 1회 hydrate — 저장된 선택은 현재 refs 목록 대조로 read-time 검증한다
   useEffect(() => {
     const refsLoaded = refs.branches.length > 0 || remoteRefs.length > 0 || refs.tags.length > 0;
+    // refs 재조회 중 빈 배열 과도 상태에서는 모든 ref가 invalid로 보이므로,
+    // 로드 전에는 hydrate도 유효성 폴백도 수행하지 않는다(선택 소실 방지).
+    if (!refsLoaded) return;
     const defaultHead = currentBranch?.ref ?? "HEAD";
+    const fallbackBase = refs.defaultBase && isValidSelection(refs.defaultBase) && refs.defaultBase !== defaultHead ? refs.defaultBase : "";
     if (!hydratedRef.current) {
-      if (!refsLoaded || !ctx.theaterId) return;
+      if (!ctx.theaterId) return;
       hydratedRef.current = true;
       const stored = readCompareSelection(ctx.theaterId, repoRel);
-      setBase(stored && isValidSelection(stored.base) ? stored.base : "");
+      setBase(stored && isValidSelection(stored.base) ? stored.base : fallbackBase);
       setHead(stored && isValidSelection(stored.head) ? stored.head : defaultHead);
       return;
     }
     // refs 갱신으로 사라진 ref는 기본값으로 폴백한다
-    setBase((value) => value && !isValidSelection(value) ? "" : value);
+    setBase((value) => value && !isValidSelection(value) ? fallbackBase : value);
     setHead((value) => value && !isValidSelection(value) ? defaultHead : value);
-  }, [ctx.theaterId, currentBranch, isValidSelection, refs.branches.length, refs.tags.length, remoteRefs.length, repoRel]);
+  }, [ctx.theaterId, currentBranch, isValidSelection, refs.branches.length, refs.defaultBase, refs.tags.length, remoteRefs.length, repoRel]);
 
   useEffect(() => { onFileOpenChange?.(selected !== null); }, [onFileOpenChange, selected]);
   useEffect(() => () => dragDisposeRef.current?.(), []);
@@ -171,13 +178,19 @@ export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs
     if (ctx.theaterId) saveCompareSelection(ctx.theaterId, repoRel, nextBase, nextHead);
   }, [base, ctx.theaterId, head, repoRel]);
 
-  const runCompare = useCallback(() => {
-    if (!ctx.theaterId || !base || !head || base === head) return;
+  const swapRefs = useCallback(() => {
+    setBase(head);
+    setHead(base);
+    if (ctx.theaterId) saveCompareSelection(ctx.theaterId, repoRel, head, base);
+  }, [base, head, ctx.theaterId, repoRel]);
+
+  const runCompare = useCallback((baseRef: string = base, headRef: string = head) => {
+    if (!ctx.theaterId || !baseRef || !headRef || baseRef === headRef) return;
     const seq = ++requestSeqRef.current;
     setSelected(null);
     setResult({ kind: "loading" });
     // api.fetch는 non-2xx에서 payload를 버리고 throw하므로 오류 코드 매핑을 위해 raw fetch를 유지한다
-    fetch("/plugins/repository/compare", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, base, head }) }).then(async (response) => {
+    fetch("/plugins/repository/compare", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, base: baseRef, head: headRef }) }).then(async (response) => {
       if (seq !== requestSeqRef.current) return;
       if (!response.ok) {
         const payload = await response.json() as { readonly error?: string };
@@ -189,11 +202,31 @@ export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs
       }
       const data = await response.json() as CompareResult;
       if (seq !== requestSeqRef.current) return;
-      setResult({ kind: "ok", base, head, files: data.files, ...(data.mergeBase ? { mergeBase: data.mergeBase } : {}), ...(data.truncated ? { truncated: true } : {}) });
+      setResult({ kind: "ok", base: baseRef, head: headRef, files: data.files, ...(data.mergeBase ? { mergeBase: data.mergeBase } : {}), ...(data.truncated ? { truncated: true } : {}) });
     }).catch((error: unknown) => {
       if (seq === requestSeqRef.current) setResult({ kind: "error", message: error instanceof Error ? error.message : "unknown" });
     });
   }, [base, ctx.theaterId, head, repoRel]);
+
+  useEffect(() => {
+    if (!request || request.seq === handledRequestSeqRef.current) return;
+    handledRequestSeqRef.current = request.seq;
+    if (!isValidSelection(request.base) || !isValidSelection(request.head)) return;
+    setBase(request.base);
+    setHead(request.head);
+    if (ctx.theaterId) saveCompareSelection(ctx.theaterId, repoRel, request.base, request.head);
+    runCompare(request.base, request.head);
+  }, [ctx.theaterId, isValidSelection, repoRel, request, runCompare]);
+
+  useEffect(() => {
+    if (autoRanRef.current || !hydratedRef.current || !base || !head || base === head) return;
+    // 캐시 복원 결과가 현재 선택과 일치하면 재실행하지 않는다.
+    // 불일치(예: 체크아웃 변경 후 재진입으로 head 기본값이 이동)면 1회 갱신해 셀렉터-결과 정합을 지킨다.
+    const staleOk = result.kind === "ok" && (result.base !== base || result.head !== head);
+    if (result.kind !== "idle" && !staleOk) return;
+    autoRanRef.current = true;
+    runCompare();
+  }, [base, head, result, runCompare]);
 
   const handleDividerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -228,8 +261,8 @@ export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs
     return options;
   }, [refs.branches, refs.tags, remoteRefs, showHeadOption, t]);
   const baseRefOptions = useMemo(
-    (): readonly SelectOption[] => [{ value: "", label: t("repository.compare.selectBase"), disabled: true }, ...headRefOptions],
-    [headRefOptions, t],
+    (): readonly SelectOption[] => [{ value: "", label: t("repository.compare.selectBase"), disabled: true }, ...headRefOptions.map((option) => option.value === refs.defaultBase ? { ...option, label: `${option.label} · ${t("repository.compare.baseBadge")}` } : option)],
+    [headRefOptions, refs.defaultBase, t],
   );
   const refSelect = (side: "base" | "head", value: string) => (
     <Select
@@ -253,14 +286,15 @@ export function CompareView({ ctx, repoRel, refs, refsError = false, onRetryRefs
     <div className="repository-compare">
       {refsError ? <div className="history-error">{t("repository.discovery.loadRefsFailed")}<button type="button" className="repository-refresh-btn" onClick={onRetryRefs}>{t("repository.common.retry")}</button></div> : <div className="repository-compare-controls">
         {refSelect("base", base)}
-        <span className="repository-compare-arrow" aria-hidden="true">…</span>
+        <button type="button" className="repository-compare-swap" disabled={!base || !head} onClick={swapRefs} title={t("repository.compare.swap")} aria-label={t("repository.compare.swap")}>⇄</button>
         {refSelect("head", head)}
-        <button type="button" className="repository-refresh-btn repository-compare-run" disabled={!canCompare} onClick={runCompare}>{t("repository.compare.run")}</button>
+        <button type="button" className="repository-refresh-btn repository-compare-run" disabled={!canCompare} onClick={() => runCompare()}>{t("repository.compare.run")}</button>
       </div>}
       <div ref={rootRef} className={`repository-root${selected ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={selected ? { gridTemplateColumns: buildDiffGridTemplate(listPaneWidth) } : undefined}>
         {selected && compareSelection ? <div className="repository-hunk-pane"><div className="repository-hunk-head"><span>{selected.path}</span><button type="button" onClick={() => setSelected(null)}>✕</button></div><HunkView ctx={ctx} repoRel={repoRel} file={selected} mode="unified" compare={compareSelection} /></div> : null}
         {selected ? <div className="repository-divider" onPointerDown={handleDividerDown} aria-hidden="true" /> : null}
         <div className="repository-list-pane repository-compare-results">
+          <span className="repository-sr-only" role="status">{result.kind === "ok" ? t("repository.compare.resultsAnnounce", { count: String(result.files.length) }) : ""}</span>
           {result.kind === "idle" && <div className="history-empty">{t("repository.compare.idle")}</div>}
           {result.kind === "loading" && <div className="history-empty">{t("repository.compare.comparing")}</div>}
           {result.kind === "ok" && result.files.length === 0 && <div className="history-empty">{t("repository.compare.noDifferences")}</div>}
