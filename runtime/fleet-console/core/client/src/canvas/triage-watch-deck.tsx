@@ -36,6 +36,13 @@ interface TriageDeckPromotionDecision {
 }
 
 export const TRIAGE_DECK_ARRIVAL_DWELL_MS = 1_100;
+// 카드 정렬 등급 — 운영자 응답을 기다리는 것이 맨 앞, 그다음 실행 중, 유휴 순.
+const TRIAGE_DECK_ACTIVITY_RANK: Record<OperationActivity, number> = {
+  awaiting: 0,
+  running: 1,
+  idle: 2,
+  dormant: 3,
+};
 const deckCardRects = new Map<string, DOMRect>();
 const CARD_FLASH_DURATION_MS = 900;
 
@@ -90,7 +97,6 @@ export function TriageWatchDeck({
 }: TriageWatchDeckProps) {
   const t = useT();
   const gridRef = useRef<HTMLDivElement | null>(null);
-  const [now, setNow] = useState(Date.now());
   const poolAvailable = useOperationBodyPoolAvailable();
   useOperationStatusDetails();
   // 무대가 떠 있는 동안에도 deck는 mount를 유지하고 visibility로만 숨는다 — 비무대 body가
@@ -136,17 +142,16 @@ export function TriageWatchDeck({
     };
   }, [operations, visible]);
 
-  useLayoutEffect(() => {
-    if (!visible) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
-    return () => window.clearInterval(timer);
-  }, [visible]);
-
   if (!visible) return null;
 
   const activities = operations.map((operation) => resolveOperationActivity(operation, operationStatus));
   const running = activities.filter((activity) => activity === "running").length;
   const idle = activities.filter((activity) => activity === "idle").length;
+  // 정렬: 응답 대기(awaiting) → 실행 중(running) → 유휴(idle). 같은 등급끼리는 기존 순서 유지.
+  const sortedOperations = [...operations].sort(
+    (left, right) => TRIAGE_DECK_ACTIVITY_RANK[resolveOperationActivity(left, operationStatus)]
+      - TRIAGE_DECK_ACTIVITY_RANK[resolveOperationActivity(right, operationStatus)],
+  );
 
   return (
     <section className={`canvas-triage-deck ${underStage ? "is-under-stage" : ""}`} data-canvas-blocker>
@@ -154,7 +159,7 @@ export function TriageWatchDeck({
         {t("canvas.triage.deckCaption", { running, idle })}
       </div>
       <div className="canvas-triage-deck-grid" ref={gridRef}>
-        {operations.map((operation) => {
+        {sortedOperations.map((operation) => {
           const activity = resolveOperationActivity(operation, operationStatus);
           const visual = operationActivityVisual(activity);
           const label = operationActivityLabel(activity);
@@ -177,7 +182,6 @@ export function TriageWatchDeck({
               <span className="canvas-triage-deck-card-status">
                 <span className="canvas-triage-deck-card-dot" aria-hidden="true" />
                 <span>{label}</span>
-                <time>{formatElapsed(now, statusDetail.activityChangedAt)}</time>
               </span>
               <strong title={operation.title}>{operation.title}</strong>
               {previewConfig ? (
@@ -250,12 +254,6 @@ function TriageDeckCardPreview({ operationId, config }: {
       ) : null}
     </span>
   );
-}
-
-export function formatElapsed(now: number, changedAt: number | null): string {
-  const totalSeconds = Math.max(0, Math.floor((now - (changedAt ?? now)) / 1_000));
-  const minutes = Math.floor(totalSeconds / 60);
-  return `${minutes}:${String(totalSeconds % 60).padStart(2, "0")}`;
 }
 
 function escapeAttributeValue(value: string): string {

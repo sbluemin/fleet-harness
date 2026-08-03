@@ -2143,12 +2143,6 @@
   text-transform: uppercase;
 }
 
-.canvas-triage-deck-card-status time {
-  margin-left: auto;
-  color: var(--text-tertiary);
-  font-variant-numeric: tabular-nums;
-}
-
 .canvas-triage-deck-card-dot {
   width: 7px;
   height: 7px;
