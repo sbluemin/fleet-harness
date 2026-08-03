@@ -105,21 +105,14 @@ describe("chat completions request translation", () => {
     expect(headers.get("authorization")).toBe("Bearer k");
   });
 
-  it.each([
-    // assistant 턴의 tool_use 뒤 후행 텍스트.
-    [{ type: "message", role: "assistant", content: "calling now" } as const],
-    // 다음 user 턴의 tool_result 앞 선행 텍스트.
-    [{ type: "message", role: "user", content: "here you go" } as const],
-  ])("keeps tool results adjacent to their call across an intervening %o", async (intervening) => {
-    // Anthropic은 tool_use 뒤 후행 텍스트도, tool_result 앞 선행 텍스트도 허용하고
-    // canonical 번역은 그 블록 순서를 보존한다. Chat 와이어에서는 tool 응답이
-    // tool_calls 메시지 바로 뒤여야 하므로, 낀 메시지는 호출 블록보다 앞으로 간다.
+  it("folds same-turn trailing assistant text into the tool_calls message itself", async () => {
+    // Chat 와이어의 정식 표현: 한 assistant 메시지가 content와 tool_calls를 함께 싣는다.
     const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
     await adapter(fetchMock).stream(request({
       input: [
         { type: "message", role: "user", content: "go" },
         { type: "function_call", call_id: "call-a", name: "ToolA", arguments: "{}" },
-        intervening,
+        { type: "message", role: "assistant", content: "calling now" },
         { type: "function_call_output", call_id: "call-a", output: "done" },
       ],
     }), { apiKey: "k" });
@@ -127,11 +120,40 @@ describe("chat completions request translation", () => {
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
       messages: Array<Record<string, unknown>>;
     };
-    expect(body.messages.map((message) => [message.role, "tool_calls" in message])).toEqual([
-      ["user", false],
-      [intervening.role, false],
-      ["assistant", true],
-      ["tool", false],
+    expect(body.messages).toEqual([
+      { role: "user", content: "go" },
+      {
+        role: "assistant",
+        content: "calling now",
+        tool_calls: [{ id: "call-a", type: "function", function: { name: "ToolA", arguments: "{}" } }],
+      },
+      { role: "tool", tool_call_id: "call-a", content: "done" },
+    ]);
+  });
+
+  it("defers leading user text until after its tool output, preserving conversation order", async () => {
+    // user가 tool_result와 함께 보낸 텍스트는 결과 직후가 의미상 제자리다 — 호출보다
+    // 앞으로 끌어올리면 대화 순서가 뒤집힌다.
+    const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
+    await adapter(fetchMock).stream(request({
+      input: [
+        { type: "message", role: "user", content: "go" },
+        { type: "function_call", call_id: "call-a", name: "ToolA", arguments: "{}" },
+        { type: "message", role: "user", content: "here you go" },
+        { type: "function_call_output", call_id: "call-a", output: "done" },
+        { type: "message", role: "user", content: "next question" },
+      ],
+    }), { apiKey: "k" });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      messages: Array<Record<string, unknown>>;
+    };
+    expect(body.messages.map((message) => [message.role, message.content])).toEqual([
+      ["user", "go"],
+      ["assistant", null],
+      ["tool", "done"],
+      ["user", "here you go"],
+      ["user", "next question"],
     ]);
   });
 

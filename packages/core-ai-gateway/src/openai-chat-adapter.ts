@@ -52,7 +52,7 @@ interface ChatWireToolCall {
 
 type ChatWireMessage =
   | { role: "system" | "assistant" | "user"; content: string | ChatWireContentPart[] }
-  | { role: "assistant"; content: null; tool_calls: ChatWireToolCall[] }
+  | { role: "assistant"; content: string | null; tool_calls: ChatWireToolCall[] }
   | { role: "tool"; tool_call_id: string; content: string };
 
 interface ChatWireRequest {
@@ -173,20 +173,34 @@ function forChatCompletionsBackend(request: CanonicalResponseRequest): ChatWireR
   }
 
   // Chat Completions는 tool 응답이 tool_calls를 실은 assistant 메시지 바로 뒤에 오기를
-  // 요구한다. 연속한 canonical function_call들을 하나의 assistant 메시지로 합치고,
-  // 플러시는 오직 결과 직전과 입력의 끝에서만 한다 — Anthropic 원문은 assistant 턴의
-  // tool_use 뒤 후행 텍스트도, 다음 user 턴의 tool_result 앞 선행 텍스트도 허용하고
-  // canonical 번역이 그 블록 순서를 보존하므로, 중간에 낀 메시지는 전부 호출 블록보다
-  // 앞에 배치해 호출과 결과의 인접성을 지킨다.
+  // 요구하지만, Anthropic 원문은 호출과 결과 사이에 텍스트를 허용하고 canonical 번역이
+  // 그 블록 순서를 보존한다. 인접성과 대화 순서를 함께 지키기 위해:
+  // - 같은 턴의 assistant 텍스트는 Chat 와이어의 정식 표현인 content+tool_calls 단일
+  //   assistant 메시지로 병합하고,
+  // - 사이에 낀 user/developer 텍스트는 해당 호출의 결과 뒤로 미룬다(원문에서도 결과와
+  //   함께 도착한 발화이므로 결과 직후가 의미상 제자리다).
   let pendingToolCalls: ChatWireToolCall[] = [];
+  let pendingAssistantText: string | undefined;
+  let deferredMessages: ChatWireMessage[] = [];
   const flushToolCalls = (): void => {
     if (pendingToolCalls.length === 0) return;
-    messages.push({ role: "assistant", content: null, tool_calls: pendingToolCalls });
+    messages.push({
+      role: "assistant",
+      content: pendingAssistantText ?? null,
+      tool_calls: pendingToolCalls,
+    });
     pendingToolCalls = [];
+    pendingAssistantText = undefined;
+  };
+  const flushDeferredMessages = (): void => {
+    if (deferredMessages.length === 0) return;
+    messages.push(...deferredMessages);
+    deferredMessages = [];
   };
 
   for (const item of request.input) {
     if (item.type === "function_call") {
+      flushDeferredMessages();
       pendingToolCalls.push({
         id: item.call_id,
         type: "function",
@@ -199,9 +213,22 @@ function forChatCompletionsBackend(request: CanonicalResponseRequest): ChatWireR
       messages.push({ role: "tool", tool_call_id: item.call_id, content: item.output });
       continue;
     }
+    if (pendingToolCalls.length > 0) {
+      if (item.role === "assistant") {
+        const text = canonicalMessageText(item.content);
+        if (text.length > 0) {
+          pendingAssistantText = pendingAssistantText === undefined ? text : `${pendingAssistantText}\n\n${text}`;
+        }
+      } else {
+        deferredMessages.push(chatWireMessage(item));
+      }
+      continue;
+    }
+    flushDeferredMessages();
     messages.push(chatWireMessage(item));
   }
   flushToolCalls();
+  flushDeferredMessages();
 
   const payload: ChatWireRequest = {
     model: request.model,
