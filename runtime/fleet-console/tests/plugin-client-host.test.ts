@@ -57,6 +57,7 @@ describe("client plugin host contract", () => {
       terminal: {
         onData: () => ({ dispose: () => undefined }),
         write: () => undefined,
+        drain: (callback) => callback(),
       },
       ticketPath: "/plugins/terminal/shell/ticket",
       wsPath: `${"/plugins/terminal"}/ws`,
@@ -91,6 +92,7 @@ describe("client plugin host contract", () => {
       terminal: {
         onData: () => ({ dispose: () => undefined }),
         write: () => undefined,
+        drain: (callback) => callback(),
       },
       ticketPath: "/plugins/terminal/shell/ticket",
       wsPath: `${"/plugins/terminal"}/ws`,

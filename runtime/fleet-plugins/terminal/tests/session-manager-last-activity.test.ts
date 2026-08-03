@@ -93,8 +93,8 @@ function createMockSocket(): MockSocket {
   return {
     readyState: 1,
     sent: [],
-    send(data) {
-      this.sent.push(Buffer.from(data));
+    send(data, options) {
+      if (options.binary) this.sent.push(Buffer.from(data));
     },
     close() {},
     on(event: "message", listener: (data: TerminalSocketData, isBinary: boolean) => void) {

@@ -36,6 +36,7 @@ export interface TerminalSurfaceProps {
 
 interface TerminalOutputScheduler {
   readonly write: (data: Uint8Array) => void;
+  readonly drain: (callback: () => void) => void;
   readonly setActive: (active: boolean) => void;
   readonly dispose: () => void;
 }
@@ -289,6 +290,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
             listener(data);
           }),
           write: outputScheduler.write,
+          drain: outputScheduler.drain,
         },
         onExit: () => onExitRef.current?.(),
         onStatus: (nextStatus, message) => {
@@ -648,17 +650,31 @@ function isTerminalScrollbackKey(event: KeyboardEvent): boolean {
   return event.key === "PageUp" || event.key === "PageDown" || event.key === "Home" || event.key === "End";
 }
 
-function createTerminalOutputScheduler(terminal: XtermTerminal, initiallyActive: boolean, afterOutputParsing: () => void): TerminalOutputScheduler {
+export function createTerminalOutputScheduler(terminal: XtermTerminal, initiallyActive: boolean, afterOutputParsing: () => void): TerminalOutputScheduler {
   let active = initiallyActive;
   let disposed = false;
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingBytes = 0;
   let pending: Uint8Array[] = [];
+  // drain은 "호출 시점 이전에 write된 바이트"의 파싱 완료만 기다린다(시퀀스 비교). 정지(quiescence)
+  // 대기로 구현하면 재접속 직후 PTY가 연속 출력 중일 때 pendingBytes가 계속 차서 입력 구독이
+  // 무기한 지연된다 — 폭주 프로세스에 Ctrl+C를 보내야 하는 순간에 입력이 잠기는 회귀가 된다.
+  let writeSeq = 0;
+  let parsedSeq = 0;
+  let pendingDrains: Array<{ readonly seq: number; readonly callback: () => void }> = [];
 
   const clearFlushTimer = () => {
     if (!flushTimer) return;
     clearTimeout(flushTimer);
     flushTimer = null;
+  };
+
+  const runPendingDrains = () => {
+    if (disposed || pendingDrains.length === 0) return;
+    const ready = pendingDrains.filter((drain) => drain.seq <= parsedSeq);
+    if (ready.length === 0) return;
+    pendingDrains = pendingDrains.filter((drain) => drain.seq > parsedSeq);
+    for (const drain of ready) drain.callback();
   };
 
   const flush = () => {
@@ -667,7 +683,11 @@ function createTerminalOutputScheduler(terminal: XtermTerminal, initiallyActive:
     const output = concatTerminalOutput(pending, pendingBytes);
     pending = [];
     pendingBytes = 0;
+    writeSeq += 1;
+    const seq = writeSeq;
     terminal.write(output, () => {
+      parsedSeq = seq;
+      runPendingDrains();
       if (!disposed) afterOutputParsing();
     });
   };
@@ -688,6 +708,15 @@ function createTerminalOutputScheduler(terminal: XtermTerminal, initiallyActive:
       }
       scheduleFlush();
     },
+    drain: (callback) => {
+      if (disposed) return;
+      flush();
+      if (parsedSeq === writeSeq) {
+        callback();
+        return;
+      }
+      pendingDrains.push({ seq: writeSeq, callback });
+    },
     setActive: (nextActive) => {
       if (active === nextActive) return;
       active = nextActive;
@@ -699,6 +728,7 @@ function createTerminalOutputScheduler(terminal: XtermTerminal, initiallyActive:
       scheduleFlush();
     },
     dispose: () => {
+      pendingDrains = [];
       flush();
       disposed = true;
       pending = [];

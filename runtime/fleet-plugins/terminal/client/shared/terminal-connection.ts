@@ -1,6 +1,7 @@
 export interface TerminalLike {
   readonly onData: (listener: (data: string) => void) => { readonly dispose: () => void };
   readonly write: (data: Uint8Array) => void;
+  readonly drain: (callback: () => void) => void;
 }
 
 export interface TerminalConnectionOptions {
@@ -91,16 +92,28 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
       ws.binaryType = "arraybuffer";
       ws.onopen = () => {
         connectionOptions.onStatus?.("live");
-        disposeInput();
-        inputSubscription = connectionOptions.terminal.onData((data) => {
-          if (ws.readyState === OPEN_READY_STATE) ws.send(encoder.encode(data));
-        });
         if (pendingSize) sendResize(pendingSize.cols, pendingSize.rows);
       };
       ws.onmessage = (event) => {
         if (event.data instanceof ArrayBuffer) {
           connectionOptions.terminal.write(new Uint8Array(event.data));
+          return;
         }
+        let frame: unknown;
+        try {
+          frame = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+        if (!isReplayEndFrame(frame)) return;
+        connectionOptions.terminal.drain(() => {
+          if (socket !== ws || ws.readyState !== OPEN_READY_STATE || inputSubscription) return;
+          ws.send(JSON.stringify({ type: "replay_ack" }));
+          disposeInput();
+          inputSubscription = connectionOptions.terminal.onData((data) => {
+            if (ws.readyState === OPEN_READY_STATE) ws.send(encoder.encode(data));
+          });
+        });
       };
       ws.onerror = () => {
         reject(new Error("Terminal WebSocket error"));
@@ -164,6 +177,10 @@ async function requestTerminalTicket(ticketPath: string, operationId: string, si
 
 function defaultWebSocketFactory(url: string): WebSocketLike {
   return new WebSocket(url) as unknown as WebSocketLike;
+}
+
+function isReplayEndFrame(value: unknown): value is { readonly type: "replay_end" } {
+  return !!value && typeof value === "object" && (value as { readonly type?: unknown }).type === "replay_end";
 }
 
 async function delay(ms: number, signal: AbortSignal): Promise<void> {
