@@ -92,6 +92,9 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     touchActivity(session);
     session.pty.resize(session.cols, session.rows);
     replayScrollback(session, socket);
+    if (socket.readyState === WS_OPEN_STATE) {
+      socket.send(Buffer.from(JSON.stringify({ type: "replay_end" }), "utf8"), { binary: false });
+    }
     socket.on("message", (data, isBinary) => handleSocketMessage(session, data, isBinary));
     socket.once("close", () => detachSocket(session, socket));
   }
@@ -243,13 +246,17 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   function handlePtyData(session: TerminalSession, data: string): void {
     touchActivity(session);
     const buffer = Buffer.from(data, "utf8");
-    respondToTerminalQueries(session, buffer);
+    const liveSocket = session.activeSocket?.readyState === WS_OPEN_STATE ? session.activeSocket : null;
+    const queryResponses = scanTerminalQueries(session, buffer);
+    // 라이브 중에도 파싱을 계속해 분절 질의의 prefix를 residual로 이월하고, 응답만 클라이언트에 위임한다.
+    // 소유권 경계는 attach와 같은 동기 블록에서 전송되는 replay_end로 유지된다.
+    if (!liveSocket) {
+      for (const response of queryResponses) writeTerminalQueryResponse(session, response);
+    }
     observeOscTitles(session, buffer);
     session.scrollback.push(buffer);
     while (session.scrollback.length > scrollbackLimit) session.scrollback.shift();
-    if (session.activeSocket && session.activeSocket.readyState === WS_OPEN_STATE) {
-      session.activeSocket.send(buffer, { binary: true });
-    }
+    liveSocket?.send(buffer, { binary: true });
   }
 
   function observeOscTitles(session: TerminalSession, buffer: Buffer): void {
@@ -423,8 +430,9 @@ function clearGraceTimer(session: TerminalSession): void {
   session.graceTimer = null;
 }
 
-function respondToTerminalQueries(session: TerminalSession, buffer: Buffer): void {
+function scanTerminalQueries(session: TerminalSession, buffer: Buffer): string[] {
   const text = `${session.terminalQueryResidual}${buffer.toString("utf8")}`;
+  const responses: string[] = [];
   session.terminalQueryResidual = "";
   let cursor = 0;
   while (cursor < text.length) {
@@ -438,9 +446,11 @@ function respondToTerminalQueries(session: TerminalSession, buffer: Buffer): voi
       session.terminalQueryResidual = trimTerminalQueryResidual(text.slice(start));
       break;
     }
-    writeTerminalQueryResponse(session, resolveTerminalQueryResponse(session, text.slice(start, end + 1)));
+    const response = resolveTerminalQueryResponse(session, text.slice(start, end + 1));
+    if (response) responses.push(response);
     cursor = end + 1;
   }
+  return responses;
 }
 
 function readTrailingEscape(text: string): string {

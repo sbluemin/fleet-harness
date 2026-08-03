@@ -76,8 +76,8 @@ class FakeSocket implements TerminalSocket {
   readonly sent: string[] = [];
   private readonly closeCallbacks = new Set<() => void>();
 
-  send(data: Buffer): void {
-    this.sent.push(data.toString("utf8"));
+  send(data: Buffer, options: { readonly binary: boolean }): void {
+    if (options.binary) this.sent.push(data.toString("utf8"));
   }
 
   close(): void {

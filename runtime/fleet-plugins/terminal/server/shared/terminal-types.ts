@@ -63,6 +63,7 @@ export interface TerminalPtyHandle {
 export interface TerminalSocket {
   readonly readyState: number;
   send(data: Buffer, options: { readonly binary: true }): void;
+  send(data: Buffer, options: { readonly binary: false }): void;
   close(code?: number, reason?: string): void;
   on(event: "message", listener: (data: TerminalSocketData, isBinary: boolean) => void): void;
   once(event: "close", listener: () => void): void;

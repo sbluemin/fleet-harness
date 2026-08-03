@@ -250,11 +250,17 @@ describe("terminal session manager", () => {
     firstA.emitClose();
     await manager.attach(secondA, { sessionId: "session-a", cwd: "/a" });
 
-    expect(secondA.sent.map((chunk) => chunk.toString("utf8"))).toEqual(["alpha"]);
-    expect(firstB.sent.map((chunk) => chunk.toString("utf8"))).toEqual(["beta"]);
+    expect(secondA.sent.map((chunk) => chunk.toString("utf8"))).toEqual([
+      "alpha",
+      JSON.stringify({ type: "replay_end" }),
+    ]);
+    expect(firstB.sent.map((chunk) => chunk.toString("utf8"))).toEqual([
+      JSON.stringify({ type: "replay_end" }),
+      "beta",
+    ]);
   });
 
-  it("responds to terminal device queries without altering output delivery", async () => {
+  it("delegates live terminal device queries and answers them after detach", async () => {
     const ptys = new Map<string, MockPty>();
     const manager = createTerminalSessionManager({
       launch: async (cwd, context) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } }),
@@ -265,13 +271,25 @@ describe("terminal session manager", () => {
       },
     });
     const socket = createMockSocket();
+    const queryOutput = `before\x1b[6nafter\x1b[5n\x1b[c\x1b[0c\x1b[>c\x1b[31m`;
+    const responses = ["\x1b[40;120R", "\x1b[0n", "\x1b[?1;2c", "\x1b[?1;2c", "\x1b[>0;0;0c"];
 
     await manager.attach(socket, { sessionId: "session-a", cwd: "/a" });
     socket.emitMessage(Buffer.from(JSON.stringify({ type: "resize", cols: 120, rows: 40 }), "utf8"), false);
-    ptys.get("session-a")?.emitData(`before\x1b[6nafter\x1b[5n\x1b[c\x1b[0c\x1b[>c\x1b[31m`);
+    ptys.get("session-a")?.emitData(queryOutput);
+    expect(ptys.get("session-a")?.writes).toEqual([]);
+    expect(socket.sent.map((chunk) => chunk.toString("utf8"))).toEqual([
+      JSON.stringify({ type: "replay_end" }),
+      queryOutput,
+    ]);
 
-    expect(ptys.get("session-a")?.writes).toEqual(["\x1b[40;120R", "\x1b[0n", "\x1b[?1;2c", "\x1b[?1;2c", "\x1b[>0;0;0c"]);
-    expect(socket.sent.map((chunk) => chunk.toString("utf8"))).toEqual([`before\x1b[6nafter\x1b[5n\x1b[c\x1b[0c\x1b[>c\x1b[31m`]);
+    socket.emitClose();
+    ptys.get("session-a")?.emitData(queryOutput);
+    expect(ptys.get("session-a")?.writes).toEqual(responses);
+    expect(socket.sent.map((chunk) => chunk.toString("utf8"))).toEqual([
+      JSON.stringify({ type: "replay_end" }),
+      queryOutput,
+    ]);
   });
 
   it("responds to terminal device queries split across pty chunks", async () => {
@@ -393,7 +411,10 @@ describe("terminal session manager", () => {
 
     // 재연결하면 같은 세션에 다시 붙어 scrollback을 그대로 재생한다.
     await manager.attach(second, { sessionId: "session-a", cwd: "/a" });
-    expect(second.sent.map((chunk) => chunk.toString("utf8"))).toEqual(["before-detach"]);
+    expect(second.sent.map((chunk) => chunk.toString("utf8"))).toEqual([
+      "before-detach",
+      JSON.stringify({ type: "replay_end" }),
+    ]);
     expect(ptys.get("session-a")?.killed()).toBe(false);
   });
 
