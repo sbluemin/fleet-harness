@@ -1,14 +1,20 @@
 import type http from "node:http";
 
 import {
-  KIMI_AUTH_PROVIDER_ID,
   validateKimiAuthKey,
+  validateOpencodeGoAuthKey,
 } from "@dotobokuri/fleet-admiral";
 import type { AuthService, AuthValidationFailureResult } from "@dotobokuri/core-infra";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 
-import { buildModelAuthState, type TerminalModelAuthProviderState } from "./model-auth-state.js";
+import {
+  MODEL_AUTH_STORE_IDS,
+  buildModelAuthState,
+  isTerminalModelAuthProviderId,
+  type TerminalModelAuthProviderId,
+  type TerminalModelAuthProviderState,
+} from "./model-auth-state.js";
 
 type AuthKeyValidation =
   | { readonly providerId: string; readonly status: "success" }
@@ -16,7 +22,7 @@ type AuthKeyValidation =
 
 interface TerminalModelAuthRouteDeps {
   readonly authService: Pick<AuthService, "setApiKey" | "deleteApiKey" | "listProviderIds">;
-  readonly validateApiKey: (apiKey: string) => Promise<AuthKeyValidation>;
+  readonly validateApiKey: (provider: TerminalModelAuthProviderId, apiKey: string) => Promise<AuthKeyValidation>;
 }
 
 interface SignInBody {
@@ -25,13 +31,18 @@ interface SignInBody {
 
 const UPSTREAM_FAILURE_STATUSES: ReadonlySet<string> = new Set(["timeout", "network", "server"]);
 
+const MODEL_AUTH_VALIDATORS: Readonly<Record<TerminalModelAuthProviderId, (apiKey: string) => Promise<AuthKeyValidation>>> = {
+  kimi: validateKimiAuthKey,
+  opencode: validateOpencodeGoAuthKey,
+};
+
 export function registerTerminalModelAuthRoutes(
   ctx: FleetPluginServerContext,
   deps: Pick<TerminalModelAuthRouteDeps, "authService">,
 ): void {
   registerRouter(ctx, "model-auth", createTerminalModelAuthRouter(ctx, {
     ...deps,
-    validateApiKey: validateKimiAuthKey,
+    validateApiKey: (provider, apiKey) => MODEL_AUTH_VALIDATORS[provider](apiKey),
   }));
 }
 
@@ -51,11 +62,11 @@ export function createTerminalModelAuthRouter(
     }
     const providerId = parseProviderPath(path);
     if (!providerId) return false;
-    if (providerId !== "kimi") {
+    if (!isTerminalModelAuthProviderId(providerId)) {
       ctx.host.http.writeJson(res, 404, { error: "provider_not_found" });
       return true;
     }
-    const provider = await findProvider(deps);
+    const provider = await findProvider(deps, providerId);
     if (!provider) {
       ctx.host.http.writeJson(res, 404, { error: "provider_not_found" });
       return true;
@@ -65,7 +76,7 @@ export function createTerminalModelAuthRouter(
       return true;
     }
     if (req.method === "DELETE") {
-      await signOutProvider(ctx, req, res, deps);
+      await signOutProvider(ctx, req, res, deps, provider.provider);
       return true;
     }
     ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
@@ -98,7 +109,7 @@ async function signInProvider(
     return;
   }
   const apiKey = body.apiKey.trim();
-  const validation = await deps.validateApiKey(apiKey);
+  const validation = await deps.validateApiKey(provider.provider, apiKey);
   if (validation.status !== "success") {
     ctx.host.http.writeJson(res, UPSTREAM_FAILURE_STATUSES.has(validation.status) ? 502 : 400, {
       error: formatSignInFailureMessage(provider.displayName, validation.status),
@@ -106,7 +117,7 @@ async function signInProvider(
     });
     return;
   }
-  await deps.authService.setApiKey(KIMI_AUTH_PROVIDER_ID, apiKey);
+  await deps.authService.setApiKey(MODEL_AUTH_STORE_IDS[provider.provider], apiKey);
   await writeMutationState(ctx, res, deps);
 }
 
@@ -115,12 +126,13 @@ async function signOutProvider(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   deps: TerminalModelAuthRouteDeps,
+  provider: TerminalModelAuthProviderId,
 ): Promise<void> {
   if (!ctx.host.security.isTerminalAuthorized(req)) {
     ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
     return;
   }
-  await deps.authService.deleteApiKey(KIMI_AUTH_PROVIDER_ID);
+  await deps.authService.deleteApiKey(MODEL_AUTH_STORE_IDS[provider]);
   await writeMutationState(ctx, res, deps);
 }
 
@@ -132,8 +144,12 @@ async function writeMutationState(
   ctx.host.http.writeJson(res, 200, { state: await buildModelAuthState(deps.authService) });
 }
 
-async function findProvider(deps: TerminalModelAuthRouteDeps): Promise<TerminalModelAuthProviderState | null> {
-  return (await buildModelAuthState(deps.authService)).providers[0] ?? null;
+async function findProvider(
+  deps: TerminalModelAuthRouteDeps,
+  providerId: TerminalModelAuthProviderId,
+): Promise<TerminalModelAuthProviderState | null> {
+  const state = await buildModelAuthState(deps.authService);
+  return state.providers.find((provider) => provider.provider === providerId) ?? null;
 }
 
 function parseProviderPath(path: string): string | null {

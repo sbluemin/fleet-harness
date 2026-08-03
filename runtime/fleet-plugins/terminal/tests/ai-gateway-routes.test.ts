@@ -15,6 +15,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   KIMI_MESSAGES_URL,
+  OPENCODE_MESSAGES_URL,
   createAiGatewayRouter,
   registerAiGatewayRoutes,
 } from "../server/ai-gateway-routes.js";
@@ -533,6 +534,80 @@ describe("mid-stream failure", () => {
   });
 });
 
+describe("OpenCode Go passthrough", () => {
+  it("rewrites the model, swaps in the stored key, and strips the unadvertised effort", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "event: message_stop\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readOpencodeApiKey: async () => "opencode-secret",
+    });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--opencode--minimax-m3[1m]",
+      thinking: { type: "adaptive" },
+      outputConfig: { effort: "xhigh", retain: "preserved" },
+    }));
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    const headers = new Headers(init?.headers);
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(String(url)).toBe(OPENCODE_MESSAGES_URL);
+    expect(headers.get("x-api-key")).toBe("opencode-secret");
+    expect(headers.get("authorization")).toBeNull();
+    // Go 모델별 effort 계약이 문서화되지 않아 effort만 제거하고 나머지는 보존한다.
+    expect(body).toMatchObject({
+      model: "minimax-m3",
+      thinking: { type: "adaptive" },
+      output_config: { retain: "preserved" },
+    });
+    expect((body.output_config as Record<string, unknown>)).not.toHaveProperty("effort");
+    expect(`${JSON.stringify(res.headers)}${res.body}`).not.toContain("opencode-secret");
+  });
+
+  it("drops output_config entirely when effort was its only field", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "event: message_stop\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readOpencodeApiKey: async () => "opencode-secret",
+    });
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--opencode--qwen3.7-max[1m]",
+      outputConfig: { effort: "high" },
+    }));
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(body.model).toBe("qwen3.7-max");
+    expect(body).not.toHaveProperty("output_config");
+  });
+
+  it("refuses an opencode model without a stored key", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    const router = createAiGatewayRouter({ fetch: fetchMock, readAuth });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--opencode--minimax-m3[1m]",
+    }));
+
+    expect(res.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(res.body).toContain("OpenCode Go");
+  });
+});
+
 describe("Kimi passthrough", () => {
   it("rewrites the model and replaces caller authentication with the stored Kimi key", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(
@@ -817,13 +892,16 @@ describe("route surface", () => {
     const ids = list.data.map((entry) => entry.id);
     // picker가 버리지 않도록 모든 항목이 claude- alias로 나가야 한다.
     expect(ids.every((id) => id.startsWith("claude"))).toBe(true);
-    expect(list.data).toHaveLength(17);
+    expect(list.data).toHaveLength(24);
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast[1m]");
     expect(ids).toContain("claude-gateway--cursor--auto[1m]");
     expect(ids).toContain("claude-gateway--cursor--kimi-k3");
     expect(ids).toContain("claude-gateway--cursor--kimi-k3-1m[1m]");
     expect(ids).toContain("claude-gateway--kimi--k3[1m]");
     expect(ids).toContain("claude-gateway--kimi--k3-256k");
+    expect(ids).toContain("claude-gateway--opencode--minimax-m3[1m]");
+    // 204.8K 창은 passthrough 1M 마커 요건 미달 — 맨몸 alias로 나가야 한다.
+    expect(ids).toContain("claude-gateway--opencode--minimax-m2.5");
     expect(ids.some((id) => id.includes("--codex--") && id.endsWith("[1m]"))).toBe(true);
     expect(list.data).toContainEqual(expect.objectContaining({
       id: "claude-gateway--cursor--kimi-k3-1m[1m]",
@@ -833,7 +911,7 @@ describe("route surface", () => {
       id: "claude-gateway--kimi--k3[1m]",
       display_name: "Moonshot-Kimi-K3-1M (1M Context)",
     }));
-    expect(list.data.every((entry) => /^(Codex|Cursor|Moonshot-Kimi)-/.test(entry.display_name))).toBe(true);
+    expect(list.data.every((entry) => /^(Codex|Cursor|Moonshot-Kimi|OpenCode)-/.test(entry.display_name))).toBe(true);
   });
 
   it("filters model discovery to the curated allowlist", async () => {

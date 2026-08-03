@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-01T00:00:00Z",
+  "updatedAt": "2026-08-03T00:00:00Z",
   "providers": {
     "codex": {
       "name": "Codex",
@@ -283,6 +283,47 @@
           "aliases": [
             "k3-256k"
           ]
+        }
+      ]
+    },
+    "opencode": {
+      "name": "OpenCode",
+      "defaultModel": "minimax-m3",
+      "source": "https://opencode.ai/docs/go/ Anthropic-protocol model table (2026-08-03); contextWindow from oh-my-pi packages/catalog/src/models.json opencode-go entries (2026-08-03)",
+      "models": [
+        {
+          "modelId": "minimax-m3",
+          "name": "MiniMax-M3",
+          "contextWindow": 1000000
+        },
+        {
+          "modelId": "minimax-m2.7",
+          "name": "MiniMax-M2.7",
+          "contextWindow": 204800
+        },
+        {
+          "modelId": "minimax-m2.5",
+          "name": "MiniMax-M2.5",
+          "contextWindow": 204800
+        },
+        {
+          "modelId": "qwen3.8-max",
+          "name": "Qwen3.8-Max"
+        },
+        {
+          "modelId": "qwen3.7-max",
+          "name": "Qwen3.7-Max",
+          "contextWindow": 1000000
+        },
+        {
+          "modelId": "qwen3.7-plus",
+          "name": "Qwen3.7-Plus",
+          "contextWindow": 1000000
+        },
+        {
+          "modelId": "qwen3.6-plus",
+          "name": "Qwen3.6-Plus",
+          "contextWindow": 1000000
         }
       ]
     }

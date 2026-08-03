@@ -1,15 +1,14 @@
 import { cancel, isCancel, select } from "@clack/prompts";
-import { KIMI_AUTH_PROVIDER_ID } from "@dotobokuri/fleet-admiral";
 
-import { getAuthCliOptions, parseAuthCliId, runAuthLoginFlow } from "./login-flow.js";
+import { AUTH_CLI_DEFINITIONS, getAuthCliOptions, parseAuthCliId, runAuthLoginFlow } from "./login-flow.js";
 import type { AuthCommandDeps, AuthCommandIo } from "./types.js";
 
 const AUTH_HELP_TEXT = `fleet auth — Authentication
 
 Usage:
-  fleet auth login [kimi]
+  fleet auth login [kimi|opencode]
   fleet auth list
-  fleet auth logout [kimi]
+  fleet auth logout [kimi|opencode]
 `;
 
 export async function dispatchAuthCommand(
@@ -51,15 +50,16 @@ async function logoutAuthProvider(
     cancel("Authentication cancelled.");
     return 1;
   }
-  await deps.authService.deleteApiKey(KIMI_AUTH_PROVIDER_ID);
-  io.stdout.write("Kimi for AI Gateway signed out.\n");
+  const definition = AUTH_CLI_DEFINITIONS[selectedCli];
+  await deps.authService.deleteApiKey(definition.providerId);
+  io.stdout.write(`${definition.label} signed out.\n`);
   return 0;
 }
 
 async function promptForLogoutCli(): Promise<ReturnType<typeof parseAuthCliId>> {
   const selected = await select({
     message: "Select an authentication provider",
-    options: getAuthCliOptions().map((value) => ({ value, label: "Kimi for AI Gateway" })),
+    options: getAuthCliOptions().map((value) => ({ value, label: AUTH_CLI_DEFINITIONS[value].label })),
   });
   return isCancel(selected) ? undefined : parseAuthCliId(String(selected));
 }

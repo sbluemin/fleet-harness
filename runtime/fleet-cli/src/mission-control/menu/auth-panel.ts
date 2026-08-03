@@ -1,8 +1,7 @@
-import {
-  KIMI_AUTH_PROVIDER_ID,
-  validateKimiAuthKey,
-} from "@dotobokuri/fleet-admiral";
 import type { AuthService } from "@dotobokuri/core-infra";
+
+import { AUTH_CLI_DEFINITIONS } from "../../auth/login-flow.js";
+import type { AuthCliId } from "../../auth/types.js";
 
 import { renderChoiceBlock, type ChoiceBlockRow } from "../layout.js";
 import { MISSION_CONTROL_THEME } from "../renderer.js";
@@ -18,9 +17,10 @@ export interface AuthPanelDeps {
 }
 
 interface ProviderRow {
-  readonly cli: "kimi";
+  readonly cli: AuthCliId;
   readonly providerId: string;
   readonly label: string;
+  readonly shortName: string;
   configured: boolean;
   status: string;
 }
@@ -95,9 +95,9 @@ export function createAuthPanel(deps: AuthPanelDeps): MenuPanel {
       validate: (value) => value.trim() ? undefined : "API key is required.",
       onCancel: () => deps.stack.pop(),
       onSubmit: async (value) => {
-        const validation = await validateKimiAuthKey(value.trim());
+        const validation = await AUTH_CLI_DEFINITIONS[row.cli].validate(value.trim());
         if (validation.status !== "success") {
-          throw new Error(formatValidationFailure(validation.status));
+          throw new Error(formatValidationFailure(row.shortName, validation.status));
         }
         await deps.authService.setApiKey(row.providerId, value.trim());
         deps.stack.pop();
@@ -151,13 +151,14 @@ export function createAuthPanel(deps: AuthPanelDeps): MenuPanel {
 }
 
 function createProviderRows(): ProviderRow[] {
-  return [{
-    cli: "kimi",
+  return (Object.keys(AUTH_CLI_DEFINITIONS) as AuthCliId[]).map((cli) => ({
+    cli,
     configured: false,
-    label: "Kimi for AI Gateway",
-    providerId: KIMI_AUTH_PROVIDER_ID,
+    label: AUTH_CLI_DEFINITIONS[cli].label,
+    shortName: AUTH_CLI_DEFINITIONS[cli].shortName,
+    providerId: AUTH_CLI_DEFINITIONS[cli].providerId,
     status: "Checking",
-  }];
+  }));
 }
 
 function renderProviderRows(rows: readonly ProviderRow[], selected: number, width: number): string[] {
@@ -178,13 +179,13 @@ function move(index: number, length: number, delta: -1 | 1): number {
   return length === 0 ? 0 : (index + delta + length) % length;
 }
 
-function formatValidationFailure(status: string): string {
-  if (status === "unauthorized") return "Kimi rejected the API key.";
-  if (status === "forbidden") return "The API key is not allowed for Kimi.";
-  if (status === "timeout") return "Kimi API key validation timed out.";
-  if (status === "network") return "Could not reach Kimi.";
-  if (status === "server") return "Kimi returned an error. Try again later.";
-  return "Could not validate the Kimi API key.";
+function formatValidationFailure(shortName: string, status: string): string {
+  if (status === "unauthorized") return `${shortName} rejected the API key.`;
+  if (status === "forbidden") return `The API key is not allowed for ${shortName}.`;
+  if (status === "timeout") return `${shortName} API key validation timed out.`;
+  if (status === "network") return `Could not reach ${shortName}.`;
+  if (status === "server") return `${shortName} returned an error. Try again later.`;
+  return `Could not validate the ${shortName} API key.`;
 }
 
 function formatError(error: unknown): string {

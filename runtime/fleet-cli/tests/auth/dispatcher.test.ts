@@ -9,8 +9,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../src/auth/login-flow.js", () => ({
-  getAuthCliOptions: () => ["kimi"],
-  parseAuthCliId: (value: string | undefined) => value === "kimi" ? value : undefined,
+  AUTH_CLI_DEFINITIONS: {
+    kimi: { label: "Kimi for AI Gateway", shortName: "Kimi", providerId: "Claude Code with Moonshot Kimi" },
+    opencode: { label: "OpenCode Go for AI Gateway", shortName: "OpenCode Go", providerId: "Claude Code with OpenCode Go" },
+  },
+  getAuthCliOptions: () => ["kimi", "opencode"],
+  parseAuthCliId: (value: string | undefined) => value === "kimi" || value === "opencode" ? value : undefined,
   runAuthLoginFlow: mocks.runAuthLoginFlow,
 }));
 
@@ -22,10 +26,10 @@ describe("auth dispatcher", () => {
     mocks.runAuthLoginFlow.mockResolvedValue(0);
   });
 
-  it("documents the Kimi-only auth surface", async () => {
+  it("documents the provider auth surface", async () => {
     const io = createIo();
     await expect(dispatchAuthCommand(["auth", "--help"], io, createDeps())).resolves.toBe(0);
-    expect(io.stdout.output).toContain("fleet auth login [kimi]");
+    expect(io.stdout.output).toContain("fleet auth login [kimi|opencode]");
   });
 
   it("dispatches Kimi login", async () => {
@@ -40,6 +44,13 @@ describe("auth dispatcher", () => {
     await expect(dispatchAuthCommand(["auth", "logout", "kimi"], io, createDeps())).resolves.toBe(0);
     expect(mocks.deleteApiKey).toHaveBeenCalledWith("Claude Code with Moonshot Kimi");
     expect(io.stdout.output).toContain("signed out");
+  });
+
+  it("logs out the stable OpenCode Go provider ID", async () => {
+    const io = createIo();
+    await expect(dispatchAuthCommand(["auth", "logout", "opencode"], io, createDeps())).resolves.toBe(0);
+    expect(mocks.deleteApiKey).toHaveBeenCalledWith("Claude Code with OpenCode Go");
+    expect(io.stdout.output).toContain("OpenCode Go for AI Gateway signed out");
   });
 });
 

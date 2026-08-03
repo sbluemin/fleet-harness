@@ -7,7 +7,7 @@ export interface AiGatewaySettings {
   readonly defaultModel?: string;
 }
 
-export type AiGatewayProviderId = "codex" | "cursor" | "kimi";
+export type AiGatewayProviderId = "codex" | "cursor" | "kimi" | "opencode";
 
 export interface AiGatewayCatalogModel {
   readonly id: string;

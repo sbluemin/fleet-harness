@@ -129,7 +129,7 @@ export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | un
   return { models, defaultModel };
 }
 
-/** Stable provider clusters (codex → cursor → kimi), then catalog order within each. */
+/** Stable provider clusters (codex → cursor → kimi → opencode), then catalog order within each. */
 function sortGatewayModelsByProvider(models: readonly GatewayModel[]): GatewayModel[] {
   return [...models].sort((left, right) => {
     const providerDelta =

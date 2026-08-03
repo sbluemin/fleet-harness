@@ -47,6 +47,7 @@ export interface CodexSubscriptionAuth {
 
 export const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 export const KIMI_MESSAGES_URL = "https://api.kimi.com/coding/v1/messages";
+export const OPENCODE_MESSAGES_URL = "https://opencode.ai/zen/go/v1/messages";
 /** Claude Code가 claude.ai 구독으로 붙일 때 보내는 자격증명 접두. OAuth 토큰도 이 접두를 쓴다. */
 const ANTHROPIC_CREDENTIAL_PREFIX = "sk-ant-";
 
@@ -85,6 +86,7 @@ export interface AiGatewayRouteDeps {
   readonly readAuth?: () => CodexSubscriptionAuth | null | Promise<CodexSubscriptionAuth | null>;
   readonly readCursorToken?: () => string | null | Promise<string | null>;
   readonly readKimiApiKey?: () => Promise<string | undefined>;
+  readonly readOpencodeApiKey?: () => Promise<string | undefined>;
   readonly cursorDiagnostics?: CursorDiagnosticSink;
   readonly fetch?: typeof fetch;
 }
@@ -199,6 +201,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
         return true;
       }
       credential = kimiApiKey;
+    } else if (target?.provider === "opencode") {
+      const opencodeApiKey = await deps.readOpencodeApiKey?.();
+      if (!opencodeApiKey) {
+        writeAnthropicError(res, 401, "authentication_error", "No OpenCode Go API key was found. Sign in to OpenCode Go first.");
+        return true;
+      }
+      credential = opencodeApiKey;
     }
 
     const controller = new AbortController();
@@ -222,6 +231,19 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
         : undefined;
       if (target.provider === "kimi") {
         await proxyToKimi(
+          req.headers,
+          res,
+          body,
+          upstreamModelId(target),
+          claudeContextWindow,
+          credential,
+          fetchImpl,
+          controller.signal,
+        );
+        return true;
+      }
+      if (target.provider === "opencode") {
+        await proxyToOpencode(
           req.headers,
           res,
           body,
@@ -369,16 +391,56 @@ async function proxyToKimi(
   });
 }
 
+/**
+ * OpenCode Go의 Anthropic 호환 경로. Kimi와 같은 passthrough지만 effort 계약이 다르다:
+ * Go 모델별 effort 수용 범위가 문서화돼 있지 않아, 미지의 upstream 400을 피하기 위해
+ * `output_config.effort`를 제거하고 나머지 output_config만 유지한다.
+ */
+async function proxyToOpencode(
+  requestHeaders: Record<string, unknown>,
+  res: GatewayProxyResponse,
+  body: AnthropicMessagesRequest,
+  model: string,
+  contextWindow: number | undefined,
+  apiKey: string,
+  fetchImpl: typeof fetch,
+  signal: AbortSignal,
+): Promise<void> {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "anthropic-version": typeof requestHeaders["anthropic-version"] === "string"
+      ? requestHeaders["anthropic-version"]
+      : "2023-06-01",
+    "x-api-key": apiKey,
+  };
+  for (const name of ["anthropic-beta", "user-agent"]) {
+    const value = requestHeaders[name];
+    if (typeof value === "string") headers[name] = value;
+  }
+  await proxyAnthropicMessages(res, opencodeRequestBody(body, model), {
+    contextWindow,
+    fetchImpl,
+    headers,
+    signal,
+    url: OPENCODE_MESSAGES_URL,
+  });
+}
+
+function opencodeRequestBody(body: AnthropicMessagesRequest, model: string): AnthropicMessagesRequest {
+  const eagerBody = eagerAnthropicRequestBody(body, model);
+  if (body.output_config === undefined) return eagerBody;
+  const { effort: _effort, ...outputConfig } = body.output_config;
+  const { output_config: _outputConfig, ...withoutOutputConfig } = eagerBody;
+  return Object.keys(outputConfig).length > 0
+    ? { ...withoutOutputConfig, output_config: outputConfig }
+    : withoutOutputConfig;
+}
+
 const KIMI_REASONING_EFFORTS = ["low", "high", "max"] as const satisfies readonly ReasoningEffort[];
 
 /** K3 accepts three native effort tiers; normalize Claude Code's wider picker ladder. */
 function kimiRequestBody(body: AnthropicMessagesRequest, model: string): AnthropicMessagesRequest {
-  const eagerBody: AnthropicMessagesRequest = {
-    ...body,
-    model,
-    messages: body.messages.map(kimiEagerMessage),
-    ...(body.tools === undefined ? {} : { tools: body.tools.map(kimiEagerTool) }),
-  };
+  const eagerBody = eagerAnthropicRequestBody(body, model);
   const effort = reasoningEffortFromOutputConfig(body.output_config);
   if (effort === undefined) {
     return eagerBody;
@@ -392,13 +454,26 @@ function kimiRequestBody(body: AnthropicMessagesRequest, model: string): Anthrop
   };
 }
 
-function kimiEagerTool(tool: AnthropicToolDefinition): AnthropicToolDefinition {
+/**
+ * Anthropic 호환 passthrough upstream(Kimi, OpenCode)은 Fleet의 지연 로딩 도구 확장을
+ * 모른다. 도구는 eager로 펼치고 tool_reference 결과 블록은 텍스트로 강등한다.
+ */
+function eagerAnthropicRequestBody(body: AnthropicMessagesRequest, model: string): AnthropicMessagesRequest {
+  return {
+    ...body,
+    model,
+    messages: body.messages.map(eagerAnthropicMessage),
+    ...(body.tools === undefined ? {} : { tools: body.tools.map(eagerAnthropicTool) }),
+  };
+}
+
+function eagerAnthropicTool(tool: AnthropicToolDefinition): AnthropicToolDefinition {
   if (!("input_schema" in tool)) return tool;
   const { defer_loading: _deferLoading, ...eagerTool } = tool;
   return eagerTool;
 }
 
-function kimiEagerMessage(message: AnthropicMessage): AnthropicMessage {
+function eagerAnthropicMessage(message: AnthropicMessage): AnthropicMessage {
   if (typeof message.content === "string") return message;
   return {
     ...message,

@@ -5,6 +5,7 @@ import {
   CODEX_SUBSCRIPTION_MODELS,
   CURSOR_SUBSCRIPTION_MODELS,
   KIMI_SUBSCRIPTION_MODELS,
+  OPENCODE_SUBSCRIPTION_MODELS,
   buildAnthropicModelList,
   buildGatewayModelConstraints,
   clampReasoningEffort,
@@ -612,6 +613,18 @@ describe("model catalog", () => {
     expect(CURSOR_SUBSCRIPTION_MODELS.find((model) => model.id === "cursor--kimi-k3-1m"))
       .toMatchObject({ cursorMaxMode: true });
     expect(KIMI_SUBSCRIPTION_MODELS.map((model) => model.upstreamId)).toEqual(["k3", "k3-256k"]);
+    // OpenCode Go의 Anthropic 프로토콜 모델만 노출한다 — OpenAI 계열 Go 모델은
+    // passthrough 경로로 서비스할 수 없다 (https://opencode.ai/docs/go/, 2026-08-03).
+    expect(OPENCODE_SUBSCRIPTION_MODELS.map((model) => model.upstreamId)).toEqual([
+      "minimax-m3",
+      "minimax-m2.7",
+      "minimax-m2.5",
+      "qwen3.8-max",
+      "qwen3.7-max",
+      "qwen3.7-plus",
+      "qwen3.6-plus",
+    ]);
+    expect(OPENCODE_SUBSCRIPTION_MODELS.every((model) => !model.effort.supported)).toBe(true);
   });
 
   it("keeps the approved GPT-5.6 and K3 effort ladders in the gateway registry", () => {
@@ -688,12 +701,18 @@ describe("model catalog", () => {
 
   it("includes every provider with collision-free ids and provider-prefixed labels", () => {
     expect(new Set(GATEWAY_MODELS.map((model) => model.provider))).toEqual(
-      new Set(["codex", "cursor", "kimi"]),
+      new Set(["codex", "cursor", "kimi", "opencode"]),
     );
     expect(new Set(GATEWAY_MODELS.map((model) => model.id)).size).toBe(GATEWAY_MODELS.length);
     expect(GATEWAY_MODELS.every((model) => model.id.startsWith(`${model.provider}--`))).toBe(true);
+    const providerLabels = {
+      codex: "Codex",
+      cursor: "Cursor",
+      kimi: "Moonshot-Kimi",
+      opencode: "OpenCode",
+    } as const;
     expect(GATEWAY_MODELS.every((model) => model.displayName.startsWith(
-      `${model.provider === "codex" ? "Codex" : model.provider === "cursor" ? "Cursor" : "Moonshot-Kimi"}-`,
+      `${providerLabels[model.provider]}-`,
     ))).toBe(true);
   });
 
@@ -723,11 +742,14 @@ describe("model catalog", () => {
       display_name: "Moonshot-Kimi-K3-256K",
       max_input_tokens: 262_144,
     });
+    // Anthropic passthrough providers require a real 1M window for the marker:
+    // Claude Code's long-context beta must not reach a sub-1M compatible upstream.
+    const anthropicPassthrough = new Set(["kimi", "opencode"]);
     expect(GATEWAY_MODELS.every((model) => (
       toClaudeGatewayModelId(model).endsWith("[1m]")
       === (
         (model.contextWindow ?? 0) > 200_000
-        && (model.provider !== "kimi" || (model.contextWindow ?? 0) >= 1_000_000)
+        && (!anthropicPassthrough.has(model.provider) || (model.contextWindow ?? 0) >= 1_000_000)
       )
     ))).toBe(true);
     expect(list.data.every((entry) => (
@@ -3030,6 +3052,7 @@ function minimalRegistry() {
       codex: provider("Codex", "codex-model"),
       cursor: provider("Cursor", "auto"),
       kimi: provider("Kimi", "k3"),
+      opencode: provider("OpenCode", "minimax-m3"),
     },
   };
 }

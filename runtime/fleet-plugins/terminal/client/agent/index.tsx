@@ -821,12 +821,14 @@ const AI_GATEWAY_PROVIDER_LABEL_KEYS = {
   codex: "terminal.settings.aiGatewayProviderCodex",
   cursor: "terminal.settings.aiGatewayProviderCursor",
   kimi: "terminal.settings.aiGatewayProviderKimi",
+  opencode: "terminal.settings.aiGatewayProviderOpencode",
 } as const;
 
 const AI_GATEWAY_PROVIDER_SUB_KEYS = {
   codex: "terminal.settings.aiGatewaySubCodex",
   cursor: "terminal.settings.aiGatewaySubCursor",
   kimi: "terminal.settings.aiGatewaySubKimi",
+  opencode: "terminal.settings.aiGatewaySubOpencode",
 } as const;
 
 function formatAiGatewayContextWindow(contextWindow: number | null): string | null {
@@ -1100,6 +1102,7 @@ function AiGatewayModelChips({ model }: { readonly model: AiGatewayCatalogModel 
 function AiGatewayProviderGlyph({ provider }: { readonly provider: AiGatewayProviderId }) {
   if (provider === "codex") return <CodexGlyph />;
   if (provider === "cursor") return <CursorGlyph />;
+  if (provider === "opencode") return <OpencodeGlyph />;
   return <KimiGlyph />;
 }
 
@@ -1116,8 +1119,8 @@ function ModelAuthBlock() {
   return (
     <section className="global-settings-card" aria-label={t("terminal.auth.modelSignInAria")}>
       <div className="model-auth-head">
-        <p className="global-settings-resp-title">{t("terminal.auth.settingsForKimi")}</p>
-        <p className="global-settings-help">{t("terminal.auth.kimiHelp")}</p>
+        <p className="global-settings-resp-title">{t("terminal.auth.modelSignInTitle")}</p>
+        <p className="global-settings-help">{t("terminal.auth.modelSignInHelp")}</p>
       </div>
       {store.error ? <p className="global-settings-error" role="alert">{store.error}</p> : null}
       {store.loading && !store.state ? <p className="global-settings-help">{t("terminal.auth.loadingSignIn")}</p> : null}
@@ -1619,6 +1622,15 @@ function KimiGlyph() {
   return (
     <svg viewBox="0 0 1024 1024" aria-hidden="true">
       <path fillRule="evenodd" d="M525.019429 157.257143c-201.984 0-365.714286 163.730286-365.714286 365.714286 0 70.326857 19.858286 136.118857 54.345143 191.926857L174.811429 807.570286A58.514286 58.514286 0 0 0 228.790857 888.685714h296.228572c201.947429 0 365.714286-163.730286 365.714285-365.714285s-163.766857-365.714286-365.714285-365.714286z m138.422857 180.114286a45.458286 45.458286 0 0 1 51.2 38.875428l12.361143 90.441143a45.458286 45.458286 0 0 1-90.075429 12.324571l-12.361143-90.441142a45.458286 45.458286 0 0 1 38.875429-51.2z m-195.876572 24.137142a45.458286 45.458286 0 0 1 51.2 38.838858l12.361143 90.441142a45.458286 45.458286 0 1 1-90.038857 12.324572l-12.361143-90.441143a45.458286 45.458286 0 0 1 38.838857-51.2" fill="currentColor" />
+    </svg>
+  );
+}
+
+// OpenCode는 공식 벡터 마크 배포 경로가 없어 터미널 프롬프트 형태의 단순화 마크를 쓴다.
+function OpencodeGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 3.5h16A1.5 1.5 0 0 1 21.5 5v14a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 19V5A1.5 1.5 0 0 1 4 3.5zm0 1.5v14h16V5H4zm3.03 3.03 3.94 3.47a.66.66 0 0 1 0 1L7.03 16 6 14.88 9.27 12 6 9.12l1.03-1.09zM12.5 14.9h5.5v1.6h-5.5v-1.6z" fill="currentColor" />
     </svg>
   );
 }

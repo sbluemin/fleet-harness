@@ -25,8 +25,21 @@ export const KIMI_AUTH_PROVIDER_ID = "Claude Code with Moonshot Kimi";
 export const KIMI_CODE_API_BASE_URL = "https://api.kimi.com/coding";
 export const KIMI_CODE_MODEL = "k3";
 
-export const GATEWAY_PROVIDERS = ["codex", "cursor", "kimi"] as const;
+export const OPENCODE_AUTH_PROVIDER_ID = "Claude Code with OpenCode Go";
+export const OPENCODE_GO_API_BASE_URL = "https://opencode.ai/zen/go";
+// Cheapest Anthropic-protocol Go model; key validation issues one 1-token request against it.
+export const OPENCODE_GO_MODEL = "minimax-m2.5";
+
+export const GATEWAY_PROVIDERS = ["codex", "cursor", "kimi", "opencode"] as const;
 export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
+
+/**
+ * Providers whose requests stay in Anthropic Messages form end to end (no
+ * canonical translation). Their `[1m]` discovery marker additionally requires a
+ * real 1M window: Claude Code attaches its long-context beta to `[1m]` models,
+ * and that synthetic beta must never reach a sub-1M Anthropic-compatible upstream.
+ */
+const ANTHROPIC_PASSTHROUGH_PROVIDERS: ReadonlySet<GatewayProvider> = new Set(["kimi", "opencode"]);
 
 export const GATEWAY_REASONING_EFFORTS = [
   "low",
@@ -85,6 +98,7 @@ export const GatewayModelsRegistrySchema = z.object({
     codex: GatewayProviderSchema,
     cursor: GatewayProviderSchema,
     kimi: GatewayProviderSchema,
+    opencode: GatewayProviderSchema,
   }).strict(),
 }).strict();
 
@@ -158,6 +172,7 @@ export const GATEWAY_MODELS: readonly GatewayModel[] = Object.freeze(
 export const CODEX_SUBSCRIPTION_MODELS = providerModels("codex");
 export const CURSOR_SUBSCRIPTION_MODELS = providerModels("cursor");
 export const KIMI_SUBSCRIPTION_MODELS = providerModels("kimi");
+export const OPENCODE_SUBSCRIPTION_MODELS = providerModels("opencode");
 
 /**
  * Claude Code currently filters discovered models whose id does not start with `claude`.
@@ -183,14 +198,16 @@ export function toGatewayModelAlias(modelId: string): string {
  * auto-compact out of. Metering against the real window instead lets Claude Code's
  * own reserve compact the session while capacity remains.
  *
- * Native Kimi passthrough additionally requires a real window of at least 1M, so a
- * synthetic long-context beta never reaches a sub-1M Anthropic-compatible upstream.
+ * Anthropic passthrough providers (Kimi, OpenCode) additionally require a real
+ * window of at least 1M, so a synthetic long-context beta never reaches a sub-1M
+ * Anthropic-compatible upstream.
  */
 export function toClaudeGatewayModelId(model: GatewayModel): string {
   const alias = toGatewayModelAlias(model.id);
   if (
     canProjectClaudeContextWindow(model.contextWindow)
-    && (model.provider !== "kimi" || isClaudeOneMillionContextWindow(model.contextWindow))
+    && (!ANTHROPIC_PASSTHROUGH_PROVIDERS.has(model.provider)
+      || isClaudeOneMillionContextWindow(model.contextWindow))
   ) {
     return `${alias}${CLAUDE_ONE_MILLION_MARKER}`;
   }
