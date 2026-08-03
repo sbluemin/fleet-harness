@@ -1,9 +1,10 @@
 import { getGlobalSettingsStoreState } from "../../global-settings-store.js";
 import { getT } from "../../i18n/index.js";
 import { resolveConsoleLanguage } from "../../whatsnew-i18n.js";
+import { fetchSearch } from "../api.js";
 import { getState, subscribeState } from "../state.js";
 import type { AppState } from "../state.js";
-import type { WikiIndexEntry } from "../api.js";
+import type { SearchEntry, WikiIndexEntry } from "../api.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -25,9 +26,19 @@ interface NavigatorOptions {
   onRequest: (r: NavigatorRequest) => void;
 }
 
+interface RenderEntryOptions {
+  activeTag: string | null;
+  isCurrent: boolean;
+  query: string;
+  snippet?: string;
+}
+
+type SortOrder = "updated" | "name";
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SEARCH_DEBOUNCE_MS = 120;
+const SORT_STORAGE_KEY = "fleet.codex.navigator.sort";
 
 function resolveActiveLocale() {
   const preference = getGlobalSettingsStoreState().state?.language ?? "auto";
@@ -63,39 +74,87 @@ function highlightMatch(text: string, query: string): string {
   );
 }
 
-function renderTagChip(tag: string): string {
-  return `<span class="codex-nav-tag">${escapeHtml(tag)}</span>`;
+function renderTagChip(tag: string, isActive: boolean): string {
+  const t = consoleT();
+  const label = isActive
+    ? t("codex.nav.clearTagFilter", { tag })
+    : t("codex.nav.filterByTag", { tag });
+  return `<button class="codex-nav-tag${isActive ? " is-active" : ""}" data-tag="${escapeHtml(tag)}" type="button" aria-pressed="${String(isActive)}" aria-label="${escapeHtml(label)}">${escapeHtml(tag)}</button>`;
 }
 
-function renderEntry(entry: WikiIndexEntry, query: string, isCurrent: boolean): string {
-  const tagMatches = query
-    ? entry.tags.some((t) => t.toLowerCase().includes(query.toLowerCase()))
+function formatRelativeUpdated(iso: string): string {
+  const updated = new Date(iso);
+  if (Number.isNaN(updated.getTime())) return iso;
+  const now = new Date();
+  const updatedDay = Date.UTC(updated.getFullYear(), updated.getMonth(), updated.getDate());
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const t = consoleT();
+  const elapsedDays = Math.max(0, Math.floor((today - updatedDay) / 86_400_000));
+  if (elapsedDays === 0) return t("codex.nav.updatedToday");
+  if (elapsedDays < 30) return t("codex.nav.updatedDaysAgo", { count: elapsedDays });
+  if (elapsedDays < 365) return t("codex.nav.updatedMonthsAgo", { count: Math.floor(elapsedDays / 30) });
+  return t("codex.nav.updatedYearsAgo", { count: Math.floor(elapsedDays / 365) });
+}
+
+function renderEntry(entry: WikiIndexEntry, options: RenderEntryOptions): string {
+  const tagMatches = options.query
+    ? entry.tags.some((tag) => tag.toLowerCase().includes(options.query.toLowerCase()))
     : false;
-  const tags = entry.tags.slice(0, 3).map(renderTagChip).join("");
+  const tags = entry.tags
+    .slice(0, 3)
+    .map((tag) => renderTagChip(tag, tag === options.activeTag))
+    .join("");
   const kind = escapeHtml(entry.status ?? "current");
-  const updated = escapeHtml(entry.updated ?? "");
+  const updated = entry.updated ?? "";
 
-  return `<button
-    class="codex-nav-entry${isCurrent ? " is-current" : ""}"
+  return `<div
+    class="codex-nav-entry${options.isCurrent ? " is-current" : ""}"
     data-entry-id="${escapeHtml(entry.id)}"
-    type="button"
-    ${isCurrent ? 'aria-current="page"' : ""}
-    title="${escapeHtml(entry.title)}"
+    tabindex="-1"
+    ${options.isCurrent ? 'aria-current="page"' : ""}
   >
-    <span class="t">${highlightMatch(entry.title, tagMatches ? "" : query)}</span>
+    <button class="t" type="button" title="${escapeHtml(entry.title)}">${highlightMatch(entry.title, tagMatches ? "" : options.query)}</button>
     ${tags ? `<span class="tg">${tags}</span>` : ""}
-    <span class="meta">${kind} · ${updated}</span>
-  </button>`;
+    ${options.snippet ? `<span class="snippet">${highlightMatch(options.snippet, options.query)}</span>` : ""}
+    <span class="meta" title="${escapeHtml(updated)}">${kind} · ${escapeHtml(formatRelativeUpdated(updated))}</span>
+  </div>`;
 }
 
-function filterEntries(entries: WikiIndexEntry[], query: string): WikiIndexEntry[] {
-  if (!query) return entries;
+function filterEntries(entries: WikiIndexEntry[], query: string, activeTag: string | null): WikiIndexEntry[] {
   const q = query.toLowerCase();
-  return entries.filter(
-    (e) =>
-      e.title.toLowerCase().includes(q) ||
-      e.tags.some((t) => t.toLowerCase().includes(q)),
-  );
+  return entries.filter((entry) => {
+    const matchesQuery = !query ||
+      entry.title.toLowerCase().includes(q) ||
+      entry.tags.some((tag) => tag.toLowerCase().includes(q));
+    return matchesQuery && (!activeTag || entry.tags.includes(activeTag));
+  });
+}
+
+function sortEntries(entries: WikiIndexEntry[], sortOrder: SortOrder): WikiIndexEntry[] {
+  const locale = resolveActiveLocale();
+  return [...entries].sort((left, right) => {
+    if (sortOrder === "name") return left.title.localeCompare(right.title, locale);
+    const leftTime = new Date(left.updated).getTime();
+    const rightTime = new Date(right.updated).getTime();
+    const byUpdated = (Number.isNaN(rightTime) ? 0 : rightTime) - (Number.isNaN(leftTime) ? 0 : leftTime);
+    return byUpdated || left.title.localeCompare(right.title, locale);
+  });
+}
+
+function readSortOrder(): SortOrder {
+  try {
+    return localStorage.getItem(SORT_STORAGE_KEY) === "name" ? "name" : "updated";
+  } catch {
+    return "updated";
+  }
+}
+
+function saveSortOrder(sortOrder: SortOrder): void {
+  try {
+    localStorage.setItem(SORT_STORAGE_KEY, sortOrder);
+  } catch {
+    // Storage is optional.
+  }
 }
 
 // ─── Mount ────────────────────────────────────────────────────────────────────
@@ -106,8 +165,14 @@ export function mountNavigatorInto(
 ): NavigatorController {
   let currentQuery = "";
   let currentEntryId: string | null = null;
+  let activeTag: string | null = null;
+  let activeTheaterId = options.initialTheaterId;
+  let serverResults: SearchEntry[] = [];
+  let sortOrder = readSortOrder();
   let mode: "entries" | "schema" = "entries";
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let searchController: AbortController | null = null;
+  let searchEpoch = 0;
 
   function renderShell(): void {
     const t = consoleT();
@@ -134,7 +199,16 @@ export function mountNavigatorInto(
         </button>
         <button class="codex-nav-quick" data-action="conflicts" type="button">${escapeHtml(t("codex.nav.conflicts"))}</button>
       </div>
-      <div class="codex-nav-list-eyebrow" id="codex-nav-eyebrow">${escapeHtml(t("codex.nav.entriesCount", { count: 0 }))}</div>
+      <div class="codex-nav-list-header">
+        <div class="codex-nav-list-summary">
+          <span class="codex-nav-list-eyebrow" id="codex-nav-eyebrow">${escapeHtml(t("codex.nav.entriesCount", { count: 0 }))}</span>
+          <button class="codex-nav-active-filter" data-clear-tag type="button" hidden></button>
+        </div>
+        <div class="codex-nav-sort" role="group" aria-label="${escapeHtml(t("codex.nav.sortAria"))}">
+          <button data-sort="updated" type="button" aria-pressed="true">${escapeHtml(t("codex.nav.sortUpdated"))}</button>
+          <button data-sort="name" type="button" aria-pressed="false">${escapeHtml(t("codex.nav.sortName"))}</button>
+        </div>
+      </div>
       <div class="codex-navigator-scroll">
         <div class="codex-nav-list" id="codex-nav-list"></div>
       </div>
@@ -148,11 +222,15 @@ export function mountNavigatorInto(
   const navList = root.querySelector<HTMLElement>("#codex-nav-list")!;
   const eyebrow = root.querySelector<HTMLElement>("#codex-nav-eyebrow")!;
   const drydockBadge = root.querySelector<HTMLElement>("#codex-nav-drydock-badge")!;
+  const activeFilterButton = root.querySelector<HTMLButtonElement>("[data-clear-tag]")!;
+  const sortControls = root.querySelector<HTMLElement>(".codex-nav-sort")!;
 
   function renderList(state: AppState): void {
     const t = consoleT();
     root.querySelectorAll<HTMLElement>("[data-mode]").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.mode === mode)));
     searchInput.hidden = mode === "schema";
+    sortControls.hidden = mode === "schema";
+    activeFilterButton.hidden = mode === "schema" || activeTag === null;
     if (mode === "schema") {
       const catalog = state.schemaCatalog;
       eyebrow.textContent = t("codex.nav.schemaCount", { count: catalog?.templates.length ?? 0 });
@@ -162,8 +240,31 @@ export function mountNavigatorInto(
       drydockBadge.textContent = String(state.pendingPatchCount);
       return;
     }
-    const filtered = filterEntries(state.index, currentQuery);
-    eyebrow.textContent = t("codex.nav.entriesCount", { count: filtered.length });
+
+    const localMatches = sortEntries(filterEntries(state.index, currentQuery, activeTag), sortOrder);
+    const seenIds = new Set(localMatches.map((entry) => entry.id));
+    const remoteMatches = sortEntries(
+      serverResults.filter((entry) => {
+        if (seenIds.has(entry.id) || (activeTag && !entry.tags.includes(activeTag))) return false;
+        seenIds.add(entry.id);
+        return true;
+      }),
+      sortOrder,
+    );
+    const merged = [
+      ...localMatches.map((entry) => ({ entry, snippet: undefined })),
+      ...remoteMatches.map((entry) => ({ entry, snippet: entry.excerpt })),
+    ];
+
+    eyebrow.textContent = t("codex.nav.entriesCount", { count: merged.length });
+    if (activeTag) {
+      activeFilterButton.hidden = false;
+      activeFilterButton.textContent = `${activeTag} ×`;
+      activeFilterButton.setAttribute("aria-label", t("codex.nav.clearTagFilter", { tag: activeTag }));
+    }
+    root.querySelectorAll<HTMLElement>("[data-sort]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.sort === sortOrder));
+    });
     drydockBadge.textContent = String(state.pendingPatchCount);
     drydockBadge.hidden = state.pendingPatchCount === 0;
 
@@ -175,16 +276,52 @@ export function mountNavigatorInto(
       navList.innerHTML = `<div class="codex-nav-error" role="alert">${escapeHtml(state.error)}</div>`;
       return;
     }
-    if (filtered.length === 0) {
-      navList.innerHTML = `<div class="codex-nav-empty">${escapeHtml(currentQuery ? t("codex.nav.noMatch") : t("codex.nav.noEntries"))}</div>`;
+    if (merged.length === 0) {
+      navList.innerHTML = `<div class="codex-nav-empty">${escapeHtml(currentQuery || activeTag ? t("codex.nav.noMatch") : t("codex.nav.noEntries"))}</div>`;
       return;
     }
-    navList.innerHTML = filtered
-      .map((e) => renderEntry(e, currentQuery, e.id === currentEntryId))
+    navList.innerHTML = merged
+      .map(({ entry, snippet }) => renderEntry(entry, {
+        activeTag,
+        isCurrent: entry.id === currentEntryId,
+        query: currentQuery,
+        snippet,
+      }))
       .join("");
   }
 
-  // 클릭 위임
+  function requestServerSearch(): void {
+    searchController?.abort();
+    searchController = null;
+    searchEpoch += 1;
+    serverResults = [];
+    renderList(getState());
+    if (!currentQuery) return;
+
+    const requestEpoch = searchEpoch;
+    const theaterId = activeTheaterId;
+    const query = currentQuery;
+    const controller = new AbortController();
+    searchController = controller;
+    void fetchSearch(theaterId, {
+      q: query,
+      tags: activeTag ? [activeTag] : undefined,
+      signal: controller.signal,
+    }).then((result) => {
+      if (controller.signal.aborted || requestEpoch !== searchEpoch || theaterId !== activeTheaterId || query !== currentQuery) return;
+      serverResults = result.entries;
+      renderList(getState());
+    }).catch(() => {
+      // Remote search is an enhancement; local title/tag results remain usable.
+    });
+  }
+
+  function selectEntry(id: string): void {
+    currentEntryId = id;
+    renderList(getState());
+    options.onRequest({ kind: "entry", id });
+  }
+
   function handleClick(event: MouseEvent): void {
     const target = event.target;
     if (!(target instanceof Element)) return;
@@ -200,11 +337,30 @@ export function mountNavigatorInto(
     const templateBtn = target.closest<HTMLElement>("[data-template-id]");
     if (templateBtn?.dataset.templateId) { options.onRequest({ kind: "schema", templateId: templateBtn.dataset.templateId }); return; }
 
-    const entryBtn = target.closest<HTMLElement>("[data-entry-id]");
-    if (entryBtn?.dataset.entryId) {
-      currentEntryId = entryBtn.dataset.entryId;
+    const tagButton = target.closest<HTMLElement>("[data-tag]");
+    if (tagButton?.dataset.tag) {
+      event.stopPropagation();
+      activeTag = activeTag === tagButton.dataset.tag ? null : tagButton.dataset.tag;
+      requestServerSearch();
+      return;
+    }
+    if (target.closest("[data-clear-tag]")) {
+      activeTag = null;
+      requestServerSearch();
+      return;
+    }
+
+    const sortButton = target.closest<HTMLElement>("[data-sort]");
+    if (sortButton?.dataset.sort === "updated" || sortButton?.dataset.sort === "name") {
+      sortOrder = sortButton.dataset.sort;
+      saveSortOrder(sortOrder);
       renderList(getState());
-      options.onRequest({ kind: "entry", id: currentEntryId });
+      return;
+    }
+
+    const entry = target.closest<HTMLElement>("[data-entry-id]");
+    if (entry?.dataset.entryId) {
+      selectEntry(entry.dataset.entryId);
       return;
     }
 
@@ -215,25 +371,26 @@ export function mountNavigatorInto(
     }
     if (quickBtn?.dataset.action === "conflicts") {
       options.onRequest({ kind: "conflicts" });
-      return;
     }
   }
 
   function handleSearchInput(): void {
     if (debounceTimer !== null) clearTimeout(debounceTimer);
+    searchController?.abort();
+    searchController = null;
+    searchEpoch += 1;
+    serverResults = [];
+    renderList(getState());
     debounceTimer = setTimeout(() => {
       currentQuery = searchInput.value;
-      renderList(getState());
+      requestServerSearch();
     }, SEARCH_DEBOUNCE_MS);
   }
 
   root.addEventListener("click", handleClick);
   searchInput.addEventListener("input", handleSearchInput);
 
-  // 상태 구독
   const unsubscribe = subscribeState((state) => renderList(state));
-
-  // 초기 렌더
   renderList(getState());
 
   return {
@@ -242,13 +399,20 @@ export function mountNavigatorInto(
       root.removeEventListener("click", handleClick);
       searchInput.removeEventListener("input", handleSearchInput);
       if (debounceTimer !== null) clearTimeout(debounceTimer);
+      searchController?.abort();
       root.innerHTML = "";
     },
-    setTheater(_theaterId: string | null): void {
-      // Theater 전환 시 검색 초기화 후 재렌더
+    setTheater(theaterId: string | null): void {
+      activeTheaterId = theaterId;
       currentQuery = "";
       currentEntryId = null;
-      if (searchInput) searchInput.value = "";
+      activeTag = null;
+      serverResults = [];
+      searchEpoch += 1;
+      searchController?.abort();
+      searchController = null;
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      searchInput.value = "";
       renderList(getState());
     },
     refreshLocale(): void {
@@ -269,6 +433,11 @@ export function mountNavigatorInto(
       }
       const conflictsBtn = root.querySelector<HTMLElement>('[data-action="conflicts"]');
       if (conflictsBtn) conflictsBtn.textContent = t("codex.nav.conflicts");
+      sortControls.setAttribute("aria-label", t("codex.nav.sortAria"));
+      const updatedSort = root.querySelector<HTMLElement>('[data-sort="updated"]');
+      if (updatedSort) updatedSort.textContent = t("codex.nav.sortUpdated");
+      const nameSort = root.querySelector<HTMLElement>('[data-sort="name"]');
+      if (nameSort) nameSort.textContent = t("codex.nav.sortName");
       renderList(getState());
     },
   };

@@ -75,7 +75,7 @@ export function CodexReadingSheet() {
         document.querySelector<HTMLElement>('[data-codex-expand="true"]') ??
         (entryId
           ? document.querySelector<HTMLElement>(
-              `.codex-nav-entry.is-current[data-entry-id="${entryId}"]`,
+              `.codex-nav-entry.is-current[data-entry-id="${entryId}"] .t`,
             )
           : null) ??
         document.querySelector<HTMLElement>(".codex-navigator .codex-nav-search-input");

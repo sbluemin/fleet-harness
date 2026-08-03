@@ -3,7 +3,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const apiMocks = vi.hoisted(() => ({
   fetchSearch: vi.fn(),
@@ -21,6 +21,12 @@ vi.mock("../core/client/src/codex/api.js", () => apiMocks);
 vi.mock("@fleet-console/markdown/mermaid", () => ({ installDiagramHydrator: vi.fn() }));
 vi.mock("@fleet-console/markdown/core", () => ({ renderMarkdown: vi.fn(() => ({ html: "", toc: [] })) }));
 vi.mock("../core/client/src/codex/cowork-controller.js", () => ({ mountCoworkInline: vi.fn() }));
+
+afterEach(() => {
+  vi.useRealTimers();
+  document.body.innerHTML = "";
+  localStorage.clear();
+});
 
 describe("Codex schema UI contract", () => {
   it("offers Entries/Schema navigation and sanitized schema readers", async () => {
@@ -60,6 +66,85 @@ describe("Codex schema UI contract", () => {
     expect(state.getState().currentWorkspaceId).toBe("new");
     expect(state.getState().index.map((entry) => entry.id)).toEqual(["new"]);
     expect(state.getState().schemaCatalog?.schema.summary).toBe("new");
+  });
+
+  it("merges debounced full-text results after local matches and escapes snippets", async () => {
+    vi.resetModules();
+    vi.useFakeTimers();
+    const remoteSearch = deferred<{ entries: Array<{ id: string; title: string; tags: string[]; updated: string; excerpt?: string }> }>();
+    apiMocks.fetchSearch.mockReturnValue(remoteSearch.promise);
+    const state = await import("../core/client/src/codex/state.js");
+    const { mountNavigatorInto } = await import("../core/client/src/codex/components/navigator.js");
+    Object.assign(state.getState(), {
+      currentWorkspaceId: "workspace-a",
+      error: null,
+      index: [
+        { id: "local", title: "Needle title", tags: ["alpha"], updated: new Date().toISOString(), path: "wiki/local.md" },
+        { id: "body", title: "Body only", tags: ["beta"], updated: "2024-01-01T00:00:00.000Z", path: "wiki/body.md" },
+      ],
+      loading: false,
+      pendingPatchCount: 0,
+    });
+    const root = document.body.appendChild(document.createElement("div"));
+    const controller = mountNavigatorInto(root, { initialTheaterId: "workspace-a", onRequest: vi.fn() });
+    const input = root.querySelector<HTMLInputElement>(".codex-nav-search-input")!;
+
+    input.value = "needle";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(120);
+    expect(root.querySelectorAll("[data-entry-id]")).toHaveLength(1);
+    expect(apiMocks.fetchSearch).toHaveBeenCalledWith("workspace-a", expect.objectContaining({ q: "needle", signal: expect.any(AbortSignal) }));
+
+    remoteSearch.resolve({ entries: [
+      { id: "local", title: "Needle title", tags: ["alpha"], updated: new Date().toISOString() },
+      { id: "body", title: "Body only", tags: ["beta"], updated: "2024-01-01T00:00:00.000Z", excerpt: "unsafe <script>needle</script> text" },
+    ] });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const entries = root.querySelectorAll<HTMLElement>("[data-entry-id]");
+    expect([...entries].map((entry) => entry.dataset.entryId)).toEqual(["local", "body"]);
+    expect(root.querySelector(".snippet")?.innerHTML).toContain("&lt;script&gt;<mark>needle</mark>&lt;/script&gt;");
+    expect(root.querySelector(".snippet script")).toBeNull();
+    expect(root.querySelector("#codex-nav-eyebrow")?.textContent).toContain("2");
+    controller.destroy();
+  });
+
+  it("persists sorting, formats relative dates, and filters without opening an entry", async () => {
+    vi.resetModules();
+    const state = await import("../core/client/src/codex/state.js");
+    const { mountNavigatorInto } = await import("../core/client/src/codex/components/navigator.js");
+    Object.assign(state.getState(), {
+      currentWorkspaceId: "workspace-a",
+      error: null,
+      index: [
+        { id: "older", title: "Alpha", tags: ["shared"], updated: "2024-01-01T00:00:00.000Z", path: "wiki/older.md" },
+        { id: "newer", title: "Zulu", tags: ["other"], updated: new Date().toISOString(), path: "wiki/newer.md" },
+      ],
+      loading: false,
+      pendingPatchCount: 0,
+    });
+    const onRequest = vi.fn();
+    const root = document.body.appendChild(document.createElement("div"));
+    const controller = mountNavigatorInto(root, { initialTheaterId: "workspace-a", onRequest });
+
+    expect([...root.querySelectorAll<HTMLElement>("[data-entry-id]")].map((entry) => entry.dataset.entryId)).toEqual(["newer", "older"]);
+    expect(root.querySelector<HTMLElement>('[data-entry-id="newer"] .meta')?.textContent).toContain("Today");
+    expect(root.querySelector<HTMLElement>('[data-entry-id="older"] .meta')?.title).toBe("2024-01-01T00:00:00.000Z");
+
+    root.querySelector<HTMLButtonElement>('[data-sort="name"]')!.click();
+    expect(localStorage.getItem("fleet.codex.navigator.sort")).toBe("name");
+    expect([...root.querySelectorAll<HTMLElement>("[data-entry-id]")].map((entry) => entry.dataset.entryId)).toEqual(["older", "newer"]);
+
+    root.querySelector<HTMLButtonElement>('[data-entry-id="older"] [data-tag="shared"]')!.click();
+    expect(onRequest).not.toHaveBeenCalled();
+    expect(root.querySelectorAll("[data-entry-id]")).toHaveLength(1);
+    expect(root.querySelector("[data-clear-tag]")?.textContent).toContain("shared");
+    expect(root.querySelector('[data-tag="shared"]')?.getAttribute("aria-pressed")).toBe("true");
+
+    root.querySelector<HTMLButtonElement>("[data-clear-tag]")!.click();
+    expect(root.querySelectorAll("[data-entry-id]")).toHaveLength(2);
+    controller.destroy();
   });
 
 });
