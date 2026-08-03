@@ -24,6 +24,20 @@ describe("session-manager terminal query replay", () => {
     await manager.stop();
   });
 
+  it("carries a live query prefix into the detached responder", async () => {
+    const { manager, pty } = await createHarness();
+    const socket = createMockSocket();
+    await manager.attach(socket, CONTEXT);
+
+    pty.emitData("\x1b[");
+    expect(pty.written).toEqual([]);
+
+    socket.emitClose();
+    pty.emitData("c");
+    expect(pty.written).toEqual([DA_RESPONSE]);
+    await manager.stop();
+  });
+
   it("answers terminal queries while no live client is attached", async () => {
     const { manager, pty } = await createHarness();
 

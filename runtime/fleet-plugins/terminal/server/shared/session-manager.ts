@@ -247,12 +247,11 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     touchActivity(session);
     const buffer = Buffer.from(data, "utf8");
     const liveSocket = session.activeSocket?.readyState === WS_OPEN_STATE ? session.activeSocket : null;
-    // replay_end는 attach와 같은 동기 블록에서 전송되므로 라이브 소켓 존재가 곧 마커 이후 경계다.
-    // 이후 질의는 WebSocket 메시지와 xterm write 큐 순서대로 파싱되어 입력 활성화 뒤 클라이언트가 응답하고, 서버는 미접속 구간만 맡는다.
-    if (liveSocket) {
-      session.terminalQueryResidual = "";
-    } else {
-      respondToTerminalQueries(session, buffer);
+    const queryResponses = scanTerminalQueries(session, buffer);
+    // 라이브 중에도 파싱을 계속해 분절 질의의 prefix를 residual로 이월하고, 응답만 클라이언트에 위임한다.
+    // 소유권 경계는 attach와 같은 동기 블록에서 전송되는 replay_end로 유지된다.
+    if (!liveSocket) {
+      for (const response of queryResponses) writeTerminalQueryResponse(session, response);
     }
     observeOscTitles(session, buffer);
     session.scrollback.push(buffer);
@@ -431,8 +430,9 @@ function clearGraceTimer(session: TerminalSession): void {
   session.graceTimer = null;
 }
 
-function respondToTerminalQueries(session: TerminalSession, buffer: Buffer): void {
+function scanTerminalQueries(session: TerminalSession, buffer: Buffer): string[] {
   const text = `${session.terminalQueryResidual}${buffer.toString("utf8")}`;
+  const responses: string[] = [];
   session.terminalQueryResidual = "";
   let cursor = 0;
   while (cursor < text.length) {
@@ -446,9 +446,11 @@ function respondToTerminalQueries(session: TerminalSession, buffer: Buffer): voi
       session.terminalQueryResidual = trimTerminalQueryResidual(text.slice(start));
       break;
     }
-    writeTerminalQueryResponse(session, resolveTerminalQueryResponse(session, text.slice(start, end + 1)));
+    const response = resolveTerminalQueryResponse(session, text.slice(start, end + 1));
+    if (response) responses.push(response);
     cursor = end + 1;
   }
+  return responses;
 }
 
 function readTrailingEscape(text: string): string {
