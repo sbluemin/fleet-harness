@@ -103,10 +103,24 @@ export function TriageWatchDeck({
       }
     };
     recordRects();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(recordRects);
-    observer.observe(grid);
-    return () => observer.disconnect();
+    // 스크롤은 grid 크기를 바꾸지 않아 ResizeObserver가 침묵한다 — viewport 상대 rect는
+    // 스크롤마다 갱신해야 승격 flight가 실제 카드 위치에서 출발한다.
+    let scrollFrame: number | null = null;
+    const handleScroll = () => {
+      if (scrollFrame !== null) return;
+      scrollFrame = window.requestAnimationFrame(() => {
+        scrollFrame = null;
+        recordRects();
+      });
+    };
+    grid.addEventListener("scroll", handleScroll, { passive: true });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(recordRects);
+    observer?.observe(grid);
+    return () => {
+      grid.removeEventListener("scroll", handleScroll);
+      if (scrollFrame !== null) window.cancelAnimationFrame(scrollFrame);
+      observer?.disconnect();
+    };
   }, [operations, visible]);
 
   useLayoutEffect(() => {
