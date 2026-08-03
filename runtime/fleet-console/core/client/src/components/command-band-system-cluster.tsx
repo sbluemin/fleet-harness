@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
@@ -31,35 +31,29 @@ const GITHUB_STARS_CACHE_KEY = "fleet-console.github-stars";
 const GITHUB_STARS_TTL_MS = 6 * 60 * 60 * 1000;
 const ENABLED_MENU_ITEM_SELECTOR = '[role="menuitem"]:not([disabled])';
 
-export function SideBarBrandFoot() {
+// 시스템 클러스터는 커맨드 밴드 우측에 상주한다 — 사이드바 접힘·라우트 전환과 무관하게
+// 설정(직행)·도움말(메뉴)이 항상 도달 가능해야 한다는 배치 계약의 소유자다.
+export function CommandBandSystemCluster() {
   const state = useConsoleState();
-
   return (
-    <div className="side-bar-brand-foot">
-      <SystemMenu latestVersion={state.latestVersion} updateAvailable={state.updateAvailable} />
-      <HelpMenu version={state.version} releaseDisabled={state.releaseNotesLoading || state.releaseNotes.length === 0 || Boolean(state.releaseNotesError && !state.releaseNotesStale)} />
+    <div className="command-band-system-cluster">
+      <SettingsButton updateAvailable={state.updateAvailable} />
+      <HelpMenu
+        version={state.version}
+        latestVersion={state.latestVersion}
+        updateAvailable={state.updateAvailable}
+        releaseDisabled={state.releaseNotesLoading || state.releaseNotes.length === 0 || Boolean(state.releaseNotesError && !state.releaseNotesStale)}
+      />
     </div>
   );
 }
 
-export function FleetBrandHome({ className = "brand-foot-home" }: { readonly className?: string }) {
+function SettingsButton({ updateAvailable }: { readonly updateAvailable: boolean }) {
   const t = useT();
-  return <Link className={className} to="/operations" aria-label={t("chrome.brandFoot.operations")}><BrandMarkIcon /><span className="brand-foot-wordmark">Fleet</span></Link>;
-}
-
-function SystemMenu({ latestVersion, updateAvailable }: { readonly latestVersion: string | null; readonly updateAvailable: boolean }) {
-  const t = useT();
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
   const navigate = useNavigate();
 
-  useFooterDropupKeyboard(rootRef, triggerRef, menuRef, open, setOpen);
-
-  const go = (path: string) => {
-    setOpen(false);
-    navigate(path);
+  const goToSettings = () => {
+    navigate("/settings");
     window.requestAnimationFrame(() => {
       const target = document.querySelector<HTMLElement>("main h2, h2");
       target?.focus?.();
@@ -71,56 +65,48 @@ function SystemMenu({ latestVersion, updateAvailable }: { readonly latestVersion
   };
 
   return (
-    <div ref={rootRef} className="brand-foot-dropup brand-foot-system-menu">
-      <button
-        ref={triggerRef}
-        type="button"
-        className="brand-foot-system-trigger"
-        onClick={() => setOpen((previous) => !previous)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label={t("chrome.brandFoot.systemMenu")}
-        title={t("chrome.brandFoot.systemMenu")}
-      >
-        <SettingsGlyph />
-        <span>{t("chrome.brandFoot.systemMenu")}</span>
-      </button>
-      {open ? (
-        <div ref={menuRef} className="brand-foot-dropup-menu" role="menu" aria-label={t("chrome.brandFoot.systemMenu")}>
-          <button type="button" role="menuitem" onClick={() => go("/settings")}>
-            <SettingsGlyph />
-            <span>{t("chrome.brandFoot.settings")}</span>
-          </button>
-          {updateAvailable ? <><div className="brand-foot-menu-divider" role="separator" /><UpdateApplyControl latestVersion={latestVersion} /></> : null}
-        </div>
-      ) : null}
-    </div>
+    <button
+      type="button"
+      className="command-band-button command-band-settings"
+      onClick={goToSettings}
+      aria-label={t("chrome.system.settings")}
+      title={t("chrome.system.settings")}
+    >
+      <SettingsGlyph />
+      {updateAvailable ? <span className="command-band-update-dot" aria-hidden="true" /> : null}
+    </button>
   );
 }
 
-function HelpMenu({ releaseDisabled, version }: { readonly releaseDisabled: boolean; readonly version: string }) {
+function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: {
+  readonly releaseDisabled: boolean;
+  readonly updateAvailable: boolean;
+  readonly latestVersion: string | null;
+  readonly version: string;
+}) {
   const t = useT();
-  const rootRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLSpanElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
-  useFooterDropupKeyboard(rootRef, triggerRef, menuRef, open, setOpen);
+  useMenuButtonKeyboard(rootRef, triggerRef, menuRef, open, setOpen);
 
-  return <div ref={rootRef} className="brand-foot-dropup brand-foot-help-menu">
-    <button ref={triggerRef} type="button" className="brand-foot-help-trigger" onClick={() => setOpen((previous) => !previous)} aria-haspopup="menu" aria-expanded={open} aria-label={t("chrome.brandFoot.help")} title={t("chrome.brandFoot.help")}><HelpGlyph /></button>
-    {open ? <div ref={menuRef} className="brand-foot-dropup-menu brand-foot-help-dropup-menu" role="menu" aria-label={t("chrome.brandFoot.help")}>
-      <button type="button" role="menuitem" disabled={releaseDisabled} onClick={() => { setOpen(false); openWhatsNew(); }}><WhatsNewGlyph /><span>{t("chrome.brandFoot.whatsNew")}</span></button>
-      <button type="button" role="menuitem" onClick={() => { setOpen(false); setShortcutsOpen(true); }}><KeyboardGlyph /><span>{t("chrome.brandFoot.keyboardShortcuts")}</span></button>
-      <div className="brand-foot-menu-divider" role="separator" />
-      <GithubLinks menuItem version={version} />
+  return <span ref={rootRef} className="command-band-system-anchor">
+    <button ref={triggerRef} type="button" className="command-band-button command-band-help" onClick={() => setOpen((previous) => !previous)} aria-haspopup="menu" aria-expanded={open} aria-label={t("chrome.system.help")} title={t("chrome.system.help")}><HelpGlyph /></button>
+    {open ? <div ref={menuRef} className="command-band-system-menu" role="menu" aria-label={t("chrome.system.help")}>
+      <button type="button" role="menuitem" disabled={releaseDisabled} onClick={() => { setOpen(false); openWhatsNew(); }}><WhatsNewGlyph /><span>{t("chrome.system.whatsNew")}</span></button>
+      <button type="button" role="menuitem" onClick={() => { setOpen(false); setShortcutsOpen(true); }}><KeyboardGlyph /><span>{t("chrome.system.keyboardShortcuts")}</span></button>
+      {updateAvailable ? <UpdateApplyControl latestVersion={latestVersion} /> : null}
+      <div className="command-band-system-menu-divider" role="separator" />
+      <GithubLinks version={version} />
     </div> : null}
     {shortcutsOpen ? <KeyboardShortcutsDialog onClose={() => { setShortcutsOpen(false); triggerRef.current?.focus(); }} /> : null}
-  </div>;
+  </span>;
 }
 
-function useFooterDropupKeyboard(rootRef: RefObject<HTMLDivElement | null>, triggerRef: RefObject<HTMLButtonElement | null>, menuRef: RefObject<HTMLDivElement | null>, open: boolean, setOpen: Dispatch<SetStateAction<boolean>>) {
+function useMenuButtonKeyboard(rootRef: RefObject<HTMLElement | null>, triggerRef: RefObject<HTMLButtonElement | null>, menuRef: RefObject<HTMLDivElement | null>, open: boolean, setOpen: Dispatch<SetStateAction<boolean>>) {
   useEffect(() => {
     if (!open) return;
     // menu-button 패턴: 열리면 첫 menuitem으로 포커스 이동.
@@ -200,7 +186,8 @@ function UpdateApplyControl({ latestVersion }: { readonly latestVersion: string 
   return (
     <button
       type="button"
-      className={`brand-foot-update brand-foot-update--${copy.tone}`}
+      role="menuitem"
+      className={`command-band-update command-band-update--${copy.tone}`}
       onClick={handleApply}
       disabled={copy.disabled}
       title={copy.title}
@@ -211,20 +198,20 @@ function UpdateApplyControl({ latestVersion }: { readonly latestVersion: string 
   );
 }
 
-function GithubLinks({ menuItem = false, version }: { readonly menuItem?: boolean; readonly version: string }) {
+function GithubLinks({ version }: { readonly version: string }) {
   const t = useT();
   const stars = useGithubStars();
   const hasCount = stars.count !== null;
   return (
-    <div className="brand-foot-github" role="group" aria-label={t("chrome.brandFoot.github")}>
-      <a className="brand-foot-github-link" href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" role={menuItem ? "menuitem" : undefined} aria-label={t("chrome.brandFoot.openGithub")} title={t("chrome.brandFoot.githubRepo")}>
+    <div className="command-band-github" role="group" aria-label={t("chrome.system.github")}>
+      <a className="command-band-github-link" href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" role="menuitem" aria-label={t("chrome.system.openGithub")} title={t("chrome.system.githubRepo")}>
         <GithubMarkIcon />
       </a>
-      <a className="brand-foot-github-stars" href={GITHUB_STARGAZERS_URL} target="_blank" rel="noopener noreferrer" role={menuItem ? "menuitem" : undefined} aria-label={hasCount ? t("chrome.brandFoot.githubStars", { count: stars.count!.toLocaleString() }) : t("chrome.brandFoot.starOnGithub")} title={t("chrome.brandFoot.starOnGithub")}>
+      <a className="command-band-github-stars" href={GITHUB_STARGAZERS_URL} target="_blank" rel="noopener noreferrer" role="menuitem" aria-label={hasCount ? t("chrome.system.githubStars", { count: stars.count!.toLocaleString() }) : t("chrome.system.starOnGithub")} title={t("chrome.system.starOnGithub")}>
         <StarIcon />
-        {hasCount ? <span className="brand-foot-github-stars-count">{formatStarCount(stars.count!)}</span> : null}
+        {hasCount ? <span className="command-band-github-stars-count">{formatStarCount(stars.count!)}</span> : null}
       </a>
-      <span className="brand-foot-github-version">v{version}</span>
+      <span className="command-band-github-version">v{version}</span>
     </div>
   );
 }
@@ -236,22 +223,22 @@ export function resolveUpdateApplyCopy(
   t: Translate<CoreMessageKey>,
 ): UpdateApplyCopy {
   const latest = latestVersion
-    ? t("chrome.brandFoot.update.latestVersion", { version: latestVersion })
-    : t("chrome.brandFoot.update.available");
-  if (applyState === "applying") return { label: t("chrome.brandFoot.update.requesting"), title: t("chrome.brandFoot.update.requestingTitle"), tone: "live", disabled: true };
-  if (applyState === "accepted") return { label: t("chrome.brandFoot.update.updating"), title: t("chrome.brandFoot.update.updatingTitle"), tone: "live", disabled: true };
-  if (applyState === "completed") return { label: t("chrome.brandFoot.update.done"), title: t("chrome.brandFoot.update.doneTitle"), tone: "live", disabled: true };
+    ? t("chrome.system.update.latestVersion", { version: latestVersion })
+    : t("chrome.system.update.available");
+  if (applyState === "applying") return { label: t("chrome.system.update.requesting"), title: t("chrome.system.update.requestingTitle"), tone: "live", disabled: true };
+  if (applyState === "accepted") return { label: t("chrome.system.update.updating"), title: t("chrome.system.update.updatingTitle"), tone: "live", disabled: true };
+  if (applyState === "completed") return { label: t("chrome.system.update.done"), title: t("chrome.system.update.doneTitle"), tone: "live", disabled: true };
   if (applyState === "blocked") return resolveBlockedUpdateApplyCopy(errorCode, t);
-  if (applyState === "error") return { label: t("common.retry"), title: t("chrome.brandFoot.update.retryTitle"), tone: "error", disabled: false };
-  return { label: t("chrome.brandFoot.update.update"), title: latest, tone: "warn", disabled: false };
+  if (applyState === "error") return { label: t("common.retry"), title: t("chrome.system.update.retryTitle"), tone: "error", disabled: false };
+  return { label: t("chrome.system.update.update"), title: latest, tone: "warn", disabled: false };
 }
 
 function resolveBlockedUpdateApplyCopy(errorCode: string | null, t: Translate<CoreMessageKey>): UpdateApplyCopy {
-  if (errorCode === "local_channel") return { label: t("chrome.brandFoot.update.local"), title: t("chrome.brandFoot.update.localTitle"), tone: "blocked", disabled: true };
-  if (errorCode === "managed_runtime_update_requires_relaunch") return { label: t("chrome.brandFoot.update.updateAndRestart"), title: t("chrome.brandFoot.update.managedTitle"), tone: "blocked", disabled: true };
-  if (errorCode === "update_already_in_progress") return { label: t("chrome.brandFoot.update.busy"), title: t("chrome.brandFoot.update.busyTitle"), tone: "blocked", disabled: true };
-  if (errorCode === "update_not_available") return { label: t("chrome.brandFoot.update.current"), title: t("chrome.brandFoot.update.currentTitle"), tone: "blocked", disabled: true };
-  return { label: t("chrome.brandFoot.update.blocked"), title: t("chrome.brandFoot.update.blockedTitle"), tone: "error", disabled: false };
+  if (errorCode === "local_channel") return { label: t("chrome.system.update.local"), title: t("chrome.system.update.localTitle"), tone: "blocked", disabled: true };
+  if (errorCode === "managed_runtime_update_requires_relaunch") return { label: t("chrome.system.update.updateAndRestart"), title: t("chrome.system.update.managedTitle"), tone: "blocked", disabled: true };
+  if (errorCode === "update_already_in_progress") return { label: t("chrome.system.update.busy"), title: t("chrome.system.update.busyTitle"), tone: "blocked", disabled: true };
+  if (errorCode === "update_not_available") return { label: t("chrome.system.update.current"), title: t("chrome.system.update.currentTitle"), tone: "blocked", disabled: true };
+  return { label: t("chrome.system.update.blocked"), title: t("chrome.system.update.blockedTitle"), tone: "error", disabled: false };
 }
 
 function isBlockedUpdateApplyError(code: string): boolean {
@@ -323,20 +310,6 @@ function formatStarCount(count: number): string {
   if (count < 1000) return String(count);
   const thousands = count / 1000;
   return thousands < 10 ? `${thousands.toFixed(1)}k` : `${Math.round(thousands)}k`;
-}
-
-// 제품 favicon(bearing-scope 마크)의 인라인 축약판 — 브랜드 글리프는 파비콘과 동일 조형을 쓴다.
-function BrandMarkIcon() {
-  return (
-    <svg className="brand-foot-glyph" viewBox="0 0 64 64" aria-hidden="true">
-      <rect x="2" y="2" width="60" height="60" rx="14" fill="var(--ink-deep)" stroke="var(--surface-rim-strong)" strokeWidth="2" />
-      <circle cx="32" cy="32" r="18.5" fill="none" stroke="var(--brass)" strokeWidth="3.5" />
-      <circle cx="32" cy="32" r="10.5" fill="none" stroke="var(--brass)" strokeWidth="1.8" opacity="0.55" />
-      <path d="M32 9v8M32 47v8M9 32h8M47 32h8" stroke="var(--brass)" strokeWidth="3" strokeLinecap="round" />
-      <circle cx="32" cy="32" r="3" fill="var(--brass)" />
-      <circle cx="44.7" cy="19.3" r="5" fill="var(--aurora)" />
-    </svg>
-  );
 }
 
 function SettingsGlyph() {

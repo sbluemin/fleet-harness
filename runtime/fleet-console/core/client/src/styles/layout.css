@@ -178,13 +178,14 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   background: var(--surface-glass);
 }
 
-.command-band-brand .brand-foot-glyph {
+.command-band-brand-glyph {
   flex: none;
   width: 16px;
   height: 16px;
+  border-radius: var(--radius-xs);
 }
 
-.command-band-brand .brand-foot-wordmark {
+.command-band-brand-wordmark {
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: var(--weight-medium);
