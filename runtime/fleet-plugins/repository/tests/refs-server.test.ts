@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { runGit } from "../server/git-executor.js";
-import { handleRepositoryRefs } from "../server/refs.js";
+import { handleRepositoryRefs, resolveDefaultBase } from "../server/refs.js";
 
 async function initGitRepo(dir: string): Promise<void> {
   await runGit(["init"], { cwd: dir });
@@ -26,6 +26,30 @@ function makeRefsContext(theaterPath: string, writes: { status: number; payload:
     },
   } as unknown as FleetPluginServerContext;
 }
+
+describe("resolveDefaultBase", () => {
+  const branch = (ref: string) => ({ ref });
+
+  it("prefers the local branch targeted by origin/HEAD", () => {
+    expect(resolveDefaultBase({ originHead: "refs/remotes/origin/main\n", branches: [branch("refs/heads/main")], remotes: [branch("refs/remotes/origin/main")] })).toBe("refs/heads/main");
+  });
+
+  it("uses the remote target when origin/HEAD has no local branch", () => {
+    expect(resolveDefaultBase({ originHead: "refs/remotes/origin/main", branches: [], remotes: [branch("refs/remotes/origin/main")] })).toBe("refs/remotes/origin/main");
+  });
+
+  it("falls back to main when origin/HEAD is unavailable", () => {
+    expect(resolveDefaultBase({ originHead: "", branches: [branch("refs/heads/main")], remotes: [] })).toBe("refs/heads/main");
+  });
+
+  it("falls back to master after main", () => {
+    expect(resolveDefaultBase({ originHead: "", branches: [branch("refs/heads/master")], remotes: [] })).toBe("refs/heads/master");
+  });
+
+  it("returns null when no default branch exists", () => {
+    expect(resolveDefaultBase({ originHead: "", branches: [branch("refs/heads/topic")], remotes: [] })).toBeNull();
+  });
+});
 
 describe("handleRepositoryRefs", () => {
   let tmpDir: string;

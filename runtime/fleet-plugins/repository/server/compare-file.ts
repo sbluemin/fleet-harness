@@ -45,9 +45,11 @@ export async function handleRepositoryCompareFile(req: http.IncomingMessage, res
   if (!relativePath || (body.oldPath !== undefined && !oldPath)) { ctx.host.http.writeJson(res, 403, { error: "path_outside_theater" }); return; }
   const range = `${body.base}...${body.head}`;
   try {
+    // repo-local diff driver/textconv(.gitattributes + .git/config)가 브라우저 클릭으로 실행되는
+    // 것을 차단한다 — hunk는 항상 git 내장 diff로 생성한다.
     const result = await runGit(oldPath
-      ? ["diff", "--unified=3", "-M", "--end-of-options", range, "--", literalPathspec(oldPath), literalPathspec(relativePath)]
-      : ["diff", "--unified=3", "-M", "--end-of-options", range, "--", literalPathspec(relativePath)], { cwd: cwdResult.gitCwd });
+      ? ["diff", "--no-ext-diff", "--no-textconv", "--unified=3", "-M", "--end-of-options", range, "--", literalPathspec(oldPath), literalPathspec(relativePath)]
+      : ["diff", "--no-ext-diff", "--no-textconv", "--unified=3", "-M", "--end-of-options", range, "--", literalPathspec(relativePath)], { cwd: cwdResult.gitCwd });
     ctx.host.http.writeJson(res, 200, { content: result.stdout, ...(result.truncated ? { truncated: true } : {}) });
   } catch (error) {
     if (error instanceof GitExecutorError) {

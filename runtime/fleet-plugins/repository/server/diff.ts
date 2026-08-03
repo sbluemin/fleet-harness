@@ -257,7 +257,7 @@ export async function handleRepositoryFile(
       // (위의 lexical + realpath containment로 이미 방어). 여기에 :(literal)을 붙이면
       // git이 ":(literal)<path>"라는 없는 파일을 찾아 실패하므로 원본 경로를 그대로 전달한다.
       const result = await runGit(
-        ["diff", "--no-index", "--relative", "--unified=3", "--", "/dev/null", relativePath],
+        ["diff", "--no-ext-diff", "--no-textconv", "--no-index", "--relative", "--unified=3", "--", "/dev/null", relativePath],
         { cwd: gitCwd, allowExitCodes: [1] },
       );
       ctx.host.http.writeJson(res, 200, { content: result.stdout, truncated: result.truncated });
@@ -280,11 +280,11 @@ export async function handleRepositoryFile(
     }
     let result;
     try {
-      result = await runGit(["diff", "HEAD", "--relative", "--unified=3", "--", literalPathspec(relativePath)], { cwd: gitCwd });
+      result = await runGit(["diff", "--no-ext-diff", "--no-textconv", "HEAD", "--relative", "--unified=3", "--", literalPathspec(relativePath)], { cwd: gitCwd });
     } catch (err) {
       if (!isNoHeadError(err)) throw err;
       // no-HEAD 신규 저장소: staged hunk를 --cached로 조회 (changed 목록의 fallback과 동일)
-      result = await runGit(["diff", "--cached", "--relative", "--unified=3", "--", literalPathspec(relativePath)], { cwd: gitCwd });
+      result = await runGit(["diff", "--no-ext-diff", "--no-textconv", "--cached", "--relative", "--unified=3", "--", literalPathspec(relativePath)], { cwd: gitCwd });
     }
     ctx.host.http.writeJson(res, 200, { content: result.stdout, truncated: result.truncated });
   } catch (error) {
