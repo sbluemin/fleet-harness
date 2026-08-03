@@ -119,6 +119,10 @@ export function refreshCodexLocale(): void {
   void readerController?.refreshLocale();
 }
 
+export function refreshCodexHealth(): void {
+  navigatorController?.refreshHealth();
+}
+
 export function mountReaderInto(
   readSlot: HTMLElement,
   tocSlot: HTMLElement,

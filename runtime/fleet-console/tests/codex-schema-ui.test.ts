@@ -116,6 +116,29 @@ describe("Codex schema UI contract", () => {
     controller.destroy();
   });
 
+  it("refreshes and hides the health strip after the last pending decision", async () => {
+    vi.resetModules();
+    apiMocks.fetchHealth
+      .mockResolvedValueOnce({ lastDrydock: null, conflictCount: 0, pendingCount: 1 })
+      .mockResolvedValueOnce({ lastDrydock: null, conflictCount: 0, pendingCount: 0 });
+    const state = await import("../core/client/src/codex/state.js");
+    const { mountNavigatorInto } = await import("../core/client/src/codex/components/navigator.js");
+    Object.assign(state.getState(), { error: null, index: [], loading: false, pendingPatchCount: 1 });
+    const root = document.body.appendChild(document.createElement("div"));
+    const controller = mountNavigatorInto(root, { initialTheaterId: "workspace-a", onRequest: vi.fn() });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(root.querySelector<HTMLElement>(".codex-nav-health")?.hidden).toBe(false);
+
+    controller.refreshHealth();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(apiMocks.fetchHealth).toHaveBeenCalledTimes(2);
+    expect(root.querySelector<HTMLElement>(".codex-nav-health")?.hidden).toBe(true);
+    controller.destroy();
+  });
+
   it("shows health details without navigating and closes them on Escape", async () => {
     vi.resetModules();
     apiMocks.fetchHealth.mockResolvedValue({

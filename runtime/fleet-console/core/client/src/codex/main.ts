@@ -55,6 +55,9 @@ export function mountNavigatorApp(
     setCurrentEntry(entryId: string | null): void {
       controller.setCurrentEntry(entryId);
     },
+    refreshHealth(): void {
+      controller.refreshHealth();
+    },
     refreshLocale(): void {
       controller.refreshLocale();
     },

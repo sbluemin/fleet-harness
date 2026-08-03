@@ -18,6 +18,7 @@ export interface NavigatorController {
   destroy(): void;
   setTheater(theaterId: string | null): void;
   setCurrentEntry(entryId: string | null): void;
+  refreshHealth(): void;
   /** 로케일 변경 시 셸·목록 문구를 다시 그린다(검색·선택 상태 유지). */
   refreshLocale(): void;
 }
@@ -502,6 +503,9 @@ export function mountNavigatorInto(
       if (currentEntryId === entryId) return;
       currentEntryId = entryId;
       renderList(getState());
+    },
+    refreshHealth(): void {
+      loadHealth();
     },
     refreshLocale(): void {
       const t = consoleT();

@@ -10,6 +10,7 @@ import {
   mountNavigatorInto,
   mountReaderInto,
   navigateCodexReaderHistory,
+  refreshCodexHealth,
   refreshCodexLocale,
   restoreCodexReaderSession,
   saveReaderScroll,
@@ -162,6 +163,7 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
       onConflictOpen: (id) => openCodexReader({ kind: "conflicts", id }),
       onDecided: () => {
         void loadInitialData();
+        refreshCodexHealth();
         openCodexReader({ kind: "drydock", patchId: undefined });
       },
     });

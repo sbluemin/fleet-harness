@@ -5,6 +5,7 @@ import {
   getCodexReaderHistoryState,
   mountReaderInto,
   navigateCodexReaderHistory,
+  refreshCodexHealth,
   saveReaderScroll,
   subscribeCodexReaderHistory,
 } from "../codex-host.js";
@@ -127,6 +128,7 @@ export function CodexReadingSheet() {
       },
       onDecided: () => {
         void loadInitialData();
+        refreshCodexHealth();
         openCodexReader({ kind: "drydock", patchId: undefined });
         expandCodexReader();
       },

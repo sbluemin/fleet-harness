@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const codexMocks = vi.hoisted(() => ({
   navigatorController: {
     destroy: vi.fn(),
+    refreshHealth: vi.fn(),
     refreshLocale: vi.fn(),
     setCurrentEntry: vi.fn(),
     setTheater: vi.fn(),
@@ -31,6 +32,7 @@ import {
   mountNavigatorInto,
   mountReaderInto,
   navigateCodexReaderHistory,
+  refreshCodexHealth,
   restoreCodexReaderSession,
   saveReaderScroll,
   setNavigatorTheater,
@@ -82,6 +84,14 @@ afterEach(() => {
 });
 
 describe("Codex host in-memory state", () => {
+  it("forwards explicit health refreshes to the mounted navigator", () => {
+    mountNavigatorInto(document.body.appendChild(document.createElement("div")), "workspace-a");
+
+    refreshCodexHealth();
+
+    expect(codexMocks.navigatorController.refreshHealth).toHaveBeenCalledOnce();
+  });
+
   it("does not reset navigator state when the same workspace is assigned again", () => {
     const firstSlot = document.createElement("div");
     const secondSlot = document.createElement("div");
