@@ -853,6 +853,119 @@ describe("Kimi passthrough", () => {
       },
     });
   });
+
+  it("rewrites the echoed SSE message_start model back to the client-requested id", async () => {
+    const upstreamBody = [
+      "event: message_start\r\n",
+      `data: ${JSON.stringify({
+        type: "message_start",
+        message: {
+          id: "msg_kimi",
+          model: "k3",
+          usage: { input_tokens: 10, output_tokens: 1 },
+        },
+      })}\r\n\r\n`,
+      "event: message_stop\r\n",
+      `data: ${JSON.stringify({ type: "message_stop" })}\r\n\r\n`,
+    ].join("");
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      upstreamBody,
+      { status: 200, headers: { "content-type": "text/event-stream; charset=utf-8" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readKimiApiKey: async () => "kimi-secret",
+    });
+    const res = response();
+
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--kimi--k3[1m]",
+    }));
+
+    const payload = res.body
+      .split(/\r?\n/)
+      .find((line) => line.startsWith("data: "))
+      ?.slice(6);
+    expect(JSON.parse(payload ?? "null")).toMatchObject({
+      type: "message_start",
+      message: {
+        id: "msg_kimi",
+        model: "claude-gateway--kimi--k3[1m]",
+        usage: { input_tokens: 10, output_tokens: 1 },
+      },
+    });
+    // 요청은 여전히 wire id로 나간다.
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as { model?: string };
+    expect(requestBody.model).toBe("k3");
+  });
+
+  it("rewrites the echoed non-streaming JSON model back to the client-requested id", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      JSON.stringify({
+        id: "msg_kimi",
+        model: "k3",
+        content: [{ type: "text", text: "done" }],
+        usage: { input_tokens: 10, output_tokens: 4 },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readKimiApiKey: async () => "kimi-secret",
+    });
+    const res = response();
+
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--kimi--k3[1m]",
+    }));
+
+    expect(JSON.parse(res.body)).toMatchObject({
+      id: "msg_kimi",
+      model: "claude-gateway--kimi--k3[1m]",
+      content: [{ type: "text", text: "done" }],
+      usage: { input_tokens: 10, output_tokens: 4 },
+    });
+  });
+
+  it("rewrites the echoed model even when no context-window projection applies", async () => {
+    const upstreamBody = [
+      "event: message_start\r\n",
+      `data: ${JSON.stringify({
+        type: "message_start",
+        message: { id: "msg_kimi", model: "k3", usage: { input_tokens: 10, output_tokens: 1 } },
+      })}\r\n\r\n`,
+    ].join("");
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      upstreamBody,
+      { status: 200, headers: { "content-type": "text/event-stream; charset=utf-8" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readKimiApiKey: async () => "kimi-secret",
+    });
+    const res = response();
+
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--kimi--k3-256k",
+    }));
+
+    const payload = res.body
+      .split(/\r?\n/)
+      .find((line) => line.startsWith("data: "))
+      ?.slice(6);
+    expect(JSON.parse(payload ?? "null")).toMatchObject({
+      message: { model: "claude-gateway--kimi--k3-256k" },
+    });
+  });
 });
 
 describe("anthropic passthrough", () => {
@@ -907,6 +1020,28 @@ describe("anthropic passthrough", () => {
     await router.handle(ctx({ res, model: "claude-sonnet-4-6" }));
 
     expect(res.status).toBe(401);
+  });
+
+  it("does not rewrite the echoed model on the real-Anthropic path", async () => {
+    const raw = [
+      "event: message_start\n",
+      `data: ${JSON.stringify({
+        type: "message_start",
+        message: { id: "msg_anthropic", model: "claude-sonnet-4-6" },
+      })}\n\n`,
+      "event: message_stop\n",
+      `data: ${JSON.stringify({ type: "message_stop" })}\n\n`,
+    ].join("");
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      raw,
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({ fetch: fetchMock, readAuth });
+    const res = response();
+
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED, model: "claude-sonnet-4-6" }));
+
+    expect(res.body).toBe(raw);
   });
 });
 

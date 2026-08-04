@@ -400,8 +400,11 @@ async function proxyToKimi(
     const value = requestHeaders[name];
     if (typeof value === "string") headers[name] = value;
   }
+  // 클라이언트 요청 model은 provider wire id로 재작성되기 전 원본을 에코용으로 남긴다.
+  const responseModel = typeof body.model === "string" ? body.model : undefined;
   await proxyAnthropicMessages(res, kimiRequestBody(body, model), {
     contextWindow,
+    responseModel,
     fetchImpl,
     headers,
     signal,

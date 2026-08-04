@@ -12,7 +12,14 @@ const ANTHROPIC_INPUT_USAGE_FIELDS = [
 
 export interface AnthropicResponseUsageProjectionOptions {
   readonly contentType?: string | null;
-  readonly contextWindow: number;
+  /** Usage projection denominator. Omit — or pass a window at or below Claude's 200k default — to skip that projection. */
+  readonly contextWindow?: number;
+  /**
+   * Client-requested model id to echo back in place of the provider's wire id.
+   * Anthropic passthrough relays the upstream body untouched, so without this the
+   * client would see the provider's bare model id and fail to match its own request.
+   */
+  readonly responseModel?: string;
   /** Maximum non-streaming response size retained for JSON rewriting. */
   readonly maxJsonBytes?: number;
   /** Maximum single SSE frame size retained for JSON rewriting. */
@@ -57,8 +64,11 @@ export function stripClaudeOneMillionMarker(modelId: string): string {
  *
  * The result is capped at the coordinate itself. Claude Code has no representation
  * for an occupancy above the window it was told the model has: past that point it
- * reports `Context exceeds the 1m-token limit` and stops auto-compacting, leaving
- * the session recoverable only by a manual `/compact`. A denominator that
+ * reports `Context exceeds the <limit>-token limit by <n> tokens — run /compact or
+ * /clear to continue.`, handing the session back to a manual step (message observed
+ * in Claude Code 2.1.221, 2026-08-04; whether its own auto-compaction still fires
+ * from that state was not measured, and the cap keeps sessions out of the band
+ * where the answer would matter). A denominator that
  * understates the real window — or an upstream that reports more input than the
  * catalog claims the model holds — would otherwise push the session into that
  * state, so the cap is a floor under the whole projection, not a rounding detail.
@@ -85,14 +95,22 @@ export function projectClaudeContextInputTokens(
 }
 
 /**
- * Rewrite Anthropic input and cache usage in bounded SSE or JSON responses.
+ * Rewrite Anthropic input and cache usage in bounded SSE or JSON responses, and
+ * optionally restore the client-requested model id over the provider's wire id.
  * Unsupported media types and unparseable payloads remain byte-for-byte intact.
  */
 export async function* projectAnthropicResponseUsage(
   chunks: AsyncIterable<Uint8Array>,
   options: AnthropicResponseUsageProjectionOptions,
 ): AsyncGenerator<Uint8Array> {
-  if (!canProjectClaudeContextWindow(options.contextWindow)) {
+  const contextWindow = canProjectClaudeContextWindow(options.contextWindow)
+    ? options.contextWindow
+    : undefined;
+  const responseModel = typeof options.responseModel === "string"
+    && options.responseModel.length > 0
+    ? options.responseModel
+    : undefined;
+  if (contextWindow === undefined && responseModel === undefined) {
     yield* chunks;
     return;
   }
@@ -101,7 +119,8 @@ export async function* projectAnthropicResponseUsage(
   if (mediaType === "text/event-stream") {
     yield* projectSseUsage(
       chunks,
-      options.contextWindow,
+      contextWindow,
+      responseModel,
       positiveLimit(options.maxSseFrameBytes, DEFAULT_MAX_SSE_FRAME_BYTES),
     );
     return;
@@ -109,7 +128,8 @@ export async function* projectAnthropicResponseUsage(
   if (mediaType === "application/json" || mediaType?.endsWith("+json")) {
     yield* projectJsonUsage(
       chunks,
-      options.contextWindow,
+      contextWindow,
+      responseModel,
       positiveLimit(options.maxJsonBytes, DEFAULT_MAX_JSON_BYTES),
     );
     return;
@@ -119,7 +139,8 @@ export async function* projectAnthropicResponseUsage(
 
 async function* projectJsonUsage(
   chunks: AsyncIterable<Uint8Array>,
-  contextWindow: number,
+  contextWindow: number | undefined,
+  responseModel: string | undefined,
   maxBytes: number,
 ): AsyncGenerator<Uint8Array> {
   const buffered: Uint8Array[] = [];
@@ -143,13 +164,14 @@ async function* projectJsonUsage(
 
   if (passthrough || bufferedBytes === 0) return;
   const original = concatChunks(buffered, bufferedBytes);
-  const projected = projectJsonBytes(original, contextWindow);
+  const projected = projectJsonBytes(original, contextWindow, responseModel);
   yield projected ?? original;
 }
 
 async function* projectSseUsage(
   chunks: AsyncIterable<Uint8Array>,
-  contextWindow: number,
+  contextWindow: number | undefined,
+  responseModel: string | undefined,
   maxFrameBytes: number,
 ): AsyncGenerator<Uint8Array> {
   let buffered: Uint8Array = new Uint8Array(0);
@@ -183,7 +205,7 @@ async function* projectSseUsage(
       const originalFrame = buffered.slice(0, separator.index + separator.length);
       const projectedFrame = frame.byteLength > maxFrameBytes
         ? undefined
-        : projectSseFrame(frame, contextWindow);
+        : projectSseFrame(frame, contextWindow, responseModel);
       yield projectedFrame === undefined
         ? originalFrame
         : concatBytes(projectedFrame, separatorBytes);
@@ -202,20 +224,28 @@ async function* projectSseUsage(
   if (buffered.byteLength > 0) yield buffered;
 }
 
-function projectJsonBytes(bytes: Uint8Array, contextWindow: number): Uint8Array | undefined {
+function projectJsonBytes(
+  bytes: Uint8Array,
+  contextWindow: number | undefined,
+  responseModel: string | undefined,
+): Uint8Array | undefined {
   let parsed: unknown;
   try {
     parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
   } catch {
     return undefined;
   }
-  const projected = projectAnthropicUsageEnvelope(parsed, contextWindow);
+  const projected = projectAnthropicUsageEnvelope(parsed, contextWindow, responseModel);
   return projected.changed
     ? new TextEncoder().encode(JSON.stringify(projected.value))
     : undefined;
 }
 
-function projectSseFrame(frame: Uint8Array, contextWindow: number): Uint8Array | undefined {
+function projectSseFrame(
+  frame: Uint8Array,
+  contextWindow: number | undefined,
+  responseModel: string | undefined,
+): Uint8Array | undefined {
   let text: string;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(frame);
@@ -243,7 +273,7 @@ function projectSseFrame(frame: Uint8Array, contextWindow: number): Uint8Array |
   } catch {
     return undefined;
   }
-  const projected = projectAnthropicUsageEnvelope(parsed, contextWindow);
+  const projected = projectAnthropicUsageEnvelope(parsed, contextWindow, responseModel);
   if (!projected.changed) return undefined;
 
   const firstDataIndex = dataIndexes[0];
@@ -261,23 +291,40 @@ function projectSseFrame(frame: Uint8Array, contextWindow: number): Uint8Array |
 
 function projectAnthropicUsageEnvelope(
   value: unknown,
-  contextWindow: number,
+  contextWindow: number | undefined,
+  responseModel: string | undefined,
 ): Projection<unknown> {
   if (!isRecord(value)) return { changed: false, value };
 
   let projectedValue = value;
   let changed = false;
-  const topLevelUsage = projectUsageProperty(projectedValue, "usage", contextWindow);
-  if (topLevelUsage.changed) {
-    projectedValue = topLevelUsage.value;
-    changed = true;
+  if (contextWindow !== undefined) {
+    const topLevelUsage = projectUsageProperty(projectedValue, "usage", contextWindow);
+    if (topLevelUsage.changed) {
+      projectedValue = topLevelUsage.value;
+      changed = true;
+    }
+
+    const message = projectedValue.message;
+    if (isRecord(message)) {
+      const messageUsage = projectUsageProperty(message, "usage", contextWindow);
+      if (messageUsage.changed) {
+        projectedValue = { ...projectedValue, message: messageUsage.value };
+        changed = true;
+      }
+    }
   }
 
-  const message = projectedValue.message;
-  if (isRecord(message)) {
-    const messageUsage = projectUsageProperty(message, "usage", contextWindow);
-    if (messageUsage.changed) {
-      projectedValue = { ...projectedValue, message: messageUsage.value };
+  if (responseModel !== undefined) {
+    // 비-스트리밍 JSON은 최상위 model에, SSE message_start 프레임은 message.model에
+    // provider의 wire id가 실린다. 어느 쪽이든 클라이언트가 요청한 id로 되돌린다.
+    if (typeof projectedValue.model === "string" && projectedValue.model !== responseModel) {
+      projectedValue = { ...projectedValue, model: responseModel };
+      changed = true;
+    }
+    const message = projectedValue.message;
+    if (isRecord(message) && typeof message.model === "string" && message.model !== responseModel) {
+      projectedValue = { ...projectedValue, message: { ...message, model: responseModel } };
       changed = true;
     }
   }

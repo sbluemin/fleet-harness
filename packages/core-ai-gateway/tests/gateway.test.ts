@@ -1073,6 +1073,105 @@ describe("Anthropic response context projection", () => {
   });
 });
 
+describe("Anthropic response model rewrite", () => {
+  it("rewrites message.model in a passthrough SSE message_start frame", async () => {
+    const raw = [
+      "event: message_start\n",
+      `data: ${JSON.stringify({
+        type: "message_start",
+        message: {
+          id: "msg_kimi",
+          model: "k3",
+          usage: { input_tokens: 10, output_tokens: 1 },
+        },
+      })}\n\n`,
+      "event: message_stop\n",
+      `data: ${JSON.stringify({ type: "message_stop" })}\n\n`,
+    ].join("");
+    const encoded = new TextEncoder().encode(raw);
+
+    const output = await collectBody(projectAnthropicResponseUsage(iterable([encoded]), {
+      contentType: "text/event-stream",
+      contextWindow: 1_048_576,
+      responseModel: "claude-gateway--kimi--k3[1m]",
+    }));
+    const events = parseSse(output);
+
+    expect(events[0]?.data).toMatchObject({
+      type: "message_start",
+      message: {
+        id: "msg_kimi",
+        model: "claude-gateway--kimi--k3[1m]",
+        usage: { input_tokens: 10, output_tokens: 1 },
+      },
+    });
+    expect(events[1]?.data).toEqual({ type: "message_stop" });
+  });
+
+  it("rewrites the top-level model in a non-streaming JSON body", async () => {
+    const raw = JSON.stringify({
+      id: "msg_kimi",
+      model: "k3",
+      content: [{ type: "text", text: "done" }],
+      usage: { input_tokens: 10, output_tokens: 4 },
+    });
+
+    const output = await collectBody(projectAnthropicResponseUsage(
+      iterable([new TextEncoder().encode(raw)]),
+      {
+        contentType: "application/json",
+        contextWindow: 1_048_576,
+        responseModel: "claude-gateway--kimi--k3[1m]",
+      },
+    ));
+
+    expect(JSON.parse(output)).toEqual({
+      id: "msg_kimi",
+      model: "claude-gateway--kimi--k3[1m]",
+      content: [{ type: "text", text: "done" }],
+      usage: { input_tokens: 10, output_tokens: 4 },
+    });
+  });
+
+  it("still rewrites the model when no context-window projection applies", async () => {
+    const raw = [
+      "event: message_start\n",
+      `data: ${JSON.stringify({
+        type: "message_start",
+        message: { id: "msg_kimi", model: "k3", usage: { input_tokens: 10, output_tokens: 1 } },
+      })}\n\n`,
+    ].join("");
+
+    const output = await collectBody(projectAnthropicResponseUsage(
+      iterable([new TextEncoder().encode(raw)]),
+      { contentType: "text/event-stream", responseModel: "claude-gateway--kimi--k3[1m]" },
+    ));
+
+    expect(parseSse(output)[0]?.data).toMatchObject({
+      message: { model: "claude-gateway--kimi--k3[1m]" },
+    });
+  });
+
+  it("leaves a matching or absent model byte-identical", async () => {
+    const raw = [
+      "event: message_start\n",
+      `data: ${JSON.stringify({
+        type: "message_start",
+        message: { id: "msg_kimi", model: "claude-gateway--kimi--k3[1m]" },
+      })}\n\n`,
+      "event: message_stop\n",
+      `data: ${JSON.stringify({ type: "message_stop" })}\n\n`,
+    ].join("");
+
+    const output = await collectBody(projectAnthropicResponseUsage(
+      iterable([new TextEncoder().encode(raw)]),
+      { contentType: "text/event-stream", responseModel: "claude-gateway--kimi--k3[1m]" },
+    ));
+
+    expect(output).toBe(raw);
+  });
+});
+
 describe("Anthropic SSE encoding", () => {
   it("emits the complete Anthropic text-turn sequence", async () => {
     const events = iterable<CanonicalResponseEvent>([
