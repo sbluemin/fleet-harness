@@ -5,6 +5,7 @@ import type { FleetClientPlugin } from "@fleet-console/sdk/plugin";
 import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 
 import { fetchSearch } from "../codex/api.js";
+import { propagateSettingsEntryIndex, recordSettingsEntryIndex } from "./command-band-system-cluster.js";
 import { setGlobalSettingsField } from "../global-settings-store.js";
 import {
   filterOperationSearchEntries,
@@ -391,7 +392,9 @@ export function OperationSearch({
       case "open-settings": {
         // 라우트 전환으로 이전 포커스 요소가 unmount되므로 복원을 억제한다(switch-theater와 동일).
         previousFocusRef.current = null;
-        navigate("/settings");
+        // 토글 닫기가 설정 구간을 소비하려면 진입 마커가 필요하다 — 버튼 경로와 동일하게 기록한다.
+        recordSettingsEntryIndex();
+        navigate("/settings", { state: propagateSettingsEntryIndex(null) });
         break;
       }
       case "open-keyboard-shortcuts": {

@@ -130,7 +130,7 @@ export function GlobalSettings() {
     const available = new Set<SettingsSectionId>([...coreSections.map((section) => section.id), ...pluginSections.map((section) => section.id)]);
     const next = requested && available.has(requested as SettingsSectionId) ? requested as SettingsSectionId : "general";
     setActiveSectionId(next);
-    if (requested && requested !== next) navigate({ pathname: "/settings", search: "" }, { replace: true });
+    if (requested && requested !== next) navigate({ pathname: "/settings", search: "" }, { replace: true, state: propagateSettingsEntryIndex(null) });
   }, [location.search, navigate, coreSections, pluginSections]);
 
   return (
