@@ -5,7 +5,7 @@ import type { OperationActivity } from "@fleet-console/sdk/plugin";
 import { clearIdleArrival, getIdleArrivalIds, setIdleArrivalAcknowledgementSuspended } from "../operation-idle-arrival.js";
 import { resolveOperationActivity } from "../operation-activity.js";
 import { clearOperationStatusDetail, recordOperationActivityTransition } from "../operation-status-detail-store.js";
-import { getState, clearPendingSideBarSignals, setActiveOperation, setActiveTheater } from "../store.js";
+import { getState, clearPendingSideBarSignals, registerFocusTheaterSwitchSuppression, setActiveOperation, setActiveTheater } from "../store.js";
 import { clearSideBarOperationAction } from "../sidebar/interaction.js";
 import type { OperationGeometry, OperationNode } from "../types.js";
 import {
@@ -46,12 +46,13 @@ let setAsideArmed: {
 } | null = null;
 let clearedCount = 0;
 let enteredAt: number | null = null;
+// 선별 중 마지막으로 무대에 올랐던 Operation의 Theater — 종료 시 이 Theater로 복귀한다.
+let lastStagedTheaterId: string | null = null;
 const lastClearedAt = new Map<string, number>();
 const deferredAt = new Map<string, number>();
 const dismissed = new Set<string>();
 const seenAt = new Map<string, number>();
 
-// 스포트라이트 — localStorage에 단일 전역 토글을 저장한다.
 const TRIAGE_SPOTLIGHT_STORAGE_KEY = "fleet-console-triage-spotlight";
 let triageSpotlightEnabled = readStoredTriageSpotlight();
 
@@ -113,7 +114,7 @@ const focusLayerBeforeTriage = new Map<string, FocusLayerState | null>();
 const listeners = new Set<Listener>();
 let revision = 0;
 
-// 덱 줌 — 전역 단일 값. 줌 카드 크기는 deck의 inline CSS 변수가 소유하고,
+// 덱 줌은 전역 선별 처리와 같은 단일 영속 값이다. 카드 크기는 deck의 inline CSS 변수가 소유하고,
 // map 판정(작전지도 LOD)은 카드 최소폭 140px 미만으로 낙찰하는 순간으로 고정한다.
 export const TRIAGE_DECK_ZOOM_MIN = 0.35;
 export const TRIAGE_DECK_ZOOM_MAX = 2.0;
@@ -123,7 +124,8 @@ export const TRIAGE_DECK_MAP_CARD_MIN_PX = 140;
 export const TRIAGE_DECK_ZOOM_PRESETS: readonly number[] = [1.0, 1.6, 0.4];
 
 const TRIAGE_DECK_ZOOM_STORAGE_KEY = "fleet-console.triage-deck-zoom";
-let triageDeckZoom = loadTriageDeckZoom();
+let triageDeckZoom: number | null = null;
+let triageDeckMapModeLive: boolean | null = null;
 
 export function clampTriageDeckZoom(zoom: number): number {
   if (!Number.isFinite(zoom)) return TRIAGE_DECK_ZOOM_DEFAULT;
@@ -134,34 +136,38 @@ export function isTriageDeckMapMode(zoom: number): boolean {
   return Math.round(TRIAGE_DECK_CARD_BASE_MIN_PX * zoom) < TRIAGE_DECK_MAP_CARD_MIN_PX;
 }
 
-// in-memory 지도 판정 채널 — 줌 tween은 store 줌을 settle 때만 갱신하므로, 임계 교차는
-// tween 프레임마다 여기에 실시간 반영한다. localStorage 기록 없음.
-let triageDeckMapModeLive = false;
-
 export function isTriageDeckMapModeActive(): boolean {
-  return triageDeckMapModeLive;
+  return triageDeckMapModeLive ?? isTriageDeckMapMode(getTriageDeckZoom());
 }
 
 export function setTriageDeckMapModeLive(active: boolean): void {
-  if (triageDeckMapModeLive === active) return;
+  if (isTriageDeckMapModeActive() === active) return;
   triageDeckMapModeLive = active;
   emitTriage();
 }
 
-// live 채널은 세션 임시 상태다 — triage 종료/리셋 시 지워 다음 진입이 영속 배율에서 출발한다.
-function clearTriageDeckMapModeLive(): void {
-  triageDeckMapModeLive = false;
-}
-
 export function getTriageDeckZoom(): number {
+  if (triageDeckZoom !== null) return triageDeckZoom;
+  triageDeckZoom = loadTriageDeckZoom();
   return triageDeckZoom;
 }
 
 export function setTriageDeckZoom(zoom: number): void {
   const clamped = clampTriageDeckZoom(zoom);
-  if (triageDeckZoom === clamped) return;
+  if (getTriageDeckZoom() === clamped) return;
   triageDeckZoom = clamped;
   persistTriageDeckZoom(clamped);
+  emitTriage();
+}
+
+export function resetTriageDeckZoomForTests(): void {
+  triageDeckZoom = null;
+  triageDeckMapModeLive = null;
+  try {
+    globalThis.localStorage?.removeItem(TRIAGE_DECK_ZOOM_STORAGE_KEY);
+  } catch {
+    // Storage is optional.
+  }
   emitTriage();
 }
 
@@ -194,17 +200,6 @@ function persistTriageDeckZoom(zoom: number): void {
   }
 }
 
-export function resetTriageDeckZoomForTests(): void {
-  triageDeckZoom = TRIAGE_DECK_ZOOM_DEFAULT;
-  triageDeckMapModeLive = false;
-  try {
-    globalThis.localStorage?.removeItem(TRIAGE_DECK_ZOOM_STORAGE_KEY);
-  } catch {
-    // Storage is optional.
-  }
-  emitTriage();
-}
-
 // 작전지도(map mode) 마커 배치 — canvas geometry를 덱 영역 [8,92]%×[10,86]%로 투영하고,
 // geometry가 없는 Operation은 id 해시 기반 golden-angle 산포로 채운다. Math.random 금지:
 // 렌더마다 위치가 흔들리면 승격 flight의 출발점이 매번 달라진다.
@@ -217,6 +212,93 @@ export interface TriageMapMarkerLayout {
   readonly operationId: string;
   readonly x: number;
   readonly y: number;
+}
+
+export interface TriageFleetZoneLayout {
+  readonly theaterId: string;
+  /** 원 중심 — 판 가로/세로에 대한 백분율. */
+  readonly centerX: number;
+  readonly centerY: number;
+  /** 원 지름 — 판 높이에 대한 백분율(aspect-ratio 1이 원을 보장한다). */
+  readonly size: number;
+}
+
+// 작전지도 위 Theater 원형 구역 배치 — 지구본 위 작전구역처럼 원들이 하나의 판에 흩어진다.
+// 자리는 결정적 슬롯에서 시작해(렌더마다 흔들리면 지도가 아니라 애니메이션이다) 겹친 쌍을
+// 중심선을 따라 밀어내는 분리 반복으로 서로 겹치지 않게 정착시키고, 판이 좁아 다 안 들어가면
+// 전체 반지름을 한 단계씩 줄여 다시 정착시킨다. 크기는 함대 규모의 sqrt 비례.
+const TRIAGE_FLEET_ZONE_SLOTS: readonly { readonly x: number; readonly y: number }[] = [
+  { x: 30, y: 38 },
+  { x: 70, y: 32 },
+  { x: 50, y: 72 },
+  { x: 84, y: 68 },
+  { x: 14, y: 70 },
+  { x: 58, y: 14 },
+  { x: 12, y: 20 },
+  { x: 88, y: 18 },
+];
+const TRIAGE_FLEET_ZONE_GAP = 3;
+const TRIAGE_FLEET_ZONE_LABEL_HEADROOM = 8;
+
+export function resolveTriageFleetZoneLayout(
+  zones: ReadonlyArray<{ readonly theaterId: string; readonly count: number }>,
+  aspect = 1.8,
+): readonly TriageFleetZoneLayout[] {
+  if (zones.length === 0) return [];
+  const safeAspect = Number.isFinite(aspect) && aspect > 0.2 ? Math.min(aspect, 6) : 1.8;
+  const width = 100 * safeAspect;
+  const total = zones.reduce((sum, zone) => sum + Math.max(1, zone.count), 0) || 1;
+  const circles = zones.map((zone, index) => {
+    const slot = TRIAGE_FLEET_ZONE_SLOTS[index % TRIAGE_FLEET_ZONE_SLOTS.length]!;
+    const share = Math.sqrt(Math.max(1, zone.count) / total);
+    // 지름 하한 34%는 라벨+dot 판독, 상한 66%는 이웃 원과의 공존을 지킨다.
+    return {
+      theaterId: zone.theaterId,
+      x: (slot.x / 100) * width,
+      y: slot.y,
+      r: (34 + share * 32) / 2,
+    };
+  });
+  for (let round = 0; round < 6; round += 1) {
+    for (let pass = 0; pass < 24; pass += 1) {
+      let moved = false;
+      for (let i = 0; i < circles.length; i += 1) {
+        for (let j = i + 1; j < circles.length; j += 1) {
+          const a = circles[i]!;
+          const b = circles[j]!;
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const dist = Math.hypot(dx, dy);
+          const need = a.r + b.r + TRIAGE_FLEET_ZONE_GAP;
+          if (dist >= need) continue;
+          // 완전히 포개진 퇴화 케이스는 인덱스 기반 고정 방향으로 밀어 결정성을 지킨다.
+          const ux = dist > 0.001 ? dx / dist : (j % 2 === 0 ? 1 : -1);
+          const uy = dist > 0.001 ? dy / dist : (i % 2 === 0 ? 0.5 : -0.5);
+          const push = (need - Math.max(dist, 0.001)) / 2;
+          a.x -= ux * push;
+          a.y -= uy * push;
+          b.x += ux * push;
+          b.y += uy * push;
+          moved = true;
+        }
+      }
+      for (const circle of circles) {
+        circle.x = Math.min(width - circle.r - 1, Math.max(circle.r + 1, circle.x));
+        circle.y = Math.min(100 - circle.r - 1, Math.max(circle.r + TRIAGE_FLEET_ZONE_LABEL_HEADROOM, circle.y));
+      }
+      if (!moved) break;
+    }
+    const overlapped = circles.some((a, i) => circles.some((b, j) => j > i
+      && Math.hypot(b.x - a.x, b.y - a.y) < a.r + b.r + TRIAGE_FLEET_ZONE_GAP - 0.5));
+    if (!overlapped) break;
+    for (const circle of circles) circle.r *= 0.88;
+  }
+  return circles.map((circle) => ({
+    theaterId: circle.theaterId,
+    centerX: (circle.x / width) * 100,
+    centerY: circle.y,
+    size: circle.r * 2,
+  }));
 }
 
 export function resolveTriageMapMarkerLayout(
@@ -311,6 +393,10 @@ function hashTriageMapKey(key: string): number {
   return Math.abs(hash);
 }
 
+// 선별 중 검색·ALERTS·스위처의 focusOperation은 Theater를 전환하지 않는다 — 전 Theater가
+// 마운트이므로 지목만으로 무대가 서고, 전환하면 목적지의 저장 focus layer가 부활한다.
+registerFocusTheaterSwitchSuppression(() => triageActive);
+
 // Formation 진입은 어느 Theater에서든 전역 선별 처리를 끝낸다.
 registerBeforeFormationViewActivation(() => setTriageActive(false));
 
@@ -326,6 +412,7 @@ export function setTriageActive(active: boolean): void {
       triageActive = true;
       clearedCount = 0;
       enteredAt = Date.now();
+      lastStagedTheaterId = null;
     }
     if (activeTheaterId) captureFocusLayerBeforeTriage(activeTheaterId);
     setIdleArrivalAcknowledgementSuspended(true);
@@ -349,11 +436,11 @@ export function setTriageActive(active: boolean): void {
   lastClearedAt.clear();
   seenAt.clear();
   activityByOperation.clear();
-  clearTriageDeckMapModeLive();
   clearPendingSideBarRequests();
   if (getLoadedTheaterId() !== null && getTheaterFocusLayerSnapshot(getLoadedTheaterId()!)?.mode === "companion") {
     forceDropCompanionOperationId();
   }
+  triageDeckMapModeLive = null;
   const capturedFocusLayers = [...focusLayerBeforeTriage];
   focusLayerBeforeTriage.clear();
   setIdleArrivalAcknowledgementSuspended(false);
@@ -370,6 +457,14 @@ export function setTriageActive(active: boolean): void {
       ? previousFocusLayer
       : null;
     setTheaterFocusLayerSnapshot(theaterId, restoredFocusLayer);
+  }
+  // 종료 시 활성 Theater는 마지막으로 무대에 올랐던 Theater로 복귀한다(무대 이력이 없으면 유지).
+  const returnTheaterId = lastStagedTheaterId;
+  lastStagedTheaterId = null;
+  if (returnTheaterId !== null
+    && getState().activeTheaterId !== returnTheaterId
+    && getState().theaters.some((theater) => theater.id === returnTheaterId)) {
+    setActiveTheater(returnTheaterId);
   }
   emitTriage();
 }
@@ -405,24 +500,28 @@ export function useTriageActive(): boolean {
   );
 }
 
-// 선별 중 방문하는 모든 Theater에 진입 경로가 활성 Theater에 하는 "캡처 후 null" 쌍을 적용한다 —
-// 캡처 없이는 종료 복원 목록에서 빠지고, null 없이는 저장된 companion이 선별 중 부활한다.
+// 선별 중 사용자가 수동으로 Theater를 전환할 때(스위처·팔레트) 진입 경로가 활성 Theater에
+// 하는 "캡처 후 null" 쌍을 적용한다 — 캡처 없이는 종료 복원 목록에서 빠지고, null 없이는
+// 저장된 companion이 선별 중 부활한다. 무대 승격은 전 Theater 마운트라 전환 자체가 없다.
 export function visitTriageTheater(theaterId: string): void {
   captureFocusLayerBeforeTriage(theaterId);
   setTheaterFocusLayerSnapshot(theaterId, null);
+  // 방문 Theater에 남아 있던 Formation 플래그는 loadForTheater가 그대로 복원해
+  // 선별과 Formation의 상호배제를 깬다 — 진입 경로처럼 목적지의 Formation도 걷어낸다.
+  clearFormationView(theaterId);
   if (getState().activeTheaterId !== theaterId) setActiveTheater(theaterId);
+}
+
+// 종료 시 복귀할 "마지막으로 무대에 올랐던 Theater" 이력 — canvas가 무대가 설 때 기록한다.
+export function recordTriageStageTheater(theaterId: string): void {
+  lastStagedTheaterId = theaterId;
 }
 
 export function pickTriageOperation(operationId: string): void {
   clearTriageSetAsideArm();
   const operation = getState().operations.find((candidate) => candidate.id === operationId) ?? null;
-  if (operation) {
-    operationTheater.set(operationId, operation.theaterId);
-    // 지목 대상이 다른 Theater 소속이면 무대 머신 재사용을 위해 활성 Theater를 전환한다.
-    if (operation.theaterId !== getState().activeTheaterId) {
-      visitTriageTheater(operation.theaterId);
-    }
-  }
+  // 전 Theater가 마운트되므로 지목은 Theater를 전환하지 않는다 — 무대가 소속 무관하게 선다.
+  if (operation) operationTheater.set(operationId, operation.theaterId);
   dismissed.delete(operationId);
   const wasDeferred = deferredAt.delete(operationId);
   if (pickedOperationId === operationId) {

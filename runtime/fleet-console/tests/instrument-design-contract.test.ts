@@ -101,6 +101,11 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--triage-card-min",
   "--triage-row-min",
   "--triage-row-max",
+  // Fleet map TSX injects each theater zone's circle position/diameter and identity tint.
+  "--zone-x",
+  "--zone-y",
+  "--zone-size",
+  "--zone-tint",
 ]);
 
 function source(path: string): string {

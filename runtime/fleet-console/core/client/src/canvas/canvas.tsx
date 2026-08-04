@@ -30,7 +30,7 @@ import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { modeSlotGeometryFor, screenToCanvas, triageStageGeometryFor, type CanvasPoint, type CanvasRect } from "./coordinates.js";
-import { disarmTriageSetAside, dismissTriageOperation, getTriageCleared, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, nextTriageDeckZoomPreset, pickTriageOperation, reconcileTriageStageCompanion, resolveTriageQueue, scheduleTriageClear, setTriageSpotlightEnabled, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, visitTriageTheater, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
+import { disarmTriageSetAside, dismissTriageOperation, getTriageCleared, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, nextTriageDeckZoomPreset, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, resolveTriageQueue, scheduleTriageClear, setTriageSpotlightEnabled, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
 
 interface OperationsCanvasProps {
   readonly state: ConsoleState;
@@ -128,9 +128,6 @@ export function OperationsCanvas({
     readonly operationId: string;
     readonly cancel: () => void;
   } | null>(null);
-  // 무대 후보가 다른 Theater 소속일 때 전환을 요청한다 — 같은 요청의 재디스패치 루프는
-  // (operationId, theaterId) 쌍을 마지막 요청으로 기록해 막는다.
-  const pendingTriageTheaterSwitchRef = useRef<{ readonly operationId: string; readonly theaterId: string } | null>(null);
   const autoFocusedTriageStageRef = useRef<TriageStageIdentity | null>(null);
   const companionTriageStageRef = useRef<TriageStageIdentity | null>(null);
   const triageRuntimeRef = useRef<{
@@ -302,27 +299,6 @@ export function OperationsCanvas({
     ? [retainedTriageEntry, ...triageQueue.filter((entry) => entry.operation.id !== retainedTriageEntry.operation.id)]
     : triageQueue;
   const candidateTriageStage = triageActive ? triageDisplayQueue[0] ?? null : null;
-  // 무대 후보가 다른 Theater 소속이면 로컬 무대 렌더 대신 활성 Theater 전환을 요청한다.
-  // 전환이 안착하는 동안 deck는 그대로 보인다.
-  const foreignTriageStageCandidate = candidateTriageStage !== null
-    && !triageEntering
-    && candidateTriageStage.operation.theaterId !== state.activeTheaterId
-    ? candidateTriageStage
-    : null;
-  useEffect(() => {
-    if (!foreignTriageStageCandidate) {
-      pendingTriageTheaterSwitchRef.current = null;
-      return;
-    }
-    const pending = pendingTriageTheaterSwitchRef.current;
-    if (pending?.operationId === foreignTriageStageCandidate.operation.id
-      && pending.theaterId === foreignTriageStageCandidate.operation.theaterId) return;
-    pendingTriageTheaterSwitchRef.current = {
-      operationId: foreignTriageStageCandidate.operation.id,
-      theaterId: foreignTriageStageCandidate.operation.theaterId,
-    };
-    visitTriageTheater(foreignTriageStageCandidate.operation.theaterId);
-  }, [foreignTriageStageCandidate]);
   // 선별 처리의 관심사는 살아있는 함대다 — 휴면(dormant) Operation은 deck에 올리지 않는다.
   const triageDeckOperations = triageActive
     ? state.operations.filter((operation) => resolveOperationActivity(operation, state.operationStatus) !== "dormant")
@@ -352,8 +328,14 @@ export function OperationsCanvas({
         .map((entry) => entry.operation.id))
     : new Set();
   triageDeckArrivalDwellRef.current = deckPromotion.dwell;
-  const triageStage = foreignTriageStageCandidate === null && deckPromotion.promote ? candidateTriageStage : null;
+  // 전 Theater가 마운트되므로 무대는 Theater 전환 없이 어느 소속이든 그대로 오른다.
+  const triageStage = deckPromotion.promote ? candidateTriageStage : null;
   const triageStageId = triageStage?.operation.id ?? null;
+  const triageStageTheaterId = triageStage?.operation.theaterId ?? null;
+  useEffect(() => {
+    // 종료 시 "마지막으로 무대에 올랐던 Theater"로 복귀하기 위한 이력 — 무대가 설 때만 기록한다.
+    if (triageStageTheaterId !== null) recordTriageStageTheater(triageStageTheaterId);
+  }, [triageStageTheaterId]);
   const triageDeckArrivingOperationId = deckPromotion.arrivingOperationId;
   useEffect(() => {
     const dwell = triageDeckArrivalDwellRef.current;
@@ -388,7 +370,8 @@ export function OperationsCanvas({
     if (!triageActive) return undefined;
     const handlers = triagePreviewHandlersRef;
     const configs = new Map<string, OperationBodyConfig>();
-    for (const operation of theaterOperations) {
+    // 선별 중에는 전 Theater가 마운트된다 — 모든 카드가 라이브 프리뷰를 받는다.
+    for (const operation of state.operations) {
       // render가 없는 kind는 pool이 body를 만들지 못한다 — 빈 프리뷰 박스 대신 tail 폴백으로 내린다.
       const descriptor = registry.operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
       if (!descriptor?.render) continue;
@@ -408,11 +391,8 @@ export function OperationsCanvas({
         onSetCompanionPanelVisible: () => {},
       });
     }
-    // pool은 활성 Theater 범위다 — 다른 Theater 카드는 tail fallback(status detail)로 남긴다.
-    return (operation: OperationNode) => operation.theaterId === state.activeTheaterId
-      ? configs.get(operation.id) ?? null
-      : null;
-  }, [canvas.operations, language, registry.operationKinds, state.activeTheaterId, state.activeTheme, theaterOperations, triageActive]);
+    return (operation: OperationNode) => configs.get(operation.id) ?? null;
+  }, [canvas.operations, language, registry.operationKinds, state.activeTheme, state.operations, triageActive]);
   const setAsideArmedId = getTriageSetAsideArmedId();
   // 덱 줌 wheel은 React 합성 onWheel 밖에서 부착한다 — React는 root wheel을 passive로
   // 묶어 preventDefault(브라우저 페이지 줌 차단)가 무용해진다. 수식키 없는 wheel은 건드리지 않는다.
@@ -476,11 +456,13 @@ export function OperationsCanvas({
     }
   }, [minimized, state.activeOperationId, triageActive, triageStageId]);
   useEffect(() => {
-    if (!triageActive || !state.activeTheaterId || !triageStageId) {
+    if (!triageActive || !triageStageTheaterId || !triageStageId) {
       autoFocusedTriageStageRef.current = null;
       return;
     }
-    const nextStage = { theaterId: state.activeTheaterId, operationId: triageStageId };
+    // 무대 identity의 Theater는 활성 Theater가 아니라 무대 Operation의 소속이다 — 전 Theater
+    // 마운트 모드에서 외부 소속 무대도 전환 없이 서기 때문이다.
+    const nextStage = { theaterId: triageStageTheaterId, operationId: triageStageId };
     if (autoFocusedTriageStageRef.current?.theaterId === nextStage.theaterId
       && autoFocusedTriageStageRef.current.operationId === nextStage.operationId) return;
     autoFocusedTriageStageRef.current = nextStage;
@@ -495,22 +477,22 @@ export function OperationsCanvas({
       requestOperationKeyboardFocus(triageStageId);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [state.activeTheaterId, triageActive, triageStageId]);
+  }, [triageActive, triageStageId, triageStageTheaterId]);
   useLayoutEffect(() => {
-    if (!triageActive || !state.activeTheaterId) {
+    if (!triageActive || (!triageStageTheaterId && !state.activeTheaterId)) {
       companionTriageStageRef.current = clearInactiveTriageStageCompanion(companionTriageStageRef.current);
       return;
     }
     companionTriageStageRef.current = reconcileTriageStageCompanion(
       companionTriageStageRef.current,
-      { theaterId: state.activeTheaterId, operationId: triageStageId },
+      { theaterId: triageStageTheaterId ?? state.activeTheaterId!, operationId: triageStageId },
     );
     return () => {
       companionTriageStageRef.current = clearInactiveTriageStageCompanion(
         companionTriageStageRef.current,
       );
     };
-  }, [state.activeTheaterId, triageActive, triageStageId]);
+  }, [state.activeTheaterId, triageActive, triageStageId, triageStageTheaterId]);
   useEffect(() => {
     if (!triageActive) {
       pendingTriageClearRef.current?.cancel();
@@ -590,7 +572,9 @@ export function OperationsCanvas({
   const operationKindRegistry = registry.operationKinds;
   const maximizedOperationExists = maximizedOperationId !== null && theaterOperations.some((operation) => operation.id === maximizedOperationId && !minimizedSet.has(operation.id));
   const panelMaximized = maximizedOperationExists ? maximizedOperationId : null;
-  const currentCompanionOperation = companionOperationId === null ? undefined : theaterOperations.find((operation) => operation.id === companionOperationId && !minimizedSet.has(operation.id));
+  // 선별 중 companion 대상은 외부 Theater 무대일 수 있다 — 전 Theater 목록에서 해석해야
+  // 외부 무대의 companion layer가 열린다(비선별에는 활성 Theater로 한정해 기존 계약 유지).
+  const currentCompanionOperation = companionOperationId === null ? undefined : (triageActive ? state.operations : theaterOperations).find((operation) => operation.id === companionOperationId && !minimizedSet.has(operation.id));
   const currentCompanionDescriptor = currentCompanionOperation ? operationKindRegistry.find((kind) => kind.pluginId === currentCompanionOperation.pluginId && kind.type === currentCompanionOperation.type) : undefined;
   const currentAvailableCompanionPanels = currentCompanionOperation
     ? availableCompanionPanels(currentCompanionDescriptor?.companions ?? [], currentCompanionOperation)
@@ -610,8 +594,20 @@ export function OperationsCanvas({
   const hiddenCompanionPanelIds = companionPanels.filter((panel) => !visibleCompanionPanels.includes(panel)).map((panel) => panel.id);
   const panelCompanion = companionOperation && availablePanels.length > 0 ? companionOperation.id : null;
   const currentPanelCompanion = currentCompanionOperation && currentAvailableCompanionPanels.length > 0 ? currentCompanionOperation.id : null;
-  const pluginOperations = companionOperation && !theaterOperations.some((operation) => operation.id === companionOperation.id)
-    ? [...theaterOperations, companionOperation]
+  // 전 Theater 마운트 모드의 무대는 활성 Theater 밖 Operation일 수 있다 — companion과 같은
+  // 방식으로 프레임 목록에 합류시켜 Theater 전환 없이 무대를 세운다.
+  const foreignStageOperation = triageStage && !theaterOperations.some((operation) => operation.id === triageStage.operation.id)
+    ? triageStage.operation
+    : null;
+  const foreignCompanionOperation = companionOperation && !theaterOperations.some((operation) => operation.id === companionOperation.id)
+    ? companionOperation
+    : null;
+  const pluginOperations = foreignStageOperation || foreignCompanionOperation
+    ? [
+        ...theaterOperations,
+        ...(foreignCompanionOperation ? [foreignCompanionOperation] : []),
+        ...(foreignStageOperation && foreignStageOperation.id !== foreignCompanionOperation?.id ? [foreignStageOperation] : []),
+      ]
     : theaterOperations;
   const hasContent = triageActive ? triageStage !== null : hasVisibleCanvasContent(pluginOperations, minimizedSet);
   useEffect(() => {
@@ -835,7 +831,9 @@ export function OperationsCanvas({
             accentKey: canvas.operationAccent[operation.id] ?? operationAccentFromNode(operation),
             onActivate: () => {
               setActiveOperation(operation.id);
-              if (!operationMaximized && !operationCompanion && !formationView) setOperationGeometry(operation.id, canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation));
+              // 선별 중에는 기록하지 않는다 — 무대는 슬롯 geometry이고, 외부 Theater 무대의 기록은
+              // 활성 Theater 캔버스 store를 오염시킨다.
+              if (!operationMaximized && !operationCompanion && !formationView && !triageActive) setOperationGeometry(operation.id, canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation));
             },
             onClose: () => {
               if (triageActive) dismissTriageOperation(operation.id);
@@ -864,7 +862,7 @@ export function OperationsCanvas({
               onSetAccent(operation.id, accentKey);
             },
             onGeometryChange: (geometry) => {
-              if (!operationMaximized && !operationCompanion && !formationView) setOperationGeometry(operation.id, geometry);
+              if (!operationMaximized && !operationCompanion && !formationView && !triageActive) setOperationGeometry(operation.id, geometry);
             },
             onGeometryCommit: (geometry) => {
               if (!operationMaximized && !operationCompanion && !formationView) void updatePluginOperationGeometry(operation.id, getCanvasSnapshot().operations[operation.id] ?? geometry);
@@ -940,8 +938,6 @@ export function OperationsCanvas({
               title={t("canvas.triage.densityChipTitle")}
               aria-label={t("canvas.triage.densityChipTitle")}
               onClick={() => {
-                // 프리셋도 줌 컨트롤러의 tween 경로로 — store 선기록은 tween 시작 프레임에
-                // 지도 판정 폴백을 뒤집어 잘못된 모드가 한 프레임 번쩍인다(영속은 settle 시).
                 triageDeckZoom.control.setZoomTarget(nextTriageDeckZoomPreset(triageDeckZoom.zoom));
               }}
             >
@@ -971,13 +967,9 @@ export function OperationsCanvas({
         arrivingOperationId={triageDeckArrivingOperationId}
         stagedOperationId={triageStageId}
         onBeforePick={triageDeckZoom.control.snapZoomTween}
-        mapGeometryFor={(operation) => {
-          if (operation.theaterId === state.activeTheaterId) {
-            return canvas.operations[operation.id] ?? operation.geometry ?? null;
-          }
-          const snapshot = getTheaterCanvasSnapshot(operation.theaterId);
-          return snapshot.operations[operation.id] ?? operation.geometry ?? null;
-        }}
+        mapGeometryFor={(operation) => operation.theaterId === state.activeTheaterId
+          ? canvas.operations[operation.id] ?? operation.geometry ?? null
+          : getTheaterCanvasSnapshot(operation.theaterId).operations[operation.id] ?? operation.geometry ?? null}
         previewConfigFor={triagePreviewConfigFor}
         freshOperationIds={freshDeckOperationIds}
       />

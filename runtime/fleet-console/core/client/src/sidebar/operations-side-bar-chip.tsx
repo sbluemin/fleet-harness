@@ -26,6 +26,8 @@ interface SideBarChipProps {
   readonly isCloseArmed: boolean;
   readonly accentValue: string | null;
   readonly groupMark?: { readonly name: string; readonly color: string } | null;
+  /** 전역 선별 사이드바에서 소속 Theater를 축약 없이 보여주는 중립 pill — Theater 이름 전체를 넣는다. */
+  readonly theaterName?: string | null;
   readonly statusAxis?: boolean;
   readonly idleUnseen?: boolean;
   readonly statusLanded?: boolean;
@@ -35,6 +37,10 @@ interface SideBarChipProps {
   readonly dropTarget: boolean;
   /** peek(비활성 Theater) 미리보기 칩 — focus만 살리고 close/rename/accent/재배치 어포던스를 렌더하지 않는다. */
   readonly preview?: boolean;
+  /** 선별 사이드바처럼 최소화가 의미 없는 표면 — false면 최소화 버튼과 팔레트 최소화 소비를 끈다. */
+  readonly minimizeEnabled?: boolean;
+  /** 컨텍스트 메뉴(그룹/액센트) 호스트가 없는 표면 — false면 메뉴 어포던스와 해당 팔레트 소비를 끈다. */
+  readonly menuEnabled?: boolean;
   readonly onArmClose: (operationId: string) => void;
   readonly onDisarmClose: () => void;
   readonly onClose: (operationId: string) => void;
@@ -57,10 +63,13 @@ export function OperationsSideBarChip({
   isCloseArmed,
   accentValue,
   groupMark = null,
+  theaterName = null,
   statusAxis = false,
   idleUnseen = false,
   statusLanded = false,
   reorderEnabled = true,
+  minimizeEnabled = true,
+  menuEnabled = true,
   dragging,
   dragOffsetY,
   dropTarget,
@@ -80,7 +89,10 @@ export function OperationsSideBarChip({
   const suppressClickRef = useRef(false);
   const { operation, active, minimized, notificationCount, status } = entry;
   const title = displayTitle(operation);
-  const groupContext = statusAxis && groupMark ? t("sidebar.chip.inGroup", { name: groupMark.name }) : "";
+  // 전역 선별 목록에서 같은 제목이 여러 Theater에 있을 수 있다 — pill은 장식(aria-hidden)이므로
+  // 소속 Theater를 접근성 이름에 함께 싣는다. 기존 aria 키의 groupContext 슬롯을 재사용한다.
+  const theaterContext = theaterName ? t("sidebar.chip.inTheater", { name: theaterName }) : "";
+  const groupContext = (statusAxis && groupMark ? t("sidebar.chip.inGroup", { name: groupMark.name }) : "") + theaterContext;
   const unseenContext = idleUnseen ? t("sidebar.chip.unseenContext") : "";
   const chipAriaLabel = active
     ? t("sidebar.chip.focusedAria", { title, groupContext, unseenContext })
@@ -140,17 +152,20 @@ export function OperationsSideBarChip({
       return true;
     }
     if (request.action === "assign-group" || request.action === "set-accent") {
+      // 메뉴 호스트가 없는 표면에서 소비를 자칭하면 팔레트 요청이 침묵 실패한다 — 미소비로 남긴다.
+      if (!menuEnabled) return false;
       onDisarmClose();
       // 팔레트로 부른 칩은 사이드바 스크롤 밖일 수 있다. rect를 읽기 전에 끌어와야 메뉴가 화면 안에 앵커링된다.
       chip.scrollIntoView({ block: "nearest" });
       onOpenAccent(operation.id, chip.getBoundingClientRect(), chip, request.action);
       return true;
     }
+    if (!minimizeEnabled) return false;
     onDisarmClose();
     onMinimize(operation.id);
     chip.focus();
     return true;
-  }), [onDisarmClose, onMinimize, onOpenAccent, operation.id, preview, rename]);
+  }), [menuEnabled, minimizeEnabled, onDisarmClose, onMinimize, onOpenAccent, operation.id, preview, rename]);
 
   return (
     <li
@@ -160,13 +175,13 @@ export function OperationsSideBarChip({
       className={chipClassName}
       role="button"
       tabIndex={0}
-      aria-haspopup={preview ? undefined : "menu"}
+      aria-haspopup={preview || !menuEnabled ? undefined : "menu"}
       aria-label={chipAriaLabel}
       aria-current={active ? "true" : undefined}
       title={preview ? t("sidebar.chip.previewTitle") : active ? t("sidebar.chip.activeTitle") : t("sidebar.chip.idleTitle")}
       style={chipStyle}
       onClick={focus}
-      onContextMenu={preview ? undefined : openAccent}
+      onContextMenu={preview || !menuEnabled ? undefined : openAccent}
       onFocus={() => {
         if (!isCloseArmed) onDisarmClose();
       }}
@@ -182,7 +197,7 @@ export function OperationsSideBarChip({
           onKeyboardMove(operation.id, event.key === "ArrowUp" ? -1 : 1);
           return;
         }
-        if (!preview && (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) {
+        if (!preview && menuEnabled && (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) {
           event.preventDefault();
           onDisarmClose();
           onOpenAccent(operation.id, event.currentTarget.getBoundingClientRect(), event.currentTarget);
@@ -217,6 +232,11 @@ export function OperationsSideBarChip({
       {notificationCount > 0 ? (
         <span className="side-bar-chip-count">{notificationCount}</span>
       ) : null}
+      {theaterName ? (
+        <span className="side-bar-chip-theater-pill" title={theaterName} aria-hidden="true">
+          {theaterName}
+        </span>
+      ) : null}
       {groupMark && statusAxis && !preview ? (
         <span
           className="side-bar-chip-group-pill"
@@ -249,7 +269,7 @@ export function OperationsSideBarChip({
           title={chipStatusLabel(status)}
         />
       ) : null}
-      {!preview && !minimized ? (
+      {!preview && !minimized && minimizeEnabled ? (
         <button
           type="button"
           className="side-bar-chip-minimize"

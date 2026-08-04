@@ -315,6 +315,12 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const handleFocus = useCallback((operationId: string) => {
     const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);
     if (!operation) return;
+    // 선별 중에는 전 Theater가 마운트이므로 focusOperation의 Theater 전환을 타지 않고 바로 지목한다 —
+    // 전환을 타면 loadForTheater가 목적지의 저장된 focus layer를 선별 위로 부활시킨다.
+    if (isTriageActive()) {
+      void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId));
+      return;
+    }
     if (operation.theaterId !== stateRef.current.activeTheaterId) {
       focusRequestEpochRef.current += 1;
       focusOperation(operationId);
@@ -485,7 +491,12 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           theaters={state.theaters}
           operations={state.operations}
           operationStatus={state.operationStatus}
+          operationNotifications={state.operationNotifications}
+          catalog={catalog}
+          renderKindIcon={renderKindIcon}
           onPick={pickTriageOperation}
+          onClose={handleClose}
+          onRename={handleRename}
         />
       ) : (
       <OperationsSideBar
@@ -540,7 +551,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   );
   return (
     <OperationBodyPool
-      operations={theaterOperations}
+      operations={triageActive ? state.operations : theaterOperations}
       operationKinds={registry.operationKinds}
       capabilities={poolCapabilities}
       defaultConfig={defaultBodyConfig}
@@ -555,6 +566,8 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
   const requestEpoch = ++requestEpochRef.current;
   const triageOperation = getState().operations.find((candidate) => candidate.id === operationId);
   if (triageOperation && isTriageActive()) {
+    // 선별 중 focusOperation은 store 가드(registerFocusTheaterSwitchSuppression)로 Theater를
+    // 전환하지 않는다 — 지목만으로 무대가 서고, 활성 Theater는 그대로다.
     pickTriageOperation(operationId);
     requestOperationKeyboardFocus(operationId);
     return;

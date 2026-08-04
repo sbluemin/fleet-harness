@@ -2165,40 +2165,102 @@
   scrollbar-width: thin;
 }
 
-/* 작전지도 LOD — 밴드별 지도는 band-body를 기준으로 절대 배치되고, is-map-mode에서 카드를 은닉한다. */
-.canvas-triage-deck.is-map-mode .canvas-triage-deck-band-cards {
+/* 작전지도 LOD — 카드가 줌 한계 아래로 읽히지 않는 크기로 낙찰하면 밴드는 mount를 유지한 채
+   은닉되고(카드 슬롯=비무대 body의 고정 거처, is-under-stage와 같은 계약) 지도 판이 그 위를 덮는다. */
+.canvas-triage-deck.is-map-mode .canvas-triage-deck-band-cards,
+.canvas-triage-deck.is-map-mode .canvas-triage-deck-band-head {
   visibility: hidden;
   opacity: 0;
   pointer-events: none;
 }
 
-.canvas-triage-deck-band-body {
+/* 작전지도는 격리된 타일이 아니라 하나의 연속된 판이다 — 지구본 위의 작전구역들처럼 모든
+   Operation이 같은 차원의 좌표계 위에 있고, Theater는 그 판 위의 구역 경계선으로만 구분된다.
+   숨은 밴드 스택 위의 오버레이라 grid에 relative가 필요하다. */
+.canvas-triage-deck-grid {
   position: relative;
-  min-height: 48px;
 }
 
-.canvas-triage-map {
+/* 연속 격자는 판(fleet)이 소유한다 — 구역이 각자 배경 격자를 가지면 판이 쪼개져 보인다. */
+.canvas-triage-map-fleet {
   position: absolute;
   inset: 0;
   z-index: 1;
-  visibility: hidden;
-  opacity: 0;
-  pointer-events: none;
+  min-height: 100%;
+  min-width: 0;
   background:
     repeating-linear-gradient(to right, color-mix(in oklch, var(--hairline) 45%, transparent) 0 1px, transparent 1px 64px),
     repeating-linear-gradient(to bottom, color-mix(in oklch, var(--hairline) 45%, transparent) 0 1px, transparent 1px 64px);
-  transition:
-    opacity var(--duration-slow) var(--ease-glide),
-    visibility 0s linear var(--duration-slow);
 }
 
-.canvas-triage-deck.is-map-mode .canvas-triage-map {
-  visibility: visible;
-  opacity: 1;
-  pointer-events: auto;
-  transition:
-    opacity var(--duration-slow) var(--ease-glide),
-    visibility 0s linear 0s;
+/* 작전구역 — 하나의 판 위에 떠 있는 원. 점선 원주와 옅은 radial 워시, 원 위 이름표만으로
+   "같은 차원의 바다 위 구역"임을 말한다. 크기·자리는 resolveTriageFleetZoneLayout이 정한다. */
+/* 구역 원주·워시·이름표는 --zone-tint(--id-* 8톤, theaters 선언 순 배정)를 입는다 — Theater는
+   정체성 채널이므로 identity 톤이 맞고, 상태(dot)는 signal 토큰을 그대로 유지한다. 점선 원주는
+   패널 보더가 아니라 차트 주석이라 state-owned border 문법의 대상이 아니다(의도된 예외). */
+.canvas-triage-map-zone {
+  position: absolute;
+  left: var(--zone-x);
+  top: var(--zone-y);
+  height: var(--zone-size);
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%);
+  border: 1px dashed color-mix(in oklch, var(--zone-tint, var(--brass)) 44%, transparent);
+  border-radius: var(--radius-pill);
+  background: radial-gradient(circle, color-mix(in oklch, var(--zone-tint, var(--brass)) 7%, transparent) 0%, transparent 74%);
+}
+
+.canvas-triage-map-zone-head .canvas-triage-deck-band-chip {
+  background: color-mix(in oklch, var(--zone-tint, var(--brass)) 22%, transparent);
+  color: var(--zone-tint, var(--brass-bright));
+}
+
+.canvas-triage-map-zone .canvas-triage-map-zone-label {
+  color: color-mix(in oklch, var(--zone-tint, var(--brass)) 72%, var(--text-primary));
+}
+
+/* 단일 Theater — 구역을 나눌 이유가 없어 원 없이 판 전체가 dot 필드가 된다. */
+.canvas-triage-map--plane {
+  position: absolute;
+  inset: 6% 4%;
+}
+
+.canvas-triage-map-zone-head {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  color: var(--brass-ink);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.canvas-triage-map-zone-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.canvas-triage-map-zone-counts {
+  flex: none;
+  color: var(--text-tertiary);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.06em;
+}
+
+/* dot 좌표계는 원에 내접하는 사각 필드 — 마커 투영([8,92]%×[10,86]%)이 원 밖으로 나가지 않는다. */
+.canvas-triage-map-zone .canvas-triage-map {
+  position: absolute;
+  inset: 13%;
 }
 
 .canvas-triage-map-dot {
@@ -2326,10 +2388,14 @@
   letter-spacing: 0.06em;
 }
 
+.canvas-triage-deck-band-body {
+  position: relative;
+  min-width: 0;
+  min-height: var(--triage-row-min, 150px);
+}
+
 .canvas-triage-deck-band-cards {
   display: grid;
-  /* 카드 최소폭/행 높이는 덱 줌(rAF tween)이 --triage-card-min/--triage-row-min/--triage-row-max
-     inline 변수로 매 프레임 갱신한다 — fallback은 줌 1.0의 기본 배치와 픽셀 동일해야 한다. */
   grid-template-columns: repeat(auto-fill, minmax(min(var(--triage-card-min, 260px), 100%), 1fr));
   grid-auto-rows: minmax(var(--triage-row-min, 150px), var(--triage-row-max, 210px));
   gap: 10px;
@@ -3313,30 +3379,11 @@
   }
 }
 
-/* 선별 처리 전용 사이드바 — Theater 트리 없이 전역 큐의 처리 순서 목록만 단다.
-   표면/경계 문법은 .operations-side-bar를 그대로 이어받아 좌측 열의 일체감을 유지한다. */
-.triage-side-bar {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  width: var(--side-bar-width, 240px);
-  min-width: 0;
-  height: 100%;
-  padding: var(--space-3) var(--space-2);
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  background: var(--surface-chrome);
-  border: 1px solid var(--surface-rim);
-  border-left: none;
-  border-bottom: none;
-  border-radius: 0 var(--radius-xl) 0 0;
-  box-shadow: var(--shadow-soft);
-}
-
+/* 선별 처리 전용 사이드바 — Map 사이드바(.operations-side-bar)의 표면·접힘 문법을 그대로
+   상속하고, 전역 상태 섹션 + 칩만 싣는다(Theater 트리 없음). 아래는 선별 고유 조각뿐이다. */
 .triage-side-bar-caption {
   flex: none;
-  padding: 0 var(--space-1);
+  padding: var(--space-1) var(--space-1) 0;
   color: var(--brass-ink);
   font-family: var(--font-mono);
   font-size: 10px;
@@ -3351,117 +3398,6 @@
   font-family: var(--font-mono);
   font-size: 10px;
   line-height: 1.45;
-}
-
-.triage-side-bar-section {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.triage-side-bar-section-label {
-  padding: var(--space-1) var(--space-1) 2px;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  border-top: 1px solid color-mix(in oklch, var(--hairline) 60%, transparent);
-}
-
-.triage-side-bar-row {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  width: 100%;
-  min-width: 0;
-  padding: 5px var(--space-1);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: none;
-  color: var(--text-secondary);
-  font-family: var(--font-body);
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    border-color var(--duration-fast) var(--ease-glide),
-    background var(--duration-fast) var(--ease-glide);
-}
-
-.triage-side-bar-row:hover,
-.triage-side-bar-row:focus-visible {
-  border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 7%, var(--surface-glass));
-  outline: none;
-}
-
-.triage-side-bar-row.is-current {
-  border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 10%, var(--surface-glass));
-  color: var(--text-primary);
-}
-
-.triage-side-bar-ordinal {
-  flex: none;
-  color: var(--brass-ink);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.06em;
-}
-
-.triage-side-bar-dot {
-  width: 7px;
-  height: 7px;
-  flex: none;
-  border-radius: var(--radius-pill);
-  background: var(--ink-fog);
-}
-
-.triage-side-bar-dot.is-awaiting {
-  background: var(--aurora);
-  box-shadow: 0 0 10px var(--aurora-glow);
-}
-
-.triage-side-bar-dot.is-running {
-  background: var(--warn);
-}
-
-.triage-side-bar-dot.is-background {
-  background: var(--warn);
-  opacity: 0.6;
-}
-
-.triage-side-bar-dot.is-idle {
-  background: var(--ink-fog);
-}
-
-.triage-side-bar-title {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.triage-side-bar-chip {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 18px;
-  height: 18px;
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--brass) 16%, transparent);
-  color: var(--brass-bright);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: var(--weight-bold);
 }
 
 .side-bar-theater-error {
@@ -3989,6 +3925,25 @@
   border-radius: 999px;
   color: color-mix(in oklch, var(--group-mark) 85%, var(--text-primary));
   background: color-mix(in oklch, var(--group-mark) 13%, transparent);
+}
+
+/* 전역 선별 사이드바의 소속 Theater pill — 그룹 pill과 같은 자리 문법이되, 식별 색이 아닌
+   중립 톤이다(Theater는 --id-* 채널을 갖지 않고, 이름 전체를 축약 없이 싣는 것이 목적). */
+.side-bar-chip-theater-pill {
+  flex: none;
+  max-width: 112px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border: 1px solid var(--surface-rim);
+  border-radius: 999px;
+  color: var(--text-tertiary);
+  background: color-mix(in oklch, var(--surface-glass) 70%, transparent);
 }
 
 .side-bar-chip--status-landed {
