@@ -22,6 +22,36 @@ describe("gateway workflow skill asset", () => {
     expect(content).toContain("## Model and Effort Assignment");
   });
 
+  // 이름이 양쪽 레지스트리에 모두 있어야 한다는 규칙과 그 실패 신호는, 세션 시작에 고정된
+  // Agent 이름과 실시간 로스터가 어긋나는 유일한 경우를 설명하는 문장이다. 조용히 사라지면
+  // 호스트는 unknown-name 실패를 로스터 오류로 오진한다.
+  it("keeps the both-sides name check and its failure signal", () => {
+    const content = skillContent();
+
+    expect(content).toContain("Confirm the name exists on both sides.");
+    expect(content).toContain("`400 unknown model` means re-read the roster.");
+    expect(content).toContain("Reaching a newly enabled model requires a new session.");
+  });
+
+  it("keeps every gateway skeleton routing execution to this skill", () => {
+    // workflow 자산만 계약으로 덮여 있었다. 나머지 스켈레톤이 이 라우팅 문장을 잃으면
+    // 각 스킬이 모델 배정을 자기 방식으로 다시 정의해도 깨지는 테스트가 없다.
+    for (const relativePath of [
+      "gateway/architecture-review/SKILL.md",
+      "gateway/codebase-research/SKILL.md",
+      "gateway/implementation-run/SKILL.md",
+      "gateway/quality-review/SKILL.md",
+    ]) {
+      const asset = EMBEDDED_AGENT_CLI_SKILL_ASSETS.find(
+        (entry) => entry.relativePath === relativePath,
+      );
+      expect(asset, relativePath).toBeDefined();
+      expect(asset?.content, relativePath).toContain(
+        "model and effort assignment — belongs to `workflow`",
+      );
+    }
+  });
+
   it("makes distribution the default and the session model the exception", () => {
     const content = skillContent();
 

@@ -189,8 +189,19 @@ export const KIMI_SUBSCRIPTION_MODELS = providerModels("kimi");
 export const OPENCODE_SUBSCRIPTION_MODELS = providerModels("opencode");
 
 /**
- * Claude Code currently filters discovered models whose id does not start with `claude`.
- * The gateway therefore exposes and accepts exact Claude-compatible aliases.
+ * The prefix every discovered gateway model id carries.
+ *
+ * It was introduced against a Claude Code discovery filter that dropped ids not
+ * beginning with `claude`. That filter no longer exists: in 2.1.221 the reader of
+ * the gateway model cache maps every entry into the picker with no id test at all
+ * (observed 2026-08-04). The prefix is therefore not what makes a model
+ * discoverable, and a future reader should not infer that it is.
+ *
+ * It stays because the grammar is already published. Persisted sessions,
+ * `ANTHROPIC_MODEL` values, and stored defaults hold prefixed ids, and
+ * `findGatewayModel` resolves a prefixed id and a bare registry id to the same
+ * model. Dropping the prefix is a migration of those persisted values, not an
+ * edit to this constant.
  */
 export const GATEWAY_MODEL_ALIAS_PREFIX = "claude-gateway--";
 const CLAUDE_ONE_MILLION_MARKER = "[1m]";
@@ -266,6 +277,11 @@ export function upstreamModelId(model: GatewayModel): string {
  * measured about one holds for its siblings. Entries that merely share a vendor
  * name do not collapse: Cursor's `kimi-k3` and Moonshot's `k3` reach different
  * upstreams through different transports and keep separate identities.
+ *
+ * This is a lookup key for measurements recorded per upstream, not a routing
+ * fact and not an id anything accepts. It stays out of `GatewayModelConstraints`
+ * for that reason: a caller handed a `provider::model` string next to real model
+ * ids will eventually pass it as one.
  */
 export function gatewayModelIdentity(model: GatewayModel): string {
   return `${model.provider}::${upstreamModelId(model)}`;
@@ -277,7 +293,6 @@ export function gatewayModelIdentity(model: GatewayModel): string {
  * declaration — unlike suitability, which is a judgement and lives elsewhere.
  */
 export interface GatewayModelConstraints {
-  readonly identity: string;
   readonly provider: GatewayProvider;
   readonly contextWindow?: number;
   /**
@@ -303,7 +318,6 @@ export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelC
     ? model.effort.levels.filter((level) => ANTHROPIC_EFFORT_RUNGS.has(level))
     : [];
   return {
-    identity: gatewayModelIdentity(model),
     provider: model.provider,
     ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
     effortLadder: Object.freeze([...ladder]),

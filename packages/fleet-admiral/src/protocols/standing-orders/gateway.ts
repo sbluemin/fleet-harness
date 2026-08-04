@@ -148,15 +148,15 @@ const DEEP_DIVE: StandingOrder = {
   name: "Deep Dive",
   prompt: String.raw`## Deep Dive Standing Order
 
-A cross-cutting verification procedure that can be triggered **at any point** whenever results contain speculation, ambiguity, or insufficient evidence. It is not a phase of its own — it is a procedure that interrupts the current step, runs to completion, and then resumes that step. Throughout, never flatten uncertainty into confident-sounding summaries — preserve and surface ambiguity honestly.
+A cross-cutting verification procedure. It is not a phase of its own — it interrupts the current step, runs to completion, and then resumes that step. Throughout, never flatten uncertainty into confident-sounding summaries — preserve and surface ambiguity honestly.
 
 ### Trigger
-Speculation-trigger handling is routed by the Result Integrity trigger mapping table.
+Entry is routed by the Result Integrity trigger mapping table. This order owns unverified claims only; ambiguity or thin evidence is a confidence gap and re-enters Context Confidence instead.
 
 ### Procedure
-1. **Surface scan** — Look for obvious speculation markers (e.g., "likely", "probably", "I think", "may be", "not sure but…").
-2. **Speculation audit** — If the result is lengthy, complex, or touches unfamiliar territory, skip your own scan and give the audit its own run:
-   - Give that run explicit instructions: *"Review the following analysis for speculative, assumed, or unverified claims. Flag each with evidence of why it is speculative and what verification is needed."*
+1. **Choose the scan.** Scan it yourself when the result is short and confined to ground already read this session; give it its own run otherwise. These are alternatives, not steps.
+2. **Run that scan.** Yours sweeps for speculation markers (e.g., "likely", "probably", "I think", "may be", "not sure but…"). Its own run gets explicit instructions:
+   - *"Review the following analysis for speculative, assumed, or unverified claims. Flag each with evidence of why it is speculative and what verification is needed."*
 3. **Follow-up verification** — For each identified speculative element, start a verification run that seeks independent confirmation or refutation.
 4. **Repeat** until all speculative elements are either **confirmed with evidence** or explicitly flagged as **unresolvable unknowns**.
 

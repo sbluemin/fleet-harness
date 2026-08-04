@@ -78,6 +78,9 @@ describe("claude-gateway custom agents", () => {
       // 호스트가 읽는 유일한 선택 신호이므로 프롬프트와 같은 모드 어휘를 써야 한다.
       expect(agent.description).toContain("recon, decide, implement, or verify");
       expect(agent.description).not.toMatch(/researching complex questions/i);
+      // 이름과 모델 id는 철자가 다르고 서로 대체되지 않는다. 이 문장이 사라지면 둘을 잇는
+      // 자리가 없어지고, 이름을 요구하는 자리에 모델 id를 넣는 실패로 되돌아간다.
+      expect(agent.description).toContain(`agent type name ${name}`);
     }
     const withEffort = names.find((name) => name.endsWith("-high"));
     expect(withEffort).toBeDefined();
