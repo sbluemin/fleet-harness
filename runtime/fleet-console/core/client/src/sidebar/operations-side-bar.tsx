@@ -755,6 +755,9 @@ export function OperationsSideBar({
     if (event.defaultPrevented) return;
     event.preventDefault();
     setActiveContextMenu(null);
+    // 캔버스(Map) 쪽에 이미 열린 캔버스 제어 메뉴는 사이드바 <aside> 안에 있지 않아
+    // 포털의 mousedown 외부-클릭 닫기가 안 잡는다 — 포털이 구독하는 닫기 신호를 함께 본다.
+    window.dispatchEvent(new Event("canvas-context-menu-close"));
     setNewMenu({
       anchor: { x: event.clientX, y: event.clientY },
       viewportBounds: { width: window.innerWidth, height: window.innerHeight },
