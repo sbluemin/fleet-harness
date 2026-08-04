@@ -59,9 +59,7 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   "Indigo",
   "Plum",
   "Rose",
-  // 모드 커튼 키커(고정 대문자 각인)·투어 진행 표기(숫자 포맷)
-  "WAR ROOM",
-  "TACTICAL",
+  // 투어 진행 표기(숫자 포맷)
   "{current} / {total}",
   // 제품 탭·Cowork 설정 토큰
   "Fleet CLI",

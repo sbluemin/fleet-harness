@@ -247,6 +247,45 @@ describe("CanvasMinimap collapse behavior", () => {
     }
   });
 
+  it("titles the mode curtain with the mode name and repeats it when Tactical returns to Cruise", () => {
+    vi.useFakeTimers();
+    try {
+      const theaterId = "cruise-curtain";
+      const operations = [0, 1].map((index) => ({
+        ...OPERATION,
+        id: `cruise-${index + 1}`,
+        theaterId,
+        title: `Cruise ${index + 1}`,
+        ts: { createdAt: index, updatedAt: index },
+      }));
+      loadForTheater(theaterId);
+      setState({
+        operations: Object.fromEntries(operations.map((operation, index) => [
+          operation.id,
+          { x: index * 40, y: index * 40, width: 320, height: 200, zIndex: index + 1 },
+        ])),
+      });
+      renderOperationsCanvas({ ...CANVAS_STATE, activeTheaterId: theaterId, operations });
+
+      // 마운트 직후의 Cruise는 복귀가 아니다 — 커튼을 치지 않는다.
+      expect(document.querySelector(".canvas-cruise-curtain")).toBeNull();
+
+      act(() => toggleFormationView());
+      expect(document.querySelector(".canvas-formation-curtain strong")?.textContent).toBe("Tactical");
+      expect(document.querySelector(".canvas-mode-curtain-kicker")).toBeNull();
+      act(() => vi.advanceTimersByTime(1_950));
+
+      act(() => clearFormationView());
+      expect(document.querySelector(".canvas-cruise-curtain strong")?.textContent).toBe("Cruise");
+
+      act(() => vi.advanceTimersByTime(1_400));
+      expect(document.querySelector(".canvas-cruise-curtain")).toBeNull();
+    } finally {
+      act(() => clearFormationView());
+      vi.useRealTimers();
+    }
+  });
+
   it("does not render the empty canvas state beneath the Formation entry curtain", () => {
     vi.useFakeTimers();
     try {
