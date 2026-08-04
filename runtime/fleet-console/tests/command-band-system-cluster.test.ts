@@ -45,6 +45,10 @@ function LocationProbe() {
   return createElement("output", { "data-testid": "location" }, `${location.pathname}${location.search}`);
 }
 
+function HistoryLengthProbe() {
+  return createElement("output", { "data-testid": "history-length" }, String(window.history.length));
+}
+
 function mountClusterAt(initialPath: string) {
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -54,11 +58,16 @@ function mountClusterAt(initialPath: string) {
     { initialEntries: [initialPath] },
     createElement(CommandBandSystemCluster),
     createElement(LocationProbe),
+    createElement(HistoryLengthProbe),
   )));
 }
 
 function currentPath(): string {
   return document.querySelector<HTMLOutputElement>('[data-testid="location"]')!.value;
+}
+
+function currentHistoryLength(): number {
+  return Number(document.querySelector<HTMLOutputElement>('[data-testid="history-length"]')!.value);
 }
 
 function menuItems(): HTMLElement[] {
@@ -89,6 +98,17 @@ describe("CommandBandSystemCluster", () => {
 
     act(() => settings.click());
     expect(currentPath()).toBe("/settings");
+    const lengthAtSettings = currentHistoryLength();
+
+    act(() => settings.click());
+    expect(currentPath()).toBe("/operations");
+    // Closing consumes the Settings entry instead of pushing another one.
+    expect(currentHistoryLength()).toBe(lengthAtSettings);
+  });
+
+  it("treats a trailing-slash Settings pathname as the settings page and closes to /operations", () => {
+    mountClusterAt("/settings/");
+    const settings = document.querySelector<HTMLButtonElement>(".command-band-settings")!;
 
     act(() => settings.click());
     expect(currentPath()).toBe("/operations");

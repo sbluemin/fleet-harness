@@ -55,14 +55,17 @@ function SettingsButton({ updateAvailable }: { readonly updateAvailable: boolean
 
   const goToSettings = () => {
     // 설정 화면에서 다시 누륄 때 토글로 닫는다 — 설정 내 섹션 이동은 search만 바꾸므로
-    // pathname 기준으로 판별해야 잘못 닫히지 않는다. 직행 진입이 아닌 경우(딥링크 등)는
-    // 기본 화면인 /operations로 복귀한다.
-    if (location.pathname === "/settings") {
+    // pathname 기준으로 판별해야 잘못 닫히지 않는다. React Router는 후행 슬래시를 허용하므로
+    // 비교·기록 모두 정규화한다. 직행 진입(딥링크 등)은 기본 화면인 /operations로 복귀한다.
+    const pathname = location.pathname.replace(/\/+$/, "") || "/";
+    if (pathname === "/settings") {
       const from = (location.state as { from?: string } | null)?.from;
-      navigate(from ?? "/operations");
+      // 닫기는 설정 항목을 소비하는 동작이므로 replace — push면 토글마다
+      // settings/이전 화면이 교대로 쌓여 Back이 설정을 다시 연다.
+      navigate(from ?? "/operations", { replace: true });
       return;
     }
-    navigate("/settings", { state: { from: `${location.pathname}${location.search}` } });
+    navigate("/settings", { state: { from: `${pathname}${location.search}` } });
     window.requestAnimationFrame(() => {
       const target = document.querySelector<HTMLElement>("main h2, h2");
       target?.focus?.();
