@@ -8,6 +8,7 @@ import "@fleet-console/font-picker/styles.css";
 import { fetchSystemFonts, SystemFontsFetchError } from "@fleet-console/font-picker/system-fonts";
 
 import { BackendApiSection } from "../components/backend-api-section.js";
+import { propagateSettingsEntryIndex } from "../components/command-band-system-cluster.js";
 import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { renderMessage, useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { useConsoleState } from "../hooks/use-store.js";
@@ -110,7 +111,12 @@ export function GlobalSettings() {
   const pluginGroups = groupPluginSettingsSections(pluginSections);
   const selectSection = (sectionId: SettingsSectionId) => {
     setActiveSectionId(sectionId);
-    navigate({ pathname: "/settings", search: sectionId === "general" ? "" : `?section=${encodeURIComponent(sectionId)}` });
+    // 설정 토글 버튼이 닫힐 때 설정 구간 전체를 소비하려면 진입 마커가 필요하다 —
+    // 이 push는 state 없이 새 항목을 만들므로 마커를 명시적으로 전파한다.
+    navigate(
+      { pathname: "/settings", search: sectionId === "general" ? "" : `?section=${encodeURIComponent(sectionId)}` },
+      { state: propagateSettingsEntryIndex(null) },
+    );
   };
 
   useEffect(() => {

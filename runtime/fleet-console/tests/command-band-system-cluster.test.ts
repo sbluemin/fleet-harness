@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { CommandBandSystemCluster, resolveUpdateApplyCopy } from "../core/client/src/components/command-band-system-cluster.js";
+import { CommandBandSystemCluster, propagateSettingsEntryIndex, resolveUpdateApplyCopy } from "../core/client/src/components/command-band-system-cluster.js";
 import { getT } from "../core/client/src/i18n/index.js";
 
 let root: Root | null = null;
@@ -52,8 +52,9 @@ function HistoryLengthProbe() {
 // GlobalSettings.selectSection과 같은 방식의 push 네비게이션을 재현하는 프로브.
 function SectionPushProbe() {
   const navigate = useNavigate();
+  const location = useLocation();
   (window as typeof window & { __pushSettingsSection?: () => void }).__pushSettingsSection = () => {
-    navigate({ pathname: "/settings", search: "?section=backend-api" });
+    navigate({ pathname: "/settings", search: "?section=backend-api" }, { state: propagateSettingsEntryIndex(location.state) });
   };
   return null;
 }
