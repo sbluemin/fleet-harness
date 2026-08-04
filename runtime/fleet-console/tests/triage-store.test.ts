@@ -1481,6 +1481,33 @@ describe("triage deck zoom", () => {
     expect(grid.scrollTop).toBe(140);
     expect(getTriageDeckZoom()).toBe(zoomBeforeShift);
 
+    // Firefox 물리 휠은 line 단위(deltaMode=1)로 보고한다 — 16px/line 정규화 없이는
+    // 한 노치가 0.7% 줌이 되어 문법이 사실상 죽는다.
+    const lineWheel = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 3,
+      deltaMode: WheelEvent.DOM_DELTA_LINE,
+    });
+    act(() => {
+      grid.dispatchEvent(lineWheel);
+    });
+    expect(lineWheel.defaultPrevented).toBe(true);
+    const expectedLineZoomMin = Math.round(260 * Math.exp(-3 * 16 * 0.0022));
+    expect(host.style.getPropertyValue("--triage-card-min")).toBe(`${expectedLineZoomMin}px`);
+
+    const lineShiftWheel = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 3,
+      deltaMode: WheelEvent.DOM_DELTA_LINE,
+      shiftKey: true,
+    });
+    act(() => {
+      grid.dispatchEvent(lineShiftWheel);
+    });
+    expect(grid.scrollTop).toBe(140 + 3 * 16);
+
     detach?.();
   });
 

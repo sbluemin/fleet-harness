@@ -275,6 +275,13 @@ export function useTriageDeckZoomControl(): {
         if (!(event.target instanceof Element) || event.target.closest(".canvas-triage-deck") === null) return;
         // Alt 제스처는 건드리지 않는다.
         if (event.altKey) return;
+        // deltaMode 정규화 — Firefox 물리 휠은 line(1)/page(2) 단위로 보고한다. 픽셀 튜닝된
+        // 지수·스크롤 경로에 그대로 넣으면 한 노치가 0.7% 줌이 되거나 페이지 단위로 튄다.
+        const deltaScale = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? 16
+          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+            ? Math.max(240, element.clientHeight)
+            : 1;
         // Shift+wheel은 카드 격자 세로 스크롤(지도 모드에서는 no-op).
         if (event.shiftKey) {
           if (isTriageDeckMapModeActive()) return;
@@ -282,13 +289,13 @@ export function useTriageDeckZoomControl(): {
           if (!(grid instanceof HTMLElement)) return;
           event.preventDefault();
           // 일부 브라우저·트랙패드는 Shift+wheel을 deltaX로 보고한다 — 세로 스크롤로 수렴시킨다.
-          grid.scrollTop += event.deltaY !== 0 ? event.deltaY : event.deltaX;
+          grid.scrollTop += (event.deltaY !== 0 ? event.deltaY : event.deltaX) * deltaScale;
           return;
         }
         // bare wheel과 Ctrl/Meta+wheel 모두 덱 줌 — 브라우저 페이지 줌 차단도 유지한다.
         event.preventDefault();
         const zoom = zoomRef.current;
-        const next = Math.min(2.0, Math.max(0.35, zoom * Math.exp(-event.deltaY * TRIAGE_DECK_ZOOM_WHEEL_SPEED)));
+        const next = Math.min(2.0, Math.max(0.35, zoom * Math.exp(-event.deltaY * deltaScale * TRIAGE_DECK_ZOOM_WHEEL_SPEED)));
         if (next === zoom) return;
         applyZoom(next);
         setTargetZoom(next);
