@@ -4,9 +4,12 @@ import { useLocation, useNavigate } from "react-router-dom";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import { ApiError, applyConsoleUpdate } from "../api.js";
+import { FEATURE_TOURS } from "../feature-tour-catalog.js";
+import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
 import { openWhatsNew } from "../store.js";
+import { forgetSeenFeatureTours, replayableFeatureTourIds } from "./feature-tour.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 
 type UpdateApplyState = "idle" | "applying" | "accepted" | "completed" | "blocked" | "error";
@@ -131,14 +134,28 @@ function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: 
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const globalSettings = useGlobalSettingsStore();
+  const seenFeatureTours = globalSettings.state?.seenFeatureTours ?? [];
+  // 지금 화면에서 되살릴 수 있는 안내를 메뉴가 열릴 때 한 번 잰다 — 없으면 항목을 눌러도
+  // 아무 일도 일어나지 않으므로, 무응답 대신 비활성으로 그 사실을 먼저 알린다.
+  const replayableTourIds = open ? replayableFeatureTourIds(FEATURE_TOURS, document) : [];
+  const replayDisabled = forgetSeenFeatureTours(seenFeatureTours, replayableTourIds) === seenFeatureTours;
 
   useMenuButtonKeyboard(rootRef, triggerRef, menuRef, open, setOpen);
+
+  const replayScreenGuide = () => {
+    const next = forgetSeenFeatureTours(seenFeatureTours, replayableTourIds);
+    setOpen(false);
+    if (next === seenFeatureTours) return;
+    void setGlobalSettingsField("seenFeatureTours", next);
+  };
 
   return <span ref={rootRef} className="command-band-system-anchor">
     <button ref={triggerRef} type="button" className="command-band-button command-band-help" onClick={() => setOpen((previous) => !previous)} aria-haspopup="menu" aria-expanded={open} aria-label={t("chrome.system.help")} title={t("chrome.system.help")}><HelpGlyph /></button>
     {open ? <div ref={menuRef} className="command-band-system-menu" role="menu" aria-label={t("chrome.system.help")}>
       <button type="button" role="menuitem" disabled={releaseDisabled} onClick={() => { setOpen(false); openWhatsNew(); }}><WhatsNewGlyph /><span>{t("chrome.system.whatsNew")}</span></button>
       <button type="button" role="menuitem" onClick={() => { setOpen(false); setShortcutsOpen(true); }}><KeyboardGlyph /><span>{t("chrome.system.keyboardShortcuts")}</span></button>
+      <button type="button" role="menuitem" disabled={replayDisabled} onClick={replayScreenGuide} title={t(replayDisabled ? "chrome.system.replayScreenGuideNone" : "chrome.system.replayScreenGuideTitle")}><ScreenGuideGlyph /><span>{t("chrome.system.replayScreenGuide")}</span></button>
       {updateAvailable ? <UpdateApplyControl latestVersion={latestVersion} /> : null}
       <div className="command-band-system-menu-divider" role="separator" />
       <GithubLinks version={version} />
@@ -367,6 +384,11 @@ function WhatsNewGlyph() {
 
 function KeyboardGlyph() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="4" width="13" height="8" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M4 7h1m2 0h1m2 0h1M5 9.5h6" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
+}
+
+// 화면 안내 — 안내 카드가 화면의 한 지점을 짚는 모양.
+function ScreenGuideGlyph() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" /><circle cx="6" cy="7" r="1.6" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M8.4 7h4M5 13.5h6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
 }
 
 function GithubMarkIcon() {
