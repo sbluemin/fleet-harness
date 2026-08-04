@@ -392,9 +392,12 @@ export function OperationSearch({
       case "open-settings": {
         // 라우트 전환으로 이전 포커스 요소가 unmount되므로 복원을 억제한다(switch-theater와 동일).
         previousFocusRef.current = null;
-        // 토글 닫기가 설정 구간을 소비하려면 진입 마커가 필요하다 — 버튼 경로와 동일하게 기록한다.
-        recordSettingsEntryIndex();
-        navigate("/settings", { state: propagateSettingsEntryIndex(null) });
+        // 토글 닫기가 설정 구간을 소비하려면 진입 마커가 필요하다. 이미 설정 위에서
+        // 열 때는 새로 기록하면 마커가 설정 안쪽을 가리켜 첫 설정 항목이 고아가 되므로
+        // 기존 마커를 보존하고 현재 항목을 대체한다.
+        const onSettings = location.pathname.replace(/\/+$/, "") === "/settings";
+        if (!onSettings) recordSettingsEntryIndex();
+        navigate("/settings", { replace: onSettings, state: propagateSettingsEntryIndex(null) });
         break;
       }
       case "open-keyboard-shortcuts": {
