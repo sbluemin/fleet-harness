@@ -21,7 +21,9 @@ describe("Command Band v2 guards", () => {
   it("disables Fit all panels until Operations hydrate", () => {
     const source = readFileSync(resolve(process.cwd(), "core/client/src/components/command-band.tsx"), "utf8");
 
-    expect(source).toContain("disabled={state.activeTheaterId === null || triageActive || !state.operationsHydrated}");
+    // Fit all은 Cruise 트레이에만 마운트되므로 모드 게이트는 더 이상 필요 없다 — hydrate 게이트만 남는다.
+    expect(source).toContain("disabled={state.activeTheaterId === null || !state.operationsHydrated}");
+    expect(source).not.toContain("|| triageActive ||");
   });
 });
 

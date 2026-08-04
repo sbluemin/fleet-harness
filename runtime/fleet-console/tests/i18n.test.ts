@@ -27,7 +27,10 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   "Operations",
   "GitHub",
   "Backend API",
-  "Formation",
+  // 캔버스 모드 3종은 번역하지 않는 제품 고유 명칭이다.
+  "Cruise",
+  "Tactical",
+  "War Room",
   "Operation {title}",
   "Companion {title}",
   "Map",
@@ -57,8 +60,8 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   "Plum",
   "Rose",
   // 모드 커튼 키커(고정 대문자 각인)·투어 진행 표기(숫자 포맷)
-  "TRIAGE MODE",
-  "FORMATION VIEW",
+  "WAR ROOM",
+  "TACTICAL",
   "{current} / {total}",
   // 제품 탭·Cowork 설정 토큰
   "Fleet CLI",

@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type ReactElement } from "react";
 import { Link } from "react-router-dom";
 
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../api.js";
-import { animateViewportTo, fitAllOperations, selectFormationLayout, useCanvasState, useFormationLayout, useFormationView } from "../canvas/canvas-store.js";
+import { animateViewportTo, clearFormationView, fitAllOperations, selectFormationLayout, toggleFormationView, useCanvasState, useFormationLayout, useFormationView, type FormationLayout } from "../canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, setTriageActive, useTriageActive, visitTriageTheater } from "../canvas/triage-store.js";
 import { COMMAND_BAND_RAIL_STRIP_PX, commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandMapControlsAnchor, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
@@ -18,7 +18,7 @@ import { setSideBarCollapsed, useSideBarState } from "../sidebar/operations-side
 import { focusOperation, hydrateOperations, requestSideBarAddTheater, requestSideBarTheaterLaunch, setActiveTheater, toggleOperationSearch } from "../store.js";
 import type { ConsoleEnvironmentDiagnostics } from "../types.js";
 import { useInlineRename } from "../use-inline-rename.js";
-import { useT } from "../i18n/index.js";
+import { useT, type CoreMessageKey } from "../i18n/index.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { cycleViewModePreference, useViewMode } from "../view-mode-store.js";
 import { useFullscreenCommandBand } from "./use-fullscreen-command-band.js";
@@ -32,6 +32,33 @@ interface NavigatorWithUserAgentData extends Navigator {
 interface CommandBandProps {
   readonly operationsViewVisible: boolean;
 }
+
+// Cruise / Tactical / War Room은 번역하지 않는 제품 고유 명칭이다 — 로케일이 바뀌어도
+// 모드 이름은 그대로고, 설명(title/aria)만 번역된다.
+type CanvasMode = "cruise" | "tactical" | "warRoom";
+
+interface CanvasModeSegment {
+  readonly id: CanvasMode;
+  readonly label: string;
+  readonly titleKey: CoreMessageKey;
+  readonly Icon: () => ReactElement;
+}
+
+const CANVAS_MODES: readonly CanvasModeSegment[] = [
+  { id: "cruise", label: "Cruise", titleKey: "chrome.commandBand.modeCruise", Icon: CruiseIcon },
+  { id: "tactical", label: "Tactical", titleKey: "chrome.commandBand.modeTactical", Icon: TacticalIcon },
+  { id: "warRoom", label: "War Room", titleKey: "chrome.commandBand.modeWarRoom", Icon: WarRoomIcon },
+];
+
+const TACTICAL_LAYOUTS: readonly {
+  readonly id: FormationLayout;
+  readonly titleKey: CoreMessageKey;
+  readonly Icon: () => ReactElement;
+}[] = [
+  { id: "grid", titleKey: "chrome.commandBand.tacticalGrid", Icon: FormationGridIcon },
+  { id: "columns", titleKey: "chrome.commandBand.tacticalColumns", Icon: FormationColumnsIcon },
+  { id: "rows", titleKey: "chrome.commandBand.tacticalRows", Icon: FormationRowsIcon },
+];
 
 export function CommandBand({ operationsViewVisible: requestedOperationsViewVisible }: CommandBandProps) {
   const t = useT();
@@ -53,6 +80,20 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const formationLayout = useFormationLayout();
   const formationView = useFormationView();
   const triageActive = useTriageActive();
+  const canvasMode: CanvasMode = triageActive ? "warRoom" : formationView ? "tactical" : "cruise";
+  const selectCanvasMode = (mode: CanvasMode) => {
+    if (mode === canvasMode) return;
+    if (mode === "warRoom") {
+      enterTriage(focusedTriageOperationId(document.activeElement));
+      return;
+    }
+    if (triageActive) setTriageActive(false);
+    if (mode === "tactical") {
+      if (!formationView) toggleFormationView();
+      return;
+    }
+    if (formationView) clearFormationView();
+  };
   const activeTheater = state.theaters.find((theater) => theater.id === state.activeTheaterId) ?? null;
   const activeOperation = commandBandActiveOperation(state.operations, state.activeOperationId, state.activeTheaterId);
   const activePlugin = activeOperation ? registry.plugins.find((plugin) => plugin.id === activeOperation.pluginId) : null;
@@ -424,33 +465,46 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       </div>
       {operationsViewVisible ? <div ref={mapControlsRef} className={`command-band-map-controls${sideBar.collapsed ? " is-docked" : ""}`}>
         <span className="command-band-dock-divider" aria-hidden="true" />
-        <div className="command-band-formation-group" role="group" aria-label={t("chrome.commandBand.formationView")}>
-        <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })} disabled={state.activeTheaterId === null} aria-label={t("chrome.commandBand.resetCanvasView")} title={t("chrome.commandBand.resetCanvasView")}><ResetViewIcon /></button>
-        <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={fitAllOperations} disabled={state.activeTheaterId === null || triageActive || !state.operationsHydrated} aria-label={t("chrome.commandBand.fitAllPanels")} title={t("chrome.commandBand.fitAllPanels")}><FitAllIcon /></button>
-        <span className="command-band-formation-divider" aria-hidden="true" />
-        <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("grid")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "grid"} aria-label={t("chrome.commandBand.formationGrid")} title={t("chrome.commandBand.formationGrid")}><FormationGridIcon /></button>
-        <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("columns")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "columns"} aria-label={t("chrome.commandBand.formationColumns")} title={t("chrome.commandBand.formationColumns")}><FormationColumnsIcon /></button>
-        <button type="button" className="command-band-formation-toggle command-band-formation-seg" onClick={() => selectFormationLayout("rows")} disabled={state.activeTheaterId === null} aria-pressed={formationView && formationLayout === "rows"} aria-label={t("chrome.commandBand.formationRows")} title={t("chrome.commandBand.formationRows")}><FormationRowsIcon /></button>
+        <div className="command-band-mode-switch" role="group" aria-label={t("chrome.commandBand.canvasMode")}>
+          {CANVAS_MODES.map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              className="command-band-mode-seg"
+              data-canvas-mode={mode.id}
+              disabled={mode.id === "tactical" ? state.activeTheaterId === null : state.theaters.length === 0}
+              aria-pressed={canvasMode === mode.id}
+              aria-label={t(mode.titleKey)}
+              title={t(mode.titleKey)}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => selectCanvasMode(mode.id)}
+            >
+              <mode.Icon />
+              <span>{mode.label}</span>
+            </button>
+          ))}
         </div>
-        <button
-        type="button"
-        className="command-band-triage-toggle"
-        disabled={state.theaters.length === 0}
-        aria-pressed={triageActive}
-        aria-label={t("chrome.commandBand.triageToggle")}
-        title={t("chrome.commandBand.triageToggle")}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => {
-          if (triageActive) {
-            setTriageActive(false);
-          } else if (state.theaters.length > 0) {
-            enterTriage(focusedTriageOperationId(document.activeElement));
-          }
-        }}
-      >
-        <TriageIcon />
-        {triageActive ? <span>{t("chrome.commandBand.triage")}</span> : null}
-        </button>
+        {canvasMode === "cruise" ? <div className="command-band-mode-tray" role="group" aria-label={t("chrome.commandBand.cruiseTools")}>
+          <span className="command-band-mode-tray-divider" aria-hidden="true" />
+          <button type="button" className="command-band-mode-tool" onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })} disabled={state.activeTheaterId === null} aria-label={t("chrome.commandBand.resetCanvasView")} title={t("chrome.commandBand.resetCanvasView")}><ResetViewIcon /></button>
+          <button type="button" className="command-band-mode-tool" onClick={fitAllOperations} disabled={state.activeTheaterId === null || !state.operationsHydrated} aria-label={t("chrome.commandBand.fitAllPanels")} title={t("chrome.commandBand.fitAllPanels")}><FitAllIcon /></button>
+        </div> : null}
+        {canvasMode === "tactical" ? <div className="command-band-mode-tray" role="group" aria-label={t("chrome.commandBand.tacticalTools")}>
+          <span className="command-band-mode-tray-divider" aria-hidden="true" />
+          {TACTICAL_LAYOUTS.map((layout) => (
+            <button
+              key={layout.id}
+              type="button"
+              className="command-band-mode-tool"
+              // 이미 켜진 레이아웃을 다시 누르면 selectFormationLayout이 모드를 꺼버린다 —
+              // 모드 이탈은 Cruise 세그먼트만 소유하므로 같은 레이아웃 클릭은 무시한다.
+              onClick={() => { if (formationLayout !== layout.id) selectFormationLayout(layout.id); }}
+              aria-pressed={formationLayout === layout.id}
+              aria-label={t(layout.titleKey)}
+              title={t(layout.titleKey)}
+            ><layout.Icon /></button>
+          ))}
+        </div> : null}
       </div> : null}
       {centerBreadcrumbVisible ? <div className="command-band-center">
         {operationsViewVisible && activeTheater ? <div ref={switcherRef} className="command-band-switcher" onBlur={handleSwitcherFocusOut}>
@@ -635,7 +689,18 @@ function FormationRowsIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h11v3h-11zM2.5 6.5h11v3h-11zM2.5 10.5h11v3h-11z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
 }
 
-function TriageIcon() {
+// Cruise — 패널이 사용자가 놓은 자리에 흩어져 있는 자유 평면.
+function CruiseIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h5v4h-5zM9 6.5h4.5v3.5H9zM4.5 9.5h3.5v3h-3.5z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
+}
+
+// Tactical — 전 함대가 한 판에 정렬돼 지휘 아래 놓인 상태.
+function TacticalIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h11v11h-11z" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M8 2.5v11M2.5 8h11" stroke="currentColor" strokeWidth="1.2" /></svg>;
+}
+
+// War Room — 한 건만 무대에 올라오고 나머지는 대기열에 남는다.
+function WarRoomIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h10v3H3zM5 8h6v2H5zM7 12h2v2H7z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
 }
 
