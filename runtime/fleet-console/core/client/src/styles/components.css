@@ -2202,8 +2202,8 @@
      구역의 범위가 읽히게 한다. 7%짜리 옅은 워시로는 판과 구별되지 않아 표석만 떠 있었다. */
   background: radial-gradient(
     circle,
-    color-mix(in oklch, var(--zone-tint, var(--brass)) 17%, transparent) 0%,
-    color-mix(in oklch, var(--zone-tint, var(--brass)) 9%, transparent) 46%,
+    color-mix(in oklch, var(--zone-tint, var(--brass)) 9%, transparent) 0%,
+    color-mix(in oklch, var(--zone-tint, var(--brass)) 5%, transparent) 46%,
     transparent 82%
   );
 }
@@ -2344,6 +2344,14 @@
 
 .canvas-triage-deck.is-under-stage .canvas-triage-map-dot {
   animation-play-state: paused;
+}
+
+/* 끌고 있는 점은 손끝만 따른다 — 유영이 살아 있으면 커서와 점이 어긋나고, 확대창이 함께
+   따라오면 판을 가린다. 특이성(0,2,0)으로 위 유영 규칙(0,2,0)보다 뒤에서 이긴다. */
+.canvas-triage-map-dot.is-dragging {
+  z-index: 2;
+  animation: none;
+  cursor: grabbing;
 }
 
 .canvas-triage-map-dot:hover,
