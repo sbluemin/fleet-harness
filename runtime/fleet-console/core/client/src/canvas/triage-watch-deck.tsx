@@ -5,7 +5,7 @@ import { useT } from "../i18n/index.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
 import { operationActivityLabel, operationActivityVisual, resolveOperationActivity } from "../operation-activity.js";
 import { getOperationStatusDetailSnapshot, useOperationStatusDetails } from "../operation-status-detail-store.js";
-import type { OperationNode } from "../types.js";
+import type { OperationGeometry, OperationNode } from "../types.js";
 import { operationAccentFromNode, resolveAccentColor } from "./operation-accent.js";
 import {
   clampTriageDeckZoom,
@@ -34,6 +34,9 @@ interface TriageWatchDeckProps {
   readonly stagedOperationId?: string | null;
   /** 줌 tween 즉시 스냅 — 카드/지도 점 클릭 직전에 호출해 승격 flight의 출발 rect를 고정한다. */
   readonly onBeforePick?: () => void;
+  /** 지도 마커용 유효 geometry — durable DTO보다 라이브 캔버스 배치가 정본이다(드래그 직후
+      PATCH 왕복 대기·실패, DTO null인 자동 배치 op). canvas가 자기 스토어로 해석해 넘긴다. */
+  readonly mapGeometryFor?: (operation: OperationNode) => OperationGeometry | null;
   /** 카드 본문 라이브 프리뷰용 pool 슬롯 config 빌더 — 핸들러 배선은 canvas가 단일 소유한다.
       렌더 가능한 kind가 아니면 null을 반환하고 카드는 tail 폴백으로 내려간다. */
   readonly previewConfigFor?: (operation: OperationNode) => OperationBodyConfig | null;
@@ -292,12 +295,16 @@ export function useTriageDeckZoomControl(theaterId: string | null): {
 }
 
 export function flashTriageDeckCard(operationId: string): void {
-  const card = document.querySelector<HTMLElement>(`[data-triage-deck-card="${escapeAttributeValue(operationId)}"]`);
-  if (!card) return;
-  card.classList.remove("is-landed");
-  void card.offsetWidth;
-  card.classList.add("is-landed");
-  window.setTimeout(() => card.classList.remove("is-landed"), CARD_FLASH_DURATION_MS);
+  // 착지 확인은 사용자가 보고 있는 요소에 준다 — 지도 모드에서는 카드가 은닉되어 있으므로
+  // 지도 점을 우선 조회한다(점은 지도 모드에서만 존재해 우선순위가 안전하다).
+  const escaped = escapeAttributeValue(operationId);
+  const target = document.querySelector<HTMLElement>(`[data-triage-map-dot="${escaped}"]`)
+    ?? document.querySelector<HTMLElement>(`[data-triage-deck-card="${escaped}"]`);
+  if (!target) return;
+  target.classList.remove("is-landed");
+  void target.offsetWidth;
+  target.classList.add("is-landed");
+  window.setTimeout(() => target.classList.remove("is-landed"), CARD_FLASH_DURATION_MS);
 }
 
 export function resolveTriageDeckPromotion(input: {
@@ -352,6 +359,7 @@ export function TriageWatchDeck({
   arrivingOperationId = null,
   stagedOperationId = null,
   onBeforePick,
+  mapGeometryFor,
   previewConfigFor,
   freshOperationIds,
 }: TriageWatchDeckProps) {
@@ -505,7 +513,12 @@ export function TriageWatchDeck({
     (left, right) => TRIAGE_DECK_ACTIVITY_RANK[resolveOperationActivity(left, operationStatus)]
       - TRIAGE_DECK_ACTIVITY_RANK[resolveOperationActivity(right, operationStatus)],
   );
-  const mapMarkers = mapMode ? resolveTriageMapMarkerLayout(operations) : null;
+  const mapMarkers = mapMode
+    ? resolveTriageMapMarkerLayout(operations.map((operation) => ({
+      id: operation.id,
+      geometry: mapGeometryFor ? mapGeometryFor(operation) : operation.geometry,
+    })))
+    : null;
   const pick = (operationId: string, element: HTMLElement) => {
     // 승격 flight는 클릭 순간 사용자가 보고 있는 위치에서 출발해야 한다 — tween이 살아 있으면
     // 카드가 움직이는 중이라 좌표가 흔들리므로 먼저 스냅 종료하고, 그 다음 rect(Quick-Look이면

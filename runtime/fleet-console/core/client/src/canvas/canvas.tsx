@@ -957,6 +957,7 @@ export function OperationsCanvas({
         arrivingOperationId={triageDeckArrivingOperationId}
         stagedOperationId={triageStageId}
         onBeforePick={triageDeckZoom.control.snapZoomTween}
+        mapGeometryFor={(operation) => canvas.operations[operation.id] ?? operation.geometry ?? null}
         previewConfigFor={triagePreviewConfigFor}
         freshOperationIds={freshDeckOperationIds}
       />

@@ -2235,6 +2235,12 @@
   outline: none;
 }
 
+/* 무대 복귀 착지 확인 — 카드와 같은 positive 플래시 문법을 지도 점에도 준다(지도 모드에서는
+   카드가 은닉되어 착지 피드백이 점에만 보인다). */
+.canvas-triage-map-dot.is-landed {
+  animation: triage-deck-landed-flash calc(var(--duration-slow) * 2.5) var(--ease-glide) 1;
+}
+
 .canvas-triage-map-dot-label {
   position: absolute;
   top: 50%;
@@ -2513,6 +2519,7 @@
   .canvas-triage-scan,
   .canvas-triage-deck-card.is-running .canvas-triage-deck-card-dot,
   .canvas-triage-deck-card.is-landed,
+  .canvas-triage-map-dot.is-landed,
   .canvas-triage-deck-card.is-arriving,
   .canvas-triage-deck-card.is-fresh,
   .canvas-triage-rail-track button.is-fresh,
