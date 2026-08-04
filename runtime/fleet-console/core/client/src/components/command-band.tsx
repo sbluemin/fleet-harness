@@ -41,13 +41,14 @@ interface CanvasModeSegment {
   readonly id: CanvasMode;
   readonly label: string;
   readonly titleKey: CoreMessageKey;
-  readonly Icon: () => ReactElement;
 }
 
+// 모드는 낱말로, 모드 전용 도구는 아이콘으로 말한다. 세그먼트에 아이콘을 함께 두면 클러스터가
+// 375px까지 벌어져 1280px 밴드에서 중앙 브레드크럼이 통째로 사라진다(2026-08 실측).
 const CANVAS_MODES: readonly CanvasModeSegment[] = [
-  { id: "cruise", label: "Cruise", titleKey: "chrome.commandBand.modeCruise", Icon: CruiseIcon },
-  { id: "tactical", label: "Tactical", titleKey: "chrome.commandBand.modeTactical", Icon: TacticalIcon },
-  { id: "warRoom", label: "War Room", titleKey: "chrome.commandBand.modeWarRoom", Icon: WarRoomIcon },
+  { id: "cruise", label: "Cruise", titleKey: "chrome.commandBand.modeCruise" },
+  { id: "tactical", label: "Tactical", titleKey: "chrome.commandBand.modeTactical" },
+  { id: "warRoom", label: "War Room", titleKey: "chrome.commandBand.modeWarRoom" },
 ];
 
 const TACTICAL_LAYOUTS: readonly {
@@ -479,8 +480,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => selectCanvasMode(mode.id)}
             >
-              <mode.Icon />
-              <span>{mode.label}</span>
+              {mode.label}
             </button>
           ))}
         </div>
@@ -689,20 +689,8 @@ function FormationRowsIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h11v3h-11zM2.5 6.5h11v3h-11zM2.5 10.5h11v3h-11z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
 }
 
-// Cruise — 패널이 사용자가 놓은 자리에 흩어져 있는 자유 평면.
-function CruiseIcon() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h5v4h-5zM9 6.5h4.5v3.5H9zM4.5 9.5h3.5v3h-3.5z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
-}
 
-// Tactical — 전 함대가 한 판에 정렬돼 지휘 아래 놓인 상태.
-function TacticalIcon() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h11v11h-11z" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M8 2.5v11M2.5 8h11" stroke="currentColor" strokeWidth="1.2" /></svg>;
-}
 
-// War Room — 한 건만 무대에 올라오고 나머지는 대기열에 남는다.
-function WarRoomIcon() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h10v3H3zM5 8h6v2H5zM7 12h2v2H7z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
-}
 
 function PanelToggleIcon({ side }: { readonly side: "left" | "right" }) {
   return (

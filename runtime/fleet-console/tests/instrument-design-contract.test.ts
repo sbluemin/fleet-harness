@@ -773,9 +773,12 @@ describe("Instrument core design contract", () => {
     // 캔버스 모드는 세그먼트 스위치 하나가 단독으로 소유한다 — 모드별 도구를 밴드에 상시
     // 늘어놓으면 다른 모드의 도구를 눌러 무경고로 모드를 이탈시킬 수 있다(2026-08 격자 클릭 사고).
     expect(commandBand).toContain('className="command-band-mode-switch" role="group" aria-label={t("chrome.commandBand.canvasMode")}');
-    expect(commandBand).toContain('{ id: "cruise", label: "Cruise", titleKey: "chrome.commandBand.modeCruise", Icon: CruiseIcon },');
-    expect(commandBand).toContain('{ id: "tactical", label: "Tactical", titleKey: "chrome.commandBand.modeTactical", Icon: TacticalIcon },');
-    expect(commandBand).toContain('{ id: "warRoom", label: "War Room", titleKey: "chrome.commandBand.modeWarRoom", Icon: WarRoomIcon },');
+    // 모드는 낱말로, 모드 전용 도구는 아이콘으로 말한다 — 세그먼트에 아이콘을 더하면 클러스터가
+    // 375px까지 벌어져 1280px 밴드에서 중앙 브레드크럼이 사라진다(2026-08 실측).
+    expect(commandBand).toContain('{ id: "cruise", label: "Cruise", titleKey: "chrome.commandBand.modeCruise" },');
+    expect(commandBand).toContain('{ id: "tactical", label: "Tactical", titleKey: "chrome.commandBand.modeTactical" },');
+    expect(commandBand).toContain('{ id: "warRoom", label: "War Room", titleKey: "chrome.commandBand.modeWarRoom" },');
+    expect(commandBand).not.toMatch(/<mode\.Icon \/>/);
     expect(commandBand).toContain('const canvasMode: CanvasMode = triageActive ? "warRoom" : formationView ? "tactical" : "cruise";');
     expect(commandBand).toContain('aria-pressed={canvasMode === mode.id}');
     // 트레이는 활성 모드의 도구만 마운트한다 — 비활성 모드 도구는 disabled가 아니라 부재다.

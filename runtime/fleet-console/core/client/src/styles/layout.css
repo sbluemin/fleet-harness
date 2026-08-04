@@ -415,18 +415,12 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   display: flex;
   flex: none;
   align-items: center;
-  gap: 6px;
   height: 24px;
   padding: 0 9px;
   border: 1px solid transparent;
   border-radius: 6px;
   color: var(--text-tertiary);
   white-space: nowrap;
-}
-
-.command-band-mode-seg svg { display: block; flex: none; width: 15px; height: 15px; }
-
-.command-band-mode-seg span {
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: var(--weight-bold);
