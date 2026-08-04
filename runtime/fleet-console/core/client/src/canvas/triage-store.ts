@@ -219,13 +219,14 @@ function persistTriageDeckZoom(zoom: number): void {
   }
 }
 
-// 작전지도(map mode) 마커 배치 — canvas geometry를 덱 영역 [8,92]%×[10,86]%로 투영하고,
-// geometry가 없는 Operation은 id 해시 기반 golden-angle 산포로 채운다. Math.random 금지:
-// 렌더마다 위치가 흔들리면 승격 flight의 출발점이 매번 달라진다.
+// 작전지도(map mode) 마커 배치 — 충분한 2D canvas geometry는 덱 영역 [8,92]%×[10,86]%로
+// 투영하고, geometry가 부족하거나 거의 한 줄이면 전 Operation을 id 해시 기반 전면 산포로 바꾼다.
+// Math.random 금지: 렌더마다 위치가 흔들리면 승격 flight의 출발점이 매번 달라진다.
 const GOLDEN_ANGLE = 2.399963;
 const GOLDEN_FRACTION = 0.61803;
 const MAP_MIN_DISTANCE_PCT = 4;
 const MAP_RELAXATION_PASSES = 12;
+export const TRIAGE_MAP_COLLINEAR_RATIO = 0.12;
 
 export interface TriageMapMarkerLayout {
   readonly operationId: string;
@@ -323,37 +324,63 @@ export function resolveTriageFleetZoneLayout(
 export function resolveTriageMapMarkerLayout(
   operations: ReadonlyArray<Pick<OperationNode, "id"> & { readonly geometry: OperationGeometry | null }>,
 ): readonly TriageMapMarkerLayout[] {
+  const centers = operations.flatMap((operation) => operation.geometry
+    ? [{
+        x: operation.geometry.x + operation.geometry.width / 2,
+        y: operation.geometry.y + operation.geometry.height / 2,
+      }]
+    : []);
   let minX = Number.POSITIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
   let maxY = Number.NEGATIVE_INFINITY;
-  for (const operation of operations) {
-    if (!operation.geometry) continue;
-    const centerX = operation.geometry.x + operation.geometry.width / 2;
-    const centerY = operation.geometry.y + operation.geometry.height / 2;
-    minX = Math.min(minX, centerX);
-    maxX = Math.max(maxX, centerX);
-    minY = Math.min(minY, centerY);
-    maxY = Math.max(maxY, centerY);
+  for (const center of centers) {
+    minX = Math.min(minX, center.x);
+    maxX = Math.max(maxX, center.x);
+    minY = Math.min(minY, center.y);
+    maxY = Math.max(maxY, center.y);
+  }
+
+  let degenerate = centers.length < 3;
+  if (!degenerate) {
+    const meanX = centers.reduce((sum, center) => sum + center.x, 0) / centers.length;
+    const meanY = centers.reduce((sum, center) => sum + center.y, 0) / centers.length;
+    let covarianceXX = 0;
+    let covarianceXY = 0;
+    let covarianceYY = 0;
+    for (const center of centers) {
+      const dx = center.x - meanX;
+      const dy = center.y - meanY;
+      covarianceXX += dx * dx;
+      covarianceXY += dx * dy;
+      covarianceYY += dy * dy;
+    }
+    covarianceXX /= centers.length;
+    covarianceXY /= centers.length;
+    covarianceYY /= centers.length;
+    const halfTrace = (covarianceXX + covarianceYY) / 2;
+    const eigenDelta = Math.hypot((covarianceXX - covarianceYY) / 2, covarianceXY);
+    const majorSpread = Math.sqrt(Math.max(0, halfTrace + eigenDelta));
+    const minorSpread = Math.sqrt(Math.max(0, halfTrace - eigenDelta));
+    degenerate = majorSpread === 0 || minorSpread / majorSpread < TRIAGE_MAP_COLLINEAR_RATIO;
   }
 
   const points = new Map<string, { x: number; y: number }>();
   for (const operation of operations) {
-    if (operation.geometry) {
-      // bounding box가 퇴화(폭 또는 높이 0)하면 그 축은 중앙 50%에 고정한다.
+    if (!degenerate && operation.geometry) {
       const centerX = operation.geometry.x + operation.geometry.width / 2;
       const centerY = operation.geometry.y + operation.geometry.height / 2;
-      const x = maxX > minX ? 8 + ((centerX - minX) / (maxX - minX)) * 84 : 50;
-      const y = maxY > minY ? 10 + ((centerY - minY) / (maxY - minY)) * 76 : 48;
+      const x = 8 + ((centerX - minX) / (maxX - minX)) * 84;
+      const y = 10 + ((centerY - minY) / (maxY - minY)) * 76;
       points.set(operation.id, { x, y });
       continue;
     }
     const hashIndex = hashTriageMapKey(operation.id);
     const angle = hashIndex * GOLDEN_ANGLE;
-    const radius = 0.18 + 0.28 * ((hashIndex * GOLDEN_FRACTION) % 1);
+    const radius = Math.sqrt((hashIndex * GOLDEN_FRACTION) % 1);
     points.set(operation.id, {
-      x: clampPercent(50 + Math.cos(angle) * radius * 50),
-      y: clampPercent(48 + Math.sin(angle) * radius * 50),
+      x: clampPercent(50 + Math.cos(angle) * radius * 42),
+      y: clampPercent(48 + Math.sin(angle) * radius * 38),
     });
   }
 
@@ -404,7 +431,7 @@ function clampPercent(value: number): number {
   return Math.min(96, Math.max(4, value));
 }
 
-function hashTriageMapKey(key: string): number {
+export function hashTriageMapKey(key: string): number {
   let hash = 0;
   for (let index = 0; index < key.length; index += 1) {
     hash = (Math.imul(hash, 31) + key.charCodeAt(index)) | 0;

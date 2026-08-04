@@ -12,9 +12,11 @@ import {
   clampTriageDeckZoom,
   getTriageDeckZoom,
   getTriageDeckZoomLive,
+  hashTriageMapKey,
   isTriageActive,
   isTriageDeckMapMode,
   isTriageDeckMapModeActive,
+  isTriageOperationDeferred,
   isTriageWaitingOperation,
   nextTriageDeckZoomPreset,
   pickTriageOperation,
@@ -149,6 +151,7 @@ export function getTriageDeckCardRect(operationId: string): DOMRect | null {
 
 // 줌/지도 오버레이 제어는 deck와 rail의 공용 컨트롤러다. rAF tween과 wheel 부착은 React 합성
 // 이벤트 밖에서 다뤄야 한다 — React는 root wheel을 passive로 묶어 preventDefault가 무용해진다.
+// wheel 문법: bare wheel은 덱 줌(캔버스와 동일), shift+wheel은 카드 격자 스크롤, alt는 건드리지 않는다.
 export interface TriageDeckZoomControl {
   readonly snapZoomTween: () => void;
   /** 프리셋 등 외부 배율 변경도 이 경로로 — store 선기록은 tween 시작 프레임에 지도 판정
@@ -270,10 +273,29 @@ export function useTriageDeckZoomControl(): {
         // 기존 줌과 이중 소비되고 브라우저 페이지 줌을 전역 차단한다.
         if (!isTriageActive()) return;
         if (!(event.target instanceof Element) || event.target.closest(".canvas-triage-deck") === null) return;
-        if (!(event.ctrlKey || event.metaKey)) return;
+        // Alt 제스처는 건드리지 않는다.
+        if (event.altKey) return;
+        // deltaMode 정규화 — Firefox 물리 휠은 line(1)/page(2) 단위로 보고한다. 픽셀 튜닝된
+        // 지수·스크롤 경로에 그대로 넣으면 한 노치가 0.7% 줌이 되거나 페이지 단위로 튄다.
+        const deltaScale = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? 16
+          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+            ? Math.max(240, element.clientHeight)
+            : 1;
+        // Shift+wheel은 카드 격자 세로 스크롤(지도 모드에서는 no-op).
+        if (event.shiftKey) {
+          if (isTriageDeckMapModeActive()) return;
+          const grid = event.target.closest(".canvas-triage-deck")?.querySelector(".canvas-triage-deck-grid");
+          if (!(grid instanceof HTMLElement)) return;
+          event.preventDefault();
+          // 일부 브라우저·트랙패드는 Shift+wheel을 deltaX로 보고한다 — 세로 스크롤로 수렴시킨다.
+          grid.scrollTop += (event.deltaY !== 0 ? event.deltaY : event.deltaX) * deltaScale;
+          return;
+        }
+        // bare wheel과 Ctrl/Meta+wheel 모두 덱 줌 — 브라우저 페이지 줌 차단도 유지한다.
         event.preventDefault();
         const zoom = zoomRef.current;
-        const next = Math.min(2.0, Math.max(0.35, zoom * Math.exp(-event.deltaY * TRIAGE_DECK_ZOOM_WHEEL_SPEED)));
+        const next = Math.min(2.0, Math.max(0.35, zoom * Math.exp(-event.deltaY * deltaScale * TRIAGE_DECK_ZOOM_WHEEL_SPEED)));
         if (next === zoom) return;
         applyZoom(next);
         setTargetZoom(next);
@@ -517,6 +539,14 @@ export function TriageWatchDeck({
     if (!visible || stagedOperationId !== null || mapMode) dismissQuicklook();
   }, [visible, stagedOperationId, mapMode]);
 
+  // 지도 진입 시 grid 스크롤을 원점으로 되돌린다 — 판(fleet)은 grid 안의 절대배치라 잔류
+  // scrollTop만큼 함께 밀려 잘린 채 남고, overflow 잠금 뒤에는 되돌릴 휠 경로도 없다.
+  useLayoutEffect(() => {
+    if (!mapMode) return;
+    const grid = gridRef.current;
+    if (grid) grid.scrollTop = 0;
+  }, [mapMode]);
+
   // 작전지도 원 배치는 판의 실제 종횡비를 알아야 픽셀 기준 겹침을 피할 수 있다 — 판(grid 뷰포트)을 실측한다.
   const [fleetAspect, setFleetAspect] = useState(1.8);
   useLayoutEffect(() => {
@@ -583,7 +613,6 @@ export function TriageWatchDeck({
     deckDepartureRect = { operationId, rect: element.getBoundingClientRect() };
     pickTriageOperation(operationId);
   };
-
   return (
     <section
       className={`canvas-triage-deck ${underStage ? "is-under-stage" : ""} ${mapMode ? "is-map-mode" : ""}`}
@@ -719,14 +748,35 @@ function renderTriageMapDots(
   return band.mapMarkers?.map((marker) => {
     const operation = band.operations.find((candidate) => candidate.id === marker.operationId);
     if (!operation) return null;
-    const visual = operationActivityVisual(resolveOperationActivity(operation, operationStatus));
+    // 마커의 대기 판정은 큐·사이드바·존 헤더와 같은 기준(isTriageWaitingOperation)을 쓴다 —
+    // 유휴 도착이 사이드바에선 대기로 서는데 지도에선 회색 유휴 점이면 같은 상태가 두 표면에서
+    // 다르게 읽힌다(상태 어휘 정합 계약).
+    const visual = isTriageWaitingOperation(operation, operationStatus)
+      ? "awaiting"
+      : operationActivityVisual(resolveOperationActivity(operation, operationStatus));
+    // 미룬(deferred) 마커는 대기 링 맥동에서 제외한다 — 사용자가 이미 보고 미룬 신호를 다시 흔들지 않는다.
+    const deferred = isTriageOperationDeferred(operation.id);
+    let style: CSSProperties = { left: `${marker.x}%`, top: `${marker.y}%` };
+    if (visual === "running") {
+      // 실행 마커의 유영 경로·주기 — id 해시 기반 결정적 주입(렌더마다 흔들리면 지도가 아니다).
+      // 주기는 초 리터럴이 아니라 --duration-slow 배수라 테마 모션 스케일을 따라간다.
+      const hash = hashTriageMapKey(operation.id);
+      style = {
+        ...style,
+        "--triage-drift-mult": (30.6 + (hash % 7) * 5).toFixed(1),
+        "--triage-drift-x1": `${((hash >> 2) % 29) - 14}px`,
+        "--triage-drift-y1": `${((hash >> 4) % 23) - 11}px`,
+        "--triage-drift-x2": `${((hash >> 6) % 29) - 14}px`,
+        "--triage-drift-y2": `${((hash >> 8) % 23) - 11}px`,
+      } as CSSProperties;
+    }
     return (
       <button
         key={marker.operationId}
         type="button"
-        className={`canvas-triage-map-dot is-${visual}`}
+        className={`canvas-triage-map-dot is-${visual}${deferred ? " is-deferred" : ""}`}
         data-triage-map-dot={marker.operationId}
-        style={{ left: `${marker.x}%`, top: `${marker.y}%` } as CSSProperties}
+        style={style}
         aria-label={t("canvas.triage.deckCardAria", { title: operation.title })}
         onClick={(event) => pick(operation.id, event.currentTarget)}
       >

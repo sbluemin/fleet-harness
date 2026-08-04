@@ -106,6 +106,12 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--zone-y",
   "--zone-size",
   "--zone-tint",
+  // Triage Watch Deck TSX injects running-dot drift vars inline.
+  "--triage-drift-mult",
+  "--triage-drift-x1",
+  "--triage-drift-y1",
+  "--triage-drift-x2",
+  "--triage-drift-y2",
 ]);
 
 function source(path: string): string {
@@ -576,6 +582,12 @@ describe("Instrument core design contract", () => {
     expect(reducedMotionBlock).toContain(".canvas-triage-map,");
     expect(reducedMotionBlock).toContain(".canvas-triage-map-dot,");
     expect(reducedMotionBlock).toContain(".canvas-triage-map-dot-label {");
+    // 지도 점의 대기 링 맥동과 실행 드리프트도 같은 봉인에 들어가고, 대기 신호는 정지 링 폴백으로 남는다.
+    expect(reducedMotionBlock).toContain(".canvas-triage-map-dot.is-awaiting::after,");
+    expect(reducedMotionBlock).toContain(".canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-running,");
+    // 착지 flash 우선 규칙(0,4,0)은 봉인 항목들보다 세다 — 결합 셀렉터를 봉인에 직접 올린다.
+    expect(reducedMotionBlock).toContain(".canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-running.is-landed,");
+    expect(reducedMotionBlock).toContain("transform: scale(1.35);");
   });
 
   it("pins the dormant resume feedback grammar — pending pulse, error card, and reduced-motion fallback", () => {
