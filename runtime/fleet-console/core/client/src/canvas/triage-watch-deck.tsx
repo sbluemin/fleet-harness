@@ -156,6 +156,12 @@ export function TriageWatchDeck({
   // 오갈 때 이전 카드의 드웰이 뒤늦게 발동해 두 카드가 동시에 확대되는 일을 막는다.
   const [quicklook, setQuicklook] = useState<{ operationId: string; origin: string; scale: number } | null>(null);
   const quicklookTimerRef = useRef<number | null>(null);
+  // rect 기록 effect는 quicklook을 deps로 갖지 않으므로(스크롤/리사이즈마다 재구독 방지),
+  // 스테일 클로저 없이 현재 값을 읽도록 ref 미러를 둔다.
+  const quicklookRef = useRef<typeof quicklook>(null);
+  useEffect(() => {
+    quicklookRef.current = quicklook;
+  }, [quicklook]);
   // 무대가 떠 있는 동안에도 deck는 mount를 유지하고 visibility로만 숨는다 — 비무대 body가
   // 카드(고정 크기)와 숨김 프레임(크롬 제외 크기) 사이를 오가며 전 세션에 PTY 리사이즈를
   // 뿌리는 churn을 없애기 위해서다. 리사이즈는 무대에 오른 Operation에만 남는다.
@@ -178,12 +184,24 @@ export function TriageWatchDeck({
         // 그렇다고 기록을 건너뛰면 확대 중 grid 스크롤이 일어났을 때 옛 위치가 남는다.
         if (card.classList.contains("is-quicklook")) {
           const gridRect = grid.getBoundingClientRect();
-          deckCardRects.set(operationId, new DOMRect(
+          const unscaledRect = new DOMRect(
             gridRect.left + (card.offsetLeft - grid.offsetLeft) - grid.scrollLeft,
             gridRect.top + (card.offsetTop - grid.offsetTop) - grid.scrollTop,
             card.offsetWidth,
             card.offsetHeight,
-          ));
+          );
+          deckCardRects.set(operationId, unscaledRect);
+          // 열린 quick-look의 scale/origin은 발동 시점 스냅샷이라, grid 스크롤이나 리사이즈
+          // (사이드바 토글 등)로 기하가 움직이면 새 경계에 맞게 재계산한다 — 스냅샷을 그대로
+          // 두면 좁아진 grid에서 1.95를 유지하거나 새로 인접해진 가장자리 밖으로 팽창한다.
+          const active = quicklookRef.current;
+          if (active?.operationId === operationId) {
+            const scale = resolveTriageQuicklookScale(unscaledRect, gridRect);
+            const origin = resolveTriageQuicklookOrigin(unscaledRect, gridRect, scale);
+            if (scale !== active.scale || origin !== active.origin) {
+              setQuicklook({ operationId, origin, scale });
+            }
+          }
           continue;
         }
         deckCardRects.set(operationId, card.getBoundingClientRect());
