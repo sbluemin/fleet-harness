@@ -473,11 +473,13 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "whatsnew.tab.fleetCore": "Fleet Core",
   "whatsnew.tab.preProductGrouping": "제품 분류 이전 업데이트",
 
+  // 상태별 명칭은 사이드바 STATUS 축(sidebar.status.*)과 동일해야 한다 — 유휴 카드가 "대기"로
+  // 보이면 사이드바의 대기(awaiting) 섹션과 상태가 충돌해 다른 상태로 읽힌다.
   "activity.running": "실행 중",
   "activity.background": "백그라운드",
-  "activity.awaiting": "입력 대기",
+  "activity.awaiting": "대기",
   "activity.dormant": "휴면",
-  "activity.idle": "대기",
+  "activity.idle": "유휴",
 
   "codex.cowork.requestFailed": "Cowork 요청에 실패했습니다.",
   "codex.cowork.draftChangesAria": "초안 변경",

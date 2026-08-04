@@ -36,12 +36,14 @@ interface TriageDeckPromotionDecision {
 }
 
 export const TRIAGE_DECK_ARRIVAL_DWELL_MS = 1_100;
-// 카드 정렬 등급 — 운영자 응답을 기다리는 것이 맨 앞, 그다음 실행 중, 유휴 순.
+// 카드 정렬 등급 — 사이드바 STATUS 축의 섹션 순서(대기→실행 중→백그라운드→유휴→휴면)를 그대로
+// 따른다. deck이 자체 순서를 정의하면 같은 상태가 두 표면에서 다른 위치로 읽힌다.
 const TRIAGE_DECK_ACTIVITY_RANK: Record<OperationActivity, number> = {
   awaiting: 0,
   running: 1,
-  idle: 2,
-  dormant: 3,
+  background: 2,
+  idle: 3,
+  dormant: 4,
 };
 const deckCardRects = new Map<string, DOMRect>();
 const CARD_FLASH_DURATION_MS = 900;
