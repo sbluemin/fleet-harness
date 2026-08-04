@@ -45,7 +45,9 @@ export function recordSettingsEntryIndex() {
 export function propagateSettingsEntryIndex(state: unknown): Record<string, unknown> {
   // 현재 항목이 이미 마커를 들고 있으면(Back으로 재방문한 과거 설정 항목 등)
   // 그 항목의 마커가 진실이다 — 세션 스코프 값은 최근 진입의 것일 뿐이다.
+  // 명시적 null은 "이 방문은 무표시"라는 기록이므로 세션 값을 빌려오지 않는다.
   const existing = (state as { settingsEntry?: unknown } | null)?.settingsEntry;
+  if (existing === null) return { ...(state as Record<string, unknown> | null), settingsEntry: null };
   const entry = typeof existing === "number" ? existing : settingsEntryIndex;
   return entry === null ? {} : { ...(state as Record<string, unknown> | null), settingsEntry: entry };
 }

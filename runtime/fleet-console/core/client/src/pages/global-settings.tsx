@@ -116,7 +116,8 @@ export function GlobalSettings() {
     // 마커 없는 방문(직접 로드·리로드)에서 push하면 원본 설정 항목이 고아가 되어
     // Back이 설정을 다시 열으므로, 마커가 없을 때는 섹션 이동을 replace로 처리한다.
     const nextState = propagateSettingsEntryIndex(location.state);
-    const marked = typeof (nextState as { settingsEntry?: unknown }).settingsEntry === "number";
+    if (!("settingsEntry" in nextState)) nextState.settingsEntry = null;
+    const marked = typeof nextState.settingsEntry === "number";
     navigate(
       { pathname: "/settings", search: sectionId === "general" ? "" : `?section=${encodeURIComponent(sectionId)}` },
       { replace: !marked, state: nextState },
