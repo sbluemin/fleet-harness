@@ -327,8 +327,11 @@ export function OperationsCanvas({
     suppressed: panelMotionSuppressed(),
   });
   // 스포트라이트 OFF일 때 검토 전인 대기 카드에 지속 맥동을 얹는다 — 등단을 멈춘 대신 도착 신호는 남긴다.
+  // 미룬(deferred) 항목은 레일 칩과 동일하게 제외한다 — 사용자가 이미 보고 미룬 신호를 다시 흔들지 않는다.
   const freshDeckOperationIds: ReadonlySet<string> = triageActive && !triageSpotlightEnabled
-    ? new Set(triageQueue.filter((entry) => !entry.picked).map((entry) => entry.operation.id))
+    ? new Set(triageQueue
+        .filter((entry) => !entry.picked && !isTriageOperationDeferred(entry.operation.id))
+        .map((entry) => entry.operation.id))
     : new Set();
   triageDeckArrivalDwellRef.current = deckPromotion.dwell;
   const triageStage = deckPromotion.promote ? candidateTriageStage : null;
