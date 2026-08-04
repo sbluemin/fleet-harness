@@ -397,7 +397,7 @@ export function OperationSearch({
         // 기존 마커를 보존하고 현재 항목을 대체한다.
         const onSettings = location.pathname.replace(/\/+$/, "") === "/settings";
         if (!onSettings) recordSettingsEntryIndex();
-        navigate("/settings", { replace: onSettings, state: propagateSettingsEntryIndex(null) });
+        navigate("/settings", { replace: onSettings, state: propagateSettingsEntryIndex(onSettings ? location.state : null) });
         break;
       }
       case "open-keyboard-shortcuts": {

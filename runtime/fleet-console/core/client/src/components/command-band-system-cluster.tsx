@@ -43,7 +43,11 @@ export function recordSettingsEntryIndex() {
 }
 
 export function propagateSettingsEntryIndex(state: unknown): Record<string, unknown> {
-  return settingsEntryIndex === null ? {} : { ...(state as Record<string, unknown> | null), settingsEntry: settingsEntryIndex };
+  // 현재 항목이 이미 마커를 들고 있으면(Back으로 재방문한 과거 설정 항목 등)
+  // 그 항목의 마커가 진실이다 — 세션 스코프 값은 최근 진입의 것일 뿐이다.
+  const existing = (state as { settingsEntry?: unknown } | null)?.settingsEntry;
+  const entry = typeof existing === "number" ? existing : settingsEntryIndex;
+  return entry === null ? {} : { ...(state as Record<string, unknown> | null), settingsEntry: entry };
 }
 
 // 시스템 클러스터는 커맨드 밴드 우측에 상주한다 — 사이드바 접힘·라우트 전환과 무관하게

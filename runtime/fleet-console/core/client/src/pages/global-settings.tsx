@@ -112,10 +112,10 @@ export function GlobalSettings() {
   const selectSection = (sectionId: SettingsSectionId) => {
     setActiveSectionId(sectionId);
     // 설정 토글 버튼이 닫힐 때 설정 구간 전체를 소비하려면 진입 마커가 필요하다 —
-    // 이 push는 state 없이 새 항목을 만들므로 마커를 명시적으로 전파한다.
+    // 이 push는 state 없이 새 항목을 만들므로 현재 항목의 마커를 명시적으로 전파한다.
     navigate(
       { pathname: "/settings", search: sectionId === "general" ? "" : `?section=${encodeURIComponent(sectionId)}` },
-      { state: propagateSettingsEntryIndex(null) },
+      { state: propagateSettingsEntryIndex(location.state) },
     );
   };
 
