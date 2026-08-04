@@ -31,6 +31,7 @@ import {
 } from "../core/client/src/canvas/canvas-store.js";
 import {
   armTriageSetAside,
+  clampTriageDeckZoom,
   deferTriageOperation,
   disarmTriageSetAside,
   dismissTriageOperation,
@@ -38,22 +39,30 @@ import {
   focusedTriageOperationId,
   forgetTriageOperation,
   getTriageCleared,
+  getTriageDeckZoom,
   getTriagePick,
   getTriageSetAsideArmedId,
   isTriageActive,
   isTriageClearedTransition,
+  isTriageDeckMapMode,
+  isTriageDeckMapModeActive,
   isTriageOperationDismissed,
   isTriageSpotlightEnabled,
   markTriageCleared,
+  nextTriageDeckZoomPreset,
   pickTriageOperation,
   recordTriageActivity,
   reconcileTriageStageCompanion,
   resetTriageSpotlightForTests,
   resetTriageTheater,
+  resolveTriageMapMarkerLayout,
   resolveTriageQueue,
   scheduleTriageClear,
   setTriageActive,
+  setTriageDeckMapModeLive,
+  setTriageDeckZoom,
   setTriageSpotlightEnabled,
+  subscribeTriage,
 } from "../core/client/src/canvas/triage-store.js";
 import type { OperationNode } from "../core/client/src/types.js";
 import { TriageClearPlate } from "../core/client/src/canvas/canvas-overlays.js";
@@ -891,6 +900,125 @@ describe("triage store", () => {
     setTriageActive(THEATER_ID, false);
     expect(getCompanionOperationId()).toBe("picked");
     forceDropCompanionOperationId();
+  });
+});
+
+describe("triage deck zoom", () => {
+  it("clamps zoom to [0.35, 2.0] and rejects non-finite input", () => {
+    expect(clampTriageDeckZoom(0)).toBe(0.35);
+    expect(clampTriageDeckZoom(0.2)).toBe(0.35);
+    expect(clampTriageDeckZoom(1.25)).toBe(1.25);
+    expect(clampTriageDeckZoom(2.5)).toBe(2.0);
+    expect(clampTriageDeckZoom(Number.NaN)).toBe(1.0);
+    expect(clampTriageDeckZoom(Number.POSITIVE_INFINITY)).toBe(1.0);
+  });
+
+  it("flips map mode exactly when the 260px card base falls below 140px", () => {
+    expect(isTriageDeckMapMode(1.0)).toBe(false);
+    expect(isTriageDeckMapMode(140 / 260)).toBe(false);
+    expect(isTriageDeckMapMode(140 / 260 - 0.01)).toBe(true);
+    expect(isTriageDeckMapMode(0.4)).toBe(true);
+    expect(isTriageDeckMapMode(0.35)).toBe(true);
+  });
+
+  it("cycles presets from the nearest preset to the current zoom", () => {
+    expect(nextTriageDeckZoomPreset(1.0)).toBe(1.6);
+    expect(nextTriageDeckZoomPreset(1.6)).toBe(0.4);
+    expect(nextTriageDeckZoomPreset(0.4)).toBe(1.0);
+    // 비-프리셋 배율은 가장 가까운 프리셋 기준으로 다음 단계를 고른다.
+    expect(nextTriageDeckZoomPreset(1.2)).toBe(1.6);
+    expect(nextTriageDeckZoomPreset(0.5)).toBe(1.0);
+  });
+
+  it("persists zoom per theater in localStorage and reloads it clamped", () => {
+    setTriageDeckZoom(THEATER_ID, 1.6);
+    expect(window.localStorage.getItem(`fleet-console.triage-deck-zoom.${THEATER_ID}`)).toBe("1.6");
+    window.localStorage.setItem("fleet-console.triage-deck-zoom.theater-b", "9");
+    expect(getTriageDeckZoom("theater-b")).toBe(2.0);
+    expect(getTriageDeckZoom("theater-c")).toBe(1.0);
+  });
+
+  it("reflects live map mode overrides and falls back to the persisted zoom", () => {
+    setTriageDeckZoom(THEATER_ID, 1.0);
+    expect(isTriageDeckMapModeActive(THEATER_ID)).toBe(false);
+    setTriageDeckMapModeLive(THEATER_ID, true);
+    expect(isTriageDeckMapModeActive(THEATER_ID)).toBe(true);
+    setTriageDeckMapModeLive(THEATER_ID, false);
+    expect(isTriageDeckMapModeActive(THEATER_ID)).toBe(false);
+  });
+
+  it("emits only when the live map mode actually changes", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeTriage(listener);
+    setTriageDeckMapModeLive(THEATER_ID, true);
+    expect(listener).toHaveBeenCalledTimes(1);
+    setTriageDeckMapModeLive(THEATER_ID, true);
+    expect(listener).toHaveBeenCalledTimes(1);
+    setTriageDeckMapModeLive(THEATER_ID, false);
+    expect(listener).toHaveBeenCalledTimes(2);
+    unsubscribe();
+  });
+});
+
+describe("triage map marker layout", () => {
+  const geometry = (x: number, y: number) => ({ x, y, width: 100, height: 60, zIndex: 1 });
+
+  it("projects canvas geometry centers into the deck [8%,92%]×[10%,86%] band", () => {
+    const layout = resolveTriageMapMarkerLayout([
+      { id: "a", geometry: geometry(0, 0) },
+      { id: "b", geometry: geometry(900, 400) },
+    ]);
+    expect(layout.find((marker) => marker.operationId === "a")).toMatchObject({ x: 8, y: 10 });
+    expect(layout.find((marker) => marker.operationId === "b")).toMatchObject({ x: 92, y: 86 });
+  });
+
+  it("pins a degenerate bounding-box axis to the center", () => {
+    const layout = resolveTriageMapMarkerLayout([
+      { id: "a", geometry: geometry(0, 0) },
+      { id: "b", geometry: geometry(500, 0) },
+    ]);
+    // y 좌표가 전부 같아 세로 bounding box 높이가 0이면 y는 중앙(48%) 고정이다.
+    for (const marker of layout) expect(marker.y).toBe(48);
+    expect(layout.find((marker) => marker.operationId === "a")?.x).toBe(8);
+    expect(layout.find((marker) => marker.operationId === "b")?.x).toBe(92);
+  });
+
+  it("places geometry-less operations deterministically without Math.random", () => {
+    const input = [
+      { id: "orphan-1", geometry: null },
+      { id: "orphan-2", geometry: null },
+      { id: "orphan-3", geometry: null },
+    ];
+    const first = resolveTriageMapMarkerLayout(input);
+    const second = resolveTriageMapMarkerLayout([...input].reverse());
+    // 반환 순서는 입력 순서를 따르므로 id 기준 정렬 후 비교 — 위치 자체가 결정적이어야 한다.
+    const byId = (layout: typeof first) => [...layout].sort((a, b) => a.operationId.localeCompare(b.operationId));
+    expect(byId(first)).toEqual(byId(second));
+    for (const marker of first) {
+      expect(marker.x).toBeGreaterThanOrEqual(4);
+      expect(marker.x).toBeLessThanOrEqual(96);
+      expect(marker.y).toBeGreaterThanOrEqual(4);
+      expect(marker.y).toBeLessThanOrEqual(96);
+    }
+  });
+
+  it("relaxes overlapping markers apart deterministically", () => {
+    // 같은 중심의 geometry 3개 — 이완 후 쌍 거리는 최소 4%를 만족하거나 경계 클램프에 걸린다.
+    const input = [
+      { id: "a", geometry: geometry(100, 100) },
+      { id: "b", geometry: geometry(100, 100) },
+      { id: "c", geometry: geometry(100, 100) },
+    ];
+    const layout = resolveTriageMapMarkerLayout(input);
+    expect(layout).toEqual(resolveTriageMapMarkerLayout(input));
+    for (let left = 0; left < layout.length; left += 1) {
+      for (let right = left + 1; right < layout.length; right += 1) {
+        const a = layout[left]!;
+        const b = layout[right]!;
+        const distance = Math.hypot(b.x - a.x, b.y - a.y);
+        expect(distance).toBeGreaterThanOrEqual(4 - 1e-6);
+      }
+    }
   });
 });
 

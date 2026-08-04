@@ -97,6 +97,10 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--canvas-menu-max-height",
   // Triage Watch Deck TSX injects the grid-capped quick-look magnification at hover time.
   "--triage-quicklook-scale",
+  // Watch Deck zoom tween injects card column/row sizing each frame.
+  "--triage-card-min",
+  "--triage-row-min",
+  "--triage-row-max",
 ]);
 
 function source(path: string): string {
@@ -560,6 +564,10 @@ describe("Instrument core design contract", () => {
     // 스포트라이트 OFF의 지속 맥동은 움직임을 빼고도 정지한 aurora 링으로 읽혀야 한다.
     expect(reducedMotionBlock).toContain(".canvas-triage-deck-card.is-fresh,");
     expect(reducedMotionBlock).toContain(".canvas-triage-rail-track button.is-fresh,");
+    // 작전지도 LOD 전환(cross-fade·마커 강조)도 같은 봉인 안에서 즉시 상태로 떨어진다.
+    expect(reducedMotionBlock).toContain(".canvas-triage-map,");
+    expect(reducedMotionBlock).toContain(".canvas-triage-map-dot,");
+    expect(reducedMotionBlock).toContain(".canvas-triage-map-dot-label {");
   });
 
   it("pins the dormant resume feedback grammar — pending pulse, error card, and reduced-motion fallback", () => {
