@@ -115,8 +115,11 @@ export function GlobalSettings() {
     // 이 push는 state 없이 새 항목을 만들므로 현재 항목의 마커를 명시적으로 전파한다.
     // 마커 없는 방문(직접 로드·리로드)에서 push하면 원본 설정 항목이 고아가 되어
     // Back이 설정을 다시 열으므로, 마커가 없을 때는 섹션 이동을 replace로 처리한다.
-    const nextState = propagateSettingsEntryIndex(location.state);
-    if (!("settingsEntry" in nextState)) nextState.settingsEntry = null;
+    const nextState = propagateSettingsEntryIndex(
+      "settingsEntry" in ((location.state ?? {}) as Record<string, unknown>)
+        ? location.state
+        : { settingsEntry: null },
+    );
     const marked = typeof nextState.settingsEntry === "number";
     navigate(
       { pathname: "/settings", search: sectionId === "general" ? "" : `?section=${encodeURIComponent(sectionId)}` },
@@ -135,7 +138,7 @@ export function GlobalSettings() {
     const available = new Set<SettingsSectionId>([...coreSections.map((section) => section.id), ...pluginSections.map((section) => section.id)]);
     const next = requested && available.has(requested as SettingsSectionId) ? requested as SettingsSectionId : "general";
     setActiveSectionId(next);
-    if (requested && requested !== next) navigate({ pathname: "/settings", search: "" }, { replace: true, state: propagateSettingsEntryIndex(null) });
+    if (requested && requested !== next) navigate({ pathname: "/settings", search: "" }, { replace: true, state: propagateSettingsEntryIndex(location.state) });
   }, [location.search, navigate, coreSections, pluginSections]);
 
   return (
