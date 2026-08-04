@@ -347,7 +347,9 @@ export function OperationsCanvas({
     }
     const timer = window.setTimeout(() => setTriageDeckDwellRevision((revision) => revision + 1), remaining);
     return () => window.clearTimeout(timer);
-  }, [candidateTriageStage?.operation.id, candidateTriageStage?.picked, triageStageId]);
+    // 스포트라이트 토글은 dwell ref를 후보 변경 없이 갱신한다(OFF=해제, ON 복귀=새 deadline) —
+    // deps에 없으면 ON 복귀 시 새 deadline을 깨울 타이머가 스케줄되지 않아 등단이 멈춘다.
+  }, [candidateTriageStage?.operation.id, candidateTriageStage?.picked, triageSpotlightEnabled, triageStageId]);
   // deck는 무대가 떠 있어도 mount를 유지한다(visibility 은닉) — 비무대 body의 거처를 카드
   // 슬롯 하나로 고정해 무대 전환마다 전 세션에 PTY 리사이즈가 퍼지는 churn을 막는다.
   const triageDeckMounted = triageActive && !triageEntering && triageDeckOperations.length > 0;
