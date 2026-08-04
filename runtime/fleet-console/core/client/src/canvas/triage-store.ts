@@ -323,6 +323,8 @@ export function resolveTriageFleetZoneLayout(
 
 export function resolveTriageMapMarkerLayout(
   operations: ReadonlyArray<Pick<OperationNode, "id"> & { readonly geometry: OperationGeometry | null }>,
+  /** 구역 중앙에 Theater 표석이 서는 배치인지 — 표석이 없는 단일 함대(판 전체)는 비워 둘 띠가 없다. */
+  reserveLabelBand = false,
 ): readonly TriageMapMarkerLayout[] {
   const centers = operations.flatMap((operation) => operation.geometry
     ? [{
@@ -384,12 +386,34 @@ export function resolveTriageMapMarkerLayout(
     });
   }
 
+  if (reserveLabelBand) clearTriageMapLabelBand(points);
   relaxTriageMapMarkers(points);
+  // 이완이 다시 띠 안으로 밀어 넣을 수 있다 — 겹침 해소 뒤 한 번 더 비운다. 두 번째 통과는
+  // 마커를 띠 밖으로만 옮기므로 이완이 확보한 최소 간격을 무너뜨리지 않는다.
+  if (reserveLabelBand) clearTriageMapLabelBand(points);
   return operations.map((operation) => ({
     operationId: operation.id,
     x: points.get(operation.id)!.x,
     y: points.get(operation.id)!.y,
   }));
+}
+
+// Theater 표석이 앉는 구역 중앙의 가로 띠. 마커의 이름표가 점 오른쪽으로 뻗으므로 왼쪽은
+// 조금 여유를 두고 오른쪽으로 넓게 잡는다.
+const MAP_LABEL_BAND_TOP = 41;
+const MAP_LABEL_BAND_BOTTOM = 61;
+const MAP_LABEL_BAND_LEFT = 12;
+const MAP_LABEL_BAND_RIGHT = 92;
+
+// 표석 자리를 비운다 — 점과 그 이름표가 Theater 문구 위에 겹치면 둘 다 읽히지 않는다.
+// 띠 안의 마커는 가까운 쪽 가장자리로 수직 이동한다(수평 이동은 소속 구역을 벗어나기 쉽다).
+function clearTriageMapLabelBand(points: Map<string, { x: number; y: number }>): void {
+  for (const point of points.values()) {
+    if (point.y <= MAP_LABEL_BAND_TOP || point.y >= MAP_LABEL_BAND_BOTTOM) continue;
+    if (point.x <= MAP_LABEL_BAND_LEFT || point.x >= MAP_LABEL_BAND_RIGHT) continue;
+    const bandCenter = (MAP_LABEL_BAND_TOP + MAP_LABEL_BAND_BOTTOM) / 2;
+    point.y = clampPercent(point.y < bandCenter ? MAP_LABEL_BAND_TOP - 1 : MAP_LABEL_BAND_BOTTOM + 1);
+  }
 }
 
 // 결정적 겹침 이완 — 가로세로 등가중 % 평면에서 4% 미만으로 붙은 쌍을 절반씩 밀어낸다.

@@ -2198,7 +2198,14 @@
   aspect-ratio: 1 / 1;
   transform: translate(-50%, -50%);
   border-radius: var(--radius-pill);
-  background: radial-gradient(circle, color-mix(in oklch, var(--zone-tint, var(--brass)) 7%, transparent) 0%, transparent 74%);
+  /* 경계선을 걷어낸 자리를 워시가 대신 진다 — 중심을 진하게, 가장자리를 길게 흘려 선 없이도
+     구역의 범위가 읽히게 한다. 7%짜리 옅은 워시로는 판과 구별되지 않아 표석만 떠 있었다. */
+  background: radial-gradient(
+    circle,
+    color-mix(in oklch, var(--zone-tint, var(--brass)) 17%, transparent) 0%,
+    color-mix(in oklch, var(--zone-tint, var(--brass)) 9%, transparent) 46%,
+    transparent 82%
+  );
 }
 
 .canvas-triage-map-zone-head .canvas-triage-deck-band-chip {
@@ -2382,8 +2389,11 @@
 /* 지도 Quick-Look — 카드가 은닉된 밀도에서도 hover 드웰이 같은 카드 얼굴을 같은 판독 크기로
    내놓는다. 카드 쪽 Quick-Look은 카드 자신을 확대하지만, 지도에는 확대할 카드가 없으므로 판
    위에 떠서 점을 덮는 오버레이가 그 자리를 대신한다. 위치·크기는 점 실측에서 JS가 주입한다.
-   포인터는 통과시킨다 — 창이 점을 덮어도 hover가 끊기지 않고 클릭이 점에 그대로 닿아야 한다. */
-.canvas-triage-map-quicklook {
+   포인터는 통과시킨다 — 창이 점을 덮어도 hover가 끊기지 않고 클릭이 점에 그대로 닿아야 한다.
+   셀렉터에 카드 클래스를 함께 묶는 것은 특이성 때문이다: 카드 얼굴을 재사용하려 카드 클래스를
+   같이 입는데, 뒤에 오는 `.canvas-triage-deck-card`(0,1,0)의 `position: relative`가 같은
+   특이성의 단일 클래스 규칙을 이겨 창이 판 좌표가 아니라 정상 흐름 위치에서 밀려난다. */
+.canvas-triage-deck-card.canvas-triage-map-quicklook {
   position: absolute;
   z-index: 3;
   border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-rim));

@@ -168,10 +168,13 @@ export interface TriageMapQuicklookPlacement {
 export const TRIAGE_MAP_QUICKLOOK_WIDTH = Math.round(TRIAGE_DECK_CARD_BASE_MIN_PX * TRIAGE_DECK_QUICKLOOK_SCALE);
 export const TRIAGE_MAP_QUICKLOOK_HEIGHT = Math.round(150 * TRIAGE_DECK_QUICKLOOK_SCALE);
 const TRIAGE_MAP_QUICKLOOK_MARGIN = 8;
+const TRIAGE_MAP_QUICKLOOK_GAP = 14;
 
-// 확대창은 점 중앙에 얹되 판(grid) 경계 안으로 클램프한다 — 점은 판 가장자리까지 떠다니므로
-// 중앙 정렬만으로는 확대창이 잘린다. 판이 확대창보다 좁으면 크기 자체를 판에 맞춰 깎는다
-// (카드 Quick-Look의 배율 클램프와 같은 정직한 열화).
+// 확대창은 점에 붙는다 — 툴팁과 같은 앵커 문법이다. 점 중앙에 얹고 경계로 밀어내면 판
+// 가장자리의 점일수록 창이 포인터에서 멀리 떨어져 "다른 곳에서 열린 창"으로 읽힌다.
+// 기본은 점의 오른쪽 아래, 그쪽이 좁으면 반대편으로 뒤집고, 양쪽 다 좁을 때만 경계로 민다.
+// 판이 확대창보다 좁으면 크기 자체를 판에 맞춰 깎는다(카드 Quick-Look의 배율 클램프와 같은
+// 정직한 열화).
 export function resolveTriageMapQuicklookPlacement(
   dotRect: DOMRect,
   gridRect: DOMRect,
@@ -179,15 +182,24 @@ export function resolveTriageMapQuicklookPlacement(
   height = TRIAGE_MAP_QUICKLOOK_HEIGHT,
 ): TriageMapQuicklookPlacement {
   const margin = TRIAGE_MAP_QUICKLOOK_MARGIN;
+  const gap = TRIAGE_MAP_QUICKLOOK_GAP;
   const boxWidth = Math.max(1, Math.min(width, gridRect.width - margin * 2));
   const boxHeight = Math.max(1, Math.min(height, gridRect.height - margin * 2));
-  const centerX = dotRect.left + dotRect.width / 2 - gridRect.left;
-  const centerY = dotRect.top + dotRect.height / 2 - gridRect.top;
-  const clamp = (value: number, span: number, box: number) =>
-    Math.max(margin, Math.min(value, Math.max(margin, span - box - margin)));
+  const anchor = (start: number, end: number, span: number, box: number) => {
+    // start/end는 점의 양 끝(판 기준). 오른쪽(아래)에 붙여 보고, 넘치면 왼쪽(위)으로 뒤집는다.
+    const after = end + gap;
+    if (after + box + margin <= span) return after;
+    const before = start - gap - box;
+    if (before >= margin) return before;
+    // 어느 쪽도 못 담으면 점 중앙을 기준으로 경계 안에 밀어 넣는다.
+    const centered = (start + end) / 2 - box / 2;
+    return Math.max(margin, Math.min(centered, Math.max(margin, span - box - margin)));
+  };
+  const left = dotRect.left - gridRect.left;
+  const top = dotRect.top - gridRect.top;
   return {
-    left: clamp(centerX - boxWidth / 2, gridRect.width, boxWidth),
-    top: clamp(centerY - boxHeight / 2, gridRect.height, boxHeight),
+    left: anchor(left, left + dotRect.width, gridRect.width, boxWidth),
+    top: anchor(top, top + dotRect.height, gridRect.height, boxHeight),
     width: boxWidth,
     height: boxHeight,
   };
@@ -694,10 +706,10 @@ export function TriageWatchDeck({
   };
 
   useEffect(() => {
-    // 지도 모드 진입도 해제 사유다 — grid가 visibility로 은닉되면 pointerleave가 발화하지
-    // 않아, 열린 Quick-Look(또는 진행 중 드웰)이 카드 복귀 때 포인터 없는 확대로 남는다.
-    // 반대로 지도를 떠날 때는 점의 확대창이 같은 이유로 남으므로, 두 표면 모두 해제한다.
-    if (!visible || stagedOperationId !== null || mapMode) dismissQuicklook();
+    // 표면이 바뀌면 열린 확대창은 방향과 무관하게 걷는다 — 은닉되거나 언마운트된 요소는
+    // pointerleave·blur를 발화하지 않으므로, 지도 진입에서는 카드 확대가, 이탈에서는 점의
+    // 확대창이 주인 없는 채로 남는다(후자는 pool 슬롯까지 카드와 다투게 된다).
+    dismissQuicklook();
   }, [visible, stagedOperationId, mapMode]);
 
   // 열린 지도 확대창의 좌표는 발동 시점 스냅샷이다 — 판이 리사이즈되면(사이드바 토글·창 변경)
@@ -727,9 +739,12 @@ export function TriageWatchDeck({
   }, [mapMode]);
 
   // 작전지도 원 배치는 판의 실제 종횡비를 알아야 픽셀 기준 겹침을 피할 수 있다 — 판(grid 뷰포트)을 실측한다.
+  // 지도 모드에서만 재면 카드 모드 동안의 리사이즈(창 크기·사이드바 토글)가 반영되지 않아,
+  // 지도 진입 첫 프레임이 옛 비율로 구역을 배치하고 morph는 그 자리를 목표로 굳는다 —
+  // 직후 측정이 구역을 옮기면 카드가 이미 없는 자리로 날아간다. 덱이 살아 있는 동안 계속 잰다.
   const [fleetAspect, setFleetAspect] = useState(1.8);
   useLayoutEffect(() => {
-    if (!mapMode || !visible) return;
+    if (!visible) return;
     const grid = gridRef.current;
     if (!grid) return;
     const measure = () => {
@@ -755,18 +770,12 @@ export function TriageWatchDeck({
   // 밴드 순서: 대기 카드 수 내림차순 → 같으면 theaters 선언 순. 카드 없는 Theater는 밴드를 그리지 않는다.
   // 헤더 수치는 밴드 정렬과 같은 대기 판정(isTriageWaitingOperation)을 쓴다 — 유휴 도착을 정렬은 대기로
   // 치면서 수치는 0으로 보이면 큐·사이드바 카운트와 모순된다. 대기로 센 유휴 도착은 유휴 수에서 뺀다.
-  const bands = theaters
+  const theaterBands = theaters
     .map((theater, theaterIndex) => {
       const theaterOperations = operations
         .filter((operation) => operation.theaterId === theater.id)
         .sort((left, right) => TRIAGE_DECK_ACTIVITY_RANK[resolveOperationActivity(left, operationStatus)]
           - TRIAGE_DECK_ACTIVITY_RANK[resolveOperationActivity(right, operationStatus)]);
-      const mapMarkers = mapMode
-        ? resolveTriageMapMarkerLayout(theaterOperations.map((operation) => ({
-            id: operation.id,
-            geometry: mapGeometryFor ? mapGeometryFor(operation) : operation.geometry,
-          })))
-        : null;
       const waitingIds = new Set(
         theaterOperations
           .filter((operation) => isTriageWaitingOperation(operation, operationStatus))
@@ -778,10 +787,21 @@ export function TriageWatchDeck({
         idle: theaterOperations.filter((operation) =>
           resolveOperationActivity(operation, operationStatus) === "idle" && !waitingIds.has(operation.id)).length,
       };
-      return { theater, theaterIndex, operations: theaterOperations, mapMarkers, counts };
+      return { theater, theaterIndex, operations: theaterOperations, counts };
     })
     .filter((band) => band.operations.length > 0)
     .sort((left, right) => right.counts.waiting - left.counts.waiting || left.theaterIndex - right.theaterIndex);
+  // 마커 배치는 구역이 몇 개로 갈리는지 안 뒤에 정한다 — 중앙 표석은 구역이 둘 이상일 때만
+  // 서므로, 그때만 마커가 비켜설 띠를 잡는다(단일 함대는 판 전체가 열린 바다다).
+  const bands = theaterBands.map((band) => ({
+    ...band,
+    mapMarkers: mapMode
+      ? resolveTriageMapMarkerLayout(band.operations.map((operation) => ({
+          id: operation.id,
+          geometry: mapGeometryFor ? mapGeometryFor(operation) : operation.geometry,
+        })), theaterBands.length > 1)
+      : null,
+  }));
   const fleetZones = mapMode
     ? resolveTriageFleetZoneLayout(bands.map((band) => ({ theaterId: band.theater.id, count: band.operations.length })), fleetAspect)
     : [];
@@ -932,7 +952,7 @@ export function TriageWatchDeck({
             })}
           </div>
         ) : null}
-        {mapQuicklookOperation ? (
+        {mapMode && mapQuicklookOperation ? (
           // 점의 확대창 — 카드 Quick-Look과 같은 카드 얼굴을 같은 판독 크기로 띄운다. 포인터를
           // 통과시켜(pointer-events:none) 창이 점을 덮어도 hover가 끊기지 않고 클릭이 점에 닿는다.
           <div

@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import { resolveTriageMapMarkerLayout } from "../core/client/src/canvas/triage-store.js";
 import {
   resolveTriageMapQuicklookPlacement,
   resolveTriageMorphFrame,
@@ -92,21 +93,28 @@ describe("resolveTriageQuicklookScale", () => {
 describe("resolveTriageMapQuicklookPlacement", () => {
   const dot = (left: number, top: number) => rect(left, top, 14, 14);
 
-  it("centers the panel on the dot when the plate has room on every side", () => {
+  it("anchors the panel just past the dot when the plate has room", () => {
     const placement = resolveTriageMapQuicklookPlacement(dot(600, 400), GRID);
     expect(placement.width).toBe(TRIAGE_MAP_QUICKLOOK_WIDTH);
     expect(placement.height).toBe(TRIAGE_MAP_QUICKLOOK_HEIGHT);
-    expect(placement.left).toBeCloseTo(607 - TRIAGE_MAP_QUICKLOOK_WIDTH / 2, 5);
-    expect(placement.top).toBeCloseTo(407 - TRIAGE_MAP_QUICKLOOK_HEIGHT / 2, 5);
+    // 점의 오른쪽 아래에 14px 간격으로 붙는다 — 창 모서리가 포인터 바로 옆에 선다.
+    expect(placement.left).toBe(600 + 14 + 14);
+    expect(placement.top).toBe(400 + 14 + 14);
   });
 
-  it("clamps inside the plate when the dot drifts to an edge", () => {
-    const near = resolveTriageMapQuicklookPlacement(dot(0, 0), GRID);
-    expect(near.left).toBe(8);
-    expect(near.top).toBe(8);
+  it("flips to the other side of the dot instead of drifting away from it", () => {
     const far = resolveTriageMapQuicklookPlacement(dot(1186, 786), GRID);
-    expect(far.left).toBe(1200 - TRIAGE_MAP_QUICKLOOK_WIDTH - 8);
-    expect(far.top).toBe(800 - TRIAGE_MAP_QUICKLOOK_HEIGHT - 8);
+    // 오른쪽·아래가 좁으면 점의 왼쪽 위로 뒤집는다. 경계로 밀어내지 않으므로 창은 점에 붙어 있다.
+    expect(far.left).toBe(1186 - 14 - TRIAGE_MAP_QUICKLOOK_WIDTH);
+    expect(far.top).toBe(786 - 14 - TRIAGE_MAP_QUICKLOOK_HEIGHT);
+    expect(far.left + TRIAGE_MAP_QUICKLOOK_WIDTH).toBeLessThanOrEqual(1186);
+  });
+
+  it("keeps the panel inside the plate when neither side can hold it", () => {
+    // 세로로 짧은 판 — 위아래 어느 쪽도 293을 담지 못하므로 점 중앙 기준으로 경계 안에 넣는다.
+    const placement = resolveTriageMapQuicklookPlacement(dot(600, 160), rect(0, 0, 1200, 340));
+    expect(placement.top).toBeGreaterThanOrEqual(8);
+    expect(placement.top + placement.height).toBeLessThanOrEqual(340 - 8 + 1e-6);
   });
 
   it("shrinks to the plate on windows narrower than the reading size", () => {
@@ -115,6 +123,27 @@ describe("resolveTriageMapQuicklookPlacement", () => {
     expect(placement.height).toBe(200 - 16);
     expect(placement.left).toBe(8);
     expect(placement.top).toBe(8);
+  });
+});
+
+describe("triage map label band", () => {
+  const op = (id: string) => ({ id, geometry: null });
+
+  it("keeps markers out of the centered Theater marker band when zones are split", () => {
+    const ids = ["a", "b", "c", "d", "e", "f", "g", "h"];
+    const zoned = resolveTriageMapMarkerLayout(ids.map(op), true);
+    for (const marker of zoned) {
+      const insideBand = marker.y > 41 && marker.y < 61 && marker.x > 12 && marker.x < 92;
+      expect(insideBand).toBe(false);
+    }
+  });
+
+  it("leaves the band open for a single fleet that has no centered marker", () => {
+    const ids = ["a", "b", "c", "d", "e", "f", "g", "h"];
+    const plane = resolveTriageMapMarkerLayout(ids.map(op));
+    const zoned = resolveTriageMapMarkerLayout(ids.map(op), true);
+    // 같은 입력이라도 표석이 없는 판은 중앙을 비우지 않는다 — 두 배치는 달라야 한다.
+    expect(plane).not.toEqual(zoned);
   });
 });
 
