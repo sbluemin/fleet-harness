@@ -5,7 +5,7 @@ import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../api.js";
 import { animateViewportTo, fitAllOperations, selectFormationLayout, useCanvasState, useFormationLayout, useFormationView } from "../canvas/canvas-store.js";
-import { enterTriage, focusedTriageOperationId, setTriageActive, useTriageActive } from "../canvas/triage-store.js";
+import { enterTriage, focusedTriageOperationId, setTriageActive, useTriageActive, visitTriageTheater } from "../canvas/triage-store.js";
 import { COMMAND_BAND_RAIL_STRIP_PX, commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandMapControlsAnchor, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
 import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
@@ -306,7 +306,11 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const selectTheaterFromMenu = (theaterId: string) => {
     setSwitcherMenu(null);
     theaterTriggerRef.current?.focus();
-    if (theaterId !== state.activeTheaterId) setActiveTheater(theaterId);
+    // 선별 중 수동 전환도 방문 경로를 타야 목적지의 저장된 Formation/companion이 부활하지 않는다.
+    if (theaterId !== state.activeTheaterId) {
+      if (triageActive) visitTriageTheater(theaterId);
+      else setActiveTheater(theaterId);
+    }
   };
 
   const selectOperationFromMenu = (operationId: string) => {
@@ -318,6 +322,9 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const addTheaterFromMenu = () => {
     setSwitcherMenu(null);
     theaterTriggerRef.current?.focus();
+    // 생성 요청의 소비자(Map 사이드바)는 선별 중 언마운트다 — 먼저 선별을 끝내 사이드바를
+    // 되살린 뒤 요청해야 지연 실행 없이 즉시 열린다(종료가 이전 대기 요청을 폐기하므로 순서 고정).
+    if (triageActive) setTriageActive(false);
     requestSideBarAddTheater();
   };
 
@@ -325,6 +332,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     if (!activeTheater) return;
     setSwitcherMenu(null);
     operationTriggerRef.current?.focus();
+    if (triageActive) setTriageActive(false);
     requestSideBarTheaterLaunch(activeTheater.id);
   };
 

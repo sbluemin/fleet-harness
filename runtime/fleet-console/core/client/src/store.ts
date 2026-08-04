@@ -373,13 +373,23 @@ export function failAddTheater(error: string): void {
   setState({ addingTheater: false, theaterError: error });
 }
 
+// 선별 처리처럼 "포커스가 Theater를 전환하면 안 되는" 모드가 등록하는 가드 — store는 triage를
+// 모른다(import 방향: triage-store → store). 가드가 true를 반환하는 동안 focusOperation은
+// activeTheater를 보존한 채 포커스 요청만 흘려보낸다.
+let focusTheaterSwitchSuppressed: () => boolean = () => false;
+
+export function registerFocusTheaterSwitchSuppression(guard: () => boolean): void {
+  focusTheaterSwitchSuppressed = guard;
+}
+
 export function focusOperation(operationId: string): void {
   const operation = state.operations.find((item) => item.id === operationId);
   if (!operation) return;
-  writeStoredActiveTheaterId(operation.theaterId);
+  const suppressSwitch = focusTheaterSwitchSuppressed() && operation.theaterId !== state.activeTheaterId;
+  if (!suppressSwitch) writeStoredActiveTheaterId(operation.theaterId);
   const activeOperationAcknowledged = acknowledgeIdleArrival(operationId);
   setState({
-    activeTheaterId: operation.theaterId,
+    ...(suppressSwitch ? {} : { activeTheaterId: operation.theaterId }),
     activeOperationId: operationId,
     activeOperationAcknowledged,
     pendingOperationFocus: operationId,

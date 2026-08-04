@@ -199,7 +199,7 @@ const AUTO_SCROLL_EDGE_PX = 34;
 const AUTO_SCROLL_STEP_PX = 18;
 const STATUS_LANDING_DURATION_MS = 500;
 
-interface StatusSection {
+export interface StatusSection {
   readonly status: SideBarStatus;
   readonly label: string;
   readonly entries: readonly SideBarEntry[];
@@ -215,7 +215,7 @@ function buildStatusSectionOrder(t: Translate<CoreMessageKey>): readonly Omit<St
   ];
 }
 
-function StatusSectionSlot({
+export function StatusSectionSlot({
   theaterId,
   section,
   unseenCount = 0,
@@ -1265,7 +1265,7 @@ function resolveEntryGroupMark(
   return color ? { name: group.name, color } : null;
 }
 
-function buildTheaterEntries({
+export function buildTheaterEntries({
   theaterId,
   operations,
   operationOrder,

@@ -34,6 +34,7 @@ import {
   requestSideBarOperationAction,
   subscribeSideBarOperationAction,
 } from "../core/client/src/sidebar/interaction.js";
+import { setSideBarCollapsed } from "../core/client/src/sidebar/operations-side-bar-store.js";
 import { OperationBodyPool } from "../core/client/src/mobile/operation-body-pool.js";
 import { createHostCapabilities } from "../core/client/src/plugin-capabilities.js";
 import {
@@ -59,14 +60,16 @@ import {
   nextTriageDeckZoomPreset,
   pickTriageOperation,
   recordTriageActivity,
+  recordTriageStageTheater,
   reconcileTriageStageCompanion,
+  resetTriageDeckZoomForTests,
   resetTriageSpotlightForTests,
   resetTriageTheater,
+  resolveTriageFleetZoneLayout,
   resolveTriageMapMarkerLayout,
   resolveTriageQueue,
   scheduleTriageClear,
   setTriageActive,
-  resetTriageDeckZoomForTests,
   setTriageDeckMapModeLive,
   setTriageDeckZoom,
   setTriageSpotlightEnabled,
@@ -652,18 +655,49 @@ describe("triage store", () => {
       .map((entry) => entry.operation.id)).toEqual(["alpha-waiting", "beta-waiting", "beta-arrived"]);
   });
 
-  it("switches the active Theater when picking a foreign-Theater Operation", () => {
+  it("keeps the active Theater on a foreign pick and returns to the last staged Theater on exit", () => {
     const foreign = operation("foreign", 1, "theater-b");
     setConsoleState({
       operations: [foreign],
       activeTheaterId: THEATER_ID,
+      theaters: THEATERS.map((theater) => ({
+        id: theater.id,
+        label: theater.label,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        lastOpenedAt: "2026-01-01T00:00:00.000Z",
+        hasWiki: false,
+        activeAdmiralCount: 0,
+      })),
       operationStatus: { foreign: "awaiting" },
     });
+    setTriageActive(true);
 
+    // 전 Theater 마운트 모드 — 지목은 Theater를 전환하지 않고 무대만 세운다.
     pickTriageOperation("foreign");
-
-    expect(getState().activeTheaterId).toBe("theater-b");
+    expect(getState().activeTheaterId).toBe(THEATER_ID);
     expect(getTriagePick()).toBe("foreign");
+
+    // canvas가 무대가 설 때 기록하는 이력 — 종료 시 이 Theater로 복귀한다.
+    recordTriageStageTheater("theater-b");
+    setTriageActive(false);
+    expect(getState().activeTheaterId).toBe("theater-b");
+  });
+
+  it("clears a visited Theater's stored Formation flag before switching to it", () => {
+    // theater-b를 Formation 상태로 남겨둔 채 theater-a에서 선별에 진입한 상황 —
+    // 방문 시 플래그를 걷어내지 않으면 loadForTheater가 Formation을 복원해 상호배제가 깨진다.
+    loadForTheater("theater-b");
+    toggleFormationView();
+    expect(getFormationView()).toBe(true);
+    loadForTheater(THEATER_ID);
+    setConsoleState({ activeTheaterId: THEATER_ID });
+    setTriageActive(true);
+
+    visitTriageTheater("theater-b");
+    loadForTheater("theater-b");
+
+    expect(getFormationView()).toBe(false);
+    expect(isTriageActive()).toBe(true);
   });
 
   it("exits global Triage when Formation activates in any Theater", () => {
@@ -677,31 +711,41 @@ describe("triage store", () => {
     expect(isTriageActive()).toBe(false);
   });
 
-  it("partitions sidebar sections into waiting, watching, and idle with theater-then-createdAt order", () => {
+  it("groups sidebar entries into the shared status sections, drops dormant, and orders awaiting by the queue", () => {
     const alphaWaiting = operation("alpha-waiting", 1);
-    const alphaRunning = operation("alpha-running", 2);
-    const betaBackground = operation("beta-background", 3, "theater-b");
+    const betaWaiting = operation("beta-waiting", 2, "theater-b");
+    const alphaRunning = operation("alpha-running", 3);
     const betaIdle = operation("beta-idle", 4, "theater-b");
-    const alphaIdle = operation("alpha-idle", 5);
-    const alphaDormant = operation("alpha-dormant", 6);
-    const operations = [betaIdle, alphaIdle, betaBackground, alphaRunning, alphaWaiting, alphaDormant];
+    const alphaDormant = operation("alpha-dormant", 5);
+    const operations = [betaIdle, alphaRunning, betaWaiting, alphaWaiting, alphaDormant];
     const status: Readonly<Record<string, OperationActivity>> = {
       "alpha-waiting": "awaiting",
+      "beta-waiting": "awaiting",
       "alpha-running": "running",
-      "beta-background": "background",
       "beta-idle": "idle",
-      "alpha-idle": "idle",
       "alpha-dormant": "dormant",
     };
     recordTriageActivity(operations, status, 1_000);
+    // beta-waiting을 지목해 전역 큐 선두로 올린다 — awaiting 섹션은 이 처리 순서를 따라야 한다.
+    pickTriageOperation("beta-waiting");
     const queue = resolveTriageQueue(operations, status, 1_000);
+    const entries = operations.map((candidate) => ({
+      operation: candidate,
+      active: false,
+      minimized: false,
+      notificationCount: 0,
+      status: status[candidate.id],
+      icon: null,
+    }));
 
-    const sections = resolveTriageSideBarSections(operations, status, queue, THEATERS);
+    const sections = resolveTriageSideBarSections(entries, queue);
 
-    expect(sections.waiting.map((operation) => operation.id)).toEqual(["alpha-waiting"]);
-    expect(sections.watching.map((operation) => operation.id)).toEqual(["alpha-running", "beta-background"]);
-    expect(sections.idle.map((operation) => operation.id)).toEqual(["alpha-idle", "beta-idle"]);
-    expect(sections.watching.some((operation) => operation.id === "alpha-dormant")).toBe(false);
+    expect(sections.map((section) => section.status)).toEqual(["awaiting", "running", "background", "idle"]);
+    const byStatus = new Map(sections.map((section) => [section.status, section.entries.map((entry) => entry.operation.id)]));
+    expect(byStatus.get("awaiting")).toEqual(["beta-waiting", "alpha-waiting"]);
+    expect(byStatus.get("running")).toEqual(["alpha-running"]);
+    expect(byStatus.get("idle")).toEqual(["beta-idle"]);
+    expect(sections.some((section) => section.entries.some((entry) => entry.operation.id === "alpha-dormant"))).toBe(false);
   });
 
   it("keeps the Triage stage and companions inside the inset without overlap", () => {
@@ -837,6 +881,74 @@ describe("triage store", () => {
     expect(bands[1]?.querySelectorAll("[data-triage-deck-card]")).toHaveLength(1);
   });
 
+  it("separates fleet zones until none overlap at the given aspect", () => {
+    // 9개 이상이면 슬롯이 재사용되어 동일 중심에서 출발한다 — 분리 반복이 결정적 방향으로
+    // 밀어내 그 퇴화 케이스까지 겹침 없이 정착해야 한다.
+    const zones = resolveTriageFleetZoneLayout(
+      Array.from({ length: 9 }, (_, index) => ({ theaterId: `t${index}`, count: 2 })),
+      1.6,
+    );
+    // 픽셀 겹침 판정은 높이=100 정규 좌표계에서 수행한다(size는 높이 기준 지름).
+    const width = 100 * 1.6;
+    const points = zones.map((zone) => ({
+      x: (zone.centerX / 100) * width,
+      y: zone.centerY,
+      r: zone.size / 2,
+    }));
+    for (let i = 0; i < points.length; i += 1) {
+      for (let j = i + 1; j < points.length; j += 1) {
+        const dist = Math.hypot(points[j]!.x - points[i]!.x, points[j]!.y - points[i]!.y);
+        expect(dist).toBeGreaterThanOrEqual(points[i]!.r + points[j]!.r);
+      }
+    }
+  });
+
+  it("lays fleet zones on deterministic slots with sqrt-of-count sizing", () => {
+    const zones = resolveTriageFleetZoneLayout([
+      { theaterId: "big", count: 9 },
+      { theaterId: "small", count: 1 },
+    ]);
+    const again = resolveTriageFleetZoneLayout([
+      { theaterId: "big", count: 9 },
+      { theaterId: "small", count: 1 },
+    ]);
+    // 결정적 배치 — 같은 입력이면 같은 자리·크기(렌더마다 흔들리면 지도가 아니다).
+    expect(zones).toEqual(again);
+    expect(new Set(zones.map((zone) => `${zone.centerX}:${zone.centerY}`)).size).toBe(2);
+    expect(zones[0]!.size).toBeGreaterThan(zones[1]!.size);
+    for (const zone of zones) {
+      expect(zone.size).toBeGreaterThanOrEqual(34);
+      expect(zone.size).toBeLessThanOrEqual(66);
+    }
+  });
+
+  it("counts an idle arrival as waiting in the band header with the queue's predicate", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    triagePlateRoot = createRoot(container);
+    const arrival = operation("arrival", 1);
+    const status: Readonly<Record<string, OperationActivity>> = { arrival: "idle" };
+    recordTriageActivity([arrival], status, 1_000);
+    markIdleArrival("arrival");
+
+    act(() => {
+      triagePlateRoot?.render(createElement(TriageWatchDeck, {
+        active: true,
+        entering: false,
+        theaters: THEATERS,
+        operations: [arrival],
+        operationStatus: status,
+        operationAccent: {},
+      }));
+    });
+
+    // 정렬(bandWaitingCount)과 헤더 수치가 같은 판정을 공유한다 — 유휴 도착은 대기 1로
+    // 집계되고 유휴 수에서는 빠져 이중 집계되지 않는다.
+    const counts = container.querySelector(".canvas-triage-deck-band-counts")?.textContent ?? "";
+    expect(counts).toContain("1 waiting");
+    expect(counts).toContain("0 idle");
+  });
+
   it("holds automatic deck arrivals but lets picks, stage advancement, and suppressed motion promote immediately", () => {
     const started = resolveTriageDeckPromotion({
       operationId: "awaiting",
@@ -931,7 +1043,7 @@ describe("triage store", () => {
       triagePlateRoot?.render(createElement(TriageWatchDeck, {
         active: true,
         entering: false,
-        theaterId: THEATER_ID,
+        theaters: THEATERS,
         operations: OPERATIONS,
         operationStatus: { picked: "awaiting", next: "idle" },
         operationAccent: {},
@@ -987,9 +1099,10 @@ describe("triage store", () => {
     forceDropCompanionOperationId();
   });
 
-  it("captures and nulls a visited Theater's focus layer on pick and restores both Theaters on exit", () => {
+  it("does not disturb a foreign Theater's stored focus layer when picking without switching", () => {
     const foreign = operation("foreign", 1, "theater-b");
-    // B에 저장된 companion layer — 선별 전의 B 화면 상태다.
+    // B에 저장된 companion layer — 선별 전의 B 화면 상태다. 전 Theater 마운트 모드에서
+    // 지목은 B를 로드하지 않으므로 저장본은 캡처도 소거도 없이 그대로 남아야 한다.
     setTheaterFocusLayerSnapshot("theater-b", { mode: "companion", operationId: "foreign", returnTo: "underlay" });
     setConsoleState({
       operations: [foreign],
@@ -1000,23 +1113,12 @@ describe("triage store", () => {
 
     pickTriageOperation("foreign");
 
-    expect(getState().activeTheaterId).toBe("theater-b");
-    // 방문 시점에 B의 live snapshot은 비워져야 선별 중 companion이 부활하지 않는다.
-    expect(getTheaterFocusLayerSnapshot("theater-b")).toBeNull();
-    expect(getCompanionOperationId()).toBeNull();
-
-    // 종료 복원의 유효성 검사(대상 geometry 존재·비최소화)를 통과하는 상태를 B에 남긴다 —
-    // geometry 저장은 지연(scheduleSave)이라 loadForTheater 왕복으로 flush해 B의 저장 상태에 확정한다.
-    loadForTheater("theater-b");
-    setOperationGeometry("foreign", { x: 0, y: 0, width: 640, height: 400, zIndex: 1 });
-    loadForTheater(THEATER_ID);
-    loadForTheater("theater-b");
+    expect(getState().activeTheaterId).toBe(THEATER_ID);
+    expect(getTheaterFocusLayerSnapshot("theater-b")).toEqual({ mode: "companion", operationId: "foreign", returnTo: "underlay" });
 
     setTriageActive(false);
-    // 캡처본이 복원되어 B의 선별 전 화면이 되돌아온다.
     expect(getTheaterFocusLayerSnapshot("theater-b")).toEqual({ mode: "companion", operationId: "foreign", returnTo: "underlay" });
-    expect(getCompanionOperationId()).toBe("foreign");
-    forceDropCompanionOperationId();
+    setTheaterFocusLayerSnapshot("theater-b", null);
   });
 
   it("captures, nulls, and switches Theater when visitTriageTheater is called directly", () => {
@@ -1124,11 +1226,11 @@ describe("triage store", () => {
     expect(consumed).toEqual([]);
   });
 
-  it("re-renders the sidebar with moved ordinals and current highlight after a pick", () => {
+  it("re-renders the sidebar with the shared chip grammar, full theater pills, and current highlight after a pick", () => {
     const container = document.createElement("div");
     document.body.append(container);
     triagePlateRoot = createRoot(container);
-    const operations = [operation("first", 1), operation("second", 2)];
+    const operations = [operation("first", 1), operation("second", 2, "theater-b")];
     const status: Readonly<Record<string, OperationActivity>> = { first: "awaiting", second: "awaiting" };
     recordTriageActivity(operations, status, 1_000);
     setTriageActive(true);
@@ -1138,22 +1240,41 @@ describe("triage store", () => {
         theaters: THEATERS,
         operations,
         operationStatus: status,
+        operationNotifications: {},
+        catalog: [],
+        renderKindIcon: () => null,
         onPick: pickTriageOperation,
+        onClose: () => {},
+        onRename: () => {},
       }));
     };
     act(render);
-    expect(container.querySelectorAll(".triage-side-bar-row")).toHaveLength(2);
-    expect(container.querySelector(".triage-side-bar-row")?.textContent).toContain("01");
+    // 기존 사이드바 문법 그대로: 상태 섹션 헤더 + side-bar-chip 행.
+    expect(container.querySelector(".side-bar-status-header--awaiting")).not.toBeNull();
+    const chips = [...container.querySelectorAll<HTMLElement>(".side-bar-chip")];
+    expect(chips).toHaveLength(2);
+    // Theater 이름은 축약 없이 전체를 pill로 싣는다.
+    const pills = [...container.querySelectorAll<HTMLElement>(".side-bar-chip-theater-pill")].map((pill) => pill.textContent);
+    expect(pills).toEqual(expect.arrayContaining(["Alpha", "Beta"]));
+    expect(pills.some((text) => text === "AL" || text === "BE")).toBe(false);
 
     // 사이드바는 triage 리비전을 스스로 구독한다 — 부모 prop 없이도 pick 변화에 리렌더한다.
     act(() => pickTriageOperation("second"));
 
-    const rows = [...container.querySelectorAll<HTMLElement>(".triage-side-bar-row")];
+    const rows = [...container.querySelectorAll<HTMLElement>(".side-bar-chip")];
     expect(rows[0]?.textContent).toContain("second");
-    expect(rows[0]?.classList.contains("is-current")).toBe(true);
+    expect(rows[0]?.classList.contains("side-bar-chip--active")).toBe(true);
     expect(rows[0]?.getAttribute("aria-current")).toBe("true");
     expect(rows[1]?.textContent).toContain("first");
-    expect(rows[1]?.classList.contains("is-current")).toBe(false);
+    expect(rows[1]?.classList.contains("side-bar-chip--active")).toBe(false);
+
+    // 접힘은 Map 사이드바와 같은 좌측 열 상태를 공유한다 — 커맨드 밴드 토글이 선별 중에도 동작한다.
+    act(() => setSideBarCollapsed(true));
+    const aside = container.querySelector<HTMLElement>(".triage-side-bar");
+    expect(aside?.classList.contains("is-closed")).toBe(true);
+    expect(aside?.dataset.sidebarState).toBe("closed");
+    act(() => setSideBarCollapsed(false));
+    expect(container.querySelector<HTMLElement>(".triage-side-bar")?.classList.contains("is-closed")).toBe(false);
   });
 
   it("renders live previews only for active-Theater cards and the detail fallback for foreign ones", () => {
@@ -1237,13 +1358,12 @@ describe("triage deck zoom", () => {
     expect(nextTriageDeckZoomPreset(0.5)).toBe(1.0);
   });
 
-  it("persists zoom globally in localStorage and reloads it clamped", () => {
+  it("persists one global zoom in localStorage and reloads it clamped", () => {
     setTriageDeckZoom(1.6);
     expect(window.localStorage.getItem("fleet-console.triage-deck-zoom")).toBe("1.6");
+    resetTriageDeckZoomForTests();
     window.localStorage.setItem("fleet-console.triage-deck-zoom", "9");
     expect(getTriageDeckZoom()).toBe(2.0);
-    resetTriageDeckZoomForTests();
-    expect(getTriageDeckZoom()).toBe(1.0);
   });
 
   it("reflects live map mode overrides and falls back to the persisted zoom", () => {

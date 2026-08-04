@@ -28,7 +28,7 @@ import { closeOperationCompletely } from "../operation-close.js";
 import { forgetTheaterCompletely } from "../theater-forget.js";
 import type { DeferredDeletionReceipt } from "../api.js";
 import { getLoadedTheaterId, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, loadForTheater, minimizeOperations, requestFitAllOperations, toggleFormationView } from "../canvas/canvas-store.js";
-import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive } from "../canvas/triage-store.js";
+import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive, visitTriageTheater } from "../canvas/triage-store.js";
 import { getViewModeSnapshot } from "../view-mode-store.js";
 import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
@@ -257,13 +257,18 @@ export function OperationSearch({
         if (command.current) break;
         // Theater 전환은 캔버스로 포커스 문맥을 넘기므로 selectEntry처럼 이전 포커스 복원을 억제한다.
         previousFocusRef.current = null;
-        setActiveTheater(action.theaterId);
+        // 선별 중 수동 전환도 방문 경로를 타야 목적지의 저장된 Formation/companion이 부활하지 않는다.
+        if (isTriageActive()) visitTriageTheater(action.theaterId);
+        else setActiveTheater(action.theaterId);
         navigate("/operations");
         break;
       }
       case "new-theater": {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        // 생성 요청의 소비자(Map 사이드바)는 선별 중 언마운트다 — 먼저 선별을 끝내야
+        // 요청이 폐기되지 않고 즉시 소비된다(종료의 대기 요청 폐기보다 뒤에 요청).
+        if (isTriageActive()) setTriageActive(false);
         if (getSideBarState().collapsed) setSideBarCollapsed(false);
         requestSideBarAddTheater();
         break;
@@ -271,6 +276,7 @@ export function OperationSearch({
       case "new-operation": {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        if (isTriageActive()) setTriageActive(false);
         requestOperationLaunchMenu();
         break;
       }
