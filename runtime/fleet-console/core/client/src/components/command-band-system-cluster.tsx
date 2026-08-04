@@ -59,13 +59,18 @@ function SettingsButton({ updateAvailable }: { readonly updateAvailable: boolean
     // 비교·기록 모두 정규화한다. 직행 진입(딥링크 등)은 기본 화면인 /operations로 복귀한다.
     const pathname = location.pathname.replace(/\/+$/, "") || "/";
     if (pathname === "/settings") {
-      const from = (location.state as { from?: string } | null)?.from;
-      // 닫기는 설정 항목을 소비하는 동작이므로 replace — push면 토글마다
-      // settings/이전 화면이 교대로 쌓여 Back이 설정을 다시 연다.
-      navigate(from ?? "/operations", { replace: true });
+      const state = location.state as { from?: string; depth?: number } | null;
+      // 닫기는 설정을 연 채 쌓인 항목을 모두 소비하는 동작이다 — 섹션 이동이 push하는
+      // 중간 /settings?... 항목까지 idx 차이만큼 되돌아가야 Back이 설정을 다시 열지 않는다.
+      // depth를 알 수 없는 진입(딥링크·리로드)은 replace로 이전 화면에 대체한다.
+      if (typeof state?.depth === "number" && window.history.state?.idx > 0) {
+        navigate(-Math.min(state.depth, window.history.state.idx));
+        return;
+      }
+      navigate(state?.from ?? "/operations", { replace: true });
       return;
     }
-    navigate("/settings", { state: { from: `${pathname}${location.search}` } });
+    navigate("/settings", { state: { from: `${pathname}${location.search}`, depth: window.history.state?.idx ?? null } });
     window.requestAnimationFrame(() => {
       const target = document.querySelector<HTMLElement>("main h2, h2");
       target?.focus?.();

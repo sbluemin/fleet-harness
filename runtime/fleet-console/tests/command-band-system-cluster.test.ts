@@ -2,7 +2,7 @@
 
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { CommandBandSystemCluster, resolveUpdateApplyCopy } from "../core/client/src/components/command-band-system-cluster.js";
@@ -49,6 +49,15 @@ function HistoryLengthProbe() {
   return createElement("output", { "data-testid": "history-length" }, String(window.history.length));
 }
 
+// GlobalSettings.selectSection과 같은 방식의 push 네비게이션을 재현하는 프로브.
+function SectionPushProbe() {
+  const navigate = useNavigate();
+  (window as typeof window & { __pushSettingsSection?: () => void }).__pushSettingsSection = () => {
+    navigate({ pathname: "/settings", search: "?section=backend-api" });
+  };
+  return null;
+}
+
 function mountClusterAt(initialPath: string) {
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -59,6 +68,7 @@ function mountClusterAt(initialPath: string) {
     createElement(CommandBandSystemCluster),
     createElement(LocationProbe),
     createElement(HistoryLengthProbe),
+    createElement(SectionPushProbe),
   )));
 }
 
@@ -109,6 +119,21 @@ describe("CommandBandSystemCluster", () => {
   it("treats a trailing-slash Settings pathname as the settings page and closes to /operations", () => {
     mountClusterAt("/settings/");
     const settings = document.querySelector<HTMLButtonElement>(".command-band-settings")!;
+
+    act(() => settings.click());
+    expect(currentPath()).toBe("/operations");
+  });
+
+  it("consumes section-navigation entries too when closing Settings", () => {
+    mountClusterAt("/operations");
+    const settings = document.querySelector<HTMLButtonElement>(".command-band-settings")!;
+
+    act(() => settings.click());
+    expect(currentPath()).toBe("/settings");
+
+    // Settings 내 섹션 이동은 /settings?... 항목을 push한다 (global-settings selectSection).
+    act(() => { (window as typeof window & { __pushSettingsSection: () => void }).__pushSettingsSection(); });
+    expect(currentPath()).toBe("/settings?section=backend-api");
 
     act(() => settings.click());
     expect(currentPath()).toBe("/operations");
