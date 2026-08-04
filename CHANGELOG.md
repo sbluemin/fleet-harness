@@ -5,6 +5,42 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.47.0] - 2026-08-04
+
+### fleet-console
+
+#### Added
+- [fleet-console] Triage Watch Deck cards now magnify into a readable quick-look after a 400ms hover dwell, scaling the live preview to legible text without resizing the underlying terminal; keyboard focus opens it instantly, edge cards expand inward, and clicking still stages the operation.
+- [fleet-console] Offer the canvas control menu on right-click in triage mode, placed at the cursor with launch actions disabled.
+- [fleet-console] Triage mode gains a persisted SPOTLIGHT toggle in the bottom rail (default on): turning it off stops finished runs from auto-staging and keeps a sustained arrival pulse on their Watch Deck cards until reviewed, and queued arrivals that cannot take an occupied stage now pulse in the rail in both states.
+- [fleet-console] Zoom the triage Watch Deck with the bare mouse wheel, pinch, or Ctrl/Cmd+wheel (0.35x-2.0x, global persistence; Shift+wheel scrolls the card grid); zooming out past the card-legibility threshold dissolves the deck into a fleet map with one status-colored marker per operation, and a Density chip on the triage rail shows the zoom and cycles presets.
+- [fleet-console] Bring the triage fleet map to life inside its theater zones: bare-wheel zoom with Shift+wheel grid scroll, collinear or geometry-less fleets scatter deterministically across each zone instead of collapsing onto a line, every marker keeps its operation name visible (idle names drop to the tertiary text tier), waiting markers - including idle arrivals, matching the queue vocabulary - pulse with an aurora ring (deferred markers stay still; reduced motion falls back to a static ring), and running markers drift on slow deterministic paths that pause on hover or under a staged panel.
+- [fleet-console] Make War Room read the same way at every density: the left column drops its queue caption and empty-state line so the awaiting, running, background, and idle sections always stand - each one reporting its own count and its own "none" - while the fleet map drops the dashed zone ring for a Theater status marker set in the middle of its zone, keeps every zone on its own slot so panel status changes never shuffle the plate, drifts every marker in place (running wide and quick, the rest narrow and slow) and clear of both the Theater marker and each other's labels, opens the card Quick-Look at full reading size beside a hovered or focused marker without stealing the pointer from it, lets a marker be dragged to move its panel, and morphs panels into the spots their markers will take when the density threshold is crossed - and back out of them on the way up, with reduced motion skipping the flight entirely.
+- [fleet-console] Turning the War Room spotlight off now stops every automatic staging, including the hand-off to the next queued panel once the staged one goes idle; only an explicit pick stages a panel.
+- [fleet-console] Add Show the screen guide to the Help menu, which replays the guide for the screen in front of you. It restores only the narrowest guide anchored on that screen, so replaying inside War Room does not restart from the mode introduction, and it stays disabled with the reason when the screen has no guide to replay.
+
+#### Changed
+- [fleet-console] Toggle the Settings screen with the command-band Settings button: pressing it again while on Settings returns to the previous page, or to Operations when Settings was opened directly.
+- [fleet-console] Triage is now one global mode across every Theater: all theaters stay mounted while triage is active, the Watch Deck splits into Theater bands covering all live Operations, and staging an Operation from another Theater brings it up without switching Theaters (exit returns to the Theater that last held the stage). The sidebar becomes a global list in the familiar status-section chip grammar with full Theater names, and zooming out turns the deck into one fleet map where each Theater is a circular operational zone on a shared chart.
+- [fleet-console] Replace the command band's six map controls with one Cruise / Tactical / War Room mode switch that always names the active canvas mode, plus a tray holding only that mode's own tools: view reset and fit-all for Cruise, the grid, columns and rows layouts for Tactical. The three mode names are product terms and stay in English in every locale, so the band, mode curtains, empty-state hints, command palette and shortcut list all use the same word. Every mode change draws the same curtain, headed with the mode it is switching to, and returning to Cruise now draws it too instead of slipping back unannounced.
+- [fleet-console] Move the triage Spotlight and deck density controls out of the canvas rail into the War Room tray, so every mode keeps its own tools in the same place on the band. Both are icons now; the density control keeps its zoom readout and drops its label.
+- [fleet-console] Replace the single War Room walkthrough with one guide per reworked screen. The canvas mode switch and its per-mode tray are introduced on first visit; War Room explains its queue rail, stage, watch deck, deck density and spotlight, and how to leave with every panel back at its coordinates; the War Room queue sidebar explains that it lists waiting work in staging order, crosses every Theater, leaves dormant panels out, and lets a click jump the queue. Only one guide plays per visit, so entering War Room no longer risks a single unbroken run of steps.
+
+#### Fixed
+- [fleet-console] Triage Watch Deck cards now use the same status vocabulary and ordering as the sidebar STATUS axis, so an idle operation no longer reads as awaiting, and background operations sort consistently between the two surfaces.
+- [fleet-console] Close the canvas control menu when left-clicking the map, regardless of whether it was opened from the map or the sidebar.
+- [fleet-console] Stop a layout button from silently dropping War Room mode: the layout controls now exist only while Tactical is the active mode, so pressing one can no longer end triage without warning.
+- [fleet-console] Stop offering Reset canvas view in War Room mode, where the viewport transform is disabled and the control did nothing when pressed.
+- [fleet-console] Show the War Room guide even when nothing is waiting. It used to hang on a staged panel that does not exist on an empty queue, so entering the mode with no waiting work explained nothing at all; the guide now opens on the queue rail and simply omits the stage step until something is staged.
+
+### fleet-core
+
+#### Changed
+- [fleet-admiral] The gateway model roster now names the agent that runs each model, one name per reasoning level it supports, so a stage can be assigned by that name instead of by a model id that a name field rejects. Each model is grouped under the provider whose allowance it spends, and two fields that no longer carried meaning were removed.
+
+#### Fixed
+- [core-ai-gateway] Gateway responses from Kimi and OpenCode's Anthropic-wire models now carry the model id the session requested rather than the provider's own wire id, so resuming such a session restores its model instead of reporting it as unrecognized.
+
 ## [1.46.0] - 2026-08-03
 
 ### fleet-cli
