@@ -1936,35 +1936,6 @@
   animation: triage-fresh-pulse calc(var(--duration-slow) * 6) var(--ease-glide) infinite;
 }
 
-/* 스포트라이트 토글 — ON 상태는 무대 자동 등단을 켠 위치/초점 표식이므로 picked pill의 brass
-   문법을 그대로 빌리고, OFF에서는 소음을 줄이기 위해 흐리게 남는다. */
-.canvas-triage-rail-spotlight {
-  flex: none;
-  margin-left: auto;
-  padding: 2px 7px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.08em;
-}
-
-.canvas-triage-rail-spotlight[aria-pressed="true"] {
-  border-color: color-mix(in oklch, var(--brass) 34%, var(--hairline));
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
-  color: var(--text-primary);
-}
-
-.canvas-triage-rail-spotlight:hover,
-.canvas-triage-rail-spotlight:focus-visible {
-  border-color: color-mix(in oklch, var(--brass) 48%, var(--hairline));
-  color: var(--text-primary);
-  outline: none;
-}
-
 .canvas-triage-rail-empty {
   color: var(--text-tertiary);
   font-family: var(--font-mono);
@@ -1977,37 +1948,6 @@
   font-family: var(--font-mono);
   font-size: 10px;
   white-space: nowrap;
-}
-
-.canvas-triage-density-chip {
-  flex: none;
-  padding: 5px 10px;
-  border: 1px solid color-mix(in oklch, var(--brass) 18%, var(--hairline));
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    color var(--duration-fast) var(--ease-glide),
-    border-color var(--duration-fast) var(--ease-glide);
-}
-
-.canvas-triage-density-chip:hover,
-.canvas-triage-density-chip:focus-visible {
-  border-color: color-mix(in oklch, var(--brass) 48%, var(--hairline));
-  color: var(--text-primary);
-  outline: none;
-}
-
-.canvas-triage-density-chip.is-adjusted {
-  color: var(--brass);
-  border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
 }
 
 .canvas-mode-curtain {

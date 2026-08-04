@@ -32,7 +32,7 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
         bodyKey: "featureTour.triage.step2Body",
       },
       {
-        anchor: ".command-band-triage-toggle",
+        anchor: ".command-band-mode-switch",
         titleKey: "featureTour.triage.step3Title",
         bodyKey: "featureTour.triage.step3Body",
       },

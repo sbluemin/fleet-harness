@@ -399,25 +399,63 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   from { opacity: 0; }
 }
 
-.command-band-formation-group {
+/* Cruise / Tactical / War Room — 캔버스 모드는 이 세그먼트 스위치 하나만 소유한다.
+   모드 전용 도구는 오른쪽 트레이에 붙으므로, 다른 모드의 도구는 애초에 존재하지 않는다. */
+.command-band-mode-switch {
   display: flex;
   flex: none;
   align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
 }
 
-.command-band-formation-group .command-band-formation-seg {
-  /* 링 hover가 사각으로 깨지지 않도록 이웃 컨트롤과 동일한 6px 라운드 유지. */
+.command-band-mode-seg {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid transparent;
   border-radius: 6px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: var(--weight-bold);
 }
 
-.command-band-formation-divider {
+/* hover는 이웃 command-band-button과 동일한 링 문법 — brass 채움은 활성(pressed) 상태 전용. */
+.command-band-mode-seg:hover:not(:disabled),
+.command-band-mode-seg:focus-visible {
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+
+.command-band-mode-seg[aria-pressed="true"] {
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  color: var(--brass-ink);
+}
+
+.command-band-mode-seg:disabled { cursor: not-allowed; opacity: 0.55; }
+
+.command-band-mode-tray {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.command-band-mode-tray-divider {
   align-self: stretch;
   flex: none;
   width: 1px;
+  margin: 4px 6px 4px 4px;
   background: var(--surface-rim);
 }
 
-.command-band-formation-toggle {
+.command-band-mode-tool {
   display: grid;
   place-items: center;
   flex: none;
@@ -425,64 +463,40 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   height: 24px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  border-radius: 6px;
   color: var(--text-tertiary);
 }
 
-.command-band-formation-toggle svg { display: block; width: 16px; height: 16px; }
+.command-band-mode-tool svg { display: block; width: 16px; height: 16px; }
 
-/* hover는 이웃 command-band-button과 동일한 링 문법 — brass 채움은 활성(pressed) 상태 전용. */
-.command-band-formation-toggle:hover:not(:disabled),
-.command-band-formation-toggle:focus-visible {
-  border-color: var(--hairline-strong);
-  color: var(--text-primary);
-}
-
-.command-band-formation-toggle[aria-pressed="true"] {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-  color: var(--brass-ink);
-}
-
-.command-band-formation-toggle:disabled { cursor: not-allowed; opacity: 0.55; }
-
-.command-band-triage-toggle {
+/* 값을 함께 읽어야 하는 도구(덱 밀도)는 아이콘 옆에 수치를 단다 — 낱말은 두지 않는다. */
+.command-band-mode-tool.is-valued {
   display: flex;
-  flex: none;
   align-items: center;
-  gap: 6px;
-  min-width: 24px;
-  height: 24px;
-  padding: 0 4px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  color: var(--text-tertiary);
+  gap: 5px;
+  width: auto;
+  padding: 0 7px;
 }
 
-.command-band-triage-toggle svg {
-  display: block;
-  flex: none;
-  width: 16px;
-  height: 16px;
-}
-
-.command-band-triage-toggle span {
+.command-band-mode-tool.is-valued span {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
 }
 
-.command-band-triage-toggle:hover:not(:disabled),
-.command-band-triage-toggle:focus-visible {
+.command-band-mode-tool:hover:not(:disabled),
+.command-band-mode-tool:focus-visible {
   border-color: var(--hairline-strong);
   color: var(--text-primary);
 }
 
-.command-band-triage-toggle[aria-pressed="true"] {
+.command-band-mode-tool[aria-pressed="true"] {
   background: color-mix(in oklch, var(--brass) 12%, transparent);
   color: var(--brass-ink);
 }
 
-.command-band-triage-toggle:disabled { cursor: not-allowed; opacity: 0.55; }
+.command-band-mode-tool:disabled { cursor: not-allowed; opacity: 0.55; }
 
 .command-band-theater-cluster {
   display: flex;

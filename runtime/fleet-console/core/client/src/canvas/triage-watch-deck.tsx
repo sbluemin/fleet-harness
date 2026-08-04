@@ -11,15 +11,18 @@ import { operationAccentFromNode, resolveAccentColor } from "./operation-accent.
 import {
   clampTriageDeckZoom,
   getTriageDeckZoom,
+  getTriageDeckZoomLive,
   isTriageActive,
   isTriageDeckMapMode,
   isTriageDeckMapModeActive,
   isTriageWaitingOperation,
+  nextTriageDeckZoomPreset,
   pickTriageOperation,
   resolveTriageFleetZoneLayout,
   resolveTriageMapMarkerLayout,
   setTriageDeckMapModeLive,
   setTriageDeckZoom,
+  setTriageDeckZoomLive,
   subscribeTriage,
   TRIAGE_DECK_CARD_BASE_MIN_PX,
   TRIAGE_DECK_ZOOM_DEFAULT,
@@ -192,6 +195,7 @@ export function useTriageDeckZoomControl(): {
     const display = zoom.toFixed(1);
     if (display !== lastDisplayRef.current) {
       lastDisplayRef.current = display;
+      setTriageDeckZoomLive(Number.parseFloat(display));
       setZoomRevision((revision) => revision + 1);
     }
   };
@@ -282,7 +286,29 @@ export function useTriageDeckZoomControl(): {
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 내부 함수는 ref 경유로 최신 상태를 읽는다.
   }), []);
+
+  // 밴드의 밀도 버튼도 이 컨트롤러를 거쳐야 한다 — store에 먼저 쓰면 tween 시작 프레임에
+  // 지도 판정이 뒤집혀 잘못된 모드가 한 프레임 번쩍인다(영속은 settle 시).
+  useEffect(() => {
+    mountedDeckZoomControl = control;
+    return () => {
+      if (mountedDeckZoomControl === control) mountedDeckZoomControl = null;
+    };
+  }, [control]);
+
   return { zoom: zoomRef.current, control };
+}
+
+// 덱이 마운트된 동안의 줌 컨트롤러. 덱이 없으면(모드 밖) store에 직접 쓴다.
+let mountedDeckZoomControl: TriageDeckZoomControl | null = null;
+
+export function cycleTriageDeckZoomPreset(): void {
+  const next = nextTriageDeckZoomPreset(getTriageDeckZoomLive());
+  if (mountedDeckZoomControl) {
+    mountedDeckZoomControl.setZoomTarget(next);
+    return;
+  }
+  setTriageDeckZoom(next);
 }
 
 export function flashTriageDeckCard(operationId: string): void {

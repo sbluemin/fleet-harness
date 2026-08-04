@@ -56,7 +56,7 @@ describe("feature tour", () => {
     expect(triage?.walkthrough.map((step) => step.anchor)).toEqual([
       ".canvas-operation.is-triage-stage",
       ".canvas-triage-rail",
-      ".command-band-triage-toggle",
+      ".command-band-mode-switch",
     ]);
   });
 
@@ -75,7 +75,7 @@ describe("feature tour", () => {
   });
 
   it("does not show Triage onboarding for the button before mode entry", () => {
-    document.body.innerHTML = '<button class="command-band-triage-toggle"></button>';
+    document.body.innerHTML = '<div class="command-band-mode-switch"></div>';
 
     expect(resolveNextFeatureTour(FEATURE_TOURS, [], document)).toBeNull();
   });
@@ -84,7 +84,7 @@ describe("feature tour", () => {
     document.body.innerHTML = [
       '<section class="canvas-operation is-triage-stage"></section>',
       '<aside class="canvas-triage-rail"></aside>',
-      '<button class="command-band-triage-toggle"></button>',
+      '<div class="command-band-mode-switch"></div>',
     ].join("");
 
     const presentation = resolveNextFeatureTour(FEATURE_TOURS, [], document);

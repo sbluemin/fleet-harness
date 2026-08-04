@@ -392,9 +392,10 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".canvas-mode-hud");
     expect(canvas).toContain("canvas-triage-rail-current");
     expect(canvas).toContain("canvas-triage-rail-cleared");
-    // 스포트라이트 토글은 레일 우측 끝 — 자동 등단 ON/OFF를 aria-pressed로 노출한다.
-    expect(canvas).toContain('className="canvas-triage-rail-spotlight"');
-    expect(canvas).toContain("aria-pressed={triageSpotlightEnabled}");
+    // 스포트라이트·덱 밀도는 War Room 트레이(커맨드 밴드)가 소유한다 — 모드 전용 컨트롤은
+    // 캔버스 구석이 아니라 그 모드의 트레이 한 곳에 모인다.
+    expect(canvas).not.toContain('className="canvas-triage-rail-spotlight"');
+    expect(canvas).not.toContain("canvas-triage-density-chip");
     // OFF의 지속 맥동은 검토 전 신호다 — 지목·미룸 항목은 deck 카드에서도 레일 칩과 동일하게 제외한다.
     expect(canvas).toContain("!entry.picked && !isTriageOperationDeferred(entry.operation.id)");
     // 두 번 눌러 확정 안내는 레일이 아니라 패널 안 HUD가 소유한다 — 확인 순간에 시선이 화면 하단으로 내려가지 않게.
@@ -770,19 +771,34 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain('aria-label={t("chrome.commandBand.resetCanvasView")}');
     expect(commandBand).toContain("<ResetViewIcon />");
     expect(commandBand).toContain("onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })}");
-    expect(commandBand).toContain("disabled={state.activeTheaterId === null}");
-    expect(commandBand).toContain('className="command-band-formation-divider"');
-    expect(commandBand).toContain('onClick={() => selectFormationLayout("grid")}');
-    expect(commandBand).toContain('onClick={() => selectFormationLayout("columns")}');
-    expect(commandBand).toContain('onClick={() => selectFormationLayout("rows")}');
-    expect(commandBand).toContain('aria-pressed={formationView && formationLayout === "grid"}');
-    expect(commandBand).toContain('aria-pressed={formationView && formationLayout === "columns"}');
-    expect(commandBand).toContain('aria-pressed={formationView && formationLayout === "rows"}');
-    expect((commandBand.match(/disabled=\{state\.activeTheaterId === null\}/g) ?? []).length).toBe(4);
-    expect(commandBand).toContain('className="command-band-triage-toggle"');
-    // 선별 처리 토글은 전역 모드라 활성 Theater가 아니라 등록된 Theater 존재로 게이트한다.
-    expect(commandBand).toContain("disabled={state.theaters.length === 0}");
-    expect(commandBand).toContain("aria-pressed={triageActive}");
+    // 캔버스 모드는 세그먼트 스위치 하나가 단독으로 소유한다 — 모드별 도구를 밴드에 상시
+    // 늘어놓으면 다른 모드의 도구를 눌러 무경고로 모드를 이탈시킬 수 있다(2026-08 격자 클릭 사고).
+    expect(commandBand).toContain('className="command-band-mode-switch" role="group" aria-label={t("chrome.commandBand.canvasMode")}');
+    // 모드는 낱말로, 모드 전용 도구는 아이콘으로 말한다 — 세그먼트에 아이콘을 더하면 클러스터가
+    // 375px까지 벌어져 1280px 밴드에서 중앙 브레드크럼이 사라진다(2026-08 실측).
+    expect(commandBand).toContain('{ id: "cruise", label: "Cruise", titleKey: "chrome.commandBand.modeCruise" },');
+    expect(commandBand).toContain('{ id: "tactical", label: "Tactical", titleKey: "chrome.commandBand.modeTactical" },');
+    expect(commandBand).toContain('{ id: "warRoom", label: "War Room", titleKey: "chrome.commandBand.modeWarRoom" },');
+    expect(commandBand).not.toMatch(/<mode\.Icon \/>/);
+    expect(commandBand).toContain('const canvasMode: CanvasMode = triageActive ? "warRoom" : formationView ? "tactical" : "cruise";');
+    expect(commandBand).toContain('aria-pressed={canvasMode === mode.id}');
+    // 트레이는 활성 모드의 도구만 마운트한다 — 비활성 모드 도구는 disabled가 아니라 부재다.
+    expect(commandBand).toContain('{canvasMode === "cruise" ? <div className="command-band-mode-tray"');
+    expect(commandBand).toContain('{canvasMode === "tactical" ? <div className="command-band-mode-tray"');
+    expect(commandBand).toContain('{canvasMode === "warRoom" ? <div className="command-band-mode-tray"');
+    expect(commandBand).toContain("onClick={cycleTriageDeckZoomPreset}");
+    expect(commandBand).toContain("onClick={() => setTriageSpotlightEnabled(!triageSpotlightEnabled)}");
+    // 값은 남기되 낱말은 두지 않는다 — 아이콘 + 배율 수치.
+    expect(commandBand).toContain("<DensityIcon /><span>{triageDeckZoomLive.toFixed(1)}×</span>");
+    expect(commandBand).toContain('<span className="command-band-mode-tray-divider" aria-hidden="true" />');
+    // 같은 레이아웃 재클릭은 무시한다 — selectFormationLayout은 동일 레이아웃에서 모드를 끄는데,
+    // 모드 이탈 권한은 Cruise 세그먼트만 갖는다.
+    expect(commandBand).toContain("onClick={() => { if (formationLayout !== layout.id) selectFormationLayout(layout.id); }}");
+    expect(commandBand).toContain("aria-pressed={formationLayout === layout.id}");
+    // Tactical은 Theater별 상태라 활성 Theater로, War Room은 전역 모드라 등록된 Theater 존재로 게이트한다.
+    expect(commandBand).toContain('disabled={mode.id === "tactical" ? state.activeTheaterId === null : state.theaters.length === 0}');
+    // 모드 이름은 번역하지 않는 제품 고유 명칭이다 — 로케일 메시지에 이름을 넣으면 두 벌이 생긴다.
+    expect(commandBand).not.toMatch(/t\("chrome\.commandBand\.(triage|formationView)"\)/);
     const sidebar = source("sidebar/operations-side-bar.tsx");
     expect(sidebar).not.toContain("side-bar-formation-group");
     expect(sidebar).not.toContain("side-bar-theater-add-btn");
@@ -796,7 +812,9 @@ describe("Instrument core design contract", () => {
     expect(components).toContain("border: 1px dashed var(--ink-rim);");
     expect(components).not.toContain(".side-bar-formation-group {");
     expect(components).not.toContain(".side-bar-theater-add-btn {");
-    expect(layout).toContain(".command-band-formation-group {");
+    expect(layout).toContain(".command-band-mode-switch {");
+    expect(layout).toContain(".command-band-mode-seg {");
+    expect(layout).toContain(".command-band-mode-tray-divider {");
     // 맵 컨트롤 클러스터는 컨테이너 플로우 배치다 — 개별 절대 위치 + 매직 오프셋(구 116px)은
     // 버튼 추가 시 겹침으로 깨지므로(선별 처리 아이콘 덮임 사고) 다시 도입하지 않는다.
     expect(layout).toContain(".command-band-map-controls {");
@@ -811,8 +829,10 @@ describe("Instrument core design contract", () => {
     expect(layout).toContain('body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls { transition: none; }');
     expect(layout).toContain(".command-band-dock-divider {");
     expect(layout).toContain(".command-band-map-controls.is-docked .command-band-dock-divider {");
-    expect(layout).not.toContain(".command-band-triage-toggle {\n  position: absolute;");
-    expect(layout).not.toContain(".command-band-formation-group .command-band-formation-seg + .command-band-formation-seg {");
+    expect(layout).not.toContain(".command-band-mode-switch {\n  position: absolute;");
+    // 구 문법(모드 전용 도구를 밴드에 상시 노출)의 잔재는 남기지 않는다.
+    expect(layout).not.toContain(".command-band-formation-group {");
+    expect(layout).not.toContain(".command-band-triage-toggle {");
     // 데스크톱은 사이드바 폭을 그대로 미러하고, 모바일 셸에는 미러할 사이드바가 없으므로
     // 좌측 트랙이 내용 크기로 접힌다. 두 갈래를 한 줄로 고정해 한쪽만 바뀌는 표류를 막는다.
     expect(commandBand).toContain('"--command-band-left-width": viewMode.effective === "mobile" ? "min-content" : `${sideBar.width}px`');
