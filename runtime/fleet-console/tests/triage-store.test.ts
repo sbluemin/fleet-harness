@@ -1690,6 +1690,61 @@ describe("triage fleet map markers", () => {
     expect(runningDot?.style.getPropertyValue("--triage-drift-x1")).toMatch(/px$/);
     expect(deferredDot?.style.getPropertyValue("--triage-drift-mult")).toBe("");
   });
+
+  it("classifies an idle arrival as an awaiting marker, matching the queue vocabulary", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    triagePlateRoot = createRoot(container);
+    const arrival = operation("arrival-map", 1);
+    markIdleArrival(arrival.id);
+
+    act(() => {
+      triagePlateRoot?.render(createElement(TriageWatchDeck, {
+        active: true,
+        entering: false,
+        theaters: THEATERS,
+        operations: [arrival],
+        operationStatus: {},
+        operationAccent: {},
+      }));
+    });
+    act(() => {
+      setTriageDeckMapModeLive(true);
+    });
+
+    // 사이드바·큐가 대기로 세는 유휴 도착은 지도에서도 aurora 대기 마커여야 한다 —
+    // 회색 유휴 점이면 같은 상태가 표면마다 다르게 읽힌다.
+    const dot = container.querySelector<HTMLElement>('[data-triage-map-dot="arrival-map"]');
+    expect(dot?.classList.contains("is-awaiting")).toBe(true);
+    expect(dot?.classList.contains("is-idle")).toBe(false);
+  });
+
+  it("resets the card grid scroll when the deck enters map mode", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    triagePlateRoot = createRoot(container);
+    const operations = [operation("scroll-a", 1), operation("scroll-b", 2)];
+
+    act(() => {
+      triagePlateRoot?.render(createElement(TriageWatchDeck, {
+        active: true,
+        entering: false,
+        theaters: THEATERS,
+        operations,
+        operationStatus: {},
+        operationAccent: {},
+      }));
+    });
+    const grid = container.querySelector<HTMLElement>(".canvas-triage-deck-grid");
+    expect(grid).not.toBeNull();
+    grid!.scrollTop = 120;
+
+    act(() => {
+      setTriageDeckMapModeLive(true);
+    });
+    // 판은 grid 안의 절대배치라 잔류 스크롤만큼 밀려 잘린다 — 지도 진입은 원점에서 시작한다.
+    expect(grid!.scrollTop).toBe(0);
+  });
 });
 
 function operation(id: string, createdAt: number, theaterId = THEATER_ID): OperationNode {

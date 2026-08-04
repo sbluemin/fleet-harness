@@ -2289,31 +2289,29 @@
   animation: triage-deck-landed-flash calc(var(--duration-slow) * 2.5) var(--ease-glide) 1;
 }
 
+/* 지도의 이름표는 상시 노출이다 — 점만으로는 어떤 Operation인지 알 수 없어 지도가 익명이 된다.
+   위계는 가시성이 아니라 텍스트 티어로 만든다: 유휴는 3티어, 대기·실행은 2티어. */
 .canvas-triage-map-dot-label {
   position: absolute;
   top: 50%;
   left: 130%;
   max-width: 180px;
   overflow: hidden;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
-  opacity: 0;
   transform: translateY(-50%);
-  transition: opacity var(--duration-fast) var(--ease-glide);
+  transition: color var(--duration-fast) var(--ease-glide);
   pointer-events: none;
 }
 
 .canvas-triage-map-dot.is-awaiting .canvas-triage-map-dot-label,
-.canvas-triage-map-dot.is-running .canvas-triage-map-dot-label {
-  opacity: 1;
-}
-
+.canvas-triage-map-dot.is-running .canvas-triage-map-dot-label,
 .canvas-triage-map-dot:hover .canvas-triage-map-dot-label,
 .canvas-triage-map-dot:focus-visible .canvas-triage-map-dot-label {
-  opacity: 1;
+  color: var(--text-secondary);
 }
 
 /* Theater 밴드 — 전역 deck 안에서 카드 묶음을 소속별로 갈라 헤더(이니셜 칩+라벨+수치)를 단다.
