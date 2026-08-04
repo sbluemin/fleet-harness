@@ -661,10 +661,13 @@ export function OperationsCanvas({
     <main
       className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${glanceVisible ? "is-glance" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${panelCompanion ? "is-companion-layout" : ""} ${formationView ? "is-formation-view" : ""} ${formationEntering ? "is-formation-entering" : ""} ${triageActive ? "is-triage" : ""} ${triageEntering ? "is-triage-entering" : ""}`}
       onPointerDown={(event) => {
-        // 캔버스 제어 메뉴가 어느 소유자(사이드바 포털/이 컴포넌트)로부터 열렸든 Map 클릭으로 닫는다 —
-        // pan의 preventDefault+포인터 캡처가 mousedown 합성을 끊어 포털의 외부-클릭 닫기가 못 잡는다.
-        // 메뉴 낶부 클릭은 data-canvas-blocker가 가로채 여기 도달하지 않는다.
-        window.dispatchEvent(new Event("canvas-context-menu-close"));
+        // 메뉴 내부 클릭(캔버스 소유 메뉴는 <main> 자손이라 버블로 도달한다)은 실행 항목의
+        // click을 살리기 위해 닫기 신호를 본내지 않는다 — data-canvas-blocker는 전파를 멈추지 않는다.
+        if (!(event.target instanceof Element && event.target.closest("[data-canvas-blocker], [data-canvas-operation]"))) {
+          // 캔버스 제어 메뉴가 어느 소유자(사이드바 포털/이 컴포넌트)로부터 열었든 Map 클릭으로 닫는다 —
+          // pan의 preventDefault+포인터 캡처가 mousedown 합성을 끊어 포털의 외부-클릭 닫기가 못 잡는다.
+          window.dispatchEvent(new Event("canvas-context-menu-close"));
+        }
         interaction.onPointerDown(event as Parameters<typeof interaction.onPointerDown>[0]);
       }}
       onPointerMove={interaction.onPointerMove}
