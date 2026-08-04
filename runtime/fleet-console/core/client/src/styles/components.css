@@ -1979,6 +1979,37 @@
   white-space: nowrap;
 }
 
+.canvas-triage-density-chip {
+  flex: none;
+  padding: 5px 10px;
+  border: 1px solid color-mix(in oklch, var(--brass) 18%, var(--hairline));
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-glide),
+    border-color var(--duration-fast) var(--ease-glide);
+}
+
+.canvas-triage-density-chip:hover,
+.canvas-triage-density-chip:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 48%, var(--hairline));
+  color: var(--text-primary);
+  outline: none;
+}
+
+.canvas-triage-density-chip.is-adjusted {
+  color: var(--brass);
+  border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
+}
+
 .canvas-mode-curtain {
   position: absolute;
   inset: 0;
@@ -2124,14 +2155,117 @@
 
 .canvas-triage-deck-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
-  grid-auto-rows: minmax(150px, 210px);
+  /* 카드 최소폭/행 높이는 덱 줌(rAF tween)이 --triage-card-min/--triage-row-min/--triage-row-max
+     inline 변수로 매 프레임 갱신한다 — fallback은 줌 1.0의 기본 배치와 픽셀 동일해야 한다. */
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--triage-card-min, 260px), 100%), 1fr));
+  grid-auto-rows: minmax(var(--triage-row-min, 150px), var(--triage-row-max, 210px));
   gap: 10px;
   min-width: 0;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: thin;
+}
+
+/* 작전지도 LOD — 카드가 줌 한계 아래로 읽히지 않는 크기로 낙찰하면 grid는 mount를 유지한 채
+   은닉되고(카드 슬롯=비무대 body의 고정 거처, is-under-stage와 같은 계약) 지도 레이어가 뜬다. */
+.canvas-triage-deck.is-map-mode .canvas-triage-deck-grid {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.canvas-triage-map {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(to right, color-mix(in oklch, var(--hairline) 45%, transparent) 0 1px, transparent 1px 64px),
+    repeating-linear-gradient(to bottom, color-mix(in oklch, var(--hairline) 45%, transparent) 0 1px, transparent 1px 64px);
+  transition:
+    opacity var(--duration-slow) var(--ease-glide),
+    visibility 0s linear var(--duration-slow);
+}
+
+.canvas-triage-deck.is-map-mode .canvas-triage-map {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transition:
+    opacity var(--duration-slow) var(--ease-glide),
+    visibility 0s linear 0s;
+}
+
+.canvas-triage-map-dot {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--ink-fog);
+  opacity: 0.75;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  transition:
+    border-color var(--duration-fast) var(--ease-glide),
+    box-shadow var(--duration-fast) var(--ease-glide),
+    opacity var(--duration-fast) var(--ease-glide);
+}
+
+.canvas-triage-map-dot.is-awaiting {
+  background: var(--aurora);
+  box-shadow: 0 0 14px var(--aurora-glow);
+  opacity: 1;
+}
+
+.canvas-triage-map-dot.is-running {
+  background: var(--warn);
+  box-shadow: 0 0 11px var(--warn-glow);
+  opacity: 1;
+}
+
+.canvas-triage-map-dot:hover,
+.canvas-triage-map-dot:focus-visible {
+  border-color: var(--brass);
+  box-shadow: 0 0 0 3px var(--brass-glow);
+  outline: none;
+}
+
+/* 무대 복귀 착지 확인 — 카드와 같은 positive 플래시 문법을 지도 점에도 준다(지도 모드에서는
+   카드가 은닉되어 착지 피드백이 점에만 보인다). */
+.canvas-triage-map-dot.is-landed {
+  animation: triage-deck-landed-flash calc(var(--duration-slow) * 2.5) var(--ease-glide) 1;
+}
+
+.canvas-triage-map-dot-label {
+  position: absolute;
+  top: 50%;
+  left: 130%;
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity var(--duration-fast) var(--ease-glide);
+  pointer-events: none;
+}
+
+.canvas-triage-map-dot.is-awaiting .canvas-triage-map-dot-label,
+.canvas-triage-map-dot.is-running .canvas-triage-map-dot-label {
+  opacity: 1;
+}
+
+.canvas-triage-map-dot:hover .canvas-triage-map-dot-label,
+.canvas-triage-map-dot:focus-visible .canvas-triage-map-dot-label {
+  opacity: 1;
 }
 
 .canvas-triage-deck-card {
@@ -2385,6 +2519,7 @@
   .canvas-triage-scan,
   .canvas-triage-deck-card.is-running .canvas-triage-deck-card-dot,
   .canvas-triage-deck-card.is-landed,
+  .canvas-triage-map-dot.is-landed,
   .canvas-triage-deck-card.is-arriving,
   .canvas-triage-deck-card.is-fresh,
   .canvas-triage-rail-track button.is-fresh,
@@ -2409,6 +2544,13 @@
   /* Quick-Look 확대 자체는 유지하되 전이만 제거해 즉시 스냅되게 한다 — 확대 정보는
      reduced-motion 사용자에게도 동일하게 필요하므로 상태가 아니라 동작만 끊는다. */
   .canvas-triage-deck-card { transition-property: border-color, background, opacity; }
+
+  /* 덱 줌 전환은 JS 쪽에서 즉시 스냅하고, 지도 cross-fade와 마커 강조 전환은 여기서 끊는다. */
+  .canvas-triage-map,
+  .canvas-triage-map-dot,
+  .canvas-triage-map-dot-label {
+    transition: none;
+  }
 }
 
 /* 순정 셸 패널 — Operation과 구별되도록 띠바에 아우로라(살아있는 것) 톤의 옅은 강조를 준다. */

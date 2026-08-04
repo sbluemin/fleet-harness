@@ -1,13 +1,26 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../i18n/index.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
 import { operationActivityLabel, operationActivityVisual, resolveOperationActivity } from "../operation-activity.js";
 import { getOperationStatusDetailSnapshot, useOperationStatusDetails } from "../operation-status-detail-store.js";
-import type { OperationNode } from "../types.js";
+import type { OperationGeometry, OperationNode } from "../types.js";
 import { operationAccentFromNode, resolveAccentColor } from "./operation-accent.js";
-import { pickTriageOperation } from "./triage-store.js";
+import {
+  clampTriageDeckZoom,
+  getTriageDeckZoom,
+  isTriageActive,
+  isTriageDeckMapMode,
+  isTriageDeckMapModeActive,
+  pickTriageOperation,
+  resolveTriageMapMarkerLayout,
+  setTriageDeckMapModeLive,
+  setTriageDeckZoom,
+  subscribeTriage,
+  TRIAGE_DECK_CARD_BASE_MIN_PX,
+  TRIAGE_DECK_ZOOM_DEFAULT,
+} from "./triage-store.js";
 
 interface TriageWatchDeckProps {
   readonly active: boolean;
@@ -19,6 +32,11 @@ interface TriageWatchDeckProps {
   readonly arrivingOperationId?: string | null;
   /** 무대에 오른 Operation — 그 카드만 슬롯을 무대 프레임에 넘기고, deck는 은닉된 채 mount를 유지한다. */
   readonly stagedOperationId?: string | null;
+  /** 줌 tween 즉시 스냅 — 카드/지도 점 클릭 직전에 호출해 승격 flight의 출발 rect를 고정한다. */
+  readonly onBeforePick?: () => void;
+  /** 지도 마커용 유효 geometry — durable DTO보다 라이브 캔버스 배치가 정본이다(드래그 직후
+      PATCH 왕복 대기·실패, DTO null인 자동 배치 op). canvas가 자기 스토어로 해석해 넘긴다. */
+  readonly mapGeometryFor?: (operation: OperationNode) => OperationGeometry | null;
   /** 카드 본문 라이브 프리뷰용 pool 슬롯 config 빌더 — 핸들러 배선은 canvas가 단일 소유한다.
       렌더 가능한 kind가 아니면 null을 반환하고 카드는 tail 폴백으로 내려간다. */
   readonly previewConfigFor?: (operation: OperationNode) => OperationBodyConfig | null;
@@ -102,16 +120,191 @@ const deckCardRects = new Map<string, DOMRect>();
 const CARD_FLASH_DURATION_MS = 900;
 
 export function getTriageDeckCardRect(operationId: string): DOMRect | null {
+  // flight 좌표는 소비 시점 실측이 정본이다 — 캐시는 레이아웃 effect 주기에 묶여 줌 tween
+  // 중간값을 담을 수 있으므로, 살아있는 DOM을 먼저 읽고 캐시도 함께 갱신한다.
+  const escaped = escapeAttributeValue(operationId);
+  const target = document.querySelector<HTMLElement>(`[data-triage-map-dot="${escaped}"]`)
+    ?? document.querySelector<HTMLElement>(`[data-triage-deck-card="${escaped}"]`);
+  // Quick-Look 확대 중인 카드는 실측 rect가 확대본이다 — 이 함수는 복귀 flight 목적지를
+  // 답하므로 recordRects가 유지하는 비확대 캐시를 신뢰한다.
+  if (target && !target.classList.contains("is-quicklook")) {
+    const rect = target.getBoundingClientRect();
+    deckCardRects.set(operationId, rect);
+    return rect;
+  }
   return deckCardRects.get(operationId) ?? null;
 }
 
+// 줌/지도 오버레이 제어는 deck와 rail의 공용 컨트롤러다. rAF tween과 wheel 부착은 React 합성
+// 이벤트 밖에서 다뤄야 한다 — React는 root wheel을 passive로 묶어 preventDefault가 무용해진다.
+export interface TriageDeckZoomControl {
+  readonly snapZoomTween: () => void;
+  /** 프리셋 등 외부 배율 변경도 이 경로로 — store 선기록은 tween 시작 프레임에 지도 판정
+      폴백을 뒤집어 잘못된 모드가 한 프레임 번쩍인다. 영속은 settle 시 휠과 동일하게. */
+  readonly setZoomTarget: (zoom: number) => void;
+  readonly attachWheelListener: (element: HTMLElement) => () => void;
+}
+
+const TRIAGE_DECK_ZOOM_TWEEN_FACTOR = 0.18;
+const TRIAGE_DECK_ZOOM_TWEEN_EPSILON = 0.002;
+const TRIAGE_DECK_ZOOM_WHEEL_SPEED = 0.0022;
+
+export function useTriageDeckZoomControl(theaterId: string | null): {
+  readonly zoom: number;
+  readonly control: TriageDeckZoomControl;
+} {
+  const zoomRef = useRef(theaterId === null ? TRIAGE_DECK_ZOOM_DEFAULT : getTriageDeckZoom(theaterId));
+  const targetRef = useRef(zoomRef.current);
+  const frameRef = useRef<number | null>(null);
+  const ownerRef = useRef<HTMLElement | null>(null);
+  // theaterId는 렌더 시점 prop이라 ref로 미러한다 — 물리 리스너/제어 함수는 안정 identity를
+  // 유지한 채 최신 theater만 ref 경유로 읽는다.
+  const theaterIdRef = useRef(theaterId);
+  theaterIdRef.current = theaterId;
+  const lastDisplayRef = useRef<string | null>(null);
+  const [, setZoomRevision] = useState(0);
+
+  const stopTween = () => {
+    if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current);
+    frameRef.current = null;
+  };
+
+  const applyZoom = (zoom: number) => {
+    // 동일 배율 재적용도 허용한다 — theater 전환 effect가 ref를 먼저 스냅한 뒤 호출하므로
+    // 조기 반환하면 CSS 변수/지도 판정/칩 표시가 새 theater의 배율로 갱신되지 않는다.
+    zoomRef.current = zoom;
+    const owner = ownerRef.current;
+    if (owner) {
+      owner.style.setProperty("--triage-card-min", `${Math.round(TRIAGE_DECK_CARD_BASE_MIN_PX * zoom)}px`);
+      owner.style.setProperty("--triage-row-min", `${Math.max(84, Math.round(150 * zoom))}px`);
+      owner.style.setProperty("--triage-row-max", `${Math.max(84, Math.round(210 * zoom))}px`);
+    }
+    // 지도 판정은 프레임 정확도로 반영한다 — tween이 임계를 가로지르는 중간에도
+    // 카드↔지도 전환이 정확한 프레임에 일어나야 한다.
+    const ownerTheaterId = theaterIdRef.current;
+    if (ownerTheaterId !== null) setTriageDeckMapModeLive(ownerTheaterId, isTriageDeckMapMode(zoom));
+    // 리렌더는 칩 표시 문자열이 실제로 바뀔 때만 — 매 프레임 bump는 OperationsCanvas 전체를
+    // 프레임당 리렌더로 몰아넣는다.
+    const display = zoom.toFixed(1);
+    if (display !== lastDisplayRef.current) {
+      lastDisplayRef.current = display;
+      setZoomRevision((revision) => revision + 1);
+    }
+  };
+
+  const setTargetZoom = (target: number) => {
+    const ownerTheaterId = theaterIdRef.current;
+    if (ownerTheaterId === null) return;
+    targetRef.current = target;
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+    if (reducedMotion) {
+      stopTween();
+      applyZoom(target);
+      setTriageDeckZoom(ownerTheaterId, target);
+      return;
+    }
+    if (frameRef.current !== null) return;
+    const step = () => {
+      const current = zoomRef.current;
+      const goal = targetRef.current;
+      if (Math.abs(goal - current) < TRIAGE_DECK_ZOOM_TWEEN_EPSILON) {
+        applyZoom(goal);
+        const settledTheaterId = theaterIdRef.current;
+        if (settledTheaterId !== null) setTriageDeckZoom(settledTheaterId, goal);
+        frameRef.current = null;
+        return;
+      }
+      applyZoom(current + (goal - current) * TRIAGE_DECK_ZOOM_TWEEN_FACTOR);
+      frameRef.current = window.requestAnimationFrame(step);
+    };
+    frameRef.current = window.requestAnimationFrame(step);
+  };
+
+  // theater가 바뀌면 저장된 배율로 즉시 스냅한다 — tween으로 걸치면 theater 간 배율이
+  // 섞여 보이고 승격 flight의 출발 rect가 이동 중 카드 위치를 읽는다.
+  useEffect(() => {
+    stopTween();
+    const initial = theaterId === null ? TRIAGE_DECK_ZOOM_DEFAULT : getTriageDeckZoom(theaterId);
+    zoomRef.current = initial;
+    targetRef.current = initial;
+    lastDisplayRef.current = null;
+    applyZoom(initial);
+    // 언마운트 시에도 잔존 rAF를 반납한다 — tween이 살아남으면 분리된 DOM에 스타일을 쓰고
+    // 언마운트된 컴포넌트의 setState와 store 쓰기까지 이어진다.
+    return stopTween;
+  }, [theaterId]);
+
+  // store 쪽 배율 변경(rail 칩 프리셋 순환)도 같은 tween 경로로 흡수한다. 저장 배율이 실제로
+  // 바뀐 emit에만 반응해야 한다 — triage store는 배율 외의 이유(라이브 지도 판정, 도착, 활동
+  // 기록)로도 emit하므로, "저장값 ≠ 목표"만 보면 휠 tween(settle 전까지 저장값 불변)이 임계
+  // 교차 emit에 목표를 저장값으로 되돌려 지도 모드에 영영 도달하지 못한다.
+  const lastStoredRef = useRef(theaterId === null ? TRIAGE_DECK_ZOOM_DEFAULT : getTriageDeckZoom(theaterId));
+  useEffect(() => {
+    lastStoredRef.current = theaterId === null ? TRIAGE_DECK_ZOOM_DEFAULT : getTriageDeckZoom(theaterId);
+    return subscribeTriage(() => {
+      if (theaterId === null) return;
+      const stored = getTriageDeckZoom(theaterId);
+      if (stored === lastStoredRef.current) return;
+      lastStoredRef.current = stored;
+      if (stored !== targetRef.current) setTargetZoom(stored);
+    });
+  }, [theaterId]);
+
+  const control = useMemo<TriageDeckZoomControl>(() => ({
+    snapZoomTween: () => {
+      // 동결은 사용자가 향하던 목표 배율로 한다 — 저장값으로 되돌리면 tween 도중(예: 지도
+      // 진입 직후) 점을 클릭한 순간 화면이 이전 배율로 튀어 선택한 밀도가 사라진다. 목표를
+      // 즉시 확정 저장해 flight 좌표와 이후 재진입 배율을 함께 고정한다.
+      const ownerTheaterId = theaterIdRef.current;
+      if (ownerTheaterId === null) return;
+      stopTween();
+      const goal = targetRef.current;
+      applyZoom(goal);
+      setTriageDeckZoom(ownerTheaterId, goal);
+    },
+    setZoomTarget: (zoom: number) => {
+      setTargetZoom(clampTriageDeckZoom(zoom));
+    },
+    attachWheelListener: (element: HTMLElement) => {
+      const previousOwner = ownerRef.current;
+      ownerRef.current = element;
+      if (previousOwner !== element) applyZoom(zoomRef.current);
+      const handleWheel = (event: WheelEvent) => {
+        // 덱 줌은 triage 모드 안에서, 덱 위에서만 발화한다 — 무경계 소비는 자유 캔버스의
+        // 기존 줌과 이중 소비되고 브라우저 페이지 줌을 전역 차단한다.
+        const ownerTheaterId = theaterIdRef.current;
+        if (ownerTheaterId === null || !isTriageActive(ownerTheaterId)) return;
+        if (!(event.target instanceof Element) || event.target.closest(".canvas-triage-deck") === null) return;
+        if (!(event.ctrlKey || event.metaKey)) return;
+        event.preventDefault();
+        const zoom = zoomRef.current;
+        const next = Math.min(2.0, Math.max(0.35, zoom * Math.exp(-event.deltaY * TRIAGE_DECK_ZOOM_WHEEL_SPEED)));
+        if (next === zoom) return;
+        applyZoom(next);
+        setTargetZoom(next);
+      };
+      element.addEventListener("wheel", handleWheel, { passive: false });
+      return () => {
+        element.removeEventListener("wheel", handleWheel);
+        if (ownerRef.current === element) ownerRef.current = null;
+      };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 내부 함수는 ref 경유로 최신 상태를 읽는다 — theater 변경 시에만 재부착한다.
+  }), [theaterId]);
+  return { zoom: zoomRef.current, control };
+}
+
 export function flashTriageDeckCard(operationId: string): void {
-  const card = document.querySelector<HTMLElement>(`[data-triage-deck-card="${escapeAttributeValue(operationId)}"]`);
-  if (!card) return;
-  card.classList.remove("is-landed");
-  void card.offsetWidth;
-  card.classList.add("is-landed");
-  window.setTimeout(() => card.classList.remove("is-landed"), CARD_FLASH_DURATION_MS);
+  // 착지 확인은 사용자가 보고 있는 요소에 준다 — 지도 모드에서는 카드가 은닉되어 있으므로
+  // 지도 점을 우선 조회한다(점은 지도 모드에서만 존재해 우선순위가 안전하다).
+  const escaped = escapeAttributeValue(operationId);
+  const target = document.querySelector<HTMLElement>(`[data-triage-map-dot="${escaped}"]`)
+    ?? document.querySelector<HTMLElement>(`[data-triage-deck-card="${escaped}"]`);
+  if (!target) return;
+  target.classList.remove("is-landed");
+  void target.offsetWidth;
+  target.classList.add("is-landed");
+  window.setTimeout(() => target.classList.remove("is-landed"), CARD_FLASH_DURATION_MS);
 }
 
 export function resolveTriageDeckPromotion(input: {
@@ -165,6 +358,8 @@ export function TriageWatchDeck({
   operationAccent,
   arrivingOperationId = null,
   stagedOperationId = null,
+  onBeforePick,
+  mapGeometryFor,
   previewConfigFor,
   freshOperationIds,
 }: TriageWatchDeckProps) {
@@ -182,6 +377,13 @@ export function TriageWatchDeck({
   useEffect(() => {
     quicklookRef.current = quicklook;
   }, [quicklook]);
+  // 지도 판정은 줌 tween 프레임마다 store의 live 채널에 반영된다 — 렌더 시점 zoom 스냅샷을
+  // 들고 있으면 임계 교차가 영영 발화하지 않는다.
+  const mapMode = useSyncExternalStore(
+    subscribeTriage,
+    () => (theaterId === null ? false : isTriageDeckMapModeActive(theaterId)),
+    () => false,
+  );
   // 무대가 떠 있는 동안에도 deck는 mount를 유지하고 visibility로만 숨는다 — 비무대 body가
   // 카드(고정 크기)와 숨김 프레임(크롬 제외 크기) 사이를 오가며 전 세션에 PTY 리사이즈를
   // 뿌리는 churn을 없애기 위해서다. 리사이즈는 무대에 오른 Operation에만 남는다.
@@ -194,21 +396,27 @@ export function TriageWatchDeck({
     if (!grid) return;
     const recordRects = () => {
       const currentIds = new Set<string>();
-      for (const card of grid.querySelectorAll<HTMLElement>("[data-triage-deck-card]")) {
-        const operationId = card.dataset.triageDeckCard;
+      // map mode에서는 카드가 은닉되므로 flight 좌표는 지도 점에서 읽는다 — 소비자
+      // (getTriageDeckCardRect)는 어느 쪽이 기록했는지 모른다.
+      const targets = mapMode
+        ? grid.closest(".canvas-triage-deck")?.querySelectorAll<HTMLElement>("[data-triage-map-dot]") ?? []
+        : grid.querySelectorAll<HTMLElement>("[data-triage-deck-card]");
+      for (const target of targets) {
+        const operationId = target.dataset.triageMapDot ?? target.dataset.triageDeckCard;
         if (!operationId) continue;
         currentIds.add(operationId);
         // Quick-Look 확대 중인 카드는 getBoundingClientRect가 확대 rect를 주므로 레이아웃
         // 좌표(offset 기하는 transform 무영향)로 비확대 rect를 재구성한다 — 이 맵은 복귀
         // flight의 목적지라 확대 rect가 실리면 고스트가 카드 두 배 크기 자리로 날아가고,
         // 그렇다고 기록을 건너뛰면 확대 중 grid 스크롤이 일어났을 때 옛 위치가 남는다.
-        if (card.classList.contains("is-quicklook")) {
+        // 지도 점은 grid 자식이 아니고 Quick-Look도 없으므로 이 분기는 카드에만 닿는다.
+        if (target.classList.contains("is-quicklook")) {
           const gridRect = grid.getBoundingClientRect();
           const unscaledRect = new DOMRect(
-            gridRect.left + (card.offsetLeft - grid.offsetLeft) - grid.scrollLeft,
-            gridRect.top + (card.offsetTop - grid.offsetTop) - grid.scrollTop,
-            card.offsetWidth,
-            card.offsetHeight,
+            gridRect.left + (target.offsetLeft - grid.offsetLeft) - grid.scrollLeft,
+            gridRect.top + (target.offsetTop - grid.offsetTop) - grid.scrollTop,
+            target.offsetWidth,
+            target.offsetHeight,
           );
           deckCardRects.set(operationId, unscaledRect);
           // 열린 quick-look의 scale/origin은 발동 시점 스냅샷이라, grid 스크롤이나 리사이즈
@@ -224,7 +432,7 @@ export function TriageWatchDeck({
           }
           continue;
         }
-        deckCardRects.set(operationId, card.getBoundingClientRect());
+        deckCardRects.set(operationId, target.getBoundingClientRect());
       }
       for (const operationId of deckCardRects.keys()) {
         if (!currentIds.has(operationId)) deckCardRects.delete(operationId);
@@ -249,7 +457,7 @@ export function TriageWatchDeck({
       if (scrollFrame !== null) window.cancelAnimationFrame(scrollFrame);
       observer?.disconnect();
     };
-  }, [operations, visible]);
+  }, [operations, visible, mapMode]);
 
   const clearQuicklookTimer = () => {
     if (quicklookTimerRef.current !== null) {
@@ -287,8 +495,10 @@ export function TriageWatchDeck({
   };
 
   useEffect(() => {
-    if (!visible || stagedOperationId !== null) dismissQuicklook();
-  }, [visible, stagedOperationId]);
+    // 지도 모드 진입도 해제 사유다 — grid가 visibility로 은닉되면 pointerleave가 발화하지
+    // 않아, 열린 Quick-Look(또는 진행 중 드웰)이 카드 복귀 때 포인터 없는 확대로 남는다.
+    if (!visible || stagedOperationId !== null || mapMode) dismissQuicklook();
+  }, [visible, stagedOperationId, mapMode]);
 
   // unmount 시 드웰 타이머를 반납한다 — unmount 뒤 발동하면 떠난 카드에 setState를 던진다.
   useEffect(() => () => clearQuicklookTimer(), []);
@@ -303,9 +513,27 @@ export function TriageWatchDeck({
     (left, right) => TRIAGE_DECK_ACTIVITY_RANK[resolveOperationActivity(left, operationStatus)]
       - TRIAGE_DECK_ACTIVITY_RANK[resolveOperationActivity(right, operationStatus)],
   );
+  const mapMarkers = mapMode
+    ? resolveTriageMapMarkerLayout(operations.map((operation) => ({
+      id: operation.id,
+      geometry: mapGeometryFor ? mapGeometryFor(operation) : operation.geometry,
+    })))
+    : null;
+  const pick = (operationId: string, element: HTMLElement) => {
+    // 승격 flight는 클릭 순간 사용자가 보고 있는 위치에서 출발해야 한다 — tween이 살아 있으면
+    // 카드가 움직이는 중이라 좌표가 흔들리므로 먼저 스냅 종료하고, 그 다음 rect(Quick-Look이면
+    // 확대된 모습 그대로)를 출발 전용 채널에 기록한다. deckCardRects는 복귀 flight 목적지용
+    // 비확대 rect로 남아야 하므로 두 용도를 분리한다.
+    onBeforePick?.();
+    deckDepartureRect = { operationId, rect: element.getBoundingClientRect() };
+    pickTriageOperation(theaterId, operationId);
+  };
 
   return (
-    <section className={`canvas-triage-deck ${underStage ? "is-under-stage" : ""}`} data-canvas-blocker>
+    <section
+      className={`canvas-triage-deck ${underStage ? "is-under-stage" : ""} ${mapMode ? "is-map-mode" : ""}`}
+      data-canvas-blocker
+    >
       <div className="canvas-triage-deck-caption">
         {t("canvas.triage.deckCaption", { running, idle })}
       </div>
@@ -347,13 +575,7 @@ export function TriageWatchDeck({
                 armQuicklook(operation.id, event.currentTarget, false);
               }}
               onBlur={dismissQuicklook}
-              onClick={(event) => {
-                // 클릭 순간의 rect(Quick-Look이면 확대된 모습 그대로)를 출발 전용 채널에 기록한다 —
-                // 승격 flight는 사용자가 보고 있는 위치에서 출발해야 하고, deckCardRects는 복귀
-                // flight 목적지용 비확대 rect로 남아야 하므로 두 용도를 분리한다.
-                deckDepartureRect = { operationId: operation.id, rect: event.currentTarget.getBoundingClientRect() };
-                pickTriageOperation(theaterId, operation.id);
-              }}
+              onClick={(event) => pick(operation.id, event.currentTarget)}
             >
               {accentColor ? <span className="canvas-triage-deck-card-spine" style={{ backgroundColor: accentColor } as CSSProperties} aria-hidden="true" /> : null}
               <span className="canvas-triage-deck-card-status">
@@ -368,6 +590,26 @@ export function TriageWatchDeck({
                   {statusDetail.detail ?? label}
                 </span>
               )}
+            </button>
+          );
+        })}
+      </div>
+      <div className="canvas-triage-map" aria-hidden={!mapMode}>
+        {mapMarkers?.map((marker) => {
+          const operation = operations.find((candidate) => candidate.id === marker.operationId);
+          if (!operation) return null;
+          const visual = operationActivityVisual(resolveOperationActivity(operation, operationStatus));
+          return (
+            <button
+              key={marker.operationId}
+              type="button"
+              className={`canvas-triage-map-dot is-${visual}`}
+              data-triage-map-dot={marker.operationId}
+              style={{ left: `${marker.x}%`, top: `${marker.y}%` } as CSSProperties}
+              aria-label={t("canvas.triage.deckCardAria", { title: operation.title })}
+              onClick={(event) => pick(operation.id, event.currentTarget)}
+            >
+              <span className="canvas-triage-map-dot-label">{operation.title}</span>
             </button>
           );
         })}

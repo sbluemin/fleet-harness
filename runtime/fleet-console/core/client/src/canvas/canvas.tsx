@@ -24,13 +24,13 @@ import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { resolveAccentColor } from "./operation-accent.js";
 import { CanvasGrid, RubberBand, TriageClearPlate } from "./canvas-overlays.js";
-import { flashTriageDeckCard, getTriageDeckCardRect, resolveTriageDeckPromotion, takeTriageDeckDepartureRect, TriageWatchDeck, type TriageDeckArrivalDwell } from "./triage-watch-deck.js";
+import { flashTriageDeckCard, getTriageDeckCardRect, resolveTriageDeckPromotion, takeTriageDeckDepartureRect, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckArrivalDwell } from "./triage-watch-deck.js";
 import { resolveGlanceHudModel, type GlanceHudModel } from "./glance-hud.js";
 import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { modeSlotGeometryFor, screenToCanvas, triageStageGeometryFor, type CanvasPoint, type CanvasRect } from "./coordinates.js";
-import { disarmTriageSetAside, dismissTriageOperation, getTriageCleared, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, resolveTriageQueue, scheduleTriageClear, setTriageSpotlightEnabled, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
+import { disarmTriageSetAside, dismissTriageOperation, getTriageCleared, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, nextTriageDeckZoomPreset, pickTriageOperation, reconcileTriageStageCompanion, resolveTriageQueue, scheduleTriageClear, setTriageSpotlightEnabled, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
 
 interface OperationsCanvasProps {
   readonly state: ConsoleState;
@@ -111,6 +111,7 @@ export function OperationsCanvas({
   const triageActive = useTriageActive(state.activeTheaterId);
   const triageSpotlightEnabled = useTriageSpotlightEnabled();
   useSyncExternalStore(subscribeTriage, getTriageSnapshot, getTriageSnapshot);
+  const triageDeckZoom = useTriageDeckZoomControl(state.activeTheaterId);
   const [triageEntering, setTriageEntering] = useState(false);
   const [, setTriageDeckDwellRevision] = useState(0);
   const [formationEntering, setFormationEntering] = useState(false);
@@ -393,6 +394,13 @@ export function OperationsCanvas({
     return (operation: OperationNode) => configs.get(operation.id) ?? null;
   }, [canvas.operations, language, registry.operationKinds, state.activeTheme, theaterOperations, triageActive]);
   const setAsideArmedId = state.activeTheaterId ? getTriageSetAsideArmedId(state.activeTheaterId) : null;
+  // 덱 줌 wheel은 React 합성 onWheel 밖에서 부착한다 — React는 root wheel을 passive로
+  // 묶어 preventDefault(브라우저 페이지 줌 차단)가 무용해진다. 수식키 없는 wheel은 건드리지 않는다.
+  useEffect(() => {
+    const canvasElement = canvasRef.current;
+    if (!canvasElement) return;
+    return triageDeckZoom.control.attachWheelListener(canvasElement);
+  }, [triageDeckZoom.control]);
   useLayoutEffect(() => {
     if (!triageActive) {
       previousTriageDeckStageRef.current = null;
@@ -911,6 +919,20 @@ export function OperationsCanvas({
               aria-label={t("canvas.triage.spotlightTitle")}
               onClick={() => setTriageSpotlightEnabled(!triageSpotlightEnabled)}
             >{t("canvas.triage.spotlightLabel")}</button>
+            <button
+              className={`canvas-triage-density-chip ${triageDeckZoom.zoom !== 1.0 ? "is-adjusted" : ""}`}
+              type="button"
+              title={t("canvas.triage.densityChipTitle")}
+              aria-label={t("canvas.triage.densityChipTitle")}
+              onClick={() => {
+                if (!state.activeTheaterId) return;
+                // 프리셋도 줌 컨트롤러의 tween 경로로 — store 선기록은 tween 시작 프레임에
+                // 지도 판정 폴백을 뒤집어 잘못된 모드가 한 프레임 번쩍인다(영속은 settle 시).
+                triageDeckZoom.control.setZoomTarget(nextTriageDeckZoomPreset(triageDeckZoom.zoom));
+              }}
+            >
+              {t("canvas.triage.densityChip")} {triageDeckZoom.zoom.toFixed(1)}×
+            </button>
           </div>
           {triageEntering ? <div className="canvas-triage-sweep" aria-hidden="true" /> : null}
           {triageEntering ? (
@@ -934,6 +956,8 @@ export function OperationsCanvas({
         operationAccent={canvas.operationAccent}
         arrivingOperationId={triageDeckArrivingOperationId}
         stagedOperationId={triageStageId}
+        onBeforePick={triageDeckZoom.control.snapZoomTween}
+        mapGeometryFor={(operation) => canvas.operations[operation.id] ?? operation.geometry ?? null}
         previewConfigFor={triagePreviewConfigFor}
         freshOperationIds={freshDeckOperationIds}
       />
