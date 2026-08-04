@@ -2,7 +2,14 @@
 
 import { describe, expect, it } from "vitest";
 
-import { resolveTriageQuicklookOrigin, resolveTriageQuicklookScale } from "../core/client/src/canvas/triage-watch-deck.js";
+import {
+  resolveTriageMapQuicklookPlacement,
+  resolveTriageMorphFrame,
+  resolveTriageQuicklookOrigin,
+  resolveTriageQuicklookScale,
+  TRIAGE_MAP_QUICKLOOK_HEIGHT,
+  TRIAGE_MAP_QUICKLOOK_WIDTH,
+} from "../core/client/src/canvas/triage-watch-deck.js";
 
 function rect(left: number, top: number, width: number, height: number): DOMRect {
   return {
@@ -79,5 +86,51 @@ describe("resolveTriageQuicklookScale", () => {
 
   it("returns 1 for a degenerate zero-size card", () => {
     expect(resolveTriageQuicklookScale(rect(0, 0, 0, 0), GRID)).toBe(1);
+  });
+});
+
+describe("resolveTriageMapQuicklookPlacement", () => {
+  const dot = (left: number, top: number) => rect(left, top, 14, 14);
+
+  it("centers the panel on the dot when the plate has room on every side", () => {
+    const placement = resolveTriageMapQuicklookPlacement(dot(600, 400), GRID);
+    expect(placement.width).toBe(TRIAGE_MAP_QUICKLOOK_WIDTH);
+    expect(placement.height).toBe(TRIAGE_MAP_QUICKLOOK_HEIGHT);
+    expect(placement.left).toBeCloseTo(607 - TRIAGE_MAP_QUICKLOOK_WIDTH / 2, 5);
+    expect(placement.top).toBeCloseTo(407 - TRIAGE_MAP_QUICKLOOK_HEIGHT / 2, 5);
+  });
+
+  it("clamps inside the plate when the dot drifts to an edge", () => {
+    const near = resolveTriageMapQuicklookPlacement(dot(0, 0), GRID);
+    expect(near.left).toBe(8);
+    expect(near.top).toBe(8);
+    const far = resolveTriageMapQuicklookPlacement(dot(1186, 786), GRID);
+    expect(far.left).toBe(1200 - TRIAGE_MAP_QUICKLOOK_WIDTH - 8);
+    expect(far.top).toBe(800 - TRIAGE_MAP_QUICKLOOK_HEIGHT - 8);
+  });
+
+  it("shrinks to the plate on windows narrower than the reading size", () => {
+    const placement = resolveTriageMapQuicklookPlacement(dot(100, 60), rect(0, 0, 320, 200));
+    expect(placement.width).toBe(320 - 16);
+    expect(placement.height).toBe(200 - 16);
+    expect(placement.left).toBe(8);
+    expect(placement.top).toBe(8);
+  });
+});
+
+describe("resolveTriageMorphFrame", () => {
+  it("moves the card onto its dot and shrinks it evenly", () => {
+    // 260×150 카드가 (100,100)에, 그 점은 (600,400)에 14×14로 선다.
+    const frame = resolveTriageMorphFrame(rect(100, 100, 260, 150), rect(600, 400, 14, 14));
+    expect(frame.dx).toBeCloseTo(607 - 230, 5);
+    expect(frame.dy).toBeCloseTo(407 - 175, 5);
+    // 균등 배율 — 축별로 다르면 카드가 찌그러지며 빨려 들어간다.
+    expect(frame.scale).toBeCloseTo(14 / 260, 5);
+  });
+
+  it("survives a degenerate zero-size card without dividing by zero", () => {
+    const frame = resolveTriageMorphFrame(rect(0, 0, 0, 0), rect(10, 10, 14, 14));
+    expect(Number.isFinite(frame.scale)).toBe(true);
+    expect(Number.isFinite(frame.dx)).toBe(true);
   });
 });

@@ -116,10 +116,8 @@ export const canvasEn = {
 
   "sidebar.list.aria": "Theaters and operations",
   "triageSidebar.aria": "War Room queue",
-  "triageSidebar.caption": "Queue — {waiting} waiting",
   "triageSidebar.watching": "Watching",
   "triageSidebar.idle": "Idle",
-  "triageSidebar.empty": "Nothing waiting",
   "sidebar.theater.operationsAria": "{theater} operations",
   "sidebar.theater.controlsAria": "{theater} controls",
   "sidebar.theater.operationControlsAria": "{theater} operation controls",
@@ -317,10 +315,8 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
 
   "sidebar.list.aria": "Theater와 Operation",
   "triageSidebar.aria": "War Room 대기열",
-  "triageSidebar.caption": "대기열 — {waiting}건 대기",
   "triageSidebar.watching": "주시 중",
   "triageSidebar.idle": "유휴",
-  "triageSidebar.empty": "선별할 작업이 없습니다",
   "sidebar.theater.operationsAria": "{theater} Operation",
   "sidebar.theater.controlsAria": "{theater} 제어",
   "sidebar.theater.operationControlsAria": "{theater} Operation 제어",

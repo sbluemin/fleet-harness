@@ -87,7 +87,6 @@ export function TriageSideBar({
     renderKindIcon,
   }));
   const sections = resolveTriageSideBarSections(entries, queue, t);
-  const totalRows = sections.reduce((count, section) => count + section.entries.length, 0);
   return (
     <aside
       className={`operations-side-bar triage-side-bar ${sideBar.collapsed ? "is-closed" : "is-expanded"}`}
@@ -97,49 +96,45 @@ export function TriageSideBar({
       inert={sideBar.collapsed}
       aria-label={t("triageSidebar.aria")}
     >
-      <div className="triage-side-bar-caption">
-        {t("triageSidebar.caption", { waiting: sections.find((section) => section.status === "awaiting")?.entries.length ?? 0 })}
-      </div>
-      {totalRows === 0 ? (
-        <p className="triage-side-bar-empty">{t("triageSidebar.empty")}</p>
-      ) : (
-        <ol className="operations-side-bar-chips triage-side-bar-sections" aria-label={t("triageSidebar.aria")}>
-          {sections.map((section) => (
-            <StatusSectionSlot key={section.status} theaterId={TRIAGE_SIDE_BAR_SECTION_KEY} section={section}>
-              {section.entries.map((entry, index) => {
-                const accentKey = getTheaterCanvasSnapshot(entry.operation.theaterId).operationAccent[entry.operation.id]
-                  ?? operationAccentFromNode(entry.operation);
-                return (
-                  <OperationsSideBarChip
-                    key={entry.operation.id}
-                    entry={entry}
-                    index={index}
-                    isCloseArmed={armedCloseId === entry.operation.id}
-                    accentValue={accentKey ? resolveAccentColor(accentKey) : null}
-                    theaterName={theaterLabelById.get(entry.operation.theaterId) ?? entry.operation.theaterId}
-                    statusAxis
-                    reorderEnabled={false}
-                    minimizeEnabled={false}
-                    menuEnabled={false}
-                    dragging={false}
-                    dragOffsetY={0}
-                    dropTarget={false}
-                    onArmClose={setArmedCloseId}
-                    onDisarmClose={() => setArmedCloseId(null)}
-                    onClose={onClose}
-                    onMinimize={() => {}}
-                    onFocus={onPick}
-                    onKeyboardMove={() => {}}
-                    onPointerDragStart={() => {}}
-                    onOpenAccent={() => {}}
-                    onRename={onRename}
-                  />
-                );
-              })}
-            </StatusSectionSlot>
-          ))}
-        </ol>
-      )}
+      {/* 상태 섹션은 비어 있어도 항상 선다 — 대기·실행 중·백그라운드·유휴는 War Room이 읽는
+          축 자체라, 건수가 0이라고 축이 사라지면 좌측 열의 읽는 법이 상황에 따라 달라진다.
+          "없음"은 빈 섹션의 자체 힌트가 말한다(전역 empty 문구는 이 계약으로 퇴역했다). */}
+      <ol className="operations-side-bar-chips triage-side-bar-sections" aria-label={t("triageSidebar.aria")}>
+        {sections.map((section) => (
+          <StatusSectionSlot key={section.status} theaterId={TRIAGE_SIDE_BAR_SECTION_KEY} section={section}>
+            {section.entries.map((entry, index) => {
+              const accentKey = getTheaterCanvasSnapshot(entry.operation.theaterId).operationAccent[entry.operation.id]
+                ?? operationAccentFromNode(entry.operation);
+              return (
+                <OperationsSideBarChip
+                  key={entry.operation.id}
+                  entry={entry}
+                  index={index}
+                  isCloseArmed={armedCloseId === entry.operation.id}
+                  accentValue={accentKey ? resolveAccentColor(accentKey) : null}
+                  theaterName={theaterLabelById.get(entry.operation.theaterId) ?? entry.operation.theaterId}
+                  statusAxis
+                  reorderEnabled={false}
+                  minimizeEnabled={false}
+                  menuEnabled={false}
+                  dragging={false}
+                  dragOffsetY={0}
+                  dropTarget={false}
+                  onArmClose={setArmedCloseId}
+                  onDisarmClose={() => setArmedCloseId(null)}
+                  onClose={onClose}
+                  onMinimize={() => {}}
+                  onFocus={onPick}
+                  onKeyboardMove={() => {}}
+                  onPointerDragStart={() => {}}
+                  onOpenAccent={() => {}}
+                  onRename={onRename}
+                />
+              );
+            })}
+          </StatusSectionSlot>
+        ))}
+      </ol>
     </aside>
   );
 }

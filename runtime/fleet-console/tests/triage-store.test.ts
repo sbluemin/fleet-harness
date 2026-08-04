@@ -79,7 +79,7 @@ import {
 import { resolveTriageSideBarSections, TriageSideBar } from "../core/client/src/sidebar/triage-side-bar.js";
 import type { OperationNode } from "../core/client/src/types.js";
 import { TriageClearPlate } from "../core/client/src/canvas/canvas-overlays.js";
-import { resolveTriageDeckPromotion, TRIAGE_DECK_ARRIVAL_DWELL_MS, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckZoomControl } from "../core/client/src/canvas/triage-watch-deck.js";
+import { resolveTriageDeckPromotion, resolveTriageMapDriftStyle, TRIAGE_DECK_ARRIVAL_DWELL_MS, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckZoomControl } from "../core/client/src/canvas/triage-watch-deck.js";
 import { triageStageGeometryFor } from "../core/client/src/canvas/coordinates.js";
 import { getOperationStatusDetailSnapshot, recordOperationActivityTransition, setOperationStatusDetail } from "../core/client/src/operation-status-detail-store.js";
 
@@ -1684,11 +1684,23 @@ describe("triage fleet map markers", () => {
     const deferredDot = container.querySelector<HTMLElement>('[data-triage-map-dot="beta-map"]');
     expect(deferredDot?.classList.contains("is-deferred")).toBe(true);
     expect(deferredDot?.classList.contains("is-awaiting")).toBe(true);
-    // 실행 마커는 결정적 유영 변수를 주입받고, 비실행 마커는 받지 않는다.
+    // 모든 마커가 결정적 유영 변수를 주입받는다 — 정지한 점은 죽은 표시로 읽힌다.
     const runningDot = container.querySelector<HTMLElement>('[data-triage-map-dot="alpha-map"]');
     expect(runningDot?.style.getPropertyValue("--triage-drift-mult")).not.toBe("");
     expect(runningDot?.style.getPropertyValue("--triage-drift-x1")).toMatch(/px$/);
-    expect(deferredDot?.style.getPropertyValue("--triage-drift-mult")).toBe("");
+    expect(deferredDot?.style.getPropertyValue("--triage-drift-mult")).not.toBe("");
+    expect(deferredDot?.style.getPropertyValue("--triage-drift-x1")).toMatch(/px$/);
+  });
+
+  it("keeps drift deterministic per id and narrows amplitude for non-running dots", () => {
+    const active = resolveTriageMapDriftStyle("alpha-map", true) as Record<string, string>;
+    const calm = resolveTriageMapDriftStyle("alpha-map", false) as Record<string, string>;
+    // 같은 id는 언제나 같은 경로를 받는다 — 렌더마다 흔들리면 지도가 아니다.
+    expect(resolveTriageMapDriftStyle("alpha-map", true)).toEqual(active);
+    // 상태 위계는 진폭과 주기가 만든다: 비실행은 더 좁게, 더 느리게 돈다.
+    const amplitude = (style: Record<string, string>) => Math.abs(Number.parseFloat(style["--triage-drift-x1"]!));
+    expect(amplitude(calm)).toBeLessThan(amplitude(active));
+    expect(Number.parseFloat(calm["--triage-drift-mult"]!)).toBeGreaterThan(Number.parseFloat(active["--triage-drift-mult"]!));
   });
 
   it("classifies an idle arrival as an awaiting marker, matching the queue vocabulary", () => {
