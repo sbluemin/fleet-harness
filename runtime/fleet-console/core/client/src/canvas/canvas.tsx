@@ -30,7 +30,7 @@ import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { modeSlotGeometryFor, screenToCanvas, triageStageGeometryFor, type CanvasPoint, type CanvasRect } from "./coordinates.js";
-import { disarmTriageSetAside, dismissTriageOperation, getTriageCleared, getTriageDeckZoom, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, nextTriageDeckZoomPreset, pickTriageOperation, reconcileTriageStageCompanion, resolveTriageQueue, scheduleTriageClear, setTriageDeckZoom, setTriageSpotlightEnabled, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
+import { disarmTriageSetAside, dismissTriageOperation, getTriageCleared, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, nextTriageDeckZoomPreset, pickTriageOperation, reconcileTriageStageCompanion, resolveTriageQueue, scheduleTriageClear, setTriageSpotlightEnabled, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
 
 interface OperationsCanvasProps {
   readonly state: ConsoleState;
@@ -926,7 +926,9 @@ export function OperationsCanvas({
               aria-label={t("canvas.triage.densityChipTitle")}
               onClick={() => {
                 if (!state.activeTheaterId) return;
-                setTriageDeckZoom(state.activeTheaterId, nextTriageDeckZoomPreset(getTriageDeckZoom(state.activeTheaterId)));
+                // 프리셋도 줌 컨트롤러의 tween 경로로 — store 선기록은 tween 시작 프레임에
+                // 지도 판정 폴백을 뒤집어 잘못된 모드가 한 프레임 번쩍인다(영속은 settle 시).
+                triageDeckZoom.control.setZoomTarget(nextTriageDeckZoomPreset(triageDeckZoom.zoom));
               }}
             >
               {t("canvas.triage.densityChip")} {triageDeckZoom.zoom.toFixed(1)}×

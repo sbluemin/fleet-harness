@@ -8,6 +8,7 @@ import { getOperationStatusDetailSnapshot, useOperationStatusDetails } from "../
 import type { OperationNode } from "../types.js";
 import { operationAccentFromNode, resolveAccentColor } from "./operation-accent.js";
 import {
+  clampTriageDeckZoom,
   getTriageDeckZoom,
   isTriageActive,
   isTriageDeckMapMode,
@@ -135,6 +136,9 @@ export function getTriageDeckCardRect(operationId: string): DOMRect | null {
 // 이벤트 밖에서 다뤄야 한다 — React는 root wheel을 passive로 묶어 preventDefault가 무용해진다.
 export interface TriageDeckZoomControl {
   readonly snapZoomTween: () => void;
+  /** 프리셋 등 외부 배율 변경도 이 경로로 — store 선기록은 tween 시작 프레임에 지도 판정
+      폴백을 뒤집어 잘못된 모드가 한 프레임 번쩍인다. 영속은 settle 시 휠과 동일하게. */
+  readonly setZoomTarget: (zoom: number) => void;
   readonly attachWheelListener: (element: HTMLElement) => () => void;
 }
 
@@ -254,6 +258,9 @@ export function useTriageDeckZoomControl(theaterId: string | null): {
       const goal = targetRef.current;
       applyZoom(goal);
       setTriageDeckZoom(ownerTheaterId, goal);
+    },
+    setZoomTarget: (zoom: number) => {
+      setTargetZoom(clampTriageDeckZoom(zoom));
     },
     attachWheelListener: (element: HTMLElement) => {
       const previousOwner = ownerRef.current;
