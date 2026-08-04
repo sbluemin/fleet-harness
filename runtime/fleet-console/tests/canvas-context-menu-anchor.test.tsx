@@ -68,6 +68,15 @@ describe("CanvasContextMenu anchor placement", () => {
 
     expect(menuStyle().getPropertyValue("--canvas-menu-max-height")).toBe("376px");
   });
+
+  it("renders fixed at viewport coordinates when the fixed prop is set", () => {
+    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [], vi.fn(), true);
+
+    const style = menuStyle();
+    expect(style.position).toBe("fixed");
+    expect(style.left).toBe("520px");
+    expect(style.top).toBe("156px");
+  });
 });
 
 describe("CanvasContextMenu launch kind attribute", () => {
@@ -153,6 +162,14 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  it("dismisses the menu on the shared close signal emitted by cross-surface interactions", () => {
+    const onClose = vi.fn();
+    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [], onClose);
+
+    act(() => window.dispatchEvent(new Event("canvas-context-menu-close")));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it("does not dismiss the menu before the feature tour card handles its click", () => {
     const onClose = vi.fn();
     renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [], onClose);
@@ -175,11 +192,13 @@ function renderMenu(
   viewportBounds: { readonly width: number; readonly height: number },
   catalog: readonly OperationCatalogPlugin[] = [],
   onClose = vi.fn(),
+  fixed = false,
 ): void {
   act(() => root.render(
     <CanvasContextMenu
       anchor={anchor}
       viewportBounds={viewportBounds}
+      fixed={fixed}
       catalog={catalog}
       canLaunch
       renderKindIcon={() => null}

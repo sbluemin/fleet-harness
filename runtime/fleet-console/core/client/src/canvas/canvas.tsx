@@ -222,9 +222,15 @@ export function OperationsCanvas({
   const handleContextMenu = (event: ReactMouseEvent<HTMLElement>) => {
     if (event.target instanceof Element && event.target.closest("[data-canvas-blocker], [data-canvas-operation]")) return;
     event.preventDefault();
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const anchor: CanvasPoint = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    // 선별 처리/Formation은 map 좌표가 아닌 고정 배치라 메뉴 앵커를 커서 지점으로 둔다 —
+    // canvasPoint는 map 모드에서만 생성/실행 좌표로 쓰인다.
+    const anchor = triageActive
+      ? { x: event.clientX, y: event.clientY }
+      : (() => {
+          const rect = canvasRef.current?.getBoundingClientRect();
+          return rect ? { x: event.clientX - rect.left, y: event.clientY - rect.top } : null;
+        })();
+    if (!anchor) return;
     setContextMenu({ anchor, canvasPoint: screenToCanvas(anchor, canvas.viewport) });
   };
 
@@ -654,7 +660,16 @@ export function OperationsCanvas({
   return (
     <main
       className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""} ${glanceVisible ? "is-glance" : ""} ${panelMaximized ? "is-panel-maximized" : ""} ${panelCompanion ? "is-companion-layout" : ""} ${formationView ? "is-formation-view" : ""} ${formationEntering ? "is-formation-entering" : ""} ${triageActive ? "is-triage" : ""} ${triageEntering ? "is-triage-entering" : ""}`}
-      onPointerDown={interaction.onPointerDown}
+      onPointerDown={(event) => {
+        // 메뉴 내부 클릭(캔버스 소유 메뉴는 <main> 자손이라 버블로 도달한다)은 실행 항목의
+        // click을 살리기 위해 닫기 신호를 본내지 않는다 — data-canvas-blocker는 전파를 멈추지 않는다.
+        if (!(event.target instanceof Element && event.target.closest("[data-canvas-blocker], [data-canvas-operation]"))) {
+          // 캔버스 제어 메뉴가 어느 소유자(사이드바 포털/이 컴포넌트)로부터 열었든 Map 클릭으로 닫는다 —
+          // pan의 preventDefault+포인터 캡처가 mousedown 합성을 끊어 포털의 외부-클릭 닫기가 못 잡는다.
+          window.dispatchEvent(new Event("canvas-context-menu-close"));
+        }
+        interaction.onPointerDown(event as Parameters<typeof interaction.onPointerDown>[0]);
+      }}
       onPointerMove={interaction.onPointerMove}
       onPointerUp={interaction.onPointerUp}
       onPointerCancel={interaction.onPointerCancel}
@@ -915,6 +930,7 @@ export function OperationsCanvas({
           renderKindIcon={renderKindIcon}
           onLaunchKind={handleContextMenuLaunchKind}
           onClose={() => setContextMenu(null)}
+          fixed={triageActive}
         />
       ) : null}
       <CanvasMinimap

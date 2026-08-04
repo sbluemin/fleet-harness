@@ -17,6 +17,9 @@ interface CanvasContextMenuProps {
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
   readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind) => void;
   readonly onClose: () => void;
+  // true면 anchor를 뷰포트 기준 좌표로 보고 position: fixed로 띄운다 — 선별 처리처럼
+  // 월드/스테이지 프레임이 anchor 좌표계를 침범하는 모드에서 쓴다.
+  readonly fixed?: boolean;
 }
 
 const MENU_WIDTH = 340;
@@ -24,7 +27,7 @@ const MENU_MAX_HEIGHT = 520;
 const MENU_MIN_HEIGHT = 120;
 const MENU_MARGIN = 12;
 
-export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", catalog, canLaunch, renderKindIcon, onLaunchKind, onClose }: CanvasContextMenuProps) {
+export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", fixed = false, catalog, canLaunch, renderKindIcon, onLaunchKind, onClose }: CanvasContextMenuProps) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -60,9 +63,13 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     };
     document.addEventListener("mousedown", handlePointer);
     document.addEventListener("keydown", handleKey);
+    // 호출 측에 닫기 신호 한 번 더 — pointerdown 단계에서 가로채는 레이어(캔버스는 pan을 위해
+    // preventDefault+포인터 캡처를 걸어 마우스 이벤트 합성이 끊긴다)가 mousedown을 삼켜도 닫히도록.
+    window.addEventListener("canvas-context-menu-close", onClose);
     return () => {
       document.removeEventListener("mousedown", handlePointer);
       document.removeEventListener("keydown", handleKey);
+      window.removeEventListener("canvas-context-menu-close", onClose);
     };
   }, [onClose]);
 
@@ -75,7 +82,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     <div
       className={`operation-launch-control operation-launch-control--canvas ${placement === "above" ? "operation-launch-control--up" : ""}`}
       ref={containerRef}
-      style={clampedAnchorStyle(anchor, viewportBounds, placement, menuSize)}
+      style={clampedAnchorStyle(anchor, viewportBounds, placement, menuSize, fixed)}
       data-canvas-blocker
     >
       <div
@@ -146,12 +153,14 @@ function clampedAnchorStyle(
   bounds: { readonly width: number; readonly height: number } | undefined,
   placement: "above" | "cursor",
   size: { readonly width: number; readonly height: number } | null,
+  fixed: boolean,
 ): CSSProperties {
   // 상한도 뷰포트에서 산출한다 — 520px보다 낮은 화면에서 메뉴가 잘려 나가지 않게.
   const maxHeight = bounds
     ? Math.max(MENU_MIN_HEIGHT, Math.min(MENU_MAX_HEIGHT, bounds.height - MENU_MARGIN * 2))
     : MENU_MAX_HEIGHT;
-  const base = { "--canvas-menu-max-height": `${maxHeight}px` };
+  const base = fixed ? { position: "fixed", "--canvas-menu-max-height": `${maxHeight}px` } as CSSProperties
+    : { "--canvas-menu-max-height": `${maxHeight}px` };
   const width = size?.width ?? MENU_WIDTH;
   // 측정 전 첫 렌더는 높이 0으로 두어 커서 좌표를 그대로 쓴다 —
   // useLayoutEffect 측정이 페인트 전에 반영되므로 위치가 튀지 않는다.
