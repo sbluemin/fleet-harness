@@ -2370,15 +2370,17 @@
 }
 
 /* 떠난 자리에 남는 자국 — 어디서 집어 어디까지 왔는지 보여야 "끌고 있다"가 읽힌다.
-   점을 따라온 자식이므로 이동량을 되돌려 원래 좌표에 세운다. */
-.canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-dragging::before {
-  content: "";
+   점의 자식이 아니라 형제로 세운다: 끌리는 점은 scale로 커지므로, 그 안에 두면 자국의
+   역보정 이동량까지 함께 확대되어 원래 자리가 아니라 엉뚱한 곳에 선다. 자국은 판 좌표에
+   직접 못 박히고 드래그가 끝날 때까지 움직이지 않는다. */
+.canvas-triage-map-dot-origin {
   position: absolute;
-  inset: 0;
-  border: 1px dashed color-mix(in oklch, var(--brass) 60%, transparent);
+  width: 14px;
+  height: 14px;
+  border: 1px dashed color-mix(in oklch, var(--brass) 55%, transparent);
   border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-  translate: calc(-1 * var(--drag-dx, 0)) calc(-1 * var(--drag-dy, 0));
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
+  transform: translate(-50%, -50%);
   pointer-events: none;
 }
 

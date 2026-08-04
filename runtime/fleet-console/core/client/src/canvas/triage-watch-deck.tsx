@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../i18n/index.js";
@@ -1189,8 +1189,18 @@ function renderTriageMapDots(
       ...(dragging ? {} : resolveTriageMapDriftStyle(operation.id, visual === "running")),
     };
     return (
+      <Fragment key={marker.operationId}>
+      {/* 집어 올린 자리에 남는 자국 — 끌리는 점의 자식이 아니라 형제다(점은 scale로 커지므로
+          자식으로 두면 자국까지 그 배율에 실려 원래 자리를 벗어난다). 드래그가 끝날 때까지
+          판 좌표에 못 박혀 움직이지 않는다. */}
+      {dragging ? (
+        <span
+          className="canvas-triage-map-dot-origin"
+          style={{ left: `${marker.x}%`, top: `${marker.y}%` }}
+          aria-hidden="true"
+        />
+      ) : null}
       <button
-        key={marker.operationId}
         type="button"
         className={`canvas-triage-map-dot is-${visual}${deferred ? " is-deferred" : ""}${dragging ? " is-dragging" : ""}`}
         data-triage-map-dot={marker.operationId}
@@ -1218,6 +1228,7 @@ function renderTriageMapDots(
       >
         <span className="canvas-triage-map-dot-label">{operation.title}</span>
       </button>
+      </Fragment>
     );
   });
 }
