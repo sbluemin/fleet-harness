@@ -172,9 +172,20 @@ export function TriageWatchDeck({
         const operationId = card.dataset.triageDeckCard;
         if (!operationId) continue;
         currentIds.add(operationId);
-        // Quick-Look 확대 중인 카드는 건너뛰어 마지막 비확대 rect를 유지한다 — 이 맵은 복귀
-        // flight의 목적지라 확대 rect가 실리면 고스트가 카드 두 배 크기 자리로 날아간다.
-        if (card.classList.contains("is-quicklook")) continue;
+        // Quick-Look 확대 중인 카드는 getBoundingClientRect가 확대 rect를 주므로 레이아웃
+        // 좌표(offset 기하는 transform 무영향)로 비확대 rect를 재구성한다 — 이 맵은 복귀
+        // flight의 목적지라 확대 rect가 실리면 고스트가 카드 두 배 크기 자리로 날아가고,
+        // 그렇다고 기록을 건너뛰면 확대 중 grid 스크롤이 일어났을 때 옛 위치가 남는다.
+        if (card.classList.contains("is-quicklook")) {
+          const gridRect = grid.getBoundingClientRect();
+          deckCardRects.set(operationId, new DOMRect(
+            gridRect.left + (card.offsetLeft - grid.offsetLeft) - grid.scrollLeft,
+            gridRect.top + (card.offsetTop - grid.offsetTop) - grid.scrollTop,
+            card.offsetWidth,
+            card.offsetHeight,
+          ));
+          continue;
+        }
         deckCardRects.set(operationId, card.getBoundingClientRect());
       }
       for (const operationId of deckCardRects.keys()) {

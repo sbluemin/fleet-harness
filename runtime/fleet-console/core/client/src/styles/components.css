@@ -2137,10 +2137,12 @@
   box-shadow: 0 18px 60px oklch(0% 0 0 / 55%), 0 0 0 1px var(--brass-glow);
 }
 
-/* 확대 시 카드 크롬(상태줄·제목)은 역보정해 프리뷰가 주인공으로 남게 한다. */
+/* 확대 시 카드 크롬(상태줄·제목)은 역보정해 프리뷰가 주인공으로 남게 한다. 역보정은 해상
+   배율에 연동한다 — 1/scale 하한을 두어 캡이 배율을 1까지 깎은 좁은 창에서 크롬이 원본보다
+   작아지는 일이 없게 한다(0.72 고정이면 확대 없는 카드의 제목만 줄어든다). */
 .canvas-triage-deck-card.is-quicklook .canvas-triage-deck-card-status,
 .canvas-triage-deck-card.is-quicklook > strong {
-  transform: scale(0.72);
+  transform: scale(max(0.72, calc(1 / var(--triage-quicklook-scale, 1.95))));
   transform-origin: left top;
 }
 
