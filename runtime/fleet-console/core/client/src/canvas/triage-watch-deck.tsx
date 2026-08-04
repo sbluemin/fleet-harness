@@ -118,19 +118,27 @@ export function resolveTriageDeckPromotion(input: {
   readonly operationId: string | null;
   readonly picked: boolean;
   readonly deckVisible: boolean;
+  /** deck가 지금 보이거나(visible) 입장 연출이 끝나면 보일 상태 — 이전 무대 없음 && deck 카드 존재.
+      스포트라이트 OFF 억제는 이 넓은 기준을 쓴다: 입장 연출 중(deckVisible=false)에도 저장된 OFF가
+      무시되고 등단하는 일이 없어야 하고, 무대 교대(이전 무대 존재)는 여기 해당하지 않아 계속 진행된다. */
+  readonly deckAvailable: boolean;
   readonly spotlight: boolean;
   readonly dwell: TriageDeckArrivalDwell | null;
   readonly now: number;
   readonly suppressed: boolean;
 }): TriageDeckPromotionDecision {
+  if (input.operationId !== null && input.picked) {
+    return { promote: true, arrivingOperationId: null, dwell: null };
+  }
+  // 스포트라이트 OFF에서는 자동 등단을 하지 않는다 — reduced-motion의 즉시 등단(suppressed)과
+  // 입장 연출 중의 deck 비가시(!deckVisible) 승격보다 먼저 판정해야 저장된 OFF가 항상 존중된다.
+  // 도착 신호는 카드의 is-fresh가 계속 책임진다.
+  if (input.operationId !== null && !input.spotlight && input.deckAvailable) {
+    return { promote: false, arrivingOperationId: null, dwell: null };
+  }
   if (!input.operationId || !input.deckVisible) {
     return { promote: input.operationId !== null, arrivingOperationId: null, dwell: null };
   }
-  if (input.picked) {
-    return { promote: true, arrivingOperationId: null, dwell: null };
-  }
-  // 스포트라이트 OFF에서는 자동 등단을 하지 않는다 — reduced-motion의 즉시 등단(suppressed)보다
-  // 먼저 판정해야 모션 최소화 사용자도 OFF 선택이 존중된다. 도착 신호는 카드의 is-fresh가 계속 책임진다.
   if (!input.spotlight) {
     return { promote: false, arrivingOperationId: null, dwell: null };
   }

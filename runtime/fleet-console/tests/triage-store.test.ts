@@ -749,6 +749,7 @@ describe("triage store", () => {
       operationId: "awaiting",
       picked: false,
       deckVisible: true,
+      deckAvailable: true,
       spotlight: true,
       dwell: null,
       now: 1_000,
@@ -763,14 +764,15 @@ describe("triage store", () => {
       operationId: "awaiting",
       picked: false,
       deckVisible: true,
+      deckAvailable: true,
       spotlight: true,
       dwell: started.dwell,
       now: 1_000 + TRIAGE_DECK_ARRIVAL_DWELL_MS,
       suppressed: false,
     }).promote).toBe(true);
-    expect(resolveTriageDeckPromotion({ operationId: "picked", picked: true, deckVisible: true, spotlight: true, dwell: started.dwell, now: 1_001, suppressed: false }).promote).toBe(true);
-    expect(resolveTriageDeckPromotion({ operationId: "next", picked: false, deckVisible: false, spotlight: true, dwell: null, now: 1_001, suppressed: false }).promote).toBe(true);
-    expect(resolveTriageDeckPromotion({ operationId: "awaiting", picked: false, deckVisible: true, spotlight: true, dwell: null, now: 1_001, suppressed: true }).promote).toBe(true);
+    expect(resolveTriageDeckPromotion({ operationId: "picked", picked: true, deckVisible: true, deckAvailable: true, spotlight: true, dwell: started.dwell, now: 1_001, suppressed: false }).promote).toBe(true);
+    expect(resolveTriageDeckPromotion({ operationId: "next", picked: false, deckVisible: false, deckAvailable: false, spotlight: true, dwell: null, now: 1_001, suppressed: false }).promote).toBe(true);
+    expect(resolveTriageDeckPromotion({ operationId: "awaiting", picked: false, deckVisible: true, deckAvailable: true, spotlight: true, dwell: null, now: 1_001, suppressed: true }).promote).toBe(true);
   });
 
   it("stops automatic promotion while the spotlight is off, except for picks and stage advancement", () => {
@@ -778,6 +780,7 @@ describe("triage store", () => {
       operationId: "awaiting",
       picked: false,
       deckVisible: true,
+      deckAvailable: true,
       spotlight: false,
       dwell: null,
       now: 1_000,
@@ -787,17 +790,22 @@ describe("triage store", () => {
       operationId: "awaiting",
       picked: false,
       deckVisible: true,
+      deckAvailable: true,
       spotlight: false,
       dwell: null,
       now: 1_000 + TRIAGE_DECK_ARRIVAL_DWELL_MS + 5_000,
       suppressed: false,
     })).toEqual({ promote: false, arrivingOperationId: null, dwell: null });
     // 지목은 스포트라이트와 무관하게 언제나 등단한다.
-    expect(resolveTriageDeckPromotion({ operationId: "picked", picked: true, deckVisible: true, spotlight: false, dwell: null, now: 1_001, suppressed: false }).promote).toBe(true);
+    expect(resolveTriageDeckPromotion({ operationId: "picked", picked: true, deckVisible: true, deckAvailable: true, spotlight: false, dwell: null, now: 1_001, suppressed: false }).promote).toBe(true);
     // deck가 보이지 않을 때는 무대 진행이 멈추지 않는다.
-    expect(resolveTriageDeckPromotion({ operationId: "next", picked: false, deckVisible: false, spotlight: false, dwell: null, now: 1_001, suppressed: false }).promote).toBe(true);
+    expect(resolveTriageDeckPromotion({ operationId: "next", picked: false, deckVisible: false, deckAvailable: false, spotlight: false, dwell: null, now: 1_001, suppressed: false }).promote).toBe(true);
     // reduced-motion(suppressed)의 즉시 등단보다 스포트라이트 OFF가 우선한다.
-    expect(resolveTriageDeckPromotion({ operationId: "awaiting", picked: false, deckVisible: true, spotlight: false, dwell: null, now: 1_001, suppressed: true }).promote).toBe(false);
+    expect(resolveTriageDeckPromotion({ operationId: "awaiting", picked: false, deckVisible: true, deckAvailable: true, spotlight: false, dwell: null, now: 1_001, suppressed: true }).promote).toBe(false);
+    // 입장 연출 중(deck는 곧 보일 상태)에도 저장된 OFF가 무시되지 않는다.
+    expect(resolveTriageDeckPromotion({ operationId: "awaiting", picked: false, deckVisible: false, deckAvailable: true, spotlight: false, dwell: null, now: 1_001, suppressed: false }).promote).toBe(false);
+    // ON에서는 입장 연출 중 등단이 기존대로 유지된다.
+    expect(resolveTriageDeckPromotion({ operationId: "awaiting", picked: false, deckVisible: false, deckAvailable: true, spotlight: true, dwell: null, now: 1_001, suppressed: false }).promote).toBe(true);
   });
 
   it("marks the dwelling Watch Deck card as arriving", () => {
