@@ -2114,7 +2114,9 @@
   transition:
     border-color var(--duration-fast) var(--ease-glide),
     background var(--duration-fast) var(--ease-glide),
-    opacity var(--duration-fast) var(--ease-glide);
+    opacity var(--duration-fast) var(--ease-glide),
+    transform var(--duration-slow) var(--ease-glide),
+    box-shadow var(--duration-slow) var(--ease-glide);
 }
 
 .canvas-triage-deck-card:hover,
@@ -2122,6 +2124,26 @@
   border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
   background: color-mix(in oklch, var(--brass) 7%, var(--surface-glass));
   outline: none;
+}
+
+/* Quick-Look — hover 드웰 후 카드를 transform으로만 확대해 프리뷰 유효 배율을 판독권(≈0.8)으로
+   올린다. 프리뷰 inner의 측정 크기는 불변이므로 PTY 리사이즈 계약과 pool 슬롯 유일성이 유지된다. */
+.canvas-triage-deck-card.is-quicklook {
+  /* 배율은 발동 시점에 JS가 grid 수용 한도로 깎아 주입한다(--triage-quicklook-scale) —
+     단일 컬럼처럼 카드가 grid를 채우는 창에서 고정 1.95는 overflow에 잘려 나가기 때문. */
+  transform: scale(var(--triage-quicklook-scale, 1.95));
+  z-index: 9;
+  border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-rim));
+  box-shadow: 0 18px 60px oklch(0% 0 0 / 55%), 0 0 0 1px var(--brass-glow);
+}
+
+/* 확대 시 카드 크롬(상태줄·제목)은 역보정해 프리뷰가 주인공으로 남게 한다. 역보정은 해상
+   배율에 연동한다 — 1/scale 하한을 두어 캡이 배율을 1까지 깎은 좁은 창에서 크롬이 원본보다
+   작아지는 일이 없게 한다(0.72 고정이면 확대 없는 카드의 제목만 줄어든다). */
+.canvas-triage-deck-card.is-quicklook .canvas-triage-deck-card-status,
+.canvas-triage-deck-card.is-quicklook > strong {
+  transform: scale(max(0.72, calc(1 / var(--triage-quicklook-scale, 1.95))));
+  transform-origin: left top;
 }
 
 .canvas-triage-deck-card.is-idle,
@@ -2326,6 +2348,10 @@
   .canvas-formation-curtain {
     animation-timing-function: steps(1, start);
   }
+
+  /* Quick-Look 확대 자체는 유지하되 전이만 제거해 즉시 스냅되게 한다 — 확대 정보는
+     reduced-motion 사용자에게도 동일하게 필요하므로 상태가 아니라 동작만 끊는다. */
+  .canvas-triage-deck-card { transition-property: border-color, background, opacity; }
 }
 
 /* 순정 셸 패널 — Operation과 구별되도록 띠바에 아우로라(살아있는 것) 톤의 옅은 강조를 준다. */
