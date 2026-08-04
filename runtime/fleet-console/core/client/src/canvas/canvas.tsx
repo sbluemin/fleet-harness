@@ -30,7 +30,7 @@ import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { modeSlotGeometryFor, screenToCanvas, triageStageGeometryFor, type CanvasPoint, type CanvasRect } from "./coordinates.js";
-import { disarmTriageSetAside, dismissTriageOperation, getTriageCleared, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, nextTriageDeckZoomPreset, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, resolveTriageQueue, scheduleTriageClear, setTriageSpotlightEnabled, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
+import { disarmTriageSetAside, dismissTriageOperation, getTriageCleared, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
 
 interface OperationsCanvasProps {
   readonly state: ConsoleState;
@@ -924,25 +924,6 @@ export function OperationsCanvas({
               </div>
             </div>
             <span className="canvas-triage-rail-cleared">{t("canvas.triage.railCleared", { count: getTriageCleared() })}</span>
-            <button
-              type="button"
-              className="canvas-triage-rail-spotlight"
-              aria-pressed={triageSpotlightEnabled}
-              title={t("canvas.triage.spotlightTitle")}
-              aria-label={t("canvas.triage.spotlightTitle")}
-              onClick={() => setTriageSpotlightEnabled(!triageSpotlightEnabled)}
-            >{t("canvas.triage.spotlightLabel")}</button>
-            <button
-              className={`canvas-triage-density-chip ${triageDeckZoom.zoom !== 1.0 ? "is-adjusted" : ""}`}
-              type="button"
-              title={t("canvas.triage.densityChipTitle")}
-              aria-label={t("canvas.triage.densityChipTitle")}
-              onClick={() => {
-                triageDeckZoom.control.setZoomTarget(nextTriageDeckZoomPreset(triageDeckZoom.zoom));
-              }}
-            >
-              {t("canvas.triage.densityChip")} {triageDeckZoom.zoom.toFixed(1)}×
-            </button>
           </div>
           {triageEntering ? <div className="canvas-triage-sweep" aria-hidden="true" /> : null}
           {triageEntering ? (

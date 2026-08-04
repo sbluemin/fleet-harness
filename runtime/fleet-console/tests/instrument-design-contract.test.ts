@@ -392,9 +392,10 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".canvas-mode-hud");
     expect(canvas).toContain("canvas-triage-rail-current");
     expect(canvas).toContain("canvas-triage-rail-cleared");
-    // 스포트라이트 토글은 레일 우측 끝 — 자동 등단 ON/OFF를 aria-pressed로 노출한다.
-    expect(canvas).toContain('className="canvas-triage-rail-spotlight"');
-    expect(canvas).toContain("aria-pressed={triageSpotlightEnabled}");
+    // 스포트라이트·덱 밀도는 War Room 트레이(커맨드 밴드)가 소유한다 — 모드 전용 컨트롤은
+    // 캔버스 구석이 아니라 그 모드의 트레이 한 곳에 모인다.
+    expect(canvas).not.toContain('className="canvas-triage-rail-spotlight"');
+    expect(canvas).not.toContain("canvas-triage-density-chip");
     // OFF의 지속 맥동은 검토 전 신호다 — 지목·미룸 항목은 deck 카드에서도 레일 칩과 동일하게 제외한다.
     expect(canvas).toContain("!entry.picked && !isTriageOperationDeferred(entry.operation.id)");
     // 두 번 눌러 확정 안내는 레일이 아니라 패널 안 HUD가 소유한다 — 확인 순간에 시선이 화면 하단으로 내려가지 않게.
@@ -784,6 +785,11 @@ describe("Instrument core design contract", () => {
     // 트레이는 활성 모드의 도구만 마운트한다 — 비활성 모드 도구는 disabled가 아니라 부재다.
     expect(commandBand).toContain('{canvasMode === "cruise" ? <div className="command-band-mode-tray"');
     expect(commandBand).toContain('{canvasMode === "tactical" ? <div className="command-band-mode-tray"');
+    expect(commandBand).toContain('{canvasMode === "warRoom" ? <div className="command-band-mode-tray"');
+    expect(commandBand).toContain("onClick={cycleTriageDeckZoomPreset}");
+    expect(commandBand).toContain("onClick={() => setTriageSpotlightEnabled(!triageSpotlightEnabled)}");
+    // 값은 남기되 낱말은 두지 않는다 — 아이콘 + 배율 수치.
+    expect(commandBand).toContain("<DensityIcon /><span>{triageDeckZoomLive.toFixed(1)}×</span>");
     expect(commandBand).toContain('<span className="command-band-mode-tray-divider" aria-hidden="true" />');
     // 같은 레이아웃 재클릭은 무시한다 — selectFormationLayout은 동일 레이아웃에서 모드를 끄는데,
     // 모드 이탈 권한은 Cruise 세그먼트만 갖는다.

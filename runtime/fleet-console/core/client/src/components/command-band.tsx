@@ -5,7 +5,8 @@ import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../api.js";
 import { animateViewportTo, clearFormationView, fitAllOperations, selectFormationLayout, toggleFormationView, useCanvasState, useFormationLayout, useFormationView, type FormationLayout } from "../canvas/canvas-store.js";
-import { enterTriage, focusedTriageOperationId, setTriageActive, useTriageActive, visitTriageTheater } from "../canvas/triage-store.js";
+import { enterTriage, focusedTriageOperationId, setTriageActive, setTriageSpotlightEnabled, useTriageActive, useTriageDeckZoomLive, useTriageSpotlightEnabled, visitTriageTheater } from "../canvas/triage-store.js";
+import { cycleTriageDeckZoomPreset } from "../canvas/triage-watch-deck.js";
 import { COMMAND_BAND_RAIL_STRIP_PX, commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandMapControlsAnchor, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
 import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
@@ -81,6 +82,8 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const formationLayout = useFormationLayout();
   const formationView = useFormationView();
   const triageActive = useTriageActive();
+  const triageSpotlightEnabled = useTriageSpotlightEnabled();
+  const triageDeckZoomLive = useTriageDeckZoomLive();
   const canvasMode: CanvasMode = triageActive ? "warRoom" : formationView ? "tactical" : "cruise";
   const selectCanvasMode = (mode: CanvasMode) => {
     if (mode === canvasMode) return;
@@ -489,6 +492,25 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
           <button type="button" className="command-band-mode-tool" onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })} disabled={state.activeTheaterId === null} aria-label={t("chrome.commandBand.resetCanvasView")} title={t("chrome.commandBand.resetCanvasView")}><ResetViewIcon /></button>
           <button type="button" className="command-band-mode-tool" onClick={fitAllOperations} disabled={state.activeTheaterId === null || !state.operationsHydrated} aria-label={t("chrome.commandBand.fitAllPanels")} title={t("chrome.commandBand.fitAllPanels")}><FitAllIcon /></button>
         </div> : null}
+        {canvasMode === "warRoom" ? <div className="command-band-mode-tray" role="group" aria-label={t("chrome.commandBand.warRoomTools")}>
+          <span className="command-band-mode-tray-divider" aria-hidden="true" />
+          <button
+            type="button"
+            className="command-band-mode-tool"
+            aria-pressed={triageSpotlightEnabled}
+            aria-label={t("canvas.triage.spotlightTitle")}
+            title={t("canvas.triage.spotlightTitle")}
+            onClick={() => setTriageSpotlightEnabled(!triageSpotlightEnabled)}
+          ><SpotlightIcon /></button>
+          <button
+            type="button"
+            className="command-band-mode-tool is-valued"
+            aria-pressed={triageDeckZoomLive !== 1.0}
+            aria-label={t("canvas.triage.densityChipTitle")}
+            title={t("canvas.triage.densityChipTitle")}
+            onClick={cycleTriageDeckZoomPreset}
+          ><DensityIcon /><span>{triageDeckZoomLive.toFixed(1)}×</span></button>
+        </div> : null}
         {canvasMode === "tactical" ? <div className="command-band-mode-tray" role="group" aria-label={t("chrome.commandBand.tacticalTools")}>
           <span className="command-band-mode-tray-divider" aria-hidden="true" />
           {TACTICAL_LAYOUTS.map((layout) => (
@@ -667,6 +689,16 @@ function ViewModeMobileIcon() {
 
 function ViewModeDesktopIcon() {
   return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true"><rect x="1.5" y="2.25" width="13" height="9" rx="1.5" strokeWidth="1.3" /><path d="M5 14h6M8 11.25V14" strokeWidth="1.3" strokeLinecap="round" /></svg>;
+}
+
+// War Room 도착 스포트라이트 — 무대를 비추는 광원.
+function SpotlightIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" strokeWidth="1.25" /><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4" stroke="currentColor" strokeWidth="1.15" strokeLinecap="round" /></svg>;
+}
+
+// 덱 밀도 — 간격이 다른 줄로 성김/빽빽함을 나타낸다.
+function DensityIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11M2.5 7h11M2.5 9.6h11M2.5 12h11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
 }
 
 function FormationGridIcon() {

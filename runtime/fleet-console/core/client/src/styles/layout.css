@@ -469,6 +469,22 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
 
 .command-band-mode-tool svg { display: block; width: 16px; height: 16px; }
 
+/* 값을 함께 읽어야 하는 도구(덱 밀도)는 아이콘 옆에 수치를 단다 — 낱말은 두지 않는다. */
+.command-band-mode-tool.is-valued {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: auto;
+  padding: 0 7px;
+}
+
+.command-band-mode-tool.is-valued span {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
 .command-band-mode-tool:hover:not(:disabled),
 .command-band-mode-tool:focus-visible {
   border-color: var(--hairline-strong);

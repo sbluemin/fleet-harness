@@ -146,6 +146,24 @@ export function setTriageDeckMapModeLive(active: boolean): void {
   emitTriage();
 }
 
+// 표시용 실시간 배율 — store 줌은 tween settle 때만 갱신되므로, 커맨드 밴드의 배율 표시는
+// 이 채널을 읽어야 tween을 따라간다. 영속 줌과 같은 지연 초기화 규약을 쓴다(null = 아직 없음).
+let triageDeckZoomLive: number | null = null;
+
+export function getTriageDeckZoomLive(): number {
+  return triageDeckZoomLive ?? getTriageDeckZoom();
+}
+
+export function setTriageDeckZoomLive(zoom: number): void {
+  if (getTriageDeckZoomLive() === zoom) return;
+  triageDeckZoomLive = zoom;
+  emitTriage();
+}
+
+export function useTriageDeckZoomLive(): number {
+  return useSyncExternalStore(subscribeTriage, getTriageDeckZoomLive, getTriageDeckZoomLive);
+}
+
 export function getTriageDeckZoom(): number {
   if (triageDeckZoom !== null) return triageDeckZoom;
   triageDeckZoom = loadTriageDeckZoom();
@@ -162,6 +180,7 @@ export function setTriageDeckZoom(zoom: number): void {
 
 export function resetTriageDeckZoomForTests(): void {
   triageDeckZoom = null;
+  triageDeckZoomLive = null;
   triageDeckMapModeLive = null;
   try {
     globalThis.localStorage?.removeItem(TRIAGE_DECK_ZOOM_STORAGE_KEY);
@@ -441,6 +460,7 @@ export function setTriageActive(active: boolean): void {
     forceDropCompanionOperationId();
   }
   triageDeckMapModeLive = null;
+  triageDeckZoomLive = null;
   const capturedFocusLayers = [...focusLayerBeforeTriage];
   focusLayerBeforeTriage.clear();
   setIdleArrivalAcknowledgementSuspended(false);
