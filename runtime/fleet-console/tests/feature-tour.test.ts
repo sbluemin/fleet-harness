@@ -7,6 +7,7 @@ import {
   availableFeatureTourSteps,
   featureTourCompletionBase,
   forgetSeenFeatureTours,
+  isCompletedTourScreenVisible,
   persistFeatureTourSeen,
   replayableFeatureTourIds,
   resolveFeatureTourCardPosition,
@@ -91,7 +92,7 @@ describe("feature tour", () => {
 
   it("holds the sidebar walkthrough back until an item is actually waiting", () => {
     document.body.innerHTML = [
-      '<aside class="triage-side-bar">',
+      '<aside class="triage-side-bar is-expanded">',
       '<div class="triage-side-bar-caption"></div>',
       '<li class="side-bar-status-section side-bar-status-section--awaiting side-bar-status-section--empty"></li>',
       "</aside>",
@@ -100,9 +101,27 @@ describe("feature tour", () => {
     expect(resolveNextFeatureTour(FEATURE_TOURS, ["canvas-modes.walkthrough", "war-room.walkthrough"], document)).toBeNull();
   });
 
-  it("defers the sidebar walkthrough when another tour already played on this mount", () => {
+  it("holds the sidebar walkthrough back while the sidebar is collapsed out of sight", () => {
+    // 접힌 사이드바는 폭 0 + visibility:hidden으로만 가려지고 자식은 DOM에 남는다 — 배제하지
+    // 않으면 사용자가 본 적 없는 안내가 재생되고 시청 기록에 남는다.
     document.body.innerHTML = [
-      '<aside class="triage-side-bar">',
+      '<aside class="triage-side-bar is-closed">',
+      '<div class="triage-side-bar-caption"></div>',
+      '<li class="side-bar-status-section side-bar-status-section--awaiting">',
+      '<button class="side-bar-chip"></button>',
+      "</li></aside>",
+    ].join("");
+    const seen = ["canvas-modes.walkthrough", "war-room.walkthrough"];
+
+    expect(resolveNextFeatureTour(FEATURE_TOURS, seen, document)).toBeNull();
+
+    document.querySelector(".triage-side-bar")!.className = "triage-side-bar is-expanded";
+    expect(resolveNextFeatureTour(FEATURE_TOURS, seen, document)?.tour.id).toBe("war-room-sidebar");
+  });
+
+  it("defers the sidebar walkthrough while the visit that just played another tour continues", () => {
+    document.body.innerHTML = [
+      '<aside class="triage-side-bar is-expanded">',
       '<div class="triage-side-bar-caption"></div>',
       '<li class="side-bar-status-section side-bar-status-section--awaiting">',
       '<button class="side-bar-chip"></button>',
@@ -112,6 +131,17 @@ describe("feature tour", () => {
 
     expect(resolveNextFeatureTour(FEATURE_TOURS, seen, document)?.tour.id).toBe("war-room-sidebar");
     expect(resolveNextFeatureTour(FEATURE_TOURS, seen, document, true)).toBeNull();
+  });
+
+  it("releases the deferred walkthrough once the completed tour's screen is gone", () => {
+    // 오버레이는 라우트 밖에 한 번만 마운트되므로 "이 마운트에서 끝냈다"로 재면 War Room을 오가도
+    // 값이 그대로다 — 판정은 끝낸 투어의 화면이 아직 보이는지로 해야 다음 방문에 뜬다.
+    document.body.innerHTML = '<aside class="canvas-triage-rail"></aside>';
+    expect(isCompletedTourScreenVisible("war-room", FEATURE_TOURS, document)).toBe(true);
+
+    document.body.innerHTML = '<div class="command-band-mode-switch"></div>';
+    expect(isCompletedTourScreenVisible("war-room", FEATURE_TOURS, document)).toBe(false);
+    expect(isCompletedTourScreenVisible(null, FEATURE_TOURS, document)).toBe(false);
   });
 
   it("replays the narrowest guide anchored on the screen in front of the user", () => {

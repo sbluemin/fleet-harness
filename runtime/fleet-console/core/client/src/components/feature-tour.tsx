@@ -37,9 +37,10 @@ export function FeatureTourOverlay() {
   const [domRevision, setDomRevision] = useState(0);
   const [position, setPosition] = useState<CardPosition>({ left: 0, top: 0, centered: true });
   const cardRef = useRef<HTMLElement | null>(null);
-  // 이 마운트에서 투어를 하나라도 끝냈는지 — deferAfterAnotherTour가 붙은 투어는 이 값이
-  // 참인 동안 시작하지 않는다. 재생 여부만 가르는 값이라 리렌더를 유발할 필요가 없다.
-  const completedThisMountRef = useRef(false);
+  // 마지막으로 끝낸 투어 — deferAfterAnotherTour가 붙은 투어는 그 투어의 화면을 떠나기 전까지
+  // 시작하지 않는다. 오버레이는 라우트 밖에 한 번만 마운트되므로(app.tsx) "이 마운트에서 끝냈다"로
+  // 재면 화면을 몇 번 오가도 값이 그대로라 미뤄둔 안내가 새로고침 전까지 영영 뜨지 않는다.
+  const completedTourIdRef = useRef<string | null>(null);
   const seen = settings.state?.seenFeatureTours ?? [];
 
   useEffect(() => {
@@ -62,12 +63,20 @@ export function FeatureTourOverlay() {
   }, []);
 
   // 시청 기록이 줄어드는 유일한 경로는 사용자가 "화면 안내 다시 보기"를 부른 것이다. 그때는
-  // 이 마운트의 완료 표시도 함께 풀어야 미뤄둔 투어까지 요청한 자리에서 재생된다.
+  // 완료 표시도 함께 풀어야 미뤄둔 투어까지 요청한 자리에서 재생된다.
   const seenCountRef = useRef(seen.length);
   useEffect(() => {
-    if (seen.length < seenCountRef.current) completedThisMountRef.current = false;
+    if (seen.length < seenCountRef.current) completedTourIdRef.current = null;
     seenCountRef.current = seen.length;
   }, [seen.length]);
+
+  // 끝낸 투어의 화면을 떠난 순간 완료 표시를 푼다 — 그래야 미뤄둔 안내가 "다음 방문"에 뜬다.
+  useEffect(() => {
+    if (completedTourIdRef.current === null) return;
+    if (!isCompletedTourScreenVisible(completedTourIdRef.current, FEATURE_TOURS, document)) {
+      completedTourIdRef.current = null;
+    }
+  }, [domRevision]);
 
   const resolved = useMemo(() => {
     if (domRevision === 0 || !settings.state || hasVisibleModal(document)) return null;
@@ -79,7 +88,12 @@ export function FeatureTourOverlay() {
         : availableFeatureTourSteps(tour.walkthrough, document);
       return steps.length > 0 ? { tour, phase: lockedTour.phase, steps } satisfies FeatureTourPresentation : null;
     }
-    return resolveNextFeatureTour(FEATURE_TOURS, seen, document, completedThisMountRef.current);
+    return resolveNextFeatureTour(
+      FEATURE_TOURS,
+      seen,
+      document,
+      isCompletedTourScreenVisible(completedTourIdRef.current, FEATURE_TOURS, document),
+    );
   }, [domRevision, lockedTour, seen, settings.state]);
 
   useEffect(() => {
@@ -122,7 +136,7 @@ export function FeatureTourOverlay() {
     if (!resolved) return;
     const key = featureTourSeenKey(resolved.tour.id, resolved.phase);
     const completionBase = featureTourCompletionBase(seen, resolved.tour, resolved.phase);
-    completedThisMountRef.current = true;
+    completedTourIdRef.current = resolved.tour.id;
     setLockedTour(null);
     setStepIndex(0);
     await persistFeatureTourSeen(completionBase, key, (next) => setGlobalSettingsField("seenFeatureTours", next));
@@ -300,14 +314,29 @@ export function replayableFeatureTourIds(
   tours: readonly FeatureTour[],
   root: ParentNode,
 ): readonly string[] {
-  const anchored = tours.filter((tour) => {
-    const activationAnchor = tour.walkthrough.find((step) => step.anchor !== null)?.anchor
-      ?? tour.spotlight?.anchor
-      ?? null;
-    return activationAnchor !== null && root.querySelector(activationAnchor) !== null;
-  });
+  const anchored = tours.filter((tour) => isFeatureTourAnchored(tour, root));
   const narrowest = anchored.at(-1);
   return narrowest ? [narrowest.id] : [];
+}
+
+// 방금 끝낸 투어의 화면에 아직 머물러 있는가 — 미뤄둔 투어가 같은 방문에서 이어 재생되는 것만
+// 막고, 화면을 떠났다 돌아오면 제 순서에 뜨게 하는 판정이다.
+export function isCompletedTourScreenVisible(
+  completedTourId: string | null,
+  tours: readonly FeatureTour[],
+  root: ParentNode,
+): boolean {
+  if (completedTourId === null) return false;
+  const completed = tours.find((tour) => tour.id === completedTourId);
+  return completed !== undefined && isFeatureTourAnchored(completed, root);
+}
+
+// 투어가 지금 화면에 걸려 있는지 — 발동 판정과 같은 기준(첫 non-null 앵커)을 쓴다.
+function isFeatureTourAnchored(tour: FeatureTour, root: ParentNode): boolean {
+  const activationAnchor = tour.walkthrough.find((step) => step.anchor !== null)?.anchor
+    ?? tour.spotlight?.anchor
+    ?? null;
+  return activationAnchor !== null && root.querySelector(activationAnchor) !== null;
 }
 
 export function forgetSeenFeatureTours(

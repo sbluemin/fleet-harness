@@ -80,21 +80,25 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
     id: "war-room-sidebar",
     // 대기 섹션은 비어 있어도 렌더되므로 비지 않은 상태를 앵커 조건으로 삼는다 — 줄이 하나도
     // 없는 목록 앞에서 "순서를 가로챌 수 있다"고 말해도 짚을 대상이 없다.
+    //
+    // 접힌 사이드바(:not(.is-closed))도 같은 이유로 배제한다 — 접혀도 자식은 DOM에 남고 폭 0 +
+    // visibility:hidden으로만 가려지므로, 배제하지 않으면 사용자가 본 적 없는 안내가 재생되고
+    // 시청 기록에 그대로 남는다.
     spotlight: null,
     deferAfterAnotherTour: true,
     walkthrough: [
       {
-        anchor: ".triage-side-bar .side-bar-status-section--awaiting:not(.side-bar-status-section--empty)",
+        anchor: ".triage-side-bar:not(.is-closed) .side-bar-status-section--awaiting:not(.side-bar-status-section--empty)",
         titleKey: "featureTour.warRoomSidebar.step1Title",
         bodyKey: "featureTour.warRoomSidebar.step1Body",
       },
       {
-        anchor: ".triage-side-bar-caption",
+        anchor: ".triage-side-bar:not(.is-closed) .triage-side-bar-caption",
         titleKey: "featureTour.warRoomSidebar.step2Title",
         bodyKey: "featureTour.warRoomSidebar.step2Body",
       },
       {
-        anchor: ".triage-side-bar .side-bar-status-section--awaiting .side-bar-chip",
+        anchor: ".triage-side-bar:not(.is-closed) .side-bar-status-section--awaiting .side-bar-chip",
         titleKey: "featureTour.warRoomSidebar.step3Title",
         bodyKey: "featureTour.warRoomSidebar.step3Body",
       },
