@@ -247,7 +247,7 @@ describe("CanvasMinimap collapse behavior", () => {
     }
   });
 
-  it("titles the mode curtain with the mode name and repeats it when Tactical returns to Cruise", () => {
+  it("names the mode the curtain is switching to and repeats it when Tactical returns to Cruise", () => {
     vi.useFakeTimers();
     try {
       const theaterId = "cruise-curtain";
@@ -271,12 +271,13 @@ describe("CanvasMinimap collapse behavior", () => {
       expect(document.querySelector(".canvas-cruise-curtain")).toBeNull();
 
       act(() => toggleFormationView());
-      expect(document.querySelector(".canvas-formation-curtain strong")?.textContent).toBe("Tactical");
+      // 모드 이름은 어느 로케일에서도 제품 고유 명칭 그대로 헤딩에 남는다.
+      expect(document.querySelector(".canvas-formation-curtain strong")?.textContent).toMatch(/Tactical/);
       expect(document.querySelector(".canvas-mode-curtain-kicker")).toBeNull();
       act(() => vi.advanceTimersByTime(1_950));
 
       act(() => clearFormationView());
-      expect(document.querySelector(".canvas-cruise-curtain strong")?.textContent).toBe("Cruise");
+      expect(document.querySelector(".canvas-cruise-curtain strong")?.textContent).toMatch(/Cruise/);
 
       act(() => vi.advanceTimersByTime(1_400));
       expect(document.querySelector(".canvas-cruise-curtain")).toBeNull();
