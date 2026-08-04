@@ -66,7 +66,7 @@ export function buildGatewayCustomAgents(
       for (const effort of constraints.effortLadder) {
         const name = toGatewayAgentName(modelId, effort);
         agents[name] = {
-          description: gatewayAgentDescription(model, modelId, effort),
+          description: gatewayAgentDescription(modelId, name, effort),
           prompt: GENERAL_PURPOSE_AGENT_PROMPT,
           model: modelId,
           effort,
@@ -76,7 +76,7 @@ export function buildGatewayCustomAgents(
     }
     const name = toGatewayAgentName(modelId);
     agents[name] = {
-      description: gatewayAgentDescription(model, modelId),
+      description: gatewayAgentDescription(modelId, name),
       prompt: GENERAL_PURPOSE_AGENT_PROMPT,
       model: modelId,
     };
@@ -101,15 +101,23 @@ export function toGatewayAgentName(modelId: string, effort?: GatewayReasoningEff
   return effort === undefined ? stem : `${stem}-${effort}`;
 }
 
+/**
+ * 이 문자열은 호스트가 identity를 고를 때 읽는 유일한 신호다. 이름과 모델 id는 철자가
+ * 다르고 서로 대체되지 않으므로, 둘을 잇는 문장이 여기 없으면 그 매핑은 어디에도 없다.
+ */
 function gatewayAgentDescription(
-  model: GatewayModel,
   modelId: string,
+  name: string,
   effort?: GatewayReasoningEffort,
 ): string {
   const effortPart = effort === undefined ? "no effort control" : `effort ${effort}`;
   return [
-    `Gateway model ${model.displayName} (${modelId}), ${effortPart}.`,
+    `Gateway model ${modelId}, ${effortPart}.`,
     "Fleet execution agent that runs one mode — recon, decide, implement, or verify. Name the mode in the task.",
     "Use after calling gateway_models when this roster entry fits the stage.",
+    `Select this identity by the agent type name ${name}. The model id above is a value for a model field and is rejected wherever a name is expected.`,
+    ...(effort === undefined
+      ? []
+      : [`That name already carries ${effort}, so pinning a reasoning effort alongside it is redundant.`]),
   ].join(" ");
 }

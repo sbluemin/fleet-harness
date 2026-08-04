@@ -23,6 +23,11 @@ export interface GatewayProxyResponse {
 
 export interface AnthropicProxyOptions {
   readonly contextWindow?: number;
+  /**
+   * 클라이언트가 요청한 모델 id. 지정하면 upstream이 에코한 wire id를 이 값으로
+   * 되돌려 본다 — Claude Code가 자기 요청 모델과 응답 모델을 대조할 수 있게 한다.
+   */
+  readonly responseModel?: string;
   readonly fetchImpl: typeof fetch;
   readonly headers: Readonly<Record<string, string>>;
   readonly signal: AbortSignal;
@@ -63,11 +68,13 @@ export async function proxyAnthropicMessages(
     return;
   }
   const rawBody = readResponseBody(upstream.body);
-  const responseBody = options.contextWindow === undefined
+  // contextWindow이 없어도 responseModel이 있으면 재작성이 필요하므로 변환기를 탄다.
+  const responseBody = options.contextWindow === undefined && options.responseModel === undefined
     ? rawBody
     : projectAnthropicResponseUsage(rawBody, {
         contentType: upstream.headers.get("content-type"),
         contextWindow: options.contextWindow,
+        responseModel: options.responseModel,
       });
   for await (const chunk of responseBody) {
     if (!res.write(chunk)) await drain(res);

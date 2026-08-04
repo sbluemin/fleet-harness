@@ -19,6 +19,7 @@ import {
 } from "@dotobokuri/core-ai-gateway";
 import { createHash } from "node:crypto";
 
+import { toGatewayAgentName } from "../agent-cli/gateway-agents.js";
 import { gatewayRoleFit, type GatewayRoleFit } from "./role-fit.js";
 
 /** A provider allowance reading, shaped by the host that took it. */
@@ -99,23 +100,57 @@ export interface GatewayLoadoutProviderQuota {
  */
 export type GatewayQuotaSnapshot = Readonly<Record<string, GatewayProviderQuota>>;
 
+/**
+ * The registered names this identity answers to, keyed by the reasoning level
+ * each one carries. A model with an effort ladder registers one name per rung,
+ * so the key set is exactly `constraints.effortLadder`; a model without effort
+ * control registers a single name under `none`.
+ */
+export type GatewayAgentTypeSelectors = Readonly<Record<string, string>>;
+
+/**
+ * Routing facts minus the provider, which the grouping key already states. The
+ * roster carries each model under its provider so a model and the allowance it
+ * spends are read together; repeating the provider inside would invite a reader
+ * to trust the copy over the group it is sitting in.
+ */
+export type GatewayLoadoutConstraints = Omit<GatewayModelConstraints, "provider">;
+
 export interface GatewayLoadoutModel {
-  /** Exact string to pass through as a model id. */
-  readonly id: string;
-  readonly displayName: string;
-  readonly constraints: GatewayModelConstraints;
+  /**
+   * Names that select this identity, one per reasoning level it advertises.
+   * Selecting by name carries the level with it, so nothing further pins effort;
+   * an entry here is reachable only if this session registered it at startup.
+   */
+  readonly agentTypes: GatewayAgentTypeSelectors;
+  /**
+   * The model itself, for a field that takes a model as a value rather than by
+   * name. It is not a second spelling of `agentTypes` and cannot be derived from
+   * one: that transform collapses `.`, `[1m]`, and `--` all into `-`, which no
+   * inverse recovers. Reach for it when no registered name exists — a model
+   * exposed mid-session has none — and to match a running session's own model
+   * back to this roster.
+   */
+  readonly modelId: string;
+  readonly constraints: GatewayLoadoutConstraints;
   /** `null` means unmeasured, which is not the same as unsuitable. */
   readonly roleFit: GatewayRoleFit | null;
   readonly isSessionDefault: boolean;
 }
 
 export interface GatewayLoadoutProvider {
-  readonly id: string;
   /**
    * `unsupported` means Fleet has no way to read this provider's allowance —
    * never that the allowance is healthy.
    */
   readonly quota: GatewayLoadoutProviderQuota | { readonly status: "unsupported" };
+  /**
+   * The exposed models this provider serves. Empty means it serves none of them,
+   * which for `claude` is its permanent state: it is listed because an unpinned
+   * run spends that allowance, making it the baseline an offload is measured
+   * against, not because its models were all turned off.
+   */
+  readonly models: readonly GatewayLoadoutModel[];
 }
 
 export interface GatewayLoadout {
@@ -125,8 +160,13 @@ export interface GatewayLoadout {
    */
   readonly revision: string;
   readonly catalogUpdatedAt: string;
-  readonly models: readonly GatewayLoadoutModel[];
-  readonly providers: readonly GatewayLoadoutProvider[];
+  /**
+   * Keyed by provider id. Each model sits under the allowance it spends, so the
+   * window to read against a model is the one in the same entry — no join.
+   * `constraints.quotaScope`, where a provider splits into pools, still selects
+   * which of that entry's windows applies.
+   */
+  readonly providers: Readonly<Record<string, GatewayLoadoutProvider>>;
 }
 
 export interface BuildGatewayLoadoutInput {
@@ -144,30 +184,53 @@ const UNSUPPORTED_QUOTA = Object.freeze({ status: "unsupported" as const });
 const PARENT_PROVIDER_ID = "claude";
 
 export function buildGatewayLoadout(input: BuildGatewayLoadoutInput): GatewayLoadout {
-  const models = input.exposed.map((model) => toLoadoutModel(model, input.defaultModel));
+  const placed = input.exposed.map((model) => ({
+    provider: model.provider as string,
+    entry: toLoadoutModel(model, input.defaultModel),
+  }));
   return {
-    revision: loadoutRevision(models),
+    revision: loadoutRevision(placed.map(({ entry }) => entry)),
     catalogUpdatedAt: GATEWAY_MODELS_UPDATED_AT,
-    models,
-    providers: buildProviders(input.exposed, input.quota, input.now ?? Date.now),
+    providers: buildProviders(placed, input.quota, input.now ?? Date.now),
   };
 }
 
 function toLoadoutModel(model: GatewayModel, defaultModel?: GatewayModel): GatewayLoadoutModel {
+  const modelId = toClaudeGatewayModelId(model);
+  // provider는 그룹 키가 말한다. 사본을 남기면 둘이 어긋났을 때 어느 쪽이 참인지 모른다.
+  const { provider: _provider, ...constraints } = buildGatewayModelConstraints(model);
   return {
-    id: toClaudeGatewayModelId(model),
-    displayName: model.displayName,
-    constraints: buildGatewayModelConstraints(model),
+    agentTypes: toAgentTypeSelectors(modelId, constraints),
+    modelId,
+    constraints,
     roleFit: gatewayRoleFit(gatewayModelIdentity(model)) ?? null,
     isSessionDefault: defaultModel !== undefined && defaultModel.id === model.id,
   };
 }
 
+/**
+ * Derive the selectors from the same transform that registers the agents, so the
+ * roster cannot drift from the names a session actually carries. Reachability is
+ * still the host's check: registration is frozen at session start while this
+ * roster is re-read live, and the two diverge the moment exposure changes.
+ */
+function toAgentTypeSelectors(
+  id: string,
+  constraints: GatewayLoadoutConstraints,
+): GatewayAgentTypeSelectors {
+  if (!constraints.effortSupported) {
+    return Object.freeze({ none: toGatewayAgentName(id) });
+  }
+  return Object.freeze(Object.fromEntries(
+    constraints.effortLadder.map((effort) => [effort, toGatewayAgentName(id, effort)]),
+  ));
+}
+
 function buildProviders(
-  exposed: readonly GatewayModel[],
+  placed: readonly { readonly provider: string; readonly entry: GatewayLoadoutModel }[],
   quota: GatewayQuotaSnapshot | undefined,
   now: () => number,
-): readonly GatewayLoadoutProvider[] {
+): Readonly<Record<string, GatewayLoadoutProvider>> {
   // 어느 예산이 상속분인지는 이 로스터가 알 수 없다. 세션의 시작 모델은 런치 시점에
   // 프로세스 환경으로 한 번 정해지고 그 뒤 세션 안에서 바뀔 수 있는데, 도구는 런타임
   // 단위로 한 번 등록되어 모든 세션을 상대하므로 어느 세션이 무엇으로 떴는지 볼 자리가
@@ -175,13 +238,18 @@ function buildProviders(
   // 그래서 여기서는 부모 구독을 포함한 모든 프로바이더의 사용량을 사실대로 늘어놓고,
   // 자기 세션이 무엇으로 도는지 이미 아는 호스트가 그 조인을 맡는다.
   const ids: string[] = [PARENT_PROVIDER_ID];
-  for (const model of exposed) {
-    if (!ids.includes(model.provider)) ids.push(model.provider);
+  for (const { provider } of placed) {
+    if (!ids.includes(provider)) ids.push(provider);
   }
   for (const id of Object.keys(quota ?? {})) {
     if (!ids.includes(id)) ids.push(id);
   }
-  return ids.map((id) => ({ id, quota: enrichProviderQuota(quota?.[id], now) ?? UNSUPPORTED_QUOTA }));
+  return Object.freeze(Object.fromEntries(ids.map((id) => [id, {
+    quota: enrichProviderQuota(quota?.[id], now) ?? UNSUPPORTED_QUOTA,
+    models: Object.freeze(
+      placed.filter((candidate) => candidate.provider === id).map(({ entry }) => entry),
+    ),
+  }])));
 }
 
 const MS_PER_HOUR = 3_600_000;
@@ -269,7 +337,7 @@ function enrichQuotaWindow(window: GatewayQuotaWindow, at: number): GatewayLoado
 function loadoutRevision(models: readonly GatewayLoadoutModel[]): string {
   const material = [
     GATEWAY_MODELS_UPDATED_AT,
-    ...models.map((model) => `${model.id}:${model.isSessionDefault ? "1" : "0"}`).sort(),
+    ...models.map((model) => `${model.modelId}:${model.isSessionDefault ? "1" : "0"}`).sort(),
   ].join("\n");
   return createHash("sha256").update(material).digest("hex").slice(0, 12);
 }

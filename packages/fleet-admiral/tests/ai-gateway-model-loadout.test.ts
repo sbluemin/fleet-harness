@@ -7,16 +7,44 @@ import {
 } from "@dotobokuri/core-ai-gateway";
 import { describe, expect, it } from "vitest";
 
+import { buildGatewayCustomAgents } from "../src/agent-cli/gateway-agents.js";
 import { buildGatewayModelsToolSpec, GATEWAY_MODELS_TOOL_ID } from "../src/ai-gateway/gateway-models-tool.js";
-import { buildGatewayLoadout } from "../src/ai-gateway/model-loadout.js";
+import { buildGatewayLoadout, type GatewayLoadout } from "../src/ai-gateway/model-loadout.js";
 import { declaredRoleFitIdentities, gatewayRoleFit } from "../src/ai-gateway/role-fit.js";
 import { isHostSessionToolAllowed } from "../src/tools.js";
+
+function allModels(loadout: ReturnType<typeof buildGatewayLoadout>) {
+  return Object.values(loadout.providers).flatMap((provider) => provider.models);
+}
 
 function model(id: string): GatewayModel {
   const found = findGatewayModel(id);
   if (!found) throw new Error(`missing catalog model: ${id}`);
   return found;
 }
+
+describe("gateway loadout agent type selectors", () => {
+  // 로스터는 호스트가 매 run 직전에 읽는 유일한 권위다. 여기에 이름이 없으면 호스트는
+  // 이름을 요구하는 자리에 넣을 값을 회수할 방법이 없어 모델 id를 넣고 실패한다.
+  it("keys selectors by the model's own ladder and matches the registered agents", () => {
+    const exposed = [model("cursor--claude-opus-5"), model("opencode--deepseek-v4-pro")];
+    const registered = new Set(Object.keys(buildGatewayCustomAgents(exposed)));
+    const loadout = buildGatewayLoadout({ exposed });
+
+    expect(allModels(loadout).length).toBe(exposed.length);
+    for (const entry of allModels(loadout)) {
+      const keys = Object.keys(entry.agentTypes).sort();
+      expect(keys, entry.modelId).toEqual(
+        entry.constraints.effortSupported ? [...entry.constraints.effortLadder].sort() : ["none"],
+      );
+      for (const name of Object.values(entry.agentTypes)) {
+        // 같은 transform으로 만들어야 로스터가 세션에 등록된 이름과 어긋나지 않는다.
+        expect(registered.has(name), `${entry.modelId} -> ${name}`).toBe(true);
+        expect(name).not.toBe(entry.modelId);
+      }
+    }
+  });
+});
 
 describe("gateway role fit declarations", () => {
   it("names only identities the catalog still contains", () => {
@@ -63,17 +91,17 @@ describe("gateway loadout", () => {
   it("reports only the exposed models and marks the session default", () => {
     const exposed = [model("kimi--k3"), model("cursor--grok-4.5-fast")];
     const loadout = buildGatewayLoadout({ exposed, defaultModel: exposed[0] });
-    expect(loadout.models).toHaveLength(2);
-    expect(loadout.models.map((entry) => entry.isSessionDefault)).toEqual([true, false]);
+    expect(allModels(loadout)).toHaveLength(2);
+    expect(allModels(loadout).map((entry) => entry.isSessionDefault)).toEqual([true, false]);
     // 노출하지 않은 모델은 게이트웨이가 여전히 실행하므로, 로스터에 새면
     // 사용자가 끈 선택이 오류 없이 뒤집힌다.
-    const ids = loadout.models.map((entry) => entry.id);
+    const ids = allModels(loadout).map((entry) => entry.modelId);
     expect(ids.some((id) => id.includes("claude-opus-5"))).toBe(false);
   });
 
   it("keeps an unmeasured axis null rather than implying a verdict", () => {
     const loadout = buildGatewayLoadout({ exposed: [model("cursor--grok-4.5-fast")] });
-    expect(loadout.models[0]?.roleFit).toBeNull();
+    expect(allModels(loadout)[0]?.roleFit).toBeNull();
   });
 
   it("reports an unreadable allowance as unsupported instead of omitting it", () => {
@@ -81,7 +109,7 @@ describe("gateway loadout", () => {
       exposed: [model("kimi--k3"), model("cursor--grok-4.5-fast")],
       quota: { cursor: { status: "ok", windows: [{ id: "cycle", scope: "auto", usedPercent: 62 }] } },
     });
-    const kimi = loadout.providers.find((entry) => entry.id === "kimi");
+    const kimi = loadout.providers.kimi;
     expect(kimi?.quota.status).toBe("unsupported");
   });
 
@@ -92,14 +120,14 @@ describe("gateway loadout", () => {
     });
     // claude는 게이트웨이 모델을 제공하지 않지만, 고정하지 않은 Phase가 소모하는
     // 예산이므로 오프로드 판단의 기준선으로 남아야 한다.
-    expect(loadout.providers.map((entry) => entry.id)).toContain("claude");
+    expect(Object.keys(loadout.providers)).toContain("claude");
   });
 
   it("keeps the parent allowance listed even when nothing could be read at all", () => {
     // 쿼터 조회가 실패하면 claude는 노출 프로바이더가 아니어서 목록에서 통째로 빠질 수
     // 있다. 그러면 호스트는 "읽지 못했다"와 "그런 예산이 없다"를 구별하지 못한다.
     const loadout = buildGatewayLoadout({ exposed: [model("kimi--k3")] });
-    const parent = loadout.providers.find((entry) => entry.id === "claude");
+    const parent = loadout.providers.claude;
     expect(parent?.quota.status).toBe("unsupported");
   });
 
@@ -111,15 +139,15 @@ describe("gateway loadout", () => {
       exposed: [model("kimi--k3"), model("cursor--grok-4.5-fast")],
       defaultModel: model("kimi--k3"),
     });
-    for (const provider of settled.providers) {
-      expect(Object.keys(provider)).toEqual(["id", "quota"]);
+    for (const provider of Object.values(settled.providers)) {
+      expect(Object.keys(provider)).toEqual(["quota", "models"]);
     }
     // 기본 모델이 무엇이든 프로바이더 목록 자체는 달라지지 않는다.
     const undefaulted = buildGatewayLoadout({
       exposed: [model("kimi--k3"), model("cursor--grok-4.5-fast")],
     });
-    expect(settled.providers.map((entry) => entry.id))
-      .toEqual(undefaulted.providers.map((entry) => entry.id));
+    expect(Object.keys(settled.providers))
+      .toEqual(Object.keys(undefaulted.providers));
   });
 
   it("moves the revision when exposure changes but not when a reading does", () => {
@@ -140,7 +168,7 @@ describe("gateway loadout", () => {
   it("carries the pool a Cursor model is billed against", () => {
     for (const cursorModel of CURSOR_SUBSCRIPTION_MODELS) {
       const loadout = buildGatewayLoadout({ exposed: [cursorModel] });
-      expect(loadout.models[0]?.constraints.quotaScope).toBeDefined();
+      expect(allModels(loadout)[0]?.constraints.quotaScope).toBeDefined();
     }
   });
 });
@@ -160,7 +188,7 @@ describe("gateway loadout derived quota metrics", () => {
   }
 
   function firstWindow(loadout: ReturnType<typeof buildGatewayLoadout>, providerId: string) {
-    const quota = loadout.providers.find((entry) => entry.id === providerId)?.quota;
+    const quota = loadout.providers[providerId]?.quota;
     return quota && "windows" in quota ? quota.windows?.[0] : undefined;
   }
 
@@ -218,7 +246,7 @@ describe("gateway loadout derived quota metrics", () => {
         },
       },
     });
-    const quota = loadout.providers.find((entry) => entry.id === "cursor")?.quota;
+    const quota = loadout.providers.cursor?.quota;
     const windows = quota && "windows" in quota ? quota.windows ?? [] : [];
     // 기간이 없어도 판정은 항상 실린다 — 소비자가 산술 없이 읽을 단일 축이다.
     expect(windows.map((window) => window.pressure)).toEqual(["critical", "elevated", "ok"]);
@@ -306,11 +334,11 @@ describe("gateway_models tool", () => {
   it("resolves the roster on every call rather than at registration", async () => {
     let exposed = [model("kimi--k3")];
     const spec = buildGatewayModelsToolSpec({ readSelection: () => ({ models: exposed }) });
-    const first = await spec.execute({}, {} as never) as { details: { models: unknown[] } };
+    const first = await spec.execute({}, {} as never) as { details: GatewayLoadout };
     exposed = [model("kimi--k3"), model("cursor--grok-4.5-fast")];
-    const second = await spec.execute({}, {} as never) as { details: { models: unknown[] } };
-    expect(first.details.models).toHaveLength(1);
-    expect(second.details.models).toHaveLength(2);
+    const second = await spec.execute({}, {} as never) as { details: GatewayLoadout };
+    expect(allModels(first.details)).toHaveLength(1);
+    expect(allModels(second.details)).toHaveLength(2);
   });
 
   it("still reports the roster when the allowance read fails", async () => {
@@ -320,13 +348,15 @@ describe("gateway_models tool", () => {
     });
     const result = await spec.execute({}, {} as never) as {
       isError: boolean;
-      details: { models: unknown[]; providers: Array<{ id: string; quota: { status: string } }> };
+      details: GatewayLoadout;
     };
     expect(result.isError).toBe(false);
-    expect(result.details.models).toHaveLength(1);
+    expect(allModels(result.details)).toHaveLength(1);
     // 조회가 실패해도 기준선과 노출 프로바이더가 모두 남고, 각자 읽지 못했음을 밝힌다.
-    expect(result.details.providers.map((entry) => entry.id)).toEqual(["claude", "kimi"]);
-    expect(result.details.providers.every((entry) => entry.quota.status === "unsupported")).toBe(true);
+    expect(Object.keys(result.details.providers)).toEqual(["claude", "kimi"]);
+    expect(
+      Object.values(result.details.providers).every((entry) => entry.quota.status === "unsupported"),
+    ).toBe(true);
   });
 });
 
@@ -352,14 +382,24 @@ describe("gateway_models tool doctrine", () => {
 
   it("sends an unmeasured axis to allowance instead of back to the session model", () => {
     const guidelines = doctrine().usageGuidelines.join("\n");
-    expect(guidelines).toContain("Unmeasured is not unsuitable");
+    expect(guidelines).toContain("unmeasured, never unsuitable");
     expect(guidelines).toContain("the choice falls to allowance");
     expect(guidelines).not.toContain("it is not a reason to pin");
   });
 
   it("keeps the scope-matching rule tied to a declared quotaScope", () => {
     // quotaScope는 Cursor만 선언한다. 이 문장이 전 프로바이더 규칙으로 읽히면
-    // codex/kimi/claude는 읽을 창이 없어진다.
-    expect(doctrine().usageGuidelines.join("\n")).toContain("constraints.quotaScope names the sub-allowance");
+    // codex/kimi/claude는 읽을 창이 없어진다 — 조건절이 규칙의 본체다.
+    expect(doctrine().usageGuidelines.join("\n")).toContain("Where a provider splits into pools");
+  });
+
+  it("keeps the two spellings distinct and the name the preferred selector", () => {
+    // 이 두 문장이 사라지면 호스트는 이름을 요구하는 자리에 modelId를 넣는 실패로
+    // 되돌아간다. 그것이 이 로스터에 agentTypes가 생긴 이유다.
+    const guidelines = doctrine().usageGuidelines.join("\n");
+    expect(guidelines).toContain("Two spellings, never interchangeable");
+    expect(guidelines).toContain("Prefer a name");
+    // modelId를 기본 경로로 되돌리면 사용자가 꺼둔 모델이 오류 없이 실행된다.
+    expect(guidelines).toContain("including a model the user turned off");
   });
 });
