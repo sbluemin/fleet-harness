@@ -2351,20 +2351,35 @@
   cursor: grab;
 }
 
-/* 끌고 있는 점은 손끝만 따른다 — 유영이 살아 있으면 커서와 점이 어긋난다. 이동량은 렌더가
-   아니라 포인터 핸들러가 --drag-dx/--drag-dy에 직접 실어, 끄는 동안 리렌더가 한 번도 없다
-   (이 컴포넌트의 렌더 한 번은 전 밴드의 마커 배치를 다시 계산한다). 들어 올린 느낌은 사이드바
-   칩 드래그와 같은 문법으로 준다: 살짝 키우고 그림자를 얹는다.
-   특이성(0,2,0)으로 위 유영 규칙(0,2,0)보다 뒤에서 이긴다. */
-.canvas-triage-map-dot.is-dragging {
+/* 끌고 있는 점은 손끝만 따른다 — 이동량은 렌더가 아니라 포인터 핸들러가 --drag-dx/--drag-dy에
+   직접 실어, 끄는 동안 리렌더가 한 번도 없다(이 컴포넌트의 렌더 한 번은 전 밴드의 마커 배치를
+   다시 계산한다). 들어 올린 느낌은 사이드바 칩 드래그와 같은 문법으로 준다: 살짝 키우고
+   그림자를 얹는다.
+   셀렉터가 유영 규칙과 같은 조상을 달고 있어야 한다 — `.is-map-mode .canvas-triage-map-dot`은
+   (0,3,0)이라 단일 클래스 결합(0,2,0)으로는 animation을 끄지 못하고, 살아남은 드리프트
+   키프레임의 translate가 인라인 이동량을 통째로 덮어써 점이 제자리에 붙어 있게 된다. */
+.canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-dragging {
   z-index: 3;
   animation: none;
   /* 포인터 추적은 즉답이어야 한다 — 전이가 끼면 점이 손끝을 뒤늦게 좇는다. */
   transition: none;
   translate: var(--drag-dx, 0) var(--drag-dy, 0);
-  scale: 1.35;
-  box-shadow: 0 0 0 4px var(--brass-glow), var(--shadow-soft);
+  scale: 1.4;
+  box-shadow: 0 0 0 5px var(--brass-glow), var(--shadow-floating);
   cursor: grabbing;
+}
+
+/* 떠난 자리에 남는 자국 — 어디서 집어 어디까지 왔는지 보여야 "끌고 있다"가 읽힌다.
+   점을 따라온 자식이므로 이동량을 되돌려 원래 좌표에 세운다. */
+.canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-dragging::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px dashed color-mix(in oklch, var(--brass) 60%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  translate: calc(-1 * var(--drag-dx, 0)) calc(-1 * var(--drag-dy, 0));
+  pointer-events: none;
 }
 
 /* 끄는 동안 이름표는 점을 따라오되 판독을 방해하지 않게 살짝 물러난다. */
