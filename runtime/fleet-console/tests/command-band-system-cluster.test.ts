@@ -154,23 +154,37 @@ describe("CommandBandSystemCluster", () => {
     act(() => trigger.click());
 
     const items = menuItems();
-    expect(items).toHaveLength(4);
+    expect(items).toHaveLength(5);
     // What's New stays disabled while release notes are empty, so focus starts on Keyboard Shortcuts.
     expect(document.activeElement).toBe(items[1]);
-    expect(items[2]?.getAttribute("aria-label")).toBe("Open GitHub repository");
+    // 화면 안내는 짚을 앵커가 없는 화면에서 비활성이므로 포커스 순환에서도 빠진다.
+    expect((items[2] as HTMLButtonElement).disabled).toBe(true);
+    expect(items[3]?.getAttribute("aria-label")).toBe("Open GitHub repository");
     expect(document.querySelector(".command-band-github-version")?.textContent).toMatch(/^v/);
 
     act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "End" })); });
-    expect(document.activeElement).toBe(items[3]);
+    expect(document.activeElement).toBe(items[4]);
     act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" })); });
     expect(document.activeElement).toBe(items[1]);
+  });
+
+  it("enables the screen guide entry only where a seen guide is anchored", () => {
+    document.body.innerHTML = '<div class="command-band-mode-switch"></div>';
+    mountCluster();
+    const trigger = document.querySelector<HTMLButtonElement>(".command-band-help")!;
+    act(() => trigger.click());
+
+    // 시청 기록이 없으면 되살릴 것도 없다 — 아직 못 본 안내는 "다시 보기"의 대상이 아니다.
+    const entry = menuItems()[2] as HTMLButtonElement;
+    expect(entry.textContent).toContain("Show the screen guide");
+    expect(entry.disabled).toBe(true);
   });
 
   it("closes the Help menu on Escape and returns focus to the trigger", () => {
     mountCluster();
     const trigger = document.querySelector<HTMLButtonElement>(".command-band-help")!;
     act(() => trigger.click());
-    expect(menuItems()).toHaveLength(4);
+    expect(menuItems()).toHaveLength(5);
 
     act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); });
     expect(menuItems()).toHaveLength(0);

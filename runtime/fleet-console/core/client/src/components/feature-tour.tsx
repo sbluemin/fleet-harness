@@ -37,6 +37,9 @@ export function FeatureTourOverlay() {
   const [domRevision, setDomRevision] = useState(0);
   const [position, setPosition] = useState<CardPosition>({ left: 0, top: 0, centered: true });
   const cardRef = useRef<HTMLElement | null>(null);
+  // 이 마운트에서 투어를 하나라도 끝냈는지 — deferAfterAnotherTour가 붙은 투어는 이 값이
+  // 참인 동안 시작하지 않는다. 재생 여부만 가르는 값이라 리렌더를 유발할 필요가 없다.
+  const completedThisMountRef = useRef(false);
   const seen = settings.state?.seenFeatureTours ?? [];
 
   useEffect(() => {
@@ -58,6 +61,14 @@ export function FeatureTourOverlay() {
     };
   }, []);
 
+  // 시청 기록이 줄어드는 유일한 경로는 사용자가 "화면 안내 다시 보기"를 부른 것이다. 그때는
+  // 이 마운트의 완료 표시도 함께 풀어야 미뤄둔 투어까지 요청한 자리에서 재생된다.
+  const seenCountRef = useRef(seen.length);
+  useEffect(() => {
+    if (seen.length < seenCountRef.current) completedThisMountRef.current = false;
+    seenCountRef.current = seen.length;
+  }, [seen.length]);
+
   const resolved = useMemo(() => {
     if (domRevision === 0 || !settings.state || hasVisibleModal(document)) return null;
     if (lockedTour) {
@@ -68,7 +79,7 @@ export function FeatureTourOverlay() {
         : availableFeatureTourSteps(tour.walkthrough, document);
       return steps.length > 0 ? { tour, phase: lockedTour.phase, steps } satisfies FeatureTourPresentation : null;
     }
-    return resolveNextFeatureTour(FEATURE_TOURS, seen, document);
+    return resolveNextFeatureTour(FEATURE_TOURS, seen, document, completedThisMountRef.current);
   }, [domRevision, lockedTour, seen, settings.state]);
 
   useEffect(() => {
@@ -111,6 +122,7 @@ export function FeatureTourOverlay() {
     if (!resolved) return;
     const key = featureTourSeenKey(resolved.tour.id, resolved.phase);
     const completionBase = featureTourCompletionBase(seen, resolved.tour, resolved.phase);
+    completedThisMountRef.current = true;
     setLockedTour(null);
     setStepIndex(0);
     await persistFeatureTourSeen(completionBase, key, (next) => setGlobalSettingsField("seenFeatureTours", next));
@@ -257,10 +269,12 @@ export function resolveNextFeatureTour(
   tours: readonly FeatureTour[],
   seen: readonly string[],
   root: ParentNode,
+  completedAnotherTour = false,
 ): FeatureTourPresentation | null {
   if (hasVisibleModal(root)) return null;
   for (const tour of tours) {
     if (seen.includes(featureTourSeenKey(tour.id, "walkthrough"))) continue;
+    if (tour.deferAfterAnotherTour === true && completedAnotherTour) continue;
     const activationStep = tour.walkthrough.find((step) => step.anchor !== null);
     if (!activationStep?.anchor || root.querySelector(activationStep.anchor) === null) continue;
     const steps = availableFeatureTourSteps(tour.walkthrough, root);
@@ -273,6 +287,36 @@ export function resolveNextFeatureTour(
     }
   }
   return null;
+}
+
+// "화면 안내 다시 보기" — 지금 화면에 앵커가 살아 있는 투어 중 가장 좁은 것 하나만 되살린다.
+// 대상 판정은 투어 발동과 같은 앵커 존재 규칙을 쓴다: 지금 보이지 않는 화면의 안내까지 되살리면
+// 사용자가 부른 적 없는 안내가 다른 화면에서 튀어나온다.
+//
+// 카탈로그는 넓은 화면에서 좁은 화면 순으로 놓여 있고, 넓은 쪽 앵커(모드 스위치 등)는 좁은 화면에도
+// 그대로 있다. 그래서 겹칠 때는 마지막에 놓인 투어가 지금 보고 있는 화면의 안내다 — 전부 되살리면
+// War Room에서 부른 재생이 모드 소개부터 다시 시작한다(실브라우저 실측).
+export function replayableFeatureTourIds(
+  tours: readonly FeatureTour[],
+  root: ParentNode,
+): readonly string[] {
+  const anchored = tours.filter((tour) => {
+    const activationAnchor = tour.walkthrough.find((step) => step.anchor !== null)?.anchor
+      ?? tour.spotlight?.anchor
+      ?? null;
+    return activationAnchor !== null && root.querySelector(activationAnchor) !== null;
+  });
+  const narrowest = anchored.at(-1);
+  return narrowest ? [narrowest.id] : [];
+}
+
+export function forgetSeenFeatureTours(
+  seen: readonly string[],
+  tourIds: readonly string[],
+): readonly string[] {
+  const drop = new Set(tourIds.flatMap((id) => [featureTourSeenKey(id, "walkthrough"), featureTourSeenKey(id, "spotlight")]));
+  const next = seen.filter((key) => !drop.has(key));
+  return next.length === seen.length ? seen : next;
 }
 
 function resolveFeatureTourAnchor(step: FeatureTourStep, root: ParentNode): HTMLElement | null {

@@ -494,9 +494,12 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         </div> : null}
         {canvasMode === "warRoom" ? <div className="command-band-mode-tray" role="group" aria-label={t("chrome.commandBand.warRoomTools")}>
           <span className="command-band-mode-tray-divider" aria-hidden="true" />
+          {/* data-war-room-tool은 화면 안내가 짚는 자리다 — 라벨이나 트레이 순서가 바뀌어도
+              앵커가 조용히 사라지지 않도록 의미 속성으로 표시한다. */}
           <button
             type="button"
             className="command-band-mode-tool"
+            data-war-room-tool="spotlight"
             aria-pressed={triageSpotlightEnabled}
             aria-label={t("canvas.triage.spotlightTitle")}
             title={t("canvas.triage.spotlightTitle")}
@@ -505,6 +508,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
           <button
             type="button"
             className="command-band-mode-tool is-valued"
+            data-war-room-tool="density"
             aria-pressed={triageDeckZoomLive !== 1.0}
             aria-label={t("canvas.triage.densityChipTitle")}
             title={t("canvas.triage.densityChipTitle")}
