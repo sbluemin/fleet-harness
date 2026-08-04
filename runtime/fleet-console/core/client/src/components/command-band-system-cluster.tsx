@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
@@ -51,9 +51,18 @@ export function CommandBandSystemCluster() {
 function SettingsButton({ updateAvailable }: { readonly updateAvailable: boolean }) {
   const t = useT();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const goToSettings = () => {
-    navigate("/settings");
+    // 설정 화면에서 다시 누륄 때 토글로 닫는다 — 설정 내 섹션 이동은 search만 바꾸므로
+    // pathname 기준으로 판별해야 잘못 닫히지 않는다. 직행 진입이 아닌 경우(딥링크 등)는
+    // 기본 화면인 /operations로 복귀한다.
+    if (location.pathname === "/settings") {
+      const from = (location.state as { from?: string } | null)?.from;
+      navigate(from ?? "/operations");
+      return;
+    }
+    navigate("/settings", { state: { from: `${location.pathname}${location.search}` } });
     window.requestAnimationFrame(() => {
       const target = document.querySelector<HTMLElement>("main h2, h2");
       target?.focus?.();
