@@ -247,6 +247,47 @@ describe("CanvasMinimap collapse behavior", () => {
     }
   });
 
+  it("names the mode the curtain is switching to and repeats it when Tactical returns to Cruise", () => {
+    vi.useFakeTimers();
+    try {
+      const theaterId = "cruise-curtain";
+      const operations = [0, 1].map((index) => ({
+        ...OPERATION,
+        id: `cruise-${index + 1}`,
+        theaterId,
+        title: `Cruise ${index + 1}`,
+        ts: { createdAt: index, updatedAt: index },
+      }));
+      loadForTheater(theaterId);
+      setState({
+        operations: Object.fromEntries(operations.map((operation, index) => [
+          operation.id,
+          { x: index * 40, y: index * 40, width: 320, height: 200, zIndex: index + 1 },
+        ])),
+      });
+      renderOperationsCanvas({ ...CANVAS_STATE, activeTheaterId: theaterId, operations });
+
+      // 마운트 직후의 Cruise는 복귀가 아니다 — 커튼을 치지 않는다.
+      expect(document.querySelector(".canvas-cruise-curtain")).toBeNull();
+
+      act(() => toggleFormationView());
+      // 모드 이름은 어느 로케일에서도 제품 고유 명칭 그대로 각인과 헤딩에 남는다.
+      expect(document.querySelector(".canvas-formation-curtain strong")?.textContent).toMatch(/Tactical/);
+      expect(document.querySelector(".canvas-formation-curtain .canvas-mode-curtain-kicker")?.textContent).toBe("TACTICAL");
+      act(() => vi.advanceTimersByTime(1_950));
+
+      act(() => clearFormationView());
+      expect(document.querySelector(".canvas-cruise-curtain strong")?.textContent).toMatch(/Cruise/);
+      expect(document.querySelector(".canvas-cruise-curtain .canvas-mode-curtain-kicker")?.textContent).toBe("CRUISE");
+
+      act(() => vi.advanceTimersByTime(1_400));
+      expect(document.querySelector(".canvas-cruise-curtain")).toBeNull();
+    } finally {
+      act(() => clearFormationView());
+      vi.useRealTimers();
+    }
+  });
+
   it("does not render the empty canvas state beneath the Formation entry curtain", () => {
     vi.useFakeTimers();
     try {

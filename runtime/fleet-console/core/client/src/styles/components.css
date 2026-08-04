@@ -2004,6 +2004,10 @@
   animation: formation-curtain-sequence 1400ms linear both;
 }
 
+.canvas-cruise-curtain {
+  animation: cruise-curtain-sequence 1400ms linear both;
+}
+
 .canvas-formation-guide {
   position: absolute;
   z-index: 0;
@@ -2638,6 +2642,14 @@
   100% { opacity: 0; }
 }
 
+@keyframes cruise-curtain-sequence {
+  0% { opacity: 0; }
+  22% { opacity: 1; }
+  54% { opacity: 1; }
+  82% { opacity: 0; }
+  100% { opacity: 0; }
+}
+
 @keyframes formation-tile-land {
   from { opacity: 0; transform: translateY(10px) scale(0.985); }
   to { opacity: 1; transform: translateY(0) scale(1); }
@@ -2675,7 +2687,8 @@
   }
 
   .canvas-triage-curtain,
-  .canvas-formation-curtain {
+  .canvas-formation-curtain,
+  .canvas-cruise-curtain {
     animation-timing-function: steps(1, start);
   }
 

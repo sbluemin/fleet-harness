@@ -115,6 +115,8 @@ export function OperationsCanvas({
   const [triageEntering, setTriageEntering] = useState(false);
   const [, setTriageDeckDwellRevision] = useState(0);
   const [formationEntering, setFormationEntering] = useState(false);
+  const [cruiseEntering, setCruiseEntering] = useState(false);
+  const previousCanvasModeRef = useRef<"cruise" | "tactical" | "warRoom" | null>(null);
   const [, setTriageFocusRevision] = useState(0);
   const previousTriageStageRef = useRef<string | null>(null);
   const previousTriageDeckStageRef = useRef<string | null>(null);
@@ -190,6 +192,23 @@ export function OperationsCanvas({
     }, 1_950);
     return () => window.clearTimeout(timer);
   }, [formationView, state.activeTheaterId]);
+
+  // 모드 이탈도 진입과 같은 무게로 알린다 — Cruise 복귀 역시 커튼 한 장으로 도착을 선언한다.
+  useEffect(() => {
+    const mode = triageActive ? "warRoom" : formationView ? "tactical" : "cruise";
+    const previousMode = previousCanvasModeRef.current;
+    previousCanvasModeRef.current = mode;
+    if (mode !== "cruise") {
+      // Tactical↔War Room 직접 전환은 그 모드의 커튼이 소유한다 — 남은 복귀 커튼을 즉시 걷는다.
+      setCruiseEntering(false);
+      return;
+    }
+    // 첫 마운트가 Cruise인 것은 복귀가 아니다.
+    if (previousMode === null || previousMode === "cruise") return;
+    setCruiseEntering(true);
+    const timer = window.setTimeout(() => setCruiseEntering(false), 1_400);
+    return () => window.clearTimeout(timer);
+  }, [formationView, triageActive]);
 
   const interaction = useCanvasInteraction({
     viewport: canvas.viewport,
@@ -955,8 +974,18 @@ export function OperationsCanvas({
         previewConfigFor={triagePreviewConfigFor}
         freshOperationIds={freshDeckOperationIds}
       />
+      {cruiseEntering ? (
+        <div className="canvas-mode-curtain canvas-cruise-curtain" aria-hidden="true">
+          <span className="canvas-mode-curtain-kicker">{t("canvas.cruise.curtainKicker")}</span>
+          <span className="canvas-mode-curtain-ruler" />
+          <strong>{t("canvas.cruise.curtainTitle")}</strong>
+          <span>{formationOperationIds.length > 0
+            ? t("canvas.cruise.curtainBody", { count: formationOperationIds.length })
+            : t("canvas.cruise.curtainBodyEmpty")}</span>
+        </div>
+      ) : null}
       <TriageClearPlate active={triageActive && triageDeckOperations.length === 0} entering={triageEntering} hasContent={hasContent} idleCount={triageIdleCount} />
-      {!triageActive && !hasContent && !formationEntering ? (
+      {!triageActive && !hasContent && !formationEntering && !cruiseEntering ? (
         <OperationsCanvasEmptyState
           activeTheaterId={state.activeTheaterId}
           theaterLabel={state.theaters.find((theater) => theater.id === state.activeTheaterId)?.label ?? state.activeTheaterId ?? ""}

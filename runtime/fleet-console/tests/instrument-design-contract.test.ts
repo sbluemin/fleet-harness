@@ -390,6 +390,8 @@ describe("Instrument core design contract", () => {
       "canvas-mode-curtain",
       "canvas-mode-curtain-kicker",
       "canvas-mode-curtain-ruler",
+      // Cruise 복귀도 진입과 같은 커튼을 쓴다 — 모드 전환 연출은 세 모드가 한 문법을 공유한다.
+      "canvas-cruise-curtain",
     ]) {
       expect(canvas).toContain(sharedModeClass);
       expect(components).toContain(`.${sharedModeClass}`);
