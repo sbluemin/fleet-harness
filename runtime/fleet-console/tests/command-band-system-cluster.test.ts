@@ -2,10 +2,10 @@
 
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { CommandBandSystemCluster, resolveUpdateApplyCopy } from "../core/client/src/components/command-band-system-cluster.js";
+import { CommandBandSystemCluster, propagateSettingsEntryIndex, resolveUpdateApplyCopy } from "../core/client/src/components/command-band-system-cluster.js";
 import { getT } from "../core/client/src/i18n/index.js";
 
 let root: Root | null = null;
@@ -40,6 +40,47 @@ function mountCluster() {
   act(() => root!.render(createElement(MemoryRouter, null, createElement(CommandBandSystemCluster))));
 }
 
+function LocationProbe() {
+  const location = useLocation();
+  return createElement("output", { "data-testid": "location" }, `${location.pathname}${location.search}`);
+}
+
+function HistoryLengthProbe() {
+  return createElement("output", { "data-testid": "history-length" }, String(window.history.length));
+}
+
+// GlobalSettings.selectSection과 같은 방식의 push 네비게이션을 재현하는 프로브.
+function SectionPushProbe() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  (window as typeof window & { __pushSettingsSection?: () => void }).__pushSettingsSection = () => {
+    navigate({ pathname: "/settings", search: "?section=backend-api" }, { state: propagateSettingsEntryIndex(location.state) });
+  };
+  return null;
+}
+
+function mountClusterAt(initialPath: string) {
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+  act(() => root!.render(createElement(
+    MemoryRouter,
+    { initialEntries: [initialPath] },
+    createElement(CommandBandSystemCluster),
+    createElement(LocationProbe),
+    createElement(HistoryLengthProbe),
+    createElement(SectionPushProbe),
+  )));
+}
+
+function currentPath(): string {
+  return document.querySelector<HTMLOutputElement>('[data-testid="location"]')!.value;
+}
+
+function currentHistoryLength(): number {
+  return Number(document.querySelector<HTMLOutputElement>('[data-testid="history-length"]')!.value);
+}
+
 function menuItems(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
 }
@@ -60,6 +101,51 @@ describe("CommandBandSystemCluster", () => {
     expect(settings.getAttribute("aria-label")).toBe("Settings");
     expect(settings.getAttribute("aria-haspopup")).toBeNull();
     expect(document.querySelector(".command-band-system-menu")).toBeNull();
+  });
+
+  it("returns to the previous route when Settings is pressed again from the settings page", () => {
+    mountClusterAt("/operations");
+    const settings = document.querySelector<HTMLButtonElement>(".command-band-settings")!;
+
+    act(() => settings.click());
+    expect(currentPath()).toBe("/settings");
+    const lengthAtSettings = currentHistoryLength();
+
+    act(() => settings.click());
+    expect(currentPath()).toBe("/operations");
+    // Closing consumes the Settings entry instead of pushing another one.
+    expect(currentHistoryLength()).toBe(lengthAtSettings);
+  });
+
+  it("treats a trailing-slash Settings pathname as the settings page and closes to /operations", () => {
+    mountClusterAt("/settings/");
+    const settings = document.querySelector<HTMLButtonElement>(".command-band-settings")!;
+
+    act(() => settings.click());
+    expect(currentPath()).toBe("/operations");
+  });
+
+  it("consumes section-navigation entries too when closing Settings", () => {
+    mountClusterAt("/operations");
+    const settings = document.querySelector<HTMLButtonElement>(".command-band-settings")!;
+
+    act(() => settings.click());
+    expect(currentPath()).toBe("/settings");
+
+    // Settings 내 섹션 이동은 /settings?... 항목을 push한다 (global-settings selectSection).
+    act(() => { (window as typeof window & { __pushSettingsSection: () => void }).__pushSettingsSection(); });
+    expect(currentPath()).toBe("/settings?section=backend-api");
+
+    act(() => settings.click());
+    expect(currentPath()).toBe("/operations");
+  });
+
+  it("falls back to /operations when Settings is pressed on a deep-linked settings page", () => {
+    mountClusterAt("/settings?section=terminal%3Acarriers");
+    const settings = document.querySelector<HTMLButtonElement>(".command-band-settings")!;
+
+    act(() => settings.click());
+    expect(currentPath()).toBe("/operations");
   });
 
   it("opens the Help menu with focus on the first enabled item and cycles with arrow keys", () => {

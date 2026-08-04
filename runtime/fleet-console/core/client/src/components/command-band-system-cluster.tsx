@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
@@ -31,6 +31,27 @@ const GITHUB_STARS_CACHE_KEY = "fleet-console.github-stars";
 const GITHUB_STARS_TTL_MS = 6 * 60 * 60 * 1000;
 const ENABLED_MENU_ITEM_SELECTOR = '[role="menuitem"]:not([disabled])';
 
+// 설정 진입 시점의 history index를 기록하는 세션 스코프 마커. GlobalSettings의 섹션
+// 이동은 state 없이 push하므로 location.state로는 이 마커가 전파되지 않는다 — 모듈
+// 스코프 변수로 들고 있다가 selectSection이 다음 항목으로 전파한다(아래 export 참조).
+// 설정에 머무는 동안에만 의미가 있고, 설정을 벗어나는 다른 경로 전환과 무관하게
+// 마지막 진입 값이 남는 것은 허용한다(판별은 pathname이 한다).
+let settingsEntryIndex: number | null = null;
+
+export function recordSettingsEntryIndex() {
+  settingsEntryIndex = window.history.state?.idx ?? null;
+}
+
+export function propagateSettingsEntryIndex(state: unknown): Record<string, unknown> {
+  // 현재 항목이 이미 마커를 들고 있으면(Back으로 재방문한 과거 설정 항목 등)
+  // 그 항목의 마커가 진실이다 — 세션 스코프 값은 최근 진입의 것일 뿐이다.
+  // 명시적 null은 "이 방문은 무표시"라는 기록이므로 세션 값을 빌려오지 않는다.
+  const existing = (state as { settingsEntry?: unknown } | null)?.settingsEntry;
+  if (existing === null) return { ...(state as Record<string, unknown> | null), settingsEntry: null };
+  const entry = typeof existing === "number" ? existing : settingsEntryIndex;
+  return entry === null ? {} : { ...(state as Record<string, unknown> | null), settingsEntry: entry };
+}
+
 // 시스템 클러스터는 커맨드 밴드 우측에 상주한다 — 사이드바 접힘·라우트 전환과 무관하게
 // 설정(직행)·도움말(메뉴)이 항상 도달 가능해야 한다는 배치 계약의 소유자다.
 export function CommandBandSystemCluster() {
@@ -51,9 +72,29 @@ export function CommandBandSystemCluster() {
 function SettingsButton({ updateAvailable }: { readonly updateAvailable: boolean }) {
   const t = useT();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const goToSettings = () => {
-    navigate("/settings");
+    // 설정 화면에서 다시 누륄 때 토글로 닫는다 — 설정 내 섹션 이동은 search만 바꾸므로
+    // pathname 기준으로 판별해야 잘못 닫히지 않는다. React Router는 후행 슬래시를 허용하므로
+    // 비교·기록 모두 정규화한다. 직행 진입(딥링크 등)은 기본 화면인 /operations로 복귀한다.
+    const pathname = location.pathname.replace(/\/+$/, "") || "/";
+    if (pathname === "/settings") {
+      const state = location.state as { settingsEntry?: unknown } | null;
+      const entry = typeof state?.settingsEntry === "number" ? state.settingsEntry : null;
+      const currentIndex = window.history.state?.idx;
+      // 닫기는 설정을 연 채 쌓인 항목을 모두 소비하는 동작이다 — 섹션 이동이 push한
+      // 중간 /settings?... 항목까지 진입 지점과의 idx 차이만큼 되돌아가야 Back이
+      // 설정을 다시 열지 않는다. 마커를 알 수 없는 진입(딥링크·리로드)은 replace 폐기.
+      if (entry !== null && typeof currentIndex === "number" && currentIndex > entry) {
+        navigate(entry - currentIndex);
+        return;
+      }
+      navigate("/operations", { replace: true });
+      return;
+    }
+    recordSettingsEntryIndex();
+    navigate("/settings", { state: propagateSettingsEntryIndex(null) });
     window.requestAnimationFrame(() => {
       const target = document.querySelector<HTMLElement>("main h2, h2");
       target?.focus?.();

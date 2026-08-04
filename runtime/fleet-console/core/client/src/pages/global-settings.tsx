@@ -8,6 +8,7 @@ import "@fleet-console/font-picker/styles.css";
 import { fetchSystemFonts, SystemFontsFetchError } from "@fleet-console/font-picker/system-fonts";
 
 import { BackendApiSection } from "../components/backend-api-section.js";
+import { propagateSettingsEntryIndex } from "../components/command-band-system-cluster.js";
 import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { renderMessage, useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { useConsoleState } from "../hooks/use-store.js";
@@ -110,7 +111,20 @@ export function GlobalSettings() {
   const pluginGroups = groupPluginSettingsSections(pluginSections);
   const selectSection = (sectionId: SettingsSectionId) => {
     setActiveSectionId(sectionId);
-    navigate({ pathname: "/settings", search: sectionId === "general" ? "" : `?section=${encodeURIComponent(sectionId)}` });
+    // 설정 토글 버튼이 닫힐 때 설정 구간 전체를 소비하려면 진입 마커가 필요하다 —
+    // 이 push는 state 없이 새 항목을 만들므로 현재 항목의 마커를 명시적으로 전파한다.
+    // 마커 없는 방문(직접 로드·리로드)에서 push하면 원본 설정 항목이 고아가 되어
+    // Back이 설정을 다시 열으므로, 마커가 없을 때는 섹션 이동을 replace로 처리한다.
+    const nextState = propagateSettingsEntryIndex(
+      "settingsEntry" in ((location.state ?? {}) as Record<string, unknown>)
+        ? location.state
+        : { settingsEntry: null },
+    );
+    const marked = typeof nextState.settingsEntry === "number";
+    navigate(
+      { pathname: "/settings", search: sectionId === "general" ? "" : `?section=${encodeURIComponent(sectionId)}` },
+      { replace: !marked, state: nextState },
+    );
   };
 
   useEffect(() => {
@@ -124,7 +138,7 @@ export function GlobalSettings() {
     const available = new Set<SettingsSectionId>([...coreSections.map((section) => section.id), ...pluginSections.map((section) => section.id)]);
     const next = requested && available.has(requested as SettingsSectionId) ? requested as SettingsSectionId : "general";
     setActiveSectionId(next);
-    if (requested && requested !== next) navigate({ pathname: "/settings", search: "" }, { replace: true });
+    if (requested && requested !== next) navigate({ pathname: "/settings", search: "" }, { replace: true, state: propagateSettingsEntryIndex(location.state) });
   }, [location.search, navigate, coreSections, pluginSections]);
 
   return (
