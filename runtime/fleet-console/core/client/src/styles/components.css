@@ -2346,12 +2346,30 @@
   animation-play-state: paused;
 }
 
-/* 끌고 있는 점은 손끝만 따른다 — 유영이 살아 있으면 커서와 점이 어긋나고, 확대창이 함께
-   따라오면 판을 가린다. 특이성(0,2,0)으로 위 유영 규칙(0,2,0)보다 뒤에서 이긴다. */
+/* 점은 집어 옮길 수 있는 것으로 보여야 한다 — 사이드바 칩과 같은 grab/grabbing 문법. */
+.canvas-triage-map-dot {
+  cursor: grab;
+}
+
+/* 끌고 있는 점은 손끝만 따른다 — 유영이 살아 있으면 커서와 점이 어긋난다. 이동량은 렌더가
+   아니라 포인터 핸들러가 --drag-dx/--drag-dy에 직접 실어, 끄는 동안 리렌더가 한 번도 없다
+   (이 컴포넌트의 렌더 한 번은 전 밴드의 마커 배치를 다시 계산한다). 들어 올린 느낌은 사이드바
+   칩 드래그와 같은 문법으로 준다: 살짝 키우고 그림자를 얹는다.
+   특이성(0,2,0)으로 위 유영 규칙(0,2,0)보다 뒤에서 이긴다. */
 .canvas-triage-map-dot.is-dragging {
-  z-index: 2;
+  z-index: 3;
   animation: none;
+  /* 포인터 추적은 즉답이어야 한다 — 전이가 끼면 점이 손끝을 뒤늦게 좇는다. */
+  transition: none;
+  translate: var(--drag-dx, 0) var(--drag-dy, 0);
+  scale: 1.35;
+  box-shadow: 0 0 0 4px var(--brass-glow), var(--shadow-soft);
   cursor: grabbing;
+}
+
+/* 끄는 동안 이름표는 점을 따라오되 판독을 방해하지 않게 살짝 물러난다. */
+.canvas-triage-map-dot.is-dragging .canvas-triage-map-dot-label {
+  opacity: 0.7;
 }
 
 .canvas-triage-map-dot:hover,

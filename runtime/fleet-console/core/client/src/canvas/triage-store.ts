@@ -225,7 +225,10 @@ function persistTriageDeckZoom(zoom: number): void {
 const GOLDEN_ANGLE = 2.399963;
 const GOLDEN_FRACTION = 0.61803;
 const MAP_MIN_DISTANCE_PCT = 4;
-const MAP_RELAXATION_PASSES = 12;
+const MAP_RELAXATION_PASSES = 30;
+// 마지막 구간은 최소 간격만 본다 — 이름표 줄 나누기는 그 자체가 점을 다시 붙일 수 있어,
+// 끝까지 함께 돌리면 두 제약이 서로를 되돌리며 4% 계약이 미달인 채로 패스가 소진된다.
+const MAP_LABEL_RELAXATION_PASSES = 18;
 // 이름표가 한 줄로 차지하는 세로 대역과, 같은 줄에 서도 글자가 안 겹치는 최소 가로 간격.
 const MAP_LABEL_ROW_PCT = 4.5;
 const MAP_LABEL_MIN_DX_PCT = 26;
@@ -264,7 +267,7 @@ const TRIAGE_FLEET_ZONE_GAP = 3;
 const TRIAGE_FLEET_ZONE_LABEL_HEADROOM = 8;
 
 export function resolveTriageFleetZoneLayout(
-  zones: ReadonlyArray<{ readonly theaterId: string; readonly count: number }>,
+  zones: ReadonlyArray<{ readonly theaterId: string; readonly count: number; readonly slotIndex?: number }>,
   aspect = 1.8,
 ): readonly TriageFleetZoneLayout[] {
   if (zones.length === 0) return [];
@@ -272,7 +275,10 @@ export function resolveTriageFleetZoneLayout(
   const width = 100 * safeAspect;
   const total = zones.reduce((sum, zone) => sum + Math.max(1, zone.count), 0) || 1;
   const circles = zones.map((zone, index) => {
-    const slot = TRIAGE_FLEET_ZONE_SLOTS[index % TRIAGE_FLEET_ZONE_SLOTS.length]!;
+    // 슬롯은 Theater 자신의 고정 번호로 고른다 — 입력 순서로 고르면 밴드 정렬이 대기 수를
+    // 따라 바뀔 때마다 구역이 서로 자리를 맞바꾼다. 판 위의 자리는 패널 상태가 아니라
+    // Theater 정체성에 묶여야 한다(구역 색을 theaterIndex로 고정한 것과 같은 이유).
+    const slot = TRIAGE_FLEET_ZONE_SLOTS[(zone.slotIndex ?? index) % TRIAGE_FLEET_ZONE_SLOTS.length]!;
     const share = Math.sqrt(Math.max(1, zone.count) / total);
     // 지름 하한 34%는 라벨+dot 판독, 상한 66%는 이웃 원과의 공존을 지킨다.
     return {
@@ -447,21 +453,21 @@ export function resolveTriageMapProjection(
   return box.degenerate ? null : { minX: box.minX, maxX: box.maxX, minY: box.minY, maxY: box.maxY };
 }
 
-// 지도 위 한 점을 캔버스 좌표로 되돌린다 — 지도는 함대의 축소판이므로, 지도에서 옮긴 자리가
-// 곧 캔버스에서의 자리다. 마커 %는 중심 기준이라 패널 크기의 절반만큼 되돌려 좌상단을 낸다.
-export function projectTriageMapPointToGeometry(
-  point: { readonly x: number; readonly y: number },
+// 지도에서 옮긴 만큼 캔버스에서도 옮긴다 — 이동량만 환산하고 원래 좌표에 더한다.
+// 마커의 절대 위치를 그대로 역투영하면 안 된다: 화면에 선 마커는 겹침 이완과 표석 띠 회피가
+// 이미 옮겨 놓은 자리라 geometry의 직접 투영이 아니다. 그 값을 되돌리면 가로로만 끌어도
+// 패널이 세로로 뛴다(띠를 피해 밀려난 만큼). 이동량은 그 왜곡을 타지 않는다.
+export function projectTriageMapDeltaToGeometry(
+  delta: { readonly x: number; readonly y: number },
   projection: TriageMapProjection,
   geometry: OperationGeometry,
 ): OperationGeometry {
   const spanX = Math.max(1, projection.maxX - projection.minX);
   const spanY = Math.max(1, projection.maxY - projection.minY);
-  const centerX = projection.minX + ((point.x - 8) / 84) * spanX;
-  const centerY = projection.minY + ((point.y - 10) / 76) * spanY;
   return {
     ...geometry,
-    x: Math.round(centerX - geometry.width / 2),
-    y: Math.round(centerY - geometry.height / 2),
+    x: Math.round(geometry.x + (delta.x / 84) * spanX),
+    y: Math.round(geometry.y + (delta.y / 76) * spanY),
   };
 }
 
@@ -550,6 +556,9 @@ function relaxTriageMapMarkers(
         // 점끼리 떨어져 있어도 이름표는 겹친다 — 이름표는 점 오른쪽으로 길게 뻗으므로, 같은
         // 줄에 선 두 점은 가로로 한참 벌어져야 글자가 안 포개진다. 먼저 세로로 벌린다(줄만
         // 달라지면 겹침이 끝난다). 띠나 판 가장자리에 막혀 줄이 갈리지 않으면 가로로 민다.
+        // 후반 패스에서는 이 규칙을 끈다 — 줄 나누기는 점을 다시 붙일 수 있어, 끝까지 함께
+        // 돌리면 4% 간격 계약이 미달인 채로 패스가 소진된다. 마지막은 간격만 보고 수렴시킨다.
+        if (pass >= MAP_LABEL_RELAXATION_PASSES) continue;
         if (Math.abs(dy) >= MAP_LABEL_ROW_PCT || Math.abs(dx) >= MAP_LABEL_MIN_DX_PCT) continue;
         moved = true;
         const rowPush = (MAP_LABEL_ROW_PCT - Math.abs(dy)) / 2 + 0.35;
@@ -566,6 +575,10 @@ function relaxTriageMapMarkers(
     }
     if (!moved) return;
   }
+}
+
+export function clampTriageMapPercent(value: number): number {
+  return clampPercent(value);
 }
 
 function clampPercent(value: number): number {

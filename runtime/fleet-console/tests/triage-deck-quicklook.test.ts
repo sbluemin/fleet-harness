@@ -141,17 +141,21 @@ describe("triage map label band", () => {
   it("keeps the minimum spacing while the band stays clear", () => {
     // 띠 회피를 마지막에 한 번 스냅하면 그 스냅이 직전 이완이 벌려 둔 간격을 도로 무너뜨린다
     // (띠 아래 절반의 점을 위로 올리면 그 위 이웃과 다시 붙는다). 두 제약은 함께 풀려야 한다.
-    const ids = Array.from({ length: 14 }, (unused, index) => `op-${index}`);
-    const markers = resolveTriageMapMarkerLayout(ids.map(op), true);
-    for (let left = 0; left < markers.length; left += 1) {
-      for (let right = left + 1; right < markers.length; right += 1) {
-        const a = markers[left]!;
-        const b = markers[right]!;
-        expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeGreaterThan(2.5);
+    // 50개는 이완이 수렴할 시간을 가장 크게 요구하는 규모다 — 정해진 패스가 소진되며 4% 계약이
+    // 미달인 채 끝나면 안 된다(줄 나누기와 간격 벌리기가 서로를 되돌리는 구간이 생긴다).
+    for (const count of [14, 50]) {
+      const ids = Array.from({ length: count }, (unused, index) => `op-${index}`);
+      const markers = resolveTriageMapMarkerLayout(ids.map(op), true);
+      for (let left = 0; left < markers.length; left += 1) {
+        for (let right = left + 1; right < markers.length; right += 1) {
+          const a = markers[left]!;
+          const b = markers[right]!;
+          expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeGreaterThan(3.9);
+        }
       }
-    }
-    for (const marker of markers) {
-      expect(marker.y > 41 && marker.y < 61 && marker.x > 12 && marker.x < 92).toBe(false);
+      for (const marker of markers) {
+        expect(marker.y > 41 && marker.y < 61 && marker.x > 12 && marker.x < 92).toBe(false);
+      }
     }
   });
 

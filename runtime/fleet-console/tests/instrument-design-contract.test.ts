@@ -71,8 +71,10 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--li",
   // Sidebar TSX injects its measured width for the shell layout.
   "--side-bar-width",
-  // Sidebar TSX injects transient drag offsets for chips and group headers.
+  // Sidebar TSX injects transient drag offsets for chips and group headers; the fleet map's
+  // marker drag writes both axes on the dot element itself, without a re-render per frame.
   "--drag-dy",
+  "--drag-dx",
   // Sidebar TSX injects the persisted group tone used by group-scoped surfaces.
   "--grp-color",
   // Sidebar chip TSX injects the group marker tone for each rendered mark.

@@ -304,17 +304,14 @@ export function OperationsCanvas({
     ? state.operations.filter((operation) => resolveOperationActivity(operation, state.operationStatus) !== "dormant")
     : theaterOperations;
   const triageDeckOperationIdSet = new Set(triageDeckOperations.map((operation) => operation.id));
-  // 입장 연출(triageEntering) 중에는 deck가 아직 안 보이지만 연출이 끝나면 보인다 — 스포트라이트
-  // OFF 억제는 이 "보일 상태"(deckAvailable)를 기준으로 해야 진입 순간의 저장된 OFF가 무시되지 않는다.
-  const deckAvailable = triageActive
+  const deckWasVisible = triageActive
     && previousTriageDeckStageRef.current === null
-    && triageDeckOperations.length > 0;
-  const deckWasVisible = deckAvailable && !triageEntering;
+    && triageDeckOperations.length > 0
+    && !triageEntering;
   const deckPromotion = resolveTriageDeckPromotion({
     operationId: candidateTriageStage?.operation.id ?? null,
     picked: candidateTriageStage?.picked === true,
     deckVisible: deckWasVisible,
-    deckAvailable,
     spotlight: triageSpotlightEnabled,
     dwell: triageDeckArrivalDwellRef.current,
     now: Date.now(),
