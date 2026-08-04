@@ -79,7 +79,7 @@ import {
 import { resolveTriageSideBarSections, TriageSideBar } from "../core/client/src/sidebar/triage-side-bar.js";
 import type { OperationNode } from "../core/client/src/types.js";
 import { TriageClearPlate } from "../core/client/src/canvas/canvas-overlays.js";
-import { resolveTriageDeckPromotion, TRIAGE_DECK_ARRIVAL_DWELL_MS, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckZoomControl } from "../core/client/src/canvas/triage-watch-deck.js";
+import { resolveTriageDeckPromotion, resolveTriageMapDriftStyle, TRIAGE_DECK_ARRIVAL_DWELL_MS, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckZoomControl } from "../core/client/src/canvas/triage-watch-deck.js";
 import { triageStageGeometryFor } from "../core/client/src/canvas/coordinates.js";
 import { getOperationStatusDetailSnapshot, recordOperationActivityTransition, setOperationStatusDetail } from "../core/client/src/operation-status-detail-store.js";
 
@@ -903,6 +903,25 @@ describe("triage store", () => {
     }
   });
 
+  it("keeps a theater's zone on its own slot when band order changes", () => {
+    // 밴드 정렬은 대기 건수를 따라 바뀐다 — 그때마다 구역이 자리를 맞바꾸면 패널 하나의 상태
+    // 변화가 판 전체를 재배치한 것처럼 보인다. 자리는 Theater 정체성(slotIndex)에 묶인다.
+    const first = resolveTriageFleetZoneLayout([
+      { theaterId: "alpha", count: 3, slotIndex: 0 },
+      { theaterId: "bravo", count: 3, slotIndex: 1 },
+    ], 1.6);
+    const reordered = resolveTriageFleetZoneLayout([
+      { theaterId: "bravo", count: 3, slotIndex: 1 },
+      { theaterId: "alpha", count: 3, slotIndex: 0 },
+    ], 1.6);
+    const find = (zones: readonly { theaterId: string; centerX: number; centerY: number }[], id: string) =>
+      zones.find((zone) => zone.theaterId === id)!;
+    expect(find(reordered, "alpha").centerX).toBeCloseTo(find(first, "alpha").centerX, 6);
+    expect(find(reordered, "alpha").centerY).toBeCloseTo(find(first, "alpha").centerY, 6);
+    expect(find(reordered, "bravo").centerX).toBeCloseTo(find(first, "bravo").centerX, 6);
+    expect(find(reordered, "bravo").centerY).toBeCloseTo(find(first, "bravo").centerY, 6);
+  });
+
   it("lays fleet zones on deterministic slots with sqrt-of-count sizing", () => {
     const zones = resolveTriageFleetZoneLayout([
       { theaterId: "big", count: 9 },
@@ -954,7 +973,6 @@ describe("triage store", () => {
       operationId: "awaiting",
       picked: false,
       deckVisible: true,
-      deckAvailable: true,
       spotlight: true,
       dwell: null,
       now: 1_000,
@@ -969,23 +987,21 @@ describe("triage store", () => {
       operationId: "awaiting",
       picked: false,
       deckVisible: true,
-      deckAvailable: true,
       spotlight: true,
       dwell: started.dwell,
       now: 1_000 + TRIAGE_DECK_ARRIVAL_DWELL_MS,
       suppressed: false,
     }).promote).toBe(true);
-    expect(resolveTriageDeckPromotion({ operationId: "picked", picked: true, deckVisible: true, deckAvailable: true, spotlight: true, dwell: started.dwell, now: 1_001, suppressed: false }).promote).toBe(true);
-    expect(resolveTriageDeckPromotion({ operationId: "next", picked: false, deckVisible: false, deckAvailable: false, spotlight: true, dwell: null, now: 1_001, suppressed: false }).promote).toBe(true);
-    expect(resolveTriageDeckPromotion({ operationId: "awaiting", picked: false, deckVisible: true, deckAvailable: true, spotlight: true, dwell: null, now: 1_001, suppressed: true }).promote).toBe(true);
+    expect(resolveTriageDeckPromotion({ operationId: "picked", picked: true, deckVisible: true, spotlight: true, dwell: started.dwell, now: 1_001, suppressed: false }).promote).toBe(true);
+    expect(resolveTriageDeckPromotion({ operationId: "next", picked: false, deckVisible: false, spotlight: true, dwell: null, now: 1_001, suppressed: false }).promote).toBe(true);
+    expect(resolveTriageDeckPromotion({ operationId: "awaiting", picked: false, deckVisible: true, spotlight: true, dwell: null, now: 1_001, suppressed: true }).promote).toBe(true);
   });
 
-  it("stops automatic promotion while the spotlight is off, except for picks and stage advancement", () => {
+  it("stops every automatic promotion while the spotlight is off, leaving only picks", () => {
     expect(resolveTriageDeckPromotion({
       operationId: "awaiting",
       picked: false,
       deckVisible: true,
-      deckAvailable: true,
       spotlight: false,
       dwell: null,
       now: 1_000,
@@ -995,22 +1011,22 @@ describe("triage store", () => {
       operationId: "awaiting",
       picked: false,
       deckVisible: true,
-      deckAvailable: true,
       spotlight: false,
       dwell: null,
       now: 1_000 + TRIAGE_DECK_ARRIVAL_DWELL_MS + 5_000,
       suppressed: false,
     })).toEqual({ promote: false, arrivingOperationId: null, dwell: null });
     // 지목은 스포트라이트와 무관하게 언제나 등단한다.
-    expect(resolveTriageDeckPromotion({ operationId: "picked", picked: true, deckVisible: true, deckAvailable: true, spotlight: false, dwell: null, now: 1_001, suppressed: false }).promote).toBe(true);
-    // deck가 보이지 않을 때는 무대 진행이 멈추지 않는다.
-    expect(resolveTriageDeckPromotion({ operationId: "next", picked: false, deckVisible: false, deckAvailable: false, spotlight: false, dwell: null, now: 1_001, suppressed: false }).promote).toBe(true);
+    expect(resolveTriageDeckPromotion({ operationId: "picked", picked: true, deckVisible: true, spotlight: false, dwell: null, now: 1_001, suppressed: false }).promote).toBe(true);
+    // OFF에서는 무대 교대도 자동으로 일어나지 않는다 — 무대의 작업이 끝나 다음 대기 건이
+    // 저절로 올라오는 것이야말로 이 스위치가 막으려는 동작이다.
+    expect(resolveTriageDeckPromotion({ operationId: "next", picked: false, deckVisible: false, spotlight: false, dwell: null, now: 1_001, suppressed: false }).promote).toBe(false);
     // reduced-motion(suppressed)의 즉시 등단보다 스포트라이트 OFF가 우선한다.
-    expect(resolveTriageDeckPromotion({ operationId: "awaiting", picked: false, deckVisible: true, deckAvailable: true, spotlight: false, dwell: null, now: 1_001, suppressed: true }).promote).toBe(false);
+    expect(resolveTriageDeckPromotion({ operationId: "awaiting", picked: false, deckVisible: true, spotlight: false, dwell: null, now: 1_001, suppressed: true }).promote).toBe(false);
     // 입장 연출 중(deck는 곧 보일 상태)에도 저장된 OFF가 무시되지 않는다.
-    expect(resolveTriageDeckPromotion({ operationId: "awaiting", picked: false, deckVisible: false, deckAvailable: true, spotlight: false, dwell: null, now: 1_001, suppressed: false }).promote).toBe(false);
+    expect(resolveTriageDeckPromotion({ operationId: "awaiting", picked: false, deckVisible: false, spotlight: false, dwell: null, now: 1_001, suppressed: false }).promote).toBe(false);
     // ON에서는 입장 연출 중 등단이 기존대로 유지된다.
-    expect(resolveTriageDeckPromotion({ operationId: "awaiting", picked: false, deckVisible: false, deckAvailable: true, spotlight: true, dwell: null, now: 1_001, suppressed: false }).promote).toBe(true);
+    expect(resolveTriageDeckPromotion({ operationId: "awaiting", picked: false, deckVisible: false, spotlight: true, dwell: null, now: 1_001, suppressed: false }).promote).toBe(true);
   });
 
   it("marks the dwelling Watch Deck card as arriving", () => {
@@ -1684,11 +1700,23 @@ describe("triage fleet map markers", () => {
     const deferredDot = container.querySelector<HTMLElement>('[data-triage-map-dot="beta-map"]');
     expect(deferredDot?.classList.contains("is-deferred")).toBe(true);
     expect(deferredDot?.classList.contains("is-awaiting")).toBe(true);
-    // 실행 마커는 결정적 유영 변수를 주입받고, 비실행 마커는 받지 않는다.
+    // 모든 마커가 결정적 유영 변수를 주입받는다 — 정지한 점은 죽은 표시로 읽힌다.
     const runningDot = container.querySelector<HTMLElement>('[data-triage-map-dot="alpha-map"]');
     expect(runningDot?.style.getPropertyValue("--triage-drift-mult")).not.toBe("");
     expect(runningDot?.style.getPropertyValue("--triage-drift-x1")).toMatch(/px$/);
-    expect(deferredDot?.style.getPropertyValue("--triage-drift-mult")).toBe("");
+    expect(deferredDot?.style.getPropertyValue("--triage-drift-mult")).not.toBe("");
+    expect(deferredDot?.style.getPropertyValue("--triage-drift-x1")).toMatch(/px$/);
+  });
+
+  it("keeps drift deterministic per id and narrows amplitude for non-running dots", () => {
+    const active = resolveTriageMapDriftStyle("alpha-map", true) as Record<string, string>;
+    const calm = resolveTriageMapDriftStyle("alpha-map", false) as Record<string, string>;
+    // 같은 id는 언제나 같은 경로를 받는다 — 렌더마다 흔들리면 지도가 아니다.
+    expect(resolveTriageMapDriftStyle("alpha-map", true)).toEqual(active);
+    // 상태 위계는 진폭과 주기가 만든다: 비실행은 더 좁게, 더 느리게 돈다.
+    const amplitude = (style: Record<string, string>) => Math.abs(Number.parseFloat(style["--triage-drift-x1"]!));
+    expect(amplitude(calm)).toBeLessThan(amplitude(active));
+    expect(Number.parseFloat(calm["--triage-drift-mult"]!)).toBeGreaterThan(Number.parseFloat(active["--triage-drift-mult"]!));
   });
 
   it("classifies an idle arrival as an awaiting marker, matching the queue vocabulary", () => {

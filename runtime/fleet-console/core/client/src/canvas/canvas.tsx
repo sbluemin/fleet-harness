@@ -18,7 +18,7 @@ import { resolveOperationActivity } from "../operation-activity.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
-import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, minimizeOperation, panelMotionSuppressed, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
+import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, minimizeOperation, panelMotionSuppressed, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
 import { escapeSelectorValue, flyPanelMotionGhost, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
@@ -323,17 +323,14 @@ export function OperationsCanvas({
     ? state.operations.filter((operation) => resolveOperationActivity(operation, state.operationStatus) !== "dormant")
     : theaterOperations;
   const triageDeckOperationIdSet = new Set(triageDeckOperations.map((operation) => operation.id));
-  // 입장 연출(triageEntering) 중에는 deck가 아직 안 보이지만 연출이 끝나면 보인다 — 스포트라이트
-  // OFF 억제는 이 "보일 상태"(deckAvailable)를 기준으로 해야 진입 순간의 저장된 OFF가 무시되지 않는다.
-  const deckAvailable = triageActive
+  const deckWasVisible = triageActive
     && previousTriageDeckStageRef.current === null
-    && triageDeckOperations.length > 0;
-  const deckWasVisible = deckAvailable && !triageEntering;
+    && triageDeckOperations.length > 0
+    && !triageEntering;
   const deckPromotion = resolveTriageDeckPromotion({
     operationId: candidateTriageStage?.operation.id ?? null,
     picked: candidateTriageStage?.picked === true,
     deckVisible: deckWasVisible,
-    deckAvailable,
     spotlight: triageSpotlightEnabled,
     dwell: triageDeckArrivalDwellRef.current,
     now: Date.now(),
@@ -973,6 +970,11 @@ export function OperationsCanvas({
           : getTheaterCanvasSnapshot(operation.theaterId).operations[operation.id] ?? operation.geometry ?? null}
         previewConfigFor={triagePreviewConfigFor}
         freshOperationIds={freshDeckOperationIds}
+        onMapMarkerMove={(operationId, theaterId, geometry) => {
+          // 지도에서 옮긴 자리는 캔버스의 자리다 — 라이브 좌표를 먼저 세우고 durable에도 남긴다.
+          setTheaterOperationGeometry(theaterId, operationId, geometry);
+          void updatePluginOperationGeometry(operationId, geometry);
+        }}
       />
       {cruiseEntering ? (
         <div className="canvas-mode-curtain canvas-cruise-curtain" aria-hidden="true">

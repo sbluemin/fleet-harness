@@ -225,7 +225,13 @@ function persistTriageDeckZoom(zoom: number): void {
 const GOLDEN_ANGLE = 2.399963;
 const GOLDEN_FRACTION = 0.61803;
 const MAP_MIN_DISTANCE_PCT = 4;
-const MAP_RELAXATION_PASSES = 12;
+const MAP_RELAXATION_PASSES = 30;
+// 마지막 구간은 최소 간격만 본다 — 이름표 줄 나누기는 그 자체가 점을 다시 붙일 수 있어,
+// 끝까지 함께 돌리면 두 제약이 서로를 되돌리며 4% 계약이 미달인 채로 패스가 소진된다.
+const MAP_LABEL_RELAXATION_PASSES = 18;
+// 이름표가 한 줄로 차지하는 세로 대역과, 같은 줄에 서도 글자가 안 겹치는 최소 가로 간격.
+const MAP_LABEL_ROW_PCT = 4.5;
+const MAP_LABEL_MIN_DX_PCT = 26;
 export const TRIAGE_MAP_COLLINEAR_RATIO = 0.12;
 
 export interface TriageMapMarkerLayout {
@@ -261,7 +267,7 @@ const TRIAGE_FLEET_ZONE_GAP = 3;
 const TRIAGE_FLEET_ZONE_LABEL_HEADROOM = 8;
 
 export function resolveTriageFleetZoneLayout(
-  zones: ReadonlyArray<{ readonly theaterId: string; readonly count: number }>,
+  zones: ReadonlyArray<{ readonly theaterId: string; readonly count: number; readonly slotIndex?: number }>,
   aspect = 1.8,
 ): readonly TriageFleetZoneLayout[] {
   if (zones.length === 0) return [];
@@ -269,7 +275,10 @@ export function resolveTriageFleetZoneLayout(
   const width = 100 * safeAspect;
   const total = zones.reduce((sum, zone) => sum + Math.max(1, zone.count), 0) || 1;
   const circles = zones.map((zone, index) => {
-    const slot = TRIAGE_FLEET_ZONE_SLOTS[index % TRIAGE_FLEET_ZONE_SLOTS.length]!;
+    // 슬롯은 Theater 자신의 고정 번호로 고른다 — 입력 순서로 고르면 밴드 정렬이 대기 수를
+    // 따라 바뀔 때마다 구역이 서로 자리를 맞바꾼다. 판 위의 자리는 패널 상태가 아니라
+    // Theater 정체성에 묶여야 한다(구역 색을 theaterIndex로 고정한 것과 같은 이유).
+    const slot = TRIAGE_FLEET_ZONE_SLOTS[(zone.slotIndex ?? index) % TRIAGE_FLEET_ZONE_SLOTS.length]!;
     const share = Math.sqrt(Math.max(1, zone.count) / total);
     // 지름 하한 34%는 라벨+dot 판독, 상한 66%는 이웃 원과의 공존을 지킨다.
     return {
@@ -323,7 +332,51 @@ export function resolveTriageFleetZoneLayout(
 
 export function resolveTriageMapMarkerLayout(
   operations: ReadonlyArray<Pick<OperationNode, "id"> & { readonly geometry: OperationGeometry | null }>,
+  /** 구역 중앙에 Theater 표석이 서는 배치인지 — 표석이 없는 단일 함대(판 전체)는 비워 둘 띠가 없다. */
+  reserveLabelBand = false,
 ): readonly TriageMapMarkerLayout[] {
+  const { minX, maxX, minY, maxY, degenerate } = resolveTriageMapBounds(operations);
+  const points = new Map<string, { x: number; y: number }>();
+  // 손으로 놓은 마커는 그 자리에 고정한다 — 이완도 띠 회피도 이 점은 밀지 않고, 나머지가 비켜간다.
+  const pinned = new Set<string>();
+  for (const operation of operations) {
+    const override = triageMapMarkerOverrides.get(operation.id);
+    if (override) {
+      points.set(operation.id, { ...override });
+      pinned.add(operation.id);
+      continue;
+    }
+    if (!degenerate && operation.geometry) {
+      const centerX = operation.geometry.x + operation.geometry.width / 2;
+      const centerY = operation.geometry.y + operation.geometry.height / 2;
+      const x = 8 + ((centerX - minX) / (maxX - minX)) * 84;
+      const y = 10 + ((centerY - minY) / (maxY - minY)) * 76;
+      points.set(operation.id, { x, y });
+      continue;
+    }
+    const hashIndex = hashTriageMapKey(operation.id);
+    const angle = hashIndex * GOLDEN_ANGLE;
+    const radius = Math.sqrt((hashIndex * GOLDEN_FRACTION) % 1);
+    points.set(operation.id, {
+      x: clampPercent(50 + Math.cos(angle) * radius * 42),
+      y: clampPercent(48 + Math.sin(angle) * radius * 38),
+    });
+  }
+
+  relaxTriageMapMarkers(points, reserveLabelBand, pinned);
+  return operations.map((operation) => ({
+    operationId: operation.id,
+    x: points.get(operation.id)!.x,
+    y: points.get(operation.id)!.y,
+  }));
+}
+
+// 마커 배치가 쓰는 정규화 기준 상자와 그 퇴화 판정 — 배치와 역투영이 같은 함수를 보게 해
+// 두 기준이 어긋날 여지를 없앤다. 퇴화(점 3개 미만 또는 거의 한 줄)면 결정적 해시 산포로
+// 떨어지므로 상자는 의미가 없다.
+function resolveTriageMapBounds(
+  operations: ReadonlyArray<{ readonly geometry: OperationGeometry | null }>,
+): { minX: number; maxX: number; minY: number; maxY: number; degenerate: boolean } {
   const centers = operations.flatMap((operation) => operation.geometry
     ? [{
         x: operation.geometry.x + operation.geometry.width / 2,
@@ -340,7 +393,6 @@ export function resolveTriageMapMarkerLayout(
     minY = Math.min(minY, center.y);
     maxY = Math.max(maxY, center.y);
   }
-
   let degenerate = centers.length < 3;
   if (!degenerate) {
     const meanX = centers.reduce((sum, center) => sum + center.x, 0) / centers.length;
@@ -364,67 +416,169 @@ export function resolveTriageMapMarkerLayout(
     const minorSpread = Math.sqrt(Math.max(0, halfTrace - eigenDelta));
     degenerate = majorSpread === 0 || minorSpread / majorSpread < TRIAGE_MAP_COLLINEAR_RATIO;
   }
+  return { minX, maxX, minY, maxY, degenerate };
+}
 
-  const points = new Map<string, { x: number; y: number }>();
-  for (const operation of operations) {
-    if (!degenerate && operation.geometry) {
-      const centerX = operation.geometry.x + operation.geometry.width / 2;
-      const centerY = operation.geometry.y + operation.geometry.height / 2;
-      const x = 8 + ((centerX - minX) / (maxX - minX)) * 84;
-      const y = 10 + ((centerY - minY) / (maxY - minY)) * 76;
-      points.set(operation.id, { x, y });
-      continue;
-    }
-    const hashIndex = hashTriageMapKey(operation.id);
-    const angle = hashIndex * GOLDEN_ANGLE;
-    const radius = Math.sqrt((hashIndex * GOLDEN_FRACTION) % 1);
-    points.set(operation.id, {
-      x: clampPercent(50 + Math.cos(angle) * radius * 42),
-      y: clampPercent(48 + Math.sin(angle) * radius * 38),
-    });
-  }
+// 사용자가 지도에서 직접 끌어다 놓은 마커 자리. 자동 배치(geometry 투영·해시 산포)보다 세다 —
+// 손으로 정한 자리를 다음 렌더가 도로 흩뜨리면 옮길 수 없는 지도와 같다. 판 좌표는 캔버스
+// geometry에서 파생되지만 그 역이 항상 성립하지는 않으므로(퇴화 배치에는 되돌릴 원본이 없다)
+// 판에서의 자리를 판이 직접 기억한다.
+const triageMapMarkerOverrides = new Map<string, { x: number; y: number }>();
 
-  relaxTriageMapMarkers(points);
-  return operations.map((operation) => ({
-    operationId: operation.id,
-    x: points.get(operation.id)!.x,
-    y: points.get(operation.id)!.y,
-  }));
+export function setTriageMapMarkerOverride(operationId: string, point: { x: number; y: number }): void {
+  triageMapMarkerOverrides.set(operationId, { x: clampPercent(point.x), y: clampPercent(point.y) });
+  emitTriage();
+}
+
+export function clearTriageMapMarkerOverrides(): void {
+  if (triageMapMarkerOverrides.size === 0) return;
+  triageMapMarkerOverrides.clear();
+  emitTriage();
+}
+
+export interface TriageMapProjection {
+  readonly minX: number;
+  readonly maxX: number;
+  readonly minY: number;
+  readonly maxY: number;
+}
+
+// 마커 좌표를 캔버스 좌표로 되돌리기 위한 기준 상자 — 마커 배치가 쓰는 것과 같은 정규화
+// 기준이다. 배치가 해시 산포로 떨어지는 경우(geometry 부재·공선)는 되돌릴 원본이 없으므로
+// null을 답한다. 그 판정을 호출부가 흉내 내면 두 곳의 기준이 어긋나므로 여기서만 정한다.
+export function resolveTriageMapProjection(
+  operations: ReadonlyArray<{ readonly geometry: OperationGeometry | null }>,
+): TriageMapProjection | null {
+  const box = resolveTriageMapBounds(operations);
+  return box.degenerate ? null : { minX: box.minX, maxX: box.maxX, minY: box.minY, maxY: box.maxY };
+}
+
+// 지도에서 옮긴 만큼 캔버스에서도 옮긴다 — 이동량만 환산하고 원래 좌표에 더한다.
+// 마커의 절대 위치를 그대로 역투영하면 안 된다: 화면에 선 마커는 겹침 이완과 표석 띠 회피가
+// 이미 옮겨 놓은 자리라 geometry의 직접 투영이 아니다. 그 값을 되돌리면 가로로만 끌어도
+// 패널이 세로로 뛴다(띠를 피해 밀려난 만큼). 이동량은 그 왜곡을 타지 않는다.
+export function projectTriageMapDeltaToGeometry(
+  delta: { readonly x: number; readonly y: number },
+  projection: TriageMapProjection,
+  geometry: OperationGeometry,
+): OperationGeometry {
+  const spanX = Math.max(1, projection.maxX - projection.minX);
+  const spanY = Math.max(1, projection.maxY - projection.minY);
+  return {
+    ...geometry,
+    x: Math.round(geometry.x + (delta.x / 84) * spanX),
+    y: Math.round(geometry.y + (delta.y / 76) * spanY),
+  };
+}
+
+// Theater 표석이 앉는 구역 중앙의 가로 띠. 마커의 이름표가 점 오른쪽으로 뻗으므로 왼쪽은
+// 조금 여유를 두고 오른쪽으로 넓게 잡는다.
+const MAP_LABEL_BAND_TOP = 41;
+const MAP_LABEL_BAND_BOTTOM = 61;
+const MAP_LABEL_BAND_LEFT = 12;
+const MAP_LABEL_BAND_RIGHT = 92;
+
+// 표석 자리는 이완이 좌표를 놓을 때마다 함께 지키는 하드 제약이다 — 점과 그 이름표가 Theater
+// 문구 위에 겹치면 둘 다 읽히지 않는다. 이완이 끝난 뒤 한 번 스냅하는 방식은 그 스냅이 직전에
+// 확보한 최소 간격을 도로 무너뜨린다(띠 아래 절반의 점을 위로 올리면 그 위 이웃과 다시 붙는다).
+// 띠 밖으로는 세로로 낸다 — 가로 이동은 소속 구역을 벗어나기 쉽다.
+function placeTriageMapPoint(
+  point: { x: number; y: number },
+  x: number,
+  y: number,
+  reserveLabelBand: boolean,
+): void {
+  point.x = clampPercent(x);
+  point.y = clampPercent(y);
+  if (!reserveLabelBand) return;
+  if (point.y <= MAP_LABEL_BAND_TOP || point.y >= MAP_LABEL_BAND_BOTTOM) return;
+  if (point.x <= MAP_LABEL_BAND_LEFT || point.x >= MAP_LABEL_BAND_RIGHT) return;
+  const bandCenter = (MAP_LABEL_BAND_TOP + MAP_LABEL_BAND_BOTTOM) / 2;
+  point.y = clampPercent(point.y < bandCenter ? MAP_LABEL_BAND_TOP - 1 : MAP_LABEL_BAND_BOTTOM + 1);
 }
 
 // 결정적 겹침 이완 — 가로세로 등가중 % 평면에서 4% 미만으로 붙은 쌍을 절반씩 밀어낸다.
 // 반복 순서가 결과를 바꾸므로 entries는 좌표로 정렬해 입력 배열 순서와 무관하게 만든다.
-function relaxTriageMapMarkers(points: Map<string, { x: number; y: number }>): void {
-  const entries = [...points.values()].sort((left, right) => left.x - right.x || left.y - right.y);
+function relaxTriageMapMarkers(
+  points: Map<string, { x: number; y: number }>,
+  reserveLabelBand = false,
+  pinned: ReadonlySet<string> = new Set(),
+): void {
+  const entries = [...points.entries()]
+    .map(([operationId, point]) => ({ point, pinned: pinned.has(operationId) }))
+    .sort((left, right) => left.point.x - right.point.x || left.point.y - right.point.y);
+  if (entries.length === 0) return;
+  // 초기 배치가 이미 띠를 밟고 있을 수 있다 — 이완 전에 제자리에서 한 번 투영해 둔다.
+  // 손으로 놓은 자리는 띠 위라도 존중한다: 사용자가 보면서 정한 자리다.
+  for (const entry of entries) {
+    if (entry.pinned) continue;
+    placeTriageMapPoint(entry.point, entry.point.x, entry.point.y, reserveLabelBand);
+  }
   if (entries.length < 2) return;
   for (let pass = 0; pass < MAP_RELAXATION_PASSES; pass += 1) {
     let moved = false;
     for (let left = 0; left < entries.length; left += 1) {
       for (let right = left + 1; right < entries.length; right += 1) {
-        const a = entries[left]!;
-        const b = entries[right]!;
+        const first = entries[left]!;
+        const second = entries[right]!;
+        if (first.pinned && second.pinned) continue;
+        const a = first.point;
+        const b = second.point;
+        // 고정된 쪽은 제자리에 두고 상대만 그만큼 더 비켜간다 — 둘로 나눠 밀면 고정이 풀린다.
+        const shiftA = first.pinned ? 0 : (second.pinned ? 2 : 1);
+        const shiftB = second.pinned ? 0 : (first.pinned ? 2 : 1);
+        const nudge = (
+          entry: { point: { x: number; y: number }; pinned: boolean },
+          x: number,
+          y: number,
+        ) => {
+          if (entry.pinned) return;
+          placeTriageMapPoint(entry.point, x, y, reserveLabelBand);
+        };
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const distance = Math.hypot(dx, dy);
-        if (distance >= MAP_MIN_DISTANCE_PCT) continue;
-        moved = true;
-        if (distance > 1e-6) {
-          const push = (MAP_MIN_DISTANCE_PCT - distance) / 2;
-          const ux = dx / distance;
-          const uy = dy / distance;
-          a.x = clampPercent(a.x - ux * push);
-          a.y = clampPercent(a.y - uy * push);
-          b.x = clampPercent(b.x + ux * push);
-          b.y = clampPercent(b.y + uy * push);
-        } else {
-          // 완전 일치는 결정적 방향으로만 분리한다 — 무작위 방향이면 렌더마다 흔들린다.
-          a.x = clampPercent(a.x - MAP_MIN_DISTANCE_PCT / 2);
-          b.x = clampPercent(b.x + MAP_MIN_DISTANCE_PCT / 2);
+        if (distance < MAP_MIN_DISTANCE_PCT) {
+          moved = true;
+          if (distance > 1e-6) {
+            const push = (MAP_MIN_DISTANCE_PCT - distance) / 2;
+            const ux = dx / distance;
+            const uy = dy / distance;
+            nudge(first, a.x - ux * push * shiftA, a.y - uy * push * shiftA);
+            nudge(second, b.x + ux * push * shiftB, b.y + uy * push * shiftB);
+          } else {
+            // 완전 일치는 결정적 방향으로만 분리한다 — 무작위 방향이면 렌더마다 흔들린다.
+            nudge(first, a.x - (MAP_MIN_DISTANCE_PCT / 2) * shiftA, a.y);
+            nudge(second, b.x + (MAP_MIN_DISTANCE_PCT / 2) * shiftB, b.y);
+          }
+          continue;
         }
+        // 점끼리 떨어져 있어도 이름표는 겹친다 — 이름표는 점 오른쪽으로 길게 뻗으므로, 같은
+        // 줄에 선 두 점은 가로로 한참 벌어져야 글자가 안 포개진다. 먼저 세로로 벌린다(줄만
+        // 달라지면 겹침이 끝난다). 띠나 판 가장자리에 막혀 줄이 갈리지 않으면 가로로 민다.
+        // 후반 패스에서는 이 규칙을 끈다 — 줄 나누기는 점을 다시 붙일 수 있어, 끝까지 함께
+        // 돌리면 4% 간격 계약이 미달인 채로 패스가 소진된다. 마지막은 간격만 보고 수렴시킨다.
+        if (pass >= MAP_LABEL_RELAXATION_PASSES) continue;
+        if (Math.abs(dy) >= MAP_LABEL_ROW_PCT || Math.abs(dx) >= MAP_LABEL_MIN_DX_PCT) continue;
+        moved = true;
+        const rowPush = (MAP_LABEL_ROW_PCT - Math.abs(dy)) / 2 + 0.35;
+        const direction = dy >= 0 ? 1 : -1;
+        const beforeGap = Math.abs(dy);
+        nudge(first, a.x, a.y - direction * rowPush * shiftA);
+        nudge(second, b.x, b.y + direction * rowPush * shiftB);
+        if (Math.abs(b.y - a.y) > beforeGap + 1e-6) continue;
+        const columnPush = (MAP_LABEL_MIN_DX_PCT - Math.abs(dx)) / 2;
+        const columnDirection = dx >= 0 ? 1 : -1;
+        nudge(first, a.x - columnDirection * columnPush * shiftA, a.y);
+        nudge(second, b.x + columnDirection * columnPush * shiftB, b.y);
       }
     }
     if (!moved) return;
   }
+}
+
+export function clampTriageMapPercent(value: number): number {
+  return clampPercent(value);
 }
 
 function clampPercent(value: number): number {

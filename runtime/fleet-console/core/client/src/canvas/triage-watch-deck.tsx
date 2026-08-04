@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../i18n/index.js";
@@ -20,14 +20,19 @@ import {
   isTriageWaitingOperation,
   nextTriageDeckZoomPreset,
   pickTriageOperation,
+  clampTriageMapPercent,
+  projectTriageMapDeltaToGeometry,
   resolveTriageFleetZoneLayout,
   resolveTriageMapMarkerLayout,
+  resolveTriageMapProjection,
+  setTriageMapMarkerOverride,
   setTriageDeckMapModeLive,
   setTriageDeckZoom,
   setTriageDeckZoomLive,
   subscribeTriage,
   TRIAGE_DECK_CARD_BASE_MIN_PX,
   TRIAGE_DECK_ZOOM_DEFAULT,
+  type TriageMapProjection,
 } from "./triage-store.js";
 
 export interface TriageDeckTheater {
@@ -56,6 +61,9 @@ interface TriageWatchDeckProps {
   readonly previewConfigFor?: (operation: OperationNode) => OperationBodyConfig | null;
   /** 스포트라이트 OFF에서 검토 전인 대기 카드 — 지속 aurora 맥동(is-fresh)을 얹는다. */
   readonly freshOperationIds?: ReadonlySet<string>;
+  /** 지도에서 마커를 끌어 옮겼을 때의 새 캔버스 좌표 — 지도는 함대의 축소판이므로 여기서 옮긴
+      자리가 곧 캔버스에서의 자리다. 전 Theater가 올라오므로 소속 Theater를 함께 넘긴다. */
+  readonly onMapMarkerMove?: (operationId: string, theaterId: string, geometry: OperationGeometry) => void;
 }
 
 export interface TriageDeckArrivalDwell {
@@ -121,6 +129,90 @@ export function resolveTriageQuicklookOrigin(
       : "center";
   return `${horizontal} ${vertical}`;
 }
+
+export interface TriageMorphFrame {
+  readonly dx: number;
+  readonly dy: number;
+  readonly scale: number;
+}
+
+// 밀도 전환은 두 표면의 교대가 아니라 같은 함대의 변형이다 — 카드가 자기 점이 설 자리로
+// 날아가 수축하고(지도 진입), 점이 있던 자리에서 카드가 자라난다(지도 이탈). 두 방향 모두
+// "카드를 점 자리에 놓는" 한 장의 프레임으로 기술되고, 방향은 재생 순서가 정한다.
+// 배율은 균등하게 잡는다 — 축별로 다르면 카드가 찌그러지며 빨려 들어간다.
+export function resolveTriageMorphFrame(cardRect: DOMRect, dotRect: DOMRect): TriageMorphFrame {
+  return {
+    dx: (dotRect.left + dotRect.width / 2) - (cardRect.left + cardRect.width / 2),
+    dy: (dotRect.top + dotRect.height / 2) - (cardRect.top + cardRect.height / 2),
+    scale: Math.min(
+      dotRect.width / Math.max(1, cardRect.width),
+      dotRect.height / Math.max(1, cardRect.height),
+    ),
+  };
+}
+
+// CSS 쪽 전환 길이(--duration-slow * 1.15 ≈ 414ms)보다 넉넉히 길게 잡아 전환이 끝나기 전에
+// 프레임이 걷히는 일을 막는다.
+export const TRIAGE_DECK_MORPH_MS = 470;
+
+interface TriageDeckMorph {
+  readonly phase: "to-map" | "to-cards";
+  readonly frames: ReadonlyMap<string, TriageMorphFrame>;
+  /** 프레임이 실제로 적용되는 단계인지 — to-map은 적용이 곧 재생이고, to-cards는 적용(무전이)
+      뒤 다음 프레임에 걷어내는 것이 재생이다(FLIP invert & play). */
+  readonly applied: boolean;
+}
+
+export interface TriageMapQuicklookPlacement {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+// 지도 Quick-Look 기본 크기 — 카드 Quick-Look과 같은 판독 크기(1.0× 카드 × 1.95배)를 준다.
+// 지도 모드의 실제 카드 배율은 판독 한계 아래라, 점의 확대창을 그 배율에 묶으면 확대해도
+// 읽히지 않는다. 확대창은 "1.0×에서 확대한 카드"라는 하나의 크기 계약을 따른다.
+export const TRIAGE_MAP_QUICKLOOK_WIDTH = Math.round(TRIAGE_DECK_CARD_BASE_MIN_PX * TRIAGE_DECK_QUICKLOOK_SCALE);
+export const TRIAGE_MAP_QUICKLOOK_HEIGHT = Math.round(150 * TRIAGE_DECK_QUICKLOOK_SCALE);
+const TRIAGE_MAP_QUICKLOOK_MARGIN = 8;
+const TRIAGE_MAP_QUICKLOOK_GAP = 14;
+
+// 확대창은 점에 붙는다 — 툴팁과 같은 앵커 문법이다. 점 중앙에 얹고 경계로 밀어내면 판
+// 가장자리의 점일수록 창이 포인터에서 멀리 떨어져 "다른 곳에서 열린 창"으로 읽힌다.
+// 기본은 점의 오른쪽 아래, 그쪽이 좁으면 반대편으로 뒤집고, 양쪽 다 좁을 때만 경계로 민다.
+// 판이 확대창보다 좁으면 크기 자체를 판에 맞춰 깎는다(카드 Quick-Look의 배율 클램프와 같은
+// 정직한 열화).
+export function resolveTriageMapQuicklookPlacement(
+  dotRect: DOMRect,
+  gridRect: DOMRect,
+  width = TRIAGE_MAP_QUICKLOOK_WIDTH,
+  height = TRIAGE_MAP_QUICKLOOK_HEIGHT,
+): TriageMapQuicklookPlacement {
+  const margin = TRIAGE_MAP_QUICKLOOK_MARGIN;
+  const gap = TRIAGE_MAP_QUICKLOOK_GAP;
+  const boxWidth = Math.max(1, Math.min(width, gridRect.width - margin * 2));
+  const boxHeight = Math.max(1, Math.min(height, gridRect.height - margin * 2));
+  const anchor = (start: number, end: number, span: number, box: number) => {
+    // start/end는 점의 양 끝(판 기준). 오른쪽(아래)에 붙여 보고, 넘치면 왼쪽(위)으로 뒤집는다.
+    const after = end + gap;
+    if (after + box + margin <= span) return after;
+    const before = start - gap - box;
+    if (before >= margin) return before;
+    // 어느 쪽도 못 담으면 점 중앙을 기준으로 경계 안에 밀어 넣는다.
+    const centered = (start + end) / 2 - box / 2;
+    return Math.max(margin, Math.min(centered, Math.max(margin, span - box - margin)));
+  };
+  const left = dotRect.left - gridRect.left;
+  const top = dotRect.top - gridRect.top;
+  return {
+    left: anchor(left, left + dotRect.width, gridRect.width, boxWidth),
+    top: anchor(top, top + dotRect.height, gridRect.height, boxHeight),
+    width: boxWidth,
+    height: boxHeight,
+  };
+}
+
 // 카드 정렬 등급 — 사이드바 STATUS 축의 섹션 순서(대기→실행 중→백그라운드→유휴→휴면)를 그대로
 // 따른다. deck이 자체 순서를 정의하면 같은 상태가 두 표면에서 다른 위치로 읽힌다.
 const TRIAGE_DECK_ACTIVITY_RANK: Record<OperationActivity, number> = {
@@ -350,10 +442,6 @@ export function resolveTriageDeckPromotion(input: {
   readonly operationId: string | null;
   readonly picked: boolean;
   readonly deckVisible: boolean;
-  /** deck가 지금 보이거나(visible) 입장 연출이 끝나면 보일 상태 — 이전 무대 없음 && deck 카드 존재.
-      스포트라이트 OFF 억제는 이 넓은 기준을 쓴다: 입장 연출 중(deckVisible=false)에도 저장된 OFF가
-      무시되고 등단하는 일이 없어야 하고, 무대 교대(이전 무대 존재)는 여기 해당하지 않아 계속 진행된다. */
-  readonly deckAvailable: boolean;
   readonly spotlight: boolean;
   readonly dwell: TriageDeckArrivalDwell | null;
   readonly now: number;
@@ -362,10 +450,12 @@ export function resolveTriageDeckPromotion(input: {
   if (input.operationId !== null && input.picked) {
     return { promote: true, arrivingOperationId: null, dwell: null };
   }
-  // 스포트라이트 OFF에서는 자동 등단을 하지 않는다 — reduced-motion의 즉시 등단(suppressed)과
-  // 입장 연출 중의 deck 비가시(!deckVisible) 승격보다 먼저 판정해야 저장된 OFF가 항상 존중된다.
+  // 스포트라이트 OFF에서는 자동 등단이 아예 없다 — 무대를 바꾸는 것은 오직 지목(picked)뿐이다.
+  // 무대가 이미 서 있는 교대 상황도 예외가 아니다: 무대의 작업이 끝나 다음 대기 건이 저절로
+  // 올라오는 것이야말로 사용자가 이 스위치를 끄면서 막으려는 동작이다. reduced-motion의 즉시
+  // 등단(suppressed)과 입장 연출 중(!deckVisible) 승격보다 먼저 판정해야 저장된 OFF가 항상 이긴다.
   // 도착 신호는 카드의 is-fresh가 계속 책임진다.
-  if (input.operationId !== null && !input.spotlight && input.deckAvailable) {
+  if (input.operationId !== null && !input.spotlight) {
     return { promote: false, arrivingOperationId: null, dwell: null };
   }
   if (!input.operationId || !input.deckVisible) {
@@ -401,6 +491,7 @@ export function TriageWatchDeck({
   mapGeometryFor,
   previewConfigFor,
   freshOperationIds,
+  onMapMarkerMove,
 }: TriageWatchDeckProps) {
   const t = useT();
   const gridRef = useRef<HTMLDivElement | null>(null);
@@ -409,6 +500,14 @@ export function TriageWatchDeck({
   // Quick-Look 상태 — 동시에 한 카드만 확대된다. 타이머도 1개만 유지해 카드 사이를 빠르게
   // 오갈 때 이전 카드의 드웰이 뒤늦게 발동해 두 카드가 동시에 확대되는 일을 막는다.
   const [quicklook, setQuicklook] = useState<{ operationId: string; origin: string; scale: number } | null>(null);
+  // 지도 모드의 Quick-Look — 카드가 은닉된 채라 카드 자신을 확대할 수 없다. 같은 hover 문법으로
+  // 같은 카드 얼굴을 점 위에 띄우는 별도 표면이며, 드웰 타이머는 카드와 공유한다(두 표면이
+  // 동시에 열리는 상태가 없어야 한다 — 지도 모드에서는 카드가, 카드 모드에서는 점이 없다).
+  const [mapQuicklook, setMapQuicklook] = useState<{ operationId: string; placement: TriageMapQuicklookPlacement } | null>(null);
+  // 드래그 좌표는 ref가 나른다(리렌더 없음). 상태는 "지금 끌고 있는 마커" 한 개뿐이며 잡을 때와
+  // 놓을 때만 바뀐다 — 그 클래스가 유영을 끄고 드래그 어포던스를 입힌다.
+  const mapDragRef = useRef<TriageMapDragState | null>(null);
+  const [draggingMarkerId, setDraggingMarkerId] = useState<string | null>(null);
   const quicklookTimerRef = useRef<number | null>(null);
   // rect 기록 effect는 quicklook을 deps로 갖지 않으므로(스크롤/리사이즈마다 재구독 방지),
   // 스테일 클로저 없이 현재 값을 읽도록 ref 미러를 둔다.
@@ -428,6 +527,70 @@ export function TriageWatchDeck({
   // 뿌리는 churn을 없애기 위해서다. 리사이즈는 무대에 오른 Operation에만 남는다.
   const visible = active && !entering && operations.length > 0;
   const underStage = stagedOperationId !== null;
+
+  // 밀도 임계를 넘는 순간의 변형 — 이 effect는 rect 기록 effect보다 **먼저** 선언되어야 한다.
+  // deckCardRects가 아직 "떠나는 표면"(지도 진입이면 카드, 이탈이면 점)의 좌표를 들고 있어야
+  // 출발점을 알 수 있고, 아래 기록 effect가 실행되면 그 좌표는 도착 표면 것으로 덮인다.
+  const [morph, setMorph] = useState<TriageDeckMorph | null>(null);
+  const morphTimerRef = useRef<number | null>(null);
+  const morphFrameRef = useRef<number | null>(null);
+  const previousMapModeRef = useRef(mapMode);
+  useLayoutEffect(() => {
+    const previous = previousMapModeRef.current;
+    if (previous === mapMode) return;
+    previousMapModeRef.current = mapMode;
+    if (morphTimerRef.current !== null) window.clearTimeout(morphTimerRef.current);
+    if (morphFrameRef.current !== null) window.cancelAnimationFrame(morphFrameRef.current);
+    morphTimerRef.current = null;
+    morphFrameRef.current = null;
+    const grid = gridRef.current;
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+    if (!visible || !grid || reducedMotion) {
+      setMorph(null);
+      return;
+    }
+    const frames = new Map<string, TriageMorphFrame>();
+    if (mapMode) {
+      // 지도 진입 — 점은 방금 그려졌고(현재 DOM), 카드 좌표는 직전 스냅샷에 남아 있다.
+      for (const dot of grid.querySelectorAll<HTMLElement>("[data-triage-map-dot]")) {
+        const operationId = dot.dataset.triageMapDot;
+        const cardRect = operationId ? deckCardRects.get(operationId) : undefined;
+        if (!operationId || !cardRect) continue;
+        frames.set(operationId, resolveTriageMorphFrame(cardRect, dot.getBoundingClientRect()));
+      }
+    } else {
+      // 지도 이탈 — 카드가 방금 자리를 잡았고(현재 DOM), 점 좌표는 직전 스냅샷에 남아 있다.
+      for (const card of grid.querySelectorAll<HTMLElement>("[data-triage-deck-card]")) {
+        const operationId = card.dataset.triageDeckCard;
+        const dotRect = operationId ? deckCardRects.get(operationId) : undefined;
+        if (!operationId || !dotRect) continue;
+        frames.set(operationId, resolveTriageMorphFrame(card.getBoundingClientRect(), dotRect));
+      }
+    }
+    if (frames.size === 0) {
+      setMorph(null);
+      return;
+    }
+    // 두 방향 모두 프레임을 먼저 건다 — 지도 진입은 그 적용이 곧 재생이고, 이탈은 걸어 둔
+    // 프레임을 다음 프레임에 걷어내는 것이 재생이다.
+    setMorph({ phase: mapMode ? "to-map" : "to-cards", frames, applied: true });
+    if (!mapMode) {
+      // invert & play — 점 자리에 축소해 둔 카드를 다음 프레임에 놓아 준다.
+      morphFrameRef.current = window.requestAnimationFrame(() => {
+        morphFrameRef.current = null;
+        setMorph((current) => current?.phase === "to-cards" ? { ...current, applied: false } : current);
+      });
+    }
+    morphTimerRef.current = window.setTimeout(() => {
+      morphTimerRef.current = null;
+      setMorph(null);
+    }, TRIAGE_DECK_MORPH_MS);
+  }, [mapMode, visible]);
+
+  useEffect(() => () => {
+    if (morphTimerRef.current !== null) window.clearTimeout(morphTimerRef.current);
+    if (morphFrameRef.current !== null) window.cancelAnimationFrame(morphFrameRef.current);
+  }, []);
 
   useLayoutEffect(() => {
     if (!visible) return;
@@ -508,6 +671,7 @@ export function TriageWatchDeck({
   const dismissQuicklook = () => {
     clearQuicklookTimer();
     setQuicklook(null);
+    setMapQuicklook(null);
   };
 
   const armQuicklook = (operationId: string, card: HTMLElement, dwell: boolean) => {
@@ -533,11 +697,49 @@ export function TriageWatchDeck({
     quicklookTimerRef.current = window.setTimeout(fire, TRIAGE_DECK_QUICKLOOK_DWELL_MS);
   };
 
+  // 지도 점의 Quick-Look — 카드와 같은 드웰·즉시(키보드) 문법을 쓰고, 좌표만 점 실측에서 온다.
+  const armMapQuicklook = (operationId: string, dot: HTMLElement, dwell: boolean) => {
+    const fire = () => {
+      quicklookTimerRef.current = null;
+      const grid = gridRef.current;
+      if (!grid) return;
+      setMapQuicklook({
+        operationId,
+        placement: resolveTriageMapQuicklookPlacement(dot.getBoundingClientRect(), grid.getBoundingClientRect()),
+      });
+    };
+    if (!dwell) {
+      fire();
+      return;
+    }
+    clearQuicklookTimer();
+    quicklookTimerRef.current = window.setTimeout(fire, TRIAGE_DECK_QUICKLOOK_DWELL_MS);
+  };
+
   useEffect(() => {
-    // 지도 모드 진입도 해제 사유다 — grid가 visibility로 은닉되면 pointerleave가 발화하지
-    // 않아, 열린 Quick-Look(또는 진행 중 드웰)이 카드 복귀 때 포인터 없는 확대로 남는다.
-    if (!visible || stagedOperationId !== null || mapMode) dismissQuicklook();
+    // 표면이 바뀌면 열린 확대창은 방향과 무관하게 걷는다 — 은닉되거나 언마운트된 요소는
+    // pointerleave·blur를 발화하지 않으므로, 지도 진입에서는 카드 확대가, 이탈에서는 점의
+    // 확대창이 주인 없는 채로 남는다(후자는 pool 슬롯까지 카드와 다투게 된다).
+    dismissQuicklook();
   }, [visible, stagedOperationId, mapMode]);
+
+  // 열린 지도 확대창의 좌표는 발동 시점 스냅샷이다 — 판이 리사이즈되면(사이드바 토글·창 변경)
+  // 점은 %로 재배치되는데 확대창만 옛 px에 남으므로, 재계산 대신 해제해 유령 창을 만들지 않는다.
+  useEffect(() => {
+    if (!mapQuicklook || typeof ResizeObserver === "undefined") return;
+    const grid = gridRef.current;
+    if (!grid) return;
+    let first = true;
+    const observer = new ResizeObserver(() => {
+      if (first) {
+        first = false;
+        return;
+      }
+      setMapQuicklook(null);
+    });
+    observer.observe(grid);
+    return () => observer.disconnect();
+  }, [mapQuicklook]);
 
   // 지도 진입 시 grid 스크롤을 원점으로 되돌린다 — 판(fleet)은 grid 안의 절대배치라 잔류
   // scrollTop만큼 함께 밀려 잘린 채 남고, overflow 잠금 뒤에는 되돌릴 휠 경로도 없다.
@@ -548,9 +750,12 @@ export function TriageWatchDeck({
   }, [mapMode]);
 
   // 작전지도 원 배치는 판의 실제 종횡비를 알아야 픽셀 기준 겹침을 피할 수 있다 — 판(grid 뷰포트)을 실측한다.
+  // 지도 모드에서만 재면 카드 모드 동안의 리사이즈(창 크기·사이드바 토글)가 반영되지 않아,
+  // 지도 진입 첫 프레임이 옛 비율로 구역을 배치하고 morph는 그 자리를 목표로 굳는다 —
+  // 직후 측정이 구역을 옮기면 카드가 이미 없는 자리로 날아간다. 덱이 살아 있는 동안 계속 잰다.
   const [fleetAspect, setFleetAspect] = useState(1.8);
   useLayoutEffect(() => {
-    if (!mapMode || !visible) return;
+    if (!visible) return;
     const grid = gridRef.current;
     if (!grid) return;
     const measure = () => {
@@ -576,18 +781,12 @@ export function TriageWatchDeck({
   // 밴드 순서: 대기 카드 수 내림차순 → 같으면 theaters 선언 순. 카드 없는 Theater는 밴드를 그리지 않는다.
   // 헤더 수치는 밴드 정렬과 같은 대기 판정(isTriageWaitingOperation)을 쓴다 — 유휴 도착을 정렬은 대기로
   // 치면서 수치는 0으로 보이면 큐·사이드바 카운트와 모순된다. 대기로 센 유휴 도착은 유휴 수에서 뺀다.
-  const bands = theaters
+  const theaterBands = theaters
     .map((theater, theaterIndex) => {
       const theaterOperations = operations
         .filter((operation) => operation.theaterId === theater.id)
         .sort((left, right) => TRIAGE_DECK_ACTIVITY_RANK[resolveOperationActivity(left, operationStatus)]
           - TRIAGE_DECK_ACTIVITY_RANK[resolveOperationActivity(right, operationStatus)]);
-      const mapMarkers = mapMode
-        ? resolveTriageMapMarkerLayout(theaterOperations.map((operation) => ({
-            id: operation.id,
-            geometry: mapGeometryFor ? mapGeometryFor(operation) : operation.geometry,
-          })))
-        : null;
       const waitingIds = new Set(
         theaterOperations
           .filter((operation) => isTriageWaitingOperation(operation, operationStatus))
@@ -599,23 +798,154 @@ export function TriageWatchDeck({
         idle: theaterOperations.filter((operation) =>
           resolveOperationActivity(operation, operationStatus) === "idle" && !waitingIds.has(operation.id)).length,
       };
-      return { theater, theaterIndex, operations: theaterOperations, mapMarkers, counts };
+      return { theater, theaterIndex, operations: theaterOperations, counts };
     })
     .filter((band) => band.operations.length > 0)
     .sort((left, right) => right.counts.waiting - left.counts.waiting || left.theaterIndex - right.theaterIndex);
+  // 마커 배치는 구역이 몇 개로 갈리는지 안 뒤에 정한다 — 중앙 표석은 구역이 둘 이상일 때만
+  // 서므로, 그때만 마커가 비켜설 띠를 잡는다(단일 함대는 판 전체가 열린 바다다).
+  const bands = theaterBands.map((band) => ({
+    ...band,
+    mapMarkers: mapMode
+      ? resolveTriageMapMarkerLayout(band.operations.map((operation) => ({
+          id: operation.id,
+          geometry: mapGeometryFor ? mapGeometryFor(operation) : operation.geometry,
+        })), theaterBands.length > 1)
+      : null,
+  }));
   const fleetZones = mapMode
-    ? resolveTriageFleetZoneLayout(bands.map((band) => ({ theaterId: band.theater.id, count: band.operations.length })), fleetAspect)
+    ? resolveTriageFleetZoneLayout(
+        bands.map((band) => ({ theaterId: band.theater.id, count: band.operations.length, slotIndex: band.theaterIndex })),
+        fleetAspect,
+      )
     : [];
   const pick = (operationId: string, element: HTMLElement) => {
     // 승격 flight는 클릭 순간 사용자가 보고 있는 위치에서 출발해야 한다 — tween이 살아 있으면
     // 카드가 움직이는 중이라 좌표가 흔들리므로 먼저 스냅 종료하고, 그 다음 rect를 출발 전용 채널에 기록한다.
     onBeforePick?.();
     deckDepartureRect = { operationId, rect: element.getBoundingClientRect() };
+    dismissQuicklook();
     pickTriageOperation(operationId);
   };
+  const mapHover: TriageMapDotHover = { arm: armMapQuicklook, dismiss: dismissQuicklook };
+  // 마커 드래그 — 판 위에서 옮긴 자리가 곧 캔버스에서의 자리다. 이동 중에는 리렌더를 한 번도
+  // 일으키지 않고 점의 CSS 변수만 직접 쓴다: 이 컴포넌트의 렌더 한 번은 전 밴드의 마커 배치를
+  // (겹침 이완 12패스까지) 다시 계산하므로, 포인터 프레임마다 setState를 돌리면 손끝을 못 따라온다.
+  // 상태 갱신은 잡을 때와 놓을 때 각 한 번뿐이고, 좌표는 ref가 나른다.
+  const mapDrag: TriageMapDotDrag = {
+    start: (operationId, event) => {
+      if (event.button !== 0) return;
+      const band = bands.find((candidate) => candidate.operations.some((operation) => operation.id === operationId));
+      const field = event.currentTarget.parentElement;
+      if (!band || !field) return;
+      // 투영이 퇴화면(geometry 부재·공선) 캔버스로 되돌릴 원본이 없다 — 그래도 판 위에서는
+      // 옮길 수 있어야 하므로, 그때는 판이 자기 좌표만 기억하고 캔버스는 건드리지 않는다.
+      const projection = resolveTriageMapProjection(band.operations.map((operation) => ({
+        geometry: mapGeometryFor ? mapGeometryFor(operation) : operation.geometry,
+      })));
+      dismissQuicklook();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      const fieldRect = field.getBoundingClientRect();
+      mapDragRef.current = {
+        operationId,
+        theaterId: band.theater.id,
+        pointerId: event.pointerId,
+        originX: event.clientX,
+        originY: event.clientY,
+        fieldWidth: fieldRect.width,
+        fieldHeight: fieldRect.height,
+        projection,
+        dx: 0,
+        dy: 0,
+        moved: false,
+      };
+    },
+    // 포인터 캡처가 걸려 있어 점을 벗어나도 이 요소가 계속 이벤트를 받는다 — 전역 리스너 없이
+    // 제스처가 끝까지 유지된다.
+    move: (event) => {
+      const dragging = mapDragRef.current;
+      if (!dragging || dragging.pointerId !== event.pointerId) return;
+      dragging.dx = event.clientX - dragging.originX;
+      dragging.dy = event.clientY - dragging.originY;
+      if (!dragging.moved) {
+        if (Math.hypot(dragging.dx, dragging.dy) < TRIAGE_MAP_DRAG_THRESHOLD_PX) return;
+        dragging.moved = true;
+        // 잡았다는 신호는 이때 한 번만 — 문턱을 넘기 전에는 아직 클릭일 수 있다.
+        setDraggingMarkerId(dragging.operationId);
+      }
+      event.currentTarget.style.setProperty("--drag-dx", `${dragging.dx}px`);
+      event.currentTarget.style.setProperty("--drag-dy", `${dragging.dy}px`);
+    },
+    end: (event) => {
+      const dragged = mapDragRef.current;
+      if (!dragged || dragged.pointerId !== event.pointerId) return;
+      mapDragRef.current = null;
+      // 새 좌표가 들어오면 점은 그 자리에 그려진다 — 이동량을 함께 지워야 두 번 더해지지 않는다.
+      event.currentTarget.style.removeProperty("--drag-dx");
+      event.currentTarget.style.removeProperty("--drag-dy");
+      if (!dragged.moved) return;
+      setDraggingMarkerId(null);
+      // click은 pointerup 뒤에 온다 — 이동으로 끝난 제스처의 click 한 번을 삼키게 표시한다.
+      triageMapDragSuppression = dragged.operationId;
+      const marker = bands
+        .flatMap((band) => band.mapMarkers ?? [])
+        .find((candidate) => candidate.operationId === dragged.operationId);
+      const operation = operations.find((candidate) => candidate.id === dragged.operationId);
+      const geometry = operation ? (mapGeometryFor ? mapGeometryFor(operation) : operation.geometry) : null;
+      if (!marker || !operation || dragged.fieldWidth <= 0 || dragged.fieldHeight <= 0) return;
+      // 판 밖에서 손을 떼도(포인터 캡처는 경계를 넘어서도 이벤트를 준다) 마커는 판 안에 선다.
+      // 클램프는 캔버스에 넘길 이동량보다 먼저 걸어야 한다 — 나중에 걸면 판은 가장자리에 멈추고
+      // 패널만 판 밖 좌표로 끌려가 화면에서 사라진다.
+      const dropped = {
+        x: clampTriageMapPercent(marker.x + (dragged.dx / dragged.fieldWidth) * 100),
+        y: clampTriageMapPercent(marker.y + (dragged.dy / dragged.fieldHeight) * 100),
+      };
+      // 판이 먼저 자기 좌표를 기억한다 — 자동 배치가 다음 렌더에서 이 자리를 도로 흩뜨리면
+      // 옮길 수 없는 지도가 된다.
+      setTriageMapMarkerOverride(operation.id, dropped);
+      if (!dragged.projection || !geometry) return;
+      onMapMarkerMove?.(
+        operation.id,
+        dragged.theaterId,
+        projectTriageMapDeltaToGeometry(
+          { x: dropped.x - marker.x, y: dropped.y - marker.y },
+          dragged.projection,
+          geometry,
+        ),
+      );
+    },
+    // 취소는 인도가 아니다 — 좌표를 남기지 않고, click 삼킴도 걸지 않는다. 취소된 제스처는
+    // 뒤따르는 click을 만들지 않으므로, 삼킴을 걸어 두면 다음번 진짜 클릭이 먹힌다.
+    cancel: (event) => {
+      const dragged = mapDragRef.current;
+      if (!dragged || dragged.pointerId !== event.pointerId) return;
+      mapDragRef.current = null;
+      event.currentTarget.style.removeProperty("--drag-dx");
+      event.currentTarget.style.removeProperty("--drag-dy");
+      if (dragged.moved) setDraggingMarkerId(null);
+    },
+  };
+  // 확대창에 실을 얼굴 — 무대에 오른 Operation은 body를 무대가 쥐고 있으므로 프리뷰 없이 tail만 싣는다.
+  const mapQuicklookOperation = (() => {
+    if (!mapQuicklook) return null;
+    const operation = operations.find((candidate) => candidate.id === mapQuicklook.operationId);
+    if (!operation) return null;
+    const activity = resolveOperationActivity(operation, operationStatus);
+    const accentKey = operationAccent[operation.id] ?? operationAccentFromNode(operation);
+    return {
+      operation,
+      visual: operationActivityVisual(activity),
+      label: operationActivityLabel(activity),
+      detail: getOperationStatusDetailSnapshot(operation.id).detail,
+      accentColor: accentKey ? resolveAccentColor(accentKey) : null,
+      previewConfig: poolAvailable && previewConfigFor && operation.id !== stagedOperationId
+        ? previewConfigFor(operation)
+        : null,
+    };
+  })();
   return (
     <section
-      className={`canvas-triage-deck ${underStage ? "is-under-stage" : ""} ${mapMode ? "is-map-mode" : ""}`}
+      className={`canvas-triage-deck ${underStage ? "is-under-stage" : ""} ${mapMode ? "is-map-mode" : ""} ${morph ? `is-morphing is-morph-${morph.phase}` : ""}`}
       data-canvas-blocker
     >
       <div className="canvas-triage-deck-caption">
@@ -642,19 +972,26 @@ export function TriageWatchDeck({
                     const statusDetail = getOperationStatusDetailSnapshot(operation.id);
                     const accentKey = operationAccent[operation.id] ?? operationAccentFromNode(operation);
                     const accentColor = accentKey ? resolveAccentColor(accentKey) : null;
-                    const previewConfig = poolAvailable && previewConfigFor && operation.id !== stagedOperationId
+                    // 지도 모드에서는 카드가 은닉되므로 pool 슬롯도 놓는다 — body는 operation당
+                    // 하나뿐이라, 은닉된 카드가 슬롯을 쥔 채로는 점의 확대창이 그 body를 실을 수 없다.
+                    const previewConfig = poolAvailable && previewConfigFor && operation.id !== stagedOperationId && !mapMode
                       ? previewConfigFor(operation)
                       : null;
                     const isQuicklook = quicklook?.operationId === operation.id;
+                    // 밀도 변형 프레임 — 카드를 자기 점 자리로 옮겨 놓는다. Quick-Look 확대와는
+                    // 공존하지 않는다(전환은 열린 확대창을 먼저 해제한다).
+                    const morphFrame = morph?.applied ? morph.frames.get(operation.id) ?? null : null;
                     return (
                       <button
-                        className={`canvas-triage-deck-card is-${visual} ${previewConfig ? "has-preview" : ""} ${arrivingOperationId === operation.id ? "is-arriving" : ""} ${freshOperationIds?.has(operation.id) ? "is-fresh" : ""} ${isQuicklook ? "is-quicklook" : ""}`}
+                        className={`canvas-triage-deck-card is-${visual} ${previewConfig ? "has-preview" : ""} ${arrivingOperationId === operation.id ? "is-arriving" : ""} ${freshOperationIds?.has(operation.id) ? "is-fresh" : ""} ${isQuicklook ? "is-quicklook" : ""} ${morph ? "is-morphing" : ""} ${morph?.phase === "to-cards" && morph.applied ? "is-morph-snap" : ""}`}
                         data-triage-deck-card={operation.id}
                         key={operation.id}
                         type="button"
                         style={isQuicklook
                           ? { transformOrigin: quicklook.origin, "--triage-quicklook-scale": String(quicklook.scale) } as CSSProperties
-                          : undefined}
+                          : morphFrame
+                            ? { transform: `translate(${morphFrame.dx.toFixed(1)}px, ${morphFrame.dy.toFixed(1)}px) scale(${morphFrame.scale.toFixed(4)})` }
+                            : undefined}
                         aria-label={t("canvas.triage.deckCardAria", { title: operation.title })}
                         onPointerEnter={(event: PointerEvent<HTMLButtonElement>) => {
                           if (event.pointerType === "touch" || arrivingOperationId === operation.id) return;
@@ -668,19 +1005,14 @@ export function TriageWatchDeck({
                         onBlur={dismissQuicklook}
                         onClick={(event) => pick(operation.id, event.currentTarget)}
                       >
-                        {accentColor ? <span className="canvas-triage-deck-card-spine" style={{ backgroundColor: accentColor } as CSSProperties} aria-hidden="true" /> : null}
-                        <span className="canvas-triage-deck-card-status">
-                          <span className="canvas-triage-deck-card-dot" aria-hidden="true" />
-                          <span>{label}</span>
-                        </span>
-                        <strong title={operation.title}>{operation.title}</strong>
-                        {previewConfig ? (
-                          <TriageDeckCardPreview config={previewConfig} operationId={operation.id} />
-                        ) : (
-                          <span className="canvas-triage-deck-card-detail" title={statusDetail.detail ?? label}>
-                            {statusDetail.detail ?? label}
-                          </span>
-                        )}
+                        <TriageDeckCardFace
+                          operationId={operation.id}
+                          title={operation.title}
+                          label={label}
+                          detail={statusDetail.detail}
+                          accentColor={accentColor}
+                          previewConfig={previewConfig}
+                        />
                       </button>
                     );
                   })}
@@ -697,7 +1029,7 @@ export function TriageWatchDeck({
             {bands.length === 1 ? (
               // Theater가 하나뿐이면 구역을 나눌 이유가 없다 — 원 없이 판 전체가 그 함대의 바다다.
               <div className="canvas-triage-map canvas-triage-map--plane">
-                {renderTriageMapDots(bands[0]!, operationStatus, t, pick)}
+                {renderTriageMapDots(bands[0]!, operationStatus, t, pick, mapHover, mapDrag, draggingMarkerId)}
               </div>
             ) : bands.map((band, bandIndex) => {
               const zone = fleetZones[bandIndex]!;
@@ -712,19 +1044,46 @@ export function TriageWatchDeck({
                   "--zone-tint": `var(--id-${TRIAGE_ZONE_TONES[band.theaterIndex % TRIAGE_ZONE_TONES.length]})`,
                 } as CSSProperties}
               >
+                {/* 구역의 이름표는 원주 대신 구역 중앙에 선다 — 점선 원주를 걷어낸 판에서
+                    "여기가 어느 Theater인가"를 말하는 것은 그 자리에 놓인 상태 문구 자체다. */}
                 <header className="canvas-triage-map-zone-head">
-                  <span className="canvas-triage-deck-band-chip" aria-hidden="true">{theaterInitials(band.theater.label)}</span>
-                  <span className="canvas-triage-map-zone-label">{band.theater.label}</span>
+                  <span className="canvas-triage-map-zone-title">
+                    <span className="canvas-triage-deck-band-chip" aria-hidden="true">{theaterInitials(band.theater.label)}</span>
+                    <span className="canvas-triage-map-zone-label">{band.theater.label}</span>
+                  </span>
                   <span className="canvas-triage-map-zone-counts">
                     {t("canvas.triage.bandCounts", { waiting: band.counts.waiting, running: band.counts.running, idle: band.counts.idle })}
                   </span>
                 </header>
                 <div className="canvas-triage-map">
-                  {renderTriageMapDots(band, operationStatus, t, pick)}
+                  {renderTriageMapDots(band, operationStatus, t, pick, mapHover, mapDrag, draggingMarkerId)}
                 </div>
               </section>
               );
             })}
+          </div>
+        ) : null}
+        {mapMode && mapQuicklookOperation ? (
+          // 점의 확대창 — 카드 Quick-Look과 같은 카드 얼굴을 같은 판독 크기로 띄운다. 포인터를
+          // 통과시켜(pointer-events:none) 창이 점을 덮어도 hover가 끊기지 않고 클릭이 점에 닿는다.
+          <div
+            className={`canvas-triage-deck-card canvas-triage-map-quicklook is-${mapQuicklookOperation.visual} ${mapQuicklookOperation.previewConfig ? "has-preview" : ""}`}
+            style={{
+              left: `${mapQuicklook!.placement.left}px`,
+              top: `${mapQuicklook!.placement.top}px`,
+              width: `${mapQuicklook!.placement.width}px`,
+              height: `${mapQuicklook!.placement.height}px`,
+            }}
+            aria-hidden="true"
+          >
+            <TriageDeckCardFace
+              operationId={mapQuicklookOperation.operation.id}
+              title={mapQuicklookOperation.operation.title}
+              label={mapQuicklookOperation.label}
+              detail={mapQuicklookOperation.detail}
+              accentColor={mapQuicklookOperation.accentColor}
+              previewConfig={mapQuicklookOperation.previewConfig}
+            />
           </div>
         ) : null}
       </div>
@@ -736,6 +1095,67 @@ export function TriageWatchDeck({
 // 배정해 대기 수가 변해도 같은 Theater가 같은 색을 유지한다.
 const TRIAGE_ZONE_TONES: readonly string[] = ["teal", "amber", "plum", "moss", "cerulean", "rose", "crimson", "indigo"];
 
+interface TriageMapDotHover {
+  readonly arm: (operationId: string, dot: HTMLElement, dwell: boolean) => void;
+  readonly dismiss: () => void;
+}
+
+interface TriageMapDotDrag {
+  readonly start: (operationId: string, event: PointerEvent<HTMLButtonElement>) => void;
+  readonly move: (event: PointerEvent<HTMLButtonElement>) => void;
+  readonly end: (event: PointerEvent<HTMLButtonElement>) => void;
+  readonly cancel: (event: PointerEvent<HTMLButtonElement>) => void;
+}
+
+interface TriageMapDragState {
+  readonly operationId: string;
+  readonly theaterId: string;
+  readonly pointerId: number;
+  readonly originX: number;
+  readonly originY: number;
+  readonly fieldWidth: number;
+  readonly fieldHeight: number;
+  readonly projection: TriageMapProjection | null;
+  dx: number;
+  dy: number;
+  moved: boolean;
+}
+
+// 클릭과 드래그를 가르는 이동 거리 — 이보다 짧으면 무대로 올리는 클릭으로 읽는다.
+export const TRIAGE_MAP_DRAG_THRESHOLD_PX = 4;
+
+// 드래그로 끝난 포인터가 뒤이어 내보내는 click 1회를 삼키는 채널. 브라우저는 pointerup 뒤
+// click을 항상 보내므로, 이 표시가 없으면 점을 옮길 때마다 그 패널이 무대로 올라간다.
+let triageMapDragSuppression: string | null = null;
+
+function consumeTriageMapDragSuppression(operationId: string): boolean {
+  if (triageMapDragSuppression !== operationId) return false;
+  triageMapDragSuppression = null;
+  return true;
+}
+
+// 점의 유영 진폭·주기 — 실행 중은 넓고 빠르게, 나머지 상태는 그 절반 이하로 좁고 느리게 돈다.
+// 정지한 점은 판을 정물로 만들지만, 모든 점이 같은 폭으로 흔들리면 "실행 중"이 가진 움직임의
+// 의미가 사라진다. 진폭 차이가 상태 위계를 그대로 옮긴다.
+const TRIAGE_MAP_DRIFT_CALM_AMPLITUDE = 0.42;
+const TRIAGE_MAP_DRIFT_CALM_PERIOD = 1.55;
+
+export function resolveTriageMapDriftStyle(operationId: string, active: boolean): CSSProperties {
+  // id 해시 기반 결정적 주입 — 렌더마다 흔들리면 지도가 아니다. 주기는 초 리터럴이 아니라
+  // --duration-slow 배수라 테마 모션 스케일을 따라간다.
+  const hash = hashTriageMapKey(operationId);
+  const amplitude = active ? 1 : TRIAGE_MAP_DRIFT_CALM_AMPLITUDE;
+  const period = (30.6 + (hash % 7) * 5) * (active ? 1 : TRIAGE_MAP_DRIFT_CALM_PERIOD);
+  const offset = (shift: number, span: number) => `${((((hash >> shift) % span) - (span - 1) / 2) * amplitude).toFixed(1)}px`;
+  return {
+    "--triage-drift-mult": period.toFixed(1),
+    "--triage-drift-x1": offset(2, 29),
+    "--triage-drift-y1": offset(4, 23),
+    "--triage-drift-x2": offset(6, 29),
+    "--triage-drift-y2": offset(8, 23),
+  } as CSSProperties;
+}
+
 function renderTriageMapDots(
   band: {
     readonly operations: readonly OperationNode[];
@@ -744,6 +1164,9 @@ function renderTriageMapDots(
   operationStatus: Readonly<Record<string, OperationActivity>>,
   t: ReturnType<typeof useT>,
   pick: (operationId: string, element: HTMLElement) => void,
+  hover: TriageMapDotHover,
+  drag: TriageMapDotDrag,
+  draggingMarkerId: string | null,
 ) {
   return band.mapMarkers?.map((marker) => {
     const operation = band.operations.find((candidate) => candidate.id === marker.operationId);
@@ -756,34 +1179,87 @@ function renderTriageMapDots(
       : operationActivityVisual(resolveOperationActivity(operation, operationStatus));
     // 미룬(deferred) 마커는 대기 링 맥동에서 제외한다 — 사용자가 이미 보고 미룬 신호를 다시 흔들지 않는다.
     const deferred = isTriageOperationDeferred(operation.id);
-    let style: CSSProperties = { left: `${marker.x}%`, top: `${marker.y}%` };
-    if (visual === "running") {
-      // 실행 마커의 유영 경로·주기 — id 해시 기반 결정적 주입(렌더마다 흔들리면 지도가 아니다).
-      // 주기는 초 리터럴이 아니라 --duration-slow 배수라 테마 모션 스케일을 따라간다.
-      const hash = hashTriageMapKey(operation.id);
-      style = {
-        ...style,
-        "--triage-drift-mult": (30.6 + (hash % 7) * 5).toFixed(1),
-        "--triage-drift-x1": `${((hash >> 2) % 29) - 14}px`,
-        "--triage-drift-y1": `${((hash >> 4) % 23) - 11}px`,
-        "--triage-drift-x2": `${((hash >> 6) % 29) - 14}px`,
-        "--triage-drift-y2": `${((hash >> 8) % 23) - 11}px`,
-      } as CSSProperties;
-    }
+    const dragging = draggingMarkerId === operation.id;
+    // 모든 점이 제자리에서 유영한다 — 살아 있는 함대의 판에서 정지한 점은 죽은 표시로 읽힌다.
+    // 끌고 있는 점만은 손끝을 정확히 따라야 하므로 유영을 멈춘다. 이동량은 렌더가 아니라
+    // 포인터 핸들러가 --drag-dx/--drag-dy로 직접 싣는다.
+    const style: CSSProperties = {
+      left: `${marker.x}%`,
+      top: `${marker.y}%`,
+      ...(dragging ? {} : resolveTriageMapDriftStyle(operation.id, visual === "running")),
+    };
     return (
+      <Fragment key={marker.operationId}>
+      {/* 집어 올린 자리에 남는 자국 — 끌리는 점의 자식이 아니라 형제다(점은 scale로 커지므로
+          자식으로 두면 자국까지 그 배율에 실려 원래 자리를 벗어난다). 드래그가 끝날 때까지
+          판 좌표에 못 박혀 움직이지 않는다. */}
+      {dragging ? (
+        <span
+          className="canvas-triage-map-dot-origin"
+          style={{ left: `${marker.x}%`, top: `${marker.y}%` }}
+          aria-hidden="true"
+        />
+      ) : null}
       <button
-        key={marker.operationId}
         type="button"
-        className={`canvas-triage-map-dot is-${visual}${deferred ? " is-deferred" : ""}`}
+        className={`canvas-triage-map-dot is-${visual}${deferred ? " is-deferred" : ""}${dragging ? " is-dragging" : ""}`}
         data-triage-map-dot={marker.operationId}
         style={style}
         aria-label={t("canvas.triage.deckCardAria", { title: operation.title })}
-        onClick={(event) => pick(operation.id, event.currentTarget)}
+        onPointerDown={(event) => drag.start(operation.id, event)}
+        onPointerMove={drag.move}
+        onPointerUp={drag.end}
+        onPointerCancel={drag.cancel}
+        onPointerEnter={(event) => {
+          if (event.pointerType === "touch") return;
+          hover.arm(operation.id, event.currentTarget, true);
+        }}
+        onPointerLeave={hover.dismiss}
+        onFocus={(event) => {
+          if (!event.currentTarget.matches(":focus-visible")) return;
+          hover.arm(operation.id, event.currentTarget, false);
+        }}
+        onBlur={hover.dismiss}
+        onClick={(event) => {
+          // 끌어서 옮긴 직후의 click은 무대 승격이 아니다 — 이동 의도를 클릭으로 삼키지 않는다.
+          if (consumeTriageMapDragSuppression(operation.id)) return;
+          pick(operation.id, event.currentTarget);
+        }}
       >
         <span className="canvas-triage-map-dot-label">{operation.title}</span>
       </button>
+      </Fragment>
     );
   });
+}
+
+// 카드 얼굴 — 덱 카드와 지도 점의 확대창이 같은 조각(스파인·상태줄·제목·프리뷰/tail)을 공유한다.
+// 두 표면이 각자 얼굴을 조립하면 같은 Operation이 밀도에 따라 다르게 읽힌다.
+function TriageDeckCardFace({ operationId, title, label, detail, accentColor, previewConfig }: {
+  readonly operationId: string;
+  readonly title: string;
+  readonly label: string;
+  readonly detail: string | null | undefined;
+  readonly accentColor: string | null;
+  readonly previewConfig: OperationBodyConfig | null;
+}) {
+  return (
+    <>
+      {accentColor ? <span className="canvas-triage-deck-card-spine" style={{ backgroundColor: accentColor } as CSSProperties} aria-hidden="true" /> : null}
+      <span className="canvas-triage-deck-card-status">
+        <span className="canvas-triage-deck-card-dot" aria-hidden="true" />
+        <span>{label}</span>
+      </span>
+      <strong title={title}>{title}</strong>
+      {previewConfig ? (
+        <TriageDeckCardPreview config={previewConfig} operationId={operationId} />
+      ) : (
+        <span className="canvas-triage-deck-card-detail" title={detail ?? label}>
+          {detail ?? label}
+        </span>
+      )}
+    </>
+  );
 }
 
 // 라이브 프리뷰 — pool 슬롯이 실제 패널 body를 카드 안으로 끌어온다. 내부 박스는 패널의 원래

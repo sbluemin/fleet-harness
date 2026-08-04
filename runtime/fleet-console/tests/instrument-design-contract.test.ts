@@ -71,8 +71,10 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--li",
   // Sidebar TSX injects its measured width for the shell layout.
   "--side-bar-width",
-  // Sidebar TSX injects transient drag offsets for chips and group headers.
+  // Sidebar TSX injects transient drag offsets for chips and group headers; the fleet map's
+  // marker drag writes both axes on the dot element itself, without a re-render per frame.
   "--drag-dy",
+  "--drag-dx",
   // Sidebar TSX injects the persisted group tone used by group-scoped surfaces.
   "--grp-color",
   // Sidebar chip TSX injects the group marker tone for each rendered mark.
@@ -584,12 +586,17 @@ describe("Instrument core design contract", () => {
     expect(reducedMotionBlock).toContain(".canvas-triage-map,");
     expect(reducedMotionBlock).toContain(".canvas-triage-map-dot,");
     expect(reducedMotionBlock).toContain(".canvas-triage-map-dot-label {");
-    // 지도 점의 대기 링 맥동과 실행 드리프트도 같은 봉인에 들어가고, 대기 신호는 정지 링 폴백으로 남는다.
+    // 지도 점의 대기 링 맥동과 전 상태 유영도 같은 봉인에 들어가고, 대기 신호는 정지 링 폴백으로 남는다.
     expect(reducedMotionBlock).toContain(".canvas-triage-map-dot.is-awaiting::after,");
-    expect(reducedMotionBlock).toContain(".canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-running,");
-    // 착지 flash 우선 규칙(0,4,0)은 봉인 항목들보다 세다 — 결합 셀렉터를 봉인에 직접 올린다.
-    expect(reducedMotionBlock).toContain(".canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-running.is-landed,");
+    expect(reducedMotionBlock).toContain(".canvas-triage-deck.is-map-mode .canvas-triage-map-dot,");
+    // 착지 flash 우선 규칙은 봉인 항목들보다 세다 — 결합 셀렉터를 봉인에 직접 올린다.
+    expect(reducedMotionBlock).toContain(".canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-landed,");
+    // 지도 Quick-Look 등장 연출도 같은 봉인을 공유한다.
+    expect(reducedMotionBlock).toContain(".canvas-triage-map-quicklook,");
     expect(reducedMotionBlock).toContain("transform: scale(1.35);");
+    // 밀도 변형(카드↔점)은 JS가 reduced-motion에서 프레임 자체를 만들지 않고, 남은 표면
+    // cross-fade만 봉인에서 끊는다.
+    expect(reducedMotionBlock).toContain(".canvas-triage-deck.is-map-mode .canvas-triage-deck-band-cards,");
   });
 
   it("pins the dormant resume feedback grammar — pending pulse, error card, and reduced-motion fallback", () => {

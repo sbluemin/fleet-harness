@@ -322,6 +322,33 @@ export function setOperationGeometry(sessionId: string, geometry: OperationGeome
   });
 }
 
+// 비활성 Theater의 패널 좌표까지 바꿀 수 있는 경로 — War Room 지도는 전 Theater를 한 판에
+// 올리므로 지금 열려 있지 않은 Theater의 패널도 옮겨진다. 활성 Theater면 평소 경로 그대로다.
+// z 순서는 건드리지 않는다: 보이지도 않는 Theater의 패널이 좌표만 바뀌었다고 맨 앞으로 올라올
+// 이유가 없고, 지도에는 z가 없어 사용자가 그 결과를 볼 수도 없다.
+export function setTheaterOperationGeometry(
+  theaterId: string,
+  sessionId: string,
+  geometry: OperationGeometry,
+): void {
+  if (activeTheaterId === theaterId) {
+    setOperationGeometry(sessionId, geometry);
+    return;
+  }
+  const theaterState = readStoredState(theaterId);
+  const zIndex = theaterState.operations[sessionId]?.zIndex ?? 1;
+  writeStoredState(theaterId, {
+    ...theaterState,
+    operations: {
+      ...theaterState.operations,
+      [sessionId]: { ...normalizeOperationGeometry(geometry, zIndex), zIndex },
+    },
+  });
+  // 현재 Theater 값은 그대로 두되 구독 컴포넌트가 비활성 Theater 스냅샷을 다시 읽게 한다.
+  state = { ...state };
+  emit();
+}
+
 // 균형 그리드의 열은 ceil(sqrt(n)), 행은 ceil(n / cols)로 정한다. 마지막 행에 슬롯이 모자라면
 // 남은 패널들이 그 행의 전체 폭을 나눠 채워 빈 셀을 남기지 않는다. 최소 크기는 실제 가용 폭·높이로
 // 캡해, 좁은 Formation 캔버스에서도 panel chrome이 clip되지 않게 한다.
