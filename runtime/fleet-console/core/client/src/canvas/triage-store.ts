@@ -50,6 +50,59 @@ const deferredAt = new Map<string, number>();
 const dismissed = new Set<string>();
 const seenAt = new Map<string, number>();
 
+const TRIAGE_SPOTLIGHT_STORAGE_KEY = "fleet-console-triage-spotlight";
+let triageSpotlightEnabled = readStoredTriageSpotlight();
+
+function readStoredTriageSpotlight(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return window.localStorage.getItem(TRIAGE_SPOTLIGHT_STORAGE_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+export function isTriageSpotlightEnabled(): boolean {
+  return triageSpotlightEnabled;
+}
+
+export function setTriageSpotlightEnabled(enabled: boolean): void {
+  if (triageSpotlightEnabled === enabled) return;
+  triageSpotlightEnabled = enabled;
+  if (typeof window !== "undefined") {
+    try {
+      if (enabled) {
+        window.localStorage.removeItem(TRIAGE_SPOTLIGHT_STORAGE_KEY);
+      } else {
+        window.localStorage.setItem(TRIAGE_SPOTLIGHT_STORAGE_KEY, "0");
+      }
+    } catch {
+      // 브라우저 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
+    }
+  }
+  emitTriage();
+}
+
+export function useTriageSpotlightEnabled(): boolean {
+  return useSyncExternalStore(
+    subscribeTriage,
+    () => triageSpotlightEnabled,
+    () => triageSpotlightEnabled,
+  );
+}
+
+export function resetTriageSpotlightForTests(): void {
+  triageSpotlightEnabled = true;
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.removeItem(TRIAGE_SPOTLIGHT_STORAGE_KEY);
+    } catch {
+      // 저장소가 막힌 환경에서는 현재 세션 상태만 되돌린다.
+    }
+  }
+  emitTriage();
+}
+
 const activityByOperation = new Map<string, OperationActivity>();
 const operationTheater = new Map<string, string>();
 const focusLayerBeforeTriage = new Map<string, FocusLayerState | null>();

@@ -1927,6 +1927,44 @@
   outline: none;
 }
 
+/* 무대가 점유된 동안 검토 전인 대기 항목 — 상태는 aurora가 border/텍스트로 말하고(애니메이션이
+   hover의 brass border보다 우선), hover/focus 피드백은 기존 brass 배경 워시가 그대로 맡는다.
+   미룬 항목에는 붙지 않는다 — 사용자가 이미 본 신호를 다시 흔드는 소음이 된다. */
+.canvas-triage-rail-track button.is-fresh {
+  border-color: var(--aurora);
+  color: var(--aurora);
+  animation: triage-fresh-pulse calc(var(--duration-slow) * 6) var(--ease-glide) infinite;
+}
+
+/* 스포트라이트 토글 — ON 상태는 무대 자동 등단을 켠 위치/초점 표식이므로 picked pill의 brass
+   문법을 그대로 빌리고, OFF에서는 소음을 줄이기 위해 흐리게 남는다. */
+.canvas-triage-rail-spotlight {
+  flex: none;
+  margin-left: auto;
+  padding: 2px 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+}
+
+.canvas-triage-rail-spotlight[aria-pressed="true"] {
+  border-color: color-mix(in oklch, var(--brass) 34%, var(--hairline));
+  background: color-mix(in oklch, var(--brass) 8%, transparent);
+  color: var(--text-primary);
+}
+
+.canvas-triage-rail-spotlight:hover,
+.canvas-triage-rail-spotlight:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 48%, var(--hairline));
+  color: var(--text-primary);
+  outline: none;
+}
+
 .canvas-triage-rail-empty {
   color: var(--text-tertiary);
   font-family: var(--font-mono);
@@ -2264,6 +2302,12 @@
   animation: triage-deck-arrival-pulse calc(var(--duration-slow) * 3.0556) var(--ease-glide) 1;
 }
 
+/* 스포트라이트 OFF — 자동 등단 대신 검토 전 대기 카드가 계속 숨 쉬는 지속 aurora 맥동.
+   1회성 도착 pulse와 달리 사용자가 확인할 때까지 반복된다. */
+.canvas-triage-deck-card.is-fresh {
+  animation: triage-fresh-pulse calc(var(--duration-slow) * 6) var(--ease-glide) infinite;
+}
+
 @keyframes triage-deck-running-pulse {
   0%, 100% { box-shadow: 0 0 0 0 var(--warn-glow); opacity: 0.72; }
   50% { box-shadow: 0 0 12px 3px var(--warn-glow); opacity: 1; }
@@ -2277,6 +2321,11 @@
 @keyframes triage-deck-arrival-pulse {
   0%, 100% { border-color: var(--surface-rim); box-shadow: none; }
   48% { border-color: var(--aurora); box-shadow: 0 0 16px var(--aurora-glow); }
+}
+
+@keyframes triage-fresh-pulse {
+  0%, 100% { border-color: var(--surface-rim); box-shadow: none; }
+  50% { border-color: var(--aurora); box-shadow: 0 0 16px var(--aurora-glow); }
 }
 
 @keyframes triage-bracket-nw { from { transform: translate(-18px, -18px); } to { transform: translate(0, 0); } }
@@ -2337,11 +2386,19 @@
   .canvas-triage-deck-card.is-running .canvas-triage-deck-card-dot,
   .canvas-triage-deck-card.is-landed,
   .canvas-triage-deck-card.is-arriving,
+  .canvas-triage-deck-card.is-fresh,
+  .canvas-triage-rail-track button.is-fresh,
   .operations-canvas.is-triage-entering .canvas-operation.is-triage-stage,
   .operations-canvas.is-formation-entering .canvas-mode-bracket,
   .operations-canvas.is-formation-entering .canvas-formation-guide,
   .operations-canvas.is-formation-entering .canvas-operation {
     animation: none;
+  }
+
+  /* 움직임 없이도 검토 전 신호는 읽혀야 한다 — 정지한 aurora 링으로 폴백한다. */
+  .canvas-triage-deck-card.is-fresh,
+  .canvas-triage-rail-track button.is-fresh {
+    border-color: var(--aurora);
   }
 
   .canvas-triage-curtain,
