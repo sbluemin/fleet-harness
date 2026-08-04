@@ -388,16 +388,14 @@ describe("Instrument core design contract", () => {
       "canvas-mode-frame",
       "canvas-mode-bracket",
       "canvas-mode-curtain",
+      "canvas-mode-curtain-kicker",
       "canvas-mode-curtain-ruler",
-      // Cruise 복귀도 진입과 같은 커튼을 쓴다 — 모드 도착 연출은 세 모드가 한 문법을 공유한다.
+      // Cruise 복귀도 진입과 같은 커튼을 쓴다 — 모드 전환 연출은 세 모드가 한 문법을 공유한다.
       "canvas-cruise-curtain",
     ]) {
       expect(canvas).toContain(sharedModeClass);
       expect(components).toContain(`.${sharedModeClass}`);
     }
-    // 커튼 제목이 곧 모드 이름이므로 같은 단어를 두 번 말하는 키커는 두지 않는다.
-    expect(canvas).not.toContain("canvas-mode-curtain-kicker");
-    expect(components).not.toContain(".canvas-mode-curtain-kicker");
     expect(canvas).not.toContain("canvas-mode-hud");
     expect(components).not.toContain(".canvas-mode-hud");
     expect(canvas).toContain("canvas-triage-rail-current");
@@ -446,7 +444,8 @@ describe("Instrument core design contract", () => {
         const selector = masked.slice(selectorStart, blockStart);
         // Mode instrument chrome has host-approved literal brass/fog blends; adjacent CSS doctrine
         // comments distinguish these decorative labels from semantic body-copy color.
-        if (selector.includes(".canvas-formation-guide-index")) continue;
+        if (selector.includes(".canvas-mode-curtain-kicker")
+          || selector.includes(".canvas-formation-guide-index")) continue;
         const line = lineAt(css, declaration.index);
         violations.push(`${consoleRelativePath(file)}:${line} ${css.split("\n")[line - 1]!.trim()}`);
       }

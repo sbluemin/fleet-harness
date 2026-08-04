@@ -1967,6 +1967,15 @@
   text-align: center;
 }
 
+/* Doctrine exception: the curtain kicker is literal instrument chrome and intentionally blends brass with fog. */
+.canvas-mode-curtain-kicker {
+  color: color-mix(in oklch, var(--brass) 72%, var(--ink-fog));
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.18em;
+}
+
 .canvas-mode-curtain-ruler {
   width: 190px;
   height: 1px;

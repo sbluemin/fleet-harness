@@ -271,13 +271,14 @@ describe("CanvasMinimap collapse behavior", () => {
       expect(document.querySelector(".canvas-cruise-curtain")).toBeNull();
 
       act(() => toggleFormationView());
-      // 모드 이름은 어느 로케일에서도 제품 고유 명칭 그대로 헤딩에 남는다.
+      // 모드 이름은 어느 로케일에서도 제품 고유 명칭 그대로 각인과 헤딩에 남는다.
       expect(document.querySelector(".canvas-formation-curtain strong")?.textContent).toMatch(/Tactical/);
-      expect(document.querySelector(".canvas-mode-curtain-kicker")).toBeNull();
+      expect(document.querySelector(".canvas-formation-curtain .canvas-mode-curtain-kicker")?.textContent).toBe("TACTICAL");
       act(() => vi.advanceTimersByTime(1_950));
 
       act(() => clearFormationView());
       expect(document.querySelector(".canvas-cruise-curtain strong")?.textContent).toMatch(/Cruise/);
+      expect(document.querySelector(".canvas-cruise-curtain .canvas-mode-curtain-kicker")?.textContent).toBe("CRUISE");
 
       act(() => vi.advanceTimersByTime(1_400));
       expect(document.querySelector(".canvas-cruise-curtain")).toBeNull();

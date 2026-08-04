@@ -900,6 +900,7 @@ export function OperationsCanvas({
           </div>
           {formationEntering ? (
             <div className="canvas-mode-curtain canvas-formation-curtain" aria-hidden="true">
+              <span className="canvas-mode-curtain-kicker">{t("canvas.formation.curtainKicker")}</span>
               <span className="canvas-mode-curtain-ruler" />
               <strong>{t("canvas.formation.curtainTitle")}</strong>
               <span>{t("canvas.formation.curtainBody", { count: formationOperationIds.length })}</span>
@@ -947,6 +948,7 @@ export function OperationsCanvas({
           {triageEntering ? <div className="canvas-triage-sweep" aria-hidden="true" /> : null}
           {triageEntering ? (
             <div className="canvas-mode-curtain canvas-triage-curtain" aria-hidden="true">
+              <span className="canvas-mode-curtain-kicker">{t("canvas.triage.curtainKicker")}</span>
               <span className="canvas-mode-curtain-ruler" />
               <strong>{t("canvas.triage.curtainTitle")}</strong>
               <span>{triageQueue.length > 0
@@ -974,6 +976,7 @@ export function OperationsCanvas({
       />
       {cruiseEntering ? (
         <div className="canvas-mode-curtain canvas-cruise-curtain" aria-hidden="true">
+          <span className="canvas-mode-curtain-kicker">{t("canvas.cruise.curtainKicker")}</span>
           <span className="canvas-mode-curtain-ruler" />
           <strong>{t("canvas.cruise.curtainTitle")}</strong>
           <span>{formationOperationIds.length > 0
