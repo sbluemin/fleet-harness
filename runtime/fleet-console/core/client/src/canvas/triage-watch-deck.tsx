@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../i18n/index.js";
@@ -36,6 +36,32 @@ interface TriageDeckPromotionDecision {
 }
 
 export const TRIAGE_DECK_ARRIVAL_DWELL_MS = 1_100;
+export const TRIAGE_DECK_QUICKLOOK_DWELL_MS = 400;
+export const TRIAGE_DECK_QUICKLOOK_SCALE = 1.95;
+
+// Quick-Look transform-origin 결정 — 확대 후 카드가 grid 경계를 넘는 방향으로 origin을
+// 클램프해 팽창이 경계 안쪽으로만 일어나게 한다. center origin 기준 카드는 절반 증가폭
+// (scale-1)/2 만큼 양쪽으로 팽창하므로, 그 폭이 카드와 grid 사이 여백보다 크면 해당 방향의
+// 경계를 넘는 것으로 본다.
+export function resolveTriageQuicklookOrigin(
+  cardRect: DOMRect,
+  gridRect: DOMRect,
+  scale = TRIAGE_DECK_QUICKLOOK_SCALE,
+): string {
+  const halfGrowX = ((scale - 1) / 2) * cardRect.width;
+  const halfGrowY = ((scale - 1) / 2) * cardRect.height;
+  const horizontal = cardRect.left - gridRect.left < halfGrowX
+    ? "left"
+    : gridRect.right - cardRect.right < halfGrowX
+      ? "right"
+      : "center";
+  const vertical = cardRect.top - gridRect.top < halfGrowY
+    ? "top"
+    : gridRect.bottom - cardRect.bottom < halfGrowY
+      ? "bottom"
+      : "center";
+  return `${horizontal} ${vertical}`;
+}
 // 카드 정렬 등급 — 사이드바 STATUS 축의 섹션 순서(대기→실행 중→백그라운드→유휴→휴면)를 그대로
 // 따른다. deck이 자체 순서를 정의하면 같은 상태가 두 표면에서 다른 위치로 읽힌다.
 const TRIAGE_DECK_ACTIVITY_RANK: Record<OperationActivity, number> = {
@@ -101,6 +127,10 @@ export function TriageWatchDeck({
   const gridRef = useRef<HTMLDivElement | null>(null);
   const poolAvailable = useOperationBodyPoolAvailable();
   useOperationStatusDetails();
+  // Quick-Look 상태 — 동시에 한 카드만 확대된다. 타이머도 1개만 유지해 카드 사이를 빠르게
+  // 오갈 때 이전 카드의 드웰이 뒤늦게 발동해 두 카드가 동시에 확대되는 일을 막는다.
+  const [quicklook, setQuicklook] = useState<{ operationId: string; origin: string } | null>(null);
+  const quicklookTimerRef = useRef<number | null>(null);
   // 무대가 떠 있는 동안에도 deck는 mount를 유지하고 visibility로만 숨는다 — 비무대 body가
   // 카드(고정 크기)와 숨김 프레임(크롬 제외 크기) 사이를 오가며 전 세션에 PTY 리사이즈를
   // 뿌리는 churn을 없애기 위해서다. 리사이즈는 무대에 오른 Operation에만 남는다.
@@ -144,6 +174,44 @@ export function TriageWatchDeck({
     };
   }, [operations, visible]);
 
+  const clearQuicklookTimer = () => {
+    if (quicklookTimerRef.current !== null) {
+      window.clearTimeout(quicklookTimerRef.current);
+      quicklookTimerRef.current = null;
+    }
+  };
+
+  const dismissQuicklook = () => {
+    clearQuicklookTimer();
+    setQuicklook(null);
+  };
+
+  const armQuicklook = (operationId: string, card: HTMLElement, dwell: boolean) => {
+    const fire = () => {
+      quicklookTimerRef.current = null;
+      const grid = gridRef.current;
+      if (!grid) return;
+      setQuicklook({
+        operationId,
+        origin: resolveTriageQuicklookOrigin(card.getBoundingClientRect(), grid.getBoundingClientRect()),
+      });
+    };
+    if (!dwell) {
+      // 키보드 사용자 동등성 — 드웰 없이 즉시 발동해 포인터와 같은 정보에 접근하게 한다.
+      fire();
+      return;
+    }
+    clearQuicklookTimer();
+    quicklookTimerRef.current = window.setTimeout(fire, TRIAGE_DECK_QUICKLOOK_DWELL_MS);
+  };
+
+  useEffect(() => {
+    if (!visible || stagedOperationId !== null) dismissQuicklook();
+  }, [visible, stagedOperationId]);
+
+  // unmount 시 드웰 타이머를 반납한다 — unmount 뒤 발동하면 떠난 카드에 setState를 던진다.
+  useEffect(() => () => clearQuicklookTimer(), []);
+
   if (!visible) return null;
 
   const activities = operations.map((operation) => resolveOperationActivity(operation, operationStatus));
@@ -171,14 +239,38 @@ export function TriageWatchDeck({
           const previewConfig = poolAvailable && previewConfigFor && operation.id !== stagedOperationId
             ? previewConfigFor(operation)
             : null;
+          const isQuicklook = quicklook?.operationId === operation.id;
           return (
             <button
-              className={`canvas-triage-deck-card is-${visual} ${previewConfig ? "has-preview" : ""} ${arrivingOperationId === operation.id ? "is-arriving" : ""}`}
+              className={`canvas-triage-deck-card is-${visual} ${previewConfig ? "has-preview" : ""} ${arrivingOperationId === operation.id ? "is-arriving" : ""} ${isQuicklook ? "is-quicklook" : ""}`}
               data-triage-deck-card={operation.id}
               key={operation.id}
               type="button"
+              style={isQuicklook ? { transformOrigin: quicklook.origin } : undefined}
               aria-label={t("canvas.triage.deckCardAria", { title: operation.title })}
-              onClick={() => pickTriageOperation(theaterId, operation.id)}
+              onPointerEnter={(event: PointerEvent<HTMLButtonElement>) => {
+                // 터치엔 hover 개념이 없다 — 손가락으로 카드를 누를 때마다 확대가 번쩍이지 않게 차단.
+                if (event.pointerType === "touch") return;
+                // 도착 맥동(1100ms)이 진행 중인 카드에 드웰 확대가 겹치면 두 신호가 충돌해
+                // 어떤 피드백인지 읽히지 않는다 — 맥동이 끝난 뒤에만 Quick-Look을 연다.
+                if (arrivingOperationId === operation.id) return;
+                armQuicklook(operation.id, event.currentTarget, true);
+              }}
+              onPointerLeave={dismissQuicklook}
+              onFocus={(event) => {
+                // 마우스 클릭 포커스는 onClick이 곧바로 승격시키므로 확대할 필요가 없고,
+                // :focus-visible(키보드 포커스)일 때만 드웰 없이 즉시 Quick-Look을 연다.
+                if (!event.currentTarget.matches(":focus-visible")) return;
+                armQuicklook(operation.id, event.currentTarget, false);
+              }}
+              onBlur={dismissQuicklook}
+              onClick={(event) => {
+                // 확대 상태에서의 클릭은 실제 rect를 재측정해 기록한다 — deckCardRects에 저장된
+                // rect는 Quick-Look 확대 전에 기록된 것이라 그대로 쓰면 승격 flight가 사용자가
+                // 보고 있는 확대된 위치가 아니라 원래 크기의 자리에서 출발해 위화감을 준다.
+                deckCardRects.set(operation.id, event.currentTarget.getBoundingClientRect());
+                pickTriageOperation(theaterId, operation.id);
+              }}
             >
               {accentColor ? <span className="canvas-triage-deck-card-spine" style={{ backgroundColor: accentColor } as CSSProperties} aria-hidden="true" /> : null}
               <span className="canvas-triage-deck-card-status">
