@@ -2094,6 +2094,10 @@
 }
 
 .canvas-triage-deck-grid {
+  /* 지도 필드와 같은 2행을 명시 공유한다 — auto-placement에 맡기면 명시 배치된 지도가 2행을
+     선점해 격자가 암시적 3행으로 밀리며, 1fr이던 카드 뷰포트가 쪼그라들고 지도도 전 높이를 잃는다. */
+  grid-row: 2;
+  grid-column: 1;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -2112,6 +2116,12 @@
   visibility: hidden;
   opacity: 0;
   pointer-events: none;
+}
+
+/* 지도 모드의 격자는 스크롤을 잠근다 — 숨은 밴드 스택이 만드는 dead scrollbar를 닫고,
+   판(fleet) 오버레이가 스크롤에 밀려나지 않게 한다. 카드 레이아웃은 visibility 은닉 그대로다. */
+.canvas-triage-deck.is-map-mode .canvas-triage-deck-grid {
+  overflow-y: hidden;
 }
 
 /* 작전지도는 격리된 타일이 아니라 하나의 연속된 판이다 — 지구본 위의 작전구역들처럼 모든
@@ -2226,10 +2236,44 @@
   opacity: 1;
 }
 
+.canvas-triage-map-dot.is-awaiting::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border: 1px solid var(--aurora);
+  border-radius: var(--radius-pill);
+  animation: triage-map-awaiting-ring calc(var(--duration-slow) * 6.6667) var(--ease-glide) infinite;
+}
+
+/* deferred는 사용자가 이미 본 항목이다 — fresh-card와 같은 제외로 다시 흔들지 않는다. */
+.canvas-triage-map-dot.is-awaiting.is-deferred::after {
+  animation: none;
+  opacity: 0.6;
+}
+
 .canvas-triage-map-dot.is-running {
   background: var(--warn);
   box-shadow: 0 0 11px var(--warn-glow);
   opacity: 1;
+}
+
+.canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-running {
+  animation: triage-map-drift calc(var(--duration-slow) * var(--triage-drift-mult, 36)) var(--ease-glide) infinite alternate;
+}
+
+/* 착지 flash는 드리프트를 이겨야 한다 — 위 드리프트 규칙(0,3,0)이 animation을 소유해
+   .is-landed(0,2,0)의 flash가 무음 처리되므로, 결합 규칙로 1회 flash를 되살린다. */
+.canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-running.is-landed {
+  animation: triage-deck-landed-flash calc(var(--duration-slow) * 2.5) var(--ease-glide) 1;
+}
+
+.canvas-triage-map-dot.is-running:hover,
+.canvas-triage-map-dot.is-running:focus-visible {
+  animation-play-state: paused;
+}
+
+.canvas-triage-deck.is-under-stage .canvas-triage-map-dot {
+  animation-play-state: paused;
 }
 
 .canvas-triage-map-dot:hover,
@@ -2521,6 +2565,17 @@
   50% { box-shadow: 0 0 12px 3px var(--warn-glow); opacity: 1; }
 }
 
+@keyframes triage-map-awaiting-ring {
+  0% { transform: scale(0.55); opacity: 0.9; }
+  70%, 100% { transform: scale(2.2); opacity: 0; }
+}
+
+@keyframes triage-map-drift {
+  0% { translate: 0 0; }
+  50% { translate: var(--triage-drift-x1, 12px) var(--triage-drift-y1, -8px); }
+  100% { translate: var(--triage-drift-x2, -10px) var(--triage-drift-y2, 9px); }
+}
+
 @keyframes triage-deck-landed-flash {
   0%, 100% { border-color: var(--surface-rim); box-shadow: none; }
   45% { border-color: var(--positive); box-shadow: 0 0 16px var(--positive-glow); }
@@ -2592,6 +2647,8 @@
   .canvas-triage-sweep,
   .canvas-triage-scan,
   .canvas-triage-deck-card.is-running .canvas-triage-deck-card-dot,
+  .canvas-triage-map-dot.is-awaiting::after,
+  .canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-running,
   .canvas-triage-deck-card.is-landed,
   .canvas-triage-map-dot.is-landed,
   .canvas-triage-deck-card.is-arriving,
@@ -2608,6 +2665,12 @@
   .canvas-triage-deck-card.is-fresh,
   .canvas-triage-rail-track button.is-fresh {
     border-color: var(--aurora);
+  }
+
+  /* 움직임 없이도 대기 신호는 읽혀야 한다 — 정지한 aurora 링으로 폴백한다. */
+  .canvas-triage-map-dot.is-awaiting::after {
+    transform: scale(1.35);
+    opacity: 0.6;
   }
 
   .canvas-triage-curtain,

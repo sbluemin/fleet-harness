@@ -395,7 +395,8 @@ export function OperationsCanvas({
   }, [canvas.operations, language, registry.operationKinds, state.activeTheme, state.operations, triageActive]);
   const setAsideArmedId = getTriageSetAsideArmedId();
   // 덱 줌 wheel은 React 합성 onWheel 밖에서 부착한다 — React는 root wheel을 passive로
-  // 묶어 preventDefault(브라우저 페이지 줌 차단)가 무용해진다. 수식키 없는 wheel은 건드리지 않는다.
+  // 묶어 preventDefault(브라우저 페이지 줌 차단)가 무용해진다. wheel 문법: bare wheel은
+  // 덱 줌(캔버스와 동일), shift+wheel은 카드 격자 스크롤, alt는 건드리지 않는다.
   useEffect(() => {
     const canvasElement = canvasRef.current;
     if (!canvasElement) return;
