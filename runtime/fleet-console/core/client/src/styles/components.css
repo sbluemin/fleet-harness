@@ -2267,8 +2267,10 @@
   animation: triage-deck-landed-flash calc(var(--duration-slow) * 2.5) var(--ease-glide) 1;
 }
 
-.canvas-triage-map-dot.is-running:hover,
-.canvas-triage-map-dot.is-running:focus-visible {
+/* 유영만 멈춘다 — 착지(is-landed) 순간엔 포인터가 점 위에 남아 있는 게 보통이라,
+   무조건 pause면 1회성 flash까지 얼어붙는다. */
+.canvas-triage-map-dot.is-running:not(.is-landed):hover,
+.canvas-triage-map-dot.is-running:not(.is-landed):focus-visible {
   animation-play-state: paused;
 }
 
@@ -2647,6 +2649,7 @@
   .canvas-triage-deck-card.is-running .canvas-triage-deck-card-dot,
   .canvas-triage-map-dot.is-awaiting::after,
   .canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-running,
+  .canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-running.is-landed,
   .canvas-triage-deck-card.is-landed,
   .canvas-triage-map-dot.is-landed,
   .canvas-triage-deck-card.is-arriving,
