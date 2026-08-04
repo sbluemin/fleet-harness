@@ -30,7 +30,7 @@ import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { modeSlotGeometryFor, screenToCanvas, triageStageGeometryFor, type CanvasPoint, type CanvasRect } from "./coordinates.js";
-import { disarmTriageSetAside, dismissTriageOperation, getTriageCleared, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
+import { disarmTriageSetAside, dismissTriageOperation, getTriageCleared, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, resolveTriageQueue, scheduleTriageClear, setTriageSpotlightEnabled, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
 
 interface OperationsCanvasProps {
   readonly state: ConsoleState;
@@ -109,6 +109,7 @@ export function OperationsCanvas({
   const disabled = !state.activeTheaterId || state.addingTheater;
   const operationBodyPoolAvailable = useOperationBodyPoolAvailable();
   const triageActive = useTriageActive(state.activeTheaterId);
+  const triageSpotlightEnabled = useTriageSpotlightEnabled();
   useSyncExternalStore(subscribeTriage, getTriageSnapshot, getTriageSnapshot);
   const [triageEntering, setTriageEntering] = useState(false);
   const [, setTriageDeckDwellRevision] = useState(0);
@@ -317,10 +318,15 @@ export function OperationsCanvas({
     operationId: candidateTriageStage?.operation.id ?? null,
     picked: candidateTriageStage?.picked === true,
     deckVisible: deckWasVisible,
+    spotlight: triageSpotlightEnabled,
     dwell: triageDeckArrivalDwellRef.current,
     now: Date.now(),
     suppressed: panelMotionSuppressed(),
   });
+  // 스포트라이트 OFF일 때 검토 전인 대기 카드에 지속 맥동을 얹는다 — 등단을 멈춘 대신 도착 신호는 남긴다.
+  const freshDeckOperationIds: ReadonlySet<string> = triageActive && !triageSpotlightEnabled
+    ? new Set(triageQueue.filter((entry) => !entry.picked).map((entry) => entry.operation.id))
+    : new Set();
   triageDeckArrivalDwellRef.current = deckPromotion.dwell;
   const triageStage = deckPromotion.promote ? candidateTriageStage : null;
   const triageStageId = triageStage?.operation.id ?? null;
@@ -877,13 +883,26 @@ export function OperationsCanvas({
               <span aria-hidden="true">▸</span>
               <div className="canvas-triage-rail-track">
                 {triageDisplayQueue.slice(1).length > 0 ? triageDisplayQueue.slice(1).map((entry) => (
-                  <button key={entry.operation.id} type="button" onClick={() => state.activeTheaterId && pickTriageOperation(state.activeTheaterId, entry.operation.id)}>
+                  <button
+                    key={entry.operation.id}
+                    type="button"
+                    className={isTriageWaitingOperation(entry.operation, state.operationStatus) && !isTriageOperationDeferred(entry.operation.id) ? "is-fresh" : undefined}
+                    onClick={() => state.activeTheaterId && pickTriageOperation(state.activeTheaterId, entry.operation.id)}
+                  >
                     {entry.operation.title}
                   </button>
                 )) : <span className="canvas-triage-rail-empty">{t("canvas.triage.railEmpty")}</span>}
               </div>
             </div>
             <span className="canvas-triage-rail-cleared">{t("canvas.triage.railCleared", { count: state.activeTheaterId ? getTriageCleared(state.activeTheaterId) : 0 })}</span>
+            <button
+              type="button"
+              className="canvas-triage-rail-spotlight"
+              aria-pressed={triageSpotlightEnabled}
+              title={t("canvas.triage.spotlightTitle")}
+              aria-label={t("canvas.triage.spotlightTitle")}
+              onClick={() => setTriageSpotlightEnabled(!triageSpotlightEnabled)}
+            >{t("canvas.triage.spotlightLabel")}</button>
           </div>
           {triageEntering ? <div className="canvas-triage-sweep" aria-hidden="true" /> : null}
           {triageEntering ? (
@@ -908,6 +927,7 @@ export function OperationsCanvas({
         arrivingOperationId={triageDeckArrivingOperationId}
         stagedOperationId={triageStageId}
         previewConfigFor={triagePreviewConfigFor}
+        freshOperationIds={freshDeckOperationIds}
       />
       <TriageClearPlate active={triageActive && triageDeckOperations.length === 0} entering={triageEntering} hasContent={hasContent} idleCount={triageIdleCount} />
       {!triageActive && !hasContent && !formationEntering ? (

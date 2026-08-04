@@ -383,6 +383,9 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".canvas-mode-hud");
     expect(canvas).toContain("canvas-triage-rail-current");
     expect(canvas).toContain("canvas-triage-rail-cleared");
+    // 스포트라이트 토글은 레일 우측 끝 — 자동 등단 ON/OFF를 aria-pressed로 노출한다.
+    expect(canvas).toContain('className="canvas-triage-rail-spotlight"');
+    expect(canvas).toContain("aria-pressed={triageSpotlightEnabled}");
     // 두 번 눌러 확정 안내는 레일이 아니라 패널 안 HUD가 소유한다 — 확인 순간에 시선이 화면 하단으로 내려가지 않게.
     expect(canvas).not.toContain("canvas-triage-rail-arm");
     expect(canvas).not.toMatch(/canvas-triage-(?:frame|bracket|hud(?:-eye|-name)?|curtain-kicker|curtain-ruler)/);
@@ -552,6 +555,9 @@ describe("Instrument core design contract", () => {
     expect(reducedMotionBlock).toContain(".canvas-triage-deck-card.is-running .canvas-triage-deck-card-dot,");
     expect(reducedMotionBlock).toContain(".canvas-triage-deck-card.is-landed,");
     expect(reducedMotionBlock).toContain(".canvas-triage-deck-card.is-arriving,");
+    // 스포트라이트 OFF의 지속 맥동은 움직임을 빼고도 정지한 aurora 링으로 읽혀야 한다.
+    expect(reducedMotionBlock).toContain(".canvas-triage-deck-card.is-fresh,");
+    expect(reducedMotionBlock).toContain(".canvas-triage-rail-track button.is-fresh,");
   });
 
   it("pins the dormant resume feedback grammar — pending pulse, error card, and reduced-motion fallback", () => {

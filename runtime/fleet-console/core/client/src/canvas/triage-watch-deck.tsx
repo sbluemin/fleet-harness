@@ -22,6 +22,8 @@ interface TriageWatchDeckProps {
   /** 카드 본문 라이브 프리뷰용 pool 슬롯 config 빌더 — 핸들러 배선은 canvas가 단일 소유한다.
       렌더 가능한 kind가 아니면 null을 반환하고 카드는 tail 폴백으로 내려간다. */
   readonly previewConfigFor?: (operation: OperationNode) => OperationBodyConfig | null;
+  /** 스포트라이트 OFF에서 검토 전인 대기 카드 — 지속 aurora 맥동(is-fresh)을 얹는다. */
+  readonly freshOperationIds?: ReadonlySet<string>;
 }
 
 export interface TriageDeckArrivalDwell {
@@ -116,6 +118,7 @@ export function resolveTriageDeckPromotion(input: {
   readonly operationId: string | null;
   readonly picked: boolean;
   readonly deckVisible: boolean;
+  readonly spotlight: boolean;
   readonly dwell: TriageDeckArrivalDwell | null;
   readonly now: number;
   readonly suppressed: boolean;
@@ -123,7 +126,15 @@ export function resolveTriageDeckPromotion(input: {
   if (!input.operationId || !input.deckVisible) {
     return { promote: input.operationId !== null, arrivingOperationId: null, dwell: null };
   }
-  if (input.picked || input.suppressed) {
+  if (input.picked) {
+    return { promote: true, arrivingOperationId: null, dwell: null };
+  }
+  // 스포트라이트 OFF에서는 자동 등단을 하지 않는다 — reduced-motion의 즉시 등단(suppressed)보다
+  // 먼저 판정해야 모션 최소화 사용자도 OFF 선택이 존중된다. 도착 신호는 카드의 is-fresh가 계속 책임진다.
+  if (!input.spotlight) {
+    return { promote: false, arrivingOperationId: null, dwell: null };
+  }
+  if (input.suppressed) {
     return { promote: true, arrivingOperationId: null, dwell: null };
   }
   const dwell = input.dwell?.operationId === input.operationId
@@ -147,6 +158,7 @@ export function TriageWatchDeck({
   arrivingOperationId = null,
   stagedOperationId = null,
   previewConfigFor,
+  freshOperationIds,
 }: TriageWatchDeckProps) {
   const t = useT();
   const gridRef = useRef<HTMLDivElement | null>(null);
@@ -303,7 +315,7 @@ export function TriageWatchDeck({
           const isQuicklook = quicklook?.operationId === operation.id;
           return (
             <button
-              className={`canvas-triage-deck-card is-${visual} ${previewConfig ? "has-preview" : ""} ${arrivingOperationId === operation.id ? "is-arriving" : ""} ${isQuicklook ? "is-quicklook" : ""}`}
+              className={`canvas-triage-deck-card is-${visual} ${previewConfig ? "has-preview" : ""} ${arrivingOperationId === operation.id ? "is-arriving" : ""} ${freshOperationIds?.has(operation.id) ? "is-fresh" : ""} ${isQuicklook ? "is-quicklook" : ""}`}
               data-triage-deck-card={operation.id}
               key={operation.id}
               type="button"

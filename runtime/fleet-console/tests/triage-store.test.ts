@@ -43,14 +43,17 @@ import {
   isTriageActive,
   isTriageClearedTransition,
   isTriageOperationDismissed,
+  isTriageSpotlightEnabled,
   markTriageCleared,
   pickTriageOperation,
   recordTriageActivity,
   reconcileTriageStageCompanion,
+  resetTriageSpotlightForTests,
   resetTriageTheater,
   resolveTriageQueue,
   scheduleTriageClear,
   setTriageActive,
+  setTriageSpotlightEnabled,
 } from "../core/client/src/canvas/triage-store.js";
 import type { OperationNode } from "../core/client/src/types.js";
 import { TriageClearPlate } from "../core/client/src/canvas/canvas-overlays.js";
@@ -76,6 +79,7 @@ beforeEach(() => {
     operationStatus: {},
   });
   resetTriageTheater(THEATER_ID);
+  resetTriageSpotlightForTests();
   resetIdleArrivalForTests();
   clearFormationView();
   clearMaximizedOperationId();
@@ -85,6 +89,7 @@ beforeEach(() => {
 
 afterEach(() => {
   resetTriageTheater(THEATER_ID);
+  resetTriageSpotlightForTests();
   forceDropCompanionOperationId();
   clearFormationView();
   clearMaximizedOperationId();
@@ -99,6 +104,23 @@ afterEach(() => {
 });
 
 describe("triage store", () => {
+  it("keeps the spotlight on by default, persists off, and resets cleanly", () => {
+    expect(isTriageSpotlightEnabled()).toBe(true);
+
+    setTriageSpotlightEnabled(false);
+    expect(isTriageSpotlightEnabled()).toBe(false);
+    expect(window.localStorage.getItem("fleet-console-triage-spotlight")).toBe("0");
+
+    setTriageSpotlightEnabled(true);
+    expect(isTriageSpotlightEnabled()).toBe(true);
+    expect(window.localStorage.getItem("fleet-console-triage-spotlight")).toBeNull();
+
+    setTriageSpotlightEnabled(false);
+    resetTriageSpotlightForTests();
+    expect(isTriageSpotlightEnabled()).toBe(true);
+    expect(window.localStorage.getItem("fleet-console-triage-spotlight")).toBeNull();
+  });
+
   it("arms the first set-aside press and dismisses only on the second press", () => {
     const pressSetAside = () => {
       if (getTriageSetAsideArmedId(THEATER_ID) === "picked") {
@@ -727,6 +749,7 @@ describe("triage store", () => {
       operationId: "awaiting",
       picked: false,
       deckVisible: true,
+      spotlight: true,
       dwell: null,
       now: 1_000,
       suppressed: false,
@@ -740,13 +763,41 @@ describe("triage store", () => {
       operationId: "awaiting",
       picked: false,
       deckVisible: true,
+      spotlight: true,
       dwell: started.dwell,
       now: 1_000 + TRIAGE_DECK_ARRIVAL_DWELL_MS,
       suppressed: false,
     }).promote).toBe(true);
-    expect(resolveTriageDeckPromotion({ operationId: "picked", picked: true, deckVisible: true, dwell: started.dwell, now: 1_001, suppressed: false }).promote).toBe(true);
-    expect(resolveTriageDeckPromotion({ operationId: "next", picked: false, deckVisible: false, dwell: null, now: 1_001, suppressed: false }).promote).toBe(true);
-    expect(resolveTriageDeckPromotion({ operationId: "awaiting", picked: false, deckVisible: true, dwell: null, now: 1_001, suppressed: true }).promote).toBe(true);
+    expect(resolveTriageDeckPromotion({ operationId: "picked", picked: true, deckVisible: true, spotlight: true, dwell: started.dwell, now: 1_001, suppressed: false }).promote).toBe(true);
+    expect(resolveTriageDeckPromotion({ operationId: "next", picked: false, deckVisible: false, spotlight: true, dwell: null, now: 1_001, suppressed: false }).promote).toBe(true);
+    expect(resolveTriageDeckPromotion({ operationId: "awaiting", picked: false, deckVisible: true, spotlight: true, dwell: null, now: 1_001, suppressed: true }).promote).toBe(true);
+  });
+
+  it("stops automatic promotion while the spotlight is off, except for picks and stage advancement", () => {
+    expect(resolveTriageDeckPromotion({
+      operationId: "awaiting",
+      picked: false,
+      deckVisible: true,
+      spotlight: false,
+      dwell: null,
+      now: 1_000,
+      suppressed: false,
+    })).toEqual({ promote: false, arrivingOperationId: null, dwell: null });
+    expect(resolveTriageDeckPromotion({
+      operationId: "awaiting",
+      picked: false,
+      deckVisible: true,
+      spotlight: false,
+      dwell: null,
+      now: 1_000 + TRIAGE_DECK_ARRIVAL_DWELL_MS + 5_000,
+      suppressed: false,
+    })).toEqual({ promote: false, arrivingOperationId: null, dwell: null });
+    // 지목은 스포트라이트와 무관하게 언제나 등단한다.
+    expect(resolveTriageDeckPromotion({ operationId: "picked", picked: true, deckVisible: true, spotlight: false, dwell: null, now: 1_001, suppressed: false }).promote).toBe(true);
+    // deck가 보이지 않을 때는 무대 진행이 멈추지 않는다.
+    expect(resolveTriageDeckPromotion({ operationId: "next", picked: false, deckVisible: false, spotlight: false, dwell: null, now: 1_001, suppressed: false }).promote).toBe(true);
+    // reduced-motion(suppressed)의 즉시 등단보다 스포트라이트 OFF가 우선한다.
+    expect(resolveTriageDeckPromotion({ operationId: "awaiting", picked: false, deckVisible: true, spotlight: false, dwell: null, now: 1_001, suppressed: true }).promote).toBe(false);
   });
 
   it("marks the dwelling Watch Deck card as arriving", () => {
@@ -768,6 +819,27 @@ describe("triage store", () => {
 
     expect(container.querySelector('[data-triage-deck-card="picked"]')?.classList.contains("is-arriving")).toBe(true);
     expect(container.querySelector('[data-triage-deck-card="next"]')?.classList.contains("is-arriving")).toBe(false);
+  });
+
+  it("marks only the fresh Watch Deck cards while the spotlight is off", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    triagePlateRoot = createRoot(container);
+
+    act(() => {
+      triagePlateRoot?.render(createElement(TriageWatchDeck, {
+        active: true,
+        entering: false,
+        theaterId: THEATER_ID,
+        operations: OPERATIONS,
+        operationStatus: { picked: "awaiting", next: "idle" },
+        operationAccent: {},
+        freshOperationIds: new Set(["picked"]),
+      }));
+    });
+
+    expect(container.querySelector('[data-triage-deck-card="picked"]')?.classList.contains("is-fresh")).toBe(true);
+    expect(container.querySelector('[data-triage-deck-card="next"]')?.classList.contains("is-fresh")).toBe(false);
   });
 
   it("records detail and activity transition timestamps independently", () => {
