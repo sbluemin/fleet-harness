@@ -24,7 +24,7 @@ import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { resolveAccentColor } from "./operation-accent.js";
 import { CanvasGrid, RubberBand, TriageClearPlate } from "./canvas-overlays.js";
-import { flashTriageDeckCard, getTriageDeckCardRect, resolveTriageDeckPromotion, TriageWatchDeck, type TriageDeckArrivalDwell } from "./triage-watch-deck.js";
+import { flashTriageDeckCard, getTriageDeckCardRect, resolveTriageDeckPromotion, takeTriageDeckDepartureRect, TriageWatchDeck, type TriageDeckArrivalDwell } from "./triage-watch-deck.js";
 import { resolveGlanceHudModel, type GlanceHudModel } from "./glance-hud.js";
 import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
@@ -384,7 +384,9 @@ export function OperationsCanvas({
       const stage = canvasRef.current?.querySelector<HTMLElement>(`.canvas-operation[data-operation-id="${escapeSelectorValue(triageStageId)}"]`) ?? null;
       if (stage) triageStageRectRef.current.set(triageStageId, stage.getBoundingClientRect());
       if (previousStageId === null && !triageEntering) {
-        const from = getTriageDeckCardRect(triageStageId);
+        // 클릭 승격은 사용자가 보고 있던(Quick-Look이면 확대된) rect에서 출발한다 — 1회용 출발
+        // 채널이 비어 있으면(자동 승격 등) 비확대 캐시로 폴백한다.
+        const from = takeTriageDeckDepartureRect(triageStageId) ?? getTriageDeckCardRect(triageStageId);
         if (from) {
           window.requestAnimationFrame(() => {
             const target = canvasRef.current?.querySelector<HTMLElement>(`.canvas-operation[data-operation-id="${escapeSelectorValue(triageStageId)}"]`) ?? null;

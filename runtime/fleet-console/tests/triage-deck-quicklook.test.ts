@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { resolveTriageQuicklookOrigin } from "../core/client/src/canvas/triage-watch-deck.js";
+import { resolveTriageQuicklookOrigin, resolveTriageQuicklookScale } from "../core/client/src/canvas/triage-watch-deck.js";
 
 function rect(left: number, top: number, width: number, height: number): DOMRect {
   return {
@@ -49,5 +49,35 @@ describe("resolveTriageQuicklookOrigin", () => {
   it("keeps center when the remaining gap exactly fits the half-growth", () => {
     // 좌측 여백이 정확히 95(scale 1.95 기준 절반 증가폭)이면 경계를 넘지 않으므로 center.
     expect(resolveTriageQuicklookOrigin(rect(95, 47.5, 200, 100), GRID)).toBe("center center");
+  });
+});
+
+describe("resolveTriageQuicklookScale", () => {
+  it("keeps the full 1.95 scale when the grid can absorb the growth", () => {
+    expect(resolveTriageQuicklookScale(rect(500, 350, 200, 100), GRID)).toBe(1.95);
+  });
+
+  it("caps to 1 when a single-column card already fills the grid width", () => {
+    // 단일 컬럼 deck — 카드 폭 == grid 폭이면 어떤 확대도 overflow에 잘리므로 확대하지 않는다.
+    expect(resolveTriageQuicklookScale(rect(0, 100, 1200, 210), GRID)).toBe(1);
+  });
+
+  it("caps to the width ratio when the card is wider than the height allows", () => {
+    // grid 800×800에 카드 500×100 — 폭 기준 1.6이 1.95보다 먼저 바닥난다.
+    expect(resolveTriageQuicklookScale(rect(0, 0, 500, 100), rect(0, 0, 800, 800))).toBe(1.6);
+  });
+
+  it("caps to the height ratio on short grids", () => {
+    // grid 높이 300에 카드 높이 210 — 300/210 ≈ 1.4286이 상한이 된다.
+    expect(resolveTriageQuicklookScale(rect(0, 0, 300, 210), rect(0, 0, 1200, 300)))
+      .toBeCloseTo(300 / 210, 5);
+  });
+
+  it("never scales below 1 even when the card overflows the grid", () => {
+    expect(resolveTriageQuicklookScale(rect(0, 0, 1400, 900), GRID)).toBe(1);
+  });
+
+  it("returns 1 for a degenerate zero-size card", () => {
+    expect(resolveTriageQuicklookScale(rect(0, 0, 0, 0), GRID)).toBe(1);
   });
 });

@@ -2129,7 +2129,9 @@
 /* Quick-Look — hover 드웰 후 카드를 transform으로만 확대해 프리뷰 유효 배율을 판독권(≈0.8)으로
    올린다. 프리뷰 inner의 측정 크기는 불변이므로 PTY 리사이즈 계약과 pool 슬롯 유일성이 유지된다. */
 .canvas-triage-deck-card.is-quicklook {
-  transform: scale(1.95);
+  /* 배율은 발동 시점에 JS가 grid 수용 한도로 깎아 주입한다(--triage-quicklook-scale) —
+     단일 컬럼처럼 카드가 grid를 채우는 창에서 고정 1.95는 overflow에 잘려 나가기 때문. */
+  transform: scale(var(--triage-quicklook-scale, 1.95));
   z-index: 9;
   border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-rim));
   box-shadow: 0 18px 60px oklch(0% 0 0 / 55%), 0 0 0 1px var(--brass-glow);

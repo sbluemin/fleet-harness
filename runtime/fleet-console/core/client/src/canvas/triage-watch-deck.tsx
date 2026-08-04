@@ -39,6 +39,31 @@ export const TRIAGE_DECK_ARRIVAL_DWELL_MS = 1_100;
 export const TRIAGE_DECK_QUICKLOOK_DWELL_MS = 400;
 export const TRIAGE_DECK_QUICKLOOK_SCALE = 1.95;
 
+// Quick-Look 배율 상한 — 단일 컬럼처럼 카드가 grid 폭을 거의 채우면 1.95를 그대로 곱한 카드가
+// grid(overflow hidden)보다 커져 확대분이 잘려 나간다. origin 클램프는 컨테이너보다 큰 대상을
+// 구제하지 못하므로 배율 자체를 grid가 수용 가능한 값으로 깎는다. 1 미만으로는 내리지 않는다
+// (축소는 확대 보기가 아니다) — 좁은 창에서는 확대 없이 강조만 남는 정직한 열화를 택한다.
+export function resolveTriageQuicklookScale(
+  cardRect: DOMRect,
+  gridRect: DOMRect,
+  maxScale = TRIAGE_DECK_QUICKLOOK_SCALE,
+): number {
+  if (cardRect.width <= 0 || cardRect.height <= 0) return 1;
+  return Math.max(1, Math.min(maxScale, gridRect.width / cardRect.width, gridRect.height / cardRect.height));
+}
+
+// 승격 출발 rect 1회용 채널 — 클릭 순간의(Quick-Look이면 확대된) rect는 outbound flight의
+// 출발점으로만 쓰여야 한다. deckCardRects에 덮어쓰면 무대 복귀 flight의 목적지까지 확대
+// rect로 오염되므로, 소비 즉시 비워지는 별도 채널로 분리한다.
+let deckDepartureRect: { readonly operationId: string; readonly rect: DOMRect } | null = null;
+
+export function takeTriageDeckDepartureRect(operationId: string): DOMRect | null {
+  if (deckDepartureRect?.operationId !== operationId) return null;
+  const rect = deckDepartureRect.rect;
+  deckDepartureRect = null;
+  return rect;
+}
+
 // Quick-Look transform-origin 결정 — 확대 후 카드가 grid 경계를 넘는 방향으로 origin을
 // 클램프해 팽창이 경계 안쪽으로만 일어나게 한다. center origin 기준 카드는 절반 증가폭
 // (scale-1)/2 만큼 양쪽으로 팽창하므로, 그 폭이 카드와 grid 사이 여백보다 크면 해당 방향의
@@ -129,7 +154,7 @@ export function TriageWatchDeck({
   useOperationStatusDetails();
   // Quick-Look 상태 — 동시에 한 카드만 확대된다. 타이머도 1개만 유지해 카드 사이를 빠르게
   // 오갈 때 이전 카드의 드웰이 뒤늦게 발동해 두 카드가 동시에 확대되는 일을 막는다.
-  const [quicklook, setQuicklook] = useState<{ operationId: string; origin: string } | null>(null);
+  const [quicklook, setQuicklook] = useState<{ operationId: string; origin: string; scale: number } | null>(null);
   const quicklookTimerRef = useRef<number | null>(null);
   // 무대가 떠 있는 동안에도 deck는 mount를 유지하고 visibility로만 숨는다 — 비무대 body가
   // 카드(고정 크기)와 숨김 프레임(크롬 제외 크기) 사이를 오가며 전 세션에 PTY 리사이즈를
@@ -147,6 +172,9 @@ export function TriageWatchDeck({
         const operationId = card.dataset.triageDeckCard;
         if (!operationId) continue;
         currentIds.add(operationId);
+        // Quick-Look 확대 중인 카드는 건너뛰어 마지막 비확대 rect를 유지한다 — 이 맵은 복귀
+        // flight의 목적지라 확대 rect가 실리면 고스트가 카드 두 배 크기 자리로 날아간다.
+        if (card.classList.contains("is-quicklook")) continue;
         deckCardRects.set(operationId, card.getBoundingClientRect());
       }
       for (const operationId of deckCardRects.keys()) {
@@ -191,9 +219,13 @@ export function TriageWatchDeck({
       quicklookTimerRef.current = null;
       const grid = gridRef.current;
       if (!grid) return;
+      const cardRect = card.getBoundingClientRect();
+      const gridRect = grid.getBoundingClientRect();
+      const scale = resolveTriageQuicklookScale(cardRect, gridRect);
       setQuicklook({
         operationId,
-        origin: resolveTriageQuicklookOrigin(card.getBoundingClientRect(), grid.getBoundingClientRect()),
+        origin: resolveTriageQuicklookOrigin(cardRect, gridRect, scale),
+        scale,
       });
     };
     if (!dwell) {
@@ -246,7 +278,9 @@ export function TriageWatchDeck({
               data-triage-deck-card={operation.id}
               key={operation.id}
               type="button"
-              style={isQuicklook ? { transformOrigin: quicklook.origin } : undefined}
+              style={isQuicklook
+                ? { transformOrigin: quicklook.origin, "--triage-quicklook-scale": String(quicklook.scale) } as CSSProperties
+                : undefined}
               aria-label={t("canvas.triage.deckCardAria", { title: operation.title })}
               onPointerEnter={(event: PointerEvent<HTMLButtonElement>) => {
                 // 터치엔 hover 개념이 없다 — 손가락으로 카드를 누를 때마다 확대가 번쩍이지 않게 차단.
@@ -265,10 +299,10 @@ export function TriageWatchDeck({
               }}
               onBlur={dismissQuicklook}
               onClick={(event) => {
-                // 확대 상태에서의 클릭은 실제 rect를 재측정해 기록한다 — deckCardRects에 저장된
-                // rect는 Quick-Look 확대 전에 기록된 것이라 그대로 쓰면 승격 flight가 사용자가
-                // 보고 있는 확대된 위치가 아니라 원래 크기의 자리에서 출발해 위화감을 준다.
-                deckCardRects.set(operation.id, event.currentTarget.getBoundingClientRect());
+                // 클릭 순간의 rect(Quick-Look이면 확대된 모습 그대로)를 출발 전용 채널에 기록한다 —
+                // 승격 flight는 사용자가 보고 있는 위치에서 출발해야 하고, deckCardRects는 복귀
+                // flight 목적지용 비확대 rect로 남아야 하므로 두 용도를 분리한다.
+                deckDepartureRect = { operationId: operation.id, rect: event.currentTarget.getBoundingClientRect() };
                 pickTriageOperation(theaterId, operation.id);
               }}
             >

@@ -95,6 +95,8 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--cap-color",
   // Canvas context menu TSX injects the viewport-derived height ceiling for its own box.
   "--canvas-menu-max-height",
+  // Triage Watch Deck TSX injects the grid-capped quick-look magnification at hover time.
+  "--triage-quicklook-scale",
 ]);
 
 function source(path: string): string {
