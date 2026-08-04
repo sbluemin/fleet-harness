@@ -431,6 +431,16 @@ export function consumeOperationLaunchMenu(): void {
   setState({ launchMenuRequest: null });
 }
 
+// 소비자(OperationsSideBar)가 없는 동안 쌓인 사이드바 요청을 부수 효과 없이 폐기한다 —
+// consume은 UI 반응(다이얼로그 열림 등)을 동반하므로 경계 정리에는 쓸 수 없다.
+export function clearPendingSideBarSignals(): void {
+  setState({
+    pendingSideBarAddTheater: false,
+    pendingSideBarTheaterLaunch: null,
+    launchMenuRequest: null,
+  });
+}
+
 export function openKeyboardShortcuts(): void {
   if (state.keyboardShortcutsOpen) return;
   setState({ keyboardShortcutsOpen: true });

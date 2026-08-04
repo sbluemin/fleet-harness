@@ -55,7 +55,7 @@ beforeEach(() => {
     viewport: { x: 0, y: 0, zoom: 1 },
     operations: { [OPERATION.id]: OPERATION.geometry! },
   });
-  setTriageActive(THEATER_A, true);
+  setTriageActive(true);
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -72,35 +72,35 @@ afterEach(() => {
 
 describe("Triage stage companion synchronization", () => {
   it("disarms the previous Theater when the next view is not in Triage", () => {
-    armTriageSetAside(THEATER_A, "operation-a");
+    armTriageSetAside("operation-a");
 
     expect(clearInactiveTriageStageCompanion({
       theaterId: THEATER_A,
       operationId: "operation-a",
     })).toBeNull();
-    expect(getTriageSetAsideArmedId(THEATER_A)).toBeNull();
+    expect(getTriageSetAsideArmedId()).toBeNull();
   });
 
   it("keeps an armed stage through a same-stage rerender", () => {
     renderCanvas();
 
-    act(() => armTriageSetAside(THEATER_A, OPERATION.id));
+    act(() => armTriageSetAside(OPERATION.id));
 
-    expect(getTriageSetAsideArmedId(THEATER_A)).toBe(OPERATION.id);
+    expect(getTriageSetAsideArmedId()).toBe(OPERATION.id);
   });
 
   it("disarms the current Theater when the canvas unmounts", () => {
     renderCanvas();
-    act(() => armTriageSetAside(THEATER_A, OPERATION.id));
-    expect(getTriageSetAsideArmedId(THEATER_A)).toBe(OPERATION.id);
+    act(() => armTriageSetAside(OPERATION.id));
+    expect(getTriageSetAsideArmedId()).toBe(OPERATION.id);
 
     act(() => root!.render(null));
 
-    expect(getTriageSetAsideArmedId(THEATER_A)).toBeNull();
+    expect(getTriageSetAsideArmedId()).toBeNull();
 
     renderCanvas();
-    act(() => armTriageSetAside(THEATER_A, OPERATION.id));
-    expect(getTriageSetAsideArmedId(THEATER_A)).toBe(OPERATION.id);
+    act(() => armTriageSetAside(OPERATION.id));
+    expect(getTriageSetAsideArmedId()).toBe(OPERATION.id);
   });
 });
 

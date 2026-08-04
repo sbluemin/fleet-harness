@@ -52,7 +52,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const canvas = useCanvasState();
   const formationLayout = useFormationLayout();
   const formationView = useFormationView();
-  const triageActive = useTriageActive(state.activeTheaterId);
+  const triageActive = useTriageActive();
   const activeTheater = state.theaters.find((theater) => theater.id === state.activeTheaterId) ?? null;
   const activeOperation = commandBandActiveOperation(state.operations, state.activeOperationId, state.activeTheaterId);
   const activePlugin = activeOperation ? registry.plugins.find((plugin) => plugin.id === activeOperation.pluginId) : null;
@@ -427,19 +427,16 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         <button
         type="button"
         className="command-band-triage-toggle"
-        disabled={state.activeTheaterId === null}
+        disabled={state.theaters.length === 0}
         aria-pressed={triageActive}
         aria-label={t("chrome.commandBand.triageToggle")}
         title={t("chrome.commandBand.triageToggle")}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => {
-          if (state.activeTheaterId) {
-            const activating = !triageActive;
-            if (activating) {
-              enterTriage(state.activeTheaterId, focusedTriageOperationId(document.activeElement));
-            } else {
-              setTriageActive(state.activeTheaterId, false);
-            }
+          if (triageActive) {
+            setTriageActive(false);
+          } else if (state.theaters.length > 0) {
+            enterTriage(focusedTriageOperationId(document.activeElement));
           }
         }}
       >

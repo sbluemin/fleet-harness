@@ -12,11 +12,12 @@ import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, c
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { playMinimizeFlight, playRestoreFlight } from "../canvas/panel-motion.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
-import { armTriageSetAside, deferTriageOperation, disarmTriageSetAside, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, getTriageSetAsideArmedId, isTriageActive, pickTriageOperation, recordTriageActivity, resolveTriageQueue, setTriageActive } from "../canvas/triage-store.js";
+import { armTriageSetAside, deferTriageOperation, disarmTriageSetAside, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, getTriageSetAsideArmedId, isTriageActive, pickTriageOperation, recordTriageActivity, resolveTriageQueue, setTriageActive, useTriageActive } from "../canvas/triage-store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
+import { TriageSideBar } from "../sidebar/triage-side-bar.js";
 import { toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
@@ -53,6 +54,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   const [catalog, setCatalog] = useState<readonly OperationCatalogPlugin[]>([]);
+  const triageActive = useTriageActive();
 
   const operationOrder = useMemo(
     () => sortedTheaterOperations(state).map((operation) => operation.id),
@@ -65,16 +67,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
 
   useEffect(() => {
     loadForTheater(state.activeTheaterId);
-    if (state.activeTheaterId && isTriageActive(state.activeTheaterId)) {
-      setTriageActive(state.activeTheaterId, true);
-    }
   }, [state.activeTheaterId]);
 
   useEffect(() => {
-    for (const theater of state.theaters) {
-      recordTriageActivity(theater.id, state.operations, state.operationStatus);
-    }
-  }, [state.operationStatus, state.operations, state.theaters]);
+    recordTriageActivity(state.operations, state.operationStatus);
+  }, [state.operationStatus, state.operations]);
 
   useEffect(() => {
     if (!state.activeTheaterId) { setCatalog([]); return; }
@@ -89,17 +86,15 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       if (isBlockingDialogOpen()) return;
       const active = document.activeElement;
       if (active instanceof HTMLElement && active.matches("input, textarea, [contenteditable='true']") && !active.closest(".xterm")) return;
-      const escapeTheaterId = stateRef.current.activeTheaterId;
-      if (event.code === "Escape" && escapeTheaterId && getTriageSetAsideArmedId(escapeTheaterId) !== null) {
+      if (event.code === "Escape" && getTriageSetAsideArmedId() !== null) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        disarmTriageSetAside(escapeTheaterId);
+        disarmTriageSetAside();
         return;
       }
       if (event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey && event.code === "Digit1") {
         if (active instanceof HTMLElement && active.closest(".xterm")) return;
-        const theaterId = stateRef.current.activeTheaterId;
-        if (isTriageActive(theaterId)) return;
+        if (isTriageActive()) return;
         if (!stateRef.current.operationsHydrated) return;
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -123,14 +118,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       if (event.code === "KeyT" && !event.shiftKey) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        const theaterId = stateRef.current.activeTheaterId;
-        if (theaterId) {
-          const activating = !isTriageActive(theaterId);
-          if (activating) {
-            enterTriage(theaterId, focusedTriageOperationId(document.activeElement));
-          } else {
-            setTriageActive(theaterId, false);
-          }
+        if (isTriageActive()) {
+          setTriageActive(false);
+        } else if (stateRef.current.theaters.length > 0) {
+          enterTriage(focusedTriageOperationId(document.activeElement));
         }
         return;
       }
@@ -166,7 +157,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         return;
       }
       const theaterId = snapshot.activeTheaterId;
-      const triageActive = theaterId !== null && isTriageActive(theaterId);
+      const triageActive = isTriageActive();
       const arrowAction = resolveOperationsArrowShortcutAction(triageActive, event.code);
       if (arrowAction === null) return;
       event.preventDefault();
@@ -180,19 +171,15 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         if (arrowAction === "triage-noop") return;
         const stageId = document.querySelector<HTMLElement>(".canvas-operation.is-triage-stage[data-operation-id]")?.dataset.operationId;
         if (!stageId) return;
-        const queue = resolveTriageQueue(
-          theaterId!,
-          snapshot.operations.filter((operation) => operation.theaterId === theaterId),
-          snapshot.operationStatus,
-        );
+        const queue = resolveTriageQueue(snapshot.operations, snapshot.operationStatus);
         if (!queue.some((entry) => entry.operation.id === stageId)) return;
         if (arrowAction === "triage-defer") {
-          deferTriageOperation(theaterId!, stageId);
-        } else if (getTriageSetAsideArmedId(theaterId!) === stageId) {
-          disarmTriageSetAside(theaterId!);
-          dismissTriageOperation(theaterId!, stageId);
+          deferTriageOperation(stageId);
+        } else if (getTriageSetAsideArmedId() === stageId) {
+          disarmTriageSetAside();
+          dismissTriageOperation(stageId);
         } else {
-          armTriageSetAside(theaterId!, stageId);
+          armTriageSetAside(stageId);
         }
         return;
       }
@@ -262,8 +249,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const focusMapOperation = useCallback((operationId: string) => {
     const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);
     if (!operation) return;
-    if (isTriageActive(operation.theaterId)) {
-      pickTriageOperation(operation.theaterId, operationId);
+    if (isTriageActive()) {
+      pickTriageOperation(operationId);
       return;
     }
     const snapshot = getCanvasSnapshot();
@@ -430,8 +417,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const handleClose = useCallback((operationId: string) => {
     if (closingOperationIds.has(operationId)) return;
     if (getCompanionOperationId() === operationId) forceDropCompanionOperationId();
-    const theaterId = stateRef.current.operations.find((op) => op.id === operationId)?.theaterId;
-    if (theaterId && isTriageActive(theaterId)) dismissTriageOperation(theaterId, operationId);
+    if (isTriageActive()) dismissTriageOperation(operationId);
     closingOperationIds.add(operationId);
     const pluginId = stateRef.current.operations.find((op) => op.id === operationId)?.pluginId;
     const plugin = (pluginId ? registry.plugins.find((p) => p.id === pluginId) : null) ?? null;
@@ -494,6 +480,14 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     />
   ) : (
     <div className="console-body is-canvas">
+      {triageActive ? (
+        <TriageSideBar
+          theaters={state.theaters}
+          operations={state.operations}
+          operationStatus={state.operationStatus}
+          onPick={pickTriageOperation}
+        />
+      ) : (
       <OperationsSideBar
         theaters={state.theaters}
         activeTheaterId={state.activeTheaterId}
@@ -525,6 +519,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         onCancelAddTheater={cancelAddTheater}
         onForgetTheater={handleForgetTheater}
       />
+      )}
       <div className="operations-center-stage" ref={bodyRef}>
         <OperationsCanvas
           state={state}
@@ -559,8 +554,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
 async function routeOperationFocus(operationId: string, operationKinds: readonly OperationKindDescriptor[], api: ClientApiCapability, requestEpochRef: { current: number }, focusMap: () => void): Promise<void> {
   const requestEpoch = ++requestEpochRef.current;
   const triageOperation = getState().operations.find((candidate) => candidate.id === operationId);
-  if (triageOperation && isTriageActive(triageOperation.theaterId)) {
-    pickTriageOperation(triageOperation.theaterId, operationId);
+  if (triageOperation && isTriageActive()) {
+    pickTriageOperation(operationId);
     requestOperationKeyboardFocus(operationId);
     return;
   }
@@ -701,8 +696,8 @@ async function launchViaPlugin(
   // hydrate된 경우에만 승계하고, 아니면 focusOperation(op 부재 시 안전하게 no-op)으로 기존 최대화 패널을 그대로 둔다.
   const operationHydrated = getState().operations.some((operation) => operation.id === newOperationId);
   // Analyze는 명시적인 사용자 focus만 따라간다. 새 Operation 생성은 열린 분석 대상을 승계하지 않는다.
-  if (isTriageActive(theaterId)) {
-    pickTriageOperation(theaterId, newOperationId);
+  if (isTriageActive()) {
+    pickTriageOperation(newOperationId);
     return;
   }
   if (getTheaterCompanionOperationId(theaterId) !== null) return;

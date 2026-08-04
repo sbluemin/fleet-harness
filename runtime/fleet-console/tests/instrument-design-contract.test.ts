@@ -773,8 +773,10 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain('aria-pressed={formationView && formationLayout === "grid"}');
     expect(commandBand).toContain('aria-pressed={formationView && formationLayout === "columns"}');
     expect(commandBand).toContain('aria-pressed={formationView && formationLayout === "rows"}');
-    expect((commandBand.match(/disabled=\{state\.activeTheaterId === null\}/g) ?? []).length).toBe(5);
+    expect((commandBand.match(/disabled=\{state\.activeTheaterId === null\}/g) ?? []).length).toBe(4);
     expect(commandBand).toContain('className="command-band-triage-toggle"');
+    // 선별 처리 토글은 전역 모드라 활성 Theater가 아니라 등록된 Theater 존재로 게이트한다.
+    expect(commandBand).toContain("disabled={state.theaters.length === 0}");
     expect(commandBand).toContain("aria-pressed={triageActive}");
     const sidebar = source("sidebar/operations-side-bar.tsx");
     expect(sidebar).not.toContain("side-bar-formation-group");

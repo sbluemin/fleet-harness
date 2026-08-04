@@ -322,22 +322,20 @@ export function OperationSearch({
         if (getViewModeSnapshot().effective === "mobile") break;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         ensurePaletteCanvasTheater(state);
-        if (!isTriageActive(state.activeTheaterId)) requestFitAllOperations();
+        if (!isTriageActive()) requestFitAllOperations();
         break;
       }
       case "toggle-triage-mode": {
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         ensurePaletteCanvasTheater(state);
-        if (state.activeTheaterId) {
-          if (isTriageActive(state.activeTheaterId)) {
-            setTriageActive(state.activeTheaterId, false);
-          } else {
-            // 팔레트 진입 시점의 activeElement는 입력창이므로 캔버스 포커스는 previousFocusRef에서 읽는다.
-            // 그 뒤 복원을 끊지 않으면 팔레트가 닫히며 이전 패널을 다시 포커스해 빈 대기열 진입의 해제가 무효화된다.
-            const focusedOperationId = focusedTriageOperationId(previousFocusRef.current);
-            previousFocusRef.current = null;
-            enterTriage(state.activeTheaterId, focusedOperationId);
-          }
+        if (isTriageActive()) {
+          setTriageActive(false);
+        } else if (state.theaters.length > 0) {
+          // 팔레트 진입 시점의 activeElement는 입력창이므로 캔버스 포커스는 previousFocusRef에서 읽는다.
+          // 그 뒤 복원을 끊지 않으면 팔레트가 닫히며 이전 패널을 다시 포커스해 빈 대기열 진입의 해제가 무효화된다.
+          const focusedOperationId = focusedTriageOperationId(previousFocusRef.current);
+          previousFocusRef.current = null;
+          enterTriage(focusedOperationId);
         }
         break;
       }

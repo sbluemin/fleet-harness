@@ -449,7 +449,7 @@ describe("Operations boot minimization", () => {
     await bootApp([operation("first")]);
     await act(async () => {
       setState({ operationStatus: { first: "awaiting" } });
-      setTriageActive("theater-a", true);
+      setTriageActive(true);
       await Promise.resolve();
     });
     const stage = document.createElement("div");
@@ -463,7 +463,7 @@ describe("Operations boot minimization", () => {
       window.dispatchEvent(initial);
       await Promise.resolve();
     });
-    expect(getTriageSetAsideArmedId("theater-a")).toBe("first");
+    expect(getTriageSetAsideArmedId()).toBe("first");
 
     const repeated = altKeyDown("ArrowDown", { repeat: true });
     await act(async () => {
@@ -472,7 +472,7 @@ describe("Operations boot minimization", () => {
     });
 
     expect(repeated.defaultPrevented).toBe(true);
-    expect(getTriageSetAsideArmedId("theater-a")).toBe("first");
+    expect(getTriageSetAsideArmedId()).toBe("first");
     stage.remove();
   });
 
@@ -509,7 +509,7 @@ describe("Operations boot minimization", () => {
       setActiveOperation("first");
       await Promise.resolve();
     });
-    armTriageSetAside("theater-a", "first");
+    armTriageSetAside("first");
     keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(true);
     const dialog = document.createElement("div");
     dialog.setAttribute("aria-modal", "true");
@@ -524,7 +524,7 @@ describe("Operations boot minimization", () => {
 
     expect(getSnapshot().minimized).not.toContain("first");
     expect(getCompanionOperationId()).toBeNull();
-    expect(getTriageSetAsideArmedId("theater-a")).toBe("first");
+    expect(getTriageSetAsideArmedId()).toBe("first");
     dialog.remove();
   });
 

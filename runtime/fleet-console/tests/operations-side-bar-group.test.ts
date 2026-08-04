@@ -337,7 +337,7 @@ describe("groupOperationsByStatus", () => {
     const operations = entries.map((entry) => entry.operation);
     const statuses = { awaiting: "awaiting", arrived: "idle", idle: "idle", running: "running" } as const;
     expect(new Set(sections[0]?.entries.map((entry) => entry.operation.id)))
-      .toEqual(new Set(resolveTriageQueue("t1", operations, statuses).map((entry) => entry.operation.id)));
+      .toEqual(new Set(resolveTriageQueue(operations, statuses).map((entry) => entry.operation.id)));
   });
 
   it("renders only non-empty sections in the literal status order and treats a missing key as idle", () => {

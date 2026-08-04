@@ -23,6 +23,12 @@ export function requestSideBarOperationAction(operationId: string, action: SideB
   notifyListeners();
 }
 
+// 소비 리스너(OperationsSideBar)가 언마운트된 동안 들어온 요청을 폐기한다 — 리스너 없이
+// 잔류한 요청은 리마운트 시 subscribe의 즉시 재생으로 뒤늦게 실행된다.
+export function clearSideBarOperationAction(): void {
+  pendingRequest = null;
+}
+
 export function subscribeSideBarOperationAction(listener: OperationActionListener): () => void {
   listeners.add(listener);
   notifyListener(listener);

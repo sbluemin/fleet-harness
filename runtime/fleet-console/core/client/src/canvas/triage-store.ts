@@ -5,8 +5,8 @@ import type { OperationActivity } from "@fleet-console/sdk/plugin";
 import { clearIdleArrival, getIdleArrivalIds, setIdleArrivalAcknowledgementSuspended } from "../operation-idle-arrival.js";
 import { resolveOperationActivity } from "../operation-activity.js";
 import { clearOperationStatusDetail, recordOperationActivityTransition } from "../operation-status-detail-store.js";
-import { getSideBarStatusAxis, setSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
-import { getState, setActiveOperation } from "../store.js";
+import { getState, clearPendingSideBarSignals, setActiveOperation, setActiveTheater } from "../store.js";
+import { clearSideBarOperationAction } from "../sidebar/interaction.js";
 import type { OperationGeometry, OperationNode } from "../types.js";
 import {
   clearFormationView,
@@ -37,19 +37,21 @@ const CLEAR_DELAY_MS = 600;
 // 패널/사이드바 닫기의 1500ms 확인과 같은 두 번 눌러 확정 문법이라, 확인 시간이 달라지면 학습이 깨진다.
 export const SET_ASIDE_ARM_DURATION_MS = 1500;
 
-const triageByTheater = new Map<string, true>();
-const pickedByTheater = new Map<string, string>();
-const setAsideArmedByTheater = new Map<string, {
+// 선별 처리는 전역 모드다 — 활성/지목/무장/카운트는 Theater와 무관하게 하나만 존재한다.
+let triageActive = false;
+let pickedOperationId: string | null = null;
+let setAsideArmed: {
   readonly operationId: string;
   readonly timer: ReturnType<typeof globalThis.setTimeout>;
-}>();
-const clearedByTheater = new Map<string, number>();
-const enteredAtByTheater = new Map<string, number>();
+} | null = null;
+let clearedCount = 0;
+let enteredAt: number | null = null;
 const lastClearedAt = new Map<string, number>();
 const deferredAt = new Map<string, number>();
 const dismissed = new Set<string>();
 const seenAt = new Map<string, number>();
 
+// 스포트라이트 — localStorage에 단일 전역 토글을 저장한다.
 const TRIAGE_SPOTLIGHT_STORAGE_KEY = "fleet-console-triage-spotlight";
 let triageSpotlightEnabled = readStoredTriageSpotlight();
 
@@ -105,12 +107,13 @@ export function resetTriageSpotlightForTests(): void {
 
 const activityByOperation = new Map<string, OperationActivity>();
 const operationTheater = new Map<string, string>();
+// focus layer만 Theater 단위로 유지한다 — 진입 시점 활성 Theater와 선별 중 자동 전환으로
+// 방문한 Theater 각각의 스냅샷을 저장해 종료 시 한 번에 복원한다.
 const focusLayerBeforeTriage = new Map<string, FocusLayerState | null>();
-let statusAxisBeforeTriage = false;
 const listeners = new Set<Listener>();
 let revision = 0;
 
-// 덱 줌 — theater별 영속(localStorage). 줌 카드 크기는 deck의 inline CSS 변수가 소유하고,
+// 덱 줌 — 전역 단일 값. 줌 카드 크기는 deck의 inline CSS 변수가 소유하고,
 // map 판정(작전지도 LOD)은 카드 최소폭 140px 미만으로 낙찰하는 순간으로 고정한다.
 export const TRIAGE_DECK_ZOOM_MIN = 0.35;
 export const TRIAGE_DECK_ZOOM_MAX = 2.0;
@@ -119,8 +122,8 @@ export const TRIAGE_DECK_CARD_BASE_MIN_PX = 260;
 export const TRIAGE_DECK_MAP_CARD_MIN_PX = 140;
 export const TRIAGE_DECK_ZOOM_PRESETS: readonly number[] = [1.0, 1.6, 0.4];
 
-const TRIAGE_DECK_ZOOM_STORAGE_PREFIX = "fleet-console.triage-deck-zoom.";
-const triageDeckZoomByTheater = new Map<string, number>();
+const TRIAGE_DECK_ZOOM_STORAGE_KEY = "fleet-console.triage-deck-zoom";
+let triageDeckZoom = loadTriageDeckZoom();
 
 export function clampTriageDeckZoom(zoom: number): number {
   if (!Number.isFinite(zoom)) return TRIAGE_DECK_ZOOM_DEFAULT;
@@ -133,36 +136,32 @@ export function isTriageDeckMapMode(zoom: number): boolean {
 
 // in-memory 지도 판정 채널 — 줌 tween은 store 줌을 settle 때만 갱신하므로, 임계 교차는
 // tween 프레임마다 여기에 실시간 반영한다. localStorage 기록 없음.
-const triageDeckMapModeByTheater = new Map<string, boolean>();
+let triageDeckMapModeLive = false;
 
-export function isTriageDeckMapModeActive(theaterId: string): boolean {
-  return triageDeckMapModeByTheater.get(theaterId) ?? isTriageDeckMapMode(getTriageDeckZoom(theaterId));
+export function isTriageDeckMapModeActive(): boolean {
+  return triageDeckMapModeLive;
 }
 
-export function setTriageDeckMapModeLive(theaterId: string, active: boolean): void {
-  if (isTriageDeckMapModeActive(theaterId) === active) return;
-  triageDeckMapModeByTheater.set(theaterId, active);
+export function setTriageDeckMapModeLive(active: boolean): void {
+  if (triageDeckMapModeLive === active) return;
+  triageDeckMapModeLive = active;
   emitTriage();
 }
 
 // live 채널은 세션 임시 상태다 — triage 종료/리셋 시 지워 다음 진입이 영속 배율에서 출발한다.
-function clearTriageDeckMapModeLive(theaterId: string): void {
-  triageDeckMapModeByTheater.delete(theaterId);
+function clearTriageDeckMapModeLive(): void {
+  triageDeckMapModeLive = false;
 }
 
-export function getTriageDeckZoom(theaterId: string): number {
-  const cached = triageDeckZoomByTheater.get(theaterId);
-  if (cached !== undefined) return cached;
-  const zoom = loadTriageDeckZoom(theaterId);
-  triageDeckZoomByTheater.set(theaterId, zoom);
-  return zoom;
+export function getTriageDeckZoom(): number {
+  return triageDeckZoom;
 }
 
-export function setTriageDeckZoom(theaterId: string, zoom: number): void {
+export function setTriageDeckZoom(zoom: number): void {
   const clamped = clampTriageDeckZoom(zoom);
-  if (triageDeckZoomByTheater.get(theaterId) === clamped) return;
-  triageDeckZoomByTheater.set(theaterId, clamped);
-  persistTriageDeckZoom(theaterId, clamped);
+  if (triageDeckZoom === clamped) return;
+  triageDeckZoom = clamped;
+  persistTriageDeckZoom(clamped);
   emitTriage();
 }
 
@@ -177,9 +176,9 @@ export function nextTriageDeckZoomPreset(current: number): number {
   return TRIAGE_DECK_ZOOM_PRESETS[(nearest + 1) % TRIAGE_DECK_ZOOM_PRESETS.length]!;
 }
 
-function loadTriageDeckZoom(theaterId: string): number {
+function loadTriageDeckZoom(): number {
   try {
-    const raw = globalThis.localStorage?.getItem(`${TRIAGE_DECK_ZOOM_STORAGE_PREFIX}${theaterId}`) ?? null;
+    const raw = globalThis.localStorage?.getItem(TRIAGE_DECK_ZOOM_STORAGE_KEY) ?? null;
     if (raw === null) return TRIAGE_DECK_ZOOM_DEFAULT;
     return clampTriageDeckZoom(Number.parseFloat(raw));
   } catch {
@@ -187,12 +186,23 @@ function loadTriageDeckZoom(theaterId: string): number {
   }
 }
 
-function persistTriageDeckZoom(theaterId: string, zoom: number): void {
+function persistTriageDeckZoom(zoom: number): void {
   try {
-    globalThis.localStorage?.setItem(`${TRIAGE_DECK_ZOOM_STORAGE_PREFIX}${theaterId}`, String(zoom));
+    globalThis.localStorage?.setItem(TRIAGE_DECK_ZOOM_STORAGE_KEY, String(zoom));
   } catch {
     // Storage is optional.
   }
+}
+
+export function resetTriageDeckZoomForTests(): void {
+  triageDeckZoom = TRIAGE_DECK_ZOOM_DEFAULT;
+  triageDeckMapModeLive = false;
+  try {
+    globalThis.localStorage?.removeItem(TRIAGE_DECK_ZOOM_STORAGE_KEY);
+  } catch {
+    // Storage is optional.
+  }
+  emitTriage();
 }
 
 // 작전지도(map mode) 마커 배치 — canvas geometry를 덱 영역 [8,92]%×[10,86]%로 투영하고,
@@ -301,73 +311,79 @@ function hashTriageMapKey(key: string): number {
   return Math.abs(hash);
 }
 
-registerBeforeFormationViewActivation((theaterId) => setTriageActive(theaterId, false));
-export function isTriageActive(theaterId: string | null): boolean {
-  return theaterId !== null && triageByTheater.has(theaterId);
+// Formation 진입은 어느 Theater에서든 전역 선별 처리를 끝낸다.
+registerBeforeFormationViewActivation(() => setTriageActive(false));
+
+export function isTriageActive(): boolean {
+  return triageActive;
 }
 
-export function setTriageActive(theaterId: string, active: boolean): void {
+export function setTriageActive(active: boolean): void {
   if (active) {
-    clearFormationView(theaterId);
-    if (!triageByTheater.has(theaterId)) {
-      if (triageByTheater.size === 0) statusAxisBeforeTriage = getSideBarStatusAxis();
-      focusLayerBeforeTriage.set(theaterId, getTheaterFocusLayerSnapshot(theaterId));
-      triageByTheater.set(theaterId, true);
-      clearedByTheater.set(theaterId, 0);
-      enteredAtByTheater.set(theaterId, Date.now());
+    const { activeTheaterId } = getState();
+    clearFormationView();
+    if (!triageActive) {
+      triageActive = true;
+      clearedCount = 0;
+      enteredAt = Date.now();
     }
-    setSideBarStatusAxis(true);
-    setIdleArrivalAcknowledgementSuspended(triageByTheater.size > 0);
-    setTheaterFocusLayerSnapshot(theaterId, null);
+    if (activeTheaterId) captureFocusLayerBeforeTriage(activeTheaterId);
+    setIdleArrivalAcknowledgementSuspended(true);
+    if (activeTheaterId) setTheaterFocusLayerSnapshot(activeTheaterId, null);
+    clearPendingSideBarRequests();
     emitTriage();
     return;
   }
-  const armChanged = clearTriageSetAsideArm(theaterId);
-  if (!triageByTheater.has(theaterId)) {
-    setIdleArrivalAcknowledgementSuspended(triageByTheater.size > 0);
+  const armChanged = clearTriageSetAsideArm();
+  if (!triageActive) {
     if (armChanged) emitTriage();
     return;
   }
-  const previousFocusLayer = focusLayerBeforeTriage.get(theaterId) ?? null;
-  const canvas = getTheaterCanvasSnapshot(theaterId);
-  const restoredFocusLayer = previousFocusLayer
-    && canvas.operations[previousFocusLayer.operationId]
-    && !canvas.minimized.includes(previousFocusLayer.operationId)
-    ? previousFocusLayer
-    : null;
-  if (getLoadedTheaterId() === theaterId && getTheaterFocusLayerSnapshot(theaterId)?.mode === "companion") {
+  triageActive = false;
+  pickedOperationId = null;
+  enteredAt = null;
+  // 미룸·치워둠 같은 transient 판정은 세션이 아니라 진입에 붙는다 — 껐다 다시 켜면 큐는
+  // 미룸·치워둠 없이 처음 순서로 돌아와야 한다(기존 per-Theater 종료의 transient 초기화와 같은 계약).
+  deferredAt.clear();
+  dismissed.clear();
+  lastClearedAt.clear();
+  seenAt.clear();
+  activityByOperation.clear();
+  clearTriageDeckMapModeLive();
+  clearPendingSideBarRequests();
+  if (getLoadedTheaterId() !== null && getTheaterFocusLayerSnapshot(getLoadedTheaterId()!)?.mode === "companion") {
     forceDropCompanionOperationId();
   }
-  triageByTheater.delete(theaterId);
-  pickedByTheater.delete(theaterId);
-  clearedByTheater.delete(theaterId);
-  enteredAtByTheater.delete(theaterId);
-  focusLayerBeforeTriage.delete(theaterId);
-  clearTriageDeckMapModeLive(theaterId);
-  clearTheaterTransientOperations(theaterId);
-  setIdleArrivalAcknowledgementSuspended(triageByTheater.size > 0);
-  if (triageByTheater.size === 0) {
-    const { activeOperationId, activeOperationAcknowledged } = getState();
-    if (activeOperationId !== null && !activeOperationAcknowledged) {
-      setActiveOperation(activeOperationId);
-    }
-    setSideBarStatusAxis(statusAxisBeforeTriage);
+  const capturedFocusLayers = [...focusLayerBeforeTriage];
+  focusLayerBeforeTriage.clear();
+  setIdleArrivalAcknowledgementSuspended(false);
+  const { activeOperationId, activeOperationAcknowledged } = getState();
+  if (activeOperationId !== null && !activeOperationAcknowledged) {
+    setActiveOperation(activeOperationId);
   }
-  setTheaterFocusLayerSnapshot(theaterId, restoredFocusLayer);
+  for (const [theaterId, previousFocusLayer] of capturedFocusLayers) {
+    // 진입 시점 스냅샷의 복원 조건은 종료 경로와 같다 — 대상 Operation이 아직 존재하고 최소화되지 않았을 때만.
+    const canvas = getTheaterCanvasSnapshot(theaterId);
+    const restoredFocusLayer = previousFocusLayer
+      && canvas.operations[previousFocusLayer.operationId]
+      && !canvas.minimized.includes(previousFocusLayer.operationId)
+      ? previousFocusLayer
+      : null;
+    setTheaterFocusLayerSnapshot(theaterId, restoredFocusLayer);
+  }
   emitTriage();
 }
 
-export function enterTriage(theaterId: string, focusedOperationId: string | null): void {
+export function enterTriage(focusedOperationId: string | null): void {
   const { operations, operationStatus } = getState();
-  const theaterOperations = operations.filter((operation) => operation.theaterId === theaterId);
   const focusedOperation = focusedOperationId === null
     ? null
-    : theaterOperations.find((operation) => operation.id === focusedOperationId) ?? null;
+    : operations.find((operation) => operation.id === focusedOperationId) ?? null;
   if (focusedOperation && isTriageWaitingOperation(focusedOperation, operationStatus)) {
-    pickTriageOperation(theaterId, focusedOperation.id);
+    pickTriageOperation(focusedOperation.id);
   }
-  setTriageActive(theaterId, true);
-  if (resolveTriageQueue(theaterId, theaterOperations, operationStatus).length > 0) return;
+  setTriageActive(true);
+  if (resolveTriageQueue(operations, operationStatus).length > 0) return;
   setActiveOperation(null);
   const document = globalThis.document;
   const HTMLElementConstructor = document?.defaultView?.HTMLElement;
@@ -381,74 +397,83 @@ export function enterTriage(theaterId: string, focusedOperationId: string | null
   }
 }
 
-export function useTriageActive(theaterId: string | null): boolean {
+export function useTriageActive(): boolean {
   return useSyncExternalStore(
     subscribeTriage,
-    () => isTriageActive(theaterId),
-    () => isTriageActive(theaterId),
+    () => isTriageActive(),
+    () => isTriageActive(),
   );
 }
 
-export function pickTriageOperation(theaterId: string, operationId: string): void {
-  clearTriageSetAsideArm(theaterId);
-  operationTheater.set(operationId, theaterId);
+// 선별 중 방문하는 모든 Theater에 진입 경로가 활성 Theater에 하는 "캡처 후 null" 쌍을 적용한다 —
+// 캡처 없이는 종료 복원 목록에서 빠지고, null 없이는 저장된 companion이 선별 중 부활한다.
+export function visitTriageTheater(theaterId: string): void {
+  captureFocusLayerBeforeTriage(theaterId);
+  setTheaterFocusLayerSnapshot(theaterId, null);
+  if (getState().activeTheaterId !== theaterId) setActiveTheater(theaterId);
+}
+
+export function pickTriageOperation(operationId: string): void {
+  clearTriageSetAsideArm();
+  const operation = getState().operations.find((candidate) => candidate.id === operationId) ?? null;
+  if (operation) {
+    operationTheater.set(operationId, operation.theaterId);
+    // 지목 대상이 다른 Theater 소속이면 무대 머신 재사용을 위해 활성 Theater를 전환한다.
+    if (operation.theaterId !== getState().activeTheaterId) {
+      visitTriageTheater(operation.theaterId);
+    }
+  }
   dismissed.delete(operationId);
   const wasDeferred = deferredAt.delete(operationId);
-  if (pickedByTheater.get(theaterId) === operationId) {
+  if (pickedOperationId === operationId) {
     if (wasDeferred) emitTriage();
     return;
   }
-  pickedByTheater.set(theaterId, operationId);
+  pickedOperationId = operationId;
   emitTriage();
 }
 
-export function getTriagePick(theaterId: string): string | null {
-  return pickedByTheater.get(theaterId) ?? null;
+export function getTriagePick(): string | null {
+  return pickedOperationId;
 }
 
-export function markTriageCleared(theaterId: string, operationId: string): void {
-  clearTriageSetAsideArm(theaterId);
-  operationTheater.set(operationId, theaterId);
+export function markTriageCleared(operationId: string): void {
+  clearTriageSetAsideArm();
   deferredAt.delete(operationId);
   lastClearedAt.set(operationId, Date.now());
-  clearedByTheater.set(theaterId, (clearedByTheater.get(theaterId) ?? 0) + 1);
-  if (pickedByTheater.get(theaterId) === operationId) pickedByTheater.delete(theaterId);
+  clearedCount += 1;
+  if (pickedOperationId === operationId) pickedOperationId = null;
   emitTriage();
 }
 
-export function getTriageCleared(theaterId: string): number {
-  return clearedByTheater.get(theaterId) ?? 0;
+export function getTriageCleared(): number {
+  return clearedCount;
 }
 
-export function dismissTriageOperation(theaterId: string, operationId: string): void {
-  clearTriageSetAsideArm(theaterId);
-  operationTheater.set(operationId, theaterId);
+export function dismissTriageOperation(operationId: string): void {
+  clearTriageSetAsideArm();
   deferredAt.delete(operationId);
   dismissed.add(operationId);
   clearIdleArrival(operationId);
-  if (pickedByTheater.get(theaterId) === operationId) pickedByTheater.delete(theaterId);
+  if (pickedOperationId === operationId) pickedOperationId = null;
   emitTriage();
 }
 
 export function resetTriageTheater(theaterId: string): void {
-  clearTriageSetAsideArm(theaterId);
-  const wasActive = triageByTheater.has(theaterId);
-  if (wasActive) setTriageActive(theaterId, false);
-  else {
-    pickedByTheater.delete(theaterId);
-    clearedByTheater.delete(theaterId);
-    enteredAtByTheater.delete(theaterId);
-    focusLayerBeforeTriage.delete(theaterId);
-    clearTriageDeckMapModeLive(theaterId);
-    clearTheaterTransientOperations(theaterId);
-    setIdleArrivalAcknowledgementSuspended(triageByTheater.size > 0);
-    emitTriage();
+  // Theater 잊기는 전역 모드를 끄지 않고 그 Theater 소속의 잔여 상태만 걷어낸다.
+  if (setAsideArmed !== null && operationTheater.get(setAsideArmed.operationId) === theaterId) {
+    clearTriageSetAsideArm();
   }
+  if (pickedOperationId !== null && operationTheater.get(pickedOperationId) === theaterId) {
+    pickedOperationId = null;
+  }
+  focusLayerBeforeTriage.delete(theaterId);
+  clearTheaterTransientOperations(theaterId);
+  emitTriage();
 }
 
 export function forgetTriageOperation(operationId: string): void {
-  const theaterId = operationTheater.get(operationId);
-  if (theaterId) clearTriageSetAsideArm(theaterId);
+  if (setAsideArmed?.operationId === operationId) clearTriageSetAsideArm();
   dismissed.delete(operationId);
   lastClearedAt.delete(operationId);
   deferredAt.delete(operationId);
@@ -456,9 +481,7 @@ export function forgetTriageOperation(operationId: string): void {
   activityByOperation.delete(operationId);
   clearOperationStatusDetail(operationId);
   operationTheater.delete(operationId);
-  if (theaterId && pickedByTheater.get(theaterId) === operationId) {
-    pickedByTheater.delete(theaterId);
-  }
+  if (pickedOperationId === operationId) pickedOperationId = null;
   for (const [snapshotTheaterId, focusLayer] of focusLayerBeforeTriage) {
     if (focusLayer?.operationId === operationId) focusLayerBeforeTriage.set(snapshotTheaterId, null);
   }
@@ -474,36 +497,34 @@ export function getTriageSnapshot(): number {
   return revision;
 }
 
-export function getTriageEnteredAt(theaterId: string): number | null {
-  return enteredAtByTheater.get(theaterId) ?? null;
+export function getTriageEnteredAt(): number | null {
+  return enteredAt;
 }
 
-export function armTriageSetAside(theaterId: string, operationId: string): void {
-  clearTriageSetAsideArm(theaterId);
+export function armTriageSetAside(operationId: string): void {
+  clearTriageSetAsideArm();
   const timer = globalThis.setTimeout(() => {
-    const armed = setAsideArmedByTheater.get(theaterId);
-    if (!armed || armed.operationId !== operationId || armed.timer !== timer) return;
-    setAsideArmedByTheater.delete(theaterId);
+    if (!setAsideArmed || setAsideArmed.operationId !== operationId || setAsideArmed.timer !== timer) return;
+    setAsideArmed = null;
     emitTriage();
   }, SET_ASIDE_ARM_DURATION_MS);
-  setAsideArmedByTheater.set(theaterId, { operationId, timer });
+  setAsideArmed = { operationId, timer };
   emitTriage();
 }
 
-export function disarmTriageSetAside(theaterId: string): void {
-  if (clearTriageSetAsideArm(theaterId)) emitTriage();
+export function disarmTriageSetAside(): void {
+  if (clearTriageSetAsideArm()) emitTriage();
 }
 
-export function getTriageSetAsideArmedId(theaterId: string): string | null {
-  return setAsideArmedByTheater.get(theaterId)?.operationId ?? null;
+export function getTriageSetAsideArmedId(): string | null {
+  return setAsideArmed?.operationId ?? null;
 }
 
-export function deferTriageOperation(theaterId: string, operationId: string, now = Date.now()): void {
-  clearTriageSetAsideArm(theaterId);
-  operationTheater.set(operationId, theaterId);
+export function deferTriageOperation(operationId: string, now = Date.now()): void {
+  clearTriageSetAsideArm();
   let latestDeferredAt = 0;
-  for (const [candidateId, timestamp] of deferredAt) {
-    if (operationTheater.get(candidateId) === theaterId) latestDeferredAt = Math.max(latestDeferredAt, timestamp);
+  for (const timestamp of deferredAt.values()) {
+    latestDeferredAt = Math.max(latestDeferredAt, timestamp);
   }
   deferredAt.set(operationId, Math.max(now, latestDeferredAt + 1));
   emitTriage();
@@ -523,16 +544,14 @@ export function focusedTriageOperationId(activeElement: Element | null): string 
 }
 
 export function recordTriageActivity(
-  theaterId: string,
   operations: readonly OperationNode[],
   operationStatus: Readonly<Record<string, OperationActivity>>,
   now = Date.now(),
 ): void {
   let changed = false;
   for (const operation of operations) {
-    if (operation.theaterId !== theaterId) continue;
-    if (operationTheater.get(operation.id) !== theaterId) {
-      operationTheater.set(operation.id, theaterId);
+    if (operationTheater.get(operation.id) !== operation.theaterId) {
+      operationTheater.set(operation.id, operation.theaterId);
       changed = true;
     }
     const activity = resolveOperationActivity(operation, operationStatus);
@@ -548,11 +567,11 @@ export function recordTriageActivity(
   if (!changed) return;
   // 무장은 대상이 대기에서 벗어났을 때만 푼다. 무관한 다른 패널의 상태 전이로 풀면 여러 에이전트가
   // 동시에 도는 동안 두 번째 ↓가 확정 대신 재무장이 되어 키보드만으로는 큐를 끝까지 비울 수 없다.
-  const armedId = setAsideArmedByTheater.get(theaterId)?.operationId ?? null;
+  const armedId = setAsideArmed?.operationId ?? null;
   if (armedId !== null) {
     const armedOperation = operations.find((operation) => operation.id === armedId) ?? null;
     if (!armedOperation || !isTriageWaitingOperation(armedOperation, operationStatus)) {
-      clearTriageSetAsideArm(theaterId);
+      clearTriageSetAsideArm();
     }
   }
   emitTriage();
@@ -576,7 +595,6 @@ export function isTriageWaitingOperation(
 }
 
 export function scheduleTriageClear(
-  theaterId: string,
   operationId: string,
   shouldClear: () => boolean,
   onSettled: () => void = () => {},
@@ -584,7 +602,7 @@ export function scheduleTriageClear(
   const timer = globalThis.setTimeout(() => {
     const clear = shouldClear();
     onSettled();
-    if (clear) markTriageCleared(theaterId, operationId);
+    if (clear) markTriageCleared(operationId);
   }, CLEAR_DELAY_MS);
   return () => globalThis.clearTimeout(timer);
 }
@@ -595,18 +613,18 @@ export function reconcileTriageStageCompanion(
 ): TriageStageIdentity {
   if (previous?.theaterId !== next.theaterId || previous.operationId !== next.operationId) {
     forceDropCompanionOperationId();
-    if (previous) disarmTriageSetAside(previous.theaterId);
+    if (previous) disarmTriageSetAside();
   }
   return next;
 }
 
+// 전역 큐다 — Theater 필터가 없다. 우선순위(지목=0/복귀=1/awaiting=2/도착=3)·미룸 뒤로·
+// seenAt→createdAt→id 타이브레이크는 기존 per-Theater 큐와 같은 규칙을 전 Theater에 걸쳐 적용한다.
 export function resolveTriageQueue(
-  theaterId: string,
   operations: readonly OperationNode[],
   operationStatus: Readonly<Record<string, OperationActivity>>,
   now = Date.now(),
 ): readonly TriageQueueEntry[] {
-  const pickedId = pickedByTheater.get(theaterId) ?? null;
   const candidates: Array<TriageQueueEntry & {
     readonly deferredAt: number | null;
     readonly seenAt: number;
@@ -614,9 +632,8 @@ export function resolveTriageQueue(
   }> = [];
 
   for (const operation of operations) {
-    if (operation.theaterId !== theaterId) continue;
     const activity = resolveOperationActivity(operation, operationStatus);
-    const picked = operation.id === pickedId;
+    const picked = operation.id === pickedOperationId;
     if (!picked && dismissed.has(operation.id)) continue;
     if (!picked && !isTriageWaitingOperation(operation, operationStatus)) continue;
     const lastCleared = lastClearedAt.get(operation.id) ?? Number.NEGATIVE_INFINITY;
@@ -653,8 +670,20 @@ export function resolveTriageQueue(
   return candidates.map(({ operation, activity, picked }) => ({ operation, activity, picked }));
 }
 
+// 선별 중엔 소비자(OperationsSideBar)가 언마운트라 사이드바 요청이 잔류했다가 종료 리마운트에서
+// 뒤늦게 실행된다 — 진입·종료 양쪽 경계에서 폐기한다.
+function clearPendingSideBarRequests(): void {
+  clearPendingSideBarSignals();
+  clearSideBarOperationAction();
+}
+
+// 선별 중 처음 방문하는 Theater의 focus layer를 한 번만 저장한다 — 종료 시 방문한 모든 Theater를 복원한다.
+function captureFocusLayerBeforeTriage(theaterId: string): void {
+  if (focusLayerBeforeTriage.has(theaterId)) return;
+  focusLayerBeforeTriage.set(theaterId, getTheaterFocusLayerSnapshot(theaterId));
+}
+
 function clearTheaterTransientOperations(theaterId: string): void {
-  clearTriageSetAsideArm(theaterId);
   for (const [operationId, ownerTheaterId] of operationTheater) {
     if (ownerTheaterId !== theaterId) continue;
     dismissed.delete(operationId);
@@ -666,11 +695,10 @@ function clearTheaterTransientOperations(theaterId: string): void {
   }
 }
 
-function clearTriageSetAsideArm(theaterId: string): boolean {
-  const armed = setAsideArmedByTheater.get(theaterId);
-  if (!armed) return false;
-  globalThis.clearTimeout(armed.timer);
-  setAsideArmedByTheater.delete(theaterId);
+function clearTriageSetAsideArm(): boolean {
+  if (!setAsideArmed) return false;
+  globalThis.clearTimeout(setAsideArmed.timer);
+  setAsideArmed = null;
   return true;
 }
 
