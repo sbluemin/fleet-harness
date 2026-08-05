@@ -543,6 +543,46 @@ describe("Cursor live client-tool Run bridge", () => {
     }
   });
 
+  it("opens cold when the first request after a saturated call is already compacted", async () => {
+    // Claude Code가 413을 받기 전에 스스로 압축하면 거절 경로가 아예 실행되지 않는다.
+    // 그때도 parked Run이 전제한 대화는 사라졌으므로 붙여서는 안 된다.
+    const call = cursorCall("call-window-selfcompact", 63);
+    const parked = new BridgeCursorStream(
+      [
+        {
+          conversationCheckpointUpdate: {
+            tokenDetails: { usedTokens: 256_000, maxTokens: 256_000 },
+          },
+        },
+        ...cursorToolFrames([call]),
+      ],
+      cursorCompletionFrames("saturated run continued"),
+      1,
+    );
+    const cold = new BridgeCursorStream(cursorCompletionFrames("cold run opened"));
+    const harness = cursorHarness([parked, cold]);
+    const base = cursorRequest("session-window-selfcompact", "kimi-k3-1m");
+    const large: CanonicalResponseRequest = {
+      ...base,
+      input: [{ type: "message", role: "user", content: "x".repeat(60_000) }],
+    };
+
+    try {
+      await collectCursorResponse(harness.adapter, large);
+
+      // 413 없이 곧바로 압축된 continuation이 도착한다.
+      const events = await collectAdapterEvents(await harness.adapter.stream(
+        cursorContinuation(base, [call], [cursorResult(call, "tool result")]),
+        { apiKey: "cursor-test-token", modelContextWindow: 256_000 },
+      ));
+
+      expect(canonicalText(events)).toBe("cold run opened");
+      expect(harness.openedStreams).toBe(2);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
   it("stays out of the way while Cursor's count is under the window", async () => {
     const belowWindow = new BridgeCursorStream([
       {

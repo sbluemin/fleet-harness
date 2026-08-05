@@ -1237,30 +1237,32 @@ export class CursorAdapter implements AiGatewayAdapter {
     // 모든 진입 경로가 이 판정을 지나야 한다. bridge를 지원하는 모델은 tool 결과가
     // parked Run에 붙어 cold Run 경로를 건너뛰므로, 판정을 그 뒤에 두면 tool을 쓰는
     // 세션만 포화된 계기로 계속 달리게 된다.
-    const contextCheckpoint = recallCursorContextCheckpoint(
+    const contextRecall = recallCursorContextCheckpoint(
       identity.conversationId,
       plan.wireModelId,
       credentialFingerprint,
       plan.estimatedInputTokens,
     );
     const contextRefusal = cursorContextWindowRefusal(
-      contextCheckpoint,
+      contextRecall.checkpoint,
       options.modelContextWindow,
     );
-    if (contextRefusal) {
-      // 거절만으로는 부족하다. mismatch 판정은 대화 내용을 보지 않으므로, 압축된
-      // 재시도가 같은 call id를 보존하면 이미 포화된 Run에 그대로 다시 붙는다. 압축이
-      // 클라이언트에만 반영되고 업스트림 세션은 가득 찬 채 이어지므로, 그 Run을 여기서
-      // 버려 재시도가 차갑게 열리도록 강제한다.
-      const saturated = this.pendingLiveRuns.get(conversationStateKey);
-      if (saturated && this.claimPendingLiveRun(saturated)) {
-        saturated.run.report("bridge.mismatch", {
+    if (contextRefusal || contextRecall.compacted) {
+      // parked Run은 park될 당시의 대화를 전제로 업스트림에 이어져 있다. 창이 찼다면
+      // 압축이 곧 오고, 이미 축소됐다면 압축이 지나간 것이라 어느 쪽이든 그 전제가
+      // 깨졌다. 그런데 mismatch 판정은 대화 내용을 보지 않아 call id만 같으면 그대로
+      // 다시 붙고, 그러면 압축이 클라이언트에만 반영된 채 업스트림 세션은 가득 찬
+      // 상태로 이어진다. 여기서 버려야 다음 요청이 차갑게 열린다.
+      const stale = this.pendingLiveRuns.get(conversationStateKey);
+      if (stale && this.claimPendingLiveRun(stale)) {
+        const outcome = contextRefusal ? "context_window_exceeded" : "conversation_compacted";
+        stale.run.report("bridge.mismatch", {
           model: cursorDiagnosticLabel(request.model),
-          outcome: "context_window_exceeded",
+          outcome,
         });
-        saturated.run.dispose("bridge_mismatch_context_window_exceeded");
+        stale.run.dispose(`bridge_mismatch_${outcome}`);
       }
-      throw contextRefusal;
+      if (contextRefusal) throw contextRefusal;
     }
     const descriptor: CursorLiveRunDescriptor = {
       conversationId: identity.conversationId,
@@ -1308,7 +1310,7 @@ export class CursorAdapter implements AiGatewayAdapter {
       }
     }
 
-    return this.openRun(request, options, identity, plan, descriptor, contextCheckpoint);
+    return this.openRun(request, options, identity, plan, descriptor, contextRecall.checkpoint);
   }
 
   /** Close every adapter-owned parked Run. Safe to call more than once. */
@@ -1695,6 +1697,15 @@ function rememberCursorWireModel(
   return previous;
 }
 
+interface CursorCheckpointRecall {
+  readonly checkpoint: CursorContextCheckpoint | undefined;
+  /**
+   * 요청이 기준선보다 작아져 체크포인트를 폐기한 경우. 대화가 재구성됐다는 신호이며,
+   * 그 대화를 전제로 열려 있는 parked Run도 함께 무효가 된다.
+   */
+  readonly compacted: boolean;
+}
+
 /**
  * 보관된 체크포인트는 그것을 측정한 대화가 계속 자라는 동안에만 이 요청을 설명한다.
  * Claude Code가 컴팩트하면 입력이 급감하는데, 낡은 값은 그 요청보다 큰 점유를 주장하고
@@ -1706,20 +1717,22 @@ function recallCursorContextCheckpoint(
   wireModelId: string,
   credentialFingerprint: string,
   requestInputTokens: number,
-): CursorContextCheckpoint | undefined {
+): CursorCheckpointRecall {
   const key = cursorConversationStateKey(credentialFingerprint, conversationId);
   const checkpoint = CURSOR_CONTEXT_CHECKPOINT_BY_STATE.get(key);
-  if (!checkpoint) return undefined;
+  if (!checkpoint) return { checkpoint: undefined, compacted: false };
   CURSOR_CONTEXT_CHECKPOINT_BY_STATE.delete(key);
   if (
     checkpoint.wireModelId !== wireModelId
     || checkpoint.credentialFingerprint !== credentialFingerprint
-    || requestInputTokens < checkpoint.requestInputTokens
   ) {
-    return undefined;
+    return { checkpoint: undefined, compacted: false };
+  }
+  if (requestInputTokens < checkpoint.requestInputTokens) {
+    return { checkpoint: undefined, compacted: true };
   }
   CURSOR_CONTEXT_CHECKPOINT_BY_STATE.set(key, checkpoint);
-  return checkpoint;
+  return { checkpoint, compacted: false };
 }
 
 /**
