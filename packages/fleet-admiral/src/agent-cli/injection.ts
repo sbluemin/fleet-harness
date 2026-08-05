@@ -11,6 +11,7 @@ import { isHostSessionToolAllowed } from "../tools.js";
 import type { SystemPromptBuildOptions } from "../prompts/index.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
 import { buildGatewayCustomAgents, type GatewayEffortExposure } from "./gateway-agents.js";
+import { GATEWAY_DISABLED_CLAUDE_SKILLS, buildDisabledSkillOverrides } from "./gateway-skills.js";
 import { createAgentCliPlugin } from "./plugin/index.js";
 import type {
   AgentCliInjectionContext,
@@ -134,6 +135,7 @@ export async function injectAgentCliProfile(
           options.gatewayExposedModels ?? [],
           options.gatewayEffortExposure,
         ),
+        skillOverrides: buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS),
       }
       : {};
     const context: AgentCliInjectionContext = {
