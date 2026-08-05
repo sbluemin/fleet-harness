@@ -28,7 +28,6 @@ import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header
 import {
   consumeStatusLandings,
   setSideBarCollapsed,
-  setSideBarWidth,
   setTheaterCollapsed,
   getStatusTransitionTick,
   getSideBarStatusSectionCollapsed,
@@ -42,6 +41,7 @@ import {
   type SideBarStatus,
 } from "./operations-side-bar-store.js";
 import { resolveOperationLaunchKind } from "./interaction.js";
+import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
 interface OperationsSideBarProps {
   readonly theaters: readonly TheaterInfo[];
@@ -333,7 +333,7 @@ export function OperationsSideBar({
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
-  const [sideBarResizing, setSideBarResizing] = useState(false);
+  const { resizing, onPointerDown: onResizePointerDown, onDoubleClick: onResizeDoubleClick } = useSideBarResize();
   const collapsedGroups = useCollapsedGroups();
   const collapsedTheaters = useCollapsedTheaters();
   const {
@@ -707,33 +707,6 @@ export function OperationsSideBar({
     });
   };
 
-  const handleResizeDragStart = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startWidth = sideBar.width;
-    setSideBarResizing(true);
-
-    const onMove = (ev: PointerEvent) => {
-      const dx = ev.clientX - startX;
-      setSideBarWidth(startWidth + dx);
-    };
-
-    const onEnd = () => {
-      setSideBarResizing(false);
-      document.removeEventListener("pointermove", onMove);
-      document.removeEventListener("pointerup", onEnd);
-      document.removeEventListener("pointercancel", onEnd);
-    };
-
-    document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onEnd);
-    document.addEventListener("pointercancel", onEnd);
-  }, [sideBar.width]);
-
-  const handleResizeDoubleClick = () => {
-    setSideBarCollapsed(!collapsed);
-  };
-
   const openTheaterBrowser = () => {
     setNewMenu(null);
     setActiveContextMenu(null);
@@ -847,7 +820,7 @@ export function OperationsSideBar({
       className={`operations-side-bar ${collapsed ? "is-closed" : "is-expanded"}`}
       ref={rootRef}
       data-sidebar-state={collapsed ? "closed" : "expanded"}
-      data-resizing={sideBarResizing ? "true" : undefined}
+      data-resizing={resizing ? "true" : undefined}
       data-canvas-blocker
       style={{ "--side-bar-width": `${width}px` } as CSSProperties}
       inert={collapsed}
@@ -1106,12 +1079,7 @@ export function OperationsSideBar({
         </li>
       </ol>
 
-      <div
-        className="operations-side-bar-resize-handle"
-        onPointerDown={handleResizeDragStart}
-        onDoubleClick={handleResizeDoubleClick}
-        aria-hidden="true"
-      />
+      <SideBarResizeHandle onPointerDown={onResizePointerDown} onDoubleClick={onResizeDoubleClick} />
 
       {newMenu ? createPortal(
         <CanvasContextMenu
