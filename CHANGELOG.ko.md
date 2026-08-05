@@ -5,6 +5,53 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.48.0] - 2026-08-05
+
+### fleet-console
+
+#### Added
+- [fleet-console] 휴면 Operation을 War Room 대기열 아래 선반에 싣습니다. 왼쪽 열은 살아 있는 네 섹션을 그대로 두고 그 아래에 접힌 선반을 얻어 몇 건이 쉬고 있는지 항상 보여주므로, 복원된 작업이 모드에서 사라지지 않습니다. 덱과 지도는 살아 있는 것만 싣고, 선반의 항목을 고르면 War Room을 떠나거나 Theater를 바꾸지 않고 제자리에서 재개합니다.
+
+#### Changed
+- [fleet-console] War Room의 모든 표면에서 우클릭이 실제로 동작합니다. 덱 카드·지도 점·대기열 레일 행·사이드바 칩이 다른 모드와 같은 Operation 메뉴를 열고 Context Menu 키와 Shift+F10으로도 열립니다. 빈 공간의 주인은 위치가 정합니다 — Theater 밴드나 지도 구역 안이면 그 Theater로 실행하고 이름을 밝히며, 어느 Theater에도 속하지 않는 자리에서는 동작이 모두 비활성이던 메뉴 대신 아무것도 열리지 않습니다.
+
+#### Fixed
+- [fleet-console] War Room의 한 Operation이 어디서나 같은 활동 색으로 읽힙니다. 덱 카드와 지도 점에서 상태 없음 회색으로 떨어지던 유휴가 사이드바·무대 프레임과 같은 색이 되고, 유휴 도착의 대기 승격을 규칙 하나가 소유해 카드와 점이 서로 다른 상태로 읽히지 않으며, 백그라운드는 모든 표면에서 중공 표식으로 실행 중과 구분되고 투명하던 사이드바 표식도 보입니다.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] 설정의 AI Gateway 모델을 펼쳐 제공할 추론 강도를 고를 수 있습니다. 고른 강도 하나가 위임 정체성 하나가 되고, 모델의 요약 칩이 그 개수를 표시합니다.
+- [fleet-console] 저장소 기록 안에서 커밋 2개를 직접 비교합니다. 커밋 행에 hover/focus 후 ⇆로 기준을 고정하거나, 검사기 액션 또는 Shift-클릭 쌍으로도 진입하며, 고정된 기준은 툴바 칩으로 상시 표시되고 선택은 오래된→새로운 순으로 자동 정렬되어 merge-base·파일 목록·파일별 diff·교환을 갖춘 상세 독에 결과가 열립니다.
+- [fleet-console] 스태시 행이 비활성으로 방치되는 대신 스태시 커밋을 검사기로 엽니다.
+
+#### Changed
+- [fleet-console] 모델의 추론 강도를 좁혀도 위임에 제공되는 정체성만 바뀝니다. 게이트웨이는 모델의 전체 사다리를 그대로 광고하므로 /model 픽커와 세션 안의 /effort는 영향을 받지 않습니다.
+- [fleet-console] 별도 비교 뷰를 은퇴시켰습니다. 브랜치·태그 행의 비교 액션과 컨텍스트 메뉴는 같은 기록-내 결과 독으로 착지하고, 태그 행에도 비교 액션이 생기며, ref 필터 칩은 짧은 이름으로 표시되고 전체 refname은 툴팁으로 제공됩니다.
+- [fleet-console] 기록을 체크아웃과 무관한 저장소의 객관적 기록으로 계약화했습니다. off-checkout 텍스트 흐림과 미커밋 행만 활성 체크아웃을 따르고, 흐려진 행에는 "현재 체크아웃에 포함되지 않음" 툴팁이, 커밋 수 배지에는 범례 설명이 붙습니다.
+- [fleet-console] 수동 저장소 동기화가 결과를 알립니다. 분류된 실패 토스트와 버튼의 실패 점, 신규·갱신·정리 ref 수를 담은 성공 요약을 표시하며, 자동 동기화와 스로틀 스킵은 계속 무음입니다.
+
+#### Fixed
+- [fleet-console] AI Gateway 설정 목록이 Anthropic 와이어로 전달할 수 없는 추론 강도를 더 이상 제공하지 않습니다. Codex GPT-5.6-Sol 같은 모델이 쓸 수 없는 "ultra"를 광고하는 대신 "effort low-max"로 표시됩니다.
+- [fleet-console] 기록 페인이 고정 파일 열보다 좁을 때 커밋 상세 독의 본문 페인이 폭 0으로 붕괴하던 문제를 세로 스택 전환으로 수리했습니다.
+
+### fleet-core
+
+#### Added
+- [core-ai-gateway] 게이트웨이 모델의 컨텍스트 창이 감당할 수 없는 스킬 본문을 보류하고 크기를 명시한 스텁으로 대체하며, 이후 그 스킬을 목록에서도 제거해 모델이 받지 못할 것을 적재하느라 턴을 쓰지 않게 합니다. 스킬은 클라이언트 바이너리 안에 있고 릴리스마다 바뀌며 적재 전에는 디스크에 없으므로 이름이 아니라 크기로 판정하며, 1M 이상 창은 감당 가능한 본문을 유지하고 그보다 작은 창은 모두 거부합니다.
+- [core-ai-gateway] 이제 `FLEET_GATEWAY_WIRE_LOG`가 Cursor 턴이 실제로 와이어에 싣는 것을 기록합니다. `cursor.wire.plan`이 replay 크기와 루트 개수를 싣고, `cursor.wire.blobfetch`·`cursor.wire.blobsummary`·`cursor.wire.checkpoint`가 서버가 되가져가는 개별 blob과 런 단위 합계, 그리고 게이트웨이 자체 토큰 추정치가 Cursor 보고값과 얼마나 벌어지는지를 남깁니다. Cursor는 턴 사이에 blob을 보관하지 않아 매 턴이 replay 전체를 재업로드하며, 그 비용은 이 경로로만 보입니다.
+
+#### Changed
+- [fleet-admiral] 게이트웨이 독트린은 이제 호스트를 떠나는 모든 실행에 모델을 명시적으로 핀하고, 세션 자신의 할당량을 가장 먼저가 아니라 가장 나중에 사용합니다. `workflow` 스킬이 순서 있는 두 게이트(Execution Surface Gate, Model Pin Gate)를 소유하므로, 표면 선택과 모델 배정이 상시 로드되는 시스템 지침에 중복되지 않습니다.
+- [fleet-admiral] 실행을 핀하지 않는 것은 이제 조용한 기본값이 아니라 기록되는 결정입니다. 세션 자신의 모델을 사용할 수 있는 예외는 라벨이 붙은 셋뿐이며(`E1` 교차 계열 검증, `E2` 최후의 보루, `E3` 빈 로스터), 읽어낼 수 없었던 할당량은 고갈의 증거가 아닙니다.
+- [fleet-admiral] `gateway_models` 지침이 계열과 할당량을 뭉뚱그리지 않고 분리합니다. `homolineage`는 해당 정체성이 물려받는 사각지대를 표시하고, 그것이 속한 프로바이더 항목은 누구의 구독으로 청구되는지를 표시합니다. 독립성은 호스트 세션이 아니라 검증 대상을 기준으로 판정합니다.
+- [fleet-admiral] gateway_models 로스터의 effortLadder와 agentTypes가 이 세션이 실제로 등록한 강도를 보고하며, 모델의 노출 강도가 바뀌면 revision도 함께 움직입니다.
+
+#### Fixed
+- [fleet-wiki] 위키 검색이 비라틴 문자 토픽을 토큰화하므로, 여러 단어로 된 한국어 질의가 `wiki_briefing`, `wiki_query`, `wiki_resolve`에서 빈 결과 대신 토큰 단위 매칭에 도달합니다.
+- [core-ai-gateway] 모델의 실제 컨텍스트 창을 넘긴 게이트웨이 턴을 이제 컨텍스트 창을 명시한 HTTP 413으로 거절합니다. Claude Code가 reactive compaction을 무장하는 유일한 형태라, 압축 시도 없이 턴이 끝나는 대신 압축 후 계속됩니다.
+- [core-ai-gateway] Cursor 대화가 더 이상 모델 컨텍스트 창의 절반 근처에서 거절되지 않습니다. replay에 상류 근거가 없는 512 KiB 크기 상한이 걸려 있었고 그 거절이 Claude Code가 reactive compaction을 시작할 수 없는 HTTP 400이라 압축 시도 없이 세션이 끝났는데, Cursor 실측에서 117개 replay 루트에 걸친 857987 바이트가 거절 없이 수용되어 이제는 모델 컨텍스트 창만이 유일한 천장이며 그쪽은 이미 압축을 시작시키는 413으로 응답합니다.
+
 ## [1.47.0] - 2026-08-04
 
 ### fleet-console

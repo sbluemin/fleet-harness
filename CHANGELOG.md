@@ -5,6 +5,53 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.48.0] - 2026-08-05
+
+### fleet-console
+
+#### Added
+- [fleet-console] Shelve dormant Operations below the War Room queue. The left column keeps its four living sections and gains a collapsed shelf underneath that always shows how many Operations are parked, so restored work stops disappearing from the mode; the Watch Deck and the fleet map stay live-only, and selecting a shelved Operation resumes it in place without leaving War Room or switching Theater.
+
+#### Changed
+- [fleet-console] Make right-click act on every War Room surface. A Watch Deck card, a fleet map marker, a queue rail row and a sidebar chip now open the same Operation menu the other modes already offer, reachable by the Context Menu key and Shift+F10 as well, and empty space is owned by position: right-clicking inside a Theater band or map zone launches into that Theater and names it, while space outside every Theater opens nothing instead of a menu whose actions were all disabled.
+
+#### Fixed
+- [fleet-console] Give one Operation one activity colour everywhere in War Room. Idle now reads the same on the Watch Deck card, the fleet map marker, the sidebar and the staged frame instead of falling back to the no-status grey on the deck and the map, an idle arrival is promoted to awaiting by one shared rule so a card can no longer disagree with its own marker, and background gains a hollow marker on every surface so it stays distinct from running and its sidebar marker stops resolving to transparent.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Expand an AI Gateway model in Settings to choose which reasoning levels it is offered at; each chosen level becomes one delegation identity, and the model's summary chip counts them.
+- [fleet-console] Compare two commits directly inside repository History: hover or focus a commit row and pin it with the swap glyph, use the inspector action, or Shift-click a pair; the pinned base stays visible as a toolbar chip, picks auto-order older to newer, and the result opens in the detail dock with merge-base, file list, per-file diff, and swap.
+- [fleet-console] Stash rows now open the stash commit in the inspector instead of sitting disabled.
+
+#### Changed
+- [fleet-console] Narrowing a model's reasoning levels changes only the identities offered for delegation. The gateway keeps advertising the model's full ladder, so the /model picker and in-session /effort are unaffected.
+- [fleet-console] The separate Compare view is retired: branch and tag rows' compare actions and context menus land in the same in-History result dock, tag rows gain the compare action, and the ref filter chip shows a short name with the full refname in its tooltip.
+- [fleet-console] History is pinned as the repository's checkout-independent record: only the off-checkout text dimming and the uncommitted row follow the active checkout, dimmed rows carry a "Not in current checkout" tooltip, and the commit count badge explains the legend.
+- [fleet-console] Manual repository Sync now reports its outcome: classified failure toasts with a failure dot on the button, and a success summary with new, updated, and pruned ref counts; automatic sync and throttle skips stay silent.
+
+#### Fixed
+- [fleet-console] The AI Gateway settings list no longer offers reasoning levels the Anthropic wire cannot carry, so a model such as Codex GPT-5.6-Sol now reads "effort low-max" instead of advertising an unusable "ultra" level.
+- [fleet-console] The commit detail dock no longer collapses its main pane to zero width when the history pane is narrower than the fixed file column; it stacks vertically instead.
+
+### fleet-core
+
+#### Added
+- [core-ai-gateway] Withhold a skill body a gateway model's context window cannot afford, replace it with a stub naming its size, and drop that skill from the listing from then on so the model stops spending a turn loading what it will never receive. The rule measures size rather than names, because skills ship inside the client binary, change every release, and are not on disk until they load; a window of 1M or more keeps a payload it can afford while every smaller one refuses it.
+- [core-ai-gateway] `FLEET_GATEWAY_WIRE_LOG` now records what a Cursor turn actually puts on the wire: `cursor.wire.plan` carries the replay size and root count, and `cursor.wire.blobfetch`, `cursor.wire.blobsummary`, and `cursor.wire.checkpoint` report each blob the server pulls back, the per-run totals, and how far the gateway's own token estimate sits from the count Cursor reports. Cursor keeps no blob between turns, so a turn re-uploads its whole replay and this is the only way to see that cost.
+
+#### Changed
+- [fleet-admiral] Gateway doctrine now pins an explicit model for every run that leaves the host, and spends the session's own allowance last instead of first. The `workflow` skill owns two ordered gates - an Execution Surface Gate and a Model Pin Gate - so surface choice and model assignment are no longer duplicated in the always-on system prompt.
+- [fleet-admiral] Leaving a run unpinned is now a recorded decision rather than a silent default. Only three labelled exceptions may spend the session's own model - `E1` cross-lineage verification, `E2` last resort, and `E3` empty roster - and an allowance that could not be read is not evidence of exhaustion.
+- [fleet-admiral] The `gateway_models` guidance separates lineage from allowance instead of conflating them: `homolineage` marks the blind spots an identity inherits, while the provider entry marks whose subscription it bills. Independence is judged against the subject under examination, not against the host session.
+- [fleet-admiral] The gateway_models roster reports effortLadder and agentTypes as the levels this session actually registered, and its revision moves when a model's exposed levels change.
+
+#### Fixed
+- [fleet-wiki] Wiki retrieval now tokenizes non-Latin topics, so a multi-word Korean query reaches per-token matching instead of returning nothing from `wiki_briefing`, `wiki_query`, and `wiki_resolve`.
+- [core-ai-gateway] A gateway turn that exceeds the model's real context window is now refused as HTTP 413 whose message names the context window, the only shape Claude Code arms reactive compaction from, so the run compacts and continues instead of ending with no compaction attempted.
+- [core-ai-gateway] A Cursor conversation is no longer refused at roughly half of its model's context window. The replay carried a local 512 KiB size cap that no upstream limit backed, and its refusal was an HTTP 400 that Claude Code cannot start reactive compaction from, so a session ended with no compaction attempted; a measurement against Cursor accepted 857987 bytes across 117 replay roots without refusing, so the model's context window is now the only ceiling and it already answers with the 413 that does start compaction.
+
 ## [1.47.0] - 2026-08-04
 
 ### fleet-console
