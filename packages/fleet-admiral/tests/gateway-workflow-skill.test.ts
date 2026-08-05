@@ -95,7 +95,10 @@ describe("gateway workflow skill asset", () => {
     // 리셋 주기가 다른 창의 usedPercent 직접 비교는 순위를 뒤집는다 — 주 초반 49%가
     // 월말 78%보다 뜨거운 실측 케이스. 판정(pressure)이 앞서고, percent는 같은
     // cadence 안의 타이브레이크로만 남는다.
-    expect(content).toContain('prefer windows at `pressure: "ok"`');
+    expect(content).toContain('Prefer `pressure: "ok"`');
+    // 판정이 있는데도 스스로 퍼센트를 재해석하면 건강한 프로바이더를 비켜 간다 —
+    // 한 응답이 elevated 35% 창과 ok 64% 창을 함께 싣는다.
+    expect(content).toContain("outranks arithmetic of your own");
     expect(content).toContain("share a `cadence` by the lower `usedPercent`");
     expect(content).toContain("never compare percentages across cadences");
     // 합산 창을 헤드룸 계산에 넣으면 같은 할당이 두 번 세어진다.
@@ -180,9 +183,7 @@ describe("gateway workflow skill asset", () => {
 
     expect(content).toContain("## Gate 2 — Model Pin Gate");
     expect(content).toContain("An unpinned run is not the neutral choice");
-    expect(content).toContain(
-      "The parent session's own allowance is the last one to spend, not the first.",
-    );
+    expect(content).toContain("The session's own allowance is the last one to spend");
     expect(content).toContain("it can never be selected, only inherited");
   });
 
@@ -248,6 +249,35 @@ describe("gateway workflow skill asset", () => {
     expect(content).toContain("`roleFit: null` is not a fourth exception");
     // 라벨 없는 상속과 의도된 예외는 사후에 구별되지 않는다.
     expect(content).toContain("the `E1` / `E2` / `E3` label");
+    // E1 좌석 수가 남은 프로바이더 수에 연동되면 프로바이더가 줄수록 세션 계열이 늘어난다.
+    // 실측 실패가 그것이었다 — 비-세션 프로바이더 둘이 빠지자 세션 분기가 2에서 5로 늘었다.
+    expect(content).toContain("one verifier seat per verify stage");
+  });
+
+  // 배분 규칙이 산문에만 남으면 프로바이더가 줄 때마다 세션 계열이 팬아웃을 흡수한다.
+  it("budgets bulk fan-out on non-session providers and never grows the session's share", () => {
+    const content = skillContent();
+
+    // 균등 분배는 아이덴티티가 아니라 프로바이더 단위다 — 모델을 둘 노출한 쪽이 두 배를
+    // 가져가면 "프로바이더 N개에 균등"이 아니라 노출 수 경쟁이 된다.
+    expect(content).toContain("Count providers, not identities");
+    expect(content).toContain("no provider more than one branch above another");
+    // 남은 하나가 높은 사용률이어도 금지가 아니다. 여기서 물러설 곳은 세션 자기 창뿐이다.
+    expect(content).toContain("One eligible provider left carries the whole fan-out");
+    // 조회 불가는 고갈이 아니므로 E2 를 열 수 없다 — 열리면 팬아웃이 세션 모델로 접힌다.
+    expect(content).toContain("an unreadable allowance never opens E2");
+    // 쿼터 수치로 분기 수를 깎는 것은 Proportionality 가 아니라 회피다.
+    expect(content).toContain("an allowance reading never trims it");
+  });
+
+  // 토큰·툴콜 측정과 구독 소모는 다른 축이다. 한 단어로 묶이면 토큰이 싼 모델이 쿼터도
+  // 아끼는 것처럼 읽혀, 실측상 비례하지 않는 두 값이 한 판단으로 접힌다.
+  it("keeps measured efficiency separate from quota drain", () => {
+    const content = skillContent();
+
+    expect(content).toContain("Allowance is not efficiency");
+    expect(content).toContain("a model's appetite, not a subscription's drain");
+    expect(content).toContain("quota is never inferred from them");
   });
 
   // 두 게이트는 위임 여부를 정하지 않는다. 이 봉인이 빠지면 스킬이 위임 압력으로 읽힌다.
