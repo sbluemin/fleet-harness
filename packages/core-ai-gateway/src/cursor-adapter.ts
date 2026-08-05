@@ -1243,7 +1243,25 @@ export class CursorAdapter implements AiGatewayAdapter {
       credentialFingerprint,
       plan.estimatedInputTokens,
     );
-    assertCursorContextWindow(contextCheckpoint, options.modelContextWindow);
+    const contextRefusal = cursorContextWindowRefusal(
+      contextCheckpoint,
+      options.modelContextWindow,
+    );
+    if (contextRefusal) {
+      // 거절만으로는 부족하다. mismatch 판정은 대화 내용을 보지 않으므로, 압축된
+      // 재시도가 같은 call id를 보존하면 이미 포화된 Run에 그대로 다시 붙는다. 압축이
+      // 클라이언트에만 반영되고 업스트림 세션은 가득 찬 채 이어지므로, 그 Run을 여기서
+      // 버려 재시도가 차갑게 열리도록 강제한다.
+      const saturated = this.pendingLiveRuns.get(conversationStateKey);
+      if (saturated && this.claimPendingLiveRun(saturated)) {
+        saturated.run.report("bridge.mismatch", {
+          model: cursorDiagnosticLabel(request.model),
+          outcome: "context_window_exceeded",
+        });
+        saturated.run.dispose("bridge_mismatch_context_window_exceeded");
+      }
+      throw contextRefusal;
+    }
     const descriptor: CursorLiveRunDescriptor = {
       conversationId: identity.conversationId,
       sessionId: identity.sessionId,
@@ -1726,10 +1744,10 @@ function recallCursorContextCheckpoint(
  * the stale checkpoint on exactly that shrink, so this cannot fire twice against a
  * conversation that already compacted.
  */
-function assertCursorContextWindow(
+function cursorContextWindowRefusal(
   checkpoint: CursorContextCheckpoint | undefined,
   modelContextWindow: number | undefined,
-): void {
+): ContextWindowExceededError | undefined {
   if (
     checkpoint === undefined
     || typeof modelContextWindow !== "number"
@@ -1737,9 +1755,9 @@ function assertCursorContextWindow(
     || modelContextWindow <= 0
     || checkpoint.contextTokens < modelContextWindow
   ) {
-    return;
+    return undefined;
   }
-  throw new ContextWindowExceededError(checkpoint.contextTokens, modelContextWindow);
+  return new ContextWindowExceededError(checkpoint.contextTokens, modelContextWindow);
 }
 
 function rememberCursorContextCheckpoint(

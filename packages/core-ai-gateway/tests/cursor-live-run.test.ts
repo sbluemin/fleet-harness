@@ -498,6 +498,51 @@ describe("Cursor live client-tool Run bridge", () => {
     }
   });
 
+  it("forces a compacted retry to open a cold Run instead of the saturated one", async () => {
+    // mismatch 판정은 대화 내용을 보지 않는다. 압축된 재시도가 같은 call id를 보존하면
+    // 그대로 통과해 이미 포화된 Run에 다시 붙고, 압축은 클라이언트에만 반영된 채
+    // 업스트림 세션은 가득 찬 상태로 이어진다.
+    const call = cursorCall("call-window-retry", 62);
+    const parked = new BridgeCursorStream(
+      [
+        {
+          conversationCheckpointUpdate: {
+            tokenDetails: { usedTokens: 256_000, maxTokens: 256_000 },
+          },
+        },
+        ...cursorToolFrames([call]),
+      ],
+      cursorCompletionFrames("saturated run continued"),
+      1,
+    );
+    const cold = new BridgeCursorStream(cursorCompletionFrames("cold run opened"));
+    const harness = cursorHarness([parked, cold]);
+    const base = cursorRequest("session-window-retry", "kimi-k3-1m");
+    const large: CanonicalResponseRequest = {
+      ...base,
+      input: [{ type: "message", role: "user", content: "x".repeat(60_000) }],
+    };
+
+    try {
+      await collectCursorResponse(harness.adapter, large);
+      await expect(harness.adapter.stream(
+        cursorContinuation(large, [call], [cursorResult(call, "tool result")]),
+        { apiKey: "cursor-test-token", modelContextWindow: 256_000 },
+      )).rejects.toBeInstanceOf(ContextWindowExceededError);
+
+      // 압축된 재시도 — 히스토리는 줄었지만 진행 중이던 call/result는 보존된다.
+      const events = await collectAdapterEvents(await harness.adapter.stream(
+        cursorContinuation(base, [call], [cursorResult(call, "tool result")]),
+        { apiKey: "cursor-test-token", modelContextWindow: 256_000 },
+      ));
+
+      expect(canonicalText(events)).toBe("cold run opened");
+      expect(harness.openedStreams).toBe(2);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
   it("stays out of the way while Cursor's count is under the window", async () => {
     const belowWindow = new BridgeCursorStream([
       {
