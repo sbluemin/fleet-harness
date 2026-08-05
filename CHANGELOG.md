@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.50.1] - 2026-08-05
+
+### fleet-core
+
+#### Fixed
+- [core-ai-gateway] A Codex-backed session no longer dies with `400 Unknown parameter: 'input[N].reasoning_content'`. Assistant reasoning is kept as replay metadata for the Chat Completions backends that require it, but it was also being written into the OpenAI Responses request body, where an unrecognized input property rejects the entire request, so every turn after the model's first thinking block failed. That metadata now stays provider-private on the Responses path.
+
 ## [1.50.0] - 2026-08-05
 
 ### fleet-core
