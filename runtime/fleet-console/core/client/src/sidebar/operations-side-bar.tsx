@@ -16,7 +16,7 @@ import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { getTheaterCanvasSnapshot, setOperationOrder, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
 import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, sortOperationsByOrder } from "../store.js";
-import { resolveOperationActivity } from "../operation-activity.js";
+import { resolveOperationActivity, resolveOperationDisplayActivity } from "../operation-activity.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
 import {
@@ -219,16 +219,18 @@ export function StatusSectionSlot({
   theaterId,
   section,
   unseenCount = 0,
+  defaultCollapsed = false,
   children,
 }: {
   readonly theaterId: string;
   readonly section: StatusSection;
   readonly unseenCount?: number;
+  readonly defaultCollapsed?: boolean;
   readonly children: ReactNode;
 }) {
   const t = useT();
   const empty = section.entries.length === 0;
-  const collapsed = useSideBarStatusSectionCollapsed(theaterId, section.status, empty);
+  const collapsed = useSideBarStatusSectionCollapsed(theaterId, section.status, empty || defaultCollapsed);
   return (
     <li
       className={[
@@ -241,7 +243,7 @@ export function StatusSectionSlot({
         <button
           type="button"
           className="side-bar-status-header__toggle"
-          onClick={() => toggleSideBarStatusSectionCollapsed(theaterId, section.status, empty)}
+          onClick={() => toggleSideBarStatusSectionCollapsed(theaterId, section.status, empty || defaultCollapsed)}
           aria-expanded={!collapsed}
           aria-label={collapsed ? t("sidebar.status.expandSection", { label: section.label }) : t("sidebar.status.collapseSection", { label: section.label })}
           title={collapsed ? t("sidebar.status.expand") : t("sidebar.status.collapse")}
@@ -422,11 +424,11 @@ export function OperationsSideBar({
     }
     // 상태축에서는 그룹 접힘이 배치에 영향을 주지 않는다 — 여기서 펼치면 사용자의 그룹축 설정만 조용히 바뀐다.
     if (statusAxis) {
-      const status = resolveSideBarStatusSection(
-        resolveOperationActivity(operation, operationStatus),
-        operation.id,
+      const status = resolveOperationDisplayActivity({
+        activity: resolveOperationActivity(operation, operationStatus),
+        operationId: operation.id,
         idleArrivalIds,
-      );
+      });
       if (getSideBarStatusSectionCollapsed(operation.theaterId, status, false)) {
         toggleSideBarStatusSectionCollapsed(operation.theaterId, status, false);
       }
@@ -1220,7 +1222,11 @@ export function groupOperationsByStatus(
     // 미해소(undefined) 엔트리의 idle 폭백은 직접 구성된 입력에 대한 방어 계약이다.
     entries: entries
       .filter((entry) =>
-        resolveSideBarStatusSection(entry.status ?? "idle", entry.operation.id, idleArrivalIds) === status)
+        resolveOperationDisplayActivity({
+          activity: entry.status ?? "idle",
+          operationId: entry.operation.id,
+          idleArrivalIds,
+        }) === status)
       .sort((left, right) => {
         const leftTick = getTick?.(left.operation.id);
         const rightTick = getTick?.(right.operation.id);
@@ -1232,25 +1238,17 @@ export function groupOperationsByStatus(
   }));
 }
 
-export function resolveSideBarStatusSection(
-  entryStatus: SideBarStatus,
-  operationId: string,
-  idleArrivalIds: ReadonlySet<string>,
-): SideBarStatus {
-  return entryStatus === "idle" && idleArrivalIds.has(operationId) ? "awaiting" : entryStatus;
-}
-
 export function hasAwaitingOperation(
   operations: readonly OperationNode[],
   operationStatus: Readonly<Record<string, OperationActivity>>,
 ): boolean {
   const idleArrivalIds = getIdleArrivalIds();
   return operations.some((operation) =>
-    resolveSideBarStatusSection(
-      resolveOperationActivity(operation, operationStatus),
-      operation.id,
+    resolveOperationDisplayActivity({
+      activity: resolveOperationActivity(operation, operationStatus),
+      operationId: operation.id,
       idleArrivalIds,
-    ) === "awaiting");
+    }) === "awaiting");
 }
 
 function resolveEntryGroupMark(

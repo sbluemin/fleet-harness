@@ -34,7 +34,7 @@ import {
   requestSideBarOperationAction,
   subscribeSideBarOperationAction,
 } from "../core/client/src/sidebar/interaction.js";
-import { setSideBarCollapsed } from "../core/client/src/sidebar/operations-side-bar-store.js";
+import { resetSideBarStatusSectionCollapseForTests, setSideBarCollapsed } from "../core/client/src/sidebar/operations-side-bar-store.js";
 import { OperationBodyPool } from "../core/client/src/mobile/operation-body-pool.js";
 import { createHostCapabilities } from "../core/client/src/plugin-capabilities.js";
 import {
@@ -108,6 +108,7 @@ beforeEach(() => {
   resetTriageSpotlightForTests();
   resetTriageDeckZoomForTests();
   resetIdleArrivalForTests();
+  resetSideBarStatusSectionCollapseForTests();
   clearFormationView();
   clearMaximizedOperationId();
   forceDropCompanionOperationId();
@@ -711,7 +712,7 @@ describe("triage store", () => {
     expect(isTriageActive()).toBe(false);
   });
 
-  it("groups sidebar entries into the shared status sections, drops dormant, and orders awaiting by the queue", () => {
+  it("groups sidebar entries into all shared status sections and orders awaiting by the queue", () => {
     const alphaWaiting = operation("alpha-waiting", 1);
     const betaWaiting = operation("beta-waiting", 2, "theater-b");
     const alphaRunning = operation("alpha-running", 3);
@@ -740,12 +741,12 @@ describe("triage store", () => {
 
     const sections = resolveTriageSideBarSections(entries, queue);
 
-    expect(sections.map((section) => section.status)).toEqual(["awaiting", "running", "background", "idle"]);
+    expect(sections.map((section) => section.status)).toEqual(["awaiting", "running", "background", "idle", "dormant"]);
     const byStatus = new Map(sections.map((section) => [section.status, section.entries.map((entry) => entry.operation.id)]));
     expect(byStatus.get("awaiting")).toEqual(["beta-waiting", "alpha-waiting"]);
     expect(byStatus.get("running")).toEqual(["alpha-running"]);
     expect(byStatus.get("idle")).toEqual(["beta-idle"]);
-    expect(sections.some((section) => section.entries.some((entry) => entry.operation.id === "alpha-dormant"))).toBe(false);
+    expect(byStatus.get("dormant")).toEqual(["alpha-dormant"]);
   });
 
   it("keeps the Triage stage and companions inside the inset without overlap", () => {
@@ -846,6 +847,47 @@ describe("triage store", () => {
 
     act(() => (container.querySelector('[data-triage-deck-card="next"]') as HTMLButtonElement).click());
     expect(getTriagePick()).toBe("next");
+  });
+
+  it("routes card, map-dot, and owned empty-region context menus without guessing bare space", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    triagePlateRoot = createRoot(container);
+    const operationMenu = vi.fn();
+    const theaterMenu = vi.fn();
+
+    act(() => {
+      triagePlateRoot?.render(createElement(TriageWatchDeck, {
+        active: true,
+        entering: false,
+        theaters: THEATERS,
+        operations: OPERATIONS,
+        operationStatus: { picked: "running", next: "idle" },
+        operationAccent: {},
+        onOperationContextMenu: operationMenu,
+        onTheaterContextMenu: theaterMenu,
+      }));
+    });
+
+    const card = container.querySelector<HTMLButtonElement>('[data-triage-deck-card="picked"]')!;
+    const cardMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 41, clientY: 52 });
+    act(() => card.dispatchEvent(cardMenu));
+    expect(cardMenu.defaultPrevented).toBe(true);
+    expect(operationMenu).toHaveBeenCalledWith("picked", expect.any(DOMRect), card);
+    expect(theaterMenu).not.toHaveBeenCalled();
+
+    const bandBody = container.querySelector<HTMLElement>(".canvas-triage-deck-band-body")!;
+    const fieldMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 71, clientY: 82 });
+    act(() => bandBody.dispatchEvent(fieldMenu));
+    expect(fieldMenu.defaultPrevented).toBe(true);
+    expect(theaterMenu).toHaveBeenCalledWith("theater-a", "Alpha", { x: 71, y: 82 });
+
+    act(() => setTriageDeckMapModeLive(true));
+    const dot = container.querySelector<HTMLButtonElement>('[data-triage-map-dot="picked"]')!;
+    const dotMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 91, clientY: 102 });
+    act(() => dot.dispatchEvent(dotMenu));
+    expect(dotMenu.defaultPrevented).toBe(true);
+    expect(operationMenu).toHaveBeenLastCalledWith("picked", expect.any(DOMRect), dot);
   });
 
   it("groups deck cards into theater bands ordered by waiting count", () => {
@@ -1258,6 +1300,7 @@ describe("triage store", () => {
         operationStatus: status,
         operationNotifications: {},
         catalog: [],
+        plugins: [],
         renderKindIcon: () => null,
         onPick: pickTriageOperation,
         onClose: () => {},
@@ -1291,6 +1334,52 @@ describe("triage store", () => {
     expect(aside?.dataset.sidebarState).toBe("closed");
     act(() => setSideBarCollapsed(false));
     expect(container.querySelector<HTMLElement>(".triage-side-bar")?.classList.contains("is-closed")).toBe(false);
+  });
+
+  it("renders dormant Operations in a separate collapsed shelf and resumes them without leaving War Room", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    triagePlateRoot = createRoot(container);
+    const dormant = operation("dormant", 1);
+    const operations = [dormant];
+    const status: Readonly<Record<string, OperationActivity>> = { dormant: "dormant" };
+    const resumeOperation = vi.fn();
+    const onPick = vi.fn();
+    setTriageActive(true);
+
+    act(() => triagePlateRoot?.render(createElement(TriageSideBar, {
+      theaters: THEATERS,
+      operations,
+      operationStatus: status,
+      operationNotifications: {},
+      catalog: [],
+      plugins: [{ id: "terminal", resumeOperation }],
+      renderKindIcon: () => null,
+      onPick,
+      onClose: () => {},
+      onRename: () => {},
+    })));
+
+    const shelf = container.querySelector(".triage-side-bar-dormant-shelf");
+    expect(shelf).not.toBeNull();
+    expect(container.querySelector(".triage-side-bar-sections .side-bar-status-section--dormant")).toBeNull();
+    expect(shelf?.querySelector(".side-bar-status-header__count")?.textContent).toBe("1");
+    const toggle = shelf?.querySelector<HTMLButtonElement>(".side-bar-status-header__toggle");
+    expect(toggle?.getAttribute("aria-expanded")).toBe("false");
+    expect(shelf?.querySelector(".side-bar-chip")).toBeNull();
+
+    act(() => toggle?.click());
+    const chip = shelf?.querySelector<HTMLElement>(".side-bar-chip");
+    expect(chip).not.toBeNull();
+    expect(chip?.getAttribute("aria-label")).toContain("Resume dormant operation dormant");
+    expect(chip?.getAttribute("aria-label")).not.toContain("Focus operation");
+    expect(chip?.getAttribute("title")).toBe("Select to resume");
+    expect(chip?.getAttribute("title")).not.toContain("right-click");
+    act(() => chip?.click());
+
+    expect(resumeOperation).toHaveBeenCalledWith("dormant");
+    expect(onPick).not.toHaveBeenCalled();
+    expect(isTriageActive()).toBe(true);
   });
 
   it("renders live previews only for active-Theater cards and the detail fallback for foreign ones", () => {

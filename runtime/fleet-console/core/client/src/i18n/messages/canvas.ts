@@ -69,6 +69,7 @@ export const canvasEn = {
 
   "canvas.menu.aria": "Canvas controls",
   "canvas.menu.title": "Canvas controls",
+  "canvas.menu.theaterTitle": "{theater} controls",
   "canvas.menu.launch": "Launch",
   "canvas.menu.empty": "No operations available.",
 
@@ -120,6 +121,7 @@ export const canvasEn = {
 
   "sidebar.list.aria": "Theaters and operations",
   "triageSidebar.aria": "War Room queue",
+  "triageSidebar.dormantShelf": "Dormant · select to resume",
   "triageSidebar.watching": "Watching",
   "triageSidebar.idle": "Idle",
   "sidebar.theater.operationsAria": "{theater} operations",
@@ -149,6 +151,8 @@ export const canvasEn = {
 
   "sidebar.chip.focusAria": "Focus operation {title}{groupContext}{unseenContext}",
   "sidebar.chip.focusedAria": "{title}{groupContext} (focused){unseenContext}",
+  "sidebar.chip.resumeAria": "Resume dormant operation {title}{groupContext}",
+  "sidebar.chip.resumeTitle": "Select to resume",
   "sidebar.chip.inGroup": " in group {name}",
   "sidebar.chip.inTheater": " in {name}",
   "sidebar.chip.unseenContext": " (unseen since idle)",
@@ -273,6 +277,7 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
 
   "canvas.menu.aria": "캔버스 제어",
   "canvas.menu.title": "캔버스 제어",
+  "canvas.menu.theaterTitle": "{theater} 제어",
   "canvas.menu.launch": "실행",
   "canvas.menu.empty": "사용 가능한 Operation이 없습니다.",
 
@@ -323,6 +328,7 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
 
   "sidebar.list.aria": "Theater와 Operation",
   "triageSidebar.aria": "War Room 대기열",
+  "triageSidebar.dormantShelf": "휴면 · 선택하여 재개",
   "triageSidebar.watching": "주시 중",
   "triageSidebar.idle": "유휴",
   "sidebar.theater.operationsAria": "{theater} Operation",
@@ -352,6 +358,8 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
 
   "sidebar.chip.focusAria": "Operation {title}에 포커스{groupContext}{unseenContext}",
   "sidebar.chip.focusedAria": "{title}{groupContext} (포커스됨){unseenContext}",
+  "sidebar.chip.resumeAria": "휴면 Operation {title}{groupContext} 재개",
+  "sidebar.chip.resumeTitle": "선택하여 재개",
   "sidebar.chip.inGroup": " · 그룹 {name}",
   "sidebar.chip.inTheater": " · {name}",
   "sidebar.chip.unseenContext": " (유휴 이후 미확인)",

@@ -41,6 +41,8 @@ interface SideBarChipProps {
   readonly minimizeEnabled?: boolean;
   /** 컨텍스트 메뉴(그룹/액센트) 호스트가 없는 표면 — false면 메뉴 어포던스와 해당 팔레트 소비를 끈다. */
   readonly menuEnabled?: boolean;
+  /** 휴면 선반처럼 본동작이 focus가 아닌 resume인 표면 — 접근성 이름과 툴팁도 같은 동사를 쓴다. */
+  readonly resumeOnActivate?: boolean;
   readonly onArmClose: (operationId: string) => void;
   readonly onDisarmClose: () => void;
   readonly onClose: (operationId: string) => void;
@@ -70,6 +72,7 @@ export function OperationsSideBarChip({
   reorderEnabled = true,
   minimizeEnabled = true,
   menuEnabled = true,
+  resumeOnActivate = false,
   dragging,
   dragOffsetY,
   dropTarget,
@@ -94,9 +97,11 @@ export function OperationsSideBarChip({
   const theaterContext = theaterName ? t("sidebar.chip.inTheater", { name: theaterName }) : "";
   const groupContext = (statusAxis && groupMark ? t("sidebar.chip.inGroup", { name: groupMark.name }) : "") + theaterContext;
   const unseenContext = idleUnseen ? t("sidebar.chip.unseenContext") : "";
-  const chipAriaLabel = active
-    ? t("sidebar.chip.focusedAria", { title, groupContext, unseenContext })
-    : t("sidebar.chip.focusAria", { title, groupContext, unseenContext });
+  const chipAriaLabel = resumeOnActivate
+    ? t("sidebar.chip.resumeAria", { title, groupContext })
+    : active
+      ? t("sidebar.chip.focusedAria", { title, groupContext, unseenContext })
+      : t("sidebar.chip.focusAria", { title, groupContext, unseenContext });
   const rename = useInlineRename({ currentTitle: title, onCommit: (next) => onRename(operation.id, next), onBegin: onDisarmClose });
   const chipClassName = [
     "side-bar-chip",
@@ -178,7 +183,13 @@ export function OperationsSideBarChip({
       aria-haspopup={preview || !menuEnabled ? undefined : "menu"}
       aria-label={chipAriaLabel}
       aria-current={active ? "true" : undefined}
-      title={preview ? t("sidebar.chip.previewTitle") : active ? t("sidebar.chip.activeTitle") : t("sidebar.chip.idleTitle")}
+      title={resumeOnActivate
+        ? t("sidebar.chip.resumeTitle")
+        : preview
+          ? t("sidebar.chip.previewTitle")
+          : active
+            ? t("sidebar.chip.activeTitle")
+            : t("sidebar.chip.idleTitle")}
       style={chipStyle}
       onClick={focus}
       onContextMenu={preview || !menuEnabled ? undefined : openAccent}

@@ -1494,6 +1494,47 @@
   transform: rotate(-90deg);
 }
 
+/* OperationActivity 색은 이 축에서 한 번만 선언한다. dormant의 brass는 위치 채널 토큰을
+   상태에 쓰는 기존 STATUS 예외다. 카드·지도까지 같은 판독을 공유하도록 예외 범위를 함께 넓힌다. */
+.tenant-beacon.is-awaiting,
+.canvas-triage-deck-card.is-awaiting,
+.canvas-triage-map-dot.is-awaiting,
+.side-bar-status-section--awaiting {
+  --activity-color: var(--aurora);
+  --activity-glow: var(--aurora-glow);
+}
+
+.tenant-beacon.is-turn-running,
+.canvas-triage-deck-card.is-running,
+.canvas-triage-map-dot.is-running,
+.side-bar-status-section--running {
+  --activity-color: var(--warn);
+  --activity-glow: var(--warn-glow);
+}
+
+.tenant-beacon.is-idle,
+.canvas-triage-deck-card.is-idle,
+.canvas-triage-map-dot.is-idle,
+.side-bar-status-section--idle {
+  --activity-color: var(--positive);
+  --activity-glow: var(--positive-glow);
+}
+
+.tenant-beacon.is-dormant,
+.canvas-triage-deck-card.is-dormant,
+.canvas-triage-map-dot.is-dormant,
+.side-bar-status-section--dormant {
+  --activity-color: color-mix(in oklch, var(--brass) 55%, var(--ink-rim));
+}
+
+.tenant-beacon.is-background,
+.canvas-triage-deck-card.is-background,
+.canvas-triage-map-dot.is-background,
+.side-bar-status-section--background {
+  --activity-color: var(--warn);
+  --activity-glow: var(--warn-glow);
+}
+
 .status-dot,
 .tenant-beacon {
   /* accent-immune: beacon dots are system status signals, never user accent fill. */
@@ -1512,37 +1553,37 @@
 
 /* awaiting — aurora(청록). 운영자 입력을 기다리는 살아있는 대기 신호(pulse). */
 .tenant-beacon.is-awaiting {
-  background: var(--aurora);
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--aurora) 30%, transparent);
+  background: var(--activity-color);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--activity-color) 30%, transparent);
   animation: aurora-pulse 1.8s ease-in-out infinite;
 }
 
 .tenant-beacon.is-dormant {
   background: none;
-  border: 1.5px solid color-mix(in oklch, var(--brass) 55%, var(--ink-rim));
+  border: 1.5px solid var(--activity-color);
   box-sizing: border-box;
 }
 
 /* Agent CLI 턴 진행 중(캐리어 스트리밍 포함) — 노랑(--warn). aurora(awaiting 대기)와 구별한다. */
 .tenant-beacon.is-turn-running {
-  background: var(--warn);
+  background: var(--activity-color);
   border-radius: 2px;
-  box-shadow: 0 0 10px var(--warn-glow);
+  box-shadow: 0 0 10px var(--activity-glow);
 }
 
 /* background — 턴은 끝났지만 백그라운드 서브에이전트/워크플로우 작업이 남아있음. running(--warn 채움)의 중공 변형. */
 .tenant-beacon.is-background {
   background: none;
-  border: 1.5px solid var(--warn);
+  border: 1.5px solid var(--activity-color);
   border-radius: 2px;
   box-sizing: border-box;
-  box-shadow: 0 0 8px var(--warn-glow);
+  box-shadow: 0 0 8px var(--activity-glow);
 }
 
 /* idle — 그린(--positive). 유휴 상태(턴 미진행/종료). 정적 dot, 외곽 애니메이션 없음. */
 .tenant-beacon.is-idle {
-  background: var(--positive);
-  box-shadow: 0 0 9px var(--positive-glow);
+  background: var(--activity-color);
+  box-shadow: 0 0 9px var(--activity-glow);
 }
 
 .status-dot--lg {
@@ -1583,6 +1624,12 @@
 .operation-launch-control--canvas {
   position: absolute;
   z-index: 30;
+}
+
+/* War Room의 메뉴는 이 모드의 층 위에 서야 한다 — 덱(80)과 레일(90)이 같은 스태킹 문맥에서 위에
+   있으면 메뉴가 보여도 항목의 클릭을 덱 카드가 먼저 받는다. Cruise의 30은 그대로 둔다. */
+.operation-launch-control--triage {
+  z-index: 100;
 }
 
 .workspace-add-button {
@@ -2289,7 +2336,7 @@
   padding: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-pill);
-  background: var(--ink-fog);
+  background: var(--activity-color);
   opacity: 0.75;
   cursor: pointer;
   transform: translate(-50%, -50%);
@@ -2300,8 +2347,7 @@
 }
 
 .canvas-triage-map-dot.is-awaiting {
-  background: var(--aurora);
-  box-shadow: 0 0 14px var(--aurora-glow);
+  box-shadow: 0 0 14px var(--activity-glow);
   opacity: 1;
 }
 
@@ -2309,7 +2355,7 @@
   content: "";
   position: absolute;
   inset: -3px;
-  border: 1px solid var(--aurora);
+  border: 1px solid var(--activity-color);
   border-radius: var(--radius-pill);
   animation: triage-map-awaiting-ring calc(var(--duration-slow) * 6.6667) var(--ease-glide) infinite;
 }
@@ -2321,9 +2367,15 @@
 }
 
 .canvas-triage-map-dot.is-running {
-  background: var(--warn);
-  box-shadow: 0 0 11px var(--warn-glow);
+  box-shadow: 0 0 11px var(--activity-glow);
   opacity: 1;
+}
+
+.canvas-triage-map-dot.is-background {
+  background: none;
+  border-color: var(--activity-color);
+  box-sizing: border-box;
+  box-shadow: 0 0 8px var(--activity-glow);
 }
 
 /* 유영은 실행 중만의 특권이 아니다 — 살아 있는 함대의 판에서 정지한 점은 죽은 표시로 읽힌다.
@@ -2604,22 +2656,23 @@
   height: 7px;
   flex: none;
   border-radius: var(--radius-pill);
-  background: var(--ink-fog);
+  background: var(--activity-color);
 }
 
 .canvas-triage-deck-card.is-running .canvas-triage-deck-card-dot {
-  background: var(--warn);
-  box-shadow: 0 0 0 0 var(--warn-glow);
+  box-shadow: 0 0 0 0 var(--activity-glow);
   animation: triage-deck-running-pulse calc(var(--duration-slow) * 6.6667) var(--ease-glide) infinite;
 }
 
 .canvas-triage-deck-card.is-awaiting .canvas-triage-deck-card-dot {
-  background: var(--aurora);
-  box-shadow: 0 0 10px var(--aurora-glow);
+  box-shadow: 0 0 10px var(--activity-glow);
 }
 
-.canvas-triage-deck-card.is-dormant .canvas-triage-deck-card-dot {
-  background: var(--surface-rim-strong);
+.canvas-triage-deck-card.is-background .canvas-triage-deck-card-dot {
+  background: none;
+  border: 1.5px solid var(--activity-color);
+  box-sizing: border-box;
+  box-shadow: 0 0 8px var(--activity-glow);
 }
 
 .canvas-triage-deck-card > strong,
@@ -3538,10 +3591,32 @@
 }
 
 /* 선별 처리 전용 사이드바 — Map 사이드바(.operations-side-bar)의 표면·접힘 문법을 그대로
-   상속하고, 전역 상태 섹션 + 칩만 싣는다(Theater 트리 없음). 캡션·빈 문구 같은 선별 전용
-   조각은 두지 않는다: 상태 섹션 자체가 항상 서 있어 수량과 "없음"을 스스로 말한다. */
+   상속한다. 네 living 섹션은 스크롤 큐를 소유하고, 휴면만 separator 아래의 접힌 선반과 중립
+   캡션을 갖는다: 휴면 수량은 보이되 큐·덱·지도 문법에는 합류시키지 않는다. */
 .triage-side-bar-sections {
   padding-top: var(--space-1);
+}
+
+.triage-side-bar-dormant-shelf {
+  flex: none;
+  border-top: 1px solid var(--surface-rim);
+  padding: var(--space-1) 0;
+}
+
+.triage-side-bar-caption {
+  margin: 0;
+  padding: var(--space-1) var(--space-3);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.08em;
+}
+
+.triage-side-bar-dormant-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .side-bar-theater-error {
@@ -4235,9 +4310,9 @@
 /* ── Group Section Layout ──────────────────────────────────────────────────────── */
 
 /* STATUS 축의 3px border는 identity가 아니라 OperationActivity 신호 채널이다.
-   idle/dormant는 tenant beacon의 현행 토큰을 그대로 공유한다. */
+   색 정본은 위 OperationActivity 축이며 --status-color는 기존 소비자를 위한 별칭이다. */
 .side-bar-status-section {
-  --status-color: transparent;
+  --status-color: var(--activity-color);
   list-style: none;
   display: flex;
   flex-direction: column;
@@ -4246,20 +4321,10 @@
   border-left: 3px solid var(--status-color);
 }
 
-.side-bar-status-section--awaiting {
-  --status-color: var(--aurora);
-}
-
-.side-bar-status-section--running {
-  --status-color: var(--warn);
-}
-
-.side-bar-status-section--idle {
-  --status-color: var(--positive);
-}
-
-.side-bar-status-section--dormant {
-  --status-color: color-mix(in oklch, var(--brass) 55%, var(--ink-rim));
+/* background는 running과 같은 warn 축을 쓰되, 중공 beacon의 기하를 세로선에도 옮겨
+   채운 running과 혼동되지 않게 한다. */
+.side-bar-status-section--background {
+  border-left-style: dashed;
 }
 
 .side-bar-status-header {
@@ -4317,6 +4382,12 @@
   height: 7px;
   border-radius: 999px;
   background: var(--status-color);
+}
+
+.side-bar-status-section--background .side-bar-status-header__dot {
+  background: none;
+  border: 1.5px solid var(--activity-color);
+  box-sizing: border-box;
 }
 
 .side-bar-status-section--empty .side-bar-status-header__dot {

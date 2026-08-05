@@ -1,9 +1,10 @@
 import { useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { OperationActivity } from "@fleet-console/sdk/plugin";
+import type { FleetClientPlugin, OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../i18n/index.js";
+import { resumeOperationInPlace } from "../operation-resume.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-idle-arrival.js";
 import type { OperationNode, OperationNotification } from "../types.js";
 import { getTheaterCanvasSnapshot } from "../canvas/canvas-store.js";
@@ -20,24 +21,22 @@ const TRIAGE_SIDE_BAR_SECTION_KEY = "__triage__";
 const EMPTY_MINIMIZED: ReadonlySet<string> = new Set();
 
 // 전역 선별 목록도 Map 사이드바의 표현 문법(상태 섹션 헤더 + 칩)을 그대로 쓴다 — 모드가 바뀌어도
-// 왼쪽 열의 읽는 법이 바뀌지 않아야 한다. 선별 고유 규칙은 두 가지뿐이다: 휴면 섹션은 싣지 않고
-// (deck와 같은 "살아있는 함대" 계약), 대기 섹션은 전역 큐의 처리 순서를 따른다.
+// 왼쪽 열의 읽는 법이 바뀌지 않아야 한다. 네 living 섹션은 큐 문법을 공유하되, 휴면은 큐에 합류하지
+// 않고 하단 선반에만 머문다. 대기 섹션은 전역 큐의 처리 순서를 따른다.
 export function resolveTriageSideBarSections(
   entries: readonly SideBarEntry[],
   queue: readonly TriageQueueEntry[],
   t?: Parameters<typeof groupOperationsByStatus>[2],
 ): StatusSection[] {
   const queueIndexById = new Map(queue.map((entry, index) => [entry.operation.id, index]));
-  return groupOperationsByStatus(entries, undefined, t)
-    .filter((section) => section.status !== "dormant")
-    .map((section) => section.status !== "awaiting"
-      ? section
-      : {
-          ...section,
-          entries: [...section.entries].sort((left, right) =>
-            (queueIndexById.get(left.operation.id) ?? Number.MAX_SAFE_INTEGER)
-            - (queueIndexById.get(right.operation.id) ?? Number.MAX_SAFE_INTEGER)),
-        });
+  return groupOperationsByStatus(entries, undefined, t).map((section) => section.status !== "awaiting"
+    ? section
+    : {
+        ...section,
+        entries: [...section.entries].sort((left, right) =>
+          (queueIndexById.get(left.operation.id) ?? Number.MAX_SAFE_INTEGER)
+          - (queueIndexById.get(right.operation.id) ?? Number.MAX_SAFE_INTEGER)),
+      });
 }
 
 interface TriageSideBarProps {
@@ -46,10 +45,12 @@ interface TriageSideBarProps {
   readonly operationStatus: Readonly<Record<string, OperationActivity>>;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly catalog: readonly OperationCatalogPlugin[];
+  readonly plugins: readonly FleetClientPlugin[];
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
   readonly onPick: (operationId: string) => void;
   readonly onClose: (operationId: string) => void;
   readonly onRename: (operationId: string, title: string) => void;
+  readonly onOpenOperationMenu?: (operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
 }
 
 export function TriageSideBar({
@@ -58,10 +59,12 @@ export function TriageSideBar({
   operationStatus,
   operationNotifications,
   catalog,
+  plugins,
   renderKindIcon,
   onPick,
   onClose,
   onRename,
+  onOpenOperationMenu,
 }: TriageSideBarProps) {
   const t = useT();
   // 지목·미룸·치워둠은 콘솔 상태를 바꾸지 않는 store 단독 변화다 — 캔버스와 같은 리비전 구독으로
@@ -87,6 +90,44 @@ export function TriageSideBar({
     renderKindIcon,
   }));
   const sections = resolveTriageSideBarSections(entries, queue, t);
+  const livingSections = sections.filter((section) => section.status !== "dormant");
+  const dormantSection = sections.find((section) => section.status === "dormant");
+  const renderChip = (entry: SideBarEntry, index: number, dormant = false) => {
+    const accentKey = getTheaterCanvasSnapshot(entry.operation.theaterId).operationAccent[entry.operation.id]
+      ?? operationAccentFromNode(entry.operation);
+    // 휴면 plugin에 resume 훅이 없으면 지목해 dormant 프레임의 자체 재개 UI를 보인다 —
+    // onPick은 알림을 지우거나 Theater를 바꾸지 않고, picked 항목은 live-only deck와 별개로 무대에 선다.
+    const activate = dormant
+      ? (operationId: string) => resumeOperationInPlace(operationId, operations, plugins, onPick)
+      : onPick;
+    return (
+      <OperationsSideBarChip
+        key={entry.operation.id}
+        entry={entry}
+        index={index}
+        isCloseArmed={armedCloseId === entry.operation.id}
+        accentValue={accentKey ? resolveAccentColor(accentKey) : null}
+        theaterName={theaterLabelById.get(entry.operation.theaterId) ?? entry.operation.theaterId}
+        statusAxis
+        reorderEnabled={false}
+        minimizeEnabled={false}
+        menuEnabled={!dormant && onOpenOperationMenu !== undefined}
+        resumeOnActivate={dormant}
+        dragging={false}
+        dragOffsetY={0}
+        dropTarget={false}
+        onArmClose={setArmedCloseId}
+        onDisarmClose={() => setArmedCloseId(null)}
+        onClose={onClose}
+        onMinimize={() => {}}
+        onFocus={activate}
+        onKeyboardMove={() => {}}
+        onPointerDragStart={() => {}}
+        onOpenAccent={(operationId, anchor, returnFocus) => onOpenOperationMenu?.(operationId, anchor, returnFocus)}
+        onRename={onRename}
+      />
+    );
+  };
   return (
     <aside
       className={`operations-side-bar triage-side-bar ${sideBar.collapsed ? "is-closed" : "is-expanded"}`}
@@ -100,41 +141,29 @@ export function TriageSideBar({
           축 자체라, 건수가 0이라고 축이 사라지면 좌측 열의 읽는 법이 상황에 따라 달라진다.
           "없음"은 빈 섹션의 자체 힌트가 말한다(전역 empty 문구는 이 계약으로 퇴역했다). */}
       <ol className="operations-side-bar-chips triage-side-bar-sections" aria-label={t("triageSidebar.aria")}>
-        {sections.map((section) => (
+        {livingSections.map((section) => (
           <StatusSectionSlot key={section.status} theaterId={TRIAGE_SIDE_BAR_SECTION_KEY} section={section}>
-            {section.entries.map((entry, index) => {
-              const accentKey = getTheaterCanvasSnapshot(entry.operation.theaterId).operationAccent[entry.operation.id]
-                ?? operationAccentFromNode(entry.operation);
-              return (
-                <OperationsSideBarChip
-                  key={entry.operation.id}
-                  entry={entry}
-                  index={index}
-                  isCloseArmed={armedCloseId === entry.operation.id}
-                  accentValue={accentKey ? resolveAccentColor(accentKey) : null}
-                  theaterName={theaterLabelById.get(entry.operation.theaterId) ?? entry.operation.theaterId}
-                  statusAxis
-                  reorderEnabled={false}
-                  minimizeEnabled={false}
-                  menuEnabled={false}
-                  dragging={false}
-                  dragOffsetY={0}
-                  dropTarget={false}
-                  onArmClose={setArmedCloseId}
-                  onDisarmClose={() => setArmedCloseId(null)}
-                  onClose={onClose}
-                  onMinimize={() => {}}
-                  onFocus={onPick}
-                  onKeyboardMove={() => {}}
-                  onPointerDragStart={() => {}}
-                  onOpenAccent={() => {}}
-                  onRename={onRename}
-                />
-              );
-            })}
+            {section.entries.map((entry, index) => renderChip(entry, index))}
           </StatusSectionSlot>
         ))}
       </ol>
+      {/* 선반의 칩은 Operation 메뉴를 갖지 않는다(본동작이 재개다) — 그렇다고 브라우저 메뉴가 뜨면
+          "이 표면에는 메뉴가 없다"가 아니라 "우리 것이 아니다"로 읽힌다. 큐의 칩과 달리 여기서는
+          아무것도 열지 않는다. menuEnabled=false는 핸들러를 떼기만 하므로 선반이 직접 막는다. */}
+      {dormantSection ? (
+        <footer className="triage-side-bar-dormant-shelf" onContextMenu={(event) => event.preventDefault()}>
+          <p className="triage-side-bar-caption">{t("triageSidebar.dormantShelf")}</p>
+          <ol className="triage-side-bar-dormant-list" aria-label={t("triageSidebar.dormantShelf")}>
+            <StatusSectionSlot
+              theaterId={TRIAGE_SIDE_BAR_SECTION_KEY}
+              section={dormantSection}
+              defaultCollapsed
+            >
+              {dormantSection.entries.map((entry, index) => renderChip(entry, index, true))}
+            </StatusSectionSlot>
+          </ol>
+        </footer>
+      ) : null}
     </aside>
   );
 }

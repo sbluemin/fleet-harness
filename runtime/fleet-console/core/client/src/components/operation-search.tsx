@@ -15,6 +15,7 @@ import {
   searchTokens,
   type RailSearchGroup,
 } from "../operation-search.js";
+import { resumeOperationInPlace } from "../operation-resume.js";
 import {
   buildCodexPaletteEntries,
   buildPaletteCommands,
@@ -286,13 +287,7 @@ export function OperationSearch({
         // agent.resume-failed가 지워져 침묵 실패가 된다. 실패 피드백은 칩 뱃지 + Alerts 항목이 담당한다.
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        const operation = state.operations.find((op) => op.id === action.operationId);
-        const plugin = operation ? plugins.find((candidate) => candidate.id === operation.pluginId) : undefined;
-        if (plugin?.resumeOperation) {
-          void Promise.resolve(plugin.resumeOperation(action.operationId)).catch(() => { /* 실패 알림은 plugin이 emit */ });
-        } else {
-          focusOperation(action.operationId);
-        }
+        resumeOperationInPlace(action.operationId, state.operations, plugins, focusOperation);
         break;
       }
       case "close-operation": {

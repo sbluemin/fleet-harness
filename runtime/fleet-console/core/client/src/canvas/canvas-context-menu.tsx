@@ -17,6 +17,8 @@ interface CanvasContextMenuProps {
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
   readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind) => void;
   readonly onClose: () => void;
+  /** 특정 Theater 소유 영역에서 열렸을 때 메뉴 헤더에 그 소유자를 명시한다. */
+  readonly theaterLabel?: string;
   // true면 anchor를 뷰포트 기준 좌표로 보고 position: fixed로 띄운다 — 선별 처리처럼
   // 월드/스테이지 프레임이 anchor 좌표계를 침범하는 모드에서 쓴다.
   readonly fixed?: boolean;
@@ -27,7 +29,7 @@ const MENU_MAX_HEIGHT = 520;
 const MENU_MIN_HEIGHT = 120;
 const MENU_MARGIN = 12;
 
-export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", fixed = false, catalog, canLaunch, renderKindIcon, onLaunchKind, onClose }: CanvasContextMenuProps) {
+export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", fixed = false, catalog, canLaunch, renderKindIcon, onLaunchKind, onClose, theaterLabel }: CanvasContextMenuProps) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -80,7 +82,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
 
   return (
     <div
-      className={`operation-launch-control operation-launch-control--canvas ${placement === "above" ? "operation-launch-control--up" : ""}`}
+      className={`operation-launch-control operation-launch-control--canvas ${fixed ? "operation-launch-control--triage" : ""} ${placement === "above" ? "operation-launch-control--up" : ""}`}
       ref={containerRef}
       style={clampedAnchorStyle(anchor, viewportBounds, placement, menuSize, fixed)}
       data-canvas-blocker
@@ -96,7 +98,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
         <div className="canvas-context-menu-head">
           <span className="canvas-context-menu-reticle" aria-hidden="true"><CommandReticleIcon /></span>
           <span className="canvas-context-menu-head-text">
-            <strong>{t("canvas.menu.title")}</strong>
+            <strong>{theaterLabel ? t("canvas.menu.theaterTitle", { theater: theaterLabel }) : t("canvas.menu.title")}</strong>
           </span>
         </div>
         <p className="canvas-context-menu-section">{t("canvas.menu.launch")}</p>

@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { clearIdleArrival, getIdleArrivalIds, setIdleArrivalAcknowledgementSuspended } from "../operation-idle-arrival.js";
-import { resolveOperationActivity } from "../operation-activity.js";
+import { resolveOperationActivity, resolveOperationDisplayActivity } from "../operation-activity.js";
 import { clearOperationStatusDetail, recordOperationActivityTransition } from "../operation-status-detail-store.js";
 import { getState, clearPendingSideBarSignals, registerFocusTheaterSwitchSuppression, setActiveOperation, setActiveTheater } from "../store.js";
 import { clearSideBarOperationAction } from "../sidebar/interaction.js";
@@ -889,9 +889,11 @@ export function isTriageWaitingOperation(
   operation: OperationNode,
   operationStatus: Readonly<Record<string, OperationActivity>>,
 ): boolean {
-  const activity = resolveOperationActivity(operation, operationStatus);
-  return activity === "awaiting"
-    || (activity === "idle" && getIdleArrivalIds().has(operation.id));
+  return resolveOperationDisplayActivity({
+    activity: resolveOperationActivity(operation, operationStatus),
+    operationId: operation.id,
+    idleArrivalIds: getIdleArrivalIds(),
+  }) === "awaiting";
 }
 
 export function scheduleTriageClear(
