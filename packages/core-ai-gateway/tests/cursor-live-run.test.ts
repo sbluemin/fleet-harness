@@ -466,6 +466,38 @@ describe("Cursor live client-tool Run bridge", () => {
     }
   });
 
+  it("refuses a tool continuation at the window instead of reattaching blind", async () => {
+    // bridge를 지원하는 모델은 tool 결과가 parked Run에 붙으므로 cold Run 경로를
+    // 타지 않는다. 그 경로에만 검사를 두면 tool을 쓰는 세션 전체가 포화된 계기로
+    // 계속 달린다 — 정확히 이 수정이 없애려는 상태다.
+    const call = cursorCall("call-window-full", 61);
+    const stream = new BridgeCursorStream([
+      {
+        conversationCheckpointUpdate: {
+          tokenDetails: { usedTokens: 256_000, maxTokens: 256_000 },
+        },
+      },
+      ...cursorToolFrames([call]),
+    ]);
+    const harness = cursorHarness([stream]);
+    const initial = cursorRequest("session-window-continuation", "kimi-k3-1m");
+
+    try {
+      await collectCursorResponse(harness.adapter, initial);
+      const continuation = cursorContinuation(initial, [call], [
+        cursorResult(call, "tool result"),
+      ]);
+
+      await expect(harness.adapter.stream(continuation, {
+        apiKey: "cursor-test-token",
+        modelContextWindow: 256_000,
+      })).rejects.toBeInstanceOf(ContextWindowExceededError);
+      expect(harness.openedStreams).toBe(1);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
   it("stays out of the way while Cursor's count is under the window", async () => {
     const belowWindow = new BridgeCursorStream([
       {

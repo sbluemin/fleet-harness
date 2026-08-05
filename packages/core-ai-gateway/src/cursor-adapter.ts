@@ -1234,6 +1234,16 @@ export class CursorAdapter implements AiGatewayAdapter {
     // Cursor rewrites and caps the declared catalog before it reaches the wire; this is the
     // post-rewrite tool set plus the resolved model coordinate.
     wireLog("cursor.wire.plan", plan);
+    // 모든 진입 경로가 이 판정을 지나야 한다. bridge를 지원하는 모델은 tool 결과가
+    // parked Run에 붙어 cold Run 경로를 건너뛰므로, 판정을 그 뒤에 두면 tool을 쓰는
+    // 세션만 포화된 계기로 계속 달리게 된다.
+    const contextCheckpoint = recallCursorContextCheckpoint(
+      identity.conversationId,
+      plan.wireModelId,
+      credentialFingerprint,
+      plan.estimatedInputTokens,
+    );
+    assertCursorContextWindow(contextCheckpoint, options.modelContextWindow);
     const descriptor: CursorLiveRunDescriptor = {
       conversationId: identity.conversationId,
       sessionId: identity.sessionId,
@@ -1280,7 +1290,7 @@ export class CursorAdapter implements AiGatewayAdapter {
       }
     }
 
-    return this.openRun(request, options, identity, plan, descriptor);
+    return this.openRun(request, options, identity, plan, descriptor, contextCheckpoint);
   }
 
   /** Close every adapter-owned parked Run. Safe to call more than once. */
@@ -1369,6 +1379,7 @@ export class CursorAdapter implements AiGatewayAdapter {
     identity: CursorSessionIdentity,
     plan: CursorRunPlan,
     descriptor: CursorLiveRunDescriptor,
+    previousContextCheckpoint: CursorContextCheckpoint | undefined,
   ): Promise<AdapterResponse> {
     if (options.signal?.aborted) throw new Error("cancelled by caller");
     // Cursor Run을 열 때 기록 정책을 고정한다. tool continuation은 이 Run에 붙어 reporter를
@@ -1383,13 +1394,6 @@ export class CursorAdapter implements AiGatewayAdapter {
       descriptor.credentialFingerprint,
       plan.wireModelId,
     );
-    const previousContextCheckpoint = recallCursorContextCheckpoint(
-      identity.conversationId,
-      plan.wireModelId,
-      descriptor.credentialFingerprint,
-      plan.estimatedInputTokens,
-    );
-    assertCursorContextWindow(previousContextCheckpoint, options.modelContextWindow);
     report("turn.start", {
       model,
       wireModel,
