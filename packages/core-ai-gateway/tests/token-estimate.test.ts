@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { estimateTokens } from "../src/gateway.js";
+import { estimateTokens } from "../src/token-estimate.js";
 
 describe("token estimate", () => {
   it("uses the conservative model ratio for code-oriented model families", () => {

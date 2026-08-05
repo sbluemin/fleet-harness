@@ -40,8 +40,8 @@ import {
   ConversationTurnStructureSchema,
   UserMessageSchema,
 } from "./generated/cursor-agent-protobuf.js";
-import { estimateTokens } from "./gateway.js";
 import { resolveCursorModelSelection } from "./models.js";
+import { estimateTokens } from "./token-estimate.js";
 
 export const CURSOR_API_ORIGIN = "https://api2.cursor.sh";
 export const CURSOR_RUN_PATH = "/agent.v1.AgentService/Run";

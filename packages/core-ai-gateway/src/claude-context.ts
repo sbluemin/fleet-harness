@@ -1,3 +1,5 @@
+import { estimateTokens } from "./token-estimate.js";
+
 export const CLAUDE_COMPAT_CONTEXT_WINDOW = 1_000_000;
 export const CLAUDE_DEFAULT_CONTEXT_WINDOW = 200_000;
 const DEFAULT_MAX_JSON_BYTES = 16 * 1024 * 1024;
@@ -405,4 +407,199 @@ function positiveContextWindow(value: number | undefined): number | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Claude Code's own preamble on a skill body it has loaded into the conversation. */
+const CLAUDE_SKILL_BODY_PREFIX = "Base directory for this skill:";
+/** Claude Code's own preamble on the skill listing it attaches to a conversation. */
+const CLAUDE_SKILL_LISTING_PREFIX = "The following skills are available for use with the Skill tool:";
+/** Entry line in that listing: `- <name>: <description>`, continued by unprefixed lines. */
+const CLAUDE_SKILL_LISTING_ENTRY = /^- ([A-Za-z0-9_.:-]+): /;
+/**
+ * Share of a model's real window one skill body may occupy before it is withheld.
+ *
+ * Calibrated against the catalog so a model that can afford a payload keeps it. At this
+ * share the measured 162,681-token skill passes on every window of 1M or more — 16% of
+ * one, leaving 824k to work in — and is refused on every window below that, including
+ * the 272,000-token model it overran. No branch on the window is needed: the fraction
+ * lands the split exactly where affordability does.
+ *
+ * The largest skill this repository ships estimates at 8,303 tokens, more than 4x under
+ * the ceiling this produces for even the smallest catalog window, so an ordinary skill
+ * never reaches the rule.
+ */
+export const CLAUDE_SKILL_BODY_BUDGET_FRACTION = 0.2;
+
+interface ClaudeTextBlockLike {
+  readonly type?: unknown;
+  readonly text?: unknown;
+}
+
+/** Structural shape of an Anthropic message, kept local so this module stays a leaf. */
+interface ClaudeMessageLike {
+  readonly content: unknown;
+}
+
+export interface ClaudeSkillPruneOptions {
+  /** The model's real context window. Omit to leave skill bodies untouched. */
+  readonly contextWindow?: number;
+  /** Upstream wire model id, for the estimator's characters-per-token ratio. */
+  readonly model?: string;
+  /** Skills already withheld on this connection. Their listing entries go before turn one. */
+  readonly withheld?: ReadonlySet<string>;
+  /** Share of the window one skill body may occupy. Defaults to the exported fraction. */
+  readonly budgetFraction?: number;
+}
+
+export interface ClaudeWithheldSkill {
+  readonly name: string;
+  readonly tokens: number;
+}
+
+export interface ClaudeSkillPruneResult<M> {
+  readonly messages: readonly M[];
+  readonly changed: boolean;
+  /** Skill bodies replaced by a stub in this request. */
+  readonly withheld: readonly ClaudeWithheldSkill[];
+  /** Listing entries removed in this request. */
+  readonly delisted: readonly string[];
+}
+
+/**
+ * Withhold skill payloads a model's window cannot afford, and hide the skills they
+ * came from.
+ *
+ * A Claude Code skill body arrives as one user text block and is re-sent every turn,
+ * so an oversized one is a fixed tax the client's own compaction can never reclaim —
+ * it only ever shrinks the conversation around it. One measured skill body occupied
+ * 162,681 estimated tokens, 60% of a 272,000-token window, before the agent had read
+ * a single file.
+ *
+ * Size is the test, never a name: skills ship inside the client binary, change with
+ * every release, and are not on disk until the moment they are loaded, so a list of
+ * bad names cannot be written in advance or kept correct. The only layer that can see
+ * how large one actually is, is the one the bytes pass through.
+ *
+ * Withholding a body also teaches the caller that skill's name, which removes its
+ * listing entry from then on so the model stops spending a turn loading something it
+ * will never receive. The caller owns that set, and its lifetime is the caller's:
+ * hold it for the process and the cost is one stubbed turn, ever.
+ */
+export function pruneClaudeSkillPayloads<M extends ClaudeMessageLike>(
+  messages: readonly M[],
+  options: ClaudeSkillPruneOptions = {},
+): ClaudeSkillPruneResult<M> {
+  const budget = skillBodyBudget(options);
+  const known = new Set(options.withheld ?? []);
+  const withheld: ClaudeWithheldSkill[] = [];
+  const delisted: string[] = [];
+  let changed = false;
+
+  // Bodies first: one withheld here must also leave the listing in this same request.
+  const bodies = messages.map((message) => mapClaudeMessageText(message, (text) => {
+    if (budget === undefined || !text.startsWith(CLAUDE_SKILL_BODY_PREFIX)) return text;
+    const tokens = estimateTokens(text, options.model);
+    if (tokens <= budget) return text;
+    const name = claudeSkillNameFromBody(text);
+    withheld.push({ name, tokens });
+    known.add(name);
+    changed = true;
+    return withheldClaudeSkillStub(name, tokens, budget);
+  }));
+
+  if (known.size === 0) return { messages: bodies, changed, withheld, delisted };
+
+  const listings = bodies.map((message) => mapClaudeMessageText(message, (text) => {
+    if (!text.startsWith(CLAUDE_SKILL_LISTING_PREFIX)) return text;
+    const next = removeClaudeSkillListingEntries(text, known, delisted);
+    if (next !== text) changed = true;
+    return next;
+  }));
+
+  return { messages: listings, changed, withheld, delisted };
+}
+
+function skillBodyBudget(options: ClaudeSkillPruneOptions): number | undefined {
+  const window = options.contextWindow;
+  if (typeof window !== "number" || !Number.isFinite(window) || window <= 0) return undefined;
+  const fraction = options.budgetFraction ?? CLAUDE_SKILL_BODY_BUDGET_FRACTION;
+  if (!Number.isFinite(fraction) || fraction <= 0 || fraction >= 1) return undefined;
+  return Math.floor(window * fraction);
+}
+
+function mapClaudeMessageText<M extends ClaudeMessageLike>(
+  message: M,
+  map: (text: string) => string,
+): M {
+  const content = message.content;
+  if (typeof content === "string") {
+    const next = map(content);
+    return next === content ? message : { ...message, content: next } as M;
+  }
+  if (!Array.isArray(content)) return message;
+  let changed = false;
+  const blocks = content.map((block: unknown) => {
+    if (!isClaudeTextBlock(block)) return block;
+    const next = map(block.text);
+    if (next === block.text) return block;
+    changed = true;
+    return { ...block, text: next };
+  });
+  return changed ? { ...message, content: blocks } as M : message;
+}
+
+function isClaudeTextBlock(block: unknown): block is { readonly text: string } {
+  if (typeof block !== "object" || block === null) return false;
+  const candidate = block as ClaudeTextBlockLike;
+  return candidate.type === "text" && typeof candidate.text === "string";
+}
+
+/** The skill directory's last segment. `.../skills/workflow` is the skill `workflow`. */
+function claudeSkillNameFromBody(text: string): string {
+  const breakAt = text.indexOf("\n");
+  const firstLine = breakAt === -1 ? text : text.slice(0, breakAt);
+  const directory = firstLine.slice(CLAUDE_SKILL_BODY_PREFIX.length).trim();
+  const segments = directory.split("/").filter((segment) => segment.length > 0);
+  return segments[segments.length - 1] ?? "";
+}
+
+/**
+ * A plugin skill is listed under a namespaced name (`fleet:workflow`) but loaded from a
+ * directory named for its last segment, so the listing name matches on that tail too.
+ */
+function claudeSkillListingMatches(entryName: string, withheldName: string): boolean {
+  if (withheldName.length === 0) return false;
+  if (entryName === withheldName) return true;
+  return entryName.slice(entryName.lastIndexOf(":") + 1) === withheldName;
+}
+
+function removeClaudeSkillListingEntries(
+  text: string,
+  withheld: ReadonlySet<string>,
+  delisted: string[],
+): string {
+  const kept: string[] = [];
+  let dropping = false;
+  for (const line of text.split("\n")) {
+    const entry = CLAUDE_SKILL_LISTING_ENTRY.exec(line);
+    if (entry) {
+      const name = entry[1] ?? "";
+      dropping = false;
+      for (const candidate of withheld) {
+        if (claudeSkillListingMatches(name, candidate)) {
+          dropping = true;
+          delisted.push(name);
+          break;
+        }
+      }
+    }
+    if (!dropping) kept.push(line);
+  }
+  return kept.join("\n");
+}
+
+function withheldClaudeSkillStub(name: string, tokens: number, budget: number): string {
+  return `[Fleet AI gateway withheld the "${name}" skill: its body is about ${tokens} tokens, `
+    + `over the ${budget}-token ceiling one skill may take from this model's context window. `
+    + `Read the skill's own files if you need it, or run this work on a model with a larger window.]`;
 }

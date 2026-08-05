@@ -7,6 +7,7 @@ import {
 import type {
   AdapterResponse,
   AiGatewayAdapter,
+  AnthropicMessagesRequest,
   CanonicalResponseRequest,
 } from "@dotobokuri/core-ai-gateway";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
@@ -429,16 +430,84 @@ describe("model context window", () => {
       messages: [{ role: "user", content: "x".repeat(2_000_000) }],
     }));
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(413);
     expect(JSON.parse(res.body)).toEqual({
       type: "error",
       error: {
         type: "invalid_request_error",
-        message: expect.stringMatching(/^Prompt is too long: \d+ tokens > 272000 maximum$/),
+        message: expect.stringMatching(/^Prompt is too long: \d+ tokens > 272000 maximum context window$/),
       },
     });
     // The guard runs inside the gateway, so upstream was still spared the turn.
     expect(streamSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("oversized skill payloads", () => {
+  const LISTING = [
+    "The following skills are available for use with the Skill tool:",
+    "",
+    "- agent-browser: Browser automation CLI for AI agents.",
+    "- claude-api: Reference for the Claude API / Anthropic SDK.",
+    "TRIGGER — read BEFORE opening the target file.",
+  ].join("\n");
+  // 4 chars/token puts this at 100_000 tokens, past the 27_200 one skill may take
+  // from a 272_000-token window.
+  const BODY = "Base directory for this skill: /tmp/bundled-skills/2.1.222/abc/claude-api\n\n"
+    + "x".repeat(400_000);
+
+  function sentText(request: AnthropicMessagesRequest | undefined, index: number): string {
+    const content = request?.messages[index]?.content;
+    if (typeof content === "string") return content;
+    const block = content?.[0];
+    return block && "text" in block && typeof block.text === "string" ? block.text : "";
+  }
+
+  it("withholds the body before the provider sees it, and delists the skill from then on", async () => {
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({ gateway, readAuth });
+    const listingTurn = { role: "user", content: [{ type: "text", text: LISTING }] };
+
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--codex--gpt-5.6-sol",
+      messages: [listingTurn, { role: "user", content: [{ type: "text", text: BODY }] }],
+    }));
+
+    const first = streamSpy.mock.calls[0]?.[0];
+    expect(sentText(first, 1)).toMatch(/^\[Fleet AI gateway withheld the "claude-api" skill/);
+    expect(sentText(first, 1)).not.toContain("xxxx");
+    // The listing loses the entry in the same request that withheld its body.
+    expect(sentText(first, 0)).not.toContain("claude-api");
+    expect(sentText(first, 0)).toContain("- agent-browser:");
+
+    // A later turn on the same router never carries the entry at all.
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--codex--gpt-5.6-sol",
+      messages: [listingTurn],
+    }));
+
+    expect(sentText(streamSpy.mock.calls[1]?.[0], 0)).not.toContain("claude-api");
+    expect(sentText(streamSpy.mock.calls[1]?.[0], 0)).toContain("- agent-browser:");
+  });
+
+  it("passes an ordinary turn through untouched", async () => {
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({ gateway, readAuth });
+
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--codex--gpt-5.6-sol",
+      messages: [{ role: "user", content: [{ type: "text", text: LISTING }] }],
+    }));
+
+    expect(sentText(streamSpy.mock.calls[0]?.[0], 0)).toBe(LISTING);
   });
 });
 
@@ -528,7 +597,7 @@ describe("mid-stream failure", () => {
       type: "error",
       error: {
         type: "invalid_request_error",
-        message: "Prompt is too long: 300000 tokens > 272000 maximum",
+        message: "Prompt is too long: 300000 tokens > 272000 maximum context window",
       },
     });
   });
