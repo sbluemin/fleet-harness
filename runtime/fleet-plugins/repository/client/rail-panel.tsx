@@ -6,8 +6,7 @@ import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/r
 import type { DiffFileEntry, DiffFileMode, DiffListResult, RepoCandidate, RepositorySearchResult, ReposResult, WorktreeCandidate, WorktreesResult } from "../server/types.js";
 import "./repository.css";
 import { ChangedFiles, type ChangedFilesState } from "./changed-files.js";
-import { CompareView } from "./compare-view.js";
-import { fuzzyMatch } from "./repository-parsers.js";
+import { fuzzyMatch, shortRefName } from "./repository-parsers.js";
 import { getT, type RepositoryMessageKey } from "./i18n/index.js";
 import { buildRepoTree, compressRepoFolder, countRepos, type RepoTreeNode } from "./repository-parsers.js";
 import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile } from "./repository-state.js";
@@ -53,7 +52,8 @@ function readViewMode(): ViewMode {
 export function readRepositorySource(): Source {
   try {
     const value = localStorage.getItem(PREFS_SOURCE);
-    if (value === "changes" || value === "history" || value === "compare") return value;
+    if (value === "changes" || value === "history") return value;
+    // 저장된 "compare"는 History로 착지한다(Compare 뷰 은퇴).
   } catch { /* ignore */ }
   // 구 소스 페이지 값(repositories/branches 등)은 워크스페이스 중앙 뷰가 아니므로 History로 착지한다.
   return "history";
@@ -116,13 +116,13 @@ function RepositoryPanel({ ctx }: RepositoryPanelProps) {
   return <RepositoryPanelBody key={ctx.theaterId} ctx={ctx} />;
 }
 
-export type Source = "changes" | "history" | "compare";
+export type Source = "changes" | "history";
 type RefSource = "branches" | "tags" | "stashes";
 type SourceIconKind = Source | RefSource | "repositories" | "worktrees";
 export type RepositoryRefItem = { label: string; ref: string; current: boolean };
-export type RepositoryStash = { name: string; subject: string };
+export type RepositoryStash = { name: string; subject: string; readonly sha?: string };
 export type RepositoryRefs = { branches: RepositoryRefItem[]; remotes: RepositoryRefItem[]; tags: RepositoryRefItem[]; stashes: RepositoryStash[]; readonly defaultBase?: string };
-export type RepositoryRefRow = { key: string; source: RefSource; primary: string; sub?: string; ref: string | null; current: boolean };
+export type RepositoryRefRow = { key: string; source: RefSource; primary: string; sub?: string; ref: string | null; current: boolean; readonly stashSha?: string };
 export type RepositoryRefGroup = { label?: "LOCAL" | "REMOTES"; rows: RepositoryRefRow[] };
 type Refs = RepositoryRefs;
 type RefContextMenuState = { readonly row: RepositoryRefRow; readonly anchor: { readonly x: number; readonly y: number } };
@@ -146,7 +146,7 @@ export function buildRefListGroups(source: RefSource, refs: RepositoryRefs): Rep
     ];
   }
   if (source === "tags") return [{ rows: refRows(refs.tags, "tags") }];
-  return [{ rows: refs.stashes.map((item) => ({ key: item.name, source, primary: item.subject || item.name, sub: item.name, ref: null, current: false })) }];
+  return [{ rows: refs.stashes.map((item) => ({ key: item.name, source, primary: item.subject || item.name, sub: item.name, ref: null, current: false, ...(item.sha ? { stashSha: item.sha } : {}) })) }];
 }
 function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const t = getT(ctx.language);
@@ -176,7 +176,15 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [changedFiles, setChangedFiles] = useState<ChangedFilesState>({ kind: "loading" });
   const [changedFilesRetry, setChangedFilesRetry] = useState(0);
   const [historyExternalRefreshToken, setHistoryExternalRefreshToken] = useState(0);
-  const [compareRequest, setCompareRequest] = useState<{ base: string; head: string; seq: number } | null>(null);
+  const [compareRequest, setCompareRequest] = useState<{ base: string; head: string; baseLabel: string; headLabel: string; seq: number } | null>(null);
+  const [inspectRequest, setInspectRequest] = useState<{ fullHash: string; seq: number } | null>(null);
+  type SyncNotice =
+    | { kind: "error"; code: "auth_failed" | "network" | "timeout" | "no_remote" | "git_failed" }
+    | { kind: "success"; newRefs: number; updatedRefs: number; pruned: number }
+    | { kind: "successClean" };
+  const [syncNotice, setSyncNotice] = useState<SyncNotice | null>(null);
+  const [syncFailed, setSyncFailed] = useState(false);
+  const syncNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [syncing, setSyncing] = useState(false);
   const syncRequestIdRef = useRef(0);
   const autoSyncTheaterRef = useRef<string | null>(null);
@@ -259,8 +267,16 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     clearSelectedFile();
     syncRequestIdRef.current += 1;
     setSyncing(false);
+    // sync 결과 상태는 패널 스코프라 저장소 전환 시 명시 리셋해야 이전 저장소의 실패 점/토스트가 새 컨텍스트에 남지 않는다.
+    if (syncNoticeTimerRef.current !== null) {
+      clearTimeout(syncNoticeTimerRef.current);
+      syncNoticeTimerRef.current = null;
+    }
+    setSyncNotice(null);
+    setSyncFailed(false);
     setChangedFiles({ kind: "loading" });
     setCompareRequest(null);
+    setInspectRequest(null);
     setRefs({ branches: [], remotes: [], tags: [], stashes: [] });
     repoRelRef.current = nextRepoRel;
     setRepoRel(nextRepoRel);
@@ -364,8 +380,20 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setReposRetry((value) => value + 1);
     setHistoryExternalRefreshToken((value) => value + 1);
   }, []);
+  const showSyncNotice = useCallback((notice: SyncNotice) => {
+    if (syncNoticeTimerRef.current !== null) clearTimeout(syncNoticeTimerRef.current);
+    setSyncNotice(notice);
+    syncNoticeTimerRef.current = setTimeout(() => {
+      syncNoticeTimerRef.current = null;
+      setSyncNotice(null);
+    }, 6000);
+  }, []);
+  useEffect(() => () => {
+    if (syncNoticeTimerRef.current !== null) clearTimeout(syncNoticeTimerRef.current);
+  }, []);
   const syncRepository = useCallback(async (mode?: "auto") => {
     if (!ctx.theaterId) return;
+    const isManual = mode !== "auto";
     const requestId = ++syncRequestIdRef.current;
     setSyncing(true);
     let response: Response;
@@ -378,15 +406,36 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     } catch {
       if (requestId !== syncRequestIdRef.current) return;
       setSyncing(false);
+      if (isManual) {
+        showSyncNotice({ kind: "error", code: "network" });
+        setSyncFailed(true);
+      }
       return;
     }
     const payload = await response.json().catch(() => ({})) as RepositoryFetchResult | { readonly error?: string };
     if (requestId !== syncRequestIdRef.current) return;
     setSyncing(false);
-    if (!response.ok || !("ok" in payload) || payload.ok !== true) return;
+    if (!response.ok || !("ok" in payload) || payload.ok !== true) {
+      const raw = "error" in payload ? payload.error : undefined;
+      const code = raw === "auth_failed" || raw === "network" || raw === "timeout" || raw === "no_remote" ? raw : "git_failed";
+      if (isManual) {
+        showSyncNotice({ kind: "error", code });
+        setSyncFailed(true);
+      }
+      return;
+    }
     if ("skipped" in payload) return;
+    setSyncFailed(false);
+    if (isManual) {
+      const newRefs = "newRefs" in payload ? payload.newRefs : 0;
+      const updatedRefs = "updatedRefs" in payload ? payload.updatedRefs : 0;
+      const pruned = "pruned" in payload ? payload.pruned : 0;
+      showSyncNotice(newRefs === 0 && updatedRefs === 0 && pruned === 0
+        ? { kind: "successClean" }
+        : { kind: "success", newRefs, updatedRefs, pruned });
+    }
     refreshRepositoryData();
-  }, [ctx.theaterId, refreshRepositoryData, repoRel]);
+  }, [ctx.theaterId, refreshRepositoryData, repoRel, showSyncNotice]);
   useEffect(() => {
     if (!ctx.theaterId) return;
     const contextKey = `${ctx.theaterId}:${repoRel}`;
@@ -442,6 +491,9 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
         setHydratedRepoViewCacheKey("");
       }
       setRefFilter(null);
+      // epoch 리마운트는 handled-seq ref를 초기화하므로, 잔존 one-shot 요청을 함께 비워야 착지가 재생 없이 깨끗하다.
+      setCompareRequest(null);
+      setInspectRequest(null);
       setHistoryLandingEpoch((value) => value + 1);
       setSource(decision.landing);
       return;
@@ -479,8 +531,18 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   }, []);
 
   const openCompare = useCallback((base: string, head: string) => {
-    setSource("compare");
-    setCompareRequest((prev) => ({ base, head, seq: (prev?.seq ?? 0) + 1 }));
+    setSource("history");
+    setCompareRequest((prev) => ({
+      base,
+      head,
+      baseLabel: shortRefName(base),
+      headLabel: shortRefName(head),
+      seq: (prev?.seq ?? 0) + 1,
+    }));
+  }, [setSource]);
+  const openStashInspect = useCallback((sha: string) => {
+    setSource("history");
+    setInspectRequest((prev) => ({ fullHash: sha, seq: (prev?.seq ?? 0) + 1 }));
   }, [setSource]);
 
   const hunkMode = selectedFile ? getHunkMode(selectedFile) : null;
@@ -503,20 +565,27 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       <ChangedFiles state={changedFiles} onRetry={retryChangedFiles} viewMode={viewMode} selectedPath={selectedFile?.entry.path ?? null} onSelect={handleSelectFile} filterText={filterText} t={t} collapsedFolders={collapsedChangeFolders} onToggleFolder={handleToggleChangeFolder} scrollContainerRef={changesListRef} onScroll={updateChangesScroll} />
     </div>
   </div>;
-  const compareView = <CompareView key={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} refs={refs} request={compareRequest} refsError={refsError} onRetryRefs={() => setRefsRetry((value) => value + 1)} />;
-  // 컴팩트 레이아웃과 동일하게 Changes/Compare를 hidden으로 상시 마운트해 섹션 전환에도 내부 상태를 보존한다.
-  const workspaceMainVisible = source === "changes" || source === "compare";
-  const workspaceMain = <>
-    <div className="repository-source-fill" hidden={source !== "changes"}>{changesView}</div>
-    <div className="repository-source-fill" hidden={source !== "compare"}>{compareView}</div>
-  </>;
+  const syncNoticeMessage = syncNotice == null ? null
+    : syncNotice.kind === "error"
+      ? t(syncNotice.code === "auth_failed" ? "repository.sync.failedAuth"
+        : syncNotice.code === "network" ? "repository.sync.failedNetwork"
+        : syncNotice.code === "timeout" ? "repository.sync.failedTimeout"
+        : syncNotice.code === "no_remote" ? "repository.sync.failedNoRemote"
+        : "repository.sync.failedGit")
+      : syncNotice.kind === "successClean"
+        ? t("repository.sync.summaryClean")
+        : t("repository.sync.summary", { newRefs: syncNotice.newRefs, updatedRefs: syncNotice.updatedRefs, pruned: syncNotice.pruned });
+  // Changes만 hidden으로 상시 마운트해 섹션 전환에도 내부 상태를 보존한다.
+  const workspaceMainVisible = source === "changes";
+  const workspaceMain = <div className="repository-source-fill" hidden={source !== "changes"}>{changesView}</div>;
   return (
     <div className="repository-unified is-workspace">
-      <div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? t("repository.panel.title")}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}<button type="button" className={`repository-sync-button${syncing ? " is-syncing" : ""}`} title={t("repository.sync.title")} aria-label={t("repository.sync.title")} disabled={syncing} onClick={() => { void syncRepository(); }}><span className="repository-sync-icon" aria-hidden="true">↻</span>{t("repository.sync.button")}</button></div>
+      <div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? t("repository.panel.title")}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}<button type="button" className={`repository-sync-button${syncing ? " is-syncing" : ""}`} title={t("repository.sync.title")} aria-label={t("repository.sync.title")} disabled={syncing} onClick={() => { void syncRepository(); }}><span className="repository-sync-icon" aria-hidden="true">↻</span>{t("repository.sync.button")}{syncFailed && <span className="repository-sync-dot" title={t("repository.sync.lastFailed")} aria-hidden="true" />}</button></div>
+      {syncNotice && syncNoticeMessage ? <div className={`repository-sync-toast is-${syncNotice.kind === "error" ? "error" : "success"}`} role="status"><span>{syncNoticeMessage}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setSyncNotice(null)}>✕</button></div> : null}
       <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${treeWidth}px` } as React.CSSProperties}>
-        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} repos={repos} reposError={reposError} reposTruncated={reposTruncated} scanDepth={scanDepth} worktrees={worktrees} worktreesError={worktreesError} refs={refs} refsError={refsError} changedFiles={changedFiles} selectedRel={repoRel} source={source} refFilter={refFilter} onRepository={handleSelectRepository} onScanDepth={setScanDepth} onRetryRepos={() => setReposRetry((value) => value + 1)} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} onRetryRefs={() => setRefsRetry((value) => value + 1)} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} />
+        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} repos={repos} reposError={reposError} reposTruncated={reposTruncated} scanDepth={scanDepth} worktrees={worktrees} worktreesError={worktreesError} refs={refs} refsError={refsError} changedFiles={changedFiles} selectedRel={repoRel} source={source} refFilter={refFilter} onRepository={handleSelectRepository} onScanDepth={setScanDepth} onRetryRepos={() => setReposRetry((value) => value + 1)} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} onRetryRefs={() => setRefsRetry((value) => value + 1)} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} />
         <div className="repository-divider repository-ws-tree-divider" onPointerDown={handleTreeDividerDown} role="separator" aria-orientation="vertical" aria-label={t("repository.common.resizeSourceTree")} />
-        <HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}:${historyLandingEpoch}`} cacheScope={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} externalRefreshToken={historyExternalRefreshToken} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
+        <HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}:${historyLandingEpoch}`} cacheScope={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} externalRefreshToken={historyExternalRefreshToken} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} compareRequest={compareRequest} inspectRequest={inspectRequest} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
       </div>
     </div>
   );
@@ -545,9 +614,10 @@ interface WorkspaceTreeProps {
   readonly onSource: (source: Source) => void;
   readonly onRef: (ref: string) => void;
   readonly onCompare: (base: string, head: string) => void;
+  readonly onStashInspect: (stashSha: string) => void;
 }
 
-export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTruncated, scanDepth, worktrees, worktreesError, refs, refsError, changedFiles, selectedRel, source, refFilter, onRepository, onScanDepth, onRetryRepos, onRetryWorktrees, onRetryRefs, onSource, onRef, onCompare }: WorkspaceTreeProps) {
+export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTruncated, scanDepth, worktrees, worktreesError, refs, refsError, changedFiles, selectedRel, source, refFilter, onRepository, onScanDepth, onRetryRepos, onRetryWorktrees, onRetryRefs, onSource, onRef, onCompare, onStashInspect }: WorkspaceTreeProps) {
   const [initialTreeState] = useState(() => readWorkspaceTreeState(theaterId));
   const [query, setQuery] = useState(initialTreeState?.query ?? "");
   const [collapsedSections, setCollapsedSections] = useState(() => new Set(initialTreeState?.collapsedSections ?? ["tags", "stashes"]));
@@ -602,9 +672,9 @@ export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTrunc
     {group.label && <span className="repository-ws-ref-subhead">{t(group.label === "LOCAL" ? "repository.refs.local" : "repository.refs.remotes")}</span>}
     {/* 브랜치 행은 role=button 자손에 interactive content가 금지되므로(ARIA-in-HTML)
         래퍼 div + 형제 네이티브 버튼 2개(행 본체·비교 액션)로 구성한다 */}
-    {group.rows.map((row) => row.source === "branches" && row.ref ? <div
+    {group.rows.map((row) => (row.source === "branches" || row.source === "tags") && row.ref ? <div
       key={row.key}
-      className={`repository-ws-tree-row is-branch${row.current ? " is-current" : ""}${source === "history" && row.ref === refFilter ? " is-active" : ""}`}
+      className={`repository-ws-tree-row${row.source === "branches" ? " is-branch" : " is-tag"}${row.current ? " is-current" : ""}${source === "history" && row.ref === refFilter ? " is-active" : ""}`}
       onContextMenu={(event) => {
         event.preventDefault();
         setRefContextMenu({ row, anchor: { x: event.clientX, y: event.clientY } });
@@ -614,7 +684,7 @@ export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTrunc
         <SourceIcon source={row.source} /><span>{row.primary}</span>{row.current && <i>HEAD</i>}
       </button>
       {refs.defaultBase && row.ref !== refs.defaultBase ? <button type="button" className="repository-tree-action" title={t("repository.compare.withBase")} aria-label={t("repository.compare.withBase")} onClick={() => onCompare(refs.defaultBase!, row.ref!)}>⇆</button> : null}
-    </div> : <button type="button" key={row.key} className={`repository-ws-tree-row${row.current ? " is-current" : ""}${source === "history" && row.ref === refFilter ? " is-active" : ""}`} disabled={row.ref === null} onClick={() => row.ref && onRef(row.ref)}>
+    </div> : <button type="button" key={row.key} className={`repository-ws-tree-row${row.current ? " is-current" : ""}`} disabled={!row.stashSha} onClick={() => { if (row.stashSha) onStashInspect(row.stashSha); }}>
       <SourceIcon source={row.source} /><span>{row.primary}</span>{row.current && <i>HEAD</i>}{row.sub && <i>{row.sub}</i>}
     </button>)}
   </div>);
@@ -635,7 +705,6 @@ export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTrunc
         {!collapsedSections.has("working") && <>
           <button type="button" className={`repository-ws-tree-row${source === "history" ? " is-active" : ""}`} onClick={() => onSource("history")}><SourceIcon source="history" /><span>{t("repository.source.history")}</span></button>
           <button type="button" className={`repository-ws-tree-row${source === "changes" ? " is-active" : ""}`} onClick={() => onSource("changes")}><SourceIcon source="changes" /><span>{t("repository.source.changes")}</span><i>{changesCount}</i></button>
-          <button type="button" className={`repository-ws-tree-row${source === "compare" ? " is-active" : ""}`} onClick={() => onSource("compare")}><SourceIcon source="compare" /><span>{t("repository.source.compare")}</span></button>
         </>}
       </section>
       <section className={`repository-ws-section${collapsedSections.has("worktrees") ? " is-collapsed" : ""}`}>{sectionHeader("worktrees")}
@@ -799,7 +868,7 @@ function WorkspaceTreeError({ t, label, onRetry }: { readonly t: T; readonly lab
 }
 
 
-function SourceIcon({ source }: { readonly source: SourceIconKind }) { const path = source === "repositories" ? "M3 5h12v9H3zM5 3h8v2" : source === "worktrees" ? "M5 3v12M5 6h7M5 12h7" : source === "changes" ? "M3 4h12M3 9h12M3 14h12" : source === "history" ? "M4 4v10h10M7 7h6v5" : source === "compare" ? "M5.5 3v9M3 9.5l2.5 2.5L8 9.5M12.5 15V6M10 8.5L12.5 6L15 8.5" : source === "branches" ? "M5 3v12M5 6h7M5 12h7" : source === "tags" ? "M3 4h8l4 4-7 7-5-5z" : "M4 5h10v9H4zM6 3h6"; return <svg viewBox="0 0 18 18" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
+function SourceIcon({ source }: { readonly source: SourceIconKind }) { const path = source === "repositories" ? "M3 5h12v9H3zM5 3h8v2" : source === "worktrees" ? "M5 3v12M5 6h7M5 12h7" : source === "changes" ? "M3 4h12M3 9h12M3 14h12" : source === "history" ? "M4 4v10h10M7 7h6v5" : source === "branches" ? "M5 3v12M5 6h7M5 12h7" : source === "tags" ? "M3 4h8l4 4-7 7-5-5z" : "M4 5h10v9H4zM6 3h6"; return <svg viewBox="0 0 18 18" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
 function RepositoryDiscovery({ t, query, onQuery, totalCount, matchedCount, scanDepth, onScanDepth, truncated, onEnter }: { readonly t: T; readonly query: string; readonly onQuery: (query: string) => void; readonly totalCount: number; readonly matchedCount: number; readonly scanDepth: number; readonly onScanDepth: (depth: number) => void; readonly truncated: boolean; readonly onEnter: () => void }) {
   return <div className="repository-discovery">
     <input type="text" className="repository-filter-input" placeholder={t("repository.discovery.placeholder")} aria-label={t("repository.discovery.aria")} value={query} onChange={(event) => onQuery(event.target.value)} onKeyDown={(event) => {

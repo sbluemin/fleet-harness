@@ -53,7 +53,10 @@ describe("CommitRow", () => {
       laneCount: 1,
       onSelect: vi.fn(),
     });
-    const children = row.props.children as readonly ReactNode[];
+    // 행은 비중첩 버튼 계약(래퍼 div + 본체 버튼 + ⇆ 액션)이라 subject는 본체 버튼 안에 있다.
+    const rowChildren = (Array.isArray(row.props.children) ? row.props.children : [row.props.children]) as readonly ReactNode[];
+    const mainButton = rowChildren.find((child) => isElement(child) && child.type === "button" && child.props.className === "history-commit-row-main");
+    const children = (isElement(mainButton) ? mainButton.props.children : []) as readonly ReactNode[];
     const subject = children.find((child) => isElement(child) && child.type === "span" && child.props.className === "history-commit-subject");
 
     expect(isElement(subject) && subject.props.title).toBe(COMMIT.subject);

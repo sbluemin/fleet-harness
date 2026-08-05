@@ -88,7 +88,7 @@ describe("Repository design grammar", () => {
   it("uses core surface tokens for panel material", () => {
     expect(css).not.toContain("background: var(--ink-deep)");
 
-    for (const selector of [".repository-toolbar", ".repository-plugin-toolbar", ".history-toolbar", ".repository-compare-controls", ".repository-line-file-label", ".repository-discovery"]) {
+    for (const selector of [".repository-toolbar", ".repository-plugin-toolbar", ".history-toolbar", ".repository-line-file-label", ".repository-discovery"]) {
       expect(blockOf(selector), selector).toContain("var(--surface-band) 55%");
     }
     for (const selector of [".repository-identity", ".repository-ws-tree"]) {
@@ -110,6 +110,17 @@ describe("Repository design grammar", () => {
   it("keeps the sync button spin animation reducible and omits the status strip", () => {
     expect(css).not.toContain(".repository-sync-status");
     expect(blocksOf(".repository-sync-button.is-syncing .repository-sync-icon").some((body) => body.includes("animation: none"))).toBe(true);
+  });
+
+  // 2026-08-05 재가 — in-history compare 앵커와 수동 Sync 표면화의 신호 채널 문법.
+  // pin/pick은 상태이므로 aurora(신호), 실패는 coral, 성공 요약은 positive — brass는 위치/포커스 전용으로 남는다.
+  it("keeps the anchor-compare and sync surfaces on the signal channel, never brass", () => {
+    expect(blockOf(".history-commit-row.is-picked")).toContain("inset 2px 0 0 var(--aurora)");
+    expect(blockOf(".history-row-compare")).toContain("var(--aurora)");
+    expect(blockOf(".history-row-compare")).not.toContain("var(--brass)");
+    expect(blockOf(".repository-sync-toast.is-error")).toContain("var(--coral)");
+    expect(blockOf(".repository-sync-toast.is-success")).toContain("var(--positive)");
+    expect(blockOf(".repository-sync-dot")).toContain("var(--coral)");
   });
 
   it("keeps workspace section header buttons within the interaction grammar", () => {

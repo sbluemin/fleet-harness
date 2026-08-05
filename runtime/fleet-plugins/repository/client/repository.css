@@ -747,21 +747,30 @@
 }
 
 .history-commit-row {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  /* 높이는 graph-gutter의 ROW_HEIGHT(28px)와 동기 — 어긋나면 레인 선이 행 사이에서 끊긴다 */
+  height: 28px;
+  color: inherit;
+  transition: background 0.1s;
+}
+
+.history-commit-row-main {
   display: grid;
   grid-template-columns: auto auto minmax(120px, 1fr) minmax(78px, auto) 7ch 10ch;
   align-items: center;
   gap: 0 8px;
   width: 100%;
   min-width: 0;
-  /* 높이는 graph-gutter의 ROW_HEIGHT(28px)와 동기 — 어긋나면 레인 선이 행 사이에서 끊긴다 */
-  height: 28px;
+  height: 100%;
   padding: 0 10px;
   border: none;
   background: none;
   color: inherit;
   cursor: pointer;
+  font: inherit;
   text-align: left;
-  transition: background 0.1s;
 }
 
 .history-commit-row:hover {
@@ -961,7 +970,7 @@
 .history-detail-pane { grid-row: 3; grid-column: 1; border-right: 0; border-left: 0; background: color-mix(in oklch, var(--surface-glass) 70%, transparent); }
 .history-root > .history-divider { grid-row: 2; grid-column: 1; touch-action: none; }
 .history-divider { touch-action: none; }
-.history-commit-row { grid-template-columns: auto auto minmax(96px, 1fr) 7ch auto; gap: 0 7px; }
+.history-commit-row-main { grid-template-columns: auto auto minmax(96px, 1fr) 7ch auto; gap: 0 7px; }
 /* gutter는 DOM 최후미이나 col 1에 놓이므로 grid-row를 고정하지 않으면 auto-placement가 커서를 되돌리지 못해
    유령 2행 트랙(0px 28px)을 만든다 → 텍스트는 0px 트랙 상단, 노드는 28px 트랙 중앙으로 반 행 어긋난다.
    grid-row: 1로 전 셀을 단일 28px 트랙에 묶어 노드와 커밋 텍스트를 정렬한다. */
@@ -1000,7 +1009,7 @@
 /* 진행형 축소 — 컨테이너(패널·트리 리사이즈)가 좁아질수록 시간 → sha → 뱃지 순으로 양보한다. */
 @container (max-width: 640px) {
   .history-commit-time { display: none; }
-  .history-commit-row {
+  .history-commit-row-main {
     grid-template-columns: auto auto minmax(96px, 1fr) 7ch;
   }
   .history-commit-subject {
@@ -1012,8 +1021,8 @@
     line-height: 14px;
   }
 }
-@container (max-width: 520px) { .history-commit-sha { display: none; } .history-commit-row { grid-template-columns: auto auto minmax(96px, 1fr); } }
-@container (max-width: 420px) { .history-commit-badges { display: none; } .history-commit-row { grid-template-columns: auto minmax(96px, 1fr); } .history-commit-subject { grid-column: 2; } }
+@container (max-width: 520px) { .history-commit-sha { display: none; } .history-commit-row-main { grid-template-columns: auto auto minmax(96px, 1fr); } }
+@container (max-width: 420px) { .history-commit-badges { display: none; } .history-commit-row-main { grid-template-columns: auto minmax(96px, 1fr); } .history-commit-subject { grid-column: 2; } }
 @media (prefers-reduced-motion: reduce) { .history-segmented button { transition-duration: .01ms; } }
 /* Repository sources mirror the approved unified explorer. */
 .repository-unified { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; container-type: inline-size; }
@@ -1389,8 +1398,7 @@
   overflow: hidden;
 }
 
-.repository-ws-main .repository-source-fill > .repository-root,
-.repository-ws-main .repository-source-fill > .repository-compare {
+.repository-ws-main .repository-source-fill > .repository-root {
   height: 100%;
 }
 
@@ -1470,17 +1478,93 @@
 }
 
 /* ── Compare 뷰 ── */
-.repository-compare { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-width: 0; min-height: 0; container-type: inline-size; }
-.repository-compare-controls { display: flex; align-items: center; flex-wrap: wrap; min-width: 0; gap: 6px; padding: 7px 10px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 55%, transparent); }
-.repository-compare-controls .fc-select { flex: 1; min-width: 0; }
-.repository-compare-controls .fc-select__value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .repository-compare-swap { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); background: none; color: var(--text-tertiary); cursor: pointer; flex: none; font-size: 12px; }
 .repository-compare-swap:hover:not(:disabled) { color: var(--text-secondary); }
-.repository-compare-swap:disabled,
-.repository-compare-run:disabled { opacity: .5; cursor: default; }
-@container (max-width: 359px) { .repository-compare-controls .repository-compare-run { flex: 1 0 100%; } }
-.repository-compare-results { display: flex; flex-direction: column; }
-.repository-compare-results .repository-sections { flex: 1; min-height: 0; }
-.repository-compare-results .history-truncated { flex: none; }
 .repository-compare-meta { flex: none; padding: 5px 10px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; }
 .repository-compare-meta span { color: var(--text-secondary); }
+
+/* ═══ in-history compare (anchor grammar) — history-panel 소유 구역 ═══ */
+.history-row-compare {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid color-mix(in oklch, var(--aurora) 42%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--ink-mid);
+  color: var(--aurora);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
+  transform: translateY(-50%);
+}
+.history-commit-row:hover .history-row-compare,
+.history-commit-row:focus-within .history-row-compare { display: inline-flex; }
+.history-row-compare:hover,
+.history-row-compare:focus-visible { border-color: var(--aurora); background: color-mix(in oklch, var(--aurora) 12%, var(--ink-mid)); color: var(--text-primary); outline: none; }
+.history-commit-row.is-picked { background: color-mix(in oklch, var(--aurora) 9%, transparent); box-shadow: inset 2px 0 0 var(--aurora); }
+.history-commit-row.is-picked .history-commit-sha { color: var(--aurora); }
+.repository-pin-chip { flex: none; border: 1px solid color-mix(in oklch, var(--aurora) 42%, transparent); border-radius: var(--radius-sm); color: var(--aurora); cursor: pointer; }
+.repository-pin-chip:hover { background: color-mix(in oklch, var(--aurora) 10%, transparent); color: var(--text-primary); }
+.history-inspector-compare { position: absolute; top: 8px; right: 45px; z-index: 1; }
+.repository-ws-dock-meta .history-inspector-head { padding-right: 210px; }
+.history-compare-inspector { height: 100%; }
+.history-compare-inspector > .repository-sr-only { position: absolute; }
+.history-compare-files { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.history-compare-result-head { min-height: 34px; padding: 7px 10px; }
+.history-compare-result-head .history-files-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; letter-spacing: 0; }
+.history-compare-meta { display: flex; align-items: center; min-height: 38px; padding: 6px 45px 6px 12px; }
+.history-compare-pair { min-width: 0; overflow: hidden; color: var(--text-secondary); font-family: var(--font-mono); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.history-compare-meta .repository-compare-swap { margin-left: 8px; }
+/* 좁은 독(파일 열 250px가 컨테이너를 초과)에서 main 열이 0으로 붕괴하던 선존 결함 —
+   detail pane을 컨테이너로 삼아 세로 스택으로 전환한다(커밋 검사기·비교 드로어 공용). */
+.history-detail-pane { container-type: inline-size; }
+@container (max-width: 430px) {
+  .repository-ws-dock { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 44%) minmax(0, 1fr); }
+  .repository-ws-dock > .history-commit-files { border-right: 0; border-bottom: 1px solid var(--surface-rim); }
+}
+/* ═══ sync surfacing · stash rows — rail-panel 소유 구역 ═══ */
+.repository-sync-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 10px 8px;
+  padding: 6px 8px;
+  border: 1px solid;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+.repository-sync-toast.is-error {
+  border-color: color-mix(in oklch, var(--coral) 45%, transparent);
+  background: color-mix(in oklch, var(--coral) 8%, var(--ink-deep));
+  color: var(--text-secondary);
+}
+.repository-sync-toast.is-success {
+  border-color: color-mix(in oklch, var(--positive) 40%, transparent);
+  background: color-mix(in oklch, var(--positive) 7%, var(--ink-deep));
+  color: var(--text-secondary);
+}
+.repository-sync-toast button {
+  border: 0;
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  margin-left: auto;
+}
+.repository-sync-button { position: relative; }
+.repository-sync-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--coral);
+}
+

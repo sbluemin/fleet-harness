@@ -94,6 +94,7 @@ function renderWorkspaceTree(): ReactElement<ElementProps> {
     onSource: vi.fn(),
     onRef: vi.fn(),
     onCompare: vi.fn(),
+    onStashInspect: vi.fn(),
   });
 }
 

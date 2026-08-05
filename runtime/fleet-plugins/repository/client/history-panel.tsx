@@ -5,13 +5,14 @@ import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
 import type { CommitResult, DiffFileEntry, LogCommitEntry, LogResult, WorktreeCheckout } from "../server/types.js";
 import { FileRow } from "./changed-files.js";
+import { CompareInspector } from "./compare-inspector.js";
 import { DiffTreeView } from "./repository-tree.js";
 import { GraphGutter, ROW_HEIGHT } from "./graph.js";
 import { layoutGraph, type GraphLayout, type GraphNode } from "./graph.js";
 import { dropHistoryCache, readHistoryCache, writeHistoryCache, type HistoryCacheEntry } from "./repository-state.js";
 import { HunkView } from "./hunk-view.js";
 import { getT, localeTag, type RepositoryMessageKey } from "./i18n/index.js";
-import { formatCommitTime, refBadges } from "./repository-parsers.js";
+import { formatCommitTime, refBadges, shortRefName } from "./repository-parsers.js";
 import { DIFF_DIVIDER_WIDTH, HISTORY_DETAIL_PANE_MIN_HEIGHT, HISTORY_LOG_PANE_MIN_HEIGHT, buildHistoryStackTemplate, buildInspectorChangesGridTemplate, buildInspectorDetailsGridTemplate, clampSplitPaneSize, installPointerDragLifecycle } from "./rail-layout.js";
 import { buildWorkspaceDockTemplate, clampWorkspaceDockHeight, normalizeWorkspaceDockHeight, readWorkspaceDockHeight, saveWorkspaceDockHeight } from "./workspace-layout.js";
 import { consumeRepositorySearchTarget, useRepositorySearchTarget } from "./repository-state.js";
@@ -21,6 +22,8 @@ type T = Translate<RepositoryMessageKey>;
 export type HistoryOkState = { readonly kind: "ok"; readonly commits: readonly LogCommitEntry[]; readonly checkouts: readonly WorktreeCheckout[]; readonly hasMore: boolean; readonly truncated: boolean };
 type LoadState = { readonly kind: "loading" } | HistoryOkState | { readonly kind: "error"; readonly message: string };
 type CommitTarget = { readonly fullHash: string; readonly entry?: LogCommitEntry };
+type CompareAnchor = { readonly fullHash: string; readonly shortHash: string };
+type ComparePair = { readonly base: string; readonly head: string; readonly baseLabel: string; readonly headLabel: string };
 type InspectorState = { readonly kind: "loading" } | { readonly kind: "ok"; readonly result: CommitResult } | { readonly kind: "error"; readonly message: string };
 type FilesViewMode = "list" | "tree";
 type HistoryCacheRestore = { readonly state: HistoryOkState; readonly target: CommitTarget | null; readonly filterText: string; readonly scrollTop: number };
@@ -144,14 +147,16 @@ export function shouldShowWip(wip: { readonly files: number }, filterText: strin
 
 function CheckoutIcon({ current }: { readonly current: boolean }) { return current ? <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2L5 8.7L9.5 3.5" stroke="currentColor" strokeWidth="1.5" /></svg> : <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none"><path d="M1.5 3.4h3l1 1.1h5v5.1a.9.9 0 01-.9.9H2.4a.9.9 0 01-.9-.9V4.3a.9.9 0 01.9-.9z" stroke="currentColor" strokeWidth="1.2" /></svg>; }
 
-export function CommitRow({ entry, checkouts, selected, graphNode, laneCount, onSelect, rowRef, locale }: { readonly entry: LogCommitEntry; readonly checkouts: readonly WorktreeCheckout[]; readonly selected: boolean; readonly graphNode: import("./graph.js").GraphNode; readonly laneCount: number; readonly onSelect: (entry: LogCommitEntry) => void; readonly rowRef?: (node: HTMLButtonElement | null) => void; readonly locale?: ConsoleLocale }) {
+export function CommitRow({ entry, checkouts, selected, picked = false, pin = null, graphNode, laneCount, onRowActivate, onCompareAction, onSelect, rowRef, locale }: { readonly entry: LogCommitEntry; readonly checkouts: readonly WorktreeCheckout[]; readonly selected: boolean; readonly picked?: boolean; readonly pin?: CompareAnchor | null; readonly graphNode: import("./graph.js").GraphNode; readonly laneCount: number; readonly onRowActivate?: (entry: LogCommitEntry, shiftKey: boolean) => void; readonly onCompareAction?: (entry: LogCommitEntry) => void; readonly onSelect?: (entry: LogCommitEntry) => void; readonly rowRef?: (node: HTMLButtonElement | null) => void; readonly locale?: ConsoleLocale }) {
   const t = getT(locale);
   const badges = refBadges(entry); const detached = findDetachedCheckout(entry, checkouts);
+  const activateRow = onRowActivate ?? ((selectedEntry: LogCommitEntry) => onSelect?.(selectedEntry));
+  const compareLabel = !pin ? t("repository.compare.pinRow", { short: entry.shortHash }) : pin.fullHash === entry.fullHash ? t("repository.compare.unpinRow", { short: entry.shortHash }) : t("repository.compare.completeRow", { short: entry.shortHash, base: pin.shortHash });
   // Fork 문법: refs 뱃지는 제목 왼쪽(그래프 바로 뒤)에서 커밋의 정체를 먼저 알린다.
-  return <button ref={rowRef} type="button" className={`history-commit-row${selected ? " is-selected" : ""}${entry.onHead ? "" : " is-off-head"}`} onClick={() => onSelect(entry)}><span className="history-commit-badges">{badges.map((badge) => { const checkout = badge.kind === "branch" ? checkouts.find((item) => item.branch === badge.label) : null; return <span key={`${badge.kind}:${badge.label}`} className={`history-badge history-badge--${badge.kind}`}>{checkout && <CheckoutIcon current={checkout.isCurrent} />}{badge.label}</span>; })}{detached && <span className="history-badge history-badge--worktree"><CheckoutIcon current={detached.isCurrent} />{t("repository.history.detached")}</span>}</span><span className="history-commit-subject" title={entry.subject}>{entry.subject}</span><span className="history-commit-sha">{entry.shortHash}</span><span className="history-commit-time">{formatCommitTime(entry.authorAt, new Date(), locale)}</span><span className="history-graph-gutter" aria-hidden="true"><GraphGutter node={graphNode} laneCount={laneCount} /></span></button>;
+  return <div className={`history-commit-row${selected ? " is-selected" : ""}${entry.onHead ? "" : " is-off-head"}${picked ? " is-picked" : ""}`} title={entry.onHead ? undefined : t("repository.history.offHead")}><button ref={rowRef} type="button" className="history-commit-row-main" onClick={(event) => activateRow(entry, event.shiftKey)}><span className="history-commit-badges">{badges.map((badge) => { const checkout = badge.kind === "branch" ? checkouts.find((item) => item.branch === badge.label) : null; return <span key={`${badge.kind}:${badge.label}`} className={`history-badge history-badge--${badge.kind}`}>{checkout && <CheckoutIcon current={checkout.isCurrent} />}{badge.label}</span>; })}{detached && <span className="history-badge history-badge--worktree"><CheckoutIcon current={detached.isCurrent} />{t("repository.history.detached")}</span>}</span><span className="history-commit-subject" title={entry.subject}>{entry.subject}</span><span className="history-commit-sha">{entry.shortHash}</span><span className="history-commit-time">{formatCommitTime(entry.authorAt, new Date(), locale)}</span><span className="history-graph-gutter" aria-hidden="true"><GraphGutter node={graphNode} laneCount={laneCount} /></span></button>{onCompareAction && <button type="button" className="history-row-compare" aria-label={compareLabel} onClick={() => onCompareAction(entry)}>⇆</button>}</div>;
 }
 
-function CommitInspector({ ctx, repoRel, target, workspace, onSelectCommit, onClose }: { readonly ctx: RailPanelContext; readonly repoRel: string; readonly target: CommitTarget; readonly workspace: boolean; readonly onSelectCommit: (target: CommitTarget) => void; readonly onClose: () => void }) {
+function CommitInspector({ ctx, repoRel, target, workspace, onSelectCommit, onPinCompare, onClose }: { readonly ctx: RailPanelContext; readonly repoRel: string; readonly target: CommitTarget; readonly workspace: boolean; readonly onSelectCommit: (target: CommitTarget) => void; readonly onPinCompare?: () => void; readonly onClose: () => void }) {
   const t = getT(ctx.language);
   const [state, setState] = useState<InspectorState>({ kind: "loading" }); const [tab, setTab] = useState<"details" | "changes">("details"); const [selectedPath, setSelectedPath] = useState<string | null>(null); const [copied, setCopied] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(() => readSize(PREFS_HEADER_HEIGHT, HEADER_DEFAULT_HEIGHT)); const [fileListWidth, setFileListWidth] = useState(() => readSize(PREFS_FILE_LIST_WIDTH, FILE_LIST_DEFAULT_WIDTH));
@@ -189,6 +194,7 @@ function CommitInspector({ ctx, repoRel, target, workspace, onSelectCommit, onCl
         <div className="repository-ws-dock-main">
           <div className="repository-ws-dock-meta">
             <CommitHeader meta={meta} entry={entry} fullHash={target.fullHash} copied={copied} onCopy={copySha} onParent={(full) => onSelectCommit({ fullHash: full })} locale={ctx.language} t={t} />
+            {onPinCompare && <button type="button" className="repository-refresh-btn history-inspector-compare" onClick={onPinCompare}>⇆ {t("repository.compare.pinAction")}</button>}
             <button type="button" className="history-detail-close repository-ws-dock-close" aria-label={t("repository.history.closeInspector")} title={t("repository.history.closeInspector")} onClick={onClose}>✕</button>
           </div>
           {selectedFile ? <div className="history-file-diff"><div className="history-file-repository-head"><span title={selectedFile.path}>{selectedFile.path}</span><div><button type="button" aria-label={t("repository.history.previousFile")} disabled={files.indexOf(selectedFile) === 0} onClick={() => chooseFile(files[files.indexOf(selectedFile) - 1]!, false)}>‹</button><button type="button" aria-label={t("repository.history.nextFile")} disabled={files.indexOf(selectedFile) === files.length - 1} onClick={() => chooseFile(files[files.indexOf(selectedFile) + 1]!, false)}>›</button></div></div><HunkView ctx={ctx} repoRel={repoRel} file={selectedFile} mode="unified" commit={commit} /></div> : <div className="history-inspector-empty">{t("repository.history.noChangedFiles")}</div>}
@@ -214,16 +220,18 @@ interface HistoryPanelProps {
   readonly workspace?: boolean;
   readonly workspaceMain?: ReactNode;
   readonly workspaceMainVisible?: boolean;
+  readonly compareRequest?: { readonly base: string; readonly head: string; readonly baseLabel: string; readonly headLabel: string; readonly seq: number } | null;
+  readonly inspectRequest?: { readonly fullHash: string; readonly seq: number } | null;
   readonly onInspectorOpenChange?: (open: boolean) => void;
   readonly onClearRef?: () => void;
   readonly onWip?: () => void;
 }
 
-export function HistoryPanel({ ctx, repoRel, cacheScope = `${ctx.theaterId ?? ""}:${repoRel}`, externalRefreshToken = 0, active = true, refFilter = null, wipFiles, workspace = false, workspaceMain, workspaceMainVisible = false, onInspectorOpenChange, onClearRef, onWip }: HistoryPanelProps) {
-  return <HistoryPanelBody key={cacheScope} ctx={ctx} repoRel={repoRel} cacheScope={cacheScope} externalRefreshToken={externalRefreshToken} active={active} refFilter={refFilter} wipFiles={wipFiles} workspace={workspace} workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} onInspectorOpenChange={onInspectorOpenChange} onClearRef={onClearRef} onWip={onWip} />;
+export function HistoryPanel({ ctx, repoRel, cacheScope = `${ctx.theaterId ?? ""}:${repoRel}`, externalRefreshToken = 0, active = true, refFilter = null, wipFiles, workspace = false, workspaceMain, workspaceMainVisible = false, compareRequest, inspectRequest, onInspectorOpenChange, onClearRef, onWip }: HistoryPanelProps) {
+  return <HistoryPanelBody key={cacheScope} ctx={ctx} repoRel={repoRel} cacheScope={cacheScope} externalRefreshToken={externalRefreshToken} active={active} refFilter={refFilter} wipFiles={wipFiles} workspace={workspace} workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} compareRequest={compareRequest} inspectRequest={inspectRequest} onInspectorOpenChange={onInspectorOpenChange} onClearRef={onClearRef} onWip={onWip} />;
 }
 
-function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, active, refFilter, wipFiles, workspace, workspaceMain, workspaceMainVisible, onInspectorOpenChange, onClearRef, onWip }: Required<Pick<HistoryPanelProps, "active" | "cacheScope" | "ctx" | "externalRefreshToken" | "refFilter" | "repoRel" | "wipFiles" | "workspace" | "workspaceMainVisible">> & Pick<HistoryPanelProps, "workspaceMain" | "onInspectorOpenChange" | "onClearRef" | "onWip">) {
+function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, active, refFilter, wipFiles, workspace, workspaceMain, workspaceMainVisible, compareRequest, inspectRequest, onInspectorOpenChange, onClearRef, onWip }: Required<Pick<HistoryPanelProps, "active" | "cacheScope" | "ctx" | "externalRefreshToken" | "refFilter" | "repoRel" | "wipFiles" | "workspace" | "workspaceMainVisible">> & Pick<HistoryPanelProps, "workspaceMain" | "compareRequest" | "inspectRequest" | "onInspectorOpenChange" | "onClearRef" | "onWip">) {
   const t = getT(ctx.language);
   const historyCacheKey = `${cacheScope}::${refFilter ?? ""}`;
   const searchTarget = useRepositorySearchTarget();
@@ -231,6 +239,9 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
   const [initialRestore] = useState(() => readHistoryCacheRestore(historyCacheKey, pendingSearchTargetHash));
   const [state, setState] = useState<LoadState>(initialRestore?.state ?? { kind: "loading" });
   const [target, setTarget] = useState<CommitTarget | null>(initialRestore?.target ?? null);
+  const [pin, setPin] = useState<CompareAnchor | null>(null);
+  const [comparePair, setComparePair] = useState<ComparePair | null>(null);
+  const [announce, setAnnounce] = useState("");
   const [filterText, setFilterText] = useState(initialRestore?.filterText ?? "");
   const [refreshToken, setRefreshToken] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -257,12 +268,56 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
   const dragDisposeRef = useRef<(() => void) | null>(null);
   const logHeightRef = useRef(logHeight);
   const dockHeightRef = useRef(dockHeight);
+  const handledCompareRequestSeqRef = useRef(0);
+  const handledInspectRequestSeqRef = useRef(0);
   const generation = useMemo<HistoryLoadGeneration>(() => ({ theaterId: ctx.theaterId, repoRel, refFilter, refreshToken: refreshToken + externalRefreshToken }), [ctx.theaterId, externalRefreshToken, refFilter, refreshToken, repoRel]);
   const generationRef = useRef(generation);
   generationRef.current = generation;
   const visible = useMemo(() => state.kind === "ok" ? filterHistoryCommits(state.commits, filterText) : [], [filterText, state]);
   const layout = useMemo(() => state.kind === "ok" ? layoutGraph(state.commits) : null, [state]);
   const commitIndexes = useMemo(() => new Map(state.kind === "ok" ? state.commits.map((entry, index) => [entry.fullHash, index]) : []), [state]);
+  const setPinFrom = useCallback((anchor: CompareAnchor) => {
+    setPin(anchor);
+    setTarget(null);
+    setComparePair(null);
+    setAnnounce(t("repository.compare.announcePinned", { short: anchor.shortHash }));
+  }, [t]);
+  const unpin = useCallback(() => {
+    setPin(null);
+    setAnnounce(t("repository.compare.announceUnpinned"));
+  }, [t]);
+  const runPair = useCallback((a: CompareAnchor, b: LogCommitEntry) => {
+    const aIndex = commitIndexes.get(a.fullHash);
+    const bIndex = commitIndexes.get(b.fullHash);
+    const aIsOlder = aIndex !== undefined && bIndex !== undefined ? aIndex > bIndex : true;
+    const older = aIsOlder ? a : { fullHash: b.fullHash, shortHash: b.shortHash };
+    const newer = aIsOlder ? { fullHash: b.fullHash, shortHash: b.shortHash } : a;
+    setComparePair({ base: older.fullHash, head: newer.fullHash, baseLabel: older.shortHash, headLabel: newer.shortHash });
+    setPin(null);
+    setTarget(null);
+    setAnnounce(t("repository.compare.announceResult", { base: older.shortHash, head: newer.shortHash }));
+  }, [commitIndexes, t]);
+  const onRowActivate = useCallback((entry: LogCommitEntry, shiftKey: boolean) => {
+    if (!shiftKey) {
+      setTarget({ fullHash: entry.fullHash, entry });
+      setComparePair(null);
+      return;
+    }
+    if (pin) {
+      if (pin.fullHash === entry.fullHash) unpin(); else runPair(pin, entry);
+      return;
+    }
+    if (target && target.fullHash !== entry.fullHash) {
+      runPair({ fullHash: target.fullHash, shortHash: target.entry?.shortHash ?? target.fullHash.slice(0, 9) }, entry);
+      return;
+    }
+    setPinFrom({ fullHash: entry.fullHash, shortHash: entry.shortHash });
+  }, [pin, runPair, setPinFrom, target, unpin]);
+  const onCompareAction = useCallback((entry: LogCommitEntry) => {
+    if (!pin) setPinFrom({ fullHash: entry.fullHash, shortHash: entry.shortHash });
+    else if (pin.fullHash === entry.fullHash) unpin();
+    else runPair(pin, entry);
+  }, [pin, runPair, setPinFrom, unpin]);
   const wip = useMemo(() => aggregateWip(wipFiles), [wipFiles]);
   const showWip = shouldShowWip(wip, filterText, refFilter);
   const virtualWindow = calculateHistoryWindow(visible.length, commitViewport.scrollTop, commitViewport.height);
@@ -298,6 +353,21 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     setTarget(null);
   }, [refFilter]);
   useEffect(() => {
+    if (!compareRequest || compareRequest.seq === handledCompareRequestSeqRef.current) return;
+    handledCompareRequestSeqRef.current = compareRequest.seq;
+    setPin(null);
+    setTarget(null);
+    setComparePair({ base: compareRequest.base, head: compareRequest.head, baseLabel: compareRequest.baseLabel, headLabel: compareRequest.headLabel });
+    setAnnounce(t("repository.compare.announceResult", { base: compareRequest.baseLabel, head: compareRequest.headLabel }));
+  }, [compareRequest, t]);
+  useEffect(() => {
+    if (!inspectRequest || inspectRequest.seq === handledInspectRequestSeqRef.current) return;
+    handledInspectRequestSeqRef.current = inspectRequest.seq;
+    setPin(null);
+    setComparePair(null);
+    setTarget({ fullHash: inspectRequest.fullHash });
+  }, [inspectRequest]);
+  useEffect(() => {
     if (
       !searchTarget
       || searchTarget.theaterId !== ctx.theaterId
@@ -307,6 +377,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     const entry = state.commits.find((commit) => commit.fullHash === searchTarget.fullHash);
     if (!entry) return;
     setFilterText("");
+    setComparePair(null);
     setTarget({ fullHash: entry.fullHash, entry });
     consumeRepositorySearchTarget(searchTarget);
   }, [ctx.theaterId, repoRel, searchTarget, state]);
@@ -369,6 +440,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
       pendingRevealRef.current = null;
       loadingMoreRef.current = false;
       setState(restored.state);
+      setComparePair(null);
       setTarget(restored.target);
       setFilterText(restored.filterText);
       setCommitViewport({ scrollTop: restored.scrollTop, height: 0 });
@@ -424,7 +496,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
       filterText,
     });
   }, [commitViewport.height, commitViewport.scrollTop, filterText, historyCacheKey, state, target]);
-  useEffect(() => { onInspectorOpenChange?.(active && target !== null); }, [active, onInspectorOpenChange, target]); useEffect(() => () => dragDisposeRef.current?.(), []);
+  useEffect(() => { onInspectorOpenChange?.(active && (target !== null || comparePair !== null)); }, [active, comparePair, onInspectorOpenChange, target]); useEffect(() => () => dragDisposeRef.current?.(), []);
   useLayoutEffect(() => {
     updateCommitViewport();
     const list = listRef.current;
@@ -435,7 +507,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
   }, [showWip, updateCommitViewport, visible.length, workspaceMainVisible]);
   // 저장된 dock 높이는 현재 컨테이너 기준으로 정규화해 축소된 창에서 주 영역이 잘리지 않게 한다(저장값 자체는 보존).
   useLayoutEffect(() => {
-    if (!workspace || target === null) return;
+    if (!workspace || (target === null && comparePair === null)) return;
     const root = rootRef.current;
     if (!root) return;
     const normalize = () => {
@@ -446,7 +518,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     const observer = new ResizeObserver(normalize);
     observer.observe(root);
     return () => observer.disconnect();
-  }, [workspace, target]);
+  }, [comparePair, workspace, target]);
   const handleDivider = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const root = rootRef.current;
@@ -523,16 +595,17 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     stateCacheKeyRef.current = null;
     setRefreshToken((value) => value + 1);
   }, [historyCacheKey]);
-  const stackTemplate = target
+  const detailOpen = target !== null || comparePair !== null;
+  const stackTemplate = detailOpen
     ? workspace ? buildWorkspaceDockTemplate(dockHeight) : buildHistoryStackTemplate(logHeight)
     : undefined;
-  return <div ref={rootRef} className={`history-root${workspace ? " repository-ws-history" : ""}${isDragging ? " is-dragging" : ""}`} style={stackTemplate ? { gridTemplateRows: stackTemplate } : undefined}>
+  return <div ref={rootRef} className={`history-root${workspace ? " repository-ws-history" : ""}${isDragging ? " is-dragging" : ""}`} style={stackTemplate ? { gridTemplateRows: stackTemplate } : undefined} onKeyDown={(event) => { if (event.key !== "Escape" || target) return; /* 검사기가 열려 있으면 Esc는 검사기 닫기 한 겹만 벗긴다 — 같은 키로 핀까지 잃지 않게 */ if (pin) { unpin(); event.stopPropagation(); event.preventDefault(); } else if (comparePair) { setComparePair(null); event.stopPropagation(); event.preventDefault(); } }}>
     <div className="history-list-pane" hidden={workspace && workspaceMainVisible}>
-      <div className="history-toolbar"><div className="history-filter"><input className="history-filter-input" placeholder={t("repository.common.filterPlaceholder")} value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText && <button type="button" className="history-filter-clear" onClick={() => setFilterText("")}>✕</button>}</div>{refFilter && <button type="button" className="repository-ref-chip" onClick={onClearRef}>{refFilter} ✕</button>}{state.kind === "ok" && <><span className="history-count">{filterText ? `${visible.length}/${state.commits.length}` : state.commits.length}</span><button type="button" className="repository-refresh-btn" onClick={refreshHistory}>{t("repository.history.refresh")}</button></>}</div>
-      <div ref={listRef} className="history-list" onScroll={updateCommitViewport}>{showWip && <button type="button" className="repository-wip-row" onClick={onWip}>{t("repository.history.uncommitted")} <span>{t(wip.files === 1 ? "repository.history.wipStats_one" : "repository.history.wipStats_other", { count: wip.files, additions: wip.additions, deletions: wip.deletions })}</span></button>}{state.kind === "loading" && <div className="history-empty">{t("repository.common.loading")}</div>}{state.kind === "error" && <div className="history-error">{state.message}<button type="button" className="repository-refresh-btn" onClick={refreshHistory}>{t("repository.common.retry")}</button></div>}{state.kind === "ok" && state.commits.length === 0 && <div className="history-empty">{t("repository.history.empty")}</div>}{state.kind === "ok" && state.commits.length > 0 && visible.length === 0 && <div className="history-empty">{t("repository.common.noMatchingItems")}</div>}{state.kind === "ok" && layout && visible.length > 0 && <div ref={commitWindowRef} className="history-commit-window"><div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.topSpacerHeight }} />{windowRows.map(({ entry, graphNode }) => <CommitRow key={entry.fullHash} rowRef={(node) => { if (node) rowRefs.current.set(entry.fullHash, node); else rowRefs.current.delete(entry.fullHash); }} entry={entry} checkouts={state.checkouts} selected={target?.fullHash === entry.fullHash} graphNode={graphNode} laneCount={layout.activeLaneCount} onSelect={(selected) => setTarget({ fullHash: selected.fullHash, entry: selected })} locale={ctx.language} />)}<div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.bottomSpacerHeight }} /></div>}{state.kind === "ok" && state.commits.length > 0 && <div className="history-pagination">{state.hasMore ? loadingMore ? <span>{t("repository.history.loadingMore")}</span> : <button type="button" className="repository-refresh-btn" onClick={loadMore}>{t("repository.history.loadMore")}</button> : <><span>{t("repository.history.end")}</span>{state.truncated && <span>{t("repository.history.capped")}</span>}</>}{loadMoreError && <span className="history-pagination-error">{loadMoreError}</span>}</div>}</div>
+      <div className="history-toolbar"><div className="history-filter"><input className="history-filter-input" placeholder={t("repository.common.filterPlaceholder")} value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText && <button type="button" className="history-filter-clear" onClick={() => setFilterText("")}>✕</button>}</div>{pin && <button type="button" className="repository-ref-chip repository-pin-chip" title={t("repository.compare.pinnedHint")} onClick={unpin}>⇆ {t("repository.compare.pinnedChip", { short: pin.shortHash })} ✕</button>}{refFilter && <button type="button" className="repository-ref-chip" title={refFilter} onClick={onClearRef}>⎇ {shortRefName(refFilter)} ✕</button>}{state.kind === "ok" && <><span className="history-count" title={t("repository.history.countLegend")}>{filterText ? `${visible.length}/${state.commits.length}` : state.commits.length}</span><button type="button" className="repository-refresh-btn" onClick={refreshHistory}>{t("repository.history.refresh")}</button></>}<span className="repository-sr-only" role="status">{announce}</span></div>
+      <div ref={listRef} className="history-list" onScroll={updateCommitViewport}>{showWip && <button type="button" className="repository-wip-row" onClick={onWip}>{t("repository.history.uncommitted")} <span>{t(wip.files === 1 ? "repository.history.wipStats_one" : "repository.history.wipStats_other", { count: wip.files, additions: wip.additions, deletions: wip.deletions })}</span></button>}{state.kind === "loading" && <div className="history-empty">{t("repository.common.loading")}</div>}{state.kind === "error" && <div className="history-error">{state.message}<button type="button" className="repository-refresh-btn" onClick={refreshHistory}>{t("repository.common.retry")}</button></div>}{state.kind === "ok" && state.commits.length === 0 && <div className="history-empty">{t("repository.history.empty")}</div>}{state.kind === "ok" && state.commits.length > 0 && visible.length === 0 && <div className="history-empty">{t("repository.common.noMatchingItems")}</div>}{state.kind === "ok" && layout && visible.length > 0 && <div ref={commitWindowRef} className="history-commit-window"><div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.topSpacerHeight }} />{windowRows.map(({ entry, graphNode }) => <CommitRow key={entry.fullHash} rowRef={(node) => { if (node) rowRefs.current.set(entry.fullHash, node); else rowRefs.current.delete(entry.fullHash); }} entry={entry} checkouts={state.checkouts} selected={target?.fullHash === entry.fullHash} picked={pin?.fullHash === entry.fullHash || comparePair?.base === entry.fullHash || comparePair?.head === entry.fullHash} pin={pin} graphNode={graphNode} laneCount={layout.activeLaneCount} onRowActivate={onRowActivate} onCompareAction={onCompareAction} locale={ctx.language} />)}<div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.bottomSpacerHeight }} /></div>}{state.kind === "ok" && state.commits.length > 0 && <div className="history-pagination">{state.hasMore ? loadingMore ? <span>{t("repository.history.loadingMore")}</span> : <button type="button" className="repository-refresh-btn" onClick={loadMore}>{t("repository.history.loadMore")}</button> : <><span>{t("repository.history.end")}</span>{state.truncated && <span>{t("repository.history.capped")}</span>}</>}{loadMoreError && <span className="history-pagination-error">{loadMoreError}</span>}</div>}</div>
     </div>
     {workspaceMain !== undefined && <div className="repository-ws-main" hidden={!workspaceMainVisible}>{workspaceMain}</div>}
-    {target && <><div className="history-divider history-divider--horizontal" role="separator" aria-orientation="horizontal" aria-label={workspace ? t("repository.history.resizeDock") : t("repository.history.resizeLog")} onPointerDown={handleDivider} /><div className="history-detail-pane"><CommitInspector ctx={ctx} repoRel={repoRel} target={target} workspace={workspace} onSelectCommit={setTarget} onClose={() => setTarget(null)} /></div></>}
+    {detailOpen && <><div className="history-divider history-divider--horizontal" role="separator" aria-orientation="horizontal" aria-label={workspace ? t("repository.history.resizeDock") : t("repository.history.resizeLog")} onPointerDown={handleDivider} /><div className="history-detail-pane">{comparePair ? <CompareInspector ctx={ctx} repoRel={repoRel} pair={comparePair} onSwap={() => setComparePair({ base: comparePair.head, head: comparePair.base, baseLabel: comparePair.headLabel, headLabel: comparePair.baseLabel })} onClose={() => setComparePair(null)} /> : target ? <CommitInspector ctx={ctx} repoRel={repoRel} target={target} workspace={workspace} onSelectCommit={(next) => { setComparePair(null); setTarget(next); }} onPinCompare={() => setPinFrom({ fullHash: target.fullHash, shortHash: target.entry?.shortHash ?? target.fullHash.slice(0, 9) })} onClose={() => setTarget(null)} /> : null}</div></>}
   </div>;
 }
 function readLogPaneHeight(): number { return readSize(PREFS_LOG_PANE_HEIGHT, LOG_PANE_DEFAULT_HEIGHT, HISTORY_LOG_PANE_MIN_HEIGHT); }

@@ -297,3 +297,13 @@ export function countRepos(node: RepoTreeNode): number {
   for (const child of Object.values(node.dirs)) total += countRepos(child);
   return total;
 }
+
+// ─── shortRefName ────────────────────────────────────────────────────────────
+
+/** 풀 refname을 사람이 읽는 짧은 이름으로 강등한다 — 와이어 계약(풀 refname)은 그대로 두고 표시만 바꾼다. */
+export function shortRefName(ref: string): string {
+  if (ref.startsWith("refs/heads/")) return ref.slice("refs/heads/".length);
+  if (ref.startsWith("refs/remotes/")) return ref.slice("refs/remotes/".length);
+  if (ref.startsWith("refs/tags/")) return ref.slice("refs/tags/".length);
+  return ref;
+}
