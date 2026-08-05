@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/fleet-cli",
-  "version": "1.48.0",
+  "version": "1.49.0",
   "description": "Fleet CLI — an orchestration kit that operates Claude Code through a unified terminal interface.",
   "repository": {
     "type": "git",

@@ -5,6 +5,26 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.49.0] - 2026-08-05
+
+### fleet-plugin
+
+#### Fixed
+- [fleet-console] Keep AI Gateway response streams active during silent provider reasoning intervals.
+
+### fleet-core
+
+#### Added
+- [core-ai-gateway] Stream OpenAI Responses reasoning as Anthropic thinking blocks for Claude Code.
+
+#### Changed
+- [fleet-admiral] A gateway session no longer carries the bundled Claude API reference skill. Its trigger fires on Claude model names and on LLM work in general, so it activated readily on the gateway path even though the models a gateway session drives are the third-party backends the gateway brokers, and its body is re-sent every turn once loaded. Fleet now launches the gateway path with that skill switched off, which removes it from the host session and from every subagent it spawns, including the injected gateway model identities. Ordinary Claude sessions keep the skill.
+- [fleet-admiral] Gateway hosts now budget bulk parallel work against provider allowances instead of retreating to their own. The roster's pressure verdict outranks raw usage percentages, so a provider reported as healthy is used whatever its percentage reads; branches spread evenly across eligible providers counted per provider rather than per exposed model; a sole remaining provider carries the whole fan-out; an allowance that cannot be read is left out of the split without being treated as exhausted; and role-fit token and tool-call efficiency no longer reads as quota drain. Cross-model verification stays available at one session-lineage seat per verify stage, sized before the roster is read, so a shrinking provider pool can no longer enlarge it.
+
+#### Fixed
+- [core-ai-gateway] A Cursor conversation no longer keeps running blind once it fills the model's context window. Claude Code's occupancy meter reads a projection that saturates at that window, so past it every turn reported the same full number and the client could not see itself reaching its own compaction threshold; one measured session sent 31 consecutive requests at a saturated meter before compaction finally fired, minutes late. The gateway now refuses the next turn from the count Cursor itself reported, carrying the 413 that starts reactive compaction, and lets the compacted retry through.
+- [core-ai-gateway] Emit Anthropic-compatible SSE keepalive comments for gateway-facing response streams.
+
 ## [1.48.0] - 2026-08-05
 
 ### fleet-console
