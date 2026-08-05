@@ -147,8 +147,11 @@ export function TriageSideBar({
           </StatusSectionSlot>
         ))}
       </ol>
+      {/* 선반의 칩은 Operation 메뉴를 갖지 않는다(본동작이 재개다) — 그렇다고 브라우저 메뉴가 뜨면
+          "이 표면에는 메뉴가 없다"가 아니라 "우리 것이 아니다"로 읽힌다. 큐의 칩과 달리 여기서는
+          아무것도 열지 않는다. menuEnabled=false는 핸들러를 떼기만 하므로 선반이 직접 막는다. */}
       {dormantSection ? (
-        <footer className="triage-side-bar-dormant-shelf">
+        <footer className="triage-side-bar-dormant-shelf" onContextMenu={(event) => event.preventDefault()}>
           <p className="triage-side-bar-caption">{t("triageSidebar.dormantShelf")}</p>
           <ol className="triage-side-bar-dormant-list" aria-label={t("triageSidebar.dormantShelf")}>
             <StatusSectionSlot

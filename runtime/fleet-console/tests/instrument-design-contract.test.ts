@@ -629,7 +629,9 @@ describe("Instrument core design contract", () => {
 
     expect(sidebar).toContain('const livingSections = sections.filter((section) => section.status !== "dormant")');
     expect(sidebar).toContain('className="operations-side-bar-chips triage-side-bar-sections"');
-    expect(sidebar).toContain('<footer className="triage-side-bar-dormant-shelf">');
+    // 선반은 Operation 메뉴를 갖지 않는 표면이므로 브라우저 메뉴도 열지 않는다 — 칩의
+    // menuEnabled=false는 핸들러를 떼기만 하므로 억제는 선반 자신이 진다.
+    expect(sidebar).toMatch(/<footer className="triage-side-bar-dormant-shelf" onContextMenu=\{\(event\) => event\.preventDefault\(\)\}>/);
     expect(sidebar).toContain('<ol className="triage-side-bar-dormant-list"');
     expect(sidebar).toContain("defaultCollapsed");
     expect(sidebar.indexOf('className="triage-side-bar-dormant-shelf"')).toBeGreaterThan(

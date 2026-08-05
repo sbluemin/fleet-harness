@@ -245,14 +245,19 @@ export function OperationsCanvas({
   };
 
   const handleContextMenu = (event: ReactMouseEvent<HTMLElement>) => {
-    if (event.target instanceof Element && event.target.closest("[data-canvas-blocker], [data-canvas-operation]")) return;
-    event.preventDefault();
-    // War Room의 소유자 없는 바닥은 launch 대상으로 추측하지 않는다. deck band/map zone이 명시적으로
-    // Theater ID를 넘기는 경우만 아래 컨텍스트 메뉴 상태를 만든다.
+    const target = event.target instanceof Element ? event.target : null;
+    // 패널 안(터미널)은 어느 모드에서도 브라우저 메뉴가 필요하다 — 복사·붙여넣기가 거기 있다.
+    if (target?.closest("[data-canvas-operation]")) return;
+    // War Room에서는 캔버스 전체가 이 모드의 것이다. 자기 메뉴를 가진 표면(카드·점·밴드·구역·레일 행)은
+    // 이미 stopPropagation으로 여기 닿지 않으므로, 여기 오는 것은 전부 "주인 없는 자리"다.
+    // 밴드 사이 여백이나 구역 밖 판 바닥이 브라우저 메뉴를 여는 것은 아무것도 열지 않는다는 계약과 어긋난다.
     if (triageActive) {
+      event.preventDefault();
       setContextMenu(null);
       return;
     }
+    if (target?.closest("[data-canvas-blocker]")) return;
+    event.preventDefault();
     const rect = canvasRef.current?.getBoundingClientRect();
     const anchor = rect ? { x: event.clientX - rect.left, y: event.clientY - rect.top } : null;
     if (!anchor) return;
