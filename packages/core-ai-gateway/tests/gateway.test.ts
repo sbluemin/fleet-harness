@@ -1249,6 +1249,44 @@ describe("Anthropic SSE keepalive", () => {
     }
   });
 
+  it("does not insert a comment into an incomplete SSE frame", async () => {
+    vi.useFakeTimers();
+    try {
+      const pending: Array<(value: IteratorResult<Uint8Array>) => void> = [];
+      const chunks: AsyncIterable<Uint8Array> = {
+        [Symbol.asyncIterator]() {
+          return {
+            next: () => new Promise<IteratorResult<Uint8Array>>((resolve) => pending.push(resolve)),
+            return: async () => ({ done: true, value: undefined }),
+          };
+        },
+      };
+      const iterator = withSseKeepAlive(chunks)[Symbol.asyncIterator]();
+      const partial = iterator.next();
+      pending.shift()?.({ done: false, value: new TextEncoder().encode("event: message_start\ndata: {") });
+      await expect(partial).resolves.toMatchObject({ done: false });
+
+      const blocked = iterator.next();
+      await vi.advanceTimersByTimeAsync(ANTHROPIC_SSE_KEEPALIVE_INTERVAL_MS * 2);
+      let settled = false;
+      void blocked.then(() => { settled = true; });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      pending.shift()?.({ done: false, value: new TextEncoder().encode("}\n\n") });
+      await expect(blocked).resolves.toMatchObject({ done: false });
+      const keepalive = iterator.next();
+      await vi.advanceTimersByTimeAsync(ANTHROPIC_SSE_KEEPALIVE_INTERVAL_MS);
+      await expect(keepalive).resolves.toMatchObject({
+        done: false,
+        value: new TextEncoder().encode(": keep-alive\n\n"),
+      });
+      await iterator.return?.(undefined);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("passes through a real chunk and restarts the idle interval", async () => {
     vi.useFakeTimers();
     try {

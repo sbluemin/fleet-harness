@@ -13,21 +13,37 @@ export async function* withSseKeepAlive(
 ): AsyncGenerator<Uint8Array> {
   const iterator = chunks[Symbol.asyncIterator]();
   let next = iterator.next();
+  let boundaryTail = "";
+  let atFrameBoundary = true;
 
   try {
     for (;;) {
-      const result = await waitForChunk(next, intervalMs);
+      const result = atFrameBoundary
+        ? await waitForChunk(next, intervalMs)
+        : { kind: "chunk" as const, result: await next };
       if (result.kind === "keepalive") {
         yield KEEPALIVE_FRAME;
         continue;
       }
       if (result.result.done) return;
+      if (result.result.value.byteLength > 0) {
+        boundaryTail = appendBoundaryTail(boundaryTail, result.result.value);
+        atFrameBoundary = endsAtSseFrameBoundary(boundaryTail);
+      }
       yield result.result.value;
       next = iterator.next();
     }
   } finally {
     await iterator.return?.();
   }
+}
+
+function appendBoundaryTail(tail: string, chunk: Uint8Array): string {
+  return (tail + new TextDecoder().decode(chunk)).slice(-4);
+}
+
+function endsAtSseFrameBoundary(tail: string): boolean {
+  return tail.endsWith("\n\n") || tail.endsWith("\r\r") || tail.endsWith("\r\n\r\n");
 }
 
 async function waitForChunk<T>(

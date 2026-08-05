@@ -393,6 +393,7 @@ async function proxyToAnthropic(
     if (typeof value === "string") headers[name] = value;
   }
   await proxyAnthropicMessages(res, body, {
+    keepAlive: true,
     fetchImpl,
     headers,
     signal,
