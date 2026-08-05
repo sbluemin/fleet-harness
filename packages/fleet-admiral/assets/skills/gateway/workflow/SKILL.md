@@ -27,9 +27,13 @@ Inspect the live tool surface before concluding anything about any of the three;
 
 **Call mechanics stay out of this skill on purpose.** Argument names, script syntax, return shapes, and which values a field accepts live in the live tool description. Read them there every time. Anything restated here would be a copy that goes stale silently.
 
+One narrow exception, and it exists because the rule above cannot reach: **an option the live description does not carry cannot be read there.** Where Fleet depends on such an option, this skill states it, says how it was verified and when, and warns that it can disappear without an error. `stallMs` is the only entry today. Nothing else earns the exception — if the live description carries a field, read it there.
+
 ## Gate 2 — Model Pin Gate
 
 Every run that leaves the host carries a pinned identity. An unpinned run is not the neutral choice: it inherits the session's own model and spends the session's own allowance, reached by omission rather than by selection. Closing that omission is this gate's whole job.
+
+Two fields can carry that pin, and **exactly one of them appears on any run.** A roster identity name already carries its model *and* its rung, so nothing goes beside it; a raw model id carries neither, so it needs the rung named separately. **Never both.** Passing an identity name and a model id together is not a syntax error and produces no warning — the explicit model overrides the identity's own, so the run reports one identity and bills another. That is this gate's own failure arriving through a field you filled in rather than one you left blank.
 
 **Call `gateway_models` first, every time.** Not once per session: allowances move while work is in flight, and a roster entry can be enabled or disabled between two runs. A gate cleared against a remembered roster is not cleared.
 
@@ -79,6 +83,18 @@ Fan-out helpers routinely turn a failed branch into an empty result rather than 
 - Have each stage **return its failure as a value** — a result that says it failed and why — instead of throwing into the helper.
 - Before synthesizing, check the branch count against what you started. A missing branch is a finding.
 - Never report coverage you did not verify. If the run capped, sampled, or dropped anything, say so in the report; silent truncation reads as completeness.
+
+## Stall Budget
+
+**Every `agent()` call in a staged run declares `stallMs: 900000`.** Fifteen minutes, the same on every stage. It is not tuned per stage, because what it bounds — how long an identity can go quiet — is a property of the identity and its rung, not of the work you handed it.
+
+What the option bounds is the **longest silent gap, never total runtime.** The watchdog re-arms on every progress signal and is cleared outright while a tool call is in flight, so a stage that streams for an hour never trips it and a stage that thinks in silence trips it on the default at three minutes. Reason about the silence, not the duration.
+
+That silence is real and it is not small. Measured 2026-08-05: a gateway reasoning identity at `high`, given a no-tool reasoning task, emitted **no progress signal at all for two consecutive ten-second stretches**. Nothing bounds that gap at the upper rungs, and the 180000 default cuts the run at three minutes of it.
+
+A trip is not one lost stage. The run is aborted and **respawned from the start, up to five times**, and only then does the call throw. An identity that goes quiet therefore spends the whole budget six times before the script sees an error — which is also the arithmetic against lowering the value: fifteen minutes against six attempts is up to ninety minutes before a genuinely hung run gives up. That is the deliberate trade. A late abort costs wall-clock on a run that was already lost; a premature one destroys a slow reasoning stage that was working, and the two are indistinguishable in the report.
+
+**`stallMs` is absent from the live tool description.** It is read — verified 2026-08-05 on `claude` 2.1.222, where `stallMs: 10000` cut two attempts at 10.017s and 10.027s and respawned between them — but an option no schema carries can be dropped by an upgrade with no error. The failure mode is silent reversion to 180000, never a rejection. Declare the value; never assume it took.
 
 ## Model and Effort Assignment
 
@@ -145,6 +161,14 @@ A stage running on another model has no feel for this repository's conventions, 
 - **Symptom:** The run took as long as doing it yourself, with the same total cost.
   **Action:** Count the barriers. Each one that no stage actually needed becomes wall-clock spent waiting for the slowest branch.
   **Why:** Staging buys overlap; a skeleton executed as a sequence of barriers pays the coordination cost and collects none of it back.
+
+- **Symptom:** A stage on a high reasoning rung restarted several times and then threw, or the same stage appears repeatedly in the progress tree with a `(retry N)` label.
+  **Action:** Read that stage's `stallMs`. A stage that restarts on a near-round interval was cut by the watchdog, not by the work; confirm the declared value and treat a missing one as the 180000 default.
+  **Why:** The watchdog measures silence, and a top-rung identity can think without emitting anything. Each trip respawns the stage from the start rather than resuming it, so one silent identity looks like five separate failures before the call finally throws.
+
+- **Symptom:** The progress tree named one identity, but the spend landed on another provider's allowance.
+  **Action:** Check whether that call carried both `agentType` and `model`. Remove the one you did not mean; the pin is exactly one field.
+  **Why:** The two are not validated against each other — the explicit `model` overrides the identity's own with no error and no warning, so the label keeps naming the identity you chose while the request goes elsewhere.
 
 - **Symptom:** A stage came back asking what to do, or made a choice the skeleton reserved for the host.
   **Action:** Move that decision to the preceding host-only barrier and run the stage again with the value spelled out.

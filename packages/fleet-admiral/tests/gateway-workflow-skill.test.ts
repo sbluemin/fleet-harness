@@ -274,6 +274,50 @@ describe("gateway workflow skill asset", () => {
     expect(content).toContain("Reaching a newly enabled model requires a new session.");
   });
 
+  // stallMs 는 라이브 도구 설명에 없는 옵션이라 "거기서 읽어라" 규칙이 닿지 않는다. 값과
+  // 근거가 문언에서 사라지면 호스트는 180초 기본값으로 조용히 되돌아가고, 상위 rung 의
+  // 침묵이 정상 실행을 끊는다.
+  it("mandates a 15-minute stall budget on every call, with its measured basis", () => {
+    const content = skillContent();
+
+    expect(content).toContain("## Stall Budget");
+    expect(content).toContain("**Every `agent()` call in a staged run declares `stallMs: 900000`.**");
+    // 이 옵션이 재는 것은 총 실행 시간이 아니라 최장 무진행 구간이다. 이 구분이 빠지면
+    // 값이 "오래 걸리는 작업" 기준으로 재조정되어 실제 위험과 어긋난다.
+    expect(content).toContain("longest silent gap, never total runtime");
+    // 트립은 재개가 아니라 처음부터 재출격이고 최대 5회다 — 값을 낮출 때의 산수 근거.
+    expect(content).toContain("respawned from the start, up to five times");
+    expect(content).toContain("up to ninety minutes before a genuinely hung run gives up");
+    // 미문서화 옵션임을 지운 채 값만 남기면, 상류가 필드를 버려도 아무도 알아채지 못한다.
+    expect(content).toContain("**`stallMs` is absent from the live tool description.**");
+    expect(content).toContain("silent reversion to 180000, never a rejection");
+    expect(content).toContain("10.017s and 10.027s");
+  });
+
+  // 라이브 설명이 싣지 않는 항목만 예외로 적는다. 이 울타리가 없으면 "call mechanics는
+  // 여기 두지 않는다"는 규칙과 충돌하는 복사본이 무제한으로 자란다.
+  it("fences the call-mechanics exception to options the live description cannot carry", () => {
+    const content = skillContent();
+
+    expect(content).toContain("**Call mechanics stay out of this skill on purpose.**");
+    expect(content).toContain("an option the live description does not carry cannot be read there");
+    expect(content).toContain("`stallMs` is the only entry today");
+  });
+
+  // 핀은 정확히 한 필드다. 병기는 에러가 아니라 조용한 덮어쓰기라서, 진행 트리가 부르는
+  // 정체성과 실제 청구 대상이 갈라진다 — Gate 2 가 막으려던 실패가 빈칸이 아니라
+  // 채워 넣은 칸으로 들어오는 경로다.
+  it("makes the pin exactly one field and names the silent-override failure", () => {
+    const content = skillContent();
+
+    expect(content).toContain("exactly one of them appears on any run");
+    expect(content).toContain("**Never both.**");
+    expect(content).toContain("the explicit model overrides the identity's own");
+    // 정체성 이름은 rung 을 이미 들고 있다. 옆에 덧대는 관행이 살아나면 사다리
+    // 재선택 절차가 두 곳에서 각각 돌아간다.
+    expect(content).toContain("already carries its model *and* its rung, so nothing goes beside it");
+  });
+
   it("keeps executor-persona vocabulary out of the gateway path", () => {
     const content = skillContent();
 
