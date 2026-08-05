@@ -259,14 +259,18 @@ export function OperationsCanvas({
     setContextMenu({ anchor, canvasPoint: screenToCanvas(anchor, canvas.viewport) });
   };
 
-  const openTriageTheaterLaunchMenu = (theaterId: string, theaterLabel: string, anchor: CanvasPoint) => {
+  const openTriageTheaterLaunchMenu = (theaterId: string, theaterLabel: string, cursor: CanvasPoint) => {
     const canvasRect = canvasRef.current?.getBoundingClientRect();
     if (!canvasRect) return;
+    // 앵커와 클램프 경계는 같은 좌표계여야 한다 — 메뉴는 캔버스 크기로 클램프되므로 앵커도 캔버스-local이다.
+    // position: fixed도 뷰포트에 걸리지 않는다: .operations-canvas의 contain: paint가 고정 위치의
+    // 컨테이닝 블록이 되어 캔버스에 재앵커한다(실측). 뷰포트 좌표를 그대로 넘기면 메뉴가 커서에서
+    // 캔버스 왼쪽 여백만큼 밀리고, 오른쪽 끝에서는 캔버스 폭으로 클램프돼 커서와 크게 어긋난다.
+    const local = { x: cursor.x - canvasRect.left, y: cursor.y - canvasRect.top };
     setContextMenu({
-      anchor,
-      // War Room에는 world transform이 없으므로 메뉴 커서를 캔버스-local geometry 좌표로 바꿔
-      // 기존 launch geometry 생성 문법을 유지한다.
-      canvasPoint: { x: anchor.x - canvasRect.left, y: anchor.y - canvasRect.top },
+      anchor: local,
+      // 기존 launch geometry 생성 문법을 유지한다 — War Room에는 world transform이 없다.
+      canvasPoint: local,
       theaterId,
       theaterLabel,
     });
