@@ -18,6 +18,8 @@ interface HarnessOptions {
   readonly bodyNull?: boolean;
   readonly data?: GlobalOptionsData;
   readonly aiGateway?: AiGatewayStoredSettings;
+  readonly wireLogEnabled?: boolean;
+  readonly applyError?: boolean;
 }
 
 describe("terminal settings routes", () => {
@@ -32,6 +34,7 @@ describe("terminal settings routes", () => {
       agentIdleDormantMinutes: 60,
       aiGateway: null,
       cursorDiagnosticsEnabled: false,
+      wireLogEnabled: false,
     });
     expect(harness.writes[0]?.body).not.toHaveProperty("consolePortMode");
   });
@@ -225,6 +228,39 @@ describe("terminal settings routes", () => {
     });
   });
 
+  it("GET /plugins/terminal/settings returns the effective wire log runtime state", async () => {
+    const harness = createRouteHarness({ wireLogEnabled: true });
+    await harness.handle({ req: req("GET"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.body).toMatchObject({ wireLogEnabled: true });
+  });
+
+  it.each([true, false])("PUT /plugins/terminal/settings accepts wireLogEnabled=%s and persists it", async (enabled) => {
+    const harness = createRouteHarness({ body: { wireLogEnabled: enabled } });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.status).toBe(200);
+    expect(harness.currentAiGateway()).toMatchObject({ version: 1, wireLogEnabled: enabled });
+    expect(harness.applied).toEqual([enabled]);
+  });
+
+  it("PUT /plugins/terminal/settings rejects non-boolean wire log values", async () => {
+    const harness = createRouteHarness({ body: { wireLogEnabled: "yes" } });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.status).toBe(400);
+    expect(harness.updateCalls).toBe(0);
+  });
+
+  it("PUT /plugins/terminal/settings rolls durable wire log state back when apply fails", async () => {
+    const harness = createRouteHarness({
+      body: { wireLogEnabled: true },
+      aiGateway: { version: 1, models: [{ id: "cursor--auto" }], wireLogEnabled: false },
+      applyError: true,
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]).toEqual({ status: 500, body: { error: "wire_log_runtime_apply_failed" } });
+    expect(harness.currentAiGateway()).toEqual({ version: 1, models: [{ id: "cursor--auto" }], wireLogEnabled: false });
+    expect(harness.applied).toEqual([true]);
+  });
+
   it("PUT /plugins/terminal/settings rejects non-boolean Cursor diagnostics values", async () => {
     const harness = createRouteHarness({ body: { cursorDiagnosticsEnabled: "yes" } });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
@@ -297,6 +333,7 @@ function createRouteHarness(options: HarnessOptions = {}) {
   let data = options.data ?? { version: 1 };
   let aiGateway: AiGatewayStoredSettings = options.aiGateway ?? { version: 1 };
   let updateCalls = 0;
+  const applied: boolean[] = [];
   const ctx = {
     pluginId: "terminal",
     manifest: { id: "terminal" },
@@ -343,6 +380,26 @@ function createRouteHarness(options: HarnessOptions = {}) {
         });
         return aiGateway;
       },
+      writeWireLogEnabled: async (enabled) => {
+        updateCalls += 1;
+        aiGateway = normalizeAiGatewaySettings({
+          ...aiGateway,
+          ...(enabled === undefined ? {} : { wireLogEnabled: enabled }),
+        });
+        if (enabled === undefined) {
+          const withoutWireLog = { ...aiGateway } as { wireLogEnabled?: boolean };
+          delete withoutWireLog.wireLogEnabled;
+          aiGateway = withoutWireLog as AiGatewayStoredSettings;
+        }
+        return aiGateway;
+      },
+    },
+    wireLogRuntime: {
+      enabled: () => options.wireLogEnabled ?? aiGateway.wireLogEnabled === true,
+      apply: (enabled) => {
+        if (enabled !== undefined) applied.push(enabled);
+        if (options.applyError) throw new Error("apply failed");
+      },
     },
   });
   const handle = routers.get("settings");
@@ -352,6 +409,7 @@ function createRouteHarness(options: HarnessOptions = {}) {
     writes,
     currentData: () => data,
     currentAiGateway: () => aiGateway,
+    applied,
     get updateCalls() { return updateCalls; },
   };
 }

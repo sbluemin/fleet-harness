@@ -237,7 +237,7 @@ describe("upstream credential", () => {
 
   it.each([
     [{ version: 1 } satisfies AiGatewayStoredSettings, false],
-    [{ version: 1, cursorDiagnosticsEnabled: true } satisfies AiGatewayStoredSettings, true],
+    [{ version: 1, cursorDiagnosticsEnabled: true, wireLogEnabled: false } satisfies AiGatewayStoredSettings, true],
   ])("passes stored Cursor diagnostics opt-in %s to newly started traces", async (settings, expected) => {
     const gateway = stubGateway();
     const streamSpy = vi.spyOn(gateway, "stream");

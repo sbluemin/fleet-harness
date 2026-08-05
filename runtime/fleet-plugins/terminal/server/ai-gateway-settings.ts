@@ -35,6 +35,13 @@ export interface AiGatewayStoredSettings {
   readonly defaultModel?: string;
   /** 부재/false는 기본 Off. 저장 정규형은 opt-in인 true만 보존한다. */
   readonly cursorDiagnosticsEnabled?: boolean;
+  /**
+   * 부재는 env(`FLEET_GATEWAY_WIRE_LOG`) 폴백, true/false는 Console이 강제하는 On/Off다.
+   * 위 `cursorDiagnosticsEnabled`와 달리 **false를 정규형에서 지우면 안 된다** — env를 켜 둔 설치에서
+   * 사용자가 UI로 Off한 뒤 재시작하면 부재가 다시 env 상속으로 읽혀 로깅이 되살아나고,
+   * 토글이 꺼지지 않는 결함이 된다.
+   */
+  readonly wireLogEnabled?: boolean;
 }
 
 export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSettings {
@@ -66,6 +73,7 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
     ...(models.length > 0 ? { models } : {}),
     ...(defaultModel !== undefined ? { defaultModel } : {}),
     ...(value.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
+    ...(typeof value.wireLogEnabled === "boolean" ? { wireLogEnabled: value.wireLogEnabled } : {}),
   };
 }
 
@@ -78,6 +86,8 @@ export interface AiGatewaySettingsStore {
   readonly write: (value: AiGatewayUpdateValue | undefined) => Promise<AiGatewayStoredSettings>;
   /** 모델 선별은 보존하고 진단 opt-in만 갱신한다. */
   readonly writeCursorDiagnosticsEnabled: (enabled: boolean) => Promise<AiGatewayStoredSettings>;
+  /** `undefined`는 wireLogEnabled 키를 제거해 env 폴백으로 돌아간다. */
+  readonly writeWireLogEnabled: (enabled: boolean | undefined) => Promise<AiGatewayStoredSettings>;
 }
 
 export interface AiGatewayUpdateValue {
@@ -96,6 +106,7 @@ export function createAiGatewaySettingsStore(storage: FleetPluginStorageHost, pl
       const next = normalizeAiGatewaySettings({
         version: 1,
         ...(current.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
+        ...(typeof current.wireLogEnabled === "boolean" ? { wireLogEnabled: current.wireLogEnabled } : {}),
         ...(value ?? {}),
       });
       await storage.writeJson(pluginId, AI_GATEWAY_SETTINGS_STORAGE_KEY, next);
@@ -107,6 +118,21 @@ export function createAiGatewaySettingsStore(storage: FleetPluginStorageHost, pl
         ...current,
         cursorDiagnosticsEnabled: enabled,
       });
+      await storage.writeJson(pluginId, AI_GATEWAY_SETTINGS_STORAGE_KEY, next);
+      return next;
+    }),
+    writeWireLogEnabled: (enabled) => serializeAiGatewaySettingsWrite(async () => {
+      const current = await read();
+      const next = normalizeAiGatewaySettings({
+        ...current,
+        ...(enabled === undefined ? {} : { wireLogEnabled: enabled }),
+      });
+      if (enabled === undefined) {
+        const withoutWireLog = { ...next } as { wireLogEnabled?: boolean };
+        delete withoutWireLog.wireLogEnabled;
+        await storage.writeJson(pluginId, AI_GATEWAY_SETTINGS_STORAGE_KEY, withoutWireLog);
+        return withoutWireLog as AiGatewayStoredSettings;
+      }
       await storage.writeJson(pluginId, AI_GATEWAY_SETTINGS_STORAGE_KEY, next);
       return next;
     }),

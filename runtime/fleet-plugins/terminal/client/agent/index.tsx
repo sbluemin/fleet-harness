@@ -867,6 +867,15 @@ function AiGatewayDiagnosticsCard() {
           !state.cursorDiagnosticsEnabled,
         )}
       />
+      <SettingToggleRow
+        title={t("terminal.settings.aiGatewayWireLog")}
+        help={t("terminal.settings.aiGatewayWireLogHelp")}
+        onLabel={t("terminal.settings.enabled")}
+        offLabel={t("terminal.settings.off")}
+        value={state.wireLogEnabled}
+        disabled={saving}
+        onToggle={() => void setSystemPromptSettingsField("wireLogEnabled", !state.wireLogEnabled)}
+      />
       <p className="global-settings-foot">{t("terminal.settings.aiGatewayDiagnosticsFoot")}</p>
     </section>
   );

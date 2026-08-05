@@ -18,11 +18,23 @@ describe("ai-gateway settings store", () => {
       models: [{ id: "" }, { id: 7 }, { id: "cursor--auto", effort: "max" }, "kimi--k3"],
       defaultModel: "",
       cursorDiagnosticsEnabled: true,
+      wireLogEnabled: false,
     })).toEqual({
       version: 1,
       models: [{ id: "cursor--auto" }],
       cursorDiagnosticsEnabled: true,
+      wireLogEnabled: false,
     });
+    expect(normalizeAiGatewaySettings({
+      version: 1,
+      cursorDiagnosticsEnabled: false,
+      wireLogEnabled: true,
+    })).toEqual({ version: 1, wireLogEnabled: true });
+    expect(normalizeAiGatewaySettings({
+      version: 1,
+      cursorDiagnosticsEnabled: false,
+      wireLogEnabled: false,
+    })).toEqual({ version: 1, wireLogEnabled: false });
     expect(normalizeAiGatewaySettings({
       version: 1,
       cursorDiagnosticsEnabled: false,
@@ -63,6 +75,24 @@ describe("ai-gateway settings store", () => {
     });
     await store.writeCursorDiagnosticsEnabled(false);
     expect(await store.read()).toEqual({ version: 1 });
+
+    await store.writeWireLogEnabled(false);
+    expect(await store.read()).toEqual({ version: 1, wireLogEnabled: false });
+    await store.write({ models: [{ id: "cursor--auto" }] });
+    expect(await store.read()).toEqual({ version: 1, models: [{ id: "cursor--auto" }], wireLogEnabled: false });
+    await store.writeCursorDiagnosticsEnabled(true);
+    expect(await store.read()).toEqual({
+      version: 1,
+      models: [{ id: "cursor--auto" }],
+      cursorDiagnosticsEnabled: true,
+      wireLogEnabled: false,
+    });
+    await store.writeWireLogEnabled(undefined);
+    expect(await store.read()).toEqual({
+      version: 1,
+      models: [{ id: "cursor--auto" }],
+      cursorDiagnosticsEnabled: true,
+    });
   });
 
   it("drops a stored effort the catalog no longer offers instead of echoing it back", () => {

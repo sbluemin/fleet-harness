@@ -37,13 +37,15 @@ export interface SystemPromptSettingsState {
   readonly aiGateway: AiGatewaySettings | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
+  readonly wireLogEnabled: boolean;
 }
 
 export type SystemPromptSettingsUpdate =
   | { readonly enableMetaphor: boolean }
   | { readonly agentIdleDormantMinutes: number | null }
   | { readonly aiGateway: AiGatewaySettings | null }
-  | { readonly cursorDiagnosticsEnabled: boolean };
+  | { readonly cursorDiagnosticsEnabled: boolean }
+  | { readonly wireLogEnabled: boolean };
 
 export class TerminalSettingsApiError extends Error {
   readonly status: number;
@@ -92,6 +94,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     || !isAgentIdleDormantMinutes(payload.agentIdleDormantMinutes)
     || !isAiGatewayCatalog(payload.aiGatewayCatalog)
     || typeof payload.cursorDiagnosticsEnabled !== "boolean"
+    || typeof payload.wireLogEnabled !== "boolean"
   ) {
     throw new TerminalSettingsApiError(status, "Invalid Terminal settings response");
   }
@@ -101,6 +104,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     aiGateway: payload.aiGateway ?? null,
     aiGatewayCatalog: payload.aiGatewayCatalog,
     cursorDiagnosticsEnabled: payload.cursorDiagnosticsEnabled,
+    wireLogEnabled: payload.wireLogEnabled,
   };
 }
 
@@ -120,7 +124,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "enableMetaphor" | "agentIdleDormantMinutes" | "aiGateway" | "cursorDiagnosticsEnabled";
+export type SystemPromptSettingsField = "enableMetaphor" | "agentIdleDormantMinutes" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -196,6 +200,9 @@ function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptS
   if (field === "aiGateway") return { aiGateway: state.aiGateway };
   if (field === "cursorDiagnosticsEnabled") {
     return { cursorDiagnosticsEnabled: state.cursorDiagnosticsEnabled };
+  }
+  if (field === "wireLogEnabled") {
+    return { wireLogEnabled: state.wireLogEnabled };
   }
   return { agentIdleDormantMinutes: state.agentIdleDormantMinutes };
 }
