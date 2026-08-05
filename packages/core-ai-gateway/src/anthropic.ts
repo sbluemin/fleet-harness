@@ -350,8 +350,16 @@ function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["
 
   const items: CanonicalResponseRequest["input"] = [];
   const parts: CanonicalInputContentPart[] = [];
+  let reasoningContent = "";
 
-  const flushParts = (): void => {
+  const takeReasoningContent = (): { reasoning_content?: string } => {
+    if (role !== "assistant" || reasoningContent.length === 0) return {};
+    const reasoning = reasoningContent;
+    reasoningContent = "";
+    return { reasoning_content: reasoning };
+  };
+
+  const flushParts = (includeReasoning = true): void => {
     if (parts.length === 0) {
       return;
     }
@@ -359,6 +367,7 @@ function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["
       type: "message",
       role,
       content: normalizeCanonicalMessageContent(parts.splice(0, parts.length)),
+      ...(includeReasoning ? takeReasoningContent() : {}),
     });
   };
 
@@ -373,12 +382,13 @@ function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["
         parts.push(translateImageBlock(block));
         break;
       case "tool_use":
-        flushParts();
+        flushParts(false);
         items.push({
           type: "function_call",
           call_id: block.id,
           name: block.name,
-          arguments: JSON.stringify(block.input)
+          arguments: JSON.stringify(block.input),
+          ...takeReasoningContent(),
         });
         break;
       case "tool_result": {
@@ -396,6 +406,10 @@ function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["
         break;
       }
       case "thinking":
+        if (role === "assistant" && typeof block.thinking === "string") {
+          reasoningContent += block.thinking;
+        }
+        break;
       case "redacted_thinking":
         break;
       default:

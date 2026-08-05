@@ -105,6 +105,59 @@ describe("chat completions request translation", () => {
     expect(headers.get("authorization")).toBe("Bearer k");
   });
 
+  it("replays reasoning only for DeepSeek V4 assistant tool turns", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
+    await adapter(fetchMock).stream(request({
+      input: [
+        { type: "message", role: "user", content: "go" },
+        {
+          type: "function_call",
+          call_id: "call-a",
+          name: "ToolA",
+          arguments: "{}",
+          reasoning_content: "Need the tool.",
+        },
+        { type: "function_call_output", call_id: "call-a", output: "done" },
+        {
+          type: "message",
+          role: "assistant",
+          content: "finished",
+          reasoning_content: "Interpreting the result.",
+        },
+      ],
+    }), { apiKey: "k" });
+
+    const deepSeekBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      messages: Array<Record<string, unknown>>;
+    };
+    expect(deepSeekBody.messages).toEqual([
+      { role: "user", content: "go" },
+      {
+        role: "assistant",
+        content: null,
+        reasoning_content: "Need the tool.",
+        tool_calls: [{ id: "call-a", type: "function", function: { name: "ToolA", arguments: "{}" } }],
+      },
+      { role: "tool", tool_call_id: "call-a", content: "done" },
+      { role: "assistant", content: "finished", reasoning_content: "Interpreting the result." },
+    ]);
+
+    fetchMock.mockClear();
+    await adapter(fetchMock).stream(request({
+      model: "kimi-k3",
+      input: [{
+        type: "message",
+        role: "assistant",
+        content: "finished",
+        reasoning_content: "Do not replay globally.",
+      }],
+    }), { apiKey: "k" });
+    const kimiBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      messages: Array<Record<string, unknown>>;
+    };
+    expect(kimiBody.messages).toEqual([{ role: "assistant", content: "finished" }]);
+  });
+
   it("folds same-turn trailing assistant text into the tool_calls message itself", async () => {
     // Chat 와이어의 정식 표현: 한 assistant 메시지가 content와 tool_calls를 함께 싣는다.
     const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
@@ -192,6 +245,33 @@ describe("chat completions request translation", () => {
 });
 
 describe("chat completions stream translation", () => {
+  it("translates reasoning_content into canonical reasoning events", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => sse(
+      chunk({ id: "c-reason", model: "deepseek-v4-flash", choices: [{ index: 0, delta: { reasoning_content: "Inspecting " } }] }),
+      chunk({ id: "c-reason", model: "deepseek-v4-flash", choices: [{ index: 0, delta: { reasoning_content: "the repository." } }] }),
+      chunk({ id: "c-reason", model: "deepseek-v4-flash", choices: [{ index: 0, delta: { content: "Done" } }] }),
+      "data: [DONE]\n\n",
+    ));
+    const response = await adapter(fetchMock).stream(request(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    const events = await collect(response.events);
+
+    expect(events.filter((event) => event.type === "response.reasoning_summary_text.delta")).toEqual([
+      {
+        type: "response.reasoning_summary_text.delta",
+        item_id: "chat_message_0_reasoning",
+        output_index: 0,
+        delta: "Inspecting ",
+      },
+      {
+        type: "response.reasoning_summary_text.delta",
+        item_id: "chat_message_0_reasoning",
+        output_index: 0,
+        delta: "the repository.",
+      },
+    ]);
+  });
+
   it("translates text chunks into canonical text events with final usage", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => sse(
       ": keep-alive\n\n",

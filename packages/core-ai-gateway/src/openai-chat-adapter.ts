@@ -51,8 +51,9 @@ interface ChatWireToolCall {
 }
 
 type ChatWireMessage =
-  | { role: "system" | "assistant" | "user"; content: string | ChatWireContentPart[] }
-  | { role: "assistant"; content: string | null; tool_calls: ChatWireToolCall[] }
+  | { role: "system" | "user"; content: string | ChatWireContentPart[] }
+  | { role: "assistant"; content: string | ChatWireContentPart[]; reasoning_content?: string }
+  | { role: "assistant"; content: string | null; tool_calls: ChatWireToolCall[]; reasoning_content?: string }
   | { role: "tool"; tool_call_id: string; content: string };
 
 interface ChatWireRequest {
@@ -83,9 +84,9 @@ export interface OpenAIChatCompletionsAdapterOptions {
  * - No strict-mode schema rewrite. Chat Completions backends differ on strict
  *   support, so tools ship with their original schemas and the optional-argument
  *   pollution caveat documented for Cursor applies here too.
- * - `reasoning` never reaches the wire. Chat Completions has no portable
- *   reasoning parameter, and `reasoning_content` deltas some backends stream are
- *   hidden thinking — they are dropped, surfacing only in reported usage.
+ * - Chat Completions에는 이식 가능한 `reasoning` 요청 파라미터가 없어 설정은 wire에 싣지
+ *   않는다. Provider가 보낸 `reasoning_content`는 canonical reasoning으로 보존하고, 이전
+ *   assistant 추론은 wire 요구가 실측된 모델에만 재생한다.
  */
 export class OpenAIChatCompletionsAdapter implements AiGatewayAdapter {
   private readonly fetchImpl: FetchLike;
@@ -179,8 +180,10 @@ function forChatCompletionsBackend(request: CanonicalResponseRequest): ChatWireR
   //   assistant 메시지로 병합하고,
   // - 사이에 낀 user/developer 텍스트는 해당 호출의 결과 뒤로 미룬다(원문에서도 결과와
   //   함께 도착한 발화이므로 결과 직후가 의미상 제자리다).
+  const replayReasoning = request.model.startsWith("deepseek-v4-");
   let pendingToolCalls: ChatWireToolCall[] = [];
   let pendingAssistantText: string | undefined;
+  let pendingAssistantReasoning: string | undefined;
   let deferredMessages: ChatWireMessage[] = [];
   const flushToolCalls = (): void => {
     if (pendingToolCalls.length === 0) return;
@@ -188,9 +191,13 @@ function forChatCompletionsBackend(request: CanonicalResponseRequest): ChatWireR
       role: "assistant",
       content: pendingAssistantText ?? null,
       tool_calls: pendingToolCalls,
+      ...(replayReasoning && pendingAssistantReasoning
+        ? { reasoning_content: pendingAssistantReasoning }
+        : {}),
     });
     pendingToolCalls = [];
     pendingAssistantText = undefined;
+    pendingAssistantReasoning = undefined;
   };
   const flushDeferredMessages = (): void => {
     if (deferredMessages.length === 0) return;
@@ -206,6 +213,9 @@ function forChatCompletionsBackend(request: CanonicalResponseRequest): ChatWireR
         type: "function",
         function: { name: item.name, arguments: item.arguments },
       });
+      if (replayReasoning && item.reasoning_content) {
+        pendingAssistantReasoning ??= item.reasoning_content;
+      }
       continue;
     }
     if (item.type === "function_call_output") {
@@ -220,12 +230,12 @@ function forChatCompletionsBackend(request: CanonicalResponseRequest): ChatWireR
           pendingAssistantText = pendingAssistantText === undefined ? text : `${pendingAssistantText}\n\n${text}`;
         }
       } else {
-        deferredMessages.push(chatWireMessage(item));
+        deferredMessages.push(chatWireMessage(item, replayReasoning));
       }
       continue;
     }
     flushDeferredMessages();
-    messages.push(chatWireMessage(item));
+    messages.push(chatWireMessage(item, replayReasoning));
   }
   flushToolCalls();
   flushDeferredMessages();
@@ -264,15 +274,27 @@ function forChatCompletionsBackend(request: CanonicalResponseRequest): ChatWireR
   return payload;
 }
 
-function chatWireMessage(item: CanonicalInputMessage): ChatWireMessage {
+function chatWireMessage(
+  item: CanonicalInputMessage,
+  replayReasoning: boolean,
+): ChatWireMessage {
   // canonical developer = system 성격 메시지 (Codex 백엔드 전용 표기). Chat 와이어의
   // 보편 표기는 system이다.
   const role = item.role === "developer" ? "system" : item.role;
+  if (role === "assistant") {
+    return {
+      role,
+      content: canonicalMessageText(item.content),
+      ...(replayReasoning && item.reasoning_content
+        ? { reasoning_content: item.reasoning_content }
+        : {}),
+    };
+  }
   if (typeof item.content === "string") {
     return { role, content: item.content };
   }
-  // 이미지 파트는 user 멀티모달 메시지에서만 의미가 있다. 그 밖의 role은 텍스트로 접는다.
-  if (role !== "user") {
+  // 이미지 파트는 user 멀티모달 메시지에서만 의미가 있다. system은 텍스트로 접는다.
+  if (role === "system") {
     return { role, content: canonicalMessageText(item.content) };
   }
   const parts: ChatWireContentPart[] = item.content.map((part) => {
@@ -364,6 +386,14 @@ async function* translateChatCompletionsStream(
     for (const choice of choices) {
       if (!isRecord(choice)) continue;
       const delta = isRecord(choice.delta) ? choice.delta : {};
+      if (typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0) {
+        yield {
+          type: "response.reasoning_summary_text.delta",
+          item_id: `${MESSAGE_ITEM_ID}_reasoning`,
+          output_index: 0,
+          delta: delta.reasoning_content,
+        };
+      }
       if (typeof delta.content === "string" && delta.content.length > 0) {
         textSeen = true;
         accumulatedText += delta.content;

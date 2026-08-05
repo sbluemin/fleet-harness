@@ -2437,6 +2437,12 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     }
     if (isRecord(update.thinkingDelta) && typeof update.thinkingDelta.text === "string") {
       activeSegment.outputText += update.thinkingDelta.text;
+      emit({
+        type: "response.reasoning_summary_text.delta",
+        item_id: `${activeSegment.itemId}_reasoning`,
+        output_index: 0,
+        delta: update.thinkingDelta.text,
+      });
       return;
     }
     if (isRecord(update.tokenDelta)) {

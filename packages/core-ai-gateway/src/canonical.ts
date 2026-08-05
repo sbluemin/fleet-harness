@@ -20,6 +20,8 @@ export interface CanonicalInputMessage {
   role: "user" | "assistant" | "developer";
   /** Plain text, or Responses-style multimodal parts when images are present. */
   content: string | CanonicalInputContentPart[];
+  /** Provider 추론 재생 메타데이터. 어댑터가 모델별로 선택하며 visible content로 노출하지 않는다. */
+  reasoning_content?: string;
 }
 
 /** Flatten message text for adapters that only accept a string prompt body. */
@@ -67,6 +69,8 @@ export interface CanonicalFunctionCall {
   call_id: string;
   name: string;
   arguments: string;
+  /** 이 assistant tool call 앞의 provider 추론. 요구하는 모델의 history에만 재생한다. */
+  reasoning_content?: string;
 }
 
 export interface CanonicalFunctionCallOutput {

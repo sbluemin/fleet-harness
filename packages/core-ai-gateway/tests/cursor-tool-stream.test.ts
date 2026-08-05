@@ -515,6 +515,25 @@ describe("Cursor client tool suspension", () => {
     expect(events.at(-1)?.type).toBe("response.completed");
   });
 
+  it("preserves Cursor thinking deltas as canonical reasoning events", async () => {
+    const { events } = await runSyntheticCursorTurn([
+      { interactionUpdate: { thinkingDelta: { text: "Inspecting the repository." } } },
+      { interactionUpdate: { textDelta: { text: "Done" } } },
+      { interactionUpdate: { turnEnded: {} } },
+    ], request("claude-session-thinking"));
+
+    expect(events).toContainEqual({
+      type: "response.reasoning_summary_text.delta",
+      item_id: expect.stringMatching(/_reasoning$/),
+      output_index: 0,
+      delta: "Inspecting the repository.",
+    });
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "response.output_text.delta",
+      delta: "Done",
+    }));
+  });
+
   it("acknowledges a Cursor planning query and lets the turn continue", async () => {
     const { events, stream } = await runSyntheticCursorTurn([
       {
