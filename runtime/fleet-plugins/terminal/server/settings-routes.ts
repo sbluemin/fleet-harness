@@ -16,6 +16,10 @@ import {
 interface TerminalSettingsRouteDeps {
   readonly globalOptionsService: GlobalOptionsService;
   readonly aiGatewayStore: AiGatewaySettingsStore;
+  readonly wireLogRuntime: {
+    readonly enabled: () => boolean;
+    readonly apply: (stored: boolean | undefined) => void;
+  };
 }
 
 interface TerminalSettingsBody {
@@ -23,13 +27,15 @@ interface TerminalSettingsBody {
   readonly agentIdleDormantMinutes?: unknown;
   readonly aiGateway?: unknown;
   readonly cursorDiagnosticsEnabled?: unknown;
+  readonly wireLogEnabled?: unknown;
 }
 
 type TerminalSettingsUpdate =
   | { readonly enableMetaphor: boolean }
   | { readonly agentIdleDormantMinutes: number | null }
   | { readonly aiGateway: AiGatewayUpdateValue | undefined }
-  | { readonly cursorDiagnosticsEnabled: boolean };
+  | { readonly cursorDiagnosticsEnabled: boolean }
+  | { readonly wireLogEnabled: boolean };
 
 export const DEFAULT_AGENT_IDLE_DORMANT_MINUTES = 60;
 
@@ -39,13 +45,18 @@ export interface TerminalSettingsState {
   readonly aiGateway: AiGatewayUpdateValue | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
+  readonly wireLogEnabled: boolean;
 }
 
 export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, deps: TerminalSettingsRouteDeps): void {
   registerRouter(ctx, "settings", async ({ req, res }) => {
     if (req.method === "GET") {
       // 상류 host 게이트(server.ts:423)로 loopback이 보장된다. 플러그인 컨텍스트에는 콘솔 포트가 없다.
-      ctx.host.http.writeJson(res, 200, toTerminalSettingsState(deps.globalOptionsService.load(), await deps.aiGatewayStore.read()));
+      ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
+        deps.globalOptionsService.load(),
+        await deps.aiGatewayStore.read(),
+        deps.wireLogRuntime.enabled(),
+      ));
       return true;
     }
     if (req.method === "PUT") {
@@ -66,18 +77,46 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
       if ("aiGateway" in update) {
         // AI Gateway 선별은 Fleet 전역 옵션이 아니라 콘솔 durable state의 플러그인 슬롯 소유다.
         const stored = await deps.aiGatewayStore.write(update.aiGateway);
-        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(deps.globalOptionsService.load(), stored));
+        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
+          deps.globalOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
+        ));
         return true;
       }
       if ("cursorDiagnosticsEnabled" in update) {
         const stored = await deps.aiGatewayStore.writeCursorDiagnosticsEnabled(
           update.cursorDiagnosticsEnabled,
         );
-        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(deps.globalOptionsService.load(), stored));
+        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
+          deps.globalOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
+        ));
+        return true;
+      }
+      if ("wireLogEnabled" in update) {
+        const previous = await deps.aiGatewayStore.read();
+        let stored: AiGatewayStoredSettings;
+        try {
+          stored = await deps.aiGatewayStore.writeWireLogEnabled(update.wireLogEnabled);
+          deps.wireLogRuntime.apply(stored.wireLogEnabled);
+        } catch {
+          // Durable state and the live target must move together. Restore the prior raw value
+          // when applying the new target fails, including absence for env fallback.
+          try {
+            await deps.aiGatewayStore.writeWireLogEnabled(previous.wireLogEnabled);
+          } catch {
+            // Preserve the original 500; the store's writer has already reported the failure.
+          }
+          ctx.host.http.writeJson(res, 500, { error: "wire_log_runtime_apply_failed" });
+          return true;
+        }
+        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
+          deps.globalOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
+        ));
         return true;
       }
       const updated = deps.globalOptionsService.update((current) => ({ ...current, ...update }));
-      ctx.host.http.writeJson(res, 200, toTerminalSettingsState(updated, await deps.aiGatewayStore.read()));
+      ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
+        updated, await deps.aiGatewayStore.read(), deps.wireLogRuntime.enabled(),
+      ));
       return true;
     }
     ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
@@ -85,7 +124,11 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
   });
 }
 
-export function toTerminalSettingsState(data: GlobalOptionsData, aiGateway: AiGatewayStoredSettings): TerminalSettingsState {
+export function toTerminalSettingsState(
+  data: GlobalOptionsData,
+  aiGateway: AiGatewayStoredSettings,
+  wireLogEnabled: boolean,
+): TerminalSettingsState {
   const configured = (aiGateway.models?.length ?? 0) > 0 || aiGateway.defaultModel !== undefined;
   return {
     enableMetaphor: data.enableMetaphor ?? false,
@@ -100,6 +143,7 @@ export function toTerminalSettingsState(data: GlobalOptionsData, aiGateway: AiGa
       : null,
     aiGatewayCatalog: buildAiGatewayCatalog(),
     cursorDiagnosticsEnabled: aiGateway.cursorDiagnosticsEnabled === true,
+    wireLogEnabled,
   };
 }
 
@@ -130,6 +174,11 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
   if (keys[0] === "cursorDiagnosticsEnabled") {
     return typeof body.cursorDiagnosticsEnabled === "boolean"
       ? { cursorDiagnosticsEnabled: body.cursorDiagnosticsEnabled }
+      : null;
+  }
+  if (keys[0] === "wireLogEnabled") {
+    return typeof body.wireLogEnabled === "boolean"
+      ? { wireLogEnabled: body.wireLogEnabled }
       : null;
   }
   return null;

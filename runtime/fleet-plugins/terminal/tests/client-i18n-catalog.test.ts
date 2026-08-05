@@ -15,6 +15,11 @@ const NEW_MESSAGE_KEYS = [
   "terminal.notifications.agentInputWaitingBody",
   "terminal.notifications.agentTurnEndedBody",
   "terminal.notifications.resumeFailedMessage",
+  "terminal.settings.aiGatewayDiagnostics",
+  "terminal.settings.aiGatewayDiagnosticsHelp",
+  "terminal.settings.aiGatewayDiagnosticsFoot",
+  "terminal.settings.aiGatewayWireLog",
+  "terminal.settings.aiGatewayWireLogHelp",
 ] as const satisfies readonly (keyof typeof terminalEn)[];
 
 const PLACEHOLDER_KEYS = [

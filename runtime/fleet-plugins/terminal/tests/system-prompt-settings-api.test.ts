@@ -35,6 +35,7 @@ describe("system prompt settings api", () => {
       aiGateway: null,
       aiGatewayCatalog: CATALOG,
       cursorDiagnosticsEnabled: false,
+      wireLogEnabled: false,
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(fetchSystemPromptSettings()).resolves.toEqual({
@@ -43,6 +44,7 @@ describe("system prompt settings api", () => {
       aiGateway: null,
       aiGatewayCatalog: CATALOG,
       cursorDiagnosticsEnabled: false,
+      wireLogEnabled: false,
     });
     expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", { signal: undefined });
   });
@@ -54,6 +56,7 @@ describe("system prompt settings api", () => {
       aiGateway: null,
       aiGatewayCatalog: EMPTY_CATALOG,
       cursorDiagnosticsEnabled: false,
+      wireLogEnabled: false,
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(saveSystemPromptSettings({ enableMetaphor: true })).resolves.toMatchObject({
@@ -83,6 +86,7 @@ describe("system prompt settings api", () => {
       enableMetaphor: false,
       agentIdleDormantMinutes: 60,
       cursorDiagnosticsEnabled: false,
+      wireLogEnabled: false,
     })));
     await expect(fetchSystemPromptSettings()).rejects.toThrow("Invalid Terminal settings response");
   });
@@ -103,6 +107,7 @@ describe("system prompt settings api", () => {
       aiGateway: null,
       aiGatewayCatalog: EMPTY_CATALOG,
       cursorDiagnosticsEnabled: false,
+      wireLogEnabled: false,
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(saveSystemPromptSettings({ agentIdleDormantMinutes: null })).resolves.toMatchObject({
@@ -128,6 +133,7 @@ describe("system prompt settings api", () => {
       aiGateway,
       aiGatewayCatalog: CATALOG,
       cursorDiagnosticsEnabled: false,
+      wireLogEnabled: false,
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(saveSystemPromptSettings({ aiGateway })).resolves.toMatchObject({ aiGateway });
@@ -139,6 +145,16 @@ describe("system prompt settings api", () => {
     });
   });
 
+  it("rejects responses missing the wire log setting", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({
+      enableMetaphor: false,
+      agentIdleDormantMinutes: 60,
+      aiGatewayCatalog: EMPTY_CATALOG,
+      cursorDiagnosticsEnabled: false,
+    })));
+    await expect(fetchSystemPromptSettings()).rejects.toThrow("Invalid Terminal settings response");
+  });
+
   it("saves Cursor diagnostics independently from the gateway selection", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({
       enableMetaphor: false,
@@ -146,15 +162,38 @@ describe("system prompt settings api", () => {
       aiGateway: null,
       aiGatewayCatalog: CATALOG,
       cursorDiagnosticsEnabled: true,
+      wireLogEnabled: false,
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(saveSystemPromptSettings({ cursorDiagnosticsEnabled: true })).resolves.toMatchObject({
       cursorDiagnosticsEnabled: true,
+      wireLogEnabled: false,
     });
     expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cursorDiagnosticsEnabled: true }),
+      signal: undefined,
+    });
+  });
+
+  it("saves the wire log setting independently from Cursor diagnostics", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      enableMetaphor: false,
+      agentIdleDormantMinutes: 60,
+      aiGateway: null,
+      aiGatewayCatalog: CATALOG,
+      cursorDiagnosticsEnabled: false,
+      wireLogEnabled: true,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(saveSystemPromptSettings({ wireLogEnabled: true })).resolves.toMatchObject({
+      wireLogEnabled: true,
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wireLogEnabled: true }),
       signal: undefined,
     });
   });
