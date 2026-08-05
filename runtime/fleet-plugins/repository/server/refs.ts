@@ -20,7 +20,7 @@ export function resolveDefaultBase(input: { originHead: string; branches: readon
 }
 async function readStashes(gitCwd: string): Promise<string> {
   try {
-    return (await runGit(["stash", "list", "--format=%gd%x00%s"], { cwd: gitCwd })).stdout;
+    return (await runGit(["stash", "list", "--format=%gd%x00%H%x00%s"], { cwd: gitCwd })).stdout;
   } catch (error) {
     if (error instanceof GitExecutorError) return "";
     throw error;
@@ -55,7 +55,10 @@ export async function handleRepositoryRefs(req: http.IncomingMessage, res: http.
     const defaultBase = resolveDefaultBase({ originHead: originHead.stdout, branches, remotes });
     ctx.host.http.writeJson(res, 200, {
       branches, remotes, tags: parseRefItems(tags.stdout, current),
-      stashes: lines(stashes).map((line) => { const [name, subject = ""] = line.split("\0"); return { name, subject }; }),
+      stashes: lines(stashes).flatMap((line) => {
+        const [name, sha, subject = ""] = line.split("\0");
+        return name && sha ? [{ name, sha, subject }] : [];
+      }),
       ...(defaultBase ? { defaultBase } : {}),
     });
   } catch (error) {

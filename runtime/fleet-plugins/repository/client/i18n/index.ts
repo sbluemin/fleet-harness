@@ -20,7 +20,6 @@ export const repositoryEn = {
   // working rows / sources
   "repository.source.history": "History",
   "repository.source.changes": "Changes",
-  "repository.source.compare": "Compare",
 
   // ref groups
   "repository.refs.local": "LOCAL",
@@ -98,17 +97,8 @@ export const repositoryEn = {
   "repository.time.yesterday": "Yesterday {time}",
 
   // compare
-  "repository.compare.run": "Compare",
   "repository.compare.swap": "Swap base and head",
-  "repository.compare.baseBadge": "base",
   "repository.compare.resultsAnnounce": "Comparison finished — {count} files",
-  "repository.compare.baseRef": "Base ref",
-  "repository.compare.headRef": "Head ref",
-  "repository.compare.selectBase": "Select base…",
-  "repository.compare.optionLocal": "LOCAL · {label}",
-  "repository.compare.optionRemotes": "REMOTES · {label}",
-  "repository.compare.optionTags": "TAGS · {label}",
-  "repository.compare.idle": "Select base and head refs, then run Compare.",
   "repository.compare.comparing": "Comparing…",
   "repository.compare.noDifferences": "No differences between the selected refs.",
   "repository.compare.noMergeBase": "The selected refs share no common history.",
@@ -116,6 +106,34 @@ export const repositoryEn = {
   "repository.compare.capped": "Comparison capped — file list truncated.",
   "repository.compare.withBase": "Compare with base",
   "repository.compare.withCurrent": "Compare with current branch",
+
+  // in-history compare (anchor grammar)
+  "repository.compare.pinAction": "Compare with another commit…",
+  "repository.compare.pinRow": "Pin {short} as compare base",
+  "repository.compare.completeRow": "Compare {short} with base {base}",
+  "repository.compare.unpinRow": "Unpin compare base {short}",
+  "repository.compare.pinnedChip": "base {short}",
+  "repository.compare.pinnedHint": "Shift-click or ⇆ picks the second commit",
+  "repository.compare.closeCompare": "Close comparison",
+  "repository.compare.resultTitle": "Changes in {head} since the common ancestor with {base}",
+  "repository.compare.announcePinned": "Pinned {short} as compare base. Choose the second commit.",
+  "repository.compare.announceUnpinned": "Compare base unpinned.",
+  "repository.compare.announceResult": "Comparing {base} with {head}.",
+
+  // checkout containment labeling
+  "repository.history.offHead": "Not in current checkout",
+  "repository.history.countLegend": "All refs · dimmed = not in current checkout",
+
+  // sync outcome surfacing (manual sync only; auto sync stays silent)
+  "repository.sync.failedAuth": "Sync failed — authentication. Check your credentials for origin.",
+  "repository.sync.failedNetwork": "Sync failed — network. origin is unreachable.",
+  "repository.sync.failedTimeout": "Sync failed — timed out.",
+  "repository.sync.failedNoRemote": "Sync failed — no remote is configured.",
+  "repository.sync.failedGit": "Sync failed — git error.",
+  "repository.sync.summary": "Synced — {newRefs} new · {updatedRefs} updated · {pruned} pruned",
+  "repository.sync.summaryClean": "Synced — already up to date",
+  "repository.sync.dismiss": "Dismiss",
+  "repository.sync.lastFailed": "Last sync failed",
 
   // hunk
   "repository.hunk.diffTruncated": "Diff truncated",
@@ -135,7 +153,6 @@ export const repositoryKo: Record<keyof typeof repositoryEn, string> = {
 
   "repository.source.history": "기록",
   "repository.source.changes": "변경",
-  "repository.source.compare": "비교",
 
   "repository.refs.local": "로컬",
   "repository.refs.remotes": "원격",
@@ -205,17 +222,8 @@ export const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.time.today": "오늘 {time}",
   "repository.time.yesterday": "어제 {time}",
 
-  "repository.compare.run": "비교",
   "repository.compare.swap": "base와 head 교환",
-  "repository.compare.baseBadge": "베이스",
   "repository.compare.resultsAnnounce": "비교 완료 — 파일 {count}개",
-  "repository.compare.baseRef": "Base ref",
-  "repository.compare.headRef": "Head ref",
-  "repository.compare.selectBase": "base 선택…",
-  "repository.compare.optionLocal": "로컬 · {label}",
-  "repository.compare.optionRemotes": "원격 · {label}",
-  "repository.compare.optionTags": "태그 · {label}",
-  "repository.compare.idle": "base와 head ref를 선택한 뒤 비교를 실행하세요.",
   "repository.compare.comparing": "비교 중…",
   "repository.compare.noDifferences": "선택한 refs 사이에 차이가 없습니다.",
   "repository.compare.noMergeBase": "선택한 refs에 공통 이력이 없습니다.",
@@ -223,6 +231,31 @@ export const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.compare.capped": "비교 한도 — 파일 목록이 잘렸습니다.",
   "repository.compare.withBase": "베이스와 비교",
   "repository.compare.withCurrent": "현재 브랜치와 비교",
+
+  "repository.compare.pinAction": "다른 커밋과 비교…",
+  "repository.compare.pinRow": "{short}를 비교 기준으로 고정",
+  "repository.compare.completeRow": "기준 {base}와(과) {short} 비교",
+  "repository.compare.unpinRow": "비교 기준 {short} 고정 해제",
+  "repository.compare.pinnedChip": "기준 {short}",
+  "repository.compare.pinnedHint": "Shift-클릭 또는 ⇆로 두 번째 커밋을 선택하세요",
+  "repository.compare.closeCompare": "비교 닫기",
+  "repository.compare.resultTitle": "{base}와(과)의 공통 조상 이후 {head}의 변경",
+  "repository.compare.announcePinned": "{short}를 비교 기준으로 고정했습니다. 두 번째 커밋을 선택하세요.",
+  "repository.compare.announceUnpinned": "비교 기준 고정을 해제했습니다.",
+  "repository.compare.announceResult": "{base}와(과) {head}를 비교합니다.",
+
+  "repository.history.offHead": "현재 체크아웃에 포함되지 않음",
+  "repository.history.countLegend": "모든 ref 기록 · 흐림 = 체크아웃 미포함",
+
+  "repository.sync.failedAuth": "동기화 실패 — 인증. origin 자격 증명을 확인하세요.",
+  "repository.sync.failedNetwork": "동기화 실패 — 네트워크. origin에 연결할 수 없습니다.",
+  "repository.sync.failedTimeout": "동기화 실패 — 시간 초과.",
+  "repository.sync.failedNoRemote": "동기화 실패 — 설정된 remote가 없습니다.",
+  "repository.sync.failedGit": "동기화 실패 — git 오류.",
+  "repository.sync.summary": "동기화 완료 — 신규 {newRefs} · 갱신 {updatedRefs} · 정리 {pruned}",
+  "repository.sync.summaryClean": "동기화 완료 — 이미 최신 상태",
+  "repository.sync.dismiss": "닫기",
+  "repository.sync.lastFailed": "마지막 동기화 실패",
 
   "repository.hunk.diffTruncated": "Diff가 잘림",
 };

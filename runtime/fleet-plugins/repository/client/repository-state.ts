@@ -66,21 +66,8 @@ export interface RepoViewState {
   readonly collapsedFolders: readonly string[];
 }
 
-export type CompareResultSnapshot =
-  | { readonly kind: "ok"; readonly base: string; readonly head: string; readonly files: readonly DiffFileEntry[]; readonly mergeBase?: string; readonly truncated?: boolean }
-  | { readonly kind: "notice"; readonly reason: "no_git_repo" | "git_unavailable" }
-  | { readonly kind: "error"; readonly message: string };
-
-export interface CompareViewState {
-  readonly result: CompareResultSnapshot | null;
-  readonly selectedPath: string | null;
-  readonly listPaneWidth: number;
-  readonly scrollTop: number;
-}
-
 const workspaceTreeCache = new Map<string, WorkspaceTreeState>();
 const repoViewCache = new Map<string, RepoViewState>();
-const compareViewCache = new Map<string, CompareViewState>();
 
 function readCacheEntry<T>(cache: Map<string, T>, key: string): T | null {
   const entry = cache.get(key);
@@ -100,7 +87,6 @@ function writeCacheEntry<T>(cache: Map<string, T>, key: string, entry: T): void 
 
 const workspaceTreeKey = (theaterId: string): string => `tree::${theaterId}`;
 const repoViewKey = (theaterId: string, repoRel: string): string => `view::${theaterId}::${repoRel}`;
-const compareViewKey = (theaterId: string, repoRel: string): string => `compare::${theaterId}::${repoRel}`;
 
 export function readWorkspaceTreeState(theaterId: string): WorkspaceTreeState | null {
   return readCacheEntry(workspaceTreeCache, workspaceTreeKey(theaterId));
@@ -124,18 +110,6 @@ export function writeRepoViewState(theaterId: string, repoRel: string, entry: Re
 
 export function dropRepoViewState(theaterId: string, repoRel: string): void {
   repoViewCache.delete(repoViewKey(theaterId, repoRel));
-}
-
-export function readCompareViewState(theaterId: string, repoRel: string): CompareViewState | null {
-  return readCacheEntry(compareViewCache, compareViewKey(theaterId, repoRel));
-}
-
-export function writeCompareViewState(theaterId: string, repoRel: string, entry: CompareViewState): void {
-  writeCacheEntry(compareViewCache, compareViewKey(theaterId, repoRel), entry);
-}
-
-export function dropCompareViewState(theaterId: string, repoRel: string): void {
-  compareViewCache.delete(compareViewKey(theaterId, repoRel));
 }
 
 // ═══ repository-view-store ═══════════════════════════════════════════════════
