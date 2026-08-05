@@ -1,4 +1,5 @@
 import type { AdmiralDoctrine } from "../protocols/doctrine.js";
+import type { ClaudeSkillOverride } from "./gateway-skills.js";
 
 export type AgentCliId = "claude" | "claude-native" | "claude-gateway";
 
@@ -63,6 +64,11 @@ export interface AgentCliInjectionContext {
     readonly model: string;
     readonly effort?: string;
   }>>;
+  /**
+   * Claude Code `--settings`의 `skillOverrides` 맵. 세션이 싣지 않을 내장 스킬을
+   * `off`로 넣는다. 프로세스 단위 필터라 서브에이전트 목록에도 함께 적용된다.
+   */
+  readonly skillOverrides?: Readonly<Record<string, ClaudeSkillOverride>>;
   readonly mcpServers: readonly AgentCliMcpServerArg[];
   readonly pluginRoot: string;
   readonly pluginRoots: readonly string[];

@@ -6,7 +6,9 @@ import { findGatewayModel } from "@dotobokuri/core-ai-gateway";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  GATEWAY_DISABLED_CLAUDE_SKILLS,
   GENERAL_PURPOSE_AGENT_PROMPT,
+  buildDisabledSkillOverrides,
   buildGatewayCustomAgents,
   injectAgentCliProfile,
   resolveAgentCliProfile,
@@ -147,6 +149,59 @@ describe("claude-gateway custom agents", () => {
     expect(injected.args).not.toContain("--agents");
     expect(injected.args).not.toContain("--disallowedTools");
     injected.cleanup?.();
+  });
+});
+
+describe("claude-gateway disabled skills", () => {
+  it("turns the built-in claude-api skill off through --settings", async () => {
+    const root = createTempRoot("fleet-admiral-gateway-skills-");
+    const profile = baseProfile("claude-gateway", {
+      args: [],
+      cwd: root,
+      env: { HOME: root },
+    });
+
+    const injected = await injectAgentCliProfile(profile, baseInjectOptions(root));
+
+    const settingsIndex = injected.args.indexOf("--settings");
+    expect(settingsIndex).toBeGreaterThanOrEqual(0);
+    const settingsJson = injected.args[settingsIndex + 1];
+    expect(typeof settingsJson).toBe("string");
+    const settings = JSON.parse(settingsJson as string) as {
+      skillOverrides?: Record<string, string>;
+    };
+    expect(settings.skillOverrides).toEqual({ "claude-api": "off" });
+    // `off`만 목록과 슬래시 호출 양쪽에서 감춘다. name-only/user-invocable-only는
+    // 서브에이전트에게 이름이 남거나 모델 목록에 그대로 실린다.
+    for (const override of Object.values(settings.skillOverrides ?? {})) {
+      expect(override).toBe("off");
+    }
+    // 이 설정은 Fleet이 강제하는 키만 실어야 한다. 사용자·프로젝트 설정을 이 자리에서
+    // 덮으면 flag 소스가 가장 세서 되돌릴 방법이 없다.
+    expect(Object.keys(settings)).toEqual(["skillOverrides"]);
+
+    injected.cleanup?.();
+  });
+
+  it("leaves classic and native Claude sessions untouched", async () => {
+    const root = createTempRoot("fleet-admiral-gateway-skills-other-");
+    const classic = baseProfile("claude", { args: [], cwd: root, env: { HOME: root } });
+    const native = baseProfile("claude-native", { args: [], cwd: root, env: { HOME: root } });
+
+    const injectedClassic = await injectAgentCliProfile(classic, baseInjectOptions(root));
+    const injectedNative = await injectAgentCliProfile(native, baseInjectOptions(root));
+
+    expect(injectedClassic.args).not.toContain("--settings");
+    expect(injectedNative.args).not.toContain("--settings");
+
+    injectedClassic.cleanup?.();
+    injectedNative.cleanup?.();
+  });
+
+  it("keeps the roster non-empty so the flag is never a no-op", () => {
+    expect(GATEWAY_DISABLED_CLAUDE_SKILLS).toContain("claude-api");
+    expect(buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS)).toBeDefined();
+    expect(buildDisabledSkillOverrides([])).toBeUndefined();
   });
 });
 
