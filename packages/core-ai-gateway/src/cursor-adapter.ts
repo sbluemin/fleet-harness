@@ -24,6 +24,7 @@ import type {
   ReasoningEffort,
 } from "./canonical.js";
 import {
+  ContextWindowExceededError,
   canonicalMessageImages,
   canonicalMessageText,
 } from "./canonical.js";
@@ -1233,6 +1234,36 @@ export class CursorAdapter implements AiGatewayAdapter {
     // Cursor rewrites and caps the declared catalog before it reaches the wire; this is the
     // post-rewrite tool set plus the resolved model coordinate.
     wireLog("cursor.wire.plan", plan);
+    // 모든 진입 경로가 이 판정을 지나야 한다. bridge를 지원하는 모델은 tool 결과가
+    // parked Run에 붙어 cold Run 경로를 건너뛰므로, 판정을 그 뒤에 두면 tool을 쓰는
+    // 세션만 포화된 계기로 계속 달리게 된다.
+    const contextRecall = recallCursorContextCheckpoint(
+      identity.conversationId,
+      plan.wireModelId,
+      credentialFingerprint,
+      plan.estimatedInputTokens,
+    );
+    const contextRefusal = cursorContextWindowRefusal(
+      contextRecall.checkpoint,
+      options.modelContextWindow,
+    );
+    if (contextRefusal || contextRecall.compacted) {
+      // parked Run은 park될 당시의 대화를 전제로 업스트림에 이어져 있다. 창이 찼다면
+      // 압축이 곧 오고, 이미 축소됐다면 압축이 지나간 것이라 어느 쪽이든 그 전제가
+      // 깨졌다. 그런데 mismatch 판정은 대화 내용을 보지 않아 call id만 같으면 그대로
+      // 다시 붙고, 그러면 압축이 클라이언트에만 반영된 채 업스트림 세션은 가득 찬
+      // 상태로 이어진다. 여기서 버려야 다음 요청이 차갑게 열린다.
+      const stale = this.pendingLiveRuns.get(conversationStateKey);
+      if (stale && this.claimPendingLiveRun(stale)) {
+        const outcome = contextRefusal ? "context_window_exceeded" : "conversation_compacted";
+        stale.run.report("bridge.mismatch", {
+          model: cursorDiagnosticLabel(request.model),
+          outcome,
+        });
+        stale.run.dispose(`bridge_mismatch_${outcome}`);
+      }
+      if (contextRefusal) throw contextRefusal;
+    }
     const descriptor: CursorLiveRunDescriptor = {
       conversationId: identity.conversationId,
       sessionId: identity.sessionId,
@@ -1279,7 +1310,7 @@ export class CursorAdapter implements AiGatewayAdapter {
       }
     }
 
-    return this.openRun(request, options, identity, plan, descriptor);
+    return this.openRun(request, options, identity, plan, descriptor, contextRecall.checkpoint);
   }
 
   /** Close every adapter-owned parked Run. Safe to call more than once. */
@@ -1368,6 +1399,7 @@ export class CursorAdapter implements AiGatewayAdapter {
     identity: CursorSessionIdentity,
     plan: CursorRunPlan,
     descriptor: CursorLiveRunDescriptor,
+    previousContextCheckpoint: CursorContextCheckpoint | undefined,
   ): Promise<AdapterResponse> {
     if (options.signal?.aborted) throw new Error("cancelled by caller");
     // Cursor Run을 열 때 기록 정책을 고정한다. tool continuation은 이 Run에 붙어 reporter를
@@ -1381,12 +1413,6 @@ export class CursorAdapter implements AiGatewayAdapter {
       identity.conversationId,
       descriptor.credentialFingerprint,
       plan.wireModelId,
-    );
-    const previousContextCheckpoint = recallCursorContextCheckpoint(
-      identity.conversationId,
-      plan.wireModelId,
-      descriptor.credentialFingerprint,
-      plan.estimatedInputTokens,
     );
     report("turn.start", {
       model,
@@ -1671,6 +1697,15 @@ function rememberCursorWireModel(
   return previous;
 }
 
+interface CursorCheckpointRecall {
+  readonly checkpoint: CursorContextCheckpoint | undefined;
+  /**
+   * 요청이 기준선보다 작아져 체크포인트를 폐기한 경우. 대화가 재구성됐다는 신호이며,
+   * 그 대화를 전제로 열려 있는 parked Run도 함께 무효가 된다.
+   */
+  readonly compacted: boolean;
+}
+
 /**
  * 보관된 체크포인트는 그것을 측정한 대화가 계속 자라는 동안에만 이 요청을 설명한다.
  * Claude Code가 컴팩트하면 입력이 급감하는데, 낡은 값은 그 요청보다 큰 점유를 주장하고
@@ -1682,20 +1717,60 @@ function recallCursorContextCheckpoint(
   wireModelId: string,
   credentialFingerprint: string,
   requestInputTokens: number,
-): CursorContextCheckpoint | undefined {
+): CursorCheckpointRecall {
   const key = cursorConversationStateKey(credentialFingerprint, conversationId);
   const checkpoint = CURSOR_CONTEXT_CHECKPOINT_BY_STATE.get(key);
-  if (!checkpoint) return undefined;
+  if (!checkpoint) return { checkpoint: undefined, compacted: false };
   CURSOR_CONTEXT_CHECKPOINT_BY_STATE.delete(key);
   if (
     checkpoint.wireModelId !== wireModelId
     || checkpoint.credentialFingerprint !== credentialFingerprint
-    || requestInputTokens < checkpoint.requestInputTokens
+  ) {
+    return { checkpoint: undefined, compacted: false };
+  }
+  if (requestInputTokens < checkpoint.requestInputTokens) {
+    return { checkpoint: undefined, compacted: true };
+  }
+  CURSOR_CONTEXT_CHECKPOINT_BY_STATE.set(key, checkpoint);
+  return { checkpoint, compacted: false };
+}
+
+/**
+ * Refuse a new turn once Cursor's own measurement says the conversation already fills
+ * the model's window.
+ *
+ * This is not a transport budget — it is what keeps Claude Code's occupancy meter
+ * informative. That meter reads a projection onto Claude Code's 1M coordinate, and the
+ * projection saturates at exactly this point: past it every turn reports 1,000,000 no
+ * matter how much further the conversation grew, so the client can no longer see itself
+ * approaching its own compaction threshold. Measured on 2026-08-05, a `grok-4.5-fast`
+ * session sat at a saturated 1,000,000 across 31 consecutive requests before compaction
+ * finally fired from the client's own local accounting, several minutes late.
+ *
+ * The refusal restores that signal: it carries the 413 Claude Code arms reactive
+ * compaction from, so the turn compacts instead of continuing blind. The count is
+ * Cursor's, never our character estimate — on that same session the estimate read
+ * 210,670 against a measured 262,338, which is why the gateway's own pre-flight guard
+ * never fired.
+ *
+ * A compacted retry sends a smaller request, and `recallCursorContextCheckpoint` drops
+ * the stale checkpoint on exactly that shrink, so this cannot fire twice against a
+ * conversation that already compacted.
+ */
+function cursorContextWindowRefusal(
+  checkpoint: CursorContextCheckpoint | undefined,
+  modelContextWindow: number | undefined,
+): ContextWindowExceededError | undefined {
+  if (
+    checkpoint === undefined
+    || typeof modelContextWindow !== "number"
+    || !Number.isFinite(modelContextWindow)
+    || modelContextWindow <= 0
+    || checkpoint.contextTokens < modelContextWindow
   ) {
     return undefined;
   }
-  CURSOR_CONTEXT_CHECKPOINT_BY_STATE.set(key, checkpoint);
-  return checkpoint;
+  return new ContextWindowExceededError(checkpoint.contextTokens, modelContextWindow);
 }
 
 function rememberCursorContextCheckpoint(

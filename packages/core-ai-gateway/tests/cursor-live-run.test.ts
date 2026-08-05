@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CURSOR_TOOL_PROVIDER_IDENTIFIER,
+  ContextWindowExceededError,
   CursorAdapter,
   buildCursorRunPlan,
   decodeConnectFrames,
@@ -432,6 +433,211 @@ describe("Cursor live client-tool Run bridge", () => {
         await collectCursorResponse(harness.adapter, base),
       );
       expect(compactedUsage?.input_tokens).toBeLessThan(10_000);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("refuses the next turn once Cursor's own count fills the model window", async () => {
+    // 이 지점이 곧 Claude Code의 점유 계기가 1M 좌표에서 포화하는 지점이다. 넘어가면
+    // 대화가 더 커져도 계기가 움직이지 않아 클라이언트가 자기 압축 임계를 볼 수 없다.
+    const saturating = new BridgeCursorStream([
+      {
+        conversationCheckpointUpdate: {
+          tokenDetails: { usedTokens: 256_000, maxTokens: 256_000 },
+        },
+      },
+      ...cursorCompletionFrames("window is full"),
+    ]);
+    const harness = cursorHarness([saturating]);
+    const request = cursorRequest("session-window-saturated", "kimi-k3-1m");
+
+    try {
+      await collectCursorResponse(harness.adapter, request);
+
+      await expect(harness.adapter.stream(request, {
+        apiKey: "cursor-test-token",
+        modelContextWindow: 256_000,
+      })).rejects.toBeInstanceOf(ContextWindowExceededError);
+      // 거절된 턴은 업스트림에 닿지 않는다.
+      expect(harness.openedStreams).toBe(1);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("refuses a tool continuation at the window instead of reattaching blind", async () => {
+    // bridge를 지원하는 모델은 tool 결과가 parked Run에 붙으므로 cold Run 경로를
+    // 타지 않는다. 그 경로에만 검사를 두면 tool을 쓰는 세션 전체가 포화된 계기로
+    // 계속 달린다 — 정확히 이 수정이 없애려는 상태다.
+    const call = cursorCall("call-window-full", 61);
+    const stream = new BridgeCursorStream([
+      {
+        conversationCheckpointUpdate: {
+          tokenDetails: { usedTokens: 256_000, maxTokens: 256_000 },
+        },
+      },
+      ...cursorToolFrames([call]),
+    ]);
+    const harness = cursorHarness([stream]);
+    const initial = cursorRequest("session-window-continuation", "kimi-k3-1m");
+
+    try {
+      await collectCursorResponse(harness.adapter, initial);
+      const continuation = cursorContinuation(initial, [call], [
+        cursorResult(call, "tool result"),
+      ]);
+
+      await expect(harness.adapter.stream(continuation, {
+        apiKey: "cursor-test-token",
+        modelContextWindow: 256_000,
+      })).rejects.toBeInstanceOf(ContextWindowExceededError);
+      expect(harness.openedStreams).toBe(1);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("forces a compacted retry to open a cold Run instead of the saturated one", async () => {
+    // mismatch 판정은 대화 내용을 보지 않는다. 압축된 재시도가 같은 call id를 보존하면
+    // 그대로 통과해 이미 포화된 Run에 다시 붙고, 압축은 클라이언트에만 반영된 채
+    // 업스트림 세션은 가득 찬 상태로 이어진다.
+    const call = cursorCall("call-window-retry", 62);
+    const parked = new BridgeCursorStream(
+      [
+        {
+          conversationCheckpointUpdate: {
+            tokenDetails: { usedTokens: 256_000, maxTokens: 256_000 },
+          },
+        },
+        ...cursorToolFrames([call]),
+      ],
+      cursorCompletionFrames("saturated run continued"),
+      1,
+    );
+    const cold = new BridgeCursorStream(cursorCompletionFrames("cold run opened"));
+    const harness = cursorHarness([parked, cold]);
+    const base = cursorRequest("session-window-retry", "kimi-k3-1m");
+    const large: CanonicalResponseRequest = {
+      ...base,
+      input: [{ type: "message", role: "user", content: "x".repeat(60_000) }],
+    };
+
+    try {
+      await collectCursorResponse(harness.adapter, large);
+      await expect(harness.adapter.stream(
+        cursorContinuation(large, [call], [cursorResult(call, "tool result")]),
+        { apiKey: "cursor-test-token", modelContextWindow: 256_000 },
+      )).rejects.toBeInstanceOf(ContextWindowExceededError);
+
+      // 압축된 재시도 — 히스토리는 줄었지만 진행 중이던 call/result는 보존된다.
+      const events = await collectAdapterEvents(await harness.adapter.stream(
+        cursorContinuation(base, [call], [cursorResult(call, "tool result")]),
+        { apiKey: "cursor-test-token", modelContextWindow: 256_000 },
+      ));
+
+      expect(canonicalText(events)).toBe("cold run opened");
+      expect(harness.openedStreams).toBe(2);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("opens cold when the first request after a saturated call is already compacted", async () => {
+    // Claude Code가 413을 받기 전에 스스로 압축하면 거절 경로가 아예 실행되지 않는다.
+    // 그때도 parked Run이 전제한 대화는 사라졌으므로 붙여서는 안 된다.
+    const call = cursorCall("call-window-selfcompact", 63);
+    const parked = new BridgeCursorStream(
+      [
+        {
+          conversationCheckpointUpdate: {
+            tokenDetails: { usedTokens: 256_000, maxTokens: 256_000 },
+          },
+        },
+        ...cursorToolFrames([call]),
+      ],
+      cursorCompletionFrames("saturated run continued"),
+      1,
+    );
+    const cold = new BridgeCursorStream(cursorCompletionFrames("cold run opened"));
+    const harness = cursorHarness([parked, cold]);
+    const base = cursorRequest("session-window-selfcompact", "kimi-k3-1m");
+    const large: CanonicalResponseRequest = {
+      ...base,
+      input: [{ type: "message", role: "user", content: "x".repeat(60_000) }],
+    };
+
+    try {
+      await collectCursorResponse(harness.adapter, large);
+
+      // 413 없이 곧바로 압축된 continuation이 도착한다.
+      const events = await collectAdapterEvents(await harness.adapter.stream(
+        cursorContinuation(base, [call], [cursorResult(call, "tool result")]),
+        { apiKey: "cursor-test-token", modelContextWindow: 256_000 },
+      ));
+
+      expect(canonicalText(events)).toBe("cold run opened");
+      expect(harness.openedStreams).toBe(2);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("stays out of the way while Cursor's count is under the window", async () => {
+    const belowWindow = new BridgeCursorStream([
+      {
+        conversationCheckpointUpdate: {
+          tokenDetails: { usedTokens: 255_999, maxTokens: 256_000 },
+        },
+      },
+      ...cursorCompletionFrames("first turn complete"),
+    ]);
+    const next = new BridgeCursorStream(cursorCompletionFrames("second turn complete"));
+    const harness = cursorHarness([belowWindow, next]);
+    const request = cursorRequest("session-window-under", "kimi-k3-1m");
+
+    try {
+      await collectCursorResponse(harness.adapter, request);
+      const events = await collectAdapterEvents(await harness.adapter.stream(request, {
+        apiKey: "cursor-test-token",
+        modelContextWindow: 256_000,
+      }));
+
+      expect(canonicalText(events)).toBe("second turn complete");
+      expect(harness.openedStreams).toBe(2);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("lets a compacted retry through instead of refusing it again", async () => {
+    // 413을 받은 Claude Code는 압축 후 훨씬 작은 요청을 다시 보낸다. 그 축소가
+    // 체크포인트를 폐기시키므로 같은 거절이 반복되지 않는다.
+    const saturating = new BridgeCursorStream([
+      {
+        conversationCheckpointUpdate: {
+          tokenDetails: { usedTokens: 256_000, maxTokens: 256_000 },
+        },
+      },
+      ...cursorCompletionFrames("window is full"),
+    ]);
+    const compacted = new BridgeCursorStream(cursorCompletionFrames("compacted turn complete"));
+    const harness = cursorHarness([saturating, compacted]);
+    const base = cursorRequest("session-window-compacted", "kimi-k3-1m");
+    const large: CanonicalResponseRequest = {
+      ...base,
+      input: [{ type: "message", role: "user", content: "x".repeat(60_000) }],
+    };
+
+    try {
+      await collectCursorResponse(harness.adapter, large);
+      const events = await collectAdapterEvents(await harness.adapter.stream(base, {
+        apiKey: "cursor-test-token",
+        modelContextWindow: 256_000,
+      }));
+
+      expect(canonicalText(events)).toBe("compacted turn complete");
+      expect(harness.openedStreams).toBe(2);
     } finally {
       harness.adapter.dispose();
     }
