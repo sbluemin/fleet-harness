@@ -397,6 +397,14 @@ function canonicalEvent(value: unknown): CanonicalResponseEvent | undefined {
         content_index: number(value.content_index, "content_index"),
         text: string(value.text, "text")
       };
+    case "response.reasoning_summary_text.delta":
+    case "response.reasoning_text.delta":
+      return {
+        type: "response.reasoning_summary_text.delta",
+        item_id: string(value.item_id, "item_id"),
+        output_index: number(value.output_index, "output_index"),
+        delta: string(value.delta, "delta")
+      };
     case "response.output_item.added":
     case "response.output_item.done": {
       const item = outputItem(value.item);
