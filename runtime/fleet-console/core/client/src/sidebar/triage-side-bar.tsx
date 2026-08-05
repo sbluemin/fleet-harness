@@ -1,9 +1,11 @@
-import { useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { FleetClientPlugin, OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../i18n/index.js";
+import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
 import { resumeOperationInPlace } from "../operation-resume.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-idle-arrival.js";
 import type { OperationNode, OperationNotification } from "../types.js";
@@ -48,6 +50,10 @@ interface TriageSideBarProps {
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly plugins: readonly FleetClientPlugin[];
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
+  readonly canLaunch: boolean;
+  /** 소유자 없는 자리의 실행 대상 — 사이드바 빈 영역은 활성 Theater로 실행한다. */
+  readonly activeTheaterLabel?: string;
+  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind) => void;
   readonly onPick: (operationId: string) => void;
   readonly onClose: (operationId: string) => void;
   readonly onRename: (operationId: string, title: string) => void;
@@ -62,6 +68,9 @@ export function TriageSideBar({
   catalog,
   plugins,
   renderKindIcon,
+  canLaunch,
+  activeTheaterLabel,
+  onLaunchKind,
   onPick,
   onClose,
   onRename,
@@ -77,6 +86,29 @@ export function TriageSideBar({
   const sideBar = useSideBarState();
   const { resizing, onPointerDown: onResizePointerDown, onDoubleClick: onResizeDoubleClick } = useSideBarResize();
   const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
+  const [launchMenu, setLaunchMenu] = useState<{
+    readonly anchor: { readonly x: number; readonly y: number };
+    readonly viewportBounds: { readonly width: number; readonly height: number };
+  } | null>(null);
+  // 메뉴는 포털(document.body)이라 <aside>의 inert가 닿지 않는다 — 좌측 열을 접으면 그 열이 연
+  // 메뉴도 함께 걷어야 한다. 아니면 사라진 사이드바의 메뉴가 화면에 남아 실행까지 받는다.
+  useEffect(() => {
+    if (sideBar.collapsed) setLaunchMenu(null);
+  }, [sideBar.collapsed]);
+  // 사이드바 빈 영역 우클릭 = 캔버스의 주인 없는 자리와 같은 '캔버스 제어'를 커서 자리에 연다.
+  // 칩과 휴면 선반은 자기 우클릭에서 preventDefault()를 부르므로(버블로 도달 시 defaultPrevented=true)
+  // 그쪽 계약은 그대로 유지되고 여기서는 무시된다.
+  const openLaunchMenuAtCursor = (event: MouseEvent<HTMLElement>) => {
+    if (event.defaultPrevented) return;
+    event.preventDefault();
+    // 캔버스가 소유한 메뉴는 이 <aside> 안에 없어 포털의 mousedown 외부-클릭 닫기가 못 잡는다 —
+    // 포털이 구독하는 닫기 신호를 함께 보낸다.
+    window.dispatchEvent(new Event("canvas-context-menu-close"));
+    setLaunchMenu({
+      anchor: { x: event.clientX, y: event.clientY },
+      viewportBounds: { width: window.innerWidth, height: window.innerHeight },
+    });
+  };
   const queue = resolveTriageQueue(operations, operationStatus);
   const stagedOperationId = getTriagePick() ?? queue[0]?.operation.id ?? null;
   const theaterLabelById = new Map(theaters.map((theater) => [theater.id, theater.label]));
@@ -139,6 +171,7 @@ export function TriageSideBar({
       style={{ "--side-bar-width": `${sideBar.width}px` } as CSSProperties}
       inert={sideBar.collapsed}
       aria-label={t("triageSidebar.aria")}
+      onContextMenu={openLaunchMenuAtCursor}
     >
       {/* 상태 섹션은 비어 있어도 항상 선다 — 대기·실행 중·백그라운드·유휴는 War Room이 읽는
           축 자체라, 건수가 0이라고 축이 사라지면 좌측 열의 읽는 법이 상황에 따라 달라진다.
@@ -168,6 +201,22 @@ export function TriageSideBar({
         </footer>
       ) : null}
       <SideBarResizeHandle onPointerDown={onResizePointerDown} onDoubleClick={onResizeDoubleClick} />
+
+      {launchMenu ? createPortal(
+        <CanvasContextMenu
+          key={`${launchMenu.anchor.x}:${launchMenu.anchor.y}`}
+          anchor={launchMenu.anchor}
+          viewportBounds={launchMenu.viewportBounds}
+          placement="cursor"
+          catalog={catalog}
+          canLaunch={canLaunch}
+          renderKindIcon={renderKindIcon}
+          onLaunchKind={(pluginId, kind) => { setLaunchMenu(null); onLaunchKind(pluginId, kind); }}
+          onClose={() => setLaunchMenu(null)}
+          theaterLabel={activeTheaterLabel}
+        />,
+        document.body,
+      ) : null}
     </aside>
   );
 }

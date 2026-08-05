@@ -1302,6 +1302,8 @@ describe("triage store", () => {
         catalog: [],
         plugins: [],
         renderKindIcon: () => null,
+        canLaunch: true,
+        onLaunchKind: () => {},
         onPick: pickTriageOperation,
         onClose: () => {},
         onRename: () => {},
@@ -1355,6 +1357,8 @@ describe("triage store", () => {
       catalog: [],
       plugins: [{ id: "terminal", resumeOperation }],
       renderKindIcon: () => null,
+      canLaunch: true,
+      onLaunchKind: () => {},
       onPick,
       onClose: () => {},
       onRename: () => {},
@@ -1380,6 +1384,89 @@ describe("triage store", () => {
     expect(resumeOperation).toHaveBeenCalledWith("dormant");
     expect(onPick).not.toHaveBeenCalled();
     expect(isTriageActive()).toBe(true);
+  });
+
+  it("opens canvas controls from bare sidebar space while chips and the dormant shelf keep their own contract", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    triagePlateRoot = createRoot(container);
+    const operations = [operation("first", 1), operation("resting", 2)];
+    const status: Readonly<Record<string, OperationActivity>> = { first: "awaiting", resting: "dormant" };
+    const onOpenOperationMenu = vi.fn();
+    const onLaunchKind = vi.fn();
+    recordTriageActivity(operations, status, 1_000);
+    setTriageActive(true);
+
+    act(() => triagePlateRoot?.render(createElement(TriageSideBar, {
+      theaters: THEATERS,
+      operations,
+      operationStatus: status,
+      operationNotifications: {},
+      catalog: [{ id: "terminal", title: "Terminal", kinds: [{ id: "shell", type: "shell", title: "Shell" }] }],
+      plugins: [],
+      renderKindIcon: () => null,
+      canLaunch: true,
+      activeTheaterLabel: "Alpha",
+      onLaunchKind,
+      onPick: () => {},
+      onClose: () => {},
+      onRename: () => {},
+      onOpenOperationMenu,
+    })));
+
+    // 칩도 선반도 아닌 빈 자리는 캔버스의 주인 없는 자리와 같은 '캔버스 제어'를 연다 —
+    // War Room에서 좌측 열이 실행 진입점을 갖지 못하던 구멍을 메운다.
+    const aside = container.querySelector<HTMLElement>(".triage-side-bar")!;
+    // 이 표면은 열면서 공용 닫기 신호를 함께 보낸다 — 캔버스가 이미 연 메뉴는 이 <aside> 밖이라
+    // 포털의 외부-클릭 닫기가 잡지 못한다. 구독만 있고 발신이 없으면 두 메뉴가 동시에 뜬다.
+    const closeSignals: Event[] = [];
+    const recordClose = (event: Event) => closeSignals.push(event);
+    window.addEventListener("canvas-context-menu-close", recordClose);
+    const bareMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 24, clientY: 48 });
+    act(() => aside.dispatchEvent(bareMenu));
+    window.removeEventListener("canvas-context-menu-close", recordClose);
+    expect(closeSignals).toHaveLength(1);
+    expect(bareMenu.defaultPrevented).toBe(true);
+    const launchMenu = document.querySelector(".canvas-context-menu");
+    expect(launchMenu).not.toBeNull();
+    // 소유자가 없는 자리이므로 어느 Theater로 실행되는지는 헤더가 밝힌다.
+    expect(launchMenu?.querySelector(".canvas-context-menu-head-text")?.textContent).toContain("Alpha");
+    const shellItem = launchMenu?.querySelector<HTMLButtonElement>('[data-operation-launch-kind="shell"]');
+    expect(shellItem).not.toBeNull();
+    expect(shellItem?.disabled).toBe(false);
+    expect(onOpenOperationMenu).not.toHaveBeenCalled();
+
+    // 항목은 실제로 실행을 배선한다 — 열리기만 하는 메뉴는 진입점이 아니다.
+    act(() => shellItem?.click());
+    expect(onLaunchKind).toHaveBeenCalledWith("terminal", expect.objectContaining({ id: "shell" }));
+    expect(document.querySelector(".canvas-context-menu")).toBeNull();
+
+    // 캔버스가 Map 클릭에서 보내는 같은 신호로도 닫힌다(pan이 mousedown 합성을 끊어 외부-클릭이 못 잡는다).
+    act(() => aside.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 24, clientY: 48 })));
+    expect(document.querySelector(".canvas-context-menu")).not.toBeNull();
+    act(() => { window.dispatchEvent(new Event("canvas-context-menu-close")); });
+    expect(document.querySelector(".canvas-context-menu")).toBeNull();
+
+    // 좌측 열을 접으면 그 열이 연 메뉴도 걷힌다 — 포털이라 <aside>의 inert가 닿지 않는다.
+    act(() => aside.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 24, clientY: 48 })));
+    expect(document.querySelector(".canvas-context-menu")).not.toBeNull();
+    act(() => setSideBarCollapsed(true));
+    expect(document.querySelector(".canvas-context-menu")).toBeNull();
+    act(() => setSideBarCollapsed(false));
+
+    // 칩 우클릭은 Operation 메뉴 계약 그대로다 — 빈 자리 핸들러가 가로채지 않는다.
+    const chip = container.querySelector<HTMLElement>(".triage-side-bar-sections .side-bar-chip")!;
+    const chipMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 30, clientY: 60 });
+    act(() => chip.dispatchEvent(chipMenu));
+    expect(onOpenOperationMenu).toHaveBeenCalled();
+    expect(document.querySelector(".canvas-context-menu")).toBeNull();
+
+    // 휴면 선반은 아무것도 열지 않는 표면 계약을 유지한다.
+    const shelf = container.querySelector<HTMLElement>(".triage-side-bar-dormant-shelf")!;
+    const shelfMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 30, clientY: 90 });
+    act(() => shelf.dispatchEvent(shelfMenu));
+    expect(shelfMenu.defaultPrevented).toBe(true);
+    expect(document.querySelector(".canvas-context-menu")).toBeNull();
   });
 
   it("renders live previews only for active-Theater cards and the detail fallback for foreign ones", () => {

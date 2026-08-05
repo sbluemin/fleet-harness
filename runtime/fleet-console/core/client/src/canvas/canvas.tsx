@@ -250,10 +250,21 @@ export function OperationsCanvas({
     if (target?.closest("[data-canvas-operation]")) return;
     // War Room에서는 캔버스 전체가 이 모드의 것이다. 자기 메뉴를 가진 표면(카드·점·밴드·구역·레일 행)은
     // 이미 stopPropagation으로 여기 닿지 않으므로, 여기 오는 것은 전부 "주인 없는 자리"다.
-    // 밴드 사이 여백이나 구역 밖 판 바닥이 브라우저 메뉴를 여는 것은 아무것도 열지 않는다는 계약과 어긋난다.
+    // 그 자리도 캔버스 제어를 연다 — Theater를 소유한 표면(밴드 헤더·지도 구역)은 밀도 단계에 따라
+    // 얇은 띠로 줄거나 통째로 사라지므로, 소유 표면에만 메뉴를 두면 실행 진입점이 밀도에 따라 없어진다.
+    // 소유자가 없는 자리의 실행 대상은 활성 Theater이고, 어디로 실행되는지는 메뉴 헤더의 이름이 말한다.
     if (triageActive) {
       event.preventDefault();
-      setContextMenu(null);
+      const activeTheaterId = state.activeTheaterId;
+      if (!activeTheaterId) {
+        setContextMenu(null);
+        return;
+      }
+      openTriageTheaterLaunchMenu(
+        activeTheaterId,
+        state.theaters.find((theater) => theater.id === activeTheaterId)?.label ?? activeTheaterId,
+        { x: event.clientX, y: event.clientY },
+      );
       return;
     }
     if (target?.closest("[data-canvas-blocker]")) return;
