@@ -1,5 +1,7 @@
 export interface AiGatewayModelSelection {
   readonly id: string;
+  /** 정체성으로 내보낼 강도. 부재 = 이 모델의 사다리 전체. */
+  readonly efforts?: readonly string[];
 }
 
 export interface AiGatewaySettings {

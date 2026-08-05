@@ -207,7 +207,12 @@ async function createAgentCliLaunchSpec(options: {
       resumeSessionId: options.resumeSessionId,
       withMarketplaceLock: withConsoleMarketplaceLock,
       mcpSessionLabel: options.sessionId,
-      ...(gatewaySelection ? { gatewayExposedModels: gatewaySelection.models } : {}),
+      ...(gatewaySelection
+        ? {
+          gatewayExposedModels: gatewaySelection.models,
+          gatewayEffortExposure: gatewaySelection.effortExposure,
+        }
+        : {}),
     } as Parameters<typeof injectAgentCliProfile>[1] & { readonly mcpSessionLabel: string });
     options.onRuntimeSessionStart?.({
       cliId: injectedProfile.id,

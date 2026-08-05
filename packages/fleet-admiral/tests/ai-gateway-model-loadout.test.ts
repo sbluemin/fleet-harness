@@ -44,6 +44,45 @@ describe("gateway loadout agent type selectors", () => {
       }
     }
   });
+
+  // 사용자가 강도를 좁히면 정체성이 사라진다. 로스터가 카탈로그 사다리를 계속
+  // 보고하면 호스트는 등록되지 않은 이름을 고르고, 그 실패는 세션 시작 뒤에야 난다.
+  it("reports only the exposed rungs and keeps them matched to the registered agents", () => {
+    const kimi = model("kimi--k3");
+    const effortExposure = { [kimi.id]: ["max"] as const };
+    const registered = new Set(Object.keys(buildGatewayCustomAgents([kimi], effortExposure)));
+    const loadout = buildGatewayLoadout({ exposed: [kimi], effortExposure });
+    const entry = allModels(loadout)[0];
+
+    expect(entry?.constraints.effortLadder).toEqual(["max"]);
+    expect(Object.keys(entry?.agentTypes ?? {})).toEqual(["max"]);
+    expect(registered).toEqual(new Set(Object.values(entry?.agentTypes ?? {})));
+    expect(registered.size).toBe(1);
+  });
+
+  it("moves the revision when a model's exposed rungs change", () => {
+    const kimi = model("kimi--k3");
+    const whole = buildGatewayLoadout({ exposed: [kimi] });
+    const narrowed = buildGatewayLoadout({
+      exposed: [kimi],
+      effortExposure: { [kimi.id]: ["max"] },
+    });
+
+    expect(narrowed.revision).not.toBe(whole.revision);
+  });
+
+  it("ignores an exposure that narrows to nothing", () => {
+    const kimi = model("kimi--k3");
+    const whole = buildGatewayLoadout({ exposed: [kimi] });
+    // 사다리와 하나도 겹치지 않는 선택은 정체성 0개를 뜻하게 두지 않는다.
+    const stale = buildGatewayLoadout({
+      exposed: [kimi],
+      effortExposure: { [kimi.id]: ["xhigh"] },
+    });
+
+    expect(allModels(stale)[0]?.constraints.effortLadder)
+      .toEqual(allModels(whole)[0]?.constraints.effortLadder);
+  });
 });
 
 describe("gateway role fit declarations", () => {

@@ -10,6 +10,7 @@
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import type { GatewayModel } from "@dotobokuri/core-ai-gateway";
 
+import type { GatewayEffortExposure } from "../agent-cli/gateway-agents.js";
 import {
   buildGatewayLoadout,
   type GatewayLoadout,
@@ -21,6 +22,8 @@ export const GATEWAY_MODELS_TOOL_ID = "gateway_models";
 export interface GatewayModelsSelection {
   /** Exactly the models the user exposed in the Console. Never the whole catalog. */
   readonly models: readonly GatewayModel[];
+  /** Per-model reasoning rungs the user exposed. Absent entry = that model's whole ladder. */
+  readonly effortExposure?: GatewayEffortExposure;
   readonly defaultModel?: GatewayModel;
 }
 
@@ -54,7 +57,7 @@ const GATEWAY_MODELS_DOCTRINE = {
     `Two spellings, never interchangeable. agentTypes names this identity once per reasoning rung, so selecting by name already carries the level and nothing further pins effort; modelId is the model as a value. Neither derives from the other — the transform behind a name collapses ".", "[1m]", and "--" all into "-". Prefer a name: a wrong name fails loudly, while modelId reaches whatever the catalog holds, including a model the user turned off, in silence.`,
     `Names are registered once at session start; this roster is re-read live. A model exposed mid-session therefore appears here under a name that will not resolve until a new session — that, and not a stale roster, is what an unknown-name failure means.`,
     `Each provider entry pairs one allowance with the exposed models it serves, so the window to read against a model is in the same entry. claude serves none by design: it is what an unpinned run spends, and the baseline an offload is measured against. A model in no entry is one the user turned off.`,
-    `effortLadder is the whole set of levels that survive — anything outside it is clamped upstream with no signal, and some models have no effort control at all.`,
+    `effortLadder is what this session offers as identities, not what the model can do: the user exposes a model at some or all of its levels, so a level absent here may still exist upstream. A level outside the model's own ladder is clamped down with no signal and refused when nothing is below it, and some models have no effort control at all. Selecting by name settles all of it — every name in agentTypes was registered.`,
     `roleFit null means unmeasured, never unsuitable: quality then gives no reason to prefer an identity, so the choice falls to allowance and never back to this session's own model. homolineage marks shared lineage with that session — useful for moving spend, useless where independent judgement is the product.`,
     `Read pressure before doing arithmetic of your own; it is the verdict on one window, combining headroom with burn pace against that window's own clock, and it never says which model to choose. Compare usedPercent only within one cadence — a shared window id does not mean a shared length. Where a provider splits into pools, quotaScope picks the window that applies and the isAggregate one stays out of headroom math. recoveryHalfLifeMs prices the drain: weeks of lockout for a monthly window, hours for a session one.`,
     `Absence is never safety. A missing derived field means the reading could not support it, and status "unsupported" means the allowance could not be read at all.`,
@@ -94,6 +97,7 @@ async function resolveLoadout(deps: GatewayModelsToolDeps): Promise<GatewayLoado
   }
   return buildGatewayLoadout({
     exposed: selection.models,
+    ...(selection.effortExposure ? { effortExposure: selection.effortExposure } : {}),
     ...(selection.defaultModel ? { defaultModel: selection.defaultModel } : {}),
     ...(quota ? { quota } : {}),
   });

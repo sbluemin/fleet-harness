@@ -19,7 +19,11 @@ import {
 } from "@dotobokuri/core-ai-gateway";
 import { createHash } from "node:crypto";
 
-import { toGatewayAgentName } from "../agent-cli/gateway-agents.js";
+import {
+  exposedEffortLadder,
+  toGatewayAgentName,
+  type GatewayEffortExposure,
+} from "../agent-cli/gateway-agents.js";
 import { gatewayRoleFit, type GatewayRoleFit } from "./role-fit.js";
 
 /** A provider allowance reading, shaped by the host that took it. */
@@ -172,6 +176,8 @@ export interface GatewayLoadout {
 export interface BuildGatewayLoadoutInput {
   /** Exactly the models the user exposed. Never the whole catalog. */
   readonly exposed: readonly GatewayModel[];
+  /** Per-model reasoning rungs the user exposed. Absent entry = that model's whole ladder. */
+  readonly effortExposure?: GatewayEffortExposure;
   readonly defaultModel?: GatewayModel;
   readonly quota?: GatewayQuotaSnapshot;
   /** Injectable clock for derived quota metrics; defaults to Date.now. */
@@ -186,7 +192,7 @@ const PARENT_PROVIDER_ID = "claude";
 export function buildGatewayLoadout(input: BuildGatewayLoadoutInput): GatewayLoadout {
   const placed = input.exposed.map((model) => ({
     provider: model.provider as string,
-    entry: toLoadoutModel(model, input.defaultModel),
+    entry: toLoadoutModel(model, input.defaultModel, input.effortExposure),
   }));
   return {
     revision: loadoutRevision(placed.map(({ entry }) => entry)),
@@ -195,10 +201,20 @@ export function buildGatewayLoadout(input: BuildGatewayLoadoutInput): GatewayLoa
   };
 }
 
-function toLoadoutModel(model: GatewayModel, defaultModel?: GatewayModel): GatewayLoadoutModel {
+function toLoadoutModel(
+  model: GatewayModel,
+  defaultModel?: GatewayModel,
+  exposure?: GatewayEffortExposure,
+): GatewayLoadoutModel {
   const modelId = toClaudeGatewayModelId(model);
   // provider는 그룹 키가 말한다. 사본을 남기면 둘이 어긋났을 때 어느 쪽이 참인지 모른다.
-  const { provider: _provider, ...constraints } = buildGatewayModelConstraints(model);
+  const { provider: _provider, ...catalog } = buildGatewayModelConstraints(model);
+  // 사다리는 카탈로그가 아니라 이 세션이 정체성으로 등록한 것을 말해야 한다.
+  // 등록되지 않은 단계를 사다리에 남기면 호스트가 해석할 수 없는 이름을 고른다.
+  const effortLadder = exposedEffortLadder(model.id, catalog.effortLadder, exposure);
+  const constraints = effortLadder === catalog.effortLadder
+    ? catalog
+    : { ...catalog, effortLadder };
   return {
     agentTypes: toAgentTypeSelectors(modelId, constraints),
     modelId,
@@ -334,10 +350,16 @@ function enrichQuotaWindow(window: GatewayQuotaWindow, at: number): GatewayLoado
 
 // Quota is deliberately excluded: it moves on its own and would make every
 // reading look like a roster change, hiding the exposure edits that matter.
+// The rung set belongs in the material for the mirror reason: narrowing a
+// model's exposed levels changes which identities exist, and a revision that
+// stayed equal across that edit would report the roster as unchanged.
 function loadoutRevision(models: readonly GatewayLoadoutModel[]): string {
   const material = [
     GATEWAY_MODELS_UPDATED_AT,
-    ...models.map((model) => `${model.modelId}:${model.isSessionDefault ? "1" : "0"}`).sort(),
+    ...models
+      .map((model) =>
+        `${model.modelId}:${model.isSessionDefault ? "1" : "0"}:${model.constraints.effortLadder.join("+")}`)
+      .sort(),
   ].join("\n");
   return createHash("sha256").update(material).digest("hex").slice(0, 12);
 }

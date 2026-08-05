@@ -52,18 +52,45 @@ export interface ClaudeCustomAgentDefinition {
 export type ClaudeCustomAgents = Readonly<Record<string, ClaudeCustomAgentDefinition>>;
 
 /**
- * 노출된 gateway 모델(+지원 강도)마다 커스텀 Agent 정의를 만든다.
+ * Scoped gateway 모델 id(`kimi--k3-256k`) → 사용자가 정체성으로 내보낸 강도들.
+ * 항목이 없으면 그 모델의 사다리 전체를 뜻한다.
+ *
+ * 이 좁히기는 **정체성 등록에만** 적용된다. 디스커버리(`/v1/models`)가 광고하는
+ * 사다리는 그대로 두는데, 요청 강도를 카탈로그보다 좁게 강제하면 클램프가 요청
+ * 이하로만 내려가는 성질 때문에 최상단만 남긴 모델이 일반 세션을 400으로 막는다.
+ */
+export type GatewayEffortExposure = Readonly<Record<string, readonly GatewayReasoningEffort[]>>;
+
+/**
+ * 사용자가 고른 강도만 남긴 사다리. 순서는 카탈로그 사다리를 따른다.
+ * 선택이 없거나 사다리와 하나도 겹치지 않으면 전체 사다리로 되돌린다 — 정체성이
+ * 0개인 모델은 노출해 놓고 쓸 수 없는 상태라 어떤 선택보다도 나쁘다.
+ */
+export function exposedEffortLadder(
+  modelId: string,
+  ladder: readonly GatewayReasoningEffort[],
+  exposure: GatewayEffortExposure | undefined,
+): readonly GatewayReasoningEffort[] {
+  const chosen = exposure?.[modelId];
+  if (chosen === undefined || chosen.length === 0) return ladder;
+  const narrowed = ladder.filter((rung) => chosen.includes(rung));
+  return narrowed.length > 0 ? narrowed : ladder;
+}
+
+/**
+ * 노출된 gateway 모델(+내보낸 강도)마다 커스텀 Agent 정의를 만든다.
  * 빈 목록이면 빈 객체를 반환한다(내장 비활성화와는 독립).
  */
 export function buildGatewayCustomAgents(
   exposed: readonly GatewayModel[],
+  exposure?: GatewayEffortExposure,
 ): ClaudeCustomAgents {
   const agents: Record<string, ClaudeCustomAgentDefinition> = {};
   for (const model of exposed) {
     const modelId = toClaudeGatewayModelId(model);
     const constraints = buildGatewayModelConstraints(model);
     if (constraints.effortSupported) {
-      for (const effort of constraints.effortLadder) {
+      for (const effort of exposedEffortLadder(model.id, constraints.effortLadder, exposure)) {
         const name = toGatewayAgentName(modelId, effort);
         agents[name] = {
           description: gatewayAgentDescription(modelId, name, effort),

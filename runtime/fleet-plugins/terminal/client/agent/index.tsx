@@ -920,6 +920,19 @@ function AiGatewayModelsCard() {
   const setDefaultModel = (id: string): void => {
     save({ ...selection, defaultModel: id });
   };
+  // 사다리 전체는 부재로 접어 저장한다 — 저장형이 하나여야 "전체 노출"이 두 가지
+  // 철자를 갖지 않는다. 마지막 한 단계는 UI가 끄지 못하게 막지만, 여기서도 지킨다.
+  const setModelEfforts = (model: AiGatewayCatalogModel, efforts: readonly string[]): void => {
+    const ladder = model.effort?.levels ?? [];
+    const ordered = ladder.filter((level) => efforts.includes(level));
+    if (ordered.length === 0) return;
+    save({
+      ...selection,
+      models: enabled.map((entry) => entry.id !== model.id
+        ? entry
+        : { id: entry.id, ...(ordered.length === ladder.length ? {} : { efforts: ordered }) }),
+    });
+  };
 
   return (
     <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayModels")}>
@@ -942,6 +955,7 @@ function AiGatewayModelsCard() {
           onAdd={addModel}
           onRemove={removeModel}
           onSetDefault={setDefaultModel}
+          onSetEfforts={setModelEfforts}
         />
       ))}
       <p className="global-settings-foot">{t("terminal.settings.aiGatewayModelsFoot")}</p>
@@ -956,17 +970,21 @@ interface AiGatewayProviderBlockProps {
   readonly onAdd: (model: AiGatewayCatalogModel) => void;
   readonly onRemove: (id: string) => void;
   readonly onSetDefault: (id: string) => void;
+  readonly onSetEfforts: (model: AiGatewayCatalogModel, efforts: readonly string[]) => void;
 }
 
-function AiGatewayProviderBlock({ provider, selection, saving, onAdd, onRemove, onSetDefault }: AiGatewayProviderBlockProps) {
+function AiGatewayProviderBlock({ provider, selection, saving, onAdd, onRemove, onSetDefault, onSetEfforts }: AiGatewayProviderBlockProps) {
   const t = getT(useTerminalLocale());
   const baseModels = provider.models.filter((model) => !model.fast);
   const [draftBase, setDraftBase] = React.useState(baseModels[0]?.id ?? "");
   const [draftFast, setDraftFast] = React.useState(false);
 
   const enabledRows = (selection.models ?? [])
-    .map((entry) => provider.models.find((model) => model.id === entry.id))
-    .filter((model): model is AiGatewayCatalogModel => model !== undefined);
+    .map((entry) => {
+      const model = provider.models.find((candidate) => candidate.id === entry.id);
+      return model === undefined ? undefined : { model, efforts: entry.efforts };
+    })
+    .filter((row): row is { model: AiGatewayCatalogModel; efforts?: readonly string[] } => row !== undefined);
 
   const draftBaseModel = provider.models.find((model) => model.id === draftBase) ?? baseModels[0];
   const hasFastPair = draftBaseModel !== undefined
@@ -994,14 +1012,16 @@ function AiGatewayProviderBlock({ provider, selection, saving, onAdd, onRemove, 
         <p className="global-settings-help">{t("terminal.settings.aiGatewayNone")}</p>
       ) : (
         <div className="ai-gateway-rows">
-          {enabledRows.map((model) => (
+          {enabledRows.map(({ model, efforts }) => (
             <AiGatewayModelRow
               key={model.id}
               model={model}
+              exposedEfforts={efforts}
               isDefault={selection.defaultModel === model.id}
               saving={saving}
               onRemove={() => onRemove(model.id)}
               onSetDefault={() => onSetDefault(model.id)}
+              onSetEfforts={(next) => onSetEfforts(model, next)}
             />
           ))}
         </div>
@@ -1046,52 +1066,137 @@ function AiGatewayProviderBlock({ provider, selection, saving, onAdd, onRemove, 
 
 interface AiGatewayModelRowProps {
   readonly model: AiGatewayCatalogModel;
+  /** 부재 = 사다리 전체 노출. */
+  readonly exposedEfforts?: readonly string[];
   readonly isDefault: boolean;
   readonly saving: boolean;
   readonly onRemove: () => void;
   readonly onSetDefault: () => void;
+  readonly onSetEfforts: (efforts: readonly string[]) => void;
 }
 
-function AiGatewayModelRow({ model, isDefault, saving, onRemove, onSetDefault }: AiGatewayModelRowProps) {
+function AiGatewayModelRow({
+  model,
+  exposedEfforts,
+  isDefault,
+  saving,
+  onRemove,
+  onSetDefault,
+  onSetEfforts,
+}: AiGatewayModelRowProps) {
   const t = getT(useTerminalLocale());
+  const [open, setOpen] = React.useState(false);
+  const ladder = model.effort?.levels ?? [];
+  const exposed = resolveExposedEfforts(ladder, exposedEfforts);
+
   return (
-    <div className="ai-gateway-model-row">
-      <button
-        type="button"
-        className={`ai-gateway-default-star ${isDefault ? "is-on" : ""}`}
-        aria-pressed={isDefault}
-        aria-label={t("terminal.settings.aiGatewayDefaultAria", { name: model.name })}
-        disabled={saving}
-        onClick={onSetDefault}
-      >
-        ★
-      </button>
-      <span className="ai-gateway-model-text">
-        <span className="ai-gateway-model-name">{model.name}</span>
-        <span className="ai-gateway-model-id">{model.id}</span>
-      </span>
-      <AiGatewayModelChips model={model} />
-      <button
-        type="button"
-        className="ai-gateway-remove"
-        aria-label={t("terminal.settings.aiGatewayRemoveAria", { name: model.name })}
-        disabled={saving}
-        onClick={onRemove}
-      >
-        ✕
-      </button>
+    <div className={`ai-gateway-model-entry ${open ? "is-open" : ""}`}>
+      <div className="ai-gateway-model-row">
+        <button
+          type="button"
+          className={`ai-gateway-default-star ${isDefault ? "is-on" : ""}`}
+          aria-pressed={isDefault}
+          aria-label={t("terminal.settings.aiGatewayDefaultAria", { name: model.name })}
+          disabled={saving}
+          onClick={onSetDefault}
+        >
+          ★
+        </button>
+        <span className="ai-gateway-model-text">
+          <span className="ai-gateway-model-name">{model.name}</span>
+          <span className="ai-gateway-model-id">{model.id}</span>
+        </span>
+        <AiGatewayModelChips model={model} exposedEfforts={exposedEfforts} />
+        {ladder.length > 0 ? (
+          <button
+            type="button"
+            className="ai-gateway-levels-toggle"
+            aria-expanded={open}
+            aria-label={t("terminal.settings.aiGatewayLevelsAria", { name: model.name })}
+            onClick={() => setOpen((current) => !current)}
+          >
+            <span className="ai-gateway-levels-caret" aria-hidden="true">▸</span>
+            {t(open ? "terminal.settings.aiGatewayLevelsHide" : "terminal.settings.aiGatewayLevels")}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="ai-gateway-remove"
+          aria-label={t("terminal.settings.aiGatewayRemoveAria", { name: model.name })}
+          disabled={saving}
+          onClick={onRemove}
+        >
+          ✕
+        </button>
+      </div>
+      {open && ladder.length > 0 ? (
+        <div className="ai-gateway-levels">
+          <div
+            className="ai-gateway-level-group"
+            role="group"
+            aria-label={t("terminal.settings.aiGatewayLevelsAria", { name: model.name })}
+          >
+            {ladder.map((level) => {
+              const isOn = exposed.includes(level);
+              return (
+                <button
+                  key={level}
+                  type="button"
+                  className={`ai-gateway-level ${isOn ? "is-on" : ""}`}
+                  aria-pressed={isOn}
+                  // 마지막 한 단계는 끌 수 없다 — 정체성이 0개인 모델은 켜 둔 채로
+                  // 쓸 수 없으므로, 그 상태는 아예 만들 수 없게 한다.
+                  disabled={saving || (isOn && exposed.length === 1)}
+                  onClick={() => onSetEfforts(isOn
+                    ? exposed.filter((current) => current !== level)
+                    : [...exposed, level])}
+                >
+                  {level}
+                </button>
+              );
+            })}
+          </div>
+          <span className="ai-gateway-levels-note">
+            {t("terminal.settings.aiGatewayIdentityCount", { count: exposed.length })}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function AiGatewayModelChips({ model }: { readonly model: AiGatewayCatalogModel }) {
+/** 저장된 선택을 사다리에 대조한다. 부재이거나 겹치는 게 없으면 사다리 전체. */
+function resolveExposedEfforts(
+  ladder: readonly string[],
+  exposedEfforts: readonly string[] | undefined,
+): readonly string[] {
+  if (!exposedEfforts || exposedEfforts.length === 0) return ladder;
+  const narrowed = ladder.filter((level) => exposedEfforts.includes(level));
+  return narrowed.length > 0 ? narrowed : ladder;
+}
+
+function AiGatewayModelChips({
+  model,
+  exposedEfforts,
+}: {
+  readonly model: AiGatewayCatalogModel;
+  readonly exposedEfforts?: readonly string[];
+}) {
   const t = getT(useTerminalLocale());
   const contextLabel = formatAiGatewayContextWindow(model.contextWindow);
+  const ladder = model.effort?.levels ?? [];
+  const exposed = resolveExposedEfforts(ladder, exposedEfforts);
   return (
     <span className="ai-gateway-chips">
       {contextLabel ? <span className="ai-gateway-chip">{contextLabel}</span> : null}
-      {model.effort ? (
-        <span className="ai-gateway-chip">{`effort ${model.effort.levels[0]}–${model.effort.levels[model.effort.levels.length - 1]}`}</span>
+      {ladder.length > 0 ? (
+        // 칩은 컨트롤이 아니라 속성이다. 좁힌 상태는 세는 값으로만 말하고,
+        // 고르는 일은 아래 단계 목록이 맡는다.
+        <span className={`ai-gateway-chip ${exposed.length < ladder.length ? "is-strong" : ""}`}>
+          {exposed.length < ladder.length
+            ? `effort ${exposed.length}/${ladder.length}`
+            : `effort ${ladder[0]}–${ladder[ladder.length - 1]}`}
+        </span>
       ) : null}
       {model.fast ? <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayFast")}</span> : null}
       {model.maxMode ? <span className="ai-gateway-chip is-strong">{t("terminal.settings.aiGatewayMaxMode")}</span> : null}

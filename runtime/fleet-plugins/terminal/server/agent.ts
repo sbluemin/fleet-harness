@@ -91,6 +91,7 @@ function buildGatewayLoadoutTools(deps: AgentRouteDeps): readonly AgentToolSpec[
       const selection = resolveAiGatewaySelection(await readAiGatewaySettings());
       return {
         models: selection.models,
+        effortExposure: selection.effortExposure,
         ...(selection.defaultModel ? { defaultModel: selection.defaultModel } : {}),
       };
     },
