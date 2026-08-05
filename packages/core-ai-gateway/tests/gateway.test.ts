@@ -1834,6 +1834,53 @@ describe("OpenAI Responses adapter", () => {
     }]);
   });
 
+  it("keeps assistant reasoning replay metadata off the Responses wire", async () => {
+    // Observed rejection: 400 "Unknown parameter: 'input[3].reasoning_content'". The field is
+    // canonical replay metadata for Chat Completions backends; reaching this wire fails the
+    // whole request, not just that item.
+    const fetchMock = vi.fn<FetchLike>(async () => new Response(
+      JSON.stringify({ error: { message: "stop after capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    const adapter = new OpenAIResponsesAdapter({ fetch: fetchMock });
+
+    await adapter.stream({
+      model: "gpt-5.6-sol",
+      input: [
+        { type: "message", role: "user", content: "Inspect the repository." },
+        {
+          type: "message",
+          role: "assistant",
+          content: "Reading it now.",
+          reasoning_content: "The user wants the tree.",
+        },
+        {
+          type: "function_call",
+          call_id: "call-read",
+          name: "Read",
+          arguments: '{"path":"README.md"}',
+          reasoning_content: "Read the readme first.",
+        },
+        { type: "function_call_output", call_id: "call-read", output: "# Fleet" },
+      ],
+      stream: true,
+    }, { apiKey: "platform-key" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body.input).toEqual([
+      { type: "message", role: "user", content: "Inspect the repository." },
+      { type: "message", role: "assistant", content: "Reading it now." },
+      {
+        type: "function_call",
+        call_id: "call-read",
+        name: "Read",
+        arguments: '{"path":"README.md"}',
+      },
+      { type: "function_call_output", call_id: "call-read", output: "# Fleet" },
+    ]);
+  });
+
   it("keeps deferred tools eager while stripping ToolSearch metadata from OpenAI wire payloads", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => new Response(
       JSON.stringify({ error: { message: "stop after capture" } }),
