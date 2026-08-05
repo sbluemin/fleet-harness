@@ -426,6 +426,33 @@ describe("gateway_models tool doctrine", () => {
     expect(guidelines).not.toContain("it is not a reason to pin");
   });
 
+  // claude 항목이 로스터 모델을 하나도 서빙하지 않는다는 사실과, 미핀 실행이 항상 claude 를
+  // 쓴다는 주장은 다르다. 세션이 게이트웨이 기본 모델로 기동되면 후자는 거짓이 된다 —
+  // 도구 지침이 그 보편 주장을 유지하면 스킬이 고쳐도 호스트는 이쪽을 읽는다.
+  it("does not claim the claude entry is always what an unpinned run spends", () => {
+    const guidelines = doctrine().usageGuidelines.join("\n");
+    expect(guidelines).toContain("a session launched on a gateway default instead spends the entry that serves that model");
+    expect(guidelines).not.toContain("it is what an unpinned run spends, and the baseline an offload is measured against");
+  });
+
+  // buildProviders 는 claude 를 항상 목록에 넣고 스냅샷이 준 창을 그대로 enrich 한다
+  // (터미널 쿼터 어댑터도 providers.claude.windows 를 실어 나른다). "보고되지 않는다"고
+  // 쓰면 호스트가 실제로 읽히는 parent pressure 를 무시한 채 안전하다고 판단한다.
+  it("does not tell the host the parent allowance goes unreported", () => {
+    const guidelines = doctrine().usageGuidelines.join("\n");
+    expect(guidelines).toContain("Every entry reports its allowance, the parent subscription included");
+    expect(guidelines).toContain("an allowance you can read and never select");
+    expect(guidelines).not.toContain("spends an allowance no window here reports");
+  });
+
+  // homolineage 는 upstream 모델 id 가 "claude"로 시작하는지만 본다. 세션을 참조하지
+  // 않으므로 "이 세션의 계열"로 서술하면 비-Claude 기본으로 기동된 세션에서 거짓이 된다.
+  it("describes homolineage as a model-derived Claude-family flag, not a session-relative one", () => {
+    const guidelines = doctrine().usageGuidelines.join("\n");
+    expect(guidelines).toContain("derived from its id alone and silent about what this session runs on");
+    expect(guidelines).not.toContain("the blind spots an identity inherits from this session's lineage");
+  });
+
   it("keeps the scope-matching rule tied to a declared quotaScope", () => {
     // quotaScope는 Cursor만 선언한다. 이 문장이 전 프로바이더 규칙으로 읽히면
     // codex/kimi/claude는 읽을 창이 없어진다 — 조건절이 규칙의 본체다.

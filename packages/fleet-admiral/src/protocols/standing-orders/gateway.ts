@@ -5,6 +5,10 @@
  * 실행자를 페르소나로 지칭하지 않는다: 결과가 돌아오는 한 번의 실행을 `run`으로 부르고,
  * `stage`는 워크플로 표면 안에서만 쓴다. 큐·잡·폴링 같은 비동기 캐리어 어휘는 쓰지 않는다.
  * 어느 표면에서 어떻게 도는지는 `workflow` 스킬과 live tool metadata가 소유한다.
+ * 표면 선택과 모델 배정은 `workflow` 스킬의 두 게이트가 단독 소유한다. 여기 남는 것은
+ * 무조건 트립와이어 하나뿐이다: 위임 여부는 Proportionality가 정하고, 위임하기로 한
+ * 순간부터는 스킬을 싣고 게이트를 통과해야 한다. 게이트를 스킬에만 두면 스킬을 싣지
+ * 않기로 한 실행 — 정확히 게이트가 잡아야 할 그 실행 — 에서 발화하지 않는다.
  * classic 본문을 override 하지 않고, 6종 전문을 이 파일이 단독으로 소유한다(중복 허용).
  *
  * classic의 `carrier-operations-policy`는 gateway에서 `orchestration-policy`로 개칭되며,
@@ -130,17 +134,14 @@ Resolve technical trade-offs first, then plan on the host. Never hand an unresol
 ### Execution Surface
 The models this session exposes are already present as named identities: each registered as its own Agent, and pinnable to a stage of a staged workflow. There is no separate roster to enlist from, no job to file, and nothing to poll. A run is a call that returns its result to you — whether it returns immediately or notifies you when it finishes. Those names were fixed when the session started, so use only a name this session actually carries: a model enabled since then appears in the live roster but is unreachable until a new session.
 
-Default to an Agent — one run whose result comes back whole, or a named teammate you can continue. Reach for a staged workflow only when the user asks for one: stages wired to each other with data, barriers, and fan-out are what that surface buys, and it is the user's call to spend it.
-
-Both surfaces require the user's request. When the one the work needs is gated, report the gate, say what the run would cost and what it would buy, then await instructions. Do not quietly do the work yourself in one context instead.
-
-### Model Loadout
-Which model and effort a run uses is routing, so it stays with the host agent. Call the ${"`"}gateway_models${"`"} MCP tool before every run on either surface, then pick the identity this work needs — a measured role fit first, and the model's own allowance wherever measurement is silent. Never let the session's own model be the default answer; it is the most expensive way to obtain what any identity produces equally well, and an unpinned run spends that allowance too.
-
-A staged workflow spreads its stages across identities and balances them against provider allowances instead of inheriting one model for every stage — reading each allowance's own reported verdict rather than comparing raw percentages across windows that reset on different clocks. The ${"`"}workflow${"`"} skill owns that procedure; what each roster field means stays in the tool's own metadata.
+Which surface a handoff takes, whether that surface is gated, and what identity the run is pinned to are decided by the ${"`"}workflow${"`"} skill's two gates, not here.
 
 ### Skill Routing
-Load the ${"`"}workflow${"`"} skill before executing a stage skeleton or assigning models across runs. The skeleton itself belongs to the skill matching the work: ${"`"}architecture-review${"`"} to decide, ${"`"}codebase-research${"`"} to establish facts, ${"`"}implementation-run${"`"} to change files, ${"`"}quality-review${"`"} to judge what exists.`,
+Whether to hand work off at all is Proportionality's call, and this routing rule neither widens nor narrows it: work that belongs on the host stays on the host, and nothing here is a reason to create a run you would not otherwise have made. Equally, avoiding the gates is not a reason to absorb a run you would have made.
+
+Once a run does leave the host, it carries a pinned identity. Load the ${"`"}workflow${"`"} skill before that handoff — a staged skeleton, a fleet of runs, or the single run you were about to leave unpinned — and clear its Execution Surface Gate and Model Pin Gate before dispatching. Not pinning is a decision that gate owns, never a default.
+
+The skeleton itself belongs to the skill matching the work: ${"`"}architecture-review${"`"} to decide, ${"`"}codebase-research${"`"} to establish facts, ${"`"}implementation-run${"`"} to change files, ${"`"}quality-review${"`"} to judge what exists.`,
 };
 
 const DEEP_DIVE: StandingOrder = {

@@ -1,26 +1,58 @@
 ---
 name: workflow
-description: Run a staged multi-agent operation — map a stage skeleton onto the workflow execution surface, choose pipeline or barrier between stages, keep failures visible, and assign each stage its model and reasoning effort. Load before executing any skeleton from architecture-review, codebase-research, implementation-run, or quality-review, and before pinning a model or effort anywhere. Skip when the work is one stage you will perform directly.
+description: Choose the surface a handoff runs on and pin the identity it runs as, then wire a staged run's stages to each other and keep its failures visible. Load before any run leaves the host — one Agent, a named teammate, or a staged workflow — and before executing a stage skeleton from architecture-review, codebase-research, implementation-run, or quality-review. Skip only when the work stays on the host.
 ---
 
 # Workflow
 
-The other gateway skills each own the *shape* of a run — which stages exist, what each returns, where the judgment stays on the host. This skill owns **turning that shape into an actual run**: the surface it executes on, how stages are wired to each other, and what each stage runs on.
+The other gateway skills each own the *shape* of a run — which stages exist, what each returns, where the judgment stays on the host. This skill owns **turning that shape into an actual run**: the surface it executes on, the identity it runs as, how stages are wired to each other, and what each stage runs on.
 
-A skeleton that is never executed as stages is not a cheaper version of the run. It is a single reader doing every job in one context, which is the failure mode the skeleton exists to prevent.
+Two gates open before anything leaves the host, in order. Neither decides *whether* to hand work off — that is the Orchestration Policy Standing Order's Proportionality call, already made before you arrive here. Work that belongs on the host stays on the host, and nothing in this skill is a reason to create a run you would not otherwise have made. Equally, avoiding these gates is not a reason to absorb a run you would have made.
 
-## Execution Surface
+## Gate 1 — Execution Surface
 
-Staged execution requires the workflow execution surface — the one that runs a script of stages, wires them together, and lets each stage carry its own model and effort. Inspect the live tool surface before concluding anything about it; tools may be lazy-loaded.
+Three surfaces, and they are not interchangeable.
 
-This skill covers that surface only, and that surface is not the default. An Agent — one run, or a named teammate you can continue — carries work that needs no wiring between its parts, and the Orchestration Policy Standing Order makes it the default for exactly that reason. A staged run is what the user asks for on top of it, and what it buys is the wiring: data flowing between stages, barriers, fan-out, and a fleet of different models working the same problem at once. Model and effort assignment below applies to both surfaces.
+- **One Agent** — a single run whose result comes back whole. This is the default. Work whose parts need no wiring between them belongs here.
+- **A named teammate** — an Agent you can address again later with its context intact. Reach for it when the same worker must carry several exchanges rather than one.
+- **The staged workflow surface** — a script of stages wired to each other, with data flowing between them, barriers, fan-out, and a fleet of different models working the same problem at once. That wiring is the only thing it buys, and it is what the user asks for on top of the default.
 
-**A surface gated behind user opt-in is unavailable until that opt-in exists.** Some workflow surfaces refuse to run unless the user explicitly asked for a multi-agent run. That refusal is not a defect and it is not a reason to quietly do the whole thing yourself in one context. Report the gate, say what the staged run would cost and what it would buy, and wait — the same way you would report any unavailable surface.
+Reach past the default only when the wiring is the point. A skeleton that is never executed as stages is not a cheaper version of the run — it is a single reader doing every job in one context, which is the failure mode the skeleton exists to prevent. The inverse is equally wrong: a staged run for work that needed one Agent pays the coordination cost and collects none of it back.
 
-Two things stay out of this skill on purpose:
+**A surface gated behind user opt-in is unavailable until that opt-in exists.** The staged workflow surface refuses to run unless the user explicitly asked for a multi-model run — as of this writing by naming `ultracode`, or through a standing session-level opt-in the harness confirms. That trigger belongs to the harness, not to Fleet: read the live tool description for what it accepts now, and treat the keyword named here as the last thing anyone checked rather than as the contract. It is a session opt-in and never a reasoning-effort rung — requesting it as one is off-ladder and clamped upstream without a signal.
 
-- **Call mechanics.** Argument names, script syntax, return shapes, and which values a field accepts live in the live tool description. Read them there every time. Anything restated here would be a copy that goes stale silently.
-- **Whether to run at all.** That is the Orchestration Policy Standing Order's call, not this skill's.
+When the gate is closed, that refusal is not a defect. Report the gate, say what the staged run would cost and what it would buy, and wait — the same way you would report any unavailable surface. Do not quietly do the work yourself in one context instead.
+
+Inspect the live tool surface before concluding anything about any of the three; tools may be lazy-loaded.
+
+**Call mechanics stay out of this skill on purpose.** Argument names, script syntax, return shapes, and which values a field accepts live in the live tool description. Read them there every time. Anything restated here would be a copy that goes stale silently.
+
+## Gate 2 — Model Pin Gate
+
+Every run that leaves the host carries a pinned identity. An unpinned run is not the neutral choice: it inherits the session's own model and spends the session's own allowance, reached by omission rather than by selection. Closing that omission is this gate's whole job.
+
+**Call `gateway_models` first, every time.** Not once per session: allowances move while work is in flight, and a roster entry can be enabled or disabled between two runs. A gate cleared against a remembered roster is not cleared.
+
+Read the response on two axes and never collapse them.
+
+- **Lineage** — whose blind spots an identity inherits. `homolineage: true` marks a Claude-family model, derived from the model id alone and silent about what this session runs on; it is a "same as me" flag only when this session is itself Claude-family. This axis decides independence, never cost.
+- **Allowance** — whose subscription a run bills to. Every model sits under the provider entry it spends. This axis decides cost, never independence.
+
+The two come apart. An identity can carry Claude lineage while billing to another provider's subscription, and that combination is a legitimate way to move spend. The rule below binds the allowance axis only.
+
+**The parent session's own allowance is the last one to spend, not the first.** Identify which allowance that is before applying the rule, because the roster cannot tell you: it reports what this session exposes, never what this session itself runs on. Read your own model id and find the provider that bills it.
+
+Two cases, and they differ in what you can do about it, not in what you can see — every provider's allowance is reported, the parent subscription included. A session running a built-in Claude model spends the `claude` entry, which reports its window like any other but serves no roster model by design, so it can never be selected, only inherited: read its pressure to know where you stand, and spare it by pinning away from it rather than by choosing it. A session launched on a gateway default spends an entry that both reports *and* serves; there the failure is recursion — routing more runs to the entry already carrying this session drains one allowance twice while the rest sit idle. `isSessionDefault` does not settle which case you are in: it reflects Settings as they stand now, not what an already-running session launched with.
+
+Prefer any other provider with room: whatever this session runs on is the most expensive way to obtain what any identity produces equally well.
+
+Three exceptions, and only these three. Each is recorded by its label in the split record.
+
+- **E1 — cross-lineage verification.** All three must hold: the role is `verify`, `judge`, or `adjudicate`; disagreement is that stage's actual product; and the lineage this run would inherit differs from the subject's. That last one is a check, never an assumption — an unpinned run takes whatever this session was launched on, and a session launched on a non-Claude gateway default inherits *that* lineage, which can be the subject's own. Reading `homolineage` off the roster does not answer it either: the flag describes a model, not this session. When the condition does hold, the voice you already are is the independent one and pinning elsewhere to obtain the same lineage is ceremony. Cap it there — one lineage must not hold a majority of the quorum, or the independence it was admitted for is gone.
+- **E2 — last resort.** Every candidate identity's own window reads `critical`, or runs against them keep returning empty after a retry. A provider whose allowance could not be read is **not** evidence of exhaustion — absence is never safety — so it can neither open this exception nor close it. When E2 opens, run one alternative identity alongside and compare the two results; a last resort nobody checked is an unpinned run with a label on it.
+- **E3 — empty roster.** No model is exposed at all, so there is nothing to pin to.
+
+When none of the three applies, the session's own model is out and the choice falls to the procedure below. `roleFit: null` is not a fourth exception: unmeasured means quality gave no reason to prefer anyone, so the choice falls to allowance and never back to this session's model.
 
 ## Reading a Stage Skeleton
 
@@ -50,9 +82,7 @@ Fan-out helpers routinely turn a failed branch into an empty result rather than 
 
 ## Model and Effort Assignment
 
-Distribution is the default. Concentrating a run on the model this session happens to run on is the exception, and the exception carries the burden of proof — the binding rule is in the Orchestration Policy Standing Order. This is the procedure that discharges it.
-
-**Call `gateway_models` first, every time.** Not once per session: allowances move while work is in flight, and a roster entry can be enabled or disabled between two runs.
+Distribution is the default. Concentrating a run on the model this session happens to run on is the exception, and the exception carries the burden of proof — Gate 2 above is where that burden is discharged, and it names the only three forms the proof can take. What follows is how the remaining choice is made once the gate is clear.
 
 Work through these in order.
 
@@ -61,10 +91,10 @@ Work through these in order.
 3. **Look for a measured fit.** Read `roleFit` for that risk. A declared `fit` is a reason to prefer an identity and a declared `unfit` a reason to avoid it. `null` means unmeasured: it says nothing about quality, and it is never a reason to fall back to the session model.
 4. **Spread the rest by allowance.** For every stage with no measured fit, choose by cost. Read the window that belongs to the model — the one whose `scope` matches `constraints.quotaScope` when the model declares one, and the provider's scope-less window when it does not — and let the roster's own verdict lead: prefer windows at `pressure: "ok"`, treat `"elevated"` as a reason to route elsewhere, and send nothing to `"critical"` unless every alternative is worse. Break a tie between windows that share a `cadence` by the lower `usedPercent`, and never compare percentages across cadences — a weekly window at 49% early in its week burns hotter than a monthly one at 78% near its reset, and `paceRatio` above 1.0 says so directly. On an older reading that carries none of the derived fields, treat percentages as comparable only within a single provider's windows — a shared id like `cycle` does not mean a shared length — and across providers trust only the extreme: a window near 100 is spent whatever its clock. A scope is declared only where one subscription splits into pools; there the scope-less figure is marked `isAggregate` — a sum that can read healthy while the model's own pool is spent, and one that stays out of headroom math. Move off a provider as its windows go elevated instead of discovering exhaustion mid-run.
 5. **Re-pick effort for the model you chose.** Ladders differ between identities. A level a model does not advertise is clamped down to the next rung below it with no signal to you, and rejected outright when nothing is below. Take a rung the target's `effortLadder` actually lists — the user can expose a model at fewer levels than it supports, and the ladder reports what this session registered, not the catalog — and check the stage's input against the target's `contextWindow`.
-6. **Diversify where disagreement is the product.** A majority-vote or judging stage wants different lineages — a verifier sharing its subject's lineage inherits the same blind spots. `homolineage: true` marks an identity sharing the parent Claude session's lineage: useful for moving spend, useless for independence.
+6. **Diversify where disagreement is the product.** A majority-vote or judging stage wants different lineages — a verifier sharing its subject's lineage inherits the same blind spots. Judge that against the **subject**, not against this session: a Claude-family identity billed to another provider is useful for moving spend, useless for independence from a Claude-family session, and silent about independence from a subject that ran elsewhere. An unpinned stage has no lineage of its own — it takes whatever this session was launched on — so its independence from the subject is knowable only once you have read your own model id, which is what Gate 2's E1 makes you check.
 7. **Confirm the name exists on both sides.** Roster membership resolves live, but Agent names were fixed when the session started. Pick only a name present in both; a model enabled mid-session is unreachable until restart. `400 unknown model` means re-read the roster.
 8. **Do not choose the load-bearing stage by allowance alone.** When everything downstream rests on one stage — the contract survey, the final synthesis, the integrating judgment — let measured fit and lineage independence decide it, and let cost break ties only after those.
-9. **Record the split.** One line per run: which identities carried which stages, and what decided it. A distribution nobody can audit is indistinguishable from a random one.
+9. **Record the split.** One line per run: which identities carried which stages, what decided it, and the `E1` / `E2` / `E3` label wherever the session's own model carried one. A distribution nobody can audit is indistinguishable from a random one, and an exception nobody labelled is indistinguishable from a lapse.
 
 ### What Measurement Actually Showed
 
@@ -87,6 +117,10 @@ Read the two together. Quality parity is the prior — and parity is exactly wha
 A stage running on another model has no feel for this repository's conventions, so decisions must travel as literal values, not as descriptions. Name the exact token, path, setting key, or constant; never write "match the existing style" or "pick something consistent". On return, check the artifacts against the literals you sent — an equivalent-looking substitution is a defect, not a variation.
 
 ## Gotchas
+
+- **Symptom:** A run left the host on the session's own model and nothing in the report says why.
+  **Action:** Treat it as a gate that never opened rather than as a choice. Re-read Gate 2, name the exception that applied, and if none did, repeat the run pinned.
+  **Why:** The session's allowance is reached by omission rather than by selection, so this failure leaves no trace of its own — an unlabelled inheritance and a deliberate `E1` look identical afterwards.
 
 - **Symptom:** A run that pinned several models produced uniform-looking results, or one stage's output is missing with no error.
   **Action:** Check whether that branch failed rather than ran. Confirm each pinned id is still in the roster and return branch failures as values instead of letting the helper collapse them.
