@@ -51,8 +51,6 @@ export const CURSOR_MODELS_PATH = "/agent.v1.AgentService/GetUsableModels";
 export const CURSOR_CLIENT_VERSION = "cli-2026.07.08-0c04a8a";
 export const CURSOR_TOOL_COUNT_LIMIT = 330;
 export const CURSOR_TOOL_BYTES_LIMIT = 120_000;
-export const CURSOR_EXTERNAL_ROOT_BLOB_LIMIT = 192;
-export const CURSOR_EXTERNAL_ROOT_BYTE_LIMIT = 512 * 1024;
 export const CURSOR_TOOL_PROVIDER_IDENTIFIER = "fleet-gateway";
 export const CURSOR_TOOL_FINALIZE_GRACE_MS = 50;
 export const CURSOR_CLIENT_HEARTBEAT_MS = 5_000;
@@ -69,14 +67,6 @@ export class CursorRequestBudgetError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "CursorRequestBudgetError";
-  }
-}
-
-/** Claude Code recognizes this prefix and routes the failed turn through reactive compaction. */
-export class CursorReplayBudgetError extends CursorRequestBudgetError {
-  constructor(message: string) {
-    super(`Prompt is too long: ${message}`);
-    this.name = "CursorReplayBudgetError";
   }
 }
 
@@ -292,6 +282,7 @@ export function parseConnectEndStreamError(payload: Uint8Array): Error | null {
  */
 class BlobStore {
   private readonly values = new Map<string, string>();
+  private decodedBytes = 0;
 
   putSerialized(serialized: string): string {
     return this.putBytes(Buffer.from(serialized, "utf8"));
@@ -300,16 +291,33 @@ class BlobStore {
   putBytes(value: Uint8Array): string {
     const data = Buffer.from(value);
     const id = createHash("sha256").update(data).digest("base64");
-    this.values.set(id, data.toString("base64"));
+    this.store(id, data.toString("base64"), data.byteLength);
     return id;
   }
 
   set(id: string, base64Data: string): void {
-    this.values.set(id, base64Data);
+    this.store(id, base64Data, Buffer.byteLength(base64Data, "base64"));
   }
 
   get(id: string): string | undefined {
     return this.values.get(id);
+  }
+
+  /**
+   * Bodies this request could be asked for, against what a turn actually transmits.
+   * Cursor pulls blobs on demand, so the two would diverge if it ever cached one
+   * between turns; measured on 2026-08-05 it never did, and every root came back in
+   * full on each request.
+   */
+  inventory(): { readonly count: number; readonly bytes: number } {
+    return { count: this.values.size, bytes: this.decodedBytes };
+  }
+
+  private store(id: string, base64Data: string, byteLength: number): void {
+    // Ids are content hashes, so a repeat put is the same body; count it once but keep
+    // the write so `set` retains its overwrite semantics.
+    if (!this.values.has(id)) this.decodedBytes += byteLength;
+    this.values.set(id, base64Data);
   }
 }
 
@@ -320,6 +328,17 @@ export interface CursorRunPlan {
   readonly wireModelId: string;
   /** Request-local estimate from the exact root/action text sent to Cursor. */
   readonly estimatedInputTokens: number;
+  /**
+   * Size of the replay this turn re-uploads. Cursor caches nothing between turns —
+   * every root is pulled back in full on each request — so this grows with the whole
+   * conversation and is the transport's real cost. It is diagnostic only: a local cap
+   * on it once refused sessions at ~48% of the model's window, and a measurement
+   * against Cursor showed 858 KB / 117 roots accepted, so the token window is the only
+   * ceiling the gateway enforces. Do not restore a byte or root cap without an
+   * observed upstream refusal to size it from.
+   */
+  readonly replayRootCount: number;
+  readonly replayBytes: number;
 }
 
 interface CursorWireTool {
@@ -390,10 +409,7 @@ export function buildCursorRunPlan(
 
   const activeMessage = activeIndex >= 0 ? request.input[activeIndex] : undefined;
   const activeReplayRoot = activeMessage ? historyRoot(activeMessage, toolNames) : null;
-  assertCursorRootBudget(
-    activeReplayRoot ? [...roots, activeReplayRoot] : roots,
-    wireModelId,
-  );
+  const replayRoots = activeReplayRoot ? [...roots, activeReplayRoot] : roots;
   const rootIds = roots.map((entry) => blobs.putSerialized(entry.serialized));
   const turnIds = buildCursorConversationTurns(request, blobs, activeIndex, toolBudget.tools);
 
@@ -438,6 +454,8 @@ export function buildCursorRunPlan(
     tools: toolBudget.tools,
     wireModelId,
     estimatedInputTokens,
+    replayRootCount: replayRoots.length,
+    replayBytes: rootBytes(replayRoots),
   };
 }
 
@@ -986,32 +1004,6 @@ function findCursorToolName(
     if (match) return match.toolName;
   }
   return undefined;
-}
-
-function assertCursorRootBudget(
-  roots: readonly CursorRootEntry[],
-  modelId: string,
-): void {
-  if (isCursorNativeModel(modelId)) return;
-  const systemEntries = roots.filter((entry) => entry.role === "system");
-  const systemBytes = rootBytes(systemEntries);
-  if (
-    systemEntries.length > CURSOR_EXTERNAL_ROOT_BLOB_LIMIT
-    || systemBytes > CURSOR_EXTERNAL_ROOT_BYTE_LIMIT
-  ) {
-    throw new CursorRequestBudgetError(
-      `Cursor system prompt exceeds the external-model root budget (${systemBytes} bytes; limit ${CURSOR_EXTERNAL_ROOT_BYTE_LIMIT})`,
-    );
-  }
-  const totalBytes = rootBytes(roots);
-  if (
-    roots.length > CURSOR_EXTERNAL_ROOT_BLOB_LIMIT
-    || totalBytes > CURSOR_EXTERNAL_ROOT_BYTE_LIMIT
-  ) {
-    throw new CursorReplayBudgetError(
-      `Cursor external replay exceeds its transport budget (${roots.length} roots, ${totalBytes} bytes; limits ${CURSOR_EXTERNAL_ROOT_BLOB_LIMIT} roots and ${CURSOR_EXTERNAL_ROOT_BYTE_LIMIT} bytes)`,
-    );
-  }
 }
 
 function isCursorNativeModel(modelId: string): boolean {
@@ -1815,6 +1807,9 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
   let semanticStallTimer: ReturnType<typeof setTimeout> | undefined;
   let transportClosed = false;
   let terminalNotified = false;
+  let blobFetchCount = 0;
+  let blobFetchBytes = 0;
+  let blobFetchMisses = 0;
 
   const usage = (segment: CursorResponseSegment): CanonicalUsage => {
     const outputTokens = Math.max(
@@ -1893,6 +1888,18 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
   const notifyTerminal = (): void => {
     if (terminalNotified) return;
     terminalNotified = true;
+    // The root budget rejects on bodies this run *could* be asked for. Cursor pulls them
+    // on demand, so that ceiling only describes real traffic if the server re-pulls
+    // everything each turn. These two totals are what decides that.
+    const inventory = blobs.inventory();
+    wireLog("cursor.wire.blobsummary", {
+      model: diagnosticModel,
+      availableBlobs: inventory.count,
+      availableBytes: inventory.bytes,
+      fetchedBlobs: blobFetchCount,
+      fetchedBytes: blobFetchBytes,
+      misses: blobFetchMisses,
+    });
     options.onTerminal();
   };
 
@@ -2196,6 +2203,20 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
       ...(checkpointContextWindow === undefined ? {} : { contextWindow: checkpointContextWindow }),
     });
     if (isRecord(frame.conversationCheckpointUpdate)) {
+      if (checkpointContextTokens !== undefined) {
+        // Cursor reports a real token count only on some turns; every other turn
+        // reports our own character estimate back. When the two disagree, Claude
+        // Code's occupancy meter is wrong by that much — and it is the meter that
+        // decides whether a session auto-compacts before it reaches its window.
+        wireLog("cursor.wire.checkpoint", {
+          model: diagnosticModel,
+          estimatedInputTokens: activeSegment?.estimatedInputTokens ?? estimatedInputTokens,
+          checkpointContextTokens,
+          ...(checkpointContextWindow === undefined
+            ? {}
+            : { checkpointContextWindow }),
+        });
+      }
       if (checkpointContextWindow !== undefined) {
         contextWindow = checkpointContextWindow;
         contextWindowVersion += 1;
@@ -2211,7 +2232,22 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
       return;
     }
     if (isRecord(frame.kvServerMessage)) {
-      stream.write(encodeCursorClientMessage(kvReply(frame.kvServerMessage, blobs)));
+      const kv = kvReply(frame.kvServerMessage, blobs);
+      stream.write(encodeCursorClientMessage(kv.message));
+      if (kv.fetch) {
+        blobFetchCount += 1;
+        blobFetchBytes += kv.fetch.bytes;
+        if (!kv.fetch.hit) blobFetchMisses += 1;
+        // Per-fetch, not just per-run: a run can span several turns, and only the id
+        // sequence shows whether the server re-pulls a body it was already given.
+        wireLog("cursor.wire.blobfetch", {
+          model: diagnosticModel,
+          sequence: blobFetchCount,
+          blobId: kv.fetch.blobId,
+          bytes: kv.fetch.bytes,
+          hit: kv.fetch.hit,
+        });
+      }
       report("client.reply", {
         model: diagnosticModel,
         reply: `kv.${cursorNestedRecordCase(frame.kvServerMessage, CURSOR_KV_CASES)}`,
@@ -2670,20 +2706,37 @@ function cursorInteractionQueryReply(query: Record<string, unknown>): CursorInte
   return { message: response(), replyKind: "interaction.unsupported.failClosed" };
 }
 
-function kvReply(kv: Record<string, unknown>, blobs: BlobStore): unknown {
+interface CursorKvOutcome {
+  readonly message: unknown;
+  /** Present only for getBlob — the one frame that transmits a replay body. */
+  readonly fetch?: {
+    readonly blobId: string;
+    readonly bytes: number;
+    readonly hit: boolean;
+  };
+}
+
+function kvReply(kv: Record<string, unknown>, blobs: BlobStore): CursorKvOutcome {
   const id = kv.id ?? 0;
   if (isRecord(kv.getBlobArgs)) {
     const blobId = typeof kv.getBlobArgs.blobId === "string" ? kv.getBlobArgs.blobId : "";
     const blobData = blobs.get(blobId);
-    return { kvClientMessage: { id, getBlobResult: blobData ? { blobData } : {} } };
+    return {
+      message: { kvClientMessage: { id, getBlobResult: blobData ? { blobData } : {} } },
+      fetch: {
+        blobId,
+        bytes: blobData === undefined ? 0 : Buffer.byteLength(blobData, "base64"),
+        hit: blobData !== undefined,
+      },
+    };
   }
   if (isRecord(kv.setBlobArgs)) {
     const blobId = typeof kv.setBlobArgs.blobId === "string" ? kv.setBlobArgs.blobId : "";
     const blobData = typeof kv.setBlobArgs.blobData === "string" ? kv.setBlobArgs.blobData : "";
     if (blobId) blobs.set(blobId, blobData);
-    return { kvClientMessage: { id, setBlobResult: {} } };
+    return { message: { kvClientMessage: { id, setBlobResult: {} } } };
   }
-  return { kvClientMessage: { id } };
+  return { message: { kvClientMessage: { id } } };
 }
 
 function cursorRequestContextReply(
