@@ -1201,9 +1201,10 @@ describe("route surface", () => {
     const ids = list.data.map((entry) => entry.id);
     // picker가 버리지 않도록 모든 항목이 claude- alias로 나가야 한다.
     expect(ids.every((id) => id.startsWith("claude"))).toBe(true);
-    expect(list.data).toHaveLength(39);
+    expect(list.data).toHaveLength(40);
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast[1m]");
     expect(ids).toContain("claude-gateway--cursor--auto[1m]");
+    expect(ids).toContain("claude-gateway--cursor--gpt-5.6-sol[1m]");
     expect(ids).toContain("claude-gateway--cursor--kimi-k3");
     expect(ids).toContain("claude-gateway--cursor--kimi-k3-1m[1m]");
     expect(ids).toContain("claude-gateway--kimi--k3[1m]");

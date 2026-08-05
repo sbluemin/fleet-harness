@@ -35,6 +35,7 @@ describe("Cursor request budgets", () => {
     ["claude-opus-5", "xhigh", "claude-opus-5-thinking-xhigh"],
     ["claude-opus-5", "max", "claude-opus-5-thinking-max"],
     ["grok-4.5-fast", "low", "cursor-grok-4.5-low-fast"],
+    ["gpt-5.6-sol", "max", "gpt-5.6-sol-max"],
   ] as const)("writes Cursor model %s with effort %s as %s", (model, effort, expected) => {
     const plan = buildCursorRunPlan(request({
       model,
