@@ -82,7 +82,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
 
   return (
     <div
-      className={`operation-launch-control operation-launch-control--canvas ${placement === "above" ? "operation-launch-control--up" : ""}`}
+      className={`operation-launch-control operation-launch-control--canvas ${fixed ? "operation-launch-control--triage" : ""} ${placement === "above" ? "operation-launch-control--up" : ""}`}
       ref={containerRef}
       style={clampedAnchorStyle(anchor, viewportBounds, placement, menuSize, fixed)}
       data-canvas-blocker

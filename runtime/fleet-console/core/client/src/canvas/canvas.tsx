@@ -274,8 +274,11 @@ export function OperationsCanvas({
     const local = { x: cursor.x - canvasRect.left, y: cursor.y - canvasRect.top };
     setContextMenu({
       anchor: local,
-      // 기존 launch geometry 생성 문법을 유지한다 — War Room에는 world transform이 없다.
-      canvasPoint: local,
+      // 실행 좌표는 그 Theater의 world 좌표여야 한다 — canvasPointToGeometry는 받은 점을 world로
+      // 취급한다. War Room은 전 Theater를 한 판에 얹으므로 화면-local을 그대로 넘기면 그 Theater를
+      // 다시 열었을 때 패널이 보이는 자리 밖에 놓인다. 로드된 Theater가 아닐 수 있으니 저장된
+      // 스냅샷의 뷰포트로 환산한다.
+      canvasPoint: screenToCanvas(local, getTheaterCanvasSnapshot(theaterId).viewport),
       theaterId,
       theaterLabel,
     });

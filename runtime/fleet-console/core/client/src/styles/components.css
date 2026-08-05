@@ -1626,6 +1626,12 @@
   z-index: 30;
 }
 
+/* War Room의 메뉴는 이 모드의 층 위에 서야 한다 — 덱(80)과 레일(90)이 같은 스태킹 문맥에서 위에
+   있으면 메뉴가 보여도 항목의 클릭을 덱 카드가 먼저 받는다. Cruise의 30은 그대로 둔다. */
+.operation-launch-control--triage {
+  z-index: 100;
+}
+
 .workspace-add-button {
   display: grid;
   width: 24px;
