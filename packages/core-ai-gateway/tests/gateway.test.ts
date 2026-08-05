@@ -308,7 +308,7 @@ describe("Anthropic request translation", () => {
     })).not.toHaveProperty("reasoning");
   });
 
-  it("drops synthetic thinking blocks when replaying an assistant turn", () => {
+  it("preserves assistant thinking as non-visible replay metadata", () => {
     const request: AnthropicMessagesRequest = {
       ...baseRequest(),
       messages: [{
@@ -322,7 +322,37 @@ describe("Anthropic request translation", () => {
     };
 
     expect(translateAnthropicRequest(request).input).toEqual([
-      { type: "message", role: "assistant", content: "Done" },
+      {
+        type: "message",
+        role: "assistant",
+        content: "Done",
+        reasoning_content: "Inspecting.",
+      },
+    ]);
+  });
+
+  it("attaches assistant thinking to the following tool call for replay", () => {
+    const request: AnthropicMessagesRequest = {
+      ...baseRequest(),
+      messages: [{
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "Need the file.", signature: "gateway_reasoning:rs_tool" },
+          { type: "text", text: "I'll inspect it." },
+          { type: "tool_use", id: "call_reasoning", name: "read_file", input: { path: "README.md" } },
+        ],
+      }],
+    };
+
+    expect(translateAnthropicRequest(request).input).toEqual([
+      { type: "message", role: "assistant", content: "I'll inspect it." },
+      {
+        type: "function_call",
+        call_id: "call_reasoning",
+        name: "read_file",
+        arguments: '{"path":"README.md"}',
+        reasoning_content: "Need the file.",
+      },
     ]);
   });
 
