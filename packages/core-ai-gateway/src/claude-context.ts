@@ -415,8 +415,20 @@ const CLAUDE_SKILL_BODY_PREFIX = "Base directory for this skill:";
 const CLAUDE_SKILL_LISTING_PREFIX = "The following skills are available for use with the Skill tool:";
 /** Entry line in that listing: `- <name>: <description>`, continued by unprefixed lines. */
 const CLAUDE_SKILL_LISTING_ENTRY = /^- ([A-Za-z0-9_.:-]+): /;
-/** Share of a model's real window one skill body may occupy before it is withheld. */
-export const CLAUDE_SKILL_BODY_BUDGET_FRACTION = 0.1;
+/**
+ * Share of a model's real window one skill body may occupy before it is withheld.
+ *
+ * Calibrated against the catalog so a model that can afford a payload keeps it. At this
+ * share the measured 162,681-token skill passes on every window of 1M or more — 16% of
+ * one, leaving 824k to work in — and is refused on every window below that, including
+ * the 272,000-token model it overran. No branch on the window is needed: the fraction
+ * lands the split exactly where affordability does.
+ *
+ * The largest skill this repository ships estimates at 8,303 tokens, more than 4x under
+ * the ceiling this produces for even the smallest catalog window, so an ordinary skill
+ * never reaches the rule.
+ */
+export const CLAUDE_SKILL_BODY_BUDGET_FRACTION = 0.2;
 
 interface ClaudeTextBlockLike {
   readonly type?: unknown;

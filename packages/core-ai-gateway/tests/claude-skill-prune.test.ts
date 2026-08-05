@@ -135,4 +135,20 @@ describe("pruneClaudeSkillPayloads", () => {
 
     expect(second.messages[0]!.content[0]!.text).toBe(first.messages[0]!.content[0]!.text);
   });
+
+  it("keeps a payload a 1M model can afford, and refuses it on every smaller window", () => {
+    // The skill body measured in the incident: 650,724 characters, 162,681 tokens.
+    const body = skillBody("claude-api", 650_724);
+
+    const onOneMillion = pruneClaudeSkillPayloads([userText(body)], { contextWindow: 1_000_000 });
+    const onTwoSeventyTwo = pruneClaudeSkillPayloads([userText(body)], { contextWindow: CONTEXT_WINDOW });
+    const onFiveHundred = pruneClaudeSkillPayloads([userText(body)], { contextWindow: 500_000 });
+
+    expect(onOneMillion.withheld).toEqual([]);
+    expect(onOneMillion.messages[0]!.content[0]!.text).toBe(body);
+    expect(onTwoSeventyTwo.withheld).toEqual([{ name: "claude-api", tokens: 162_681 }]);
+    // 500_000 is the largest window that still cannot afford it, so the split is not
+    // "carries the [1m] marker" — it is the window the payload actually fits inside.
+    expect(onFiveHundred.withheld).toEqual([{ name: "claude-api", tokens: 162_681 }]);
+  });
 });
