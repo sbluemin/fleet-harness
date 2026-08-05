@@ -351,7 +351,10 @@ const MATCH_CONTEXT_AFTER = 80;
 export function tokenizeRetrievalTopic(topic: string): string[] {
   const tokens = topic
     .toLowerCase()
-    .split(/[^a-z0-9]+/i)
+    // Unicode letter/number classes so non-Latin scripts (Korean queries are
+    // the norm in this workspace) survive tokenization; [^a-z0-9] treated
+    // every Hangul character as a separator and produced zero tokens.
+    .split(/[^\p{L}\p{N}]+/u)
     .map((token) => token.trim())
     .filter((token) => token.length > 1 || /^[0-9]+$/.test(token));
   return dedupeStrings(tokens);
