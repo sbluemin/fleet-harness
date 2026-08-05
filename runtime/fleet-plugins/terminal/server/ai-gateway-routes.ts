@@ -15,6 +15,7 @@ import {
   findGatewayModel,
   hasClaudeOneMillionMarker,
   projectAnthropicResponseUsage,
+  pruneClaudeSkillPayloads,
   reasoningEffortFromOutputConfig,
   resolveCodexCredentials,
   resolveCursorCredentials,
@@ -122,6 +123,9 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
   const ownedCursorGateway = ownedCursorAdapter
     ? new AnthropicMessagesGateway(ownedCursorAdapter)
     : undefined;
+  // 창을 감당 못 해 본문이 한 번 보류된 스킬들. 이 라우터가 사는 동안 유지해야
+  // 다음 세션의 첫 요청부터 목록에서 빠진다 — 프로세스당 한 번만 낭비되는 턴이 된다.
+  const withheldSkills = new Set<string>();
   // 설정 리더가 있으면 노출은 opt-in(켠 모델만)이다. 미주입(테스트 하네스 등)일 때만
   // 전체 카탈로그로 동작한다 — Console 배선(routes.ts)은 항상 리더를 주입한다.
   const gatewaySettings = async (): Promise<AiGatewayStoredSettings | undefined> => (
@@ -190,6 +194,18 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
     if (!target && requested.startsWith(GATEWAY_MODEL_ALIAS_PREFIX)) {
       writeAnthropicError(res, 400, "invalid_request_error", `Unknown AI gateway model: ${requested}`);
       return true;
+    }
+
+    // 스킬 본문은 매 턴 재전송되는 고정 비용이라 클라이언트 압축이 걷어낼 수 없다.
+    // 프로바이더 분기보다 앞이어야 canonical을 거치지 않는 passthrough까지 함께 덮는다.
+    if (target) {
+      const pruned = pruneClaudeSkillPayloads(body.messages, {
+        ...(typeof target.contextWindow === "number" ? { contextWindow: target.contextWindow } : {}),
+        model: upstreamModelId(target),
+        withheld: withheldSkills,
+      });
+      for (const skill of pruned.withheld) withheldSkills.add(skill.name);
+      if (pruned.changed) body = { ...body, messages: [...pruned.messages] };
     }
 
     let credential = "";
@@ -313,6 +329,11 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
         || error instanceof UnsupportedReasoningEffortError
         || error instanceof ContextWindowExceededError;
       const type = invalidRequest ? "invalid_request_error" : "api_error";
+      // Claude Code arms reactive compaction only from a 413 whose message names the
+      // context window; a 400 carrying the same text ends the turn instead. Everything
+      // else keeps 400 — a Cursor transport-budget refusal is not an overflow, and
+      // reporting it as one would send the client compacting after the wrong thing.
+      const status = error instanceof ContextWindowExceededError ? 413 : invalidRequest ? 400 : 502;
       const message = errorMessage(error);
       if (res.headersSent) {
         // 헤더를 보낸 뒤에는 상태 코드를 바꿀 수 없다. 그냥 끊으면 클라이언트는
@@ -320,7 +341,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
         writeSseErrorFrame(res, type, message);
         res.end();
       } else {
-        writeAnthropicError(res, invalidRequest ? 400 : 502, type, message);
+        writeAnthropicError(res, status, type, message);
       }
     } finally {
       req.off("close", abort);

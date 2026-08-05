@@ -3002,7 +3002,7 @@ describe("pre-flight context window guard", () => {
     expect(error).toBeInstanceOf(ContextWindowExceededError);
     const overflow = error as ContextWindowExceededError;
     expect(overflow.name).toBe("ContextWindowExceededError");
-    expect(overflow.message).toMatch(/^Prompt is too long: \d+ tokens > \d+ maximum$/);
+    expect(overflow.message).toMatch(/^Prompt is too long: \d+ tokens > \d+ maximum context window$/);
     // Claude Code's three classifiers: prefix, lowercased substring, numeric extraction.
     expect(overflow.message.startsWith("Prompt is too long")).toBe(true);
     expect(overflow.message.toLowerCase()).toContain("prompt is too long");

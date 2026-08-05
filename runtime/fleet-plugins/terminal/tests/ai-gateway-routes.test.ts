@@ -429,12 +429,12 @@ describe("model context window", () => {
       messages: [{ role: "user", content: "x".repeat(2_000_000) }],
     }));
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(413);
     expect(JSON.parse(res.body)).toEqual({
       type: "error",
       error: {
         type: "invalid_request_error",
-        message: expect.stringMatching(/^Prompt is too long: \d+ tokens > 272000 maximum$/),
+        message: expect.stringMatching(/^Prompt is too long: \d+ tokens > 272000 maximum context window$/),
       },
     });
     // The guard runs inside the gateway, so upstream was still spared the turn.
@@ -528,7 +528,7 @@ describe("mid-stream failure", () => {
       type: "error",
       error: {
         type: "invalid_request_error",
-        message: "Prompt is too long: 300000 tokens > 272000 maximum",
+        message: "Prompt is too long: 300000 tokens > 272000 maximum context window",
       },
     });
   });
