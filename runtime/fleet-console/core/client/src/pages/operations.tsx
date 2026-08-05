@@ -493,6 +493,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           operationStatus={state.operationStatus}
           operationNotifications={state.operationNotifications}
           catalog={catalog}
+          plugins={registry.plugins}
           renderKindIcon={renderKindIcon}
           onPick={pickTriageOperation}
           onClose={handleClose}

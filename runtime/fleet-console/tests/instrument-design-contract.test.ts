@@ -621,6 +621,26 @@ describe("Instrument core design contract", () => {
     expect(disabledHover).toContain("var(--brass) 10%");
   });
 
+  it("pins the demoted dormant shelf outside the live queue", () => {
+    const sidebar = source("sidebar/triage-side-bar.tsx");
+    const components = source("styles/components.css");
+    const shelf = components.match(/\.triage-side-bar-dormant-shelf \{[^}]*\}/)?.[0] ?? "";
+    const caption = components.match(/\.triage-side-bar-caption \{[^}]*\}/)?.[0] ?? "";
+
+    expect(sidebar).toContain('const livingSections = sections.filter((section) => section.status !== "dormant")');
+    expect(sidebar).toContain('className="operations-side-bar-chips triage-side-bar-sections"');
+    expect(sidebar).toContain('<footer className="triage-side-bar-dormant-shelf">');
+    expect(sidebar).toContain('<ol className="triage-side-bar-dormant-list"');
+    expect(sidebar).toContain("defaultCollapsed");
+    expect(sidebar.indexOf('className="triage-side-bar-dormant-shelf"')).toBeGreaterThan(
+      sidebar.indexOf('className="operations-side-bar-chips triage-side-bar-sections"'),
+    );
+    expect(shelf).toContain("border-top: 1px solid var(--surface-rim);");
+    expect(shelf).not.toMatch(/var\(--(?:brass|aurora|warn|coral|positive)/);
+    expect(caption).toMatch(/color: var\(--text-(?:primary|secondary|tertiary|on-brass)\)/);
+    expect(caption).toMatch(/font-weight: var\(--weight-(?:regular|medium|bold)\)/);
+  });
+
   it("collapses sidebar chip actions out of layout until hover or focus-within", () => {
     const components = source("styles/components.css");
     const restingActions = components.match(/\.side-bar-chip-close,\n\.side-bar-chip-minimize \{[^}]*\}/)?.[0] ?? "";

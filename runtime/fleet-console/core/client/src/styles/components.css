@@ -3585,10 +3585,32 @@
 }
 
 /* 선별 처리 전용 사이드바 — Map 사이드바(.operations-side-bar)의 표면·접힘 문법을 그대로
-   상속하고, 전역 상태 섹션 + 칩만 싣는다(Theater 트리 없음). 캡션·빈 문구 같은 선별 전용
-   조각은 두지 않는다: 상태 섹션 자체가 항상 서 있어 수량과 "없음"을 스스로 말한다. */
+   상속한다. 네 living 섹션은 스크롤 큐를 소유하고, 휴면만 separator 아래의 접힌 선반과 중립
+   캡션을 갖는다: 휴면 수량은 보이되 큐·덱·지도 문법에는 합류시키지 않는다. */
 .triage-side-bar-sections {
   padding-top: var(--space-1);
+}
+
+.triage-side-bar-dormant-shelf {
+  flex: none;
+  border-top: 1px solid var(--surface-rim);
+  padding: var(--space-1) 0;
+}
+
+.triage-side-bar-caption {
+  margin: 0;
+  padding: var(--space-1) var(--space-3);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.08em;
+}
+
+.triage-side-bar-dormant-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .side-bar-theater-error {

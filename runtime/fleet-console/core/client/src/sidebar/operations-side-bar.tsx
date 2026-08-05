@@ -219,16 +219,18 @@ export function StatusSectionSlot({
   theaterId,
   section,
   unseenCount = 0,
+  defaultCollapsed = false,
   children,
 }: {
   readonly theaterId: string;
   readonly section: StatusSection;
   readonly unseenCount?: number;
+  readonly defaultCollapsed?: boolean;
   readonly children: ReactNode;
 }) {
   const t = useT();
   const empty = section.entries.length === 0;
-  const collapsed = useSideBarStatusSectionCollapsed(theaterId, section.status, empty);
+  const collapsed = useSideBarStatusSectionCollapsed(theaterId, section.status, empty || defaultCollapsed);
   return (
     <li
       className={[
@@ -241,7 +243,7 @@ export function StatusSectionSlot({
         <button
           type="button"
           className="side-bar-status-header__toggle"
-          onClick={() => toggleSideBarStatusSectionCollapsed(theaterId, section.status, empty)}
+          onClick={() => toggleSideBarStatusSectionCollapsed(theaterId, section.status, empty || defaultCollapsed)}
           aria-expanded={!collapsed}
           aria-label={collapsed ? t("sidebar.status.expandSection", { label: section.label }) : t("sidebar.status.collapseSection", { label: section.label })}
           title={collapsed ? t("sidebar.status.expand") : t("sidebar.status.collapse")}
