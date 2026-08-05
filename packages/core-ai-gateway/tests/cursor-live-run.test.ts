@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CURSOR_TOOL_PROVIDER_IDENTIFIER,
+  ContextWindowExceededError,
   CursorAdapter,
   buildCursorRunPlan,
   decodeConnectFrames,
@@ -432,6 +433,94 @@ describe("Cursor live client-tool Run bridge", () => {
         await collectCursorResponse(harness.adapter, base),
       );
       expect(compactedUsage?.input_tokens).toBeLessThan(10_000);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("refuses the next turn once Cursor's own count fills the model window", async () => {
+    // 이 지점이 곧 Claude Code의 점유 계기가 1M 좌표에서 포화하는 지점이다. 넘어가면
+    // 대화가 더 커져도 계기가 움직이지 않아 클라이언트가 자기 압축 임계를 볼 수 없다.
+    const saturating = new BridgeCursorStream([
+      {
+        conversationCheckpointUpdate: {
+          tokenDetails: { usedTokens: 256_000, maxTokens: 256_000 },
+        },
+      },
+      ...cursorCompletionFrames("window is full"),
+    ]);
+    const harness = cursorHarness([saturating]);
+    const request = cursorRequest("session-window-saturated", "kimi-k3-1m");
+
+    try {
+      await collectCursorResponse(harness.adapter, request);
+
+      await expect(harness.adapter.stream(request, {
+        apiKey: "cursor-test-token",
+        modelContextWindow: 256_000,
+      })).rejects.toBeInstanceOf(ContextWindowExceededError);
+      // 거절된 턴은 업스트림에 닿지 않는다.
+      expect(harness.openedStreams).toBe(1);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("stays out of the way while Cursor's count is under the window", async () => {
+    const belowWindow = new BridgeCursorStream([
+      {
+        conversationCheckpointUpdate: {
+          tokenDetails: { usedTokens: 255_999, maxTokens: 256_000 },
+        },
+      },
+      ...cursorCompletionFrames("first turn complete"),
+    ]);
+    const next = new BridgeCursorStream(cursorCompletionFrames("second turn complete"));
+    const harness = cursorHarness([belowWindow, next]);
+    const request = cursorRequest("session-window-under", "kimi-k3-1m");
+
+    try {
+      await collectCursorResponse(harness.adapter, request);
+      const events = await collectAdapterEvents(await harness.adapter.stream(request, {
+        apiKey: "cursor-test-token",
+        modelContextWindow: 256_000,
+      }));
+
+      expect(canonicalText(events)).toBe("second turn complete");
+      expect(harness.openedStreams).toBe(2);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("lets a compacted retry through instead of refusing it again", async () => {
+    // 413을 받은 Claude Code는 압축 후 훨씬 작은 요청을 다시 보낸다. 그 축소가
+    // 체크포인트를 폐기시키므로 같은 거절이 반복되지 않는다.
+    const saturating = new BridgeCursorStream([
+      {
+        conversationCheckpointUpdate: {
+          tokenDetails: { usedTokens: 256_000, maxTokens: 256_000 },
+        },
+      },
+      ...cursorCompletionFrames("window is full"),
+    ]);
+    const compacted = new BridgeCursorStream(cursorCompletionFrames("compacted turn complete"));
+    const harness = cursorHarness([saturating, compacted]);
+    const base = cursorRequest("session-window-compacted", "kimi-k3-1m");
+    const large: CanonicalResponseRequest = {
+      ...base,
+      input: [{ type: "message", role: "user", content: "x".repeat(60_000) }],
+    };
+
+    try {
+      await collectCursorResponse(harness.adapter, large);
+      const events = await collectAdapterEvents(await harness.adapter.stream(base, {
+        apiKey: "cursor-test-token",
+        modelContextWindow: 256_000,
+      }));
+
+      expect(canonicalText(events)).toBe("compacted turn complete");
+      expect(harness.openedStreams).toBe(2);
     } finally {
       harness.adapter.dispose();
     }

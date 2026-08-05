@@ -3067,6 +3067,36 @@ describe("pre-flight context window guard", () => {
       .resolves.toMatchObject({ status: 200 });
   });
 
+  it("hands the window to the adapter so a provider measurement can refuse the turn", async () => {
+    // 문자 추정은 provider가 실제로 센 점유를 볼 수 없다. 그 측정값을 쥔 adapter에게
+    // 창을 넘기지 않으면 어떤 adapter도 그 거절을 낼 수 없다.
+    let seenWindow: number | undefined;
+    const measuring: AiGatewayAdapter = {
+      async stream(_request, options) {
+        seenWindow = options.modelContextWindow;
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          events: iterable<CanonicalResponseEvent>([
+            { type: "response.created", response: { id: "resp_window", model: "gpt-5.6-sol", usage: null } },
+            {
+              type: "response.completed",
+              response: { id: "resp_window", model: "gpt-5.6-sol", usage: { input_tokens: 1, output_tokens: 1 } },
+            },
+          ]),
+        };
+      },
+    };
+
+    await new AnthropicMessagesGateway(measuring).stream(requestOfChars(100), {
+      apiKey: "k",
+      modelContextWindow: 272_000,
+    });
+
+    expect(seenWindow).toBe(272_000);
+  });
+
   it("charges only the tools the adapter reports as reaching the wire", async () => {
     const seen: string[][] = [];
     const narrowed: AiGatewayAdapter = {

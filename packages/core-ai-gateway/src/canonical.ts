@@ -319,8 +319,39 @@ export interface CanonicalError {
   message: string;
 }
 
+/**
+ * Refusal Claude Code can recover from, rather than one that ends the turn.
+ *
+ * Claude Code classifies an overflow only from an HTTP **413** whose message contains
+ * `context window`; that classification is what arms its reactive compaction. The
+ * `Prompt is too long` prefix is a second, separate contract — the compaction routine
+ * matches it to decide that its own summarization request overflowed and to retry with
+ * older messages dropped. Both are required, so the message carries the prefix and the
+ * phrase, and `writeAnthropicError` must send this as 413. Any other status is surfaced
+ * as a plain failure and the turn dies with no compaction attempted.
+ *
+ * It lives in the canonical vocabulary rather than the gateway because an adapter that
+ * holds a provider-measured occupancy has to raise the same refusal, and an adapter
+ * importing the gateway would invert the layer.
+ */
+export class ContextWindowExceededError extends Error {
+  constructor(
+    readonly requestTokens: number,
+    readonly contextWindow: number,
+  ) {
+    super(`Prompt is too long: ${requestTokens} tokens > ${contextWindow} maximum context window`);
+    this.name = "ContextWindowExceededError";
+  }
+}
+
 export interface AdapterCallOptions {
   apiKey: string;
+  /**
+   * The model's real usable context window. Adapters that hold a provider-measured
+   * occupancy for the conversation use it to refuse a turn the estimate cannot see;
+   * it is never a projection denominator and never a transport budget.
+   */
+  modelContextWindow?: number;
   /** 새로 여는 provider trace가 진단 이벤트를 낼지 결정한다. 생략하면 adapter 기본값을 유지한다. */
   diagnosticsEnabled?: boolean;
   signal?: AbortSignal;

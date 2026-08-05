@@ -24,6 +24,7 @@ import type {
   ReasoningEffort,
 } from "./canonical.js";
 import {
+  ContextWindowExceededError,
   canonicalMessageImages,
   canonicalMessageText,
 } from "./canonical.js";
@@ -1388,6 +1389,7 @@ export class CursorAdapter implements AiGatewayAdapter {
       descriptor.credentialFingerprint,
       plan.estimatedInputTokens,
     );
+    assertCursorContextWindow(previousContextCheckpoint, options.modelContextWindow);
     report("turn.start", {
       model,
       wireModel,
@@ -1696,6 +1698,44 @@ function recallCursorContextCheckpoint(
   }
   CURSOR_CONTEXT_CHECKPOINT_BY_STATE.set(key, checkpoint);
   return checkpoint;
+}
+
+/**
+ * Refuse a new turn once Cursor's own measurement says the conversation already fills
+ * the model's window.
+ *
+ * This is not a transport budget — it is what keeps Claude Code's occupancy meter
+ * informative. That meter reads a projection onto Claude Code's 1M coordinate, and the
+ * projection saturates at exactly this point: past it every turn reports 1,000,000 no
+ * matter how much further the conversation grew, so the client can no longer see itself
+ * approaching its own compaction threshold. Measured on 2026-08-05, a `grok-4.5-fast`
+ * session sat at a saturated 1,000,000 across 31 consecutive requests before compaction
+ * finally fired from the client's own local accounting, several minutes late.
+ *
+ * The refusal restores that signal: it carries the 413 Claude Code arms reactive
+ * compaction from, so the turn compacts instead of continuing blind. The count is
+ * Cursor's, never our character estimate — on that same session the estimate read
+ * 210,670 against a measured 262,338, which is why the gateway's own pre-flight guard
+ * never fired.
+ *
+ * A compacted retry sends a smaller request, and `recallCursorContextCheckpoint` drops
+ * the stale checkpoint on exactly that shrink, so this cannot fire twice against a
+ * conversation that already compacted.
+ */
+function assertCursorContextWindow(
+  checkpoint: CursorContextCheckpoint | undefined,
+  modelContextWindow: number | undefined,
+): void {
+  if (
+    checkpoint === undefined
+    || typeof modelContextWindow !== "number"
+    || !Number.isFinite(modelContextWindow)
+    || modelContextWindow <= 0
+    || checkpoint.contextTokens < modelContextWindow
+  ) {
+    return;
+  }
+  throw new ContextWindowExceededError(checkpoint.contextTokens, modelContextWindow);
 }
 
 function rememberCursorContextCheckpoint(

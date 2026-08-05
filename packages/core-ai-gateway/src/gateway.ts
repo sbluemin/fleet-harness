@@ -3,7 +3,7 @@ import type {
   AnthropicMessagesRequest,
   TranslateAnthropicRequestOptions
 } from "./anthropic.js";
-import { canonicalMessageText } from "./canonical.js";
+import { ContextWindowExceededError, canonicalMessageText } from "./canonical.js";
 import type {
   AiGatewayAdapter,
   CanonicalFunctionTool,
@@ -13,26 +13,7 @@ import { OpenAIResponsesAdapter } from "./openai-responses-adapter.js";
 import { estimateTokens } from "./token-estimate.js";
 import { logCanonicalEvents, wireLog, wireLogEnabled } from "./wire-log.js";
 
-/**
- * Refusal Claude Code can recover from, rather than one that ends the turn.
- *
- * Claude Code classifies an overflow only from an HTTP **413** whose message contains
- * `context window`; that classification is what arms its reactive compaction. The
- * `Prompt is too long` prefix is a second, separate contract — the compaction routine
- * matches it to decide that its own summarization request overflowed and to retry with
- * older messages dropped. Both are required, so the message carries the prefix and the
- * phrase, and `writeAnthropicError` must send this as 413. Any other status is surfaced
- * as a plain failure and the turn dies with no compaction attempted.
- */
-export class ContextWindowExceededError extends Error {
-  constructor(
-    readonly requestTokens: number,
-    readonly contextWindow: number,
-  ) {
-    super(`Prompt is too long: ${requestTokens} tokens > ${contextWindow} maximum context window`);
-    this.name = "ContextWindowExceededError";
-  }
-}
+export { ContextWindowExceededError } from "./canonical.js";
 
 export interface AnthropicGatewayCallOptions extends TranslateAnthropicRequestOptions {
   apiKey: string;
@@ -95,6 +76,9 @@ export class AnthropicMessagesGateway {
     guardModelContextWindow(canonical, options.modelContextWindow, this.adapter);
     const upstream = await this.adapter.stream(canonical, {
       apiKey: options.apiKey,
+      ...(options.modelContextWindow === undefined
+        ? {}
+        : { modelContextWindow: options.modelContextWindow }),
       ...(options.diagnosticsEnabled === undefined
         ? {}
         : { diagnosticsEnabled: options.diagnosticsEnabled }),
