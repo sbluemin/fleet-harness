@@ -393,6 +393,7 @@ async function proxyToAnthropic(
     if (typeof value === "string") headers[name] = value;
   }
   await proxyAnthropicMessages(res, body, {
+    keepAlive: true,
     fetchImpl,
     headers,
     signal,
@@ -426,6 +427,7 @@ async function proxyToKimi(
   await proxyAnthropicMessages(res, kimiRequestBody(body, model), {
     contextWindow,
     responseModel,
+    keepAlive: true,
     fetchImpl,
     headers,
     signal,

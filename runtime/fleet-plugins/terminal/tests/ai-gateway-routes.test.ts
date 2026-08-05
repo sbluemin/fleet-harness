@@ -721,6 +721,39 @@ describe("OpenCode Go passthrough", () => {
 });
 
 describe("Kimi passthrough", () => {
+  it("keeps Claude Code's downstream stream alive while the provider is silent", async () => {
+    vi.useFakeTimers();
+    try {
+      let close!: () => void;
+      const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            close = () => controller.close();
+          },
+        }),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ));
+      const router = createAiGatewayRouter({
+        fetch: fetchMock,
+        readAuth,
+        readKimiApiKey: async () => "kimi-secret",
+      });
+      const res = response();
+      const handled = router.handle(ctx({
+        res,
+        token: ANTHROPIC_CRED,
+        model: "claude-gateway--kimi--k3-256k",
+      }));
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      expect(res.body).toBe(": keep-alive\n\n");
+      close();
+      await handled;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("rewrites the model and replaces caller authentication with the stored Kimi key", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(
       "event: message_stop\n\n",
@@ -1044,6 +1077,35 @@ describe("Kimi passthrough", () => {
 });
 
 describe("anthropic passthrough", () => {
+  it("keeps Claude Code's downstream stream alive while Anthropic is silent", async () => {
+    vi.useFakeTimers();
+    try {
+      let close!: () => void;
+      const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            close = () => controller.close();
+          },
+        }),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ));
+      const router = createAiGatewayRouter({ fetch: fetchMock, readAuth });
+      const res = response();
+      const handled = router.handle(ctx({
+        res,
+        token: ANTHROPIC_CRED,
+        model: "claude-opus-4-6",
+      }));
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      expect(res.body).toBe(": keep-alive\n\n");
+      close();
+      await handled;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("relays a claude model to the Anthropic subscription without translating", async () => {
     const gateway = stubGateway();
     const streamSpy = vi.spyOn(gateway, "stream");

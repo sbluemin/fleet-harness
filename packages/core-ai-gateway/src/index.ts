@@ -11,3 +11,4 @@ export * from "./models.js";
 export * from "./openai-chat-adapter.js";
 export * from "./openai-responses-adapter.js";
 export * from "./opencode-go.js";
+export * from "./sse-keepalive.js";
