@@ -513,7 +513,7 @@ function stringMetadata(
 
 interface OpenBlock {
   index: number;
-  kind: "text" | "tool_use";
+  kind: "text" | "thinking" | "tool_use";
   accumulatedJson: string;
   closed: boolean;
 }
@@ -644,6 +644,7 @@ export async function collectAnthropicMessage(
   let id = "msg_gateway";
   let model = fallbackModel;
   let text = "";
+  const thinking = new Map<string, string>();
   let stopReason = "end_turn";
   let outputTokens = 0;
   let inputTokens = 0;
@@ -663,6 +664,9 @@ export async function collectAnthropicMessage(
         break;
       case "response.output_text.delta":
         text += event.delta;
+        break;
+      case "response.reasoning_summary_text.delta":
+        thinking.set(event.item_id, (thinking.get(event.item_id) ?? "") + event.delta);
         break;
       case "response.output_item.added":
         if (event.item.type === "function_call") {
@@ -722,6 +726,11 @@ export async function collectAnthropicMessage(
     if (block) block.input = safeJson(entry.text);
   }
   if (text.length > 0) content.unshift({ type: "text", text });
+  content.unshift(...[...thinking].map(([itemId, value]) => ({
+    type: "thinking",
+    thinking: value,
+    signature: `gateway_${reasoningBlockKey(itemId)}`,
+  })));
 
   return {
     id,
@@ -761,39 +770,57 @@ export async function* encodeAnthropicSse(
   let messageStarted = false;
   let messageStopped = false;
   let sawToolUse = false;
+  let activeContentKey: string | undefined;
 
   const encode = (event: string, data: unknown): Uint8Array =>
     encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 
-  const startTextBlock = (key: string): Uint8Array | undefined => {
+  const startContentBlock = (key: string, kind: "text" | "thinking"): Uint8Array | undefined => {
     if (blocks.has(key)) {
       return undefined;
     }
     const block: OpenBlock = {
       index: nextBlockIndex++,
-      kind: "text",
+      kind,
       accumulatedJson: "",
       closed: false
     };
     blocks.set(key, block);
+    activeContentKey = key;
     return encode("content_block_start", {
       type: "content_block_start",
       index: block.index,
-      content_block: { type: "text", text: "" }
+      content_block: kind === "text"
+        ? { type: "text", text: "" }
+        : { type: "thinking", thinking: "", signature: "" }
     });
   };
 
-  const closeBlock = (key: string): Uint8Array | undefined => {
+  const closeBlock = (key: string): Uint8Array[] => {
     const block = blocks.get(key);
     if (block === undefined || block.closed) {
-      return undefined;
+      return [];
     }
     block.closed = true;
-    return encode("content_block_stop", {
-      type: "content_block_stop",
-      index: block.index
-    });
+    if (activeContentKey === key) activeContentKey = undefined;
+    return [
+      ...(block.kind === "thinking"
+        ? [encode("content_block_delta", {
+            type: "content_block_delta",
+            index: block.index,
+            delta: { type: "signature_delta", signature: `gateway_${key}` }
+          })]
+        : []),
+      encode("content_block_stop", {
+        type: "content_block_stop",
+        index: block.index
+      })
+    ];
   };
+
+  const closeActiveContent = (): Uint8Array[] => activeContentKey === undefined
+    ? []
+    : closeBlock(activeContentKey);
 
   for await (const event of events) {
     switch (event.type) {
@@ -819,17 +846,19 @@ export async function* encodeAnthropicSse(
         break;
       case "response.content_part.added": {
         const key = textBlockKey(event.item_id, event.content_index);
-        const start = startTextBlock(key);
-        if (start !== undefined) {
-          yield start;
+        if (!blocks.has(key)) {
+          yield* closeActiveContent();
+          const start = startContentBlock(key, "text");
+          if (start !== undefined) yield start;
         }
         break;
       }
       case "response.output_text.delta": {
         const key = textBlockKey(event.item_id, event.content_index);
-        const start = startTextBlock(key);
-        if (start !== undefined) {
-          yield start;
+        if (!blocks.has(key)) {
+          yield* closeActiveContent();
+          const start = startContentBlock(key, "text");
+          if (start !== undefined) yield start;
         }
         const block = blocks.get(key);
         if (block !== undefined) {
@@ -841,15 +870,29 @@ export async function* encodeAnthropicSse(
         }
         break;
       }
-      case "response.output_text.done": {
-        const stop = closeBlock(textBlockKey(event.item_id, event.content_index));
-        if (stop !== undefined) {
-          yield stop;
+      case "response.output_text.done":
+        yield* closeBlock(textBlockKey(event.item_id, event.content_index));
+        break;
+      case "response.reasoning_summary_text.delta": {
+        const key = reasoningBlockKey(event.item_id);
+        if (!blocks.has(key)) {
+          yield* closeActiveContent();
+          const start = startContentBlock(key, "thinking");
+          if (start !== undefined) yield start;
+        }
+        const block = blocks.get(key);
+        if (block !== undefined) {
+          yield encode("content_block_delta", {
+            type: "content_block_delta",
+            index: block.index,
+            delta: { type: "thinking_delta", thinking: event.delta }
+          });
         }
         break;
       }
       case "response.output_item.added":
         if (event.item.type === "function_call") {
+          yield* closeActiveContent();
           sawToolUse = true;
           const block: OpenBlock = {
             index: nextBlockIndex++,
@@ -891,16 +934,14 @@ export async function* encodeAnthropicSse(
             delta: { type: "input_json_delta", partial_json: remainder }
           });
         }
-        const stop = closeBlock(event.item_id);
-        if (stop !== undefined) {
-          yield stop;
-        }
+        yield* closeBlock(event.item_id);
         break;
       }
       case "response.output_item.done":
         if (event.item.type === "function_call") {
           let block = blocks.get(event.item.id);
           if (block === undefined) {
+            yield* closeActiveContent();
             const syntheticStart = functionCallStart(event.item, nextBlockIndex++);
             block = syntheticStart.block;
             blocks.set(event.item.id, block);
@@ -916,11 +957,9 @@ export async function* encodeAnthropicSse(
               delta: { type: "input_json_delta", partial_json: remainder }
             });
           }
-          const stop = closeBlock(event.item.id);
-          if (stop !== undefined) {
-            yield stop;
-          }
+          yield* closeBlock(event.item.id);
         } else if (event.item.type === "web_search_call") {
+          yield* closeActiveContent();
           // Provider-executed search arrives whole at `done` (never at `added`, which would
           // race a partial action). It never marks sawToolUse: server tools keep stop_reason
           // at end_turn, unlike a client tool_use round-trip.
@@ -958,10 +997,7 @@ export async function* encodeAnthropicSse(
         break;
       case "response.completed":
         for (const [key] of blocks) {
-          const stop = closeBlock(key);
-          if (stop !== undefined) {
-            yield stop;
-          }
+          yield* closeBlock(key);
         }
         yield encode("message_delta", {
           type: "message_delta",
@@ -978,10 +1014,12 @@ export async function* encodeAnthropicSse(
         messageStopped = true;
         break;
       case "response.failed":
+        yield* closeActiveContent();
         yield encode("error", { type: "error", error: event.response.error });
         messageStopped = true;
         break;
       case "error":
+        yield* closeActiveContent();
         yield encode("error", { type: "error", error: event.error });
         messageStopped = true;
         break;
@@ -995,6 +1033,10 @@ export async function* encodeAnthropicSse(
 
 function textBlockKey(itemId: string, contentIndex: number): string {
   return `${itemId}:${contentIndex}`;
+}
+
+function reasoningBlockKey(itemId: string): string {
+  return `reasoning:${itemId}`;
 }
 
 function requiredToolBlock(blocks: Map<string, OpenBlock>, itemId: string): OpenBlock {

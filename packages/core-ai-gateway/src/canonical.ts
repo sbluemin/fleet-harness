@@ -278,6 +278,12 @@ export type CanonicalResponseEvent =
       text: string;
     }
   | {
+      type: "response.reasoning_summary_text.delta";
+      item_id: string;
+      output_index: number;
+      delta: string;
+    }
+  | {
       type: "response.output_item.added";
       output_index: number;
       item: CanonicalOutputItem;

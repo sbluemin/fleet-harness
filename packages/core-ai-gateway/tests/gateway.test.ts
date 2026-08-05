@@ -308,6 +308,24 @@ describe("Anthropic request translation", () => {
     })).not.toHaveProperty("reasoning");
   });
 
+  it("drops synthetic thinking blocks when replaying an assistant turn", () => {
+    const request: AnthropicMessagesRequest = {
+      ...baseRequest(),
+      messages: [{
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "Inspecting.", signature: "gateway_reasoning:rs_1" },
+          { type: "redacted_thinking", data: "opaque" },
+          { type: "text", text: "Done" },
+        ],
+      }],
+    };
+
+    expect(translateAnthropicRequest(request).input).toEqual([
+      { type: "message", role: "assistant", content: "Done" },
+    ]);
+  });
+
   it("maps a second-turn tool_result back to the preserved function call id", () => {
     const request: AnthropicMessagesRequest = {
       model: "claude-sonnet-4-6",
@@ -2392,6 +2410,137 @@ describe("OpenAI Responses adapter", () => {
       },
     });
     expect(messageDelta?.data).toMatchObject({ delta: { stop_reason: "end_turn" } });
+  });
+
+  it("streams Responses reasoning summaries as Anthropic thinking before text", async () => {
+    const upstreamSse = [
+      frame("response.created", {
+        type: "response.created",
+        response: { id: "resp_reasoning", model: "gpt-5.6-sol", usage: null },
+      }),
+      frame("response.reasoning_summary_text.delta", {
+        type: "response.reasoning_summary_text.delta",
+        item_id: "rs_1",
+        output_index: 0,
+        delta: "Inspecting ",
+      }),
+      frame("response.reasoning_text.delta", {
+        type: "response.reasoning_text.delta",
+        item_id: "rs_1",
+        output_index: 0,
+        delta: "the repository.",
+      }),
+      frame("response.output_text.delta", {
+        type: "response.output_text.delta",
+        item_id: "msg_1",
+        output_index: 1,
+        content_index: 0,
+        delta: "Done",
+      }),
+      frame("response.output_text.done", {
+        type: "response.output_text.done",
+        item_id: "msg_1",
+        output_index: 1,
+        content_index: 0,
+        text: "Done",
+      }),
+      frame("response.completed", {
+        type: "response.completed",
+        response: { id: "resp_reasoning", model: "gpt-5.6-sol", usage: { input_tokens: 8, output_tokens: 5 } },
+      }),
+    ].join("");
+    const adapter = new OpenAIResponsesAdapter({ fetch: async () => sseResponse(upstreamSse) });
+    const result = await adapter.stream(
+      { model: "gpt-5.6-sol", input: [], stream: true },
+      { apiKey: "k" },
+    );
+    if (!result.ok) throw new Error("expected a successful stream");
+    const events: CanonicalResponseEvent[] = [];
+    for await (const event of result.events) events.push(event);
+
+    expect(events.filter((event) => event.type === "response.reasoning_summary_text.delta")).toEqual([
+      { type: "response.reasoning_summary_text.delta", item_id: "rs_1", output_index: 0, delta: "Inspecting " },
+      { type: "response.reasoning_summary_text.delta", item_id: "rs_1", output_index: 0, delta: "the repository." },
+    ]);
+
+    const frames = parseSse(await collectBody(encodeAnthropicSse(iterable(events))));
+    expect(frames.map((item) => item.event)).toEqual([
+      "message_start",
+      "content_block_start",
+      "content_block_delta",
+      "content_block_delta",
+      "content_block_delta",
+      "content_block_stop",
+      "content_block_start",
+      "content_block_delta",
+      "content_block_stop",
+      "message_delta",
+      "message_stop",
+    ]);
+    expect(frames[1]?.data).toMatchObject({
+      content_block: { type: "thinking", thinking: "", signature: "" },
+    });
+    expect(frames[2]?.data).toMatchObject({ delta: { type: "thinking_delta", thinking: "Inspecting " } });
+    expect(frames[3]?.data).toMatchObject({ delta: { type: "thinking_delta", thinking: "the repository." } });
+    expect(frames[4]?.data).toMatchObject({
+      delta: { type: "signature_delta", signature: "gateway_reasoning:rs_1" },
+    });
+    expect(frames[6]?.data).toMatchObject({ content_block: { type: "text", text: "" } });
+
+    const collected = await collectAnthropicMessage(iterable(events), "gpt-5.6-sol");
+    expect(collected.content).toEqual([
+      { type: "thinking", thinking: "Inspecting the repository.", signature: "gateway_reasoning:rs_1" },
+      { type: "text", text: "Done" },
+    ]);
+  });
+
+  it("closes thinking with a signature before starting a tool block", async () => {
+    const events = iterable<CanonicalResponseEvent>([
+      {
+        type: "response.created",
+        response: { id: "resp_reason_tool", model: "gpt-5.6-sol", usage: null },
+      },
+      {
+        type: "response.reasoning_summary_text.delta",
+        item_id: "rs_tool",
+        output_index: 0,
+        delta: "Need a file.",
+      },
+      {
+        type: "response.output_item.added",
+        output_index: 1,
+        item: {
+          type: "function_call",
+          id: "fc_tool",
+          call_id: "call_tool",
+          name: "read_file",
+          arguments: "",
+        },
+      },
+      {
+        type: "response.function_call_arguments.done",
+        item_id: "fc_tool",
+        output_index: 1,
+        arguments: '{"path":"README.md"}',
+      },
+      {
+        type: "response.completed",
+        response: { id: "resp_reason_tool", model: "gpt-5.6-sol", usage: { input_tokens: 5, output_tokens: 3 } },
+      },
+    ]);
+
+    const frames = parseSse(await collectBody(encodeAnthropicSse(events)));
+    expect(frames.slice(1, 7).map((item) => [item.event, (item.data.delta as { type?: string } | undefined)?.type])).toEqual([
+      ["content_block_start", undefined],
+      ["content_block_delta", "thinking_delta"],
+      ["content_block_delta", "signature_delta"],
+      ["content_block_stop", undefined],
+      ["content_block_start", undefined],
+      ["content_block_delta", "input_json_delta"],
+    ]);
+    expect(frames[5]?.data).toMatchObject({
+      content_block: { type: "tool_use", id: "call_tool", name: "read_file" },
+    });
   });
 
   it("streams function-call arguments into Anthropic tool_use deltas with the call id intact", async () => {
