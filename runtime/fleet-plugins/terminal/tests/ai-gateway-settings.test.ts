@@ -65,6 +65,23 @@ describe("ai-gateway settings store", () => {
     expect(await store.read()).toEqual({ version: 1 });
   });
 
+  it("drops a stored effort the catalog no longer offers instead of echoing it back", () => {
+    // 이 정규형이 설정 GET의 값이고 클라이언트는 무관한 편집에도 그대로 되돌려 보낸다.
+    // 사다리 밖 단계를 남기면 검증기가 그 payload를 거부해, 카탈로그가 단계를 하나 빼는
+    // 순간 그 모델을 지우기 전까지 AI Gateway 저장 전체가 400으로 잠긴다.
+    expect(normalizeAiGatewaySettings({
+      version: 1,
+      models: [{ id: "kimi--k3-256k", efforts: ["xhigh"] }],
+    })).toEqual({ version: 1, models: [{ id: "kimi--k3-256k" }] });
+    expect(normalizeAiGatewaySettings({
+      version: 1,
+      models: [{ id: "kimi--k3-256k", efforts: ["max", "xhigh"] }],
+    })).toEqual({ version: 1, models: [{ id: "kimi--k3-256k", efforts: ["max"] }] });
+    // 정규화한 값은 검증기가 그대로 받아들여야 왕복이 닫힌다.
+    expect(parseAiGatewayUpdate({ models: [{ id: "kimi--k3-256k", efforts: ["max"] }], defaultModel: "kimi--k3-256k" }).ok)
+      .toBe(true);
+  });
+
   it("keeps a narrowed effort selection and folds a whole-ladder one back to absent", () => {
     // 저장형이 하나여야 "전체 노출"이 두 가지 철자를 갖지 않는다.
     expect(parseAiGatewayUpdate({ models: [{ id: "kimi--k3", efforts: ["max", "low"] }] }))

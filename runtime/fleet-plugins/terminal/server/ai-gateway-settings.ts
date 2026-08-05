@@ -47,9 +47,15 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
         const efforts = Array.isArray(entry.efforts)
           ? entry.efforts.filter((level): level is string => typeof level === "string" && level.length > 0)
           : [];
-        // 빈 배열은 저장하지 않는다 — "정체성 0개"를 뜻하게 두면 노출해 놓고 쓸 수 없는
-        // 모델이 생긴다. 부재와 같은 뜻(사다리 전체)으로 접는다.
-        return efforts.length > 0 ? { id: entry.id, efforts } : { id: entry.id };
+        // 카탈로그에 대조해 지금 고를 수 있는 단계만 남긴다. 이 정규형이 설정 GET이
+        // 돌려주는 값이고 클라이언트는 그 배열을 무관한 편집(모델 추가·기본 모델 변경)에도
+        // 그대로 되돌려 보내는데, 검증기는 사다리 밖 단계를 거부하므로 카탈로그가 단계를
+        // 하나 빼는 순간 그 모델을 지우기 전까지 AI Gateway 저장 전체가 400으로 잠긴다.
+        // 빈 배열도 저장하지 않는다 — "정체성 0개"는 노출해 놓고 쓸 수 없는 모델이 된다.
+        // 부재와 같은 뜻(사다리 전체)으로 접는다.
+        const model = efforts.length > 0 ? findGatewayModel(entry.id) : undefined;
+        const exposed = model ? narrowEffortLadder(model, efforts) : undefined;
+        return exposed ? { id: entry.id, efforts: [...exposed] } : { id: entry.id };
       })
     : [];
   const defaultModel = typeof value.defaultModel === "string" && value.defaultModel.length > 0
