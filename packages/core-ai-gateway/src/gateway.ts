@@ -10,6 +10,7 @@ import type {
   CanonicalResponseRequest,
 } from "./canonical.js";
 import { OpenAIResponsesAdapter } from "./openai-responses-adapter.js";
+import { withSseKeepAlive } from "./sse-keepalive.js";
 import { estimateTokens } from "./token-estimate.js";
 import { logCanonicalEvents, wireLog, wireLogEnabled } from "./wire-log.js";
 
@@ -116,10 +117,10 @@ export class AnthropicMessagesGateway {
           "cache-control": "no-cache",
           "content-type": "text/event-stream; charset=utf-8"
         }),
-        body: encodeAnthropicSse(events, {
+        body: withSseKeepAlive(encodeAnthropicSse(events, {
           contextWindow: options.contextWindow,
           model: request.model,
-        })
+        }))
       };
     }
 

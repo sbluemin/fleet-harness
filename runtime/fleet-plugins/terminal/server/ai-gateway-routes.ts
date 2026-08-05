@@ -426,6 +426,7 @@ async function proxyToKimi(
   await proxyAnthropicMessages(res, kimiRequestBody(body, model), {
     contextWindow,
     responseModel,
+    keepAlive: true,
     fetchImpl,
     headers,
     signal,

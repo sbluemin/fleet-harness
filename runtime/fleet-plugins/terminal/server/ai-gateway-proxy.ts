@@ -1,4 +1,4 @@
-import { projectAnthropicResponseUsage } from "@dotobokuri/core-ai-gateway";
+import { projectAnthropicResponseUsage, withSseKeepAlive } from "@dotobokuri/core-ai-gateway";
 import type {
   AnthropicMessage,
   AnthropicMessagesRequest,
@@ -28,6 +28,8 @@ export interface AnthropicProxyOptions {
    * 되돌려 본다 — Claude Code가 자기 요청 모델과 응답 모델을 대조할 수 있게 한다.
    */
   readonly responseModel?: string;
+  /** Provider가 Anthropic 이벤트를 내지 않는 동안에도 gateway alias의 downstream 생존성을 유지한다. */
+  readonly keepAlive?: boolean;
   readonly fetchImpl: typeof fetch;
   readonly headers: Readonly<Record<string, string>>;
   readonly signal: AbortSignal;
@@ -69,13 +71,17 @@ export async function proxyAnthropicMessages(
   }
   const rawBody = readResponseBody(upstream.body);
   // contextWindow이 없어도 responseModel이 있으면 재작성이 필요하므로 변환기를 탄다.
-  const responseBody = options.contextWindow === undefined && options.responseModel === undefined
+  const contentType = upstream.headers.get("content-type");
+  const projectedBody = options.contextWindow === undefined && options.responseModel === undefined
     ? rawBody
     : projectAnthropicResponseUsage(rawBody, {
-        contentType: upstream.headers.get("content-type"),
+        contentType,
         contextWindow: options.contextWindow,
         responseModel: options.responseModel,
       });
+  const responseBody = options.keepAlive === true && contentType?.split(";", 1)[0]?.trim().toLowerCase() === "text/event-stream"
+    ? withSseKeepAlive(projectedBody)
+    : projectedBody;
   for await (const chunk of responseBody) {
     if (!res.write(chunk)) await drain(res);
   }

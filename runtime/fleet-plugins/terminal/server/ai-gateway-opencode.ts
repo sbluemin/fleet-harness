@@ -66,6 +66,7 @@ export async function proxyToOpencode(
   await proxyAnthropicMessages(res, opencodeRequestBody(body, model), {
     contextWindow,
     responseModel,
+    keepAlive: true,
     fetchImpl,
     headers,
     signal,

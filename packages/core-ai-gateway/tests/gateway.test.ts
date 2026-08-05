@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  ANTHROPIC_SSE_KEEPALIVE_INTERVAL_MS,
   AnthropicMessagesGateway,
   GATEWAY_MODELS,
   CODEX_SUBSCRIPTION_MODELS,
@@ -30,7 +31,8 @@ import {
   UpstreamProtocolError,
   collectAnthropicMessage,
   encodeAnthropicSse,
-  translateAnthropicRequest
+  translateAnthropicRequest,
+  withSseKeepAlive
 } from "../src/index.js";
 import type {
   AiGatewayAdapter,
@@ -1169,6 +1171,114 @@ describe("Anthropic response model rewrite", () => {
     ));
 
     expect(output).toBe(raw);
+  });
+});
+
+describe("Anthropic SSE keepalive", () => {
+  it("emits a comment before Claude Code's downstream stall threshold", async () => {
+    vi.useFakeTimers();
+    try {
+      let release!: (value: IteratorResult<Uint8Array>) => void;
+      const chunks: AsyncIterable<Uint8Array> = {
+        [Symbol.asyncIterator]() {
+          return {
+            next: () => new Promise<IteratorResult<Uint8Array>>((resolve) => { release = resolve; }),
+            return: async () => ({ done: true, value: undefined }),
+          };
+        },
+      };
+      const iterator = withSseKeepAlive(chunks)[Symbol.asyncIterator]();
+      const first = iterator.next();
+
+      await vi.advanceTimersByTimeAsync(ANTHROPIC_SSE_KEEPALIVE_INTERVAL_MS - 1);
+      let settled = false;
+      void first.then(() => { settled = true; });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(first).resolves.toMatchObject({
+        done: false,
+        value: new TextEncoder().encode(": keep-alive\n\n"),
+      });
+
+      release({ done: true, value: undefined });
+      await iterator.return?.(undefined);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps a translated gateway response alive before the first canonical event", async () => {
+    vi.useFakeTimers();
+    try {
+      let finish!: () => void;
+      const adapter: AiGatewayAdapter = {
+        async stream() {
+          return {
+            ok: true as const,
+            status: 200,
+            headers: new Headers(),
+            events: {
+              [Symbol.asyncIterator]() {
+                return {
+                  next: () => new Promise<IteratorResult<CanonicalResponseEvent>>((resolve) => {
+                    finish = () => resolve({ done: true, value: undefined });
+                  }),
+                  return: async () => ({ done: true, value: undefined }),
+                };
+              },
+            },
+          };
+        },
+      };
+      const response = await new AnthropicMessagesGateway(adapter).stream(baseRequest(), { apiKey: "k" });
+      const iterator = response.body[Symbol.asyncIterator]();
+      const first = iterator.next();
+
+      await vi.advanceTimersByTimeAsync(ANTHROPIC_SSE_KEEPALIVE_INTERVAL_MS);
+      await expect(first).resolves.toMatchObject({
+        done: false,
+        value: new TextEncoder().encode(": keep-alive\n\n"),
+      });
+
+      finish();
+      await iterator.return?.(undefined);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("passes through a real chunk and restarts the idle interval", async () => {
+    vi.useFakeTimers();
+    try {
+      const pending: Array<(value: IteratorResult<Uint8Array>) => void> = [];
+      const chunks: AsyncIterable<Uint8Array> = {
+        [Symbol.asyncIterator]() {
+          return {
+            next: () => new Promise<IteratorResult<Uint8Array>>((resolve) => pending.push(resolve)),
+            return: async () => ({ done: true, value: undefined }),
+          };
+        },
+      };
+      const iterator = withSseKeepAlive(chunks)[Symbol.asyncIterator]();
+      const real = iterator.next();
+      await vi.advanceTimersByTimeAsync(6_000);
+      pending.shift()?.({ done: false, value: new TextEncoder().encode("event: message_start\n\n") });
+      await expect(real).resolves.toMatchObject({ done: false });
+
+      const keepalive = iterator.next();
+      await vi.advanceTimersByTimeAsync(9_999);
+      let settled = false;
+      void keepalive.then(() => { settled = true; });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(keepalive).resolves.toMatchObject({ done: false });
+      await iterator.return?.(undefined);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
