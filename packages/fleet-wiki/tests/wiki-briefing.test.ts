@@ -304,6 +304,27 @@ describe("wiki briefing", () => {
     expect(hits[0]?.excerpt).toContain("<<<FLEET_WIKI_ENTRY_END>>>");
     expect(hits[0]?.matchedSnippets?.[0]?.snippet).toContain("<<<FLEET_WIKI_ENTRY_BEGIN");
   });
+
+  it("matches Korean multi-word topics through unicode tokenization", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+
+    await writeWikiEntry({
+      id: "unit-renderer",
+      title: "유닛 렌더러 계약",
+      tags: ["rf2"],
+      created: "2026-04-26T00:00:00.000Z",
+      updated: "2026-04-26T00:00:00.000Z",
+      version: 1,
+      body: "렌더러 적용은 지연 실행이다. 머트리얼 예약과 파라미터 반영 경로를 다룬다.",
+    }, paths);
+
+    // No exact phrase match — recall must come from per-token matching, which
+    // previously produced zero tokens for Hangul-only topics.
+    const hits = await briefingQuery(paths, { topic: "머트리얼 렌더러 동작", limit: 5 });
+
+    expect(hits.map((hit) => hit.id)).toContain("unit-renderer");
+  });
 });
 
 async function makeTempRoot(): Promise<string> {
