@@ -849,6 +849,47 @@ describe("triage store", () => {
     expect(getTriagePick()).toBe("next");
   });
 
+  it("routes card, map-dot, and owned empty-region context menus without guessing bare space", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    triagePlateRoot = createRoot(container);
+    const operationMenu = vi.fn();
+    const theaterMenu = vi.fn();
+
+    act(() => {
+      triagePlateRoot?.render(createElement(TriageWatchDeck, {
+        active: true,
+        entering: false,
+        theaters: THEATERS,
+        operations: OPERATIONS,
+        operationStatus: { picked: "running", next: "idle" },
+        operationAccent: {},
+        onOperationContextMenu: operationMenu,
+        onTheaterContextMenu: theaterMenu,
+      }));
+    });
+
+    const card = container.querySelector<HTMLButtonElement>('[data-triage-deck-card="picked"]')!;
+    const cardMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 41, clientY: 52 });
+    act(() => card.dispatchEvent(cardMenu));
+    expect(cardMenu.defaultPrevented).toBe(true);
+    expect(operationMenu).toHaveBeenCalledWith("picked", expect.any(DOMRect), card);
+    expect(theaterMenu).not.toHaveBeenCalled();
+
+    const bandBody = container.querySelector<HTMLElement>(".canvas-triage-deck-band-body")!;
+    const fieldMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 71, clientY: 82 });
+    act(() => bandBody.dispatchEvent(fieldMenu));
+    expect(fieldMenu.defaultPrevented).toBe(true);
+    expect(theaterMenu).toHaveBeenCalledWith("theater-a", "Alpha", { x: 71, y: 82 });
+
+    act(() => setTriageDeckMapModeLive(true));
+    const dot = container.querySelector<HTMLButtonElement>('[data-triage-map-dot="picked"]')!;
+    const dotMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 91, clientY: 102 });
+    act(() => dot.dispatchEvent(dotMenu));
+    expect(dotMenu.defaultPrevented).toBe(true);
+    expect(operationMenu).toHaveBeenLastCalledWith("picked", expect.any(DOMRect), dot);
+  });
+
   it("groups deck cards into theater bands ordered by waiting count", () => {
     const container = document.createElement("div");
     document.body.append(container);

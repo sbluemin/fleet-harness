@@ -69,6 +69,7 @@ export const canvasEn = {
 
   "canvas.menu.aria": "Canvas controls",
   "canvas.menu.title": "Canvas controls",
+  "canvas.menu.theaterTitle": "{theater} controls",
   "canvas.menu.launch": "Launch",
   "canvas.menu.empty": "No operations available.",
 
@@ -276,6 +277,7 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
 
   "canvas.menu.aria": "캔버스 제어",
   "canvas.menu.title": "캔버스 제어",
+  "canvas.menu.theaterTitle": "{theater} 제어",
   "canvas.menu.launch": "실행",
   "canvas.menu.empty": "사용 가능한 Operation이 없습니다.",
 

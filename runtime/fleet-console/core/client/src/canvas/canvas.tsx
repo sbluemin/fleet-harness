@@ -37,17 +37,20 @@ interface OperationsCanvasProps {
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly canLaunch: boolean;
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
-  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, canvasPoint: CanvasPoint) => void;
+  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, canvasPoint: CanvasPoint, theaterId?: string) => void;
   readonly onLaunchAtGeometry: (pluginId: string, kind: OperationLaunchKind, geometry: OperationGeometry) => void;
   readonly onClose: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
   readonly onRename: (operationId: string, title: string) => void;
   readonly onSetAccent: (operationId: string, accentKey: string | null) => void;
+  readonly onOpenOperationMenu?: (operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
 }
 
 interface ContextMenuRequest {
   readonly anchor: CanvasPoint;
   readonly canvasPoint: CanvasPoint;
+  readonly theaterId?: string;
+  readonly theaterLabel?: string;
 }
 
 interface PluginOperationRendererProps {
@@ -87,6 +90,7 @@ export function OperationsCanvas({
   onFocus,
   onRename,
   onSetAccent,
+  onOpenOperationMenu,
 }: OperationsCanvasProps) {
   const canvasRef = useRef<HTMLElement | null>(null);
   const t = useT();
@@ -232,25 +236,40 @@ export function OperationsCanvas({
   });
 
   const handleContextMenuLaunchKind = (pluginId: string, kind: OperationLaunchKind) => {
-    const point = contextMenu?.canvasPoint;
+    const request = contextMenu;
     setContextMenu(null);
-    if (!point) return;
-    onLaunchKind(pluginId, kind, point);
+    if (!request) return;
+    // War Room의 소유 영역 launch도 페이지가 소유한 기존 plugin launch 경로를 그대로 탄다.
+    // theaterId가 없으면 Cruise의 활성 Theater 경로이고, 있으면 소유 영역이 명시한 Theater다.
+    onLaunchKind(pluginId, kind, request.canvasPoint, request.theaterId);
   };
 
   const handleContextMenu = (event: ReactMouseEvent<HTMLElement>) => {
     if (event.target instanceof Element && event.target.closest("[data-canvas-blocker], [data-canvas-operation]")) return;
     event.preventDefault();
-    // 선별 처리/Formation은 map 좌표가 아닌 고정 배치라 메뉴 앵커를 커서 지점으로 둔다 —
-    // canvasPoint는 map 모드에서만 생성/실행 좌표로 쓰인다.
-    const anchor = triageActive
-      ? { x: event.clientX, y: event.clientY }
-      : (() => {
-          const rect = canvasRef.current?.getBoundingClientRect();
-          return rect ? { x: event.clientX - rect.left, y: event.clientY - rect.top } : null;
-        })();
+    // War Room의 소유자 없는 바닥은 launch 대상으로 추측하지 않는다. deck band/map zone이 명시적으로
+    // Theater ID를 넘기는 경우만 아래 컨텍스트 메뉴 상태를 만든다.
+    if (triageActive) {
+      setContextMenu(null);
+      return;
+    }
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const anchor = rect ? { x: event.clientX - rect.left, y: event.clientY - rect.top } : null;
     if (!anchor) return;
     setContextMenu({ anchor, canvasPoint: screenToCanvas(anchor, canvas.viewport) });
+  };
+
+  const openTriageTheaterLaunchMenu = (theaterId: string, theaterLabel: string, anchor: CanvasPoint) => {
+    const canvasRect = canvasRef.current?.getBoundingClientRect();
+    if (!canvasRect) return;
+    setContextMenu({
+      anchor,
+      // War Room에는 world transform이 없으므로 메뉴 커서를 캔버스-local geometry 좌표로 바꿔
+      // 기존 launch geometry 생성 문법을 유지한다.
+      canvasPoint: { x: anchor.x - canvasRect.left, y: anchor.y - canvasRect.top },
+      theaterId,
+      theaterLabel,
+    });
   };
 
   const minimizedSet = new Set(minimized);
@@ -933,6 +952,18 @@ export function OperationsCanvas({
                     key={entry.operation.id}
                     type="button"
                     className={isTriageWaitingOperation(entry.operation, state.operationStatus) && !isTriageOperationDeferred(entry.operation.id) ? "is-fresh" : undefined}
+                    aria-haspopup="menu"
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onOpenOperationMenu?.(entry.operation.id, new DOMRect(event.clientX, event.clientY, 0, 0), event.currentTarget);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onOpenOperationMenu?.(entry.operation.id, event.currentTarget.getBoundingClientRect(), event.currentTarget);
+                    }}
                     onClick={() => pickTriageOperation(entry.operation.id)}
                   >
                     {entry.operation.title}
@@ -975,6 +1006,8 @@ export function OperationsCanvas({
           setTheaterOperationGeometry(theaterId, operationId, geometry);
           void updatePluginOperationGeometry(operationId, geometry);
         }}
+        onOperationContextMenu={onOpenOperationMenu}
+        onTheaterContextMenu={openTriageTheaterLaunchMenu}
       />
       {cruiseEntering ? (
         <div className="canvas-mode-curtain canvas-cruise-curtain" aria-hidden="true">
@@ -1005,10 +1038,11 @@ export function OperationsCanvas({
           viewportBounds={viewportBoundsFor(canvasRef.current)}
           placement="cursor"
           catalog={catalog}
-          canLaunch={canLaunch && !formationView && !triageActive}
+          canLaunch={canLaunch && !formationView}
           renderKindIcon={renderKindIcon}
           onLaunchKind={handleContextMenuLaunchKind}
           onClose={() => setContextMenu(null)}
+          theaterLabel={contextMenu.theaterLabel}
           fixed={triageActive}
         />
       ) : null}

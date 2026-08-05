@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../i18n/index.js";
@@ -64,6 +64,9 @@ interface TriageWatchDeckProps {
   /** 지도에서 마커를 끌어 옮겼을 때의 새 캔버스 좌표 — 지도는 함대의 축소판이므로 여기서 옮긴
       자리가 곧 캔버스에서의 자리다. 전 Theater가 올라오므로 소속 Theater를 함께 넘긴다. */
   readonly onMapMarkerMove?: (operationId: string, theaterId: string, geometry: OperationGeometry) => void;
+  /** Operation 표면의 공용 메뉴와 Theater 소유 빈 영역의 launch 메뉴를 상위 canvas가 호스트한다. */
+  readonly onOperationContextMenu?: (operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
+  readonly onTheaterContextMenu?: (theaterId: string, theaterLabel: string, anchor: { readonly x: number; readonly y: number }) => void;
 }
 
 export interface TriageDeckArrivalDwell {
@@ -492,6 +495,8 @@ export function TriageWatchDeck({
   previewConfigFor,
   freshOperationIds,
   onMapMarkerMove,
+  onOperationContextMenu,
+  onTheaterContextMenu,
 }: TriageWatchDeckProps) {
   const t = useT();
   const gridRef = useRef<HTMLDivElement | null>(null);
@@ -833,6 +838,37 @@ export function TriageWatchDeck({
     dismissQuicklook();
     pickTriageOperation(operationId);
   };
+  const openOperationMenu = (operationId: string, event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    // 메뉴가 뜬 동안 hover 확대가 메뉴와 카드 body를 두고 싸우지 않게 즉시 걷는다.
+    dismissQuicklook();
+    onOperationContextMenu?.(operationId, new DOMRect(event.clientX, event.clientY, 0, 0), event.currentTarget);
+  };
+  const openOperationMenuFromKeyboard = (operationId: string, event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    dismissQuicklook();
+    onOperationContextMenu?.(operationId, event.currentTarget.getBoundingClientRect(), event.currentTarget);
+    return true;
+  };
+  const openTheaterMenu = (theater: TriageDeckTheater, event: ReactMouseEvent<HTMLElement>) => {
+    if (event.defaultPrevented || event.target instanceof Element && event.target.closest("[data-triage-deck-card], [data-triage-map-dot]")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dismissQuicklook();
+    onTheaterContextMenu?.(theater.id, theater.label, { x: event.clientX, y: event.clientY });
+  };
+  const openMapOperationMenu = (operationId: string, event: ReactMouseEvent<HTMLButtonElement>) => {
+    const activeDrag = mapDragRef.current;
+    if ((activeDrag?.operationId === operationId && activeDrag.moved) || isTriageMapDragSuppressed(operationId)) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    openOperationMenu(operationId, event);
+  };
   const mapHover: TriageMapDotHover = { arm: armMapQuicklook, dismiss: dismissQuicklook };
   // 마커 드래그 — 판 위에서 옮긴 자리가 곧 캔버스에서의 자리다. 이동 중에는 리렌더를 한 번도
   // 일으키지 않고 점의 CSS 변수만 직접 쓴다: 이 컴포넌트의 렌더 한 번은 전 밴드의 마커 배치를
@@ -960,7 +996,11 @@ export function TriageWatchDeck({
       <div className="canvas-triage-deck-grid" ref={gridRef}>
         {bands.map((band) => {
           return (
-            <section className="canvas-triage-deck-band" key={band.theater.id}>
+            <section
+              className="canvas-triage-deck-band"
+              key={band.theater.id}
+              onContextMenu={(event) => openTheaterMenu(band.theater, event)}
+            >
               <header className="canvas-triage-deck-band-head">
                 <span className="canvas-triage-deck-band-chip" aria-hidden="true">{theaterInitials(band.theater.label)}</span>
                 <span className="canvas-triage-deck-band-label">{band.theater.label}</span>
@@ -999,6 +1039,8 @@ export function TriageWatchDeck({
                             ? { transform: `translate(${morphFrame.dx.toFixed(1)}px, ${morphFrame.dy.toFixed(1)}px) scale(${morphFrame.scale.toFixed(4)})` }
                             : undefined}
                         aria-label={t("canvas.triage.deckCardAria", { title: operation.title })}
+                        aria-haspopup="menu"
+                        onContextMenu={(event) => openOperationMenu(operation.id, event)}
                         onPointerEnter={(event: PointerEvent<HTMLButtonElement>) => {
                           if (event.pointerType === "touch" || arrivingOperationId === operation.id) return;
                           armQuicklook(operation.id, event.currentTarget, true);
@@ -1009,6 +1051,7 @@ export function TriageWatchDeck({
                           armQuicklook(operation.id, event.currentTarget, false);
                         }}
                         onBlur={dismissQuicklook}
+                        onKeyDown={(event) => { openOperationMenuFromKeyboard(operation.id, event); }}
                         onClick={(event) => pick(operation.id, event.currentTarget)}
                       >
                         <TriageDeckCardFace
@@ -1034,8 +1077,11 @@ export function TriageWatchDeck({
           <div className="canvas-triage-map-fleet">
             {bands.length === 1 ? (
               // Theater가 하나뿐이면 구역을 나눌 이유가 없다 — 원 없이 판 전체가 그 함대의 바다다.
-              <div className="canvas-triage-map canvas-triage-map--plane">
-                {renderTriageMapDots(bands[0]!, operationStatus, t, pick, mapHover, mapDrag, draggingMarkerId)}
+              <div
+                className="canvas-triage-map canvas-triage-map--plane"
+                onContextMenu={(event) => openTheaterMenu(bands[0]!.theater, event)}
+              >
+                {renderTriageMapDots(bands[0]!, operationStatus, t, pick, mapHover, mapDrag, draggingMarkerId, openMapOperationMenu, openOperationMenuFromKeyboard)}
               </div>
             ) : bands.map((band, bandIndex) => {
               const zone = fleetZones[bandIndex]!;
@@ -1043,6 +1089,7 @@ export function TriageWatchDeck({
               <section
                 className="canvas-triage-map-zone"
                 key={band.theater.id}
+                onContextMenu={(event) => openTheaterMenu(band.theater, event)}
                 style={{
                   "--zone-x": `${zone.centerX}%`,
                   "--zone-y": `${zone.centerY}%`,
@@ -1062,7 +1109,7 @@ export function TriageWatchDeck({
                   </span>
                 </header>
                 <div className="canvas-triage-map">
-                  {renderTriageMapDots(band, operationStatus, t, pick, mapHover, mapDrag, draggingMarkerId)}
+                  {renderTriageMapDots(band, operationStatus, t, pick, mapHover, mapDrag, draggingMarkerId, openMapOperationMenu, openOperationMenuFromKeyboard)}
                 </div>
               </section>
               );
@@ -1134,8 +1181,12 @@ export const TRIAGE_MAP_DRAG_THRESHOLD_PX = 4;
 // click을 항상 보내므로, 이 표시가 없으면 점을 옮길 때마다 그 패널이 무대로 올라간다.
 let triageMapDragSuppression: string | null = null;
 
+function isTriageMapDragSuppressed(operationId: string): boolean {
+  return triageMapDragSuppression === operationId;
+}
+
 function consumeTriageMapDragSuppression(operationId: string): boolean {
-  if (triageMapDragSuppression !== operationId) return false;
+  if (!isTriageMapDragSuppressed(operationId)) return false;
   triageMapDragSuppression = null;
   return true;
 }
@@ -1173,6 +1224,8 @@ function renderTriageMapDots(
   hover: TriageMapDotHover,
   drag: TriageMapDotDrag,
   draggingMarkerId: string | null,
+  openOperationMenu: (operationId: string, event: ReactMouseEvent<HTMLButtonElement>) => void,
+  openOperationMenuFromKeyboard: (operationId: string, event: ReactKeyboardEvent<HTMLButtonElement>) => boolean,
 ) {
   return band.mapMarkers?.map((marker) => {
     const operation = band.operations.find((candidate) => candidate.id === marker.operationId);
@@ -1212,6 +1265,8 @@ function renderTriageMapDots(
         data-triage-map-dot={marker.operationId}
         style={style}
         aria-label={t("canvas.triage.deckCardAria", { title: operation.title })}
+        aria-haspopup="menu"
+        onContextMenu={(event) => openOperationMenu(operation.id, event)}
         onPointerDown={(event) => drag.start(operation.id, event)}
         onPointerMove={drag.move}
         onPointerUp={drag.end}
@@ -1226,6 +1281,7 @@ function renderTriageMapDots(
           hover.arm(operation.id, event.currentTarget, false);
         }}
         onBlur={hover.dismiss}
+        onKeyDown={(event) => { openOperationMenuFromKeyboard(operation.id, event); }}
         onClick={(event) => {
           // 끌어서 옮긴 직후의 click은 무대 승격이 아니다 — 이동 의도를 클릭으로 삼키지 않는다.
           if (consumeTriageMapDragSuppression(operation.id)) return;

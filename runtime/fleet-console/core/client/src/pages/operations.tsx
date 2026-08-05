@@ -8,16 +8,19 @@ import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, fet
 import { isBlockingDialogOpen } from "../focus-guards.js";
 import { closeOperationCompletely } from "../operation-close.js";
 import { forgetTheaterCompletely } from "../theater-forget.js";
-import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
+import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { playMinimizeFlight, playRestoreFlight } from "../canvas/panel-motion.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
+import { GroupContextMenu } from "../canvas/group-context-menu.js";
+import { operationAccentFromNode } from "../canvas/operation-accent.js";
 import { armTriageSetAside, deferTriageOperation, disarmTriageSetAside, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, getTriageSetAsideArmedId, isTriageActive, pickTriageOperation, recordTriageActivity, resolveTriageQueue, setTriageActive, useTriageActive } from "../canvas/triage-store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
 import { OperationsSideBar } from "../sidebar/operations-side-bar.js";
 import { TriageSideBar } from "../sidebar/triage-side-bar.js";
+import { useContextMenuKeyboard } from "../sidebar/context-menu-keyboard.js";
 import { toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
@@ -54,6 +57,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   const [catalog, setCatalog] = useState<readonly OperationCatalogPlugin[]>([]);
+  const [triageOperationMenu, setTriageOperationMenu] = useState<{
+    readonly operationId: string;
+    readonly anchor: DOMRect;
+    readonly returnFocus?: HTMLElement | null;
+  } | null>(null);
   const triageActive = useTriageActive();
 
   const operationOrder = useMemo(
@@ -62,6 +70,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     [state.operations, state.activeTheaterId],
   );
   const stateRef = useRef(state);
+  const triageMenuReturnFocusRef = useRef<HTMLElement | null>(null);
   const focusRequestEpochRef = useRef(0);
   stateRef.current = state;
 
@@ -72,6 +81,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   useEffect(() => {
     recordTriageActivity(state.operations, state.operationStatus);
   }, [state.operationStatus, state.operations]);
+
+  useEffect(() => {
+    if (!triageActive) setTriageOperationMenu(null);
+  }, [triageActive]);
 
   useEffect(() => {
     if (!state.activeTheaterId) { setCatalog([]); return; }
@@ -294,10 +307,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     return plugin?.renderLaunchIcon?.(kind) ?? null;
   }, [registry.plugins]);
 
-  const handleCanvasLaunchKind = useCallback((pluginId: string, kind: OperationLaunchKind, canvasPoint: CanvasPoint) => {
-    if (!stateRef.current.activeTheaterId) return;
+  const handleCanvasLaunchKind = useCallback((pluginId: string, kind: OperationLaunchKind, canvasPoint: CanvasPoint, theaterId?: string) => {
+    const launchTheaterId = theaterId ?? stateRef.current.activeTheaterId;
+    if (!launchTheaterId) return;
     const geometry = { ...canvasPointToGeometry(canvasPoint), zIndex: claimTopZIndex() };
-    void launchViaPlugin(pluginId, kind, geometry, stateRef.current.activeTheaterId, registry.plugins);
+    void launchViaPlugin(pluginId, kind, geometry, launchTheaterId, registry.plugins);
   }, [registry.plugins]);
 
   const handleSideBarLaunchKind = useCallback((pluginId: string, kind: OperationLaunchKind) => {
@@ -365,6 +379,27 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       ]))
       .catch(() => {});
   }, []);
+
+  const openTriageOperationMenu = useCallback((operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => {
+    if (!stateRef.current.operations.some((operation) => operation.id === operationId)) return;
+    setTriageOperationMenu({ operationId, anchor, returnFocus });
+  }, []);
+  // 포커스 복귀는 갱신 함수 밖에서 한다 — setState updater는 순수해야 하고, StrictMode의
+  // 이중 호출에서 focus()가 두 번 실행된다.
+  const closeTriageOperationMenu = useCallback(() => {
+    triageMenuReturnFocusRef.current?.focus();
+    setTriageOperationMenu(null);
+  }, []);
+  const triageContextMenuOperation = triageOperationMenu
+    ? state.operations.find((operation) => operation.id === triageOperationMenu.operationId) ?? null
+    : null;
+  triageMenuReturnFocusRef.current = triageOperationMenu?.returnFocus ?? null;
+  useContextMenuKeyboard({
+    open: triageActive && triageContextMenuOperation !== null,
+    menuSelector: '.group-context-menu-card[role="menu"]',
+    returnFocusRef: triageMenuReturnFocusRef,
+    onEscape: closeTriageOperationMenu,
+  });
 
   const handleSetGroupColor = useCallback((groupId: string, color: string | null) => {
     if (!color) return;
@@ -498,6 +533,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onPick={pickTriageOperation}
           onClose={handleClose}
           onRename={handleRename}
+          onOpenOperationMenu={openTriageOperationMenu}
         />
       ) : (
       <OperationsSideBar
@@ -544,9 +580,26 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onFocus={handleFocus}
           onRename={handleRename}
           onSetAccent={handleSetAccent}
+          onOpenOperationMenu={openTriageOperationMenu}
         />
       </div>
       <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} />
+      {triageActive && triageOperationMenu && triageContextMenuOperation ? (
+        <GroupContextMenu
+          kind="chip"
+          operation={triageContextMenuOperation}
+          groups={state.groups.filter((group) => group.theaterId === triageContextMenuOperation.theaterId)}
+          accentKey={getTheaterCanvasSnapshot(triageContextMenuOperation.theaterId).operationAccent[triageContextMenuOperation.id]
+            ?? operationAccentFromNode(triageContextMenuOperation)}
+          anchor={triageOperationMenu.anchor}
+          actions={{
+            onSetAccent: (key) => handleSetAccent(triageContextMenuOperation.id, key),
+            onSetGroupId: (groupId) => handleSetGroupId(triageContextMenuOperation.id, groupId),
+            onCreateGroup: (name) => handleCreateGroup(triageContextMenuOperation.theaterId, name, triageContextMenuOperation.id),
+          }}
+          onClose={closeTriageOperationMenu}
+        />
+      ) : null}
       <CodexReadingSheet />
     </div>
   );

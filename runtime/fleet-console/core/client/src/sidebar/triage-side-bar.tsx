@@ -50,6 +50,7 @@ interface TriageSideBarProps {
   readonly onPick: (operationId: string) => void;
   readonly onClose: (operationId: string) => void;
   readonly onRename: (operationId: string, title: string) => void;
+  readonly onOpenOperationMenu?: (operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
 }
 
 export function TriageSideBar({
@@ -63,6 +64,7 @@ export function TriageSideBar({
   onPick,
   onClose,
   onRename,
+  onOpenOperationMenu,
 }: TriageSideBarProps) {
   const t = useT();
   // 지목·미룸·치워둠은 콘솔 상태를 바꾸지 않는 store 단독 변화다 — 캔버스와 같은 리비전 구독으로
@@ -109,7 +111,7 @@ export function TriageSideBar({
         statusAxis
         reorderEnabled={false}
         minimizeEnabled={false}
-        menuEnabled={false}
+        menuEnabled={!dormant && onOpenOperationMenu !== undefined}
         resumeOnActivate={dormant}
         dragging={false}
         dragOffsetY={0}
@@ -121,7 +123,7 @@ export function TriageSideBar({
         onFocus={activate}
         onKeyboardMove={() => {}}
         onPointerDragStart={() => {}}
-        onOpenAccent={() => {}}
+        onOpenAccent={(operationId, anchor, returnFocus) => onOpenOperationMenu?.(operationId, anchor, returnFocus)}
         onRename={onRename}
       />
     );
