@@ -632,7 +632,7 @@ describe("model catalog", () => {
 
   it("contains only the approved latest provider families", () => {
     expect(CODEX_SUBSCRIPTION_MODELS).toHaveLength(6);
-    expect(CURSOR_SUBSCRIPTION_MODELS).toHaveLength(9);
+    expect(CURSOR_SUBSCRIPTION_MODELS).toHaveLength(10);
     expect(KIMI_SUBSCRIPTION_MODELS).toHaveLength(2);
     expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.upstreamId?.startsWith("gpt-5.6-"))).toBe(true);
     expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.contextWindow === 272_000)).toBe(true);
@@ -642,6 +642,7 @@ describe("model catalog", () => {
       "composer-2.5-fast",
       "grok-4.5",
       "grok-4.5-fast",
+      "gpt-5.6-sol",
       "claude-opus-5",
       "claude-fable-5",
       "kimi-k3-max",
@@ -653,6 +654,7 @@ describe("model catalog", () => {
     ]))).toEqual({
       "claude-opus-5": 300_000,
       "claude-fable-5": 300_000,
+      "gpt-5.6-sol": 272_000,
       "composer-2.5": 200_000,
       "composer-2.5-fast": 200_000,
       "grok-4.5": 256_000,
