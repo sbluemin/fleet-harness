@@ -1522,6 +1522,13 @@
 .history-compare-meta { display: flex; align-items: center; min-height: 38px; padding: 6px 45px 6px 12px; }
 .history-compare-pair { min-width: 0; overflow: hidden; color: var(--text-secondary); font-family: var(--font-mono); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .history-compare-meta .repository-compare-swap { margin-left: 8px; }
+/* 좁은 독(파일 열 250px가 컨테이너를 초과)에서 main 열이 0으로 붕괴하던 선존 결함 —
+   detail pane을 컨테이너로 삼아 세로 스택으로 전환한다(커밋 검사기·비교 드로어 공용). */
+.history-detail-pane { container-type: inline-size; }
+@container (max-width: 430px) {
+  .repository-ws-dock { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 44%) minmax(0, 1fr); }
+  .repository-ws-dock > .history-commit-files { border-right: 0; border-bottom: 1px solid var(--surface-rim); }
+}
 /* ═══ sync surfacing · stash rows — rail-panel 소유 구역 ═══ */
 .repository-sync-toast {
   display: flex;
