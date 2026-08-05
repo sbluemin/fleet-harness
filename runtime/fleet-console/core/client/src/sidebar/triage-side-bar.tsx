@@ -14,6 +14,7 @@ import { getTriagePick, getTriageSnapshot, resolveTriageQueue, subscribeTriage, 
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { buildTheaterEntries, groupOperationsByStatus, StatusSectionSlot, type StatusSection } from "./operations-side-bar.js";
 import { useSideBarState } from "./operations-side-bar-store.js";
+import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
 // 선별 사이드바의 상태 섹션은 Map 사이드바 STATUS 축과 같은 collapse 저장소를 쓰되,
 // Theater 키가 아니라 전역 선별 고유 키 하나로 접힘을 기억한다.
@@ -74,6 +75,7 @@ export function TriageSideBar({
   // 접힘/폭은 Map 사이드바와 같은 좌측 열 상태를 공유한다 — 커맨드 밴드의 사이드바 토글이
   // 선별 중에도 계속 동작해야 하고, 모드 전환이 사용자의 접힘 선택을 잃지 않아야 한다.
   const sideBar = useSideBarState();
+  const { resizing, onPointerDown: onResizePointerDown, onDoubleClick: onResizeDoubleClick } = useSideBarResize();
   const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
   const queue = resolveTriageQueue(operations, operationStatus);
   const stagedOperationId = getTriagePick() ?? queue[0]?.operation.id ?? null;
@@ -133,6 +135,7 @@ export function TriageSideBar({
       className={`operations-side-bar triage-side-bar ${sideBar.collapsed ? "is-closed" : "is-expanded"}`}
       data-canvas-blocker
       data-sidebar-state={sideBar.collapsed ? "closed" : "expanded"}
+      data-resizing={resizing ? "true" : undefined}
       style={{ "--side-bar-width": `${sideBar.width}px` } as CSSProperties}
       inert={sideBar.collapsed}
       aria-label={t("triageSidebar.aria")}
@@ -164,6 +167,7 @@ export function TriageSideBar({
           </ol>
         </footer>
       ) : null}
+      <SideBarResizeHandle onPointerDown={onResizePointerDown} onDoubleClick={onResizeDoubleClick} />
     </aside>
   );
 }
