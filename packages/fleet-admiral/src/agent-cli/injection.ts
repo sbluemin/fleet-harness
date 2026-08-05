@@ -10,7 +10,7 @@ import { resolveDoctrineFromCliId } from "../protocols/doctrine.js";
 import { isHostSessionToolAllowed } from "../tools.js";
 import type { SystemPromptBuildOptions } from "../prompts/index.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
-import { buildGatewayCustomAgents } from "./gateway-agents.js";
+import { buildGatewayCustomAgents, type GatewayEffortExposure } from "./gateway-agents.js";
 import { createAgentCliPlugin } from "./plugin/index.js";
 import type {
   AgentCliInjectionContext,
@@ -45,6 +45,8 @@ export interface InjectAgentCliProfileOptions {
    * 파일 영속화 없이 런치 인자로만 주입한다. classic Claude 경로에는 전달하지 않는다.
    */
   readonly gatewayExposedModels?: readonly GatewayModel[];
+  /** claude-gateway 전용: 모델별로 정체성을 만들 강도. 항목이 없으면 그 모델의 사다리 전체. */
+  readonly gatewayEffortExposure?: GatewayEffortExposure;
 }
 
 interface AgentCliPluginMarketplaceLock {
@@ -127,7 +129,12 @@ export async function injectAgentCliProfile(
     });
     options.onCleanup?.(cleanup);
     const gatewayAgents = profile.id === "claude-gateway"
-      ? { customAgents: buildGatewayCustomAgents(options.gatewayExposedModels ?? []) }
+      ? {
+        customAgents: buildGatewayCustomAgents(
+          options.gatewayExposedModels ?? [],
+          options.gatewayEffortExposure,
+        ),
+      }
       : {};
     const context: AgentCliInjectionContext = {
       cliId: profile.id,

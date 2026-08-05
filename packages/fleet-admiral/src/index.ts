@@ -106,6 +106,7 @@ export {
   toGatewayAgentName,
   type ClaudeCustomAgentDefinition,
   type ClaudeCustomAgents,
+  type GatewayEffortExposure,
 } from "./agent-cli/gateway-agents.js";
 
 // Fleet 에이전트 in-process MCP 런타임 라이프사이클
