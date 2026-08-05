@@ -694,9 +694,19 @@ describe("Instrument core design contract", () => {
     // Doctrine: status-section border/dot/count are signal-owned, while the chip group mark
     // consumes only resolveAccentColor identity values and never repaints the status beacon.
     expect(sidebar).toContain("groupMarkByGroupId.get(entry.operation.groupId)");
-    expect(components).toContain("--status-color: var(--positive);");
-    expect(components).toContain("--status-color: color-mix(in oklch, var(--brass) 55%, var(--ink-rim));");
+    expect(components).toContain(".tenant-beacon.is-awaiting,\n.canvas-triage-deck-card.is-awaiting,\n.canvas-triage-map-dot.is-awaiting,\n.side-bar-status-section--awaiting {");
+    expect(components).toMatch(/\.tenant-beacon\.is-idle,\s*\.canvas-triage-deck-card\.is-idle,\s*\.canvas-triage-map-dot\.is-idle,\s*\.side-bar-status-section--idle\s*\{[^}]*--activity-color:\s*var\(--positive\)/);
+    expect(components).toContain(".tenant-beacon.is-dormant,\n.canvas-triage-deck-card.is-dormant,\n.canvas-triage-map-dot.is-dormant,\n.side-bar-status-section--dormant {");
+    expect(components).toContain("--activity-color: color-mix(in oklch, var(--brass) 55%, var(--ink-rim));");
+    expect(components).toMatch(/\.tenant-beacon\.is-background,\s*\.canvas-triage-deck-card\.is-background,\s*\.canvas-triage-map-dot\.is-background,\s*\.side-bar-status-section--background\s*\{[^}]*--activity-color:\s*var\(--warn\)/);
+    expect(components).toMatch(/\.canvas-triage-deck-card-dot \{[^}]*background:\s*var\(--activity-color\)/);
+    expect(components).toMatch(/\.canvas-triage-map-dot \{[^}]*background:\s*var\(--activity-color\)/);
+    expect(components).toMatch(/\.canvas-triage-deck-card\.is-background \.canvas-triage-deck-card-dot \{[^}]*background:\s*none;[^}]*border:\s*1\.5px solid var\(--activity-color\)/);
+    expect(components).toMatch(/\.canvas-triage-map-dot\.is-background \{[^}]*background:\s*none;[^}]*border-color:\s*var\(--activity-color\)/);
+    expect(components).toContain("--status-color: var(--activity-color);");
     expect(components).toContain("border-left: 3px solid var(--status-color);");
+    expect(components).toMatch(/\.side-bar-status-section--background \{[^}]*border-left-style:\s*dashed/);
+    expect(components).toMatch(/\.side-bar-status-section--background \.side-bar-status-header__dot \{[^}]*background:\s*none;[^}]*border:\s*1\.5px solid var\(--activity-color\)/);
     expect(components).toContain("background: var(--group-mark);");
     expect(components).toMatch(/\.side-bar-chip-unseen \{[^}]*background:\s*var\(--positive\)/);
     expect(components).toMatch(/\.side-bar-chip--unseen \{[^}]*border-color:\s*color-mix\(in oklch, var\(--positive\)/);

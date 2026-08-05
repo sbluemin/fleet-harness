@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { applyVisibleReorder, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderWithinSegment, type DropSectionInfo } from "../core/client/src/sidebar/operations-side-bar-hit-test.js";
-import { groupOperations, groupOperationsByStatus, hasAwaitingOperation, resolveSideBarStatusSection, theaterInitials } from "../core/client/src/sidebar/operations-side-bar.js";
+import { resolveOperationDisplayActivity } from "../core/client/src/operation-activity.js";
+import { groupOperations, groupOperationsByStatus, hasAwaitingOperation, theaterInitials } from "../core/client/src/sidebar/operations-side-bar.js";
 import type { SideBarEntry } from "../core/client/src/sidebar/operations-side-bar-chip.js";
 import { resolveTriageQueue } from "../core/client/src/canvas/triage-store.js";
 import {
@@ -317,7 +318,7 @@ describe("groupOperationsByStatus", () => {
     { status: "running", operationId: "arrived", arrivals: new Set(["arrived"]), expected: "running" },
     { status: "dormant", operationId: "arrived", arrivals: new Set(["arrived"]), expected: "dormant" },
   ] as const)("resolves $status for $operationId into the shared $expected section", ({ status, operationId, arrivals, expected }) => {
-    expect(resolveSideBarStatusSection(status, operationId, arrivals)).toBe(expected);
+    expect(resolveOperationDisplayActivity({ activity: status, operationId, idleArrivalIds: arrivals })).toBe(expected);
   });
 
   it("places idle arrivals with awaiting and keeps every entry in exactly one status section", () => {
@@ -331,7 +332,7 @@ describe("groupOperationsByStatus", () => {
 
     const sections = groupOperationsByStatus(entries);
     expect(sections[0]?.entries.map((entry) => entry.operation.id)).toEqual(["awaiting", "arrived"]);
-    expect(sections[2]?.entries.map((entry) => entry.operation.id)).toEqual(["idle"]);
+    expect(sections[3]?.entries.map((entry) => entry.operation.id)).toEqual(["idle"]);
     expect(sections.flatMap((section) => section.entries)).toHaveLength(entries.length);
 
     const operations = entries.map((entry) => entry.operation);
@@ -354,10 +355,11 @@ describe("groupOperationsByStatus", () => {
     expect(sections.map((section) => [section.status, section.label])).toEqual([
       ["awaiting", "AWAITING"],
       ["running", "RUNNING"],
+      ["background", "BACKGROUND"],
       ["idle", "IDLE"],
       ["dormant", "DORMANT"],
     ]);
-    expect(sections[2]?.entries.map((entry) => entry.operation.id)).toEqual(["idle-missing", "idle-explicit"]);
+    expect(sections[3]?.entries.map((entry) => entry.operation.id)).toEqual(["idle-missing", "idle-explicit"]);
   });
 
   it("preserves the incoming sortOperationsByOrder sequence inside each status section", () => {

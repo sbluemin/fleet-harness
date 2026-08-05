@@ -2,8 +2,9 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyn
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../i18n/index.js";
+import { getIdleArrivalIds } from "../operation-idle-arrival.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
-import { operationActivityLabel, operationActivityVisual, resolveOperationActivity } from "../operation-activity.js";
+import { operationActivityLabel, operationActivityVisual, resolveOperationActivity, resolveOperationDisplayActivity } from "../operation-activity.js";
 import { getOperationStatusDetailSnapshot, useOperationStatusDetails } from "../operation-status-detail-store.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import type { OperationGeometry, OperationNode } from "../types.js";
@@ -17,7 +18,6 @@ import {
   isTriageDeckMapMode,
   isTriageDeckMapModeActive,
   isTriageOperationDeferred,
-  isTriageWaitingOperation,
   nextTriageDeckZoomPreset,
   pickTriageOperation,
   clampTriageMapPercent,
@@ -775,7 +775,13 @@ export function TriageWatchDeck({
 
   if (!visible) return null;
 
-  const activities = operations.map((operation) => resolveOperationActivity(operation, operationStatus));
+  const idleArrivalIds = getIdleArrivalIds();
+  const displayActivity = (operation: OperationNode) => resolveOperationDisplayActivity({
+    activity: resolveOperationActivity(operation, operationStatus),
+    operationId: operation.id,
+    idleArrivalIds,
+  });
+  const activities = operations.map(displayActivity);
   const running = activities.filter((activity) => activity === "running").length;
   const idle = activities.filter((activity) => activity === "idle").length;
   // 밴드 순서: 대기 카드 수 내림차순 → 같으면 theaters 선언 순. 카드 없는 Theater는 밴드를 그리지 않는다.
@@ -785,18 +791,18 @@ export function TriageWatchDeck({
     .map((theater, theaterIndex) => {
       const theaterOperations = operations
         .filter((operation) => operation.theaterId === theater.id)
-        .sort((left, right) => TRIAGE_DECK_ACTIVITY_RANK[resolveOperationActivity(left, operationStatus)]
-          - TRIAGE_DECK_ACTIVITY_RANK[resolveOperationActivity(right, operationStatus)]);
+        .sort((left, right) => TRIAGE_DECK_ACTIVITY_RANK[displayActivity(left)]
+          - TRIAGE_DECK_ACTIVITY_RANK[displayActivity(right)]);
       const waitingIds = new Set(
         theaterOperations
-          .filter((operation) => isTriageWaitingOperation(operation, operationStatus))
+          .filter((operation) => displayActivity(operation) === "awaiting")
           .map((operation) => operation.id),
       );
       const counts = {
         waiting: waitingIds.size,
-        running: theaterOperations.filter((operation) => resolveOperationActivity(operation, operationStatus) === "running").length,
+        running: theaterOperations.filter((operation) => displayActivity(operation) === "running").length,
         idle: theaterOperations.filter((operation) =>
-          resolveOperationActivity(operation, operationStatus) === "idle" && !waitingIds.has(operation.id)).length,
+          displayActivity(operation) === "idle" && !waitingIds.has(operation.id)).length,
       };
       return { theater, theaterIndex, operations: theaterOperations, counts };
     })
@@ -930,7 +936,7 @@ export function TriageWatchDeck({
     if (!mapQuicklook) return null;
     const operation = operations.find((candidate) => candidate.id === mapQuicklook.operationId);
     if (!operation) return null;
-    const activity = resolveOperationActivity(operation, operationStatus);
+    const activity = displayActivity(operation);
     const accentKey = operationAccent[operation.id] ?? operationAccentFromNode(operation);
     return {
       operation,
@@ -966,7 +972,7 @@ export function TriageWatchDeck({
               <div className="canvas-triage-deck-band-body">
                 <div className="canvas-triage-deck-band-cards">
                   {band.operations.map((operation) => {
-                    const activity = resolveOperationActivity(operation, operationStatus);
+                    const activity = displayActivity(operation);
                     const visual = operationActivityVisual(activity);
                     const label = operationActivityLabel(activity);
                     const statusDetail = getOperationStatusDetailSnapshot(operation.id);
@@ -1171,12 +1177,12 @@ function renderTriageMapDots(
   return band.mapMarkers?.map((marker) => {
     const operation = band.operations.find((candidate) => candidate.id === marker.operationId);
     if (!operation) return null;
-    // 마커의 대기 판정은 큐·사이드바·존 헤더와 같은 기준(isTriageWaitingOperation)을 쓴다 —
-    // 유휴 도착이 사이드바에선 대기로 서는데 지도에선 회색 유휴 점이면 같은 상태가 두 표면에서
-    // 다르게 읽힌다(상태 어휘 정합 계약).
-    const visual = isTriageWaitingOperation(operation, operationStatus)
-      ? "awaiting"
-      : operationActivityVisual(resolveOperationActivity(operation, operationStatus));
+    // 카드·지도·사이드바가 같은 display-state resolver를 써서 유휴 도착을 모두 대기로 읽는다.
+    const visual = operationActivityVisual(resolveOperationDisplayActivity({
+      activity: resolveOperationActivity(operation, operationStatus),
+      operationId: operation.id,
+      idleArrivalIds: getIdleArrivalIds(),
+    }));
     // 미룬(deferred) 마커는 대기 링 맥동에서 제외한다 — 사용자가 이미 보고 미룬 신호를 다시 흔들지 않는다.
     const deferred = isTriageOperationDeferred(operation.id);
     const dragging = draggingMarkerId === operation.id;
