@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.50.0] - 2026-08-05
+
+### fleet-core
+
+#### Added
+- [core-ai-gateway] Show OpenCode Chat Completions and Cursor reasoning as Claude Code thinking, with DeepSeek V4 reasoning history preserved across tool turns.
+
 ## [1.49.0] - 2026-08-05
 
 ### fleet-plugin

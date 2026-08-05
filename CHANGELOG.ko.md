@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.50.0] - 2026-08-05
+
+### fleet-core
+
+#### Added
+- [core-ai-gateway] OpenCode Chat Completions와 Cursor 추론을 Claude Code thinking으로 표시하고 DeepSeek V4 추론 기록을 도구 실행 턴 사이에도 보존합니다.
+
 ## [1.49.0] - 2026-08-05
 
 ### fleet-plugin
