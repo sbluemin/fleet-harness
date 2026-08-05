@@ -4,12 +4,9 @@ import { ValueSchema } from "@bufbuild/protobuf/wkt";
 
 import {
   CURSOR_CLIENT_VERSION,
-  CURSOR_EXTERNAL_ROOT_BLOB_LIMIT,
-  CURSOR_EXTERNAL_ROOT_BYTE_LIMIT,
   CURSOR_TOOL_BYTES_LIMIT,
   CURSOR_TOOL_COUNT_LIMIT,
   CursorAdapter,
-  CursorReplayBudgetError,
   CursorRequestBudgetError,
   buildCursorRunPlan,
   translateAnthropicRequest,
@@ -328,53 +325,47 @@ describe("Cursor request budgets", () => {
     }), "conversation-selected-tool")).toThrow(CursorRequestBudgetError);
   });
 
-  it("rejects external replay over the root count ceiling instead of dropping history", () => {
+  // Replay size carries no gateway ceiling. A local 512 KiB / 192-root cap used to
+  // refuse these, which cut sessions off near 48% of the model's window; measuring
+  // against Cursor on 2026-08-05 saw 857,987 bytes across 117 roots accepted without
+  // a refusal, so the model's context window is the only limit left.
+  it("keeps every external replay root instead of capping the conversation", () => {
     const input: CanonicalResponseRequest["input"] = [];
     for (let index = 0; index < 220; index += 1) {
       input.push({ type: "message", role: "user", content: `user-${index}` });
       input.push({ type: "message", role: "assistant", content: `assistant-${index}` });
     }
     input.push({ type: "message", role: "user", content: "active-user" });
-    const build = () => buildCursorRunPlan(request({ input }), "conversation-roots");
+    const plan = buildCursorRunPlan(request({ input }), "conversation-roots");
 
-    expect(build).toThrow(CursorReplayBudgetError);
-    expect(build).toThrow(/^Prompt is too long:/);
+    // 440 history roots plus the system root; the active message replays next turn.
+    expect(rootValues(plan).length).toBe(441);
+    expect(plan.replayRootCount).toBe(442);
+    expect(plan.replayBytes).toBeGreaterThan(0);
   });
 
-  it("rejects an oversized trailing tool result instead of truncating it", () => {
-    const build = () => buildCursorRunPlan(request({
+  it("carries an oversized trailing tool result instead of truncating it", () => {
+    const output = "🧪".repeat(180_000);
+    const plan = buildCursorRunPlan(request({
       input: [
         { type: "message", role: "user", content: "run the tool" },
         { type: "function_call", call_id: "call-1", name: "exec_command", arguments: "{}" },
-        { type: "function_call_output", call_id: "call-1", output: "🧪".repeat(180_000) },
+        { type: "function_call_output", call_id: "call-1", output },
       ],
     }), "conversation-tool-result");
 
-    expect(build).toThrow(CursorReplayBudgetError);
-    expect(build).toThrow(/^Prompt is too long:/);
+    expect(plan.replayBytes).toBeGreaterThan(Buffer.byteLength(output, "utf8"));
   });
 
-  it("preflights an active user message against its next-turn replay budget", () => {
-    const build = () => buildCursorRunPlan(request({
-      input: [{
-        type: "message",
-        role: "user",
-        content: "x".repeat(CURSOR_EXTERNAL_ROOT_BYTE_LIMIT),
-      }],
-    }), "conversation-active-replay");
+  it("carries a system prompt of any size", () => {
+    const instructions = "p".repeat(600_000);
+    const plan = buildCursorRunPlan(request({ instructions }), "conversation-system-limit");
 
-    expect(build).toThrow(CursorReplayBudgetError);
-    expect(build).toThrow(/^Prompt is too long:/);
-  });
-
-  it("fails explicitly when the required system prompt alone exceeds the root budget", () => {
-    expect(() => buildCursorRunPlan(request({
-      instructions: "p".repeat(CURSOR_EXTERNAL_ROOT_BYTE_LIMIT),
-    }), "conversation-system-limit")).toThrow(CursorRequestBudgetError);
+    expect(systemText(plan)).toContain(instructions);
   });
 
   it("does not prune native Composer replay roots", () => {
-    const input = Array.from({ length: CURSOR_EXTERNAL_ROOT_BLOB_LIMIT + 10 }, (_, index) => ({
+    const input = Array.from({ length: 202 }, (_, index) => ({
       type: "message" as const,
       role: (index % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
       content: `message-${index}`,
@@ -382,7 +373,7 @@ describe("Cursor request budgets", () => {
     input.push({ type: "message", role: "user", content: "active" });
     const plan = buildCursorRunPlan(request({ model: "composer-2.5", input }), "conversation-native");
 
-    expect(rootValues(plan).length).toBe(CURSOR_EXTERNAL_ROOT_BLOB_LIMIT + 11);
+    expect(rootValues(plan).length).toBe(203);
   });
 
   it("forwards multimodal image parts on the active Cursor user message", () => {

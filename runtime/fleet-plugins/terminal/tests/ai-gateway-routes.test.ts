@@ -1,6 +1,6 @@
 import {
   AnthropicMessagesGateway,
-  CURSOR_EXTERNAL_ROOT_BYTE_LIMIT,
+  CURSOR_TOOL_BYTES_LIMIT,
   ContextWindowExceededError,
   CursorAdapter,
 } from "@dotobokuri/core-ai-gateway";
@@ -357,7 +357,11 @@ describe("upstream credential", () => {
     expect(res.body).toContain("metadata.user_id");
   });
 
-  it("returns Claude's prompt-too-long contract for unreplayable Cursor input", async () => {
+  // A Cursor budget refusal is not a context overflow. It has to stay 400: 413 is the
+  // shape Claude Code arms reactive compaction from, and compacting cannot make an
+  // unfittable tool schema fit, so reporting one as the other sends the client
+  // shrinking the wrong thing.
+  it("keeps a Cursor transport-budget refusal at 400 rather than the 413 overflow shape", async () => {
     const router = createAiGatewayRouter({
       readAuth,
       readCursorToken: () => "cursor-subscription-token",
@@ -368,10 +372,12 @@ describe("upstream credential", () => {
       res,
       token: ANTHROPIC_CRED,
       model: "claude-gateway--cursor--grok-4.5-fast",
-      messages: [{
-        role: "user",
-        content: "x".repeat(CURSOR_EXTERNAL_ROOT_BYTE_LIMIT),
+      tools: [{
+        name: "selected",
+        description: "x".repeat(CURSOR_TOOL_BYTES_LIMIT),
+        input_schema: { type: "object", properties: {} },
       }],
+      toolChoice: { type: "tool", name: "selected" },
     }));
 
     expect(res.status).toBe(400);
@@ -379,7 +385,7 @@ describe("upstream credential", () => {
       type: "error",
       error: {
         type: "invalid_request_error",
-        message: expect.stringMatching(/^Prompt is too long:/),
+        message: expect.stringContaining("exceeds the transport budget"),
       },
     });
   });
@@ -1358,6 +1364,7 @@ function ctx(options: {
   readonly metadata?: Record<string, unknown> | null;
   readonly messages?: ReadonlyArray<Record<string, unknown>>;
   readonly tools?: ReadonlyArray<Record<string, unknown>>;
+  readonly toolChoice?: Record<string, unknown>;
 }): RouteHandlerContext {
   const payload = JSON.stringify({
     model: options.model ?? "claude-gateway--codex--gpt-5.6-sol",
@@ -1369,6 +1376,7 @@ function ctx(options: {
       ? {}
       : { metadata: options.metadata ?? { user_id: "claude-session-test" } }),
     ...(options.tools ? { tools: options.tools } : {}),
+    ...(options.toolChoice ? { tool_choice: options.toolChoice } : {}),
     stream: true,
   });
   const req = {
