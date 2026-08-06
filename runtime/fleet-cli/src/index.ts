@@ -3,7 +3,10 @@ import { createInfraServices } from "@dotobokuri/core-infra";
 import { runApp } from "./app.js";
 import { dispatchAuthCommand } from "./auth/dispatcher.js";
 import { buildFleetHelpText, parseFleetCliOptions } from "./cli-args.js";
+import { suppressSqliteExperimentalWarning } from "./suppress-sqlite-warning.js";
 import { dispatchUpdateCommand } from "./update/dispatcher.js";
+
+suppressSqliteExperimentalWarning();
 
 const argv = process.argv.slice(2);
 
