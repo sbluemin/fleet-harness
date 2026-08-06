@@ -51,14 +51,24 @@ describe("feature tour", () => {
     expect(presentation?.steps).toEqual([TOUR.walkthrough[0]]);
   });
 
-  it("ships one walkthrough per reworked screen, none of them spotlights", () => {
+  it("ships one walkthrough per reworked screen, plus a deprecation spotlight", () => {
     expect(FEATURE_TOURS.map((tour) => tour.id)).toEqual([
       "canvas-modes",
       "war-room",
       "war-room-sidebar",
       "claude-operations",
+      "classic-deprecation",
     ]);
-    for (const tour of FEATURE_TOURS) expect(tour.spotlight).toBeNull();
+    // 워크스루 투어에는 스포트라이트가 없다 — 스포트라이트는 폐지 안내 하나뿐이고, 그것은
+    // 단일 메시지라 워크스루(진행 표시)가 아니라 스포트라이트(알겠습니다)로 제공한다.
+    for (const tour of FEATURE_TOURS) {
+      if (tour.id === "classic-deprecation") {
+        expect(tour.spotlight).not.toBeNull();
+        expect(tour.walkthrough).toEqual([]);
+      } else {
+        expect(tour.spotlight).toBeNull();
+      }
+    }
   });
 
   it("anchors the War Room walkthrough on the rail, so an empty queue still teaches the mode", () => {
@@ -183,6 +193,38 @@ describe("feature tour", () => {
     }
   });
 
+  it("shows the Classic deprecation spotlight on the launch menu after the intro walkthrough", () => {
+    document.body.innerHTML = [
+      '<button data-operation-launch-kind="claude-native">Claude (Native)</button>',
+      '<button data-operation-launch-kind="claude">Claude (Classic)</button>',
+      '<button data-operation-launch-kind="claude-gateway">Claude (Gateway)</button>',
+    ].join("");
+    const deprecation = FEATURE_TOURS.find((tour) => tour.id === "classic-deprecation");
+
+    // claude-operations 워크스루를 이미 본 사용자에게는 같은 메뉴에서 폐지 안내만 뜬다.
+    const presentation = resolveNextFeatureTour(FEATURE_TOURS, ["claude-operations.walkthrough"], document);
+    expect(presentation?.tour.id).toBe("classic-deprecation");
+    expect(presentation?.phase).toBe("spotlight");
+    expect(presentation?.steps).toEqual(deprecation?.spotlight ? [deprecation.spotlight] : []);
+
+    // Classic 항목이 없는 메뉴(예: 순정 CLI만 설치)에서는 안내도 함께 빠진다.
+    document.body.innerHTML = '<button data-operation-launch-kind="claude-native">Claude (Native)</button>';
+    expect(resolveNextFeatureTour(FEATURE_TOURS, ["claude-operations.walkthrough"], document)).toBeNull();
+
+    // Classic 항목이 비활성(CLI 미설치로 disabled 렌더)이면 폐지 안내도 뜨지 않는다 —
+    // 쓸 수 없는 항목에 닻을 두면 "AI Gateway를 쓰라"는 문구가 의미를 잃는다.
+    document.body.innerHTML = '<button data-operation-launch-kind="claude" disabled>Claude (Classic)</button>';
+    expect(resolveNextFeatureTour(FEATURE_TOURS, ["claude-operations.walkthrough"], document)).toBeNull();
+  });
+
+  it("phrases the Classic deprecation in both locales, pointing at the AI Gateway", () => {
+    expect(CORE_MESSAGES.en["featureTour.classicDeprecation.title"]).toContain("Classic");
+    expect(CORE_MESSAGES.en["featureTour.classicDeprecation.body"]).toContain("AI Gateway");
+    expect(CORE_MESSAGES.en["featureTour.classicDeprecation.body"]).toContain("existing Operations keep working");
+    expect(CORE_MESSAGES.ko["featureTour.classicDeprecation.title"]).toContain("Classic");
+    expect(CORE_MESSAGES.ko["featureTour.classicDeprecation.body"]).toContain("AI Gateway");
+  });
+
   it("introduces the modes first, and War Room only after the user is in it", () => {
     document.body.innerHTML = [
       '<div class="command-band-mode-switch"></div>',
@@ -235,7 +277,12 @@ describe("feature tour", () => {
     expect(document.querySelector('[data-operation-launch-kind="claude"]')?.textContent)
       .toBe("Claude (Classic)");
 
-    expect(resolveNextFeatureTour(FEATURE_TOURS, ["claude-operations.walkthrough"], document)).toBeNull();
+    // claude-operations를 이미 본 사용자에게는 같은 메뉴에서 폐지 안내 스포트라이트가 이어서 뜬다.
+    const deprecation = resolveNextFeatureTour(FEATURE_TOURS, ["claude-operations.walkthrough"], document);
+    expect(deprecation?.tour.id).toBe("classic-deprecation");
+    expect(deprecation?.phase).toBe("spotlight");
+    // 스포트라이트까지 보면 이 메뉴에서 더 재생할 안내가 없다.
+    expect(resolveNextFeatureTour(FEATURE_TOURS, ["claude-operations.walkthrough", "classic-deprecation.spotlight"], document)).toBeNull();
   });
 
   it("never advances past the last step, so the progress count cannot exceed the total", () => {
