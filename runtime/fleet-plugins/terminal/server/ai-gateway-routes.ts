@@ -18,12 +18,14 @@ import {
   kimiAnthropicHeaders,
   kimiRequestBody,
   pruneClaudeSkillPayloads,
+  resolveAiGatewaySelection,
   resolveCodexCredentials,
   resolveCursorCredentials,
   toClaudeGatewayModelId,
   upstreamModelId,
 } from "@dotobokuri/core-ai-gateway";
 import type {
+  AiGatewayStoredSettings,
   AnthropicMessagesRequest,
   CursorDiagnosticSink,
   GatewayModel,
@@ -47,7 +49,6 @@ import {
   writeSseErrorFrame,
   type GatewayProxyResponse,
 } from "./ai-gateway-proxy.js";
-import { resolveAiGatewaySelection, type AiGatewayStoredSettings } from "./ai-gateway-settings.js";
 
 export { OPENCODE_GO_MESSAGES_URL as OPENCODE_MESSAGES_URL } from "@dotobokuri/core-ai-gateway";
 export { KIMI_MESSAGES_URL } from "@dotobokuri/core-ai-gateway";
@@ -92,8 +93,8 @@ export async function readCodexSubscriptionAuth(): Promise<CodexSubscriptionAuth
 }
 
 export interface AiGatewayRouteDeps {
-  /** 콘솔 durable state의 노출 모델 선별을 읽는다. 미주입(테스트 하네스)이면 전체 카탈로그를 노출한다. */
-  readonly readAiGatewaySettings?: () => Promise<AiGatewayStoredSettings>;
+  /** core-ai-gateway 설정의 노출 모델 선별을 읽는다. 미주입(테스트 하네스)이면 전체 카탈로그를 노출한다. */
+  readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
   /** 테스트가 upstream을 대체할 수 있도록 주입 가능하게 둔다. */
   readonly gateway?: AnthropicMessagesGateway;
   /** 테스트가 구독 토큰 조회를 대체한다. */
@@ -125,13 +126,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
   const withheldSkills = new Set<string>();
   // 설정 리더가 있으면 노출은 opt-in(켠 모델만)이다. 미주입(테스트 하네스 등)일 때만
   // 전체 카탈로그로 동작한다 — Console 배선(routes.ts)은 항상 리더를 주입한다.
-  const gatewaySettings = async (): Promise<AiGatewayStoredSettings | undefined> => (
+  const gatewaySettings = (): AiGatewayStoredSettings | undefined => (
     deps.readAiGatewaySettings ? deps.readAiGatewaySettings() : undefined
   );
-  const cursorDiagnosticsEnabled = async (): Promise<boolean | undefined> => {
+  const cursorDiagnosticsEnabled = (): boolean | undefined => {
     if (!deps.readAiGatewaySettings) return undefined;
     try {
-      return (await deps.readAiGatewaySettings()).cursorDiagnosticsEnabled === true;
+      return deps.readAiGatewaySettings().cursorDiagnosticsEnabled === true;
     } catch {
       // 진단 설정 판독 실패는 모델 요청을 막지 않고 안전한 기본값 Off로 단락한다.
       return false;
@@ -152,7 +153,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
         return true;
       }
       res.writeHead(200, { "content-type": "application/json" });
-      const settings = await gatewaySettings();
+      const settings = gatewaySettings();
       res.end(JSON.stringify(buildAnthropicModelList(
         settings ? resolveAiGatewaySelection(settings).models : GATEWAY_MODELS,
       )));
@@ -291,7 +292,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps = {}): AiGatewayR
             ? createOpencodeGateway(opencodeGoWire(target) as "responses" | "chat-completions")
             : createGatewayFor(target, chatgptAccountId));
       const diagnosticsEnabled = target.provider === "cursor"
-        ? await cursorDiagnosticsEnabled()
+        ? cursorDiagnosticsEnabled()
         : undefined;
       // The guard runs regardless of the `[1m]` coordinate: a 200000-window Cursor
       // model carries no marker but still needs to be refused before it overflows.

@@ -62,6 +62,12 @@ export const GATEWAY_REASONING_EFFORTS = [
 ] as const;
 export type GatewayReasoningEffort = typeof GATEWAY_REASONING_EFFORTS[number];
 
+/**
+ * Scoped gateway model id → the reasoning rungs exposed as delegation identities.
+ * An absent entry means that model's whole ladder.
+ */
+export type GatewayEffortExposure = Readonly<Record<string, readonly GatewayReasoningEffort[]>>;
+
 const GatewayEffortUpstreamModelIdsSchema = z.partialRecord(
   z.enum(GATEWAY_REASONING_EFFORTS),
   z.string().min(1),

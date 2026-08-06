@@ -6,8 +6,13 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { resolvePathBinary } from "@dotobokuri/core-agent";
-import { GATEWAY_MODELS, buildAnthropicModelList, toClaudeGatewayModelId } from "@dotobokuri/core-ai-gateway";
-import type { GatewayModel } from "@dotobokuri/core-ai-gateway";
+import {
+  GATEWAY_MODELS,
+  buildAnthropicModelList,
+  resolveAiGatewaySelection,
+  toClaudeGatewayModelId,
+} from "@dotobokuri/core-ai-gateway";
+import type { AiGatewaySelection, AiGatewayStoredSettings, GatewayModel } from "@dotobokuri/core-ai-gateway";
 import { createSessionIdentityResolver } from "@dotobokuri/core-unified-agent";
 import {
   createSessionCaptureHookExec,
@@ -26,7 +31,6 @@ import {
 } from "@dotobokuri/core-infra";
 
 import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleBackgroundHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, toCaptureProvider, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
-import { resolveAiGatewaySelection, type AiGatewaySelection, type AiGatewayStoredSettings } from "../ai-gateway-settings.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
 import { stripConsoleInternalEnv } from "../shared/launch-env.js";
 import { applyAgentCliPathEnvOverlay } from "./agent-cli-paths.js";
@@ -56,7 +60,7 @@ export interface TerminalLaunchResolverDeps {
   readonly resolveProfile?: typeof resolveAgentCliProfile;
   readonly createSessionIdentityResolver?: typeof createSessionIdentityResolver;
   readonly readAgentCliPaths?: () => Promise<Readonly<Record<string, string>>>;
-  readonly readAiGatewaySettings?: () => Promise<AiGatewayStoredSettings>;
+  readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
 }
 
 export interface ConsoleRuntimeSessionInfo {
@@ -155,7 +159,7 @@ function hasHookEntryExtension(entryPath: string): boolean {
 async function createAgentCliLaunchSpec(options: {
   readonly agentRuntime?: FleetAgentRuntimeLifecycle;
   readonly aiGateway?: AiGatewayLaunchBinding;
-  readonly readAiGatewaySettings?: () => Promise<AiGatewayStoredSettings>;
+  readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
   readonly cliId?: string;
   readonly createSessionCaptureHookExec: typeof createSessionCaptureHookExec;
   readonly createSessionIdentityResolver: typeof createSessionIdentityResolver;
@@ -185,7 +189,7 @@ async function createAgentCliLaunchSpec(options: {
     // gateway Agent 주입과 ANTHROPIC_MODEL/cache는 같은 selection을 공유한다.
     // inject보다 먼저 읽어 `--agents`에 노출 모델×effort를 스폰 인자로만 실는다.
     const gatewaySelection = profile.id === "claude-gateway" && options.readAiGatewaySettings
-      ? resolveAiGatewaySelection(await options.readAiGatewaySettings())
+      ? resolveAiGatewaySelection(options.readAiGatewaySettings())
       : undefined;
     const injectedProfile = await options.injectProfile(profile, {
       buildSystemPrompt: (injectTone) => options.createSystemPromptBuilder({ carrierRuntime: agentRuntime.carrierRuntime }).build(injectTone),

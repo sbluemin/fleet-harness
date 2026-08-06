@@ -1,14 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  AI_GATEWAY_SETTINGS_STORAGE_KEY,
-  createAiGatewaySettingsStore,
   normalizeAiGatewaySettings,
   parseAiGatewayUpdate,
   resolveAiGatewaySelection,
-} from "../server/ai-gateway-settings.js";
+} from "../../src/settings/index.js";
 
-describe("ai-gateway settings store", () => {
+describe("ai-gateway settings", () => {
   it("normalizes malformed stored payloads to an unconfigured slot", () => {
     expect(normalizeAiGatewaySettings(undefined)).toEqual({ version: 1 });
     expect(normalizeAiGatewaySettings("everything")).toEqual({ version: 1 });
@@ -39,60 +37,6 @@ describe("ai-gateway settings store", () => {
       version: 1,
       cursorDiagnosticsEnabled: false,
     })).toEqual({ version: 1 });
-  });
-
-  it("persists under the terminal plugin storage slot", async () => {
-    const written: Record<string, unknown> = {};
-    const store = createAiGatewaySettingsStore({
-      readJson: async (_pluginId: string, key: string) => written[key],
-      writeJson: async (_pluginId: string, key: string, value: unknown) => { written[key] = value; },
-    } as never, "terminal");
-
-    expect(await store.read()).toEqual({ version: 1 });
-    await store.write({ models: [{ id: "cursor--claude-opus-5" }], defaultModel: "cursor--claude-opus-5" });
-    expect(written[AI_GATEWAY_SETTINGS_STORAGE_KEY]).toEqual({
-      version: 1,
-      models: [{ id: "cursor--claude-opus-5" }],
-      defaultModel: "cursor--claude-opus-5",
-    });
-    await store.writeCursorDiagnosticsEnabled(true);
-    expect(await store.read()).toEqual({
-      version: 1,
-      models: [{ id: "cursor--claude-opus-5" }],
-      defaultModel: "cursor--claude-opus-5",
-      cursorDiagnosticsEnabled: true,
-    });
-    await store.write({ models: [{ id: "cursor--auto" }] });
-    expect(await store.read()).toEqual({
-      version: 1,
-      models: [{ id: "cursor--auto" }],
-      cursorDiagnosticsEnabled: true,
-    });
-    await store.write(undefined);
-    expect(await store.read()).toEqual({
-      version: 1,
-      cursorDiagnosticsEnabled: true,
-    });
-    await store.writeCursorDiagnosticsEnabled(false);
-    expect(await store.read()).toEqual({ version: 1 });
-
-    await store.writeWireLogEnabled(false);
-    expect(await store.read()).toEqual({ version: 1, wireLogEnabled: false });
-    await store.write({ models: [{ id: "cursor--auto" }] });
-    expect(await store.read()).toEqual({ version: 1, models: [{ id: "cursor--auto" }], wireLogEnabled: false });
-    await store.writeCursorDiagnosticsEnabled(true);
-    expect(await store.read()).toEqual({
-      version: 1,
-      models: [{ id: "cursor--auto" }],
-      cursorDiagnosticsEnabled: true,
-      wireLogEnabled: false,
-    });
-    await store.writeWireLogEnabled(undefined);
-    expect(await store.read()).toEqual({
-      version: 1,
-      models: [{ id: "cursor--auto" }],
-      cursorDiagnosticsEnabled: true,
-    });
   });
 
   it("drops a stored effort the catalog no longer offers instead of echoing it back", () => {

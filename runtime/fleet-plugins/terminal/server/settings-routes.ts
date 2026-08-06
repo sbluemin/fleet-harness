@@ -11,7 +11,7 @@ import {
   type AiGatewaySettingsStore,
   type AiGatewayStoredSettings,
   type AiGatewayUpdateValue,
-} from "./ai-gateway-settings.js";
+} from "@dotobokuri/core-ai-gateway";
 
 interface TerminalSettingsRouteDeps {
   readonly globalOptionsService: GlobalOptionsService;
@@ -54,7 +54,7 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
       // 상류 host 게이트(server.ts:423)로 loopback이 보장된다. 플러그인 컨텍스트에는 콘솔 포트가 없다.
       ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
         deps.globalOptionsService.load(),
-        await deps.aiGatewayStore.read(),
+        deps.aiGatewayStore.read(),
         deps.wireLogRuntime.enabled(),
       ));
       return true;
@@ -75,15 +75,15 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
         return true;
       }
       if ("aiGateway" in update) {
-        // AI Gateway 선별은 Fleet 전역 옵션이 아니라 콘솔 durable state의 플러그인 슬롯 소유다.
-        const stored = await deps.aiGatewayStore.write(update.aiGateway);
+        // AI Gateway 선별은 Fleet 전역 옵션이 아니라 core-ai-gateway가 소유하는 자기 축이다.
+        const stored = deps.aiGatewayStore.write(update.aiGateway);
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
           deps.globalOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
         ));
         return true;
       }
       if ("cursorDiagnosticsEnabled" in update) {
-        const stored = await deps.aiGatewayStore.writeCursorDiagnosticsEnabled(
+        const stored = deps.aiGatewayStore.writeCursorDiagnosticsEnabled(
           update.cursorDiagnosticsEnabled,
         );
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
@@ -92,16 +92,16 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
         return true;
       }
       if ("wireLogEnabled" in update) {
-        const previous = await deps.aiGatewayStore.read();
+        const previous = deps.aiGatewayStore.read();
         let stored: AiGatewayStoredSettings;
         try {
-          stored = await deps.aiGatewayStore.writeWireLogEnabled(update.wireLogEnabled);
+          stored = deps.aiGatewayStore.writeWireLogEnabled(update.wireLogEnabled);
           deps.wireLogRuntime.apply(stored.wireLogEnabled);
         } catch {
           // Durable state and the live target must move together. Restore the prior raw value
           // when applying the new target fails, including absence for env fallback.
           try {
-            await deps.aiGatewayStore.writeWireLogEnabled(previous.wireLogEnabled);
+            deps.aiGatewayStore.writeWireLogEnabled(previous.wireLogEnabled);
           } catch {
             // Preserve the original 500; the store's writer has already reported the failure.
           }
@@ -115,7 +115,7 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
       }
       const updated = deps.globalOptionsService.update((current) => ({ ...current, ...update }));
       ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
-        updated, await deps.aiGatewayStore.read(), deps.wireLogRuntime.enabled(),
+        updated, deps.aiGatewayStore.read(), deps.wireLogRuntime.enabled(),
       ));
       return true;
     }

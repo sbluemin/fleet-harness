@@ -8,15 +8,15 @@ import { createCarrierRegistry, initStore, registerDefaultCarriers } from "@doto
 import { KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID } from "@dotobokuri/fleet-admiral";
 import {
   DEFAULT_WIRE_LOG_MAX_BYTES,
+  createAiGatewaySettingsStore,
   setWireLogTarget,
   wireLogEnabled,
 } from "@dotobokuri/core-ai-gateway";
+import type { AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 
 import { registerAgentRoutes } from "./server/agent.js";
 import { registerAnalysisRoutes } from "./server/agent-api/analysis-routes.js";
 import { AI_GATEWAY_ROUTE_SEGMENT, registerAiGatewayRoutes } from "./server/ai-gateway-routes.js";
-import { createAiGatewaySettingsStore } from "./server/ai-gateway-settings.js";
-import type { AiGatewayStoredSettings } from "./server/ai-gateway-settings.js";
 import { createAgentCliPathStore } from "./server/agent-api/agent-cli-paths.js";
 import { registerCarrierSettingsRoutes } from "./server/carrier-settings-routes.js";
 import { registerGlobalShellRoutes } from "./server/global.js";
@@ -43,11 +43,11 @@ function createWireLogRuntime(ctx: FleetPluginServerContext) {
   };
 }
 
-async function applyStoredWireLog(ctx: FleetPluginServerContext, read: () => Promise<AiGatewayStoredSettings>): Promise<void> {
+function applyStoredWireLog(ctx: FleetPluginServerContext, read: () => AiGatewayStoredSettings): void {
   try {
-    applyWireLog(ctx, (await read()).wireLogEnabled);
+    applyWireLog(ctx, read().wireLogEnabled);
   } catch {
-    // Malformed plugin storage must not prevent the built-in plugin from starting;
+    // Malformed durable settings must not prevent the built-in plugin from starting;
     // fail closed by overriding any env target until a valid setting is available.
     applyWireLog(ctx, false);
   }
@@ -77,11 +77,17 @@ export default definePlugin({
       runtime.terminate(payload.operationId);
     });
     ctx.host.lifecycle.registerCleanup(unsubscribeDelete);
-    // AI Gateway 선별은 콘솔 durable state(plugins.terminal["ai-gateway"]) 소유 — Fleet 전역 옵션이 아니다.
+    // AI Gateway 선별의 저장 형태·검증·승계는 core-ai-gateway가 소유한다. 호스트는 이 설정이
+    // 예전에 살던 자기 소유 디렉터리만 알려 주고(플러그인 데이터 슬롯), 그 승계 판단은 하지 않는다.
     // Apply the stored target before registering routes so no request can observe an uninitialized mode.
-    const aiGatewayStore = createAiGatewaySettingsStore(ctx.host.storage, ctx.pluginId);
+    // dataDir는 호스트의 **유효** Fleet 루트다. 생략하면 core가 실제 홈(`~/.fleet`)으로 떨어져,
+    // 격리 루트로 띄운 Console이 사용자의 진짜 설정을 읽고 덮어쓴다.
+    const aiGatewayStore = createAiGatewaySettingsStore({
+      dataDir: ctx.host.paths.fleetDataDir,
+      legacyDir: ctx.host.paths.pluginDataDir(ctx.pluginId),
+    });
     const wireLog = createWireLogRuntime(ctx);
-    await applyStoredWireLog(ctx, aiGatewayStore.read);
+    applyStoredWireLog(ctx, aiGatewayStore.read);
     ctx.host.lifecycle.registerCleanup(() => setWireLogTarget(undefined));
     registerShellRoutes(ctx, runtime);
     registerGlobalShellRoutes(ctx, runtime);

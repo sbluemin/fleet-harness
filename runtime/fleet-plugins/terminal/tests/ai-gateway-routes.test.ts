@@ -7,6 +7,7 @@ import {
 import type {
   AdapterResponse,
   AiGatewayAdapter,
+  AiGatewayStoredSettings,
   AnthropicMessagesRequest,
   CanonicalResponseRequest,
 } from "@dotobokuri/core-ai-gateway";
@@ -21,10 +22,9 @@ import {
   createAiGatewayRouter,
   registerAiGatewayRoutes,
 } from "../server/ai-gateway-routes.js";
-import type { AiGatewayStoredSettings } from "../server/ai-gateway-settings.js";
 
-function aiGatewaySettingsStub(settings: AiGatewayStoredSettings): () => Promise<AiGatewayStoredSettings> {
-  return () => Promise.resolve(settings);
+function aiGatewaySettingsStub(settings: AiGatewayStoredSettings): () => AiGatewayStoredSettings {
+  return () => settings;
 }
 
 const BASE = "/plugins/terminal/ai-gateway";
@@ -301,7 +301,7 @@ describe("upstream credential", () => {
     const streamSpy = vi.spyOn(gateway, "stream");
     const router = createAiGatewayRouter({
       gateway,
-      readAiGatewaySettings: async () => { throw new Error("settings unavailable"); },
+      readAiGatewaySettings: () => { throw new Error("settings unavailable"); },
       readAuth,
       readCursorToken: () => "cursor-subscription-token",
     });
