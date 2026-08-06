@@ -81,4 +81,12 @@ describe("Inspector dock", () => {
     expect(dockSource).toContain("repository-ws-dock-divider");
     expect(dockSource).toContain("aria-orientation=\"vertical\"");
   });
+
+  it("persists the dragged width even when the inspector unmounts mid-drag", () => {
+    // installPointerDragLifecycle의 dispose는 onFinish를 부르지 않는다 — 언마운트 정리 경로가
+    // 직접 저장하지 않으면 화면에 이미 반영된 폭이 조용히 되돌아간다.
+    const cleanup = dockSource.slice(dockSource.indexOf("useEffect(() => () =>"), dockSource.indexOf("const startDrag"));
+    expect(cleanup).toContain("dragDisposeRef.current()");
+    expect(cleanup).toContain("saveWorkspaceDockFilesWidth(filesWidthRef.current)");
+  });
 });

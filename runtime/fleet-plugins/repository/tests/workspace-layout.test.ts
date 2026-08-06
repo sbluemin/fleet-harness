@@ -76,10 +76,10 @@ describe("Repository workspace layout", () => {
   it("clamps the dock file-column drag so the diff column keeps its minimum", () => {
     expect(clampWorkspaceDockFilesWidth(250, 60, 800)).toBe(310);
     expect(clampWorkspaceDockFilesWidth(250, -200, 800)).toBe(150);
-    // 컨테이너를 넘겨 끌어도 diff 열 200px + 디바이더 4px는 남는다.
-    expect(clampWorkspaceDockFilesWidth(250, 900, 800)).toBe(596);
+    // 컨테이너를 넘겨 끌어도 diff 열 340px + 디바이더 4px는 남는다.
+    expect(clampWorkspaceDockFilesWidth(250, 900, 800)).toBe(456);
     // 독이 파일 열 최소폭조차 담지 못하면 드래그는 no-op — 세로 스택 컨테이너 쿼리에 맡긴다.
-    expect(clampWorkspaceDockFilesWidth(250, 0, 340)).toBeNull();
+    expect(clampWorkspaceDockFilesWidth(250, 0, 480)).toBeNull();
   });
 
   it("falls back safely when the storage accessor itself throws", () => {

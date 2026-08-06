@@ -1000,7 +1000,9 @@
 .history-sha-copy, .history-parent { border-radius: var(--radius-sm); background: none; cursor: pointer; font-family: var(--font-mono); font-size: 10.5px; padding: 3px 8px; }
 .history-sha-copy { border: 1px solid var(--surface-rim); color: var(--text-secondary); }.history-sha-copy span { color: var(--text-tertiary); margin-left: 7px; }.history-sha-copy.is-copied { border-color: var(--positive); color: var(--positive-ink); }
 .history-parent { border: 1px solid var(--surface-rim); color: var(--text-secondary); }
-.history-commit-files { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; overflow: hidden; }
+/* min-width/열 minmax가 없으면 섹션의 자동 최소 크기가 min-content(가장 긴 경로)로 굳어
+   grid 트랙을 무시하고 옆 diff 열 위로 넘친다 — 폭 조절이 화면에 반영되지 않는 원인. */
+.history-commit-files { display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; }
 .history-files-title { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; }.history-files-stats { margin-left: auto; letter-spacing: 0; }.history-files-title i { color: var(--positive-ink); font-style: normal; }.history-files-title em { color: var(--coral-ink); font-style: normal; }.history-files-view-toggle { margin-left: 0; }
 .history-files-scroll { min-height: 0; overflow: auto; }.history-commit-files .repository-file-row { padding-left: 14px; }
 .history-changes-tab { min-height: 0; overflow: hidden; }.history-changes-columns { display: grid; min-height: 0; height: 100%; }.history-changes-columns > .history-commit-files { border-right: 1px solid var(--surface-rim); }
@@ -1415,7 +1417,7 @@
   /* 사용자가 끈 파일 열 폭은 CSS 변수로만 들어온다 — 인라인 grid-template-columns는 아래 세로
      스택 컨테이너 쿼리를 이겨 main 열 0 붕괴를 되살린다. min()이 diff 열 최소폭(JS 클램프의
      WORKSPACE_DOCK_MAIN_MIN_WIDTH + 디바이더)을 저장값보다 우선 보장한다. */
-  grid-template-columns: minmax(0, min(var(--ws-dock-files-width, 250px), calc(100% - 204px))) 4px minmax(0, 1fr);
+  grid-template-columns: minmax(0, min(var(--ws-dock-files-width, 250px), calc(100% - 344px))) 4px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
 }
@@ -1439,6 +1441,14 @@
   max-height: 104px;
   padding: 9px 42px 8px 12px;
   border-bottom: 0;
+}
+
+/* 독 메타는 높이가 104px로 묶인 요약 줄이다 — 긴 제목이 감기면 좁은 diff 열에서 한 글자씩
+   쌓이다 잘린다. 한 줄 + ellipsis로 고정하고 전문은 title로 남긴다(로그 행과 같은 규칙). */
+.repository-ws-dock-meta .history-inspector-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .repository-ws-dock-meta .history-inspector-message {

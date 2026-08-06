@@ -27,7 +27,13 @@ export function WorkspaceDock({ t, className, overlay, files, main }: WorkspaceD
   const filesWidthRef = useRef(filesWidth);
   const dragDisposeRef = useRef<(() => void) | null>(null);
 
-  useEffect(() => () => dragDisposeRef.current?.(), []);
+  // 드래그 도중 언마운트(Esc로 검사기 닫기 등)에서도 이미 적용된 폭을 저장한다 — dispose는
+  // onFinish를 부르지 않으므로, 여기서 저장하지 않으면 화면에 반영된 폭이 조용히 되돌아간다.
+  useEffect(() => () => {
+    if (!dragDisposeRef.current) return;
+    dragDisposeRef.current();
+    saveWorkspaceDockFilesWidth(filesWidthRef.current);
+  }, []);
 
   const startDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();

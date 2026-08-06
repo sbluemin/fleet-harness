@@ -16,8 +16,9 @@ export const WORKSPACE_MAIN_MIN_WIDTH = 180;
 export const WORKSPACE_DOCK_FILES_DEFAULT_WIDTH = 250;
 export const WORKSPACE_DOCK_FILES_MIN_WIDTH = 150;
 export const WORKSPACE_DOCK_DIVIDER_WIDTH = 4;
-// diff 열이 판독 가능한 최소 폭. CSS의 calc(100% - …) 보정값과 반드시 같은 값이어야 한다.
-export const WORKSPACE_DOCK_MAIN_MIN_WIDTH = 200;
+// diff 열의 최소 폭. CSS의 calc(100% - …) 보정값과 반드시 같은 값이어야 한다.
+// 독 메타 헤더는 고정 버튼들 때문에 오른쪽 210px를 비워 두므로, 그보다 넉넉해야 제목이 남는다.
+export const WORKSPACE_DOCK_MAIN_MIN_WIDTH = 340;
 
 export const PREFS_WORKSPACE_DOCK_HEIGHT = "fleet-console.repository.workspace.dockHeight";
 export const PREFS_WORKSPACE_TREE_WIDTH = "fleet-console.repository.workspace.treeWidth";
