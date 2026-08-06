@@ -22,6 +22,11 @@ export default defineConfig([
     dts: { entry: { cli: "core/host/cli.ts" }, resolve: true },
     sourcemap: false,
     clean: false,
+    // tsup은 기본값으로 모든 import 지정자에서 node: 접두를 벗긴다. fs·os·path처럼 맨 이름
+    // 별칭이 있는 빌트인은 무해하지만, node:sqlite처럼 접두로만 존재하는 빌트인은 맨 이름이
+    // 해석되지 않아 산출물이 런타임에 ERR_MODULE_NOT_FOUND로 죽는다. 소스가 쓴 지정자를
+    // 그대로 내보낸다(engines가 node>=20.19.0이라 접두는 정적·동적 import 모두 지원된다).
+    removeNodeProtocol: false,
     // workspace 패키지(@dotobokuri/*)는 npm에 개별 발행하지 않으므로 번들에 인라인한다.
     // native(node-pty)·동적 require(ws)·font-list의 플랫폼 helper는 정적 분석 대상이 아니라 external로 남으며,
     // publish 스크립트가 published dependencies로 유지한다.
