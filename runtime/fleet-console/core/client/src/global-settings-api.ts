@@ -41,7 +41,6 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     !payload
     || (payload.consolePortMode !== "dynamic" && payload.consolePortMode !== "static")
     || (payload.consoleStaticPort !== null && !isValidConsoleStaticPort(payload.consoleStaticPort))
-    || typeof payload.reducePanelMotion !== "boolean"
     || !isSeenFeatureTours(payload.seenFeatureTours)
     || (payload.theme !== "instrument" && payload.theme !== "maritime" && payload.theme !== "carbon"
       && payload.theme !== "whites")
@@ -52,7 +51,6 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
   return {
     consolePortMode: payload.consolePortMode,
     consoleStaticPort: payload.consoleStaticPort,
-    reducePanelMotion: payload.reducePanelMotion,
     seenFeatureTours: payload.seenFeatureTours,
     theme: payload.theme,
     uiFont: normalizeUiFont(payload.uiFont),

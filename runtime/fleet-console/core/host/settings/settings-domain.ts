@@ -21,7 +21,6 @@ export interface ConsoleGeneralSettings {
   readonly consolePortMode?: "dynamic" | "static";
   readonly consoleStaticPort?: number;
   readonly language?: "auto" | "en" | "ko";
-  readonly reducePanelMotion?: boolean;
   readonly seenFeatureTours?: readonly string[];
   readonly theme?: ConsoleThemeId;
   readonly uiFont?: UiFontSettings;
@@ -123,9 +122,6 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const language = value.language === "auto" || value.language === "en" || value.language === "ko"
     ? value.language
     : undefined;
-  const reducePanelMotion = typeof value.reducePanelMotion === "boolean"
-    ? value.reducePanelMotion
-    : undefined;
   const seenFeatureTours = sanitizeSeenFeatureTours(value.seenFeatureTours);
   // 퇴역 라이트 테마(daywatch/drydock) 저장값은 whites로 무손실 폴백한다 — 라이트 사용자가
   // 업그레이드 직후 다크 기본값으로 떨어지는 극성 반전을 막는다.
@@ -140,7 +136,6 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(consolePortMode !== undefined ? { consolePortMode } : {}),
     ...(consoleStaticPort !== undefined ? { consoleStaticPort } : {}),
     ...(language !== undefined ? { language } : {}),
-    ...(reducePanelMotion !== undefined ? { reducePanelMotion } : {}),
     ...(seenFeatureTours !== undefined ? { seenFeatureTours } : {}),
     ...(theme !== undefined ? { theme } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
@@ -196,7 +191,6 @@ interface GlobalSettingsBody {
   readonly consolePortMode?: unknown;
   readonly consoleStaticPort?: unknown;
   readonly language?: unknown;
-  readonly reducePanelMotion?: boolean;
   readonly seenFeatureTours?: unknown;
   readonly theme?: unknown;
   readonly uiFont?: unknown;
@@ -275,10 +269,6 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_language" });
     return;
   }
-  if (body.reducePanelMotion !== undefined && typeof body.reducePanelMotion !== "boolean") {
-    deps.writeJson(res, 400, { error: "invalid_reduce_panel_motion" });
-    return;
-  }
   if (body.seenFeatureTours !== undefined && !isSeenFeatureToursInput(body.seenFeatureTours)) {
     deps.writeJson(res, 400, { error: "invalid_seen_feature_tours" });
     return;
@@ -307,7 +297,6 @@ async function mutateGlobalSettings(
       ...(body.consolePortMode === "dynamic" || body.consolePortMode === "static" ? { consolePortMode: body.consolePortMode } : {}),
       ...(isValidGlobalStaticPortInput(body.consoleStaticPort) ? { consoleStaticPort: body.consoleStaticPort } : {}),
       ...(body.language === "auto" || body.language === "en" || body.language === "ko" ? { language: body.language } : {}),
-      ...(typeof body.reducePanelMotion === "boolean" ? { reducePanelMotion: body.reducePanelMotion } : {}),
       ...(body.seenFeatureTours !== undefined ? { seenFeatureTours: sanitizeSeenFeatureTours(body.seenFeatureTours) ?? [] } : {}),
       ...(theme !== undefined ? { theme } : {}),
       ...(isUiFontSettings(body.uiFont) ? { uiFont: body.uiFont } : {}),
@@ -325,7 +314,6 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     consolePortMode: general.consolePortMode ?? "dynamic",
     consoleStaticPort: general.consoleStaticPort ?? null,
     language: general.language ?? "auto",
-    reducePanelMotion: general.reducePanelMotion ?? false,
     seenFeatureTours: general.seenFeatureTours ?? [],
     theme: general.theme ?? "instrument",
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,

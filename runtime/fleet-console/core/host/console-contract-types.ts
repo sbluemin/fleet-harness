@@ -261,7 +261,6 @@ export interface GlobalSettingsState {
   readonly consolePortMode: "dynamic" | "static";
   readonly consoleStaticPort: number | null;
   readonly language: "auto" | "en" | "ko";
-  readonly reducePanelMotion: boolean;
   readonly seenFeatureTours: readonly string[];
   readonly theme: ConsoleThemeId;
   readonly uiFont: UiFontSettings;

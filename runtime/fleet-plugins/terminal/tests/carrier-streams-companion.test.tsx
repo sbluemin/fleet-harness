@@ -379,10 +379,9 @@ describe("Carrier Streams companion", () => {
     // 이 패키지가 그 계약을 덮어쓰지 않는다는 것만 단언한다(교차 패키지 소스 읽기 금지).
     expect(ANALYSIS_CSS).toMatch(/\.carrier-sortie-ribbon \{[^}]*position: absolute;[^}]*z-index: 3;[^}]*bottom: 0;/);
     expect(ANALYSIS_CSS).not.toMatch(/\.agent-stream-host \.terminal-stage \{[^}]*(?:height|inset)\s*:/);
-    // 모션 차단 게이트는 둘이다 — OS의 prefers-reduced-motion 과 앱 설정의 .reduce-panel-motion.
-    // 한쪽만 막으면 설정 토글을 켠 운영자에게 스캔 애니메이션이 계속 흐른다.
+    // 모션 차단 게이트는 OS의 prefers-reduced-motion 하나다 — 앱 설정 축(.reduce-panel-motion)은 퇴역했다.
     expect(ANALYSIS_CSS).toMatch(/\.carrier-sortie-ribbon, \.carrier-sortie-ribbon__scan,[^{]*\{ animation: none; \}/);
-    expect(ANALYSIS_CSS).toMatch(/\.reduce-panel-motion \.carrier-sortie-ribbon,\s*\n\.reduce-panel-motion \.carrier-sortie-ribbon__scan,/);
+    expect(ANALYSIS_CSS).not.toContain(".reduce-panel-motion");
     // 짧은 Operation에서는 세로 중앙의 핸들 스택이 리본 밴드까지 내려온다 — 먼저 있던 어포던스가 위여야 한다.
     expect(ANALYSIS_CSS).toMatch(/\.session-analyst-handle-stack \{[^}]*z-index: 4;/);
     // 모바일은 companion 탐색이 no-op이라 리본을 띄우지 않는다.

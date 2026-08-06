@@ -44,7 +44,7 @@ export interface FloatingWidgetFleetSignals {
   readonly awaiting: number;
   /** 콘솔 스트림이 끊어진 상태. */
   readonly disconnected: boolean;
-  /** OS 설정이나 콘솔 설정으로 모션이 억제된 상태. */
+  /** OS의 동작 줄이기 설정으로 모션이 억제된 상태. */
   readonly reducedMotion: boolean;
 }
 
