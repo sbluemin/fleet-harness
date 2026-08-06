@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { installConsoleGlobalShortcuts } from "../core/client/src/global-shortcuts.js";
+import { installConsoleGlobalShortcuts, resolvePanelShortcutOutcome } from "../core/client/src/global-shortcuts.js";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -96,5 +96,15 @@ describe("Console global shortcuts", () => {
     expect(modalGated.event.defaultPrevented).toBe(false);
     expect(modalGated.stopImmediatePropagation).not.toHaveBeenCalled();
     cleanup();
+  });
+
+  // 사이드바·Activity Rail 단축키가 조작할 표면이 없는 곳에서도 발화하면, 아무 변화 없이 영속 상태만
+  // 바뀌어 나중에 누른 적 없는 접힘으로 나타난다. 표면 가용성이 결과를 결정한다.
+  it("resolves the panel shortcut outcome from surface availability, not from the key alone", () => {
+    expect(resolvePanelShortcutOutcome({ panelSurfacesReachable: true, operationsViewVisible: true })).toBe("apply");
+    expect(resolvePanelShortcutOutcome({ panelSurfacesReachable: true, operationsViewVisible: false })).toBe("reveal");
+    // 모바일 셸에는 두 표면이 아예 없다 — 경로가 /operations여도 발화하지 않는다.
+    expect(resolvePanelShortcutOutcome({ panelSurfacesReachable: false, operationsViewVisible: true })).toBe("suppress");
+    expect(resolvePanelShortcutOutcome({ panelSurfacesReachable: false, operationsViewVisible: false })).toBe("suppress");
   });
 });

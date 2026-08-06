@@ -1,6 +1,20 @@
 import { isBlockingDialogOpen } from "./focus-guards.js";
 import { isKeyboardShortcutsModalOpen } from "./components/keyboard-shortcuts-dialog.js";
 
+export type PanelShortcutOutcome = "suppress" | "reveal" | "apply";
+
+// 사이드바와 Activity Rail은 데스크톱 /operations에만 마운트된다. 표면이 없는 곳에서 토글을 그대로
+// 적용하면 아무 변화 없이 영속 상태만 바뀌고, 나중에 그 표면으로 돌아갔을 때 누른 적 없는 접힘이
+// 나타난다(2026-08 실측). 모바일 셸에는 두 표면이 아예 없으므로 발화를 막고(suppress),
+// 라우트만 다르면 그 표면으로 돌아가 펼친다(reveal).
+export function resolvePanelShortcutOutcome(surfaces: {
+  readonly panelSurfacesReachable: boolean;
+  readonly operationsViewVisible: boolean;
+}): PanelShortcutOutcome {
+  if (!surfaces.panelSurfacesReachable) return "suppress";
+  return surfaces.operationsViewVisible ? "apply" : "reveal";
+}
+
 export interface ConsoleGlobalShortcutDependencies {
   readonly getSideBarCollapsed: () => boolean;
   readonly setSideBarCollapsed: (collapsed: boolean) => void;
