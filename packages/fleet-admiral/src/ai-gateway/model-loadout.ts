@@ -2,8 +2,8 @@
  * ai-gateway/model-loadout — the roster a host reads before assigning models to
  * workflow stages.
  *
- * Three layers meet here and stay distinguishable: catalog constraints (facts a
- * provider states), role fit (a judgement Fleet measured), and provider quota (a
+ * Two layers meet here and stay distinguishable: catalog constraints (facts a
+ * provider states, its capability class included) and provider quota (a
  * reading taken at a moment). The host combines them; this module never decides
  * for it, because a roster that answered "use this one" would be followed
  * without the check that makes the choice defensible.
@@ -12,7 +12,6 @@
 import {
   GATEWAY_MODELS_UPDATED_AT,
   buildGatewayModelConstraints,
-  gatewayModelIdentity,
   toClaudeGatewayModelId,
   type GatewayModel,
   type GatewayModelConstraints,
@@ -24,7 +23,6 @@ import {
   toGatewayAgentName,
   type GatewayEffortExposure,
 } from "../agent-cli/gateway-agents.js";
-import { gatewayRoleFit, type GatewayRoleFit } from "./role-fit.js";
 
 /** A provider allowance reading, shaped by the host that took it. */
 export interface GatewayQuotaWindow {
@@ -137,8 +135,6 @@ export interface GatewayLoadoutModel {
    */
   readonly modelId: string;
   readonly constraints: GatewayLoadoutConstraints;
-  /** `null` means unmeasured, which is not the same as unsuitable. */
-  readonly roleFit: GatewayRoleFit | null;
   readonly isSessionDefault: boolean;
 }
 
@@ -219,7 +215,6 @@ function toLoadoutModel(
     agentTypes: toAgentTypeSelectors(modelId, constraints),
     modelId,
     constraints,
-    roleFit: gatewayRoleFit(gatewayModelIdentity(model)) ?? null,
     isSessionDefault: defaultModel !== undefined && defaultModel.id === model.id,
   };
 }

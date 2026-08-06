@@ -28,7 +28,7 @@ Discover and Apply pipeline naturally, but **Decide is a barrier by necessity** 
 
 ## Capability Classes
 
-Every fanned stage here is mechanical — Discover is checked against the codebase and Apply against the literals Decide fixed — so distribution by allowance applies throughout (`workflow`, mechanical regime), and a `light`-class identity is a legitimate Apply seat for the local, well-precedented edits the Scope Warning bounds. For a large Discover, a measured `map` fit outranks class. The judgment in this skeleton — Decide and Inspect — sits in host-only barriers, which is exactly why no fanned seat needs a class floor; letting a stage absorb one of those decisions reopens it.
+Every fanned stage here is mechanical — Discover is checked against the codebase and Apply against the literals Decide fixed — so distribution by allowance applies throughout (`workflow`, mechanical regime), and a `light`-class identity is a legitimate Apply seat for the local, well-precedented edits the Scope Warning bounds. The judgment in this skeleton — Decide and Inspect — sits in host-only barriers, which is exactly why no fanned seat needs a class floor; letting a stage absorb one of those decisions reopens it.
 
 ## Decisions Travel as Literals
 

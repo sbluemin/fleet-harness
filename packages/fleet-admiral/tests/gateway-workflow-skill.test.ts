@@ -283,9 +283,9 @@ describe("gateway workflow skill asset", () => {
     // 대상 계열을 비-Claude 로 못 박고 세션을 Claude 로 가정하던 구 전제가 되살아나면
     // 같은 결함이 그대로 돌아온다.
     expect(content).not.toContain("the subject under examination ran on a non-Claude lineage");
-    // 미측정(roleFit: null)이 예외로 승격되면 게이트가 무력화된다 — null 은 체제
-    // 기본값(판단=class prior, 기계=allowance)으로 떨어질 뿐이다.
-    expect(content).toContain("`roleFit: null` opens no exception of its own");
+    // 무등급(라우터)이 예외로 승격되면 게이트가 무력화된다 — 무등급은 판단석 자격이
+    // 없을 뿐이고, 기계석은 allowance 로 떨어진다.
+    expect(content).toContain("An unclassed entry opens no exception of its own");
     // 라벨 없는 상속과 의도된 예외는 사후에 구별되지 않는다.
     expect(content).toContain("the `E1` / `E2` / `E3` / `E4` label");
     // E1 좌석 수가 남은 프로바이더 수에 연동되면 프로바이더가 줄수록 세션 계열이 늘어난다.
@@ -309,14 +309,14 @@ describe("gateway workflow skill asset", () => {
     expect(content).toContain("an allowance reading never trims it");
   });
 
-  // 토큰·툴콜 측정과 구독 소모는 다른 축이다. 한 단어로 묶이면 토큰이 싼 모델이 쿼터도
-  // 아끼는 것처럼 읽혀, 실측상 비례하지 않는 두 값이 한 판단으로 접힌다.
-  it("keeps measured efficiency separate from quota drain", () => {
+  // roleFit 측정 테이블은 capabilityClass 로 대체·폐기됐다. 스킬 문언에 되살아나면
+  // 품질 신호가 두 벌이 되어 판단석 배정이 어느 축을 읽을지 갈라진다.
+  it("carries no retired roleFit vocabulary", () => {
     const content = skillContent();
 
-    expect(content).toContain("Allowance is not efficiency");
-    expect(content).toContain("a model's appetite, not a subscription's drain");
-    expect(content).toContain("quota is never inferred from them");
+    expect(content).not.toContain("roleFit");
+    expect(content).not.toContain("measured fit");
+    expect(content).not.toContain("Look for a measured fit");
   });
 
   // 두 게이트는 위임 여부를 정하지 않는다. 이 봉인이 빠지면 스킬이 위임 압력으로 읽힌다.

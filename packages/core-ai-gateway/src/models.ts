@@ -92,9 +92,8 @@ export type GatewayQuotaScope = typeof GATEWAY_QUOTA_SCOPES[number];
  * The provider's own positioning of a model within its current lineup, read
  * from what the provider states — lineup defaults, tier tokens (`max`/`pro`
  * against `plus` against `flash`/`mini`-class names), and generation
- * supersession. It is a prior, not a measurement: Fleet-measured suitability
- * stays in role fit, and a measured verdict outranks this class wherever the
- * two disagree.
+ * supersession. It is a prior, not a measurement: the provider's statement
+ * about its own lineup, never Fleet's judgment of quality.
  *
  * Ambiguity resolves downward. Overclassing puts a light model in seats that
  * needed judgment; underclassing merely costs one candidate. A `-fast` entry
@@ -319,7 +318,7 @@ export function gatewayModelIdentity(model: GatewayModel): string {
 /**
  * Facts a caller must respect when routing work to a model. Everything here is
  * derived from the catalog, so a newly added model carries them without further
- * declaration — unlike suitability, which is a judgement and lives elsewhere.
+ * declaration.
  */
 export interface GatewayModelConstraints {
   readonly provider: GatewayProvider;
@@ -341,8 +340,8 @@ export interface GatewayModelConstraints {
   readonly homolineage: boolean;
   /**
    * The provider's stated lineup positioning ({@link GatewayCapabilityClass}).
-   * A quality prior for seats whose product is judgment; measured role fit
-   * outranks it, and allowance never implies it. Absent on routing aliases.
+   * The quality prior for seats whose product is judgment; allowance never
+   * implies it. Absent on routing aliases.
    */
   readonly capabilityClass?: GatewayCapabilityClass;
   readonly quotaScope?: GatewayQuotaScope;

@@ -39,10 +39,10 @@ const GATEWAY_MODELS_DOCTRINE = {
   tag: GATEWAY_MODELS_TOOL_ID,
   title: "gateway_models Tool Guidelines",
   description:
-    `Report the gateway models currently available to this session, each model's routing constraints, capability class, and measured role fit, and the current provider allowances.`
+    `Report the gateway models currently available to this session, each model's routing constraints and capability class, and the current provider allowances.`
     + ` The roster is exactly what the user exposed in the Console and is editable while this session runs, so it is resolved at call time rather than remembered.`,
   promptSnippet:
-    `gateway_models — Live roster of assignable gateway models: constraints, capability class, measured role fit, and provider allowances.`,
+    `gateway_models — Live roster of assignable gateway models: constraints, capability class, and provider allowances.`,
   whenToUse: [
     `Call gateway_models before every run that leaves the host — a staged workflow or a single Agent — not only when a run pins a model or a reasoning effort.`,
     `Call it again before a later dispatch in the same session; the roster is re-read from Settings on every call, and allowances move while work is in flight.`,
@@ -61,8 +61,8 @@ const GATEWAY_MODELS_DOCTRINE = {
     `claude reports a window but serves no model by design, so a session on a built-in Claude model spends an allowance you can read and never select; a session launched on a gateway default instead spends the entry that serves that model, which further runs can pile back onto.`,
     `Read pressure before doing arithmetic of your own; it is the verdict on one window, combining headroom with burn pace against that window's own clock, and it never says which model to choose. Compare usedPercent only within one cadence — a shared window id does not mean a shared length.`,
     `Where a provider splits into pools, quotaScope picks the window that applies and the isAggregate one stays out of headroom math. recoveryHalfLifeMs prices the drain: weeks of lockout for a monthly window, hours for a session one.`,
-    `Four fields, four questions, and none implies another. homolineage marks a Claude-family model, derived from its id alone and silent about what this session runs on; the entry it sits under marks whose allowance it spends; capabilityClass states the provider's own lineup positioning, a quality prior that a measured roleFit verdict outranks; roleFit.tokenEfficiency counts tokens and tool calls, which no allowance is derived from.`,
-    `roleFit null means unmeasured, never unsuitable: quality preference then falls to capabilityClass — judgment seats keep to the highest reachable class, and allowance decides among class peers — never back to this session's own model.`,
+    `Three fields, three questions, and none implies another. homolineage marks a Claude-family model, derived from its id alone and silent about what this session runs on; the entry it sits under marks whose allowance it spends; capabilityClass states the provider's own lineup positioning — the roster's only quality signal, which no allowance figure implies.`,
+    `capabilityClass answers quality and allowance decides among class peers: judgment seats keep to the highest reachable class, and neither question ever falls back to this session's own model.`,
     `Absence is never safety. A missing derived field means the reading could not support it, and status "unsupported" means the allowance could not be read at all.`,
     `The roster cannot tell which provider this session itself runs on — make that match yourself and read that window. isSessionDefault reflects Settings as it stands now, not what an already-running session launched with.`,
   ],
@@ -89,9 +89,9 @@ export function buildGatewayModelsToolSpec(deps: GatewayModelsToolDeps): AgentTo
 
 async function resolveLoadout(deps: GatewayModelsToolDeps): Promise<GatewayLoadout> {
   const selection = await deps.readSelection();
-  // A failed allowance read must not sink the roster: constraints and role fit
-  // are still the larger part of the decision, and reporting `unsupported`
-  // states the gap instead of implying room.
+  // A failed allowance read must not sink the roster: constraints — the
+  // capability class included — are still the larger part of the decision, and
+  // reporting `unsupported` states the gap instead of implying room.
   let quota: GatewayQuotaSnapshot | undefined;
   try {
     quota = await deps.readQuota?.();
