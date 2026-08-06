@@ -810,12 +810,17 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain('className="command-band-button command-band-sidebar-toggle"');
     expect(commandBand).toContain("<BrandHome />");
     expect(commandBand).toContain("<CommandBandSystemCluster />");
-    expect(commandBand).toContain("onClick={() => setSideBarCollapsed(!sideBar.collapsed)}");
+    expect(commandBand).toContain("onClick={handleSideBarToggle}");
     expect(commandBand).toContain('className="command-band-button command-band-search"');
     expect(commandBand).toContain("onClick={toggleOperationSearch}");
     expect(commandBand).toContain('className="command-band-button command-band-viewmode"');
     expect(commandBand).toContain('className="command-band-button command-band-rail-toggle"');
-    expect(commandBand).toContain("onClick={toggleRailChrome}");
+    expect(commandBand).toContain("onClick={handleRailToggle}");
+    // 두 패널 토글은 라우트가 아니라 뷰 모드로만 걸린다 — /operations 밖에서도 밴드에 상주하고,
+    // 눌리면 Operations로 돌아가 그 표면을 펼친다(사라지는 조작 표면 + 무음 단축키 금지).
+    expect(commandBand).toContain("const panelTogglesVisible = viewMode.effective !== \"mobile\";");
+    expect(commandBand).toContain("{panelTogglesVisible ? <button type=\"button\" className=\"command-band-button command-band-sidebar-toggle\"");
+    expect(commandBand).toContain("{panelTogglesVisible ? <button type=\"button\" className=\"command-band-button command-band-rail-toggle\"");
     expect(commandBand).toContain(`      </div>
       {operationsViewVisible ? <div ref={mapControlsRef} className={\`command-band-map-controls\${sideBar.collapsed ? " is-docked" : ""}\`}>`);
     // 접힘 도킹 구분선은 맵 컨트롤의 첫 플로우 자식이다 — 도킹 상태에서만 display로 나타나

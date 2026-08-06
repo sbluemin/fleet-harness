@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type ReactElement } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
@@ -12,7 +12,7 @@ import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCar
 import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
-import { toggleRailChrome, useRailChromeExpanded } from "../rail/rail-store.js";
+import { setRailChromeExpanded, toggleRailChrome, useRailChromeExpanded } from "../rail/rail-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { setSideBarCollapsed, useSideBarState } from "../sidebar/operations-side-bar-store.js";
@@ -78,6 +78,31 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const modLabel = resolveModLabel();
   const sideBarShortcut = `${modLabel}${modLabel === "⌘" ? "" : "+"}B`;
   const railShortcut = `${modLabel}${modLabel === "⌘" ? "⌥" : "+Alt+"}B`;
+  const navigate = useNavigate();
+  // 두 패널 토글은 데스크톱 밴드에 상주한다 — 사라졌다 나타나는 조작 표면은 밴드를 불안정하게 읽히게 하고,
+  // 버튼이 없는 동안에도 ⌘B·⌘⌥B는 계속 발화해 보이지 않는 영속 상태만 바꿨다(2026-08 실측).
+  // /operations 밖에서는 접을 표면 자체가 없으므로 팔레트 toggle-rail과 같은 경로로 Operations로 돌아가 펼친다.
+  const panelTogglesVisible = viewMode.effective !== "mobile";
+  const sideBarToggleExpands = !operationsViewVisible || sideBar.collapsed;
+  const sideBarToggleLabel = t(sideBarToggleExpands ? "chrome.commandBand.expandSidebar" : "chrome.commandBand.collapseSidebar", { shortcut: sideBarShortcut });
+  const railToggleExpands = !operationsViewVisible || !railChromeExpanded;
+  const railToggleLabel = t(railToggleExpands ? "chrome.commandBand.expandActivityRail" : "chrome.commandBand.collapseActivityRail", { shortcut: railShortcut });
+  const handleSideBarToggle = useCallback(() => {
+    if (operationsViewVisible) {
+      setSideBarCollapsed(!sideBar.collapsed);
+      return;
+    }
+    navigate("/operations");
+    setSideBarCollapsed(false);
+  }, [navigate, operationsViewVisible, sideBar.collapsed]);
+  const handleRailToggle = useCallback(() => {
+    if (operationsViewVisible) {
+      toggleRailChrome();
+      return;
+    }
+    navigate("/operations");
+    setRailChromeExpanded(true);
+  }, [navigate, operationsViewVisible]);
   const canvas = useCanvasState();
   const formationLayout = useFormationLayout();
   const formationView = useFormationView();
@@ -460,7 +485,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
             {t(state.connection === "offline" ? "chrome.link.offline" : "chrome.link.reconnecting")}
           </span>
         ) : null}
-        {operationsViewVisible ? <button type="button" className="command-band-button command-band-sidebar-toggle" onClick={() => setSideBarCollapsed(!sideBar.collapsed)} aria-label={t(sideBar.collapsed ? "chrome.commandBand.expandSidebar" : "chrome.commandBand.collapseSidebar", { shortcut: sideBarShortcut })} title={t(sideBar.collapsed ? "chrome.commandBand.expandSidebar" : "chrome.commandBand.collapseSidebar", { shortcut: sideBarShortcut })}>
+        {panelTogglesVisible ? <button type="button" className="command-band-button command-band-sidebar-toggle" onClick={handleSideBarToggle} aria-label={sideBarToggleLabel} title={sideBarToggleLabel}>
           <PanelToggleIcon side="left" />
         </button> : null}
         <button type="button" className="command-band-button command-band-search" onClick={toggleOperationSearch} aria-label={t("chrome.commandBand.searchSessions")} title={t("chrome.commandBand.searchSessionsTitle")}>
@@ -607,7 +632,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
           {viewMode.preference === "auto" ? <ViewModeAutoIcon /> : viewMode.preference === "mobile" ? <ViewModeMobileIcon /> : <ViewModeDesktopIcon />}
         </button>
         <CommandBandSystemCluster />
-        {operationsViewVisible ? <button type="button" className="command-band-button command-band-rail-toggle" onClick={toggleRailChrome} aria-label={t(railChromeExpanded ? "chrome.commandBand.collapseActivityRail" : "chrome.commandBand.expandActivityRail", { shortcut: railShortcut })} title={t(railChromeExpanded ? "chrome.commandBand.collapseActivityRail" : "chrome.commandBand.expandActivityRail", { shortcut: railShortcut })}>
+        {panelTogglesVisible ? <button type="button" className="command-band-button command-band-rail-toggle" onClick={handleRailToggle} aria-label={railToggleLabel} title={railToggleLabel}>
           <PanelToggleIcon side="right" />
         </button> : null}
       </div>
