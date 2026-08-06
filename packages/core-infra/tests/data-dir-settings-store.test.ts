@@ -133,7 +133,7 @@ describe("data-dir settings store", () => {
   });
 
   it("drops the relocated aiGateway key from global options", () => {
-    // AI Gateway 선별은 콘솔 durable state(plugins.terminal["ai-gateway"])로 이전됐다.
+    // AI Gateway 선별은 core-ai-gateway가 소유하는 별도 파일(`<dataDir>/ai-gateway.json`)로 이전됐다.
     expect(sanitizeGlobalOptionsData({
       version: 1,
       aiGateway: { models: [{ id: "cursor--claude-opus-5" }] },

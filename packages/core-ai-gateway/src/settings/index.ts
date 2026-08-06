@@ -1,26 +1,22 @@
+import { hasClaudeOneMillionMarker } from "../anthropic/claude-context.js";
 import {
   GATEWAY_MODELS,
   GATEWAY_PROVIDER_NAMES,
   GATEWAY_PROVIDERS,
   buildGatewayModelConstraints,
   findGatewayModel,
-  hasClaudeOneMillionMarker,
   toClaudeGatewayModelId,
-} from "@dotobokuri/core-ai-gateway";
+} from "../models.js";
 import type {
+  GatewayEffortExposure,
   GatewayModel,
   GatewayProvider,
   GatewayReasoningEffort,
-} from "@dotobokuri/core-ai-gateway";
-import type { GatewayEffortExposure } from "@dotobokuri/fleet-admiral";
-import type { FleetPluginStorageHost } from "@fleet-console/sdk/plugin";
+} from "../models.js";
 
-// AI Gateway 모델 선별은 콘솔 durable state의 terminal 플러그인 네임스페이스에 저장된다
-// (console settings.json → plugins.terminal["ai-gateway"]). 저장 형태는 이 모듈이 보증하고,
-// 카탈로그 대조(모델 존재, 기본 모델 소속)도 카탈로그를 아는 이 계층이 소유한다.
-// 구 카탈로그가 남긴 stale id는 소비 시점에 걸러낸다.
-
-export const AI_GATEWAY_SETTINGS_STORAGE_KEY = "ai-gateway";
+// AI Gateway 모델 선별의 저장 형태·카탈로그 대조·검증은 이 패키지가 소유한다. 카탈로그를 아는
+// 계층만이 "지금 고를 수 있는 모델·강도"를 판정할 수 있기 때문이다. 호스트는 저장 위치와 HTTP
+// 표면만 배선하고, 구 카탈로그가 남긴 stale id는 소비 시점에 여기서 걸러낸다.
 
 /** 저장되는 모델 항목. `efforts` 부재 = 그 모델의 사다리 전체를 정체성으로 내보낸다. */
 export interface AiGatewayStoredModel {
@@ -28,7 +24,7 @@ export interface AiGatewayStoredModel {
   readonly efforts?: readonly string[];
 }
 
-/** `plugins.terminal["ai-gateway"]`에 저장되는 형태. models 부재/공백 = 미구성(노출 없음). */
+/** AI Gateway 설정 파일에 저장되는 형태. models 부재/공백 = 미구성(노출 없음). */
 export interface AiGatewayStoredSettings {
   readonly version: 1;
   readonly models?: readonly AiGatewayStoredModel[];
@@ -36,12 +32,17 @@ export interface AiGatewayStoredSettings {
   /** 부재/false는 기본 Off. 저장 정규형은 opt-in인 true만 보존한다. */
   readonly cursorDiagnosticsEnabled?: boolean;
   /**
-   * 부재는 env(`FLEET_GATEWAY_WIRE_LOG`) 폴백, true/false는 Console이 강제하는 On/Off다.
+   * 부재는 env(`FLEET_GATEWAY_WIRE_LOG`) 폴백, true/false는 호스트가 강제하는 On/Off다.
    * 위 `cursorDiagnosticsEnabled`와 달리 **false를 정규형에서 지우면 안 된다** — env를 켜 둔 설치에서
    * 사용자가 UI로 Off한 뒤 재시작하면 부재가 다시 env 상속으로 읽혀 로깅이 되살아나고,
    * 토글이 꺼지지 않는 결함이 된다.
    */
   readonly wireLogEnabled?: boolean;
+}
+
+export interface AiGatewayUpdateValue {
+  readonly models?: readonly AiGatewayStoredModel[];
+  readonly defaultModel?: string;
 }
 
 export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSettings {
@@ -75,77 +76,6 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
     ...(value.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
     ...(typeof value.wireLogEnabled === "boolean" ? { wireLogEnabled: value.wireLogEnabled } : {}),
   };
-}
-
-// 같은 서버 프로세스의 이 모듈 인스턴스에서 read+write만 직렬화한다(agent-cli-paths와 동일 관례).
-let aiGatewaySettingsWriteTail: Promise<void> = Promise.resolve();
-
-export interface AiGatewaySettingsStore {
-  readonly read: () => Promise<AiGatewayStoredSettings>;
-  /** 진단 opt-in은 보존하고 모델 선별만 교체한다. */
-  readonly write: (value: AiGatewayUpdateValue | undefined) => Promise<AiGatewayStoredSettings>;
-  /** 모델 선별은 보존하고 진단 opt-in만 갱신한다. */
-  readonly writeCursorDiagnosticsEnabled: (enabled: boolean) => Promise<AiGatewayStoredSettings>;
-  /** `undefined`는 wireLogEnabled 키를 제거해 env 폴백으로 돌아간다. */
-  readonly writeWireLogEnabled: (enabled: boolean | undefined) => Promise<AiGatewayStoredSettings>;
-}
-
-export interface AiGatewayUpdateValue {
-  readonly models?: readonly AiGatewayStoredModel[];
-  readonly defaultModel?: string;
-}
-
-export function createAiGatewaySettingsStore(storage: FleetPluginStorageHost, pluginId: string): AiGatewaySettingsStore {
-  const read = async (): Promise<AiGatewayStoredSettings> => normalizeAiGatewaySettings(
-    await storage.readJson(pluginId, AI_GATEWAY_SETTINGS_STORAGE_KEY),
-  );
-  return {
-    read,
-    write: (value) => serializeAiGatewaySettingsWrite(async () => {
-      const current = await read();
-      const next = normalizeAiGatewaySettings({
-        version: 1,
-        ...(current.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
-        ...(typeof current.wireLogEnabled === "boolean" ? { wireLogEnabled: current.wireLogEnabled } : {}),
-        ...(value ?? {}),
-      });
-      await storage.writeJson(pluginId, AI_GATEWAY_SETTINGS_STORAGE_KEY, next);
-      return next;
-    }),
-    writeCursorDiagnosticsEnabled: (enabled) => serializeAiGatewaySettingsWrite(async () => {
-      const current = await read();
-      const next = normalizeAiGatewaySettings({
-        ...current,
-        cursorDiagnosticsEnabled: enabled,
-      });
-      await storage.writeJson(pluginId, AI_GATEWAY_SETTINGS_STORAGE_KEY, next);
-      return next;
-    }),
-    writeWireLogEnabled: (enabled) => serializeAiGatewaySettingsWrite(async () => {
-      const current = await read();
-      const next = normalizeAiGatewaySettings({
-        ...current,
-        ...(enabled === undefined ? {} : { wireLogEnabled: enabled }),
-      });
-      if (enabled === undefined) {
-        const withoutWireLog = { ...next } as { wireLogEnabled?: boolean };
-        delete withoutWireLog.wireLogEnabled;
-        await storage.writeJson(pluginId, AI_GATEWAY_SETTINGS_STORAGE_KEY, withoutWireLog);
-        return withoutWireLog as AiGatewayStoredSettings;
-      }
-      await storage.writeJson(pluginId, AI_GATEWAY_SETTINGS_STORAGE_KEY, next);
-      return next;
-    }),
-  };
-}
-
-function serializeAiGatewaySettingsWrite<T>(write: () => Promise<T>): Promise<T> {
-  const result = aiGatewaySettingsWriteTail.then(write);
-  aiGatewaySettingsWriteTail = result.then(
-    () => undefined,
-    () => undefined,
-  );
-  return result;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -19,9 +19,9 @@ import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./ag
 import { AGENT_CLI_COMMANDS, createAgentCliPathStore, createCarrierAgentCliLaunchResolver, resolveAgentCliBinary } from "./agent-api/agent-cli-paths.js";
 import type { AgentCliDiagnostics } from "./agent-api/agent-cli-types.js";
 import { readConsoleQuotaSnapshot } from "./agent-api/gateway-loadout.js";
-import { resolveAiGatewaySelection } from "./ai-gateway-settings.js";
+import { resolveAiGatewaySelection } from "@dotobokuri/core-ai-gateway";
+import type { AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 import type { AiGatewayLaunchBinding } from "./agent-api/launch.js";
-import type { AiGatewayStoredSettings } from "./ai-gateway-settings.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
 import { createAgentTerminalLaunchResolver, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
@@ -48,7 +48,7 @@ type OperationRenamedEvent = {
 interface AgentRouteDeps {
   readonly globalOptionsService: GlobalOptionsService;
   readonly aiGateway?: AiGatewayLaunchBinding;
-  readonly readAiGatewaySettings?: () => Promise<AiGatewayStoredSettings>;
+  readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
 }
 
 const AGENT_OPERATION_TYPE = "agent";
@@ -87,8 +87,8 @@ function buildGatewayLoadoutTools(deps: AgentRouteDeps): readonly AgentToolSpec[
   if (!readAiGatewaySettings) return [];
   const aiGateway = deps.aiGateway;
   return [buildGatewayModelsToolSpec({
-    readSelection: async () => {
-      const selection = resolveAiGatewaySelection(await readAiGatewaySettings());
+    readSelection: () => {
+      const selection = resolveAiGatewaySelection(readAiGatewaySettings());
       return {
         models: selection.models,
         effortExposure: selection.effortExposure,

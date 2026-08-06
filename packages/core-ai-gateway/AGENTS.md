@@ -11,6 +11,7 @@ Translates Anthropic Messages traffic onto non-Anthropic provider backends.
 | `src/transport/` | Provider-unaware transport mechanics: SSE framing, token estimate, wire log, keepalive, credential file I/O |
 | `src/<provider>/` | One folder per provider (`codex/`, `cursor/`, `kimi/`, `opencode-go/`). OpenCode behavior is additionally split by wire under `src/opencode-go/{anthropic,responses,chat-completions}/` |
 | `src/models.ts`, `models.json` | Model catalog, context windows, effort ladders |
+| `src/settings/` | Which catalog models a user exposed and where that choice is stored: stored shape, catalog-checked validation, selection resolution, and the `<dataDir>/ai-gateway.json` durable store |
 
 ## Routing doctrine
 
@@ -19,6 +20,7 @@ Translates Anthropic Messages traffic onto non-Anthropic provider backends.
 - Same wire protocol is not a reason to share provider request/response/tool/header/capability semantics — duplicate provider semantics deliberately.
 - Only canonical protocol vocabulary (`src/canonical/`), provider-unaware transport mechanics (`src/transport/`), and exactly two Anthropic normalization modules — `src/anthropic/protocol.ts` and `src/anthropic/passthrough.ts` — may be shared across providers. `src/transport/` must not import any provider folder, and `src/anthropic/native.ts` is Anthropic-owned provider semantics other providers must not import.
 - Provider request/response/tool/header/capability exceptions cannot live in `canonical/`, `transport/`, or the root facade.
+- `src/settings/` is a catalog reader, never a provider: it may consume `src/models.ts` and the Claude compatibility seam, but must not import a provider folder or carry provider request/response semantics. Hosts wire it with an explicit data root and an optional legacy directory; the package resolves no host path of its own.
 - `src/index.ts` is a compatibility facade only: it re-exports the public surface from the new locations and must not add provider branching or behavior.
 - The one sanctioned seam→provider coupling is `AnthropicMessagesGateway`'s backwards-compatible default constructor (`src/anthropic/gateway.ts` → `codex/responses/adapter.ts`, the legacy `OpenAIResponsesAdapter`). It is pinned by the provider-boundaries test; any other anthropic-seam import of a provider folder is a violation.
 

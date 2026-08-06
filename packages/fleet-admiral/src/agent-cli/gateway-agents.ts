@@ -13,6 +13,7 @@
 import {
   buildGatewayModelConstraints,
   toClaudeGatewayModelId,
+  type GatewayEffortExposure,
   type GatewayModel,
   type GatewayReasoningEffort,
 } from "@dotobokuri/core-ai-gateway";
@@ -53,13 +54,14 @@ export type ClaudeCustomAgents = Readonly<Record<string, ClaudeCustomAgentDefini
 
 /**
  * Scoped gateway 모델 id(`kimi--k3-256k`) → 사용자가 정체성으로 내보낸 강도들.
- * 항목이 없으면 그 모델의 사다리 전체를 뜻한다.
+ * 항목이 없으면 그 모델의 사다리 전체를 뜻한다. 정의는 선별을 소유하는
+ * core-ai-gateway가 갖고, 여기서는 Agent 조립 어휘로 다시 내보내기만 한다.
  *
  * 이 좁히기는 **정체성 등록에만** 적용된다. 디스커버리(`/v1/models`)가 광고하는
  * 사다리는 그대로 두는데, 요청 강도를 카탈로그보다 좁게 강제하면 클램프가 요청
  * 이하로만 내려가는 성질 때문에 최상단만 남긴 모델이 일반 세션을 400으로 막는다.
  */
-export type GatewayEffortExposure = Readonly<Record<string, readonly GatewayReasoningEffort[]>>;
+export type { GatewayEffortExposure } from "@dotobokuri/core-ai-gateway";
 
 /**
  * 사용자가 고른 강도만 남긴 사다리. 순서는 카탈로그 사다리를 따른다.

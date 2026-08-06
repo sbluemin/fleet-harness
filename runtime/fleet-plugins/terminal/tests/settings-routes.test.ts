@@ -4,7 +4,7 @@ import type { GlobalOptionsData } from "@dotobokuri/core-infra";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { describe, expect, it } from "vitest";
 
-import { normalizeAiGatewaySettings, type AiGatewayStoredSettings } from "../server/ai-gateway-settings.js";
+import { normalizeAiGatewaySettings, type AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 import { registerTerminalSettingsRoutes } from "../server/settings-routes.js";
 
 interface WriteJsonCall {
@@ -360,19 +360,26 @@ function createRouteHarness(options: HarnessOptions = {}) {
       update: (mutate) => { updateCalls += 1; data = mutate(data); return data; },
     },
     aiGatewayStore: {
-      read: async () => aiGateway,
-      write: async (value) => {
+      path: "/test/ai-gateway.json",
+      read: () => aiGateway,
+      // 실 store(core-ai-gateway settings-store)의 write와 같은 보존 규칙을 지킨다.
+      // 여기서 wireLogEnabled를 빠뜨리면 모델만 바꾼 PUT이 로깅을 끈 것처럼 보이고,
+      // 하네스는 프로덕션에 없는 동작을 상대로 green이 된다.
+      write: (value) => {
         updateCalls += 1;
         aiGateway = normalizeAiGatewaySettings({
           version: 1,
           ...(aiGateway.cursorDiagnosticsEnabled === true
             ? { cursorDiagnosticsEnabled: true }
             : {}),
+          ...(typeof aiGateway.wireLogEnabled === "boolean"
+            ? { wireLogEnabled: aiGateway.wireLogEnabled }
+            : {}),
           ...(value ?? {}),
         });
         return aiGateway;
       },
-      writeCursorDiagnosticsEnabled: async (enabled) => {
+      writeCursorDiagnosticsEnabled: (enabled) => {
         updateCalls += 1;
         aiGateway = normalizeAiGatewaySettings({
           ...aiGateway,
@@ -380,7 +387,7 @@ function createRouteHarness(options: HarnessOptions = {}) {
         });
         return aiGateway;
       },
-      writeWireLogEnabled: async (enabled) => {
+      writeWireLogEnabled: (enabled) => {
         updateCalls += 1;
         aiGateway = normalizeAiGatewaySettings({
           ...aiGateway,

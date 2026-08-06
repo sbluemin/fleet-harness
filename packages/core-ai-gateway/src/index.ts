@@ -12,6 +12,8 @@ export type { WireLogTarget } from "./transport/wire-log.js";
 export { AnthropicMessagesGateway, ContextWindowExceededError } from "./anthropic/gateway.js";
 export type { AnthropicGatewayCallOptions, AnthropicGatewayResponse } from "./anthropic/gateway.js";
 export * from "./models.js";
+export * from "./settings/index.js";
+export * from "./settings/store.js";
 export * from "./opencode-go/index.js";
 export * from "./codex/index.js";
 export * from "./kimi/index.js";

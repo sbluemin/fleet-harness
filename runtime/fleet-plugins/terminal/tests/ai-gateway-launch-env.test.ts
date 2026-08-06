@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { applyAiGatewayEnv } from "../server/agent-api/launch.js";
-import { resolveAiGatewaySelection } from "../server/ai-gateway-settings.js";
+import { resolveAiGatewaySelection } from "@dotobokuri/core-ai-gateway";
 
 const temporaryDirectories: string[] = [];
 
