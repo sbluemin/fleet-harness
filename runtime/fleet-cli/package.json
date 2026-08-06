@@ -20,7 +20,6 @@
   "files": [
     "dist",
     "bin",
-    "postinstall.mjs",
     "README.md"
   ],
   "scripts": {

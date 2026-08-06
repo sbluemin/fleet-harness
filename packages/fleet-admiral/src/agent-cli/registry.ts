@@ -46,8 +46,9 @@ export function getDefaultAgentCliId(): AgentCliId {
   return DEFAULT_CLI_ID;
 }
 
-// Console 호스트에서만 성립하는 CLI. 게이트웨이 라우트가 Console에 마운트되어야 동작하므로
-// 기본 카탈로그(예: Fleet CLI의 Start CLI 목록)에서는 제외한다.
+// 기본 카탈로그 나열에서 제외하는 CLI. claude-native는 Console 전용이고, claude-gateway는
+// 게이트웨이 라우트를 직접 마운트하는 호스트(Console 터미널 플러그인, fleet-cli thin 런처)가
+// cliId를 명시해 해석한다 — 카탈로그 나열로는 노출하지 않는다.
 const CONSOLE_ONLY_CLI_IDS: ReadonlySet<AgentCliId> = new Set<AgentCliId>(["claude-native", "claude-gateway"]);
 
 export interface AgentCliIdListOptions {
