@@ -40,6 +40,13 @@ export interface TriageDeckTheater {
   readonly label: string;
 }
 
+/** 라이브 프리뷰 재료 — pool 슬롯 config와, 그 body를 소유한 kind가 선언한 바닥 크롬 높이(패널
+    좌표계 px). 크롬을 선언하지 않은 kind는 바닥까지 출력이 흐른다는 뜻이므로 0이다. */
+export interface TriagePreviewSource {
+  readonly config: OperationBodyConfig;
+  readonly bottomChrome: number;
+}
+
 interface TriageWatchDeckProps {
   readonly active: boolean;
   readonly entering: boolean;
@@ -56,9 +63,10 @@ interface TriageWatchDeckProps {
   /** 지도 마커용 유효 geometry — durable DTO보다 라이브 캔버스 배치가 정본이다(드래그 직후
       PATCH 왕복 대기·실패, DTO null인 자동 배치 op). canvas가 자기 스토어로 해석해 넘긴다. */
   readonly mapGeometryFor?: (operation: OperationNode) => OperationGeometry | null;
-  /** 카드 본문 라이브 프리뷰용 pool 슬롯 config 빌더 — 핸들러 배선은 canvas가 단일 소유한다.
-      렌더 가능한 kind가 아니면 null을 반환하고 카드는 tail 폴백으로 내려간다. */
-  readonly previewConfigFor?: (operation: OperationNode) => OperationBodyConfig | null;
+  /** 카드 본문 라이브 프리뷰 재료 빌더 — pool 슬롯 config와 그 kind가 선언한 바닥 크롬 높이를
+      함께 넘긴다. 핸들러 배선은 canvas가 단일 소유한다. 렌더 가능한 kind가 아니면 null을
+      반환하고 카드는 tail 폴백으로 내려간다. */
+  readonly previewSourceFor?: (operation: OperationNode) => TriagePreviewSource | null;
   /** 스포트라이트 OFF에서 검토 전인 대기 카드 — 지속 aurora 맥동(is-fresh)을 얹는다. */
   readonly freshOperationIds?: ReadonlySet<string>;
   /** 지도에서 마커를 끌어 옮겼을 때의 새 캔버스 좌표 — 지도는 함대의 축소판이므로 여기서 옮긴
@@ -492,7 +500,7 @@ export function TriageWatchDeck({
   stagedOperationId = null,
   onBeforePick,
   mapGeometryFor,
-  previewConfigFor,
+  previewSourceFor,
   freshOperationIds,
   onMapMarkerMove,
   onOperationContextMenu,
@@ -980,8 +988,8 @@ export function TriageWatchDeck({
       label: operationActivityLabel(activity),
       detail: getOperationStatusDetailSnapshot(operation.id).detail,
       accentColor: accentKey ? resolveAccentColor(accentKey) : null,
-      previewConfig: poolAvailable && previewConfigFor && operation.id !== stagedOperationId
-        ? previewConfigFor(operation)
+      preview: poolAvailable && previewSourceFor && operation.id !== stagedOperationId
+        ? previewSourceFor(operation)
         : null,
     };
   })();
@@ -1020,8 +1028,8 @@ export function TriageWatchDeck({
                     const accentColor = accentKey ? resolveAccentColor(accentKey) : null;
                     // 지도 모드에서는 카드가 은닉되므로 pool 슬롯도 놓는다 — body는 operation당
                     // 하나뿐이라, 은닉된 카드가 슬롯을 쥔 채로는 점의 확대창이 그 body를 실을 수 없다.
-                    const previewConfig = poolAvailable && previewConfigFor && operation.id !== stagedOperationId && !mapMode
-                      ? previewConfigFor(operation)
+                    const preview = poolAvailable && previewSourceFor && operation.id !== stagedOperationId && !mapMode
+                      ? previewSourceFor(operation)
                       : null;
                     const isQuicklook = quicklook?.operationId === operation.id;
                     // 밀도 변형 프레임 — 카드를 자기 점 자리로 옮겨 놓는다. Quick-Look 확대와는
@@ -1029,7 +1037,7 @@ export function TriageWatchDeck({
                     const morphFrame = morph?.applied ? morph.frames.get(operation.id) ?? null : null;
                     return (
                       <button
-                        className={`canvas-triage-deck-card is-${visual} ${previewConfig ? "has-preview" : ""} ${arrivingOperationId === operation.id ? "is-arriving" : ""} ${freshOperationIds?.has(operation.id) ? "is-fresh" : ""} ${isQuicklook ? "is-quicklook" : ""} ${morph ? "is-morphing" : ""} ${morph?.phase === "to-cards" && morph.applied ? "is-morph-snap" : ""}`}
+                        className={`canvas-triage-deck-card is-${visual} ${preview ? "has-preview" : ""} ${arrivingOperationId === operation.id ? "is-arriving" : ""} ${freshOperationIds?.has(operation.id) ? "is-fresh" : ""} ${isQuicklook ? "is-quicklook" : ""} ${morph ? "is-morphing" : ""} ${morph?.phase === "to-cards" && morph.applied ? "is-morph-snap" : ""}`}
                         data-triage-deck-card={operation.id}
                         key={operation.id}
                         type="button"
@@ -1060,7 +1068,7 @@ export function TriageWatchDeck({
                           label={label}
                           detail={statusDetail.detail}
                           accentColor={accentColor}
-                          previewConfig={previewConfig}
+                          preview={preview}
                         />
                       </button>
                     );
@@ -1120,7 +1128,7 @@ export function TriageWatchDeck({
           // 점의 확대창 — 카드 Quick-Look과 같은 카드 얼굴을 같은 판독 크기로 띄운다. 포인터를
           // 통과시켜(pointer-events:none) 창이 점을 덮어도 hover가 끊기지 않고 클릭이 점에 닿는다.
           <div
-            className={`canvas-triage-deck-card canvas-triage-map-quicklook is-${mapQuicklookOperation.visual} ${mapQuicklookOperation.previewConfig ? "has-preview" : ""}`}
+            className={`canvas-triage-deck-card canvas-triage-map-quicklook is-${mapQuicklookOperation.visual} ${mapQuicklookOperation.preview ? "has-preview" : ""}`}
             style={{
               left: `${mapQuicklook!.placement.left}px`,
               top: `${mapQuicklook!.placement.top}px`,
@@ -1135,7 +1143,7 @@ export function TriageWatchDeck({
               label={mapQuicklookOperation.label}
               detail={mapQuicklookOperation.detail}
               accentColor={mapQuicklookOperation.accentColor}
-              previewConfig={mapQuicklookOperation.previewConfig}
+              preview={mapQuicklookOperation.preview}
             />
           </div>
         ) : null}
@@ -1297,13 +1305,13 @@ function renderTriageMapDots(
 
 // 카드 얼굴 — 덱 카드와 지도 점의 확대창이 같은 조각(스파인·상태줄·제목·프리뷰/tail)을 공유한다.
 // 두 표면이 각자 얼굴을 조립하면 같은 Operation이 밀도에 따라 다르게 읽힌다.
-function TriageDeckCardFace({ operationId, title, label, detail, accentColor, previewConfig }: {
+function TriageDeckCardFace({ operationId, title, label, detail, accentColor, preview }: {
   readonly operationId: string;
   readonly title: string;
   readonly label: string;
   readonly detail: string | null | undefined;
   readonly accentColor: string | null;
-  readonly previewConfig: OperationBodyConfig | null;
+  readonly preview: TriagePreviewSource | null;
 }) {
   return (
     <>
@@ -1313,8 +1321,8 @@ function TriageDeckCardFace({ operationId, title, label, detail, accentColor, pr
         <span>{label}</span>
       </span>
       <strong title={title}>{title}</strong>
-      {previewConfig ? (
-        <TriageDeckCardPreview config={previewConfig} operationId={operationId} />
+      {preview ? (
+        <TriageDeckCardPreview config={preview.config} bottomChrome={preview.bottomChrome} operationId={operationId} />
       ) : (
         <span className="canvas-triage-deck-card-detail" title={detail ?? label}>
           {detail ?? label}
@@ -1324,27 +1332,26 @@ function TriageDeckCardFace({ operationId, title, label, detail, accentColor, pr
   );
 }
 
-// 바닥 크롬 밴드 — 에이전트 CLI 패널의 최하단은 입력 컴포저와 상태줄(cwd·모델·권한 모드)이
-// 차지하며, 실행 중에도 갱신되지 않는 고정 크롬이다. 프리뷰의 역할은 스트리밍 감시이므로 이
-// 밴드는 프레임 밖으로 내보내고 그 위 출력 영역이 카드를 채운다. 기본 터미널 글꼴(14px,
-// lineHeight 1) 기준 상태줄 3행 + 컴포저 3행 + 여백 1행 ≈ 7행. 패널 좌표계 기준 상수라
-// scale이 곱해지며 카드/Quick-Look 어디서든 같은 행 수가 잘린다.
-export const TRIAGE_PREVIEW_BOTTOM_CHROME = 104;
 // 작은 패널에서 밴드가 프레임 대부분을 먹지 않도록 한 몫 상한을 둔다 — 하한 200px 패널에서
-// 104px를 그대로 빼면 남는 출력 영역이 절반 밑으로 떨어져 프리뷰가 오히려 덜 읽힌다.
+// 선언값 104px를 그대로 빼면 남는 출력 영역이 절반 밑으로 떨어져 프리뷰가 오히려 덜 읽힌다.
 const TRIAGE_PREVIEW_BOTTOM_CHROME_MAX_RATIO = 0.3;
 
 // 프리뷰 fit — 레터박스 없이 카드 영역을 채우는 cover-fit이되, 세로 기준은 패널 전체가 아니라
-// 바닥 크롬을 제외한 출력 영역이다. 크롭 앵커는 가로 중앙·세로는 출력 영역의 하단: 터미널의
-// 최신 출력은 컴포저 바로 위에 쌓이므로 모니터링 가치가 있는 영역이 살아남는다(빈 셸이 비어
-// 보이는 것은 정직한 상태 표현이다).
+// 바닥 크롬을 제외한 출력 영역이다. 크롭 앵커는 가로 중앙·세로는 출력 영역의 하단: 에이전트
+// CLI의 최신 출력은 컴포저 바로 위에 쌓이므로 모니터링 가치가 있는 영역이 살아남는다(빈 셸이
+// 비어 보이는 것은 정직한 상태 표현이다). 밴드 높이는 body 소유자인 kind가 선언하며
+// (OperationKindDescriptor.previewBottomChrome), 선언이 없는 body는 바닥까지 출력이 흐른다는
+// 뜻이므로 0 — 순정 셸과 문서형 패널은 최신 행을 잃지 않는다.
 export function resolveTriagePreviewFit(
   viewport: { readonly width: number; readonly height: number },
   inner: { readonly width: number; readonly height: number },
+  bottomChrome = 0,
 ): { scale: number; left: number; top: number } | null {
   if (viewport.width <= 0 || viewport.height <= 0) return null;
   if (inner.width <= 0 || inner.height <= 0) return null;
-  const chrome = Math.min(TRIAGE_PREVIEW_BOTTOM_CHROME, inner.height * TRIAGE_PREVIEW_BOTTOM_CHROME_MAX_RATIO);
+  // 선언값은 플러그인이 넘기는 값이다 — 음수·비유한 값이 fit 전체를 NaN으로 만들지 않게 막는다.
+  const declared = Number.isFinite(bottomChrome) ? Math.max(0, bottomChrome) : 0;
+  const chrome = Math.min(declared, inner.height * TRIAGE_PREVIEW_BOTTOM_CHROME_MAX_RATIO);
   const contentHeight = inner.height - chrome;
   const scale = Math.max(viewport.width / inner.width, viewport.height / contentHeight);
   return {
@@ -1357,9 +1364,10 @@ export function resolveTriagePreviewFit(
 // 라이브 프리뷰 — pool 슬롯이 실제 패널 body를 카드 안으로 끌어온다. 내부 박스는 패널의 원래
 // 픽셀 크기를 고정 유지한 채 transform scale로만 축소한다: FitAddon이 카드 크기를 측정하면
 // PTY cols/rows가 타일 크기로 리사이즈되어 실세션 레이아웃이 깨지므로, 측정 크기 불변이 계약이다.
-function TriageDeckCardPreview({ operationId, config }: {
+function TriageDeckCardPreview({ operationId, config, bottomChrome }: {
   readonly operationId: string;
   readonly config: OperationBodyConfig;
+  readonly bottomChrome: number;
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [fit, setFit] = useState<{ scale: number; left: number; top: number } | null>(null);
@@ -1374,6 +1382,7 @@ function TriageDeckCardPreview({ operationId, config }: {
       setFit(resolveTriagePreviewFit(
         { width: viewport.clientWidth, height: viewport.clientHeight },
         { width: innerWidth, height: innerHeight },
+        bottomChrome,
       ));
     };
     measure();
@@ -1381,7 +1390,7 @@ function TriageDeckCardPreview({ operationId, config }: {
     const observer = new ResizeObserver(measure);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [innerHeight, innerWidth]);
+  }, [bottomChrome, innerHeight, innerWidth]);
   return (
     <span className="canvas-triage-deck-card-preview" ref={viewportRef} aria-hidden="true" inert>
       {fit ? (

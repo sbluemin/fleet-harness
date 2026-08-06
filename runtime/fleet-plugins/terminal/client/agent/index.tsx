@@ -98,6 +98,11 @@ export const agentOperationKind = defineOperationKind({
   title: (locale) => getT(locale)("terminal.kind.agent"),
   subtitle: (operation) => readPayloadString(operation.payload, "cliLabel") ?? undefined,
   render: (context) => <AgentOperationView context={context} />,
+  // 에이전트 CLI TUI는 화면 바닥에 입력 컴포저와 상태줄(cwd·모델·권한 모드)을 고정으로 그린다 —
+  // 실행 중에도 갱신되지 않으므로 호스트 프리뷰는 이 밴드를 프레임 밖으로 밀어낼 수 있다.
+  // 기본 글꼴 14px·lineHeight 1 기준 상태줄 3행 + 컴포저 3행 + 여백 1행 ≈ 7행.
+  // 순정 셸(shellOperationKind)은 바닥까지 출력이 흐르므로 이 값을 선언하지 않는다.
+  previewBottomChrome: 104,
   canOpenCompanions: () => true,
   companions: [
     { id: CARRIER_STREAMS_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.carrierStreams"), hideCaption: true, defaultHidden: true, available: operationSupportsCarrierStreams, shortcut: { code: "KeyC", label: "C" }, render: (context) => <CarrierStreamsPanel context={context} /> },

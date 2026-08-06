@@ -24,7 +24,7 @@ import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { resolveAccentColor } from "./operation-accent.js";
 import { CanvasGrid, RubberBand, TriageClearPlate } from "./canvas-overlays.js";
-import { flashTriageDeckCard, getTriageDeckCardRect, resolveTriageDeckPromotion, takeTriageDeckDepartureRect, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckArrivalDwell } from "./triage-watch-deck.js";
+import { flashTriageDeckCard, getTriageDeckCardRect, resolveTriageDeckPromotion, takeTriageDeckDepartureRect, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckArrivalDwell, type TriagePreviewSource } from "./triage-watch-deck.js";
 import { resolveGlanceHudModel, type GlanceHudModel } from "./glance-hud.js";
 import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
@@ -424,16 +424,16 @@ export function OperationsCanvas({
       onClose(operationId);
     },
   };
-  const triagePreviewConfigFor = useMemo(() => {
+  const triagePreviewSourceFor = useMemo(() => {
     if (!triageActive) return undefined;
     const handlers = triagePreviewHandlersRef;
-    const configs = new Map<string, OperationBodyConfig>();
+    const sources = new Map<string, TriagePreviewSource>();
     // 선별 중에는 전 Theater가 마운트된다 — 모든 카드가 라이브 프리뷰를 받는다.
     for (const operation of state.operations) {
       // render가 없는 kind는 pool이 body를 만들지 못한다 — 빈 프리뷰 박스 대신 tail 폴백으로 내린다.
       const descriptor = registry.operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
       if (!descriptor?.render) continue;
-      configs.set(operation.id, {
+      const config: OperationBodyConfig = {
         active: false,
         geometry: canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation),
         operation,
@@ -447,9 +447,12 @@ export function OperationsCanvas({
         companionsOpen: false,
         hiddenCompanionPanelIds: EMPTY_HIDDEN_COMPANION_IDS,
         onSetCompanionPanelVisible: () => {},
-      });
+      };
+      // 바닥 크롬 높이는 body 소유자인 kind가 선언한다 — 미선언 body(순정 셸·문서형 패널)는
+      // 바닥까지 출력이 흐르므로 0이고, 프리뷰는 최신 행을 잘라내지 않는다.
+      sources.set(operation.id, { config, bottomChrome: descriptor.previewBottomChrome ?? 0 });
     }
-    return (operation: OperationNode) => configs.get(operation.id) ?? null;
+    return (operation: OperationNode) => sources.get(operation.id) ?? null;
   }, [canvas.operations, language, registry.operationKinds, state.activeTheme, state.operations, triageActive]);
   const setAsideArmedId = getTriageSetAsideArmedId();
   // 덱 줌 wheel은 React 합성 onWheel 밖에서 부착한다 — React는 root wheel을 passive로
@@ -1022,7 +1025,7 @@ export function OperationsCanvas({
         mapGeometryFor={(operation) => operation.theaterId === state.activeTheaterId
           ? canvas.operations[operation.id] ?? operation.geometry ?? null
           : getTheaterCanvasSnapshot(operation.theaterId).operations[operation.id] ?? operation.geometry ?? null}
-        previewConfigFor={triagePreviewConfigFor}
+        previewSourceFor={triagePreviewSourceFor}
         freshOperationIds={freshDeckOperationIds}
         onMapMarkerMove={(operationId, theaterId, geometry) => {
           // 지도에서 옮긴 자리는 캔버스의 자리다 — 라이브 좌표를 먼저 세우고 durable에도 남긴다.

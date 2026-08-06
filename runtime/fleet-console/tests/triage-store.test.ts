@@ -1496,6 +1496,10 @@ describe("triage store", () => {
           onSetCompanionPanelVisible: () => {},
         }
       : null;
+    const previewSourceFor = (candidate: OperationNode) => {
+      const config = previewConfigFor(candidate);
+      return config ? { config, bottomChrome: 0 } : null;
+    };
     act(() => {
       // has-preview 클래스는 pool 가용성 게이트를 통과해야 붙는다 — 실제 조립 경로와 같은
       // OperationBodyPool 안에서 렌더한다.
@@ -1511,7 +1515,7 @@ describe("triage store", () => {
           operations,
           operationStatus: status,
           operationAccent: {},
-          previewConfigFor,
+          previewSourceFor,
         }),
       }));
     });
