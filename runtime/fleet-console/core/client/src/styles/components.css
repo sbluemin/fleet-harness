@@ -6359,7 +6359,7 @@
 }
 
 /* 비활성 사유는 설명이 서던 아래 줄로 내린다 — 라벨과 같은 행에 두면 둘이 폭을 다투어
-   `Claude (Gateway • Experimental)` 같은 긴 종류 이름이 잘린다. */
+   `Claude (Gateway)` 같은 긴 종류 이름이 잘린다. */
 .operation-launch-menu-item--annotated .operation-launch-menu-reason {
   grid-column: 2 / -1;
   grid-row: 2;

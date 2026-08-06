@@ -104,7 +104,7 @@ const HIERARCHY = [
 
 const CLI_BACKENDS = [
   { num: "01", vendor: "Anthropic", name: "Claude Code", tag: { ko: "장기 추론·아키텍처 판단의 표준 백엔드", en: "The standard backend for long-form reasoning and architectural judgment." }, color: "oklch(78% 0.13 75)" },
-  { num: "02", vendor: "OpenAI · Cursor · Moonshot AI", name: "Claude Gateway", tag: { ko: "여러 프론티어 모델을 Claude Code 표면에서 라우팅하는 실험적 백엔드", en: "An experimental backend routing frontier models through the Claude Code surface." }, color: "oklch(72% 0.17 25)" },
+  { num: "02", vendor: "OpenAI · Cursor · Moonshot AI", name: "Claude Gateway", tag: { ko: "여러 프론티어 모델을 Claude Code 표면에서 라우팅하는 백엔드", en: "A backend routing frontier models through the Claude Code surface." }, color: "oklch(72% 0.17 25)" },
   { num: "03", vendor: "OpenAI", name: "Codex CLI", tag: { ko: "Carrier와 Task Force를 위한 실행 백엔드", en: "An execution backend for Carriers and Task Forces." }, color: "oklch(72% 0.03 250)" },
 ];
 

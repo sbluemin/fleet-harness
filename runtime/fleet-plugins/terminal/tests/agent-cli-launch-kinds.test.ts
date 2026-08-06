@@ -8,7 +8,7 @@ describe("buildAgentCliLaunchKinds", () => {
       [
         { id: "claude-native", label: "Claude (Native)", available: true, signedIn: true },
         { id: "claude", label: "Claude", available: true, signedIn: true },
-        { id: "claude-gateway", label: "Claude (Gateway • Experimental)", available: true, signedIn: true },
+        { id: "claude-gateway", label: "Claude (Gateway)", available: true, signedIn: true },
       ],
       "agent",
     );
@@ -16,7 +16,7 @@ describe("buildAgentCliLaunchKinds", () => {
     expect(result).toEqual([
       { id: "claude-native", type: "agent", title: "Claude (Native)" },
       { id: "claude", type: "agent", title: "Claude (Classic)" },
-      { id: "claude-gateway", type: "agent", title: "Claude (Gateway • Experimental)" },
+      { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
     ]);
   });
 

@@ -1223,7 +1223,7 @@ describe("Instrument core design contract", () => {
     expect(descriptionBlock).toContain("font-family: var(--font-body);");
     expect(descriptionBlock).not.toMatch(/font-weight:\s*\d/);
 
-    // 실행 메뉴에는 신규 표식 배지를 두지 않는다 — 실험/신규 여부는 라벨 괄호 안이 들고 있다.
+    // 실행 메뉴에는 별도 표식 배지를 두지 않는다 — 종류 구분은 라벨 괄호 안이 들고 있다.
     // 배지가 돌아오면 brass 채널을 빌리는 doctrine 예외가 다시 필요해지므로 여기서 막는다.
     expect(components).not.toContain("operation-launch-menu-badge");
   });

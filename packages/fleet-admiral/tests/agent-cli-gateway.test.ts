@@ -41,7 +41,7 @@ describe("claude-gateway profile", () => {
       args: ["--model", "claude-gateway--cursor-auto"],
       bin: process.execPath,
       id: "claude-gateway",
-      label: "Claude (Gateway • Experimental)",
+      label: "Claude (Gateway)",
       renameCommand: "/rename",
     });
     expect(profile.env.KEEP_ME).toBe("yes");

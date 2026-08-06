@@ -78,7 +78,7 @@ Every supported CLI brings a model-native agent loop refined by its creator. Fle
 | CLI | Provider | Protocol | Product surface |
 |---|---|---|---|
 | **Claude Code** | Anthropic | ACP | Live Agent Operations |
-| **Claude (Gateway • Experimental)** | OpenAI, Cursor, Moonshot AI | Claude Code gateway | Live Agent Operations with GPT, Cursor, and Kimi K3 models |
+| **Claude (Gateway)** | OpenAI, Cursor, Moonshot AI | Claude Code gateway | Live Agent Operations with GPT, Cursor, and Kimi K3 models |
 | **Codex CLI** | OpenAI | Codex App Server | Carrier and Task Force backends |
 
 Kimi K3 is selected from AI Gateway's Claude Code model picker. Register its API key under Settings → Plugins → Terminal → Agent CLI; the credential stays in the local gateway and is never injected into the Claude Code process.
