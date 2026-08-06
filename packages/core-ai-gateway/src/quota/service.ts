@@ -1,12 +1,14 @@
-import {
-  fetchClaudeUsage,
-  fetchCodexUsage,
-  fetchCursorUsage,
-  fetchKimiUsage,
-  fetchOpencodeUsage,
-  sanitizeProviderError,
-} from "./providers.js";
+import type { AuthService } from "@dotobokuri/core-infra";
+
+import { fetchClaudeUsage } from "../anthropic/quota.js";
+import { fetchCodexUsage } from "../codex/quota.js";
+import { fetchCursorUsage } from "../cursor/quota.js";
+import { fetchKimiUsage } from "../kimi/quota.js";
+import { fetchOpencodeUsage } from "../opencode-go/quota.js";
+import { scanOpencodeGoWindows } from "../opencode-go/usage-scan.js";
+import { defaultCredentialDeps, type CredentialResolverDeps } from "../transport/credentials.js";
 import type { ProviderDto, ProviderResult, ProviderSuccess, QuotaSummaryDto } from "./types.js";
+import { sanitizeProviderError, type ProviderDeps } from "./windows.js";
 
 const CACHE_TTL_MS = 120_000;
 const STALE_TTL_MS = 1_800_000;
@@ -23,13 +25,52 @@ export interface QuotaService {
 export interface QuotaServiceDeps {
   readonly isClaudeConnected: () => Promise<boolean>;
   readonly isCursorConnected: () => Promise<boolean>;
-  readonly fetchClaude?: () => Promise<ProviderResult>;
-  readonly fetchCodex?: () => Promise<ProviderResult>;
-  readonly fetchCursor?: () => Promise<ProviderResult>;
-  readonly fetchKimi?: () => Promise<ProviderResult>;
-  readonly fetchOpencode?: () => Promise<ProviderResult>;
+  readonly fetchClaude: () => Promise<ProviderResult>;
+  readonly fetchCodex: () => Promise<ProviderResult>;
+  readonly fetchCursor: () => Promise<ProviderResult>;
+  readonly fetchKimi: () => Promise<ProviderResult>;
+  readonly fetchOpencode: () => Promise<ProviderResult>;
   readonly now?: () => number;
   readonly platform?: NodeJS.Platform;
+}
+
+/**
+ * Deps for building the five provider probes. `authService` is required here —
+ * Kimi and OpenCode Go read the key Fleet itself stores through it — so a host
+ * that composes these collectors can never silently fall back to constructing a
+ * default auth path inside the package.
+ */
+export interface AiGatewayQuotaCollectorDeps {
+  readonly authService: AuthService;
+  readonly credentialDeps?: CredentialResolverDeps;
+  readonly fetch?: typeof fetch;
+  readonly now?: () => number;
+  readonly scanOpencodeWindows?: typeof scanOpencodeGoWindows;
+}
+
+export interface AiGatewayQuotaCollectors {
+  readonly fetchClaude: () => Promise<ProviderResult>;
+  readonly fetchCodex: () => Promise<ProviderResult>;
+  readonly fetchCursor: () => Promise<ProviderResult>;
+  readonly fetchKimi: () => Promise<ProviderResult>;
+  readonly fetchOpencode: () => Promise<ProviderResult>;
+}
+
+export function createAiGatewayQuotaCollectors(deps: AiGatewayQuotaCollectorDeps): AiGatewayQuotaCollectors {
+  const providerDeps: ProviderDeps = {
+    credentials: deps.credentialDeps ?? defaultCredentialDeps,
+    authService: deps.authService,
+    ...(deps.fetch !== undefined ? { fetch: deps.fetch } : {}),
+    ...(deps.now !== undefined ? { now: deps.now } : {}),
+    ...(deps.scanOpencodeWindows !== undefined ? { scanOpencodeGoWindows: deps.scanOpencodeWindows } : {}),
+  };
+  return {
+    fetchClaude: () => fetchClaudeUsage(providerDeps),
+    fetchCodex: () => fetchCodexUsage(providerDeps),
+    fetchCursor: () => fetchCursorUsage(providerDeps),
+    fetchKimi: () => fetchKimiUsage(providerDeps),
+    fetchOpencode: () => fetchOpencodeUsage(providerDeps),
+  };
 }
 
 interface CacheEntry {
@@ -46,11 +87,11 @@ function isProviderSuccess(value: ProviderResult): value is ProviderSuccess {
 export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
   const now = deps.now ?? Date.now;
   const fetchers: Record<ProviderId, () => Promise<ProviderResult>> = {
-    claude: deps.fetchClaude ?? (() => fetchClaudeUsage()),
-    codex: deps.fetchCodex ?? (() => fetchCodexUsage()),
-    cursor: deps.fetchCursor ?? (() => fetchCursorUsage()),
-    kimi: deps.fetchKimi ?? (() => fetchKimiUsage()),
-    opencode: deps.fetchOpencode ?? (() => fetchOpencodeUsage()),
+    claude: deps.fetchClaude,
+    codex: deps.fetchCodex,
+    cursor: deps.fetchCursor,
+    kimi: deps.fetchKimi,
+    opencode: deps.fetchOpencode,
   };
   const cache = new Map<ProviderId, CacheEntry>();
   const lastGood = new Map<ProviderId, ProviderSuccess>();

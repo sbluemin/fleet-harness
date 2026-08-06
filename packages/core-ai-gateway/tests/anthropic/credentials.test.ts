@@ -6,14 +6,10 @@ import { promisify } from "node:util";
 
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  defaultCredentialDeps,
-  readBoundedFile,
-  resolveClaudeCredentials,
-  resolveCodexCredentials,
-  resolveCursorCredentials,
-  type CredentialResolverDeps,
-} from "../server/credentials.js";
+import { defaultCredentialDeps, readBoundedFile, type CredentialResolverDeps } from "../../src/transport/credentials.js";
+import { resolveClaudeCredentials } from "../../src/anthropic/credentials.js";
+import { resolveCodexCredentials } from "../../src/codex/credentials.js";
+import { resolveCursorCredentials } from "../../src/cursor/credentials.js";
 
 function deps(overrides: Partial<CredentialResolverDeps> = {}): CredentialResolverDeps {
   return {

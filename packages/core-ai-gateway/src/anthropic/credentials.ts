@@ -1,31 +1,7 @@
 import path from "node:path";
 
-import {
-  MAX_CREDENTIAL_BYTES,
-  credentialRecord,
-  defaultCredentialDeps,
-  readBoundedFile,
-  resolveCodexCredentials,
-  resolveCursorCredentials,
-} from "@dotobokuri/core-ai-gateway";
-import type {
-  CodexCredentials,
-  CredentialResolverDeps,
-  CursorCredentials,
-} from "@dotobokuri/core-ai-gateway";
-
-import type { CredentialMethod } from "./types.js";
-
-// Cursor/Codex 자격증명 조달은 core-ai-gateway가 단일 출처다. Console AI gateway 라우트도 같은
-// 구현을 쓰므로, 여기서 다시 구현하면 조달 규칙이 한쪽에만 반영되는 과거 불일치가 되살아난다.
-export {
-  MAX_CREDENTIAL_BYTES,
-  defaultCredentialDeps,
-  readBoundedFile,
-  resolveCodexCredentials,
-  resolveCursorCredentials,
-};
-export type { CodexCredentials, CredentialResolverDeps, CursorCredentials };
+import { MAX_CREDENTIAL_BYTES, credentialRecord, type CredentialResolverDeps } from "../transport/credentials.js";
+import type { CredentialMethod } from "../quota/types.js";
 
 export interface ClaudeCredentials {
   readonly accessToken: string;

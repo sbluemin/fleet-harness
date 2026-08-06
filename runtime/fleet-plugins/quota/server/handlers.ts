@@ -1,8 +1,7 @@
 import type http from "node:http";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
-
-import type { QuotaService } from "./service.js";
+import type { QuotaService } from "@dotobokuri/core-ai-gateway";
 
 export type SettingsSerializer = <T>(operation: () => Promise<T>) => Promise<T>;
 

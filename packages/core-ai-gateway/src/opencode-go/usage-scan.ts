@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import type { QuotaWindow } from "./types.js";
+import type { QuotaWindow } from "../quota/types.js";
 
 /**
  * OpenCode Go 관측 사용량 스캐너 — OpenUsage(robinebers/openusage)의 OpenCode provider와

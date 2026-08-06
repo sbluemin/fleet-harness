@@ -1,7 +1,11 @@
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
+import {
+  createAiGatewayQuotaCollectors,
+  createQuotaService,
+} from "@dotobokuri/core-ai-gateway";
+import { createAuthService, DEFAULT_AUTH_PATH } from "@dotobokuri/core-infra";
 
 import { handleConnect, handleSummary } from "./server/handlers.js";
-import { createQuotaService } from "./server/service.js";
 
 export default definePlugin({
   id: "quota",
@@ -23,6 +27,9 @@ export default definePlugin({
       platform: process.platform,
       isClaudeConnected: () => isConnected("claude"),
       isCursorConnected: () => isConnected("cursor"),
+      ...createAiGatewayQuotaCollectors({
+        authService: createAuthService({ authPath: DEFAULT_AUTH_PATH }),
+      }),
     });
     registerRouter(ctx, "summary", async ({ req, res }) => {
       await handleSummary(req, res, ctx, service);

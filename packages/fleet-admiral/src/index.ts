@@ -67,6 +67,9 @@ export {
   type GatewayQuotaWindow,
   type GatewayWindowPressure,
 } from "./ai-gateway/model-loadout.js";
+export {
+  parseGatewayQuotaSnapshot,
+} from "./ai-gateway/quota-snapshot.js";
 // Agent CLI 프로파일/레지스트리 해석기
 export {
   type AgentCliMetadata,

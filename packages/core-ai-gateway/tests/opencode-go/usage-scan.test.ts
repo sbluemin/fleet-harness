@@ -9,7 +9,7 @@ import {
   listOpencodeDatabases,
   resolveOpencodeDataDir,
   scanOpencodeGoWindows,
-} from "../server/opencode-usage.js";
+} from "../../src/opencode-go/usage-scan.js";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
