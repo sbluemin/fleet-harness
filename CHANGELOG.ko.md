@@ -5,6 +5,77 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.51.0] - 2026-08-06
+
+### fleet-cli
+
+#### Added
+- [fleet-cli] thin 런처가 Fleet Console과 같은 AI Gateway 모델 선별 파일(`~/.fleet/ai-gateway.json`)을 읽고, 인프로세스로 프로브한 실제 공급자 할당량과 함께 `gateway_models`를 제공합니다.
+
+#### Breaking Changes
+- [fleet-cli] `fleet`가 내장 두-pane 터미널 앱 대신 AI Gateway 주입(`--mcp-config`를 통한 인프로세스 Fleet MCP 서버, 노출 모델·추론 강도별 커스텀 에이전트, gateway doctrine 프롬프트, 루프백 Anthropic 호환 엔드포인트)과 함께 Claude Code를 네이티브 자식 프로세스로 바로 실행합니다. 캐리어 운용 표면, PTY/터미널 가로채기 계층, `--disable-cursor-sync` 옵션은 제거되며, `fleet auth`와 `fleet update`는 유지되고 인식되지 않는 인자는 Claude Code로 그대로 전달됩니다.
+
+### fleet-console
+
+#### Added
+- [fleet-console] Operation 런치 메뉴에서 Claude (Classic)이 점진적으로 폐지된다는 1회성 안내를 표시합니다. 실행 종류 소개 워크스루를 본 뒤 Classic 항목에 닻을 두고 재생되며, 기존 (Classic) Operation은 계속 동작하고 새 Operation은 정식화된 AI Gateway 또는 순정 Claude를 권장합니다.
+
+#### Changed
+- [fleet-console] War Room 라이브 프리뷰의 크롭 기준을 에이전트 CLI 패널의 바닥 크롬 위로 올립니다. Watch Deck 카드와 확대창이 실행 중에도 갱신되지 않는 입력 컴포저·상태줄 대신 스트리밍 출력으로 프레임을 채워, 같은 카드 크기에서 약 일곱 행만큼의 실시간 출력이 더 보입니다. 순정 셸처럼 바닥까지 출력이 흐르는 패널은 모든 행을 그대로 유지합니다.
+- [fleet-console] Claude Gateway 실행 종류를 정식으로 승격합니다. Operation 실행 메뉴와 캔버스 컨텍스트 메뉴의 표기가 `Claude (Gateway • Experimental)`에서 `Claude (Gateway)`로 바뀌고, 기능 투어 문구에서 실험 표기가 빠집니다.
+
+#### Fixed
+- [fleet-console] 한 프로세스 안에서 Console 서버를 다시 시작할 때 플러그인의 컴파일된 라우트 번들을 매번 새 임시 디렉터리에 쓰고 별도 모듈 사본으로 등록하는 대신, 번들 내용을 기준으로 재사용합니다.
+- [fleet-console] War Room 모드의 좌측 사이드바 폭 조절을 복구합니다. War Room 좌측 열만 가장자리 핸들이 없어 폭을 드래그로 바꿀 수 없고 핸들 더블클릭 접기도 닿지 않았습니다. 이미 다른 모드와 폭·접힘 상태를 공유하고 있었는데도 그랬습니다. 이제 모든 모드가 같은 핸들 하나를 쓰며, 여기서 정한 폭은 모드를 전환해도 그대로 이어집니다.
+- [fleet-console] War Room의 모든 표면에서 캔버스 제어 메뉴에 닿습니다. 좌측 사이드바 빈 영역, 덱 판 바닥, Theater 밴드 사이 여백, 큐 레일 배경을 우클릭하면 지도 구역이 이미 제공하던 실행 메뉴가 같은 방식으로 열리고 어느 Theater로 실행되는지 이름을 밝히므로, 카드 밀도에서 진입점이 밴드 헤더 한 줄로 줄었다가 작전 지도 말고는 어디서도 열리지 않던 문제가 사라집니다. 소유 표면의 메뉴는 그대로이고 휴면 선반은 여전히 아무것도 열지 않으며, 사이드바를 접으면 그 열이 연 메뉴도 함께 걷힙니다.
+- [fleet-console] Operations 화면 밖에서도 커맨드 밴드에 사이드바와 Activity Rail 토글을 유지하고, 누르면 Operations로 돌아가 해당 패널을 엽니다.
+- [fleet-console] 두 패널이 모두 보이지 않는 화면에서는 사이드바와 Activity Rail 단축키가 저장된 패널 상태를 바꾸지 않습니다.
+- [fleet-console] Console 데몬과 업데이트 워커도 OS 인증서 저장소를 기본 신뢰(`NODE_USE_SYSTEM_CA=1`)하도록 기동해 Desktop sidecar와 정책을 맞춥니다. `FLEET_CONSOLE_NO_SYSTEM_CA=1`로 끌 수 있습니다.
+- [fleet-console] 사용량 한도의 OpenCode Go 카드가 Fleet Desktop에서 로컬 사용 기록이 없다고 알리는 대신 세션·주간·월간 미터를 표시합니다. 빌드 번들이 `node:sqlite`의 `node:` 접두를 잃어 로컬 OpenCode CLI 로그 읽기가 실패했고, 그 실패가 기록 부재로 조용히 보고되고 있었습니다.
+
+#### Removed
+- [fleet-console] Settings > General에서 "Reduce panel motion" 토글을 제거합니다. 패널 모션은 이제 운영체제의 동작 줄이기 설정만 따르며, 저장돼 있던 설정값은 다른 설정에 영향 없이 사라집니다.
+
+### fleet-desktop
+
+#### Fixed
+- [fleet-console] Desktop이 관리하는 Node 프로세스(Console sidecar와 설치 프로그램)가 OS 인증서 저장소를 기본으로 신뢰해, TLS 검사 프록시가 있는 네트워크에서도 Codex 사용량 조회와 Codex 게이트웨이 호출이 동작합니다. `FLEET_CONSOLE_NO_SYSTEM_CA=1`로 끌 수 있으며, 명시된 `NODE_USE_SYSTEM_CA` 값은 존중됩니다.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] AI Gateway 설정에 기본값 Off인 와이어 로그 토글을 추가합니다. 게이트웨이 와이어 전체(프롬프트·도구 스키마·모델 출력·도구 인자)를 Console 데이터 디렉터리 아래 로컬 로그에 기록하며, 16 MiB에서 순환하고 백업 하나를 보관합니다. On은 다음 요청부터, Off는 다음 기록부터 적용됩니다. 이 설정은 `FLEET_GATEWAY_WIRE_LOG`보다 우선하므로, 해당 변수가 설정된 환경에서도 Off로 두면 기록이 중단됩니다.
+- [fleet-console] 저장소 커밋 검사기와 비교 검사기에서 파일 목록과 diff 사이 디바이더를 끌어 폭을 조절하고, 비교 결과도 목록 보기와 트리 보기로 전환합니다. 끌어 놓은 폭은 기억되고 diff 열은 판독 가능한 최소폭을 유지하며, 목록/트리 선택은 커밋 검사기와 공유되어 같은 파일 목록이 두 표면에서 같은 표현을 유지합니다. 좁은 검사기는 지금처럼 두 페인을 세로로 쌓습니다.
+
+#### Changed
+- [fleet-console] AI Gateway 모델 선별을 Console 채널별 플러그인 슬롯이 아니라 전역 설정 파일 옆의 Fleet 단일 파일 `~/.fleet/ai-gateway.json`에 저장합니다. 기존 선별은 처음 사용할 때 그대로 승계되어 모델, 모델별 추론 강도, Cursor 진단, 와이어 로그 스위치가 유지됩니다. 이제 개발용과 게시본 Console이 하나의 AI Gateway 선별을 공유하며, 데이터 루트를 명시해 띄운 Console은 자기 것을 따로 갖습니다.
+- [fleet-console] Claude (Gateway) 실행이 모델 디스커버리 캐시를 기록하지 못하면 경고 후 낡은 모델 로스터로 시작하는 대신 실행을 거부합니다.
+
+#### Fixed
+- [fleet-console] 캐리어 스트림 활동 카드에서 실행 중인 도구가 상태를 보고하지 않을 때 `{status}` 자리표시자를 그대로 남기는 대신 도구 상태 줄을 감춥니다.
+- [fleet-console] quota 패널에서 TLS 인증서 실패를 일반 오류 대신 "Certificate verification failed (<code>)" 전용 스트립으로 표시하고, AI 게이트웨이 502 오류 메시지에 전송 원인 코드를 함께 남깁니다.
+- [fleet-console] 저장소 기록 로그와 검사기 상세 헤더에서 긴 커밋 제목을 한 줄로 유지하고, 전문은 툴팁으로 제공합니다. 좁은 패널에서 제목이 둘째 줄로 감기며 목록이 난잡해지고, 같은 높이를 공유하는 그래프 레인과 행이 어긋나던 문제를 해결합니다.
+- [fleet-console] 검사기의 파일 목록이 diff 페인 위로 넘치던 문제를 해결합니다. 파일 열이 자기 폭에 맞춰 줄어들어, 긴 경로가 diff에 덮이는 대신 목록 안에서 스크롤됩니다.
+
+### fleet-core
+
+#### Added
+- [core-ai-gateway] AI Gateway에서 Cursor GPT-5.6 Sol을 제공합니다. Cursor가 실제로 서빙하는 low~max 추론 사다리, 실측한 272000 토큰 컨텍스트 윈도, Cursor API 사용량 풀 기준 청구를 함께 반영합니다.
+- [core-ai-gateway] `FLEET_GATEWAY_WIRE_LOG`보다 우선하는 명시적 in-process 와이어 로그 타깃을 추가해, 호스트가 재기동 없이 진단 로깅을 켜고 끌 수 있습니다. 회전은 오버라이드 타깃에만 적용되어 지정한 바이트 상한에서 백업 하나를 남기며, 환경 변수 경로는 기존의 무제한 append 동작을 유지합니다.
+- [core-ai-gateway] 게이트웨이 모델 카탈로그에 provider가 스스로 밝힌 capability class(`flagship`/`standard`/`light`)를 기록하고, 라우팅 constraints와 `gateway_models` 로스터로 보고합니다. 라우팅 별칭은 무등급으로 남고, 서비스 티어 형제 모델은 base와 같은 등급이어야 합니다.
+
+#### Changed
+- [fleet-admiral] 게이트웨이 워크플로 스테이지 배정을 판단/기계 2-체제로 나눕니다. 판단 역할(decompose, propose, decide, judge, synthesize)은 도달 가능한 최상위 capability class를 유지하며 부족한 팬은 가벼운 등급으로 채우지 않고 축소하거나 같은 신원을 반복 착석합니다. 기계 역할은 기존 할당량 분배 기본값을 유지하고, class-eligible 신원이 전무한 경우를 위해 기록되는 E4(judgment floor) 예외를 신설했으며, 각 게이트웨이 에이전트 설명에 모델의 class가 표기됩니다.
+- [fleet-admiral] 게이트웨이 스테이지 스킬을 `workflow-architecting`, `workflow-research`, `workflow-implementing`, `workflow-review`로 리네임하고, 각 골격에 어떤 스테이지가 판단석이고 어떤 스테이지가 기계 팬인지 명시했습니다.
+- [fleet-admiral] Claude Code 하네스가 이미 보장하는 내용을 재서술하던 상시 게이트웨이 독트린을 정리합니다. 디렉터리 독트린 로딩은 하네스의 CLAUDE.md 자동 표면화에 맡기고, Mission Anchor recall 라인은 매 결정 경계가 아니라 재진입 지점에서만 출력하며, 사전 질문 게이트는 제품 의도 모호성으로 한정하고, deferred-tool 재서술을 제거했습니다.
+- [core-ai-gateway][fleet-admiral] Anthropic 호환 AI Gateway 라우터, 공급자 쿼터 프로브, 게이트웨이 실행 환경이 호스트 중립 패키지(`core-ai-gateway`, `fleet-admiral`)로 이동해 Fleet Console과 Fleet CLI가 하나의 구현을 공유합니다.
+
+#### Fixed
+- [core-ai-gateway] OpenCode Go DeepSeek V4 요청이 텍스트 전용 Chat Completions 엔드포인트로 갈 때만 이미지 파트를 제거해 `image_url` 스키마 오류를 방지하며, 범용 Chat 어댑터의 동작은 그대로 유지합니다.
+
+#### Removed
+- [fleet-admiral] `gateway_models` 로스터와 workflow 독트린에서 실측 roleFit 테이블을 제거합니다. 이제 카탈로그 capability class가 로스터의 단일 품질 신호이며, allowance는 같은 class 동급 간에만 판정합니다.
+
 ## [1.50.1] - 2026-08-05
 
 ### fleet-core

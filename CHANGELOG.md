@@ -5,6 +5,77 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.51.0] - 2026-08-06
+
+### fleet-cli
+
+#### Added
+- [fleet-cli] The thin launcher reads the same AI Gateway model selection file as Fleet Console (`~/.fleet/ai-gateway.json`) and serves `gateway_models` with live provider allowances probed in-process.
+
+#### Breaking Changes
+- [fleet-cli] `fleet` now launches Claude Code directly as a native child process with AI Gateway injection (the in-process Fleet MCP server over `--mcp-config`, one custom agent per exposed model and reasoning effort, the gateway doctrine prompt, and a loopback Anthropic-compatible endpoint), replacing the embedded two-pane terminal app. The carrier operation surface, the PTY/terminal interception layer, and the `--disable-cursor-sync` option are removed; `fleet auth` and `fleet update` remain, and unrecognized arguments pass through to Claude Code.
+
+### fleet-console
+
+#### Added
+- [fleet-console] Show a one-time notice in the operation launch menu that Claude (Classic) is being phased out. It plays once, after the launch-kind intro walkthrough, anchored to the Classic item, and points new Operations at the AI Gateway (now generally available) or plain Claude while existing (Classic) Operations keep working.
+
+#### Changed
+- [fleet-console] Crop the War Room live preview above an agent CLI panel's bottom chrome. A Watch Deck card and its quick-look now fill the frame with streaming output instead of the input composer and status lines that never change while a run is working, so roughly seven more rows of live output stay in view at the same card size. A panel whose body streams all the way down, such as a plain shell, keeps every row.
+- [fleet-console] Promote the Claude Gateway launch kind to official: the Operation launch menu and canvas context menu now label it `Claude (Gateway)`, and the feature-tour copy no longer calls it experimental.
+
+#### Fixed
+- [fleet-console] Reuse a plugin's compiled route bundle across Console server starts within one process, keyed by bundle content, instead of writing it to a fresh temporary directory and registering a separate module copy on every start.
+- [fleet-console] Restore side bar resize in War Room mode. The War Room left column was the only mode without the edge handle, so its width could not be dragged and the handle double-click collapse was unreachable even though the column already shared the other modes' width and collapsed state; the handle is now the same shared control in every mode, and the width it sets carries across a mode switch.
+- [fleet-console] Reach the canvas control menu from every War Room surface. Right-clicking bare space in the left sidebar, on the deck floor, between Theater bands, or on the queue rail background now opens the same launch menu the map zones already offered, and it names the Theater it will launch into, so the entry point no longer shrinks to a one-line band header at card density and vanish everywhere but the fleet map. Owned surfaces keep their menus, the dormant shelf still opens nothing, and collapsing the sidebar dismisses the menu it opened.
+- [fleet-console] Keep the sidebar and Activity Rail toggles in the command band outside the Operations screen, where pressing one returns to Operations and opens that panel.
+- [fleet-console] Stop the sidebar and Activity Rail keyboard shortcuts from changing the stored panel state on screens that show neither panel.
+- [fleet-console] Launch the Console daemon and update worker with the OS certificate store trusted by default (`NODE_USE_SYSTEM_CA=1`), matching the Desktop sidecar, with `FLEET_CONSOLE_NO_SYSTEM_CA=1` as the opt-out.
+- [fleet-console] The OpenCode Go card in Usage limits now shows its session, weekly, and monthly meters in Fleet Desktop instead of reporting that no local usage log exists; the built bundle had lost the `node:` prefix on `node:sqlite`, so reading the local OpenCode CLI log failed and was silently reported as absent.
+
+#### Removed
+- [fleet-console] Remove the "Reduce panel motion" toggle from Settings > General. Panel motion now follows only the operating system's Reduce Motion setting, and a stored preference is dropped without affecting other settings.
+
+### fleet-desktop
+
+#### Fixed
+- [fleet-console] Trust the OS certificate store by default in Desktop-managed Node processes (the Console sidecar and the Console installer), so Codex usage and Codex gateway calls work on networks with TLS-inspecting proxies. Set `FLEET_CONSOLE_NO_SYSTEM_CA=1` to opt out; an explicitly set `NODE_USE_SYSTEM_CA` value is respected.
+
+### fleet-plugin
+
+#### Added
+- [fleet-console] Add a Wire log toggle to AI Gateway settings, off by default, which records the full gateway wire (prompts, tool schemas, model output, and tool arguments) to a local log under the Console data directory that rotates at 16 MiB with one backup. Turning it on applies to the next request and turning it off stops the next write. The setting overrides `FLEET_GATEWAY_WIRE_LOG`, so turning it off stops logging even where that variable is set.
+- [fleet-console] Drag the divider between the file list and the diff in the repository commit and compare inspectors, and switch a compare result between list and tree view. The dragged width is remembered, the diff column keeps a readable minimum, and the list/tree choice is shared with the commit inspector so the same files keep one representation across both surfaces. A narrow inspector still stacks the two panes vertically instead of splitting them.
+
+#### Changed
+- [fleet-console] Store the AI Gateway model selection as one Fleet-wide file at `~/.fleet/ai-gateway.json`, alongside the global settings file, instead of a per-Console-channel plugin slot. An existing selection is carried over on first use, so the models, per-model reasoning levels, Cursor diagnostics, and wire-log switches stay as they were. Development and published Consoles now share one AI Gateway selection; a Console started with an explicit data-root override keeps its own.
+- [fleet-console] A Claude (Gateway) launch now refuses to start when the model-discovery cache cannot be written, instead of warning and starting with a stale model roster.
+
+#### Fixed
+- [fleet-console] Hide the tool status line in a carrier stream's activity card when the running tool reports no status, instead of leaving the literal `{status}` placeholder on screen.
+- [fleet-console] Surface TLS certificate failures in the quota panel as a dedicated "Certificate verification failed (<code>)" strip instead of a generic provider error, and include the transport cause code in AI gateway 502 error messages.
+- [fleet-console] Keep a long commit subject on a single line in the repository history log and in the inspector's detail header, with the full text available as a tooltip. A narrow panel used to wrap the subject onto a second line, which crowded the log and pushed the row out of step with the graph lane it shares a height with.
+- [fleet-console] Stop the inspector's file list from overflowing onto the diff pane. The file column now shrinks to its own width, so long paths scroll inside the list instead of being painted over by the diff.
+
+### fleet-core
+
+#### Added
+- [core-ai-gateway] Offer Cursor GPT-5.6 Sol through the AI Gateway, with the low through max reasoning ladder Cursor serves, a measured 272000-token context window, and billing against the Cursor API usage pool.
+- [core-ai-gateway] Add an explicit in-process wire log target that takes precedence over `FLEET_GATEWAY_WIRE_LOG`, so a host can arm or disarm diagnostic logging without a restart. Only an override target rotates, at its byte limit with one backup; the environment path keeps its unlimited-append behaviour.
+- [core-ai-gateway] Record each gateway model's provider-stated capability class (`flagship`/`standard`/`light`) in the model catalog and report it through routing constraints and the `gateway_models` roster; routing aliases stay unclassed and a service-tier sibling must match its base class.
+
+#### Changed
+- [fleet-admiral] Assign gateway workflow stages by a judgment/mechanical regime split: judgment roles (decompose, propose, decide, judge, synthesize) keep to the highest reachable capability class and shrink or repeat-seat a thin fan instead of seating a lighter class, while mechanical fans keep the allowance-distribution default; a recorded E4 judgment-floor exception covers the case where no class-eligible identity is reachable, and each gateway agent description now states its model's class.
+- [fleet-admiral] Rename the gateway stage skills to `workflow-architecting`, `workflow-research`, `workflow-implementing`, and `workflow-review`, and teach each skeleton which of its stages are judgment seats versus mechanical fans.
+- [fleet-admiral] Trim always-on gateway doctrine that restated the Claude Code harness: directory doctrine loading defers to the harness's automatic CLAUDE.md surfacing, Mission Anchor recall lines fire only at re-entry points instead of every decision boundary, the pre-engagement clarification gate is scoped to product-intent ambiguity, and the deferred-tool restatement is removed.
+- [core-ai-gateway][fleet-admiral] The Anthropic-compatible AI Gateway router, the provider quota probes, and the gateway launch environment moved into host-neutral packages so Fleet Console and Fleet CLI share one implementation.
+
+#### Fixed
+- [core-ai-gateway] Drop image parts only for OpenCode Go DeepSeek V4 requests to its text-only Chat Completions endpoint, preventing `image_url` schema errors while leaving the generic Chat adapter unchanged.
+
+#### Removed
+- [fleet-admiral] Drop the measured roleFit table from the `gateway_models` roster and the workflow doctrine; the catalog capability class is the roster's single quality signal, and allowance decides only among class peers.
+
 ## [1.50.1] - 2026-08-05
 
 ### fleet-core
