@@ -210,6 +210,11 @@ describe("feature tour", () => {
     // Classic 항목이 없는 메뉴(예: 순정 CLI만 설치)에서는 안내도 함께 빠진다.
     document.body.innerHTML = '<button data-operation-launch-kind="claude-native">Claude (Native)</button>';
     expect(resolveNextFeatureTour(FEATURE_TOURS, ["claude-operations.walkthrough"], document)).toBeNull();
+
+    // Classic 항목이 비활성(CLI 미설치로 disabled 렌더)이면 폐지 안내도 뜨지 않는다 —
+    // 쓸 수 없는 항목에 닻을 두면 "AI Gateway를 쓰라"는 문구가 의미를 잃는다.
+    document.body.innerHTML = '<button data-operation-launch-kind="claude" disabled>Claude (Classic)</button>';
+    expect(resolveNextFeatureTour(FEATURE_TOURS, ["claude-operations.walkthrough"], document)).toBeNull();
   });
 
   it("phrases the Classic deprecation in both locales, pointing at the AI Gateway", () => {
