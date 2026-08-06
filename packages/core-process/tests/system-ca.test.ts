@@ -11,6 +11,10 @@ describe("Node system CA environment", () => {
     expect(withNodeSystemCa({ NODE_USE_SYSTEM_CA: "0" })).toEqual({ NODE_USE_SYSTEM_CA: "0" });
   });
 
+  it("treats a case-variant key as an explicit value (Windows env keys are case-insensitive)", () => {
+    expect(withNodeSystemCa({ node_use_system_ca: "0" })).toEqual({ node_use_system_ca: "0" });
+  });
+
   it("does not mutate the input environment", () => {
     const env = { PATH: "/bin" };
 

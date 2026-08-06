@@ -4,7 +4,9 @@ const NODE_USE_SYSTEM_CA_ENV = "NODE_USE_SYSTEM_CA";
 
 export function withNodeSystemCa(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const next: NodeJS.ProcessEnv = { ...env };
-  // 사용자가 명시한 값(0 포함)은 존중한다.
-  if (next[NODE_USE_SYSTEM_CA_ENV] === undefined) next[NODE_USE_SYSTEM_CA_ENV] = "1";
+  // 사용자가 명시한 값(0 포함)은 존중한다. Windows는 env 키가 대소문자 무시라 `node_use_system_ca=0` 같은
+  // 변형이 있는데 대문자 키를 추가하면 child env 구성 시 명시값을 덮을 수 있어, 존재 여부는 대소문자 무관하게 본다.
+  const hasExplicitValue = Object.keys(next).some((key) => key.toUpperCase() === NODE_USE_SYSTEM_CA_ENV);
+  if (!hasExplicitValue) next[NODE_USE_SYSTEM_CA_ENV] = "1";
   return next;
 }
