@@ -3,65 +3,41 @@ import { describe, expect, it } from "vitest";
 import { buildFleetHelpText, parseFleetCliOptions } from "../src/cli-args.js";
 
 describe("fleet CLI args", () => {
-  it("enables cursor sync by default", () => {
-    expect(parseFleetCliOptions([], {}).cursorSync).toBe(true);
-  });
-
-  it("parses the cursor sync disable flag", () => {
-    expect(parseFleetCliOptions(["--disable-cursor-sync"], {}).cursorSync).toBe(false);
-  });
-
-  it("rejects the retired native terminal boot flag", () => {
-    expect(() => parseFleetCliOptions(["--native"], {})).toThrow("Unknown fleet option: --native");
-  });
-
-  it("parses the cursor sync environment off-switch without mutating process.env", () => {
-    const before = { ...process.env };
-
-    for (const off of ["0", "false", "no", "off"]) {
-      expect(parseFleetCliOptions([], { FLEET_CURSOR_SYNC: off }).cursorSync).toBe(false);
-    }
-    for (const on of ["1", "true", "yes", "on", "anything-else"]) {
-      expect(parseFleetCliOptions([], { FLEET_CURSOR_SYNC: on }).cursorSync).toBe(true);
-    }
-    expect(process.env).toEqual(before);
-  });
-
-  it("lets the disable flag override an enabling env value", () => {
-    expect(parseFleetCliOptions(["--disable-cursor-sync"], { FLEET_CURSOR_SYNC: "1" })).toMatchObject({
-      cursorSync: false,
+  it("passes every argument through by default", () => {
+    expect(parseFleetCliOptions(["--model", "sonnet", "prompt"])).toEqual({
+      help: false,
+      passthroughArgs: ["--model", "sonnet", "prompt"],
     });
   });
 
-  it("documents the cursor sync disable flag in help text", () => {
-    const helpText = buildFleetHelpText({ env: { NO_COLOR: "1" }, isTTY: true, release: { version: "0.0.0-test", channel: "stable" } });
+  it("recognizes help only as the first argument", () => {
+    expect(parseFleetCliOptions(["--help", "--verbose"])).toEqual({
+      help: true,
+      passthroughArgs: ["--verbose"],
+    });
+    expect(parseFleetCliOptions(["prompt", "--help"])).toEqual({
+      help: false,
+      passthroughArgs: ["prompt", "--help"],
+    });
+    expect(parseFleetCliOptions(["-h"])).toEqual({ help: true, passthroughArgs: [] });
+  });
+
+  it("documents the thin launcher and passthrough behavior", () => {
+    const helpText = buildFleetHelpText({
+      env: { NO_COLOR: "1" },
+      isTTY: true,
+      release: { version: "0.0.0-test", channel: "stable" },
+    });
 
     expect(helpText).toContain("Fleet Harness");
     expect(helpText).toContain("USAGE");
-    expect(helpText).toContain("COMMANDS");
-    expect(helpText).toContain("OPTIONS");
+    expect(helpText).toContain("fleet [claude args...]");
+    expect(helpText).toContain("fleet auth login|list|logout");
+    expect(helpText).toContain("fleet update");
+    expect(helpText).toContain("-h, --help");
+    expect(helpText).toContain("Unrecognized arguments are passed through to Claude Code.");
     expect(helpText).not.toContain("console");
     expect(helpText).not.toContain("desktop");
-    expect(helpText).toContain("-h, --help");
-    expect(helpText).not.toContain("--native");
-    expect(helpText).not.toContain("Run the selected Agent CLI in the real terminal");
-    expect(helpText).toContain("--disable-cursor-sync");
-    expect(helpText).toContain("problematic IME cursor anchoring (or FLEET_CURSOR_SYNC=0)");
     expect(helpText).not.toContain("\x1b[");
-    expect(helpText).not.toContain("fleet —");
-  });
-
-  it("does not document console or desktop commands in any channel", () => {
-    const local = buildFleetHelpText({ env: { NO_COLOR: "1" }, isTTY: true, release: { version: "0.0.0-test", channel: "local" } });
-    const stable = buildFleetHelpText({ env: { NO_COLOR: "1" }, isTTY: true, release: { version: "1.23.0", channel: "stable" } });
-
-    expect(local).not.toContain("fleet desktop");
-    expect(local).not.toContain("fleet console");
-    expect(stable).not.toContain("fleet desktop");
-    expect(stable).not.toContain("fleet console");
-  });
-
-  it("rejects unknown flags", () => {
-    expect(() => parseFleetCliOptions(["--unknown"], {})).toThrow("Unknown fleet option: --unknown");
   });
 });

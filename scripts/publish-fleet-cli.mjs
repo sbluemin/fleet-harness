@@ -13,7 +13,8 @@ const version = args.find((a) => a.startsWith("--version="))?.split("=")[1];
 const dryRun = args.includes("--dry-run");
 
 // 배포 산출물에서 external로 유지할 패키지 이름 목록 — 버전은 원본 package.json에서 읽는다.
-const EXTERNAL_DEP_NAMES = ["@clack/prompts", "@xterm/headless", "node-pty"];
+// thin 런처 전환으로 네이티브 의존(@xterm/headless·node-pty)이 사라져 @clack/prompts만 남는다.
+const EXTERNAL_DEP_NAMES = ["@clack/prompts"];
 
 const original = readFileSync(PKG_PATH, "utf8");
 const originalPkg = JSON.parse(original);
@@ -44,7 +45,8 @@ try {
 
   delete pkg.private;
   pkg.dependencies = EXTERNAL_DEPS;
-  pkg.scripts = { postinstall: "node postinstall.mjs" };
+  // node-pty spawn-helper chmod용 postinstall은 thin 런처 전환으로 폐기됐다.
+  delete pkg.scripts;
   if (version) pkg.version = version;
 
   writeFileSync(PKG_PATH, JSON.stringify(pkg, null, 2) + "\n");

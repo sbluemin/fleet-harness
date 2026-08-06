@@ -1,20 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  createSystemPromptBuilder,
-  injectAgentCliProfile,
-  isHostSessionToolAllowed,
-} from "@dotobokuri/fleet-admiral";
-import {
-  executorMcpRuntimeProviderRuntime,
-  executorPortRuntime,
-} from "@dotobokuri/core-agent";
-import { ensureWorkspaceDirectory } from "@dotobokuri/core-infra";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { isHostSessionToolAllowed } from "@dotobokuri/fleet-admiral";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
-import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "../src/runtime/runtime.js";
+import { createFleetCliRuntime, type FleetCliRuntime } from "../src/runtime/runtime.js";
 
 interface McpToolListResponse {
   readonly result?: {
@@ -38,236 +30,43 @@ const EXPECTED_WIKI_TOOL_IDS = [
   "wiki_schema_create",
 ] as const;
 
-const EXPECTED_CARRIER_TOOL_IDS = [
-  "carrier_dispatch",
-  "carrier_jobs",
-] as const;
-// Fleet Wiki mutation·stage·lint·schema 도구는 전부 host-only —
-// 어떤 캐리어에도 executor로 노출되지 않는다.
-const HOST_ONLY_WIKI_TOOL_IDS = [
-  "wiki_drydock",
-  "wiki_ingest",
-  "wiki_patch_edit",
-  "wiki_compile_source",
-  "wiki_query",
-  "wiki_schema_list",
-  "wiki_schema_read",
-] as const;
-// 무조건 읽기 전용 4종만 모든 캐리어에 글로벌 노출된다.
-const GLOBAL_READONLY_WIKI_TOOL_IDS = [
-  "wiki_briefing",
-  "wiki_orient",
-  "wiki_read",
-  "wiki_resolve",
-] as const;
-const WITH_TEST_MARKETPLACE_LOCK = <T>(_target: string, fn: () => T): T => fn();
-
-describe("fleet-cli agent CLI MCP registration", () => {
-  let lifecycle: FleetRuntimeLifecycle | undefined;
+describe("fleet-cli gateway MCP composition", () => {
+  let runtime: FleetCliRuntime | undefined;
+  let dataDir: string | undefined;
 
   afterEach(async () => {
-    await lifecycle?.shutdown();
-    lifecycle = undefined;
+    await runtime?.cleanup();
+    runtime = undefined;
+    if (dataDir) rmSync(dataDir, { recursive: true, force: true });
+    dataDir = undefined;
   });
 
-  it("exposes carrier and wiki tools on one dedicated Fleet MCP server", async () => {
-    lifecycle = createFleetRuntimeLifecycle();
-    const runtime = await lifecycle.start();
+  it("exposes exactly Wiki and gateway_models tools on a gateway-doctrine fleet session", async () => {
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-cli-runtime-"));
+    runtime = await createFleetCliRuntime({ dataDir });
     const endpoint = await runtime.dedicatedMcpSession.getEndpoint();
     const tokens = await runtime.dedicatedMcpSession.issueSessionToken({
-      label: "agent:test-wiki",
-      cwd: process.cwd(),
-    });
-    const servers = endpoint.servers.map((server) => ({
-      ...server,
-      token: tokens.find((entry) => entry.name === server.name)?.token,
-    }));
-    const fleet = servers.find((server) => server.name === "fleet");
-
-    expect(servers.map((server) => server.name)).toEqual(["fleet"]);
-    expect(tokens.map((entry) => entry.name)).toEqual(["fleet"]);
-    expect(fleet?.token).toBeDefined();
-
-    const fleetToolNames = await listMcpTools(fleet!.url, fleet!.token!);
-
-    for (const toolId of EXPECTED_CARRIER_TOOL_IDS) {
-      expect(fleetToolNames.has(toolId)).toBe(true);
-    }
-    for (const toolId of EXPECTED_WIKI_TOOL_IDS) {
-      expect(fleetToolNames.has(toolId)).toBe(true);
-    }
-    expect(
-      runtime.mcpRegistry[0]!.getAllAgentTools()
-        .filter((spec) => EXPECTED_WIKI_TOOL_IDS.includes(spec.id as typeof EXPECTED_WIKI_TOOL_IDS[number]))
-        .map((spec) => ({ id: spec.id, parameters: spec.parameters })),
-    ).toEqual(getWikiToolSpecs().map((spec) => ({ id: spec.id, parameters: spec.parameters })));
-    expect(fleetToolNames.size).toBe(
-      EXPECTED_CARRIER_TOOL_IDS.length + EXPECTED_WIKI_TOOL_IDS.length,
-    );
-    expect(fleetToolNames.has("mcp__fleet__wiki_query")).toBe(false);
-    expect(fleetToolNames.has("mcp__carrier__carrier_dispatch")).toBe(false);
-    expect(fleetToolNames.has("mcp__wiki__wiki_query")).toBe(false);
-
-    const executorPort = executorPortRuntime;
-    expect(executorMcpRuntimeProviderRuntime.getExecutorMcpRouterRuntimes().map((entry) => entry.name)).toEqual(["fleet"]);
-    expect(executorPort.getExecutorMcpTools("unknown", "nimitz")).toEqual([]);
-
-    const ordinaryCarrierTools = new Set(executorPort.getExecutorMcpTools("fleet", "nimitz").map((tool) => tool.id));
-    const genesisTools = new Set(executorPort.getExecutorMcpTools("fleet", "genesis").map((tool) => tool.id));
-
-    // host-only Wiki 도구는 어떤 캐리어에도 노출되지 않는다.
-    for (const toolId of HOST_ONLY_WIKI_TOOL_IDS) {
-      expect(ordinaryCarrierTools.has(toolId)).toBe(false);
-    }
-    // 읽기 전용 4종은 모든 캐리어에 글로벌 노출된다.
-    for (const toolId of GLOBAL_READONLY_WIKI_TOOL_IDS) {
-      expect(ordinaryCarrierTools.has(toolId)).toBe(true);
-    }
-    expect(ordinaryCarrierTools.has("wiki_patch_queue")).toBe(false);
-    expect(ordinaryCarrierTools.has("wiki_schema_create")).toBe(false);
-    // 모든 Wiki 도구는 호스트(agent tool)로는 여전히 노출된다.
-    expect(fleetToolNames.has("wiki_schema_create")).toBe(true);
-    expect(fleetToolNames.has("wiki_patch_queue")).toBe(true);
-
-    expect(ordinaryCarrierTools.has("carrier_jobs")).toBe(true);
-    expect(genesisTools.has("carrier_jobs")).toBe(true);
-
-    // 4개 built-in Carrier 전체 Wiki ACL 고정: 정확히 읽기 전용 4종만 노출, host-only 9종은 전부 차단.
-    const ALL_CARRIER_IDS = ["nimitz", "genesis", "sentinel", "vanguard"];
-    const DENIED_HOST_ONLY_WIKI_TOOL_IDS = [...HOST_ONLY_WIKI_TOOL_IDS, "wiki_patch_queue", "wiki_schema_create"];
-    for (const carrierId of ALL_CARRIER_IDS) {
-      const tools = new Set(executorPort.getExecutorMcpTools("fleet", carrierId).map((tool) => tool.id));
-      const wikiTools = [...tools].filter((id) => id.startsWith("wiki_")).sort();
-      expect(wikiTools).toEqual([...GLOBAL_READONLY_WIKI_TOOL_IDS].sort());
-      for (const denied of DENIED_HOST_ONLY_WIKI_TOOL_IDS) {
-        expect(tools.has(denied)).toBe(false);
-      }
-    }
-
-    const systemPrompt = createSystemPromptBuilder({
-      carrierRuntime: runtime.carrierRuntime,
-    }).build(false);
-    const roughTokens = Math.ceil(systemPrompt.length / 4);
-
-    expect(systemPrompt).toContain('<fleet section="role">');
-    expect(systemPrompt).not.toContain('<fleet section="persona">');
-    expect(systemPrompt).toContain('<fleet section="roster">');
-    expect(systemPrompt).toContain('<fleet section="protocol-gate">');
-    expect(systemPrompt).not.toContain('<fleet section="protocol">');
-    expect(systemPrompt).toContain('<fleet section="standing-orders"');
-    expect(systemPrompt).not.toContain('<fleet section="tool-guide"');
-    expect(roughTokens).toBeLessThanOrEqual(8_500);
-  });
-
-  it("keeps a gateway-filtered host session non-empty and free of carrier tools", async () => {
-    // gateway doctrine 세션은 캐리어 도구 2종을 배제한다. 실 런타임 구성(wiki 도구 동반)에서
-    // 필터 후 스냅샷이 비지 않아야 세션 토큰 발급이 성공하고 gateway CLI가 기동한다.
-    lifecycle = createFleetRuntimeLifecycle();
-    const runtime = await lifecycle.start();
-    const endpoint = await runtime.dedicatedMcpSession.getEndpoint();
-    const tokens = await runtime.dedicatedMcpSession.issueSessionToken({
-      label: "agent:test-gateway",
+      label: "gateway-host",
       cwd: process.cwd(),
       includeTool: (toolId) => isHostSessionToolAllowed(toolId, "gateway"),
     });
-    const fleet = endpoint.servers.find((server) => server.name === "fleet");
-    const token = tokens.find((entry) => entry.name === "fleet")?.token;
-    expect(token).toBeDefined();
 
-    const fleetToolNames = await listMcpTools(fleet!.url, token!);
-    for (const toolId of EXPECTED_CARRIER_TOOL_IDS) {
-      expect(fleetToolNames.has(toolId)).toBe(false);
-    }
-    for (const toolId of EXPECTED_WIKI_TOOL_IDS) {
-      expect(fleetToolNames.has(toolId)).toBe(true);
-    }
-    expect(fleetToolNames.size).toBe(EXPECTED_WIKI_TOOL_IDS.length);
+    expect(endpoint.servers.map((server) => server.name)).toEqual(["fleet"]);
+    expect(tokens.map((token) => token.name)).toEqual(["fleet"]);
+    const fleetServer = endpoint.servers[0]!;
+    const fleetToken = tokens[0]!;
+    const toolNames = await listMcpTools(fleetServer.url, fleetToken.token);
+    const expected = [...EXPECTED_WIKI_TOOL_IDS, "gateway_models"].sort();
+
+    expect([...toolNames].sort()).toEqual(expected);
+    expect(toolNames.has("carrier_dispatch")).toBe(false);
+    expect(toolNames.has("carrier_jobs")).toBe(false);
+    expect(
+      runtime.mcpRegistry.getAllAgentTools()
+        .filter((spec) => EXPECTED_WIKI_TOOL_IDS.includes(spec.id as typeof EXPECTED_WIKI_TOOL_IDS[number]))
+        .map((spec) => ({ id: spec.id, parameters: spec.parameters })),
+    ).toEqual(getWikiToolSpecs().map((spec) => ({ id: spec.id, parameters: spec.parameters })));
   });
-
-  it("migrates root legacy Wiki knowledge into the runtime data directory on first tool use", async () => {
-    const dataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-wiki-data-"));
-    const invocationCwd = mkdtempSync(path.join(os.tmpdir(), "fleet-wiki-project-"));
-    try {
-      mkdirSync(path.join(invocationCwd, ".fleet", "knowledge", "wiki"), { recursive: true });
-      writeFileSync(
-        path.join(invocationCwd, ".fleet", "knowledge", "wiki", "legacy.md"),
-        "---\nid: legacy\ntitle: Legacy\n---\nDurable legacy knowledge.\n",
-        { encoding: "utf8" },
-      );
-      lifecycle = createFleetRuntimeLifecycle({ dataDir });
-      const runtime = await lifecycle.start();
-
-      const result = await runtime.mcpRegistry[0]!.invoke("wiki_orient", {}, { cwd: invocationCwd });
-      const workspace = ensureWorkspaceDirectory(dataDir, invocationCwd);
-      const destinationEntry = path.join(workspace.path, "knowledge", "wiki", "legacy.md");
-
-      expect(result.isError).toBe(false);
-      expect(readFileSync(destinationEntry, "utf8")).toContain("Durable legacy knowledge.");
-      expect(existsSync(path.join(workspace.path, "knowledge.migrated.json"))).toBe(true);
-      expect(readFileSync(path.join(invocationCwd, ".fleet", "knowledge", "wiki", "legacy.md"), "utf8"))
-        .toContain("Durable legacy knowledge.");
-    } finally {
-      rmSync(dataDir, { recursive: true, force: true });
-      rmSync(invocationCwd, { recursive: true, force: true });
-    }
-  });
-
-  it("injects rendered plugin paths, child env, Claude agents, and cleanup", async () => {
-    const cleanups: Array<() => void> = [];
-    const rootDir = mkdtempSync(path.join(os.tmpdir(), "fleet-agent-root-"));
-    const releaseSessionToken = vi.fn();
-    try {
-      const profile = await injectAgentCliProfile({
-        args: [],
-        bin: "claude",
-        cwd: process.cwd(),
-        env: {},
-        id: "claude",
-        label: "Claude",
-        terminalName: "claude",
-      }, {
-        buildSystemPrompt: () => "private fleet prompt",
-        dataDir: rootDir,
-        dedicatedMcpSession: {
-          getEndpoint: async () => ({
-            servers: [{ name: "fleet", url: "http://127.0.0.1:1000/fleet" }],
-          }),
-          issueSessionToken: () => [{ name: "fleet", token: "fleet-token" }],
-          releaseSessionToken,
-        } as never,
-        onCleanup: (cleanup) => cleanups.push(cleanup),
-        pluginRootDir: rootDir,
-        withMarketplaceLock: WITH_TEST_MARKETPLACE_LOCK,
-      });
-      const pluginRoots = pluginDirArgs(profile.args);
-      const pluginRoot = path.join(rootDir, "marketplace", "plugins", "fleet");
-      const systemPromptFile = argValue(profile.args, "--append-system-prompt-file");
-
-      expect(pluginRoots).toEqual([pluginRoot]);
-      expect(systemPromptFile).toBeDefined();
-      expect(readFileSync(systemPromptFile!, "utf8")).toBe("private fleet prompt");
-      expect(existsSync(path.join(pluginRoot, ".mcp.json"))).toBe(false);
-      expect(readFileSync(path.join(pluginRoot, "skills", "protocol-midline", "SKILL.md"), "utf8")).toContain("name: protocol-midline");
-      const renderedArgs = profile.args.join(" ");
-      expect(renderedArgs).toContain("fleet-token");
-      expect(Object.values(profile.env)).not.toContain("fleet-token");
-
-      profile.cleanup?.();
-      for (const cleanup of cleanups) {
-        cleanup();
-      }
-
-      expect(existsSync(pluginRoot)).toBe(true);
-      expect(existsSync(systemPromptFile!)).toBe(false);
-      expect(releaseSessionToken).toHaveBeenCalledTimes(1);
-    } finally {
-      rmSync(rootDir, { recursive: true, force: true });
-    }
-  });
-
-
-
-
 });
 
 async function listMcpTools(url: string, token: string): Promise<Set<string>> {
@@ -277,31 +76,8 @@ async function listMcpTools(url: string, token: string): Promise<Set<string>> {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "tools/list",
-    }),
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
   });
   const body = await response.json() as McpToolListResponse;
   return new Set(body.result?.tools?.map((tool) => tool.name).filter((name): name is string => Boolean(name)));
-}
-
-function readJson(filePath: string): Record<string, unknown> {
-  return JSON.parse(readFileSync(filePath, "utf8")) as Record<string, unknown>;
-}
-
-function argValue(args: readonly string[], name: string): string | undefined {
-  const index = args.indexOf(name);
-  return index === -1 ? undefined : args[index + 1];
-}
-
-function pluginDirArgs(args: readonly string[]): string[] {
-  const pluginDirs: string[] = [];
-  for (let index = 0; index < args.length; index += 1) {
-    if (args[index] === "--plugin-dir") {
-      pluginDirs.push(args[index + 1]!);
-    }
-  }
-  return pluginDirs;
 }

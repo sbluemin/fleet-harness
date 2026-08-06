@@ -21,9 +21,11 @@ edit_policy: |
 
 This document is the operational reference for the Admiral's prompt assembly and
 runtime lifecycle model. The current architecture has no per-turn runtime-context
-tag prefix. The Admiral system prompt is assembled inside `fleet-cli`, and
-live protocol/carrier/job state is consumed through public leaf package APIs and
-package-local policy modules.
+tag prefix. The Admiral system prompt is assembled inside each host — Fleet
+Console's terminal plugin for classic/native/gateway launches, and `fleet-cli`'s
+thin launcher for its gateway-doctrine launch — and live protocol/carrier/job
+state is consumed through public leaf package APIs and package-local policy
+modules.
 
 This document is for the Admiral. It is not a public spec, not a contributor
 guide, and not a Carrier-managed asset. Post-verification documentation and
@@ -201,7 +203,7 @@ Runtime state is read through direct owners:
 - Built-in protocol skill assets: classic source at `packages/fleet-admiral/assets/skills/{protocol-baseline,protocol-midline,protocol-redline,protocol-frontline,assumption-audit,carrier-operations}/SKILL.md`, plus gateway overlays under `packages/fleet-admiral/assets/skills/gateway/<name>/SKILL.md`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_SKILL_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`. The `carrier-operations` contracts section mirrors the registry's contracts-tier roster render and is locked by a sync test in `packages/fleet-admiral/tests/carrier-operations-skill.test.ts`. Gateway doctrine plugin render omits `carrier-operations` and every `protocol-*` skill, and remaps each `gateway/<name>` overlay onto the live `skills/<name>` path.
 - Carrier registry and display state: `@dotobokuri/fleet-carriers`
 - Carrier store, job stream state, and per-job workspace change manifest policy: `@dotobokuri/fleet-carriers`
-- Workspace git-status scanner implementation: `runtime/fleet-cli`
+- Workspace git-status scanner implementation: `runtime/fleet-plugins/terminal`
 - Executor/session/model state: `@dotobokuri/core-agent`
 - MCP registry/server state: `@dotobokuri/core-agent`
 
@@ -220,25 +222,27 @@ inspection without embedding file lists in reminder text.
 
 ## 4. Lifecycle Boot
 
-`runtime/fleet-cli/src/runtime/runtime.ts` is the lifecycle boot entry point.
-`createFleetRuntimeLifecycle()` returns the lifecycle handle; its `start()`
-performs boot side effects directly:
+Each host boots its own Admiral runtime.
+
+`fleet-cli` (`runtime/fleet-cli/src/runtime/runtime.ts`, `createFleetCliRuntime()`)
+composes the thin gateway host directly:
 
 - creates infrastructure services
-- creates the carrier runtime
-- registers the executor port
-- initializes agent sessions and carrier store
-- registers default carriers
-- initializes settings
-- registers default Admiral tools
-- registers Fleet Wiki executor tools
-- starts the MCP server
+- opens the AI Gateway settings store and the in-process quota service
+- registers Fleet Wiki agent tools and the `gateway_models` tool
+- starts the carrier-free in-process Fleet MCP runtime
+  (`createFleetGatewayAgentRuntimeLifecycle`, fleet-admiral)
+- applies the stored gateway wire-log switch
 
-The lifecycle's `shutdown()` first closes Carrier admission, then awaits
-`CarrierRuntime.cleanup()` — which cancels every in-flight one-shot dispatch and
-waits for its provider client to disconnect/finalize and its dispatch-context
-registry to be disposed — before cleaning dedicated MCP sessions, stopping the
-MCP server, and resetting settings. No global client pool is used.
+Its `cleanup()` releases the dedicated MCP session, stops the MCP server, and
+resets the wire-log target. Carrier runtime, executor port, and carrier store
+boot only in Fleet Console's terminal plugin, which keeps using
+`createFleetAgentRuntimeLifecycle`: its `cleanup()` first closes Carrier
+admission, then awaits `CarrierRuntime.cleanup()` — which cancels every
+in-flight one-shot dispatch and waits for its provider client to
+disconnect/finalize and its dispatch-context registry to be disposed — before
+cleaning dedicated MCP sessions and stopping the MCP server. No global client
+pool is used.
 
 ---
 

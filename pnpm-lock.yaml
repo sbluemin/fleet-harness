@@ -229,24 +229,18 @@ importers:
       '@dotobokuri/core-agent':
         specifier: workspace:*
         version: link:../../packages/core-agent
+      '@dotobokuri/core-ai-gateway':
+        specifier: workspace:*
+        version: link:../../packages/core-ai-gateway
       '@dotobokuri/core-infra':
         specifier: workspace:*
         version: link:../../packages/core-infra
       '@dotobokuri/fleet-admiral':
         specifier: workspace:*
         version: link:../../packages/fleet-admiral
-      '@dotobokuri/fleet-carriers':
-        specifier: workspace:*
-        version: link:../../packages/fleet-carriers
       '@dotobokuri/fleet-wiki':
         specifier: workspace:*
         version: link:../../packages/fleet-wiki
-      '@xterm/headless':
-        specifier: ^5.5.0
-        version: 5.5.0
-      node-pty:
-        specifier: ^1.0.0
-        version: 1.1.0
     devDependencies:
       '@types/node':
         specifier: ^24.10.0
@@ -1754,9 +1748,6 @@ packages:
 
   '@xterm/addon-webgl@0.19.0':
     resolution: {integrity: sha512-b3fMOsyLVuCeNJWxolACEUED0vm7qC0cy4wRvf3oURSzDTYVQiGPhTnhWZwIHdvC48Y+oLhvYXnY4XDXPoJo6A==}
-
-  '@xterm/headless@5.5.0':
-    resolution: {integrity: sha512-5xXB7kdQlFBP82ViMJTwwEc3gKCLGKR/eoxQm4zge7GPBl86tCdI0IdPJjoKd8mUSFXz5V7i/25sfsEkP4j46g==}
 
   '@xterm/xterm@6.0.0':
     resolution: {integrity: sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==}
@@ -4991,8 +4982,6 @@ snapshots:
   '@xterm/addon-unicode11@0.9.0': {}
 
   '@xterm/addon-webgl@0.19.0': {}
-
-  '@xterm/headless@5.5.0': {}
 
   '@xterm/xterm@6.0.0': {}
 

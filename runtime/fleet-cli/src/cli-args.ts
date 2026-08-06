@@ -13,13 +13,8 @@ import {
 import { readFleetCliRelease, type FleetCliRelease } from "./release.js";
 
 export interface FleetCliOptions {
-  readonly cursorSync: boolean;
-  readonly argvOverrides: FleetCliArgOverrides;
   readonly help: boolean;
-}
-
-export interface FleetCliArgOverrides {
-  readonly cursorSync: boolean;
+  readonly passthroughArgs: readonly string[];
 }
 
 export interface BuildFleetHelpTextOptions {
@@ -28,30 +23,14 @@ export interface BuildFleetHelpTextOptions {
   readonly release?: FleetCliRelease;
 }
 
-type MutableFleetCliArgOverrides = {
-  -readonly [Key in keyof FleetCliArgOverrides]: FleetCliArgOverrides[Key];
-};
-
-const FALSE_VALUES = new Set(["0", "false", "no", "off"]);
 const HELP_BANNER_INDENT = "  ";
-const HELP_HINT = "Run 'fleet --help' for usage.";
 
-export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.ProcessEnv = process.env): FleetCliOptions {
-  let cursorSync = parseCursorSyncEnv(env.FLEET_CURSOR_SYNC);
-  let help = false;
-  const argvOverrides = createEmptyArgOverrides();
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === "--help" || arg === "-h") {
-      help = true;
-    } else if (arg === "--disable-cursor-sync") {
-      cursorSync = false;
-      argvOverrides.cursorSync = true;
-    } else {
-      throw new Error(formatUnknownFleetOption(arg));
-    }
-  }
-  return { cursorSync, argvOverrides, help };
+export function parseFleetCliOptions(argv: readonly string[]): FleetCliOptions {
+  const help = argv[0] === "--help" || argv[0] === "-h";
+  return {
+    help,
+    passthroughArgs: help ? argv.slice(1) : [...argv],
+  };
 }
 
 export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): string {
@@ -66,7 +45,7 @@ export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): str
     dim(subtitle, colorEnabled),
     "",
     section("USAGE", colorEnabled),
-    `  ${command("fleet", colorEnabled)} ${dim("[options]", colorEnabled)}`,
+    `  ${command("fleet", colorEnabled)} ${dim("[claude args...]", colorEnabled)}`,
     `  ${command("fleet auth", colorEnabled)} ${dim("login|list|logout", colorEnabled)}`,
     `  ${command("fleet update", colorEnabled)}`,
     "",
@@ -76,29 +55,9 @@ export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): str
     "",
     section("OPTIONS", colorEnabled),
     `  ${option("-h, --help", colorEnabled)}          ${dim("Show this help message and exit.", colorEnabled)}`,
-    `  ${option("--disable-cursor-sync", colorEnabled)}`,
-    `                      ${dim("Disable outer-terminal cursor projection for terminals", colorEnabled)}`,
-    `                      ${dim("with problematic IME cursor anchoring (or FLEET_CURSOR_SYNC=0).", colorEnabled)}`,
+    `  ${dim("Unrecognized arguments are passed through to Claude Code.", colorEnabled)}`,
     "",
   ];
   const text = `${lines.join("\n")}`;
   return colorEnabled ? text : stripAnsi(text);
-}
-
-function createEmptyArgOverrides(): MutableFleetCliArgOverrides {
-  return {
-    cursorSync: false,
-  };
-}
-
-function formatUnknownFleetOption(option: string): string {
-  return `Unknown fleet option: ${option}\n${HELP_HINT}`;
-}
-
-function parseCursorSyncEnv(value: string | undefined): boolean {
-  if (value === undefined) {
-    return true;
-  }
-
-  return !FALSE_VALUES.has(value.trim().toLowerCase());
 }

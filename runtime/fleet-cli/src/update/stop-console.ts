@@ -14,11 +14,10 @@ export interface StopRunningConsoleDeps {
 }
 
 // fleet update가 글로벌 패키지를 덮어쓰기 전에 실행 중인 Fleet Console 데몬을
-// best-effort로 정지시킨다. 데몬은 node-pty 네이티브 애드온과 winpty 바이너리를
+// best-effort로 정지시킨다. 데몬은 네이티브 애드온과 플랫폼 바이너리를
 // 로드한 채 유지되므로, 살아 있는 동안에는 Windows에서 설치 트리 파일이 잠겨
-// npm cleanup이 EPERM(node-pty\deps rmdir)으로 실패하고 전역 bin shim 재링크가
-// 치명 종료된다. 데몬을 먼저 내려 잠금을 풀면 재설치가 깨끗하게 진행되며,
-// 데몬은 다음 사용 시 자동 재기동된다.
+// npm cleanup이 EPERM으로 실패하고 전역 bin shim 재링크가 치명 종료된다.
+// 데몬을 먼저 내려 잠금을 풀면 재설치가 깨끗하게 진행되며, 다음 사용 시 자동 재기동된다.
 //
 // fleet-cli와 fleet-console는 peer 패키지라 require.resolve로 sibling을 찾을 수
 // 없다. 독립 설치된 `fleet-console` PATH 바이너리를 호출한다.

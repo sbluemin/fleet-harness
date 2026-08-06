@@ -1,8 +1,40 @@
 // Compatibility-only facade. Provider branching and behavior live in the provider
 // folders; this file only re-exports the public surface from their new locations.
 export * from "./anthropic/index.js";
+// Provider quota probes and the shared quota vocabulary. `CredentialMethod` is
+// re-exported from transport/credentials.js (same closed shape), so the quota
+// DTO types are re-listed explicitly to keep the facade unambiguous.
+export type {
+  ProviderStatus,
+  WindowId,
+  QuotaScope,
+  WindowDurationBasis,
+  WindowStartBasis,
+  QuotaWindowPeriod,
+  QuotaWindowAmounts,
+  QuotaWindow,
+  ResetCredits,
+  ProviderDto,
+  QuotaSummaryDto,
+  ProviderSuccess,
+  ProviderResult,
+} from "./quota/types.js";
+export * from "./quota/windows.js";
+export * from "./quota/service.js";
+export * from "./anthropic/quota.js";
+export * from "./anthropic/credentials.js";
+export * from "./codex/quota.js";
+export * from "./cursor/quota.js";
+export * from "./kimi/quota.js";
+export * from "./opencode-go/quota.js";
+export * from "./opencode-go/usage-scan.js";
 export * from "./canonical/index.js";
 export * from "./cursor/index.js";
+export * from "./cursor/diagnostic-log.js";
+export * from "./gateway-router/router.js";
+export * from "./gateway-router/types.js";
+export * from "./gateway-router/proxy.js";
+export * from "./gateway-router/opencode.js";
 export * from "./transport/credentials.js";
 // wireLog/logCanonicalEvents 는 진단 구현 세부사항이므로 런타임 제어 표면만 좁게 공개한다.
 export { DEFAULT_WIRE_LOG_MAX_BYTES, setWireLogTarget, wireLogEnabled } from "./transport/wire-log.js";

@@ -9,15 +9,18 @@ Translates Anthropic Messages traffic onto non-Anthropic provider backends.
 | `src/canonical/index.ts` | Provider-neutral request/event vocabulary every adapter speaks |
 | `src/anthropic/` | Client-facing Anthropic protocol seam: `protocol.ts`/`passthrough.ts` are cross-provider shared client-facing protocol normalization, `native.ts` is Anthropic-owned endpoint/header/auth forwarding policy, `gateway.ts`/`claude-context.ts` are the client-facing gateway/Claude compatibility seam (not a provider-shared allowlist) |
 | `src/transport/` | Provider-unaware transport mechanics: SSE framing, token estimate, wire log, keepalive, credential file I/O |
+| `src/gateway-router/` | Sanctioned cross-provider HTTP dispatch surface: the Anthropic-compatible /v1 serving seam behind explicit host-injected dependencies |
 | `src/<provider>/` | One folder per provider (`codex/`, `cursor/`, `kimi/`, `opencode-go/`). OpenCode behavior is additionally split by wire under `src/opencode-go/{anthropic,responses,chat-completions}/` |
 | `src/models.ts`, `models.json` | Model catalog, context windows, effort ladders |
 | `src/settings/` | Which catalog models a user exposed and where that choice is stored: stored shape, catalog-checked validation, selection resolution, and the `<dataDir>/ai-gateway.json` durable store |
+| src/quota/ | Provider-neutral quota vocabulary, window normalization, and the cached usage service; per-provider probes live beside each provider as src/<provider>/quota.ts |
 
 ## Routing doctrine
 
 - `models.json` + `src/models.ts` are the single central catalog SSoT; never split them or move ownership.
 - `capabilityClass` records the provider's own lineup positioning (`flagship`/`standard`/`light`) — the roster's only quality signal, stating what the provider claims, never a Fleet quality measurement. Classify a new model in this order: a `providerModelId`-linked service-tier sibling inherits its base's class; otherwise the provider's naming grammar decides — top tier tokens (`max`, `pro`) and the current generation of an unsuffixed mainline are `flagship`, mid tokens (`plus`) and superseded generations of a former flagship are `standard`, light tokens (`flash`, mini-class names like `luna`, and an unlinked `-fast`) are `light`. Resolve ambiguity downward (overclassing seats a light model in judgment work; underclassing merely costs one candidate) and leave routing aliases (`auto`) unclassed — validation enforces both.
 - Provider behavior belongs to `src/<provider>/`, and OpenCode's wire-specific behavior additionally to its wire subfolder.
+- `src/gateway-router/` is the sanctioned cross-provider HTTP serving seam: it may import provider folders for dispatch, receives every host concern (settings reader, credentials, originator, model override, diagnostics sink, fetch) as explicit dependencies, and carries no host identity, no environment lookups, and no host lifecycle of its own.
 - Same wire protocol is not a reason to share provider request/response/tool/header/capability semantics — duplicate provider semantics deliberately.
 - Only canonical protocol vocabulary (`src/canonical/`), provider-unaware transport mechanics (`src/transport/`), and exactly two Anthropic normalization modules — `src/anthropic/protocol.ts` and `src/anthropic/passthrough.ts` — may be shared across providers. `src/transport/` must not import any provider folder, and `src/anthropic/native.ts` is Anthropic-owned provider semantics other providers must not import.
 - Provider request/response/tool/header/capability exceptions cannot live in `canonical/`, `transport/`, or the root facade.
@@ -28,6 +31,7 @@ Translates Anthropic Messages traffic onto non-Anthropic provider backends.
 ## Constraints
 
 - Keep Fleet orchestration and persona semantics out of this package; it knows providers, not Carriers.
+- Provider usage/quota probing lives beside each provider (src/<provider>/quota.ts) with shared window vocabulary and caching in src/quota/; collectors receive their credential and auth dependencies explicitly — no default auth construction inside this package.
 - Each provider Responses implementation that applies strict mode rewrites every compatible tool schema into strict mode and strips the resulting nulls back out on the way in. **These two are one mechanism per implementation.** Change either alone and arguments silently gain or lose meaning: a surviving null reads as a real value to the client, and an un-rewritten schema loses the omission guarantee. The rewrite, the null stripping, and the argument-delta dropping below stay local to each such implementation — never centralize or import this semantic logic across providers.
 - Strict compatibility is decided by an allowlist of JSON Schema keywords, never a denylist. The costs are asymmetric — judging a tool incompatible costs that one tool its guarantee, while wrongly admitting one returns a 400 that fails the entire request, every other tool included. Widen the allowlist only against an observed acceptance.
 - Each provider Responses implementation that applies strict mode drops `response.function_call_arguments.delta` deliberately. Nulls cannot be stripped from a partial JSON fragment, so forwarding fragments would let the client reassemble un-stripped arguments. Restoring argument streaming reintroduces the defect.

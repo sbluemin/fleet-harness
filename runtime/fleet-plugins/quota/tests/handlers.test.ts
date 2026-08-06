@@ -1,11 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
+import type { QuotaService } from "@dotobokuri/core-ai-gateway";
 import { describe, expect, it, vi } from "vitest";
 
 import { handleConnect, handleSummary } from "../server/handlers.js";
 import type { SettingsSerializer } from "../server/handlers.js";
-import type { QuotaService } from "../server/service.js";
 
 function createSerializer(): SettingsSerializer {
   let chain = Promise.resolve();

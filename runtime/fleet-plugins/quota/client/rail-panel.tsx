@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
-import type { ProviderDto, QuotaSummaryDto, QuotaWindow } from "../server/types.js";
+import type { ProviderDto, QuotaSummaryDto, QuotaWindow } from "@dotobokuri/core-ai-gateway";
 import { providerGlyph } from "./cli-glyphs.js";
 import { getT, type QuotaMessageKey } from "./i18n/index.js";
 import "./quota.css";
