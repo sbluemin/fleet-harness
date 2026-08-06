@@ -22,18 +22,18 @@ import type {
   CanonicalResponseRequest,
   CanonicalUsage,
   ReasoningEffort,
-} from "./canonical.js";
+} from "../../canonical/index.js";
 import {
   ContextWindowExceededError,
   canonicalMessageImages,
   canonicalMessageText,
-} from "./canonical.js";
-import { cursorNativeExecPolicyReplies } from "./cursor-native-exec-policy.js";
-import { wireLog } from "./wire-log.js";
+} from "../../canonical/index.js";
+import { cursorNativeExecPolicyReplies } from "./exec-policy.js";
+import { wireLog } from "../../transport/wire-log.js";
 import {
   cursorUnknownExecCaseName,
   cursorUnknownExecReply,
-} from "./cursor-unknown-exec.js";
+} from "./unknown-exec.js";
 import {
   AgentClientMessageSchema,
   AgentServerMessageSchema,
@@ -41,8 +41,8 @@ import {
   ConversationTurnStructureSchema,
   UserMessageSchema,
 } from "./generated/cursor-agent-protobuf.js";
-import { resolveCursorModelSelection } from "./models.js";
-import { estimateTokens } from "./token-estimate.js";
+import { resolveCursorModelSelection } from "../../models.js";
+import { estimateTokens } from "../../transport/token-estimate.js";
 
 export const CURSOR_API_ORIGIN = "https://api2.cursor.sh";
 export const CURSOR_RUN_PATH = "/agent.v1.AgentService/Run";

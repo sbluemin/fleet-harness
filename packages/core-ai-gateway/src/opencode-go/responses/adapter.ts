@@ -11,8 +11,8 @@ import type {
   CanonicalUsage,
   CanonicalWebSearchAction,
   CanonicalWebSearchCallOutputItem,
-  CanonicalWebSearchSource
-} from "./canonical.js";
+  CanonicalWebSearchSource,
+} from "../../canonical/index.js";
 import {
   UpstreamBodyLimitError,
   UpstreamIdleTimeoutError,
@@ -25,30 +25,13 @@ import {
   readWithIdleTimeout,
   type FetchLike,
   type UpstreamReadOptions,
-} from "./upstream-sse.js";
-import { wireLog } from "./wire-log.js";
+} from "../../transport/upstream-sse.js";
+import { wireLog } from "../../transport/wire-log.js";
 
-// 전송 계층은 upstream-sse.ts와 공유한다. 기존 배럴 소비자를 위해 그대로 재수출한다.
-export { UpstreamBodyLimitError, UpstreamIdleTimeoutError, UpstreamProtocolError };
-export type { FetchLike };
-
-export const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
-/** ChatGPT 구독으로 Codex가 호출하는 백엔드. Platform API와 다른 표면이다. */
-export const CHATGPT_CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
-export const DEFAULT_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
-export const DEFAULT_UPSTREAM_IDLE_TIMEOUT_MS = 30_000;
-
-// ChatGPT 백엔드는 Platform API가 받는 샘플링 파라미터를 400으로 거절한다.
-// 실측으로 확정한 거부 목록. metadata는 "Unsupported parameter", 샘플링 필드는 400으로 돌아온다.
-// instructions/tools/tool_choice/parallel_tool_calls는 허용된다.
-const CHATGPT_UNSUPPORTED_FIELDS = [
-  "max_output_tokens",
-  "temperature",
-  "top_p",
-  "stop",
-  "user",
-  "metadata",
-] as const;
+/** OpenCode Go 구독이 노출하는 Responses 네임스페이스 엔드포인트. */
+export const OPENCODE_GO_RESPONSES_URL = "https://opencode.ai/zen/go/v1/responses";
+export const DEFAULT_OPENCODE_GO_RESPONSES_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
+export const DEFAULT_OPENCODE_GO_RESPONSES_UPSTREAM_IDLE_TIMEOUT_MS = 30_000;
 
 /**
  * OpenAI Responses wire shapes. The canonical model keeps `native_tools` as a
@@ -56,8 +39,13 @@ const CHATGPT_UNSUPPORTED_FIELDS = [
  * for a hosted tool selector, so this adapter's outbound payload is its own honest
  * type rather than a reuse of `CanonicalResponseRequest`. `native_tools` never reaches
  * the wire: it is merged into `tools`/`tool_choice` below and dropped.
+ *
+ * OpenCode Go owns this copy. Its Responses backend shares the OpenAI wire, but not
+ * the Codex subscription surface: it has no ChatGPT-unsupported sampling-field branch,
+ * no `store: false` requirement, and no `dropSamplingParams` option. Same wire does
+ * not justify adapter reuse — duplication is deliberate.
  */
-interface OpenAIResponsesWireFunctionTool {
+interface OpenCodeResponsesWireFunctionTool {
   type: "function";
   name: string;
   description?: string;
@@ -70,57 +58,53 @@ interface OpenAIResponsesWireFunctionTool {
  * hosted web search filter accepts either `allowed_domains` or `blocked_domains`, mirroring
  * Anthropic's own mutually-exclusive pair. `max_uses` still has no confirmed wire field and is dropped.
  */
-interface OpenAIResponsesWireWebSearchTool {
+interface OpenCodeResponsesWireWebSearchTool {
   type: "web_search";
   filters?: { allowed_domains: string[] } | { blocked_domains: string[] };
 }
 
-type OpenAIResponsesWireTool = OpenAIResponsesWireFunctionTool | OpenAIResponsesWireWebSearchTool;
+type OpenCodeResponsesWireTool = OpenCodeResponsesWireFunctionTool | OpenCodeResponsesWireWebSearchTool;
 
-type OpenAIResponsesWireToolChoice = CanonicalToolChoice | { type: "web_search" };
+type OpenCodeResponsesWireToolChoice = CanonicalToolChoice | { type: "web_search" };
 
-type OpenAIResponsesWireRequest = Omit<
+type OpenCodeResponsesWireRequest = Omit<
   CanonicalResponseRequest,
   "tools" | "tool_choice" | "native_tools"
 > & {
-  tools?: OpenAIResponsesWireTool[];
-  tool_choice?: OpenAIResponsesWireToolChoice;
+  tools?: OpenCodeResponsesWireTool[];
+  tool_choice?: OpenCodeResponsesWireToolChoice;
   /** Requests extra output fields, e.g. `web_search_call.action.sources` for hosted web search results. */
   include?: string[];
 };
 
-export interface OpenAIResponsesAdapterOptions {
+export interface OpencodeGoResponsesAdapterOptions {
   fetch?: FetchLike;
   maxBodyBytes?: number;
   idleTimeoutMs?: number;
-  /** 기본은 Platform API. 구독 경로는 CHATGPT_CODEX_RESPONSES_URL을 넘긴다. */
-  url?: string;
-  /** 구독 경로가 요구하는 chatgpt-account-id 등 추가 헤더. */
+  /** 구독 경로가 요구하는 추가 헤더. */
   headers?: Readonly<Record<string, string>>;
-  /** ChatGPT 백엔드가 거절하는 샘플링 필드를 제거한다. */
-  dropSamplingParams?: boolean;
 }
 
-export class OpenAIResponsesAdapter implements AiGatewayAdapter {
+export class OpencodeGoResponsesAdapter implements AiGatewayAdapter {
   readonly capabilities = { nativeTools: ["web_search"] } as const;
   private readonly fetchImpl: FetchLike;
   private readonly maxBodyBytes: number;
   private readonly idleTimeoutMs: number;
   private readonly url: string;
   private readonly extraHeaders: Readonly<Record<string, string>>;
-  private readonly dropSamplingParams: boolean;
 
-  constructor(options: OpenAIResponsesAdapterOptions = {}) {
-    this.url = options.url ?? OPENAI_RESPONSES_URL;
+  constructor(options: OpencodeGoResponsesAdapterOptions = {}) {
+    // OpenCode Go 소유 어댑터는 이 네임스페이스 엔드포인트로 고정된다. 임의 엔드포인트
+    // 오버라이드는 provider 어댑터를 다시 범용화하므로 옵션으로 노출하지 않는다.
+    this.url = OPENCODE_GO_RESPONSES_URL;
     this.extraHeaders = options.headers ?? {};
-    this.dropSamplingParams = options.dropSamplingParams ?? false;
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.maxBodyBytes = positiveInteger(
-      options.maxBodyBytes ?? DEFAULT_MAX_UPSTREAM_BODY_BYTES,
+      options.maxBodyBytes ?? DEFAULT_OPENCODE_GO_RESPONSES_MAX_UPSTREAM_BODY_BYTES,
       "maxBodyBytes"
     );
     this.idleTimeoutMs = positiveInteger(
-      options.idleTimeoutMs ?? DEFAULT_UPSTREAM_IDLE_TIMEOUT_MS,
+      options.idleTimeoutMs ?? DEFAULT_OPENCODE_GO_RESPONSES_UPSTREAM_IDLE_TIMEOUT_MS,
       "idleTimeoutMs"
     );
   }
@@ -135,9 +119,9 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
 
     const controller = new AbortController();
     const unlinkAbort = linkAbortSignal(options.signal, controller);
-    const payload = forOpenAIResponsesBackend(request, this.dropSamplingParams);
+    const payload = forOpenCodeGoResponsesBackend(request);
     // Exact JSON body sent upstream, including each tool's `parameters` and any `strict` flag.
-    wireLog("openai.wire.request", { url: this.url, payload });
+    wireLog("opencode-go-responses.wire.request", { url: this.url, payload });
     let response: Response;
 
     try {
@@ -183,7 +167,7 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
       ok: true,
       status: response.status,
       headers: response.headers,
-      events: parseOpenAIEventStream(response.body, {
+      events: parseOpenCodeGoEventStream(response.body, {
         controller,
         idleTimeoutMs: this.idleTimeoutMs,
         maxBodyBytes: this.maxBodyBytes,
@@ -193,18 +177,16 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
   }
 }
 
-function forOpenAIResponsesBackend(
+function forOpenCodeGoResponsesBackend(
   request: CanonicalResponseRequest,
-  dropSamplingParams: boolean,
-): OpenAIResponsesWireRequest {
-  const source = dropSamplingParams ? forChatGptBackend(request) : { ...request };
+): OpenCodeResponsesWireRequest {
   const {
     tools: canonicalTools,
     tool_choice: canonicalToolChoice,
     native_tools: nativeTools,
     ...rest
-  } = source;
-  const payload: OpenAIResponsesWireRequest = { ...rest };
+  } = request;
+  const payload: OpenCodeResponsesWireRequest = { ...rest };
 
   // Canonical-only input fields must never reach the wire. The Responses API rejects an
   // unknown input property with a 400 that fails the entire request — observed as
@@ -224,7 +206,7 @@ function forOpenAIResponsesBackend(
     return wireItem;
   });
 
-  const wireTools: OpenAIResponsesWireTool[] = (canonicalTools ?? []).map((tool) => {
+  const wireTools: OpenCodeResponsesWireTool[] = (canonicalTools ?? []).map((tool) => {
     const { defer_loading: _deferLoading, ...wireTool } = tool;
     // A schema outside strict mode's subset is rejected with a 400 that fails the whole
     // request, not just that tool, so an incompatible tool keeps its original schema and
@@ -242,7 +224,7 @@ function forOpenAIResponsesBackend(
   let requiresHostedWebSearch = false;
   let hasHostedWebSearch = false;
   for (const nativeTool of nativeTools ?? []) {
-    const webSearchTool: OpenAIResponsesWireWebSearchTool = { type: "web_search" };
+    const webSearchTool: OpenCodeResponsesWireWebSearchTool = { type: "web_search" };
     if (nativeTool.allowed_domains !== undefined && nativeTool.allowed_domains.length > 0) {
       webSearchTool.filters = { allowed_domains: [...nativeTool.allowed_domains] };
     } else if (nativeTool.blocked_domains !== undefined && nativeTool.blocked_domains.length > 0) {
@@ -271,7 +253,7 @@ function forOpenAIResponsesBackend(
   // Hosted web search only reports its sources when explicitly requested via `include`.
   // Without this, `response.output_item.done` for `web_search_call` arrives with no `action.sources`.
   if (hasHostedWebSearch) {
-    const rawInclude = (source as { include?: unknown }).include;
+    const rawInclude = (request as { include?: unknown }).include;
     const existingInclude = Array.isArray(rawInclude)
       ? rawInclude.filter((entry): entry is string => typeof entry === "string")
       : [];
@@ -281,25 +263,15 @@ function forOpenAIResponsesBackend(
   return payload;
 }
 
-function forChatGptBackend(request: CanonicalResponseRequest): CanonicalResponseRequest {
-  const copy: Record<string, unknown> = { ...request };
-  for (const field of CHATGPT_UNSUPPORTED_FIELDS) {
-    delete copy[field];
-  }
-  // 백엔드가 명시적으로 요구한다: 생략하면 400 "Store must be set to false".
-  copy.store = false;
-  return copy as unknown as CanonicalResponseRequest;
-}
-
 type ReadOptions = UpstreamReadOptions;
 
-async function* parseOpenAIEventStream(
+async function* parseOpenCodeGoEventStream(
   body: ReadableStream<Uint8Array> | null,
   options: ReadOptions & { onClose: () => void }
 ): AsyncGenerator<CanonicalResponseEvent> {
   if (body === null) {
     options.onClose();
-    throw new UpstreamProtocolError("OpenAI streaming response had no body");
+    throw new UpstreamProtocolError("OpenCode Go streaming response had no body");
   }
 
   const reader = body.getReader();
@@ -356,7 +328,7 @@ function parseEventFrame(frame: string): CanonicalResponseEvent | undefined {
     parsed = JSON.parse(data);
   } catch (error) {
     throw new UpstreamProtocolError(
-      `OpenAI SSE contained invalid JSON: ${error instanceof Error ? error.message : String(error)}`
+      `OpenCode Go SSE contained invalid JSON: ${error instanceof Error ? error.message : String(error)}`
     );
   }
   if (isRecord(parsed) && typeof parsed.type !== "string" && eventName !== undefined) {
@@ -367,7 +339,7 @@ function parseEventFrame(frame: string): CanonicalResponseEvent | undefined {
 
 function canonicalEvent(value: unknown): CanonicalResponseEvent | undefined {
   if (!isRecord(value) || typeof value.type !== "string") {
-    throw new UpstreamProtocolError("OpenAI SSE event was not an object with a type");
+    throw new UpstreamProtocolError("OpenCode Go SSE event was not an object with a type");
   }
 
   switch (value.type) {
@@ -487,15 +459,12 @@ function usage(value: unknown): CanonicalUsage {
   const totalTokens = optionalNonNegativeNumber(parsed.total_tokens, "usage.total_tokens");
 
   // cached_tokens/cache_write_tokens/reasoning_tokens are documented as subsets of their
-  // parent totals and total_tokens as their sum, but the ChatGPT subscription backend's
-  // real envelopes have not been observed to guarantee that arithmetic. Reject only
-  // malformed shape (wrong type / negative / non-finite) here; a self-inconsistent but
-  // well-typed envelope is preserved as-is on the canonical event rather than failing the
-  // whole response. reasoning_tokens/total_tokens never reach the Anthropic wire at all.
-  // cached_tokens/cache_write_tokens do reach it when consistent with input_tokens, but the
-  // Anthropic conversion layer (see toAnthropicCacheAwareUsage in anthropic.ts) falls back
-  // to the authoritative parent input total with no cache breakdown when the two exceed it,
-  // rather than inventing a read-over-write truncation priority.
+  // parent totals and total_tokens as their sum, but upstream envelopes have not been
+  // observed to guarantee that arithmetic. Reject only malformed shape (wrong type /
+  // negative / non-finite) here; a self-inconsistent but well-typed envelope is preserved
+  // as-is on the canonical event rather than failing the whole response. The Anthropic
+  // conversion layer falls back to the authoritative parent input total when the two
+  // exceed it, rather than inventing a read-over-write truncation priority.
 
   return {
     input_tokens: inputTokens,

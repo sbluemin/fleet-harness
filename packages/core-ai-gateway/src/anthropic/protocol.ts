@@ -11,19 +11,19 @@ import type {
   CanonicalUsage,
   CanonicalWebSearchAction,
   ReasoningEffort,
-} from "./canonical.js";
+} from "../canonical/index.js";
 import {
   clampReasoningEffort,
   normalizeCanonicalMessageContent,
   REASONING_EFFORTS,
-} from "./canonical.js";
+} from "../canonical/index.js";
 import { projectClaudeContextInputTokens } from "./claude-context.js";
 import {
   gatewayProviderDefault,
   resolveGatewayModel,
   upstreamModelId,
-} from "./models.js";
-import type { GatewayModel } from "./models.js";
+} from "../models.js";
+import type { GatewayModel } from "../models.js";
 
 export const DEFAULT_CODEX_MODEL = upstreamModelId(gatewayProviderDefault("codex"));
 

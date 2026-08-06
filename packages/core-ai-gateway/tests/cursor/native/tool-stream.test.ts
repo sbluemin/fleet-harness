@@ -15,17 +15,17 @@ import {
   encodeConnectFrame,
   resetCursorWireModelMemory,
   resolveCursorSessionIdentity,
-} from "../src/index.js";
+} from "../../../src/index.js";
 import type {
   CanonicalResponseEvent,
   CanonicalResponseRequest,
   CursorDiagnosticEvent,
-} from "../src/index.js";
+} from "../../../src/index.js";
 import {
   AgentClientMessageSchema,
   AgentServerMessageSchema,
-} from "../src/generated/cursor-agent-protobuf.js";
-import { cursorNativeExecPolicyReplies } from "../src/cursor-native-exec-policy.js";
+} from "../../../src/cursor/native/generated/cursor-agent-protobuf.js";
+import { cursorNativeExecPolicyReplies } from "../../../src/cursor/native/exec-policy.js";
 
 afterEach(() => resetCursorWireModelMemory());
 

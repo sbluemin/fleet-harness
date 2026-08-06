@@ -1,34 +1,32 @@
 import {
+  ANTHROPIC_MESSAGES_URL,
   AnthropicMessagesGateway,
-  CHATGPT_CODEX_RESPONSES_URL,
+  CodexResponsesAdapter,
   ContextWindowExceededError,
   CursorAdapter,
   CursorRequestBudgetError,
   CursorSessionIdentityError,
   GATEWAY_MODEL_ALIAS_PREFIX,
   GATEWAY_MODELS,
-  OpenAIResponsesAdapter,
+  KIMI_MESSAGES_URL,
   UnsupportedReasoningEffortError,
+  anthropicNativeHeaders,
   buildAnthropicModelList,
-  clampReasoningEffort,
   defaultCredentialDeps,
   findGatewayModel,
   hasClaudeOneMillionMarker,
-  projectAnthropicResponseUsage,
+  kimiAnthropicHeaders,
+  kimiRequestBody,
   pruneClaudeSkillPayloads,
-  reasoningEffortFromOutputConfig,
   resolveCodexCredentials,
   resolveCursorCredentials,
   toClaudeGatewayModelId,
   upstreamModelId,
 } from "@dotobokuri/core-ai-gateway";
 import type {
-  AnthropicMessage,
   AnthropicMessagesRequest,
-  AnthropicToolDefinition,
   CursorDiagnosticSink,
   GatewayModel,
-  ReasoningEffort,
 } from "@dotobokuri/core-ai-gateway";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
@@ -43,7 +41,6 @@ import {
 } from "./ai-gateway-opencode.js";
 import {
   drain,
-  eagerAnthropicRequestBody,
   errorMessage,
   proxyAnthropicMessages,
   writeAnthropicError,
@@ -53,6 +50,8 @@ import {
 import { resolveAiGatewaySelection, type AiGatewayStoredSettings } from "./ai-gateway-settings.js";
 
 export { OPENCODE_GO_MESSAGES_URL as OPENCODE_MESSAGES_URL } from "@dotobokuri/core-ai-gateway";
+export { KIMI_MESSAGES_URL } from "@dotobokuri/core-ai-gateway";
+export { ANTHROPIC_MESSAGES_URL } from "@dotobokuri/core-ai-gateway";
 
 export const AI_GATEWAY_ROUTE_SEGMENT = "ai-gateway";
 export const AI_GATEWAY_MODEL_ENV = "FLEET_AI_GATEWAY_MODEL";
@@ -63,8 +62,6 @@ export interface CodexSubscriptionAuth {
   readonly accountId: string;
 }
 
-export const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
-export const KIMI_MESSAGES_URL = "https://api.kimi.com/coding/v1/messages";
 /** Claude Code가 claude.ai 구독으로 붙일 때 보내는 자격증명 접두. OAuth 토큰도 이 접두를 쓴다. */
 const ANTHROPIC_CREDENTIAL_PREFIX = "sk-ant-";
 
@@ -381,17 +378,8 @@ async function proxyToAnthropic(
   fetchImpl: typeof fetch,
   signal: AbortSignal,
 ): Promise<void> {
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-    "anthropic-version": typeof requestHeaders["anthropic-version"] === "string"
-      ? requestHeaders["anthropic-version"]
-      : "2023-06-01",
-  };
-  // 자격증명을 교체하지 않는다. 청구 주체는 호출자로 남는다.
-  for (const name of ["authorization", "x-api-key", "anthropic-beta", "user-agent"]) {
-    const value = requestHeaders[name];
-    if (typeof value === "string") headers[name] = value;
-  }
+  // 헤더·URL 정책은 core-ai-gateway가 소유한다. 여기는 요청을 실어 보낼 뿐이다.
+  const headers = anthropicNativeHeaders(requestHeaders);
   await proxyAnthropicMessages(res, body, {
     keepAlive: true,
     fetchImpl,
@@ -411,17 +399,8 @@ async function proxyToKimi(
   fetchImpl: typeof fetch,
   signal: AbortSignal,
 ): Promise<void> {
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-    "anthropic-version": typeof requestHeaders["anthropic-version"] === "string"
-      ? requestHeaders["anthropic-version"]
-      : "2023-06-01",
-    "x-api-key": apiKey,
-  };
-  for (const name of ["anthropic-beta", "user-agent"]) {
-    const value = requestHeaders[name];
-    if (typeof value === "string") headers[name] = value;
-  }
+  // 헤더·본문 정책은 core-ai-gateway가 소유한다. 여기는 요청을 실어 보낼 뿐이다.
+  const headers = kimiAnthropicHeaders(requestHeaders, apiKey);
   // 클라이언트 요청 model은 provider wire id로 재작성되기 전 원본을 에코용으로 남긴다.
   const responseModel = typeof body.model === "string" ? body.model : undefined;
   await proxyAnthropicMessages(res, kimiRequestBody(body, model), {
@@ -435,24 +414,6 @@ async function proxyToKimi(
   });
 }
 
-const KIMI_REASONING_EFFORTS = ["low", "high", "max"] as const satisfies readonly ReasoningEffort[];
-
-/** K3 accepts three native effort tiers; normalize Claude Code's wider picker ladder. */
-function kimiRequestBody(body: AnthropicMessagesRequest, model: string): AnthropicMessagesRequest {
-  const eagerBody = eagerAnthropicRequestBody(body, model);
-  const effort = reasoningEffortFromOutputConfig(body.output_config);
-  if (effort === undefined) {
-    return eagerBody;
-  }
-  return {
-    ...eagerBody,
-    output_config: {
-      ...body.output_config,
-      effort: clampReasoningEffort(effort, KIMI_REASONING_EFFORTS, model),
-    },
-  };
-}
-
 function createGatewayFor(
   model: GatewayModel,
   chatgptAccountId: string,
@@ -460,14 +421,9 @@ function createGatewayFor(
   if (model.provider !== "codex") {
     throw new TypeError(`Unsupported translated gateway provider: ${model.provider}`);
   }
-  return new AnthropicMessagesGateway(new OpenAIResponsesAdapter({
-    url: CHATGPT_CODEX_RESPONSES_URL,
-    headers: {
-      "chatgpt-account-id": chatgptAccountId,
-      originator: "fleet-console",
-    },
-    // ChatGPT 백엔드는 Platform API용 샘플링 파라미터를 400으로 거절한다.
-    dropSamplingParams: true,
+  return new AnthropicMessagesGateway(new CodexResponsesAdapter({
+    accountId: chatgptAccountId,
+    headers: { originator: "fleet-console" },
   }));
 }
 

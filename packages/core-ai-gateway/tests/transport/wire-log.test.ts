@@ -13,7 +13,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { setWireLogTarget, wireLog, wireLogEnabled } from "../src/wire-log.js";
+import { setWireLogTarget, wireLog, wireLogEnabled } from "../../src/transport/wire-log.js";
 
 const temporaryDirectories: string[] = [];
 

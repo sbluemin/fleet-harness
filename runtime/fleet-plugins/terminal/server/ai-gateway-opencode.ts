@@ -2,7 +2,9 @@ import {
   AnthropicMessagesGateway,
   OPENCODE_GO_MESSAGES_URL,
   createOpencodeGoAdapter,
+  opencodeAnthropicHeaders,
   opencodeGoWire,
+  opencodeRequestBody,
 } from "@dotobokuri/core-ai-gateway";
 import type {
   AnthropicMessagesRequest,
@@ -11,7 +13,6 @@ import type {
 } from "@dotobokuri/core-ai-gateway";
 
 import {
-  eagerAnthropicRequestBody,
   proxyAnthropicMessages,
   type GatewayProxyResponse,
 } from "./ai-gateway-proxy.js";
@@ -50,17 +51,8 @@ export async function proxyToOpencode(
   fetchImpl: typeof fetch,
   signal: AbortSignal,
 ): Promise<void> {
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-    "anthropic-version": typeof requestHeaders["anthropic-version"] === "string"
-      ? requestHeaders["anthropic-version"]
-      : "2023-06-01",
-    "x-api-key": apiKey,
-  };
-  for (const name of ["anthropic-beta", "user-agent"]) {
-    const value = requestHeaders[name];
-    if (typeof value === "string") headers[name] = value;
-  }
+  // 헤더·본문 정책은 core-ai-gateway가 소유한다. 여기는 요청을 실어 보낼 뿐이다.
+  const headers = opencodeAnthropicHeaders(requestHeaders, apiKey);
   // 클라이언트 요청 model은 provider wire id로 재작성되기 전 원본을 에코용으로 남긴다.
   const responseModel = typeof body.model === "string" ? body.model : undefined;
   await proxyAnthropicMessages(res, opencodeRequestBody(body, model), {
@@ -72,21 +64,4 @@ export async function proxyToOpencode(
     signal,
     url: OPENCODE_GO_MESSAGES_URL,
   });
-}
-
-/**
- * Go의 Anthropic-wire 모델별 effort 수용 범위가 문서화돼 있지 않아, 미지의 upstream
- * 400을 피하기 위해 `output_config.effort`를 제거하고 나머지 output_config만 유지한다.
- */
-export function opencodeRequestBody(
-  body: AnthropicMessagesRequest,
-  model: string,
-): AnthropicMessagesRequest {
-  const eagerBody = eagerAnthropicRequestBody(body, model);
-  if (body.output_config === undefined) return eagerBody;
-  const { effort: _effort, ...outputConfig } = body.output_config;
-  const { output_config: _outputConfig, ...withoutOutputConfig } = eagerBody;
-  return Object.keys(outputConfig).length > 0
-    ? { ...withoutOutputConfig, output_config: outputConfig }
-    : withoutOutputConfig;
 }

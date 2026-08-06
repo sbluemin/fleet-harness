@@ -7,8 +7,8 @@ import type {
   CanonicalResponseEvent,
   CanonicalResponseRequest,
   CanonicalUsage,
-} from "./canonical.js";
-import { canonicalMessageText } from "./canonical.js";
+} from "../../canonical/index.js";
+import { canonicalMessageText } from "../../canonical/index.js";
 import {
   UpstreamProtocolError,
   UpstreamBodyLimitError,
@@ -20,9 +20,11 @@ import {
   readWithIdleTimeout,
   type FetchLike,
   type UpstreamReadOptions,
-} from "./upstream-sse.js";
-import { wireLog } from "./wire-log.js";
+} from "../../transport/upstream-sse.js";
+import { wireLog } from "../../transport/wire-log.js";
 
+/** OpenCode Go 구독이 노출하는 Chat Completions 네임스페이스 엔드포인트. */
+export const OPENCODE_GO_CHAT_COMPLETIONS_URL = "https://opencode.ai/zen/go/v1/chat/completions";
 export const DEFAULT_CHAT_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
 export const DEFAULT_CHAT_UPSTREAM_IDLE_TIMEOUT_MS = 30_000;
 
@@ -119,7 +121,8 @@ export class OpenAIChatCompletionsAdapter implements AiGatewayAdapter {
 
     const controller = new AbortController();
     const unlinkAbort = linkAbortSignal(options.signal, controller);
-    const payload = forChatCompletionsBackend(request);
+    const supportsImageInput = imageInputPolicy.get(this)?.(request.model) ?? true;
+    const payload = forChatCompletionsBackend(request, supportsImageInput);
     wireLog("openai-chat.wire.request", { url: this.url, payload });
     let response: Response;
 
@@ -167,7 +170,46 @@ export class OpenAIChatCompletionsAdapter implements AiGatewayAdapter {
   }
 }
 
-function forChatCompletionsBackend(request: CanonicalResponseRequest): ChatWireRequest {
+const imageInputPolicy = new WeakMap<
+  OpenAIChatCompletionsAdapter,
+  (model: string) => boolean
+>();
+
+export interface OpencodeGoChatCompletionsAdapterOptions {
+  fetch?: FetchLike;
+  maxBodyBytes?: number;
+  idleTimeoutMs?: number;
+  /** 구독 경로가 요구하는 추가 헤더. */
+  headers?: Readonly<Record<string, string>>;
+}
+
+/**
+ * OpenCode Go 소유 chat-completions 어댑터.
+ *
+ * 레거시 `OpenAIChatCompletionsAdapter`는 공개 호환용으로 유지하되, 이 provider 래퍼는
+ * 항상 `OPENCODE_GO_CHAT_COMPLETIONS_URL`을 타깃하고 url 옵션을 노출하지 않는다 —
+ * 임의 엔드포인트 오버라이드가 provider 어댑터를 다시 범용화하지 않도록 고정한다.
+ */
+export class OpencodeGoChatCompletionsAdapter extends OpenAIChatCompletionsAdapter {
+  constructor(options: OpencodeGoChatCompletionsAdapterOptions = {}) {
+    super({
+      url: OPENCODE_GO_CHAT_COMPLETIONS_URL,
+      ...(options.fetch ? { fetch: options.fetch } : {}),
+      // `!== undefined` 여야 명시적 0이 상속된 positiveInteger 검증을 통과한다.
+      ...(options.maxBodyBytes !== undefined ? { maxBodyBytes: options.maxBodyBytes } : {}),
+      ...(options.idleTimeoutMs !== undefined ? { idleTimeoutMs: options.idleTimeoutMs } : {}),
+      ...(options.headers ? { headers: options.headers } : {}),
+    });
+    // OpenCode Go의 DeepSeek V4 Chat 스키마는 image_url을 거부한다. 이 정책은
+    // public generic class의 상속 표면을 넓히지 않고 provider instance에만 결합한다.
+    imageInputPolicy.set(this, (model) => !model.startsWith("deepseek-v4-"));
+  }
+}
+
+function forChatCompletionsBackend(
+  request: CanonicalResponseRequest,
+  supportsImageInput: boolean,
+): ChatWireRequest {
   const messages: ChatWireMessage[] = [];
   if (request.instructions !== undefined && request.instructions.length > 0) {
     messages.push({ role: "system", content: request.instructions });
@@ -180,6 +222,8 @@ function forChatCompletionsBackend(request: CanonicalResponseRequest): ChatWireR
   //   assistant 메시지로 병합하고,
   // - 사이에 낀 user/developer 텍스트는 해당 호출의 결과 뒤로 미룬다(원문에서도 결과와
   //   함께 도착한 발화이므로 결과 직후가 의미상 제자리다).
+  // DeepSeek V4 assistant/tool-turn reasoning 재생은 레거시 generic 어댑터의 HEAD
+  // 공개 동작으로 유지한다 — 이번 변경에서 OpenCode 래퍼에 국한되는 건 이미지 정책뿐이다.
   const replayReasoning = request.model.startsWith("deepseek-v4-");
   let pendingToolCalls: ChatWireToolCall[] = [];
   let pendingAssistantText: string | undefined;
@@ -230,12 +274,12 @@ function forChatCompletionsBackend(request: CanonicalResponseRequest): ChatWireR
           pendingAssistantText = pendingAssistantText === undefined ? text : `${pendingAssistantText}\n\n${text}`;
         }
       } else {
-        deferredMessages.push(chatWireMessage(item, replayReasoning));
+        deferredMessages.push(chatWireMessage(item, replayReasoning, supportsImageInput));
       }
       continue;
     }
     flushDeferredMessages();
-    messages.push(chatWireMessage(item, replayReasoning));
+    messages.push(chatWireMessage(item, replayReasoning, supportsImageInput));
   }
   flushToolCalls();
   flushDeferredMessages();
@@ -277,6 +321,7 @@ function forChatCompletionsBackend(request: CanonicalResponseRequest): ChatWireR
 function chatWireMessage(
   item: CanonicalInputMessage,
   replayReasoning: boolean,
+  supportsImageInput: boolean,
 ): ChatWireMessage {
   // canonical developer = system 성격 메시지 (Codex 백엔드 전용 표기). Chat 와이어의
   // 보편 표기는 system이다.
@@ -293,8 +338,9 @@ function chatWireMessage(
   if (typeof item.content === "string") {
     return { role, content: item.content };
   }
-  // 이미지 파트는 user 멀티모달 메시지에서만 의미가 있다. system은 텍스트로 접는다.
-  if (role === "system") {
+  // 이미지 파트는 user 멀티모달 메시지에서만 의미가 있다. system과 텍스트 전용
+  // 모델은 텍스트로 접는다.
+  if (role === "system" || !supportsImageInput) {
     return { role, content: canonicalMessageText(item.content) };
   }
   const parts: ChatWireContentPart[] = item.content.map((part) => {
