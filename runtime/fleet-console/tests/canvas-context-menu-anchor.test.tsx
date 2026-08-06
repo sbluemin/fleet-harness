@@ -87,14 +87,14 @@ describe("CanvasContextMenu launch kind attribute", () => {
         title: "Terminal",
         kinds: [
           { id: "claude", type: "agent", title: "Claude Code (Classic)" },
-          { id: "claude-gateway", type: "agent", title: "Claude (Gateway • Experimental)" },
+          { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
         ],
       },
     ]);
 
     const gateway = document.querySelectorAll<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]');
     expect(gateway).toHaveLength(1);
-    expect(gateway[0]?.textContent).toContain("Claude (Gateway • Experimental)");
+    expect(gateway[0]?.textContent).toContain("Claude (Gateway)");
     expect(document.querySelector('[data-operation-launch-kind="claude"]')).not.toBeNull();
   });
 
@@ -107,7 +107,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
           { id: "claude-native", type: "agent", title: "Claude (Native)" },
           { id: "claude", type: "agent", title: "Claude (Classic)" },
           { id: "codex", type: "agent", title: "Codex" },
-          { id: "claude-gateway", type: "agent", title: "Claude (Gateway • Experimental)" },
+          { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
           { id: "shell", type: "shell", title: "Shell" },
         ],
       },
@@ -123,10 +123,10 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(descriptionOf("codex")).toBeUndefined();
     expect(descriptionOf("shell")).toBeUndefined();
 
-    // 신규·실험 여부는 라벨 괄호 안이 들고 있다 — 항목에 별도 표식을 덧붙이지 않는다.
+    // 종류 구분은 라벨 괄호 안이 들고 있다 — 항목에 별도 표식을 덧붙이지 않는다.
     expect(document.querySelector(".operation-launch-menu-badge")).toBeNull();
     expect(document.querySelector('[data-operation-launch-kind="claude-gateway"]')?.textContent)
-      .toContain("Claude (Gateway • Experimental)");
+      .toContain("Claude (Gateway)");
   });
 
   it("shows the disabled reason instead of the description when the CLI cannot launch", () => {

@@ -179,7 +179,7 @@ describe("feature tour", () => {
     ]);
     // 앵커는 번역되는 라벨이 아니라 안정 식별자에 걸려야 한다.
     for (const step of claude?.walkthrough ?? []) {
-      expect(step.anchor).not.toMatch(/Classic|Native|Gateway •|Experimental/);
+      expect(step.anchor).not.toMatch(/Classic|Native|Gateway/);
     }
   });
 
