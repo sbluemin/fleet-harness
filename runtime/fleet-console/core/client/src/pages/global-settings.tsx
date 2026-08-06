@@ -475,7 +475,6 @@ function GeneralSettingsCard({
       {state ? (
         <>
           <ConsolePortSettings state={state} saving={saving} consoleState={consoleState} />
-          <PanelMotionSettings state={state} saving={saving} />
           <LanguageSettings state={state} saving={saving} />
         </>
       ) : (
@@ -483,27 +482,6 @@ function GeneralSettingsCard({
       )}
       <p className="global-settings-foot">{t("settings.general.foot")}</p>
     </section>
-  );
-}
-
-function PanelMotionSettings({ state, saving }: { readonly state: GlobalSettingsState; readonly saving: boolean }) {
-  const t = useT();
-  return (
-    <div className="global-settings-row">
-      <div className="global-settings-row-text">
-        <p className="global-settings-resp-title">{t("settings.panelMotion.title")}</p>
-        <p className="global-settings-help">{t("settings.panelMotion.help")}</p>
-      </div>
-      <button
-        type="button"
-        aria-pressed={state.reducePanelMotion}
-        className={`global-settings-toggle ${state.reducePanelMotion ? "is-on" : ""}`}
-        disabled={saving}
-        onClick={() => void setGlobalSettingsField("reducePanelMotion", !state.reducePanelMotion)}
-      >
-        {t("settings.panelMotion.toggle")}
-      </button>
-    </div>
   );
 }
 

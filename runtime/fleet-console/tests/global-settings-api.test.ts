@@ -4,7 +4,7 @@ import { ApiError } from "../core/client/src/api.js";
 import { fetchGlobalSettingsState, updateGlobalSettings } from "../core/client/src/global-settings-api.js";
 
 const originalFetch = globalThis.fetch;
-const SETTINGS = { consolePortMode: "dynamic", consoleStaticPort: null, reducePanelMotion: false, seenFeatureTours: [], theme: "instrument", uiFont: { source: "builtin", id: "manrope", size: 14 }, language: "auto" } as const;
+const SETTINGS = { consolePortMode: "dynamic", consoleStaticPort: null, seenFeatureTours: [], theme: "instrument", uiFont: { source: "builtin", id: "manrope", size: 14 }, language: "auto" } as const;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -26,16 +26,6 @@ describe("global settings client transport", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/settings/global", expect.objectContaining({
       method: "PUT",
       body: JSON.stringify({ language: "ko" }),
-    }));
-  });
-
-  it("requires and sends the reducePanelMotion preference", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ state: { ...SETTINGS, reducePanelMotion: true } })));
-    globalThis.fetch = fetchMock as typeof fetch;
-
-    await expect(updateGlobalSettings({ reducePanelMotion: true })).resolves.toEqual({ state: { ...SETTINGS, reducePanelMotion: true } });
-    expect(fetchMock).toHaveBeenCalledWith("/api/v1/settings/global", expect.objectContaining({
-      body: JSON.stringify({ reducePanelMotion: true }),
     }));
   });
 
@@ -69,12 +59,6 @@ describe("global settings client transport", () => {
 
   it("rejects missing or invalid language values", async () => {
     globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ ...SETTINGS, language: "ja" }))) as typeof fetch;
-
-    await expect(fetchGlobalSettingsState()).rejects.toBeInstanceOf(ApiError);
-  });
-
-  it("rejects missing or invalid reducePanelMotion values", async () => {
-    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ ...SETTINGS, reducePanelMotion: "false" }))) as typeof fetch;
 
     await expect(fetchGlobalSettingsState()).rejects.toBeInstanceOf(ApiError);
   });

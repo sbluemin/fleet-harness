@@ -13,8 +13,7 @@ import type {
 } from "@fleet-console/sdk/floating";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 
-import { panelMotionSuppressed } from "./canvas/canvas-store.js";
-import { subscribe as subscribeGlobalSettings } from "./global-settings-store.js";
+import { prefersReducedMotion } from "./canvas/canvas-store.js";
 import { useConsoleLocale } from "./i18n/index.js";
 import { resolveOperationActivity } from "./operation-activity.js";
 import { getDepartureIds, subscribeDeparture } from "./operation-departure.js";
@@ -210,7 +209,7 @@ function readFleetSignals(): FloatingWidgetFleetSignals {
     running,
     awaiting,
     disconnected: state.connection === "offline",
-    reducedMotion: panelMotionSuppressed(),
+    reducedMotion: prefersReducedMotion(),
   };
 }
 
@@ -221,7 +220,7 @@ function signalsEqual(left: FloatingWidgetFleetSignals, right: FloatingWidgetFle
     && left.reducedMotion === right.reducedMotion;
 }
 
-// 함대 신호는 서로 다른 세 곳에서 바뀐다 — Operation 스토어, 서버 영속 설정, OS 모션 환경.
+// 함대 신호는 서로 다른 세 곳에서 바뀐다 — Operation 스토어, 도착 확인 채널, OS 모션 환경.
 // 셋을 한 구독으로 합쳐 위젯이 출처를 알 필요가 없게 한다.
 function createManagedSignalsCapability(): ManagedSignalsCapability {
   const activeSubscriptions = new Set<() => void>();
@@ -242,7 +241,6 @@ function createManagedSignalsCapability(): ManagedSignalsCapability {
       : null;
     motionQuery?.addEventListener("change", notifyIfChanged);
     const unsubscribeStore = subscribeStore(notifyIfChanged);
-    const unsubscribeSettings = subscribeGlobalSettings(notifyIfChanged);
     // 도착 확인 여부는 스토어 밖 채널이라 따로 구독해야 awaiting 집계가 갱신된다.
     const unsubscribeIdleArrival = subscribeIdleArrival(notifyIfChanged);
     const unsubscribe = () => {
@@ -250,7 +248,6 @@ function createManagedSignalsCapability(): ManagedSignalsCapability {
       active = false;
       motionQuery?.removeEventListener("change", notifyIfChanged);
       unsubscribeStore();
-      unsubscribeSettings();
       unsubscribeIdleArrival();
       activeSubscriptions.delete(unsubscribe);
     };

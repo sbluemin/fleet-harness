@@ -1,4 +1,4 @@
-import { panelMotionSuppressed } from "./canvas-store.js";
+import { prefersReducedMotion } from "./canvas-store.js";
 
 // 존재 전환 안무 — 최소화/복원 시 패널과 사이드바 칩 사이를 잇는 고스트 flight.
 // 상태 커밋을 지연·블로킹하지 않는 fire-and-forget 연출 레이어다.
@@ -17,7 +17,7 @@ interface FlightTiming {
 // 양 끝점이 실제로 보일 때만 난다 — 접힌 사이드바의 칩이나 focus layer 뒤 히든 피어는
 // visibility:hidden이어도 rect가 유효해, 가드 없이는 보이지 않는 지점에서 고스트가 나타난다.
 export function playMinimizeFlight(operationId: string): void {
-  if (typeof document === "undefined" || panelMotionSuppressed()) return;
+  if (typeof document === "undefined" || prefersReducedMotion()) return;
   const panel = panelElement(operationId);
   if (!isVisiblyRendered(panel)) return;
   const from = panel.getBoundingClientRect();
@@ -31,7 +31,7 @@ export function playMinimizeFlight(operationId: string): void {
 // 복원 flight: 상태 커밋 지점에서 호출한다 — 칩 rect를 즉시 캡처하고,
 // 다음 프레임에 패널 rect를 조회해 칩→패널로 역방향 flight. 패널 본체 페이드인은 CSS 소유.
 export function playRestoreFlight(operationId: string): void {
-  if (typeof document === "undefined" || panelMotionSuppressed()) return;
+  if (typeof document === "undefined" || prefersReducedMotion()) return;
   const chip = chipElement(operationId);
   if (!isVisiblyRendered(chip)) return;
   const from = chip.getBoundingClientRect();
@@ -64,7 +64,7 @@ export function escapeSelectorValue(value: string): string {
 }
 
 export function flyPanelMotionGhost(from: DOMRect, to: DOMRect, onArrive?: () => void): void {
-  if (typeof document === "undefined" || panelMotionSuppressed()) return;
+  if (typeof document === "undefined" || prefersReducedMotion()) return;
   if (from.width <= 0 || from.height <= 0 || to.width <= 0 || to.height <= 0) return;
   const ghost = document.createElement("div");
   ghost.className = "panel-motion-ghost";

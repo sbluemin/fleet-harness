@@ -1059,9 +1059,8 @@
   }
 }
 
-/* 모션 억제는 두 축이다 — OS의 prefers-reduced-motion 과 콘솔 설정 reduce-panel-motion.
-   어느 쪽이든 편대는 정지 편대로 강등되고, 상태는 포즈 한 장으로만 남는다.
-   미디어 쿼리와 클래스는 한 블록으로 묶을 수 없어 규칙을 두 번 적는다. */
+/* OS의 prefers-reduced-motion 이 걸리면 편대는 정지 편대로 강등되고,
+   상태는 포즈 한 장으로만 남는다. */
 @media (prefers-reduced-motion: reduce) {
   .scuttlebutt-bird-tag,
   .scuttlebutt-bird-say {
@@ -1092,34 +1091,4 @@
   .scuttlebutt-bird.is-alert .scuttlebutt-qk-mark {
     opacity: 1;
   }
-}
-
-.reduce-panel-motion .scuttlebutt-bird-tag,
-.reduce-panel-motion .scuttlebutt-bird-say {
-  transition: none;
-}
-
-.reduce-panel-motion .scuttlebutt-qk,
-.reduce-panel-motion .scuttlebutt-qk *,
-.reduce-panel-motion .scuttlebutt-arrival-bubble,
-.reduce-panel-motion .scuttlebutt-departure-bubble,
-.reduce-panel-motion .scuttlebutt-thinking i,
-.reduce-panel-motion .scuttlebutt-chat-card {
-  animation: none !important;
-}
-
-.reduce-panel-motion .scuttlebutt-bird.is-cheer .scuttlebutt-qk-eyes {
-  opacity: 0;
-}
-
-.reduce-panel-motion .scuttlebutt-bird.is-cheer .scuttlebutt-qk-happy {
-  opacity: 1;
-}
-
-.reduce-panel-motion .scuttlebutt-bird.is-sleep .scuttlebutt-qk-zzz {
-  opacity: 1;
-}
-
-.reduce-panel-motion .scuttlebutt-bird.is-alert .scuttlebutt-qk-mark {
-  opacity: 1;
 }

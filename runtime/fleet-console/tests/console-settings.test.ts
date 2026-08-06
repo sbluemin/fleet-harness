@@ -168,9 +168,10 @@ describe("sanitizeConsoleSettingsData", () => {
     expect(sanitizeConsoleSettingsData({ version: 1, general: { language: "ja" } })).toEqual({ version: 1, general: {}, plugins: {} });
   });
 
-  it("accepts boolean reducePanelMotion values and drops invalid values", () => {
-    expect(sanitizeConsoleSettingsData({ version: 1, general: { reducePanelMotion: true } })).toEqual({ version: 1, general: { reducePanelMotion: true }, plugins: {} });
-    expect(sanitizeConsoleSettingsData({ version: 1, general: { reducePanelMotion: "true" } })).toEqual({ version: 1, general: {}, plugins: {} });
+  // 퇴역한 reducePanelMotion 키가 남은 기존 settings.json은 다음 sanitize에서 조용히 떨어진다 —
+  // 마이그레이션 단계 없이도 일반 설정 전체가 초기화되지 않는다는 계약이다.
+  it("drops the retired reducePanelMotion key without resetting sibling general settings", () => {
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { language: "ko", reducePanelMotion: true } })).toEqual({ version: 1, general: { language: "ko" }, plugins: {} });
   });
 
   it("accepts minimum valid port boundary", () => {

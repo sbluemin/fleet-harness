@@ -18,7 +18,7 @@ import { resolveOperationActivity } from "../operation-activity.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
-import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, minimizeOperation, panelMotionSuppressed, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
+import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, minimizeOperation, prefersReducedMotion, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
 import { escapeSelectorValue, flyPanelMotionGhost, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
@@ -376,7 +376,7 @@ export function OperationsCanvas({
     spotlight: triageSpotlightEnabled,
     dwell: triageDeckArrivalDwellRef.current,
     now: Date.now(),
-    suppressed: panelMotionSuppressed(),
+    suppressed: prefersReducedMotion(),
   });
   // 스포트라이트 OFF일 때 검토 전인 대기 카드에 지속 맥동을 얹는다 — 등단을 멈춘 대신 도착 신호는 남긴다.
   // 미룬(deferred) 항목은 레일 칩과 동일하게 제외한다 — 사용자가 이미 보고 미룬 신호를 다시 흔들지 않는다.
@@ -397,7 +397,7 @@ export function OperationsCanvas({
   const triageDeckArrivingOperationId = deckPromotion.arrivingOperationId;
   useEffect(() => {
     const dwell = triageDeckArrivalDwellRef.current;
-    if (!dwell || triageStageId !== null || panelMotionSuppressed()) return;
+    if (!dwell || triageStageId !== null || prefersReducedMotion()) return;
     const remaining = Math.max(0, dwell.deadline - Date.now());
     if (remaining === 0) {
       setTriageDeckDwellRevision((revision) => revision + 1);
@@ -721,7 +721,7 @@ export function OperationsCanvas({
   const focusCycleIndexByOperationId = new Map(focusCycleIds.map((operationId, index) => [operationId, index + 1]));
   // Formation 진입·레이아웃 전환 시 슬롯 순서 stagger — 윈도우 리사이즈 재배치에는 적용하지 않는다.
   useEffect(() => {
-    if (!formationView || panelMotionSuppressed()) return;
+    if (!formationView || prefersReducedMotion()) return;
     const root = canvasRef.current;
     if (!root) return;
     const frames = formationOperationIds

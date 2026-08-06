@@ -345,18 +345,6 @@
   .session-analyst__panel-head--artifacts .session-analyst__panel-copy { display: none; }
 }
 
-.reduce-panel-motion .session-analyst-handle__live::after,
-.reduce-panel-motion .carrier-sortie-ribbon,
-.reduce-panel-motion .carrier-sortie-ribbon__scan,
-.reduce-panel-motion .carrier-stream-column__scan,
-.reduce-panel-motion .carrier-stream-column__activity-scan,
-.reduce-panel-motion .carrier-stream-column__activity[data-tone="live"] .carrier-stream-column__activity-orbit::after,
-.reduce-panel-motion .carrier-stream-column__reasoning i::after {
-  animation: none;
-}
-.reduce-panel-motion .session-analyst-handle-stack .session-analyst-handle { transition: none; }
-.reduce-panel-motion .session-analyst-handle-stack .session-analyst-handle:hover { transform: none; }
-
 @media (prefers-reduced-motion: reduce) {
   .session-analyst-handle, .session-analyst__suggestions button, .session-analyst__followups-row button, .session-analyst__queue-item button, .session-analyst__composer-surface, .session-analyst__composer textarea, .session-analyst__selector-strip, .session-analyst__artifact-count, .session-analyst__artifact-count i { transition: none; }
   .session-analyst-handle:hover { transform: none; }

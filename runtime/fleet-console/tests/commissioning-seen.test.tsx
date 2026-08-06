@@ -11,7 +11,6 @@ const SETTINGS: GlobalSettingsState = {
   consolePortMode: "dynamic",
   consoleStaticPort: null,
   language: "auto",
-  reducePanelMotion: false,
   seenFeatureTours: [],
   theme: "instrument",
   uiFont: { source: "builtin", id: "manrope", size: 14 },

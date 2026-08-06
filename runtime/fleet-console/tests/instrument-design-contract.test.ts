@@ -559,13 +559,9 @@ describe("Instrument core design contract", () => {
     const reducedMotionBlock = components.slice(components.indexOf("@media (prefers-reduced-motion: reduce)"));
     expect(reducedMotionBlock).toMatch(/\.canvas-operation,\s*\.canvas-operation\.is-minimized \{\s*transition: none;\s*\}/);
     expect(reducedMotionBlock).toMatch(/\.canvas-companion-frame \{\s*animation: none;\s*\}/);
-    const explicitReducedMotionStart = components.indexOf(".reduce-panel-motion .canvas-operation,");
-    const explicitReducedMotionBlock = components.slice(
-      explicitReducedMotionStart,
-      components.indexOf("@media (prefers-reduced-motion: reduce)", explicitReducedMotionStart),
-    );
-    expect(explicitReducedMotionBlock).toMatch(/\.reduce-panel-motion \.canvas-operation,\s*\.reduce-panel-motion \.canvas-operation\.is-minimized \{\s*transition: none;\s*\}/);
-    expect(explicitReducedMotionBlock).toMatch(/\.reduce-panel-motion \.canvas-companion-frame,\s*\.reduce-panel-motion \.side-bar-chip\.is-arrival-pulse \{\s*animation: none;\s*\}/);
+    // 모션 억제 축은 OS의 prefers-reduced-motion 하나다 — 콘솔 설정 축(.reduce-panel-motion)은 퇴역했고,
+    // 재도입되면 미디어 쿼리 블록과 규칙이 갈라지므로 셀렉터 자체를 봉인한다.
+    expect(components).not.toContain(".reduce-panel-motion");
     // (d) 존재 전환 keyframe은 panel-enter로 일반화 — companion 전용 명칭은 퇴역하고 실제 사용까지 고정한다.
     expect(components).toContain("@keyframes panel-enter");
     expect(components).toContain("animation: panel-enter var(--duration-slow) var(--ease-glide) both;");
@@ -1375,7 +1371,6 @@ describe("Instrument core design contract", () => {
     );
     expect(selectBlock).toContain("padding: 8px 16px 8px 10px;");
     expect(selectBlock).toContain(".fc-select__popup--compact { min-width: min(160px, calc(100vw - 16px)); }");
-    expect(selectBlock).toMatch(/\.reduce-panel-motion \.fc-select__trigger,\s*\.reduce-panel-motion \.fc-select__caret,\s*\.reduce-panel-motion \.fc-select__popup,\s*\.reduce-panel-motion \.fc-select__option \{\s*transition: none;\s*\}/);
     expect(selectBlock).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.fc-select__trigger,\s*\.fc-select__caret,\s*\.fc-select__popup,\s*\.fc-select__option \{\s*transition: none;\s*\}\s*\}/);
 
     expect(selectBlock).not.toMatch(/#[0-9a-f]{3,8}\b/i);
