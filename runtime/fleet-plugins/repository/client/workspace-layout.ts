@@ -19,6 +19,9 @@ export const WORKSPACE_DOCK_DIVIDER_WIDTH = 4;
 // diff 열의 최소 폭. CSS의 calc(100% - …) 보정값과 반드시 같은 값이어야 한다.
 // 독 메타 헤더는 고정 버튼들 때문에 오른쪽 210px를 비워 두므로, 그보다 넉넉해야 제목이 남는다.
 export const WORKSPACE_DOCK_MAIN_MIN_WIDTH = 340;
+// 두 최소폭과 디바이더가 모두 들어가는 최소 독 폭. 이보다 좁으면 좌우 분할 자체가 성립하지
+// 않으므로(디바이더가 보이는데 끌어도 움직이지 않는 구간이 생긴다) CSS가 세로 스택으로 넘긴다.
+export const WORKSPACE_DOCK_SPLIT_MIN_WIDTH = WORKSPACE_DOCK_FILES_MIN_WIDTH + WORKSPACE_DOCK_DIVIDER_WIDTH + WORKSPACE_DOCK_MAIN_MIN_WIDTH;
 
 export const PREFS_WORKSPACE_DOCK_HEIGHT = "fleet-console.repository.workspace.dockHeight";
 export const PREFS_WORKSPACE_TREE_WIDTH = "fleet-console.repository.workspace.treeWidth";

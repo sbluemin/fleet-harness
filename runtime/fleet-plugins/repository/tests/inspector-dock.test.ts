@@ -82,6 +82,12 @@ describe("Inspector dock", () => {
     expect(dockSource).toContain("aria-orientation=\"vertical\"");
   });
 
+  it("starts a drag from the rendered width, not a stale stored width", () => {
+    const drag = dockSource.slice(dockSource.indexOf("const startDrag"), dockSource.indexOf("installPointerDragLifecycle({"));
+    expect(drag).toContain("clampWorkspaceDockFilesWidth(filesWidthRef.current, 0, width)");
+    expect(drag).toContain("if (start === null) return");
+  });
+
   it("persists the dragged width even when the inspector unmounts mid-drag", () => {
     // installPointerDragLifecycle의 dispose는 onFinish를 부르지 않는다 — 언마운트 정리 경로가
     // 직접 저장하지 않으면 화면에 이미 반영된 폭이 조용히 되돌아간다.

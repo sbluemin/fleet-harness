@@ -6,7 +6,11 @@ import {
   PREFS_WORKSPACE_DOCK_HEIGHT,
   PREFS_WORKSPACE_TREE_WIDTH,
   WORKSPACE_DOCK_DEFAULT_HEIGHT,
+  WORKSPACE_DOCK_DIVIDER_WIDTH,
   WORKSPACE_DOCK_FILES_DEFAULT_WIDTH,
+  WORKSPACE_DOCK_FILES_MIN_WIDTH,
+  WORKSPACE_DOCK_MAIN_MIN_WIDTH,
+  WORKSPACE_DOCK_SPLIT_MIN_WIDTH,
   WORKSPACE_TREE_DEFAULT_WIDTH,
   buildWorkspaceTreeSections,
   clampWorkspaceDockFilesWidth,
@@ -80,6 +84,20 @@ describe("Repository workspace layout", () => {
     expect(clampWorkspaceDockFilesWidth(250, 900, 800)).toBe(456);
     // 독이 파일 열 최소폭조차 담지 못하면 드래그는 no-op — 세로 스택 컨테이너 쿼리에 맡긴다.
     expect(clampWorkspaceDockFilesWidth(250, 0, 480)).toBeNull();
+  });
+
+  it("normalizes a stored width wider than the current dock to the rendered width", () => {
+    // CSS min()이 화면에서만 줄여 둔 상태에서 저장값을 기점으로 삼으면 숨은 초과분만큼
+    // 첫 이동이 먹히지 않는다. delta 0 클램프가 그 기점 보정이다.
+    expect(clampWorkspaceDockFilesWidth(600, 0, 800)).toBe(456);
+    expect(clampWorkspaceDockFilesWidth(456, -100, 800)).toBe(356);
+  });
+
+  it("stacks the dock before either minimum can be violated", () => {
+    // 스택 경계와 클램프가 같은 산술을 쓰지 않으면 "보이는데 끌리지 않는" 디바이더 구간이 생긴다.
+    expect(WORKSPACE_DOCK_SPLIT_MIN_WIDTH).toBe(WORKSPACE_DOCK_FILES_MIN_WIDTH + WORKSPACE_DOCK_DIVIDER_WIDTH + WORKSPACE_DOCK_MAIN_MIN_WIDTH);
+    expect(clampWorkspaceDockFilesWidth(250, 0, WORKSPACE_DOCK_SPLIT_MIN_WIDTH)).toBe(WORKSPACE_DOCK_FILES_MIN_WIDTH);
+    expect(clampWorkspaceDockFilesWidth(250, 0, WORKSPACE_DOCK_SPLIT_MIN_WIDTH - 1)).toBeNull();
   });
 
   it("falls back safely when the storage accessor itself throws", () => {

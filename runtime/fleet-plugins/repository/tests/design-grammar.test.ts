@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { WORKSPACE_DOCK_DIVIDER_WIDTH, WORKSPACE_DOCK_MAIN_MIN_WIDTH } from "../client/workspace-layout.js";
+import { WORKSPACE_DOCK_DIVIDER_WIDTH, WORKSPACE_DOCK_MAIN_MIN_WIDTH, WORKSPACE_DOCK_SPLIT_MIN_WIDTH } from "../client/workspace-layout.js";
 
 const css = await fs.readFile(new URL("../client/repository.css", import.meta.url), "utf8");
 
@@ -181,6 +181,8 @@ describe("Repository design grammar", () => {
     // 좁은 독은 세로 스택으로 넘어가고, 그때 열 디바이더는 트랙 수를 어긋내므로 흐름에서 빠진다.
     expect(stacked).toContain("grid-template-columns: minmax(0, 1fr)");
     expect(blockOf(".repository-ws-dock > .repository-ws-dock-divider")).toContain("display: none");
+    // 스택 경계가 두 최소폭 합보다 좁으면 "보이는데 끌리지 않는" 디바이더 구간이 생긴다.
+    expect(css).toContain(`@container (width < ${WORKSPACE_DOCK_SPLIT_MIN_WIDTH}px)`);
   });
 
   it("lets the file column actually shrink to its grid track", () => {

@@ -39,9 +39,15 @@ export function WorkspaceDock({ t, className, overlay, files, main }: WorkspaceD
     event.preventDefault();
     const dock = dockRef.current;
     if (!dock) return;
-    const start = filesWidthRef.current;
-    const startX = event.clientX;
     const width = dock.getBoundingClientRect().width;
+    // 저장 폭이 현재 독의 최대치를 넘으면 CSS min()이 화면에서만 줄여 놓는다(저장값은 보존).
+    // 그 상태에서 저장값을 드래그 기점으로 삼으면 숨은 초과분만큼 첫 이동이 먹히지 않으므로,
+    // 화면에 실제로 그려진 폭으로 기점을 맞춘다.
+    const start = clampWorkspaceDockFilesWidth(filesWidthRef.current, 0, width);
+    if (start === null) return;
+    filesWidthRef.current = start;
+    setFilesWidth(start);
+    const startX = event.clientX;
     dragDisposeRef.current?.();
     dragDisposeRef.current = installPointerDragLifecycle({
       documentTarget: document,

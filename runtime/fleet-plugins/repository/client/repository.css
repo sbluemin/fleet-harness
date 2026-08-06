@@ -1526,9 +1526,12 @@
 .history-compare-pair { min-width: 0; overflow: hidden; color: var(--text-secondary); font-family: var(--font-mono); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .history-compare-meta .repository-compare-swap { margin-left: 8px; }
 /* 좁은 독(파일 열 250px가 컨테이너를 초과)에서 main 열이 0으로 붕괴하던 선존 결함 —
-   detail pane을 컨테이너로 삼아 세로 스택으로 전환한다(커밋 검사기·비교 드로어 공용). */
+   detail pane을 컨테이너로 삼아 세로 스택으로 전환한다(커밋 검사기·비교 드로어 공용).
+   경계는 WORKSPACE_DOCK_SPLIT_MIN_WIDTH(파일 150 + 디바이더 4 + diff 340)와 같아야 한다:
+   더 좁은데도 좌우로 나누면 디바이더가 보이는데 클램프는 no-op인 구간이 생긴다.
+   범위 문법을 쓰는 이유는 소수점 폭에서도 경계가 정확히 맞아떨어지게 하기 위함이다. */
 .history-detail-pane { container-type: inline-size; }
-@container (max-width: 430px) {
+@container (width < 494px) {
   .repository-ws-dock { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 44%) minmax(0, 1fr); }
   /* 세로 스택에서는 열 디바이더가 트랙 수를 어긋내므로 흐름에서 제거하고, 이음매는 테두리가 잇는다. */
   .repository-ws-dock > .repository-ws-dock-divider { display: none; }
