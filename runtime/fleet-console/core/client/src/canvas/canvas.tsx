@@ -450,7 +450,7 @@ export function OperationsCanvas({
       };
       // 바닥 크롬 높이는 body 소유자인 kind가 선언한다 — 미선언 body(순정 셸·문서형 패널)는
       // 바닥까지 출력이 흐르므로 0이고, 프리뷰는 최신 행을 잘라내지 않는다.
-      sources.set(operation.id, { config, bottomChrome: descriptor.previewBottomChrome ?? 0 });
+      sources.set(operation.id, { config, bottomChrome: descriptor.previewBottomChrome?.() ?? 0 });
     }
     return (operation: OperationNode) => sources.get(operation.id) ?? null;
   }, [canvas.operations, language, registry.operationKinds, state.activeTheme, state.operations, triageActive]);
