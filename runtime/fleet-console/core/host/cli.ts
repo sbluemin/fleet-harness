@@ -4,7 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { withHidden } from "@dotobokuri/core-process";
+import { withHidden, withNodeSystemCa } from "@dotobokuri/core-process";
 
 import type { ConsoleLockPayload } from "./console-contract-types.js";
 import { openBrowser, type OpenBrowserDeps } from "./browser.js";
@@ -156,6 +156,8 @@ export function buildConsoleHelpText(options: BuildConsoleHelpTextOptions = {}):
 
 export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = {}) {
   const env = deps.env ?? process.env;
+  // TLS 검사 프록시 환경 대응(issue #531): OS 신뢰 저장소를 기본 신뢰한다. opt-out은 FLEET_CONSOLE_NO_SYSTEM_CA=1.
+  const childEnv = env.FLEET_CONSOLE_NO_SYSTEM_CA === "1" ? env : withNodeSystemCa(env);
   const execPath = deps.execPath ?? process.execPath;
   const serverModulePath = deps.serverModulePath ?? resolveDefaultServerModulePath();
   const spawnDetached = deps.spawnDetached ?? ((bin, args, options) => {
@@ -215,7 +217,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       if (typeof probeResult.health?.workspaceCount === "number" && probeResult.health.workspaceCount > 0) return current.endpoint;
     }
     if (current) await stop();
-    spawnDetached(execPath, [serverModulePath, "serve"], withHidden({ detached: true, env, stdio: "ignore" as const }));
+    spawnDetached(execPath, [serverModulePath, "serve"], withHidden({ detached: true, env: childEnv, stdio: "ignore" as const }));
     for (let i = 0; i < 30; i += 1) {
       await sleep(100);
       const next = await probe();

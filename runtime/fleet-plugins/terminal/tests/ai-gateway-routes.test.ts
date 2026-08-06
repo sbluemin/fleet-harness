@@ -14,6 +14,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { RouteHandler, RouteHandlerContext } from "@fleet-console/sdk/routing";
 import { describe, expect, it, vi } from "vitest";
 
+import { errorMessage } from "../server/ai-gateway-proxy.js";
 import {
   KIMI_MESSAGES_URL,
   OPENCODE_MESSAGES_URL,
@@ -31,6 +32,24 @@ const MESSAGES = `${BASE}/v1/messages`;
 const ANTHROPIC_CRED = "sk-ant-oat01-caller";
 const SUBSCRIPTION_TOKEN = "chatgpt-subscription-access-token";
 const ACCOUNT_ID = "11111111-2222-3333-4444-555555555555";
+
+describe("gateway error messages", () => {
+  it("includes a transport cause code", () => {
+    const error = new TypeError("fetch failed");
+    Object.defineProperty(error, "cause", { value: { code: "UNABLE_TO_VERIFY_LEAF_SIGNATURE" } });
+    expect(errorMessage(error)).toBe("fetch failed (UNABLE_TO_VERIFY_LEAF_SIGNATURE)");
+  });
+
+  it("leaves plain errors unchanged", () => {
+    expect(errorMessage(new Error("upstream failed"))).toBe("upstream failed");
+  });
+
+  it("does not duplicate a code already present in the message", () => {
+    const error = new Error("fetch failed (ECONNREFUSED)");
+    Object.defineProperty(error, "cause", { value: { code: "ECONNREFUSED" } });
+    expect(errorMessage(error)).toBe("fetch failed (ECONNREFUSED)");
+  });
+});
 
 describe("route registration", () => {
   it("always registers the AI gateway route", () => {

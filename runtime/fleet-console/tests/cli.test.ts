@@ -9,6 +9,7 @@ import type { ConsoleLockPayload } from "../core/host/console-contract-types.js"
 import {
   buildConsoleHelpText,
   assertCliCanControlDaemon,
+  createConsoleDaemonLifecycle,
   isCliDirectRun,
   isLockProcessAlive,
   main,
@@ -206,6 +207,34 @@ describe("fleet console CLI", () => {
     expect(helpText).toContain("restart");
     expect(helpText).toContain("status");
     expect(helpText).not.toContain("Gateway");
+  });
+
+  it.each([
+    { env: { FLEET_CONSOLE_DIR: "__DIR__" }, expectedEnv: { FLEET_CONSOLE_DIR: "__DIR__", NODE_USE_SYSTEM_CA: "1" } },
+    { env: { FLEET_CONSOLE_DIR: "__DIR__", FLEET_CONSOLE_NO_SYSTEM_CA: "1" }, expectedEnv: { FLEET_CONSOLE_DIR: "__DIR__", FLEET_CONSOLE_NO_SYSTEM_CA: "1" } },
+    { env: { FLEET_CONSOLE_DIR: "__DIR__", NODE_USE_SYSTEM_CA: "0" }, expectedEnv: { FLEET_CONSOLE_DIR: "__DIR__", NODE_USE_SYSTEM_CA: "0" } },
+  ])("passes the configured system CA environment to the daemon: $expectedEnv", async ({ env, expectedEnv }) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-system-ca-"));
+    TEMP_DIRS.push(dir);
+    const spawnDetached = vi.fn();
+    const lifecycle = createConsoleDaemonLifecycle({
+      env: { ...env, FLEET_CONSOLE_DIR: dir },
+      execPath: "/node",
+      serverModulePath: "/pkg/dist/cli.mjs",
+      spawnDetached,
+      sleep: async () => {},
+      health: { probe: async () => ({ healthy: false, lock: null, error: "lock missing" }) },
+    });
+
+    await expect(lifecycle.ensureDaemon()).rejects.toThrow("Fleet Console server did not become healthy");
+
+    expect(spawnDetached).toHaveBeenCalledTimes(1);
+    expect(spawnDetached.mock.calls[0]?.[2]).toEqual({
+      detached: true,
+      env: { ...expectedEnv, FLEET_CONSOLE_DIR: dir },
+      stdio: "ignore",
+      windowsHide: true,
+    });
   });
 
   it("ensures the server and opens the console URL without browser tokens", async () => {

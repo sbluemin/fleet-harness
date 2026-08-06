@@ -24,6 +24,8 @@ describe("console update apply worker", () => {
     expect(script).toContain('"@dotobokuri/fleet-cli"');
     expect(script).toContain('"@dotobokuri/fleet-console"');
     expect(script).toContain('"serve"');
+    // 워커가 교체 데몬을 띄울 때 process.env를 그대로 넘기는 계약 — 서비스의 child env 주입(예: NODE_USE_SYSTEM_CA)이 데몬까지 도달하는 경로다.
+    expect(script).toContain("env: process.env");
     expect(script).toContain('"/resolved/npm.cmd"');
     expect(script).toContain('"/d","/s","/c","call","/resolved/npm.cmd "');
     expect(script).toContain("ensureGlobalRootWritable(manager)");
@@ -81,9 +83,45 @@ describe("console update apply worker", () => {
     expect(spawned).toEqual([{
       execPath: "/node",
       args: ["/tmp/fleet-console-update-123-456.mjs"],
-      options: { detached: true, env: { PATH: "/bin" }, stdio: "ignore", windowsHide: true },
+      options: { detached: true, env: { PATH: "/bin", NODE_USE_SYSTEM_CA: "1" }, stdio: "ignore", windowsHide: true },
     }]);
     expect(unref).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { env: { FLEET_CONSOLE_NO_SYSTEM_CA: "1" }, expected: { FLEET_CONSOLE_NO_SYSTEM_CA: "1" } },
+    { env: { NODE_USE_SYSTEM_CA: "0" }, expected: { NODE_USE_SYSTEM_CA: "0" } },
+  ])("passes the configured system CA environment to the update worker: $expected", async ({ env, expected }) => {
+    let spawnedEnv: NodeJS.ProcessEnv | undefined;
+    const service = createConsoleUpdateApplyService({
+      env,
+      execPath: "/node",
+      makeDir: vi.fn(),
+      now: () => 123,
+      preflightInstall: () => createPackageManagerSpec(),
+      processPid: 456,
+      serverModulePath: "/pkg/dist/cli.mjs",
+      tmpDir: "/tmp",
+      writeFile: vi.fn(),
+      spawnWorker: (_execPath, _args, options) => {
+        spawnedEnv = options.env;
+        return {
+          once: vi.fn().mockReturnThis(),
+          unref: vi.fn(),
+        };
+      },
+    });
+
+    await service.start({
+      currentEndpoint: "http://127.0.0.1:4000/",
+      currentPackageRoot: "/pkg",
+      currentPid: 111,
+      dataDir: "/data/console",
+      lockFile: "/tmp/console.lock",
+      targetVersion: "1.2.3",
+    });
+
+    expect(spawnedEnv).toEqual(expected);
   });
 
   it("rejects worker spawn before writing the worker when no current global manager matches", async () => {

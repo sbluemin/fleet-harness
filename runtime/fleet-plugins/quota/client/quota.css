@@ -236,6 +236,11 @@
   background: var(--coral-glow);
 }
 
+.quota-strip--error {
+  border-left: 3px solid var(--coral);
+  background: var(--coral-glow);
+}
+
 .quota-strip--stale {
   border-left: 3px solid var(--warn);
   background: var(--warn-glow);

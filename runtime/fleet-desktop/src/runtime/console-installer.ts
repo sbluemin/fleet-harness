@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import { withNodeSystemCa } from "@dotobokuri/core-process";
 import { DESKTOP_RESOURCE_ROOT_MARKER, formatDesktopResourceRootMarker, isDesktopResourceRootMarkerValid } from "@fleet-console/desktop-protocol";
 
 import { satisfiesNodeEngine } from "./node-bootstrap.js";
@@ -127,12 +128,15 @@ export function createConsoleInstallerEnvironment(source: NodeJS.ProcessEnv = pr
   const pathSeparator = platform === "win32" ? ";" : ":";
   const resolvedPath = nodeBinDirectory ? (existingPath ? `${nodeBinDirectory}${pathSeparator}${existingPath}` : nodeBinDirectory) : existingPath;
   if (resolvedPath !== undefined) environment[pathKey] = resolvedPath;
-  return {
+  const installerEnv: NodeJS.ProcessEnv = {
     ...environment,
     npm_config_registry: "https://registry.npmjs.org/",
     npm_config_userconfig: npmUserConfiguration,
     npm_config_globalconfig: npmGlobalConfiguration,
   };
+  // TLS 검사 프록시 환경 대응(issue #531): registry 조달도 OS 신뢰 저장소를 기본 신뢰한다 — 여기가 막히면
+  // 최초 설치/업데이트 자체가 실패해 sidecar까지 도달하지 못한다. opt-out은 FLEET_CONSOLE_NO_SYSTEM_CA=1.
+  return source.FLEET_CONSOLE_NO_SYSTEM_CA === "1" ? installerEnv : withNodeSystemCa(installerEnv);
 }
 
 export async function reconcileConsoleInstallations(paths: RuntimePaths, fileSystem: ConsoleInstallerFileSystem): Promise<void> {

@@ -182,6 +182,25 @@ export function writeSseErrorFrame(
   }
 }
 
+function findCauseCode(error: unknown): string | undefined {
+  let current: unknown = error;
+  const seen = new Set<object>();
+  for (let depth = 0; depth <= 4; depth += 1) {
+    if (current === null || typeof current !== "object") return undefined;
+    if (seen.has(current)) return undefined;
+    seen.add(current);
+    if (Object.prototype.hasOwnProperty.call(current, "code")) {
+      const code = (current as Record<string, unknown>).code;
+      if (typeof code === "string") return code;
+    }
+    current = (current as Record<string, unknown>).cause;
+  }
+  return undefined;
+}
+
 export function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? error.message : String(error);
+  // fetch 거절은 message가 "fetch failed"뿐이라 원인 code(cause chain)를 함께 남긴다(issue #531).
+  const code = findCauseCode(error);
+  return code !== undefined && !message.includes(code) ? `${message} (${code})` : message;
 }

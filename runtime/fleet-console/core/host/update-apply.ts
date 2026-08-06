@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { createGlobalPackageUpdater } from "@dotobokuri/core-agent";
 import type { GlobalPackageManagerCommand } from "@dotobokuri/core-agent";
-import { withHidden } from "@dotobokuri/core-process";
+import { withHidden, withNodeSystemCa } from "@dotobokuri/core-process";
 import { DESKTOP_RESOURCE_ROOT_MARKER, isDesktopResourceRootMarkerValid } from "@fleet-console/desktop-protocol";
 
 export interface ConsoleUpdateApplyService {
@@ -82,6 +82,8 @@ const TEMP_FILE_MODE = 0o600;
 
 export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplyServiceDeps = {}): ConsoleUpdateApplyService {
   const env = deps.env ?? process.env;
+  // TLS 검사 프록시 환경 대응(issue #531): OS 신뢰 저장소를 기본 신뢰한다. opt-out은 FLEET_CONSOLE_NO_SYSTEM_CA=1.
+  const childEnv = env.FLEET_CONSOLE_NO_SYSTEM_CA === "1" ? env : withNodeSystemCa(env);
   const execPath = deps.execPath ?? process.execPath;
   const makeDir = deps.makeDir ?? ((dirPath, options) => {
     fs.mkdirSync(dirPath, options);
@@ -121,7 +123,7 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
       workerPath,
     });
     writeFile(workerPath, script, { mode: TEMP_FILE_MODE });
-    await spawnDetachedWorker(spawnWorker, execPath, [workerPath], env);
+    await spawnDetachedWorker(spawnWorker, execPath, [workerPath], childEnv);
     return { accepted: true };
   }
 

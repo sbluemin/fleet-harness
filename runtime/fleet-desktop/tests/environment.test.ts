@@ -209,4 +209,38 @@ describe("desktop environment", () => {
       "C:\\Users\\alice\\AppData\\Roaming\\npm",
     ]);
   });
+
+  it("defaults the sidecar service environment to trust the OS CA store", () => {
+    const worktree = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-system-ca-"));
+    TEMP_DIRS.push(worktree);
+    const resourceRoot = path.join(worktree, "runtime", "fleet-console");
+    const environment = createDesktopEnvironment(path.join(worktree, "user-data"), "1.23.0", resourceRoot, false, {});
+    expect(environment.serviceEnv.NODE_USE_SYSTEM_CA).toBe("1");
+  });
+
+  it("honors the FLEET_CONSOLE_NO_SYSTEM_CA opt-out", () => {
+    const worktree = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-system-ca-optout-"));
+    TEMP_DIRS.push(worktree);
+    const resourceRoot = path.join(worktree, "runtime", "fleet-console");
+    const environment = createDesktopEnvironment(path.join(worktree, "user-data"), "1.23.0", resourceRoot, false, { FLEET_CONSOLE_NO_SYSTEM_CA: "1" });
+    expect(environment.serviceEnv.NODE_USE_SYSTEM_CA).toBeUndefined();
+  });
+
+  it("does not override an explicitly set NODE_USE_SYSTEM_CA", () => {
+    const worktree = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-system-ca-explicit-"));
+    TEMP_DIRS.push(worktree);
+    const resourceRoot = path.join(worktree, "runtime", "fleet-console");
+    const environment = createDesktopEnvironment(path.join(worktree, "user-data"), "1.23.0", resourceRoot, false, { NODE_USE_SYSTEM_CA: "0" });
+    expect(environment.serviceEnv.NODE_USE_SYSTEM_CA).toBe("0");
+  });
+
+  it("keeps NODE_USE_SYSTEM_CA on the packaged macOS PATH-normalizing branch", () => {
+    const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-system-ca-packaged-"));
+    TEMP_DIRS.push(userDataDir);
+    const environment = createDesktopEnvironment(userDataDir, "1.23.0", "/packaged/resources/sidecar/fleet-console", true, {
+      SHELL: "/bin/zsh",
+      PATH: "/inherited/bin",
+    }, { platform: "darwin", loginShellPath: "/Users/alice/.opencode/bin:/usr/bin" });
+    expect(environment.serviceEnv.NODE_USE_SYSTEM_CA).toBe("1");
+  });
 });
