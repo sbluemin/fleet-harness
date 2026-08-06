@@ -90,6 +90,47 @@ describe("War Room canvas controls reach", () => {
     }
   });
 
+  // 위 경우는 <main>에 직접 이벤트를 놓는다 — 진입 커튼(1.9초) 동안에는 덱이 아예 렌더되지 않으므로
+  // 그때의 <main>은 맨바닥이고, 실제 제품에서 커서가 닿는 표면은 그 판을 덮은 덱이다. 커튼을 걷어
+  // 덱을 세운 뒤 덱 자신의 빈 자리에서 우클릭해야 "밀도가 실행 진입점을 없애지 않는다"가 검증된다.
+  it("reaches canvas controls from the deck's own empty space once the entry curtain lifts", () => {
+    vi.useFakeTimers();
+    try {
+      renderCanvas();
+      // 진입 커튼이 걷혀야 덱이 선다(커튼 중에는 TriageWatchDeck이 null을 낸다).
+      act(() => { vi.advanceTimersByTime(2_000); });
+
+      const deck = container!.querySelector<HTMLElement>(".canvas-triage-deck");
+      expect(deck, "deck must be mounted once the curtain lifts").not.toBeNull();
+
+      for (const zoom of [1.0, 1.6]) {
+        act(() => setTriageDeckZoom(zoom));
+        // 밴드 사이 여백·판 바닥은 덱이 덮은 자리지만 주인이 없다 — 여기서 시작한 우클릭이
+        // 캔버스까지 버블해 캔버스 제어를 열어야 한다.
+        const grid = container!.querySelector<HTMLElement>(".canvas-triage-deck-grid")!;
+        const menu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 120, clientY: 240 });
+        act(() => grid.dispatchEvent(menu));
+        expect(menu.defaultPrevented, `deck zoom ${zoom}`).toBe(true);
+        const opened = container!.querySelector(".canvas-context-menu");
+        expect(opened, `deck zoom ${zoom}`).not.toBeNull();
+        expect(opened?.querySelector('[data-operation-launch-kind="shell"]')).not.toBeNull();
+        act(() => { window.dispatchEvent(new Event("canvas-context-menu-close")); });
+      }
+
+      // 밴드는 자기 Theater를 소유한다 — 같은 메뉴가 그 Theater 이름을 달고 선다.
+      act(() => setTriageDeckZoom(1.0));
+      const band = container!.querySelector<HTMLElement>(".canvas-triage-deck-band");
+      expect(band, "card density must render theater bands").not.toBeNull();
+      const bandMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 140, clientY: 260 });
+      act(() => band!.dispatchEvent(bandMenu));
+      expect(bandMenu.defaultPrevented).toBe(true);
+      expect(container!.querySelector(".canvas-context-menu-head-text")?.textContent).toContain("Alpha");
+    } finally {
+      act(() => { window.dispatchEvent(new Event("canvas-context-menu-close")); });
+      vi.useRealTimers();
+    }
+  });
+
   it("opens nothing when no Theater owns the launch", () => {
     // 실행 대상이 없으면 메뉴를 띄워도 아무것도 실행할 수 없다 — 브라우저 메뉴만 계속 막는다.
     act(() => root!.render(createElement(OperationsCanvas, {
