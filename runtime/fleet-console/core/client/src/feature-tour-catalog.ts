@@ -129,4 +129,16 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
       },
     ],
   },
+  {
+    id: "classic-deprecation",
+    // 런치 메뉴의 Classic 항목에만 닻을 건다 — 메뉴가 열려야 뜨고, Classic CLI가 없는 메뉴에는
+    // 항목 자체가 없으니 안내도 함께 빠진다. 폐지는 점진적이라 "당장 옮겨라"가 아니라
+    // "새로 만들 때는 새 종류를 고르라"는 1회성 스포트라이트다.
+    spotlight: {
+      anchor: '[data-operation-launch-kind="claude"]',
+      titleKey: "featureTour.classicDeprecation.title",
+      bodyKey: "featureTour.classicDeprecation.body",
+    },
+    walkthrough: [],
+  },
 ] as const;
