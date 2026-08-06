@@ -15,7 +15,6 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:remote-live": "node scripts/remote-live-test.mjs",
-    "test:e2e": "playwright test",
     "package:dir": "pnpm build && electron-builder --dir --publish never",
     "package:unsigned": "pnpm build && electron-builder --publish never",
     "prepackage:release": "node scripts/verify-packaged-app.mjs --preflight",
@@ -32,7 +31,6 @@
     "@electron/fuses": "2.1.3",
     "electron": "43.1.0",
     "electron-builder": "26.15.3",
-    "playwright": "1.61.1",
     "tsup": "8.5.1",
     "typescript": "6.0.2",
     "vitest": "4.1.10"

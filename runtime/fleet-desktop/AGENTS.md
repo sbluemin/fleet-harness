@@ -10,7 +10,7 @@
 | `src/runtime/` | Managed Node and Console procurement and supervision |
 | `assets/entry/` | Passive bootstrap status surface |
 | `scripts/`, `build/` | Packaging and release policy |
-| `tests/`, `e2e/` | Shell, ownership, packaging, and live runtime contracts |
+| `tests/` | Shell, ownership, packaging, and live runtime contracts |
 
 ## Constraints
 
