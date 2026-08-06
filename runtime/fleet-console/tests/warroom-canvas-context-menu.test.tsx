@@ -25,6 +25,9 @@ import { isTriageDeckMapMode, resetTriageDeckZoomForTests, resetTriageTheater, s
 import type { ConsoleState, OperationNode } from "../core/client/src/types.js";
 
 const THEATER_A = "theater-a";
+// War Room은 전 Theater를 한 판에 얹는다 — 밴드가 자기 Theater를 소유하는지는 활성 Theater가
+// 아닌 밴드에서만 드러난다. 두 밴드가 같은 이름이면 밴드 소유와 캔버스 폴백이 구별되지 않는다.
+const THEATER_B = "theater-b";
 const OPERATION: OperationNode = {
   id: "operation-a",
   theaterId: THEATER_A,
@@ -34,6 +37,12 @@ const OPERATION: OperationNode = {
   payload: {},
   geometry: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 },
   ts: { createdAt: 0, updatedAt: 0 },
+};
+const OPERATION_B: OperationNode = {
+  ...OPERATION,
+  id: "operation-b",
+  theaterId: THEATER_B,
+  title: "Operation B",
 };
 const CATALOG = [{ id: "test-plugin", title: "Test", kinds: [{ id: "shell", type: "shell", title: "Shell" }] }];
 let root: Root | null = null;
@@ -59,6 +68,7 @@ afterEach(() => {
   resetTriageDeckZoomForTests();
   setTriageActive(false);
   resetTriageTheater(THEATER_A);
+  resetTriageTheater(THEATER_B);
   loadForTheater(null);
   container?.remove();
   root = null;
@@ -87,6 +97,54 @@ describe("War Room canvas controls reach", () => {
       expect(opened?.querySelector('[data-operation-launch-kind="shell"]')).not.toBeNull();
       act(() => { window.dispatchEvent(new Event("canvas-context-menu-close")); });
       expect(container!.querySelector(".canvas-context-menu")).toBeNull();
+    }
+  });
+
+  // 위 경우는 <main>에 직접 이벤트를 놓는다 — 진입 커튼(1.9초) 동안에는 덱이 아예 렌더되지 않으므로
+  // 그때의 <main>은 맨바닥이고, 실제 제품에서 커서가 닿는 표면은 그 판을 덮은 덱이다. 커튼을 걷어
+  // 덱을 세운 뒤 덱 자신의 빈 자리에서 우클릭해야 "밀도가 실행 진입점을 없애지 않는다"가 검증된다.
+  it("reaches canvas controls from the deck's own empty space once the entry curtain lifts", () => {
+    vi.useFakeTimers();
+    try {
+      renderCanvas();
+      // 진입 커튼이 걷혀야 덱이 선다(커튼 중에는 TriageWatchDeck이 null을 낸다).
+      act(() => { vi.advanceTimersByTime(2_000); });
+
+      const deck = container!.querySelector<HTMLElement>(".canvas-triage-deck");
+      expect(deck, "deck must be mounted once the curtain lifts").not.toBeNull();
+
+      for (const zoom of [1.0, 1.6]) {
+        act(() => setTriageDeckZoom(zoom));
+        // 밴드 사이 여백·판 바닥은 덱이 덮은 자리지만 주인이 없다 — 여기서 시작한 우클릭이
+        // 캔버스까지 버블해 캔버스 제어를 열어야 한다.
+        const grid = container!.querySelector<HTMLElement>(".canvas-triage-deck-grid")!;
+        const menu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 120, clientY: 240 });
+        act(() => grid.dispatchEvent(menu));
+        expect(menu.defaultPrevented, `deck zoom ${zoom}`).toBe(true);
+        const opened = container!.querySelector(".canvas-context-menu");
+        expect(opened, `deck zoom ${zoom}`).not.toBeNull();
+        expect(opened?.querySelector('[data-operation-launch-kind="shell"]')).not.toBeNull();
+        act(() => { window.dispatchEvent(new Event("canvas-context-menu-close")); });
+      }
+
+      // 밴드는 자기 Theater를 소유한다 — 활성 Theater(Alpha)가 아닌 밴드에서 열어야 그 소유가
+      // 드러난다. Alpha 밴드에서 재면 밴드가 핸들러를 잃어도 캔버스 폴백이 같은 Alpha를 띄워
+      // 통과하므로, 엉뚱한 Theater로 실행되는 회귀를 이 단언이 못 잡는다.
+      act(() => setTriageDeckZoom(1.0));
+      const bands = [...container!.querySelectorAll<HTMLElement>(".canvas-triage-deck-band")];
+      expect(bands.length, "card density must render one band per theater").toBe(2);
+      const betaBand = bands.find((candidate) =>
+        candidate.querySelector(".canvas-triage-deck-band-label")?.textContent === "Beta");
+      expect(betaBand, "the non-active Theater must own its own band").not.toBeUndefined();
+      const bandMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 140, clientY: 260 });
+      act(() => betaBand!.dispatchEvent(bandMenu));
+      expect(bandMenu.defaultPrevented).toBe(true);
+      const bandHead = container!.querySelector(".canvas-context-menu-head-text")?.textContent;
+      expect(bandHead).toContain("Beta");
+      expect(bandHead).not.toContain("Alpha");
+    } finally {
+      act(() => { window.dispatchEvent(new Event("canvas-context-menu-close")); });
+      vi.useRealTimers();
     }
   });
 
@@ -152,14 +210,14 @@ const STATE: ConsoleState = {
   requestedPort: null,
   effectivePort: 0,
   portHonored: true,
-  theaters: [{ id: THEATER_A, label: "Alpha" }],
-  operations: [OPERATION],
+  theaters: [{ id: THEATER_A, label: "Alpha" }, { id: THEATER_B, label: "Beta" }],
+  operations: [OPERATION, OPERATION_B],
   operationsHydrated: true,
   groups: [],
   activeTheaterId: THEATER_A,
   activeOperationId: OPERATION.id,
   activeOperationAcknowledged: true,
-  operationStatus: { [OPERATION.id]: "awaiting" },
+  operationStatus: { [OPERATION.id]: "awaiting", [OPERATION_B.id]: "awaiting" },
   addingTheater: false,
   theaterError: null,
   operationsViewActive: true,
