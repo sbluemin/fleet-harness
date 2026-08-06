@@ -1,4 +1,4 @@
-import { closeSync, mkdirSync, mkdtempSync, openSync, realpathSync, rmSync } from "node:fs";
+import { chmodSync, closeSync, mkdirSync, mkdtempSync, openSync, realpathSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -17,7 +17,7 @@ describe("global package updater", () => {
 
   it("npm 글로벌 루트 안의 현재 패키지를 감지한다", async () => {
     const binDir = makeTempDir();
-    const npmBin = touch(path.join(binDir, "npm"));
+    const npmBin = touchExecutable(path.join(binDir, "npm"));
     const globalRoot = makeTempDir();
     const packageRoot = path.join(globalRoot, PACKAGE_NAMES[0]);
     mkdirSync(packageRoot, { recursive: true });
@@ -193,8 +193,9 @@ function makeTempDir(): string {
   return dir;
 }
 
-function touch(filePath: string): string {
+function touchExecutable(filePath: string): string {
   closeSync(openSync(filePath, "w"));
+  chmodSync(filePath, 0o755);
   return filePath;
 }
 
