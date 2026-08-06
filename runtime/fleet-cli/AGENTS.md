@@ -1,25 +1,19 @@
 # Fleet CLI
 
-`runtime/fleet-cli` is the `fleet` terminal host and CLI runtime composition root. It embeds an Agent CLI process in the Fleet TUI.
+`runtime/fleet-cli` is the `fleet` terminal host and CLI runtime composition root. It launches gateway-doctrine Claude Code as a native child process.
 
 ## Directory index
 
 | Directory | Responsibility |
 |---|---|
-| `src/runtime/` | Host assembly and lifecycle |
-| `src/mission-control/` | Upper interaction layer, launcher, options, and panels |
-| `src/mission-bridge/` | Lower Fleet status and Job Bar domain |
-| `src/controls/` | Input, PTY, panel, mouse, resize, and render adapters |
-| `src/tui/`, `src/styles/` | Host-owned terminal renderer and visual vocabulary |
-| `src/agent-cli/`, `src/update/` | Child integration and CLI-specific update lifecycle |
-| `tests/` | Host, terminal, and composition contracts |
+| `src/runtime/` | Fleet MCP, settings, quota, and wire-log composition |
+| `src/gateway/` | Loopback AI-gateway server and Claude Code child lifecycle |
+| `src/auth/`, `src/update/` | CLI subcommands |
+| `src/styles/` | Help output formatting |
+| `tests/` | Host composition, launch, auth, update, and release contracts |
 
 ## Constraints
 
-- Assembly flows one way through public Admiral and core capabilities. Carrier personas, generic execution, infrastructure, and launch policy remain in their owning packages.
-- Service construction is explicit; lower layers must not reach into CLI state or receive host UI objects as domain dependencies.
-- A Fleet CLI process has one in-process Fleet MCP runtime; main and executor isolation is session- and token-based, not server-per-session.
-- The host embeds an upper Agent CLI PTY over a lower Fleet pane.
-- After launch, input belongs to the active child PTY. Do not introduce Fleet-owned global mode or exit shortcuts.
+- The host composes a thin native launch: one in-process Fleet MCP runtime (host-session tools only), one loopback AI-gateway HTTP server, and one Claude Code child spawned with inherited stdio. No PTY, no TUI, and no terminal input/output interception belong in this host.
+- Reusable behavior enters through declared package exports (fleet-admiral launch/runtime policy; core-ai-gateway serving, quota, and settings). This host owns only composition, argv dispatch, and process lifecycle.
 - Fleet Console is a peer host; Fleet CLI must not embed Console lifecycle or depend on the Console package for CLI commands.
-- Treat `process.env` as read-only; derive child-specific environment copies instead of mutating process-global state.

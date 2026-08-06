@@ -8,7 +8,6 @@ export default defineConfig({
   dts: true,
   target: "node20",
   noExternal: [/^@dotobokuri\/core-process(\/|$)/, /^@dotobokuri\//],
-  external: ["node-pty"],
   splitting: false,
   clean: true,
   sourcemap: true
