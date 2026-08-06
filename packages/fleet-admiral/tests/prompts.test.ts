@@ -271,6 +271,21 @@ describe("Admiral prompts", () => {
     }
     expect(prompt).toContain("## Orchestration Policy");
     expect(prompt).toContain("assumption-audit");
+    // Pre-engagement 게이트는 제품 의도 모호성 전용이다. 이 경계 문장이 빠지면 하네스의
+    // 자율 실행 기본값과 정면충돌해, 세션마다 실행 층위 선택을 두고 중재를 재수행한다.
+    expect(prompt).toContain("This gate binds product-intent ambiguity only");
+    expect(prompt).toContain("follow the harness's autonomous-execution default");
+    // AGENTS.md 수동 선로딩은 하네스의 CLAUDE.md 자동 주입과 중복이었다(실측: 수동 Read
+    // 직후 같은 내용이 재주입됨). gateway 경로는 링크 부재·미표면화 쓰기 경로만 직접 읽는다.
+    expect(prompt).toContain("The harness auto-surfaces a directory's linked CLAUDE.md doctrine");
+    expect(prompt).not.toContain("Before touching any directory, load the AGENTS.md doctrine files");
+    expect(prompt).toContain("deepest applicable file wins on conflict");
+    // Anchor recall 은 재진입 장비다 — 매 경계 의례로 되돌아오면 상시 출력 비용이 복귀한다.
+    expect(prompt).toContain("output only at re-entry points");
+    expect(prompt).not.toContain("Before entering each decision boundary, output exactly one short line");
+    expect(prompt).not.toContain("no more than 3 changed lines");
+    // 하네스 프롬프트가 이미 가르치는 deferred-tool 기제는 재서술하지 않는다.
+    expect(prompt).not.toContain("Tools may be lazy-loaded");
     // 실행자를 지칭하는 어휘 없이 워크플로 스테이지로만 실행을 기술한다.
     for (const marker of EXECUTOR_NAMING_MARKERS) {
       expect(prompt).not.toContain(marker);
