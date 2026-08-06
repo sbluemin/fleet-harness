@@ -3,6 +3,7 @@ export {
   type SystemPromptBuilder,
   type SystemPromptBuildOptions,
 } from "./prompts/index.js";
+export { buildGatewaySystemPrompt } from "./prompts/gateway.js";
 export {
   resolveDoctrineFromCliId,
   type AdmiralDoctrine,
@@ -47,6 +48,10 @@ export {
   validateOpencodeGoAuthKey,
 } from "./ai-gateway/auth.js";
 export type { AuthKeyValidationResult } from "./ai-gateway/auth.js";
+export {
+  prepareAiGatewayLaunchProfile,
+  type AiGatewayLaunchEnvOptions,
+} from "./ai-gateway/launch-env.js";
 
 // AI Gateway 모델 로드아웃 — 호스트가 Phase에 모델/강도를 배치할 때 참조하는 로스터
 export {
@@ -118,6 +123,11 @@ export {
   type FleetAgentRuntimeServices,
   type FleetAgentRuntimeToolRegistration,
 } from "./agent-runtime/index.js";
+export {
+  createFleetGatewayAgentRuntimeLifecycle,
+  type FleetGatewayAgentRuntimeLifecycle,
+  type FleetGatewayAgentRuntimeLifecycleDeps,
+} from "./agent-runtime/gateway-runtime.js";
 
 // Carrier result reminder 주입 종단
 export {

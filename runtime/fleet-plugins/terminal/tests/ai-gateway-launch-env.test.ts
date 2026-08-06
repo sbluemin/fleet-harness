@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { applyAiGatewayEnv } from "../server/agent-api/launch.js";
+import { prepareAiGatewayLaunchProfile } from "@dotobokuri/fleet-admiral";
 import { resolveAiGatewaySelection } from "@dotobokuri/core-ai-gateway";
 
 const temporaryDirectories: string[] = [];
@@ -29,9 +29,8 @@ describe("Claude gateway launch environment", () => {
       env: { CLAUDE_CONFIG_DIR: configDir },
       terminalName: "xterm-256color",
     } as const;
-    const configured = applyAiGatewayEnv(profile, {
-      routePath: "/plugins/terminal/ai-gateway",
-      origin: () => "http://127.0.0.1:4310",
+    const configured = prepareAiGatewayLaunchProfile(profile, {
+      baseUrl: "http://127.0.0.1:4310/plugins/terminal/ai-gateway",
     });
 
     expect(configured.env).toMatchObject({
@@ -55,7 +54,7 @@ describe("Claude gateway launch environment", () => {
       ],
       defaultModel: "cursor--claude-opus-5",
     });
-    const configured = applyAiGatewayEnv({
+    const configured = prepareAiGatewayLaunchProfile({
       id: "claude-gateway",
       label: "Claude Gateway",
       bin: "claude",
@@ -64,9 +63,9 @@ describe("Claude gateway launch environment", () => {
       env: { CLAUDE_CONFIG_DIR: configDir },
       terminalName: "xterm-256color",
     } as const, {
-      routePath: "/plugins/terminal/ai-gateway",
-      origin: () => "http://127.0.0.1:4310",
-    }, selection);
+      baseUrl: "http://127.0.0.1:4310/plugins/terminal/ai-gateway",
+      selection,
+    });
 
     expect(configured.env.ANTHROPIC_MODEL).toBe("claude-gateway--cursor--claude-opus-5[1m]");
     // effort는 Claude Code 소관이다 — launch env는 건드리지 않는다.
@@ -95,7 +94,7 @@ describe("Claude gateway launch environment", () => {
         { id: "codex--gpt-5.6-luna-fast" },
       ],
     });
-    applyAiGatewayEnv({
+    prepareAiGatewayLaunchProfile({
       id: "claude-gateway",
       label: "Claude Gateway",
       bin: "claude",
@@ -104,9 +103,9 @@ describe("Claude gateway launch environment", () => {
       env: { CLAUDE_CONFIG_DIR: configDir },
       terminalName: "xterm-256color",
     } as const, {
-      routePath: "/plugins/terminal/ai-gateway",
-      origin: () => "http://127.0.0.1:4310",
-    }, selection);
+      baseUrl: "http://127.0.0.1:4310/plugins/terminal/ai-gateway",
+      selection,
+    });
 
     const cache = JSON.parse(readFileSync(path.join(configDir, "cache", "gateway-models.json"), "utf8")) as {
       readonly models: readonly { readonly id: string }[];
@@ -123,7 +122,7 @@ describe("Claude gateway launch environment", () => {
     const configDir = mkdtempSync(path.join(os.tmpdir(), "fleet-ai-gateway-claude-"));
     temporaryDirectories.push(configDir);
 
-    applyAiGatewayEnv({
+    prepareAiGatewayLaunchProfile({
       id: "claude-gateway",
       label: "Claude Gateway",
       bin: "claude",
@@ -132,9 +131,9 @@ describe("Claude gateway launch environment", () => {
       env: { CLAUDE_CONFIG_DIR: configDir },
       terminalName: "xterm-256color",
     } as const, {
-      routePath: "/plugins/terminal/ai-gateway",
-      origin: () => "http://127.0.0.1:4310",
-    }, resolveAiGatewaySelection({ version: 1 }));
+      baseUrl: "http://127.0.0.1:4310/plugins/terminal/ai-gateway",
+      selection: resolveAiGatewaySelection({ version: 1 }),
+    });
 
     const cache = JSON.parse(readFileSync(path.join(configDir, "cache", "gateway-models.json"), "utf8")) as {
       readonly models: readonly { readonly id: string }[];
@@ -151,7 +150,7 @@ describe("Claude gateway launch environment", () => {
       models: [{ id: "kimi--k3-256k" }],
       defaultModel: "kimi--k3-256k",
     });
-    const configured = applyAiGatewayEnv({
+    const configured = prepareAiGatewayLaunchProfile({
       id: "claude-gateway",
       label: "Claude Gateway",
       bin: "claude",
@@ -160,9 +159,9 @@ describe("Claude gateway launch environment", () => {
       env: { CLAUDE_CONFIG_DIR: configDir, ANTHROPIC_MODEL: "claude-gateway--codex--gpt-5.6-sol[1m]" },
       terminalName: "xterm-256color",
     } as const, {
-      routePath: "/plugins/terminal/ai-gateway",
-      origin: () => "http://127.0.0.1:4310",
-    }, selection);
+      baseUrl: "http://127.0.0.1:4310/plugins/terminal/ai-gateway",
+      selection,
+    });
 
     expect(configured.env.ANTHROPIC_MODEL).toBe("claude-gateway--codex--gpt-5.6-sol[1m]");
   });
