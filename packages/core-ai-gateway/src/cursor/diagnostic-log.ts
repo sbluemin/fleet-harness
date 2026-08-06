@@ -8,12 +8,12 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 
-import { REASONING_EFFORTS } from "@dotobokuri/core-ai-gateway";
+import { REASONING_EFFORTS } from "../canonical/index.js";
 import type {
   CursorDiagnosticEvent,
   CursorDiagnosticEventName,
   CursorDiagnosticSink,
-} from "@dotobokuri/core-ai-gateway";
+} from "./native/adapter.js";
 
 const DEFAULT_CURSOR_DIAGNOSTIC_MAX_BYTES = 4 * 1024 * 1024;
 const CURSOR_DIAGNOSTIC_FILE = "cursor-diagnostics.jsonl";
@@ -57,11 +57,10 @@ export interface CursorDiagnosticLog {
  * discard. Writes are serialized, bounded to one backup, and deliberately fail-open.
  */
 export function createCursorDiagnosticLog(
-  pluginDataDir: string,
+  dir: string,
   options: CursorDiagnosticLogOptions = {},
 ): CursorDiagnosticLog {
-  const directory = path.join(pluginDataDir, "ai-gateway");
-  const logPath = path.join(directory, CURSOR_DIAGNOSTIC_FILE);
+  const logPath = path.join(dir, CURSOR_DIAGNOSTIC_FILE);
   const backupPath = `${logPath}.1`;
   const maxBytes = positiveInteger(options.maxBytes) ?? DEFAULT_CURSOR_DIAGNOSTIC_MAX_BYTES;
   let initialized = false;
@@ -70,8 +69,8 @@ export function createCursorDiagnosticLog(
 
   const initialize = async (): Promise<void> => {
     if (initialized) return;
-    await mkdir(directory, { recursive: true, mode: 0o700 });
-    await chmod(directory, 0o700);
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    await chmod(dir, 0o700);
     try {
       const file = await stat(logPath);
       currentBytes = file.size;

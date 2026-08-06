@@ -2,10 +2,10 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import os from "node:os";
 import path from "node:path";
 
-import type { CursorDiagnosticEvent } from "@dotobokuri/core-ai-gateway";
+import type { CursorDiagnosticEvent } from "../../src/cursor/native/adapter.js";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createCursorDiagnosticLog } from "../server/ai-gateway-diagnostics.js";
+import { createCursorDiagnosticLog } from "../../src/cursor/diagnostic-log.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -18,7 +18,7 @@ afterEach(async () => {
 describe("Cursor diagnostic log", () => {
   it("does not create its directory until an enabled trace writes an event", async () => {
     const root = await temporaryDirectory();
-    const log = createCursorDiagnosticLog(root);
+    const log = createCursorDiagnosticLog(path.join(root, "ai-gateway"));
 
     await log.flush();
 
@@ -36,7 +36,7 @@ describe("Cursor diagnostic log", () => {
     const activeBefore = await stat(activePath);
     const backupBefore = await stat(backupPath);
 
-    const log = createCursorDiagnosticLog(root);
+    const log = createCursorDiagnosticLog(path.join(root, "ai-gateway"));
     await log.flush();
 
     expect(await readFile(activePath, "utf8")).toBe("active evidence\n");
@@ -47,7 +47,7 @@ describe("Cursor diagnostic log", () => {
 
   it("persists only allowlisted fields with private filesystem permissions", async () => {
     const root = await temporaryDirectory();
-    const log = createCursorDiagnosticLog(root);
+    const log = createCursorDiagnosticLog(path.join(root, "ai-gateway"));
     const event = diagnosticEvent({
       event: "server.frame",
       model: "claude-opus-5",
@@ -86,7 +86,7 @@ describe("Cursor diagnostic log", () => {
 
   it("keeps one bounded backup when the active file reaches its limit", async () => {
     const root = await temporaryDirectory();
-    const log = createCursorDiagnosticLog(root, { maxBytes: 400 });
+    const log = createCursorDiagnosticLog(path.join(root, "ai-gateway"), { maxBytes: 400 });
 
     for (let index = 1; index <= 3; index += 1) {
       log.write(diagnosticEvent({
@@ -107,7 +107,7 @@ describe("Cursor diagnostic log", () => {
 
   it("persists semantic stall timeouts for hung Cursor turns", async () => {
     const root = await temporaryDirectory();
-    const log = createCursorDiagnosticLog(root);
+    const log = createCursorDiagnosticLog(path.join(root, "ai-gateway"));
 
     log.write(diagnosticEvent({
       event: "transport.semantic_timeout",
@@ -129,7 +129,7 @@ describe("Cursor diagnostic log", () => {
 
   it("persists mid-session model switches without raw session identifiers", async () => {
     const root = await temporaryDirectory();
-    const log = createCursorDiagnosticLog(root);
+    const log = createCursorDiagnosticLog(path.join(root, "ai-gateway"));
 
     log.write(diagnosticEvent({
       event: "model.switch",
@@ -154,7 +154,7 @@ describe("Cursor diagnostic log", () => {
 
   it("persists payload-free live bridge lifecycle diagnostics", async () => {
     const root = await temporaryDirectory();
-    const log = createCursorDiagnosticLog(root);
+    const log = createCursorDiagnosticLog(path.join(root, "ai-gateway"));
 
     log.write({
       ...diagnosticEvent({

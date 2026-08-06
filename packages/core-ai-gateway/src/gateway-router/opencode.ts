@@ -1,21 +1,20 @@
+import { AnthropicMessagesGateway } from "../anthropic/gateway.js";
+import type { AnthropicMessagesRequest } from "../anthropic/protocol.js";
 import {
-  AnthropicMessagesGateway,
-  OPENCODE_GO_MESSAGES_URL,
   createOpencodeGoAdapter,
-  opencodeAnthropicHeaders,
+  OPENCODE_GO_MESSAGES_URL,
   opencodeGoWire,
+} from "../opencode-go/index.js";
+import {
+  opencodeAnthropicHeaders,
   opencodeRequestBody,
-} from "@dotobokuri/core-ai-gateway";
-import type {
-  AnthropicMessagesRequest,
-  GatewayModel,
-  GatewayModelWire,
-} from "@dotobokuri/core-ai-gateway";
+} from "../opencode-go/anthropic/index.js";
+import type { GatewayModel, GatewayModelWire } from "../models.js";
 
 import {
   proxyAnthropicMessages,
   type GatewayProxyResponse,
-} from "./ai-gateway-proxy.js";
+} from "./proxy.js";
 
 /**
  * OpenCode Go provider의 서버측 소유 모듈.

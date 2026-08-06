@@ -1,9 +1,7 @@
-import {
-  eagerAnthropicRequestBody,
-  projectAnthropicResponseUsage,
-  withSseKeepAlive,
-} from "@dotobokuri/core-ai-gateway";
-import type { AnthropicMessagesRequest } from "@dotobokuri/core-ai-gateway";
+import { projectAnthropicResponseUsage } from "../anthropic/claude-context.js";
+import { eagerAnthropicRequestBody } from "../anthropic/passthrough.js";
+import { withSseKeepAlive } from "../transport/sse-keepalive.js";
+import type { AnthropicMessagesRequest } from "../anthropic/protocol.js";
 
 // 도구 eager 정규화는 core-ai-gateway 소유로 이전됐다. 기존 런타임 소비자(ai-gateway-routes)를
 // 위해 이 모듈의 이름으로 재수출한다.
