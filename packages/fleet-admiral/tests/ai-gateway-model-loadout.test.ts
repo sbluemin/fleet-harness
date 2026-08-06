@@ -2,7 +2,6 @@ import {
   CURSOR_SUBSCRIPTION_MODELS,
   GATEWAY_MODELS,
   findGatewayModel,
-  gatewayModelIdentity,
   type GatewayModel,
 } from "@dotobokuri/core-ai-gateway";
 import { describe, expect, it } from "vitest";
@@ -10,7 +9,6 @@ import { describe, expect, it } from "vitest";
 import { buildGatewayCustomAgents } from "../src/agent-cli/gateway-agents.js";
 import { buildGatewayModelsToolSpec, GATEWAY_MODELS_TOOL_ID } from "../src/ai-gateway/gateway-models-tool.js";
 import { buildGatewayLoadout, type GatewayLoadout } from "../src/ai-gateway/model-loadout.js";
-import { declaredRoleFitIdentities, gatewayRoleFit } from "../src/ai-gateway/role-fit.js";
 import { isHostSessionToolAllowed } from "../src/tools.js";
 
 function allModels(loadout: ReturnType<typeof buildGatewayLoadout>) {
@@ -85,45 +83,14 @@ describe("gateway loadout agent type selectors", () => {
   });
 });
 
-describe("gateway role fit declarations", () => {
-  it("names only identities the catalog still contains", () => {
-    // roleFit은 카탈로그와 별도 파일에 산다. 모델이 사라지거나 upstream id가 바뀌면
-    // 선언은 조용히 고아가 되고, 아무 모델에도 붙지 않은 채 남는다.
-    const known = new Set(GATEWAY_MODELS.map((entry) => gatewayModelIdentity(entry)));
-    for (const identity of declaredRoleFitIdentities()) {
-      expect(known.has(identity), `orphaned role-fit identity: ${identity}`).toBe(true);
-    }
+describe("gateway loadout quality signal", () => {
+  it("carries no per-model measurement table alongside the class prior", () => {
+    // roleFit 측정 테이블은 capabilityClass 로 대체·폐기됐다. 로스터에 되살아나면
+    // 품질 어휘가 두 벌이 되어, 판단석 배정이 어느 축을 읽을지 갈라진다.
+    const loadout = buildGatewayLoadout({ exposed: [model("codex--gpt-5.6-sol")] });
+    expect(JSON.stringify(loadout)).not.toContain("roleFit");
   });
 
-  it("carries re-checkable evidence and an observation date on every claim", () => {
-    for (const identity of declaredRoleFitIdentities()) {
-      const fit = gatewayRoleFit(identity);
-      expect(fit).toBeDefined();
-      for (const entry of Object.values(fit ?? {})) {
-        expect(entry.evidence.length).toBeGreaterThan(24);
-        expect(entry.measuredAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-      }
-    }
-  });
-
-  it("reaches a model through its service-tier sibling's identity", () => {
-    // codex--gpt-5.6-sol-fast는 sol과 같은 upstream이므로 sol에 대한 측정이 그대로 적용된다.
-    const sol = gatewayRoleFit(gatewayModelIdentity(model("codex--gpt-5.6-sol")));
-    // 선언이 사라지면 양쪽이 undefined가 되어 toEqual이 그대로 통과한다.
-    // sibling 전파를 검사하려면 원본이 존재한다는 것부터 고정해야 한다.
-    expect(sol).toBeDefined();
-    expect(gatewayRoleFit(gatewayModelIdentity(model("codex--gpt-5.6-sol-fast")))).toEqual(sol);
-  });
-
-  it("still declares the measurements the table was written to carry", () => {
-    // 위 두 검사는 declaredRoleFitIdentities()를 순회하므로 ROLE_FIT이 비면 루프가 0회 돌고
-    // vacuous pass한다 — 측정을 통째로 지워도 green이었다. 표가 비지 않았음을 직접 고정한다.
-    const identities = declaredRoleFitIdentities();
-    expect(identities.length).toBeGreaterThan(0);
-    for (const identity of identities) {
-      expect(Object.keys(gatewayRoleFit(identity) ?? {}).length).toBeGreaterThan(0);
-    }
-  });
 });
 
 describe("gateway loadout", () => {
@@ -136,11 +103,6 @@ describe("gateway loadout", () => {
     // 사용자가 끈 선택이 오류 없이 뒤집힌다.
     const ids = allModels(loadout).map((entry) => entry.modelId);
     expect(ids.some((id) => id.includes("claude-opus-5"))).toBe(false);
-  });
-
-  it("keeps an unmeasured axis null rather than implying a verdict", () => {
-    const loadout = buildGatewayLoadout({ exposed: [model("cursor--grok-4.5-fast")] });
-    expect(allModels(loadout)[0]?.roleFit).toBeNull();
   });
 
   it("reports an unreadable allowance as unsupported instead of omitting it", () => {
@@ -209,6 +171,16 @@ describe("gateway loadout", () => {
       const loadout = buildGatewayLoadout({ exposed: [cursorModel] });
       expect(allModels(loadout)[0]?.constraints.quotaScope).toBeDefined();
     }
+  });
+
+  it("carries the provider-stated capability class into constraints", () => {
+    const loadout = buildGatewayLoadout({
+      exposed: [model("opencode--deepseek-v4-flash"), model("codex--gpt-5.6-sol")],
+    });
+    // 판단석 배정의 prior 가 로스터에서 빠지면 호스트는 이름 문자열로 등급을 추측하게 된다.
+    const classes = allModels(loadout).map((entry) => entry.constraints.capabilityClass);
+    expect(classes).toContain("light");
+    expect(classes).toContain("flagship");
   });
 });
 
@@ -419,11 +391,20 @@ describe("gateway_models tool doctrine", () => {
     expect(spec.whenNotToUse.join("\n")).not.toContain("when every stage will inherit the session model");
   });
 
-  it("sends an unmeasured axis to allowance instead of back to the session model", () => {
+  it("makes capabilityClass the roster's only quality signal, never the session model", () => {
     const guidelines = doctrine().usageGuidelines.join("\n");
-    expect(guidelines).toContain("unmeasured, never unsuitable");
-    expect(guidelines).toContain("the choice falls to allowance");
+    // 품질 축이 allowance 로 무너지던 것이 실측된 실패다: 판단 스테이지(propose)에 품질
+    // 신호가 없어 아키텍처 제안석이 light 모델로 균등 분배됐다. class 가 품질을 답하고,
+    // allowance 는 같은 class 동급 간에만 판정하며, 어느 질문도 세션 모델로 돌아가지 않는다.
+    expect(guidelines).toContain("the roster's only quality signal");
+    expect(guidelines).toContain("capabilityClass answers quality and allowance decides among class peers");
+    expect(guidelines).toContain("judgment seats keep to the highest reachable class");
+    expect(guidelines).toContain("neither question ever falls back to this session's own model");
+    expect(guidelines).not.toContain("the choice falls to allowance");
     expect(guidelines).not.toContain("it is not a reason to pin");
+    // 폐기된 측정 테이블 어휘가 도구 문언에 되살아나면 품질 신호가 두 벌이 된다.
+    expect(guidelines).not.toContain("roleFit");
+    expect(guidelines).not.toContain("role fit");
   });
 
   // claude 항목이 로스터 모델을 하나도 서빙하지 않는다는 사실과, 미핀 실행이 항상 claude 를

@@ -512,6 +512,7 @@ describe("model catalog", () => {
     legacyAutoCompactThreshold.providers.codex.models[0] = {
       modelId: "codex-model",
       name: "Model",
+      capabilityClass: "standard",
       contextWindow: 272_000,
       // 컴팩션 예산 분모는 폐기된 개념이다. 실제 창보다 작은 분모는 남은 용량을
       // 1M 좌표의 100% 위로 밀어내 Claude Code가 컴팩트할 수 없는 상태를 만든다.
@@ -523,6 +524,7 @@ describe("model catalog", () => {
     legacyEffortDefault.providers.codex.models[0] = {
       modelId: "codex-model",
       name: "Model",
+      capabilityClass: "standard",
       // 모델별 기본 effort는 폐기된 개념이다 — 잔존 필드는 strict 스키마가 거부한다.
       effort: { supported: true, levels: ["low", "high"], default: "high" },
     };
@@ -532,6 +534,7 @@ describe("model catalog", () => {
     duplicateEffort.providers.codex.models[0] = {
       modelId: "codex-model",
       name: "Model",
+      capabilityClass: "standard",
       effort: { supported: true, levels: ["low", "low"] },
     };
     expect(() => parseGatewayModelsRegistry(duplicateEffort)).toThrow(/levels contain duplicates/);
@@ -540,6 +543,7 @@ describe("model catalog", () => {
     missingCursorTemplate.providers.cursor.models[0] = {
       modelId: "cursor-model",
       name: "Model",
+      capabilityClass: "standard",
       effort: { supported: true, levels: ["low", "high"] },
     };
     missingCursorTemplate.providers.cursor.defaultModel = "cursor-model";
@@ -549,6 +553,7 @@ describe("model catalog", () => {
     invalidTemplate.providers.cursor.models[0] = {
       modelId: "cursor-model",
       name: "Model",
+      capabilityClass: "standard",
       effort: {
         supported: true,
         levels: ["low", "high"],
@@ -562,6 +567,7 @@ describe("model catalog", () => {
     invalidOverride.providers.cursor.models[0] = {
       modelId: "cursor-model",
       name: "Model",
+      capabilityClass: "standard",
       effort: {
         supported: true,
         levels: ["low", "high"],
@@ -625,9 +631,57 @@ describe("model catalog", () => {
     scopedCodex.providers.codex.models[0] = {
       modelId: "codex-model",
       name: "Model",
+      capabilityClass: "standard",
       quotaScope: "api",
     };
     expect(() => parseGatewayModelsRegistry(scopedCodex)).toThrow(/quota scope is only supported by Cursor/);
+  });
+
+  // capability class 는 판단석 배정의 prior 다. 미선언 모델이 조용히 통과하면 로스터에
+  // class 없는 항목이 생겨 보수적 독트린이 그 모델을 판단석에서 통째로 제외한다.
+  it("requires a capability class on every model except a routing alias", () => {
+    const missingClass = minimalRegistry();
+    missingClass.providers.codex.models[0] = { modelId: "codex-model", name: "Model" };
+    expect(() => parseGatewayModelsRegistry(missingClass)).toThrow(/missing a capability class/);
+
+    // 라우터는 호출마다 다른 모델을 서빙하므로 어떤 단일 class 도 거짓이 된다.
+    const classedRouter = minimalRegistry();
+    classedRouter.providers.cursor.models[0] = {
+      modelId: "auto",
+      name: "Auto",
+      providerModelId: "default",
+      capabilityClass: "flagship",
+    };
+    expect(() => parseGatewayModelsRegistry(classedRouter)).toThrow(/routing alias cannot carry a capability class/);
+
+    // 서비스 티어 형제는 같은 upstream 이다 — class 가 갈리면 티어가 prior 를 편집한다.
+    const tierDrift = minimalRegistry();
+    tierDrift.providers.codex.models = [
+      { modelId: "codex-model", name: "Model", capabilityClass: "flagship" },
+      {
+        modelId: "codex-model-fast",
+        name: "Model Fast",
+        providerModelId: "codex-model",
+        serviceTier: "priority",
+        capabilityClass: "light",
+      },
+    ];
+    expect(() => parseGatewayModelsRegistry(tierDrift)).toThrow(/sibling class differs from its base/);
+  });
+
+  it("classes every catalog model, light tiers included, and never the router", () => {
+    // 실측된 실패의 재발 방지: 아키텍처 Propose 석이 luna·deepseek-flash 로 균등
+    // 분배됐다. 이 둘은 provider 스스로 light 로 자리매김한 모델이다.
+    expect(findGatewayModel("codex--gpt-5.6-luna")?.capabilityClass).toBe("light");
+    expect(findGatewayModel("opencode--deepseek-v4-flash")?.capabilityClass).toBe("light");
+    expect(findGatewayModel("codex--gpt-5.6-sol")?.capabilityClass).toBe("flagship");
+    // -fast 는 같은 upstream 의 서비스 티어라 base 의 class 를 따른다.
+    expect(findGatewayModel("codex--gpt-5.6-sol-fast")?.capabilityClass).toBe("flagship");
+    expect(findGatewayModel("cursor--auto")?.capabilityClass).toBeUndefined();
+    for (const model of GATEWAY_MODELS) {
+      if (model.id === "cursor--auto") continue;
+      expect(model.capabilityClass, model.id).toBeDefined();
+    }
   });
 
   it("contains only the approved latest provider families", () => {
@@ -3566,7 +3620,9 @@ function baseRequest(): AnthropicMessagesRequest {
 
 function minimalRegistry() {
   const provider = (name: string, modelId: string) => {
-    const models: Array<Record<string, unknown>> = [{ modelId, name: "Model" }];
+    const models: Array<Record<string, unknown>> = [
+      { modelId, name: "Model", capabilityClass: "standard" },
+    ];
     return { name, defaultModel: modelId, source: "test fixture", models };
   };
   return {

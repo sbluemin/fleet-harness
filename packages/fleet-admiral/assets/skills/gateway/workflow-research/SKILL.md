@@ -1,9 +1,9 @@
 ---
-name: codebase-research
+name: workflow-research
 description: Answer a question about a codebase or an external subject by fanning out independent searches, reading sources directly, and separating what was verified from what was only claimed. Load before orchestrating reconnaissance across many files, subsystems, or external sources. Skip for a single lookup you can perform directly.
 ---
 
-# Codebase Research
+# Workflow — Research
 
 Reconnaissance whose product is **evidence, not a summary**. The run's value comes from covering angles a single reader would miss and from being explicit about what it failed to establish.
 
@@ -12,8 +12,8 @@ Executing this skeleton — the surface it runs on, the wiring between stages, a
 ## When Not To Use
 
 - A fact one grep or one file read settles. Fanning out costs more than the answer is worth.
-- Work that will change files. Use `implementation-run`.
-- Judging code that already exists against a standard. Use `quality-review`.
+- Work that will change files. Use `workflow-implementing`.
+- Judging code that already exists against a standard. Use `workflow-review`.
 
 ## Stage Skeleton
 
@@ -25,6 +25,10 @@ Executing this skeleton — the surface it runs on, the wiring between stages, a
 | Reconcile | synthesize | 1 | Merged findings, ranked, with contradictions kept visible |
 
 Run Sweep and Read as a pipeline. A barrier between them buys nothing: each candidate can be read the moment its angle finds it. Insert a barrier only before Reconcile, which genuinely needs the whole set.
+
+## Capability Classes
+
+Scope and Reconcile are the judgment seats: the angles Scope names bound everything the run can find, and Reconcile decides which claims survive and which contradictions stay visible. Each is a single seat, so the highest reachable `capabilityClass` costs one call (`workflow`, judgment regime). Sweep and Read are the wide mechanical fans — distribute them by allowance, where a `light`-class identity earns its keep.
 
 ## Rules
 

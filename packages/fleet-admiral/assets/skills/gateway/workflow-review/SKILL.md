@@ -1,9 +1,9 @@
 ---
-name: quality-review
+name: workflow-review
 description: Review existing code or a change set by splitting the work into independent dimensions, hunting within each, then adversarially verifying every finding before it is reported. Load before a correctness, security, or quality pass over a diff or subsystem. Skip when you already know the defect and only need it fixed.
 ---
 
-# Quality Review
+# Workflow — Review
 
 The output is a **judged finding list, not a fix list**. A reviewer that also repairs what it finds loses the independence that made the finding worth having, and repairs things that were never broken.
 
@@ -11,9 +11,9 @@ Executing this skeleton — the surface it runs on, the wiring between stages, a
 
 ## When Not To Use
 
-- The defect is known and only the repair remains. Use `implementation-run`.
-- Deciding between designs. Use `architecture-review`.
-- Establishing facts with no standard to judge against. Use `codebase-research`.
+- The defect is known and only the repair remains. Use `workflow-implementing`.
+- Deciding between designs. Use `workflow-architecting`.
+- Establishing facts with no standard to judge against. Use `workflow-research`.
 
 ## Stage Skeleton
 
@@ -25,6 +25,10 @@ Executing this skeleton — the surface it runs on, the wiring between stages, a
 | Adjudicate | — | **host only** | Confirmed / declined / deferred, with the reason |
 
 Pipeline Hunt into Verify — a dimension's findings can be verified while another dimension is still hunting. Nothing here needs a global barrier.
+
+## Capability Classes
+
+Split is the one fanned judgment seat — the dimensions it names bound everything the run can find — and it is a single call: give it the highest reachable `capabilityClass` (`workflow`, judgment regime). Hunt and Verify are mechanical: a finding is checked against code and a verification refutes a concrete scenario, and the role measurement separated no models on adversarial judgment — so those seats buy quality with distribution and lineage mixing, not class. Adjudicate stays on the host, where the only judgment that outranks a verifier's verdict lives.
 
 ## Dimensions Stay Separate
 
