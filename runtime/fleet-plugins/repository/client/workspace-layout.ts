@@ -10,8 +10,22 @@ export const WORKSPACE_TREE_DIVIDER_WIDTH = 4;
 // 트리를 줄여도 중앙(History/Changes) 영역이 유의미하게 남도록 하는 최소 보장 폭.
 export const WORKSPACE_MAIN_MIN_WIDTH = 180;
 
+// 검사기 독(파일 목록 ⇔ diff)의 폭 축. 저장값은 CSS 변수로만 주입한다 — 인라인
+// grid-template-columns는 좁은 독을 세로 스택으로 바꾸는 컨테이너 쿼리를 이겨버려
+// main 열 0 붕괴(PR#516에서 고친 선존 결함)를 되살린다.
+export const WORKSPACE_DOCK_FILES_DEFAULT_WIDTH = 250;
+export const WORKSPACE_DOCK_FILES_MIN_WIDTH = 150;
+export const WORKSPACE_DOCK_DIVIDER_WIDTH = 4;
+// diff 열의 최소 폭. CSS의 calc(100% - …) 보정값과 반드시 같은 값이어야 한다.
+// 독 메타 헤더는 고정 버튼들 때문에 오른쪽 210px를 비워 두므로, 그보다 넉넉해야 제목이 남는다.
+export const WORKSPACE_DOCK_MAIN_MIN_WIDTH = 340;
+// 두 최소폭과 디바이더가 모두 들어가는 최소 독 폭. 이보다 좁으면 좌우 분할 자체가 성립하지
+// 않으므로(디바이더가 보이는데 끌어도 움직이지 않는 구간이 생긴다) CSS가 세로 스택으로 넘긴다.
+export const WORKSPACE_DOCK_SPLIT_MIN_WIDTH = WORKSPACE_DOCK_FILES_MIN_WIDTH + WORKSPACE_DOCK_DIVIDER_WIDTH + WORKSPACE_DOCK_MAIN_MIN_WIDTH;
+
 export const PREFS_WORKSPACE_DOCK_HEIGHT = "fleet-console.repository.workspace.dockHeight";
 export const PREFS_WORKSPACE_TREE_WIDTH = "fleet-console.repository.workspace.treeWidth";
+export const PREFS_WORKSPACE_DOCK_FILES_WIDTH = "fleet-console.repository.workspace.dockFilesWidth";
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -60,6 +74,25 @@ export function clampWorkspaceTreeWidth(startWidth: number, pointerDeltaX: numbe
   const maximum = containerWidth - WORKSPACE_MAIN_MIN_WIDTH - WORKSPACE_TREE_DIVIDER_WIDTH;
   if (maximum < WORKSPACE_TREE_MIN_WIDTH) return null;
   return Math.max(WORKSPACE_TREE_MIN_WIDTH, Math.min(maximum, startWidth + pointerDeltaX));
+}
+
+export function readWorkspaceDockFilesWidth(storage?: StorageLike): number {
+  try {
+    const value = Number.parseFloat((storage ?? globalThis.localStorage).getItem(PREFS_WORKSPACE_DOCK_FILES_WIDTH) ?? "");
+    if (Number.isFinite(value) && value >= WORKSPACE_DOCK_FILES_MIN_WIDTH) return value;
+  } catch { /* best-effort preference */ }
+  return WORKSPACE_DOCK_FILES_DEFAULT_WIDTH;
+}
+
+export function saveWorkspaceDockFilesWidth(width: number, storage?: StorageLike): void {
+  try { (storage ?? globalThis.localStorage).setItem(PREFS_WORKSPACE_DOCK_FILES_WIDTH, String(width)); }
+  catch { /* best-effort preference */ }
+}
+
+export function clampWorkspaceDockFilesWidth(startWidth: number, pointerDeltaX: number, containerWidth: number): number | null {
+  const maximum = containerWidth - WORKSPACE_DOCK_MAIN_MIN_WIDTH - WORKSPACE_DOCK_DIVIDER_WIDTH;
+  if (maximum < WORKSPACE_DOCK_FILES_MIN_WIDTH) return null;
+  return Math.max(WORKSPACE_DOCK_FILES_MIN_WIDTH, Math.min(maximum, startWidth + pointerDeltaX));
 }
 
 export function readWorkspaceDockHeight(storage?: StorageLike): number {

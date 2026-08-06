@@ -93,6 +93,8 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--alpha-fill",
   // Repository Rail TSX injects the user-resized workspace tree width.
   "--ws-tree-width",
+  // Repository commit/compare inspector TSX injects the user-resized dock file-list width.
+  "--ws-dock-files-width",
   // Terminal Carriers TSX injects the selected captain identity tone.
   "--cap-color",
   // Canvas context menu TSX injects the viewport-derived height ceiling for its own box.

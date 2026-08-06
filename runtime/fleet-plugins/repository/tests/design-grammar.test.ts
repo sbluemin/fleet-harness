@@ -2,6 +2,8 @@ import fs from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
+import { WORKSPACE_DOCK_DIVIDER_WIDTH, WORKSPACE_DOCK_MAIN_MIN_WIDTH, WORKSPACE_DOCK_SPLIT_MIN_WIDTH } from "../client/workspace-layout.js";
+
 const css = await fs.readFile(new URL("../client/repository.css", import.meta.url), "utf8");
 
 interface CssRule {
@@ -157,6 +159,43 @@ describe("Repository design grammar", () => {
 
   it("retires legacy scan depth select chrome", () => {
     expect(css).not.toMatch(/\.repository-scan-depth\b/);
+  });
+
+  it("keeps commit subjects on one row at every container width", () => {
+    const subjects = blocksOf(".history-commit-subject");
+    // 행 높이는 그래프 gutter의 ROW_HEIGHT와 가상 스크롤 기하에 묶여 있다 — 줄바꿈은 둘 다 깨뜨린다.
+    for (const body of subjects) {
+      expect(body).not.toContain("line-clamp");
+      expect(body).not.toContain("white-space: normal");
+    }
+    expect(subjects.some((body) => body.includes("white-space: nowrap") && body.includes("text-overflow: ellipsis"))).toBe(true);
+  });
+
+  it("resizes the inspector dock through an injected width variable, not an inline track list", () => {
+    const [wide, stacked] = blocksOf(".repository-ws-dock");
+    expect(wide).toContain("var(--ws-dock-files-width, 250px)");
+    // 파일 열 · 4px 디바이더 · diff 열의 3트랙 문법.
+    expect(wide).toMatch(/grid-template-columns:[^;]*\)\) 4px minmax\(0, 1fr\)/);
+    // CSS 보정값과 JS 클램프가 어긋나면 한쪽만 diff 열을 지켜 준다.
+    expect(wide).toContain(`calc(100% - ${WORKSPACE_DOCK_MAIN_MIN_WIDTH + WORKSPACE_DOCK_DIVIDER_WIDTH}px)`);
+    // 좁은 독은 세로 스택으로 넘어가고, 그때 열 디바이더는 트랙 수를 어긋내므로 흐름에서 빠진다.
+    expect(stacked).toContain("grid-template-columns: minmax(0, 1fr)");
+    expect(blockOf(".repository-ws-dock > .repository-ws-dock-divider")).toContain("display: none");
+    // 스택 경계가 두 최소폭 합보다 좁으면 "보이는데 끌리지 않는" 디바이더 구간이 생긴다.
+    expect(css).toContain(`@container (width < ${WORKSPACE_DOCK_SPLIT_MIN_WIDTH}px)`);
+  });
+
+  it("lets the file column actually shrink to its grid track", () => {
+    // min-width/열 minmax가 빠지면 섹션이 min-content로 굳어 트랙을 무시하고 diff 열을 덮는다.
+    const files = blockOf(".history-commit-files");
+    expect(files).toContain("min-width: 0");
+    expect(files).toContain("grid-template-columns: minmax(0, 1fr)");
+  });
+
+  it("keeps the dock meta subject on one line", () => {
+    const meta = blockOf(".repository-ws-dock-meta .history-inspector-subject");
+    expect(meta).toContain("white-space: nowrap");
+    expect(meta).toContain("text-overflow: ellipsis");
   });
 
   it("keeps added and deleted rows monochromatic", () => {

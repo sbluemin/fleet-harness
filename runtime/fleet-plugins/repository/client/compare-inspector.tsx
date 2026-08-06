@@ -3,9 +3,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
 import type { CompareResult, DiffFileEntry } from "../server/types.js";
-import { FileRow } from "./changed-files.js";
+import { FileRow, FilesViewToggle, readFilesViewMode, saveFilesViewMode, type FilesViewMode } from "./changed-files.js";
 import { HunkView } from "./hunk-view.js";
 import { getT } from "./i18n/index.js";
+import { DiffTreeView } from "./repository-tree.js";
+import { WorkspaceDock } from "./workspace-dock.js";
 
 interface ComparePair {
   readonly base: string;
@@ -32,7 +34,12 @@ export function CompareInspector({ ctx, repoRel, pair, onSwap, onClose }: Compar
   const t = getT(ctx.language);
   const [state, setState] = useState<CompareInspectorState>({ kind: "loading" });
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [filesView, setFilesView] = useState<FilesViewMode>(readFilesViewMode);
   const requestSeqRef = useRef(0);
+  const chooseFilesView = (next: FilesViewMode) => {
+    setFilesView(next);
+    saveFilesViewMode(next);
+  };
 
   useEffect(() => {
     const seq = ++requestSeqRef.current;
@@ -74,17 +81,19 @@ export function CompareInspector({ ctx, repoRel, pair, onSwap, onClose }: Compar
         ? state.message === "no_merge_base" ? t("repository.compare.noMergeBase") : state.message
         : state.files.length === 0 ? t("repository.compare.noDifferences") : null;
 
-  return <div className="repository-ws-dock history-compare-inspector">
-    <span className="repository-sr-only" role="status">{state.kind === "ok" ? t("repository.compare.resultsAnnounce", { count: String(state.files.length) }) : ""}</span>
-    <section className="history-commit-files history-compare-files">
-      <div className="history-files-title history-compare-result-head"><span className="history-files-label">{t("repository.compare.resultTitle", { head: pair.headLabel, base: pair.baseLabel })}</span>{state.kind === "ok" && <span className="history-files-stats">{state.files.length} <i>+{additions}</i> <em>−{deletions}</em></span>}</div>
+  return <WorkspaceDock
+    t={t}
+    className="history-compare-inspector"
+    overlay={<span className="repository-sr-only" role="status">{state.kind === "ok" ? t("repository.compare.resultsAnnounce", { count: String(state.files.length) }) : ""}</span>}
+    files={<section className="history-commit-files history-compare-files">
+      <div className="history-files-title history-compare-result-head"><span className="history-files-label">{t("repository.compare.resultTitle", { head: pair.headLabel, base: pair.baseLabel })}</span>{state.kind === "ok" && <span className="history-files-stats">{state.files.length} <i>+{additions}</i> <em>−{deletions}</em></span>}<FilesViewToggle mode={filesView} onMode={chooseFilesView} t={t} /></div>
       {state.kind === "ok" && state.mergeBase && <div className="repository-compare-meta">{t("repository.compare.mergeBase")} <span>{state.mergeBase}</span></div>}
-      <div className="history-files-scroll">{state.kind === "ok" && state.files.map((file) => <FileRow key={file.path} entry={file} isSelected={file.path === selectedFile?.path} onSelect={(entry) => setSelectedPath(entry.path)} t={t} />)}</div>
+      <div className="history-files-scroll">{state.kind === "ok" && (filesView === "tree" ? <DiffTreeView files={state.files} selectedPath={selectedFile?.path ?? null} onSelect={(entry) => setSelectedPath(entry.path)} /> : state.files.map((file) => <FileRow key={file.path} entry={file} isSelected={file.path === selectedFile?.path} onSelect={(entry) => setSelectedPath(entry.path)} t={t} />))}</div>
       {state.kind === "ok" && state.truncated && <div className="history-truncated">{t("repository.compare.capped")}</div>}
-    </section>
-    <div className="repository-ws-dock-main">
+    </section>}
+    main={<div className="repository-ws-dock-main">
       <div className="repository-ws-dock-meta history-compare-meta"><span className="history-compare-pair">{pair.baseLabel} → {pair.headLabel}</span><button type="button" className="repository-compare-swap" title={t("repository.compare.swap")} aria-label={t("repository.compare.swap")} onClick={onSwap}>⇄</button><button type="button" className="history-detail-close repository-ws-dock-close" aria-label={t("repository.compare.closeCompare")} title={t("repository.compare.closeCompare")} onClick={onClose}>✕</button></div>
       {selectedFile && compareSelection ? <div className="history-file-diff"><div className="history-file-repository-head"><span title={selectedFile.path}>{selectedFile.path}</span></div><HunkView ctx={ctx} repoRel={repoRel} file={selectedFile} mode="unified" compare={compareSelection} /></div> : <div className="history-inspector-empty">{empty}</div>}
-    </div>
-  </div>;
+    </div>}
+  />;
 }
