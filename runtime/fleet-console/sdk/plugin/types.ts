@@ -112,6 +112,15 @@ export interface OperationKindDescriptor {
   readonly title: LocalizedText;
   readonly subtitle?: (operation: OperationNode) => string | undefined;
   readonly render?: (context: OperationRenderContext) => ReactNode;
+  /**
+   * Current height in panel pixels of fixed bottom chrome this body always paints below its live
+   * content (e.g. an agent CLI's input composer and status lines). A host preview that crops the
+   * body may push that band out of frame so the live area fills the preview. The host reads it
+   * each time it builds a preview, so a band that follows a user preference (a terminal font size,
+   * say) reports its height at that moment. Omit it when the body streams all the way to its
+   * bottom edge, as a bare terminal does.
+   */
+  readonly previewBottomChrome?: () => number;
   readonly companions?: readonly CompanionPanelDescriptor[];
   readonly canOpenCompanions?: (context: OperationCompanionAvailabilityContext) => boolean | Promise<boolean>;
 }

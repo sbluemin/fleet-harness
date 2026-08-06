@@ -9,7 +9,7 @@ import { defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import type { OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { TerminalSurface } from "../shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE } from "../shared/terminal-preferences.js";
-import { useTerminalPrefs, setInstalledTerminalFont, setTerminalRenderer, setTerminalFont, setTerminalFontSize } from "../shared/terminal-preferences.js";
+import { getTerminalPrefsSnapshot, useTerminalPrefs, setInstalledTerminalFont, setTerminalRenderer, setTerminalFont, setTerminalFontSize } from "../shared/terminal-preferences.js";
 import type { TerminalFontId, TerminalFontSettings, TerminalRenderer } from "../shared/terminal-preferences.js";
 import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
 import { AnalystChatPanel } from "./analysis-chat-panel.js";
@@ -92,12 +92,21 @@ function sortiePhaseText(phase: TrackPhase, t: ReturnType<typeof getT>): string 
   return t("terminal.sortie.phase.working");
 }
 
+// 상태줄 3행(cwd·모델·권한 모드) + 입력 컴포저 3행(테두리 2 + 프롬프트 1) + 사이 여백 1행.
+const AGENT_PREVIEW_CHROME_ROWS = 7;
+
 export const agentOperationKind = defineOperationKind({
   pluginId: "terminal",
   type: "agent",
   title: (locale) => getT(locale)("terminal.kind.agent"),
   subtitle: (operation) => readPayloadString(operation.payload, "cliLabel") ?? undefined,
   render: (context) => <AgentOperationView context={context} />,
+  // 에이전트 CLI TUI는 화면 바닥에 입력 컴포저와 상태줄(cwd·모델·권한 모드)을 고정으로 그린다 —
+  // 실행 중에도 갱신되지 않으므로 호스트 프리뷰는 이 밴드를 프레임 밖으로 밀어낼 수 있다.
+  // 밴드의 단위는 px가 아니라 행이다: 셀 높이가 글꼴 크기를 따르므로(TERMINAL_OPTIONS.lineHeight
+  // = 1) 현재 글꼴 크기를 곱해 지원 범위(10~22px) 어디서도 같은 행 수가 잘리게 한다.
+  // 순정 셸(shellOperationKind)은 바닥까지 출력이 흐르므로 이 값을 선언하지 않는다.
+  previewBottomChrome: () => AGENT_PREVIEW_CHROME_ROWS * getTerminalPrefsSnapshot().font.size,
   canOpenCompanions: () => true,
   companions: [
     { id: CARRIER_STREAMS_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.carrierStreams"), hideCaption: true, defaultHidden: true, available: operationSupportsCarrierStreams, shortcut: { code: "KeyC", label: "C" }, render: (context) => <CarrierStreamsPanel context={context} /> },

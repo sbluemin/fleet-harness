@@ -6,6 +6,7 @@ import { resolveTriageMapMarkerLayout } from "../core/client/src/canvas/triage-s
 import {
   resolveTriageMapQuicklookPlacement,
   resolveTriageMorphFrame,
+  resolveTriagePreviewFit,
   resolveTriageQuicklookOrigin,
   resolveTriageQuicklookScale,
   TRIAGE_MAP_QUICKLOOK_HEIGHT,
@@ -182,5 +183,50 @@ describe("resolveTriageMorphFrame", () => {
     const frame = resolveTriageMorphFrame(rect(0, 0, 0, 0), rect(10, 10, 14, 14));
     expect(Number.isFinite(frame.scale)).toBe(true);
     expect(Number.isFinite(frame.dx)).toBe(true);
+  });
+});
+
+describe("resolveTriagePreviewFit", () => {
+  // 에이전트 CLI kind가 선언하는 바닥 크롬(입력 컴포저 + 상태줄) 높이.
+  const AGENT_CHROME = 104;
+
+  it("pushes the declared bottom chrome out of frame and lands the output edge on the bottom", () => {
+    const fit = resolveTriagePreviewFit({ width: 200, height: 120 }, { width: 800, height: 600 }, AGENT_CHROME)!;
+    // 프레임 바닥에 닿는 것은 패널 바닥이 아니라 크롬을 뺀 출력 영역의 바닥이다.
+    expect(fit.top + (600 - AGENT_CHROME) * fit.scale).toBeCloseTo(120, 5);
+    // 상태줄·컴포저는 프레임 아래로 밀려난다.
+    expect(fit.top + 600 * fit.scale).toBeGreaterThan(120);
+  });
+
+  it("crops nothing for a body that declares no chrome", () => {
+    // 순정 셸·문서형 패널 — 바닥까지 출력이 흐르므로 최신 행이 프레임 안에 남아야 한다.
+    const fit = resolveTriagePreviewFit({ width: 200, height: 120 }, { width: 800, height: 600 })!;
+    expect(fit.top + 600 * fit.scale).toBeCloseTo(120, 5);
+    const explicitZero = resolveTriagePreviewFit({ width: 200, height: 120 }, { width: 800, height: 600 }, 0)!;
+    expect(explicitZero).toEqual(fit);
+  });
+
+  it("never opens a blank strip at the top", () => {
+    for (const viewport of [{ width: 200, height: 120 }, { width: 640, height: 400 }, { width: 300, height: 40 }]) {
+      const fit = resolveTriagePreviewFit(viewport, { width: 800, height: 600 }, AGENT_CHROME)!;
+      expect(fit.top).toBeLessThanOrEqual(0);
+      expect(fit.left).toBeLessThanOrEqual(0);
+    }
+  });
+
+  it("keeps the horizontal crop centered", () => {
+    const fit = resolveTriagePreviewFit({ width: 200, height: 200 }, { width: 800, height: 600 }, AGENT_CHROME)!;
+    expect(fit.left).toBeCloseTo((200 - 800 * fit.scale) / 2, 5);
+  });
+
+  it("caps the chrome band on a minimum-size panel so the output area keeps the frame", () => {
+    // 320×200 하한 패널 — 104px를 그대로 빼면 남는 출력이 절반 밑으로 떨어지므로 30%로 제한된다.
+    const fit = resolveTriagePreviewFit({ width: 160, height: 100 }, { width: 320, height: 200 }, AGENT_CHROME)!;
+    expect(fit.top + (200 - 60) * fit.scale).toBeCloseTo(100, 5);
+  });
+
+  it("returns null for a collapsed viewport", () => {
+    expect(resolveTriagePreviewFit({ width: 0, height: 120 }, { width: 800, height: 600 }, AGENT_CHROME)).toBeNull();
+    expect(resolveTriagePreviewFit({ width: 200, height: 0 }, { width: 800, height: 600 }, AGENT_CHROME)).toBeNull();
   });
 });
