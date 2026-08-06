@@ -5,10 +5,13 @@ const mocks = vi.hoisted(() => ({
   fetchGroups: vi.fn(),
   fetchOperations: vi.fn(),
   forgetTheater: vi.fn(),
+  getState: vi.fn(),
   hydrateGroups: vi.fn(),
   hydrateOperations: vi.fn(),
+  isTriageActive: vi.fn(),
   removeTheater: vi.fn(),
   resetTriageTheater: vi.fn(),
+  visitTriageTheater: vi.fn(),
 }));
 
 vi.mock("../core/client/src/api.js", () => ({
@@ -18,11 +21,14 @@ vi.mock("../core/client/src/api.js", () => ({
 }));
 
 vi.mock("../core/client/src/canvas/triage-store.js", () => ({
+  isTriageActive: mocks.isTriageActive,
   resetTriageTheater: mocks.resetTriageTheater,
+  visitTriageTheater: mocks.visitTriageTheater,
 }));
 
 vi.mock("../core/client/src/store.js", () => ({
   failAddTheater: mocks.failAddTheater,
+  getState: mocks.getState,
   hydrateGroups: mocks.hydrateGroups,
   hydrateOperations: mocks.hydrateOperations,
   removeTheater: mocks.removeTheater,
@@ -42,6 +48,8 @@ beforeEach(() => {
   mocks.fetchOperations.mockResolvedValue([]);
   mocks.fetchGroups.mockResolvedValue([]);
   mocks.forgetTheater.mockResolvedValue({ ok: true, deletion: RECEIPT });
+  mocks.isTriageActive.mockReturnValue(false);
+  mocks.getState.mockReturnValue({ activeTheaterId: null });
 });
 
 describe("forgetTheaterCompletely", () => {

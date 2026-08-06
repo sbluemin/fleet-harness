@@ -79,12 +79,14 @@ vi.mock("../core/client/src/global-settings-store.js", () => ({
 vi.mock("../core/client/src/operations-sse.js", () => ({ refreshObserverStatus: vi.fn() }));
 vi.mock("../core/client/src/pages/global-settings.js", () => ({ GlobalSettings: () => createElement("div", { "data-route": "settings" }) }));
 vi.mock("../core/client/src/plugin-capabilities.js", () => ({ createHostCapabilities: () => ({ api: {} }) }));
-vi.mock("../core/client/src/plugin-registry.js", () => ({ usePluginRegistry: () => ({ plugins: registryMocks.plugins, operationKinds: registryMocks.operationKinds, settingsSections: [], notificationKinds: [], railPanels: [] }) }));
+vi.mock("../core/client/src/plugin-registry.js", () => ({ usePluginRegistry: () => ({ plugins: registryMocks.plugins, operationKinds: registryMocks.operationKinds, settingsSections: [], notificationKinds: [], railPanels: [], floatingWidgets: [] }) }));
 vi.mock("../core/client/src/rail/rail-store.js", () => ({ toggleRailChrome: vi.fn() }));
 vi.mock("../core/client/src/rail/right-rail.js", () => ({ RightRail: () => null }));
 vi.mock("../core/client/src/release-notes-fetch.js", () => ({ abortReleaseNotesFetch: vi.fn(), requestReleaseNotes: vi.fn() }));
 // operations.tsx의 Alt 핸들러가 상태축 분기를 위해 이 모듈을 함께 읽으므로, 누락되면 preventDefault 이전에 던진다.
-vi.mock("../core/client/src/sidebar/operations-side-bar-store.js", () => ({
+// 부분 목으로 두어야 이 스토어에 export가 늘어도 이 테스트가 따라 깨지지 않는다.
+vi.mock("../core/client/src/sidebar/operations-side-bar-store.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../core/client/src/sidebar/operations-side-bar-store.js")>()),
   getSideBarState: () => ({ collapsed: false }),
   setSideBarCollapsed: vi.fn(),
   getSideBarStatusAxis: () => false,
@@ -93,7 +95,9 @@ vi.mock("../core/client/src/sidebar/operations-side-bar-store.js", () => ({
   subscribeOperationActivityTracking: () => () => {},
   toggleSideBarStatusAxis: vi.fn(),
 }));
-vi.mock("../core/client/src/sidebar/operations-side-bar.js", () => ({
+// TriageSideBar가 같은 모듈의 목록 조립 헬퍼를 함께 읽으므로 부분 목이어야 한다.
+vi.mock("../core/client/src/sidebar/operations-side-bar.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../core/client/src/sidebar/operations-side-bar.js")>()),
   OperationsSideBar: ({ onClose, onFocus, onMinimize }: { readonly onClose: (operationId: string) => void; readonly onFocus: (operationId: string) => void; readonly onMinimize: (operationId: string) => void }) => {
     sideBarMocks.onFocus = onFocus;
     sideBarMocks.onClose = onClose;
@@ -138,12 +142,15 @@ beforeEach(() => {
   canvasMocks.onLaunchAtGeometry = null;
   registryMocks.plugins = [];
   registryMocks.operationKinds = [];
+  // 선별 처리는 Theater가 아니라 전역 축이라, Theater 단위 reset만으로는 꺼지지 않는다.
+  setTriageActive(false);
   resetTriageTheater("theater-a");
   resetTriageTheater("theater-b");
 });
 
 afterEach(() => {
   act(() => root?.unmount());
+  setTriageActive(false);
   loadForTheater("theater-a");
   clearCompanionOperationId();
   clearMaximizedOperationId();
@@ -180,7 +187,7 @@ describe("Operations boot minimization", () => {
     setOperationGeometry("visible", { x: 20, y: 30, width: 100, height: 80, zIndex: 1 });
     setViewport({ x: 120, y: 160, zoom: 0.5 });
     loadForTheater(null);
-    await bootApp([operation("visible", Date.now() + 1_000)]);
+    await bootApp([operation("visible", BOOT_FRESH_CREATED_AT())]);
     loadForTheater("theater-a");
     resetCanvasViewportSize();
     requestFitAllOperations();
@@ -213,7 +220,7 @@ describe("Operations boot minimization", () => {
     loadForTheater("theater-a");
     setViewport({ x: 120, y: 160, zoom: 0.5 });
     loadForTheater(null);
-    await bootApp([operation("missing-geometry", Date.now() + 1_000)]);
+    await bootApp([operation("missing-geometry", BOOT_FRESH_CREATED_AT())]);
     loadForTheater("theater-a");
     resetCanvasViewportSize();
     requestFitAllOperations();
@@ -248,7 +255,7 @@ describe("Operations boot minimization", () => {
     setOperationGeometry("stale", { x: 2_000, y: 2_000, width: 100, height: 80, zIndex: 2 });
     setViewport({ x: 120, y: 160, zoom: 0.5 });
     loadForTheater(null);
-    await bootApp([operation("visible", Date.now() + 1_000)]);
+    await bootApp([operation("visible", BOOT_FRESH_CREATED_AT())]);
     loadForTheater("theater-a");
     resetCanvasViewportSize();
     requestFitAllOperations();
@@ -1246,6 +1253,12 @@ function theater(id = "theater-a", label = "Theater A") {
     hasWiki: false,
     activeAdmiralCount: 0,
   };
+}
+
+// app.tsx는 createdAt < bootOperationsRequestStartedAt인 Operation만 최소화한다. 여유가 1초뿐이면
+// 전체 스위트를 병렬로 돌릴 때 스케줄링 지연만으로 "부팅 이후 생성"이 뒤집혀 최소화되어 버린다.
+function BOOT_FRESH_CREATED_AT(): number {
+  return Date.now() + 60_000;
 }
 
 function operation(id: string, createdAt = 1, theaterId = "theater-a"): OperationNode {
