@@ -28,7 +28,7 @@ Propose runs blind: each proposer sees the constraints, never the other proposal
 
 ## Capability Classes
 
-Propose is the ceiling of the whole run: Judge only selects among what was proposed, and Commit only grafts what exists, so quality lost in a Propose seat is unrecoverable downstream. Propose and Judge are judgment seats — they keep to the highest `capabilityClass` reachable (`workflow`, judgment regime), and diversity among proposers means diverse approaches and lineages **within** that class, never a lighter model in a seat. When too few class-eligible identities exist, shrink the panel or repeat-seat one blind — two strong proposals outweigh three where one is weak. Ground is mechanical: distribute it, and let a measured `map` fit outrank class there.
+Propose is the ceiling of the whole run: Judge only selects among what was proposed, and Commit only grafts what exists, so quality lost in a Propose seat is unrecoverable downstream. Propose, Judge, and Commit are all judgment seats — each keeps to the highest `capabilityClass` reachable (`workflow`, judgment regime), and diversity among proposers means diverse approaches and lineages **within** that class, never a lighter model in a seat. When too few class-eligible identities exist, shrink the panel or repeat-seat one blind — two strong proposals outweigh three where one is weak. Ground is mechanical: distribute it, and let a measured `map` fit outrank class there.
 
 ## Fixed Judging Axes
 
