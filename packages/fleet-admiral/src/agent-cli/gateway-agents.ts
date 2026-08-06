@@ -13,6 +13,7 @@
 import {
   buildGatewayModelConstraints,
   toClaudeGatewayModelId,
+  type GatewayCapabilityClass,
   type GatewayEffortExposure,
   type GatewayModel,
   type GatewayReasoningEffort,
@@ -95,7 +96,7 @@ export function buildGatewayCustomAgents(
       for (const effort of exposedEffortLadder(model.id, constraints.effortLadder, exposure)) {
         const name = toGatewayAgentName(modelId, effort);
         agents[name] = {
-          description: gatewayAgentDescription(modelId, name, effort),
+          description: gatewayAgentDescription(modelId, name, constraints.capabilityClass, effort),
           prompt: GENERAL_PURPOSE_AGENT_PROMPT,
           model: modelId,
           effort,
@@ -105,7 +106,7 @@ export function buildGatewayCustomAgents(
     }
     const name = toGatewayAgentName(modelId);
     agents[name] = {
-      description: gatewayAgentDescription(modelId, name),
+      description: gatewayAgentDescription(modelId, name, constraints.capabilityClass),
       prompt: GENERAL_PURPOSE_AGENT_PROMPT,
       model: modelId,
     };
@@ -137,11 +138,15 @@ export function toGatewayAgentName(modelId: string, effort?: GatewayReasoningEff
 function gatewayAgentDescription(
   modelId: string,
   name: string,
+  capabilityClass?: GatewayCapabilityClass,
   effort?: GatewayReasoningEffort,
 ): string {
   const effortPart = effort === undefined ? "no effort control" : `effort ${effort}`;
+  // class 는 판단석 배정의 prior 라서 첫 문장에 실린다 — 여기 없으면 호스트는
+  // 정체성을 고르는 순간에 로스터를 다시 열지 않는 한 등급을 볼 수 없다.
+  const classPart = capabilityClass === undefined ? "no capability class" : `${capabilityClass} class`;
   return [
-    `Gateway model ${modelId}, ${effortPart}.`,
+    `Gateway model ${modelId}, ${classPart}, ${effortPart}.`,
     "Fleet execution agent that runs one mode — recon, decide, implement, or verify. Name the mode in the task.",
     "Use after calling gateway_models when this roster entry fits the stage.",
     `Select this identity by the agent type name ${name}. The model id above is a value for a model field and is rejected wherever a name is expected.`,

@@ -77,6 +77,9 @@ describe("claude-gateway custom agents", () => {
       expect(agent.model.startsWith("claude-gateway--")).toBe(true);
       expect(agent.prompt).toBe(GENERAL_PURPOSE_AGENT_PROMPT);
       expect(agent.description).toContain("gateway_models");
+      // capability class 는 판단석 배정의 prior 다. 설명 첫 문장에서 사라지면 호스트는
+      // 정체성을 고르는 순간(gateway_models 재조회 전) 등급을 볼 수 없다.
+      expect(agent.description).toContain("flagship class");
       // 호스트가 읽는 유일한 선택 신호이므로 프롬프트와 같은 모드 어휘를 써야 한다.
       expect(agent.description).toContain("recon, decide, implement, or verify");
       expect(agent.description).not.toMatch(/researching complex questions/i);
@@ -88,6 +91,18 @@ describe("claude-gateway custom agents", () => {
     expect(withEffort).toBeDefined();
     expect(agents[withEffort!]!.effort).toBe("high");
     expect(toGatewayAgentName(agents[withEffort!]!.model, "high")).toBe(withEffort);
+  });
+
+  it("carries each model's own capability class, light tiers included", () => {
+    const flash = requireGatewayModel("opencode--deepseek-v4-flash");
+    const agents = buildGatewayCustomAgents([flash]);
+    const definitions = Object.values(agents);
+    expect(definitions.length).toBeGreaterThan(0);
+    for (const definition of definitions) {
+      // light 가 flagship 으로 읽히면 판단석 배정의 prior 가 통째로 뒤집힌다.
+      expect(definition.description).toContain("light class");
+      expect(definition.description).not.toContain("flagship class");
+    }
   });
 
   it("injects --agents only for claude-gateway, and never disables a built-in agent", async () => {

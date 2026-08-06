@@ -115,8 +115,8 @@ Doctrine resolution is owned by `resolveDoctrineFromCliId`:
   error. Mission Anchor and Context Confidence speak in decision boundaries
   instead of protocol checkpoints.
 - Plugin skill render installs `assumption-audit` and `wiki-operations` plus the
-  gateway-only run skills — `workflow`, `architecture-review`,
-  `codebase-research`, `implementation-run`, and `quality-review`. Each run skill
+  gateway-only run skills — `workflow`, `workflow-architecting`,
+  `workflow-research`, `workflow-implementing`, and `workflow-review`. Each run skill
   owns the shape of one stage skeleton; `workflow` owns executing any of them,
   including model and reasoning-effort assignment per stage. The `gateway/`
   authoring prefix is never exposed as a live skill path.

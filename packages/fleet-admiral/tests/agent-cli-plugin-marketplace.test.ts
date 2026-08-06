@@ -209,12 +209,16 @@ describe("agent CLI plugin marketplace rendering", () => {
     // 캐리어 페르소나가 맡던 역할은 gateway에서 작전별 워크플로 스킬이 대신한다.
     for (const skill of [
       "workflow",
-      "architecture-review",
-      "implementation-run",
-      "quality-review",
-      "codebase-research",
+      "workflow-architecting",
+      "workflow-implementing",
+      "workflow-review",
+      "workflow-research",
     ]) {
       expect(existsSync(path.join(skillsRoot, skill, "SKILL.md")), skill).toBe(true);
+    }
+    // 구명 디렉터리가 되살아나면 스킬이 두 벌 렌더되어 어느 쪽이 로드될지 갈라진다.
+    for (const retired of ["architecture-review", "implementation-run", "quality-review", "codebase-research"]) {
+      expect(existsSync(path.join(skillsRoot, retired)), retired).toBe(false);
     }
     // 모델·effort 배정은 workflow 스킬이 흡수했으므로 별도 스킬로 렌더되지 않는다.
     expect(existsSync(path.join(skillsRoot, "model-loadout"))).toBe(false);
@@ -256,10 +260,10 @@ describe("agent CLI plugin marketplace rendering", () => {
     // classic은 캐리어 페르소나로 위임하므로 작전 워크플로 스킬을 렌더하지 않는다.
     for (const skill of [
       "workflow",
-      "architecture-review",
-      "implementation-run",
-      "quality-review",
-      "codebase-research",
+      "workflow-architecting",
+      "workflow-implementing",
+      "workflow-review",
+      "workflow-research",
     ]) {
       expect(existsSync(path.join(skillsRoot, skill, "SKILL.md")), skill).toBe(false);
     }

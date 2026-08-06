@@ -1,9 +1,9 @@
 ---
-name: implementation-run
+name: workflow-implementing
 description: Apply one decided change across many files, packages, or call sites by discovering the sites, transforming each in isolation, and inspecting the artifacts rather than the reports. Load before a migration, a sweeping refactor, or a multi-package edit. Skip when the change fits in a few files you will edit directly, or when the approach is not yet decided.
 ---
 
-# Implementation Run
+# Workflow — Implementing
 
 The only stage shape here that **writes**. Its risk is not failure — a failed edit is visible — but convergence: many branches each producing something reasonable that together do not match the codebase.
 
@@ -11,9 +11,9 @@ Executing this skeleton — the surface it runs on, the wiring between stages, a
 
 ## When Not To Use
 
-- The approach is undecided. Decide first with `architecture-review`; a stage handed an open decision will close it for you, differently in each branch.
+- The approach is undecided. Decide first with `workflow-architecting`; a stage handed an open decision will close it for you, differently in each branch.
 - A handful of files you can edit directly. The per-stage overhead exceeds the work.
-- Judging existing code. Use `quality-review`.
+- Judging existing code. Use `workflow-review`.
 
 ## Stage Skeleton
 
@@ -25,6 +25,10 @@ Executing this skeleton — the surface it runs on, the wiring between stages, a
 | Inspect | verify | host reads the diff | Accept or reject per site |
 
 Discover and Apply pipeline naturally, but **Decide is a barrier by necessity** — the literals must exist before any site is touched, or each branch invents its own.
+
+## Capability Classes
+
+Every fanned stage here is mechanical — Discover is checked against the codebase and Apply against the literals Decide fixed — so distribution by allowance applies throughout (`workflow`, mechanical regime), and a `light`-class identity is a legitimate Apply seat for the local, well-precedented edits the Scope Warning bounds. For a large Discover, a measured `map` fit outranks class. The judgment in this skeleton — Decide and Inspect — sits in host-only barriers, which is exactly why no fanned seat needs a class floor; letting a stage absorb one of those decisions reopens it.
 
 ## Decisions Travel as Literals
 

@@ -1,6 +1,6 @@
 ---
 name: workflow
-description: Choose the surface a handoff runs on and pin the identity it runs as, then wire a staged run's stages to each other and keep its failures visible. Load before any run leaves the host — one Agent, a named teammate, or a staged workflow — and before executing a stage skeleton from architecture-review, codebase-research, implementation-run, or quality-review. Skip only when the work stays on the host.
+description: Choose the surface a handoff runs on and pin the identity it runs as, then wire a staged run's stages to each other and keep its failures visible. Load before any run leaves the host — one Agent, a named teammate, or a staged workflow — and before executing a stage skeleton from workflow-architecting, workflow-research, workflow-implementing, or workflow-review. Skip only when the work stays on the host.
 ---
 
 # Workflow
@@ -50,21 +50,22 @@ Identify which allowance that is first, because the roster cannot tell you — i
 
 `isSessionDefault` does not settle which case you are in: it reflects Settings as they stand now, not what an already-running session launched with. Prefer any other provider with room — whatever this session runs on is the most expensive way to obtain what any identity produces equally well.
 
-### Three exceptions, and only these three.
+### Four exceptions, and only these four.
 
 Each is recorded by its label in the split record.
 
 - **E1 — cross-lineage verification.** All three must hold: the role is `verify`, `judge`, or `adjudicate`; disagreement is that stage's actual product; and the lineage this run would inherit differs from the subject's. That last one is a check, never an assumption — an unpinned run takes whatever this session launched on, and the flag describes a model, not this session. **Cap the session's lineage at one verifier seat per verify stage**, fixed by the stage's need before you read the roster. Among the *other* lineages one lineage must not hold a majority of the quorum; when too few remain, shrink the quorum rather than add session-lineage seats. The seat is a verification exception, not a scarcity response.
 - **E2 — last resort.** Every candidate's own window reads `critical`, or runs keep returning empty after a retry. An allowance that could not be read is **not** evidence of exhaustion, so it can neither open this exception nor close it. When E2 opens, run one alternative identity alongside and compare — a last resort nobody checked is an unpinned run with a label on it.
 - **E3 — empty roster.** No model is exposed at all.
+- **E4 — judgment floor.** All three must hold: the seat's role is a judgment role; no identity of the class that role requires is reachable on a readable, non-`critical` provider; and the session's model takes **at most one seat per stage**, with the rest of the fan shrunk or repeat-seated under the assignment rules rather than filled from a lighter class. E4 buys capability, never convenience — one reachable flagship identity, however busy its provider short of `critical`, closes it.
 
-`roleFit: null` is not a fourth exception: unmeasured means quality gave no reason to prefer anyone, so the choice falls to allowance and never back to this session's model.
+`roleFit: null` opens no exception of its own: unmeasured means no measured verdict, so the seat falls to its regime's default — the class prior for judgment, allowance for mechanical — and never back to this session's model.
 
 ## Reading a Stage Skeleton
 
 Every gateway skeleton is a table of `Stage | Role | Fan | Returns`.
 
-- **Role** — the one-word job: map, propose, implement, verify, synthesize, transform. It is the input to model assignment.
+- **Role** — the one-word job: decompose, map, scan, extract, transform, implement, verify, propose, decide, judge, synthesize. It is the input to model assignment, which first sorts it into a regime — judgment or mechanical — below.
 - **Fan** — parallel branches. `one per <item>` is sized by the previous stage's output, not by a number you pick. **`host only` is not a stage you hand off** — it is a barrier where you do the work yourself.
 - **Returns** — the contract. Declare a schema rather than parsing prose: a stage that must fill a shape retries against it, while a stage asked for prose improvises.
 
@@ -72,7 +73,7 @@ Every gateway skeleton is a table of `Stage | Role | Fan | Returns`.
 
 **Pipeline unless stage N+1 genuinely needs the whole set at once** — deduplicating before expensive downstream work, deciding literals every branch shares, early-exit on zero, or comparing one result against the others.
 
-A barrier is **not** justified by needing to flatten, map, or filter between stages (do that inside a stage), by stages feeling conceptually separate, or by the script reading cleaner. Each unjustified barrier costs the gap between slowest and fastest branch, on every item, for nothing. The barriers a skeleton already names — `implementation-run`'s Decide, `quality-review`'s Adjudicate — are load-bearing; do not optimize them away.
+A barrier is **not** justified by needing to flatten, map, or filter between stages (do that inside a stage), by stages feeling conceptually separate, or by the script reading cleaner. Each unjustified barrier costs the gap between slowest and fastest branch, on every item, for nothing. The barriers a skeleton already names — `workflow-implementing`'s Decide, `workflow-review`'s Adjudicate — are load-bearing; do not optimize them away.
 
 ## Failures Must Be Loud
 
@@ -84,17 +85,28 @@ A fan-out helper turns a failed branch into an empty result, so a run that lost 
 
 ## Model and Effort Assignment
 
-Distribution is the default. The session's own allowance is the last one to spend, and its first-priority use is orchestration on the host itself, never bulk fan-out. Concentrating a run on this session's model is the exception, and the exception carries the burden of proof — Gate 2 above is where that burden is discharged.
+Every role belongs to one of two regimes, and the regime decides what its seats optimize for:
+
+| Regime | Roles | The test | What fills a seat |
+|---|---|---|---|
+| **Judgment** | decompose, propose, decide, judge, synthesize | the output is an opinion the run commits to, with no external answer key | `capabilityClass` first: seats keep to the highest class reachable on a readable, non-`critical` provider; allowance decides only among peers of that class |
+| **Mechanical** | map, scan, extract, transform, implement, verify | the output is checkable — against the codebase, the sent literals, or a concrete failing scenario | allowance and measured efficiency, by the distribution rules below |
+
+Distribution is the default for mechanical roles; for judgment roles the highest reachable class is the default. The two defaults never trade, and their costs differ by construction: mechanical fans are wide and absorb distribution, judgment fans are a handful of seats, so holding them to class costs little. Quality lost at a judgment seat is unrecoverable downstream — a judge only selects among what was proposed, a synthesis only composes what exists.
+
+`verify` is mechanical deliberately: refuting a concrete finding is closed work the measurements below separated no models on, and what a verifier seat buys quality with is lineage mixing, not class. Scoring an open artifact on axes is not verify — that is `judge`, and it is judgment.
+
+The session's own allowance is the last one to spend in both regimes, and its first-priority use is orchestration on the host itself, never bulk fan-out. Concentrating a run on this session's model is the exception, and the exception carries the burden of proof — Gate 2 above is where that burden is discharged.
 
 1. **Name the role.** Take it from the Role column. If you cannot name it in one word, fix the stage split first.
-2. **Name the dominant risk.** One risk, not a list: too little context, unreliable tool use, correlated judgment, convention drift, or incomplete coverage.
-3. **Look for a measured fit.** Read `roleFit` for that risk. `fit` is a reason to prefer, `unfit` a reason to avoid, `null` says nothing about quality and never sends you back to the session model.
-4. **Spread the rest by allowance**, using the two subsections below.
-5. **Re-pick effort for the model you chose.** A level a model does not advertise is clamped down with no signal and refused when nothing is below. Take a rung the target's `effortLadder` actually lists — it reports what this session registered, not the catalog — and check the stage's input against its `contextWindow`.
-6. **Diversify where disagreement is the product.** A verifier sharing its subject's lineage inherits the same blind spots. Judge that against the **subject**, not against this session: a Claude-family identity billed elsewhere is useful for moving spend, useless for independence from a Claude-family session, and silent about independence from a subject that ran elsewhere. An unpinned stage has no lineage of its own. Diversity sizes the quorum, never the bulk fan-out.
-7. **Confirm the name exists on both sides.** The roster resolves live; Agent names were fixed at session start. `400 unknown model` means re-read the roster. Reaching a newly enabled model requires a new session.
-8. **Do not choose the load-bearing stage by allowance alone.** For the contract survey, the final synthesis, or the integrating judgment, let measured fit and lineage independence decide, and let allowance break ties only after those.
-9. **Record the split.** Which identities carried which stages, what decided it, and the `E1` / `E2` / `E3` label wherever the session's model carried one. An unlabelled exception is indistinguishable from a lapse.
+2. **Name the regime and the dominant risk.** The regime comes from the table above; the risk is one word, not a list: too little context, unreliable tool use, correlated judgment, convention drift, or incomplete coverage.
+3. **Look for a measured fit.** Read `roleFit` for that risk. `fit` is a reason to prefer, `unfit` a reason to avoid, and a measured verdict outranks the class prior where the two disagree. `null` says nothing about quality: a judgment seat then falls to the class prior, a mechanical seat to allowance, and neither ever back to the session model.
+4. **Fill judgment seats before spreading anything.** Take the highest `capabilityClass` reachable on a readable, non-`critical` provider and seat every judgment role there. When class-eligible identities number fewer than the fan wants, repeat-seat one as independent runs or shrink the fan — a judgment seat is never filled from a lighter class to make a count. Two seats on one identity lose lineage spread between them and keep blind independence, the cheaper loss. When no identity of the required class is reachable at all, E4 above is the only door — one session-model seat, recorded.
+5. **Spread the mechanical rest by allowance**, using the two subsections below.
+6. **Re-pick effort for the model you chose.** A level a model does not advertise is clamped down with no signal and refused when nothing is below. Take a rung the target's `effortLadder` actually lists — it reports what this session registered, not the catalog — and check the stage's input against its `contextWindow`.
+7. **Diversify where disagreement is the product.** A verifier sharing its subject's lineage inherits the same blind spots. Judge that against the **subject**, not against this session: a Claude-family identity billed elsewhere is useful for moving spend, useless for independence from a Claude-family session, and silent about independence from a subject that ran elsewhere. An unpinned stage has no lineage of its own. Diversity sizes the quorum, never the bulk fan-out — and in a judgment stage it works within the class the regime sets, never below it.
+8. **Confirm the name exists on both sides.** The roster resolves live; Agent names were fixed at session start. `400 unknown model` means re-read the roster. Reaching a newly enabled model requires a new session.
+9. **Record the split.** Which identities carried which stages, what decided it, and the `E1` / `E2` / `E3` / `E4` label wherever the session's model carried one. An unlabelled exception is indistinguishable from a lapse.
 
 ### Reading an allowance
 
@@ -107,6 +119,7 @@ Distribution is the default. The session's own allowance is the last one to spen
 
 ### Sizing a bulk fan-out
 
+- **This subsection sizes mechanical fans only.** A judgment fan is sized in step 4 above — class availability may shrink it; allowance still never does.
 - **The task sets the branch count and an allowance reading never trims it.** A window still called `ok` is not a reason to run fewer branches than the work needs.
 - **Split evenly across eligible non-session providers** — those whose applicable window is readable and not `critical` — no provider more than one branch above another.
 - **Count providers, not identities.** A provider exposing two models does not draw twice the share.
@@ -120,10 +133,12 @@ Two measurements, both on 2026-08-02.
 
 | Measurement | Result | What it means |
 |---|---|---|
-| Three models against seven stage roles | **indistinguishable on five of them** — structured output, repository search, adversarial judgment, mechanical transformation, a small implementation task | quality parity is the prior |
+| Three models against seven stage roles | **indistinguishable on five of them** — structured output, repository search, adversarial judgment, mechanical transformation, a small implementation task | quality parity is the prior on closed roles |
 | Twelve identities, one identical 12-file mapping task | **all twelve answered it perfectly**, trap entry included; cheapest **176k total tokens over 5 tool calls**, dearest **5.20M over 29**; output alone 1.7k–20.3k, so **not a cache-read artifact** | what separated them was measured efficiency, not provider quota |
 
 Parity is exactly what makes measured token and tool-call efficiency the deciding axis when allowance pressure is equal. **Indistinguishable never meant "inherit"; it means the less efficient choice buys nothing.** Quota pressure remains a separate roster verdict, never inferred from these counts.
+
+**Both measurements were closed tasks** — work with a single correct answer, where spend can be compared at held quality. Parity measured there licenses nothing about open-ended generation: a proposal, a synthesis, or an axis-scored judgment has no answer key, and a model that spends less there may be answering less. On judgment roles the capability class stands as the prior until a `roleFit` measurement speaks.
 
 Three rules the same measurements refuted:
 
@@ -168,3 +183,7 @@ Decisions must travel as literal values, not descriptions: name the exact token,
 - **Symptom:** A stage came back asking what to do, or made a choice the skeleton reserved for the host.
   **Action:** Move that decision to the preceding host-only barrier and run the stage again with the value spelled out.
   **Why:** A stage handed an open decision always closes it, differently in each branch — which is the failure the barrier was placed there to prevent.
+
+- **Symptom:** A judgment stage — a proposal, a synthesis, an axis-scored judgment — ran on a `light`-class identity while a higher class was reachable.
+  **Action:** Treat it as a mis-assigned seat, not a quota win. Re-run that seat on the highest reachable class and keep the light identity for the mechanical stages its measurements earn.
+  **Why:** Downstream stages only select among and compose what the judgment seats produced, and the allowance axis cannot see what a weak seat silently cost — the run reads complete either way.

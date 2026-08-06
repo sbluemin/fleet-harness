@@ -210,6 +210,16 @@ describe("gateway loadout", () => {
       expect(allModels(loadout)[0]?.constraints.quotaScope).toBeDefined();
     }
   });
+
+  it("carries the provider-stated capability class into constraints", () => {
+    const loadout = buildGatewayLoadout({
+      exposed: [model("opencode--deepseek-v4-flash"), model("codex--gpt-5.6-sol")],
+    });
+    // 판단석 배정의 prior 가 로스터에서 빠지면 호스트는 이름 문자열로 등급을 추측하게 된다.
+    const classes = allModels(loadout).map((entry) => entry.constraints.capabilityClass);
+    expect(classes).toContain("light");
+    expect(classes).toContain("flagship");
+  });
 });
 
 describe("gateway loadout derived quota metrics", () => {
@@ -419,11 +429,19 @@ describe("gateway_models tool doctrine", () => {
     expect(spec.whenNotToUse.join("\n")).not.toContain("when every stage will inherit the session model");
   });
 
-  it("sends an unmeasured axis to allowance instead of back to the session model", () => {
+  it("sends an unmeasured axis to the class prior instead of back to the session model", () => {
     const guidelines = doctrine().usageGuidelines.join("\n");
     expect(guidelines).toContain("unmeasured, never unsuitable");
-    expect(guidelines).toContain("the choice falls to allowance");
+    // null → 무조건 allowance 는 실측된 실패다: 판단 스테이지(propose)에 측정 축이 없어
+    // 아키텍처 제안석이 light 모델로 균등 분배됐다. null 은 class prior 로 떨어지고,
+    // allowance 는 같은 class 동급 간에만 판정한다.
+    expect(guidelines).toContain("quality preference then falls to capabilityClass");
+    expect(guidelines).toContain("judgment seats keep to the highest reachable class");
+    expect(guidelines).not.toContain("the choice falls to allowance");
     expect(guidelines).not.toContain("it is not a reason to pin");
+    // class 는 prior 이고 측정이 이긴다 — 이 서열이 도구 문언에서 빠지면 role fit 이
+    // class 에 눌려 사문화된다.
+    expect(guidelines).toContain("a measured roleFit verdict outranks");
   });
 
   // claude 항목이 로스터 모델을 하나도 서빙하지 않는다는 사실과, 미핀 실행이 항상 claude 를

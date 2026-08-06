@@ -37,10 +37,10 @@ describe("gateway workflow skill asset", () => {
     // workflow 자산만 계약으로 덮여 있었다. 나머지 스켈레톤이 이 라우팅 문장을 잃으면
     // 각 스킬이 모델 배정을 자기 방식으로 다시 정의해도 깨지는 테스트가 없다.
     for (const relativePath of [
-      "gateway/architecture-review/SKILL.md",
-      "gateway/codebase-research/SKILL.md",
-      "gateway/implementation-run/SKILL.md",
-      "gateway/quality-review/SKILL.md",
+      "gateway/workflow-architecting/SKILL.md",
+      "gateway/workflow-research/SKILL.md",
+      "gateway/workflow-implementing/SKILL.md",
+      "gateway/workflow-review/SKILL.md",
     ]) {
       const asset = EMBEDDED_AGENT_CLI_SKILL_ASSETS.find(
         (entry) => entry.relativePath === relativePath,
@@ -52,15 +52,40 @@ describe("gateway workflow skill asset", () => {
     }
   });
 
-  it("makes distribution the default and the session model the exception", () => {
+  it("scopes distribution to mechanical roles and keeps the session model the exception", () => {
     const content = skillContent();
 
-    expect(content).toContain("Distribution is the default.");
+    expect(content).toContain("Distribution is the default for mechanical roles");
+    expect(content).toContain("for judgment roles the highest reachable class is the default");
     expect(content).toContain("carries the burden of proof");
     expect(content).toContain("Indistinguishable never meant \"inherit\"");
     // 입증 책임이 어디서 해소되는지 가리키지 않으면 배정 절차가 게이트와 분리되어
     // 각각 다른 예외 집합을 갖게 된다.
     expect(content).toContain("Gate 2 above is where that burden is discharged");
+    // 무조건 분산이 되살아나면 판단석이 다시 할당량 축으로 떨어진다 — 실측된 실패:
+    // 아키텍처 Propose 3석 중 2석이 light 모델(luna·deepseek-flash)에 배정됐다.
+    expect(content).not.toContain("Distribution is the default.");
+  });
+
+  // 판단/기계 2-체제가 이 스킬의 새 척추다. 역할표·class 바닥·축소 규칙 중 하나라도
+  // 조용히 사라지면 판단석이 다시 할당량 축으로 떨어진다.
+  it("assigns judgment seats by capability class and keeps mechanical fans on distribution", () => {
+    const content = skillContent();
+
+    expect(content).toContain("| **Judgment** | decompose, propose, decide, judge, synthesize |");
+    expect(content).toContain("| **Mechanical** | map, scan, extract, transform, implement, verify |");
+    expect(content).toContain("`capabilityClass` first");
+    // class-eligible 부족 시 줄이거나 반복 착석한다 — 가벼운 class 로 머릿수를 채우는
+    // 순간 이 체제 전체가 무효가 된다.
+    expect(content).toContain("repeat-seat one as independent runs or shrink the fan");
+    expect(content).toContain("never filled from a lighter class to make a count");
+    // verify(닫힌 반박)와 judge(열린 채점)가 갈라지지 않으면 아키텍처 심판이 verify 로
+    // 표기되어 class 바닥을 벗어난다.
+    expect(content).toContain("that is `judge`, and it is judgment");
+    // 판단 팬 크기는 배정 4단계 소유다 — bulk 절이 다시 전체를 잡으면 축소 규칙이 죽는다.
+    expect(content).toContain("This subsection sizes mechanical fans only.");
+    // 구 절차의 열거식 방어선이 되살아나면 Propose 가 다시 목록 누락으로 빠진다.
+    expect(content).not.toContain("Do not choose the load-bearing stage by allowance alone");
   });
 
   it("does not restore the superseded inherit-by-default rules", () => {
@@ -145,6 +170,12 @@ describe("gateway workflow skill asset", () => {
     expect(content).toContain("5.20M over 29");
     // 캐시 읽기로 부풀려진 수치가 아니라는 근거가 문언에 남아 있어야 재검증이 가능하다.
     expect(content).toContain("not a cache-read artifact");
+    // parity 는 닫힌 과업에서만 측정됐다(role-fit.ts 의 tokenEfficiency 주석과 같은
+    // 한정). 이 스코프가 프롬프트에서 빠지면 판단 역할까지 parity 로 정당화되어
+    // class 바닥이 무력화된다 — 소스 주석에만 있는 의도는 모델에 도달하지 않는다.
+    expect(content).toContain("quality parity is the prior on closed roles");
+    expect(content).toContain("Both measurements were closed tasks");
+    expect(content).toContain("a model that spends less there may be answering less");
   });
 
   // 표면 선택은 Standing Order 에서 이 스킬로 이관됐다. Gate 1 이 세 표면을 모두 들고
@@ -222,15 +253,22 @@ describe("gateway workflow skill asset", () => {
     expect(content).toContain("The rule below binds the allowance axis only.");
   });
 
-  // 예외는 셋뿐이고 각각 라벨로 기록된다. E2 의 "읽히지 않는 allowance 는 고갈의
+  // 예외는 넷뿐이고 각각 라벨로 기록된다. E2 의 "읽히지 않는 allowance 는 고갈의
   // 증거가 아니다"가 빠지면 조회 실패가 곧 최후의 보루 발동으로 둔갑한다.
-  it("admits exactly three labelled exceptions and closes the unreadable-allowance loophole", () => {
+  it("admits exactly four labelled exceptions and closes the unreadable-allowance loophole", () => {
     const content = skillContent();
 
-    expect(content).toContain("Three exceptions, and only these three.");
+    expect(content).toContain("Four exceptions, and only these four.");
+    expect(content).not.toContain("Three exceptions, and only these three.");
     expect(content).toContain("**E1 — cross-lineage verification.**");
     expect(content).toContain("**E2 — last resort.**");
     expect(content).toContain("**E3 — empty roster.**");
+    // E4 는 능력을 사는 문이지 편의의 문이 아니다 — 도달 가능한 flagship 하나가 닫고,
+    // 세션 모델은 스테이지당 한 석을 넘지 못한다. 이 캡이 빠지면 "판단 스테이지니까
+    // 항상 세션 모델"이 게이트 전체를 삼킨다.
+    expect(content).toContain("**E4 — judgment floor.**");
+    expect(content).toContain("E4 buys capability, never convenience");
+    expect(content).toContain("at most one seat per stage");
     // E1 이 무제한이면 검증 정족수가 통째로 세션 계열이 되어 독립성이 사라진다.
     expect(content).toContain("lineage must not hold a majority of the quorum");
     // E2 는 조회 불가를 근거로 열 수 없다.
@@ -245,10 +283,11 @@ describe("gateway workflow skill asset", () => {
     // 대상 계열을 비-Claude 로 못 박고 세션을 Claude 로 가정하던 구 전제가 되살아나면
     // 같은 결함이 그대로 돌아온다.
     expect(content).not.toContain("the subject under examination ran on a non-Claude lineage");
-    // 미측정(roleFit: null)이 네 번째 예외로 승격되면 게이트가 무력화된다.
-    expect(content).toContain("`roleFit: null` is not a fourth exception");
+    // 미측정(roleFit: null)이 예외로 승격되면 게이트가 무력화된다 — null 은 체제
+    // 기본값(판단=class prior, 기계=allowance)으로 떨어질 뿐이다.
+    expect(content).toContain("`roleFit: null` opens no exception of its own");
     // 라벨 없는 상속과 의도된 예외는 사후에 구별되지 않는다.
-    expect(content).toContain("the `E1` / `E2` / `E3` label");
+    expect(content).toContain("the `E1` / `E2` / `E3` / `E4` label");
     // E1 좌석 수가 남은 프로바이더 수에 연동되면 프로바이더가 줄수록 세션 계열이 늘어난다.
     // 실측 실패가 그것이었다 — 비-세션 프로바이더 둘이 빠지자 세션 분기가 2에서 5로 늘었다.
     expect(content).toContain("one verifier seat per verify stage");

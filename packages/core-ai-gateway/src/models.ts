@@ -88,9 +88,30 @@ const GatewayModelEffortSchema = z.discriminatedUnion("supported", [
 export const GATEWAY_QUOTA_SCOPES = ["auto", "api"] as const;
 export type GatewayQuotaScope = typeof GATEWAY_QUOTA_SCOPES[number];
 
+/**
+ * The provider's own positioning of a model within its current lineup, read
+ * from what the provider states — lineup defaults, tier tokens (`max`/`pro`
+ * against `plus` against `flash`/`mini`-class names), and generation
+ * supersession. It is a prior, not a measurement: Fleet-measured suitability
+ * stays in role fit, and a measured verdict outranks this class wherever the
+ * two disagree.
+ *
+ * Ambiguity resolves downward. Overclassing puts a light model in seats that
+ * needed judgment; underclassing merely costs one candidate. A `-fast` entry
+ * therefore inherits its base class only when `providerModelId` proves it is
+ * the same upstream under different service terms; an unlinked `-fast`/`flash`
+ * name reads as the provider's light tier.
+ *
+ * Routing aliases (Cursor's `auto`) carry no class: what serves the request
+ * varies per call, so any single class would lie.
+ */
+export const GATEWAY_CAPABILITY_CLASSES = ["flagship", "standard", "light"] as const;
+export type GatewayCapabilityClass = typeof GATEWAY_CAPABILITY_CLASSES[number];
+
 const GatewayModelEntrySchema = z.object({
   modelId: z.string().min(1),
   name: z.string().min(1),
+  capabilityClass: z.enum(GATEWAY_CAPABILITY_CLASSES).optional(),
   description: z.string().min(1).optional(),
   providerModelId: z.string().min(1).optional(),
   serviceTier: z.literal("priority").optional(),
@@ -156,6 +177,8 @@ export interface GatewayModel {
   readonly quotaScope?: GatewayQuotaScope;
   /** Upstream wire protocol; OpenCode Go only. Omission means `anthropic`. */
   readonly wire?: GatewayModelWire;
+  /** Provider-stated lineup positioning; absent only on routing aliases. */
+  readonly capabilityClass?: GatewayCapabilityClass;
   readonly description?: string;
   /** Authoritative input context window reported by the provider/reference catalog. */
   readonly contextWindow?: number;
@@ -316,6 +339,12 @@ export interface GatewayModelConstraints {
    * Anthropic entries are recognized without further declaration.
    */
   readonly homolineage: boolean;
+  /**
+   * The provider's stated lineup positioning ({@link GatewayCapabilityClass}).
+   * A quality prior for seats whose product is judgment; measured role fit
+   * outranks it, and allowance never implies it. Absent on routing aliases.
+   */
+  readonly capabilityClass?: GatewayCapabilityClass;
   readonly quotaScope?: GatewayQuotaScope;
 }
 
@@ -329,6 +358,7 @@ export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelC
     effortLadder: Object.freeze([...ladder]),
     effortSupported: ladder.length > 0,
     homolineage: upstreamModelId(model).toLowerCase().startsWith("claude"),
+    ...(model.capabilityClass ? { capabilityClass: model.capabilityClass } : {}),
     ...(model.quotaScope ? { quotaScope: model.quotaScope } : {}),
   };
 }
@@ -500,6 +530,7 @@ function toGatewayModel(
     ...(entry.cursorMaxMode ? { cursorMaxMode: entry.cursorMaxMode } : {}),
     ...(entry.quotaScope ? { quotaScope: entry.quotaScope } : {}),
     ...(entry.wire ? { wire: entry.wire } : {}),
+    ...(entry.capabilityClass ? { capabilityClass: entry.capabilityClass } : {}),
     ...(entry.description ? { description: entry.description } : {}),
     ...(entry.contextWindow ? { contextWindow: entry.contextWindow } : {}),
     effort: freezeGatewayModelEffort(entry.effort),
@@ -524,6 +555,24 @@ function validateRegistry(value: GatewayModelsRegistry): void {
         throw new Error(`Duplicate gateway model id: ${provider}/${model.modelId}`);
       }
       modelIds.add(model.modelId);
+      // A routing alias serves a different model per call, so any single class
+      // would lie; every real model must state one so judgment-seat policy has
+      // a prior to read. `default` is the only routing upstream observed.
+      const isRoutingAlias = model.providerModelId === "default";
+      if (isRoutingAlias && model.capabilityClass) {
+        throw new Error(`Gateway routing alias cannot carry a capability class: ${provider}/${model.modelId}`);
+      }
+      if (!isRoutingAlias && !model.capabilityClass) {
+        throw new Error(`Gateway model is missing a capability class: ${provider}/${model.modelId}`);
+      }
+      // A service-tier sibling is the same upstream under different terms; a
+      // class diverging from its base would let the serving tier edit the prior.
+      if (!isRoutingAlias && model.providerModelId) {
+        const base = definition.models.find((candidate) => candidate.modelId === model.providerModelId);
+        if (base && base.capabilityClass !== model.capabilityClass) {
+          throw new Error(`Gateway service-tier sibling class differs from its base: ${provider}/${model.modelId}`);
+        }
+      }
       if (model.serviceTier && !model.providerModelId) {
         throw new Error(`Gateway service tier requires providerModelId: ${provider}/${model.modelId}`);
       }
