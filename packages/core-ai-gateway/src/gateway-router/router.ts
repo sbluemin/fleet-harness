@@ -103,9 +103,10 @@ export interface AiGatewayRouteDeps {
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
   /** 테스트가 upstream을 대체할 수 있도록 주입 가능하게 둔다. */
   readonly gateway?: AnthropicMessagesGateway;
-  /** 테스트가 구독 토큰 조회를 대체한다. */
-  readonly readAuth?: () => CodexSubscriptionAuth | null | Promise<CodexSubscriptionAuth | null>;
-  readonly readCursorToken?: () => string | null | Promise<string | null>;
+  // 자격증명 조달은 호스트 관심사다. 이 패키지는 기본 조회를 갖지 않으며(환경·홈·키체인
+  // 접근 금지), 각 호스트가 export된 reader를 명시 주입한다.
+  readonly readAuth: () => CodexSubscriptionAuth | null | Promise<CodexSubscriptionAuth | null>;
+  readonly readCursorToken: () => string | null | Promise<string | null>;
   readonly readKimiApiKey?: () => Promise<string | undefined>;
   readonly readOpencodeApiKey?: () => Promise<string | undefined>;
   readonly readModelOverride?: () => string | undefined;
@@ -120,7 +121,7 @@ export interface AiGatewayRouter {
 }
 
 export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter {
-  const readAuth = deps.readAuth ?? (() => readCodexSubscriptionAuth());
+  const readAuth = deps.readAuth;
   const fetchImpl = deps.fetch ?? globalThis.fetch.bind(globalThis);
   const ownedCursorAdapter = deps.gateway
     ? undefined
@@ -216,7 +217,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     let credential = "";
     let chatgptAccountId = "";
     if (target?.provider === "cursor") {
-      const cursorToken = await (deps.readCursorToken ?? readCursorSubscriptionToken)();
+      const cursorToken = await deps.readCursorToken();
       if (!cursorToken) {
         writeAnthropicError(res, 401, "authentication_error", "No Cursor subscription token was found. Sign in to Cursor first.");
         return true;

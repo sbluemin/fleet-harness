@@ -5,6 +5,8 @@ import {
   AI_GATEWAY_MODEL_ENV,
   createAiGatewayRouter,
   createCursorDiagnosticLog,
+  readCodexSubscriptionAuth,
+  readCursorSubscriptionToken,
   type AiGatewaySettingsStore,
 } from "@dotobokuri/core-ai-gateway";
 import {
@@ -29,6 +31,9 @@ export async function startGatewayHttpServer(deps: {
     readKimiApiKey: () => deps.authService.getApiKey(KIMI_AUTH_PROVIDER_ID),
     readOpencodeApiKey: () => deps.authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
     originator: "fleet-cli",
+    // 자격증명 조달은 호스트 결정이다 — thin 런처도 export된 기본 reader를 명시 주입한다.
+    readAuth: () => readCodexSubscriptionAuth(),
+    readCursorToken: () => readCursorSubscriptionToken(),
     readModelOverride: () => process.env[AI_GATEWAY_MODEL_ENV],
     cursorDiagnostics: diagnostics.write,
   });

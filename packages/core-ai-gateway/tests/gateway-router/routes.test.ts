@@ -1405,9 +1405,16 @@ describe("route surface", () => {
 });
 
 function createAiGatewayRouter(
-  deps: Omit<AiGatewayRouteDeps, "originator"> = {},
+  deps: Partial<AiGatewayRouteDeps> = {},
 ) {
-  return createCoreAiGatewayRouter({ originator: "fleet-console", ...deps });
+  // readAuth/readCursorToken은 프로덕션에서 필수 주입이다. 테스트 래퍼는 자격증명 부재 스텁을
+  // 기본값으로 두고, 각 테스트가 필요한 조달자만 덮어쓴다.
+  return createCoreAiGatewayRouter({
+    originator: "fleet-console",
+    readAuth: () => null,
+    readCursorToken: () => null,
+    ...deps,
+  });
 }
 
 function readAuth() {
