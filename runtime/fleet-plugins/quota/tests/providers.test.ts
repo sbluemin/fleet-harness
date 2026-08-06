@@ -672,6 +672,28 @@ describe("Kimi provider requests", () => {
   });
 });
 
+describe("provider error sanitization", () => {
+  it("classifies a TLS certificate verification failure", () => {
+    const error = new TypeError("fetch failed");
+    Object.defineProperty(error, "cause", { value: { code: "UNABLE_TO_VERIFY_LEAF_SIGNATURE" } });
+    expect(sanitizeProviderError(error)).toBe("Certificate verification failed (UNABLE_TO_VERIFY_LEAF_SIGNATURE)");
+  });
+
+  it("classifies a nested TLS certificate verification failure", () => {
+    const error = new TypeError("fetch failed");
+    Object.defineProperty(error, "cause", {
+      value: { cause: { code: "CERT_HAS_EXPIRED" } },
+    });
+    expect(sanitizeProviderError(error)).toBe("Certificate verification failed (CERT_HAS_EXPIRED)");
+  });
+
+  it("keeps non-TLS causes generic", () => {
+    const error = new TypeError("fetch failed");
+    Object.defineProperty(error, "cause", { value: { code: "ECONNREFUSED" } });
+    expect(sanitizeProviderError(error)).toBe("Provider request failed");
+  });
+});
+
 describe("provider response boundaries", () => {
   it("rejects a response whose final URL differs and surfaces no quota data", async () => {
     const response = jsonResponse({ five_hour: { used_percentage: 99 } });

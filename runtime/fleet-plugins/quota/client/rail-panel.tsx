@@ -121,7 +121,7 @@ function Meter({
   );
 }
 
-function StatusStrip({ kind, children }: { readonly kind: "expired" | "stale"; readonly children: React.ReactNode }) {
+function StatusStrip({ kind, children }: { readonly kind: "expired" | "stale" | "error"; readonly children: React.ReactNode }) {
   return <div className={`quota-strip quota-strip--${kind}`}>{children}</div>;
 }
 
@@ -167,7 +167,12 @@ function ProviderCard({
       {provider.status === "no_subscription" ? <div className="quota-signed-out">{t(NO_SUBSCRIPTION_KEY[id])}</div> : null}
       {provider.status === "expired" ? <StatusStrip kind="expired">{t(EXPIRED_KEY[id])}</StatusStrip> : null}
       {provider.status === "stale" ? <StatusStrip kind="stale">{t("quota.stale", { provider: name, t: elapsed(provider.fetchedAt, now) })}</StatusStrip> : null}
-      {provider.status === "error" ? <div className="quota-error">{t("quota.error", { provider: name })}</div> : null}
+      {provider.status === "error" ? (() => {
+        const match = provider.message?.match(/^Certificate verification failed \(([A-Za-z0-9_]+)\)$/);
+        return match?.[1] !== undefined
+          ? <StatusStrip kind="error">{t("quota.error.tls", { provider: name, code: match[1] })}</StatusStrip>
+          : <div className="quota-error">{t("quota.error", { provider: name })}</div>;
+      })() : null}
       {(provider.status === "ok" || provider.status === "stale") ? provider.windows?.map((window, index) => (
         <Meter key={`${window.id}-${window.label ?? index}`} window={window} cycleDays={provider.cycleDays} now={now} t={t} />
       )) : null}

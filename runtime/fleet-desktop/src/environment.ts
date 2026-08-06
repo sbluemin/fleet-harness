@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { prependPathEntries } from "@dotobokuri/core-process";
+import { prependPathEntries, withNodeSystemCa } from "@dotobokuri/core-process";
 import { DESKTOP_DEVELOPMENT_ENV, DESKTOP_OWNER_ID_ENV, DESKTOP_OWNER_KIND_ENV, DESKTOP_PROTOCOL_VERSION, DESKTOP_PROTOCOL_VERSION_ENV, DESKTOP_RESOURCE_ROOT_ENV, resolveCanonicalLocalConsolePaths, resolveCanonicalStableConsolePaths } from "@fleet-console/desktop-protocol";
 
 export interface DesktopEnvironment {
@@ -63,12 +63,14 @@ export function createDesktopEnvironment(userDataDir: string, appVersion: string
   const serviceBase = isPackaged
     ? createPackagedServiceEnvironment(sanitized, options.loginShellPath, options.platform ?? process.platform)
     : sanitized;
+  // TLS 검사 프록시 환경 대응(issue #531): sidecar Node가 OS 신뢰 저장소를 기본 신뢰하도록 한다. opt-out은 FLEET_CONSOLE_NO_SYSTEM_CA=1.
+  const serviceBaseWithCa = env.FLEET_CONSOLE_NO_SYSTEM_CA === "1" ? serviceBase : withNodeSystemCa(serviceBase);
   return {
     ownerId,
     consoleDir: paths.dir,
     dataDir: paths.dataDir,
     serviceEnv: {
-      ...serviceBase,
+      ...serviceBaseWithCa,
       [DESKTOP_OWNER_ID_ENV]: ownerId,
       [DESKTOP_OWNER_KIND_ENV]: "desktop",
       [DESKTOP_PROTOCOL_VERSION_ENV]: String(DESKTOP_PROTOCOL_VERSION),

@@ -156,4 +156,19 @@ describe("console installer environment PATH", () => {
     expect(env.path).toBe("/not-the-path");
     expect(env.PATH).toBe("/runtime/node/bin");
   });
+
+  it("defaults the installer environment to trust the OS CA store (issue #531)", () => {
+    const env = createConsoleInstallerEnvironment({}, "/s/.npmrc", "/s/.npmrc-global", "/runtime/node/bin", "darwin");
+    expect(env.NODE_USE_SYSTEM_CA).toBe("1");
+  });
+
+  it("honors the FLEET_CONSOLE_NO_SYSTEM_CA opt-out", () => {
+    const env = createConsoleInstallerEnvironment({ FLEET_CONSOLE_NO_SYSTEM_CA: "1" }, "/s/.npmrc", "/s/.npmrc-global", "/runtime/node/bin", "darwin");
+    expect(env.NODE_USE_SYSTEM_CA).toBeUndefined();
+  });
+
+  it("does not override an explicitly set NODE_USE_SYSTEM_CA", () => {
+    const env = createConsoleInstallerEnvironment({ NODE_USE_SYSTEM_CA: "0" }, "/s/.npmrc", "/s/.npmrc-global", "/runtime/node/bin", "darwin");
+    expect(env.NODE_USE_SYSTEM_CA).toBe("0");
+  });
 });

@@ -27,6 +27,19 @@ const REQUEST_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BYTES = 262_144;
 const MAX_WINDOWS = 8;
 const MAX_CREDIT_ENTRIES = 256;
+const TLS_CERT_ERROR_CODES: ReadonlySet<string> = new Set([
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+  "UNABLE_TO_GET_ISSUER_CERT",
+  "UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
+  "UNABLE_TO_DECRYPT_CERT_SIGNATURE",
+  "CERT_HAS_EXPIRED",
+  "CERT_NOT_YET_VALID",
+  "CERT_UNTRUSTED",
+  "DEPTH_ZERO_SELF_SIGNED_CERT",
+  "SELF_SIGNED_CERT_IN_CHAIN",
+  "ERR_TLS_CERT_ALTNAME_INVALID",
+  "HOSTNAME_MISMATCH",
+]);
 
 const HOUR_MS = 3_600_000;
 const WEEK_MS = 7 * 24 * HOUR_MS;
@@ -90,6 +103,22 @@ function object(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
+}
+
+function findCauseCode(error: unknown): string | undefined {
+  let current: unknown = error;
+  const seen = new Set<object>();
+  for (let depth = 0; depth <= 4; depth += 1) {
+    if (current === null || typeof current !== "object") return undefined;
+    if (seen.has(current)) return undefined;
+    seen.add(current);
+    if (Object.prototype.hasOwnProperty.call(current, "code")) {
+      const code = (current as Record<string, unknown>).code;
+      if (typeof code === "string") return code;
+    }
+    current = (current as Record<string, unknown>).cause;
+  }
+  return undefined;
 }
 
 function array(value: unknown): readonly unknown[] {
@@ -659,6 +688,11 @@ export function sanitizeProviderError(error: unknown): string {
   if (error instanceof DOMException && error.name === "AbortError") return "Provider request timed out";
   if (error instanceof ProviderHttpError && error.statusCode !== undefined) {
     return `Provider request failed (${error.statusCode})`;
+  }
+  // TLS 검사 프록시 등 인증서 검증 실패는 원인 코드를 남긴다 — 일반화하면 사용자가 원인을 찾을 수 없다(issue #531).
+  const causeCode = findCauseCode(error);
+  if (causeCode !== undefined && TLS_CERT_ERROR_CODES.has(causeCode)) {
+    return `Certificate verification failed (${causeCode})`;
   }
   return "Provider request failed";
 }
