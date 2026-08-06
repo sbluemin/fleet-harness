@@ -1,13 +1,13 @@
 import modelsData from "../models.json" with { type: "json" };
 import { z } from "zod";
 
-import { clampReasoningEffort, type ReasoningEffort } from "./canonical.js";
+import { clampReasoningEffort, type ReasoningEffort } from "./canonical/index.js";
 import {
   canProjectClaudeContextWindow,
   hasClaudeOneMillionMarker,
   isClaudeOneMillionContextWindow,
   stripClaudeOneMillionMarker,
-} from "./claude-context.js";
+} from "./anthropic/claude-context.js";
 
 /**
  * Subscription credential coordinates for gateway providers.

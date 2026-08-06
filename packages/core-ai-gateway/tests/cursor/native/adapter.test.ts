@@ -10,14 +10,14 @@ import {
   CursorRequestBudgetError,
   buildCursorRunPlan,
   translateAnthropicRequest,
-} from "../src/index.js";
-import type { AnthropicMessagesRequest, CanonicalResponseRequest } from "../src/index.js";
+} from "../../../src/index.js";
+import type { AnthropicMessagesRequest, CanonicalResponseRequest } from "../../../src/index.js";
 import {
   AgentClientMessageSchema,
   ConversationStepSchema,
   ConversationTurnStructureSchema,
   UserMessageSchema,
-} from "../src/generated/cursor-agent-protobuf.js";
+} from "../../../src/cursor/native/generated/cursor-agent-protobuf.js";
 
 describe("Cursor request budgets", () => {
   it("uses the verified Cursor tool transport version", () => {

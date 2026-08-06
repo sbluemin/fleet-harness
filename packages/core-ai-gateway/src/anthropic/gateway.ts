@@ -1,20 +1,20 @@
-import { collectAnthropicMessage, encodeAnthropicSse, translateAnthropicRequest } from "./anthropic.js";
+import { collectAnthropicMessage, encodeAnthropicSse, translateAnthropicRequest } from "./protocol.js";
 import type {
   AnthropicMessagesRequest,
   TranslateAnthropicRequestOptions
-} from "./anthropic.js";
-import { ContextWindowExceededError, canonicalMessageText } from "./canonical.js";
+} from "./protocol.js";
+import { ContextWindowExceededError, canonicalMessageText } from "../canonical/index.js";
 import type {
   AiGatewayAdapter,
   CanonicalFunctionTool,
   CanonicalResponseRequest,
-} from "./canonical.js";
-import { OpenAIResponsesAdapter } from "./openai-responses-adapter.js";
-import { withSseKeepAlive } from "./sse-keepalive.js";
-import { estimateTokens } from "./token-estimate.js";
-import { logCanonicalEvents, wireLog, wireLogEnabled } from "./wire-log.js";
+} from "../canonical/index.js";
+import { OpenAIResponsesAdapter } from "../codex/responses/adapter.js";
+import { withSseKeepAlive } from "../transport/sse-keepalive.js";
+import { estimateTokens } from "../transport/token-estimate.js";
+import { logCanonicalEvents, wireLog, wireLogEnabled } from "../transport/wire-log.js";
 
-export { ContextWindowExceededError } from "./canonical.js";
+export { ContextWindowExceededError } from "../canonical/index.js";
 
 export interface AnthropicGatewayCallOptions extends TranslateAnthropicRequestOptions {
   apiKey: string;

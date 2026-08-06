@@ -1,8 +1,12 @@
-import type { AiGatewayAdapter } from "./canonical.js";
-import type { GatewayModel, GatewayModelWire } from "./models.js";
-import { OpenAIChatCompletionsAdapter } from "./openai-chat-adapter.js";
-import { OpenAIResponsesAdapter } from "./openai-responses-adapter.js";
-import type { FetchLike } from "./upstream-sse.js";
+import type { AiGatewayAdapter } from "../canonical/index.js";
+import type { GatewayModel, GatewayModelWire } from "../models.js";
+import { OpencodeGoChatCompletionsAdapter } from "./chat-completions/adapter.js";
+import { OpencodeGoResponsesAdapter } from "./responses/adapter.js";
+import type { FetchLike } from "../transport/upstream-sse.js";
+
+export * from "./anthropic/index.js";
+export * from "./responses/index.js";
+export * from "./chat-completions/index.js";
 
 /**
  * OpenCode Go 구독 접속 좌표와 wire 라우팅.
@@ -21,8 +25,8 @@ export const OPENCODE_GO_API_BASE_URL = "https://opencode.ai/zen/go";
 export const OPENCODE_GO_MODEL = "minimax-m2.5";
 
 export const OPENCODE_GO_MESSAGES_URL = `${OPENCODE_GO_API_BASE_URL}/v1/messages`;
-export const OPENCODE_GO_RESPONSES_URL = `${OPENCODE_GO_API_BASE_URL}/v1/responses`;
-export const OPENCODE_GO_CHAT_COMPLETIONS_URL = `${OPENCODE_GO_API_BASE_URL}/v1/chat/completions`;
+// OPENCODE_GO_RESPONSES_URL / OPENCODE_GO_CHAT_COMPLETIONS_URL는 각 wire 어댑터
+// 소유이며, 위의 export * 로 이 배럴을 통해 재수출된다.
 
 /** The wire a registry entry actually reaches; the registry omits `wire` for Anthropic natives. */
 export function opencodeGoWire(model: Pick<GatewayModel, "wire">): GatewayModelWire {
@@ -43,13 +47,14 @@ export function createOpencodeGoAdapter(
   options: OpencodeGoAdapterOptions = {},
 ): AiGatewayAdapter {
   if (wire === "responses") {
-    return new OpenAIResponsesAdapter({
-      url: OPENCODE_GO_RESPONSES_URL,
+    // OpenCode Go 소유 Responses 어댑터: 기본 url이 OPENCODE_GO_RESPONSES_URL이라
+    // 명시 없이도 Go 네임스페이스로 향한다.
+    return new OpencodeGoResponsesAdapter({
       ...(options.fetch ? { fetch: options.fetch } : {}),
     });
   }
-  return new OpenAIChatCompletionsAdapter({
-    url: OPENCODE_GO_CHAT_COMPLETIONS_URL,
+  // OpenCode Go 소유 chat-completions 어댑터: url이 고정된다.
+  return new OpencodeGoChatCompletionsAdapter({
     ...(options.fetch ? { fetch: options.fetch } : {}),
   });
 }

@@ -1,4 +1,4 @@
-import { estimateTokens } from "./token-estimate.js";
+import { estimateTokens } from "../transport/token-estimate.js";
 
 export const CLAUDE_COMPAT_CONTEXT_WINDOW = 1_000_000;
 export const CLAUDE_DEFAULT_CONTEXT_WINDOW = 200_000;

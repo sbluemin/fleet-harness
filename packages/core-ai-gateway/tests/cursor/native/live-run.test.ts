@@ -13,7 +13,7 @@ import {
   decodeConnectFrames,
   encodeConnectFrame,
   resetCursorWireModelMemory,
-} from "../src/index.js";
+} from "../../../src/index.js";
 import type {
   CanonicalFunctionTool,
   CanonicalResponseEvent,
@@ -21,11 +21,11 @@ import type {
   CursorAdapterOptions,
   CursorDiagnosticEvent,
   ReasoningEffort,
-} from "../src/index.js";
+} from "../../../src/index.js";
 import {
   AgentClientMessageSchema,
   AgentServerMessageSchema,
-} from "../src/generated/cursor-agent-protobuf.js";
+} from "../../../src/cursor/native/generated/cursor-agent-protobuf.js";
 
 afterEach(() => {
   vi.useRealTimers();

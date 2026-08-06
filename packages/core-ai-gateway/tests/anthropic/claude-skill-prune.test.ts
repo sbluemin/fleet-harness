@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   CLAUDE_SKILL_BODY_BUDGET_FRACTION,
   pruneClaudeSkillPayloads,
-} from "../src/claude-context.js";
+} from "../../src/anthropic/claude-context.js";
 
 const CONTEXT_WINDOW = 272_000;
 const BUDGET_TOKENS = CONTEXT_WINDOW * CLAUDE_SKILL_BODY_BUDGET_FRACTION;
