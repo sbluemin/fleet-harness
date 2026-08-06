@@ -90,6 +90,7 @@ export const repositoryEn = {
   "repository.history.parent": "parent {short}",
   "repository.history.detached": "detached",
   "repository.history.resizeDock": "Resize commit detail dock",
+  "repository.history.resizeFileList": "Resize file list",
   "repository.history.resizeLog": "Resize commit log",
 
   // time
@@ -217,6 +218,7 @@ export const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.history.parent": "부모 {short}",
   "repository.history.detached": "detached",
   "repository.history.resizeDock": "커밋 상세 독 크기 조절",
+  "repository.history.resizeFileList": "파일 목록 크기 조절",
   "repository.history.resizeLog": "커밋 로그 크기 조절",
 
   "repository.time.today": "오늘 {time}",

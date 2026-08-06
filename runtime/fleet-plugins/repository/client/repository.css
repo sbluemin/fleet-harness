@@ -1006,19 +1006,13 @@
 .history-changes-tab { min-height: 0; overflow: hidden; }.history-changes-columns { display: grid; min-height: 0; height: 100%; }.history-changes-columns > .history-commit-files { border-right: 1px solid var(--surface-rim); }
 .history-file-diff { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; overflow: hidden; }.history-file-repository-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-mono); font-size: 11px; }.history-file-repository-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.history-file-repository-head > div { display: flex; gap: 2px; margin-left: auto; }.history-file-repository-head button { width: 24px; height: 24px; border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); background: none; color: var(--text-tertiary); cursor: pointer; }.history-file-repository-head button:disabled { cursor: default; opacity: .4; }
 .history-inspector-empty { padding: 16px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 12px; }.history-inspector-error { color: var(--coral-ink); }
-/* 진행형 축소 — 컨테이너(패널·트리 리사이즈)가 좁아질수록 시간 → sha → 뱃지 순으로 양보한다. */
+/* 진행형 축소 — 컨테이너(패널·트리 리사이즈)가 좁아질수록 시간 → sha → 뱃지 순으로 양보한다.
+   제목은 어느 폭에서도 한 줄을 유지한다(기본 규칙의 nowrap+ellipsis): 행 높이는 그래프 gutter의
+   ROW_HEIGHT(28px)와 가상 스크롤 기하에 묶여 있어 줄바꿈이 레인 선과 스크롤 위치를 함께 깨뜨린다. */
 @container (max-width: 640px) {
   .history-commit-time { display: none; }
   .history-commit-row-main {
     grid-template-columns: auto auto minmax(96px, 1fr) 7ch;
-  }
-  .history-commit-subject {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    white-space: normal;
-    overflow: hidden;
-    line-height: 14px;
   }
 }
 @container (max-width: 520px) { .history-commit-sha { display: none; } .history-commit-row-main { grid-template-columns: auto auto minmax(96px, 1fr); } }
@@ -1418,13 +1412,12 @@
 
 .repository-ws-dock {
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr);
+  /* 사용자가 끈 파일 열 폭은 CSS 변수로만 들어온다 — 인라인 grid-template-columns는 아래 세로
+     스택 컨테이너 쿼리를 이겨 main 열 0 붕괴를 되살린다. min()이 diff 열 최소폭(JS 클램프의
+     WORKSPACE_DOCK_MAIN_MIN_WIDTH + 디바이더)을 저장값보다 우선 보장한다. */
+  grid-template-columns: minmax(0, min(var(--ws-dock-files-width, 250px), calc(100% - 204px))) 4px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
-}
-
-.repository-ws-dock > .history-commit-files {
-  border-right: 1px solid var(--surface-rim);
 }
 
 .repository-ws-dock-main {
@@ -1527,7 +1520,9 @@
 .history-detail-pane { container-type: inline-size; }
 @container (max-width: 430px) {
   .repository-ws-dock { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 44%) minmax(0, 1fr); }
-  .repository-ws-dock > .history-commit-files { border-right: 0; border-bottom: 1px solid var(--surface-rim); }
+  /* 세로 스택에서는 열 디바이더가 트랙 수를 어긋내므로 흐름에서 제거하고, 이음매는 테두리가 잇는다. */
+  .repository-ws-dock > .repository-ws-dock-divider { display: none; }
+  .repository-ws-dock > .history-commit-files { border-bottom: 1px solid var(--surface-rim); }
 }
 /* ═══ sync surfacing · stash rows — rail-panel 소유 구역 ═══ */
 .repository-sync-toast {

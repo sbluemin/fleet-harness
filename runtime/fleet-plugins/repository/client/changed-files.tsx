@@ -8,6 +8,8 @@ import { DiffTreeView } from "./repository-tree.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
+export type FilesViewMode = "list" | "tree";
+
 export type ChangedFilesState =
   | { readonly kind: "loading" }
   | { readonly kind: "ok"; readonly files: readonly DiffFileEntry[] }
@@ -17,7 +19,7 @@ export type ChangedFilesState =
 interface ChangedFilesProps {
   readonly state: ChangedFilesState;
   readonly onRetry: () => void;
-  readonly viewMode: "list" | "tree";
+  readonly viewMode: FilesViewMode;
   readonly selectedPath: string | null;
   readonly onSelect: (entry: DiffFileEntry) => void;
   readonly filterText: string;
@@ -38,6 +40,10 @@ interface ListFileRowProps {
 // ─── constants ───────────────────────────────────────────────────────────────
 
 const PREFS_CHANGES_COLLAPSED = "fleet-console.diff.changesCollapsed";
+
+// 커밋 검사기와 비교 검사기가 같은 목록/트리 선택을 공유한다 — 표면마다 따로 기억하면 같은 파일
+// 목록이 표면을 옮길 때마다 표현을 바꾼다.
+export const PREFS_FILES_VIEW = "fleet-console.history.filesView";
 
 const STATUS_KEY: { [key: string]: RepositoryMessageKey } = {
   M: "repository.status.modified",
@@ -146,6 +152,43 @@ export function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect,
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── 파일 목록 표현 토글 (export) ────────────────────────────────────────────
+
+export function readFilesViewMode(storage?: Pick<Storage, "getItem">): FilesViewMode {
+  try {
+    const value = (storage ?? globalThis.localStorage).getItem(PREFS_FILES_VIEW);
+    if (value === "list" || value === "tree") return value;
+  } catch { /* best-effort preference */ }
+  return "list";
+}
+
+export function saveFilesViewMode(mode: FilesViewMode, storage?: Pick<Storage, "setItem">): void {
+  try { (storage ?? globalThis.localStorage).setItem(PREFS_FILES_VIEW, mode); }
+  catch { /* best-effort preference */ }
+}
+
+export function FilesViewToggle({ mode, onMode, t }: { readonly mode: FilesViewMode; readonly onMode: (mode: FilesViewMode) => void; readonly t: Translate<RepositoryMessageKey> }) {
+  return (
+    <div className="repository-view-toggle history-files-view-toggle">
+      <button type="button" className={`repository-toggle-btn${mode === "list" ? " is-active" : ""}`} title={t("repository.common.listView")} aria-label={t("repository.common.listView")} aria-pressed={mode === "list"} onClick={() => onMode("list")}>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <line x1="2" y1="3.5" x2="12" y2="3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          <line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          <line x1="2" y1="10.5" x2="12" y2="10.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+        </svg>
+      </button>
+      <button type="button" className={`repository-toggle-btn${mode === "tree" ? " is-active" : ""}`} title={t("repository.common.treeView")} aria-label={t("repository.common.treeView")} aria-pressed={mode === "tree"} onClick={() => onMode("tree")}>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <rect x="1" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" />
+          <rect x="9" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" />
+          <rect x="1" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" />
+          <rect x="9" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" />
+        </svg>
+      </button>
     </div>
   );
 }

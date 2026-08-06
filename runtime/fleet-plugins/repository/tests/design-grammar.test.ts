@@ -159,6 +159,26 @@ describe("Repository design grammar", () => {
     expect(css).not.toMatch(/\.repository-scan-depth\b/);
   });
 
+  it("keeps commit subjects on one row at every container width", () => {
+    const subjects = blocksOf(".history-commit-subject");
+    // 행 높이는 그래프 gutter의 ROW_HEIGHT와 가상 스크롤 기하에 묶여 있다 — 줄바꿈은 둘 다 깨뜨린다.
+    for (const body of subjects) {
+      expect(body).not.toContain("line-clamp");
+      expect(body).not.toContain("white-space: normal");
+    }
+    expect(subjects.some((body) => body.includes("white-space: nowrap") && body.includes("text-overflow: ellipsis"))).toBe(true);
+  });
+
+  it("resizes the inspector dock through an injected width variable, not an inline track list", () => {
+    const [wide, stacked] = blocksOf(".repository-ws-dock");
+    expect(wide).toContain("var(--ws-dock-files-width, 250px)");
+    // 파일 열 · 4px 디바이더 · diff 열의 3트랙 문법.
+    expect(wide).toMatch(/grid-template-columns:[^;]*\)\) 4px minmax\(0, 1fr\)/);
+    // 좁은 독은 세로 스택으로 넘어가고, 그때 열 디바이더는 트랙 수를 어긋내므로 흐름에서 빠진다.
+    expect(stacked).toContain("grid-template-columns: minmax(0, 1fr)");
+    expect(blockOf(".repository-ws-dock > .repository-ws-dock-divider")).toContain("display: none");
+  });
+
   it("keeps added and deleted rows monochromatic", () => {
     expect(blockOf(".repository-line-add .repository-line-code")).toContain("var(--text-primary) 72%");
     expect(blockOf(".repository-line-del .repository-line-code")).toContain("var(--text-primary) 60%");
