@@ -1,3 +1,10 @@
+### fleet-console
+
+#### Fixed
+
+- [fleet-console] Reuse a plugin's compiled route bundle across Console server starts within one process, keyed by bundle content, instead of writing it to a fresh temporary directory and registering a separate module copy on every start.
+  ko: 한 프로세스 안에서 Console 서버를 다시 시작할 때 플러그인의 컴파일된 라우트 번들을 매번 새 임시 디렉터리에 쓰고 별도 모듈 사본으로 등록하는 대신, 번들 내용을 기준으로 재사용합니다.
+
 ### fleet-plugin
 
 #### Fixed

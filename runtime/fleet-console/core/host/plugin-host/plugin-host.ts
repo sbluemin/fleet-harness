@@ -26,9 +26,10 @@ export type {
 } from "@fleet-console/sdk/plugin";
 import type { FleetPluginHostCapabilities, FleetPluginManifest, FleetPluginRouteModule, FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
+import { createHash } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
 import fs from "node:fs";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -449,6 +450,19 @@ function filterDiscoveredPlugins(plugins: readonly DiscoveredFleetPlugin[]): rea
   return accepted;
 }
 
+// 동적 import된 URL은 Node의 ESM 레지스트리에 영구히 남아 회수되지 않는다. 번들 캐시 디렉터리는 서버마다
+// 다르므로 경로로 키를 잡으면 같은 플러그인이 기동마다 새 모듈 그래프로 등록된다 — 내용 해시로 키를 잡아야
+// 한 프로세스에서 Console 서버를 반복 기동해도 플러그인 모듈이 누적되지 않는다.
+const pluginBundleModules = new Map<string, Promise<FleetPluginRouteModule>>();
+
+function importPluginBundleOnce(digest: string, bundledPath: string): Promise<FleetPluginRouteModule> {
+  const cached = pluginBundleModules.get(digest);
+  if (cached) return cached;
+  const loading = import(pathToFileURL(bundledPath).href) as Promise<FleetPluginRouteModule>;
+  pluginBundleModules.set(digest, loading);
+  return loading;
+}
+
 async function importPluginModule(entry: string, bundleCacheDir: string | undefined, generatedBundleDirs: Set<string>): Promise<FleetPluginRouteModule> {
   if (entry.endsWith(".ts")) {
     const { build } = await import("esbuild");
@@ -465,16 +479,19 @@ async function importPluginModule(entry: string, bundleCacheDir: string | undefi
     });
     const bundled = output.outputFiles[0]?.text;
     if (!bundled) throw new Error("plugin_bundle_failed");
-    const bundledPath = await writeTemporaryPluginBundle(entry, bundled, bundleCacheDir, generatedBundleDirs);
-    return await import(pathToFileURL(bundledPath).href) as FleetPluginRouteModule;
+    const digest = createHash("sha256").update(bundled).digest("hex").slice(0, 16);
+    // 캐시 히트여도 번들 디렉터리는 계속 쓴다 — 소유자 표식과 정리 계약이 그 디렉터리에 걸려 있다.
+    const bundledPath = await writeTemporaryPluginBundle(entry, bundled, digest, bundleCacheDir, generatedBundleDirs);
+    return await importPluginBundleOnce(digest, bundledPath);
   }
   return await import(pathToFileURL(entry).href) as FleetPluginRouteModule;
 }
 
-async function writeTemporaryPluginBundle(entry: string, source: string, bundleCacheDir: string | undefined, generatedBundleDirs: Set<string>): Promise<string> {
+async function writeTemporaryPluginBundle(entry: string, source: string, digest: string, bundleCacheDir: string | undefined, generatedBundleDirs: Set<string>): Promise<string> {
   const cacheRoot = bundleCacheDir ?? path.join(resolvePluginBundleNodeModules(entry), ".cache");
   await mkdir(cacheRoot, { recursive: true });
-  const dir = await mkdtemp(path.join(cacheRoot, `${PLUGIN_BUNDLE_DIR_PREFIX}${process.pid}-`));
+  const dir = path.join(cacheRoot, `${PLUGIN_BUNDLE_DIR_PREFIX}${process.pid}-${digest}`);
+  await mkdir(dir, { recursive: true });
   if (bundleCacheDir) {
     generatedBundleDirs.add(dir);
     await writePluginBundleOwner(dir, process.pid);
