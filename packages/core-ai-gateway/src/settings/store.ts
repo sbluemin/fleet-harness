@@ -93,10 +93,22 @@ export function createAiGatewaySettingsStore(
 
   // 승계와 요청된 갱신을 같은 잠금 안에서 끝낸다. 둘을 나누면 승계가 실패한 직후의 부분 갱신이
   // 목적지 파일을 먼저 만들어, 아직 옮기지 못한 선별을 영영 고아로 만든다.
+  //
+  // 과거 파일을 아직 **읽지 못한** 상태에서도 같은 일이 벌어진다. 목적지 파일이 생기는 순간
+  // 그것이 "승계 끝"의 유일한 표식이 되므로, 조사에 결론이 나기 전에는 쓰지 않고 거절한다.
+  // 조용히 잃는 것보다 실패를 보이는 편이 낫다 — 저장은 다시 시도할 수 있지만 사라진 선별은
+  // 되돌릴 수 없다. 되돌아오지 못할 상태(디렉터리·심링크 루프 등)는 애초에 `nothing`으로
+  // 결론지으므로, 이 거절이 영구히 설정 저장을 막는 상태로 굳지 않는다.
   const update = (
     mutate: (current: AiGatewayStoredSettings) => AiGatewayStoredSettings,
   ): AiGatewayStoredSettings => {
     probeLegacySettings();
+    if (!probeSettled) {
+      throw new Error(
+        `AI Gateway settings were not written: the previous settings file at ${legacyPath!} could not be read, `
+        + "and writing now would strand it. Make that file readable or remove it, then retry.",
+      );
+    }
     return store.update((current) => mutate(adoptedBase(current)));
   };
 
@@ -152,13 +164,20 @@ type LegacyProbe =
   /** 읽지 못했다. 결론이 아니므로 다음 접근이 다시 조사해야 한다. */
   | { readonly kind: "unavailable" };
 
+/**
+ * 다시 읽어도 결과가 달라지지 않는 실패들. 그 자리에 읽을 수 있는 과거 파일이 **없다**는
+ * 결론이므로 재시도 대상이 아니다. 이걸 `unavailable`로 두면 승계를 기다리느라 설정 저장이
+ * 영구히 막히는데, 그건 원래 막으려던 손실보다 나쁘다.
+ */
+const CONCLUSIVE_LEGACY_READ_ERRORS = new Set(["ENOENT", "EISDIR", "ENOTDIR", "ELOOP", "ENAMETOOLONG"]);
+
 function readLegacySettings(legacyPath: string): LegacyProbe {
   let raw: string;
   try {
     raw = fs.readFileSync(legacyPath, "utf-8");
   } catch (error) {
-    // 없는 파일은 결론이지만, 권한·I/O 실패는 결론이 아니다.
-    return (error as NodeJS.ErrnoException).code === "ENOENT"
+    // 권한·I/O 실패는 결론이 아니다 — 지금 못 읽었을 뿐 값은 그대로 있을 수 있다.
+    return CONCLUSIVE_LEGACY_READ_ERRORS.has((error as NodeJS.ErrnoException).code ?? "")
       ? { kind: "nothing" }
       : { kind: "unavailable" };
   }

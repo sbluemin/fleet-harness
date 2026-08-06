@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -221,6 +230,49 @@ describe("ai-gateway settings store", () => {
       models: [{ id: "cursor--auto" }],
       cursorDiagnosticsEnabled: true,
     });
+  });
+
+  it("refuses to write while the previous file exists but cannot be read yet", () => {
+    const dataDir = createDataDir();
+    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "cursor--auto" }] });
+    const legacyFile = path.join(legacyDir, "ai-gateway.json");
+    chmodSync(legacyFile, 0o000);
+    // root는 권한 검사를 우회해 EACCES가 나지 않는다. 그 환경에서는 이 경로를 재현할 수 없다.
+    let readable = true;
+    try {
+      readFileSync(legacyFile, "utf-8");
+    } catch {
+      readable = false;
+    }
+    if (readable) return;
+
+    const store = createAiGatewaySettingsStore({ dataDir, legacyDir });
+    // 읽기는 관대하다 — 미구성으로 답하되 목적지 파일을 만들어 결론을 굳히지 않는다.
+    expect(store.read()).toEqual({ version: 1 });
+    expect(existsSync(store.path)).toBe(false);
+    // 쓰기는 거절한다. 여기서 파일이 생기면 그 순간 과거 선별이 영영 고아가 된다.
+    expect(() => store.writeCursorDiagnosticsEnabled(true)).toThrow(/could not be read/);
+    expect(existsSync(store.path)).toBe(false);
+
+    chmodSync(legacyFile, 0o644);
+    store.writeCursorDiagnosticsEnabled(true);
+    expect(store.read()).toEqual({
+      version: 1,
+      models: [{ id: "cursor--auto" }],
+      cursorDiagnosticsEnabled: true,
+    });
+  });
+
+  it("does not wedge writes when the previous path can never yield a file", () => {
+    const dataDir = createDataDir();
+    // 그 자리에 디렉터리가 있으면 다시 읽어도 결과가 같다. 승계를 기다리며 저장을 영구히
+    // 막는 것은 원래 막으려던 손실보다 나쁘므로, 결론(`nothing`)으로 접고 진행해야 한다.
+    const legacyDir = path.join(dataDir, "console", "plugins", "terminal");
+    mkdirSync(path.join(legacyDir, "ai-gateway.json"), { recursive: true });
+    const store = createAiGatewaySettingsStore({ dataDir, legacyDir });
+
+    store.writeCursorDiagnosticsEnabled(true);
+    expect(store.read()).toEqual({ version: 1, cursorDiagnosticsEnabled: true });
   });
 
   it("cleans up its own orphaned temp files", () => {
