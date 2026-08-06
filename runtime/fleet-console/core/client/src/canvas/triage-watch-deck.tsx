@@ -1324,12 +1324,39 @@ function TriageDeckCardFace({ operationId, title, label, detail, accentColor, pr
   );
 }
 
+// 바닥 크롬 밴드 — 에이전트 CLI 패널의 최하단은 입력 컴포저와 상태줄(cwd·모델·권한 모드)이
+// 차지하며, 실행 중에도 갱신되지 않는 고정 크롬이다. 프리뷰의 역할은 스트리밍 감시이므로 이
+// 밴드는 프레임 밖으로 내보내고 그 위 출력 영역이 카드를 채운다. 기본 터미널 글꼴(14px,
+// lineHeight 1) 기준 상태줄 3행 + 컴포저 3행 + 여백 1행 ≈ 7행. 패널 좌표계 기준 상수라
+// scale이 곱해지며 카드/Quick-Look 어디서든 같은 행 수가 잘린다.
+export const TRIAGE_PREVIEW_BOTTOM_CHROME = 104;
+// 작은 패널에서 밴드가 프레임 대부분을 먹지 않도록 한 몫 상한을 둔다 — 하한 200px 패널에서
+// 104px를 그대로 빼면 남는 출력 영역이 절반 밑으로 떨어져 프리뷰가 오히려 덜 읽힌다.
+const TRIAGE_PREVIEW_BOTTOM_CHROME_MAX_RATIO = 0.3;
+
+// 프리뷰 fit — 레터박스 없이 카드 영역을 채우는 cover-fit이되, 세로 기준은 패널 전체가 아니라
+// 바닥 크롬을 제외한 출력 영역이다. 크롭 앵커는 가로 중앙·세로는 출력 영역의 하단: 터미널의
+// 최신 출력은 컴포저 바로 위에 쌓이므로 모니터링 가치가 있는 영역이 살아남는다(빈 셸이 비어
+// 보이는 것은 정직한 상태 표현이다).
+export function resolveTriagePreviewFit(
+  viewport: { readonly width: number; readonly height: number },
+  inner: { readonly width: number; readonly height: number },
+): { scale: number; left: number; top: number } | null {
+  if (viewport.width <= 0 || viewport.height <= 0) return null;
+  if (inner.width <= 0 || inner.height <= 0) return null;
+  const chrome = Math.min(TRIAGE_PREVIEW_BOTTOM_CHROME, inner.height * TRIAGE_PREVIEW_BOTTOM_CHROME_MAX_RATIO);
+  const contentHeight = inner.height - chrome;
+  const scale = Math.max(viewport.width / inner.width, viewport.height / contentHeight);
+  return {
+    scale,
+    left: (viewport.width - inner.width * scale) / 2,
+    top: viewport.height - contentHeight * scale,
+  };
+}
+
 // 라이브 프리뷰 — pool 슬롯이 실제 패널 body를 카드 안으로 끌어온다. 내부 박스는 패널의 원래
 // 픽셀 크기를 고정 유지한 채 transform scale로만 축소한다: FitAddon이 카드 크기를 측정하면
 // PTY cols/rows가 타일 크기로 리사이즈되어 실세션 레이아웃이 깨지므로, 측정 크기 불변이 계약이다.
-// 레터박스 없이 카드 영역을 채우는 cover-fit — max 비율로 확대하고 넘치는 축은 크롭한다.
-// 크롭 앵커는 가로 중앙·세로 하단: 터미널의 최신 출력과 입력줄은 항상 하단에 있으므로
-// 모니터링 가치가 있는 영역이 살아남는다(빈 셸이 비어 보이는 것은 정직한 상태 표현이다).
 function TriageDeckCardPreview({ operationId, config }: {
   readonly operationId: string;
   readonly config: OperationBodyConfig;
@@ -1344,18 +1371,10 @@ function TriageDeckCardPreview({ operationId, config }: {
     const viewport = viewportRef.current;
     if (!viewport) return;
     const measure = () => {
-      const width = viewport.clientWidth;
-      const height = viewport.clientHeight;
-      if (width <= 0 || height <= 0) {
-        setFit(null);
-        return;
-      }
-      const scale = Math.max(width / innerWidth, height / innerHeight);
-      setFit({
-        scale,
-        left: (width - innerWidth * scale) / 2,
-        top: height - innerHeight * scale,
-      });
+      setFit(resolveTriagePreviewFit(
+        { width: viewport.clientWidth, height: viewport.clientHeight },
+        { width: innerWidth, height: innerHeight },
+      ));
     };
     measure();
     if (typeof ResizeObserver === "undefined") return;
