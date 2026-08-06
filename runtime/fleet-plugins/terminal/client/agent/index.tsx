@@ -643,7 +643,7 @@ function CarrierStreamColumn({
                 <span className="carrier-stream-column__activity-orbit" data-tone={resolveToolTone(latestTool.status)} aria-hidden="true" />
                 <span className="carrier-stream-column__activity-copy">
                   <strong>{t("terminal.analyst.activity.usingTool", { title: latestTool.name ?? latestTool.id })}</strong>
-                  <small>{t("terminal.analyst.activity.toolStatus", { status: latestTool.status })}</small>
+                  {latestTool.status ? <small>{t("terminal.analyst.activity.toolStatus", { status: latestTool.status })}</small> : null}
                   <small>{t("terminal.analyst.lastConfirmedOnly")}</small>
                 </span>
                 <time>{elapsed}</time>
@@ -997,12 +997,10 @@ function AiGatewayProviderBlock({ provider, selection, saving, onAdd, onRemove, 
   const [draftBase, setDraftBase] = React.useState(baseModels[0]?.id ?? "");
   const [draftFast, setDraftFast] = React.useState(false);
 
-  const enabledRows = (selection.models ?? [])
-    .map((entry) => {
-      const model = provider.models.find((candidate) => candidate.id === entry.id);
-      return model === undefined ? undefined : { model, efforts: entry.efforts };
-    })
-    .filter((row): row is { model: AiGatewayCatalogModel; efforts?: readonly string[] } => row !== undefined);
+  const enabledRows = (selection.models ?? []).flatMap((entry) => {
+    const model = provider.models.find((candidate) => candidate.id === entry.id);
+    return model === undefined ? [] : [{ model, efforts: entry.efforts }];
+  });
 
   const draftBaseModel = provider.models.find((model) => model.id === draftBase) ?? baseModels[0];
   const hasFastPair = draftBaseModel !== undefined
