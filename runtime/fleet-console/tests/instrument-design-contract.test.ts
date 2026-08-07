@@ -39,6 +39,7 @@ const SKILLS_CSS_PATH = new URL("../../fleet-plugins/skills/client/skills.css", 
 const TERMINAL_AGENT_PATH = new URL("../../fleet-plugins/terminal/client/agent/index.tsx", import.meta.url);
 const TERMINAL_ANALYSIS_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/analysis.css", import.meta.url);
 const TERMINAL_GOAL_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/goal.css", import.meta.url);
+const TERMINAL_AGENT_CLI_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/agent-cli.css", import.meta.url);
 const SDK_RAIL_TYPES_PATH = new URL("../sdk/rail/types.ts", import.meta.url);
 const SDK_VERSION_PATH = new URL("../sdk/version.ts", import.meta.url);
 const OWNED_SOURCES = [
@@ -604,6 +605,38 @@ describe("Instrument core design contract", () => {
       }
     }
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[^{]*\{[^}]*\.terminal-goal-body/);
+  });
+
+  it("pins the AI Gateway capability-class badge grammar — ink rank, no signal colour, dashed for unclassed", () => {
+    // 등급은 Operation 상태가 아니라 프로바이더가 자기 라인업에 대해 주장하는 속성이다.
+    // 신호색을 빌리면 같은 행에서 등급이 상태처럼 읽혀 활동 축과 서로를 부정한다.
+    const css = externalSource(TERMINAL_AGENT_CLI_CSS_PATH).replace(/\r\n/g, "\n");
+    const badgeRules = [...css.matchAll(/([^{}]*\.ai-gateway-class-badge[^{}]*)\{([^}]*)\}/g)];
+    expect(badgeRules.length).toBeGreaterThan(0);
+    for (const [, , body] of badgeRules) {
+      expect(body).not.toMatch(/var\(--(aurora|warn|coral|positive|brass)[a-z-]*\)/);
+    }
+
+    // 서열은 테두리·글자의 잉크 농도로만 말하고, standard가 그 기준선이라 자기 규칙을 갖지
+    // 않는다. 가운데 등급에 규칙이 생기는 순간 세 등급이 서로 독립이 되어 서열이 사라진다.
+    const base = css.match(/^\.ai-gateway-class-badge \{[^}]*\}/m)?.[0] ?? "";
+    expect(base).toContain("border: 1px solid var(--surface-rim);");
+    expect(base).toContain("color: var(--text-secondary);");
+    expect(css).not.toContain(".ai-gateway-class-badge.is-standard");
+
+    const flagship = css.match(/\.ai-gateway-class-badge\.is-flagship \{[^}]*\}/)?.[0] ?? "";
+    expect(flagship).toContain("border-color: var(--surface-rim-strong);");
+    expect(flagship).toContain("color: var(--text-primary);");
+
+    const light = css.match(/\.ai-gateway-class-badge\.is-light \{[^}]*\}/)?.[0] ?? "";
+    expect(light).toContain("color: var(--text-tertiary);");
+    expect(light).toMatch(/border-color: color-mix\(in oklch, var\(--surface-rim\) \d+%, transparent\);/);
+
+    // 등급 없는 라우팅 별칭은 서열의 한 칸이 아니라 서열 밖이다 — 농도를 한 단 더 내리는
+    // 대신 파선으로 가른다. 농도로 갈랐다면 light보다 약한 네 번째 등급으로 읽힌다.
+    const unclassed = css.match(/\.ai-gateway-class-badge\.is-unclassed \{[^}]*\}/)?.[0] ?? "";
+    expect(unclassed).toContain("border-style: dashed;");
+    expect(unclassed).not.toContain("border-color:");
   });
 
   it("pins the shared panel motion layer and existence choreography grammar", () => {
