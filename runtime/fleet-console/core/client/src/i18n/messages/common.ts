@@ -61,6 +61,11 @@ export const commonEn = {
   "launchKind.claudeNative.description": "Plain Claude Code, without the Admiral prompt",
   "launchKind.claude.description": "The one you know — Admiral standing orders and Carrier dispatch",
   "launchKind.claudeGateway.description": "Runs Claude Code on the models you enabled in Settings",
+  // 실행 종류 옆에 늘 보이는 한 단어짜리 대비. 설명 문장은 한 항목을 짚었을 때만 펼치므로,
+  // 짚지 않고 훑는 사람(그리고 호버가 없는 터치)도 세 Claude를 구별할 수 있어야 한다.
+  "launchKind.claudeNative.brief": "No Admiral",
+  "launchKind.claude.brief": "Admiral + Carriers",
+  "launchKind.claudeGateway.brief": "Other models",
 } as const;
 
 export const commonKo: Record<keyof typeof commonEn, string> = {
@@ -126,4 +131,7 @@ export const commonKo: Record<keyof typeof commonEn, string> = {
   "launchKind.claudeNative.description": "Admiral 프롬프트 없는 순정 Claude Code",
   "launchKind.claude.description": "Admiral 상비 명령과 Carrier 위임을 함께 싣는 기존 방식",
   "launchKind.claudeGateway.description": "설정에서 켠 다른 모델로 Claude Code를 실행",
+  "launchKind.claudeNative.brief": "Admiral 없이",
+  "launchKind.claude.brief": "Admiral + Carrier",
+  "launchKind.claudeGateway.brief": "다른 모델",
 };
