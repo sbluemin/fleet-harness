@@ -105,6 +105,20 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
 
 .command-band.is-fullscreen.is-revealed { transform: translateY(0); }
 
+/* 도킹 — "계속 보이기"는 오버레이 고정이 아니라 흐름 복귀다. fixed로 띄운 채 계속 보이게 하면
+   스테이지 상단 44px이 영구히 덮이고 그 띠는 클릭도 되지 않는다. 여기서 position을 되돌려
+   .console-shell 플렉스 열이 다시 밴드 몫을 재도록 한다 — 덮이는 픽셀이 0이 된다.
+   .is-revealed와 특정도가 같으므로 반드시 뒤에 두어 transform을 무효화해야 한다. */
+.command-band.is-fullscreen.is-docked {
+  position: relative;
+  /* 창 모드 밴드와 같은 쌓임으로 되돌린다. z-index 40은 떠 있는 밴드가 스테이지를 덮기 위한
+     값이라, 흐름으로 돌아온 뒤에도 남겨 두면 그보다 낮은 오버레이(What's new는 35) 위에
+     밴드가 그려지고 클릭까지 받는다 — 모달 예외가 도킹을 visibility로 숨기지 않기 때문이다. */
+  z-index: auto;
+  transform: none;
+  transition: none;
+}
+
 .command-band.is-fullscreen[aria-hidden="true"] { pointer-events: none; }
 
 .command-band-edge-reveal {
@@ -124,7 +138,9 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   cursor: pointer;
 }
 
-body:has([aria-modal="true"]:not([hidden])) .command-band.is-fullscreen,
+/* 모달 뒤로 물러나는 것은 떠 있는 밴드뿐이다 — visibility는 자리를 비우지 않으므로, 도킹된
+   밴드에 걸면 모달 아래에 44px 빈 크롬 띠만 남는다. 도킹은 흐름의 일부라 그대로 둔다. */
+body:has([aria-modal="true"]:not([hidden])) .command-band.is-fullscreen:not(.is-docked),
 body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscreen {
   visibility: hidden;
   pointer-events: none;
@@ -360,6 +376,15 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   background: color-mix(in oklch, var(--ink-spectral) 10%, transparent);
   color: var(--text-secondary);
   outline: none;
+}
+
+/* 눌린 아이콘 버튼은 밴드의 다른 토글과 같은 문법으로 말한다 — .command-band-mode-seg·
+   .command-band-mode-tool이 쓰는 brass 채움이며, War Room 스포트라이트처럼 불리언 토글도
+   이미 이 문법을 입고 있다. 이 규칙이 없던 동안 aria-pressed는 접근성 트리에만 존재하고
+   화면에는 아무 흔적도 남기지 않았다. */
+.command-band-button[aria-pressed="true"] {
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  color: var(--brass-ink);
 }
 
 /* 맵 컨트롤 클러스터(보기 초기화·전체 맞춤·Formation·선별 처리)는 한 컨테이너의 플로우 형제다 —

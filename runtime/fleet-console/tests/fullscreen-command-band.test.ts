@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useFullscreenCommandBand } from "../core/client/src/components/use-fullscreen-command-band.js";
 import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "../core/client/src/desktop-fullscreen.js";
+import { getCommandBandDocked, setCommandBandDocked } from "../core/client/src/fullscreen-band-store.js";
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -18,6 +19,8 @@ beforeEach(() => {
   mediaQuery = new TestMediaQuery(false);
   vi.stubGlobal("matchMedia", vi.fn().mockReturnValue(mediaQuery));
   resetDesktopFullscreenSnapshot();
+  localStorage.clear();
+  setCommandBandDocked(false);
   delete document.documentElement.dataset.desktopShell;
   document.body.replaceChildren();
   container = document.createElement("div");
@@ -34,6 +37,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   resetDesktopFullscreenSnapshot();
+  setCommandBandDocked(false);
+  localStorage.clear();
   delete document.documentElement.dataset.desktopShell;
 });
 
@@ -99,24 +104,130 @@ describe("useFullscreenCommandBand", () => {
     expect(attribute(band(), "data-visible")).toBe("false");
   });
 
-  it("reveals on pointer entry and honors the session-local pin", () => {
+  it("keeps the band visible while docked and returns to auto-hide when undocked", () => {
     mediaQuery.setMatches(true);
     renderProbe();
     act(() => vi.advanceTimersByTime(480));
 
     act(() => edge().dispatchEvent(new Event("pointerover", { bubbles: true })));
     expect(attribute(band(), "data-visible")).toBe("true");
-    act(() => pin().click());
-    expect(attribute(pin(), "aria-pressed")).toBe("true");
+    act(() => dockToggle().click());
+    expect(attribute(dockToggle(), "aria-pressed")).toBe("true");
+    expect(attribute(band(), "data-docked")).toBe("true");
     act(() => edge().dispatchEvent(new Event("pointerout", { bubbles: true })));
     act(() => vi.advanceTimersByTime(480));
     expect(attribute(band(), "data-visible")).toBe("true");
 
-    act(() => pin().click());
-    expect(attribute(pin(), "aria-pressed")).toBe("false");
-    act(() => edge().dispatchEvent(new Event("pointerout", { bubbles: true })));
+    act(() => dockToggle().click());
+    expect(attribute(dockToggle(), "aria-pressed")).toBe("false");
+    expect(attribute(band(), "data-docked")).toBe("false");
+    // 도킹 해제는 즉시 증발시키지 않고 이탈과 같은 유예를 준다.
+    expect(attribute(band(), "data-visible")).toBe("true");
     act(() => vi.advanceTimersByTime(480));
     expect(attribute(band(), "data-visible")).toBe("false");
+  });
+
+  it("remembers the docked choice across a remount", () => {
+    mediaQuery.setMatches(true);
+    renderProbe();
+    act(() => vi.advanceTimersByTime(480));
+    act(() => dockToggle().click());
+    expect(getCommandBandDocked()).toBe(true);
+    expect(localStorage.getItem("fleet-console.fullscreen-band.docked")).toBe("1");
+
+    act(() => root!.unmount());
+    root = createRoot(container!);
+    renderProbe();
+
+    expect(attribute(band(), "data-docked")).toBe("true");
+    act(() => vi.advanceTimersByTime(480));
+    expect(attribute(band(), "data-visible")).toBe("true");
+  });
+
+  it("reveals only after sustained upward intent below the instant edge, and never while dragging", () => {
+    mediaQuery.setMatches(true);
+    renderProbe();
+    act(() => vi.advanceTimersByTime(480));
+    expect(attribute(band(), "data-visible")).toBe("false");
+
+    // 레인 밖(>=32px)은 아무리 올라가도 발화하지 않는다.
+    act(() => movePointer(200));
+    act(() => movePointer(120));
+    act(() => vi.advanceTimersByTime(120));
+    expect(attribute(band(), "data-visible")).toBe("false");
+
+    // 레인 안이라도 버튼을 누른 채 올라오는 것은 캔버스 패닝이다.
+    act(() => movePointer(20, 1));
+    act(() => vi.advanceTimersByTime(120));
+    expect(attribute(band(), "data-visible")).toBe("false");
+
+    // 아래로 꺾으면 dwell이 취소된다.
+    act(() => movePointer(20));
+    act(() => vi.advanceTimersByTime(60));
+    act(() => movePointer(28));
+    act(() => vi.advanceTimersByTime(120));
+    expect(attribute(band(), "data-visible")).toBe("false");
+
+    // 유지된 상승 의도만 120ms 뒤에 발화한다.
+    act(() => movePointer(24));
+    act(() => vi.advanceTimersByTime(119));
+    expect(attribute(band(), "data-visible")).toBe("false");
+    act(() => vi.advanceTimersByTime(1));
+    expect(attribute(band(), "data-visible")).toBe("true");
+
+    // 의도로 내려온 밴드도 스스로 물러난다 — 포인터가 밴드 밖에 있는 채로 발화하므로
+    // 진입/이탈 쌍이 생기지 않고, 유예를 걸어 두지 않으면 영영 숨지 않는다.
+    act(() => vi.advanceTimersByTime(480));
+    expect(attribute(band(), "data-visible")).toBe("false");
+  });
+
+  it("does not observe pointer intent while docked", () => {
+    mediaQuery.setMatches(true);
+    const addSpy = vi.spyOn(window, "addEventListener");
+    setCommandBandDocked(true);
+    renderProbe();
+
+    expect(addSpy.mock.calls.some(([type]) => type === "pointermove")).toBe(false);
+    expect(attribute(band(), "data-docked")).toBe("true");
+    act(() => vi.advanceTimersByTime(480));
+    expect(attribute(band(), "data-visible")).toBe("true");
+  });
+
+  it("cancels a dwell already armed when a press starts without moving", () => {
+    mediaQuery.setMatches(true);
+    renderProbe();
+    act(() => vi.advanceTimersByTime(480));
+
+    act(() => movePointer(200));
+    act(() => movePointer(20));
+    act(() => vi.advanceTimersByTime(60));
+    // buttons 검사는 다음 pointermove에서만 돈다 — 움직이지 않고 누르면 dwell이 살아남아
+    // 드래그 시작과 함께 밴드가 내려왔다.
+    act(() => window.dispatchEvent(new MouseEvent("pointerdown", { clientY: 20, buttons: 1 })));
+    act(() => vi.advanceTimersByTime(120));
+    expect(attribute(band(), "data-visible")).toBe("false");
+  });
+
+  it("attaches the intent observers only while they are needed and removes them on unmount", () => {
+    mediaQuery.setMatches(true);
+    const addSpy = vi.spyOn(window, "addEventListener");
+    const removeSpy = vi.spyOn(window, "removeEventListener");
+    renderProbe();
+
+    const attached = (spy: typeof addSpy) => spy.mock.calls.filter(([type]) => type === "pointermove" || type === "pointerdown").length;
+    expect(attached(addSpy)).toBe(2);
+    expect(attached(removeSpy)).toBe(0);
+
+    // 도킹하면 관찰할 대상이 없다 — 남겨 두면 숨은 적 없는 밴드에 계속 reveal이 걸린다.
+    act(() => dockToggle().click());
+    expect(attached(removeSpy)).toBe(2);
+
+    act(() => dockToggle().click());
+    expect(attached(addSpy)).toBe(4);
+
+    act(() => root!.unmount());
+    root = null;
+    expect(attached(removeSpy)).toBe(4);
   });
 
   it("does not hide while the interaction guard reports focus or pointer containment", () => {
@@ -151,6 +262,10 @@ function renderProbe(): void {
   act(() => root!.render(createElement(FullscreenBandProbe)));
 }
 
+function movePointer(clientY: number, buttons = 0): void {
+  window.dispatchEvent(new MouseEvent("pointermove", { clientY, buttons }));
+}
+
 function FullscreenBandProbe(props?: { readonly canHide?: () => boolean }) {
   const canHide = props?.canHide;
   const fullscreen = useFullscreenCommandBand(canHide);
@@ -170,13 +285,14 @@ function FullscreenBandProbe(props?: { readonly canHide?: () => boolean }) {
         "data-band": "true",
         "data-fullscreen": String(fullscreen.isFullscreen),
         "data-visible": String(fullscreen.isVisible),
+        "data-docked": String(fullscreen.isDocked),
         "aria-hidden": hidden || undefined,
         inert: hidden || undefined,
         onFocus: fullscreen.reveal,
         onBlur: fullscreen.hideAfterLeave,
       },
       createElement("button", { "data-first-control": "true" }),
-      createElement("button", { "data-pin": "true", "aria-pressed": fullscreen.isPinned, onClick: fullscreen.togglePin }),
+      createElement("button", { "data-dock-toggle": "true", "aria-pressed": fullscreen.isDocked, onClick: fullscreen.toggleDock }),
     ),
     createElement("button", { "data-outside": "true" }),
   );
@@ -194,8 +310,8 @@ function firstControl(): HTMLButtonElement {
   return document.querySelector<HTMLButtonElement>("[data-first-control]")!;
 }
 
-function pin(): HTMLButtonElement {
-  return document.querySelector<HTMLButtonElement>("[data-pin]")!;
+function dockToggle(): HTMLButtonElement {
+  return document.querySelector<HTMLButtonElement>("[data-dock-toggle]")!;
 }
 
 function outside(): HTMLButtonElement {

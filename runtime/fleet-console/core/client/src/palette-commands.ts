@@ -1,6 +1,7 @@
 import type { LocalizedText, Translate } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
+import { getCommandBandDocked } from "./fullscreen-band-store.js";
 import { getGlobalSettingsStoreState } from "./global-settings-store.js";
 import type { CoreMessageKey } from "./i18n/index.js";
 import { searchTokens } from "./operation-search.js";
@@ -29,6 +30,7 @@ export type PaletteCommandAction =
   | { readonly kind: "open-codex-entry"; readonly entryId: string }
   | { readonly kind: "toggle-rail" }
   | { readonly kind: "toggle-sidebar" }
+  | { readonly kind: "toggle-command-band-dock" }
   | { readonly kind: "switch-theme"; readonly theme: ThemeId }
   | { readonly kind: "open-settings" }
   | { readonly kind: "open-keyboard-shortcuts" }
@@ -218,6 +220,16 @@ export function buildPaletteCommands(
     label: t("palette.toggleSidebar"),
     current: false,
     action: { kind: "toggle-sidebar" },
+  });
+  // 전체화면에서 밴드가 숨은 동안 그 안의 토글은 inert라 닿지 않는다 — 팔레트가 표면 밖 경로다.
+  // 라벨은 저장된 선호를 따른다: 이 항목은 전환이므로 한 방향으로만 읽히면 이미 켜 둔 사용자가
+  // 켜는 줄 알고 골랐다가 밴드를 끄게 된다. current는 false로 둔다 — 전환 항목은 배지 대상이 아니고,
+  // true면 팔레트가 이미 적용된 선택으로 보아 실행을 건너뛴다.
+  commands.push({
+    commandId: "toggle-command-band-dock",
+    label: t(getCommandBandDocked() ? "palette.stopKeepingCommandBandVisible" : "palette.keepCommandBandVisible"),
+    current: false,
+    action: { kind: "toggle-command-band-dock" },
   });
   for (const theme of buildPaletteThemes(t)) {
     commands.push({
