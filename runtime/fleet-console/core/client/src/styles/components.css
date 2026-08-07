@@ -2719,7 +2719,10 @@
 }
 
 /* 내부 박스는 패널의 원래 픽셀 크기를 유지한 채 transform으로만 축소된다(PTY 리사이즈 금지 계약).
-   translate+scale은 JS가 min 비율 fit으로 계산해 전체 패널을 중앙 배치한다. */
+   translate+scale은 JS가 min 비율 fit으로 계산해 전체 패널을 중앙 배치한다. Quick-Look이 열리면
+   같은 값에 실물 크기 하한(1/카드배율)이 들어와 화면상 1:1이 선다. 이 transform에는 전이를 두지
+   않는다 — 전이는 카드 확대가 소유하고, 여기에 따로 걸면 덱 줌 tween처럼 fit이 매 프레임 다시
+   잡히는 동안 프리뷰가 뒤처져 가장자리에 빈 띠가 뜬다. */
 .canvas-triage-deck-card-preview-inner {
   position: absolute;
   top: 0;

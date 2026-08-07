@@ -7,8 +7,10 @@ import {
   resolveTriageMapQuicklookPlacement,
   resolveTriageMorphFrame,
   resolveTriagePreviewFit,
+  resolveTriagePreviewMinScale,
   resolveTriageQuicklookOrigin,
   resolveTriageQuicklookScale,
+  TRIAGE_DECK_QUICKLOOK_SCALE,
   TRIAGE_MAP_QUICKLOOK_HEIGHT,
   TRIAGE_MAP_QUICKLOOK_WIDTH,
 } from "../core/client/src/canvas/triage-watch-deck.js";
@@ -230,3 +232,90 @@ describe("resolveTriagePreviewFit", () => {
     expect(resolveTriagePreviewFit({ width: 200, height: 0 }, { width: 800, height: 600 }, AGENT_CHROME)).toBeNull();
   });
 });
+
+describe("resolveTriagePreviewMinScale", () => {
+  it("asks for no floor outside a magnified window", () => {
+    // 평상시 카드는 함대를 한눈에 담는 축소판이다 — 확대창이 아니므로 하한도 없다.
+    expect(resolveTriagePreviewMinScale(0)).toBe(0);
+  });
+
+  it("turns a surface magnification into the floor that cancels it", () => {
+    expect(resolveTriagePreviewMinScale(TRIAGE_DECK_QUICKLOOK_SCALE)).toBeCloseTo(1 / 1.95, 10);
+    // 지도 확대창은 transform 없이 제 크기로 뜨므로 표면 배율이 1이고, 하한도 그대로 실물 크기다.
+    expect(resolveTriagePreviewMinScale(1)).toBe(1);
+  });
+
+  it("falls back to no floor for degenerate input", () => {
+    expect(resolveTriagePreviewMinScale(-1)).toBe(0);
+    expect(resolveTriagePreviewMinScale(Number.NaN)).toBe(0);
+    expect(resolveTriagePreviewMinScale(Number.POSITIVE_INFINITY)).toBe(0);
+  });
+});
+
+describe("resolveTriagePreviewFit — actual-size floor", () => {
+  // 실측 기하(1680×1050 창, 덱 줌 1.0): 카드 프리뷰 뷰포트 282×123, 지도 확대창 471×206,
+  // 프리뷰 소스 640×400.
+  const SOURCE = { width: 640, height: 400 };
+
+  it("lands the card Quick-Look on exactly 1:1 once the card magnification is applied", () => {
+    const surface = TRIAGE_DECK_QUICKLOOK_SCALE;
+    const fit = resolveTriagePreviewFit(
+      { width: 282, height: 123 },
+      SOURCE,
+      0,
+      resolveTriagePreviewMinScale(surface),
+    )!;
+    expect(surface * fit.scale).toBeCloseTo(1, 10);
+  });
+
+  it("lands the map Quick-Look on exactly 1:1", () => {
+    const fit = resolveTriagePreviewFit(
+      { width: 471, height: 206 },
+      SOURCE,
+      0,
+      resolveTriagePreviewMinScale(1),
+    )!;
+    expect(fit.scale).toBeCloseTo(1, 10);
+  });
+
+  it("still reaches actual size when the grid cap shaved the card scale down to 1", () => {
+    // 좁은 창에서 카드가 커지지 못해도 판독이라는 목적은 남는다.
+    const fit = resolveTriagePreviewFit({ width: 282, height: 123 }, SOURCE, 0, resolveTriagePreviewMinScale(1))!;
+    expect(fit.scale).toBeCloseTo(1, 10);
+  });
+
+  it("keeps the unmagnified card on cover-fit", () => {
+    const floored = resolveTriagePreviewFit({ width: 282, height: 123 }, SOURCE, 0, 0)!;
+    const plain = resolveTriagePreviewFit({ width: 282, height: 123 }, SOURCE, 0)!;
+    expect(floored).toEqual(plain);
+    expect(plain.scale).toBeCloseTo(282 / 640, 10);
+  });
+
+  it("lets cover-fit win over the floor rather than opening a letterbox", () => {
+    // 큰 카드·작은 패널에서는 cover-fit이 이미 실물을 넘는다 — 하한을 위해 줄이면 프레임에
+    // 빈 띠가 생기므로 cover가 이긴다.
+    const fit = resolveTriagePreviewFit(
+      { width: 486, height: 336 },
+      { width: 320, height: 200 },
+      0,
+      resolveTriagePreviewMinScale(TRIAGE_DECK_QUICKLOOK_SCALE),
+    )!;
+    expect(fit.scale).toBeCloseTo(Math.max(486 / 320, 336 / 200), 10);
+  });
+
+  it("keeps the crop anchors under the floor", () => {
+    // 이 케이스는 아래 배선 계약과 짝이다 — 산술만 맞고 배선이 끊기면 화면은 여전히 축소판이다.
+    const fit = resolveTriagePreviewFit(
+      { width: 282, height: 123 },
+      SOURCE,
+      104,
+      resolveTriagePreviewMinScale(TRIAGE_DECK_QUICKLOOK_SCALE),
+    )!;
+    // 상단에 빈 띠가 열리지 않고, 가로는 중앙에 남는다.
+    expect(fit.top).toBeLessThanOrEqual(0);
+    expect(fit.left).toBeCloseTo((282 - 640 * fit.scale) / 2, 10);
+    // 크롬을 뺀 출력 영역의 바닥은 여전히 프레임 바닥에 닿는다.
+    expect(fit.top + (400 - 104) * fit.scale).toBeCloseTo(123, 10);
+  });
+});
+
