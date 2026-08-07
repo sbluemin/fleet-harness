@@ -6,8 +6,6 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { initStore } from "@dotobokuri/fleet-carriers";
-
 import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-detect.js";
 import { SESSION_COOKIE_NAME } from "../core/host/auth.js";
 import { createConsoleLock } from "../core/host/lock.js";
@@ -425,11 +423,10 @@ function remoteRequestBody(
 
 async function startFixture(options: { readonly remote: boolean }): Promise<Fixture> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-remote-"));
-  const carrierStoreDir = path.join(dir, "fleet-home");
-  initStore(carrierStoreDir);
+  const dataRoot = path.join(dir, "fleet-home");
   tempDirs.push(dir);
   // durable state는 dataDir 아래 console/ 슬롯에 co-locate된다.
-  const consoleDataDir = path.join(carrierStoreDir, "console");
+  const consoleDataDir = path.join(dataRoot, "console");
   if (options.remote) {
     fs.mkdirSync(consoleDataDir, { recursive: true });
     fs.writeFileSync(
@@ -442,7 +439,7 @@ async function startFixture(options: { readonly remote: boolean }): Promise<Fixt
     version: "test",
     agentRuntime: createFakeConsoleRuntime() as never,
     agentCliDetector: { detect: async () => [] } satisfies AgentCliDetector,
-    dataDir: carrierStoreDir,
+    dataDir: dataRoot,
     systemFonts: { getFonts: async () => [] },
   });
   servers.push(server);

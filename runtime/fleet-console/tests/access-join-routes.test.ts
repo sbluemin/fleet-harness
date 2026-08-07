@@ -4,8 +4,6 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { initStore } from "@dotobokuri/fleet-carriers";
-
 import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-detect.js";
 import { SESSION_COOKIE_NAME } from "../core/host/auth.js";
 import type { ConsoleLockPayload } from "../core/host/console-contract-types.js";
@@ -117,15 +115,14 @@ function joinWith(fixture: Fixture, token: string): Promise<Response> {
 
 async function startFixture(): Promise<Fixture> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-access-"));
-  const carrierStoreDir = path.join(dir, "fleet-home");
-  initStore(carrierStoreDir);
+  const dataRoot = path.join(dir, "fleet-home");
   tempDirs.push(dir);
   const server = createConsoleServer({
     port: 0,
     version: "test",
     agentRuntime: createFakeConsoleRuntime() as never,
     agentCliDetector: createStubAgentCliDetector(),
-    dataDir: carrierStoreDir,
+    dataDir: dataRoot,
     systemFonts: { getFonts: async () => [] },
   });
   servers.push(server);
