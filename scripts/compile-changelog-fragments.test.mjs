@@ -59,27 +59,7 @@ test('rejects the retired fleet-plugin and fleet-core runtime headings', () => {
   }
 });
 
-test('still compiles a pre-existing pr-number fragment alongside a branch fragment', () => {
-  const fixture = createFixture();
-  writeRawFragment(fixture, 'pr-545.md', '### fleet-core\n#### Fixed\n- [core-ai-gateway] Drop undeclared tool-call keys.\n  ko: 선언되지 않은 tool 호출 키를 제거합니다.\n');
-  writeBranchFragment(fixture, 'runtime-topic', '### fleet-console\n#### Added\n- Add the Console surface.\n  ko: Console 표면을 추가합니다.');
 
-  const result = run(fixture, '--dry-run', '--version', '1.2.3', '--date', '2026-07-10');
-
-  assert.equal(result.status, 0, result.stderr);
-  // The runtime headings lead; the package-shaped heading the older fragment was authored under trails them.
-  assert.ok(result.stdout.indexOf('### fleet-console') < result.stdout.indexOf('### fleet-core'));
-  assert.match(result.stdout, /- \[core-ai-gateway\] Drop undeclared tool-call keys\./);
-  assert.match(result.stdout, /- Add the Console surface\./);
-});
-
-test('rejects frontmatter on a pre-existing pr-number fragment', () => {
-  const fixture = createFixture();
-  writeRawFragment(fixture, 'pr-545.md', '---\nbranch: whatever\n---\n\n### fleet-core\n#### Fixed\n- [core-agent] Fix one.\n  ko: 하나를 수정합니다.\n');
-  const result = run(fixture, '--check');
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /carries no frontmatter/);
-});
 
 test('rejects a bullet that carries a legacy package tag', () => {
   const fixture = createFixture();

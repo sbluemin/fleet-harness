@@ -38,9 +38,7 @@ branch: feat/some-topic
 
 Runtime headings use the Runtime Mapping values above. Section headings are `Added`, `Changed`, `Fixed`, `Removed`, or `Breaking Changes`. Bullets carry no package tag — the runtime heading already states where the change is noticed, and the compiler rejects a bullet that starts with one. Every English bullet and Korean `ko:` line remain adjacent. Groups may be authored in any order because the compiler emits the canonical runtime and section order: `fleet-cli`, `fleet-console`, `fleet-desktop`, each with its sections nested beneath.
 
-Existing compiled release history remains unchanged. Releases through v1.51.0 use `fleet-plugin` and `fleet-core` headings and per-bullet package tags; do not rewrite them to adopt this layout.
-
-A `pr-<number>.md` fragment authored before this layout landed still carries those headings and tags. It belongs to someone else's unreleased change, so the compiler keeps accepting it as written and emits it after the runtime groups. Never author a new one, and never rewrite one in place — the next release drains them, and the compiler's `pr-<number>` path retires with them.
+Existing compiled release history remains unchanged. Releases through v1.51.0 use `fleet-plugin` and `fleet-core` headings and per-bullet package tags; do not rewrite them to adopt this layout. The Console reader still understands those releases, but the compiler no longer writes them.
 
 ## Release Baseline
 
