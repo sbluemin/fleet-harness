@@ -9,7 +9,8 @@ import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
 import { resumeOperationInPlace } from "../operation-resume.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-idle-arrival.js";
 import type { OperationNode, OperationNotification } from "../types.js";
-import { getTheaterCanvasSnapshot } from "../canvas/canvas-store.js";
+import { getTheaterCanvasSnapshot, getTheaterMinimizedIds, setTheaterOperationMinimized, useCanvasState } from "../canvas/canvas-store.js";
+import { resolveOperationActivity } from "../operation-activity.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import type { TriageDeckTheater } from "../canvas/triage-watch-deck.js";
 import { getTriagePick, getTriageSnapshot, resolveTriageQueue, subscribeTriage, type TriageQueueEntry } from "../canvas/triage-store.js";
@@ -81,6 +82,10 @@ export function TriageSideBar({
   // 사이드바도 함께 리렌더한다. 유휴 도착도 awaiting 섹션 판정에 관여하므로 같이 구독한다.
   useSyncExternalStore(subscribeTriage, getTriageSnapshot, getTriageSnapshot);
   useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
+  // 최소화 선반은 canvas 스토어가 정본이다. 비활성 Theater에 쓰면 활성 Theater의 minimized 배열은
+  // 그대로여서 useMinimized 계열 구독이 발화하지 않으므로, 스냅샷 자체를 구독해 어느 Theater가
+  // 바뀌든 다시 읽는다 — 선반 복원처럼 선별 스토어를 건드리지 않는 경로가 있어 그 emit에 얹힐 수 없다.
+  useCanvasState();
   // 접힘/폭은 Map 사이드바와 같은 좌측 열 상태를 공유한다 — 커맨드 밴드의 사이드바 토글이
   // 선별 중에도 계속 동작해야 하고, 모드 전환이 사용자의 접힘 선택을 잃지 않아야 한다.
   const sideBar = useSideBarState();
@@ -123,17 +128,35 @@ export function TriageSideBar({
     catalog,
     renderKindIcon,
   }));
-  const sections = resolveTriageSideBarSections(entries, queue, t);
+  // 최소화한 Operation은 상태 축에서 내려와 전용 선반으로 모인다 — 최소화는 활동 상태가 아니라
+  // 표시 선택이므로 대기·실행 중·백그라운드·유휴 중 어디에도 새 칸을 만들지 않는다.
+  // 휴면은 그대로 휴면 선반이 가져간다: 재개 대기는 사용자가 고른 상태가 아니라 세션의 상태다.
+  const minimizedIds = new Set(getTheaterMinimizedIds(theaters.map((theater) => theater.id)));
+  const isDormantEntry = (entry: SideBarEntry): boolean =>
+    resolveOperationActivity(entry.operation, operationStatus) === "dormant";
+  const minimizedEntries = entries.filter((entry) => minimizedIds.has(entry.operation.id) && !isDormantEntry(entry));
+  const minimizedSection: StatusSection = {
+    status: "minimized",
+    label: t("triageSidebar.minimized"),
+    entries: minimizedEntries,
+  };
+  const shelvedIds = new Set(minimizedEntries.map((entry) => entry.operation.id));
+  const sections = resolveTriageSideBarSections(entries.filter((entry) => !shelvedIds.has(entry.operation.id)), queue, t);
   const livingSections = sections.filter((section) => section.status !== "dormant");
   const dormantSection = sections.find((section) => section.status === "dormant");
-  const renderChip = (entry: SideBarEntry, index: number, dormant = false) => {
+  const renderChip = (entry: SideBarEntry, index: number, shelf: "none" | "dormant" | "minimized" = "none") => {
+    const dormant = shelf === "dormant";
     const accentKey = getTheaterCanvasSnapshot(entry.operation.theaterId).operationAccent[entry.operation.id]
       ?? operationAccentFromNode(entry.operation);
     // 휴면 plugin에 resume 훅이 없으면 지목해 dormant 프레임의 자체 재개 UI를 보인다 —
     // onPick은 알림을 지우거나 Theater를 바꾸지 않고, picked 항목은 live-only deck와 별개로 무대에 선다.
+    // 최소화 선반의 본동작은 되올리기다 — 무대에 세우지 않고 deck으로만 돌려보낸다. 지목했다면 최소화가
+    // 큐에서 걸러내므로 무대에 서지도 못한 채 선반에 남는다.
     const activate = dormant
       ? (operationId: string) => resumeOperationInPlace(operationId, operations, plugins, onPick)
-      : onPick;
+      : shelf === "minimized"
+        ? () => setTheaterOperationMinimized(entry.operation.theaterId, entry.operation.id, false)
+        : onPick;
     return (
       <OperationsSideBarChip
         key={entry.operation.id}
@@ -183,6 +206,17 @@ export function TriageSideBar({
           </StatusSectionSlot>
         ))}
       </ol>
+      {/* 최소화 선반은 휴면 선반과 같은 문법을 쓰되 그 위에 선다 — 내가 직접 내린 것이 세션이 스스로
+          잠든 것보다 손에 가깝다. 휴면처럼 0건이어도 자리를 지킨다: 되찾을 곳이 상황에 따라 나타났다
+          사라지면 어디를 봐야 하는지가 매번 달라진다. */}
+      <section className="triage-side-bar-minimized-shelf" onContextMenu={(event) => event.preventDefault()}>
+        <p className="triage-side-bar-caption">{t("triageSidebar.minimizedShelf")}</p>
+        <ol className="triage-side-bar-minimized-list" aria-label={t("triageSidebar.minimizedShelf")}>
+          <StatusSectionSlot theaterId={TRIAGE_SIDE_BAR_SECTION_KEY} section={minimizedSection}>
+            {minimizedEntries.map((entry, index) => renderChip(entry, index, "minimized"))}
+          </StatusSectionSlot>
+        </ol>
+      </section>
       {/* 선반의 칩은 Operation 메뉴를 갖지 않는다(본동작이 재개다) — 그렇다고 브라우저 메뉴가 뜨면
           "이 표면에는 메뉴가 없다"가 아니라 "우리 것이 아니다"로 읽힌다. 큐의 칩과 달리 여기서는
           아무것도 열지 않는다. menuEnabled=false는 핸들러를 떼기만 하므로 선반이 직접 막는다. */}
@@ -195,7 +229,7 @@ export function TriageSideBar({
               section={dormantSection}
               defaultCollapsed
             >
-              {dormantSection.entries.map((entry, index) => renderChip(entry, index, true))}
+              {dormantSection.entries.map((entry, index) => renderChip(entry, index, "dormant"))}
             </StatusSectionSlot>
           </ol>
         </footer>

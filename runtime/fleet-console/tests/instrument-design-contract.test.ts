@@ -1468,4 +1468,62 @@ describe("War Room Quick-Look actual-size grammar", () => {
     const card = components.match(/\.canvas-triage-deck-card \{[^}]*\}/)?.[0] ?? "";
     expect(card).toContain("transform var(--duration-slow)");
   });
+
+  it("magnifies the cell so the card and its window controls take one transform", () => {
+    // 확대가 카드에만 걸리면 카드의 형제인 창 컨트롤이 따라가지 못해 확대된 카드 위에서 손잡이가
+    // 제자리에 남는다. 배율은 칸이 지고, 카드는 테두리·그림자만 입는다.
+    const cell = components.match(/\.canvas-triage-deck-cell\.is-quicklook \{[^}]*\}/)?.[0] ?? "";
+    expect(cell).toContain("transform: scale(var(--triage-quicklook-scale");
+    const card = components.match(/\.canvas-triage-deck-card\.is-quicklook \{[^}]*\}/)?.[0] ?? "";
+    expect(card).not.toBe("");
+    expect(card).not.toContain("transform:");
+    // 손잡이는 카드 크롬과 같은 1/배율 되돌림을 받아 확대 중에도 24px을 지킨다.
+    const controls = components.match(/\.canvas-triage-deck-cell\.is-quicklook \.canvas-triage-deck-card-controls \{[^}]*\}/)?.[0] ?? "";
+    expect(controls).toContain("1 / var(--triage-quicklook-scale");
+    // 전이 소유가 칸으로 옮겨졌으므로 reduced-motion도 칸을 끊어야 한다 — 카드만 끊으면 확대가 움직인다.
+    const reducedMotion = components.slice(components.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reducedMotion).toMatch(/\.canvas-triage-deck-cell,\s*\.canvas-triage-deck-card-controls \{\s*transition: none;\s*\}/);
+  });
+
+  it("reads quick-look layout coordinates from the cell that owns positioning", () => {
+    // 칸이 position: relative라 카드의 offsetLeft/Top은 칸 안의 0이다 — grid 기준 offset과 빼려면
+    // 좌표를 칸에서 읽어야 하고, 카드에서 읽으면 복귀 flight 목적지가 grid 모서리로 무너진다.
+    const deck = source("canvas/triage-watch-deck.tsx");
+    expect(deck).toContain('target.closest<HTMLElement>(".canvas-triage-deck-cell")');
+    expect(deck).toContain("layoutBox.offsetLeft - grid.offsetLeft");
+    expect(deck).not.toContain("target.offsetLeft - grid.offsetLeft");
+  });
+
+  it("keeps the minimized shelf neutral and above the dormant shelf", () => {
+    const sidebar = source("sidebar/triage-side-bar.tsx");
+    const shelf = components.match(/\.triage-side-bar-minimized-shelf \{[^}]*\}/)?.[0] ?? "";
+    const section = components.match(/\.side-bar-status-section--minimized \{[^}]*\}/)?.[0] ?? "";
+    expect(shelf).toContain("border-top: 1px solid var(--surface-rim);");
+    // 최소화는 활동 상태가 아니라 표시 선택이다 — 상태 축의 신호색도, 휴면이 쓰는 brass 혼합도 빌리지 않는다.
+    expect(shelf).not.toMatch(/var\(--(?:brass|aurora|warn|coral|positive)/);
+    expect(section).toContain("--activity-color: var(--ink-fog);");
+    expect(section).not.toMatch(/var\(--(?:brass|aurora|warn|coral|positive)/);
+    // 손에 가까운 순서: 살아 있는 축 → 내가 내린 것 → 세션이 스스로 잠든 것.
+    expect(sidebar.indexOf('className="triage-side-bar-minimized-shelf"')).toBeGreaterThan(
+      sidebar.indexOf('className="operations-side-bar-chips triage-side-bar-sections"'),
+    );
+    expect(sidebar.indexOf('className="triage-side-bar-dormant-shelf"')).toBeGreaterThan(
+      sidebar.indexOf('className="triage-side-bar-minimized-shelf"'),
+    );
+  });
+
+  it("keeps deck card window controls always visible as a recorded exception", () => {
+    // 사이드바 20px·캔버스 24px 손잡이는 hover/focus 전까지 0×0으로 접히지만, deck 카드의 손잡이는
+    // 접지 않는다: 카드가 그 자체로 버튼이라 접힌 손잡이를 찾을 단서가 없고, 카드 위 hover는 400ms 뒤
+    // Quick-Look 확대를 불러 "올려서 찾는" 동작이 확대와 경합한다. 예외는 CSS 옆 주석으로 남는다.
+    const control = components.match(/\.canvas-triage-deck-card-control \{[^}]*\}/)?.[0] ?? "";
+    expect(control).not.toBe("");
+    expect(control).toContain("width: 24px");
+    expect(control).toContain("height: 24px");
+    expect(control).toMatch(/opacity:\s*0\.55/);
+    expect(components).toContain("도트린 예외 — 다른 창 컨트롤");
+    // 닫기는 다른 표면과 같은 두 번 누르기 무장을 그대로 쓴다.
+    const armed = components.match(/\.canvas-triage-deck-card-control\.is-armed-close \{[^}]*\}/)?.[0] ?? "";
+    expect(armed).toContain("chip-close-arm 1.5s");
+  });
 });

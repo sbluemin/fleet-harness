@@ -9,6 +9,7 @@ import { getOperationStatusDetailSnapshot, useOperationStatusDetails } from "../
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import type { OperationGeometry, OperationNode } from "../types.js";
 import { operationAccentFromNode, resolveAccentColor } from "./operation-accent.js";
+import { CloseIcon, MinimizeIcon } from "./operation-frame.js";
 import {
   clampTriageDeckZoom,
   getTriageDeckZoom,
@@ -47,6 +48,8 @@ export interface TriagePreviewSource {
   readonly bottomChrome: number;
 }
 
+const CARD_CLOSE_ARM_DURATION_MS = 1500;
+
 interface TriageWatchDeckProps {
   readonly active: boolean;
   readonly entering: boolean;
@@ -75,6 +78,10 @@ interface TriageWatchDeckProps {
   /** Operation 표면의 공용 메뉴와 Theater 소유 빈 영역의 launch 메뉴를 상위 canvas가 호스트한다. */
   readonly onOperationContextMenu?: (operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
   readonly onTheaterContextMenu?: (theaterId: string, theaterLabel: string, anchor: { readonly x: number; readonly y: number }) => void;
+  /** 카드의 창 컨트롤 — 최소화는 이 판(deck)에서 내리는 동작이고, 닫기는 두 번 눌러 확정한다.
+      상태 변경은 canvas가 단일 소유하므로 deck는 의도만 올려보낸다. */
+  readonly onMinimizeOperation?: (operationId: string) => void;
+  readonly onCloseOperation?: (operationId: string) => void;
 }
 
 export interface TriageDeckArrivalDwell {
@@ -505,6 +512,8 @@ export function TriageWatchDeck({
   onMapMarkerMove,
   onOperationContextMenu,
   onTheaterContextMenu,
+  onMinimizeOperation,
+  onCloseOperation,
 }: TriageWatchDeckProps) {
   const t = useT();
   const gridRef = useRef<HTMLDivElement | null>(null);
@@ -513,6 +522,10 @@ export function TriageWatchDeck({
   // Quick-Look 상태 — 동시에 한 카드만 확대된다. 타이머도 1개만 유지해 카드 사이를 빠르게
   // 오갈 때 이전 카드의 드웰이 뒤늦게 발동해 두 카드가 동시에 확대되는 일을 막는다.
   const [quicklook, setQuicklook] = useState<{ operationId: string; origin: string; scale: number } | null>(null);
+  // 카드의 닫기도 캔버스 패널·사이드바 칩과 같은 두 번 누르기 계약을 쓴다. 무장은 한 번에 하나만
+  // 유지한다 — 여러 카드가 동시에 "확인?"을 걸고 있으면 어느 것을 확인하는지 읽히지 않는다.
+  const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
+  const closeArmTimerRef = useRef<number | null>(null);
   // 지도 모드의 Quick-Look — 카드가 은닉된 채라 카드 자신을 확대할 수 없다. 같은 hover 문법으로
   // 같은 카드 얼굴을 점 위에 띄우는 별도 표면이며, 드웰 타이머는 카드와 공유한다(두 표면이
   // 동시에 열리는 상태가 없어야 한다 — 지도 모드에서는 카드가, 카드 모드에서는 점이 없다).
@@ -627,11 +640,15 @@ export function TriageWatchDeck({
         // 지도 점은 grid 자식이 아니고 Quick-Look도 없으므로 이 분기는 카드에만 닿는다.
         if (target.classList.contains("is-quicklook")) {
           const gridRect = grid.getBoundingClientRect();
+          // 레이아웃 좌표는 카드가 아니라 카드를 감싼 칸에서 읽는다 — 칸이 위치 기준(position:
+          // relative)이라 카드의 offsetLeft/Top은 칸 안의 0이 되고, grid 기준 offset과 빼면
+          // 목적지가 grid 모서리로 무너진다. 칸은 grid의 자식이라 예전 카드와 같은 기준을 가진다.
+          const layoutBox = target.closest<HTMLElement>(".canvas-triage-deck-cell") ?? target;
           const unscaledRect = new DOMRect(
-            gridRect.left + (target.offsetLeft - grid.offsetLeft) - grid.scrollLeft,
-            gridRect.top + (target.offsetTop - grid.offsetTop) - grid.scrollTop,
-            target.offsetWidth,
-            target.offsetHeight,
+            gridRect.left + (layoutBox.offsetLeft - grid.offsetLeft) - grid.scrollLeft,
+            gridRect.top + (layoutBox.offsetTop - grid.offsetTop) - grid.scrollTop,
+            layoutBox.offsetWidth,
+            layoutBox.offsetHeight,
           );
           deckCardRects.set(operationId, unscaledRect);
           // 열린 quick-look의 scale/origin은 발동 시점 스냅샷이라, grid 스크롤이나 리사이즈
@@ -680,6 +697,33 @@ export function TriageWatchDeck({
       quicklookTimerRef.current = null;
     }
   };
+
+  const clearCloseArmTimer = () => {
+    if (closeArmTimerRef.current === null) return;
+    window.clearTimeout(closeArmTimerRef.current);
+    closeArmTimerRef.current = null;
+  };
+
+  const armCardClose = (operationId: string) => {
+    clearCloseArmTimer();
+    setArmedCloseId(operationId);
+    closeArmTimerRef.current = window.setTimeout(() => {
+      closeArmTimerRef.current = null;
+      setArmedCloseId(null);
+    }, CARD_CLOSE_ARM_DURATION_MS);
+  };
+
+  const pressCardClose = (operationId: string) => {
+    if (armedCloseId === operationId) {
+      clearCloseArmTimer();
+      setArmedCloseId(null);
+      onCloseOperation?.(operationId);
+      return;
+    }
+    armCardClose(operationId);
+  };
+
+  useEffect(() => () => clearCloseArmTimer(), []);
 
   const dismissQuicklook = () => {
     clearQuicklookTimer();
@@ -1035,25 +1079,34 @@ export function TriageWatchDeck({
                     // 밀도 변형 프레임 — 카드를 자기 점 자리로 옮겨 놓는다. Quick-Look 확대와는
                     // 공존하지 않는다(전환은 열린 확대창을 먼저 해제한다).
                     const morphFrame = morph?.applied ? morph.frames.get(operation.id) ?? null : null;
+                    const cardArmed = armedCloseId === operation.id;
                     return (
-                      <button
-                        className={`canvas-triage-deck-card is-${visual} ${preview ? "has-preview" : ""} ${arrivingOperationId === operation.id ? "is-arriving" : ""} ${freshOperationIds?.has(operation.id) ? "is-fresh" : ""} ${isQuicklook ? "is-quicklook" : ""} ${morph ? "is-morphing" : ""} ${morph?.phase === "to-cards" && morph.applied ? "is-morph-snap" : ""}`}
-                        data-triage-deck-card={operation.id}
+                      // 확대는 이 칸이 진다 — 카드와 그 형제인 창 컨트롤이 한 변환을 함께 받아야
+                      // 손잡이가 확대된 카드의 같은 모서리에 남는다. 포인터 드웰도 칸이 소유한다:
+                      // 카드에만 걸면 손잡이로 커서를 옮기는 순간 pointerleave가 확대를 걷어내
+                      // 버튼이 커서 밑에서 사라진다.
+                      <div
+                        className={`canvas-triage-deck-cell ${isQuicklook ? "is-quicklook" : ""} ${morph ? "is-morphing" : ""}`}
                         key={operation.id}
-                        type="button"
                         style={isQuicklook
                           ? { transformOrigin: quicklook.origin, "--triage-quicklook-scale": String(quicklook.scale) } as CSSProperties
-                          : morphFrame
-                            ? { transform: `translate(${morphFrame.dx.toFixed(1)}px, ${morphFrame.dy.toFixed(1)}px) scale(${morphFrame.scale.toFixed(4)})` }
-                            : undefined}
-                        aria-label={t("canvas.triage.deckCardAria", { title: operation.title })}
-                        aria-haspopup="menu"
-                        onContextMenu={(event) => openOperationMenu(operation.id, event)}
-                        onPointerEnter={(event: PointerEvent<HTMLButtonElement>) => {
+                          : undefined}
+                        onPointerEnter={(event: PointerEvent<HTMLDivElement>) => {
                           if (event.pointerType === "touch" || arrivingOperationId === operation.id) return;
                           armQuicklook(operation.id, event.currentTarget, true);
                         }}
                         onPointerLeave={dismissQuicklook}
+                      >
+                      <button
+                        className={`canvas-triage-deck-card is-${visual} ${preview ? "has-preview" : ""} ${arrivingOperationId === operation.id ? "is-arriving" : ""} ${freshOperationIds?.has(operation.id) ? "is-fresh" : ""} ${isQuicklook ? "is-quicklook" : ""} ${morph ? "is-morphing" : ""} ${morph?.phase === "to-cards" && morph.applied ? "is-morph-snap" : ""}`}
+                        data-triage-deck-card={operation.id}
+                        type="button"
+                        style={morphFrame
+                          ? { transform: `translate(${morphFrame.dx.toFixed(1)}px, ${morphFrame.dy.toFixed(1)}px) scale(${morphFrame.scale.toFixed(4)})` }
+                          : undefined}
+                        aria-label={t("canvas.triage.deckCardAria", { title: operation.title })}
+                        aria-haspopup="menu"
+                        onContextMenu={(event) => openOperationMenu(operation.id, event)}
                         onFocus={(event) => {
                           if (!event.currentTarget.matches(":focus-visible")) return;
                           armQuicklook(operation.id, event.currentTarget, false);
@@ -1075,6 +1128,58 @@ export function TriageWatchDeck({
                           surfaceScale={isQuicklook ? quicklook.scale : 0}
                         />
                       </button>
+                      {onMinimizeOperation || onCloseOperation ? (
+                        <span
+                          className="canvas-triage-deck-card-controls"
+                          // 손잡이 위에서는 확대를 시작하지 않는다 — 누르려고 올린 커서 밑에서 카드가
+                          // 커지면 버튼이 함께 밀려 클릭이 빗나간다. 이미 확대 중이면 그대로 둔다:
+                          // 여기서 걷으면 버튼이 원래 자리로 되돌아가 같은 어긋남이 반대로 일어난다.
+                          onPointerEnter={() => { if (!isQuicklook) clearQuicklookTimer(); }}
+                          // 손잡이를 벗어나 카드로 돌아오면 드웰을 처음부터 다시 잰다. 칸 밖으로
+                          // 나가는 경우는 칸의 onPointerLeave가 확대를 걷는다.
+                          onPointerLeave={(event) => {
+                            if (isQuicklook) return;
+                            const cell = event.currentTarget.parentElement;
+                            const next = event.relatedTarget;
+                            if (!cell || !(next instanceof Node) || !cell.contains(next)) return;
+                            const card = cell.querySelector<HTMLElement>("[data-triage-deck-card]");
+                            if (card) armQuicklook(operation.id, card, true);
+                          }}
+                        >
+                          {onMinimizeOperation ? (
+                            <button
+                              type="button"
+                              className="canvas-triage-deck-card-control"
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                clearCloseArmTimer();
+                                setArmedCloseId(null);
+                                onMinimizeOperation(operation.id);
+                              }}
+                              aria-label={t("canvas.frame.minimizeAria", { title: operation.title })}
+                              title={t("canvas.frame.minimizeTitle")}
+                            >
+                              <MinimizeIcon />
+                            </button>
+                          ) : null}
+                          {onCloseOperation ? (
+                            <button
+                              type="button"
+                              className={`canvas-triage-deck-card-control ${cardArmed ? "is-armed-close" : ""}`}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onClick={(event) => { event.stopPropagation(); pressCardClose(operation.id); }}
+                              aria-label={cardArmed
+                                ? t("canvas.frame.confirmCloseAria", { title: operation.title })
+                                : t("canvas.frame.closeAria", { title: operation.title })}
+                              title={cardArmed ? t("canvas.frame.confirmCloseTitle") : t("canvas.frame.closeTitle")}
+                            >
+                              {cardArmed ? t("canvas.frame.closeArmed") : <CloseIcon />}
+                            </button>
+                          ) : null}
+                        </span>
+                      ) : null}
+                      </div>
                     );
                   })}
                 </div>

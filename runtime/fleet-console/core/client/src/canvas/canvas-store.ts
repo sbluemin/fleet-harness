@@ -354,6 +354,60 @@ export function setTheaterOperationGeometry(
   emit();
 }
 
+// 최소화도 좌표와 같은 이유로 비활성 Theater까지 닿아야 한다 — War Room의 deck과 사이드바는 전
+// Theater를 한 판에 올리므로, 지금 열려 있지 않은 Theater의 패널도 그 자리에서 내리고 되올린다.
+// 활성 Theater면 geometry 보존·zIndex 복원을 그대로 지는 평소 경로로 넘긴다.
+export function setTheaterOperationMinimized(theaterId: string, sessionId: string, minimized: boolean): void {
+  if (activeTheaterId === theaterId) {
+    if (minimized) minimizeOperation(sessionId);
+    else restoreOperation(sessionId);
+    return;
+  }
+  const theaterState = readStoredState(theaterId);
+  if (theaterState.minimized.includes(sessionId) === minimized) return;
+  // 활성 경로(minimizeOperation)가 지는 focus layer 정리를 여기서도 한다 — War Room 무대에는 다른
+  // Theater의 Operation도 서고 그 위에 최대화·동반 레이어가 붙으므로, 건너뛰면 무대에서 내린 패널의
+  // 레이어가 그대로 남는다. 레이어는 Operation의 Theater가 아니라 로드된 Theater 키로 저장되므로
+  // (setFocusLayer) 여기서도 그 Theater가 아니라 지금 켜진 레이어를 본다.
+  if (minimized) {
+    if (getMaximizedOperationId() === sessionId) clearMaximizedOperationId();
+    if (getCompanionOperationId() === sessionId) forceDropCompanionOperationId();
+  }
+  // 되올릴 때는 활성 경로(restoreOperation)처럼 맨 앞으로 끌어올린다 — 그 Theater를 열었을 때 방금
+  // 되올린 패널이 이웃 밑에 깔려 있으면 되올렸다는 사실이 화면에 드러나지 않는다. 좌표가 아직 없는
+  // Operation은 자리를 지어내지 않고 그대로 둔다: 처음 캔버스에 설 때 평소 초기 배치가 정한다.
+  const restored = !minimized ? theaterState.operations[sessionId] : undefined;
+  const operations = restored
+    ? { ...theaterState.operations, [sessionId]: { ...restored, zIndex: nextZIndex(theaterState.operations) } }
+    : theaterState.operations;
+  writeStoredState(theaterId, {
+    ...theaterState,
+    operations,
+    minimized: minimized
+      ? [...theaterState.minimized, sessionId]
+      : theaterState.minimized.filter((id) => id !== sessionId),
+  });
+  state = { ...state };
+  emit();
+}
+
+function nextZIndex(operations: Record<string, OperationGeometry>): number {
+  let top = 0;
+  for (const geometry of Object.values(operations)) top = Math.max(top, geometry.zIndex ?? 0);
+  return top + 1;
+}
+
+// 전 Theater의 최소화 id를 한 번에 모은다. 활성 Theater는 메모리 state를, 나머지는 저장 스냅샷을
+// 읽으므로 호출부는 Theater 경계를 신경 쓰지 않는다. 반환 배열은 매번 새로 만들어지니 구독이 아니라
+// 리렌더 시점의 파생값으로 쓴다(useSyncExternalStore에 그대로 물리면 무한 렌더).
+export function getTheaterMinimizedIds(theaterIds: readonly string[]): readonly string[] {
+  const ids: string[] = [];
+  for (const theaterId of theaterIds) {
+    for (const sessionId of getTheaterCanvasSnapshot(theaterId).minimized) ids.push(sessionId);
+  }
+  return ids;
+}
+
 // 균형 그리드의 열은 ceil(sqrt(n)), 행은 ceil(n / cols)로 정한다. 마지막 행에 슬롯이 모자라면
 // 남은 패널들이 그 행의 전체 폭을 나눠 채워 빈 셀을 남기지 않는다. 최소 크기는 실제 가용 폭·높이로
 // 캡해, 좁은 Formation 캔버스에서도 panel chrome이 clip되지 않게 한다.
@@ -1077,8 +1131,7 @@ function normalizeCanvasState(value: unknown): CanvasState {
     operations,
     operationOrder: normalizeOperationOrder(value.operationOrder),
     operationAccent: normalizeOperationAccent(value.operationAccent),
-    // 저장된 최소화 목록 중 실재하는 Operation만 남긴다(stale 직렬화 방어).
-    minimized: normalizeMinimized(value.minimized, operations),
+    minimized: normalizeMinimized(value.minimized),
     collapsedGroups: normalizeStringArray(value.collapsedGroups),
     stationKeeping: value.stationKeeping === true,
   };
@@ -1106,12 +1159,15 @@ function normalizeOperationAccent(value: unknown): Record<string, string> {
   return operationAccent;
 }
 
-function normalizeMinimized(value: unknown, operations: Record<string, OperationGeometry>): readonly string[] {
+// 최소화 목록의 진실은 "사용자가 내렸다"이지 "좌표가 저장돼 있다"가 아니다. War Room은 Cruise 캔버스에
+// 한 번도 놓인 적 없는 Operation도 판에서 내리므로 좌표 유무로 거르면 방금 내린 항목이 다음 읽기에서
+// 사라진다. 사라진 세션 정리는 실 Operation 목록을 아는 pruneOperations가 이미 전담한다.
+function normalizeMinimized(value: unknown): readonly string[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   const minimized: string[] = [];
   for (const entry of value) {
-    if (typeof entry !== "string" || seen.has(entry) || !(entry in operations)) continue;
+    if (typeof entry !== "string" || seen.has(entry)) continue;
     seen.add(entry);
     minimized.push(entry);
   }
