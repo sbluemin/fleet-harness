@@ -152,6 +152,7 @@ async function boot(): Promise<void> {
     policy: () => policy,
     sessionFetch: (input, init) => consoleSession.fetch(input, init),
     localOrigin: () => localConsoleOrigin,
+    deviceName: os.hostname().replace(/\.local$/iu, ""),
     loadConsole: async (url) => {
       await window?.loadURL(url);
       // 창이 옮겨 갔으면 타이틀바·전체화면 동기화와 "돌아갈 곳"도 그 콘솔을 따라가야 한다.

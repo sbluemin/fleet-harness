@@ -7,7 +7,7 @@ import { ApiError, applyConsoleUpdate } from "../api.js";
 import { FEATURE_TOURS } from "../feature-tour-catalog.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useDesktopHomeOrigin } from "../desktop-shell.js";
-import { probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type RemoteHost, type RemoteHostReach } from "../remote-hosts.js";
+import { fetchLocalConsoles, probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type LocalConsole, type RemoteHost, type RemoteHostReach } from "../remote-hosts.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
 import { openWhatsNew } from "../store.js";
@@ -87,10 +87,12 @@ export function CommandBandSystemCluster() {
  */
 function HostSwitcher() {
   const t = useT();
+  const state = useConsoleState();
   const hosts = useRemoteHosts();
   const homeOrigin = useDesktopHomeOrigin();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [local, setLocal] = useState<readonly LocalConsole[]>([]);
   const [reach, setReach] = useState<Readonly<Record<string, RemoteHostReach>>>({});
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -98,12 +100,15 @@ function HostSwitcher() {
   useEffect(() => {
     const controller = new AbortController();
     void refreshRemoteHosts(controller.signal).catch(() => undefined);
+    void fetchLocalConsoles(controller.signal).then(setLocal).catch(() => undefined);
     return () => controller.abort();
   }, []);
 
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
+    // 열 때마다 다시 본다 — 이 기계의 콘솔은 조용히 뜨고 진다.
+    void fetchLocalConsoles(controller.signal).then(setLocal).catch(() => undefined);
     for (const host of hosts) {
       void probeRemoteHost(host.id, controller.signal)
         .then((result) => setReach((previous) => ({ ...previous, [host.id]: result })))
@@ -123,16 +128,25 @@ function HostSwitcher() {
     };
   }, [open, hosts]);
 
-  // 고를 것도 돌아갈 곳도 없으면 스위처는 아무 일도 하지 않는다.
-  if (hosts.length === 0 && homeOrigin === null) return null;
   const currentOrigin = location.origin;
-  const currentHost = hosts.find((host) => host.origin === currentOrigin) ?? null;
-  const atHome = homeOrigin === null || homeOrigin === currentOrigin;
-  // 목록에도 없고 셸의 집도 아닌 곳에 서 있다면, 그 사실을 숨기지 말고 주소로 말한다.
-  const chipLabel = currentHost?.label ?? (atHome ? t("chrome.hosts.thisComputer") : location.host);
+  // 셸이 띄운 콘솔과 이 기계에서 발견한 콘솔은 같은 무리다 — 링크 없이 갈 수 있는 곳들.
+  const nearby = [
+    ...(homeOrigin !== null && !local.some((entry) => entry.origin === homeOrigin) ? [{ origin: homeOrigin, version: "", owner: null } as LocalConsole] : []),
+    ...local,
+  ];
+  const savedCurrent = hosts.find((host) => host.origin === currentOrigin) ?? null;
+  const nearbyCurrent = nearby.some((entry) => entry.origin === currentOrigin);
+  // 이 콘솔이 스스로 말하는 이름이 언제나 진실이다 — 원격에서 보고 있어도 그 이름을 읽는다.
+  const chipLabel = state.consoleName || savedCurrent?.label || location.host;
+
+  if (nearby.length === 0 && hosts.length === 0) return null;
   const openSettings = () => {
     setOpen(false);
     navigate({ pathname: "/settings", search: "?section=remote-access" });
+  };
+  const go = (origin: string) => {
+    setOpen(false);
+    if (origin !== currentOrigin) location.assign(new URL("/console/", `${origin}/`).toString());
   };
 
   return (
@@ -151,76 +165,46 @@ function HostSwitcher() {
       </button>
       {open ? (
         <div ref={panelRef} className="host-switcher-panel" role="menu" aria-label={t("chrome.hosts.aria")}>
-          <p className="host-switcher-heading">{t("chrome.hosts.heading")}</p>
-          {homeOrigin !== null ? (
-            <button
-              type="button"
-              role="menuitemradio"
-              aria-checked={homeOrigin === currentOrigin}
-              className={homeOrigin === currentOrigin ? "is-current" : ""}
-              disabled={homeOrigin === currentOrigin}
-              onClick={() => {
-                setOpen(false);
-                location.assign(new URL("/console/", `${homeOrigin}/`).toString());
-              }}
-            >
-              <span className="host-switcher-dot is-live" aria-hidden="true" />
-              <span className="host-switcher-entry">
-                <span className="host-switcher-name">{t("chrome.hosts.thisComputer")}</span>
-                <small>{new URL(homeOrigin).host}</small>
-              </span>
-              {homeOrigin === currentOrigin ? <CheckGlyph /> : null}
-            </button>
+          {nearby.length > 0 ? (
+            <>
+              <p className="host-switcher-heading">{t("chrome.hosts.nearby")}</p>
+              {nearby.map((entry) => (
+                <HostRow
+                  key={entry.origin}
+                  live
+                  name={entry.origin === homeOrigin ? t("chrome.hosts.thisComputer") : nearbyName(entry, t)}
+                  detail={nearbyDetail(entry, currentOrigin, state.consoleName)}
+                  current={entry.origin === currentOrigin}
+                  onOpen={() => go(entry.origin)}
+                />
+              ))}
+            </>
           ) : null}
-          {homeOrigin === null && currentHost === null ? (
-            <button type="button" role="menuitemradio" aria-checked className="is-current" disabled>
-              <span className="host-switcher-dot is-live" aria-hidden="true" />
-              <span className="host-switcher-entry">
-                <span className="host-switcher-name">{t("chrome.hosts.thisComputer")}</span>
-                <small>{location.host}</small>
-              </span>
-              <CheckGlyph />
-            </button>
+          {hosts.length > 0 ? (
+            <>
+              {nearby.length > 0 ? <div className="host-switcher-divider" role="separator" /> : null}
+              <p className="host-switcher-heading">{t("chrome.hosts.saved")}</p>
+              {hosts.map((host) => (
+                <HostRow
+                  key={host.id}
+                  live={Boolean(reach[host.id]?.trusted)}
+                  name={host.label}
+                  detail={hostDetail(host, reach[host.id], t)}
+                  current={host.origin === currentOrigin}
+                  disabled={reach[host.id]?.reachable === false}
+                  onOpen={() => go(host.origin)}
+                />
+              ))}
+            </>
           ) : null}
-          {!atHome && currentHost === null ? (
-            <button type="button" role="menuitemradio" aria-checked className="is-current" disabled>
-              <span className="host-switcher-dot is-live" aria-hidden="true" />
-              <span className="host-switcher-entry">
-                <span className="host-switcher-name">{location.host}</span>
-                <small>{t("chrome.hosts.notSaved")}</small>
-              </span>
-              <CheckGlyph />
-            </button>
+          {/* 목록 어디에도 없는 콘솔에 서 있다면 그 사실을 숨기지 않는다. */}
+          {!nearbyCurrent && savedCurrent === null ? (
+            <>
+              <div className="host-switcher-divider" role="separator" />
+              <HostRow live name={chipLabel} detail={`${location.host} · ${t("chrome.hosts.notSaved")}`} current />
+            </>
           ) : null}
-          {hosts.map((host) => {
-            const isCurrent = host.origin === currentOrigin;
-            const state = reach[host.id];
-            return (
-              <button
-                key={host.id}
-                type="button"
-                role="menuitemradio"
-                aria-checked={isCurrent}
-                className={isCurrent ? "is-current" : ""}
-                disabled={isCurrent || state?.reachable === false}
-                onClick={() => {
-                  setOpen(false);
-                  if (!isCurrent) location.assign(new URL("/console/", `${host.origin}/`).toString());
-                }}
-              >
-                <span className={`host-switcher-dot ${state?.trusted ? "is-live" : ""}`} aria-hidden="true" />
-                <span className="host-switcher-entry">
-                  <span className="host-switcher-name">{host.label}</span>
-                  <small>{hostDetail(host, state, t)}</small>
-                </span>
-                {isCurrent ? <CheckGlyph /> : null}
-              </button>
-            );
-          })}
           <div className="host-switcher-divider" role="separator" />
-          <button type="button" role="menuitem" className="host-switcher-link" onClick={openSettings}>
-            {t("chrome.hosts.add")}
-          </button>
           <button type="button" role="menuitem" className="host-switcher-link" onClick={openSettings}>
             {t("chrome.hosts.manage")}
           </button>
@@ -228,6 +212,50 @@ function HostSwitcher() {
       ) : null}
     </div>
   );
+}
+
+function HostRow({
+  live,
+  name,
+  detail,
+  current,
+  disabled,
+  onOpen,
+}: {
+  readonly live: boolean;
+  readonly name: string;
+  readonly detail: string;
+  readonly current: boolean;
+  readonly disabled?: boolean;
+  readonly onOpen?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitemradio"
+      aria-checked={current}
+      className={current ? "is-current" : ""}
+      disabled={current || disabled === true || onOpen === undefined}
+      onClick={onOpen}
+    >
+      <span className={`host-switcher-dot ${live ? "is-live" : ""}`} aria-hidden="true" />
+      <span className="host-switcher-entry">
+        <span className="host-switcher-name">{name}</span>
+        <small>{detail}</small>
+      </span>
+      {current ? <CheckGlyph /> : null}
+    </button>
+  );
+}
+
+function nearbyName(entry: LocalConsole, t: ReturnType<typeof useT>): string {
+  return entry.owner === "desktop" ? t("chrome.hosts.managedConsole") : t("chrome.hosts.console");
+}
+
+function nearbyDetail(entry: LocalConsole, currentOrigin: string, currentName: string): string {
+  const address = new URL(entry.origin).host;
+  if (entry.origin === currentOrigin && currentName) return `${address} · ${currentName}`;
+  return entry.version ? `${address} · v${entry.version}` : address;
 }
 
 function hostDetail(host: RemoteHost, state: RemoteHostReach | undefined, t: ReturnType<typeof useT>): string {

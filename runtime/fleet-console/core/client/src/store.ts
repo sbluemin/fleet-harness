@@ -49,6 +49,7 @@ let commissioningMigrationAttempted = false;
 let state: ConsoleState = {
   connection: "connecting",
   connectionLostAt: null,
+  consoleName: "",
   channel: "unknown",
   // The SDK ConsoleTheme union matches ThemeId; the selected theme passes
   // through to the plugin context unchanged.
@@ -143,6 +144,7 @@ export function setActiveUiFont(uiFont: UiFontSettings): void {
 
 export function applyObserverStatus(status: ObserverStatus): void {
   setState({
+    consoleName: status.name,
     channel: status.channel,
     version: status.version,
     updateAvailable: status.updateAvailable,

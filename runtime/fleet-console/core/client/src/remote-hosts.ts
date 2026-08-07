@@ -92,6 +92,32 @@ export async function probeRemoteHost(id: string, signal?: AbortSignal): Promise
   return { reachable: payload.reachable === true, trusted: payload.trusted === true };
 }
 
+/** 이 기계에서 지금 돌고 있는 콘솔들. 저장하지 않고 열 때마다 다시 본다. */
+export interface LocalConsole {
+  readonly origin: string;
+  readonly version: string;
+  readonly owner: "cli" | "desktop" | null;
+}
+
+/**
+ * 원격 콘솔을 보고 있을 때 이 요청은 401로 끝난다 — 그쪽 루프백 주소는 여기서 다른 기계를
+ * 가리키므로, 빈 목록이 정답이다.
+ */
+export async function fetchLocalConsoles(signal?: AbortSignal): Promise<readonly LocalConsole[]> {
+  const response = await fetch("/api/v1/local-consoles", { signal });
+  if (!response.ok) return [];
+  const payload = await response.json() as { readonly consoles?: unknown };
+  return Array.isArray(payload.consoles) ? payload.consoles.filter(isLocalConsole) : [];
+}
+
+function isLocalConsole(value: unknown): value is LocalConsole {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const entry = value as Record<string, unknown>;
+  return typeof entry.origin === "string" && entry.origin.startsWith("http://")
+    && typeof entry.version === "string"
+    && (entry.owner === null || entry.owner === "cli" || entry.owner === "desktop");
+}
+
 function publish(next: readonly RemoteHost[]): void {
   loaded = true;
   if (next.length === snapshot.length && next.every((host, index) => same(host, snapshot[index]))) return;

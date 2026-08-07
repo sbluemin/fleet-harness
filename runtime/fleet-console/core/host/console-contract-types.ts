@@ -64,6 +64,8 @@ export interface ConsoleAgentCliMetadata {
 export type ConsoleObserverWikiServerStatus = "available" | "unavailable" | "unknown";
 
 export interface ConsoleObserverStatus {
+  /** 이 콘솔이 스스로를 부르는 이름. 액세스 링크의 label과 같은 값이라 양쪽에서 같게 읽힌다. */
+  readonly name: string;
   readonly workspaces: number;
   readonly version: string;
   readonly channel: "stable" | "local" | "unknown";

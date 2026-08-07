@@ -45,6 +45,7 @@ import { createRemoteIdentityStore } from "./remote-identity.js";
 import { encodeAccessLink, parseAccessLink, sanitizeAccessLabel } from "./access-link.js";
 import { createRemoteHostStore, type RemoteHostRecord } from "./remote-hosts.js";
 import { probeRemoteIdentity } from "./remote-probe.js";
+import { listLocalConsoles } from "./local-consoles.js";
 import { createPluginClientAssets } from "./plugin-host/plugin-host.js";
 import { createFleetPluginHost } from "./plugin-host/plugin-host.js";
 import type { FleetPluginHostCapabilities, OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind } from "./plugin-host/plugin-host.js";
@@ -332,6 +333,13 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     gate: "origin-write",
   },
   {
+    method: "GET",
+    path: "/api/v1/local-consoles",
+    summary: "List the consoles running on this machine that this one can point a window at.",
+    category: "Access",
+    gate: "loopback",
+  },
+  {
     method: "POST",
     path: "/api/v1/desktop/handoff",
     summary: "Hand the attached Desktop what it needs to open one remembered console, consuming any pending grant.",
@@ -348,6 +356,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
 ];
 
 export const REMOTE_HOSTS_PATH = "/api/v1/remote-hosts";
+export const LOCAL_CONSOLES_PATH = "/api/v1/local-consoles";
 export const REMOTE_HOST_HANDOFF_PATH = "/api/v1/desktop/handoff";
 
 export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer {
@@ -810,6 +819,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       runAsyncBooleanHandler(handleRemoteHosts(req, res, pathname), res);
       return;
     }
+    if (pathname === LOCAL_CONSOLES_PATH) {
+      handleLocalConsoles(req, res);
+      return;
+    }
     if (pathname === REMOTE_HOST_HANDOFF_PATH) {
       runAsyncBooleanHandler(handleRemoteHostHandoff(req, res), res);
       return;
@@ -1163,6 +1176,22 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return true;
   }
 
+  /**
+   * 링크 없이 갈 수 있는 지름길. 여기 적힌 루프백 주소는 "이 요청이 도착한 리스너와 같은 기계"를
+   * 뜻하므로, 원격 리스너에는 절대 내주지 않는다 — 원격에서 받은 127.0.0.1은 다른 기계다.
+   */
+  function handleLocalConsoles(req: http.IncomingMessage, res: http.ServerResponse): void {
+    if (req.method !== "GET") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (!isLoopbackListener(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    writeJson(res, 200, { consoles: listLocalConsoles() });
+  }
+
   async function addRemoteHost(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const body = await readJsonBody<{ readonly link?: unknown }>(req);
     if (!isPlainObject(body) || typeof body.link !== "string") {
@@ -1363,6 +1392,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function handleStatus(req: http.IncomingMessage, res: http.ServerResponse): void {
     const theaterId = readUrl(req).searchParams.get("theaterId");
     const payload: ConsoleObserverStatus = {
+      name: consoleLabel(),
       workspaces: operations.list().length,
       version,
       channel,

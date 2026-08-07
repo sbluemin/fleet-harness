@@ -54,6 +54,7 @@ export interface TheaterBootstrap {
 }
 
 export interface ObserverStatus {
+  readonly name: string;
   readonly workspaces: number;
   readonly version: string;
   readonly channel: "stable" | "local" | "unknown";
@@ -221,6 +222,8 @@ export type CodexReaderRequest =
   | { readonly kind: "schema"; readonly templateId?: string };
 
 export interface ConsoleState {
+  /** 이 콘솔이 스스로를 부르는 이름. 원격에서 보고 있어도 그 콘솔의 이름을 그대로 읽는다. */
+  readonly consoleName: string;
   readonly connection: ConnectionState;
   readonly connectionLostAt: number | null;
   readonly channel: ObserverStatus["channel"];

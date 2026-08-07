@@ -21,6 +21,8 @@ export interface RemoteBridgeDeps {
   /** 로컬 Console은 평문 루프백이라 Node의 fetch로 충분하다. */
   readonly localFetch?: typeof fetch;
   readonly localOrigin: () => string | null;
+  /** 원격 콘솔의 세션 목록에 남을 이 기기의 이름. */
+  readonly deviceName?: string;
   readonly loadConsole: (url: string) => Promise<void>;
   readonly notify: (notice: DesktopNotice) => void;
   readonly log?: (message: string) => void;
@@ -85,7 +87,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     policy.stageConsoleOrigin(handoff.origin);
     try {
       // 자격은 한 번뿐이다. 이미 세션 쿠키가 있으면 token은 비어 오고, 그때는 조인을 건너뛴다.
-      if (handoff.token) await joinRemoteConsole(deps.sessionFetch, `${handoff.origin}${JOIN_PATH}`, handoff.token);
+      if (handoff.token) await joinRemoteConsole(deps.sessionFetch, `${handoff.origin}${JOIN_PATH}`, handoff.token, deps.deviceName ?? null);
       await deps.loadConsole(`${handoff.origin}${CONSOLE_PATH}`);
       policy.commitConsoleOrigin();
     } catch (error) {

@@ -90,6 +90,15 @@ describe("remote console join", () => {
     expect(init.body).toBe(JSON.stringify({ token: TOKEN }));
   });
 
+  it("names this device so the other side's session list is not a row of anonymous entries", async () => {
+    const sessionFetch = vi.fn(async () => new Response(null, { status: 204 }));
+
+    await joinRemoteConsole(sessionFetch, JOIN_URL, TOKEN, "studio-linux");
+
+    const [, init] = sessionFetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.body).toBe(JSON.stringify({ token: TOKEN, device: "studio-linux" }));
+  });
+
   it.each([
     [401, "remote_link_rejected"],
     [403, "remote_link_host_mismatch"],
@@ -108,7 +117,7 @@ describe("remote console join", () => {
       init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
     });
 
-    await expect(joinRemoteConsole(hang, JOIN_URL, TOKEN, 5)).rejects.toThrow("remote_link_unreachable");
+    await expect(joinRemoteConsole(hang, JOIN_URL, TOKEN, null, 5)).rejects.toThrow("remote_link_unreachable");
   });
 });
 

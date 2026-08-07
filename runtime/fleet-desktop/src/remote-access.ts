@@ -104,8 +104,11 @@ function readPresentedFingerprint(hostname: string, port: number, timeoutMs: num
 /**
  * 1회용 자격을 세션으로 바꾼다. 자격은 본문으로만 보내 URL과 로그에 남기지 않고, 리다이렉트는
  * 받지 않는다 — 조인은 지문을 확인한 그 서버에서만 성립해야 한다.
+ *
+ * 기기 이름은 자격이 아니라 상대편 운영자를 위한 표식이다. 그것이 없으면 원격 콘솔의 세션
+ * 목록에서 어느 줄을 끊어야 하는지 알 수 없다.
  */
-export async function joinRemoteConsole(sessionFetch: SessionFetch, joinUrl: string, token: string, timeoutMs = REMOTE_REQUEST_TIMEOUT_MS): Promise<void> {
+export async function joinRemoteConsole(sessionFetch: SessionFetch, joinUrl: string, token: string, device: string | null = null, timeoutMs = REMOTE_REQUEST_TIMEOUT_MS): Promise<void> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -113,7 +116,8 @@ export async function joinRemoteConsole(sessionFetch: SessionFetch, joinUrl: str
       method: "POST",
       redirect: "error",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token }),
+      // 기기 이름을 함께 보낸다 — 원격 쪽 세션 목록에서 "이름 없는 기기"로만 보이면 회수를 결정할 수 없다.
+      body: JSON.stringify(device === null ? { token } : { token, device }),
       signal: controller.signal,
     });
     if (response.status === 401) throw new Error("remote_link_rejected");

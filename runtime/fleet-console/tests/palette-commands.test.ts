@@ -38,6 +38,7 @@ function makeState(patch: Partial<ConsoleState> = {}): ConsoleState {
   return {
     connection: "connecting",
     connectionLostAt: null,
+    consoleName: "",
     channel: "unknown",
     activeTheme: "instrument",
     version: "1.30.0",
