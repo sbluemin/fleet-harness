@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import type { Duplex } from "node:stream";
 
 import { createInfraServices, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
@@ -582,13 +583,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   routeRegistry.register("/plugin-runtime", handlePluginRuntimeRoute);
 
+  // 요청과 업그레이드가 같은 Host 경계를 쓰도록 판정을 한 곳에 둔다.
+  function isRequestHostAllowed(req: http.IncomingMessage): boolean {
+    return validateHost(req, lockHandle?.payload.port ?? port);
+  }
+
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     const pathname = getPathname(req);
     if (pathname === "/console/codex" || pathname.startsWith("/console/codex/")) {
       runAsyncBooleanHandler(codex.handle(req, res), res, () => tryServeStaticConsole(req, res, pathname));
       return;
     }
-    if (!validateHost(req, lockHandle?.payload.port ?? port)) {
+    if (!isRequestHostAllowed(req)) {
       writeJson(res, 403, { error: "host_mismatch" });
       return;
     }
@@ -1305,7 +1311,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   function listenOnce(portToBind: number, statePatch: Omit<ConsolePortRuntimeState, "effectivePort">): Promise<ConsolePortListenResult> {
     return new Promise((resolve, reject) => {
-      const srv = createHttpServer(handleRequest, upgradeRegistry);
+      const srv = createHttpServer(handleRequest, upgradeRegistry, isRequestHostAllowed);
       const onError = (error: Error) => {
         reject(error);
       };
@@ -1316,7 +1322,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const actualPort = typeof address === "object" && address ? address.port : portToBind;
         const endpoint = `http://${host}:${actualPort}/`;
         try {
-          const localLoopbackServer = await maybeStartLoopbackServer(host, actualPort, handleRequest, upgradeRegistry);
+          const localLoopbackServer = await maybeStartLoopbackServer(host, actualPort, handleRequest, upgradeRegistry, isRequestHostAllowed);
           resolve({
             srv,
             localLoopbackServer,
@@ -1346,19 +1352,36 @@ function resolveBuiltInPluginDiscoveryRoots(packageRoot: string): { readonly bui
   };
 }
 
+/**
+ * 업그레이드는 요청 경로와 같은 Host 경계를 먼저 통과해야 한다. 업그레이드 핸들러는
+ * 거절을 바이트 없이 소켓 파기로만 표현하므로, 거절 사유를 밖에서 구분할 수 없다.
+ * 순서(호스트 판정 → 레지스트리 위임)를 계약으로 고정하려고 접합부를 분리해 둔다.
+ */
+export function createUpgradeListener(deps: {
+  readonly isHostAllowed: (req: http.IncomingMessage) => boolean;
+  readonly upgradeRegistry: Pick<UpgradeRegistry, "handle">;
+}): (req: http.IncomingMessage, socket: Duplex, head: Buffer) => void {
+  return (req, socket, head) => {
+    if (!deps.isHostAllowed(req)) {
+      socket.destroy();
+      return;
+    }
+    const pathname = getPathname(req);
+    if (deps.upgradeRegistry.handle({ req, socket, head, pathname })) return;
+    socket.destroy();
+  };
+}
+
 function createHttpServer(
   handler: http.RequestListener,
   upgradeRegistry: UpgradeRegistry,
+  isHostAllowed: (req: http.IncomingMessage) => boolean,
 ): http.Server {
   const srv = http.createServer(handler);
   srv.timeout = SERVER_TIMEOUT_MS;
   srv.keepAliveTimeout = SERVER_TIMEOUT_MS;
   srv.headersTimeout = SERVER_TIMEOUT_MS + 1000;
-  srv.on("upgrade", (req, socket, head) => {
-    const pathname = getPathname(req);
-    if (upgradeRegistry.handle({ req, socket, head, pathname })) return;
-    socket.destroy();
-  });
+  srv.on("upgrade", createUpgradeListener({ isHostAllowed, upgradeRegistry }));
   return srv;
 }
 
@@ -1367,9 +1390,10 @@ async function maybeStartLoopbackServer(
   actualPort: number,
   handler: http.RequestListener,
   upgradeRegistry: UpgradeRegistry,
+  isHostAllowed: (req: http.IncomingMessage) => boolean,
 ): Promise<http.Server | null> {
   if (isLoopbackHost(host) || isWildcardHost(host)) return null;
-  const srv = createHttpServer(handler, upgradeRegistry);
+  const srv = createHttpServer(handler, upgradeRegistry, isHostAllowed);
   await new Promise<void>((resolve, reject) => {
     srv.once("error", reject);
     srv.listen(actualPort, "127.0.0.1", () => {
