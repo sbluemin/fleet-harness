@@ -176,6 +176,14 @@ test('derives a fragment filename from a branch name', () => {
   assert.throws(() => branchFragmentName('   '), /Branch name is empty/);
 });
 
+test('refuses a branch that normalizes onto the reserved canary filename', () => {
+  for (const branch of ['Canary', 'CANARY', 'canary!']) {
+    assert.throws(() => branchFragmentName(branch), /reserved filename canary\.md/, branch);
+  }
+  assert.equal(branchFragmentName('canary'), 'canary.md');
+  assert.equal(branchFragmentName('release/Canary'), 'release-canary.md');
+});
+
 test('caps a derived filename at sixty slug characters without a trailing hyphen', () => {
   const name = branchFragmentName(`feat/${'a'.repeat(40)}-${'b'.repeat(40)}`);
   assert.equal(name.length, 63);

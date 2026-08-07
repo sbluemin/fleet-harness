@@ -109,7 +109,14 @@ export function branchFragmentName(branch) {
   if (!trimmed) throw new Error('Branch name is empty. Pass it explicitly: --name-for-branch <branch>.');
   const slug = trimmed.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-+/, '').replace(/-+$/, '');
   const capped = (slug === '' ? 'branch' : slug).slice(0, BRANCH_SLUG_MAX_LENGTH).replace(/-+$/, '');
-  return `${capped}.md`;
+  const name = `${capped}.md`;
+  // canary.md is reserved for authorized direct-canary work and carries no frontmatter, so a branch like
+  // "Canary" that normalizes onto it would have to drop its branch declaration and would then look like
+  // direct-canary work. Refuse the name instead of handing back one the author cannot legally use.
+  if (name === CANARY_FRAGMENT_NAME && trimmed !== 'canary') {
+    throw new Error(`Branch "${branch}" derives the reserved filename ${CANARY_FRAGMENT_NAME}, which belongs to authorized direct-canary work. Rename the branch.`);
+  }
+  return name;
 }
 
 function readCurrentBranch() {

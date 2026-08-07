@@ -37,19 +37,28 @@ jobs:
           # AGENTS.md/CLAUDE.md live in .changelog.d/ but are doctrine, not fragments.
           fragment_filter() { grep -E '^\.changelog\.d/[^/]+\.md$' | grep -vE '^\.changelog\.d/(AGENTS|CLAUDE)\.md$' || true; }
           fragment_files=$(git diff --name-only --diff-filter=A "$merge_base" "$HEAD_REF" | fragment_filter)
-          edited_fragments=$(git diff --name-only --diff-filter=M "$merge_base" "$HEAD_REF" | fragment_filter)
           if node -e "const labels = JSON.parse(process.env.LABELS_JSON); process.exit(labels.some((label) => label.name === 'no-changelog') ? 0 : 1);"; then
             has_no_changelog=true
           else
             has_no_changelog=false
           fi
 
-          # A fragment that already exists on the base branch belongs to another change. Two branches whose names
-          # slug to the same filename would otherwise overwrite each other's release note without a conflict.
-          if [ -n "$edited_fragments" ]; then
-            echo "::error::This PR edits a changelog fragment that already exists on the base branch, which overwrites another change's release note."
-            printf '%s\n' "$edited_fragments"
-            echo "Rename this branch so it derives a free filename, then rename the fragment and its branch: frontmatter to match."
+          # Every fragment already on the base branch belongs to another change that has not been released yet.
+          # This PR must leave all of them byte-identical: an edit overwrites another branch's release note (two
+          # branch names can slug to one filename), and a delete or rename removes it outright. Compare each base
+          # fragment across the range rather than filtering by change type, so M, D and R are all caught.
+          base_fragments=$(git ls-tree -r --name-only "$merge_base" -- .changelog.d | fragment_filter)
+          disturbed=""
+          while IFS= read -r fragment; do
+            [ -n "$fragment" ] || continue
+            if ! git diff --quiet "$merge_base" "$HEAD_REF" -- "$fragment"; then
+              disturbed="${disturbed}${fragment}"$'\n'
+            fi
+          done <<< "$base_fragments"
+          if [ -n "$disturbed" ]; then
+            echo "::error::This PR changes a changelog fragment that already exists on the base branch, which discards another change's unreleased release note."
+            printf '%s' "$disturbed"
+            echo "Leave other branches' fragments untouched. If the name collides with yours, rename this branch so it derives a free filename, then rename your fragment and its branch: frontmatter to match."
             exit 1
           fi
 
