@@ -306,9 +306,6 @@ export const terminalEn = {
   "terminal.settings.missing": "Missing",
   "terminal.analysis.error.sessionNotFound": "Analysis session was not found.",
   "terminal.analysis.error.requestFailed": "Analysis request failed.",
-  "terminal.themeHint.light": "Console switched to a light theme — relaunch or run /theme in the CLI to match",
-  "terminal.themeHint.dark": "Console switched to a dark theme — relaunch or run /theme in the CLI to match",
-  "terminal.themeHint.dismiss": "Dismiss theme hint",
 } as const;
 
 export const terminalKo: Record<keyof typeof terminalEn, string> = {
@@ -613,9 +610,6 @@ export const terminalKo: Record<keyof typeof terminalEn, string> = {
   "terminal.settings.missing": "없음",
   "terminal.analysis.error.sessionNotFound": "분석 세션을 찾을 수 없습니다.",
   "terminal.analysis.error.requestFailed": "분석 요청이 실패했습니다.",
-  "terminal.themeHint.light": "콘솔이 라이트 테마로 전환되었습니다 — CLI를 다시 시작하거나 /theme으로 테마를 맞춰 주세요",
-  "terminal.themeHint.dark": "콘솔이 다크 테마로 전환되었습니다 — CLI를 다시 시작하거나 /theme으로 테마를 맞춰 주세요",
-  "terminal.themeHint.dismiss": "테마 안내 닫기",
 };
 
 export const TERMINAL_MESSAGES = { en: terminalEn, ko: terminalKo } as const;

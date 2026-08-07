@@ -6,7 +6,6 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
-import { getT, useTerminalLocale } from "../i18n/index.js";
 import { createImeShiftEnterHandler } from "./ime-shift-enter.js";
 import { createTerminalConnection, type TerminalConnection } from "./terminal-connection.js";
 import { createTerminalCopyOnSelect } from "./terminal-copy-on-select.js";
@@ -169,12 +168,6 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
   return LIGHT_TERMINAL_THEMES.has(theme) ? "light" : "dark";
 }
 
-/* 세션 PTY는 패널 언마운트(Global Shell 닫기·Theater 전환)를 넘어 생존하므로, 극성 힌트의 기준선도
-   surface 수명 밖에 보관해야 닫힌 사이 전환된 테마가 재오픈 시 힌트를 발화한다. 같은 플러그인 번들
-   내부의 모듈 상태다 — 번들 경계를 넘는 공유가 아니다. PTY 종료 후 재spawn된 세션은 현재 극성 env를
-   받으므로, 닫힌 동안의 전환 + 재spawn이 겹치는 극단 경로에서만 힌트가 한 번 과발화할 수 있다(무해·해제 가능). */
-const sessionPolarityBaseline = new Map<string, "light" | "dark">();
-
 export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail }: TerminalSurfaceProps) {
   const activeTheme = theme;
   const { renderer: terminalRenderer, font: terminalFontSettings } = useTerminalPrefs();
@@ -199,9 +192,6 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   const activeRef = useRef(active);
   activeRef.current = active;
   const [status, setStatus] = useState("connecting");
-  // 테마 극성(다크↔라이트) 전환 1회성 안내 — 실행 중 CLI 내부 테마는 강제할 수 없으므로 힌트만 띄운다.
-  const [themeHint, setThemeHint] = useState<"light" | "dark" | null>(null);
-  const t = getT(useTerminalLocale());
   // 마운트 effect는 심볼 폰트 선대기 등 await 뒤에 ticket 연결을 만들고 테마 변경에 재실행되지 않으므로,
   // 최신 극성은 ref로 읽는다(activeRef와 같은 이유) — 대기 중 테마가 바뀌어도 첫 ticket이 현재 극성을 싣는다.
   const colorSchemeRef = useRef(terminalPolarityFor(activeTheme));
@@ -472,27 +462,6 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
     syncTerminalViewportBackground(container, terminalTheme);
   }, [activeTheme, mountedTerminalEpoch]);
 
-  // 세션 전환(Global Shell theater 전환 등)은 같은 surface 인스턴스의 operationId만 바꾸므로,
-  // 이전 세션의 힌트가 새 세션 위에 남지 않게 먼저 지운다.
-  useEffect(() => {
-    setThemeHint(null);
-  }, [operationId]);
-
-  // 극성 전환 감지: 기준선은 세션(operationId) 단위 모듈 맵에 보관한다 — 패널이 닫혔다 열려도
-  // 생존한 PTY의 기준선이 유지되어, 닫힌 사이 일어난 다크↔라이트 전환도 재오픈 시 힌트를 발화한다.
-  useEffect(() => {
-    const polarity = terminalPolarityFor(activeTheme);
-    const baseline = sessionPolarityBaseline.get(operationId);
-    if (baseline === undefined) {
-      sessionPolarityBaseline.set(operationId, polarity);
-      return;
-    }
-    if (baseline !== polarity) {
-      sessionPolarityBaseline.set(operationId, polarity);
-      setThemeHint(polarity);
-    }
-  }, [activeTheme, operationId]);
-
   useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) return;
@@ -552,12 +521,6 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
           </div>
         ) : null}
         <div className="terminal-viewport">
-          {themeHint ? (
-            <div className="terminal-theme-hint" role="status">
-              <span>{t(themeHint === "light" ? "terminal.themeHint.light" : "terminal.themeHint.dark")}</span>
-              <button type="button" className="terminal-theme-hint-dismiss" aria-label={t("terminal.themeHint.dismiss")} onClick={() => setThemeHint(null)}>✕</button>
-            </div>
-          ) : null}
           <div className="terminal-canvas" ref={containerRef} style={zoomStyle} />
         </div>
       </div>
