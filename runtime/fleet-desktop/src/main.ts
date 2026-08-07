@@ -11,9 +11,9 @@ import { createConsoleControls } from "./console-controls.js";
 import { createHydratedDesktopEnvironment, resolveDesktopUserDataDirectory } from "./environment.js";
 import { pushEntrySnapshot } from "./entry-page.js";
 import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
-import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
+import { createLaunchController, type RuntimeEntryState, type StartupChoice } from "./launch-controller.js";
 import { createPairingNotifier } from "./pairing-notifications.js";
-import { createPairingModal } from "./pairing-modal.js";
+import { createPairingModal, LOCAL_RUNTIME_CHOICE } from "./pairing-modal.js";
 import { confirmRemoteIdentity, installRemoteCertificatePins, joinRemoteConsole } from "./remote-access.js";
 import { createRuntimePairing, type RemoteAccessAdapter } from "./runtime-pairing.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
@@ -92,6 +92,7 @@ async function boot(): Promise<void> {
   const zoomState = createZoomState(path.join(app.getPath("userData"), "desktop-state.json"));
   const controls = createConsoleControls({ zoomState, refreshNativeActions: () => refreshNativeUpdateActions?.() });
   let pairing: ReturnType<typeof createRuntimePairing> | null = null;
+  const startupModal = createPairingModal({ BrowserWindow, pairingPagePath: desktopResources.pairingPagePath });
   const lifecycle = createDesktopLifecycle(app, async () => {
     const launch = createLaunchController({
       createWindow: async () => {
@@ -124,6 +125,18 @@ async function boot(): Promise<void> {
       onWindowReady: (push) => { pushRuntimeProgress = push; },
       pushEntry: pushEntrySnapshot,
       startOrAdopt: () => supervisor.startOrAdopt(),
+      // 시작할 때 어떤 콘솔에 붙을지 묻는다. 입력은 언제나 같은 샌드박스 모달을 통과한다.
+      chooseRuntime: async (activeWindow): Promise<StartupChoice> => {
+        const value = await startupModal.prompt(activeWindow as unknown as BrowserWindow);
+        if (value === null) return { kind: "cancelled" };
+        return value === LOCAL_RUNTIME_CHOICE ? { kind: "local" } : { kind: "target", value };
+      },
+      connectTarget: async (value, activeWindow) => {
+        if (!policy) return false;
+        await pairing?.switchTo(value, activeWindow as never, policy);
+        return policy.currentConsoleOrigin() !== null;
+      },
+      onStartupCancelled: () => { void lifecycle.quit(); },
     });
     return launch.start() as Promise<BrowserWindow>;
   }, async () => { await pairing?.dispose(); await supervisor.stop(); });
@@ -169,7 +182,7 @@ async function boot(): Promise<void> {
     notifier: createPairingNotifier(Notification, { showMessageBox: (options) => dialog.showMessageBox(options) }),
     fullscreenSynchronizer: () => fullscreenSynchronizer,
     themeSynchronizer,
-    modal: createPairingModal({ BrowserWindow, pairingPagePath: desktopResources.pairingPagePath }),
+    modal: startupModal,
     entryPagePath: desktopResources.entryPagePath,
     localOrigin: () => localConsoleOrigin,
     logger,

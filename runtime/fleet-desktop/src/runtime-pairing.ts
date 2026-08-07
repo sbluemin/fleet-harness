@@ -3,7 +3,7 @@ import type { BrowserWindow, WebContents } from "electron";
 import type { DesktopThemeSynchronizer } from "./desktop-theme-sync.js";
 import type { DesktopFullscreenSynchronizer } from "./desktop-fullscreen-sync.js";
 import { pushEntrySnapshot, type EntryPageWebContents } from "./entry-page.js";
-import type { PairingModal } from "./pairing-modal.js";
+import { LOCAL_RUNTIME_CHOICE, type PairingModal } from "./pairing-modal.js";
 import { isAccessLinkInput, parseAccessLink, type ValidatedAccessLink } from "./remote-access-link.js";
 import { snapshotForAccessPhase, snapshotForAccessReady, type RemoteAccessPhase } from "./remote-entry-snapshot.js";
 import type { WindowPolicy } from "./window-policy.js";
@@ -180,9 +180,13 @@ export function createRuntimePairing(dependencies: RuntimePairingDependencies): 
       pushRemoteSnapshot(snapshotForAccessPhase(link.hostname, phase));
     };
     try {
-      const parsed = input === dependencies.localOrigin()
-        ? { kind: "loopback" as const, origin: input }
-        : parsePairingTarget(input);
+      // 관리형 로컬을 고르면 이미 살아 있는 로컬 콘솔로 돌아간다. 부팅 시점의 조달은
+      // launch controller가 맡고, 여기까지 오는 "local"은 이미 켜져 있다는 뜻이다.
+      const resolved = input === LOCAL_RUNTIME_CHOICE ? dependencies.localOrigin() : input;
+      if (resolved === null) throw new Error("local_runtime_unavailable");
+      const parsed = resolved === dependencies.localOrigin()
+        ? { kind: "loopback" as const, origin: resolved }
+        : parsePairingTarget(resolved);
       if (parsed.kind === "loopback") target = await verifyPairingOrigin(parsed.origin, fetchFor, timeoutMs);
       else {
         const remote = dependencies.remoteAccess;
@@ -388,6 +392,7 @@ function failureMessage(code: string): string {
   switch (code) {
     case "pairing_target_invalid": return "That is not a Fleet Console access link. Create a new link in the console you want to reach.";
     case "remote_access_unavailable": return "This Fleet Console Desktop cannot open remote links.";
+    case "local_runtime_unavailable": return "The managed local Fleet Console is not running yet.";
     case "remote_link_fingerprint_mismatch": return "That console presented a different certificate than the link expects. Create the link again from that console, and do not use this one.";
     case "remote_link_rejected": return "The access link was already used or has expired. Create a new one.";
     case "remote_link_host_mismatch": return "The remote console refused this address. Create the link again from that console.";

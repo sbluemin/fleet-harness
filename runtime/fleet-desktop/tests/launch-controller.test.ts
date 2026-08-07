@@ -167,3 +167,83 @@ describe("launch controller", () => {
     expect(window.loadURL).not.toHaveBeenCalled();
   });
 });
+
+describe("startup runtime choice", () => {
+  it("asks before it procures anything and never remembers the answer", async () => {
+    const order: string[] = [];
+    const chooseRuntime = vi.fn(async () => { order.push("ask"); return { kind: "local" } as const; });
+    const controller = createLaunchController({
+      ...launchDefaults(order),
+      chooseRuntime,
+      startOrAdopt: async () => { order.push("start"); return "http://127.0.0.1:4310/console/"; },
+    });
+
+    await controller.start();
+    await controller.start();
+
+    // 두 번째 실행도 묻는다 — 답을 기억하면 어제의 선택이 오늘 조용히 붙는다.
+    expect(chooseRuntime).toHaveBeenCalledTimes(2);
+    expect(order.indexOf("ask")).toBeLessThan(order.indexOf("start"));
+  });
+
+  it("hands the window to a chosen target without starting the managed runtime", async () => {
+    const order: string[] = [];
+    const connectTarget = vi.fn(async () => { order.push("connect"); return true; });
+    const controller = createLaunchController({
+      ...launchDefaults(order),
+      chooseRuntime: async () => ({ kind: "target", value: "https://host:4310/join#t=a&f=b" }),
+      connectTarget,
+      startOrAdopt: async () => { order.push("start"); return "http://127.0.0.1:4310/console/"; },
+    });
+
+    await controller.start();
+
+    expect(connectTarget).toHaveBeenCalledWith("https://host:4310/join#t=a&f=b", expect.anything());
+    expect(order).not.toContain("start");
+  });
+
+  it("asks again when the chosen target fails, because boot has no console to fall back to", async () => {
+    const order: string[] = [];
+    const choices = [{ kind: "target", value: "127.0.0.1:9" } as const, { kind: "local" } as const];
+    const controller = createLaunchController({
+      ...launchDefaults(order),
+      chooseRuntime: async () => { order.push("ask"); return choices.shift()!; },
+      connectTarget: async () => { order.push("failed"); return false; },
+      startOrAdopt: async () => { order.push("start"); return "http://127.0.0.1:4310/console/"; },
+    });
+
+    await controller.start();
+
+    expect(order.filter((step) => step !== "show" && step !== "load")).toEqual(["ask", "failed", "ask", "start"]);
+  });
+
+  it("quits instead of falling back when the choice is cancelled", async () => {
+    const order: string[] = [];
+    const onStartupCancelled = vi.fn(() => order.push("quit"));
+    const controller = createLaunchController({
+      ...launchDefaults(order),
+      chooseRuntime: async () => ({ kind: "cancelled" }),
+      onStartupCancelled,
+      startOrAdopt: async () => { order.push("start"); return "http://127.0.0.1:4310/console/"; },
+    });
+
+    await controller.start();
+
+    expect(onStartupCancelled).toHaveBeenCalledOnce();
+    expect(order).not.toContain("start");
+  });
+});
+
+function launchDefaults(order: string[]) {
+  return {
+    createWindow: async () => ({
+      isDestroyed: () => false,
+      loadURL: async () => { order.push("load"); },
+      show: () => order.push("show"),
+      webContents: { executeJavaScript: async () => undefined, navigationHistory: { clear: () => undefined } },
+    }),
+    handoffOrigin: () => undefined,
+    pushEntry: async () => undefined,
+    startOrAdopt: async () => "http://127.0.0.1:4310/console/",
+  };
+}

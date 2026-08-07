@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createPairingModal, createPairingModalOptions, parsePairingNavigation } from "../src/pairing-modal.js";
+import { createPairingModal, createPairingModalOptions, editCommandFor, parsePairingNavigation } from "../src/pairing-modal.js";
 
 describe("pairing modal", () => {
   it("uses a fixed, sandboxed, script-free child-window boundary", () => {
@@ -12,7 +12,7 @@ describe("pairing modal", () => {
       modal: true,
       show: false,
       width: 460,
-      height: 400,
+      height: 420,
       useContentSize: true,
       resizable: false,
       minimizable: false,
@@ -109,11 +109,38 @@ describe("pairing modal", () => {
   });
 });
 
+describe("pairing edit commands", () => {
+  // 모달은 부모의 메뉴 액셀러레이터를 막는다. macOS는 편집 명령도 같은 경로로 보내므로,
+  // 막아 둔 채로 두면 액세스 링크를 붙여넣을 방법이 사라진다.
+  it("restores the editing commands the ignored menu accelerators would have carried", () => {
+    const contents = { paste: vi.fn(), copy: vi.fn(), cut: vi.fn(), selectAll: vi.fn(), undo: vi.fn(), redo: vi.fn() };
+    for (const [key, method] of [["v", "paste"], ["c", "copy"], ["x", "cut"], ["a", "selectAll"], ["z", "undo"]] as const) {
+      editCommandFor({ key, meta: true, control: false, alt: false, shift: false })?.(contents as never);
+      editCommandFor({ key: key.toUpperCase(), meta: false, control: true, alt: false, shift: false })?.(contents as never);
+      expect(contents[method]).toHaveBeenCalledTimes(2);
+    }
+    editCommandFor({ key: "z", meta: true, control: false, alt: false, shift: true })?.(contents as never);
+    expect(contents.redo).toHaveBeenCalledOnce();
+  });
+
+  it("claims nothing a plain keystroke or a foreign chord would own", () => {
+    for (const input of [
+      { key: "v", meta: false, control: false, alt: false, shift: false },
+      { key: "v", meta: true, control: true, alt: false, shift: false },
+      { key: "v", meta: true, control: false, alt: true, shift: false },
+      { key: "v", meta: true, control: false, alt: false, shift: true },
+      { key: "r", meta: true, control: false, alt: false, shift: false },
+      { key: "q", meta: true, control: false, alt: false, shift: false },
+    ]) expect(editCommandFor(input)).toBeNull();
+  });
+});
+
 describe("pairing navigation parser", () => {
   it("rejects credentials, ports, hashes, extra paths, and unknown parameters", () => {
     expect(parsePairingNavigation("fleet-desktop-pairing://cancel/")).toBeNull();
     expect(parsePairingNavigation("fleet-desktop-pairing://submit/?target=127.0.0.1%3A4310")).toBe("127.0.0.1:4310");
     expect(parsePairingNavigation("fleet-desktop-pairing://submit/?mode=loopback&target=127.0.0.1%3A4310")).toBe("127.0.0.1:4310");
+    expect(parsePairingNavigation("fleet-desktop-pairing://submit/?mode=local")).toBe("local");
     expect(parsePairingNavigation("fleet-desktop-pairing://submit/?mode=link&link=https%3A%2F%2F192.168.1.20%3A4310%2Fjoin%23t%3Dy8bWk3Qm5r7uJ2pS4vX9zA1cE6gI0lN8oR2tU5wY7bD%26f%3D6FB70D9F321A91894CC16D613078FB13E6E0B0042D985D395F04EDC2103E95F8")).toBe("https://192.168.1.20:4310/join#t=y8bWk3Qm5r7uJ2pS4vX9zA1cE6gI0lN8oR2tU5wY7bD&f=6FB70D9F321A91894CC16D613078FB13E6E0B0042D985D395F04EDC2103E95F8");
     for (const value of [
       "fleet-desktop-pairing://submit/?target=one&other=two",
@@ -122,6 +149,8 @@ describe("pairing navigation parser", () => {
       "fleet-desktop-pairing://submit/?mode=link&link=%ZZ",
       "fleet-desktop-pairing://submit/?mode=link&link=https%3A%2F%2Fhost%0Aevil",
       "fleet-desktop-pairing://submit/?mode=ssh&host=devbox",
+      "fleet-desktop-pairing://submit/?mode=local&target=127.0.0.1%3A4310",
+      "fleet-desktop-pairing://submit/?mode=LOCAL",
       "fleet-desktop-pairing://submit/?target=one&",
       "fleet-desktop-pairing://submit/?tar%67et=one",
       "fleet-desktop-pairing://submit/path?target=one",

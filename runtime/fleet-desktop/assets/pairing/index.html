@@ -4,24 +4,37 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'none'; connect-src 'none'; img-src 'none'; font-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action fleet-desktop-pairing:">
-  <title>Connect to Runtime</title>
+  <title>Connect to Fleet Console</title>
   <link rel="stylesheet" href="pairing.css">
 </head>
 <body>
   <main>
-    <h1>Connect to Runtime</h1>
-    <p>Choose a Fleet Console on this machine, or paste an access link from another one.</p>
-    <input class="mode" id="mode-loopback" name="pairing-mode" type="radio" checked>
+    <h1>Connect to Fleet Console</h1>
+    <p>Choose the console this window should open.</p>
+    <input class="mode" id="mode-local" name="pairing-mode" type="radio" checked>
+    <input class="mode" id="mode-loopback" name="pairing-mode" type="radio">
     <input class="mode" id="mode-link" name="pairing-mode" type="radio">
     <div class="tabs" role="tablist" aria-label="Runtime connection type">
+      <label for="mode-local" role="tab">Managed local</label>
       <label for="mode-loopback" role="tab">Loopback address</label>
       <label for="mode-link" role="tab">Access link</label>
     </div>
+    <section class="panel panel-local" aria-label="Managed local">
+      <form action="fleet-desktop-pairing://submit/" method="get">
+        <input name="mode" type="hidden" value="local">
+        <p class="hint">Fleet Console installs and runs on this machine, and keeps itself updated. This is the usual choice.</p>
+        <div class="actions">
+          <button type="submit" autofocus>Connect</button>
+          <a href="fleet-desktop-pairing://cancel/">Cancel</a>
+        </div>
+      </form>
+    </section>
     <section class="panel panel-loopback" aria-label="Loopback address">
       <form action="fleet-desktop-pairing://submit/" method="get">
         <input name="mode" type="hidden" value="loopback">
         <label for="target">Fleet Console runtime address</label>
-        <input id="target" name="target" type="text" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="127.0.0.1:4310" pattern="127\.0\.0\.1:[1-9][0-9]{0,4}" maxlength="15" required autofocus>
+        <input id="target" name="target" type="text" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="127.0.0.1:4310" pattern="127\.0\.0\.1:[1-9][0-9]{0,4}" maxlength="15" required>
+        <p class="hint">A console already running on this machine, such as one started from a terminal.</p>
         <div class="actions">
           <button type="submit">Connect</button>
           <a href="fleet-desktop-pairing://cancel/">Cancel</a>
