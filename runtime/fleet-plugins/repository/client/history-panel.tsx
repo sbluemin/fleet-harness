@@ -24,7 +24,23 @@ export type HistoryOkState = { readonly kind: "ok"; readonly commits: readonly L
 type LoadState = { readonly kind: "loading" } | HistoryOkState | { readonly kind: "error"; readonly message: string };
 type CommitTarget = { readonly fullHash: string; readonly entry?: LogCommitEntry };
 type CompareAnchor = { readonly fullHash: string; readonly shortHash: string };
-type ComparePair = { readonly base: string; readonly head: string; readonly baseLabel: string; readonly headLabel: string };
+export type ComparePair = { readonly base: string; readonly head: string; readonly baseLabel: string; readonly headLabel: string };
+
+/**
+ * 비교의 base/head 방향을 정한다. 목록 위치로 정해서는 안 된다 — topo 정렬에서는 브랜치 체인이 통째로 먼저
+ * 나오므로 위쪽 행이 아래쪽 행보다 오래된 커밋일 수 있고, 그때 base와 head가 뒤바뀌어 추가가 삭제로 보인다.
+ * 방향은 목록이 실제로 보여 주는 커밋 시각으로 정하고, 앵커의 시각을 알 수 없을 때만
+ * 사용자가 고른 순서(먼저 고른 쪽이 base)를 그대로 지킨다.
+ */
+export function chooseComparePair(
+  anchor: { readonly fullHash: string; readonly shortHash: string; readonly authorAt: number | null },
+  target: { readonly fullHash: string; readonly shortHash: string; readonly authorAt: number },
+): ComparePair {
+  const anchorIsOlder = anchor.authorAt === null || anchor.authorAt <= target.authorAt;
+  const older = anchorIsOlder ? anchor : target;
+  const newer = anchorIsOlder ? target : anchor;
+  return { base: older.fullHash, head: newer.fullHash, baseLabel: older.shortHash, headLabel: newer.shortHash };
+}
 type InspectorState = { readonly kind: "loading" } | { readonly kind: "ok"; readonly result: CommitResult } | { readonly kind: "error"; readonly message: string };
 type HistoryCacheRestore = { readonly state: HistoryOkState; readonly target: CommitTarget | null; readonly filterText: string; readonly scrollTop: number };
 
@@ -347,16 +363,16 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     setAnnounce(t("repository.compare.announceUnpinned"));
   }, [t]);
   const runPair = useCallback((a: CompareAnchor, b: LogCommitEntry) => {
-    const aIndex = commitIndexes.get(a.fullHash);
-    const bIndex = commitIndexes.get(b.fullHash);
-    const aIsOlder = aIndex !== undefined && bIndex !== undefined ? aIndex > bIndex : true;
-    const older = aIsOlder ? a : { fullHash: b.fullHash, shortHash: b.shortHash };
-    const newer = aIsOlder ? { fullHash: b.fullHash, shortHash: b.shortHash } : a;
-    setComparePair({ base: older.fullHash, head: newer.fullHash, baseLabel: older.shortHash, headLabel: newer.shortHash });
+    // 앵커는 shortHash만 들고 다니므로 시각은 적재된 목록에서 되찾는다 — 검사기에서 핀한 경우처럼
+    // 호출부가 항목을 쥐고 있지 않은 경로까지 한자리에서 덮는다.
+    const anchorIndex = commitIndexes.get(a.fullHash);
+    const anchorEntry = state.kind === "ok" && anchorIndex !== undefined ? state.commits[anchorIndex] : undefined;
+    const pair = chooseComparePair({ ...a, authorAt: anchorEntry?.authorAt ?? null }, b);
+    setComparePair(pair);
     setPin(null);
     setTarget(null);
-    setAnnounce(t("repository.compare.announceResult", { base: older.shortHash, head: newer.shortHash }));
-  }, [commitIndexes, t]);
+    setAnnounce(t("repository.compare.announceResult", { base: pair.baseLabel, head: pair.headLabel }));
+  }, [commitIndexes, state, t]);
   const onRowActivate = useCallback((entry: LogCommitEntry, shiftKey: boolean) => {
     if (!shiftKey) {
       setTarget({ fullHash: entry.fullHash, entry });
