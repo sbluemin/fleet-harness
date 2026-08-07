@@ -12,9 +12,20 @@ import { createHash } from "node:crypto";
  *
  * Gate 1 alone is not a contract: a collaborator with the Triage role can attach labels,
  * and whether an issue template's `labels:` front matter applies for an author without
- * write access is not documented. Gates 2 and 3 cover both cases. The allowlist ships in
- * the binary on purpose — the message changes without a release, the set of people who
- * may send one does not.
+ * write access is not documented. Gates 2 and 3 cover both cases.
+ *
+ * Trust boundary — read this before widening the channel. The gates authenticate the
+ * issue's *author*, not the author of its *current text*. A collaborator with write access
+ * can edit an open note and GitHub still reports the original author in `user.login` and
+ * `author_association`; unauthenticated REST exposes no editor identity for issues, the
+ * GraphQL field that does requires a token, and every alternative artifact (release,
+ * comment, gist) behaves the same way. So the real boundary is "anyone with write access
+ * to this repository", not "the allowlist". That matches the boundary the console already
+ * grants: it fetches CHANGELOG.md live from `main` and renders it, so the same set of
+ * people can already change what every running console displays without a release. What
+ * the allowlist does buy is blocking outside contributors, who can open an issue but
+ * cannot label one or edit anyone else's. Narrowing this further needs content signing or
+ * an authenticated read, and both would have to cover the changelog path too.
  */
 
 export interface DeveloperNote {

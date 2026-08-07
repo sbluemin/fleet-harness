@@ -51,6 +51,20 @@ describe("untrusted remote markdown body", () => {
     expect(html).toContain("<blockquote>");
   });
 
+  it("keeps a mermaid fence as readable code instead of a pending diagram", () => {
+    // hydrator를 설치하지 않는 표면에서 mermaid 변환은 소스를 data 속성에 감춘 빈 pending
+    // 상자만 남긴다 — 노트에서는 내용이 통째로 사라지는 것과 같다.
+    const html = render("```mermaid\ngraph TD;\nA-->B;\n```");
+    expect(html).not.toContain("diagram-block");
+    expect(html).not.toContain("data-diagram-state");
+    expect(html).toContain("graph TD");
+  });
+
+  it("still converts a mermaid fence when the option is off", () => {
+    const html = renderMarkdown("```mermaid\ngraph TD;\nA-->B;\n```").html;
+    expect(html).toContain("diagram-block");
+  });
+
   it("leaves images and relative links alone when the option is off", () => {
     const html = renderMarkdown("![x](https://example.com/a.png)\n\n[y](/settings)").html;
     expect(html).toContain("<img");

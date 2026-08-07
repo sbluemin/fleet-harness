@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
-import { renderMarkdown } from "@fleet-console/markdown/core";
+import { installCodeCopyHandler, renderMarkdown } from "@fleet-console/markdown/core";
 import "@fleet-console/markdown/styles.css";
 
 import "../styles/developer-notes.css";
@@ -26,6 +26,7 @@ const FOCUSABLE_SELECTOR = 'button:not([disabled]), [href], [tabindex]:not([tabi
 export function DeveloperNotesSheet({ state }: DeveloperNotesSheetProps) {
   const t = useT();
   const dialogRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const globalSettings = useGlobalSettingsStore();
   const seen = globalSettings.state?.seenDeveloperNotes ?? [];
   const notes = state.developerNotes;
@@ -52,6 +53,14 @@ export function DeveloperNotesSheet({ state }: DeveloperNotesSheetProps) {
       if (shell) shell.inert = false;
     };
   }, []);
+
+  // 렌더된 코드블록의 Copy 버튼은 마크다운 렌더러가 만든다 — 붙이는 표면이 동작을 설치하지
+  // 않으면 보이는 컨트롤이 아무 일도 하지 않는다.
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (body === null) return;
+    return installCodeCopyHandler(body, { copiedLabel: t("chrome.developerNotes.copied") });
+  }, [rendered, t]);
 
   // 열릴 때 선택된 노트를 읽음으로 올리고, 철회된 노트의 표식을 함께 정리한다.
   useEffect(() => {
@@ -126,7 +135,7 @@ export function DeveloperNotesSheet({ state }: DeveloperNotesSheetProps) {
                 <h2>{selected.title}</h2>
                 {/* renderMarkdown은 DOMPurify를 두 번 통과시킨 문자열만 돌려주고, 원격 저작 본문이므로
                     이미지 제거와 절대 https 링크 제한을 함께 건다(untrustedRemoteBody). */}
-                <div className="markdown-body" dangerouslySetInnerHTML={{ __html: rendered.html }} />
+                <div ref={bodyRef} className="markdown-body" dangerouslySetInnerHTML={{ __html: rendered.html }} />
                 <a className="developer-notes-source" href={selected.url} target="_blank" rel="noopener noreferrer">
                   {t("chrome.developerNotes.openOnGithub")}
                 </a>

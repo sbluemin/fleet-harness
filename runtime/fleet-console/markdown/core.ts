@@ -84,6 +84,9 @@ export function renderMarkdown(body: string, options: RenderMarkdownOptions = {}
   decorateCodeBlocks(document, {
     copyLabel: options.copyLabel ?? "Copy",
     copyAriaLabel: options.copyAriaLabel ?? ((language) => `Copy ${language} code`),
+    // 원격 저작 본문은 다이어그램으로 바꾸지 않는다 — hydrator가 없는 표면에서 mermaid
+    // 블록은 소스를 data 속성에 감춘 빈 pending 상자로 남아 내용이 통째로 사라진다.
+    keepMermaidAsCode: options.untrustedRemoteBody === true,
   });
   decorateLinks(document);
   if (options.untrustedRemoteBody === true) restrictRemoteBody(document, options.blockedImageLabel ?? "Image omitted");
@@ -92,6 +95,44 @@ export function renderMarkdown(body: string, options: RenderMarkdownOptions = {}
     html,
     toc: extractToc(document),
   };
+}
+
+/**
+ * 코드블록 Copy 버튼의 동작. 버튼을 만드는 쪽이 동작도 소유해야 소비 표면마다 죽은 컨트롤이
+ * 생기지 않는다 — 렌더된 마크다운을 붙이는 표면은 이 핸들러를 반드시 설치한다.
+ * 반환값은 해제 함수다.
+ */
+export function installCodeCopyHandler(root: HTMLElement, labels: { readonly copiedLabel: string }): () => void {
+  const handleClick = (event: MouseEvent) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const button = target.closest<HTMLElement>('[data-action="copy-code"]');
+    if (!button || !root.contains(button)) return;
+    const code = button.closest("pre")?.getAttribute("data-code");
+    if (code === null || code === undefined) return;
+    copyCodeToClipboard(button, code, labels.copiedLabel);
+  };
+  root.addEventListener("click", handleClick);
+  return () => root.removeEventListener("click", handleClick);
+}
+
+function copyCodeToClipboard(button: HTMLElement, code: string, copiedLabel: string): void {
+  const clipboard = navigator.clipboard;
+  if (!clipboard) return;
+  let write: Promise<void>;
+  try {
+    write = clipboard.writeText(code);
+  } catch {
+    return;
+  }
+  const original = button.textContent;
+  void write.then(() => {
+    if (!button.isConnected) return;
+    button.textContent = copiedLabel;
+    window.setTimeout(() => {
+      if (button.isConnected) button.textContent = original;
+    }, 1_200);
+  }).catch(() => undefined);
 }
 
 export function encodeMermaidSource(source: string): string {
@@ -177,14 +218,18 @@ function removeDuplicateTitleHeading(document: Document, title: string | undefin
 
 function decorateCodeBlocks(
   document: Document,
-  labels: { readonly copyLabel: string; readonly copyAriaLabel: (language: string) => string },
+  labels: {
+    readonly copyLabel: string;
+    readonly copyAriaLabel: (language: string) => string;
+    readonly keepMermaidAsCode?: boolean;
+  },
 ): void {
   for (const code of document.querySelectorAll("pre > code")) {
     const language = languageFromClass(code.className);
     const rawCode = code.textContent ?? "";
     const pre = code.parentElement;
     if (!pre) continue;
-    if (language === "mermaid") {
+    if (language === "mermaid" && labels.keepMermaidAsCode !== true) {
       const placeholder = document.createElement("div");
       placeholder.className = "diagram-block";
       // Base64-encode so DOMPurify does not strip the attribute when the
