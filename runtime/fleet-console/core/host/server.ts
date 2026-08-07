@@ -528,7 +528,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     readJsonBody,
     writeJson,
     onThemeChanged: broadcastDesktopThemeChanged,
-    onRemoteAccessChanged: () => { void reconcileRemoteAccess(); },
+    onRemoteAccessChanged: () => reconcileRemoteAccess(),
   });
   const desktopThemeRouter = createDesktopThemeRouter({
     getTheme: () => consoleSettingsStore.load().general?.theme ?? "instrument",

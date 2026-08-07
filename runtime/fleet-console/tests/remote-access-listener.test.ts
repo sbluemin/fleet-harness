@@ -184,11 +184,9 @@ async function saveRemoteAccess(fixture: Fixture, remoteAccess: { readonly enabl
     body: JSON.stringify({ remoteAccess }),
   });
   if (!response.ok) throw new Error(`settings save failed: ${response.status} ${await response.text()}`);
-  // 리스너 전환은 저장 응답 뒤에서 직렬화되어 끝난다. 상태 조회로 안정 지점을 기다린다.
-  await vi.waitFor(async () => {
-    const status = await readRemoteStatus(fixture);
-    expect(status.listening).toBe(remoteAccess.enabled && status.lastError === null);
-  });
+  // 저장 응답은 리스너 전환이 끝난 뒤에 온다. 곧바로 읽은 상태가 이미 확정이어야 한다.
+  const status = await readRemoteStatus(fixture);
+  expect(status.listening).toBe(remoteAccess.enabled && status.lastError === null);
 }
 
 function grantTokenOf(link: string): string {
