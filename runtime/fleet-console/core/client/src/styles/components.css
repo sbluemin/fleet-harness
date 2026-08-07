@@ -1221,6 +1221,9 @@
   display: inline-flex;
   flex: none;
   align-self: flex-start;
+  /* grid 부모에서는 align-self가 인라인 축을 잡지 못해 트랙 폭만큼 늘어난다 — 두 축 모두에서
+     내용 폭을 유지해야 짧은 라벨 두 개가 빈 상자 왼쪽에 몰리지 않는다. */
+  justify-self: start;
   padding: 3px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
