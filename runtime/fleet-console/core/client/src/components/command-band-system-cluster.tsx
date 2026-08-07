@@ -129,13 +129,20 @@ function HostSwitcher() {
   }, [open, hosts]);
 
   const currentOrigin = location.origin;
-  // 셸이 띄운 콘솔과 이 기계에서 발견한 콘솔은 같은 무리다 — 링크 없이 갈 수 있는 곳들.
-  const nearby = [
-    ...(homeOrigin !== null && !local.some((entry) => entry.origin === homeOrigin) ? [{ origin: homeOrigin, version: "", owner: null } as LocalConsole] : []),
-    ...local,
+  /**
+   * 셸이 띄운 콘솔과 이 기계에서 발견한 콘솔은 같은 무리다 — 링크 없이 갈 수 있는 곳들.
+   * 그중 셸이 띄운 것이 언제나 첫 줄이다: 앱을 열면 처음 만나는 콘솔이고 돌아갈 기준점이다.
+   * 나머지는 우연히 같은 기계에 떠 있을 뿐이므로 발견됐다는 표를 달아 구분한다.
+   */
+  const discovered = local.filter((entry) => entry.origin !== homeOrigin);
+  const nearby: readonly { readonly entry: LocalConsole; readonly home: boolean }[] = [
+    ...(homeOrigin !== null
+      ? [{ entry: local.find((item) => item.origin === homeOrigin) ?? { origin: homeOrigin, version: "", owner: null }, home: true }]
+      : []),
+    ...discovered.map((entry) => ({ entry, home: false })),
   ];
   const savedCurrent = hosts.find((host) => host.origin === currentOrigin) ?? null;
-  const nearbyCurrent = nearby.some((entry) => entry.origin === currentOrigin);
+  const nearbyCurrent = nearby.some(({ entry }) => entry.origin === currentOrigin);
   // 이 콘솔이 스스로 말하는 이름이 언제나 진실이다 — 원격에서 보고 있어도 그 이름을 읽는다.
   const chipLabel = state.consoleName || savedCurrent?.label || location.host;
 
@@ -168,12 +175,13 @@ function HostSwitcher() {
           {nearby.length > 0 ? (
             <>
               <p className="host-switcher-heading">{t("chrome.hosts.nearby")}</p>
-              {nearby.map((entry) => (
+              {nearby.map(({ entry, home }) => (
                 <HostRow
                   key={entry.origin}
                   live
-                  name={entry.origin === homeOrigin ? t("chrome.hosts.thisComputer") : nearbyName(entry, t)}
+                  name={home ? t("chrome.hosts.thisComputer") : nearbyName(entry, t)}
                   detail={nearbyDetail(entry, currentOrigin, state.consoleName)}
+                  badge={home ? undefined : t("chrome.hosts.discovered")}
                   current={entry.origin === currentOrigin}
                   onOpen={() => go(entry.origin)}
                 />
@@ -218,6 +226,7 @@ function HostRow({
   live,
   name,
   detail,
+  badge,
   current,
   disabled,
   onOpen,
@@ -225,6 +234,7 @@ function HostRow({
   readonly live: boolean;
   readonly name: string;
   readonly detail: string;
+  readonly badge?: string;
   readonly current: boolean;
   readonly disabled?: boolean;
   readonly onOpen?: () => void;
@@ -243,6 +253,7 @@ function HostRow({
         <span className="host-switcher-name">{name}</span>
         <small>{detail}</small>
       </span>
+      {badge ? <span className="host-switcher-badge">{badge}</span> : null}
       {current ? <CheckGlyph /> : null}
     </button>
   );

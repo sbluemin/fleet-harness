@@ -790,6 +790,22 @@
 .host-switcher-panel > button.is-current svg { margin-left: auto; color: var(--brass-bright); }
 .host-switcher-panel > button:disabled { cursor: not-allowed; opacity: 0.55; }
 
+/* 발견된 콘솔은 저장하거나 고른 적 없이 목록에 든 것이라, 그 사실을 한 눈에 구분해 준다. */
+.host-switcher-badge {
+  margin-left: auto;
+  padding: 1px 8px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+/* 배지가 auto 여백을 가져가면 체크는 배지 뒤에 붙는다. */
+.host-switcher-panel > button.is-current .host-switcher-badge + svg { margin-left: var(--space-2); }
+
 .host-switcher-entry { display: flex; min-width: 0; flex-direction: column; }
 .host-switcher-entry small { color: var(--text-tertiary); font-family: var(--font-mono); font-size: 11px; }
 .host-switcher-divider { height: 1px; margin: var(--space-2) var(--space-3); background: var(--surface-rim); }
