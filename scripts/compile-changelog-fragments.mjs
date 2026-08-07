@@ -213,6 +213,10 @@ function parseEntry(file, bullet, koSummary) {
   if (!/^\S(?:.*\S)?$/.test(summary)) throw new Error(`${file}: malformed bullet "${bullet}".`);
   if (!/^[\x09\x20-\x7e]+$/.test(summary)) throw new Error(`${file}: bullet summary must be English ASCII text.`);
   if (!/\p{Script=Hangul}/u.test(koSummary)) throw new Error(`${file}: Korean summary must contain Hangul.`);
+  // A leading bracket is read as a package tag by the Console parser. If only one locale carries it, the two
+  // documents parse to different structures and the Korean overlay silently falls back to English for the
+  // entire release, so reject it on both sides rather than on the English line alone.
+  if (koSummary.startsWith('[')) throw new Error(`${file}: Korean summary must not start with a bracket — it would be read as a package tag and drop Korean release notes: "${koSummary}"`);
   return { enSummary: summary, koSummary };
 }
 

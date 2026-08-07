@@ -156,6 +156,14 @@ test('retains English ASCII and Korean Hangul validation', () => {
   }
 });
 
+test('rejects a bracket-leading Korean summary that would be read as a package tag', () => {
+  const fixture = createFixture();
+  writeFragment(fixture, '### fleet-console\n#### Fixed\n- Restore the Shift+Enter shortcut.\n  ko: [Shift]+Enter 단축키를 복구합니다.');
+  const result = run(fixture, '--check');
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /must not start with a bracket/);
+});
+
 test('derives a fragment filename from a branch name', () => {
   assert.equal(branchFragmentName('canary'), 'canary.md');
   assert.equal(branchFragmentName('feat/panel-integrated-chrome'), 'feat-panel-integrated-chrome.md');
