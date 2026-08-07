@@ -1125,7 +1125,23 @@ export function TriageWatchDeck({
                         />
                       </button>
                       {onMinimizeOperation || onCloseOperation ? (
-                        <span className="canvas-triage-deck-card-controls">
+                        <span
+                          className="canvas-triage-deck-card-controls"
+                          // 손잡이 위에서는 확대를 시작하지 않는다 — 누르려고 올린 커서 밑에서 카드가
+                          // 커지면 버튼이 함께 밀려 클릭이 빗나간다. 이미 확대 중이면 그대로 둔다:
+                          // 여기서 걷으면 버튼이 원래 자리로 되돌아가 같은 어긋남이 반대로 일어난다.
+                          onPointerEnter={() => { if (!isQuicklook) clearQuicklookTimer(); }}
+                          // 손잡이를 벗어나 카드로 돌아오면 드웰을 처음부터 다시 잰다. 칸 밖으로
+                          // 나가는 경우는 칸의 onPointerLeave가 확대를 걷는다.
+                          onPointerLeave={(event) => {
+                            if (isQuicklook) return;
+                            const cell = event.currentTarget.parentElement;
+                            const next = event.relatedTarget;
+                            if (!cell || !(next instanceof Node) || !cell.contains(next)) return;
+                            const card = cell.querySelector<HTMLElement>("[data-triage-deck-card]");
+                            if (card) armQuicklook(operation.id, card, true);
+                          }}
+                        >
                           {onMinimizeOperation ? (
                             <button
                               type="button"

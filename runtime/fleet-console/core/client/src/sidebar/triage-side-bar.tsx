@@ -131,6 +131,11 @@ export function TriageSideBar({
   const isDormantEntry = (entry: SideBarEntry): boolean =>
     resolveOperationActivity(entry.operation, operationStatus) === "dormant";
   const minimizedEntries = entries.filter((entry) => minimizedIds.has(entry.operation.id) && !isDormantEntry(entry));
+  const minimizedSection: StatusSection = {
+    status: "minimized",
+    label: t("triageSidebar.minimized"),
+    entries: minimizedEntries,
+  };
   const shelvedIds = new Set(minimizedEntries.map((entry) => entry.operation.id));
   const sections = resolveTriageSideBarSections(entries.filter((entry) => !shelvedIds.has(entry.operation.id)), queue, t);
   const livingSections = sections.filter((section) => section.status !== "dormant");
@@ -197,17 +202,17 @@ export function TriageSideBar({
           </StatusSectionSlot>
         ))}
       </ol>
-      {/* 최소화 선반은 사용자가 직접 내린 것만 담으므로 비면 아예 서지 않는다 — 상태 축과 달리
-          "이 축이 늘 있다"고 알릴 이유가 없다. 휴면 선반과 같은 무채색 문법을 쓰되 그 위에 선다:
-          내가 치운 것이 세션이 스스로 잠든 것보다 손에 가깝다. */}
-      {minimizedEntries.length > 0 ? (
-        <section className="triage-side-bar-minimized-shelf" onContextMenu={(event) => event.preventDefault()}>
-          <p className="triage-side-bar-caption">{t("triageSidebar.minimizedShelf")}</p>
-          <ol className="triage-side-bar-minimized-list" aria-label={t("triageSidebar.minimizedShelf")}>
+      {/* 최소화 선반은 휴면 선반과 같은 문법을 쓰되 그 위에 선다 — 내가 직접 내린 것이 세션이 스스로
+          잠든 것보다 손에 가깝다. 휴면처럼 0건이어도 자리를 지킨다: 되찾을 곳이 상황에 따라 나타났다
+          사라지면 어디를 봐야 하는지가 매번 달라진다. */}
+      <section className="triage-side-bar-minimized-shelf" onContextMenu={(event) => event.preventDefault()}>
+        <p className="triage-side-bar-caption">{t("triageSidebar.minimizedShelf")}</p>
+        <ol className="triage-side-bar-minimized-list" aria-label={t("triageSidebar.minimizedShelf")}>
+          <StatusSectionSlot theaterId={TRIAGE_SIDE_BAR_SECTION_KEY} section={minimizedSection}>
             {minimizedEntries.map((entry, index) => renderChip(entry, index, "minimized"))}
-          </ol>
-        </section>
-      ) : null}
+          </StatusSectionSlot>
+        </ol>
+      </section>
       {/* 선반의 칩은 Operation 메뉴를 갖지 않는다(본동작이 재개다) — 그렇다고 브라우저 메뉴가 뜨면
           "이 표면에는 메뉴가 없다"가 아니라 "우리 것이 아니다"로 읽힌다. 큐의 칩과 달리 여기서는
           아무것도 열지 않는다. menuEnabled=false는 핸들러를 떼기만 하므로 선반이 직접 막는다. */}

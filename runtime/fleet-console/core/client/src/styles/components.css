@@ -1523,6 +1523,13 @@
   --activity-color: color-mix(in oklch, var(--brass) 55%, var(--ink-rim));
 }
 
+/* 최소화는 활동 상태가 아니라 사용자가 고른 표시 상태다 — 신호 채널(aurora·warn·positive·coral)을
+   빌리지 않고, 휴면이 쓰는 brass 혼합과도 구분되도록 차가운 중성 잉크를 그대로 쓴다. 밝기도 상태
+   비콘들(L 70~77%)보다 낮아 신호로 읽히지 않는다. */
+.side-bar-status-section--minimized {
+  --activity-color: var(--ink-fog);
+}
+
 .tenant-beacon.is-background,
 .canvas-triage-deck-card.is-background,
 .canvas-triage-map-dot.is-background,
@@ -3774,13 +3781,10 @@
   padding: var(--space-1) 0;
 }
 
-/* 상태 섹션과 같은 기하로 줄을 맞추되 색은 싣지 않는다 — 최소화는 활동 상태가 아니라 표시
-   선택이므로 신호 채널을 쓰지 않는다. 행 자체는 제 활동 비콘을 그대로 지닌다. */
 .triage-side-bar-minimized-list {
   list-style: none;
-  margin: 0 0 0 var(--space-1);
+  margin: 0;
   padding: 0;
-  border-left: 3px solid var(--surface-rim);
 }
 
 .side-bar-theater-error {

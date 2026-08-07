@@ -1485,12 +1485,12 @@ describe("War Room Quick-Look actual-size grammar", () => {
   it("keeps the minimized shelf neutral and above the dormant shelf", () => {
     const sidebar = source("sidebar/triage-side-bar.tsx");
     const shelf = components.match(/\.triage-side-bar-minimized-shelf \{[^}]*\}/)?.[0] ?? "";
-    const list = components.match(/\.triage-side-bar-minimized-list \{[^}]*\}/)?.[0] ?? "";
+    const section = components.match(/\.side-bar-status-section--minimized \{[^}]*\}/)?.[0] ?? "";
     expect(shelf).toContain("border-top: 1px solid var(--surface-rim);");
-    // 최소화는 활동 상태가 아니라 표시 선택이다 — 상태 축의 신호색을 빌려 쓰지 않는다.
+    // 최소화는 활동 상태가 아니라 표시 선택이다 — 상태 축의 신호색도, 휴면이 쓰는 brass 혼합도 빌리지 않는다.
     expect(shelf).not.toMatch(/var\(--(?:brass|aurora|warn|coral|positive)/);
-    expect(list).not.toMatch(/var\(--(?:brass|aurora|warn|coral|positive)/);
-    expect(list).toContain("border-left: 3px solid var(--surface-rim);");
+    expect(section).toContain("--activity-color: var(--ink-fog);");
+    expect(section).not.toMatch(/var\(--(?:brass|aurora|warn|coral|positive)/);
     // 손에 가까운 순서: 살아 있는 축 → 내가 내린 것 → 세션이 스스로 잠든 것.
     expect(sidebar.indexOf('className="triage-side-bar-minimized-shelf"')).toBeGreaterThan(
       sidebar.indexOf('className="operations-side-bar-chips triage-side-bar-sections"'),
