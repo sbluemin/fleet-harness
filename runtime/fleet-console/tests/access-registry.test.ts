@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createAccessRegistry, createLoopbackListenerIdentity, formatSessionCookie, readSessionCookie, resolveListenerIdentity, SESSION_COOKIE_NAME } from "../core/host/auth.js";
+import { createAccessRegistry, createLoopbackListenerIdentity, formatSessionCookie, readSessionCookie, resolveListenerIdentity, sessionCookieName } from "../core/host/auth.js";
 
 function createClock(start = 1_000): { now: () => number; advance: (ms: number) => void } {
   let current = start;
@@ -96,17 +96,31 @@ describe("access registry", () => {
 
 describe("session cookie", () => {
   it("reads only the console session cookie out of a shared header", () => {
-    expect(readSessionCookie({ cookie: `other=1; ${SESSION_COOKIE_NAME}=abc; trailing=2` })).toBe("abc");
-    expect(readSessionCookie({ cookie: "other=1" })).toBeNull();
-    expect(readSessionCookie({})).toBeNull();
-    expect(readSessionCookie({ cookie: `${SESSION_COOKIE_NAME}=` })).toBeNull();
+    expect(readSessionCookie({ cookie: `other=1; ${sessionCookieName(4310)}=abc; trailing=2` }, 4310)).toBe("abc");
+    expect(readSessionCookie({ cookie: "other=1" }, 4310)).toBeNull();
+    expect(readSessionCookie({}, 4310)).toBeNull();
+    expect(readSessionCookie({ cookie: `${sessionCookieName(4310)}=` }, 4310)).toBeNull();
+  });
+
+  /**
+   * 쿠키는 포트로 구분되지 않는다. 이름이 하나뿐이면 같은 기계의 두 콘솔 중 나중에 조인한
+   * 쪽이 앞의 세션을 덮어쓰고, 되돌아간 콘솔은 새 링크 없이 다시 열 수 없다.
+   */
+  it("keeps two consoles on the same host apart by writing the port into the name", () => {
+    const session = { id: "abc", handle: "h1", audience: "remote" as const, access: "full" as const, expiresAt: 0 };
+    const header = `${sessionCookieName(5000)}=first; ${sessionCookieName(6000)}=second`;
+
+    expect(sessionCookieName(5000)).not.toBe(sessionCookieName(6000));
+    expect(formatSessionCookie(session, { secure: true, port: 5000 })).toContain(`${sessionCookieName(5000)}=abc`);
+    expect(readSessionCookie({ cookie: header }, 5000)).toBe("first");
+    expect(readSessionCookie({ cookie: header }, 6000)).toBe("second");
   });
 
   it("marks the cookie http-only and same-site, and adds Secure only for a secure listener", () => {
     const session = { id: "abc", handle: "h1", audience: "local" as const, access: "full" as const, expiresAt: 0 };
 
-    expect(formatSessionCookie(session, { secure: false })).toBe(`${SESSION_COOKIE_NAME}=abc; HttpOnly; SameSite=Strict; Path=/`);
-    expect(formatSessionCookie(session, { secure: true })).toContain("; Secure");
+    expect(formatSessionCookie(session, { secure: false, port: 4310 })).toBe(`${sessionCookieName(4310)}=abc; HttpOnly; SameSite=Strict; Path=/`);
+    expect(formatSessionCookie(session, { secure: true, port: 4310 })).toContain("; Secure");
   });
 });
 

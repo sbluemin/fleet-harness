@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-detect.js";
-import { SESSION_COOKIE_NAME } from "../core/host/auth.js";
+import { sessionCookieName } from "../core/host/auth.js";
 import type { ConsoleLockPayload } from "../core/host/console-contract-types.js";
 import { createConsoleLock } from "../core/host/lock.js";
 import { createConsoleServer, type ConsoleServer } from "../core/host/server.js";
@@ -52,7 +52,8 @@ describe("access grant and join routes", () => {
 
     expect(joined.status).toBe(204);
     const cookie = joined.headers.get("set-cookie") ?? "";
-    expect(cookie).toContain(`${SESSION_COOKIE_NAME}=`);
+    // 이름에 포트가 새겨져야 같은 기계의 두 콘솔이 서로의 세션을 덮어쓰지 않는다.
+    expect(cookie).toContain(`${sessionCookieName(fixture.lock.port)}=`);
     expect(cookie).toContain("HttpOnly");
     expect(cookie).toContain("SameSite=Strict");
     // 루프백 리스너는 평문 http라 Secure를 붙이면 브라우저가 쿠키를 버린다.

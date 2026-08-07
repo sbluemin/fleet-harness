@@ -7,7 +7,6 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-detect.js";
-import { SESSION_COOKIE_NAME } from "../core/host/auth.js";
 import { createConsoleLock } from "../core/host/lock.js";
 import { normalizeFingerprint } from "../core/host/remote-identity.js";
 import { parseAccessLink } from "../core/host/access-link.js";
@@ -238,6 +237,36 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, staleCookie)).resolves.toMatchObject({ status: 401 });
   });
 
+  /**
+   * Codex 게이트웨이는 자기만의 Host 검사만 한다. 원격 판정이 그 분기 뒤에 있으면 세션 없는
+   * 요청이 `Host: 127.0.0.1:<port>` 하나로 원격 리스너를 통과해 Wiki 내용을 받아 간다.
+   */
+  it("refuses a session-less Codex request that forges the loopback Host", async () => {
+    const fixture = await startFixture({ remote: true });
+
+    for (const target of ["/console/codex", "/console/codex/", "/console/codex/api/search?q=a"]) {
+      const forged = await remoteRequestBody(fixture, "GET", target, `127.0.0.1:${fixture.remotePort}`);
+      expect({ target, status: forged.status }).toEqual({ target, status: 401 });
+    }
+  });
+
+  /**
+   * 저장된 주소는 어제 붙어 있던 인터페이스의 것이다. 그 주소가 사라졌을 때 기동까지 함께
+   * 무너지면, 사용자는 설정을 고칠 화면조차 열 수 없다.
+   */
+  it("still starts the console when the saved remote address no longer exists", async () => {
+    // TEST-NET-3. 이 기계에 있을 수 없는 주소라 바인드는 반드시 실패한다.
+    const fixture = await startFixture({ remote: true, bindHost: "203.0.113.9" });
+
+    const status = await fetch(`${fixture.loopbackEndpoint}api/v1/access-links`, {
+      headers: { Authorization: `Bearer ${fixture.lockToken}` },
+    }).then((response) => response.json() as Promise<{ listening: boolean; lastError: string | null }>);
+
+    expect(fixture.loopbackEndpoint).toContain("127.0.0.1");
+    expect(status.listening).toBe(false);
+    expect(status.lastError).not.toBeNull();
+  });
+
   it("answers a browser that typed the address with an explanation instead of a bare 401", async () => {
     const fixture = await startFixture({ remote: true });
 
@@ -401,6 +430,8 @@ function remoteRequestBody(
   fixture: Fixture,
   method: string,
   requestPath: string,
+  /** Host를 위조한 요청을 보내기 위한 자리 — 게이트가 헤더를 믿지 않는지 확인한다. */
+  hostHeader?: string,
 ): Promise<{ status: number; headers: import("node:http").IncomingHttpHeaders; body: string }> {
   return new Promise((resolve, reject) => {
     const request = https.request({
@@ -410,7 +441,7 @@ function remoteRequestBody(
       method,
       rejectUnauthorized: false,
       checkServerIdentity: () => undefined,
-      headers: { host: `${BIND_HOST}:${fixture.remotePort}` },
+      headers: { host: hostHeader ?? `${BIND_HOST}:${fixture.remotePort}` },
     }, (response) => {
       const chunks: Buffer[] = [];
       response.on("data", (chunk: Buffer) => chunks.push(chunk));
@@ -421,7 +452,7 @@ function remoteRequestBody(
   });
 }
 
-async function startFixture(options: { readonly remote: boolean }): Promise<Fixture> {
+async function startFixture(options: { readonly remote: boolean; readonly bindHost?: string }): Promise<Fixture> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-remote-"));
   const dataRoot = path.join(dir, "fleet-home");
   tempDirs.push(dir);
@@ -431,7 +462,7 @@ async function startFixture(options: { readonly remote: boolean }): Promise<Fixt
     fs.mkdirSync(consoleDataDir, { recursive: true });
     fs.writeFileSync(
       path.join(consoleDataDir, "settings.json"),
-      JSON.stringify({ version: 1, general: { remoteAccess: { enabled: true, bindHost: BIND_HOST } }, plugins: {} }),
+      JSON.stringify({ version: 1, general: { remoteAccess: { enabled: true, bindHost: options.bindHost ?? BIND_HOST } }, plugins: {} }),
     );
   }
   const server = createConsoleServer({
@@ -445,8 +476,9 @@ async function startFixture(options: { readonly remote: boolean }): Promise<Fixt
   servers.push(server);
   const loopbackEndpoint = await server.start({ dir, lockFile: path.join(dir, "console.lock") });
   const lock = createConsoleLock().readLock(path.join(dir, "console.lock"))!;
-  const fingerprint = options.remote
-    ? new crypto.X509Certificate(fs.readFileSync(path.join(consoleDataDir, "remote", "identity-cert.pem"), "utf8")).fingerprint256
+  const certificateFile = path.join(consoleDataDir, "remote", "identity-cert.pem");
+  const fingerprint = options.remote && fs.existsSync(certificateFile)
+    ? new crypto.X509Certificate(fs.readFileSync(certificateFile, "utf8")).fingerprint256
     : "";
   return { dir, loopbackEndpoint, remotePort: lock.port, lockToken: lock.token, fingerprint };
 }

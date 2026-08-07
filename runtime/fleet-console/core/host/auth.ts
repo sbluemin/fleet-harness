@@ -259,21 +259,31 @@ export function resolveListenerIdentity(
 }
 
 /** 요청 쿠키에서 세션 식별자만 읽는다. 다른 쿠키는 무시한다. */
-export function readSessionCookie(headers: { readonly cookie?: string | string[] }): string | null {
+/**
+ * 쿠키는 포트로 구분되지 않는다. 같은 기계가 두 콘솔을 서로 다른 포트로 열어 두면 이름이
+ * 하나뿐일 때 나중 조인이 앞의 세션을 덮어쓰고, 되돌아가면 401이다 — 저장된 호스트는 자격을
+ * 남기지 않고 1회용 grant도 이미 소진됐으므로 새 링크 없이는 그 콘솔을 다시 열 수 없다.
+ * 그래서 이름에 포트를 새겨 각 콘솔이 자기 쿠키만 읽고 쓴다.
+ */
+export function sessionCookieName(port: number): string {
+  return `${SESSION_COOKIE_NAME}_${port}`;
+}
+
+export function readSessionCookie(headers: { readonly cookie?: string | string[] }, port: number): string | null {
   const raw = Array.isArray(headers.cookie) ? headers.cookie[0] : headers.cookie;
   if (!raw) return null;
   for (const part of raw.split(";")) {
     const separator = part.indexOf("=");
     if (separator === -1) continue;
-    if (part.slice(0, separator).trim() !== SESSION_COOKIE_NAME) continue;
+    if (part.slice(0, separator).trim() !== sessionCookieName(port)) continue;
     const value = part.slice(separator + 1).trim();
     return value.length > 0 ? value : null;
   }
   return null;
 }
 
-export function formatSessionCookie(session: AccessSession, options: { readonly secure: boolean }): string {
-  const attributes = [`${SESSION_COOKIE_NAME}=${session.id}`, "HttpOnly", "SameSite=Strict", "Path=/"];
+export function formatSessionCookie(session: AccessSession, options: { readonly secure: boolean; readonly port: number }): string {
+  const attributes = [`${sessionCookieName(options.port)}=${session.id}`, "HttpOnly", "SameSite=Strict", "Path=/"];
   if (options.secure) attributes.push("Secure");
   return attributes.join("; ");
 }

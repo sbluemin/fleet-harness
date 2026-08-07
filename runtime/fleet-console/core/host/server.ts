@@ -756,7 +756,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 링크는 웹 URL 모양을 하고 있어 사람은 브라우저에 붙여넣는다. 아무 설명 없는 401로
     // 끝내지 않도록 이 한 경로만 세션 없이 통과시킨다 — 자격도 상태도 읽지 않는 정적 문서다.
     if (pathname === JOIN_NOTICE_PATH && req.method === "GET") return true;
-    const session = access.resolveSession(readSessionCookie(req.headers), listener.audience);
+    const session = access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
     if (session === null) return false;
     // monitoring 자격은 보기만 한다. 등급이 사고 후 범위를 좁히려면 여기서 실제로 막혀야 한다.
     return session.access !== "monitoring" || isReadOnlyRequest(req);
@@ -770,17 +770,24 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     const pathname = getPathname(req);
+    /**
+     * 원격 판정은 어떤 분기보다 먼저 끝난다. Codex 게이트웨이는 자기만의 Host 검사만 하므로,
+     * 그 조기 반환이 이 판정 위에 있으면 세션 없는 요청이 `Host: 127.0.0.1:<port>` 하나로
+     * 원격 리스너를 통과해 Wiki 내용을 받아 간다(실측). 분기가 하나 늘 때마다 문이 하나 열리는
+     * 구조를 두지 않으려면 판정이 라우팅 앞에 있어야 한다.
+     */
+    const listener = listenerForRequest(req);
+    if (listener && listener.audience !== "local" && !isRemoteRequestAdmitted(listener, req, pathname)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
     if (pathname === "/console/codex" || pathname.startsWith("/console/codex/")) {
       runAsyncBooleanHandler(codex.handle(req, res), res, () => tryServeStaticConsole(req, res, pathname));
       return;
     }
+    // Host 게이트는 순서를 바꾸지 않는다 — Codex는 wildcard 바인드에서 더 넓은 host 집합을 쓴다.
     if (!isRequestHostAllowed(req)) {
       writeJson(res, 403, { error: "host_mismatch" });
-      return;
-    }
-    const listener = listenerForRequest(req);
-    if (listener && listener.audience !== "local" && !isRemoteRequestAdmitted(listener, req, pathname)) {
-      writeJson(res, 401, { error: "unauthorized" });
       return;
     }
     if (pathname === PAIRING_IDENTITY_PATH) {
@@ -1104,7 +1111,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return true;
     }
     // 평문 http 리스너에 Secure를 붙이면 브라우저가 쿠키를 버린다.
-    res.writeHead(204, withSecurityHeaders({ "Set-Cookie": formatSessionCookie(session, { secure: listener.secure }) }));
+    res.writeHead(204, withSecurityHeaders({ "Set-Cookie": formatSessionCookie(session, { secure: listener.secure, port: listener.port }) }));
     res.end();
     return true;
   }
@@ -1118,7 +1125,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const listener = listenerForRequest(req);
     if (listener === null) return null;
     if (listener.audience === "local") return "local";
-    return access.resolveSession(readSessionCookie(req.headers), listener.audience)?.handle ?? null;
+    return access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience)?.handle ?? null;
   }
 
   function isLoopbackListener(req: http.IncomingMessage): boolean {
@@ -1901,10 +1908,20 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   async function restartRemoteAccess(): Promise<void> {
     await stopRemoteAccess();
     remoteLastError = null;
+    await startRemoteAccessGuarded(boundPort!);
+  }
+
+  /**
+   * 원격 리스너는 선택 기능이므로 그 실패가 콘솔을 못 뜨게 해서는 안 된다.
+   *
+   * 저장된 주소는 어제 붙어 있던 인터페이스의 것이다. 노트북이 망을 옮기면 그 주소는 사라지고
+   * 바인드는 EADDRNOTAVAIL로 끝나는데, 그것이 기동을 함께 무너뜨리면 사용자는 설정을 고칠
+   * 화면조차 열 수 없다. 실패는 상태로 남기고 콘솔은 계속 뜬다.
+   */
+  async function startRemoteAccessGuarded(actualPort: number): Promise<void> {
     try {
-      await startRemoteAccessIfEnabled(boundPort!);
+      await startRemoteAccessIfEnabled(actualPort);
     } catch (error) {
-      // 바인드 실패는 콘솔을 죽이지 않는다 — 주소가 사라진 인터페이스일 수 있다.
       remoteLastError = remoteAccessErrorCode(error);
       await stopRemoteAccess();
     }
@@ -1931,17 +1948,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const bindHost = configured?.enabled === true ? configured.bindHost : undefined;
     if (!bindHost) return;
     const identity = await remoteIdentityStore.ensure(bindHost);
-    const listener: ListenerIdentity = {
-      audience: "remote",
-      host: bindHost,
-      port: actualPort,
-      origin: `https://${bindHost}:${actualPort}`,
-      secure: true,
-      bindAddress: bindHost,
-    };
-    listeners = [...listeners, listener];
-    remoteFingerprint = identity.fingerprint;
-    remoteServer = await startRemoteListener({
+    const started = await startRemoteListener({
       identity,
       bindHost,
       port: actualPort,
@@ -1953,6 +1960,20 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         return resolved === null || resolved.audience === "local" || isRemoteRequestAdmitted(resolved, req, getPathname(req));
       },
     });
+    const listener: ListenerIdentity = {
+      audience: "remote",
+      host: bindHost,
+      port: actualPort,
+      origin: `https://${bindHost}:${actualPort}`,
+      secure: true,
+      // 게이트는 소켓의 실제 주소로 리스너를 찾는다. 설정이 이름을 받으므로, 여기에 그 이름을
+      // 그대로 두면 어떤 요청도 자기 리스너를 찾지 못해 조인부터 전부 막힌다 — 리스너와 링크는
+      // 멀쩡해 보이는 채로.
+      bindAddress: started.address,
+    };
+    listeners = [...listeners, listener];
+    remoteFingerprint = identity.fingerprint;
+    remoteServer = started.server;
   }
 
   function listenOnce(portToBind: number, statePatch: Omit<ConsolePortRuntimeState, "effectivePort">): Promise<ConsolePortListenResult> {
@@ -1971,7 +1992,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         listeners = [createLoopbackListenerIdentity(actualPort)];
         boundPort = actualPort;
         try {
-          await startRemoteAccessIfEnabled(actualPort);
+          await startRemoteAccessGuarded(actualPort);
           const localLoopbackServer = await maybeStartLoopbackServer(host, actualPort, handleRequest, upgradeRegistry, isRequestHostAllowed);
           resolve({
             srv,
@@ -2108,7 +2129,7 @@ async function startRemoteListener(input: {
   readonly upgradeRegistry: UpgradeRegistry;
   readonly isHostAllowed: (req: http.IncomingMessage) => boolean;
   readonly isAdmitted: (req: http.IncomingMessage) => boolean;
-}): Promise<https.Server> {
+}): Promise<{ readonly server: https.Server; readonly address: string }> {
   const srv = https.createServer({ cert: input.identity.certificatePem, key: input.identity.privateKeyPem }, input.handler);
   srv.timeout = SERVER_TIMEOUT_MS;
   srv.keepAliveTimeout = SERVER_TIMEOUT_MS;
@@ -2122,7 +2143,9 @@ async function startRemoteListener(input: {
       resolve();
     });
   });
-  return srv;
+  // 설정이 DNS 이름을 받으므로, 게이트가 비교할 주소는 바인드가 끝난 뒤 소켓에서 읽는다.
+  const address = srv.address();
+  return { server: srv, address: typeof address === "object" && address ? address.address : input.bindHost };
 }
 
 function createHttpServer(
