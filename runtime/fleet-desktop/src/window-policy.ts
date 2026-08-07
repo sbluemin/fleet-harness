@@ -11,6 +11,12 @@ export interface WindowPolicy {
   stageConsoleOrigin(origin: string): void;
   commitConsoleOrigin(): void;
   cancelPendingConsoleOrigin(): void;
+  /**
+   * 인증서 지문 대조를 통과한 원격 origin만 항해 대상 집합에 들어온다. 링크 문자열을
+   * 손에 넣은 것만으로는 열리지 않는다 — 붙여넣기는 이 함수를 호출할 자격이 아니다.
+   */
+  admitRemoteConsoleOrigin(origin: string): void;
+  withdrawRemoteConsoleOrigin(origin: string): void;
 }
 
 export const DESKTOP_WINDOW_TITLE = "Fleet Console";
@@ -50,7 +56,10 @@ export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: s
     return { action: "deny" };
   });
   contents.session.setPermissionRequestHandler((_wc, permission, callback, details) => callback(Boolean(consoleOrigin) && permission === "clipboard-sanitized-write" && hasExactOrigin(details.requestingUrl, consoleOrigin ?? "")));
-  const validateOrigin = (origin: string): void => { if (!isLoopbackOrigin(origin)) throw new Error("window_policy_console_origin_not_loopback"); };
+  const admittedRemoteOrigins = new Set<string>();
+  const validateOrigin = (origin: string): void => {
+    if (!isLoopbackOrigin(origin) && !admittedRemoteOrigins.has(origin)) throw new Error("window_policy_console_origin_not_loopback");
+  };
   return {
     activateConsoleOrigin(origin: string): void { validateOrigin(origin); consoleOrigin = origin; pendingConsoleOrigin = undefined; },
     currentConsoleOrigin(): string | null { return consoleOrigin ?? null; },
@@ -61,6 +70,17 @@ export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: s
       pendingConsoleOrigin = undefined;
     },
     cancelPendingConsoleOrigin(): void { pendingConsoleOrigin = undefined; },
+    admitRemoteConsoleOrigin(origin: string): void {
+      if (!isPinnedRemoteOrigin(origin)) throw new Error("window_policy_remote_origin_invalid");
+      admittedRemoteOrigins.add(origin);
+    },
+    withdrawRemoteConsoleOrigin(origin: string): void {
+      admittedRemoteOrigins.delete(origin);
+      // 철회된 origin이 아직 활성이면 창은 어디로도 항해할 수 없는 상태로 남는다. 그대로
+      // 두면 다음 will-navigate가 통과하므로 활성 origin에서도 함께 걷어낸다.
+      if (consoleOrigin === origin) consoleOrigin = undefined;
+      if (pendingConsoleOrigin === origin) pendingConsoleOrigin = undefined;
+    },
   };
 }
 
@@ -68,3 +88,5 @@ export function isAllowedConsoleUrl(url: string, origin: string): boolean { try 
 function isHttpUrl(url: string): boolean { try { return ["http:", "https:"].includes(new URL(url).protocol); } catch { return false; } }
 function hasExactOrigin(url: string, origin: string): boolean { try { return new URL(url).origin === origin; } catch { return false; } }
 function isLoopbackOrigin(origin: string): boolean { try { const parsed = new URL(origin); return parsed.protocol === "http:" && (parsed.hostname === "127.0.0.1" || parsed.hostname === "[::1]"); } catch { return false; } }
+/** 원격 콘솔은 TLS 위에서만 산다. 경로나 자격이 섞인 문자열은 origin이 아니라 URL이다. */
+function isPinnedRemoteOrigin(origin: string): boolean { try { const parsed = new URL(origin); return parsed.protocol === "https:" && parsed.origin === origin && parsed.hostname.length > 0; } catch { return false; } }

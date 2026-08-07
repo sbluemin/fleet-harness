@@ -3,8 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BrowserWindow, dialog, Menu, Notification, shell, Tray } from "electron";
-import { DESKTOP_PROTOCOL_VERSION } from "@fleet-console/desktop-protocol";
+import { app, BrowserWindow, dialog, Menu, Notification, session, shell, Tray } from "electron";
 
 import { createDesktopLifecycle } from "./app-lifecycle.js";
 import { isConsoleConflict, showConsoleConflictAndQuit } from "./console-conflict.js";
@@ -15,7 +14,8 @@ import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
 import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
 import { createPairingNotifier } from "./pairing-notifications.js";
 import { createPairingModal } from "./pairing-modal.js";
-import { createRuntimePairing } from "./runtime-pairing.js";
+import { installRemoteCertificatePins, joinRemoteConsole } from "./remote-access.js";
+import { createRuntimePairing, type RemoteAccessAdapter } from "./runtime-pairing.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
 import { createDesktopThemeSynchronizer } from "./desktop-theme-sync.js";
 import { createDesktopFullscreenSynchronizer } from "./desktop-fullscreen-sync.js";
@@ -25,9 +25,6 @@ import { createConsoleInstallerDependencies, installConsole, reconcileConsoleIns
 import { bootstrapNodeRuntime, isManagedNodeRuntimeValid, reconcileNodeRuntime, satisfiesNodeEngine, type NodeRuntimeManifest } from "./runtime/node-bootstrap.js";
 import { createRegistryChecker } from "./runtime/registry-check.js";
 import { resolveRuntimePaths } from "./runtime/runtime-paths.js";
-import { createRemoteLastTargetStore } from "./runtime-pairing.js";
-import { connectManagedRemote } from "./runtime/remote/orchestrator.js";
-import { createOpenSshAdapter } from "./runtime/remote/ssh.js";
 import { SidecarSupervisor, type SidecarRuntime } from "./sidecar-supervisor.js";
 import { configureTray, createDesktopTray, shouldConfigureTray } from "./tray.js";
 import { createNoopUpdateController, createUpdateController, resolveActiveWindow, showWindowsHiddenUpdateDialog } from "./update-controller.js";
@@ -67,8 +64,6 @@ async function boot(): Promise<void> {
   const logger = createDesktopLogger(path.join(app.getPath("userData"), "logs"));
   bootLogger = logger;
   const registry = createRegistryChecker({ packageName: PACKAGE_NAME, statePath: path.join(runtimePaths.root, "registry-state.json") });
-  const remoteManifest = JSON.parse(fs.readFileSync(path.resolve(sourceDirectory, "build", "node-runtime.json"), "utf8")) as NodeRuntimeManifest;
-  const remoteLastTarget = createRemoteLastTargetStore(app.getPath("userData"));
   let pushRuntimeProgress: RuntimeProgress | null = null;
   const initialServiceVersion = readInstalledVersion(isPackaged ? runtimePaths.latest : desktopResources.serviceRoot) ?? "";
   const supervisor = new SidecarSupervisor({
@@ -177,26 +172,9 @@ async function boot(): Promise<void> {
     modal: createPairingModal({ BrowserWindow, pairingPagePath: desktopResources.pairingPagePath }),
     entryPagePath: desktopResources.entryPagePath,
     localOrigin: () => localConsoleOrigin,
-    lastTargetStore: remoteLastTarget,
     logger,
     onRuntimeChanged: () => refreshNativeUpdateActions?.(),
-    connectRemote: async (target, onPhase) => {
-      const started = Date.now();
-      const ssh = await createOpenSshAdapter();
-      return connectManagedRemote(target.value, {
-        ssh,
-        manifest: remoteManifest,
-        registry,
-        ownerId: environment.ownerId,
-        protocolVersion: DESKTOP_PROTOCOL_VERSION,
-        desktopVersion: app.getVersion(),
-        consoleDirRel: ".fleet/console",
-        onPhase: (phase) => {
-          logger.info(`managed SSH phase=${phase} elapsedMs=${Date.now() - started}`);
-          onPhase(phase);
-        },
-      });
-    },
+    remoteAccess: createRemoteAccessAdapter(logger),
   });
   trayHolder.current = createDesktopTray(process.platform, Tray, desktopResources, actions);
   refreshNativeUpdateActions = () => {
@@ -207,6 +185,28 @@ async function boot(): Promise<void> {
   refreshNativeUpdateActions();
   await lifecycle.start();
   if (isPackaged) setInterval(() => { void updates.check(false); }, 60 * 60 * 1_000);
+}
+
+/**
+ * 원격 접속의 신뢰 근거는 링크가 실어 나른 인증서 지문뿐이다. 창이 쓰는 바로 그 세션에
+ * 핀을 걸고 그 세션으로 조인해야, 지문을 확인한 상대와 쿠키를 주고받는 상대가 같아진다.
+ */
+function createRemoteAccessAdapter(logger: DesktopLogger): RemoteAccessAdapter {
+  const consoleSession = session.defaultSession;
+  const pins = installRemoteCertificatePins(consoleSession, (message) => logger.error(message));
+  return {
+    pin: (link) => pins.pin(link.hostname, link.fingerprint),
+    unpin: (link) => pins.unpin(link.hostname),
+    join: (link) => joinRemoteConsole((input, init) => consoleSession.fetch(input, init), link),
+    fetch: (input, init) => consoleSession.fetch(input, init),
+    forget: async (link) => {
+      try {
+        await consoleSession.clearStorageData({ origin: link.origin, storages: ["cookies"] });
+      } catch (error) {
+        logger.error(`remote session cookie cleanup failed: ${describeError(error)}`);
+      }
+    },
+  };
 }
 
 async function resolvePackagedRuntime(runtimePaths: ReturnType<typeof resolveRuntimePaths>, registry: ReturnType<typeof createRegistryChecker>, progress: RuntimeProgress, logger: DesktopLogger): Promise<SidecarRuntime> {

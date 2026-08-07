@@ -1,44 +1,27 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-
 import type { BrowserWindow, BrowserWindowConstructorOptions, Event, WebContents } from "electron";
 
 export const PAIRING_SCHEME = "fleet-desktop-pairing:";
 const PAIRING_PARTITION = "fleet-desktop-pairing";
 
 export interface PairingModal {
-  prompt(parent: BrowserWindow, rememberedTarget?: string | null): Promise<string | null>;
+  prompt(parent: BrowserWindow): Promise<string | null>;
 }
 
 export interface PairingModalDependencies {
   readonly BrowserWindow: typeof BrowserWindow;
   readonly pairingPagePath: string;
-  readonly fileSystem?: PairingTemplateFileSystem;
-  readonly temporaryDirectory?: string;
 }
 
 interface PairingModalWindow extends BrowserWindow {
   readonly webContents: WebContents;
 }
 
-interface PairingTemplateFileSystem {
-  readFileSync(path: string, encoding: "utf8"): string;
-  writeFileSync(path: string, data: string, options: { readonly encoding: "utf8"; readonly mode: number; readonly flag: "wx" }): void;
-  mkdtempSync(prefix: string): string;
-  copyFileSync(source: string, destination: string): void;
-  chmodSync(path: string, mode: number): void;
-  rmSync(path: string, options: { readonly recursive: true; readonly force: true }): void;
-}
-
 // 이 모달은 렌더러 코드 없이 폼 이동만 받아, 사용자 입력이 IPC나 실행 문자열을 통과하지 않게 한다.
 export function createPairingModal(dependencies: PairingModalDependencies): PairingModal {
-  const fileSystem = dependencies.fileSystem ?? fs;
-  const temporaryDirectory = dependencies.temporaryDirectory ?? os.tmpdir();
   let active: { readonly window: PairingModalWindow; readonly result: Promise<string | null>; ready: boolean } | null = null;
 
   return {
-    prompt(parent, rememberedTarget = null): Promise<string | null> {
+    prompt(parent): Promise<string | null> {
       if (active && !active.window.isDestroyed()) {
         if (active.ready) active.window.show();
         active.window.focus();
@@ -50,8 +33,6 @@ export function createPairingModal(dependencies: PairingModalDependencies): Pair
       let settled = false;
       let shortcutsIgnored = false;
       let cleanupContents = (): void => undefined;
-      let temporaryPageDirectory: string | null = null;
-      let temporaryPagePath: string | null = null;
       const result = new Promise<string | null>((resolve) => { resolveResult = resolve; });
       const onParentClosed = (): void => finish(null);
       const onModalClosed = (): void => finish(null, false);
@@ -62,11 +43,6 @@ export function createPairingModal(dependencies: PairingModalDependencies): Pair
         parent.removeListener("closed", onParentClosed);
         modal.removeListener("closed", onModalClosed);
         cleanupContents();
-        if (temporaryPageDirectory) {
-          try { fileSystem.rmSync(temporaryPageDirectory, { recursive: true, force: true }); } catch { /* Best-effort cleanup preserves modal completion. */ }
-          temporaryPageDirectory = null;
-          temporaryPagePath = null;
-        }
         if (shortcutsIgnored && !parent.isDestroyed()) {
           try { parent.webContents.setIgnoreMenuShortcuts(false); } catch { /* 부모 종료 중에는 복원이 불가능할 수 있다. */ }
         }
@@ -102,53 +78,10 @@ export function createPairingModal(dependencies: PairingModalDependencies): Pair
         finish(null);
         return result;
       }
-      const temporaryPage = createRememberedPairingPage(dependencies.pairingPagePath, rememberedTarget, fileSystem, temporaryDirectory);
-      temporaryPageDirectory = temporaryPage?.directory ?? null;
-      temporaryPagePath = temporaryPage?.path ?? null;
-      void modal.loadFile(temporaryPagePath ?? dependencies.pairingPagePath).catch(() => finish(null));
+      void modal.loadFile(dependencies.pairingPagePath).catch(() => finish(null));
       return result;
     },
   };
-}
-
-function rememberedSshHost(target: string | null): string | null {
-  return target?.startsWith("ssh:") && target.length > 4 ? target.slice(4) : null;
-}
-
-function createRememberedPairingPage(pairingPagePath: string, target: string | null, fileSystem: PairingTemplateFileSystem, temporaryDirectory: string): { readonly directory: string; readonly path: string } | null {
-  const host = rememberedSshHost(target);
-  if (!host) return null;
-  let directory: string | null = null;
-  try {
-    directory = fileSystem.mkdtempSync(path.join(temporaryDirectory, "fleet-desktop-pairing-"));
-    const html = withRememberedSshTarget(fileSystem.readFileSync(pairingPagePath, "utf8"), host);
-    const temporaryPath = path.join(directory, "index.html");
-    fileSystem.writeFileSync(temporaryPath, html, { encoding: "utf8", mode: 0o600, flag: "wx" });
-    const stylesheetPath = path.join(directory, "pairing.css");
-    fileSystem.copyFileSync(path.join(path.dirname(pairingPagePath), "pairing.css"), stylesheetPath);
-    fileSystem.chmodSync(stylesheetPath, 0o600);
-    return { directory, path: temporaryPath };
-  } catch {
-    if (directory) {
-      try { fileSystem.rmSync(directory, { recursive: true, force: true }); } catch { /* Best-effort cleanup preserves static fallback. */ }
-    }
-    return null;
-  }
-}
-
-function withRememberedSshTarget(html: string, host: string): string {
-  return addAttribute(addAttribute(html, "mode-ssh", "checked"), "ssh-host", `value="${escapeHtmlAttribute(host)}"`);
-}
-
-function addAttribute(html: string, id: string, attribute: string): string {
-  const expression = new RegExp(`<input\\b[^>]*\\bid="${id}"[^>]*>`, "u");
-  const match = html.match(expression);
-  if (!match) throw new Error("pairing_template_marker_missing");
-  return html.replace(expression, `${match[0]!.slice(0, -1)} ${attribute}>`);
-}
-
-function escapeHtmlAttribute(value: string): string {
-  return value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", "\"": "&quot;" })[character] ?? character);
 }
 
 export function createPairingModalOptions(parent: BrowserWindow): BrowserWindowConstructorOptions {
@@ -157,7 +90,7 @@ export function createPairingModalOptions(parent: BrowserWindow): BrowserWindowC
     modal: true,
     show: false,
     width: 460,
-    height: 330,
+    height: 400,
     useContentSize: true,
     resizable: false,
     minimizable: false,
@@ -185,10 +118,9 @@ export function parsePairingNavigation(value: string): string | null | undefined
     const rawSearch = value.slice("fleet-desktop-pairing://submit/".length);
     const loopback = /^\?target=([^&#]*)$/u.exec(rawSearch) ?? /^\?mode=loopback&target=([^&#]*)$/u.exec(rawSearch);
     if (loopback) return decodeRawTarget(loopback[1]!);
-    const ssh = /^\?mode=ssh&host=([^&#]*)$/u.exec(rawSearch);
-    if (!ssh) return undefined;
-    const host = decodeRawTarget(ssh[1]!);
-    return host === undefined ? undefined : `ssh:${host}`;
+    const accessLink = /^\?mode=link&link=([^&#]*)$/u.exec(rawSearch);
+    if (!accessLink) return undefined;
+    return decodeRawTarget(accessLink[1]!);
   } catch {
     return undefined;
   }

@@ -1,38 +1,35 @@
 import type { EntryPageSnapshot, EntryStepSnapshot } from "./entry-page.js";
-import type { RemoteRuntimePhase } from "./runtime/remote/contracts.js";
-import type { ValidatedSshTarget } from "./runtime/remote/contracts.js";
 
-const FOOT = "managed SSH runtime";
+/** 링크 접속의 진행 단계. 순서가 곧 보안 순서다 — 신원을 고정한 뒤에만 통신한다. */
+export type RemoteAccessPhase = "reading_link" | "pinning_identity" | "opening_session" | "verifying_console";
+
+const FOOT = "remote access link";
 
 type RemoteStep = Omit<EntryStepSnapshot, "state" | "result">;
 
 const stepsFor = (host: string): readonly RemoteStep[] => [
-  { name: `Contacting ${host}`, sub: "SSH" },
-  { name: "Installing Node runtime", sub: "managed runtime" },
-  { name: "Installing Fleet Console", sub: "managed runtime" },
-  { name: "Starting console", sub: "remote runtime" },
-  { name: "Securing tunnel", sub: "localhost" },
-  { name: "Verifying connection", sub: "Fleet Console" },
+  { name: "Reading access link", sub: "one-time credential" },
+  { name: `Pinning ${host}`, sub: "certificate fingerprint" },
+  { name: "Opening session", sub: "single-use grant" },
+  { name: "Verifying console", sub: "Fleet Console" },
 ];
 
-function activeIndex(phase: RemoteRuntimePhase): number {
+function activeIndex(phase: RemoteAccessPhase): number {
   switch (phase) {
-    case "provisioning_node": return 1;
-    case "provisioning_console": return 2;
-    case "starting_service": return 3;
-    case "opening_tunnel": return 4;
-    case "verifying_pairing": return 5;
-    case "validating_target": case "connecting": case "detecting_platform": return 0;
+    case "reading_link": return 0;
+    case "pinning_identity": return 1;
+    case "opening_session": return 2;
+    case "verifying_console": return 3;
   }
 }
 
-export function snapshotForRemotePhase(target: ValidatedSshTarget, phase: RemoteRuntimePhase, failed = false): EntryPageSnapshot {
+export function snapshotForAccessPhase(host: string, phase: RemoteAccessPhase, failed = false): EntryPageSnapshot {
   const active = activeIndex(phase);
   return {
     platform: process.platform,
     foot: FOOT,
     dev: false,
-    steps: stepsFor(target.host).slice(0, active + 1).map((step, index) => ({
+    steps: stepsFor(host).slice(0, active + 1).map((step, index) => ({
       ...step,
       state: index < active ? "complete" : failed ? "failed" : "active",
       ...(index === active && failed ? { result: "failed" } : {}),
@@ -40,12 +37,12 @@ export function snapshotForRemotePhase(target: ValidatedSshTarget, phase: Remote
   };
 }
 
-export function snapshotForRemoteReady(target: ValidatedSshTarget): EntryPageSnapshot {
+export function snapshotForAccessReady(host: string): EntryPageSnapshot {
   return {
     platform: process.platform,
     foot: FOOT,
     dev: false,
-    steps: stepsFor(target.host).map((step) => ({ ...step, state: "complete" })),
+    steps: stepsFor(host).map((step) => ({ ...step, state: "complete" })),
     handoff: "Console ready",
   };
 }

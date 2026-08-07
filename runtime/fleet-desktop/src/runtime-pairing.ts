@@ -1,67 +1,16 @@
 import type { BrowserWindow, WebContents } from "electron";
-import fs from "node:fs";
-import path from "node:path";
 
 import type { DesktopThemeSynchronizer } from "./desktop-theme-sync.js";
 import type { DesktopFullscreenSynchronizer } from "./desktop-fullscreen-sync.js";
 import { pushEntrySnapshot, type EntryPageWebContents } from "./entry-page.js";
 import type { PairingModal } from "./pairing-modal.js";
-import { snapshotForRemotePhase, snapshotForRemoteReady } from "./remote-entry-snapshot.js";
-import type { RemoteRuntimePhase } from "./runtime/remote/contracts.js";
-import { parseSshTarget, type ValidatedSshTarget } from "./runtime/remote/contracts.js";
-import type { ManagedRemoteSession } from "./runtime/remote/orchestrator.js";
+import { isAccessLinkInput, parseAccessLink, type ValidatedAccessLink } from "./remote-access-link.js";
+import { snapshotForAccessPhase, snapshotForAccessReady, type RemoteAccessPhase } from "./remote-entry-snapshot.js";
 import type { WindowPolicy } from "./window-policy.js";
-
-interface LastTargetFileSystem {
-  readFileSync(path: string, encoding: "utf8"): string;
-  mkdirSync(path: string, options: { recursive: true }): string | undefined;
-  writeFileSync(path: string, data: string, options: { encoding: "utf8"; mode: number }): void;
-  renameSync(oldPath: string, newPath: string): void;
-}
-
-export interface RemoteLastTargetStore {
-  load(): string | null;
-  save(target: string): void;
-}
-
-/** Stores only a successfully committed SSH target under Electron userData. */
-export function createRemoteLastTargetStore(userDataPath: string, fileSystem: LastTargetFileSystem = fs): RemoteLastTargetStore {
-  const statePath = path.join(userDataPath, "remote-runtime-last-target.json");
-  const temporaryPath = `${statePath}.tmp`;
-  return {
-    load(): string | null {
-      try {
-        const parsed: unknown = JSON.parse(fileSystem.readFileSync(statePath, "utf8"));
-        return isLastTargetState(parsed) ? parsed.sshTarget : null;
-      } catch {
-        return null;
-      }
-    },
-    save(target): void {
-      if (!isSshTarget(target)) return;
-      try {
-        fileSystem.mkdirSync(userDataPath, { recursive: true });
-        fileSystem.writeFileSync(temporaryPath, `${JSON.stringify({ sshTarget: target })}\n`, { encoding: "utf8", mode: 0o600 });
-        fileSystem.renameSync(temporaryPath, statePath);
-      } catch {
-        // Remembering a target is best-effort and must not interrupt pairing.
-      }
-    },
-  };
-}
-
-function isLastTargetState(value: unknown): value is { sshTarget: string } {
-  return typeof value === "object" && value !== null && "sshTarget" in value && isSshTarget(value.sshTarget);
-}
-
-function isSshTarget(value: unknown): value is string {
-  return typeof value === "string" && value.startsWith("ssh:") && value.length > 4 && !/[\u0000-\u001f\u007f\s]/u.test(value);
-}
 
 export const PAIRING_IDENTITY_PATH = "/api/v1/pairing-identity";
 export const PAIRING_PROTOCOL_VERSION = 1;
 const PAIRING_TIMEOUT_MS = 3_000;
-const SAME_TARGET_LIVENESS_TIMEOUT_MS = 1_000;
 const MAX_PAIRING_IDENTITY_BYTES = 8 * 1024;
 
 export interface PairingIdentity {
@@ -69,6 +18,12 @@ export interface PairingIdentity {
   readonly schemaVersion: 1;
   readonly pairingProtocolVersion: 1;
 }
+
+/**
+ * `typeof fetch`보다 좁게 잡는다. 원격 확인은 Electron 세션의 fetch로 흐르고, 그 쪽은
+ * `URL` 입력을 받지 않으므로 전역 fetch 타입을 그대로 요구하면 세션을 넘길 수 없다.
+ */
+export type ConsoleFetch = (input: string, init?: RequestInit) => Promise<Response>;
 
 export interface RuntimePairingWindow extends BrowserWindow {
   loadFile(filePath: string): Promise<void>;
@@ -79,8 +34,23 @@ export interface RuntimePairingNotifier {
   show(options: { readonly title: string; readonly body: string; readonly type: "info" | "error" }): void;
 }
 
+/**
+ * 원격 접속의 부수효과를 한 곳에 모은 어댑터. 링크를 신뢰 근거로 바꾸는 일(핀 고정)과
+ * 자격을 세션으로 바꾸는 일(조인)이 같은 세션 위에서 같은 순서로 일어나야 한다.
+ */
+export interface RemoteAccessAdapter {
+  /** 첫 네트워크 요청보다 반드시 먼저 호출된다. */
+  pin(link: ValidatedAccessLink): void;
+  unpin(link: ValidatedAccessLink): void;
+  join(link: ValidatedAccessLink): Promise<void>;
+  /** 조인으로 받은 세션 쿠키가 사는 fetch. 신원 확인도 같은 항아리를 써야 한다. */
+  readonly fetch: ConsoleFetch;
+  /** 접속을 놓을 때 그 origin의 세션 흔적을 지운다. */
+  forget(link: ValidatedAccessLink): Promise<void>;
+}
+
 export interface RuntimePairingDependencies {
-  readonly fetch?: typeof fetch;
+  readonly fetch?: ConsoleFetch;
   readonly notifier: RuntimePairingNotifier | null;
   readonly fullscreenSynchronizer?: () => DesktopFullscreenSynchronizer | null;
   readonly themeSynchronizer: DesktopThemeSynchronizer | null;
@@ -88,8 +58,7 @@ export interface RuntimePairingDependencies {
   readonly entryPagePath: string;
   readonly localOrigin: () => string | null;
   readonly timeoutMs?: number;
-  readonly connectRemote?: (target: ValidatedSshTarget, onPhase: (phase: RemoteRuntimePhase) => void) => Promise<ManagedRemoteSession>;
-  readonly lastTargetStore?: RemoteLastTargetStore;
+  readonly remoteAccess?: RemoteAccessAdapter;
   readonly logger?: { info(message: string): void; error(message: string): void };
   readonly onRuntimeChanged?: () => void;
 }
@@ -100,7 +69,9 @@ export interface RuntimePairing {
   dispose(): Promise<void>;
 }
 
-export type PairingTarget = { readonly kind: "loopback"; readonly origin: string } | { readonly kind: "ssh"; readonly target: ValidatedSshTarget };
+export type PairingTarget =
+  | { readonly kind: "loopback"; readonly origin: string }
+  | { readonly kind: "link"; readonly link: ValidatedAccessLink };
 
 export function parsePairingTarget(input: string): PairingTarget {
   const match = /^127\.0\.0\.1:([1-9]\d{0,4})$/u.exec(input);
@@ -109,21 +80,28 @@ export function parsePairingTarget(input: string): PairingTarget {
     if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) throw new Error("pairing_target_invalid");
     return { kind: "loopback", origin: `http://127.0.0.1:${port}` };
   }
-  if (!input.startsWith("ssh:")) throw new Error("pairing_target_invalid");
-  try { return { kind: "ssh", target: parseSshTarget(input.slice(4)) }; } catch { throw new Error("pairing_target_invalid"); }
+  if (!isAccessLinkInput(input)) throw new Error("pairing_target_invalid");
+  return { kind: "link", link: parseAccessLink(input) };
 }
 
-export async function verifyPairingTarget(input: string, fetchFor: typeof fetch = globalThis.fetch, timeoutMs = PAIRING_TIMEOUT_MS): Promise<{ readonly origin: string; readonly consoleUrl: string }> {
+export async function verifyPairingTarget(input: string, fetchFor: ConsoleFetch = globalThis.fetch, timeoutMs = PAIRING_TIMEOUT_MS): Promise<{ readonly origin: string; readonly consoleUrl: string }> {
   const target = parsePairingTarget(input);
   if (target.kind !== "loopback") throw new Error("pairing_target_invalid");
   return verifyPairingOrigin(target.origin, fetchFor, timeoutMs);
 }
 
-export async function verifyPairingOrigin(origin: string, fetchFor: typeof fetch = globalThis.fetch, timeoutMs = PAIRING_TIMEOUT_MS): Promise<{ readonly origin: string; readonly consoleUrl: string }> {
+export async function verifyPairingOrigin(origin: string, fetchFor: ConsoleFetch = globalThis.fetch, timeoutMs = PAIRING_TIMEOUT_MS): Promise<{ readonly origin: string; readonly consoleUrl: string }> {
   const parsed = new URL(origin);
   if (parsed.protocol !== "http:" || parsed.hostname !== "127.0.0.1" || !parsed.port || parsed.pathname !== "/" || parsed.search || parsed.hash || parsed.username || parsed.password) throw new Error("pairing_target_invalid");
-  const canonicalOrigin = parsed.origin;
-  const identityUrl = new URL(PAIRING_IDENTITY_PATH, `${canonicalOrigin}/`).toString();
+  return verifyConsoleIdentity(parsed.origin, fetchFor, timeoutMs);
+}
+
+/**
+ * 주소가 실제로 호환 Fleet Console인지 확인한다. 원격에서는 조인으로 세션을 연 뒤에만
+ * 200이 돌아오므로, 이 확인은 "붙을 수 있다"가 아니라 "붙었고 그 상대가 콘솔이다"를 뜻한다.
+ */
+export async function verifyConsoleIdentity(origin: string, fetchFor: ConsoleFetch = globalThis.fetch, timeoutMs = PAIRING_TIMEOUT_MS): Promise<{ readonly origin: string; readonly consoleUrl: string }> {
+  const identityUrl = new URL(PAIRING_IDENTITY_PATH, `${origin}/`).toString();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -131,7 +109,7 @@ export async function verifyPairingOrigin(origin: string, fetchFor: typeof fetch
     if (!response.ok || response.url !== identityUrl) throw new Error("pairing_target_unverified");
     const payload = parsePairingIdentity(await readBoundedText(response, MAX_PAIRING_IDENTITY_BYTES));
     if (!isPairingIdentity(payload)) throw new Error("pairing_target_unverified");
-    return { origin: canonicalOrigin, consoleUrl: new URL("/console/", `${canonicalOrigin}/`).toString() };
+    return { origin, consoleUrl: new URL("/console/", `${origin}/`).toString() };
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("pairing_target_")) throw error;
     throw new Error("pairing_target_unavailable", { cause: error });
@@ -144,8 +122,32 @@ export function createRuntimePairing(dependencies: RuntimePairingDependencies): 
   const fetchFor = dependencies.fetch ?? globalThis.fetch;
   const timeoutMs = dependencies.timeoutMs ?? PAIRING_TIMEOUT_MS;
   let promptInFlight: Promise<void> | null = null;
-  let committedRemote: ManagedRemoteSession | null = null;
+  let committedLink: ValidatedAccessLink | null = null;
   let switchInFlight = false;
+
+  const releaseLink = async (link: ValidatedAccessLink | null, policy: WindowPolicy): Promise<void> => {
+    if (!link || !dependencies.remoteAccess) return;
+    try {
+      dependencies.remoteAccess.unpin(link);
+      policy.withdrawRemoteConsoleOrigin(link.origin);
+      await dependencies.remoteAccess.forget(link);
+    } catch (error) {
+      dependencies.logger?.error(`remote access release failed code=${redactedCode(failureCode(error))}`);
+    }
+  };
+
+  /**
+   * 실패한 후보를 걷어낸다. 같은 원격에 다시 붙다가 실패한 경우에는 살아 있는 접속을
+   * 함께 끊어서는 안 되므로, 핀을 실패한 링크가 아니라 커밋된 링크의 값으로 되돌린다.
+   */
+  const rollbackCandidate = async (candidate: ValidatedAccessLink | null, policy: WindowPolicy): Promise<void> => {
+    if (!candidate || !dependencies.remoteAccess) return;
+    if (committedLink && committedLink.origin === candidate.origin) {
+      dependencies.remoteAccess.pin(committedLink);
+      return;
+    }
+    await releaseLink(candidate, policy);
+  };
 
   const switchTo = async (input: string, window: RuntimePairingWindow, policy: WindowPolicy): Promise<void> => {
     if (switchInFlight) {
@@ -160,9 +162,8 @@ export function createRuntimePairing(dependencies: RuntimePairingDependencies): 
     const previousUrl = window.webContents.getURL();
     const previousOrigin = policy.currentConsoleOrigin();
     let target: { readonly origin: string; readonly consoleUrl: string };
-    let candidate: ManagedRemoteSession | null = null;
-    let remoteTarget: ValidatedSshTarget | null = null;
-    let remotePhase: RemoteRuntimePhase = "validating_target";
+    let candidate: ValidatedAccessLink | null = null;
+    let remotePhase: RemoteAccessPhase = "reading_link";
     let entryLoaded = false;
     let entryPush = Promise.resolve();
     const pushRemoteSnapshot = (snapshot: Parameters<typeof pushEntrySnapshot>[1]): void => {
@@ -172,56 +173,53 @@ export function createRuntimePairing(dependencies: RuntimePairingDependencies): 
         dependencies.logger?.error(`managed runtime entry snapshot failed code=${redactedCode(failureCode(error))}`);
       });
     };
+    const advance = (link: ValidatedAccessLink, phase: RemoteAccessPhase): void => {
+      remotePhase = phase;
+      pushRemoteSnapshot(snapshotForAccessPhase(link.hostname, phase));
+    };
     try {
       const parsed = input === dependencies.localOrigin()
         ? { kind: "loopback" as const, origin: input }
         : parsePairingTarget(input);
       if (parsed.kind === "loopback") target = await verifyPairingOrigin(parsed.origin, fetchFor, timeoutMs);
       else {
-        if (committedRemote?.target.value === parsed.target.value) {
-          try {
-            await verifyPairingOrigin(committedRemote.origin, fetchFor, Math.min(timeoutMs, SAME_TARGET_LIVENESS_TIMEOUT_MS));
-            dependencies.logger?.info("managed runtime pairing skipped code=already_connected");
-            return;
-          } catch {
-            const staleRemote = committedRemote;
-            committedRemote = null;
-            await disposeRemoteSession(staleRemote, dependencies);
-          }
-        }
-        if (!dependencies.connectRemote) throw new Error("ssh_unavailable");
-        remoteTarget = parsed.target;
+        const remote = dependencies.remoteAccess;
+        if (!remote) throw new Error("remote_access_unavailable");
+        candidate = parsed.link;
         await window.loadFile(dependencies.entryPagePath);
         entryLoaded = true;
-        await pushEntrySnapshot(window.webContents, snapshotForRemotePhase(remoteTarget, remotePhase));
-        candidate = await dependencies.connectRemote(remoteTarget, (phase) => {
-          remotePhase = phase;
-          pushRemoteSnapshot(snapshotForRemotePhase(remoteTarget!, phase));
-        });
-        target = await verifyPairingOrigin(candidate.origin, fetchFor, timeoutMs);
-        pushRemoteSnapshot(snapshotForRemoteReady(remoteTarget));
+        await pushEntrySnapshot(window.webContents, snapshotForAccessPhase(candidate.hostname, remotePhase));
+        // 순서가 방어다 — 지문을 고정하기 전에는 이 호스트로 어떤 요청도 나가지 않는다.
+        advance(candidate, "pinning_identity");
+        remote.pin(candidate);
+        advance(candidate, "opening_session");
+        await remote.join(candidate);
+        advance(candidate, "verifying_console");
+        target = await verifyConsoleIdentity(candidate.origin, remote.fetch, timeoutMs);
+        policy.admitRemoteConsoleOrigin(candidate.origin);
+        pushRemoteSnapshot(snapshotForAccessReady(candidate.hostname));
         await entryPush;
       }
     } catch (error) {
-      await candidate?.rollback().catch(() => undefined);
       const localOrigin = dependencies.localOrigin();
-      if (remoteTarget && entryLoaded && !window.isDestroyed()) {
-        pushRemoteSnapshot(snapshotForRemotePhase(remoteTarget, remotePhase, true));
+      if (candidate && entryLoaded && !window.isDestroyed()) {
+        pushRemoteSnapshot(snapshotForAccessPhase(candidate.hostname, remotePhase, true));
         await entryPush;
       }
+      await rollbackCandidate(candidate, policy);
       const previousWasRemote = previousOrigin !== null && previousOrigin !== localOrigin;
       let localRestored = true;
-      if (remoteTarget && previousOrigin && previousOrigin !== localOrigin && !window.isDestroyed()) {
+      if (candidate && previousOrigin && previousOrigin !== localOrigin && !window.isDestroyed()) {
         await restorePreviousRemoteRuntime(window, policy, previousOrigin, previousUrl, dependencies);
-      } else if (remoteTarget && localOrigin && !window.isDestroyed()) {
-        localRestored = await restoreLocalRuntime(window, policy, localOrigin, previousUrl, dependencies, () => {
-          const previousRemote = committedRemote;
-          committedRemote = null;
-          return disposeRemoteSession(previousRemote, dependencies);
+      } else if (candidate && localOrigin && !window.isDestroyed()) {
+        localRestored = await restoreLocalRuntime(window, policy, localOrigin, previousUrl, dependencies, async () => {
+          const previousLink = committedLink;
+          committedLink = null;
+          await releaseLink(previousLink, policy);
         });
       }
       logPairingFailure(dependencies, error);
-      if (remoteTarget && !previousWasRemote && !localRestored) notifyLocalUnavailable(dependencies.notifier);
+      if (candidate && !previousWasRemote && !localRestored) notifyLocalUnavailable(dependencies.notifier);
       else notifyFailure(dependencies.notifier, error);
       return;
     }
@@ -237,11 +235,9 @@ export function createRuntimePairing(dependencies: RuntimePairingDependencies): 
       dependencies.fullscreenSynchronizer?.()?.activate(target.origin);
       if (previousOrigin && previousOrigin !== target.origin) dependencies.fullscreenSynchronizer?.()?.reset(previousOrigin);
       window.webContents.navigationHistory.clear();
-      candidate?.commit();
-      const previousRemote = committedRemote;
-      committedRemote = candidate;
-      if (candidate) dependencies.lastTargetStore?.save(`ssh:${candidate.target.value}`);
-      await disposeRemoteSession(previousRemote, dependencies);
+      const previousLink = committedLink;
+      committedLink = candidate;
+      if (previousLink && previousLink.origin !== candidate?.origin) await releaseLink(previousLink, policy);
       dependencies.onRuntimeChanged?.();
       dependencies.notifier?.show({ title: "Fleet Console connected", body: `Connected to ${target.origin}.`, type: "info" });
     } catch (error) {
@@ -254,7 +250,7 @@ export function createRuntimePairing(dependencies: RuntimePairingDependencies): 
         try { await dependencies.themeSynchronizer?.start(previousOrigin); } catch { /* rollback feedback must not hide the original failure */ }
         dependencies.fullscreenSynchronizer?.()?.activate(previousOrigin);
       }
-      await candidate?.rollback().catch(() => undefined);
+      await rollbackCandidate(candidate, policy);
       dependencies.fullscreenSynchronizer?.()?.resync();
       logPairingFailure(dependencies, error);
       notifyFailure(dependencies.notifier, error);
@@ -266,7 +262,7 @@ export function createRuntimePairing(dependencies: RuntimePairingDependencies): 
     promptInFlight = (async () => {
       if (window.isDestroyed()) return;
       try {
-        const value = await dependencies.modal.prompt(window, dependencies.lastTargetStore?.load() ?? null);
+        const value = await dependencies.modal.prompt(window);
         if (typeof value === "string" && !window.isDestroyed()) await switchTo(value, window, policy);
       } catch (error) {
         notifyFailure(dependencies.notifier, error);
@@ -275,7 +271,21 @@ export function createRuntimePairing(dependencies: RuntimePairingDependencies): 
       .finally(() => { promptInFlight = null; });
     return promptInFlight;
   };
-  return { prompt, switchTo, async dispose() { const remote = committedRemote; committedRemote = null; await remote?.dispose(); } };
+  return {
+    prompt,
+    switchTo,
+    async dispose() {
+      const link = committedLink;
+      committedLink = null;
+      if (!link || !dependencies.remoteAccess) return;
+      try {
+        dependencies.remoteAccess.unpin(link);
+        await dependencies.remoteAccess.forget(link);
+      } catch (error) {
+        dependencies.logger?.error(`remote access release failed code=${redactedCode(failureCode(error))}`);
+      }
+    },
+  };
 }
 
 async function restoreLocalRuntime(window: RuntimePairingWindow, policy: WindowPolicy, localOrigin: string, previousUrl: string, dependencies: RuntimePairingDependencies, disposePreviousRemote: () => Promise<void>): Promise<boolean> {
@@ -317,10 +327,6 @@ async function restorePreviousRemoteRuntime(window: RuntimePairingWindow, policy
     dependencies.logger?.error(`managed runtime remote restore failed code=${redactedCode(failureCode(restoreError))}`);
     return false;
   }
-}
-
-async function disposeRemoteSession(session: ManagedRemoteSession | null, dependencies: RuntimePairingDependencies): Promise<void> {
-  try { await session?.dispose(); } catch (error) { dependencies.logger?.error(`managed runtime dispose failed code=${redactedCode(failureCode(error))}`); }
 }
 
 async function readBoundedText(response: Response, limit: number): Promise<string> {
@@ -377,16 +383,15 @@ function failureCode(error: unknown): string {
 }
 function failureMessage(code: string): string {
   switch (code) {
-    case "remote_platform_unsupported": return "The remote machine runs an unsupported OS or CPU architecture.";
-    case "ssh_unavailable": return "OpenSSH (ssh) was not found on this machine.";
-    case "ssh_failed": case "pairing_target_unavailable": return "Could not reach the remote host. Check the address and your SSH config and agent.";
-    case "ssh_timeout": return "The SSH connection timed out.";
-    case "remote_console_owned_elsewhere": return "Another Fleet Console Desktop is already using that remote runtime.";
-    case "remote_console_lock_conflict": return "The remote runtime is in use by another process.";
-    case "remote_tunnel_port_conflict_exhausted": return "Could not find a free local port for the tunnel after several attempts.";
-    case "remote_node_invalid": case "remote_console_invalid": return "The remote runtime failed its integrity check.";
-    case "remote_registry_unavailable": return "Could not reach the package registry to install Fleet Console.";
+    case "pairing_target_invalid": return "That is not a Fleet Console access link. Create a new link in the console you want to reach.";
+    case "remote_access_unavailable": return "This Fleet Console Desktop cannot open remote links.";
+    case "remote_link_rejected": return "The access link was already used or has expired. Create a new one.";
+    case "remote_link_host_mismatch": return "The remote console refused this address. Create the link again from that console.";
+    case "remote_link_unreachable": return "Could not reach that console, or its certificate did not match the link.";
+    case "remote_link_unverified": return "The remote console refused the access link.";
+    case "window_policy_remote_origin_invalid": return "That access link points at an address Fleet Console will not open.";
     case "pairing_target_unverified": return "That address is not a compatible Fleet Console runtime.";
+    case "pairing_target_unavailable": return "Could not reach that Fleet Console. Check that it is still running.";
     default: return "The connection failed. Local Fleet Console remains available.";
   }
 }
