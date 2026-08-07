@@ -1,0 +1,29 @@
+name: Scripts Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - canary
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # These suites import only node: builtins and the scripts under test, so they need no install step.
+      # The shell expands the glob rather than passing the directory, so the same command also works on the
+      # Node 22 run locally, where --test rejects a directory. A suite added later is picked up on its own.
+      - name: Run repository script tests
+        run: node --test scripts/*.test.mjs

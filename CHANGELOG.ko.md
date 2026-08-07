@@ -441,16 +441,16 @@ Release v1.44.0
 
 #### Added
 - [fleet-console] Scuttlebutt가 작업 시작도 warn 채널 "작업 시작" 말풍선으로 알립니다. 완료 말풍선과 대칭이며, 보고 있는 Operation의 시작은 조용하고, 재시작은 60초 쿨다운을 따릅니다. 새 출발 알림 설정 토글(기본 켜짐)로 끌 수 있습니다.
-- [fleet-console] [fleet-console] Claude Code와 Codex 구독 rate-limit을 보여주는 사용 한도 rail 패널을 추가합니다. 세션·주간·모델별 사용량 막대와 리셋까지 남은 시간, Codex의 rate-limit 재설정 잔여 횟수를 표시합니다.
-- [fleet-console] [fleet-console] Claude는 명시적인 연결 단계를 거친 뒤에만 로컬 CLI 로그인 정보로 사용량을 조회하며, 자격증명은 읽기 전용으로 다루고 요청은 각 공급자에게만 전송합니다.
-- [fleet-console] [fleet-console] 사용 한도 패널에 Cursor를 추가합니다. 청구 주기 기준으로 포함된 사용량과 Auto, API 사용률, 주기가 리셋되기까지 남은 시간, 현재 요금제를 표시합니다.
+- [fleet-console] Claude Code와 Codex 구독 rate-limit을 보여주는 사용 한도 rail 패널을 추가합니다. 세션·주간·모델별 사용량 막대와 리셋까지 남은 시간, Codex의 rate-limit 재설정 잔여 횟수를 표시합니다.
+- [fleet-console] Claude는 명시적인 연결 단계를 거친 뒤에만 로컬 CLI 로그인 정보로 사용량을 조회하며, 자격증명은 읽기 전용으로 다루고 요청은 각 공급자에게만 전송합니다.
+- [fleet-console] 사용 한도 패널에 Cursor를 추가합니다. 청구 주기 기준으로 포함된 사용량과 Auto, API 사용률, 주기가 리셋되기까지 남은 시간, 현재 요금제를 표시합니다.
 
 #### Changed
 - [fleet-console] Whites 터미널의 종이·잉크·무채 ANSI 단계를 오트밀 대기에 맞춰 따뜻하게 조정하고, 유채 ANSI 색은 의미색 그대로 유지합니다.
-- [fleet-console] [fleet-console] 사용량 공급자를 각각 독립적으로 연결하고 해제합니다. 한 공급자를 조작해도 다른 공급자가 갱신되거나 영향을 받지 않습니다.
+- [fleet-console] 사용량 공급자를 각각 독립적으로 연결하고 해제합니다. 한 공급자를 조작해도 다른 공급자가 갱신되거나 영향을 받지 않습니다.
 
 #### Fixed
-- [fleet-console] [fleet-console] 패널 안 컴패니언 핸들 칩의 한글 라벨을 정수 10px와 본문 산스 폰트로 선명하게 하고, 핸들 스택과 아티팩트 칩 중앙정렬의 반픽셀 블러를 제거합니다.
+- [fleet-console] 패널 안 컴패니언 핸들 칩의 한글 라벨을 정수 10px와 본문 산스 폰트로 선명하게 하고, 핸들 스택과 아티팩트 칩 중앙정렬의 반픽셀 블러를 제거합니다.
 - [fleet-console] 저장소 기록에서 merge 커밋의 레인 선이 분기점 위로 튀어나오거나, 로드된 페이지 밖 부모를 향해 끊긴 분기 선이 그려지던 문제를 수정합니다.
 - [fleet-console] 커밋 행의 그래프 거터 폭을 통일해 merge 구간에서 제목이 옆으로 밀리지 않습니다.
 
