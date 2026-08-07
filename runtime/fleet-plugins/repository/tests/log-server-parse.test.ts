@@ -8,6 +8,8 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { runGit } from "../server/git-executor.js";
 import { annotateHeadReachability, handleRepositoryLog, isCanonicalRepositoryRef, parseLogOutput, parseWorktreePorcelain } from "../server/log.js";
 
+const logSource = await fs.readFile(new URL("../server/log.ts", import.meta.url), "utf8");
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 async function initGitRepo(dir: string): Promise<void> {
@@ -46,16 +48,24 @@ describe("parseLogOutput", () => {
     }]);
   });
 
-  // %b는 개행을 담을 수 있어 반드시 마지막 필드다 — 본문은 첫 줄의 9번째 조각과 그 뒤 줄들에 걸쳐 있고,
+  // 본문은 8칸으로 절단되어 마지막 필드에 한 줄로 온다. 빈 본문은 공백 패딩, 내용이 있으면 잘린 앞부분.
   // 목록 페이로드에는 존재 여부만 남는다.
-  it("여러 줄 본문을 hasBody로만 요약하고 본문 자체는 싣지 않는다", () => {
+  it("절단된 본문 필드를 hasBody로만 요약하고 본문 자체는 싣지 않는다", () => {
     const head = "\x1eabc\x00abc\x00subject\x00Author\x002 hours ago\x001720000000\x00\x00parent-a\x00";
-    expect(parseLogOutput(`${head}first body line\nsecond body line\n`)).toEqual([{
+    expect(parseLogOutput(`${head}first b..\n`)).toEqual([{
       fullHash: "abc", shortHash: "abc", subject: "subject", authorName: "Author",
       relTime: "2 hours ago", authorAt: 1_720_000_000, refs: [], parents: ["parent-a"],
       onHead: true, hasBody: true,
     }]);
-    expect(parseLogOutput(`${head}\n`)[0]?.hasBody).toBe(false);
+    // 본문 없는 커밋은 공백 패딩만 온다 — 공백을 내용으로 오인하면 모든 행에 마커가 붙는다.
+    expect(parseLogOutput(`${head}        \n`)[0]?.hasBody).toBe(false);
+  });
+
+  // 절단을 잃으면 커밋 하나가 페이지 전체의 stdout 버퍼를 소진해 hasMore가 false로 접히고,
+  // 그보다 오래된 이력이 페이지네이션에서 사라진다. 포맷 문자열이 그 상한을 지고 있다.
+  it("본문 자리표시자를 절단해 페이지 한 건의 크기 상한을 유지한다", () => {
+    expect(logSource).toContain("%x00%<(8,trunc)%b");
+    expect(logSource).not.toMatch(/%x00%b(?!\w)/);
   });
 });
 

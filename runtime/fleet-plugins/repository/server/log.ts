@@ -24,8 +24,12 @@ const CANONICAL_REF_RE = /^refs\/(?:heads|remotes|tags)\//;
 // rev-parse가 reflog/조상 표현식을 해석해 /refs 열거 밖 커밋으로 필터되는 것을 막는다
 const REF_METACHAR_RE = /[~^:?*\[\\\s\x00-\x1f\x7f]/;
 
-// %b(본문)는 개행을 담을 수 있으므로 반드시 마지막 필드여야 한다 — 앞에 두면 뒤 필드가 다음 줄로 밀려 파싱이 깨진다.
-const LOG_PRETTY_FORMAT = "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P%x00%b";
+// 본문은 존재 여부만 필요하므로 %b를 8칸으로 절단해 싣는다. 절단하지 않으면 커밋 하나의 본문 길이에
+// 상한이 없어, 목록 한 페이지가 runGit의 stdout 버퍼(8 MiB)를 먼저 소진할 수 있다. 그때 파싱되는 레코드 수가
+// limit 아래로 떨어지면 hasMore가 false로 접혀 그보다 오래된 이력이 페이지네이션에서 통째로 사라진다.
+// 절단본은 한 줄로 눌리므로 뒤 필드를 다음 줄로 밀지도 않는다. 여전히 마지막 필드 자리를 지킨다.
+// 알려진 한계: 본문이 공백 8칸으로 시작하면 존재 여부가 false로 읽힌다 — 마커 한 개가 빠질 뿐이다.
+const LOG_PRETTY_FORMAT = "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P%x00%<(8,trunc)%b";
 
 // 정렬 축은 화이트리스트 상수로만 git 인자가 된다 — 요청 문자열이 인자 위치에 직접 닿지 않게 한다.
 const LOG_ORDER_ARGS: Readonly<Record<LogOrder, string>> = { topo: "--topo-order", date: "--date-order" };
@@ -78,9 +82,9 @@ export function parseLogOutput(stdout: string): LogCommitEntry[] {
 
     const refs = refsRaw.split(",").map((r) => r.trim()).filter(Boolean);
     const parents = parentsRaw.split(" ").map((p) => p.trim()).filter(Boolean);
-    // 본문은 마지막 필드이므로 첫 줄의 9번째 조각과 그 뒤의 모든 줄에 걸쳐 있다.
-    // 존재 여부만 남기고 내용은 버린다 — 목록 페이로드에 본문 전체를 싣지 않기 위해서다.
-    const hasBody = (fields[8] ?? "").trim() !== "" || lines.slice(1).some((line) => line.trim() !== "");
+    // 본문 필드는 8칸으로 절단되어 한 줄에 들어오므로 첫 줄의 9번째 조각만 보면 된다.
+    // 빈 본문은 공백으로 채워져 오고, 내용이 있으면 잘린 앞부분이 온다 — 존재 여부만 남기고 내용은 버린다.
+    const hasBody = (fields[8] ?? "").trim() !== "";
 
     commits.push({
       shortHash,
