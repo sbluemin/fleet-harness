@@ -790,6 +790,12 @@
 .host-switcher-panel > button.is-current svg { margin-left: auto; color: var(--brass-bright); }
 .host-switcher-panel > button:disabled { cursor: not-allowed; opacity: 0.55; }
 
+/* 이 앱이 띄운 콘솔은 한 줄로 접고 강조한다 — 목록에서 유일하게 언제나 거기 있는 기준점이다. */
+.host-switcher-panel > button.is-home { padding-block: 6px; }
+.host-switcher-panel > button.is-home .host-switcher-entry { flex-direction: row; align-items: baseline; gap: var(--space-2); }
+.host-switcher-panel > button.is-home .host-switcher-name { color: var(--brass-bright); }
+.host-switcher-panel > button.is-home small { color: var(--text-tertiary); }
+
 /* 발견된 콘솔은 저장하거나 고른 적 없이 목록에 든 것이라, 그 사실을 한 눈에 구분해 준다. */
 .host-switcher-badge {
   margin-left: auto;

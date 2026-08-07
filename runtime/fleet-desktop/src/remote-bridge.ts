@@ -56,7 +56,7 @@ const JOIN_PATH = "/api/v1/join";
 export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   const localFetch = deps.localFetch ?? globalThis.fetch;
   const confirmIdentity = deps.confirmIdentity ?? confirmRemoteIdentity;
-  const attached: Array<{ readonly contents: Pick<WebContents, "on" | "removeListener">; readonly listener: (...args: never[]) => void }> = [];
+  const attached: Array<{ readonly contents: Pick<WebContents, "on" | "removeListener">; readonly listener: (...args: never[]) => void; readonly event?: "did-navigate" }> = [];
 
   async function askLocalConsole(path: string, body: unknown): Promise<Response> {
     const origin = deps.localOrigin();
@@ -88,6 +88,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     try {
       // 자격은 한 번뿐이다. 이미 세션 쿠키가 있으면 token은 비어 오고, 그때는 조인을 건너뛴다.
       if (handoff.token) await joinRemoteConsole(deps.sessionFetch, `${handoff.origin}${JOIN_PATH}`, handoff.token, deps.deviceName ?? null);
+      await verifyConsoleReachable(handoff.origin);
       await deps.loadConsole(`${handoff.origin}${CONSOLE_PATH}`);
       policy.commitConsoleOrigin();
     } catch (error) {
@@ -96,6 +97,23 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
       deps.pins.unpin(handoff.hostname);
       throw error;
     }
+  }
+
+  /**
+   * 창을 보내기 전에 그 콘솔이 정말 콘솔을 내주는지 확인한다.
+   *
+   * `loadURL`은 401 JSON 본문도 "성공한 적재"로 되돌려 준다. 그 판정을 창에 맡기면 롤백 경로가
+   * 아예 발동하지 않고, 사용자는 콘솔 대신 오류 문서 위에 갇힌다 — 그 문서에는 돌아갈 UI가 없다.
+   */
+  async function verifyConsoleReachable(origin: string): Promise<void> {
+    let response: Response;
+    try {
+      response = await deps.sessionFetch(`${origin}${CONSOLE_PATH}`, { method: "GET", redirect: "error" });
+    } catch (error) {
+      throw new Error("remote_link_unreachable", { cause: error });
+    }
+    if (response.status === 401) throw new Error("remote_host_session_expired");
+    if (!response.ok) throw new Error("remote_host_unavailable");
   }
 
   async function openLocal(origin: string): Promise<void> {
@@ -112,6 +130,18 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     const origin = typeof added.host?.origin === "string" ? added.host.origin : null;
     if (!origin) throw new Error("pairing_target_invalid");
     await open(origin);
+  }
+
+  /** 오류 문서 위에 남겨 두지 않는다 — 그 화면에는 돌아올 방법이 없다. */
+  async function recoverToHome(origin: string, home: string, status: number): Promise<void> {
+    const policy = deps.policy();
+    policy?.withdrawRemoteConsoleOrigin(origin);
+    try {
+      await openLocal(home);
+    } catch (error) {
+      deps.log?.(`recovery to the local console failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    report(new Error(status === 401 ? "remote_host_session_expired" : "remote_host_unavailable"));
   }
 
   function report(error: unknown): void {
@@ -132,6 +162,17 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
       };
       contents.on("will-navigate", listener as never);
       attached.push({ contents, listener: listener as never });
+
+      // 확인을 통과한 뒤에도 세션은 끊길 수 있다. 창이 오류 문서에 착지하면 집으로 되돌린다.
+      const landed = (_event: unknown, url: string, httpResponseCode: number): void => {
+        if (typeof httpResponseCode !== "number" || httpResponseCode < 400) return;
+        const home = deps.localOrigin();
+        const target = consoleTarget(url, home);
+        if (target === null || home === null || target === home) return;
+        void recoverToHome(target, home, httpResponseCode);
+      };
+      contents.on("did-navigate", landed as never);
+      attached.push({ contents, listener: landed as never, event: "did-navigate" });
     },
     open,
     receiveLink,
@@ -139,7 +180,10 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     dispose() {
       while (attached.length > 0) {
         const entry = attached.pop();
-        entry?.contents.removeListener("will-navigate", entry.listener as never);
+        if (!entry) continue;
+        // 두 이벤트를 한 배열로 관리하므로 리스너 해제는 느슨한 시그니처로 부른다.
+        (entry.contents as unknown as { removeListener: (event: string, listener: (...args: never[]) => void) => void })
+          .removeListener(entry.event ?? "will-navigate", entry.listener);
       }
     },
   };
@@ -178,6 +222,7 @@ function describe(code: string): string {
     case "remote_link_fingerprint_mismatch":
     case "remote_host_fingerprint_mismatch": return "That address answered with a different certificate. Ask for a fresh access link.";
     case "remote_link_rejected": return "That access link was already used, or it expired. Ask for a fresh one.";
+    case "remote_host_session_expired": return "That console no longer recognises this device. Ask for a fresh access link.";
     case "remote_link_host_mismatch": return "That console refused the link as meant for a different address.";
     case "remote_host_is_self": return "That link points back at this console.";
     case "pairing_target_invalid": return "That is not a Fleet Console access link.";

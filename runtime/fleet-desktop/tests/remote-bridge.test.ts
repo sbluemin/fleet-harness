@@ -13,7 +13,7 @@ function handoff(overrides: Record<string, unknown> = {}): Response {
 }
 
 /** 무엇이 어떤 차례로 일어났는지가 이 다리의 계약이라, 호출을 한 줄로 기록해 둔다. */
-function createHarness(options: { readonly responses?: (path: string) => Response; readonly confirm?: () => Promise<void>; readonly load?: () => Promise<void> } = {}) {
+function createHarness(options: { readonly responses?: (path: string) => Response; readonly confirm?: () => Promise<void>; readonly load?: () => Promise<void>; readonly verify?: () => Response } = {}) {
   const trace: string[] = [];
   const requests: Array<{ url: string; init: RequestInit }> = [];
   const notices: Array<{ title: string; body: string }> = [];
@@ -34,6 +34,10 @@ function createHarness(options: { readonly responses?: (path: string) => Respons
     clear: () => trace.push("clear"),
   };
   const sessionFetch = vi.fn(async (url: string) => {
+    if (url.endsWith("/console/")) {
+      trace.push(`verify:${url}`);
+      return options.verify ? options.verify() : new Response("<!doctype html>", { status: 200 });
+    }
     trace.push(`join:${url}`);
     return new Response(null, { status: 204 });
   });
@@ -98,6 +102,8 @@ describe("remote bridge", () => {
       `admit:${REMOTE}`,
       `stage:${REMOTE}`,
       `join:${REMOTE}/api/v1/join`,
+      // 창을 보내기 전에 콘솔이 정말 콘솔을 내주는지 확인한다 — loadURL은 401 본문도 성공으로 되돌린다.
+      `verify:${REMOTE}/console/`,
       `load:${REMOTE}/console/`,
       "commit",
     ]);
@@ -119,7 +125,7 @@ describe("remote bridge", () => {
 
     await harness.bridge.open(REMOTE);
 
-    expect(harness.sessionFetch).not.toHaveBeenCalled();
+    expect(harness.trace).not.toContain(`join:${REMOTE}/api/v1/join`);
     expect(harness.trace).toContain(`load:${REMOTE}/console/`);
   });
 
@@ -140,6 +146,31 @@ describe("remote bridge", () => {
     expect(harness.trace).toContain(`withdraw:${REMOTE}`);
     expect(harness.trace).toContain("unpin:100.84.12.7");
     expect(harness.trace).not.toContain("commit");
+  });
+
+  it("never sends the window to a console that answers with an error document", async () => {
+    const harness = createHarness({ verify: () => Response.json({ error: "unauthorized" }, { status: 401 }) });
+
+    await expect(harness.bridge.open(REMOTE)).rejects.toThrow("remote_host_session_expired");
+
+    // 창은 움직이지 않았고, 신뢰도 남지 않았다.
+    expect(harness.trace).not.toContain(`load:${REMOTE}/console/`);
+    expect(harness.trace).toContain(`withdraw:${REMOTE}`);
+    expect(harness.trace).toContain("unpin:100.84.12.7");
+  });
+
+  it("brings the window home when it lands on an error document anyway", async () => {
+    const contents = new EventEmitter();
+    const harness = createHarness();
+    harness.bridge.attach(contents as never);
+    harness.setCurrent(REMOTE);
+
+    contents.emit("did-navigate", {}, `${REMOTE}/console/`, 401);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(harness.trace).toContain(`withdraw:${REMOTE}`);
+    expect(harness.trace).toContain(`load:${LOCAL}/console/`);
+    expect(harness.notices[0]?.body).toContain("no longer recognises this device");
   });
 
   it("refuses a host the local console no longer lists", async () => {

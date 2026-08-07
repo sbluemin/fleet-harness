@@ -179,10 +179,11 @@ function HostSwitcher() {
                 <HostRow
                   key={entry.origin}
                   live
-                  name={home ? t("chrome.hosts.thisComputer") : nearbyName(entry, t)}
-                  detail={nearbyDetail(entry, currentOrigin, state.consoleName)}
-                  badge={home ? undefined : t("chrome.hosts.discovered")}
+                  name={nearbyName(home, entry.origin === currentOrigin, state.consoleName, t)}
+                  detail={entry.version && !home ? `${new URL(entry.origin).host} · v${entry.version}` : new URL(entry.origin).host}
+                  badge={home || entry.origin === currentOrigin ? undefined : t("chrome.hosts.discovered")}
                   current={entry.origin === currentOrigin}
+                  compact={home}
                   onOpen={() => go(entry.origin)}
                 />
               ))}
@@ -229,6 +230,7 @@ function HostRow({
   badge,
   current,
   disabled,
+  compact,
   onOpen,
 }: {
   readonly live: boolean;
@@ -237,6 +239,8 @@ function HostRow({
   readonly badge?: string;
   readonly current: boolean;
   readonly disabled?: boolean;
+  /** 이 앱이 띄운 콘솔은 한 줄로 접어 강조한다 — 목록에서 유일하게 언제나 거기 있는 기준점이다. */
+  readonly compact?: boolean;
   readonly onOpen?: () => void;
 }) {
   return (
@@ -244,7 +248,7 @@ function HostRow({
       type="button"
       role="menuitemradio"
       aria-checked={current}
-      className={current ? "is-current" : ""}
+      className={`${current ? "is-current" : ""} ${compact ? "is-home" : ""}`.trim()}
       disabled={current || disabled === true || onOpen === undefined}
       onClick={onOpen}
     >
@@ -259,15 +263,18 @@ function HostRow({
   );
 }
 
-function nearbyName(entry: LocalConsole, t: ReturnType<typeof useT>): string {
-  return entry.owner === "desktop" ? t("chrome.hosts.managedConsole") : t("chrome.hosts.console");
+/**
+ * 이름은 "누가 이 콘솔을 들고 있는가"로 가른다. 락에 적힌 owner는 어느 앱이 락을 썼는지일 뿐이라,
+ * 이 앱이 띄운 콘솔과 우연히 같은 기계에 떠 있는 콘솔이 둘 다 desktop으로 나온다 — 그것으로
+ * 이름을 지으면 두 줄이 똑같이 읽힌다.
+ */
+function nearbyName(home: boolean, current: boolean, currentName: string, t: ReturnType<typeof useT>): string {
+  if (home) return t("chrome.hosts.managedConsole");
+  // 지금 쓰고 있는 콘솔은 "발견"된 것이 아니다 — 자기 이름으로 부른다.
+  if (current && currentName) return currentName;
+  return t("chrome.hosts.console");
 }
 
-function nearbyDetail(entry: LocalConsole, currentOrigin: string, currentName: string): string {
-  const address = new URL(entry.origin).host;
-  if (entry.origin === currentOrigin && currentName) return `${address} · ${currentName}`;
-  return entry.version ? `${address} · v${entry.version}` : address;
-}
 
 function hostDetail(host: RemoteHost, state: RemoteHostReach | undefined, t: ReturnType<typeof useT>): string {
   const address = `${host.hostname}:${host.port}`;
