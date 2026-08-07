@@ -35,6 +35,7 @@ import type { FleetPluginHostCapabilities, OperationCatalogPlugin, OperationLaun
 import { readFleetConsoleRelease, type FleetConsoleRelease } from "./release.js";
 import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } from "./release-notes/release-notes.js";
 import { ConsoleReleaseNotesUnavailableError, type ReleaseNotesLocale } from "./release-notes/release-notes.js";
+import { createDeveloperNotesService, DeveloperNotesUnavailableError, type DeveloperNotesService } from "./developer-notes/developer-notes.js";
 import { RouteRegistry } from "./route-registry/registry.js";
 import { UpgradeRegistry } from "./route-registry/registry.js";
 import { withSecurityHeaders } from "./security-headers.js";
@@ -58,6 +59,7 @@ export interface ConsoleServerDeps {
   readonly agentRuntime?: unknown;
   readonly release?: FleetConsoleRelease;
   readonly releaseNotes?: ConsoleReleaseNotesService;
+  readonly developerNotes?: DeveloperNotesService;
   readonly updateCheck?: ConsoleUpdateCheckService;
   readonly updateApply?: ConsoleUpdateApplyService;
   readonly systemFonts?: SystemFontsService;
@@ -137,6 +139,13 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     method: "GET",
     path: "/api/v1/updates/release-notes",
     summary: "Get the console release notes.",
+    category: "Update",
+    gate: "loopback",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/updates/developer-notes",
+    summary: "Get the maintainer-authored developer notes.",
     category: "Update",
     gate: "loopback",
   },
@@ -247,6 +256,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const channel = release.channel;
   const lock = createConsoleLock({ hostname: () => host });
   const releaseNotes = deps.releaseNotes ?? createConsoleReleaseNotesService();
+  const developerNotes = deps.developerNotes ?? createDeveloperNotesService();
   const updateCheck = deps.updateCheck ?? createConsoleUpdateCheckService({ readRelease: () => release });
   const updateApply = deps.updateApply ?? createConsoleUpdateApplyService();
   const theaters = new TheaterRegistry();
@@ -635,6 +645,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       runAsyncHandler(handleObserverReleaseNotes(req, res), res);
       return;
     }
+    if (pathname === "/api/v1/updates/developer-notes") {
+      runAsyncHandler(handleObserverDeveloperNotes(req, res), res);
+      return;
+    }
     if (pathname === "/api/v1/updates/apply") {
       runAsyncHandler(handleUpdateApply(req, res), res);
       return;
@@ -907,6 +921,23 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     } catch (error) {
       if (error instanceof ConsoleReleaseNotesUnavailableError) {
         writeJson(res, 503, { error: "release_notes_unavailable" });
+        return;
+      }
+      throw error;
+    }
+  }
+
+  async function handleObserverDeveloperNotes(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (req.method !== "GET") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    try {
+      const force = readUrl(req).searchParams.get("force") === "true";
+      writeJson(res, 200, await developerNotes.refresh({ force }));
+    } catch (error) {
+      if (error instanceof DeveloperNotesUnavailableError) {
+        writeJson(res, 503, { error: "developer_notes_unavailable" });
         return;
       }
       throw error;

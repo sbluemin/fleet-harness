@@ -1,4 +1,4 @@
-import type { ConsoleEnvironmentDiagnostics, ConsoleUpdateApplyAcceptedResponse, OperationGroup, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
+import type { ConsoleEnvironmentDiagnostics, ConsoleUpdateApplyAcceptedResponse, DeveloperNote, DeveloperNotesResponse, OperationGroup, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
 
 export interface TheaterFolderListEntry {
   readonly name: string;
@@ -102,6 +102,13 @@ export async function fetchReleaseNotes(options: ReleaseNotesFetchOptions = {}):
   const response = await fetch(`/api/v1/updates/release-notes${suffix}`, { signal: options.signal });
   await assertOk(response);
   return assertReleaseNotesResponse(await response.json(), response.status);
+}
+
+export async function fetchDeveloperNotes(options: { readonly force?: boolean; readonly signal?: AbortSignal } = {}): Promise<DeveloperNotesResponse> {
+  const suffix = options.force ? "?force=true" : "";
+  const response = await fetch(`/api/v1/updates/developer-notes${suffix}`, { signal: options.signal });
+  await assertOk(response);
+  return assertDeveloperNotesResponse(await response.json(), response.status);
 }
 
 export async function applyConsoleUpdate(signal?: AbortSignal): Promise<ConsoleUpdateApplyAcceptedResponse> {
@@ -413,6 +420,41 @@ function assertConsoleUpdateApplyAccepted(value: unknown, status: number): Conso
   const payload = value as Partial<ConsoleUpdateApplyAcceptedResponse>;
   if (!payload || payload.status !== "accepted") throw new ApiError(status, "Invalid update response");
   return { status: "accepted" };
+}
+
+function assertDeveloperNotesResponse(value: unknown, status: number): DeveloperNotesResponse {
+  const payload = value as Partial<DeveloperNotesResponse>;
+  if (!payload || !Array.isArray(payload.notes) || typeof payload.snapshotHash !== "string" || typeof payload.stale !== "boolean") {
+    throw new ApiError(status, "Invalid developer notes response");
+  }
+  return {
+    notes: payload.notes.map((note) => assertDeveloperNote(note, status)),
+    snapshotHash: payload.snapshotHash,
+    stale: payload.stale,
+  };
+}
+
+function assertDeveloperNote(value: unknown, status: number): DeveloperNote {
+  const payload = value as Partial<DeveloperNote>;
+  if (
+    !payload
+    || typeof payload.id !== "string"
+    || typeof payload.hash !== "string"
+    || typeof payload.title !== "string"
+    || typeof payload.body !== "string"
+    || typeof payload.url !== "string"
+    || typeof payload.publishedAt !== "string"
+  ) {
+    throw new ApiError(status, "Invalid developer note");
+  }
+  return {
+    id: payload.id,
+    hash: payload.hash,
+    title: payload.title,
+    body: payload.body,
+    url: payload.url,
+    publishedAt: payload.publishedAt,
+  };
 }
 
 function assertReleaseNotesResponse(value: unknown, status: number): ReleaseNotesResponse {

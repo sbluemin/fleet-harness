@@ -1,0 +1,191 @@
+/* 개발자 노트 시트 — 도움말 메뉴에서 열리는 읽기 표면.
+   키보드 단축키 다이얼로그와 같은 scrim/z-index 문법을 쓴다(같은 메뉴에서 열리는 형제다). */
+
+.developer-notes-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  background: color-mix(in oklch, var(--ink-abyss) 64%, transparent);
+}
+
+.developer-notes-sheet {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, calc(100vw - 48px));
+  max-height: min(660px, calc(100vh - 64px));
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background: var(--ink-deep);
+  box-shadow: var(--shadow-floating);
+  outline: none;
+
+}
+
+.developer-notes-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--surface-rim);
+  color: var(--text-primary);
+}
+
+.developer-notes-head button {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-xs);
+  color: var(--text-tertiary);
+}
+
+.developer-notes-head button:hover {
+  background: var(--surface-glass);
+  color: var(--text-primary);
+}
+
+.developer-notes-layout {
+  display: grid;
+  /* 목록 열은 minmax(0, …)로 고정해야 긴 제목이 트랙을 늘려 본문을 밀어내지 않는다. */
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.developer-notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px;
+  overflow-y: auto;
+  border-right: 1px solid var(--surface-rim);
+}
+
+.developer-notes-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.developer-notes-item:hover {
+  background: var(--surface-glass);
+}
+
+.developer-notes-item[aria-current="true"] {
+  border-left-color: var(--brass);
+  background: var(--surface-glass);
+  color: var(--text-primary);
+}
+
+.developer-notes-item-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: var(--weight-medium);
+}
+
+.developer-notes-item time {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+/* 미읽음은 상태이므로 신호 토큰을 쓴다 — brass는 위치·포커스 전용이라 상태를 말하지 않는다. */
+.developer-notes-unread {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--aurora);
+}
+
+.developer-notes-edited {
+  padding: 0 5px;
+  border: 1px solid color-mix(in oklch, var(--warn) 45%, transparent);
+  border-radius: var(--radius-pill);
+  color: var(--warn-ink);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+}
+
+.developer-notes-body {
+  min-width: 0;
+  padding: 16px 20px 20px;
+  overflow-y: auto;
+}
+
+.developer-notes-body > h2 {
+  margin: 0 0 12px;
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.02em;
+}
+
+/* 타입 스케일 축소 — markdown/styles.css는 `.markdown-body` 자신에게 문서 읽기 스케일
+   (본문 17px · h2 30px)을 직접 공급한다. 그래서 조상(.developer-notes-sheet)에 같은 토큰을
+   선언해도 요소 자신의 선언이 이겨 아무 효과가 없다. 반드시 `.markdown-body`를 직접 겨냥한
+   더 높은 특이성으로 덮어야 한다.
+   시트는 문서가 아니라 알림이므로 콘솔 크롬(14px) 아래로 내려 위계를 유지한다. */
+.developer-notes-body .markdown-body {
+  margin-inline: 0;
+  --font-size-xs: 10px;
+  --font-size-sm: 11px;
+  --font-size-code: 11.5px;
+  --font-size-body: 13px;
+  --font-size-lg: 13.5px;
+  --font-size-title-md: 15px;
+  --font-size-display-md: 17px;
+  --font-size-display-lg: 19px;
+}
+
+.developer-notes-empty {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+}
+
+.developer-notes-source {
+  display: inline-block;
+  margin-top: 18px;
+  color: var(--aurora-ink);
+  font-size: 12px;
+}
+
+/* 원격 본문에서 떼어낸 이미지 자리 — CSP가 외부 이미지를 막으므로 깨진 이미지를 남기지 않는다. */
+.markdown-body .markdown-blocked-image {
+  padding: 8px 10px;
+  border: 1px dashed var(--surface-rim-strong);
+  border-radius: var(--radius-xs);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+@media (width <= 720px) {
+  .developer-notes-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, auto) minmax(0, 1fr);
+  }
+
+  .developer-notes-list {
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--surface-rim);
+  }
+
+  .developer-notes-item {
+    flex: none;
+  }
+}

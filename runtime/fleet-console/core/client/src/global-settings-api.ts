@@ -42,6 +42,7 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     || (payload.consolePortMode !== "dynamic" && payload.consolePortMode !== "static")
     || (payload.consoleStaticPort !== null && !isValidConsoleStaticPort(payload.consoleStaticPort))
     || !isSeenFeatureTours(payload.seenFeatureTours)
+    || !isSeenFeatureTours(payload.seenDeveloperNotes)
     || (payload.theme !== "instrument" && payload.theme !== "maritime" && payload.theme !== "carbon"
       && payload.theme !== "whites")
     || !isConsoleLanguagePreference(payload.language)
@@ -52,6 +53,7 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     consolePortMode: payload.consolePortMode,
     consoleStaticPort: payload.consoleStaticPort,
     seenFeatureTours: payload.seenFeatureTours,
+    seenDeveloperNotes: payload.seenDeveloperNotes,
     theme: payload.theme,
     uiFont: normalizeUiFont(payload.uiFont),
     language: payload.language,

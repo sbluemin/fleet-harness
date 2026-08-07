@@ -14,6 +14,7 @@ import { OperationSearch } from "./components/operation-search.js";
 import { ReconnectButton } from "./components/reconnect-button.js";
 import { Toast } from "./components/toast.js";
 import { appendPendingDeletion, deletionCountdownSeconds, latestPendingDeletion } from "./deletion-undo.js";
+import { DeveloperNotesSheet } from "./components/developer-notes-sheet.js";
 import { WhatsNewModal } from "./components/whatsnew-modal.js";
 import { FloatingWidgetLayer } from "./floating-widget-layer.js";
 import { useGlobalSettingsStore } from "./global-settings-store.js";
@@ -28,6 +29,7 @@ import { setRailChromeExpanded, toggleRailChrome } from "./rail/rail-store.js";
 import { refreshObserverStatus } from "./operations-sse.js";
 import { closeKeyboardShortcuts, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fetch.js";
+import { startDeveloperNotesPolling } from "./developer-notes-fetch.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "./sidebar/operations-side-bar-store.js";
 import { getViewModeSnapshot } from "./view-mode-store.js";
 import { useConsoleLocale, useT } from "./i18n/index.js";
@@ -152,6 +154,9 @@ export function App() {
     void requestReleaseNotes({ locale: releaseNotesLocale });
     return abortReleaseNotesFetch;
   }, [releaseNotesLocale]);
+
+  // 노트는 로케일과 무관하다(개발자가 쓴 한 벌 그대로 읽는다) — 로케일 변경에 재조회하지 않는다.
+  useEffect(() => startDeveloperNotesPolling(), []);
 
   const shortcutsReturnFocusRef = useRef<HTMLElement | null>(null);
 
@@ -306,6 +311,7 @@ export function App() {
         />
         {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
         <WhatsNewModal state={state} />
+        {state.developerNotesOpen ? <DeveloperNotesSheet state={state} /> : null}
         <CommissioningOverlay state={state} />
         <FeatureTourOverlay />
         <Toast

@@ -13,6 +13,7 @@ const SETTINGS: GlobalSettingsState = {
   consoleStaticPort: null,
   language: "auto",
   seenFeatureTours: [],
+  seenDeveloperNotes: [],
   theme: "instrument",
   uiFont: { source: "builtin", id: "manrope", size: 14 },
 };

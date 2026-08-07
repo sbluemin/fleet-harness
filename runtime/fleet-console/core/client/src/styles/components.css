@@ -9362,9 +9362,25 @@ body[data-codex-reading="true"] .operations-side-bar {
   background: var(--positive);
 }
 
+/* 읽지 않은 개발자 노트 = 도착 상태 신호(aurora). 업데이트 점(positive)은 설정 버튼에
+   있으므로 두 신호가 같은 버튼에서 겹치지 않는다. brass는 위치·포커스 전용이라 여기 못 쓴다. */
+.command-band-notes-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--aurora);
+}
+
 .command-band-system-anchor {
   position: relative;
   display: flex;
+}
+
+.command-band-help {
+  position: relative;
 }
 
 .command-band-system-menu {
@@ -9407,6 +9423,15 @@ body[data-codex-reading="true"] .operations-side-bar {
 }
 
 .command-band-system-menu svg { width: 13px; height: 13px; }
+.command-band-system-menu-count {
+  margin-left: auto;
+  padding: 0 6px;
+  border: 1px solid color-mix(in oklch, var(--aurora) 45%, transparent);
+  border-radius: var(--radius-pill);
+  color: var(--aurora-ink);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
 .command-band-system-menu-divider { height: 1px; margin: 4px 6px; background: var(--surface-rim); }
 
 /* 대기 중 업데이트 안내는 정보다 — 중립 잉크. 진행(live)=warn, 실패(error)=coral만 신호로 발화. */

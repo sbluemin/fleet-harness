@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { CommandBandSystemCluster, propagateSettingsEntryIndex, resolveUpdateApplyCopy } from "../core/client/src/components/command-band-system-cluster.js";
 import { getT } from "../core/client/src/i18n/index.js";
+import { applyDeveloperNotes } from "../core/client/src/store.js";
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -154,18 +155,18 @@ describe("CommandBandSystemCluster", () => {
     act(() => trigger.click());
 
     const items = menuItems();
-    expect(items).toHaveLength(5);
-    // What's New stays disabled while release notes are empty, so focus starts on Keyboard Shortcuts.
-    expect(document.activeElement).toBe(items[1]);
+    expect(items).toHaveLength(6);
+    // What's New와 개발자 노트가 모두 비어 비활성이므로 포커스는 키보드 단축키에서 시작한다.
+    expect(document.activeElement).toBe(items[2]);
     // 화면 안내는 짚을 앵커가 없는 화면에서 비활성이므로 포커스 순환에서도 빠진다.
-    expect((items[2] as HTMLButtonElement).disabled).toBe(true);
-    expect(items[3]?.getAttribute("aria-label")).toBe("Open GitHub repository");
+    expect((items[3] as HTMLButtonElement).disabled).toBe(true);
+    expect(items[4]?.getAttribute("aria-label")).toBe("Open GitHub repository");
     expect(document.querySelector(".command-band-github-version")?.textContent).toMatch(/^v/);
 
     act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "End" })); });
-    expect(document.activeElement).toBe(items[4]);
+    expect(document.activeElement).toBe(items[5]);
     act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" })); });
-    expect(document.activeElement).toBe(items[1]);
+    expect(document.activeElement).toBe(items[2]);
   });
 
   it("enables the screen guide entry only where a seen guide is anchored", () => {
@@ -175,16 +176,43 @@ describe("CommandBandSystemCluster", () => {
     act(() => trigger.click());
 
     // 시청 기록이 없으면 되살릴 것도 없다 — 아직 못 본 안내는 "다시 보기"의 대상이 아니다.
-    const entry = menuItems()[2] as HTMLButtonElement;
+    const entry = menuItems()[3] as HTMLButtonElement;
     expect(entry.textContent).toContain("Show the screen guide");
     expect(entry.disabled).toBe(true);
+  });
+
+  it("seats developer notes directly under What's New and disables it while there is nothing to read", () => {
+    // 눌러도 아무 일이 없는 항목을 남기지 않는다 — 무응답 대신 비활성으로 그 사실을 먼저 알린다.
+    mountCluster();
+    act(() => document.querySelector<HTMLButtonElement>(".command-band-help")!.click());
+    const items = menuItems();
+    expect(items[0]?.textContent).toContain("What's New");
+    expect(items[1]?.textContent).toContain("Developer notes");
+    expect((items[1] as HTMLButtonElement).disabled).toBe(true);
+    expect(document.querySelector(".command-band-notes-dot")).toBeNull();
+  });
+
+  it("marks the help button and the menu entry when an unread note arrives", () => {
+    act(() => applyDeveloperNotes({
+      notes: [{ id: "gh-1", hash: "aaaa", title: "Gateway maintenance", body: "", url: "https://github.com/sbluemin/fleet-harness/issues/1", publishedAt: "2026-08-07T01:00:00Z" }],
+      snapshotHash: "snapshot-with-one-note",
+      stale: false,
+    }));
+    mountCluster();
+    // 도착 신호는 도움말 버튼에 붙는다 — 업데이트 점은 설정 버튼에 있어 둘이 겹치지 않는다.
+    expect(document.querySelector(".command-band-notes-dot")).not.toBeNull();
+    act(() => document.querySelector<HTMLButtonElement>(".command-band-help")!.click());
+    const entry = menuItems()[1] as HTMLButtonElement;
+    expect(entry.disabled).toBe(false);
+    expect(entry.querySelector(".command-band-system-menu-count")?.textContent).toBe("1");
+    act(() => applyDeveloperNotes({ notes: [], snapshotHash: "snapshot-empty", stale: false }));
   });
 
   it("closes the Help menu on Escape and returns focus to the trigger", () => {
     mountCluster();
     const trigger = document.querySelector<HTMLButtonElement>(".command-band-help")!;
     act(() => trigger.click());
-    expect(menuItems()).toHaveLength(5);
+    expect(menuItems()).toHaveLength(6);
 
     act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); });
     expect(menuItems()).toHaveLength(0);

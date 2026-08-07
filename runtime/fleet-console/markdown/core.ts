@@ -26,6 +26,16 @@ export interface RenderMarkdownOptions {
   readonly copyLabel?: string;
   /** 코드블록 Copy 버튼 aria-label. 기본값 `(language) => \`Copy ${language} code\``. */
   readonly copyAriaLabel?: (language: string) => string;
+  /**
+   * 원격에서 저작된 본문을 렌더할 때 켠다(개발자 노트).
+   * - 이미지는 제거하고 자리에 안내 문구를 남긴다: 콘솔 CSP의 `img-src`가 `'self' data:
+   *   https://img.shields.io`뿐이라 외부 첨부는 테두리만 남은 깨진 이미지가 된다.
+   * - 링크는 절대 https만 남긴다: 허용 URI 정규식이 스킴 없는 경로를 통과시키므로
+   *   `[x](/settings)` 같은 링크가 콘솔 내부를 항해하게 된다.
+   */
+  readonly untrustedRemoteBody?: boolean;
+  /** `untrustedRemoteBody`에서 제거된 이미지 자리에 남길 문구. */
+  readonly blockedImageLabel?: string;
 }
 
 interface FrontmatterEntry {
@@ -76,6 +86,7 @@ export function renderMarkdown(body: string, options: RenderMarkdownOptions = {}
     copyAriaLabel: options.copyAriaLabel ?? ((language) => `Copy ${language} code`),
   });
   decorateLinks(document);
+  if (options.untrustedRemoteBody === true) restrictRemoteBody(document, options.blockedImageLabel ?? "Image omitted");
   const html = DOMPurify.sanitize(document.body.innerHTML, sanitizeConfig);
   return {
     html,
@@ -262,6 +273,25 @@ function configureHighlighter(): typeof hljs {
 function languageFromClass(className: string): string | null {
   const match = className.match(/language-([a-z0-9_-]+)/i);
   return match?.[1]?.toLowerCase() ?? null;
+}
+
+// 원격 저작 본문 전용 축소. 렌더 단계에서 강제해야 하는 이유는 두 제약이 서로 다른 곳에
+// 있기 때문이다 — 이미지는 콘솔 CSP가, 상대 링크는 마크다운 허용 URI 정규식이 만든다.
+function restrictRemoteBody(document: Document, blockedImageLabel: string): void {
+  for (const image of [...document.querySelectorAll("img")]) {
+    const placeholder = document.createElement("p");
+    placeholder.className = "markdown-blocked-image";
+    placeholder.textContent = blockedImageLabel;
+    image.replaceWith(placeholder);
+  }
+  for (const link of [...document.querySelectorAll("a")]) {
+    const href = link.getAttribute("href") ?? "";
+    if (/^https:\/\//i.test(href)) continue;
+    // 링크 텍스트는 정보이므로 살리고 항해 기능만 뗀다.
+    const span = document.createElement("span");
+    span.textContent = link.textContent ?? "";
+    link.replaceWith(span);
+  }
 }
 
 function isExternalLink(href: string): boolean {

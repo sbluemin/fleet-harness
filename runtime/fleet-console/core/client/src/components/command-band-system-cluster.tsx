@@ -8,7 +8,8 @@ import { FEATURE_TOURS } from "../feature-tour-catalog.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
-import { openWhatsNew } from "../store.js";
+import { countUnreadDeveloperNotes } from "../developer-notes-read.js";
+import { openDeveloperNotes, openWhatsNew } from "../store.js";
 import { forgetSeenFeatureTours, replayableFeatureTourIds } from "./feature-tour.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 
@@ -140,6 +141,9 @@ function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: 
   // 아무 일도 일어나지 않으므로, 무응답 대신 비활성으로 그 사실을 먼저 알린다.
   const replayableTourIds = open ? replayableFeatureTourIds(FEATURE_TOURS, document) : [];
   const replayDisabled = forgetSeenFeatureTours(seenFeatureTours, replayableTourIds) === seenFeatureTours;
+  const consoleState = useConsoleState();
+  const unreadNotes = countUnreadDeveloperNotes(globalSettings.state?.seenDeveloperNotes ?? [], consoleState.developerNotes);
+  const notesDisabled = consoleState.developerNotes.length === 0;
 
   useMenuButtonKeyboard(rootRef, triggerRef, menuRef, open, setOpen);
 
@@ -151,9 +155,10 @@ function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: 
   };
 
   return <span ref={rootRef} className="command-band-system-anchor">
-    <button ref={triggerRef} type="button" className="command-band-button command-band-help" onClick={() => setOpen((previous) => !previous)} aria-haspopup="menu" aria-expanded={open} aria-label={t("chrome.system.help")} title={t("chrome.system.help")}><HelpGlyph /></button>
+    <button ref={triggerRef} type="button" className="command-band-button command-band-help" onClick={() => setOpen((previous) => !previous)} aria-haspopup="menu" aria-expanded={open} aria-label={t("chrome.system.help")} title={t("chrome.system.help")}><HelpGlyph />{unreadNotes > 0 ? <span className="command-band-notes-dot" aria-hidden="true" /> : null}</button>
     {open ? <div ref={menuRef} className="command-band-system-menu" role="menu" aria-label={t("chrome.system.help")}>
       <button type="button" role="menuitem" disabled={releaseDisabled} onClick={() => { setOpen(false); openWhatsNew(); }}><WhatsNewGlyph /><span>{t("chrome.system.whatsNew")}</span></button>
+      <button type="button" role="menuitem" disabled={notesDisabled} title={notesDisabled ? t("chrome.system.developerNotesNone") : undefined} onClick={() => { setOpen(false); openDeveloperNotes(); }}><DeveloperNotesGlyph /><span>{t("chrome.system.developerNotes")}</span>{unreadNotes > 0 ? <span className="command-band-system-menu-count" aria-label={t("chrome.system.developerNotesUnread", { count: String(unreadNotes) })}>{unreadNotes}</span> : null}</button>
       <button type="button" role="menuitem" onClick={() => { setOpen(false); setShortcutsOpen(true); }}><KeyboardGlyph /><span>{t("chrome.system.keyboardShortcuts")}</span></button>
       <button type="button" role="menuitem" disabled={replayDisabled} onClick={replayScreenGuide} title={t(replayDisabled ? "chrome.system.replayScreenGuideNone" : "chrome.system.replayScreenGuideTitle")}><ScreenGuideGlyph /><span>{t("chrome.system.replayScreenGuide")}</span></button>
       {updateAvailable ? <UpdateApplyControl latestVersion={latestVersion} /> : null}
@@ -380,6 +385,11 @@ function HelpGlyph() {
 
 function WhatsNewGlyph() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5h12v8H2zM2 5l2-2.5h8L14 5M8 5v8" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
+}
+
+// 개발자 노트 — 접힌 편지. "새 소식"의 상자 글리프와 구분되면서 같은 선 굵기를 쓴다.
+function DeveloperNotesGlyph() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M2 4.5 8 8.8l6-4.3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /></svg>;
 }
 
 function KeyboardGlyph() {

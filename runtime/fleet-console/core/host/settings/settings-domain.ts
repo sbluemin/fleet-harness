@@ -22,6 +22,7 @@ export interface ConsoleGeneralSettings {
   readonly consoleStaticPort?: number;
   readonly language?: "auto" | "en" | "ko";
   readonly seenFeatureTours?: readonly string[];
+  readonly seenDeveloperNotes?: readonly string[];
   readonly theme?: ConsoleThemeId;
   readonly uiFont?: UiFontSettings;
 }
@@ -50,6 +51,10 @@ const MIN_CONSOLE_STATIC_PORT = 1024;
 const MAX_CONSOLE_STATIC_PORT = 65535;
 const MAX_SEEN_FEATURE_TOURS = 64;
 const MAX_FEATURE_TOUR_KEY_LENGTH = 64;
+// Developer-note read markers are `<id>:<content hash>` pairs. Keying on the hash rather
+// than the id alone is what makes an edited note surface again instead of staying read.
+const MAX_SEEN_DEVELOPER_NOTES = 64;
+const MAX_DEVELOPER_NOTE_KEY_LENGTH = 96;
 
 export function createConsoleSettingsStore(deps: CreateConsoleSettingsStoreDeps = {}): DurableJsonStore<ConsoleSettingsData> {
   const paths = deps.paths ?? createConsoleDataPaths();
@@ -94,6 +99,17 @@ export function sanitizeUiFontSettings(value: unknown): UiFontSettings | undefin
   return undefined;
 }
 
+export function sanitizeSeenDeveloperNotes(value: unknown): readonly string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== "string" || item.length > MAX_DEVELOPER_NOTE_KEY_LENGTH) continue;
+    seen.add(item);
+    if (seen.size === MAX_SEEN_DEVELOPER_NOTES) break;
+  }
+  return [...seen];
+}
+
 export function sanitizeSeenFeatureTours(value: unknown): readonly string[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const seen = new Set<string>();
@@ -123,6 +139,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ? value.language
     : undefined;
   const seenFeatureTours = sanitizeSeenFeatureTours(value.seenFeatureTours);
+  const seenDeveloperNotes = sanitizeSeenDeveloperNotes(value.seenDeveloperNotes);
   // 퇴역 라이트 테마(daywatch/drydock) 저장값은 whites로 무손실 폴백한다 — 라이트 사용자가
   // 업그레이드 직후 다크 기본값으로 떨어지는 극성 반전을 막는다.
   const theme = value.theme === "instrument" || value.theme === "maritime" || value.theme === "carbon"
@@ -137,6 +154,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(consoleStaticPort !== undefined ? { consoleStaticPort } : {}),
     ...(language !== undefined ? { language } : {}),
     ...(seenFeatureTours !== undefined ? { seenFeatureTours } : {}),
+    ...(seenDeveloperNotes !== undefined ? { seenDeveloperNotes } : {}),
     ...(theme !== undefined ? { theme } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
   };
@@ -192,6 +210,7 @@ interface GlobalSettingsBody {
   readonly consoleStaticPort?: unknown;
   readonly language?: unknown;
   readonly seenFeatureTours?: unknown;
+  readonly seenDeveloperNotes?: unknown;
   readonly theme?: unknown;
   readonly uiFont?: unknown;
 }
@@ -273,6 +292,10 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_seen_feature_tours" });
     return;
   }
+  if (body.seenDeveloperNotes !== undefined && !isSeenDeveloperNotesInput(body.seenDeveloperNotes)) {
+    deps.writeJson(res, 400, { error: "invalid_seen_developer_notes" });
+    return;
+  }
   if (
     body.theme !== undefined
     && body.theme !== "instrument" && body.theme !== "maritime" && body.theme !== "carbon"
@@ -298,6 +321,7 @@ async function mutateGlobalSettings(
       ...(isValidGlobalStaticPortInput(body.consoleStaticPort) ? { consoleStaticPort: body.consoleStaticPort } : {}),
       ...(body.language === "auto" || body.language === "en" || body.language === "ko" ? { language: body.language } : {}),
       ...(body.seenFeatureTours !== undefined ? { seenFeatureTours: sanitizeSeenFeatureTours(body.seenFeatureTours) ?? [] } : {}),
+      ...(body.seenDeveloperNotes !== undefined ? { seenDeveloperNotes: sanitizeSeenDeveloperNotes(body.seenDeveloperNotes) ?? [] } : {}),
       ...(theme !== undefined ? { theme } : {}),
       ...(isUiFontSettings(body.uiFont) ? { uiFont: body.uiFont } : {}),
     },
@@ -315,6 +339,7 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     consoleStaticPort: general.consoleStaticPort ?? null,
     language: general.language ?? "auto",
     seenFeatureTours: general.seenFeatureTours ?? [],
+    seenDeveloperNotes: general.seenDeveloperNotes ?? [],
     theme: general.theme ?? "instrument",
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
   };
@@ -337,6 +362,12 @@ function isSeenFeatureToursInput(value: unknown): value is readonly string[] {
   return Array.isArray(value)
     && value.length <= 64
     && value.every((item) => typeof item === "string" && item.length <= 64);
+}
+
+function isSeenDeveloperNotesInput(value: unknown): value is readonly string[] {
+  return Array.isArray(value)
+    && value.length <= MAX_SEEN_DEVELOPER_NOTES
+    && value.every((item) => typeof item === "string" && item.length <= MAX_DEVELOPER_NOTE_KEY_LENGTH);
 }
 
 interface PluginSettingsRouteDeps {

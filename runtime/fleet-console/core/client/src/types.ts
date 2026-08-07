@@ -32,6 +32,21 @@ export interface ReleaseNotes {
   readonly localizationFallback: boolean;
 }
 
+export interface DeveloperNote {
+  readonly id: string;
+  readonly hash: string;
+  readonly title: string;
+  readonly body: string;
+  readonly url: string;
+  readonly publishedAt: string;
+}
+
+export interface DeveloperNotesResponse {
+  readonly notes: readonly DeveloperNote[];
+  readonly snapshotHash: string;
+  readonly stale: boolean;
+}
+
 export interface ReleaseNotesResponse {
   readonly notes: readonly ReleaseNotes[];
   readonly sourceRef: "main";
@@ -126,6 +141,7 @@ export interface GlobalSettingsState {
   readonly consolePortMode: "dynamic" | "static";
   readonly consoleStaticPort: number | null;
   readonly seenFeatureTours: readonly string[];
+  readonly seenDeveloperNotes: readonly string[];
   readonly theme: ThemeId;
   readonly uiFont: UiFontSettings;
   readonly language: ConsoleLanguagePreference;
@@ -202,6 +218,10 @@ export interface ConsoleState {
   readonly releaseNotesStale: boolean;
   readonly automaticWhatsNewVersion: string | null;
   readonly selectedReleaseNoteKey: string | null;
+  readonly developerNotes: readonly DeveloperNote[];
+  readonly developerNotesSnapshotHash: string | null;
+  readonly developerNotesOpen: boolean;
+  readonly selectedDeveloperNoteId: string | null;
   readonly onboardingOpen: boolean;
   readonly bootstrapped: boolean;
   readonly pendingOperationFocus: string | null;

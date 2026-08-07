@@ -9,6 +9,7 @@ import type {
   CodexReaderRequest,
   ConnectionState,
   ConsoleState,
+  DeveloperNotesResponse,
   NotificationKind,
   NotificationPreferences,
   OperationGroup,
@@ -82,6 +83,10 @@ let state: ConsoleState = {
   releaseNotesStale: false,
   automaticWhatsNewVersion: null,
   selectedReleaseNoteKey: null,
+  developerNotes: [],
+  developerNotesSnapshotHash: null,
+  developerNotesOpen: false,
+  selectedDeveloperNoteId: null,
   onboardingOpen: false,
   bootstrapped: false,
   pendingOperationFocus: null,
@@ -551,6 +556,37 @@ export function toggleOperationSearch(): void {
     operationSearchOpen,
     ...(operationSearchOpen ? {} : { operationSearchSeed: null }),
   });
+}
+
+// 스냅샷 해시가 같으면 목록 참조를 갈지 않는다 — 폴링이 매 시간 돌아도 구독자가 다시
+// 렌더하지 않고, 열려 있던 시트의 선택·스크롤도 흔들리지 않는다.
+export function applyDeveloperNotes(response: DeveloperNotesResponse): void {
+  if (state.developerNotesSnapshotHash === response.snapshotHash) return;
+  const selectedStillPresent = state.selectedDeveloperNoteId !== null
+    && response.notes.some((note) => note.id === state.selectedDeveloperNoteId);
+  setState({
+    developerNotes: response.notes,
+    developerNotesSnapshotHash: response.snapshotHash,
+    selectedDeveloperNoteId: selectedStillPresent ? state.selectedDeveloperNoteId : response.notes[0]?.id ?? null,
+  });
+}
+
+export function openDeveloperNotes(): void {
+  if (state.developerNotes.length === 0 || state.developerNotesOpen) return;
+  setState({
+    developerNotesOpen: true,
+    selectedDeveloperNoteId: state.selectedDeveloperNoteId ?? state.developerNotes[0]?.id ?? null,
+  });
+}
+
+export function closeDeveloperNotes(): void {
+  if (!state.developerNotesOpen) return;
+  setState({ developerNotesOpen: false });
+}
+
+export function selectDeveloperNote(id: string): void {
+  if (!state.developerNotes.some((note) => note.id === id)) return;
+  setState({ selectedDeveloperNoteId: id });
 }
 
 export function openWhatsNew(): void {
