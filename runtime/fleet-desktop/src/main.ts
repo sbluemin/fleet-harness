@@ -14,7 +14,7 @@ import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
 import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
 import { createPairingNotifier } from "./pairing-notifications.js";
 import { createPairingModal } from "./pairing-modal.js";
-import { installRemoteCertificatePins, joinRemoteConsole } from "./remote-access.js";
+import { confirmRemoteIdentity, installRemoteCertificatePins, joinRemoteConsole } from "./remote-access.js";
 import { createRuntimePairing, type RemoteAccessAdapter } from "./runtime-pairing.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
 import { createDesktopThemeSynchronizer } from "./desktop-theme-sync.js";
@@ -195,6 +195,7 @@ function createRemoteAccessAdapter(logger: DesktopLogger): RemoteAccessAdapter {
   const consoleSession = session.defaultSession;
   const pins = installRemoteCertificatePins(consoleSession, (message) => logger.error(message));
   return {
+    confirmIdentity: (link) => confirmRemoteIdentity(link),
     pin: (link) => pins.pin(link.hostname, link.fingerprint),
     unpin: (link) => pins.unpin(link.hostname),
     join: (link) => joinRemoteConsole((input, init) => consoleSession.fetch(input, init), link),

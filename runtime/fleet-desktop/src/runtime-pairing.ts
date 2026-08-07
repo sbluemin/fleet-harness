@@ -39,7 +39,9 @@ export interface RuntimePairingNotifier {
  * 자격을 세션으로 바꾸는 일(조인)이 같은 세션 위에서 같은 순서로 일어나야 한다.
  */
 export interface RemoteAccessAdapter {
-  /** 첫 네트워크 요청보다 반드시 먼저 호출된다. */
+  /** Chromium이 이 호스트를 보기 전에 인증서를 확인한다 — 어긋난 링크는 여기서 끝난다. */
+  confirmIdentity(link: ValidatedAccessLink): Promise<void>;
+  /** 첫 브라우저 요청보다 반드시 먼저 호출된다. */
   pin(link: ValidatedAccessLink): void;
   unpin(link: ValidatedAccessLink): void;
   join(link: ValidatedAccessLink): Promise<void>;
@@ -189,8 +191,9 @@ export function createRuntimePairing(dependencies: RuntimePairingDependencies): 
         await window.loadFile(dependencies.entryPagePath);
         entryLoaded = true;
         await pushEntrySnapshot(window.webContents, snapshotForAccessPhase(candidate.hostname, remotePhase));
-        // 순서가 방어다 — 지문을 고정하기 전에는 이 호스트로 어떤 요청도 나가지 않는다.
+        // 순서가 방어다 — 지문이 확인되고 고정되기 전에는 브라우저가 이 호스트를 보지 않는다.
         advance(candidate, "pinning_identity");
+        await remote.confirmIdentity(candidate);
         remote.pin(candidate);
         advance(candidate, "opening_session");
         await remote.join(candidate);
@@ -385,6 +388,7 @@ function failureMessage(code: string): string {
   switch (code) {
     case "pairing_target_invalid": return "That is not a Fleet Console access link. Create a new link in the console you want to reach.";
     case "remote_access_unavailable": return "This Fleet Console Desktop cannot open remote links.";
+    case "remote_link_fingerprint_mismatch": return "That console presented a different certificate than the link expects. Create the link again from that console, and do not use this one.";
     case "remote_link_rejected": return "The access link was already used or has expired. Create a new one.";
     case "remote_link_host_mismatch": return "The remote console refused this address. Create the link again from that console.";
     case "remote_link_unreachable": return "Could not reach that console, or its certificate did not match the link.";

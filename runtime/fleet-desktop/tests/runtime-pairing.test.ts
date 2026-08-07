@@ -112,7 +112,7 @@ describe("runtime pairing", () => {
 
     await pairing.switchTo(ACCESS_LINK, runtimeWindow(async (url) => { order.push(`load:${url}`); }) as never, policy);
 
-    expect(order).toEqual(["pin", "join", `fetch:${REMOTE_ORIGIN}/api/v1/pairing-identity`, `load:${REMOTE_ORIGIN}/console/`]);
+    expect(order).toEqual(["confirm", "pin", "join", `fetch:${REMOTE_ORIGIN}/api/v1/pairing-identity`, `load:${REMOTE_ORIGIN}/console/`]);
     expect(remote.pin).toHaveBeenCalledWith(expect.objectContaining({ hostname: "192.168.1.20", fingerprint: FINGERPRINT }));
     expect(policy.admitRemoteConsoleOrigin).toHaveBeenCalledWith(REMOTE_ORIGIN);
     expect(policy.currentConsoleOrigin()).toBe(REMOTE_ORIGIN);
@@ -177,6 +177,24 @@ describe("runtime pairing", () => {
     expect(remote.forget).toHaveBeenCalledWith(expect.objectContaining({ origin: REMOTE_ORIGIN }));
     expect(policy.withdrawRemoteConsoleOrigin).toHaveBeenCalledWith(REMOTE_ORIGIN);
     expect(policy.currentConsoleOrigin()).toBe("http://127.0.0.1:4000");
+  });
+
+  it("stops a fingerprint mismatch before the browser ever sees that host", async () => {
+    const order: string[] = [];
+    const remote = remoteAccessStub(order, { confirmIdentity: async () => { order.push("confirm"); throw new Error("remote_link_fingerprint_mismatch"); } });
+    const policy = trackingPolicy();
+    const notifier = { show: vi.fn() };
+    const pairing = createRuntimePairing({ ...pairingDefaults(), notifier, themeSynchronizer: null, modal: modalReturning(null), remoteAccess: remote });
+
+    await pairing.switchTo(ACCESS_LINK, runtimeWindow(async (url) => { order.push(`load:${url}`); }) as never, policy);
+
+    // 브라우저가 그 호스트를 한 번이라도 보면 실패가 캐시되어 다음 올바른 링크까지 막힌다.
+    expect(order).toEqual(["confirm", "load:http://127.0.0.1:4000/console/"]);
+    expect(remote.pin).not.toHaveBeenCalled();
+    expect(remote.join).not.toHaveBeenCalled();
+    expect(remote.fetch).not.toHaveBeenCalled();
+    expect(policy.admitRemoteConsoleOrigin).not.toHaveBeenCalled();
+    expect(notifier.show).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining("different certificate") }));
   });
 
   it("keeps the live pin when a second link to the same console fails to join", async () => {
@@ -292,6 +310,7 @@ describe("runtime pairing", () => {
   });
 
   it.each([
+    ["remote_link_fingerprint_mismatch", "That console presented a different certificate than the link expects. Create the link again from that console, and do not use this one."],
     ["remote_link_rejected", "The access link was already used or has expired. Create a new one."],
     ["remote_link_host_mismatch", "The remote console refused this address. Create the link again from that console."],
     ["remote_link_unreachable", "Could not reach that console, or its certificate did not match the link."],
@@ -394,8 +413,9 @@ function trackingPolicy() {
   };
 }
 
-function remoteAccessStub(order: string[], overrides: Partial<{ join: () => Promise<void>; fetch: (input: string) => Promise<Response>; forget: () => Promise<void> }> = {}) {
+function remoteAccessStub(order: string[], overrides: Partial<{ confirmIdentity: () => Promise<void>; join: () => Promise<void>; fetch: (input: string) => Promise<Response>; forget: () => Promise<void> }> = {}) {
   return {
+    confirmIdentity: vi.fn(overrides.confirmIdentity ?? (async () => { order.push("confirm"); })),
     pin: vi.fn(() => { order.push("pin"); }),
     unpin: vi.fn(),
     join: vi.fn(overrides.join ?? (async () => { order.push("join"); })),

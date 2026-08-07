@@ -1,9 +1,13 @@
+import net from "node:net";
+import tls from "node:tls";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
   CERTIFICATE_ACCEPTED,
   CERTIFICATE_DEFAULT,
   CERTIFICATE_REJECTED,
+  confirmRemoteIdentity,
   installRemoteCertificatePins,
   joinRemoteConsole,
   type CertificateVerifyProc,
@@ -27,6 +31,16 @@ const TEST_CERTIFICATE = [
   "AQH/BAUwAwEB/zAKBggqhkjOPQQDAgNHADBEAiAcerFTzrB6EGtD6SQUbsvvAyTq",
   "YVJb5bEcgcrn6qUm5QIgB2vujyeKrfiyuxsANZse3zlHOstj3TFdaoxovsexxXM=",
   "-----END CERTIFICATE-----",
+  "",
+].join("\n");
+
+/** 위 인증서와 짝인 개인키. 실제 TLS 핸드셰이크로 신원 확인 경로를 검증하려면 필요하다. */
+const TEST_KEY = [
+  "-----BEGIN PRIVATE KEY-----",
+  "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgfN7fRhySfa0C/HaT",
+  "fqgMoLJI4HcIrdRtEqR3r/SlwLWhRANCAATIGn5NFTF1E2zSev1fJbQh1d7vQX7x",
+  "2NhChPgNEidaSXCtbbiR5WcOhv9mtpQCzNOq7NTfL+7X9aKUYd3CG8Af",
+  "-----END PRIVATE KEY-----",
   "",
 ].join("\n");
 
@@ -110,3 +124,50 @@ function pinnedSession(log?: (message: string) => void) {
   };
   return { pins, verify };
 }
+
+describe("remote identity confirmation", () => {
+  it("accepts a server whose live certificate matches the link", async () => {
+    const server = await startTlsServer();
+    try {
+      const link = parseAccessLink(`https://127.0.0.1:${server.port}/join#t=${TOKEN}&f=${server.fingerprint}`);
+      await expect(confirmRemoteIdentity(link, 2000)).resolves.toBeUndefined();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("names a mismatch as its own failure so it never reaches the browser", async () => {
+    const server = await startTlsServer();
+    try {
+      const link = parseAccessLink(`https://127.0.0.1:${server.port}/join#t=${TOKEN}&f=${OTHER_FINGERPRINT}`);
+      await expect(confirmRemoteIdentity(link, 2000)).rejects.toThrow("remote_link_fingerprint_mismatch");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reports an unreachable host without claiming a mismatch", async () => {
+    const link = parseAccessLink(`https://127.0.0.1:1/join#t=${TOKEN}&f=${FINGERPRINT}`);
+    await expect(confirmRemoteIdentity(link, 1000)).rejects.toThrow("remote_link_unreachable");
+  });
+});
+
+async function startTlsServer(): Promise<{ port: number; fingerprint: string; close: () => Promise<void> }> {
+  const server = tls.createServer({ cert: TEST_CERTIFICATE, key: TEST_KEY }, (socket) => socket.end());
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("no address");
+  return {
+    port: address.port,
+    fingerprint: FINGERPRINT,
+    close: () => new Promise<void>((resolve) => { server.close(() => resolve()); }),
+  };
+}
+
+// net은 SNI 분기를 계약으로 확인하려고 import한다 — IP 리터럴에는 servername을 붙이지 않는다.
+describe("SNI", () => {
+  it("treats an IPv4 literal as an address, not a hostname", () => {
+    expect(net.isIP("192.168.1.20")).toBe(4);
+    expect(net.isIP("console.example")).toBe(0);
+  });
+});

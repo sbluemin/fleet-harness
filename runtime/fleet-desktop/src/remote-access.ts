@@ -1,4 +1,7 @@
-import { certificateFingerprint, type ValidatedAccessLink } from "./remote-access-link.js";
+import net from "node:net";
+import tls from "node:tls";
+
+import { certificateFingerprint, normalizeFingerprint, type ValidatedAccessLink } from "./remote-access-link.js";
 
 /** Chromium 검증 결과 코드. 0=수락, -2=거부, -3=Chromium 판정 그대로. */
 export const CERTIFICATE_ACCEPTED = 0;
@@ -58,6 +61,45 @@ export function installRemoteCertificatePins(session: PinnableSession, log?: (me
     unpin(hostname): void { pins.delete(hostname); },
     clear(): void { pins.clear(); },
   };
+}
+
+/**
+ * Chromium이 이 호스트를 처음 보기 전에, 우리가 직접 인증서를 확인한다.
+ *
+ * Chromium은 (인증서, 호스트) 쌍의 검증 결과를 캐시하고, 그 캐시는 핀 교체·연결 종료·
+ * 검증기 재설치·clearCache·setSSLConfig 어느 것으로도 무효화되지 않는다(실측). 지문이
+ * 어긋난 링크를 한 번이라도 Chromium에 통과시키면 그 실패가 캐시에 남아, 뒤이어 붙여넣은
+ * 올바른 링크까지 앱을 재시작할 때까지 거부된다. 그래서 어긋난 링크는 Chromium에
+ * 도달하기 전에 여기서 끝난다.
+ *
+ * 이 확인이 Chromium의 검증기를 대신하지는 않는다. 확인과 요청 사이에 인증서가 바뀌면
+ * 핀이 그 요청을 막는다 — 그 경우는 사용자 오타가 아니라 실제 교체이므로 시끄러워야 한다.
+ */
+export async function confirmRemoteIdentity(link: ValidatedAccessLink, timeoutMs = REMOTE_REQUEST_TIMEOUT_MS): Promise<void> {
+  const presented = await readPresentedFingerprint(link.hostname, link.port, timeoutMs);
+  if (presented === null) throw new Error("remote_link_unreachable");
+  if (presented !== link.fingerprint) throw new Error("remote_link_fingerprint_mismatch");
+}
+
+function readPresentedFingerprint(hostname: string, port: number, timeoutMs: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    const settle = (value: string | null): void => {
+      socket.destroy();
+      resolve(value);
+    };
+    // 신원 확인이 목적이므로 체인 검증은 끄고 제시된 인증서만 읽는다. IP 리터럴에는 SNI를 붙이지 않는다.
+    const socket = tls.connect({
+      host: hostname,
+      port,
+      rejectUnauthorized: false,
+      ...(net.isIP(hostname) === 0 ? { servername: hostname } : {}),
+    }, () => {
+      const certificate = socket.getPeerX509Certificate();
+      settle(certificate ? normalizeFingerprint(certificate.fingerprint256) : null);
+    });
+    socket.setTimeout(timeoutMs, () => settle(null));
+    socket.on("error", () => settle(null));
+  });
 }
 
 /**
