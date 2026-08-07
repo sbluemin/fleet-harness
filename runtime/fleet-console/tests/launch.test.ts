@@ -26,7 +26,7 @@ interface FakeRuntime {
 }
 
 const baseProfile = {
-  id: "claude",
+  id: "claude-native",
   label: "Claude Code",
   bin: "/bin/claude",
   args: ["--model", "sonnet"],
@@ -94,7 +94,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       messagePolicy: { bracketedPaste: true, multilineStrategy: "paste-mode" },
       terminalName: "xterm-256color",
     });
-    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "claude" }));
+    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "claude-gateway" }));
     expect(injectProfile).toHaveBeenCalledTimes(1);
     expect(events).toEqual([]);
   });
@@ -102,7 +102,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
   it("passes resumeSessionId and capture hook exec to fleet-admiral injection", async () => {
     const runtime = createFakeRuntime(() => undefined);
     const injectedOptions: InjectAgentCliProfileOptions[] = [];
-    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude" as const, label: "Claude", cwd, env: { ...env } }));
+    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude-native" as const, label: "Claude", cwd, env: { ...env } }));
     const injectProfile = vi.fn(async (profile: AgentCliProfile, options: InjectAgentCliProfileOptions) => {
       injectedOptions.push(options);
       return { ...profile, args: [...profile.args, "resume", "provider-session-a"] };
@@ -118,10 +118,10 @@ describe("createDefaultTerminalLaunchResolver", () => {
       resolveProfile: resolveProfile as never,
     });
 
-    await resolve("/work/project", { sessionId: "fleet-session-a", cliId: "claude", resumeSessionId: "provider-session-a" });
+    await resolve("/work/project", { sessionId: "fleet-session-a", cliId: "claude-native", resumeSessionId: "provider-session-a" });
 
     expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({
-      cliId: "claude",
+      cliId: "claude-native",
       resumeSessionId: "provider-session-a",
     }));
     expect(injectedOptions[0]).toMatchObject({ resumeSessionId: "provider-session-a" });
@@ -133,7 +133,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
   it("passes a selected Agent CLI id to fleet-admiral profile resolution", async () => {
     const runtime = createFakeRuntime(() => undefined);
-    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude" as const, label: "Claude", cwd, env: { ...env } }));
+    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude-native" as const, label: "Claude", cwd, env: { ...env } }));
     const injectProfile = vi.fn(async (profile) => profile);
     const resolve = createDefaultTerminalLaunchResolver({
       cwd: "/work",
@@ -143,9 +143,9 @@ describe("createDefaultTerminalLaunchResolver", () => {
       resolveProfile: resolveProfile as never,
     });
 
-    await resolve("/work/project", { sessionId: "session-a", cliId: "claude" });
+    await resolve("/work/project", { sessionId: "session-a", cliId: "claude-native" });
 
-    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "claude" }));
+    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "claude-native" }));
   });
 
   it("uses the shared Admiral dependencies for gateway and standard operations", async () => {
@@ -175,7 +175,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(sharedResolveProfile).toHaveBeenCalledTimes(1);
     expect(sharedInjectProfile).toHaveBeenCalledTimes(1);
 
-    await resolve("/work", { sessionId: "session-standard-admiral", cliId: "claude" });
+    await resolve("/work", { sessionId: "session-standard-admiral", cliId: "claude-native" });
     expect(sharedResolveProfile).toHaveBeenCalledTimes(2);
     expect(sharedInjectProfile).toHaveBeenCalledTimes(2);
   });
@@ -500,7 +500,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       createSessionIdentityResolver: createResolver as never,
     });
 
-    const spec = await resolve("/work", { sessionId: "session-a", cliId: "claude" });
+    const spec = await resolve("/work", { sessionId: "session-a", cliId: "claude-native" });
 
     expect(spec.sessionIdentityResolver).toMatchObject({ resolve: expect.any(Function) });
     expect(createResolver).toHaveBeenCalledWith(expect.objectContaining({

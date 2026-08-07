@@ -27,6 +27,8 @@ export interface TerminalLaunchContext {
   readonly model?: string;
   readonly effort?: string;
   readonly goalCheckLimit?: number;
+  /** 런치 시 첫 턴으로 제출될 프롬프트. argv 위치 인자로 나가며 PTY로 주입하지 않는다. */
+  readonly prompt?: string;
   readonly resumeSessionId?: string;
   /** 콘솔 테마 극성 힌트 — spawn env COLORFGBG로만 소비된다. PTY는 최초 spawn 시점 값에 고정된다. */
   readonly colorScheme?: "light" | "dark";
@@ -48,6 +50,8 @@ export interface TerminalTicketContext {
   readonly cliId?: string;
   readonly model?: string;
   readonly effort?: string;
+  /** 런치 시 첫 턴으로 제출될 프롬프트. argv 위치 인자로 나가며 PTY로 주입하지 않는다. */
+  readonly prompt?: string;
   readonly resumeSessionId?: string;
   readonly colorScheme?: "light" | "dark";
 }

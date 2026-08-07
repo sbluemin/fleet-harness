@@ -124,6 +124,84 @@ describe("claude-native injection", () => {
   });
 });
 
+describe("launch prompt positional arg", () => {
+  for (const cliId of ["claude-native", "claude-gateway"] as const) {
+    describe(cliId, () => {
+      it("keeps sanitized prompt in promptArgs, not args", async () => {
+        const profile = await resolveAgentCliProfile({
+          CLAUDE_BIN: process.execPath,
+        }, "/tmp", {
+          cliId,
+          prompt: "  hello world  ",
+        });
+
+        expect(profile.promptArgs).toEqual(["hello world"]);
+        expect(profile.args).not.toContain("hello world");
+        expect(profile.args).not.toContain("  hello world  ");
+      });
+
+      it("appends the prompt as the final argv after every flag", async () => {
+        const root = createTempRoot(`fleet-admiral-${cliId}-prompt-`);
+        const profile = await resolveAgentCliProfile({
+          CLAUDE_BIN: process.execPath,
+          HOME: root,
+        }, root, {
+          cliId,
+          prompt: "hello world",
+        });
+        const injected = await injectAgentCliProfile(profile, {
+          buildSystemPrompt: () => "Fleet doctrine",
+          dataDir: path.join(root, "data"),
+          dedicatedMcpSession: {
+            async getEndpoint() {
+              return { servers: [{ name: "fleet", url: "http://127.0.0.1:48123/mcp" }] };
+            },
+            issueSessionToken() {
+              return [{ name: "fleet", token: "token-123" }];
+            },
+            releaseSessionToken() {},
+          },
+          withMarketplaceLock: async (_target, fn) => fn(),
+        });
+
+        // 회귀 가드: `--mcp-config`는 가변 인자라 프롬프트가 그 앞에 있으면 mcp config로 삼켜진다.
+        expect(injected.args.at(-1)).toBe("hello world");
+        expect(injected.args.at(-2)).toBe("--dangerously-skip-permissions");
+        expect(injected.promptArgs).toEqual([]);
+        injected.cleanup?.();
+      });
+
+      it("omits promptArgs for undefined, empty, and whitespace-only prompts", async () => {
+        const root = createTempRoot(`fleet-admiral-${cliId}-prompt-empty-`);
+        const baseline = await resolveAgentCliProfile({
+          CLAUDE_BIN: process.execPath,
+          HOME: root,
+        }, root, { cliId });
+        const cases = [undefined, "", "   \n  "] as const;
+        for (const prompt of cases) {
+          const profile = await resolveAgentCliProfile({
+            CLAUDE_BIN: process.execPath,
+            HOME: root,
+          }, root, { cliId, prompt });
+          expect(profile.promptArgs).toBeUndefined();
+          expect(profile.args).toEqual(baseline.args);
+        }
+      });
+
+      it("preserves newlines and strips NUL/escape controls", async () => {
+        const profile = await resolveAgentCliProfile({
+          CLAUDE_BIN: process.execPath,
+        }, "/tmp", {
+          cliId,
+          prompt: "line1\nline2\x00still\x1bhere",
+        });
+
+        expect(profile.promptArgs).toEqual(["line1\nline2stillhere"]);
+      });
+    });
+  }
+});
+
 function createTempRoot(prefix: string): string {
   const root = mkdtempSync(path.join(os.tmpdir(), prefix));
   tempDirs.push(root);

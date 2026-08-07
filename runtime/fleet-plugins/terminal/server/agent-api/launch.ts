@@ -20,6 +20,7 @@ import {
   resolveAgentCliProfile,
   type AgentCliId,
   type AgentCliProfile,
+  LaunchPromptError,
   type FleetGatewayAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
 import {
@@ -123,7 +124,17 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
     if (deps.readAgentCliPaths) {
       launchEnv = applyAgentCliPathEnvOverlay(launchEnv, context?.cliId, await deps.readAgentCliPaths());
     }
+    // FLEET_TERMINAL_CMD는 Agent CLI 실행을 통째로 대체한다 — 모델·강도·resume·시스템 프롬프트·
+    // MCP 설정·플러그인 디렉터리와 마찬가지로 런치 프롬프트도 실을 자리가 없다. 임의 명령의 argv
+    // 계약을 알 수 없어 사용자 텍스트를 뒤에 붙일 수 없기 때문이다. 조용히 버리면 Operation은
+    // 열렸는데 아무 지시도 받지 못한 세션이 남으므로, 프롬프트를 들고 온 런치는 아예 거부한다.
     const override = parseTerminalCommand(env.FLEET_TERMINAL_CMD);
+    if (override && context?.prompt) {
+      throw new LaunchPromptError(
+        "prompt_unsupported_launch",
+        "FLEET_TERMINAL_CMD replaces the Agent CLI launch, so a launch prompt cannot be delivered in this configuration.",
+      );
+    }
     if (override) {
       const resolvedOverride = resolveWindowsLaunchBinary(
         override.bin,
@@ -153,6 +164,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       model: context?.model,
       effort: context?.effort,
       goalCheckLimit: context?.goalCheckLimit,
+      prompt: context?.prompt,
       createSessionIdentityResolver: resolveSessionIdentityResolver,
       resumeSessionId: context?.resumeSessionId,
       sessionId,
@@ -193,6 +205,7 @@ async function createAgentCliLaunchSpec(options: {
   readonly dataDir: string;
   readonly env: NodeJS.ProcessEnv;
   readonly goalCheckLimit?: number;
+  readonly prompt?: string;
   readonly hookEntry: ConsoleHookCommandEntry;
   readonly infraServices: { readonly globalOptionsService: GlobalOptionsService };
   readonly injectProfile: typeof injectAgentCliProfile;
@@ -236,6 +249,7 @@ async function createAgentCliLaunchSpec(options: {
       model: resolvedModel,
       effort: options.effort,
       goalCheckLimit: options.goalCheckLimit,
+      prompt: options.prompt,
     });
     const injectedProfile = await options.injectProfile(profile, {
       buildSystemPrompt: () => options.createSystemPromptBuilder().build(),

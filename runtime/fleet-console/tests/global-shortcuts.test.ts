@@ -17,6 +17,7 @@ describe("Console global shortcuts", () => {
       setSideBarCollapsed: vi.fn(),
       openOperationSearch: vi.fn(),
       toggleOperationSearch,
+      toggleQuickLaunch: vi.fn(),
       toggleRailChrome: vi.fn(),
     });
     const dialog = document.createElement("div");
@@ -38,6 +39,7 @@ describe("Console global shortcuts", () => {
       setSideBarCollapsed: vi.fn(),
       openOperationSearch: vi.fn(),
       toggleOperationSearch: vi.fn(),
+      toggleQuickLaunch: vi.fn(),
       toggleRailChrome: vi.fn(),
       canUndoLastClose: () => active,
       undoLastClose,
@@ -69,6 +71,7 @@ describe("Console global shortcuts", () => {
       setSideBarCollapsed: vi.fn(),
       openOperationSearch,
       toggleOperationSearch: vi.fn(),
+      toggleQuickLaunch: vi.fn(),
       toggleRailChrome: vi.fn(),
     });
     const dispatch = (init: KeyboardEventInit) => {
@@ -106,5 +109,56 @@ describe("Console global shortcuts", () => {
     // 모바일 셸에는 두 표면이 아예 없다 — 경로가 /operations여도 발화하지 않는다.
     expect(resolvePanelShortcutOutcome({ panelSurfacesReachable: false, operationsViewVisible: true })).toBe("suppress");
     expect(resolvePanelShortcutOutcome({ panelSurfacesReachable: false, operationsViewVisible: false })).toBe("suppress");
+  });
+});
+
+describe("Quick Launch shortcut", () => {
+  it("opens on Mod+J even while a terminal textarea holds focus", () => {
+    const toggleQuickLaunch = vi.fn();
+    const cleanup = installConsoleGlobalShortcuts({
+      getSideBarCollapsed: () => false,
+      setSideBarCollapsed: vi.fn(),
+      openOperationSearch: vi.fn(),
+      toggleOperationSearch: vi.fn(),
+      toggleQuickLaunch,
+      toggleRailChrome: vi.fn(),
+    });
+    // Mod+K/Mod+P와 같은 정책: 터미널을 보고 있다가 떠오른 지시를 그 자리에서 띄운다.
+    const xterm = document.createElement("div");
+    xterm.className = "xterm";
+    const helper = document.createElement("textarea");
+    xterm.append(helper);
+    document.body.append(xterm);
+    helper.focus();
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", metaKey: true, bubbles: true, cancelable: true }));
+
+    expect(toggleQuickLaunch).toHaveBeenCalledOnce();
+    cleanup();
+  });
+
+  it("stays closed behind a blocking dialog and ignores Alt+Mod+J", () => {
+    const toggleQuickLaunch = vi.fn();
+    const cleanup = installConsoleGlobalShortcuts({
+      getSideBarCollapsed: () => false,
+      setSideBarCollapsed: vi.fn(),
+      openOperationSearch: vi.fn(),
+      toggleOperationSearch: vi.fn(),
+      toggleQuickLaunch,
+      toggleRailChrome: vi.fn(),
+    });
+    const dialog = document.createElement("div");
+    dialog.setAttribute("aria-modal", "true");
+    document.body.append(dialog);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", metaKey: true, bubbles: true, cancelable: true }));
+    expect(toggleQuickLaunch).not.toHaveBeenCalled();
+
+    dialog.remove();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", metaKey: true, altKey: true, bubbles: true, cancelable: true }));
+    expect(toggleQuickLaunch).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", metaKey: true, bubbles: true, cancelable: true }));
+    expect(toggleQuickLaunch).toHaveBeenCalledOnce();
+    cleanup();
   });
 });

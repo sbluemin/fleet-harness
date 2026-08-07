@@ -1,6 +1,21 @@
+import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { ConsoleTheme, OperationActivity } from "@fleet-console/sdk/plugin";
 
 export type ThemeId = "instrument" | "maritime" | "carbon" | "whites";
+
+/**
+ * Quick Launch 컴포저가 확정한 실행 의도.
+ *
+ * `variant`는 캔버스 우클릭 메뉴가 쓰는 것과 같은 flat wire 레코드다 — 여기에 `prompt`가 함께 실려
+ * 터미널 플러그인의 세션 생성 body로 나간다. 프롬프트는 spawn 전용 값이라 응답이나 Operation
+ * payload로 되돌아오지 않는다.
+ */
+export interface QuickLaunchRequest {
+  readonly theaterId: string;
+  readonly pluginId: string;
+  readonly kind: OperationLaunchKind;
+  readonly variant: Readonly<Record<string, string>>;
+}
 
 export type ReleaseNotesLocale = "en" | "ko";
 
@@ -193,6 +208,16 @@ export interface ConsoleState {
   readonly operationsViewActive: boolean;
   readonly operationSearchOpen: boolean;
   readonly operationSearchSeed: string | null;
+  readonly quickLaunchOpen: boolean;
+  // 실행이 거절되면 컴포저를 이 초안과 함께 다시 연다 — 서버 거절(모델 비활성·CLI 미가용·
+  // 프롬프트 전달 불가)은 컴포저가 결과를 기다리지 않는 구조라 이 경로로만 사용자에게 돌아온다.
+  readonly quickLaunchDraft: string | null;
+  // 거절 사유의 서버 코드. 초안만 되살리면 결정적 실패(Windows shim 문자·FLEET_TERMINAL_CMD)는
+  // 무엇을 고쳐야 하는지 모른 채 같은 Run을 반복하게 된다.
+  readonly quickLaunchError: string | null;
+  // 컴포저가 넘긴 실행 의도. Operations 화면이 자기 지오메트리·포커스 규율로 소비한다
+  // (pendingOperationFocus와 같은 request/consume 계약).
+  readonly pendingQuickLaunch: QuickLaunchRequest | null;
   readonly whatsNewOpen: boolean;
   readonly releaseNotes: readonly ReleaseNotes[];
   readonly releaseNotesLoading: boolean;

@@ -27,7 +27,7 @@ import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
 import { availableCompanionPanels, resolveCompanionShortcutToggle, usableCompanionShortcuts } from "../companion-shortcut.js";
 import { resolveOperationsArrowShortcutAction } from "../operations-arrow-shortcut.js";
-import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
+import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, consumeQuickLaunch, failAddTheater, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { MobileShell } from "../mobile/mobile-shell.js";
 import { OperationBodyPool, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
@@ -348,6 +348,25 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     const geometry = resolveLaunchGeometry(launchTheaterId, { ...canvasPointToGeometry(canvasPoint), zIndex: claimTopZIndex() });
     void launchViaPlugin(pluginId, kind, geometry, launchTheaterId, registry.plugins, variant);
   }, [registry.plugins]);
+
+  // Quick Launch 컴포저가 남긴 의도를 여기서 소비한다. 대상 Theater로의 전환이 실제로 반영된 뒤에만
+  // 실행해야 한다 — activeTheaterId가 아직 이전 Theater면 launch 좌표와 포커스 승계가 엉뚱한 캔버스로 간다.
+  useEffect(() => {
+    const request = state.pendingQuickLaunch;
+    if (!request || request.theaterId !== state.activeTheaterId) return;
+    consumeQuickLaunch();
+    const canvasPoint = canvasCenterPoint(bodyRef.current);
+    const geometry = resolveLaunchGeometry(request.theaterId, { ...canvasPointToGeometry(canvasPoint), zIndex: claimTopZIndex() });
+    // 실행이 거절되면(모델 비활성·CLI 미가용·프롬프트 전달 불가) 초안을 잃지 않게 컴포저를 되연다.
+    // 컴포저는 결과를 기다리지 않는 구조라, 사용자에게 되돌아오는 경로는 여기뿐이다.
+    void launchViaPlugin(request.pluginId, request.kind, geometry, request.theaterId, registry.plugins, request.variant)
+      .catch((error: unknown) => {
+        const draft = request.variant.prompt;
+        if (!draft) return;
+        // 플러그인 클라이언트가 서버 error 코드를 message로 실어 던진다. 코드를 모르면 일반 문구로 떨어진다.
+        reopenQuickLaunchWithDraft(draft, error instanceof Error ? error.message : null);
+      });
+  }, [registry.plugins, state.activeTheaterId, state.pendingQuickLaunch]);
 
   const handleLaunchAtGeometry = useCallback((pluginId: string, kind: OperationLaunchKind, geometry: OperationGeometry) => {
     const launchTheaterId = stateRef.current.activeTheaterId;

@@ -145,6 +145,8 @@ export async function injectAgentCliProfile(
     return {
       ...profile,
       args: mergeAgentCliArgs(profile, capability.builderId, context, injectedArgs),
+      // 위치 인자는 이미 args 끝에 합쳐졌으므로 비운다. 남겨 두면 하류가 한 번 더 붙일 수 있다.
+      promptArgs: [],
       cleanup,
     };
   } catch (error) {
@@ -219,7 +221,8 @@ function mergeAgentCliArgs(
   _context: AgentCliInjectionContext,
   injectedArgs: readonly string[],
 ): string[] {
-  return [...profile.args, ...injectedArgs];
+  // 위치 인자는 모든 플래그 뒤에 와야 한다 — `--mcp-config`가 가변 인자라 앞에 두면 삼켜진다.
+  return [...profile.args, ...injectedArgs, ...(profile.promptArgs ?? [])];
 }
 
 function createOnceCleanup(cleanup: () => void): () => void {

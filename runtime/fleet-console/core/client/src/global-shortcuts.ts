@@ -20,6 +20,7 @@ export interface ConsoleGlobalShortcutDependencies {
   readonly setSideBarCollapsed: (collapsed: boolean) => void;
   readonly openOperationSearch: () => void;
   readonly toggleOperationSearch: () => void;
+  readonly toggleQuickLaunch: () => void;
   readonly toggleRailChrome: () => void;
   readonly canUndoLastClose?: () => boolean;
   readonly undoLastClose?: () => void;
@@ -48,6 +49,15 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       event.preventDefault();
       event.stopImmediatePropagation();
       dependencies.openOperationSearch();
+      return;
+    }
+    // Mod+J(Quick Launch): 입력·터미널 포커스 가드를 두지 않는다 — Mod+K/Mod+P와 같은 정책으로,
+    // 터미널을 보고 있다가 떠오른 지시를 그 자리에서 띄우는 것이 이 단축키의 목적이다.
+    // Alt는 거르고 Shift는 허용한다(Mod+P와 동일한 술어 폭).
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "j") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      dependencies.toggleQuickLaunch();
       return;
     }
     // Mod+Alt+B(rail): macOS는 ⌘(+⌥)로 발화하며 ⌥B의 합성문자(∫)는 무시하고 code로 판정한다.

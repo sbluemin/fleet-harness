@@ -7,6 +7,7 @@ export const DEFAULT_GOAL_CHECK_LIMIT = 8;
 export const MIN_GOAL_CHECK_LIMIT = 1;
 export const MAX_GOAL_CHECK_LIMIT = 20;
 export const MAX_GOAL_CONDITION_CHARS = 4000;
+export const MAX_LAUNCH_PROMPT_CHARS = 16000;
 
 export interface AgentCliProfile {
   readonly id: AgentCliId;
@@ -27,6 +28,10 @@ export interface AgentCliProfile {
   // 목표(정지 조건) 슬래시 명령. Claude Code의 `/goal`처럼 조건을 세션 Stop 훅으로
   // 등록하는 CLI만 선언한다. 미선언 CLI는 호스트가 목표 주입을 건너뛴다.
   readonly goalCommand?: string;
+  // 런치 프롬프트의 후미 위치(positional) 인자. `--mcp-config`는 가변 인자라 그 뒤에
+  // 오는 위치 인자를 삼키므로, 최종 argv의 맨 끝에 남아야 한다. 주입 계층이 이 값을
+  // args 끝에 합친 뒤 비운다.
+  readonly promptArgs?: readonly string[];
   readonly terminalName: string;
 }
 
@@ -53,6 +58,7 @@ export interface AgentCliProfileOptions {
   readonly goalCheckLimit?: number;
   readonly model?: string;
   readonly effort?: string;
+  readonly prompt?: string;
   readonly resumeSessionId?: string;
 }
 
