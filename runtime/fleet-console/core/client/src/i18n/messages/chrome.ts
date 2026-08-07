@@ -182,6 +182,8 @@ export const chromeEn = {
   "chrome.toast.operationClosed": "Operation closed",
   "chrome.toast.secondsRemaining": "{count}s remaining",
   "chrome.toast.undo": "Undo",
+  "chrome.toast.themeLight": "Console switched to a light theme — relaunch running CLIs or run /theme to match",
+  "chrome.toast.themeDark": "Console switched to a dark theme — relaunch running CLIs or run /theme to match",
 
   // backend-api
   "chrome.backendApi.sectionAria": "Backend API catalog",
@@ -380,6 +382,8 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.toast.operationClosed": "Operation이 닫혔습니다",
   "chrome.toast.secondsRemaining": "{count}초 남음",
   "chrome.toast.undo": "실행 취소",
+  "chrome.toast.themeLight": "콘솔이 라이트 테마로 전환되었습니다 — 실행 중인 CLI는 다시 시작하거나 /theme으로 테마를 맞춰 주세요",
+  "chrome.toast.themeDark": "콘솔이 다크 테마로 전환되었습니다 — 실행 중인 CLI는 다시 시작하거나 /theme으로 테마를 맞춰 주세요",
 
   "chrome.backendApi.sectionAria": "Backend API 카탈로그",
   "chrome.backendApi.title": "Backend API",

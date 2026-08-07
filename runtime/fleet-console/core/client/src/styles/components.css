@@ -6481,41 +6481,6 @@
   background: var(--warn);
 }
 
-/* 테마 극성 전환(다크↔라이트) 1회성 힌트 — 실행 중 CLI의 내부 테마는 콘솔이 강제할 수 없으므로
-   안내만 한다. 정보 칩이라 신호색이 아닌 중립 표면+텍스트 티어 문법을 쓴다. */
-.terminal-theme-hint {
-  position: absolute;
-  top: var(--space-2);
-  right: var(--space-2);
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  max-width: min(92%, 420px);
-  padding: var(--space-1) var(--space-2);
-  font-size: 12px;
-  color: var(--text-secondary);
-  background: var(--surface-glass-strong);
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-soft);
-}
-
-.terminal-theme-hint-dismiss {
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  border-radius: var(--radius-xs);
-  color: var(--text-tertiary);
-}
-
-.terminal-theme-hint-dismiss:hover {
-  color: var(--text-primary);
-  background: color-mix(in oklch, var(--ink-mid) 72%, transparent);
-}
-
 /* 줌 보정 레이어: position:relative 기준 박스를 제공해 .terminal-canvas의 역스케일(%-기반)이
    측정 없이 inner 크기에 정확히 맞도록 한다. flex:1로 상태바 아래 남는 공간을 채운다. */
 .terminal-viewport {

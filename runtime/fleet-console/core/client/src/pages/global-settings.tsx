@@ -13,7 +13,7 @@ import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField
 import { renderMessage, useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
-import { readLastDarkTheme, setActiveTheme, setActiveUiFont } from "../store.js";
+import { readLastDarkTheme, setActiveTheme, setActiveUiFont, themePolarity } from "../store.js";
 import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_DESCRIPTION_KEYS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
 import type { GlobalSettingsState, ThemeId, UiFontId, UiFontSettings } from "../types.js";
 
@@ -274,7 +274,7 @@ function ThemeCard({
   const t = useT();
   const darkThemes = buildDarkThemeOptions(t);
   const activeTheme = state?.theme ?? "instrument";
-  const isLight = activeTheme === LIGHT_THEME_ID;
+  const isLight = themePolarity(activeTheme) === "light";
   const selectTheme = (theme: ThemeId) => {
     if (getGlobalSettingsStoreState().savingField !== null) return;
     const previousTheme = activeTheme;

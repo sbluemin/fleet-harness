@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, createElement, useLayoutEffect } from "react";
+import { act, createElement, Fragment, useLayoutEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import type { OperationKindDescriptor } from "@fleet-console/sdk/plugin";
@@ -70,7 +70,11 @@ vi.mock("../core/client/src/components/command-band.js", () => ({ CommandBand: (
 vi.mock("../core/client/src/components/commissioning-overlay.js", () => ({ CommissioningOverlay: () => null }));
 vi.mock("../core/client/src/components/keyboard-shortcuts-dialog.js", () => ({ isKeyboardShortcutsModalOpen: () => false, shouldHandleOperationsKeyboardShortcut: keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut }));
 vi.mock("../core/client/src/components/operation-search.js", () => ({ OperationSearch: () => null }));
-vi.mock("../core/client/src/components/toast.js", () => ({ Toast: () => null }));
+vi.mock("../core/client/src/components/toast.js", () => ({
+  Toast: () => null,
+  // App은 토스트를 ToastHost 스택으로 감싼다 — mock도 같은 쌍을 제공해야 App 렌더가 산다.
+  ToastHost: ({ children }: { readonly children?: ReactNode }) => createElement(Fragment, null, children),
+}));
 vi.mock("../core/client/src/components/whatsnew-modal.js", () => ({ WhatsNewModal: () => null }));
 vi.mock("../core/client/src/global-settings-store.js", () => ({
   getGlobalSettingsStoreState: () => ({ state: null }),
