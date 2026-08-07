@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import path from "node:path";
 
 import type { DurableConsoleState, DurableDeletionTombstone } from "./durable-state.js";
 import type { OperationNode } from "./operations/operations-domain.js";
@@ -14,8 +13,6 @@ const MIGRATED_PAYLOAD_KEYS = ["launchKindId", "cliId"] as const;
 
 const BACKUP_FILE_SUFFIX = ".classic-backup";
 
-/** 퇴역한 Carrier 스토어가 Fleet 데이터 디렉터리에 남기는 항목(마지막 항목은 잠금 디렉터리). */
-const RETIRED_CARRIER_STORE_ENTRIES = ["carriers.json", "carrier-subagent.json", "carriers.json.lock"] as const;
 
 export interface ClassicLaunchKindMigrationResult {
   /** 이주가 반영된 state. 변경이 없으면 입력과 동일한 참조를 돌려준다. */
@@ -83,25 +80,6 @@ export function backupDurableStateBeforeClassicMigration(stateFilePath: string):
     fs.copyFileSync(stateFilePath, backupPath);
   } catch (error) {
     console.warn(`[fleet-console] Classic launch kind migration backup skipped: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
-/**
- * 퇴역한 Carrier 스토어 파일을 Fleet 데이터 디렉터리에서 제거한다(best-effort).
- *
- * 이 파일들은 삭제된 Carrier 스토어가 소유하던 것으로, 소유자가 사라진 뒤에는 아무도 읽지도
- * 지우지도 않아 사용자 데이터 디렉터리에 영구 잔존한다. 실패는 절대 부팅을 막지 않는다.
- */
-export function removeRetiredCarrierStoreFiles(fleetDataDir: string): void {
-  if (!path.isAbsolute(fleetDataDir)) return;
-  for (const entry of RETIRED_CARRIER_STORE_ENTRIES) {
-    const target = path.join(fleetDataDir, entry);
-    try {
-      if (!fs.existsSync(target)) continue;
-      fs.rmSync(target, { recursive: true, force: true });
-    } catch (error) {
-      console.warn(`[fleet-console] Retired carrier store cleanup skipped for ${entry}: ${error instanceof Error ? error.message : String(error)}`);
-    }
   }
 }
 

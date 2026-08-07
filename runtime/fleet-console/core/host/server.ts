@@ -30,7 +30,6 @@ import type { OperationNode } from "./operations/operations-domain.js";
 import {
   backupDurableStateBeforeClassicMigration,
   migrateClassicLaunchKinds,
-  removeRetiredCarrierStoreFiles,
   CLASSIC_LAUNCH_KIND_ID,
   GATEWAY_LAUNCH_KIND_ID,
 } from "./classic-launch-kind-migration.js";
@@ -1097,7 +1096,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 이주분을 디스크에 확정한다. sanitizer는 출력만 바꿀 뿐 재기록을 유발하지 않으므로
     // 명시 save가 없으면 다음 부팅마다 같은 이주를 반복한다.
     if (classicLaunchKindsMigrated) persistDurableState();
-    removeRetiredCarrierStoreFiles(fleetDataDir);
+    // 퇴역한 Carrier 스토어 파일(carriers.json·carrier-subagent.json·carriers.json.lock)은
+    // 그대로 둔다. `~/.fleet`는 CLI와 Console이 공유하는 데이터 루트라, 업그레이드 전 호스트가
+    // 아직 그 스토어를 소유한 채 돌고 있을 수 있다. 특히 carriers.json.lock은 withDirectoryLock이
+    // 점유하는 잠금 디렉터리여서, 지우면 임계 구역 안의 레거시 프로세스 옆으로 두 번째 writer가
+    // 들어온다. 아무도 읽지 않는 파일을 치우는 정돈은 그 위험을 살 만한 값이 아니다.
     // Legacy captures/ → state.json providerSession one-shot migration (best-effort).
     // Runs after durable load so save preserves tombstones already restored into the coordinator.
     migrateLegacyCaptureState();

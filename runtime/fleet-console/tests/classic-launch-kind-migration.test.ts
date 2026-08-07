@@ -1,3 +1,5 @@
+import fs from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -139,5 +141,16 @@ describe("migrateClassicLaunchKinds", () => {
     const state = makeState([makeOperation("op-1", { cwd: "/tmp" })]);
 
     expect(migrateClassicLaunchKinds(state).state).toBe(state);
+  });
+
+  // `~/.fleet`는 CLI와 Console이 공유하는 데이터 루트다. carriers.json.lock은 withDirectoryLock이
+  // 점유하는 잠금 디렉터리라, 업그레이드 전 호스트가 임계 구역에 있는 동안 지우면 두 번째 writer가
+  // 들어온다. 이주는 자기 state.json 밖의 남의 스토어를 절대 건드리지 않는다.
+  it("never reaches for the retired Carrier store — a legacy host may still hold its lock", () => {
+    const source = fs.readFileSync(new URL("../core/host/classic-launch-kind-migration.ts", import.meta.url), "utf8");
+
+    expect(source).not.toContain("carriers.json");
+    expect(source).not.toContain("carrier-subagent");
+    expect(source).not.toContain("rmSync");
   });
 });
