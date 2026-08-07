@@ -52,8 +52,9 @@ env -u CLAUDE_CODE_CHILD_SESSION \
 - `FLEET_GATEWAY_WIRE_LOG` — the request body and the argument JSON a model actually
   produced. **It is a fallback, not an override.** The Settings wire-log toggle wins
   whenever the Console has a stored value: on writes to
-  `<plugin-data-dir>/ai-gateway/wire-log.jsonl` and ignores the variable, off writes
-  nothing at all, and only an *unset* toggle falls through to the path you named
+  `<plugin-data-dir>/ai-gateway/wire-log.jsonl` — the *plugin* data directory, a different
+  root from the settings file above — and ignores the variable, off writes nothing at all,
+  and only an *unset* toggle falls through to the path you named
   (`applyWireLog` in `runtime/fleet-plugins/terminal/routes.ts`). A fresh
   `FLEET_CONSOLE_DIR` has no stored value, which is why the variable works there — until
   someone touches the toggle. The file appears on the first gateway call, not at boot.
@@ -66,9 +67,12 @@ env -u CLAUDE_CODE_CHILD_SESSION \
 
 `/model` lists a gateway entry — labelled `From gateway` — only for models the Console was
 told to expose, and that list is **isolated per runtime directory**: it lives at
-`<plugin-data-dir>/ai-gateway.json`, not in `~/.fleet`. A fresh `FLEET_CONSOLE_DIR` starts
-with no such file, so the picker shows only the Claude entries and it reads as though
-gateway models were unsupported. They are not. Add one first:
+`<fleet-data-dir>/ai-gateway.json`, which under `FLEET_CONSOLE_DIR=<e2e-dir>` resolves to
+`<e2e-dir>/ai-gateway.json` — measured, not inferred. (The store also takes a `legacyDir`
+pointing at the plugin data directory, but that is a one-time migration source, never where
+current settings are written.) A fresh runtime directory has no such file, so the picker
+shows only the Claude entries and it reads as though gateway models were unsupported. They
+are not. Add one first:
 
 Settings → **AI Gateway** (Terminal) → the provider's row under *AI Gateway 모델* → choose
 the model in that row's combobox → **모델 추가**. Launch the Operation afterwards and the
