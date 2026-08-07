@@ -4,6 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { OperationCatalogPlugin } from "@fleet-console/sdk/operations";
 
 import { loadForTheater } from "../core/client/src/canvas/canvas-store.js";
 import { requestSideBarOperationAction } from "../core/client/src/sidebar/interaction.js";
@@ -152,6 +153,29 @@ describe("sidebar context menu keyboard path", () => {
     expect(document.activeElement).toBe(row);
   });
 
+  it("forwards a launch-variant chip payload through the sidebar menu", () => {
+    const onLaunchKind = vi.fn();
+    const catalog = gatewayVariantCatalog();
+    renderSideBar(catalog, onLaunchKind);
+    const sideBar = required<HTMLElement>(".operations-side-bar");
+
+    act(() => sideBar.dispatchEvent(new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 120,
+      clientY: 80,
+    })));
+    const parent = required<HTMLElement>('[data-operation-launch-kind="claude-gateway"]');
+    act(() => parent.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+    act(() => required<HTMLButtonElement>('[data-launch-variant-chip="fable:max"]').click());
+
+    expect(onLaunchKind).toHaveBeenCalledWith(
+      "terminal",
+      catalog[0]!.kinds[0],
+      { model: "fable", effort: "max" },
+    );
+  });
+
   it("executes the focused existing menu item with Enter", async () => {
     renderSideBar();
     const chip = required<HTMLElement>('[data-side-bar-chip-id="operation-a"]');
@@ -172,7 +196,10 @@ describe("sidebar context menu keyboard path", () => {
 
 });
 
-function renderSideBar(): void {
+function renderSideBar(
+  catalog: readonly OperationCatalogPlugin[] = [],
+  onLaunchKind = vi.fn(),
+): void {
   act(() => root?.render(createElement(MemoryRouter, null, createElement(OperationsSideBar, {
     theaters: [THEATER],
     activeTheaterId: THEATER.id,
@@ -181,12 +208,12 @@ function renderSideBar(): void {
     minimized: [],
     activeOperationId: OPERATION.id,
     operationNotifications: {},
-    catalog: [],
+    catalog,
     canLaunch: true,
     addingTheater: false,
     theaterError: null,
     renderKindIcon: () => null,
-    onLaunchKind: vi.fn(),
+    onLaunchKind,
     onClose: vi.fn(),
     onMinimize: vi.fn(),
     onFocus: vi.fn(),
@@ -204,6 +231,32 @@ function renderSideBar(): void {
     onCancelAddTheater: vi.fn(),
     onForgetTheater: vi.fn(),
   }))));
+}
+
+function gatewayVariantCatalog(): readonly OperationCatalogPlugin[] {
+  return [{
+    id: "terminal",
+    title: "Terminal",
+    kinds: [{
+      id: "claude-gateway",
+      type: "agent",
+      title: "Claude (Gateway)",
+      variants: [{
+        id: "native",
+        label: "Claude",
+        rows: [{
+          id: "fable",
+          label: "Fable",
+          launch: { model: "fable" },
+          chips: [{
+            id: "max",
+            label: "MAX",
+            launch: { model: "fable", effort: "max" },
+          }],
+        }],
+      }],
+    }],
+  }];
 }
 
 function dispatchKey(target: HTMLElement, key: string, options: KeyboardEventInit = {}): void {

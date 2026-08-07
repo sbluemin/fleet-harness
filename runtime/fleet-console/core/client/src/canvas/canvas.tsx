@@ -37,8 +37,9 @@ interface OperationsCanvasProps {
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly canLaunch: boolean;
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
-  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, canvasPoint: CanvasPoint, theaterId?: string) => void;
+  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, canvasPoint: CanvasPoint, theaterId?: string, variant?: Readonly<Record<string, string>>) => void;
   readonly onLaunchAtGeometry: (pluginId: string, kind: OperationLaunchKind, geometry: OperationGeometry) => void;
+  readonly onRefreshCatalog?: () => void;
   readonly onClose: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
   readonly onRename: (operationId: string, title: string) => void;
@@ -86,6 +87,7 @@ export function OperationsCanvas({
   renderKindIcon,
   onLaunchKind,
   onLaunchAtGeometry,
+  onRefreshCatalog,
   onClose,
   onFocus,
   onRename,
@@ -246,13 +248,17 @@ export function OperationsCanvas({
     onClick: clearTerminalFocus,
   });
 
-  const handleContextMenuLaunchKind = (pluginId: string, kind: OperationLaunchKind) => {
+  const handleContextMenuLaunchKind = (
+    pluginId: string,
+    kind: OperationLaunchKind,
+    variant?: Readonly<Record<string, string>>,
+  ) => {
     const request = contextMenu;
     setContextMenu(null);
     if (!request) return;
     // War Room의 소유 영역 launch도 페이지가 소유한 기존 plugin launch 경로를 그대로 탄다.
     // theaterId가 없으면 Cruise의 활성 Theater 경로이고, 있으면 소유 영역이 명시한 Theater다.
-    onLaunchKind(pluginId, kind, request.canvasPoint, request.theaterId);
+    onLaunchKind(pluginId, kind, request.canvasPoint, request.theaterId, variant);
   };
 
   const handleContextMenu = (event: ReactMouseEvent<HTMLElement>) => {
@@ -284,6 +290,7 @@ export function OperationsCanvas({
     const anchor = rect ? { x: event.clientX - rect.left, y: event.clientY - rect.top } : null;
     if (!anchor) return;
     setContextMenu({ anchor, canvasPoint: screenToCanvas(anchor, canvas.viewport) });
+    onRefreshCatalog?.();
   };
 
   const openTriageTheaterLaunchMenu = (theaterId: string, theaterLabel: string, cursor: CanvasPoint) => {
@@ -304,6 +311,7 @@ export function OperationsCanvas({
       theaterId,
       theaterLabel,
     });
+    onRefreshCatalog?.();
   };
 
   const minimizedSet = new Set(minimized);

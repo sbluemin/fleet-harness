@@ -40,12 +40,33 @@ export interface OperationPatchInput {
   readonly payload?: Record<string, unknown>;
 }
 
+export interface OperationLaunchVariantChip {
+  readonly id: string;
+  readonly label: string;
+  readonly launch: Readonly<Record<string, string>>;
+}
+
+export interface OperationLaunchVariantRow {
+  readonly id: string;
+  readonly label: string;
+  readonly starred?: boolean;
+  readonly launch: Readonly<Record<string, string>>;
+  readonly chips?: readonly OperationLaunchVariantChip[];
+}
+
+export interface OperationLaunchVariantGroup {
+  readonly id: string;
+  readonly label: string;
+  readonly rows: readonly OperationLaunchVariantRow[];
+}
+
 export interface OperationLaunchKind {
   readonly id: string;
   readonly type: string;
   readonly title: string;
   readonly disabled?: boolean;
   readonly disabledReason?: string;
+  readonly variants?: readonly OperationLaunchVariantGroup[];
 }
 
 export interface OperationCatalogPlugin {

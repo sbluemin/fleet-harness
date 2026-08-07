@@ -1,30 +1,98 @@
+import { resolveAiGatewaySelection } from "@dotobokuri/core-ai-gateway";
 import { describe, expect, it } from "vitest";
 
 import { buildAgentCliLaunchKinds } from "../server/agent-api/agent-cli-launch-kinds.js";
 
+const nativeVariants = {
+  id: "native",
+  label: "Claude",
+  rows: [
+    nativeRow("fable", "Fable"),
+    nativeRow("opus", "Opus"),
+    nativeRow("sonnet", "Sonnet"),
+  ],
+};
+
 describe("buildAgentCliLaunchKinds", () => {
-  it("지원되는 Claude CLI만 Operation Controls 목록에 포함한다", () => {
+  it("adds the complete native model and effort menu to the enabled gateway kind", () => {
     const result = buildAgentCliLaunchKinds(
       [
         { id: "claude-native", label: "Claude (Native)", available: true, signedIn: true },
         { id: "claude-gateway", label: "Claude (Gateway)", available: true, signedIn: true },
       ],
       "agent",
+      resolveAiGatewaySelection({ version: 1 }),
     );
 
     expect(result).toEqual([
       { id: "claude-native", type: "agent", title: "Claude (Native)" },
-      { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
+      {
+        id: "claude-gateway",
+        type: "agent",
+        title: "Claude (Gateway)",
+        variants: [nativeVariants],
+      },
     ]);
   });
 
-  it("설치 미완료 및 로그인 미완료 CLI에 비활성화 사유를 표시한다", () => {
+  it("adds enabled gateway models in provider order with their exposed effort ladders", () => {
+    const selection = resolveAiGatewaySelection({
+      version: 1,
+      models: [
+        { id: "kimi--k3", efforts: ["max"] },
+        { id: "codex--gpt-5.6-sol-fast" },
+      ],
+      defaultModel: "kimi--k3",
+    });
+
+    const result = buildAgentCliLaunchKinds(
+      [{ id: "claude-gateway", label: "Claude (Gateway)", available: true, signedIn: true }],
+      "agent",
+      selection,
+    );
+
+    expect(result[0]?.variants).toEqual([
+      nativeVariants,
+      {
+        id: "gateway",
+        label: "Gateway",
+        rows: [
+          {
+            id: "codex--gpt-5.6-sol-fast",
+            label: selection.models[0]!.displayName,
+            launch: { model: "codex--gpt-5.6-sol-fast" },
+            chips: [
+              gatewayChip("codex--gpt-5.6-sol-fast", "low", "LOW"),
+              gatewayChip("codex--gpt-5.6-sol-fast", "medium", "MED"),
+              gatewayChip("codex--gpt-5.6-sol-fast", "high", "HIGH"),
+              gatewayChip("codex--gpt-5.6-sol-fast", "xhigh", "XHIGH"),
+              gatewayChip("codex--gpt-5.6-sol-fast", "max", "MAX"),
+            ],
+          },
+          {
+            id: "kimi--k3",
+            label: selection.models[1]!.displayName,
+            starred: true,
+            launch: { model: "kimi--k3" },
+            chips: [gatewayChip("kimi--k3", "max", "MAX")],
+          },
+        ],
+      },
+    ]);
+    expect(JSON.stringify(result)).not.toContain("ultra");
+  });
+
+  it("keeps disabled reasons and does not attach variants to a disabled gateway kind", () => {
     const result = buildAgentCliLaunchKinds(
       [
         { id: "claude-gateway", label: "Claude (Gateway)", available: false, signedIn: true },
         { id: "claude-native", label: "Claude (Native)", available: true, signedIn: false },
       ],
       "agent",
+      resolveAiGatewaySelection({
+        version: 1,
+        models: [{ id: "kimi--k3" }],
+      }),
     );
 
     expect(result).toEqual([
@@ -33,3 +101,26 @@ describe("buildAgentCliLaunchKinds", () => {
     ]);
   });
 });
+
+function nativeRow(model: string, label: string) {
+  return {
+    id: model,
+    label,
+    launch: { model },
+    chips: [
+      gatewayChip(model, "low", "LOW"),
+      gatewayChip(model, "medium", "MED"),
+      gatewayChip(model, "high", "HIGH"),
+      gatewayChip(model, "xhigh", "XHIGH"),
+      gatewayChip(model, "max", "MAX"),
+    ],
+  };
+}
+
+function gatewayChip(model: string, effort: string, label: string) {
+  return {
+    id: effort,
+    label,
+    launch: { model, effort },
+  };
+}

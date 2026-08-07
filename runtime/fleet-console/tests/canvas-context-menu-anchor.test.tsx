@@ -24,6 +24,9 @@ beforeEach(() => {
     if (this.classList.contains("canvas-context-menu")) {
       return { ...originalGetBoundingClientRect.call(this), width: 288, height: 133 } as DOMRect;
     }
+    if (this.classList.contains("operation-launch-flyout")) {
+      return { ...originalGetBoundingClientRect.call(this), width: 324, height: 300 } as DOMRect;
+    }
     return originalGetBoundingClientRect.call(this);
   };
   container = document.createElement("div");
@@ -404,6 +407,119 @@ describe("CanvasContextMenu launch kind attribute", () => {
     }
   });
 
+  it("opens launch variants on pointer, suppresses the description aside, and preserves every payload", () => {
+    const onLaunchKind = vi.fn();
+    const catalog = gatewayVariantCatalog();
+    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, catalog, vi.fn(), false, onLaunchKind);
+
+    const parent = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
+    expect(parent.getAttribute("aria-haspopup")).toBe("menu");
+    expect(parent.getAttribute("aria-expanded")).toBe("false");
+    expect(parent.querySelector(".operation-launch-menu-chevron")?.textContent).toBe("›");
+
+    act(() => {
+      parent.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+      parent.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true }));
+    });
+    expect(parent.getAttribute("aria-expanded")).toBe("true");
+    expect(document.querySelector(".operation-launch-variant-caption")?.textContent).toBe("Claude built-in");
+    expect(document.querySelector(".canvas-context-menu-aside")).toBeNull();
+
+    const row = document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!;
+    const chip = document.querySelector<HTMLButtonElement>('[data-launch-variant-chip="fable:max"]')!;
+    act(() => row.click());
+    expect(onLaunchKind).toHaveBeenLastCalledWith("terminal", catalog[0]!.kinds[0], { model: "fable" });
+    act(() => chip.click());
+    expect(onLaunchKind).toHaveBeenLastCalledWith("terminal", catalog[0]!.kinds[0], { model: "fable", effort: "max" });
+    act(() => parent.click());
+    expect(onLaunchKind).toHaveBeenLastCalledWith("terminal", catalog[0]!.kinds[0]);
+  });
+
+  it("clamps the flyout inside narrow horizontal and vertical bounds", () => {
+    const bounds = { width: 500, height: 360 };
+    renderMenu({ x: 450, y: 320 }, bounds, gatewayVariantCatalog());
+    const parent = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
+
+    act(() => parent.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+
+    const flyout = document.querySelector<HTMLElement>(".operation-launch-flyout")!;
+    const left = Number.parseFloat(flyout.style.left);
+    const top = Number.parseFloat(flyout.style.top);
+    expect(left).toBeGreaterThanOrEqual(12);
+    expect(left).toBeLessThanOrEqual(bounds.width - 324 - 12);
+    expect(top).toBeGreaterThanOrEqual(12);
+    expect(top).toBeLessThanOrEqual(bounds.height - 300 - 12);
+  });
+
+  it("roves across flyout rows and chips, then restores parent focus with ArrowLeft", async () => {
+    renderMenu({ x: 900, y: 156 }, { width: 1116, height: 856 }, gatewayVariantCatalog());
+    const parent = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
+
+    act(() => {
+      parent.focus();
+      parent.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    });
+    await act(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
+
+    const flyout = document.querySelector<HTMLElement>(".operation-launch-flyout")!;
+    const row = document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!;
+    const high = document.querySelector<HTMLButtonElement>('[data-launch-variant-chip="fable:high"]')!;
+    const max = document.querySelector<HTMLButtonElement>('[data-launch-variant-chip="fable:max"]')!;
+    expect(flyout.parentElement).toBe(document.querySelector(".operation-launch-control--canvas"));
+    expect(flyout.closest(".canvas-context-menu")).toBeNull();
+    expect(flyout.classList.contains("is-left")).toBe(true);
+    expect(document.activeElement).toBe(row);
+
+    pressFlyoutKey("ArrowDown");
+    expect(document.activeElement).toBe(high);
+    pressFlyoutKey("ArrowDown");
+    expect(document.activeElement).toBe(max);
+    pressFlyoutKey("ArrowDown");
+    expect(document.activeElement).toBe(row);
+    pressFlyoutKey("ArrowUp");
+    expect(document.activeElement).toBe(max);
+    pressFlyoutKey("Home");
+    expect(document.activeElement).toBe(row);
+    pressFlyoutKey("End");
+    expect(document.activeElement).toBe(max);
+
+    pressFlyoutKey("ArrowLeft");
+    expect(document.querySelector(".operation-launch-flyout")).toBeNull();
+    expect(document.activeElement).toBe(parent);
+  });
+
+  it("closes only the flyout on Escape", () => {
+    const onClose = vi.fn();
+    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, gatewayVariantCatalog(), onClose);
+    const parent = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
+    act(() => parent.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+    const flyout = document.querySelector<HTMLElement>(".operation-launch-flyout")!;
+
+    act(() => flyout.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+
+    expect(document.querySelector(".operation-launch-flyout")).toBeNull();
+    expect(document.activeElement).toBe(parent);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("leaves kinds without variants on the existing direct-launch path", () => {
+    const onLaunchKind = vi.fn();
+    const catalog: readonly OperationCatalogPlugin[] = [{
+      id: "terminal",
+      title: "Terminal",
+      kinds: [{ id: "shell", type: "shell", title: "Shell" }],
+    }];
+    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, catalog, vi.fn(), false, onLaunchKind);
+
+    const shell = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="shell"]')!;
+    expect(shell.hasAttribute("aria-haspopup")).toBe(false);
+    expect(shell.querySelector(".operation-launch-menu-chevron")).toBeNull();
+    act(() => shell.click());
+    expect(onLaunchKind).toHaveBeenCalledWith("terminal", catalog[0]!.kinds[0]);
+  });
+
   it("marks the rendered menu box as the tour placement boundary", () => {
     renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 });
 
@@ -452,6 +568,7 @@ function renderMenu(
   catalog: readonly OperationCatalogPlugin[] = [],
   onClose = vi.fn(),
   fixed = false,
+  onLaunchKind = vi.fn(),
 ): void {
   act(() => root.render(
     <CanvasContextMenu
@@ -461,10 +578,47 @@ function renderMenu(
       catalog={catalog}
       canLaunch
       renderKindIcon={() => null}
-      onLaunchKind={vi.fn()}
+      onLaunchKind={onLaunchKind}
       onClose={onClose}
     />,
   ));
+}
+
+function gatewayVariantCatalog(): readonly OperationCatalogPlugin[] {
+  return [{
+    id: "terminal",
+    title: "Terminal",
+    kinds: [{
+      id: "claude-gateway",
+      type: "agent",
+      title: "Claude (Gateway)",
+      variants: [{
+        id: "native",
+        label: "Claude",
+        rows: [{
+          id: "fable",
+          label: "Fable",
+          launch: { model: "fable" },
+          chips: [
+            {
+              id: "high",
+              label: "HIGH",
+              launch: { model: "fable", effort: "high" },
+            },
+            {
+              id: "max",
+              label: "MAX",
+              launch: { model: "fable", effort: "max" },
+            },
+          ],
+        }],
+      }],
+    }],
+  }];
+}
+
+function pressFlyoutKey(key: string): void {
+  act(() => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true })));
 }
 
 function menuStyle(): CSSStyleDeclaration {

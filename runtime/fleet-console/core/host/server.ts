@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { createInfraServices, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
+import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./console-contract-types.js";
@@ -1428,12 +1429,14 @@ function isValidConsoleStaticPort(value: unknown): value is number {
 
 function sanitizeLaunchKind(value: unknown): OperationLaunchKind | null {
   if (!isPlainObject(value) || typeof value.id !== "string" || typeof value.type !== "string" || typeof value.title !== "string") return null;
+  const variants = readLaunchVariantGroups(value.variants);
   return {
     id: value.id,
     type: value.type,
     title: value.title,
     ...(typeof value.disabled === "boolean" ? { disabled: value.disabled } : {}),
     ...(typeof value.disabledReason === "string" ? { disabledReason: value.disabledReason } : {}),
+    ...(variants.length > 0 ? { variants } : {}),
   };
 }
 

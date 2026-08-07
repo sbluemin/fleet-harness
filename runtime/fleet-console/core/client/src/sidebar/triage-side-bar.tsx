@@ -53,7 +53,7 @@ interface TriageSideBarProps {
   readonly canLaunch: boolean;
   /** 소유자 없는 자리의 실행 대상 — 사이드바 빈 영역은 활성 Theater로 실행한다. */
   readonly activeTheaterLabel?: string;
-  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind) => void;
+  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>) => void;
   readonly onPick: (operationId: string) => void;
   readonly onClose: (operationId: string) => void;
   readonly onRename: (operationId: string, title: string) => void;
@@ -211,7 +211,7 @@ export function TriageSideBar({
           catalog={catalog}
           canLaunch={canLaunch}
           renderKindIcon={renderKindIcon}
-          onLaunchKind={(pluginId, kind) => { setLaunchMenu(null); onLaunchKind(pluginId, kind); }}
+          onLaunchKind={(pluginId, kind, variantLaunch) => { setLaunchMenu(null); onLaunchKind(pluginId, kind, variantLaunch); }}
           onClose={() => setLaunchMenu(null)}
           theaterLabel={activeTheaterLabel}
         />,

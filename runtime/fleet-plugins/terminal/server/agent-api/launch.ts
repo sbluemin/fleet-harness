@@ -6,14 +6,17 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { resolvePathBinary } from "@dotobokuri/core-agent";
-import { resolveAiGatewaySelection } from "@dotobokuri/core-ai-gateway";
-import type { AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
+import { exposableEffortLadder, resolveAiGatewaySelection, toClaudeGatewayModelId } from "@dotobokuri/core-ai-gateway";
+import type { AiGatewaySelection, AiGatewayStoredSettings, GatewayModel, GatewayReasoningEffort } from "@dotobokuri/core-ai-gateway";
 import { createSessionIdentityResolver } from "@dotobokuri/core-unified-agent";
 import {
   createSessionCaptureHookExec,
   createSystemPromptBuilder,
   injectAgentCliProfile,
   prepareAiGatewayLaunchProfile,
+  NATIVE_CLAUDE_EFFORTS,
+  NATIVE_CLAUDE_MODEL_ALIASES,
+  resolveAgentCliId,
   resolveAgentCliProfile,
   type AgentCliId,
   type AgentCliProfile,
@@ -64,6 +67,28 @@ export interface ConsoleRuntimeSessionInfo {
   readonly label: string;
   readonly mcpToolCount: number;
   readonly sessionId: string;
+}
+
+export type GatewayLaunchOptionErrorCode = "gateway_model_not_enabled" | "invalid_effort";
+
+export class GatewayLaunchOptionError extends Error {
+  readonly code: GatewayLaunchOptionErrorCode;
+
+  constructor(code: GatewayLaunchOptionErrorCode, message: string) {
+    super(message);
+    this.name = "GatewayLaunchOptionError";
+    this.code = code;
+  }
+}
+
+export function isGatewayLaunchEffortAllowed(
+  selection: AiGatewaySelection,
+  model: GatewayModel,
+  effort: string,
+): boolean {
+  if (!NATIVE_CLAUDE_EFFORTS.includes(effort as (typeof NATIVE_CLAUDE_EFFORTS)[number])) return false;
+  const efforts = selection.effortExposure[model.id] ?? exposableEffortLadder(model);
+  return efforts.includes(effort as GatewayReasoningEffort);
 }
 
 export type TerminalLaunchResolver = (cwd?: string, context?: TerminalLaunchContext) => Promise<TerminalLaunchSpec>;
@@ -125,6 +150,8 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       onRuntimeSessionStart: deps.onRuntimeSessionStart,
       resolveProfile,
       cliId: context?.cliId,
+      model: context?.model,
+      effort: context?.effort,
       createSessionIdentityResolver: resolveSessionIdentityResolver,
       resumeSessionId: context?.resumeSessionId,
       sessionId,
@@ -156,6 +183,8 @@ async function createAgentCliLaunchSpec(options: {
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
   readonly cliId?: string;
+  readonly model?: string;
+  readonly effort?: string;
   readonly createSessionCaptureHookExec: typeof createSessionCaptureHookExec;
   readonly createSessionIdentityResolver: typeof createSessionIdentityResolver;
   readonly createSystemPromptBuilder: typeof createSystemPromptBuilder;
@@ -176,15 +205,35 @@ async function createAgentCliLaunchSpec(options: {
     if (!agentRuntime) {
       throw new Error("Fleet Console agent runtime is unavailable.");
     }
-    const profile = await options.resolveProfile(options.env, options.cwd, {
-      cliId: options.cliId,
-      resumeSessionId: options.resumeSessionId,
-    });
+    const cliId = resolveAgentCliId(options.env, { cliId: options.cliId });
     // gateway Agent 주입과 ANTHROPIC_MODEL/cache는 같은 selection을 공유한다.
-    // inject보다 먼저 읽어 `--agents`에 노출 모델×effort를 스폰 인자로만 실는다.
-    const gatewaySelection = profile.id === "claude-gateway" && options.readAiGatewaySettings
+    // resolveProfile보다 먼저 읽어 명시 모델 검증·`--agents`·cache가 한 스냅샷을 공유한다.
+    const gatewaySelection = cliId === "claude-gateway" && options.readAiGatewaySettings
       ? resolveAiGatewaySelection(options.readAiGatewaySettings())
       : undefined;
+    let resolvedModel = options.model;
+    if (cliId === "claude-gateway" && resolvedModel && !NATIVE_CLAUDE_MODEL_ALIASES.includes(resolvedModel as (typeof NATIVE_CLAUDE_MODEL_ALIASES)[number])) {
+      const model = gatewaySelection?.models.find((candidate) => candidate.id === resolvedModel);
+      if (!model) {
+        throw new GatewayLaunchOptionError(
+          "gateway_model_not_enabled",
+          `Gateway model "${resolvedModel}" is not enabled.`,
+        );
+      }
+      if (options.effort !== undefined && (!gatewaySelection || !isGatewayLaunchEffortAllowed(gatewaySelection, model, options.effort))) {
+        throw new GatewayLaunchOptionError(
+          "invalid_effort",
+          `Gateway effort "${options.effort}" is not enabled for model "${resolvedModel}".`,
+        );
+      }
+      resolvedModel = toClaudeGatewayModelId(model);
+    }
+    const profile = await options.resolveProfile(options.env, options.cwd, {
+      cliId,
+      resumeSessionId: options.resumeSessionId,
+      model: resolvedModel,
+      effort: options.effort,
+    });
     const injectedProfile = await options.injectProfile(profile, {
       buildSystemPrompt: () => options.createSystemPromptBuilder().build(),
       dataDir: options.dataDir,

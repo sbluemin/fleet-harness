@@ -15,6 +15,11 @@
       "import": "./operations/browser.tsx",
       "default": "./operations/browser.tsx"
     },
+    "./operations/launch-variants": {
+      "types": "./operations/launch-variants.ts",
+      "import": "./operations/launch-variants.ts",
+      "default": "./operations/launch-variants.ts"
+    },
     "./version": {
       "types": "./version.ts",
       "import": "./version.ts",

@@ -23,7 +23,7 @@ export function createClaudeFamilyCliDefinition(
         delete childEnv.ANTHROPIC_AUTH_TOKEN;
       }
       return {
-        args: [...prefixArgs, ...buildModelArgs(profileOptions.model)],
+        args: [...prefixArgs, ...buildModelArgs(profileOptions.model), ...buildEffortArgs(profileOptions.effort)],
         bin,
         cwd: profileOptions.cwd,
         env: childEnv,
@@ -44,4 +44,8 @@ export function createClaudeFamilyCliDefinition(
 
 function buildModelArgs(model: string | undefined): string[] {
   return model === undefined ? [] : ["--model", model];
+}
+
+function buildEffortArgs(effort: string | undefined): string[] {
+  return effort === undefined ? [] : ["--effort", effort];
 }

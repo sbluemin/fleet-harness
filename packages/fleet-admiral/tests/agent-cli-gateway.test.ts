@@ -35,10 +35,11 @@ describe("claude-gateway profile", () => {
     }, "/tmp", {
       cliId: "claude-gateway",
       model: "claude-gateway--cursor-auto",
+      effort: "xhigh",
     });
 
     expect(profile).toMatchObject({
-      args: ["--model", "claude-gateway--cursor-auto"],
+      args: ["--model", "claude-gateway--cursor-auto", "--effort", "xhigh"],
       bin: process.execPath,
       id: "claude-gateway",
       label: "Claude (Gateway)",
