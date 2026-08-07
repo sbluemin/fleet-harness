@@ -25,6 +25,7 @@ export type PaletteCommandAction =
   | { readonly kind: "fit-all-panels" }
   | { readonly kind: "toggle-triage-mode" }
   | { readonly kind: "toggle-formation" }
+  | { readonly kind: "toggle-station-keeping" }
   | { readonly kind: "toggle-status-axis" }
   | { readonly kind: "open-rail-panel"; readonly panelId: string }
   | { readonly kind: "open-codex-entry"; readonly entryId: string }
@@ -165,6 +166,12 @@ export function buildPaletteCommands(
       label: t("palette.toggleFormation"),
       current: false,
       action: { kind: "toggle-formation" },
+    });
+    commands.push({
+      commandId: "toggle-station-keeping",
+      label: t("palette.toggleStationKeeping"),
+      current: false,
+      action: { kind: "toggle-station-keeping" },
     });
     commands.push({
       commandId: "toggle-status-axis",

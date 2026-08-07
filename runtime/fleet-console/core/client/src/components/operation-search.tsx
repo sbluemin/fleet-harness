@@ -29,7 +29,7 @@ import { stashKeyboardShortcutsReturnFocus } from "../focus-guards.js";
 import { closeOperationCompletely } from "../operation-close.js";
 import { forgetTheaterCompletely } from "../theater-forget.js";
 import type { DeferredDeletionReceipt } from "../api.js";
-import { getLoadedTheaterId, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, loadForTheater, minimizeOperations, requestFitAllOperations, toggleFormationView } from "../canvas/canvas-store.js";
+import { getLoadedTheaterId, clearFormationView, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, getStationKeeping, loadForTheater, minimizeOperations, requestFitAllOperations, setStationKeeping, toggleFormationView } from "../canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive, visitTriageTheater } from "../canvas/triage-store.js";
 import { getViewModeSnapshot } from "../view-mode-store.js";
 import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
@@ -345,6 +345,16 @@ export function OperationSearch({
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         ensurePaletteCanvasTheater(state);
         toggleFormationView();
+        break;
+      }
+      case "toggle-station-keeping": {
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        ensurePaletteCanvasTheater(state);
+        // 팔레트는 규율이 사는 곳으로 데려간다 — Tactical/War Room이면 Cruise로 나온 뒤 전환해,
+        // 광고된 커맨드가 무음 no-op이 되지 않고 전환 결과(펼침 포함)가 즉시 보이게 한다.
+        if (isTriageActive()) setTriageActive(false);
+        clearFormationView();
+        setStationKeeping(!getStationKeeping());
         break;
       }
       case "toggle-status-axis": {

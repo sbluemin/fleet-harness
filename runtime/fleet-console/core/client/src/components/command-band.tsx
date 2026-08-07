@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../api.js";
-import { animateViewportTo, clearFormationView, fitAllOperations, selectFormationLayout, toggleFormationView, useCanvasState, useFormationLayout, useFormationView, type FormationLayout } from "../canvas/canvas-store.js";
+import { animateViewportTo, clearFormationView, fitAllOperations, selectFormationLayout, setStationKeeping, toggleFormationView, useCanvasState, useFormationLayout, useFormationView, useStationKeeping, type FormationLayout } from "../canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, setTriageActive, setTriageSpotlightEnabled, useTriageActive, useTriageDeckZoomLive, useTriageSpotlightEnabled, visitTriageTheater } from "../canvas/triage-store.js";
 import { cycleTriageDeckZoomPreset } from "../canvas/triage-watch-deck.js";
 import { COMMAND_BAND_RAIL_STRIP_PX, commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandMapControlsAnchor, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
@@ -108,6 +108,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const formationView = useFormationView();
   const triageActive = useTriageActive();
   const triageSpotlightEnabled = useTriageSpotlightEnabled();
+  const stationKeeping = useStationKeeping();
   const triageDeckZoomLive = useTriageDeckZoomLive();
   const canvasMode: CanvasMode = triageActive ? "warRoom" : formationView ? "tactical" : "cruise";
   const selectCanvasMode = (mode: CanvasMode) => {
@@ -528,6 +529,16 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
           <span className="command-band-mode-tray-divider" aria-hidden="true" />
           <button type="button" className="command-band-mode-tool" onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })} disabled={state.activeTheaterId === null} aria-label={t("chrome.commandBand.resetCanvasView")} title={t("chrome.commandBand.resetCanvasView")}><ResetViewIcon /></button>
           <button type="button" className="command-band-mode-tool" onClick={fitAllOperations} disabled={state.activeTheaterId === null || !state.operationsHydrated} aria-label={t("chrome.commandBand.fitAllPanels")} title={t("chrome.commandBand.fitAllPanels")}><FitAllIcon /></button>
+          <button
+            type="button"
+            className="command-band-mode-tool"
+            data-cruise-tool="station-keeping"
+            aria-pressed={stationKeeping}
+            disabled={state.activeTheaterId === null || !state.operationsHydrated}
+            aria-label={t("chrome.commandBand.stationKeeping")}
+            title={t("chrome.commandBand.stationKeeping")}
+            onClick={() => setStationKeeping(!stationKeeping)}
+          ><StationKeepingIcon /></button>
         </div> : null}
         {canvasMode === "warRoom" ? <div className="command-band-mode-tray" role="group" aria-label={t("chrome.commandBand.warRoomTools")}>
           <span className="command-band-mode-tray-divider" aria-hidden="true" />
@@ -752,6 +763,11 @@ function ResetViewIcon() {
 
 function FitAllIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+// Station Keeping — 패널 둘레의 이격 반경(점선 keep-clear 구역 안의 패널).
+function StationKeepingIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="6" height="6" fill="none" stroke="currentColor" strokeWidth="1.25" /><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="2" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2.2" opacity="0.75" /></svg>;
 }
 
 function FormationColumnsIcon() {

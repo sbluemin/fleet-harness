@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { calculateGridSlots, clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, consumePendingFitAllOperations, fitAllOperations, forceDropCompanionOperationId, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFormationLayout, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCanvasSnapshot, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, requestFitAllOperations, resetCanvasViewportSize, selectFormationLayout, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setFormationLayout, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, setState, toggleFormationView, toggleTheaterGroupCollapsed, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
+import { calculateGridSlots, clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, forceDropCompanionOperationId, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFormationLayout, getFormationView, getMaximizedOperationId, getSnapshot, getStationKeeping, getTheaterCanvasSnapshot, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, requestFitAllOperations, resetCanvasViewportSize, resolveClearPosition, resolveLaunchGeometry, restoreOperation, selectFormationLayout, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setFormationLayout, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setOperationOrder, setState, setStationKeeping, settleOperationGeometry, STATION_KEEPING_GAP, toggleFormationView, toggleTheaterGroupCollapsed, type OperationGeometry } from "../core/client/src/canvas/canvas-store.js";
 
 const GEOMETRY: OperationGeometry = { x: 0, y: 0, width: 100, height: 100, zIndex: 0 };
 
@@ -667,6 +667,167 @@ describe("canvas store", () => {
     loadForTheater("theater-a");
     expect(getFormationView()).toBe(true);
     expect(getSnapshot().operations).toEqual(beforeFormation);
+  });
+});
+
+describe("station keeping", () => {
+  const rect = (x: number, y: number, width = 100, height = 100): OperationGeometry => ({ x, y, width, height, zIndex: 0 });
+
+  function expectAllVisibleClear(): void {
+    const snapshot = getSnapshot();
+    const visible = Object.entries(snapshot.operations)
+      .filter(([id]) => !snapshot.minimized.includes(id))
+      .map(([, geometry]) => geometry);
+    for (let i = 0; i < visible.length; i += 1) {
+      for (let j = i + 1; j < visible.length; j += 1) {
+        const a = visible[i]!;
+        const b = visible[j]!;
+        const clear = a.x + a.width + STATION_KEEPING_GAP <= b.x || b.x + b.width + STATION_KEEPING_GAP <= a.x
+          || a.y + a.height + STATION_KEEPING_GAP <= b.y || b.y + b.height + STATION_KEEPING_GAP <= a.y;
+        expect(clear, `panels ${i} and ${j} overlap: ${JSON.stringify([a, b])}`).toBe(true);
+      }
+    }
+  }
+
+  it("resolveClearPosition returns the target when it is already clear", () => {
+    expect(resolveClearPosition(rect(0, 0), [rect(500, 500)])).toEqual({ x: 0, y: 0 });
+  });
+
+  it("resolveClearPosition finds the nearest clear spot honoring the gap", () => {
+    // 장애물 (0,0,100,100) 위에 정확히 겹친 목표 — 최근접 해는 한 축으로 100+gap 만큼 밀린 자리다.
+    const spot = resolveClearPosition(rect(0, 0), [rect(0, 0)]);
+    const distance = Math.sqrt((spot.x - 0) ** 2 + (spot.y - 0) ** 2);
+    expect(distance).toBeCloseTo(100 + STATION_KEEPING_GAP, 10);
+  });
+
+  it("enabling spreads overlapping panels and leaves them clear", () => {
+    setOperationGeometry("op-a", rect(0, 0));
+    setOperationGeometry("op-b", rect(40, 40));
+    setOperationGeometry("op-c", rect(80, 80));
+
+    setStationKeeping(true);
+
+    expect(getStationKeeping()).toBe(true);
+    expectAllVisibleClear();
+  });
+
+  it("anchors the z-top panel while lower panels absorb the spread displacement", () => {
+    setOperationGeometry("op-a", rect(0, 0));
+    setOperationGeometry("op-b", rect(40, 40));
+    setOperationGeometry("op-c", rect(80, 80)); // 마지막 setOperationGeometry가 최상단 z를 가진다.
+    const top = getSnapshot().operations["op-c"]!;
+
+    setStationKeeping(true);
+
+    const after = getSnapshot().operations["op-c"]!;
+    expect({ x: after.x, y: after.y }).toEqual({ x: top.x, y: top.y });
+    expectAllVisibleClear();
+  });
+
+  it("disabling moves nothing", () => {
+    setOperationGeometry("op-a", rect(0, 0));
+    setOperationGeometry("op-b", rect(40, 40));
+    setStationKeeping(true);
+    const spread = { ...getSnapshot().operations };
+
+    setStationKeeping(false);
+
+    expect(getStationKeeping()).toBe(false);
+    expect(getSnapshot().operations).toEqual(spread);
+  });
+
+  it("settleOperationGeometry moves only the touched panel", () => {
+    setOperationGeometry("op-a", rect(0, 0));
+    setOperationGeometry("op-b", rect(400, 0));
+    setStationKeeping(true);
+    const anchor = getSnapshot().operations["op-b"]!;
+
+    // 드래그 종료를 재현: op-a를 op-b 위로 옮긴 뒤 정착시킨다.
+    setOperationGeometry("op-a", { ...getSnapshot().operations["op-a"]!, x: 410, y: 10 });
+    settleOperationGeometry("op-a");
+
+    expectAllVisibleClear();
+    const settled = getSnapshot().operations["op-b"]!;
+    expect({ x: settled.x, y: settled.y }).toEqual({ x: anchor.x, y: anchor.y });
+  });
+
+  it("settleOperationGeometry is a no-op while disabled", () => {
+    setOperationGeometry("op-a", rect(0, 0));
+    setOperationGeometry("op-b", rect(10, 10));
+
+    settleOperationGeometry("op-a");
+
+    expect(getSnapshot().operations["op-a"]).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it("ensureDefaultGeometry lands hydrated panels clear of existing ones", () => {
+    setOperationGeometry("op-a", rect(0, 0, 640, 400));
+    setStationKeeping(true);
+
+    // 캐스케이드 폴백(index×40)은 op-a와 겹치는 자리다 — 규율이 정착시켜야 한다.
+    ensureDefaultGeometry("op-b");
+
+    expectAllVisibleClear();
+  });
+
+  it("restoreOperation settles a panel whose spot was taken while minimized", () => {
+    setOperationGeometry("op-a", rect(0, 0));
+    setStationKeeping(true);
+    minimizeOperation("op-a");
+    setOperationGeometry("op-b", rect(0, 0));
+
+    restoreOperation("op-a");
+
+    expectAllVisibleClear();
+  });
+
+  it("resolveLaunchGeometry settles launch coordinates while enabled and passes them through while disabled", () => {
+    setOperationGeometry("op-a", rect(0, 0));
+    const launch = rect(10, 10);
+
+    expect(resolveLaunchGeometry("theater-a", launch)).toEqual(launch);
+
+    setStationKeeping(true);
+    const settled = resolveLaunchGeometry("theater-a", launch);
+    const clear = settled.x >= 100 + STATION_KEEPING_GAP || settled.y >= 100 + STATION_KEEPING_GAP
+      || settled.x + settled.width + STATION_KEEPING_GAP <= 0 || settled.y + settled.height + STATION_KEEPING_GAP <= 0;
+    expect(clear).toBe(true);
+  });
+
+  it("persists the flag per theater and round-trips through storage", () => {
+    setStationKeeping(true);
+    expect(getStationKeeping()).toBe(true);
+
+    loadForTheater("theater-b");
+    expect(getStationKeeping()).toBe(false);
+
+    loadForTheater("theater-a");
+    expect(getStationKeeping()).toBe(true);
+  });
+
+  it("normalizes stored state without the flag to disabled", () => {
+    window.localStorage.setItem("fleet-console.canvas.theater-legacy", JSON.stringify({
+      viewport: { x: 0, y: 0, zoom: 1 },
+      operations: { "op-a": rect(0, 0) },
+    }));
+
+    loadForTheater("theater-legacy");
+
+    expect(getStationKeeping()).toBe(false);
+  });
+
+  it("loadForTheater restores the invariant when external writes left overlaps", () => {
+    // 규율이 켜진 Theater의 저장본에 규율 밖 쓰기(War Room 지도 이동 등)가 겹침을 남긴 상황.
+    window.localStorage.setItem("fleet-console.canvas.theater-drifted", JSON.stringify({
+      viewport: { x: 0, y: 0, zoom: 1 },
+      operations: { "op-a": rect(0, 0), "op-b": rect(20, 20) },
+      stationKeeping: true,
+    }));
+
+    loadForTheater("theater-drifted");
+
+    expect(getStationKeeping()).toBe(true);
+    expectAllVisibleClear();
   });
 });
 

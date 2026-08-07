@@ -24,6 +24,9 @@ export interface CanvasState {
   readonly minimized: readonly string[];
   // 접힌 그룹 id 목록(per-Theater localStorage). 접힘은 시각 표시 상태라 클라이언트 SSoT.
   readonly collapsedGroups: readonly string[];
+  // Station Keeping — Cruise의 상시 비겹침 규율(옵트인, Theater별). 켜는 순간 한 번 펼치고,
+  // 켜져 있는 동안 생성·이동·리사이즈·복원이 정착을 거친다. 끄는 것은 좌표를 되돌리지 않는다.
+  readonly stationKeeping: boolean;
 }
 
 export interface CanvasViewportSize {
@@ -75,7 +78,9 @@ const ZOOM_TWEEN_FACTOR = 0.2;
 const ZOOM_TWEEN_POSITION_EPSILON = 0.5;
 const ZOOM_TWEEN_ZOOM_EPSILON = 0.001;
 const DEFAULT_VIEWPORT: CanvasViewport = { x: 0, y: 0, zoom: 1 };
-const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, operations: {}, operationOrder: [], operationAccent: {}, minimized: [], collapsedGroups: [] };
+const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, operations: {}, operationOrder: [], operationAccent: {}, minimized: [], collapsedGroups: [], stationKeeping: false };
+// Station Keeping이 유지하는 패널 사이 최소 간격(월드 단위). 줌과 무관하게 월드 좌표로만 계산한다.
+export const STATION_KEEPING_GAP = 16;
 
 const listeners = new Set<Listener>();
 const focusLayerListeners = new Set<Listener>();
@@ -214,6 +219,7 @@ export function setState(patch: Partial<CanvasState>): void {
     operationAccent: patch.operationAccent ?? state.operationAccent,
     minimized: patch.minimized ?? state.minimized,
     collapsedGroups: patch.collapsedGroups ?? state.collapsedGroups,
+    stationKeeping: patch.stationKeeping ?? state.stationKeeping,
   };
   scheduleSave();
   emit();
@@ -458,9 +464,15 @@ export function restoreOperation(sessionId: string): void {
     return;
   }
   const zIndex = claimTopZIndex();
+  let restored: OperationGeometry = { ...geometry, zIndex };
+  // Station Keeping 중에는 복원도 정착을 거친다 — 자리를 비운 사이 다른 패널이 그 자리를 쓸 수 있다.
+  if (state.stationKeeping) {
+    const spot = resolveClearPosition(restored, visibleObstacles(sessionId));
+    restored = { ...restored, x: spot.x, y: spot.y };
+  }
   setState({
     minimized,
-    operations: { ...state.operations, [sessionId]: { ...geometry, zIndex } },
+    operations: { ...state.operations, [sessionId]: restored },
   });
 }
 
@@ -505,15 +517,149 @@ export function ensureDefaultGeometry(sessionId: string): OperationGeometry {
   const existing = state.operations[sessionId];
   if (existing) return existing;
   const index = Object.keys(state.operations).length;
-  const geometry: OperationGeometry = {
+  let geometry: OperationGeometry = {
     x: index * DEFAULT_OPERATION_OFFSET,
     y: index * DEFAULT_OPERATION_OFFSET,
     width: DEFAULT_OPERATION_WIDTH,
     height: DEFAULT_OPERATION_HEIGHT,
     zIndex: claimTopZIndex(),
   };
+  if (state.stationKeeping) {
+    const spot = resolveClearPosition(geometry, visibleObstacles(sessionId));
+    geometry = { ...geometry, x: spot.x, y: spot.y };
+  }
   setState({ operations: { ...state.operations, [sessionId]: geometry } });
   return geometry;
+}
+
+// ── Station Keeping ──────────────────────────────────────────────────────────
+// Cruise의 상시 비겹침 규율. 모든 계산은 월드 좌표이고 캔버스는 무한 평면이므로 해는 항상 존재한다.
+
+interface StationKeepingRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+// gap 이상 떨어져 있으면 clear — 정확히 gap만큼 떨어진 접촉은 규율을 만족한다.
+function rectsClear(a: StationKeepingRect, b: StationKeepingRect, gap: number): boolean {
+  return a.x + a.width + gap <= b.x || b.x + b.width + gap <= a.x
+    || a.y + a.height + gap <= b.y || b.y + b.height + gap <= a.y;
+}
+
+// 목표 자리에서 가장 가까운 비겹침 좌표. 최적해의 x·y는 각각 "목표 그대로"이거나 "어떤 장애물
+// 가장자리에 gap을 두고 붙는 값"이므로(위치 공간의 금지 영역이 축 정렬 사각형 합집합이라 최근접점은
+// 그 경계·경계 교차점 위에 있다), 두 축 후보의 곱집합 전수 검사가 정확한 최근접 자리를 준다.
+export function resolveClearPosition(
+  target: StationKeepingRect,
+  obstacles: readonly StationKeepingRect[],
+  gap = STATION_KEEPING_GAP,
+): { readonly x: number; readonly y: number } {
+  if (obstacles.every((obstacle) => rectsClear(target, obstacle, gap))) return { x: target.x, y: target.y };
+  const xCandidates = new Set<number>([target.x]);
+  const yCandidates = new Set<number>([target.y]);
+  for (const obstacle of obstacles) {
+    xCandidates.add(obstacle.x - target.width - gap);
+    xCandidates.add(obstacle.x + obstacle.width + gap);
+    yCandidates.add(obstacle.y - target.height - gap);
+    yCandidates.add(obstacle.y + obstacle.height + gap);
+  }
+  let best: { x: number; y: number } | null = null;
+  let bestDistance = Infinity;
+  for (const x of xCandidates) {
+    for (const y of yCandidates) {
+      const candidate = { x, y, width: target.width, height: target.height };
+      if (obstacles.some((obstacle) => !rectsClear(candidate, obstacle, gap))) continue;
+      const distance = (x - target.x) ** 2 + (y - target.y) ** 2;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = { x, y };
+      }
+    }
+  }
+  return best ?? { x: target.x, y: target.y };
+}
+
+// 규율의 장애물은 "보이는 Cruise 패널"뿐이다 — 최소화·모드 투영·접힘은 자리를 차지하지 않는다.
+function visibleObstacles(excludeId: string | null): readonly StationKeepingRect[] {
+  return Object.entries(state.operations)
+    .filter(([sessionId]) => sessionId !== excludeId && !state.minimized.includes(sessionId))
+    .map(([, geometry]) => geometry);
+}
+
+// 옵트인 순간과 불변식 복구의 일괄 정착. z 상위(최근 사용) 패널부터 자리를 확정해 사용자가 보고
+// 있는 패널이 덜 움직인다(멘탈맵 보존 — Tactical의 재격자화가 아니다). 이미 비겹침이면 null.
+function spreadVisibleOperations(
+  operations: Record<string, OperationGeometry>,
+  minimized: readonly string[],
+): Record<string, OperationGeometry> | null {
+  const minimizedSet = new Set(minimized);
+  const sorted = Object.entries(operations)
+    .filter(([sessionId]) => !minimizedSet.has(sessionId))
+    .sort(([, a], [, b]) => b.zIndex - a.zIndex);
+  const placed: StationKeepingRect[] = [];
+  const next = { ...operations };
+  let changed = false;
+  for (const [sessionId, geometry] of sorted) {
+    const spot = resolveClearPosition(geometry, placed);
+    if (spot.x !== geometry.x || spot.y !== geometry.y) {
+      next[sessionId] = { ...geometry, x: spot.x, y: spot.y };
+      changed = true;
+    }
+    placed.push({ ...geometry, x: spot.x, y: spot.y });
+  }
+  return changed ? next : null;
+}
+
+export function getStationKeeping(): boolean {
+  return state.stationKeeping;
+}
+
+export function useStationKeeping(): boolean {
+  return useSyncExternalStore(subscribe, getStationKeeping, getStationKeeping);
+}
+
+// 옵트인은 즉시 한 번 펼친다. 옵트아웃은 좌표를 되돌리지 않는다 — 규율이 남긴 배치가 새 현실이다.
+export function setStationKeeping(enabled: boolean): void {
+  if (state.stationKeeping === enabled) return;
+  if (!enabled) {
+    setState({ stationKeeping: false });
+    return;
+  }
+  const spread = spreadVisibleOperations(state.operations, state.minimized);
+  setState({ stationKeeping: true, ...(spread ? { operations: spread } : {}) });
+}
+
+// 규율이 켜진 상태의 불변식 복구 — War Room 지도 이동처럼 규율 밖 쓰기가 남긴 겹침을 정착시킨다.
+export function enforceStationKeeping(): void {
+  if (!state.stationKeeping) return;
+  const spread = spreadVisibleOperations(state.operations, state.minimized);
+  if (spread) setState({ operations: spread });
+}
+
+// 단일 패널 정착(드래그·리사이즈 해제) — 만진 패널만 움직이고 이웃은 절대 움직이지 않는다.
+export function settleOperationGeometry(sessionId: string): void {
+  if (!state.stationKeeping) return;
+  const geometry = state.operations[sessionId];
+  if (!geometry || state.minimized.includes(sessionId)) return;
+  const spot = resolveClearPosition(geometry, visibleObstacles(sessionId));
+  if (spot.x === geometry.x && spot.y === geometry.y) return;
+  setState({ operations: { ...state.operations, [sessionId]: { ...geometry, x: spot.x, y: spot.y } } });
+}
+
+// 생성 좌표 정착 — 규율은 Theater별 상태이므로 대상 Theater의 스냅샷을 따른다.
+// 비활성 Theater(War Room 소유 영역 실행)는 저장된 스냅샷 기준으로 정착해 다음 방문 때 겹치지 않는다.
+export function resolveLaunchGeometry(theaterId: string, geometry: OperationGeometry): OperationGeometry {
+  const snapshot = activeTheaterId === theaterId ? state : readStoredState(theaterId);
+  if (!snapshot.stationKeeping) return geometry;
+  const minimizedSet = new Set(snapshot.minimized);
+  const obstacles = Object.entries(snapshot.operations)
+    .filter(([sessionId]) => !minimizedSet.has(sessionId))
+    .map(([, existing]) => existing);
+  const spot = resolveClearPosition(geometry, obstacles);
+  if (spot.x === geometry.x && spot.y === geometry.y) return geometry;
+  return { ...geometry, x: spot.x, y: spot.y };
 }
 
 export function pruneOperations(validSessionIds: readonly string[]): void {
@@ -562,6 +708,16 @@ export function loadForTheater(theaterId: string | null): void {
   targetViewport = state.viewport;
   // 복원된 Operation의 최대 zIndex 위로 카운터를 끌어올린다 — 새로고침/Theater 전환 후에도 활성화→최상단을 보장한다.
   topZIndex = Math.max(topZIndex, maxZIndexOf(state.operations));
+  // 규율이 켜진 Theater는 로드 시점에 불변식을 복구한다 — 비활성 상태에서 들어온 규율 밖 쓰기
+  // (War Room 지도 이동 등)가 남긴 겹침을 정착시키고, 복구를 저장까지 수렴시켜 다음 로드가
+  // 같은 복구를 반복하지 않게 한다(이탈 시 flushScheduledSave가 이 상태를 쓴다).
+  if (state.stationKeeping) {
+    const spread = spreadVisibleOperations(state.operations, state.minimized);
+    if (spread) {
+      state = { ...state, operations: spread };
+      scheduleSave();
+    }
+  }
   emit();
   if (focusLayerChanged) emitFocusLayer();
   if (formationChanged) emitFormationView();
@@ -924,6 +1080,7 @@ function normalizeCanvasState(value: unknown): CanvasState {
     // 저장된 최소화 목록 중 실재하는 Operation만 남긴다(stale 직렬화 방어).
     minimized: normalizeMinimized(value.minimized, operations),
     collapsedGroups: normalizeStringArray(value.collapsedGroups),
+    stationKeeping: value.stationKeeping === true,
   };
 }
 
