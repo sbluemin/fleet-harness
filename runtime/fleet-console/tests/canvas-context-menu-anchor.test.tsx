@@ -86,7 +86,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
         id: "terminal",
         title: "Terminal",
         kinds: [
-          { id: "claude", type: "agent", title: "Claude Code (Classic)" },
+          { id: "claude-native", type: "agent", title: "Claude (Native)" },
           { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
         ],
       },
@@ -270,7 +270,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
       {
         id: "terminal",
         title: "Terminal",
-        kinds: [{ id: "claude", type: "agent", title: "Claude Local" }],
+        kinds: [{ id: "claude-native", type: "agent", title: "Claude Local" }],
       },
       {
         id: "remote",
@@ -286,7 +286,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
       .toBe("Runs Claude Code on the models you enabled in Settings");
     act(() => rows[0]!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
     expect(document.querySelector(".canvas-context-menu-aside")?.textContent)
-      .toContain("Admiral standing orders");
+      .toContain("without the Admiral prompt");
   });
 
   it("closes when focus leaves the menu, since its items sit outside the tab order", () => {

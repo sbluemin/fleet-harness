@@ -32,7 +32,6 @@ export interface AiGatewayCatalog {
 }
 
 export interface SystemPromptSettingsState {
-  readonly enableMetaphor: boolean;
   readonly agentIdleDormantMinutes: number | null;
   readonly aiGateway: AiGatewaySettings | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
@@ -41,7 +40,6 @@ export interface SystemPromptSettingsState {
 }
 
 export type SystemPromptSettingsUpdate =
-  | { readonly enableMetaphor: boolean }
   | { readonly agentIdleDormantMinutes: number | null }
   | { readonly aiGateway: AiGatewaySettings | null }
   | { readonly cursorDiagnosticsEnabled: boolean }
@@ -90,7 +88,6 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
   const payload = value as Partial<SystemPromptSettingsState>;
   if (
     !payload
-    || typeof payload.enableMetaphor !== "boolean"
     || !isAgentIdleDormantMinutes(payload.agentIdleDormantMinutes)
     || !isAiGatewayCatalog(payload.aiGatewayCatalog)
     || typeof payload.cursorDiagnosticsEnabled !== "boolean"
@@ -99,7 +96,6 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     throw new TerminalSettingsApiError(status, "Invalid Terminal settings response");
   }
   return {
-    enableMetaphor: payload.enableMetaphor,
     agentIdleDormantMinutes: payload.agentIdleDormantMinutes,
     aiGateway: payload.aiGateway ?? null,
     aiGatewayCatalog: payload.aiGatewayCatalog,
@@ -124,7 +120,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "enableMetaphor" | "agentIdleDormantMinutes" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled";
+export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -196,7 +192,6 @@ export async function setSystemPromptSettingsField<Field extends SystemPromptSet
 }
 
 function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptSettingsState): SystemPromptSettingsUpdate {
-  if (field === "enableMetaphor") return { enableMetaphor: state.enableMetaphor };
   if (field === "aiGateway") return { aiGateway: state.aiGateway };
   if (field === "cursorDiagnosticsEnabled") {
     return { cursorDiagnosticsEnabled: state.cursorDiagnosticsEnabled };

@@ -110,7 +110,7 @@ describe("global settings routes", () => {
     expect(published).toEqual(["carbon"]);
   });
 
-  it("PUT /global-settings ignores enableMetaphor body field", async () => {
+  it("PUT /global-settings ignores the retired terminal-owned enableMetaphor field", async () => {
     const harness = createRouterHarness({
       authorized: true,
       body: { enableMetaphor: true },

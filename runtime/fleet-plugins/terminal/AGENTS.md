@@ -15,7 +15,7 @@ The built-in Terminal plugin owns Shell and Agent Operations, including PTY sess
 ## Constraints
 
 - Console owns Operation chrome and path selection; Terminal owns its bodies, session lifecycle, preferences, and terminal-only assets.
-- Agent prompt and metaphor settings use Fleet global settings. Terminal font is server-durable plugin state; renderer choice is browser-local. Console core must not own either terminal preference.
+- Agent prompt settings use Fleet global settings. Terminal font is server-durable plugin state; renderer choice is browser-local. Console core must not own either terminal preference.
 - System-font choices are host-classified and consumed through the shared Font Picker boundary.
 - Global Shell starts at the active Theater root and uses one deterministic reserved PTY identity per Theater. It remains browser-Origin and terminal-authorization gated, and Theater resolution must finish before capacity checks or ticket issuance.
 - Closing or collapsing its panel, or switching Theaters, must not destroy a Global Shell PTY; returning to a Theater reattaches its existing session and replays only that Theater's server-owned scrollback.

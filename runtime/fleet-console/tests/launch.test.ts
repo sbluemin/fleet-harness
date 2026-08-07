@@ -38,9 +38,9 @@ const baseProfile = {
 
 const TEMP_DIRS: string[] = [];
 
-// 전역 옵션(enableMetaphor)을 고정 반환하는 InfraServices 스텁 —
+// 전역 옵션을 고정 반환하는 InfraServices 스텁 —
 // launch resolver가 실제 ~/.fleet/settings.json을 읽지 않도록 테스트를 격리한다.
-function createFakeInfraServices(globalOptions: { readonly enableMetaphor?: boolean } = {}) {
+function createFakeInfraServices(globalOptions: { readonly agentIdleDormantMinutes?: number | null } = {}) {
   const data = { version: 1 as const, ...globalOptions };
   return {
     authService: {},

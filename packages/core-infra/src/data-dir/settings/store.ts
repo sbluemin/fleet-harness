@@ -5,7 +5,6 @@ import { createDurableJsonStore } from "../../fs-store/json-store.js";
 
 export interface GlobalOptionsData {
   readonly version: 1;
-  readonly enableMetaphor?: boolean;
   /** Idle agent auto-DORMANT threshold in minutes. `null` disables; key absent means server default. */
   readonly agentIdleDormantMinutes?: number | null;
 }
@@ -110,12 +109,10 @@ export function sanitizeGlobalOptionsData(value: unknown): GlobalOptionsValidati
   const agentIdleDormantMinutes = sanitizeAgentIdleDormantMinutes(value.agentIdleDormantMinutes);
   const data: GlobalOptionsData = {
     version: GLOBAL_OPTIONS_VERSION,
-    ...(typeof value.enableMetaphor === "boolean" ? { enableMetaphor: value.enableMetaphor } : {}),
     ...(agentIdleDormantMinutes !== undefined ? { agentIdleDormantMinutes } : {}),
   };
-  const allowedKeys = new Set(["version", "enableMetaphor", "agentIdleDormantMinutes"]);
+  const allowedKeys = new Set(["version", "agentIdleDormantMinutes"]);
   const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
-    ("enableMetaphor" in value && typeof value.enableMetaphor !== "boolean") ||
     ("agentIdleDormantMinutes" in value && agentIdleDormantMinutes === undefined);
 
   return { data, changed };

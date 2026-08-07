@@ -23,7 +23,6 @@ interface TerminalSettingsRouteDeps {
 }
 
 interface TerminalSettingsBody {
-  readonly enableMetaphor?: unknown;
   readonly agentIdleDormantMinutes?: unknown;
   readonly aiGateway?: unknown;
   readonly cursorDiagnosticsEnabled?: unknown;
@@ -31,7 +30,6 @@ interface TerminalSettingsBody {
 }
 
 type TerminalSettingsUpdate =
-  | { readonly enableMetaphor: boolean }
   | { readonly agentIdleDormantMinutes: number | null }
   | { readonly aiGateway: AiGatewayUpdateValue | undefined }
   | { readonly cursorDiagnosticsEnabled: boolean }
@@ -40,7 +38,6 @@ type TerminalSettingsUpdate =
 export const DEFAULT_AGENT_IDLE_DORMANT_MINUTES = 60;
 
 export interface TerminalSettingsState {
-  readonly enableMetaphor: boolean;
   readonly agentIdleDormantMinutes: number | null;
   readonly aiGateway: AiGatewayUpdateValue | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
@@ -131,7 +128,6 @@ export function toTerminalSettingsState(
 ): TerminalSettingsState {
   const configured = (aiGateway.models?.length ?? 0) > 0 || aiGateway.defaultModel !== undefined;
   return {
-    enableMetaphor: data.enableMetaphor ?? false,
     agentIdleDormantMinutes: data.agentIdleDormantMinutes === undefined
       ? DEFAULT_AGENT_IDLE_DORMANT_MINUTES
       : data.agentIdleDormantMinutes,
@@ -159,9 +155,6 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
   const keys = Object.keys(value);
   if (keys.length !== 1) return null;
   const body = value as TerminalSettingsBody;
-  if (keys[0] === "enableMetaphor") {
-    return typeof body.enableMetaphor === "boolean" ? { enableMetaphor: body.enableMetaphor } : null;
-  }
   if (keys[0] === "agentIdleDormantMinutes") {
     return isAgentIdleDormantMinutes(body.agentIdleDormantMinutes)
       ? { agentIdleDormantMinutes: body.agentIdleDormantMinutes }
