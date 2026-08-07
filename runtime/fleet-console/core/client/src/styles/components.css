@@ -744,6 +744,9 @@
   outline: none;
 }
 
+/* 이 컴퓨터에 서 있으면 칩은 이름을 말하지 않는다 — 이웃 아이콘 버튼과 같은 폭으로 줄어든다. */
+.host-switcher-chip.is-bare { width: 24px; padding: 0; justify-content: center; gap: 3px; }
+
 .host-switcher-chip .host-switcher-name { color: inherit; }
 .host-switcher-chip:hover .host-switcher-name,
 .host-switcher-chip[aria-expanded="true"] .host-switcher-name { color: var(--text-primary); }

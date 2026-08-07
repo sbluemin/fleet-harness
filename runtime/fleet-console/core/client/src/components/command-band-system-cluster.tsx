@@ -150,8 +150,13 @@ function HostSwitcher() {
   ];
   const savedCurrent = hosts.find((host) => host.origin === currentOrigin) ?? null;
   const nearbyCurrent = nearby.some(({ entry }) => entry.origin === currentOrigin);
-  // 이 콘솔이 스스로 말하는 이름이 언제나 진실이다 — 원격에서 보고 있어도 그 이름을 읽는다.
-  const chipLabel = state.consoleName || savedCurrent?.label || location.host;
+  /**
+   * 지금 서 있는 콘솔의 이름은 한 번만 정한다 — 칩과 목록이 서로 다른 규칙으로 지으면
+   * 같은 콘솔이 두 이름으로 보인다. 사용자가 고쳐 부른 이름이 있으면 그것이 우선이다.
+   */
+  const currentLabel = savedCurrent?.label || state.consoleName || location.host;
+  // 이 컴퓨터의 콘솔에 서 있다면 칩은 이름을 말하지 않는다 — 알려야 할 것은 "여기가 아닌 곳"뿐이다.
+  const chipLabel = nearbyCurrent ? null : currentLabel;
 
   if (nearby.length === 0 && hosts.length === 0) return null;
   const openSettings = () => {
@@ -168,13 +173,15 @@ function HostSwitcher() {
       <button
         ref={triggerRef}
         type="button"
-        className="host-switcher-chip"
+        className={`host-switcher-chip ${chipLabel ? "" : "is-bare"}`.trim()}
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label={chipLabel ?? t("chrome.hosts.aria")}
+        title={chipLabel ?? t("chrome.hosts.aria")}
         onClick={() => setOpen((previous) => !previous)}
       >
         <span className="host-switcher-dot is-live" aria-hidden="true" />
-        <span className="host-switcher-name">{chipLabel}</span>
+        {chipLabel ? <span className="host-switcher-name">{chipLabel}</span> : null}
         <ChevronGlyph />
       </button>
       {open ? (
@@ -186,7 +193,7 @@ function HostSwitcher() {
                 <HostRow
                   key={entry.origin}
                   live
-                  name={nearbyName(home, entry.origin === currentOrigin, state.consoleName, t)}
+                  name={nearbyName(home, entry.origin === currentOrigin, currentLabel, t)}
                   detail={entry.version && !home ? `${new URL(entry.origin).host} · v${entry.version}` : new URL(entry.origin).host}
                   badge={home || entry.origin === currentOrigin ? undefined : t("chrome.hosts.discovered")}
                   current={entry.origin === currentOrigin}
@@ -217,7 +224,7 @@ function HostSwitcher() {
           {!nearbyCurrent && savedCurrent === null ? (
             <>
               <div className="host-switcher-divider" role="separator" />
-              <HostRow live name={chipLabel} detail={`${location.host} · ${t("chrome.hosts.notSaved")}`} current />
+              <HostRow live name={currentLabel} detail={`${location.host} · ${t("chrome.hosts.notSaved")}`} current />
             </>
           ) : null}
           <div className="host-switcher-divider" role="separator" />
