@@ -2926,13 +2926,18 @@
   overflow: hidden;
 }
 
+/* 긴 Theater 이름은 줄임표로 끝난다 — 줄임표가 없으면 글자가 중간에서 그냥 끊겨 이름이
+   잘렸다는 사실 자체가 보이지 않는다. 온전한 이름은 메뉴의 접근 이름이 계속 들고 있다. */
 .canvas-context-menu-head-text strong {
+  display: block;
   font-family: var(--font-body);
   font-weight: var(--weight-medium);
   font-size: 11px;
   letter-spacing: -0.005em;
   color: var(--text-secondary);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Launch 섹션 라벨 — 헤더 줄 오른쪽 끝에 선다. */

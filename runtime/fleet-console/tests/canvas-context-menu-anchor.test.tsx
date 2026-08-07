@@ -236,6 +236,106 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(activeKind()).toBe("claude-native");
   });
 
+  it("places the description aside on the side that has room and withholds it when neither does", () => {
+    const catalog: readonly OperationCatalogPlugin[] = [
+      {
+        id: "terminal",
+        title: "Terminal",
+        kinds: [{ id: "claude-gateway", type: "agent", title: "Claude (Gateway)" }],
+      },
+    ];
+    const point = () => act(() =>
+      document.querySelector('[data-operation-launch-kind="claude-gateway"]')!
+        .dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
+
+    // 오른쪽에 자리가 있으면 오른쪽.
+    renderMenu({ x: 100, y: 156 }, { width: 1116, height: 856 }, catalog);
+    point();
+    expect(document.querySelector(".canvas-context-menu-aside")?.className).not.toContain("--flip");
+
+    // 오른쪽이 막히고 왼쪽이 열려 있으면 뒤집는다.
+    renderMenu({ x: 1000, y: 156 }, { width: 1116, height: 856 }, catalog);
+    point();
+    expect(document.querySelector(".canvas-context-menu-aside")?.className).toContain("--flip");
+
+    // 양쪽 모두 좁으면 아예 펴지 않는다 — 뒤집기만 하면 설명이 화면 왼쪽으로 밀려 잘린다.
+    renderMenu({ x: 200, y: 156 }, { width: 400, height: 800 }, catalog);
+    point();
+    expect(document.querySelector(".canvas-context-menu-aside")).toBeNull();
+    // 펴지 못해도 대비와 설명 문장 자체는 행에 남는다.
+    const row = document.querySelector('[data-operation-launch-kind="claude-gateway"]')!;
+    expect(row.querySelector(".operation-launch-menu-brief")?.textContent).toBe("Other models");
+    expect(row.textContent).toContain("models you enabled in Settings");
+  });
+
+  it("keys the open description by plugin so two plugins may share a kind id", () => {
+    renderMenu({ x: 100, y: 156 }, { width: 1116, height: 856 }, [
+      {
+        id: "terminal",
+        title: "Terminal",
+        kinds: [{ id: "claude", type: "agent", title: "Claude Local" }],
+      },
+      {
+        id: "remote",
+        title: "Remote",
+        kinds: [{ id: "claude-gateway", type: "agent", title: "Claude Remote" }],
+      },
+    ]);
+
+    const rows = document.querySelectorAll<HTMLButtonElement>(".canvas-context-menu-item");
+    expect(rows).toHaveLength(2);
+    act(() => rows[1]!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
+    expect(document.querySelector(".canvas-context-menu-aside")?.textContent)
+      .toBe("Runs Claude Code on the models you enabled in Settings");
+    act(() => rows[0]!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
+    expect(document.querySelector(".canvas-context-menu-aside")?.textContent)
+      .toContain("Admiral standing orders");
+  });
+
+  it("closes when focus leaves the menu, since its items sit outside the tab order", () => {
+    const onClose = vi.fn();
+    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [
+      {
+        id: "terminal",
+        title: "Terminal",
+        kinds: [{ id: "shell", type: "shell", title: "Shell" }],
+      },
+    ], onClose);
+
+    const outside = document.createElement("button");
+    document.body.append(outside);
+    const menu = document.querySelector<HTMLElement>(".canvas-context-menu")!;
+
+    // 메뉴 안에서 옮겨 다니는 동안에는 닫지 않는다.
+    act(() => menu.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: menu.querySelector(".canvas-context-menu-item") })));
+    expect(onClose).not.toHaveBeenCalled();
+
+    act(() => menu.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: outside })));
+    expect(onClose).toHaveBeenCalledOnce();
+    outside.remove();
+  });
+
+  it("names the menu after its launch target and keeps the visual head out of the menu tree", () => {
+    act(() => root.render(
+      <CanvasContextMenu
+        anchor={{ x: 520, y: 156 }}
+        viewportBounds={{ width: 1116, height: 856 }}
+        catalog={[{ id: "terminal", title: "Terminal", kinds: [{ id: "shell", type: "shell", title: "Shell" }] }]}
+        canLaunch
+        theaterLabel="Alpha"
+        renderKindIcon={() => null}
+        onLaunchKind={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    ));
+
+    const menu = document.querySelector(".canvas-context-menu")!;
+    expect(menu.getAttribute("aria-label")).toBe("Alpha controls · Terminal");
+    // 같은 문자열이 눈에도 보이지만, 접근성 트리에는 메뉴 이름으로만 한 번 실린다.
+    expect(document.querySelector(".canvas-context-menu-head-text")?.textContent).toBe("Alpha controls · Terminal");
+    expect(document.querySelector(".canvas-context-menu-head")?.getAttribute("aria-hidden")).toBe("true");
+  });
+
   it("gives the menu a valid ancestor for its menu items", () => {
     renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [
       {

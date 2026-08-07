@@ -42,7 +42,9 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   const [menuSize, setMenuSize] = useState<{ readonly width: number; readonly height: number } | null>(null);
   // 설명을 펼칠 항목. 포인터 호버와 키보드 포커스가 같은 상태를 쓴다 — 둘이 갈라지면
   // 키보드로 옮긴 자리와 옆에 뜬 설명이 서로 다른 항목을 가리킨다.
-  const [activeKindId, setActiveKindId] = useState<string | null>(null);
+  // 키는 플러그인까지 포함해야 한다: 실행 종류 id는 플러그인 안에서만 고유하므로, 두 플러그인이
+  // 같은 id를 쓰면 한쪽 항목에 다른 쪽 설명이 붙는다.
+  const [activeKey, setActiveKey] = useState<string | null>(null);
 
   // 배치 판정은 CSS의 max-height 상한이 아니라 실제 렌더 높이로 해야 한다 —
   // 상한(520px)으로 clamp하면 짧은 메뉴가 커서에서 수백 px 떨어진 곳에 열린다.
@@ -94,6 +96,9 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   // 행 하나가 통째로 서는 것은 값을 못 한다. 둘 이상일 때만 그룹 라벨을 세운다.
   const singlePlugin = catalog.length === 1 ? catalog[0]! : null;
   const headTitle = theaterLabel ? t("canvas.menu.theaterTitle", { theater: theaterLabel }) : t("canvas.menu.title");
+  // 시각 머리글과 메뉴 이름이 같은 문자열이어야 한다 — 좁은 폭에서 머리글이 줄임표로 잘려도
+  // 어느 Theater로 실행되는지는 접근 이름에 온전히 남는다.
+  const headLabel = singlePlugin ? `${headTitle} · ${singlePlugin.title}` : headTitle;
 
   const moveFocus = useCallback((from: HTMLElement | null, delta: number, edge: "first" | "last" | null) => {
     const menu = menuRef.current;
@@ -134,17 +139,19 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   };
 
   const activeDescription = useMemo(() => {
-    if (!activeKindId) return null;
+    if (!activeKey) return null;
     for (const plugin of catalog) {
       for (const kind of plugin.kinds) {
-        if (kind.id !== activeKindId) continue;
+        if (itemKey(plugin.id, kind.id) !== activeKey) continue;
         if (kind.disabledReason) return null;
         const annotation = resolveLaunchKindAnnotation(kind.id);
         return annotation ? t(annotation.descriptionKey) : null;
       }
     }
     return null;
-  }, [activeKindId, catalog, t]);
+  }, [activeKey, catalog, t]);
+
+  const asideSide = activeDescription ? asidePlacement(anchor, viewportBounds, menuSize) : null;
 
   return (
     <div
@@ -156,17 +163,28 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
       <div
         className="operation-launch-menu theater-menu canvas-context-menu"
         role="menu"
-        aria-label={t("canvas.menu.aria")}
+        // 머리글은 시각 표면이고, 그 정보는 메뉴 이름이 대신 싣는다 — role="menu" 아래에 일반
+        // 콘텐츠를 두면 화면 낭독기의 메뉴 탐색이 첫 항목으로 곧장 들어가지 못한다.
+        aria-label={headLabel}
         aria-orientation="vertical"
         tabIndex={-1}
         ref={menuRef}
         onKeyDown={handleMenuKeyDown}
-        onMouseLeave={() => setActiveKindId(null)}
+        onMouseLeave={() => setActiveKey(null)}
+        // 항목이 전부 tabIndex=-1이라 Tab은 메뉴를 건너뛴다. 그때 메뉴만 열린 채 남으면 사용자는
+        // 다른 컨트롤에 포커스를 둔 채 떠 있는 실행 메뉴를 보게 된다 — 포커스가 떠나면 닫는다.
+        onBlur={(event) => {
+          const next = event.relatedTarget as Node | null;
+          if (next && event.currentTarget.contains(next)) return;
+          if (next === null) return; // 창 자체가 포커스를 잃은 경우는 닫지 않는다
+          setActiveKey(null);
+          onClose();
+        }}
         {...{ [FEATURE_TOUR_BOUNDARY_ATTRIBUTE]: "" }}
       >
-        <div className="canvas-context-menu-head">
+        <div className="canvas-context-menu-head" aria-hidden="true">
           <span className="canvas-context-menu-head-text">
-            <strong>{singlePlugin ? `${headTitle} · ${singlePlugin.title}` : headTitle}</strong>
+            <strong>{headLabel}</strong>
           </span>
           <p className="canvas-context-menu-section">{t("canvas.menu.launch")}</p>
         </div>
@@ -189,8 +207,8 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                   disabled={disabled}
                   title={kind.disabledReason}
                   tabIndex={-1}
-                  onMouseEnter={() => setActiveKindId(kind.id)}
-                  onFocus={() => setActiveKindId(kind.id)}
+                  onMouseEnter={() => setActiveKey(itemKey(plugin.id, kind.id))}
+                  onFocus={() => setActiveKey(itemKey(plugin.id, kind.id))}
                   onClick={() => onLaunchKind(plugin.id, kind)}
                 >
                   <span className="theater-menu-check" aria-hidden="true">{renderKindIcon(plugin.id, kind) ?? <FallbackGlyph />}</span>
@@ -215,10 +233,10 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
           </div>
         )) : <p className="theater-menu-empty">{t("canvas.menu.empty")}</p>}
       </div>
-      {activeDescription
+      {activeDescription && asideSide
         ? (
           <p
-            className={`canvas-context-menu-aside${asideFlips(anchor, viewportBounds, menuSize) ? " canvas-context-menu-aside--flip" : ""}`}
+            className={`canvas-context-menu-aside${asideSide === "left" ? " canvas-context-menu-aside--flip" : ""}`}
             aria-hidden="true"
           >
             {activeDescription}
@@ -242,17 +260,21 @@ export function CommandReticleIcon() {
   );
 }
 
-// 어사이드는 기본으로 메뉴 오른쪽에 선다. 오른쪽 끝에서 열려 자리가 없으면 왼쪽으로 뒤집는다 —
-// 뒤집지 않으면 밀도는 맞고 설명만 화면 밖으로 잘려 사실상 사라진다.
-function asideFlips(
+// 어사이드는 기본으로 메뉴 오른쪽에 선다. 오른쪽에 자리가 없으면 왼쪽으로 뒤집고, 양쪽 모두
+// 좁으면(캔버스가 대략 516px 아래) 아예 펴지 않는다 — 뒤집기만 하고 왼쪽 여백을 안 보면 설명이
+// 화면 왼쪽으로 밀려 앞부분이 잘린 채 남는다. 펴지 못해도 한 단어 대비는 행에 그대로 있고
+// 설명 문장은 버튼의 접근 이름에 남으므로, 안 보이는 것보다 안 띄우는 쪽이 정직하다.
+function asidePlacement(
   anchor: { readonly x: number; readonly y: number },
   bounds: { readonly width: number; readonly height: number } | undefined,
   size: { readonly width: number; readonly height: number } | null,
-): boolean {
-  if (!bounds) return false;
+): "right" | "left" | null {
+  if (!bounds) return "right";
   const width = size?.width ?? MENU_WIDTH;
   const left = Math.max(MENU_MARGIN, Math.min(anchor.x, bounds.width - width - MENU_MARGIN));
-  return left + width + ASIDE_GAP + ASIDE_WIDTH > bounds.width - MENU_MARGIN;
+  if (left + width + ASIDE_GAP + ASIDE_WIDTH <= bounds.width - MENU_MARGIN) return "right";
+  if (left - ASIDE_GAP - ASIDE_WIDTH >= MENU_MARGIN) return "left";
+  return null;
 }
 
 function clampedAnchorStyle(
@@ -282,6 +304,12 @@ function clampedAnchorStyle(
   const preferred = anchor.y + height + MENU_MARGIN <= bounds.height ? anchor.y : anchor.y - height;
   const top = Math.max(MENU_MARGIN, Math.min(preferred, bounds.height - height - MENU_MARGIN));
   return { ...base, left, top } as CSSProperties;
+}
+
+// 실행 종류 id는 플러그인 안에서만 고유하다. 활성 항목을 이 키로 잡아야 두 플러그인이 같은
+// id를 가질 때 한쪽 항목에 다른 쪽 설명이 붙지 않는다.
+function itemKey(pluginId: string, kindId: string): string {
+  return `${pluginId}:${kindId}`;
 }
 
 // 플러그인이 아이콘을 등록하지 않았을 때의 일반 폴백 마크 — 특정 플러그인 지식이 아니다.
