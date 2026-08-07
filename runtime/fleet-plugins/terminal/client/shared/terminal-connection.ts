@@ -12,6 +12,11 @@ export interface TerminalConnectionOptions {
   /** 콘솔 테마 극성 — ticket 요청에 실려 spawn env COLORFGBG 힌트가 된다(최초 spawn 시점 고정). */
   readonly colorScheme?: "light" | "dark";
   readonly onStatus?: (status: TerminalConnectionStatus, message?: string) => void;
+  /**
+   * 서버 보유 scrollback을 재생하는 구간의 시작(true)과 끝(false)을 알린다. 재생 청크는 과거에 이미
+   * 흘러간 바이트라, 그 안의 부수효과 시퀀스를 지금 다시 실행하면 안 되는 소비자를 위한 신호다.
+   */
+  readonly onReplayStateChange?: (replaying: boolean) => void;
   readonly onExit?: () => void;
   readonly location?: Pick<Location, "host" | "protocol">;
   readonly webSocketFactory?: (url: string) => WebSocketLike;
@@ -86,6 +91,8 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
   };
 
   const attachSocket = async (url: string, connectionOptions: TerminalConnectionOptions): Promise<void> => {
+    // 모든 (재)연결은 서버 attach에서 scrollback 재생으로 시작한다 — 재생 종료는 replay_end가 알린다.
+    connectionOptions.onReplayStateChange?.(true);
     await new Promise<void>((resolve, reject) => {
       const ws = (connectionOptions.webSocketFactory ?? defaultWebSocketFactory)(url);
       socket = ws;
@@ -107,6 +114,9 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
         }
         if (!isReplayEndFrame(frame)) return;
         connectionOptions.terminal.drain(() => {
+          // 재생 바이트가 모두 파싱된 뒤다. 아래 입력 구독 가드보다 먼저 알려, 가드에 걸리는 경우에도
+          // 재생 구간이 열린 채로 남지 않게 한다.
+          connectionOptions.onReplayStateChange?.(false);
           if (socket !== ws || ws.readyState !== OPEN_READY_STATE || inputSubscription) return;
           disposeInput();
           inputSubscription = connectionOptions.terminal.onData((data) => {

@@ -13,6 +13,12 @@ interface ClipboardWriter {
 export interface TerminalOsc52ClipboardOptions {
   readonly parser: OscHandlerRegistrar;
   readonly clipboard?: ClipboardWriter;
+  /**
+   * True while the connection is replaying server-held scrollback. Replayed bytes are a transcript
+   * of copies the user already made, so re-applying them would overwrite the current clipboard with
+   * stale content just by reopening a panel or reconnecting.
+   */
+  readonly isReplayingScrollback?: () => boolean;
 }
 
 export interface TerminalOsc52ClipboardController {
@@ -34,12 +40,14 @@ export const OSC_CLIPBOARD_IDENT = 52;
 export function createTerminalOsc52Clipboard({
   parser,
   clipboard,
+  isReplayingScrollback,
 }: TerminalOsc52ClipboardOptions): TerminalOsc52ClipboardController {
   const subscription = parser.registerOscHandler(OSC_CLIPBOARD_IDENT, (data) => {
     const text = parseOsc52ClipboardWrite(data);
     // Returning true keeps the sequence consumed either way — an unhandled OSC 52 would otherwise
-    // be logged as unknown on every copy, and refusing a read query is still handling it.
-    if (text === null || !clipboard) return true;
+    // be logged as unknown on every copy, and refusing a read query or a replayed copy is still
+    // handling it.
+    if (text === null || !clipboard || isReplayingScrollback?.() === true) return true;
     try {
       void clipboard.writeText(text).catch(() => undefined);
     } catch {

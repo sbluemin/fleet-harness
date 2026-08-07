@@ -86,9 +86,35 @@ describe("createTerminalOsc52Clipboard", () => {
 
     expect(harness.disposeHandler).toHaveBeenCalledTimes(1);
   });
+
+  it("does not overwrite the clipboard with a copy replayed from scrollback", () => {
+    let replaying = true;
+    const harness = createHarness(() => Promise.resolve(), () => replaying);
+
+    // Reopening a panel replays every past chunk, including the OSC 52 of a copy made long ago.
+    expect(harness.emit(`c;${base64("copied an hour ago")}`)).toBe(true);
+    expect(harness.writeText).not.toHaveBeenCalled();
+
+    replaying = false;
+    harness.emit(`c;${base64("copied just now")}`);
+
+    expect(harness.writeText).toHaveBeenCalledTimes(1);
+    expect(harness.writeText).toHaveBeenCalledWith("copied just now");
+  });
+
+  it("applies writes when no replay state is supplied", () => {
+    const harness = createHarness();
+
+    harness.emit(`c;${base64("no replay signal")}`);
+
+    expect(harness.writeText).toHaveBeenCalledWith("no replay signal");
+  });
 });
 
-function createHarness(writeImplementation: (text: string) => Promise<void> = () => Promise.resolve()) {
+function createHarness(
+  writeImplementation: (text: string) => Promise<void> = () => Promise.resolve(),
+  isReplayingScrollback?: () => boolean,
+) {
   const writeText = vi.fn(writeImplementation);
   const disposeHandler = vi.fn();
   let registeredIdent: number | null = null;
@@ -103,6 +129,7 @@ function createHarness(writeImplementation: (text: string) => Promise<void> = ()
       },
     },
     clipboard: { writeText },
+    ...(isReplayingScrollback ? { isReplayingScrollback } : {}),
   });
 
   return {

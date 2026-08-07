@@ -52,6 +52,52 @@ describe("terminal connection replay input gate", () => {
 
     connection.dispose();
   });
+
+  it("reports the replay window on every attach so replayed side effects stay suppressed", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ticket: "ticket-b", ttlMs: 10_000 }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })));
+    const terminal = new FakeTerminal();
+    const replayStates: boolean[] = [];
+    const sockets: FakeWebSocket[] = [];
+    const connection = createTerminalConnection({
+      operationId: "session-b",
+      terminal,
+      ticketPath: "/ticket",
+      wsPath: "/ws",
+      location: { host: "console.test", protocol: "http:" },
+      onReplayStateChange: (replaying) => replayStates.push(replaying),
+      webSocketFactory: () => {
+        const socket = new FakeWebSocket();
+        sockets.push(socket);
+        return socket;
+      },
+    });
+    connection.start();
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0]!.open();
+
+    // The window opens with the attach itself, before any replayed byte can reach the parser.
+    expect(replayStates).toEqual([true]);
+
+    sockets[0]!.receive(new TextEncoder().encode("replayed-output").buffer);
+    expect(replayStates).toEqual([true]);
+
+    sockets[0]!.receive(JSON.stringify({ type: "replay_end" }));
+    expect(replayStates).toEqual([true]);
+
+    // It closes only once the replayed bytes have actually been parsed.
+    terminal.releaseDrain();
+    expect(replayStates).toEqual([true, false]);
+
+    // A reconnect replays the same scrollback again, so the window must reopen.
+    sockets[0]!.close();
+    await vi.waitFor(() => expect(sockets).toHaveLength(2), { timeout: 2_000 });
+    expect(replayStates).toEqual([true, false, true]);
+
+    connection.dispose();
+  });
 });
 
 class FakeTerminal {
