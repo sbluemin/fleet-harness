@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
+import https from "node:https";
 import path from "node:path";
 import type { Duplex } from "node:stream";
 
@@ -9,7 +10,7 @@ import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
-import { createAccessRegistry, createLoopbackListenerIdentity, formatSessionCookie, resolveListenerIdentity, type ListenerIdentity } from "./auth.js";
+import { createAccessRegistry, createLoopbackListenerIdentity, formatSessionCookie, readSessionCookie, resolveListenerIdentity, type ListenerIdentity } from "./auth.js";
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./console-contract-types.js";
 import { createCodexWorkspaceRouter } from "./codex/workspace-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
@@ -38,6 +39,7 @@ import {
 } from "./classic-launch-kind-migration.js";
 import { migrateLegacyCaptures } from "./legacy-capture-migration.js";
 import { createConsoleDataPaths } from "./paths.js";
+import { createRemoteIdentityStore, normalizeFingerprint } from "./remote-identity.js";
 import { createPluginClientAssets } from "./plugin-host/plugin-host.js";
 import { createFleetPluginHost } from "./plugin-host/plugin-host.js";
 import type { FleetPluginHostCapabilities, OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind } from "./plugin-host/plugin-host.js";
@@ -242,6 +244,13 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   },
   {
     method: "POST",
+    path: "/api/v1/access-links",
+    summary: "Create a remote access link for this console.",
+    category: "Access",
+    gate: "lock-token",
+  },
+  {
+    method: "POST",
     path: "/api/v1/join",
     summary: "Exchange a single-use grant for a console session.",
     category: "Access",
@@ -309,7 +318,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // 리스너는 바인드 시점에 확정된다. 요청은 소켓의 로컬 주소로 자기 리스너를 찾고, 그
   // 리스너의 audience·Host·Origin만 통과 기준으로 삼는다.
   let listeners: readonly ListenerIdentity[] = [];
+  let remoteServer: https.Server | null = null;
+  let remoteFingerprint: string | null = null;
   const access = createAccessRegistry();
+  const remoteIdentityStore = createRemoteIdentityStore(durablePaths.dir);
   const pluginOperationTypes = new Set<string>();
   const pluginPayloadSanitizers = new Map<string, readonly string[]>();
   const pluginLaunchCatalogProviders = new Map<string, OperationLaunchCatalogProvider[]>();
@@ -613,6 +625,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return resolveListenerIdentity(listeners, req.socket);
   }
 
+  /**
+   * 원격 리스너는 기본 거부다. 조인 문서와 조인 엔드포인트만 세션 없이 지나갈 수 있고,
+   * 나머지는 모두 이 리스너에서 발급된 세션을 요구한다. 라우트마다 흩어진 게이트에 원격을
+   * 맡기면 하나만 빠져도 통째로 열리므로, 판정을 라우팅 이전 한 곳에서 끝낸다.
+   */
+  function isRemoteRequestAdmitted(listener: ListenerIdentity, req: http.IncomingMessage, pathname: string): boolean {
+    if (pathname === "/api/v1/join") return true;
+    if (access.resolveSession(readSessionCookie(req.headers), listener.audience) !== null) return true;
+    return false;
+  }
+
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     const pathname = getPathname(req);
     if (pathname === "/console/codex" || pathname.startsWith("/console/codex/")) {
@@ -621,6 +644,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (!isRequestHostAllowed(req)) {
       writeJson(res, 403, { error: "host_mismatch" });
+      return;
+    }
+    const listener = listenerForRequest(req);
+    if (listener && listener.audience !== "local" && !isRemoteRequestAdmitted(listener, req, pathname)) {
+      writeJson(res, 401, { error: "unauthorized" });
       return;
     }
     if (pathname === PAIRING_IDENTITY_PATH) {
@@ -634,6 +662,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === "/api/v1/access-grants") {
       handleAccessGrantIssue(req, res);
+      return;
+    }
+    if (pathname === "/api/v1/access-links") {
+      handleAccessLinkIssue(req, res);
       return;
     }
     if (pathname === "/api/v1/join") {
@@ -771,6 +803,29 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     const grant = access.issueGrant(listener.audience);
     writeJson(res, 201, { token: grant.token, audience: grant.audience, expiresAt: grant.expiresAt });
+  }
+
+  /**
+   * 원격 액세스 링크. 주소·자격·신원을 한 문자열로 묶고, 자격과 지문은 fragment에 둔다 —
+   * fragment는 요청에 실리지 않으므로 서버 로그나 프록시에 남지 않는다.
+   */
+  function handleAccessLinkIssue(req: http.IncomingMessage, res: http.ServerResponse): void {
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (!isLockAuthorized(req) && !isExactConsoleOrigin(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    const remote = listeners.find((entry) => entry.audience === "remote");
+    if (!remote || !remoteFingerprint) {
+      writeJson(res, 409, { error: "remote_access_disabled" });
+      return;
+    }
+    const grant = access.issueGrant("remote");
+    const link = `${remote.origin}/join#t=${encodeURIComponent(grant.token)}&f=${encodeURIComponent(normalizeFingerprint(remoteFingerprint))}`;
+    writeJson(res, 201, { link, expiresAt: grant.expiresAt, fingerprint: remoteFingerprint });
   }
 
   async function handleAccessJoin(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
@@ -1132,6 +1187,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     consoleResourcesDisposed = true;
+    // 원격 리스너를 남겨 두면 콘솔이 내려간 뒤에도 포트가 열려 있는 것처럼 보인다.
+    const closingRemote = remoteServer;
+    remoteServer = null;
+    remoteFingerprint = null;
+    listeners = [];
+    access.revokeAllSessions();
+    if (closingRemote) await new Promise<void>((resolve) => closingRemote.close(() => resolve()));
     const cleanupResults = await Promise.allSettled([...pluginCleanupCallbacks].map((cleanup) => cleanup()));
     for (const result of cleanupResults) {
       if (result.status === "rejected") {
@@ -1379,6 +1441,39 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
   }
 
+  /**
+   * 원격 리스너는 설정이 켜졌을 때만 열린다. 루프백과 같은 포트를 다른 인터페이스에 바인드해
+   * 링크 주소의 포트가 콘솔 포트와 어긋나지 않게 한다.
+   */
+  async function startRemoteAccessIfEnabled(actualPort: number): Promise<void> {
+    const configured = consoleSettingsStore.load().general?.remoteAccess;
+    const bindHost = configured?.enabled === true ? configured.bindHost : undefined;
+    if (!bindHost) return;
+    const identity = await remoteIdentityStore.ensure(bindHost);
+    const listener: ListenerIdentity = {
+      audience: "remote",
+      host: bindHost,
+      port: actualPort,
+      origin: `https://${bindHost}:${actualPort}`,
+      secure: true,
+      bindAddress: bindHost,
+    };
+    listeners = [...listeners, listener];
+    remoteFingerprint = identity.fingerprint;
+    remoteServer = await startRemoteListener({
+      identity,
+      bindHost,
+      port: actualPort,
+      handler: handleRequest,
+      upgradeRegistry,
+      isHostAllowed: isRequestHostAllowed,
+      isAdmitted: (req) => {
+        const resolved = listenerForRequest(req);
+        return resolved === null || resolved.audience === "local" || isRemoteRequestAdmitted(resolved, req, getPathname(req));
+      },
+    });
+  }
+
   function listenOnce(portToBind: number, statePatch: Omit<ConsolePortRuntimeState, "effectivePort">): Promise<ConsolePortListenResult> {
     return new Promise((resolve, reject) => {
       const srv = createHttpServer(handleRequest, upgradeRegistry, isRequestHostAllowed);
@@ -1394,6 +1489,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         // 게이트가 참조할 리스너 신원은 실제 바인드 포트가 정해진 뒤에만 확정된다.
         listeners = [createLoopbackListenerIdentity(actualPort)];
         try {
+          await startRemoteAccessIfEnabled(actualPort);
           const localLoopbackServer = await maybeStartLoopbackServer(host, actualPort, handleRequest, upgradeRegistry, isRequestHostAllowed);
           resolve({
             srv,
@@ -1432,9 +1528,11 @@ function resolveBuiltInPluginDiscoveryRoots(packageRoot: string): { readonly bui
 export function createUpgradeListener(deps: {
   readonly isHostAllowed: (req: http.IncomingMessage) => boolean;
   readonly upgradeRegistry: Pick<UpgradeRegistry, "handle">;
+  /** 업그레이드도 요청과 같은 인가를 거친다 — 원격에서는 세션 없이 소켓을 붙일 수 없다. */
+  readonly isAdmitted?: (req: http.IncomingMessage) => boolean;
 }): (req: http.IncomingMessage, socket: Duplex, head: Buffer) => void {
   return (req, socket, head) => {
-    if (!deps.isHostAllowed(req)) {
+    if (!deps.isHostAllowed(req) || deps.isAdmitted?.(req) === false) {
       socket.destroy();
       return;
     }
@@ -1442,6 +1540,35 @@ export function createUpgradeListener(deps: {
     if (deps.upgradeRegistry.handle({ req, socket, head, pathname })) return;
     socket.destroy();
   };
+}
+
+/**
+ * 원격 리스너. 루프백과 달리 TLS를 쓰고, 링크가 실어 나른 지문이 이 인증서를 가리킨다.
+ * 같은 핸들러를 공유하지만 요청은 소켓 주소로 자기 리스너를 찾으므로 경계가 섞이지 않는다.
+ */
+async function startRemoteListener(input: {
+  readonly identity: { readonly certificatePem: string; readonly privateKeyPem: string };
+  readonly bindHost: string;
+  readonly port: number;
+  readonly handler: http.RequestListener;
+  readonly upgradeRegistry: UpgradeRegistry;
+  readonly isHostAllowed: (req: http.IncomingMessage) => boolean;
+  readonly isAdmitted: (req: http.IncomingMessage) => boolean;
+}): Promise<https.Server> {
+  const srv = https.createServer({ cert: input.identity.certificatePem, key: input.identity.privateKeyPem }, input.handler);
+  srv.timeout = SERVER_TIMEOUT_MS;
+  srv.keepAliveTimeout = SERVER_TIMEOUT_MS;
+  srv.headersTimeout = SERVER_TIMEOUT_MS + 1000;
+  srv.on("upgrade", createUpgradeListener({ isHostAllowed: input.isHostAllowed, upgradeRegistry: input.upgradeRegistry, isAdmitted: input.isAdmitted }));
+  await new Promise<void>((resolve, reject) => {
+    const onError = (error: Error): void => reject(error);
+    srv.once("error", onError);
+    srv.listen(input.port, input.bindHost, () => {
+      srv.off("error", onError);
+      resolve();
+    });
+  });
+  return srv;
 }
 
 function createHttpServer(

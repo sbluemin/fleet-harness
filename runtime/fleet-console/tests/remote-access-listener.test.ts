@@ -1,0 +1,221 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
+import https from "node:https";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { initStore } from "@dotobokuri/fleet-carriers";
+
+import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-detect.js";
+import { SESSION_COOKIE_NAME } from "../core/host/auth.js";
+import { createConsoleLock } from "../core/host/lock.js";
+import { normalizeFingerprint } from "../core/host/remote-identity.js";
+import { createConsoleServer, type ConsoleServer } from "../core/host/server.js";
+
+// 원격 리스너는 자기 인증서로만 신원을 증명한다. 링크가 실어 나른 지문으로 검증해야
+// 하므로, 테스트 클라이언트도 CA가 아니라 지문으로 서버를 확인한다.
+//
+// 루프백은 원격 바인드 주소로 거부되고(같은 포트를 이미 쓰는 리스너와도 충돌한다) 별칭
+// 루프백은 바인드되지 않는 플랫폼이 있어, 이 머신이 실제로 가진 비내부 IPv4를 쓴다.
+// 그런 주소가 없으면 원격을 열 수 없으므로 조용히 통과시키지 않고 눈에 띄게 건너뛴다.
+const REMOTE_HOST = findBindableHost();
+const BIND_HOST = REMOTE_HOST ?? "127.0.0.1";
+
+function findBindableHost(): string | null {
+  for (const entries of Object.values(os.networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      if (entry.family === "IPv4" && !entry.internal) return entry.address;
+    }
+  }
+  return null;
+}
+
+interface Fixture {
+  readonly dir: string;
+  readonly loopbackEndpoint: string;
+  readonly remotePort: number;
+  readonly lockToken: string;
+  readonly fingerprint: string;
+}
+
+const servers: ConsoleServer[] = [];
+const tempDirs: string[] = [];
+
+afterEach(async () => {
+  while (servers.length > 0) await servers.pop()!.stop();
+  while (tempDirs.length > 0) fs.rmSync(tempDirs.pop()!, { force: true, recursive: true });
+});
+
+describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
+  it("stays closed until remote access is enabled", async () => {
+    const fixture = await startFixture({ remote: false });
+
+    const response = await fetch(`${fixture.loopbackEndpoint}api/v1/access-links`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${fixture.lockToken}` },
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: "remote_access_disabled" });
+  });
+
+  it("serves the remote listener over tls with the fingerprint the link advertises", async () => {
+    const fixture = await startFixture({ remote: true });
+    const link = await createLink(fixture);
+    const advertised = new URL(link).hash.match(/f=([^&]+)/u)?.[1] ?? "";
+
+    const presented = await readPresentedCertificateFingerprint(fixture.remotePort);
+
+    expect(normalizeFingerprint(decodeURIComponent(advertised))).toBe(normalizeFingerprint(presented));
+    expect(link.startsWith(`https://${BIND_HOST}:${fixture.remotePort}/join#`)).toBe(true);
+  });
+
+  it("refuses every remote request that carries no session", async () => {
+    const fixture = await startFixture({ remote: true });
+
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters")).resolves.toMatchObject({ status: 401 });
+    await expect(remoteRequest(fixture, "GET", "/console/")).resolves.toMatchObject({ status: 401 });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/status")).resolves.toMatchObject({ status: 401 });
+  });
+
+  it("admits the console only after the link grant is exchanged", async () => {
+    const fixture = await startFixture({ remote: true });
+    const token = grantTokenOf(await createLink(fixture));
+
+    const joined = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token }));
+    expect(joined.status).toBe(204);
+    const cookie = joined.headers["set-cookie"]?.[0] ?? "";
+    expect(cookie).toContain("Secure");
+
+    const session = cookie.split(";")[0]!;
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, session)).resolves.toMatchObject({ status: 200 });
+    await expect(remoteRequest(fixture, "GET", "/console/", undefined, session)).resolves.toMatchObject({ status: 200 });
+  });
+
+  it("refuses a loopback grant presented to the remote listener", async () => {
+    const fixture = await startFixture({ remote: true });
+    const issued = await fetch(`${fixture.loopbackEndpoint}api/v1/access-grants`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${fixture.lockToken}` },
+    });
+    const localGrant = (await issued.json() as { token: string }).token;
+
+    const joined = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: localGrant }));
+
+    expect(joined.status).toBe(401);
+  });
+
+  it("refuses a remote grant presented to the loopback listener", async () => {
+    const fixture = await startFixture({ remote: true });
+    const token = grantTokenOf(await createLink(fixture));
+
+    const joined = await fetch(`${fixture.loopbackEndpoint}api/v1/join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+
+    expect(joined.status).toBe(401);
+  });
+
+  it("keeps the loopback listener open without a session", async () => {
+    const fixture = await startFixture({ remote: true });
+
+    await expect(fetch(`${fixture.loopbackEndpoint}api/v1/theaters`).then((r) => r.status)).resolves.toBe(200);
+  });
+});
+
+function grantTokenOf(link: string): string {
+  return decodeURIComponent(new URL(link).hash.match(/t=([^&]+)/u)?.[1] ?? "");
+}
+
+async function createLink(fixture: Fixture): Promise<string> {
+  const response = await fetch(`${fixture.loopbackEndpoint}api/v1/access-links`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${fixture.lockToken}` },
+  });
+  return (await response.json() as { link: string }).link;
+}
+
+function readPresentedCertificateFingerprint(port: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const request = https.request({ host: BIND_HOST, port, path: "/api/v1/join", method: "POST", rejectUnauthorized: false }, (response) => {
+      response.resume();
+      resolve((request.socket as import("node:tls").TLSSocket).getPeerCertificate().fingerprint256);
+    });
+    request.on("error", reject);
+    request.end();
+  });
+}
+
+function remoteRequest(
+  fixture: Fixture,
+  method: string,
+  requestPath: string,
+  body?: string,
+  cookie?: string,
+): Promise<{ status: number; headers: import("node:http").IncomingHttpHeaders }> {
+  return new Promise((resolve, reject) => {
+    const request = https.request({
+      host: BIND_HOST,
+      port: fixture.remotePort,
+      path: requestPath,
+      method,
+      // 링크가 실어 나른 지문으로 서버를 확인한다 — CA 신뢰가 아니라 핀이다.
+      rejectUnauthorized: false,
+      checkServerIdentity: () => undefined,
+      headers: {
+        host: `${BIND_HOST}:${fixture.remotePort}`,
+        ...(body ? { "content-type": "application/json", "content-length": Buffer.byteLength(body) } : {}),
+        ...(cookie ? { cookie } : {}),
+      },
+    }, (response) => {
+      response.resume();
+      response.on("end", () => resolve({ status: response.statusCode ?? 0, headers: response.headers }));
+    });
+    request.on("error", reject);
+    if (body) request.write(body);
+    request.end();
+  });
+}
+
+async function startFixture(options: { readonly remote: boolean }): Promise<Fixture> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-remote-"));
+  const carrierStoreDir = path.join(dir, "fleet-home");
+  initStore(carrierStoreDir);
+  tempDirs.push(dir);
+  // durable state는 dataDir 아래 console/ 슬롯에 co-locate된다.
+  const consoleDataDir = path.join(carrierStoreDir, "console");
+  if (options.remote) {
+    fs.mkdirSync(consoleDataDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(consoleDataDir, "settings.json"),
+      JSON.stringify({ version: 1, general: { remoteAccess: { enabled: true, bindHost: BIND_HOST } }, plugins: {} }),
+    );
+  }
+  const server = createConsoleServer({
+    port: 0,
+    version: "test",
+    agentRuntime: createFakeConsoleRuntime() as never,
+    agentCliDetector: { detect: async () => [] } satisfies AgentCliDetector,
+    dataDir: carrierStoreDir,
+    systemFonts: { getFonts: async () => [] },
+  });
+  servers.push(server);
+  const loopbackEndpoint = await server.start({ dir, lockFile: path.join(dir, "console.lock") });
+  const lock = createConsoleLock().readLock(path.join(dir, "console.lock"))!;
+  const fingerprint = options.remote
+    ? new crypto.X509Certificate(fs.readFileSync(path.join(consoleDataDir, "remote", "identity-cert.pem"), "utf8")).fingerprint256
+    : "";
+  return { dir, loopbackEndpoint, remotePort: lock.port, lockToken: lock.token, fingerprint };
+}
+
+function createFakeConsoleRuntime(): unknown {
+  const handlers = new Set<(event: unknown) => void>();
+  return {
+    carrierRuntime: { jobs: { streaming: { register(callback: (event: unknown) => void) { handlers.add(callback); return () => handlers.delete(callback); } } } },
+    cleanup: vi.fn(async () => undefined),
+  };
+}
