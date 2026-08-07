@@ -4,6 +4,8 @@ import path from "node:path";
 
 import selfsigned from "selfsigned";
 
+import { normalizeFingerprint } from "./access-link.js";
+
 /**
  * 원격 리스너의 신원. 액세스 링크가 이 지문을 함께 실어 나르고, Desktop이 접속 직전
  * 제시된 인증서와 대조한다. 지문이 어긋나면 토큰은 전송되지 않으므로 중간자가 가로챌
@@ -106,10 +108,7 @@ export function fingerprintOf(certificatePem: string): string {
   return new crypto.X509Certificate(certificatePem).fingerprint256;
 }
 
-/** 링크와 UI가 같은 표기를 쓰도록 지문 비교는 항상 정규화한 뒤 수행한다. */
-export function normalizeFingerprint(value: string): string {
-  return value.replace(/[^0-9a-fA-F]/gu, "").toUpperCase();
-}
+export { normalizeFingerprint };
 
 export function fingerprintsMatch(left: string, right: string): boolean {
   const a = Buffer.from(normalizeFingerprint(left), "hex");

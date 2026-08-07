@@ -103,7 +103,7 @@ describe("session cookie", () => {
   });
 
   it("marks the cookie http-only and same-site, and adds Secure only for a secure listener", () => {
-    const session = { id: "abc", handle: "h1", audience: "local" as const, expiresAt: 0 };
+    const session = { id: "abc", handle: "h1", audience: "local" as const, access: "full" as const, expiresAt: 0 };
 
     expect(formatSessionCookie(session, { secure: false })).toBe(`${SESSION_COOKIE_NAME}=abc; HttpOnly; SameSite=Strict; Path=/`);
     expect(formatSessionCookie(session, { secure: true })).toContain("; Secure");

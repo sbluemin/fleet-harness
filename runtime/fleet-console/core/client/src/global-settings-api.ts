@@ -1,6 +1,6 @@
 import { ApiError } from "./api.js";
 import { normalizeUiFont } from "./ui-font.js";
-import type { ConsoleLanguagePreference, GlobalSettingsMutationResult, GlobalSettingsState, RemoteAccessLink, RemoteAccessLinkSummary, RemoteAccessSessionSummary, RemoteAccessState, RemoteAccessStatus } from "./types.js";
+import type { ConsoleLanguagePreference, GlobalSettingsMutationResult, GlobalSettingsState, RemoteAccessClass, RemoteAccessInterface, RemoteAccessLink, RemoteAccessLinkSummary, RemoteAccessSessionSummary, RemoteAccessState, RemoteAccessStatus } from "./types.js";
 
 export async function fetchGlobalSettingsState(signal?: AbortSignal): Promise<GlobalSettingsState> {
   const response = await fetch("/api/v1/settings/global", { signal });
@@ -35,6 +35,7 @@ export async function fetchRemoteAccessStatus(signal?: AbortSignal): Promise<Rem
     lastError: typeof payload.lastError === "string" ? payload.lastError : null,
     links: Array.isArray(payload.links) ? payload.links.filter(isLinkSummary) : [],
     sessions: Array.isArray(payload.sessions) ? payload.sessions.filter(isSessionSummary) : [],
+    interfaces: Array.isArray(payload.interfaces) ? payload.interfaces.filter(isInterfaceCandidate) : [],
   };
 }
 
@@ -64,19 +65,24 @@ function isLinkSummary(value: unknown): value is RemoteAccessLinkSummary {
   return Boolean(entry) && typeof entry?.id === "string" && typeof entry.issuedAt === "number" && typeof entry.expiresAt === "number";
 }
 
+function isInterfaceCandidate(value: unknown): value is RemoteAccessInterface {
+  const entry = value as Partial<RemoteAccessInterface> | null;
+  return Boolean(entry) && (entry?.kind === "tailscale" || entry?.kind === "local") && typeof entry.label === "string" && typeof entry.address === "string";
+}
+
 function isSessionSummary(value: unknown): value is RemoteAccessSessionSummary {
   const entry = value as Partial<RemoteAccessSessionSummary> | null;
   return Boolean(entry) && typeof entry?.handle === "string" && typeof entry.openedAt === "number" && typeof entry.expiresAt === "number" && typeof entry.lastSeenAt === "number";
 }
 
-export async function createRemoteAccessLink(signal?: AbortSignal): Promise<RemoteAccessLink> {
-  const response = await fetch("/api/v1/access-links", { method: "POST", signal });
+export async function createRemoteAccessLink(access: RemoteAccessClass, signal?: AbortSignal): Promise<RemoteAccessLink> {
+  const response = await fetch(`/api/v1/access-links?access=${access}`, { method: "POST", signal });
   await assertOk(response);
   const payload = await response.json() as Partial<RemoteAccessLink>;
   if (typeof payload?.link !== "string" || typeof payload.expiresAt !== "number" || typeof payload.fingerprint !== "string") {
     throw new ApiError(response.status, "Invalid remote access link response");
   }
-  return { link: payload.link, expiresAt: payload.expiresAt, fingerprint: payload.fingerprint };
+  return { id: String(payload.id ?? ""), link: payload.link, access: payload.access === "monitoring" ? "monitoring" : "full", expiresAt: payload.expiresAt, fingerprint: payload.fingerprint };
 }
 
 async function assertOk(response: Response): Promise<void> {

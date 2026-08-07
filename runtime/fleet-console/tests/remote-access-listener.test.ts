@@ -12,6 +12,7 @@ import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent
 import { SESSION_COOKIE_NAME } from "../core/host/auth.js";
 import { createConsoleLock } from "../core/host/lock.js";
 import { normalizeFingerprint } from "../core/host/remote-identity.js";
+import { parseAccessLink } from "../core/host/access-link.js";
 import { createConsoleServer, type ConsoleServer } from "../core/host/server.js";
 
 // 원격 리스너는 자기 인증서로만 신원을 증명한다. 링크가 실어 나른 지문으로 검증해야
@@ -64,12 +65,21 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
   it("serves the remote listener over tls with the fingerprint the link advertises", async () => {
     const fixture = await startFixture({ remote: true });
     const link = await createLink(fixture);
-    const advertised = new URL(link).hash.match(/f=([^&]+)/u)?.[1] ?? "";
+    const parsed = parseAccessLink(link);
 
     const presented = await readPresentedCertificateFingerprint(fixture.remotePort);
 
-    expect(normalizeFingerprint(decodeURIComponent(advertised))).toBe(normalizeFingerprint(presented));
-    expect(link.startsWith(`https://${BIND_HOST}:${fixture.remotePort}/join#`)).toBe(true);
+    expect(normalizeFingerprint(parsed.fingerprint)).toBe(normalizeFingerprint(presented));
+    expect(parsed.origin).toBe(`https://${BIND_HOST}:${fixture.remotePort}`);
+  });
+
+  it("keeps the address inside the envelope so the link itself never shows it", async () => {
+    const fixture = await startFixture({ remote: true });
+    const link = await createLink(fixture);
+
+    expect(link.startsWith("fleet://join?code=")).toBe(true);
+    expect(link).not.toContain(BIND_HOST);
+    expect(link).not.toContain(String(fixture.remotePort));
   });
 
   it("refuses every remote request that carries no session", async () => {
@@ -230,20 +240,56 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, staleCookie)).resolves.toMatchObject({ status: 401 });
   });
 
-  it("answers a browser that opened the link with an explanation instead of a bare 401", async () => {
+  it("answers a browser that typed the address with an explanation instead of a bare 401", async () => {
     const fixture = await startFixture({ remote: true });
 
     const notice = await remoteRequestBody(fixture, "GET", "/join");
 
     expect(notice.status).toBe(200);
     expect(notice.headers["content-type"]).toContain("text/html");
-    expect(notice.body).toContain("Fleet Console Desktop");
+    // 막다른 길에서 끝내지 않고, 링크의 모양과 그것을 붙여넣을 자리를 함께 알려 준다.
+    expect(notice.body).toContain("fleet://join?code=");
+    expect(notice.body).toContain("Remote access");
     // 설명만 하고 아무것도 하지 않는 문서여야 한다.
     expect(notice.body).not.toMatch(/<script|\bon[a-z]+=/iu);
     expect(notice.headers["content-security-policy"]).toContain("default-src 'none'");
     // 나머지 표면은 그대로 닫혀 있다.
     await expect(remoteRequest(fixture, "GET", "/console/")).resolves.toMatchObject({ status: 401 });
     await expect(remoteRequest(fixture, "POST", "/join")).resolves.toMatchObject({ status: 401 });
+  });
+
+  it("holds a monitoring session to reading, and lets a full one through", async () => {
+    const fixture = await startFixture({ remote: true });
+    const watcher = await joinAs(fixture, "monitoring", "iPad");
+    const operator = await joinAs(fixture, "full", "MacBook Pro");
+
+    // 등급이 사고 후 범위를 좁히려면 쓰기가 실제로 막혀야 한다.
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, watcher)).resolves.toMatchObject({ status: 200 });
+    await expect(remoteRequest(fixture, "POST", "/api/v1/theaters", "{}", watcher)).resolves.toMatchObject({ status: 401 });
+    await expect(remoteRequest(fixture, "POST", "/api/v1/theaters", "{}", operator)).resolves.not.toMatchObject({ status: 401 });
+
+    const listed = await readRemoteStatus(fixture);
+    expect(listed.sessions.map((entry) => [entry.device, entry.access]).sort()).toEqual([["MacBook Pro", "full"], ["iPad", "monitoring"]].sort());
+  });
+
+  it("refuses a websocket upgrade from a monitoring session even though the method reads", async () => {
+    const fixture = await startFixture({ remote: true });
+    const watcher = await joinAs(fixture, "monitoring", "iPad");
+
+    const upgraded = await remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, watcher, { upgrade: "websocket" });
+
+    expect(upgraded.status).toBe(401);
+  });
+
+  it("reports the addresses this machine can actually listen on", async () => {
+    const fixture = await startFixture({ remote: false });
+
+    const status = await readRemoteStatus(fixture);
+
+    expect(status.interfaces.length).toBeGreaterThan(0);
+    expect(status.interfaces.every((entry) => /^\d{1,3}(?:\.\d{1,3}){3}$/u.test(entry.address))).toBe(true);
+    expect(status.interfaces.some((entry) => entry.address === BIND_HOST)).toBe(true);
+    expect(status.interfaces.every((entry) => entry.kind === "tailscale" || entry.kind === "local")).toBe(true);
   });
 
   it("keeps the loopback listener open without a session", async () => {
@@ -258,8 +304,19 @@ interface RemoteAccessStatus {
   readonly origin: string | null;
   readonly fingerprint: string | null;
   readonly lastError: string | null;
-  readonly links: readonly { readonly id: string; readonly issuedAt: number; readonly expiresAt: number }[];
-  readonly sessions: readonly { readonly handle: string; readonly openedAt: number; readonly expiresAt: number }[];
+  readonly links: readonly { readonly id: string; readonly access: string; readonly issuedAt: number; readonly expiresAt: number }[];
+  readonly sessions: readonly { readonly handle: string; readonly device: string | null; readonly access: string; readonly openedAt: number; readonly expiresAt: number }[];
+  readonly interfaces: readonly { readonly kind: string; readonly label: string; readonly address: string }[];
+}
+
+async function joinAs(fixture: Fixture, access: string, device: string): Promise<string> {
+  const response = await fetch(`${fixture.loopbackEndpoint}api/v1/access-links?access=${access}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${fixture.lockToken}` },
+  });
+  const token = grantTokenOf((await response.json() as { link: string }).link);
+  const joined = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token, device }));
+  return (joined.headers["set-cookie"]?.[0] ?? "").split(";")[0]!;
 }
 
 async function revoke(fixture: Fixture, resource: string): Promise<number> {
@@ -287,7 +344,7 @@ async function saveRemoteAccess(fixture: Fixture, remoteAccess: { readonly enabl
 }
 
 function grantTokenOf(link: string): string {
-  return decodeURIComponent(new URL(link).hash.match(/t=([^&]+)/u)?.[1] ?? "");
+  return parseAccessLink(link).token;
 }
 
 async function createLink(fixture: Fixture): Promise<string> {
@@ -315,6 +372,7 @@ function remoteRequest(
   requestPath: string,
   body?: string,
   cookie?: string,
+  extraHeaders?: Record<string, string>,
 ): Promise<{ status: number; headers: import("node:http").IncomingHttpHeaders }> {
   return new Promise((resolve, reject) => {
     const request = https.request({
@@ -329,6 +387,7 @@ function remoteRequest(
         host: `${BIND_HOST}:${fixture.remotePort}`,
         ...(body ? { "content-type": "application/json", "content-length": Buffer.byteLength(body) } : {}),
         ...(cookie ? { cookie } : {}),
+        ...extraHeaders,
       },
     }, (response) => {
       response.resume();

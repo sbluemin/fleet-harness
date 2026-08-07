@@ -13,12 +13,11 @@ import {
   type CertificateVerifyProc,
   type CertificateVerifyRequest,
 } from "../src/remote-access.js";
-import { parseAccessLink } from "../src/remote-access-link.js";
 
 const TOKEN = "y8bWk3Qm5r7uJ2pS4vX9zA1cE6gI0lN8oR2tU5wY7bD";
 const FINGERPRINT = "4E65DB042A0B820A0833F016ADAD49B03D7DB5BC43100696AD023A77B647E325";
 const OTHER_FINGERPRINT = "0".repeat(64);
-const LINK = parseAccessLink(`https://192.168.1.20:4310/join#t=${TOKEN}&f=${FINGERPRINT}`);
+const JOIN_URL = "https://192.168.1.20:4310/api/v1/join";
 
 const TEST_CERTIFICATE = [
   "-----BEGIN CERTIFICATE-----",
@@ -81,10 +80,10 @@ describe("remote console join", () => {
   it("sends the credential in the body, refuses redirects, and keeps it out of the URL", async () => {
     const sessionFetch = vi.fn(async () => new Response(null, { status: 204 }));
 
-    await expect(joinRemoteConsole(sessionFetch, LINK)).resolves.toBeUndefined();
+    await expect(joinRemoteConsole(sessionFetch, JOIN_URL, TOKEN)).resolves.toBeUndefined();
 
     const [url, init] = sessionFetch.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("https://192.168.1.20:4310/api/v1/join");
+    expect(url).toBe(JOIN_URL);
     expect(url).not.toContain(TOKEN);
     expect(init.method).toBe("POST");
     expect(init.redirect).toBe("error");
@@ -96,11 +95,11 @@ describe("remote console join", () => {
     [403, "remote_link_host_mismatch"],
     [500, "remote_link_unverified"],
   ])("maps HTTP %i to %s", async (status, code) => {
-    await expect(joinRemoteConsole(async () => new Response(null, { status }), LINK)).rejects.toThrow(code);
+    await expect(joinRemoteConsole(async () => new Response(null, { status }), JOIN_URL, TOKEN)).rejects.toThrow(code);
   });
 
   it("reports a refused certificate or unreachable host as one unreachable code", async () => {
-    await expect(joinRemoteConsole(async () => { throw new Error("net::ERR_CERT_AUTHORITY_INVALID"); }, LINK))
+    await expect(joinRemoteConsole(async () => { throw new Error("net::ERR_CERT_AUTHORITY_INVALID"); }, JOIN_URL, TOKEN))
       .rejects.toThrow("remote_link_unreachable");
   });
 
@@ -109,7 +108,7 @@ describe("remote console join", () => {
       init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
     });
 
-    await expect(joinRemoteConsole(hang, LINK, 5)).rejects.toThrow("remote_link_unreachable");
+    await expect(joinRemoteConsole(hang, JOIN_URL, TOKEN, 5)).rejects.toThrow("remote_link_unreachable");
   });
 });
 
@@ -129,8 +128,7 @@ describe("remote identity confirmation", () => {
   it("accepts a server whose live certificate matches the link", async () => {
     const server = await startTlsServer();
     try {
-      const link = parseAccessLink(`https://127.0.0.1:${server.port}/join#t=${TOKEN}&f=${server.fingerprint}`);
-      await expect(confirmRemoteIdentity(link, 2000)).resolves.toBeUndefined();
+      await expect(confirmRemoteIdentity("127.0.0.1", server.port, server.fingerprint, 2000)).resolves.toBeUndefined();
     } finally {
       await server.close();
     }
@@ -139,16 +137,14 @@ describe("remote identity confirmation", () => {
   it("names a mismatch as its own failure so it never reaches the browser", async () => {
     const server = await startTlsServer();
     try {
-      const link = parseAccessLink(`https://127.0.0.1:${server.port}/join#t=${TOKEN}&f=${OTHER_FINGERPRINT}`);
-      await expect(confirmRemoteIdentity(link, 2000)).rejects.toThrow("remote_link_fingerprint_mismatch");
+      await expect(confirmRemoteIdentity("127.0.0.1", server.port, OTHER_FINGERPRINT, 2000)).rejects.toThrow("remote_link_fingerprint_mismatch");
     } finally {
       await server.close();
     }
   });
 
   it("reports an unreachable host without claiming a mismatch", async () => {
-    const link = parseAccessLink(`https://127.0.0.1:1/join#t=${TOKEN}&f=${FINGERPRINT}`);
-    await expect(confirmRemoteIdentity(link, 1000)).rejects.toThrow("remote_link_unreachable");
+    await expect(confirmRemoteIdentity("127.0.0.1", 1, FINGERPRINT, 1000)).rejects.toThrow("remote_link_unreachable");
   });
 });
 

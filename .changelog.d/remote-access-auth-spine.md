@@ -6,10 +6,14 @@ branch: remote-access-auth-spine
 #### Added
 - Remote access: serve the console on a chosen network interface over TLS and hand out access links that each carry a single-use credential and the console's certificate fingerprint. Settings shows the live listener, the fingerprint, every unused link and open session with its own revoke, and an identity rotation that cuts off every paired device at once. Turning remote access off closes the listener and ends every remote session immediately.
   ko: 원격 접속: 선택한 네트워크 인터페이스에 TLS로 Console을 열고, 각각 1회용 자격과 인증서 지문을 담은 액세스 링크를 발급합니다. 설정에서 현재 리스너와 지문, 사용되지 않은 링크와 열려 있는 세션을 개별 회수와 함께 보여주고, 연결된 모든 기기를 한 번에 끊는 신원 갱신을 제공합니다. 원격 접속을 끄면 리스너가 닫히고 모든 원격 세션이 즉시 끝납니다.
-- Opening an access link in a browser now explains that the link belongs to Fleet Console Desktop and how to paste it there, instead of answering with a bare authorization error.
-  ko: 액세스 링크를 브라우저에서 열면 인증 오류만 돌려주는 대신, 이 링크가 Fleet Console Desktop의 것이며 어디에 붙여넣는지 안내합니다.
+- Settings now keeps the other consoles this one can reach. Paste an access link and the console confirms the certificate before saving anything, then names, checks, opens, and forgets each host from one place. The host chip in the command band switches between them.
+  ko: 설정이 이제 이 Console에서 건너갈 수 있는 다른 Console들을 보관합니다. 액세스 링크를 붙여넣으면 저장하기 전에 인증서를 먼저 확인하고, 이후로는 한 자리에서 각 호스트의 이름 변경·상태 확인·열기·삭제를 합니다. 커맨드 밴드의 호스트 칩으로 그 사이를 오갑니다.
+- Opening a remote listener's address in a browser now explains what an access link looks like and where to paste it, instead of answering with a bare authorization error.
+  ko: 원격 리스너의 주소를 브라우저로 열면 인증 오류만 돌려주는 대신, 액세스 링크가 어떻게 생겼고 어디에 붙여넣는지 안내합니다.
 
 #### Changed
+- Access links are now a single `fleet://join?code=...` string. The address, the credential, the fingerprint, and the console's name travel inside one encoded envelope, so pasting a link into a chat no longer exposes a private address.
+  ko: 액세스 링크가 이제 `fleet://join?code=...` 한 줄입니다. 주소·자격·지문·Console 이름이 인코딩된 봉투 하나에 함께 들어가므로, 링크를 대화창에 붙여넣어도 사설 주소가 드러나지 않습니다.
 - Console sessions now open through a single-use grant on both the loopback and remote listeners, and each listener judges the request that arrived on it: a grant issued for one never opens a session on the other.
   ko: Console 세션은 이제 루프백과 원격 양쪽에서 1회용 grant로 열리며, 각 리스너는 자기에게 도착한 요청만 판정합니다 — 한쪽에서 발급된 grant는 다른 쪽에서 세션을 열지 못합니다.
 
@@ -21,17 +25,13 @@ branch: remote-access-auth-spine
 
 ### fleet-desktop
 #### Added
-- Connect to a console on another machine by pasting its access link. Fleet Desktop confirms the console's certificate against the fingerprint the link carries before it opens anything, exchanges the credential for a session in the main process, and only then hands the window to that console.
-  ko: 다른 기기의 Console에 액세스 링크를 붙여넣어 접속합니다. Fleet Desktop은 무엇을 열기 전에 링크가 실은 지문으로 Console 인증서를 확인하고, 메인 프로세스에서 자격을 세션으로 바꾼 뒤에야 창을 그 Console로 넘깁니다.
-
-#### Changed
-- Fleet Desktop now asks which console to open at every launch, before it installs or starts anything: the managed local runtime, a console already running on this machine, or an access link. The answer is not remembered, so a launch never inherits yesterday's choice, and cancelling quits instead of falling back.
-  ko: Fleet Desktop이 이제 실행할 때마다, 무엇을 설치하거나 시작하기 전에 어떤 Console을 열지 묻습니다 — 관리형 로컬 런타임, 이 기기에서 이미 실행 중인 Console, 또는 액세스 링크. 답을 기억하지 않으므로 어제의 선택이 이어지지 않으며, 취소하면 대체 경로로 넘어가지 않고 종료합니다.
-
-#### Fixed
-- Paste now works in the Connect to Fleet Console dialog. The dialog suppresses the main window's menu shortcuts, and on macOS that also silenced the editing commands, so an access link could not be pasted into it.
-  ko: Connect to Fleet Console 대화상자에서 붙여넣기가 동작합니다. 이 대화상자는 메인 창의 메뉴 단축키를 억제하는데, macOS에서는 편집 명령까지 함께 막혀 액세스 링크를 붙여넣을 수 없었습니다.
+- Fleet Desktop now opens `fleet://` access links. Selecting one hands it to the console already running in the window, which checks it and adds the host; Fleet Desktop shows no dialog of its own.
+  ko: Fleet Desktop이 이제 `fleet://` 액세스 링크를 엽니다. 링크를 선택하면 창에서 실행 중인 Console에 넘기고, Console이 확인해 호스트로 추가합니다 — Fleet Desktop이 따로 대화상자를 띄우지 않습니다.
+- Choosing a remote console inside the console now works in Fleet Desktop. It confirms the host's live certificate against the saved fingerprint before the browser engine ever contacts it, exchanges the one-time credential for a session, and only then moves the window. A host that answers with a different certificate does not open.
+  ko: Console 안에서 원격 호스트를 고르는 동작이 Fleet Desktop에서 실제로 이어집니다. 브라우저 엔진이 그 호스트에 닿기 전에 저장된 지문으로 실제 인증서를 먼저 확인하고, 1회용 자격을 세션으로 바꾼 뒤에야 창을 옮깁니다. 다른 인증서로 응답하는 호스트는 열리지 않습니다.
 
 #### Removed
-- Remote runtimes over SSH. Fleet Desktop no longer installs or supervises a Node runtime and a console on a remote host over SSH; connect to a console that is already running there with its access link instead. Connecting to a local console, including the managed one Fleet Desktop installs, is unchanged.
-  ko: SSH 기반 원격 런타임을 제거했습니다. Fleet Desktop이 SSH로 원격 호스트에 Node 런타임과 Console을 설치하고 관리하지 않습니다 — 그곳에서 이미 실행 중인 Console에 액세스 링크로 접속하세요. Fleet Desktop이 설치하는 관리형 Console을 포함한 로컬 접속은 그대로입니다.
+- Remote runtimes over SSH. Fleet Desktop no longer installs or supervises a Node runtime and a console on a remote host over SSH; add that console in Settings with its access link instead. Connecting to a local console, including the managed one Fleet Desktop installs, is unchanged.
+  ko: SSH 기반 원격 런타임을 제거했습니다. Fleet Desktop이 SSH로 원격 호스트에 Node 런타임과 Console을 설치하고 관리하지 않습니다 — 그 Console은 설정에서 액세스 링크로 추가하세요. Fleet Desktop이 설치하는 관리형 Console을 포함한 로컬 접속은 그대로입니다.
+- The Connect to Runtime menu and tray entries. Which console to open is chosen in the console itself, so the native menu no longer carries a second copy of that list.
+  ko: Connect to Runtime 메뉴와 트레이 항목을 제거했습니다. 어떤 Console을 열지는 Console 안에서 고르므로, 네이티브 메뉴가 같은 목록을 두 번째로 들고 있지 않습니다.

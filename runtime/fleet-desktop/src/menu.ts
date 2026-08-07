@@ -10,10 +10,7 @@ export interface ApplicationMenuActions {
   readonly zoomOut: () => void;
   readonly actualSize: () => void;
   readonly reloadConsole: () => void;
-  readonly connectRuntime: () => void;
-  readonly backToLocal: () => void;
   readonly consoleReady: () => boolean;
-  readonly isRemoteActive: () => boolean;
   readonly updates: UpdateController;
 }
 
@@ -33,8 +30,6 @@ export function installApplicationMenu(MenuCtor: typeof Menu, actions: Applicati
       role: "appMenu",
       submenu: [
         { label: "Show", click: actions.show },
-        { label: "Connect to Runtime…", enabled: actions.consoleReady(), click: () => { if (actions.consoleReady()) actions.connectRuntime(); } },
-        { label: "Back to Local Runtime", enabled: canReturnToLocal(actions), click: () => { if (canReturnToLocal(actions)) actions.backToLocal(); } },
         { type: "separator" },
         ...(actions.updates.enabled() ? [{ label: "Check for Updates", click: () => void actions.updates.check() }, ...(actions.updates.availableVersion() ? [{ label: `Update to ${actions.updates.availableVersion()}…`, sublabel: "restarts console", click: () => void actions.updates.install() }] : [])] : []),
         { type: "separator" },
@@ -63,8 +58,6 @@ function darwinConsoleActions(actions: ApplicationMenuActions): MenuItemConstruc
 
 function nonDarwinConsoleActions(actions: ApplicationMenuActions): MenuItemConstructorOptions[] {
   return [
-    { label: "Back to Local Runtime", enabled: canReturnToLocal(actions), click: () => { if (canReturnToLocal(actions)) actions.backToLocal(); } },
-    { type: "separator" },
     consoleAction("Reload Console", "Ctrl+R", actions.reloadConsole, actions),
     consoleAction("Reload Console", "F5", actions.reloadConsole, actions),
     { type: "separator" },
@@ -76,8 +69,6 @@ function nonDarwinConsoleActions(actions: ApplicationMenuActions): MenuItemConst
     consoleAction("Actual Size", "Ctrl+0", actions.actualSize, actions),
   ];
 }
-
-function canReturnToLocal(actions: ApplicationMenuActions): boolean { return actions.consoleReady() && actions.isRemoteActive(); }
 
 function consoleAction(label: string, accelerator: string, action: () => void, actions: ApplicationMenuActions, hidden = false): MenuItemConstructorOptions {
   const enabled = actions.consoleReady();

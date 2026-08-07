@@ -18,6 +18,8 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   "MANIFEST · DIAGRAM",
   // 이관 전부터 command-band rename aria가 한국어였음
   "{title} 이름 변경",
+  // 액세스 링크의 모양 그 자체 — 번역하면 붙여넣을 것과 달라진다.
+  "fleet://join?code=...",
   // 단축키 표기·언어 칩·버전 태그
   "⌘/Ctrl",
   "EN",

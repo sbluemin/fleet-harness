@@ -6,6 +6,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import { ApiError, applyConsoleUpdate } from "../api.js";
 import { FEATURE_TOURS } from "../feature-tour-catalog.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
+import { probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type RemoteHost, type RemoteHostReach } from "../remote-hosts.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
 import { openWhatsNew } from "../store.js";
@@ -61,6 +62,7 @@ export function CommandBandSystemCluster() {
   const state = useConsoleState();
   return (
     <div className="command-band-system-cluster">
+      <HostSwitcher />
       <SettingsButton updateAvailable={state.updateAvailable} />
       <HelpMenu
         version={state.version}
@@ -70,6 +72,150 @@ export function CommandBandSystemCluster() {
       />
     </div>
   );
+}
+
+/**
+ * 호스트 스위처. 목록은 이 콘솔이 들고 있고, 고른 호스트의 `/console/`로 그냥 항해한다 —
+ * 각 콘솔이 자기 UI를 서빙하므로 프록시가 없고, 그래서 목록 자체가 호스트마다 다를 수 있다.
+ *
+ * 닿는지 여부는 열어 볼 때 확인한다. 목록에 든 것만으로 매번 남의 기계를 두드리면, 보지도
+ * 않는 화면 때문에 조용한 네트워크 소음이 계속 흐른다.
+ */
+function HostSwitcher() {
+  const t = useT();
+  const hosts = useRemoteHosts();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [reach, setReach] = useState<Readonly<Record<string, RemoteHostReach>>>({});
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void refreshRemoteHosts(controller.signal).catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    for (const host of hosts) {
+      void probeRemoteHost(host.id, controller.signal)
+        .then((result) => setReach((previous) => ({ ...previous, [host.id]: result })))
+        .catch(() => undefined);
+    }
+    const onPointer = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!panelRef.current?.contains(target) && !triggerRef.current?.contains(target)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); triggerRef.current?.focus(); } };
+    document.addEventListener("pointerdown", onPointer, true);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      controller.abort();
+      document.removeEventListener("pointerdown", onPointer, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, hosts]);
+
+  // 고를 것이 하나뿐이면 스위처는 아무 일도 하지 않는다.
+  if (hosts.length === 0) return null;
+  const currentOrigin = location.origin;
+  const currentHost = hosts.find((host) => host.origin === currentOrigin) ?? null;
+  const openSettings = () => {
+    setOpen(false);
+    navigate({ pathname: "/settings", search: "?section=remote-access" });
+  };
+
+  return (
+    <div className="host-switcher">
+      <button
+        ref={triggerRef}
+        type="button"
+        className="host-switcher-chip"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((previous) => !previous)}
+      >
+        <span className="host-switcher-dot is-live" aria-hidden="true" />
+        <span className="host-switcher-name">{currentHost?.label ?? t("chrome.hosts.thisComputer")}</span>
+        <ChevronGlyph />
+      </button>
+      {open ? (
+        <div ref={panelRef} className="host-switcher-panel" role="menu" aria-label={t("chrome.hosts.aria")}>
+          <p className="host-switcher-heading">{t("chrome.hosts.heading")}</p>
+          {currentHost === null ? (
+            <button type="button" role="menuitemradio" aria-checked className="is-current" disabled>
+              <span className="host-switcher-dot is-live" aria-hidden="true" />
+              <span className="host-switcher-entry">
+                <span className="host-switcher-name">{t("chrome.hosts.thisComputer")}</span>
+                <small>{location.host}</small>
+              </span>
+              <CheckGlyph />
+            </button>
+          ) : null}
+          {hosts.map((host) => {
+            const isCurrent = host.origin === currentOrigin;
+            const state = reach[host.id];
+            return (
+              <button
+                key={host.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={isCurrent}
+                className={isCurrent ? "is-current" : ""}
+                disabled={isCurrent || state?.reachable === false}
+                onClick={() => {
+                  setOpen(false);
+                  if (!isCurrent) location.assign(new URL("/console/", `${host.origin}/`).toString());
+                }}
+              >
+                <span className={`host-switcher-dot ${state?.trusted ? "is-live" : ""}`} aria-hidden="true" />
+                <span className="host-switcher-entry">
+                  <span className="host-switcher-name">{host.label}</span>
+                  <small>{hostDetail(host, state, t)}</small>
+                </span>
+                {isCurrent ? <CheckGlyph /> : null}
+              </button>
+            );
+          })}
+          <div className="host-switcher-divider" role="separator" />
+          <button type="button" role="menuitem" className="host-switcher-link" onClick={openSettings}>
+            {t("chrome.hosts.add")}
+          </button>
+          <button type="button" role="menuitem" className="host-switcher-link" onClick={openSettings}>
+            {t("chrome.hosts.manage")}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function hostDetail(host: RemoteHost, state: RemoteHostReach | undefined, t: ReturnType<typeof useT>): string {
+  const address = `${host.hostname}:${host.port}`;
+  if (state === undefined) return address;
+  if (!state.reachable) {
+    return host.lastOpenedAt === null
+      ? `${address} · ${t("chrome.hosts.unreachable")}`
+      : `${address} · ${t("chrome.hosts.unreachable")} · ${t("chrome.hosts.seen")} ${formatSeen(host.lastOpenedAt)}`;
+  }
+  return state.trusted ? address : `${address} · ${t("chrome.hosts.untrusted")}`;
+}
+
+function formatSeen(epochMs: number): string {
+  const minutes = Math.round((Date.now() - epochMs) / 60_000);
+  if (minutes < 60) return `${Math.max(1, minutes)} min ago`;
+  const hours = Math.round(minutes / 60);
+  return hours < 24 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`;
+}
+
+function ChevronGlyph() {
+  return <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function CheckGlyph() {
+  return <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 6.3 4.8 8.6 9.5 3.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 function SettingsButton({ updateAvailable }: { readonly updateAvailable: boolean }) {

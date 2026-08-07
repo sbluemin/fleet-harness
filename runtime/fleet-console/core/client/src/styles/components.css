@@ -716,159 +716,309 @@
   color: var(--brass-bright);
 }
 
-/* 조작 옆에 붙는 말풍선. 상시 문구가 차지하던 열을 비워 조작 열이 넓게 앉는다. */
-.remote-access-toggle {
-  position: relative;
-  display: flex;
-  width: fit-content;
-}
+/* 호스트 스위처 — 커맨드 밴드 우측 시스템 클러스터의 상주 크롬. */
+.host-switcher { position: relative; }
 
-.settings-hover-note {
-  position: absolute;
-  z-index: 3;
-  top: calc(100% + 6px);
-  left: 0;
-  width: max-content;
-  max-width: 22rem;
-  margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-sm);
-  background: var(--ink-abyss);
-  box-shadow: 0 8px 20px rgb(0 0 0 / 45%);
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.55;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity var(--duration-fast) var(--ease-spring);
-}
-
-/* 포인터가 없는 사용자를 위해 포커스에서도 열린다. */
-.remote-access-toggle:hover .settings-hover-note,
-.remote-access-toggle:focus-within .settings-hover-note {
-  opacity: 1;
-  visibility: visible;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .settings-hover-note {
-    transition: none;
-  }
-}
-
-.remote-access-identity {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  align-items: flex-start;
-}
-
-.remote-access-rotate {
-  min-height: 30px;
-  padding: 0 var(--space-3);
-  border: 1px solid color-mix(in oklch, var(--warn) 46%, transparent);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-}
-
-.remote-access-rotate:hover:not(:disabled),
-.remote-access-rotate.is-armed {
-  background: var(--warn-glow);
-  color: var(--warn-ink);
-}
-
-.remote-access-rotate:disabled {
-  cursor: not-allowed;
-  opacity: 0.58;
-}
-
-.remote-access-open-in {
-  margin: 0;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.55;
-}
-
-.remote-access-ledger {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-}
-
-.remote-access-ledger ul {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.remote-access-ledger li {
-  display: flex;
-  gap: var(--space-2);
+.host-switcher-chip {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 6px var(--space-3);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklch, var(--ink-deep) 84%, transparent);
-}
-
-.remote-access-ledger-when {
-  min-width: 0;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.03em;
-}
-
-.remote-access-ledger-until {
-  margin-left: var(--space-2);
-  color: var(--text-tertiary);
-}
-
-.remote-access-ledger li button {
-  flex: none;
-  padding: 3px var(--space-2);
+  gap: var(--space-2);
+  height: 28px;
+  padding: 0 var(--space-3);
   border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-xs);
-  background: transparent;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--ink-deep) 70%, transparent);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.host-switcher-chip:hover { border-color: var(--brass); color: var(--text-primary); }
+
+.host-switcher-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--surface-rim-strong);
+  border-radius: 50%;
+}
+
+.host-switcher-dot.is-live { border-color: var(--aurora); background: var(--aurora); }
+.host-switcher-name { color: var(--text-primary); }
+
+.host-switcher-panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 8px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  min-width: 17rem;
+  padding: var(--space-2);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background: var(--ink-abyss);
+  box-shadow: 0 14px 34px rgb(0 0 0 / 48%);
+}
+
+.host-switcher-heading {
+  margin: 0;
+  padding: var(--space-2) var(--space-3) var(--space-1);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.08em;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
-.remote-access-ledger li button:hover:not(:disabled) {
-  border-color: var(--coral);
-  color: var(--coral-ink);
+.host-switcher-panel > button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: left;
 }
 
-.remote-access-ledger li button:disabled {
-  cursor: not-allowed;
-  opacity: 0.58;
-}
+.host-switcher-panel > button:hover:not(:disabled) { background: color-mix(in oklch, var(--ink-deep) 80%, transparent); }
+.host-switcher-panel > button.is-current { background: color-mix(in oklch, var(--ink-deep) 90%, transparent); }
+.host-switcher-panel > button.is-current svg { margin-left: auto; color: var(--brass-bright); }
+.host-switcher-panel > button:disabled { cursor: not-allowed; opacity: 0.55; }
 
-.remote-access-warning {
+.host-switcher-entry { display: flex; min-width: 0; flex-direction: column; }
+.host-switcher-entry small { color: var(--text-tertiary); font-family: var(--font-mono); font-size: 11px; }
+.host-switcher-divider { height: 1px; margin: var(--space-2) var(--space-3); background: var(--surface-rim); }
+.host-switcher-link { color: var(--aurora-ink); font-size: 13px; }
+
+/* Remote access 섹션 — 시안의 네 덩어리(배너·수신 주소·신원·링크와 기기). */
+.remote-section { display: flex; flex-direction: column; gap: var(--space-4); }
+
+.remote-section-head h3 {
   margin: 0;
-  padding: var(--space-3);
-  border: 1px solid color-mix(in oklch, var(--warn) 46%, transparent);
+  color: var(--text-primary);
+  font-size: 19px;
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.01em;
+}
+
+.remote-section-head p {
+  margin: var(--space-2) 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* 위험 고지는 경고 채널을 쓰고 왼쪽 레일로 시선을 잡는다 — 읽지 않고 지나가면 안 되는 문장이다. */
+.remote-danger {
+  display: flex;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid color-mix(in oklch, var(--coral) 40%, transparent);
+  border-left-width: 3px;
   border-radius: var(--radius-md);
-  background: var(--warn-glow);
+  background: color-mix(in oklch, var(--coral) 10%, transparent);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.remote-danger svg { flex: none; margin-top: 2px; color: var(--coral-ink); }
+.remote-danger strong { color: var(--text-primary); font-weight: var(--weight-bold); }
+
+.remote-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-deep) 62%, transparent);
+}
+
+.remote-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
+.remote-card-title { margin: 0; color: var(--text-primary); font-size: 15px; font-weight: var(--weight-bold); }
+.remote-card-help { margin: 0; color: var(--text-secondary); font-size: 12.5px; line-height: 1.55; }
+.remote-card-alert { margin: 0; color: var(--warn-ink); font-family: var(--font-mono); font-size: 11.5px; }
+
+/* 켜고 끄는 스위치는 상태 하나만 말한다 — 세그먼트 두 칸보다 이쪽이 시안의 문법이다. */
+.remote-switch {
+  flex: none;
+  width: 46px;
+  height: 26px;
+  padding: 3px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--ink-abyss) 55%, transparent);
+  transition: background var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring);
+}
+
+.remote-switch-knob {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  transition: transform var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
+}
+
+.remote-switch.is-on { border-color: color-mix(in oklch, var(--brass) 60%, transparent); background: color-mix(in oklch, var(--brass) 22%, transparent); }
+.remote-switch.is-on .remote-switch-knob { transform: translateX(20px); background: var(--brass-bright); }
+.remote-switch:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.remote-choices { display: flex; flex-direction: column; gap: var(--space-2); }
+.remote-choice { display: flex; align-items: baseline; gap: var(--space-3); cursor: default; }
+.remote-choice input { accent-color: var(--brass); }
+.remote-choice-label { color: var(--text-primary); font-size: 13px; }
+.remote-choice code { color: var(--text-secondary); font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.04em; }
+.remote-custom { display: flex; flex-direction: column; gap: 4px; margin-left: 26px; }
+.remote-custom .console-port-input { width: 100%; max-width: 260px; }
+
+.remote-fingerprint {
+  overflow-wrap: anywhere;
+  color: var(--aurora-ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  letter-spacing: 0.06em;
+}
+
+.remote-rotate, .remote-create {
+  flex: none;
+  min-height: 32px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-deep) 78%, transparent);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.remote-create { border-color: color-mix(in oklch, var(--brass) 55%, transparent); background: color-mix(in oklch, var(--brass) 16%, transparent); color: var(--brass-bright); }
+.remote-rotate.is-armed, .remote-rotate:hover:not(:disabled) { border-color: color-mix(in oklch, var(--warn) 55%, transparent); background: var(--warn-glow); color: var(--warn-ink); }
+.remote-rotate:disabled, .remote-create:disabled { cursor: not-allowed; opacity: 0.55; }
+
+.remote-link-field { display: flex; gap: var(--space-2); }
+.remote-link-field input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 38px;
+  padding: 8px var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-abyss) 70%, transparent);
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.remote-link-field button {
+  flex: none;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-deep) 78%, transparent);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 11px;
-  line-height: 1.6;
+}
+
+/* 다른 콘솔 목록 — 고르는 것은 연결 방식이 아니라 콘솔이므로 각 줄이 하나의 호스트다. */
+.remote-hosts { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.remote-hosts-empty { margin: 0; color: var(--text-tertiary); font-size: 12.5px; }
+
+.remote-host {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-deep) 55%, transparent);
+}
+
+.remote-host-dot { width: 7px; height: 7px; border: 1.5px solid var(--surface-rim-strong); border-radius: var(--radius-pill); }
+.remote-host-dot.is-live { border-color: var(--aurora); background: var(--aurora); }
+.remote-host-text { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+
+.remote-host-name {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13.5px;
+}
+
+.remote-host-name:focus { outline: 1px solid color-mix(in oklch, var(--brass) 55%, transparent); outline-offset: 3px; }
+.remote-host-text small { color: var(--text-tertiary); font-family: var(--font-mono); font-size: 11px; }
+
+.remote-host-open {
+  padding: 4px var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--brass) 50%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.remote-host-open:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.remote-monitoring { display: flex; align-items: center; gap: var(--space-3); color: var(--text-secondary); font-size: 12.5px; }
+.remote-monitoring input { accent-color: var(--brass); }
+
+.remote-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.remote-table th {
+  padding: 0 0 var(--space-2);
+  border-bottom: 1px solid var(--surface-rim);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.14em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.remote-table td { padding: var(--space-3) 0; border-bottom: 1px solid color-mix(in oklch, var(--surface-rim) 55%, transparent); color: var(--text-primary); }
+.remote-table td:nth-child(3) { color: var(--text-secondary); font-family: var(--font-mono); font-size: 11.5px; }
+.remote-table td:last-child { text-align: right; }
+.remote-table-empty { color: var(--text-tertiary); }
+
+.remote-access-chip {
+  display: inline-flex;
+  padding: 1px 9px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+}
+
+.remote-access-chip.is-full { border-color: color-mix(in oklch, var(--aurora) 45%, transparent); color: var(--aurora-ink); }
+
+.remote-revoke {
+  border: 0;
+  background: none;
+  color: var(--coral-ink);
+  font: inherit;
+  font-size: 12px;
+}
+
+.remote-revoke:disabled { cursor: not-allowed; opacity: 0.5; }
+
+@media (prefers-reduced-motion: reduce) {
+  .remote-switch, .remote-switch-knob { transition: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

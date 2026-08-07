@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import https from "node:https";
+import os from "node:os";
 import path from "node:path";
 import type { Duplex } from "node:stream";
 
@@ -10,7 +11,8 @@ import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
-import { createAccessRegistry, createLoopbackListenerIdentity, formatSessionCookie, readSessionCookie, resolveListenerIdentity, type ListenerIdentity } from "./auth.js";
+import { createAccessRegistry, createLoopbackListenerIdentity, formatSessionCookie, readSessionCookie, resolveListenerIdentity, type AccessClass, type ListenerIdentity } from "./auth.js";
+import { listRemoteInterfaces } from "./remote-interfaces.js";
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./console-contract-types.js";
 import { createCodexWorkspaceRouter } from "./codex/workspace-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
@@ -39,7 +41,10 @@ import {
 } from "./classic-launch-kind-migration.js";
 import { migrateLegacyCaptures } from "./legacy-capture-migration.js";
 import { createConsoleDataPaths } from "./paths.js";
-import { createRemoteIdentityStore, normalizeFingerprint } from "./remote-identity.js";
+import { createRemoteIdentityStore } from "./remote-identity.js";
+import { encodeAccessLink, parseAccessLink, sanitizeAccessLabel } from "./access-link.js";
+import { createRemoteHostStore, type RemoteHostRecord } from "./remote-hosts.js";
+import { probeRemoteIdentity } from "./remote-probe.js";
 import { createPluginClientAssets } from "./plugin-host/plugin-host.js";
 import { createFleetPluginHost } from "./plugin-host/plugin-host.js";
 import type { FleetPluginHostCapabilities, OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind } from "./plugin-host/plugin-host.js";
@@ -293,12 +298,57 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   },
   {
     method: "GET",
+    path: "/api/v1/remote-hosts",
+    summary: "List the other consoles this one can jump to.",
+    category: "Access",
+    gate: "loopback",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/remote-hosts",
+    summary: "Remember another console from its access link, after confirming its certificate.",
+    category: "Access",
+    gate: "origin-write",
+  },
+  {
+    method: "PATCH",
+    path: "/api/v1/remote-hosts/:hostId",
+    summary: "Rename a remembered console.",
+    category: "Access",
+    gate: "origin-write",
+  },
+  {
+    method: "DELETE",
+    path: "/api/v1/remote-hosts/:hostId",
+    summary: "Forget a remembered console and its certificate pin.",
+    category: "Access",
+    gate: "origin-write",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/remote-hosts/:hostId/probes",
+    summary: "Check whether a remembered console answers and still presents its pinned certificate.",
+    category: "Access",
+    gate: "origin-write",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/desktop/handoff",
+    summary: "Hand the attached Desktop what it needs to open one remembered console, consuming any pending grant.",
+    category: "Desktop",
+    gate: "origin-write",
+  },
+  {
+    method: "GET",
     path: "/api/v1/health",
     summary: "Check console status with the lock token.",
     category: "Health",
     gate: "lock-token",
   },
 ];
+
+export const REMOTE_HOSTS_PATH = "/api/v1/remote-hosts";
+export const REMOTE_HOST_HANDOFF_PATH = "/api/v1/desktop/handoff";
 
 export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer {
   const host = deps.host ?? DEFAULT_HOST;
@@ -360,6 +410,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let boundPort: number | null = null;
   const access = createAccessRegistry();
   const remoteIdentityStore = createRemoteIdentityStore(durablePaths.dir);
+  const remoteHostStore = createRemoteHostStore(durablePaths.dir);
   const pluginOperationTypes = new Set<string>();
   const pluginPayloadSanitizers = new Map<string, readonly string[]>();
   const pluginLaunchCatalogProviders = new Map<string, OperationLaunchCatalogProvider[]>();
@@ -396,6 +447,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return deletionCoordinator.deleteOperation(operationId) !== null;
   }
   let desktopFullscreen = false;
+  // 창을 들고 있는 Desktop이 게시하는 호스트 목록. 브라우저 단독이면 비어 있다.
   let unsubscribeUpdateCheckChanges = updateCheck.onChange?.(() => {
     broadcastUpdateAvailable();
   }) ?? null;
@@ -674,8 +726,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 링크는 웹 URL 모양을 하고 있어 사람은 브라우저에 붙여넣는다. 아무 설명 없는 401로
     // 끝내지 않도록 이 한 경로만 세션 없이 통과시킨다 — 자격도 상태도 읽지 않는 정적 문서다.
     if (pathname === JOIN_NOTICE_PATH && req.method === "GET") return true;
-    if (access.resolveSession(readSessionCookie(req.headers), listener.audience) !== null) return true;
-    return false;
+    const session = access.resolveSession(readSessionCookie(req.headers), listener.audience);
+    if (session === null) return false;
+    // monitoring 자격은 보기만 한다. 등급이 사고 후 범위를 좁히려면 여기서 실제로 막혀야 한다.
+    return session.access !== "monitoring" || isReadOnlyRequest(req);
+  }
+
+  /** 읽기로 볼 수 있는 것만. 터미널 업그레이드는 method가 GET이어도 쓰기다. */
+  function isReadOnlyRequest(req: http.IncomingMessage): boolean {
+    if (req.method !== "GET" && req.method !== "HEAD") return false;
+    return String(req.headers.upgrade ?? "").toLowerCase() !== "websocket";
   }
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -729,6 +789,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === "/api/v1/join") {
       runAsyncBooleanHandler(handleAccessJoin(req, res), res);
+      return;
+    }
+    if (pathname === REMOTE_HOSTS_PATH || pathname.startsWith(`${REMOTE_HOSTS_PATH}/`)) {
+      runAsyncBooleanHandler(handleRemoteHosts(req, res, pathname), res);
+      return;
+    }
+    if (pathname === REMOTE_HOST_HANDOFF_PATH) {
+      runAsyncBooleanHandler(handleRemoteHostHandoff(req, res), res);
       return;
     }
     runAsyncBooleanHandler(routeRegistry.handle({ req, res, pathname }), res, () => {
@@ -878,6 +946,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 발급 사실만 나간다 — 목록을 보는 것으로는 어떤 링크도 다시 쓸 수 없다.
       links: access.listGrants("remote"),
       sessions: access.listSessions("remote"),
+      interfaces: listRemoteInterfaces(),
     });
   }
 
@@ -963,8 +1032,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   /**
-   * 원격 액세스 링크. 주소·자격·신원을 한 문자열로 묶고, 자격과 지문은 fragment에 둔다 —
-   * fragment는 요청에 실리지 않으므로 서버 로그나 프록시에 남지 않는다.
+   * 원격 액세스 링크. 주소·자격·신원·이름을 하나의 봉투에 담아 `fleet://join?code=`로 실어
+   * 나른다. 봉투 밖에 남는 것이 없으므로 붙여넣는 사람 눈에도, 이 문자열이 지나가는 대화창에도
+   * 사설 주소가 드러나지 않는다. 이 스킴을 여는 주체는 Fleet Desktop 하나뿐이다.
    */
   function handleAccessLinkIssue(req: http.IncomingMessage, res: http.ServerResponse): void {
     if (req.method !== "POST") {
@@ -980,9 +1050,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 409, { error: "remote_access_disabled" });
       return;
     }
-    const grant = access.issueGrant("remote");
-    const link = `${remote.origin}/join#t=${encodeURIComponent(grant.token)}&f=${encodeURIComponent(normalizeFingerprint(remoteFingerprint))}`;
-    writeJson(res, 201, { link, expiresAt: grant.expiresAt, fingerprint: remoteFingerprint });
+    const grant = access.issueGrant("remote", readAccessClass(req));
+    const link = encodeAccessLink({ endpoint: remote.origin, token: grant.token, fingerprint: remoteFingerprint, label: consoleLabel() });
+    writeJson(res, 201, { id: grant.id, link, access: grant.access, expiresAt: grant.expiresAt, fingerprint: remoteFingerprint });
   }
 
   async function handleAccessJoin(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
@@ -991,9 +1061,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return true;
     }
     const listener = listenerForRequest(req);
-    const body = await readJsonBody<{ readonly token?: unknown }>(req);
+    const body = await readJsonBody<{ readonly token?: unknown; readonly device?: unknown }>(req);
     const token = isPlainObject(body) && typeof body.token === "string" ? body.token : null;
-    const session = listener ? access.redeemGrant(token, listener.audience) : null;
+    const device = isPlainObject(body) ? sanitizeDeviceName(body.device) : null;
+    const session = listener ? access.redeemGrant(token, listener.audience, device) : null;
     if (!listener || !session) {
       writeJson(res, 401, { error: "unauthorized" });
       return true;
@@ -1001,6 +1072,145 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 평문 http 리스너에 Secure를 붙이면 브라우저가 쿠키를 버린다.
     res.writeHead(204, withSecurityHeaders({ "Set-Cookie": formatSessionCookie(session, { secure: listener.secure }) }));
     res.end();
+    return true;
+  }
+
+  /**
+   * 건너갈 수 있는 다른 콘솔들의 목록은 이 기계 앞에 앉은 사람의 것이다. 원격에서 붙은 세션에는
+   * 보이지도 고쳐지지도 않는다 — 남의 콘솔 주소와 지문이 원격 화면으로 새 나갈 이유가 없다.
+   */
+  function isLoopbackListener(req: http.IncomingMessage): boolean {
+    return listenerForRequest(req)?.audience === "local";
+  }
+
+  function isRemoteHostWriteAuthorized(req: http.IncomingMessage): boolean {
+    return isLoopbackListener(req) && (isLockAuthorized(req) || isExactConsoleOrigin(req));
+  }
+
+  async function handleRemoteHosts(req: http.IncomingMessage, res: http.ServerResponse, pathname: string): Promise<boolean> {
+    const rest = pathname.slice(REMOTE_HOSTS_PATH.length).replace(/^\//u, "");
+    if (rest.length === 0) {
+      if (req.method === "GET") {
+        if (!isLoopbackListener(req)) {
+          writeJson(res, 401, { error: "unauthorized" });
+          return true;
+        }
+        writeJson(res, 200, { hosts: remoteHostStore.list() });
+        return true;
+      }
+      if (req.method !== "POST") {
+        writeJson(res, 405, { error: "Method not allowed" });
+        return true;
+      }
+      if (!isRemoteHostWriteAuthorized(req)) {
+        writeJson(res, 401, { error: "unauthorized" });
+        return true;
+      }
+      await addRemoteHost(req, res);
+      return true;
+    }
+
+    const [id, action] = rest.split("/");
+    if (!isRemoteHostWriteAuthorized(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return true;
+    }
+    const host = remoteHostStore.find(decodeHandle(id ?? ""));
+    if (!host) {
+      writeJson(res, 404, { error: "remote_host_unknown" });
+      return true;
+    }
+    if (action === "probes" && req.method === "POST") {
+      writeJson(res, 200, await describeReachability(host));
+      return true;
+    }
+    if (action !== undefined) {
+      writeJson(res, 404, { error: "remote_host_unknown" });
+      return true;
+    }
+    if (req.method === "DELETE") {
+      remoteHostStore.forget(host.id);
+      writeNoContent(res);
+      return true;
+    }
+    if (req.method === "PATCH") {
+      const body = await readJsonBody<{ readonly label?: unknown }>(req);
+      const label = isPlainObject(body) && typeof body.label === "string" ? body.label : "";
+      const renamed = remoteHostStore.rename(host.id, label);
+      if (!renamed) {
+        writeJson(res, 400, { error: "remote_host_label_invalid" });
+        return true;
+      }
+      writeJson(res, 200, { host: renamed });
+      return true;
+    }
+    writeJson(res, 405, { error: "Method not allowed" });
+    return true;
+  }
+
+  async function addRemoteHost(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const body = await readJsonBody<{ readonly link?: unknown }>(req);
+    if (!isPlainObject(body) || typeof body.link !== "string") {
+      writeJson(res, 400, { error: "pairing_target_invalid" });
+      return;
+    }
+    let link;
+    try {
+      link = parseAccessLink(body.link);
+    } catch {
+      writeJson(res, 400, { error: "pairing_target_invalid" });
+      return;
+    }
+    // 자기 자신을 목록에 넣으면 스위처가 제자리를 가리킨다.
+    if (listeners.some((entry) => entry.origin === link.origin)) {
+      writeJson(res, 409, { error: "remote_host_is_self" });
+      return;
+    }
+    // 자격을 보내기 전에 그 주소가 정말 그 인증서를 내미는지 먼저 확인한다.
+    const probe = await probeRemoteIdentity(link.hostname, link.port, link.fingerprint);
+    if (probe.state === "unreachable") {
+      writeJson(res, 502, { error: "remote_host_unreachable" });
+      return;
+    }
+    if (probe.state === "mismatch") {
+      writeJson(res, 409, { error: "remote_host_fingerprint_mismatch" });
+      return;
+    }
+    writeJson(res, 201, { host: remoteHostStore.remember(link) });
+  }
+
+  async function describeReachability(host: RemoteHostRecord): Promise<{ readonly reachable: boolean; readonly trusted: boolean }> {
+    const probe = await probeRemoteIdentity(host.hostname, host.port, host.fingerprint);
+    return { reachable: probe.state !== "unreachable", trusted: probe.state === "match" };
+  }
+
+  /**
+   * Desktop이 창을 그 호스트로 보내기 직전에 필요한 것을 한 번에 가져간다. 1회용 자격은 이
+   * 호출로 소진되므로, 링크 하나가 두 창을 열 수는 없다.
+   */
+  async function handleRemoteHostHandoff(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+    if (!isRemoteHostWriteAuthorized(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return true;
+    }
+    const body = await readJsonBody<{ readonly origin?: unknown }>(req);
+    const origin = isPlainObject(body) && typeof body.origin === "string" ? body.origin : "";
+    const handoff = remoteHostStore.takeHandoff(origin);
+    if (!handoff) {
+      writeJson(res, 404, { error: "remote_host_unknown" });
+      return true;
+    }
+    writeJson(res, 200, {
+      origin: handoff.host.origin,
+      hostname: handoff.host.hostname,
+      port: handoff.host.port,
+      fingerprint: handoff.host.fingerprint,
+      token: handoff.token,
+    });
     return true;
   }
 
@@ -1723,11 +1933,30 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   return returnedServer;
 }
 
+/** 발급 요청이 고른 등급. 알 수 없는 값은 가장 좁은 쪽이 아니라 기본(full)으로 두지 않는다. */
+function readAccessClass(req: http.IncomingMessage): AccessClass {
+  const requested = new URL(req.url ?? "/", "http://localhost").searchParams.get("access");
+  return requested === "monitoring" ? "monitoring" : "full";
+}
+
+/** 기기 이름은 사람이 자기 기기를 알아보는 단서일 뿐이다 — 표시 가능한 짧은 문자열로 자른다. */
+function sanitizeDeviceName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value.replace(/[\u0000-\u001f\u007f]/gu, "").trim().slice(0, 48);
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+/** 링크를 받는 쪽 목록에 뜨는 이름. 기계 이름이 사람이 자기 콘솔을 알아보는 가장 짧은 단서다. */
+function consoleLabel(): string {
+  return sanitizeAccessLabel(os.hostname().replace(/\.local$/iu, "")) || "Fleet Console";
+}
+
 export const JOIN_NOTICE_PATH = "/join";
 
 /**
- * 액세스 링크를 브라우저에서 연 사람에게 보여주는 정적 안내. 자격(fragment)은 요청에 실리지
- * 않고 이 문서에는 그것을 읽을 스크립트도 없다 — 설명만 하고 아무것도 하지 않는 것이 요점이다.
+ * 이 주소를 브라우저 주소창에 넣어 본 사람에게 보여주는 정적 안내. 액세스 링크는 `fleet://`라
+ * 브라우저가 따라올 수 없고, 이 문서에는 아무 스크립트도 없다 — 설명만 하고 아무것도 하지
+ * 않는 것이 요점이다.
  */
 const JOIN_NOTICE_DOCUMENT = `<!doctype html>
 <html lang="en">
@@ -1748,10 +1977,10 @@ strong { color: #e6edf3; font-weight: 600; }
 </head>
 <body>
 <main>
-<h1>Open this link in Fleet Console Desktop</h1>
-<p>This is a Fleet Console access link. It carries a one-time credential and the console&#39;s certificate fingerprint, and <strong>only Fleet Console Desktop can use it</strong> &mdash; a browser cannot check the fingerprint, so remote access is not open to browsers.</p>
-<p>Copy the whole link, then in Fleet Console Desktop choose <strong>Connect to Runtime</strong> and paste it into the <strong>Access link</strong> tab.</p>
-<p>The link stays unused until then, and it expires on its own.</p>
+<h1>This console is reached with an access link</h1>
+<p>You have found the remote listener of a Fleet Console. It does not open in a browser: a browser cannot check this console&#39;s certificate fingerprint, so <strong>remote access is not available to browsers</strong>.</p>
+<p>Ask for an access link instead. It looks like <strong>fleet://join?code=&hellip;</strong> and carries the address, a one-time credential, and the fingerprint together.</p>
+<p>In the Fleet Console you are already using, open <strong>Settings &rarr; Remote access &rarr; Hosts</strong> and paste the link there.</p>
 </main>
 </body>
 </html>

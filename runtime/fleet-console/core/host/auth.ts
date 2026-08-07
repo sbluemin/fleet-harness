@@ -11,6 +11,12 @@ export function readBearerToken(headers: { readonly authorization?: string | str
  */
 export type AccessAudience = "local" | "remote";
 
+/**
+ * 자격이 여는 권한의 등급. 1회성·머신 바인딩은 *발급*을 통제하고, 등급은 *사고 후 범위*를
+ * 통제한다 — 서로 대체할 수 없으므로 둘 다 필요하다. monitoring은 읽기만 한다.
+ */
+export type AccessClass = "full" | "monitoring";
+
 export const SESSION_COOKIE_NAME = "fleet_console_session";
 
 /**
@@ -23,6 +29,7 @@ export interface AccessGrant {
   readonly id: string;
   readonly token: string;
   readonly audience: AccessAudience;
+  readonly access: AccessClass;
   readonly issuedAt: number;
   readonly expiresAt: number;
 }
@@ -30,6 +37,7 @@ export interface AccessGrant {
 /** 발급 사실만 담은 공개 표현. 토큰은 발급 시점 응답에만 실리고 다시는 나가지 않는다. */
 export interface AccessGrantSummary {
   readonly id: string;
+  readonly access: AccessClass;
   readonly issuedAt: number;
   readonly expiresAt: number;
 }
@@ -40,11 +48,15 @@ export interface AccessSession {
   /** 세션을 가리키는 공개 이름. 쿠키 값과 달리 목록에 실어도 안전하다. */
   readonly handle: string;
   readonly audience: AccessAudience;
+  readonly access: AccessClass;
   readonly expiresAt: number;
 }
 
 export interface AccessSessionSummary {
   readonly handle: string;
+  /** 조인할 때 기기가 스스로 밝힌 이름. 목록에서 사람이 자기 기기를 알아보는 유일한 단서다. */
+  readonly device: string | null;
+  readonly access: AccessClass;
   readonly openedAt: number;
   readonly expiresAt: number;
   readonly lastSeenAt: number;
@@ -63,9 +75,9 @@ export interface AccessRegistryDeps {
 
 export interface AccessRegistry {
   readonly grantTtlMs: number;
-  issueGrant(audience: AccessAudience): AccessGrant;
+  issueGrant(audience: AccessAudience, access?: AccessClass): AccessGrant;
   /** 리스너의 audience와 일치하는 grant만 세션으로 교환된다. 교환된 grant는 소멸한다. */
-  redeemGrant(token: string | null, audience: AccessAudience): AccessSession | null;
+  redeemGrant(token: string | null, audience: AccessAudience, device?: string | null): AccessSession | null;
   resolveSession(id: string | null, audience: AccessAudience): AccessSession | null;
   listGrants(audience: AccessAudience): readonly AccessGrantSummary[];
   /** 아직 쓰이지 않은 링크를 하나만 무효화한다. */
@@ -84,7 +96,9 @@ export interface AccessRegistry {
 
 interface StoredSession {
   readonly handle: string;
+  readonly device: string | null;
   readonly audience: AccessAudience;
+  readonly access: AccessClass;
   readonly openedAt: number;
   readonly absoluteExpiresAt: number;
   idleExpiresAt: number;
@@ -105,31 +119,32 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
   const grants = new Map<string, AccessGrant>();
   const sessions = new Map<string, StoredSession>();
 
-  function issueGrant(audience: AccessAudience): AccessGrant {
+  function issueGrant(audience: AccessAudience, access: AccessClass = "full"): AccessGrant {
     prune();
     const issuedAt = now();
-    const grant: AccessGrant = { id: randomHandle(), token: randomToken(), audience, issuedAt, expiresAt: issuedAt + grantTtlMs };
+    const grant: AccessGrant = { id: randomHandle(), token: randomToken(), audience, access, issuedAt, expiresAt: issuedAt + grantTtlMs };
     grants.set(grant.token, grant);
     return grant;
   }
 
-  function redeemGrant(token: string | null, audience: AccessAudience): AccessSession | null {
+  function redeemGrant(token: string | null, audience: AccessAudience, device: string | null = null): AccessSession | null {
     prune();
     if (!token) return null;
     const grant = grants.get(token);
     if (!grant) return null;
     grants.delete(token);
     if (grant.expiresAt <= now() || grant.audience !== audience) return null;
-    return openSession(audience);
+    // 세션은 자기를 연 자격의 등급을 물려받는다 — 조인이 등급을 올릴 수 없어야 한다.
+    return openSession(audience, grant.access, device);
   }
 
-  function openSession(audience: AccessAudience): AccessSession {
+  function openSession(audience: AccessAudience, access: AccessClass, device: string | null): AccessSession {
     const id = randomToken();
     const handle = randomHandle();
     const current = now();
     const absoluteExpiresAt = current + sessionTtlMs;
-    sessions.set(id, { handle, audience, openedAt: current, absoluteExpiresAt, idleExpiresAt: current + sessionIdleTtlMs, lastSeenAt: current });
-    return { id, handle, audience, expiresAt: absoluteExpiresAt };
+    sessions.set(id, { handle, device, audience, access, openedAt: current, absoluteExpiresAt, idleExpiresAt: current + sessionIdleTtlMs, lastSeenAt: current });
+    return { id, handle, audience, access, expiresAt: absoluteExpiresAt };
   }
 
   function resolveSession(id: string | null, audience: AccessAudience): AccessSession | null {
@@ -141,14 +156,14 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     // 유휴 만료는 접근할 때마다 밀리되 절대 만료를 넘기지 못한다.
     stored.idleExpiresAt = Math.min(current + sessionIdleTtlMs, stored.absoluteExpiresAt);
     stored.lastSeenAt = current;
-    return { id, handle: stored.handle, audience: stored.audience, expiresAt: stored.absoluteExpiresAt };
+    return { id, handle: stored.handle, audience: stored.audience, access: stored.access, expiresAt: stored.absoluteExpiresAt };
   }
 
   function listGrants(audience: AccessAudience): readonly AccessGrantSummary[] {
     prune();
     return [...grants.values()]
       .filter((grant) => grant.audience === audience)
-      .map((grant) => ({ id: grant.id, issuedAt: grant.issuedAt, expiresAt: grant.expiresAt }))
+      .map((grant) => ({ id: grant.id, access: grant.access, issuedAt: grant.issuedAt, expiresAt: grant.expiresAt }))
       .sort((left, right) => right.issuedAt - left.issuedAt);
   }
 
@@ -169,7 +184,7 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     prune();
     return [...sessions.values()]
       .filter((stored) => stored.audience === audience)
-      .map((stored) => ({ handle: stored.handle, openedAt: stored.openedAt, expiresAt: stored.absoluteExpiresAt, lastSeenAt: stored.lastSeenAt }))
+      .map((stored) => ({ handle: stored.handle, device: stored.device, access: stored.access, openedAt: stored.openedAt, expiresAt: stored.absoluteExpiresAt, lastSeenAt: stored.lastSeenAt }))
       .sort((left, right) => right.openedAt - left.openedAt);
   }
 
