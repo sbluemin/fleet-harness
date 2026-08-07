@@ -1154,6 +1154,8 @@ export class CursorAdapter implements AiGatewayAdapter {
   private readonly sessionIdOverride: string | undefined;
   private readonly pendingLiveRuns = new Map<string, CursorPendingLiveRun>();
   private readonly liveRuns = new Set<CursorLiveRun>();
+  /** Transports opened but not yet carrying a live Run, so disposal can still reach them. */
+  private readonly openingTransports = new Set<CursorOpeningTransport>();
   private disposed = false;
 
   constructor(options: CursorAdapterOptions = {}) {
@@ -1323,6 +1325,10 @@ export class CursorAdapter implements AiGatewayAdapter {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    for (const opening of [...this.openingTransports]) {
+      this.openingTransports.delete(opening);
+      closeCursorTransport(opening.stream, opening.session, true);
+    }
     const parkedRuns = new Set<CursorLiveRun>();
     for (const pending of [...this.pendingLiveRuns.values()]) {
       if (!this.claimPendingLiveRun(pending)) continue;
@@ -1486,32 +1492,58 @@ export class CursorAdapter implements AiGatewayAdapter {
     // Nothing may be reported as a successful turn until Cursor answers with a 2xx. The gate
     // below carries its own timer rather than `stream.setTimeout`, because the client
     // heartbeat armed further down refreshes a stream timer on every write it makes.
-    try {
-      // KV, interaction, heartbeat, and later mcpResult messages share this request stream.
-      stream.write(encodeCursorClientMessage(plan.payload));
-    } catch (error) {
-      const failure = error instanceof Error ? error : new Error(String(error));
-      report("turn.finish", {
-        model,
-        outcome: "request_write_error",
-        error: cursorDiagnosticError(failure),
-        frameCount: 0,
-        lastFrame: "none",
-      });
-      closeCursorTransport(stream, session, true, failure);
-      throw failure;
-    }
-    report("client.request", { model, reply: "run" });
-
+    // 이 구간에는 아직 live Run이 없다. 그 사이의 취소와 adapter dispose를 어댑터가 직접
+    // 붙들지 않으면, 열린 전송이 두 경로 어디에도 걸리지 않고 살아남는다.
+    const opening: CursorOpeningTransport = { stream, session };
+    this.openingTransports.add(opening);
     let head: CursorResponseHead;
     try {
-      head = await awaitCursorResponseHead(stream, session, this.idleTimeoutMs);
-    } catch (error) {
-      const failure = error instanceof Error ? error : new Error(String(error));
+      try {
+        // KV, interaction, heartbeat, and later mcpResult messages share this request stream.
+        stream.write(encodeCursorClientMessage(plan.payload));
+      } catch (error) {
+        const failure = error instanceof Error ? error : new Error(String(error));
+        report("turn.finish", {
+          model,
+          outcome: "request_write_error",
+          error: cursorDiagnosticError(failure),
+          frameCount: 0,
+          lastFrame: "none",
+        });
+        closeCursorTransport(stream, session, true, failure);
+        throw failure;
+      }
+      report("client.request", { model, reply: "run" });
+
+      try {
+        head = await awaitCursorResponseHead(
+          stream,
+          session,
+          this.idleTimeoutMs,
+          options.signal,
+        );
+      } catch (error) {
+        const failure = error instanceof Error ? error : new Error(String(error));
+        report("turn.finish", {
+          model,
+          outcome: "response_head_error",
+          error: cursorDiagnosticError(failure),
+          frameCount: 0,
+          lastFrame: "none",
+        });
+        closeCursorTransport(stream, session, true);
+        throw failure;
+      }
+    } finally {
+      this.openingTransports.delete(opening);
+    }
+    // `dispose()` can land between the head resolving and this continuation running; registering
+    // a live Run then would restart provider work the adapter already declared finished.
+    if (this.disposed) {
+      const failure = new Error("Cursor adapter is disposed");
       report("turn.finish", {
         model,
-        outcome: "response_head_error",
-        error: cursorDiagnosticError(failure),
+        outcome: "adapter_dispose",
         frameCount: 0,
         lastFrame: "none",
       });
@@ -1603,15 +1635,22 @@ interface CursorResponseHead {
   readonly headers: Headers;
 }
 
+interface CursorOpeningTransport {
+  readonly stream: http2.ClientHttp2Stream;
+  readonly session: http2.ClientHttp2Session;
+}
+
 /**
  * Settle once Cursor answers the Run with HTTP response headers. Every terminal transport
  * event before that is a failure of the request, never an empty successful turn, so each one
- * rejects here instead of reaching a client as a completed response.
+ * rejects here instead of reaching a client as a completed response. The caller's abort signal
+ * is observed from here because the live Run that otherwise honors it does not exist yet.
  */
 function awaitCursorResponseHead(
   stream: http2.ClientHttp2Stream,
   session: http2.ClientHttp2Session,
   timeoutMs: number,
+  signal: AbortSignal | undefined,
 ): Promise<CursorResponseHead> {
   return new Promise<CursorResponseHead>((resolve, reject) => {
     let settled = false;
@@ -1624,6 +1663,7 @@ function awaitCursorResponseHead(
       stream.off("close", onEnded);
       stream.off("end", onEnded);
       session.off("error", onError);
+      signal?.removeEventListener("abort", onAbort);
       settle();
     };
     const onResponse = (
@@ -1638,6 +1678,7 @@ function awaitCursorResponseHead(
     const onEnded = (): void => finish(
       () => reject(new Error("cursor stream ended before a response")),
     );
+    const onAbort = (): void => finish(() => reject(new Error("cancelled by caller")));
     const timer = setTimeout(
       () => finish(() => reject(new Error("cursor stream idle timeout"))),
       timeoutMs,
@@ -1648,6 +1689,8 @@ function awaitCursorResponseHead(
     stream.on("close", onEnded);
     stream.on("end", onEnded);
     session.on("error", onError);
+    if (signal?.aborted) onAbort();
+    else signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 

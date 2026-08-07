@@ -93,6 +93,42 @@ describe("Cursor upstream rejection", () => {
     }));
   });
 
+  it("honors a caller abort raised while the response head is still outstanding", async () => {
+    // The live Run that observes `options.signal` does not exist yet in this window, so the
+    // gate observes it directly; otherwise a disconnected client leaves the Run open upstream.
+    const events: CursorDiagnosticEvent[] = [];
+    const harness = cursorTransportHarness({
+      quiet: true,
+      chunks: [],
+      diagnostics: (event) => events.push(event),
+    });
+    const controller = new AbortController();
+    const pending = harness.run(controller.signal);
+    await waitFor(() => harness.stream.writes.length > 0);
+    controller.abort(new Error("client disconnected"));
+
+    await expect(pending).rejects.toThrow(/cancelled by caller/);
+    expect(harness.stream.closeCode).toBe(http2.constants.NGHTTP2_CANCEL);
+    expect(harness.sessionClosed).toBeGreaterThan(0);
+    expect(turnFinish(events)).toEqual(expect.objectContaining({
+      outcome: "response_head_error",
+      error: "caller_abort",
+    }));
+  });
+
+  it("closes a transport still awaiting its response head when the adapter is disposed", async () => {
+    // Between the request write and the head there is no live Run for `dispose()` to reach,
+    // so the adapter holds the transport itself rather than leaving it open past shutdown.
+    const harness = cursorTransportHarness({ quiet: true, chunks: [] });
+    const pending = harness.run();
+    await waitFor(() => harness.stream.writes.length > 0);
+    harness.adapter.dispose();
+
+    await expect(pending).rejects.toThrow(/ended before a response/);
+    expect(harness.stream.closeCode).toBe(http2.constants.NGHTTP2_CANCEL);
+    expect(harness.sessionClosed).toBeGreaterThan(0);
+  });
+
   it("surfaces a compressed Connect frame instead of decoding it", async () => {
     const response = await runCursorTransport({
       chunks: [encodeConnectFrame(Buffer.from("compressed"), CONNECT_FLAG_COMPRESSED)],
@@ -164,6 +200,8 @@ interface CursorTransportScript {
   /** `null` models a stream that dies before Cursor answers with response headers. */
   readonly head?: CursorResponseHeaders | null;
   readonly chunks: readonly Buffer[];
+  /** Emit nothing at all after the request write, modelling an upstream that never answers. */
+  readonly quiet?: boolean;
   readonly diagnostics?: (event: CursorDiagnosticEvent) => void;
 }
 
@@ -172,14 +210,17 @@ const CONNECT_HEAD: CursorResponseHeaders = {
   "content-type": "application/connect+proto",
 };
 
-async function runCursorTransport(script: CursorTransportScript) {
+function cursorTransportHarness(script: CursorTransportScript) {
   const stream = new ScriptedCursorStream({
     ...script,
     head: script.head === undefined ? CONNECT_HEAD : script.head,
   });
+  let sessionClosed = 0;
   const session = Object.assign(new EventEmitter(), {
     request: () => stream,
-    close: () => undefined,
+    close: () => {
+      sessionClosed += 1;
+    },
   });
   const adapter = new CursorAdapter({
     connect: (() => session as unknown as http2.ClientHttp2Session) as typeof http2.connect,
@@ -188,12 +229,34 @@ async function runCursorTransport(script: CursorTransportScript) {
     toolFinalizeGraceMs: 0,
     ...(script.diagnostics ? { diagnostics: script.diagnostics } : {}),
   });
-  return adapter.stream(request(), { apiKey: "cursor-test-token" });
+  return {
+    adapter,
+    stream,
+    get sessionClosed() {
+      return sessionClosed;
+    },
+    run: (signal?: AbortSignal) => adapter.stream(request(), {
+      apiKey: "cursor-test-token",
+      ...(signal ? { signal } : {}),
+    }),
+  };
+}
+
+async function runCursorTransport(script: CursorTransportScript) {
+  return cursorTransportHarness(script).run();
 }
 
 /** `turn.finish` carries the outcome; later transport events still arrive after it. */
 function turnFinish(events: readonly CursorDiagnosticEvent[]): CursorDiagnosticEvent | undefined {
   return events.find((event) => event.event === "turn.finish");
+}
+
+async function waitFor(predicate: () => boolean, timeoutMs = 500): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("Timed out waiting for Cursor test state");
+    await new Promise<void>((resolve) => setTimeout(resolve, 1));
+  }
 }
 
 async function drain(
@@ -239,7 +302,7 @@ class ScriptedCursorStream extends EventEmitter {
 
   write(chunk: Uint8Array): boolean {
     this.writes.push(Buffer.from(chunk));
-    if (this.started) return true;
+    if (this.started || this.script.quiet === true) return true;
     this.started = true;
     queueMicrotask(() => {
       if (this.script.head) this.emit("response", this.script.head);
