@@ -15,6 +15,7 @@ import { createLaunchController, type RuntimeEntryState, type StartupChoice } fr
 import { createPairingNotifier } from "./pairing-notifications.js";
 import { createPairingModal, LOCAL_RUNTIME_CHOICE } from "./pairing-modal.js";
 import { confirmRemoteIdentity, installRemoteCertificatePins, joinRemoteConsole } from "./remote-access.js";
+import { isRemoteConsoleOrigin } from "./console-origin.js";
 import { createRuntimePairing, type RemoteAccessAdapter } from "./runtime-pairing.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
 import { createDesktopThemeSynchronizer } from "./desktop-theme-sync.js";
@@ -79,8 +80,18 @@ async function boot(): Promise<void> {
   let window: BrowserWindow | null = null;
   let policy: ReturnType<typeof applyWindowPolicy> | null = null;
   let localConsoleOrigin: string | null = null;
+  // 원격 콘솔은 자체서명 인증서 뒤에서 세션을 요구한다. Node의 fetch는 둘 다 갖지 못하므로
+  // 그 origin으로 가는 메인 프로세스 요청은 창이 쓰는 바로 그 세션을 타야 한다.
+  const remoteAccess = createRemoteAccessAdapter(logger);
+  const consoleFetch: typeof fetch = (input, init) => {
+    // 동기화기는 문자열 URL만 넘긴다. Request가 오면 조용히 다른 경로로 보내지 않고 기존 경로를 쓴다.
+    if (typeof input !== "string" && !(input instanceof URL)) return globalThis.fetch(input, init);
+    const url = typeof input === "string" ? input : input.href;
+    return isRemoteConsoleOrigin(new URL(url).origin) ? remoteAccess.fetch(url, init) : globalThis.fetch(url, init);
+  };
   const themeSynchronizer = process.platform === "win32"
     ? createDesktopThemeSynchronizer({
+      fetch: consoleFetch,
       applyTheme: (snapshot) => {
         if (!window || window.isDestroyed()) return;
         window.setTitleBarOverlay(snapshot.titleBarOverlay);
@@ -98,7 +109,7 @@ async function boot(): Promise<void> {
       createWindow: async () => {
         const createdWindow = createSecureWindow(BrowserWindow, { iconPath: desktopResources.iconPath, platform: process.platform });
         window = createdWindow;
-        fullscreenSynchronizer = createDesktopFullscreenSynchronizer(createdWindow);
+        fullscreenSynchronizer = createDesktopFullscreenSynchronizer(createdWindow, { fetch: consoleFetch });
         createdWindow.once("closed", () => {
           themeSynchronizer?.stop();
           fullscreenSynchronizer?.stop();
@@ -187,7 +198,7 @@ async function boot(): Promise<void> {
     localOrigin: () => localConsoleOrigin,
     logger,
     onRuntimeChanged: () => refreshNativeUpdateActions?.(),
-    remoteAccess: createRemoteAccessAdapter(logger),
+    remoteAccess,
   });
   trayHolder.current = createDesktopTray(process.platform, Tray, desktopResources, actions);
   refreshNativeUpdateActions = () => {

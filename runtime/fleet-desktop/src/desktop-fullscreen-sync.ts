@@ -1,3 +1,4 @@
+import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-origin.js";
 import type { BrowserWindow, WebContents } from "electron";
 
 const DESKTOP_FULLSCREEN_PATH = "/api/v1/desktop/fullscreen";
@@ -172,16 +173,5 @@ export function createDesktopFullscreenSynchronizer(
 }
 
 function normalizeConsoleOrigin(origin: string): string {
-  const parsed = new URL(origin);
-  if (
-    parsed.protocol !== "http:"
-    || parsed.hostname !== "127.0.0.1"
-    || !parsed.port
-    || parsed.pathname !== "/"
-    || parsed.search
-    || parsed.hash
-    || parsed.username
-    || parsed.password
-  ) throw new Error("desktop_fullscreen_origin_invalid");
-  return parsed.origin;
+  return normalizeAnyConsoleOrigin(origin, "desktop_fullscreen_origin_invalid");
 }

@@ -1,3 +1,5 @@
+import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-origin.js";
+
 interface DesktopTitleBarOverlay {
   readonly color: string;
   readonly symbolColor: string;
@@ -192,16 +194,5 @@ function desktopThemeUrl(origin: string, pathname: string): string {
 }
 
 function normalizeConsoleOrigin(origin: string): string {
-  const parsed = new URL(origin);
-  if (
-    parsed.protocol !== "http:"
-    || parsed.hostname !== "127.0.0.1"
-    || !parsed.port
-    || parsed.pathname !== "/"
-    || parsed.search
-    || parsed.hash
-    || parsed.username
-    || parsed.password
-  ) throw new Error("desktop_theme_origin_invalid");
-  return parsed.origin;
+  return normalizeAnyConsoleOrigin(origin, "desktop_theme_origin_invalid");
 }
