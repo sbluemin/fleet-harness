@@ -193,6 +193,43 @@ describe("useFullscreenCommandBand", () => {
     expect(attribute(band(), "data-visible")).toBe("true");
   });
 
+  it("cancels a dwell already armed when a press starts without moving", () => {
+    mediaQuery.setMatches(true);
+    renderProbe();
+    act(() => vi.advanceTimersByTime(480));
+
+    act(() => movePointer(200));
+    act(() => movePointer(20));
+    act(() => vi.advanceTimersByTime(60));
+    // buttons 검사는 다음 pointermove에서만 돈다 — 움직이지 않고 누르면 dwell이 살아남아
+    // 드래그 시작과 함께 밴드가 내려왔다.
+    act(() => window.dispatchEvent(new MouseEvent("pointerdown", { clientY: 20, buttons: 1 })));
+    act(() => vi.advanceTimersByTime(120));
+    expect(attribute(band(), "data-visible")).toBe("false");
+  });
+
+  it("attaches the intent observers only while they are needed and removes them on unmount", () => {
+    mediaQuery.setMatches(true);
+    const addSpy = vi.spyOn(window, "addEventListener");
+    const removeSpy = vi.spyOn(window, "removeEventListener");
+    renderProbe();
+
+    const attached = (spy: typeof addSpy) => spy.mock.calls.filter(([type]) => type === "pointermove" || type === "pointerdown").length;
+    expect(attached(addSpy)).toBe(2);
+    expect(attached(removeSpy)).toBe(0);
+
+    // 도킹하면 관찰할 대상이 없다 — 남겨 두면 숨은 적 없는 밴드에 계속 reveal이 걸린다.
+    act(() => dockToggle().click());
+    expect(attached(removeSpy)).toBe(2);
+
+    act(() => dockToggle().click());
+    expect(attached(addSpy)).toBe(4);
+
+    act(() => root!.unmount());
+    root = null;
+    expect(attached(removeSpy)).toBe(4);
+  });
+
   it("does not hide while the interaction guard reports focus or pointer containment", () => {
     mediaQuery.setMatches(true);
     let canHide = false;

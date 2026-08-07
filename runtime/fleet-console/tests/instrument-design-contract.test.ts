@@ -998,6 +998,11 @@ describe("Instrument core design contract", () => {
     const dockedBandBlock = layout.match(/\.command-band\.is-fullscreen\.is-docked \{[^}]*\}/)?.[0] ?? "";
     expect(dockedBandBlock).toContain("position: relative;");
     expect(dockedBandBlock).toContain("transform: none;");
+    // 떠 있을 때의 z-index를 물려받으면 그보다 낮은 오버레이(What's new는 35) 위에 밴드가
+    // 그려지고 클릭까지 받는다 — 도킹은 창 모드와 같은 쌓임으로 돌아가야 한다.
+    expect(dockedBandBlock).toContain("z-index: auto;");
+    const whatsNewOverlayBlock = components.match(/\.whatsnew-overlay \{[^}]*\}/)?.[0] ?? "";
+    expect(whatsNewOverlayBlock).toContain("z-index: 35;");
     // 모달 뒤로 물러나는 것은 떠 있는 밴드뿐이다 — 도킹된 밴드에 걸면 44px 빈 띠만 남는다.
     expect(layout).toContain('body:has([aria-modal="true"]:not([hidden])) .command-band.is-fullscreen:not(.is-docked),');
     // aria-pressed가 화면에 흔적을 남기지 않던 회귀를 막는다 — 밴드 토글의 눌림은 brass 채움이다.

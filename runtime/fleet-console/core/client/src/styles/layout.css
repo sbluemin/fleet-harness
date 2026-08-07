@@ -111,6 +111,10 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
    .is-revealed와 특정도가 같으므로 반드시 뒤에 두어 transform을 무효화해야 한다. */
 .command-band.is-fullscreen.is-docked {
   position: relative;
+  /* 창 모드 밴드와 같은 쌓임으로 되돌린다. z-index 40은 떠 있는 밴드가 스테이지를 덮기 위한
+     값이라, 흐름으로 돌아온 뒤에도 남겨 두면 그보다 낮은 오버레이(What's new는 35) 위에
+     밴드가 그려지고 클릭까지 받는다 — 모달 예외가 도킹을 visibility로 숨기지 않기 때문이다. */
+  z-index: auto;
   transform: none;
   transition: none;
 }

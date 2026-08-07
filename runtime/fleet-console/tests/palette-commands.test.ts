@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { setCommandBandDocked } from "../core/client/src/fullscreen-band-store.js";
 import { hydrateGlobalSettings } from "../core/client/src/global-settings-store.js";
 import {
   buildCodexPaletteEntries,
@@ -151,6 +152,22 @@ describe("buildPaletteCommands", () => {
       "forget-theater:theater-alpha",
       "forget-theater:theater-beta",
     ]);
+  });
+
+  it("carries the dock action and follows the stored preference in its label", () => {
+    setCommandBandDocked(false);
+    const off = buildPaletteCommands(makeState(), [], tEn).find((command) => command.commandId === "toggle-command-band-dock");
+    // 트립와이어: 액션 종류가 빠지면 팔레트가 항목만 그리고 아무 일도 하지 않는다.
+    expect(off?.action).toEqual({ kind: "toggle-command-band-dock" });
+    expect(off?.label).toBe("Keep command band visible in fullscreen");
+    expect(off?.current).toBe(false);
+
+    setCommandBandDocked(true);
+    const on = buildPaletteCommands(makeState(), [], tEn).find((command) => command.commandId === "toggle-command-band-dock");
+    // 이 항목은 전환이다 — 이미 켠 사용자에게 한 방향 라벨만 보이면 끄는 줄 모르고 끄게 된다.
+    expect(on?.label).toBe("Stop keeping command band visible in fullscreen");
+    expect(on?.current).toBe(false);
+    setCommandBandDocked(false);
   });
 
   it("marks the active Theater and active theme as current", () => {

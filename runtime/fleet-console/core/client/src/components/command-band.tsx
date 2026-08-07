@@ -190,6 +190,9 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     return !focusWithin && !pointerWithinRef.current.edge && !pointerWithinRef.current.band;
   }, []);
   const fullscreen = useFullscreenCommandBand(canAutoHide);
+  // 도킹 중에는 밴드가 흐름에 있어 부를 대상이 없다 — 엣지 스트립을 남기면 스테이지 최상단에
+  // 클릭을 가로채는 투명 오버레이만 떠 있게 된다.
+  const edgeRevealActive = fullscreen.isFullscreen && !fullscreen.isDocked;
   // 브레드크럼 표시 대상(P0 가드 결과) 기준으로 판정한다 — activeOperationId가 그대로여도
   // Theater 전환으로 Operation 세그먼트가 숨으면 숨은 rename이 살아남아 복귀 시 스테일 draft가 부활한다.
   const displayedOperationId = activeOperation?.id ?? null;
@@ -206,6 +209,15 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       void renameOperation(operationId, title).then(() => fetchOperations(null)).then(hydrateOperations).catch(() => {});
     },
   });
+
+  // 도킹하면 엣지 스트립이 display:none으로 사라지는데 Chromium은 activeElement를 그 위에
+  // 그대로 남긴다. 그 포커스가 남아 있으면 canAutoHide가 영원히 거짓이라, 나중에 도킹을 풀어도
+  // 밴드가 다시는 숨지 않는다.
+  useEffect(() => {
+    if (edgeRevealActive) return;
+    const edge = edgeRevealRef.current;
+    if (edge !== null && document.activeElement === edge) edge.blur();
+  }, [edgeRevealActive]);
 
   useEffect(() => {
     if (!rename.renaming || commandBandRenameCommitTarget(renameTargetOperationIdRef.current, displayedOperationId)) return;
@@ -440,9 +452,6 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   };
 
   const commandBandHidden = fullscreen.isFullscreen && !fullscreen.isVisible;
-  // 도킹 중에는 밴드가 흐름에 있어 부를 대상이 없다 — 엣지 스트립을 남기면 스테이지 최상단에
-  // 클릭을 가로채는 투명 오버레이만 떠 있게 된다.
-  const edgeRevealActive = fullscreen.isFullscreen && !fullscreen.isDocked;
 
   return (
     <>

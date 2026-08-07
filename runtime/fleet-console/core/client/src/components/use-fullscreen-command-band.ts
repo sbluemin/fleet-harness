@@ -112,9 +112,13 @@ export function useFullscreenCommandBand(canHide: () => boolean = ALWAYS_ALLOW_H
       }, EDGE_INTENT_DWELL_MS);
     };
     window.addEventListener("pointermove", observe, { passive: true });
+    // buttons 검사는 다음 pointermove에서만 돌아간다 — 의도를 걸어 둔 뒤 움직이지 않고 그대로
+    // 누르면 dwell이 살아남아 드래그 시작과 함께 밴드가 내려온다. 누름 자체로 취소한다.
+    window.addEventListener("pointerdown", cancelDwell, { passive: true });
     return () => {
       cancelDwell();
       window.removeEventListener("pointermove", observe);
+      window.removeEventListener("pointerdown", cancelDwell);
     };
   }, [docked, fullscreen, hideAfterLeave, reveal]);
 
