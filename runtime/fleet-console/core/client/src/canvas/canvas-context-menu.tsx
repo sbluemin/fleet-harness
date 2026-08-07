@@ -239,6 +239,20 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     }
   };
 
+  const moveFlyoutFocus = (from: HTMLElement | null, delta: number, edge: "first" | "last" | null) => {
+    const flyout = flyoutRef.current;
+    if (!flyout) return;
+    const items = Array.from(flyout.querySelectorAll<HTMLButtonElement>(".operation-launch-variant-row, .operation-launch-variant-chip")).filter((item) => !item.disabled);
+    if (items.length === 0) return;
+    if (edge) {
+      items[edge === "first" ? 0 : items.length - 1]!.focus();
+      return;
+    }
+    const index = from ? items.indexOf(from as HTMLButtonElement) : -1;
+    const next = index < 0 ? (delta > 0 ? 0 : items.length - 1) : (index + delta + items.length) % items.length;
+    items[next]!.focus();
+  };
+
   const activeDescription = useMemo(() => {
     if (!activeKey) return null;
     for (const plugin of catalog) {
@@ -398,11 +412,33 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
             if (!containerRef.current?.contains(event.relatedTarget)) scheduleFlyoutClose();
           }}
           onKeyDown={(event) => {
-            if (event.key !== "ArrowLeft" && event.key !== "Escape") return;
-            event.preventDefault();
-            event.stopPropagation();
-            flyoutAnchorRefs.current.get(openFlyout!)?.querySelector<HTMLButtonElement>("[data-operation-launch-kind]")?.focus();
-            closeFlyout();
+            const target = event.target as HTMLElement;
+            switch (event.key) {
+              case "ArrowDown":
+                event.preventDefault();
+                moveFlyoutFocus(target, 1, null);
+                return;
+              case "ArrowUp":
+                event.preventDefault();
+                moveFlyoutFocus(target, -1, null);
+                return;
+              case "Home":
+                event.preventDefault();
+                moveFlyoutFocus(null, 0, "first");
+                return;
+              case "End":
+                event.preventDefault();
+                moveFlyoutFocus(null, 0, "last");
+                return;
+              case "ArrowLeft":
+              case "Escape":
+                event.preventDefault();
+                event.stopPropagation();
+                flyoutAnchorRefs.current.get(openFlyout!)?.querySelector<HTMLButtonElement>("[data-operation-launch-kind]")?.focus();
+                closeFlyout();
+                return;
+              default:
+            }
           }}
         >
           {flyoutTarget.kind.variants!.map((group, groupIndex) => (

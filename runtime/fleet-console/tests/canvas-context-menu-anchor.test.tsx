@@ -451,7 +451,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(top).toBeLessThanOrEqual(bounds.height - 300 - 12);
   });
 
-  it("opens and focuses the first variant with ArrowRight, then restores parent focus", async () => {
+  it("roves across flyout rows and chips, then restores parent focus with ArrowLeft", async () => {
     renderMenu({ x: 900, y: 156 }, { width: 1116, height: 856 }, gatewayVariantCatalog());
     const parent = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
 
@@ -464,12 +464,28 @@ describe("CanvasContextMenu launch kind attribute", () => {
     });
 
     const flyout = document.querySelector<HTMLElement>(".operation-launch-flyout")!;
+    const row = document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!;
+    const high = document.querySelector<HTMLButtonElement>('[data-launch-variant-chip="fable:high"]')!;
+    const max = document.querySelector<HTMLButtonElement>('[data-launch-variant-chip="fable:max"]')!;
     expect(flyout.parentElement).toBe(document.querySelector(".operation-launch-control--canvas"));
     expect(flyout.closest(".canvas-context-menu")).toBeNull();
     expect(flyout.classList.contains("is-left")).toBe(true);
-    expect(document.activeElement).toBe(document.querySelector('[data-launch-variant-row="fable"]'));
+    expect(document.activeElement).toBe(row);
 
-    act(() => flyout.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
+    pressFlyoutKey("ArrowDown");
+    expect(document.activeElement).toBe(high);
+    pressFlyoutKey("ArrowDown");
+    expect(document.activeElement).toBe(max);
+    pressFlyoutKey("ArrowDown");
+    expect(document.activeElement).toBe(row);
+    pressFlyoutKey("ArrowUp");
+    expect(document.activeElement).toBe(max);
+    pressFlyoutKey("Home");
+    expect(document.activeElement).toBe(row);
+    pressFlyoutKey("End");
+    expect(document.activeElement).toBe(max);
+
+    pressFlyoutKey("ArrowLeft");
     expect(document.querySelector(".operation-launch-flyout")).toBeNull();
     expect(document.activeElement).toBe(parent);
   });
@@ -583,15 +599,26 @@ function gatewayVariantCatalog(): readonly OperationCatalogPlugin[] {
           id: "fable",
           label: "Fable",
           launch: { model: "fable" },
-          chips: [{
-            id: "max",
-            label: "MAX",
-            launch: { model: "fable", effort: "max" },
-          }],
+          chips: [
+            {
+              id: "high",
+              label: "HIGH",
+              launch: { model: "fable", effort: "high" },
+            },
+            {
+              id: "max",
+              label: "MAX",
+              launch: { model: "fable", effort: "max" },
+            },
+          ],
         }],
       }],
     }],
   }];
+}
+
+function pressFlyoutKey(key: string): void {
+  act(() => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true })));
 }
 
 function menuStyle(): CSSStyleDeclaration {

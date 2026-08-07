@@ -88,18 +88,40 @@ describe("agent launch variants", () => {
     }));
   });
 
-  it.each([
-    ["gateway_model_not_enabled", 409],
-    ["invalid_effort", 400],
-  ] as const)("maps spawn-time %s to its route response", async (code, status) => {
+  it("removes the pending operation when the gateway model becomes stale during spawn", async () => {
     const harness = await createHarness({
       body: { cliId: "claude-gateway", model: "fable", effort: "max" },
-      attachError: new GatewayLaunchOptionError(code, code),
+      attachError: new GatewayLaunchOptionError("gateway_model_not_enabled", "gateway_model_not_enabled"),
     });
 
     await harness.postSessions();
 
-    expect(harness.responses.at(-1)).toEqual({ status, body: { error: code } });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "gateway_model_not_enabled" } });
+    expect(harness.operations).toEqual([]);
+  });
+
+  it("maps a spawn-time invalid effort and removes its pending operation", async () => {
+    const harness = await createHarness({
+      body: { cliId: "claude-gateway", model: "fable", effort: "max" },
+      attachError: new GatewayLaunchOptionError("invalid_effort", "invalid_effort"),
+    });
+
+    await harness.postSessions();
+
+    expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "invalid_effort" } });
+    expect(harness.operations).toEqual([]);
+  });
+
+  it("retains the errored operation when terminal infrastructure fails", async () => {
+    const harness = await createHarness({
+      body: { cliId: "claude-gateway", model: "fable", effort: "max" },
+      attachError: new Error("pty unavailable"),
+    });
+
+    await harness.postSessions();
+
+    expect(harness.responses.at(-1)).toEqual({ status: 503, body: { error: "terminal_unavailable" } });
+    expect(harness.operations).toHaveLength(1);
   });
 
   it("threads a valid native alias and effort into the initial attach only", async () => {

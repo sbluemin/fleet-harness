@@ -418,12 +418,13 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ctx.host.operations.patch(sessionId, { payload: toOperationPayload(ctx.host.operations.get(sessionId)?.payload, cwd, created, undefined, observability.getDurableOperation(sessionId)?.providerTitle) });
       ctx.host.http.writeJson(res, 200, created);
     } catch (error) {
-      pendingRuntimeSessions.delete(sessionId);
-      observability.updateTerminalSessionStatus(sessionId, "error");
       if (error instanceof GatewayLaunchOptionError) {
+        removeSession(sessionId);
         ctx.host.http.writeJson(res, error.code === "gateway_model_not_enabled" ? 409 : 400, { error: error.code });
         return;
       }
+      pendingRuntimeSessions.delete(sessionId);
+      observability.updateTerminalSessionStatus(sessionId, "error");
       ctx.host.http.writeJson(res, 503, { error: "terminal_unavailable" });
     }
   }
