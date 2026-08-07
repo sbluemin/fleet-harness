@@ -11,6 +11,13 @@ export interface AiGatewaySettings {
 
 export type AiGatewayProviderId = "codex" | "cursor" | "kimi" | "opencode";
 
+/**
+ * 카탈로그가 매기는 등급 축. core-ai-gateway의 `GatewayCapabilityClass`를 그대로 옮겨 적은
+ * 것으로, 브라우저 코드가 Node 계층 패키지를 끌어오지 않기 위해 이 파일의 다른 카탈로그
+ * 타입과 같은 방식으로 미러링한다.
+ */
+export type AiGatewayCapabilityClass = "flagship" | "standard" | "light";
+
 export interface AiGatewayCatalogModel {
   readonly id: string;
   readonly name: string;
@@ -18,6 +25,8 @@ export interface AiGatewayCatalogModel {
   readonly oneMillion: boolean;
   readonly maxMode: boolean;
   readonly fast: boolean;
+  /** 부재(`null`) = 라우팅 별칭이라 어떤 단일 등급도 참이 아닌 모델. */
+  readonly capabilityClass: AiGatewayCapabilityClass | null;
   readonly description: string | null;
   readonly effort: { readonly levels: readonly string[] } | null;
 }

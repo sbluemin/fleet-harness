@@ -256,6 +256,14 @@
   min-width: 0;
 }
 
+.ai-gateway-model-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
 .ai-gateway-model-name {
   color: var(--text-primary);
   font-family: var(--font-mono);
@@ -268,6 +276,41 @@
   font-family: var(--font-mono);
   font-size: 10px;
   overflow-wrap: anywhere;
+}
+
+/* 등급은 상태가 아니라 프로바이더가 주장하는 속성이므로 신호색을 빌리지 않는다. 세 등급의
+   서열은 테두리와 글자의 잉크 농도로만 말하고, standard가 그 기준선이다. */
+.ai-gateway-class-badge {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: 1px 7px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.1em;
+  line-height: 1.5;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ai-gateway-class-badge.is-flagship {
+  border-color: var(--surface-rim-strong);
+  color: var(--text-primary);
+}
+
+.ai-gateway-class-badge.is-light {
+  border-color: color-mix(in oklch, var(--surface-rim) 55%, transparent);
+  color: var(--text-tertiary);
+}
+
+/* 등급 없는 라우팅 별칭은 서열의 한 칸이 아니라 서열 밖이므로, 농도가 아닌 파선으로 가른다. */
+.ai-gateway-class-badge.is-unclassed {
+  border-style: dashed;
+  color: var(--text-tertiary);
 }
 
 .ai-gateway-chips {

@@ -42,7 +42,7 @@ describe("terminal settings routes", () => {
     const harness = createRouteHarness({ data: { version: 1 } });
     await harness.handle({ req: req("GET"), res: res(), pathname: "/plugins/terminal/settings" });
     const body = harness.writes[0]?.body as {
-      readonly aiGatewayCatalog: { readonly providers: readonly { readonly id: string; readonly models: readonly { readonly id: string; readonly maxMode: boolean; readonly fast: boolean; readonly effort: unknown }[] }[] };
+      readonly aiGatewayCatalog: { readonly providers: readonly { readonly id: string; readonly models: readonly { readonly id: string; readonly maxMode: boolean; readonly fast: boolean; readonly capabilityClass: string | null; readonly effort: unknown }[] }[] };
     };
     const providers = body.aiGatewayCatalog.providers;
     expect(providers.map((provider) => provider.id)).toEqual(["codex", "cursor", "kimi", "opencode"]);
@@ -54,6 +54,9 @@ describe("terminal settings routes", () => {
     expect(cursorKimi?.maxMode).toBe(true);
     const fastIds = allIds.filter((id) => id.endsWith("-fast"));
     expect(fastIds.length).toBeGreaterThan(0);
+    // 등급은 이 응답으로만 브라우저에 닿는다 — 투영에서 잘리면 로스터 배지가 사라진다.
+    expect(providers[0]?.models.find((model) => model.id === "codex--gpt-5.6-sol")?.capabilityClass).toBe("flagship");
+    expect(providers[1]?.models.find((model) => model.id === "cursor--auto")?.capabilityClass).toBeNull();
   });
 
   it("PUT /plugins/terminal/settings updates the agent idle dormant threshold in global options", async () => {

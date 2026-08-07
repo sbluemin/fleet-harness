@@ -35,7 +35,7 @@ import { formatElapsedDuration } from "./helpers.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore } from "./model-auth.js";
 import type { ModelAuthProviderState } from "./model-auth.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings.js";
-import type { AiGatewayCatalogModel, AiGatewayCatalogProvider, AiGatewayProviderId, AiGatewaySettings } from "./settings.js";
+import type { AiGatewayCapabilityClass, AiGatewayCatalogModel, AiGatewayCatalogProvider, AiGatewayProviderId, AiGatewaySettings } from "./settings.js";
 import { StreamedMarkdown } from "./streamed-markdown.js";
 import { applySessionUpdate, hydrateAgentClis, removeSession, selectSession, useAgentState } from "./store.js";
 import type { AgentCliDiagnosticsEntry, AgentCliStatus, SessionInfo } from "./types.js";
@@ -842,7 +842,7 @@ interface AiGatewayModelRowProps {
   readonly onSetEfforts: (efforts: readonly string[]) => void;
 }
 
-function AiGatewayModelRow({
+export function AiGatewayModelRow({
   model,
   exposedEfforts,
   isDefault,
@@ -870,7 +870,10 @@ function AiGatewayModelRow({
           ★
         </button>
         <span className="ai-gateway-model-text">
-          <span className="ai-gateway-model-name">{model.name}</span>
+          <span className="ai-gateway-model-head">
+            <span className="ai-gateway-model-name">{model.name}</span>
+            <AiGatewayCapabilityBadge capabilityClass={model.capabilityClass} />
+          </span>
           <span className="ai-gateway-model-id">{model.id}</span>
         </span>
         <AiGatewayModelChips model={model} exposedEfforts={exposedEfforts} />
@@ -968,6 +971,32 @@ function AiGatewayModelChips({
       {model.fast ? <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayFast")}</span> : null}
       {model.maxMode ? <span className="ai-gateway-chip is-strong">{t("terminal.settings.aiGatewayMaxMode")}</span> : null}
       {model.description ? <span className="ai-gateway-chip">{model.description}</span> : null}
+    </span>
+  );
+}
+
+/**
+ * 등급마다 한 줄 설명. 라벨은 카탈로그 리터럴을 그대로 쓰고 이 문장만 번역한다 — 등급 이름을
+ * 옮기면 배지와 호스트가 읽는 이름이 갈라져 같은 모델을 두 어휘로 말하게 된다.
+ */
+const AI_GATEWAY_CLASS_TOOLTIP_KEYS = {
+  flagship: "terminal.settings.aiGatewayClassFlagshipTooltip",
+  standard: "terminal.settings.aiGatewayClassStandardTooltip",
+  light: "terminal.settings.aiGatewayClassLightTooltip",
+  unclassed: "terminal.settings.aiGatewayClassUnclassedTooltip",
+} as const;
+
+/**
+ * 등급은 로스터에서 유일한 품질 신호라서 속성 칩과 섞지 않고 모델 이름에 붙인다. 서열은
+ * 신호색이 아니라 잉크 강도로만 말한다 — 등급은 상태가 아니라 프로바이더가 주장하는 속성이다.
+ */
+function AiGatewayCapabilityBadge({ capabilityClass }: { readonly capabilityClass: AiGatewayCapabilityClass | null }) {
+  const t = getT(useTerminalLocale());
+  // 카탈로그 검증이 라우팅 별칭에 등급을 금지하므로, 부재는 결측이 아니라 그 자체가 사실이다.
+  const grade = capabilityClass ?? "unclassed";
+  return (
+    <span className={`ai-gateway-class-badge is-${grade}`} title={t(AI_GATEWAY_CLASS_TOOLTIP_KEYS[grade])}>
+      {grade}
     </span>
   );
 }

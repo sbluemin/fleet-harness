@@ -8,6 +8,7 @@ import {
   toClaudeGatewayModelId,
 } from "../models.js";
 import type {
+  GatewayCapabilityClass,
   GatewayEffortExposure,
   GatewayModel,
   GatewayProvider,
@@ -243,6 +244,12 @@ export interface AiGatewayCatalogModel {
   readonly maxMode: boolean;
   /** Fast variants are separate catalog models paired by the `-fast` id suffix. */
   readonly fast: boolean;
+  /**
+   * The provider's own lineup positioning. `null` on routing aliases, which
+   * serve a different model per call and would be misdescribed by any single
+   * class — the roster shows that absence rather than inventing a grade.
+   */
+  readonly capabilityClass: GatewayCapabilityClass | null;
   readonly description: string | null;
   /**
    * The rungs this model can be exposed at. Not the raw catalog ladder: a level
@@ -273,6 +280,7 @@ function toCatalogModel(model: GatewayModel): AiGatewayCatalogModel {
     oneMillion: hasClaudeOneMillionMarker(toClaudeGatewayModelId(model)),
     maxMode: model.cursorMaxMode === true,
     fast: model.id.endsWith("-fast"),
+    capabilityClass: model.capabilityClass ?? null,
     description: model.description ?? null,
     effort: levels.length > 0 ? { levels } : null,
   };

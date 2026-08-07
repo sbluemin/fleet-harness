@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { GATEWAY_MODELS } from "../../src/models.js";
 import {
+  buildAiGatewayCatalog,
   normalizeAiGatewaySettings,
   parseAiGatewayUpdate,
   resolveAiGatewaySelection,
@@ -125,5 +127,20 @@ describe("ai-gateway settings", () => {
       "kimi--k3",
     ]);
     expect(selection.defaultModel?.id).toBe("cursor--grok-4.5-fast");
+  });
+
+  it("carries every model's capability class into the catalog, and null where the registry forbids one", () => {
+    const catalog = buildAiGatewayCatalog();
+    const projected = new Map(
+      catalog.providers.flatMap((provider) => provider.models).map((model) => [model.id, model]),
+    );
+    for (const model of GATEWAY_MODELS) {
+      expect(projected.get(model.id)?.capabilityClass).toBe(model.capabilityClass ?? null);
+    }
+    // 라우팅 별칭은 등급을 가질 수 없다. 그 부재는 결측이 아니라 그 자체가 사실이므로
+    // 카탈로그가 끝까지 실어 나르고, 로스터는 등급 대신 부재를 표시한다.
+    expect(projected.get("cursor--auto")?.capabilityClass).toBeNull();
+    expect(new Set([...projected.values()].map((model) => model.capabilityClass)))
+      .toEqual(new Set(["flagship", "standard", "light", null]));
   });
 });
