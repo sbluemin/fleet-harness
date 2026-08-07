@@ -8,7 +8,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { useT } from "../i18n/index.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { readQuickLaunchSelection, writeQuickLaunchSelection } from "../quick-launch-preferences.js";
-import { findVariantLaunchKind, resolveSelection } from "../quick-launch.js";
+import { findVariantLaunchKind, QUICK_LAUNCH_PROMPT_MAX_CHARS, resolveSelection } from "../quick-launch.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { closeQuickLaunch, requestQuickLaunch, setActiveTheater } from "../store.js";
 
@@ -103,7 +103,9 @@ export function QuickLaunch() {
 
   const submit = useCallback(() => {
     const text = prompt.trim();
-    if (text.length === 0 || !theaterId || !target || submitting) return;
+    // 상한을 넘긴 요청은 서버가 반드시 400으로 거절한다. 그대로 보내면 컴포저만 닫히고 초안이
+    // 사라지므로, 확실히 실패할 요청으로는 넘기지 않는다.
+    if (text.length === 0 || text.length > QUICK_LAUNCH_PROMPT_MAX_CHARS || !theaterId || !target || submitting) return;
     setSubmitting(true);
     const variant: Record<string, string> = { prompt: text };
     if (model) variant.model = model;
@@ -141,7 +143,9 @@ export function QuickLaunch() {
 
   if (!open) return null;
 
-  const canSubmit = prompt.trim().length > 0 && !!theaterId && !!target && !submitting;
+  const promptLength = prompt.trim().length;
+  const overLimit = promptLength > QUICK_LAUNCH_PROMPT_MAX_CHARS;
+  const canSubmit = promptLength > 0 && !overLimit && !!theaterId && !!target && !submitting;
   const modelLabel = selectedRow?.label ?? t("chrome.quickLaunch.modelUnset");
   const kindIcon = target
     ? registry.plugins.find((plugin) => plugin.id === target.pluginId)?.renderLaunchIcon?.(target.kind) ?? null
@@ -211,6 +215,11 @@ export function QuickLaunch() {
           </button>
 
           <span className="quick-launch-spacer" />
+          {overLimit ? (
+            <span className="quick-launch-overflow" role="status">
+              {t("chrome.quickLaunch.tooLong", { over: String(promptLength - QUICK_LAUNCH_PROMPT_MAX_CHARS) })}
+            </span>
+          ) : null}
           <kbd className="quick-launch-esc">esc</kbd>
           <button
             type="button"

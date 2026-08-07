@@ -1,7 +1,7 @@
 import { createChildEnv, resolveBinary } from "@dotobokuri/core-agent";
 
 import { clampGoalCheckLimit } from "../goal.js";
-import { sanitizeLaunchPrompt } from "../prompt.js";
+import { assertLaunchPromptShimSafe, sanitizeLaunchPrompt } from "../prompt.js";
 import type { AgentCliDefinition, AgentCliId, AgentCliProfileOptions } from "../types.js";
 
 interface ClaudeFamilyCliFactoryOptions {
@@ -18,6 +18,8 @@ export function createClaudeFamilyCliDefinition(
     async createProfile(profileOptions: AgentCliProfileOptions) {
       const { bin, prefixArgs } = resolveBinary("claude", "CLAUDE_BIN", profileOptions.env);
       const launchPrompt = sanitizeLaunchPrompt(profileOptions.prompt);
+      // prefixArgs가 있으면 이 실행은 cmd.exe를 거친다 — 그 명령줄에 임의 텍스트를 실을 수 없다.
+      assertLaunchPromptShimSafe(launchPrompt, prefixArgs);
       // 한도를 건네지 않은 호스트의 환경은 건드리지 않는다. 덮어쓰면 운영자가 직접 설정한
       // CLAUDE_CODE_STOP_HOOK_BLOCK_CAP이 Console 기능 때문에 조용히 8로 바뀐다 —
       // Fleet CLI와 Console은 서로의 목표 동작을 바꾸지 않는 동격 호스트다.

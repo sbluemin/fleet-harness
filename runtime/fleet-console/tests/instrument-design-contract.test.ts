@@ -883,6 +883,9 @@ describe("Instrument core design contract", () => {
       ".operation-search-card",
       ".quick-launch-card",
     ];
+    // Quick Launch 오버레이도 fleet-pop을 타므로 억제 절을 함께 못 박는다 — 규칙 옆에 붙은
+    // 자체 reduced-motion 블록은 .fc-select__* 선례와 같은 형태다.
+    expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.quick-launch-overlay \{\s*animation: none;\s*\}/);
     for (const selector of componentsPopupSelectors) {
       const scoped = selector.replace(/\./g, "\\.");
       expect(components).toMatch(new RegExp(`${scoped} \\{[^}]*\\),\\s*var\\(--ink-deep\\);`));

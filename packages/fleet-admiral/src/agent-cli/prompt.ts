@@ -1,3 +1,29 @@
+// Windows의 .cmd/.bat shim은 cmd.exe /d /s /c 로 감싸 실행된다(core-process wrapWindowsShim).
+// cmd는 따옴표 안에서도 %NAME%을 전개하고 ^를 이스케이프로 읽으므로, 그 명령줄에 실린 임의
+// 텍스트는 조용히 변조되고 환경변수 값이 그대로 모델에 실려 나간다. 명령줄에서는 %%도 접히지
+// 않아 이스케이프로 막을 수단이 없다 — 그래서 core-process가 shim 경로에 대해 이미 택한 규율
+// (rejectCmdExpansionSensitiveShim: 이스케이프가 아니라 거부)을 프롬프트에도 그대로 적용한다.
+const CMD_EXPANSION_SENSITIVE_PATTERN = /[%^]/;
+
+export class LaunchPromptUnsafeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LaunchPromptUnsafeError";
+  }
+}
+
+/**
+ * cmd.exe로 감싸인 shim으로 실행될 때에 한해, 전개 위험 문자를 담은 프롬프트를 거부한다.
+ * `prefixArgs`가 비어 있으면(POSIX 또는 실행 파일 직접 실행) 아무 제약도 걸지 않는다.
+ */
+export function assertLaunchPromptShimSafe(prompt: string | undefined, prefixArgs: readonly string[]): void {
+  if (prompt === undefined || prefixArgs.length === 0) return;
+  if (!CMD_EXPANSION_SENSITIVE_PATTERN.test(prompt)) return;
+  throw new LaunchPromptUnsafeError(
+    "The launch prompt contains % or ^, which cmd.exe would expand while running the Windows shim. Remove those characters and try again.",
+  );
+}
+
 // 런치 프롬프트는 PTY가 아니라 argv 위치 인자로 나간다. NUL과 제어문자는 인자 경계·로깅을
 // 오염시키므로 제거하되, 줄바꿈과 탭은 프롬프트의 의미라 보존한다.
 export function sanitizeLaunchPrompt(value: string | undefined): string | undefined {

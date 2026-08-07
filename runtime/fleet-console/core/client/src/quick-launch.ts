@@ -8,6 +8,15 @@ import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVarian
  * 번들러 가상 모듈 없이 돈다.
  */
 
+/**
+ * 서버가 강제하는 프롬프트 상한(fleet-admiral `MAX_LAUNCH_PROMPT_CHARS`)의 브라우저 사본.
+ *
+ * 브라우저 코드는 Node 패키지를 끌어올 수 없어 값을 복제한다. 두 값이 갈라지면 컴포저가
+ * 서버가 반드시 400으로 거절할 요청을 보내고 초안을 잃으므로, `tests/quick-launch.test.ts`가
+ * 실제 서버 상수와의 일치를 못 박는다.
+ */
+export const QUICK_LAUNCH_PROMPT_MAX_CHARS = 16000;
+
 export interface VariantKindTarget {
   readonly pluginId: string;
   readonly kind: OperationLaunchKind;

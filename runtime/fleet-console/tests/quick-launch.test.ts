@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
 
 import { readQuickLaunchSelection, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
-import { findVariantLaunchKind, resolveSelection } from "../core/client/src/quick-launch.js";
+import { findVariantLaunchKind, QUICK_LAUNCH_PROMPT_MAX_CHARS, resolveSelection } from "../core/client/src/quick-launch.js";
 
 const GROUPS: readonly OperationLaunchVariantGroup[] = [
   {
@@ -128,5 +131,17 @@ describe("quick launch preferences", () => {
   it("drops non-string fields instead of trusting them", () => {
     window.localStorage.setItem("fleet-console.quickLaunch.selection", JSON.stringify({ theaterId: 7, model: "", effort: "high" }));
     expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: "high" });
+  });
+});
+
+describe("prompt limit", () => {
+  it("mirrors the server-enforced launch prompt limit", () => {
+    // 브라우저 사본이 서버 계약과 갈라지면 컴포저가 반드시 400으로 거절될 요청을 보내고 초안을 잃는다.
+    // 패키지를 import하면 jsdom이 node:sqlite까지 끌어오므로, 계약 테스트와 같이 소스를 읽어 고정한다.
+    // jsdom 환경에서는 import.meta.url이 file: 스킴이 아니므로 vitest cwd(runtime/fleet-console) 기준으로 읽는다.
+    const source = readFileSync(resolve(process.cwd(), "../../packages/fleet-admiral/src/agent-cli/types.ts"), "utf8");
+    const declared = source.match(/MAX_LAUNCH_PROMPT_CHARS = (\d+)/)?.[1];
+    expect(declared).toBeDefined();
+    expect(QUICK_LAUNCH_PROMPT_MAX_CHARS).toBe(Number(declared));
   });
 });

@@ -14,3 +14,5 @@ branch: quick-launch-composer
   ko: 마지막으로 실행한 Theater·모델·추론 강도를 그대로 다시 씁니다. 반복 실행은 단축키 하나와 문장 하나로 끝납니다.
 - Open the composer while a terminal has focus; the shortcut is not swallowed by the Operation you are looking at.
   ko: 터미널에 포커스가 있는 상태에서도 컴포저가 열립니다. 보고 있던 Operation이 단축키를 삼키지 않습니다.
+- Keep the composer and its draft open when a prompt is too long, and refuse a prompt that a Windows command shim would rewrite before the agent reads it, instead of launching with corrupted text.
+  ko: 프롬프트가 너무 길면 컴포저와 초안을 그대로 두고, Windows 명령 shim이 에이전트에 닿기 전에 바꿔 버릴 프롬프트는 실행하지 않고 거부합니다.
