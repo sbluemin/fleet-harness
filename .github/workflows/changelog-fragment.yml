@@ -80,7 +80,9 @@ jobs:
               # The compiler can only check that the declared branch and the filename agree after normalization,
               # so slug-equivalent values ('feat/foo/bar' for branch 'feat/foo-bar') pass it. Only CI knows the
               # real head ref, so the exact-branch half of the contract is enforced here.
-              declared=$(awk 'BEGIN { inside = 0 } NR == 1 { if ($0 != "---") exit; inside = 1; next } inside && $0 == "---" { exit } inside && /^branch:[[:space:]]*/ { sub(/^branch:[[:space:]]*/, ""); print; exit }' "$fragment")
+              # The compiler accepts CRLF frontmatter, so this must too, or a fragment it validates would be
+              # rejected here.
+              declared=$(awk 'BEGIN { inside = 0 } { sub(/\r$/, "") } NR == 1 { if ($0 != "---") exit; inside = 1; next } inside && $0 == "---" { exit } inside && /^branch:[[:space:]]*/ { sub(/^branch:[[:space:]]*/, ""); print; exit }' "$fragment")
               if [ "$declared" != "$HEAD_BRANCH" ]; then
                 echo "::error file=$fragment::Fragment declares branch '$declared' but this PR's head branch is '$HEAD_BRANCH'. Correct the branch: frontmatter."
                 exit 1
