@@ -1069,6 +1069,10 @@ export function TriageWatchDeck({
                           detail={statusDetail.detail}
                           accentColor={accentColor}
                           preview={preview}
+                          // 확대된 카드만 자기 배율을 넘긴다 — 프리뷰는 그 배율을 상쇄해
+                          // 터미널을 화면상 실물 크기로 세운다. 배율이 grid 한도에 걸려 1까지
+                          // 깎인 좁은 창에서도 판독이라는 목적은 그대로 선다.
+                          surfaceScale={isQuicklook ? quicklook.scale : 0}
                         />
                       </button>
                     );
@@ -1144,6 +1148,9 @@ export function TriageWatchDeck({
               detail={mapQuicklookOperation.detail}
               accentColor={mapQuicklookOperation.accentColor}
               preview={mapQuicklookOperation.preview}
+              // 지도 확대창은 transform 없이 제 크기로 뜨므로 표면 배율이 곧 1이다 — 그래도
+              // 확대창이라는 사실은 같으므로 프리뷰는 카드 Quick-Look과 같은 실물 크기로 선다.
+              surfaceScale={1}
             />
           </div>
         ) : null}
@@ -1305,13 +1312,15 @@ function renderTriageMapDots(
 
 // 카드 얼굴 — 덱 카드와 지도 점의 확대창이 같은 조각(스파인·상태줄·제목·프리뷰/tail)을 공유한다.
 // 두 표면이 각자 얼굴을 조립하면 같은 Operation이 밀도에 따라 다르게 읽힌다.
-function TriageDeckCardFace({ operationId, title, label, detail, accentColor, preview }: {
+function TriageDeckCardFace({ operationId, title, label, detail, accentColor, preview, surfaceScale = 0 }: {
   readonly operationId: string;
   readonly title: string;
   readonly label: string;
   readonly detail: string | null | undefined;
   readonly accentColor: string | null;
   readonly preview: TriagePreviewSource | null;
+  /** 이 얼굴을 담은 표면의 화면상 확대 배율 — 확대창만 넘긴다(기본 0 = 확대창 아님). */
+  readonly surfaceScale?: number;
 }) {
   return (
     <>
@@ -1322,7 +1331,12 @@ function TriageDeckCardFace({ operationId, title, label, detail, accentColor, pr
       </span>
       <strong title={title}>{title}</strong>
       {preview ? (
-        <TriageDeckCardPreview config={preview.config} bottomChrome={preview.bottomChrome} operationId={operationId} />
+        <TriageDeckCardPreview
+          config={preview.config}
+          bottomChrome={preview.bottomChrome}
+          operationId={operationId}
+          surfaceScale={surfaceScale}
+        />
       ) : (
         <span className="canvas-triage-deck-card-detail" title={detail ?? label}>
           {detail ?? label}
@@ -1342,10 +1356,18 @@ const TRIAGE_PREVIEW_BOTTOM_CHROME_MAX_RATIO = 0.3;
 // 비어 보이는 것은 정직한 상태 표현이다). 밴드 높이는 body 소유자인 kind가 선언하며
 // (OperationKindDescriptor.previewBottomChrome), 선언이 없는 body는 바닥까지 출력이 흐른다는
 // 뜻이므로 0 — 순정 셸과 문서형 패널은 최신 행을 잃지 않는다.
+//
+// minScale은 확대창이 요구하는 배율 하한이다. 카드는 함대를 한눈에 담는 축소판이므로 cover-fit이
+// 정답이지만, Quick-Look은 "축소판을 크게 키운 그림"이 아니라 "실물을 들여다보는 창"이다. 표면이
+// 화면에서 S배로 확대돼 있을 때 1/S를 하한으로 받으면 두 배율이 상쇄되어 화면상 1:1이 서고, 글자는
+// 패널에서 읽던 크기 그대로가 된다. 대신 보이는 범위는 창이 담는 만큼으로 좁아진다(그것이 돋보기다).
+// cover-fit이 하한보다 크면 cover가 이긴다 — 레터박스를 만들면서까지 실물 크기를 고집하지 않고,
+// 이미 실물보다 크게 보이는 프리뷰를 굳이 줄이지도 않는다.
 export function resolveTriagePreviewFit(
   viewport: { readonly width: number; readonly height: number },
   inner: { readonly width: number; readonly height: number },
   bottomChrome = 0,
+  minScale = 0,
 ): { scale: number; left: number; top: number } | null {
   if (viewport.width <= 0 || viewport.height <= 0) return null;
   if (inner.width <= 0 || inner.height <= 0) return null;
@@ -1353,7 +1375,8 @@ export function resolveTriagePreviewFit(
   const declared = Number.isFinite(bottomChrome) ? Math.max(0, bottomChrome) : 0;
   const chrome = Math.min(declared, inner.height * TRIAGE_PREVIEW_BOTTOM_CHROME_MAX_RATIO);
   const contentHeight = inner.height - chrome;
-  const scale = Math.max(viewport.width / inner.width, viewport.height / contentHeight);
+  const floor = Number.isFinite(minScale) ? Math.max(0, minScale) : 0;
+  const scale = Math.max(floor, viewport.width / inner.width, viewport.height / contentHeight);
   return {
     scale,
     left: (viewport.width - inner.width * scale) / 2,
@@ -1361,13 +1384,22 @@ export function resolveTriagePreviewFit(
   };
 }
 
+// 표면 배율을 프리뷰가 되돌려야 할 하한으로 옮긴다 — 확대창이 아니면(0) 하한도 없다.
+export function resolveTriagePreviewMinScale(surfaceScale: number): number {
+  if (!Number.isFinite(surfaceScale) || surfaceScale <= 0) return 0;
+  return 1 / surfaceScale;
+}
+
 // 라이브 프리뷰 — pool 슬롯이 실제 패널 body를 카드 안으로 끌어온다. 내부 박스는 패널의 원래
 // 픽셀 크기를 고정 유지한 채 transform scale로만 축소한다: FitAddon이 카드 크기를 측정하면
 // PTY cols/rows가 타일 크기로 리사이즈되어 실세션 레이아웃이 깨지므로, 측정 크기 불변이 계약이다.
-function TriageDeckCardPreview({ operationId, config, bottomChrome }: {
+function TriageDeckCardPreview({ operationId, config, bottomChrome, surfaceScale }: {
   readonly operationId: string;
   readonly config: OperationBodyConfig;
   readonly bottomChrome: number;
+  /** 이 프리뷰를 담은 표면의 화면상 확대 배율 — Quick-Look으로 확대된 표면만 자기 배율을
+      넘긴다. 0은 확대창이 아니라는 뜻이고, 평상시 카드는 축소판(cover-fit)으로 남는다. */
+  readonly surfaceScale: number;
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [fit, setFit] = useState<{ scale: number; left: number; top: number } | null>(null);
@@ -1375,6 +1407,7 @@ function TriageDeckCardPreview({ operationId, config, bottomChrome }: {
   // 올려 잡으면 지원되는 작은 패널의 프리뷰 컨테이너가 실제 geometry보다 커져 refit을 유발한다.
   const innerWidth = Math.max(320, config.geometry.width);
   const innerHeight = Math.max(200, config.geometry.height);
+  const minScale = resolveTriagePreviewMinScale(surfaceScale);
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
@@ -1383,6 +1416,7 @@ function TriageDeckCardPreview({ operationId, config, bottomChrome }: {
         { width: viewport.clientWidth, height: viewport.clientHeight },
         { width: innerWidth, height: innerHeight },
         bottomChrome,
+        minScale,
       ));
     };
     measure();
@@ -1390,10 +1424,17 @@ function TriageDeckCardPreview({ operationId, config, bottomChrome }: {
     const observer = new ResizeObserver(measure);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [bottomChrome, innerHeight, innerWidth]);
+    // Quick-Look 배율은 열려 있는 동안에도 grid 스크롤·리사이즈로 재계산되므로(recordRects),
+    // 하한이 바뀌면 fit도 다시 잡아야 한다. 뷰포트 크기는 그대로일 수 있어 ResizeObserver만으로는
+    // 이 변화를 잡지 못한다.
+  }, [bottomChrome, innerHeight, innerWidth, minScale]);
   return (
     <span className="canvas-triage-deck-card-preview" ref={viewportRef} aria-hidden="true" inert>
       {fit ? (
+        // 이 transform에는 전이를 붙이지 않는다. 전이는 카드 확대가 이미 소유하고 있고 프리뷰
+        // 배율은 거기에 올라탄다 — 프리뷰가 자기 전이를 따로 가지면 두 전이가 서로 다른 값을
+        // 쫓게 되고, 덱 줌 tween이나 창 리사이즈처럼 fit이 매 프레임 다시 잡히는 동안 프리뷰가
+        // 뒤처져 화면 배율이 1:1을 벗어나고 가장자리에 빈 띠가 뜬다.
         <span
           className="canvas-triage-deck-card-preview-inner"
           style={{

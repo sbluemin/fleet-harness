@@ -1391,3 +1391,39 @@ describe("Instrument core design contract", () => {
     expect(40).toBeLessThan(60);
   });
 });
+
+// War Room Quick-Look은 확대창 안의 프리뷰를 화면상 실물 크기(1:1)로 세운다. 배율 산술은
+// triage-deck-quicklook.test.ts가 고정하지만, 산술이 맞아도 배선이 끊기거나 전이 소유가 옮겨가면
+// 화면은 조용히 예전 동작 — 같은 축소판이 커지기만 하는 확대 — 으로 돌아간다.
+describe("War Room Quick-Look actual-size grammar", () => {
+  const deck = source("canvas/triage-watch-deck.tsx");
+  const components = source("styles/components.css");
+
+  it("hands a card its own magnification only while its Quick-Look is open", () => {
+    expect(deck).toContain("surfaceScale={isQuicklook ? quicklook.scale : 0}");
+  });
+
+  it("treats the map Quick-Look window as a magnified surface standing at its own size", () => {
+    expect(deck).toContain("surfaceScale={1}");
+  });
+
+  it("feeds the floor into the fit and re-measures when the floor moves", () => {
+    expect(deck).toContain("resolveTriagePreviewMinScale(surfaceScale)");
+    // Quick-Look 배율은 열린 채로도 재계산된다(recordRects) — deps에서 빠지면 뷰포트가 그대로인
+    // 동안 fit이 낡은 하한에 머물러 확대창이 1:1을 잃는다.
+    expect(deck).toMatch(/\[bottomChrome, innerHeight, innerWidth, minScale\]/);
+  });
+
+  it("leaves the preview transform without a transition of its own", () => {
+    const inner = components.match(/\.canvas-triage-deck-card-preview-inner \{[^}]*\}/)?.[0] ?? "";
+    expect(inner).not.toBe("");
+    // fit은 덱 줌 tween과 창 리사이즈마다 매 프레임 다시 잡힌다 — 여기 전이를 걸면 프리뷰가
+    // 카드보다 뒤처져 화면 배율이 1:1을 벗어나고 가장자리에 빈 띠가 뜬다.
+    expect(inner).not.toContain("transition");
+  });
+
+  it("keeps the magnification transition on the card that owns it", () => {
+    const card = components.match(/\.canvas-triage-deck-card \{[^}]*\}/)?.[0] ?? "";
+    expect(card).toContain("transform var(--duration-slow)");
+  });
+});
