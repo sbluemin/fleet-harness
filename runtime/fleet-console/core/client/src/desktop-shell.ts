@@ -1,37 +1,28 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 
 /**
  * 창을 들고 있는 셸이 알려 준 "돌아갈 곳". 원격 콘솔이 서빙한 화면은 자기가 아닌 origin을
  * 스스로 알 수 없으므로, 이 값이 없으면 호스트 스위처에는 돌아가는 줄이 서지 않는다.
+ *
+ * 이 값은 게시한 창에만 되돌아온다. 다른 사람의 화면에 흘러가면 거기서는 그 사람의 기계를
+ * 가리키기 때문이다 — 서버가 요청자를 보고 가리므로, 여기서는 한 번 읽어 오기만 한다.
  */
-type Listener = () => void;
-
-let homeOrigin: string | null = null;
-const listeners = new Set<Listener>();
-
 export function useDesktopHomeOrigin(): string | null {
-  return useSyncExternalStore(subscribe, getDesktopHomeOrigin, getDesktopHomeOrigin);
-}
+  const [homeOrigin, setHomeOrigin] = useState<string | null>(null);
 
-export function getDesktopHomeOrigin(): string | null {
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetchDesktopHomeOrigin(controller.signal).then(setHomeOrigin).catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+
   return homeOrigin;
 }
 
-export function applyDesktopShellSnapshot(value: unknown): void {
-  const next = readHomeOrigin(value);
-  // SSE는 재연결마다 현재 값을 다시 보낸다 — 같은 값으로 구독자를 깨우지 않는다.
-  if (next === homeOrigin) return;
-  homeOrigin = next;
-  for (const listener of listeners) listener();
-}
-
-export function resetDesktopShellSnapshot(): void {
-  applyDesktopShellSnapshot({ homeOrigin: null });
-}
-
-function subscribe(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
+export async function fetchDesktopHomeOrigin(signal?: AbortSignal): Promise<string | null> {
+  const response = await fetch("/api/v1/desktop/shell", { signal });
+  if (!response.ok) return null;
+  return readHomeOrigin(await response.json());
 }
 
 function readHomeOrigin(value: unknown): string | null {

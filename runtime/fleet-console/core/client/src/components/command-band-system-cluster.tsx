@@ -129,17 +129,24 @@ function HostSwitcher() {
   }, [open, hosts]);
 
   const currentOrigin = location.origin;
+  const currentIsLoopback = isLoopbackOrigin(currentOrigin);
   /**
-   * 셸이 띄운 콘솔과 이 기계에서 발견한 콘솔은 같은 무리다 — 링크 없이 갈 수 있는 곳들.
-   * 그중 셸이 띄운 것이 언제나 첫 줄이다: 앱을 열면 처음 만나는 콘솔이고 돌아갈 기준점이다.
-   * 나머지는 우연히 같은 기계에 떠 있을 뿐이므로 발견됐다는 표를 달아 구분한다.
+   * "이 컴퓨터"에 실릴 수 있는 것은 이 창이 실제로 닿을 수 있는 콘솔뿐이다.
+   *
+   * 스캔은 루프백 리스너에서만 답하므로, 원격 콘솔을 보고 있으면 비어 있다. 그때 돌아갈 곳을
+   * 아는 것은 셸뿐이라 셸의 말을 그대로 쓴다. 반대로 스캔이 답했다면 그 목록이 진실이고,
+   * 셸이 말한 집이 거기 없으면 그 콘솔은 이미 죽은 것이므로 줄을 세우지 않는다.
    */
-  const discovered = local.filter((entry) => entry.origin !== homeOrigin);
+  const homeIsLive = homeOrigin !== null && (local.length === 0 || local.some((entry) => entry.origin === homeOrigin));
+  const home = homeIsLive ? homeOrigin : null;
+  const placeholder = (origin: string): LocalConsole => ({ origin, version: "", owner: null });
   const nearby: readonly { readonly entry: LocalConsole; readonly home: boolean }[] = [
-    ...(homeOrigin !== null
-      ? [{ entry: local.find((item) => item.origin === homeOrigin) ?? { origin: homeOrigin, version: "", owner: null }, home: true }]
+    ...(home !== null ? [{ entry: local.find((item) => item.origin === home) ?? placeholder(home), home: true }] : []),
+    // 지금 서 있는 루프백 콘솔은 스캔에 안 잡혀도(격리 실행 등) 목록에 있어야 한다 — 눈앞에 있으니까.
+    ...(currentIsLoopback && currentOrigin !== home && !local.some((entry) => entry.origin === currentOrigin)
+      ? [{ entry: placeholder(currentOrigin), home: false }]
       : []),
-    ...discovered.map((entry) => ({ entry, home: false })),
+    ...local.filter((entry) => entry.origin !== home).map((entry) => ({ entry, home: false })),
   ];
   const savedCurrent = hosts.find((host) => host.origin === currentOrigin) ?? null;
   const nearbyCurrent = nearby.some(({ entry }) => entry.origin === currentOrigin);
@@ -268,6 +275,16 @@ function HostRow({
  * 이 앱이 띄운 콘솔과 우연히 같은 기계에 떠 있는 콘솔이 둘 다 desktop으로 나온다 — 그것으로
  * 이름을 지으면 두 줄이 똑같이 읽힌다.
  */
+/** 루프백 콘솔만 이 창이 주소 그대로 열 수 있다 — 다른 기계의 127.0.0.1은 여기서 우리 기계다. */
+function isLoopbackOrigin(origin: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(origin);
+    return protocol === "http:" && (hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]");
+  } catch {
+    return false;
+  }
+}
+
 function nearbyName(home: boolean, current: boolean, currentName: string, t: ReturnType<typeof useT>): string {
   if (home) return t("chrome.hosts.managedConsole");
   // 지금 쓰고 있는 콘솔은 "발견"된 것이 아니다 — 자기 이름으로 부른다.

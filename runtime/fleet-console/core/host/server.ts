@@ -18,7 +18,7 @@ import { createCodexWorkspaceRouter } from "./codex/workspace-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { createConsoleSettingsStore, type ConsoleThemeId } from "./settings/settings-domain.js";
 import { DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot } from "./desktop-contract.js";
-import { createDesktopFullscreenRouter, createDesktopShellRouter, DESKTOP_SHELL_EVENT, emptyDesktopShell, type DesktopShellSnapshot } from "./desktop-contract.js";
+import { createDesktopFullscreenRouter, createDesktopShellRouter, emptyDesktopShell, type DesktopShellSnapshot } from "./desktop-contract.js";
 import { DESKTOP_THEME_EVENT, desktopThemeSnapshot } from "./desktop-contract.js";
 import { createDesktopThemeRouter } from "./desktop-contract.js";
 import { createDeferredDeletionCoordinator, DeferredDeletionError, type DeferredDeletionReceipt } from "./deferred-deletion.js";
@@ -457,6 +457,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
   let desktopFullscreen = false;
   let desktopShell: DesktopShellSnapshot = emptyDesktopShell();
+  /**
+   * 셸의 집 주소를 되돌려 받을 자격은 그것을 게시한 창에만 있다.
+   *
+   * 이 값은 루프백 주소다. 다른 사람의 화면에 흘러가면 거기서는 그 사람의 기계를 가리키고,
+   * 같은 포트를 쓰는 전혀 다른 콘솔로 데려간다. 그래서 게시한 세션(원격) 또는 루프백 요청
+   * 자신(local)에게만 되돌려 준다.
+   */
+  let desktopShellOwner: string | "local" | null = null;
   // 창을 들고 있는 Desktop이 게시하는 호스트 목록. 브라우저 단독이면 비어 있다.
   let unsubscribeUpdateCheckChanges = updateCheck.onChange?.(() => {
     broadcastUpdateAvailable();
@@ -639,13 +647,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
   });
   const desktopShellRouter = createDesktopShellRouter({
-    getShell: () => desktopShell,
+    getShell: (req) => (shellOwnerOf(req) === desktopShellOwner ? desktopShell : emptyDesktopShell()),
     isAuthorized: isExactConsoleOrigin,
     readJsonBody,
-    setShell: (snapshot) => {
-      if (desktopShell.homeOrigin === snapshot.homeOrigin) return;
+    setShell: (req, snapshot) => {
       desktopShell = snapshot;
-      broadcastDesktopShellChanged();
+      desktopShellOwner = snapshot.homeOrigin === null ? null : shellOwnerOf(req);
     },
     writeJson,
     writeNoContent: (res) => { res.writeHead(204, withSecurityHeaders({})); res.end(); },
@@ -701,7 +708,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }));
       res.write(":connected\n\n");
       res.write(encodeSseData(DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot(desktopFullscreen)));
-      res.write(encodeSseData(DESKTOP_SHELL_EVENT, desktopShell));
       operationSseSubscribers.add(res);
       startSseKeepaliveLifecycle(res, () => {
         operationSseSubscribers.delete(res);
@@ -1107,6 +1113,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 건너갈 수 있는 다른 콘솔들의 목록은 이 기계 앞에 앉은 사람의 것이다. 원격에서 붙은 세션에는
    * 보이지도 고쳐지지도 않는다 — 남의 콘솔 주소와 지문이 원격 화면으로 새 나갈 이유가 없다.
    */
+  /** 루프백 요청은 전부 같은 기계이므로 하나로 본다. 원격은 세션 단위로 가른다. */
+  function shellOwnerOf(req: http.IncomingMessage): string | "local" | null {
+    const listener = listenerForRequest(req);
+    if (listener === null) return null;
+    if (listener.audience === "local") return "local";
+    return access.resolveSession(readSessionCookie(req.headers), listener.audience)?.handle ?? null;
+  }
+
   function isLoopbackListener(req: http.IncomingMessage): boolean {
     return listenerForRequest(req)?.audience === "local";
   }
@@ -1709,12 +1723,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     for (const res of operationSseSubscribers) {
       res.write(data);
     }
-  }
-
-  function broadcastDesktopShellChanged(): void {
-    if (operationSseSubscribers.size === 0) return;
-    const data = encodeSseData(DESKTOP_SHELL_EVENT, desktopShell);
-    for (const res of operationSseSubscribers) res.write(data);
   }
 
   function broadcastDesktopFullscreenChanged(): void {

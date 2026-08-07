@@ -64,7 +64,6 @@ export function createDesktopFullscreenRouter(deps: DesktopFullscreenRouteDeps):
 }
 
 export const DESKTOP_SHELL_PATH = "/api/v1/desktop/shell";
-export const DESKTOP_SHELL_EVENT = "desktop:shell";
 
 /**
  * 창을 들고 있는 셸이 자기에 대해 알려 주는 한 가지 사실: 이 앱이 처음 띄운 콘솔이 어디인가.
@@ -97,10 +96,11 @@ function isConsoleOriginShape(origin: string): boolean {
 }
 
 interface DesktopShellRouteDeps {
-  readonly getShell: () => DesktopShellSnapshot;
+  /** 요청자에 따라 답이 달라진다 — 이 값을 되돌려 받을 자격은 게시한 창에만 있다. */
+  readonly getShell: (req: http.IncomingMessage) => DesktopShellSnapshot;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
-  readonly setShell: (snapshot: DesktopShellSnapshot) => void;
+  readonly setShell: (req: http.IncomingMessage, snapshot: DesktopShellSnapshot) => void;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
   readonly writeNoContent: (res: http.ServerResponse) => void;
 }
@@ -109,7 +109,7 @@ export const DESKTOP_SHELL_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "GET",
     path: DESKTOP_SHELL_PATH,
-    summary: "Read where the attached Desktop can send this window home.",
+    summary: "Read where the Desktop that published it can send this window home; every other viewer reads nothing.",
     category: "Desktop",
     gate: "loopback",
   },
@@ -126,7 +126,7 @@ export function createDesktopShellRouter(deps: DesktopShellRouteDeps): (context:
   return async ({ req, res, pathname }) => {
     if (pathname !== DESKTOP_SHELL_PATH) return false;
     if (req.method === "GET") {
-      deps.writeJson(res, 200, deps.getShell());
+      deps.writeJson(res, 200, deps.getShell(req));
       return true;
     }
     if (req.method !== "PUT") {
@@ -142,7 +142,7 @@ export function createDesktopShellRouter(deps: DesktopShellRouteDeps): (context:
       deps.writeJson(res, 400, { error: "invalid_desktop_shell" });
       return true;
     }
-    deps.setShell(body);
+    deps.setShell(req, body);
     deps.writeNoContent(res);
     return true;
   };
