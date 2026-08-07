@@ -1482,6 +1482,24 @@ describe("War Room Quick-Look actual-size grammar", () => {
     expect(controls).toContain("1 / var(--triage-quicklook-scale");
   });
 
+  it("keeps the minimized shelf neutral and above the dormant shelf", () => {
+    const sidebar = source("sidebar/triage-side-bar.tsx");
+    const shelf = components.match(/\.triage-side-bar-minimized-shelf \{[^}]*\}/)?.[0] ?? "";
+    const list = components.match(/\.triage-side-bar-minimized-list \{[^}]*\}/)?.[0] ?? "";
+    expect(shelf).toContain("border-top: 1px solid var(--surface-rim);");
+    // 최소화는 활동 상태가 아니라 표시 선택이다 — 상태 축의 신호색을 빌려 쓰지 않는다.
+    expect(shelf).not.toMatch(/var\(--(?:brass|aurora|warn|coral|positive)/);
+    expect(list).not.toMatch(/var\(--(?:brass|aurora|warn|coral|positive)/);
+    expect(list).toContain("border-left: 3px solid var(--surface-rim);");
+    // 손에 가까운 순서: 살아 있는 축 → 내가 내린 것 → 세션이 스스로 잠든 것.
+    expect(sidebar.indexOf('className="triage-side-bar-minimized-shelf"')).toBeGreaterThan(
+      sidebar.indexOf('className="operations-side-bar-chips triage-side-bar-sections"'),
+    );
+    expect(sidebar.indexOf('className="triage-side-bar-dormant-shelf"')).toBeGreaterThan(
+      sidebar.indexOf('className="triage-side-bar-minimized-shelf"'),
+    );
+  });
+
   it("keeps deck card window controls always visible as a recorded exception", () => {
     // 사이드바 20px·캔버스 24px 손잡이는 hover/focus 전까지 0×0으로 접히지만, deck 카드의 손잡이는
     // 접지 않는다: 카드가 그 자체로 버튼이라 접힌 손잡이를 찾을 단서가 없고, 카드 위 hover는 400ms 뒤

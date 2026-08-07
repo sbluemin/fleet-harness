@@ -365,14 +365,31 @@ export function setTheaterOperationMinimized(theaterId: string, sessionId: strin
   }
   const theaterState = readStoredState(theaterId);
   if (theaterState.minimized.includes(sessionId) === minimized) return;
+  // 저장 스냅샷은 minimized를 operations에 실재하는 id로만 좁혀 읽는다(stale 직렬화 방어). War Room은
+  // Cruise 캔버스에 한 번도 놓인 적 없는 Operation도 판에서 내릴 수 있으므로, 자리를 함께 적어 두지
+  // 않으면 방금 쓴 최소화가 다음 읽기에서 통째로 사라진다. 그 자리는 나중에 Cruise에서 되올릴 때의
+  // 복원 위치이기도 하다.
+  const operations = minimized && !(sessionId in theaterState.operations)
+    ? {
+        ...theaterState.operations,
+        [sessionId]: normalizeOperationGeometry(undefined, nextZIndex(theaterState.operations)),
+      }
+    : theaterState.operations;
   writeStoredState(theaterId, {
     ...theaterState,
+    operations,
     minimized: minimized
       ? [...theaterState.minimized, sessionId]
       : theaterState.minimized.filter((id) => id !== sessionId),
   });
   state = { ...state };
   emit();
+}
+
+function nextZIndex(operations: Record<string, OperationGeometry>): number {
+  let top = 0;
+  for (const geometry of Object.values(operations)) top = Math.max(top, geometry.zIndex ?? 0);
+  return top + 1;
 }
 
 // 전 Theater의 최소화 id를 한 번에 모은다. 활성 Theater는 메모리 state를, 나머지는 저장 스냅샷을

@@ -3765,6 +3765,24 @@
   padding: 0;
 }
 
+/* 최소화 선반 — 휴면 선반과 같은 무채색 문법을 쓰되 그 위에 선다. 내가 직접 내린 것이 세션이
+   스스로 잠든 것보다 손에 가깝기 때문이다. 사용자가 만든 목록이라 비면 아예 서지 않는다
+   (휴면은 축 자체라 0건이어도 남는다). */
+.triage-side-bar-minimized-shelf {
+  flex: none;
+  border-top: 1px solid var(--surface-rim);
+  padding: var(--space-1) 0;
+}
+
+/* 상태 섹션과 같은 기하로 줄을 맞추되 색은 싣지 않는다 — 최소화는 활동 상태가 아니라 표시
+   선택이므로 신호 채널을 쓰지 않는다. 행 자체는 제 활동 비콘을 그대로 지닌다. */
+.triage-side-bar-minimized-list {
+  list-style: none;
+  margin: 0 0 0 var(--space-1);
+  padding: 0;
+  border-left: 3px solid var(--surface-rim);
+}
+
 .side-bar-theater-error {
   margin: var(--space-2);
   color: var(--coral-ink);
