@@ -373,15 +373,12 @@ export function setTheaterOperationMinimized(theaterId: string, sessionId: strin
     if (getMaximizedOperationId() === sessionId) clearMaximizedOperationId();
     if (getCompanionOperationId() === sessionId) forceDropCompanionOperationId();
   }
-  // 저장 스냅샷은 minimized를 operations에 실재하는 id로만 좁혀 읽는다(stale 직렬화 방어). War Room은
-  // Cruise 캔버스에 한 번도 놓인 적 없는 Operation도 판에서 내릴 수 있으므로, 자리를 함께 적어 두지
-  // 않으면 방금 쓴 최소화가 다음 읽기에서 통째로 사라진다. 그 자리는 나중에 Cruise에서 되올릴 때의
-  // 복원 위치이기도 하다.
-  const operations = minimized && !(sessionId in theaterState.operations)
-    ? {
-        ...theaterState.operations,
-        [sessionId]: normalizeOperationGeometry(undefined, nextZIndex(theaterState.operations)),
-      }
+  // 되올릴 때는 활성 경로(restoreOperation)처럼 맨 앞으로 끌어올린다 — 그 Theater를 열었을 때 방금
+  // 되올린 패널이 이웃 밑에 깔려 있으면 되올렸다는 사실이 화면에 드러나지 않는다. 좌표가 아직 없는
+  // Operation은 자리를 지어내지 않고 그대로 둔다: 처음 캔버스에 설 때 평소 초기 배치가 정한다.
+  const restored = !minimized ? theaterState.operations[sessionId] : undefined;
+  const operations = restored
+    ? { ...theaterState.operations, [sessionId]: { ...restored, zIndex: nextZIndex(theaterState.operations) } }
     : theaterState.operations;
   writeStoredState(theaterId, {
     ...theaterState,
@@ -1134,8 +1131,7 @@ function normalizeCanvasState(value: unknown): CanvasState {
     operations,
     operationOrder: normalizeOperationOrder(value.operationOrder),
     operationAccent: normalizeOperationAccent(value.operationAccent),
-    // 저장된 최소화 목록 중 실재하는 Operation만 남긴다(stale 직렬화 방어).
-    minimized: normalizeMinimized(value.minimized, operations),
+    minimized: normalizeMinimized(value.minimized),
     collapsedGroups: normalizeStringArray(value.collapsedGroups),
     stationKeeping: value.stationKeeping === true,
   };
@@ -1163,12 +1159,15 @@ function normalizeOperationAccent(value: unknown): Record<string, string> {
   return operationAccent;
 }
 
-function normalizeMinimized(value: unknown, operations: Record<string, OperationGeometry>): readonly string[] {
+// 최소화 목록의 진실은 "사용자가 내렸다"이지 "좌표가 저장돼 있다"가 아니다. War Room은 Cruise 캔버스에
+// 한 번도 놓인 적 없는 Operation도 판에서 내리므로 좌표 유무로 거르면 방금 내린 항목이 다음 읽기에서
+// 사라진다. 사라진 세션 정리는 실 Operation 목록을 아는 pruneOperations가 이미 전담한다.
+function normalizeMinimized(value: unknown): readonly string[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   const minimized: string[] = [];
   for (const entry of value) {
-    if (typeof entry !== "string" || seen.has(entry) || !(entry in operations)) continue;
+    if (typeof entry !== "string" || seen.has(entry)) continue;
     seen.add(entry);
     minimized.push(entry);
   }
