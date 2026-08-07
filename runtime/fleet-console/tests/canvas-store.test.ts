@@ -711,6 +711,19 @@ describe("station keeping", () => {
     expectAllVisibleClear();
   });
 
+  it("anchors the z-top panel while lower panels absorb the spread displacement", () => {
+    setOperationGeometry("op-a", rect(0, 0));
+    setOperationGeometry("op-b", rect(40, 40));
+    setOperationGeometry("op-c", rect(80, 80)); // 마지막 setOperationGeometry가 최상단 z를 가진다.
+    const top = getSnapshot().operations["op-c"]!;
+
+    setStationKeeping(true);
+
+    const after = getSnapshot().operations["op-c"]!;
+    expect({ x: after.x, y: after.y }).toEqual({ x: top.x, y: top.y });
+    expectAllVisibleClear();
+  });
+
   it("disabling moves nothing", () => {
     setOperationGeometry("op-a", rect(0, 0));
     setOperationGeometry("op-b", rect(40, 40));

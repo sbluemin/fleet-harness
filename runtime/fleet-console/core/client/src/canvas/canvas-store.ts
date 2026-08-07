@@ -709,10 +709,14 @@ export function loadForTheater(theaterId: string | null): void {
   // 복원된 Operation의 최대 zIndex 위로 카운터를 끌어올린다 — 새로고침/Theater 전환 후에도 활성화→최상단을 보장한다.
   topZIndex = Math.max(topZIndex, maxZIndexOf(state.operations));
   // 규율이 켜진 Theater는 로드 시점에 불변식을 복구한다 — 비활성 상태에서 들어온 규율 밖 쓰기
-  // (War Room 지도 이동 등)가 남긴 겹침을 정착시킨다. 저장은 다음 사용자 변경이 소유한다.
+  // (War Room 지도 이동 등)가 남긴 겹침을 정착시키고, 복구를 저장까지 수렴시켜 다음 로드가
+  // 같은 복구를 반복하지 않게 한다(이탈 시 flushScheduledSave가 이 상태를 쓴다).
   if (state.stationKeeping) {
     const spread = spreadVisibleOperations(state.operations, state.minimized);
-    if (spread) state = { ...state, operations: spread };
+    if (spread) {
+      state = { ...state, operations: spread };
+      scheduleSave();
+    }
   }
   emit();
   if (focusLayerChanged) emitFocusLayer();

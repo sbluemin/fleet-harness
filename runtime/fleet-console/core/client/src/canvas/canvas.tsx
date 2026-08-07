@@ -216,6 +216,15 @@ export function OperationsCanvas({
     return () => window.clearTimeout(timer);
   }, [formationView, triageActive]);
 
+  // 포커스 레이어(최대화·companion)가 걷힌 순간 Cruise 규율을 재적용한다 — 드래그 도중 레이어 전환은
+  // 드래그를 커밋 없이 중단시키므로(operation-frame의 interaction-disabled 정리), 라이브 좌표가 겹친 채
+  // 남을 수 있다. 정착은 커밋에만 걸려 있어 이 재적용이 그 구멍을 막는다. 규율이 꺼져 있으면 no-op.
+  const focusLayerActive = maximizedOperationId !== null || companionOperationId !== null;
+  useEffect(() => {
+    if (focusLayerActive || formationView || triageActive) return;
+    enforceStationKeeping();
+  }, [focusLayerActive, formationView, triageActive]);
+
   const interaction = useCanvasInteraction({
     viewport: canvas.viewport,
     // Formation은 읽기 전용 감독 그리드다 — 슬롯 사이 빈 공간에서 숨은 viewport를 팬/줌하거나
