@@ -187,17 +187,17 @@ describe("fleet console CLI", () => {
     expect(calls.map((call) => ({
       url: call.url,
       method: call.init?.method,
-      bodyKeys: Object.keys(JSON.parse(String(call.init?.body)) as Record<string, unknown>),
+      body: JSON.parse(String(call.init?.body)) as Record<string, unknown>,
     }))).toEqual([
       {
         url: "http://127.0.0.1:51240/plugins/terminal/agent/sessions/session-background/background",
         method: "POST",
-        bodyKeys: ["input"],
+        body: { input: "" },
       },
       {
         url: "http://127.0.0.1:51240/plugins/terminal/agent/sessions/session-background/background",
         method: "POST",
-        bodyKeys: ["input"],
+        body: { input: "" },
       },
     ]);
   });

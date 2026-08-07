@@ -33,7 +33,7 @@ import { readAnalysisProviderSession, readProviderSession, type AnalysisProvider
 import type { AgentProviderSession, AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
 import { CARRIER_JOB_FINALIZED_GRACE_MS, isCarrierJobActiveForIdle, startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown };
-type HookTurnBody = { readonly phase?: unknown };
+type HookTurnBody = { readonly phase?: unknown; readonly input?: unknown };
 type HookBackgroundBody = { readonly input?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
 type HookAutoNameBody = { readonly input?: unknown; readonly prompt?: unknown };
@@ -523,7 +523,11 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       return true;
     }
     oscActivityTrackers.get(sessionId)?.reset();
-    observability.notifySessionUpdated(updated);
+    // 턴 종료 payload가 실어 온 살아 있는 백그라운드 작업 보고를 같은 전이 안에서 반영한 뒤 한 번만 알린다.
+    // 두 번 알리면 그 사이의 프레임에서 세션이 백그라운드 작업을 잊은 채 유휴로 읽힌다.
+    const pending = turnState === "ended" ? resolveBackgroundPendingFromHookInput(body?.input) : undefined;
+    const settled = pending === undefined ? updated : observability.setTerminalSessionBackgroundPending(sessionId, pending) ?? updated;
+    observability.notifySessionUpdated(settled);
     ctx.host.http.writeJson(res, 200, { ok: true });
     if (turnState === "ended") scheduleIdentityRefresh(sessionId);
     return true;

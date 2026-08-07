@@ -39,22 +39,19 @@ function claudeHooks(options: CreateAgentCliPluginOptions): unknown {
   // UserPromptSubmit: 세션 캡처 → 턴 시작 → 자동 작명 순서로 같은 이벤트에 렌더한다.
   const userPromptSubmitExecs = [options.captureSessionHookExec, options.turnStartHookExec, options.autoNameHookExec]
     .filter((exec): exec is FleetHookExec => exec !== undefined);
-  // 백그라운드 작업 보고는 Stop과 SubagentStop 양쪽에 건다. 두 이벤트의 payload만이 그 시점에
-  // 살아 있는 background_tasks 전량을 싣고 오므로, 턴이 끝난 뒤에도 남은 작업이 있는지를 절대값으로 알 수 있다.
-  // 하나의 Workflow 호출이 SubagentStop을 에이전트 수만큼 발화하므로 spawn을 세는 방식은 성립하지 않는다.
-  const stopExecs = [options.turnEndHookExec, options.backgroundReportHookExec]
+  // Stop: 턴 종료 신호. 살아 있는 백그라운드 작업 목록은 같은 payload에 실려 오므로 별도 hook을 걸지 않고
+  // 턴 종료 hook이 함께 실어 나른다 — 한 이벤트에 두 hook을 걸면 둘이 병렬로 떠서 턴 종료가 먼저 도착하고,
+  // 그 찰나에 세션이 거짓 유휴로 보여 종료 알림과 도착 표시가 튄다.
+  const stopExecs = [options.turnEndHookExec]
     .filter((exec): exec is FleetHookExec => exec !== undefined);
   // 입력 대기 신호: AskUserQuestion은 PreToolUse(matcher=AskUserQuestion)와
   // permission_prompt Notification을 모두 발화한다. 그 외 입력 대기도 Notification의 입력 대기 타입만 |-구분 정확 매처로 거른다
   // (idle_prompt(정상 유휴 대기, 차단 아님)·auth_success·elicitation_complete/response 등 비대기 타입 제외).
   // 한 번의 대기가 PreToolUse와 Notification 두 경로로 동시에 들어올 수 있어, 최종 중복 제거는 클라이언트(store)에서 세션별로 한다.
   const inputWaitingExec = options.inputWaitingHookExec;
-  const preToolUse = [
-    ...(inputWaitingExec ? [{
-      matcher: "AskUserQuestion",
-      hooks: [claudeCommandHook(inputWaitingExec)],
-    }] : []),
-  ];
+  const preToolUse = inputWaitingExec
+    ? [{ matcher: "AskUserQuestion", hooks: [claudeCommandHook(inputWaitingExec)] }]
+    : [];
   return {
     hooks: {
       ...(userPromptSubmitExecs.length > 0 ? {

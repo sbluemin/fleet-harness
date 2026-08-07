@@ -140,7 +140,7 @@ describe("agent CLI session resume and capture hooks", () => {
     });
   });
 
-  it("renders the background report on both stop events through profile injection", async () => {
+  it("renders the background report alongside turn end without a second hook on Stop", async () => {
     const root = createTempRoot("fleet-admiral-background-hooks-");
     const profile = baseProfile("claude", {
       args: [],
@@ -159,13 +159,10 @@ describe("agent CLI session resume and capture hooks", () => {
       readonly hooks: Record<string, unknown>;
     };
 
-    // 살아 있는 작업 목록은 Stop과 SubagentStop payload에만 실린다. 두 이벤트 모두에서 보고해야
-    // 워크플로우가 끝난 뒤의 해제까지 닫힌다.
+    // 같은 이벤트에 두 hook을 걸면 병렬로 떠서 턴 종료가 홀로 먼저 도착하는 프레임이 생긴다.
+    // Stop의 백그라운드 보고는 턴 종료 hook이 함께 실어 나르므로 Stop에는 hook이 하나뿐이다.
     expect(hooksJson.hooks.Stop).toEqual([
-      { hooks: [
-        { type: "command", command: "node", args: ["console.js", "hook", "turn-end"] },
-        { type: "command", command: "node", args: ["console.js", "hook", "background-report"] },
-      ] },
+      { hooks: [{ type: "command", command: "node", args: ["console.js", "hook", "turn-end"] }] },
     ]);
     expect(hooksJson.hooks.SubagentStop).toEqual([
       { hooks: [{ type: "command", command: "node", args: ["console.js", "hook", "background-report"] }] },
