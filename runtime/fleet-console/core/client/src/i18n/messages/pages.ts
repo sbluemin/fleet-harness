@@ -147,15 +147,24 @@ export const pagesEn = {
   "shortcuts.codex.fitLightbox": "Fit the diagram lightbox to the viewport",
 
   // whatsnew tabs (catalog labels owned by pages; chrome owns modal chrome)
+  // Fleet Plugin and Fleet Core are compatibility labels: releases stopped being grouped that way,
+  // but compiled history keeps those headings forever, so the tabs still appear on older releases.
   "whatsnew.tab.overview": "Overview",
   "whatsnew.tab.allUpdates": "All updates",
   "whatsnew.tab.otherUpdates": "Other updates",
   "whatsnew.tab.fleetCli": "Fleet CLI",
   "whatsnew.tab.fleetConsole": "Fleet Console",
   "whatsnew.tab.fleetDesktop": "Fleet Desktop",
-  "whatsnew.tab.fleetPlugin": "Fleet Plugin",
-  "whatsnew.tab.fleetCore": "Fleet Core",
+  "whatsnew.tab.fleetPlugin": "Fleet Plugin (historical)",
+  "whatsnew.tab.fleetCore": "Fleet Core (historical)",
   "whatsnew.tab.preProductGrouping": "Pre-product-grouping updates",
+
+  // whatsnew section labels: the wire format keeps English enums, only the display label localizes
+  "whatsnew.section.added": "Added",
+  "whatsnew.section.changed": "Changed",
+  "whatsnew.section.fixed": "Fixed",
+  "whatsnew.section.removed": "Removed",
+  "whatsnew.section.breakingChanges": "Breaking Changes",
 
   // activity
   "activity.running": "Running",
@@ -463,9 +472,15 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "whatsnew.tab.fleetCli": "Fleet CLI",
   "whatsnew.tab.fleetConsole": "Fleet Console",
   "whatsnew.tab.fleetDesktop": "Fleet Desktop",
-  "whatsnew.tab.fleetPlugin": "Fleet Plugin",
-  "whatsnew.tab.fleetCore": "Fleet Core",
+  "whatsnew.tab.fleetPlugin": "Fleet Plugin (이전 릴리스)",
+  "whatsnew.tab.fleetCore": "Fleet Core (이전 릴리스)",
   "whatsnew.tab.preProductGrouping": "제품 분류 이전 업데이트",
+
+  "whatsnew.section.added": "추가",
+  "whatsnew.section.changed": "변경",
+  "whatsnew.section.fixed": "수정",
+  "whatsnew.section.removed": "제거",
+  "whatsnew.section.breakingChanges": "호환성 변경",
 
   // 상태별 명칭은 사이드바 STATUS 축(sidebar.status.*)과 동일해야 한다 — 유휴 카드가 "대기"로
   // 보이면 사이드바의 대기(awaiting) 섹션과 상태가 충돌해 다른 상태로 읽힌다.

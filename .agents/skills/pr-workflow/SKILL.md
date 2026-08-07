@@ -1,11 +1,11 @@
 ---
 name: pr-workflow
-description: End-to-end PR lifecycle on sbluemin/fleet-harness — commit staged work, open a PR, add its PR-number changelog fragment in a second commit, await Codex review, adversarially adjudicate context-incomplete feedback against frozen product intent, roll back review-driven scope drift, and auto-merge only after a final context audit. Supersedes the former pr-creates and pr-review-fixes skills.
+description: End-to-end PR lifecycle on sbluemin/fleet-harness — commit staged work together with its branch-named changelog fragment, open a PR, await Codex review, adversarially adjudicate context-incomplete feedback against frozen product intent, roll back review-driven scope drift, and auto-merge only after a final context audit. Supersedes the former pr-creates and pr-review-fixes skills.
 ---
 
 # PR Workflow
 
-Use this skill to drive a change from committed work to a merged pull request on `sbluemin/fleet-harness`, mirroring the full cycle the Admiral runs by hand: **commit → open PR → add `pr-<number>.md` and push again → await Codex review → judge & apply feedback → re-review → detect approval → auto-merge**.
+Use this skill to drive a change from committed work to a merged pull request on `sbluemin/fleet-harness`, mirroring the full cycle the Admiral runs by hand: **commit the change with its changelog fragment → open PR → await Codex review → judge & apply feedback → re-review → detect approval → auto-merge**.
 
 This is a single end-to-end workflow. Enter at Phase 1 for a fresh change; if the branch is already committed and pushed with an open PR, skip to Phase 3 to resume at the review loop; if the PR is already approved, resume at Phase 6 to merge it.
 
@@ -15,7 +15,6 @@ Replace each `<placeholder>` before running. Optional inputs may be left blank �
 
 - `<commit_subject>` — Conventional Commits subject for the initial commit. Optional. If omitted, derive from the dominant change in the staged/working diff.
 - `<commit_body>` — Optional commit body. If omitted, summarize the change as bullets.
-- `<changelog_commit_subject>` — Conventional Commits subject for the post-creation fragment commit. Optional. Default `docs(changelog): add PR <pr_number> release note`.
 - `<title>` — Conventional Commits PR title (≤ 70 chars). Optional. If omitted, derive from `git log <base>..HEAD`.
 - `<body>` — Markdown PR body. Optional. If omitted, auto-build a Summary + Test Plan from the diff, following `.github/PULL_REQUEST_TEMPLATE.md` style (Korean prose is fine; the PR title stays English Conventional Commits).
 - `<base>` — Base branch. Optional. Default `canary`. `main` / `master` are rejected unless explicitly overridden.
@@ -35,9 +34,11 @@ Publish a PR authored by the authenticated user's GitHub account, carry it throu
 
 ## Changelog Fragment Requirement
 
-Every release-impacting PR must include exactly one `.changelog.d/pr-<pr_number>.md` unless it intentionally carries the `no-changelog` label. The PR number does not exist before Phase 2, so the initial product commit and PR are created first; the fragment is then added in a second commit and pushed before Codex review activation.
+Every release-impacting PR must include exactly one fragment named after its own branch. The alternative is not the `no-changelog` label on its own: unless every changed path is mechanically internal (tests, `.agents/`, `.github/`, `AGENTS.md`/`CLAUDE.md`, `.changelog.d/`, the changelog compiler), CI also requires a `Changelog-Impact: none` line and a `No-Changelog-Reason: <code>` line in the PR body, with a sentence saying why no user notices the change. The branch already exists when the work starts, so the fragment is staged and committed **together with the change it describes** — there is no second commit and nothing to wait for. Read the filename from `node scripts/compile-changelog-fragments.mjs --name-for-branch`; never derive it by hand.
 
-The fragment body groups entries under `### <product>` and `#### <section>` headings. Products are `fleet-cli`, `fleet-console`, `fleet-desktop`, `fleet-plugin`, and `fleet-core`; sections are `Added`, `Changed`, `Fixed`, `Removed`, and `Breaking Changes`. Each `- [tag] English summary.` line is immediately followed by exactly one two-space-indented `  ko: 한글 요약.` line. English summaries must be ASCII-only, Korean summaries must contain Hangul, and tags retain the repository allowlist. Validate with `node scripts/compile-changelog-fragments.mjs --check` before the second push. `canary.md` is reserved for explicitly authorized direct-canary work outside this PR workflow and must never be used for a PR.
+The fragment opens with `---`, `branch: <exact git branch name>`, `---`, and the compiler rejects a filename that disagrees with that value. The body groups entries under `### <runtime>` and `#### <section>` headings. Runtimes are `fleet-cli`, `fleet-console`, and `fleet-desktop` — the runtime a user notices the change in, never the package that implements it; sections are `Added`, `Changed`, `Fixed`, `Removed`, and `Breaking Changes`. Each `- English summary.` line is immediately followed by exactly one two-space-indented `  ko: 한글 요약.` line. Bullets carry no package tag. English summaries must be ASCII-only and Korean summaries must contain Hangul. Validate with `node scripts/compile-changelog-fragments.mjs --check` before pushing. `canary.md` is reserved for explicitly authorized direct-canary work outside this PR workflow and must never be used for a PR.
+
+Work no user perceives — refactors, boundary gates, doctrine and prompt edits, test repairs, release tooling — is `no-changelog` and writes no fragment. See `.changelog.d/AGENTS.md` for the full authoring contract.
 
 ## Admiral Judgment Policy
 
@@ -67,7 +68,7 @@ Before the first review-fix, freeze one Product Context Record for the entire PR
 - Intended trade-offs.
 - Supported behavior that must not regress or narrow.
 - Cited issue, PRD, Fleet Wiki, and decision evidence when available.
-- `REVIEW_BASE_HEAD`: the pushed PR head SHA after the PR-number changelog commit and before any review-fix.
+- `REVIEW_BASE_HEAD`: the pushed PR head SHA before any review-fix.
 
 If resuming after review fixes and this record or a trustworthy pre-fix `REVIEW_BASE_HEAD` cannot be reconstructed from the PR history and cited evidence, stop and ask the user before applying more feedback or merging.
 
@@ -77,23 +78,23 @@ If resuming after review fixes and this record or a trustworthy pre-fix `REVIEW_
 
 1. Confirm the environment in parallel: `pwd`; OS info (`uname -a`); shell (`echo "SHELL=$SHELL"`); `gh auth status`; `gh repo view --json nameWithOwner` (must equal `sbluemin/fleet-harness`).
 2. Read the repository root `AGENTS.md`. For each subdirectory the change touches, read its `AGENTS.md` too — child rules override parent rules within their scope.
-3. Classify the change as release-impacting or `no-changelog`. A release-impacting change receives `.changelog.d/pr-<pr_number>.md` only after Phase 2 creates the PR.
+3. Classify the change as release-impacting or `no-changelog`, and record which runtimes a user notices it in. A release-impacting change carries its branch-named fragment in the Phase 1 commit.
 
 ### Phase 1 — Commit
 
 1. Inspect: `git status --short --branch`; `git branch --show-current`.
-2. Stage only the files belonging to this change: `git add <file> [<file> ...]`. Do not use `git add -A` / `git add .` unless every pending change belongs to this commit.
-3. Write the commit message in English using Conventional Commits (allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`). Subject `<commit_subject>` or inferred; body `<commit_body>` or addressed-change bullets.
-4. Pre-commit self-check: re-read `git diff --cached` once and confirm the subject/body match what is staged — nothing more, nothing less.
-5. Commit via HEREDOC. Do NOT use `--amend`, `--no-verify`, `--no-gpg-sign`, or any hook bypass. If a pre-commit hook fails, fix the cause and create a new commit (never amend).
-6. Do not invent a changelog filename before PR creation. The initial commit normally excludes `.changelog.d/`; an explicitly selected `no-changelog` flow excludes it permanently.
+2. For release-impacting work, write the changelog fragment now. Read its filename from `node scripts/compile-changelog-fragments.mjs --name-for-branch`, author it per `.changelog.d/AGENTS.md`, and validate the set with `node scripts/compile-changelog-fragments.mjs --check`. A `no-changelog` change writes no fragment.
+3. Stage only the files belonging to this change, the fragment included: `git add <file> [<file> ...]`. Do not use `git add -A` / `git add .` unless every pending change belongs to this commit.
+4. Write the commit message in English using Conventional Commits (allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`). Subject `<commit_subject>` or inferred; body `<commit_body>` or addressed-change bullets.
+5. Pre-commit self-check: re-read `git diff --cached` once and confirm the subject/body match what is staged — nothing more, nothing less.
+6. Commit via HEREDOC. Do NOT use `--amend`, `--no-verify`, `--no-gpg-sign`, or any hook bypass. If a pre-commit hook fails, fix the cause and create a new commit (never amend).
 
 ### Phase 2 — Open the PR
 
 1. Resolve `<head>` (default current branch) and `<base>` (default `canary`; reject `main`/`master` unless overridden). If `<head>` equals `<base>`, stop and ask.
 2. `git push -u origin <head>` and verify `git status --short --branch` reports up-to-date with the remote.
 3. Build PR metadata: derive `<title>` (≤ 70 chars, Conventional Commits) and `<body>` (`## Summary` 1–3 bullets + `## Test Plan` checklist) if not provided.
-   - For release-impacting work, mark the changelog checklist as pending PR-number assignment. For `no-changelog`, record that classification explicitly.
+   - For release-impacting work, name the committed fragment in the changelog checklist. For `no-changelog`, record that classification and its reason explicitly.
 4. Echo the final title/body/base/head/draft once for the record, then create directly — invoking this skill is itself the authorization to open the PR, so do not pause for a separate confirmation round-trip. The safety guards still bind: the base-branch guard rejects `main`/`master` unless explicitly overridden, and `<head>` must not equal `<base>` (step 1). Pause for the Admiral of the Navy only when metadata is genuinely ambiguous or a safety guard trips.
    ```bash
    gh pr create --repo sbluemin/fleet-harness --base "$base" --head "$head" \
@@ -106,16 +107,12 @@ If resuming after review fixes and this record or a trustworthy pre-fix `REVIEW_
    )" $( [ "$draft" = "true" ] && echo "--draft" )
    ```
 5. Record the PR identity for the rest of the workflow: `<pr_number>` (number), `<repo>`, the PR URL, and `<headRefName>` (= `<head>`, the only branch Phases 4–6 push to). These are the target for Phases 3–7.
-6. For release-impacting work, create exactly `.changelog.d/pr-<pr_number>.md` using the grouped product/section syntax from `.changelog.d/AGENTS.md`. Include every release-facing product claim in that one file; never create `canary.md` or a product-section filename for the PR.
-7. Validate the complete fragment set with `node scripts/compile-changelog-fragments.mjs --check`, stage only `.changelog.d/pr-<pr_number>.md`, re-read its cached diff, and commit it via HEREDOC using `<changelog_commit_subject>` or the default. Do not amend the product commit or bypass hooks.
-8. Confirm the current branch still equals `<headRefName>`, then push the fragment commit explicitly with `git push origin HEAD:<headRefName>`. Verify the remote head equals local `HEAD` and the working tree is clean.
-9. Finalize the PR body's Changelog checklist so it names `.changelog.d/pr-<pr_number>.md` and marks the fragment syntax, bilingual summaries, and validation complete. Preserve all other user-provided body content. Only then may Phase 3 activate Codex review.
 
 ### Phase 3 — Await the Codex review (deterministic background poll)
 
 The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronously. The skill **waits with a deterministic background poll that wakes you only when something real changes** — never ask the Admiral to run `/loop` by hand, and prefer this over a fixed-interval cron that re-invokes the model every tick whether or not anything happened. A cheap `gh` loop runs in the background (no model tokens) and re-invokes you on the first genuine signal.
 
-0. **Ensure PR metadata, changelog completion, the right branch, and frozen context.** Confirm `<pr_number>`, `<repo>`, and `<headRefName>` are known. On a fresh run they come from Phase 2; on a resume entry, resolve them first via `gh pr view --json number,headRefName,url` for the current branch (or the `<pr_number>` carried in the resume prompt). Never poll or push without them. For release-impacting work, require `.changelog.d/pr-<pr_number>.md` on the remote head; if it is missing, return to Phase 2 step 6 before activating review. Then confirm the **current branch equals `<headRefName>`** (`git branch --show-current`); if it does not, stop and ask the Admiral before editing or committing — do not auto-checkout and never commit fixes onto a non-head branch. Finally confirm the **working tree is clean** (`git status --short`); if there are unrelated uncommitted changes, stop and ask the Admiral before editing — never overwrite them or fold pre-existing changes into a review-fix commit. Before the first review-fix, freeze the Product Context Record and set `REVIEW_BASE_HEAD` to the current pushed head SHA.
+0. **Ensure PR metadata, changelog completion, the right branch, and frozen context.** Confirm `<pr_number>`, `<repo>`, and `<headRefName>` are known. On a fresh run they come from Phase 2; on a resume entry, resolve them first via `gh pr view --json number,headRefName,url` for the current branch (or the `<pr_number>` carried in the resume prompt). Never poll or push without them. For release-impacting work, require the branch-named fragment on the remote head; if it is missing, return to Phase 1 before activating review. Then confirm the **current branch equals `<headRefName>`** (`git branch --show-current`); if it does not, stop and ask the Admiral before editing or committing — do not auto-checkout and never commit fixes onto a non-head branch. Finally confirm the **working tree is clean** (`git status --short`); if there are unrelated uncommitted changes, stop and ask the Admiral before editing — never overwrite them or fold pre-existing changes into a review-fix commit. Before the first review-fix, freeze the Product Context Record and set `REVIEW_BASE_HEAD` to the current pushed head SHA.
 1. **Activate the initial review before waiting.** Apply this gate once per PR, before the first long-running poll. Skip it after Codex has already reacted, reviewed, commented, or been explicitly requested.
    1. Check PR-body reactions, reviews, and Codex top-level comments. Any `chatgpt-codex-connector[bot]` reaction, review, or comment means the reviewer is active; continue to step 2.
    2. If no Codex signal exists, post `@codex Please review this PR.` as a PR comment and record its comment ID, URL, and creation time. Do not start the 40-minute poll yet.
@@ -218,7 +215,7 @@ Then report in Korean:
 - PR number, title, head/base, URL, draft flag.
 - Frozen Product Context Record evidence, `REVIEW_BASE_HEAD`, and the final cumulative context-audit outcome.
 - Each review item across all passes: fix / declined / deferred, with verification evidence.
-- Files changed, the initial product commit SHA, the PR-number fragment commit SHA when applicable, later fix commit SHA(s), and push target(s).
+- Files changed, the initial commit SHA (fragment included when release-impacting), later fix commit SHA(s), and push target(s).
 - Validation commands and pass/fail status; note any check not run.
 - The approval signal observed (Codex `+1` on the PR body), or the explicit activation request URL plus `codex_activation_timeout`; include every `@codex` follow-up comment URL.
 - **Merge outcome**: merged (`<merge_method>` + merge commit SHA + whether a pre-merge rebase/force-push was needed), or — when `<auto_merge>` is `false` or auto-merge halted — the approved-but-unmerged state and the reason. The Phase 3 wait poll was stopped in Phase 6.
@@ -233,7 +230,7 @@ Then report in Korean:
 
 ## Documentation Synthesis
 
-PR titles, summaries, bodies, and `.changelog.d/pr-<pr_number>.md` fragments are host-owned. Synthesize them directly from the frozen Product Context Record, verified `git diff`/`git log` evidence, and validated changelog fragments — never delegate documentation synthesis to a Carrier.
+PR titles, summaries, bodies, and `.changelog.d/` fragments are host-owned. Synthesize them directly from the frozen Product Context Record, verified `git diff`/`git log` evidence, and validated changelog fragments — never delegate documentation synthesis to a Carrier.
 
 ## Safety Rules
 

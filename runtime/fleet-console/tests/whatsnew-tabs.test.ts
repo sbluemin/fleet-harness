@@ -39,10 +39,10 @@ describe("What's New tabs", () => {
     const legacy = note([{ packageTags: [], text: "Earlier release" }]);
     const mixed = note([{ packageTags: [], text: "Earlier release" }, { packageTags: [], text: "Plugin", product: "fleet-plugin" }]);
 
-    expect(deriveWhatsNewOverview(release)).toEqual([{ id: "fleet-plugin", label: "Fleet Plugin", count: 1, summary: "Plugin" }]);
+    expect(deriveWhatsNewOverview(release)).toEqual([{ id: "fleet-plugin", label: "Fleet Plugin (historical)", count: 1, summary: "Plugin" }]);
     expect(deriveWhatsNewOverview(legacy)).toEqual([{ id: "all-updates", label: "Pre-product-grouping updates", count: 1, summary: "Earlier release" }]);
     expect(deriveWhatsNewOverview(mixed)).toEqual([
-      { id: "fleet-plugin", label: "Fleet Plugin", count: 1, summary: "Plugin" },
+      { id: "fleet-plugin", label: "Fleet Plugin (historical)", count: 1, summary: "Plugin" },
       { id: "other-updates", label: "Other updates", count: 1, summary: "Earlier release" },
     ]);
     expect(filterWhatsNewSections(release, "overview")).toEqual([]);

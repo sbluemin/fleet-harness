@@ -92,7 +92,7 @@ Do not start implementation before the user picks a direction.
 
 - Build (tsc — vitest alone does not typecheck) + fleet-console tests + **each touched plugin's own test runner** (fleet-console green ≠ plugin green).
 - **Headed visual verification gate before delivery**: compare the result against the approved mock/시안 in all three themes with screenshot evidence; if token cohesion falls short or default form styles survive, polish before handing over.
-- Ship via the `pr-workflow` skill. Changelog note: the fragment tag allowlist has no `fleet-plugin` tag — plugin-visible changes go under a `### fleet-plugin` product heading with a `[fleet-console]` tag (established precedent).
+- Ship via the `pr-workflow` skill. Changelog note: a plugin-visible change is a Fleet Console change — it goes under `### fleet-console`, because that is the runtime the user notices it in.
 
 ## Must not
 

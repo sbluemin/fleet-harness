@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { Select } from "@fleet-console/sdk/react/browser";
 
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
-import { useT } from "../i18n/index.js";
+import { useT, type CoreMessageKey } from "../i18n/index.js";
 import { requestReleaseNotes } from "../release-notes-fetch.js";
 import { closeWhatsNew, selectReleaseNote } from "../store.js";
 import type { ConsoleState, ReleaseNoteItem, ReleaseNoteSection } from "../types.js";
@@ -244,13 +244,23 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
   );
 }
 
+// 섹션 이름은 CHANGELOG.md의 프로토콜 enum이라 영어로 고정된다. 화면에 보이는 라벨만 로케일화한다.
+const SECTION_LABEL_KEYS = {
+  "Added": "whatsnew.section.added",
+  "Changed": "whatsnew.section.changed",
+  "Fixed": "whatsnew.section.fixed",
+  "Removed": "whatsnew.section.removed",
+  "Breaking Changes": "whatsnew.section.breakingChanges",
+} as const satisfies Record<ReleaseNoteSection["heading"], CoreMessageKey>;
+
 function ReleaseNoteSectionView({ section, index }: { readonly section: ReleaseNoteSection; readonly index: number }) {
+  const t = useT();
   const tone = section.heading.toLowerCase().replaceAll(" ", "-");
   const style: WhatsNewSectionStyle = { "--whatsnew-delay": `${index * 55}ms` };
   return (
     <section className={`whatsnew-section whatsnew-section--${tone}`} style={style}>
       <h3>
-        <span className="whatsnew-section-chip">{section.heading}</span>
+        <span className="whatsnew-section-chip">{t(SECTION_LABEL_KEYS[section.heading])}</span>
       </h3>
       <ul>
         {section.items.map((item, itemIndex) => (
