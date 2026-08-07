@@ -66,6 +66,7 @@ beforeEach(() => {
     operationSearchSeed: null,
     quickLaunchOpen: false,
     quickLaunchDraft: null,
+    quickLaunchError: null,
     pendingQuickLaunch: null,
     pendingOperationFocus: null,
     keyboardFocusRequest: null,

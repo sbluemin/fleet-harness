@@ -360,9 +360,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     // 실행이 거절되면(모델 비활성·CLI 미가용·프롬프트 전달 불가) 초안을 잃지 않게 컴포저를 되연다.
     // 컴포저는 결과를 기다리지 않는 구조라, 사용자에게 되돌아오는 경로는 여기뿐이다.
     void launchViaPlugin(request.pluginId, request.kind, geometry, request.theaterId, registry.plugins, request.variant)
-      .catch(() => {
+      .catch((error: unknown) => {
         const draft = request.variant.prompt;
-        if (draft) reopenQuickLaunchWithDraft(draft);
+        if (!draft) return;
+        // 플러그인 클라이언트가 서버 error 코드를 message로 실어 던진다. 코드를 모르면 일반 문구로 떨어진다.
+        reopenQuickLaunchWithDraft(draft, error instanceof Error ? error.message : null);
       });
   }, [registry.plugins, state.activeTheaterId, state.pendingQuickLaunch]);
 

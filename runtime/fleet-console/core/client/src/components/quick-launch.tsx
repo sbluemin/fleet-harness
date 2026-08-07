@@ -8,7 +8,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { useT } from "../i18n/index.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { readQuickLaunchSelection, writeQuickLaunchSelection } from "../quick-launch-preferences.js";
-import { findVariantLaunchKind, QUICK_LAUNCH_PROMPT_MAX_CHARS, resolveSelection } from "../quick-launch.js";
+import { findVariantLaunchKind, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, resolveSelection } from "../quick-launch.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { closeQuickLaunch, consumeQuickLaunchDraft, requestQuickLaunch, setActiveTheater } from "../store.js";
 
@@ -150,6 +150,7 @@ export function QuickLaunch() {
   const overLimit = promptLength > QUICK_LAUNCH_PROMPT_MAX_CHARS;
   const canSubmit = promptLength > 0 && !overLimit && !!theaterId && !!target && !submitting;
   const modelLabel = selectedRow?.label ?? t("chrome.quickLaunch.modelUnset");
+  const rejectionKey = quickLaunchErrorMessageKey(state.quickLaunchError);
   const kindIcon = target
     ? registry.plugins.find((plugin) => plugin.id === target.pluginId)?.renderLaunchIcon?.(target.kind) ?? null
     : null;
@@ -221,6 +222,11 @@ export function QuickLaunch() {
           {overLimit ? (
             <span className="quick-launch-overflow" role="status">
               {t("chrome.quickLaunch.tooLong", { over: String(promptLength - QUICK_LAUNCH_PROMPT_MAX_CHARS) })}
+            </span>
+          ) : rejectionKey ? (
+            // 거절된 실행이 초안과 함께 돌아왔다. 무엇을 고쳐야 하는지 말하지 않으면 같은 Run이 반복된다.
+            <span className="quick-launch-rejection" role="alert">
+              {t(rejectionKey as Parameters<typeof t>[0])}
             </span>
           ) : null}
           <kbd className="quick-launch-esc">esc</kbd>

@@ -72,3 +72,20 @@ export function resolveSelection(
     effortLabel: chip?.label ?? null,
   };
 }
+
+/**
+ * 서버가 붙인 거절 코드를 사용자에게 보일 문구 키로 옮긴다. 모르는 코드는 일반 문구로 떨어뜨려
+ * 아무 말도 못 하는 상태를 만들지 않는다.
+ */
+export function quickLaunchErrorMessageKey(code: string | null): string | null {
+  if (code === null) return null;
+  switch (code) {
+    case "prompt_unsafe_for_shim": return "chrome.quickLaunch.errorUnsafePrompt";
+    case "prompt_unsupported_launch": return "chrome.quickLaunch.errorPromptUnsupported";
+    case "prompt_too_long": return "chrome.quickLaunch.errorTooLong";
+    case "gateway_model_not_enabled": return "chrome.quickLaunch.errorModelOff";
+    case "invalid_effort": return "chrome.quickLaunch.errorEffortOff";
+    case "agent_cli_unavailable": return "chrome.quickLaunch.errorCliUnavailable";
+    default: return "chrome.quickLaunch.errorGeneric";
+  }
+}

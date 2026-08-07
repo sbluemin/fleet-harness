@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
 
 import { readQuickLaunchSelection, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
-import { findVariantLaunchKind, QUICK_LAUNCH_PROMPT_MAX_CHARS, resolveSelection } from "../core/client/src/quick-launch.js";
+import { findVariantLaunchKind, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, resolveSelection } from "../core/client/src/quick-launch.js";
 import { getState, removeTheater, setState } from "../core/client/src/store.js";
 import type { TheaterInfo } from "../core/client/src/types.js";
 
@@ -187,5 +187,41 @@ describe("pending request lifecycle", () => {
     removeTheater("t1");
 
     expect(getState().pendingQuickLaunch).toMatchObject({ theaterId: "t2" });
+  });
+});
+
+describe("rejection messages", () => {
+  it("names what to fix for each rejection the server can send", () => {
+    // 초안만 되살리고 사유를 숨기면 결정적 실패는 같은 Run을 반복하게 만든다.
+    expect(quickLaunchErrorMessageKey("prompt_unsafe_for_shim")).toBe("chrome.quickLaunch.errorUnsafePrompt");
+    expect(quickLaunchErrorMessageKey("prompt_unsupported_launch")).toBe("chrome.quickLaunch.errorPromptUnsupported");
+    expect(quickLaunchErrorMessageKey("prompt_too_long")).toBe("chrome.quickLaunch.errorTooLong");
+    expect(quickLaunchErrorMessageKey("gateway_model_not_enabled")).toBe("chrome.quickLaunch.errorModelOff");
+    expect(quickLaunchErrorMessageKey("invalid_effort")).toBe("chrome.quickLaunch.errorEffortOff");
+    expect(quickLaunchErrorMessageKey("agent_cli_unavailable")).toBe("chrome.quickLaunch.errorCliUnavailable");
+  });
+
+  it("falls back to a generic reason rather than saying nothing", () => {
+    expect(quickLaunchErrorMessageKey("something_new_from_the_server")).toBe("chrome.quickLaunch.errorGeneric");
+  });
+
+  it("shows nothing when there was no rejection", () => {
+    expect(quickLaunchErrorMessageKey(null)).toBeNull();
+  });
+
+  it("declares every mapped key in both locales", () => {
+    const chrome = readFileSync(resolve(process.cwd(), "core/client/src/i18n/messages/chrome.ts"), "utf8");
+    const keys = [
+      "chrome.quickLaunch.errorUnsafePrompt",
+      "chrome.quickLaunch.errorPromptUnsupported",
+      "chrome.quickLaunch.errorTooLong",
+      "chrome.quickLaunch.errorModelOff",
+      "chrome.quickLaunch.errorEffortOff",
+      "chrome.quickLaunch.errorCliUnavailable",
+      "chrome.quickLaunch.errorGeneric",
+    ];
+    for (const key of keys) {
+      expect(chrome.split(`"${key}":`).length - 1, key).toBe(2);
+    }
   });
 });

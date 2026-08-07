@@ -10320,3 +10320,13 @@ body[data-codex-reading="true"] .operations-side-bar {
   font-size: 10.5px;
   letter-spacing: 0.04em;
 }
+
+/* 실행 거절 사유 — 상태 신호이므로 coral 채널을 쓴다. */
+.quick-launch-rejection {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--coral);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

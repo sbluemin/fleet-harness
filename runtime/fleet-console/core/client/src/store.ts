@@ -76,6 +76,7 @@ let state: ConsoleState = {
   operationSearchSeed: null,
   quickLaunchOpen: false,
   quickLaunchDraft: null,
+  quickLaunchError: null,
   pendingQuickLaunch: null,
   whatsNewOpen: false,
   releaseNotes: [],
@@ -564,12 +565,12 @@ export function toggleOperationSearch(): void {
 }
 
 export function openQuickLaunch(): void {
-  setState({ quickLaunchOpen: true });
+  setState({ quickLaunchOpen: true, quickLaunchError: null });
 }
 
-// 실행이 실패했을 때 초안을 잃지 않도록 컴포저를 그 문장과 함께 되연다.
-export function reopenQuickLaunchWithDraft(draft: string): void {
-  setState({ quickLaunchOpen: true, quickLaunchDraft: draft });
+// 실행이 실패했을 때 초안과 사유를 함께 들고 컴포저를 되연다.
+export function reopenQuickLaunchWithDraft(draft: string, errorCode: string | null): void {
+  setState({ quickLaunchOpen: true, quickLaunchDraft: draft, quickLaunchError: errorCode });
 }
 
 export function consumeQuickLaunchDraft(): void {
@@ -578,11 +579,11 @@ export function consumeQuickLaunchDraft(): void {
 }
 
 export function closeQuickLaunch(): void {
-  setState({ quickLaunchOpen: false });
+  setState({ quickLaunchOpen: false, quickLaunchError: null });
 }
 
 export function toggleQuickLaunch(): void {
-  setState({ quickLaunchOpen: !state.quickLaunchOpen });
+  setState({ quickLaunchOpen: !state.quickLaunchOpen, quickLaunchError: null });
 }
 
 // pendingOperationFocus/consumeOperationFocus와 같은 request/consume 계약. 컴포저는 의도만 남기고,
