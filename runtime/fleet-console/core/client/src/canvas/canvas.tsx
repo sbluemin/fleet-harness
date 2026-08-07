@@ -377,7 +377,14 @@ export function OperationsCanvas({
         picked: false,
       }
     : null;
-  const retainedTriageEntry = graceTriageEntry ?? protectedTriageEntry;
+  // 최소화한 Operation은 판에서 내려간 것이므로 어떤 유지 경로로도 무대에 되살아나지 않는다.
+  // previousTriageHasFocus가 치워둔 항목을 같은 이유로 이미 제외하지만, 최소화는 무대의 손잡이로
+  // 실행되어 그 손잡이가 이전 프레임 안에서 포커스를 쥔 채 남는다 — 걸러내지 않으면 무대와 최소화
+  // 선반에 같은 Operation이 동시에 선다. grace(전이 유예) 경로도 같은 이유로 함께 막는다.
+  const retainedTriageCandidate = graceTriageEntry ?? protectedTriageEntry;
+  const retainedTriageEntry = retainedTriageCandidate && triageMinimizedSet.has(retainedTriageCandidate.operation.id)
+    ? null
+    : retainedTriageCandidate;
   const pickedDifferentOperation = automaticTriageStage?.picked === true
     && automaticTriageStage.operation.id !== retainedTriageEntry?.operation.id;
   const triageDisplayQueue = retainedTriageEntry && !pickedDifferentOperation && automaticTriageStage?.operation.id !== retainedTriageEntry.operation.id
