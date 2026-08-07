@@ -29,6 +29,7 @@ export type PaletteCommandAction =
   | { readonly kind: "open-codex-entry"; readonly entryId: string }
   | { readonly kind: "toggle-rail" }
   | { readonly kind: "toggle-sidebar" }
+  | { readonly kind: "toggle-command-band-dock" }
   | { readonly kind: "switch-theme"; readonly theme: ThemeId }
   | { readonly kind: "open-settings" }
   | { readonly kind: "open-keyboard-shortcuts" }
@@ -218,6 +219,13 @@ export function buildPaletteCommands(
     label: t("palette.toggleSidebar"),
     current: false,
     action: { kind: "toggle-sidebar" },
+  });
+  // 전체화면에서 밴드가 숨은 동안 그 안의 토글은 inert라 닿지 않는다 — 팔레트가 표면 밖 경로다.
+  commands.push({
+    commandId: "toggle-command-band-dock",
+    label: t("palette.keepCommandBandVisible"),
+    current: false,
+    action: { kind: "toggle-command-band-dock" },
   });
   for (const theme of buildPaletteThemes(t)) {
     commands.push({

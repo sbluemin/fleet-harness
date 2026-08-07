@@ -440,13 +440,16 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   };
 
   const commandBandHidden = fullscreen.isFullscreen && !fullscreen.isVisible;
+  // 도킹 중에는 밴드가 흐름에 있어 부를 대상이 없다 — 엣지 스트립을 남기면 스테이지 최상단에
+  // 클릭을 가로채는 투명 오버레이만 떠 있게 된다.
+  const edgeRevealActive = fullscreen.isFullscreen && !fullscreen.isDocked;
 
   return (
     <>
       <button
         ref={edgeRevealRef}
         type="button"
-        className={`command-band-edge-reveal${fullscreen.isFullscreen ? " is-fullscreen" : ""}`}
+        className={`command-band-edge-reveal${edgeRevealActive ? " is-fullscreen" : ""}`}
         aria-label={t("chrome.commandBand.showCommandBand")}
         onPointerEnter={handleEdgePointerEnter}
         onPointerLeave={handleEdgePointerLeave}
@@ -456,7 +459,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       />
       <header
         ref={commandBandRef}
-        className={`command-band${requestedOperationsViewVisible ? " is-operations" : " is-utility"}${fullscreen.isFullscreen ? " is-fullscreen" : ""}${fullscreen.isVisible ? " is-revealed" : ""}`}
+        className={`command-band${requestedOperationsViewVisible ? " is-operations" : " is-utility"}${fullscreen.isFullscreen ? " is-fullscreen" : ""}${fullscreen.isVisible ? " is-revealed" : ""}${fullscreen.isFullscreen && fullscreen.isDocked ? " is-docked" : ""}`}
         style={{
           "--command-band-left-width": viewMode.effective === "mobile" ? "min-content" : `${sideBar.width}px`,
           "--command-band-map-anchor": `${mapControlsAnchor}px`,
@@ -625,7 +628,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         </div> : null}
       </div> : null}
       <div className="command-band-right">
-        {fullscreen.isFullscreen ? <button type="button" className="command-band-button command-band-pin" onClick={fullscreen.togglePin} aria-label={t("chrome.commandBand.pinCommandBand")} aria-pressed={fullscreen.isPinned} title={fullscreen.isPinned ? t("chrome.commandBand.unpinCommandBand") : t("chrome.commandBand.pinCommandBand")}>
+        {fullscreen.isFullscreen ? <button type="button" className="command-band-button command-band-dock-toggle" onClick={fullscreen.toggleDock} aria-label={t("chrome.commandBand.keepCommandBandVisible")} aria-pressed={fullscreen.isDocked} title={fullscreen.isDocked ? t("chrome.commandBand.stopKeepingCommandBandVisible") : t("chrome.commandBand.keepCommandBandVisible")}>
           <PinIcon />
         </button> : null}
         <button type="button" className="command-band-button command-band-viewmode" onClick={cycleViewModePreference} aria-label={viewModeLabel} aria-pressed={viewMode.preference !== "auto"} title={viewModeLabel}>

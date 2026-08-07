@@ -118,6 +118,7 @@ describe("buildPaletteCommands", () => {
       "open-rail-panel:repository",
       "toggle-rail",
       "toggle-sidebar",
+      "toggle-command-band-dock",
       "switch-theme:instrument",
       "switch-theme:maritime",
       "switch-theme:carbon",

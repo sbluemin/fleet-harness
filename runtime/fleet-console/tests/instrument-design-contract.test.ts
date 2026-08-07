@@ -961,10 +961,11 @@ describe("Instrument core design contract", () => {
     expect(operationBlock).toContain("background: var(--surface-frame);");
     const titlebarBlock = components.match(/^\.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
     expect(titlebarBlock).toContain("background: var(--surface-frame);");
-    // 캡이 실재하는 상태로 한정한다 — 풀스크린은 밴드가 fixed로 흐름에서 빠져 자동 은닉되므로
-    // 캡이 없고, 사이드바가 뷰포트 최상단에 닿는다. 무조건 해제하면 그 화면에서 마감이 사라진다.
+    // 캡이 실재하는 상태로 한정한다 — 자동 은닉 풀스크린은 밴드가 fixed로 흐름에서 빠져 캡이
+    // 없고, 사이드바가 뷰포트 최상단에 닿는다. 무조건 해제하면 그 화면에서 마감이 사라진다.
+    // 도킹한 풀스크린은 밴드가 흐름으로 돌아와 다시 캡이 되므로 같은 해제를 받아야 한다.
     const expandedSideBarBlock =
-      components.match(/\.console-shell:has\(\.command-band:not\(\.is-fullscreen\)\) \.operations-side-bar\.is-expanded \{[^}]*\}/)?.[0] ?? "";
+      components.match(/\.console-shell:has\(\.command-band:not\(\.is-fullscreen\)\) \.operations-side-bar\.is-expanded,\n\.console-shell:has\(\.command-band\.is-docked\) \.operations-side-bar\.is-expanded \{[^}]*\}/)?.[0] ?? "";
     expect(expandedSideBarBlock).toContain("border-top: none;");
     expect(expandedSideBarBlock).toContain("border-top-right-radius: 0;");
     expect(components).not.toMatch(/^\.operations-side-bar\.is-expanded \{/m);
@@ -979,9 +980,11 @@ describe("Instrument core design contract", () => {
     expect(layout).toContain(".command-band-theater-cluster {");
     expect(layout).not.toContain("--command-band-carrier");
     expect(commandBand).toContain("useFullscreenCommandBand");
-    expect(commandBand).toContain('className={`command-band-edge-reveal${fullscreen.isFullscreen ? " is-fullscreen" : ""}`}');
+    // 엣지 스트립은 자동 은닉일 때만 존재한다 — 도킹 중에 남기면 스테이지 최상단을 가로챈다.
+    expect(commandBand).toContain("const edgeRevealActive = fullscreen.isFullscreen && !fullscreen.isDocked;");
+    expect(commandBand).toContain('className={`command-band-edge-reveal${edgeRevealActive ? " is-fullscreen" : ""}`}');
     expect(commandBand).toContain('aria-label={t("chrome.commandBand.showCommandBand")}');
-    expect(commandBand).toContain('aria-pressed={fullscreen.isPinned}');
+    expect(commandBand).toContain('aria-pressed={fullscreen.isDocked}');
     expect(commandBand).toContain("inert={commandBandHidden || undefined}");
     expect(commandBand).toContain("onKeyDown={(event) => { if (event.key === \"Tab\") fullscreen.reveal(); }}");
     expect(layout).toContain(".command-band.is-fullscreen {");
@@ -991,7 +994,16 @@ describe("Instrument core design contract", () => {
     expect(layout).toContain(".command-band-edge-reveal.is-fullscreen {");
     expect(layout).toContain("height: 8px;");
     expect(layout).toContain('html[data-desktop-shell="true"] .command-band-edge-reveal {');
-    expect(layout).toContain('body:has([aria-modal="true"]:not([hidden])) .command-band.is-fullscreen,');
+    // 도킹은 흐름 복귀다 — position/transform을 되돌리지 않으면 "계속 보이기"가 44px을 계속 덮는다.
+    const dockedBandBlock = layout.match(/\.command-band\.is-fullscreen\.is-docked \{[^}]*\}/)?.[0] ?? "";
+    expect(dockedBandBlock).toContain("position: relative;");
+    expect(dockedBandBlock).toContain("transform: none;");
+    // 모달 뒤로 물러나는 것은 떠 있는 밴드뿐이다 — 도킹된 밴드에 걸면 44px 빈 띠만 남는다.
+    expect(layout).toContain('body:has([aria-modal="true"]:not([hidden])) .command-band.is-fullscreen:not(.is-docked),');
+    // aria-pressed가 화면에 흔적을 남기지 않던 회귀를 막는다 — 밴드 토글의 눌림은 brass 채움이다.
+    const pressedBandButtonBlock = layout.match(/\.command-band-button\[aria-pressed="true"\] \{[^}]*\}/)?.[0] ?? "";
+    expect(pressedBandButtonBlock).toContain("background: color-mix(in oklch, var(--brass) 12%, transparent);");
+    expect(pressedBandButtonBlock).toContain("color: var(--brass-ink);");
   });
 
   it("keeps long What's new content inside the scrollable body without shrinking controls", () => {

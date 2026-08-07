@@ -7,6 +7,7 @@ import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/r
 import { fetchSearch } from "../codex/api.js";
 import { propagateSettingsEntryIndex, recordSettingsEntryIndex } from "./command-band-system-cluster.js";
 import { setGlobalSettingsField } from "../global-settings-store.js";
+import { toggleCommandBandDocked } from "../fullscreen-band-store.js";
 import {
   filterOperationSearchEntries,
   groupOperationSearchEntries,
@@ -377,6 +378,10 @@ export function OperationSearch({
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         previousFocusRef.current = document.querySelector<HTMLElement>(".command-band-sidebar-toggle");
         setSideBarCollapsed(!getSideBarState().collapsed);
+        break;
+      }
+      case "toggle-command-band-dock": {
+        toggleCommandBandDocked();
         break;
       }
       case "switch-theme": {
