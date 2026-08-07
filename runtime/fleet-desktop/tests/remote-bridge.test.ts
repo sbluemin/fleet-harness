@@ -70,6 +70,8 @@ describe("console target", () => {
     [`${REMOTE}/console/settings`, REMOTE],
     // 돌아오는 길도 이 다리를 거쳐야 한다 — window policy가 활성 origin 밖을 막기 때문이다.
     [`${LOCAL}/console/`, LOCAL],
+    // 이 기계에서 발견한 다른 콘솔도 마찬가지다. 가로채지 않으면 policy가 막아 클릭이 무음으로 죽는다.
+    ["http://127.0.0.1:50000/console/", "http://127.0.0.1:50000"],
   ])("claims %s", (url, origin) => {
     expect(consoleTarget(url, LOCAL)).toBe(origin);
   });
@@ -249,6 +251,34 @@ describe("remote bridge", () => {
     contents.emit("will-navigate", home, `${LOCAL}/console/`, false, true);
 
     expect(home.preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it("opens another console on this machine only after the local console confirms it found one", async () => {
+    const DISCOVERED = "http://127.0.0.1:50000";
+    const harness = createHarness({
+      responses: (path) => (path === "/api/v1/local-consoles"
+        ? Response.json({ consoles: [{ origin: DISCOVERED, version: "1.51.0", owner: "cli", distro: null }] })
+        : handoff()),
+    });
+
+    await harness.bridge.open(DISCOVERED);
+
+    // 핀도 자격도 거치지 않는다 — 같은 기계이므로 확인만으로 충분하다.
+    expect(harness.trace).toEqual(["ask:/api/v1/local-consoles", `activate:${DISCOVERED}`, `load:${DISCOVERED}/console/`]);
+  });
+
+  /**
+   * 원격 콘솔이 서빙한 페이지가 `http://127.0.0.1:<임의>`로 항해를 걸면 그 주소는 보는 사람의
+   * 기계에 있는 전혀 다른 서비스를 가리킨다. 발견 목록에 없는 곳으로는 창을 보내지 않는다.
+   */
+  it("refuses a loopback port the local console never reported", async () => {
+    const harness = createHarness({
+      responses: (path) => (path === "/api/v1/local-consoles" ? Response.json({ consoles: [] }) : handoff()),
+    });
+
+    await expect(harness.bridge.open("http://127.0.0.1:9999")).rejects.toThrow("remote_host_unknown");
+
+    expect(harness.trace).toEqual(["ask:/api/v1/local-consoles"]);
   });
 
   it("stops listening once disposed", () => {

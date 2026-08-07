@@ -42,7 +42,7 @@ const REMOTE_BIND_HOST = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[A-Za-z0-9](?:[A-Za-z0-9._
 export function sanitizeRemoteAccessSettings(value: unknown): ConsoleRemoteAccessSettings | undefined {
   if (!isRecord(value)) return undefined;
   const enabled = typeof value.enabled === "boolean" ? value.enabled : undefined;
-  const bindHost = isValidRemoteBindHost(value.bindHost) ? value.bindHost : undefined;
+  const bindHost = isValidRemoteBindHost(value.bindHost) ? canonicalizeRemoteBindHost(value.bindHost) : undefined;
   if (enabled === undefined && bindHost === undefined) return undefined;
   return { ...(enabled !== undefined ? { enabled } : {}), ...(bindHost !== undefined ? { bindHost } : {}) };
 }
@@ -53,6 +53,15 @@ export function sanitizeRemoteAccessSettings(value: unknown): ConsoleRemoteAcces
  * EADDRINUSE로 끝나고, 사용자는 "다른 프로그램이 쓰고 있다"는 오해를 사는 오류만 받는다.
  */
 const UNUSABLE_REMOTE_BIND_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "0.0.0.0"]);
+
+/**
+ * DNS 이름은 대소문자를 가리지 않지만 `validateHost`는 Host 헤더를 바이트로 비교하고, 브라우저와
+ * Chromium은 URL 호스트명을 소문자로 정규화해 보낸다. 저장된 이름에 대문자가 남아 있으면 리스너와
+ * 인증서는 멀쩡한데 모든 요청이 403이다 — 조인까지 포함해서. 그래서 경계에서 한 번 접어 둔다.
+ */
+export function canonicalizeRemoteBindHost(value: string): string {
+  return value.toLowerCase();
+}
 
 export function isValidRemoteBindHost(value: unknown): value is string {
   // 루프백은 원격 바인드가 아니다. 이 자리에 넣으면 원격 세션 규칙이 로컬 표면에 적용된다.

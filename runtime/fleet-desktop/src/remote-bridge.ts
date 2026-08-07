@@ -1,6 +1,6 @@
 import type { WebContents } from "electron";
 
-import { isRemoteConsoleOrigin } from "./console-origin.js";
+import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-origin.js";
 import type { DesktopNotice } from "./desktop-notices.js";
 import { confirmRemoteIdentity, joinRemoteConsole, type RemoteCertificatePins, type SessionFetch } from "./remote-access.js";
 import type { WindowPolicy } from "./window-policy.js";
@@ -49,6 +49,7 @@ interface Handoff {
 }
 
 const HANDOFF_PATH = "/api/v1/desktop/handoff";
+const LOCAL_CONSOLES_PATH = "/api/v1/local-consoles";
 const REMOTE_HOSTS_PATH = "/api/v1/remote-hosts";
 const CONSOLE_PATH = "/console/";
 const JOIN_PATH = "/api/v1/join";
@@ -72,6 +73,15 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   async function open(origin: string): Promise<void> {
     // 집으로 돌아가는 길에는 핀도 자격도 필요 없다 — 루프백은 언제나 허용된 origin이다.
     if (origin === deps.localOrigin()) return openLocal(origin);
+    /**
+     * 이 기계의 다른 콘솔도 핀과 자격 없이 열 수 있다. 다만 창을 아무 로컬 포트로나 보낼 수는
+     * 없다 — 원격 콘솔이 서빙한 페이지가 `http://127.0.0.1:<임의>`로 항해를 걸면 그 주소는
+     * 사용자 기계의 전혀 다른 서비스를 가리킨다. 로컬 Console이 실제로 발견한 것만 연다.
+     */
+    if (isLoopbackConsoleOrigin(origin)) {
+      if (!(await isDiscoveredLocally(origin))) throw new Error("remote_host_unknown");
+      return openLocal(origin);
+    }
     const response = await askLocalConsole(HANDOFF_PATH, { origin });
     if (response.status === 404) throw new Error("remote_host_unknown");
     if (!response.ok) throw new Error("remote_host_unavailable");
@@ -114,6 +124,19 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     }
     if (response.status === 401) throw new Error("remote_host_session_expired");
     if (!response.ok) throw new Error("remote_host_unavailable");
+  }
+
+  async function isDiscoveredLocally(origin: string): Promise<boolean> {
+    const home = deps.localOrigin();
+    if (!home) return false;
+    try {
+      const response = await localFetch(`${home}${LOCAL_CONSOLES_PATH}`);
+      if (!response.ok) return false;
+      const payload = await response.json() as { readonly consoles?: readonly { readonly origin?: unknown }[] };
+      return (payload.consoles ?? []).some((entry) => entry.origin === origin);
+    } catch {
+      return false;
+    }
   }
 
   async function openLocal(origin: string): Promise<void> {
@@ -199,7 +222,11 @@ export function consoleTarget(url: string, localOrigin: string | null): string |
     const parsed = new URL(url);
     if (!parsed.pathname.startsWith(CONSOLE_PATH)) return null;
     if (isRemoteConsoleOrigin(parsed.origin)) return parsed.origin;
-    return localOrigin !== null && parsed.origin === localOrigin ? parsed.origin : null;
+    // 루프백 콘솔은 셸이 띄운 것이든 이 기계에서 발견한 것이든 이 다리를 거친다. 열어 줄지는
+    // open()이 로컬 Console에 물어 정하고, 여기서는 window policy가 막기 전에 가로채기만 한다.
+    if (!isLoopbackConsoleOrigin(parsed.origin)) return null;
+    // 셸이 자기 콘솔을 아직 갖지 않았다면 물어볼 곳도 없다.
+    return localOrigin === null ? null : parsed.origin;
   } catch {
     return null;
   }
