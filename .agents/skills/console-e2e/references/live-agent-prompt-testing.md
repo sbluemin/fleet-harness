@@ -24,8 +24,14 @@ node /abs/path/to/worktree/runtime/fleet-console/dist/cli.mjs serve
 Confirm what actually booted before trusting any result:
 
 ```bash
-ps -p "$(python3 -c "import json;print(json.load(open('$E2E_DIR/console.lock'))['pid'])")" -o command=
+ps -p "$(python3 -c "import json;print(json.load(open('<e2e-dir>/console.lock'))['pid'])")" -o command=
 ```
+
+Every `<placeholder>` below is spelled out on each call, never carried in a shell variable —
+cwd and shell state reset between tool calls, so a variable set in one call is empty in the
+next. That includes the browser session id: the base skill requires the same **literal** id in
+every independent `ab` call. The examples use `fleet-console-e2e-20260807-strict`; replace it
+consistently, and replace `<e2e-dir>` / `<scratch>` / `<worktree>` / `<port>` the same way.
 
 ## Serve with the capture and model levers already set
 
@@ -35,8 +41,8 @@ sidecar. Setting them on the spawned agent CLI is too late.
 
 ```bash
 env -u CLAUDE_CODE_CHILD_SESSION \
-  FLEET_CONSOLE_DIR="$E2E_DIR" \
-  FLEET_GATEWAY_WIRE_LOG="$SCRATCH/wire.jsonl" \
+  FLEET_CONSOLE_DIR=<e2e-dir> \
+  FLEET_GATEWAY_WIRE_LOG=<scratch>/wire.jsonl \
   FLEET_AI_GATEWAY_MODEL='claude-gateway--opencode--deepseek-v4-flash[1m]' \
   node /abs/path/to/worktree/runtime/fleet-console/dist/cli.mjs serve
 ```
@@ -65,7 +71,7 @@ three onboarding tours — each swallows clicks aimed at the page behind it, and
 looks like a missing element, not a blocked one. Dismiss, then assert:
 
 ```bash
-ab --session "$S" eval "document.querySelectorAll('[aria-modal=\"true\"]').length"   # expect 0
+ab --session fleet-console-e2e-20260807-strict eval "document.querySelectorAll('[aria-modal=\"true\"]').length"   # expect 0
 ```
 
 `Escape` closes what a close button sometimes will not.
@@ -90,8 +96,8 @@ ps eww -p <claude-pid> | tr ' ' '\n' | grep -E '^(ANTHROPIC_BASE_URL|FLEET_GATEW
 `ab type` and `ab fill` **do not reach xterm**. Only `press` does, one key at a time:
 
 ```bash
-for k in "/" m o d e l; do ab --session "$S" press "$k" >/dev/null; done
-ab --session "$S" press Enter
+for k in "/" m o d e l; do ab --session fleet-console-e2e-20260807-strict press "$k" >/dev/null; done
+ab --session fleet-console-e2e-20260807-strict press Enter
 ```
 
 The terminal renders to **canvas**, so `.xterm-rows` is empty and there is no DOM text to
@@ -115,7 +121,7 @@ Boot alone emits a quota probe (`messages: [{role:"user",content:"quota"}]`, `ma
 ```bash
 python3 -c "
 import json
-rows=[json.loads(l) for l in open('$SCRATCH/wire.jsonl')]
+rows=[json.loads(l) for l in open('<scratch>/wire.jsonl')]
 req=[r for r in rows if r['event'].endswith('.wire.request')][-1]['payload']['payload']
 print(len(req.get('tools',[])), 'tools')
 print(json.dumps(req['tools'][0], indent=2)[:800])
