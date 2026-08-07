@@ -1,7 +1,7 @@
 import type { AdmiralDoctrine } from "../protocols/doctrine.js";
 import type { ClaudeSkillOverride } from "./gateway-skills.js";
 
-export type AgentCliId = "claude" | "claude-native" | "claude-gateway";
+export type AgentCliId = "claude-native" | "claude-gateway";
 
 export interface AgentCliProfile {
   readonly id: AgentCliId;

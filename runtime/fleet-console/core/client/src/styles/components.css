@@ -399,7 +399,7 @@
   line-height: 1.5;
 }
 
-/* 토글 — carrier-settings 토글과 동일한 brass/aurora 스위치 어휘. */
+/* 토글 — 설정 화면 공통 brass/aurora 스위치 어휘. */
 .global-settings-toggle {
   display: inline-flex;
   align-items: center;

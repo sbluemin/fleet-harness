@@ -30,61 +30,31 @@ afterEach(() => {
 });
 
 describe("agent CLI session resume and capture hooks", () => {
-  it("defaults metaphor off and forwards explicit opt-in to the prompt builder", async () => {
-    const observed: Array<{ enableMetaphor: boolean; doctrine: string }> = [];
+  it("builds an Admiral system prompt for gateway but never for native", async () => {
+    const built: string[] = [];
 
-    for (const enableMetaphor of [undefined, true] as const) {
-      const root = createTempRoot(`fleet-admiral-metaphor-${enableMetaphor ?? false}-`);
-      const profile = baseProfile("claude", {
+    for (const cliId of ["claude-gateway", "claude-native"] as const) {
+      const root = createTempRoot(`fleet-admiral-doctrine-${cliId}-`);
+      const profile = baseProfile(cliId, {
         args: [],
         cwd: root,
         env: { HOME: root },
       });
       const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
-        buildSystemPrompt: (value) => {
-          const options = typeof value === "boolean"
-            ? { enableMetaphor: value, doctrine: "classic" as const }
-            : value;
-          observed.push({ enableMetaphor: options.enableMetaphor, doctrine: options.doctrine ?? "classic" });
+        buildSystemPrompt: () => {
+          built.push(cliId);
           return "Fleet doctrine";
         },
-        ...(enableMetaphor === undefined ? {} : { enableMetaphor }),
       }));
       injected.cleanup?.();
     }
 
-    expect(observed).toEqual([
-      { enableMetaphor: false, doctrine: "classic" },
-      { enableMetaphor: true, doctrine: "classic" },
-    ]);
-  });
-
-  it("selects gateway doctrine from claude-gateway profile id", async () => {
-    const observed: Array<{ enableMetaphor: boolean; doctrine: string }> = [];
-    const root = createTempRoot("fleet-admiral-gateway-doctrine-");
-    const profile = baseProfile("claude-gateway", {
-      args: [],
-      cwd: root,
-      env: { HOME: root },
-    });
-    const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
-      buildSystemPrompt: (value) => {
-        const options = typeof value === "boolean"
-          ? { enableMetaphor: value, doctrine: "classic" as const }
-          : value;
-        observed.push({ enableMetaphor: options.enableMetaphor, doctrine: options.doctrine ?? "classic" });
-        return "Fleet doctrine";
-      },
-      enableMetaphor: true,
-    }));
-    injected.cleanup?.();
-
-    expect(observed).toEqual([{ enableMetaphor: true, doctrine: "gateway" }]);
+    expect(built).toEqual(["claude-gateway"]);
   });
 
   it("places Claude --resume before Fleet injection flags", async () => {
     const root = createTempRoot("fleet-admiral-claude-resume-");
-    const profile = baseProfile("claude", {
+    const profile = baseProfile("claude-gateway", {
       args: ["--model", "claude-opus"],
       cwd: root,
       env: { HOME: root },
@@ -142,7 +112,7 @@ describe("agent CLI session resume and capture hooks", () => {
 
   it("renders the background report alongside turn end without a second hook on Stop", async () => {
     const root = createTempRoot("fleet-admiral-background-hooks-");
-    const profile = baseProfile("claude", {
+    const profile = baseProfile("claude-gateway", {
       args: [],
       cwd: root,
       env: { HOME: root },
@@ -176,7 +146,7 @@ describe("agent CLI session resume and capture hooks", () => {
     const dataDir = path.join(root, "data");
     const plugin = await createAgentCliPlugin({
       captureSessionHookExec: hookExec("node", ["console.js", "hook", "capture-session", "claude"]),
-      cliId: "claude",
+      cliId: "claude-gateway",
       cwd: root,
       dataDir,
       withMarketplaceLock: async (_target, fn) => fn(),
@@ -241,7 +211,6 @@ function baseInjectOptions(
     readonly backgroundReportHookExec?: FleetHookExec;
     readonly captureSessionHookExec?: FleetHookExec;
     readonly dedicatedMcpSession?: TestDedicatedMcpSession;
-    readonly enableMetaphor?: boolean;
     readonly gatewayExposedModels?: Parameters<typeof injectAgentCliProfile>[1]["gatewayExposedModels"];
     readonly inputWaitingHookExec?: FleetHookExec;
     readonly resumeSessionId?: string;
@@ -256,7 +225,6 @@ function baseInjectOptions(
     ...(overrides.autoNameHookExec ? { autoNameHookExec: overrides.autoNameHookExec } : {}),
     ...(overrides.backgroundReportHookExec ? { backgroundReportHookExec: overrides.backgroundReportHookExec } : {}),
     ...(overrides.captureSessionHookExec ? { captureSessionHookExec: overrides.captureSessionHookExec } : {}),
-    ...(overrides.enableMetaphor === undefined ? {} : { enableMetaphor: overrides.enableMetaphor }),
     ...(overrides.gatewayExposedModels ? { gatewayExposedModels: overrides.gatewayExposedModels } : {}),
     ...(overrides.inputWaitingHookExec ? { inputWaitingHookExec: overrides.inputWaitingHookExec } : {}),
     ...(overrides.resumeSessionId ? { resumeSessionId: overrides.resumeSessionId } : {}),

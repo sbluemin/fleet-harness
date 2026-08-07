@@ -8,7 +8,6 @@ import type { GatewayModel } from "@dotobokuri/core-ai-gateway";
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { resolveDoctrineFromCliId } from "../protocols/doctrine.js";
 import { isHostSessionToolAllowed } from "../tools.js";
-import type { SystemPromptBuildOptions } from "../prompts/index.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
 import { buildGatewayCustomAgents, type GatewayEffortExposure } from "./gateway-agents.js";
 import { GATEWAY_DISABLED_CLAUDE_SKILLS, buildDisabledSkillOverrides } from "./gateway-skills.js";
@@ -21,11 +20,10 @@ import type {
 } from "./types.js";
 
 export interface InjectAgentCliProfileOptions {
-  readonly buildSystemPrompt: (options: boolean | SystemPromptBuildOptions) => string;
+  readonly buildSystemPrompt: () => string;
   readonly dataDir?: string;
   readonly dedicatedMcpSession: DedicatedMcpSession;
   readonly mcpSessionLabel?: string;
-  readonly enableMetaphor?: boolean;
   readonly captureSessionHookExec?: FleetHookExec;
   // 턴 시작(UserPromptSubmit)·턴 종료(Stop) 신호 hook. host가 빌드해 주입한다.
   readonly turnStartHookExec?: FleetHookExec;
@@ -42,7 +40,7 @@ export interface InjectAgentCliProfileOptions {
   readonly withMarketplaceLock: AgentCliPluginMarketplaceLock;
   /**
    * claude-gateway 전용: AI Gateway에 노출된 모델로 `--agents` JSON을 조립한다.
-   * 파일 영속화 없이 런치 인자로만 주입한다. classic Claude 경로에는 전달하지 않는다.
+   * 파일 영속화 없이 런치 인자로만 주입한다.
    */
   readonly gatewayExposedModels?: readonly GatewayModel[];
   /** claude-gateway 전용: 모델별로 정체성을 만들 강도. 항목이 없으면 그 모델의 사다리 전체. */
@@ -84,13 +82,11 @@ export async function injectAgentCliProfile(
     return profile;
   }
 
-  const enableMetaphor = options.enableMetaphor ?? false;
   const doctrine = resolveDoctrineFromCliId(profile.id);
   const endpoint = await options.dedicatedMcpSession.getEndpoint();
   const tokenLabel = options.mcpSessionLabel ?? `agent:${profile.id}:${crypto.randomUUID()}`;
   const tokens = await options.dedicatedMcpSession.issueSessionToken({
     cwd: profile.cwd,
-    // gateway/native doctrine 세션에는 캐리어 운용 도구를 노출하지 않는다.
     // native는 위키 MCP만 남긴다.
     includeTool: (toolId) => isHostSessionToolAllowed(toolId, doctrine),
     label: tokenLabel,
@@ -99,7 +95,7 @@ export async function injectAgentCliProfile(
   // native는 Admiral 시스템 프롬프트를 붙이지 않는다.
   const systemPrompt = doctrine === "native"
     ? undefined
-    : options.buildSystemPrompt({ enableMetaphor, doctrine });
+    : options.buildSystemPrompt();
   const tempCleanups: Array<() => void> = [];
   try {
     const systemPromptFile = systemPrompt !== undefined && isClaudeFamilyProfile(profile)
@@ -161,7 +157,7 @@ export async function injectAgentCliProfile(
 }
 
 function isClaudeFamilyProfile(profile: AgentCliProfile): boolean {
-  return profile.id === "claude" || profile.id === "claude-native" || profile.id === "claude-gateway";
+  return profile.id === "claude-native" || profile.id === "claude-gateway";
 }
 
 function buildAgentCliMcpServerConfigs(

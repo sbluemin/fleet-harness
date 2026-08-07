@@ -1,4 +1,4 @@
-// carriers/store-lock-race.test.ts에서 이전 — 락 알고리즘이 fs-store로 이동했으므로
+// stores/store-lock-race.test.ts에서 이전 — 락 알고리즘이 fs-store로 이동했으므로
 // race/quarantine 복구 단위 테스트를 fs-store directory-lock으로 재작성한다.
 import os from "node:os";
 import path from "node:path";
@@ -14,7 +14,7 @@ describe("directory-lock stale recovery races", () => {
   it("quarantine 후 owner identity가 달라지면 lock을 복원한다", async () => {
     const actualFs = await vi.importActual<typeof import("node:fs")>("node:fs");
     const tempDir = actualFs.mkdtempSync(path.join(os.tmpdir(), "fleet-dir-lock-race-"));
-    const lockDir = path.join(tempDir, "carriers.json.lock");
+    const lockDir = path.join(tempDir, "state.json.lock");
     const staleOwner = { pid: 999_999, hostname: os.hostname(), startedAt: Date.now() - 60_000 };
     const freshOwner = { pid: process.pid, hostname: os.hostname(), startedAt: Date.now() };
     actualFs.mkdirSync(lockDir);

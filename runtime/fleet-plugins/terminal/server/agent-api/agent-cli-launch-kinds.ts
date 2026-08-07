@@ -12,14 +12,10 @@ export function buildAgentCliLaunchKinds(
       return {
         id: cli.id,
         type: operationType,
-        title: resolveOperationTitle(cli),
+        title: cli.label,
         ...(disabledReason ? { disabled: true, disabledReason } : {}),
       };
     });
-}
-
-function resolveOperationTitle(cli: AgentCliLaunchMetadata): string {
-  return cli.id === "claude" ? `${cli.label} (Classic)` : cli.label;
 }
 
 function resolveDisabledReason(cli: AgentCliLaunchMetadata): string | undefined {

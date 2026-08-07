@@ -103,7 +103,7 @@ describe("Anthropic request translation", () => {
           input_schema: { type: "object", properties: {} },
         },
         {
-          name: "mcp__fleet__carrier_dispatch",
+          name: "mcp__fleet__wiki_read",
           input_schema: { type: "object", properties: {} },
           defer_loading: true,
         },
@@ -118,7 +118,7 @@ describe("Anthropic request translation", () => {
       },
       {
         type: "function",
-        name: "mcp__fleet__carrier_dispatch",
+        name: "mcp__fleet__wiki_read",
         parameters: { type: "object", properties: {} },
         defer_loading: true,
       },
@@ -414,9 +414,9 @@ describe("Anthropic request translation", () => {
           type: "tool_result",
           tool_use_id: "call-tool-search",
           content: [
-            { type: "tool_reference", tool_name: "mcp__fleet__carrier_dispatch" },
-            { type: "tool_reference", tool_name: "mcp__fleet__carrier_jobs" },
-            { type: "tool_reference", tool_name: "mcp__fleet__carrier_dispatch" },
+            { type: "tool_reference", tool_name: "mcp__fleet__wiki_read" },
+            { type: "tool_reference", tool_name: "mcp__fleet__wiki_orient" },
+            { type: "tool_reference", tool_name: "mcp__fleet__wiki_read" },
           ],
         }],
       }],
@@ -426,13 +426,13 @@ describe("Anthropic request translation", () => {
       type: "function_call_output",
       call_id: "call-tool-search",
       output: [
-        '{"type":"tool_reference","tool_name":"mcp__fleet__carrier_dispatch"}',
-        '{"type":"tool_reference","tool_name":"mcp__fleet__carrier_jobs"}',
-        '{"type":"tool_reference","tool_name":"mcp__fleet__carrier_dispatch"}',
+        '{"type":"tool_reference","tool_name":"mcp__fleet__wiki_read"}',
+        '{"type":"tool_reference","tool_name":"mcp__fleet__wiki_orient"}',
+        '{"type":"tool_reference","tool_name":"mcp__fleet__wiki_read"}',
       ].join(""),
       tool_references: [
-        "mcp__fleet__carrier_dispatch",
-        "mcp__fleet__carrier_jobs",
+        "mcp__fleet__wiki_read",
+        "mcp__fleet__wiki_orient",
       ],
     }]);
   });
@@ -1949,12 +1949,12 @@ describe("OpenAI Responses adapter", () => {
       input: [{
         type: "function_call_output",
         call_id: "call-tool-search",
-        output: '{"type":"tool_reference","tool_name":"mcp__fleet__carrier_dispatch"}',
-        tool_references: ["mcp__fleet__carrier_dispatch"],
+        output: '{"type":"tool_reference","tool_name":"mcp__fleet__wiki_read"}',
+        tool_references: ["mcp__fleet__wiki_read"],
       }],
       tools: [{
         type: "function",
-        name: "mcp__fleet__carrier_dispatch",
+        name: "mcp__fleet__wiki_read",
         parameters: { type: "object", properties: {} },
         defer_loading: true,
       }],
@@ -1966,11 +1966,11 @@ describe("OpenAI Responses adapter", () => {
     expect(body.input).toEqual([{
       type: "function_call_output",
       call_id: "call-tool-search",
-      output: '{"type":"tool_reference","tool_name":"mcp__fleet__carrier_dispatch"}',
+      output: '{"type":"tool_reference","tool_name":"mcp__fleet__wiki_read"}',
     }]);
     expect(body.tools).toEqual([{
       type: "function",
-      name: "mcp__fleet__carrier_dispatch",
+      name: "mcp__fleet__wiki_read",
       parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
       strict: true,
     }]);

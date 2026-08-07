@@ -59,129 +59,12 @@ export interface SessionInfo {
   readonly resumeAvailable: boolean;
 }
 
-export interface ObservedTenant {
-  readonly tenantId: string;
-  readonly tenantLabel: string;
-  readonly createdAt: number;
-  readonly sessions: number;
-  readonly status?: "live" | "closed" | "dormant";
-  readonly cliRunId?: string;
-  readonly registrationId?: string;
-  readonly theaterId?: string;
-  readonly terminalSessionId?: string;
-}
-
-export interface ObservedEvent {
-  readonly id: number;
-  readonly tenantId: string;
-  readonly jobId?: string;
-  readonly type: string;
-  readonly at: number;
-  readonly event: Record<string, unknown>;
-}
-
-export interface ObserverTruncation {
-  readonly droppedCount: number;
-  readonly newestId?: number;
-}
-
-export interface SnapshotJob {
-  readonly jobId: string;
-  readonly status: string;
-  readonly updatedAt: number;
-  /** First valid request retained at the snapshot level when begin events expire. */
-  readonly request?: RequestView;
-  readonly events: readonly ObservedEvent[];
-}
-
-export interface SnapshotTenantJobs {
-  readonly tenantId: string;
-  readonly tenantLabel?: string;
-  readonly jobs: readonly SnapshotJob[];
-  readonly truncation?: ObserverTruncation;
-}
-
-export interface TrackToolCall {
-  readonly id: string;
-  readonly name?: string;
-  readonly input?: unknown;
-  readonly output?: unknown;
-  readonly status?: string;
-}
-
-export interface RequestBlockView {
-  readonly tag: string;
-  readonly hint: string;
-  readonly required: boolean;
-  readonly present: boolean;
-  readonly body: string;
-}
-
-export interface RequestView {
-  readonly blocks: readonly RequestBlockView[];
-  readonly additional: string;
-}
-
-export interface TrackView {
-  readonly trackId: string;
-  readonly displayName: string;
-  readonly displayCli?: string;
-  readonly model?: string;
-  readonly effort?: string;
-  readonly subtitle?: string;
-  readonly kind?: string;
-  readonly status: string;
-  readonly lastEventId: number;
-  readonly latestLine?: string;
-  readonly text: string;
-  readonly thought: string;
-  readonly sentTextLength: number;
-  readonly sentThoughtLength: number;
-  readonly requestPreview?: string;
-  readonly tools: readonly TrackToolCall[];
-  readonly startedAt?: number;
-  readonly finishedAt?: number;
-  readonly error?: string;
-}
-
-export interface JobView {
-  readonly jobId: string;
-  readonly tenantId: string;
-  readonly label?: string;
-  readonly ownerCarrierId?: string;
-  readonly kind?: string;
-  readonly signatureCli?: string;
-  readonly status: string;
-  readonly startedAt?: number;
-  readonly updatedAt: number;
-  readonly finishedAt?: number;
-  readonly summary?: string;
-  readonly error?: string;
-  /** First valid observer-only request emitted by a job track. */
-  readonly request?: RequestView;
-  readonly trackOrder: readonly string[];
-  readonly tracks: Readonly<Record<string, TrackView>>;
-  readonly lastEventId: number;
-  readonly recentEvents: readonly ObservedEvent[];
-}
-
-export interface TenantJobsView {
-  readonly tenantId: string;
-  readonly tenantLabel?: string;
-  readonly jobOrder: readonly string[];
-  readonly jobs: Readonly<Record<string, JobView>>;
-  readonly truncation: ObserverTruncation;
-}
-
 export interface AgentClientState {
   readonly connection: "connecting" | "live";
   readonly connectionError: string | null;
   readonly agentClis: readonly AgentCliMetadata[];
   readonly sessions: Readonly<Record<string, SessionInfo>>;
   readonly sessionOrder: readonly string[];
-  readonly tenants: readonly ObservedTenant[];
-  readonly tenantJobs: Readonly<Record<string, TenantJobsView>>;
-  readonly tenantOrder: readonly string[];
   readonly activeTerminalSessionId: string | null;
   readonly turnState: Readonly<Record<string, TurnState>>;
 }

@@ -16,12 +16,12 @@ describe("shortcut catalog", () => {
 
   it("appends active companion shortcuts to the end of Operations", () => {
     const operations = buildShortcutGroups(getT("en"), [
-      { label: "C", title: "Carrier Streams" },
+      { label: "C", title: "Chat" },
       { label: "A", title: "Session Analyst" },
     ]).find((group) => group.title === "Operations")!;
 
     expect(operations.entries.slice(-2)).toEqual([
-      { combos: [["Alt", "C"]], description: "Toggle Carrier Streams" },
+      { combos: [["Alt", "C"]], description: "Toggle Chat" },
       { combos: [["Alt", "A"]], description: "Toggle Session Analyst" },
     ]);
   });
@@ -34,6 +34,6 @@ describe("shortcut catalog", () => {
     expect(groups.flatMap((group) => group.entries).map((entry) => entry.description))
       .not.toContain("Close the open overlay or menu");
     expect(groups.flatMap((group) => group.entries).map((entry) => entry.description))
-      .not.toContain("Close the carrier job stream");
+      .not.toContain("Close the job stream");
   });
 });

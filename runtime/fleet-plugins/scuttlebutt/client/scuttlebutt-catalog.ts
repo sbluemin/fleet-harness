@@ -43,7 +43,7 @@ export const scuttlebuttEn = {
   "line.bori.3": "Courier Bori — dispatch coming through!",
   "line.dori.1": "Patrol reports nothing unusual.",
   "line.dori.2": "Dori entering the patrol route.",
-  "line.dori.3": "Carrier streams are steady.",
+  "line.dori.3": "Output streams are steady.",
 } as const;
 
 export type ScuttlebuttMessageKey = keyof typeof scuttlebuttEn;

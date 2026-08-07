@@ -63,9 +63,9 @@ describe("agent CLI plugin marketplace rendering", () => {
       }
     };
 
-    const firstRender = createAgentCliPlugin({ cliId: "claude", cwd, dataDir, withMarketplaceLock });
+    const firstRender = createAgentCliPlugin({ cliId: "claude-gateway", cwd, dataDir, withMarketplaceLock });
     await firstHomeEntered.promise;
-    const secondRender = createAgentCliPlugin({ cliId: "claude", cwd, dataDir, withMarketplaceLock });
+    const secondRender = createAgentCliPlugin({ cliId: "claude-gateway", cwd, dataDir, withMarketplaceLock });
     await secondHomeWaited.promise;
     releaseFirstHome.resolve(undefined);
     const [first, second] = await Promise.all([firstRender, secondRender]);
@@ -78,7 +78,7 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(findStagingEntries(homeMarketplace)).toEqual([]);
   });
 
-  it("wires AskUserQuestion PreToolUse and input-waiting Notification hooks for Claude", async () => {
+  it("wires AskUserQuestion PreToolUse and input-waiting Notification hooks for a gateway session", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-hooks-"));
     tempDirs.push(root);
     const dataDir = path.join(root, "data");
@@ -87,7 +87,7 @@ describe("agent CLI plugin marketplace rendering", () => {
     const inputWaitingHookExec = { command: "node", args: ["cli.mjs", "hook", "attention"] };
 
     const plugin = await createAgentCliPlugin({
-      cliId: "claude",
+      cliId: "claude-gateway",
       cwd,
       dataDir,
       inputWaitingHookExec,
@@ -121,7 +121,7 @@ describe("agent CLI plugin marketplace rendering", () => {
     mkdirSync(cwd, { recursive: true });
 
     const plugin = await createAgentCliPlugin({
-      cliId: "claude",
+      cliId: "claude-gateway",
       cwd,
       dataDir,
       captureSessionHookExec: { command: "node", args: ["cli.mjs", "hook", "capture-session", "claude"] },
@@ -154,7 +154,7 @@ describe("agent CLI plugin marketplace rendering", () => {
     writeFileSync(legacyManifest, "{}\n");
 
     const plugin = await createAgentCliPlugin({
-      cliId: "claude",
+      cliId: "claude-gateway",
       cwd: path.join(root, "project"),
       dataDir,
       withMarketplaceLock: async (_target, fn) => fn(),
@@ -176,14 +176,14 @@ describe("agent CLI plugin marketplace rendering", () => {
     writeFileSync(path.join(stalePluginDir, "skills", "legacy", "SKILL.md"), "# Legacy\n", { flag: "wx" });
 
     await createAgentCliPlugin({
-      cliId: "claude",
+      cliId: "claude-gateway",
       cwd,
       dataDir,
       withMarketplaceLock: async (_target, fn) => fn(),
     });
 
     expect(existsSync(stalePluginDir)).toBe(false);
-    expect(existsSync(path.join(dataDir, "marketplace", "plugins", "fleet"))).toBe(true);
+    expect(existsSync(path.join(dataDir, "marketplace", "plugins", "fleet-gateway"))).toBe(true);
   });
 
   it("omits protocol skills and carrier-operations for gateway doctrine", async () => {
@@ -242,33 +242,6 @@ describe("agent CLI plugin marketplace rendering", () => {
     }
   });
 
-  it("keeps classic plugin render including carrier-operations", async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-classic-doctrine-"));
-    tempDirs.push(root);
-
-    const plugin = await createAgentCliPlugin({
-      cliId: "claude",
-      cwd: path.join(root, "project"),
-      dataDir: path.join(root, "data"),
-      withMarketplaceLock: async (_target, fn) => fn(),
-    });
-
-    const skillsRoot = path.join(plugin.pluginRoot, "skills");
-    expect(existsSync(path.join(skillsRoot, "carrier-operations", "SKILL.md"))).toBe(true);
-    expect(existsSync(path.join(skillsRoot, "gateway"))).toBe(false);
-    expect(existsSync(path.join(skillsRoot, "protocol-baseline", "SKILL.md"))).toBe(true);
-    // classic은 캐리어 페르소나로 위임하므로 작전 워크플로 스킬을 렌더하지 않는다.
-    for (const skill of [
-      "workflow",
-      "workflow-architecting",
-      "workflow-implementing",
-      "workflow-review",
-      "workflow-research",
-    ]) {
-      expect(existsSync(path.join(skillsRoot, skill, "SKILL.md")), skill).toBe(false);
-    }
-  });
-
   it("renders wiki-operations only for native doctrine", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-native-doctrine-"));
     tempDirs.push(root);
@@ -290,41 +263,37 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(existsSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"))).toBe(true);
   });
 
-  it("keeps classic and gateway asset roots isolated under the same dataDir", async () => {
+  it("keeps gateway and native asset roots isolated under the same dataDir", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-doctrine-roots-"));
     tempDirs.push(root);
     const dataDir = path.join(root, "data");
     const cwd = path.join(root, "project");
     mkdirSync(cwd, { recursive: true });
     const withMarketplaceLock = async <T>(_target: string, fn: () => T | Promise<T>): Promise<T> => fn();
-    const classicRoot = path.join(dataDir, "marketplace", "plugins", "fleet");
+    const retiredClassicRoot = path.join(dataDir, "marketplace", "plugins", "fleet");
     const gatewayRoot = path.join(dataDir, "marketplace", "plugins", "fleet-gateway");
     const nativeRoot = path.join(dataDir, "marketplace", "plugins", "fleet-native");
 
     for (const order of [
-      ["claude", "claude-gateway", "claude-native"],
-      ["claude-native", "claude-gateway", "claude"],
+      ["claude-gateway", "claude-native"],
+      ["claude-native", "claude-gateway"],
     ] as const) {
-      let classicPluginRoot = "";
       let gatewayPluginRoot = "";
       let nativePluginRoot = "";
       for (const cliId of order) {
         const plugin = await createAgentCliPlugin({ cliId, cwd, dataDir, withMarketplaceLock });
-        if (cliId === "claude") classicPluginRoot = plugin.pluginRoot;
-        else if (cliId === "claude-gateway") gatewayPluginRoot = plugin.pluginRoot;
+        if (cliId === "claude-gateway") gatewayPluginRoot = plugin.pluginRoot;
         else nativePluginRoot = plugin.pluginRoot;
       }
 
-      expect(classicPluginRoot).toBe(classicRoot);
       expect(gatewayPluginRoot).toBe(gatewayRoot);
       expect(nativePluginRoot).toBe(nativeRoot);
-      expect(existsSync(classicRoot)).toBe(true);
       expect(existsSync(gatewayRoot)).toBe(true);
       expect(existsSync(nativeRoot)).toBe(true);
-      expect(existsSync(path.join(classicRoot, "skills", "carrier-operations", "SKILL.md"))).toBe(true);
+      // 퇴역한 Classic 루트는 다시 렌더되지 않고, 남아 있으면 다음 렌더가 정리한다.
+      expect(existsSync(retiredClassicRoot)).toBe(false);
       expect(existsSync(path.join(gatewayRoot, "skills", "carrier-operations", "SKILL.md"))).toBe(false);
       expect(existsSync(path.join(nativeRoot, "skills", "carrier-operations", "SKILL.md"))).toBe(false);
-      expect(existsSync(path.join(classicRoot, "skills", "protocol-baseline", "SKILL.md"))).toBe(true);
       expect(existsSync(path.join(gatewayRoot, "skills", "protocol-baseline", "SKILL.md"))).toBe(false);
       expect(existsSync(path.join(nativeRoot, "skills", "wiki-operations", "SKILL.md"))).toBe(true);
       expect(existsSync(path.join(nativeRoot, "skills", "assumption-audit", "SKILL.md"))).toBe(false);

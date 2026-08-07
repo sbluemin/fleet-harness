@@ -112,7 +112,7 @@ Do not start implementation before the user picks a direction.
 - **Proportionality**: `quick` depth is a report, not a repaint — resist expanding a periodic check into an unapproved redesign.
 - Output language follows the session working language; token names, file paths, and grammar terms stay as-is.
 
-## Carrier delegation
+## Delegation
 
 - `vanguard` — Phase 2 detector sweeps (parallel per surface family) and code recon behind a measured behavior.
 - `genesis` — Phase 6 multi-file conformance batches, unless the user directs direct execution.

@@ -1,20 +1,18 @@
 import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 
 import { agentAttentionNotification, agentOperationKind, agentPlugin, agentSettingsSection, generalSettingsSection } from "./agent/index.js";
-import { carrierSettingsSection } from "./carriers/section.js";
 import { globalShellPanel } from "./global-shell/rail-panel.js";
 import { shellOperationKind, shellPlugin } from "./shell/index.js";
 import { preloadSymbolsNerdFontMono } from "./shared/symbols-font.js";
 import { connectTerminalSettings } from "./shared/terminal-preferences.js";
 import "./assets/fonts/symbols-nerd-font-mono.css";
-import "./carriers/styles.css";
 
 const AGENT_OPERATION_TYPES = new Set(["agent"]);
 
 export const terminalPlugin = definePlugin({
   id: "terminal",
   operationKinds: [shellOperationKind, agentOperationKind],
-  settingsSections: [generalSettingsSection, agentSettingsSection, carrierSettingsSection],
+  settingsSections: [generalSettingsSection, agentSettingsSection],
   notificationKinds: [agentAttentionNotification],
   railPanels: [globalShellPanel],
   install: (ctx) => { void preloadSymbolsNerdFontMono(); connectTerminalSettings(ctx.settings); return agentPlugin.install?.(ctx); },
@@ -50,7 +48,7 @@ export const terminalPlugin = definePlugin({
 });
 
 export const operationKinds = [shellOperationKind, agentOperationKind] as const;
-export const settingsSections = [generalSettingsSection, agentSettingsSection, carrierSettingsSection] as const;
+export const settingsSections = [generalSettingsSection, agentSettingsSection] as const;
 export const notificationKinds = [agentAttentionNotification] as const;
 export const plugins = [terminalPlugin] as const;
 

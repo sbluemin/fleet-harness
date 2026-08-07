@@ -106,8 +106,8 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
   },
   {
     id: "claude-operations",
-    // Claude가 세 갈래로 나뉜 사실은 셋을 차례로 짚어야 전해진다 — 하나만 비추면 나머지 둘과
-    // 무엇이 다른지가 빠진다. 순서는 메뉴에 놓인 순서(Native → Classic → Gateway)를 따른다.
+    // Claude가 두 갈래로 나뉜 사실은 둘을 차례로 짚어야 전해진다 — 하나만 비추면 다른 하나와
+    // 무엇이 다른지가 빠진다. 순서는 메뉴에 놓인 순서(Native → Gateway)를 따른다.
     // 이 투어는 주의를 한 번 환기할 뿐이고, 되짚어 볼 설명은 메뉴 항목에 상시 남는다.
     spotlight: null,
     walkthrough: [
@@ -118,28 +118,10 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
         bodyKey: "featureTour.claudeOperations.step1Body",
       },
       {
-        anchor: '[data-operation-launch-kind="claude"]',
-        titleKey: "featureTour.claudeOperations.step2Title",
-        bodyKey: "featureTour.claudeOperations.step2Body",
-      },
-      {
         anchor: '[data-operation-launch-kind="claude-gateway"]',
         titleKey: "featureTour.claudeOperations.step3Title",
         bodyKey: "featureTour.claudeOperations.step3Body",
       },
     ],
-  },
-  {
-    id: "classic-deprecation",
-    // 런치 메뉴의 Classic 항목에만 닻을 건다 — 메뉴가 열려야 뜨고, Classic CLI가 없는 메뉴에는
-    // 항목 자체가 없으니 안내도 함께 빠진다. CLI 미설치로 항목이 비활성이면 폐지 안내는 의미가
-    // 없으므로(:disabled 제외) 쓸 수 있는 Classic이 있을 때만 재생한다.
-    // 폐지는 점진적이라 "당장 옮겨라"가 아니라 "새로 만들 때는 새 종류를 고르라"는 1회성 스포트라이트다.
-    spotlight: {
-      anchor: '[data-operation-launch-kind="claude"]:not(:disabled)',
-      titleKey: "featureTour.classicDeprecation.title",
-      bodyKey: "featureTour.classicDeprecation.body",
-    },
-    walkthrough: [],
   },
 ] as const;

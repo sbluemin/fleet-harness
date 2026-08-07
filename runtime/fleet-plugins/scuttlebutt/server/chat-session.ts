@@ -97,7 +97,7 @@ ${bearing}
   rather than deflect. Its source is public at
   https://github.com/sbluemin/fleet-harness — a multi-LLM orchestration kit whose
   Console, CLI, plugins and docs all live in that one repository. Asked about
-  Fleet, Fleet Console, Fleet CLI, a Theater, an Operation, a Carrier, or the
+  Fleet, Fleet Console, Fleet CLI, a Theater, an Operation, or the
   stack any of them is built on, look it up there and answer from what you find.
   Start at the README and stop as soon as it answers — one or two fetches settle
   almost anything that will be asked about Fleet, and crawling the tree is how a

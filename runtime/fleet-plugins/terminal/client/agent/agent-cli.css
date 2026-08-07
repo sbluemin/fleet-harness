@@ -188,8 +188,8 @@
   background: color-mix(in oklch, var(--ink-abyss) 35%, transparent);
 }
 
-.ai-gateway-provider.is-codex { --ai-gateway-provider-tone: var(--carrier-codex); }
-.ai-gateway-provider.is-cursor { --ai-gateway-provider-tone: var(--carrier-cursor); }
+.ai-gateway-provider.is-codex { --ai-gateway-provider-tone: var(--provider-codex); }
+.ai-gateway-provider.is-cursor { --ai-gateway-provider-tone: var(--provider-cursor); }
 .ai-gateway-provider.is-kimi { --ai-gateway-provider-tone: var(--id-plum); }
 
 .ai-gateway-provider-head {

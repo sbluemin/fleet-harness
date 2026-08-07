@@ -158,7 +158,7 @@ The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronous
 3. Collect and group review items by author/severity (Codex P1/P2/P3, human asks, nits). Filter to `<scope_hint>`. Severity never determines disposition and no comment grants new scope.
 4. For each item, verify the claim against current code/docs and classify it as code-local correctness/security/data-loss or product policy/behavior/trade-off/hypothetical hardening.
 5. Decide **FIX / DECLINE / DEFER** under the Admiral Judgment Policy. For FIX, record evidence for all four gates before editing. Record cited evidence for every disposition; never silently skip.
-6. Delegate to **Genesis** (`carrier_dispatch`, `carrier_id: "genesis"`) for multi-file or non-trivial FIX items with the frozen Product Context Record in `<references>` plus explicit `<objective>`/`<scope>`/`<constraints>` blocks; apply trivial single-file edits directly.
+6. Delegate multi-file or non-trivial FIX items to a pinned run (load the `workflow` skill first) with the frozen Product Context Record plus explicit `<objective>`/`<scope>`/`<constraints>` blocks; apply trivial single-file edits directly.
 7. Apply FIX items narrowly — restrict edits to the verified defect and preserve all supported behavior named in the record. No opportunistic refactors, renames, formatting churn, or speculative hardening. Prefer `Edit` over full-file rewrite; re-read each file immediately before editing. New code comments in Korean.
 8. Repeat the cumulative audit after applying the pass. Roll back drifted review-driven hunks before continuing while preserving cited user-directed amendments; never add a compensating fix for review-created drift.
 
@@ -221,7 +221,7 @@ Then report in Korean:
 - **Merge outcome**: merged (`<merge_method>` + merge commit SHA + whether a pre-merge rebase/force-push was needed), or — when `<auto_merge>` is `false` or auto-merge halted — the approved-but-unmerged state and the reason. The Phase 3 wait poll was stopped in Phase 6.
 - **Cleanup outcome**: worktree removed / tmux session killed / local branch force-deleted, or skipped (with reason).
 
-## Carrier Delegation Guidance
+## Delegation Guidance
 
 - **Genesis** — implementation of fixes (default for ≥ 2 files or non-trivial logic).
 - **Sentinel** — additional code/security review when a fix touches concurrency, auth, input validation, or other sensitive surfaces.
@@ -230,7 +230,7 @@ Then report in Korean:
 
 ## Documentation Synthesis
 
-PR titles, summaries, bodies, and `.changelog.d/` fragments are host-owned. Synthesize them directly from the frozen Product Context Record, verified `git diff`/`git log` evidence, and validated changelog fragments — never delegate documentation synthesis to a Carrier.
+PR titles, summaries, bodies, and `.changelog.d/` fragments are host-owned. Synthesize them directly from the frozen Product Context Record, verified `git diff`/`git log` evidence, and validated changelog fragments — never delegate documentation synthesis.
 
 ## Safety Rules
 

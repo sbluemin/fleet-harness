@@ -113,7 +113,7 @@ describe("claude-gateway custom agents", () => {
       cwd: root,
       env: { HOME: root },
     });
-    const classic = baseProfile("claude", {
+    const native = baseProfile("claude-native", {
       args: [],
       cwd: root,
       env: { HOME: root },
@@ -122,7 +122,7 @@ describe("claude-gateway custom agents", () => {
     const injectedGateway = await injectAgentCliProfile(gateway, baseInjectOptions(root, {
       gatewayExposedModels: [model],
     }));
-    const injectedClassic = await injectAgentCliProfile(classic, baseInjectOptions(root, {
+    const injectedNative = await injectAgentCliProfile(native, baseInjectOptions(root, {
       gatewayExposedModels: [model],
     }));
 
@@ -145,11 +145,11 @@ describe("claude-gateway custom agents", () => {
       expect(agent.prompt).toBe(GENERAL_PURPOSE_AGENT_PROMPT);
     }
 
-    expect(injectedClassic.args).not.toContain("--disallowedTools");
-    expect(injectedClassic.args).not.toContain("--agents");
+    expect(injectedNative.args).not.toContain("--disallowedTools");
+    expect(injectedNative.args).not.toContain("--agents");
 
     injectedGateway.cleanup?.();
-    injectedClassic.cleanup?.();
+    injectedNative.cleanup?.();
   });
 
   it("injects neither flag when no gateway models are exposed", async () => {
@@ -198,18 +198,14 @@ describe("claude-gateway disabled skills", () => {
     injected.cleanup?.();
   });
 
-  it("leaves classic and native Claude sessions untouched", async () => {
+  it("leaves native Claude sessions untouched", async () => {
     const root = createTempRoot("fleet-admiral-gateway-skills-other-");
-    const classic = baseProfile("claude", { args: [], cwd: root, env: { HOME: root } });
     const native = baseProfile("claude-native", { args: [], cwd: root, env: { HOME: root } });
 
-    const injectedClassic = await injectAgentCliProfile(classic, baseInjectOptions(root));
     const injectedNative = await injectAgentCliProfile(native, baseInjectOptions(root));
 
-    expect(injectedClassic.args).not.toContain("--settings");
     expect(injectedNative.args).not.toContain("--settings");
 
-    injectedClassic.cleanup?.();
     injectedNative.cleanup?.();
   });
 

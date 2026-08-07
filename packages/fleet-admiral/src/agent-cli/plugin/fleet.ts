@@ -6,21 +6,19 @@ import { writePrivateFile, writePrivateJson } from "./fs.js";
 import type { FleetHookExec } from "../types.js";
 import type { AssetPluginBundle, CreateAgentCliPluginOptions } from "../types.js";
 
-/** Classic and gateway asset roots must coexist under the same marketplace. */
-export const ASSET_PLUGIN_DIRECTORY_NAMES = ["fleet", "fleet-gateway", "fleet-native"] as const;
+/** Gateway and native asset roots must coexist under the same marketplace. */
+export const ASSET_PLUGIN_DIRECTORY_NAMES = ["fleet-gateway", "fleet-native"] as const;
 
 export const assetBundle: AssetPluginBundle = {
-  description: "Fleet carrier delegation and wiki evidence plugin",
-  directoryName: "fleet",
+  description: "Fleet workflow orchestration and wiki evidence plugin",
+  directoryName: "fleet-gateway",
   displayName: "Fleet",
   name: "fleet",
   source: "asset",
 };
 
 export function resolveAssetPluginDirectoryName(doctrine: AdmiralDoctrine): string {
-  if (doctrine === "gateway") return "fleet-gateway";
-  if (doctrine === "native") return "fleet-native";
-  return "fleet";
+  return doctrine === "native" ? "fleet-native" : "fleet-gateway";
 }
 
 export function renderAssetPluginRoot(
@@ -30,7 +28,7 @@ export function renderAssetPluginRoot(
 ): void {
   const doctrine = options.doctrine ?? resolveDoctrineFromCliId(options.cliId);
   renderEmbeddedSkillAssets(pluginRoot, doctrine);
-  if (options.cliId === "claude" || options.cliId === "claude-native" || options.cliId === "claude-gateway") {
+  if (options.cliId === "claude-native" || options.cliId === "claude-gateway") {
     writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), claudeHooks(options), pluginRoot);
   }
 }
@@ -106,9 +104,8 @@ function selectSkillAssetsForDoctrine(
     );
   }
 
-  if (doctrine === "gateway") {
-    // gateway 경로는 protocol-* 스킬과 carrier-operations를 렌더하지 않는다.
-    // gateway/<name>/SKILL.md는 접두를 벗겨 동일 이름의 base 자산을 대체한다.
+  // gateway/<name>/SKILL.md는 접두를 벗겨 동일 이름의 base 자산을 대체한다.
+  {
     const overlays = new Map<string, string>();
     for (const asset of EMBEDDED_AGENT_CLI_SKILL_ASSETS) {
       if (!asset.relativePath.startsWith("gateway/")) continue;
@@ -117,8 +114,6 @@ function selectSkillAssetsForDoctrine(
     const rendered: Array<{ relativePath: string; content: string }> = [];
     for (const asset of EMBEDDED_AGENT_CLI_SKILL_ASSETS) {
       if (asset.relativePath.startsWith("gateway/")) continue;
-      if (asset.relativePath.startsWith("carrier-operations/")) continue;
-      if (asset.relativePath.startsWith("protocol-")) continue;
       rendered.push({
         relativePath: asset.relativePath,
         content: overlays.get(asset.relativePath) ?? asset.content,
@@ -130,8 +125,4 @@ function selectSkillAssetsForDoctrine(
     }
     return rendered;
   }
-
-  return EMBEDDED_AGENT_CLI_SKILL_ASSETS.filter(
-    (asset) => !asset.relativePath.startsWith("gateway/"),
-  );
 }

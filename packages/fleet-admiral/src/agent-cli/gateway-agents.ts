@@ -21,8 +21,7 @@ import {
 
 /**
  * Fleet gateway 커스텀 Agent용 단일 실행 프롬프트.
- * Carrier 4종(Vanguard/Nimitz/Genesis/Sentinel)의 전이 가능한 행동 불변식만 담으며,
- * 캐리어 request-block·`<report>`·`carrier_jobs` 계약은 넣지 않는다.
+ * 전이 가능한 행동 불변식만 담으며, 퇴역한 캐리어 위임 계약은 넣지 않는다.
  * Claude Code 내장 general-purpose의 "search broadly / Be thorough" 기본값은 의도적으로 버린다.
  */
 export const GENERAL_PURPOSE_AGENT_PROMPT = [

@@ -94,7 +94,7 @@ describe("Session Analyst readiness handle", () => {
     store.dispatch({ type: "event", event: { type: "chunk", text: "Retained answer" }, now: 2 });
     store.dispatch({ type: "event", event: { type: "complete" }, now: 3 });
     const onRequestCompanions = vi.fn();
-    await renderOperation(fetch, "live", onRequestCompanions, true, ["carrier-streams", "session-analyst-artifacts"]);
+    await renderOperation(fetch, "live", onRequestCompanions, true, ["session-analyst-artifacts"]);
 
     expect(analystHandle().textContent).toContain("EXIT");
     act(() => analystHandle().click());
@@ -103,7 +103,7 @@ describe("Session Analyst readiness handle", () => {
     expect(fetch.mock.calls.some((call) => call[1] === `analysis/${OPERATION_ID}/stop`)).toBe(false);
 
     onRequestCompanions.mockClear();
-    await renderOperation(fetch, "live", onRequestCompanions, false, ["carrier-streams", "session-analyst-chat", "session-analyst-artifacts"]);
+    await renderOperation(fetch, "live", onRequestCompanions, false, ["session-analyst-chat", "session-analyst-artifacts"]);
     await vi.waitFor(() => expect(analystHandle().disabled).toBe(false));
     expect(analystHandle().textContent).toContain("ANALYZE");
     act(() => analystHandle().click());
@@ -160,7 +160,7 @@ describe("Session Analyst readiness handle", () => {
       "live",
       onRequestCompanions,
       true,
-      ["carrier-streams"],
+      [],
       onSetCompanionPanelVisible,
     );
 
@@ -172,26 +172,6 @@ describe("Session Analyst readiness handle", () => {
     expect(onRequestCompanions).toHaveBeenCalledWith(false);
   });
 
-  it("keeps the companion layer open when Carrier Streams remains visible", async () => {
-    const onRequestCompanions = vi.fn();
-    const onSetCompanionPanelVisible = vi.fn();
-
-    await renderOperation(
-      analysisFetch(false),
-      "live",
-      onRequestCompanions,
-      true,
-      [],
-      onSetCompanionPanelVisible,
-    );
-
-    expect(onSetCompanionPanelVisible.mock.calls).toEqual([
-      ["session-analyst-chat", false],
-      ["session-analyst-artifacts", false],
-    ]);
-    expect(onRequestCompanions).not.toHaveBeenCalled();
-  });
-
   it("does not change panel visibility when the companion layer is already closed", async () => {
     const onRequestCompanions = vi.fn();
     const onSetCompanionPanelVisible = vi.fn();
@@ -201,7 +181,7 @@ describe("Session Analyst readiness handle", () => {
       "live",
       onRequestCompanions,
       false,
-      ["carrier-streams", "session-analyst-chat", "session-analyst-artifacts"],
+      ["session-analyst-chat", "session-analyst-artifacts"],
       onSetCompanionPanelVisible,
     );
 
@@ -220,8 +200,8 @@ async function renderOperation(
   onRequestCompanions = vi.fn(),
   companionsOpen = false,
   hiddenCompanionPanelIds = companionsOpen
-    ? ["carrier-streams", "session-analyst-artifacts"]
-    : ["carrier-streams", "session-analyst-chat", "session-analyst-artifacts"],
+    ? ["session-analyst-artifacts"]
+    : ["session-analyst-chat", "session-analyst-artifacts"],
   onSetCompanionPanelVisible = vi.fn(),
 ): Promise<void> {
   if (!container) {

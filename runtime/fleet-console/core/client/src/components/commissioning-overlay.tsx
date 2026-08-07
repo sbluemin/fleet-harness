@@ -133,14 +133,6 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
               </Link>
             </div>
           </li>
-
-          <li className="commissioning-step">
-            <span className="commissioning-step-node" aria-hidden="true">03</span>
-            <div className="commissioning-step-body">
-              <h3>{t("chrome.commissioning.step3Title")}</h3>
-              <p>{t("chrome.commissioning.step3Body")}</p>
-            </div>
-          </li>
         </ol>
 
         <footer className="commissioning-footer">

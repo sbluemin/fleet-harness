@@ -1,5 +1,5 @@
 import type { OperationNode } from "@fleet-console/sdk/operations";
-import type { AgentCliDiagnostics, AgentCliMetadata, AgentCliState, ObservedTenant, SessionInfo, SnapshotTenantJobs } from "./types.js";
+import type { AgentCliDiagnostics, AgentCliMetadata, AgentCliState, SessionInfo } from "./types.js";
 
 export interface OperationsSnapshot {
   readonly operations: readonly OperationNode[];
@@ -52,22 +52,6 @@ export async function setAgentCliPath(cliCommand: string, path: string | null, s
     const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
     throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);
   }
-}
-
-export async function fetchTenants(signal?: AbortSignal): Promise<readonly ObservedTenant[]> {
-  const response = await fetch("/plugins/terminal/agent/tenants", { signal });
-  await assertOk(response);
-  const payload = await response.json() as { readonly tenants?: unknown };
-  if (!Array.isArray(payload.tenants)) throw new AgentApiError(response.status, "Invalid tenants response");
-  return payload.tenants.map((tenant) => assertObservedTenant(tenant, response.status));
-}
-
-export async function fetchJobs(signal?: AbortSignal): Promise<readonly SnapshotTenantJobs[]> {
-  const response = await fetch("/plugins/terminal/agent/jobs", { signal });
-  await assertOk(response);
-  const payload = await response.json() as { readonly tenants?: unknown };
-  if (!Array.isArray(payload.tenants)) throw new AgentApiError(response.status, "Invalid jobs response");
-  return payload.tenants as readonly SnapshotTenantJobs[];
 }
 
 export async function fetchSessions(signal?: AbortSignal): Promise<readonly SessionInfo[]> {
@@ -162,14 +146,6 @@ function assertAgentCliMetadata(value: unknown, status: number): AgentCliMetadat
     available: payload.available === true,
     signedIn: payload.signedIn !== false,
   };
-}
-
-function assertObservedTenant(value: unknown, status: number): ObservedTenant {
-  const payload = value as Partial<ObservedTenant>;
-  if (!payload || typeof payload.tenantId !== "string" || typeof payload.tenantLabel !== "string" || typeof payload.createdAt !== "number" || typeof payload.sessions !== "number") {
-    throw new AgentApiError(status, "Invalid tenant response");
-  }
-  return payload as ObservedTenant;
 }
 
 function assertOperationNode(value: unknown, status: number): OperationNode {

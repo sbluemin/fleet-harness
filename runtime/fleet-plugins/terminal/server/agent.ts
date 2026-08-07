@@ -2,21 +2,19 @@ import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 
-import { buildGatewayModelsToolSpec, createCarrierResultReminderRouter, createDelayedPtyWriter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliIds, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
+import { buildGatewayModelsToolSpec, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, getAgentCliIds, getAgentCliMetadata, parseAgentCliId, sanitizePtyMessageText, type AgentCliId } from "@dotobokuri/fleet-admiral";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
-import { getCarrierConfig, resolveAgentCliType } from "@dotobokuri/fleet-carriers";
 import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 import type { OperationLaunchKind, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
-import { createWorkspaceChangeScanner } from "./shared/index.js";
 import type { TerminalRuntime } from "./shared/index.js";
 
 import { createDefaultAgentCliDetector, validateAgentCliPathForSave } from "./agent-api/agent-cli-detect.js";
 import { buildAgentCliLaunchKinds } from "./agent-api/agent-cli-launch-kinds.js";
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-api/agent-cli-launch-metadata.js";
-import { AGENT_CLI_COMMANDS, createAgentCliPathStore, createCarrierAgentCliLaunchResolver, resolveAgentCliBinary } from "./agent-api/agent-cli-paths.js";
+import { AGENT_CLI_COMMANDS, createAgentCliPathStore, resolveAgentCliBinary } from "./agent-api/agent-cli-paths.js";
 import type { AgentCliDiagnostics } from "./agent-api/agent-cli-types.js";
 import { readConsoleQuotaSnapshot } from "./agent-api/gateway-loadout.js";
 import { resolveAiGatewaySelection } from "@dotobokuri/core-ai-gateway";
@@ -27,11 +25,11 @@ import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
 import { resolveBackgroundPendingFromHookInput } from "./agent-api/background-report.js";
 import { createAgentTerminalLaunchResolver, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
+import { writeAgentSessionEvents } from "./agent-api/observability-routes.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./agent-api/osc-agent-activity.js";
-import { writeAggregateObserverEvents } from "./agent-api/observability-routes.js";
 import { readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./agent-api/provider-session.js";
 import type { AgentProviderSession, AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
-import { CARRIER_JOB_FINALIZED_GRACE_MS, isCarrierJobActiveForIdle, startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
+import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown };
 type HookTurnBody = { readonly phase?: unknown; readonly input?: unknown };
 type HookBackgroundBody = { readonly input?: unknown };
@@ -58,12 +56,12 @@ const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
 const OPERATION_RESTORED_EVENT_CHANNEL = "operation:restored";
 const TERMINAL_PLUGIN_ID = "terminal";
 
-export function registerAgentRoutes(
+export async function registerAgentRoutes(
   ctx: FleetPluginServerContext,
   terminalRuntime: TerminalRuntime,
   deps: AgentRouteDeps,
-): () => Promise<readonly OperationLaunchKind[]> {
-  const api = createAgentApi(ctx, terminalRuntime, deps);
+): Promise<() => Promise<readonly OperationLaunchKind[]>> {
+  const api = await createAgentApi(ctx, terminalRuntime, deps);
   terminalRuntime.registerLaunchResolver(AGENT_OPERATION_TYPE, api.launch);
   terminalRuntime.onExit(async (operationId) => {
     await api.handleExit(operationId);
@@ -102,20 +100,14 @@ function buildGatewayLoadoutTools(deps: AgentRouteDeps): readonly AgentToolSpec[
   })];
 }
 
-function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
+async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
   const wikiToolSpecs = createTerminalWikiToolSpecs(ctx.host.paths.fleetDataDir);
   const agentCliPathStore = createAgentCliPathStore(ctx.host.storage, ctx.pluginId);
   const readAgentCliPaths = async () => (await agentCliPathStore.read()).paths;
-  const runtime = createFleetAgentRuntimeLifecycle({
-    dataDir: ctx.host.paths.fleetDataDir,
-    onMcpServerStartError: (error) => {
-      console.error("[fleet-console] Failed to start MCP server", error);
-    },
-    workspaceChangeScanner: createWorkspaceChangeScanner(),
+  const runtime = await createFleetGatewayAgentRuntimeLifecycle({
     wikiToolSpecs,
     extraAgentTools: buildGatewayLoadoutTools(deps),
   });
-  runtime.carrierRuntime.setAgentCliLaunchResolver(createCarrierAgentCliLaunchResolver(readAgentCliPaths));
   const observability = createConsoleObservabilityStore({
     canonicalizeTheaterPath: ctx.host.paths.canonicalizeTheaterPath,
     workspaceHash: ctx.host.paths.workspaceHash,
@@ -123,7 +115,6 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
   const detector = createDefaultAgentCliDetector(readAgentCliPaths);
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
-  const jobOriginById = new Map<string, string>();
   const oscActivityTrackers = new Map<string, OscAgentActivityTracker>();
   const launchResolver = createAgentTerminalLaunchResolver({
     agentRuntime: runtime,
@@ -136,11 +127,6 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       pendingRuntimeSessions.set(session.sessionId, session);
     },
   });
-  const unsubscribeStream = runtime.carrierRuntime.jobs.streaming.register((event) => {
-    const sessionId = resolveCarrierEventOrigin(event as { readonly jobId: string; readonly type: string; readonly originSessionId?: string }, jobOriginById);
-    if (!sessionId) return;
-    observability.appendTerminalRuntimeEvent(sessionId, withSignatureCli(event, runtime.carrierRuntime.registry));
-  });
   const unsubscribeTitle = terminalRuntime.onTitle(AGENT_OPERATION_TYPE, (sessionId, title) => {
     // spinner는 프레임마다 타이틀을 방출하므로 tracker가 이미 있으면 세션 조회(DTO 투영)를 건너뛴다.
     let tracker = oscActivityTrackers.get(sessionId);
@@ -148,7 +134,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       const session = observability.getTerminalSessionInfo(sessionId);
       if (!session) return;
       const cliId = session.cliId;
-      if (cliId !== "claude" && cliId !== "claude-native" && cliId !== "claude-gateway") return;
+      if (cliId !== "claude-native" && cliId !== "claude-gateway") return;
       tracker = createOscAgentActivityTracker({
         cliId,
         cwdBasename: session.cwdLabel,
@@ -161,23 +147,8 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     }
     tracker.observeTitle(title);
   });
-  // carrier 리마인더와 rename 주입이 세션 단위로 함께 직렬화되도록 공유 writer를 사용한다.
+  // rename 주입이 세션 단위로 직렬화되도록 공유 writer를 쓴다.
   const reminderWriter = createDelayedPtyWriter();
-  const unsubscribeReminder = createCarrierResultReminderRouter({
-    streamRegister: runtime.carrierRuntime.jobs.streaming.register,
-    writer: reminderWriter,
-    delivery: CONSOLE_PTY_MESSAGE_DELIVERY,
-    resolveSink: (event) => {
-      const sessionId = resolveCarrierEventOrigin(event as { readonly jobId: string; readonly type: string; readonly originSessionId?: string }, jobOriginById);
-      return sessionId ? { write: (data) => terminalRuntime.write(sessionId, data) } : undefined;
-    },
-    resolvePolicy: (event) => {
-      const sessionId = resolveCarrierEventOrigin(event as { readonly jobId: string; readonly type: string; readonly originSessionId?: string }, jobOriginById);
-      return sessionId ? terminalRuntime.getMessagePolicy(sessionId) ?? {} : {};
-    },
-    // 세션별 지연 제출 직렬화 키: 같은 터미널 세션으로 동시 도착한 리마인더가 뒤섞이지 않도록 한다.
-    resolveSessionKey: (event) => resolveCarrierEventOrigin(event as { readonly jobId: string; readonly type: string; readonly originSessionId?: string }, jobOriginById) ?? undefined,
-  });
   const unsubscribeRename = ctx.host.events.subscribe(OPERATION_RENAMED_EVENT_CHANNEL, (payload) => {
     if (!isOperationRenamedEvent(payload)) return;
     if (payload.pluginId !== TERMINAL_PLUGIN_ID || payload.type !== AGENT_OPERATION_TYPE) return;
@@ -210,14 +181,6 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     listTerminalSessions: () => observability.listTerminalSessions(),
     getSessionLastActivityAt: (sessionId) => terminalRuntime.getSessionLastActivityAt(sessionId),
     hasProviderSessionCapture: (sessionId) => readProviderSession(ctx.host.operations.get(sessionId)?.payload) !== undefined,
-    // tenantId(=cliRunId)로 세션-job이 연결된다. 활성·finalize grace 안 job이 있으면 reminder용 PTY를 지킨다.
-    // job.updatedAt은 wall-clock(Date.now) 기준이므로 grace 비교도 동일 시계를 쓴다.
-    hasActiveCarrierJob: (sessionId) => {
-      const tenantId = observability.getTerminalSessionInfo(sessionId)?.tenantId;
-      if (!tenantId) return false;
-      const nowMs = Date.now();
-      return observability.listJobs(tenantId).some((job) => isCarrierJobActiveForIdle(job, nowMs, CARRIER_JOB_FINALIZED_GRACE_MS));
-    },
     terminate: (sessionId) => terminalRuntime.terminate(sessionId),
     registerCleanup: (cleanup) => ctx.host.lifecycle.registerCleanup(cleanup),
   });
@@ -265,31 +228,9 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       ctx.host.http.writeJson(res, 200, { ok: true });
       return true;
     }
-    if (path === "/tenants") {
-      if (req.method !== "GET") return methodNotAllowed(res);
-      ctx.host.http.writeJson(res, 200, { tenants: observability.listWorkspaces() });
-      return true;
-    }
-    if (path === "/jobs") {
-      if (req.method !== "GET") return methodNotAllowed(res);
-      const requestedTenantId = new URL(req.url ?? "/", "http://127.0.0.1").searchParams.get("tenant");
-      const visible = requestedTenantId ? observability.listWorkspaces().filter((workspace) => workspace.tenantId === requestedTenantId) : observability.listWorkspaces();
-      if (requestedTenantId && visible.length === 0) {
-        ctx.host.http.writeJson(res, 404, { error: "Workspace not found" });
-        return true;
-      }
-      ctx.host.http.writeJson(res, 200, { tenants: visible.map((workspace) => ({ tenantId: workspace.tenantId, tenantLabel: workspace.tenantLabel, jobs: observability.listJobs(workspace.tenantId), truncation: observability.getTruncation(workspace.tenantId) })) });
-      return true;
-    }
     if (path === "/events") {
       if (req.method !== "GET") return methodNotAllowed(res);
-      const requestedTenantId = new URL(req.url ?? "/", "http://127.0.0.1").searchParams.get("tenant");
-      const visible = requestedTenantId ? observability.listWorkspaces().filter((workspace) => workspace.tenantId === requestedTenantId) : observability.listWorkspaces();
-      if (requestedTenantId && visible.length === 0) {
-        ctx.host.http.writeJson(res, 404, { error: "Workspace not found" });
-        return true;
-      }
-      writeAggregateObserverEvents(req, res, visible, observability, (tenantId) => observability.getWorkspace(tenantId), { subscribeAll: true });
+      writeAgentSessionEvents(req, res, observability);
       return true;
     }
     if (path === "/sessions") return handleSessions(req, res);
@@ -606,7 +547,7 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
 
   async function buildAgentCliLaunchMetadata(): Promise<readonly AgentCliLaunchMetadata[]> {
     // Console은 게이트웨이 라우트를 가진 유일한 호스트라 console-only CLI까지 후보로 받는다.
-    const metadata = getAgentCliMetadata(getAgentCliIds({ includeConsoleOnly: true }));
+    const metadata = getAgentCliMetadata(getAgentCliIds());
     if ((process.env.FLEET_TERMINAL_CMD ?? "").trim().length > 0) {
       return metadata.map((meta) => ({ id: meta.id, label: meta.label, available: true, signedIn: true }));
     }
@@ -684,8 +625,6 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     reminderWriter.cancelAll();
     unsubscribeRename();
     unsubscribeRestore();
-    unsubscribeReminder();
-    unsubscribeStream();
     unsubscribeTitle();
     for (const tracker of oscActivityTrackers.values()) tracker.reset();
     oscActivityTrackers.clear();
@@ -745,14 +684,14 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     if (!label) return;
     const renameCommand = terminalRuntime.getRenameCommand(sessionId);
     if (!renameCommand) return;
-    const safeLabel = sanitizeCarrierResultReminder(label.replace(/[\r\n\t]+/g, " ")).trim();
+    const safeLabel = sanitizePtyMessageText(label.replace(/[\r\n\t]+/g, " ")).trim();
     if (safeLabel.length === 0) return;
     const policy = terminalRuntime.getMessagePolicy(sessionId) ?? {};
     // 리마인더와 동일한 세션 키/writer로 직렬화해 rename+리마인더 인터리브를 막는다.
     reminderWriter.enqueue(
       sessionId,
       (data) => terminalRuntime.write(sessionId, data),
-      formatCarrierResultReminderMessage(policy, `${renameCommand} ${safeLabel}`, process.platform, CONSOLE_PTY_MESSAGE_DELIVERY),
+      formatPtyMessage(policy, `${renameCommand} ${safeLabel}`, process.platform, CONSOLE_PTY_MESSAGE_DELIVERY),
     );
   }
 
@@ -895,17 +834,6 @@ function readProviderTitle(value: Record<string, unknown> | undefined): AgentPro
   return { source: "provider" };
 }
 
-function resolveCarrierEventOrigin(event: { readonly jobId: string; readonly type: string; readonly originSessionId?: string }, jobOriginById: Map<string, string>): string | null {
-  if (event.originSessionId) {
-    jobOriginById.set(event.jobId, event.originSessionId);
-    if (event.type === "job:finalized") queueMicrotask(() => jobOriginById.delete(event.jobId));
-    return event.originSessionId;
-  }
-  const knownOrigin = jobOriginById.get(event.jobId);
-  if (event.type === "job:finalized") queueMicrotask(() => jobOriginById.delete(event.jobId));
-  return knownOrigin ?? null;
-}
-
 function readPayloadString(payload: Record<string, unknown>, key: string): string {
   const value = payload[key];
   return typeof value === "string" ? value : "";
@@ -936,12 +864,3 @@ function readHookPrompt(value: unknown): string | undefined {
   }
 }
 
-function withSignatureCli(event: unknown, registry: Parameters<typeof getCarrierConfig>[0]): unknown {
-  if (typeof event !== "object" || event === null) return event;
-  const obj = event as Record<string, unknown>;
-  if (obj.type !== "job:registered" || typeof obj.ownerCarrierId !== "string") return event;
-  const config = getCarrierConfig(registry, obj.ownerCarrierId);
-  if (!config) return event;
-  const signatureCli = resolveAgentCliType(obj.ownerCarrierId, config.defaultCliType);
-  return { ...obj, signatureCli };
-}

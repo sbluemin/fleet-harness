@@ -66,7 +66,7 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
 
 8. **Complete mandatory project setup inside the worktree**:
    - From `<abs-worktree-path>`, always run `pnpm install --frozen-lockfile` before reporting create-mode completion.
-   - If installation fails, stop immediately and report the command failure. Do not report the worktree as ready and do not proceed to Carrier dispatch.
+   - If installation fails, stop immediately and report the command failure. Do not report the worktree as ready and do not proceed to delegation.
 
 9. **Report in Korean**:
    - Worktree path.
@@ -138,9 +138,9 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
 - Do not use destructive git commands such as `git reset --hard` or `git checkout --` to clean a worktree.
 - Do not bypass hooks or hide command failures.
 
-## Carrier Delegation Guidance
+## Delegation Guidance
 
 - **Nimitz** — consult before proceeding with any non-standard `<base-branch>` request. This is especially important when the requested base changes branch policy or release flow.
 - **Stop and report** — when a worktree path or branch is already present or in use. Do not resolve collisions autonomously.
-- Skip carrier delegation for clean create/remove operations that follow the standard `origin/canary` path and have no conflict or policy issue.
-- **Carrier edits inside the new worktree** — after `create`, when you delegate file edits to a carrier (`carrier_dispatch`), pass the **absolute worktree path** as the dispatch `cwd` argument so the carrier's CLI spawns inside this worktree and its repo-relative paths resolve here. If you omit `cwd`, the carrier's cwd defaults to the **main checkout** (not this worktree), so omitting it for worktree work risks editing the main checkout — always set `cwd` for worktree delegation. Before dispatch, confirm `pnpm install --frozen-lockfile` succeeded in this worktree, identify every target package, and run each package's declared `typecheck` and `build` scripts from this worktree. If either preflight script is absent or fails, stop and report instead of dispatching. After each return run `git -C <main-checkout> status --short` to confirm the main checkout stayed clean, and treat the carrier's reported `workspaceChanges` (window-approx) as unreliable — trust the real `git status`.
+- Skip delegation for clean create/remove operations that follow the standard `origin/canary` path and have no conflict or policy issue.
+- **Delegated edits inside the new worktree** — after `create`, a run that edits files must be given the **absolute worktree path** as its working directory so its repo-relative paths resolve here; a run left to default lands in the **main checkout**. Before delegating, confirm `pnpm install --frozen-lockfile` succeeded in this worktree, identify every target package, and run each package's declared `typecheck` and `build` scripts from this worktree. If either preflight script is absent or fails, stop and report instead of delegating. After each return run `git -C <main-checkout> status --short` to confirm the main checkout stayed clean, and trust the real `git status` over any run's own report of what it changed.

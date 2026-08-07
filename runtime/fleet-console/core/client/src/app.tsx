@@ -320,7 +320,6 @@ export function App() {
           <Routes>
             <Route path="/" element={<Navigate to="/operations" replace />} />
             <Route path="/operations" element={<Operations state={state} claimBootPanelMinimization={claimBootPanelMinimization} onDeferredDeletion={enqueueDeletion} />} />
-            <Route path="/carrier-settings" element={<Navigate to="/settings?section=terminal%3Acarriers" replace />} />
             <Route path="/settings" element={<GlobalSettings />} />
             <Route path="*" element={<Navigate to="/operations" replace />} />
           </Routes>

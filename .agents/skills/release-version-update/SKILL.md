@@ -57,7 +57,7 @@ Update the root `fleet-harness` version and compile the release notes from repos
 
 ## Host Synthesis
 
-Release notes and changelog compilation are host-owned. Synthesize release items directly from the branch diff, commit history, and validated `.changelog.d/` fragments — never delegate release-note synthesis to a Carrier.
+Release notes and changelog compilation are host-owned. Synthesize release items directly from the branch diff, commit history, and validated `.changelog.d/` fragments — never delegate release-note synthesis.
 
 Scale the synthesis to the evidence: small changes may need only the validated fragments and a concise diff/commit review, while broad releases require a correspondingly wider host audit.
 

@@ -17,7 +17,7 @@ import {
   resolveAgentCliProfile,
   type AgentCliId,
   type AgentCliProfile,
-  type FleetAgentRuntimeLifecycle,
+  type FleetGatewayAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
 import {
   createInfraServices,
@@ -48,7 +48,7 @@ export interface TerminalLaunchResolverDeps {
   readonly tsxLoaderPath?: string;
   readonly dataDir?: string;
   readonly infraServices?: { readonly globalOptionsService: GlobalOptionsService };
-  readonly agentRuntime?: FleetAgentRuntimeLifecycle;
+  readonly agentRuntime?: FleetGatewayAgentRuntimeLifecycle;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly injectProfile?: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
@@ -152,7 +152,7 @@ function hasHookEntryExtension(entryPath: string): boolean {
 }
 
 async function createAgentCliLaunchSpec(options: {
-  readonly agentRuntime?: FleetAgentRuntimeLifecycle;
+  readonly agentRuntime?: FleetGatewayAgentRuntimeLifecycle;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
   readonly cliId?: string;
@@ -180,17 +180,15 @@ async function createAgentCliLaunchSpec(options: {
       cliId: options.cliId,
       resumeSessionId: options.resumeSessionId,
     });
-    const globalSettings = readGlobalSettingsSnapshot(options.infraServices);
     // gateway Agent 주입과 ANTHROPIC_MODEL/cache는 같은 selection을 공유한다.
     // inject보다 먼저 읽어 `--agents`에 노출 모델×effort를 스폰 인자로만 실는다.
     const gatewaySelection = profile.id === "claude-gateway" && options.readAiGatewaySettings
       ? resolveAiGatewaySelection(options.readAiGatewaySettings())
       : undefined;
     const injectedProfile = await options.injectProfile(profile, {
-      buildSystemPrompt: (injectTone) => options.createSystemPromptBuilder({ carrierRuntime: agentRuntime.carrierRuntime }).build(injectTone),
+      buildSystemPrompt: () => options.createSystemPromptBuilder().build(),
       dataDir: options.dataDir,
       dedicatedMcpSession: agentRuntime.dedicatedMcpSession,
-      enableMetaphor: globalSettings.enableMetaphor,
       captureSessionHookExec: buildConsoleCaptureHookCommand(
         options.hookEntry,
         profile.id,
@@ -271,7 +269,7 @@ function toLaunchSpec(profile: AgentCliProfile, cleanup: () => Promise<void>, se
   };
 }
 
-function countMcpTools(agentRuntime: FleetAgentRuntimeLifecycle): number {
+function countMcpTools(agentRuntime: FleetGatewayAgentRuntimeLifecycle): number {
   return agentRuntime.mcpRegistry.getAllAgentTools().length;
 }
 
@@ -324,17 +322,5 @@ function resolveOptionalPackage(id: string): string | undefined {
     return require.resolve(id);
   } catch {
     return undefined;
-  }
-}
-
-// 세션 launch 직전에 전역 옵션(~/.fleet/settings.json)을 1회 스냅샷한다. daemon 재시작 없이도
-// 신규 세션이 최신 토글 값을 반영하도록 부팅 캐시가 아닌 launch 시점에 읽는다. 로드 실패(락 타임아웃 등)는
-// 세션 launch를 막지 않고 기본값(append / 메타포 off)으로 폴백한다.
-function readGlobalSettingsSnapshot(infraServices: { readonly globalOptionsService: GlobalOptionsService }): { readonly enableMetaphor: boolean } {
-  try {
-    const data = infraServices.globalOptionsService.load();
-    return { enableMetaphor: data.enableMetaphor ?? false };
-  } catch {
-    return { enableMetaphor: false };
   }
 }

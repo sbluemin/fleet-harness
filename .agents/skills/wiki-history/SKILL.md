@@ -61,8 +61,8 @@ Every section must be written from "**why**" and "**what the user feels at the s
 ## Required Workflow
 
 1. Call `wiki_orient` to capture existing PRD section structure, tag vocabulary, and naming patterns.
-2. Identify existing entries in the same feature area (e.g., `coding-agent`, `harness`, `carrier`) and reserve them as `related` candidates.
-3. Compose the entry body directly on the host, obeying the DO / DO NOT rules above and the Output Format. Write from "why" and "what the user feels at the surface"; without explicit adherence the output drifts into code-grounded or planning-style writing. The host performs Fleet Wiki authoring directly — do not dispatch a carrier for it.
+2. Identify existing entries in the same feature area (e.g., `coding-agent`, `harness`, `gateway`) and reserve them as `related` candidates.
+3. Compose the entry body directly on the host, obeying the DO / DO NOT rules above and the Output Format. Write from "why" and "what the user feels at the surface"; without explicit adherence the output drifts into code-grounded or planning-style writing. The host performs Fleet Wiki authoring directly — do not delegate it.
 4. Stage the entry with `wiki_ingest` (`mode: "create"` for a new entry, or `"update"` to refine an existing one), targeting id `prd-<area>-<topic>` and providing the raw decision evidence as the `source`. Then fetch the preview with `wiki_patch_queue(action:"show")` and present it to the Admiral of the Navy.
 5. Walk through the preview line by line, checking each DO / DO NOT rule. If any rule is violated (code detail, planning phrasing, implementation action), revise the pending patch with `wiki_patch_edit` (or re-stage with `wiki_ingest`) before proceeding.
 6. Only after explicit Admiral-of-the-Navy approval, register the entry via `wiki_patch_queue(action:"approve")`. **Never auto-approve** — wiki entries are permanent.
@@ -77,7 +77,7 @@ Before approving the patch, ask each question once more:
 - [ ] Does the body contain duplicated frontmatter (YAML block with `id:`, `title:`, `tags:`, `version:`, etc.) that repeats metadata already in the patch envelope?
 - [ ] Are there sections not listed in the Output Format (e.g., "Open Questions", "Future Considerations")?
 - [ ] Does the Problem section describe the **structural cause**, not just the visible symptom?
-- [ ] Are the User Stories written from the actual user/carrier perspective, not the developer's?
+- [ ] Are the User Stories written from the actual user perspective, not the developer's?
 - [ ] Can a reader, one year from now, understand "why this decision was made" from this document alone?
 
 If any answer is NO, do not register — rewrite first.

@@ -95,7 +95,6 @@ describe("CanvasContextMenu launch kind attribute", () => {
     const gateway = document.querySelectorAll<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]');
     expect(gateway).toHaveLength(1);
     expect(gateway[0]?.textContent).toContain("Claude (Gateway)");
-    expect(document.querySelector('[data-operation-launch-kind="claude"]')).not.toBeNull();
   });
 
   it("annotates the Claude launch kinds with a description and no extra decoration", () => {
@@ -105,7 +104,6 @@ describe("CanvasContextMenu launch kind attribute", () => {
         title: "Terminal",
         kinds: [
           { id: "claude-native", type: "agent", title: "Claude (Native)" },
-          { id: "claude", type: "agent", title: "Claude (Classic)" },
           { id: "codex", type: "agent", title: "Codex" },
           { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
           { id: "shell", type: "shell", title: "Shell" },
@@ -117,9 +115,8 @@ describe("CanvasContextMenu launch kind attribute", () => {
       document.querySelector(`[data-operation-launch-kind="${kindId}"] .operation-launch-menu-description`)?.textContent;
 
     expect(descriptionOf("claude-native")).toBe("Plain Claude Code, without the Admiral prompt");
-    expect(descriptionOf("claude")).toContain("Admiral standing orders");
     expect(descriptionOf("claude-gateway")).toContain("models you enabled in Settings");
-    // 설명은 Claude 세 갈래에만 붙는다 — 대비가 필요 없는 종류까지 늘리면 메뉴만 길어진다.
+    // 설명은 Claude 두 갈래에만 붙는다 — 대비가 필요 없는 종류까지 늘리면 메뉴만 길어진다.
     expect(descriptionOf("codex")).toBeUndefined();
     expect(descriptionOf("shell")).toBeUndefined();
 

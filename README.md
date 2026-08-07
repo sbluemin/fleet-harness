@@ -39,23 +39,25 @@ Idle agents are reclaimed instead of abandoned: after a threshold you choose, a 
 
 A **Theater** is a project folder. Register as many as you work in — every panel, session, and tool follows the active one.
 
-## Arrange the work, not just the windows
+## Three ways to work the same canvas
 
-Operations live on an infinite canvas. Drag them where the task wants them, zoom out through the Map, or press <kbd>Alt</kbd>+<kbd>F</kbd> to tile everything into Formation — grid, columns, or rows. <kbd>Alt</kbd>+<kbd>S</kbd> flips the sidebar into a status board so you can see what is working, waiting, or idle at a glance.
+Operations live on an infinite canvas, and a switch in the command band decides how much of the arranging you do yourself.
 
-<kbd>⌘</kbd>+<kbd>K</kbd> reaches across the whole console: operations, repository commits, files, and skills, plus the actions you would otherwise hunt for — resume, close, minimize, rename, regroup, recolor, switch Formation.
+| Mode | What it does | Shortcut |
+|---|---|---|
+| **Cruise** | Place panels wherever you want them | — |
+| **Tactical** | Lay every panel out at once | <kbd>Alt</kbd>+<kbd>F</kbd> |
+| **War Room** | Take waiting panels one at a time | <kbd>Alt</kbd>+<kbd>T</kbd> |
+
+War Room is the one to reach for when several agents are waiting on you: it stages a single Operation at a time, keeps the rest in a queue, and lets you defer one with <kbd>Alt</kbd>+<kbd>→</kbd> without losing its place. <kbd>Alt</kbd>+<kbd>S</kbd> sorts the sidebar by operation status so you can see what is working, waiting, or idle at a glance.
+
+<kbd>⌘</kbd>+<kbd>K</kbd> searches Operations across every Theater. <kbd>⌘</kbd>+<kbd>P</kbd> opens the command palette for the actions you would otherwise hunt for — resume, close, minimize, rename, regroup, recolor, switch mode.
 
 ## Keep project context beside the terminal
 
 <img src=".github/console-repository.png" alt="Fleet Console with the Repository panel open beside two live agent operations" width="100%" />
 
-The Activity Rail ships with seven built-in panels — **Alerts, Codex, Shell, Files, Repository, Skills,** and **Ledger** — and installed plugins can contribute their own. The Repository panel alone gives you history, working changes, compare, worktrees, branches, tags, and stashes for the active Theater, without leaving the operation you are supervising. Each panel remembers its own width and can float over the canvas instead of pushing it.
-
-## Watch every delegated carrier as it runs
-
-<img src=".github/console-carrier-streams.png" alt="Fleet Console Carrier Streams companion showing a live Vanguard reconnaissance dispatch" width="100%" />
-
-When an agent delegates work to a **Carrier**, the Carrier Streams companion opens beside that operation and shows the dispatch as it happens: the order that was sent, the answer streaming back, and the tool the carrier is running right now. You no longer have to guess what a background specialist is doing.
+The Activity Rail ships with eight built-in panels — **Alerts, Codex, Shell, Files, Repository, Skills, Ledger,** and **Usage limits** — and installed plugins can contribute their own. The Repository panel alone gives you history, working changes, compare, worktrees, branches, tags, and stashes for the active Theater, without leaving the operation you are supervising. Ledger and Usage limits keep token spend and provider quota in the same rail, so you notice a window filling up before a run stops. Each panel remembers its own width and can float over the canvas instead of pushing it.
 
 ## Ask questions about a session without disturbing it
 
@@ -63,31 +65,29 @@ When an agent delegates work to a **Carrier**, the Carrier Streams companion ope
 
 **Session Analyst** is read-only intelligence for a single operation. Ask it to walk through what happened, flag anything worth reviewing, or draft a handoff brief — it reads the session and answers without touching the host agent. Longer outputs are published to the **Artifacts** companion: rendered, evidence-cited documents that live in their own pane beside the session. Pick the CLI, model, and reasoning effort the analyst itself runs on — it does not have to be the model you are supervising.
 
-## Configure every specialist independently
-
-<img src=".github/console-carrier-settings.png" alt="Fleet Console Carrier settings showing the Nimitz captain with a Task Force of two CLI backends" width="100%" />
-
-Four built-in Carriers ship with Fleet: **Nimitz** (strategic command and judgment), **Genesis** (chief engineer), **Sentinel** (QA and security), and **Vanguard** (reconnaissance). Under Settings → Plugins → Terminal → Carriers, each one gets its own CLI backend, model, and reasoning effort — so the specialist that audits your security does not have to run on the model that writes your features.
-
-Nimitz and Vanguard additionally support **Task Force**: give either one two or more CLI backends and a single dispatch runs across all of them, so you can compare approaches and surface consensus instead of trusting one model's first answer.
-
 ## Native runtimes, coordinated — not replaced
 
-Every supported CLI brings a model-native agent loop refined by its creator. Fleet launches the actual CLI binary in its declared product surface and speaks its supported protocol, preserving the capabilities and authentication you already use.
+Fleet launches the actual CLI binary in its declared product surface and speaks its supported protocol, preserving the model-native agent loop, capabilities, and authentication you already use. An Agent Operation starts as one of two kinds:
 
-| CLI | Provider | Protocol | Product surface |
-|---|---|---|---|
-| **Claude Code** | Anthropic | ACP | Live Agent Operations |
-| **Claude (Gateway)** | OpenAI, Cursor, Moonshot AI | Claude Code gateway | Live Agent Operations with GPT, Cursor, and Kimi K3 models |
-| **Codex CLI** | OpenAI | Codex App Server | Carrier and Task Force backends |
+| Launch kind | What it runs |
+|---|---|
+| **Claude (Native)** | Plain Claude Code — Console hooks and Wiki skills are all that get added |
+| **Claude (Gateway)** | Claude Code driving the models you enabled in Settings |
 
-Kimi K3 is selected from AI Gateway's Claude Code model picker. Register its API key under Settings → Plugins → Terminal → Agent CLI; the credential stays in the local gateway and is never injected into the Claude Code process.
+The gateway is a local Claude Code endpoint, not an API proxy: your subscription CLIs stay the transport, and each provider's credential never enters the Claude Code process.
 
-Fleet maps that system into a clear command chain: you are the **Admiral of the Navy**, the workspace host acts as **Admiral**, and each specialized **Carrier** is commanded by a Captain persona. The metaphor is more than decoration — it makes ownership, delegation, and verification explicit.
+| Provider | Models reachable through the gateway |
+|---|---|
+| **Codex** | GPT-5.6 Sol · Terra · Luna, each with a Fast variant |
+| **Cursor** | Composer 2.5 · Grok 4.5 · GPT-5.6 Sol · Claude Opus 5 · Claude Fable 5 · Kimi K3 · Auto |
+| **Moonshot-Kimi** | Kimi K3, K3 256K |
+| **OpenCode** | MiniMax M3 · Qwen3 Max · DeepSeek V4 · GLM-5 · Kimi K3 · MiMo · Grok 4.5 · GPT-5.6 Luna |
+
+Choose which of these the gateway offers under Settings → Plugins → Terminal → **AI Gateway**. Only models enabled there appear in Claude Code's `/model` picker and as launch defaults, and expanding a model lets you pick the reasoning levels it is offered at.
 
 ## Make it yours
 
-Three themes — **Instrument**, **Maritime**, and **Carbon** — retune the whole surface, and UI and terminal typography are configurable independently. The console speaks English and Korean across its chrome, settings, shortcuts, and built-in plugins, and switches immediately without a reload.
+Pick light or dark, then the dark tone that suits the room — **Instrument**, **Maritime**, or **Carbon**. UI and terminal typography are configurable independently, down to the installed system fonts on your machine. The console speaks English and Korean across its chrome, settings, shortcuts, and built-in plugins, and switches immediately without a reload.
 
 Fleet Wiki keeps architecture decisions, product history, and review queues in the same workspace as execution, so the reasoning behind a change outlives the transcript that produced it.
 

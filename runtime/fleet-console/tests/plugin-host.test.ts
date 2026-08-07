@@ -464,10 +464,10 @@ describe("plugin host", () => {
       importModule: async () => ({ register }),
     });
 
-    await expect(createHost((ctx) => ctx.registerRouter("/api/v1/plugins/demo/carriers", () => true)).boot()).resolves.toBeUndefined();
-    await expect(createHost((ctx) => ctx.registerRouter("/api/v1/plugins/other/carriers", () => true)).boot()).rejects.toThrow("plugin_route_outside_scope");
-    await expect(createHost((ctx) => ctx.registerRouter("/api/v1/settings/carriers", () => true)).boot()).rejects.toThrow("plugin_route_outside_scope");
-    await expect(createHost((ctx) => ctx.registerRouter("/api/v1/plugins/demo/../other/carriers", () => true)).boot()).rejects.toThrow("plugin_route_outside_scope");
+    await expect(createHost((ctx) => ctx.registerRouter("/api/v1/plugins/demo/widgets", () => true)).boot()).resolves.toBeUndefined();
+    await expect(createHost((ctx) => ctx.registerRouter("/api/v1/plugins/other/widgets", () => true)).boot()).rejects.toThrow("plugin_route_outside_scope");
+    await expect(createHost((ctx) => ctx.registerRouter("/api/v1/settings/widgets", () => true)).boot()).rejects.toThrow("plugin_route_outside_scope");
+    await expect(createHost((ctx) => ctx.registerRouter("/api/v1/plugins/demo/../other/widgets", () => true)).boot()).rejects.toThrow("plugin_route_outside_scope");
   });
 
   it("exposes the host-resolved Fleet data directory to plugins", async () => {

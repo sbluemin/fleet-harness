@@ -1,15 +1,14 @@
 # Fleet Console
 
-Standalone loopback web console for observing carrier jobs, live output streams, and plugin-owned PTY terminal workspaces.
+Standalone loopback web console for observing live output streams and plugin-owned PTY terminal workspaces.
 
 ## What It Does
 
-Fleet Console owns its own local HTTP server. The Terminal plugin owns Shell and Agent PTY runtime, tickets, launch, and WebSocket transport; carrier events are streamed to the browser through the observer API.
+Fleet Console owns its own local HTTP server. The Terminal plugin owns Shell and Agent PTY runtime, tickets, launch, and WebSocket transport; session events are streamed to the browser through the observer API.
 
 - Plugin-owned terminal sessions and observed jobs in a navigable rail.
 - Workspace hub sessions created through an in-console directory browser — no OS-native dialog.
 - Terminal plugin-spawned Agent CLI PTYs with in-process observation.
-- Per-job carrier tracks with incremental output text, reasoning folds, and tool-call activity.
 - Codex/Fleet Wiki browsing under the shared Console GNB at `/console/codex`.
 - Codex Cowork lets you open a Wiki entry in a focused AI editing session: compare its immutable current version with a live draft, give the assistant selected text or annotations as context, and Apply once when ready. Your draft and conversation survive refresh or restart, while knowledge remains unchanged until that final Apply; Cowork has no terminal or PTY access and keeps provider details, workspace paths, and credentials out of the browser.
 - Browser observer snapshots and SSE streams backed by console-owned global observed ids.

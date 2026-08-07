@@ -41,7 +41,6 @@ import { AnalystChatPanel } from "./analysis-chat-panel.js";
 import {
   ANALYST_ARTIFACTS_COMPANION_ID,
   ANALYST_CHAT_COMPANION_ID,
-  CARRIER_STREAMS_COMPANION_ID,
 } from "./analysis-visibility.js";
 
 const catalog = { clis: [{ cliId: "claude", label: "Claude", available: true, defaultModel: "gpt", models: [{ id: "gpt", label: "GPT", effortLevels: ["medium"], defaultEffort: "medium" }] }] };
@@ -536,7 +535,7 @@ describe("Session Analyst Evidence Pulse", () => {
     const { container, root } = renderPanel({
       operationId: "chat-test",
       companionsOpen: true,
-      hiddenCompanionPanelIds: [CARRIER_STREAMS_COMPANION_ID, ANALYST_ARTIFACTS_COMPANION_ID],
+      hiddenCompanionPanelIds: [ANALYST_ARTIFACTS_COMPANION_ID],
       onRequestCompanions,
       onSetCompanionPanelVisible,
     } as OperationRenderContext);
@@ -562,7 +561,7 @@ describe("Session Analyst Evidence Pulse", () => {
     const { container, root } = renderPanel({
       operationId: "chat-test",
       companionsOpen: true,
-      hiddenCompanionPanelIds: [CARRIER_STREAMS_COMPANION_ID],
+      hiddenCompanionPanelIds: [],
       onRequestCompanions,
       onSetCompanionPanelVisible,
     } as OperationRenderContext);
@@ -575,33 +574,6 @@ describe("Session Analyst Evidence Pulse", () => {
     ]);
     expect(onRequestCompanions).toHaveBeenCalledOnce();
     expect(onRequestCompanions).toHaveBeenCalledWith(false);
-
-    act(() => root.unmount());
-    container.remove();
-  });
-
-  it("keeps the companion layer open on Escape when Carrier Streams remains visible", () => {
-    const onRequestCompanions = vi.fn();
-    const onSetCompanionPanelVisible = vi.fn();
-    storeState = {
-      ...initialAnalysisState,
-      artifacts: [{ id: "artifact", title: "Artifact", html: "<p>artifact</p>", createdAt: 1 }],
-    };
-    const { container, root } = renderPanel({
-      operationId: "chat-test",
-      companionsOpen: true,
-      hiddenCompanionPanelIds: [],
-      onRequestCompanions,
-      onSetCompanionPanelVisible,
-    } as OperationRenderContext);
-    const textarea = container.querySelector("textarea")!;
-
-    act(() => textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
-    expect(onSetCompanionPanelVisible.mock.calls).toEqual([
-      [ANALYST_CHAT_COMPANION_ID, false],
-      [ANALYST_ARTIFACTS_COMPANION_ID, false],
-    ]);
-    expect(onRequestCompanions).not.toHaveBeenCalled();
 
     act(() => root.unmount());
     container.remove();

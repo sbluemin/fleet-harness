@@ -30,95 +30,17 @@
    리본도 흐름 밖에 두어 하단에 고정한다: 터미널 geometry가 불변이므로 PTY refit을 유발하지 않는다.
    층위: 터미널(0) < 리본(3) < 핸들 스택(4) < Operation resize 핸들(5). 리본은 먼저 있던
    어포던스 아래에 눕는다 — 새 표면이 기존 클릭 대상을 가로채서는 안 된다. */
-.carrier-sortie-ribbon { position: absolute; z-index: 3; right: 0; bottom: 0; left: 0; box-sizing: border-box; display: flex; align-items: center; gap: var(--space-3); min-height: 30px; overflow: hidden; border: none; border-top: 1px solid color-mix(in oklch, var(--aurora) 30%, var(--hairline)); /* 판독성 계약: glass 층 + 불투명 --ink-deep 언더레이 */ background: linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)), var(--ink-deep); padding: 5px 12px; box-shadow: var(--shadow-floating); color: var(--text-secondary); font-family: var(--font-mono); text-align: left; cursor: pointer; animation: analyst-status-rise var(--duration-base) var(--ease-glide) both; }
-.carrier-sortie-ribbon:hover { background: linear-gradient(color-mix(in oklch, var(--ink-mid) 72%, var(--surface-glass-strong)), color-mix(in oklch, var(--ink-mid) 72%, var(--surface-glass-strong))), var(--ink-deep); }
-.carrier-sortie-ribbon:focus-visible { outline: 2px solid var(--aurora); outline-offset: -2px; }
-.carrier-sortie-ribbon__scan { position: absolute; z-index: 1; inset: 0 0 auto; height: 2px; background: linear-gradient(90deg, transparent, var(--aurora), transparent); background-size: 200% 100%; animation: analyst-aurora-scan 1.6s linear infinite; }
-.carrier-sortie-ribbon__count { flex: none; color: var(--aurora-ink); font-weight: var(--weight-bold); font-size: 10px; letter-spacing: .1em; white-space: nowrap; }
-.carrier-sortie-ribbon__roster { display: flex; align-items: center; gap: var(--space-3); min-width: 0; overflow: hidden; }
-.carrier-sortie-ribbon__track { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; border-left: 2px solid var(--hairline-strong); padding-left: 7px; }
-.carrier-sortie-ribbon__track[data-captain="nimitz"] { border-left-color: var(--captain-nimitz); }
-.carrier-sortie-ribbon__track[data-captain="genesis"] { border-left-color: var(--captain-genesis); }
-.carrier-sortie-ribbon__track[data-captain="sentinel"] { border-left-color: var(--captain-sentinel); }
-.carrier-sortie-ribbon__track[data-captain="vanguard"] { border-left-color: var(--captain-vanguard); }
 /* min-width 하한이 없으면 좁은 패널에서 이름이 몇 px짜리 생략부호 조각으로 뭉개진다 — 판독 불가한 잔해보다
    roster가 통째로 잘려나가는 편이 낫다(roster의 overflow:hidden이 우측에서 깔끔히 자른다). */
-.carrier-sortie-ribbon__name { overflow: hidden; min-width: 5ch; color: var(--text-primary); font-size: 10.5px; white-space: nowrap; text-overflow: ellipsis; }
-.carrier-sortie-ribbon__phase { flex: none; color: var(--text-tertiary); font-size: 9.5px; letter-spacing: .04em; white-space: nowrap; }
-.carrier-sortie-ribbon__more { flex: none; color: var(--text-tertiary); font-size: 9.5px; white-space: nowrap; }
-.carrier-sortie-ribbon__chev { margin-left: auto; flex: none; color: var(--text-tertiary); font-size: 12px; line-height: 1; }
 /* 모바일 Session View는 companion 탐색을 아직 제공하지 않는다(핸들러가 no-op) — 열 수 없는 패널을
    가리키는 전폭 CTA는 두지 않는다. 좁은 슬리버인 기존 핸들과 달리 리본은 눌러 달라고 요구한다. */
-.mobile-operation-body-slot .carrier-sortie-ribbon { display: none; }
 
-.carrier-streams { container-type: inline-size; box-sizing: border-box; display: grid; grid-template-rows: auto minmax(0, 1fr); width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; background: var(--surface-pillar); color: var(--text-primary); }
-.carrier-streams__panel-head .session-analyst__panel-copy { flex: 1; }
-.carrier-streams__state { display: inline-flex; align-items: center; gap: 7px; color: var(--text-tertiary); font-weight: var(--weight-medium); font-size: 10px; line-height: 1; font-family: var(--font-mono); letter-spacing: .08em; white-space: nowrap; }
-.carrier-streams__state i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-tertiary); }
-.carrier-streams__state.is-live { color: var(--aurora-ink); }
-.carrier-streams__state.is-live i { background: var(--aurora); box-shadow: 0 0 10px var(--aurora-glow); }
-.carrier-streams__board { display: flex; flex-direction: column; align-items: stretch; gap: 10px; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 10px; scrollbar-width: thin; }
 /* 행은 보드 가용 높이를 나눠 갖는다 — flex-basis는 반드시 0이어야 한다. auto면 shrink 모드로 들어가
    짧은 행이 하한까지 눌린다. max-content 상한이 짧은 행의 남는 몫을 긴 행으로 재분배한다. */
-.carrier-stream-column { position: relative; box-sizing: border-box; display: flex; flex: 1 1 0; width: 100%; min-width: 0; min-height: 240px; max-height: max-content; flex-direction: column; overflow: hidden; border: 1px solid var(--hairline); border-radius: 13px; background: var(--ink-deep); color: var(--text-primary); }
-.carrier-stream-column[data-tone="live"] { border-color: color-mix(in oklch, var(--aurora) 36%, var(--hairline)); }
-.carrier-stream-column[data-tone="done"] { border-color: color-mix(in oklch, var(--positive) 34%, var(--hairline)); }
-.carrier-stream-column[data-tone="error"] { border-color: color-mix(in oklch, var(--coral) 42%, var(--hairline)); }
-.carrier-stream-column__scan { position: absolute; z-index: 1; inset: 0 0 auto; height: 2px; background: linear-gradient(90deg, transparent, var(--aurora), transparent); background-size: 200% 100%; animation: analyst-aurora-scan 1.6s linear infinite; }
-.carrier-stream-column__head { display: flex; align-items: center; gap: 7px; min-height: 46px; flex: none; border-bottom: 1px solid var(--hairline); padding: 8px 10px; background: color-mix(in oklch, var(--surface-glass-strong) 80%, var(--ink-deep)); }
-.carrier-stream-column__head > strong { min-width: 0; flex: 1; overflow: hidden; font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
-.carrier-stream-column--collapsed time { color: var(--text-tertiary); font-size: 9.5px; font-family: var(--font-mono); white-space: nowrap; }
-.carrier-stream-column__head > button { display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--hairline); border-radius: var(--radius-sm); background: transparent; color: var(--brass-bright); cursor: pointer; }
-.carrier-stream-column__captain-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; }
-.carrier-stream-column__captain-dot[data-captain="nimitz"] { background: var(--captain-nimitz); }
-.carrier-stream-column__captain-dot[data-captain="genesis"] { background: var(--captain-genesis); }
-.carrier-stream-column__captain-dot[data-captain="sentinel"] { background: var(--captain-sentinel); }
-.carrier-stream-column__captain-dot[data-captain="vanguard"] { background: var(--captain-vanguard); }
-.carrier-stream-column__phase { color: var(--aurora-ink); font-weight: var(--weight-bold); font-size: 9px; line-height: 1; font-family: var(--font-mono); letter-spacing: .08em; }
-.carrier-stream-column__phase[data-tone="done"] { color: var(--positive-ink); }
-.carrier-stream-column__phase[data-tone="error"] { color: var(--coral-ink); }
-.carrier-stream-column__body { min-height: 0; flex: 1; overflow-y: auto; outline: none; scrollbar-width: thin; }
-.carrier-stream-column__body:focus-visible { box-shadow: inset 0 0 0 2px var(--brass-bright); }
-.carrier-stream-column__content { display: flex; min-height: 100%; flex-direction: column; gap: 12px; padding: 12px; }
 /* 출격 명령서 — 채팅 말풍선이 아니라 캐리어에게 발부된 명령 블록. 정체성은 spine+wash 문법
    (도크 카드 선례), 미상 캐리어는 brass 중립 폴백. */
-.carrier-stream-column__request { border-left: 3px solid var(--brass); border-radius: 4px 10px 10px 4px; background: color-mix(in oklch, var(--brass) 5%, var(--ink-deep)); color: var(--text-secondary); padding: 9px 12px; font-size: 11px; line-height: 1.55; }
-.carrier-stream-column__request[data-captain="nimitz"] { border-left-color: var(--captain-nimitz); background: color-mix(in oklch, var(--captain-nimitz) 5%, var(--ink-deep)); }
-.carrier-stream-column__request[data-captain="genesis"] { border-left-color: var(--captain-genesis); background: color-mix(in oklch, var(--captain-genesis) 5%, var(--ink-deep)); }
-.carrier-stream-column__request[data-captain="sentinel"] { border-left-color: var(--captain-sentinel); background: color-mix(in oklch, var(--captain-sentinel) 5%, var(--ink-deep)); }
-.carrier-stream-column__request[data-captain="vanguard"] { border-left-color: var(--captain-vanguard); background: color-mix(in oklch, var(--captain-vanguard) 5%, var(--ink-deep)); }
-.carrier-stream-column__request-kicker { display: block; margin-bottom: 4px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 9px; font-weight: var(--weight-bold); letter-spacing: .14em; text-transform: uppercase; }
-.carrier-stream-column__request p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.carrier-stream-column__answer { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: start; gap: 8px; }
-.carrier-stream-column__answer > span { color: var(--aurora-ink); font-size: 13px; line-height: 1.5; }
 /* 공용 .markdown-body의 리딩 measure(max-inline-size 78ch + margin-inline auto)가 셀 안에서
    본문을 중앙 정렬·트랙 초과시키므로 해제한다 — Analyst 채팅 마크다운과 동일한 처방. */
-.carrier-stream-column__markdown { min-width: 0; max-width: 100%; max-inline-size: 100%; margin: 0; color: var(--text-secondary); font-size: 11.5px; line-height: 1.62; overflow-wrap: anywhere; }
-.carrier-stream-column__reasoning { display: inline-flex; align-items: center; gap: 8px; color: var(--text-tertiary); font-size: 10px; line-height: 1; font-family: var(--font-mono); }
-.carrier-stream-column__reasoning i { position: relative; width: 6px; height: 6px; border-radius: 50%; background: var(--aurora); box-shadow: 0 0 10px var(--aurora-glow); }
-.carrier-stream-column__reasoning i::after { content: ""; position: absolute; inset: -3px; border: 1px solid var(--aurora); border-radius: 50%; animation: analyst-orbit-pulse 1.8s var(--ease-glide) infinite; }
-.carrier-stream-column__activity { position: relative; overflow: hidden; border: 1px solid color-mix(in oklch, var(--aurora) 35%, var(--hairline)); border-radius: var(--radius-md); background: color-mix(in oklch, var(--aurora) 6%, var(--ink-deep)); padding: var(--space-3); }
-.carrier-stream-column__activity[data-tone="done"], .carrier-stream-column__activity[data-tone="error"] { border-color: var(--hairline); background: var(--ink-deep); }
-.carrier-stream-column__activity-scan { position: absolute; z-index: 1; inset: 0 0 auto; height: 2px; background: linear-gradient(90deg, transparent, var(--aurora), transparent); background-size: 200% 100%; animation: analyst-aurora-scan 1.6s linear infinite; }
-.carrier-stream-column__activity-main { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: start; gap: var(--space-2); }
-.carrier-stream-column__activity-orbit { position: relative; width: 18px; height: 18px; margin-top: 2px; }
-.carrier-stream-column__activity-orbit::before, .carrier-stream-column__activity-orbit::after { content: ""; position: absolute; border-radius: 50%; }
-.carrier-stream-column__activity-orbit::before { inset: 5px; background: var(--aurora); box-shadow: 0 0 14px var(--aurora-glow); }
-.carrier-stream-column__activity[data-tone="live"] .carrier-stream-column__activity-orbit::after { inset: 1px; border: 1px solid var(--aurora); animation: analyst-orbit-pulse 1.4s var(--ease-glide) infinite; }
-.carrier-stream-column__activity[data-tone="done"] .carrier-stream-column__activity-orbit::before { background: var(--positive); box-shadow: 0 0 12px var(--positive-glow); }
-.carrier-stream-column__activity[data-tone="error"] .carrier-stream-column__activity-orbit::before { background: var(--coral); box-shadow: 0 0 12px var(--coral-glow); }
-.carrier-stream-column__activity[data-tone="done"] .carrier-stream-column__activity-orbit::after,
-.carrier-stream-column__activity[data-tone="error"] .carrier-stream-column__activity-orbit::after { content: none; animation: none; }
-.carrier-stream-column__activity-copy { display: grid; gap: 2px; min-width: 0; }
-.carrier-stream-column__activity-copy strong { overflow-wrap: anywhere; color: var(--text-primary); font-size: 12px; line-height: 1.35; }
-.carrier-stream-column__activity-copy small { color: var(--text-tertiary); font-size: 10px; line-height: 1.4; }
-.carrier-stream-column__activity time { color: var(--aurora-ink); font-weight: var(--weight-medium); font-size: 10px; line-height: 1.3; font-family: var(--font-mono); }
-.carrier-stream-column__error { border: 1px solid color-mix(in oklch, var(--coral) 40%, var(--hairline)); border-radius: var(--radius-sm); background: var(--coral-glow); color: var(--coral-ink); padding: 8px 10px; font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
-.carrier-stream-column--collapsed { height: 36px; min-height: 36px; flex: none; width: 100%; flex-direction: row; align-items: center; gap: 9px; border-color: color-mix(in oklch, var(--positive) 34%, var(--hairline)); background: color-mix(in oklch, var(--positive) 5%, var(--ink-deep)); padding: 0 10px; cursor: pointer; }
-.carrier-stream-column--collapsed strong { min-width: 0; flex: 1; overflow: hidden; color: var(--text-secondary); font-size: 10.5px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
-.carrier-stream-column--collapsed:focus-visible { outline: 2px solid var(--brass-bright); outline-offset: -3px; }
-.carrier-streams__empty { display: grid; place-items: center; align-content: center; gap: 5px; color: var(--text-tertiary); padding: var(--space-5); text-align: center; font-size: 11px; line-height: 1.5; }
-.carrier-streams__empty strong { color: var(--text-secondary); font-size: 12px; }
 
 .session-analyst__chat-pane { container-type: inline-size; position: relative; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); width: 100%; height: 100%; min-width: 0; min-height: 0; color: var(--text-primary); overflow: hidden; background: var(--surface-pillar); }
 .session-analyst__panel-head { display: flex; align-items: center; gap: 11px; min-height: 72px; flex: none; border-bottom: 1px solid var(--hairline); padding: 12px 14px; background: color-mix(in oklch, var(--surface-glass-strong) 82%, var(--surface-pillar)); }
@@ -349,5 +271,4 @@
   .session-analyst-handle, .session-analyst__suggestions button, .session-analyst__followups-row button, .session-analyst__queue-item button, .session-analyst__composer-surface, .session-analyst__composer textarea, .session-analyst__selector-strip, .session-analyst__artifact-count, .session-analyst__artifact-count i { transition: none; }
   .session-analyst-handle:hover { transform: none; }
   .session-analyst__suggestions button:hover, .session-analyst__followups-row button:hover { transform: none; }
-  .session-analyst__pulse-scan, .session-analyst__composer.is-working .session-analyst__composer-surface::before, .session-analyst__pulse-orbit::after, .session-analyst__pulse, .session-analyst__pulse-copy strong, .session-analyst__receipt, .session-analyst__message--analyst, .session-analyst__queue-item, .session-analyst__followups, .session-analyst__slash, .session-analyst__composer.is-docking, .session-analyst__artifact-menu, .session-analyst__export-menu, .session-analyst-handle__count.is-pulsing, .session-analyst-handle--artifacts.is-authoring .session-analyst-handle__count, .session-analyst__author-card, .session-analyst__author-track span, .session-analyst-handle__live::after, .carrier-sortie-ribbon, .carrier-sortie-ribbon__scan, .carrier-stream-column__scan, .carrier-stream-column__activity-scan, .carrier-stream-column__activity[data-tone="live"] .carrier-stream-column__activity-orbit::after, .carrier-stream-column__reasoning i::after { animation: none; }
 }

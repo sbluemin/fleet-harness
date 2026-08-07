@@ -721,7 +721,7 @@ describe("Cursor live client-tool Run bridge", () => {
     const initial: CanonicalResponseRequest = {
       model: "claude-opus-5",
       instructions: "Use ToolSearch before calling a deferred Fleet tool.",
-      input: [{ type: "message", role: "user", content: "Dispatch a Fleet carrier." }],
+      input: [{ type: "message", role: "user", content: "Read a Fleet Wiki entry." }],
       tools: [
         {
           type: "function",
@@ -735,8 +735,8 @@ describe("Cursor live client-tool Run bridge", () => {
         },
         {
           type: "function",
-          name: "mcp__fleet__carrier_dispatch",
-          description: "Dispatch a Fleet carrier",
+          name: "mcp__fleet__wiki_read",
+          description: "Read a Fleet Wiki entry",
           parameters: { type: "object", properties: {} },
           defer_loading: true,
         },
@@ -764,13 +764,13 @@ describe("Cursor live client-tool Run bridge", () => {
           type: "function_call",
           call_id: call.callId,
           name: "ToolSearch",
-          arguments: '{"query":"select:mcp__fleet__carrier_dispatch"}',
+          arguments: '{"query":"select:mcp__fleet__wiki_read"}',
         },
         {
           type: "function_call_output",
           call_id: call.callId,
-          output: '{"type":"tool_reference","tool_name":"mcp__fleet__carrier_dispatch"}',
-          tool_references: ["mcp__fleet__carrier_dispatch"],
+          output: '{"type":"tool_reference","tool_name":"mcp__fleet__wiki_read"}',
+          tool_references: ["mcp__fleet__wiki_read"],
         },
       ],
     };
@@ -787,7 +787,7 @@ describe("Cursor live client-tool Run bridge", () => {
         runRequest: {
           mcpTools: {
             mcpTools: expect.arrayContaining([
-              expect.objectContaining({ toolName: "mcp__fleet__carrier_dispatch" }),
+              expect.objectContaining({ toolName: "mcp__fleet__wiki_read" }),
             ]),
           },
         },

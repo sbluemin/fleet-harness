@@ -47,12 +47,12 @@ describe("OSC title session wiring", () => {
   it("keeps raw titles private and emits once per semantic transition across repeated spinner frames", async () => {
     const ptys = new Map<string, MockPty>();
     const store = createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });
-    store.createPendingTerminalSession({ sessionId: "agent-private", cwd: "/work", cliId: "claude", createdAt: 1_000 });
+    store.createPendingTerminalSession({ sessionId: "agent-private", cwd: "/work", cliId: "claude-gateway", createdAt: 1_000 });
     const frames: unknown[] = [];
     const activityCalls: string[] = [];
     store.subscribeAll((event) => frames.push(event));
     const tracker = createOscAgentActivityTracker({
-      cliId: "claude",
+      cliId: "claude-gateway",
       cwdBasename: "work",
       onActivity: (activity) => {
         activityCalls.push(activity);

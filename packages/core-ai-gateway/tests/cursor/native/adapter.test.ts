@@ -171,9 +171,9 @@ describe("Cursor request budgets", () => {
     const tools = [
       tool("ToolSearch"),
       tool("Read"),
-      { ...tool("mcp__fleet__carrier_dispatch"), defer_loading: true },
-      { ...tool("mcp__fleet__carrier_jobs"), defer_loading: true },
-      { ...tool("mcp__fleet__carrier_result"), defer_loading: true },
+      { ...tool("mcp__fleet__wiki_read"), defer_loading: true },
+      { ...tool("mcp__fleet__wiki_orient"), defer_loading: true },
+      { ...tool("mcp__fleet__wiki_resolve"), defer_loading: true },
     ];
     const initialPlan = buildCursorRunPlan(request({ tools }), "conversation-tool-search-initial");
     const initialNames = runRequest(initialPlan).mcpTools?.mcpTools.map((entry) => entry.toolName) ?? [];
@@ -181,26 +181,26 @@ describe("Cursor request budgets", () => {
 
     expect(toolSearchWireName).toMatch(/^cc_tool_search_[a-f0-9]{8}$/);
     expect(initialNames).toHaveLength(2);
-    expect(initialNames).not.toContain("mcp__fleet__carrier_dispatch");
+    expect(initialNames).not.toContain("mcp__fleet__wiki_read");
     expect(systemText(initialPlan)).toContain(`\`${toolSearchWireName}\` is Claude Code's ToolSearch bridge`);
 
     const continuationPlan = buildCursorRunPlan(request({
       tools,
       input: [
-        { type: "message", role: "user", content: "Use fleet carrier_dispatch." },
+        { type: "message", role: "user", content: "Use fleet wiki_read." },
         {
           type: "function_call",
           call_id: "call-tool-search",
           name: "ToolSearch",
-          arguments: '{"query":"select:mcp__fleet__carrier_dispatch,mcp__fleet__carrier_jobs"}',
+          arguments: '{"query":"select:mcp__fleet__wiki_read,mcp__fleet__wiki_orient"}',
         },
         {
           type: "function_call_output",
           call_id: "call-tool-search",
           output: "selected",
           tool_references: [
-            "mcp__fleet__carrier_dispatch",
-            "mcp__fleet__carrier_jobs",
+            "mcp__fleet__wiki_read",
+            "mcp__fleet__wiki_orient",
           ],
         },
       ],
@@ -210,19 +210,19 @@ describe("Cursor request budgets", () => {
 
     expect(continuationNames).toEqual(expect.arrayContaining([
       toolSearchWireName,
-      "mcp__fleet__carrier_dispatch",
-      "mcp__fleet__carrier_jobs",
+      "mcp__fleet__wiki_read",
+      "mcp__fleet__wiki_orient",
     ]));
-    expect(continuationNames).not.toContain("mcp__fleet__carrier_result");
+    expect(continuationNames).not.toContain("mcp__fleet__wiki_resolve");
   });
 
   it("keeps deferred tools eager when the client did not advertise ToolSearch", () => {
     const plan = buildCursorRunPlan(request({
-      tools: [{ ...tool("mcp__fleet__carrier_dispatch"), defer_loading: true }],
+      tools: [{ ...tool("mcp__fleet__wiki_read"), defer_loading: true }],
     }), "conversation-no-tool-search");
 
     expect(runRequest(plan).mcpTools?.mcpTools.map((entry) => entry.toolName)).toEqual([
-      "mcp__fleet__carrier_dispatch",
+      "mcp__fleet__wiki_read",
     ]);
   });
 
@@ -231,8 +231,8 @@ describe("Cursor request budgets", () => {
       tools: [
         tool("ToolSearch"),
         tool("Read"),
-        { ...tool("mcp__fleet__carrier_dispatch"), defer_loading: true },
-        { ...tool("mcp__fleet__carrier_jobs"), defer_loading: true },
+        { ...tool("mcp__fleet__wiki_read"), defer_loading: true },
+        { ...tool("mcp__fleet__wiki_orient"), defer_loading: true },
       ],
     });
     const plan = buildCursorRunPlan(canonical, "conversation-wire-tools");

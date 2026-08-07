@@ -1,4 +1,9 @@
-import type { CarrierJobStreamEvent } from "@dotobokuri/fleet-carriers";
+/**
+ * pty-message-writer — PTY로 사용자 입력 형태의 메시지를 넣는 공유 직렬화 primitive.
+ *
+ * 활성 CLI의 messagePolicy(bracketed paste / 줄 종결자 / 멀티라인 전략)를 적용해 바이트를
+ * 만들고, 지연 제출을 세션 단위로 직렬화한다.
+ */
 
 import type { CliMessagePolicy, PtyInputChunk } from "../agent-cli/types.js";
 
@@ -26,10 +31,9 @@ export interface DelayedPtyWriter {
   cancelAll(): void;
 }
 
-// 세션별 지연 제출을 직렬화하는 공유 primitive. 같은 세션으로 두 입력
-// (carrier 리마인더/rename 주입)이 250ms 지연 창 안에 도착하면 텍스트가 뒤섞이고(textA textB)
-// CR이 결합/공백 제출되므로, 이전 제출의 종결자(CR)까지 flush된 뒤 다음 입력의 첫 write가
-// 시작되도록 체인한다. 리마인더와 rename이 같은 인스턴스를 공유해야 상호 직렬화된다.
+// 세션별 지연 제출을 직렬화하는 공유 primitive. 같은 세션으로 두 입력이 250ms 지연 창 안에
+// 도착하면 텍스트가 뒤섞이고(textA textB) CR이 결합/공백 제출되므로, 이전 제출의 종결자(CR)까지
+// flush된 뒤 다음 입력의 첫 write가 시작되도록 체인한다.
 export function createDelayedPtyWriter(): DelayedPtyWriter {
   const submitTails = new Map<string, Promise<void>>();
   const pendingControllers = new Map<string, Set<AbortController>>();
@@ -73,37 +77,7 @@ export function createDelayedPtyWriter(): DelayedPtyWriter {
   };
 }
 
-export function createCarrierResultReminderRouter(deps: {
-  readonly streamRegister: (handler: (event: CarrierJobStreamEvent) => void) => () => void;
-  readonly resolveSink: (event: CarrierJobStreamEvent) => PtyWriteSink | undefined;
-  readonly resolvePolicy?: (event: CarrierJobStreamEvent) => CliMessagePolicy;
-  readonly resolveSessionKey?: (event: CarrierJobStreamEvent) => string | undefined;
-  // rename 주입 등 다른 지연 경로와 세션 단위로 함께 직렬화하려면 host가 공유 writer를 주입한다.
-  readonly writer?: DelayedPtyWriter;
-  // host 전용 전송 정책. 미지정 시 기존 formatter 바이트와 제출 타이밍을 유지한다.
-  readonly delivery?: PtyMessageDeliveryOptions;
-  readonly platform?: NodeJS.Platform;
-}): () => void {
-  const writer = deps.writer ?? createDelayedPtyWriter();
-
-  return deps.streamRegister((event) => {
-    if (event.type !== "job:finalized") return;
-    if (typeof event.systemReminder !== "string") return;
-
-    const reminder = sanitizeCarrierResultReminder(event.systemReminder);
-    if (reminder.trim().length === 0) return;
-
-    const sink = deps.resolveSink(event);
-    if (!sink) return;
-
-    // host가 활성 프로파일의 messagePolicy를 제공하면 그대로 적용한다. 미제공 시 기본 정책.
-    const policy = deps.resolvePolicy?.(event) ?? {};
-    const chunks = formatCarrierResultReminderMessage(policy, reminder, deps.platform, deps.delivery);
-    writer.enqueue(deps.resolveSessionKey?.(event), (data) => sink.write(data), chunks);
-  });
-}
-
-export function sanitizeCarrierResultReminder(text: string): string {
+export function sanitizePtyMessageText(text: string): string {
   return text
     .split(BRACKETED_PASTE_END)
     .join("")
@@ -112,7 +86,7 @@ export function sanitizeCarrierResultReminder(text: string): string {
     .replace(CONTROL_CHARS_EXCEPT_INPUT_WHITESPACE, "");
 }
 
-export function formatCarrierResultReminderMessage(
+export function formatPtyMessage(
   policy: CliMessagePolicy,
   text: string,
   platform: NodeJS.Platform = process.platform,

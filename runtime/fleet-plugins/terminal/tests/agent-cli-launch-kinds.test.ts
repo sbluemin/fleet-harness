@@ -7,7 +7,6 @@ describe("buildAgentCliLaunchKinds", () => {
     const result = buildAgentCliLaunchKinds(
       [
         { id: "claude-native", label: "Claude (Native)", available: true, signedIn: true },
-        { id: "claude", label: "Claude", available: true, signedIn: true },
         { id: "claude-gateway", label: "Claude (Gateway)", available: true, signedIn: true },
       ],
       "agent",
@@ -15,7 +14,6 @@ describe("buildAgentCliLaunchKinds", () => {
 
     expect(result).toEqual([
       { id: "claude-native", type: "agent", title: "Claude (Native)" },
-      { id: "claude", type: "agent", title: "Claude (Classic)" },
       { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
     ]);
   });
@@ -23,13 +21,15 @@ describe("buildAgentCliLaunchKinds", () => {
   it("설치 미완료 및 로그인 미완료 CLI에 비활성화 사유를 표시한다", () => {
     const result = buildAgentCliLaunchKinds(
       [
-        { id: "claude", label: "Claude", available: false, signedIn: true },
+        { id: "claude-gateway", label: "Claude (Gateway)", available: false, signedIn: true },
+        { id: "claude-native", label: "Claude (Native)", available: true, signedIn: false },
       ],
       "agent",
     );
 
     expect(result).toEqual([
-      { id: "claude", type: "agent", title: "Claude (Classic)", disabled: true, disabledReason: "Not installed" },
+      { id: "claude-gateway", type: "agent", title: "Claude (Gateway)", disabled: true, disabledReason: "Not installed" },
+      { id: "claude-native", type: "agent", title: "Claude (Native)", disabled: true, disabledReason: "Sign in required" },
     ]);
   });
 });

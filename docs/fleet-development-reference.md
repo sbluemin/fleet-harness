@@ -7,7 +7,6 @@ This guide explains how Fleet development is organized.
 Fleet development follows a hard one-way dependency graph:
 
 - `runtime/fleet-cli` — sole CLI Composition Root and host adapter; consumes Admiral policy from `@dotobokuri/fleet-admiral`; owns one in-process MCP HTTP/JSON-RPC server per CLI process and the console register publisher.
-- `packages/fleet-carriers` — carrier runtime, personas, jobs (including detached jobs), and carrier state.
 - `packages/core-agent` — host-agnostic executor/session/model runtime engine, builtin external MCP catalog, generic in-process MCP server primitives, and shared register data contract.
 - `packages/core-infra` — host-agnostic auth, data-dir resolution, data-dir/settings, and durable `fs-store` I/O primitives.
 - `runtime/fleet-console` — standalone loopback Console Service and sole owner of CLI register ingest, REST/SSE/WebSocket, Terminal PTY/provider/plugin runtime, durable state, and static UI serving.
@@ -21,13 +20,9 @@ Fleet development follows a hard one-way dependency graph:
 
 Put code here when it requires terminal rendering, CLI process lifecycle management, host input routing, concrete service assembly, per-process in-process MCP serving, console registration publishing, or Admiral prompt/protocol/tool policy.
 
-### 2.2 `packages/fleet-carriers`
-
-Put code here when it owns carrier persona metadata, carrier dispatch, carrier job surfaces, or carrier state persistence.
-
 ### 2.3 `packages/core-infra`
 
-Put code here when it owns generic auth, data-dir resolution, data-dir/settings, or durable `fs-store` I/O primitives. Executor/session infrastructure belongs to `packages/core-agent`; detached-job infrastructure belongs to `packages/fleet-carriers`.
+Put code here when it owns generic auth, data-dir resolution, data-dir/settings, or durable `fs-store` I/O primitives. Executor/session infrastructure belongs to `packages/core-agent`.
 
 ### 2.4 `runtime/fleet-console`
 
@@ -51,4 +46,4 @@ Put code here when it owns the host-agnostic one-shot executor/session/model run
 
 ## 4. State Synchronization
 
-Fleet supports multiple concurrent instances sharing the same `carriers.json` file via the `fs-store` advisory directory lock (`withDirectoryLock`) combined with atomic writes and read-time snapshots. Developers must avoid hidden process-global state and use explicit service instances plus pull-based resolvers.
+Fleet supports multiple concurrent instances sharing the same durable state files via the `fs-store` advisory directory lock (`withDirectoryLock`) combined with atomic writes and read-time snapshots. Developers must avoid hidden process-global state and use explicit service instances plus pull-based resolvers.

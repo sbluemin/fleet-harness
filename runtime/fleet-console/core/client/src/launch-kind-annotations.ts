@@ -7,7 +7,7 @@ import type { CoreMessageKey } from "./i18n/index.js";
 //
 // 두 층으로 나뉜다: brief는 라벨 옆에 늘 서서 훑기만 해도 종류가 갈리게 하고,
 // description은 그 항목을 짚었을 때만 옆에 펼친다. 상시로 두 줄을 쓰면 메뉴가 실행 목록이
-// 아니라 설명서가 되고, 아예 없애면 이름만으로 세 Claude를 못 가른다.
+// 아니라 설명서가 되고, 아예 없애면 이름만으로 두 Claude를 못 가른다.
 export interface LaunchKindAnnotation {
   readonly descriptionKey: CoreMessageKey;
   readonly briefKey: CoreMessageKey;
@@ -17,10 +17,6 @@ export const LAUNCH_KIND_ANNOTATIONS: Readonly<Record<string, LaunchKindAnnotati
   "claude-native": {
     descriptionKey: "launchKind.claudeNative.description",
     briefKey: "launchKind.claudeNative.brief",
-  },
-  claude: {
-    descriptionKey: "launchKind.claude.description",
-    briefKey: "launchKind.claude.brief",
   },
   "claude-gateway": {
     descriptionKey: "launchKind.claudeGateway.description",

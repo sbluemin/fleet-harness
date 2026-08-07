@@ -6,12 +6,11 @@
 
 # Fleet
 
-Fleet is a multi-LLM orchestration kit. An Admiral host coordinates specialized Carrier personas through supported Agent CLI backends.
+Fleet is a multi-LLM orchestration kit. A host agent coordinates delegated runs across supported Agent CLI backends and gateway models.
 
 ## Domain map
 
 - **Admiral** — the host agent that plans, delegates, and integrates work.
-- **Carrier** — a specialized delegated persona backed by an Agent CLI executor.
 - **Theater** — a Fleet Console project root and the boundary for its local context.
 - **Operation** — a Console-managed unit inside a Theater.
 

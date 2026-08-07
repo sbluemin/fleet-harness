@@ -1,4 +1,4 @@
-import { claudeCli, claudeGatewayCli, claudeNativeCli } from "./claude/definitions.js";
+import { claudeGatewayCli, claudeNativeCli } from "./claude/definitions.js";
 import type { AgentCliDefinition, AgentCliId, AgentCliProfile } from "./types.js";
 
 export interface ResolveAgentCliProfileOptions {
@@ -12,11 +12,10 @@ export interface AgentCliMetadata {
   readonly label: string;
 }
 
-const DEFAULT_CLI_ID: AgentCliId = "claude";
-// Console 캔버스 제어 메뉴 순서를 고정한다: Claude (Native) → Claude → Claude (Gateway).
+const DEFAULT_CLI_ID: AgentCliId = "claude-gateway";
+// Console 캔버스 제어 메뉴 순서를 고정한다: Claude (Native) → Claude (Gateway).
 const DEFINITIONS: Record<AgentCliId, AgentCliDefinition> = {
   "claude-native": claudeNativeCli,
-  claude: claudeCli,
   "claude-gateway": claudeGatewayCli,
 };
 
@@ -46,18 +45,8 @@ export function getDefaultAgentCliId(): AgentCliId {
   return DEFAULT_CLI_ID;
 }
 
-// 기본 카탈로그 나열에서 제외하는 CLI. claude-native는 Console 전용이고, claude-gateway는
-// 게이트웨이 라우트를 직접 마운트하는 호스트(Console 터미널 플러그인, fleet-cli thin 런처)가
-// cliId를 명시해 해석한다 — 카탈로그 나열로는 노출하지 않는다.
-const CONSOLE_ONLY_CLI_IDS: ReadonlySet<AgentCliId> = new Set<AgentCliId>(["claude-native", "claude-gateway"]);
-
-export interface AgentCliIdListOptions {
-  readonly includeConsoleOnly?: boolean;
-}
-
-export function getAgentCliIds(options: AgentCliIdListOptions = {}): AgentCliId[] {
-  const ids = Object.keys(DEFINITIONS) as AgentCliId[];
-  return options.includeConsoleOnly ? ids : ids.filter((id) => !CONSOLE_ONLY_CLI_IDS.has(id));
+export function getAgentCliIds(): AgentCliId[] {
+  return Object.keys(DEFINITIONS) as AgentCliId[];
 }
 
 export function getAgentCliMetadata(ids: readonly AgentCliId[] = getAgentCliIds()): AgentCliMetadata[] {
@@ -72,9 +61,18 @@ function parseEnvCliId(value: string | undefined): AgentCliId | undefined {
     return undefined;
   }
 
+  // 퇴역한 Classic id는 최소 한 릴리스 동안 gateway로 정규화한다. 이미 FLEET_AGENT_CLI=claude를
+  // 내보내 둔 환경이 업그레이드만으로 기동 불능이 되지 않게 한다.
+  if (value === RETIRED_CLASSIC_CLI_ID) {
+    return "claude-gateway";
+  }
+
   if (Object.hasOwn(DEFINITIONS, value)) {
     return value as AgentCliId;
   }
 
-  throw new Error(`Unsupported agent CLI "${value}". Expected one of: ${getAgentCliIds({ includeConsoleOnly: true }).join(", ")}`);
+  throw new Error(`Unsupported agent CLI "${value}". Expected one of: ${getAgentCliIds().join(", ")}`);
 }
+
+/** 퇴역한 Classic Agent CLI id. 값 자체는 더 이상 해석되지 않고 gateway로 정규화된다. */
+const RETIRED_CLASSIC_CLI_ID = "claude";
