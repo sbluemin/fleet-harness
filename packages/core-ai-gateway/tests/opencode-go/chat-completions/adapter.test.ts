@@ -547,7 +547,8 @@ describe("chat completions undeclared argument pruning", () => {
     calledName = "Record",
   ): Promise<string> {
     const fetchMock = vi.fn<typeof fetch>(async () => toolCall(args, calledName));
-    const response = await adapter(fetchMock).stream(
+    // Pruning is bound to the provider wrapper, never the public generic class.
+    const response = await new OpencodeGoChatCompletionsAdapter({ fetch: fetchMock }).stream(
       request({ tools: [tool(parameters)] }),
       { apiKey: "k" },
     );
@@ -557,6 +558,7 @@ describe("chat completions undeclared argument pruning", () => {
     if (done?.type !== "response.function_call_arguments.done") throw new Error("no arguments.done");
     const item = events.find((event) => event.type === "response.output_item.done");
     if (item?.type !== "response.output_item.done") throw new Error("no output_item.done");
+    if (item.item.type !== "function_call") throw new Error("expected a function_call item");
     // 두 이벤트가 갈라지면 하류가 어느 쪽을 읽느냐에 따라 인자가 달라진다.
     expect(item.item.arguments).toBe(done.arguments);
     return done.arguments;
@@ -614,5 +616,43 @@ describe("chat completions undeclared argument pruning", () => {
 
   it("leaves arguments alone for a tool the request never declared", async () => {
     expect(await emittedArguments("{\"a\":1}", closedSchema(), "Unlisted")).toBe("{\"a\":1}");
+  });
+
+  it("keeps a key that patternProperties legalizes under a closed object", async () => {
+    // `x-id` is declared, just not through `properties` — deleting it would corrupt a valid call.
+    const dynamic = {
+      type: "object",
+      properties: { claim: { type: "string" } },
+      patternProperties: { "^x-": { type: "string" } },
+      additionalProperties: false,
+    };
+    expect(await emittedArguments("{\"claim\":\"c\",\"x-id\":\"7\"}", dynamic))
+      .toBe("{\"claim\":\"c\",\"x-id\":\"7\"}");
+  });
+
+  it("keeps keys a conditional schema may legalize", async () => {
+    const conditional = {
+      type: "object",
+      properties: { kind: { type: "string" } },
+      if: { properties: { kind: { const: "wide" } } },
+      additionalProperties: false,
+    };
+    expect(await emittedArguments("{\"kind\":\"wide\",\"extra\":1}", conditional))
+      .toBe("{\"kind\":\"wide\",\"extra\":1}");
+  });
+
+  it("never prunes through the public generic adapter", async () => {
+    // The measurement behind pruning is OpenCode's; a generic instance can target any
+    // Chat Completions backend, so its arguments must reach the client unchanged.
+    const raw = "{\"claim\":\"c\",\"source\":\"s\",\"quote\":\"q\",\"quote_unused\":\"\"}";
+    const fetchMock = vi.fn<typeof fetch>(async () => toolCall(raw));
+    const response = await adapter(fetchMock).stream(
+      request({ tools: [tool(closedSchema())] }),
+      { apiKey: "k" },
+    );
+    if (!response.ok) throw new Error("expected ok");
+    const events = await collect(response.events);
+    expect(events.find((event) => event.type === "response.function_call_arguments.done"))
+      .toMatchObject({ arguments: raw });
   });
 });

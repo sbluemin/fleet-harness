@@ -165,7 +165,7 @@ export class OpenAIChatCompletionsAdapter implements AiGatewayAdapter {
       events: translateChatCompletionsStream(
         response.body,
         { ...readOptions, onClose: unlinkAbort },
-        declaredToolSchemas(request)
+        argumentPruningPolicy.has(this) ? declaredToolSchemas(request) : EMPTY_TOOL_SCHEMAS
       ),
     };
   }
@@ -175,6 +175,15 @@ const imageInputPolicy = new WeakMap<
   OpenAIChatCompletionsAdapter,
   (model: string) => boolean
 >();
+
+/**
+ * Which instances prune undeclared tool-call argument keys on the way in.
+ *
+ * The measurement behind the pruning is OpenCode's alone, and a generic instance can be
+ * constructed against any Chat Completions endpoint, so — like the image policy — this
+ * binds to the provider instance instead of widening the public generic class.
+ */
+const argumentPruningPolicy = new WeakMap<OpenAIChatCompletionsAdapter, true>();
 
 export interface OpencodeGoChatCompletionsAdapterOptions {
   fetch?: FetchLike;
@@ -204,6 +213,9 @@ export class OpencodeGoChatCompletionsAdapter extends OpenAIChatCompletionsAdapt
     // OpenCode Go의 DeepSeek V4 Chat 스키마는 image_url을 거부한다. 이 정책은
     // public generic class의 상속 표면을 넓히지 않고 provider instance에만 결합한다.
     imageInputPolicy.set(this, (model) => !model.startsWith("deepseek-v4-"));
+    // 미선언 인자 키 정화도 같은 이유로 provider instance 한정이다 — 이 wire가 strict를
+    // 무시한다는 실측은 OpenCode의 것이고, 다른 백엔드에 대해서는 측정된 바가 없다.
+    argumentPruningPolicy.set(this, true);
   }
 }
 
@@ -370,6 +382,9 @@ interface PendingChatToolCall {
 /** Tool name to the JSON Schema the client declared for it in this request. */
 type DeclaredToolSchemas = ReadonlyMap<string, Record<string, unknown>>;
 
+/** An instance outside the pruning policy resolves no schema, so every argument passes through. */
+const EMPTY_TOOL_SCHEMAS: DeclaredToolSchemas = new Map();
+
 function declaredToolSchemas(request: CanonicalResponseRequest): DeclaredToolSchemas {
   const schemas = new Map<string, Record<string, unknown>>();
   for (const tool of request.tools ?? []) schemas.set(tool.name, tool.parameters);
@@ -386,10 +401,12 @@ function declaredToolSchemas(request: CanonicalResponseRequest): DeclaredToolSch
  * guarantee can be made, and unlike an outbound rewrite it cannot provoke a 400.
  *
  * Only a closed object — one that says `additionalProperties: false` — is pruned; an
- * open object declares extra keys legal and must survive untouched. Any schema shape
- * this walker cannot resolve (`$ref`, a branching keyword, absent `properties`) leaves
- * its subtree exactly as it arrived. The asymmetry is deliberate: a key wrongly dropped
- * is silent data loss, while a key wrongly kept is only the behaviour that already ships.
+ * open object declares extra keys legal and must survive untouched. Any schema shape this
+ * walker cannot resolve leaves its subtree exactly as it arrived: `$ref`, a branching
+ * keyword, absent `properties`, or a keyword that legalizes keys `properties` never names
+ * (`patternProperties`, `dependentSchemas`, `if`, `unevaluatedProperties`). The asymmetry
+ * is deliberate: a key wrongly dropped is silent data loss, while a key wrongly kept is
+ * only the behaviour that already ships.
  */
 function pruneUndeclaredArguments(
   raw: string,
@@ -414,6 +431,17 @@ function pruneUndeclaredValue(value: unknown, schema: unknown): unknown {
   // A branching or referenced schema does not name one closed set of legal keys.
   if (typeof schema.$ref === "string") return value;
   if (Array.isArray(schema.anyOf) || Array.isArray(schema.oneOf) || Array.isArray(schema.allOf)) {
+    return value;
+  }
+  // Keywords that legalize keys `properties` never names — `patternProperties` alone makes
+  // `x-id` valid under `additionalProperties: false`. Evaluating them is out of scope, so
+  // the declared set is unresolvable and the object stays whole.
+  if (
+    isRecord(schema.patternProperties)
+    || isRecord(schema.dependentSchemas)
+    || schema.if !== undefined
+    || schema.unevaluatedProperties !== undefined
+  ) {
     return value;
   }
 
