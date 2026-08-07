@@ -13,7 +13,6 @@ const MIGRATED_PAYLOAD_KEYS = ["launchKindId", "cliId"] as const;
 
 const BACKUP_FILE_SUFFIX = ".classic-backup";
 
-
 export interface ClassicLaunchKindMigrationResult {
   /** 이주가 반영된 state. 변경이 없으면 입력과 동일한 참조를 돌려준다. */
   readonly state: DurableConsoleState;
