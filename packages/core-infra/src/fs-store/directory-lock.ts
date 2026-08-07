@@ -4,7 +4,7 @@ import * as path from "node:path";
 
 import type { DirectoryLockDeps, DirectoryLockOwner } from "./types.js";
 
-// carriers store-lock.ts의 quarantine 식별-복구를 정본으로 승격
+// 구 store-lock.ts의 quarantine 식별-복구를 정본으로 승격
 
 interface LockSnapshot {
   owner: DirectoryLockOwner | null;

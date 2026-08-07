@@ -17,12 +17,13 @@ const SETTINGS: GlobalSettingsState = {
   uiFont: { source: "builtin", id: "manrope", size: 14 },
 };
 
-// claude-operations 워크스루가 끝나자마자 같은 메뉴에서 classic-deprecation 스포트라이트가
-// 이어진다. finish()는 시청 기록 저장이 끝나기 전에 락을 풀지 않아야 하므로, 첫 PUT을 지연시켜
+// canvas-modes 워크스루가 끝나자마자 같은 화면에서 claude-operations 워크스루가 이어진다.
+// finish()는 시청 기록 저장이 끝나기 전에 락을 풀지 않아야 하므로, 첫 PUT을 지연시켜
 // '저장 중' 상태에서 다음 투어가 열리지 않는지와, 저장이 끝난 뒤에야 열리는지를 검증한다.
 const LAUNCH_KINDS = [
+  '<div class="command-band-mode-switch"></div>',
+  '<div class="command-band-mode-tray"></div>',
   '<button data-operation-launch-kind="claude-native">Claude (Native)</button>',
-  '<button data-operation-launch-kind="claude">Claude (Classic)</button>',
   '<button data-operation-launch-kind="claude-gateway">Claude (Gateway)</button>',
 ].join("");
 
@@ -52,14 +53,14 @@ describe("feature tour seen-key serialization", () => {
   it("holds the next tour until the prior seen-key save completes", async () => {
     document.body.innerHTML = LAUNCH_KINDS;
 
-    // 첫 PUT(클래식 워크스루 저장)은 수동 해제 전까지 답하지 않는다.
+    // 첫 PUT(모드 워크스루 저장)은 수동 해제 전까지 답하지 않는다.
     let resolveFirst!: (value: Response) => void;
     const fetchMock = vi.fn()
       .mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveFirst = resolve; }))
       .mockImplementation(async () => new Response(JSON.stringify({
         state: {
           ...SETTINGS,
-          seenFeatureTours: ["claude-operations.walkthrough", "classic-deprecation.spotlight"],
+          seenFeatureTours: ["canvas-modes.walkthrough", "claude-operations.walkthrough"],
         },
       })));
     globalThis.fetch = fetchMock as typeof fetch;
@@ -68,37 +69,37 @@ describe("feature tour seen-key serialization", () => {
     root = createRoot(document.body.appendChild(document.createElement("div")));
     await act(async () => { root?.render(<FeatureTourOverlay />); });
 
-    // claude-operations 워크스루가 세 단계로 재생된다.
+    // canvas-modes 워크스루가 두 단계로 재생된다.
     expect(document.querySelector('[data-feature-tour-id]')?.getAttribute("data-feature-tour-id"))
-      .toBe("claude-operations");
+      .toBe("canvas-modes");
 
-    // 다음 → 다음 → 시작하기(마지막 단계)로 완료한다. 마지막 클릭은 저장을 시작하고,
-    // 그 저장이 끝나기 전에는 뒤따르는 스포트라이트가 열리면 안 된다.
-    await act(async () => { primaryButton()?.click(); });
+    // 다음 → 시작하기(마지막 단계)로 완료한다. 마지막 클릭은 저장을 시작하고,
+    // 그 저장이 끝나기 전에는 뒤따르는 투어가 열리면 안 된다.
     await act(async () => { primaryButton()?.click(); });
     await act(async () => { primaryButton()?.click(); });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(document.querySelector('[data-feature-tour-id]')).toBeNull();
 
-    // 저장이 끝나야 락이 풀리고 classic-deprecation 스포트라이트가 열린다.
+    // 저장이 끝나야 락이 풀리고 claude-operations 워크스루가 열린다.
     await act(async () => {
       resolveFirst(new Response(JSON.stringify({
-        state: { ...SETTINGS, seenFeatureTours: ["claude-operations.walkthrough"] },
+        state: { ...SETTINGS, seenFeatureTours: ["canvas-modes.walkthrough"] },
       })));
     });
     expect(document.querySelector('[data-feature-tour-id]')?.getAttribute("data-feature-tour-id"))
-      .toBe("classic-deprecation");
+      .toBe("claude-operations");
 
-    // 스포트라이트를 닫으면 저장이 끝난 뒤의 쓰기라 동시 저장에 밀리지 않고 두 키가 모두 남는다.
+    // 두 번째 투어를 끝내면 저장이 끝난 뒤의 쓰기라 동시 저장에 밀리지 않고 두 키가 모두 남는다.
+    await act(async () => { primaryButton()?.click(); });
     await act(async () => { primaryButton()?.click(); });
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
     const bodies = fetchMock.mock.calls.map(([, init]) => JSON.parse((init as RequestInit).body as string));
-    expect(bodies[0]).toEqual({ seenFeatureTours: ["claude-operations.walkthrough"] });
+    expect(bodies[0]).toEqual({ seenFeatureTours: ["canvas-modes.walkthrough"] });
     expect(bodies[1]).toEqual({
-      seenFeatureTours: ["claude-operations.walkthrough", "classic-deprecation.spotlight"],
+      seenFeatureTours: ["canvas-modes.walkthrough", "claude-operations.walkthrough"],
     });
-    expect(getGlobalSettingsStoreState().state?.seenFeatureTours).toContain("classic-deprecation.spotlight");
+    expect(getGlobalSettingsStoreState().state?.seenFeatureTours).toContain("claude-operations.walkthrough");
   });
 });

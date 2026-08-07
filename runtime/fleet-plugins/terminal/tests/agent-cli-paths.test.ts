@@ -12,7 +12,6 @@ import {
   agentCliCommandForId,
   applyAgentCliPathEnvOverlay,
   createAgentCliPathStore,
-  createCarrierAgentCliLaunchResolver,
   normalizeAgentCliPaths,
   resolveAgentCliBinary,
 } from "../server/agent-api/agent-cli-paths.js";
@@ -210,91 +209,11 @@ describe("Agent CLI launch env overlay", () => {
   });
 });
 
-describe("Carrier Agent CLI launch resolution", () => {
-  it("resolves Codex from PATH only for the preserved Carrier backend", async () => {
-    const directory = createTemporaryDirectory();
-    createFileAt(directory, "codex");
-    const resolver = createCarrierAgentCliLaunchResolver(
-      async () => ({}),
-      { PATH: directory },
-    );
-
-    await expect(resolver("codex", { env: {} })).resolves.toEqual({
-      cliPath: undefined,
-    });
-    expect(agentCliCommandForId("codex")).toBeNull();
-  });
-
-  it("keeps Codex env and stored path overrides for Carrier launches", async () => {
-    const storedBinary = createFile("stored-codex", 0o700);
-    const envBinary = createFile("env-codex", 0o700);
-    const resolver = createCarrierAgentCliLaunchResolver(
-      async () => ({ codex: storedBinary }),
-      { PATH: "", CODEX_BIN: envBinary },
-    );
-
-    await expect(resolver("codex", { env: {} })).resolves.toEqual({
-      cliPath: envBinary,
-    });
-
-    const storedResolver = createCarrierAgentCliLaunchResolver(
-      async () => ({ codex: storedBinary }),
-      { PATH: "" },
-    );
-    await expect(storedResolver("codex", { env: {} })).resolves.toEqual({
-      cliPath: storedBinary,
-    });
-  });
-
-  it("passes only CLAUDE_BIN when a Claude user path needs the bridge override", async () => {
-    const resolver = createCarrierAgentCliLaunchResolver(
-      async () => ({ claude: process.execPath }),
-      {
-        PATH: path.dirname(process.execPath),
-        CLAUDECODE: "nested",
-        NODE_OPTIONS: "--inspect",
-        npm_config_user_agent: "must-not-return",
-      },
-    );
-
-    await expect(resolver("claude", { env: {} })).resolves.toEqual({
-      cliPath: process.execPath,
-      env: { CLAUDE_BIN: process.execPath },
-    });
-  });
+describe("Agent CLI launch resolution", () => {
 
 
 
 
-
-  it("keeps an existing env override ahead of the stored user path", async () => {
-    const userBinary = createFile("user-claude", 0o700);
-    const resolver = createCarrierAgentCliLaunchResolver(
-      async () => ({ claude: userBinary }),
-      { PATH: path.dirname(process.execPath), CLAUDE_BIN: process.execPath },
-    );
-
-    await expect(resolver("claude", { env: {} })).resolves.toEqual({
-      cliPath: process.execPath,
-    });
-  });
-
-  it("rejects a Claude launch when the binary cannot be resolved", async () => {
-    const directory = createTemporaryDirectory();
-    const resolver = createCarrierAgentCliLaunchResolver(
-      async () => ({}),
-      {
-        PATH: directory,
-        CLAUDECODE: "nested",
-        NODE_OPTIONS: "--inspect",
-        npm_config_user_agent: "must-not-return",
-      },
-    );
-
-    await expect(resolver("claude", { env: { AUTH_TOKEN: "secret" } })).rejects.toThrow(
-      "agent_cli_unavailable",
-    );
-  });
 });
 
 function createTemporaryDirectory(): string {

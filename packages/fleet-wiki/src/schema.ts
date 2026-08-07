@@ -130,7 +130,7 @@ title: Title MUST follow the "PRD: {feature summary}" format.
 # PRD Template
 
 <!--
-COMPOSER GUIDANCE (carriers must read before authoring):
+COMPOSER GUIDANCE (read before authoring):
 
 1. TITLE FORMAT
    The entry title MUST follow the "PRD: {feature summary}" pattern.
@@ -173,42 +173,42 @@ COMPOSER GUIDANCE (carriers must read before authoring):
 
 export const DEFAULT_WORKSPACE_KNOWLEDGE_AGENTS = `---
 name: Fleet Wiki Workspace Doctrine
-description: Operational doctrine for any agent or carrier touching the Fleet Wiki workspace — boundaries, roles, workflow, schema, and escalation.
+description: Operational doctrine for any agent touching the Fleet Wiki workspace — boundaries, roles, workflow, schema, and escalation.
 applies_to: .fleet/knowledge/**
 authority: Admiral of the Navy (대원수)
 ---
 
 # Fleet Wiki Workspace Doctrine
 
-This directory is the **Fleet Wiki** — a workspace-local markdown knowledge base. All entries here are governed by a deterministic patch queue with mandatory host approval. **Direct filesystem edits are forbidden for any agent or carrier.**
+This directory is the **Fleet Wiki** — a workspace-local markdown knowledge base. All entries here are governed by a deterministic patch queue with mandatory host approval. **Direct filesystem edits are forbidden for any agent.**
 
 The active entry schema is defined in \`schema/wiki-schema.md\` and may be revised by the Admiral of the Navy (대원수) at any time. Always consult the current schema rather than assuming a fixed format.
 
 ## 1. Hard Boundaries (CRITICAL)
 
-The following prohibitions are **absolute** for every carrier and any sub-agent operating in this directory:
+The following prohibitions are **absolute** for every agent operating in this directory:
 
 - **NEVER** edit any file under \`wiki/\` directly via filesystem tools (Read/Write/Edit). Entry creation and new staged revisions must go through host-only \`wiki_ingest\`; already-pending queue proposal revisions may use host-only \`wiki_patch_edit\`.
 - **NEVER** edit \`index.json\`, \`wiki/index.md\`, or \`log.md\` by hand. These files are **system-managed** and rebuilt automatically when patches are approved.
 - **NEVER** edit files under \`raw/\` after creation — raw sources are immutable evidence and \`wiki_ingest\` writes them automatically.
 - **NEVER** touch \`queue/\`, \`archive/\`, or \`conflicts/\` — these are workflow-internal stores managed by the wiki tooling.
-- **NEVER** invoke mutation, staging, lint, schema, or approval Wiki tools from a carrier executor. Those tools are **host-only**; runtime ACLs are authoritative.
-- **NEVER** approve or reject patches from a carrier executor. Approval authority is **host-only** through \`wiki_patch_queue\`.
+- **NEVER** invoke mutation, staging, lint, schema, or approval Wiki tools from a delegated run. Those tools are **host-only**; runtime ACLs are authoritative.
+- **NEVER** approve or reject patches from a delegated run. Approval authority is **host-only** through \`wiki_patch_queue\`.
 
 ## 2. Roles and Gates
 
 | Role | Capability | Gate |
 |------|-----------|------|
-| **Carriers** | Read-only consult: \`wiki_orient\` · \`wiki_briefing\` · \`wiki_read\` · \`wiki_resolve\` | Cannot mutate, stage, lint, inspect/create schema, or approve patches |
+| **Delegated runs** | Read-only consult: \`wiki_orient\` · \`wiki_briefing\` · \`wiki_read\` · \`wiki_resolve\` | Cannot mutate, stage, lint, inspect/create schema, or approve patches |
 | **Host (Admiral PI)** | Read, compose, stage (\`wiki_ingest\`), revise pending (\`wiki_patch_edit\`), lint (\`wiki_drydock\`), query (\`wiki_query\`), compile (\`wiki_compile_source\`), schema (\`wiki_schema_list\` / \`wiki_schema_read\` / \`wiki_schema_create\`), approve/reject (\`wiki_patch_queue\`) | Sole mutation, schema, and approval authority |
 
-The host performs every Fleet Wiki operation directly. Carriers may consult read-only tools for context but must not stage entries, revise patches, lint, create schema templates, or approve queue items.
+The host performs every Fleet Wiki operation directly. Delegated runs may consult read-only tools for context but must not stage entries, revise patches, lint, create schema templates, or approve queue items.
 
 ## 3. Standard Workflow
 
 ### 3.1 Read / Lookup
 
-\`wiki_orient\` → \`wiki_briefing\` → \`wiki_read\` → \`wiki_resolve\`. Read-only; globally shared with carriers; no approval needed.
+\`wiki_orient\` → \`wiki_briefing\` → \`wiki_read\` → \`wiki_resolve\`. Read-only; globally shared; no approval needed.
 
 ### 3.2 Stage a New Entry (Host)
 

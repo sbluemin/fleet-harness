@@ -18,11 +18,9 @@ import {
   ANALYST_ARTIFACTS_COMPANION_ID,
   ANALYST_CHAT_COMPANION_ID,
   ANALYST_COMPANION_IDS,
-  CARRIER_STREAMS_COMPANION_ID,
   closeAnalystCompanionPanels,
   countRemainingVisibleCompanionPanels,
   isCompanionPanelVisible,
-  operationSupportsCarrierStreams,
 } from "./analysis-visibility.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { currentTerminalLocale, getT, useTerminalLocale, type TerminalMessageKey } from "../i18n/index.js";
@@ -32,17 +30,14 @@ import "./agent-cli.css";
 
 import { createAgentSession, fetchAgentCliDiagnostics, fetchAgentCliState, resumeAgentSession, setAgentCliPath, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
-import { deriveTrackPhase, formatElapsedDuration, isTrackLive, mergeJobIds, resolveCarrierCaptain, resolveToolTone, type TrackPhase } from "./helpers.js";
+import { formatElapsedDuration } from "./helpers.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore } from "./model-auth.js";
 import type { ModelAuthProviderState } from "./model-auth.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings.js";
 import type { AiGatewayCatalogModel, AiGatewayCatalogProvider, AiGatewayProviderId, AiGatewaySettings } from "./settings.js";
-import { isTerminalJobStatus } from "./reduce.js";
 import { StreamedMarkdown } from "./streamed-markdown.js";
-import { applySessionUpdate, hydrateAgentClis, removeSession, selectSession, sessionJobs, useAgentState } from "./store.js";
-import type { AgentCliDiagnosticsEntry, AgentCliStatus, JobView, SessionInfo, TrackView } from "./types.js";
-
-export { CARRIER_STREAMS_COMPANION_ID };
+import { applySessionUpdate, hydrateAgentClis, removeSession, selectSession, useAgentState } from "./store.js";
+import type { AgentCliDiagnosticsEntry, AgentCliStatus, SessionInfo } from "./types.js";
 
 interface SettingToggleRowProps {
   readonly title: string;
@@ -85,13 +80,6 @@ const TRACK_PHASE_COPY_KEYS = {
   error: "terminal.streams.status.error",
 } as const;
 
-function sortiePhaseText(phase: TrackPhase, t: ReturnType<typeof getT>): string {
-  if (phase.kind === "tool" && phase.toolName) return t("terminal.sortie.phase.tool", { tool: phase.toolName });
-  if (phase.kind === "writing") return t("terminal.sortie.phase.writing");
-  if (phase.kind === "reasoning") return t("terminal.sortie.phase.reasoning");
-  return t("terminal.sortie.phase.working");
-}
-
 // 상태줄 3행(cwd·모델·권한 모드) + 입력 컴포저 3행(테두리 2 + 프롬프트 1) + 사이 여백 1행.
 const AGENT_PREVIEW_CHROME_ROWS = 7;
 
@@ -109,7 +97,6 @@ export const agentOperationKind = defineOperationKind({
   previewBottomChrome: () => AGENT_PREVIEW_CHROME_ROWS * getTerminalPrefsSnapshot().font.size,
   canOpenCompanions: () => true,
   companions: [
-    { id: CARRIER_STREAMS_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.carrierStreams"), hideCaption: true, defaultHidden: true, available: operationSupportsCarrierStreams, shortcut: { code: "KeyC", label: "C" }, render: (context) => <CarrierStreamsPanel context={context} /> },
     { id: ANALYST_CHAT_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.sessionAnalyst"), hideCaption: true, defaultHidden: true, shortcut: { code: "KeyA", label: "A", clusterIds: ANALYST_COMPANION_IDS }, render: (context) => <AnalystChatPanel context={context} /> },
     { id: ANALYST_ARTIFACTS_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.artifacts"), hideCaption: true, defaultHidden: true, render: (context) => <AnalystArtifactsPanel context={context} /> },
   ],
@@ -370,78 +357,13 @@ function SessionAnalystHandle({
   );
 }
 
-function CarrierStreamsHandle({ context, live }: { readonly context: OperationRenderContext; readonly live: boolean }) {
-  const open = isCompanionPanelVisible(context, CARRIER_STREAMS_COMPANION_ID);
-  const language = context.language ?? "en";
-  const t = getT(language);
-  return (
-    <button
-      type="button"
-      className={`session-analyst-handle session-analyst-handle--streams${live ? " is-live" : ""}`}
-      aria-label={t(open ? "terminal.streams.exit" : "terminal.streams.open")}
-      aria-pressed={open}
-      onClick={() => toggleCompanionPanel(context, CARRIER_STREAMS_COMPANION_ID)}
-    >
-      {live ? <span className="session-analyst-handle__live" aria-hidden="true" /> : null}
-      <span className="session-analyst-handle__chev" aria-hidden="true">{open ? "«" : "»"}</span>
-      <span className="session-analyst-handle__label">{t(open ? "terminal.handle.exit" : "terminal.handle.streams")}</span>
-    </button>
-  );
-}
-
 const SORTIE_RIBBON_INLINE_LIMIT = 2;
-
-function CarrierSortieRibbon({ context, jobs }: { readonly context: OperationRenderContext; readonly jobs: readonly JobView[] }) {
-  const language = context.language ?? "en";
-  const t = getT(language);
-  const live = jobs.flatMap((job) => isTerminalJobStatus(job.status) ? [] : job.trackOrder.flatMap((trackId) => {
-    const track = job.tracks[trackId];
-    return track && isTrackLive(track.status) ? [{ job, track }] : [];
-  }));
-  if (live.length === 0) return null;
-  const shown = live.slice(0, SORTIE_RIBBON_INLINE_LIMIT);
-  const overflow = live.length - shown.length;
-  // aria-label은 자식 텍스트를 덮으므로 화면에 보이는 함장·국면을 이름에 직접 실어야 한다.
-  // 그러지 않으면 보조기기 사용자에게는 출격 수만 남고 리본의 본론이 통째로 사라진다.
-  const roster = shown
-    .map(({ job, track }) => `${track.displayName} ${sortiePhaseText(deriveTrackPhase(track, job.status), t)}`)
-    .join(", ");
-  const overflowSuffix = overflow > 0 ? `, ${t("terminal.sortie.more", { count: overflow })}` : "";
-
-  return (
-    <button
-      type="button"
-      className="carrier-sortie-ribbon"
-      aria-label={`${t("terminal.sortie.open", { count: live.length })}: ${roster}${overflowSuffix}`}
-      onClick={() => openCompanionPanel(context, CARRIER_STREAMS_COMPANION_ID)}
-    >
-      <span className="carrier-sortie-ribbon__scan" aria-hidden="true" />
-      <span className="carrier-sortie-ribbon__count">{t("terminal.sortie.count", { count: live.length })}</span>
-      <span className="carrier-sortie-ribbon__roster">
-        {shown.map(({ job, track }) => {
-          const captain = resolveCarrierCaptain(job.ownerCarrierId);
-          return (
-            <span className="carrier-sortie-ribbon__track" key={`${job.jobId}:${track.trackId}`} data-captain={captain}>
-              <span className="carrier-sortie-ribbon__name" title={track.displayName}>{track.displayName}</span>
-              <span className="carrier-sortie-ribbon__phase">{sortiePhaseText(deriveTrackPhase(track, job.status), t)}</span>
-            </span>
-          );
-        })}
-        {overflow > 0 ? <span className="carrier-sortie-ribbon__more">{t("terminal.sortie.more", { count: overflow })}</span> : null}
-      </span>
-      <span className="carrier-sortie-ribbon__chev" aria-hidden="true">»</span>
-    </button>
-  );
-}
 
 function AgentOperationView({ context }: { readonly context: OperationRenderContext }) {
   const state = useAgentState();
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
   const analysisReadiness = useAnalysisReady(context);
   const { state: analysisState } = useAnalysisStore(context);
-  const jobs = sessionJobs(session);
-  const liveTrackCount = countLiveTracks(jobs);
-  const streamsSupported = operationSupportsCarrierStreams(context.operation);
   // 초기값 true: 닫힘 상태로 마운트해도 첫 effect가 re-arm한다(force-drop과 동시 언마운트로
   // EXIT 전이를 관찰하지 못한 경우 복구). Theater 복귀는 companionsOpen=true 마운트라 disarm이 보존된다.
   const previousCompanionsOpenRef = React.useRef(true);
@@ -467,7 +389,6 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
 
   const handles = (
     <div className="session-analyst-handle-stack">
-      {streamsSupported ? <CarrierStreamsHandle context={context} live={liveTrackCount > 0} /> : null}
       <SessionAnalystHandle context={context} ready={analysisReadiness === "ready"} working={analysisState.busy} />
     </div>
   );
@@ -497,190 +418,8 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
         onExit={() => removeSession(session.sessionId)}
       />
-      {streamsSupported ? <CarrierSortieRibbon context={context} jobs={jobs} /> : null}
     </div>
   );
-}
-
-function CarrierStreamsPanel({ context }: { readonly context: OperationRenderContext }) {
-  const state = useAgentState();
-  const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
-  const jobs = sessionJobs(session);
-  const language = context.language ?? "en";
-  const t = getT(language);
-  const [expandedCompletedTrackIds, setExpandedCompletedTrackIds] = React.useState<readonly string[]>([]);
-  // 스토어는 종결 잡을 세션 내내 보존한다 — 완료 트랙은 시한부 잔존이 아니라
-  // 접힌 스트립으로 세션 끝까지 남아 클릭 전개(보존 기록 열람)를 보장한다.
-  const tracks = jobs.flatMap((job) => job.trackOrder.flatMap((trackId) => {
-    const track = job.tracks[trackId];
-    return track ? [{ job, track }] : [];
-  }));
-  const liveTrackCount = countLiveTracks(jobs);
-
-  return (
-    <section className="carrier-streams" aria-label={t("terminal.companion.carrierStreams")}>
-      <header className="session-analyst__panel-head carrier-streams__panel-head">
-        <span className="session-analyst__panel-mark" aria-hidden="true">✳</span>
-        <span className="session-analyst__panel-copy"><strong>{t("terminal.companion.carrierStreams")}</strong><small>{t("terminal.streams.subtitle")}</small></span>
-        <span className={`carrier-streams__state${liveTrackCount > 0 ? " is-live" : ""}`}>
-          <i aria-hidden="true" />{liveTrackCount > 0
-            ? `${liveTrackCount} ${t("terminal.streams.status.live")}`
-            : t("terminal.streams.status.idle")}
-        </span>
-      </header>
-      {tracks.length === 0 ? (
-        <div className="carrier-streams__empty">
-          <strong>{t("terminal.streams.emptyTitle")}</strong>
-          <span>{t("terminal.streams.emptyBody")}</span>
-        </div>
-      ) : (
-        <div className="carrier-streams__board">
-          {tracks.map(({ job, track }) => {
-            const trackKey = `${job.jobId}:${track.trackId}`;
-            const phase = deriveTrackPhase(track, job.status);
-            const expanded = phase.tone !== "done" || expandedCompletedTrackIds.includes(trackKey);
-            return (
-              <CarrierStreamColumn
-                key={trackKey}
-                job={job}
-                track={track}
-                language={language}
-                expanded={expanded}
-                onToggleCompleted={() => {
-                  setExpandedCompletedTrackIds((current) => expanded
-                    ? current.filter((id) => id !== trackKey)
-                    : mergeJobIds(current, [trackKey]));
-                }}
-              />
-            );
-          })}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function CarrierStreamColumn({
-  job,
-  track,
-  language,
-  expanded,
-  onToggleCompleted,
-}: {
-  readonly job: JobView;
-  readonly track: TrackView;
-  readonly language: ConsoleLocale;
-  readonly expanded: boolean;
-  readonly onToggleCompleted: () => void;
-}) {
-  const t = getT(language);
-  const phase = deriveTrackPhase(track, job.status);
-  const captain = resolveCarrierCaptain(job.ownerCarrierId);
-  const elapsed = useElapsed(track.startedAt ?? job.startedAt, track.finishedAt ?? job.finishedAt);
-  const request = trackRequestText(job, track);
-  const contentKey = `${track.lastEventId}:${track.text.length}:${track.tools.length}`;
-  const scroll = usePinnedScrollLocal(`${job.jobId}:${track.trackId}:${expanded}`, contentKey);
-  const completed = phase.tone === "done";
-  const reasoning = phase.tone === "live" && track.thought.length > 0
-    && (track.text.length === 0 || latestTrackEventType(job, track.trackId) === "track:thought");
-  // 잡 레벨 오류/요약 폴백은 이 트랙의 phase가 error일 때만 — 혼합 결과 잡에서
-  // 성공 트랙 컬럼이 잡 실패 문구를 떠안는 오표기를 막는다(트랙 자체 오류는 항상 표시).
-  const error = track.error ?? (phase.tone === "error" ? job.error ?? job.summary : undefined);
-  const phaseLabel = t(TRACK_PHASE_COPY_KEYS[phase.tone]);
-  const latestTool = track.tools.length > 0 ? track.tools[track.tools.length - 1] : undefined;
-
-  if (completed && !expanded) {
-    return (
-      <button
-        type="button"
-        className="carrier-stream-column carrier-stream-column--collapsed"
-        data-captain={captain}
-        aria-label={`${t("terminal.streams.expand")} · ${track.displayName}`}
-        onClick={onToggleCompleted}
-      >
-        {captain ? <span className="carrier-stream-column__captain-dot" data-captain={captain} aria-hidden="true" /> : null}
-        <strong>{track.displayName}</strong>
-        <span className="carrier-stream-column__phase" data-tone="done">{t("terminal.streams.status.done")}</span>
-        <time>{elapsed}</time>
-      </button>
-    );
-  }
-
-  return (
-    <article className="carrier-stream-column" data-captain={captain} data-tone={phase.tone}>
-      {phase.tone === "live" ? <span className="carrier-stream-column__scan" aria-hidden="true" /> : null}
-      <header className="carrier-stream-column__head">
-        {captain ? <span className="carrier-stream-column__captain-dot" data-captain={captain} aria-hidden="true" /> : null}
-        <strong title={track.displayName}>{track.displayName}</strong>
-        <span className="carrier-stream-column__phase" data-tone={phase.tone}>{phaseLabel}</span>
-        {completed ? <button type="button" aria-label={`${t("terminal.streams.collapse")} · ${track.displayName}`} onClick={onToggleCompleted}>‹</button> : null}
-      </header>
-      <div ref={scroll.containerRef} className="carrier-stream-column__body" tabIndex={0}>
-        <div ref={scroll.contentRef} className="carrier-stream-column__content">
-          {request ? (
-            <div className="carrier-stream-column__request" data-captain={captain}>
-              <span className="carrier-stream-column__request-kicker">{t("terminal.streams.dispatchOrder")}</span>
-              <p>{request}</p>
-            </div>
-          ) : null}
-          {track.text ? (
-            <div className="carrier-stream-column__answer">
-              <span aria-hidden="true">✳</span>
-              <StreamedMarkdown className="carrier-stream-column__markdown markdown-body" text={track.text} streaming={phase.tone === "live"} language={language} />
-            </div>
-          ) : null}
-          {reasoning ? (
-            <div className="carrier-stream-column__reasoning" aria-live="polite">
-              <i aria-hidden="true" />
-              <span>{t("terminal.streams.reasoning")}</span>
-            </div>
-          ) : null}
-          {error ? <div className="carrier-stream-column__error" role="alert">{error}</div> : null}
-          {latestTool ? (
-            <div className="carrier-stream-column__activity" data-tone={phase.tone} aria-label={`${t("terminal.streams.activity")} · ${track.displayName}`}>
-              {phase.tone === "live" ? <span className="carrier-stream-column__activity-scan" aria-hidden="true" /> : null}
-              <div className="carrier-stream-column__activity-main">
-                <span className="carrier-stream-column__activity-orbit" data-tone={resolveToolTone(latestTool.status)} aria-hidden="true" />
-                <span className="carrier-stream-column__activity-copy">
-                  <strong>{t("terminal.analyst.activity.usingTool", { title: latestTool.name ?? latestTool.id })}</strong>
-                  {latestTool.status ? <small>{t("terminal.analyst.activity.toolStatus", { status: latestTool.status })}</small> : null}
-                  <small>{t("terminal.analyst.lastConfirmedOnly")}</small>
-                </span>
-                <time>{elapsed}</time>
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function countLiveTracks(jobs: readonly JobView[]): number {
-  return jobs.reduce((count, job) => {
-    if (isTerminalJobStatus(job.status)) return count;
-    return count + job.trackOrder.reduce((trackCount, trackId) => {
-      const track = job.tracks[trackId];
-      return track && isTrackLive(track.status) ? trackCount + 1 : trackCount;
-    }, 0);
-  }, 0);
-}
-
-function trackRequestText(job: JobView, track: TrackView): string {
-  if (job.request) {
-    const blocks = job.request.blocks.filter((block) => block.present && block.body.trim()).map((block) => block.body.trim());
-    if (job.request.additional.trim()) blocks.push(job.request.additional.trim());
-    return blocks.join("\n\n");
-  }
-  return track.requestPreview?.trim() ?? "";
-}
-
-function latestTrackEventType(job: JobView, trackId: string): string | undefined {
-  for (let index = job.recentEvents.length - 1; index >= 0; index -= 1) {
-    const event = job.recentEvents[index];
-    if (event?.event.trackId === trackId) return event.type;
-  }
-  return undefined;
 }
 
 function GeneralSection() {
@@ -690,7 +429,6 @@ function GeneralSection() {
   // 제공하므로, 플러그인은 자체 래퍼로 감싸 그 간격을 가로채지 않는다(간격은 호스트 소관).
   return (
     <>
-      <SystemPromptSettingsBlock />
       <IdleAgentSessionsSettingsBlock />
       <TerminalFontSettingsCard terminalFont={terminalFont} />
       <TerminalRendererCard terminalRenderer={terminalRenderer} />
@@ -1305,41 +1043,6 @@ function ProviderRow({ provider, busy }: ProviderRowProps) {
   );
 }
 
-function SystemPromptSettingsBlock() {
-  const t = getT(useTerminalLocale());
-  const settings = useSystemPromptSettingsStore();
-  const state = settings.state;
-  const saving = settings.savingField !== null;
-
-  React.useEffect(() => {
-    const controller = new AbortController();
-    void loadSystemPromptSettings(controller.signal);
-    return () => controller.abort();
-  }, []);
-
-  return (
-    <section className="global-settings-card" aria-label={t("terminal.settings.systemPromptAria")}>
-      {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
-      {state ? (
-        <>
-          <SettingToggleRow
-            title={t("terminal.settings.metaphor")}
-            help={t("terminal.settings.metaphorHelp")}
-            onLabel={t("terminal.settings.enabled")}
-            offLabel={t("terminal.settings.off")}
-            value={state.enableMetaphor}
-            disabled={saving}
-            onToggle={() => void setSystemPromptSettingsField("enableMetaphor", !state.enableMetaphor)}
-          />
-        </>
-      ) : (
-        <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
-      )}
-      <p className="global-settings-foot">{t("terminal.settings.systemPromptFoot")}</p>
-    </section>
-  );
-}
-
 function SettingToggleRow({ title, help, onLabel, offLabel, value, disabled, onToggle }: SettingToggleRowProps) {
   return (
     <div className="global-settings-row">
@@ -1759,4 +1462,4 @@ function OpencodeGlyph() {
   );
 }
 
-export { formatElapsedDuration, resolveCarrierCaptain } from "./helpers.js";
+export { formatElapsedDuration } from "./helpers.js";

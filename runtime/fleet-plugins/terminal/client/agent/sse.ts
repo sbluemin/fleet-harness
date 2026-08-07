@@ -1,25 +1,18 @@
 import { assertSessionInfo } from "./api.js";
-import type { AttentionReason, ObservedEvent, ObserverTruncation, SessionInfo } from "./types.js";
+import type { AttentionReason, SessionInfo } from "./types.js";
 
 export interface SseFrame {
   readonly event: string;
   readonly data: string;
 }
 
-export interface ObserverFrame {
-  readonly kind: "event" | "truncation" | "session" | "attention";
-  readonly tenantId: string;
-  readonly tenantLabel?: string;
-  readonly event?: ObservedEvent;
-  readonly truncation?: ObserverTruncation;
-  readonly session?: SessionInfo;
+export interface AgentSessionFrame {
+  readonly kind: "session" | "attention";
+  readonly session: SessionInfo;
   readonly reason?: AttentionReason;
 }
 
-interface AggregateFramePayload {
-  readonly tenant?: { readonly tenantId?: string; readonly tenantLabel?: string };
-  readonly event?: Partial<ObservedEvent>;
-  readonly truncation?: ObserverTruncation;
+interface AgentSessionFramePayload {
   readonly session?: Partial<SessionInfo>;
   readonly reason?: unknown;
 }
@@ -50,32 +43,19 @@ export function createSseFrameParser(): (chunk: string) => readonly SseFrame[] {
   };
 }
 
-export function interpretObserverFrame(frame: SseFrame): ObserverFrame | null {
+export function interpretAgentSessionFrame(frame: SseFrame): AgentSessionFrame | null {
   if (!frame.data) return null;
-  let parsed: AggregateFramePayload;
+  let parsed: AgentSessionFramePayload;
   try {
-    parsed = JSON.parse(frame.data) as AggregateFramePayload;
+    parsed = JSON.parse(frame.data) as AgentSessionFramePayload;
   } catch {
     return null;
   }
-  if (frame.event === "observer:truncated") {
-    const tenantId = parsed.tenant?.tenantId;
-    if (!tenantId || !parsed.truncation) return null;
-    return { kind: "truncation", tenantId, tenantLabel: parsed.tenant?.tenantLabel, truncation: parsed.truncation };
-  }
-  if (frame.event === "session:updated") {
-    const session = readSessionInfo(parsed.session);
-    if (!session) return null;
-    return { kind: "session", tenantId: session.tenantId ?? session.sessionId, session };
-  }
-  if (frame.event === "session:attention") {
-    const session = readSessionInfo(parsed.session);
-    if (!session) return null;
-    return { kind: "attention", tenantId: session.tenantId ?? session.sessionId, session, reason: readAttentionReason(parsed.reason) };
-  }
-  const event = readObservedEvent(parsed.event) ?? readObservedEvent(parsed);
-  if (!event) return null;
-  return { kind: "event", tenantId: event.tenantId, tenantLabel: parsed.tenant?.tenantLabel, event };
+  if (frame.event !== "session:updated" && frame.event !== "session:attention") return null;
+  const session = readSessionInfo(parsed.session);
+  if (!session) return null;
+  if (frame.event === "session:updated") return { kind: "session", session };
+  return { kind: "attention", session, reason: readAttentionReason(parsed.reason) };
 }
 
 function parseFrame(raw: string): SseFrame | null {
@@ -84,13 +64,6 @@ function parseFrame(raw: string): SseFrame | null {
   const data = lines.filter((line) => line.startsWith("data:")).map((line) => line.slice("data:".length).trim()).join("\n");
   if (!data && event === "message") return null;
   return { event, data };
-}
-
-function readObservedEvent(value: unknown): ObservedEvent | null {
-  if (typeof value !== "object" || value === null) return null;
-  const event = value as Partial<ObservedEvent>;
-  if (typeof event.id !== "number" || typeof event.tenantId !== "string" || typeof event.type !== "string" || typeof event.at !== "number") return null;
-  return { ...(event as ObservedEvent), event: typeof event.event === "object" && event.event !== null ? event.event : {} };
 }
 
 function readSessionInfo(value: unknown): SessionInfo | null {

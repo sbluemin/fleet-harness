@@ -5,7 +5,6 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentCliProfile, InjectAgentCliProfileOptions } from "@dotobokuri/fleet-admiral";
-import { createCarrierRuntime } from "@dotobokuri/fleet-carriers";
 
 import { createDefaultTerminalLaunchResolver } from "../../fleet-plugins/terminal/server/agent-api/launch.js";
 import { createShellTerminalLaunchResolver, resolveNodePtyModulePath, resolveUseConptyDll } from "../../fleet-plugins/terminal/server/shared/pty.js";
@@ -39,9 +38,9 @@ const baseProfile = {
 
 const TEMP_DIRS: string[] = [];
 
-// 전역 옵션(enableMetaphor)을 고정 반환하는 InfraServices 스텁 —
+// 전역 옵션을 고정 반환하는 InfraServices 스텁 —
 // launch resolver가 실제 ~/.fleet/settings.json을 읽지 않도록 테스트를 격리한다.
-function createFakeInfraServices(globalOptions: { readonly enableMetaphor?: boolean } = {}) {
+function createFakeInfraServices(globalOptions: { readonly agentIdleDormantMinutes?: number | null } = {}) {
   const data = { version: 1 as const, ...globalOptions };
   return {
     authService: {},
@@ -65,7 +64,6 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const runtime = createFakeRuntime((event) => events.push(event));
     const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, cwd, env: { ...env } }));
     const injectProfile = vi.fn(async (profile, options) => {
-      expect(options.enableMetaphor).toBe(false);
       expect(options.buildSystemPrompt).toEqual(expect.any(Function));
       expect(options.captureSessionHookExec).toMatchObject({ command: process.execPath });
       expect(options.captureSessionHookExec?.args).toContain("capture-session");
@@ -99,29 +97,6 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: undefined }));
     expect(injectProfile).toHaveBeenCalledTimes(1);
     expect(events).toEqual([]);
-  });
-
-  it("injects global settings (metaphor + system prompt mode) into fleet-admiral injection", async () => {
-    const runtime = createFakeRuntime(() => undefined);
-    let captured: InjectAgentCliProfileOptions | null = null;
-    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, cwd, env: { ...env } }));
-    const injectProfile = vi.fn(async (profile: AgentCliProfile, options: InjectAgentCliProfileOptions) => {
-      captured = options;
-      return profile;
-    });
-    const resolve = createDefaultTerminalLaunchResolver({
-      cwd: "/work",
-      env: { PATH: "/bin" } as NodeJS.ProcessEnv,
-      agentRuntime: runtime as never,
-      infraServices: createFakeInfraServices({ enableMetaphor: true }) as never,
-      injectProfile: injectProfile as never,
-      resolveProfile: resolveProfile as never,
-    });
-
-    await resolve("/work/project", { sessionId: "session-g" });
-
-    expect(captured).not.toBeNull();
-    expect(captured!.enableMetaphor).toBe(true);
   });
 
   it("passes resumeSessionId and capture hook exec to fleet-admiral injection", async () => {
@@ -207,12 +182,9 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
   it("launches claude-gateway through the real shared Admiral package", async () => {
     const root = makeTempDir("fleet-gateway-admiral-integration-");
-    const carrierRuntime = createCarrierRuntime();
-    carrierRuntime.registerCarrierDefaults();
     const releasedLabels: string[] = [];
     const resolve = createDefaultTerminalLaunchResolver({
       agentRuntime: {
-        carrierRuntime,
         dedicatedMcpSession: {
           async getEndpoint() {
             return { servers: [{ name: "fleet", url: "http://127.0.0.1:48123/mcp" }] };
@@ -225,9 +197,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
           },
         },
         mcpRegistry: { getAllAgentTools: () => [] },
-        async cleanup() {
-          await carrierRuntime.cleanup();
-        },
+        async cleanup() {},
       } as never,
       aiGateway: {
         routePath: "/plugins/terminal/ai-gateway",
@@ -263,7 +233,6 @@ describe("createDefaultTerminalLaunchResolver", () => {
     await spec.cleanup?.();
     expect(existsSync(promptPath!)).toBe(false);
     expect(releasedLabels).toEqual(["gateway-integration"]);
-    await carrierRuntime.cleanup();
   });
 
   it("honors a FLEET_TERMINAL_CMD override verbatim as an explicit operator override", async () => {

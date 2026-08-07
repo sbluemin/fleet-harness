@@ -30,7 +30,7 @@ Translates Anthropic Messages traffic onto non-Anthropic provider backends.
 
 ## Constraints
 
-- Keep Fleet orchestration and persona semantics out of this package; it knows providers, not Carriers.
+- Keep Fleet orchestration and persona semantics out of this package; it knows providers, not Fleet personas.
 - Provider usage/quota probing lives beside each provider (src/<provider>/quota.ts) with shared window vocabulary and caching in src/quota/; collectors receive their credential and auth dependencies explicitly — no default auth construction inside this package.
 - Each provider Responses implementation that applies strict mode rewrites every compatible tool schema into strict mode and strips the resulting nulls back out on the way in. **These two are one mechanism per implementation.** Change either alone and arguments silently gain or lose meaning: a surviving null reads as a real value to the client, and an un-rewritten schema loses the omission guarantee. The rewrite, the null stripping, and the argument-delta dropping below stay local to each such implementation — never centralize or import this semantic logic across providers.
 - Strict compatibility is decided by an allowlist of JSON Schema keywords, never a denylist. The costs are asymmetric — judging a tool incompatible costs that one tool its guarantee, while wrongly admitting one returns a 400 that fails the entire request, every other tool included. Widen the allowlist only against an observed acceptance.

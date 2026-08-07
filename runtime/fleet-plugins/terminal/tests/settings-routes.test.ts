@@ -25,12 +25,11 @@ interface HarnessOptions {
 describe("terminal settings routes", () => {
   it("GET /plugins/terminal/settings returns terminal settings", async () => {
     const harness = createRouteHarness({
-      data: { version: 1, enableMetaphor: false },
+      data: { version: 1 },
     });
     await harness.handle({ req: req("GET"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes[0]?.status).toBe(200);
     expect(harness.writes[0]?.body).toMatchObject({
-      enableMetaphor: false,
       agentIdleDormantMinutes: 60,
       aiGateway: null,
       cursorDiagnosticsEnabled: false,
@@ -57,26 +56,26 @@ describe("terminal settings routes", () => {
     expect(fastIds.length).toBeGreaterThan(0);
   });
 
-  it("PUT /plugins/terminal/settings updates enableMetaphor in global options", async () => {
+  it("PUT /plugins/terminal/settings updates the agent idle dormant threshold in global options", async () => {
     const harness = createRouteHarness({
-      body: { enableMetaphor: true },
-      data: { version: 1, enableMetaphor: false },
+      body: { agentIdleDormantMinutes: 30 },
+      data: { version: 1 },
     });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes[0]?.status).toBe(200);
-    expect(harness.writes[0]?.body).toMatchObject({ enableMetaphor: true, agentIdleDormantMinutes: 60 });
-    expect(harness.currentData()).toEqual({ version: 1, enableMetaphor: true });
+    expect(harness.writes[0]?.body).toMatchObject({ agentIdleDormantMinutes: 30 });
+    expect(harness.currentData()).toEqual({ version: 1, agentIdleDormantMinutes: 30 });
   });
 
   it("PUT /plugins/terminal/settings rejects non-boolean payloads", async () => {
-    const harness = createRouteHarness({ body: { enableMetaphor: "yes" } });
+    const harness = createRouteHarness({ body: { cursorDiagnosticsEnabled: "yes" } });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes[0]?.status).toBe(400);
     expect(harness.updateCalls).toBe(0);
   });
 
   it("PUT /plugins/terminal/settings rejects payloads with unknown extra keys", async () => {
-    const harness = createRouteHarness({ body: { enableMetaphor: true, consolePortMode: "static" } });
+    const harness = createRouteHarness({ body: { cursorDiagnosticsEnabled: true, consolePortMode: "static" } });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes[0]?.status).toBe(400);
     expect(harness.updateCalls).toBe(0);
@@ -98,7 +97,7 @@ describe("terminal settings routes", () => {
 
   it("PUT /plugins/terminal/settings rejects payloads with multiple known keys", async () => {
     const harness = createRouteHarness({
-      body: { enableMetaphor: true, agentIdleDormantMinutes: 60 },
+      body: { agentIdleDormantMinutes: 60, cursorDiagnosticsEnabled: true },
     });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes[0]?.status).toBe(400);
@@ -112,7 +111,7 @@ describe("terminal settings routes", () => {
     });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes[0]?.status).toBe(200);
-    expect(harness.writes[0]?.body).toMatchObject({ enableMetaphor: false, agentIdleDormantMinutes: 120 });
+    expect(harness.writes[0]?.body).toMatchObject({ agentIdleDormantMinutes: 120 });
     expect(harness.currentData()).toEqual({ version: 1, agentIdleDormantMinutes: 120 });
   });
 
@@ -123,7 +122,7 @@ describe("terminal settings routes", () => {
     });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes[0]?.status).toBe(200);
-    expect(harness.writes[0]?.body).toMatchObject({ enableMetaphor: false, agentIdleDormantMinutes: null });
+    expect(harness.writes[0]?.body).toMatchObject({ agentIdleDormantMinutes: null });
     expect(harness.currentData()).toEqual({ version: 1, agentIdleDormantMinutes: null });
   });
 
@@ -146,7 +145,7 @@ describe("terminal settings routes", () => {
     const harness = createRouteHarness({ data: { version: 1 } });
     await harness.handle({ req: req("GET"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes[0]?.status).toBe(200);
-    expect(harness.writes[0]?.body).toMatchObject({ enableMetaphor: false, agentIdleDormantMinutes: 60 });
+    expect(harness.writes[0]?.body).toMatchObject({ agentIdleDormantMinutes: 60 });
   });
 
   it("PUT /plugins/terminal/settings stores a catalog-valid aiGateway selection", async () => {
@@ -313,14 +312,14 @@ describe("terminal settings routes", () => {
   });
 
   it("PUT /plugins/terminal/settings enforces terminal-origin authorization", async () => {
-    const harness = createRouteHarness({ terminalAuthorized: false, body: { enableMetaphor: true } });
+    const harness = createRouteHarness({ terminalAuthorized: false, body: { cursorDiagnosticsEnabled: true } });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes).toEqual([{ status: 401, body: { error: "unauthorized" } }]);
     expect(harness.updateCalls).toBe(0);
   });
 
   it("PUT /plugins/terminal/settings rejects non-JSON content types", async () => {
-    const harness = createRouteHarness({ body: { enableMetaphor: true } });
+    const harness = createRouteHarness({ body: { cursorDiagnosticsEnabled: true } });
     await harness.handle({ req: req("PUT", "text/plain"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes[0]?.status).toBe(415);
     expect(harness.updateCalls).toBe(0);

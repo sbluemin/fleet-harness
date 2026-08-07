@@ -38,12 +38,12 @@ describe("claude-native profile", () => {
     });
   });
 
-  it("lists Native ahead of Classic in the console-only catalog", () => {
-    const ids = getAgentCliIds({ includeConsoleOnly: true });
-    expect(ids.indexOf("claude-native")).toBeLessThan(ids.indexOf("claude"));
-    expect(ids).toContain("claude-gateway");
-    expect(getAgentCliIds()).not.toContain("claude-native");
+  it("lists Native ahead of Gateway and no longer carries the retired Classic id", () => {
+    const ids = getAgentCliIds();
+    expect(ids).toEqual(["claude-native", "claude-gateway"]);
+    expect(ids).not.toContain("claude");
     expect(getAgentCliMetadata(ids).find((entry) => entry.id === "claude-native")?.label).toBe("Claude (Native)");
+    expect(getAgentCliMetadata(ids).find((entry) => entry.id === "claude-gateway")?.label).toBe("Claude (Gateway)");
   });
 });
 

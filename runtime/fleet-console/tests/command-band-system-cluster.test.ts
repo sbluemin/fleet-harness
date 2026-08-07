@@ -141,7 +141,7 @@ describe("CommandBandSystemCluster", () => {
   });
 
   it("falls back to /operations when Settings is pressed on a deep-linked settings page", () => {
-    mountClusterAt("/settings?section=terminal%3Acarriers");
+    mountClusterAt("/settings?section=terminal%3Aagent");
     const settings = document.querySelector<HTMLButtonElement>(".command-band-settings")!;
 
     act(() => settings.click());

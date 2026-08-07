@@ -1,27 +1,16 @@
 export {
   createSystemPromptBuilder,
   type SystemPromptBuilder,
-  type SystemPromptBuildOptions,
 } from "./prompts/index.js";
 export { buildGatewaySystemPrompt } from "./prompts/gateway.js";
 export {
   resolveDoctrineFromCliId,
   type AdmiralDoctrine,
 } from "./protocols/doctrine.js";
+export { getAllStandingOrders } from "./protocols/standing-orders/index.js";
 export {
-  getAllStandingOrders,
-  getStandingOrdersForDoctrine,
-} from "./protocols/standing-orders/index.js";
-export {
-  FLEET_PROTOCOL_GATE_PROMPT,
-  getProtocolGatePrompt,
-} from "./protocols/fleet-action.js";
-export {
-  CARRIER_OPERATION_TOOL_IDS,
   FLEET_MCP_SERVER_NAME,
-  getExecutorMcpTools,
   isHostSessionToolAllowed,
-  registerAgentToolDefaults,
 } from "./tools.js";
 
 // Agent CLI launch-spec types (구조적 DI 타입 포함)
@@ -117,25 +106,17 @@ export {
 
 // Fleet 에이전트 in-process MCP 런타임 라이프사이클
 export {
-  createFleetAgentRuntimeLifecycle,
-  type FleetAgentRuntimeLifecycle,
-  type FleetAgentRuntimeLifecycleDeps,
-  type FleetAgentRuntimeServices,
-  type FleetAgentRuntimeToolRegistration,
-} from "./agent-runtime/index.js";
-export {
   createFleetGatewayAgentRuntimeLifecycle,
   type FleetGatewayAgentRuntimeLifecycle,
   type FleetGatewayAgentRuntimeLifecycleDeps,
 } from "./agent-runtime/gateway-runtime.js";
 
-// Carrier result reminder 주입 종단
+// PTY 메시지 주입 종단
 export {
-  createCarrierResultReminderRouter,
   createDelayedPtyWriter,
-  formatCarrierResultReminderMessage,
-  sanitizeCarrierResultReminder,
+  formatPtyMessage,
+  sanitizePtyMessageText,
   type DelayedPtyWriter,
   type PtyMessageDeliveryOptions,
   type PtyWriteSink,
-} from "./agent-runtime/reminder-router.js";
+} from "./agent-runtime/pty-message-writer.js";

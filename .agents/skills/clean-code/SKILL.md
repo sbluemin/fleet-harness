@@ -52,7 +52,7 @@ After Pass 1, scan the consolidated files for:
 
 - **Copy-paste functions**: identical or near-identical logic in 2+ files (e.g., status mappers, effort resolvers, log wrappers). Diff the bodies — if they differ only by a string literal, parameterize.
 - **Trivial wrappers**: functions that only reshape or forward to another function with no added logic. Inline at call site.
-- **Parallel type hierarchies**: separate types/builders for sortie vs taskforce vs carrier that follow the same structure. Unify with a discriminant parameter.
+- **Parallel type hierarchies**: separate types/builders that follow the same structure. Unify with a discriminant parameter.
 - **Dead exports**: exported but zero consumers (verify with `rg`).
 - **Alias bloat**: namespace objects with backward-compat keys pointing to the same module, or methods duplicated under long+short names.
 

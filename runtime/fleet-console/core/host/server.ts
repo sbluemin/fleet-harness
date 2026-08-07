@@ -27,6 +27,12 @@ import { createOperationsRouter } from "./operations/operations-domain.js";
 import { createSanitizedOpDto } from "./operations/operations-domain.js";
 import { createOperationStore } from "./operations/operations-domain.js";
 import type { OperationNode } from "./operations/operations-domain.js";
+import {
+  backupDurableStateBeforeClassicMigration,
+  migrateClassicLaunchKinds,
+  CLASSIC_LAUNCH_KIND_ID,
+  GATEWAY_LAUNCH_KIND_ID,
+} from "./classic-launch-kind-migration.js";
 import { migrateLegacyCaptures } from "./legacy-capture-migration.js";
 import { createConsoleDataPaths } from "./paths.js";
 import { createPluginClientAssets } from "./plugin-host/plugin-host.js";
@@ -255,7 +261,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const infraServices = createInfraServices();
   // channel은 createConsoleDataPaths가 release SSoT로 자체 감지한다(hook 서브프로세스·fallback과 동일 경로).
   // 플러그인 fleet 루트: 명시 dataDir → FLEET_CONSOLE_DIR 격리 슬롯 → fleet 전역(~/.fleet).
-  // carriers.json은 fleet-cli와 공유하는 전역 상태라 채널 분기는 적용하지 않되,
+  // Fleet 데이터 루트는 fleet-cli와 공유하는 전역 상태라 채널 분기는 적용하지 않되,
   // 명시 격리 오버라이드만은 durable state와 함께 이동해야 실사용자 store 오염을 막는다.
   const fleetDataDir = deps.dataDir ?? process.env.FLEET_CONSOLE_DIR ?? getFleetDataDir();
   const durablePaths = createConsoleDataPaths({ fleetDataDir: deps.dataDir });
@@ -1063,19 +1069,38 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   async function rehydrateDurableState(): Promise<void> {
     let state: DurableConsoleState;
+    let classicLaunchKindsMigrated = false;
     try {
-      state = durableStateStore.load();
+      // 퇴역한 Classic launch kind는 store에 주입하기 전에 옮긴다. 그래야 live Operation과
+      // tombstone 내장 Operation이 한 번에 이주되고, 이후의 어떤 save든 이주분을 기록한다.
+      const loaded = durableStateStore.load();
+      const migration = migrateClassicLaunchKinds(loaded);
+      if (migration.changed) {
+        classicLaunchKindsMigrated = true;
+        console.warn(`[fleet-console] Migrated ${migration.migratedOperations} operation(s) from the retired "${CLASSIC_LAUNCH_KIND_ID}" launch kind to "${GATEWAY_LAUNCH_KIND_ID}".`);
+        backupDurableStateBeforeClassicMigration(durablePaths.stateFile);
+      }
+      state = migration.state;
       theaters.restore(state.theaters);
       operations.replace(state.operations);
       operations.replaceGroups(state.groups ?? []);
     } catch (error) {
       console.warn(`[fleet-console] Durable state restore skipped: ${error instanceof Error ? error.message : String(error)}`);
+      classicLaunchKindsMigrated = false;
       state = emptyDurableConsoleState();
       theaters.restore([]);
       operations.replace([]);
       operations.replaceGroups([]);
     }
     deletionCoordinator.load(state.deletionTombstones ?? []);
+    // 이주분을 디스크에 확정한다. sanitizer는 출력만 바꿀 뿐 재기록을 유발하지 않으므로
+    // 명시 save가 없으면 다음 부팅마다 같은 이주를 반복한다.
+    if (classicLaunchKindsMigrated) persistDurableState();
+    // 퇴역한 Carrier 스토어 파일(carriers.json·carrier-subagent.json·carriers.json.lock)은
+    // 그대로 둔다. `~/.fleet`는 CLI와 Console이 공유하는 데이터 루트라, 업그레이드 전 호스트가
+    // 아직 그 스토어를 소유한 채 돌고 있을 수 있다. 특히 carriers.json.lock은 withDirectoryLock이
+    // 점유하는 잠금 디렉터리여서, 지우면 임계 구역 안의 레거시 프로세스 옆으로 두 번째 writer가
+    // 들어온다. 아무도 읽지 않는 파일을 치우는 정돈은 그 위험을 살 만한 값이 아니다.
     // Legacy captures/ → state.json providerSession one-shot migration (best-effort).
     // Runs after durable load so save preserves tombstones already restored into the coordinator.
     migrateLegacyCaptureState();

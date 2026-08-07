@@ -23,7 +23,7 @@ afterEach(async () => {
 
 describe("agent dormant ticket guards", () => {
   it("rejects ticket issuance for a dormant session with operation_dormant", async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const sessionId = await harness.createLiveSession();
     await harness.transitionToDormant(sessionId);
 
@@ -33,7 +33,7 @@ describe("agent dormant ticket guards", () => {
   });
 
   it("invalidates outstanding tickets when a session transitions to dormant", async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const sessionId = await harness.createLiveSession();
     const issued = harness.issueDirectTicket(sessionId);
     expect(harness.tickets.consume(issued.ticket)).toMatchObject({ sessionId });
@@ -46,7 +46,7 @@ describe("agent dormant ticket guards", () => {
   });
 
   it("allows ticket issuance after resume moves the session out of dormant", async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const sessionId = await harness.createLiveSession();
     await harness.transitionToDormant(sessionId);
 
@@ -66,7 +66,7 @@ describe("agent dormant ticket guards", () => {
   });
 });
 
-function createHarness() {
+async function createHarness() {
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-dormant-ticket-"));
   temporaryDirectories.push(fleetDataDir);
   const operations: OperationNode[] = [];
@@ -208,7 +208,7 @@ function createHarness() {
 
   const previousTerminalCommand = process.env.FLEET_TERMINAL_CMD;
   process.env.FLEET_TERMINAL_CMD = "test-terminal";
-  registerAgentRoutes(ctx, terminalRuntime, {
+  await registerAgentRoutes(ctx, terminalRuntime, {
     globalOptionsService: {
       load: () => ({ version: 1, agentIdleDormantMinutes: null }),
       save: (data) => data,

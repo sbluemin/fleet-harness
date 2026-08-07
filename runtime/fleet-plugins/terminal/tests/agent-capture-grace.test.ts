@@ -24,7 +24,7 @@ afterEach(async () => {
 describe("agent provider capture grace", () => {
   it("cancels pending OSC activity when a session is removed", async () => {
     vi.useFakeTimers();
-    const harness = createHarness({ cliId: "claude" });
+    const harness = await createHarness({ cliId: "claude-gateway" });
     await harness.postSessions();
     const sessionId = harness.operations[0]!.id;
     harness.emitTitle(sessionId, "⠏ theater");
@@ -38,7 +38,7 @@ describe("agent provider capture grace", () => {
 
   it("cancels pending OSC activity before a PTY exit makes the session dormant", async () => {
     vi.useFakeTimers();
-    const harness = createHarness({ cliId: "claude" });
+    const harness = await createHarness({ cliId: "claude-gateway" });
     await harness.postSessions();
     const sessionId = harness.operations[0]!.id;
     harness.markProviderSession(sessionId);
@@ -56,7 +56,7 @@ describe("agent provider capture grace", () => {
 
   it("cancels pending OSC activity before resume spawns a replacement PTY", async () => {
     vi.useFakeTimers();
-    const harness = createHarness({ cliId: "claude" });
+    const harness = await createHarness({ cliId: "claude-gateway" });
     await harness.postSessions();
     const sessionId = harness.operations[0]!.id;
     harness.markProviderSession(sessionId);
@@ -73,8 +73,8 @@ describe("agent provider capture grace", () => {
   it("settles the turn-end background report inside the same turn transition", async () => {
     // Stop이 실어 온 두 사실(턴 종료·남은 백그라운드 작업)이 따로 반영되면 그 사이 프레임에서 세션이
     // 거짓 유휴로 읽혀 종료 알림과 도착 표시가 튄다. 한 번의 turn POST가 둘을 함께 확정해야 한다.
-    const harness = createHarness({
-      cliId: "claude",
+    const harness = await createHarness({
+      cliId: "claude-gateway",
       phase: "end",
       input: JSON.stringify({ hook_event_name: "Stop", background_tasks: [{ id: "wf-1", type: "workflow", status: "running" }] }),
     });
@@ -88,10 +88,10 @@ describe("agent provider capture grace", () => {
 
   it("projects live tasks, holds through an unreadable report, and releases on an empty one", async () => {
     const body: Record<string, unknown> = {
-      cliId: "claude",
+      cliId: "claude-gateway",
       input: JSON.stringify({ hook_event_name: "SubagentStop", agent_id: "agent-1", background_tasks: [{ id: "wf-1", type: "workflow", status: "running" }] }),
     };
-    const harness = createHarness(body);
+    const harness = await createHarness(body);
     await harness.postSessions();
     const sessionId = harness.operations[0]!.id;
 
@@ -111,7 +111,7 @@ describe("agent provider capture grace", () => {
   });
 
   it("returns only invalid_agent_cli when a removed provider Operation is resumed", async () => {
-    const harness = createHarness({ cliId: "claude" });
+    const harness = await createHarness({ cliId: "claude-gateway" });
     await harness.postSessions();
     const sessionId = harness.operations[0]!.id;
     harness.operations[0]!.payload.cliId = "codex";
@@ -126,8 +126,8 @@ describe("agent provider capture grace", () => {
     expect(harness.attach).toHaveBeenCalledTimes(1);
   });
 
-  it("preserves legacy Codex transcript metadata when a restored Operation is renamed", () => {
-    const harness = createHarness({ cliId: "claude" });
+  it("preserves legacy Codex transcript metadata when a restored Operation is renamed", async () => {
+    const harness = await createHarness({ cliId: "claude-gateway" });
     const providerSession = {
       provider: "codex",
       sessionId: "legacy-codex-session",
@@ -167,7 +167,7 @@ describe("agent provider capture grace", () => {
   });
 });
 
-function createHarness(body: Record<string, unknown>) {
+async function createHarness(body: Record<string, unknown>) {
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-initial-prompt-"));
   temporaryDirectories.push(fleetDataDir);
   const operations: OperationNode[] = [];
@@ -298,7 +298,7 @@ function createHarness(body: Record<string, unknown>) {
 
   const previousTerminalCommand = process.env.FLEET_TERMINAL_CMD;
   process.env.FLEET_TERMINAL_CMD = "test-terminal";
-  registerAgentRoutes(ctx, terminalRuntime, {
+  await registerAgentRoutes(ctx, terminalRuntime, {
     globalOptionsService: {
       load: () => ({ version: 1, agentIdleDormantMinutes: null }),
       save: (data) => data,

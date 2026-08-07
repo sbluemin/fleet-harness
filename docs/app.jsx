@@ -72,7 +72,7 @@ const UI = {
 
   closerEy:    { ko: "Mission Brief · Ready", en: "Mission Brief · Ready" },
   closerTitle: { ko: ["함대는", "당신의 명령을 기다린다."], en: ["The fleet awaits", "your orders."] },
-  closerSub:   { ko: "저장소를 살펴보고, 첫 임무를 부여하라. 정찰부터 검증까지, 함대가 알아서 끝낸다. 문서화와 Fleet Wiki는 Carrier에 위임하지 않고 제독이 직접 수행한다.", en: "Explore the repo, issue your first mission. From recon to verification, the fleet handles the rest. The Admiral performs documentation and Fleet Wiki work directly — not through Carriers." },
+  closerSub:   { ko: "저장소를 살펴보고, 첫 임무를 부여하라. 정찰부터 검증까지, 함대가 알아서 끝낸다. 문서화와 Fleet Wiki는 위임하지 않고 제독이 직접 수행한다.", en: "Explore the repo, issue your first mission. From recon to verification, the fleet handles the rest. The Admiral performs documentation and Fleet Wiki work directly." },
   installCmt:  { ko: "# install the harness", en: "# install the harness" },
   setSailCmt:  { ko: "# Set sail on your first mission, Admiral.", en: "# Set sail on your first mission, Admiral." },
   footerLine:  { ko: "fleet-harness · Fleet Action Protocol v1", en: "fleet-harness · Fleet Action Protocol v1" },
@@ -105,7 +105,7 @@ const HIERARCHY = [
 const CLI_BACKENDS = [
   { num: "01", vendor: "Anthropic", name: "Claude Code", tag: { ko: "장기 추론·아키텍처 판단의 표준 백엔드", en: "The standard backend for long-form reasoning and architectural judgment." }, color: "oklch(78% 0.13 75)" },
   { num: "02", vendor: "OpenAI · Cursor · Moonshot AI", name: "Claude Gateway", tag: { ko: "여러 프론티어 모델을 Claude Code 표면에서 라우팅하는 백엔드", en: "A backend routing frontier models through the Claude Code surface." }, color: "oklch(72% 0.17 25)" },
-  { num: "03", vendor: "OpenAI", name: "Codex CLI", tag: { ko: "Carrier와 Task Force를 위한 실행 백엔드", en: "An execution backend for Carriers and Task Forces." }, color: "oklch(72% 0.03 250)" },
+  { num: "03", vendor: "OpenAI", name: "Codex CLI", tag: { ko: "게이트웨이 모델 실행 백엔드", en: "An execution backend for gateway models." }, color: "oklch(72% 0.03 250)" },
 ];
 
 const CAPTAINS = [
@@ -233,9 +233,9 @@ const ORDERS = [
     desc: { ko: "결정 경계에 들어서기 전 증거 충분성을 complete·sufficient·partial·speculative로 판정한다. 증거 목록 없는 확신은 speculative로 강등되고, 기준 미달이면 정찰로 재진입한다.", en: "Grades evidence sufficiency — complete, sufficient, partial, speculative — before any decision boundary. Confidence with no evidence list is demoted to speculative; below threshold, it re-enters reconnaissance." },
   },
   {
-    name: "Carrier Operations Policy",
-    kr: { ko: "함대 운용 정책", en: "Carrier Operations Policy" },
-    desc: { ko: "실행은 위임하고 판단은 보유한다. 작업 복잡도에 함대 규모를 비례시키고, 같은 단계의 다중 함장은 기본적으로 병렬 출격시킨다.", en: "Delegate execution, retain judgment. Size the fleet to the task's complexity, and launch same-phase captains in parallel by default." },
+    name: "Orchestration Policy",
+    kr: { ko: "오케스트레이션 정책", en: "Orchestration Policy" },
+    desc: { ko: "실행은 위임하고 판단은 보유한다. 작업 복잡도에 실행 폭을 비례시키고, 모든 위임은 실행 표면과 신원을 명시적으로 고정한다.", en: "Delegate execution, retain judgment. Size the run to the task's complexity, and pin every handoff to an explicit surface and identity." },
   },
   {
     name: "Deep Dive",
@@ -254,13 +254,13 @@ const DIFFS = [
     n: "01",
     name: "Multi-CLI Orchestration",
     kr: { ko: "멀티-CLI 오케스트레이션", en: "Multi-CLI Orchestration" },
-    body: { ko: "Claude Code와 Claude Gateway는 Operation을 실행하고, Codex CLI는 Carrier와 Task Force를 구동한다.", en: "Claude Code and Claude Gateway run operations, and Codex CLI powers Carriers and Task Forces." },
+    body: { ko: "Claude Code와 Claude Gateway가 Operation을 실행하고, 게이트웨이가 여러 벤더의 모델을 같은 세션에 싣는다.", en: "Claude Code and Claude Gateway run operations, and the gateway brings models from several vendors into the same session." },
   },
   {
     n: "02",
     name: "Naval Metaphor as Contract",
     kr: { ko: "운영 가능한 해군 메타포", en: "An Operational Naval Metaphor" },
-    body: { ko: "장식이 아니다. 4명의 함장은 각자 서로 겹치지 않는 책임 영역을 가진 운영 계약이다. Vanguard에게 ADR을 시키지 않고, Nimitz에게 코드를 쓰게 하지 않는다. 문서화와 Fleet Wiki는 Carrier에 위임하지 않고 제독이 직접 수행한다.", en: "Not decoration. Each of the four captains is an operational contract with non-overlapping duties. Vanguard doesn't write ADRs; Nimitz doesn't write code. The Admiral performs documentation and Fleet Wiki work directly — not through Carriers." },
+    body: { ko: "장식이 아니다. 4명의 함장은 각자 서로 겹치지 않는 책임 영역을 가진 운영 계약이다. Vanguard에게 ADR을 시키지 않고, Nimitz에게 코드를 쓰게 하지 않는다. 문서화와 Fleet Wiki는 위임하지 않고 제독이 직접 수행한다.", en: "Not decoration. Each of the four captains is an operational contract with non-overlapping duties. Vanguard doesn't write ADRs; Nimitz doesn't write code. The Admiral performs documentation and Fleet Wiki work directly." },
   },
   {
     n: "03",

@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { applyActivity, reevaluateSessionsForTenant, sessionActivity, type AgentConnectionOptions } from "../client/agent/connection.js";
+import { applyActivity, sessionActivity, type AgentConnectionOptions } from "../client/agent/connection.js";
 import { extractStatusDetail } from "../client/shared/status-detail.js";
 import { assertSessionInfo } from "../client/agent/api.js";
-import { applyJobsSnapshot, hydrateSessions } from "../client/agent/store.js";
 import type { SessionInfo } from "../client/agent/types.js";
 
 describe("Agent connection activity state machine", () => {
@@ -59,26 +58,6 @@ describe("Agent connection activity state machine", () => {
     expect(sessionActivity(makeSession({ backgroundPending: true, modelActivity: "working" }))).toBe("running");
   });
 
-  it("keeps background-pending sessions running while a Carrier stream is active", () => {
-    const session = makeSession({ sessionId: "carrier-active", tenantId: "tenant-carrier", backgroundPending: true, modelActivity: "not-working" });
-    applyJobsSnapshot([{
-      tenantId: "tenant-carrier",
-      jobs: [{ jobId: "job-a", status: "active", updatedAt: 1_000, events: [] }],
-    }]);
-
-    expect(sessionActivity(session)).toBe("running");
-  });
-
-  it("keeps not-working sessions running while a Carrier stream is active", () => {
-    const session = makeSession({ sessionId: "carrier-active-no-background", tenantId: "tenant-carrier-no-background", modelActivity: "not-working" });
-    applyJobsSnapshot([{
-      tenantId: "tenant-carrier-no-background",
-      jobs: [{ jobId: "job-a", status: "active", updatedAt: 1_000, events: [] }],
-    }]);
-
-    expect(sessionActivity(session)).toBe("running");
-  });
-
   it("does not notify when entering background and notifies when it returns idle", () => {
     const { options, notifications } = createOptions();
     const sessionId = "background-transition";
@@ -101,22 +80,6 @@ describe("Agent connection activity state machine", () => {
 
     expect(statusSet.mock.calls.map((call) => call[1])).toEqual(["awaiting", "awaiting", "running", "idle", "idle"]);
     expect(notifications.mock.calls.map((call) => call[0].kind)).toEqual(["agent.attention", "agent.ended"]);
-  });
-
-  it("does not let Carrier job reevaluation overwrite awaiting", () => {
-    const { options, statusSet } = createOptions();
-    const session = makeSession({ sessionId: "awaiting-carrier", tenantId: "tenant-awaiting", turnState: "running" });
-    hydrateSessions([session]);
-    applyJobsSnapshot([{
-      tenantId: "tenant-awaiting",
-      jobs: [{ jobId: "job-a", status: "active", updatedAt: 1_000, events: [] }],
-    }]);
-    applyActivity(options, session.sessionId, "awaiting");
-
-    reevaluateSessionsForTenant(options, "tenant-awaiting");
-
-    expect(statusSet).toHaveBeenCalledTimes(1);
-    expect(statusSet).toHaveBeenLastCalledWith(session.sessionId, "awaiting");
   });
 
   it("sanitizes and caps the latest non-empty output line", () => {

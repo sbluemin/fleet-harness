@@ -199,19 +199,19 @@
 }
 
 .ledger-operation--claude .ledger-operation-mark {
-  color: var(--carrier-claude);
+  color: var(--provider-claude);
 }
 
 .ledger-operation--kimi .ledger-operation-mark {
-  color: var(--carrier-kimi);
+  color: var(--provider-kimi);
 }
 
 .ledger-operation--codex .ledger-operation-mark {
-  color: var(--carrier-codex);
+  color: var(--provider-codex);
 }
 
 .ledger-operation--cursor .ledger-operation-mark {
-  color: var(--carrier-cursor);
+  color: var(--provider-cursor);
 }
 
 .ledger-operation-copy {
@@ -433,19 +433,19 @@
 }
 
 .ledger-client-row--claude .ledger-client-mark {
-  color: var(--carrier-claude);
+  color: var(--provider-claude);
 }
 
 .ledger-client-row--kimi .ledger-client-mark {
-  color: var(--carrier-kimi);
+  color: var(--provider-kimi);
 }
 
 .ledger-client-row--codex .ledger-client-mark {
-  color: var(--carrier-codex);
+  color: var(--provider-codex);
 }
 
 .ledger-client-row--cursor .ledger-client-mark {
-  color: var(--carrier-cursor);
+  color: var(--provider-cursor);
 }
 
 .ledger-source p,

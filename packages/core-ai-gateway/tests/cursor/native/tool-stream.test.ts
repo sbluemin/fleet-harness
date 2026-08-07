@@ -145,7 +145,7 @@ describe("Cursor client tool suspension", () => {
     const toolRequest: CanonicalResponseRequest = {
       model: "grok-4.5-fast",
       instructions: "Find the requested deferred tool with ToolSearch.",
-      input: [{ type: "message", role: "user", content: "Find fleet carrier_dispatch." }],
+      input: [{ type: "message", role: "user", content: "Find fleet wiki_read." }],
       tools: [{
         type: "function",
         name: "ToolSearch",
@@ -189,7 +189,7 @@ describe("Cursor client tool suspension", () => {
             toolCallId: callId,
             providerIdentifier: CURSOR_TOOL_PROVIDER_IDENTIFIER,
             toolName: wireName,
-            args: { query: cursorValue("select:mcp__fleet__carrier_dispatch") },
+            args: { query: cursorValue("select:mcp__fleet__wiki_read") },
           },
         },
       },
@@ -203,7 +203,7 @@ describe("Cursor client tool suspension", () => {
         type: "function_call",
         call_id: callId,
         name: "ToolSearch",
-        arguments: JSON.stringify({ query: "select:mcp__fleet__carrier_dispatch" }),
+        arguments: JSON.stringify({ query: "select:mcp__fleet__wiki_read" }),
       },
     }));
   });

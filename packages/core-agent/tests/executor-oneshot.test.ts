@@ -51,7 +51,7 @@ describe("executeOneShot", () => {
     await expect(execution.readiness).rejects.toThrow("session/load failed"); await expect(execution.completion).resolves.toMatchObject({ status: "err" });
     expect(buildMock).toHaveBeenCalledTimes(1); expect(clients[0]!.connectCalls).toEqual([expect.objectContaining({ sessionId: "provider-session" })]); expect(clients[0]!.messages).toEqual([]); expect(clients[0]!.disconnectCount).toBe(1);
   });
-  it("passes resolved Carrier cliPath and merges launch env after auth env", async () => {
+  it("passes resolved executor cliPath and merges launch env after auth env", async () => {
     const agentCliLaunchResolver = vi.fn(async () => ({
       cliPath: "/custom/bin/codex",
       env: { CODEX_BIN: "/custom/bin/codex" },
@@ -74,7 +74,7 @@ describe("executeOneShot", () => {
     });
     await execution.abort();
   });
-  it("does not add custom env when Carrier launch resolution has no overlay", async () => {
+  it("does not add custom env when executor launch resolution has no overlay", async () => {
     const execution = executeOneShot(options("default environment", {
       agentCliLaunchResolver: async () => ({ cliPath: undefined }),
     }));

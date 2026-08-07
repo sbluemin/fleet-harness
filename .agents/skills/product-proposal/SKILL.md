@@ -82,8 +82,8 @@ These are the reason the skill exists. Without them it degrades into "a guide fo
 - **Proportionality**: a small ask → fewer options and a lighter measurement; "audit / be thorough" → the full option pool and a deeper measurement.
 - **Output language** follows the session working language; functional identifiers (skill ids, token keys) stay as-is.
 
-## Carrier delegation
+## Delegation
 
 - `vanguard` — code recon to confirm the path / constraints behind a measured behavior.
 - `nimitz` — only when two options need an architecture call before a recommendation (read-only).
-- Implementation carriers (`genesis`) and `pr-workflow` belong to the **next** phase, after the Admiral of the Navy picks a direction.
+- Implementation runs and `pr-workflow` belong to the **next** phase, after the user picks a direction.

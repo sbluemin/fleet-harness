@@ -1,17 +1,11 @@
 /**
  * prompts/gateway — gateway doctrine Admiral 시스템 프롬프트
  *
- * gateway 경로는 protocol-* 스킬을 주입하지 않고, 캐리어 운용(carrier_dispatch /
- * carrier_jobs / 캐리어 로스터) 지침도 담지 않는다. 따라서 `protocol-gate`와 `roster`
- * 블록이 없고, 실행은 세션에 이미 등록된 Agent 실행과 워크플로 `stage`라는 두 표면으로만
- * 기술한다. 큐에 넣고 폴링하는 비동기 잡 어휘는 이 경로에 존재하지 않는다. 메타포
- * 오버레이(persona/tone)도 렌더하지 않으므로 `enableMetaphor`는 이 경로에 영향을 주지
- * 않는다. 섹션 순서:
+ * 실행은 세션에 이미 등록된 Agent 실행과 워크플로 `stage`라는 두 표면으로만 기술한다.
+ * 큐에 넣고 폴링하는 비동기 잡 어휘는 이 경로에 존재하지 않는다. 섹션 순서:
  *  0. `section="preamble"` — `<fleet>` 블록 해석 규칙 서문 (항상 최초 주입)
  *  1. `section="role"` — 역할·행동 규약 (항상 주입)
  *  2. `section="standing-orders" type="<id>"` — 각 Standing Order를 type 속성으로 분리한 개별 블록
- *
- * classic doctrine 본문은 `./classic.ts`가 독립적으로 소유한다(중복 허용).
  */
 
 import { getAllStandingOrders } from "../protocols/standing-orders/index.js";
@@ -55,18 +49,18 @@ You are the host agent for this session, operating on the user's behalf.
 // 함수
 // ─────────────────────────────────────────────────────────
 
-/** gateway doctrine 시스템 프롬프트를 합성한다. 메타포 오버레이는 렌더하지 않는다. */
+/** gateway doctrine 시스템 프롬프트를 합성한다. */
 export function buildGatewaySystemPrompt(): string {
   const parts: string[] = [];
 
   // ── 0. 서문 — 항상 최초 주입 ──
   parts.push(`<fleet section="preamble">\n${PREAMBLE.trim()}\n</fleet>`);
 
-  // ── 1. 역할 — 항상 주입. persona/tone 메타포 오버레이는 이 경로에 존재하지 않는다. ──
+  // ── 1. 역할 — 항상 주입. ──
   parts.push(`<fleet section="role">\n${ROLE.trim()}\n</fleet>`);
 
   // ── 2. Standing Orders — 항상 포함, 각 오더를 type 속성으로 분리한 개별 블록 ──
-  for (const order of getAllStandingOrders("gateway")) {
+  for (const order of getAllStandingOrders()) {
     parts.push(`<fleet section="standing-orders" type="${order.id}">\n${order.prompt.trim()}\n</fleet>`);
   }
 

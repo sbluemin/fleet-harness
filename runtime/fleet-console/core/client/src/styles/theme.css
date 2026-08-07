@@ -62,11 +62,10 @@
   --canvas-sea-far: oklch(8.5% 0.012 245);
 
   /* 캐리어 시그니처 색 — 콘솔 팔레트에서 재정의한 provider 정체성 축. */
-  --carrier-claude: oklch(78% 0.15 62);
-  --carrier-kimi: oklch(75% 0.15 315);
-  --carrier-codex: oklch(78% 0.035 248);
-  --carrier-cursor: oklch(72% 0.13 238);
-  --carrier-taskforce: oklch(78% 0.12 216);
+  --provider-claude: oklch(78% 0.15 62);
+  --provider-kimi: oklch(75% 0.15 315);
+  --provider-codex: oklch(78% 0.035 248);
+  --provider-cursor: oklch(72% 0.13 238);
   /* 정체성 톤(--id-*) — Operation accent·그룹색·captain 식별이 공유하는 8톤.
      각 테마의 채도 봉투를 따라 재조율된다(Instrument C≈0.06). 신호색(brass/aurora/warn/coral)과
      hue가 이웃한 crimson/amber는 채도를 낮춰 상태 신호와 혼동되지 않게 한다. */
@@ -96,10 +95,6 @@
   --scuttlebutt-qk-id-rose: oklch(73% 0.06 350);
 
   /* captain 식별은 --id-* 8톤에 1:1 배정한다 — raw hex 금지, 테마 연동, 중복 없음. */
-  --captain-nimitz: var(--id-amber);
-  --captain-genesis: var(--id-crimson);
-  --captain-sentinel: var(--id-rose);
-  --captain-vanguard: var(--id-moss);
 
   --surface-glass: var(--ink-deep);
   /* 크롬 열(사이드바·밴드 좌측 캡) 전용 표면 티어 — 다크 3종은 glass 별칭을 var 간접으로 상속하고,
@@ -357,11 +352,10 @@
   --canvas-sea-mid: oklch(96.5% 0.004 100);
   --canvas-sea-far: oklch(97.6% 0.003 100);
 
-  --carrier-claude: oklch(54% 0.135 62);
-  --carrier-kimi: oklch(52% 0.135 315);
-  --carrier-codex: oklch(43% 0.035 255);
-  --carrier-cursor: oklch(50% 0.115 238);
-  --carrier-taskforce: oklch(51% 0.105 216);
+  --provider-claude: oklch(54% 0.135 62);
+  --provider-kimi: oklch(52% 0.135 315);
+  --provider-codex: oklch(43% 0.035 255);
+  --provider-cursor: oklch(50% 0.115 238);
 
   --id-crimson: oklch(54% 0.1 25);
   --id-amber: oklch(56% 0.095 70);

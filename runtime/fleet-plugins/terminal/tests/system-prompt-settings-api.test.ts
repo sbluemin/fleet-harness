@@ -30,7 +30,6 @@ describe("system prompt settings api", () => {
 
   it("loads Terminal prompt settings from the plugin route", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({
-      enableMetaphor: false,
       agentIdleDormantMinutes: 60,
       aiGateway: null,
       aiGatewayCatalog: CATALOG,
@@ -39,7 +38,6 @@ describe("system prompt settings api", () => {
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(fetchSystemPromptSettings()).resolves.toEqual({
-      enableMetaphor: false,
       agentIdleDormantMinutes: 60,
       aiGateway: null,
       aiGatewayCatalog: CATALOG,
@@ -51,22 +49,21 @@ describe("system prompt settings api", () => {
 
   it("saves the prompt boolean to the plugin route", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({
-      enableMetaphor: true,
+      cursorDiagnosticsEnabled: true,
       agentIdleDormantMinutes: 60,
       aiGateway: null,
       aiGatewayCatalog: EMPTY_CATALOG,
-      cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
     }));
     vi.stubGlobal("fetch", fetchMock);
-    await expect(saveSystemPromptSettings({ enableMetaphor: true })).resolves.toMatchObject({
-      enableMetaphor: true,
+    await expect(saveSystemPromptSettings({ cursorDiagnosticsEnabled: true })).resolves.toMatchObject({
+      cursorDiagnosticsEnabled: true,
       agentIdleDormantMinutes: 60,
     });
     expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enableMetaphor: true }),
+      body: JSON.stringify({ cursorDiagnosticsEnabled: true }),
       signal: undefined,
     });
   });
@@ -77,13 +74,12 @@ describe("system prompt settings api", () => {
   });
 
   it("rejects responses missing agentIdleDormantMinutes", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ enableMetaphor: false, aiGatewayCatalog: EMPTY_CATALOG })));
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ aiGatewayCatalog: EMPTY_CATALOG })));
     await expect(fetchSystemPromptSettings()).rejects.toThrow("Invalid Terminal settings response");
   });
 
   it("rejects responses missing the gateway catalog", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({
-      enableMetaphor: false,
       agentIdleDormantMinutes: 60,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
@@ -93,7 +89,6 @@ describe("system prompt settings api", () => {
 
   it("rejects responses missing the Cursor diagnostics setting", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({
-      enableMetaphor: false,
       agentIdleDormantMinutes: 60,
       aiGatewayCatalog: EMPTY_CATALOG,
     })));
@@ -102,7 +97,6 @@ describe("system prompt settings api", () => {
 
   it("saves agentIdleDormantMinutes including null Off", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({
-      enableMetaphor: false,
       agentIdleDormantMinutes: null,
       aiGateway: null,
       aiGatewayCatalog: EMPTY_CATALOG,
@@ -111,7 +105,6 @@ describe("system prompt settings api", () => {
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(saveSystemPromptSettings({ agentIdleDormantMinutes: null })).resolves.toMatchObject({
-      enableMetaphor: false,
       agentIdleDormantMinutes: null,
     });
     expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", {
@@ -128,7 +121,6 @@ describe("system prompt settings api", () => {
       defaultModel: "cursor--claude-opus-5",
     };
     const fetchMock = vi.fn(async () => jsonResponse({
-      enableMetaphor: false,
       agentIdleDormantMinutes: 60,
       aiGateway,
       aiGatewayCatalog: CATALOG,
@@ -147,7 +139,6 @@ describe("system prompt settings api", () => {
 
   it("rejects responses missing the wire log setting", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({
-      enableMetaphor: false,
       agentIdleDormantMinutes: 60,
       aiGatewayCatalog: EMPTY_CATALOG,
       cursorDiagnosticsEnabled: false,
@@ -157,7 +148,6 @@ describe("system prompt settings api", () => {
 
   it("saves Cursor diagnostics independently from the gateway selection", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({
-      enableMetaphor: false,
       agentIdleDormantMinutes: 60,
       aiGateway: null,
       aiGatewayCatalog: CATALOG,
@@ -179,7 +169,6 @@ describe("system prompt settings api", () => {
 
   it("saves the wire log setting independently from Cursor diagnostics", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({
-      enableMetaphor: false,
       agentIdleDormantMinutes: 60,
       aiGateway: null,
       aiGatewayCatalog: CATALOG,

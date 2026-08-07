@@ -69,7 +69,6 @@ describe("data-dir settings store", () => {
       changed: true,
       data: {
         version: 1,
-        enableMetaphor: false,
       },
     });
   });
@@ -160,18 +159,19 @@ describe("data-dir settings store", () => {
     });
   });
 
-  it("drops the legacy replaceSystemPrompt option while preserving enableMetaphor", () => {
-    // 이전 릴리스가 남긴 ~/.fleet/settings.json의 replaceSystemPrompt(boolean) 키는
-    // 이제 미허용 키이므로 changed=true와 함께 안전 드롭되고 enableMetaphor는 보존되어야 한다.
+  it("drops the legacy replaceSystemPrompt and retired enableMetaphor options", () => {
+    // 이전 릴리스가 남긴 ~/.fleet/settings.json의 replaceSystemPrompt와, Classic과 함께
+    // 퇴역한 enableMetaphor는 둘 다 미허용 키이므로 changed=true와 함께 안전 드롭된다.
     expect(sanitizeGlobalOptionsData({
       version: 1,
       replaceSystemPrompt: true,
       enableMetaphor: false,
+      agentIdleDormantMinutes: 45,
     })).toEqual({
       changed: true,
       data: {
         version: 1,
-        enableMetaphor: false,
+        agentIdleDormantMinutes: 45,
       },
     });
   });
@@ -210,12 +210,12 @@ describe("data-dir settings store", () => {
 
     service.save({
       version: 1,
-      enableMetaphor: true,
+      agentIdleDormantMinutes: 90,
     });
 
     expect(JSON.parse(fs.readFileSync(path.join(dataDir, "settings.json"), "utf-8"))).toEqual({
       version: 1,
-      enableMetaphor: true,
+      agentIdleDormantMinutes: 90,
     });
     expect(fs.readdirSync(dataDir).filter((name) => name.startsWith(".tmp-settings.json"))).toEqual([]);
   });
@@ -223,14 +223,14 @@ describe("data-dir settings store", () => {
   it("sanitizes stale console port fields that migrated to console-settings store", () => {
     expect(sanitizeGlobalOptionsData({
       version: 1,
-      enableMetaphor: false,
+      agentIdleDormantMinutes: 30,
       consolePortMode: "static",
       consoleStaticPort: 8080,
     })).toEqual({
       changed: true,
       data: {
         version: 1,
-        enableMetaphor: false,
+        agentIdleDormantMinutes: 30,
       },
     });
   });
@@ -287,13 +287,13 @@ describe("data-dir settings store", () => {
     const second = createGlobalOptionsStore({ dataDir, timeoutMs: 1_000 });
 
     await Promise.all([
-      Promise.resolve().then(() => first.update((current) => ({ ...current, enableMetaphor: false }))),
-      Promise.resolve().then(() => second.update((current) => ({ ...current, enableMetaphor: true }))),
+      Promise.resolve().then(() => first.update((current) => ({ ...current, agentIdleDormantMinutes: 15 }))),
+      Promise.resolve().then(() => second.update((current) => ({ ...current, agentIdleDormantMinutes: 45 }))),
     ]);
 
     expect(first.load()).toEqual({
       version: 1,
-      enableMetaphor: true,
+      agentIdleDormantMinutes: 45,
     });
   });
 });

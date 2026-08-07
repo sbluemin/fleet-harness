@@ -818,7 +818,7 @@ describe("Kimi passthrough", () => {
           input_schema: { type: "object", properties: {} },
         },
         {
-          name: "mcp__fleet__carrier_dispatch",
+          name: "mcp__fleet__wiki_read",
           input_schema: { type: "object", properties: {} },
           defer_loading: true,
         },
@@ -830,7 +830,7 @@ describe("Kimi passthrough", () => {
           tool_use_id: "call-tool-search",
           content: [{
             type: "tool_reference",
-            tool_name: "mcp__fleet__carrier_dispatch",
+            tool_name: "mcp__fleet__wiki_read",
           }],
         }],
       }],
@@ -844,7 +844,7 @@ describe("Kimi passthrough", () => {
     expect(body.tools?.every((tool) => !("defer_loading" in tool))).toBe(true);
     expect(body.messages?.[0]?.content?.[0]).toMatchObject({
       type: "tool_result",
-      content: [{ type: "text", text: "Tool available: mcp__fleet__carrier_dispatch" }],
+      content: [{ type: "text", text: "Tool available: mcp__fleet__wiki_read" }],
     });
   });
 

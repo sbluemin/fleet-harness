@@ -5,7 +5,6 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { initStore, resetStoreForTests } from "@dotobokuri/fleet-carriers";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "../core/host/api-catalog.js";
 import type { ConsoleLockPayload } from "../core/host/console-contract-types.js";
@@ -16,7 +15,7 @@ import type { SystemFontsService } from "../core/host/system-fonts.js";
 
 interface ServerFixture {
   readonly dir: string;
-  readonly carrierStoreDir: string;
+  readonly fleetDataDir: string;
   readonly lockFile: string;
   readonly server: ConsoleServer;
   readonly endpoint: string;
@@ -24,13 +23,6 @@ interface ServerFixture {
 }
 
 interface FakeConsoleRuntime {
-  readonly carrierRuntime: {
-    readonly jobs: {
-      readonly streaming: {
-        register(callback: (event: unknown) => void): () => void;
-      };
-    };
-  };
   readonly cleanup: ReturnType<typeof vi.fn>;
 }
 
@@ -52,7 +44,6 @@ const servers: ConsoleServer[] = [];
 
 afterEach(async () => {
   for (const server of servers.splice(0)) await server.stop();
-  resetStoreForTests();
   for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -87,7 +78,7 @@ describe("api catalog", () => {
       expect(entry.category).toBeTruthy();
     }
     expect(serializedRoutes).not.toContain(fixture.lock.token);
-    expect(serializedRoutes).not.toContain(fixture.carrierStoreDir);
+    expect(serializedRoutes).not.toContain(fixture.fleetDataDir);
     expect(serializedRoutes).not.toContain("handler");
     expect(serializedRoutes).not.toContain("function");
     expect(serializedRoutes).not.toContain("filePath");
@@ -115,7 +106,7 @@ describe("api catalog", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(body).toEqual({ version: 1, fonts: INJECTED_SYSTEM_FONTS });
-    expect(JSON.stringify(body)).not.toContain(fixture.carrierStoreDir);
+    expect(JSON.stringify(body)).not.toContain(fixture.fleetDataDir);
     expect(JSON.stringify(body)).not.toContain("postScriptName");
   });
 
@@ -130,8 +121,7 @@ describe("api catalog", () => {
 
 async function startFixture(): Promise<ServerFixture> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-api-catalog-"));
-  const carrierStoreDir = path.join(dir, "fleet-home");
-  initStore(carrierStoreDir);
+  const fleetDataDir = path.join(dir, "fleet-home");
   tempDirs.push(dir);
   const lockFile = path.join(dir, "console.lock");
   const server = createConsoleServer({
@@ -139,13 +129,13 @@ async function startFixture(): Promise<ServerFixture> {
     version: "test",
     agentRuntime: createFakeConsoleRuntime() as never,
     agentCliDetector: createStubAgentCliDetector(),
-    dataDir: carrierStoreDir,
+    dataDir: fleetDataDir,
     systemFonts: createInjectedSystemFontsService(),
   });
   servers.push(server);
   const endpoint = await server.start({ dir, lockFile });
   const lock = createConsoleLock().readLock(lockFile)!;
-  return { dir, carrierStoreDir, lockFile, server, endpoint, lock };
+  return { dir, fleetDataDir, lockFile, server, endpoint, lock };
 }
 
 function createInjectedSystemFontsService(): SystemFontsService {
@@ -162,20 +152,7 @@ function createStubAgentCliDetector(): AgentCliDetector {
 }
 
 function createFakeConsoleRuntime(): FakeConsoleRuntime {
-  const handlers = new Set<(event: unknown) => void>();
-  return {
-    carrierRuntime: {
-      jobs: {
-        streaming: {
-          register(callback) {
-            handlers.add(callback);
-            return () => handlers.delete(callback);
-          },
-        },
-      },
-    },
-    cleanup: vi.fn(async () => undefined),
-  };
+  return { cleanup: vi.fn(async () => undefined) };
 }
 
 function requestCatalogEntry(fixture: ServerFixture, entry: ApiCatalogEntry): Promise<Response> {
@@ -191,7 +168,7 @@ function concretizeCatalogPath(routePath: string): string {
     .replaceAll(":sessionId", "missing-session")
     .replaceAll(":theaterId", "missing-theater")
     .replaceAll(":pluginId", "terminal")
-    .replaceAll(":id", "missing-carrier")
+    .replaceAll(":id", "missing-id")
     .replaceAll(":cliType", "claude")
     .replaceAll(":cli", "claude");
 }

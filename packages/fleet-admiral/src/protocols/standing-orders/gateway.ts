@@ -11,7 +11,7 @@
  * 않기로 한 실행 — 정확히 게이트가 잡아야 할 그 실행 — 에서 발화하지 않는다.
  * classic 본문을 override 하지 않고, 6종 전문을 이 파일이 단독으로 소유한다(중복 허용).
  *
- * classic의 `carrier-operations-policy`는 gateway에서 `orchestration-policy`로 개칭되며,
+ * 퇴역한 `carrier-operations-policy`를 대체하는 `orchestration-policy`를 포함하며,
  * 나머지 5종은 id를 유지한다.
  */
 

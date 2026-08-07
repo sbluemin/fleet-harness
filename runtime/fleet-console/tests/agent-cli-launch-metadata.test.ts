@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { combineAgentCliLaunchMetadata } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-launch-metadata.js";
 
 const METADATA = [
-  { id: "claude", label: "Claude" },
+  { id: "claude-native", label: "Claude (Native)" },
   { id: "claude-gateway", label: "Claude (Gateway)" },
 ] as const;
 
@@ -18,12 +18,12 @@ describe("combineAgentCliLaunchMetadata", () => {
     );
 
     expect(result).toEqual([
-      { id: "claude", label: "Claude", available: true, signedIn: true },
+      { id: "claude-native", label: "Claude (Native)", available: true, signedIn: true },
       { id: "claude-gateway", label: "Claude (Gateway)", available: true, signedIn: true },
     ]);
   });
 
-  it("claude 바이너리가 미설치면 claude가 available=false가 된다", () => {
+  it("claude 바이너리가 미설치면 모든 launch kind가 available=false가 된다", () => {
     const result = combineAgentCliLaunchMetadata(
       METADATA,
       [
@@ -32,7 +32,7 @@ describe("combineAgentCliLaunchMetadata", () => {
       ],
     );
 
-    expect(result.find((cli) => cli.id === "claude")?.available).toBe(false);
+    expect(result.every((cli) => cli.available === false)).toBe(true);
   });
 
   it("탐지 입력이 비면 available=false, signedIn=true로 둔다", () => {

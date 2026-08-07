@@ -134,7 +134,7 @@ export function buildConsoleHelpText(options: BuildConsoleHelpTextOptions = {}):
     ),
     dim(subtitle, colorEnabled),
     "",
-    dim("Observe carrier jobs, live output streams, and console-owned terminal sessions.", colorEnabled),
+    dim("Observe live output streams and console-owned terminal sessions.", colorEnabled),
     "",
     section("USAGE", colorEnabled),
     `  ${command("fleet-console", colorEnabled)} ${dim("[start|stop|restart|status] [--help]", colorEnabled)}`,

@@ -45,19 +45,19 @@
 }
 
 .quota-provider__mark--claude {
-  color: var(--carrier-claude);
+  color: var(--provider-claude);
 }
 
 .quota-provider__mark--codex {
-  color: var(--carrier-codex);
+  color: var(--provider-codex);
 }
 
 .quota-provider__mark--cursor {
-  color: var(--carrier-cursor);
+  color: var(--provider-cursor);
 }
 
 .quota-provider__mark--kimi {
-  color: var(--carrier-kimi);
+  color: var(--provider-kimi);
 }
 
 .quota-plan {

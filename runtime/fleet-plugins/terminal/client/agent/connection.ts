@@ -2,10 +2,9 @@ import type { OperationNode } from "@fleet-console/sdk/operations";
 import type { ClientNotificationsCapability, ClientOperationStatusCapability, ClientOperationsCapability, OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { currentTerminalLocale, getT } from "../i18n/index.js";
-import { fetchAgentState, fetchJobs, fetchOperationsSnapshot, fetchSessions, fetchTenants } from "./api.js";
-import { isTerminalJobStatus } from "./reduce.js";
-import { createSseFrameParser, interpretObserverFrame } from "./sse.js";
-import { applyJobsSnapshot, applyObservedEvent, applySessionUpdate, applyTenantSnapshot, applyTruncation, getAgentState, hydrateAgentClis, hydrateSessions, sessionJobs, setAgentState } from "./store.js";
+import { fetchAgentState, fetchOperationsSnapshot, fetchSessions } from "./api.js";
+import { createSseFrameParser, interpretAgentSessionFrame } from "./sse.js";
+import { applySessionUpdate, hydrateAgentClis, hydrateSessions, setAgentState } from "./store.js";
 import type { SessionInfo } from "./types.js";
 
 export interface AgentConnectionOptions {
@@ -55,18 +54,14 @@ async function consumeStream(reader: ReadableStreamDefaultReader<Uint8Array>, si
     const result = await reader.read();
     if (result.done) return;
     for (const frame of parse(decoder.decode(result.value, { stream: true }))) {
-      const interpreted = interpretObserverFrame(frame);
+      const interpreted = interpretAgentSessionFrame(frame);
       if (!interpreted) continue;
-      if (interpreted.kind === "truncation" && interpreted.truncation) {
-        applyTruncation(interpreted.tenantId, interpreted.tenantLabel, interpreted.truncation);
-        continue;
-      }
-      if (interpreted.kind === "session" && interpreted.session) {
+      if (interpreted.kind === "session") {
         applySessionUpdate(interpreted.session);
         applyActivity(options, interpreted.session.sessionId, sessionActivity(interpreted.session));
         continue;
       }
-      if (interpreted.kind === "attention" && interpreted.session) {
+      if (interpreted.kind === "attention") {
         applySessionUpdate(interpreted.session);
         // idle_prompt(정상 유휴)는 새 hook matcher에서 제외되지만, 업그레이드 전환기의 in-flight 세션이나
         // 아직 재렌더되지 않은 hooks.json이 옛 matcher로 idle_prompt를 보낼 수 있다. 그 호환성을 위해
@@ -75,12 +70,6 @@ async function consumeStream(reader: ReadableStreamDefaultReader<Uint8Array>, si
         if (interpreted.reason !== "idle_prompt") {
           applyActivity(options, interpreted.session.sessionId, "awaiting");
         }
-        continue;
-      }
-      if (interpreted.event) {
-        applyObservedEvent(interpreted.event, interpreted.tenantLabel);
-        // 캐리어 job 상태 변화는 세션 activity(턴 종료 + 스트리밍 = running)에 영향을 주므로 재평가한다.
-        reevaluateSessionsForTenant(options, interpreted.event.tenantId);
       }
     }
   }
@@ -96,20 +85,13 @@ export function sessionActivity(session: SessionInfo): OperationActivity {
   if (session.status === "dormant") return "dormant";
   if (session.attentionPending === true) return "awaiting";
   if (session.modelActivity === "working") return "running";
-  if (session.modelActivity === "not-working") return hasActiveCarrierStream(session) ? "running" : backgroundOrIdle(session);
+  if (session.modelActivity === "not-working") return backgroundOrIdle(session);
   if (session.turnState === "running") return "running";
-  // 턴이 종료(ended)됐어도 캐리어 스트리밍이 진행 중이면 running을 유지한다.
-  if (session.turnState === "ended") return hasActiveCarrierStream(session) ? "running" : backgroundOrIdle(session);
   return backgroundOrIdle(session);
 }
 
 function backgroundOrIdle(session: SessionInfo): OperationActivity {
   return session.backgroundPending === true ? "background" : "idle";
-}
-
-// 해당 세션에 종료되지 않은(스트리밍 중인) 캐리어 job이 하나라도 있으면 true.
-function hasActiveCarrierStream(session: SessionInfo): boolean {
-  return sessionJobs(session).some((job) => !isTerminalJobStatus(job.status));
 }
 
 // status를 반영하고, idle/awaiting로 전이될 때만 notification을 보낸다.
@@ -128,34 +110,14 @@ export function applyActivity(options: AgentConnectionOptions, sessionId: string
   }
 }
 
-// 특정 테넌트의 캐리어 job 상태가 바뀌면, 그 테넌트에 연결된 세션의 activity를 다시 계산해 반영한다.
-// (예: 턴 종료 후 마지막 스트리밍 job이 끝나면 running -> idle로 전이)
-export function reevaluateSessionsForTenant(options: AgentConnectionOptions, tenantId: string): void {
-  const { sessions } = getAgentState();
-  for (const session of Object.values(sessions)) {
-    if (session.tenantId !== tenantId) continue;
-    // attention으로 설정된 awaiting는 transient 신호로 turnState에 반영되지 않는다.
-    // 캐리어 job 이벤트 재평가가 이를 running으로 덮어쓰면 입력 대기 표시가 사라지므로 보존한다.
-    // (다음 session:updated 프레임이나 turn 전이가 awaiting를 해소한다.)
-    if (lastActivity.get(session.sessionId) === "awaiting") continue;
-    applyActivity(options, session.sessionId, sessionActivity(session));
-  }
-}
-
 async function resyncSnapshots(signal: AbortSignal, options: AgentConnectionOptions): Promise<void> {
-  const [agentClis, sessions, tenants, jobs, operationsSnapshot] = await Promise.all([
+  const [agentClis, sessions, operationsSnapshot] = await Promise.all([
     fetchAgentState(signal),
     fetchSessions(signal),
-    fetchTenants(signal),
-    fetchJobs(signal),
     fetchOperationsSnapshot(signal),
   ]);
   hydrateAgentClis(agentClis);
   hydrateSessions(sessions);
-  applyTenantSnapshot(tenants);
-  applyJobsSnapshot(jobs);
-  // activity 평가는 job 스냅샷 적용 이후에 한다 — tenantJobs가 비어있으면 hasActiveCarrierStream이
-  // 항상 false가 되어, 스트리밍 중인 세션이 재연결 직후 idle로 오판되고 허위 알림이 발생한다.
   for (const session of sessions) applyActivity(options, session.sessionId, sessionActivity(session));
   // resync 시 이전 agent.streaming orphan 패널을 조용히 제거한다(최선 노력, 실패 무시).
   pruneOrphanStreamingOperations(operationsSnapshot.operations, options);

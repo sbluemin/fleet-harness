@@ -112,8 +112,8 @@ Rebase the topic branch in `<worktree_path>` onto `<remote>/<base>` (mirrored in
 - Do not modify the main worktree's working tree beyond a fast-forward `git merge --ff-only` of local `<base>` — **unless** the Admiral of the Navy explicitly invokes current-branch mode, in which case rebasing the currently checked-out branch in place (rewriting that worktree's HEAD) is the intended action.
 - Korean for the final report prose; English for any commit messages the Admiral of the Navy may request afterwards.
 
-## Carrier Delegation Guidance
+## Delegation Guidance
 
 - **Genesis** — only when conflict resolution requires non-trivial code edits across multiple files. Provide `<objective>`, `<scope>` (conflicted files only), `<constraints>`, and `<references>` (the conflict hunks). Do not sortie Genesis preemptively before a conflict materializes.
 - **Sentinel** — only when the Admiral of the Navy requests a post-rebase code review (typically after a conflict-heavy rebase).
-- Skip carrier delegation entirely for clean rebases — the skill is pure git orchestration in that case.
+- Skip delegation entirely for clean rebases — the skill is pure git orchestration in that case.

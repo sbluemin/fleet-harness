@@ -150,7 +150,7 @@ describe("Scuttlebutt translations", () => {
       "Courier Bori — dispatch coming through!",
       "Patrol reports nothing unusual.",
       "Dori entering the patrol route.",
-      "Carrier streams are steady.",
+      "Output streams are steady.",
     ]);
     expect([
       ko("bird.tori"),

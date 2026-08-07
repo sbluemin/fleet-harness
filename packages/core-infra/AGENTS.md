@@ -14,6 +14,6 @@ Host-agnostic gateways for durable Fleet infrastructure I/O.
 
 ## Constraints
 
-- This is the bottom durable-I/O layer; it owns no Carrier, Admiral, host, or UI policy.
+- This is the bottom durable-I/O layer; it owns no Admiral, host, or UI policy.
 - Durable writes preserve atomic replacement, advisory locking, symlink guards, traversal defense, and secure modes as one shared contract.
 - Data-root resolution is self-contained; caller overrides are for isolation, not a second production policy.

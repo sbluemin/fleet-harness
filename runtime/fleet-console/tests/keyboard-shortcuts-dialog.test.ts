@@ -51,13 +51,13 @@ describe("KeyboardShortcutsDialog", () => {
     act(() => root!.render(createElement(
       ActiveCompanionShortcutsProvider,
       {
-        value: [{ label: "C", title: "Carrier Streams" }],
+        value: [{ label: "C", title: "Chat" }],
         children: createElement(KeyboardShortcutsDialog, { onClose: vi.fn() }),
       },
     )));
 
     const rows = [...document.querySelectorAll(".keyboard-shortcuts-group dl > div")];
-    const companionRow = rows.find((row) => row.querySelector("dd")?.textContent === "Toggle Carrier Streams");
+    const companionRow = rows.find((row) => row.querySelector("dd")?.textContent === "Toggle Chat");
     expect(companionRow?.querySelector("dt")?.textContent).toBe("AltC");
   });
 });

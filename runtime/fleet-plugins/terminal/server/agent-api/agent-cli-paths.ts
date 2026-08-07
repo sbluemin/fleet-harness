@@ -156,27 +156,6 @@ export function buildAgentCliClientEnvOverlay(
   return { CLAUDE_BIN: userPath };
 }
 
-export function createCarrierAgentCliLaunchResolver(
-  readAgentCliPaths: () => Promise<Readonly<Record<string, string>>>,
-  baseEnv: NodeJS.ProcessEnv = process.env,
-): AgentCliLaunchResolver {
-  return async (cliId, context) => {
-    const userPaths = await readAgentCliPaths();
-    // Codex Agent Operation은 제거됐지만 Carrier backend는 provider client로 계속 지원한다.
-    const cliCommand = cliId === "codex" ? "codex" : agentCliCommandForId(cliId);
-    if (!cliCommand) throw new Error("agent_cli_unavailable");
-    const effectiveEnv = { ...baseEnv, ...context.env };
-    const resolution = resolveAgentCliBinary({ cliCommand, env: effectiveEnv, userPaths });
-    if (!resolution.resolved) throw new Error("agent_cli_unavailable");
-
-    const env = buildAgentCliClientEnvOverlay(effectiveEnv, cliId, userPaths);
-    return {
-      cliPath: resolution.launchPath,
-      ...(env ? { env } : {}),
-    };
-  };
-}
-
 function resolveConfiguredPath(
   executablePath: string,
   env: NodeJS.ProcessEnv,

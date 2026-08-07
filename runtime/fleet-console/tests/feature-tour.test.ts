@@ -51,23 +51,16 @@ describe("feature tour", () => {
     expect(presentation?.steps).toEqual([TOUR.walkthrough[0]]);
   });
 
-  it("ships one walkthrough per reworked screen, plus a deprecation spotlight", () => {
+  it("ships one walkthrough per reworked screen and no spotlight", () => {
     expect(FEATURE_TOURS.map((tour) => tour.id)).toEqual([
       "canvas-modes",
       "war-room",
       "war-room-sidebar",
       "claude-operations",
-      "classic-deprecation",
     ]);
-    // 워크스루 투어에는 스포트라이트가 없다 — 스포트라이트는 폐지 안내 하나뿐이고, 그것은
-    // 단일 메시지라 워크스루(진행 표시)가 아니라 스포트라이트(알겠습니다)로 제공한다.
     for (const tour of FEATURE_TOURS) {
-      if (tour.id === "classic-deprecation") {
-        expect(tour.spotlight).not.toBeNull();
-        expect(tour.walkthrough).toEqual([]);
-      } else {
-        expect(tour.spotlight).toBeNull();
-      }
+      expect(tour.spotlight).toBeNull();
+      expect(tour.walkthrough.length).toBeGreaterThan(0);
     }
   });
 
@@ -179,50 +172,19 @@ describe("feature tour", () => {
       .toEqual(["canvas-modes.walkthrough"]);
   });
 
-  it("walks the three Claude launch kinds in menu order without a spotlight", () => {
+  it("walks the surviving Claude launch kinds in menu order without a spotlight", () => {
     const claude = FEATURE_TOURS.find((tour) => tour.id === "claude-operations");
     expect(claude?.spotlight).toBeNull();
     expect(claude?.walkthrough.map((step) => step.anchor)).toEqual([
       '[data-operation-launch-kind="claude-native"]',
-      '[data-operation-launch-kind="claude"]',
       '[data-operation-launch-kind="claude-gateway"]',
     ]);
+    // 퇴역한 Classic 앵커가 되살아나면 잡는다.
+    expect(claude?.walkthrough.map((step) => step.anchor)).not.toContain('[data-operation-launch-kind="claude"]');
     // 앵커는 번역되는 라벨이 아니라 안정 식별자에 걸려야 한다.
     for (const step of claude?.walkthrough ?? []) {
       expect(step.anchor).not.toMatch(/Classic|Native|Gateway/);
     }
-  });
-
-  it("shows the Classic deprecation spotlight on the launch menu after the intro walkthrough", () => {
-    document.body.innerHTML = [
-      '<button data-operation-launch-kind="claude-native">Claude (Native)</button>',
-      '<button data-operation-launch-kind="claude">Claude (Classic)</button>',
-      '<button data-operation-launch-kind="claude-gateway">Claude (Gateway)</button>',
-    ].join("");
-    const deprecation = FEATURE_TOURS.find((tour) => tour.id === "classic-deprecation");
-
-    // claude-operations 워크스루를 이미 본 사용자에게는 같은 메뉴에서 폐지 안내만 뜬다.
-    const presentation = resolveNextFeatureTour(FEATURE_TOURS, ["claude-operations.walkthrough"], document);
-    expect(presentation?.tour.id).toBe("classic-deprecation");
-    expect(presentation?.phase).toBe("spotlight");
-    expect(presentation?.steps).toEqual(deprecation?.spotlight ? [deprecation.spotlight] : []);
-
-    // Classic 항목이 없는 메뉴(예: 순정 CLI만 설치)에서는 안내도 함께 빠진다.
-    document.body.innerHTML = '<button data-operation-launch-kind="claude-native">Claude (Native)</button>';
-    expect(resolveNextFeatureTour(FEATURE_TOURS, ["claude-operations.walkthrough"], document)).toBeNull();
-
-    // Classic 항목이 비활성(CLI 미설치로 disabled 렌더)이면 폐지 안내도 뜨지 않는다 —
-    // 쓸 수 없는 항목에 닻을 두면 "AI Gateway를 쓰라"는 문구가 의미를 잃는다.
-    document.body.innerHTML = '<button data-operation-launch-kind="claude" disabled>Claude (Classic)</button>';
-    expect(resolveNextFeatureTour(FEATURE_TOURS, ["claude-operations.walkthrough"], document)).toBeNull();
-  });
-
-  it("phrases the Classic deprecation in both locales, pointing at the AI Gateway", () => {
-    expect(CORE_MESSAGES.en["featureTour.classicDeprecation.title"]).toContain("Classic");
-    expect(CORE_MESSAGES.en["featureTour.classicDeprecation.body"]).toContain("AI Gateway");
-    expect(CORE_MESSAGES.en["featureTour.classicDeprecation.body"]).toContain("existing Operations keep working");
-    expect(CORE_MESSAGES.ko["featureTour.classicDeprecation.title"]).toContain("Classic");
-    expect(CORE_MESSAGES.ko["featureTour.classicDeprecation.body"]).toContain("AI Gateway");
   });
 
   it("introduces the modes first, and War Room only after the user is in it", () => {
@@ -259,7 +221,6 @@ describe("feature tour", () => {
     const claude = FEATURE_TOURS.find((tour) => tour.id === "claude-operations");
     document.body.innerHTML = [
       '<button data-operation-launch-kind="claude-native">Claude (Native)</button>',
-      '<button data-operation-launch-kind="claude">Claude (Classic)</button>',
       '<button data-operation-launch-kind="codex">Codex</button>',
       '<button data-operation-launch-kind="claude-gateway">Claude (Gateway)</button>',
     ].join("");
@@ -269,20 +230,14 @@ describe("feature tour", () => {
     expect(presentation?.phase).toBe("walkthrough");
     expect(presentation?.steps).toEqual(claude?.walkthrough);
 
-    // "claude" 앵커는 정확 일치라 claude-native·claude-gateway를 함께 집지 않는다.
+    // 앵커는 정확 일치라 서로를 함께 집지 않는다.
     for (const step of claude?.walkthrough ?? []) {
       const matches = document.querySelectorAll(step.anchor ?? "");
       expect(matches).toHaveLength(1);
     }
-    expect(document.querySelector('[data-operation-launch-kind="claude"]')?.textContent)
-      .toBe("Claude (Classic)");
 
-    // claude-operations를 이미 본 사용자에게는 같은 메뉴에서 폐지 안내 스포트라이트가 이어서 뜬다.
-    const deprecation = resolveNextFeatureTour(FEATURE_TOURS, ["claude-operations.walkthrough"], document);
-    expect(deprecation?.tour.id).toBe("classic-deprecation");
-    expect(deprecation?.phase).toBe("spotlight");
-    // 스포트라이트까지 보면 이 메뉴에서 더 재생할 안내가 없다.
-    expect(resolveNextFeatureTour(FEATURE_TOURS, ["claude-operations.walkthrough", "classic-deprecation.spotlight"], document)).toBeNull();
+    // 워크스루를 보면 이 메뉴에서 더 재생할 안내가 없다.
+    expect(resolveNextFeatureTour(FEATURE_TOURS, ["claude-operations.walkthrough"], document)).toBeNull();
   });
 
   it("never advances past the last step, so the progress count cannot exceed the total", () => {
@@ -303,9 +258,7 @@ describe("feature tour", () => {
 
   it("names each Claude launch kind by what it loads, in both locales", () => {
     expect(CORE_MESSAGES.en["featureTour.claudeOperations.step1Body"]).toContain("no Admiral prompt");
-    expect(CORE_MESSAGES.ko["featureTour.claudeOperations.step1Body"]).toContain("Admiral 프롬프트도 Carrier도");
-    expect(CORE_MESSAGES.en["featureTour.claudeOperations.step2Body"]).toContain("Carrier dispatch");
-    expect(CORE_MESSAGES.ko["featureTour.claudeOperations.step2Body"]).toContain("Carrier 위임");
+    expect(CORE_MESSAGES.ko["featureTour.claudeOperations.step1Body"]).toContain("Admiral 프롬프트를 싣지 않은");
     expect(CORE_MESSAGES.en["featureTour.claudeOperations.step3Body"]).toContain("/model");
     expect(CORE_MESSAGES.ko["featureTour.claudeOperations.step3Body"]).toContain("/model");
   });

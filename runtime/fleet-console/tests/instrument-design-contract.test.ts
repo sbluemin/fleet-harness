@@ -95,8 +95,6 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--ws-tree-width",
   // Repository commit/compare inspector TSX injects the user-resized dock file-list width.
   "--ws-dock-files-width",
-  // Terminal Carriers TSX injects the selected captain identity tone.
-  "--cap-color",
   // Canvas context menu TSX injects the viewport-derived height ceiling for its own box.
   "--canvas-menu-max-height",
   // Triage Watch Deck TSX injects the grid-capped quick-look magnification at hover time.
@@ -1133,7 +1131,7 @@ describe("Instrument core design contract", () => {
       const declarations = block.match(/^\s{2}[^\n:]+:/gm) ?? [];
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
-        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|canvas|surface|hairline|text|id|carrier|shadow|scrollbar)[a-z-]*|--weight-regular|color-scheme):$/);
+        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|canvas|surface|hairline|text|id|provider|shadow|scrollbar)[a-z-]*|--weight-regular|color-scheme):$/);
       }
     }
     // 신호 ink 티어는 base에서 별칭으로 존재해 다크 3종이 var 간접으로 base 신호색을 상속한다.
@@ -1188,12 +1186,11 @@ describe("Instrument core design contract", () => {
     }
   });
 
-  it("keeps real GNB and captain producers aligned with the static CSS gates", () => {
+  it("keeps real GNB producers aligned with the static CSS gates", () => {
     const components = source("styles/components.css");
     const layout = source("styles/layout.css");
     const commandBand = source("components/command-band.tsx");
     const terminalAgent = externalSource(TERMINAL_AGENT_PATH);
-    const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
     const skillsCss = externalSource(SKILLS_CSS_PATH);
     // 디스플레이 서체 생산자는 커맨드 밴드의 브랜드 워드마크 하나뿐이다 — layout.css 단독 소유.
     expect(components).not.toMatch(/font-family:\s*var\(--font-display\)/);
@@ -1202,31 +1199,22 @@ describe("Instrument core design contract", () => {
     expect(components).not.toMatch(/data-sidebar-state="(?:rail|list|detail)"/);
     expect(components).not.toContain("global-navigation");
     expect(components).not.toContain("data-signature");
-    expect(terminalAnalysisCss).toContain(".carrier-stream-column__captain-dot {");
-    expect(terminalAgent).toContain('className="carrier-stream-column__captain-dot"');
     expect(terminalAgent).not.toContain("data-signature");
     expect(skillsCss).not.toMatch(/color-mix\([^)]*\b(?:black|white)\b/);
   });
 
-  it("maps only known Carrier Stream captain dots through captain identity tokens", () => {
+  it("keeps the retired carrier identity grammar out of the product", () => {
     const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
     const terminalAgent = externalSource(TERMINAL_AGENT_PATH);
-    const captainIds = ["nimitz", "genesis", "sentinel", "vanguard"] as const;
+    const theme = source("styles/theme.css");
 
-    expect(terminalAnalysisCss).not.toMatch(/\.carrier-stream-column__captain-dot \{[^}]*background:/);
-    expect(terminalAnalysisCss.match(/\.carrier-stream-column__captain-dot\[data-captain="/g)).toHaveLength(4);
-    for (const id of captainIds) {
-      expect(terminalAnalysisCss).toContain(`.carrier-stream-column__captain-dot[data-captain="${id}"] { background: var(--captain-${id}); }`);
-    }
-    expect(terminalAgent).toContain("resolveCarrierCaptain(job.ownerCarrierId)");
-    expect(terminalAnalysisCss).not.toContain('data-captain="kirov"');
-    expect(terminalAnalysisCss).not.toContain("--captain-kirov");
-    expect(terminalAnalysisCss).not.toMatch(/data-captain\s*=\s*["']ohio["']/i);
-    expect(terminalAnalysisCss).not.toContain("--captain-ohio");
-    expect(terminalAnalysisCss).not.toContain('data-captain="chronicle"');
-    expect(terminalAnalysisCss).not.toContain("--captain-chronicle");
-    expect(terminalAnalysisCss).not.toContain('data-captain="tempest"');
-    expect(terminalAnalysisCss).not.toContain("--captain-tempest");
+    // 캐리어 스트림과 함장 정체성 토큰은 함께 퇴역했다 — 어느 한쪽만 되살아나도 잡는다.
+    expect(theme).not.toContain("--captain-");
+    expect(theme).not.toContain("--carrier-");
+    expect(terminalAnalysisCss).not.toContain("carrier-stream-column");
+    expect(terminalAnalysisCss).not.toContain("carrier-sortie-ribbon");
+    expect(terminalAnalysisCss).not.toContain("data-captain");
+    expect(terminalAgent).not.toContain("data-captain");
   });
 
   it("pins the launch-kind description grammar and keeps the menu free of decoration tokens", () => {

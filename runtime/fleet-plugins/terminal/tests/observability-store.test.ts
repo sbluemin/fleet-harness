@@ -5,7 +5,6 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { sessionActivity } from "../client/agent/connection.js";
-import { reduceSnapshotJob } from "../client/agent/reduce.js";
 import { createConsoleObservabilityStore } from "../server/agent-api/observability-store.js";
 
 const tempDirs: string[] = [];
@@ -27,8 +26,8 @@ describe("agent observability DTO boundary", () => {
       sessionId: "session-a",
       theaterId: "theater-a",
       cwd,
-      cliId: "claude",
-      cliLabel: "Claude",
+      cliId: "claude-gateway",
+      cliLabel: "Claude (Gateway)",
       createdAt: 1_000,
       providerSession: {
         provider: "claude",
@@ -59,8 +58,8 @@ describe("agent observability DTO boundary", () => {
       sessionId: "session-a",
       theaterId: "theater-a",
       cwd,
-      cliId: "claude",
-      cliLabel: "Claude",
+      cliId: "claude-gateway",
+      cliLabel: "Claude (Gateway)",
       createdAt: 1_000,
       providerSession: {
         provider: "claude",
@@ -78,247 +77,12 @@ describe("agent observability DTO boundary", () => {
     expect(JSON.stringify(store.listTerminalSessions())).not.toContain("provider-session-secret");
     expect(store.clearTerminalSessionProviderSession("missing")).toBeNull();
   });
-
-  it("sanitizes carrier stream events before observer snapshots and SSE frames", () => {
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-events-"));
-    tempDirs.push(cwd);
-    const store = createConsoleObservabilityStore({
-      canonicalizeTheaterPath: (value) => fs.realpathSync.native(value),
-      workspaceHash: () => "theater-a",
-    });
-    store.createPendingTerminalSession({ sessionId: "session-a", cwd, cliId: "claude", createdAt: 1_000 });
-    store.registerTerminalRuntimeSession({ sessionId: "session-a", label: "Claude", mcpToolCount: 3 });
-
-    const liveFrames: unknown[] = [];
-    store.subscribeAll((event) => liveFrames.push(event));
-    store.appendTerminalRuntimeEvent("session-a", {
-      type: "job:finalized",
-      jobId: "job-a",
-      status: "done",
-      summary: "ok",
-      systemReminder: "secret reminder",
-      providerSession: "provider-session-secret",
-      transcriptPath: "/secret/transcript.jsonl",
-      ticket: "terminal-ticket-secret",
-      token: "mcp-token-secret",
-      prompt: "private prompt",
-    }, 2_000);
-    const serialized = JSON.stringify({ jobs: store.listJobs("session-a"), events: store.listEvents("session-a"), liveFrames });
-
-    expect(serialized).toContain("job-a");
-    expect(serialized).not.toContain("secret reminder");
-    expect(serialized).not.toContain("provider-session-secret");
-    expect(serialized).not.toContain("transcript");
-    expect(serialized).not.toContain("terminal-ticket-secret");
-    expect(serialized).not.toContain("mcp-token-secret");
-    expect(serialized).not.toContain("private prompt");
-  });
-
-  it("preserves only declared request fields while redacting paths in snapshots and subscribed frames", () => {
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-request-"));
-    tempDirs.push(cwd);
-    const store = createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });
-    store.createPendingTerminalSession({ sessionId: "session-a", cwd, createdAt: 1_000 });
-    store.registerTerminalRuntimeSession({ sessionId: "session-a", label: "Claude", mcpToolCount: 0 });
-    const liveFrames: unknown[] = [];
-    store.subscribeAll((event) => liveFrames.push(event));
-    const body = " \n/path/with spaces\ntoken-like=sk_live_123\n<unknown>&<script>x</script>\n";
-    const observedBody = " \n[redacted path] spaces\ntoken-like=sk_live_123\n<unknown>&<script>x</script>\n";
-    const additional = "outside <unknown> & <script>literal</script>";
-    store.appendTerminalRuntimeEvent("session-a", {
-      type: "track:begin",
-      jobId: "job-a",
-      trackId: "track-a",
-      request: {
-        blocks: [{ tag: "objective", hint: "Goal", required: true, present: true, body, providerSession: "ignored" }],
-        additional,
-        ticket: "ignored",
-      },
-      providerSession: "provider-session-secret",
-      token: "mcp-token-secret",
-      prompt: "private prompt",
-    }, 2_000);
-
-    const events = store.listEvents("session-a");
-    const serialized = JSON.stringify({ jobs: store.listJobs("session-a"), events, liveFrames });
-    expect(events[0]?.event.request).toEqual({
-      blocks: [{ tag: "objective", hint: "Goal", required: true, present: true, body: observedBody }],
-      additional,
-    });
-    expect((liveFrames[0] as { event: Record<string, unknown> }).event.request).toEqual(events[0]?.event.request);
-    expect(serialized).not.toContain("provider-session-secret");
-    expect(serialized).not.toContain("mcp-token-secret");
-    expect(serialized).not.toContain("private prompt");
-    expect(serialized).not.toContain("\"ticket\"");
-  });
-
-  it("redacts filesystem paths without changing ordinary slash text or producer input", () => {
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-request-paths-"));
-    tempDirs.push(cwd);
-    const store = createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });
-    store.createPendingTerminalSession({ sessionId: "session-a", cwd, createdAt: 1_000 });
-    store.registerTerminalRuntimeSession({ sessionId: "session-a", label: "Claude", mcpToolCount: 0 });
-    const liveFrames: unknown[] = [];
-    store.subscribeAll((event) => liveFrames.push(event));
-    const body = [
-      "POSIX=/Users/alice/project/file.ts",
-      "drive=C:\\Users\\Alice\\project\\file.ts",
-      "forward=D:/work/project/file.ts",
-      "home=~/repo/file.ts user=~alice/repo/file.ts",
-      "winhome=~\\repo\\file.ts winuser=~alice\\repo\\file.ts",
-      "slashunc=//server/share/private.txt",
-      "angle=<file:///Users/alice/angle> <C:\\Users\\Alice\\angle> <~/angle> <~alice\\angle> <\\\\server\\share\\angle> <\\Users\\Alice\\angle> rooted=\\Users\\Alice\\repo",
-      "single=\\alpha keep=~ ~alice https://example.com/~alice/repo <https://example.com/a/b> I/O HTTP/2 <unknown>literal</unknown>",
-    ].join("\n");
-    const secondBody = "UNC=\\\\server\\share\\folder\\file.txt file=file:///Users/alice/project/file.ts XML=<root>/etc/fleet</root>";
-    const additional = "before /opt/fleet/bin after; wrapped=(/srv/app), label:/var/lib/fleet homes=~/repo ~alice/repo ~\\repo ~alice\\repo angles=<file:///opt/angle> <D:\\work\\angle> <~\\angle> rooted=\\Windows\\System32 single=\\alpha slashunc=//server/share/additional.txt remote=https://example.org/x/y file://server/share/private.txt\n";
-    const requestPreview = "<objective>Inspect /Users/alice/app C:\\Users\\Alice\\app \\\\server\\share\\app //server/share/preview.txt file:///Users/alice/app ~/repo/file.ts ~alice/repo/file.ts ~\\repo\\file.ts ~alice\\repo\\file.ts angles=<file:///Users/alice/autolink> <C:\\Users\\Alice\\autolink> <~/autolink> <~alice\\autolink> <\\Users\\Alice\\autolink> single=\\alpha; keep ~ ~alice https://example.com/~alice/repo <https://example.com/a/b> I/O HTTP/2</objective>";
-    const request = {
-      blocks: [
-        { tag: "objective", hint: "Goal", required: true, present: true, body },
-        { tag: "context", hint: "Context", required: false, present: true, body: secondBody },
-      ],
-      additional,
-    };
-    const producerInput = {
-      type: "track:begin",
-      jobId: "job-a",
-      trackId: "track-a",
-      request,
-      requestPreview,
-    };
-    const originalProducerInput = structuredClone(producerInput);
-
-    store.appendTerminalRuntimeEvent("session-a", producerInput, 2_000);
-
-    const observedRequest = {
-      blocks: [
-        {
-          tag: "objective",
-          hint: "Goal",
-          required: true,
-          present: true,
-          body: [
-            "POSIX=[redacted path]",
-            "drive=[redacted path]",
-            "forward=[redacted path]",
-            "home=[redacted path] user=[redacted path]",
-            "winhome=[redacted path] winuser=[redacted path]",
-            "slashunc=[redacted path]",
-            "angle=<[redacted path]> <[redacted path]> <[redacted path]> <[redacted path]> <[redacted path]> <[redacted path]> rooted=[redacted path]",
-            "single=[redacted path] keep=~ ~alice https://example.com/~alice/repo <https://example.com/a/b> I/O HTTP/2 <unknown>literal</unknown>",
-          ].join("\n"),
-        },
-        { tag: "context", hint: "Context", required: false, present: true, body: "UNC=[redacted path] file=[redacted path] XML=<root>[redacted path]</root>" },
-      ],
-      additional: "before [redacted path] after; wrapped=([redacted path]), label:[redacted path] homes=[redacted path] [redacted path] [redacted path] [redacted path] angles=<[redacted path]> <[redacted path]> <[redacted path]> rooted=[redacted path] single=[redacted path] slashunc=[redacted path] remote=https://example.org/x/y [redacted path]\n",
-    };
-    const events = store.listEvents("session-a");
-    const jobs = store.listJobs("session-a");
-    const serialized = JSON.stringify({ jobs, events, liveFrames });
-    const observedPreview = "<objective>Inspect [redacted path] [redacted path] [redacted path] [redacted path] [redacted path] [redacted path] [redacted path] [redacted path] [redacted path] angles=<[redacted path]> <[redacted path]> <[redacted path]> <[redacted path]> <[redacted path]> single=[redacted path]; keep ~ ~alice https://example.com/~alice/repo <https://example.com/a/b> I/O HTTP/2</objective>";
-    expect(producerInput).toEqual(originalProducerInput);
-    expect(events[0]?.event.request).toEqual(observedRequest);
-    expect(events[0]?.event.requestPreview).toBe(observedPreview);
-    expect(jobs[0]?.request).toEqual(observedRequest);
-    expect(jobs[0]?.events[0]?.event.requestPreview).toBe(observedPreview);
-    expect((liveFrames[0] as { event: Record<string, unknown> }).event.request).toEqual(observedRequest);
-    expect((liveFrames[0] as { event: Record<string, unknown> }).event.requestPreview).toBe(observedPreview);
-    for (const rawPath of [
-      "/Users/alice/project/file.ts",
-      "C:\\Users\\Alice\\project\\file.ts",
-      "D:/work/project/file.ts",
-      "\\\\server\\share\\folder\\file.txt",
-      "file:///Users/alice/project/file.ts",
-      "/etc/fleet",
-      "/opt/fleet/bin",
-      "/srv/app",
-      "/var/lib/fleet",
-      "~/repo/file.ts",
-      "~alice/repo/file.ts",
-      "~\\repo\\file.ts",
-      "~alice\\repo\\file.ts",
-      "/Users/alice/angle",
-      "C:\\Users\\Alice\\angle",
-      "\\Users\\Alice\\repo",
-      "\\alpha",
-      "//server/share/private.txt",
-      "//server/share/additional.txt",
-      "//server/share/preview.txt",
-      "file:///Users/alice/autolink",
-      "file://server/share/private.txt",
-    ]) expect(serialized).not.toContain(rawPath);
-  });
-
-  it("narrows malformed request DTOs without manufacturing request content", () => {
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-request-invalid-"));
-    tempDirs.push(cwd);
-    const store = createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });
-    store.createPendingTerminalSession({ sessionId: "session-a", cwd, createdAt: 1_000 });
-    store.registerTerminalRuntimeSession({ sessionId: "session-a", label: "Claude", mcpToolCount: 0 });
-    store.appendTerminalRuntimeEvent("session-a", {
-      type: "track:begin", jobId: "job-a", trackId: "track-a", request: { blocks: "not-an-array", additional: 4 },
-    });
-
-    const event = store.listEvents("session-a")[0];
-    expect(event?.event).not.toHaveProperty("request");
-  });
-
-  it("retains the first normalized request in a job snapshot after its begin event expires", () => {
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-request-retention-"));
-    tempDirs.push(cwd);
-    const store = createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });
-    store.createPendingTerminalSession({ sessionId: "session-a", cwd, createdAt: 1_000 });
-    store.registerTerminalRuntimeSession({ sessionId: "session-a", label: "Claude", mcpToolCount: 0 });
-    const request = {
-      blocks: [{ tag: "objective", hint: "Goal", required: true, present: true, body: "  /tmp/fake\nsk-live\n<script>literal</script>  " }],
-      additional: "<unknown>&outside",
-    };
-    const malformed = store.appendTerminalRuntimeEvent("session-a", {
-      type: "track:begin", jobId: "job-a", trackId: "track-a", request: { blocks: [null], additional: "must not poison" },
-    }, 1_999);
-    expect(malformed?.event).not.toHaveProperty("request");
-    store.appendTerminalRuntimeEvent("session-a", { type: "track:begin", jobId: "job-a", trackId: "track-a", request }, 2_000);
-    for (let index = 0; index < 200; index++) {
-      store.appendTerminalRuntimeEvent("session-a", { type: "track:text", jobId: "job-a", trackId: "track-a", text: String(index) }, 2_001 + index);
-    }
-
-    const snapshot = store.listJobs("session-a")[0];
-    const observedRequest = {
-      ...request,
-      blocks: [{ ...request.blocks[0], body: "  [redacted path]\nsk-live\n<script>literal</script>  " }],
-    };
-    expect(snapshot?.events).toHaveLength(200);
-    expect(snapshot?.events.some((event) => event.type === "track:begin")).toBe(false);
-    expect(snapshot?.request).toEqual(observedRequest);
-    expect(reduceSnapshotJob("session-a", snapshot!).request).toEqual(observedRequest);
-  });
-
-  it("assigns globally monotonic observed ids across terminal sessions", () => {
-    const cwdA = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-a-"));
-    const cwdB = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-b-"));
-    tempDirs.push(cwdA, cwdB);
-    const store = createConsoleObservabilityStore({
-      canonicalizeTheaterPath: (value) => fs.realpathSync.native(value),
-      workspaceHash: (canonical) => path.basename(canonical),
-    });
-    store.createPendingTerminalSession({ sessionId: "session-a", cwd: cwdA, createdAt: 1_000 });
-    store.createPendingTerminalSession({ sessionId: "session-b", cwd: cwdB, createdAt: 1_000 });
-    store.registerTerminalRuntimeSession({ sessionId: "session-a", label: "A", mcpToolCount: 0 });
-    store.registerTerminalRuntimeSession({ sessionId: "session-b", label: "B", mcpToolCount: 0 });
-
-    const a = store.appendTerminalRuntimeEvent("session-a", { type: "track:text", jobId: "job-a", trackId: "t1", text: "a" });
-    const b = store.appendTerminalRuntimeEvent("session-b", { type: "track:text", jobId: "job-b", trackId: "t1", text: "b" });
-
-    expect(a?.id).toBe(1);
-    expect(b?.id).toBe(2);
-  });
 });
 
 describe("agent activity observability state", () => {
   function createStore() {
     const store = createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });
-    store.createPendingTerminalSession({ sessionId: "session-a", cwd: "/workspace/project", cliId: "claude", createdAt: 1_000 });
+    store.createPendingTerminalSession({ sessionId: "session-a", cwd: "/workspace/project", cliId: "claude-gateway", createdAt: 1_000 });
     return store;
   }
 

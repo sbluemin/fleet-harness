@@ -98,7 +98,7 @@ Both paths obey the same guards: propose-then-approve, validate-before-encode, a
 - Do not encode speculation or a one-off accident (three-condition gate).
 - Do not re-record what code or git history already captures - capture the non-obvious "why".
 
-## Carrier delegation
+## Delegation
 
 - `vanguard` - confirm where a candidate's home already exists (avoid duplication).
 - An approved encoding that is a code or skill change routes through `genesis` and `pr-workflow`; a pure memory write the Admiral does directly.

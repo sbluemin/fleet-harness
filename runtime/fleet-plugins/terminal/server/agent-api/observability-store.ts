@@ -108,28 +108,8 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   const workspaceHash = deps.workspaceHash ?? defaultWorkspaceHash;
   const workspacesByCliRunId = new Map<string, WorkspaceState>();
   const workspacesByRegistrationId = new Map<string, WorkspaceState>();
-  const eventsByTenant = new Map<string, AgentObservedEvent[]>();
-  const truncationByTenant = new Map<string, AgentObserverTruncation>();
-  const jobsByTenant = new Map<string, TenantJobState>();
   const terminalSessionsById = new Map<string, PendingTerminalSessionState>();
-  const listenersByTenant = new Map<string, Set<AgentObservedEventListener>>();
   const allListeners = new Set<AgentAllEventListener>();
-  let nextObservedId = 1;
-
-  function append(tenantId: string, rawEvent: unknown, at = now()): AgentObservedEvent {
-    const eventObject = typeof rawEvent === "object" && rawEvent !== null ? rawEvent as Record<string, unknown> : {};
-    const event: AgentObservedEvent = {
-      id: nextObservedId,
-      tenantId,
-      jobId: typeof eventObject.jobId === "string" ? eventObject.jobId : undefined,
-      type: typeof eventObject.type === "string" ? eventObject.type : "event",
-      at,
-      event: normalizeEventPayload(rawEvent),
-    };
-    nextObservedId += 1;
-    storeObservedEvent(event);
-    return event;
-  }
 
   function registerTerminalRuntimeSession(input: { readonly sessionId: string; readonly cliId?: string; readonly cliLabel?: string; readonly label: string; readonly mcpToolCount: number }): AgentTerminalSessionInfo | null {
     const terminalSession = terminalSessionsById.get(input.sessionId);
@@ -160,11 +140,6 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return toTerminalSessionInfo(terminalSession);
   }
 
-  function appendTerminalRuntimeEvent(sessionId: string, rawEvent: unknown, at = now()): AgentObservedEvent | null {
-    if (!workspacesByCliRunId.has(sessionId)) return null;
-    return append(sessionId, rawEvent, at);
-  }
-
   function listWorkspaces(): readonly AgentObservedWorkspace[] {
     return Array.from(workspacesByCliRunId.values())
       .map((workspace) => ({
@@ -183,28 +158,6 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
 
   function getWorkspace(tenantId: string): AgentObservedWorkspace | null {
     return listWorkspaces().find((workspace) => workspace.tenantId === tenantId) ?? null;
-  }
-
-  function listEvents(tenantId: string): readonly AgentObservedEvent[] {
-    return eventsByTenant.get(tenantId) ?? [];
-  }
-
-  function listJobs(tenantId: string): readonly AgentObservedJob[] {
-    return Array.from(getTenantJobState(tenantId).jobs.values()).sort((a, b) => b.updatedAt - a.updatedAt);
-  }
-
-  function getTruncation(tenantId: string): AgentObserverTruncation {
-    return truncationByTenant.get(tenantId) ?? { droppedCount: 0 };
-  }
-
-  function subscribe(tenantId: string, listener: AgentObservedEventListener): () => void {
-    const listeners = listenersByTenant.get(tenantId) ?? new Set();
-    listeners.add(listener);
-    listenersByTenant.set(tenantId, listeners);
-    return () => {
-      listeners.delete(listener);
-      if (listeners.size === 0) listenersByTenant.delete(tenantId);
-    };
   }
 
   function subscribeAll(listener: AgentAllEventListener): () => void {
@@ -482,27 +435,18 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     for (const session of terminalSessionsById.values()) clearTerminalSessionBackgroundPending(session);
     workspacesByCliRunId.clear();
     workspacesByRegistrationId.clear();
-    eventsByTenant.clear();
-    truncationByTenant.clear();
-    jobsByTenant.clear();
     terminalSessionsById.clear();
-    listenersByTenant.clear();
     allListeners.clear();
   }
 
   return {
-    append,
     clear,
     getLaunchCwd,
-    getTruncation,
     getDurableOperation,
     getWorkspace,
-    listEvents,
-    listJobs,
     listDurableOperations,
     listTerminalSessions,
     listWorkspaces,
-    appendTerminalRuntimeEvent,
     createPendingTerminalSession,
     getTerminalSessionInfo,
     injectDormantOperation,
@@ -511,7 +455,6 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     renameTerminalSession,
     autoNameTerminalSession,
     applyTerminalSessionProviderIdentity,
-    subscribe,
     subscribeAll,
     updateTerminalSessionProviderSession,
     clearTerminalSessionProviderSession,
@@ -524,60 +467,6 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     registerTerminalRuntimeSession,
     workspaceCount: () => listWorkspaces().length,
   };
-
-  function storeObservedEvent(event: AgentObservedEvent): void {
-    const list = eventsByTenant.get(event.tenantId) ?? [];
-    list.push(event);
-    if (list.length > TENANT_EVENT_LIMIT) {
-      const dropped = list.length - TENANT_EVENT_LIMIT;
-      const retained = list.slice(dropped);
-      eventsByTenant.set(event.tenantId, retained);
-      const previous = truncationByTenant.get(event.tenantId);
-      truncationByTenant.set(event.tenantId, {
-        droppedCount: (previous?.droppedCount ?? 0) + dropped,
-        droppedBeforeId: retained[0]?.id,
-      });
-    } else {
-      eventsByTenant.set(event.tenantId, list);
-      if (!truncationByTenant.has(event.tenantId)) truncationByTenant.set(event.tenantId, { droppedCount: 0 });
-    }
-    updateJobSnapshot(event.tenantId, event);
-    for (const listener of listenersByTenant.get(event.tenantId) ?? []) listener(event);
-    for (const listener of allListeners) listener(event);
-  }
-
-  function getTenantJobState(tenantId: string): TenantJobState {
-    const existing = jobsByTenant.get(tenantId);
-    if (existing) return existing;
-    const created = { jobs: new Map<string, AgentObservedJob>(), finalizedOrder: [] };
-    jobsByTenant.set(tenantId, created);
-    return created;
-  }
-
-  function updateJobSnapshot(tenantId: string, event: AgentObservedEvent): void {
-    if (!event.jobId) return;
-    const state = getTenantJobState(tenantId);
-    const previous = state.jobs.get(event.jobId);
-    const status = inferStatus(event.type, event.event, previous?.status);
-    const request = previous?.request ?? (event.type === "track:begin" ? normalizeRequest(event.event.request) : undefined);
-    state.jobs.set(event.jobId, {
-      jobId: event.jobId,
-      status,
-      updatedAt: event.at,
-      ...(request ? { request } : {}),
-      events: [...(previous?.events ?? []), event].slice(-JOB_EVENT_LIMIT),
-    });
-    if (event.type === "job:finalized") {
-      const existingIndex = state.finalizedOrder.indexOf(event.jobId);
-      if (existingIndex >= 0) state.finalizedOrder.splice(existingIndex, 1);
-      state.finalizedOrder.push(event.jobId);
-      while (state.finalizedOrder.length > TENANT_FINALIZED_JOB_LIMIT) {
-        const prunedJobId = state.finalizedOrder.shift();
-        if (prunedJobId) state.jobs.delete(prunedJobId);
-      }
-    }
-    pruneTenantJobs(state);
-  }
 
   function removeWorkspaceIndexes(workspace: WorkspaceState): void {
     workspacesByRegistrationId.delete(workspace.session.registrationId);
@@ -645,7 +534,6 @@ function normalizeEventPayload(event: unknown): Record<string, unknown> {
         type: "job:registered",
         jobId: safeString(obj.jobId),
         kind: safeString(obj.kind),
-        ownerCarrierId: safeString(obj.ownerCarrierId),
         label: safeString(obj.label),
         startedAt: safeNumber(obj.startedAt),
         activeJobToolCallId: safeOptionalString(obj.activeJobToolCallId),
