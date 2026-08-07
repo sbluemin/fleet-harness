@@ -267,7 +267,7 @@ const DIFFS = [
     n: "04",
     name: "Architectural Discipline",
     kr: { ko: "아키텍처 규율", en: "Architectural Discipline" },
-    body: { ko: "빌드 게이트는 협상 불가. AGENTS.md는 항상 로드되는 라우팅 컨텍스트로 강제 동기화된다. 각 단계는 그 자체로 컴파일·테스트를 통과해야 다음으로 넘어간다.", en: "Build gates are non-negotiable. AGENTS.md stays force-synced as always-loaded routing context, and each step must compile and test on its own to advance." },
+    body: { ko: "빌드 게이트는 협상 불가. 패키지 경계는 CI가 매 PR마다 검사한다 — `core-*`는 Fleet 도메인을 몰라야 하고, 어기면 검사에서 걸린다. 각 단계는 그 자체로 컴파일·테스트를 통과해야 다음으로 넘어간다.", en: "Build gates are non-negotiable. Package boundaries are checked by CI on every pull request: `core-*` must stay Fleet-domain-agnostic, and a violation fails the check. Each step must compile and test on its own to advance." },
   },
 ];
 
