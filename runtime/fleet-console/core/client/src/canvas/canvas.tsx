@@ -18,7 +18,7 @@ import { resolveOperationActivity } from "../operation-activity.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
-import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, minimizeOperation, prefersReducedMotion, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, settleOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
+import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, prefersReducedMotion, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, setTheaterOperationMinimized, settleOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
 import { escapeSelectorValue, flyPanelMotionGhost, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
@@ -30,7 +30,7 @@ import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { modeSlotGeometryFor, screenToCanvas, triageStageGeometryFor, type CanvasPoint, type CanvasRect } from "./coordinates.js";
-import { disarmTriageSetAside, dismissTriageOperation, getTriageCleared, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
+import { disarmTriageSetAside, dismissTriageOperation, forgetTriageOperation, getTriageCleared, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
 
 interface OperationsCanvasProps {
   readonly state: ConsoleState;
@@ -315,6 +315,11 @@ export function OperationsCanvas({
   };
 
   const minimizedSet = new Set(minimized);
+  // War Room의 판은 전 Theater를 한 번에 얹으므로 최소화 판정도 Theater 경계를 넘는다. canvas 스냅샷은
+  // 비활성 Theater에 쓸 때도 새 객체로 갈리므로(setTheaterOperationMinimized) 이 파생값이 함께 갱신된다.
+  const triageMinimizedSet = triageActive
+    ? new Set(getTheaterMinimizedIds(state.theaters.map((theater) => theater.id)))
+    : minimizedSet;
   const visibleOperations = Object.fromEntries(
     Object.entries(canvas.operations).filter(([sessionId]) => !minimizedSet.has(sessionId)),
   );
@@ -380,8 +385,11 @@ export function OperationsCanvas({
     : triageQueue;
   const candidateTriageStage = triageActive ? triageDisplayQueue[0] ?? null : null;
   // 선별 처리의 관심사는 살아있는 함대다 — 휴면(dormant) Operation은 deck에 올리지 않는다.
+  // 최소화한 Operation도 싣지 않는다: War Room에서 최소화는 "이 판에서 내린다"는 뜻이므로 deck이
+  // 곧 그 판이다. 내려간 항목은 사이드바 최소화 선반에서 되올린다.
   const triageDeckOperations = triageActive
-    ? state.operations.filter((operation) => resolveOperationActivity(operation, state.operationStatus) !== "dormant")
+    ? state.operations.filter((operation) => resolveOperationActivity(operation, state.operationStatus) !== "dormant"
+      && !triageMinimizedSet.has(operation.id))
     : theaterOperations;
   const triageDeckOperationIdSet = new Set(triageDeckOperations.map((operation) => operation.id));
   const deckWasVisible = triageActive
@@ -925,6 +933,13 @@ export function OperationsCanvas({
             },
             onMinimize: () => {
               if (state.activeOperationId === operation.id) setActiveOperation(null);
+              if (triageActive) {
+                // War Room의 최소화는 deck에서 내리는 동작이다. 무대에 서 있던 패널이면 지목까지
+                // 거둬 무대를 함께 비운다 — 지목이 남으면 큐가 비어도 그 패널이 무대에 붙어 있다.
+                forgetTriageOperation(operation.id);
+                setTheaterOperationMinimized(operation.theaterId, operation.id, true);
+                return;
+              }
               playMinimizeFlight(operation.id);
               minimizeOperation(operation.id);
             },

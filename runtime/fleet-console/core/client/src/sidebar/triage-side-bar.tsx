@@ -9,7 +9,8 @@ import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
 import { resumeOperationInPlace } from "../operation-resume.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-idle-arrival.js";
 import type { OperationNode, OperationNotification } from "../types.js";
-import { getTheaterCanvasSnapshot } from "../canvas/canvas-store.js";
+import { getTheaterCanvasSnapshot, getTheaterMinimizedIds, setTheaterOperationMinimized } from "../canvas/canvas-store.js";
+import { resolveOperationActivity } from "../operation-activity.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import type { TriageDeckTheater } from "../canvas/triage-watch-deck.js";
 import { getTriagePick, getTriageSnapshot, resolveTriageQueue, subscribeTriage, type TriageQueueEntry } from "../canvas/triage-store.js";
@@ -123,17 +124,30 @@ export function TriageSideBar({
     catalog,
     renderKindIcon,
   }));
-  const sections = resolveTriageSideBarSections(entries, queue, t);
+  // 최소화한 Operation은 상태 축에서 내려와 전용 선반으로 모인다 — 최소화는 활동 상태가 아니라
+  // 표시 선택이므로 대기·실행 중·백그라운드·유휴 중 어디에도 새 칸을 만들지 않는다.
+  // 휴면은 그대로 휴면 선반이 가져간다: 재개 대기는 사용자가 고른 상태가 아니라 세션의 상태다.
+  const minimizedIds = new Set(getTheaterMinimizedIds(theaters.map((theater) => theater.id)));
+  const isDormantEntry = (entry: SideBarEntry): boolean =>
+    resolveOperationActivity(entry.operation, operationStatus) === "dormant";
+  const minimizedEntries = entries.filter((entry) => minimizedIds.has(entry.operation.id) && !isDormantEntry(entry));
+  const shelvedIds = new Set(minimizedEntries.map((entry) => entry.operation.id));
+  const sections = resolveTriageSideBarSections(entries.filter((entry) => !shelvedIds.has(entry.operation.id)), queue, t);
   const livingSections = sections.filter((section) => section.status !== "dormant");
   const dormantSection = sections.find((section) => section.status === "dormant");
-  const renderChip = (entry: SideBarEntry, index: number, dormant = false) => {
+  const renderChip = (entry: SideBarEntry, index: number, shelf: "none" | "dormant" | "minimized" = "none") => {
+    const dormant = shelf === "dormant";
     const accentKey = getTheaterCanvasSnapshot(entry.operation.theaterId).operationAccent[entry.operation.id]
       ?? operationAccentFromNode(entry.operation);
     // 휴면 plugin에 resume 훅이 없으면 지목해 dormant 프레임의 자체 재개 UI를 보인다 —
     // onPick은 알림을 지우거나 Theater를 바꾸지 않고, picked 항목은 live-only deck와 별개로 무대에 선다.
+    // 최소화 선반의 본동작은 되올리기다 — 무대에 세우지 않고 deck으로만 돌려보낸다. 지목했다면 최소화가
+    // 큐에서 걸러내므로 무대에 서지도 못한 채 선반에 남는다.
     const activate = dormant
       ? (operationId: string) => resumeOperationInPlace(operationId, operations, plugins, onPick)
-      : onPick;
+      : shelf === "minimized"
+        ? () => setTheaterOperationMinimized(entry.operation.theaterId, entry.operation.id, false)
+        : onPick;
     return (
       <OperationsSideBarChip
         key={entry.operation.id}
@@ -183,6 +197,17 @@ export function TriageSideBar({
           </StatusSectionSlot>
         ))}
       </ol>
+      {/* 최소화 선반은 사용자가 직접 내린 것만 담으므로 비면 아예 서지 않는다 — 상태 축과 달리
+          "이 축이 늘 있다"고 알릴 이유가 없다. 휴면 선반과 같은 무채색 문법을 쓰되 그 위에 선다:
+          내가 치운 것이 세션이 스스로 잠든 것보다 손에 가깝다. */}
+      {minimizedEntries.length > 0 ? (
+        <section className="triage-side-bar-minimized-shelf" onContextMenu={(event) => event.preventDefault()}>
+          <p className="triage-side-bar-caption">{t("triageSidebar.minimizedShelf")}</p>
+          <ol className="triage-side-bar-minimized-list" aria-label={t("triageSidebar.minimizedShelf")}>
+            {minimizedEntries.map((entry, index) => renderChip(entry, index, "minimized"))}
+          </ol>
+        </section>
+      ) : null}
       {/* 선반의 칩은 Operation 메뉴를 갖지 않는다(본동작이 재개다) — 그렇다고 브라우저 메뉴가 뜨면
           "이 표면에는 메뉴가 없다"가 아니라 "우리 것이 아니다"로 읽힌다. 큐의 칩과 달리 여기서는
           아무것도 열지 않는다. menuEnabled=false는 핸들러를 떼기만 하므로 선반이 직접 막는다. */}
@@ -195,7 +220,7 @@ export function TriageSideBar({
               section={dormantSection}
               defaultCollapsed
             >
-              {dormantSection.entries.map((entry, index) => renderChip(entry, index, true))}
+              {dormantSection.entries.map((entry, index) => renderChip(entry, index, "dormant"))}
             </StatusSectionSlot>
           </ol>
         </footer>

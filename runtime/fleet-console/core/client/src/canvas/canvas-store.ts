@@ -354,6 +354,38 @@ export function setTheaterOperationGeometry(
   emit();
 }
 
+// 최소화도 좌표와 같은 이유로 비활성 Theater까지 닿아야 한다 — War Room의 deck과 사이드바는 전
+// Theater를 한 판에 올리므로, 지금 열려 있지 않은 Theater의 패널도 그 자리에서 내리고 되올린다.
+// 활성 Theater면 geometry 보존·zIndex 복원을 그대로 지는 평소 경로로 넘긴다.
+export function setTheaterOperationMinimized(theaterId: string, sessionId: string, minimized: boolean): void {
+  if (activeTheaterId === theaterId) {
+    if (minimized) minimizeOperation(sessionId);
+    else restoreOperation(sessionId);
+    return;
+  }
+  const theaterState = readStoredState(theaterId);
+  if (theaterState.minimized.includes(sessionId) === minimized) return;
+  writeStoredState(theaterId, {
+    ...theaterState,
+    minimized: minimized
+      ? [...theaterState.minimized, sessionId]
+      : theaterState.minimized.filter((id) => id !== sessionId),
+  });
+  state = { ...state };
+  emit();
+}
+
+// 전 Theater의 최소화 id를 한 번에 모은다. 활성 Theater는 메모리 state를, 나머지는 저장 스냅샷을
+// 읽으므로 호출부는 Theater 경계를 신경 쓰지 않는다. 반환 배열은 매번 새로 만들어지니 구독이 아니라
+// 리렌더 시점의 파생값으로 쓴다(useSyncExternalStore에 그대로 물리면 무한 렌더).
+export function getTheaterMinimizedIds(theaterIds: readonly string[]): readonly string[] {
+  const ids: string[] = [];
+  for (const theaterId of theaterIds) {
+    for (const sessionId of getTheaterCanvasSnapshot(theaterId).minimized) ids.push(sessionId);
+  }
+  return ids;
+}
+
 // 균형 그리드의 열은 ceil(sqrt(n)), 행은 ceil(n / cols)로 정한다. 마지막 행에 슬롯이 모자라면
 // 남은 패널들이 그 행의 전체 폭을 나눠 채워 빈 셀을 남기지 않는다. 최소 크기는 실제 가용 폭·높이로
 // 캡해, 좁은 Formation 캔버스에서도 panel chrome이 clip되지 않게 한다.

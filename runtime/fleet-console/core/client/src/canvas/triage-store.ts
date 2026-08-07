@@ -932,8 +932,20 @@ export function resolveTriageQueue(
     readonly seenAt: number;
     readonly priority: number;
   }> = [];
+  // 최소화는 "지금 보는 판에서 내린다"는 뜻이므로 deck에서 내려간 Operation은 순번에도 남지 않는다.
+  // 지목(picked)보다 앞서 판정한다 — 무대에 선 패널을 최소화하면 무대까지 비우는 것이 정의다.
+  const minimizedByTheater = new Map<string, ReadonlySet<string>>();
+  const isMinimized = (operation: OperationNode): boolean => {
+    let ids = minimizedByTheater.get(operation.theaterId);
+    if (!ids) {
+      ids = new Set(getTheaterCanvasSnapshot(operation.theaterId).minimized);
+      minimizedByTheater.set(operation.theaterId, ids);
+    }
+    return ids.has(operation.id);
+  };
 
   for (const operation of operations) {
+    if (isMinimized(operation)) continue;
     const activity = resolveOperationActivity(operation, operationStatus);
     const picked = operation.id === pickedOperationId;
     if (!picked && dismissed.has(operation.id)) continue;

@@ -421,9 +421,12 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
         )}
         <div className="canvas-operation-window-controls">
           <span className="canvas-operation-controls-divider" aria-hidden="true" />
-          {!triageStage ? <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={minimize} aria-label={t("canvas.frame.minimizeAria", { title: displayTitle })} title={t("canvas.frame.minimizeTitle")}>
+          {/* 최소화는 무대에서도 쓴다 — War Room의 최소화는 창을 접는 동작이 아니라 판(deck)에서
+              내리는 동작이고, 무대에 선 패널이면 무대까지 함께 비운다. 최대화만 계속 빠진다:
+              무대는 이미 캔버스 전체라 더 키울 자리가 없다. */}
+          <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={minimize} aria-label={t("canvas.frame.minimizeAria", { title: displayTitle })} title={t("canvas.frame.minimizeTitle")}>
             <MinimizeIcon />
-          </button> : null}
+          </button>
           {!triageStage && onMaximize ? (
             <button type="button" className={`canvas-operation-icon-button ${maximized ? "is-active" : ""}`} onPointerDown={stopButtonPointer} onClick={maximize} aria-label={maximized ? t("canvas.frame.restoreAria", { title: displayTitle }) : t("canvas.frame.maximizeAria", { title: displayTitle })} aria-pressed={maximized} title={maximized ? t("canvas.frame.restoreTitle") : t("canvas.frame.maximizeTitle")}>
               {maximized ? <RestorePanelIcon /> : <MaximizePanelIcon />}
