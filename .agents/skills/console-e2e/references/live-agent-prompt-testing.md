@@ -134,6 +134,7 @@ Driving a browser to ask "does this backend accept X" is slow and confounded. Im
 built adapter and call it directly — same code path, no Console, no PTY:
 
 ```js
+import fs from 'node:fs';
 const { OpencodeGoChatCompletionsAdapter } = await import('<worktree>/packages/core-ai-gateway/dist/index.js');
 const key = JSON.parse(fs.readFileSync('/Users/<you>/.fleet/auth.json','utf8'))['Claude Code with OpenCode Go'].key;
 const res = await new OpencodeGoChatCompletionsAdapter({}).stream(
