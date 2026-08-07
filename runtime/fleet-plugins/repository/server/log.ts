@@ -30,6 +30,10 @@ const REF_METACHAR_RE = /[~^:?*\[\\\s\x00-\x1f\x7f]/;
 // %s·%D도 똑같이 바이트 상한이 없다. 버퍼가 잘렸을 때의 안전은 hasMore 판정이 진다(핸들러 참조).
 // 알려진 한계: 본문이 공백 8칸으로 시작하면 존재 여부가 false로 읽힌다 — 마커 한 개가 빠질 뿐이다.
 const LOG_PRETTY_FORMAT = "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P%x00%<(8,trunc)%b";
+// 위 포맷이 레코드마다 내보내는 필드 수 — 파서가 잘린 꼬리 레코드를 가려내는 근거다. 포맷과 함께 갱신할 것.
+const LOG_FIELD_COUNT = 9;
+// %H는 저장소 해시 알고리즘에 따라 SHA-1 40자 또는 SHA-256 64자다. 그 사이 길이는 잘린 해시를 뜻한다.
+const FULL_HASH_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
 // 정렬 축은 화이트리스트 상수로만 git 인자가 된다 — 요청 문자열이 인자 위치에 직접 닿지 않게 한다.
 const LOG_ORDER_ARGS: Readonly<Record<LogOrder, string>> = { topo: "--topo-order", date: "--date-order" };
@@ -78,7 +82,11 @@ export function parseLogOutput(stdout: string): LogCommitEntry[] {
     const refsRaw = fields[6] ?? "";
     const parentsRaw = fields[7] ?? "";
 
-    if (!fullHash) continue;
+    // 잘린 꼬리 레코드는 버린다. stdout 버퍼가 레코드 중간에서 끊기면 필드가 덜 온 조각이 남는데,
+    // 해시만 비어있지 않다고 받아들이면 제목·작성자가 빈 행이 목록에 서고 — 해시 자체가 잘렸을 수도 있다 —
+    // 그 조각이 반환 개수에 포함돼 클라이언트의 다음 skip이 그 커밋을 건너뛴다. 영영 다시 읽지 못한다.
+    // 완결 신호는 필드 수다: 본문은 절단되어 언제나 마지막 한 칸을 채우므로 온전한 레코드는 항상 LOG_FIELD_COUNT개다.
+    if (fields.length < LOG_FIELD_COUNT || !FULL_HASH_RE.test(fullHash)) continue;
 
     const refs = refsRaw.split(",").map((r) => r.trim()).filter(Boolean);
     const parents = parentsRaw.split(" ").map((p) => p.trim()).filter(Boolean);

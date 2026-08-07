@@ -31,11 +31,14 @@ function makeLogContext(theaterPath: string, writes: { status: number; payload: 
   } as unknown as FleetPluginServerContext;
 }
 
+const HASH_A = "0123456789abcdef0123456789abcdef01234567";
+const HASH_B = "89abcdef0123456789abcdef0123456789abcdef";
+
 describe("parseLogOutput", () => {
   it("%at author time을 정수로 파싱하고 full decorations를 보존한다", () => {
-    const output = "\x1e0123456789abcdef\x000123456\x00subject\x00Author\x002 hours ago\x001720000000\x00HEAD -> refs/heads/main, refs/remotes/origin/main, tag: v1.2.3\x00parent-a parent-b";
+    const output = `\x1e${HASH_A}\x000123456\x00subject\x00Author\x002 hours ago\x001720000000\x00HEAD -> refs/heads/main, refs/remotes/origin/main, tag: v1.2.3\x00parent-a parent-b\x00        `;
     expect(parseLogOutput(output)).toEqual([{
-      fullHash: "0123456789abcdef",
+      fullHash: HASH_A,
       shortHash: "0123456",
       subject: "subject",
       authorName: "Author",
@@ -51,14 +54,28 @@ describe("parseLogOutput", () => {
   // 본문은 8칸으로 절단되어 마지막 필드에 한 줄로 온다. 빈 본문은 공백 패딩, 내용이 있으면 잘린 앞부분.
   // 목록 페이로드에는 존재 여부만 남는다.
   it("절단된 본문 필드를 hasBody로만 요약하고 본문 자체는 싣지 않는다", () => {
-    const head = "\x1eabc\x00abc\x00subject\x00Author\x002 hours ago\x001720000000\x00\x00parent-a\x00";
+    const head = `\x1e${HASH_A}\x00abc\x00subject\x00Author\x002 hours ago\x001720000000\x00\x00parent-a\x00`;
     expect(parseLogOutput(`${head}first b..\n`)).toEqual([{
-      fullHash: "abc", shortHash: "abc", subject: "subject", authorName: "Author",
+      fullHash: HASH_A, shortHash: "abc", subject: "subject", authorName: "Author",
       relTime: "2 hours ago", authorAt: 1_720_000_000, refs: [], parents: ["parent-a"],
       onHead: true, hasBody: true,
     }]);
     // 본문 없는 커밋은 공백 패딩만 온다 — 공백을 내용으로 오인하면 모든 행에 마커가 붙는다.
     expect(parseLogOutput(`${head}        \n`)[0]?.hasBody).toBe(false);
+  });
+
+  // stdout 버퍼가 레코드 중간에서 끊기면 필드가 덜 온 조각이 남는다. 그 조각을 커밋으로 세면
+  // 클라이언트의 다음 skip이 그만큼 전진해 해당 커밋을 영영 건너뛴다 — 다음 페이지가 거기서 이어져야 한다.
+  it("필드가 덜 온 꼬리 레코드를 버려 다음 페이지가 그 커밋에서 이어지게 한다", () => {
+    const complete = `\x1e${HASH_A}\x00abc\x00subject\x00Author\x002 hours ago\x001720000000\x00\x00\x00        `;
+    for (const tail of [
+      `\x1e${HASH_B}\x00def\x00cut here`,          // 필드 중간에서 끊김
+      `\x1e${HASH_B.slice(0, 17)}`,                 // 해시 자체가 잘림
+      `\x1e${HASH_B}`,                              // 해시만 오고 나머지 필드 없음
+    ]) {
+      const parsed = parseLogOutput(`${complete}${tail}`);
+      expect(parsed.map((commit) => commit.fullHash)).toEqual([HASH_A]);
+    }
   });
 
   // 절단은 안전장치가 아니라 페이로드 절감이다 — 폭 단위가 표시 칸이라 폭 0인 문자에는 걸리지 않는다.
