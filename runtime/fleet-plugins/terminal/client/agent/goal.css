@@ -1,0 +1,319 @@
+/* 목표는 Operation 하단에서 위로 열리는 서랍이다. 터미널 위에 겹쳐 뜨고 흐름에서는 빠져 있다 —
+   자리를 나눠 가지면 여닫을 때마다 터미널이 리사이즈되고, 그 리사이즈는 PTY까지 전파된다.
+   껍데기(배경·구분선·여백)는 전부 본문이 들고 있어야 접힌 상태에서 죽은 띠가 남지 않는다. */
+.terminal-goal-strip {
+  position: absolute;
+  z-index: 3;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  box-sizing: border-box;
+  /* 접힌 구간은 클릭을 통과시킨다 — 높이 0짜리 띠가 터미널 입력을 가로채면 안 된다. */
+  pointer-events: none;
+}
+
+/* 출격 리본도 같은 바닥에 선다(.carrier-sortie-ribbon, min-height 30px) — 둘 다 bottom:0에
+   두면 리본이 살아 있는 동안 서랍 손잡이가 그 위에 겹친다. 리본이 있을 때만 그만큼 띄운다. */
+.agent-stream-host:has(.carrier-sortie-ribbon) .terminal-goal-strip { bottom: 30px; }
+
+/* 여닫이는 0fr↔1fr 그리드 행으로 움직인다 — 내용 높이를 미리 알 필요가 없고, 접힌 동안에도
+   본문이 붙어 있어야 닫는 방향에도 같은 전이가 걸린다(포커스는 inert가 떼어낸다). */
+.terminal-goal-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-base) var(--ease-glide);
+}
+
+.terminal-goal-strip.is-open .terminal-goal-body { grid-template-rows: 1fr; }
+
+/* 0fr 트랙의 기본 크기는 자식의 최소 기여분이고 padding은 거기 포함된다 — 껍데기를 그대로
+   그리드 아이템으로 두면 접힌 줄에 여백 두께만큼이 남는다. 여백 없는 클립 층을 하나 둔다. */
+.terminal-goal-body-clip { overflow: hidden; min-height: 0; }
+
+/* 한 줄이라 터미널을 가리는 면적이 작다 — 비칠 이유가 없으므로 불투명하게 두고, 아래 글자와
+   섞여 읽히는 일이 없게 한다. floating 그림자만으로 "위에 떠 있는 판"이 성립한다. */
+.terminal-goal-body-inner {
+  pointer-events: auto;
+  display: grid;
+  gap: var(--space-2);
+  border-top: 1px solid var(--hairline-strong);
+  background: var(--ink-deep);
+  box-shadow: var(--shadow-floating);
+  color: var(--text-secondary);
+  /* 우측 레일 손잡이(.session-analyst-handle, 25px)는 패널 위에 겹쳐 뜨고 짧은 패널에서는
+     목표 줄과 같은 높이에 선다 — 본문이 그 폭만큼 오른쪽을 비워 준다. */
+  padding: var(--space-3) calc(var(--space-4) + 27px) var(--space-3) var(--space-4);
+}
+
+/* 예산은 한 줄이다. 표식·상태·눈금·조작은 고정폭으로 자리를 지키고, 늘고 주는 것은
+   가운데 detail 칸 하나뿐이다 — 좁아지면 그 칸만 줄어들고 나머지는 온전히 남는다. */
+.terminal-goal-row,
+.terminal-goal-sheet {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.terminal-goal-detail {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-tertiary);
+  font-size: 10px;
+}
+
+/* 탭은 본문 위 가장자리에 매달린다. 본문 높이가 전이되면 이 자리도 함께 움직이므로
+   손잡이가 패널을 따라 올라오는 것처럼 보인다. */
+.terminal-goal-tab {
+  pointer-events: auto;
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: min(70%, 320px);
+  box-sizing: border-box;
+  border: 1px solid var(--hairline-strong);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  background: var(--ink-deep);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  padding: 4px var(--space-3) 5px;
+  cursor: pointer;
+  transition:
+    background var(--duration-base) var(--ease-glide),
+    color var(--duration-base) var(--ease-glide),
+    border-color var(--duration-base) var(--ease-glide);
+}
+
+.terminal-goal-tab:hover {
+  background: color-mix(in oklch, var(--ink-mid) 72%, var(--ink-deep));
+  color: var(--text-secondary);
+}
+
+.terminal-goal-tab:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.terminal-goal-tab-state {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* 레일 손잡이와 같은 글리프(»)를 세로축으로 돌려 쓴다 — 다른 기호를 고르면 같은 문법의
+   손잡이인데 다른 계열처럼 읽힌다. */
+.terminal-goal-caret {
+  flex: none;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  line-height: 1;
+  transform: rotate(-90deg);
+  transition: transform var(--duration-base) var(--ease-glide);
+}
+
+.terminal-goal-strip.is-open .terminal-goal-caret { transform: rotate(90deg); }
+
+/* 강제 중인 목표는 분석 손잡이의 라이브 점과 같은 박동으로 말한다. 색만 무채색이다 —
+   활동 신호색을 빌려 오면 유휴 Operation 위에서 두 축이 서로를 부정한다. 키프레임을
+   여기서 따로 정의하는 이유는 다른 파일의 내부 이름에 기대지 않기 위해서다. */
+.terminal-goal-pulse {
+  position: relative;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-primary);
+}
+
+.terminal-goal-pulse::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border: 1px solid var(--text-primary);
+  border-radius: 50%;
+  animation: terminal-goal-pulse-orbit 1.8s var(--ease-glide) infinite;
+}
+
+@keyframes terminal-goal-pulse-orbit {
+  0% { opacity: 0.65; transform: scale(0.72); }
+  70% { opacity: 0; transform: scale(1.32); }
+  100% { opacity: 0; transform: scale(1.32); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-goal-body,
+  .terminal-goal-tab,
+  .terminal-goal-caret { transition: none; }
+  .terminal-goal-pulse::after { animation: none; }
+}
+
+.terminal-goal-mark {
+  flex: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.16em;
+}
+
+.terminal-goal-state {
+  flex: none;
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+.terminal-goal-meta {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.terminal-goal-actions {
+  display: inline-flex;
+  flex: none;
+  margin-left: auto;
+  gap: var(--space-2);
+}
+
+.terminal-goal-actions button,
+.terminal-goal-sheet button,
+.terminal-goal-stepper button {
+  border: 1px solid color-mix(in oklch, var(--text-tertiary) 35%, transparent);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.terminal-goal-actions button,
+.terminal-goal-sheet > button {
+  flex: none;
+  padding: 5px 9px;
+}
+
+.terminal-goal-sheet > button.is-primary { color: var(--text-primary); }
+
+.terminal-goal-actions button:hover:not(:disabled),
+.terminal-goal-sheet button:hover:not(:disabled),
+.terminal-goal-stepper button:hover:not(:disabled) {
+  border-color: var(--brass);
+  color: var(--text-primary);
+}
+
+.terminal-goal-actions button:focus-visible,
+.terminal-goal-sheet button:focus-visible,
+.terminal-goal-stepper button:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.terminal-goal-actions button:disabled,
+.terminal-goal-sheet button:disabled,
+.terminal-goal-stepper button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.terminal-goal-ledger { display: flex; align-items: center; gap: var(--space-1); }
+.terminal-goal-tick {
+  width: 13px;
+  height: 4px;
+  border-radius: 1px;
+  background: color-mix(in oklch, var(--ink-fog) 45%, transparent);
+}
+.terminal-goal-tick.is-spent { background: var(--text-tertiary); }
+.terminal-goal-tick.is-current { background: var(--brass); }
+/* 목표 축은 활동 축이 아니다 — 한도 소진만 예외적으로 신호색을 쓴다.
+   설계 계약에 이 예외를 함께 등록한다. */
+.terminal-goal-ledger.is-exhausted .terminal-goal-tick.is-spent,
+.terminal-goal-ledger.is-exhausted .terminal-goal-tick.is-current { background: var(--coral); }
+.terminal-goal-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-left: var(--space-1);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 어느 문장도 줄바꿈으로 예산을 먹지 않도록 한 줄로 자르고, 전문은 title로 남긴다. */
+.terminal-goal-error,
+.terminal-goal-disclosure {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  line-height: 1.5;
+  border-radius: var(--radius-sm);
+}
+
+.terminal-goal-error { flex: none; color: var(--text-primary); }
+
+/* 지시문 취급 경고는 활동 상태가 아니다 — 이 disclosure만 warn 계열을 쓰며,
+   설계 계약(instrument-design-contract)에 예외로 등록돼 있다. */
+.terminal-goal-disclosure { flex: none; color: color-mix(in oklch, var(--warn) 62%, var(--text-secondary)); cursor: help; }
+
+/* 설정도 같은 한 줄이다 — 입력·경고·한도·확정이 한 행에 선다. */
+.terminal-goal-field {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in oklch, var(--text-tertiary) 35%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--text-primary) 4%, transparent);
+  color: var(--text-primary);
+  padding: 5px var(--space-3);
+  font: inherit;
+  font-size: 11px;
+}
+
+.terminal-goal-field:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.terminal-goal-stepper {
+  display: inline-grid;
+  grid-template-columns: 22px 26px 22px;
+  flex: none;
+  align-items: center;
+}
+
+.terminal-goal-stepper button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+}
+
+.terminal-goal-stepper output {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}

@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 
-import { buildGatewayModelsToolSpec, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, getAgentCliIds, getAgentCliMetadata, NATIVE_CLAUDE_EFFORTS, NATIVE_CLAUDE_MODEL_ALIASES, parseAgentCliId, sanitizePtyMessageText, type AgentCliId } from "@dotobokuri/fleet-admiral";
+import { buildGatewayModelsToolSpec, clampGoalCheckLimit, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, getAgentCliIds, getAgentCliMetadata, MAX_GOAL_CONDITION_CHARS, NATIVE_CLAUDE_EFFORTS, NATIVE_CLAUDE_MODEL_ALIASES, parseAgentCliId, sanitizePtyMessageText, type AgentCliId } from "@dotobokuri/fleet-admiral";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -28,9 +28,11 @@ import { createConsoleObservabilityStore } from "./agent-api/observability-store
 import { writeAgentSessionEvents } from "./agent-api/observability-routes.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./agent-api/osc-agent-activity.js";
 import { readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./agent-api/provider-session.js";
-import type { AgentProviderSession, AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
+import { buildAgentSessionGoal, dropGoalTranscriptCache, readGoalMarkersFromTranscript } from "./agent-api/goal-transcript.js";
+import type { AgentProviderSession, AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource, OperationGoalRecord } from "./agent-api/types.js";
 import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown };
+type GoalBody = { readonly condition?: unknown; readonly checkLimit?: unknown };
 type HookTurnBody = { readonly phase?: unknown; readonly input?: unknown };
 type HookBackgroundBody = { readonly input?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
@@ -140,7 +142,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         cwdBasename: session.cwdLabel,
         onActivity: (modelActivity) => {
           const updated = observability.setTerminalSessionModelActivity(sessionId, modelActivity);
-          if (updated) observability.notifySessionUpdated(updated);
+          if (updated) void notifySessionUpdated(updated);
         },
       });
       oscActivityTrackers.set(sessionId, tracker);
@@ -154,7 +156,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     if (payload.pluginId !== TERMINAL_PLUGIN_ID || payload.type !== AGENT_OPERATION_TYPE) return;
     const updated = observability.renameTerminalSession(payload.operationId, payload.title);
     if (updated) {
-      observability.notifySessionUpdated(updated);
+      void notifySessionUpdated(updated);
       const operation = ctx.host.operations.get(payload.operationId);
       if (operation) {
         const cwd = readPayloadString(operation.payload, "cwd") || ctx.host.paths.resolveTheaterPath(operation.theaterId) || "";
@@ -172,8 +174,31 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     const operation = ctx.host.operations.get(payload.operationId);
     if (!operation || observability.getTerminalSessionInfo(operation.id)) return;
     const dormant = injectOperation(operation);
-    observability.notifySessionUpdated(dormant);
+    void notifySessionUpdated(dormant);
   });
+
+  // 목표는 세션 상태가 아니라 durable payload + 트랜스크립트에서 매번 파생된다. 스냅샷(GET)과
+  // 브로드캐스트(SSE)가 같은 파생을 공유해야 한다 — 브로드캐스트에만 실으면 SSE를 놓친
+  // 클라이언트나 새로 연 페이지에는 영수증이 영영 나타나지 않는다.
+  async function withSessionGoal(session: AgentTerminalSessionInfo): Promise<AgentTerminalSessionInfo> {
+    const operation = ctx.host.operations.get(session.sessionId);
+    const providerSession = readProviderSession(operation?.payload);
+    const goal = await buildAgentSessionGoal({
+      goal: readOperationGoal(operation?.payload),
+      transcriptPath: providerSession?.transcriptPath,
+      turnRunning: session.turnState === "running",
+      backgroundPending: session.backgroundPending === true,
+      sessionLive: isLiveAgentSession(session),
+      launchCheckLimit: readPositiveNumber(operation?.payload, "goalLaunchCheckLimit"),
+      clearedBaseline: readPositiveNumber(operation?.payload, "goalClearedBaseline"),
+    });
+    return goal ? { ...session, goal } : session;
+  }
+
+  async function notifySessionUpdated(session: AgentTerminalSessionInfo): Promise<void> {
+    observability.notifySessionUpdated(await withSessionGoal(session));
+  }
+
   backfillAgentOperationLaunchKinds();
   rehydrateDormantAgentOperations();
   startIdleAgentDormantSweeper({
@@ -285,7 +310,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       return true;
     }
     if (req.method === "GET") {
-      ctx.host.http.writeJson(res, 200, { sessions: observability.listTerminalSessions() });
+      const sessions = await Promise.all(observability.listTerminalSessions().map((session) => withSessionGoal(session)));
+      ctx.host.http.writeJson(res, 200, { sessions });
       return true;
     }
     if (req.method !== "POST") return methodNotAllowed(res);
@@ -366,6 +392,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
       return true;
     }
+    if (action === "goal") return handleGoal(req, res, sessionId);
     if (req.method === "DELETE") {
       removeSession(sessionId);
       ctx.host.http.writeJson(res, 200, { ok: true });
@@ -414,7 +441,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const created = runtimeSession
         ? observability.registerTerminalRuntimeSession(runtimeSession) ?? session
         : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? session;
-      observability.notifySessionUpdated(created);
+      void notifySessionUpdated(created);
       ctx.host.operations.patch(sessionId, { payload: toOperationPayload(ctx.host.operations.get(sessionId)?.payload, cwd, created, undefined, observability.getDurableOperation(sessionId)?.providerTitle) });
       ctx.host.http.writeJson(res, 200, created);
     } catch (error) {
@@ -465,6 +492,11 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         observability.clearTerminalSessionProviderSession(sessionId);
         const payloadWithoutProvider = { ...node.payload };
         delete payloadWithoutProvider.providerSession;
+        // 목표 기록도 함께 버린다. fresh는 조건문을 다시 주입하지 않으므로 새 프로세스는
+        // 그 목표를 강제하지 않고, 기준선과 묘비는 사라진 트랜스크립트를 가리키는 수다 —
+        // 남겨 두면 강제되지 않는 목표를 "요청됨"으로 보여 주게 된다.
+        delete payloadWithoutProvider.goal;
+        delete payloadWithoutProvider.goalClearedBaseline;
         ctx.host.operations.patch(sessionId, { payload: payloadWithoutProvider });
       }
       await terminalRuntime.attach({
@@ -480,7 +512,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
       pendingRuntimeSessions.delete(sessionId);
       const resumed = runtimeSession ? observability.registerTerminalRuntimeSession(runtimeSession) ?? starting : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? starting;
-      observability.notifySessionUpdated(resumed);
+      void notifySessionUpdated(resumed);
       // fresh 성공 patch는 attach 중 자식이 capture한 새 providerSession만 보존한다 —
       // payload는 spawn 전에 비워 두었으므로, 읽히는 세션은 반드시 자식의 신규 capture다.
       const currentPayload = fresh ? ctx.host.operations.get(sessionId)?.payload : node.payload;
@@ -499,9 +531,93 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       }
       pendingRuntimeSessions.delete(sessionId);
       const reverted = observability.updateTerminalSessionStatus(sessionId, "dormant");
-      if (reverted) observability.notifySessionUpdated(reverted);
+      if (reverted) void notifySessionUpdated(reverted);
       ctx.host.http.writeJson(res, 503, { error: "terminal_unavailable" });
     }
+    return true;
+  }
+
+  async function handleGoal(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
+    if (req.method !== "POST" && req.method !== "DELETE") return methodNotAllowed(res);
+    const operation = ctx.host.operations.get(sessionId);
+    const session = observability.getTerminalSessionInfo(sessionId);
+    if (!operation || !session) {
+      ctx.host.http.writeJson(res, 404, { error: "terminal_session_not_found" });
+      return true;
+    }
+    // 해제는 세션 생사와 무관하게 항상 받는다. 목표를 건 세션이 이미 죽은 뒤에도 사용자는
+    // Fleet에 남은 영수증을 치울 수 있어야 하고, 살아 있을 때만 CLI에 `/goal clear`를 흘린다.
+    // 여기서 live를 요구하면 휴면 Operation의 목표 기록이 영영 지워지지 않는다.
+    if (req.method === "DELETE") {
+      if (isLiveAgentSession(session) && terminalRuntime.getGoalCommand(sessionId)) injectGoalClear(sessionId);
+      // 기록만 지우면 영수증이 되살아난다: 목표는 트랜스크립트에서 매번 파생되고 sentinel
+      // 마커는 지워지지 않으므로, 다음 파생이 같은 마커를 터미널 소유 목표로 다시 읽는다.
+      // 해제 시점의 마커 수를 묘비로 남겨 그 이전 마커를 영구히 배제한다.
+      const clearedPath = readProviderSession(operation.payload)?.transcriptPath;
+      const clearedBaseline = clearedPath ? (await readGoalMarkersFromTranscript(clearedPath)).length : 0;
+      const payload: Record<string, unknown> = { ...operation.payload, goalClearedBaseline: clearedBaseline };
+      delete payload.goal;
+      ctx.host.operations.patch(sessionId, { payload });
+      void notifySessionUpdated(session);
+      ctx.host.http.writeJson(res, 202, { ok: true });
+      return true;
+    }
+
+    if (!isLiveAgentSession(session)) {
+      ctx.host.http.writeJson(res, 409, { error: "goal_not_live" });
+      return true;
+    }
+    if (!terminalRuntime.getGoalCommand(sessionId)) {
+      ctx.host.http.writeJson(res, 409, { error: "goal_unsupported" });
+      return true;
+    }
+
+    const body = await ctx.host.http.readJsonBody<GoalBody>(req);
+    const rawCondition = typeof body?.condition === "string" ? body.condition.trim() : "";
+    if (rawCondition.length === 0) {
+      ctx.host.http.writeJson(res, 400, { error: "goal_condition_required" });
+      return true;
+    }
+    if (rawCondition.length > MAX_GOAL_CONDITION_CHARS) {
+      ctx.host.http.writeJson(res, 400, { error: "goal_condition_too_long" });
+      return true;
+    }
+    const condition = sanitizeGoalCondition(rawCondition);
+    if (condition.length === 0) {
+      ctx.host.http.writeJson(res, 400, { error: "goal_condition_required" });
+      return true;
+    }
+    const checkLimit = clampGoalCheckLimit(typeof body?.checkLimit === "number" ? body.checkLimit : undefined);
+    // 주입 전에 지금까지 쌓인 마커 수를 기준선으로 잡는다. 이전 목표의 종료 마커가
+    // 새 목표의 상태로 읽히는 것을 막는 유일한 수단이다(마커에는 시각이 없다).
+    const goalTranscriptPath = readProviderSession(operation.payload)?.transcriptPath;
+    const markerBaseline = goalTranscriptPath ? (await readGoalMarkersFromTranscript(goalTranscriptPath)).length : 0;
+    const goal: OperationGoalRecord = {
+      origin: "fleet",
+      checkLimit,
+      requestedAt: Date.now(),
+      markerBaseline,
+      condition,
+    };
+    injectGoalCommand(sessionId, condition);
+    // 새 목표의 기준선이 묘비를 대신한다 — 둘을 함께 두면 어느 쪽이 유효한지 payload가 두 벌로 말한다.
+    const goalPayload: Record<string, unknown> = { ...operation.payload, goal };
+    delete goalPayload.goalClearedBaseline;
+    ctx.host.operations.patch(sessionId, { payload: goalPayload });
+    // 이미 뜬 프로세스의 cap은 spawn 환경에 박혀 있다. 방금 고른 한도는 다음 재개부터
+    // 유효하므로, 응답도 강제 중인 한도와 예약된 한도를 갈라서 말한다.
+    const launchCheckLimit = clampGoalCheckLimit(readPositiveNumber(operation.payload, "goalLaunchCheckLimit"));
+    const requested = {
+      state: "requested" as const,
+      live: true,
+      origin: "fleet" as const,
+      checksUsed: 0,
+      checkLimit: launchCheckLimit,
+      ...(checkLimit === launchCheckLimit ? {} : { pendingCheckLimit: checkLimit }),
+      condition,
+    };
+    ctx.host.http.writeJson(res, 202, { goal: requested });
+    observability.notifySessionUpdated({ ...session, goal: requested });
     return true;
   }
 
@@ -524,7 +640,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     // 두 번 알리면 그 사이의 프레임에서 세션이 백그라운드 작업을 잊은 채 유휴로 읽힌다.
     const pending = turnState === "ended" ? resolveBackgroundPendingFromHookInput(body?.input) : undefined;
     const settled = pending === undefined ? updated : observability.setTerminalSessionBackgroundPending(sessionId, pending) ?? updated;
-    observability.notifySessionUpdated(settled);
+    void notifySessionUpdated(settled);
     ctx.host.http.writeJson(res, 200, { ok: true });
     if (turnState === "ended") scheduleIdentityRefresh(sessionId);
     return true;
@@ -545,7 +661,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ctx.host.http.writeJson(res, 404, { error: "terminal_session_not_found" });
       return true;
     }
-    observability.notifySessionUpdated(updated);
+    void notifySessionUpdated(updated);
     ctx.host.http.writeJson(res, 200, { ok: true });
     return true;
   }
@@ -571,7 +687,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     const prompt = typeof body?.prompt === "string" ? body.prompt : readHookPrompt(body?.input);
     const result = observability.autoNameTerminalSession(sessionId, deriveOperationLabel(prompt));
     if (result?.renamed) {
-      observability.notifySessionUpdated(result.session);
+      void notifySessionUpdated(result.session);
       const autoNameCwd = readPayloadString(ctx.host.operations.get(sessionId)?.payload ?? {}, "cwd") ?? result.session.cwdLabel;
       ctx.host.operations.patch(sessionId, { title: result.session.label ?? path.basename(autoNameCwd) });
     }
@@ -638,7 +754,16 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     const operationId = context?.operationId ?? "";
     const operation = ctx.host.operations.get(operationId);
     const cliId = typeof operation?.payload.cliId === "string" ? operation.payload.cliId : undefined;
+    const goal = readOperationGoal(operation?.payload);
     const providerSession = readProviderSession(operation?.payload)?.sessionId;
+    // 이 spawn이 실제로 강제하게 될 한도를 payload에 남긴다. 뜬 뒤에는 자식 프로세스의
+    // 환경을 바꿀 수 없으므로, 영수증이 눈금으로 셀 수 있는 값은 여기서 고정된 이 숫자뿐이다.
+    const launchCheckLimit = clampGoalCheckLimit(goal?.checkLimit);
+    if (operation) {
+      ctx.host.operations.patch(operation.id, {
+        payload: { ...operation.payload, goalLaunchCheckLimit: launchCheckLimit },
+      });
+    }
     return launchResolver(cwd, {
       sessionId: operationId,
       operationId,
@@ -648,6 +773,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ...(cliId ? { cliId } : {}),
       ...(context?.model ? { model: context.model } : {}),
       ...(context?.effort ? { effort: context.effort } : {}),
+      goalCheckLimit: launchCheckLimit,
       ...(providerSession ? { resumeSessionId: providerSession } : {}),
     });
   }
@@ -663,7 +789,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       if (dormant) {
         // 전이 전 발급된 미소비 ticket이 WS consume으로 PTY를 되살리지 못하도록 폐기한다.
         terminalRuntime.invalidateTicketsForSession(operationId);
-        observability.notifySessionUpdated(dormant);
+        void notifySessionUpdated(dormant);
         const exitCwd = readPayloadString(ctx.host.operations.get(operationId)?.payload ?? {}, "cwd") ?? "";
         ctx.host.operations.patch(operationId, { payload: toOperationPayload(ctx.host.operations.get(operationId)?.payload, exitCwd, dormant, providerSession, observability.getDurableOperation(operationId)?.providerTitle) });
       }
@@ -675,6 +801,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
 
   function removeSession(sessionId: string): void {
     reminderWriter.cancel(sessionId);
+    dropGoalTranscriptCache(readProviderSession(ctx.host.operations.get(sessionId)?.payload)?.transcriptPath);
     resetOscActivity(sessionId);
     terminalRuntime.terminate(sessionId);
     pendingRuntimeSessions.delete(sessionId);
@@ -719,7 +846,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         if (!title || !current || readProviderSession(current.payload)?.sessionId !== providerSessionId) return;
         const applied = observability.applyTerminalSessionProviderIdentity(sessionId, title);
         if (!applied?.renamed) return;
-        observability.notifySessionUpdated(applied.session);
+        void notifySessionUpdated(applied.session);
         const operation = ctx.host.operations.get(sessionId);
         if (!operation || readProviderSession(operation.payload)?.sessionId !== providerSessionId) return;
         const cwd = readPayloadString(operation.payload, "cwd") || applied.session.cwdLabel;
@@ -745,14 +872,30 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     if (!label) return;
     const renameCommand = terminalRuntime.getRenameCommand(sessionId);
     if (!renameCommand) return;
-    const safeLabel = sanitizePtyMessageText(label.replace(/[\r\n\t]+/g, " ")).trim();
+    const safeLabel = sanitizeGoalCondition(label);
     if (safeLabel.length === 0) return;
+    injectSerializedCommand(sessionId, `${renameCommand} ${safeLabel}`);
+  }
+
+  function injectGoalCommand(sessionId: string, condition: string): void {
+    const goalCommand = terminalRuntime.getGoalCommand(sessionId);
+    if (!goalCommand) return;
+    injectSerializedCommand(sessionId, `${goalCommand} ${condition}`);
+  }
+
+  function injectGoalClear(sessionId: string): void {
+    const goalCommand = terminalRuntime.getGoalCommand(sessionId);
+    if (!goalCommand) return;
+    injectSerializedCommand(sessionId, `${goalCommand} clear`);
+  }
+
+  function injectSerializedCommand(sessionId: string, command: string): void {
     const policy = terminalRuntime.getMessagePolicy(sessionId) ?? {};
-    // 리마인더와 동일한 세션 키/writer로 직렬화해 rename+리마인더 인터리브를 막는다.
+    // 리마인더와 동일한 세션 키/writer로 직렬화해 명령+리마인더 인터리브를 막는다.
     reminderWriter.enqueue(
       sessionId,
       (data) => terminalRuntime.write(sessionId, data),
-      formatPtyMessage(policy, `${renameCommand} ${safeLabel}`, process.platform, CONSOLE_PTY_MESSAGE_DELIVERY),
+      formatPtyMessage(policy, command, process.platform, CONSOLE_PTY_MESSAGE_DELIVERY),
     );
   }
 
@@ -903,6 +1046,39 @@ function readPayloadString(payload: Record<string, unknown>, key: string): strin
 function readPayloadNumber(payload: Record<string, unknown>, key: string): number {
   const value = payload[key];
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+// 부재는 그 사실 자체가 의미다: goalLaunchCheckLimit이 없으면 자식이 받은 cap은 기본값이고
+// (clampGoalCheckLimit(undefined)이 그 값이다), goalClearedBaseline이 없으면 해제 이력이 없다.
+function readPositiveNumber(payload: Record<string, unknown> | undefined, key: string): number | undefined {
+  const value = payload?.[key];
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function readOperationGoal(payload: Record<string, unknown> | undefined): OperationGoalRecord | undefined {
+  const value = payload?.goal;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.origin !== "fleet" && candidate.origin !== "terminal") return undefined;
+  if (typeof candidate.checkLimit !== "number" || !Number.isFinite(candidate.checkLimit)) return undefined;
+  if (typeof candidate.requestedAt !== "number" || !Number.isFinite(candidate.requestedAt)) return undefined;
+  if (typeof candidate.markerBaseline !== "number" || !Number.isSafeInteger(candidate.markerBaseline) || candidate.markerBaseline < 0) return undefined;
+  if (candidate.condition !== undefined && typeof candidate.condition !== "string") return undefined;
+  return {
+    origin: candidate.origin,
+    checkLimit: clampGoalCheckLimit(candidate.checkLimit),
+    requestedAt: candidate.requestedAt,
+    markerBaseline: candidate.markerBaseline,
+    ...(typeof candidate.condition === "string" ? { condition: candidate.condition } : {}),
+  };
+}
+
+function sanitizeGoalCondition(value: string): string {
+  return sanitizePtyMessageText(value.replace(/[\r\n\t]+/g, " ")).trim();
+}
+
+function isLiveAgentSession(session: AgentTerminalSessionInfo): boolean {
+  return session.status === "starting" || session.status === "terminal-only" || session.status === "registered";
 }
 
 function readHookNotificationType(value: unknown): unknown {

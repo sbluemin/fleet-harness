@@ -1,3 +1,5 @@
+import type { GoalObservedState } from "./goal-projection.js";
+
 export type AgentSessionStatus = "starting" | "terminal-only" | "registered" | "closed" | "error" | "dormant";
 
 export type AgentTurnState = "none" | "running" | "ended";
@@ -13,6 +15,34 @@ export type AgentAttentionReason =
   | "elicitation_response";
 
 export type AgentLabelSource = "user" | "auto";
+
+export interface OperationGoalRecord {
+  readonly origin: "fleet" | "terminal";
+  readonly checkLimit: number;
+  readonly requestedAt: number;
+  // 요청 시점까지 트랜스크립트에 이미 쌓여 있던 goal 마커 수. 트랜스크립트는 세션 내내
+  // 누적되므로, 이 인덱스 이전의 마커는 이전 목표의 잔재다. 이게 없으면 새 목표를 건 직후에
+  // 과거 목표의 종료 마커가 현재 상태로 투영된다.
+  readonly markerBaseline: number;
+  // Fleet이 보낸 조건문만 보관한다. 터미널에서 직접 친 조건은 트랜스크립트에만 있고
+  // payload는 브라우저까지 그대로 나가므로 절대 여기에 복사하지 않는다.
+  readonly condition?: string;
+}
+
+export interface AgentSessionGoal {
+  readonly state: GoalObservedState | "requested";
+  readonly live: boolean;
+  readonly origin: "fleet" | "terminal";
+  readonly checksUsed: number;
+  /** 지금 강제되고 있는 한도. 살아 있는 세션에서는 프로세스가 spawn 때 받은 값이다. */
+  readonly checkLimit: number;
+  /** 사용자가 고른 한도가 아직 강제되지 않을 때만 존재한다(다음 재개부터 적용). */
+  readonly pendingCheckLimit?: number;
+  readonly totalChecks?: number;
+  readonly condition?: string;
+  readonly durationMs?: number;
+  readonly tokens?: number;
+}
 
 // Provider-derived titles are durable server state. Keep this separate from
 // AgentLabelSource because that union is projected into browser session DTOs.
@@ -60,6 +90,7 @@ export interface AgentTerminalSessionInfo {
   readonly cliRunId?: string;
   readonly tenantId?: string;
   readonly resumeAvailable: boolean;
+  readonly goal?: AgentSessionGoal;
 }
 
 export interface AgentObservedWorkspace {

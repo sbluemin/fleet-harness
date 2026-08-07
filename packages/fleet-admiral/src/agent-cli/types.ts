@@ -3,6 +3,11 @@ import type { ClaudeSkillOverride } from "./gateway-skills.js";
 
 export type AgentCliId = "claude-native" | "claude-gateway";
 
+export const DEFAULT_GOAL_CHECK_LIMIT = 8;
+export const MIN_GOAL_CHECK_LIMIT = 1;
+export const MAX_GOAL_CHECK_LIMIT = 20;
+export const MAX_GOAL_CONDITION_CHARS = 4000;
+
 export interface AgentCliProfile {
   readonly id: AgentCliId;
   readonly label: string;
@@ -19,6 +24,9 @@ export interface AgentCliProfile {
   // 슬래시 명령을 지원하지 않는 CLI(또는 FLEET_TERMINAL_CMD 등 임의 override)는 생략하며,
   // 그 경우 호스트는 rename 주입을 건너뛴다. messagePolicy와 동일하게 resolved profile에 실린다.
   readonly renameCommand?: string;
+  // 목표(정지 조건) 슬래시 명령. Claude Code의 `/goal`처럼 조건을 세션 Stop 훅으로
+  // 등록하는 CLI만 선언한다. 미선언 CLI는 호스트가 목표 주입을 건너뛴다.
+  readonly goalCommand?: string;
   readonly terminalName: string;
 }
 
@@ -42,6 +50,7 @@ export interface AgentCliDefinition {
 export interface AgentCliProfileOptions {
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
+  readonly goalCheckLimit?: number;
   readonly model?: string;
   readonly effort?: string;
   readonly resumeSessionId?: string;
