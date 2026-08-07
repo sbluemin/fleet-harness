@@ -155,8 +155,8 @@ function HostSwitcher() {
    * 같은 콘솔이 두 이름으로 보인다. 사용자가 고쳐 부른 이름이 있으면 그것이 우선이다.
    */
   const currentLabel = savedCurrent?.label || state.consoleName || location.host;
-  // 이 컴퓨터의 콘솔에 서 있다면 칩은 이름을 말하지 않는다 — 알려야 할 것은 "여기가 아닌 곳"뿐이다.
-  const chipLabel = nearbyCurrent ? null : currentLabel;
+  // 이 컴퓨터의 콘솔에 서 있으면 어느 콘솔인지가 아니라 "여기"라는 사실만 말한다.
+  const chipLabel = nearbyCurrent ? t("chrome.hosts.local") : currentLabel;
 
   if (nearby.length === 0 && hosts.length === 0) return null;
   const openSettings = () => {
@@ -173,15 +173,15 @@ function HostSwitcher() {
       <button
         ref={triggerRef}
         type="button"
-        className={`host-switcher-chip ${chipLabel ? "" : "is-bare"}`.trim()}
+        className="host-switcher-chip"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={chipLabel ?? t("chrome.hosts.aria")}
-        title={chipLabel ?? t("chrome.hosts.aria")}
+        aria-label={`${t("chrome.hosts.aria")}: ${chipLabel}`}
+        title={chipLabel}
         onClick={() => setOpen((previous) => !previous)}
       >
         <span className="host-switcher-dot is-live" aria-hidden="true" />
-        {chipLabel ? <span className="host-switcher-name">{chipLabel}</span> : null}
+        <span className="host-switcher-name">{chipLabel}</span>
         <ChevronGlyph />
       </button>
       {open ? (
