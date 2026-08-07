@@ -9,6 +9,7 @@ import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
+import { createAccessRegistry, formatSessionCookie, type AccessAudience } from "./auth.js";
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./console-contract-types.js";
 import { createCodexWorkspaceRouter } from "./codex/workspace-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
@@ -233,6 +234,20 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     gate: "origin-strict",
   },
   {
+    method: "POST",
+    path: "/api/v1/access-grants",
+    summary: "Issue a single-use grant that opens a console session.",
+    category: "Access",
+    gate: "lock-token",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/join",
+    summary: "Exchange a single-use grant for a console session.",
+    category: "Access",
+    gate: "loopback",
+  },
+  {
     method: "GET",
     path: "/api/v1/health",
     summary: "Check console status with the lock token.",
@@ -291,6 +306,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   const routeRegistry = new RouteRegistry();
   const upgradeRegistry = new UpgradeRegistry();
+  // 오늘 서버는 루프백 리스너 하나만 연다. audience를 값으로 들고 다녀야 원격 리스너가
+  // 붙을 때 로컬 자격이 그쪽에서 거부된다는 계약을 코드가 그대로 표현한다.
+  const listenerAudience: AccessAudience = "local";
+  const access = createAccessRegistry();
   const pluginOperationTypes = new Set<string>();
   const pluginPayloadSanitizers = new Map<string, readonly string[]>();
   const pluginLaunchCatalogProviders = new Map<string, OperationLaunchCatalogProvider[]>();
@@ -607,6 +626,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       handleHealth(req, res);
       return;
     }
+    if (pathname === "/api/v1/access-grants") {
+      handleAccessGrantIssue(req, res);
+      return;
+    }
+    if (pathname === "/api/v1/join") {
+      runAsyncBooleanHandler(handleAccessJoin(req, res), res);
+      return;
+    }
     runAsyncBooleanHandler(routeRegistry.handle({ req, res, pathname }), res, () => {
       handleCoreRequest(req, res, pathname);
       return true;
@@ -721,6 +748,40 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     writeJson(res, 401, { error: "Unauthorized" });
+  }
+
+  // 조인 자격 발급. 로컬 자격이라도 링크와 같은 grant 문법을 거치게 해서, 세션을 여는
+  // 경로가 하나로 유지되도록 한다. 락 토큰은 이미 프로세스 제어 권한이므로 로컬 세션으로의
+  // 교환은 권한 확대가 아니라 축소다.
+  function handleAccessGrantIssue(req: http.IncomingMessage, res: http.ServerResponse): void {
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (!isLockAuthorized(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    const grant = access.issueGrant(listenerAudience);
+    writeJson(res, 201, { token: grant.token, audience: grant.audience, expiresAt: grant.expiresAt });
+  }
+
+  async function handleAccessJoin(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+    const body = await readJsonBody<{ readonly token?: unknown }>(req);
+    const token = isPlainObject(body) && typeof body.token === "string" ? body.token : null;
+    const session = access.redeemGrant(token, listenerAudience);
+    if (!session) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return true;
+    }
+    // 루프백 리스너는 평문 http이므로 Secure를 붙이면 브라우저가 쿠키를 버린다.
+    res.writeHead(204, withSecurityHeaders({ "Set-Cookie": formatSessionCookie(session, { secure: false }) }));
+    res.end();
+    return true;
   }
 
   async function handleTheaterFoldersList(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
