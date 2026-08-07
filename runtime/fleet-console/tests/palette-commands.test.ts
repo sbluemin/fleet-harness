@@ -113,6 +113,7 @@ describe("buildPaletteCommands", () => {
       "new-operation",
       "toggle-triage-mode",
       "toggle-formation",
+      "toggle-station-keeping",
       "toggle-status-axis",
       "open-rail-panel:alerts",
       "open-rail-panel:repository",
