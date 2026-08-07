@@ -9,7 +9,7 @@ import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
 import { resumeOperationInPlace } from "../operation-resume.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-idle-arrival.js";
 import type { OperationNode, OperationNotification } from "../types.js";
-import { getTheaterCanvasSnapshot, getTheaterMinimizedIds, setTheaterOperationMinimized } from "../canvas/canvas-store.js";
+import { getTheaterCanvasSnapshot, getTheaterMinimizedIds, setTheaterOperationMinimized, useCanvasState } from "../canvas/canvas-store.js";
 import { resolveOperationActivity } from "../operation-activity.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import type { TriageDeckTheater } from "../canvas/triage-watch-deck.js";
@@ -82,6 +82,10 @@ export function TriageSideBar({
   // 사이드바도 함께 리렌더한다. 유휴 도착도 awaiting 섹션 판정에 관여하므로 같이 구독한다.
   useSyncExternalStore(subscribeTriage, getTriageSnapshot, getTriageSnapshot);
   useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
+  // 최소화 선반은 canvas 스토어가 정본이다. 비활성 Theater에 쓰면 활성 Theater의 minimized 배열은
+  // 그대로여서 useMinimized 계열 구독이 발화하지 않으므로, 스냅샷 자체를 구독해 어느 Theater가
+  // 바뀌든 다시 읽는다 — 선반 복원처럼 선별 스토어를 건드리지 않는 경로가 있어 그 emit에 얹힐 수 없다.
+  useCanvasState();
   // 접힘/폭은 Map 사이드바와 같은 좌측 열 상태를 공유한다 — 커맨드 밴드의 사이드바 토글이
   // 선별 중에도 계속 동작해야 하고, 모드 전환이 사용자의 접힘 선택을 잃지 않아야 한다.
   const sideBar = useSideBarState();
