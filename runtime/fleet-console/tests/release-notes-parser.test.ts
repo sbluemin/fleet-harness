@@ -114,7 +114,7 @@ const DUPLICATE_LEGACY_CHANGELOG = `# Changelog
 
 ### Fixed
 
-- [fleet-console] Ignore the repeated fix.
+- [fleet-console] Keep the repeated fix.
 `;
 
 const MIXED_CHANGELOG = `# Changelog
@@ -139,7 +139,7 @@ const MIXED_CHANGELOG = `# Changelog
 
 ### Fixed
 
-- [fleet-console] Ignore the repeated legacy fix.
+- [fleet-console] Keep the repeated legacy fix.
 `;
 
 const UNKNOWN_PRODUCT_CONTEXT_CHANGELOG = `# Changelog
@@ -150,7 +150,7 @@ const UNKNOWN_PRODUCT_CONTEXT_CHANGELOG = `# Changelog
 
 #### Added
 
-- [fleet-console] Ignore the pre-product note.
+- [fleet-console] Keep the pre-product note.
 
 ### fleet-cli
 
@@ -162,7 +162,7 @@ const UNKNOWN_PRODUCT_CONTEXT_CHANGELOG = `# Changelog
 
 #### Added
 
-- [fleet-console] Ignore the between-product note.
+- [fleet-console] Keep the between-product note.
 
 ### fleet-console
 
@@ -174,7 +174,7 @@ const UNKNOWN_PRODUCT_CONTEXT_CHANGELOG = `# Changelog
 
 #### Added
 
-- [fleet-console] Ignore the post-product note.
+- [fleet-console] Keep the post-product note.
 `;
 
 const MISLEADING_TAGS_CHANGELOG = `# Changelog
@@ -191,7 +191,30 @@ const MISLEADING_TAGS_CHANGELOG = `# Changelog
 
 #### Added
 
-- [fleet-cli] Ignore the unknown product.
+- [fleet-cli] Keep the unknown product.
+`;
+
+const RUNTIME_CHANGELOG = `# Changelog
+
+## [1.52.0] - 2026-08-10
+
+### fleet-cli
+
+#### Added
+
+- Add the CLI surface.
+
+### fleet-console
+
+#### Added
+
+- Add the Console surface.
+
+### fleet-desktop
+
+#### Fixed
+
+- Fix the Desktop shell.
 `;
 
 describe("release note parser", () => {
@@ -240,31 +263,38 @@ describe("release note parser", () => {
     expect(sections?.[2]?.items).toEqual([{ packageTags: ["fleet-cli"], text: "Remove the legacy mode.", product: "fleet-cli" }]);
   });
 
-  it("keeps only the first repeated legacy section", () => {
+  it("merges a section heading that repeats within one release", () => {
     const notes = parseConsoleReleaseNotes(DUPLICATE_LEGACY_CHANGELOG);
     const sections = notes[0]?.sections;
 
     expect(sections?.map((section) => section.heading)).toEqual(["Added", "Fixed"]);
-    expect(sections?.[1]?.items).toEqual([{ packageTags: ["fleet-console"], text: "Keep the first fix." }]);
+    expect(sections?.[1]?.items).toEqual([
+      { packageTags: ["fleet-console"], text: "Keep the first fix." },
+      { packageTags: ["fleet-console"], text: "Keep the repeated fix." },
+    ]);
   });
 
-  it("puts the first legacy section before matching product sections in mixed blocks", () => {
+  it("puts legacy items before matching product sections in mixed blocks", () => {
     const notes = parseConsoleReleaseNotes(MIXED_CHANGELOG);
     const fixed = notes[0]?.sections.find((section) => section.heading === "Fixed");
 
     expect(fixed?.items).toEqual([
       { packageTags: ["fleet-console"], text: "Keep the legacy fix first." },
+      { packageTags: ["fleet-console"], text: "Keep the repeated legacy fix." },
       { packageTags: ["fleet-cli"], text: "Keep the CLI product fix.", product: "fleet-cli" },
       { packageTags: ["fleet-console"], text: "Keep the Console product fix.", product: "fleet-console" },
     ]);
   });
 
-  it("ignores level-four sections outside recognized product headings", () => {
+  it("keeps level-four sections under an unrecognized heading as unstamped items", () => {
     const notes = parseConsoleReleaseNotes(UNKNOWN_PRODUCT_CONTEXT_CHANGELOG);
 
     expect(notes[0]?.sections).toEqual([{
       heading: "Added",
       items: [
+        { packageTags: ["fleet-console"], text: "Keep the pre-product note." },
+        { packageTags: ["fleet-console"], text: "Keep the between-product note." },
+        { packageTags: ["fleet-console"], text: "Keep the post-product note." },
         { packageTags: ["fleet-cli"], text: "Keep the CLI product note.", product: "fleet-cli" },
         { packageTags: ["fleet-console"], text: "Keep the Console product note.", product: "fleet-console" },
       ],
@@ -275,7 +305,26 @@ describe("release note parser", () => {
     const notes = parseConsoleReleaseNotes(MISLEADING_TAGS_CHANGELOG);
 
     expect(notes[0]?.sections[0]?.items).toEqual([
+      { packageTags: ["fleet-cli"], text: "Keep the unknown product." },
       { packageTags: ["fleet-console"], text: "Keep the misleading tag.", product: "fleet-cli" },
+    ]);
+  });
+
+  it("reads a runtime-grouped release that carries no package tags", () => {
+    const notes = parseConsoleReleaseNotes(RUNTIME_CHANGELOG);
+
+    expect(notes[0]?.sections).toEqual([
+      {
+        heading: "Added",
+        items: [
+          { packageTags: [], text: "Add the CLI surface.", product: "fleet-cli" },
+          { packageTags: [], text: "Add the Console surface.", product: "fleet-console" },
+        ],
+      },
+      {
+        heading: "Fixed",
+        items: [{ packageTags: [], text: "Fix the Desktop shell.", product: "fleet-desktop" }],
+      },
     ]);
   });
 });

@@ -8,6 +8,7 @@ on:
       - synchronize
       - labeled
       - unlabeled
+      - edited
 
 permissions:
   contents: read
@@ -26,27 +27,55 @@ jobs:
         env:
           BASE_REF: ${{ github.event.pull_request.base.sha }}
           HEAD_REF: ${{ github.event.pull_request.head.sha }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
           LABELS_JSON: ${{ toJson(github.event.pull_request.labels) }}
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           merge_base=$(git merge-base "$BASE_REF" "$HEAD_REF")
           changed_files=$(git diff --name-only --diff-filter=AM "$merge_base" "$HEAD_REF")
-          fragment_files=$(printf '%s\n' "$changed_files" | grep -E '^\.changelog\.d/[^/]+\.md$' || true)
+          # AGENTS.md/CLAUDE.md live in .changelog.d/ but are doctrine, not fragments.
+          fragment_files=$(printf '%s\n' "$changed_files" | grep -E '^\.changelog\.d/[^/]+\.md$' | grep -vE '^\.changelog\.d/(AGENTS|CLAUDE)\.md$' || true)
           if node -e "const labels = JSON.parse(process.env.LABELS_JSON); process.exit(labels.some((label) => label.name === 'no-changelog') ? 0 : 1);"; then
             has_no_changelog=true
           else
             has_no_changelog=false
           fi
 
-          if [ -z "$fragment_files" ] && [ "$has_no_changelog" != "true" ]; then
-            echo "PRs must include at least one .changelog.d/*.md fragment or carry the no-changelog label."
-            exit 1
+          if [ -n "$fragment_files" ]; then
+            if [ "$has_no_changelog" = "true" ]; then
+              echo "::error::This PR carries both a changelog fragment and the no-changelog label. Remove one."
+              exit 1
+            fi
+            expected=$(node scripts/compile-changelog-fragments.mjs --name-for-branch "$HEAD_BRANCH")
+            while IFS= read -r fragment; do
+              [ -n "$fragment" ] || continue
+              if [ "${fragment#.changelog.d/}" != "$expected" ]; then
+                echo "::error file=$fragment::Fragment name does not match this PR's branch. Branch '$HEAD_BRANCH' derives .changelog.d/$expected. Rename the file and its branch: frontmatter."
+                exit 1
+              fi
+            done <<< "$fragment_files"
+            printf 'Changed changelog fragments:\n%s\n' "$fragment_files"
+            exit 0
           fi
 
-          if [ -n "$fragment_files" ]; then
-            printf 'Changed changelog fragments:\n%s\n' "$fragment_files"
-          elif [ "$has_no_changelog" = "true" ]; then
-            echo "No changelog fragment required because no-changelog label is present."
+          # No fragment. Every changed path must be mechanically internal, or the PR must declare why.
+          runtime_paths=$(printf '%s\n' "$changed_files" | grep -vE '(^|/)tests?/|\.test\.|\.spec\.|^\.agents/|^\.github/|(^|/)(AGENTS|CLAUDE)\.md$|^\.changelog\.d/|^scripts/compile-changelog-fragments' || true)
+          if [ -z "$runtime_paths" ]; then
+            echo "Every changed path is mechanically internal; no changelog fragment required."
+            exit 0
           fi
+
+          impact=$(printf '%s\n' "$PR_BODY" | tr -d '\r' | grep -E '^Changelog-Impact:[[:space:]]*none[[:space:]]*$' || true)
+          reason=$(printf '%s\n' "$PR_BODY" | tr -d '\r' | grep -E '^No-Changelog-Reason:[[:space:]]*(internal-refactor|boundary-gate|doctrine-prompt|test-repair|release-tooling)[[:space:]]*$' || true)
+          if [ "$has_no_changelog" != "true" ] || [ -z "$impact" ] || [ -z "$reason" ]; then
+            echo "::error::This PR changes source a user can reach but adds no changelog fragment."
+            printf 'Paths that require a release note:\n%s\n' "$runtime_paths"
+            echo "Add the branch-named fragment (node scripts/compile-changelog-fragments.mjs --name-for-branch), or apply the no-changelog label AND put these two lines in the PR body:"
+            echo "  Changelog-Impact: none"
+            echo "  No-Changelog-Reason: internal-refactor | boundary-gate | doctrine-prompt | test-repair | release-tooling"
+            exit 1
+          fi
+          printf 'Declared no-changelog for source paths:\n%s\n%s\n' "$reason" "$runtime_paths"
 
       - name: Validate changelog fragments
         run: node scripts/compile-changelog-fragments.mjs --check --allow-empty

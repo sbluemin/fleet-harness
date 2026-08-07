@@ -75,35 +75,46 @@ export function parseConsoleReleaseNotes(changelog: string): readonly ConsoleRel
   return notes;
 }
 
+// 이 리더는 컴파일러보다 넓게 읽는다. 컴파일된 이력은 다시 쓰지 않으므로, 읽는 쪽이 지금까지 쓰인 모든
+// 방언과 앞으로 추가될 런타임 헤딩을 모두 받아내야 한다. 알아보지 못한 입력을 버리면 사용자는 오류 없이
+// 항목을 잃는다.
 function collectSections(lines: readonly string[]): readonly ConsoleReleaseNoteSection[] {
   const legacySections = new Map<ReleaseNoteHeading, MutableReleaseNoteSection>();
   const productSections = new Map<ReleaseNoteHeading, MutableReleaseNoteSection>();
-  const legacyHeadings = new Set<ReleaseNoteHeading>();
   let current: MutableReleaseNoteSection | null = null;
   let currentProduct: ReleaseNoteProduct | null = null;
+  let insideUnknownProduct = false;
   for (const line of lines) {
     const sectionMatch = SECTION_HEADER_PATTERN.exec(line);
     if (sectionMatch !== null) {
-      const heading = sectionMatch[1] as ReleaseNoteHeading;
+      // 같은 섹션 헤딩이 한 릴리스에 두 번 나오면 이어 붙인다. 첫 블록만 남기면 v1.3.0처럼 뒤 블록의
+      // 항목이 조용히 사라진다.
       currentProduct = null;
-      current = legacyHeadings.has(heading) ? null : getSection(legacySections, heading);
-      legacyHeadings.add(heading);
+      insideUnknownProduct = false;
+      current = getSection(legacySections, sectionMatch[1] as ReleaseNoteHeading);
       continue;
     }
     const productMatch = PRODUCT_HEADER_PATTERN.exec(line);
     if (productMatch !== null) {
       currentProduct = productMatch[1] as ReleaseNoteProduct;
+      insideUnknownProduct = false;
       current = null;
       continue;
     }
     if (line.startsWith("### ")) {
+      // 이 리더가 모르는 제품 헤딩이다. 배포된 Console은 갱신할 수 없으므로 미래에 추가되는 런타임의
+      // 항목도 버리지 않고 미분류 버킷으로 흘린다.
       currentProduct = null;
+      insideUnknownProduct = true;
       current = null;
       continue;
     }
     const productSectionMatch = PRODUCT_SECTION_HEADER_PATTERN.exec(line);
     if (productSectionMatch !== null) {
-      current = currentProduct === null ? null : getSection(productSections, productSectionMatch[1] as ReleaseNoteHeading);
+      const heading = productSectionMatch[1] as ReleaseNoteHeading;
+      if (currentProduct !== null) current = getSection(productSections, heading);
+      else if (insideUnknownProduct) current = getSection(legacySections, heading);
+      else current = null;
       continue;
     }
     if (current === null) continue;

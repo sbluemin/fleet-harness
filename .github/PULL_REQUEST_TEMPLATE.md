@@ -36,9 +36,15 @@
 
 ## Changelog
 
-- [ ] Added one `.changelog.d/*.md` fragment, or applied the `no-changelog` label intentionally.
-- [ ] Fragment `section:` is one of `Added`, `Changed`, `Fixed`, `Removed`, or `Breaking Changes`.
-- [ ] Fragment bullets are English and use only `[core-process]`, `[core-agent]`, `[core-unified-agent]`, `[core-infra]`, `[fleet-admiral]`, `[fleet-carriers]`, `[fleet-wiki]`, `[fleet-console]`, or `[fleet-cli]`.
+- [ ] Added the branch-named fragment from `node scripts/compile-changelog-fragments.mjs --name-for-branch`, or declared `Changelog-Impact: none` below.
+- [ ] Entries sit under the runtime the user notices them in — `### fleet-cli`, `### fleet-console`, or `### fleet-desktop` — not the package that implements them.
+- [ ] Section headings are `Added`, `Changed`, `Fixed`, `Removed`, or `Breaking Changes`; bullets are English ASCII with no package tag, each followed by its `  ko:` line.
+
+<!-- Internal-only change? Delete the checklist above, apply the `no-changelog` label, and keep both lines below.
+Changelog-Impact: none
+No-Changelog-Reason: internal-refactor
+Reasons: internal-refactor | boundary-gate | doctrine-prompt | test-repair | release-tooling.
+Add one sentence saying why no user notices this change. -->
 
 ## Related Issues / PRs
 

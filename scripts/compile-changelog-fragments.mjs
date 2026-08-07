@@ -1,19 +1,20 @@
 #!/usr/bin/env node
 
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SECTIONS = ['Added', 'Changed', 'Fixed', 'Removed', 'Breaking Changes'];
-const PRODUCTS = ['fleet-cli', 'fleet-console', 'fleet-desktop', 'fleet-plugin', 'fleet-core'];
-const TAGS = ['core-process', 'core-agent', 'core-ai-gateway', 'core-unified-agent', 'core-infra', 'fleet-admiral', 'fleet-analyst', 'fleet-carriers', 'fleet-wiki', 'fleet-console', 'fleet-cli'];
-const RETIRED_TAGS = ['core', 'wiki', 'wiki-web', 'agent-core', 'unified-agent', 'mcp-server', 'agent', 'carriers', 'fleet-infra'];
+// Release notes are grouped by the runtime a user experiences the change in, never by the package it was implemented in.
+const PRODUCTS = ['fleet-cli', 'fleet-console', 'fleet-desktop'];
 const DEFAULT_CHANGELOG = 'CHANGELOG.md';
 const DEFAULT_CHANGELOG_KO = 'CHANGELOG.ko.md';
 const DEFAULT_FRAGMENTS_DIR = '.changelog.d';
 const IGNORED_FRAGMENT_FILES = new Set(['AGENTS.md', 'CLAUDE.md']);
-const PR_FRAGMENT_PATTERN = /^pr-([1-9]\d*)\.md$/;
 const CANARY_FRAGMENT_NAME = 'canary.md';
+const FRAGMENT_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*\.md$/;
+const BRANCH_SLUG_MAX_LENGTH = 60;
 const IS_DIRECT_EXECUTION = process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (IS_DIRECT_EXECUTION) main();
@@ -21,6 +22,12 @@ if (IS_DIRECT_EXECUTION) main();
 function main() {
   try {
     const options = parseArgs(process.argv.slice(2));
+
+    if (options.nameForBranch !== null) {
+      console.log(branchFragmentName(options.nameForBranch || readCurrentBranch()));
+      return;
+    }
+
     const fragments = readFragments(options.fragmentsDir);
     const entries = validateFragments(fragments);
 
@@ -57,6 +64,7 @@ function parseArgs(args) {
     date: new Date().toISOString().slice(0, 10),
     dryRun: false,
     fragmentsDir: DEFAULT_FRAGMENTS_DIR,
+    nameForBranch: null,
     version: '',
   };
   for (let index = 0; index < args.length; index += 1) {
@@ -64,6 +72,11 @@ function parseArgs(args) {
     if (arg === '--allow-empty') options.allowEmpty = true;
     else if (arg === '--check') options.check = true;
     else if (arg === '--dry-run') options.dryRun = true;
+    else if (arg === '--name-for-branch') {
+      const value = readOptionalValue(args, index + 1);
+      options.nameForBranch = value ?? '';
+      if (value !== null) index += 1;
+    }
     else if (arg === '--version') options.version = readOptionValue(args, (index += 1), arg);
     else if (arg === '--date') options.date = readOptionValue(args, (index += 1), arg);
     else if (arg === '--changelog') options.changelogPath = readOptionValue(args, (index += 1), arg);
@@ -71,6 +84,7 @@ function parseArgs(args) {
     else if (arg === '--fragments-dir') options.fragmentsDir = readOptionValue(args, (index += 1), arg);
     else throw new Error(`Unknown option: ${arg}`);
   }
+  if (options.nameForBranch !== null) return options;
   if (options.check && options.dryRun) throw new Error('Use only one of --check or --dry-run.');
   if (!options.check && !options.version) throw new Error(`${options.dryRun ? 'Dry-run' : 'Write'} mode requires --version <semver>.`);
   if (options.version && !/^\d+\.\d+\.\d+$/.test(options.version)) throw new Error(`Invalid --version value: ${options.version}`);
@@ -84,6 +98,31 @@ function readOptionValue(args, index, optionName) {
   return value;
 }
 
+function readOptionalValue(args, index) {
+  const value = args[index];
+  return value === undefined || value.startsWith('--') ? null : value;
+}
+
+// A fragment is named after the branch that authors it, so it can be written in the same commit as the change itself.
+export function branchFragmentName(branch) {
+  const trimmed = branch.trim();
+  if (!trimmed) throw new Error('Branch name is empty. Pass it explicitly: --name-for-branch <branch>.');
+  const slug = trimmed.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-+/, '').replace(/-+$/, '');
+  const capped = (slug === '' ? 'branch' : slug).slice(0, BRANCH_SLUG_MAX_LENGTH).replace(/-+$/, '');
+  return `${capped}.md`;
+}
+
+function readCurrentBranch() {
+  let branch = '';
+  try {
+    branch = execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim();
+  } catch {
+    throw new Error('Could not read the current git branch. Pass it explicitly: --name-for-branch <branch>.');
+  }
+  if (!branch) throw new Error('HEAD is detached, so there is no branch to derive a name from. Pass it explicitly: --name-for-branch <branch>.');
+  return branch;
+}
+
 function readFragments(fragmentsDir) {
   if (!fs.existsSync(fragmentsDir)) return [];
   if (!fs.statSync(fragmentsDir).isDirectory()) throw new Error(`${fragmentsDir} is not a directory.`);
@@ -93,55 +132,28 @@ function readFragments(fragmentsDir) {
     .map((name) => {
       const fragmentPath = path.join(fragmentsDir, name);
       if (!fs.statSync(fragmentPath).isFile()) throw new Error(`${fragmentPath} must be a file directly under ${fragmentsDir}.`);
-      const product = PRODUCTS.find((candidate) => name.startsWith(`${candidate}-`)) ?? null;
-      const grouped = name === CANARY_FRAGMENT_NAME || PR_FRAGMENT_PATTERN.test(name);
-      if (!product && !grouped) throw new Error(`${name}: filename must be canary.md, pr-<positive-number>.md, or a supported legacy product-section name.`);
-      return { content: fs.readFileSync(fragmentPath, 'utf8'), grouped, name, path: fragmentPath, product };
+      if (name !== CANARY_FRAGMENT_NAME && !FRAGMENT_NAME_PATTERN.test(name)) {
+        throw new Error(`${name}: filename must be ${CANARY_FRAGMENT_NAME} or a branch-derived name. Run "node scripts/compile-changelog-fragments.mjs --name-for-branch" to get it.`);
+      }
+      return { content: fs.readFileSync(fragmentPath, 'utf8'), name, path: fragmentPath };
     });
 }
 
+// canary.md holds authorized direct-canary work and sorts first; every other fragment is branch-derived and sorts by name.
 function compareFragmentNames(left, right) {
-  const leftPr = PR_FRAGMENT_PATTERN.exec(left);
-  const rightPr = PR_FRAGMENT_PATTERN.exec(right);
-  if (leftPr && rightPr) return Number(leftPr[1]) - Number(rightPr[1]);
-  return left.localeCompare(right);
+  if (left === right) return 0;
+  if (left === CANARY_FRAGMENT_NAME) return -1;
+  if (right === CANARY_FRAGMENT_NAME) return 1;
+  return left < right ? -1 : 1;
 }
 
 function validateFragments(fragments) {
-  return fragments.flatMap((fragment) => {
-    if (fragment.grouped) return parseGroupedFragment(fragment);
-    const parsed = parseLegacyFragment(fragment);
-    const expectedName = `${fragment.product}-${parsed.section.toLowerCase().replaceAll(' ', '-')}.md`;
-    if (fragment.name !== expectedName) throw new Error(`${fragment.name}: expected filename ${expectedName} for its product and section.`);
-    return parsed.entries.map((entry) => ({ ...entry, file: fragment.name, product: fragment.product, section: parsed.section }));
-  });
+  return fragments.flatMap((fragment) => parseFragment(fragment));
 }
 
-function parseLegacyFragment(fragment) {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/.exec(fragment.content);
-  if (!match) throw new Error(`${fragment.name}: missing frontmatter.`);
-  const frontmatterLines = match[1].trim().split(/\r?\n/).filter(Boolean);
-  if (frontmatterLines.length !== 1 || !frontmatterLines[0].startsWith('section:')) throw new Error(`${fragment.name}: frontmatter must contain exactly one section: value.`);
-  const section = frontmatterLines[0].slice('section:'.length).trim();
-  if (!SECTIONS.includes(section)) throw new Error(`${fragment.name}: unsupported section "${section}".`);
-
-  const bodyLines = trimOuterBlankLines(match[2].split(/\r?\n/));
-  if (bodyLines.length === 0) throw new Error(`${fragment.name}: body must contain at least one English/Korean pair.`);
-  const entries = [];
-  for (let index = 0; index < bodyLines.length; index += 2) {
-    const english = bodyLines[index];
-    const korean = bodyLines[index + 1];
-    if (!english.startsWith('- ')) throw new Error(`${fragment.name}: expected an English bullet at body line ${index + 1}.`);
-    if (korean === undefined) throw new Error(`${fragment.name}: English bullet at body line ${index + 1} is missing its adjacent Korean summary.`);
-    if (!korean.startsWith('  ko: ')) throw new Error(`${fragment.name}: English bullet at body line ${index + 1} must be followed immediately by exactly "  ko: <summary>".`);
-    if (korean.startsWith('   ') || !/^  ko: \S(?:.*\S)?$/.test(korean)) throw new Error(`${fragment.name}: Korean summary at body line ${index + 2} must use exactly two spaces and be non-empty.`);
-    entries.push(parseEntry(fragment.name, english, korean.slice('  ko: '.length)));
-  }
-  return { entries, section };
-}
-
-function parseGroupedFragment(fragment) {
-  const lines = fragment.content.split(/\r?\n/);
+function parseFragment(fragment) {
+  const body = readFragmentBody(fragment);
+  const lines = body.split(/\r?\n/);
   const entries = [];
   let product = null;
   let section = null;
@@ -150,20 +162,20 @@ function parseGroupedFragment(fragment) {
     if (!line.trim()) continue;
     if (line.startsWith('### ')) {
       const candidate = line.slice('### '.length).trim();
-      if (!PRODUCTS.includes(candidate)) throw new Error(`${fragment.name}: unsupported product "${candidate}" at line ${index + 1}.`);
+      if (!PRODUCTS.includes(candidate)) throw new Error(`${fragment.name}: unsupported runtime "${candidate}" at line ${index + 1}. Use one of ${PRODUCTS.join(', ')}.`);
       product = candidate;
       section = null;
       continue;
     }
     if (line.startsWith('#### ')) {
-      if (!product) throw new Error(`${fragment.name}: section heading at line ${index + 1} requires a preceding product heading.`);
+      if (!product) throw new Error(`${fragment.name}: section heading at line ${index + 1} requires a preceding runtime heading.`);
       const candidate = line.slice('#### '.length).trim();
       if (!SECTIONS.includes(candidate)) throw new Error(`${fragment.name}: unsupported section "${candidate}" at line ${index + 1}.`);
       section = candidate;
       continue;
     }
     if (line.startsWith('- ')) {
-      if (!product || !section) throw new Error(`${fragment.name}: English bullet at line ${index + 1} requires product and section headings.`);
+      if (!product || !section) throw new Error(`${fragment.name}: English bullet at line ${index + 1} requires runtime and section headings.`);
       const korean = lines[index + 1];
       if (korean === undefined) throw new Error(`${fragment.name}: English bullet at line ${index + 1} is missing its adjacent Korean summary.`);
       if (!korean.startsWith('  ko: ')) throw new Error(`${fragment.name}: English bullet at line ${index + 1} must be followed immediately by exactly "  ko: <summary>".`);
@@ -172,32 +184,36 @@ function parseGroupedFragment(fragment) {
       index += 1;
       continue;
     }
-    throw new Error(`${fragment.name}: expected a product heading, section heading, or English bullet at line ${index + 1}.`);
+    throw new Error(`${fragment.name}: expected a runtime heading, section heading, or English bullet at line ${index + 1}.`);
   }
-  if (entries.length === 0) throw new Error(`${fragment.name}: body must contain at least one product-scoped English/Korean pair.`);
+  if (entries.length === 0) throw new Error(`${fragment.name}: body must contain at least one runtime-scoped English/Korean pair.`);
   return entries;
 }
 
-function trimOuterBlankLines(lines) {
-  let start = 0;
-  let end = lines.length;
-  while (start < end && !lines[start].trim()) start += 1;
-  while (end > start && !lines[end - 1].trim()) end -= 1;
-  return lines.slice(start, end);
+// The branch frontmatter is what makes a stale or hand-invented filename a loud failure instead of a silent one.
+function readFragmentBody(fragment) {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(fragment.content);
+  if (fragment.name === CANARY_FRAGMENT_NAME) {
+    if (match) throw new Error(`${CANARY_FRAGMENT_NAME}: direct-canary fragments must not declare branch frontmatter.`);
+    return fragment.content;
+  }
+  if (!match) throw new Error(`${fragment.name}: missing frontmatter. Start the file with "---", then "branch: <git branch name>", then "---".`);
+  const frontmatterLines = match[1].trim().split(/\r?\n/).filter(Boolean);
+  if (frontmatterLines.length !== 1 || !frontmatterLines[0].startsWith('branch:')) throw new Error(`${fragment.name}: frontmatter must contain exactly one branch: value.`);
+  const branch = frontmatterLines[0].slice('branch:'.length).trim();
+  if (!branch) throw new Error(`${fragment.name}: frontmatter branch: value is empty.`);
+  const expected = branchFragmentName(branch);
+  if (expected !== fragment.name) throw new Error(`${fragment.name}: branch "${branch}" derives ${expected}. Rename the file, or correct the branch: value.`);
+  return match[2];
 }
 
 function parseEntry(file, bullet, koSummary) {
-  if (bullet.includes('@dotobokuri/')) throw new Error(`${file}: changelog tags must not include @dotobokuri/ scopes.`);
-  const match = /^- ((?:\[[a-z-]+\]\s*)+)(\S(?:.*\S)?)$/.exec(bullet);
-  if (!match) throw new Error(`${file}: malformed bullet "${bullet}".`);
-  const tags = [...match[1].matchAll(/\[([^\]]+)\]/g)].map((tagMatch) => tagMatch[1]);
-  for (const tag of tags) {
-    if (RETIRED_TAGS.includes(tag)) throw new Error(`${file}: retired tag [${tag}] is not allowed.`);
-    if (!TAGS.includes(tag)) throw new Error(`${file}: unknown package tag [${tag}].`);
-  }
-  if (!/^[\x09\x20-\x7e]+$/.test(match[2])) throw new Error(`${file}: bullet summary must be English ASCII text.`);
+  const summary = bullet.slice('- '.length);
+  if (summary.startsWith('[')) throw new Error(`${file}: bullet must not start with a package tag. Release notes are grouped by runtime heading now: "${bullet}"`);
+  if (!/^\S(?:.*\S)?$/.test(summary)) throw new Error(`${file}: malformed bullet "${bullet}".`);
+  if (!/^[\x09\x20-\x7e]+$/.test(summary)) throw new Error(`${file}: bullet summary must be English ASCII text.`);
   if (!/\p{Script=Hangul}/u.test(koSummary)) throw new Error(`${file}: Korean summary must contain Hangul.`);
-  return { enSummary: match[2], koSummary, tagPrefix: match[1] };
+  return { enSummary: summary, koSummary };
 }
 
 function renderDryRun(options, entries) {
@@ -218,7 +234,7 @@ function renderReleaseSection(version, date, entries, allowEmpty, locale) {
       const sectionEntries = productEntries.filter((entry) => entry.section === section);
       if (sectionEntries.length === 0) continue;
       lines.push('', `#### ${section}`);
-      lines.push(...sectionEntries.map((entry) => `- ${entry.tagPrefix}${locale === 'en' ? entry.enSummary : entry.koSummary}`));
+      lines.push(...sectionEntries.map((entry) => `- ${locale === 'en' ? entry.enSummary : entry.koSummary}`));
     }
     wroteProduct = true;
   }
