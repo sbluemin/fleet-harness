@@ -716,6 +716,48 @@
   color: var(--brass-bright);
 }
 
+/* 조작 옆에 붙는 말풍선. 상시 문구가 차지하던 열을 비워 조작 열이 넓게 앉는다. */
+.remote-access-toggle {
+  position: relative;
+  display: flex;
+  width: fit-content;
+}
+
+.settings-hover-note {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 6px);
+  left: 0;
+  width: max-content;
+  max-width: 22rem;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-sm);
+  background: var(--ink-abyss);
+  box-shadow: 0 8px 20px rgb(0 0 0 / 45%);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+/* 포인터가 없는 사용자를 위해 포커스에서도 열린다. */
+.remote-access-toggle:hover .settings-hover-note,
+.remote-access-toggle:focus-within .settings-hover-note {
+  opacity: 1;
+  visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-hover-note {
+    transition: none;
+  }
+}
+
 .remote-access-identity {
   display: flex;
   flex-direction: column;

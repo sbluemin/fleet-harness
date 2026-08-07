@@ -604,25 +604,30 @@ function RemoteAccessSettings({ state, saving }: { readonly state: GlobalSetting
         <p className="global-settings-help">{t("settings.remote.help")}</p>
       </div>
       <div className="console-port-control">
-        <div className="segmented" role="group" aria-label={t("settings.remote.modeAria")}>
-          <button
-            type="button"
-            aria-pressed={!remote.enabled}
-            className={`segmented-option ${remote.enabled ? "" : "is-active"}`}
-            disabled={saving}
-            onClick={() => { if (remote.enabled) save({ enabled: false, bindHost: remote.bindHost }); }}
-          >
-            {t("settings.remote.off")}
-          </button>
-          <button
-            type="button"
-            aria-pressed={remote.enabled}
-            className={`segmented-option ${remote.enabled ? "is-active" : ""}`}
-            disabled={saving || !hostIsValid}
-            onClick={() => { if (!remote.enabled && hostIsValid) save({ enabled: true, bindHost: trimmedHost }); }}
-          >
-            {t("settings.remote.on")}
-          </button>
+        {/* 끄기의 파급은 스위치를 보는 순간에만 필요한 정보다 — 상시 문구로 두면 조작 열을
+            바깥으로 밀어낸다. 숨겨도 aria-describedby가 가리키므로 화면 낭독기에는 남는다. */}
+        <div className="remote-access-toggle">
+          <div className="segmented" role="group" aria-label={t("settings.remote.modeAria")} aria-describedby="remote-access-note">
+            <button
+              type="button"
+              aria-pressed={!remote.enabled}
+              className={`segmented-option ${remote.enabled ? "" : "is-active"}`}
+              disabled={saving}
+              onClick={() => { if (remote.enabled) save({ enabled: false, bindHost: remote.bindHost }); }}
+            >
+              {t("settings.remote.off")}
+            </button>
+            <button
+              type="button"
+              aria-pressed={remote.enabled}
+              className={`segmented-option ${remote.enabled ? "is-active" : ""}`}
+              disabled={saving || !hostIsValid}
+              onClick={() => { if (!remote.enabled && hostIsValid) save({ enabled: true, bindHost: trimmedHost }); }}
+            >
+              {t("settings.remote.on")}
+            </button>
+          </div>
+          <p id="remote-access-note" role="tooltip" className="settings-hover-note">{t("settings.remote.note")}</p>
         </div>
 
         <div className="console-port-reveal is-open">
@@ -727,7 +732,6 @@ function RemoteAccessSettings({ state, saving }: { readonly state: GlobalSetting
           </div>
         ) : null}
       </div>
-      <p className="console-port-note">{t("settings.remote.note")}</p>
     </div>
   );
 }
