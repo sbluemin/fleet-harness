@@ -4,7 +4,7 @@ export type ThemeId = "instrument" | "maritime" | "carbon" | "whites";
 
 export type ReleaseNotesLocale = "en" | "ko";
 
-export type ReleaseNoteProduct = "fleet-cli" | "fleet-console" | "fleet-desktop" | "fleet-plugin" | "fleet-core";
+export type ReleaseNoteProduct = "fleet-cli" | "fleet-console" | "fleet-desktop";
 
 export type ConsoleLanguagePreference = "auto" | ReleaseNotesLocale;
 

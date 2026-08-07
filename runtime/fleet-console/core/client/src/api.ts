@@ -485,7 +485,7 @@ function assertReleaseNoteItem(value: unknown, status: number): ReleaseNoteItem 
 }
 
 function isReleaseNoteProduct(value: unknown): value is ReleaseNoteProduct {
-  return value === "fleet-cli" || value === "fleet-console" || value === "fleet-desktop" || value === "fleet-plugin" || value === "fleet-core";
+  return value === "fleet-cli" || value === "fleet-console" || value === "fleet-desktop";
 }
 
 function assertTheaterFolderList(value: unknown, status: number): TheaterFolderListResponse {

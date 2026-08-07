@@ -100,14 +100,16 @@ describe("client api parsing", () => {
       stale: false,
     }));
 
-    for (const product of ["fleet-cli", "fleet-console", "fleet-desktop", "fleet-plugin", "fleet-core"] as const) {
+    for (const product of ["fleet-cli", "fleet-console", "fleet-desktop"] as const) {
       globalThis.fetch = vi.fn(async () => responseFor(product)) as typeof fetch;
       await expect(fetchReleaseNotes()).resolves.toMatchObject({ notes: [{ sections: [{ items: [{ product }] }] }] });
     }
     globalThis.fetch = vi.fn(async () => responseFor(undefined, false)) as typeof fetch;
     await expect(fetchReleaseNotes()).resolves.toMatchObject({ notes: [{ sections: [{ items: [{ text: "Note" }] }] }] });
 
-    for (const product of [null, "fleet-unknown", 7]) {
+    // fleet-plugin과 fleet-core는 퇴역한 축이다. 호스트 파서가 그 항목을 버리므로 이 값이 실린 payload는
+    // 더 이상 도달할 수 없고, 도달했다면 계약 위반이다.
+    for (const product of [null, "fleet-unknown", "fleet-plugin", "fleet-core", 7]) {
       globalThis.fetch = vi.fn(async () => responseFor(product)) as typeof fetch;
       await expect(fetchReleaseNotes()).rejects.toBeInstanceOf(ApiError);
     }

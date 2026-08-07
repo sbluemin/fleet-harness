@@ -26,27 +26,27 @@ describe("What's New tabs", () => {
 
   it("uses All updates for legacy and Other updates only for mixed releases", () => {
     const legacy = note([{ packageTags: ["fleet-console"], text: "Legacy" }]);
-    const mixed = note([{ packageTags: [], text: "Legacy" }, { packageTags: [], text: "Core", product: "fleet-core" }]);
+    const mixed = note([{ packageTags: [], text: "Legacy" }, { packageTags: [], text: "Console", product: "fleet-console" }]);
 
     expect(deriveWhatsNewTabs(legacy).map((tab) => tab.id)).toEqual(["overview", "all-updates"]);
     expect(filterWhatsNewSections(legacy, "all-updates")[0]?.items).toEqual(legacy.sections[0]?.items);
-    expect(deriveWhatsNewTabs(mixed).map((tab) => tab.id)).toEqual(["overview", "fleet-core", "other-updates"]);
+    expect(deriveWhatsNewTabs(mixed).map((tab) => tab.id)).toEqual(["overview", "fleet-console", "other-updates"]);
     expect(filterWhatsNewSections(mixed, "other-updates")[0]?.items).toEqual([{ packageTags: [], text: "Legacy" }]);
   });
 
   it("derives compact product, legacy, and mixed overview summaries", () => {
-    const release = note([{ packageTags: [], text: "Plugin", product: "fleet-plugin" }]);
+    const release = note([{ packageTags: [], text: "Console", product: "fleet-console" }]);
     const legacy = note([{ packageTags: [], text: "Earlier release" }]);
-    const mixed = note([{ packageTags: [], text: "Earlier release" }, { packageTags: [], text: "Plugin", product: "fleet-plugin" }]);
+    const mixed = note([{ packageTags: [], text: "Earlier release" }, { packageTags: [], text: "Console", product: "fleet-console" }]);
 
-    expect(deriveWhatsNewOverview(release)).toEqual([{ id: "fleet-plugin", label: "Fleet Plugin (historical)", count: 1, summary: "Plugin" }]);
+    expect(deriveWhatsNewOverview(release)).toEqual([{ id: "fleet-console", label: "Fleet Console", count: 1, summary: "Console" }]);
     expect(deriveWhatsNewOverview(legacy)).toEqual([{ id: "all-updates", label: "Pre-product-grouping updates", count: 1, summary: "Earlier release" }]);
     expect(deriveWhatsNewOverview(mixed)).toEqual([
-      { id: "fleet-plugin", label: "Fleet Plugin (historical)", count: 1, summary: "Plugin" },
+      { id: "fleet-console", label: "Fleet Console", count: 1, summary: "Console" },
       { id: "other-updates", label: "Other updates", count: 1, summary: "Earlier release" },
     ]);
     expect(filterWhatsNewSections(release, "overview")).toEqual([]);
-    expect(isWhatsNewTabAvailable(release, "fleet-plugin")).toBe(true);
-    expect(isWhatsNewTabAvailable(release, "fleet-core")).toBe(false);
+    expect(isWhatsNewTabAvailable(release, "fleet-console")).toBe(true);
+    expect(isWhatsNewTabAvailable(release, "fleet-cli")).toBe(false);
   });
 });

@@ -217,6 +217,31 @@ const RUNTIME_CHANGELOG = `# Changelog
 - Fix the Desktop shell.
 `;
 
+const RETIRED_ONLY_CHANGELOG = `# Changelog
+
+## [1.50.0] - 2026-08-05
+
+### fleet-core
+
+#### Added
+
+- [core-ai-gateway] Drop the core-only release.
+
+## [1.49.1] - 2026-08-04
+
+### fleet-plugin
+
+#### Fixed
+
+- [fleet-console] Drop the plugin note.
+
+### fleet-console
+
+#### Added
+
+- Keep the Console note.
+`;
+
 describe("release note parser", () => {
   it("collects every non-empty version block without collapsing duplicates", () => {
     const notes = parseConsoleReleaseNotes(CHANGELOG);
@@ -244,7 +269,7 @@ describe("release note parser", () => {
     expect(Object.hasOwn(notes[1]?.sections[1]?.items[0] ?? {}, "product")).toBe(false);
   });
 
-  it("flattens future product sections in product order without expanding the API", () => {
+  it("flattens runtime sections in product order and drops the retired package-axis headings", () => {
     const notes = parseConsoleReleaseNotes(PRODUCT_CHANGELOG);
     const sections = notes[0]?.sections;
 
@@ -253,14 +278,23 @@ describe("release note parser", () => {
       { packageTags: ["fleet-cli"], text: "Open the embedded app.", product: "fleet-cli" },
       { packageTags: ["fleet-console"], text: "Add the Console surface.", product: "fleet-console" },
       { packageTags: ["fleet-console"], text: "Add the Desktop shell.", product: "fleet-desktop" },
-      { packageTags: ["fleet-console"], text: "Add the plugin surface.", product: "fleet-plugin" },
-      { packageTags: ["fleet-admiral"], text: "Add the core surface.", product: "fleet-core" },
     ]);
     expect(sections?.[1]?.items).toEqual([
       { packageTags: ["fleet-console"], text: "Fix the Console surface.", product: "fleet-console" },
-      { packageTags: ["fleet-console"], text: "Fix the plugin surface.", product: "fleet-plugin" },
     ]);
     expect(sections?.[2]?.items).toEqual([{ packageTags: ["fleet-cli"], text: "Remove the legacy mode.", product: "fleet-cli" }]);
+  });
+
+  it("drops a retired heading's items instead of leaking them into the unstamped bucket", () => {
+    const notes = parseConsoleReleaseNotes(RETIRED_ONLY_CHANGELOG);
+
+    // 실 이력에는 fleet-plugin/fleet-core 항목만 담긴 릴리스가 있다(v1.49.0·v1.50.0·v1.50.1 등).
+    // 그런 릴리스는 사용자가 체감할 내용이 하나도 남지 않으므로 목록에서 통째로 빠진다.
+    expect(notes.map((note) => note.version)).toEqual(["1.49.1"]);
+    expect(notes[0]?.sections).toEqual([{
+      heading: "Added",
+      items: [{ packageTags: [], text: "Keep the Console note.", product: "fleet-console" }],
+    }]);
   });
 
   it("merges a section heading that repeats within one release", () => {

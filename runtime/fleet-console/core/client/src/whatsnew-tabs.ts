@@ -26,8 +26,6 @@ export function buildProductTabs(t: T): readonly (WhatsNewTab & { readonly id: R
     { id: "fleet-cli", label: t("whatsnew.tab.fleetCli") },
     { id: "fleet-console", label: t("whatsnew.tab.fleetConsole") },
     { id: "fleet-desktop", label: t("whatsnew.tab.fleetDesktop") },
-    { id: "fleet-plugin", label: t("whatsnew.tab.fleetPlugin") },
-    { id: "fleet-core", label: t("whatsnew.tab.fleetCore") },
   ];
 }
 

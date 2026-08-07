@@ -1,4 +1,4 @@
-export type ReleaseNoteProduct = "fleet-cli" | "fleet-console" | "fleet-desktop" | "fleet-plugin" | "fleet-core";
+export type ReleaseNoteProduct = "fleet-cli" | "fleet-console" | "fleet-desktop";
 
 export interface ConsoleReleaseNoteItem {
   readonly packageTags: readonly string[];
@@ -49,10 +49,18 @@ interface MutableReleaseNoteSection {
   readonly items: ConsoleReleaseNoteItem[];
 }
 
+// 지금 읽고 있는 항목이 어느 헤딩 아래 있는지. "retired"는 더 이상 노출하지 않는 옛 패키지 축 헤딩이고,
+// "unknown"은 이 Console 버전이 알지 못하는 헤딩이다. 전자는 버리고 후자는 미분류로 보존한다.
+type ProductScope = ReleaseNoteProduct | "retired" | "unknown" | "none";
+
 const RELEASE_NOTE_HEADINGS: readonly ReleaseNoteHeading[] = ["Added", "Changed", "Fixed", "Removed", "Breaking Changes"];
 const VERSION_HEADER_PATTERN = /^## \[([^\]]+)\](?: - ([0-9]{4}-[0-9]{2}-[0-9]{2}))?$/;
 const SECTION_HEADER_PATTERN = /^### (Added|Changed|Fixed|Removed|Breaking Changes)$/;
-const PRODUCT_HEADER_PATTERN = /^### (fleet-(?:cli|console|desktop|plugin|core))$/;
+const PRODUCT_HEADER_PATTERN = /^### (fleet-(?:cli|console|desktop))$/;
+// v1.51.0까지의 이력은 구현 패키지 축으로 묶여 있어서 이 두 헤딩을 쓴다. 사용자가 체감하는 런타임이
+// 아니므로 그 아래 항목은 노출하지 않는다. 헤딩 자체는 계속 알아본다 — 모르는 헤딩 취급으로 흘리면
+// 아래에서 미분류 버킷으로 되살아나 결국 화면에 다시 나온다.
+const RETIRED_PRODUCT_HEADER_PATTERN = /^### fleet-(?:plugin|core)$/;
 const PRODUCT_SECTION_HEADER_PATTERN = /^#### (Added|Changed|Fixed|Removed|Breaking Changes)$/;
 const BULLET_PATTERN = /^- (.+)$/;
 const PACKAGE_TAG_PATTERN = /^\[([^\]]+)\]/;
@@ -82,38 +90,39 @@ function collectSections(lines: readonly string[]): readonly ConsoleReleaseNoteS
   const legacySections = new Map<ReleaseNoteHeading, MutableReleaseNoteSection>();
   const productSections = new Map<ReleaseNoteHeading, MutableReleaseNoteSection>();
   let current: MutableReleaseNoteSection | null = null;
-  let currentProduct: ReleaseNoteProduct | null = null;
-  let insideUnknownProduct = false;
+  let scope: ProductScope = "none";
   for (const line of lines) {
     const sectionMatch = SECTION_HEADER_PATTERN.exec(line);
     if (sectionMatch !== null) {
       // 같은 섹션 헤딩이 한 릴리스에 두 번 나오면 이어 붙인다. 첫 블록만 남기면 v1.3.0처럼 뒤 블록의
       // 항목이 조용히 사라진다.
-      currentProduct = null;
-      insideUnknownProduct = false;
+      scope = "none";
       current = getSection(legacySections, sectionMatch[1] as ReleaseNoteHeading);
       continue;
     }
     const productMatch = PRODUCT_HEADER_PATTERN.exec(line);
     if (productMatch !== null) {
-      currentProduct = productMatch[1] as ReleaseNoteProduct;
-      insideUnknownProduct = false;
+      scope = productMatch[1] as ReleaseNoteProduct;
+      current = null;
+      continue;
+    }
+    if (RETIRED_PRODUCT_HEADER_PATTERN.test(line)) {
+      scope = "retired";
       current = null;
       continue;
     }
     if (line.startsWith("### ")) {
       // 이 리더가 모르는 제품 헤딩이다. 배포된 Console은 갱신할 수 없으므로 미래에 추가되는 런타임의
       // 항목도 버리지 않고 미분류 버킷으로 흘린다.
-      currentProduct = null;
-      insideUnknownProduct = true;
+      scope = "unknown";
       current = null;
       continue;
     }
     const productSectionMatch = PRODUCT_SECTION_HEADER_PATTERN.exec(line);
     if (productSectionMatch !== null) {
       const heading = productSectionMatch[1] as ReleaseNoteHeading;
-      if (currentProduct !== null) current = getSection(productSections, heading);
-      else if (insideUnknownProduct) current = getSection(legacySections, heading);
+      if (isSupportedProduct(scope)) current = getSection(productSections, heading);
+      else if (scope === "unknown") current = getSection(legacySections, heading);
       else current = null;
       continue;
     }
@@ -123,7 +132,7 @@ function collectSections(lines: readonly string[]): readonly ConsoleReleaseNoteS
       continue;
     }
     const bulletMatch = BULLET_PATTERN.exec(line);
-    if (bulletMatch !== null) current.items.push(parseReleaseNoteItem(bulletMatch[1] ?? "", currentProduct));
+    if (bulletMatch !== null) current.items.push(parseReleaseNoteItem(bulletMatch[1] ?? "", isSupportedProduct(scope) ? scope : null));
   }
   return RELEASE_NOTE_HEADINGS
     .map((heading) => combineSections(heading, legacySections.get(heading), productSections.get(heading)))
@@ -137,6 +146,10 @@ function combineSections(
 ): MutableReleaseNoteSection | undefined {
   if (legacySection === undefined && productSection === undefined) return undefined;
   return { heading, items: [...(legacySection?.items ?? []), ...(productSection?.items ?? [])] };
+}
+
+function isSupportedProduct(scope: ProductScope): scope is ReleaseNoteProduct {
+  return scope !== "none" && scope !== "retired" && scope !== "unknown";
 }
 
 function getSection(
