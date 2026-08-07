@@ -67,13 +67,14 @@ export function App() {
 
   // 테마 극성(다크↔라이트) 전환 1회성 전역 안내 — 이전에는 터미널 패널마다 힌트가 떠서 전환 한 번에
   // 패널 수만큼 닫아야 했다. 실행 중 CLI의 내부 테마는 콘솔이 강제할 수 없으므로 안내는 유지하되,
-  // 콘솔 chrome이 단 하나의 토스트로 발화한다. 기준선은 bootstrap 완료 시점에 심는다 — 부팅 중
-  // localStorage→서버 settings 2회 적용(main.tsx)으로 극성이 정착 전에 흔들려도 오발화하지 않게.
+  // 콘솔 chrome이 단 하나의 토스트로 발화한다. 기준선은 마운트 첫 실행에 심는다 — main.tsx가 주입/저장
+  // 테마와 서버 settings 적용을 모두 render 전 top-level await로 끝내므로, 마운트 이후의 테마 변경은
+  // 사용자 동작뿐이다. theaters bootstrap 같은 무관한 축에 게이트하면 그 응답이 늦거나 실패하는 동안의
+  // 전환이 통째로 소실된다(Settings는 그 전에도 조작 가능하다).
   const [themeNotice, setThemeNotice] = useState<"light" | "dark" | null>(null);
   const themePolarityBaselineRef = useRef<"light" | "dark" | null>(null);
   const activeThemePolarity = themePolarity(state.activeTheme);
   useEffect(() => {
-    if (!state.bootstrapped) return;
     if (themePolarityBaselineRef.current === null) {
       themePolarityBaselineRef.current = activeThemePolarity;
       return;
@@ -82,7 +83,7 @@ export function App() {
       themePolarityBaselineRef.current = activeThemePolarity;
       setThemeNotice(activeThemePolarity);
     }
-  }, [state.bootstrapped, activeThemePolarity]);
+  }, [activeThemePolarity]);
 
   // 안내는 잠시 띄우고 자동으로 거둔다 — 수동 닫기만 두면 "패널마다 닫기"가 "토스트 닫기 1회"로
   // 바뀌는 데 그치므로, 읽을 시간 뒤에는 스스로 사라진다. 재전환 시 새 극성으로 타이머가 리셋된다.

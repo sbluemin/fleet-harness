@@ -141,8 +141,9 @@ async function renderApp(): Promise<void> {
 }
 
 describe("Theme polarity notice", () => {
-  it("fires no toast while boot settles, even when the stored theme flips polarity before bootstrap", async () => {
-    // 부팅 중 localStorage→서버 settings 2회 적용으로 극성이 흔들려도 안내가 뜨면 안 된다.
+  it("seeds its baseline on mount, so the already-applied boot theme raises nothing", async () => {
+    // main.tsx는 주입/저장 테마와 서버 settings를 render 전에 모두 적용하므로, 마운트 시점의
+    // 극성은 이미 정착값이다 — 그 값이 무엇이든 안내가 떠서는 안 된다.
     setState({ activeTheme: "whites", bootstrapped: false });
     await renderApp();
     expect(themeToasts()).toHaveLength(0);
@@ -151,6 +152,22 @@ describe("Theme polarity notice", () => {
       setState({ bootstrapped: true });
     });
     expect(themeToasts()).toHaveLength(0);
+  });
+
+  it("still fires while theater bootstrap is pending — the notice must not ride an unrelated axis", async () => {
+    // theaters bootstrap이 느리거나 실패해도 Settings는 조작 가능하다. 그 사이의 전환을 삼키면
+    // 사용자는 안내를 영영 받지 못한다. bootstrap 응답을 영구 보류시켜 그 구간을 재현한다.
+    apiMocks.fetchTheaterBootstrap.mockReturnValue(new Promise(() => {}));
+    setState({ bootstrapped: false });
+    await renderApp();
+
+    await act(async () => {
+      setActiveTheme("whites");
+    });
+    expect(getState().bootstrapped).toBe(false);
+    const pending = themeToasts();
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.querySelector(".app-toast-title")?.textContent).toBe(THEME_LIGHT_TITLE);
   });
 
   it("fires exactly one console-level toast on a polarity flip after bootstrap", async () => {
