@@ -1,6 +1,25 @@
 import { useSyncExternalStore } from "react";
 
-import type { DiffFileEntry, LogCommitEntry, WorktreeCheckout } from "../server/types.js";
+import type { DiffFileEntry, LogCommitEntry, LogOrder, WorktreeCheckout } from "../server/types.js";
+
+// ═══ history-order-preference ════════════════════════════════════════════════
+
+const HISTORY_ORDER_KEY = "fleet-console.history.order";
+
+/** 저장된 값이 없거나 알아볼 수 없으면 topo — 브랜치 체인이 끊기지 않는 쪽이 기본이다. */
+export function readHistoryOrder(): LogOrder {
+  try {
+    return localStorage.getItem(HISTORY_ORDER_KEY) === "date" ? "date" : "topo";
+  } catch {
+    return "topo";
+  }
+}
+
+export function saveHistoryOrder(order: LogOrder): void {
+  try {
+    localStorage.setItem(HISTORY_ORDER_KEY, order);
+  } catch { /* ignore */ }
+}
 
 // ═══ history-cache ═══════════════════════════════════════════════════════════
 

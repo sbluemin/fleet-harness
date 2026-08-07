@@ -92,6 +92,12 @@ export const repositoryEn = {
   "repository.history.resizeDock": "Resize commit detail dock",
   "repository.history.resizeFileList": "Resize file list",
   "repository.history.resizeLog": "Resize commit log",
+  "repository.history.hasBody": "Has a commit message body",
+  "repository.history.orderToggle": "Switch commit order",
+  "repository.history.orderTopo": "topo",
+  "repository.history.orderDate": "date",
+  "repository.history.orderTopoHint": "Topological order — branch chains stay contiguous. Click for date order.",
+  "repository.history.orderDateHint": "Date order — every ref interleaved newest first. Click for topological order.",
 
   // time
   "repository.time.today": "Today {time}",
@@ -220,6 +226,12 @@ export const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.history.resizeDock": "커밋 상세 독 크기 조절",
   "repository.history.resizeFileList": "파일 목록 크기 조절",
   "repository.history.resizeLog": "커밋 로그 크기 조절",
+  "repository.history.hasBody": "커밋 메시지 본문이 있음",
+  "repository.history.orderToggle": "커밋 정렬 전환",
+  "repository.history.orderTopo": "계보순",
+  "repository.history.orderDate": "시간순",
+  "repository.history.orderTopoHint": "계보순 — 브랜치 체인이 끊기지 않고 이어집니다. 누르면 시간순으로 전환합니다.",
+  "repository.history.orderDateHint": "시간순 — 모든 ref를 최신 커밋부터 뒤섞어 나열합니다. 누르면 계보순으로 전환합니다.",
 
   "repository.time.today": "오늘 {time}",
   "repository.time.yesterday": "어제 {time}",

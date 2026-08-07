@@ -4,7 +4,7 @@ import type http from "node:http";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { GitExecutorError, runGit } from "./git-executor.js";
-import type { LogCommitEntry, WorktreeCheckout } from "./types.js";
+import type { LogCommitEntry, LogOrder, WorktreeCheckout } from "./types.js";
 import { InvalidRepoError, resolveGitCwd } from "./diff.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -23,6 +23,17 @@ const CANONICAL_REF_RE = /^refs\/(?:heads|remotes|tags)\//;
 // gitrevisions 선택자(@{n}·^·~ 등)와 check-ref-format 금지 문자를 이름 수준에서 거부한다 —
 // rev-parse가 reflog/조상 표현식을 해석해 /refs 열거 밖 커밋으로 필터되는 것을 막는다
 const REF_METACHAR_RE = /[~^:?*\[\\\s\x00-\x1f\x7f]/;
+
+// %b(본문)는 개행을 담을 수 있으므로 반드시 마지막 필드여야 한다 — 앞에 두면 뒤 필드가 다음 줄로 밀려 파싱이 깨진다.
+const LOG_PRETTY_FORMAT = "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P%x00%b";
+
+// 정렬 축은 화이트리스트 상수로만 git 인자가 된다 — 요청 문자열이 인자 위치에 직접 닿지 않게 한다.
+const LOG_ORDER_ARGS: Readonly<Record<LogOrder, string>> = { topo: "--topo-order", date: "--date-order" };
+
+export function resolveLogOrder(requested: unknown): LogOrder | null {
+  if (requested === undefined) return "topo";
+  return requested === "topo" || requested === "date" ? requested : null;
+}
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -67,6 +78,9 @@ export function parseLogOutput(stdout: string): LogCommitEntry[] {
 
     const refs = refsRaw.split(",").map((r) => r.trim()).filter(Boolean);
     const parents = parentsRaw.split(" ").map((p) => p.trim()).filter(Boolean);
+    // 본문은 마지막 필드이므로 첫 줄의 9번째 조각과 그 뒤의 모든 줄에 걸쳐 있다.
+    // 존재 여부만 남기고 내용은 버린다 — 목록 페이로드에 본문 전체를 싣지 않기 위해서다.
+    const hasBody = (fields[8] ?? "").trim() !== "" || lines.slice(1).some((line) => line.trim() !== "");
 
     commits.push({
       shortHash,
@@ -78,6 +92,7 @@ export function parseLogOutput(stdout: string): LogCommitEntry[] {
       refs,
       parents,
       onHead: true,
+      hasBody,
     });
   }
 
@@ -189,11 +204,13 @@ export async function handleRepositoryLog(
   if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
-  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly repoRel?: unknown; readonly subPath?: unknown; readonly ref?: unknown; readonly limit?: unknown; readonly skip?: unknown }>(req);
+  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly repoRel?: unknown; readonly subPath?: unknown; readonly ref?: unknown; readonly limit?: unknown; readonly skip?: unknown; readonly order?: unknown }>(req);
   if (!isPlainObject(body) || "subPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
 
   const theaterId = body.theaterId;
   if (typeof theaterId !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
+  const order = resolveLogOrder(body.order);
+  if (order === null) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
   const limit = body.limit === undefined ? 200 : body.limit;
   const skip = body.skip === undefined ? 0 : body.skip;
   if (!Number.isInteger(limit) || typeof limit !== "number" || limit < 1 || limit > 500
@@ -241,11 +258,12 @@ export async function handleRepositoryLog(
     const [realGitCwd, realToplevel] = await Promise.all([normalizeWorktreePath(gitCwd), normalizeWorktreePath(currentWorktreePath)]);
     const scopePathspec = realToplevel !== "" && realGitCwd === realToplevel ? [] : ["."];
     const skipArg = skip > 0 ? [`--skip=${skip}`] : [];
+    const orderArg = LOG_ORDER_ARGS[order];
     const result = resolvedRef
-      ? await runGit(["log", resolvedRef, "--date-order", "-n", String(limit + 1), ...skipArg, "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", "--", ...scopePathspec], { cwd: gitCwd })
+      ? await runGit(["log", resolvedRef, orderArg, "-n", String(limit + 1), ...skipArg, "--decorate=full", LOG_PRETTY_FORMAT, "--", ...scopePathspec], { cwd: gitCwd })
       : await runGit(
         // --all은 refs/stash·refs/notes까지 그래프에 유입시키므로 브랜치/태그/원격 + 현재 HEAD + 워크트리 HEAD로 한정한다
-        ["log", "--branches", "--tags", "--remotes", "--date-order", "-n", String(limit + 1), ...skipArg, "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", ...headRevs, ...worktreeRevs, "--", ...scopePathspec],
+        ["log", "--branches", "--tags", "--remotes", orderArg, "-n", String(limit + 1), ...skipArg, "--decorate=full", LOG_PRETTY_FORMAT, ...headRevs, ...worktreeRevs, "--", ...scopePathspec],
         { cwd: gitCwd },
       );
     const parsedCommits = parseLogOutput(result.stdout);

@@ -42,14 +42,27 @@ describe("parseLogOutput", () => {
       refs: ["HEAD -> refs/heads/main", "refs/remotes/origin/main", "tag: v1.2.3"],
       parents: ["parent-a", "parent-b"],
       onHead: true,
+      hasBody: false,
     }]);
+  });
+
+  // %b는 개행을 담을 수 있어 반드시 마지막 필드다 — 본문은 첫 줄의 9번째 조각과 그 뒤 줄들에 걸쳐 있고,
+  // 목록 페이로드에는 존재 여부만 남는다.
+  it("여러 줄 본문을 hasBody로만 요약하고 본문 자체는 싣지 않는다", () => {
+    const head = "\x1eabc\x00abc\x00subject\x00Author\x002 hours ago\x001720000000\x00\x00parent-a\x00";
+    expect(parseLogOutput(`${head}first body line\nsecond body line\n`)).toEqual([{
+      fullHash: "abc", shortHash: "abc", subject: "subject", authorName: "Author",
+      relTime: "2 hours ago", authorAt: 1_720_000_000, refs: [], parents: ["parent-a"],
+      onHead: true, hasBody: true,
+    }]);
+    expect(parseLogOutput(`${head}\n`)[0]?.hasBody).toBe(false);
   });
 });
 
 describe("annotateHeadReachability", () => {
   const base = {
     shortHash: "aaa", subject: "s", authorName: "a", relTime: "now", authorAt: 0,
-    refs: [], parents: [], onHead: true,
+    refs: [], parents: [], onHead: true, hasBody: false,
   };
 
   it("rev-list에 없는 커밋만 onHead=false로 표시한다", () => {

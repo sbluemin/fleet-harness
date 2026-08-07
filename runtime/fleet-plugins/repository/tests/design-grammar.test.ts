@@ -161,6 +161,35 @@ describe("Repository design grammar", () => {
     expect(css).not.toMatch(/\.repository-scan-depth\b/);
   });
 
+  // 2026-08-07 재가 — Fork 문법의 ref 뱃지. 색조는 --badge-tone 한 채널로만 흐르고, 종류가 고정된 축만
+  // CSS가 소유한다(체크아웃 위치=brass, 태그=plum). 나머지는 커밋 행이 자기 레인 색을 주입한다.
+  it("routes every ref badge color through one tone channel, with location on brass", () => {
+    const badge = blockOf(".history-badge");
+    expect(badge).toContain("--badge-tone:");
+    for (const property of ["border", "background", "border-right"]) {
+      expect(blocksOf(".history-badge").concat(blocksOf(".history-badge-mark")).some((body) => body.includes(`${property}:`) && body.includes("var(--badge-tone)")), property).toBe(true);
+    }
+    // 알약이 아니라 라운드 사각 + 볼드 sans — Fork가 뱃지를 라벨이 아닌 표식으로 읽히게 하는 축.
+    expect(badge).not.toContain("border-radius: 999px");
+    expect(badge).toContain("border-radius: var(--radius-xs)");
+    expect(badge).toContain("font-family: var(--font-body)");
+    expect(badge).toContain("font-weight: var(--weight-bold)");
+
+    for (const selector of [".history-badge--head", ".history-badge.is-current"]) {
+      expect(blockOf(selector), selector).toContain("var(--brass)");
+    }
+    expect(blockOf(".history-badge--tag")).toContain("var(--id-plum)");
+    expect(blockOf(".history-badge--tag")).not.toContain("var(--brass)");
+    // 인라인으로 주입되는 레인 색이 --badge-tone을 덮어쓰므로, 정의되지 않은 var 참조가 되지 않도록 기본값이 있어야 한다.
+    expect(badge).toMatch(/--badge-tone:\s*var\(--ink-fog\)/);
+  });
+
+  it("raises only the Conventional Commit prefix, and demotes it with the rest off HEAD", () => {
+    expect(blockOf(".history-commit-kind")).toContain("font-weight: var(--weight-bold)");
+    expect(blockOf(".history-commit-kind")).toContain("color: var(--text-primary)");
+    expect(css).toContain(".history-commit-row.is-off-head .history-commit-kind");
+  });
+
   it("keeps commit subjects on one row at every container width", () => {
     const subjects = blocksOf(".history-commit-subject");
     // 행 높이는 그래프 gutter의 ROW_HEIGHT와 가상 스크롤 기하에 묶여 있다 — 줄바꿈은 둘 다 깨뜨린다.

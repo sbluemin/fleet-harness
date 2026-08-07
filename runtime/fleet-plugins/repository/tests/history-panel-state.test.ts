@@ -18,6 +18,7 @@ const COMMIT: LogCommitEntry = {
   refs: [],
   parents: [],
   onHead: true,
+  hasBody: false,
 };
 
 type ElementProps = Record<string, unknown> & {
@@ -50,7 +51,6 @@ describe("CommitRow", () => {
       checkouts: [],
       selected: false,
       graphNode: layoutGraph([COMMIT]).nodes[0]!,
-      laneCount: 1,
       onSelect: vi.fn(),
     });
     // 행은 비중첩 버튼 계약(래퍼 div + 본체 버튼 + ⇆ 액션)이라 subject는 본체 버튼 안에 있다.
@@ -125,7 +125,7 @@ describe("History window rendering", () => {
 });
 
 describe("History page accumulation", () => {
-  const generationA: HistoryLoadGeneration = { theaterId: "theater", repoRel: "", refFilter: "refs/heads/a", refreshToken: 0 };
+  const generationA: HistoryLoadGeneration = { theaterId: "theater", repoRel: "", refFilter: "refs/heads/a", order: "topo", refreshToken: 0 };
   const state: HistoryOkState = { kind: "ok", commits: [COMMIT], checkouts: [], hasMore: true, truncated: false };
   const nextCommit: LogCommitEntry = { ...COMMIT, shortHash: "def5678", fullHash: "def5678fedcba9876543210fedcba9876543210f", subject: "older commit" };
 
