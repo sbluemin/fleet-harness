@@ -59,6 +59,8 @@ export type ConsoleHookCommand =
   | { readonly command: "turn-start" }
   | { readonly command: "turn-end" }
   | { readonly command: "background-report" }
+  | { readonly command: "background-spawn" }
+  | { readonly command: "background-stop" }
   | { readonly command: "attention" }
   | { readonly command: "auto-name" };
 
@@ -77,7 +79,8 @@ const FIXED_HOST = "127.0.0.1";
 const HELP_BANNER_INDENT = "  ";
 const DEFAULT_HELP_RELEASE = "local";
 // background-spawn/background-stop은 더 이상 렌더되지 않지만, 업그레이드 시점에 이미 살아 있는 세션의
-// hooks.json이 여전히 그 이름으로 호출한다. 이름을 지우면 in-flight 세션의 hook이 예외로 죽으므로 계속 받아준다.
+// hooks.json이 여전히 그 이름으로 이 실행 파일을 호출한다(경로가 제자리 덮어써지므로 구 세션이 새 바이너리를 부른다).
+// 이름을 지우면 in-flight 세션의 hook이 예외로 죽으므로 계속 받아주고, 본문도 퇴역 당시 형식을 그대로 보낸다.
 const CONSOLE_HOOK_COMMANDS = new Set(["capture-session", "turn-start", "turn-end", "background-report", "background-spawn", "background-stop", "attention", "auto-name"]);
 
 export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
@@ -114,9 +117,8 @@ export function parseConsoleHookCommand(argv: readonly string[]): ConsoleHookCom
   if (commandName === "turn-start" && rest.length === 0) return { command: "turn-start" };
   if (commandName === "turn-end" && rest.length === 0) return { command: "turn-end" };
   if (commandName === "background-report" && rest.length === 0) return { command: "background-report" };
-  // 퇴역한 이름은 같은 보고 명령으로 흡수한다. 퇴역 hook의 payload에는 background_tasks가 없을 수 있고,
-  // 그때 보고는 "무의견"이 되어 상태를 바꾸지 않는다.
-  if ((commandName === "background-spawn" || commandName === "background-stop") && rest.length === 0) return { command: "background-report" };
+  if (commandName === "background-spawn" && rest.length === 0) return { command: "background-spawn" };
+  if (commandName === "background-stop" && rest.length === 0) return { command: "background-stop" };
   if (commandName === "attention" && rest.length === 0) return { command: "attention" };
   if (commandName === "auto-name" && rest.length === 0) return { command: "auto-name" };
   if (commandName === "capture-session" && rest.length === 1 && rest[0] === "claude") return { command: "capture-session", provider: rest[0] };
@@ -330,6 +332,14 @@ export async function main(): Promise<void> {
     if (hookCommand.command === "background-report") {
       // 백그라운드 보고 hook도 무출력·exit 0 best-effort다. hook payload를 그대로 넘기고 해석은 서버가 한다.
       await postAgentHook(`/sessions/${readHookSessionId(process.env)}/background`, { input: await readStdinBestEffort() }, process.env);
+      return;
+    }
+    if (hookCommand.command === "background-spawn" || hookCommand.command === "background-stop") {
+      // 퇴역한 이름은 퇴역 당시의 본문 형식을 그대로 보낸다. 업그레이드는 활성 Operation이 있으면 구 데몬을
+      // 그대로 두는데(ensureDaemon의 workspaceCount 보호), 그 서버는 {event}만 이해하므로 새 형식을 보내면
+      // 400으로 떨어져 살아 있는 세션의 백그라운드 축이 통째로 죽는다. 새 서버는 이 본문을 무의견으로 받고,
+      // 그 세션의 실제 보고는 같은 새 바이너리가 보내는 turn-end payload가 담당한다.
+      await postAgentHook(`/sessions/${readHookSessionId(process.env)}/background`, { event: hookCommand.command === "background-spawn" ? "spawn" : "stop" }, process.env);
       return;
     }
     if (hookCommand.command === "attention") {
