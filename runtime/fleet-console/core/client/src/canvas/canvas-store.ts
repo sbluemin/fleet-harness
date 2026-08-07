@@ -366,10 +366,12 @@ export function setTheaterOperationMinimized(theaterId: string, sessionId: strin
   const theaterState = readStoredState(theaterId);
   if (theaterState.minimized.includes(sessionId) === minimized) return;
   // 활성 경로(minimizeOperation)가 지는 focus layer 정리를 여기서도 한다 — War Room 무대에는 다른
-  // Theater의 Operation도 서고 그 위에 동반 패널이 붙으므로, 정리를 건너뛰면 무대에서 내린 패널의
-  // 최대화·동반 레이어가 그 Theater에 남아 다음에 그 Theater를 열 때 되살아난다.
-  if (minimized && focusLayersByTheater.get(theaterId)?.operationId === sessionId) {
-    setTheaterFocusLayerSnapshot(theaterId, null);
+  // Theater의 Operation도 서고 그 위에 최대화·동반 레이어가 붙으므로, 건너뛰면 무대에서 내린 패널의
+  // 레이어가 그대로 남는다. 레이어는 Operation의 Theater가 아니라 로드된 Theater 키로 저장되므로
+  // (setFocusLayer) 여기서도 그 Theater가 아니라 지금 켜진 레이어를 본다.
+  if (minimized) {
+    if (getMaximizedOperationId() === sessionId) clearMaximizedOperationId();
+    if (getCompanionOperationId() === sessionId) forceDropCompanionOperationId();
   }
   // 저장 스냅샷은 minimized를 operations에 실재하는 id로만 좁혀 읽는다(stale 직렬화 방어). War Room은
   // Cruise 캔버스에 한 번도 놓인 적 없는 Operation도 판에서 내릴 수 있으므로, 자리를 함께 적어 두지
