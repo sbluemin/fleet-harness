@@ -9,7 +9,7 @@ import { fetchSystemFonts, SystemFontsFetchError } from "@fleet-console/font-pic
 
 import { BackendApiSection } from "../components/backend-api-section.js";
 import { propagateSettingsEntryIndex } from "../components/command-band-system-cluster.js";
-import { createRemoteAccessLink, fetchRemoteAccessStatus } from "../global-settings-api.js";
+import { createRemoteAccessLink, fetchRemoteAccessStatus, revokeRemoteAccessLink, revokeRemoteAccessSession, rotateRemoteIdentity } from "../global-settings-api.js";
 import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { renderMessage, useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { useConsoleState } from "../hooks/use-store.js";
@@ -522,6 +522,7 @@ function LanguageSettings({ state, saving }: { readonly state: GlobalSettingsSta
 const REMOTE_BIND_HOST = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[A-Za-z0-9](?:[A-Za-z0-9._-]{0,252}[A-Za-z0-9])?)$/u;
 const REMOTE_LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 const REMOTE_GRANT_TTL_MINUTES = 15;
+const ROTATE_ARM_TIMEOUT_MS = 5_000;
 
 function isValidRemoteBindHost(value: string): boolean {
   return REMOTE_BIND_HOST.test(value) && !REMOTE_LOOPBACK_HOSTS.has(value);
@@ -533,11 +534,21 @@ function RemoteAccessSettings({ state, saving }: { readonly state: GlobalSetting
   const [draftHost, setDraftHost] = useState(remote.bindHost ?? "");
   const [status, setStatus] = useState<RemoteAccessStatus | null>(null);
   const [link, setLink] = useState<RemoteAccessLink | null>(null);
-  const [linkError, setLinkError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<"create" | "rotate" | "revoke" | null>(null);
   const [copied, setCopied] = useState(false);
+  const [rotateArmed, setRotateArmed] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => { setDraftHost(remote.bindHost ?? ""); }, [remote.bindHost]);
+
+  // blur만으로 무장을 풀면 안 된다 — macOS 브라우저는 버튼 클릭에 포커스를 주지 않아,
+  // 무장 상태가 조용히 남았다가 한참 뒤의 첫 클릭이 곧바로 갱신을 실행한다.
+  useEffect(() => {
+    if (!rotateArmed) return;
+    const timer = setTimeout(() => setRotateArmed(false), ROTATE_ARM_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [rotateArmed]);
 
   // 설정값이 아니라 실제 리스너를 읽는다 — 켜 두었지만 바인드에 실패한 상태가 보여야 한다.
   useEffect(() => {
@@ -546,27 +557,39 @@ function RemoteAccessSettings({ state, saving }: { readonly state: GlobalSetting
       .then(setStatus)
       .catch(() => { if (!controller.signal.aborted) setStatus(null); });
     return () => controller.abort();
-  }, [remote.enabled, remote.bindHost]);
+  }, [remote.enabled, remote.bindHost, reloadToken]);
 
   const trimmedHost = draftHost.trim();
   const hostIsValid = isValidRemoteBindHost(trimmedHost);
   const hostIsInvalid = trimmedHost.length > 0 && !hostIsValid;
+  const refresh = () => setReloadToken((token) => token + 1);
 
   const save = (next: { readonly enabled: boolean; readonly bindHost: string | null }) => {
     // 링크는 자격이다. 대상이 바뀌거나 리스너가 닫히는 순간 화면에서도 사라져야 한다.
     setLink(null);
-    setLinkError(null);
+    setActionError(null);
+    setRotateArmed(false);
     void setGlobalSettingsField("remoteAccess", next);
   };
 
-  const create = () => {
-    setCreating(true);
-    setLinkError(null);
-    setCopied(false);
-    void createRemoteAccessLink()
-      .then(setLink)
-      .catch((error: unknown) => { setLinkError(error instanceof Error ? error.message : String(error)); })
-      .finally(() => setCreating(false));
+  const run = (kind: "create" | "rotate" | "revoke", action: () => Promise<unknown>) => {
+    setBusy(kind);
+    setActionError(null);
+    void action()
+      .then((result) => { if (kind === "create") setLink(result as RemoteAccessLink); })
+      .catch((error: unknown) => { setActionError(error instanceof Error ? error.message : String(error)); })
+      .finally(() => { setBusy(null); refresh(); });
+  };
+
+  const rotate = () => {
+    if (!rotateArmed) {
+      setRotateArmed(true);
+      return;
+    }
+    setRotateArmed(false);
+    // 갱신하면 화면에 남은 링크도 더는 통하지 않는다.
+    setLink(null);
+    run("rotate", rotateRemoteIdentity);
   };
 
   const copy = () => {
@@ -640,16 +663,28 @@ function RemoteAccessSettings({ state, saving }: { readonly state: GlobalSetting
         </div>
 
         {status?.listening && status.fingerprint ? (
-          <p className="remote-access-fingerprint">
-            <span className="remote-access-fingerprint-label">{t("settings.remote.fingerprintLabel")}</span>
-            <code>{status.fingerprint}</code>
-          </p>
+          <div className="remote-access-identity">
+            <p className="remote-access-fingerprint">
+              <span className="remote-access-fingerprint-label">{t("settings.remote.fingerprintLabel")}</span>
+              <code>{status.fingerprint}</code>
+            </p>
+            <button
+              type="button"
+              className={`remote-access-rotate ${rotateArmed ? "is-armed" : ""}`}
+              disabled={busy !== null}
+              onClick={rotate}
+              onBlur={() => setRotateArmed(false)}
+            >
+              {busy === "rotate" ? t("settings.remote.rotate.busy") : rotateArmed ? t("settings.remote.rotate.arm") : t("settings.remote.rotate")}
+            </button>
+            <span className="console-port-hint">{t("settings.remote.rotate.help")}</span>
+          </div>
         ) : null}
 
         {status?.listening ? (
           <div className="remote-access-link">
-            <button type="button" className="remote-access-create" disabled={creating} onClick={create}>
-              {creating ? t("settings.remote.creating") : t("settings.remote.create")}
+            <button type="button" className="remote-access-create" disabled={busy !== null} onClick={() => run("create", createRemoteAccessLink)}>
+              {busy === "create" ? t("settings.remote.creating") : t("settings.remote.create")}
             </button>
             {link ? (
               <>
@@ -659,16 +694,87 @@ function RemoteAccessSettings({ state, saving }: { readonly state: GlobalSetting
                   <button type="button" onClick={copy}>{copied ? t("settings.remote.copied") : t("settings.remote.copy")}</button>
                 </div>
                 <span className="console-port-hint">{renderMessage(t("settings.remote.expires"), { minutes: REMOTE_GRANT_TTL_MINUTES })}</span>
+                <p className="remote-access-open-in">{t("settings.remote.openIn")}</p>
               </>
             ) : null}
-            {linkError ? <p className="global-settings-error" role="alert">{linkError}</p> : null}
+            {actionError ? <p className="global-settings-error" role="alert">{actionError}</p> : null}
             <p className="remote-access-warning">{t("settings.remote.warning")}</p>
+
+            <RemoteAccessLedger
+              title={t("settings.remote.links.title")}
+              empty={t("settings.remote.links.empty")}
+              action={t("settings.remote.revoke")}
+              busy={busy !== null}
+              rows={(status.links ?? []).map((entry) => ({
+                key: entry.id,
+                primary: renderMessage(t("settings.remote.links.issued"), { time: formatClockTime(entry.issuedAt) }),
+                secondary: renderMessage(t("settings.remote.links.expires"), { time: formatClockTime(entry.expiresAt) }),
+                onAction: () => run("revoke", () => revokeRemoteAccessLink(entry.id)),
+              }))}
+            />
+            <RemoteAccessLedger
+              title={t("settings.remote.sessions.title")}
+              empty={t("settings.remote.sessions.empty")}
+              action={t("settings.remote.disconnect")}
+              busy={busy !== null}
+              rows={(status.sessions ?? []).map((entry) => ({
+                key: entry.handle,
+                primary: renderMessage(t("settings.remote.sessions.opened"), { time: formatClockTime(entry.openedAt) }),
+                secondary: renderMessage(t("settings.remote.sessions.lastSeen"), { time: formatClockTime(entry.lastSeenAt) }),
+                onAction: () => run("revoke", () => revokeRemoteAccessSession(entry.handle)),
+              }))}
+            />
           </div>
         ) : null}
       </div>
       <p className="console-port-note">{t("settings.remote.note")}</p>
     </div>
   );
+}
+
+interface RemoteAccessLedgerRow {
+  readonly key: string;
+  readonly primary: ReactNode;
+  readonly secondary: ReactNode;
+  readonly onAction: () => void;
+}
+
+/** 발급된 자격의 목록. 자격 자체는 실리지 않고, 언제 생겼고 언제 죽는지만 보여준다. */
+function RemoteAccessLedger({
+  title,
+  empty,
+  action,
+  busy,
+  rows,
+}: {
+  readonly title: string;
+  readonly empty: string;
+  readonly action: string;
+  readonly busy: boolean;
+  readonly rows: readonly RemoteAccessLedgerRow[];
+}) {
+  return (
+    <section className="remote-access-ledger" aria-label={title}>
+      <p className="remote-access-fingerprint-label">{title}</p>
+      {rows.length === 0
+        ? <p className="console-port-hint">{empty}</p>
+        : (
+          <ul>
+            {rows.map((row) => (
+              <li key={row.key}>
+                <span className="remote-access-ledger-when">{row.primary}<span className="remote-access-ledger-until">{row.secondary}</span></span>
+                <button type="button" disabled={busy} onClick={row.onAction}>{action}</button>
+              </li>
+            ))}
+          </ul>
+        )}
+    </section>
+  );
+}
+
+/** 목록의 시간은 상대 표기가 아니라 시계 시각으로 — 만료가 언제인지 세지 않아도 되게 한다. */
+function formatClockTime(epochMs: number): string {
+  return new Date(epochMs).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
 
 function remoteErrorKey(code: string): CoreMessageKey {

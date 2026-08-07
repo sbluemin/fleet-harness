@@ -716,6 +716,107 @@
   color: var(--brass-bright);
 }
 
+.remote-access-identity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.remote-access-rotate {
+  min-height: 30px;
+  padding: 0 var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--warn) 46%, transparent);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.remote-access-rotate:hover:not(:disabled),
+.remote-access-rotate.is-armed {
+  background: var(--warn-glow);
+  color: var(--warn-ink);
+}
+
+.remote-access-rotate:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.remote-access-open-in {
+  margin: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.remote-access-ledger {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.remote-access-ledger ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.remote-access-ledger li {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-deep) 84%, transparent);
+}
+
+.remote-access-ledger-when {
+  min-width: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+
+.remote-access-ledger-until {
+  margin-left: var(--space-2);
+  color: var(--text-tertiary);
+}
+
+.remote-access-ledger li button {
+  flex: none;
+  padding: 3px var(--space-2);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.remote-access-ledger li button:hover:not(:disabled) {
+  border-color: var(--coral);
+  color: var(--coral-ink);
+}
+
+.remote-access-ledger li button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .remote-access-warning {
   margin: 0;
   padding: var(--space-3);

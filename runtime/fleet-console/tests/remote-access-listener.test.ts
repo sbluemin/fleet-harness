@@ -157,6 +157,95 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await expect(fetch(`${fixture.loopbackEndpoint}api/v1/theaters`).then((r) => r.status)).resolves.toBe(200);
   });
 
+  it("lists issued links and open sessions without ever re-serving a credential", async () => {
+    const fixture = await startFixture({ remote: true });
+    const first = await createLink(fixture);
+    const second = await createLink(fixture);
+
+    const listed = await readRemoteStatus(fixture);
+    expect(listed.links).toHaveLength(2);
+    // 목록을 보는 것만으로 어떤 링크도 다시 쓸 수 없어야 한다.
+    const serialized = JSON.stringify(listed);
+    expect(serialized).not.toContain(grantTokenOf(first));
+    expect(serialized).not.toContain(grantTokenOf(second));
+
+    await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(first) }));
+    const afterJoin = await readRemoteStatus(fixture);
+    expect(afterJoin.links).toHaveLength(1);
+    expect(afterJoin.sessions).toHaveLength(1);
+    expect(JSON.stringify(afterJoin.sessions)).not.toContain("fleet_console_session");
+  });
+
+  it("revokes one unused link and leaves the others usable", async () => {
+    const fixture = await startFixture({ remote: true });
+    const doomed = await createLink(fixture);
+    const kept = await createLink(fixture);
+    const ids = (await readRemoteStatus(fixture)).links.map((link) => link.id);
+    expect(ids).toHaveLength(2);
+
+    // 어느 id가 어느 링크인지는 밖에서 알 수 없으므로, 하나를 지우고 둘 중 하나만 남는지 본다.
+    await expect(revoke(fixture, `access-links/${ids[0]!}`)).resolves.toBe(204);
+    await expect(revoke(fixture, `access-links/${ids[0]!}`)).resolves.toBe(404);
+    expect((await readRemoteStatus(fixture)).links).toHaveLength(1);
+
+    const outcomes = await Promise.all([doomed, kept].map(async (link) =>
+      (await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(link) }))).status));
+    expect(outcomes.filter((status) => status === 204)).toHaveLength(1);
+    expect(outcomes.filter((status) => status === 401)).toHaveLength(1);
+  });
+
+  it("ends one open session immediately", async () => {
+    const fixture = await startFixture({ remote: true });
+    const joined = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(await createLink(fixture)) }));
+    const cookie = (joined.headers["set-cookie"]?.[0] ?? "").split(";")[0]!;
+    const handle = (await readRemoteStatus(fixture)).sessions[0]!.handle;
+
+    await expect(revoke(fixture, `access-sessions/${handle}`)).resolves.toBe(204);
+
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, cookie)).resolves.toMatchObject({ status: 401 });
+    expect((await readRemoteStatus(fixture)).sessions).toHaveLength(0);
+  });
+
+  it("rotates the identity and takes every link, session, and pin with it", async () => {
+    const fixture = await startFixture({ remote: true });
+    const staleLink = await createLink(fixture);
+    const joined = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(await createLink(fixture)) }));
+    const staleCookie = (joined.headers["set-cookie"]?.[0] ?? "").split(";")[0]!;
+    const before = await readRemoteStatus(fixture);
+
+    const rotated = await fetch(`${fixture.loopbackEndpoint}api/v1/remote-identity/rotations`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${fixture.lockToken}` },
+    });
+    expect(rotated.status).toBe(200);
+
+    const after = await readRemoteStatus(fixture);
+    expect(after.listening).toBe(true);
+    expect(normalizeFingerprint(after.fingerprint!)).not.toBe(normalizeFingerprint(before.fingerprint!));
+    expect(after.links).toHaveLength(0);
+    expect(after.sessions).toHaveLength(0);
+    // 새 인증서를 실제로 제시해야 한다 — 상태만 바뀌고 리스너가 옛 키를 쓰면 핀이 어긋난다.
+    expect(normalizeFingerprint(await readPresentedCertificateFingerprint(fixture.remotePort))).toBe(normalizeFingerprint(after.fingerprint!));
+    await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(staleLink) }))).resolves.toMatchObject({ status: 401 });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, staleCookie)).resolves.toMatchObject({ status: 401 });
+  });
+
+  it("answers a browser that opened the link with an explanation instead of a bare 401", async () => {
+    const fixture = await startFixture({ remote: true });
+
+    const notice = await remoteRequestBody(fixture, "GET", "/join");
+
+    expect(notice.status).toBe(200);
+    expect(notice.headers["content-type"]).toContain("text/html");
+    expect(notice.body).toContain("Fleet Console Desktop");
+    // 설명만 하고 아무것도 하지 않는 문서여야 한다.
+    expect(notice.body).not.toMatch(/<script|\bon[a-z]+=/iu);
+    expect(notice.headers["content-security-policy"]).toContain("default-src 'none'");
+    // 나머지 표면은 그대로 닫혀 있다.
+    await expect(remoteRequest(fixture, "GET", "/console/")).resolves.toMatchObject({ status: 401 });
+    await expect(remoteRequest(fixture, "POST", "/join")).resolves.toMatchObject({ status: 401 });
+  });
+
   it("keeps the loopback listener open without a session", async () => {
     const fixture = await startFixture({ remote: true });
 
@@ -169,6 +258,14 @@ interface RemoteAccessStatus {
   readonly origin: string | null;
   readonly fingerprint: string | null;
   readonly lastError: string | null;
+  readonly links: readonly { readonly id: string; readonly issuedAt: number; readonly expiresAt: number }[];
+  readonly sessions: readonly { readonly handle: string; readonly openedAt: number; readonly expiresAt: number }[];
+}
+
+async function revoke(fixture: Fixture, resource: string): Promise<number> {
+  const origin = fixture.loopbackEndpoint.replace(/\/$/u, "");
+  const response = await fetch(`${origin}/api/v1/${resource}`, { method: "DELETE", headers: { Origin: origin } });
+  return response.status;
 }
 
 async function readRemoteStatus(fixture: Fixture): Promise<RemoteAccessStatus> {
@@ -239,6 +336,30 @@ function remoteRequest(
     });
     request.on("error", reject);
     if (body) request.write(body);
+    request.end();
+  });
+}
+
+function remoteRequestBody(
+  fixture: Fixture,
+  method: string,
+  requestPath: string,
+): Promise<{ status: number; headers: import("node:http").IncomingHttpHeaders; body: string }> {
+  return new Promise((resolve, reject) => {
+    const request = https.request({
+      host: BIND_HOST,
+      port: fixture.remotePort,
+      path: requestPath,
+      method,
+      rejectUnauthorized: false,
+      checkServerIdentity: () => undefined,
+      headers: { host: `${BIND_HOST}:${fixture.remotePort}` },
+    }, (response) => {
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer) => chunks.push(chunk));
+      response.on("end", () => resolve({ status: response.statusCode ?? 0, headers: response.headers, body: Buffer.concat(chunks).toString("utf8") }));
+    });
+    request.on("error", reject);
     request.end();
   });
 }

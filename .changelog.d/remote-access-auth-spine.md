@@ -4,8 +4,10 @@ branch: remote-access-auth-spine
 
 ### fleet-console
 #### Added
-- Remote access: serve the console on a chosen network interface over TLS and hand out an access link that carries a single-use credential and the console's certificate fingerprint. Settings shows the live listener, the fingerprint, and what the link grants; turning it off closes the listener and ends every remote session at once.
-  ko: 원격 접속: 선택한 네트워크 인터페이스에 TLS로 Console을 열고, 1회용 자격과 인증서 지문을 함께 담은 액세스 링크를 발급합니다. 설정에서 현재 리스너와 지문, 링크가 여는 권한을 보여주며, 끄면 리스너가 닫히고 모든 원격 세션이 즉시 끝납니다.
+- Remote access: serve the console on a chosen network interface over TLS and hand out access links that each carry a single-use credential and the console's certificate fingerprint. Settings shows the live listener, the fingerprint, every unused link and open session with its own revoke, and an identity rotation that cuts off every paired device at once. Turning remote access off closes the listener and ends every remote session immediately.
+  ko: 원격 접속: 선택한 네트워크 인터페이스에 TLS로 Console을 열고, 각각 1회용 자격과 인증서 지문을 담은 액세스 링크를 발급합니다. 설정에서 현재 리스너와 지문, 사용되지 않은 링크와 열려 있는 세션을 개별 회수와 함께 보여주고, 연결된 모든 기기를 한 번에 끊는 신원 갱신을 제공합니다. 원격 접속을 끄면 리스너가 닫히고 모든 원격 세션이 즉시 끝납니다.
+- Opening an access link in a browser now explains that the link belongs to Fleet Console Desktop and how to paste it there, instead of answering with a bare authorization error.
+  ko: 액세스 링크를 브라우저에서 열면 인증 오류만 돌려주는 대신, 이 링크가 Fleet Console Desktop의 것이며 어디에 붙여넣는지 안내합니다.
 
 #### Changed
 - Console sessions now open through a single-use grant on both the loopback and remote listeners, and each listener judges the request that arrived on it: a grant issued for one never opens a session on the other.
@@ -14,6 +16,8 @@ branch: remote-access-auth-spine
 #### Fixed
 - WebSocket upgrades now pass the same Host check as ordinary requests instead of reaching the upgrade handlers directly.
   ko: WebSocket 업그레이드가 업그레이드 핸들러로 바로 가지 않고, 일반 요청과 같은 Host 검사를 먼저 거칩니다.
+- Segmented controls in Settings no longer stretch across their whole column. The Console port switch filled the row to hold two short buttons.
+  ko: 설정의 분할 컨트롤이 열 전체로 늘어나지 않습니다. Console 포트 전환은 짧은 버튼 두 개를 담으려고 행 전체를 채우고 있었습니다.
 
 ### fleet-desktop
 #### Added

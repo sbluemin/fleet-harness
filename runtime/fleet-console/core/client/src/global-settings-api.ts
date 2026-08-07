@@ -1,6 +1,6 @@
 import { ApiError } from "./api.js";
 import { normalizeUiFont } from "./ui-font.js";
-import type { ConsoleLanguagePreference, GlobalSettingsMutationResult, GlobalSettingsState, RemoteAccessLink, RemoteAccessState, RemoteAccessStatus } from "./types.js";
+import type { ConsoleLanguagePreference, GlobalSettingsMutationResult, GlobalSettingsState, RemoteAccessLink, RemoteAccessLinkSummary, RemoteAccessSessionSummary, RemoteAccessState, RemoteAccessStatus } from "./types.js";
 
 export async function fetchGlobalSettingsState(signal?: AbortSignal): Promise<GlobalSettingsState> {
   const response = await fetch("/api/v1/settings/global", { signal });
@@ -33,7 +33,40 @@ export async function fetchRemoteAccessStatus(signal?: AbortSignal): Promise<Rem
     origin: typeof payload.origin === "string" ? payload.origin : null,
     fingerprint: typeof payload.fingerprint === "string" ? payload.fingerprint : null,
     lastError: typeof payload.lastError === "string" ? payload.lastError : null,
+    links: Array.isArray(payload.links) ? payload.links.filter(isLinkSummary) : [],
+    sessions: Array.isArray(payload.sessions) ? payload.sessions.filter(isSessionSummary) : [],
   };
+}
+
+export async function revokeRemoteAccessLink(id: string, signal?: AbortSignal): Promise<void> {
+  await assertRevoked(await fetch(`/api/v1/access-links/${encodeURIComponent(id)}`, { method: "DELETE", signal }));
+}
+
+export async function revokeRemoteAccessSession(handle: string, signal?: AbortSignal): Promise<void> {
+  await assertRevoked(await fetch(`/api/v1/access-sessions/${encodeURIComponent(handle)}`, { method: "DELETE", signal }));
+}
+
+/**
+ * 이미 사라진 자격의 회수는 실패가 아니다 — 목록이 낡았을 뿐이고, 사용자가 원한 상태는
+ * 이미 참이다. 404를 오류로 띄우면 "안 없어졌다"는 반대 인상을 준다.
+ */
+async function assertRevoked(response: Response): Promise<void> {
+  if (response.status === 404) return;
+  await assertOk(response);
+}
+
+export async function rotateRemoteIdentity(signal?: AbortSignal): Promise<void> {
+  await assertOk(await fetch("/api/v1/remote-identity/rotations", { method: "POST", signal }));
+}
+
+function isLinkSummary(value: unknown): value is RemoteAccessLinkSummary {
+  const entry = value as Partial<RemoteAccessLinkSummary> | null;
+  return Boolean(entry) && typeof entry?.id === "string" && typeof entry.issuedAt === "number" && typeof entry.expiresAt === "number";
+}
+
+function isSessionSummary(value: unknown): value is RemoteAccessSessionSummary {
+  const entry = value as Partial<RemoteAccessSessionSummary> | null;
+  return Boolean(entry) && typeof entry?.handle === "string" && typeof entry.openedAt === "number" && typeof entry.expiresAt === "number" && typeof entry.lastSeenAt === "number";
 }
 
 export async function createRemoteAccessLink(signal?: AbortSignal): Promise<RemoteAccessLink> {

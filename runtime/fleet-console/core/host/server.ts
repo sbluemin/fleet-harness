@@ -245,7 +245,35 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "GET",
     path: "/api/v1/access-links",
-    summary: "Report whether remote access is listening and which identity it presents.",
+    summary: "Report the remote listener, its identity, its unused links, and its open sessions.",
+    category: "Access",
+    gate: "loopback",
+  },
+  {
+    method: "DELETE",
+    path: "/api/v1/access-links/:linkId",
+    summary: "Revoke one unused remote access link.",
+    category: "Access",
+    gate: "origin-write",
+  },
+  {
+    method: "DELETE",
+    path: "/api/v1/access-sessions/:sessionHandle",
+    summary: "End one open remote session.",
+    category: "Access",
+    gate: "origin-write",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/remote-identity/rotations",
+    summary: "Issue a new remote certificate, invalidating every link, pin, and session for the old one.",
+    category: "Access",
+    gate: "origin-write",
+  },
+  {
+    method: "GET",
+    path: "/join",
+    summary: "Explain that an access link opens in Fleet Console Desktop.",
     category: "Access",
     gate: "loopback",
   },
@@ -643,6 +671,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    */
   function isRemoteRequestAdmitted(listener: ListenerIdentity, req: http.IncomingMessage, pathname: string): boolean {
     if (pathname === "/api/v1/join") return true;
+    // 링크는 웹 URL 모양을 하고 있어 사람은 브라우저에 붙여넣는다. 아무 설명 없는 401로
+    // 끝내지 않도록 이 한 경로만 세션 없이 통과시킨다 — 자격도 상태도 읽지 않는 정적 문서다.
+    if (pathname === JOIN_NOTICE_PATH && req.method === "GET") return true;
     if (access.resolveSession(readSessionCookie(req.headers), listener.audience) !== null) return true;
     return false;
   }
@@ -666,6 +697,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       handlePairingIdentity(req, res);
       return;
     }
+    if (pathname === JOIN_NOTICE_PATH) {
+      handleJoinNotice(req, res);
+      return;
+    }
     if (tryServeStaticConsole(req, res, pathname)) return;
     if (pathname === "/api/v1/health") {
       handleHealth(req, res);
@@ -678,6 +713,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (pathname === "/api/v1/access-links") {
       if (req.method === "GET") handleRemoteAccessStatus(res);
       else handleAccessLinkIssue(req, res);
+      return;
+    }
+    if (pathname.startsWith("/api/v1/access-links/")) {
+      handleAccessLinkRevoke(req, res, pathname.slice("/api/v1/access-links/".length));
+      return;
+    }
+    if (pathname.startsWith("/api/v1/access-sessions/")) {
+      handleAccessSessionRevoke(req, res, pathname.slice("/api/v1/access-sessions/".length));
+      return;
+    }
+    if (pathname === "/api/v1/remote-identity/rotations") {
+      runAsyncBooleanHandler(handleRemoteIdentityRotation(req, res), res);
       return;
     }
     if (pathname === "/api/v1/join") {
@@ -828,7 +875,91 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       origin: remote?.origin ?? null,
       fingerprint: remoteFingerprint,
       lastError: remoteLastError,
+      // 발급 사실만 나간다 — 목록을 보는 것으로는 어떤 링크도 다시 쓸 수 없다.
+      links: access.listGrants("remote"),
+      sessions: access.listSessions("remote"),
     });
+  }
+
+  function handleAccessLinkRevoke(req: http.IncomingMessage, res: http.ServerResponse, rawId: string): void {
+    if (req.method !== "DELETE") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (!isLockAuthorized(req) && !isExactConsoleOrigin(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    if (!access.revokeGrant(decodeHandle(rawId))) {
+      writeJson(res, 404, { error: "link_not_found" });
+      return;
+    }
+    res.writeHead(204, withSecurityHeaders({}));
+    res.end();
+  }
+
+  function handleAccessSessionRevoke(req: http.IncomingMessage, res: http.ServerResponse, rawHandle: string): void {
+    if (req.method !== "DELETE") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (!isLockAuthorized(req) && !isExactConsoleOrigin(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    if (!access.revokeSessionByHandle(decodeHandle(rawHandle))) {
+      writeJson(res, 404, { error: "session_not_found" });
+      return;
+    }
+    res.writeHead(204, withSecurityHeaders({}));
+    res.end();
+  }
+
+  /**
+   * 신원 갱신. 새 인증서를 발급하고 리스너를 그 인증서로 다시 연다. 옛 지문을 실은 링크와
+   * 그 지문으로 고정한 Desktop 핀은 이 순간 전부 무효가 되므로, 미사용 링크와 열린 세션도
+   * 함께 걷어낸다 — 남겨 두면 붙을 수 없는 자격이 목록에 남는다.
+   */
+  async function handleRemoteIdentityRotation(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+    if (!isLockAuthorized(req) && !isExactConsoleOrigin(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return true;
+    }
+    const bindHost = listeners.find((entry) => entry.audience === "remote")?.host;
+    if (!bindHost) {
+      writeJson(res, 409, { error: "remote_access_disabled" });
+      return true;
+    }
+    await remoteIdentityStore.rotate(bindHost);
+    access.revokeGrants("remote");
+    await reconcileRemoteIdentity();
+    if (remoteFingerprint === null) {
+      writeJson(res, 500, { error: remoteLastError ?? "remote_listener_failed" });
+      return true;
+    }
+    writeJson(res, 200, { fingerprint: remoteFingerprint });
+    return true;
+  }
+
+  /** 정적 안내 문서. 스크립트가 없으므로 fragment를 읽지 않고, 읽을 상태도 없다. */
+  function handleJoinNotice(req: http.IncomingMessage, res: http.ServerResponse): void {
+    if (req.method !== "GET") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    const body = Buffer.from(JOIN_NOTICE_DOCUMENT, "utf8");
+    res.writeHead(200, withSecurityHeaders({
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Length": String(body.byteLength),
+      "Cache-Control": "no-store",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      "Referrer-Policy": "no-referrer",
+    }));
+    res.end(body);
   }
 
   /**
@@ -1474,23 +1605,39 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 두 저장이 겹치면 같은 포트에 두 번 바인드하려 든다.
    */
   function reconcileRemoteAccess(): Promise<void> {
-    remoteReconcile = remoteReconcile.then(async () => {
-      if (consoleResourcesDisposed || boundPort === null) return;
+    return queueRemoteReconcile(() => {
       const configured = consoleSettingsStore.load().general?.remoteAccess;
       const desiredHost = configured?.enabled === true ? configured.bindHost : undefined;
       const active = listeners.find((entry) => entry.audience === "remote");
-      if ((active?.host ?? undefined) === desiredHost) return;
-      await stopRemoteAccess();
-      remoteLastError = null;
-      try {
-        await startRemoteAccessIfEnabled(boundPort);
-      } catch (error) {
-        // 바인드 실패는 콘솔을 죽이지 않는다 — 주소가 사라진 인터페이스일 수 있다.
-        remoteLastError = remoteAccessErrorCode(error);
-        await stopRemoteAccess();
-      }
+      // 바인드 주소가 그대로면 리스너를 흔들 이유가 없다.
+      return (active?.host ?? undefined) === desiredHost ? null : restartRemoteAccess;
+    });
+  }
+
+  /** 인증서가 바뀌었을 때. 주소는 같으므로 위 판정으로는 재기동되지 않는다. */
+  function reconcileRemoteIdentity(): Promise<void> {
+    return queueRemoteReconcile(() => restartRemoteAccess);
+  }
+
+  function queueRemoteReconcile(plan: () => (() => Promise<void>) | null): Promise<void> {
+    remoteReconcile = remoteReconcile.then(async () => {
+      if (consoleResourcesDisposed || boundPort === null) return;
+      const action = plan();
+      if (action) await action();
     }).catch(() => undefined);
     return remoteReconcile;
+  }
+
+  async function restartRemoteAccess(): Promise<void> {
+    await stopRemoteAccess();
+    remoteLastError = null;
+    try {
+      await startRemoteAccessIfEnabled(boundPort!);
+    } catch (error) {
+      // 바인드 실패는 콘솔을 죽이지 않는다 — 주소가 사라진 인터페이스일 수 있다.
+      remoteLastError = remoteAccessErrorCode(error);
+      await stopRemoteAccess();
+    }
   }
 
   async function stopRemoteAccess(): Promise<void> {
@@ -1498,8 +1645,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     remoteServer = null;
     remoteFingerprint = null;
     listeners = listeners.filter((entry) => entry.audience !== "remote");
-    // 리스너만 닫고 세션을 남기면, 다시 켰을 때 예전 자격이 되살아난다.
+    // 리스너만 닫고 자격을 남기면, 다시 켰을 때 예전 자격이 되살아난다. 미사용 링크도
+    // 옛 주소와 옛 지문을 실어 나르므로 함께 버린다.
     access.revokeSessions("remote");
+    access.revokeGrants("remote");
     if (closing) await new Promise<void>((resolve) => closing.close(() => resolve()));
   }
 
@@ -1572,6 +1721,50 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     });
   }
   return returnedServer;
+}
+
+export const JOIN_NOTICE_PATH = "/join";
+
+/**
+ * 액세스 링크를 브라우저에서 연 사람에게 보여주는 정적 안내. 자격(fragment)은 요청에 실리지
+ * 않고 이 문서에는 그것을 읽을 스크립트도 없다 — 설명만 하고 아무것도 하지 않는 것이 요점이다.
+ */
+const JOIN_NOTICE_DOCUMENT = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fleet Console access link</title>
+<style>
+:root { color-scheme: dark; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px;
+  background: #0b1116; color: #e6edf3;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+main { max-width: 30rem; }
+h1 { margin: 0 0 12px; font-size: 20px; font-weight: 650; }
+p { margin: 0 0 12px; color: #aebbc5; font-size: 14px; line-height: 1.55; }
+strong { color: #e6edf3; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+<h1>Open this link in Fleet Console Desktop</h1>
+<p>This is a Fleet Console access link. It carries a one-time credential and the console&#39;s certificate fingerprint, and <strong>only Fleet Console Desktop can use it</strong> &mdash; a browser cannot check the fingerprint, so remote access is not open to browsers.</p>
+<p>Copy the whole link, then in Fleet Console Desktop choose <strong>Connect to Runtime</strong> and paste it into the <strong>Access link</strong> tab.</p>
+<p>The link stays unused until then, and it expires on its own.</p>
+</main>
+</body>
+</html>
+`;
+
+/** 경로에서 온 이름은 그대로 비교하지 않는다 — 디코드 실패는 존재하지 않는 이름으로 본다. */
+function decodeHandle(raw: string): string {
+  if (raw.includes("/")) return "";
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return "";
+  }
 }
 
 /** 원격 바인드 실패 사유를 안전한 코드로만 표면화한다 — 주소·경로는 밖으로 내보내지 않는다. */

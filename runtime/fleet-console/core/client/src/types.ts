@@ -128,12 +128,28 @@ export interface RemoteAccessState {
   readonly bindHost: string | null;
 }
 
+/** 발급 사실만 담은 공개 표현. 링크 문자열은 발급 응답에만 실리고 다시 조회되지 않는다. */
+export interface RemoteAccessLinkSummary {
+  readonly id: string;
+  readonly issuedAt: number;
+  readonly expiresAt: number;
+}
+
+export interface RemoteAccessSessionSummary {
+  readonly handle: string;
+  readonly openedAt: number;
+  readonly expiresAt: number;
+  readonly lastSeenAt: number;
+}
+
 /** 지금 열려 있는 리스너의 사실. 설정값과 달리 바인드 실패를 그대로 드러낸다. */
 export interface RemoteAccessStatus {
   readonly listening: boolean;
   readonly origin: string | null;
   readonly fingerprint: string | null;
   readonly lastError: string | null;
+  readonly links: readonly RemoteAccessLinkSummary[];
+  readonly sessions: readonly RemoteAccessSessionSummary[];
 }
 
 export interface RemoteAccessLink {
