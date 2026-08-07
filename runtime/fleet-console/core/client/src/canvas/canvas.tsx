@@ -1064,7 +1064,10 @@ export function OperationsCanvas({
           viewportBounds={viewportBoundsFor(canvasRef.current)}
           placement="cursor"
           catalog={catalog}
-          canLaunch={canLaunch && !formationView}
+          // 실행 가부는 모드가 아니라 Theater가 정한다 — 사이드바와 좌하단 런처는 어느 모드에서도
+          // 같은 catalog를 그대로 실행하므로, 여기만 Formation을 이유로 막으면 같은 메뉴가
+          // 진입 경로에 따라 죽는다. Formation이 막는 것은 캔버스 제스처(팬·줌·드래그 생성)뿐이다.
+          canLaunch={canLaunch}
           renderKindIcon={renderKindIcon}
           onLaunchKind={handleContextMenuLaunchKind}
           onClose={() => setContextMenu(null)}
