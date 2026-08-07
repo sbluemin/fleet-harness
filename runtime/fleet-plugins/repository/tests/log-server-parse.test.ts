@@ -61,9 +61,10 @@ describe("parseLogOutput", () => {
     expect(parseLogOutput(`${head}        \n`)[0]?.hasBody).toBe(false);
   });
 
-  // 절단을 잃으면 커밋 하나가 페이지 전체의 stdout 버퍼를 소진해 hasMore가 false로 접히고,
-  // 그보다 오래된 이력이 페이지네이션에서 사라진다. 포맷 문자열이 그 상한을 지고 있다.
-  it("본문 자리표시자를 절단해 페이지 한 건의 크기 상한을 유지한다", () => {
+  // 절단은 안전장치가 아니라 페이로드 절감이다 — 폭 단위가 표시 칸이라 폭 0인 문자에는 걸리지 않는다.
+  // 그래도 평범한 저장소에서 페이지가 본문 길이에 비례해 부푸는 것을 막으므로 포맷에 남긴다.
+  // 잘렸을 때의 안전은 위의 hasMore 계약이 진다.
+  it("목록 포맷이 본문을 절단해 실어 페이지 페이로드가 본문 길이에 비례하지 않게 한다", () => {
     expect(logSource).toContain("%x00%<(8,trunc)%b");
     expect(logSource).not.toMatch(/%x00%b(?!\w)/);
   });
@@ -165,6 +166,36 @@ describe("handleRepositoryLog", () => {
 
   afterEach(async () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  // 페이지 크기는 포맷으로 묶을 수 없다 — %s·%D·%b는 사용자가 쓰는 텍스트라 바이트 상한이 없다.
+  // 그래서 stdout이 잘렸을 때 레코드 수로 "더 없음"을 판정하면 남은 이력이 조용히 사라진다.
+  // 아래는 제목 하나만으로 버퍼를 넘겨 그 경로를 재현한다(본문 없이도 도달한다는 뜻이기도 하다).
+  it("keeps pagination open when the log buffer truncates mid-page", async () => {
+    const repoDir = path.join(tmpDir, "repo");
+    await fs.mkdir(repoDir);
+    await initGitRepo(repoDir);
+    // 메시지는 파일로 넘긴다 — 이 크기를 인자로 주면 git 실행 전에 OS의 argv 상한에서 먼저 죽는다.
+    const messagePath = path.join(tmpDir, "message.txt");
+    for (let index = 0; index < 3; index += 1) {
+      await fs.writeFile(messagePath, `${"S".repeat(3 * 1024 * 1024)} ${index}\n`);
+      await fs.writeFile(path.join(repoDir, "entry.txt"), `history ${index}`);
+      await runGit(["add", "entry.txt"], { cwd: repoDir });
+      await runGit(["commit", "-F", messagePath], { cwd: repoDir });
+    }
+
+    const writes: { status: number; payload: unknown }[] = [];
+    await handleRepositoryLog({ method: "POST" } as never, {} as never, makeLogContext(repoDir, writes, { theaterId: "theater", limit: 200 }));
+
+    const payload = writes[0]?.payload as { readonly commits: readonly unknown[]; readonly hasMore: boolean; readonly truncated?: boolean };
+    expect(writes[0]?.status).toBe(200);
+    // 버퍼가 실제로 잘렸고, 요청한 200개보다 적게 파싱됐다.
+    expect(payload.truncated).toBe(true);
+    expect(payload.commits.length).toBeLessThan(200);
+    // 그럼에도 남은 이력에 도달할 길이 열려 있어야 한다.
+    expect(payload.hasMore).toBe(true);
+    // 다음 페이지의 skip이 전진할 수 있도록 최소 한 건은 돌려준다.
+    expect(payload.commits.length).toBeGreaterThan(0);
   });
 
   it("accepts canonical local refs with underscore and non-ASCII names", async () => {
