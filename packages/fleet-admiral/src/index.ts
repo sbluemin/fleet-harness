@@ -31,7 +31,7 @@ export {
   type PtyInputChunk,
 } from "./agent-cli/types.js";
 export { clampGoalCheckLimit } from "./agent-cli/goal.js";
-export { assertLaunchPromptShimSafe, LaunchPromptUnsafeError, sanitizeLaunchPrompt } from "./agent-cli/prompt.js";
+export { assertLaunchPromptShimSafe, LaunchPromptError, sanitizeLaunchPrompt, type LaunchPromptErrorCode } from "./agent-cli/prompt.js";
 
 export {
   KIMI_AUTH_PROVIDER_ID,

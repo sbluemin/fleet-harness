@@ -9,6 +9,12 @@ import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet
 
 import { readQuickLaunchSelection, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
 import { findVariantLaunchKind, QUICK_LAUNCH_PROMPT_MAX_CHARS, resolveSelection } from "../core/client/src/quick-launch.js";
+import { getState, removeTheater, setState } from "../core/client/src/store.js";
+import type { TheaterInfo } from "../core/client/src/types.js";
+
+function makeTheater(id: string): TheaterInfo {
+  return { id, label: id, createdAt: "2026-01-01T00:00:00.000Z", lastOpenedAt: "2026-01-01T00:00:00.000Z", hasWiki: false, activeAdmiralCount: 0 };
+}
 
 const GROUPS: readonly OperationLaunchVariantGroup[] = [
   {
@@ -143,5 +149,43 @@ describe("prompt limit", () => {
     const declared = source.match(/MAX_LAUNCH_PROMPT_CHARS = (\d+)/)?.[1];
     expect(declared).toBeDefined();
     expect(QUICK_LAUNCH_PROMPT_MAX_CHARS).toBe(Number(declared));
+  });
+});
+
+describe("pending request lifecycle", () => {
+  it("drops a pending Quick Launch when its Theater is removed", () => {
+    // 소비 조건이 request.theaterId === activeTheaterId이므로, Theater가 사라지면 조건이 영영
+    // 성립하지 않는다. 함께 버리지 않으면 프롬프트가 실행되지도 지워지지도 않은 채 남는다.
+    setState({
+      theaters: [makeTheater("t1"), makeTheater("t2")],
+      activeTheaterId: "t1",
+      pendingQuickLaunch: {
+        theaterId: "t1",
+        pluginId: "terminal",
+        kind: { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
+        variant: { prompt: "do the thing" },
+      },
+    });
+
+    removeTheater("t1");
+
+    expect(getState().pendingQuickLaunch).toBeNull();
+  });
+
+  it("keeps a pending Quick Launch aimed at a surviving Theater", () => {
+    setState({
+      theaters: [makeTheater("t1"), makeTheater("t2")],
+      activeTheaterId: "t1",
+      pendingQuickLaunch: {
+        theaterId: "t2",
+        pluginId: "terminal",
+        kind: { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
+        variant: { prompt: "do the thing" },
+      },
+    });
+
+    removeTheater("t1");
+
+    expect(getState().pendingQuickLaunch).toMatchObject({ theaterId: "t2" });
   });
 });

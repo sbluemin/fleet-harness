@@ -51,6 +51,7 @@ function makeConsoleSnap(patch: Partial<ConsoleState> = {}): ConsoleState {
     operationSearchOpen: false,
     operationSearchSeed: null,
     quickLaunchOpen: false,
+    quickLaunchDraft: null,
     pendingQuickLaunch: null,
     whatsNewOpen: false,
     releaseNotes: [],

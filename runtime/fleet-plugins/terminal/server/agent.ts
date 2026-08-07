@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 
-import { buildGatewayModelsToolSpec, clampGoalCheckLimit, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, getAgentCliIds, getAgentCliMetadata, MAX_GOAL_CONDITION_CHARS, LaunchPromptUnsafeError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, NATIVE_CLAUDE_MODEL_ALIASES, parseAgentCliId, sanitizeLaunchPrompt, sanitizePtyMessageText, type AgentCliId } from "@dotobokuri/fleet-admiral";
+import { buildGatewayModelsToolSpec, clampGoalCheckLimit, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, getAgentCliIds, getAgentCliMetadata, MAX_GOAL_CONDITION_CHARS, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, NATIVE_CLAUDE_MODEL_ALIASES, parseAgentCliId, sanitizeLaunchPrompt, sanitizePtyMessageText, type AgentCliId } from "@dotobokuri/fleet-admiral";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -467,11 +467,11 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         ctx.host.http.writeJson(res, error.code === "gateway_model_not_enabled" ? 409 : 400, { error: error.code });
         return;
       }
-      // Windows shim은 cmd.exe를 거치므로 전개 위험 문자를 담은 프롬프트는 spawn 전에 거부된다.
-      // 요청이 잘못된 것이지 터미널이 죽은 게 아니라 503이 아니라 400으로 갈라 응답한다.
-      if (error instanceof LaunchPromptUnsafeError) {
+      // 프롬프트를 이 실행 경로로 안전하게 전달할 수 없을 때 spawn 전에 거부된다(cmd.exe shim 재해석,
+      // FLEET_TERMINAL_CMD 대체 실행). 요청이 잘못된 것이지 터미널이 죽은 게 아니므로 503이 아니라 400이다.
+      if (error instanceof LaunchPromptError) {
         removeSession(sessionId);
-        ctx.host.http.writeJson(res, 400, { error: "prompt_unsafe_for_shim" });
+        ctx.host.http.writeJson(res, 400, { error: error.code });
         return;
       }
       pendingRuntimeSessions.delete(sessionId);

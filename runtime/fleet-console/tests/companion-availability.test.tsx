@@ -204,6 +204,7 @@ function consoleState(activeOperationId: string): ConsoleState {
     operationSearchOpen: false,
     operationSearchSeed: null,
     quickLaunchOpen: false,
+    quickLaunchDraft: null,
     pendingQuickLaunch: null,
     whatsNewOpen: false,
     releaseNotes: [],

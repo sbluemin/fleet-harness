@@ -10,7 +10,7 @@ import { usePluginRegistry } from "../plugin-registry.js";
 import { readQuickLaunchSelection, writeQuickLaunchSelection } from "../quick-launch-preferences.js";
 import { findVariantLaunchKind, QUICK_LAUNCH_PROMPT_MAX_CHARS, resolveSelection } from "../quick-launch.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
-import { closeQuickLaunch, requestQuickLaunch, setActiveTheater } from "../store.js";
+import { closeQuickLaunch, consumeQuickLaunchDraft, requestQuickLaunch, setActiveTheater } from "../store.js";
 
 // 카드 폭은 팔레트(920px)보다 좁다 — 팔레트는 결과 목록을 담고, 여기는 한 문단을 담는다.
 const CARD_WIDTH_FALLBACK = 760;
@@ -70,12 +70,15 @@ export function QuickLaunch() {
     const rememberedTheater = remembered.theaterId !== null && theaters.some((candidate) => candidate.id === remembered.theaterId)
       ? remembered.theaterId
       : null;
-    setPrompt("");
+    // 거절된 실행이 남긴 초안이 있으면 그것으로 되살린다(store가 되열 때 실어 준다).
+    setPrompt(state.quickLaunchDraft ?? "");
+    consumeQuickLaunchDraft();
     setPopover(null);
     setSubmitting(false);
     setTheaterId(rememberedTheater ?? state.activeTheaterId ?? theaters[0]?.id ?? null);
     setModel(remembered.model);
     setEffort(remembered.effort);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, state.activeTheaterId, theaters]);
 
   // 카탈로그가 도착하면 기억해 둔 조합을 실제 목록에 맞춘다.

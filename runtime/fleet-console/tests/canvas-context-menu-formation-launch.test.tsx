@@ -151,6 +151,7 @@ const STATE: ConsoleState = {
   operationSearchOpen: false,
   operationSearchSeed: null,
   quickLaunchOpen: false,
+  quickLaunchDraft: null,
   pendingQuickLaunch: null,
   whatsNewOpen: false,
   releaseNotes: [],

@@ -27,7 +27,7 @@ import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
 import { availableCompanionPanels, resolveCompanionShortcutToggle, usableCompanionShortcuts } from "../companion-shortcut.js";
 import { resolveOperationsArrowShortcutAction } from "../operations-arrow-shortcut.js";
-import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, consumeQuickLaunch, failAddTheater, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
+import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, consumeQuickLaunch, failAddTheater, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { MobileShell } from "../mobile/mobile-shell.js";
 import { OperationBodyPool, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
@@ -357,7 +357,13 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     consumeQuickLaunch();
     const canvasPoint = canvasCenterPoint(bodyRef.current);
     const geometry = resolveLaunchGeometry(request.theaterId, { ...canvasPointToGeometry(canvasPoint), zIndex: claimTopZIndex() });
-    void launchViaPlugin(request.pluginId, request.kind, geometry, request.theaterId, registry.plugins, request.variant);
+    // 실행이 거절되면(모델 비활성·CLI 미가용·프롬프트 전달 불가) 초안을 잃지 않게 컴포저를 되연다.
+    // 컴포저는 결과를 기다리지 않는 구조라, 사용자에게 되돌아오는 경로는 여기뿐이다.
+    void launchViaPlugin(request.pluginId, request.kind, geometry, request.theaterId, registry.plugins, request.variant)
+      .catch(() => {
+        const draft = request.variant.prompt;
+        if (draft) reopenQuickLaunchWithDraft(draft);
+      });
   }, [registry.plugins, state.activeTheaterId, state.pendingQuickLaunch]);
 
   const handleLaunchAtGeometry = useCallback((pluginId: string, kind: OperationLaunchKind, geometry: OperationGeometry) => {

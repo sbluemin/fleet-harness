@@ -53,6 +53,7 @@ function makeState(
     operationSearchOpen: false,
     operationSearchSeed: null,
     quickLaunchOpen: false,
+    quickLaunchDraft: null,
     pendingQuickLaunch: null,
     whatsNewOpen: false,
     releaseNotes: [],

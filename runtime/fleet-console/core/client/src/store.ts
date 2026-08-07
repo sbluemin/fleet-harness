@@ -75,6 +75,7 @@ let state: ConsoleState = {
   operationSearchOpen: false,
   operationSearchSeed: null,
   quickLaunchOpen: false,
+  quickLaunchDraft: null,
   pendingQuickLaunch: null,
   whatsNewOpen: false,
   releaseNotes: [],
@@ -566,6 +567,16 @@ export function openQuickLaunch(): void {
   setState({ quickLaunchOpen: true });
 }
 
+// 실행이 실패했을 때 초안을 잃지 않도록 컴포저를 그 문장과 함께 되연다.
+export function reopenQuickLaunchWithDraft(draft: string): void {
+  setState({ quickLaunchOpen: true, quickLaunchDraft: draft });
+}
+
+export function consumeQuickLaunchDraft(): void {
+  if (state.quickLaunchDraft === null) return;
+  setState({ quickLaunchDraft: null });
+}
+
 export function closeQuickLaunch(): void {
   setState({ quickLaunchOpen: false });
 }
@@ -668,8 +679,12 @@ export function removeTheater(theaterId: string): void {
   const removedOperationIds = new Set(state.operations.filter((operation) => operation.theaterId === theaterId).map((operation) => operation.id));
   const activeOperationId = state.activeOperationId && removedOperationIds.has(state.activeOperationId) ? null : state.activeOperationId;
   const activeOperationAcknowledged = activeOperationId === null ? true : state.activeOperationAcknowledged;
+  // 사라진 Theater를 겨눈 Quick Launch 요청은 여기서 함께 버린다. 소비 조건이
+  // request.theaterId === activeTheaterId라, 그 Theater가 없어지면 조건이 영영 성립하지 않아
+  // 프롬프트가 실행되지도 지워지지도 않은 채 남는다.
+  const pendingQuickLaunch = state.pendingQuickLaunch?.theaterId === theaterId ? null : state.pendingQuickLaunch;
   writeStoredActiveTheaterId(activeTheaterId);
-  setState({ theaters, activeTheaterId, activeOperationId, activeOperationAcknowledged, operationNotifications });
+  setState({ theaters, activeTheaterId, activeOperationId, activeOperationAcknowledged, operationNotifications, pendingQuickLaunch });
 }
 
 export function dismissNotificationsForOperation(operationId: string): void {
