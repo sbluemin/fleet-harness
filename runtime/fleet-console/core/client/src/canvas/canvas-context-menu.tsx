@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 
 import { FEATURE_TOUR_BOUNDARY_ATTRIBUTE, FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
@@ -24,16 +24,30 @@ interface CanvasContextMenuProps {
   readonly fixed?: boolean;
 }
 
-const MENU_WIDTH = 340;
+// 폭은 세 곳이 함께 알아야 한다 — 이 상수(측정 전 clamp 폴백), .canvas-context-menu의 width,
+// .operation-launch-control--canvas .operation-launch-menu의 min-width. 하나만 고치면 컴파일은
+// 되고 치수만 조용히 어긋난다.
+const MENU_WIDTH = 288;
 const MENU_MAX_HEIGHT = 520;
 const MENU_MIN_HEIGHT = 120;
 const MENU_MARGIN = 12;
+// 설명 어사이드는 메뉴 옆에 뜬다. 오른쪽에 자리가 없으면 왼쪽으로 뒤집는다.
+const ASIDE_WIDTH = 208;
+const ASIDE_GAP = 8;
 
 export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", fixed = false, catalog, canLaunch, renderKindIcon, onLaunchKind, onClose, theaterLabel }: CanvasContextMenuProps) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [menuSize, setMenuSize] = useState<{ readonly width: number; readonly height: number } | null>(null);
+  // 설명을 펼칠 항목. 포인터와 키보드는 각자 기억한다 — 하나로 합치면 포인터가 메뉴를 벗어날 때
+  // 포커스가 짚고 있던 항목의 설명까지 함께 지워져, 여전히 강조된 행에 설명만 사라진다.
+  // 가리키는 동안에는 포인터가 이기고, 포인터가 나가면 포커스가 다시 드러난다.
+  // 키는 플러그인까지 포함해야 한다: 실행 종류 id는 플러그인 안에서만 고유하므로, 두 플러그인이
+  // 같은 id를 쓰면 한쪽 항목에 다른 쪽 설명이 붙는다.
+  const [hoverKey, setHoverKey] = useState<string | null>(null);
+  const [focusKey, setFocusKey] = useState<string | null>(null);
+  const activeKey = hoverKey ?? focusKey;
 
   // 배치 판정은 CSS의 max-height 상한이 아니라 실제 렌더 높이로 해야 한다 —
   // 상한(520px)으로 clamp하면 짧은 메뉴가 커서에서 수백 px 떨어진 곳에 열린다.
@@ -77,8 +91,70 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
 
   useEffect(() => {
     // 첫 항목을 강제 포커스하지 않고 컨테이너만 포커스해 '이미 선택된 듯한' UX를 피한다.
+    // 방향키를 처음 누른 순간에만 항목으로 들어간다.
     menuRef.current?.focus();
   }, []);
+
+  // 플러그인이 하나뿐이면 그 이름은 헤더 줄에 붙는다 — 항목 네 개짜리 메뉴에서 이름만 있는
+  // 행 하나가 통째로 서는 것은 값을 못 한다. 둘 이상일 때만 그룹 라벨을 세운다.
+  const singlePlugin = catalog.length === 1 ? catalog[0]! : null;
+  const headTitle = theaterLabel ? t("canvas.menu.theaterTitle", { theater: theaterLabel }) : t("canvas.menu.title");
+  // 시각 머리글과 메뉴 이름이 같은 문자열이어야 한다 — 좁은 폭에서 머리글이 줄임표로 잘려도
+  // 어느 Theater로 실행되는지는 접근 이름에 온전히 남는다.
+  const headLabel = singlePlugin ? `${headTitle} · ${singlePlugin.title}` : headTitle;
+
+  const moveFocus = useCallback((from: HTMLElement | null, delta: number, edge: "first" | "last" | null) => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    const items = Array.from(menu.querySelectorAll<HTMLButtonElement>(".canvas-context-menu-item")).filter((item) => !item.disabled);
+    if (items.length === 0) return;
+    if (edge) {
+      items[edge === "first" ? 0 : items.length - 1]!.focus();
+      return;
+    }
+    const index = from ? items.indexOf(from as HTMLButtonElement) : -1;
+    const next = index < 0 ? (delta > 0 ? 0 : items.length - 1) : (index + delta + items.length) % items.length;
+    items[next]!.focus();
+  }, []);
+
+  const handleMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    const onItem = target.classList.contains("canvas-context-menu-item");
+    switch (event.key) {
+      case "ArrowDown":
+        event.preventDefault();
+        moveFocus(onItem ? target : null, 1, null);
+        return;
+      case "ArrowUp":
+        event.preventDefault();
+        moveFocus(onItem ? target : null, -1, null);
+        return;
+      case "Home":
+        event.preventDefault();
+        moveFocus(null, 0, "first");
+        return;
+      case "End":
+        event.preventDefault();
+        moveFocus(null, 0, "last");
+        return;
+      default:
+    }
+  };
+
+  const activeDescription = useMemo(() => {
+    if (!activeKey) return null;
+    for (const plugin of catalog) {
+      for (const kind of plugin.kinds) {
+        if (itemKey(plugin.id, kind.id) !== activeKey) continue;
+        if (kind.disabledReason) return null;
+        const annotation = resolveLaunchKindAnnotation(kind.id);
+        return annotation ? t(annotation.descriptionKey) : null;
+      }
+    }
+    return null;
+  }, [activeKey, catalog, t]);
+
+  const asideSide = activeDescription ? asidePlacement(anchor, viewportBounds, menuSize) : null;
 
   return (
     <div
@@ -89,23 +165,41 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     >
       <div
         className="operation-launch-menu theater-menu canvas-context-menu"
-        role="dialog"
-        aria-label={t("canvas.menu.aria")}
+        role="menu"
+        // 머리글은 시각 표면이고, 그 정보는 메뉴 이름이 대신 싣는다 — role="menu" 아래에 일반
+        // 콘텐츠를 두면 화면 낭독기의 메뉴 탐색이 첫 항목으로 곧장 들어가지 못한다.
+        aria-label={headLabel}
+        aria-orientation="vertical"
         tabIndex={-1}
         ref={menuRef}
+        onKeyDown={handleMenuKeyDown}
+        onMouseLeave={() => setHoverKey(null)}
+        // 항목이 전부 tabIndex=-1이라 Tab은 메뉴를 건너뛴다. 그때 메뉴만 열린 채 남으면 사용자는
+        // 다른 컨트롤에 포커스를 둔 채 떠 있는 실행 메뉴를 보게 된다 — 포커스가 떠나면 닫는다.
+        onBlur={(event) => {
+          const next = event.relatedTarget as Node | null;
+          if (next && event.currentTarget.contains(next)) return;
+          if (next === null) return; // 창 자체가 포커스를 잃은 경우는 닫지 않는다
+          // 기능 투어는 이 메뉴의 항목에 앵커를 걸고 여러 단계를 걷는다. 그 카드의 버튼으로
+          // 포커스가 가는 것은 메뉴를 떠나는 것이 아니다 — 여기서 닫으면 다음 단계가 짚을
+          // 항목이 사라져 설명하던 대상을 잃은 투어만 남는다(포인터 경로도 같은 이유로 면제한다).
+          if (document.querySelector(FEATURE_TOUR_LAYER_SELECTOR)?.contains(next)) return;
+          setHoverKey(null);
+          setFocusKey(null);
+          onClose();
+        }}
         {...{ [FEATURE_TOUR_BOUNDARY_ATTRIBUTE]: "" }}
       >
-        <div className="canvas-context-menu-head">
-          <span className="canvas-context-menu-reticle" aria-hidden="true"><CommandReticleIcon /></span>
+        <div className="canvas-context-menu-head" aria-hidden="true">
           <span className="canvas-context-menu-head-text">
-            <strong>{theaterLabel ? t("canvas.menu.theaterTitle", { theater: theaterLabel }) : t("canvas.menu.title")}</strong>
+            <strong>{headLabel}</strong>
           </span>
+          <p className="canvas-context-menu-section">{t("canvas.menu.launch")}</p>
         </div>
-        <p className="canvas-context-menu-section">{t("canvas.menu.launch")}</p>
         {catalog.length > 0 ? catalog.map((plugin, index) => (
-          <div key={plugin.id}>
+          <div key={plugin.id} role="group" aria-label={plugin.title}>
             {index > 0 ? <div className="theater-menu-divider" role="separator" /> : null}
-            <p className="canvas-context-menu-plugin">{plugin.title}</p>
+            {singlePlugin ? null : <p className="canvas-context-menu-plugin">{plugin.title}</p>}
             {plugin.kinds.map((kind) => {
               const disabled = kind.disabled === true || !canLaunch;
               const annotation = resolveLaunchKindAnnotation(kind.id);
@@ -120,6 +214,9 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                   data-operation-launch-kind={kind.id}
                   disabled={disabled}
                   title={kind.disabledReason}
+                  tabIndex={-1}
+                  onMouseEnter={() => setHoverKey(itemKey(plugin.id, kind.id))}
+                  onFocus={() => setFocusKey(itemKey(plugin.id, kind.id))}
                   onClick={() => onLaunchKind(plugin.id, kind)}
                 >
                   <span className="theater-menu-check" aria-hidden="true">{renderKindIcon(plugin.id, kind) ?? <FallbackGlyph />}</span>
@@ -127,19 +224,40 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                   {/* 비활성 사유가 있으면 그것이 먼저다 — 지금 실행할 수 없다는 사실이 종류 설명보다 급하다. */}
                   {kind.disabledReason
                     ? <span className="operation-launch-menu-reason">{kind.disabledReason}</span>
-                    : annotation ? <span className="operation-launch-menu-description">{t(annotation.descriptionKey)}</span> : null}
+                    : annotation
+                      ? (
+                        <>
+                          <span className="operation-launch-menu-brief">{t(annotation.briefKey)}</span>
+                          {/* 설명 문장은 버튼 안에 남아 접근 이름에 실린다 — 시각적으로만 접고,
+                              같은 문자열을 옆 어사이드가 비춘다. 화면 낭독기는 어사이드 표시 여부와
+                              무관하게 늘 세 종류의 차이를 읽는다. */}
+                          <span className="operation-launch-menu-description operation-launch-menu-description--quiet">{t(annotation.descriptionKey)}</span>
+                        </>
+                      )
+                      : null}
                 </button>
               );
             })}
           </div>
         )) : <p className="theater-menu-empty">{t("canvas.menu.empty")}</p>}
       </div>
+      {activeDescription && asideSide
+        ? (
+          <p
+            className={`canvas-context-menu-aside${asideSide === "left" ? " canvas-context-menu-aside--flip" : ""}`}
+            aria-hidden="true"
+          >
+            {activeDescription}
+          </p>
+        )
+        : null}
     </div>
   );
 }
 
-// 좌하단 런처 FAB와 메뉴 헤더가 공유하는 '커맨드 레티클' 마크 — 외곽 스코프 링 + 사방 조준 틱 +
-// 중앙의 '+'(생성 의미 보존). 단순 plus를 Canvas controls 진입점으로 제공한다.
+// 좌하단 런처 FAB와 메뉴 헤더가 공유하던 '커맨드 레티클' 마크 — 외곽 스코프 링 + 사방 조준 틱 +
+// 중앙의 '+'(생성 의미 보존). 메뉴 헤더가 한 줄로 내려앉으면서 메뉴에서는 쓰지 않지만,
+// Canvas controls 진입점의 마크로 계속 export한다.
 export function CommandReticleIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -148,6 +266,23 @@ export function CommandReticleIcon() {
       <path d="M12 9.2v5.6M9.2 12h5.6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
     </svg>
   );
+}
+
+// 어사이드는 기본으로 메뉴 오른쪽에 선다. 오른쪽에 자리가 없으면 왼쪽으로 뒤집고, 양쪽 모두
+// 좁으면(캔버스가 대략 516px 아래) 아예 펴지 않는다 — 뒤집기만 하고 왼쪽 여백을 안 보면 설명이
+// 화면 왼쪽으로 밀려 앞부분이 잘린 채 남는다. 펴지 못해도 한 단어 대비는 행에 그대로 있고
+// 설명 문장은 버튼의 접근 이름에 남으므로, 안 보이는 것보다 안 띄우는 쪽이 정직하다.
+function asidePlacement(
+  anchor: { readonly x: number; readonly y: number },
+  bounds: { readonly width: number; readonly height: number } | undefined,
+  size: { readonly width: number; readonly height: number } | null,
+): "right" | "left" | null {
+  if (!bounds) return "right";
+  const width = size?.width ?? MENU_WIDTH;
+  const left = Math.max(MENU_MARGIN, Math.min(anchor.x, bounds.width - width - MENU_MARGIN));
+  if (left + width + ASIDE_GAP + ASIDE_WIDTH <= bounds.width - MENU_MARGIN) return "right";
+  if (left - ASIDE_GAP - ASIDE_WIDTH >= MENU_MARGIN) return "left";
+  return null;
 }
 
 function clampedAnchorStyle(
@@ -177,6 +312,12 @@ function clampedAnchorStyle(
   const preferred = anchor.y + height + MENU_MARGIN <= bounds.height ? anchor.y : anchor.y - height;
   const top = Math.max(MENU_MARGIN, Math.min(preferred, bounds.height - height - MENU_MARGIN));
   return { ...base, left, top } as CSSProperties;
+}
+
+// 실행 종류 id는 플러그인 안에서만 고유하다. 활성 항목을 이 키로 잡아야 두 플러그인이 같은
+// id를 가질 때 한쪽 항목에 다른 쪽 설명이 붙지 않는다.
+function itemKey(pluginId: string, kindId: string): string {
+  return `${pluginId}:${kindId}`;
 }
 
 // 플러그인이 아이콘을 등록하지 않았을 때의 일반 폴백 마크 — 특정 플러그인 지식이 아니다.

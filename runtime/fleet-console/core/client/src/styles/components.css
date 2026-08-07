@@ -1620,6 +1620,11 @@
 .operation-launch-control--canvas {
   position: absolute;
   z-index: 30;
+  /* 캔버스 메뉴 폭의 단일 소유자. 메뉴 박스와 설명 어사이드의 기준점이 여기 하나로 모인다 —
+     컨테이너에 폭이 없으면 어사이드의 100%가 메뉴 오른쪽이 아니라 왼쪽 모서리를 가리켜
+     설명이 메뉴 위를 덮는다. 컴포넌트의 MENU_WIDTH(측정 전 clamp 폴백)만 이 값을 따로 안다. */
+  --canvas-menu-width: 288px;
+  width: var(--canvas-menu-width);
 }
 
 /* War Room의 메뉴는 이 모드의 층 위에 서야 한다 — 덱(80)과 레일(90)이 같은 스태킹 문맥에서 위에
@@ -1680,8 +1685,9 @@
 
 .operation-launch-control--canvas .operation-launch-menu {
   top: 0;
-  /* 'Canvas controls' 헤더가 한 줄에 들어가고, 실행 종류의 한 줄 설명이 두 줄 안에 끝나도록 넓힌다. */
-  min-width: 340px;
+  /* 설명 문장이 항목 안에서 접히면서 폭을 넓힐 이유가 사라졌다. 라벨과 한 단어짜리 대비만
+     한 줄에 들어가면 된다. */
+  min-width: var(--canvas-menu-width);
 }
 
 /* 런처로 연 경우 메뉴를 컨테이너 바닥에 정렬해 위로 펼친다(아래 FAB/Dock과 겹치지 않게). */
@@ -2903,50 +2909,42 @@
   background: color-mix(in oklch, var(--aurora) 9%, color-mix(in oklch, var(--ink-deep) 28%, transparent));
 }
 
-/* Canvas controls 헤더 — 마크 + 타이틀. */
+/* Canvas controls 헤더 — 실행 대상과 Launch 라벨이 한 줄을 나눠 쓴다. 이 메뉴는 설명서가 아니라
+   런처이므로 첫 액션 앞에 세울 수 있는 크롬은 이 한 줄이 전부다. 실행 대상 이름은 남는다 —
+   어느 Theater로 실행되는지 알려주는 표면이 여기 말고는 없다. */
 .canvas-context-menu-head {
   display: flex;
-  align-items: center;
+  align-items: baseline;
+  justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-2) var(--space-3);
-  margin-bottom: var(--space-1);
-  border-bottom: 1px solid var(--surface-rim);
-}
-
-.canvas-context-menu-reticle {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 30px;
-  height: 30px;
-  color: var(--brass-ink);
-}
-
-.canvas-context-menu-reticle svg {
-  width: 30px;
-  height: 30px;
+  padding: var(--space-1) var(--space-2);
+  line-height: 16px;
 }
 
 .canvas-context-menu-head-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
   min-width: 0;
+  overflow: hidden;
 }
 
+/* 긴 Theater 이름은 줄임표로 끝난다 — 줄임표가 없으면 글자가 중간에서 그냥 끊겨 이름이
+   잘렸다는 사실 자체가 보이지 않는다. 온전한 이름은 메뉴의 접근 이름이 계속 들고 있다. */
 .canvas-context-menu-head-text strong {
+  display: block;
   font-family: var(--font-body);
   font-weight: var(--weight-medium);
-  font-size: 15px;
-  letter-spacing: -0.01em;
-  color: var(--text-primary);
+  font-size: 11px;
+  letter-spacing: -0.005em;
+  color: var(--text-secondary);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* Launch 섹션 라벨. */
+/* Launch 섹션 라벨 — 헤더 줄 오른쪽 끝에 선다. */
 .canvas-context-menu-section {
-  margin: var(--space-2) 0 0;
-  padding: var(--space-1) var(--space-2);
+  margin: 0;
+  padding: 0;
+  flex: none;
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: var(--weight-medium);
@@ -2956,12 +2954,60 @@
 }
 
 .canvas-context-menu {
-  width: 288px;
+  width: var(--canvas-menu-width);
   /* 상한은 뷰포트 높이에서 산출된 geometry 변수가 소유한다 — 짧은 화면에서도 메뉴가 잘리지 않는다. */
   max-height: var(--canvas-menu-max-height, 520px);
   overflow-y: auto;
 }
 
+/* 바깥 패딩은 캔버스 메뉴에서만 좁힌다 — 공유 .theater-menu를 고치면 사이드바 Theater 메뉴까지
+   함께 얇아진다. 두 클래스를 함께 짚어야 하는 이유: .theater-menu의 padding 선언이 이 파일
+   뒤쪽에 있어 한 클래스짜리 선택자로는 특이도가 같아 지고, 값은 조용히 8px로 남는다. */
+.operation-launch-menu.canvas-context-menu {
+  padding: var(--space-1);
+}
+
+/* 설명 어사이드 — 짚은 항목의 설명 문장을 메뉴 옆에 편다. 메뉴의 overflow 바깥 형제라
+   스크롤 박스에 잘리지 않는다. */
+.canvas-context-menu-aside {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 0;
+  width: 208px;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  /* 팝업 판독성 계약: .theater-menu와 같은 불투명 --ink-deep 언더레이 위에 선다. */
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar)),
+      color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar))
+    ),
+    var(--ink-deep);
+  box-shadow: var(--shadow-floating);
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+/* 오른쪽 끝에서 열리면 왼쪽으로 뒤집는다 — 뒤집지 않으면 설명이 화면 밖으로 잘려 사라진다. */
+.canvas-context-menu-aside--flip {
+  left: auto;
+  right: calc(100% + 8px);
+}
+
+/* 항목은 tabIndex=-1이라 방향키로만 포커스가 옮겨온다. 프로그래매틱 포커스에서도 자리가
+   보이도록 :focus-visible뿐 아니라 :focus에도 같은 brass 강조를 준다. */
+.canvas-context-menu-item:focus {
+  outline: none;
+  color: var(--text-primary);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+}
+
+/* 플러그인이 둘 이상일 때만 서는 그룹 라벨. 하나뿐이면 헤더 줄에 병합돼 이 행 자체가 없다. */
 .canvas-context-menu-plugin {
   margin: var(--space-1) 0 0;
   padding: var(--space-1) var(--space-2) 0;
@@ -6345,11 +6391,12 @@
   text-transform: uppercase;
 }
 
-/* 한 줄 설명이 붙는 실행 종류 항목은 그리드로 둔다. 라벨이 첫 행을 온전히 쓰고, 설명과
-   비활성 사유는 그 아래 전체 폭에 선다. */
+/* 실행 종류 항목은 그리드로 둔다. 아이콘·라벨·한 단어 대비가 첫 행을 나눠 쓰고, 비활성 사유만
+   그 아래 전체 폭에 선다. 설명 문장은 첫 행에 접혀 있다가 항목을 짚었을 때 메뉴 옆에 펴진다 —
+   상시 두 줄로 두면 항목 하나가 50px를 먹어 메뉴가 실행 목록이 아니라 설명서가 된다. */
 .operation-launch-menu-item--annotated {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: start;
   column-gap: var(--space-2);
   row-gap: 2px;
@@ -6363,6 +6410,28 @@
 .operation-launch-menu-item--annotated .theater-menu-label {
   grid-column: 2;
   grid-row: 1;
+}
+
+/* 라벨 오른쪽에 늘 서는 한 단어짜리 대비. 배지가 아니라 무배경 텍스트다 — 캡슐을 두면
+   brass 채널을 빌려야 하고, 그 예외는 이미 폐기됐다. */
+.operation-launch-menu-brief {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  min-width: 0;
+  max-width: 124px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: 11px;
+  letter-spacing: 0;
+  color: color-mix(in oklch, var(--text-tertiary) 82%, transparent);
+}
+
+.operation-launch-menu-item:hover:not(:disabled) .operation-launch-menu-brief,
+.operation-launch-menu-item:focus-visible .operation-launch-menu-brief {
+  color: var(--text-tertiary);
 }
 
 /* 비활성 사유는 설명이 서던 아래 줄로 내린다 — 라벨과 같은 행에 두면 둘이 폭을 다투어
@@ -6388,6 +6457,20 @@
   letter-spacing: 0;
   line-height: 1.35;
   white-space: normal;
+}
+
+/* 캔버스 메뉴에서 설명 문장은 시각적으로만 접힌다. 지우지 않는 이유는 화면 낭독기 때문이다 —
+   버튼 안에 남아 접근 이름에 실리므로, 옆 어사이드가 떠 있든 아니든 세 Claude의 차이가
+   항상 낭독된다. absolute라 그리드 흐름에서 빠져 행 높이를 늘리지 않는다. */
+.operation-launch-menu-description--quiet {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .theater-menu-error {

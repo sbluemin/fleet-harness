@@ -1231,6 +1231,7 @@ describe("Instrument core design contract", () => {
 
   it("pins the launch-kind description grammar and keeps the menu free of decoration tokens", () => {
     const components = source("styles/components.css");
+    const contextMenu = source("canvas/canvas-context-menu.tsx");
     // 줄머리 앵커가 필요하다 — 앵커 없이는 `--annotated` 하위 배치 규칙이 먼저 잡힌다.
     const descriptionBlock = components.match(/^\.operation-launch-menu-description \{[^}]*\}/m)?.[0] ?? "";
     const reasonCell = components.match(/\.operation-launch-menu-item--annotated \.operation-launch-menu-reason \{[^}]*\}/)?.[0] ?? "";
@@ -1242,9 +1243,45 @@ describe("Instrument core design contract", () => {
     expect(descriptionBlock).toContain("font-family: var(--font-body);");
     expect(descriptionBlock).not.toMatch(/font-weight:\s*\d/);
 
-    // 실행 메뉴에는 별도 표식 배지를 두지 않는다 — 종류 구분은 라벨 괄호 안이 들고 있다.
-    // 배지가 돌아오면 brass 채널을 빌리는 doctrine 예외가 다시 필요해지므로 여기서 막는다.
+    // 실행 메뉴에는 별도 표식 배지를 두지 않는다 — 종류 구분은 라벨 괄호 안과 무배경 한 단어
+    // 대비가 들고 있다. 배지가 돌아오면 brass 채널을 빌리는 doctrine 예외가 다시 필요해지므로
+    // 여기서 막는다.
     expect(components).not.toContain("operation-launch-menu-badge");
+
+    // 캔버스 메뉴는 실행 목록이지 설명서가 아니다. 설명 문장은 항목 안에 남아 접근 이름에는
+    // 실리되 시각적으로는 접히고(--quiet), 짚은 항목의 것만 메뉴 옆 어사이드에 펴진다.
+    // 상시 두 줄로 되돌아오면 항목 하나가 33px에서 50px로 불어나므로 트립와이어를 건다.
+    const quietBlock = components.match(/^\.operation-launch-menu-description--quiet \{[^}]*\}/m)?.[0] ?? "";
+    expect(quietBlock).toContain("position: absolute;");
+    expect(quietBlock).toContain("clip-path: inset(50%);");
+    const briefBlock = components.match(/^\.operation-launch-menu-brief \{[^}]*\}/m)?.[0] ?? "";
+    expect(briefBlock).toContain("grid-row: 1;");
+    expect(briefBlock).toContain("font-family: var(--font-body);");
+    expect(briefBlock).not.toMatch(/background|border-radius/);
+    expect(contextMenu).toContain('className="operation-launch-menu-brief"');
+    expect(contextMenu).toContain("operation-launch-menu-description operation-launch-menu-description--quiet");
+
+    // 헤더는 한 줄이다 — 레티클 마크와 그 30px 블록은 메뉴에서 물러났다. 실행 대상 이름은
+    // 남는다: 어느 Theater로 실행되는지 알려주는 표면이 여기 말고는 없다.
+    expect(components).not.toContain(".canvas-context-menu-reticle");
+    expect(contextMenu).not.toContain('className="canvas-context-menu-reticle"');
+    expect(contextMenu).toContain('className="canvas-context-menu-head-text"');
+    expect(components).toContain(".canvas-context-menu-head {\n  display: flex;\n  align-items: baseline;");
+
+    // 폭은 세 곳이 함께 알아야 한다. 하나만 고치면 컴파일은 되고 치수만 조용히 어긋난다.
+    // 폭은 컨테이너가 단일 소유자다. 컨테이너에 폭이 없으면 설명 어사이드의 100%가 메뉴
+    // 오른쪽이 아니라 왼쪽 모서리를 가리켜 설명이 메뉴 위를 덮는다(실측으로 확인).
+    expect(contextMenu).toContain("const MENU_WIDTH = 288;");
+    expect(components).toMatch(/\.operation-launch-control--canvas \{[^}]*--canvas-menu-width: 288px;[^}]*width: var\(--canvas-menu-width\);/);
+    expect(components).toContain(".canvas-context-menu {\n  width: var(--canvas-menu-width);");
+    expect(components).toMatch(/\.operation-launch-control--canvas \.operation-launch-menu \{[^}]*min-width: var\(--canvas-menu-width\);/);
+    // 캔버스 전용 패딩은 두 클래스를 함께 짚어야 한다 — 한 클래스면 뒤쪽의 .theater-menu와
+    // 특이도가 같아 조용히 지고 8px로 남는다(실측으로 확인한 함정).
+    expect(components).toContain(".operation-launch-menu.canvas-context-menu {\n  padding: var(--space-1);");
+
+    // 메뉴 조상 관계가 올바라야 menuitem이 유효하다. dialog로 되돌아가면 ARIA가 깨진다.
+    expect(contextMenu).toContain('role="menu"');
+    expect(contextMenu).not.toContain('role="dialog"');
   });
 
   it("keeps the v4 navigation, Theater, map, CLI, and rail visual producers", () => {
