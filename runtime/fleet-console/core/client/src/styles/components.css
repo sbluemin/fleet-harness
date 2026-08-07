@@ -2575,6 +2575,25 @@
   min-width: 0;
 }
 
+/* 카드를 감싸는 칸 — Quick-Look 확대는 이 칸이 진다. 카드가 <button>이라 그 안에 버튼을 넣을 수
+   없으므로 최소화·닫기를 카드의 형제로 이 칸에 얹고, 확대할 때 함께 따라가되 자기 배율만 되돌린다.
+   밀도 변형(morph)의 transform은 카드가 그대로 소유한다 — 확대와 변형은 공존하지 않는다. */
+.canvas-triage-deck-cell {
+  position: relative;
+  /* grid 한 칸에 카드 하나 — stretch 기본값이 카드를 칸에 꽉 채우므로 카드 크기 규칙을 따로 두지
+     않는다(자손 선택자를 두면 `.canvas-triage-deck-card {` 블록을 문자열로 집는 계약 검사가 그
+     자손 규칙을 먼저 집어 오탐한다). 절대배치된 창 컨트롤은 이 흐름에서 빠진다. */
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  transition: transform var(--duration-slow) var(--ease-glide);
+}
+
+.canvas-triage-deck-cell.is-quicklook {
+  transform: scale(var(--triage-quicklook-scale, 1.95));
+  z-index: 9;
+}
+
 .canvas-triage-deck-card {
   position: relative;
   display: grid;
@@ -2608,10 +2627,10 @@
 /* Quick-Look — hover 드웰 후 카드를 transform으로만 확대해 프리뷰 유효 배율을 판독권(≈0.8)으로
    올린다. 프리뷰 inner의 측정 크기는 불변이므로 PTY 리사이즈 계약과 pool 슬롯 유일성이 유지된다. */
 .canvas-triage-deck-card.is-quicklook {
-  /* 배율은 발동 시점에 JS가 grid 수용 한도로 깎아 주입한다(--triage-quicklook-scale) —
-     단일 컬럼처럼 카드가 grid를 채우는 창에서 고정 1.95는 overflow에 잘려 나가기 때문. */
-  transform: scale(var(--triage-quicklook-scale, 1.95));
-  z-index: 9;
+  /* 배율 자체는 감싸는 칸이 진다(.canvas-triage-deck-cell.is-quicklook) — 카드와 그 형제인 창
+     컨트롤이 한 변환을 함께 받아야 버튼이 확대된 카드의 같은 모서리에 남는다. 배율은 발동 시점에
+     JS가 grid 수용 한도로 깎아 주입한다(--triage-quicklook-scale) — 단일 컬럼처럼 카드가 grid를
+     채우는 창에서 고정 1.95는 overflow에 잘려 나가기 때문. */
   border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-rim));
   box-shadow: 0 18px 60px oklch(0% 0 0 / 55%), 0 0 0 1px var(--brass-glow);
 }
@@ -2628,6 +2647,94 @@
 .canvas-triage-deck-card.is-idle,
 .canvas-triage-deck-card.is-dormant {
   opacity: 0.68;
+}
+
+/* 창 컨트롤은 카드 크롬과 같은 배율 되돌림을 받는다 — 확대해도 24px 손잡이는 24px로 남는다. */
+.canvas-triage-deck-card-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  gap: 4px;
+  transform-origin: right top;
+  transition: transform var(--duration-slow) var(--ease-glide), opacity var(--duration-fast) var(--ease-glide);
+}
+
+.canvas-triage-deck-cell.is-quicklook .canvas-triage-deck-card-controls {
+  transform: scale(max(0.72, calc(1 / var(--triage-quicklook-scale, 1.95))));
+}
+
+/* 밀도 변형 중에는 카드가 자기 점 자리로 날아가고 칸은 제자리에 남는다 — 손잡이만 원래 자리에
+   떠 있으면 무엇에 달린 버튼인지 읽히지 않으므로 변형이 끝날 때까지 걷는다. */
+.canvas-triage-deck-cell.is-morphing .canvas-triage-deck-card-controls {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 도트린 예외 — 다른 창 컨트롤(사이드바 20px·캔버스 24px)은 hover/focus 전까지 0×0으로 접히지만,
+   deck 카드의 손잡이는 접지 않고 늘 자리를 지킨다. 카드는 그 자체가 하나의 버튼이라 접힌 손잡이를
+   찾을 단서가 카드 어디에도 남지 않고, 카드 위 hover는 400ms 뒤 Quick-Look 확대를 부르기 때문에
+   "올려서 찾는" 동작이 확대와 경합한다. 대신 쉬는 동안 대비를 낮춰 deck의 소음을 억제한다. */
+.canvas-triage-deck-card-control {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  background: color-mix(in oklch, var(--surface-glass) 72%, transparent);
+  opacity: 0.55;
+  cursor: pointer;
+  transition:
+    opacity var(--duration-fast) var(--ease-glide),
+    color var(--duration-fast) var(--ease-glide),
+    border-color var(--duration-fast) var(--ease-glide),
+    background var(--duration-fast) var(--ease-glide);
+}
+
+.canvas-triage-deck-cell:hover .canvas-triage-deck-card-control,
+.canvas-triage-deck-cell:focus-within .canvas-triage-deck-card-control,
+.canvas-triage-deck-cell.is-quicklook .canvas-triage-deck-card-control {
+  opacity: 1;
+}
+
+.canvas-triage-deck-card-control:hover,
+.canvas-triage-deck-card-control:focus-visible {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 12%, var(--surface-glass));
+  opacity: 1;
+}
+
+.canvas-triage-deck-card-control svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+}
+
+/* 닫기 무장은 캔버스 패널·사이드바 칩과 같은 문법이다 — 한 번 눌러 무장하고 1.5초 안에 확인한다. */
+.canvas-triage-deck-card-control.is-armed-close {
+  width: auto;
+  padding: 0 6px;
+  border-color: color-mix(in oklch, var(--coral) 50%, transparent);
+  background: color-mix(in oklch, var(--coral) 20%, transparent);
+  color: var(--coral-ink);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  opacity: 1;
+  animation: chip-close-arm 1.5s linear forwards;
+}
+
+.canvas-triage-deck-card-control.is-armed-close:hover,
+.canvas-triage-deck-card-control.is-armed-close:focus-visible {
+  border-color: color-mix(in oklch, var(--coral) 70%, transparent);
+  background: color-mix(in oklch, var(--coral) 30%, transparent);
+  color: var(--coral-ink);
 }
 
 .canvas-triage-deck-card-spine {

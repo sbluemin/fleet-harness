@@ -523,7 +523,7 @@ function beaconStatusClass(status: OperationActivity | undefined): string {
   return "tenant-beacon is-idle";
 }
 
-function MinimizeIcon() {
+export function MinimizeIcon() {
   // 타이틀바 하단 수평선 — Operation이 아래 dock으로 가라앉는 최소화 마크.
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -548,7 +548,7 @@ function RestorePanelIcon() {
   );
 }
 
-function CloseIcon() {
+export function CloseIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M4.6 4.6 11.4 11.4M11.4 4.6 4.6 11.4" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />

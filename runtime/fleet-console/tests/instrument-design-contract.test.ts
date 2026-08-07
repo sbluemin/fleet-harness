@@ -1468,4 +1468,32 @@ describe("War Room Quick-Look actual-size grammar", () => {
     const card = components.match(/\.canvas-triage-deck-card \{[^}]*\}/)?.[0] ?? "";
     expect(card).toContain("transform var(--duration-slow)");
   });
+
+  it("magnifies the cell so the card and its window controls take one transform", () => {
+    // 확대가 카드에만 걸리면 카드의 형제인 창 컨트롤이 따라가지 못해 확대된 카드 위에서 손잡이가
+    // 제자리에 남는다. 배율은 칸이 지고, 카드는 테두리·그림자만 입는다.
+    const cell = components.match(/\.canvas-triage-deck-cell\.is-quicklook \{[^}]*\}/)?.[0] ?? "";
+    expect(cell).toContain("transform: scale(var(--triage-quicklook-scale");
+    const card = components.match(/\.canvas-triage-deck-card\.is-quicklook \{[^}]*\}/)?.[0] ?? "";
+    expect(card).not.toBe("");
+    expect(card).not.toContain("transform:");
+    // 손잡이는 카드 크롬과 같은 1/배율 되돌림을 받아 확대 중에도 24px을 지킨다.
+    const controls = components.match(/\.canvas-triage-deck-cell\.is-quicklook \.canvas-triage-deck-card-controls \{[^}]*\}/)?.[0] ?? "";
+    expect(controls).toContain("1 / var(--triage-quicklook-scale");
+  });
+
+  it("keeps deck card window controls always visible as a recorded exception", () => {
+    // 사이드바 20px·캔버스 24px 손잡이는 hover/focus 전까지 0×0으로 접히지만, deck 카드의 손잡이는
+    // 접지 않는다: 카드가 그 자체로 버튼이라 접힌 손잡이를 찾을 단서가 없고, 카드 위 hover는 400ms 뒤
+    // Quick-Look 확대를 불러 "올려서 찾는" 동작이 확대와 경합한다. 예외는 CSS 옆 주석으로 남는다.
+    const control = components.match(/\.canvas-triage-deck-card-control \{[^}]*\}/)?.[0] ?? "";
+    expect(control).not.toBe("");
+    expect(control).toContain("width: 24px");
+    expect(control).toContain("height: 24px");
+    expect(control).toMatch(/opacity:\s*0\.55/);
+    expect(components).toContain("도트린 예외 — 다른 창 컨트롤");
+    // 닫기는 다른 표면과 같은 두 번 누르기 무장을 그대로 쓴다.
+    const armed = components.match(/\.canvas-triage-deck-card-control\.is-armed-close \{[^}]*\}/)?.[0] ?? "";
+    expect(armed).toContain("chip-close-arm 1.5s");
+  });
 });

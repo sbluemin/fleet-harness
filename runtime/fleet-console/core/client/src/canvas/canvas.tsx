@@ -1069,6 +1069,21 @@ export function OperationsCanvas({
           setTheaterOperationGeometry(theaterId, operationId, geometry);
           void updatePluginOperationGeometry(operationId, geometry);
         }}
+        onMinimizeOperation={(operationId) => {
+          // deck 카드의 최소화도 무대의 그것과 같은 동작이다 — 판에서 내리고 지목을 거둔다.
+          const operation = state.operations.find((candidate) => candidate.id === operationId);
+          if (!operation) return;
+          if (state.activeOperationId === operationId) setActiveOperation(null);
+          forgetTriageOperation(operationId);
+          setTheaterOperationMinimized(operation.theaterId, operationId, true);
+        }}
+        onCloseOperation={(operationId) => {
+          if (state.activeOperationId === operationId) setActiveOperation(null);
+          dismissTriageOperation(operationId);
+          if (panelMaximized === operationId) clearMaximizedOperationId();
+          if (panelCompanion === operationId) forceDropCompanionOperationId();
+          onClose(operationId);
+        }}
         onOperationContextMenu={onOpenOperationMenu}
         onTheaterContextMenu={openTriageTheaterLaunchMenu}
       />

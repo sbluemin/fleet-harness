@@ -472,6 +472,10 @@ describe("Operations boot minimization", () => {
   it("does not let repeated Alt+Down confirm an armed Triage set-aside", async () => {
     await bootApp([operation("first")]);
     await act(async () => {
+      // 최소화한 Operation은 War Room 큐에 오르지 않는다 — 최소화가 곧 "이 판에서 내렸다"는 뜻이라
+      // deck에도 순번에도 남지 않기 때문이다. 부팅 최소화를 먼저 되돌려야 무대에 세울 수 있다.
+      // 이 테스트가 지키는 계약은 그것과 무관하다: 키를 누른 채로 두어도 두 번 누르기 확인이 통과되지 않는다.
+      restoreOperation("first");
       setState({ operationStatus: { first: "awaiting" } });
       setTriageActive(true);
       await Promise.resolve();
