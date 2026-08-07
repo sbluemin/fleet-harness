@@ -10,6 +10,7 @@ import { getT, useTerminalLocale } from "../i18n/index.js";
 import { createImeShiftEnterHandler } from "./ime-shift-enter.js";
 import { createTerminalConnection, type TerminalConnection } from "./terminal-connection.js";
 import { createTerminalCopyOnSelect } from "./terminal-copy-on-select.js";
+import { createTerminalOsc52Clipboard } from "./terminal-osc52-clipboard.js";
 import { TERMINAL_OPTIONS } from "./terminal-options.js";
 import { useTerminalPrefs } from "./terminal-preferences.js";
 import { createTerminalScrollFollow, type TerminalScrollFollowController } from "./terminal-scroll-follow.js";
@@ -245,6 +246,13 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         windowTarget: window,
         clipboard: navigator.clipboard,
       });
+      // 전체 화면 TUI(agent CLI 등)가 마우스 트래킹을 켜면 xterm은 드래그를 애플리케이션에 넘기고 자체
+      // 선택을 끈다. 그때부터 선택 하이라이트도 복사도 애플리케이션이 수행하며, 복사 결과는 OSC 52로만
+      // 터미널에 전달된다 — copy-on-select가 읽는 xterm 선택은 그 상태에서 항상 비어 있다.
+      const osc52Clipboard = createTerminalOsc52Clipboard({
+        parser: terminal.parser,
+        clipboard: navigator.clipboard,
+      });
       terminal.loadAddon(new Unicode11Addon());
       terminal.unicode.activeVersion = "11";
 
@@ -352,6 +360,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         imeHandler.dispose();
         connection.dispose();
         copyOnSelect.dispose();
+        osc52Clipboard.dispose();
         scrollGesture.dispose();
         outputScheduler.dispose();
         statusDetailReporter.dispose();

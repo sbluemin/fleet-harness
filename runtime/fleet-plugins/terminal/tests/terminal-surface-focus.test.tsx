@@ -18,6 +18,7 @@ vi.mock("@xterm/xterm", () => ({
     readonly cols = 80;
     readonly rows = 24;
     readonly unicode = { activeVersion: "" };
+    readonly parser = { registerOscHandler: () => ({ dispose() {} }) };
     readonly options: Record<string, unknown> = {};
     readonly focus = terminalMocks.focus;
     attachCustomKeyEventHandler() {}
