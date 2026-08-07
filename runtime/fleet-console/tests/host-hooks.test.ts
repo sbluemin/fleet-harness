@@ -51,19 +51,15 @@ describe("console terminal host hooks", () => {
     });
   });
 
-  it("builds background spawn and stop hook commands", () => {
+  it("builds the background report hook command", () => {
     const entry = {
       entryPath: "/app/fleet-console/dist/cli.mjs",
       execPath: "/usr/local/bin/node",
     };
 
-    expect(buildConsoleBackgroundHookCommand(entry, "spawn")).toEqual({
+    expect(buildConsoleBackgroundHookCommand(entry)).toEqual({
       command: "/usr/local/bin/node",
-      args: ["/app/fleet-console/dist/cli.mjs", "hook", "background-spawn"],
-    });
-    expect(buildConsoleBackgroundHookCommand(entry, "stop")).toEqual({
-      command: "/usr/local/bin/node",
-      args: ["/app/fleet-console/dist/cli.mjs", "hook", "background-stop"],
+      args: ["/app/fleet-console/dist/cli.mjs", "hook", "background-report"],
     });
   });
 

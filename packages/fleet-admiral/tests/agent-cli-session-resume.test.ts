@@ -140,7 +140,7 @@ describe("agent CLI session resume and capture hooks", () => {
     });
   });
 
-  it("passes background hook execs through profile injection", async () => {
+  it("renders the background report on both stop events through profile injection", async () => {
     const root = createTempRoot("fleet-admiral-background-hooks-");
     const profile = baseProfile("claude", {
       args: [],
@@ -148,8 +148,8 @@ describe("agent CLI session resume and capture hooks", () => {
       env: { HOME: root },
     });
     const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
-      backgroundSpawnHookExec: hookExec("node", ["console.js", "hook", "background-spawn"]),
-      backgroundStopHookExec: hookExec("node", ["console.js", "hook", "background-stop"]),
+      turnEndHookExec: hookExec("node", ["console.js", "hook", "turn-end"]),
+      backgroundReportHookExec: hookExec("node", ["console.js", "hook", "background-report"]),
     }));
     const pluginRootIndex = injected.args.indexOf("--plugin-dir") + 1;
     const pluginRoot = injected.args[pluginRootIndex];
@@ -159,12 +159,18 @@ describe("agent CLI session resume and capture hooks", () => {
       readonly hooks: Record<string, unknown>;
     };
 
-    expect(hooksJson.hooks.PreToolUse).toEqual([
-      { matcher: "Task|Agent|Workflow", hooks: [{ type: "command", command: "node", args: ["console.js", "hook", "background-spawn"] }] },
+    // 살아 있는 작업 목록은 Stop과 SubagentStop payload에만 실린다. 두 이벤트 모두에서 보고해야
+    // 워크플로우가 끝난 뒤의 해제까지 닫힌다.
+    expect(hooksJson.hooks.Stop).toEqual([
+      { hooks: [
+        { type: "command", command: "node", args: ["console.js", "hook", "turn-end"] },
+        { type: "command", command: "node", args: ["console.js", "hook", "background-report"] },
+      ] },
     ]);
     expect(hooksJson.hooks.SubagentStop).toEqual([
-      { hooks: [{ type: "command", command: "node", args: ["console.js", "hook", "background-stop"] }] },
+      { hooks: [{ type: "command", command: "node", args: ["console.js", "hook", "background-report"] }] },
     ]);
+    expect(hooksJson.hooks.PreToolUse).toBeUndefined();
     injected.cleanup?.();
   });
 
@@ -235,8 +241,7 @@ function baseInjectOptions(
   overrides: {
     readonly buildSystemPrompt?: Parameters<typeof injectAgentCliProfile>[1]["buildSystemPrompt"];
     readonly autoNameHookExec?: FleetHookExec;
-    readonly backgroundSpawnHookExec?: FleetHookExec;
-    readonly backgroundStopHookExec?: FleetHookExec;
+    readonly backgroundReportHookExec?: FleetHookExec;
     readonly captureSessionHookExec?: FleetHookExec;
     readonly dedicatedMcpSession?: TestDedicatedMcpSession;
     readonly enableMetaphor?: boolean;
@@ -252,8 +257,7 @@ function baseInjectOptions(
     dataDir: path.join(root, "data"),
     dedicatedMcpSession: overrides.dedicatedMcpSession ?? createDedicatedMcpSession(),
     ...(overrides.autoNameHookExec ? { autoNameHookExec: overrides.autoNameHookExec } : {}),
-    ...(overrides.backgroundSpawnHookExec ? { backgroundSpawnHookExec: overrides.backgroundSpawnHookExec } : {}),
-    ...(overrides.backgroundStopHookExec ? { backgroundStopHookExec: overrides.backgroundStopHookExec } : {}),
+    ...(overrides.backgroundReportHookExec ? { backgroundReportHookExec: overrides.backgroundReportHookExec } : {}),
     ...(overrides.captureSessionHookExec ? { captureSessionHookExec: overrides.captureSessionHookExec } : {}),
     ...(overrides.enableMetaphor === undefined ? {} : { enableMetaphor: overrides.enableMetaphor }),
     ...(overrides.gatewayExposedModels ? { gatewayExposedModels: overrides.gatewayExposedModels } : {}),

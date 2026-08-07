@@ -58,8 +58,7 @@ export type ConsoleHookCommand =
   | { readonly command: "capture-session"; readonly provider: "claude" }
   | { readonly command: "turn-start" }
   | { readonly command: "turn-end" }
-  | { readonly command: "background-spawn" }
-  | { readonly command: "background-stop" }
+  | { readonly command: "background-report" }
   | { readonly command: "attention" }
   | { readonly command: "auto-name" };
 
@@ -77,7 +76,9 @@ export interface BuildConsoleHelpTextOptions {
 const FIXED_HOST = "127.0.0.1";
 const HELP_BANNER_INDENT = "  ";
 const DEFAULT_HELP_RELEASE = "local";
-const CONSOLE_HOOK_COMMANDS = new Set(["capture-session", "turn-start", "turn-end", "background-spawn", "background-stop", "attention", "auto-name"]);
+// background-spawn/background-stop은 더 이상 렌더되지 않지만, 업그레이드 시점에 이미 살아 있는 세션의
+// hooks.json이 여전히 그 이름으로 호출한다. 이름을 지우면 in-flight 세션의 hook이 예외로 죽으므로 계속 받아준다.
+const CONSOLE_HOOK_COMMANDS = new Set(["capture-session", "turn-start", "turn-end", "background-report", "background-spawn", "background-stop", "attention", "auto-name"]);
 
 export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
   // 인자가 없으면 기본 동작은 start(서버 보장 + 브라우저 열기)다.
@@ -112,8 +113,10 @@ export function parseConsoleHookCommand(argv: readonly string[]): ConsoleHookCom
   }
   if (commandName === "turn-start" && rest.length === 0) return { command: "turn-start" };
   if (commandName === "turn-end" && rest.length === 0) return { command: "turn-end" };
-  if (commandName === "background-spawn" && rest.length === 0) return { command: "background-spawn" };
-  if (commandName === "background-stop" && rest.length === 0) return { command: "background-stop" };
+  if (commandName === "background-report" && rest.length === 0) return { command: "background-report" };
+  // 퇴역한 이름은 같은 보고 명령으로 흡수한다. 퇴역 hook의 payload에는 background_tasks가 없을 수 있고,
+  // 그때 보고는 "무의견"이 되어 상태를 바꾸지 않는다.
+  if ((commandName === "background-spawn" || commandName === "background-stop") && rest.length === 0) return { command: "background-report" };
   if (commandName === "attention" && rest.length === 0) return { command: "attention" };
   if (commandName === "auto-name" && rest.length === 0) return { command: "auto-name" };
   if (commandName === "capture-session" && rest.length === 1 && rest[0] === "claude") return { command: "capture-session", provider: rest[0] };
@@ -318,8 +321,9 @@ export async function main(): Promise<void> {
       await postAgentHook(`/sessions/${readHookSessionId(process.env)}/turn`, { phase: hookCommand.command === "turn-start" ? "start" : "end" }, process.env);
       return;
     }
-    if (hookCommand.command === "background-spawn" || hookCommand.command === "background-stop") {
-      await postAgentHook(`/sessions/${readHookSessionId(process.env)}/background`, { event: hookCommand.command === "background-spawn" ? "spawn" : "stop" }, process.env);
+    if (hookCommand.command === "background-report") {
+      // 백그라운드 보고 hook도 무출력·exit 0 best-effort다. hook payload를 그대로 넘기고 해석은 서버가 한다.
+      await postAgentHook(`/sessions/${readHookSessionId(process.env)}/background`, { input: await readStdinBestEffort() }, process.env);
       return;
     }
     if (hookCommand.command === "attention") {

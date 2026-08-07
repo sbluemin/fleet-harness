@@ -91,8 +91,7 @@ describe("agent CLI plugin marketplace rendering", () => {
       cwd,
       dataDir,
       inputWaitingHookExec,
-      backgroundSpawnHookExec: { command: "node", args: ["cli.mjs", "hook", "background-spawn"] },
-      backgroundStopHookExec: { command: "node", args: ["cli.mjs", "hook", "background-stop"] },
+      backgroundReportHookExec: { command: "node", args: ["cli.mjs", "hook", "background-report"] },
       withMarketplaceLock: async (_target, fn) => fn(),
     });
 
@@ -100,12 +99,13 @@ describe("agent CLI plugin marketplace rendering", () => {
       readonly hooks: Record<string, unknown>;
     };
     // AskUserQuestion은 Notification 훅을 발화하지 않으므로 PreToolUse(정확 매처)로 잡는다.
+    // 백그라운드 축은 PreToolUse spawn을 세지 않는다 — 워크플로우 1건이 spawn 1회·stop N회를 내기 때문이다.
     expect(hooksJson.hooks.PreToolUse).toEqual([
       { matcher: "AskUserQuestion", hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "attention"] }] },
-      { matcher: "Task|Agent|Workflow", hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "background-spawn"] }] },
     ]);
+    expect(JSON.stringify(hooksJson.hooks)).not.toContain("Task|Agent|Workflow");
     expect(hooksJson.hooks.SubagentStop).toEqual([
-      { hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "background-stop"] }] },
+      { hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "background-report"] }] },
     ]);
     // 그 외 입력 대기는 입력 대기 Notification 타입만 |-구분 정확 매처로 거른다.
     expect(hooksJson.hooks.Notification).toEqual([

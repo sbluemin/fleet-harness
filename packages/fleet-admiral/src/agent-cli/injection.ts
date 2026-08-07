@@ -32,9 +32,8 @@ export interface InjectAgentCliProfileOptions {
   readonly turnEndHookExec?: FleetHookExec;
   // 입력 대기 신호 hook. Claude plugin에 와이어링된다.
   readonly inputWaitingHookExec?: FleetHookExec;
-  // 백그라운드 서브에이전트/워크플로우 spawn(PreToolUse)·stop(SubagentStop) 신호 hook. host가 빌드해 주입한다.
-  readonly backgroundSpawnHookExec?: FleetHookExec;
-  readonly backgroundStopHookExec?: FleetHookExec;
+  // 살아 있는 백그라운드 작업 보고(Stop·SubagentStop) hook. host가 빌드해 주입한다.
+  readonly backgroundReportHookExec?: FleetHookExec;
   // 작전명 자동 작명(UserPromptSubmit) hook. host가 빌드해 주입한다.
   readonly autoNameHookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
@@ -116,8 +115,7 @@ export async function injectAgentCliProfile(
       turnStartHookExec: options.turnStartHookExec,
       turnEndHookExec: options.turnEndHookExec,
       inputWaitingHookExec: options.inputWaitingHookExec,
-      backgroundSpawnHookExec: options.backgroundSpawnHookExec,
-      backgroundStopHookExec: options.backgroundStopHookExec,
+      backgroundReportHookExec: options.backgroundReportHookExec,
       autoNameHookExec: options.autoNameHookExec,
       withMarketplaceLock: options.withMarketplaceLock,
     });

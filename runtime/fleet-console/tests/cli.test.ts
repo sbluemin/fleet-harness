@@ -90,8 +90,11 @@ describe("fleet console CLI", () => {
   it("parses hook capture-session commands", () => {
     expect(parseConsoleHookCommand(["capture-session", "claude"])).toEqual({ command: "capture-session", provider: "claude" });
     expect(() => parseConsoleHookCommand(["capture-session", "codex"])).toThrow("Unknown fleet-console hook command");
-    expect(parseConsoleHookCommand(["background-spawn"])).toEqual({ command: "background-spawn" });
-    expect(parseConsoleHookCommand(["background-stop"])).toEqual({ command: "background-stop" });
+    expect(parseConsoleHookCommand(["background-report"])).toEqual({ command: "background-report" });
+    expect(() => parseConsoleHookCommand(["background-report", "extra"])).toThrow("Unknown fleet-console hook command");
+    // 퇴역한 이름은 in-flight 세션의 hooks.json이 여전히 부른다. 예외로 죽이지 않고 같은 보고로 흡수한다.
+    expect(parseConsoleHookCommand(["background-spawn"])).toEqual({ command: "background-report" });
+    expect(parseConsoleHookCommand(["background-stop"])).toEqual({ command: "background-report" });
     expect(() => parseConsoleHookCommand(["background-spawn", "extra"])).toThrow("Unknown fleet-console hook command");
     expect(() => parseConsoleHookCommand(["background-stop", "extra"])).toThrow("Unknown fleet-console hook command");
     expect(parseConsoleHookCommand(["attention"])).toEqual({ command: "attention" });
@@ -143,7 +146,7 @@ describe("fleet console CLI", () => {
     expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({ provider: "claude" });
   });
 
-  it("posts background hooks to the session-scoped background endpoint", async () => {
+  it("posts the background report, including under the retired hook names, to the session-scoped endpoint", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-background-hook-"));
     TEMP_DIRS.push(dir);
     const paths = createConsolePaths({ env: { FLEET_CONSOLE_DIR: dir } });
@@ -167,7 +170,7 @@ describe("fleet console CLI", () => {
     process.env.FLEET_CONSOLE_DIR = dir;
     process.env.FLEET_CONSOLE_SESSION_ID = "session-background";
     try {
-      for (const command of ["background-spawn", "background-stop"] as const) {
+      for (const command of ["background-report", "background-stop"] as const) {
         process.argv = ["node", "fleet-console", "hook", command];
         await main();
       }
@@ -180,20 +183,21 @@ describe("fleet console CLI", () => {
       else process.env.FLEET_CONSOLE_SESSION_ID = originalSessionId;
     }
 
+    // 두 이름 모두 같은 보고 경로로 흐르고, hook payload는 해석 없이 서버로 그대로 넘어간다.
     expect(calls.map((call) => ({
       url: call.url,
       method: call.init?.method,
-      body: JSON.parse(String(call.init?.body)) as unknown,
+      bodyKeys: Object.keys(JSON.parse(String(call.init?.body)) as Record<string, unknown>),
     }))).toEqual([
       {
         url: "http://127.0.0.1:51240/plugins/terminal/agent/sessions/session-background/background",
         method: "POST",
-        body: { event: "spawn" },
+        bodyKeys: ["input"],
       },
       {
         url: "http://127.0.0.1:51240/plugins/terminal/agent/sessions/session-background/background",
         method: "POST",
-        body: { event: "stop" },
+        bodyKeys: ["input"],
       },
     ]);
   });

@@ -355,16 +355,17 @@ describe("agent activity observability state", () => {
     expect(JSON.stringify(store.listDurableOperations())).not.toContain("attentionPending");
   });
 
-  it("tracks background spawn and stop events, clamps at zero, and survives turn transitions", () => {
+  it("applies the background report as an absolute value and survives turn transitions", () => {
     const store = createStore();
 
-    expect(store.setTerminalSessionBackgroundEvent("missing", "spawn")).toBeNull();
-    expect(store.setTerminalSessionBackgroundEvent("session-a", "spawn")).toMatchObject({ backgroundPending: true });
-    expect(store.setTerminalSessionBackgroundEvent("session-a", "spawn")).toMatchObject({ backgroundPending: true });
+    expect(store.setTerminalSessionBackgroundPending("missing", true)).toBeNull();
+    expect(store.setTerminalSessionBackgroundPending("session-a", true)).toMatchObject({ backgroundPending: true });
+    expect(store.setTerminalSessionBackgroundPending("session-a", true)).toMatchObject({ backgroundPending: true });
     expect(store.setTerminalSessionTurnState("session-a", "ended")).toMatchObject({ backgroundPending: true });
-    expect(store.setTerminalSessionBackgroundEvent("session-a", "stop")).toMatchObject({ backgroundPending: true });
-    expect(store.setTerminalSessionBackgroundEvent("session-a", "stop")).not.toHaveProperty("backgroundPending");
-    expect(store.setTerminalSessionBackgroundEvent("session-a", "stop")).not.toHaveProperty("backgroundPending");
+    // 워크플로우 에이전트가 하나씩 끝나도 남은 작업이 보고되는 한 배지는 유지된다.
+    expect(store.setTerminalSessionBackgroundPending("session-a", true)).toMatchObject({ backgroundPending: true });
+    expect(store.setTerminalSessionBackgroundPending("session-a", false)).not.toHaveProperty("backgroundPending");
+    expect(store.setTerminalSessionBackgroundPending("session-a", false)).not.toHaveProperty("backgroundPending");
   });
 
   it("expires background pending after 30 minutes and emits an updated session", () => {
@@ -373,7 +374,7 @@ describe("agent activity observability state", () => {
     const frames: unknown[] = [];
     store.subscribeAll((event) => frames.push(event));
 
-    store.setTerminalSessionBackgroundEvent("session-a", "spawn");
+    store.setTerminalSessionBackgroundPending("session-a", true);
     vi.advanceTimersByTime(29 * 60_000);
     expect(store.getTerminalSessionInfo("session-a")).toMatchObject({ backgroundPending: true });
     vi.advanceTimersByTime(60_000);
@@ -390,7 +391,7 @@ describe("agent activity observability state", () => {
     const store = createStore();
     const frames: unknown[] = [];
     store.subscribeAll((event) => frames.push(event));
-    store.setTerminalSessionBackgroundEvent("session-a", "spawn");
+    store.setTerminalSessionBackgroundPending("session-a", true);
 
     const dormant = store.transitionTerminalSessionToDormant("session-a", {
       provider: "claude",
@@ -413,7 +414,7 @@ describe("agent activity observability state", () => {
     });
 
     // 전이 시점에 in-flight였던 best-effort hook이 뒤늦게 도착해도 무시된다.
-    expect(store.setTerminalSessionBackgroundEvent("session-a", "spawn")).toBeNull();
+    expect(store.setTerminalSessionBackgroundPending("session-a", true)).toBeNull();
     expect(store.getTerminalSessionInfo("session-a")).not.toHaveProperty("backgroundPending");
     vi.advanceTimersByTime(30 * 60_000);
     expect(store.getTerminalSessionInfo("session-a")).not.toHaveProperty("backgroundPending");
