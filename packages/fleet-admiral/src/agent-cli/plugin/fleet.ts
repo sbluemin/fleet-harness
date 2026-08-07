@@ -39,7 +39,9 @@ function claudeHooks(options: CreateAgentCliPluginOptions): unknown {
   // UserPromptSubmit: 세션 캡처 → 턴 시작 → 자동 작명 순서로 같은 이벤트에 렌더한다.
   const userPromptSubmitExecs = [options.captureSessionHookExec, options.turnStartHookExec, options.autoNameHookExec]
     .filter((exec): exec is FleetHookExec => exec !== undefined);
-  // Stop: 턴 종료 신호.
+  // Stop: 턴 종료 신호. 살아 있는 백그라운드 작업 목록은 같은 payload에 실려 오므로 별도 hook을 걸지 않고
+  // 턴 종료 hook이 함께 실어 나른다 — 한 이벤트에 두 hook을 걸면 둘이 병렬로 떠서 턴 종료가 먼저 도착하고,
+  // 그 찰나에 세션이 거짓 유휴로 보여 종료 알림과 도착 표시가 튄다.
   const stopExecs = [options.turnEndHookExec]
     .filter((exec): exec is FleetHookExec => exec !== undefined);
   // 입력 대기 신호: AskUserQuestion은 PreToolUse(matcher=AskUserQuestion)와
@@ -47,18 +49,9 @@ function claudeHooks(options: CreateAgentCliPluginOptions): unknown {
   // (idle_prompt(정상 유휴 대기, 차단 아님)·auth_success·elicitation_complete/response 등 비대기 타입 제외).
   // 한 번의 대기가 PreToolUse와 Notification 두 경로로 동시에 들어올 수 있어, 최종 중복 제거는 클라이언트(store)에서 세션별로 한다.
   const inputWaitingExec = options.inputWaitingHookExec;
-  // spawn/stop 훅은 Stop(턴 종료) 뒤에도 계속되는 백그라운드 subagent/workflow 작업을 추적하고,
-  // SubagentStop은 pending 개수를 감소시킨다.
-  const preToolUse = [
-    ...(inputWaitingExec ? [{
-      matcher: "AskUserQuestion",
-      hooks: [claudeCommandHook(inputWaitingExec)],
-    }] : []),
-    ...(options.backgroundSpawnHookExec ? [{
-      matcher: "Task|Agent|Workflow",
-      hooks: [claudeCommandHook(options.backgroundSpawnHookExec)],
-    }] : []),
-  ];
+  const preToolUse = inputWaitingExec
+    ? [{ matcher: "AskUserQuestion", hooks: [claudeCommandHook(inputWaitingExec)] }]
+    : [];
   return {
     hooks: {
       ...(userPromptSubmitExecs.length > 0 ? {
@@ -78,9 +71,9 @@ function claudeHooks(options: CreateAgentCliPluginOptions): unknown {
           hooks: [claudeCommandHook(inputWaitingExec)],
         }],
       } : {}),
-      ...(options.backgroundStopHookExec ? {
+      ...(options.backgroundReportHookExec ? {
         SubagentStop: [{
-          hooks: [claudeCommandHook(options.backgroundStopHookExec)],
+          hooks: [claudeCommandHook(options.backgroundReportHookExec)],
         }],
       } : {}),
     },

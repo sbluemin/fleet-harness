@@ -24,8 +24,8 @@ export function buildConsoleTurnHookCommand(entry: ConsoleHookCommandEntry, phas
   return buildConsoleCliHookExec(entry, ["hook", phase === "start" ? "turn-start" : "turn-end"]);
 }
 
-export function buildConsoleBackgroundHookCommand(entry: ConsoleHookCommandEntry, kind: "spawn" | "stop"): FleetHookExec {
-  return buildConsoleCliHookExec(entry, ["hook", kind === "spawn" ? "background-spawn" : "background-stop"]);
+export function buildConsoleBackgroundHookCommand(entry: ConsoleHookCommandEntry): FleetHookExec {
+  return buildConsoleCliHookExec(entry, ["hook", "background-report"]);
 }
 
 export function buildConsoleAttentionHookCommand(entry: ConsoleHookCommandEntry): FleetHookExec {

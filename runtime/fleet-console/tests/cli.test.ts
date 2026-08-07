@@ -90,6 +90,9 @@ describe("fleet console CLI", () => {
   it("parses hook capture-session commands", () => {
     expect(parseConsoleHookCommand(["capture-session", "claude"])).toEqual({ command: "capture-session", provider: "claude" });
     expect(() => parseConsoleHookCommand(["capture-session", "codex"])).toThrow("Unknown fleet-console hook command");
+    expect(parseConsoleHookCommand(["background-report"])).toEqual({ command: "background-report" });
+    expect(() => parseConsoleHookCommand(["background-report", "extra"])).toThrow("Unknown fleet-console hook command");
+    // 퇴역한 이름은 in-flight 세션의 hooks.json이 여전히 부른다. 예외로 죽이지 않고 별개 명령으로 남긴다.
     expect(parseConsoleHookCommand(["background-spawn"])).toEqual({ command: "background-spawn" });
     expect(parseConsoleHookCommand(["background-stop"])).toEqual({ command: "background-stop" });
     expect(() => parseConsoleHookCommand(["background-spawn", "extra"])).toThrow("Unknown fleet-console hook command");
@@ -143,7 +146,7 @@ describe("fleet console CLI", () => {
     expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({ provider: "claude" });
   });
 
-  it("posts background hooks to the session-scoped background endpoint", async () => {
+  it("posts the background report, including under the retired hook names, to the session-scoped endpoint", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-background-hook-"));
     TEMP_DIRS.push(dir);
     const paths = createConsolePaths({ env: { FLEET_CONSOLE_DIR: dir } });
@@ -167,7 +170,7 @@ describe("fleet console CLI", () => {
     process.env.FLEET_CONSOLE_DIR = dir;
     process.env.FLEET_CONSOLE_SESSION_ID = "session-background";
     try {
-      for (const command of ["background-spawn", "background-stop"] as const) {
+      for (const command of ["background-report", "background-spawn", "background-stop"] as const) {
         process.argv = ["node", "fleet-console", "hook", command];
         await main();
       }
@@ -180,11 +183,18 @@ describe("fleet console CLI", () => {
       else process.env.FLEET_CONSOLE_SESSION_ID = originalSessionId;
     }
 
+    // 새 이름은 hook payload를 해석 없이 그대로 넘기고, 퇴역한 이름은 퇴역 당시의 {event} 본문을 유지한다 —
+    // 업그레이드를 넘겨 살아남은 구 데몬이 그 세션의 hook을 계속 받고 있고, 그 서버는 {event}만 이해한다.
     expect(calls.map((call) => ({
       url: call.url,
       method: call.init?.method,
-      body: JSON.parse(String(call.init?.body)) as unknown,
+      body: JSON.parse(String(call.init?.body)) as Record<string, unknown>,
     }))).toEqual([
+      {
+        url: "http://127.0.0.1:51240/plugins/terminal/agent/sessions/session-background/background",
+        method: "POST",
+        body: { input: "" },
+      },
       {
         url: "http://127.0.0.1:51240/plugins/terminal/agent/sessions/session-background/background",
         method: "POST",

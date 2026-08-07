@@ -70,25 +70,44 @@ describe("agent provider capture grace", () => {
     expect((await harness.getSessions())[0]).not.toHaveProperty("modelActivity");
   });
 
-  it("accepts background hook events and projects the pending state", async () => {
-    const harness = createHarness({ cliId: "claude", event: "spawn" });
+  it("settles the turn-end background report inside the same turn transition", async () => {
+    // Stop이 실어 온 두 사실(턴 종료·남은 백그라운드 작업)이 따로 반영되면 그 사이 프레임에서 세션이
+    // 거짓 유휴로 읽혀 종료 알림과 도착 표시가 튄다. 한 번의 turn POST가 둘을 함께 확정해야 한다.
+    const harness = createHarness({
+      cliId: "claude",
+      phase: "end",
+      input: JSON.stringify({ hook_event_name: "Stop", background_tasks: [{ id: "wf-1", type: "workflow", status: "running" }] }),
+    });
     await harness.postSessions();
     const sessionId = harness.operations[0]!.id;
 
-    await harness.backgroundSession(sessionId);
+    await harness.turnSession(sessionId);
 
-    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { ok: true } });
-    expect((await harness.getSessions())[0]).toMatchObject({ sessionId, backgroundPending: true });
+    expect((await harness.getSessions())[0]).toMatchObject({ sessionId, turnState: "ended", backgroundPending: true });
   });
 
-  it("rejects invalid background hook events", async () => {
-    const harness = createHarness({ cliId: "claude", event: "invalid" });
+  it("projects live tasks, holds through an unreadable report, and releases on an empty one", async () => {
+    const body: Record<string, unknown> = {
+      cliId: "claude",
+      input: JSON.stringify({ hook_event_name: "SubagentStop", agent_id: "agent-1", background_tasks: [{ id: "wf-1", type: "workflow", status: "running" }] }),
+    };
+    const harness = createHarness(body);
     await harness.postSessions();
     const sessionId = harness.operations[0]!.id;
 
     await harness.backgroundSession(sessionId);
+    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { ok: true } });
+    expect((await harness.getSessions())[0]).toMatchObject({ sessionId, backgroundPending: true });
 
-    expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "invalid_event" } });
+    // 읽어내지 못한 보고는 무의견이다 — 이미 켜진 배지를 끄지 않아야 무의견과 해제가 구분된다.
+    body.input = "not json";
+    await harness.backgroundSession(sessionId);
+    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { ok: true } });
+    expect((await harness.getSessions())[0]).toMatchObject({ sessionId, backgroundPending: true });
+
+    body.input = JSON.stringify({ hook_event_name: "Stop", background_tasks: [] });
+    await harness.backgroundSession(sessionId);
+    expect((await harness.getSessions())[0]).not.toHaveProperty("backgroundPending");
   });
 
   it("returns only invalid_agent_cli when a removed provider Operation is resumed", async () => {

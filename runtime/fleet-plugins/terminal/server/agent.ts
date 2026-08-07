@@ -24,6 +24,7 @@ import type { AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 import type { AiGatewayLaunchBinding } from "./agent-api/launch.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
+import { resolveBackgroundPendingFromHookInput } from "./agent-api/background-report.js";
 import { createAgentTerminalLaunchResolver, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./agent-api/osc-agent-activity.js";
@@ -32,8 +33,8 @@ import { readAnalysisProviderSession, readProviderSession, type AnalysisProvider
 import type { AgentProviderSession, AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
 import { CARRIER_JOB_FINALIZED_GRACE_MS, isCarrierJobActiveForIdle, startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown };
-type HookTurnBody = { readonly phase?: unknown };
-type HookBackgroundBody = { readonly event?: unknown };
+type HookTurnBody = { readonly phase?: unknown; readonly input?: unknown };
+type HookBackgroundBody = { readonly input?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
 type HookAutoNameBody = { readonly input?: unknown; readonly prompt?: unknown };
 type HookCaptureBody = { readonly provider?: unknown; readonly input?: unknown };
@@ -522,7 +523,11 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
       return true;
     }
     oscActivityTrackers.get(sessionId)?.reset();
-    observability.notifySessionUpdated(updated);
+    // 턴 종료 payload가 실어 온 살아 있는 백그라운드 작업 보고를 같은 전이 안에서 반영한 뒤 한 번만 알린다.
+    // 두 번 알리면 그 사이의 프레임에서 세션이 백그라운드 작업을 잊은 채 유휴로 읽힌다.
+    const pending = turnState === "ended" ? resolveBackgroundPendingFromHookInput(body?.input) : undefined;
+    const settled = pending === undefined ? updated : observability.setTerminalSessionBackgroundPending(sessionId, pending) ?? updated;
+    observability.notifySessionUpdated(settled);
     ctx.host.http.writeJson(res, 200, { ok: true });
     if (turnState === "ended") scheduleIdentityRefresh(sessionId);
     return true;
@@ -532,12 +537,13 @@ function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Terminal
     if (req.method !== "POST") return methodNotAllowed(res);
     if (!ctx.host.security.isLockAuthorized(req)) return unauthorized(res);
     const body = await ctx.host.http.readJsonBody<HookBackgroundBody>(req);
-    const event = body?.event === "spawn" || body?.event === "stop" ? body.event : null;
-    if (event === null) {
-      ctx.host.http.writeJson(res, 400, { error: "invalid_event" });
+    const pending = resolveBackgroundPendingFromHookInput(body?.input);
+    if (pending === undefined) {
+      // background_tasks를 읽어내지 못한 보고는 무의견이다. 상태를 건드리지 않고 조용히 수용한다.
+      ctx.host.http.writeJson(res, 200, { ok: true });
       return true;
     }
-    const updated = observability.setTerminalSessionBackgroundEvent(sessionId, event);
+    const updated = observability.setTerminalSessionBackgroundPending(sessionId, pending);
     if (!updated) {
       ctx.host.http.writeJson(res, 404, { error: "terminal_session_not_found" });
       return true;

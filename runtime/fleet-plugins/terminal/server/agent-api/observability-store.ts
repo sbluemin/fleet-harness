@@ -66,7 +66,7 @@ interface PendingTerminalSessionState {
   turnState?: AgentTurnState;
   modelActivity?: AgentModelActivity;
   attentionPending?: boolean;
-  backgroundPendingCount?: number;
+  backgroundPending?: boolean;
   backgroundPendingExpiry?: ReturnType<typeof setTimeout>;
   registrationId?: string;
   cliRunId?: string;
@@ -327,22 +327,23 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return toTerminalSessionInfo(session);
   }
 
-  function setTerminalSessionBackgroundEvent(sessionId: string, event: "spawn" | "stop"): AgentTerminalSessionInfo | null {
+  // 살아 있는 백그라운드 작업 보고를 절대값으로 반영한다. 증감이 아니라 대입이므로, 하나의 Workflow가
+  // 에이전트 수만큼 stop을 발화해도 남은 작업이 있는 한 pending이 꺼지지 않는다.
+  function setTerminalSessionBackgroundPending(sessionId: string, pending: boolean): AgentTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
     // dormant/closed/error 세션에 뒤늦게 도착한 best-effort hook은 무시한다 — 라이프사이클 정리
-    // (clearTerminalSessionBackgroundPending) 뒤에 카운트·타이머를 되살리면 resume 후 거짓 배지가 남는다.
+    // (clearTerminalSessionBackgroundPending) 뒤에 상태·타이머를 되살리면 resume 후 거짓 배지가 남는다.
     if (session.status === "dormant" || session.status === "closed" || session.status === "error") return null;
-    const count = session.backgroundPendingCount ?? 0;
-    session.backgroundPendingCount = event === "spawn" ? count + 1 : Math.max(0, count - 1);
-    if (session.backgroundPendingCount === 0) {
-      // 0으로 돌아오면 만료 타이머도 함께 정리한다 — 30분 뒤 무의미한 0→0 notify를 남기지 않는다.
+    if (!pending) {
+      // 꺼질 때는 만료 타이머도 함께 정리한다 — 30분 뒤 무의미한 false→false notify를 남기지 않는다.
       clearTerminalSessionBackgroundPending(session);
       return toTerminalSessionInfo(session);
     }
+    session.backgroundPending = true;
     if (session.backgroundPendingExpiry) clearTimeout(session.backgroundPendingExpiry);
     session.backgroundPendingExpiry = setTimeout(() => {
-      session.backgroundPendingCount = 0;
+      session.backgroundPending = false;
       delete session.backgroundPendingExpiry;
       notifySessionUpdated(toTerminalSessionInfo(session));
     }, BACKGROUND_PENDING_TTL_MS);
@@ -463,7 +464,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   function clearTerminalSessionBackgroundPending(session: PendingTerminalSessionState): void {
     if (session.backgroundPendingExpiry) clearTimeout(session.backgroundPendingExpiry);
     delete session.backgroundPendingExpiry;
-    session.backgroundPendingCount = 0;
+    session.backgroundPending = false;
   }
 
   function removeTerminalSession(sessionId: string): boolean {
@@ -516,7 +517,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     clearTerminalSessionProviderSession,
     updateTerminalSessionStatus,
     setTerminalSessionTurnState,
-    setTerminalSessionBackgroundEvent,
+    setTerminalSessionBackgroundPending,
     setTerminalSessionModelActivity,
     transitionTerminalSessionToDormant,
     removeTerminalSession,
@@ -596,7 +597,7 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): AgentTermina
     turnState: state.turnState ?? "none",
     ...(state.modelActivity ? { modelActivity: state.modelActivity } : {}),
     ...(state.attentionPending === true ? { attentionPending: true } : {}),
-    ...(state.backgroundPendingCount && state.backgroundPendingCount > 0 ? { backgroundPending: true } : {}),
+    ...(state.backgroundPending === true ? { backgroundPending: true } : {}),
     createdAt: state.createdAt,
     theaterId: state.theaterId,
     registrationId: state.registrationId,
