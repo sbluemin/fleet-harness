@@ -1,5 +1,7 @@
 import type { BrowserWindow, BrowserWindowConstructorOptions, WebContents } from "electron";
 
+import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-origin.js";
+
 export interface SecureWindowOptions {
   readonly iconPath: string;
   readonly platform?: NodeJS.Platform;
@@ -58,7 +60,8 @@ export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: s
   contents.session.setPermissionRequestHandler((_wc, permission, callback, details) => callback(Boolean(consoleOrigin) && permission === "clipboard-sanitized-write" && hasExactOrigin(details.requestingUrl, consoleOrigin ?? "")));
   const admittedRemoteOrigins = new Set<string>();
   const validateOrigin = (origin: string): void => {
-    if (!isLoopbackOrigin(origin) && !admittedRemoteOrigins.has(origin)) throw new Error("window_policy_console_origin_not_loopback");
+    // 루프백은 언제나, 원격은 지문을 대조해 들인 뒤에만.
+    if (!isLoopbackConsoleOrigin(origin) && !admittedRemoteOrigins.has(origin)) throw new Error("window_policy_console_origin_not_admitted");
   };
   return {
     activateConsoleOrigin(origin: string): void { validateOrigin(origin); consoleOrigin = origin; pendingConsoleOrigin = undefined; },
@@ -71,7 +74,7 @@ export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: s
     },
     cancelPendingConsoleOrigin(): void { pendingConsoleOrigin = undefined; },
     admitRemoteConsoleOrigin(origin: string): void {
-      if (!isPinnedRemoteOrigin(origin)) throw new Error("window_policy_remote_origin_invalid");
+      if (!isRemoteConsoleOrigin(origin)) throw new Error("window_policy_remote_origin_invalid");
       admittedRemoteOrigins.add(origin);
     },
     withdrawRemoteConsoleOrigin(origin: string): void {
@@ -87,6 +90,3 @@ export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: s
 export function isAllowedConsoleUrl(url: string, origin: string): boolean { try { const parsed = new URL(url); return parsed.origin === origin && parsed.pathname.startsWith("/console/"); } catch { return false; } }
 function isHttpUrl(url: string): boolean { try { return ["http:", "https:"].includes(new URL(url).protocol); } catch { return false; } }
 function hasExactOrigin(url: string, origin: string): boolean { try { return new URL(url).origin === origin; } catch { return false; } }
-function isLoopbackOrigin(origin: string): boolean { try { const parsed = new URL(origin); return parsed.protocol === "http:" && (parsed.hostname === "127.0.0.1" || parsed.hostname === "[::1]"); } catch { return false; } }
-/** 원격 콘솔은 TLS 위에서만 산다. 경로나 자격이 섞인 문자열은 origin이 아니라 URL이다. */
-function isPinnedRemoteOrigin(origin: string): boolean { try { const parsed = new URL(origin); return parsed.protocol === "https:" && parsed.origin === origin && parsed.hostname.length > 0; } catch { return false; } }
