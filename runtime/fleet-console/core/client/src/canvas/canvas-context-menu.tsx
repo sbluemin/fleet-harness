@@ -40,11 +40,14 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [menuSize, setMenuSize] = useState<{ readonly width: number; readonly height: number } | null>(null);
-  // 설명을 펼칠 항목. 포인터 호버와 키보드 포커스가 같은 상태를 쓴다 — 둘이 갈라지면
-  // 키보드로 옮긴 자리와 옆에 뜬 설명이 서로 다른 항목을 가리킨다.
+  // 설명을 펼칠 항목. 포인터와 키보드는 각자 기억한다 — 하나로 합치면 포인터가 메뉴를 벗어날 때
+  // 포커스가 짚고 있던 항목의 설명까지 함께 지워져, 여전히 강조된 행에 설명만 사라진다.
+  // 가리키는 동안에는 포인터가 이기고, 포인터가 나가면 포커스가 다시 드러난다.
   // 키는 플러그인까지 포함해야 한다: 실행 종류 id는 플러그인 안에서만 고유하므로, 두 플러그인이
   // 같은 id를 쓰면 한쪽 항목에 다른 쪽 설명이 붙는다.
-  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [hoverKey, setHoverKey] = useState<string | null>(null);
+  const [focusKey, setFocusKey] = useState<string | null>(null);
+  const activeKey = hoverKey ?? focusKey;
 
   // 배치 판정은 CSS의 max-height 상한이 아니라 실제 렌더 높이로 해야 한다 —
   // 상한(520px)으로 clamp하면 짧은 메뉴가 커서에서 수백 px 떨어진 곳에 열린다.
@@ -170,14 +173,19 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
         tabIndex={-1}
         ref={menuRef}
         onKeyDown={handleMenuKeyDown}
-        onMouseLeave={() => setActiveKey(null)}
+        onMouseLeave={() => setHoverKey(null)}
         // 항목이 전부 tabIndex=-1이라 Tab은 메뉴를 건너뛴다. 그때 메뉴만 열린 채 남으면 사용자는
         // 다른 컨트롤에 포커스를 둔 채 떠 있는 실행 메뉴를 보게 된다 — 포커스가 떠나면 닫는다.
         onBlur={(event) => {
           const next = event.relatedTarget as Node | null;
           if (next && event.currentTarget.contains(next)) return;
           if (next === null) return; // 창 자체가 포커스를 잃은 경우는 닫지 않는다
-          setActiveKey(null);
+          // 기능 투어는 이 메뉴의 항목에 앵커를 걸고 여러 단계를 걷는다. 그 카드의 버튼으로
+          // 포커스가 가는 것은 메뉴를 떠나는 것이 아니다 — 여기서 닫으면 다음 단계가 짚을
+          // 항목이 사라져 설명하던 대상을 잃은 투어만 남는다(포인터 경로도 같은 이유로 면제한다).
+          if (document.querySelector(FEATURE_TOUR_LAYER_SELECTOR)?.contains(next)) return;
+          setHoverKey(null);
+          setFocusKey(null);
           onClose();
         }}
         {...{ [FEATURE_TOUR_BOUNDARY_ATTRIBUTE]: "" }}
@@ -207,8 +215,8 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                   disabled={disabled}
                   title={kind.disabledReason}
                   tabIndex={-1}
-                  onMouseEnter={() => setActiveKey(itemKey(plugin.id, kind.id))}
-                  onFocus={() => setActiveKey(itemKey(plugin.id, kind.id))}
+                  onMouseEnter={() => setHoverKey(itemKey(plugin.id, kind.id))}
+                  onFocus={() => setFocusKey(itemKey(plugin.id, kind.id))}
                   onClick={() => onLaunchKind(plugin.id, kind)}
                 >
                   <span className="theater-menu-check" aria-hidden="true">{renderKindIcon(plugin.id, kind) ?? <FallbackGlyph />}</span>

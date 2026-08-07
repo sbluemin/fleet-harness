@@ -315,6 +315,61 @@ describe("CanvasContextMenu launch kind attribute", () => {
     outside.remove();
   });
 
+  it("stays open while the feature tour card takes focus from one of its anchored items", () => {
+    const onClose = vi.fn();
+    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [
+      {
+        id: "terminal",
+        title: "Terminal",
+        kinds: [{ id: "claude-native", type: "agent", title: "Claude (Native)" }],
+      },
+    ], onClose);
+    tourLayer = document.createElement("div");
+    tourLayer.setAttribute(FEATURE_TOUR_LAYER_ATTRIBUTE, "");
+    const tourNext = document.createElement("button");
+    tourLayer.append(tourNext);
+    document.body.append(tourLayer);
+
+    const menu = document.querySelector<HTMLElement>(".canvas-context-menu")!;
+    // 투어는 이 메뉴의 항목마다 앵커를 걸고 여러 단계를 걷는다 — 다음 단계 버튼을 눌렀다고
+    // 메뉴가 닫히면 남은 단계가 짚을 대상이 사라진다.
+    act(() => menu.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: tourNext })));
+    expect(onClose).not.toHaveBeenCalled();
+
+    const outside = document.createElement("button");
+    document.body.append(outside);
+    act(() => menu.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: outside })));
+    expect(onClose).toHaveBeenCalledOnce();
+    outside.remove();
+  });
+
+  it("keeps the focused item's description when the pointer leaves the menu", () => {
+    renderMenu({ x: 100, y: 156 }, { width: 1116, height: 856 }, [
+      {
+        id: "terminal",
+        title: "Terminal",
+        kinds: [
+          { id: "claude-native", type: "agent", title: "Claude (Native)" },
+          { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
+        ],
+      },
+    ]);
+
+    const menu = document.querySelector<HTMLElement>(".canvas-context-menu")!;
+    const rows = document.querySelectorAll<HTMLButtonElement>(".canvas-context-menu-item");
+    const asideText = () => document.querySelector(".canvas-context-menu-aside")?.textContent;
+
+    // 포인터로 열고 방향키로 옮기는 혼합 입력이 흔하다.
+    act(() => rows[0]!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
+    act(() => rows[1]!.focus());
+    // 가리키는 동안에는 포인터가 이긴다.
+    expect(asideText()).toBe("Plain Claude Code, without the Admiral prompt");
+
+    act(() => menu.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body })));
+    // 포인터가 나가도 포커스가 짚고 있는 행의 설명은 남는다.
+    expect(asideText()).toBe("Runs Claude Code on the models you enabled in Settings");
+  });
+
   it("names the menu after its launch target and keeps the visual head out of the menu tree", () => {
     act(() => root.render(
       <CanvasContextMenu
