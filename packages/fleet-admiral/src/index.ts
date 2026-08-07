@@ -18,6 +18,7 @@ export {
   DEFAULT_GOAL_CHECK_LIMIT,
   MAX_GOAL_CHECK_LIMIT,
   MAX_GOAL_CONDITION_CHARS,
+  MAX_LAUNCH_PROMPT_CHARS,
   MIN_GOAL_CHECK_LIMIT,
   type AgentCliDefinition,
   type AgentCliId,
@@ -30,6 +31,7 @@ export {
   type PtyInputChunk,
 } from "./agent-cli/types.js";
 export { clampGoalCheckLimit } from "./agent-cli/goal.js";
+export { sanitizeLaunchPrompt } from "./agent-cli/prompt.js";
 
 export {
   KIMI_AUTH_PROVIDER_ID,

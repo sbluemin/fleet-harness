@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import type { AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
+import { MAX_LAUNCH_PROMPT_CHARS } from "@dotobokuri/fleet-admiral";
 import type { OperationCreateInput, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
@@ -150,6 +151,56 @@ describe("agent launch variants", () => {
     const resumeContext = harness.attach.mock.calls[1]?.[0];
     expect(resumeContext).not.toHaveProperty("model");
     expect(resumeContext).not.toHaveProperty("effort");
+  });
+
+  it("rejects a non-string prompt", async () => {
+    const harness = await createHarness({
+      body: { cliId: "claude-native", prompt: 12 },
+    });
+
+    await harness.postSessions();
+
+    expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "invalid_prompt" } });
+    expect(harness.attach).not.toHaveBeenCalled();
+  });
+
+  it("rejects a prompt longer than MAX_LAUNCH_PROMPT_CHARS", async () => {
+    const harness = await createHarness({
+      body: { cliId: "claude-native", prompt: "x".repeat(MAX_LAUNCH_PROMPT_CHARS + 1) },
+    });
+
+    await harness.postSessions();
+
+    expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "prompt_too_long" } });
+    expect(harness.attach).not.toHaveBeenCalled();
+  });
+
+  it("omits a whitespace-only prompt from attach", async () => {
+    const harness = await createHarness({
+      body: { cliId: "claude-native", prompt: "   \n\t  " },
+    });
+
+    await harness.postSessions();
+
+    expect(harness.responses.at(-1)?.status).toBe(200);
+    expect(harness.attach).toHaveBeenCalledTimes(1);
+    expect(harness.attach.mock.calls[0]?.[0]).not.toHaveProperty("prompt");
+  });
+
+  it("accepts prompt for claude-native and keeps it out of response and durable payload", async () => {
+    const harness = await createHarness({
+      body: { cliId: "claude-native", prompt: "launch me" },
+    });
+
+    await harness.postSessions();
+
+    expect(harness.responses.at(-1)?.status).toBe(200);
+    expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({
+      cliId: "claude-native",
+      prompt: "launch me",
+    }));
+    expect(containsKey(harness.responses.at(-1)?.body, "prompt")).toBe(false);
+    expect(containsKey(harness.operations[0]?.payload, "prompt")).toBe(false);
   });
 });
 
@@ -461,4 +512,12 @@ async function createHarness(options: {
 
 function cryptoRandomId(): string {
   return `session-${Math.random().toString(16).slice(2)}`;
+}
+
+function containsKey(value: unknown, key: string): boolean {
+  if (Array.isArray(value)) return value.some((entry) => containsKey(entry, key));
+  if (typeof value !== "object" || value === null) return false;
+  return Object.entries(value as Record<string, unknown>).some(([entryKey, entryValue]) => (
+    entryKey === key || containsKey(entryValue, key)
+  ));
 }

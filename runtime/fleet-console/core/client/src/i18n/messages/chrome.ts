@@ -65,6 +65,15 @@ export const chromeEn = {
   // operation-search
   "chrome.operationSearch.commandsDialog": "Console commands",
   "chrome.operationSearch.quickSearchDialog": "Operation quick search",
+  // quick-launch
+  "chrome.quickLaunch.dialog": "Quick Launch",
+  "chrome.quickLaunch.placeholder": "What should it work on?",
+  "chrome.quickLaunch.promptLabel": "Prompt",
+  "chrome.quickLaunch.theaterMenu": "Choose a Theater",
+  "chrome.quickLaunch.theaterUnset": "Choose a Theater",
+  "chrome.quickLaunch.modelMenu": "Choose a model and reasoning effort",
+  "chrome.quickLaunch.modelUnset": "Default model",
+  "chrome.quickLaunch.run": "Run",
   "chrome.operationSearch.placeholder": "Search Operations — type > for commands",
   "chrome.operationSearch.commandResults": "Command results",
   "chrome.operationSearch.operationResults": "Operation results",
@@ -270,6 +279,15 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
 
   "chrome.operationSearch.commandsDialog": "Console 명령",
   "chrome.operationSearch.quickSearchDialog": "Operation 빠른 검색",
+  // quick-launch
+  "chrome.quickLaunch.dialog": "Quick Launch",
+  "chrome.quickLaunch.placeholder": "무엇을 시킬까요?",
+  "chrome.quickLaunch.promptLabel": "프롬프트",
+  "chrome.quickLaunch.theaterMenu": "Theater 선택",
+  "chrome.quickLaunch.theaterUnset": "Theater 선택",
+  "chrome.quickLaunch.modelMenu": "모델과 추론 강도 선택",
+  "chrome.quickLaunch.modelUnset": "기본 모델",
+  "chrome.quickLaunch.run": "실행",
   "chrome.operationSearch.placeholder": "Operation 검색 — 명령은 > 입력",
   "chrome.operationSearch.commandResults": "명령 결과",
   "chrome.operationSearch.operationResults": "Operation 결과",

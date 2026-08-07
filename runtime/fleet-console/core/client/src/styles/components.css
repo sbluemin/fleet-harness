@@ -9978,3 +9978,337 @@ body[data-codex-reading="true"] .operations-side-bar {
     animation: none;
   }
 }
+
+/* ── Quick Launch 컴포저 ──────────────────────────────────────────────
+   전역 단축키(Mod+J)로 열리는 프롬프트 컴포저. 오버레이 지오메트리와 스크림은
+   .operation-search-overlay의 계약을 그대로 승계한다 — 두 표면은 서로 배타적이며
+   (isBlockingDialogOpen이 aria-modal로 판정) 같은 z-index 층에 산다. */
+.quick-launch-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: start center;
+  padding: 14vh var(--space-5) var(--space-5);
+  background: color-mix(in oklch, var(--ink-abyss) 66%, transparent);
+  animation: fleet-pop 280ms var(--ease-spring) both;
+}
+
+.quick-launch-card {
+  position: relative;
+  width: min(760px, 100%);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-lg);
+  /* 팝업 판독성 계약: pillar 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--surface-pillar) 92%, transparent),
+      color-mix(in oklch, var(--surface-pillar) 92%, transparent)
+    ),
+    var(--ink-deep);
+  box-shadow: var(--shadow-floating);
+}
+
+.quick-launch-card:focus-visible {
+  outline: none;
+}
+
+.quick-launch-field {
+  padding: var(--space-3) var(--space-4) var(--space-2);
+}
+
+.quick-launch-input {
+  width: 100%;
+  min-height: 46px;
+  /* 6줄까지 자라고 그 뒤로는 스크롤한다 — Analyst 컴포저와 같은 clamp 정책. */
+  max-height: calc(1.55em * 6 + var(--space-2));
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 16.5px;
+  line-height: 1.55;
+  resize: none;
+  overflow-y: auto;
+}
+
+.quick-launch-input:focus-visible {
+  outline: none;
+}
+
+.quick-launch-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.quick-launch-bar {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3) var(--space-4);
+  border-top: 1px solid var(--surface-rim);
+}
+
+.quick-launch-spacer {
+  flex: 1;
+  min-width: var(--space-2);
+}
+
+.quick-launch-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  border: 1px solid var(--surface-rim);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--surface-pillar) 40%, transparent);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring);
+}
+
+.quick-launch-chip:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+  color: var(--text-primary);
+}
+
+.quick-launch-chip:disabled {
+  opacity: 0.45;
+}
+
+.quick-launch-chip[aria-expanded="true"] {
+  border-color: var(--brass);
+  background: var(--brass-glow);
+  color: var(--brass);
+}
+
+.quick-launch-chip-label {
+  color: var(--text-primary);
+  font-weight: var(--weight-bold);
+}
+
+.quick-launch-effort {
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.quick-launch-caret {
+  color: var(--text-tertiary);
+  font-size: 10px;
+}
+
+/* 실행 종류 글리프는 캔버스 메뉴의 아이콘 슬롯과 같은 치수·색을 쓴다. */
+.quick-launch-kind-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--brass-ink);
+}
+
+.quick-launch-kind-icon svg {
+  display: block;
+  width: 13px;
+  height: 13px;
+}
+
+/* Theater 아이덴티티는 이 마크가 든다 — 카드에 별도 스파인을 두지 않는다. */
+.quick-launch-mark {
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--surface-pillar) 70%, transparent);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: var(--weight-bold);
+}
+
+.quick-launch-esc {
+  padding: 2px 6px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.quick-launch-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px 14px;
+  border: 1px solid var(--brass);
+  border-radius: var(--radius-md);
+  background: var(--brass);
+  color: var(--text-on-brass);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: var(--weight-bold);
+}
+
+.quick-launch-submit:disabled {
+  opacity: 0.35;
+}
+
+.quick-launch-submit kbd {
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-abyss) 22%, transparent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+/* 팝오버는 .theater-menu의 팝업 스킨(테두리·언더레이·그림자)을 상속하고 위치·폭만 덮는다.
+   카드는 화면 위쪽(14vh)에 고정이라 팝오버는 항상 아래로 연다 — 위로 열면 뷰포트 밖으로 잘린다. */
+.quick-launch-pop {
+  top: calc(100% + var(--space-2));
+  right: auto;
+  bottom: auto;
+  left: var(--space-4);
+  z-index: 41;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.quick-launch-pop--theater {
+  width: 288px;
+}
+
+.quick-launch-pop--model {
+  width: 324px;
+}
+
+.quick-launch-pop-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.quick-launch-pop-item:hover,
+.quick-launch-pop-item:focus-visible {
+  background: color-mix(in oklch, var(--surface-pillar) 55%, transparent);
+  color: var(--text-primary);
+}
+
+.quick-launch-pop-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-launch-pop-check {
+  color: var(--brass);
+  font-size: 11px;
+}
+
+.quick-launch-pop-band {
+  margin: 0;
+  padding: var(--space-2) var(--space-2) 6px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.quick-launch-variant-row {
+  padding: 6px var(--space-2) var(--space-2);
+}
+
+.quick-launch-variant-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 0 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+  text-align: left;
+}
+
+.quick-launch-variant-name:hover,
+.quick-launch-variant-name:focus-visible {
+  color: var(--text-primary);
+}
+
+.quick-launch-variant-star {
+  color: var(--brass);
+  font-size: 10px;
+}
+
+.quick-launch-variant-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.quick-launch-variant-chip {
+  min-width: 44px;
+  padding: 3px 6px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring);
+}
+
+.quick-launch-variant-chip:hover {
+  border-color: var(--brass);
+  background: var(--brass-glow);
+  color: var(--brass);
+}
+
+.quick-launch-variant-chip[aria-pressed="true"] {
+  border-color: var(--brass);
+  background: var(--brass);
+  color: var(--text-on-brass);
+  font-weight: var(--weight-bold);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-launch-overlay {
+    animation: none;
+  }
+
+  .quick-launch-chip,
+  .quick-launch-variant-chip {
+    transition: none;
+  }
+}

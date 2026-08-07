@@ -15,6 +15,7 @@ import type {
   OperationNotification,
   OperationNode,
   ObserverStatus,
+  QuickLaunchRequest,
   ReleaseNotesResponse,
   ThemeId,
   TheaterBootstrap,
@@ -73,6 +74,8 @@ let state: ConsoleState = {
   operationsViewActive: false,
   operationSearchOpen: false,
   operationSearchSeed: null,
+  quickLaunchOpen: false,
+  pendingQuickLaunch: null,
   whatsNewOpen: false,
   releaseNotes: [],
   releaseNotesLoading: false,
@@ -557,6 +560,29 @@ export function toggleOperationSearch(): void {
     operationSearchOpen,
     ...(operationSearchOpen ? {} : { operationSearchSeed: null }),
   });
+}
+
+export function openQuickLaunch(): void {
+  setState({ quickLaunchOpen: true });
+}
+
+export function closeQuickLaunch(): void {
+  setState({ quickLaunchOpen: false });
+}
+
+export function toggleQuickLaunch(): void {
+  setState({ quickLaunchOpen: !state.quickLaunchOpen });
+}
+
+// pendingOperationFocus/consumeOperationFocus와 같은 request/consume 계약. 컴포저는 의도만 남기고,
+// 실행 좌표·포커스 승계는 Operations 화면이 자기 규율로 처리한다.
+export function requestQuickLaunch(request: QuickLaunchRequest): void {
+  setState({ pendingQuickLaunch: request });
+}
+
+export function consumeQuickLaunch(): void {
+  if (state.pendingQuickLaunch === null) return;
+  setState({ pendingQuickLaunch: null });
 }
 
 export function openWhatsNew(): void {

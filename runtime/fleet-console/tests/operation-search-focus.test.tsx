@@ -64,6 +64,8 @@ beforeEach(() => {
     }],
     operationSearchOpen: true,
     operationSearchSeed: null,
+    quickLaunchOpen: false,
+    pendingQuickLaunch: null,
     pendingOperationFocus: null,
     keyboardFocusRequest: null,
     pendingSideBarAddTheater: false,

@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 
-import { buildGatewayModelsToolSpec, clampGoalCheckLimit, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, getAgentCliIds, getAgentCliMetadata, MAX_GOAL_CONDITION_CHARS, NATIVE_CLAUDE_EFFORTS, NATIVE_CLAUDE_MODEL_ALIASES, parseAgentCliId, sanitizePtyMessageText, type AgentCliId } from "@dotobokuri/fleet-admiral";
+import { buildGatewayModelsToolSpec, clampGoalCheckLimit, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, getAgentCliIds, getAgentCliMetadata, MAX_GOAL_CONDITION_CHARS, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, NATIVE_CLAUDE_MODEL_ALIASES, parseAgentCliId, sanitizeLaunchPrompt, sanitizePtyMessageText, type AgentCliId } from "@dotobokuri/fleet-admiral";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -31,7 +31,7 @@ import { readAnalysisProviderSession, readProviderSession, type AnalysisProvider
 import { buildAgentSessionGoal, dropGoalTranscriptCache, readGoalMarkersFromTranscript } from "./agent-api/goal-transcript.js";
 import type { AgentProviderSession, AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource, OperationGoalRecord } from "./agent-api/types.js";
 import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
-type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown };
+type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown };
 type GoalBody = { readonly condition?: unknown; readonly checkLimit?: unknown };
 type HookTurnBody = { readonly phase?: unknown; readonly input?: unknown };
 type HookBackgroundBody = { readonly input?: unknown };
@@ -331,12 +331,26 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     }
     const launchOptions = readLaunchOptions(body, cliId, res);
     if (launchOptions === false) return true;
+    if (body?.prompt !== undefined && typeof body.prompt !== "string") {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_prompt" });
+      return true;
+    }
+    if (typeof body?.prompt === "string" && body.prompt.length > MAX_LAUNCH_PROMPT_CHARS) {
+      ctx.host.http.writeJson(res, 400, { error: "prompt_too_long" });
+      return true;
+    }
+    // spawn-only: sanitizeLaunchPrompt 결과는 Operation payload·브라우저 DTO에 넣지 않는다
+    // (FORBIDDEN_BROWSER_PAYLOAD_KEYS에 "prompt" 포함).
+    const prompt = typeof body?.prompt === "string" ? sanitizeLaunchPrompt(body.prompt) : undefined;
     const cwd = ctx.host.paths.resolveTheaterPath(theaterId);
     if (!cwd) {
       ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
       return true;
     }
-    await createSession(cwd, theaterId, cliId, res, launchOptions);
+    await createSession(cwd, theaterId, cliId, res, {
+      ...launchOptions,
+      ...(prompt ? { prompt } : {}),
+    });
     return true;
   }
 
@@ -406,7 +420,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     theaterId: string,
     cliId: AgentCliId,
     res: Parameters<typeof handle>[0]["res"],
-    launchOptions: { readonly model?: string; readonly effort?: string } = {},
+    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     if (!meta || !meta.available || !meta.signedIn) {
@@ -435,6 +449,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         cliId,
         ...(launchOptions.model ? { model: launchOptions.model } : {}),
         ...(launchOptions.effort ? { effort: launchOptions.effort } : {}),
+        // spawn-only 상태 — Operation payload·브라우저 DTO에 넣지 않는다
+        // (FORBIDDEN_BROWSER_PAYLOAD_KEYS에 "prompt" 포함).
+        ...(launchOptions.prompt ? { prompt: launchOptions.prompt } : {}),
       });
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
       pendingRuntimeSessions.delete(sessionId);
@@ -750,7 +767,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     return buildAgentCliLaunchKinds(metadata, AGENT_OPERATION_TYPE, selection);
   }
 
-  function launch(cwd: string | undefined, context: { readonly operationId?: string; readonly model?: string; readonly effort?: string } | undefined) {
+  function launch(cwd: string | undefined, context: { readonly operationId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string } | undefined) {
     const operationId = context?.operationId ?? "";
     const operation = ctx.host.operations.get(operationId);
     const cliId = typeof operation?.payload.cliId === "string" ? operation.payload.cliId : undefined;
@@ -764,6 +781,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         payload: { ...operation.payload, goalLaunchCheckLimit: launchCheckLimit },
       });
     }
+    // prompt는 spawn-only. Operation payload·브라우저 DTO에 넣지 않는다(FORBIDDEN_BROWSER_PAYLOAD_KEYS).
     return launchResolver(cwd, {
       sessionId: operationId,
       operationId,
@@ -774,6 +792,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ...(context?.model ? { model: context.model } : {}),
       ...(context?.effort ? { effort: context.effort } : {}),
       goalCheckLimit: launchCheckLimit,
+      ...(context?.prompt ? { prompt: context.prompt } : {}),
       ...(providerSession ? { resumeSessionId: providerSession } : {}),
     });
   }

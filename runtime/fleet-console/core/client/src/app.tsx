@@ -11,6 +11,7 @@ import { FeatureTourOverlay } from "./components/feature-tour.js";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog.js";
 import { takeKeyboardShortcutsReturnFocus } from "./focus-guards.js";
 import { OperationSearch } from "./components/operation-search.js";
+import { QuickLaunch } from "./components/quick-launch.js";
 import { ReconnectButton } from "./components/reconnect-button.js";
 import { Toast, ToastHost } from "./components/toast.js";
 import { appendPendingDeletion, deletionCountdownSeconds, latestPendingDeletion } from "./deletion-undo.js";
@@ -26,7 +27,7 @@ import { Operations } from "./pages/operations.js";
 import { BUILT_IN_RAIL_PANELS } from "./rail/built-in-panels.js";
 import { setRailChromeExpanded, toggleRailChrome } from "./rail/rail-store.js";
 import { refreshObserverStatus } from "./operations-sse.js";
-import { closeKeyboardShortcuts, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleOperationSearch } from "./store.js";
+import { closeKeyboardShortcuts, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleOperationSearch, toggleQuickLaunch } from "./store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fetch.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "./sidebar/operations-side-bar-store.js";
 import { getViewModeSnapshot } from "./view-mode-store.js";
@@ -288,6 +289,7 @@ export function App() {
       },
       openOperationSearch: () => openOperationSearch(">"),
       toggleOperationSearch,
+      toggleQuickLaunch,
       toggleRailChrome: () => {
         const outcome = resolvePanelShortcut();
         if (outcome === "suppress") return;
@@ -332,6 +334,7 @@ export function App() {
           canUndoLastClose={canUndoLastClose}
           onUndoLastClose={undoLastClose}
         />
+        <QuickLaunch />
         {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
         <WhatsNewModal state={state} />
         <CommissioningOverlay state={state} />

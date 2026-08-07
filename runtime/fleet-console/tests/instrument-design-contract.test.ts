@@ -881,6 +881,7 @@ describe("Instrument core design contract", () => {
       ".accent-popover-card",
       ".theater-menu",
       ".operation-search-card",
+      ".quick-launch-card",
     ];
     for (const selector of componentsPopupSelectors) {
       const scoped = selector.replace(/\./g, "\\.");

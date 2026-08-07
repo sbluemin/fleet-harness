@@ -52,6 +52,8 @@ function makeState(
     operationsViewActive: false,
     operationSearchOpen: false,
     operationSearchSeed: null,
+    quickLaunchOpen: false,
+    pendingQuickLaunch: null,
     whatsNewOpen: false,
     releaseNotes: [],
     releaseNotesLoading: false,

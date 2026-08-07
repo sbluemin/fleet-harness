@@ -6,6 +6,7 @@ export interface ResolveAgentCliProfileOptions {
   readonly goalCheckLimit?: number;
   readonly model?: string;
   readonly effort?: string;
+  readonly prompt?: string;
   readonly resumeSessionId?: string;
 }
 
@@ -33,6 +34,7 @@ export async function resolveAgentCliProfile(
     goalCheckLimit: options.goalCheckLimit,
     model: options.model,
     effort: options.effort,
+    prompt: options.prompt,
     resumeSessionId: options.resumeSessionId,
   });
 }

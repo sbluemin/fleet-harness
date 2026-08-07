@@ -73,15 +73,17 @@ export async function fetchOperationsSnapshot(signal?: AbortSignal): Promise<Ope
 export async function createAgentSession(
   theaterId: string,
   cliId: string,
-  options?: { readonly model?: string; readonly effort?: string },
+  options?: { readonly model?: string; readonly effort?: string; readonly prompt?: string },
   signal?: AbortSignal,
 ): Promise<SessionInfo> {
   const model = typeof options?.model === "string" && options.model.length > 0 ? options.model : undefined;
   const effort = typeof options?.effort === "string" && options.effort.length > 0 ? options.effort : undefined;
+  // 요청 body에는 prompt를 실을 수 있지만, 응답 DTO에는 절대 오면 안 된다 — FORBIDDEN_BROWSER_PAYLOAD_KEYS의 "prompt"는 응답 가드이므로 지우지 않는다.
+  const prompt = typeof options?.prompt === "string" && options.prompt.length > 0 ? options.prompt : undefined;
   const response = await fetch("/plugins/terminal/agent/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ theaterId, cliId, ...(model ? { model } : {}), ...(effort ? { effort } : {}) }),
+    body: JSON.stringify({ theaterId, cliId, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(prompt ? { prompt } : {}) }),
     signal,
   });
   await assertOk(response);
