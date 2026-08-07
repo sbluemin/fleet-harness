@@ -8,7 +8,7 @@ import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, fet
 import { isBlockingDialogOpen } from "../focus-guards.js";
 import { closeOperationCompletely } from "../operation-close.js";
 import { forgetTheaterCompletely } from "../theater-forget.js";
-import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, restoreOperation, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
+import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { playMinimizeFlight, playRestoreFlight } from "../canvas/panel-motion.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
@@ -268,7 +268,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     }
     const snapshot = getCanvasSnapshot();
     const geometry = snapshot.operations[operationId] ?? operation.geometry ?? ensurePluginGeometry(operation);
-    if (!snapshot.operations[operationId]) setOperationGeometry(operationId, geometry);
+    // 캔버스 store에 처음 심는 좌표도 생성과 같은 규율을 탄다 — Station Keeping이면 정착 후 심는다.
+    if (!snapshot.operations[operationId]) setOperationGeometry(operationId, resolveLaunchGeometry(operation.theaterId, geometry));
     const wasMinimized = snapshot.minimized.includes(operationId);
     // 복원과 활성화를 같은 동기 실행에서 끝내 Canvas의 최소화-active 정리 effect보다 먼저 상태를 확정한다.
     if (wasMinimized) playRestoreFlight(operationId);
@@ -310,20 +311,23 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const handleCanvasLaunchKind = useCallback((pluginId: string, kind: OperationLaunchKind, canvasPoint: CanvasPoint, theaterId?: string) => {
     const launchTheaterId = theaterId ?? stateRef.current.activeTheaterId;
     if (!launchTheaterId) return;
-    const geometry = { ...canvasPointToGeometry(canvasPoint), zIndex: claimTopZIndex() };
+    // Station Keeping이 켜진 Theater의 생성 좌표는 전부 정착을 거친다 — 어느 진입 경로든 같은 규율.
+    const geometry = resolveLaunchGeometry(launchTheaterId, { ...canvasPointToGeometry(canvasPoint), zIndex: claimTopZIndex() });
     void launchViaPlugin(pluginId, kind, geometry, launchTheaterId, registry.plugins);
   }, [registry.plugins]);
 
   const handleSideBarLaunchKind = useCallback((pluginId: string, kind: OperationLaunchKind) => {
-    if (!stateRef.current.activeTheaterId) return;
+    const launchTheaterId = stateRef.current.activeTheaterId;
+    if (!launchTheaterId) return;
     const canvasPoint = canvasCenterPoint(bodyRef.current);
-    const geometry = { ...canvasPointToGeometry(canvasPoint), zIndex: claimTopZIndex() };
-    void launchViaPlugin(pluginId, kind, geometry, stateRef.current.activeTheaterId, registry.plugins);
+    const geometry = resolveLaunchGeometry(launchTheaterId, { ...canvasPointToGeometry(canvasPoint), zIndex: claimTopZIndex() });
+    void launchViaPlugin(pluginId, kind, geometry, launchTheaterId, registry.plugins);
   }, [registry.plugins]);
 
   const handleLaunchAtGeometry = useCallback((pluginId: string, kind: OperationLaunchKind, geometry: OperationGeometry) => {
-    if (!stateRef.current.activeTheaterId) return;
-    void launchViaPlugin(pluginId, kind, geometry, stateRef.current.activeTheaterId, registry.plugins);
+    const launchTheaterId = stateRef.current.activeTheaterId;
+    if (!launchTheaterId) return;
+    void launchViaPlugin(pluginId, kind, resolveLaunchGeometry(launchTheaterId, geometry), launchTheaterId, registry.plugins);
   }, [registry.plugins]);
 
   const handleFocus = useCallback((operationId: string) => {

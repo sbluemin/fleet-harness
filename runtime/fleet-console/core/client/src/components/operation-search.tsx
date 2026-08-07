@@ -28,7 +28,7 @@ import { stashKeyboardShortcutsReturnFocus } from "../focus-guards.js";
 import { closeOperationCompletely } from "../operation-close.js";
 import { forgetTheaterCompletely } from "../theater-forget.js";
 import type { DeferredDeletionReceipt } from "../api.js";
-import { getLoadedTheaterId, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, loadForTheater, minimizeOperations, requestFitAllOperations, toggleFormationView } from "../canvas/canvas-store.js";
+import { getLoadedTheaterId, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, getFormationView, getStationKeeping, loadForTheater, minimizeOperations, requestFitAllOperations, setStationKeeping, toggleFormationView } from "../canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive, visitTriageTheater } from "../canvas/triage-store.js";
 import { getViewModeSnapshot } from "../view-mode-store.js";
 import { openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
@@ -344,6 +344,13 @@ export function OperationSearch({
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         ensurePaletteCanvasTheater(state);
         toggleFormationView();
+        break;
+      }
+      case "toggle-station-keeping": {
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        ensurePaletteCanvasTheater(state);
+        // 규율은 Cruise의 것이다 — Tactical/War Room 위에서 보이지 않는 펼침이 일어나지 않게 게이트한다.
+        if (!isTriageActive() && !getFormationView()) setStationKeeping(!getStationKeeping());
         break;
       }
       case "toggle-status-axis": {
