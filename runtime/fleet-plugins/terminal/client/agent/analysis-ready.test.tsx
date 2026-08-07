@@ -280,7 +280,7 @@ function readyResponse(ready: boolean): Response {
 }
 
 function analystHandle(): HTMLButtonElement {
-  const handle = container?.querySelector<HTMLButtonElement>(".session-analyst-handle:not(.session-analyst-handle--streams)");
+  const handle = container?.querySelector<HTMLButtonElement>(".session-analyst-handle--analyst");
   if (!handle) throw new Error("Session Analyst handle must render.");
   return handle;
 }

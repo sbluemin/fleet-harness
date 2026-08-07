@@ -18,6 +18,7 @@ export interface TerminalRuntime {
   terminate(operationId: string): boolean;
   getMessagePolicy(operationId: string): CliMessagePolicy | undefined;
   getRenameCommand(operationId: string): string | undefined;
+  getGoalCommand(operationId: string): string | undefined;
   getSessionLastActivityAt(operationId: string): number | null;
   resolveSessionIdentity(operationId: string, providerSessionId: string): Promise<string | null>;
   onExit(callback: (operationId: string) => void | Promise<void>): () => void;
@@ -69,6 +70,7 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
     terminate: (operationId) => sessions.terminate(operationId),
     getMessagePolicy: (operationId) => sessions.getSessionMessagePolicy(operationId),
     getRenameCommand: (operationId) => sessions.getSessionRenameCommand(operationId),
+    getGoalCommand: (operationId) => sessions.getSessionGoalCommand(operationId),
     getSessionLastActivityAt: (operationId) => sessions.getSessionLastActivityAt(operationId),
     resolveSessionIdentity: (operationId, providerSessionId) => sessions.resolveSessionIdentity(operationId, providerSessionId),
     onExit: (callback) => {

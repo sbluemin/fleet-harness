@@ -29,6 +29,7 @@ interface TerminalSession {
   readonly cleanup?: () => void | Promise<void>;
   readonly messagePolicy?: CliMessagePolicy;
   readonly renameCommand?: string;
+  readonly goalCommand?: string;
   readonly sessionIdentityResolver?: SessionIdentityResolver;
   readonly titleListener?: TerminalTitleListener;
   readonly titleParser?: OscTitleParser;
@@ -117,6 +118,10 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
 
   function getSessionRenameCommand(sessionId: string): string | undefined {
     return sessions.get(sessionId)?.renameCommand;
+  }
+
+  function getSessionGoalCommand(sessionId: string): string | undefined {
+    return sessions.get(sessionId)?.goalCommand;
   }
 
   function getSessionLastActivityAt(sessionId: string): number | null {
@@ -215,6 +220,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       cleanup: launch.cleanup,
       messagePolicy: launch.messagePolicy,
       renameCommand: launch.renameCommand,
+      goalCommand: launch.goalCommand,
       sessionIdentityResolver: launch.sessionIdentityResolver,
       titleListener,
       ...(titleListener ? { titleParser: createOscTitleParser() } : {}),
@@ -351,7 +357,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     }
   }
 
-  return { canAttach, createSession, attach, getSessionMessagePolicy, getSessionRenameCommand, getSessionLastActivityAt, resolveSessionIdentity, terminate, stop, writeToSession };
+  return { canAttach, createSession, attach, getSessionMessagePolicy, getSessionRenameCommand, getSessionGoalCommand, getSessionLastActivityAt, resolveSessionIdentity, terminate, stop, writeToSession };
 }
 
 async function runLaunchCleanup(cleanup: (() => void | Promise<void>) | undefined): Promise<void> {

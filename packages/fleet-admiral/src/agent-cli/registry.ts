@@ -3,6 +3,7 @@ import type { AgentCliDefinition, AgentCliId, AgentCliProfile } from "./types.js
 
 export interface ResolveAgentCliProfileOptions {
   readonly cliId?: string;
+  readonly goalCheckLimit?: number;
   readonly model?: string;
   readonly effort?: string;
   readonly resumeSessionId?: string;
@@ -29,6 +30,7 @@ export async function resolveAgentCliProfile(
   return DEFINITIONS[id].createProfile({
     cwd,
     env,
+    goalCheckLimit: options.goalCheckLimit,
     model: options.model,
     effort: options.effort,
     resumeSessionId: options.resumeSessionId,

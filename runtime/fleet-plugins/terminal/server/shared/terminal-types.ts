@@ -9,6 +9,7 @@ export interface TerminalLaunchSpec {
   readonly env: NodeJS.ProcessEnv;
   readonly messagePolicy?: CliMessagePolicy;
   readonly renameCommand?: string;
+  readonly goalCommand?: string;
   /** Spawn-time selected opaque provider identity reader; never browser-visible. */
   readonly sessionIdentityResolver?: SessionIdentityResolver;
   readonly terminalName?: string;
@@ -25,6 +26,7 @@ export interface TerminalLaunchContext {
   readonly cliId?: string;
   readonly model?: string;
   readonly effort?: string;
+  readonly goalCheckLimit?: number;
   readonly resumeSessionId?: string;
   /** 콘솔 테마 극성 힌트 — spawn env COLORFGBG로만 소비된다. PTY는 최초 spawn 시점 값에 고정된다. */
   readonly colorScheme?: "light" | "dark";
@@ -83,6 +85,7 @@ export interface TerminalSessionManager {
   attach(socket: TerminalSocket, context: TerminalTicketContext): Promise<void>;
   getSessionMessagePolicy(sessionId: string): CliMessagePolicy | undefined;
   getSessionRenameCommand(sessionId: string): string | undefined;
+  getSessionGoalCommand(sessionId: string): string | undefined;
   getSessionLastActivityAt(sessionId: string): number | null;
   resolveSessionIdentity(sessionId: string, providerSessionId: string): Promise<string | null>;
   terminate(sessionId: string): boolean;

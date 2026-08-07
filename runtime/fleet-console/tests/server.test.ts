@@ -2393,7 +2393,7 @@ describe("console static and terminal ticket boundary", () => {
     let destroyed = 0;
     const handler = createPluginTerminalUpgradeHandler({
       tickets: { consume: () => null },
-      sessions: { canAttach: () => true, createSession: async () => undefined, attach: async () => undefined, getSessionMessagePolicy: () => undefined, getSessionRenameCommand: () => undefined, getSessionLastActivityAt: () => null, resolveSessionIdentity: async () => null, terminate: () => false, stop: async () => undefined, writeToSession: () => false },
+      sessions: { canAttach: () => true, createSession: async () => undefined, attach: async () => undefined, getSessionMessagePolicy: () => undefined, getSessionRenameCommand: () => undefined, getSessionGoalCommand: () => undefined, getSessionLastActivityAt: () => null, resolveSessionIdentity: async () => null, terminate: () => false, stop: async () => undefined, writeToSession: () => false },
       isAuthorized: () => true,
     });
 
@@ -2426,6 +2426,7 @@ describe("console static and terminal ticket boundary", () => {
         createSession: async () => undefined,
         attach: async () => undefined,
         getSessionMessagePolicy: () => undefined,
+        getSessionGoalCommand: () => undefined,
         getSessionRenameCommand: () => undefined,
         getSessionLastActivityAt: () => null,
         resolveSessionIdentity: async () => null,

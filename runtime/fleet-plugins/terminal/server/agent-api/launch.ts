@@ -152,6 +152,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       cliId: context?.cliId,
       model: context?.model,
       effort: context?.effort,
+      goalCheckLimit: context?.goalCheckLimit,
       createSessionIdentityResolver: resolveSessionIdentityResolver,
       resumeSessionId: context?.resumeSessionId,
       sessionId,
@@ -191,6 +192,7 @@ async function createAgentCliLaunchSpec(options: {
   readonly cwd: string;
   readonly dataDir: string;
   readonly env: NodeJS.ProcessEnv;
+  readonly goalCheckLimit?: number;
   readonly hookEntry: ConsoleHookCommandEntry;
   readonly infraServices: { readonly globalOptionsService: GlobalOptionsService };
   readonly injectProfile: typeof injectAgentCliProfile;
@@ -233,6 +235,7 @@ async function createAgentCliLaunchSpec(options: {
       resumeSessionId: options.resumeSessionId,
       model: resolvedModel,
       effort: options.effort,
+      goalCheckLimit: options.goalCheckLimit,
     });
     const injectedProfile = await options.injectProfile(profile, {
       buildSystemPrompt: () => options.createSystemPromptBuilder().build(),
@@ -313,6 +316,7 @@ function toLaunchSpec(profile: AgentCliProfile, cleanup: () => Promise<void>, se
     env: { ...profile.env },
     messagePolicy: profile.messagePolicy,
     renameCommand: profile.renameCommand,
+    goalCommand: profile.goalCommand,
     sessionIdentityResolver,
     terminalName: profile.terminalName,
   };
