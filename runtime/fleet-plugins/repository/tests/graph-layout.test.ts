@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { layoutGraph } from "../client/graph.js";
+import { GraphGutter, layoutGraph } from "../client/graph.js";
 import type { LogCommitEntry } from "../server/types.js";
 
 function makeCommit(overrides: Partial<LogCommitEntry> = {}): LogCommitEntry {
@@ -14,6 +14,7 @@ function makeCommit(overrides: Partial<LogCommitEntry> = {}): LogCommitEntry {
     refs: [],
     parents: [],
     onHead: true,
+    hasBody: false,
     ...overrides,
   };
 }
@@ -302,5 +303,45 @@ describe("layoutGraph — Phase 2 다중 레인 topology", () => {
     expect(layout.nodes[0]?.branchToLanes).toEqual([]);
     expect(layout.activeLaneCount).toBe(1);
     expect(layout.collapsed).toBe(false);
+  });
+});
+
+// 2026-08-07 재가 — Fork 문법의 거터 폭. 목록 전체 최대 레인 수가 아니라 행마다 실제로 그려진 레인만
+// 폭을 차지하므로, 분기가 없는 구간에서 커밋 본문이 그래프 바로 옆에 붙는다.
+describe("layoutGraph — 행별 거터 폭(rowLaneCount)", () => {
+  const branchedHistory = [
+    makeCommit({ fullHash: "HEAD", parents: ["head-1"], refs: ["HEAD -> refs/heads/main"] }),
+    makeCommit({ fullHash: "head-1", parents: ["common"] }),
+    makeCommit({ fullHash: "topic", parents: ["common"], refs: ["refs/remotes/origin/topic"] }),
+    makeCommit({ fullHash: "common", parents: ["base"] }),
+    makeCommit({ fullHash: "base", parents: [] }),
+  ];
+
+  it("두 레인이 함께 살아 있는 구간만 2를 세고, 전역 activeLaneCount와 분리된다", () => {
+    const layout = layoutGraph(branchedHistory);
+
+    expect(layout.nodes.map((node) => node.rowLaneCount)).toEqual([1, 1, 2, 2, 1]);
+    expect(layout.activeLaneCount).toBe(2);
+  });
+
+  it("병합으로 닫히는 레인과 새로 갈라지는 레인도 그 행의 폭에 포함된다", () => {
+    const layout = layoutGraph([
+      makeCommit({ fullHash: "M", parents: ["A", "B"] }),
+      makeCommit({ fullHash: "A", parents: [] }),
+      makeCommit({ fullHash: "B", parents: [] }),
+    ]);
+
+    // M 행은 자기 레인 + 갈라져 나가는 레인을 함께 그린다.
+    expect(layout.nodes[0]?.branchToLanes).not.toEqual([]);
+    expect(layout.nodes[0]?.rowLaneCount).toBe(2);
+    expect(layout.nodes[2]?.rowLaneCount).toBe(2);
+  });
+
+  it("거터 SVG 폭은 그 행의 레인 수에 정비례한다", () => {
+    const nodes = layoutGraph(branchedHistory).nodes;
+    const single = Number(GraphGutter({ node: nodes[0]! }).props.width);
+    const double = Number(GraphGutter({ node: nodes[2]! }).props.width);
+
+    expect(double).toBe(single * 2);
   });
 });

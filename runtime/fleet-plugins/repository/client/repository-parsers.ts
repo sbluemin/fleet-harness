@@ -52,6 +52,19 @@ export function formatCommitTime(authorAt: number, now = new Date(), locale: Con
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+/**
+ * Conventional Commit 접두(`type(scope)!:`)를 제목 본문에서 분리한다 — Fork처럼 접두만 강조하기 위해서다.
+ * 콜론 뒤 공백을 요구하므로 `https://…` 같은 스킴은 접두로 오인되지 않는다. 규약을 따르지 않는 제목은
+ * 접두 없이 그대로 돌려주므로 호출부가 한 가지 경로만 렌더하면 된다.
+ */
+const CONVENTIONAL_SUBJECT_RE = /^([A-Za-z][\w-]*(?:\([^()]*\))?!?:)\s+(.+)$/;
+
+export function splitCommitSubject(subject: string): { readonly prefix: string | null; readonly rest: string } {
+  const match = CONVENTIONAL_SUBJECT_RE.exec(subject);
+  if (!match) return { prefix: null, rest: subject };
+  return { prefix: match[1]!, rest: match[2]! };
+}
+
 export function refBadges(entry: LogCommitEntry): RefBadge[] {
   const badges: RefBadge[] = [];
   for (const ref of entry.refs) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatCommitTime, refBadges } from "../client/repository-parsers.js";
+import { formatCommitTime, refBadges, splitCommitSubject } from "../client/repository-parsers.js";
 import type { LogCommitEntry } from "../server/types.js";
 
 function makeEntry(overrides: Partial<LogCommitEntry> = {}): LogCommitEntry {
@@ -14,6 +14,7 @@ function makeEntry(overrides: Partial<LogCommitEntry> = {}): LogCommitEntry {
     refs: [],
     parents: ["parent1234"],
     onHead: true,
+    hasBody: false,
     ...overrides,
   };
 }
@@ -94,5 +95,29 @@ describe("refBadges", () => {
     expect(badges[0]?.kind).toBe("head");
     expect(badges[1]?.kind).toBe("branch");
     expect(badges[2]?.kind).toBe("tag");
+  });
+});
+
+describe("splitCommitSubject", () => {
+  it("Conventional Commit 접두를 본문에서 떼어낸다", () => {
+    expect(splitCommitSubject("feat(fleet-console): open console sessions"))
+      .toEqual({ prefix: "feat(fleet-console):", rest: "open console sessions" });
+    expect(splitCommitSubject("fix: gate WebSocket upgrades")).toEqual({ prefix: "fix:", rest: "gate WebSocket upgrades" });
+  });
+
+  it("breaking change 표식(!)을 접두에 포함한다", () => {
+    expect(splitCommitSubject("feat!: retire the Classic launch kind")).toEqual({ prefix: "feat!:", rest: "retire the Classic launch kind" });
+    expect(splitCommitSubject("feat(fleet-cli)!: rebuild fleet")).toEqual({ prefix: "feat(fleet-cli)!:", rest: "rebuild fleet" });
+  });
+
+  it("규약을 따르지 않는 제목은 접두 없이 그대로 돌려준다", () => {
+    for (const subject of ["Merge branch 'canary'", "", "wip"]) {
+      expect(splitCommitSubject(subject)).toEqual({ prefix: null, rest: subject });
+    }
+  });
+
+  it("콜론 뒤 공백을 요구해 URL 스킴을 접두로 오인하지 않는다", () => {
+    expect(splitCommitSubject("https://example.com/x is broken"))
+      .toEqual({ prefix: null, rest: "https://example.com/x is broken" });
   });
 });

@@ -105,6 +105,7 @@ describe("history cache", () => {
       refs: ["HEAD -> canary"],
       parents: ["parent"],
       onHead: true,
+      hasBody: false,
     };
     const key = scope("commit-round-trip");
     const value: HistoryCacheEntry = {

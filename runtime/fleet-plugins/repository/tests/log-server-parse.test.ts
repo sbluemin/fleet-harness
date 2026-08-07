@@ -8,6 +8,8 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { runGit } from "../server/git-executor.js";
 import { annotateHeadReachability, handleRepositoryLog, isCanonicalRepositoryRef, parseLogOutput, parseWorktreePorcelain } from "../server/log.js";
 
+const logSource = await fs.readFile(new URL("../server/log.ts", import.meta.url), "utf8");
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 async function initGitRepo(dir: string): Promise<void> {
@@ -29,11 +31,14 @@ function makeLogContext(theaterPath: string, writes: { status: number; payload: 
   } as unknown as FleetPluginServerContext;
 }
 
+const HASH_A = "0123456789abcdef0123456789abcdef01234567";
+const HASH_B = "89abcdef0123456789abcdef0123456789abcdef";
+
 describe("parseLogOutput", () => {
   it("%at author time을 정수로 파싱하고 full decorations를 보존한다", () => {
-    const output = "\x1e0123456789abcdef\x000123456\x00subject\x00Author\x002 hours ago\x001720000000\x00HEAD -> refs/heads/main, refs/remotes/origin/main, tag: v1.2.3\x00parent-a parent-b";
+    const output = `\x1e${HASH_A}\x000123456\x00subject\x00Author\x002 hours ago\x001720000000\x00HEAD -> refs/heads/main, refs/remotes/origin/main, tag: v1.2.3\x00parent-a parent-b\x00        `;
     expect(parseLogOutput(output)).toEqual([{
-      fullHash: "0123456789abcdef",
+      fullHash: HASH_A,
       shortHash: "0123456",
       subject: "subject",
       authorName: "Author",
@@ -42,14 +47,50 @@ describe("parseLogOutput", () => {
       refs: ["HEAD -> refs/heads/main", "refs/remotes/origin/main", "tag: v1.2.3"],
       parents: ["parent-a", "parent-b"],
       onHead: true,
+      hasBody: false,
     }]);
+  });
+
+  // 본문은 8칸으로 절단되어 마지막 필드에 한 줄로 온다. 빈 본문은 공백 패딩, 내용이 있으면 잘린 앞부분.
+  // 목록 페이로드에는 존재 여부만 남는다.
+  it("절단된 본문 필드를 hasBody로만 요약하고 본문 자체는 싣지 않는다", () => {
+    const head = `\x1e${HASH_A}\x00abc\x00subject\x00Author\x002 hours ago\x001720000000\x00\x00parent-a\x00`;
+    expect(parseLogOutput(`${head}first b..\n`)).toEqual([{
+      fullHash: HASH_A, shortHash: "abc", subject: "subject", authorName: "Author",
+      relTime: "2 hours ago", authorAt: 1_720_000_000, refs: [], parents: ["parent-a"],
+      onHead: true, hasBody: true,
+    }]);
+    // 본문 없는 커밋은 공백 패딩만 온다 — 공백을 내용으로 오인하면 모든 행에 마커가 붙는다.
+    expect(parseLogOutput(`${head}        \n`)[0]?.hasBody).toBe(false);
+  });
+
+  // stdout 버퍼가 레코드 중간에서 끊기면 필드가 덜 온 조각이 남는다. 그 조각을 커밋으로 세면
+  // 클라이언트의 다음 skip이 그만큼 전진해 해당 커밋을 영영 건너뛴다 — 다음 페이지가 거기서 이어져야 한다.
+  it("필드가 덜 온 꼬리 레코드를 버려 다음 페이지가 그 커밋에서 이어지게 한다", () => {
+    const complete = `\x1e${HASH_A}\x00abc\x00subject\x00Author\x002 hours ago\x001720000000\x00\x00\x00        `;
+    for (const tail of [
+      `\x1e${HASH_B}\x00def\x00cut here`,          // 필드 중간에서 끊김
+      `\x1e${HASH_B.slice(0, 17)}`,                 // 해시 자체가 잘림
+      `\x1e${HASH_B}`,                              // 해시만 오고 나머지 필드 없음
+    ]) {
+      const parsed = parseLogOutput(`${complete}${tail}`);
+      expect(parsed.map((commit) => commit.fullHash)).toEqual([HASH_A]);
+    }
+  });
+
+  // 절단은 안전장치가 아니라 페이로드 절감이다 — 폭 단위가 표시 칸이라 폭 0인 문자에는 걸리지 않는다.
+  // 그래도 평범한 저장소에서 페이지가 본문 길이에 비례해 부푸는 것을 막으므로 포맷에 남긴다.
+  // 잘렸을 때의 안전은 위의 hasMore 계약이 진다.
+  it("목록 포맷이 본문을 절단해 실어 페이지 페이로드가 본문 길이에 비례하지 않게 한다", () => {
+    expect(logSource).toContain("%x00%<(8,trunc)%b");
+    expect(logSource).not.toMatch(/%x00%b(?!\w)/);
   });
 });
 
 describe("annotateHeadReachability", () => {
   const base = {
     shortHash: "aaa", subject: "s", authorName: "a", relTime: "now", authorAt: 0,
-    refs: [], parents: [], onHead: true,
+    refs: [], parents: [], onHead: true, hasBody: false,
   };
 
   it("rev-list에 없는 커밋만 onHead=false로 표시한다", () => {
@@ -142,6 +183,36 @@ describe("handleRepositoryLog", () => {
 
   afterEach(async () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  // 페이지 크기는 포맷으로 묶을 수 없다 — %s·%D·%b는 사용자가 쓰는 텍스트라 바이트 상한이 없다.
+  // 그래서 stdout이 잘렸을 때 레코드 수로 "더 없음"을 판정하면 남은 이력이 조용히 사라진다.
+  // 아래는 제목 하나만으로 버퍼를 넘겨 그 경로를 재현한다(본문 없이도 도달한다는 뜻이기도 하다).
+  it("keeps pagination open when the log buffer truncates mid-page", async () => {
+    const repoDir = path.join(tmpDir, "repo");
+    await fs.mkdir(repoDir);
+    await initGitRepo(repoDir);
+    // 메시지는 파일로 넘긴다 — 이 크기를 인자로 주면 git 실행 전에 OS의 argv 상한에서 먼저 죽는다.
+    const messagePath = path.join(tmpDir, "message.txt");
+    for (let index = 0; index < 3; index += 1) {
+      await fs.writeFile(messagePath, `${"S".repeat(3 * 1024 * 1024)} ${index}\n`);
+      await fs.writeFile(path.join(repoDir, "entry.txt"), `history ${index}`);
+      await runGit(["add", "entry.txt"], { cwd: repoDir });
+      await runGit(["commit", "-F", messagePath], { cwd: repoDir });
+    }
+
+    const writes: { status: number; payload: unknown }[] = [];
+    await handleRepositoryLog({ method: "POST" } as never, {} as never, makeLogContext(repoDir, writes, { theaterId: "theater", limit: 200 }));
+
+    const payload = writes[0]?.payload as { readonly commits: readonly unknown[]; readonly hasMore: boolean; readonly truncated?: boolean };
+    expect(writes[0]?.status).toBe(200);
+    // 버퍼가 실제로 잘렸고, 요청한 200개보다 적게 파싱됐다.
+    expect(payload.truncated).toBe(true);
+    expect(payload.commits.length).toBeLessThan(200);
+    // 그럼에도 남은 이력에 도달할 길이 열려 있어야 한다.
+    expect(payload.hasMore).toBe(true);
+    // 다음 페이지의 skip이 전진할 수 있도록 최소 한 건은 돌려준다.
+    expect(payload.commits.length).toBeGreaterThan(0);
   });
 
   it("accepts canonical local refs with underscore and non-ASCII names", async () => {

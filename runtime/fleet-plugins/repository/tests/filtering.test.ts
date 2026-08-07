@@ -22,6 +22,7 @@ const COMMITS: readonly LogCommitEntry[] = [
     refs: ["HEAD -> refs/heads/main", "tag: v1.2.3"],
     parents: [],
     onHead: true,
+    hasBody: false,
   },
   {
     shortHash: "def5678",
@@ -33,6 +34,7 @@ const COMMITS: readonly LogCommitEntry[] = [
     refs: ["refs/remotes/origin/topic"],
     parents: [],
     onHead: true,
+    hasBody: false,
   },
 ];
 

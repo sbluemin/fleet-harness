@@ -13,6 +13,12 @@ export interface GraphNode {
   readonly passThroughLanes: readonly number[];
   readonly mergeFromLanes: readonly number[];
   readonly branchToLanes: readonly number[];
+  /**
+   * 이 행에서 실제로 무언가가 그려지는 레인 수(최대 레인 인덱스 + 1).
+   * Fork 문법 — 거터 폭은 목록 전체 최대치가 아니라 행마다 이 값으로 정해지므로,
+   * 분기가 없는 대부분의 행에서 커밋 본문이 그래프 바로 옆에 붙는다.
+   */
+  readonly rowLaneCount: number;
 }
 
 export interface GraphLayout {
@@ -138,6 +144,7 @@ export function layoutGraph(commits: readonly LogCommitEntry[]): GraphLayout {
       passThroughLanes,
       mergeFromLanes,
       branchToLanes,
+      rowLaneCount: rowMaxLaneIndex + 1,
     });
   }
 
@@ -150,16 +157,19 @@ export function layoutGraph(commits: readonly LogCommitEntry[]): GraphLayout {
 
 interface GraphGutterProps {
   readonly node: GraphNode;
-  readonly laneCount: number;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
-const LANE_WIDTH = 12;
+const LANE_WIDTH = 14;
 // .history-commit-row의 고정 높이(diff.css)와 반드시 일치해야 행 간 레인 선이 이음새 없이 연결된다
 export const ROW_HEIGHT = 28;
-const NODE_R = 3;
-const HEAD_RING_R = 5;
+const NODE_R = 3.5;
+const HEAD_RING_R = 5.5;
+const STROKE_WIDTH = 2;
+// 대각선 대신 직각 + 라운드 코너로 잇는 Fork 문법의 코너 반지름.
+// 레인 간격(14px)의 절반보다 작아야 이웃 레인의 코너와 겹치지 않는다.
+const ELBOW_R = 5;
 // 장식적 구분 채도는 --id-* 정체성 봉투에서만 가져온다 — 테마별 재조율·상태 신호와
 // 혼동할 수 없어야 한다. 신호 토큰(warn/positive/aurora) 순환은 상태 채널을 침범하므로 폐기.
 const LANE_COLORS = [
@@ -176,17 +186,35 @@ const LANE_COLORS = [
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 function laneCx(lane: number): number {
-  return lane * LANE_WIDTH + 6;
+  return lane * LANE_WIDTH + LANE_WIDTH / 2;
 }
 
-function laneColor(lane: number): string {
+export function laneColor(lane: number): string {
   return LANE_COLORS[lane % LANE_COLORS.length] ?? "var(--ink-fog)";
+}
+
+/** 행 위쪽 `fromLane`에서 내려와 `toX`의 노드로 합류하는 경로 — 수직 → 라운드 코너 → 수평. */
+function mergePath(fromLane: number, toX: number, cy: number): string {
+  const fromX = laneCx(fromLane);
+  const dir = Math.sign(toX - fromX);
+  if (dir === 0) return `M ${fromX} 0 V ${cy}`;
+  return `M ${fromX} 0 V ${cy - ELBOW_R} Q ${fromX} ${cy} ${fromX + dir * ELBOW_R} ${cy} H ${toX}`;
+}
+
+/** 노드에서 갈라져 나와 행 아래쪽 `toLane`으로 내려가는 경로 — 수평 → 라운드 코너 → 수직. */
+function branchPath(fromX: number, toLane: number, cy: number): string {
+  const toX = laneCx(toLane);
+  const dir = Math.sign(toX - fromX);
+  if (dir === 0) return `M ${fromX} ${cy} V ${ROW_HEIGHT}`;
+  return `M ${fromX} ${cy} H ${toX - dir * ELBOW_R} Q ${toX} ${cy} ${toX} ${cy + ELBOW_R} V ${ROW_HEIGHT}`;
 }
 
 // ─── GraphGutter ─────────────────────────────────────────────────────────────
 
-export function GraphGutter({ node, laneCount }: GraphGutterProps) {
-  const lanes = Math.max(laneCount, 1);
+export function GraphGutter({ node }: GraphGutterProps) {
+  // Fork 문법 — 거터 폭은 이 행이 실제로 쓰는 레인만큼이다. 목록 전체 최대 레인 수로 고정하면
+  // 분기가 하나도 없는 행까지 빈 레인만큼 본문이 밀려 좁은 rail에서 제목 폭을 상시 잠식한다.
+  const lanes = Math.max(node.rowLaneCount, 1);
   const collapseIndicatorWidth = node.collapsed ? 10 : 0;
   const width = lanes * LANE_WIDTH + collapseIndicatorWidth;
   const cx = laneCx(node.lane);
@@ -209,7 +237,7 @@ export function GraphGutter({ node, laneCount }: GraphGutterProps) {
           x2={laneCx(lane)}
           y2={ROW_HEIGHT}
           stroke={laneColor(lane)}
-          strokeWidth={1.5}
+          strokeWidth={STROKE_WIDTH}
         />
       ))}
 
@@ -221,7 +249,7 @@ export function GraphGutter({ node, laneCount }: GraphGutterProps) {
           x2={cx}
           y2={cy - NODE_R}
           stroke={laneColor(node.lane)}
-          strokeWidth={1.5}
+          strokeWidth={STROKE_WIDTH}
         />
       )}
 
@@ -233,34 +261,30 @@ export function GraphGutter({ node, laneCount }: GraphGutterProps) {
           x2={cx}
           y2={ROW_HEIGHT}
           stroke={laneColor(node.lane)}
-          strokeWidth={1.5}
+          strokeWidth={STROKE_WIDTH}
         />
       )}
 
-      {/* mergeFromLanes: 병합으로 닫히는 레인 — 위쪽에서 노드로 대각선 */}
+      {/* mergeFromLanes: 병합으로 닫히는 레인 — 위쪽에서 내려와 직각 라운드 코너로 노드에 합류 */}
       {node.mergeFromLanes.map((lane) => (
-        <line
+        <path
           key={`mf-${lane}`}
-          x1={laneCx(lane)}
-          y1={0}
-          x2={cx}
-          y2={cy}
+          d={mergePath(lane, cx, cy)}
+          fill="none"
           stroke={laneColor(lane)}
-          strokeWidth={1.5}
+          strokeWidth={STROKE_WIDTH}
           strokeLinecap="round"
         />
       ))}
 
-      {/* branchToLanes: 노드에서 새로 분기되는 레인 — 아래로 대각선 */}
+      {/* branchToLanes: 노드에서 갈라져 직각 라운드 코너로 아래 레인에 내려앉는다 */}
       {node.branchToLanes.map((lane) => (
-        <line
+        <path
           key={`bt-${lane}`}
-          x1={cx}
-          y1={cy}
-          x2={laneCx(lane)}
-          y2={ROW_HEIGHT}
+          d={branchPath(cx, lane, cy)}
+          fill="none"
           stroke={laneColor(lane)}
-          strokeWidth={1.5}
+          strokeWidth={STROKE_WIDTH}
           strokeLinecap="round"
         />
       ))}
@@ -273,7 +297,7 @@ export function GraphGutter({ node, laneCount }: GraphGutterProps) {
           r={HEAD_RING_R}
           fill="none"
           stroke={laneColor(node.lane)}
-          strokeWidth={1.5}
+          strokeWidth={STROKE_WIDTH}
         />
       )}
 

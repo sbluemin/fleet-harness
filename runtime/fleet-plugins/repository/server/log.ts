@@ -4,7 +4,7 @@ import type http from "node:http";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { GitExecutorError, runGit } from "./git-executor.js";
-import type { LogCommitEntry, WorktreeCheckout } from "./types.js";
+import type { LogCommitEntry, LogOrder, WorktreeCheckout } from "./types.js";
 import { InvalidRepoError, resolveGitCwd } from "./diff.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -23,6 +23,25 @@ const CANONICAL_REF_RE = /^refs\/(?:heads|remotes|tags)\//;
 // gitrevisions 선택자(@{n}·^·~ 등)와 check-ref-format 금지 문자를 이름 수준에서 거부한다 —
 // rev-parse가 reflog/조상 표현식을 해석해 /refs 열거 밖 커밋으로 필터되는 것을 막는다
 const REF_METACHAR_RE = /[~^:?*\[\\\s\x00-\x1f\x7f]/;
+
+// 본문은 존재 여부만 필요하므로 %b를 8칸으로 절단해 싣는다. 평범한 저장소에서 페이지 페이로드를 크게 줄이고
+// (실측: 400KB 본문 6커밋이 2.4MB → 1KB), 절단본은 한 줄로 눌려 뒤 필드를 다음 줄로 밀지도 않는다.
+// 다만 이 절단은 페이지 크기의 안전장치가 아니다 — 폭은 바이트가 아니라 표시 칸이라 폭 0인 문자에는 걸리지 않고,
+// %s·%D도 똑같이 바이트 상한이 없다. 버퍼가 잘렸을 때의 안전은 hasMore 판정이 진다(핸들러 참조).
+// 알려진 한계: 본문이 공백 8칸으로 시작하면 존재 여부가 false로 읽힌다 — 마커 한 개가 빠질 뿐이다.
+const LOG_PRETTY_FORMAT = "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P%x00%<(8,trunc)%b";
+// 위 포맷이 레코드마다 내보내는 필드 수 — 파서가 잘린 꼬리 레코드를 가려내는 근거다. 포맷과 함께 갱신할 것.
+const LOG_FIELD_COUNT = 9;
+// %H는 저장소 해시 알고리즘에 따라 SHA-1 40자 또는 SHA-256 64자다. 그 사이 길이는 잘린 해시를 뜻한다.
+const FULL_HASH_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+
+// 정렬 축은 화이트리스트 상수로만 git 인자가 된다 — 요청 문자열이 인자 위치에 직접 닿지 않게 한다.
+const LOG_ORDER_ARGS: Readonly<Record<LogOrder, string>> = { topo: "--topo-order", date: "--date-order" };
+
+export function resolveLogOrder(requested: unknown): LogOrder | null {
+  if (requested === undefined) return "topo";
+  return requested === "topo" || requested === "date" ? requested : null;
+}
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -63,10 +82,17 @@ export function parseLogOutput(stdout: string): LogCommitEntry[] {
     const refsRaw = fields[6] ?? "";
     const parentsRaw = fields[7] ?? "";
 
-    if (!fullHash) continue;
+    // 잘린 꼬리 레코드는 버린다. stdout 버퍼가 레코드 중간에서 끊기면 필드가 덜 온 조각이 남는데,
+    // 해시만 비어있지 않다고 받아들이면 제목·작성자가 빈 행이 목록에 서고 — 해시 자체가 잘렸을 수도 있다 —
+    // 그 조각이 반환 개수에 포함돼 클라이언트의 다음 skip이 그 커밋을 건너뛴다. 영영 다시 읽지 못한다.
+    // 완결 신호는 필드 수다: 본문은 절단되어 언제나 마지막 한 칸을 채우므로 온전한 레코드는 항상 LOG_FIELD_COUNT개다.
+    if (fields.length < LOG_FIELD_COUNT || !FULL_HASH_RE.test(fullHash)) continue;
 
     const refs = refsRaw.split(",").map((r) => r.trim()).filter(Boolean);
     const parents = parentsRaw.split(" ").map((p) => p.trim()).filter(Boolean);
+    // 본문 필드는 8칸으로 절단되어 한 줄에 들어오므로 첫 줄의 9번째 조각만 보면 된다.
+    // 빈 본문은 공백으로 채워져 오고, 내용이 있으면 잘린 앞부분이 온다 — 존재 여부만 남기고 내용은 버린다.
+    const hasBody = (fields[8] ?? "").trim() !== "";
 
     commits.push({
       shortHash,
@@ -78,6 +104,7 @@ export function parseLogOutput(stdout: string): LogCommitEntry[] {
       refs,
       parents,
       onHead: true,
+      hasBody,
     });
   }
 
@@ -189,11 +216,13 @@ export async function handleRepositoryLog(
   if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
-  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly repoRel?: unknown; readonly subPath?: unknown; readonly ref?: unknown; readonly limit?: unknown; readonly skip?: unknown }>(req);
+  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly repoRel?: unknown; readonly subPath?: unknown; readonly ref?: unknown; readonly limit?: unknown; readonly skip?: unknown; readonly order?: unknown }>(req);
   if (!isPlainObject(body) || "subPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
 
   const theaterId = body.theaterId;
   if (typeof theaterId !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
+  const order = resolveLogOrder(body.order);
+  if (order === null) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
   const limit = body.limit === undefined ? 200 : body.limit;
   const skip = body.skip === undefined ? 0 : body.skip;
   if (!Number.isInteger(limit) || typeof limit !== "number" || limit < 1 || limit > 500
@@ -241,15 +270,21 @@ export async function handleRepositoryLog(
     const [realGitCwd, realToplevel] = await Promise.all([normalizeWorktreePath(gitCwd), normalizeWorktreePath(currentWorktreePath)]);
     const scopePathspec = realToplevel !== "" && realGitCwd === realToplevel ? [] : ["."];
     const skipArg = skip > 0 ? [`--skip=${skip}`] : [];
+    const orderArg = LOG_ORDER_ARGS[order];
     const result = resolvedRef
-      ? await runGit(["log", resolvedRef, "--date-order", "-n", String(limit + 1), ...skipArg, "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", "--", ...scopePathspec], { cwd: gitCwd })
+      ? await runGit(["log", resolvedRef, orderArg, "-n", String(limit + 1), ...skipArg, "--decorate=full", LOG_PRETTY_FORMAT, "--", ...scopePathspec], { cwd: gitCwd })
       : await runGit(
         // --all은 refs/stash·refs/notes까지 그래프에 유입시키므로 브랜치/태그/원격 + 현재 HEAD + 워크트리 HEAD로 한정한다
-        ["log", "--branches", "--tags", "--remotes", "--date-order", "-n", String(limit + 1), ...skipArg, "--decorate=full", "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P", ...headRevs, ...worktreeRevs, "--", ...scopePathspec],
+        ["log", "--branches", "--tags", "--remotes", orderArg, "-n", String(limit + 1), ...skipArg, "--decorate=full", LOG_PRETTY_FORMAT, ...headRevs, ...worktreeRevs, "--", ...scopePathspec],
         { cwd: gitCwd },
       );
     const parsedCommits = parseLogOutput(result.stdout);
-    const hasMore = parsedCommits.length > limit;
+    // stdout이 잘렸다면 레코드 수는 "더 없음"의 근거가 되지 못한다 — 잘린 지점 이후를 못 읽었을 뿐이다.
+    // 이때도 개수로 판정하면 hasMore가 false로 접혀 남은 이력이 페이지네이션에서 통째로 사라진다.
+    // 페이지 크기를 포맷으로 묶어 막을 수는 없다: %s·%D·%b는 모두 사용자 작성 텍스트라 바이트 상한이 없고,
+    // pretty-format의 절단 폭은 바이트가 아니라 표시 칸이라 폭 0인 문자에는 걸리지 않는다.
+    // 레코드를 하나도 못 읽었을 때는 열어 두지 않는다 — skip이 전진하지 못해 더 보기가 헛도는 쪽이 더 나쁘다.
+    const hasMore = parsedCommits.length > limit || (result.truncated && parsedCommits.length > 0);
     const commits = annotateHeadReachability(parsedCommits.slice(0, limit), headRevList);
     ctx.host.http.writeJson(res, 200, { commits, checkouts, hasMore, ...(result.truncated ? { truncated: true } : {}) });
   } catch (error) {

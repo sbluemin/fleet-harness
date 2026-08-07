@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { appendHistoryPage, calculateHistoryWindow, CommitRow, findDetachedCheckout, getHistoryWindowRows, type HistoryLoadGeneration, type HistoryOkState } from "../client/history-panel.js";
+import { appendHistoryPage, calculateHistoryWindow, chooseComparePair, CommitRow, findDetachedCheckout, getHistoryWindowRows, type HistoryLoadGeneration, type HistoryOkState } from "../client/history-panel.js";
 import { ROW_HEIGHT } from "../client/graph.js";
 import { layoutGraph } from "../client/graph.js";
 import type { LogCommitEntry, WorktreeCheckout } from "../server/types.js";
@@ -18,6 +18,7 @@ const COMMIT: LogCommitEntry = {
   refs: [],
   parents: [],
   onHead: true,
+  hasBody: false,
 };
 
 type ElementProps = Record<string, unknown> & {
@@ -50,7 +51,6 @@ describe("CommitRow", () => {
       checkouts: [],
       selected: false,
       graphNode: layoutGraph([COMMIT]).nodes[0]!,
-      laneCount: 1,
       onSelect: vi.fn(),
     });
     // 행은 비중첩 버튼 계약(래퍼 div + 본체 버튼 + ⇆ 액션)이라 subject는 본체 버튼 안에 있다.
@@ -125,7 +125,7 @@ describe("History window rendering", () => {
 });
 
 describe("History page accumulation", () => {
-  const generationA: HistoryLoadGeneration = { theaterId: "theater", repoRel: "", refFilter: "refs/heads/a", refreshToken: 0 };
+  const generationA: HistoryLoadGeneration = { theaterId: "theater", repoRel: "", refFilter: "refs/heads/a", order: "topo", refreshToken: 0 };
   const state: HistoryOkState = { kind: "ok", commits: [COMMIT], checkouts: [], hasMore: true, truncated: false };
   const nextCommit: LogCommitEntry = { ...COMMIT, shortHash: "def5678", fullHash: "def5678fedcba9876543210fedcba9876543210f", subject: "older commit" };
 
@@ -152,5 +152,39 @@ describe("History page accumulation", () => {
 
     expect(result?.commits).toEqual([COMMIT, nextCommit]);
     expect(result?.hasMore).toBe(false);
+  });
+});
+
+// 2026-08-07 회귀 — 기본 정렬이 topo가 되면서 목록 위치가 시간 순서를 뜻하지 않게 되었다.
+// 이 저장소 실측: topo 목록에서 ecf03342(20:23)가 35ee071f(20:43)보다 위에 선다.
+// 위치로 방향을 정하던 옛 로직은 그 둘을 비교할 때 base/head를 뒤집어 추가를 삭제로 보여 준다.
+describe("chooseComparePair", () => {
+  const ANCHOR = { fullHash: "ecf03342b4b50239", shortHash: "ecf03342", authorAt: 1_786_101_795 };
+  const TARGET: LogCommitEntry = { ...COMMIT, fullHash: "35ee071f0a1b2c3d", shortHash: "35ee071f", authorAt: 1_786_103_009 };
+
+  it("목록에서 앵커가 위에 있어도 더 오래된 쪽을 base로 삼는다", () => {
+    expect(chooseComparePair(ANCHOR, TARGET)).toEqual({
+      base: ANCHOR.fullHash, head: TARGET.fullHash, baseLabel: ANCHOR.shortHash, headLabel: TARGET.shortHash,
+    });
+  });
+
+  it("반대로 고른 순서에서도 같은 방향을 낸다 — 방향은 표시 순서가 아니라 커밋 시각이 정한다", () => {
+    const reversed = chooseComparePair(
+      { fullHash: TARGET.fullHash, shortHash: TARGET.shortHash, authorAt: TARGET.authorAt },
+      { ...COMMIT, fullHash: ANCHOR.fullHash, shortHash: ANCHOR.shortHash, authorAt: ANCHOR.authorAt },
+    );
+    expect(reversed.base).toBe(ANCHOR.fullHash);
+    expect(reversed.head).toBe(TARGET.fullHash);
+  });
+
+  it("앵커의 시각을 알 수 없으면 사용자가 고른 순서를 지킨다", () => {
+    const pair = chooseComparePair({ fullHash: "unknown", shortHash: "unknown", authorAt: null }, TARGET);
+    expect(pair.base).toBe("unknown");
+    expect(pair.head).toBe(TARGET.fullHash);
+  });
+
+  it("시각이 같으면 먼저 고른 쪽을 base로 둔다", () => {
+    const pair = chooseComparePair({ fullHash: "a", shortHash: "a", authorAt: TARGET.authorAt }, TARGET);
+    expect(pair.base).toBe("a");
   });
 });

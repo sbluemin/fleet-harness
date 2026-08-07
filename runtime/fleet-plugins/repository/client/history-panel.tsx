@@ -1,18 +1,18 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
-import type { CommitResult, DiffFileEntry, LogCommitEntry, LogResult, WorktreeCheckout } from "../server/types.js";
+import type { CommitResult, DiffFileEntry, LogCommitEntry, LogOrder, LogResult, WorktreeCheckout } from "../server/types.js";
 import { FileRow, FilesViewToggle, readFilesViewMode, saveFilesViewMode, type FilesViewMode } from "./changed-files.js";
 import { CompareInspector } from "./compare-inspector.js";
 import { DiffTreeView } from "./repository-tree.js";
-import { GraphGutter, ROW_HEIGHT } from "./graph.js";
+import { GraphGutter, ROW_HEIGHT, laneColor } from "./graph.js";
 import { layoutGraph, type GraphLayout, type GraphNode } from "./graph.js";
-import { dropHistoryCache, readHistoryCache, writeHistoryCache, type HistoryCacheEntry } from "./repository-state.js";
+import { dropHistoryCache, readHistoryCache, readHistoryOrder, saveHistoryOrder, writeHistoryCache, type HistoryCacheEntry } from "./repository-state.js";
 import { HunkView } from "./hunk-view.js";
 import { getT, localeTag, type RepositoryMessageKey } from "./i18n/index.js";
-import { formatCommitTime, refBadges, shortRefName } from "./repository-parsers.js";
+import { formatCommitTime, refBadges, shortRefName, splitCommitSubject, type RefBadge, type RefBadgeKind } from "./repository-parsers.js";
 import { DIFF_DIVIDER_WIDTH, HISTORY_DETAIL_PANE_MIN_HEIGHT, HISTORY_LOG_PANE_MIN_HEIGHT, buildHistoryStackTemplate, buildInspectorChangesGridTemplate, buildInspectorDetailsGridTemplate, clampSplitPaneSize, installPointerDragLifecycle } from "./rail-layout.js";
 import { WorkspaceDock } from "./workspace-dock.js";
 import { buildWorkspaceDockTemplate, clampWorkspaceDockHeight, normalizeWorkspaceDockHeight, readWorkspaceDockHeight, saveWorkspaceDockHeight } from "./workspace-layout.js";
@@ -24,7 +24,23 @@ export type HistoryOkState = { readonly kind: "ok"; readonly commits: readonly L
 type LoadState = { readonly kind: "loading" } | HistoryOkState | { readonly kind: "error"; readonly message: string };
 type CommitTarget = { readonly fullHash: string; readonly entry?: LogCommitEntry };
 type CompareAnchor = { readonly fullHash: string; readonly shortHash: string };
-type ComparePair = { readonly base: string; readonly head: string; readonly baseLabel: string; readonly headLabel: string };
+export type ComparePair = { readonly base: string; readonly head: string; readonly baseLabel: string; readonly headLabel: string };
+
+/**
+ * 비교의 base/head 방향을 정한다. 목록 위치로 정해서는 안 된다 — topo 정렬에서는 브랜치 체인이 통째로 먼저
+ * 나오므로 위쪽 행이 아래쪽 행보다 오래된 커밋일 수 있고, 그때 base와 head가 뒤바뀌어 추가가 삭제로 보인다.
+ * 방향은 목록이 실제로 보여 주는 커밋 시각으로 정하고, 앵커의 시각을 알 수 없을 때만
+ * 사용자가 고른 순서(먼저 고른 쪽이 base)를 그대로 지킨다.
+ */
+export function chooseComparePair(
+  anchor: { readonly fullHash: string; readonly shortHash: string; readonly authorAt: number | null },
+  target: { readonly fullHash: string; readonly shortHash: string; readonly authorAt: number },
+): ComparePair {
+  const anchorIsOlder = anchor.authorAt === null || anchor.authorAt <= target.authorAt;
+  const older = anchorIsOlder ? anchor : target;
+  const newer = anchorIsOlder ? target : anchor;
+  return { base: older.fullHash, head: newer.fullHash, baseLabel: older.shortHash, headLabel: newer.shortHash };
+}
 type InspectorState = { readonly kind: "loading" } | { readonly kind: "ok"; readonly result: CommitResult } | { readonly kind: "error"; readonly message: string };
 type HistoryCacheRestore = { readonly state: HistoryOkState; readonly target: CommitTarget | null; readonly filterText: string; readonly scrollTop: number };
 
@@ -48,6 +64,7 @@ export interface HistoryLoadGeneration {
   readonly theaterId: string | null | undefined;
   readonly repoRel: string;
   readonly refFilter: string | null;
+  readonly order: LogOrder;
   readonly refreshToken: number;
 }
 
@@ -93,6 +110,7 @@ export function isHistoryGenerationCurrent(request: HistoryLoadGeneration, curre
   return request.theaterId === current.theaterId
     && request.repoRel === current.repoRel
     && request.refFilter === current.refFilter
+    && request.order === current.order
     && request.refreshToken === current.refreshToken;
 }
 
@@ -145,14 +163,70 @@ export function aggregateWip(files: readonly DiffFileEntry[]): { files: number; 
 export function shouldShowWip(wip: { readonly files: number }, filterText: string, refFilter: string | null): boolean { return wip.files > 0 && !filterText && !refFilter; }
 
 function CheckoutIcon({ current }: { readonly current: boolean }) { return current ? <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2L5 8.7L9.5 3.5" stroke="currentColor" strokeWidth="1.5" /></svg> : <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none"><path d="M1.5 3.4h3l1 1.1h5v5.1a.9.9 0 01-.9.9H2.4a.9.9 0 01-.9-.9V4.3a.9.9 0 01.9-.9z" stroke="currentColor" strokeWidth="1.2" /></svg>; }
+function BranchIcon() { return <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none"><path d="M3.6 3.9v4.2M3.6 8.1h3.1a1.7 1.7 0 001.7-1.7V4.6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /><circle cx="3.6" cy="2.6" r="1.3" stroke="currentColor" strokeWidth="1.2" /><circle cx="8.4" cy="3.3" r="1.3" stroke="currentColor" strokeWidth="1.2" /></svg>; }
+function TagIcon() { return <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none"><path d="M1.9 5.6V2.4a.6.6 0 01.6-.6h3.2L10.4 6a.8.8 0 010 1.1L7.1 10.4a.8.8 0 01-1.1 0z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /><circle cx="4.1" cy="4.1" r=".85" fill="currentColor" /></svg>; }
+function RemoteIcon() { return <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="4.3" stroke="currentColor" strokeWidth="1.2" /><path d="M1.7 6h8.6M6 1.7c1.1 1.2 1.7 2.7 1.7 4.3S7.1 9.1 6 10.3C4.9 9.1 4.3 7.6 4.3 6S4.9 2.9 6 1.7z" stroke="currentColor" strokeWidth="1.1" /></svg>; }
 
-export function CommitRow({ entry, checkouts, selected, picked = false, pin = null, graphNode, laneCount, onRowActivate, onCompareAction, onSelect, rowRef, locale }: { readonly entry: LogCommitEntry; readonly checkouts: readonly WorktreeCheckout[]; readonly selected: boolean; readonly picked?: boolean; readonly pin?: CompareAnchor | null; readonly graphNode: import("./graph.js").GraphNode; readonly laneCount: number; readonly onRowActivate?: (entry: LogCommitEntry, shiftKey: boolean) => void; readonly onCompareAction?: (entry: LogCommitEntry) => void; readonly onSelect?: (entry: LogCommitEntry) => void; readonly rowRef?: (node: HTMLButtonElement | null) => void; readonly locale?: ConsoleLocale }) {
+/**
+ * 뱃지 색조 — Fork처럼 ref 뱃지를 그래프와 같은 색 체계로 묶는다.
+ * 체크아웃 위치(brass)와 태그(plum)는 어느 레인에 있든 같아야 하므로 CSS가 소유하고,
+ * 나머지 브랜치·원격·워크트리만 자기 커밋의 레인 색을 물려받아 인라인으로 주입된다.
+ */
+function laneBadgeTone(kind: RefBadgeKind, checkout: WorktreeCheckout | null | undefined, lane: number | undefined): string | undefined {
+  if (lane === undefined || checkout?.isCurrent || kind === "head" || kind === "tag") return undefined;
+  return laneColor(lane);
+}
+
+function BadgeMark({ kind, checkout }: { readonly kind: RefBadgeKind; readonly checkout: WorktreeCheckout | null | undefined }) {
+  if (kind === "tag") return <TagIcon />;
+  if (kind === "remote") return <RemoteIcon />;
+  if (checkout) return <CheckoutIcon current={checkout.isCurrent} />;
+  if (kind === "head" || kind === "worktree") return <CheckoutIcon current={kind === "head"} />;
+  return <BranchIcon />;
+}
+
+/** `lane`을 넘기지 않으면 색조를 CSS 기본값에 맡긴다 — 그래프가 없는 검사기 칩이 그 경로를 쓴다. */
+function RefBadgeChip({ badge, checkout, lane }: { readonly badge: RefBadge; readonly checkout?: WorktreeCheckout | null; readonly lane?: number }) {
+  const tone = laneBadgeTone(badge.kind, checkout, lane);
+  return <span
+    className={`history-badge history-badge--${badge.kind}${checkout?.isCurrent ? " is-current" : ""}`}
+    style={tone ? ({ "--badge-tone": tone } as CSSProperties) : undefined}
+  >
+    <span className="history-badge-mark"><BadgeMark kind={badge.kind} checkout={checkout} /></span>
+    <span className="history-badge-label">{badge.label}</span>
+  </span>;
+}
+
+
+export function CommitRow({ entry, checkouts, selected, picked = false, pin = null, graphNode, onRowActivate, onCompareAction, onSelect, rowRef, locale }: { readonly entry: LogCommitEntry; readonly checkouts: readonly WorktreeCheckout[]; readonly selected: boolean; readonly picked?: boolean; readonly pin?: CompareAnchor | null; readonly graphNode: import("./graph.js").GraphNode; readonly onRowActivate?: (entry: LogCommitEntry, shiftKey: boolean) => void; readonly onCompareAction?: (entry: LogCommitEntry) => void; readonly onSelect?: (entry: LogCommitEntry) => void; readonly rowRef?: (node: HTMLButtonElement | null) => void; readonly locale?: ConsoleLocale }) {
   const t = getT(locale);
   const badges = refBadges(entry); const detached = findDetachedCheckout(entry, checkouts);
   const activateRow = onRowActivate ?? ((selectedEntry: LogCommitEntry) => onSelect?.(selectedEntry));
   const compareLabel = !pin ? t("repository.compare.pinRow", { short: entry.shortHash }) : pin.fullHash === entry.fullHash ? t("repository.compare.unpinRow", { short: entry.shortHash }) : t("repository.compare.completeRow", { short: entry.shortHash, base: pin.shortHash });
+  // Fork 문법 — Conventional Commit 접두만 볼드로 올려 커밋 종류를 훑어 읽게 한다. 규약 밖 제목은 통째로 한 티어에 둔다.
+  const subject = splitCommitSubject(entry.subject);
   // Fork 문법: refs 뱃지는 제목 왼쪽(그래프 바로 뒤)에서 커밋의 정체를 먼저 알린다.
-  return <div className={`history-commit-row${selected ? " is-selected" : ""}${entry.onHead ? "" : " is-off-head"}${picked ? " is-picked" : ""}`} title={entry.onHead ? undefined : t("repository.history.offHead")}><button ref={rowRef} type="button" className="history-commit-row-main" onClick={(event) => activateRow(entry, event.shiftKey)}><span className="history-commit-badges">{badges.map((badge) => { const checkout = badge.kind === "branch" ? checkouts.find((item) => item.branch === badge.label) : null; return <span key={`${badge.kind}:${badge.label}`} className={`history-badge history-badge--${badge.kind}`}>{checkout && <CheckoutIcon current={checkout.isCurrent} />}{badge.label}</span>; })}{detached && <span className="history-badge history-badge--worktree"><CheckoutIcon current={detached.isCurrent} />{t("repository.history.detached")}</span>}</span><span className="history-commit-subject" title={entry.subject}>{entry.subject}</span><span className="history-commit-sha">{entry.shortHash}</span><span className="history-commit-time">{formatCommitTime(entry.authorAt, new Date(), locale)}</span><span className="history-graph-gutter" aria-hidden="true"><GraphGutter node={graphNode} laneCount={laneCount} /></span></button>{onCompareAction && <button type="button" className="history-row-compare" aria-label={compareLabel} onClick={() => onCompareAction(entry)}>⇆</button>}</div>;
+  return <div className={`history-commit-row${selected ? " is-selected" : ""}${entry.onHead ? "" : " is-off-head"}${picked ? " is-picked" : ""}`} title={entry.onHead ? undefined : t("repository.history.offHead")}>
+    <button ref={rowRef} type="button" className="history-commit-row-main" onClick={(event) => activateRow(entry, event.shiftKey)}>
+      <span className="history-commit-badges">
+        {badges.map((badge) => <RefBadgeChip
+          key={`${badge.kind}:${badge.label}`}
+          badge={badge}
+          checkout={badge.kind === "branch" ? checkouts.find((item) => item.branch === badge.label) : null}
+          lane={graphNode.lane}
+        />)}
+        {detached && <RefBadgeChip badge={{ kind: "worktree", label: t("repository.history.detached") }} checkout={detached} lane={graphNode.lane} />}
+      </span>
+      <span className="history-commit-subject" title={entry.subject}>{subject.prefix ? <><b className="history-commit-kind">{subject.prefix}</b> {subject.rest}</> : entry.subject}</span>
+      {/* 본문이 더 있는 커밋만 표시한다 — 목록에서 "열어 볼 값이 있는 커밋"을 가려내는 Fork의 ↵ 마커. */}
+      {entry.hasBody && <span className="history-commit-body-mark" aria-label={t("repository.history.hasBody")} title={t("repository.history.hasBody")}>↵</span>}
+      <span className="history-commit-author"><span className="history-commit-avatar" aria-hidden="true">{initials(entry.authorName)}</span><span className="history-commit-author-name">{entry.authorName}</span></span>
+      <span className="history-commit-sha">{entry.shortHash}</span>
+      <span className="history-commit-time">{formatCommitTime(entry.authorAt, new Date(), locale)}</span>
+      <span className="history-graph-gutter" aria-hidden="true"><GraphGutter node={graphNode} /></span>
+    </button>
+    {onCompareAction && <button type="button" className="history-row-compare" aria-label={compareLabel} onClick={() => onCompareAction(entry)}>⇆</button>}
+  </div>;
 }
 
 function CommitInspector({ ctx, repoRel, target, workspace, onSelectCommit, onPinCompare, onClose }: { readonly ctx: RailPanelContext; readonly repoRel: string; readonly target: CommitTarget; readonly workspace: boolean; readonly onSelectCommit: (target: CommitTarget) => void; readonly onPinCompare?: () => void; readonly onClose: () => void }) {
@@ -206,7 +280,7 @@ function CommitInspector({ ctx, repoRel, target, workspace, onSelectCommit, onPi
   return <div className={`history-inspector${workspace ? " repository-ws-inspector" : ""}`} onKeyDown={(event) => { if (isInspectorDismissKey(event.key)) { event.preventDefault(); onClose(); } }}>{workspace ? content : <><div className="history-segmented"><button type="button" aria-pressed={tab === "details"} onClick={() => setTab("details")}>{t("repository.history.details")}</button><button type="button" aria-pressed={tab === "changes"} onClick={() => setTab("changes")}>{t("repository.source.changes")} {state.kind === "ok" && <span>{state.result.files.length}</span>}</button><button type="button" className="history-detail-close history-inspector-close" aria-label={t("repository.history.closeInspector")} title={t("repository.history.closeInspector")} onClick={onClose}>✕</button></div>{content}</>}</div>;
 }
 
-function CommitHeader({ meta, entry, fullHash, copied, onCopy, onParent, locale, t }: { readonly meta: CommitResult["meta"]; readonly entry?: LogCommitEntry; readonly fullHash: string; readonly copied: boolean; readonly onCopy: () => void; readonly onParent: (full: string) => void; readonly locale: ConsoleLocale | undefined; readonly t: T }) { return <div className="history-inspector-head"><div className="history-inspector-subject" title={meta.subject}>{meta.subject}</div>{meta.body && <pre className="history-inspector-message">{meta.body}</pre>}<div className="history-author"><span className="history-avatar">{initials(meta.authorName)}</span><span><b>{meta.authorName}</b><small>{meta.authorEmail}</small></span><time title={new Date(meta.authorAt * 1000).toLocaleString(localeTag(locale))}>{formatCommitTime(meta.authorAt, new Date(), locale)}</time></div><div className="history-inspector-ids"><button type="button" className={`history-sha-copy${copied ? " is-copied" : ""}`} onClick={onCopy}>{fullHash}<span>{copied ? t("repository.history.copied") : t("repository.history.copy")}</span></button>{meta.parents.map((parent) => <button type="button" className="history-parent" key={parent.full} onClick={() => onParent(parent.full)}>{t("repository.history.parent", { short: parent.short })}</button>)}</div>{entry && <div className="history-ref-chips">{refBadges(entry).map((badge) => <span key={`${badge.kind}:${badge.label}`} className={`history-badge history-badge--${badge.kind}`}>{badge.label}</span>)}</div>}</div>; }
+function CommitHeader({ meta, entry, fullHash, copied, onCopy, onParent, locale, t }: { readonly meta: CommitResult["meta"]; readonly entry?: LogCommitEntry; readonly fullHash: string; readonly copied: boolean; readonly onCopy: () => void; readonly onParent: (full: string) => void; readonly locale: ConsoleLocale | undefined; readonly t: T }) { return <div className="history-inspector-head"><div className="history-inspector-subject" title={meta.subject}>{meta.subject}</div>{meta.body && <pre className="history-inspector-message">{meta.body}</pre>}<div className="history-author"><span className="history-avatar">{initials(meta.authorName)}</span><span><b>{meta.authorName}</b><small>{meta.authorEmail}</small></span><time title={new Date(meta.authorAt * 1000).toLocaleString(localeTag(locale))}>{formatCommitTime(meta.authorAt, new Date(), locale)}</time></div><div className="history-inspector-ids"><button type="button" className={`history-sha-copy${copied ? " is-copied" : ""}`} onClick={onCopy}>{fullHash}<span>{copied ? t("repository.history.copied") : t("repository.history.copy")}</span></button>{meta.parents.map((parent) => <button type="button" className="history-parent" key={parent.full} onClick={() => onParent(parent.full)}>{t("repository.history.parent", { short: parent.short })}</button>)}</div>{entry && <div className="history-ref-chips">{refBadges(entry).map((badge) => <RefBadgeChip key={`${badge.kind}:${badge.label}`} badge={badge} />)}</div>}</div>; }
 function CommitFiles({ files, selectedPath, additions, deletions, viewMode, onViewMode, onSelect, t }: { readonly files: readonly DiffFileEntry[]; readonly selectedPath: string | null; readonly additions: number; readonly deletions: number; readonly viewMode: FilesViewMode; readonly onViewMode: (mode: FilesViewMode) => void; readonly onSelect: (file: DiffFileEntry) => void; readonly t: T }) { return <section className="history-commit-files"><div className="history-files-title"><span className="history-files-label">{t("repository.history.changedFiles")}</span><span className="history-files-stats">{files.length} <i>+{additions}</i> <em>−{deletions}</em></span><FilesViewToggle mode={viewMode} onMode={onViewMode} t={t} /></div><div className="history-files-scroll">{viewMode === "tree" ? <DiffTreeView files={files} selectedPath={selectedPath} onSelect={onSelect} /> : files.map((file) => <FileRow key={file.path} entry={file} isSelected={file.path === selectedPath} onSelect={onSelect} t={t} />)}</div></section>; }
 
 interface HistoryPanelProps {
@@ -233,7 +307,9 @@ export function HistoryPanel({ ctx, repoRel, cacheScope = `${ctx.theaterId ?? ""
 
 function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, active, refFilter, wipFiles, workspace, workspaceMain, workspaceMainVisible, compareRequest, inspectRequest, onInspectorOpenChange, onClearRef, onWip }: Required<Pick<HistoryPanelProps, "active" | "cacheScope" | "ctx" | "externalRefreshToken" | "refFilter" | "repoRel" | "wipFiles" | "workspace" | "workspaceMainVisible">> & Pick<HistoryPanelProps, "workspaceMain" | "compareRequest" | "inspectRequest" | "onInspectorOpenChange" | "onClearRef" | "onWip">) {
   const t = getT(ctx.language);
-  const historyCacheKey = `${cacheScope}::${refFilter ?? ""}`;
+  const [order, setOrder] = useState<LogOrder>(readHistoryOrder);
+  // 정렬 축이 바뀌면 커밋 순서와 그래프 레이아웃이 통째로 달라지므로 캐시 슬롯도 분리한다.
+  const historyCacheKey = `${cacheScope}::${refFilter ?? ""}::${order}`;
   const searchTarget = useRepositorySearchTarget();
   const pendingSearchTargetHash = searchTarget?.theaterId === ctx.theaterId && searchTarget.repoRel === repoRel ? searchTarget.fullHash : null;
   const [initialRestore] = useState(() => readHistoryCacheRestore(historyCacheKey, pendingSearchTargetHash));
@@ -270,7 +346,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
   const dockHeightRef = useRef(dockHeight);
   const handledCompareRequestSeqRef = useRef(0);
   const handledInspectRequestSeqRef = useRef(0);
-  const generation = useMemo<HistoryLoadGeneration>(() => ({ theaterId: ctx.theaterId, repoRel, refFilter, refreshToken: refreshToken + externalRefreshToken }), [ctx.theaterId, externalRefreshToken, refFilter, refreshToken, repoRel]);
+  const generation = useMemo<HistoryLoadGeneration>(() => ({ theaterId: ctx.theaterId, repoRel, refFilter, order, refreshToken: refreshToken + externalRefreshToken }), [ctx.theaterId, externalRefreshToken, order, refFilter, refreshToken, repoRel]);
   const generationRef = useRef(generation);
   generationRef.current = generation;
   const visible = useMemo(() => state.kind === "ok" ? filterHistoryCommits(state.commits, filterText) : [], [filterText, state]);
@@ -287,16 +363,16 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     setAnnounce(t("repository.compare.announceUnpinned"));
   }, [t]);
   const runPair = useCallback((a: CompareAnchor, b: LogCommitEntry) => {
-    const aIndex = commitIndexes.get(a.fullHash);
-    const bIndex = commitIndexes.get(b.fullHash);
-    const aIsOlder = aIndex !== undefined && bIndex !== undefined ? aIndex > bIndex : true;
-    const older = aIsOlder ? a : { fullHash: b.fullHash, shortHash: b.shortHash };
-    const newer = aIsOlder ? { fullHash: b.fullHash, shortHash: b.shortHash } : a;
-    setComparePair({ base: older.fullHash, head: newer.fullHash, baseLabel: older.shortHash, headLabel: newer.shortHash });
+    // 앵커는 shortHash만 들고 다니므로 시각은 적재된 목록에서 되찾는다 — 검사기에서 핀한 경우처럼
+    // 호출부가 항목을 쥐고 있지 않은 경로까지 한자리에서 덮는다.
+    const anchorIndex = commitIndexes.get(a.fullHash);
+    const anchorEntry = state.kind === "ok" && anchorIndex !== undefined ? state.commits[anchorIndex] : undefined;
+    const pair = chooseComparePair({ ...a, authorAt: anchorEntry?.authorAt ?? null }, b);
+    setComparePair(pair);
     setPin(null);
     setTarget(null);
-    setAnnounce(t("repository.compare.announceResult", { base: older.shortHash, head: newer.shortHash }));
-  }, [commitIndexes, t]);
+    setAnnounce(t("repository.compare.announceResult", { base: pair.baseLabel, head: pair.headLabel }));
+  }, [commitIndexes, state, t]);
   const onRowActivate = useCallback((entry: LogCommitEntry, shiftKey: boolean) => {
     if (!shiftKey) {
       setTarget({ fullHash: entry.fullHash, entry });
@@ -463,7 +539,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     loadingMoreRef.current = false;
     setLoadingMore(false);
     setLoadMoreError(null);
-    ctx.api.fetch("repository", "log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, limit: HISTORY_PAGE_SIZE, skip: 0, ...(refFilter ? { ref: refFilter } : {}) }) }).then(async (response) => {
+    ctx.api.fetch("repository", "log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, limit: HISTORY_PAGE_SIZE, skip: 0, order, ...(refFilter ? { ref: refFilter } : {}) }) }).then(async (response) => {
       if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed");
       return response.json() as Promise<LogResult>;
     }).then((data) => {
@@ -481,7 +557,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
       if (!cancelled) setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" });
     });
     return () => { cancelled = true; };
-  }, [ctx.api, ctx.theaterId, everActive, externalRefreshToken, historyCacheKey, pendingSearchTargetHash, refreshToken, refFilter, repoRel]);
+  }, [ctx.api, ctx.theaterId, everActive, externalRefreshToken, historyCacheKey, order, pendingSearchTargetHash, refreshToken, refFilter, repoRel]);
   useEffect(() => {
     if (state.kind !== "ok" || stateCacheKeyRef.current !== historyCacheKey) return;
     const list = listRef.current;
@@ -564,7 +640,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     ctx.api.fetch("repository", "log", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, limit: HISTORY_PAGE_SIZE, skip: state.commits.length, ...(refFilter ? { ref: refFilter } : {}) }),
+      body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, limit: HISTORY_PAGE_SIZE, skip: state.commits.length, order, ...(refFilter ? { ref: refFilter } : {}) }),
     }).then(async (response) => {
       if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed");
       return response.json() as Promise<LogResult>;
@@ -587,7 +663,14 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
       loadingMoreRef.current = false;
       setLoadingMore(false);
     });
-  }, [ctx.api, ctx.theaterId, generation, historyCacheKey, refFilter, repoRel, state]);
+  }, [ctx.api, ctx.theaterId, generation, historyCacheKey, order, refFilter, repoRel, state]);
+  const toggleOrder = useCallback(() => {
+    setOrder((current) => {
+      const next: LogOrder = current === "topo" ? "date" : "topo";
+      saveHistoryOrder(next);
+      return next;
+    });
+  }, []);
   const refreshHistory = useCallback(() => {
     dropHistoryCache(historyCacheKey);
     loadedCacheKeyRef.current = null;
@@ -601,8 +684,8 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     : undefined;
   return <div ref={rootRef} className={`history-root${workspace ? " repository-ws-history" : ""}${isDragging ? " is-dragging" : ""}`} style={stackTemplate ? { gridTemplateRows: stackTemplate } : undefined} onKeyDown={(event) => { if (event.key !== "Escape" || target) return; /* 검사기가 열려 있으면 Esc는 검사기 닫기 한 겹만 벗긴다 — 같은 키로 핀까지 잃지 않게 */ if (pin) { unpin(); event.stopPropagation(); event.preventDefault(); } else if (comparePair) { setComparePair(null); event.stopPropagation(); event.preventDefault(); } }}>
     <div className="history-list-pane" hidden={workspace && workspaceMainVisible}>
-      <div className="history-toolbar"><div className="history-filter"><input className="history-filter-input" placeholder={t("repository.common.filterPlaceholder")} value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText && <button type="button" className="history-filter-clear" onClick={() => setFilterText("")}>✕</button>}</div>{pin && <button type="button" className="repository-ref-chip repository-pin-chip" title={t("repository.compare.pinnedHint")} onClick={unpin}>⇆ {t("repository.compare.pinnedChip", { short: pin.shortHash })} ✕</button>}{refFilter && <button type="button" className="repository-ref-chip" title={refFilter} onClick={onClearRef}>⎇ {shortRefName(refFilter)} ✕</button>}{state.kind === "ok" && <><span className="history-count" title={t("repository.history.countLegend")}>{filterText ? `${visible.length}/${state.commits.length}` : state.commits.length}</span><button type="button" className="repository-refresh-btn" onClick={refreshHistory}>{t("repository.history.refresh")}</button></>}<span className="repository-sr-only" role="status">{announce}</span></div>
-      <div ref={listRef} className="history-list" onScroll={updateCommitViewport}>{showWip && <button type="button" className="repository-wip-row" onClick={onWip}>{t("repository.history.uncommitted")} <span>{t(wip.files === 1 ? "repository.history.wipStats_one" : "repository.history.wipStats_other", { count: wip.files, additions: wip.additions, deletions: wip.deletions })}</span></button>}{state.kind === "loading" && <div className="history-empty">{t("repository.common.loading")}</div>}{state.kind === "error" && <div className="history-error">{state.message}<button type="button" className="repository-refresh-btn" onClick={refreshHistory}>{t("repository.common.retry")}</button></div>}{state.kind === "ok" && state.commits.length === 0 && <div className="history-empty">{t("repository.history.empty")}</div>}{state.kind === "ok" && state.commits.length > 0 && visible.length === 0 && <div className="history-empty">{t("repository.common.noMatchingItems")}</div>}{state.kind === "ok" && layout && visible.length > 0 && <div ref={commitWindowRef} className="history-commit-window"><div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.topSpacerHeight }} />{windowRows.map(({ entry, graphNode }) => <CommitRow key={entry.fullHash} rowRef={(node) => { if (node) rowRefs.current.set(entry.fullHash, node); else rowRefs.current.delete(entry.fullHash); }} entry={entry} checkouts={state.checkouts} selected={target?.fullHash === entry.fullHash} picked={pin?.fullHash === entry.fullHash || comparePair?.base === entry.fullHash || comparePair?.head === entry.fullHash} pin={pin} graphNode={graphNode} laneCount={layout.activeLaneCount} onRowActivate={onRowActivate} onCompareAction={onCompareAction} locale={ctx.language} />)}<div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.bottomSpacerHeight }} /></div>}{state.kind === "ok" && state.commits.length > 0 && <div className="history-pagination">{state.hasMore ? loadingMore ? <span>{t("repository.history.loadingMore")}</span> : <button type="button" className="repository-refresh-btn" onClick={loadMore}>{t("repository.history.loadMore")}</button> : <><span>{t("repository.history.end")}</span>{state.truncated && <span>{t("repository.history.capped")}</span>}</>}{loadMoreError && <span className="history-pagination-error">{loadMoreError}</span>}</div>}</div>
+      <div className="history-toolbar"><div className="history-filter"><input className="history-filter-input" placeholder={t("repository.common.filterPlaceholder")} value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText && <button type="button" className="history-filter-clear" onClick={() => setFilterText("")}>✕</button>}</div>{pin && <button type="button" className="repository-ref-chip repository-pin-chip" title={t("repository.compare.pinnedHint")} onClick={unpin}>⇆ {t("repository.compare.pinnedChip", { short: pin.shortHash })} ✕</button>}{refFilter && <button type="button" className="repository-ref-chip" title={refFilter} onClick={onClearRef}>⎇ {shortRefName(refFilter)} ✕</button>}{state.kind === "ok" && <><span className="history-count" title={t("repository.history.countLegend")}>{filterText ? `${visible.length}/${state.commits.length}` : state.commits.length}</span><button type="button" className="history-order-toggle" aria-label={t("repository.history.orderToggle")} title={t(order === "topo" ? "repository.history.orderTopoHint" : "repository.history.orderDateHint")} onClick={toggleOrder}><OrderIcon order={order} />{t(order === "topo" ? "repository.history.orderTopo" : "repository.history.orderDate")}</button><button type="button" className="repository-refresh-btn" onClick={refreshHistory}>{t("repository.history.refresh")}</button></>}<span className="repository-sr-only" role="status">{announce}</span></div>
+      <div ref={listRef} className="history-list" onScroll={updateCommitViewport}>{showWip && <button type="button" className="repository-wip-row" onClick={onWip}>{t("repository.history.uncommitted")} <span>{t(wip.files === 1 ? "repository.history.wipStats_one" : "repository.history.wipStats_other", { count: wip.files, additions: wip.additions, deletions: wip.deletions })}</span></button>}{state.kind === "loading" && <div className="history-empty">{t("repository.common.loading")}</div>}{state.kind === "error" && <div className="history-error">{state.message}<button type="button" className="repository-refresh-btn" onClick={refreshHistory}>{t("repository.common.retry")}</button></div>}{state.kind === "ok" && state.commits.length === 0 && <div className="history-empty">{t("repository.history.empty")}</div>}{state.kind === "ok" && state.commits.length > 0 && visible.length === 0 && <div className="history-empty">{t("repository.common.noMatchingItems")}</div>}{state.kind === "ok" && layout && visible.length > 0 && <div ref={commitWindowRef} className="history-commit-window"><div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.topSpacerHeight }} />{windowRows.map(({ entry, graphNode }) => <CommitRow key={entry.fullHash} rowRef={(node) => { if (node) rowRefs.current.set(entry.fullHash, node); else rowRefs.current.delete(entry.fullHash); }} entry={entry} checkouts={state.checkouts} selected={target?.fullHash === entry.fullHash} picked={pin?.fullHash === entry.fullHash || comparePair?.base === entry.fullHash || comparePair?.head === entry.fullHash} pin={pin} graphNode={graphNode} onRowActivate={onRowActivate} onCompareAction={onCompareAction} locale={ctx.language} />)}<div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.bottomSpacerHeight }} /></div>}{state.kind === "ok" && state.commits.length > 0 && <div className="history-pagination">{state.hasMore ? loadingMore ? <span>{t("repository.history.loadingMore")}</span> : <button type="button" className="repository-refresh-btn" onClick={loadMore}>{t("repository.history.loadMore")}</button> : <><span>{t("repository.history.end")}</span>{state.truncated && <span>{t("repository.history.capped")}</span>}</>}{loadMoreError && <span className="history-pagination-error">{loadMoreError}</span>}</div>}</div>
     </div>
     {workspaceMain !== undefined && <div className="repository-ws-main" hidden={!workspaceMainVisible}>{workspaceMain}</div>}
     {detailOpen && <><div className="history-divider history-divider--horizontal" role="separator" aria-orientation="horizontal" aria-label={workspace ? t("repository.history.resizeDock") : t("repository.history.resizeLog")} onPointerDown={handleDivider} /><div className="history-detail-pane">{comparePair ? <CompareInspector ctx={ctx} repoRel={repoRel} pair={comparePair} onSwap={() => setComparePair({ base: comparePair.head, head: comparePair.base, baseLabel: comparePair.headLabel, headLabel: comparePair.baseLabel })} onClose={() => setComparePair(null)} /> : target ? <CommitInspector ctx={ctx} repoRel={repoRel} target={target} workspace={workspace} onSelectCommit={(next) => { setComparePair(null); setTarget(next); }} onPinCompare={() => setPinFrom({ fullHash: target.fullHash, shortHash: target.entry?.shortHash ?? target.fullHash.slice(0, 9) })} onClose={() => setTarget(null)} /> : null}</div></>}
@@ -612,3 +695,9 @@ function readLogPaneHeight(): number { return readSize(PREFS_LOG_PANE_HEIGHT, LO
 function readSize(key: string, fallback: number, minimum = 0): number { try { const value = Number.parseFloat(localStorage.getItem(key) ?? ""); if (Number.isFinite(value) && value >= minimum) return value; } catch { /* ignore */ } return fallback; }
 function initials(name: string): string { return name.split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]!.toUpperCase()).join("") || "?"; }
 function HistoryIcon() { return <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M5 3v12M10 7v8M14 11v4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /><path d="M5 7c1.8 0 2.4 0 5 0M10 11c1.4 0 2.2 0 4 0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>; }
+/** topo는 갈라졌다 합류하는 갈래를, date는 시계를 그린다 — 라벨과 같은 축을 도형으로 한 번 더 말한다. */
+function OrderIcon({ order }: { readonly order: LogOrder }) {
+  return order === "topo"
+    ? <svg className="history-order-icon" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3.4 1.6v8.8M3.4 4.2h3.4a1.8 1.8 0 011.8 1.8v4.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>
+    : <svg className="history-order-icon" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="4.4" stroke="currentColor" strokeWidth="1.2" /><path d="M6 3.4V6l1.9 1.3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
+}
