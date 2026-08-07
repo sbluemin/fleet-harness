@@ -3,6 +3,8 @@
 import { act, createElement, Fragment, useLayoutEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
+import type { OperationCatalogPlugin } from "@fleet-console/sdk/operations";
+import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -28,8 +30,10 @@ const sideBarMocks = vi.hoisted(() => ({
   onMinimize: null as null | ((operationId: string) => void),
 }));
 const canvasMocks = vi.hoisted(() => ({
+  catalog: [] as readonly OperationCatalogPlugin[],
   onMount: null as null | (() => void | (() => void)),
   onLaunchAtGeometry: null as null | ((pluginId: string, kind: { readonly type: string; readonly title: string }, geometry: { readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly zIndex: number }) => void),
+  onRefreshCatalog: null as null | (() => void),
 }));
 const registryMocks = vi.hoisted(() => ({
   plugins: [] as Array<Record<string, unknown>>,
@@ -59,8 +63,14 @@ vi.mock("../core/client/src/api.js", () => ({
 
 vi.mock("@fleet-console/sdk/operations/browser", () => ({ fetchOperationCatalog: vi.fn().mockResolvedValue([]) }));
 vi.mock("../core/client/src/canvas/canvas.js", () => ({
-  OperationsCanvas: ({ onLaunchAtGeometry }: { readonly onLaunchAtGeometry: NonNullable<typeof canvasMocks.onLaunchAtGeometry> }) => {
+  OperationsCanvas: ({ catalog, onLaunchAtGeometry, onRefreshCatalog }: {
+    readonly catalog: readonly OperationCatalogPlugin[];
+    readonly onLaunchAtGeometry: NonNullable<typeof canvasMocks.onLaunchAtGeometry>;
+    readonly onRefreshCatalog: () => void;
+  }) => {
+    canvasMocks.catalog = catalog;
     canvasMocks.onLaunchAtGeometry = onLaunchAtGeometry;
+    canvasMocks.onRefreshCatalog = onRefreshCatalog;
     useLayoutEffect(() => canvasMocks.onMount?.(), []);
     return null;
   },
@@ -142,8 +152,11 @@ beforeEach(() => {
   sideBarMocks.onFocus = null;
   sideBarMocks.onClose = null;
   sideBarMocks.onMinimize = null;
+  canvasMocks.catalog = [];
   canvasMocks.onMount = null;
   canvasMocks.onLaunchAtGeometry = null;
+  canvasMocks.onRefreshCatalog = null;
+  vi.mocked(fetchOperationCatalog).mockReset().mockResolvedValue([]);
   registryMocks.plugins = [];
   registryMocks.operationKinds = [];
   // 선별 처리는 Theater가 아니라 전역 축이라, Theater 단위 reset만으로는 꺼지지 않는다.
@@ -1063,6 +1076,29 @@ describe("Operations boot minimization", () => {
     expect(getState().activeTheaterId).toBe("theater-b");
     expect(getTheaterCompanionOperationId("theater-a")).toBe("first");
     expect(getCompanionOperationId()).toBeNull();
+  });
+
+  it("keeps a newer catalog refresh when an older request resolves last", async () => {
+    const stale = deferred<readonly OperationCatalogPlugin[]>();
+    const fresh = deferred<readonly OperationCatalogPlugin[]>();
+    vi.mocked(fetchOperationCatalog)
+      .mockReturnValueOnce(stale.promise)
+      .mockReturnValueOnce(fresh.promise);
+    await bootApp([]);
+    expect(canvasMocks.onRefreshCatalog).not.toBeNull();
+
+    act(() => canvasMocks.onRefreshCatalog?.());
+    await act(async () => {
+      fresh.resolve([{ id: "fresh", title: "Fresh", kinds: [{ id: "fresh", type: "shell", title: "Fresh" }] }]);
+      await Promise.resolve();
+    });
+    expect(canvasMocks.catalog[0]?.id).toBe("fresh");
+
+    await act(async () => {
+      stale.resolve([{ id: "stale", title: "Stale", kinds: [{ id: "stale", type: "shell", title: "Stale" }] }]);
+      await Promise.resolve();
+    });
+    expect(canvasMocks.catalog[0]?.id).toBe("fresh");
   });
 
   it("does not retarget Analyze when launch starts with it open", async () => {

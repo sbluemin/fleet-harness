@@ -2,9 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { assertOperationNode } from "@fleet-console/sdk/operations/browser";
+import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
+import { assertOperationNode, fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
+import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 import { createConsoleLock } from "../core/host/lock.js";
 import { createOperationsRouter } from "../core/host/operations/operations-domain.js";
 import { createSanitizedOpDto } from "../core/host/operations/operations-domain.js";
@@ -16,6 +18,7 @@ const tempDirs: string[] = [];
 const servers: ConsoleServer[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(servers.splice(0).map((server) => server.stop()));
   for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -241,6 +244,102 @@ describe("operations platform", () => {
     expect(store.get("op")?.accent).toBeUndefined();
   });
 
+  it("omits all-malformed launch variants and non-boolean starred values", () => {
+    expect(readLaunchVariantGroups([
+      { id: 7, label: "Bad", rows: [] },
+      { id: "empty", label: "Empty", rows: [{ id: "bad", label: "Bad", launch: { model: false } }] },
+    ])).toEqual([]);
+
+    expect(readLaunchVariantGroups([{
+      id: "native",
+      label: "Claude",
+      rows: [{ id: "fable", label: "Fable", starred: "yes", launch: { model: "fable" } }],
+    }])).toEqual([{
+      id: "native",
+      label: "Claude",
+      rows: [{ id: "fable", label: "Fable", launch: { model: "fable" } }],
+    }]);
+  });
+
+  it("strictly reconstructs launch variants from the browser catalog response", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      plugins: [{
+        id: "terminal",
+        title: "Terminal",
+        kinds: [
+          {
+            id: "claude-gateway",
+            type: "agent",
+            title: "Claude (Gateway)",
+            variants: [
+              {
+                id: "native",
+                label: "Claude",
+                rows: [
+                  {
+                    id: "fable",
+                    label: "Fable",
+                    starred: true,
+                    ignored: "drop-me",
+                    launch: { model: "fable", effort: 5 },
+                    chips: [
+                      { id: "max", label: "MAX", launch: { model: "fable", effort: "max", extra: false } },
+                      { id: 7, label: "HIGH", launch: { model: "fable", effort: "high" } },
+                      { id: "empty", label: "EMPTY", launch: { effort: 5 } },
+                    ],
+                  },
+                  { id: "empty", label: "Empty", launch: { model: false } },
+                  { id: "missing-label", launch: { model: "opus" } },
+                ],
+              },
+              { id: 8, label: "Malformed", rows: [] },
+              { id: "empty", label: "Empty", rows: [{ id: "bad", label: "Bad", launch: [] }] },
+            ],
+          },
+          {
+            id: "malformed-variants",
+            type: "agent",
+            title: "Malformed variants",
+            variants: [{ id: "empty", label: "Empty", rows: [{ id: "bad", label: "Bad", launch: { model: false } }] }],
+          },
+          { id: "shell", type: "shell", title: "Shell" },
+        ],
+      }],
+    })));
+
+    const catalog = await fetchOperationCatalog();
+
+    expect(catalog).toEqual([{
+      id: "terminal",
+      title: "Terminal",
+      kinds: [
+        {
+          id: "claude-gateway",
+          type: "agent",
+          title: "Claude (Gateway)",
+          variants: [{
+            id: "native",
+            label: "Claude",
+            rows: [{
+              id: "fable",
+              label: "Fable",
+              starred: true,
+              launch: { model: "fable" },
+              chips: [{
+                id: "max",
+                label: "MAX",
+                launch: { model: "fable", effort: "max" },
+              }],
+            }],
+          }],
+        },
+        { id: "malformed-variants", type: "agent", title: "Malformed variants" },
+        { id: "shell", type: "shell", title: "Shell" },
+      ],
+    }]);
+    fetchMock.mockRestore();
+  });
+
   it("serves the operation launch catalog before item routes", async () => {
     const store = createOperationStore({ now: () => 10 });
     const router = createOperationsRouter({
@@ -292,9 +391,64 @@ describe("operations platform", () => {
       kinds: [
         { id: "shell", type: "shell", title: "Shell" },
         { id: "agent", type: "agent", title: "Agent CLI" },
+        {
+          id: "claude-gateway",
+          type: "agent",
+          title: "Claude (Gateway)",
+          variants: [{
+            id: "native",
+            label: "Claude",
+            rows: [{
+              id: "fable",
+              label: "Fable",
+              launch: { model: "fable" },
+              chips: [{
+                id: "max",
+                label: "MAX",
+                launch: { model: "fable", effort: "max" },
+              }],
+            }],
+          }],
+        },
       ],
     });
     expect(catalog.plugins.filter((plugin) => plugin.id === "terminal")).toHaveLength(1);
+  });
+
+  it("preserves launch variants through the host catalog HTTP sanitizer", async () => {
+    const fixture = await startCatalogFixture();
+
+    const response = await fetch(`${fixture.endpoint}api/v1/operations/catalog`);
+    const catalog = await response.json() as {
+      readonly plugins: ReadonlyArray<{
+        readonly id: string;
+        readonly kinds: readonly OperationLaunchKind[];
+      }>;
+    };
+    const gateway = catalog.plugins
+      .find((plugin) => plugin.id === "terminal")
+      ?.kinds.find((kind) => kind.id === "claude-gateway");
+
+    expect(response.status).toBe(200);
+    expect(gateway).toEqual({
+      id: "claude-gateway",
+      type: "agent",
+      title: "Claude (Gateway)",
+      variants: [{
+        id: "native",
+        label: "Claude",
+        rows: [{
+          id: "fable",
+          label: "Fable",
+          launch: { model: "fable" },
+          chips: [{
+            id: "max",
+            label: "MAX",
+            launch: { model: "fable", effort: "max" },
+          }],
+        }],
+      }],
+    });
   });
 
   it("deletes every OperationNode for a Theater", () => {
@@ -373,6 +527,15 @@ async function startCatalogFixture(): Promise<{ readonly endpoint: string }> {
     "  ctx.host.operations.registerLaunchCatalog(ctx.pluginId, () => [",
     "    { id: 'shell', type: 'ignored-duplicate', title: 'Ignored Duplicate' },",
     "    { id: 'agent', type: 'agent', title: 'Agent CLI' },",
+    "    {",
+    "      id: 'claude-gateway', type: 'agent', title: 'Claude (Gateway)', ignored: 'drop-me',",
+    "      variants: [{",
+    "        id: 'native', label: 'Claude', rows: [{",
+    "          id: 'fable', label: 'Fable', launch: { model: 'fable', invalid: false },",
+    "          chips: [{ id: 'max', label: 'MAX', launch: { model: 'fable', effort: 'max', invalid: 7 } }],",
+    "        }, { id: 'invalid', label: 'Invalid', launch: { model: false } }],",
+    "      }],",
+    "    },",
     "  ]);",
     "}",
   ].join("\n"));

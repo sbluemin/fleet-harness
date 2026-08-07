@@ -23,6 +23,8 @@ export interface TerminalLaunchContext {
   readonly theaterId?: string;
   readonly kind?: "fleet" | "shell";
   readonly cliId?: string;
+  readonly model?: string;
+  readonly effort?: string;
   readonly resumeSessionId?: string;
   /** 콘솔 테마 극성 힌트 — spawn env COLORFGBG로만 소비된다. PTY는 최초 spawn 시점 값에 고정된다. */
   readonly colorScheme?: "light" | "dark";
@@ -42,6 +44,8 @@ export interface TerminalTicketContext {
   readonly theaterId?: string;
   readonly kind?: "fleet" | "shell";
   readonly cliId?: string;
+  readonly model?: string;
+  readonly effort?: string;
   readonly resumeSessionId?: string;
   readonly colorScheme?: "light" | "dark";
 }

@@ -56,7 +56,7 @@ interface OperationsSideBarProps {
   readonly addingTheater: boolean;
   readonly theaterError: string | null;
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
-  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind) => void;
+  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>) => void;
   readonly onClose: (operationId: string) => void;
   readonly onMinimize: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
@@ -1090,7 +1090,7 @@ export function OperationsSideBar({
           catalog={catalog}
           canLaunch={canLaunch}
           renderKindIcon={renderKindIcon}
-          onLaunchKind={(pluginId, kind) => { setNewMenu(null); onLaunchKind(pluginId, kind); }}
+          onLaunchKind={(pluginId, kind, variantLaunch) => { setNewMenu(null); onLaunchKind(pluginId, kind, variantLaunch); }}
           onClose={() => setNewMenu(null)}
         />,
         document.body,

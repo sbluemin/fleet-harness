@@ -15,6 +15,7 @@ export interface LaunchContext {
   readonly kind: OperationLaunchKind;
   readonly geometry: OperationGeometry;
   readonly operations: ClientOperationsCapability;
+  readonly variant?: Readonly<Record<string, string>>;
 }
 
 export type ConsoleTheme = "instrument" | "maritime" | "carbon" | "whites";

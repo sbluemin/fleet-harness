@@ -72,7 +72,17 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const stateRef = useRef(state);
   const triageMenuReturnFocusRef = useRef<HTMLElement | null>(null);
   const focusRequestEpochRef = useRef(0);
+  const catalogRequestEpochRef = useRef(0);
   stateRef.current = state;
+
+  const refreshCatalog = useCallback(() => {
+    const epoch = ++catalogRequestEpochRef.current;
+    void fetchOperationCatalog()
+      .then((nextCatalog) => {
+        if (catalogRequestEpochRef.current === epoch) setCatalog(nextCatalog);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     loadForTheater(state.activeTheaterId);
@@ -87,9 +97,14 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   }, [triageActive]);
 
   useEffect(() => {
-    if (!state.activeTheaterId) { setCatalog([]); return; }
-    void fetchOperationCatalog().then(setCatalog).catch(() => {});
-  }, [state.activeTheaterId]);
+    if (!state.activeTheaterId) {
+      catalogRequestEpochRef.current += 1;
+      setCatalog([]);
+      return;
+    }
+    refreshCatalog();
+    return () => { catalogRequestEpochRef.current += 1; };
+  }, [refreshCatalog, state.activeTheaterId]);
 
   // Alt+화살표는 캔버스 배치 순서와 패널 문법을 공유하고, Alt+F/Alt+S는 같은 capture/editable 가드 정책을 따른다.
   useEffect(() => {
@@ -308,20 +323,30 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     return plugin?.renderLaunchIcon?.(kind) ?? null;
   }, [registry.plugins]);
 
-  const handleCanvasLaunchKind = useCallback((pluginId: string, kind: OperationLaunchKind, canvasPoint: CanvasPoint, theaterId?: string) => {
+  const handleCanvasLaunchKind = useCallback((
+    pluginId: string,
+    kind: OperationLaunchKind,
+    canvasPoint: CanvasPoint,
+    theaterId?: string,
+    variant?: Readonly<Record<string, string>>,
+  ) => {
     const launchTheaterId = theaterId ?? stateRef.current.activeTheaterId;
     if (!launchTheaterId) return;
     // Station Keeping이 켜진 Theater의 생성 좌표는 전부 정착을 거친다 — 어느 진입 경로든 같은 규율.
     const geometry = resolveLaunchGeometry(launchTheaterId, { ...canvasPointToGeometry(canvasPoint), zIndex: claimTopZIndex() });
-    void launchViaPlugin(pluginId, kind, geometry, launchTheaterId, registry.plugins);
+    void launchViaPlugin(pluginId, kind, geometry, launchTheaterId, registry.plugins, variant);
   }, [registry.plugins]);
 
-  const handleSideBarLaunchKind = useCallback((pluginId: string, kind: OperationLaunchKind) => {
+  const handleSideBarLaunchKind = useCallback((
+    pluginId: string,
+    kind: OperationLaunchKind,
+    variant?: Readonly<Record<string, string>>,
+  ) => {
     const launchTheaterId = stateRef.current.activeTheaterId;
     if (!launchTheaterId) return;
     const canvasPoint = canvasCenterPoint(bodyRef.current);
     const geometry = resolveLaunchGeometry(launchTheaterId, { ...canvasPointToGeometry(canvasPoint), zIndex: claimTopZIndex() });
-    void launchViaPlugin(pluginId, kind, geometry, launchTheaterId, registry.plugins);
+    void launchViaPlugin(pluginId, kind, geometry, launchTheaterId, registry.plugins, variant);
   }, [registry.plugins]);
 
   const handleLaunchAtGeometry = useCallback((pluginId: string, kind: OperationLaunchKind, geometry: OperationGeometry) => {
@@ -583,6 +608,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           renderKindIcon={renderKindIcon}
           onLaunchKind={handleCanvasLaunchKind}
           onLaunchAtGeometry={handleLaunchAtGeometry}
+          onRefreshCatalog={refreshCatalog}
           onClose={handleClose}
           onFocus={handleFocus}
           onRename={handleRename}
@@ -735,13 +761,14 @@ async function launchViaPlugin(
   geometry: OperationGeometry,
   theaterId: string,
   plugins: readonly FleetClientPlugin[],
+  variant?: Readonly<Record<string, string>>,
 ): Promise<void> {
   const plugin = plugins.find((p) => p.id === pluginId);
   const resync = () => { void fetchOperations(null).then(hydrateOperations).catch(() => {}); };
   const capabilities = createHostCapabilities(resync);
   let newOperationId: string | null = null;
   if (plugin?.launch) {
-    const result = await plugin.launch({ theaterId, kind, geometry, operations: capabilities.operations });
+    const result = await plugin.launch({ theaterId, kind, geometry, operations: capabilities.operations, variant });
     newOperationId = result.id;
   } else {
     const operation = await capabilities.operations.create({

@@ -3,11 +3,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import type { AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 import type { OperationCreateInput, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { GatewayLaunchOptionError } from "../server/agent-api/launch.js";
 import { registerAgentRoutes } from "../server/agent.js";
 import type { TerminalRuntime } from "../server/shared/index.js";
 import { createPluginTerminalTicketRegistry } from "../server/shared/tickets.js";
@@ -19,6 +21,114 @@ const temporaryDirectories: string[] = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true });
+});
+
+describe("agent launch variants", () => {
+  it.each([
+    [{ cliId: "claude-gateway", model: 5 }, 400, "invalid_launch_option"],
+    [{ cliId: "claude-native", model: "fable" }, 400, "launch_option_unsupported"],
+    [{ cliId: "claude-gateway", model: "cursor--missing" }, 409, "gateway_model_not_enabled"],
+    [{ cliId: "claude-gateway", model: "fable", effort: "ultra" }, 400, "invalid_effort"],
+    [{ cliId: "claude-gateway", effort: "max" }, 400, "invalid_launch_option"],
+  ] as const)("rejects invalid launch body %#", async (body, status, error) => {
+    const harness = await createHarness({ body });
+
+    await harness.postSessions();
+
+    expect(harness.responses.at(-1)).toEqual({ status, body: { error } });
+    expect(harness.attach).not.toHaveBeenCalled();
+  });
+
+  it("rejects effort outside a model's exposed ladder", async () => {
+    const harness = await createHarness({
+      body: { cliId: "claude-gateway", model: "kimi--k3", effort: "high" },
+      aiGatewaySettings: {
+        version: 1,
+        models: [{ id: "kimi--k3", efforts: ["max"] }],
+      },
+    });
+
+    await harness.postSessions();
+
+    expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "invalid_effort" } });
+    expect(harness.attach).not.toHaveBeenCalled();
+  });
+
+  it("rejects ultra even when the gateway model catalog includes it", async () => {
+    const harness = await createHarness({
+      body: { cliId: "claude-gateway", model: "codex--gpt-5.6-sol-fast", effort: "ultra" },
+      aiGatewaySettings: {
+        version: 1,
+        models: [{ id: "codex--gpt-5.6-sol-fast" }],
+      },
+    });
+
+    await harness.postSessions();
+
+    expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "invalid_effort" } });
+    expect(harness.attach).not.toHaveBeenCalled();
+  });
+
+  it("threads a valid scoped gateway model and effort into attach", async () => {
+    const harness = await createHarness({
+      body: { cliId: "claude-gateway", model: "kimi--k3", effort: "max" },
+      aiGatewaySettings: {
+        version: 1,
+        models: [{ id: "kimi--k3", efforts: ["max"] }],
+      },
+    });
+
+    await harness.postSessions();
+
+    expect(harness.responses.at(-1)?.status).toBe(200);
+    expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({
+      cliId: "claude-gateway",
+      model: "kimi--k3",
+      effort: "max",
+    }));
+  });
+
+  it.each([
+    ["gateway_model_not_enabled", 409],
+    ["invalid_effort", 400],
+  ] as const)("maps spawn-time %s to its route response", async (code, status) => {
+    const harness = await createHarness({
+      body: { cliId: "claude-gateway", model: "fable", effort: "max" },
+      attachError: new GatewayLaunchOptionError(code, code),
+    });
+
+    await harness.postSessions();
+
+    expect(harness.responses.at(-1)).toEqual({ status, body: { error: code } });
+  });
+
+  it("threads a valid native alias and effort into the initial attach only", async () => {
+    const harness = await createHarness({
+      body: { cliId: "claude-gateway", model: "fable", effort: "max" },
+    });
+
+    await harness.postSessions();
+
+    expect(harness.responses.at(-1)?.status).toBe(200);
+    expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({
+      cliId: "claude-gateway",
+      model: "fable",
+      effort: "max",
+    }));
+
+    const sessionId = harness.operations[0]!.id;
+    harness.operations[0]!.payload.providerSession = {
+      provider: "claude",
+      sessionId: "provider-session-1",
+      capturedAt: "2026-08-07T00:00:00.000Z",
+    };
+    await harness.transitionToDormant(sessionId);
+    await harness.resumeSession(sessionId);
+
+    const resumeContext = harness.attach.mock.calls[1]?.[0];
+    expect(resumeContext).not.toHaveProperty("model");
+    expect(resumeContext).not.toHaveProperty("effort");
+  });
 });
 
 describe("agent dormant ticket guards", () => {
@@ -66,7 +176,11 @@ describe("agent dormant ticket guards", () => {
   });
 });
 
-async function createHarness() {
+async function createHarness(options: {
+  readonly body?: Readonly<Record<string, unknown>>;
+  readonly aiGatewaySettings?: AiGatewayStoredSettings;
+  readonly attachError?: Error;
+} = {}) {
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-dormant-ticket-"));
   temporaryDirectories.push(fleetDataDir);
   const operations: OperationNode[] = [];
@@ -83,7 +197,9 @@ async function createHarness() {
       return () => `ticket-${index++}`;
     })(),
   });
-  const attach = vi.fn<TerminalRuntime["attach"]>(async () => {});
+  const attach = vi.fn<TerminalRuntime["attach"]>(async () => {
+    if (options.attachError) throw options.attachError;
+  });
   const terminalRuntime: TerminalRuntime = {
     handleUpgrade: () => false,
     issueTicket: (context) => {
@@ -189,7 +305,7 @@ async function createHarness() {
           const url = req.url ?? "";
           if (url.includes("/ticket")) return { operationId: (req as http.IncomingMessage & { __body?: { operationId?: string } }).__body?.operationId } as T;
           if (url.includes("/resume")) return {} as T;
-          return { theaterId: "theater-1", cliId: "claude" } as T;
+          return { theaterId: "theater-1", cliId: "claude", ...options.body } as T;
         },
       },
       security: {
@@ -214,6 +330,9 @@ async function createHarness() {
       save: (data) => data,
       update: (mutate) => mutate({ version: 1 }),
     },
+    ...(options.aiGatewaySettings
+      ? { readAiGatewaySettings: () => options.aiGatewaySettings! }
+      : {}),
   });
   cleanups.push(async () => {
     if (previousTerminalCommand === undefined) delete process.env.FLEET_TERMINAL_CMD;
@@ -295,11 +414,20 @@ async function createHarness() {
 
   return {
     attach,
+    operations,
     tickets,
     responses,
     invalidateCalls,
     get ticketsIssued() { return ticketsIssued; },
     createLiveSession,
+    postSessions: async () => {
+      if (!route) throw new Error("Agent route was not registered");
+      await route({
+        req: { method: "POST", url: "/plugins/terminal/agent/sessions" } as http.IncomingMessage,
+        res: {} as http.ServerResponse,
+        pathname: "/plugins/terminal/agent/sessions",
+      });
+    },
     transitionToDormant,
     postTicket,
     getSessions,

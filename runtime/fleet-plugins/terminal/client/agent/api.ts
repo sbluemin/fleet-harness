@@ -70,11 +70,18 @@ export async function fetchOperationsSnapshot(signal?: AbortSignal): Promise<Ope
   return { operations: payload.operations.map((operation) => assertOperationNode(operation, response.status)) };
 }
 
-export async function createAgentSession(theaterId: string, cliId: string, signal?: AbortSignal): Promise<SessionInfo> {
+export async function createAgentSession(
+  theaterId: string,
+  cliId: string,
+  options?: { readonly model?: string; readonly effort?: string },
+  signal?: AbortSignal,
+): Promise<SessionInfo> {
+  const model = typeof options?.model === "string" && options.model.length > 0 ? options.model : undefined;
+  const effort = typeof options?.effort === "string" && options.effort.length > 0 ? options.effort : undefined;
   const response = await fetch("/plugins/terminal/agent/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ theaterId, cliId }),
+    body: JSON.stringify({ theaterId, cliId, ...(model ? { model } : {}), ...(effort ? { effort } : {}) }),
     signal,
   });
   await assertOk(response);

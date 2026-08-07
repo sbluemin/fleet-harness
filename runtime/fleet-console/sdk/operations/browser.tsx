@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import { readLaunchVariantGroups } from "./launch-variants.js";
 import type { OperationCatalogPlugin, OperationLaunchKind, OperationNode } from "./types.js";
 
 export interface OperationBodyProps {
@@ -65,12 +66,14 @@ function readCatalogPlugin(value: unknown): OperationCatalogPlugin | null {
 
 function readLaunchKind(value: unknown): OperationLaunchKind | null {
   if (!isRecord(value) || typeof value.id !== "string" || typeof value.type !== "string" || typeof value.title !== "string") return null;
+  const variants = readLaunchVariantGroups(value.variants);
   return {
     id: value.id,
     type: value.type,
     title: value.title,
     ...(typeof value.disabled === "boolean" ? { disabled: value.disabled } : {}),
     ...(typeof value.disabledReason === "string" ? { disabledReason: value.disabledReason } : {}),
+    ...(variants.length > 0 ? { variants } : {}),
   };
 }
 

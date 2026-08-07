@@ -61,6 +61,8 @@ export const commonEn = {
   "launchKind.claudeNative.brief": "No Admiral",
   "launchKind.claude.brief": "Admiral + Carriers",
   "launchKind.claudeGateway.brief": "Other models",
+  "launchVariants.group.native": "Claude built-in",
+  "launchVariants.group.gateway": "Gateway — models you enabled",
 } as const;
 
 export const commonKo: Record<keyof typeof commonEn, string> = {
@@ -124,4 +126,6 @@ export const commonKo: Record<keyof typeof commonEn, string> = {
   "launchKind.claudeNative.brief": "Admiral 없이",
   "launchKind.claude.brief": "Admiral + Carrier",
   "launchKind.claudeGateway.brief": "다른 모델",
+  "launchVariants.group.native": "Claude 내장",
+  "launchVariants.group.gateway": "Gateway — 설정에서 켠 모델",
 };

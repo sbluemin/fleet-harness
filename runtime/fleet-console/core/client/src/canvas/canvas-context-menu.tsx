@@ -15,7 +15,7 @@ interface CanvasContextMenuProps {
   readonly canLaunch: boolean;
   // 아이콘은 플러그인 소유다 — console-core는 어떤 플러그인인지 모른 채 렌더만 위임한다.
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
-  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind) => void;
+  readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>) => void;
   readonly onClose: () => void;
   /** 특정 Theater 소유 영역에서 열렸을 때 메뉴 헤더에 그 소유자를 명시한다. */
   readonly theaterLabel?: string;
@@ -28,6 +28,9 @@ interface CanvasContextMenuProps {
 // .operation-launch-control--canvas .operation-launch-menu의 min-width. 하나만 고치면 컴파일은
 // 되고 치수만 조용히 어긋난다.
 const MENU_WIDTH = 288;
+const FLYOUT_WIDTH = 324;
+const FLYOUT_GAP = 10;
+const FLYOUT_CLOSE_GRACE_MS = 160;
 const MENU_MAX_HEIGHT = 520;
 const MENU_MIN_HEIGHT = 120;
 const MENU_MARGIN = 12;
@@ -48,6 +51,79 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   const [hoverKey, setHoverKey] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const activeKey = hoverKey ?? focusKey;
+  const [openFlyout, setOpenFlyout] = useState<string | null>(null);
+  const [flyoutPosition, setFlyoutPosition] = useState<{
+    readonly id: string;
+    readonly left: number;
+    readonly top: number;
+    readonly opensLeft: boolean;
+  } | null>(null);
+  const flyoutAnchorRefs = useRef(new Map<string, HTMLDivElement>());
+  const flyoutRef = useRef<HTMLDivElement | null>(null);
+  const flyoutCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelFlyoutClose = () => {
+    if (flyoutCloseTimerRef.current === null) return;
+    clearTimeout(flyoutCloseTimerRef.current);
+    flyoutCloseTimerRef.current = null;
+  };
+  const closeFlyout = () => {
+    cancelFlyoutClose();
+    setOpenFlyout(null);
+    setFlyoutPosition(null);
+  };
+  const openLaunchFlyout = (flyoutId: string) => {
+    cancelFlyoutClose();
+    const item = flyoutAnchorRefs.current.get(flyoutId);
+    const container = containerRef.current;
+    if (!item || !container) return;
+    const itemRect = item.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const styledLeft = Number.parseFloat(container.style.left);
+    const containerLeft = Number.isFinite(styledLeft) ? styledLeft : container.offsetLeft;
+    const itemLocalLeft = itemRect.left - containerRect.left;
+    const itemLocalRight = itemRect.right > itemRect.left
+      ? itemRect.right - containerRect.left
+      : itemLocalLeft + (menuSize?.width ?? MENU_WIDTH);
+    const itemLeft = containerLeft + itemLocalLeft;
+    const itemRight = containerLeft + itemLocalRight;
+    const rightCandidate = itemRight + FLYOUT_GAP;
+    const leftCandidate = itemLeft - FLYOUT_GAP - FLYOUT_WIDTH;
+    const boundsWidth = viewportBounds?.width;
+    const maxLeft = boundsWidth === undefined
+      ? Number.POSITIVE_INFINITY
+      : Math.max(MENU_MARGIN, boundsWidth - FLYOUT_WIDTH - MENU_MARGIN);
+    const rightFits = rightCandidate <= maxLeft;
+    const leftFits = leftCandidate >= MENU_MARGIN;
+    const rightRoom = boundsWidth === undefined ? Number.POSITIVE_INFINITY : boundsWidth - itemRight;
+    const leftRoom = itemLeft;
+    const opensLeft = leftFits
+      ? !rightFits || leftRoom > rightRoom
+      : !rightFits && leftRoom > rightRoom;
+    const absoluteLeft = Math.max(MENU_MARGIN, Math.min(opensLeft ? leftCandidate : rightCandidate, maxLeft));
+    const styledTop = Number.parseFloat(container.style.top);
+    const containerTop = Number.isFinite(styledTop) ? styledTop : container.offsetTop;
+    const absoluteTop = Math.max(MENU_MARGIN, containerTop + itemRect.top - containerRect.top - 6);
+    setFlyoutPosition({
+      id: flyoutId,
+      left: absoluteLeft,
+      top: absoluteTop,
+      opensLeft,
+    });
+    setOpenFlyout(flyoutId);
+  };
+  const scheduleFlyoutClose = () => {
+    cancelFlyoutClose();
+    flyoutCloseTimerRef.current = setTimeout(() => {
+      flyoutCloseTimerRef.current = null;
+      setOpenFlyout(null);
+      setFlyoutPosition(null);
+      setHoverKey(null);
+    }, FLYOUT_CLOSE_GRACE_MS);
+  };
+  const flyoutTarget = openFlyout === null
+    ? null
+    : findLaunchFlyout(catalog, openFlyout);
 
   // 배치 판정은 CSS의 max-height 상한이 아니라 실제 렌더 높이로 해야 한다 —
   // 상한(520px)으로 clamp하면 짧은 메뉴가 커서에서 수백 px 떨어진 곳에 열린다.
@@ -67,6 +143,26 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
+
+  useLayoutEffect(() => {
+    const element = flyoutRef.current;
+    const container = containerRef.current;
+    if (!element || !container || !viewportBounds || !openFlyout) return;
+    const measure = () => {
+      const height = element.getBoundingClientRect().height;
+      const maxTop = Math.max(MENU_MARGIN, viewportBounds.height - height - MENU_MARGIN);
+      setFlyoutPosition((previous) => {
+        if (!previous || previous.id !== openFlyout) return previous;
+        const nextTop = Math.max(MENU_MARGIN, Math.min(previous.top, maxTop));
+        return Math.abs(nextTop - previous.top) < 0.5 ? previous : { ...previous, top: nextTop };
+      });
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [openFlyout, viewportBounds]);
 
   useEffect(() => {
     const handlePointer = (event: MouseEvent) => {
@@ -94,6 +190,8 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     // 방향키를 처음 누른 순간에만 항목으로 들어간다.
     menuRef.current?.focus();
   }, []);
+
+  useEffect(() => () => cancelFlyoutClose(), []);
 
   // 플러그인이 하나뿐이면 그 이름은 헤더 줄에 붙는다 — 항목 네 개짜리 메뉴에서 이름만 있는
   // 행 하나가 통째로 서는 것은 값을 못 한다. 둘 이상일 때만 그룹 라벨을 세운다.
@@ -146,7 +244,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     for (const plugin of catalog) {
       for (const kind of plugin.kinds) {
         if (itemKey(plugin.id, kind.id) !== activeKey) continue;
-        if (kind.disabledReason) return null;
+        if (kind.disabledReason || (kind.variants?.length ?? 0) > 0) return null;
         const annotation = resolveLaunchKindAnnotation(kind.id);
         return annotation ? t(annotation.descriptionKey) : null;
       }
@@ -154,7 +252,9 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     return null;
   }, [activeKey, catalog, t]);
 
-  const asideSide = activeDescription ? asidePlacement(anchor, viewportBounds, menuSize) : null;
+  const asideSide = activeDescription && flyoutTarget === null
+    ? asidePlacement(anchor, viewportBounds, menuSize)
+    : null;
 
   return (
     <div
@@ -178,7 +278,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
         // 다른 컨트롤에 포커스를 둔 채 떠 있는 실행 메뉴를 보게 된다 — 포커스가 떠나면 닫는다.
         onBlur={(event) => {
           const next = event.relatedTarget as Node | null;
-          if (next && event.currentTarget.contains(next)) return;
+          if (next && containerRef.current?.contains(next)) return;
           if (next === null) return; // 창 자체가 포커스를 잃은 경우는 닫지 않는다
           // 기능 투어는 이 메뉴의 항목에 앵커를 걸고 여러 단계를 걷는다. 그 카드의 버튼으로
           // 포커스가 가는 것은 메뉴를 떠나는 것이 아니다 — 여기서 닫으면 다음 단계가 짚을
@@ -203,39 +303,73 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
             {plugin.kinds.map((kind) => {
               const disabled = kind.disabled === true || !canLaunch;
               const annotation = resolveLaunchKindAnnotation(kind.id);
+              const flyoutId = itemKey(plugin.id, kind.id);
+              const hasVariants = !disabled && (kind.variants?.length ?? 0) > 0;
+              const flyoutOpen = hasVariants && openFlyout === flyoutId;
+              const activateDescription = () => {
+                setHoverKey(flyoutId);
+                if (!hasVariants) closeFlyout();
+              };
+              const activateFocus = () => {
+                setFocusKey(flyoutId);
+                if (!hasVariants) closeFlyout();
+              };
               return (
-                <button
-                  key={`${plugin.id}:${kind.id}`}
-                  type="button"
-                  role="menuitem"
-                  className={`theater-menu-item canvas-context-menu-item operation-launch-menu-item${annotation ? " operation-launch-menu-item--annotated" : ""}`}
-                  // 실행 종류의 안정 식별자. 기능 투어처럼 특정 항목을 짚어야 하는 바깥 선택자가
-                  // 번역 가능한 title/label 문자열 대신 이 속성에 걸리도록 한다.
-                  data-operation-launch-kind={kind.id}
-                  disabled={disabled}
-                  title={kind.disabledReason}
-                  tabIndex={-1}
-                  onMouseEnter={() => setHoverKey(itemKey(plugin.id, kind.id))}
-                  onFocus={() => setFocusKey(itemKey(plugin.id, kind.id))}
-                  onClick={() => onLaunchKind(plugin.id, kind)}
+                <div
+                  key={flyoutId}
+                  className="operation-launch-menu-item-wrap"
+                  ref={(element) => {
+                    if (element) flyoutAnchorRefs.current.set(flyoutId, element);
+                    else flyoutAnchorRefs.current.delete(flyoutId);
+                  }}
+                  onPointerEnter={() => { if (hasVariants) openLaunchFlyout(flyoutId); }}
+                  onPointerLeave={() => { if (hasVariants) scheduleFlyoutClose(); }}
+                  onFocus={() => { if (hasVariants) openLaunchFlyout(flyoutId); }}
+                  onBlur={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget)) scheduleFlyoutClose();
+                  }}
                 >
-                  <span className="theater-menu-check" aria-hidden="true">{renderKindIcon(plugin.id, kind) ?? <FallbackGlyph />}</span>
-                  <span className="theater-menu-label">{kind.title}</span>
-                  {/* 비활성 사유가 있으면 그것이 먼저다 — 지금 실행할 수 없다는 사실이 종류 설명보다 급하다. */}
-                  {kind.disabledReason
-                    ? <span className="operation-launch-menu-reason">{kind.disabledReason}</span>
-                    : annotation
-                      ? (
-                        <>
-                          <span className="operation-launch-menu-brief">{t(annotation.briefKey)}</span>
-                          {/* 설명 문장은 버튼 안에 남아 접근 이름에 실린다 — 시각적으로만 접고,
-                              같은 문자열을 옆 어사이드가 비춘다. 화면 낭독기는 어사이드 표시 여부와
-                              무관하게 늘 세 종류의 차이를 읽는다. */}
-                          <span className="operation-launch-menu-description operation-launch-menu-description--quiet">{t(annotation.descriptionKey)}</span>
-                        </>
-                      )
-                      : null}
-                </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={`theater-menu-item canvas-context-menu-item operation-launch-menu-item${annotation ? " operation-launch-menu-item--annotated" : ""}${hasVariants ? " operation-launch-menu-item--variants" : ""}`}
+                    // 실행 종류의 안정 식별자. 기능 투어처럼 특정 항목을 짚어야 하는 바깥 선택자가
+                    // 번역 가능한 title/label 문자열 대신 이 속성에 걸리도록 한다.
+                    data-operation-launch-kind={kind.id}
+                    disabled={disabled}
+                    title={kind.disabledReason}
+                    tabIndex={-1}
+                    {...(hasVariants ? { "aria-haspopup": "menu" as const, "aria-expanded": flyoutOpen } : {})}
+                    onMouseEnter={activateDescription}
+                    onFocus={activateFocus}
+                    onKeyDown={(event) => {
+                      if (event.key !== "ArrowRight" || !hasVariants) return;
+                      event.preventDefault();
+                      openLaunchFlyout(flyoutId);
+                      requestAnimationFrame(() => {
+                        containerRef.current?.querySelector<HTMLButtonElement>("[data-launch-variant-row]")?.focus();
+                      });
+                    }}
+                    onClick={() => onLaunchKind(plugin.id, kind)}
+                  >
+                    <span className="theater-menu-check" aria-hidden="true">{renderKindIcon(plugin.id, kind) ?? <FallbackGlyph />}</span>
+                    <span className="theater-menu-label">{kind.title}</span>
+                    {/* 비활성 사유가 있으면 그것이 먼저다 — 지금 실행할 수 없다는 사실이 종류 설명보다 급하다. */}
+                    {kind.disabledReason
+                      ? <span className="operation-launch-menu-reason">{kind.disabledReason}</span>
+                      : annotation
+                        ? (
+                          <>
+                            <span className="operation-launch-menu-brief">{t(annotation.briefKey)}</span>
+                            {/* 설명 문장은 버튼 안에 남아 접근 이름에 실린다 — 시각적으로만 접고,
+                                variant가 없는 행에서만 같은 문자열을 옆 어사이드가 비춘다. */}
+                            <span className="operation-launch-menu-description operation-launch-menu-description--quiet">{t(annotation.descriptionKey)}</span>
+                          </>
+                        )
+                        : null}
+                    {hasVariants ? <span className="operation-launch-menu-chevron" aria-hidden="true">›</span> : null}
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -251,8 +385,82 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
           </p>
         )
         : null}
+      {flyoutTarget && flyoutPosition?.id === openFlyout ? (
+        <div
+          className={`operation-launch-flyout theater-menu${flyoutPosition.opensLeft ? " is-left" : ""}`}
+          role="menu"
+          ref={flyoutRef}
+          style={{ position: "fixed", left: flyoutPosition.left, right: "auto", top: flyoutPosition.top }}
+          onPointerEnter={cancelFlyoutClose}
+          onPointerLeave={scheduleFlyoutClose}
+          onFocus={cancelFlyoutClose}
+          onBlur={(event) => {
+            if (!containerRef.current?.contains(event.relatedTarget)) scheduleFlyoutClose();
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            flyoutAnchorRefs.current.get(openFlyout!)?.querySelector<HTMLButtonElement>("[data-operation-launch-kind]")?.focus();
+            closeFlyout();
+          }}
+        >
+          {flyoutTarget.kind.variants!.map((group, groupIndex) => (
+            <div key={group.id} className="operation-launch-variant-group">
+              {groupIndex > 0 ? <div className="theater-menu-divider" role="separator" /> : null}
+              <p className="operation-launch-variant-caption">
+                {group.id === "native"
+                  ? t("launchVariants.group.native")
+                  : group.id === "gateway"
+                    ? t("launchVariants.group.gateway")
+                    : group.label}
+              </p>
+              {group.rows.map((row) => (
+                <div key={row.id} className="operation-launch-variant-entry">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="operation-launch-variant-row"
+                    data-launch-variant-row={row.id}
+                    onClick={() => onLaunchKind(flyoutTarget.pluginId, flyoutTarget.kind, row.launch)}
+                  >
+                    <span>{row.label}</span>
+                    {row.starred ? <span className="operation-launch-variant-star" aria-hidden="true">★</span> : null}
+                  </button>
+                  {(row.chips?.length ?? 0) > 0 ? (
+                    <div className="operation-launch-variant-chips">
+                      {row.chips!.map((chip) => (
+                        <button
+                          key={chip.id}
+                          type="button"
+                          className="operation-launch-variant-chip"
+                          data-launch-variant-chip={`${row.id}:${chip.id}`}
+                          onClick={() => onLaunchKind(flyoutTarget.pluginId, flyoutTarget.kind, chip.launch)}
+                        >
+                          {chip.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
+}
+
+function findLaunchFlyout(catalog: readonly OperationCatalogPlugin[], flyoutId: string): {
+  readonly pluginId: string;
+  readonly kind: OperationLaunchKind;
+} | null {
+  for (const plugin of catalog) {
+    const kind = plugin.kinds.find((candidate) => itemKey(plugin.id, candidate.id) === flyoutId);
+    if (kind?.variants && kind.variants.length > 0) return { pluginId: plugin.id, kind };
+  }
+  return null;
 }
 
 // 좌하단 런처 FAB와 메뉴 헤더가 공유하던 '커맨드 레티클' 마크 — 외곽 스코프 링 + 사방 조준 틱 +

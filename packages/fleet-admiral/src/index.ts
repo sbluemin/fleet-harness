@@ -75,6 +75,10 @@ export {
   resolveAgentCliProfile,
   type ResolveAgentCliProfileOptions,
 } from "./agent-cli/registry.js";
+export {
+  NATIVE_CLAUDE_EFFORTS,
+  NATIVE_CLAUDE_MODEL_ALIASES,
+} from "./agent-cli/claude/definitions.js";
 
 // Agent CLI 주입 능력 맵
 export { getAgentCliInjectionCapability } from "./agent-cli/capabilities.js";

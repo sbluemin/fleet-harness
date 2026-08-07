@@ -94,7 +94,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       messagePolicy: { bracketedPaste: true, multilineStrategy: "paste-mode" },
       terminalName: "xterm-256color",
     });
-    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: undefined }));
+    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "claude" }));
     expect(injectProfile).toHaveBeenCalledTimes(1);
     expect(events).toEqual([]);
   });
@@ -178,6 +178,135 @@ describe("createDefaultTerminalLaunchResolver", () => {
     await resolve("/work", { sessionId: "session-standard-admiral", cliId: "claude" });
     expect(sharedResolveProfile).toHaveBeenCalledTimes(2);
     expect(sharedInjectProfile).toHaveBeenCalledTimes(2);
+  });
+
+  it("launches gateway variants with native aliases or converted scoped model ids", async () => {
+    const root = makeTempDir("fleet-gateway-launch-variant-");
+    const settings = {
+      version: 1 as const,
+      models: [{ id: "cursor--claude-opus-5" }],
+      defaultModel: "cursor--claude-opus-5",
+    };
+    const resolve = createDefaultTerminalLaunchResolver({
+      cwd: root,
+      dataDir: root,
+      env: {
+        CLAUDE_BIN: process.execPath,
+        CLAUDE_CONFIG_DIR: path.join(root, "claude-config"),
+        PATH: process.env.PATH,
+      },
+      agentRuntime: createFakeRuntime() as never,
+      aiGateway: {
+        routePath: "/plugins/terminal/ai-gateway",
+        origin: () => "http://127.0.0.1:43210",
+      },
+      infraServices: createFakeInfraServices() as never,
+      injectProfile: (async (profile: AgentCliProfile) => profile) as never,
+      createSessionIdentityResolver: (() => ({ resolve: async () => null })) as never,
+      readAiGatewaySettings: () => settings,
+    });
+
+    const native = await resolve(root, {
+      cliId: "claude-gateway",
+      model: "fable",
+      effort: "max",
+      sessionId: "gateway-native-variant",
+    });
+    const scoped = await resolve(root, {
+      cliId: "claude-gateway",
+      model: "cursor--claude-opus-5",
+      effort: "xhigh",
+      sessionId: "gateway-scoped-variant",
+    });
+    const rowOnly = await resolve(root, {
+      cliId: "claude-gateway",
+      model: "cursor--claude-opus-5",
+      sessionId: "gateway-scoped-row",
+    });
+
+    expect(native.args).toEqual(["--model", "fable", "--effort", "max"]);
+    expect(scoped.args).toEqual([
+      "--model",
+      "claude-gateway--cursor--claude-opus-5[1m]",
+      "--effort",
+      "xhigh",
+    ]);
+    expect(rowOnly.args).toEqual([
+      "--model",
+      "claude-gateway--cursor--claude-opus-5[1m]",
+    ]);
+    expect(rowOnly.args).not.toContain("--effort");
+    for (const spec of [native, scoped, rowOnly]) {
+      expect(spec.env.ANTHROPIC_MODEL).toBe("claude-gateway--cursor--claude-opus-5[1m]");
+      expect(spec.env.CLAUDE_CODE_EFFORT_LEVEL).toBeUndefined();
+      await spec.cleanup?.();
+    }
+  });
+
+  it("rejects a scoped gateway model that became stale before spawn", async () => {
+    const root = makeTempDir("fleet-gateway-stale-model-");
+    const resolve = createDefaultTerminalLaunchResolver({
+      cwd: root,
+      dataDir: root,
+      env: {
+        CLAUDE_BIN: process.execPath,
+        CLAUDE_CONFIG_DIR: path.join(root, "claude-config"),
+        PATH: process.env.PATH,
+      },
+      agentRuntime: createFakeRuntime() as never,
+      aiGateway: {
+        routePath: "/plugins/terminal/ai-gateway",
+        origin: () => "http://127.0.0.1:43210",
+      },
+      infraServices: createFakeInfraServices() as never,
+      injectProfile: (async (profile: AgentCliProfile) => profile) as never,
+      createSessionIdentityResolver: (() => ({ resolve: async () => null })) as never,
+      readAiGatewaySettings: () => ({ version: 1 }),
+    });
+
+    await expect(resolve(root, {
+      cliId: "claude-gateway",
+      model: "kimi--k3",
+      sessionId: "gateway-stale-model",
+    })).rejects.toMatchObject({
+      name: "GatewayLaunchOptionError",
+      code: "gateway_model_not_enabled",
+    });
+  });
+
+  it("rejects a scoped gateway effort that became stale before spawn", async () => {
+    const root = makeTempDir("fleet-gateway-stale-effort-");
+    const resolve = createDefaultTerminalLaunchResolver({
+      cwd: root,
+      dataDir: root,
+      env: {
+        CLAUDE_BIN: process.execPath,
+        CLAUDE_CONFIG_DIR: path.join(root, "claude-config"),
+        PATH: process.env.PATH,
+      },
+      agentRuntime: createFakeRuntime() as never,
+      aiGateway: {
+        routePath: "/plugins/terminal/ai-gateway",
+        origin: () => "http://127.0.0.1:43210",
+      },
+      infraServices: createFakeInfraServices() as never,
+      injectProfile: (async (profile: AgentCliProfile) => profile) as never,
+      createSessionIdentityResolver: (() => ({ resolve: async () => null })) as never,
+      readAiGatewaySettings: () => ({
+        version: 1,
+        models: [{ id: "kimi--k3", efforts: ["max"] }],
+      }),
+    });
+
+    await expect(resolve(root, {
+      cliId: "claude-gateway",
+      model: "kimi--k3",
+      effort: "high",
+      sessionId: "gateway-stale-effort",
+    })).rejects.toMatchObject({
+      name: "GatewayLaunchOptionError",
+      code: "invalid_effort",
+    });
   });
 
   it("launches claude-gateway through the real shared Admiral package", async () => {

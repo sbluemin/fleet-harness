@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 
-import { buildGatewayModelsToolSpec, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, getAgentCliIds, getAgentCliMetadata, parseAgentCliId, sanitizePtyMessageText, type AgentCliId } from "@dotobokuri/fleet-admiral";
+import { buildGatewayModelsToolSpec, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, getAgentCliIds, getAgentCliMetadata, NATIVE_CLAUDE_EFFORTS, NATIVE_CLAUDE_MODEL_ALIASES, parseAgentCliId, sanitizePtyMessageText, type AgentCliId } from "@dotobokuri/fleet-admiral";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -23,14 +23,14 @@ import type { AiGatewayLaunchBinding } from "./agent-api/launch.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
 import { resolveBackgroundPendingFromHookInput } from "./agent-api/background-report.js";
-import { createAgentTerminalLaunchResolver, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
+import { createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { writeAgentSessionEvents } from "./agent-api/observability-routes.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./agent-api/osc-agent-activity.js";
 import { readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./agent-api/provider-session.js";
 import type { AgentProviderSession, AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
 import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
-type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown };
+type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown };
 type HookTurnBody = { readonly phase?: unknown; readonly input?: unknown };
 type HookBackgroundBody = { readonly input?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
@@ -303,13 +303,56 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ctx.host.http.writeJson(res, 400, { error: "theater_required" });
       return true;
     }
+    const launchOptions = readLaunchOptions(body, cliId, res);
+    if (launchOptions === false) return true;
     const cwd = ctx.host.paths.resolveTheaterPath(theaterId);
     if (!cwd) {
       ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
       return true;
     }
-    await createSession(cwd, theaterId, cliId, res);
+    await createSession(cwd, theaterId, cliId, res, launchOptions);
     return true;
+  }
+
+  function readLaunchOptions(
+    body: SessionCreateBody | null,
+    cliId: AgentCliId,
+    res: Parameters<typeof handle>[0]["res"],
+  ): { readonly model?: string; readonly effort?: string } | false {
+    if ((body?.model !== undefined && typeof body.model !== "string")
+      || (body?.effort !== undefined && typeof body.effort !== "string")) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_launch_option" });
+      return false;
+    }
+    const model = body?.model;
+    const effort = body?.effort;
+    if (model === undefined && effort === undefined) return {};
+    if (cliId !== "claude-gateway") {
+      ctx.host.http.writeJson(res, 400, { error: "launch_option_unsupported" });
+      return false;
+    }
+    if (model === undefined) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_launch_option" });
+      return false;
+    }
+    if (NATIVE_CLAUDE_MODEL_ALIASES.includes(model as (typeof NATIVE_CLAUDE_MODEL_ALIASES)[number])) {
+      if (effort !== undefined && !NATIVE_CLAUDE_EFFORTS.includes(effort as (typeof NATIVE_CLAUDE_EFFORTS)[number])) {
+        ctx.host.http.writeJson(res, 400, { error: "invalid_effort" });
+        return false;
+      }
+      return { model, ...(effort === undefined ? {} : { effort }) };
+    }
+    const selection = resolveAiGatewaySelection(deps.readAiGatewaySettings?.());
+    const gatewayModel = selection.models.find((candidate) => candidate.id === model);
+    if (!gatewayModel) {
+      ctx.host.http.writeJson(res, 409, { error: "gateway_model_not_enabled" });
+      return false;
+    }
+    if (effort !== undefined && !isGatewayLaunchEffortAllowed(selection, gatewayModel, effort)) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_effort" });
+      return false;
+    }
+    return { model, ...(effort === undefined ? {} : { effort }) };
   }
 
   async function handleSessionItem(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string, action: string): Promise<boolean> {
@@ -331,7 +374,13 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     return methodNotAllowed(res);
   }
 
-  async function createSession(cwd: string, theaterId: string, cliId: AgentCliId, res: Parameters<typeof handle>[0]["res"]): Promise<void> {
+  async function createSession(
+    cwd: string,
+    theaterId: string,
+    cliId: AgentCliId,
+    res: Parameters<typeof handle>[0]["res"],
+    launchOptions: { readonly model?: string; readonly effort?: string } = {},
+  ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     if (!meta || !meta.available || !meta.signedIn) {
       ctx.host.http.writeJson(res, 409, { error: "agent_cli_unavailable" });
@@ -357,6 +406,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         pluginId: ctx.pluginId,
         theaterId,
         cliId,
+        ...(launchOptions.model ? { model: launchOptions.model } : {}),
+        ...(launchOptions.effort ? { effort: launchOptions.effort } : {}),
       });
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
       pendingRuntimeSessions.delete(sessionId);
@@ -366,9 +417,13 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       observability.notifySessionUpdated(created);
       ctx.host.operations.patch(sessionId, { payload: toOperationPayload(ctx.host.operations.get(sessionId)?.payload, cwd, created, undefined, observability.getDurableOperation(sessionId)?.providerTitle) });
       ctx.host.http.writeJson(res, 200, created);
-    } catch {
+    } catch (error) {
       pendingRuntimeSessions.delete(sessionId);
       observability.updateTerminalSessionStatus(sessionId, "error");
+      if (error instanceof GatewayLaunchOptionError) {
+        ctx.host.http.writeJson(res, error.code === "gateway_model_not_enabled" ? 409 : 400, { error: error.code });
+        return;
+      }
       ctx.host.http.writeJson(res, 503, { error: "terminal_unavailable" });
     }
   }
@@ -572,10 +627,13 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
 
   async function buildLaunchKinds(): Promise<readonly OperationLaunchKind[]> {
     const metadata = await buildAgentCliLaunchMetadata();
-    return buildAgentCliLaunchKinds(metadata, AGENT_OPERATION_TYPE);
+    const selection = deps.readAiGatewaySettings
+      ? resolveAiGatewaySelection(deps.readAiGatewaySettings())
+      : undefined;
+    return buildAgentCliLaunchKinds(metadata, AGENT_OPERATION_TYPE, selection);
   }
 
-  function launch(cwd: string | undefined, context: { readonly operationId?: string } | undefined) {
+  function launch(cwd: string | undefined, context: { readonly operationId?: string; readonly model?: string; readonly effort?: string } | undefined) {
     const operationId = context?.operationId ?? "";
     const operation = ctx.host.operations.get(operationId);
     const cliId = typeof operation?.payload.cliId === "string" ? operation.payload.cliId : undefined;
@@ -587,6 +645,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       pluginId: ctx.pluginId,
       ...(operation?.theaterId ? { theaterId: operation.theaterId } : {}),
       ...(cliId ? { cliId } : {}),
+      ...(context?.model ? { model: context.model } : {}),
+      ...(context?.effort ? { effort: context.effort } : {}),
       ...(providerSession ? { resumeSessionId: providerSession } : {}),
     });
   }

@@ -4,6 +4,7 @@ import type { AgentCliDefinition, AgentCliId, AgentCliProfile } from "./types.js
 export interface ResolveAgentCliProfileOptions {
   readonly cliId?: string;
   readonly model?: string;
+  readonly effort?: string;
   readonly resumeSessionId?: string;
 }
 
@@ -29,6 +30,7 @@ export async function resolveAgentCliProfile(
     cwd,
     env,
     model: options.model,
+    effort: options.effort,
     resumeSessionId: options.resumeSessionId,
   });
 }

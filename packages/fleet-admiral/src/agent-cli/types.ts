@@ -43,6 +43,7 @@ export interface AgentCliProfileOptions {
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
   readonly model?: string;
+  readonly effort?: string;
   readonly resumeSessionId?: string;
 }
 
