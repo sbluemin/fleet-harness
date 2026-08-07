@@ -40,6 +40,8 @@ Runtime headings use the Runtime Mapping values above. Section headings are `Add
 
 Existing compiled release history remains unchanged. Releases through v1.51.0 use `fleet-plugin` and `fleet-core` headings and per-bullet package tags; do not rewrite them to adopt this layout.
 
+A `pr-<number>.md` fragment authored before this layout landed still carries those headings and tags. It belongs to someone else's unreleased change, so the compiler keeps accepting it as written and emits it after the runtime groups. Never author a new one, and never rewrite one in place — the next release drains them, and the compiler's `pr-<number>` path retires with them.
+
 ## Release Baseline
 
 Classify entries against the runtime's public release baseline, not the order of internal PRs. Before a runtime's first public release, fold its implementation corrections, redesigns, packaging repairs, and release-pipeline adjustments into `Added` as part of the initially shipped product. Use `Changed` or `Fixed` only for behavior that differs from a version users could previously consume. Describe first-release hardening as a shipped capability or quality, not as a fix to an unreleased product. This holds per change, not only at a runtime's first release: a correction to a change whose own fragment is still unreleased in `.changelog.d/` describes behavior no shipped version exposed, so fold it into that pending fragment or classify the PR `no-changelog` — never emit a standalone `Changed` or `Fixed` entry for behavior users could not yet consume.
