@@ -114,10 +114,13 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
         }
         if (!isReplayEndFrame(frame)) return;
         connectionOptions.terminal.drain(() => {
-          // 재생 바이트가 모두 파싱된 뒤다. 아래 입력 구독 가드보다 먼저 알려, 가드에 걸리는 경우에도
-          // 재생 구간이 열린 채로 남지 않게 한다.
+          // 이 소켓이 아직 활성일 때만 재생 구간을 닫는다. drain은 출력 파싱을 기다리므로 소켓이 먼저
+          // 닫히고 재접속이 새 재생을 시작한 뒤에 이 콜백이 도착할 수 있는데, 그때 창을 닫아버리면
+          // 새 연결의 재생분이 클립보드를 덮는다. 다른 소켓이 주인이면 그 소켓이 자기 창을 닫는다.
+          if (socket !== ws) return;
+          // 재생 바이트가 모두 파싱된 뒤다. 아래 입력 구독 조건과 무관하게 창은 닫는다.
           connectionOptions.onReplayStateChange?.(false);
-          if (socket !== ws || ws.readyState !== OPEN_READY_STATE || inputSubscription) return;
+          if (ws.readyState !== OPEN_READY_STATE || inputSubscription) return;
           disposeInput();
           inputSubscription = connectionOptions.terminal.onData((data) => {
             if (ws.readyState === OPEN_READY_STATE) ws.send(encoder.encode(data));
