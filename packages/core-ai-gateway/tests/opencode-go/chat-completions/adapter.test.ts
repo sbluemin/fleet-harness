@@ -514,3 +514,145 @@ describe("opencode go wire routing", () => {
     expect(() => new OpencodeGoChatCompletionsAdapter({ idleTimeoutMs: 0 })).toThrow(TypeError);
   });
 });
+
+describe("chat completions undeclared argument pruning", () => {
+  function closedSchema(): Record<string, unknown> {
+    return {
+      type: "object",
+      properties: {
+        claim: { type: "string" },
+        source: { type: "string" },
+        quote: { type: "string" },
+      },
+      required: ["claim", "source", "quote"],
+      additionalProperties: false,
+    };
+  }
+
+  function tool(parameters: Record<string, unknown>, name = "Record") {
+    return { type: "function" as const, name, description: "records one finding", parameters };
+  }
+
+  function toolCall(args: string, name = "Record"): Response {
+    return sse(
+      chunk({ id: "c", model: "deepseek-v4-flash", choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "call-1", function: { name, arguments: args } }] } }] }),
+      chunk({ id: "c", model: "deepseek-v4-flash", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] }),
+      "data: [DONE]\n\n",
+    );
+  }
+
+  async function emittedArguments(
+    args: string,
+    parameters: Record<string, unknown>,
+    calledName = "Record",
+  ): Promise<string> {
+    const fetchMock = vi.fn<typeof fetch>(async () => toolCall(args, calledName));
+    // Pruning is bound to the provider wrapper, never the public generic class.
+    const response = await new OpencodeGoChatCompletionsAdapter({ fetch: fetchMock }).stream(
+      request({ tools: [tool(parameters)] }),
+      { apiKey: "k" },
+    );
+    if (!response.ok) throw new Error("expected ok");
+    const events = await collect(response.events);
+    const done = events.find((event) => event.type === "response.function_call_arguments.done");
+    if (done?.type !== "response.function_call_arguments.done") throw new Error("no arguments.done");
+    const item = events.find((event) => event.type === "response.output_item.done");
+    if (item?.type !== "response.output_item.done") throw new Error("no output_item.done");
+    if (item.item.type !== "function_call") throw new Error("expected a function_call item");
+    // 두 이벤트가 갈라지면 하류가 어느 쪽을 읽느냐에 따라 인자가 달라진다.
+    expect(item.item.arguments).toBe(done.arguments);
+    return done.arguments;
+  }
+
+  it("drops a key the closed schema never declared", async () => {
+    // The measured OpenCode Zen behaviour: `strict: true` is accepted and ignored, so the
+    // model still appends an empty-string key no schema keyword allows.
+    expect(await emittedArguments(
+      "{\"claim\":\"c\",\"source\":\"s\",\"quote\":\"q\",\"quote_unused\":\"\"}",
+      closedSchema(),
+    )).toBe("{\"claim\":\"c\",\"source\":\"s\",\"quote\":\"q\"}");
+  });
+
+  it("prunes inside array items, where the incident actually landed", async () => {
+    const nested = {
+      type: "object",
+      properties: { findings: { type: "array", items: closedSchema() } },
+      required: ["findings"],
+      additionalProperties: false,
+    };
+    expect(await emittedArguments(
+      "{\"findings\":[{\"claim\":\"a\",\"source\":\"b\",\"quote\":\"c\",\"quote_unused\":\"\"}]}",
+      nested,
+    )).toBe("{\"findings\":[{\"claim\":\"a\",\"source\":\"b\",\"quote\":\"c\"}]}");
+  });
+
+  it("keeps an undeclared key when the schema left the object open", async () => {
+    // An open object declares extra keys legal; pruning there would be data loss.
+    expect(await emittedArguments(
+      "{\"claim\":\"c\",\"extra\":1}",
+      { type: "object", properties: { claim: { type: "string" } } },
+    )).toBe("{\"claim\":\"c\",\"extra\":1}");
+  });
+
+  it("returns the original bytes when nothing is dropped", async () => {
+    // Re-serializing a clean payload would churn spacing and key order for nothing.
+    const raw = "{\"claim\": \"c\", \"source\": \"s\", \"quote\": \"q\"}";
+    expect(await emittedArguments(raw, closedSchema())).toBe(raw);
+  });
+
+  it("leaves malformed argument JSON for the client to diagnose", async () => {
+    expect(await emittedArguments("{\"claim\":\"c\"", closedSchema())).toBe("{\"claim\":\"c\"");
+  });
+
+  it("does not prune a subtree whose schema branches", async () => {
+    const branching = {
+      type: "object",
+      properties: { payload: { anyOf: [{ type: "object", properties: {}, additionalProperties: false }] } },
+      additionalProperties: false,
+    };
+    expect(await emittedArguments("{\"payload\":{\"anything\":1}}", branching))
+      .toBe("{\"payload\":{\"anything\":1}}");
+  });
+
+  it("leaves arguments alone for a tool the request never declared", async () => {
+    expect(await emittedArguments("{\"a\":1}", closedSchema(), "Unlisted")).toBe("{\"a\":1}");
+  });
+
+  it("keeps a key that patternProperties legalizes under a closed object", async () => {
+    // `x-id` is declared, just not through `properties` — deleting it would corrupt a valid call.
+    const dynamic = {
+      type: "object",
+      properties: { claim: { type: "string" } },
+      patternProperties: { "^x-": { type: "string" } },
+      additionalProperties: false,
+    };
+    expect(await emittedArguments("{\"claim\":\"c\",\"x-id\":\"7\"}", dynamic))
+      .toBe("{\"claim\":\"c\",\"x-id\":\"7\"}");
+  });
+
+  it("keeps keys a conditional schema may legalize", async () => {
+    const conditional = {
+      type: "object",
+      properties: { kind: { type: "string" } },
+      if: { properties: { kind: { const: "wide" } } },
+      additionalProperties: false,
+    };
+    expect(await emittedArguments("{\"kind\":\"wide\",\"extra\":1}", conditional))
+      .toBe("{\"kind\":\"wide\",\"extra\":1}");
+  });
+
+  it("never prunes through the public generic adapter", async () => {
+    // The measurement behind pruning is OpenCode's; a generic instance can target any
+    // Chat Completions backend, so its arguments must reach the client unchanged.
+    const raw = "{\"claim\":\"c\",\"source\":\"s\",\"quote\":\"q\",\"quote_unused\":\"\"}";
+    const fetchMock = vi.fn<typeof fetch>(async () => toolCall(raw));
+    const response = await adapter(fetchMock).stream(
+      request({ tools: [tool(closedSchema())] }),
+      { apiKey: "k" },
+    );
+    if (!response.ok) throw new Error("expected ok");
+    const events = await collect(response.events);
+    expect(events.find((event) => event.type === "response.function_call_arguments.done"))
+      .toMatchObject({ arguments: raw });
+  });
+});

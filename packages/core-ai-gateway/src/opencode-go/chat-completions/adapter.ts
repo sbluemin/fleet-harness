@@ -162,10 +162,11 @@ export class OpenAIChatCompletionsAdapter implements AiGatewayAdapter {
       ok: true,
       status: response.status,
       headers: response.headers,
-      events: translateChatCompletionsStream(response.body, {
-        ...readOptions,
-        onClose: unlinkAbort,
-      }),
+      events: translateChatCompletionsStream(
+        response.body,
+        { ...readOptions, onClose: unlinkAbort },
+        argumentPruningPolicy.has(this) ? declaredToolSchemas(request) : EMPTY_TOOL_SCHEMAS
+      ),
     };
   }
 }
@@ -174,6 +175,15 @@ const imageInputPolicy = new WeakMap<
   OpenAIChatCompletionsAdapter,
   (model: string) => boolean
 >();
+
+/**
+ * Which instances prune undeclared tool-call argument keys on the way in.
+ *
+ * The measurement behind the pruning is OpenCode's alone, and a generic instance can be
+ * constructed against any Chat Completions endpoint, so — like the image policy — this
+ * binds to the provider instance instead of widening the public generic class.
+ */
+const argumentPruningPolicy = new WeakMap<OpenAIChatCompletionsAdapter, true>();
 
 export interface OpencodeGoChatCompletionsAdapterOptions {
   fetch?: FetchLike;
@@ -203,6 +213,9 @@ export class OpencodeGoChatCompletionsAdapter extends OpenAIChatCompletionsAdapt
     // OpenCode Go의 DeepSeek V4 Chat 스키마는 image_url을 거부한다. 이 정책은
     // public generic class의 상속 표면을 넓히지 않고 provider instance에만 결합한다.
     imageInputPolicy.set(this, (model) => !model.startsWith("deepseek-v4-"));
+    // 미선언 인자 키 정화도 같은 이유로 provider instance 한정이다 — 이 wire가 strict를
+    // 무시한다는 실측은 OpenCode의 것이고, 다른 백엔드에 대해서는 측정된 바가 없다.
+    argumentPruningPolicy.set(this, true);
   }
 }
 
@@ -366,16 +379,120 @@ interface PendingChatToolCall {
   arguments: string;
 }
 
+/** Tool name to the JSON Schema the client declared for it in this request. */
+type DeclaredToolSchemas = ReadonlyMap<string, Record<string, unknown>>;
+
+/** An instance outside the pruning policy resolves no schema, so every argument passes through. */
+const EMPTY_TOOL_SCHEMAS: DeclaredToolSchemas = new Map();
+
+function declaredToolSchemas(request: CanonicalResponseRequest): DeclaredToolSchemas {
+  const schemas = new Map<string, Record<string, unknown>>();
+  for (const tool of request.tools ?? []) schemas.set(tool.name, tool.parameters);
+  return schemas;
+}
+
+/**
+ * Removes argument keys the tool's own schema never declared.
+ *
+ * This wire cannot be made to honour a schema on the way out. OpenCode Zen accepts
+ * `strict: true` on a function and still returns undeclared keys — measured against
+ * deepseek-v4-flash on 2026-08-07, 5 of 5 runs, with `additionalProperties: false`
+ * and every property required. Pruning on the way in is therefore the only place the
+ * guarantee can be made, and unlike an outbound rewrite it cannot provoke a 400.
+ *
+ * Only a closed object — one that says `additionalProperties: false` — is pruned; an
+ * open object declares extra keys legal and must survive untouched. Any schema shape this
+ * walker cannot resolve leaves its subtree exactly as it arrived: `$ref`, a branching
+ * keyword, absent `properties`, or a keyword that legalizes keys `properties` never names
+ * (`patternProperties`, `dependentSchemas`, `if`, `unevaluatedProperties`). The asymmetry
+ * is deliberate: a key wrongly dropped is silent data loss, while a key wrongly kept is
+ * only the behaviour that already ships.
+ */
+function pruneUndeclaredArguments(
+  raw: string,
+  schema: Record<string, unknown> | undefined
+): string {
+  if (schema === undefined || raw.length === 0) return raw;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // A truncated or malformed payload is the client's to diagnose, not ours to rewrite.
+    return raw;
+  }
+  const pruned = pruneUndeclaredValue(parsed, schema);
+  // Re-serializing an untouched payload would churn key order and spacing for nothing.
+  return pruned === parsed ? raw : JSON.stringify(pruned);
+}
+
+/** Returns `value` itself when nothing was dropped, so a no-op is detectable by identity. */
+function pruneUndeclaredValue(value: unknown, schema: unknown): unknown {
+  if (!isRecord(schema)) return value;
+  // A branching or referenced schema does not name one closed set of legal keys.
+  if (typeof schema.$ref === "string") return value;
+  if (Array.isArray(schema.anyOf) || Array.isArray(schema.oneOf) || Array.isArray(schema.allOf)) {
+    return value;
+  }
+  // Keywords that legalize keys `properties` never names — `patternProperties` alone makes
+  // `x-id` valid under `additionalProperties: false`. Evaluating them is out of scope, so
+  // the declared set is unresolvable and the object stays whole.
+  if (
+    isRecord(schema.patternProperties)
+    || isRecord(schema.dependentSchemas)
+    || schema.if !== undefined
+    || schema.unevaluatedProperties !== undefined
+  ) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    if (!isRecord(schema.items)) return value;
+    let changed = false;
+    const next = value.map((entry) => {
+      const pruned = pruneUndeclaredValue(entry, schema.items);
+      if (pruned !== entry) changed = true;
+      return pruned;
+    });
+    return changed ? next : value;
+  }
+
+  if (!isRecord(value)) return value;
+  const properties = isRecord(schema.properties) ? schema.properties : undefined;
+  if (properties === undefined) return value;
+  const closed = schema.additionalProperties === false;
+
+  let changed = false;
+  const next: Record<string, unknown> = { ...value };
+  for (const [key, entry] of Object.entries(value)) {
+    if (!Object.hasOwn(properties, key)) {
+      if (!closed) continue;
+      delete next[key];
+      changed = true;
+      continue;
+    }
+    const pruned = pruneUndeclaredValue(entry, properties[key]);
+    if (pruned !== entry) {
+      next[key] = pruned;
+      changed = true;
+    }
+  }
+  return changed ? next : value;
+}
+
 /**
  * Chat Completions 청크 스트림을 canonical 이벤트로 번역한다.
  *
  * tool call 인자는 조각으로 흘러오지만 delta로 중계하지 않고 완결 시점에
  * `response.output_item.done` 하나로 내보낸다 — Responses 어댑터가 인자 delta를
  * 버리는 것과 같은 계약을 유지해, 하류가 두 어댑터에서 같은 모양을 본다.
+ *
+ * That single completion point is also where undeclared argument keys are pruned:
+ * a partial fragment cannot be parsed, so pruning has nowhere else to stand.
  */
 async function* translateChatCompletionsStream(
   body: ReadableStream<Uint8Array> | null,
-  options: UpstreamReadOptions & { onClose: () => void }
+  options: UpstreamReadOptions & { onClose: () => void },
+  toolSchemas: DeclaredToolSchemas
 ): AsyncGenerator<CanonicalResponseEvent> {
   if (body === null) {
     options.onClose();
@@ -495,6 +612,7 @@ async function* translateChatCompletionsStream(
         throw new UpstreamProtocolError(`Chat Completions tool call ${index} ended without a name`);
       }
       const id = pending.id ?? `chat_call_${index}`;
+      const args = pruneUndeclaredArguments(pending.arguments, toolSchemas.get(pending.name));
       // added→arguments.done→done 3종을 모두 낸다. 스트리밍 변환은 어느 조합이든
       // 합성하지만, 비스트리밍 collect는 added에서만 client tool_use 블록을 만들므로
       // done 단독 방출은 tool call을 통째로 삼킨다.
@@ -503,14 +621,14 @@ async function* translateChatCompletionsStream(
         type: "function_call" as const,
         call_id: id,
         name: pending.name,
-        arguments: pending.arguments,
+        arguments: args,
       };
       yield { type: "response.output_item.added", output_index: outputIndex, item: { ...item, arguments: "" } };
       yield {
         type: "response.function_call_arguments.done",
         item_id: id,
         output_index: outputIndex,
-        arguments: pending.arguments,
+        arguments: args,
       };
       yield { type: "response.output_item.done", output_index: outputIndex, item };
       outputIndex += 1;
