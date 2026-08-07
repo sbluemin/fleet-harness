@@ -1350,19 +1350,25 @@ function TriageDeckCardFace({ operationId, title, label, detail, accentColor, pr
 // 선언값 104px를 그대로 빼면 남는 출력 영역이 절반 밑으로 떨어져 프리뷰가 오히려 덜 읽힌다.
 const TRIAGE_PREVIEW_BOTTOM_CHROME_MAX_RATIO = 0.3;
 
-// 프리뷰 fit — 레터박스 없이 카드 영역을 채우는 cover-fit이되, 세로 기준은 패널 전체가 아니라
-// 바닥 크롬을 제외한 출력 영역이다. 크롭 앵커는 가로 중앙·세로는 출력 영역의 하단: 에이전트
-// CLI의 최신 출력은 컴포저 바로 위에 쌓이므로 모니터링 가치가 있는 영역이 살아남는다(빈 셸이
-// 비어 보이는 것은 정직한 상태 표현이다). 밴드 높이는 body 소유자인 kind가 선언하며
-// (OperationKindDescriptor.previewBottomChrome), 선언이 없는 body는 바닥까지 출력이 흐른다는
-// 뜻이므로 0 — 순정 셸과 문서형 패널은 최신 행을 잃지 않는다.
+// 프리뷰 fit — 기본 배율은 폭 하나로 정한다. 프리뷰가 담는 것은 왼쪽 정렬 텍스트(터미널 출력·
+// 문서·파일 트리)라 두 크롭이 등가가 아니다: 세로로 잘리면 오래된 줄만 사라지고 최신 줄은
+// 온전하지만, 가로로 잘리면 모든 줄의 시작 문자가 사라져 남은 화면이 읽히지 않는다.
+// cover-fit(두 비율의 max)은 카드가 원본보다 세로로 길 때 그 읽히지 않는 쪽을 골랐다 — 밀도를
+// 올릴수록 카드 크롬(패딩·상태줄·제목)이 고정이라 프리뷰 뷰포트가 상대적으로 길어지고, 좌우가
+// 잘려 나갔다. 폭 고정은 `inner.width * scale === viewport.width`를 성립시켜 그 크롭을 정책이
+// 아니라 수식으로 불가능하게 만든다. 대가는 상단 여백이다: 축소된 출력이 프레임보다 짧으면 위에
+// 프레임 배경이 남는다(종전에 좌우를 잘라내던 바로 그 조건이다).
 //
-// minScale은 확대창이 요구하는 배율 하한이다. 카드는 함대를 한눈에 담는 축소판이므로 cover-fit이
-// 정답이지만, Quick-Look은 "축소판을 크게 키운 그림"이 아니라 "실물을 들여다보는 창"이다. 표면이
-// 화면에서 S배로 확대돼 있을 때 1/S를 하한으로 받으면 두 배율이 상쇄되어 화면상 1:1이 서고, 글자는
-// 패널에서 읽던 크기 그대로가 된다. 대신 보이는 범위는 창이 담는 만큼으로 좁아진다(그것이 돋보기다).
-// cover-fit이 하한보다 크면 cover가 이긴다 — 레터박스를 만들면서까지 실물 크기를 고집하지 않고,
-// 이미 실물보다 크게 보이는 프리뷰를 굳이 줄이지도 않는다.
+// minScale은 확대창이 요구하는 배율 하한이며, 폭 고정보다 위에 선다. Quick-Look은 "축소판을 크게
+// 키운 그림"이 아니라 "실물을 들여다보는 창"이다. 표면이 화면에서 S배로 확대돼 있을 때 1/S를
+// 하한으로 받으면 두 배율이 상쇄되어 화면상 1:1이 서고, 글자는 패널에서 읽던 크기 그대로가 된다.
+// 대신 보이는 범위는 창이 담는 만큼으로 좁아진다(그것이 돋보기다) — 하한이 폭을 넘어설 때의 가로
+// 크롭은 손실이 아니라 돋보기의 정의이므로, 그때만 종전처럼 가로 중앙에 앵커한다.
+//
+// 세로 앵커는 언제나 출력 영역의 하단 — 에이전트 CLI의 최신 출력은 컴포저 바로 위에 쌓이므로
+// 모니터링 가치가 있는 영역이 살아남고, 빈 셸이 비어 보이는 것은 정직한 상태 표현이다. 밴드
+// 높이는 body 소유자인 kind가 선언하며(OperationKindDescriptor.previewBottomChrome), 선언이
+// 없는 body는 바닥까지 출력이 흐른다는 뜻이므로 0 — 순정 셸과 문서형 패널은 최신 행을 잃지 않는다.
 export function resolveTriagePreviewFit(
   viewport: { readonly width: number; readonly height: number },
   inner: { readonly width: number; readonly height: number },
@@ -1376,10 +1382,14 @@ export function resolveTriagePreviewFit(
   const chrome = Math.min(declared, inner.height * TRIAGE_PREVIEW_BOTTOM_CHROME_MAX_RATIO);
   const contentHeight = inner.height - chrome;
   const floor = Number.isFinite(minScale) ? Math.max(0, minScale) : 0;
-  const scale = Math.max(floor, viewport.width / inner.width, viewport.height / contentHeight);
+  const widthFit = viewport.width / inner.width;
+  const scale = Math.max(floor, widthFit);
   return {
     scale,
-    left: (viewport.width - inner.width * scale) / 2,
+    // 폭 고정이 이기면 좌우가 프레임과 정확히 만나므로 0으로 확정한다(뺄셈으로 두면 부동소수점
+    // 잔차가 남는다). 실물 크기 하한이 폭을 넘어설 때만 음수가 되어 종전처럼 가로 중앙 크롭이
+    // 선다 — 프레임보다 넓은 실물을 창이 담는 모습이다.
+    left: scale > widthFit ? (viewport.width - inner.width * scale) / 2 : 0,
     top: viewport.height - contentHeight * scale,
   };
 }
