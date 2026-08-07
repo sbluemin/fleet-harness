@@ -1480,6 +1480,18 @@ describe("War Room Quick-Look actual-size grammar", () => {
     // 손잡이는 카드 크롬과 같은 1/배율 되돌림을 받아 확대 중에도 24px을 지킨다.
     const controls = components.match(/\.canvas-triage-deck-cell\.is-quicklook \.canvas-triage-deck-card-controls \{[^}]*\}/)?.[0] ?? "";
     expect(controls).toContain("1 / var(--triage-quicklook-scale");
+    // 전이 소유가 칸으로 옮겨졌으므로 reduced-motion도 칸을 끊어야 한다 — 카드만 끊으면 확대가 움직인다.
+    const reducedMotion = components.slice(components.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reducedMotion).toMatch(/\.canvas-triage-deck-cell,\s*\.canvas-triage-deck-card-controls \{\s*transition: none;\s*\}/);
+  });
+
+  it("reads quick-look layout coordinates from the cell that owns positioning", () => {
+    // 칸이 position: relative라 카드의 offsetLeft/Top은 칸 안의 0이다 — grid 기준 offset과 빼려면
+    // 좌표를 칸에서 읽어야 하고, 카드에서 읽으면 복귀 flight 목적지가 grid 모서리로 무너진다.
+    const deck = source("canvas/triage-watch-deck.tsx");
+    expect(deck).toContain('target.closest<HTMLElement>(".canvas-triage-deck-cell")');
+    expect(deck).toContain("layoutBox.offsetLeft - grid.offsetLeft");
+    expect(deck).not.toContain("target.offsetLeft - grid.offsetLeft");
   });
 
   it("keeps the minimized shelf neutral and above the dormant shelf", () => {

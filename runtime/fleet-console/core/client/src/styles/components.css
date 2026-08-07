@@ -3006,6 +3006,13 @@
      reduced-motion 사용자에게도 동일하게 필요하므로 상태가 아니라 동작만 끊는다. */
   .canvas-triage-deck-card { transition-property: border-color, background, opacity; }
 
+  /* 확대 자체는 칸이 지므로 칸과 그 위에 얹힌 손잡이도 함께 끊는다 — 카드만 끊으면 확대가
+     그대로 움직여 reduced-motion 사용자에게 의도한 즉시 스냅이 오지 않는다. */
+  .canvas-triage-deck-cell,
+  .canvas-triage-deck-card-controls {
+    transition: none;
+  }
+
   /* 덱 줌 전환은 JS 쪽에서 즉시 스냅하고, 지도 cross-fade와 마커 강조 전환은 여기서 끊는다.
      밀도 변형(카드↔점)은 JS가 아예 프레임을 만들지 않으므로, 남은 표면 전이만 끊으면 된다. */
   .canvas-triage-map,

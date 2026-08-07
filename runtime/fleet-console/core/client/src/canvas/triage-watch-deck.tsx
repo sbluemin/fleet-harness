@@ -640,11 +640,15 @@ export function TriageWatchDeck({
         // 지도 점은 grid 자식이 아니고 Quick-Look도 없으므로 이 분기는 카드에만 닿는다.
         if (target.classList.contains("is-quicklook")) {
           const gridRect = grid.getBoundingClientRect();
+          // 레이아웃 좌표는 카드가 아니라 카드를 감싼 칸에서 읽는다 — 칸이 위치 기준(position:
+          // relative)이라 카드의 offsetLeft/Top은 칸 안의 0이 되고, grid 기준 offset과 빼면
+          // 목적지가 grid 모서리로 무너진다. 칸은 grid의 자식이라 예전 카드와 같은 기준을 가진다.
+          const layoutBox = target.closest<HTMLElement>(".canvas-triage-deck-cell") ?? target;
           const unscaledRect = new DOMRect(
-            gridRect.left + (target.offsetLeft - grid.offsetLeft) - grid.scrollLeft,
-            gridRect.top + (target.offsetTop - grid.offsetTop) - grid.scrollTop,
-            target.offsetWidth,
-            target.offsetHeight,
+            gridRect.left + (layoutBox.offsetLeft - grid.offsetLeft) - grid.scrollLeft,
+            gridRect.top + (layoutBox.offsetTop - grid.offsetTop) - grid.scrollTop,
+            layoutBox.offsetWidth,
+            layoutBox.offsetHeight,
           );
           deckCardRects.set(operationId, unscaledRect);
           // 열린 quick-look의 scale/origin은 발동 시점 스냅샷이라, grid 스크롤이나 리사이즈
