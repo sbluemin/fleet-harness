@@ -6,7 +6,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import { ApiError, applyConsoleUpdate } from "../api.js";
 import { FEATURE_TOURS } from "../feature-tour-catalog.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
-import { useDesktopHomeOrigin } from "../desktop-shell.js";
+import { isDesktopShell, useDesktopHomeOrigin } from "../desktop-shell.js";
 import { fetchLocalConsoles, probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type LocalConsole, type RemoteHost, type RemoteHostReach } from "../remote-hosts.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
@@ -90,6 +90,8 @@ function HostSwitcher() {
   const state = useConsoleState();
   const hosts = useRemoteHosts();
   const homeOrigin = useDesktopHomeOrigin();
+  // 원격으로 건너가는 일은 셸의 인증서 배관을 거쳐야 한다. 브라우저 단독에서는 내주지 않는다.
+  const canOpenRemote = isDesktopShell();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [local, setLocal] = useState<readonly LocalConsole[]>([]);
@@ -212,9 +214,9 @@ function HostSwitcher() {
                   key={host.id}
                   live={Boolean(reach[host.id]?.trusted)}
                   name={host.label}
-                  detail={hostDetail(host, reach[host.id], t)}
+                  detail={canOpenRemote ? hostDetail(host, reach[host.id], t) : `${host.hostname}:${host.port} · ${t("chrome.hosts.desktopOnly")}`}
                   current={host.origin === currentOrigin}
-                  disabled={reach[host.id]?.reachable === false}
+                  disabled={!canOpenRemote || reach[host.id]?.reachable === false}
                   onOpen={() => go(host.origin)}
                 />
               ))}

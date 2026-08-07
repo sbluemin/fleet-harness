@@ -12,6 +12,7 @@ import { propagateSettingsEntryIndex } from "../components/command-band-system-c
 import { createRemoteAccessLink, fetchRemoteAccessStatus, revokeRemoteAccessLink, revokeRemoteAccessSession, rotateRemoteIdentity } from "../global-settings-api.js";
 import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { renderMessage, useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
+import { isDesktopShell } from "../desktop-shell.js";
 import { addRemoteHost, forgetRemoteHost, probeRemoteHost, refreshRemoteHosts, renameRemoteHost, useRemoteHosts, type RemoteHost, type RemoteHostReach } from "../remote-hosts.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
@@ -526,12 +527,13 @@ function LanguageSettings({ state, saving }: { readonly state: GlobalSettingsSta
  * 액세스 링크와 그것을 쓴 기기들. 각 카드는 자기 사실만 말하고 서로의 상태를 추측하지 않는다.
  */
 const REMOTE_BIND_HOST = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[A-Za-z0-9](?:[A-Za-z0-9._-]{0,252}[A-Za-z0-9])?)$/u;
-const REMOTE_LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
+// 서버의 isValidRemoteBindHost와 같은 집합. 와일드카드는 루프백과 같은 포트를 다투므로 값이 아니다.
+const REMOTE_UNUSABLE_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "0.0.0.0"]);
 const REMOTE_GRANT_TTL_MINUTES = 15;
 const ROTATE_ARM_TIMEOUT_MS = 5_000;
 
 function isValidRemoteBindHost(value: string): boolean {
-  return REMOTE_BIND_HOST.test(value) && !REMOTE_LOOPBACK_HOSTS.has(value);
+  return REMOTE_BIND_HOST.test(value) && !REMOTE_UNUSABLE_HOSTS.has(value);
 }
 
 function RemoteAccessSection({ state, saving }: { readonly state: GlobalSettingsState; readonly saving: boolean }) {
@@ -721,6 +723,8 @@ function RemoteHostRow({ host, reach }: { readonly host: RemoteHost; readonly re
   const [busy, setBusy] = useState(false);
   const live = reach !== undefined && reach !== "checking" && reach.trusted;
   const answered = reach === undefined || reach === "checking" || reach.reachable;
+  // 여는 것만 셸이 필요하다 — 추가·이름 변경·삭제는 서버가 하는 일이라 브라우저에서도 그대로다.
+  const canOpen = isDesktopShell();
 
   return (
     <li className="remote-host">
@@ -740,12 +744,13 @@ function RemoteHostRow({ host, reach }: { readonly host: RemoteHost; readonly re
             void renameRemoteHost(host.id, next).catch(() => setLabel(host.label)).finally(() => setBusy(false));
           }}
         />
-        <small>{`${host.hostname}:${host.port} · ${reachLabel(reach, t)}`}</small>
+        <small>{`${host.hostname}:${host.port} · ${canOpen ? reachLabel(reach, t) : t("settings.remote.hosts.desktopOnly")}`}</small>
       </span>
       <button
         type="button"
         className="remote-host-open"
-        disabled={busy || !answered}
+        title={canOpen ? undefined : t("settings.remote.hosts.desktopOnly")}
+        disabled={busy || !answered || !canOpen}
         onClick={() => location.assign(new URL("/console/", `${host.origin}/`).toString())}
       >
         {t("settings.remote.hosts.open")}

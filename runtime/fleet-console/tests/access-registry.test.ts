@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createAccessRegistry, createLoopbackListenerIdentity, formatSessionCookie, readSessionCookie, resolveListenerIdentity, sessionCookieName } from "../core/host/auth.js";
+import { isValidRemoteBindHost } from "../core/host/settings/settings-domain.js";
 
 function createClock(start = 1_000): { now: () => number; advance: (ms: number) => void } {
   let current = start;
@@ -147,5 +148,21 @@ describe("listener identity", () => {
     expect(resolveListenerIdentity([loopback], { localAddress: "192.168.1.9", localPort: 4310 })).toBeNull();
     expect(resolveListenerIdentity([loopback], { localAddress: "127.0.0.1", localPort: 9999 })).toBeNull();
     expect(resolveListenerIdentity([], { localAddress: "127.0.0.1", localPort: 4310 })).toBeNull();
+  });
+});
+
+describe("remote bind host", () => {
+  it("takes an address or a name of this machine", () => {
+    expect(isValidRemoteBindHost("192.168.1.20")).toBe(true);
+    expect(isValidRemoteBindHost("studio.local")).toBe(true);
+  });
+
+  /**
+   * 원격 리스너는 루프백과 같은 포트를 다른 인터페이스에 바인드한다. 와일드카드는 그 포트를
+   * 이미 잡고 있는 루프백과 다투므로 반드시 EADDRINUSE로 끝난다 — 저장할 수 있으나 결코
+   * 동작할 수 없는 값은 받지 않는다.
+   */
+  it.each(["0.0.0.0", "127.0.0.1", "localhost", "::1"])("refuses %s, which can never produce a listener", (host) => {
+    expect(isValidRemoteBindHost(host)).toBe(false);
   });
 });

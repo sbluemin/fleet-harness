@@ -47,9 +47,16 @@ export function sanitizeRemoteAccessSettings(value: unknown): ConsoleRemoteAcces
   return { ...(enabled !== undefined ? { enabled } : {}), ...(bindHost !== undefined ? { bindHost } : {}) };
 }
 
+/**
+ * 원격 리스너는 루프백과 **같은 포트**를 다른 인터페이스에 바인드한다. 그래서 와일드카드는
+ * 값으로 성립하지 않는다 — `0.0.0.0:<port>`는 이미 `127.0.0.1:<port>`가 잡고 있어 반드시
+ * EADDRINUSE로 끝나고, 사용자는 "다른 프로그램이 쓰고 있다"는 오해를 사는 오류만 받는다.
+ */
+const UNUSABLE_REMOTE_BIND_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "0.0.0.0"]);
+
 export function isValidRemoteBindHost(value: unknown): value is string {
   // 루프백은 원격 바인드가 아니다. 이 자리에 넣으면 원격 세션 규칙이 로컬 표면에 적용된다.
-  return typeof value === "string" && REMOTE_BIND_HOST.test(value) && value !== "127.0.0.1" && value !== "localhost" && value !== "::1";
+  return typeof value === "string" && REMOTE_BIND_HOST.test(value) && !UNUSABLE_REMOTE_BIND_HOSTS.has(value);
 }
 
 export interface ConsoleSettingsData {

@@ -35,3 +35,14 @@ function readHomeOrigin(value: unknown): string | null {
     return null;
   }
 }
+
+/**
+ * 이 창을 Fleet Desktop이 들고 있는가.
+ *
+ * 원격 콘솔로 건너가는 일은 셸의 인증서 배관을 거쳐야 성립한다. 브라우저 단독으로 그 주소에
+ * 항해하면 자체서명 인증서에 막히거나 세션이 없어 401이고, 그 순간 사용자는 멀쩡히 쓰던
+ * 로컬 콘솔에서 튕겨 나간다 — 그래서 셸이 없으면 그 동작을 내주지 않는다.
+ */
+export function isDesktopShell(): boolean {
+  return typeof document !== "undefined" && document.documentElement.dataset.desktopShell === "true";
+}
