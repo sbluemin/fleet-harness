@@ -826,7 +826,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     if (pathname === LOCAL_CONSOLES_PATH) {
-      handleLocalConsoles(req, res);
+      runAsyncBooleanHandler(handleLocalConsoles(req, res), res);
       return;
     }
     if (pathname === REMOTE_HOST_HANDOFF_PATH) {
@@ -1194,16 +1194,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 링크 없이 갈 수 있는 지름길. 여기 적힌 루프백 주소는 "이 요청이 도착한 리스너와 같은 기계"를
    * 뜻하므로, 원격 리스너에는 절대 내주지 않는다 — 원격에서 받은 127.0.0.1은 다른 기계다.
    */
-  function handleLocalConsoles(req: http.IncomingMessage, res: http.ServerResponse): void {
+  async function handleLocalConsoles(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
     if (req.method !== "GET") {
       writeJson(res, 405, { error: "Method not allowed" });
-      return;
+      return true;
     }
     if (!isLoopbackListener(req)) {
       writeJson(res, 401, { error: "unauthorized" });
-      return;
+      return true;
     }
-    writeJson(res, 200, { consoles: listLocalConsoles() });
+    writeJson(res, 200, { consoles: await listLocalConsoles() });
+    return true;
   }
 
   async function addRemoteHost(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {

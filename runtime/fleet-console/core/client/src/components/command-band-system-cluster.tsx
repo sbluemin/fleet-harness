@@ -139,7 +139,7 @@ function HostSwitcher() {
    */
   const homeIsLive = homeOrigin !== null && (local.length === 0 || local.some((entry) => entry.origin === homeOrigin));
   const home = homeIsLive ? homeOrigin : null;
-  const placeholder = (origin: string): LocalConsole => ({ origin, version: "", owner: null });
+  const placeholder = (origin: string): LocalConsole => ({ origin, version: "", owner: null, distro: null });
   const nearby: readonly { readonly entry: LocalConsole; readonly home: boolean }[] = [
     ...(home !== null ? [{ entry: local.find((item) => item.origin === home) ?? placeholder(home), home: true }] : []),
     // 지금 서 있는 루프백 콘솔은 스캔에 안 잡혀도(격리 실행 등) 목록에 있어야 한다 — 눈앞에 있으니까.
@@ -194,7 +194,7 @@ function HostSwitcher() {
                   key={entry.origin}
                   live
                   name={nearbyName(home, entry.origin === currentOrigin, currentLabel, t)}
-                  detail={entry.version && !home ? `${new URL(entry.origin).host} · v${entry.version}` : new URL(entry.origin).host}
+                  detail={nearbyDetail(entry, home)}
                   badge={home || entry.origin === currentOrigin ? undefined : t("chrome.hosts.discovered")}
                   current={entry.origin === currentOrigin}
                   compact={home}
@@ -290,6 +290,14 @@ function isLoopbackOrigin(origin: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** 같은 루프백 주소라도 어디에 사는지가 다르다 — WSL 안의 콘솔은 그 배포판 이름을 달고 선다. */
+function nearbyDetail(entry: LocalConsole, home: boolean): string {
+  const parts = [new URL(entry.origin).host];
+  if (entry.distro) parts.push(entry.distro);
+  if (entry.version && !home) parts.push(`v${entry.version}`);
+  return parts.join(" · ");
 }
 
 function nearbyName(home: boolean, current: boolean, currentName: string, t: ReturnType<typeof useT>): string {

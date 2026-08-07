@@ -8,6 +8,8 @@ branch: remote-access-auth-spine
   ko: 원격 접속: 선택한 네트워크 인터페이스에 TLS로 Console을 열고, 각각 1회용 자격과 인증서 지문을 담은 액세스 링크를 발급합니다. 설정에서 현재 리스너와 지문, 사용되지 않은 링크와 열려 있는 세션을 개별 회수와 함께 보여주고, 연결된 모든 기기를 한 번에 끊는 신원 갱신을 제공합니다. 원격 접속을 끄면 리스너가 닫히고 모든 원격 세션이 즉시 끝납니다.
 - Settings now keeps the other consoles this one can reach. Paste an access link and the console confirms the certificate before saving anything, then names, checks, opens, and forgets each host from one place. The host chip in the command band switches between them.
   ko: 설정이 이제 이 Console에서 건너갈 수 있는 다른 Console들을 보관합니다. 액세스 링크를 붙여넣으면 저장하기 전에 인증서를 먼저 확인하고, 이후로는 한 자리에서 각 호스트의 이름 변경·상태 확인·열기·삭제를 합니다. 커맨드 밴드의 호스트 칩으로 그 사이를 오갑니다.
+- The host switcher lists the consoles already running on this machine, so reaching one takes no link at all. On Windows that includes a console running inside a WSL distribution, named by the distribution it lives in.
+  ko: 호스트 스위처가 이 기계에서 이미 돌고 있는 콘솔들을 함께 보여 주므로, 그 콘솔에 가는 데는 링크가 필요 없습니다. Windows에서는 WSL 배포판 안에서 돌고 있는 콘솔도 그 배포판 이름과 함께 잡힙니다.
 - Opening a remote listener's address in a browser now explains what an access link looks like and where to paste it, instead of answering with a bare authorization error.
   ko: 원격 리스너의 주소를 브라우저로 열면 인증 오류만 돌려주는 대신, 액세스 링크가 어떻게 생겼고 어디에 붙여넣는지 안내합니다.
 

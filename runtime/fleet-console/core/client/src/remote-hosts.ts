@@ -97,6 +97,8 @@ export interface LocalConsole {
   readonly origin: string;
   readonly version: string;
   readonly owner: "cli" | "desktop" | null;
+  /** WSL 배포판 안에서 돌고 있다면 그 이름. 같은 루프백 주소라도 어디 사는지가 다르다. */
+  readonly distro: string | null;
 }
 
 /**
@@ -115,7 +117,8 @@ function isLocalConsole(value: unknown): value is LocalConsole {
   const entry = value as Record<string, unknown>;
   return typeof entry.origin === "string" && entry.origin.startsWith("http://")
     && typeof entry.version === "string"
-    && (entry.owner === null || entry.owner === "cli" || entry.owner === "desktop");
+    && (entry.owner === null || entry.owner === "cli" || entry.owner === "desktop")
+    && (entry.distro === null || typeof entry.distro === "string");
 }
 
 function publish(next: readonly RemoteHost[]): void {
