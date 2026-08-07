@@ -10,6 +10,7 @@ import { getT, useTerminalLocale } from "../i18n/index.js";
 import { createImeShiftEnterHandler } from "./ime-shift-enter.js";
 import { createTerminalConnection, type TerminalConnection } from "./terminal-connection.js";
 import { createTerminalCopyOnSelect } from "./terminal-copy-on-select.js";
+import { createTerminalOsc52Clipboard } from "./terminal-osc52-clipboard.js";
 import { TERMINAL_OPTIONS } from "./terminal-options.js";
 import { useTerminalPrefs } from "./terminal-preferences.js";
 import { createTerminalScrollFollow, type TerminalScrollFollowController } from "./terminal-scroll-follow.js";
@@ -245,6 +246,18 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         windowTarget: window,
         clipboard: navigator.clipboard,
       });
+      // 전체 화면 TUI(agent CLI 등)가 마우스 트래킹을 켜면 xterm은 드래그를 애플리케이션에 넘기고 자체
+      // 선택을 끈다. 그때부터 선택 하이라이트도 복사도 애플리케이션이 수행하며, 복사 결과는 OSC 52로만
+      // 터미널에 전달된다 — copy-on-select가 읽는 xterm 선택은 그 상태에서 항상 비어 있다.
+      // 단 scrollback 재생 구간은 제외한다: 재생 청크에는 과거 복사의 OSC 52가 그대로 들어 있어,
+      // 패널을 다시 열거나 재연결하는 것만으로 지금 클립보드가 낡은 내용으로 덮인다. connection이
+      // 재생 시작/종료를 알려줄 때까지는 억제해 둔다.
+      let replayingScrollback = true;
+      const osc52Clipboard = createTerminalOsc52Clipboard({
+        parser: terminal.parser,
+        clipboard: navigator.clipboard,
+        isReplayingScrollback: () => replayingScrollback,
+      });
       terminal.loadAddon(new Unicode11Addon());
       terminal.unicode.activeVersion = "11";
 
@@ -304,6 +317,9 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
           },
           drain: outputScheduler.drain,
         },
+        onReplayStateChange: (replaying) => {
+          replayingScrollback = replaying;
+        },
         onExit: () => onExitRef.current?.(),
         onStatus: (nextStatus, message) => {
           setStatus(message ? `${nextStatus}: ${message}` : nextStatus);
@@ -352,6 +368,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         imeHandler.dispose();
         connection.dispose();
         copyOnSelect.dispose();
+        osc52Clipboard.dispose();
         scrollGesture.dispose();
         outputScheduler.dispose();
         statusDetailReporter.dispose();

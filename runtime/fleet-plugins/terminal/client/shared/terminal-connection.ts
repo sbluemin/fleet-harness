@@ -12,6 +12,11 @@ export interface TerminalConnectionOptions {
   /** 콘솔 테마 극성 — ticket 요청에 실려 spawn env COLORFGBG 힌트가 된다(최초 spawn 시점 고정). */
   readonly colorScheme?: "light" | "dark";
   readonly onStatus?: (status: TerminalConnectionStatus, message?: string) => void;
+  /**
+   * 서버 보유 scrollback을 재생하는 구간의 시작(true)과 끝(false)을 알린다. 재생 청크는 과거에 이미
+   * 흘러간 바이트라, 그 안의 부수효과 시퀀스를 지금 다시 실행하면 안 되는 소비자를 위한 신호다.
+   */
+  readonly onReplayStateChange?: (replaying: boolean) => void;
   readonly onExit?: () => void;
   readonly location?: Pick<Location, "host" | "protocol">;
   readonly webSocketFactory?: (url: string) => WebSocketLike;
@@ -86,6 +91,8 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
   };
 
   const attachSocket = async (url: string, connectionOptions: TerminalConnectionOptions): Promise<void> => {
+    // 모든 (재)연결은 서버 attach에서 scrollback 재생으로 시작한다 — 재생 종료는 replay_end가 알린다.
+    connectionOptions.onReplayStateChange?.(true);
     await new Promise<void>((resolve, reject) => {
       const ws = (connectionOptions.webSocketFactory ?? defaultWebSocketFactory)(url);
       socket = ws;
@@ -107,7 +114,13 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
         }
         if (!isReplayEndFrame(frame)) return;
         connectionOptions.terminal.drain(() => {
-          if (socket !== ws || ws.readyState !== OPEN_READY_STATE || inputSubscription) return;
+          // 이 소켓이 아직 활성일 때만 재생 구간을 닫는다. drain은 출력 파싱을 기다리므로 소켓이 먼저
+          // 닫히고 재접속이 새 재생을 시작한 뒤에 이 콜백이 도착할 수 있는데, 그때 창을 닫아버리면
+          // 새 연결의 재생분이 클립보드를 덮는다. 다른 소켓이 주인이면 그 소켓이 자기 창을 닫는다.
+          if (socket !== ws) return;
+          // 재생 바이트가 모두 파싱된 뒤다. 아래 입력 구독 조건과 무관하게 창은 닫는다.
+          connectionOptions.onReplayStateChange?.(false);
+          if (ws.readyState !== OPEN_READY_STATE || inputSubscription) return;
           disposeInput();
           inputSubscription = connectionOptions.terminal.onData((data) => {
             if (ws.readyState === OPEN_READY_STATE) ws.send(encoder.encode(data));
