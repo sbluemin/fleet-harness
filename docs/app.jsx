@@ -46,7 +46,7 @@ const UI = {
   backendsLede:  { ko: "Fleet은 실제 CLI 바이너리를 선언된 제품 표면에서 실행한다. 제작사가 다듬은 에이전트 루프와 이미 쓰던 인증이 그대로 보존된다.", en: "Fleet launches the actual CLI binary in its declared product surface, preserving the model-native agent loop and the authentication you already use." },
 
   providersEy:    { ko: "AI Gateway · 04", en: "AI Gateway · 04" },
-  providersTitle: { ko: ["네 곳의 공급자,", "당신의 구독 그대로."], en: ["Four providers,", "your own subscriptions."] },
+  providersTitle: { ko: ["네 곳의 공급자,", "당신의 계정으로."], en: ["Four providers,", "on accounts you own."] },
   providersLede:  { ko: "게이트웨이는 API 프록시가 아니라 로컬 Claude Code 엔드포인트다. 상류 요청은 Console이 직접 보내고, 어떤 공급자의 자격 증명도 Claude Code 프로세스에 들어가지 않는다. Codex와 Cursor는 이미 쓰던 구독을 타고, Kimi와 OpenCode Go는 설정에 등록한 API 키를 쓴다. 좌측에서 공급자를 고르면 게이트웨이로 닿는 모델이 펼쳐진다.", en: "The gateway is a local Claude Code endpoint, not an API proxy: the Console makes the upstream request itself, and no provider credential ever enters the Claude Code process. Codex and Cursor ride the subscription you already have; Kimi and OpenCode Go take an API key you register in Settings. Pick a provider to see the models it reaches." },
   providersAria:  { ko: "게이트웨이 공급자", en: "Gateway providers" },
   providerCap:    { ko: "Provider", en: "Provider" },
@@ -259,9 +259,9 @@ const DIFFS = [
   },
   {
     n: "03",
-    name: "Your Subscriptions, Not an API Bill",
-    kr: { ko: "API 청구서가 아니라 내 구독", en: "Your Subscriptions, Not an API Bill" },
-    body: { ko: "게이트웨이는 API 프록시가 아니라 로컬 Claude Code 엔드포인트다. 전송은 이미 결제 중인 구독 CLI가 담당하고, 각 공급자의 자격 증명은 Claude Code 프로세스에 들어가지 않는다.", en: "The gateway is a local Claude Code endpoint, not an API proxy. The subscription CLIs you already pay for stay the transport, and no provider credential enters the Claude Code process." },
+    name: "Credentials Stay Out of the Agent",
+    kr: { ko: "자격 증명은 에이전트 밖에", en: "Credentials Stay Out of the Agent" },
+    body: { ko: "게이트웨이는 API 프록시가 아니라 로컬 Claude Code 엔드포인트다. 자격 증명은 Console이 들고 상류 요청도 Console이 보내므로, 에이전트 프로세스는 그것을 한 번도 보지 않는다. 계정은 각자 자기 것을 쓴다 — Codex와 Cursor는 기존 구독, Kimi와 OpenCode Go는 등록한 API 키.", en: "The gateway is a local Claude Code endpoint, not an API proxy. The Console holds the credential and makes the upstream request, so the agent process never sees it. Each provider runs on your own account: an existing subscription for Codex and Cursor, a registered API key for Kimi and OpenCode Go." },
   },
   {
     n: "04",
@@ -308,7 +308,7 @@ const COMPARES = [
     us: true,
     bullets: [
       { ko: "서버가 소유하는 병렬 Operation", en: "Parallel, server-owned Operations" },
-      { ko: "구독 CLI로 닿는 4개 공급자", en: "Four providers reached through your own CLIs" },
+      { ko: "내 계정으로 닿는 4개 공급자", en: "Four providers on accounts you own" },
       { ko: "상시 작동하는 6개 Standing Order", en: "Six always-on Standing Orders" },
     ],
     verdict: { ko: "여러 에이전트를 동시에 감독하는 자리로 설계되었다.", en: "Built to be the place you supervise several agents at once." },
