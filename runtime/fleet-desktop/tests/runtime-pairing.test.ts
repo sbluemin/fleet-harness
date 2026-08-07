@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { parseAccessLink } from "../src/remote-access-link.js";
-import { createRuntimePairing, parsePairingTarget, verifyPairingTarget } from "../src/runtime-pairing.js";
+import { createRuntimePairing, parsePairingTarget, verifyConsoleIdentity, verifyPairingTarget } from "../src/runtime-pairing.js";
 
 const TOKEN = "y8bWk3Qm5r7uJ2pS4vX9zA1cE6gI0lN8oR2tU5wY7bD";
 const FINGERPRINT = "6FB70D9F321A91894CC16D613078FB13E6E0B0042D985D395F04EDC2103E95F8";
@@ -31,6 +31,20 @@ describe("runtime pairing", () => {
     ]) {
       expect(() => parsePairingTarget(input)).toThrow("pairing_target_invalid");
     }
+  });
+
+  it("accepts an identity response from a fetch that reports no url, and still rejects a reported mismatch", async () => {
+    const blank = new Response(JSON.stringify({ product: "fleet-console", schemaVersion: 1, pairingProtocolVersion: 1 }), { status: 200 });
+    // Electron 세션 fetch는 url을 비워 둔다. redirect:"error"가 이미 리다이렉트를 막으므로
+    // 빈 값은 통과시키되, 실제로 다른 곳을 보고하면 여전히 거절해야 한다.
+    Object.defineProperty(blank, "url", { value: "" });
+    await expect(verifyConsoleIdentity("https://192.168.1.20:4310", async () => blank)).resolves.toEqual({
+      origin: "https://192.168.1.20:4310",
+      consoleUrl: "https://192.168.1.20:4310/console/",
+    });
+
+    await expect(verifyConsoleIdentity("https://192.168.1.20:4310", async () => identityResponseAt("https://evil.test/api/v1/pairing-identity")))
+      .rejects.toThrow("pairing_target_unverified");
   });
 
   it("stages, commits, and notifies only after the target Console loads", async () => {

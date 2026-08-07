@@ -108,7 +108,10 @@ export async function verifyConsoleIdentity(origin: string, fetchFor: ConsoleFet
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetchFor(identityUrl, { method: "GET", redirect: "error", signal: controller.signal });
-    if (!response.ok || response.url !== identityUrl) throw new Error("pairing_target_unverified");
+    if (!response.ok) throw new Error("pairing_target_unverified");
+    // 리다이렉트는 redirect:"error"가 이미 거부한다. url 대조는 그 위의 이중 확인인데,
+    // Electron 세션 fetch는 이 필드를 비워 둔다 — 보고하는 구현에서만 대조한다.
+    if (response.url !== "" && response.url !== identityUrl) throw new Error("pairing_target_unverified");
     const payload = parsePairingIdentity(await readBoundedText(response, MAX_PAIRING_IDENTITY_BYTES));
     if (!isPairingIdentity(payload)) throw new Error("pairing_target_unverified");
     return { origin, consoleUrl: new URL("/console/", `${origin}/`).toString() };
