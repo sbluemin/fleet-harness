@@ -32,8 +32,11 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           merge_base=$(git merge-base "$BASE_REF" "$HEAD_REF")
-          # Deletions count: removing a feature is exactly the case that needs a Removed entry.
-          changed_files=$(git diff --name-only --diff-filter=AMD "$merge_base" "$HEAD_REF")
+          # Deletions count: removing a feature is exactly the case that needs a Removed entry. Renames count on
+          # BOTH sides, because a rename can carry an edit with it and can move a file across the internal/runtime
+          # line in either direction.
+          changed_files=$(git diff --name-status --diff-filter=AMDR "$merge_base" "$HEAD_REF" \
+            | awk 'BEGIN { FS = "\t" } { if ($1 ~ /^R/) { print $2; print $3 } else { print $2 } }')
           # AGENTS.md/CLAUDE.md live in .changelog.d/ but are doctrine, not fragments.
           fragment_filter() { grep -E '^\.changelog\.d/[^/]+\.md$' | grep -vE '^\.changelog\.d/(AGENTS|CLAUDE)\.md$' || true; }
           fragment_files=$(git diff --name-only --diff-filter=A "$merge_base" "$HEAD_REF" | fragment_filter)
@@ -72,6 +75,14 @@ jobs:
               [ -n "$fragment" ] || continue
               if [ "${fragment#.changelog.d/}" != "$expected" ]; then
                 echo "::error file=$fragment::Fragment name does not match this PR's branch. Branch '$HEAD_BRANCH' derives .changelog.d/$expected. Rename the file and its branch: frontmatter."
+                exit 1
+              fi
+              # The compiler can only check that the declared branch and the filename agree after normalization,
+              # so slug-equivalent values ('feat/foo/bar' for branch 'feat/foo-bar') pass it. Only CI knows the
+              # real head ref, so the exact-branch half of the contract is enforced here.
+              declared=$(awk 'BEGIN { inside = 0 } NR == 1 { if ($0 != "---") exit; inside = 1; next } inside && $0 == "---" { exit } inside && /^branch:[[:space:]]*/ { sub(/^branch:[[:space:]]*/, ""); print; exit }' "$fragment")
+              if [ "$declared" != "$HEAD_BRANCH" ]; then
+                echo "::error file=$fragment::Fragment declares branch '$declared' but this PR's head branch is '$HEAD_BRANCH'. Correct the branch: frontmatter."
                 exit 1
               fi
             done <<< "$fragment_files"
