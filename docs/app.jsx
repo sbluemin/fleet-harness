@@ -9,58 +9,58 @@ const t = (obj) => (obj && typeof obj === "object" && (obj.ko || obj.en)) ? (obj
 
 // ───── UI strings ─────
 const UI = {
-  navHierarchy: { ko: "지휘 체계", en: "Command Chain" },
-  navCaptains:  { ko: "4 함장", en: "4 Captains" },
-  navProtocol:  { ko: "4 모드", en: "4 Modes" },
+  navHierarchy: { ko: "구성", en: "How it works" },
+  navProviders: { ko: "게이트웨이", en: "Gateway" },
+  navModes:     { ko: "3 모드", en: "3 Modes" },
   navDiffs:     { ko: "차별점", en: "Why us" },
   primaryAria:  { ko: "주요 메뉴", en: "Primary" },
 
-  heroEyebrow:  { ko: "Fleet Action Protocol · v1", en: "Fleet Action Protocol · v1" },
-  heroTitle:    { ko: ["단일 인터페이스에서", "함대 전체를 지휘하라."], en: ["Command an entire fleet", "from a single interface."] },
-  heroDescPre:    { ko: "fleet-harness는 Claude Code와 Claude Gateway Operation을 오케스트레이션하는 멀티-LLM 하네스입니다. 사용자는 ", en: "fleet-harness is a multi-LLM harness that orchestrates Claude Code and Claude Gateway operations. You command as the " },
-  heroDescAdmiral:{ ko: "대원수", en: "Admiral of the Navy" },
-  heroDescMid:    { ko: "로서 임무를 부여하고, 호스트인 ", en: ", while the host — the " },
-  heroDescHost:   { ko: "제독", en: "Admiral" },
-  heroDescMid2:   { ko: "이 4명의 ", en: " — delegates to four " },
-  heroDescCap:    { ko: "함장", en: "Captains" },
-  heroDescTail:   { ko: "에게 책임을 위임해 작전을 종결합니다.", en: " who close the operation." },
+  heroEyebrow:  { ko: "Fleet Console · Research preview", en: "Fleet Console · Research preview" },
+  heroTitle:    { ko: ["하나의 콘솔.", "모든 에이전트."], en: ["One console.", "Every coding agent."] },
+  heroDescPre:    { ko: "Fleet Console은 코딩 에이전트를 브라우저가 아니라 로컬 서버가 소유하는 ", en: "Fleet Console runs coding agents as " },
+  heroDescOperation:{ ko: "Operation", en: "Operations" },
+  heroDescMid:    { ko: "으로 실행합니다. 탭을 닫아도 세션은 계속 돌고, 호스트 에이전트인 ", en: " owned by a local server, not your browser. Close the tab and the session keeps running. The host agent — the " },
+  heroDescHost:   { ko: "Admiral", en: "Admiral" },
+  heroDescMid2:   { ko: "은 여섯 개의 ", en: " — plans and delegates under six always-on " },
+  heroDescOrders: { ko: "Standing Order", en: "Standing Orders" },
+  heroDescTail:   { ko: " 아래에서 계획하고 위임합니다.", en: "." },
 
   ctaRepo:      { ko: "저장소 살펴보기", en: "Explore the repo" },
-  ctaCaptains:  { ko: "함장 명단 보기", en: "Meet the captains" },
+  ctaProviders: { ko: "게이트웨이 모델 보기", en: "See the gateway models" },
   ctaGithubView:{ ko: "GitHub에서 보기", en: "View on GitHub" },
-  ctaProtocol:  { ko: "Fleet Action Protocol 보기", en: "See the Fleet Action Protocol" },
+  ctaModes:     { ko: "캔버스 모드 보기", en: "See the canvas modes" },
 
-  metaBackends: { ko: "CLI Backends", en: "CLI Backends" },
-  metaBackendsVal: { ko: "Anthropic / OpenAI / Cursor", en: "Anthropic / OpenAI / Cursor" },
-  metaCaptains: { ko: "Captains", en: "Captains" },
-  metaCaptainsVal: { ko: "명시적 책임 분리", en: "Distinct responsibilities" },
-  metaProtocol: { ko: "Protocol", en: "Protocol" },
-  metaProtocolVal: { ko: "Intent → Mode → Execute", en: "Intent → Mode → Execute" },
+  metaKinds: { ko: "Launch kinds", en: "Launch kinds" },
+  metaKindsVal: { ko: "Native / Gateway", en: "Native / Gateway" },
+  metaProviders: { ko: "Gateway providers", en: "Gateway providers" },
+  metaProvidersVal: { ko: "구독과 API 키", en: "Subscriptions and API keys" },
+  metaOrders: { ko: "Standing Orders", en: "Standing Orders" },
+  metaOrdersVal: { ko: "상시 작동", en: "Always on" },
 
-  hierarchyEy:  { ko: "Chain of Command", en: "Chain of Command" },
-  hierarchyTitle: { ko: "3-단 지휘 체계", en: "Three-tier command structure" },
-  hierarchyLede:  { ko: "사용자는 코드를 쓰지 않는다. 결정한다. 함대는 그 결정을 작전으로 환원한다.", en: "You don't write code — you decide. The fleet turns each decision into an operation." },
+  hierarchyEy:  { ko: "How it works", en: "How it works" },
+  hierarchyTitle: { ko: "결정 · 계획 · 실행", en: "Decide, plan, execute" },
+  hierarchyLede:  { ko: "사용자는 코드를 쓰지 않는다. 결정한다. 호스트가 그 결정을 Operation으로 환원한다.", en: "You don't write code — you decide. The host turns each decision into an Operation." },
 
-  backendsEy:    { ko: "Runtime Paths · 03", en: "Runtime Paths · 03" },
-  backendsTitle: { ko: ["세 개의 런타임 경로,", "한 명의 제독."], en: ["Three runtime paths,", "one Admiral."] },
-  backendsLede:  { ko: "한 모델로 모든 작업을 수행하지 않는다. 각 경로는 자신이 가장 잘하는 역할을 맡는다.", en: "No single model handles every task. Each path takes the role it serves best." },
+  backendsEy:    { ko: "Launch kinds · 02", en: "Launch kinds · 02" },
+  backendsTitle: { ko: ["두 가지 실행 종류,", "하나의 캔버스."], en: ["Two launch kinds,", "one canvas."] },
+  backendsLede:  { ko: "Fleet은 실제 CLI 바이너리를 선언된 제품 표면에서 실행한다. 제작사가 다듬은 에이전트 루프와 이미 쓰던 인증이 그대로 보존된다.", en: "Fleet launches the actual CLI binary in its declared product surface, preserving the model-native agent loop and the authentication you already use." },
 
-  captainsEy:    { ko: "Captains Roster · 04", en: "Captains Roster · 04" },
-  captainsTitle: { ko: ["네 명의 함장,", "겹치지 않는 네 개의 책임."], en: ["Four captains,", "four non-overlapping duties."] },
-  captainsLede:  { ko: "함장은 장식이 아닌 운영 계약이다. 좌측에서 함장을 선택하면 임무 강령과 책임 명세가 펼쳐진다.", en: "Captains aren't decoration — they're operational contracts. Pick one to see its mission and duties." },
-  captainsAria:  { ko: "함장 명단", en: "Captains list" },
-  captainCap:    { ko: "Captain", en: "Captain" },
-  responsibilities: { ko: "Responsibilities", en: "Responsibilities" },
+  providersEy:    { ko: "AI Gateway · 04", en: "AI Gateway · 04" },
+  providersTitle: { ko: ["네 곳의 공급자,", "당신의 계정으로."], en: ["Four providers,", "on accounts you own."] },
+  providersLede:  { ko: "게이트웨이는 API 프록시가 아니라 로컬 Claude Code 엔드포인트다. 상류 요청은 Console이 직접 보내고, 어떤 공급자의 자격 증명도 Claude Code 프로세스에 들어가지 않는다. Codex와 Cursor는 이미 쓰던 구독을 타고, Kimi와 OpenCode Go는 설정에 등록한 API 키를 쓴다. 좌측에서 공급자를 고르면 게이트웨이로 닿는 모델이 펼쳐진다.", en: "The gateway is a local Claude Code endpoint, not an API proxy: the Console makes the upstream request itself, and no provider credential ever enters the Claude Code process. Codex and Cursor ride the subscription you already have; Kimi and OpenCode Go take an API key you register in Settings. Pick a provider to see the models it reaches." },
+  providersAria:  { ko: "게이트웨이 공급자", en: "Gateway providers" },
+  providerCap:    { ko: "Provider", en: "Provider" },
+  reachableModels: { ko: "Models", en: "Models" },
 
-  protocolEy:    { ko: "Fleet Action Protocol · 04", en: "Fleet Action Protocol · 04" },
-  protocolTitle: { ko: ["하나의 게이트,", "네 개의 모드."], en: ["One gate,", "four modes."] },
-  protocolLede:  { ko: "모든 요청은 Intent Gate에서 대화형과 작전형으로 갈린다. 작전형은 Mode Gate에서 정확히 하나의 모드 스킬을 온디맨드로 적재하고, General Quarters 준비 점검을 마친 뒤 brief 한 줄로 작전 계획을 보고하고 진입한다. 하향 가드가 가벼운 모드로의 도피를 막는다.", en: "Every request splits at the Intent Gate — conversational or operational. Operational work loads exactly one mode skill on demand at the Mode Gate, runs the General Quarters readiness checks, then reports a one-line brief before entry. The downward guard blocks any escape into a lighter mode." },
-  protocolAria:  { ko: "Fleet Action Protocol 모드", en: "Fleet Action Protocol modes" },
-  phaseLabel:    { ko: "Mode", en: "Mode" },
+  modesEy:    { ko: "Canvas modes · 03", en: "Canvas modes · 03" },
+  modesTitle: { ko: ["같은 캔버스를 쓰는", "세 가지 방식."], en: ["Three ways to work", "the same canvas."] },
+  modesLede:  { ko: "Operation은 무한 캔버스 위에 놓이고, 커맨드 밴드의 스위치가 배치를 어디까지 직접 할지 정한다. 여러 에이전트가 동시에 응답을 기다릴 때 고르는 것이 War Room이다.", en: "Operations live on an infinite canvas, and a switch in the command band decides how much of the arranging you do yourself. War Room is the one to reach for when several agents are waiting on you." },
+  modesAria:  { ko: "캔버스 모드", en: "Canvas modes" },
+  modeLabel:  { ko: "Mode", en: "Mode" },
 
   ordersEy:    { ko: "Standing Orders · Always Active", en: "Standing Orders · Always Active" },
   ordersTitle: { ko: ["항상 켜져 있는", "여섯 개의 명령."], en: ["Six orders,", "always on."] },
-  ordersLede:  { ko: "어떤 프로토콜 모드에도 종속되지 않고 모든 작전 위에 상시 작동하는 호스트 차원의 안전 장치. 대화형 요청에서도 꺼지지 않는다.", en: "Host-level safeguards that run above every mission, bound to no protocol mode — and never switched off, even on conversational requests." },
+  ordersLede:  { ko: "모든 작업 위에 상시 작동하는 호스트 차원의 안전 장치. 대화형 요청에서도 꺼지지 않는다.", en: "Host-level safeguards that run above every task — and never switched off, even on conversational requests." },
   active:      { ko: "Active", en: "Active" },
 
   diffsEy:    { ko: "What sets it apart · 04", en: "What sets it apart · 04" },
@@ -68,99 +68,106 @@ const UI = {
 
   compareEy:    { ko: "Landscape", en: "Landscape" },
   compareTitle: { ko: "에이전트 지형도 위에서.", en: "On the agent-tooling landscape." },
-  compareLede:  { ko: "비슷한 도구는 많다. 그러나 처음부터 함대로 설계된 도구는 드물다.", en: "Plenty of similar tools. Few are designed as a fleet from day one." },
+  compareLede:  { ko: "비슷한 도구는 많다. 그러나 에이전트를 서버가 소유하는 살아 있는 작업 단위로 다루는 도구는 드물다.", en: "Plenty of similar tools. Few treat an agent as a live, server-owned unit of work." },
 
-  closerEy:    { ko: "Mission Brief · Ready", en: "Mission Brief · Ready" },
-  closerTitle: { ko: ["함대는", "당신의 명령을 기다린다."], en: ["The fleet awaits", "your orders."] },
-  closerSub:   { ko: "저장소를 살펴보고, 첫 임무를 부여하라. 정찰부터 검증까지, 함대가 알아서 끝낸다. 문서화와 Fleet Wiki는 위임하지 않고 제독이 직접 수행한다.", en: "Explore the repo, issue your first mission. From recon to verification, the fleet handles the rest. The Admiral performs documentation and Fleet Wiki work directly." },
-  installCmt:  { ko: "# install the harness", en: "# install the harness" },
-  setSailCmt:  { ko: "# Set sail on your first mission, Admiral.", en: "# Set sail on your first mission, Admiral." },
-  footerLine:  { ko: "fleet-harness · Fleet Action Protocol v1", en: "fleet-harness · Fleet Action Protocol v1" },
+  closerEy:    { ko: "Get started", en: "Get started" },
+  closerTitle: { ko: ["콘솔을 켜고", "첫 Operation을 띄우세요."], en: ["Start the console,", "launch your first Operation."] },
+  closerSub:   { ko: "모든 실행은 내 머신 안에서 이루어진다. 서버는 루프백에만 바인딩되며, 브라우저에는 MCP·세션 토큰이 전달되지 않는다.", en: "Everything runs on your machine: the server binds to loopback only, and the browser never receives MCP or session tokens." },
+  installCmt:  { ko: "# install the console", en: "# install the console" },
+  setSailCmt:  { ko: "# Start it, and it opens in your browser.", en: "# Start it, and it opens in your browser." },
+  footerLine:  { ko: "fleet-harness · Fleet Console", en: "fleet-harness · Fleet Console" },
   builtOn:     { ko: "native CLI orchestration", en: "native CLI orchestration" },
-  countMeta:   { ko: "· 3 Paths · 4 Captains · 4 Modes", en: "· 3 Paths · 4 Captains · 4 Modes" },
+  countMeta:   { ko: "· 2 Launch kinds · 4 Providers · 6 Standing Orders", en: "· 2 Launch kinds · 4 Providers · 6 Standing Orders" },
 };
 
 // ───── Data ─────
 const HIERARCHY = [
   {
     rank: "Tier 01",
-    role: { ko: "대원수", en: "Admiral of the Navy" },
-    en: "Admiral of the Navy · USER",
-    desc: { ko: "최종 의사 결정자. 임무를 부여하고 함대의 행동을 승인한다.", en: "The final decision-maker. Issues missions and approves every fleet action." },
+    role: { ko: "사용자", en: "You" },
+    en: "You · DECIDE",
+    desc: { ko: "최종 의사 결정자. 무엇을 할지 정하고, 되돌리기 어려운 행동을 승인한다.", en: "The final decision-maker. Sets what gets done and approves anything hard to reverse." },
   },
   {
     rank: "Tier 02",
-    role: { ko: "제독", en: "Admiral" },
-    en: "Admiral · HOST",
-    desc: { ko: "함대 지휘관. 임무를 분해하고 적임 함장에게 위임하며, 결과를 통합·검증한다.", en: "Fleet commander. Decomposes the mission, delegates to the right captain, then integrates and verifies the results." },
+    role: { ko: "Admiral", en: "Admiral" },
+    en: "Admiral · HOST AGENT",
+    desc: { ko: "호스트 에이전트. 작업을 분해하고 적합한 모델에 위임하며, 돌아온 결과를 산출물 단위로 검사한 뒤 통합한다.", en: "The host agent. Decomposes the work, delegates it to the model that fits, then inspects the returned artifacts before integrating them." },
   },
   {
     rank: "Tier 03",
-    role: { ko: "함장", en: "Captain" },
-    en: "Captain · CLI AGENT",
-    desc: { ko: "4명의 전문 함장. 각자의 영역에서 단일 CLI 백엔드를 운용해 작전을 수행한다.", en: "Four specialists, each running a single CLI backend within their domain to execute the operation." },
+    role: { ko: "Operation", en: "Operation" },
+    en: "Operation · AGENT SESSION",
+    desc: { ko: "실제 터미널 세션. 로컬 Fleet Console 서버가 소유하므로 탭을 닫아도 계속 실행되고 출력도 계속 쌓인다.", en: "A real terminal session owned by the local Fleet Console server, so it keeps running and buffering output after you close the tab." },
   },
 ];
 
 const CLI_BACKENDS = [
-  { num: "01", vendor: "Anthropic", name: "Claude Code", tag: { ko: "장기 추론·아키텍처 판단의 표준 백엔드", en: "The standard backend for long-form reasoning and architectural judgment." }, color: "oklch(78% 0.13 75)" },
-  { num: "02", vendor: "OpenAI · Cursor · Moonshot AI", name: "Claude Gateway", tag: { ko: "여러 프론티어 모델을 Claude Code 표면에서 라우팅하는 백엔드", en: "A backend routing frontier models through the Claude Code surface." }, color: "oklch(72% 0.17 25)" },
-  { num: "03", vendor: "OpenAI", name: "Codex CLI", tag: { ko: "게이트웨이 모델 실행 백엔드", en: "An execution backend for gateway models." }, color: "oklch(72% 0.03 250)" },
+  { num: "01", vendor: "Anthropic", name: "Claude (Native)", tag: { ko: "순정 Claude Code — Console 훅과 Wiki 스킬만 덧붙는다", en: "Plain Claude Code — Console hooks and Wiki skills are all that get added." }, color: "oklch(78% 0.13 75)" },
+  { num: "02", vendor: "Codex · Cursor · Moonshot · OpenCode", name: "Claude (Gateway)", tag: { ko: "설정에서 켠 모델로 구동되는 Claude Code", en: "Claude Code driving the models you enabled in Settings." }, color: "oklch(72% 0.17 25)" },
 ];
 
-const CAPTAINS = [
+const PROVIDERS = [
   {
-    id: "Vanguard",
-    role: { ko: "Reconnaissance Specialist", en: "Reconnaissance Specialist" },
-    cli: "Claude Code",
+    id: "Codex",
+    role: { ko: "OpenAI · ChatGPT 구독", en: "OpenAI · ChatGPT subscription" },
+    cli: "subscription",
     color: "#5fd673",
     mission: {
-      ko: "로컬과 원격을 가리지 않고 코드베이스 사실을 수집한다. 코드를 수정하거나 판단을 대신하지 않고 다음 결정을 위한 근거를 가져온다.",
-      en: "Collects codebase facts wherever the source lives — local or remote. Returns evidence for the next decision without editing code or making the decision.",
+      ko: "GPT-5.6 계열을 Claude Code 표면으로 들여온다. 추론 강도 사다리가 가장 깊은 경로다 — Sol과 Terra는 low부터 ultra까지, Luna는 max까지 노출하므로 같은 모델을 가벼운 작업과 어려운 판단에 다른 강도로 쓸 수 있다.",
+      en: "Brings the GPT-5.6 family onto the Claude Code surface, with the deepest reasoning ladder of any provider here: Sol and Terra run from low through ultra, Luna through max, so one model can serve both cheap mechanical work and hard judgment at different efforts.",
     },
-    duties: [
-      { ko: "로컬·원격 코드베이스 정찰 — 디렉터리·심볼·호출 그래프 추적", en: "Local and remote codebase reconnaissance — directories, symbols, call graphs." },
-      { ko: "외부 저장소 심층 조사 — 읽기 전용 API·공개 코드 검색·임시 clone", en: "External repository deep dives — read-only APIs, public code search, temporary clones." },
-      { ko: "API·SDK 사용 패턴과 웹·외부 레퍼런스 수집", en: "API and SDK usage patterns plus web and external references." },
-      { ko: "출처 기반 보고 — 로컬 절대 경로, 원격 소스 참조, 신뢰도", en: "Source-linked reporting — local absolute paths, remote source references, confidence." },
+    models: [
+      { ko: "GPT-5.6 Sol — low~ultra, Fast 변형 포함", en: "GPT-5.6 Sol — low through ultra, Fast variant included" },
+      { ko: "GPT-5.6 Terra — low~ultra, Fast 변형 포함", en: "GPT-5.6 Terra — low through ultra, Fast variant included" },
+      { ko: "GPT-5.6 Luna — low~max, Fast 변형 포함", en: "GPT-5.6 Luna — low through max, Fast variant included" },
     ],
   },
   {
-    id: "Nimitz",
-    role: { ko: "Strategic Command & Judgment", en: "Strategic Command & Judgment" },
-    cli: "Claude Code",
+    id: "Cursor",
+    role: { ko: "Cursor 구독", en: "Cursor subscription" },
+    cli: "subscription",
     color: "#d4af37",
-    mission: { ko: "방아쇠를 당기지 않는다. 그러나 어디에 어떻게 당길지를 결정한다. Read-only 전략 사령관.", en: "Doesn't pull the trigger — decides where and how it should be pulled. The read-only strategic commander." },
-    duties: [
-      { ko: "아키텍처 결정 (ADR) — 트레이드오프 및 위험 분석", en: "Architecture decisions (ADRs) — tradeoffs and risk analysis." },
-      { ko: "전략 판단 — 대안 비교, 우선순위, 진행 여부", en: "Strategic judgment — alternatives, priorities, go/no-go." },
-      { ko: "Task Force 합의와 읽기 전용 경계 — 실행은 호스트에 반환", en: "Task Force consensus and read-only boundary — execution returns to the host." },
+    mission: {
+      ko: "한 구독으로 여러 벤더의 모델에 닿는 가장 넓은 경로. Composer부터 Grok·GPT·Claude·Kimi까지 같은 게이트웨이 뒤에 선다.",
+      en: "The widest path: one subscription reaching models from several vendors — Composer, Grok, GPT, Claude, and Kimi all stand behind the same gateway.",
+    },
+    models: [
+      { ko: "Composer 2.5", en: "Composer 2.5" },
+      { ko: "Grok 4.5", en: "Grok 4.5" },
+      { ko: "GPT-5.6 Sol", en: "GPT-5.6 Sol" },
+      { ko: "Claude Opus 5 · Claude Fable 5", en: "Claude Opus 5 and Claude Fable 5" },
+      { ko: "Kimi K3 · Auto", en: "Kimi K3 and Auto" },
     ],
   },
   {
-    id: "Genesis",
-    role: { ko: "Chief Engineer", en: "Chief Engineer" },
-    cli: "Claude Code",
+    id: "Moonshot",
+    role: { ko: "Moonshot AI · Kimi API 키", en: "Moonshot AI · Kimi API key" },
+    cli: "API key",
     color: "#ff6b6b",
-    mission: { ko: "직접 구현과 호스트가 작성한 실행 계약 기반 구현을 모두 맡는다. 구현과 QA 증거를 반환하는 수석 엔지니어.", en: "Owns direct implementation and execution of host-authored implementation contracts. The chief engineer returns implementation and QA evidence." },
-    duties: [
-      { ko: "직접 구현 — 새 기능, 모듈, 시스템 통합", en: "Direct implementation — new features, modules, system integrations." },
-      { ko: "구조화된 구현 — 호스트가 작성한 범위와 제약을 그대로 실행", en: "Structured implementation — executes the host-authored scope and constraints." },
-      { ko: "각 wave 후 빌드·테스트·QA 증거 반환", en: "Returns build, test, and QA evidence after each wave." },
-      { ko: "설계 계약 준수 — 대안을 임의로 대체하지 않고 호스트에 반환", en: "Preserves design contracts — returns alternatives to the host instead of substituting them." },
+    mission: {
+      ko: "긴 컨텍스트가 필요한 작업을 위한 경로. K3는 백만 토큰 창을 들고 오므로, 큰 하위 시스템을 한 세션 안에서 통째로 읽힐 수 있다.",
+      en: "The path for work that needs a long context. K3 brings a million-token window, so a large subsystem can be read whole inside one session.",
+    },
+    models: [
+      { ko: "Kimi K3 — 1M 컨텍스트", en: "Kimi K3 — 1M context" },
+      { ko: "Kimi K3 256K", en: "Kimi K3 256K" },
     ],
   },
   {
-    id: "Sentinel",
-    role: { ko: "The Inquisitor · QA & Security Lead", en: "The Inquisitor · QA & Security Lead" },
-    cli: "Claude Code",
+    id: "OpenCode",
+    role: { ko: "OpenCode Go API 키", en: "OpenCode Go API key" },
+    cli: "API key",
     color: "#fb7185",
-    mission: { ko: "함대의 검열관. 어떤 코드도 그의 의심을 거치지 않고는 실전에 투입되지 않는다.", en: "The fleet's inquisitor. No code reaches the front line without surviving his doubt." },
-    duties: [
-      { ko: "코드 리뷰 — 시맨틱·성능·테스트 커버리지", en: "Code review — semantics, performance, test coverage." },
-      { ko: "보안 감사 — OWASP Top 10, 권한 모델, 비밀 관리", en: "Security audit — OWASP Top 10, permission models, secret handling." },
-      { ko: "버그 헌팅 · 침투 테스트 시나리오 작성", en: "Bug hunting and penetration-test scenario authoring." },
-      { ko: "Review Cycle에서 Genesis 결과를 병렬 심문", en: "Interrogates Genesis's output in parallel during the Review Cycle." },
+    mission: {
+      ko: "오픈 웨이트 모델을 가장 많이 모아 둔 경로. 기계적인 대량 작업을 값싼 신원에 흩뿌릴 때 쓰는 폭이 여기서 나온다.",
+      en: "The widest bench of open-weight models. This is where the breadth comes from when mechanical, high-volume work is spread across cheaper identities.",
+    },
+    models: [
+      { ko: "MiniMax M3 · Qwen3 Max", en: "MiniMax M3 and Qwen3 Max" },
+      { ko: "DeepSeek V4 · GLM-5", en: "DeepSeek V4 and GLM-5" },
+      { ko: "Kimi K3 · MiMo", en: "Kimi K3 and MiMo" },
+      { ko: "Grok 4.5 · GPT-5.6 Luna", en: "Grok 4.5 and GPT-5.6 Luna" },
     ],
   },
 ];
@@ -168,50 +175,38 @@ const CAPTAINS = [
 const MODES = [
   {
     n: "01",
-    name: "Baseline",
-    kr: { ko: "사소", en: "Trivial" },
-    tag: { ko: "단일 표면", en: "Single surface" },
-    required: false,
-    desc: { ko: "단순하고 가역적이며 단일 표면에 닿는 작업. 계획 부담이 거의 없는 최소 절차로 즉시 실행한다.", en: "Simple, reversible work that touches a single surface. Run it immediately with minimal planning overhead." },
+    name: "Cruise",
+    kr: { ko: "직접 배치", en: "Place them yourself" },
+    tag: { ko: "기본", en: "Default" },
+    required: true,
+    desc: { ko: "패널을 원하는 자리에 직접 놓는 기본 모드. 무한 캔버스 위에서 위치와 크기를 스스로 정하고, 그 배치는 다음에 열 때도 그대로 남는다.", en: "The default: put each panel where you want it. You choose position and size on the infinite canvas, and the arrangement is still there when you come back." },
     points: [
-      { m: "SCOPE", t: { ko: "**단일·가역 표면** — 오타 수정, 로그 한 줄, 지역 변수 개명 수준.", en: "**Single, reversible surface** — a typo, one log line, a local rename." } },
-      { m: "GUARD", t: { ko: "비가역·구조·다중 모듈·독트린 변경이 끼면 진입 금지, 상향 게이트로.", en: "Anything irreversible, structural, multi-module, or doctrine-level forbids entry — escalate." } },
+      { m: "CANVAS", t: { ko: "**무한 캔버스** — 패널마다 위치·크기를 기억한다.", en: "**An infinite canvas** — every panel remembers its own position and size." } },
+      { m: "SEARCH", t: { ko: "**⌘K**로 모든 Theater에 걸쳐 Operation을 검색하고, **⌘P**로 커맨드 팔레트를 연다.", en: "**⌘K** searches Operations across every Theater; **⌘P** opens the command palette." } },
     ],
   },
   {
     n: "02",
-    name: "Midline",
-    kr: { ko: "표준", en: "Standard" },
-    tag: { ko: "기본", en: "Default" },
+    name: "Tactical",
+    kr: { ko: "한 번에 정렬", en: "Lay them all out" },
+    tag: { ko: "Alt+F", en: "Alt+F" },
     required: false,
-    desc: { ko: "하향 가드를 건드리지 않는 일반적인 경계형 작전. 모드가 모호할 때의 기본 폴백이기도 하다.", en: "Ordinary bounded work that doesn't trip the downward guard — and the default fallback when the mode is ambiguous." },
+    desc: { ko: "열려 있는 패널을 한 번에 정렬해 전부 한 화면에 세운다. 무엇이 떠 있는지부터 확인하고 싶을 때 쓰는 모드다.", en: "Lays every open panel out at once so the whole set is on screen. This is the mode for finding out what is running before deciding where to look." },
     points: [
-      { m: "FLOW", t: { ko: "**정찰 → 계획 경계 → 인라인 계획 → 실집행 → 검증 → 문서**.", en: "**Recon → planning boundary → inline plan → execution → verification → docs**." } },
-      { m: "GATE", t: { ko: "계획 경계 진입엔 sufficient 확신 — 차단 갭이 남으면 못 들어간다.", en: "The planning boundary demands sufficient confidence — no entry with blocking gaps open." } },
+      { m: "LAYOUT", t: { ko: "**전체 자동 정렬** — 직접 배치한 좌표는 보존되고, Cruise로 돌아오면 되살아난다.", en: "**Everything arranged at once** — your hand-placed coordinates survive and come back with Cruise." } },
+      { m: "SORT", t: { ko: "**Alt+S**로 사이드바를 Operation 상태 기준으로 정렬한다.", en: "**Alt+S** sorts the sidebar by operation status." } },
     ],
   },
   {
     n: "03",
-    name: "Redline",
-    kr: { ko: "고위험", en: "High-Risk" },
-    tag: { ko: "강제 통제", en: "Hard controls" },
-    required: true,
-    desc: { ko: "비가역 작업, 구조·API 변경, 다중 모듈 편집, 독트린·프롬프트 정책 수정, 보안 민감 작업. 명시적 위험 통제 없이는 한 줄도 쓰지 않는다.", en: "Irreversible ops, structural/API changes, cross-module edits, doctrine or prompt-policy edits, security-sensitive work. Not a line ships without explicit risk controls." },
+    name: "War Room",
+    kr: { ko: "한 건씩 처리", en: "One at a time" },
+    tag: { ko: "Alt+T", en: "Alt+T" },
+    required: false,
+    desc: { ko: "여러 에이전트가 동시에 응답을 기다릴 때 고르는 모드. Operation을 한 번에 하나씩 무대에 올리고 나머지는 큐에 세워, 무엇부터 볼지 고르는 일 자체를 없앤다.", en: "The mode for when several agents are waiting on you. It stages a single Operation at a time and keeps the rest in a queue, so choosing what to look at stops being a decision." },
     points: [
-      { m: "TRIGGER", t: { ko: "**하향 가드 발동** — 비가역·구조·계약·독트린·보안 중 하나라도.", en: "**Downward guard fires** — any of irreversible, structural, contract, doctrine, or security." } },
-      { m: "CONTROL", t: { ko: "롤백 단위·명시적 통제·증거 기반 진행을 강제한다.", en: "Enforces rollback units, explicit controls, and evidence-backed progress." } },
-    ],
-  },
-  {
-    n: "04",
-    name: "Frontline",
-    kr: { ko: "다중 함장", en: "Multi-Agent" },
-    tag: { ko: "병렬 협조", en: "Coordinated" },
-    required: true,
-    desc: { ko: "여러 함장, 독립 병렬 작업 줄기, 교차 함장 리뷰 루프, 파일 소유권 조정이 필요한 작전. 협조 자체가 핵심이다.", en: "Work that needs multiple captains, independent parallel workstreams, cross-captain review loops, and file-ownership coordination. Coordination is the whole point." },
-    points: [
-      { m: "COORD",     t: { ko: "**다중 함장 병렬 출격** — 같은 단계의 함장은 기본이 병렬.", en: "**Multiple captains in parallel** — same-phase captains launch concurrently by default." } },
-      { m: "OWNERSHIP", t: { ko: "파일 소유권 경계와 교차 리뷰 루프를 관리한다.", en: "Manages file-ownership boundaries and cross-review loops." } },
+      { m: "STAGE", t: { ko: "**한 번에 하나** — 나머지는 대기 큐에 서고, 순서를 잃지 않는다.", en: "**One at a time** — the rest wait in a queue without losing their place." } },
+      { m: "DEFER", t: { ko: "**Alt+→**로 지금 것을 뒤로 미룬다. 답할 준비가 안 된 것을 붙잡고 있지 않아도 된다.", en: "**Alt+→** defers the staged one, so nothing you aren't ready to answer holds up the queue." } },
     ],
   },
 ];
@@ -240,12 +235,12 @@ const ORDERS = [
   {
     name: "Deep Dive",
     kr: { ko: "딥 다이브", en: "Deep Dive" },
-    desc: { ko: "추측이 발견되는 즉시 자동 검증을 띄운다. 동일 가정에 대해 최대 2회까지 재검증하고, 그래도 불확실하면 대원수에게 회부한다.", en: "Auto-verification launches the moment a guess appears. Up to two re-checks per assumption — still uncertain, it escalates to the Admiral of the Navy." },
+    desc: { ko: "추측이 발견되는 즉시 자동 검증을 띄운다. 동일 가정에 대해 최대 2회까지 재검증하고, 그래도 불확실하면 미해결로 표시해 사용자에게 회부한다.", en: "Auto-verification launches the moment a guess appears. Up to two re-checks per assumption — still uncertain, it is surfaced to you as unresolved." },
   },
   {
     name: "Result Integrity",
     kr: { ko: "결과 무결성", en: "Result Integrity" },
-    desc: { ko: "함장이 가져온 결과는 관련성·완결성·내부 충돌 3축으로 검사한다. 어느 하나라도 어긋나면 자동 재시도하고, 실패가 누적되면 대원수에게 보고한다.", en: "Captain results are checked on three axes — relevance, completeness, internal consistency. Any failure triggers a retry; repeated failure is reported to the Admiral of the Navy." },
+    desc: { ko: "위임한 실행이 돌려준 결과는 관련성·완결성·내부 충돌 3축으로 검사하고, 파일을 바꾼 실행은 서사가 아니라 diff를 직접 읽어 판정한다. 실패가 누적되면 사용자에게 보고한다.", en: "Every delegated result is checked on three axes — relevance, completeness, internal consistency — and a run that changed files is judged by reading its diff, never its own summary. Repeated failure is reported to you." },
   },
 ];
 
@@ -254,25 +249,25 @@ const DIFFS = [
     n: "01",
     name: "Multi-CLI Orchestration",
     kr: { ko: "멀티-CLI 오케스트레이션", en: "Multi-CLI Orchestration" },
-    body: { ko: "Claude Code와 Claude Gateway가 Operation을 실행하고, 게이트웨이가 여러 벤더의 모델을 같은 세션에 싣는다.", en: "Claude Code and Claude Gateway run operations, and the gateway brings models from several vendors into the same session." },
+    body: { ko: "제작사가 다듬은 에이전트 루프를 대체하지 않고 조율한다. Fleet은 실제 CLI 바이너리를 실행하고 지원 프로토콜로 말하므로, 이미 쓰던 기능과 인증이 그대로 살아 있다.", en: "Native runtimes are coordinated, not replaced. Fleet launches the actual CLI binary and speaks its supported protocol, so the capabilities and authentication you already use stay intact." },
   },
   {
     n: "02",
-    name: "Naval Metaphor as Contract",
-    kr: { ko: "운영 가능한 해군 메타포", en: "An Operational Naval Metaphor" },
-    body: { ko: "장식이 아니다. 4명의 함장은 각자 서로 겹치지 않는 책임 영역을 가진 운영 계약이다. Vanguard에게 ADR을 시키지 않고, Nimitz에게 코드를 쓰게 하지 않는다. 문서화와 Fleet Wiki는 위임하지 않고 제독이 직접 수행한다.", en: "Not decoration. Each of the four captains is an operational contract with non-overlapping duties. Vanguard doesn't write ADRs; Nimitz doesn't write code. The Admiral performs documentation and Fleet Wiki work directly." },
+    name: "Sessions That Outlive the Tab",
+    kr: { ko: "탭보다 오래 사는 세션", en: "Sessions That Outlive the Tab" },
+    body: { ko: "Operation은 브라우저가 아니라 로컬 서버가 소유한다. 탭을 닫으면 소켓만 분리되고 PTY는 계속 돈다. 다시 열면 스크롤백을 재생하고 하던 일을 이어간다.", en: "An Operation is owned by the local server, not the browser. Closing the tab detaches the socket while the PTY keeps running; reopen it and the session replays its scrollback and carries on." },
   },
   {
     n: "03",
-    name: "Task Force & Squadron",
-    kr: { ko: "태스크 포스 & 스쿼드론", en: "Task Force & Squadron" },
-    body: { ko: "Task Force는 여러 백엔드의 결과를 합의 알고리즘으로 통합. Squadron은 동일 작전을 병렬 분기로 동시에 시도하고 가장 우수한 줄기를 채택한다.", en: "Task Force fuses outputs from multiple backends through a consensus algorithm. Squadron tries the same operation along parallel branches and adopts the strongest one." },
+    name: "Credentials Stay Out of the Agent",
+    kr: { ko: "자격 증명은 에이전트 밖에", en: "Credentials Stay Out of the Agent" },
+    body: { ko: "게이트웨이는 API 프록시가 아니라 로컬 Claude Code 엔드포인트다. 자격 증명은 Console이 들고 상류 요청도 Console이 보내므로, 에이전트 프로세스는 그것을 한 번도 보지 않는다. 계정은 각자 자기 것을 쓴다 — Codex와 Cursor는 기존 구독, Kimi와 OpenCode Go는 등록한 API 키.", en: "The gateway is a local Claude Code endpoint, not an API proxy. The Console holds the credential and makes the upstream request, so the agent process never sees it. Each provider runs on your own account: an existing subscription for Codex and Cursor, a registered API key for Kimi and OpenCode Go." },
   },
   {
     n: "04",
     name: "Architectural Discipline",
     kr: { ko: "아키텍처 규율", en: "Architectural Discipline" },
-    body: { ko: "빌드 게이트는 협상 불가. SSOT(AGENTS.md, ADR)는 강제 동기화. 각 wave는 그 자체로 컴파일·테스트를 통과해야 다음으로 진행한다.", en: "Build gates are non-negotiable. SSOT (AGENTS.md and ADRs) stays force-synced. Each wave must compile and test on its own to advance." },
+    body: { ko: "빌드 게이트는 협상 불가. 패키지 경계는 CI가 매 PR마다 검사한다 — `core-*`는 Fleet 도메인을 몰라야 하고, 어기면 검사에서 걸린다. 각 단계는 그 자체로 컴파일·테스트를 통과해야 다음으로 넘어간다.", en: "Build gates are non-negotiable. Package boundaries are checked by CI on every pull request: `core-*` must stay Fleet-domain-agnostic, and a violation fails the check. Each step must compile and test on its own to advance." },
   },
 ];
 
@@ -285,7 +280,7 @@ const COMPARES = [
       { ko: "사용자가 역할 분리", en: "User splits the roles" },
       { ko: "수동 컨텍스트 전환", en: "Manual context switching" },
     ],
-    verdict: { ko: "한 명의 천재. 그러나 함장이 아니라 일등 항해사다.", en: "A lone genius — a first mate, not a captain." },
+    verdict: { ko: "혼자서는 뛰어나다. 다만 세션이 하나뿐이다.", en: "Excellent on its own — but there is only ever one session." },
   },
   {
     cat: { ko: "멀티 에이전트 프레임", en: "Multi-agent framework" },
@@ -295,7 +290,7 @@ const COMPARES = [
       { ko: "그래프·메시지 기반", en: "Graph- and message-based" },
       { ko: "프레임워크 학습 비용", en: "Framework learning cost" },
     ],
-    verdict: { ko: "설계도는 강하다. 하지만 실제 함정은 직접 띄워야 한다.", en: "Strong blueprints — but you still launch the ships yourself." },
+    verdict: { ko: "설계도는 강하다. 하지만 실행 환경은 직접 만들어야 한다.", en: "Strong blueprints — but you still build the runtime yourself." },
   },
   {
     cat: { ko: "컨테이너 격리형", en: "Container-isolated" },
@@ -305,18 +300,18 @@ const COMPARES = [
       { ko: "엔드-투-엔드 지향", en: "End-to-end oriented" },
       { ko: "백엔드 모델 단일/제한", en: "Single or limited backend models" },
     ],
-    verdict: { ko: "강력한 단일 함정. 함대는 아니다.", en: "A powerful single vessel. Not a fleet." },
+    verdict: { ko: "강력한 단일 실행기. 여러 개를 동시에 감독하는 자리는 아니다.", en: "A powerful single runner — not a place to supervise several at once." },
   },
   {
     cat: "fleet-harness",
-    name: "Fleet Action Protocol",
+    name: "Fleet Console",
     us: true,
     bullets: [
-      { ko: "세 런타임 경로 통합 지휘", en: "Three runtime paths coordinated together" },
-      { ko: "4 함장 명시적 책임 분리", en: "Four captains, distinct duties" },
-      { ko: "적응형 4-모드 프로토콜 게이트", en: "Adaptive four-mode protocol gate" },
+      { ko: "서버가 소유하는 병렬 Operation", en: "Parallel, server-owned Operations" },
+      { ko: "내 계정으로 닿는 4개 공급자", en: "Four providers on accounts you own" },
+      { ko: "상시 작동하는 6개 Standing Order", en: "Six always-on Standing Orders" },
     ],
-    verdict: { ko: "처음부터 함대로 설계되었다.", en: "Designed as a fleet from day one." },
+    verdict: { ko: "여러 에이전트를 동시에 감독하는 자리로 설계되었다.", en: "Built to be the place you supervise several agents at once." },
   },
 ];
 
@@ -338,8 +333,8 @@ function Nav() {
         </a>
         <nav className="nav-links" aria-label={t(UI.primaryAria)}>
           <a href="#hierarchy">{t(UI.navHierarchy)}</a>
-          <a href="#captains">{t(UI.navCaptains)}</a>
-          <a href="#protocol">{t(UI.navProtocol)}</a>
+          <a href="#providers">{t(UI.navProviders)}</a>
+          <a href="#modes">{t(UI.navModes)}</a>
           <a href="#diffs">{t(UI.navDiffs)}</a>
         </nav>
         <a href="https://github.com/sbluemin/fleet-harness.git" className="nav-cta" target="_blank" rel="noreferrer">
@@ -355,16 +350,16 @@ function Nav() {
 
 // ───── Hero ─────
 function Hero() {
-  const nodeCount = 4;
+  const nodeCount = PROVIDERS.length;
   const radius = 38;
   const nodes = Array.from({ length: nodeCount }, (_, i) => {
     const angle = (i / nodeCount) * Math.PI * 2 - Math.PI / 2;
     return {
       x: 50 + Math.cos(angle) * radius,
       y: 50 + Math.sin(angle) * radius,
-      label: ["VG", "NM", "GN", "SN"][i],
-      full: ["Vanguard", "Nimitz", "Genesis", "Sentinel"][i],
-      color: ["#5fd673", "#d4af37", "#ff6b6b", "#fb7185"][i],
+      label: ["CX", "CR", "MS", "OC"][i],
+      full: PROVIDERS[i].id,
+      color: PROVIDERS[i].color,
     };
   });
 
@@ -381,11 +376,11 @@ function Hero() {
             <h1 className="hero-title">{titleLines[0]}<br/>{titleLines[1]}</h1>
             <p className="hero-desc">
               {t(UI.heroDescPre)}
-              <em style={{color:"var(--brass-bright)", fontStyle:"italic"}}>{t(UI.heroDescAdmiral)}</em>
+              <em style={{color:"var(--brass-bright)", fontStyle:"italic"}}>{t(UI.heroDescOperation)}</em>
               {t(UI.heroDescMid)}
               <em style={{color:"var(--brass-bright)", fontStyle:"italic"}}>{t(UI.heroDescHost)}</em>
               {t(UI.heroDescMid2)}
-              <em style={{color:"var(--brass-bright)", fontStyle:"italic"}}>{t(UI.heroDescCap)}</em>
+              <em style={{color:"var(--brass-bright)", fontStyle:"italic"}}>{t(UI.heroDescOrders)}</em>
               {t(UI.heroDescTail)}
             </p>
             <div className="hero-actions">
@@ -393,20 +388,20 @@ function Hero() {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.7.5.5 5.7.5 12c0 5 3.3 9.3 7.8 10.8.6.1.8-.3.8-.6v-2.1c-3.2.7-3.9-1.5-3.9-1.5-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.8-1.6-2.6-.3-5.4-1.3-5.4-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.2 1.2.9-.3 1.9-.4 2.9-.4s2 .1 2.9.4c2.2-1.5 3.2-1.2 3.2-1.2.6 1.7.2 2.9.1 3.2.7.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.4 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6 4.5-1.5 7.8-5.8 7.8-10.8C23.5 5.7 18.3.5 12 .5z" /></svg>
                 {t(UI.ctaRepo)}
               </a>
-              <a className="btn-secondary" href="#captains">{t(UI.ctaCaptains)}</a>
+              <a className="btn-secondary" href="#providers">{t(UI.ctaProviders)}</a>
             </div>
             <div className="hero-meta">
               <div className="hero-meta-item">
-                <div className="label">{t(UI.metaBackends)}</div>
-                <div className="value"><em>3</em> · {t(UI.metaBackendsVal)}</div>
+                <div className="label">{t(UI.metaKinds)}</div>
+                <div className="value"><em>{CLI_BACKENDS.length}</em> · {t(UI.metaKindsVal)}</div>
               </div>
               <div className="hero-meta-item">
-                <div className="label">{t(UI.metaCaptains)}</div>
-                <div className="value"><em>{CAPTAINS.length}</em> · {t(UI.metaCaptainsVal)}</div>
+                <div className="label">{t(UI.metaProviders)}</div>
+                <div className="value"><em>{PROVIDERS.length}</em> · {t(UI.metaProvidersVal)}</div>
               </div>
               <div className="hero-meta-item">
-                <div className="label">{t(UI.metaProtocol)}</div>
-                <div className="value"><em>4</em> · {t(UI.metaProtocolVal)}</div>
+                <div className="label">{t(UI.metaOrders)}</div>
+                <div className="value"><em>{ORDERS.length}</em> · {t(UI.metaOrdersVal)}</div>
               </div>
             </div>
           </div>
@@ -419,7 +414,7 @@ function Hero() {
             <div className="hero-diagram-center">
               <div>
                 <div className="role">Admiral</div>
-                <div className="name">{lang === "ko" ? "제독" : "Admiral"}<br/>HOST</div>
+                <div className="name">Admiral<br/>HOST</div>
               </div>
             </div>
             {nodes.map((n, i) => (
@@ -496,63 +491,63 @@ function Backends() {
   );
 }
 
-// ───── Captains ─────
-function Captains() {
+// ───── Gateway providers ─────
+function Providers() {
   const [active, setActive] = useState(0);
-  const c = CAPTAINS[active];
-  const title = t(UI.captainsTitle);
+  const c = PROVIDERS[active];
+  const title = t(UI.providersTitle);
   return (
-    <section className="section" id="captains">
+    <section className="section" id="providers">
       <div className="shell">
         <div className="section-head">
-          <span className="eyebrow">{t(UI.captainsEy)}</span>
+          <span className="eyebrow">{t(UI.providersEy)}</span>
           <div className="divider"></div>
           <h2 className="section-title">{title[0]}<br/>{title[1]}</h2>
-          <p className="lede">{t(UI.captainsLede)}</p>
+          <p className="lede">{t(UI.providersLede)}</p>
         </div>
-        <div className="captains-wrap">
-          <div className="captain-list" role="tablist" aria-label={t(UI.captainsAria)}>
-            {CAPTAINS.map((cap, i) => (
+        <div className="providers-wrap">
+          <div className="provider-list" role="tablist" aria-label={t(UI.providersAria)}>
+            {PROVIDERS.map((cap, i) => (
               <button
                 key={cap.id}
                 role="tab"
                 aria-selected={active === i}
-                className={"captain-list-item " + (active === i ? "active" : "")}
+                className={"provider-list-item " + (active === i ? "active" : "")}
                 style={{ "--cap-color": cap.color }}
                 onClick={() => setActive(i)}
               >
-                <span className="captain-dot" aria-hidden="true"></span>
-                <span className="captain-list-text">
-                  <span className="captain-list-name">{cap.id}</span>
-                  <span className="captain-list-role">{t(cap.role)}</span>
+                <span className="provider-dot" aria-hidden="true"></span>
+                <span className="provider-list-text">
+                  <span className="provider-list-name">{cap.id}</span>
+                  <span className="provider-list-role">{t(cap.role)}</span>
                 </span>
               </button>
             ))}
           </div>
 
           <div
-            className="captain-detail"
+            className="provider-detail"
             style={{ "--cap-color": c.color }}
             key={c.id}
           >
             <div style={{animation: "fleet-pop 360ms var(--ease-spring) both"}}>
-              <div className="captain-detail-head">
-                <div className="captain-detail-title-block">
-                  <div className="captain-id"><span>{t(UI.captainCap)}</span> · {c.id.toUpperCase()}</div>
-                  <h3 className="captain-name">{c.id}</h3>
-                  <div className="captain-role">{t(c.role)}</div>
+              <div className="provider-detail-head">
+                <div className="provider-detail-title-block">
+                  <div className="provider-id"><span>{t(UI.providerCap)}</span> · {c.id.toUpperCase()}</div>
+                  <h3 className="provider-name">{c.id}</h3>
+                  <div className="provider-role">{t(c.role)}</div>
                 </div>
-                <div className="captain-cli-badge">
+                <div className="provider-cli-badge">
                   <span className="ind" aria-hidden="true"></span>
                   {c.cli}
                 </div>
               </div>
-              <div className="captain-body">
-                <div className="captain-mission">"{t(c.mission)}"</div>
+              <div className="provider-body">
+                <div className="provider-mission">"{t(c.mission)}"</div>
                 <div>
-                  <div className="captain-resp-title">{t(UI.responsibilities)}</div>
-                  <ul className="captain-resp-list">
-                    {c.duties.map((d, i) => <li key={i}>{t(d)}</li>)}
+                  <div className="provider-model-title">{t(UI.reachableModels)}</div>
+                  <ul className="provider-model-list">
+                    {c.models.map((d, i) => <li key={i}>{t(d)}</li>)}
                   </ul>
                 </div>
               </div>
@@ -564,47 +559,47 @@ function Captains() {
   );
 }
 
-// ───── Protocol (gate · 4 modes) ─────
-function Protocol() {
+// ───── Canvas modes ─────
+function Modes() {
   const [active, setActive] = useState(0);
   const p = MODES[active];
-  const title = t(UI.protocolTitle);
+  const title = t(UI.modesTitle);
   return (
-    <section className="section" id="protocol">
+    <section className="section" id="modes">
       <div className="shell">
         <div className="section-head">
-          <span className="eyebrow">{t(UI.protocolEy)}</span>
+          <span className="eyebrow">{t(UI.modesEy)}</span>
           <div className="divider"></div>
           <h2 className="section-title">{title[0]}<br/>{title[1]}</h2>
-          <p className="lede">{t(UI.protocolLede)}</p>
+          <p className="lede">{t(UI.modesLede)}</p>
         </div>
-        <div className="phases-wrap">
-          <div className="phase-rail" role="tablist" aria-label={t(UI.protocolAria)}>
+        <div className="modes-wrap">
+          <div className="mode-rail" role="tablist" aria-label={t(UI.modesAria)}>
             {MODES.map((ph, i) => (
               <button
                 key={ph.n}
                 role="tab"
                 aria-selected={active === i}
                 className={
-                  "phase-step " +
+                  "mode-step " +
                   (active === i ? "active " : "") +
                   (ph.required ? "required" : "conditional")
                 }
                 onClick={() => setActive(i)}
               >
-                <span className="phase-step-num">{ph.n}</span>
-                <span className="phase-step-body">
-                  <span className="phase-step-title">{ph.name}</span>
-                  <span className="phase-step-tag">· {t(ph.tag)} · {t(ph.kr)}</span>
+                <span className="mode-step-num">{ph.n}</span>
+                <span className="mode-step-body">
+                  <span className="mode-step-title">{ph.name}</span>
+                  <span className="mode-step-tag">· {t(ph.tag)} · {t(ph.kr)}</span>
                 </span>
               </button>
             ))}
           </div>
-          <div className="phase-detail" key={p.n}>
+          <div className="mode-detail" key={p.n}>
             <div style={{animation: "fleet-pop 320ms var(--ease-spring) both"}}>
-              <div className="phase-detail-num" aria-hidden="true">{p.n}</div>
-              <div className="phase-detail-eyebrow">
-                <span>{t(UI.phaseLabel)} {p.n}</span>
+              <div className="mode-detail-num" aria-hidden="true">{p.n}</div>
+              <div className="mode-detail-eyebrow">
+                <span>{t(UI.modeLabel)} {p.n}</span>
                 <span style={{
                   width: 6, height: 6, borderRadius: "50%",
                   background: p.required ? "var(--coral)" : "var(--aurora)",
@@ -612,11 +607,11 @@ function Protocol() {
                 }}></span>
                 <span style={{color: p.required ? "var(--coral)" : "var(--aurora)"}}>{t(p.tag)}</span>
               </div>
-              <h3 className="phase-detail-title">{p.name} <span style={{color:"var(--ink-fog)", fontWeight:300}}>· {t(p.kr)}</span></h3>
-              <p className="phase-detail-desc">{t(p.desc)}</p>
-              <div className="phase-detail-points">
+              <h3 className="mode-detail-title">{p.name} <span style={{color:"var(--ink-fog)", fontWeight:300}}>· {t(p.kr)}</span></h3>
+              <p className="mode-detail-desc">{t(p.desc)}</p>
+              <div className="mode-detail-points">
                 {p.points.map((pt, i) => (
-                  <div className="phase-detail-point" key={i}>
+                  <div className="mode-detail-point" key={i}>
                     <span className="pt-marker">{pt.m}</span>
                     <span dangerouslySetInnerHTML={{__html: t(pt.t).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")}}></span>
                   </div>
@@ -730,15 +725,15 @@ function Closer() {
           <p className="closer-sub">{t(UI.closerSub)}</p>
           <div className="code-block" style={{textAlign:"left", maxWidth: 540, margin: "0 auto 36px"}}>
             <span className="cm">{t(UI.installCmt)}</span><br/>
-            <span className="pr">$</span> npm install -g <span className="ar">@dotobokuri/fleet-cli</span><br/>
-            <span className="pr">$</span> fleet <span className="cm">{t(UI.setSailCmt)}</span>
+            <span className="pr">$</span> npm install -g <span className="ar">@dotobokuri/fleet-console</span><br/>
+            <span className="pr">$</span> fleet-console <span className="cm">{t(UI.setSailCmt)}</span>
           </div>
           <div className="closer-actions">
             <a className="btn-primary" href="https://github.com/sbluemin/fleet-harness.git" target="_blank" rel="noreferrer">
               {t(UI.ctaGithubView)}
             </a>
-            <a className="btn-secondary" href="#protocol">
-              {t(UI.ctaProtocol)}
+            <a className="btn-secondary" href="#modes">
+              {t(UI.ctaModes)}
             </a>
           </div>
         </div>
@@ -763,8 +758,8 @@ function App() {
         <Hero />
         <Hierarchy />
         <Backends />
-        <Captains />
-        <Protocol />
+        <Providers />
+        <Modes />
         <Orders />
         <Diffs />
         <Compare />
