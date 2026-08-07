@@ -1462,6 +1462,7 @@ class BridgeCursorStream extends EventEmitter {
   writableEnded = false;
   closeCode: number | undefined;
   private initialReleased = false;
+  private responded = false;
   private mcpResultCount = 0;
   private readonly releasedMcpCounts = new Set<number>();
   private readonly continuationReleases: readonly BridgeCursorRelease[];
@@ -1488,6 +1489,7 @@ class BridgeCursorStream extends EventEmitter {
   write(chunk: Uint8Array): boolean {
     const value = Buffer.from(chunk);
     this.writes.push(value);
+    this.respond();
     const message = decodeCursorClientFrame(value);
     if (!this.initialReleased && isRecord(message) && message.runRequest !== undefined) {
       this.initialReleased = true;
@@ -1529,9 +1531,21 @@ class BridgeCursorStream extends EventEmitter {
     queueMicrotask(() => this.emit("close"));
   }
 
+  /** Cursor answers with response headers before any frame; the adapter gates decoding on them. */
+  private respond(): void {
+    if (this.responded) return;
+    this.responded = true;
+    queueMicrotask(() => this.emit("response", {
+      ":status": 200,
+      "content-type": "application/connect+proto",
+    }));
+  }
+
   private release(frames: readonly unknown[]): void {
     if (frames.length === 0) return;
-    queueMicrotask(() => {
+    // A macrotask, so the adapter's response-head continuation has installed its data
+    // listener first — an EventEmitter drops what it emits with no listener attached.
+    setImmediate(() => {
       if (this.closed) return;
       this.emit("data", Buffer.concat(frames.map(encodeCursorServerFrame)));
     });

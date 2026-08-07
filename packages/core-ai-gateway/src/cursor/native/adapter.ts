@@ -59,6 +59,9 @@ export const CURSOR_PENDING_LIVE_RUN_TTL_MS = 5 * 60_000;
 export const CURSOR_PENDING_LIVE_RUN_CAPACITY = 64;
 export const CONNECT_FLAG_COMPRESSED = 0x01;
 export const CONNECT_FLAG_END_STREAM = 0x02;
+/** Bounds for reading a rejected Run's own error body before forwarding it to the client. */
+const CURSOR_UPSTREAM_ERROR_BODY_LIMIT = 64 * 1024;
+const CURSOR_UPSTREAM_ERROR_BODY_TIMEOUT_MS = 5_000;
 
 const CURSOR_UNKNOWN_EXEC_FIELDS = Symbol("cursorUnknownExecFields");
 
@@ -118,6 +121,7 @@ export type CursorDiagnosticEventName =
   | "model.switch"
   | "transport.dial"
   | "transport.connected"
+  | "transport.response"
   | "transport.timeout"
   | "transport.semantic_timeout"
   | "transport.abort"
@@ -174,6 +178,8 @@ export interface CursorDiagnosticEvent {
   readonly previousWireModel?: string;
   readonly requestedEffort?: ReasoningEffort;
   readonly turn?: "prompt" | "tool-continuation";
+  /** Cursor's HTTP response status for this Run. Never a body, header value, or identifier. */
+  readonly status?: number;
   readonly frame?: string;
   readonly reply?: string;
   readonly sequence?: number;
@@ -1148,6 +1154,8 @@ export class CursorAdapter implements AiGatewayAdapter {
   private readonly sessionIdOverride: string | undefined;
   private readonly pendingLiveRuns = new Map<string, CursorPendingLiveRun>();
   private readonly liveRuns = new Set<CursorLiveRun>();
+  /** Transports opened but not yet carrying a live Run, so disposal can still reach them. */
+  private readonly openingTransports = new Set<CursorOpeningTransport>();
   private disposed = false;
 
   constructor(options: CursorAdapterOptions = {}) {
@@ -1317,6 +1325,10 @@ export class CursorAdapter implements AiGatewayAdapter {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    for (const opening of [...this.openingTransports]) {
+      this.openingTransports.delete(opening);
+      closeCursorTransport(opening.stream, opening.session, true);
+    }
     const parkedRuns = new Set<CursorLiveRun>();
     for (const pending of [...this.pendingLiveRuns.values()]) {
       if (!this.claimPendingLiveRun(pending)) continue;
@@ -1477,6 +1489,85 @@ export class CursorAdapter implements AiGatewayAdapter {
       session.close();
       throw error;
     }
+    // Nothing may be reported as a successful turn until Cursor answers with a 2xx. The gate
+    // below carries its own timer rather than `stream.setTimeout`, because the client
+    // heartbeat armed further down refreshes a stream timer on every write it makes.
+    // 이 구간에는 아직 live Run이 없다. 그 사이의 취소와 adapter dispose를 어댑터가 직접
+    // 붙들지 않으면, 열린 전송이 두 경로 어디에도 걸리지 않고 살아남는다.
+    const opening: CursorOpeningTransport = { stream, session };
+    this.openingTransports.add(opening);
+    let head: CursorResponseHead;
+    try {
+      try {
+        // KV, interaction, heartbeat, and later mcpResult messages share this request stream.
+        stream.write(encodeCursorClientMessage(plan.payload));
+      } catch (error) {
+        const failure = error instanceof Error ? error : new Error(String(error));
+        report("turn.finish", {
+          model,
+          outcome: "request_write_error",
+          error: cursorDiagnosticError(failure),
+          frameCount: 0,
+          lastFrame: "none",
+        });
+        closeCursorTransport(stream, session, true, failure);
+        throw failure;
+      }
+      report("client.request", { model, reply: "run" });
+
+      try {
+        head = await awaitCursorResponseHead(
+          stream,
+          session,
+          this.idleTimeoutMs,
+          options.signal,
+        );
+      } catch (error) {
+        const failure = error instanceof Error ? error : new Error(String(error));
+        report("turn.finish", {
+          model,
+          outcome: "response_head_error",
+          error: cursorDiagnosticError(failure),
+          frameCount: 0,
+          lastFrame: "none",
+        });
+        closeCursorTransport(stream, session, true);
+        throw failure;
+      }
+      // `dispose()` can land between the head resolving and this continuation running;
+      // registering a live Run then would restart work the adapter already declared finished.
+      if (this.disposed) {
+        const failure = new Error("Cursor adapter is disposed");
+        report("turn.finish", {
+          model,
+          outcome: "adapter_dispose",
+          frameCount: 0,
+          lastFrame: "none",
+        });
+        closeCursorTransport(stream, session, true);
+        throw failure;
+      }
+      report("transport.response", { model, status: head.status });
+      if (head.status < 200 || head.status >= 300) {
+        // Forward Cursor's own rejection with its own status. Decoding this body as Connect
+        // frames is what turned an expired credential into a successful empty assistant turn.
+        // 이 읽기도 소유 구간 안이다. 거절 경로는 live Run을 만들지 않으므로, 여기서 놓으면
+        // 본문이 늦는 동안 전송이 dispose에도 취소에도 걸리지 않는다.
+        const body = await readCursorErrorBody(stream, options.signal);
+        report("turn.finish", {
+          model,
+          outcome: "upstream_status",
+          status: head.status,
+          frameCount: 0,
+          lastFrame: "none",
+        });
+        closeCursorTransport(stream, session, false);
+        return { ok: false, status: head.status, headers: head.headers, body };
+      }
+    } finally {
+      this.openingTransports.delete(opening);
+    }
+
     let heartbeatCount = 0;
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     const stopHeartbeat = (): void => {
@@ -1536,17 +1627,157 @@ export class CursorAdapter implements AiGatewayAdapter {
     stream.once("close", stopHeartbeat);
     stream.once("end", stopHeartbeat);
     stream.once("error", stopHeartbeat);
-    try {
-      // KV, interaction, heartbeat, and later mcpResult messages share this request stream.
-      stream.write(encodeCursorClientMessage(plan.payload));
-    } catch (error) {
-      const failure = error instanceof Error ? error : new Error(String(error));
-      liveRun.dispose("request_write_error", failure);
-      throw failure;
-    }
-    report("client.request", { model, reply: "run" });
 
     return cursorSuccessfulResponse(liveRun.initialEvents);
+  }
+}
+
+interface CursorResponseHead {
+  readonly status: number;
+  readonly headers: Headers;
+}
+
+interface CursorOpeningTransport {
+  readonly stream: http2.ClientHttp2Stream;
+  readonly session: http2.ClientHttp2Session;
+}
+
+/**
+ * Settle once Cursor answers the Run with HTTP response headers. Every terminal transport
+ * event before that is a failure of the request, never an empty successful turn, so each one
+ * rejects here instead of reaching a client as a completed response. The caller's abort signal
+ * is observed from here because the live Run that otherwise honors it does not exist yet.
+ */
+function awaitCursorResponseHead(
+  stream: http2.ClientHttp2Stream,
+  session: http2.ClientHttp2Session,
+  timeoutMs: number,
+  signal: AbortSignal | undefined,
+): Promise<CursorResponseHead> {
+  return new Promise<CursorResponseHead>((resolve, reject) => {
+    let settled = false;
+    const finish = (settle: () => void): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      stream.off("response", onResponse);
+      stream.off("error", onError);
+      stream.off("close", onEnded);
+      stream.off("end", onEnded);
+      session.off("error", onError);
+      signal?.removeEventListener("abort", onAbort);
+      settle();
+    };
+    const onResponse = (
+      headers: http2.IncomingHttpHeaders & http2.IncomingHttpStatusHeader,
+    ): void => {
+      const status = Number(headers[":status"]);
+      finish(() => (Number.isSafeInteger(status) && status > 0
+        ? resolve({ status, headers: cursorResponseHeaders(headers) })
+        : reject(new Error("Cursor response carried no HTTP status"))));
+    };
+    const onError = (error: Error): void => finish(() => reject(error));
+    const onEnded = (): void => finish(
+      () => reject(new Error("cursor stream ended before a response")),
+    );
+    const onAbort = (): void => finish(() => reject(new Error("cancelled by caller")));
+    const timer = setTimeout(
+      () => finish(() => reject(new Error("cursor stream idle timeout"))),
+      timeoutMs,
+    );
+    timer.unref?.();
+    stream.on("response", onResponse);
+    stream.on("error", onError);
+    stream.on("close", onEnded);
+    stream.on("end", onEnded);
+    session.on("error", onError);
+    if (signal?.aborted) onAbort();
+    else signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * Carry only the upstream media type. Length and encoding headers describe Cursor's own
+ * framing of a body this gateway re-emits — and may truncate — so forwarding them would
+ * contradict the bytes actually written.
+ */
+function cursorResponseHeaders(headers: http2.IncomingHttpHeaders): Headers {
+  const contentType = headers["content-type"];
+  const value = Array.isArray(contentType) ? contentType[0] : contentType;
+  const result = new Headers();
+  if (value) {
+    try {
+      result.set("content-type", value);
+    } catch {
+      // A malformed upstream media type must not sink the rejection it belongs to.
+    }
+  }
+  return result;
+}
+
+/**
+ * Read a rejected Run's own error body, bounded in bytes, in time, and by the caller's abort.
+ * A disconnected caller has no use for the remainder, and the status is already known.
+ */
+function readCursorErrorBody(
+  stream: http2.ClientHttp2Stream,
+  signal: AbortSignal | undefined,
+): Promise<Uint8Array> {
+  return new Promise<Uint8Array>((resolve) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    let settled = false;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      stream.off("data", onData);
+      stream.off("end", finish);
+      stream.off("close", finish);
+      stream.off("error", finish);
+      signal?.removeEventListener("abort", finish);
+      resolve(Buffer.concat(chunks));
+    };
+    const onData = (chunk: Uint8Array): void => {
+      const room = CURSOR_UPSTREAM_ERROR_BODY_LIMIT - total;
+      if (room <= 0) return finish();
+      const slice = Buffer.from(chunk.subarray(0, room));
+      chunks.push(slice);
+      total += slice.byteLength;
+      if (total >= CURSOR_UPSTREAM_ERROR_BODY_LIMIT) finish();
+    };
+    const timer = setTimeout(finish, CURSOR_UPSTREAM_ERROR_BODY_TIMEOUT_MS);
+    timer.unref?.();
+    stream.on("data", onData);
+    stream.on("end", finish);
+    stream.on("close", finish);
+    stream.on("error", finish);
+    // After `timer` exists: an already-aborted signal settles synchronously from here.
+    if (signal?.aborted) finish();
+    else signal?.addEventListener("abort", finish, { once: true });
+  });
+}
+
+function closeCursorTransport(
+  stream: http2.ClientHttp2Stream,
+  session: http2.ClientHttp2Session,
+  cancel: boolean,
+  error?: Error,
+): void {
+  try {
+    if (error) stream.destroy(error);
+    else stream.close(cancel ? http2.constants.NGHTTP2_CANCEL : http2.constants.NGHTTP2_NO_ERROR);
+  } catch {
+    try {
+      stream.destroy(error);
+    } catch {
+      // The transport is already gone.
+    }
+  }
+  try {
+    session.close();
+  } catch {
+    // The session is already gone.
   }
 }
 
@@ -1612,6 +1843,8 @@ function cursorDiagnosticError(error: unknown): string {
   if (error instanceof Error) {
     if (error.message === "cursor stream idle timeout") return "idle_timeout";
     if (error.message === "cursor stream semantic stall timeout") return "semantic_stall_timeout";
+    if (error.message === "cursor stream ended before a response") return "no_response_head";
+    if (error.message === "cursor stream produced no frames") return "empty_stream";
     if (error.message === "cancelled by caller") return "caller_abort";
     const code = (error as Error & { readonly code?: unknown }).code;
     if (
@@ -1985,21 +2218,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     clearToolFinalize(activeSegment);
     detachAbort(activeSegment);
     options.stopHeartbeat();
-    try {
-      if (error) stream.destroy(error);
-      else stream.close(cancel ? http2.constants.NGHTTP2_CANCEL : http2.constants.NGHTTP2_NO_ERROR);
-    } catch {
-      try {
-        stream.destroy(error);
-      } catch {
-        // The transport is already gone.
-      }
-    }
-    try {
-      session.close();
-    } catch {
-      // The session is already gone.
-    }
+    closeCursorTransport(stream, session, cancel, error);
     notifyTerminal();
   };
 
@@ -2258,6 +2477,20 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     if (state !== "attached") return;
     state = "completed";
     finishSegment(activeSegment, undefined, outcome);
+  };
+
+  /**
+   * A Run whose transport ended without a single decoded Connect frame produced nothing to
+   * complete. Reporting that as a finished turn is what let a non-Connect upstream body — an
+   * edge rejection, a proxy error page — reach the client as a successful empty assistant
+   * message. A clean end-stream frame counts, so a legitimately empty turn still completes.
+   */
+  const finishAttachedTransport = (outcome: string): void => {
+    if (frameCount > 0) {
+      completeRun(outcome);
+      return;
+    }
+    dispose(`${outcome}_without_frames`, new Error("cursor stream produced no frames"));
   };
 
   const handleFrame = (frame: CursorServerFrame): void => {
@@ -2593,13 +2826,13 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
   });
   stream.on("end", () => {
     report("transport.end", { model: diagnosticModel, frameCount, lastFrame });
-    if (state === "attached") completeRun("stream_end");
+    if (state === "attached") finishAttachedTransport("stream_end");
     if (state === "parked") dispose("stream_end_while_parked");
     closeTransport(false);
   });
   stream.on("close", () => {
     report("transport.close", { model: diagnosticModel, frameCount, lastFrame });
-    if (state === "attached") completeRun("stream_close");
+    if (state === "attached") finishAttachedTransport("stream_close");
     if (state === "parked") dispose("stream_close_while_parked");
     closeTransport(false);
   });
