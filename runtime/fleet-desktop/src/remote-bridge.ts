@@ -68,6 +68,8 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   }
 
   async function open(origin: string): Promise<void> {
+    // 집으로 돌아가는 길에는 핀도 자격도 필요 없다 — 루프백은 언제나 허용된 origin이다.
+    if (origin === deps.localOrigin()) return openLocal(origin);
     const response = await askLocalConsole(HANDOFF_PATH, { origin });
     if (response.status === 404) throw new Error("remote_host_unknown");
     if (!response.ok) throw new Error("remote_host_unavailable");
@@ -94,6 +96,13 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     }
   }
 
+  async function openLocal(origin: string): Promise<void> {
+    const policy = deps.policy();
+    if (!policy) throw new Error("remote_bridge_no_window");
+    policy.activateConsoleOrigin(origin);
+    await deps.loadConsole(`${origin}${CONSOLE_PATH}`);
+  }
+
   async function receiveLink(link: string): Promise<void> {
     const response = await askLocalConsole(REMOTE_HOSTS_PATH, { link });
     if (!response.ok) throw new Error(await readErrorCode(response));
@@ -113,7 +122,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     attach(contents) {
       const listener = (event: { preventDefault: () => void }, url: string, _redirect?: unknown, isMainFrame?: boolean): void => {
         if (isMainFrame === false) return;
-        const target = remoteConsoleTarget(url);
+        const target = consoleTarget(url, deps.localOrigin());
         // 이미 활성인 콘솔 안에서의 이동은 window policy의 몫이다.
         if (target === null || target === deps.policy()?.currentConsoleOrigin()) return;
         event.preventDefault();
@@ -134,12 +143,17 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   };
 }
 
-/** 원격 콘솔의 `/console/`로 가려는 항해만 이 다리가 가로챈다. */
-export function remoteConsoleTarget(url: string): string | null {
+/**
+ * 콘솔을 갈아타려는 항해만 이 다리가 가로챈다 — 원격으로 나가는 길과, 셸이 띄운 로컬 콘솔로
+ * 돌아오는 길. 돌아오는 길도 여기를 거쳐야 하는 이유는 window policy가 활성 origin 밖으로의
+ * 항해를 막기 때문이다.
+ */
+export function consoleTarget(url: string, localOrigin: string | null): string | null {
   try {
     const parsed = new URL(url);
-    if (!isRemoteConsoleOrigin(parsed.origin)) return null;
-    return parsed.pathname.startsWith(CONSOLE_PATH) ? parsed.origin : null;
+    if (!parsed.pathname.startsWith(CONSOLE_PATH)) return null;
+    if (isRemoteConsoleOrigin(parsed.origin)) return parsed.origin;
+    return localOrigin !== null && parsed.origin === localOrigin ? parsed.origin : null;
   } catch {
     return null;
   }

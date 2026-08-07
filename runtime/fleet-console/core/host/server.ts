@@ -18,7 +18,7 @@ import { createCodexWorkspaceRouter } from "./codex/workspace-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { createConsoleSettingsStore, type ConsoleThemeId } from "./settings/settings-domain.js";
 import { DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot } from "./desktop-contract.js";
-import { createDesktopFullscreenRouter } from "./desktop-contract.js";
+import { createDesktopFullscreenRouter, createDesktopShellRouter, DESKTOP_SHELL_EVENT, emptyDesktopShell, type DesktopShellSnapshot } from "./desktop-contract.js";
 import { DESKTOP_THEME_EVENT, desktopThemeSnapshot } from "./desktop-contract.js";
 import { createDesktopThemeRouter } from "./desktop-contract.js";
 import { createDeferredDeletionCoordinator, DeferredDeletionError, type DeferredDeletionReceipt } from "./deferred-deletion.js";
@@ -447,6 +447,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return deletionCoordinator.deleteOperation(operationId) !== null;
   }
   let desktopFullscreen = false;
+  let desktopShell: DesktopShellSnapshot = emptyDesktopShell();
   // 창을 들고 있는 Desktop이 게시하는 호스트 목록. 브라우저 단독이면 비어 있다.
   let unsubscribeUpdateCheckChanges = updateCheck.onChange?.(() => {
     broadcastUpdateAvailable();
@@ -628,6 +629,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       });
     },
   });
+  const desktopShellRouter = createDesktopShellRouter({
+    getShell: () => desktopShell,
+    isAuthorized: isExactConsoleOrigin,
+    readJsonBody,
+    setShell: (snapshot) => {
+      if (desktopShell.homeOrigin === snapshot.homeOrigin) return;
+      desktopShell = snapshot;
+      broadcastDesktopShellChanged();
+    },
+    writeJson,
+    writeNoContent: (res) => { res.writeHead(204, withSecurityHeaders({})); res.end(); },
+  });
   const desktopFullscreenRouter = createDesktopFullscreenRouter({
     getFullscreen: () => desktopFullscreen,
     isAuthorized: isExactConsoleOrigin,
@@ -679,6 +692,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }));
       res.write(":connected\n\n");
       res.write(encodeSseData(DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot(desktopFullscreen)));
+      res.write(encodeSseData(DESKTOP_SHELL_EVENT, desktopShell));
       operationSseSubscribers.add(res);
       startSseKeepaliveLifecycle(res, () => {
         operationSseSubscribers.delete(res);
@@ -700,6 +714,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return globalSettingsRouter(ctx);
   });
   routeRegistry.register("/api/v1/desktop", async (context) => {
+    if (await desktopShellRouter(context)) return true;
     if (await desktopFullscreenRouter(context)) return true;
     return desktopThemeRouter(context);
   });
@@ -1664,6 +1679,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     for (const res of operationSseSubscribers) {
       res.write(data);
     }
+  }
+
+  function broadcastDesktopShellChanged(): void {
+    if (operationSseSubscribers.size === 0) return;
+    const data = encodeSseData(DESKTOP_SHELL_EVENT, desktopShell);
+    for (const res of operationSseSubscribers) res.write(data);
   }
 
   function broadcastDesktopFullscreenChanged(): void {

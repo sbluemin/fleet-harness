@@ -6,6 +6,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import { ApiError, applyConsoleUpdate } from "../api.js";
 import { FEATURE_TOURS } from "../feature-tour-catalog.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
+import { useDesktopHomeOrigin } from "../desktop-shell.js";
 import { probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type RemoteHost, type RemoteHostReach } from "../remote-hosts.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
@@ -78,12 +79,16 @@ export function CommandBandSystemCluster() {
  * 호스트 스위처. 목록은 이 콘솔이 들고 있고, 고른 호스트의 `/console/`로 그냥 항해한다 —
  * 각 콘솔이 자기 UI를 서빙하므로 프록시가 없고, 그래서 목록 자체가 호스트마다 다를 수 있다.
  *
+ * 그래서 "이 컴퓨터" 한 줄만은 콘솔이 아니라 셸에게서 온다. 원격 콘솔이 서빙한 화면은 자기가
+ * 떠나온 곳을 알 수 없으므로, 그 줄이 없으면 돌아갈 길이 사라진다.
+ *
  * 닿는지 여부는 열어 볼 때 확인한다. 목록에 든 것만으로 매번 남의 기계를 두드리면, 보지도
  * 않는 화면 때문에 조용한 네트워크 소음이 계속 흐른다.
  */
 function HostSwitcher() {
   const t = useT();
   const hosts = useRemoteHosts();
+  const homeOrigin = useDesktopHomeOrigin();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [reach, setReach] = useState<Readonly<Record<string, RemoteHostReach>>>({});
@@ -118,10 +123,13 @@ function HostSwitcher() {
     };
   }, [open, hosts]);
 
-  // 고를 것이 하나뿐이면 스위처는 아무 일도 하지 않는다.
-  if (hosts.length === 0) return null;
+  // 고를 것도 돌아갈 곳도 없으면 스위처는 아무 일도 하지 않는다.
+  if (hosts.length === 0 && homeOrigin === null) return null;
   const currentOrigin = location.origin;
   const currentHost = hosts.find((host) => host.origin === currentOrigin) ?? null;
+  const atHome = homeOrigin === null || homeOrigin === currentOrigin;
+  // 목록에도 없고 셸의 집도 아닌 곳에 서 있다면, 그 사실을 숨기지 말고 주소로 말한다.
+  const chipLabel = currentHost?.label ?? (atHome ? t("chrome.hosts.thisComputer") : location.host);
   const openSettings = () => {
     setOpen(false);
     navigate({ pathname: "/settings", search: "?section=remote-access" });
@@ -138,18 +146,48 @@ function HostSwitcher() {
         onClick={() => setOpen((previous) => !previous)}
       >
         <span className="host-switcher-dot is-live" aria-hidden="true" />
-        <span className="host-switcher-name">{currentHost?.label ?? t("chrome.hosts.thisComputer")}</span>
+        <span className="host-switcher-name">{chipLabel}</span>
         <ChevronGlyph />
       </button>
       {open ? (
         <div ref={panelRef} className="host-switcher-panel" role="menu" aria-label={t("chrome.hosts.aria")}>
           <p className="host-switcher-heading">{t("chrome.hosts.heading")}</p>
-          {currentHost === null ? (
+          {homeOrigin !== null ? (
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={homeOrigin === currentOrigin}
+              className={homeOrigin === currentOrigin ? "is-current" : ""}
+              disabled={homeOrigin === currentOrigin}
+              onClick={() => {
+                setOpen(false);
+                location.assign(new URL("/console/", `${homeOrigin}/`).toString());
+              }}
+            >
+              <span className="host-switcher-dot is-live" aria-hidden="true" />
+              <span className="host-switcher-entry">
+                <span className="host-switcher-name">{t("chrome.hosts.thisComputer")}</span>
+                <small>{new URL(homeOrigin).host}</small>
+              </span>
+              {homeOrigin === currentOrigin ? <CheckGlyph /> : null}
+            </button>
+          ) : null}
+          {homeOrigin === null && currentHost === null ? (
             <button type="button" role="menuitemradio" aria-checked className="is-current" disabled>
               <span className="host-switcher-dot is-live" aria-hidden="true" />
               <span className="host-switcher-entry">
                 <span className="host-switcher-name">{t("chrome.hosts.thisComputer")}</span>
                 <small>{location.host}</small>
+              </span>
+              <CheckGlyph />
+            </button>
+          ) : null}
+          {!atHome && currentHost === null ? (
+            <button type="button" role="menuitemradio" aria-checked className="is-current" disabled>
+              <span className="host-switcher-dot is-live" aria-hidden="true" />
+              <span className="host-switcher-entry">
+                <span className="host-switcher-name">{location.host}</span>
+                <small>{t("chrome.hosts.notSaved")}</small>
               </span>
               <CheckGlyph />
             </button>

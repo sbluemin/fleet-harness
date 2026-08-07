@@ -35,6 +35,8 @@ import { createZoomState } from "./zoom-state.js";
 type RuntimeProgress = (state: RuntimeEntryState, detail?: string, progress?: number) => Promise<void>;
 
 const PACKAGE_NAME = "@dotobokuri/fleet-console";
+// Console 계약의 경로 리터럴 — 다른 동기화기와 같은 방식으로 여기서 선언한다(Console 내부를 import하지 않는다).
+const DESKTOP_SHELL_PATH = "/api/v1/desktop/shell";
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const isPackaged = app.isPackaged;
 const desktopResources = resolveDesktopResourcePaths(isPackaged);
@@ -126,6 +128,25 @@ async function boot(): Promise<void> {
    * 이 다리는 메뉴에도 트레이에도 나타나지 않는다.
    */
   const notifier = createDesktopNotifier(Notification, { showMessageBox: (options) => dialog.showMessageBox(options) });
+  /**
+   * 창이 어느 콘솔에 있든 "이 셸이 띄운 콘솔이 어디인가"는 알려 준다. 원격 콘솔이 서빙한
+   * 화면은 자기가 떠나온 곳을 알 수 없으므로, 이것이 없으면 돌아갈 길이 사라진다.
+   */
+  const publishShellHome = async (origin: string): Promise<void> => {
+    const home = localConsoleOrigin;
+    if (!home) return;
+    try {
+      const response = await consoleFetch(`${origin}${DESKTOP_SHELL_PATH}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Origin: origin },
+        body: JSON.stringify({ homeOrigin: home }),
+      });
+      // 경로가 어긋나면 404가 조용히 돌아온다 — 돌아갈 줄이 사라진 이유를 로그에서 찾을 수 있어야 한다.
+      if (!response.ok) logger.error(`shell home publish rejected status=${response.status}`);
+    } catch (error) {
+      logger.error(`shell home publish failed: ${describeError(error)}`);
+    }
+  };
   const bridge: RemoteBridge = createRemoteBridge({
     pins: remotePins,
     policy: () => policy,
@@ -133,10 +154,11 @@ async function boot(): Promise<void> {
     localOrigin: () => localConsoleOrigin,
     loadConsole: async (url) => {
       await window?.loadURL(url);
-      // 창이 옮겨 갔으면 타이틀바와 전체화면 동기화도 그 콘솔을 따라가야 한다.
+      // 창이 옮겨 갔으면 타이틀바·전체화면 동기화와 "돌아갈 곳"도 그 콘솔을 따라가야 한다.
       const origin = new URL(url).origin;
       await themeSynchronizer?.start(origin);
       fullscreenSynchronizer?.activate(origin);
+      await publishShellHome(origin);
     },
     notify: (notice) => notifier.show(notice),
     log: (message) => logger.error(message),
@@ -166,6 +188,7 @@ async function boot(): Promise<void> {
         localConsoleOrigin = origin;
         policy?.activateConsoleOrigin(origin);
         controls.handoffStarted();
+        void publishShellHome(origin);
       },
       synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); },
       synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),

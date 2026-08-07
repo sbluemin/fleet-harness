@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createRemoteBridge, remoteConsoleTarget } from "../src/remote-bridge.js";
+import { consoleTarget, createRemoteBridge } from "../src/remote-bridge.js";
 
 const LOCAL = "http://127.0.0.1:4310";
 const REMOTE = "https://100.84.12.7:6768";
@@ -60,22 +60,27 @@ function createHarness(options: { readonly responses?: (path: string) => Respons
   return { bridge, trace, requests, notices, sessionFetch, setCurrent: (origin: string | null) => { current = origin; } };
 }
 
-describe("remote console target", () => {
+describe("console target", () => {
   it.each([
     [`${REMOTE}/console/`, REMOTE],
     [`${REMOTE}/console/settings`, REMOTE],
+    // 돌아오는 길도 이 다리를 거쳐야 한다 — window policy가 활성 origin 밖을 막기 때문이다.
+    [`${LOCAL}/console/`, LOCAL],
   ])("claims %s", (url, origin) => {
-    expect(remoteConsoleTarget(url)).toBe(origin);
+    expect(consoleTarget(url, LOCAL)).toBe(origin);
   });
 
   it.each([
-    ["the loopback console", `${LOCAL}/console/`],
-    ["a plaintext host", "http://100.84.12.7:6768/console/"],
+    ["another machine's plaintext console", "http://100.84.12.7:6768/console/"],
     ["a path outside the console", `${REMOTE}/join`],
     ["the bare origin", REMOTE],
     ["a non-url", "not a url"],
   ])("leaves %s alone", (_label, url) => {
-    expect(remoteConsoleTarget(url)).toBeNull();
+    expect(consoleTarget(url, LOCAL)).toBeNull();
+  });
+
+  it("claims no loopback console when the shell has none of its own", () => {
+    expect(consoleTarget(`${LOCAL}/console/`, null)).toBeNull();
   });
 });
 
@@ -190,6 +195,29 @@ describe("remote bridge", () => {
 
     expect(subframe.preventDefault).not.toHaveBeenCalled();
     expect(harness.trace).toEqual([]);
+  });
+
+  it("goes back to the shell's own console without a pin, a grant, or the host list", async () => {
+    const harness = createHarness();
+    harness.setCurrent(REMOTE);
+
+    await harness.bridge.open(LOCAL);
+
+    expect(harness.trace).toEqual([`activate:${LOCAL}`, `load:${LOCAL}/console/`]);
+    expect(harness.requests).toEqual([]);
+    expect(harness.sessionFetch).not.toHaveBeenCalled();
+  });
+
+  it("intercepts the way home, which the window policy would otherwise block", () => {
+    const contents = new EventEmitter();
+    const harness = createHarness();
+    harness.bridge.attach(contents as never);
+    harness.setCurrent(REMOTE);
+
+    const home = { preventDefault: vi.fn() };
+    contents.emit("will-navigate", home, `${LOCAL}/console/`, false, true);
+
+    expect(home.preventDefault).toHaveBeenCalledOnce();
   });
 
   it("stops listening once disposed", () => {

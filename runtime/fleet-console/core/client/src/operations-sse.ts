@@ -1,5 +1,6 @@
 import { fetchObserverStatus, fetchOperations } from "./api.js";
 import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
+import { applyDesktopShellSnapshot, resetDesktopShellSnapshot } from "./desktop-shell.js";
 import { applyObserverStatus, applyOperationUpdate, getState, hydrateOperations, setConnectionState } from "./store.js";
 import type { OperationNode } from "./types.js";
 
@@ -47,6 +48,16 @@ export function connectOperationsSse(): void {
       applyDesktopFullscreenSnapshot(JSON.parse(msg.data));
     } catch {
       resetDesktopFullscreenSnapshot();
+    }
+  });
+
+  source.addEventListener("desktop:shell", (e) => {
+    if (!isCurrentSource()) return;
+    const msg = e as MessageEvent<string>;
+    try {
+      applyDesktopShellSnapshot(JSON.parse(msg.data));
+    } catch {
+      resetDesktopShellSnapshot();
     }
   });
 
