@@ -15,6 +15,7 @@ const CATALOG = {
           oneMillion: true,
           maxMode: false,
           fast: false,
+          capabilityClass: "flagship",
           description: null,
           effort: { levels: ["low", "medium", "high", "xhigh", "max"] },
         },
