@@ -9,13 +9,14 @@ import { fetchSystemFonts, SystemFontsFetchError } from "@fleet-console/font-pic
 
 import { BackendApiSection } from "../components/backend-api-section.js";
 import { propagateSettingsEntryIndex } from "../components/command-band-system-cluster.js";
+import { createRemoteAccessLink, fetchRemoteAccessStatus } from "../global-settings-api.js";
 import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { renderMessage, useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { readLastDarkTheme, setActiveTheme, setActiveUiFont, themePolarity } from "../store.js";
 import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_DESCRIPTION_KEYS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
-import type { GlobalSettingsState, ThemeId, UiFontId, UiFontSettings } from "../types.js";
+import type { GlobalSettingsState, RemoteAccessLink, RemoteAccessStatus, ThemeId, UiFontId, UiFontSettings } from "../types.js";
 
 interface LanguageOption {
   readonly id: GlobalSettingsState["language"];
@@ -475,6 +476,7 @@ function GeneralSettingsCard({
       {state ? (
         <>
           <ConsolePortSettings state={state} saving={saving} consoleState={consoleState} />
+          <RemoteAccessSettings state={state} saving={saving} />
           <LanguageSettings state={state} saving={saving} />
         </>
       ) : (
@@ -514,6 +516,168 @@ function LanguageSettings({ state, saving }: { readonly state: GlobalSettingsSta
       <p className="console-port-note">{t("settings.language.note")}</p>
     </div>
   );
+}
+
+/** 바인드 주소는 이 기기가 실제로 가진 주소여야 하므로, 루프백은 서버와 같은 규칙으로 여기서도 막는다. */
+const REMOTE_BIND_HOST = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[A-Za-z0-9](?:[A-Za-z0-9._-]{0,252}[A-Za-z0-9])?)$/u;
+const REMOTE_LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
+const REMOTE_GRANT_TTL_MINUTES = 15;
+
+function isValidRemoteBindHost(value: string): boolean {
+  return REMOTE_BIND_HOST.test(value) && !REMOTE_LOOPBACK_HOSTS.has(value);
+}
+
+function RemoteAccessSettings({ state, saving }: { readonly state: GlobalSettingsState; readonly saving: boolean }) {
+  const t = useT();
+  const remote = state.remoteAccess;
+  const [draftHost, setDraftHost] = useState(remote.bindHost ?? "");
+  const [status, setStatus] = useState<RemoteAccessStatus | null>(null);
+  const [link, setLink] = useState<RemoteAccessLink | null>(null);
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => { setDraftHost(remote.bindHost ?? ""); }, [remote.bindHost]);
+
+  // 설정값이 아니라 실제 리스너를 읽는다 — 켜 두었지만 바인드에 실패한 상태가 보여야 한다.
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetchRemoteAccessStatus(controller.signal)
+      .then(setStatus)
+      .catch(() => { if (!controller.signal.aborted) setStatus(null); });
+    return () => controller.abort();
+  }, [remote.enabled, remote.bindHost]);
+
+  const trimmedHost = draftHost.trim();
+  const hostIsValid = isValidRemoteBindHost(trimmedHost);
+  const hostIsInvalid = trimmedHost.length > 0 && !hostIsValid;
+
+  const save = (next: { readonly enabled: boolean; readonly bindHost: string | null }) => {
+    // 링크는 자격이다. 대상이 바뀌거나 리스너가 닫히는 순간 화면에서도 사라져야 한다.
+    setLink(null);
+    setLinkError(null);
+    void setGlobalSettingsField("remoteAccess", next);
+  };
+
+  const create = () => {
+    setCreating(true);
+    setLinkError(null);
+    setCopied(false);
+    void createRemoteAccessLink()
+      .then(setLink)
+      .catch((error: unknown) => { setLinkError(error instanceof Error ? error.message : String(error)); })
+      .finally(() => setCreating(false));
+  };
+
+  const copy = () => {
+    if (!link) return;
+    void navigator.clipboard.writeText(link.link).then(() => setCopied(true)).catch(() => setCopied(false));
+  };
+
+  return (
+    <div className="global-settings-row is-stack remote-access-row">
+      <div className="global-settings-row-text">
+        <p className="global-settings-resp-title">{t("settings.remote.title")} <span className="new-badge">{t("settings.port.newBadge")}</span></p>
+        <p className="global-settings-help">{t("settings.remote.help")}</p>
+      </div>
+      <div className="console-port-control">
+        <div className="segmented" role="group" aria-label={t("settings.remote.modeAria")}>
+          <button
+            type="button"
+            aria-pressed={!remote.enabled}
+            className={`segmented-option ${remote.enabled ? "" : "is-active"}`}
+            disabled={saving}
+            onClick={() => { if (remote.enabled) save({ enabled: false, bindHost: remote.bindHost }); }}
+          >
+            {t("settings.remote.off")}
+          </button>
+          <button
+            type="button"
+            aria-pressed={remote.enabled}
+            className={`segmented-option ${remote.enabled ? "is-active" : ""}`}
+            disabled={saving || !hostIsValid}
+            onClick={() => { if (!remote.enabled && hostIsValid) save({ enabled: true, bindHost: trimmedHost }); }}
+          >
+            {t("settings.remote.on")}
+          </button>
+        </div>
+
+        <div className="console-port-reveal is-open">
+          <div className="console-port-reveal-inner">
+            <label className="console-port-input-label" htmlFor="remote-access-host-input">{t("settings.remote.hostLabel")}</label>
+            <input
+              id="remote-access-host-input"
+              className={`console-port-input ${hostIsInvalid ? "is-invalid" : ""}`}
+              placeholder="192.168.1.20"
+              value={draftHost}
+              disabled={saving}
+              autoComplete="off"
+              spellCheck={false}
+              aria-invalid={hostIsInvalid}
+              aria-describedby="remote-access-host-hint"
+              onChange={(event) => setDraftHost(event.target.value)}
+              onBlur={() => {
+                const next = draftHost.trim();
+                if (next === (remote.bindHost ?? "") || !isValidRemoteBindHost(next)) return;
+                save({ enabled: remote.enabled, bindHost: next });
+              }}
+            />
+            <span id="remote-access-host-hint" className={`console-port-hint ${hostIsInvalid ? "is-invalid" : ""}`}>
+              {t("settings.remote.hostHint")}
+            </span>
+          </div>
+        </div>
+
+        <div className={`console-port-effective ${status?.lastError ? "is-fallback" : ""}`} aria-live="polite">
+          <span className="console-port-effective-dot" aria-hidden="true" />
+          <span>
+            {status?.listening && status.origin
+              ? renderMessage(t("settings.remote.listening"), { origin: status.origin })
+              : status?.lastError
+                ? t(remoteErrorKey(status.lastError))
+                : t("settings.remote.notListening")}
+          </span>
+        </div>
+
+        {status?.listening && status.fingerprint ? (
+          <p className="remote-access-fingerprint">
+            <span className="remote-access-fingerprint-label">{t("settings.remote.fingerprintLabel")}</span>
+            <code>{status.fingerprint}</code>
+          </p>
+        ) : null}
+
+        {status?.listening ? (
+          <div className="remote-access-link">
+            <button type="button" className="remote-access-create" disabled={creating} onClick={create}>
+              {creating ? t("settings.remote.creating") : t("settings.remote.create")}
+            </button>
+            {link ? (
+              <>
+                <label className="console-port-input-label" htmlFor="remote-access-link-output">{t("settings.remote.linkLabel")}</label>
+                <div className="remote-access-link-field">
+                  <input id="remote-access-link-output" className="console-port-input" readOnly value={link.link} onFocus={(event) => event.currentTarget.select()} />
+                  <button type="button" onClick={copy}>{copied ? t("settings.remote.copied") : t("settings.remote.copy")}</button>
+                </div>
+                <span className="console-port-hint">{renderMessage(t("settings.remote.expires"), { minutes: REMOTE_GRANT_TTL_MINUTES })}</span>
+              </>
+            ) : null}
+            {linkError ? <p className="global-settings-error" role="alert">{linkError}</p> : null}
+            <p className="remote-access-warning">{t("settings.remote.warning")}</p>
+          </div>
+        ) : null}
+      </div>
+      <p className="console-port-note">{t("settings.remote.note")}</p>
+    </div>
+  );
+}
+
+function remoteErrorKey(code: string): CoreMessageKey {
+  switch (code) {
+    case "bind_address_unavailable": return "settings.remote.error.bind_address_unavailable";
+    case "bind_address_in_use": return "settings.remote.error.bind_address_in_use";
+    case "bind_permission_denied": return "settings.remote.error.bind_permission_denied";
+    default: return "settings.remote.error.remote_listener_failed";
+  }
 }
 
 function ConsolePortSettings({

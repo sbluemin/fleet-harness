@@ -23,6 +23,7 @@ beforeEach(() => {
   hydrateGlobalSettings({
     consolePortMode: "dynamic",
     consoleStaticPort: null,
+    remoteAccess: { enabled: false, bindHost: null },
     seenFeatureTours: [],
     theme: "instrument",
     uiFont: DEFAULT_UI_FONT,

@@ -120,12 +120,76 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     expect(joined.status).toBe(401);
   });
 
+  it("opens and closes the remote listener when the setting changes, without a restart", async () => {
+    const fixture = await startFixture({ remote: false });
+
+    await expect(readRemoteStatus(fixture)).resolves.toMatchObject({ listening: false, origin: null, fingerprint: null });
+
+    await saveRemoteAccess(fixture, { enabled: true, bindHost: BIND_HOST });
+    const enabled = await readRemoteStatus(fixture);
+    expect(enabled).toMatchObject({ listening: true, origin: `https://${BIND_HOST}:${fixture.remotePort}` });
+    const token = grantTokenOf(await createLink(fixture));
+    await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token }))).resolves.toMatchObject({ status: 204 });
+
+    await saveRemoteAccess(fixture, { enabled: false, bindHost: BIND_HOST });
+    await expect(readRemoteStatus(fixture)).resolves.toMatchObject({ listening: false, fingerprint: null });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters")).rejects.toThrow();
+  });
+
+  it("kills the sessions a closed remote listener issued instead of leaving them redeemable", async () => {
+    const fixture = await startFixture({ remote: true });
+    const joined = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(await createLink(fixture)) }));
+    const session = (joined.headers["set-cookie"]?.[0] ?? "").split(";")[0]!;
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, session)).resolves.toMatchObject({ status: 200 });
+
+    await saveRemoteAccess(fixture, { enabled: false, bindHost: BIND_HOST });
+    await saveRemoteAccess(fixture, { enabled: true, bindHost: BIND_HOST });
+
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, session)).resolves.toMatchObject({ status: 401 });
+  });
+
+  it("reports a bind failure as a code instead of taking the console down", async () => {
+    const fixture = await startFixture({ remote: false });
+
+    await saveRemoteAccess(fixture, { enabled: true, bindHost: "203.0.113.7" });
+
+    await expect(readRemoteStatus(fixture)).resolves.toMatchObject({ listening: false, lastError: "bind_address_unavailable" });
+    await expect(fetch(`${fixture.loopbackEndpoint}api/v1/theaters`).then((r) => r.status)).resolves.toBe(200);
+  });
+
   it("keeps the loopback listener open without a session", async () => {
     const fixture = await startFixture({ remote: true });
 
     await expect(fetch(`${fixture.loopbackEndpoint}api/v1/theaters`).then((r) => r.status)).resolves.toBe(200);
   });
 });
+
+interface RemoteAccessStatus {
+  readonly listening: boolean;
+  readonly origin: string | null;
+  readonly fingerprint: string | null;
+  readonly lastError: string | null;
+}
+
+async function readRemoteStatus(fixture: Fixture): Promise<RemoteAccessStatus> {
+  const response = await fetch(`${fixture.loopbackEndpoint}api/v1/access-links`);
+  return await response.json() as RemoteAccessStatus;
+}
+
+async function saveRemoteAccess(fixture: Fixture, remoteAccess: { readonly enabled: boolean; readonly bindHost: string }): Promise<void> {
+  const origin = fixture.loopbackEndpoint.replace(/\/$/u, "");
+  const response = await fetch(`${origin}/api/v1/settings/global`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Origin: origin },
+    body: JSON.stringify({ remoteAccess }),
+  });
+  if (!response.ok) throw new Error(`settings save failed: ${response.status} ${await response.text()}`);
+  // 리스너 전환은 저장 응답 뒤에서 직렬화되어 끝난다. 상태 조회로 안정 지점을 기다린다.
+  await vi.waitFor(async () => {
+    const status = await readRemoteStatus(fixture);
+    expect(status.listening).toBe(remoteAccess.enabled && status.lastError === null);
+  });
+}
 
 function grantTokenOf(link: string): string {
   return decodeURIComponent(new URL(link).hash.match(/t=([^&]+)/u)?.[1] ?? "");

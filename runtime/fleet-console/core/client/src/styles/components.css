@@ -625,6 +625,109 @@
   line-height: 1.55;
 }
 
+/* 원격 접속 — 포트 행의 제어 문법을 그대로 쓰고, 자격을 다루는 부분만 경고 채널을 더한다. */
+.remote-access-row .console-port-input {
+  width: 100%;
+  max-width: 260px;
+}
+
+.remote-access-fingerprint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.remote-access-fingerprint-label {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.remote-access-fingerprint code {
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.remote-access-link {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.remote-access-create {
+  align-self: flex-start;
+  min-height: 34px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-deep) 78%, transparent);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.remote-access-create:hover:not(:disabled) {
+  border-color: var(--brass);
+  color: var(--brass-bright);
+}
+
+.remote-access-create:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.remote-access-link-field {
+  display: flex;
+  gap: var(--space-2);
+  align-items: stretch;
+}
+
+.remote-access-link-field .console-port-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+  font-size: 11px;
+}
+
+.remote-access-link-field button {
+  flex: none;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-deep) 78%, transparent);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.remote-access-link-field button:hover {
+  border-color: var(--brass);
+  color: var(--brass-bright);
+}
+
+.remote-access-warning {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--warn) 46%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--warn-glow);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .console-port-reveal {
     transition: none;

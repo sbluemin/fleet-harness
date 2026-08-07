@@ -207,6 +207,8 @@ interface GlobalSettingsRouteDeps {
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
   readonly onThemeChanged?: (theme: ConsoleThemeId) => void;
+  /** 저장 직후 살아 있는 리스너를 설정에 맞춘다 — 켜자마자 링크를 만들 수 있어야 한다. */
+  readonly onRemoteAccessChanged?: () => void;
 }
 
 interface GlobalSettingsRouteContext {
@@ -339,6 +341,7 @@ async function mutateGlobalSettings(
     plugins: current.plugins,
   }));
   if (theme !== undefined) deps.onThemeChanged?.(theme);
+  if (body.remoteAccess !== undefined) deps.onRemoteAccessChanged?.();
   const response: GlobalSettingsMutationResult = { state: toGlobalSettingsState(updated) };
   deps.writeJson(res, 200, response);
 }

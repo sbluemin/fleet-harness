@@ -122,9 +122,30 @@ export interface OperationNode {
   };
 }
 
+/** 원격 접속 설정. 바인드 주소는 구성 리터럴이며 요청이나 DNS에서 유도되지 않는다. */
+export interface RemoteAccessState {
+  readonly enabled: boolean;
+  readonly bindHost: string | null;
+}
+
+/** 지금 열려 있는 리스너의 사실. 설정값과 달리 바인드 실패를 그대로 드러낸다. */
+export interface RemoteAccessStatus {
+  readonly listening: boolean;
+  readonly origin: string | null;
+  readonly fingerprint: string | null;
+  readonly lastError: string | null;
+}
+
+export interface RemoteAccessLink {
+  readonly link: string;
+  readonly expiresAt: number;
+  readonly fingerprint: string;
+}
+
 export interface GlobalSettingsState {
   readonly consolePortMode: "dynamic" | "static";
   readonly consoleStaticPort: number | null;
+  readonly remoteAccess: RemoteAccessState;
   readonly seenFeatureTours: readonly string[];
   readonly theme: ThemeId;
   readonly uiFont: UiFontSettings;

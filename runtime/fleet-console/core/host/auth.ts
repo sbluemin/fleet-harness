@@ -42,6 +42,8 @@ export interface AccessRegistry {
   redeemGrant(token: string | null, audience: AccessAudience): AccessSession | null;
   resolveSession(id: string | null, audience: AccessAudience): AccessSession | null;
   revokeSession(id: string): boolean;
+  /** 원격을 끄면 그 audience의 세션도 함께 죽는다 — 리스너만 닫으면 자격은 살아 남는다. */
+  revokeSessions(audience: AccessAudience): void;
   revokeAllSessions(): void;
   prune(): void;
 }
@@ -105,6 +107,12 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     return sessions.delete(id);
   }
 
+  function revokeSessions(audience: AccessAudience): void {
+    for (const [id, stored] of sessions) {
+      if (stored.audience === audience) sessions.delete(id);
+    }
+  }
+
   function revokeAllSessions(): void {
     sessions.clear();
   }
@@ -119,7 +127,7 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     }
   }
 
-  return { grantTtlMs, issueGrant, redeemGrant, resolveSession, revokeSession, revokeAllSessions, prune };
+  return { grantTtlMs, issueGrant, redeemGrant, resolveSession, revokeSession, revokeSessions, revokeAllSessions, prune };
 }
 
 /**

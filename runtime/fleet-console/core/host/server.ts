@@ -243,6 +243,13 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     gate: "lock-token",
   },
   {
+    method: "GET",
+    path: "/api/v1/access-links",
+    summary: "Report whether remote access is listening and which identity it presents.",
+    category: "Access",
+    gate: "loopback",
+  },
+  {
     method: "POST",
     path: "/api/v1/access-links",
     summary: "Create a remote access link for this console.",
@@ -320,6 +327,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let listeners: readonly ListenerIdentity[] = [];
   let remoteServer: https.Server | null = null;
   let remoteFingerprint: string | null = null;
+  let remoteReconcile: Promise<void> = Promise.resolve();
+  let remoteLastError: string | null = null;
+  let boundPort: number | null = null;
   const access = createAccessRegistry();
   const remoteIdentityStore = createRemoteIdentityStore(durablePaths.dir);
   const pluginOperationTypes = new Set<string>();
@@ -518,6 +528,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     readJsonBody,
     writeJson,
     onThemeChanged: broadcastDesktopThemeChanged,
+    onRemoteAccessChanged: () => { void reconcileRemoteAccess(); },
   });
   const desktopThemeRouter = createDesktopThemeRouter({
     getTheme: () => consoleSettingsStore.load().general?.theme ?? "instrument",
@@ -665,7 +676,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     if (pathname === "/api/v1/access-links") {
-      handleAccessLinkIssue(req, res);
+      if (req.method === "GET") handleRemoteAccessStatus(res);
+      else handleAccessLinkIssue(req, res);
       return;
     }
     if (pathname === "/api/v1/join") {
@@ -803,6 +815,20 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     const grant = access.issueGrant(listener.audience);
     writeJson(res, 201, { token: grant.token, audience: grant.audience, expiresAt: grant.expiresAt });
+  }
+
+  /**
+   * 원격 리스너의 실제 상태. 설정값이 아니라 지금 열려 있는 리스너를 보고한다 — 켜 두었지만
+   * 바인드에 실패한 경우를 설정 화면이 "켜짐"으로 오독하지 않게 한다.
+   */
+  function handleRemoteAccessStatus(res: http.ServerResponse): void {
+    const remote = listeners.find((entry) => entry.audience === "remote");
+    writeJson(res, 200, {
+      listening: remote !== undefined && remoteFingerprint !== null,
+      origin: remote?.origin ?? null,
+      fingerprint: remoteFingerprint,
+      lastError: remoteLastError,
+    });
   }
 
   /**
@@ -1192,6 +1218,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     remoteServer = null;
     remoteFingerprint = null;
     listeners = [];
+    boundPort = null;
     access.revokeAllSessions();
     if (closingRemote) await new Promise<void>((resolve) => closingRemote.close(() => resolve()));
     const cleanupResults = await Promise.allSettled([...pluginCleanupCallbacks].map((cleanup) => cleanup()));
@@ -1442,6 +1469,41 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   /**
+   * 설정 변경을 살아 있는 리스너에 반영한다. 재시작을 요구하면 사용자는 켜자마자 링크를
+   * 만들 수 없고, 그 실패는 설정이 저장되지 않은 것처럼 보인다. 전환은 직렬화한다 —
+   * 두 저장이 겹치면 같은 포트에 두 번 바인드하려 든다.
+   */
+  function reconcileRemoteAccess(): Promise<void> {
+    remoteReconcile = remoteReconcile.then(async () => {
+      if (consoleResourcesDisposed || boundPort === null) return;
+      const configured = consoleSettingsStore.load().general?.remoteAccess;
+      const desiredHost = configured?.enabled === true ? configured.bindHost : undefined;
+      const active = listeners.find((entry) => entry.audience === "remote");
+      if ((active?.host ?? undefined) === desiredHost) return;
+      await stopRemoteAccess();
+      remoteLastError = null;
+      try {
+        await startRemoteAccessIfEnabled(boundPort);
+      } catch (error) {
+        // 바인드 실패는 콘솔을 죽이지 않는다 — 주소가 사라진 인터페이스일 수 있다.
+        remoteLastError = remoteAccessErrorCode(error);
+        await stopRemoteAccess();
+      }
+    }).catch(() => undefined);
+    return remoteReconcile;
+  }
+
+  async function stopRemoteAccess(): Promise<void> {
+    const closing = remoteServer;
+    remoteServer = null;
+    remoteFingerprint = null;
+    listeners = listeners.filter((entry) => entry.audience !== "remote");
+    // 리스너만 닫고 세션을 남기면, 다시 켰을 때 예전 자격이 되살아난다.
+    access.revokeSessions("remote");
+    if (closing) await new Promise<void>((resolve) => closing.close(() => resolve()));
+  }
+
+  /**
    * 원격 리스너는 설정이 켜졌을 때만 열린다. 루프백과 같은 포트를 다른 인터페이스에 바인드해
    * 링크 주소의 포트가 콘솔 포트와 어긋나지 않게 한다.
    */
@@ -1488,6 +1550,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const endpoint = `http://${host}:${actualPort}/`;
         // 게이트가 참조할 리스너 신원은 실제 바인드 포트가 정해진 뒤에만 확정된다.
         listeners = [createLoopbackListenerIdentity(actualPort)];
+        boundPort = actualPort;
         try {
           await startRemoteAccessIfEnabled(actualPort);
           const localLoopbackServer = await maybeStartLoopbackServer(host, actualPort, handleRequest, upgradeRegistry, isRequestHostAllowed);
@@ -1509,6 +1572,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     });
   }
   return returnedServer;
+}
+
+/** 원격 바인드 실패 사유를 안전한 코드로만 표면화한다 — 주소·경로는 밖으로 내보내지 않는다. */
+function remoteAccessErrorCode(error: unknown): string {
+  const code = typeof error === "object" && error !== null && "code" in error && typeof error.code === "string" ? error.code : "";
+  if (code === "EADDRNOTAVAIL") return "bind_address_unavailable";
+  if (code === "EADDRINUSE") return "bind_address_in_use";
+  if (code === "EACCES") return "bind_permission_denied";
+  return "remote_listener_failed";
 }
 
 function resolveBuiltInPluginDiscoveryRoots(packageRoot: string): { readonly builtInSourceRoot?: string; readonly builtInDistRoot: string } {
