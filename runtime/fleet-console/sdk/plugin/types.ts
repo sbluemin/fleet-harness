@@ -286,7 +286,12 @@ export interface FleetPluginHttpHost {
 }
 
 export interface FleetPluginSecurityHost {
-  validateHost(req: http.IncomingMessage, expectedPort: number): boolean;
+  /**
+   * 요청이 도착한 리스너의 Host 경계를 통과했는지 판정한다. 리스너마다 허용 Host가 다르므로
+   * 기대 포트는 호스트만 알 수 있다 — 플러그인이 스스로 고른 포트로는 잘못된 경계에 대고
+   * 승인할 수 있어 인자로 받지 않는다.
+   */
+  validateHost(req: http.IncomingMessage): boolean;
   isTerminalAuthorized(req: http.IncomingMessage): boolean;
   isLockAuthorized(req: http.IncomingMessage): boolean;
 }

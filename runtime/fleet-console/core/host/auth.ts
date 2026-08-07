@@ -122,6 +122,42 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
   return { grantTtlMs, issueGrant, redeemGrant, resolveSession, revokeSession, revokeAllSessions, prune };
 }
 
+/**
+ * 리스너마다 신뢰 경계가 다르다. 루프백은 평문 http에 기존 Host/Origin 게이트를 쓰고,
+ * 원격은 https에 세션을 요구한다. 두 리스너가 하나의 핸들러를 공유하므로, 요청이 어느
+ * 리스너로 들어왔는지는 소켓의 로컬 주소로만 판별할 수 있다.
+ */
+export interface ListenerIdentity {
+  readonly audience: AccessAudience;
+  /** Host 헤더와 대조할 호스트 부분. */
+  readonly host: string;
+  readonly port: number;
+  /** 브라우저 Origin과 대조할 정규 origin. */
+  readonly origin: string;
+  readonly secure: boolean;
+  /** 이 리스너가 바인드한 로컬 주소. 요청 소켓의 localAddress와 대조한다. */
+  readonly bindAddress: string;
+}
+
+export function createLoopbackListenerIdentity(port: number): ListenerIdentity {
+  return { audience: "local", host: "127.0.0.1", port, origin: `http://127.0.0.1:${port}`, secure: false, bindAddress: "127.0.0.1" };
+}
+
+/** IPv4-mapped IPv6(`::ffff:127.0.0.1`)와 IPv6 루프백을 같은 주소로 본다. */
+export function normalizeBindAddress(address: string | undefined): string {
+  if (!address) return "";
+  const stripped = address.startsWith("::ffff:") ? address.slice(7) : address;
+  return stripped === "::1" ? "127.0.0.1" : stripped;
+}
+
+export function resolveListenerIdentity(
+  listeners: readonly ListenerIdentity[],
+  socket: { readonly localAddress?: string | undefined; readonly localPort?: number | undefined },
+): ListenerIdentity | null {
+  const address = normalizeBindAddress(socket.localAddress);
+  return listeners.find((listener) => listener.bindAddress === address && (socket.localPort === undefined || listener.port === socket.localPort)) ?? null;
+}
+
 /** 요청 쿠키에서 세션 식별자만 읽는다. 다른 쿠키는 무시한다. */
 export function readSessionCookie(headers: { readonly cookie?: string | string[] }): string | null {
   const raw = Array.isArray(headers.cookie) ? headers.cookie[0] : headers.cookie;

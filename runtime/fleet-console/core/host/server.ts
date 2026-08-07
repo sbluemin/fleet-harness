@@ -9,7 +9,7 @@ import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
-import { createAccessRegistry, formatSessionCookie, type AccessAudience } from "./auth.js";
+import { createAccessRegistry, createLoopbackListenerIdentity, formatSessionCookie, resolveListenerIdentity, type ListenerIdentity } from "./auth.js";
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./console-contract-types.js";
 import { createCodexWorkspaceRouter } from "./codex/workspace-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
@@ -306,9 +306,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   const routeRegistry = new RouteRegistry();
   const upgradeRegistry = new UpgradeRegistry();
-  // 오늘 서버는 루프백 리스너 하나만 연다. audience를 값으로 들고 다녀야 원격 리스너가
-  // 붙을 때 로컬 자격이 그쪽에서 거부된다는 계약을 코드가 그대로 표현한다.
-  const listenerAudience: AccessAudience = "local";
+  // 리스너는 바인드 시점에 확정된다. 요청은 소켓의 로컬 주소로 자기 리스너를 찾고, 그
+  // 리스너의 audience·Host·Origin만 통과 기준으로 삼는다.
+  let listeners: readonly ListenerIdentity[] = [];
   const access = createAccessRegistry();
   const pluginOperationTypes = new Set<string>();
   const pluginPayloadSanitizers = new Map<string, readonly string[]>();
@@ -436,7 +436,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       readJsonBody,
     },
     security: {
-      validateHost,
+      validateHost: isRequestHostAllowed,
       isTerminalAuthorized,
       isLockAuthorized,
     },
@@ -604,7 +604,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   // 요청과 업그레이드가 같은 Host 경계를 쓰도록 판정을 한 곳에 둔다.
   function isRequestHostAllowed(req: http.IncomingMessage): boolean {
-    return validateHost(req, lockHandle?.payload.port ?? port);
+    const listener = listenerForRequest(req);
+    return listener !== null && validateHost(req, `${listener.host}:${listener.port}`);
+  }
+
+  /** 요청이 도착한 리스너. 등록되지 않은 소켓에서 온 요청은 어떤 게이트도 통과하지 못한다. */
+  function listenerForRequest(req: http.IncomingMessage): ListenerIdentity | null {
+    return resolveListenerIdentity(listeners, req.socket);
   }
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -758,11 +764,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 405, { error: "Method not allowed" });
       return;
     }
-    if (!isLockAuthorized(req)) {
+    const listener = listenerForRequest(req);
+    if (!listener || !isLockAuthorized(req)) {
       writeJson(res, 401, { error: "unauthorized" });
       return;
     }
-    const grant = access.issueGrant(listenerAudience);
+    const grant = access.issueGrant(listener.audience);
     writeJson(res, 201, { token: grant.token, audience: grant.audience, expiresAt: grant.expiresAt });
   }
 
@@ -771,15 +778,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 405, { error: "Method not allowed" });
       return true;
     }
+    const listener = listenerForRequest(req);
     const body = await readJsonBody<{ readonly token?: unknown }>(req);
     const token = isPlainObject(body) && typeof body.token === "string" ? body.token : null;
-    const session = access.redeemGrant(token, listenerAudience);
-    if (!session) {
+    const session = listener ? access.redeemGrant(token, listener.audience) : null;
+    if (!listener || !session) {
       writeJson(res, 401, { error: "unauthorized" });
       return true;
     }
-    // 루프백 리스너는 평문 http이므로 Secure를 붙이면 브라우저가 쿠키를 버린다.
-    res.writeHead(204, withSecurityHeaders({ "Set-Cookie": formatSessionCookie(session, { secure: false }) }));
+    // 평문 http 리스너에 Secure를 붙이면 브라우저가 쿠키를 버린다.
+    res.writeHead(204, withSecurityHeaders({ "Set-Cookie": formatSessionCookie(session, { secure: listener.secure }) }));
     res.end();
     return true;
   }
@@ -949,7 +957,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 405, { error: "Method not allowed" });
       return;
     }
-    if (!isAllowedTerminalOrigin(req, lockHandle?.payload.port ?? port)) {
+    if (!isTerminalAuthorized(req)) {
       writeJson(res, 401, { error: "unauthorized" });
       return;
     }
@@ -1052,9 +1060,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   // 카탈로그 gate 레이블은 "origin-write"로 개명됐지만 이 함수 이름은 별도 정리 범위.
   function isTerminalAuthorized(req: http.IncomingMessage): boolean {
-    if (!lockHandle) return false;
+    const listener = listenerForRequest(req);
+    if (!listener) return false;
     // Origin 검증으로 WS 경로와 동일한 출처 경계를 terminal 라우트에 적용한다.
-    return isAllowedTerminalOrigin(req, lockHandle.payload.port ?? port);
+    return isAllowedTerminalOrigin(req, listener.origin);
   }
 
   function isLockAuthorized(req: http.IncomingMessage): boolean {
@@ -1064,8 +1073,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   // 카탈로그 gate 레이블은 "origin-strict"로 개명됐지만 이 함수 이름은 별도 정리 범위.
   function isExactConsoleOrigin(req: http.IncomingMessage): boolean {
-    if (!lockHandle) return false;
-    return req.headers.origin === `http://127.0.0.1:${lockHandle.payload.port ?? port}`;
+    const listener = listenerForRequest(req);
+    return listener !== null && req.headers.origin === listener.origin;
   }
 
   function listTheaterInfos(): readonly ConsoleTheaterInfo[] {
@@ -1382,6 +1391,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const address = srv.address();
         const actualPort = typeof address === "object" && address ? address.port : portToBind;
         const endpoint = `http://${host}:${actualPort}/`;
+        // 게이트가 참조할 리스너 신원은 실제 바인드 포트가 정해진 뒤에만 확정된다.
+        listeners = [createLoopbackListenerIdentity(actualPort)];
         try {
           const localLoopbackServer = await maybeStartLoopbackServer(host, actualPort, handleRequest, upgradeRegistry, isRequestHostAllowed);
           resolve({
@@ -1590,21 +1601,25 @@ function runAsyncBooleanHandler(handler: Promise<boolean>, res: http.ServerRespo
   });
 }
 
-function validateHost(req: http.IncomingMessage, expectedPort: number): boolean {
+/**
+ * Host는 리스너가 실제로 바인드한 주소와만 일치해야 한다. 허용 집합을 요청 Host나 DNS에서
+ * 유도하면 DNS rebinding으로 이 경계가 무너지므로, 비교 대상은 언제나 구성으로 정해진 리터럴이다.
+ */
+function validateHost(req: http.IncomingMessage, expectedHostPort: string): boolean {
   if (req.url?.startsWith("http://") || req.url?.startsWith("https://")) return false;
   const hostHeaderCount = req.rawHeaders.filter((header, index) => index % 2 === 0 && header.toLowerCase() === "host").length;
   if (hostHeaderCount !== 1) return false;
   const hostHeader = req.headers.host;
   if (!hostHeader) return false;
-  return hostHeader === `127.0.0.1:${expectedPort}`;
+  return hostHeader === expectedHostPort;
 }
 
 // 신규 terminal 라우트의 출처 경계. 브라우저 요청은 console origin과 일치해야 하고,
 // Origin 헤더가 없는 비브라우저(CLI/도구) 호출은 허용한다(기존 register 채널과의 호환).
-function isAllowedTerminalOrigin(req: http.IncomingMessage, expectedPort: number): boolean {
+function isAllowedTerminalOrigin(req: http.IncomingMessage, expectedOrigin: string): boolean {
   const origin = req.headers.origin;
   if (origin === undefined) return true;
-  return origin === `http://127.0.0.1:${expectedPort}`;
+  return origin === expectedOrigin;
 }
 
 async function readPluginStorageJson(dataDir: string, pluginId: string, key: string): Promise<unknown> {

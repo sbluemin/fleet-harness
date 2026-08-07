@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createAccessRegistry, formatSessionCookie, readSessionCookie, SESSION_COOKIE_NAME } from "../core/host/auth.js";
+import { createAccessRegistry, createLoopbackListenerIdentity, formatSessionCookie, readSessionCookie, resolveListenerIdentity, SESSION_COOKIE_NAME } from "../core/host/auth.js";
 
 function createClock(start = 1_000): { now: () => number; advance: (ms: number) => void } {
   let current = start;
@@ -107,5 +107,31 @@ describe("session cookie", () => {
 
     expect(formatSessionCookie(session, { secure: false })).toBe(`${SESSION_COOKIE_NAME}=abc; HttpOnly; SameSite=Strict; Path=/`);
     expect(formatSessionCookie(session, { secure: true })).toContain("; Secure");
+  });
+});
+
+describe("listener identity", () => {
+  const loopback = createLoopbackListenerIdentity(4310);
+  const remote = { audience: "remote" as const, host: "100.84.12.7", port: 6768, origin: "https://100.84.12.7:6768", secure: true, bindAddress: "100.84.12.7" };
+
+  it("describes the loopback listener as plain http with a local audience", () => {
+    expect(loopback).toMatchObject({ audience: "local", host: "127.0.0.1", origin: "http://127.0.0.1:4310", secure: false });
+  });
+
+  it("matches a request to the listener that accepted its socket", () => {
+    expect(resolveListenerIdentity([loopback, remote], { localAddress: "127.0.0.1", localPort: 4310 })).toBe(loopback);
+    expect(resolveListenerIdentity([loopback, remote], { localAddress: "100.84.12.7", localPort: 6768 })).toBe(remote);
+  });
+
+  it("treats ipv4-mapped and ipv6 loopback as the loopback listener", () => {
+    expect(resolveListenerIdentity([loopback], { localAddress: "::ffff:127.0.0.1", localPort: 4310 })).toBe(loopback);
+    expect(resolveListenerIdentity([loopback], { localAddress: "::1", localPort: 4310 })).toBe(loopback);
+  });
+
+  it("refuses a socket that belongs to no registered listener", () => {
+    // 등록되지 않은 리스너에서 온 요청은 어떤 게이트도 통과시키지 않는다.
+    expect(resolveListenerIdentity([loopback], { localAddress: "192.168.1.9", localPort: 4310 })).toBeNull();
+    expect(resolveListenerIdentity([loopback], { localAddress: "127.0.0.1", localPort: 9999 })).toBeNull();
+    expect(resolveListenerIdentity([], { localAddress: "127.0.0.1", localPort: 4310 })).toBeNull();
   });
 });
