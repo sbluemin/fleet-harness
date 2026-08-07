@@ -57,6 +57,17 @@ describe("background report", () => {
     expect(resolveBackgroundPendingFromHookInput(shellOnly)).toBe(false);
   });
 
+  it("never reads an unrecognized task entry as proof that no work remains", () => {
+    // 어휘가 드리프트해 항목 모양을 알아볼 수 없게 되면, 그것을 "남은 작업 없음"으로 접는 순간 거짓 유휴다.
+    for (const entry of [null, "running", 7, ["wf-1"]]) {
+      expect(resolveBackgroundPendingFromHookInput(hookInput({ background_tasks: [entry] }))).toBeUndefined();
+    }
+    // 남아 있음이 확인된 항목이 하나라도 있으면 답은 이미 정해진다 — 옆에 못 읽은 항목이 있어도 true를 잃지 않는다.
+    expect(resolveBackgroundPendingFromHookInput(hookInput({ background_tasks: [WORKFLOW_TASK, null] }))).toBe(true);
+    // 셸만 남은 목록은 알아본 결과가 "에이전트 작업 없음"이므로 그대로 해제한다.
+    expect(resolveBackgroundPendingFromHookInput(hookInput({ background_tasks: [{ id: "s", type: "shell" }] }))).toBe(false);
+  });
+
   it("stays opinionless when the live task list cannot be read", () => {
     expect(resolveBackgroundPendingFromHookInput(undefined)).toBeUndefined();
     expect(resolveBackgroundPendingFromHookInput("")).toBeUndefined();

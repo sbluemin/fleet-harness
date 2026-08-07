@@ -20,8 +20,10 @@ interface BackgroundHookPayload {
 
 /**
  * hook payload(JSON 문자열)에서 이 세션에 백그라운드 에이전트 작업이 남아 있는지 판정한다.
- * background_tasks를 읽어낼 수 없으면 undefined(무의견)를 돌려 상태를 바꾸지 않게 한다 — 어휘가 드리프트해도
- * 거짓 유휴로 무너지는 대신 기존 상태와 TTL로 퇴보한다.
+ * 목록이나 그 안의 항목을 읽어낼 수 없으면 undefined(무의견)를 돌려 상태를 바꾸지 않게 한다 — 어휘가
+ * 드리프트해도 거짓 유휴로 무너지는 대신 기존 상태와 TTL로 퇴보한다. 읽어내지 못한 항목은 "남은 작업이 없다"의
+ * 근거가 될 수 없다. 다만 남아 있음이 확인된 항목이 하나라도 있으면 그것으로 이미 답이 정해지므로,
+ * 같은 목록에 읽지 못한 항목이 섞여 있어도 true를 잃지 않는다.
  */
 export function resolveBackgroundPendingFromHookInput(input: unknown): boolean | undefined {
   if (typeof input !== "string" || input.length === 0) return undefined;
@@ -35,11 +37,20 @@ export function resolveBackgroundPendingFromHookInput(input: unknown): boolean |
   const tasks = payload.background_tasks;
   if (!Array.isArray(tasks)) return undefined;
   const selfAgentId = typeof payload.agent_id === "string" ? payload.agent_id : undefined;
-  return tasks.some((task) => isPendingAgentTask(task, selfAgentId));
+  let unreadable = false;
+  for (const task of tasks) {
+    const pending = classifyBackgroundTask(task, selfAgentId);
+    if (pending === true) return true;
+    if (pending === undefined) unreadable = true;
+  }
+  return unreadable ? undefined : false;
 }
 
-function isPendingAgentTask(task: unknown, selfAgentId: string | undefined): boolean {
-  if (typeof task !== "object" || task === null) return false;
+// 항목 하나의 판정. 작업 레코드로 보이지 않는 값(비-객체·null·배열)은 undefined(무의견)다.
+// 반면 레코드이되 type만 없는 항목은 알아볼 수 없는 것이 아니라 denylist에 걸리지 않은 에이전트 작업으로 본다 —
+// 새로 생기는 에이전트성 백그라운드 타입이 조용히 무시되지 않아야 하고, 그 방향이 거짓 유휴를 만들지 않는다.
+function classifyBackgroundTask(task: unknown, selfAgentId: string | undefined): boolean | undefined {
+  if (typeof task !== "object" || task === null || Array.isArray(task)) return undefined;
   const entry = task as { readonly id?: unknown; readonly type?: unknown };
   if (selfAgentId !== undefined && entry.id === selfAgentId) return false;
   return !(typeof entry.type === "string" && NON_AGENT_BACKGROUND_TASK_TYPES.has(entry.type));
