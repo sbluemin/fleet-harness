@@ -208,17 +208,34 @@ describe("resolveTriagePreviewFit", () => {
     expect(explicitZero).toEqual(fit);
   });
 
-  it("never opens a blank strip at the top", () => {
-    for (const viewport of [{ width: 200, height: 120 }, { width: 640, height: 400 }, { width: 300, height: 40 }]) {
+  it("never crops horizontally, whatever the aspect ratio", () => {
+    // 왼쪽 정렬 텍스트는 줄의 시작을 잃으면 읽히지 않는다 — 폭은 어떤 종횡비에서도 온전해야 한다.
+    for (const viewport of [{ width: 200, height: 120 }, { width: 640, height: 400 }, { width: 300, height: 40 }, { width: 200, height: 200 }, { width: 473, height: 209 }]) {
       const fit = resolveTriagePreviewFit(viewport, { width: 800, height: 600 }, AGENT_CHROME)!;
-      expect(fit.top).toBeLessThanOrEqual(0);
-      expect(fit.left).toBeLessThanOrEqual(0);
+      expect(fit.left).toBe(0);
+      expect(800 * fit.scale).toBeCloseTo(viewport.width, 5);
     }
   });
 
-  it("keeps the horizontal crop centered", () => {
+  it("trades the old horizontal crop for a top strip when the viewport is narrower in aspect than the output area", () => {
+    // 종전 cover-fit이 좌우를 잘라내던 바로 그 조건(viewport 비율 1.00 < 출력 영역 비율 800/496 ≈ 1.61)이다.
     const fit = resolveTriagePreviewFit({ width: 200, height: 200 }, { width: 800, height: 600 }, AGENT_CHROME)!;
-    expect(fit.left).toBeCloseTo((200 - 800 * fit.scale) / 2, 5);
+    expect(fit.scale).toBeCloseTo(0.25, 5);
+    expect(fit.top).toBeCloseTo(200 - (600 - AGENT_CHROME) * 0.25, 5);
+    expect(fit.top).toBeGreaterThan(0);
+  });
+
+  it("still crops the oldest rows when the output area is taller than the frame", () => {
+    const fit = resolveTriagePreviewFit({ width: 400, height: 100 }, { width: 800, height: 600 }, AGENT_CHROME)!;
+    expect(fit.top).toBeLessThan(0);
+    expect(fit.top + (600 - AGENT_CHROME) * fit.scale).toBeCloseTo(100, 5);
+  });
+
+  it("treats a negative or non-finite chrome declaration as zero", () => {
+    const baseline = resolveTriagePreviewFit({ width: 200, height: 120 }, { width: 800, height: 600 }, 0)!;
+    expect(resolveTriagePreviewFit({ width: 200, height: 120 }, { width: 800, height: 600 }, -40)).toEqual(baseline);
+    expect(resolveTriagePreviewFit({ width: 200, height: 120 }, { width: 800, height: 600 }, Number.NaN)).toEqual(baseline);
+    expect(resolveTriagePreviewFit({ width: 200, height: 120 }, { width: 800, height: 600 }, Number.POSITIVE_INFINITY)).toEqual(baseline);
   });
 
   it("caps the chrome band on a minimum-size panel so the output area keeps the frame", () => {
@@ -284,23 +301,26 @@ describe("resolveTriagePreviewFit — actual-size floor", () => {
     expect(fit.scale).toBeCloseTo(1, 10);
   });
 
-  it("keeps the unmagnified card on cover-fit", () => {
+  it("leaves the unmagnified card on the plain width fit", () => {
     const floored = resolveTriagePreviewFit({ width: 282, height: 123 }, SOURCE, 0, 0)!;
     const plain = resolveTriagePreviewFit({ width: 282, height: 123 }, SOURCE, 0)!;
     expect(floored).toEqual(plain);
     expect(plain.scale).toBeCloseTo(282 / 640, 10);
   });
 
-  it("lets cover-fit win over the floor rather than opening a letterbox", () => {
-    // 큰 카드·작은 패널에서는 cover-fit이 이미 실물을 넘는다 — 하한을 위해 줄이면 프레임에
-    // 빈 띠가 생기므로 cover가 이긴다.
+  it("keeps the frame width even where a taller fit would have magnified further", () => {
+    // 종전에는 여기서 세로 비율(1.68)이 이겨 레터박스를 피했다. 왼쪽 정렬 텍스트에서는 줄의
+    // 시작을 잃는 쪽이 더 비싸므로 이제 폭(1.51875)이 이기고, 남는 세로는 상단 여백이 된다.
+    // 실물 크기 하한은 그대로 살아 있다 — 다만 이 뷰포트에서는 폭이 이미 하한을 넘는다.
     const fit = resolveTriagePreviewFit(
       { width: 486, height: 336 },
       { width: 320, height: 200 },
       0,
       resolveTriagePreviewMinScale(TRIAGE_DECK_QUICKLOOK_SCALE),
     )!;
-    expect(fit.scale).toBeCloseTo(Math.max(486 / 320, 336 / 200), 10);
+    expect(fit.scale).toBeCloseTo(486 / 320, 10);
+    expect(fit.left).toBe(0);
+    expect(fit.top).toBeGreaterThan(0);
   });
 
   it("keeps the crop anchors under the floor", () => {
