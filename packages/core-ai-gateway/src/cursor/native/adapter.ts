@@ -1534,36 +1534,38 @@ export class CursorAdapter implements AiGatewayAdapter {
         closeCursorTransport(stream, session, true);
         throw failure;
       }
+      // `dispose()` can land between the head resolving and this continuation running;
+      // registering a live Run then would restart work the adapter already declared finished.
+      if (this.disposed) {
+        const failure = new Error("Cursor adapter is disposed");
+        report("turn.finish", {
+          model,
+          outcome: "adapter_dispose",
+          frameCount: 0,
+          lastFrame: "none",
+        });
+        closeCursorTransport(stream, session, true);
+        throw failure;
+      }
+      report("transport.response", { model, status: head.status });
+      if (head.status < 200 || head.status >= 300) {
+        // Forward Cursor's own rejection with its own status. Decoding this body as Connect
+        // frames is what turned an expired credential into a successful empty assistant turn.
+        // 이 읽기도 소유 구간 안이다. 거절 경로는 live Run을 만들지 않으므로, 여기서 놓으면
+        // 본문이 늦는 동안 전송이 dispose에도 취소에도 걸리지 않는다.
+        const body = await readCursorErrorBody(stream, options.signal);
+        report("turn.finish", {
+          model,
+          outcome: "upstream_status",
+          status: head.status,
+          frameCount: 0,
+          lastFrame: "none",
+        });
+        closeCursorTransport(stream, session, false);
+        return { ok: false, status: head.status, headers: head.headers, body };
+      }
     } finally {
       this.openingTransports.delete(opening);
-    }
-    // `dispose()` can land between the head resolving and this continuation running; registering
-    // a live Run then would restart provider work the adapter already declared finished.
-    if (this.disposed) {
-      const failure = new Error("Cursor adapter is disposed");
-      report("turn.finish", {
-        model,
-        outcome: "adapter_dispose",
-        frameCount: 0,
-        lastFrame: "none",
-      });
-      closeCursorTransport(stream, session, true);
-      throw failure;
-    }
-    report("transport.response", { model, status: head.status });
-    if (head.status < 200 || head.status >= 300) {
-      // Forward Cursor's own rejection with its own status. Decoding this body as Connect
-      // frames is what turned an expired credential into a successful empty assistant turn.
-      const body = await readCursorErrorBody(stream);
-      report("turn.finish", {
-        model,
-        outcome: "upstream_status",
-        status: head.status,
-        frameCount: 0,
-        lastFrame: "none",
-      });
-      closeCursorTransport(stream, session, false);
-      return { ok: false, status: head.status, headers: head.headers, body };
     }
 
     let heartbeatCount = 0;
@@ -1713,8 +1715,14 @@ function cursorResponseHeaders(headers: http2.IncomingHttpHeaders): Headers {
   return result;
 }
 
-/** Read a rejected Run's own error body, bounded in both bytes and time. */
-function readCursorErrorBody(stream: http2.ClientHttp2Stream): Promise<Uint8Array> {
+/**
+ * Read a rejected Run's own error body, bounded in bytes, in time, and by the caller's abort.
+ * A disconnected caller has no use for the remainder, and the status is already known.
+ */
+function readCursorErrorBody(
+  stream: http2.ClientHttp2Stream,
+  signal: AbortSignal | undefined,
+): Promise<Uint8Array> {
   return new Promise<Uint8Array>((resolve) => {
     const chunks: Buffer[] = [];
     let total = 0;
@@ -1727,6 +1735,7 @@ function readCursorErrorBody(stream: http2.ClientHttp2Stream): Promise<Uint8Arra
       stream.off("end", finish);
       stream.off("close", finish);
       stream.off("error", finish);
+      signal?.removeEventListener("abort", finish);
       resolve(Buffer.concat(chunks));
     };
     const onData = (chunk: Uint8Array): void => {
@@ -1743,6 +1752,9 @@ function readCursorErrorBody(stream: http2.ClientHttp2Stream): Promise<Uint8Arra
     stream.on("end", finish);
     stream.on("close", finish);
     stream.on("error", finish);
+    // After `timer` exists: an already-aborted signal settles synchronously from here.
+    if (signal?.aborted) finish();
+    else signal?.addEventListener("abort", finish, { once: true });
   });
 }
 

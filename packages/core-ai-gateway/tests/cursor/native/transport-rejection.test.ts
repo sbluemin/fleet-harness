@@ -129,6 +129,45 @@ describe("Cursor upstream rejection", () => {
     expect(harness.sessionClosed).toBeGreaterThan(0);
   });
 
+  it("keeps a stalled rejection body reachable by adapter disposal", async () => {
+    // The rejection path never creates a live Run, so ownership has to survive the body read;
+    // otherwise a shutdown during it waits out the body timeout with nobody holding the stream.
+    const harness = cursorTransportHarness({
+      head: { ":status": 429, "content-type": "application/json" },
+      chunks: [],
+      stall: true,
+    });
+    const pending = harness.run();
+    await waitFor(() => harness.stream.headDelivered);
+    const startedAt = Date.now();
+    harness.adapter.dispose();
+
+    const response = await pending;
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    expect(response.ok).toBe(false);
+    if (response.ok) throw new Error("unreachable");
+    expect(response.status).toBe(429);
+  });
+
+  it("stops reading a stalled rejection body once the caller aborts", async () => {
+    const harness = cursorTransportHarness({
+      head: { ":status": 503, "content-type": "text/plain" },
+      chunks: [Buffer.from("upstream is busy", "utf8")],
+      stall: true,
+    });
+    const controller = new AbortController();
+    const pending = harness.run(controller.signal);
+    await waitFor(() => harness.stream.headDelivered);
+    const startedAt = Date.now();
+    controller.abort(new Error("client disconnected"));
+
+    const response = await pending;
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    expect(response.ok).toBe(false);
+    if (response.ok) throw new Error("unreachable");
+    expect(response.status).toBe(503);
+  });
+
   it("surfaces a compressed Connect frame instead of decoding it", async () => {
     const response = await runCursorTransport({
       chunks: [encodeConnectFrame(Buffer.from("compressed"), CONNECT_FLAG_COMPRESSED)],
@@ -202,6 +241,8 @@ interface CursorTransportScript {
   readonly chunks: readonly Buffer[];
   /** Emit nothing at all after the request write, modelling an upstream that never answers. */
   readonly quiet?: boolean;
+  /** Deliver the head and any chunks but never end the body, modelling a stalled rejection. */
+  readonly stall?: boolean;
   readonly diagnostics?: (event: CursorDiagnosticEvent) => void;
 }
 
@@ -290,6 +331,7 @@ function request(): CanonicalResponseRequest {
 class ScriptedCursorStream extends EventEmitter {
   readonly writes: Buffer[] = [];
   closeCode: number | undefined;
+  headDelivered = false;
   private started = false;
 
   constructor(private readonly script: CursorTransportScript) {
@@ -306,11 +348,12 @@ class ScriptedCursorStream extends EventEmitter {
     this.started = true;
     queueMicrotask(() => {
       if (this.script.head) this.emit("response", this.script.head);
+      this.headDelivered = true;
       // A macrotask, so the adapter's response-head continuation has installed its data
       // listener first — an EventEmitter drops what it emits with no listener attached.
       setImmediate(() => {
         for (const body of this.script.chunks) this.emit("data", body);
-        this.emit("end");
+        if (this.script.stall !== true) this.emit("end");
       });
     });
     return true;
