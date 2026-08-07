@@ -74,7 +74,7 @@ Fleet launches the actual CLI binary in its declared product surface and speaks 
 | **Claude (Native)** | Plain Claude Code — Console hooks and Wiki skills are all that get added |
 | **Claude (Gateway)** | Claude Code driving the models you enabled in Settings |
 
-The gateway is a local Claude Code endpoint, not an API proxy: your subscription CLIs stay the transport, and each provider's credential never enters the Claude Code process.
+The gateway is a local Claude Code endpoint, not an API proxy: the Console makes the upstream request itself, and no provider credential ever enters the Claude Code process. Codex and Cursor ride the subscription you already have; Kimi and OpenCode Go take an API key you register in Settings.
 
 | Provider | Models reachable through the gateway |
 |---|---|

@@ -33,7 +33,7 @@ const UI = {
   metaKinds: { ko: "Launch kinds", en: "Launch kinds" },
   metaKindsVal: { ko: "Native / Gateway", en: "Native / Gateway" },
   metaProviders: { ko: "Gateway providers", en: "Gateway providers" },
-  metaProvidersVal: { ko: "구독 CLI 그대로", en: "Your own subscription CLIs" },
+  metaProvidersVal: { ko: "구독과 API 키", en: "Subscriptions and API keys" },
   metaOrders: { ko: "Standing Orders", en: "Standing Orders" },
   metaOrdersVal: { ko: "상시 작동", en: "Always on" },
 
@@ -47,7 +47,7 @@ const UI = {
 
   providersEy:    { ko: "AI Gateway · 04", en: "AI Gateway · 04" },
   providersTitle: { ko: ["네 곳의 공급자,", "당신의 구독 그대로."], en: ["Four providers,", "your own subscriptions."] },
-  providersLede:  { ko: "게이트웨이는 API 프록시가 아니라 로컬 Claude Code 엔드포인트다. 전송은 사용자의 구독 CLI가 담당하고, 각 공급자의 자격 증명은 Claude Code 프로세스에 들어가지 않는다. 좌측에서 공급자를 고르면 게이트웨이로 닿는 모델이 펼쳐진다.", en: "The gateway is a local Claude Code endpoint, not an API proxy: your subscription CLIs stay the transport, and each provider's credential never enters the Claude Code process. Pick a provider to see the models it reaches." },
+  providersLede:  { ko: "게이트웨이는 API 프록시가 아니라 로컬 Claude Code 엔드포인트다. 상류 요청은 Console이 직접 보내고, 어떤 공급자의 자격 증명도 Claude Code 프로세스에 들어가지 않는다. Codex와 Cursor는 이미 쓰던 구독을 타고, Kimi와 OpenCode Go는 설정에 등록한 API 키를 쓴다. 좌측에서 공급자를 고르면 게이트웨이로 닿는 모델이 펼쳐진다.", en: "The gateway is a local Claude Code endpoint, not an API proxy: the Console makes the upstream request itself, and no provider credential ever enters the Claude Code process. Codex and Cursor ride the subscription you already have; Kimi and OpenCode Go take an API key you register in Settings. Pick a provider to see the models it reaches." },
   providersAria:  { ko: "게이트웨이 공급자", en: "Gateway providers" },
   providerCap:    { ko: "Provider", en: "Provider" },
   reachableModels: { ko: "Models", en: "Models" },
@@ -111,7 +111,7 @@ const PROVIDERS = [
   {
     id: "Codex",
     role: { ko: "OpenAI · ChatGPT 구독", en: "OpenAI · ChatGPT subscription" },
-    cli: "codex",
+    cli: "subscription",
     color: "#5fd673",
     mission: {
       ko: "GPT-5.6 계열을 Claude Code 표면으로 들여온다. 추론 강도 사다리가 가장 깊은 경로다 — Sol과 Terra는 low부터 ultra까지, Luna는 max까지 노출하므로 같은 모델을 가벼운 작업과 어려운 판단에 다른 강도로 쓸 수 있다.",
@@ -126,7 +126,7 @@ const PROVIDERS = [
   {
     id: "Cursor",
     role: { ko: "Cursor 구독", en: "Cursor subscription" },
-    cli: "cursor-agent",
+    cli: "subscription",
     color: "#d4af37",
     mission: {
       ko: "한 구독으로 여러 벤더의 모델에 닿는 가장 넓은 경로. Composer부터 Grok·GPT·Claude·Kimi까지 같은 게이트웨이 뒤에 선다.",
@@ -142,8 +142,8 @@ const PROVIDERS = [
   },
   {
     id: "Moonshot",
-    role: { ko: "Moonshot AI · Kimi 구독", en: "Moonshot AI · Kimi subscription" },
-    cli: "kimi",
+    role: { ko: "Moonshot AI · Kimi API 키", en: "Moonshot AI · Kimi API key" },
+    cli: "API key",
     color: "#ff6b6b",
     mission: {
       ko: "긴 컨텍스트가 필요한 작업을 위한 경로. K3는 백만 토큰 창을 들고 오므로, 큰 하위 시스템을 한 세션 안에서 통째로 읽힐 수 있다.",
@@ -156,8 +156,8 @@ const PROVIDERS = [
   },
   {
     id: "OpenCode",
-    role: { ko: "OpenCode Zen 구독", en: "OpenCode Zen subscription" },
-    cli: "opencode",
+    role: { ko: "OpenCode Go API 키", en: "OpenCode Go API key" },
+    cli: "API key",
     color: "#fb7185",
     mission: {
       ko: "오픈 웨이트 모델을 가장 많이 모아 둔 경로. 기계적인 대량 작업을 값싼 신원에 흩뿌릴 때 쓰는 폭이 여기서 나온다.",
