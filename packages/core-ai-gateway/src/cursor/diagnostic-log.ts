@@ -23,6 +23,7 @@ const CURSOR_DIAGNOSTIC_EVENTS = new Set<CursorDiagnosticEventName>([
   "model.switch",
   "transport.dial",
   "transport.connected",
+  "transport.response",
   "transport.timeout",
   "transport.semantic_timeout",
   "transport.abort",
@@ -138,6 +139,7 @@ function serializeCursorDiagnosticEvent(event: CursorDiagnosticEvent): string | 
     record.requestedEffort = event.requestedEffort;
   }
   if (event.turn === "prompt" || event.turn === "tool-continuation") record.turn = event.turn;
+  addNumber(record, "status", event.status);
   addString(record, "frame", event.frame, 128);
   addString(record, "reply", event.reply, 128);
   addNumber(record, "sequence", event.sequence);

@@ -857,14 +857,13 @@ async function runSyntheticCursorTurn(
 }> {
   const stream = new FakeCursorStream(frames, options.releaseOnHeartbeat ?? false);
   let requestHeaders: http2.OutgoingHttpHeaders | undefined;
-  const session = {
+  const session = Object.assign(new EventEmitter(), {
     request: (headers: http2.OutgoingHttpHeaders) => {
       requestHeaders = headers;
       return stream;
     },
-    on: () => session,
     close: () => undefined,
-  };
+  });
   const adapter = new CursorAdapter({
     connect: (() => session as unknown as http2.ClientHttp2Session) as typeof http2.connect,
     idleTimeoutMs: options.idleTimeoutMs ?? 1_000,
@@ -1087,6 +1086,7 @@ class FakeCursorStream extends EventEmitter {
   readonly writes: Buffer[] = [];
   closeCode: number | undefined;
   private sent = false;
+  private responded = false;
 
   constructor(
     private readonly frames: readonly SyntheticCursorFrame[],
@@ -1101,12 +1101,22 @@ class FakeCursorStream extends EventEmitter {
 
   write(chunk: Uint8Array): boolean {
     this.writes.push(Buffer.from(chunk));
+    // Cursor answers with response headers before any frame; the adapter gates decoding on them.
+    if (!this.responded) {
+      this.responded = true;
+      queueMicrotask(() => this.emit("response", {
+        ":status": 200,
+        "content-type": "application/connect+proto",
+      }));
+    }
     const message = this.releaseOnHeartbeat
       ? decodeCursorClientFrame(Buffer.from(chunk)) as Record<string, unknown>
       : undefined;
     if (!this.sent && (!this.releaseOnHeartbeat || message?.clientHeartbeat !== undefined)) {
       this.sent = true;
-      queueMicrotask(() => this.emit(
+      // A macrotask, so the adapter's response-head continuation has installed its data
+      // listener first — an EventEmitter drops what it emits with no listener attached.
+      setImmediate(() => this.emit(
         "data",
         Buffer.concat(this.frames.map(encodeSyntheticCursorServerFrame)),
       ));
