@@ -243,7 +243,10 @@
   gap: var(--space-2);
 }
 
+/* 행은 호스트 전용 말풍선의 기준 상자이기도 하다 — 기준을 버튼으로 두면 말풍선 폭이 버튼
+   폭에서 자라 카드 밖으로 넘는다(공급자 헤드가 우선 소진 말풍선에 대해 택한 규율과 같다). */
 .ai-gateway-model-row {
+  position: relative;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -454,6 +457,76 @@
 .ai-gateway-default-star:hover:not(:disabled),
 .ai-gateway-default-star.is-on {
   color: var(--brass);
+}
+
+/* 호스트 전용 예약 토글. 켜짐은 brass 워시로만 말한다 — 이 축은 상태가 아니라 사용자가
+   고른 위치(어느 표면에 내보낼지)이고, 등급 배지처럼 신호색을 빌리지 않는다. */
+.ai-gateway-host-only {
+  flex: none;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring);
+}
+
+.ai-gateway-host-only:hover:not(:disabled) {
+  border-color: var(--surface-rim-strong);
+  color: var(--text-primary);
+}
+
+.ai-gateway-host-only.is-on {
+  border-color: color-mix(in oklch, var(--brass) 40%, transparent);
+  background: color-mix(in oklch, var(--brass) 16%, transparent);
+  color: var(--brass-ink);
+}
+
+.ai-gateway-host-only:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* 라벨 두 단어로는 "와이어에는 남고 로스터에서만 빠진다"를 읽을 수 없으므로, 한 줄 요약
+   말풍선이 hover·키보드 포커스에서 그 설명을 진다 — 우선 소진 토글이 세운 문법 그대로다.
+   네이티브 title은 쓰지 않는다: 브라우저가 그려서 지연이 길고 토큰을 안 따르며 스크린샷에
+   잡히지 않아 떴는지 확인할 방법이 없다. 행이 기준 상자라 폭 상한이 행 폭이 된다. */
+.ai-gateway-host-only-tip {
+  position: absolute;
+  z-index: 1;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  visibility: hidden;
+  /* absolute 요소의 기본 폭은 기준 상자에 맞춰 줄어든다 — max-width만 걸면 한 줄 요약이
+     세로로 접힌다. max-content가 폭의 기준이고 상한은 행 폭이 진다. */
+  width: max-content;
+  max-width: 100%;
+  padding: 3px var(--space-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xs);
+  background: var(--ink-veil);
+  color: var(--text-primary);
+  font-size: 10px;
+  letter-spacing: 0;
+  line-height: 1.4;
+  text-align: left;
+  text-transform: none;
+  white-space: normal;
+  pointer-events: none;
+}
+
+.ai-gateway-host-only:hover + .ai-gateway-host-only-tip,
+.ai-gateway-host-only:focus-visible + .ai-gateway-host-only-tip {
+  visibility: visible;
 }
 
 .ai-gateway-remove {

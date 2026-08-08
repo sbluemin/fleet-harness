@@ -41,6 +41,31 @@ describe("ai-gateway settings", () => {
     })).toEqual({ version: 1 });
   });
 
+  it("normalizes host-only flags to the true-only stored form", () => {
+    expect(normalizeAiGatewaySettings({
+      version: 1,
+      models: [
+        { id: "kimi--k3", hostOnly: true },
+        { id: "cursor--auto", hostOnly: false },
+        { id: "codex--gpt-5.6-sol-fast", hostOnly: "yes" },
+      ],
+    })).toEqual({
+      version: 1,
+      models: [
+        { id: "kimi--k3", hostOnly: true },
+        { id: "cursor--auto" },
+        { id: "codex--gpt-5.6-sol-fast" },
+      ],
+    });
+    expect(normalizeAiGatewaySettings({
+      version: 1,
+      models: [{ id: "kimi--k3", efforts: ["max"], hostOnly: true }],
+    })).toEqual({
+      version: 1,
+      models: [{ id: "kimi--k3", efforts: ["max"], hostOnly: true }],
+    });
+  });
+
   it("drops a stored effort the catalog no longer offers instead of echoing it back", () => {
     // 이 정규형이 설정 GET의 값이고 클라이언트는 무관한 편집에도 그대로 되돌려 보낸다.
     // 사다리 밖 단계를 남기면 검증기가 그 payload를 거부해, 카탈로그가 단계를 하나 빼는
@@ -109,11 +134,11 @@ describe("ai-gateway settings", () => {
     expect(selection.defaultModel).toBeUndefined();
   });
 
-  it("exposes enabled models in GATEWAY_PROVIDERS order, not Add-click order", () => {
+  it("keeps host-only models on the wire while provider-sorting the delegation subset", () => {
     const selection = resolveAiGatewaySelection({
       version: 1,
       models: [
-        { id: "cursor--grok-4.5-fast" },
+        { id: "cursor--grok-4.5-fast", hostOnly: true },
         { id: "codex--gpt-5.6-sol-fast" },
         { id: "kimi--k3" },
         { id: "codex--gpt-5.6-luna-fast" },
@@ -124,6 +149,11 @@ describe("ai-gateway settings", () => {
       "codex--gpt-5.6-sol-fast",
       "codex--gpt-5.6-luna-fast",
       "cursor--grok-4.5-fast",
+      "kimi--k3",
+    ]);
+    expect(selection.delegationModels.map((model) => model.id)).toEqual([
+      "codex--gpt-5.6-sol-fast",
+      "codex--gpt-5.6-luna-fast",
       "kimi--k3",
     ]);
     expect(selection.defaultModel?.id).toBe("cursor--grok-4.5-fast");
@@ -142,6 +172,19 @@ describe("ai-gateway settings", () => {
     expect(projected.get("cursor--auto")?.capabilityClass).toBeNull();
     expect(new Set([...projected.values()].map((model) => model.capabilityClass)))
       .toEqual(new Set(["flagship", "standard", "light", null]));
+  });
+
+  it("parses host-only flags and rejects malformed or unknown per-model keys", () => {
+    expect(parseAiGatewayUpdate({ models: [{ id: "kimi--k3", hostOnly: true }] })).toEqual({
+      ok: true,
+      value: { models: [{ id: "kimi--k3", hostOnly: true }] },
+    });
+    expect(parseAiGatewayUpdate({ models: [{ id: "kimi--k3", hostOnly: false }] })).toEqual({
+      ok: true,
+      value: { models: [{ id: "kimi--k3" }] },
+    });
+    expect(parseAiGatewayUpdate({ models: [{ id: "kimi--k3", hostOnly: "yes" }] })).toEqual({ ok: false });
+    expect(parseAiGatewayUpdate({ models: [{ id: "kimi--k3", unknown: true }] })).toEqual({ ok: false });
   });
 
   it("accepts providerPriority updates including an explicit clear", () => {

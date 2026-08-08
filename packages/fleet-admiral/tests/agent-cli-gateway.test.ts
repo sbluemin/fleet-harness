@@ -10,6 +10,7 @@ import {
   GATEWAY_DISABLED_CLAUDE_SKILLS,
   GENERAL_PURPOSE_AGENT_PROMPT,
   buildDisabledSkillOverrides,
+  buildGatewayAgentFiles,
   buildGatewayCustomAgents,
   injectAgentCliProfile,
   resolveAgentCliProfile,
@@ -95,6 +96,19 @@ describe("claude-gateway custom agents", () => {
     expect(toGatewayAgentName(agents[withEffort!]!.model, "high")).toBe(withEffort);
   });
 
+  it("builds identities only for the models the caller provides", () => {
+    const included = requireGatewayModel("cursor--claude-opus-5");
+    const omittedModelId = "claude-gateway--opencode--deepseek-v4-flash";
+
+    const agents = buildGatewayCustomAgents([included]);
+    expect(Object.keys(agents).length).toBeGreaterThan(0);
+    expect(Object.values(agents).map((agent) => agent.model)).not.toContain(omittedModelId);
+
+    const files = buildGatewayAgentFiles([included]);
+    expect(files.length).toBeGreaterThan(0);
+    expect(files.every((file) => !file.content.includes(omittedModelId))).toBe(true);
+  });
+
   it("carries each model's own capability class, light tiers included", () => {
     const flash = requireGatewayModel("opencode--deepseek-v4-flash");
     const agents = buildGatewayCustomAgents([flash]);
@@ -147,10 +161,10 @@ describe("claude-gateway custom agents", () => {
     });
 
     const injectedGateway = await injectAgentCliProfile(gateway, baseInjectOptions(root, {
-      gatewayExposedModels: [model],
+      gatewayDelegationModels: [model],
     }));
     const injectedNative = await injectAgentCliProfile(native, baseInjectOptions(root, {
-      gatewayExposedModels: [model],
+      gatewayDelegationModels: [model],
     }));
 
     // 게이트웨이 정의는 내장 Agent를 대체하지 않고 그 옆에 놓인다. 내장을 끄면
@@ -290,7 +304,7 @@ function baseProfile(
 function baseInjectOptions(
   root: string,
   overrides: {
-    readonly gatewayExposedModels?: Parameters<typeof injectAgentCliProfile>[1]["gatewayExposedModels"];
+    readonly gatewayDelegationModels?: Parameters<typeof injectAgentCliProfile>[1]["gatewayDelegationModels"];
     readonly captureSessionHookExec?: FleetHookExec;
   } = {},
 ): Parameters<typeof injectAgentCliProfile>[1] {
@@ -307,7 +321,7 @@ function baseInjectOptions(
       releaseSessionToken() {},
     },
     ...(overrides.captureSessionHookExec ? { captureSessionHookExec: overrides.captureSessionHookExec } : {}),
-    ...(overrides.gatewayExposedModels ? { gatewayExposedModels: overrides.gatewayExposedModels } : {}),
+    ...(overrides.gatewayDelegationModels ? { gatewayDelegationModels: overrides.gatewayDelegationModels } : {}),
     withMarketplaceLock: async (_target, fn) => fn(),
   };
 }

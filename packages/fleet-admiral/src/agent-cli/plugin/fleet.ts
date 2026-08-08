@@ -40,7 +40,7 @@ export function renderAssetPluginRoot(
 }
 
 function renderGatewayAgentAssets(pluginRoot: string, options: CreateAgentCliPluginOptions): void {
-  for (const file of buildGatewayAgentFiles(options.gatewayExposedModels ?? [], options.gatewayEffortExposure)) {
+  for (const file of buildGatewayAgentFiles(options.gatewayDelegationModels ?? [], options.gatewayEffortExposure)) {
     writePrivateFile(path.join(pluginRoot, "agents", file.fileName), file.content, pluginRoot);
   }
 }

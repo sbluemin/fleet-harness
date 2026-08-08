@@ -23,6 +23,12 @@ import type {
 export interface AiGatewayStoredModel {
   readonly id: string;
   readonly efforts?: readonly string[];
+  /**
+   * true면 모델은 와이어(`/v1/models`, `/v1/messages` 노출 게이트, 실행 선택기)에 남지만
+   * 위임 정체성을 등록하지 않고 `gateway_models` 로스터에서도 제외한다. 부재는 위임 가능이며,
+   * 저장 정규형은 true만 보존한다.
+   */
+  readonly hostOnly?: boolean;
 }
 
 /** AI Gateway 설정 파일에 저장되는 형태. models 부재/공백 = 미구성(노출 없음). */
@@ -80,7 +86,11 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
         // 빈 배열도 저장하지 않는다 — "정체성 0개"는 노출해 놓고 쓸 수 없는 모델이 된다.
         // 부재와 같은 뜻(사다리 전체)으로 접는다.
         const exposed = efforts.length > 0 ? narrowEffortLadder(model, efforts) : undefined;
-        return [exposed ? { id: entry.id, efforts: [...exposed] } : { id: entry.id }];
+        return [{
+          id: entry.id,
+          ...(exposed ? { efforts: [...exposed] } : {}),
+          ...(entry.hostOnly === true ? { hostOnly: true } : {}),
+        }];
       })
     : [];
   // 기본 모델도 카탈로그 부재면 접는다 — stale 기본값 하나가 이후 모든 저장을 400으로 막는다.
@@ -127,6 +137,11 @@ export interface AiGatewaySelection {
    */
   readonly models: readonly GatewayModel[];
   /**
+   * The subset of `models` registered as delegation identities — `models` minus
+   * the host-only ones. Its order follows the same provider sort as `models`.
+   */
+  readonly delegationModels: readonly GatewayModel[];
+  /**
    * Scoped model id → the reasoning rungs exposed as delegation identities.
    * An absent entry means that model's whole ladder. This narrowing never
    * reaches the wire: `/v1/models` keeps advertising the catalog ladder, so a
@@ -141,10 +156,13 @@ export interface AiGatewaySelection {
 
 export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | undefined): AiGatewaySelection {
   const enabled: GatewayModel[] = [];
+  const hostOnlyIds = new Set<string>();
   const effortExposure: Record<string, readonly GatewayReasoningEffort[]> = {};
   for (const entry of settings?.models ?? []) {
     const model = findGatewayModel(entry.id);
-    if (!model || enabled.includes(model)) continue;
+    if (!model) continue;
+    if (entry.hostOnly === true) hostOnlyIds.add(model.id);
+    if (enabled.includes(model)) continue;
     enabled.push(model);
     const exposed = narrowEffortLadder(model, entry.efforts);
     if (exposed) effortExposure[model.id] = exposed;
@@ -153,9 +171,10 @@ export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | un
   // Settings UI is already grouped by GATEWAY_PROVIDERS; expose the same grammar
   // on the wire regardless of Add-click membership order.
   const models = sortGatewayModelsByProvider(enabled);
+  const delegationModels = models.filter((model) => !hostOnlyIds.has(model.id));
   const configuredDefault = settings?.defaultModel ? findGatewayModel(settings.defaultModel) : undefined;
   const defaultModel = configuredDefault && models.includes(configuredDefault) ? configuredDefault : undefined;
-  return { models, effortExposure, defaultModel, providerPriority: settings?.providerPriority };
+  return { models, delegationModels, effortExposure, defaultModel, providerPriority: settings?.providerPriority };
 }
 
 /**
@@ -210,15 +229,22 @@ export function parseAiGatewayUpdate(value: unknown):
     if (!Array.isArray(record.models)) return { ok: false };
     for (const raw of record.models) {
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false };
-      const entry = raw as { readonly id?: unknown; readonly efforts?: unknown };
-      if (Object.keys(entry).some((key) => key !== "id" && key !== "efforts")) return { ok: false };
+      const entry = raw as { readonly id?: unknown; readonly efforts?: unknown; readonly hostOnly?: unknown };
+      if (Object.keys(entry).some((key) => key !== "id" && key !== "efforts" && key !== "hostOnly")) {
+        return { ok: false };
+      }
       if (typeof entry.id !== "string") return { ok: false };
+      if (entry.hostOnly !== undefined && typeof entry.hostOnly !== "boolean") return { ok: false };
       const model = findGatewayModel(entry.id);
       if (!model) return { ok: false };
       if (models.some((existing) => existing.id === model.id)) return { ok: false };
       const efforts = parseExposedEfforts(model, entry.efforts);
       if (efforts === null) return { ok: false };
-      models.push({ id: model.id, ...(efforts ? { efforts } : {}) });
+      models.push({
+        id: model.id,
+        ...(efforts ? { efforts } : {}),
+        ...(entry.hostOnly === true ? { hostOnly: true } : {}),
+      });
     }
   }
 

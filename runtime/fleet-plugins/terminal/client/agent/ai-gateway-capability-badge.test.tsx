@@ -45,11 +45,13 @@ function renderRow(capabilityClass: AiGatewayCapabilityClass | null): HTMLElemen
   act(() => {
     root?.render(createElement(AiGatewayModelRow, {
       model: model(capabilityClass),
+      hostOnly: false,
       isDefault: false,
       saving: false,
       onRemove: () => {},
       onSetDefault: () => {},
       onSetEfforts: () => {},
+      onToggleHostOnly: () => {},
     }));
   });
   const badge = container.querySelector(".ai-gateway-class-badge");

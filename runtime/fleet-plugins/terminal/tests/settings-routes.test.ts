@@ -199,6 +199,110 @@ describe("terminal settings routes", () => {
     expect(harness.currentData()).toEqual({ version: 1 });
   });
 
+  it("PUT /plugins/terminal/settings accepts hostOnly:true and GET echoes it", async () => {
+    const harness = createRouteHarness({
+      body: {
+        aiGateway: {
+          models: [{ id: "cursor--auto", hostOnly: true }],
+        },
+      },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.status).toBe(200);
+    expect(harness.writes[0]?.body).toMatchObject({
+      aiGateway: {
+        models: [{ id: "cursor--auto", hostOnly: true }],
+      },
+    });
+    expect(harness.currentAiGateway()).toEqual({
+      version: 1,
+      models: [{ id: "cursor--auto", hostOnly: true }],
+    });
+
+    await harness.handle({ req: req("GET"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[1]?.status).toBe(200);
+    expect(harness.writes[1]?.body).toMatchObject({
+      aiGateway: {
+        models: [{ id: "cursor--auto", hostOnly: true }],
+      },
+    });
+  });
+
+  it("PUT /plugins/terminal/settings accepts hostOnly:false and stores without the key", async () => {
+    const harness = createRouteHarness({
+      body: {
+        aiGateway: {
+          models: [{ id: "cursor--auto", hostOnly: false }],
+        },
+      },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.status).toBe(200);
+    expect(harness.writes[0]?.body).toMatchObject({
+      aiGateway: {
+        models: [{ id: "cursor--auto" }],
+      },
+    });
+    expect(harness.currentAiGateway()).toEqual({
+      version: 1,
+      models: [{ id: "cursor--auto" }],
+    });
+    expect(harness.currentAiGateway().models?.[0]).not.toHaveProperty("hostOnly");
+  });
+
+  it("PUT /plugins/terminal/settings rejects a non-boolean hostOnly", async () => {
+    const harness = createRouteHarness({
+      body: {
+        aiGateway: {
+          models: [{ id: "cursor--auto", hostOnly: "yes" }],
+        },
+      },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.status).toBe(400);
+    expect(harness.updateCalls).toBe(0);
+  });
+
+  it("PUT /plugins/terminal/settings preserves hostOnly when only defaultModel changes", async () => {
+    const harness = createRouteHarness({
+      body: {
+        aiGateway: {
+          models: [
+            { id: "cursor--auto", hostOnly: true },
+            { id: "cursor--claude-opus-5" },
+          ],
+          defaultModel: "cursor--claude-opus-5",
+        },
+      },
+      aiGateway: {
+        version: 1,
+        models: [
+          { id: "cursor--auto", hostOnly: true },
+          { id: "cursor--claude-opus-5" },
+        ],
+      },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.status).toBe(200);
+    expect(harness.writes[0]?.body).toMatchObject({
+      aiGateway: {
+        models: [
+          { id: "cursor--auto", hostOnly: true },
+          { id: "cursor--claude-opus-5" },
+        ],
+        defaultModel: "cursor--claude-opus-5",
+      },
+    });
+    expect(harness.currentAiGateway()).toEqual({
+      version: 1,
+      models: [
+        { id: "cursor--auto", hostOnly: true },
+        { id: "cursor--claude-opus-5" },
+      ],
+      defaultModel: "cursor--claude-opus-5",
+    });
+  });
+
   it("PUT /plugins/terminal/settings persists and echoes providerPriority", async () => {
     const harness = createRouteHarness({
       body: {

@@ -243,6 +243,56 @@ describe("createDefaultTerminalLaunchResolver", () => {
     }
   });
 
+  it("launches a host-only gateway model while withholding it from the delegation identities", async () => {
+    // 이 두 철자가 갈라지는 유일한 자리다. 같은 selection에서 실행 경로는 models를,
+    // 정체성 렌더는 delegationModels를 받는다 — 한쪽만 되돌려도 여기서만 드러난다.
+    const root = makeTempDir("fleet-gateway-host-only-");
+    const settings = {
+      version: 1 as const,
+      models: [
+        { id: "cursor--claude-opus-5", hostOnly: true },
+        { id: "cursor--grok-4.5" },
+      ],
+      defaultModel: "cursor--claude-opus-5",
+    };
+    let injected: InjectAgentCliProfileOptions | undefined;
+    const resolve = createDefaultTerminalLaunchResolver({
+      cwd: root,
+      dataDir: root,
+      env: {
+        CLAUDE_BIN: process.execPath,
+        CLAUDE_CONFIG_DIR: path.join(root, "claude-config"),
+        PATH: process.env.PATH,
+      },
+      agentRuntime: createFakeRuntime() as never,
+      aiGateway: {
+        routePath: "/plugins/terminal/ai-gateway",
+        origin: () => "http://127.0.0.1:43210",
+      },
+      infraServices: createFakeInfraServices() as never,
+      injectProfile: (async (profile: AgentCliProfile, options: InjectAgentCliProfileOptions) => {
+        injected = options;
+        return profile;
+      }) as never,
+      createSessionIdentityResolver: (() => ({ resolve: async () => null })) as never,
+      readAiGatewaySettings: () => settings,
+    });
+
+    const spec = await resolve(root, {
+      cliId: "claude-gateway",
+      model: "cursor--claude-opus-5",
+      sessionId: "gateway-host-only",
+    });
+
+    // 호스트 세션 쪽: 여전히 고를 수 있고, 세션 모델로도 배선된다.
+    expect(spec.args).toEqual(["--model", "claude-gateway--cursor--claude-opus-5[1m]"]);
+    expect(spec.env.ANTHROPIC_MODEL).toBe("claude-gateway--cursor--claude-opus-5[1m]");
+    // 위임 쪽: 정체성을 만들 목록에서만 빠진다.
+    const delegable = (injected?.gatewayDelegationModels ?? []).map((model) => model.id);
+    expect(delegable).toEqual(["cursor--grok-4.5"]);
+    await spec.cleanup?.();
+  });
+
   it("rejects a scoped gateway model that became stale before spawn", async () => {
     const root = makeTempDir("fleet-gateway-stale-model-");
     const resolve = createDefaultTerminalLaunchResolver({
