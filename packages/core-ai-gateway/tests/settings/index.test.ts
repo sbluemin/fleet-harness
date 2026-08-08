@@ -143,4 +143,23 @@ describe("ai-gateway settings", () => {
     expect(new Set([...projected.values()].map((model) => model.capabilityClass)))
       .toEqual(new Set(["flagship", "standard", "light", null]));
   });
+
+
+  it("providerPriority round-trips and drops unknown providers and duplicates", () => {
+    expect(normalizeAiGatewaySettings({
+      version: 1,
+      providerPriority: ["cursor", "codex", "cursor", "unknown", "kimi"],
+    })).toEqual({ version: 1, providerPriority: ["cursor", "codex", "kimi"] });
+
+    expect(normalizeAiGatewaySettings({
+      version: 1,
+      providerPriority: ["unknown", 7, ""],
+    })).toEqual({ version: 1 });
+
+    const selection = resolveAiGatewaySelection({
+      version: 1,
+      providerPriority: ["opencode", "codex"],
+    });
+    expect(selection.providerPriority).toEqual(["opencode", "codex"]);
+  });
 });

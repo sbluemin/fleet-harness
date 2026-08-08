@@ -28,7 +28,7 @@ Pipeline Hunt into Verify — a dimension's findings can be verified while anoth
 
 ## Capability Classes
 
-Split is the one fanned judgment seat — the dimensions it names bound everything the run can find — and it is a single call: give it the highest reachable `capabilityClass` (`workflow`, judgment regime). Hunt and Verify are mechanical: a finding is checked against code and a verification refutes a concrete scenario, and the role measurement separated no models on adversarial judgment — so those seats buy quality with distribution and lineage mixing, not class. Adjudicate stays on the host, where the only judgment that outranks a verifier's verdict lives.
+Split is the one fanned judgment seat — the dimensions it names bound everything the run can find — and it is a single call: give it the top quality band reachable, `benchmark` evidence first and the `capabilityClass` prior where unmeasured (`workflow`, judgment regime). Hunt and Verify are mechanical: a finding is checked against code and a verification refutes a concrete scenario, and the role measurement separated no models on adversarial judgment — so those seats buy quality with distribution and lineage mixing, not rank; between otherwise-equal hunters the lower `tokensPerTask` is the tiebreak, read within one source. Adjudicate stays on the host, where the only judgment that outranks a verifier's verdict lives.
 
 ## Dimensions Stay Separate
 

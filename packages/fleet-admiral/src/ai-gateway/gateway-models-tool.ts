@@ -8,7 +8,7 @@
  */
 
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
-import type { GatewayModel } from "@dotobokuri/core-ai-gateway";
+import type { GatewayModel, GatewayProvider } from "@dotobokuri/core-ai-gateway";
 
 import type { GatewayEffortExposure } from "../agent-cli/gateway-agents.js";
 import {
@@ -25,6 +25,8 @@ export interface GatewayModelsSelection {
   /** Per-model reasoning rungs the user exposed. Absent entry = that model's whole ladder. */
   readonly effortExposure?: GatewayEffortExposure;
   readonly defaultModel?: GatewayModel;
+  /** The user's opt-in ordered spend preference across providers; weights the allowance axis only. */
+  readonly providerPriority?: readonly GatewayProvider[];
 }
 
 export interface GatewayModelsToolDeps {
@@ -39,10 +41,10 @@ const GATEWAY_MODELS_DOCTRINE = {
   tag: GATEWAY_MODELS_TOOL_ID,
   title: "gateway_models Tool Guidelines",
   description:
-    `Report the gateway models currently available to this session, each model's routing constraints and capability class, and the current provider allowances.`
+    `Report the gateway models currently available to this session, each model's routing constraints, capability class, and benchmark evidence, and the current provider allowances and the user's provider spend priority.`
     + ` The roster is exactly what the user exposed in the Console and is editable while this session runs, so it is resolved at call time rather than remembered.`,
   promptSnippet:
-    `gateway_models — Live roster of assignable gateway models: constraints, capability class, and provider allowances.`,
+    `gateway_models — Live roster of assignable gateway models: constraints, capability class, benchmark evidence, provider allowances, and the user's provider priority.`,
   whenToUse: [
     `Call gateway_models before every run that leaves the host — a staged workflow or a single Agent — not only when a run pins a model or a reasoning effort.`,
     `Call it again before a later dispatch in the same session; the roster is re-read from Settings on every call, and allowances move while work is in flight.`,
@@ -61,8 +63,9 @@ const GATEWAY_MODELS_DOCTRINE = {
     `claude reports a window but serves no model by design, so a session on a built-in Claude model spends an allowance you can read and never select; a session launched on a gateway default instead spends the entry that serves that model, which further runs can pile back onto.`,
     `Read pressure before doing arithmetic of your own; it is the verdict on one window, combining headroom with burn pace against that window's own clock, and it never says which model to choose. Compare usedPercent only within one cadence — a shared window id does not mean a shared length.`,
     `Where a provider splits into pools, quotaScope picks the window that applies and the isAggregate one stays out of headroom math. recoveryHalfLifeMs prices the drain: weeks of lockout for a monthly window, hours for a session one.`,
-    `Three fields, three questions, and none implies another. homolineage marks a Claude-family model, derived from its id alone and silent about what this session runs on; the entry it sits under marks whose allowance it spends; capabilityClass states the provider's own lineup positioning — the roster's only quality signal, which no allowance figure implies.`,
-    `capabilityClass answers quality and allowance decides among class peers: judgment seats keep to the highest reachable class, and neither question ever falls back to this session's own model.`,
+    `Three fields, three questions, and none implies another. homolineage marks a Claude-family model, derived from its id alone and silent about what this session runs on; the entry it sits under marks whose allowance it spends; capabilityClass states the provider's own lineup positioning — the quality prior where no benchmark figures exist, which no allowance figure implies.`,
+    `Quality reads benchmark first — third-party figures measured about the vendor model, with scores inside noiseBandPoints forming one band and a caveat changing what its figures are evidence of — and capabilityClass where unmeasured: judgment seats keep to the top reachable band, and neither quality nor allowance ever falls back to this session's own model. Scores compare only within one source; a cross-source candidate is read by its standing among its own source's comparators, and class breaks what standing cannot.`,
+    `providerPriority is the user's standing spend order: listed providers spend first everywhere allowance decides, the pressure forecast included — leave one only on observed failure, and never lift an identity across a quality band for it.`,
     `Absence is never safety. A missing derived field means the reading could not support it, and status "unsupported" means the allowance could not be read at all.`,
     `The roster cannot tell which provider this session itself runs on — make that match yourself and read that window. isSessionDefault reflects Settings as it stands now, not what an already-running session launched with.`,
   ],
@@ -102,6 +105,7 @@ async function resolveLoadout(deps: GatewayModelsToolDeps): Promise<GatewayLoado
     exposed: selection.models,
     ...(selection.effortExposure ? { effortExposure: selection.effortExposure } : {}),
     ...(selection.defaultModel ? { defaultModel: selection.defaultModel } : {}),
+    ...(selection.providerPriority ? { providerPriority: selection.providerPriority } : {}),
     ...(quota ? { quota } : {}),
   });
 }

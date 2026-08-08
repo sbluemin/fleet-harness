@@ -56,7 +56,7 @@ describe("gateway workflow skill asset", () => {
     const content = skillContent();
 
     expect(content).toContain("Distribution is the default for mechanical roles");
-    expect(content).toContain("for judgment roles the highest reachable class is the default");
+    expect(content).toContain("for judgment roles the top reachable quality band is the default");
     expect(content).toContain("carries the burden of proof");
     expect(content).toContain("Indistinguishable never meant \"inherit\"");
     // 입증 책임이 어디서 해소되는지 가리키지 않으면 배정 절차가 게이트와 분리되어
@@ -74,11 +74,12 @@ describe("gateway workflow skill asset", () => {
 
     expect(content).toContain("| **Judgment** | decompose, propose, decide, judge, synthesize |");
     expect(content).toContain("| **Mechanical** | map, scan, extract, transform, implement, verify |");
-    expect(content).toContain("`capabilityClass` first");
-    // class-eligible 부족 시 줄이거나 반복 착석한다 — 가벼운 class 로 머릿수를 채우는
+    expect(content).toContain("quality evidence first");
+    expect(content).toContain("the `capabilityClass` prior where not");
+    // band-eligible 부족 시 줄이거나 반복 착석한다 — 밴드 아래로 머릿수를 채우는
     // 순간 이 체제 전체가 무효가 된다.
     expect(content).toContain("repeat-seat one as independent runs or shrink the fan");
-    expect(content).toContain("never filled from a lighter class to make a count");
+    expect(content).toContain("never filled from below the band to make a count");
     // verify(닫힌 반박)와 judge(열린 채점)가 갈라지지 않으면 아키텍처 심판이 verify 로
     // 표기되어 class 바닥을 벗어난다.
     expect(content).toContain("that is `judge`, and it is judgment");
@@ -86,6 +87,37 @@ describe("gateway workflow skill asset", () => {
     expect(content).toContain("This subsection sizes mechanical fans only.");
     // 구 절차의 열거식 방어선이 되살아나면 Propose 가 다시 목록 누락으로 빠진다.
     expect(content).not.toContain("Do not choose the load-bearing stage by allowance alone");
+  });
+
+  // 측정>주장 재편의 척추다. 밴드·노이즈·caveat·우선순위 중 하나라도 조용히 사라지면
+  // 판단석이 다시 공급자 주장(class)만으로 채워지거나, 사용자 옵트인이 예보에 뒤집힌다.
+  it("ranks judgment seats by measured evidence and honors the user's provider priority", () => {
+    const content = skillContent();
+
+    expect(content).toContain("### Reading quality evidence");
+    expect(content).toContain("Measurement outranks the claim.");
+    expect(content).toContain("a measured `standard` model above the band beats an unmeasured `flagship` claim");
+    expect(content).toContain("Scores within `noiseBandPoints` are one band, not an ordering.");
+    expect(content).toContain("Read `caveat` before trusting a standout.");
+    // 우선순위는 allowance 축 전용이다 — 품질 밴드를 넘으면 판단석이 할당량 축으로 떨어진다.
+    expect(content).toContain("`providerPriority` is the user's standing order on this axis.");
+    expect(content).toContain("It outranks the pressure forecast, `critical` included");
+    expect(content).toContain("It never lifts an identity across a quality band");
+    // 예보(pressure)로 사용자 명령을 뒤집는 조용한 재배분이 되살아나면 안 된다.
+    expect(content).toContain("leave a listed provider only on observation");
+    // 판단석 자격 필터(non-critical)가 우선순위 예외 없이 남으면, 우선 공급자의 판단
+    // 후보가 관측 실패 전에 예보만으로 배제된다 — 실측 리뷰가 잡은 자기모순.
+    expect(content).toContain("A listed provider's identities stay eligible for judgment seats at any forecast.");
+    expect(content).toContain("not `critical` unless the user listed it in `providerPriority`");
+    // 소스가 둘이 되는 순간, 소스 간 점수 비교는 공급자 간 class 비교와 같은 오류다.
+    expect(content).toContain("Scores compare only within one source.");
+    expect(content).toContain("standing among its own source's comparators");
+    // 토큰 효율도 하네스 상대값이다 — 소스 경계 없이 비교하면 문제 단위가 큰 소스의
+    // 모델이 무조건 비싸 보인다(CursorBench ~10k/task vs SWE-rebench ~수 M/problem).
+    expect(content).toContain("a `tokensPerTask` from one harness never prices against another's");
+    // E2가 예보만으로 열리면 우선 공급자의 critical이 관측 실패 없이 세션 모델 예외를
+    // 여는 뒷문이 된다 — 우선순위의 "관측만이 이탈 근거" 규칙과 직접 충돌.
+    expect(content).toContain("never opens E2 on its forecast");
   });
 
   it("does not restore the superseded inherit-by-default rules", () => {

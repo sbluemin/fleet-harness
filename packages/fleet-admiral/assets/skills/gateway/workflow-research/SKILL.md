@@ -28,7 +28,7 @@ Run Sweep and Read as a pipeline. A barrier between them buys nothing: each cand
 
 ## Capability Classes
 
-Scope and Reconcile are the judgment seats: the angles Scope names bound everything the run can find, and Reconcile decides which claims survive and which contradictions stay visible. Each is a single seat, so the highest reachable `capabilityClass` costs one call (`workflow`, judgment regime). Sweep and Read are the wide mechanical fans — distribute them by allowance, where a `light`-class identity earns its keep.
+Scope and Reconcile are the judgment seats: the angles Scope names bound everything the run can find, and Reconcile decides which claims survive and which contradictions stay visible. Each is a single seat, so the top quality band reachable — `benchmark` evidence first, the `capabilityClass` prior where unmeasured — costs one call (`workflow`, judgment regime). Sweep and Read are the wide mechanical fans — distribute them by allowance, honoring a `providerPriority` the user set, where a cheap identity (a `light` class, or the lowest `tokensPerTask` among same-source identities) earns its keep.
 
 ## Rules
 

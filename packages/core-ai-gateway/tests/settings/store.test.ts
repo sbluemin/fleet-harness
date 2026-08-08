@@ -56,6 +56,21 @@ describe("ai-gateway settings store", () => {
     });
   });
 
+  // providerPriority 는 update 계약({models, defaultModel})이 나르지 않는 축이다.
+  // write 가 이월하지 않으면 무관한 모델 노출 저장 한 번이 사용자의 소진 순서를 지운다.
+  it("carries a stored providerPriority across unrelated writes", () => {
+    const dataDir = createDataDir();
+    const store = createAiGatewaySettingsStore({ dataDir });
+    writeFileSync(store.path, JSON.stringify({ version: 1, providerPriority: ["codex", "cursor"] }), "utf-8");
+
+    store.write({ models: [{ id: "kimi--k3" }] });
+    expect(store.read()).toEqual({
+      version: 1,
+      models: [{ id: "kimi--k3" }],
+      providerPriority: ["codex", "cursor"],
+    });
+  });
+
   it("keeps each setting axis independent across writes", () => {
     const store = createAiGatewaySettingsStore({ dataDir: createDataDir() });
 

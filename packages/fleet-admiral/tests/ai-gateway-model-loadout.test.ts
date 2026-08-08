@@ -195,6 +195,34 @@ describe("gateway loadout", () => {
     expect(classes).toContain("light");
     expect(classes).toContain("flagship");
   });
+
+  it("carries benchmark evidence into constraints when the catalog has figures", () => {
+    const loadout = buildGatewayLoadout({ exposed: [model("codex--gpt-5.6-sol-fast")] });
+    expect(allModels(loadout)[0]?.constraints.benchmark?.source).toBe("CursorBench 3.2");
+  });
+
+  it("carries providerPriority through to the payload and into the revision", () => {
+    const exposed = [model("kimi--k3")];
+    const without = buildGatewayLoadout({ exposed });
+    const withPriority = buildGatewayLoadout({
+      exposed,
+      providerPriority: ["cursor", "kimi"],
+    });
+    const samePriority = buildGatewayLoadout({
+      exposed,
+      providerPriority: ["cursor", "kimi"],
+    });
+    const reordered = buildGatewayLoadout({
+      exposed,
+      providerPriority: ["kimi", "cursor"],
+    });
+
+    expect(without.providerPriority).toBeUndefined();
+    expect(withPriority.providerPriority).toEqual(["cursor", "kimi"]);
+    expect(withPriority.revision).not.toBe(without.revision);
+    expect(samePriority.revision).toBe(withPriority.revision);
+    expect(reordered.revision).not.toBe(withPriority.revision);
+  });
 });
 
 describe("gateway loadout derived quota metrics", () => {
@@ -400,20 +428,36 @@ describe("gateway_models tool doctrine", () => {
     expect(spec.whenNotToUse.join("\n")).not.toContain("when every stage will inherit the session model");
   });
 
-  it("makes capabilityClass the roster's only quality signal, never the session model", () => {
+  it("ranks quality by benchmark evidence first, class as the unmeasured prior, never the session model", () => {
     const guidelines = doctrine().usageGuidelines.join("\n");
     // 품질 축이 allowance 로 무너지던 것이 실측된 실패다: 판단 스테이지(propose)에 품질
-    // 신호가 없어 아키텍처 제안석이 light 모델로 균등 분배됐다. class 가 품질을 답하고,
-    // allowance 는 같은 class 동급 간에만 판정하며, 어느 질문도 세션 모델로 돌아가지 않는다.
-    expect(guidelines).toContain("the roster's only quality signal");
-    expect(guidelines).toContain("capabilityClass answers quality and allowance decides among class peers");
-    expect(guidelines).toContain("judgment seats keep to the highest reachable class");
-    expect(guidelines).toContain("neither question ever falls back to this session's own model");
+    // 신호가 없어 아키텍처 제안석이 light 모델로 균등 분배됐다. 이제 측정(benchmark)이
+    // 먼저 품질을 답하고, class 는 측정이 없는 곳의 prior 로만 남으며, providerPriority 는
+    // allowance 축 전용이다. 어느 질문도 세션 모델로 돌아가지 않는다.
+    expect(guidelines).toContain("the quality prior where no benchmark figures exist");
+    expect(guidelines).toContain("Quality reads benchmark first");
+    expect(guidelines).toContain("judgment seats keep to the top reachable band");
+    // 소스 간 점수 비교를 허용하면 공급자 간 class 비교와 같은 오류가 벤치 차원에서 재현된다.
+    expect(guidelines).toContain("Scores compare only within one source");
+    expect(guidelines).toContain("neither quality nor allowance ever falls back to this session's own model");
+    // 구 문언이 되살아나면 공급자 주장(class)이 다시 공급자 간 품질 통화가 된다.
+    expect(guidelines).not.toContain("the roster's only quality signal");
+    expect(guidelines).not.toContain("judgment seats keep to the highest reachable class");
     expect(guidelines).not.toContain("the choice falls to allowance");
     expect(guidelines).not.toContain("it is not a reason to pin");
     // 폐기된 측정 테이블 어휘가 도구 문언에 되살아나면 품질 신호가 두 벌이 된다.
     expect(guidelines).not.toContain("roleFit");
     expect(guidelines).not.toContain("role fit");
+  });
+
+  // 우선순위는 사용자 옵트인 소진 순서다. 예보(pressure)가 그것을 뒤집으면 옵트인이
+  // 무력화되고, 품질 밴드를 넘으면 판단석이 할당량 축으로 떨어진다.
+  it("carries the user's provider spend priority as an allowance-axis order only", () => {
+    const guidelines = doctrine().usageGuidelines.join("\n");
+    expect(guidelines).toContain("providerPriority is the user's standing spend order");
+    expect(guidelines).toContain("the pressure forecast included");
+    expect(guidelines).toContain("leave one only on observed failure");
+    expect(guidelines).toContain("never lift an identity across a quality band");
   });
 
   // claude 항목이 로스터 모델을 하나도 서빙하지 않는다는 사실과, 미핀 실행이 항상 claude 를

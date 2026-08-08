@@ -568,8 +568,8 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(spec.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined();
     expect(cache.baseUrl).toBe(spec.env.ANTHROPIC_BASE_URL);
     expect(cache.fetchedAt).toEqual(expect.any(Number));
-    // core-ai-gateway의 GATEWAY_MODELS 전량이 prewrite되어야 한다 — 카탈로그에 모델을 추가하면 이 수도 함께 올린다.
-    expect(cache.models).toHaveLength(40);
+    // core-ai-gateway의 GATEWAY_MODELS 전량이 prewrite되어야 한다 — 카탈로그가 바뀌면 이 수도 함께 맞춘다.
+    expect(cache.models).toHaveLength(29);
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast[1m]");
     expect(ids).toContain("claude-gateway--cursor--auto[1m]");
     expect(ids).toContain("claude-gateway--cursor--kimi-k3");

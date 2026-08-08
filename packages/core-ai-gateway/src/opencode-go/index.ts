@@ -21,8 +21,8 @@ export * from "./chat-completions/index.js";
 // Keep the persisted provider id stable so stored keys survive upgrades.
 export const OPENCODE_AUTH_PROVIDER_ID = "Claude Code with OpenCode Go";
 export const OPENCODE_GO_API_BASE_URL = "https://opencode.ai/zen/go";
-// Cheapest Anthropic-protocol Go model; key validation issues one 1-token request against it.
-export const OPENCODE_GO_MODEL = "minimax-m2.5";
+// Current Anthropic-protocol Go model; key validation issues one 1-token request against it.
+export const OPENCODE_GO_MODEL = "minimax-m3";
 
 export const OPENCODE_GO_MESSAGES_URL = `${OPENCODE_GO_API_BASE_URL}/v1/messages`;
 // OPENCODE_GO_RESPONSES_URL / OPENCODE_GO_CHAT_COMPLETIONS_URL는 각 wire 어댑터

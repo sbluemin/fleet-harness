@@ -1,0 +1,115 @@
+{
+  "version": 2,
+  "sources": {
+    "cursorbench": {
+      "name": "CursorBench",
+      "benchVersion": "3.2",
+      "observedAt": "2026-07-30T00:00:00Z",
+      "url": "https://cursor.com/cursorbench",
+      "method": "Third-party agentic-coding benchmark: ambiguous multi-file tasks from real Cursor sessions, run in Cursor's own harness. Scores are evidence about the vendor model and transfer across gateway providers serving it; token and step figures are harness-relative efficiency signals, not billing facts. Score differences within the noise band are not statistically significant, and scores never compare across sources.",
+      "noiseBandPoints": 2
+    },
+    "swe-rebench": {
+      "name": "SWE-rebench",
+      "benchVersion": "2026-07",
+      "observedAt": "2026-07-01T00:00:00Z",
+      "url": "https://swe-rebench.com/",
+      "method": "Third-party continuously refreshed software-engineering benchmark: real GitHub issues mined into a decontaminated time window (2026-05-15 to 2026-07-01, 111 problems), every model run in the same harness with per-problem Docker images. Scores are resolved rates; token figures are per-problem and harness-relative. Score differences within the noise band are not significant, and scores never compare across sources.",
+      "noiseBandPoints": 3
+    }
+  },
+  "models": {
+    "gpt-5.6-sol": {
+      "source": "cursorbench",
+      "rungs": {
+        "low": { "score": 52.6, "tokensPerTask": 5104, "stepsPerTask": 19 },
+        "medium": { "score": 60.0, "tokensPerTask": 9747, "stepsPerTask": 27 },
+        "high": { "score": 63.5, "tokensPerTask": 13867, "stepsPerTask": 32 },
+        "xhigh": { "score": 64.5, "tokensPerTask": 19699, "stepsPerTask": 38 },
+        "max": { "score": 67.2, "tokensPerTask": 28320, "stepsPerTask": 48 }
+      }
+    },
+    "gpt-5.6-terra": {
+      "source": "cursorbench",
+      "rungs": {
+        "low": { "score": 46.9, "tokensPerTask": 5312, "stepsPerTask": 19 },
+        "medium": { "score": 50.3, "tokensPerTask": 6222, "stepsPerTask": 20 },
+        "high": { "score": 54.2, "tokensPerTask": 9468, "stepsPerTask": 23 },
+        "xhigh": { "score": 59.2, "tokensPerTask": 16089, "stepsPerTask": 29 },
+        "max": { "score": 64.9, "tokensPerTask": 32969, "stepsPerTask": 47 }
+      }
+    },
+    "gpt-5.6-luna": {
+      "source": "cursorbench",
+      "rungs": {
+        "low": { "score": 37.6, "tokensPerTask": 3209, "stepsPerTask": 17 },
+        "medium": { "score": 47.7, "tokensPerTask": 7095, "stepsPerTask": 28 },
+        "high": { "score": 56.8, "tokensPerTask": 15141, "stepsPerTask": 40 },
+        "xhigh": { "score": 57.7, "tokensPerTask": 22480, "stepsPerTask": 48 },
+        "max": { "score": 61.1, "tokensPerTask": 87973, "stepsPerTask": 61 }
+      }
+    },
+    "grok-4.5": {
+      "source": "cursorbench",
+      "rungs": {
+        "low": { "score": 63.5, "tokensPerTask": 15841, "stepsPerTask": 31 },
+        "medium": { "score": 65.4, "tokensPerTask": 18914, "stepsPerTask": 34 },
+        "high": { "score": 66.7, "tokensPerTask": 19521, "stepsPerTask": 33 }
+      },
+      "caveat": "Bench footnote: an earlier snapshot of Cursor's codebase was unintentionally present in this model's training data, inflating scores by an unknown amount; the advantage does not transfer to other repositories."
+    },
+    "kimi-k3": {
+      "source": "cursorbench",
+      "rungs": {
+        "low": { "score": 50.5, "tokensPerTask": 13007, "stepsPerTask": 33 },
+        "high": { "score": 59.7, "tokensPerTask": 26846, "stepsPerTask": 47 },
+        "max": { "score": 60.8, "tokensPerTask": 38428, "stepsPerTask": 57 }
+      }
+    },
+    "composer-2.5": {
+      "source": "cursorbench",
+      "overall": { "score": 56.1, "tokensPerTask": 14286, "stepsPerTask": 33 }
+    },
+    "glm-5.2": {
+      "source": "cursorbench",
+      "rungs": {
+        "high": { "score": 51.5, "tokensPerTask": 21829, "stepsPerTask": 49 },
+        "max": { "score": 55.0, "tokensPerTask": 35946, "stepsPerTask": 58 }
+      },
+      "caveat": "Measured per reasoning rung, but the gateway serves this model without effort control; which rung the serving path reaches is unknown."
+    },
+    "claude-opus-5": {
+      "source": "cursorbench",
+      "rungs": {
+        "low": { "score": 62.8, "tokensPerTask": 18529, "stepsPerTask": 37 },
+        "medium": { "score": 64.3, "tokensPerTask": 23612, "stepsPerTask": 44 },
+        "high": { "score": 66.7, "tokensPerTask": 27932, "stepsPerTask": 48 },
+        "xhigh": { "score": 69.3, "tokensPerTask": 54239, "stepsPerTask": 72 },
+        "max": { "score": 70.0, "tokensPerTask": 61838, "stepsPerTask": 78 }
+      }
+    },
+    "claude-fable-5": {
+      "source": "cursorbench",
+      "rungs": {
+        "low": { "score": 62.1, "tokensPerTask": 18182, "stepsPerTask": 31 },
+        "medium": { "score": 65.2, "tokensPerTask": 30366, "stepsPerTask": 41 },
+        "high": { "score": 66.5, "tokensPerTask": 43747, "stepsPerTask": 48 },
+        "xhigh": { "score": 68.4, "tokensPerTask": 64971, "stepsPerTask": 56 },
+        "max": { "score": 70.5, "tokensPerTask": 103525, "stepsPerTask": 72 }
+      }
+    },
+    "minimax-m3": {
+      "source": "swe-rebench",
+      "overall": { "score": 47.2, "tokensPerTask": 13869459 }
+    },
+    "mimo-v2.5-pro": {
+      "source": "swe-rebench",
+      "overall": { "score": 46.5, "tokensPerTask": 4687987 }
+    },
+    "deepseek-v4-pro": {
+      "source": "swe-rebench",
+      "overall": { "score": 40.2, "tokensPerTask": 3955414 },
+      "caveat": "Measured at the high reasoning setting; the gateway serves this model without effort control."
+    }
+  }
+}

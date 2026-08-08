@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-06T00:00:00Z",
+  "updatedAt": "2026-08-08T00:00:00Z",
   "providers": {
     "codex": {
       "name": "Codex",
@@ -25,7 +25,8 @@
           },
           "aliases": [
             "gpt-5.6-sol"
-          ]
+          ],
+          "benchmarkKey": "gpt-5.6-sol"
         },
         {
           "modelId": "gpt-5.6-sol-fast",
@@ -47,7 +48,8 @@
           },
           "aliases": [
             "gpt-5.6-sol-fast"
-          ]
+          ],
+          "benchmarkKey": "gpt-5.6-sol"
         },
         {
           "modelId": "gpt-5.6-terra",
@@ -67,7 +69,8 @@
           },
           "aliases": [
             "gpt-5.6-terra"
-          ]
+          ],
+          "benchmarkKey": "gpt-5.6-terra"
         },
         {
           "modelId": "gpt-5.6-terra-fast",
@@ -89,7 +92,8 @@
           },
           "aliases": [
             "gpt-5.6-terra-fast"
-          ]
+          ],
+          "benchmarkKey": "gpt-5.6-terra"
         },
         {
           "modelId": "gpt-5.6-luna",
@@ -108,7 +112,8 @@
           },
           "aliases": [
             "gpt-5.6-luna"
-          ]
+          ],
+          "benchmarkKey": "gpt-5.6-luna"
         },
         {
           "modelId": "gpt-5.6-luna-fast",
@@ -129,7 +134,8 @@
           },
           "aliases": [
             "gpt-5.6-luna-fast"
-          ]
+          ],
+          "benchmarkKey": "gpt-5.6-luna"
         }
       ]
     },
@@ -153,7 +159,8 @@
           "name": "Composer-2.5",
           "capabilityClass": "flagship",
           "quotaScope": "auto",
-          "contextWindow": 200000
+          "contextWindow": 200000,
+          "benchmarkKey": "composer-2.5"
         },
         {
           "modelId": "composer-2.5-fast",
@@ -176,7 +183,8 @@
               "high"
             ],
             "upstreamModelIdTemplate": "cursor-grok-4.5-{effort}"
-          }
+          },
+          "benchmarkKey": "grok-4.5"
         },
         {
           "modelId": "grok-4.5-fast",
@@ -210,7 +218,8 @@
               "max"
             ],
             "upstreamModelIdTemplate": "gpt-5.6-sol-{effort}"
-          }
+          },
+          "benchmarkKey": "gpt-5.6-sol"
         },
         {
           "modelId": "claude-opus-5",
@@ -232,7 +241,8 @@
               "xhigh": "claude-opus-5-thinking-xhigh",
               "max": "claude-opus-5-thinking-max"
             }
-          }
+          },
+          "benchmarkKey": "claude-opus-5"
         },
         {
           "modelId": "claude-fable-5",
@@ -251,7 +261,8 @@
               "max"
             ],
             "upstreamModelIdTemplate": "claude-fable-5-{effort}"
-          }
+          },
+          "benchmarkKey": "claude-fable-5"
         },
         {
           "modelId": "kimi-k3-1m",
@@ -260,7 +271,8 @@
           "quotaScope": "api",
           "providerModelId": "kimi-k3-max",
           "contextWindow": 1048576,
-          "cursorMaxMode": true
+          "cursorMaxMode": true,
+          "benchmarkKey": "kimi-k3"
         },
         {
           "modelId": "kimi-k3",
@@ -275,7 +287,8 @@
               "high"
             ],
             "upstreamModelIdTemplate": "kimi-k3-{effort}"
-          }
+          },
+          "benchmarkKey": "kimi-k3"
         }
       ]
     },
@@ -299,7 +312,8 @@
           },
           "aliases": [
             "k3"
-          ]
+          ],
+          "benchmarkKey": "kimi-k3"
         },
         {
           "modelId": "k3-256k",
@@ -316,62 +330,28 @@
           },
           "aliases": [
             "k3-256k"
-          ]
+          ],
+          "benchmarkKey": "kimi-k3"
         }
       ]
     },
     "opencode": {
       "name": "OpenCode",
       "defaultModel": "minimax-m3",
-      "source": "live GET https://opencode.ai/zen/go/v1/models + per-model wire probes on /messages, /responses, /chat/completions (2026-08-03); contextWindow cross-checked against models.dev api.json opencode-go entries and oh-my-pi packages/catalog/src/models.json (2026-08-03, both agree). Excluded: mimo-v2-pro/mimo-v2-omni (upstream server_error), hy3-preview (listed but Router.ModelNotFound)",
+      "source": "live GET https://opencode.ai/zen/go/v1/models + per-model wire probes on /messages, /responses, /chat/completions (2026-08-03); contextWindow cross-checked against models.dev api.json opencode-go entries and oh-my-pi packages/catalog/src/models.json (2026-08-03, both agree). Excluded: mimo-v2-pro/mimo-v2-omni (upstream server_error), hy3-preview (listed but Router.ModelNotFound); superseded generations removed 2026-08-08 — the catalog keeps each lineup's current generation only",
       "models": [
         {
           "modelId": "minimax-m3",
           "name": "MiniMax-M3",
           "capabilityClass": "flagship",
-          "contextWindow": 1000000
-        },
-        {
-          "modelId": "minimax-m2.7",
-          "name": "MiniMax-M2.7",
-          "capabilityClass": "standard",
-          "contextWindow": 204800
-        },
-        {
-          "modelId": "minimax-m2.5",
-          "name": "MiniMax-M2.5",
-          "capabilityClass": "standard",
-          "contextWindow": 204800
+          "contextWindow": 1000000,
+          "benchmarkKey": "minimax-m3"
         },
         {
           "modelId": "qwen3.8-max",
           "name": "Qwen3.8-Max",
           "capabilityClass": "flagship",
           "contextWindow": 1000000
-        },
-        {
-          "modelId": "qwen3.7-max",
-          "name": "Qwen3.7-Max",
-          "capabilityClass": "standard",
-          "contextWindow": 1000000
-        },
-        {
-          "modelId": "qwen3.7-plus",
-          "name": "Qwen3.7-Plus",
-          "capabilityClass": "standard",
-          "contextWindow": 1000000
-        },
-        {
-          "modelId": "qwen3.6-plus",
-          "name": "Qwen3.6-Plus",
-          "capabilityClass": "standard",
-          "contextWindow": 1000000
-        },
-        {
-          "modelId": "qwen3.5-plus",
-          "name": "Qwen3.5-Plus",
-          "capabilityClass": "standard",
-          "contextWindow": 262144
         },
         {
           "modelId": "gpt-5.6-luna",
@@ -388,7 +368,8 @@
               "xhigh",
               "max"
             ]
-          }
+          },
+          "benchmarkKey": "gpt-5.6-luna"
         },
         {
           "modelId": "grok-4.5",
@@ -403,7 +384,8 @@
               "medium",
               "high"
             ]
-          }
+          },
+          "benchmarkKey": "grok-4.5"
         },
         {
           "modelId": "deepseek-v4-flash",
@@ -417,63 +399,32 @@
           "name": "DeepSeek-V4-Pro",
           "capabilityClass": "flagship",
           "wire": "chat-completions",
-          "contextWindow": 1000000
+          "contextWindow": 1000000,
+          "benchmarkKey": "deepseek-v4-pro"
         },
         {
           "modelId": "glm-5.2",
           "name": "GLM-5.2",
           "capabilityClass": "flagship",
           "wire": "chat-completions",
-          "contextWindow": 1000000
-        },
-        {
-          "modelId": "glm-5.1",
-          "name": "GLM-5.1",
-          "capabilityClass": "standard",
-          "wire": "chat-completions",
-          "contextWindow": 202752
-        },
-        {
-          "modelId": "glm-5",
-          "name": "GLM-5",
-          "capabilityClass": "standard",
-          "wire": "chat-completions",
-          "contextWindow": 202752
+          "contextWindow": 1000000,
+          "benchmarkKey": "glm-5.2"
         },
         {
           "modelId": "kimi-k3",
           "name": "Kimi-K3",
           "capabilityClass": "flagship",
           "wire": "chat-completions",
-          "contextWindow": 1048576
-        },
-        {
-          "modelId": "kimi-k2.7-code",
-          "name": "Kimi-K2.7-Code",
-          "capabilityClass": "standard",
-          "wire": "chat-completions",
-          "contextWindow": 262144
-        },
-        {
-          "modelId": "kimi-k2.6",
-          "name": "Kimi-K2.6",
-          "capabilityClass": "standard",
-          "wire": "chat-completions",
-          "contextWindow": 262144
-        },
-        {
-          "modelId": "kimi-k2.5",
-          "name": "Kimi-K2.5",
-          "capabilityClass": "standard",
-          "wire": "chat-completions",
-          "contextWindow": 262144
+          "contextWindow": 1048576,
+          "benchmarkKey": "kimi-k3"
         },
         {
           "modelId": "mimo-v2.5-pro",
           "name": "MiMo-V2.5-Pro",
           "capabilityClass": "flagship",
           "wire": "chat-completions",
-          "contextWindow": 1048576
+          "contextWindow": 1048576,
+          "benchmarkKey": "mimo-v2.5-pro"
         },
         {
           "modelId": "mimo-v2.5",

@@ -668,12 +668,12 @@ describe("OpenCode Go passthrough", () => {
     await router.handle(ctx({
       res: response(),
       token: ANTHROPIC_CRED,
-      model: "claude-gateway--opencode--qwen3.7-max[1m]",
+      model: "claude-gateway--opencode--qwen3.8-max[1m]",
       outputConfig: { effort: "high" },
     }));
 
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
-    expect(body.model).toBe("qwen3.7-max");
+    expect(body.model).toBe("qwen3.8-max");
     expect(body).not.toHaveProperty("output_config");
   });
 
@@ -1274,7 +1274,7 @@ describe("route surface", () => {
     const ids = list.data.map((entry) => entry.id);
     // picker가 버리지 않도록 모든 항목이 claude- alias로 나가야 한다.
     expect(ids.every((id) => id.startsWith("claude"))).toBe(true);
-    expect(list.data).toHaveLength(40);
+    expect(list.data).toHaveLength(29);
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast[1m]");
     expect(ids).toContain("claude-gateway--cursor--auto[1m]");
     expect(ids).toContain("claude-gateway--cursor--gpt-5.6-sol[1m]");
@@ -1283,8 +1283,6 @@ describe("route surface", () => {
     expect(ids).toContain("claude-gateway--kimi--k3[1m]");
     expect(ids).toContain("claude-gateway--kimi--k3-256k");
     expect(ids).toContain("claude-gateway--opencode--minimax-m3[1m]");
-    // 204.8K 창은 passthrough 1M 마커 요건 미달 — 맨몸 alias로 나가야 한다.
-    expect(ids).toContain("claude-gateway--opencode--minimax-m2.5");
     expect(ids.some((id) => id.includes("--codex--") && id.endsWith("[1m]"))).toBe(true);
     expect(list.data).toContainEqual(expect.objectContaining({
       id: "claude-gateway--cursor--kimi-k3-1m[1m]",

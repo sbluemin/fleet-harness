@@ -39,6 +39,12 @@ export interface AiGatewayStoredSettings {
    * 토글이 꺼지지 않는 결함이 된다.
    */
   readonly wireLogEnabled?: boolean;
+  /**
+   * The user's opt-in ordered preference for which provider allowances to spend
+   * first. It weights the allowance axis of run distribution only and never
+   * overrides quality evidence; absent means no preference.
+   */
+  readonly providerPriority?: readonly GatewayProvider[];
 }
 
 export interface AiGatewayUpdateValue {
@@ -70,13 +76,30 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
   const defaultModel = typeof value.defaultModel === "string" && value.defaultModel.length > 0
     ? value.defaultModel
     : undefined;
+  const providerPriority = sanitizeProviderPriority(value.providerPriority);
   return {
     version: 1,
     ...(models.length > 0 ? { models } : {}),
     ...(defaultModel !== undefined ? { defaultModel } : {}),
     ...(value.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
     ...(typeof value.wireLogEnabled === "boolean" ? { wireLogEnabled: value.wireLogEnabled } : {}),
+    ...(providerPriority ? { providerPriority: [...providerPriority] } : {}),
   };
+}
+
+function sanitizeProviderPriority(value: unknown): readonly GatewayProvider[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const seen = new Set<GatewayProvider>();
+  const cleaned: GatewayProvider[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    if (!GATEWAY_PROVIDERS.includes(entry as GatewayProvider)) continue;
+    const provider = entry as GatewayProvider;
+    if (seen.has(provider)) continue;
+    seen.add(provider);
+    cleaned.push(provider);
+  }
+  return cleaned.length > 0 ? cleaned : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -100,6 +123,8 @@ export interface AiGatewaySelection {
   readonly effortExposure: GatewayEffortExposure;
   /** Resolved session-default model, when configured and exposed. */
   readonly defaultModel: GatewayModel | undefined;
+  /** Opt-in provider allowance spend order; absent means no preference. */
+  readonly providerPriority: readonly GatewayProvider[] | undefined;
 }
 
 export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | undefined): AiGatewaySelection {
@@ -118,7 +143,7 @@ export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | un
   const models = sortGatewayModelsByProvider(enabled);
   const configuredDefault = settings?.defaultModel ? findGatewayModel(settings.defaultModel) : undefined;
   const defaultModel = configuredDefault && models.includes(configuredDefault) ? configuredDefault : undefined;
-  return { models, effortExposure, defaultModel };
+  return { models, effortExposure, defaultModel, providerPriority: settings?.providerPriority };
 }
 
 /**

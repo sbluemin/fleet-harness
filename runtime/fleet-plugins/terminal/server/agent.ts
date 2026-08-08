@@ -94,6 +94,7 @@ function buildGatewayLoadoutTools(deps: AgentRouteDeps): readonly AgentToolSpec[
         models: selection.models,
         effortExposure: selection.effortExposure,
         ...(selection.defaultModel ? { defaultModel: selection.defaultModel } : {}),
+        ...(selection.providerPriority ? { providerPriority: selection.providerPriority } : {}),
       };
     },
     ...(aiGateway

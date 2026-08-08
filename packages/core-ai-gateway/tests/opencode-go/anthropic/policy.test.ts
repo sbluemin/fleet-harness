@@ -24,15 +24,15 @@ describe("opencode go anthropic policy", () => {
         input_schema: { type: "object", properties: {} },
         defer_loading: true,
       }],
-    }), "minimax-m2.5");
-    expect(body.model).toBe("minimax-m2.5");
+    }), "minimax-m3");
+    expect(body.model).toBe("minimax-m3");
     expect(body.tools).toEqual([{ name: "Read", input_schema: { type: "object", properties: {} } }]);
   });
 
   it("strips effort from output_config but keeps the other fields", () => {
     const next = opencodeRequestBody(
       request({ output_config: { effort: "high", reasoning_effort: "low" } }),
-      "minimax-m2.5",
+      "minimax-m3",
     );
     expect(next.output_config).toEqual({ reasoning_effort: "low" });
   });
@@ -40,14 +40,14 @@ describe("opencode go anthropic policy", () => {
   it("drops output_config entirely when it only carried effort", () => {
     const next = opencodeRequestBody(
       request({ output_config: { effort: "high" } }),
-      "minimax-m2.5",
+      "minimax-m3",
     );
     expect(next.output_config).toBeUndefined();
   });
 
   it("passes the body through untouched when there is no output_config", () => {
     const body = request();
-    expect(opencodeRequestBody(body, "minimax-m2.5")).toEqual({ ...body, model: "minimax-m2.5" });
+    expect(opencodeRequestBody(body, "minimax-m3")).toEqual({ ...body, model: "minimax-m3" });
   });
 
   it("builds Anthropic wire headers with defaults and forwarding", () => {

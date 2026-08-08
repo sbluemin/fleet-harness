@@ -1,3 +1,4 @@
+import benchmarksData from "../benchmarks.json" with { type: "json" };
 import modelsData from "../models.json" with { type: "json" };
 import { z } from "zod";
 
@@ -107,10 +108,59 @@ export type GatewayQuotaScope = typeof GATEWAY_QUOTA_SCOPES[number];
 export const GATEWAY_CAPABILITY_CLASSES = ["flagship", "standard", "light"] as const;
 export type GatewayCapabilityClass = typeof GATEWAY_CAPABILITY_CLASSES[number];
 
+const GatewayBenchmarkFiguresSchema = z.object({
+  score: z.number().positive().max(100),
+  tokensPerTask: z.number().int().positive(),
+  stepsPerTask: z.number().int().positive().optional(),
+}).strict();
+
+const GatewayBenchmarkSourceSchema = z.object({
+  name: z.string().min(1),
+  benchVersion: z.string().min(1),
+  observedAt: z.iso.datetime(),
+  url: z.string().min(1),
+  method: z.string().min(1),
+  noiseBandPoints: z.number().positive(),
+}).strict();
+
+const GatewayBenchmarkModelEntrySchema = z.object({
+  source: z.string().min(1),
+  rungs: z.partialRecord(z.enum(GATEWAY_REASONING_EFFORTS), GatewayBenchmarkFiguresSchema).optional(),
+  overall: GatewayBenchmarkFiguresSchema.optional(),
+  caveat: z.string().min(1).optional(),
+}).strict().refine((entry) => entry.rungs !== undefined || entry.overall !== undefined, {
+  message: "Gateway benchmark model entry requires rungs or overall",
+});
+
+const GatewayBenchmarksRegistrySchema = z.object({
+  version: z.number().int().positive(),
+  sources: z.record(z.string().min(1), GatewayBenchmarkSourceSchema),
+  models: z.record(z.string().min(1), GatewayBenchmarkModelEntrySchema),
+}).strict();
+
+export type GatewayBenchmarkFigures = {
+  readonly score: number;
+  readonly tokensPerTask: number;
+  readonly stepsPerTask?: number;
+};
+
+export type GatewayModelBenchmark = {
+  readonly source: string;
+  readonly observedAt: string;
+  readonly noiseBandPoints: number;
+  readonly rungs?: Readonly<Partial<Record<GatewayReasoningEffort, GatewayBenchmarkFigures>>>;
+  readonly overall?: GatewayBenchmarkFigures;
+  readonly caveat?: string;
+};
+
+type GatewayBenchmarkModelEntry = z.infer<typeof GatewayBenchmarkModelEntrySchema>;
+type GatewayBenchmarksRegistry = z.infer<typeof GatewayBenchmarksRegistrySchema>;
+
 const GatewayModelEntrySchema = z.object({
   modelId: z.string().min(1),
   name: z.string().min(1),
   capabilityClass: z.enum(GATEWAY_CAPABILITY_CLASSES).optional(),
+  benchmarkKey: z.string().min(1).optional(),
   description: z.string().min(1).optional(),
   providerModelId: z.string().min(1).optional(),
   serviceTier: z.literal("priority").optional(),
@@ -178,6 +228,8 @@ export interface GatewayModel {
   readonly wire?: GatewayModelWire;
   /** Provider-stated lineup positioning; absent only on routing aliases. */
   readonly capabilityClass?: GatewayCapabilityClass;
+  /** Third-party benchmark evidence keyed from benchmarks.json. */
+  readonly benchmark?: GatewayModelBenchmark;
   readonly description?: string;
   /** Authoritative input context window reported by the provider/reference catalog. */
   readonly contextWindow?: number;
@@ -187,7 +239,18 @@ export interface GatewayModel {
   readonly aliases?: readonly string[];
 }
 
-const registry = parseGatewayModelsRegistry(modelsData);
+
+const benchmarksRegistry = parseGatewayBenchmarksRegistry(benchmarksData);
+
+export function parseGatewayBenchmarksRegistry(value: unknown): GatewayBenchmarksRegistry {
+  const parsed = GatewayBenchmarksRegistrySchema.parse(value);
+  for (const [modelKey, entry] of Object.entries(parsed.models)) {
+    if (!parsed.sources[entry.source]) {
+      throw new Error(`Gateway benchmark model entry names an unknown source: ${modelKey} -> ${entry.source}`);
+    }
+  }
+  return parsed;
+}
 
 export function parseGatewayModelsRegistry(value: unknown): GatewayModelsRegistry {
   const parsed = GatewayModelsRegistrySchema.parse(value);
@@ -195,7 +258,22 @@ export function parseGatewayModelsRegistry(value: unknown): GatewayModelsRegistr
   return parsed;
 }
 
+const registry = (() => {
+  const parsed = parseGatewayModelsRegistry(modelsData);
+  validateBenchmarkCoverage(parsed);
+  return parsed;
+})();
+
 export const GATEWAY_MODELS_UPDATED_AT = registry.updatedAt;
+
+/**
+ * Deterministic stamp that moves whenever any benchmark source is re-observed.
+ * Roster revisions include it so a bench refresh is visible as a catalog change.
+ */
+export const GATEWAY_BENCHMARKS_STAMP = Object.entries(benchmarksRegistry.sources)
+  .map(([sourceId, source]) => `${sourceId}:${source.observedAt}`)
+  .sort()
+  .join("|");
 
 /** Human-readable provider names as declared by the model registry (e.g. `Moonshot-Kimi`). */
 export const GATEWAY_PROVIDER_NAMES: Readonly<Record<GatewayProvider, string>> = Object.freeze(
@@ -344,6 +422,13 @@ export interface GatewayModelConstraints {
    * implies it. Absent on routing aliases.
    */
   readonly capabilityClass?: GatewayCapabilityClass;
+  /**
+   * Third-party measured evidence about the vendor model. Where present and
+   * fresh it outranks the capabilityClass prior for quality ordering, and
+   * capabilityClass stands where it is absent. Score differences within
+   * noiseBandPoints are not significant.
+   */
+  readonly benchmark?: GatewayModelBenchmark;
   readonly quotaScope?: GatewayQuotaScope;
 }
 
@@ -358,6 +443,7 @@ export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelC
     effortSupported: ladder.length > 0,
     homolineage: upstreamModelId(model).toLowerCase().startsWith("claude"),
     ...(model.capabilityClass ? { capabilityClass: model.capabilityClass } : {}),
+    ...(model.benchmark ? { benchmark: model.benchmark } : {}),
     ...(model.quotaScope ? { quotaScope: model.quotaScope } : {}),
   };
 }
@@ -515,11 +601,61 @@ function scopedModelId(provider: GatewayProvider, modelId: string): string {
   return `${provider}--${modelId}`;
 }
 
+function freezeBenchmarkFigures(figures: GatewayBenchmarkFigures): GatewayBenchmarkFigures {
+  return Object.freeze({ ...figures });
+}
+
+function resolveGatewayModelBenchmark(
+  entry: GatewayModelEntry,
+  effort: GatewayModelEffort,
+): GatewayModelBenchmark | undefined {
+  if (!entry.benchmarkKey) return undefined;
+  const benchEntry = benchmarksRegistry.models[entry.benchmarkKey];
+  if (!benchEntry) return undefined;
+  const source = benchmarksRegistry.sources[benchEntry.source];
+  if (!source) return undefined;
+
+  let rungs: Partial<Record<GatewayReasoningEffort, GatewayBenchmarkFigures>> | undefined;
+  if (benchEntry.rungs) {
+    if (effort.supported) {
+      const narrowed = effort.levels
+        .filter((level) => benchEntry.rungs?.[level] !== undefined)
+        .map((level) => [level, freezeBenchmarkFigures(benchEntry.rungs![level]!)] as const);
+      rungs = narrowed.length > 0
+        ? Object.freeze(Object.fromEntries(narrowed)) as Partial<Record<GatewayReasoningEffort, GatewayBenchmarkFigures>>
+        : undefined;
+    } else {
+      rungs = Object.freeze(
+        Object.fromEntries(
+          Object.entries(benchEntry.rungs).map(([level, figures]) => [
+            level as GatewayReasoningEffort,
+            freezeBenchmarkFigures(figures),
+          ]),
+        ),
+      ) as Partial<Record<GatewayReasoningEffort, GatewayBenchmarkFigures>>;
+    }
+  }
+
+  const overall = benchEntry.overall ? freezeBenchmarkFigures(benchEntry.overall) : undefined;
+  const benchmark = Object.freeze({
+    source: `${source.name} ${source.benchVersion}`,
+    observedAt: source.observedAt,
+    noiseBandPoints: source.noiseBandPoints,
+    ...(rungs ? { rungs } : {}),
+    ...(overall ? { overall } : {}),
+    ...(benchEntry.caveat ? { caveat: benchEntry.caveat } : {}),
+  }) as GatewayModelBenchmark;
+
+  if (!benchmark.rungs && !benchmark.overall) return undefined;
+  return benchmark;
+}
+
 function toGatewayModel(
   provider: GatewayProvider,
   providerName: string,
   entry: GatewayModelEntry,
 ): GatewayModel {
+  const benchmark = resolveGatewayModelBenchmark(entry, freezeGatewayModelEffort(entry.effort));
   return {
     id: scopedModelId(provider, entry.modelId),
     displayName: `${providerName}-${entry.name}`,
@@ -530,6 +666,7 @@ function toGatewayModel(
     ...(entry.quotaScope ? { quotaScope: entry.quotaScope } : {}),
     ...(entry.wire ? { wire: entry.wire } : {}),
     ...(entry.capabilityClass ? { capabilityClass: entry.capabilityClass } : {}),
+    ...(benchmark ? { benchmark } : {}),
     ...(entry.description ? { description: entry.description } : {}),
     ...(entry.contextWindow ? { contextWindow: entry.contextWindow } : {}),
     effort: freezeGatewayModelEffort(entry.effort),
@@ -541,7 +678,41 @@ function providerModels(provider: GatewayProvider): readonly GatewayModel[] {
   return Object.freeze(GATEWAY_MODELS.filter((model) => model.provider === provider));
 }
 
+export function validateBenchmarkCoverage(
+  value: GatewayModelsRegistry,
+  benchmarks: GatewayBenchmarksRegistry = benchmarksRegistry,
+): void {
+  const referencedBenchmarkKeys = new Set<string>();
+  for (const provider of GATEWAY_PROVIDERS) {
+    for (const model of value.providers[provider].models) {
+      if (model.benchmarkKey) referencedBenchmarkKeys.add(model.benchmarkKey);
+    }
+  }
+  for (const key of Object.keys(benchmarks.models)) {
+    if (!referencedBenchmarkKeys.has(key)) {
+      throw new Error(`Gateway benchmark entry is orphaned: ${key}`);
+    }
+  }
+}
+
 function validateRegistry(value: GatewayModelsRegistry): void {
+  for (const provider of GATEWAY_PROVIDERS) {
+    const definition = value.providers[provider];
+    for (const model of definition.models) {
+      if (model.benchmarkKey) {
+        if (!benchmarksRegistry.models[model.benchmarkKey]) {
+          throw new Error(`Gateway benchmark key is unknown: ${provider}/${model.modelId} -> ${model.benchmarkKey}`);
+        }
+        if (model.providerModelId === "default") {
+          throw new Error(`Gateway routing alias cannot carry a benchmark key: ${provider}/${model.modelId}`);
+        }
+        const resolved = resolveGatewayModelBenchmark(model, freezeGatewayModelEffort(model.effort));
+        if (!resolved) {
+          throw new Error(`Gateway benchmark resolves to no rungs or overall: ${provider}/${model.modelId}`);
+        }
+      }
+    }
+  }
   const lookupIds = new Set<string>();
   for (const provider of GATEWAY_PROVIDERS) {
     const definition = value.providers[provider];
@@ -570,6 +741,9 @@ function validateRegistry(value: GatewayModelsRegistry): void {
         const base = definition.models.find((candidate) => candidate.modelId === model.providerModelId);
         if (base && base.capabilityClass !== model.capabilityClass) {
           throw new Error(`Gateway service-tier sibling class differs from its base: ${provider}/${model.modelId}`);
+        }
+        if (base && base.benchmarkKey !== model.benchmarkKey) {
+          throw new Error(`Gateway service-tier sibling benchmark key differs from its base: ${provider}/${model.modelId}`);
         }
       }
       if (model.serviceTier && !model.providerModelId) {
