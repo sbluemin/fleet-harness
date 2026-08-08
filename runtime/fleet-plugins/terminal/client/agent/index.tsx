@@ -674,16 +674,26 @@ function AiGatewayModelsCard() {
 
   const save = (next: AiGatewaySettings): void => {
     const models = next.models ?? [];
-    const nextPriority = next.providerPriority ?? [];
-    // 키 부재를 서버가 "보존"으로 읽으므로 저장에는 항상 우선순위를 명시해 싣는다 —
-    // 빈 배열이 해제의 유일한 철자다. 전부 비었는데 해제할 것도 없을 때만 null.
-    const normalized = models.length === 0 && next.defaultModel === undefined && nextPriority.length === 0
-      ? priority.length > 0 ? { providerPriority: [] as readonly AiGatewayProviderId[] } : null
-      : {
-        ...(models.length > 0 ? { models } : {}),
-        ...(next.defaultModel !== undefined ? { defaultModel: next.defaultModel } : {}),
-        providerPriority: nextPriority,
-      };
+    // 우선순위는 이 저장에 싣지 않는다 — 키 부재를 서버가 "보존"으로 읽으므로, 다른
+    // 호스트가 그 사이 바꾼 소진 순서를 모델·기본값 편집이 스테일 스냅숏으로 덮지
+    // 않는다. 우선순위를 싣는 유일한 경로는 칩 액션(savePriority)이다.
+    const normalized = models.length === 0 && next.defaultModel === undefined ? null : {
+      ...(models.length > 0 ? { models } : {}),
+      ...(next.defaultModel !== undefined ? { defaultModel: next.defaultModel } : {}),
+    };
+    void setSystemPromptSettingsField("aiGateway", normalized);
+  };
+
+  const savePriority = (nextPriority: readonly AiGatewayProviderId[]): void => {
+    // 전체-값 PUT 계약상 우선순위만 보내면 모델 선택이 지워진다 — 현재 스냅숏을 함께
+    // 싣는다. 빈 배열은 명시 해제의 유일한 철자이고, 해제할 것도 없는 전량 공백만 null.
+    const value: AiGatewaySettings = {
+      ...(enabled.length > 0 ? { models: enabled } : {}),
+      ...(selection.defaultModel !== undefined ? { defaultModel: selection.defaultModel } : {}),
+      providerPriority: nextPriority,
+    };
+    const nothingElse = enabled.length === 0 && selection.defaultModel === undefined;
+    const normalized = nothingElse && nextPriority.length === 0 && priority.length === 0 ? null : value;
     void setSystemPromptSettingsField("aiGateway", normalized);
   };
 
@@ -691,7 +701,7 @@ function AiGatewayModelsCard() {
     const next = priority.includes(id)
       ? priority.filter((entry) => entry !== id)
       : [...priority, id];
-    save({ ...selection, providerPriority: next });
+    savePriority(next);
   };
 
   const addModel = (model: AiGatewayCatalogModel): void => {
