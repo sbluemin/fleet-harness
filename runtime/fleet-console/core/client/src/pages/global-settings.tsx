@@ -965,10 +965,19 @@ function RemoteLinksCard({
       <p className="remote-card-help">{renderMessage(t("settings.remote.links.rule"), { minutes: REMOTE_GRANT_TTL_MINUTES })}</p>
 
       {link ? (
-        <div className="remote-link-field">
-          <input readOnly value={link.link} aria-label={t("settings.remote.linkLabel")} onFocus={(event) => event.currentTarget.select()} />
-          <button type="button" onClick={onCopy}>{copied ? t("settings.remote.copied") : t("settings.remote.copy")}</button>
-        </div>
+        <>
+          <div className="remote-link-field">
+            <input readOnly value={link.link} aria-label={t("settings.remote.linkLabel")} onFocus={(event) => event.currentTarget.select()} />
+            <button type="button" onClick={onCopy}>{copied ? t("settings.remote.copied") : t("settings.remote.copy")}</button>
+          </div>
+          {/*
+            링크는 인코딩된 봉투일 뿐 암호가 아니다 — 받은 쪽은 물론 그 문자열이 지나간 곳도 풀어
+            볼 수 있다. 섹션 머리의 경고는 원격 접속 전체를 말하므로, 방금 만들어진 이 문자열이
+            무엇을 여는지는 그 문자열 옆에서 다시 말한다. monitoring 링크는 명령을 실행하지
+            못하므로 full일 때만 그 문장을 붙인다.
+          */}
+          {link.access === "full" ? <p className="remote-card-help">{t("settings.remote.warning")}</p> : null}
+        </>
       ) : null}
 
       <label className="remote-monitoring">

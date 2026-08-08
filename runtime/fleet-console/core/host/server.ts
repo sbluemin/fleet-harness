@@ -1077,8 +1077,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   /**
    * 원격 액세스 링크. 주소·자격·신원·이름을 하나의 봉투에 담아 `fleet://join?code=`로 실어
-   * 나른다. 봉투 밖에 남는 것이 없으므로 붙여넣는 사람 눈에도, 이 문자열이 지나가는 대화창에도
-   * 사설 주소가 드러나지 않는다. 이 스킴을 여는 주체는 Fleet Desktop 하나뿐이다.
+   * 나른다. 봉투는 인코딩이지 암호가 아니다 — 붙여넣은 문자열을 눈으로 읽어서는 사설 주소가
+   * 보이지 않지만, 그 문자열을 가진 쪽은 언제든 풀어 볼 수 있다. 그러므로 이 링크는 가려진
+   * 주소가 아니라 자격 그 자체로 다루고, 신뢰하는 경로로만 건넨다. 이 스킴을 여는 주체는
+   * Fleet Desktop 하나뿐이다.
    */
   function handleAccessLinkIssue(req: http.IncomingMessage, res: http.ServerResponse): void {
     if (req.method !== "POST") {
@@ -1089,12 +1091,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 401, { error: "unauthorized" });
       return;
     }
+    const requestedAccess = readAccessClass(req);
+    if (requestedAccess === null) {
+      writeJson(res, 400, { error: "invalid_access_class" });
+      return;
+    }
     const remote = listeners.find((entry) => entry.audience === "remote");
     if (!remote || !remoteFingerprint) {
       writeJson(res, 409, { error: "remote_access_disabled" });
       return;
     }
-    const grant = access.issueGrant("remote", readAccessClass(req));
+    const grant = access.issueGrant("remote", requestedAccess);
     const link = encodeAccessLink({ endpoint: remote.origin, token: grant.token, fingerprint: remoteFingerprint, label: consoleLabel() });
     writeJson(res, 201, { id: grant.id, link, access: grant.access, expiresAt: grant.expiresAt, fingerprint: remoteFingerprint });
   }
@@ -2017,10 +2024,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   return returnedServer;
 }
 
-/** 발급 요청이 고른 등급. 알 수 없는 값은 가장 좁은 쪽이 아니라 기본(full)으로 두지 않는다. */
-function readAccessClass(req: http.IncomingMessage): AccessClass {
+/**
+ * 발급 요청이 고른 등급. 아는 이름 둘만 받는다.
+ *
+ * 모르는 값을 기본값으로 흘려보내면 그 기본값이 넓은 쪽이라 오타 하나가 좁히려던 발급을 넓힌다.
+ * 등급은 발급자가 고르는 것이지 파서가 메우는 것이 아니므로, 읽지 못한 값은 `null`로 돌려
+ * 호출자가 거절하게 한다. 값이 아예 없는 것은 고르지 않은 것이라 종전대로 `full`이다.
+ */
+function readAccessClass(req: http.IncomingMessage): AccessClass | null {
   const requested = new URL(req.url ?? "/", "http://localhost").searchParams.get("access");
-  return requested === "monitoring" ? "monitoring" : "full";
+  if (requested === null || requested === "full") return "full";
+  return requested === "monitoring" ? "monitoring" : null;
 }
 
 /** 기기 이름은 사람이 자기 기기를 알아보는 단서일 뿐이다 — 표시 가능한 짧은 문자열로 자른다. */

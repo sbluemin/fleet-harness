@@ -7,7 +7,7 @@
 <p align="center">
   <strong>Fleet Console은 Claude Code와 Claude Gateway를 서버가 소유하는 살아 있는 Operation으로 실행합니다.</strong><br/>
   하나의 로컬 워크스페이스에서 배치하고, 관측하고, 위임할 수 있습니다.<br/>
-  네이티브 에이전트 런타임. 공식 프로토콜. API 래핑이나 프록시 없음.
+  네이티브 에이전트 런타임. 공식 프로토콜. 공급자 자격은 에이전트 프로세스에 들어가지 않음.
 </p>
 
 <p align="center">
@@ -27,7 +27,7 @@ npm install -g @dotobokuri/fleet-console
 fleet-console          # 로컬 콘솔을 시작하고 브라우저로 엽니다
 ```
 
-`fleet-console`은 `status`, `restart`, `stop`도 지원합니다. 모든 실행은 내 머신 안에서 이루어집니다. 서버는 루프백에만 바인딩되며, 브라우저에는 MCP·세션 토큰이 전달되지 않습니다.
+`fleet-console`은 `status`, `restart`, `stop`도 지원합니다. 모든 실행은 내 머신 안에서 이루어집니다. 서버는 기본적으로 루프백에 바인딩되고, 브라우저에는 MCP·공급자 토큰이 전달되지 않습니다. 원격 접속은 켜기 전까지 꺼져 있으며, 켜면 직접 고른 인터페이스에 TLS로 콘솔을 엽니다.
 
 네이티브 창을 원한다면 [최신 GitHub Release](https://github.com/sbluemin/fleet-harness/releases/latest)에서 플랫폼 빌드를 설치하세요.
 
@@ -93,7 +93,7 @@ Fleet Wiki는 아키텍처 결정, 제품 히스토리, 리뷰 큐를 실행 환
 
 ## Fleet Console Desktop — 필요할 때 네이티브로
 
-Fleet Console Desktop은 Fleet Console 위의 선택적 얇은 네이티브 셸이며, 두 번째 서버나 분기된 UI가 아닙니다. 표준 Console 서비스를 감독하고 정확한 루프백 원본을 검증한 뒤, 샌드박스 처리된 Node-free 렌더러에서 같은 `/console/` 제품을 로드합니다.
+Fleet Console Desktop은 Fleet Console 위의 선택적 얇은 네이티브 셸이며, 두 번째 서버나 분기된 UI가 아닙니다. 표준 Console 서비스를 감독하고, 창을 넘기기 전에 그 원본을 정확히 검증한 뒤 — 루프백 콘솔이거나, 로컬 Console이 들고 있는 지문과 살아 있는 인증서가 일치하는 원격 콘솔 — 샌드박스 처리된 Node-free 렌더러에서 같은 `/console/` 제품을 로드합니다.
 
 - 네이티브 창, 트레이 라이프사이클, 플랫폼 업데이트 흐름
 - 사용자 상태와 독립적으로 교체 가능한 관리형 Node·Console 런타임
