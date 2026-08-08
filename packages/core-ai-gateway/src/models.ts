@@ -120,7 +120,14 @@ const GatewayBenchmarkSourceSchema = z.object({
   observedAt: z.iso.datetime(),
   url: z.string().min(1),
   method: z.string().min(1),
-  noiseBandPoints: z.number().positive(),
+  /**
+   * Fleet가 라우팅상 동률로 취급하는 점수 폭. **소스가 발표한 통계값이 아니라 Fleet의
+   * 보수적 라우팅 정책이다** — CursorBench는 임계값을 발표하지 않고, SWE-rebench는 소스
+   * 전역 값이 아니라 모델별 오차를 싣는다. 그래서 이 값은 소스를 서술하는 `method`가
+   * 아니라 여기에 있고, 이름도 소스 쪽 사실처럼 읽히지 않게 둔다 — 호스트에는 소스 이름
+   * 바로 옆에 실려 나가므로, 이름이 근거 등급을 그대로 말해 버린다.
+   */
+  routingTieBandPoints: z.number().positive(),
 }).strict();
 
 const GatewayBenchmarkModelEntrySchema = z.object({
@@ -158,7 +165,7 @@ export type GatewayBenchmarkFigures = {
 export type GatewayModelBenchmark = {
   readonly source: string;
   readonly observedAt: string;
-  readonly noiseBandPoints: number;
+  readonly routingTieBandPoints: number;
   readonly rungs?: Readonly<Partial<Record<GatewayReasoningEffort, GatewayBenchmarkFigures>>>;
   readonly overall?: GatewayBenchmarkFigures;
   readonly caveat?: string;
@@ -436,8 +443,9 @@ export interface GatewayModelConstraints {
   /**
    * Third-party measured evidence about the vendor model. Where present and
    * fresh it outranks the capabilityClass prior for quality ordering, and
-   * capabilityClass stands where it is absent. Score differences within
-   * noiseBandPoints are not significant.
+   * capabilityClass stands where it is absent. Fleet treats a score gap within
+   * routingTieBandPoints as a routing tie; that band is Fleet's own policy, not
+   * a significance threshold published by the source.
    */
   readonly benchmark?: GatewayModelBenchmark;
   readonly quotaScope?: GatewayQuotaScope;
@@ -651,7 +659,7 @@ function resolveGatewayModelBenchmark(
   const benchmark = Object.freeze({
     source: `${source.name} ${source.benchVersion}`,
     observedAt: source.observedAt,
-    noiseBandPoints: source.noiseBandPoints,
+    routingTieBandPoints: source.routingTieBandPoints,
     ...(rungs ? { rungs } : {}),
     ...(overall ? { overall } : {}),
     ...(benchEntry.caveat ? { caveat: benchEntry.caveat } : {}),
