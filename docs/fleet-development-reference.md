@@ -6,7 +6,7 @@ This guide explains how Fleet development is organized.
 
 Fleet development follows a hard one-way dependency graph:
 
-- `runtime/fleet-cli` — sole CLI Composition Root and host adapter; consumes Admiral policy from `@dotobokuri/fleet-admiral`; owns one in-process MCP HTTP/JSON-RPC server per CLI process and the console register publisher.
+- `runtime/fleet-console/cli` — thin `fleet` launcher Composition Root inside `@dotobokuri/fleet-console`; consumes Admiral policy from `@dotobokuri/fleet-admiral`; owns argv/process lifecycle, one in-process Fleet MCP, an ephemeral loopback AI Gateway, and a Claude Code child with inherited stdio (no PTY/TUI/interception).
 - `packages/core-agent` — host-agnostic executor/session/model runtime engine, builtin external MCP catalog, generic in-process MCP server primitives, and shared register data contract.
 - `packages/core-infra` — host-agnostic auth, data-dir resolution, data-dir/settings, and durable `fs-store` I/O primitives.
 - `runtime/fleet-console` — standalone loopback Console Service and sole owner of CLI register ingest, REST/SSE/WebSocket, Terminal PTY/provider/plugin runtime, durable state, and static UI serving.
@@ -16,9 +16,9 @@ Fleet development follows a hard one-way dependency graph:
 
 ## 2. Where New Work Goes
 
-### 2.1 `runtime/fleet-cli`
+### 2.1 `runtime/fleet-console/cli`
 
-Put code here when it requires terminal rendering, CLI process lifecycle management, host input routing, concrete service assembly, per-process in-process MCP serving, console registration publishing, or Admiral prompt/protocol/tool policy.
+Put code here when it belongs to the thin `fleet` launcher: argv/process lifecycle, Claude Code passthrough, `auth`/`update`/`console` dispatch, one in-process Fleet MCP, an ephemeral loopback AI Gateway, concrete service assembly, or Admiral prompt/protocol/tool policy. Do not put PTY, TUI, or terminal I/O interception here.
 
 ### 2.3 `packages/core-infra`
 
@@ -38,8 +38,8 @@ Put code here when it owns the host-agnostic one-shot executor/session/model run
 
 ## 3. Import Rules
 
-- `fleet-cli` assembles concrete services through explicit leaf package calls.
-- Lower packages must not import `fleet-cli` or any package above them in the dependency graph.
+- The Console-owned `fleet` launcher assembles concrete services through explicit leaf package calls.
+- Lower packages must not import runtime hosts (`runtime/fleet-console`, `runtime/fleet-desktop`) or any package above them in the dependency graph.
 - Consumers use public package exports only.
 - Do not deep-import `src/**` or `internal/**` across package boundaries.
 - The Desktop shell depends on the Console Service protocol; the Console Service never depends on Electron.

@@ -107,7 +107,7 @@ describe("fleet console CLI", () => {
   it("posts capture-session hooks to the session-scoped capture endpoint", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-capture-hook-"));
     TEMP_DIRS.push(dir);
-    const paths = createConsolePaths({ env: { FLEET_CONSOLE_DIR: dir } });
+    const paths = createConsolePaths({ env: { FLEET_CONSOLE_DATA_DIR: dir } });
     const lock = createConsoleLock().writeLock({
       dir: paths.dir,
       lockFile: paths.lockFile,
@@ -120,13 +120,15 @@ describe("fleet console CLI", () => {
     const originalArgv = process.argv;
     const originalFetch = globalThis.fetch;
     const originalConsoleDir = process.env.FLEET_CONSOLE_DIR;
+    const originalConsoleDataDir = process.env.FLEET_CONSOLE_DATA_DIR;
     const originalSessionId = process.env.FLEET_CONSOLE_SESSION_ID;
     globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       calls.push({ url: String(url), init });
       return new Response("{}", { status: 200 });
     }) as unknown as typeof fetch;
     process.argv = ["node", "fleet-console", "hook", "capture-session", "claude"];
-    process.env.FLEET_CONSOLE_DIR = dir;
+    process.env.FLEET_CONSOLE_DATA_DIR = dir;
+    delete process.env.FLEET_CONSOLE_DIR;
     process.env.FLEET_CONSOLE_SESSION_ID = "session-x";
     try {
       await main();
@@ -135,6 +137,8 @@ describe("fleet console CLI", () => {
       globalThis.fetch = originalFetch;
       if (originalConsoleDir === undefined) delete process.env.FLEET_CONSOLE_DIR;
       else process.env.FLEET_CONSOLE_DIR = originalConsoleDir;
+      if (originalConsoleDataDir === undefined) delete process.env.FLEET_CONSOLE_DATA_DIR;
+      else process.env.FLEET_CONSOLE_DATA_DIR = originalConsoleDataDir;
       if (originalSessionId === undefined) delete process.env.FLEET_CONSOLE_SESSION_ID;
       else process.env.FLEET_CONSOLE_SESSION_ID = originalSessionId;
     }
@@ -149,7 +153,7 @@ describe("fleet console CLI", () => {
   it("posts the background report, including under the retired hook names, to the session-scoped endpoint", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-background-hook-"));
     TEMP_DIRS.push(dir);
-    const paths = createConsolePaths({ env: { FLEET_CONSOLE_DIR: dir } });
+    const paths = createConsolePaths({ env: { FLEET_CONSOLE_DATA_DIR: dir } });
     createConsoleLock().writeLock({
       dir: paths.dir,
       lockFile: paths.lockFile,
@@ -162,12 +166,14 @@ describe("fleet console CLI", () => {
     const originalArgv = process.argv;
     const originalFetch = globalThis.fetch;
     const originalConsoleDir = process.env.FLEET_CONSOLE_DIR;
+    const originalConsoleDataDir = process.env.FLEET_CONSOLE_DATA_DIR;
     const originalSessionId = process.env.FLEET_CONSOLE_SESSION_ID;
     globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       calls.push({ url: String(url), init });
       return new Response("{}", { status: 200 });
     }) as unknown as typeof fetch;
-    process.env.FLEET_CONSOLE_DIR = dir;
+    process.env.FLEET_CONSOLE_DATA_DIR = dir;
+    delete process.env.FLEET_CONSOLE_DIR;
     process.env.FLEET_CONSOLE_SESSION_ID = "session-background";
     try {
       for (const command of ["background-report", "background-spawn", "background-stop"] as const) {
@@ -179,6 +185,8 @@ describe("fleet console CLI", () => {
       globalThis.fetch = originalFetch;
       if (originalConsoleDir === undefined) delete process.env.FLEET_CONSOLE_DIR;
       else process.env.FLEET_CONSOLE_DIR = originalConsoleDir;
+      if (originalConsoleDataDir === undefined) delete process.env.FLEET_CONSOLE_DATA_DIR;
+      else process.env.FLEET_CONSOLE_DATA_DIR = originalConsoleDataDir;
       if (originalSessionId === undefined) delete process.env.FLEET_CONSOLE_SESSION_ID;
       else process.env.FLEET_CONSOLE_SESSION_ID = originalSessionId;
     }
@@ -210,8 +218,8 @@ describe("fleet console CLI", () => {
 
   it("documents the usage entry points and subcommands in help text", () => {
     const helpText = buildConsoleHelpText();
+    expect(helpText).toContain("fleet console");
     expect(helpText).toContain("fleet-console");
-    expect(helpText).not.toContain("fleet console");
     expect(helpText).toContain("start");
     expect(helpText).toContain("stop");
     expect(helpText).toContain("restart");

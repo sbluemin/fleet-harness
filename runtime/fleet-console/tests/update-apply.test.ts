@@ -21,7 +21,7 @@ describe("console update apply worker", () => {
     expect(script).not.toContain('from "@dotobokuri/fleet-cli"');
     expect(script).not.toContain("runtime/fleet-cli");
     expect(script).not.toContain('from "open"');
-    expect(script).toContain('"@dotobokuri/fleet-cli"');
+    expect(script).toContain('"@dotobokuri/fleet-console"');
     expect(script).toContain('"@dotobokuri/fleet-console"');
     expect(script).toContain('"serve"');
     // 워커가 교체 데몬을 띄울 때 process.env를 그대로 넘기는 계약 — 서비스의 child env 주입(예: NODE_USE_SYSTEM_CA)이 데몬까지 도달하는 경로다.
@@ -176,7 +176,7 @@ function createConfig(): ConsoleUpdateWorkerScriptConfig {
     lockFile: "/tmp/console.lock",
     logFile: "/tmp/fleet-console-update.log",
     packageManager: createPackageManagerSpec(),
-    packageNames: ["@dotobokuri/fleet-cli", "@dotobokuri/fleet-console"],
+    packageNames: ["@dotobokuri/fleet-console"],
     serverModulePath: "/pkg/dist/cli.mjs",
     statusFile: "/tmp/fleet-console-update.status.json",
     targetVersion: "1.2.3",

@@ -3,8 +3,8 @@ maintainer: admiral-only
 edit_policy: |
   DO NOT MODIFY THROUGH A DELEGATED RUN.
   This document is the Admiral persona's self-model — its operational reference
-  for how the system prompt and live Fleet state flow through fleet-cli,
-  fleet-admiral, and core-infra. Updates must originate from the Admiral
+  for how the system prompt and live Fleet state flow through Fleet Console's
+  terminal launcher, fleet-admiral, and core-infra. Updates must originate from the Admiral
   directly, in response to verified code changes in prompt assembly or runtime
   lifecycle machinery.
 ---
@@ -22,8 +22,8 @@ edit_policy: |
 This document is the operational reference for the Admiral's prompt assembly and
 runtime lifecycle model. The current architecture has no per-turn runtime-context
 tag prefix. The Admiral system prompt is assembled inside each host — Fleet
-Console's terminal plugin for native/gateway launches, and `fleet-cli`'s
-thin launcher for its gateway-doctrine launch — and live state is consumed
+Console's terminal plugin for native/gateway launches, and the Console-owned
+`fleet` thin launcher for its gateway-doctrine launch — and live state is consumed
 through public leaf package APIs and package-local policy modules.
 
 This document is for the Admiral. It is not a public spec and not a contributor
@@ -69,10 +69,11 @@ not serialized into a per-turn prompt wrapper.
 
 ## 4. Lifecycle Boot
 
-Each host boots its own Admiral runtime.
+Each launch path boots its own Admiral runtime.
 
-`fleet-cli` (`runtime/fleet-cli/src/runtime/runtime.ts`, `createFleetCliRuntime()`)
-composes the thin gateway host directly:
+The Console-owned `fleet` launcher
+(`runtime/fleet-console/cli/runtime/runtime.ts`, `createFleetCliRuntime()`)
+composes the thin gateway process directly:
 
 - creates infrastructure services
 - opens the AI Gateway settings store and the in-process quota service
@@ -83,7 +84,8 @@ composes the thin gateway host directly:
 
 Its `cleanup()` releases the dedicated MCP session, stops the MCP server, and
 resets the wire-log target. Fleet Console's terminal plugin boots the same
-`createFleetGatewayAgentRuntimeLifecycle`, so both hosts share one runtime shape.
+`createFleetGatewayAgentRuntimeLifecycle`, so both launch paths share one runtime
+shape inside the Fleet Console host package.
 
 ---
 

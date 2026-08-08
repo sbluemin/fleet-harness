@@ -11,7 +11,7 @@
   "scripts": {
     "build": "pnpm -r --filter '!fleet-harness' --filter '!@dotobokuri/fleet-desktop' build",
     "check:core-boundary": "node scripts/check-core-boundary.mjs",
-    "cli": "pnpm --filter @dotobokuri/core-unified-agent build && node scripts/run-isolated.mjs cli",
+    "cli": "pnpm --filter @dotobokuri/fleet-console build && node scripts/run-isolated.mjs cli",
     "console": "pnpm --filter @dotobokuri/fleet-console build && node scripts/run-isolated.mjs console",
     "desktop": "node scripts/run-isolated.mjs desktop",
     "desktop:build": "pnpm --filter @dotobokuri/fleet-desktop build",
@@ -21,7 +21,7 @@
     "postinstall": "node scripts/fix-node-pty-spawn-helper.mjs && node scripts/generate-fleet-admiral-assets.mjs && pnpm -r --filter '!fleet-harness' --filter '!@dotobokuri/fleet-desktop' build"
   },
   "bin": {
-    "fleet": "./runtime/fleet-cli/bin/fleet"
+    "fleet": "./runtime/fleet-console/dist/fleet.mjs"
   },
   "pnpm": {
     "//supportedArchitectures": "배포 타깃(macOS arm64, Windows x64)의 optional 네이티브 패키지(@esbuild/*)를 호스트 arch와 무관하게 설치한다. arm64 Windows에서도 x64 desktop 패키징이 가능하도록.",

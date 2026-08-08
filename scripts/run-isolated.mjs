@@ -25,7 +25,7 @@ import { fileURLToPath } from "node:url";
  */
 
 const TARGETS = {
-  cli: ["pnpm", "--filter", "@dotobokuri/fleet-cli", "dev"],
+  cli: [process.execPath, "runtime/fleet-console/dist/fleet.mjs"],
   console: [process.execPath, "runtime/fleet-console/dist/cli.mjs"],
   desktop: ["pnpm", "--filter", "@dotobokuri/fleet-desktop", "dev"],
 };

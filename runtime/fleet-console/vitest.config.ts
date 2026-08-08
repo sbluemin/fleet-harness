@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@dotobokuri/core-agent": path.join(workspaceRoot, "packages/core-agent/src"),
+      "@dotobokuri/core-ai-gateway": path.join(workspaceRoot, "packages/core-ai-gateway/src"),
       "@dotobokuri/core-unified-agent": path.join(workspaceRoot, "packages/core-unified-agent/src"),
       "@dotobokuri/fleet-admiral": path.join(workspaceRoot, "packages/fleet-admiral/src"),
       // 서브패스 alias는 bare alias보다 먼저 와야 한다: 접두 매칭이라 뒤에 두면 절대 도달하지 않는다.
@@ -23,6 +24,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.{ts,tsx}"],
+    // built smoke self-skips unless FLEET_BUILT_SMOKE=1; keep it discoverable for explicit runs.
     // 파일의 첫 테스트는 그 파일 모듈 그래프의 transform/import 비용을 혼자 지불한다 — 전체 스위트를
     // 병렬로 돌릴 때 그 비용이 기본 5초를 넘겨서, 로직과 무관한 첫 테스트만 타임아웃으로 죽는다.
     testTimeout: 20_000,

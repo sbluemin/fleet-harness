@@ -1,7 +1,7 @@
 {
   "name": "@dotobokuri/fleet-console",
   "version": "1.51.0",
-  "description": "Fleet Console - standalone web surface for observing Fleet CLI workspaces, live output streams, and terminals.",
+  "description": "Fleet Console \u2014 sole owner of the fleet and fleet-console bins, Console web surface, and thin Claude Code launcher.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sbluemin/fleet-harness.git",
@@ -16,6 +16,7 @@
   "main": "./dist/cli.mjs",
   "types": "./dist/cli.d.ts",
   "bin": {
+    "fleet": "./dist/fleet.mjs",
     "fleet-console": "./dist/cli.mjs"
   },
   "exports": {
@@ -38,8 +39,10 @@
     "node": ">=20.19.0"
   },
   "scripts": {
-    "build": "pnpm generate:admiral-assets && pnpm generate:shim-keys && tsup && node ../../scripts/check-dist-node-protocol.mjs && node ../../scripts/check-dist-published-externals.mjs && pnpm generate:desktop-protocol-declaration && pnpm verify:desktop-protocol && vite build --config core/client/vite.config.ts",
-    "cli": "tsx core/host/cli.ts",
+    "boundary:guard": "node ../../scripts/guard-fleet-agent-boundary.mjs",
+    "build": "pnpm boundary:guard && pnpm generate:admiral-assets && pnpm generate:shim-keys && tsup && node ../../scripts/check-dist-node-protocol.mjs && node ../../scripts/check-dist-published-externals.mjs && pnpm generate:desktop-protocol-declaration && pnpm verify:desktop-protocol && vite build --config core/client/vite.config.ts",
+    "cli": "tsx cli/fleet-entry.ts",
+    "fleet": "tsx cli/fleet-entry.ts",
     "dev": "vite --config core/client/vite.config.ts",
     "generate:admiral-assets": "node ../../scripts/generate-fleet-admiral-assets.mjs",
     "generate:desktop-protocol-declaration": "tsup core/host/desktop-protocol.ts --dts --dts-resolve --dts-only --out-dir dist --format esm --no-config",
@@ -54,7 +57,9 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.212",
+    "@clack/prompts": "1.4.0",
     "@dotobokuri/core-agent": "workspace:*",
+    "@dotobokuri/core-ai-gateway": "workspace:*",
     "@dotobokuri/core-infra": "workspace:*",
     "@dotobokuri/core-process": "workspace:*",
     "@dotobokuri/core-unified-agent": "workspace:*",
