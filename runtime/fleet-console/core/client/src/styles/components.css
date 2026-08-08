@@ -7187,9 +7187,15 @@
   white-space: nowrap;
 }
 
-.operation-launch-variant-star {
+/* 기본 모델 표식은 두 실행 메뉴에서 같은 별이어야 한다. 조판을 행에서 상속시키면 mono를 쓰는
+   캔버스 쪽 ★가 sans를 쓰는 Quick Launch 쪽의 절반 폭으로 가늘게 렌더돼, 같은 뜻의 표식이
+   표면마다 다른 기호로 읽힌다. */
+.operation-launch-variant-star,
+.quick-launch-variant-star {
   color: var(--brass);
-  font-size: 9.5px;
+  font-family: var(--font-body);
+  font-size: 10px;
+  line-height: 1;
 }
 
 .operation-launch-variant-chevron,
@@ -10832,11 +10838,6 @@ body[data-codex-reading="true"] .operations-side-bar {
 .quick-launch-variant-name[aria-expanded="true"] {
   background: color-mix(in oklch, var(--surface-pillar) 55%, transparent);
   color: var(--text-primary);
-}
-
-.quick-launch-variant-star {
-  color: var(--brass);
-  font-size: 10px;
 }
 
 .quick-launch-effort-menu.theater-menu {

@@ -93,9 +93,20 @@ describe("Quick Launch effort submenu layout", () => {
   it("lets the label claim the row so a starred model keeps the list's left edge", () => {
     // ★에 margin-left:auto를 걸면 그 행만 통째로 우측 정렬돼 목록의 기준선이 끊긴다.
     const css = readFileSync(resolve(process.cwd(), "core/client/src/styles/components.css"), "utf8");
-    expect(/\.quick-launch-variant-star\s*\{[^}]*margin-left:\s*auto/u.test(css)).toBe(false);
-    expect(/\.operation-launch-variant-star\s*\{[^}]*margin-left:\s*auto/u.test(css)).toBe(false);
-    expect(css).toMatch(/\.quick-launch-variant-label\s*\{[^}]*flex:\s*1;/u);
+    for (const selector of [".quick-launch-variant-star", ".operation-launch-variant-star"]) {
+      expect(ruleFor(css, selector)).not.toMatch(/margin-left:\s*auto/u);
+    }
+    expect(ruleFor(css, ".quick-launch-variant-label")).toMatch(/flex:\s*1;/u);
+  });
+
+  it("gives both launch menus the same default-model star", () => {
+    // 조판을 행에서 상속시키면 mono를 쓰는 캔버스 쪽 ★가 sans를 쓰는 Quick Launch 쪽의 절반
+    // 폭으로 렌더돼, 같은 뜻의 표식이 표면마다 다른 기호로 읽힌다.
+    const css = readFileSync(resolve(process.cwd(), "core/client/src/styles/components.css"), "utf8");
+    const canvas = ruleFor(css, ".operation-launch-variant-star");
+    expect(canvas).toBe(ruleFor(css, ".quick-launch-variant-star"));
+    expect(canvas).toMatch(/font-family:\s*var\(--font-body\)/u);
+    expect(canvas).toMatch(/font-size:\s*10px/u);
   });
 
   it("styles the selected effort with aria-current to match the rendered attribute", () => {
@@ -119,6 +130,15 @@ function renderMenu(): void {
       <button type="button" className="quick-launch-effort-item">HIGH</button>
     </QuickLaunchEffortMenu>,
   ));
+}
+
+// 선언 블록을 셀렉터로 찾아 돌려준다. 정규식을 곧장 `.test()`로 쓰면 셀렉터가 사라지거나 다른
+// 규칙과 묶였을 때도 "매칭 없음 = 위반 없음"으로 읽혀 조용히 통과한다.
+function ruleFor(css: string, selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const block = new RegExp(`(?:^|,)\\s*${escaped}\\s*(?:,[^{]*)?\\{([^}]*)\\}`, "mu").exec(css);
+  if (!block) throw new Error(`Expected a CSS rule for ${selector}`);
+  return block[1]!;
 }
 
 function effortMenu(): HTMLElement {
