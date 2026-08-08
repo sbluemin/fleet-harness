@@ -1,6 +1,6 @@
 import { ApiError } from "./api.js";
 import { normalizeUiFont } from "./ui-font.js";
-import type { ConsoleLanguagePreference, GlobalSettingsMutationResult, GlobalSettingsState, RemoteAccessClass, RemoteAccessInterface, RemoteAccessLink, RemoteAccessLinkSummary, RemoteAccessSessionSummary, RemoteAccessState, RemoteAccessStatus } from "./types.js";
+import type { ConsoleLanguagePreference, GlobalSettingsMutationResult, GlobalSettingsState, RemoteAccessClass, RemoteAccessInterface, RemoteAccessLink, RemoteAccessLinkSummary, RemoteAccessPairedDevice, RemoteAccessState, RemoteAccessStatus } from "./types.js";
 
 export async function fetchGlobalSettingsState(signal?: AbortSignal): Promise<GlobalSettingsState> {
   const response = await fetch("/api/v1/settings/global", { signal });
@@ -34,7 +34,7 @@ export async function fetchRemoteAccessStatus(signal?: AbortSignal): Promise<Rem
     fingerprint: typeof payload.fingerprint === "string" ? payload.fingerprint : null,
     lastError: typeof payload.lastError === "string" ? payload.lastError : null,
     links: Array.isArray(payload.links) ? payload.links.filter(isLinkSummary) : [],
-    sessions: Array.isArray(payload.sessions) ? payload.sessions.filter(isSessionSummary) : [],
+    devices: Array.isArray(payload.devices) ? payload.devices.filter(isPairedDevice) : [],
     interfaces: Array.isArray(payload.interfaces) ? payload.interfaces.filter(isInterfaceCandidate) : [],
   };
 }
@@ -43,8 +43,14 @@ export async function revokeRemoteAccessLink(id: string, signal?: AbortSignal): 
   await assertRevoked(await fetch(`/api/v1/access-links/${encodeURIComponent(id)}`, { method: "DELETE", signal }));
 }
 
+/** 지금 붙어 있는 접속만 끊는다. 그 기기는 여전히 페어링되어 있어 스스로 다시 붙을 수 있다. */
 export async function revokeRemoteAccessSession(handle: string, signal?: AbortSignal): Promise<void> {
   await assertRevoked(await fetch(`/api/v1/access-sessions/${encodeURIComponent(handle)}`, { method: "DELETE", signal }));
+}
+
+/** 페어링을 거둔다. 새 액세스 링크 없이는 다시 붙지 못한다. */
+export async function revokeRemoteAccessDevice(id: string, signal?: AbortSignal): Promise<void> {
+  await assertRevoked(await fetch(`/api/v1/paired-devices/${encodeURIComponent(id)}`, { method: "DELETE", signal }));
 }
 
 /**
@@ -70,9 +76,10 @@ function isInterfaceCandidate(value: unknown): value is RemoteAccessInterface {
   return Boolean(entry) && (entry?.kind === "tailscale" || entry?.kind === "local") && typeof entry.label === "string" && typeof entry.address === "string";
 }
 
-function isSessionSummary(value: unknown): value is RemoteAccessSessionSummary {
-  const entry = value as Partial<RemoteAccessSessionSummary> | null;
-  return Boolean(entry) && typeof entry?.handle === "string" && typeof entry.openedAt === "number" && typeof entry.expiresAt === "number" && typeof entry.lastSeenAt === "number";
+function isPairedDevice(value: unknown): value is RemoteAccessPairedDevice {
+  const entry = value as Partial<RemoteAccessPairedDevice> | null;
+  return Boolean(entry) && typeof entry?.id === "string" && typeof entry.pairedAt === "number" && typeof entry.lastSeenAt === "number"
+    && (entry.sessionHandle === null || typeof entry.sessionHandle === "string");
 }
 
 export async function createRemoteAccessLink(access: RemoteAccessClass, signal?: AbortSignal): Promise<RemoteAccessLink> {

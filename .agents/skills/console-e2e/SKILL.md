@@ -9,6 +9,8 @@ Test the Console as a browser product. Keep Electron and native-shell claims out
 
 When the scenario must boot a real agent CLI Operation and reach a provider — verifying an AI Gateway adapter, reproducing a provider-specific tool-call defect, capturing what a model actually put on the wire — also read [live agent prompt testing](references/live-agent-prompt-testing.md). Terminal input, gateway model pinning, and wire capture each fail in ways the base workflow does not describe.
 
+When the scenario touches remote access — access links, pairing, sessions, the control curtain, or anything under Settings -> Remote access — also read [remote access and pairing E2E](references/remote-access-testing.md). The guest device cannot be a browser tab there: it is simulated from Node over real TLS while the browser watches only the owner's side.
+
 ## Load the browser contract
 
 Record the test host OS/architecture before choosing an agent-browser binary. If the host is Windows ARM64, the native wrapper is unavailable, or the result depends on platform-specific input behavior, read [the platform automation reference](references/platform-automation.md) completely before running browser commands. Never silently substitute an unofficial binary or report an emulated automation client as native ARM64 evidence.

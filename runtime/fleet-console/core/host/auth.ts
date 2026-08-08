@@ -18,6 +18,8 @@ export type AccessAudience = "local" | "remote";
 export type AccessClass = "full" | "monitoring";
 
 export const SESSION_COOKIE_NAME = "fleet_console_session";
+/** 페어링 자격이 담기는 쿠키. 세션과 달리 회수 전까지 살아 남는다. */
+export const PAIRING_COOKIE_NAME = "fleet_console_pairing";
 
 /**
  * 링크 1회 교환용 자격. 사용되면 즉시 소멸하고, 미사용 상태로도 짧게만 살아 있는다.
@@ -49,6 +51,11 @@ export interface AccessSession {
   readonly handle: string;
   readonly audience: AccessAudience;
   readonly access: AccessClass;
+  /**
+   * 이 세션을 연 페어링. 세션은 접속이고 페어링은 자격이므로, 페어링을 회수할 때 그것으로
+   * 열려 있던 접속까지 함께 끊으려면 둘을 잇는 이름이 필요하다. 루프백 세션에는 없다.
+   */
+  readonly pairingId: string | null;
   readonly expiresAt: number;
 }
 
@@ -57,6 +64,7 @@ export interface AccessSessionSummary {
   /** 조인할 때 기기가 스스로 밝힌 이름. 목록에서 사람이 자기 기기를 알아보는 유일한 단서다. */
   readonly device: string | null;
   readonly access: AccessClass;
+  readonly pairingId: string | null;
   readonly openedAt: number;
   readonly expiresAt: number;
   readonly lastSeenAt: number;
@@ -86,6 +94,14 @@ export interface AccessRegistry {
   /** 리스너의 audience와 일치하는 grant만 세션으로 교환된다. 교환된 grant는 소멸한다. */
   redeemGrant(token: string | null, audience: AccessAudience, device?: string | null): AccessSession | null;
   /**
+   * grant를 소멸시키고 그 사실만 돌려준다. 세션을 열기 전에 페어링을 먼저 만들어야 하는
+   * 경로가 쓴다 — 세션이 자기를 연 페어링의 이름을 들고 태어나야, 나중에 그 페어링을
+   * 회수할 때 접속까지 함께 끊을 수 있다.
+   */
+  consumeGrant(token: string | null, audience: AccessAudience): AccessGrant | null;
+  /** 자격이 이미 확인된 뒤 접속을 연다. 등급은 부르는 쪽이 정하고 조인이 올릴 수 없다. */
+  openSession(audience: AccessAudience, access: AccessClass, device: string | null, pairingId: string | null): AccessSession;
+  /**
    * 소모하지 않고 등급만 본다. 조인을 거절해야 하는 경우 자격을 태우기 전에 판정하기 위한 것이다 —
    * redeemGrant는 거절할 때도 토큰을 지우므로, 그 뒤에서 막으면 1회용 링크만 소멸하고 아무도
    * 붙지 못한 채 끝난다. 만료·audience 불일치는 여기서도 null이다.
@@ -106,6 +122,8 @@ export interface AccessRegistry {
   revokeSession(id: string): boolean;
   /** 이미 열린 세션 하나를 공개 이름으로 끊는다. */
   revokeSessionByHandle(handle: string): boolean;
+  /** 한 페어링으로 열린 접속을 전부 끊는다. 페어링 회수가 접속을 남겨 두지 않게 한다. */
+  revokeSessionsByPairing(pairingId: string): boolean;
   /** 원격을 끄면 그 audience의 세션도 함께 죽는다 — 리스너만 닫으면 자격은 살아 남는다. */
   revokeSessions(audience: AccessAudience): void;
   revokeAllSessions(): void;
@@ -117,6 +135,7 @@ interface StoredSession {
   readonly device: string | null;
   readonly audience: AccessAudience;
   readonly access: AccessClass;
+  readonly pairingId: string | null;
   readonly openedAt: number;
   readonly absoluteExpiresAt: number;
   idleExpiresAt: number;
@@ -124,7 +143,12 @@ interface StoredSession {
 }
 
 const DEFAULT_GRANT_TTL_MS = 15 * 60 * 1000;
-const DEFAULT_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+/**
+ * 세션 수명이 자격 수명을 뜻하던 시절의 12시간은 페어링이 생기면서 의미가 달라졌다. 이제
+ * 자격은 페어링이 들고 있고 세션은 "지금 붙어 있는가"만 말하므로, 절대 만료는 오래 뜬
+ * 서버가 잊힌 접속을 언젠가 걷어내는 상한일 뿐이다. 실질적인 정리는 유휴 만료가 한다.
+ */
+const DEFAULT_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_SESSION_IDLE_TTL_MS = 60 * 60 * 1000;
 
 export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegistry {
@@ -145,15 +169,20 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     return grant;
   }
 
-  function redeemGrant(token: string | null, audience: AccessAudience, device: string | null = null): AccessSession | null {
+  function consumeGrant(token: string | null, audience: AccessAudience): AccessGrant | null {
     prune();
     if (!token) return null;
     const grant = grants.get(token);
     if (!grant) return null;
     grants.delete(token);
     if (grant.expiresAt <= now() || grant.audience !== audience) return null;
+    return grant;
+  }
+
+  function redeemGrant(token: string | null, audience: AccessAudience, device: string | null = null): AccessSession | null {
+    const grant = consumeGrant(token, audience);
     // 세션은 자기를 연 자격의 등급을 물려받는다 — 조인이 등급을 올릴 수 없어야 한다.
-    return openSession(audience, grant.access, device);
+    return grant ? openSession(audience, grant.access, device, null) : null;
   }
 
   function peekGrant(token: string, audience: AccessAudience): AccessGrantSummary | null {
@@ -163,13 +192,13 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     return { id: grant.id, access: grant.access, issuedAt: grant.issuedAt, expiresAt: grant.expiresAt };
   }
 
-  function openSession(audience: AccessAudience, access: AccessClass, device: string | null): AccessSession {
+  function openSession(audience: AccessAudience, access: AccessClass, device: string | null, pairingId: string | null): AccessSession {
     const id = randomToken();
     const handle = randomHandle();
     const current = now();
     const absoluteExpiresAt = current + sessionTtlMs;
-    sessions.set(id, { handle, device, audience, access, openedAt: current, absoluteExpiresAt, idleExpiresAt: current + sessionIdleTtlMs, lastSeenAt: current });
-    return { id, handle, audience, access, expiresAt: absoluteExpiresAt };
+    sessions.set(id, { handle, device, audience, access, pairingId, openedAt: current, absoluteExpiresAt, idleExpiresAt: current + sessionIdleTtlMs, lastSeenAt: current });
+    return { id, handle, audience, access, pairingId, expiresAt: absoluteExpiresAt };
   }
 
   function resolveSession(id: string | null, audience: AccessAudience): AccessSession | null {
@@ -181,7 +210,7 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     // 유휴 만료는 접근할 때마다 밀리되 절대 만료를 넘기지 못한다.
     stored.idleExpiresAt = Math.min(current + sessionIdleTtlMs, stored.absoluteExpiresAt);
     stored.lastSeenAt = current;
-    return { id, handle: stored.handle, audience: stored.audience, access: stored.access, expiresAt: stored.absoluteExpiresAt };
+    return { id, handle: stored.handle, audience: stored.audience, access: stored.access, pairingId: stored.pairingId, expiresAt: stored.absoluteExpiresAt };
   }
 
   function listGrants(audience: AccessAudience): readonly AccessGrantSummary[] {
@@ -209,7 +238,7 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     prune();
     return [...sessions.values()]
       .filter((stored) => stored.audience === audience)
-      .map((stored) => ({ handle: stored.handle, device: stored.device, access: stored.access, openedAt: stored.openedAt, expiresAt: stored.absoluteExpiresAt, lastSeenAt: stored.lastSeenAt }))
+      .map((stored) => ({ handle: stored.handle, device: stored.device, access: stored.access, pairingId: stored.pairingId, openedAt: stored.openedAt, expiresAt: stored.absoluteExpiresAt, lastSeenAt: stored.lastSeenAt }))
       .sort((left, right) => right.openedAt - left.openedAt);
   }
 
@@ -230,6 +259,16 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
 
   function revokeSession(id: string): boolean {
     return sessions.delete(id);
+  }
+
+  function revokeSessionsByPairing(pairingId: string): boolean {
+    let removed = false;
+    for (const [id, stored] of sessions) {
+      if (stored.pairingId !== pairingId) continue;
+      sessions.delete(id);
+      removed = true;
+    }
+    return removed;
   }
 
   function revokeSessions(audience: AccessAudience): void {
@@ -257,7 +296,7 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     if (removed) deps.onSessionsPruned?.();
   }
 
-  return { grantTtlMs, issueGrant, redeemGrant, peekGrant, resolveSession, listGrants, revokeGrant, revokeGrants, listSessions, hasSession, revokeSession, revokeSessionByHandle, revokeSessions, revokeAllSessions, prune };
+  return { grantTtlMs, issueGrant, redeemGrant, consumeGrant, openSession, peekGrant, resolveSession, listGrants, revokeGrant, revokeGrants, listSessions, hasSession, revokeSession, revokeSessionByHandle, revokeSessionsByPairing, revokeSessions, revokeAllSessions, prune };
 }
 
 /**
@@ -296,32 +335,72 @@ export function resolveListenerIdentity(
   return listeners.find((listener) => listener.bindAddress === address && (socket.localPort === undefined || listener.port === socket.localPort)) ?? null;
 }
 
-/** 요청 쿠키에서 세션 식별자만 읽는다. 다른 쿠키는 무시한다. */
 /**
  * 쿠키는 포트로 구분되지 않는다. 같은 기계가 두 콘솔을 서로 다른 포트로 열어 두면 이름이
- * 하나뿐일 때 나중 조인이 앞의 세션을 덮어쓰고, 되돌아가면 401이다 — 저장된 호스트는 자격을
- * 남기지 않고 1회용 grant도 이미 소진됐으므로 새 링크 없이는 그 콘솔을 다시 열 수 없다.
- * 그래서 이름에 포트를 새겨 각 콘솔이 자기 쿠키만 읽고 쓴다.
+ * 하나뿐일 때 나중 조인이 앞의 자격을 덮어쓰고, 되돌아가면 401이다 — 저장된 호스트는 자격을
+ * 남기지 않으므로 그 콘솔은 새 링크 없이 다시 열 수 없다. 그래서 이름에 포트를 새겨 각
+ * 콘솔이 자기 쿠키만 읽고 쓴다.
  */
 export function sessionCookieName(port: number): string {
   return `${SESSION_COOKIE_NAME}_${port}`;
 }
 
-export function readSessionCookie(headers: { readonly cookie?: string | string[] }, port: number): string | null {
+export function pairingCookieName(port: number): string {
+  return `${PAIRING_COOKIE_NAME}_${port}`;
+}
+
+/**
+ * 브라우저가 받아 주는 쿠키 수명에는 상한이 있다(RFC 6265bis는 400일로 자른다). 그래서 이
+ * 창을 인증서 수명(825일)에 맞추는 것은 애초에 불가능하고, 늘려 봐야 브라우저가 잘라 낸다.
+ *
+ * 대신 붙을 때마다 창을 다시 민다. 쓰는 기기에게는 끝이 없고, 이 기간 내내 한 번도 오지 않은
+ * 기기만 자격이 삭는다 — 잠든 자격이 영원히 살아 있는 편이 더 나쁘므로 이것은 비용이 아니라
+ * 성질이다. 그 경우 서버의 페어링은 남으므로, 목록에서 마지막 접속 시각을 보고 치우면 된다.
+ */
+export const PAIRING_COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
+
+/** 요청 쿠키에서 이름이 정확히 일치하는 값만 읽는다. 다른 쿠키는 무시한다. */
+function readCookie(headers: { readonly cookie?: string | string[] }, name: string): string | null {
   const raw = Array.isArray(headers.cookie) ? headers.cookie[0] : headers.cookie;
   if (!raw) return null;
   for (const part of raw.split(";")) {
     const separator = part.indexOf("=");
     if (separator === -1) continue;
-    if (part.slice(0, separator).trim() !== sessionCookieName(port)) continue;
+    if (part.slice(0, separator).trim() !== name) continue;
     const value = part.slice(separator + 1).trim();
     return value.length > 0 ? value : null;
   }
   return null;
 }
 
-export function formatSessionCookie(session: AccessSession, options: { readonly secure: boolean; readonly port: number }): string {
-  const attributes = [`${sessionCookieName(options.port)}=${session.id}`, "HttpOnly", "SameSite=Strict", "Path=/"];
-  if (options.secure) attributes.push("Secure");
+export function readSessionCookie(headers: { readonly cookie?: string | string[] }, port: number): string | null {
+  return readCookie(headers, sessionCookieName(port));
+}
+
+export function readPairingCookie(headers: { readonly cookie?: string | string[] }, port: number): string | null {
+  return readCookie(headers, pairingCookieName(port));
+}
+
+export function formatSessionCookie(session: Pick<AccessSession, "id">, options: { readonly secure: boolean; readonly port: number }): string {
+  return formatCookie(sessionCookieName(options.port), session.id, options.secure);
+}
+
+/**
+ * 페어링 쿠키만 만료 시각을 갖는다. 세션 쿠키는 브라우저를 닫으면 사라져야 하지만, 페어링은
+ * 앱을 껐다 켜도 그 기기가 여전히 이 콘솔의 손님이라는 사실이기 때문이다.
+ */
+export function formatPairingCookie(secret: string, options: { readonly secure: boolean; readonly port: number; readonly maxAgeSeconds?: number }): string {
+  return formatCookie(pairingCookieName(options.port), secret, options.secure, options.maxAgeSeconds ?? PAIRING_COOKIE_MAX_AGE_SECONDS);
+}
+
+/** 회수된 페어링의 쿠키를 그 기기에서도 지운다. 남겨 두면 붙지 못할 값을 계속 보낸다. */
+export function expirePairingCookie(options: { readonly secure: boolean; readonly port: number }): string {
+  return formatCookie(pairingCookieName(options.port), "", options.secure, 0);
+}
+
+function formatCookie(name: string, value: string, secure: boolean, maxAgeSeconds?: number): string {
+  const attributes = [`${name}=${value}`, "HttpOnly", "SameSite=Strict", "Path=/"];
+  if (maxAgeSeconds !== undefined) attributes.push(`Max-Age=${maxAgeSeconds}`);
+  if (secure) attributes.push("Secure");
   return attributes.join("; ");
 }

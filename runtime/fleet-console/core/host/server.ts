@@ -12,7 +12,8 @@ import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-va
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
 import { CONTROL_CHANGED_EVENT, CONTROL_HOLDER_EVENT_CHANNEL, CONTROL_RECLAIMED_EVENT, controlChangedSnapshot, controlReclaimedSnapshot, type ControlHolderSnapshot } from "./access-control-contract.js";
-import { createAccessRegistry, createLoopbackListenerIdentity, formatSessionCookie, readSessionCookie, resolveListenerIdentity, type AccessAudience, type AccessClass, type ListenerIdentity } from "./auth.js";
+import { createAccessRegistry, createLoopbackListenerIdentity, expirePairingCookie, formatPairingCookie, formatSessionCookie, readPairingCookie, readSessionCookie, resolveListenerIdentity, type AccessAudience, type AccessClass, type AccessSession, type ListenerIdentity } from "./auth.js";
+import { createPairedDeviceStore, PAIRED_DEVICE_LIMIT } from "./paired-devices.js";
 import { listRemoteInterfaces } from "./remote-interfaces.js";
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./console-contract-types.js";
 import { createCodexWorkspaceRouter } from "./codex/workspace-routes.js";
@@ -42,7 +43,7 @@ import {
 } from "./classic-launch-kind-migration.js";
 import { migrateLegacyCaptures } from "./legacy-capture-migration.js";
 import { createConsoleDataPaths } from "./paths.js";
-import { createRemoteIdentityStore } from "./remote-identity.js";
+import { createRemoteIdentityStore, fingerprintsMatch } from "./remote-identity.js";
 import { encodeAccessLink, parseAccessLink, sanitizeAccessLabel } from "./access-link.js";
 import { createRemoteHostStore, type RemoteHostRecord } from "./remote-hosts.js";
 import { probeRemoteIdentity } from "./remote-probe.js";
@@ -264,7 +265,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "GET",
     path: "/api/v1/access-links",
-    summary: "Report the remote listener, its identity, its unused links, and its open sessions.",
+    summary: "Report the remote listener, its identity, its unused links, and the devices it has paired.",
     category: "Access",
     gate: "loopback",
   },
@@ -278,7 +279,14 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "DELETE",
     path: "/api/v1/access-sessions/:sessionHandle",
-    summary: "End one open remote session.",
+    summary: "End one open remote session, leaving its pairing intact.",
+    category: "Access",
+    gate: "origin-write",
+  },
+  {
+    method: "DELETE",
+    path: "/api/v1/paired-devices/:deviceId",
+    summary: "Unpair one device so it cannot rejoin without a new access link.",
     category: "Access",
     gate: "origin-write",
   },
@@ -306,7 +314,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "POST",
     path: "/api/v1/join",
-    summary: "Exchange a single-use grant for a console session.",
+    summary: "Exchange a single-use grant for a pairing, or resume an existing pairing.",
     category: "Access",
     gate: "loopback",
   },
@@ -458,6 +466,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   const remoteIdentityStore = createRemoteIdentityStore(durablePaths.dir);
   const remoteHostStore = createRemoteHostStore(durablePaths.dir);
+  const pairedDeviceStore = createPairedDeviceStore(durablePaths.dir);
   const pluginOperationTypes = new Set<string>();
   const pluginPayloadSanitizers = new Map<string, readonly string[]>();
   const pluginLaunchCatalogProviders = new Map<string, OperationLaunchCatalogProvider[]>();
@@ -881,6 +890,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       handleAccessSessionRevoke(req, res, pathname.slice("/api/v1/access-sessions/".length));
       return;
     }
+    if (pathname.startsWith("/api/v1/paired-devices/")) {
+      handlePairedDeviceRevoke(req, res, pathname.slice("/api/v1/paired-devices/".length));
+      return;
+    }
     if (pathname === "/api/v1/remote-identity/rotations") {
       runAsyncBooleanHandler(handleRemoteIdentityRotation(req, res), res);
       return;
@@ -1051,6 +1064,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     const remote = listeners.find((entry) => entry.audience === "remote");
+    const sessions = access.listSessions("remote");
     writeJson(res, 200, {
       listening: remote !== undefined && remoteFingerprint !== null,
       origin: remote?.origin ?? null,
@@ -1058,7 +1072,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       lastError: remoteLastError,
       // 발급 사실만 나간다 — 목록을 보는 것으로는 어떤 링크도 다시 쓸 수 없다.
       links: access.listGrants("remote"),
-      sessions: access.listSessions("remote"),
+      /**
+       * 화면이 보는 단위는 페어링이다. 접속은 그 페어링의 현재 상태로 접혀 들어간다 — 끊어도
+       * 사라지지 않는 줄과 끊으면 사라지는 줄이 한 표에 섞이면 무엇을 회수하는지 알 수 없다.
+       */
+      devices: pairedDeviceStore.list("remote").map((device) => {
+        const open = sessions.find((session) => session.pairingId === device.id) ?? null;
+        return {
+          id: device.id,
+          device: device.device,
+          access: device.access,
+          pairedAt: device.pairedAt,
+          lastSeenAt: Math.max(device.lastSeenAt, open?.lastSeenAt ?? 0),
+          sessionHandle: open?.handle ?? null,
+        };
+      }),
       interfaces: listRemoteInterfaces(),
     });
   }
@@ -1080,6 +1108,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     res.end();
   }
 
+  /**
+   * 지금 붙어 있는 접속 하나를 끊는다. 페어링은 건드리지 않는다 — 제어를 되찾는 일과 그 기기를
+   * 손님 목록에서 지우는 일은 다른 결정이고, 다른 버튼이다. 끊긴 기기는 자기 페어링 쿠키로
+   * 다시 붙어 제어를 되가져올 수 있고, 이 기계의 화면은 그때 다시 커튼을 올린다.
+   */
   function handleAccessSessionRevoke(req: http.IncomingMessage, res: http.ServerResponse, rawHandle: string): void {
     if (req.method !== "DELETE") {
       writeJson(res, 405, { error: "Method not allowed" });
@@ -1108,9 +1141,42 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   /**
+   * 페어링 하나를 영구히 거둔다. 접속을 끊는 것과 달리 이쪽은 되돌아올 길까지 없앤다 —
+   * 그 기기는 새 액세스 링크를 받기 전에는 다시 붙지 못한다.
+   */
+  function handlePairedDeviceRevoke(req: http.IncomingMessage, res: http.ServerResponse, rawId: string): void {
+    if (req.method !== "DELETE") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (!isAccessAdminAuthorized(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    const removed = pairedDeviceStore.revoke(decodeHandle(rawId));
+    if (!removed) {
+      writeJson(res, 404, { error: "paired_device_not_found" });
+      return;
+    }
+    // 자격을 거두면서 그 자격으로 열려 있던 접속을 남겨 두면, 회수는 다음 요청까지만 참이다.
+    const closed = access.listSessions("remote").filter((session) => session.pairingId === removed.id);
+    access.revokeSessionsByPairing(removed.id);
+    for (const session of closed) {
+      desktopShellsByOwner.delete(session.handle);
+      notifyControlReclaimed(session.handle);
+    }
+    broadcastControlChanged();
+    res.writeHead(204, withSecurityHeaders({}));
+    res.end();
+  }
+
+  /**
    * 신원 갱신. 새 인증서를 발급하고 리스너를 그 인증서로 다시 연다. 옛 지문을 실은 링크와
    * 그 지문으로 고정한 Desktop 핀은 이 순간 전부 무효가 되므로, 미사용 링크와 열린 세션도
    * 함께 걷어낸다 — 남겨 두면 붙을 수 없는 자격이 목록에 남는다.
+   *
+   * 페어링도 같이 간다. 페어링은 회수 전까지 사는 자격이지만, 그 기기가 이 콘솔을 알아보는
+   * 근거였던 지문이 방금 바뀌었다 — 붙을 수 없는 손님을 목록에 남기는 것은 사실이 아니다.
    */
   async function handleRemoteIdentityRotation(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
     if (req.method !== "POST") {
@@ -1128,6 +1194,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     await remoteIdentityStore.rotate(bindHost);
     access.revokeGrants("remote");
+    pairedDeviceStore.revokeAll("remote");
     await reconcileRemoteIdentity();
     if (remoteFingerprint === null) {
       writeJson(res, 500, { error: remoteLastError ?? "remote_listener_failed" });
@@ -1185,41 +1252,125 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson(res, 201, { id: grant.id, link, access: grant.access, expiresAt: grant.expiresAt, fingerprint: remoteFingerprint });
   }
 
+  /**
+   * 조인에는 두 갈래가 있다. 링크를 처음 쓰는 기기는 1회용 grant를 내밀고, 그 교환으로
+   * 페어링이 생긴다. 이미 페어링된 기기는 아무것도 내밀지 않고 자기 쿠키만 들고 온다 —
+   * 제어권을 회수당했든, 유휴로 끊겼든, 콘솔이 재시작했든, 돌아오는 길은 이 두 번째 갈래다.
+   *
+   * 페어링이 세션과 갈라져 있어야 그 길이 존재한다. 자격이 곧 세션이면 세션을 끊는 모든
+   * 행위가 자격까지 지우고, 상대는 새 링크를 받기 전에는 돌아올 수 없다.
+   */
   async function handleAccessJoin(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
     if (req.method !== "POST") {
       writeJson(res, 405, { error: "Method not allowed" });
       return true;
     }
     const listener = listenerForRequest(req);
-    const body = await readJsonBody<{ readonly token?: unknown; readonly device?: unknown }>(req);
-    const token = isPlainObject(body) && typeof body.token === "string" ? body.token : null;
-    const device = isPlainObject(body) ? sanitizeDeviceName(body.device) : null;
-    /**
-     * 제어를 쥔 원격은 한 번에 하나다. 커튼은 "누가" 몰고 있는지를 하나로 말해야 하고 회수
-     * 버튼은 대상이 하나여야 하므로, 둘째 full 조인은 받지 않는다. 밀어내기로 하지 않는 이유는
-     * 유효한 링크를 쥔 사람이 현 보유자를 조용히 축출할 수 있게 되기 때문이다 — 자리를 비우는
-     * 판단은 콘솔 주인의 몫으로 남긴다.
-     *
-     * 자격을 소모하기 전에 판정한다. redeemGrant는 성공 여부와 무관하게 토큰을 지우므로,
-     * 뒤에서 거절하면 1회용 링크만 태우고 아무도 붙지 못한다.
-     */
-    if (listener?.audience === "remote" && access.hasSession("remote", "full")) {
-      const pending = token === null ? null : access.peekGrant(token, listener.audience);
-      if (pending?.access === "full") {
-        writeJson(res, 409, { error: "remote_control_held" });
-        return true;
-      }
-    }
-    const session = listener ? access.redeemGrant(token, listener.audience, device) : null;
-    if (!listener || !session) {
+    if (!listener) {
       writeJson(res, 401, { error: "unauthorized" });
       return true;
     }
-    if (listener.audience === "remote" && session.access === "full") broadcastControlChanged();
+    const body = await readJsonBody<{ readonly token?: unknown; readonly device?: unknown }>(req);
+    const token = isPlainObject(body) && typeof body.token === "string" ? body.token : null;
+    const device = isPlainObject(body) ? sanitizeDeviceName(body.device) : null;
+    const joined = token === null
+      ? resumePairedDevice(req, listener, device)
+      : pairFromGrant(listener, token, device);
+    if ("error" in joined) {
+      /**
+       * 페어링만 내밀었는데 거절당했다면 그 쿠키는 이제 아무것도 열지 못한다 — 회수되었거나,
+       * 신원이 갱신되었거나, 이 콘솔이 그 기기를 애초에 모른다. 지워 주지 않으면 그 기기는
+       * 시도할 때마다 죽은 값을 다시 보낸다.
+       */
+      if (token === null && joined.status === 401) {
+        res.writeHead(401, withSecurityHeaders({
+          "Content-Type": "application/json",
+          "Set-Cookie": expirePairingCookie({ secure: listener.secure, port: listener.port }),
+        }));
+        res.end(JSON.stringify({ error: joined.error }));
+        return true;
+      }
+      writeJson(res, joined.status, { error: joined.error });
+      return true;
+    }
+    if (listener.audience === "remote" && joined.session.access === "full") broadcastControlChanged();
     // 평문 http 리스너에 Secure를 붙이면 브라우저가 쿠키를 버린다.
-    res.writeHead(204, withSecurityHeaders({ "Set-Cookie": formatSessionCookie(session, { secure: listener.secure, port: listener.port }) }));
+    const cookies = [formatSessionCookie(joined.session, { secure: listener.secure, port: listener.port })];
+    if (joined.pairingSecret !== null) cookies.push(formatPairingCookie(joined.pairingSecret, { secure: listener.secure, port: listener.port }));
+    res.writeHead(204, withSecurityHeaders({ "Set-Cookie": cookies }));
     res.end();
     return true;
+  }
+
+  interface JoinAccepted {
+    readonly session: AccessSession;
+    /** 새 페어링이거나 만료 창을 다시 민 기존 페어링. 페어링이 없는 조인에서는 null이다. */
+    readonly pairingSecret: string | null;
+  }
+
+  interface JoinRejected {
+    readonly status: number;
+    readonly error: string;
+  }
+
+  function pairFromGrant(listener: ListenerIdentity, token: string, device: string | null): JoinAccepted | JoinRejected {
+    /**
+     * 자격을 소모하기 전에 판정한다. consumeGrant는 성공 여부와 무관하게 토큰을 지우므로,
+     * 뒤에서 거절하면 1회용 링크만 태우고 아무도 붙지 못한다.
+     */
+    const pending = access.peekGrant(token, listener.audience);
+    if (pending !== null && !canTakeControl(listener.audience, pending.access)) return { status: 409, error: "remote_control_held" };
+    /**
+     * 상한에 걸린 조인은 grant를 태우지 않는다 — 자리를 비운 뒤 같은 링크가 아직 통해야 한다.
+     * 다만 되살아나는 것은 링크 문자열뿐이다. 셸이 들고 있던 자격은 handoff가 한 번만 넘기므로,
+     * 목록에서 그 콘솔을 다시 여는 길로는 돌아올 수 없고 링크를 다시 붙여넣어야 한다.
+     */
+    if (pending !== null && listener.audience === "remote" && pairedDeviceStore.list("remote").length >= PAIRED_DEVICE_LIMIT) {
+      return { status: 409, error: "paired_device_limit" };
+    }
+    const grant = access.consumeGrant(token, listener.audience);
+    if (!grant) return { status: 401, error: "unauthorized" };
+    // 루프백은 페어링을 만들지 않는다 — 이 리스너에는 애초에 세션 게이트가 없다.
+    if (listener.audience !== "remote") {
+      return { session: access.openSession(listener.audience, grant.access, device, null), pairingSecret: null };
+    }
+    const paired = pairedDeviceStore.pair({ audience: listener.audience, access: grant.access, device });
+    if (!paired) return { status: 409, error: "paired_device_limit" };
+    return {
+      session: access.openSession(listener.audience, grant.access, device, paired.device.id),
+      pairingSecret: paired.secret,
+    };
+  }
+
+  function resumePairedDevice(req: http.IncomingMessage, listener: ListenerIdentity, device: string | null): JoinAccepted | JoinRejected {
+    const secret = readPairingCookie(req.headers, listener.port);
+    const paired = pairedDeviceStore.resolve(secret, listener.audience);
+    if (!paired || secret === null) return { status: 401, error: "unauthorized" };
+    /**
+     * 같은 페어링이 두 접속을 동시에 여는 것은 이 기기가 앞의 접속을 잃었다는 뜻이다. 남겨 두면
+     * 목록에 유령 접속이 쌓이고, 그중 어느 줄을 끊어야 하는지 알 수 없다. 자리 판정보다 먼저
+     * 치우는 이유는, 자기 자신이 두고 간 접속 때문에 자리가 찼다고 거절당하지 않기 위해서다.
+     */
+    const reclaimedOwn = access.revokeSessionsByPairing(paired.id);
+    if (!canTakeControl(listener.audience, paired.access)) return { status: 409, error: "remote_control_held" };
+    if (reclaimedOwn) broadcastControlChanged();
+    return {
+      // 등급은 페어링이 정한다 — 재개가 monitoring을 full로 올릴 수 없어야 한다.
+      session: access.openSession(listener.audience, paired.access, device ?? paired.device, paired.id),
+      // 받은 비밀값을 그대로 다시 실어 만료 창을 민다. 서버는 해시만 알므로 이 값은 여기서만 나온다.
+      pairingSecret: secret,
+    };
+  }
+
+  /**
+   * 제어를 쥔 원격은 한 번에 하나다. 커튼은 "누가" 몰고 있는지를 하나로 말해야 하고 회수
+   * 버튼은 대상이 하나여야 하므로, 둘째 full 조인은 받지 않는다. 밀어내기로 하지 않는 이유는
+   * 유효한 자격을 쥔 사람이 현 보유자를 조용히 축출할 수 있게 되기 때문이다 — 자리를 비우는
+   * 판단은 콘솔 주인의 몫으로 남긴다.
+   */
+  function canTakeControl(audience: AccessAudience, requested: AccessClass): boolean {
+    if (audience !== "remote" || requested !== "full") return true;
+    return !access.hasSession("remote", "full");
   }
 
   /**
@@ -2167,7 +2318,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const configured = consoleSettingsStore.load().general?.remoteAccess;
     const bindHost = configured?.enabled === true ? configured.bindHost : undefined;
     if (!bindHost) return;
+    /**
+     * `ensure`는 조용히 갱신하기도 한다 — 바인드 주소가 바뀌었거나 만료가 가까우면 새 인증서를
+     * 만든다. 그 순간 옛 지문을 믿고 있던 페어링은 이 콘솔에 닿을 수 없으므로, 명시적 갱신과
+     * 같은 값을 치러야 한다. 그러지 않으면 붙지 못할 손님이 목록과 상한을 차지한 채 남는다.
+     *
+     * 판정은 지문으로만 한다. `ensure`는 콘솔이 뜰 때마다 불리고 대개는 있던 인증서를 그대로
+     * 돌려주는데, 호출 사실만으로 회수하면 재시작이 매번 손님을 내보내 페어링이 무의미해진다.
+     */
+    const previousFingerprint = remoteIdentityStore.read()?.fingerprint ?? null;
     const identity = await remoteIdentityStore.ensure(bindHost);
+    if (previousFingerprint === null || !fingerprintsMatch(previousFingerprint, identity.fingerprint)) {
+      pairedDeviceStore.revokeAll("remote");
+    }
     const started = await startRemoteListener({
       identity,
       bindHost,
