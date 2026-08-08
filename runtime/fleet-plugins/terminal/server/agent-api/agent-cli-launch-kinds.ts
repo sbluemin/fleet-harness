@@ -1,5 +1,13 @@
 import type { OperationLaunchKind, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
-import { exposableEffortLadder, type AiGatewaySelection } from "@dotobokuri/core-ai-gateway";
+import {
+  bareModelName,
+  exposableEffortLadder,
+  GATEWAY_PROVIDER_NAMES,
+  GATEWAY_PROVIDERS,
+  type AiGatewaySelection,
+  type GatewayModel,
+  type GatewayProvider,
+} from "@dotobokuri/core-ai-gateway";
 import { NATIVE_CLAUDE_EFFORTS, NATIVE_CLAUDE_MODEL_ALIASES } from "@dotobokuri/fleet-admiral";
 
 import type { AgentCliLaunchMetadata } from "./agent-cli-launch-metadata.js";
@@ -55,28 +63,44 @@ export function buildClaudeGatewayLaunchVariants(selection?: AiGatewaySelection)
     })),
   };
   if (!selection || selection.models.length === 0) return [native];
-  return [native, {
-    id: "gateway",
-    label: "Gateway",
-    rows: selection.models.map((model) => {
-      const efforts = (selection.effortExposure[model.id] ?? exposableEffortLadder(model))
-        .filter((effort): effort is (typeof NATIVE_CLAUDE_EFFORTS)[number] =>
-          NATIVE_CLAUDE_EFFORTS.includes(effort as (typeof NATIVE_CLAUDE_EFFORTS)[number]));
-      return {
-        id: model.id,
-        label: model.displayName,
-        ...(selection.defaultModel?.id === model.id ? { starred: true } : {}),
-        launch: { model: model.id },
-        ...(efforts.length > 0 ? {
-          chips: efforts.map((effort) => ({
-            id: effort,
-            label: EFFORT_LABELS[effort] ?? effort.toUpperCase(),
-            launch: { model: model.id, effort },
-          })),
-        } : {}),
-      };
-    }),
-  }];
+
+  // Gateway rows stay sorted by GATEWAY_PROVIDERS, but launch menus show one band
+  // per provider so glyphs and captions can identify the supplier without the
+  // Claude Code displayName prefix.
+  const groups: OperationLaunchVariantGroup[] = [native];
+  for (const provider of GATEWAY_PROVIDERS) {
+    const models = selection.models.filter((model) => model.provider === provider);
+    if (models.length === 0) continue;
+    groups.push({
+      id: providerGroupId(provider),
+      label: GATEWAY_PROVIDER_NAMES[provider],
+      rows: models.map((model) => toGatewayRow(model, selection)),
+    });
+  }
+  return groups;
+}
+
+function providerGroupId(provider: GatewayProvider): string {
+  return `gateway:${provider}`;
+}
+
+function toGatewayRow(model: GatewayModel, selection: AiGatewaySelection) {
+  const efforts = (selection.effortExposure[model.id] ?? exposableEffortLadder(model))
+    .filter((effort): effort is (typeof NATIVE_CLAUDE_EFFORTS)[number] =>
+      NATIVE_CLAUDE_EFFORTS.includes(effort as (typeof NATIVE_CLAUDE_EFFORTS)[number]));
+  return {
+    id: model.id,
+    label: bareModelName(model),
+    ...(selection.defaultModel?.id === model.id ? { starred: true } : {}),
+    launch: { model: model.id },
+    ...(efforts.length > 0 ? {
+      chips: efforts.map((effort) => ({
+        id: effort,
+        label: EFFORT_LABELS[effort] ?? effort.toUpperCase(),
+        launch: { model: model.id, effort },
+      })),
+    } : {}),
+  };
 }
 
 function resolveDisabledReason(cli: AgentCliLaunchMetadata): string | undefined {

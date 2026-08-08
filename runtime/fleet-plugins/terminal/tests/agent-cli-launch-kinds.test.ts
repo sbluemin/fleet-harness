@@ -54,12 +54,12 @@ describe("buildAgentCliLaunchKinds", () => {
     expect(result[0]?.variants).toEqual([
       nativeVariants,
       {
-        id: "gateway",
-        label: "Gateway",
+        id: "gateway:codex",
+        label: "Codex",
         rows: [
           {
             id: "codex--gpt-5.6-sol-fast",
-            label: selection.models[0]!.displayName,
+            label: "GPT-5.6-Sol-Fast",
             launch: { model: "codex--gpt-5.6-sol-fast" },
             chips: [
               gatewayChip("codex--gpt-5.6-sol-fast", "low", "LOW"),
@@ -69,9 +69,15 @@ describe("buildAgentCliLaunchKinds", () => {
               gatewayChip("codex--gpt-5.6-sol-fast", "max", "MAX"),
             ],
           },
+        ],
+      },
+      {
+        id: "gateway:kimi",
+        label: "Moonshot-Kimi",
+        rows: [
           {
             id: "kimi--k3",
-            label: selection.models[1]!.displayName,
+            label: "K3-1M",
             starred: true,
             launch: { model: "kimi--k3" },
             chips: [gatewayChip("kimi--k3", "max", "MAX")],

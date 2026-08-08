@@ -346,9 +346,9 @@ function toCatalogModel(model: GatewayModel): AiGatewayCatalogModel {
   };
 }
 
-// displayName은 Claude Code /model picker용 provider-접두 라벨이다. 설정 UI는 provider 그룹
-// 안에서 표시하므로 접두를 벗긴 소재 이름을 쓴다.
-function bareModelName(model: GatewayModel): string {
+// displayName은 Claude Code /model picker용 provider-접두 라벨이다. Settings·launch menus는
+// provider 그룹 안에서 표시하므로 접두를 벗긴 소재 이름을 쓴다.
+export function bareModelName(model: GatewayModel): string {
   const prefix = `${GATEWAY_PROVIDER_NAMES[model.provider]}-`;
   return model.displayName.startsWith(prefix) ? model.displayName.slice(prefix.length) : model.displayName;
 }

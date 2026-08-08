@@ -4,6 +4,7 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 import { FEATURE_TOUR_BOUNDARY_ATTRIBUTE, FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import { useT } from "../i18n/index.js";
 import { resolveLaunchKindAnnotation } from "../launch-kind-annotations.js";
+import { launchProviderFromGroupId, launchProviderGlyph } from "../components/launch-provider-glyphs.js";
 
 interface CanvasContextMenuProps {
   // 캔버스(<main>) 기준 화면 좌표. 메뉴를 이 지점에 띄운다.
@@ -444,13 +445,24 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
           {flyoutTarget.kind.variants!.map((group, groupIndex) => (
             <div key={group.id} className="operation-launch-variant-group">
               {groupIndex > 0 ? <div className="theater-menu-divider" role="separator" /> : null}
-              <p className="operation-launch-variant-caption">
-                {group.id === "native"
+              {(() => {
+                const provider = launchProviderFromGroupId(group.id);
+                const caption = group.id === "native"
                   ? t("launchVariants.group.native")
                   : group.id === "gateway"
                     ? t("launchVariants.group.gateway")
-                    : group.label}
-              </p>
+                    : group.label;
+                return (
+                  <p className={`operation-launch-variant-caption${provider ? ` is-${provider}` : ""}`}>
+                    {provider ? (
+                      <span className="operation-launch-provider-glyph" aria-hidden="true">
+                        {launchProviderGlyph(provider)}
+                      </span>
+                    ) : null}
+                    <span>{caption}</span>
+                  </p>
+                );
+              })()}
               {group.rows.map((row) => (
                 <div key={row.id} className="operation-launch-variant-entry">
                   <button

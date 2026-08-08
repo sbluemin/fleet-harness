@@ -11,6 +11,7 @@ import { readQuickLaunchSelection, writeQuickLaunchSelection } from "../quick-la
 import { findVariantLaunchKind, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, resolveSelection } from "../quick-launch.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { closeQuickLaunch, consumeQuickLaunchDraft, requestQuickLaunch, setActiveTheater } from "../store.js";
+import { launchProviderFromGroupId, launchProviderGlyph } from "./launch-provider-glyphs.js";
 
 // 카드 폭은 팔레트(920px)보다 좁다 — 팔레트는 결과 목록을 담고, 여기는 한 문단을 담는다.
 const CARD_WIDTH_FALLBACK = 760;
@@ -272,7 +273,19 @@ export function QuickLaunch() {
             <div className="quick-launch-pop quick-launch-pop--model theater-menu" role="menu" aria-label={t("chrome.quickLaunch.modelMenu")}>
               {groups.map((group) => (
                 <div key={group.id} className="quick-launch-pop-group">
-                  <p className="quick-launch-pop-band">{group.label}</p>
+                  {(() => {
+                    const provider = launchProviderFromGroupId(group.id);
+                    return (
+                      <p className={`quick-launch-pop-band${provider ? ` is-${provider}` : ""}`}>
+                        {provider ? (
+                          <span className="operation-launch-provider-glyph" aria-hidden="true">
+                            {launchProviderGlyph(provider)}
+                          </span>
+                        ) : null}
+                        <span>{group.label}</span>
+                      </p>
+                    );
+                  })()}
                   {group.rows.map((row) => (
                     <VariantRow
                       key={row.id}
