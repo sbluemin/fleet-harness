@@ -16,6 +16,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   KIMI_MESSAGES_URL,
+  MAX_GATEWAY_REQUEST_BODY_BYTES,
   OPENCODE_MESSAGES_URL,
   createAiGatewayRouter as createCoreAiGatewayRouter,
   errorMessage,
@@ -245,9 +246,11 @@ describe("upstream credential", () => {
     expect(streamSpy.mock.calls[0]?.[1]).not.toHaveProperty("reasoningEfforts");
   });
 
+  // 이 케이스가 보는 것은 진단 옵트인이지만, 설정을 실어 주는 순간 노출 선별도 함께 선다 —
+  // 요청하는 모델을 켜 두지 않으면 진단 단언에 닿기 전에 실행이 거절된다.
   it.each([
-    [{ version: 1 } satisfies AiGatewayStoredSettings, false],
-    [{ version: 1, cursorDiagnosticsEnabled: true, wireLogEnabled: false } satisfies AiGatewayStoredSettings, true],
+    [{ version: 1, models: [{ id: "cursor--grok-4.5-fast" }] } satisfies AiGatewayStoredSettings, false],
+    [{ version: 1, models: [{ id: "cursor--grok-4.5-fast" }], cursorDiagnosticsEnabled: true, wireLogEnabled: false } satisfies AiGatewayStoredSettings, true],
   ])("passes stored Cursor diagnostics opt-in %s to newly started traces", async (settings, expected) => {
     const gateway = stubGateway();
     const streamSpy = vi.spyOn(gateway, "stream");
@@ -1191,6 +1194,199 @@ describe("anthropic passthrough", () => {
     expect(res.body).toBe(raw);
   });
 });
+
+// 선별은 광고 목록이 아니라 지출 계약이다. 디스커버리가 켠 모델만 내놓아도 실행 경로가 카탈로그
+// 전체를 받아 주면, raw id를 아는 호출자가 사용자가 끈 모델로 그 구독을 그대로 쓴다.
+describe("exposed model selection", () => {
+  const ENABLED = "claude-gateway--codex--gpt-5.6-sol";
+  const DISABLED = "claude-gateway--codex--gpt-5.6-luna";
+  const SELECTION: AiGatewayStoredSettings = { version: 1, models: [{ id: "codex--gpt-5.6-sol" }] };
+
+  it("serves a model the user left enabled", async () => {
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({
+      gateway,
+      readAiGatewaySettings: aiGatewaySettingsStub(SELECTION),
+      readAuth,
+    });
+    const res = response();
+
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED, model: ENABLED }));
+
+    expect(res.status).toBe(200);
+    expect(streamSpy).toHaveBeenCalled();
+  });
+
+  it("refuses a disabled model named by its raw id, without spending the subscription", async () => {
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const authSpy = vi.fn(readAuth);
+    const router = createAiGatewayRouter({
+      gateway,
+      readAiGatewaySettings: aiGatewaySettingsStub(SELECTION),
+      readAuth: authSpy,
+    });
+    const res = response();
+
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED, model: DISABLED }));
+
+    expect(res.status).toBe(403);
+    expect(res.body).toContain("not enabled");
+    // 거절이 자격증명을 읽기도 전에 끝나야 한다. 구독 토큰을 조달한 뒤 막으면 그만큼은 이미 새어 나간 것이다.
+    expect(authSpy).not.toHaveBeenCalled();
+    expect(streamSpy).not.toHaveBeenCalled();
+  });
+
+  it("keeps discovery and execution agreeing on the same set", async () => {
+    const router = createAiGatewayRouter({
+      gateway: stubGateway(),
+      readAiGatewaySettings: aiGatewaySettingsStub(SELECTION),
+      readAuth,
+    });
+    const discovery = response();
+    await router.handle(ctx({ res: discovery, token: ANTHROPIC_CRED, pathname: `${BASE}/v1/models`, method: "GET" }));
+
+    expect(discovery.body).toContain("codex--gpt-5.6-sol");
+    expect(discovery.body).not.toContain("codex--gpt-5.6-luna");
+
+    const execution = response();
+    await router.handle(ctx({ res: execution, token: ANTHROPIC_CRED, model: DISABLED }));
+    expect(execution.status).toBe(403);
+  });
+
+  it("exposes the whole catalog when no settings reader is injected", async () => {
+    // 리더 미주입은 "선별 없음"이지 "전부 꺼짐"이 아니다 — /v1/models가 이미 그렇게 동작한다.
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({ gateway, readAuth });
+    const res = response();
+
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED, model: DISABLED }));
+
+    expect(res.status).toBe(200);
+    expect(streamSpy).toHaveBeenCalled();
+  });
+
+  it("lets an operator env override reach a model the selection leaves off", async () => {
+    // 그 값을 세팅한 주체는 이 프로세스의 운영자이고 선별 파일의 주인과 같은 사람이라,
+    // 호출자 입력과 같은 신뢰 등급이 아니다.
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({
+      gateway,
+      readAiGatewaySettings: aiGatewaySettingsStub(SELECTION),
+      readAuth,
+      readModelOverride: () => DISABLED,
+    });
+    const res = response();
+
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED, model: ENABLED }));
+
+    expect(res.status).toBe(200);
+    expect(streamSpy).toHaveBeenCalled();
+  });
+
+  it("does not block a launch when the selection file cannot be read", async () => {
+    // 설정 판독 실패는 기능을 낮출 뿐 요청을 막지 않는다 — 위 Cursor 진단이 이미 택한 규율이다.
+    const gateway = stubGateway();
+    const router = createAiGatewayRouter({
+      gateway,
+      readAiGatewaySettings: () => { throw new Error("settings unavailable"); },
+      readAuth,
+    });
+    const res = response();
+
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED, model: DISABLED }));
+
+    expect(res.status).toBe(200);
+  });
+
+  it("leaves native Anthropic models alone", async () => {
+    // 카탈로그에 없는 모델은 게이트웨이 지출이 아니라 호출자 자격증명으로 가는 원문 중계다.
+    const fetchImpl = vi.fn(async () => new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
+    const router = createAiGatewayRouter({
+      readAiGatewaySettings: aiGatewaySettingsStub(SELECTION),
+      readAuth,
+      fetch: fetchImpl as unknown as typeof fetch,
+    });
+    const res = response();
+
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED, model: "claude-sonnet-5" }));
+
+    expect(res.status).not.toBe(403);
+    expect(fetchImpl).toHaveBeenCalled();
+  });
+});
+
+describe("request body limit", () => {
+  it("refuses a body past the limit with a 413 that does not arm reactive compaction", async () => {
+    // "context window"가 들어간 413만 Claude Code의 압축을 무장시킨다(canonical/index.ts).
+    // 큰 본문이 곧 창 초과는 아니므로 그 문구를 빌려 쓰지 않는다.
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({ gateway, readAuth });
+    const res = response();
+
+    await router.handle(oversizedCtx(res, MAX_GATEWAY_REQUEST_BODY_BYTES));
+
+    expect(res.status).toBe(413);
+    expect(res.body).not.toContain("context window");
+    expect(streamSpy).not.toHaveBeenCalled();
+  });
+
+  it("stops reading instead of buffering everything the caller offers", async () => {
+    // 다 모은 뒤 크기를 재면 이미 그만큼 실린 뒤다. 상한을 넘긴 순간 소비가 끝나야 한다.
+    const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
+    const res = response();
+    let yielded = 0;
+    const chunk = Buffer.alloc(1024 * 1024, 0x61);
+    const req = {
+      method: "POST",
+      headers: { authorization: `Bearer ${ANTHROPIC_CRED}` },
+      once: () => undefined,
+      off: () => undefined,
+      async *[Symbol.asyncIterator]() {
+        // 상한의 네 배를 내놓을 준비를 해 두고, 실제로 몇 번 소비되는지 센다.
+        for (let i = 0; i < (MAX_GATEWAY_REQUEST_BODY_BYTES / chunk.length) * 4; i += 1) {
+          yielded += 1;
+          yield chunk;
+        }
+      },
+    };
+
+    await router.handle({ req, res, pathname: MESSAGES } as unknown as GatewayHttpHandlerContext);
+
+    expect(res.status).toBe(413);
+    expect(yielded * chunk.length).toBeLessThanOrEqual(MAX_GATEWAY_REQUEST_BODY_BYTES + chunk.length);
+  });
+
+  it("admits an ordinary conversation body", async () => {
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({ gateway, readAuth });
+    const res = response();
+
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED }));
+
+    expect(res.status).toBe(200);
+    expect(streamSpy).toHaveBeenCalled();
+  });
+});
+
+function oversizedCtx(res: ResponseStub, limit: number): GatewayHttpHandlerContext {
+  const chunk = Buffer.alloc(1024 * 1024, 0x61);
+  const req = {
+    method: "POST",
+    headers: { authorization: `Bearer ${ANTHROPIC_CRED}` },
+    once: () => undefined,
+    off: () => undefined,
+    async *[Symbol.asyncIterator]() {
+      for (let sent = 0; sent <= limit; sent += chunk.length) yield chunk;
+    },
+  };
+  return { req, res, pathname: MESSAGES } as unknown as GatewayHttpHandlerContext;
+}
 
 describe("route surface", () => {
   it("applies a model override only through the injected reader", async () => {
