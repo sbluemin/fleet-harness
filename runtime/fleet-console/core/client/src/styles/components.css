@@ -7110,9 +7110,9 @@
 .operation-launch-variant-caption.is-cursor,
 .quick-launch-pop-band.is-cursor { --launch-provider-tone: var(--provider-cursor); }
 .operation-launch-variant-caption.is-kimi,
-.quick-launch-pop-band.is-kimi { --launch-provider-tone: var(--id-plum); }
+.quick-launch-pop-band.is-kimi { --launch-provider-tone: var(--provider-kimi); }
 .operation-launch-variant-caption.is-opencode,
-.quick-launch-pop-band.is-opencode { --launch-provider-tone: var(--id-teal); }
+.quick-launch-pop-band.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 
 .operation-launch-provider-glyph {
   display: inline-flex;
@@ -7142,8 +7142,8 @@
 .quick-launch-kind-icon.is-claude { --launch-provider-tone: var(--provider-claude); }
 .quick-launch-kind-icon.is-codex { --launch-provider-tone: var(--provider-codex); }
 .quick-launch-kind-icon.is-cursor { --launch-provider-tone: var(--provider-cursor); }
-.quick-launch-kind-icon.is-kimi { --launch-provider-tone: var(--id-plum); }
-.quick-launch-kind-icon.is-opencode { --launch-provider-tone: var(--id-teal); }
+.quick-launch-kind-icon.is-kimi { --launch-provider-tone: var(--provider-kimi); }
+.quick-launch-kind-icon.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 
 .operation-launch-variant-entry {
   padding: 1px var(--space-1);
