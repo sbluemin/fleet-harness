@@ -38,3 +38,9 @@ export interface ControlReclaimedSnapshot {
 }
 
 export const controlReclaimedSnapshot = (reason: ControlReclaimedReason): ControlReclaimedSnapshot => ({ reason });
+
+/**
+ * 플러그인에게 보유자 변화를 알리는 채널. 브라우저로 나가는 SSE 이벤트와 목적이 다르다 —
+ * 이쪽은 서버 안에서 이미 열려 있는 전송을 다시 협상시키기 위한 것이다.
+ */
+export const CONTROL_HOLDER_EVENT_CHANNEL = "control:holder";

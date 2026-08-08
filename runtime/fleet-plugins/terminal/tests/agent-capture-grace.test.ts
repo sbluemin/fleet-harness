@@ -259,6 +259,7 @@ async function createHarness(body: Record<string, unknown>) {
   const terminalRuntime: TerminalRuntime = {
     handleUpgrade: () => false,
     issueTicket: () => ({ ticket: "ticket", ttlMs: 1_000, role: "control" as const }),
+    renegotiateSockets: () => {},
     invalidateTicketsForSession: () => {},
     canAttach: () => true,
     attach,

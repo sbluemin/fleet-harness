@@ -2393,7 +2393,7 @@ describe("console static and terminal ticket boundary", () => {
     let destroyed = 0;
     const handler = createPluginTerminalUpgradeHandler({
       tickets: { consume: () => null },
-      sessions: { canAttach: () => true, createSession: async () => undefined, attach: async () => undefined, attachViewer: () => false, getSessionMessagePolicy: () => undefined, getSessionRenameCommand: () => undefined, getSessionGoalCommand: () => undefined, getSessionLastActivityAt: () => null, resolveSessionIdentity: async () => null, terminate: () => false, stop: async () => undefined, writeToSession: () => false },
+      sessions: { canAttach: () => true, createSession: async () => undefined, attach: async () => undefined, attachViewer: () => false, renegotiateSockets: () => {}, getSessionMessagePolicy: () => undefined, getSessionRenameCommand: () => undefined, getSessionGoalCommand: () => undefined, getSessionLastActivityAt: () => null, resolveSessionIdentity: async () => null, terminate: () => false, stop: async () => undefined, writeToSession: () => false },
       isAuthorized: () => true,
     });
 
@@ -2424,7 +2424,7 @@ describe("console static and terminal ticket boundary", () => {
           return false;
         },
         createSession: async () => undefined,
-        attach: async () => undefined, attachViewer: () => false,
+        attach: async () => undefined, attachViewer: () => false, renegotiateSockets: () => {},
         getSessionMessagePolicy: () => undefined,
         getSessionGoalCommand: () => undefined,
         getSessionRenameCommand: () => undefined,

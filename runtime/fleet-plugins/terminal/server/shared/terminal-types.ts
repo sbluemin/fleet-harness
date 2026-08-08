@@ -107,6 +107,11 @@ export interface TerminalSessionManager {
    * 띄우면 관전이 실행이 된다. 없는 세션이면 false를 돌려주고 호출자가 소켓을 닫는다.
    */
   attachViewer(socket: TerminalSocket, sessionId: string): boolean;
+  /**
+   * 붙어 있는 모든 소켓을 닫아 등급을 다시 받게 한다. 제어 보유자가 바뀌었을 때 Console이 부른다 —
+   * 티켓 발급 시점의 판정만으로는 이미 열려 있던 터미널이 옛 등급 그대로 남는다.
+   */
+  renegotiateSockets(): void;
   getSessionMessagePolicy(sessionId: string): CliMessagePolicy | undefined;
   getSessionRenameCommand(sessionId: string): string | undefined;
   getSessionGoalCommand(sessionId: string): string | undefined;

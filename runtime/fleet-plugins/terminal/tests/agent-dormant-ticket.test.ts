@@ -275,6 +275,7 @@ async function createHarness(options: {
   });
   const terminalRuntime: TerminalRuntime = {
     handleUpgrade: () => false,
+    renegotiateSockets: () => {},
     issueTicket: (context) => {
       ticketsIssued += 1;
       return tickets.issue(context);

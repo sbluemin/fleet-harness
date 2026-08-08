@@ -289,6 +289,58 @@ describe("terminal session manager", () => {
     expect(viewer.sent).toHaveLength(afterClose);
   });
 
+  /**
+   * 보유자가 바뀌면 이미 붙어 있던 소켓도 등급을 다시 받아야 한다. 티켓 발급 시점의 판정만으로는
+   * 그때 열려 있던 터미널이 옛 등급 그대로 남아, 회수 뒤에도 읽기 전용에 갇힌다.
+   */
+  it("closes every attached socket so a holder change is renegotiated", async () => {
+    const manager = createTerminalSessionManager({
+      launch: async (cwd) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: {} }),
+      startShell: () => createMockPty(),
+    });
+    const controller = createMockSocket();
+    const viewer = createMockSocket();
+    await manager.attach(controller, { sessionId: "session-a", cwd: "/a" });
+    manager.attachViewer(viewer, "session-a");
+
+    manager.renegotiateSockets();
+
+    // 4000(밀려남)과 갈라야 한다 — 그 코드는 클라이언트를 관전자로 굳히지만, 이쪽은 다시 물어보게 한다.
+    expect(controller.closed).toEqual([{ code: 4002, reason: "terminal_control_changed" }]);
+    expect(viewer.closed).toEqual([{ code: 4002, reason: "terminal_control_changed" }]);
+  });
+
+  /**
+   * 관전자가 남아 있어 grace가 세션을 살려 둔 뒤, 그 마지막 관전자가 나가면 아무도 정리를 다시
+   * 걸어 주지 않는다 — theater-shell PTY가 패널이 모두 닫힌 뒤에도 영원히 남는다.
+   */
+  it("cleans up a theater shell once its last viewer leaves", async () => {
+    vi.useFakeTimers();
+    try {
+      const exits: string[] = [];
+      const manager = createTerminalSessionManager({
+        launch: async (cwd) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: {} }),
+        startShell: () => createMockPty(),
+        onSessionExit: (sessionId) => { exits.push(sessionId); },
+      });
+      const controller = createMockSocket();
+      const viewer = createMockSocket();
+      await manager.attach(controller, { sessionId: "shell:theater-1", cwd: "/a" });
+      manager.attachViewer(viewer, "shell:theater-1");
+
+      controller.emitClose();
+      await vi.advanceTimersByTimeAsync(5_000);
+      // 보는 사람이 남아 있으므로 아직 정리하지 않는다.
+      expect(exits).toEqual([]);
+
+      viewer.emitClose();
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(exits).toEqual(["shell:theater-1"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps scrollback isolated per session", async () => {
     const ptys = new Map<string, MockPty>();
     const manager = createTerminalSessionManager({

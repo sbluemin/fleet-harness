@@ -61,6 +61,7 @@ async function mount(options: MountOptions): Promise<{
       options.issued.push(context);
       return { ticket: "ticket", ttlMs: 1_000, role: context.role ?? "control" };
     },
+    renegotiateSockets: () => {},
     invalidateTicketsForSession: () => {},
     canAttach: () => true,
     attach: async () => {},

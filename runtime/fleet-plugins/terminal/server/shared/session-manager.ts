@@ -123,8 +123,26 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     if (socket.readyState === WS_OPEN_STATE) {
       socket.send(Buffer.from(JSON.stringify({ type: "replay_end" }), "utf8"), { binary: false });
     }
-    socket.once("close", () => { session.viewers.delete(socket); });
+    socket.once("close", () => {
+      session.viewers.delete(socket);
+      scheduleTheaterShellCleanup(session);
+    });
     return true;
+  }
+
+  /**
+   * 제어 보유자가 바뀌었으니 붙어 있는 소켓들을 다시 협상시킨다.
+   *
+   * 등급을 자리에서 올리고 내리는 대신 소켓을 닫는다. 클라이언트의 재연결 루프가 곧바로 새
+   * 티켓을 받고, 그 티켓의 등급은 이미 서버가 정한다 — 이미 옳게 도는 경로 하나만 쓰면
+   * 승격·강등 두 갈래를 따로 맞출 필요가 없다. 대가는 보유자가 바뀔 때의 scrollback 재생뿐이고,
+   * 그 일은 원격 세션 하나당 많아야 두 번 일어난다.
+   */
+  function renegotiateSockets(): void {
+    for (const session of sessions.values()) {
+      const sockets = [session.activeSocket, ...session.viewers].filter((socket): socket is TerminalSocket => socket !== null);
+      for (const socket of sockets) socket.close(4002, "terminal_control_changed");
+    }
   }
 
   async function createSession(context: TerminalTicketContext): Promise<void> {
@@ -343,6 +361,23 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     session.pty.resize(frame.cols, frame.rows);
   }
 
+  /**
+   * theater-shell은 "상태 미유지"라 아무도 보고 있지 않게 된 순간부터 짧은 유예 뒤 정리된다.
+   *
+   * 관전자도 보는 사람이므로 유예가 끝나도 남아 있으면 살려 둔다. 다만 그때 정리를 포기하면
+   * 마지막 관전자가 나간 뒤 아무도 다시 걸어 주지 않아 PTY가 영영 남는다 — 소켓이 하나라도
+   * 떨어질 때마다 다시 건다.
+   */
+  function scheduleTheaterShellCleanup(session: TerminalSession): void {
+    if (!isTheaterShell(session.id)) return;
+    if (session.activeSocket !== null || session.viewers.size > 0) return;
+    clearGraceTimer(session);
+    session.graceTimer = setTimeout(() => {
+      session.graceTimer = null;
+      if (session.activeSocket === null && session.viewers.size === 0) removeSession(session);
+    }, THEATER_SHELL_DETACH_GRACE_MS);
+  }
+
   function detachSocket(session: TerminalSession, socket: TerminalSocket): void {
     if (session.activeSocket !== socket) return;
     // 소켓이 끊겨도(콘솔 웹 종료·세션 전환 언마운트) PTY 세션은 유지한다. activeSocket만 비워
@@ -351,15 +386,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     session.activeSocket = null;
     // 예외: theater-shell(캔버스 순정 셸)은 "상태 미유지" 요구에 따라 소켓 단절 후 짧은 grace 뒤 PTY를 정리한다.
     // 패널 닫기·새로고침이 이 경로로 흘러 orphan PTY를 막는다. 재연결이 들어오면 attach가 타이머를 취소한다.
-    if (isTheaterShell(session.id)) {
-      clearGraceTimer(session);
-      session.graceTimer = setTimeout(() => {
-        session.graceTimer = null;
-        // 보고 있는 사람이 남아 있으면 정리하지 않는다 — 제어가 원격으로 넘어가 이 소켓이
-        // 물러난 것뿐인데 PTY를 죽이면 관전자의 화면이 함께 사라진다.
-        if (session.activeSocket === null && session.viewers.size === 0) removeSession(session);
-      }, THEATER_SHELL_DETACH_GRACE_MS);
-    }
+    scheduleTheaterShellCleanup(session);
   }
 
   function replayScrollback(session: TerminalSession, socket: TerminalSocket): void {
@@ -397,7 +424,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     }
   }
 
-  return { canAttach, createSession, attach, attachViewer, getSessionMessagePolicy, getSessionRenameCommand, getSessionGoalCommand, getSessionLastActivityAt, resolveSessionIdentity, terminate, stop, writeToSession };
+  return { canAttach, createSession, attach, attachViewer, renegotiateSockets, getSessionMessagePolicy, getSessionRenameCommand, getSessionGoalCommand, getSessionLastActivityAt, resolveSessionIdentity, terminate, stop, writeToSession };
 }
 
 async function runLaunchCleanup(cleanup: (() => void | Promise<void>) | undefined): Promise<void> {

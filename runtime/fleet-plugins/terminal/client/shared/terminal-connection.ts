@@ -72,6 +72,8 @@ const OPEN_READY_STATE = 1;
 const TERMINAL_UNAVAILABLE_CLOSE_CODE = 1013;
 const TERMINAL_REPLACED_CLOSE_CODE = 4000;
 const TERMINAL_CLOSED_CLOSE_CODE = 4001;
+/** 제어 보유자가 바뀌어 서버가 재협상을 요구한 닫힘. 등급을 비우고 다시 물어본다. */
+const TERMINAL_CONTROL_CHANGED_CLOSE_CODE = 4002;
 
 export function createTerminalConnection(options: TerminalConnectionOptions): TerminalConnection {
   const abort = new AbortController();
@@ -178,6 +180,13 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
            * 역할만 내려놓고 루프는 계속 돈다 — 곧바로 관전자로 다시 붙어 같은 출력을 본다.
            */
           role = "viewer";
+          connectionOptions.onStatus?.("connecting");
+        } else if (code === TERMINAL_CONTROL_CHANGED_CLOSE_CODE) {
+          /**
+           * 보유자가 바뀌었다. 지금 들고 있던 등급은 옛 사실에 대한 답이므로 버리고 control로
+           * 되물어본다 — 승격이든 강등이든 판정은 서버가 하고, 이 자리에서 방향을 알 필요가 없다.
+           */
+          role = "control";
           connectionOptions.onStatus?.("connecting");
         } else if (code === TERMINAL_CLOSED_CLOSE_CODE) {
           abort.abort();
