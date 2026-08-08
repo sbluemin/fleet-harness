@@ -7,6 +7,9 @@ import { ActiveCompanionShortcutsProvider } from "./active-companion-shortcuts.j
 import { fetchGroups, fetchOperations, fetchTheaterBootstrap, fetchTheaters, restoreDeletion, type DeferredDeletionReceipt } from "./api.js";
 import { CommandBand } from "./components/command-band.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
+import { ControlBar } from "./components/control-bar.js";
+import { ControlCurtain } from "./components/control-curtain.js";
+import { ControlReclaimedNotice } from "./components/control-reclaimed-notice.js";
 import { FeatureTourOverlay } from "./components/feature-tour.js";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog.js";
 import { takeKeyboardShortcutsReturnFocus } from "./focus-guards.js";
@@ -318,6 +321,7 @@ export function App() {
             <ReconnectButton />
           </div>
         ) : null}
+        <ControlBar />
         <main className="console-route-content">
           <Routes>
             <Route path="/" element={<Navigate to="/operations" replace />} />
@@ -339,6 +343,8 @@ export function App() {
         <WhatsNewModal state={state} />
         <CommissioningOverlay state={state} />
         <FeatureTourOverlay />
+        <ControlCurtain />
+        <ControlReclaimedNotice />
         <ToastHost>
           <Toast
             open={themeNotice !== null}

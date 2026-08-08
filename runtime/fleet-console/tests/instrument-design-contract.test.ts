@@ -887,6 +887,8 @@ describe("Instrument core design contract", () => {
     const componentsPopupSelectors = [
       ".whatsnew-card",
       ".commissioning-card",
+      ".control-curtain-card",
+      ".control-reclaimed-card",
       ".directory-browser-card",
       ".codex-reading-sheet",
       ".app-toast",

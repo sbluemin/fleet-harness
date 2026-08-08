@@ -158,7 +158,11 @@ function HostSwitcher() {
    */
   const currentLabel = savedCurrent?.label || state.consoleName || location.host;
   // 이 컴퓨터의 콘솔에 서 있으면 어느 콘솔인지가 아니라 "여기"라는 사실만 말한다.
-  const chipLabel = nearbyCurrent ? t("chrome.hosts.local") : currentLabel;
+  const chipLabel = state.controlHolder !== null
+    ? t("chrome.control.shared")
+    : nearbyCurrent
+      ? t("chrome.hosts.local")
+      : currentLabel;
 
   if (nearby.length === 0 && hosts.length === 0) return null;
   const openSettings = () => {
@@ -175,14 +179,14 @@ function HostSwitcher() {
       <button
         ref={triggerRef}
         type="button"
-        className="host-switcher-chip"
+        className={`host-switcher-chip${state.controlHolder !== null ? " is-shared" : ""}`}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`${t("chrome.hosts.aria")}: ${chipLabel}`}
         title={chipLabel}
         onClick={() => setOpen((previous) => !previous)}
       >
-        <span className="host-switcher-dot is-live" aria-hidden="true" />
+        <span className={`host-switcher-dot ${state.controlHolder !== null ? "is-shared" : "is-live"}`} aria-hidden="true" />
         <span className="host-switcher-name">{chipLabel}</span>
         <ChevronGlyph />
       </button>

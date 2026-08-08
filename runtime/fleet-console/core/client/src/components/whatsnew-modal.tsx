@@ -75,6 +75,7 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
     !state.bootstrapped ||
     state.onboardingOpen ||
     state.operationSearchOpen ||
+    (state.controlHolder !== null && !state.controlCurtainDismissed) ||
     state.quickLaunchOpen ||
     state.keyboardShortcutsOpen;
   if (state.whatsNewOpen && !whatsNewSuppressed && returnFocusRef.current === null) {

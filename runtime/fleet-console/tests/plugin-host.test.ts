@@ -49,7 +49,7 @@ const noopHostCapabilities: FleetPluginHostCapabilities = {
   security: {
     validateHost: () => true,
     isTerminalAuthorized: () => true,
-    isLockAuthorized: () => true,
+    isLockAuthorized: () => true, resolveTerminalSocketRole: () => "control" as const,
   },
   lifecycle: {
     registerCleanup: () => () => {},

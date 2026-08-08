@@ -249,6 +249,9 @@ function describe(code: string): string {
     case "remote_link_fingerprint_mismatch":
     case "remote_host_fingerprint_mismatch": return "That address answered with a different certificate. Ask for a fresh access link.";
     case "remote_link_rejected": return "That access link was already used, or it expired. Ask for a fresh one.";
+    // 자격이 나빠서가 아니라 자리가 차 있어서 거절된 경우다. "다시 받아라"로 안내하면 링크를
+    // 새로 받아도 같은 거절이 돌아온다 — 기다리거나 물러나 달라고 말해야 한다.
+    case "remote_link_control_held": return "Another device already has control of that console. Ask them to hand it back, then try again.";
     case "remote_host_session_expired": return "That console no longer recognises this device. Ask for a fresh access link.";
     case "remote_link_host_mismatch": return "That console refused the link as meant for a different address.";
     case "remote_host_is_self": return "That link points back at this console.";

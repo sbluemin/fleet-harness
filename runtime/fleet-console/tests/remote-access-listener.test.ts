@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import http from "node:http";
 import https from "node:https";
 import os from "node:os";
 import path from "node:path";
@@ -369,6 +370,137 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
 
     await expect(fetch(`${fixture.loopbackEndpoint}api/v1/theaters`).then((r) => r.status)).resolves.toBe(200);
   });
+
+  /**
+   * 초대받은 손님은 초대장을 관리하지 못한다. 이 목록에는 인증서 지문, 다른 기기의 이름,
+   * 그리고 이 기계가 가진 모든 주소가 실려 있고, 이 쓰기들은 손님이 자기보다 오래 사는
+   * 초대장을 새로 찍거나 남의 자리를 끊거나 호스트 신원을 통째로 갈아 끼우게 한다.
+   */
+  it("keeps remote access administration on the loopback side", async () => {
+    const fixture = await startFixture({ remote: true });
+    const cookie = await joinAs(fixture, "full", "guest");
+    const remoteOrigin = `https://${BIND_HOST}:${fixture.remotePort}`;
+    const asRemote = { origin: remoteOrigin };
+
+    await expect(remoteRequest(fixture, "GET", "/api/v1/access-links", undefined, cookie, asRemote)).resolves.toMatchObject({ status: 401 });
+    await expect(remoteRequest(fixture, "POST", "/api/v1/access-links", undefined, cookie, asRemote)).resolves.toMatchObject({ status: 401 });
+    await expect(remoteRequest(fixture, "DELETE", "/api/v1/access-links/whatever", undefined, cookie, asRemote)).resolves.toMatchObject({ status: 401 });
+    await expect(remoteRequest(fixture, "POST", "/api/v1/remote-identity/rotations", undefined, cookie, asRemote)).resolves.toMatchObject({ status: 401 });
+
+    // 그 손님이 자기 handle을 알아도 끊는 일은 이 기계 앞에서만 일어난다.
+    const handle = (await readRemoteStatus(fixture)).sessions[0]!.handle;
+    await expect(remoteRequest(fixture, "DELETE", `/api/v1/access-sessions/${handle}`, undefined, cookie, asRemote)).resolves.toMatchObject({ status: 401 });
+    expect((await readRemoteStatus(fixture)).sessions).toHaveLength(1);
+  });
+
+  /**
+   * 제어를 쥔 원격은 하나다. 둘째를 받으면 커튼이 "누가" 몰고 있는지 하나로 말하지 못하고
+   * 회수 버튼의 대상도 갈라진다. 거절은 자격을 태우기 전에 일어나야 한다 — 뒤에서 막으면
+   * 1회용 링크만 소멸하고 아무도 붙지 못한다.
+   */
+  it("admits one full remote session and leaves the refused link usable", async () => {
+    const fixture = await startFixture({ remote: true });
+    await joinAs(fixture, "full", "first");
+    const secondLink = await createLink(fixture);
+
+    const refused = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(secondLink) }));
+    expect(refused.status).toBe(409);
+
+    const held = await readRemoteStatus(fixture);
+    expect(held.sessions).toHaveLength(1);
+    expect(held.links).toHaveLength(1);
+
+    // 보유자가 물러나면 같은 링크가 그대로 통한다 — 태워 버렸다면 여기서 401이 난다.
+    await expect(revoke(fixture, `access-sessions/${held.sessions[0]!.handle}`)).resolves.toBe(204);
+    await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(secondLink) }))).resolves.toMatchObject({ status: 204 });
+  });
+
+  /**
+   * 커튼이 뜨고 걷히는 근거 전체. 보유자 정보는 이 기계 앞 화면에만 가고, 회수 통지는 끊긴
+   * 세션 하나에만 간다 — 두 수신자가 갈리지 않으면 원격 화면에 다른 기기의 이름이 실린다.
+   */
+  it("tells the local console who holds control, and tells only the evicted session it was reclaimed", async () => {
+    const fixture = await startFixture({ remote: true });
+    const local = await openLoopbackEvents(fixture);
+
+    const cookie = await joinAs(fixture, "full", "Kitchen iPad");
+    const remote = await openRemoteEvents(fixture, cookie);
+
+    const held = await local.waitFor("control:changed", (data) => data.holder !== null);
+    expect(held.holder).toMatchObject({ device: "Kitchen iPad" });
+    expect(typeof held.holder.handle).toBe("string");
+
+    await expect(revoke(fixture, `access-sessions/${held.holder.handle}`)).resolves.toBe(204);
+
+    // 끊긴 쪽은 자기 회수를 듣는다.
+    expect(await remote.waitFor("control:reclaimed", () => true)).toEqual({ reason: "reclaimed" });
+    // 이 기계 앞 화면은 보유자가 사라진 것을 듣는다.
+    expect(await local.waitFor("control:changed", (data) => data.holder === null)).toEqual({ holder: null });
+    // 원격은 보유자 정보를 한 번도 받지 않는다.
+    expect(remote.seen("control:changed")).toBe(0);
+
+    local.close();
+    remote.close();
+  });
+
+  /**
+   * 만료는 조용하다. 알리지 않으면 화면은 이미 없는 보유자를 계속 띄우고, 그 보유자를 향한
+   * 회수는 404로 끝나 화면이 스스로 정리되지도 못한다.
+   */
+  it("clears a stale holder when the reclaim finds the session already gone", async () => {
+    const fixture = await startFixture({ remote: true });
+    const local = await openLoopbackEvents(fixture);
+    await joinAs(fixture, "full", "Ghost");
+    const held = await local.waitFor("control:changed", (data) => data.holder !== null);
+
+    await expect(revoke(fixture, `access-sessions/${held.holder.handle}`)).resolves.toBe(204);
+    await local.waitFor("control:changed", (data) => data.holder === null);
+
+    // 이미 사라진 세션을 다시 회수해도 화면이 정리되는 신호는 한 번 더 나간다.
+    const seenBefore = local.seen("control:changed");
+    await expect(revoke(fixture, `access-sessions/${held.holder.handle}`)).resolves.toBe(404);
+    await vi.waitFor(() => expect(local.seen("control:changed")).toBeGreaterThan(seenBefore));
+    expect(await local.waitFor("control:changed", (data) => data.holder === null)).toEqual({ holder: null });
+
+    local.close();
+  });
+
+  /**
+   * monitoring은 제어를 쥔 적이 없으므로 그 세션이 사라져도 보유자는 그대로다. 그때까지 신호로
+   * 세면 붙어 있던 터미널이 통째로 끊겼다 다시 붙으며 scrollback을 재생한다 — 아무것도 바뀌지
+   * 않았는데 화면이 깜빡인다.
+   */
+  it("stays quiet when a session that never held control goes away", async () => {
+    const fixture = await startFixture({ remote: true });
+    const local = await openLoopbackEvents(fixture);
+    await joinAs(fixture, "full", "holder");
+    const held = await local.waitFor("control:changed", (data) => data.holder !== null);
+    await joinAs(fixture, "monitoring", "watcher");
+
+    const watcher = (await readRemoteStatus(fixture)).sessions.find((entry) => entry.access === "monitoring");
+    const framesBefore = local.seen("control:changed");
+    await expect(revoke(fixture, `access-sessions/${watcher!.handle}`)).resolves.toBe(204);
+
+    // 보유자는 그대로다. 프레임이 늘지 않아야 한다.
+    await expect(readRemoteStatus(fixture).then((status) => status.sessions)).resolves.toHaveLength(1);
+    expect(local.seen("control:changed")).toBe(framesBefore);
+
+    // 진짜 보유자가 나가면 그때는 알린다 — 조용해진 것이지 멎은 것이 아니다.
+    await expect(revoke(fixture, `access-sessions/${held.holder.handle}`)).resolves.toBe(204);
+    expect(await local.waitFor("control:changed", (data) => data.holder === null)).toEqual({ holder: null });
+
+    local.close();
+  });
+
+  /** monitoring은 제어를 쥐지 않으므로 상한과 무관하게 full 옆에 함께 붙는다. */
+  it("lets a monitoring session join while a full session holds control", async () => {
+    const fixture = await startFixture({ remote: true });
+    await joinAs(fixture, "full", "holder");
+    await joinAs(fixture, "monitoring", "watcher");
+
+    const status = await readRemoteStatus(fixture);
+    expect(status.sessions.map((entry) => entry.access).sort()).toEqual(["full", "monitoring"]);
+  });
 });
 
 interface RemoteAccessStatus {
@@ -389,6 +521,83 @@ async function joinAs(fixture: Fixture, access: string, device: string): Promise
   const token = grantTokenOf((await response.json() as { link: string }).link);
   const joined = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token, device }));
   return (joined.headers["set-cookie"]?.[0] ?? "").split(";")[0]!;
+}
+
+/**
+ * SSE를 읽는 최소 클라이언트. EventSource가 없는 환경이라 프레임을 직접 가른다 — 스트림은
+ * 끝나지 않으므로 본문을 다 읽고 파싱하는 방식은 쓸 수 없다.
+ */
+interface EventProbe {
+  waitFor(event: string, predicate: (data: any) => boolean, timeoutMs?: number): Promise<any>;
+  seen(event: string): number;
+  close(): void;
+}
+
+function readEventStream(response: import("node:http").IncomingMessage): EventProbe {
+  const received: Array<{ readonly event: string; readonly data: unknown }> = [];
+  const waiters: Array<() => void> = [];
+  let buffer = "";
+  response.setEncoding("utf8");
+  response.on("data", (chunk: string) => {
+    buffer += chunk;
+    let split = buffer.indexOf("\n\n");
+    while (split !== -1) {
+      const frame = buffer.slice(0, split);
+      buffer = buffer.slice(split + 2);
+      const event = /^event: (.+)$/mu.exec(frame)?.[1];
+      const raw = /^data: (.*)$/mu.exec(frame)?.[1];
+      if (event && raw !== undefined) {
+        try {
+          received.push({ event, data: JSON.parse(raw) });
+        } catch {
+          // 프레임이 깨졌으면 그 프레임만 버린다.
+        }
+      }
+      while (waiters.length > 0) waiters.pop()!();
+      split = buffer.indexOf("\n\n");
+    }
+  });
+  return {
+    seen: (event) => received.filter((entry) => entry.event === event).length,
+    async waitFor(event, predicate, timeoutMs = 5_000) {
+      const deadline = Date.now() + timeoutMs;
+      for (;;) {
+        const hit = received.find((entry) => entry.event === event && predicate(entry.data));
+        if (hit) return hit.data;
+        if (Date.now() >= deadline) throw new Error(`timed out waiting for ${event}`);
+        await new Promise<void>((resolve) => {
+          waiters.push(resolve);
+          setTimeout(resolve, 50);
+        });
+      }
+    },
+    close: () => response.destroy(),
+  };
+}
+
+function openLoopbackEvents(fixture: Fixture): Promise<EventProbe> {
+  const url = new URL(`${fixture.loopbackEndpoint}api/v1/operations/events`);
+  return new Promise((resolve, reject) => {
+    const request = http.request({ host: url.hostname, port: Number(url.port), path: url.pathname, method: "GET" }, (response) => resolve(readEventStream(response)));
+    request.on("error", reject);
+    request.end();
+  });
+}
+
+function openRemoteEvents(fixture: Fixture, cookie: string): Promise<EventProbe> {
+  return new Promise((resolve, reject) => {
+    const request = https.request({
+      host: BIND_HOST,
+      port: fixture.remotePort,
+      path: "/api/v1/operations/events",
+      method: "GET",
+      rejectUnauthorized: false,
+      checkServerIdentity: () => undefined,
+      headers: { host: `${BIND_HOST}:${fixture.remotePort}`, cookie },
+    }, (response) => resolve(readEventStream(response)));
+    request.on("error", reject);
+    request.end();
+  });
 }
 
 async function revoke(fixture: Fixture, resource: string): Promise<number> {

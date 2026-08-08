@@ -258,7 +258,8 @@ async function createHarness(body: Record<string, unknown>) {
   const terminate = vi.fn(() => true);
   const terminalRuntime: TerminalRuntime = {
     handleUpgrade: () => false,
-    issueTicket: () => ({ ticket: "ticket", ttlMs: 1_000 }),
+    issueTicket: () => ({ ticket: "ticket", ttlMs: 1_000, role: "control" as const }),
+    renegotiateSockets: () => {},
     invalidateTicketsForSession: () => {},
     canAttach: () => true,
     attach,
@@ -362,7 +363,7 @@ async function createHarness(body: Record<string, unknown>) {
       security: {
         validateHost: () => true,
         isTerminalAuthorized: () => true,
-        isLockAuthorized: () => true,
+        isLockAuthorized: () => true, resolveTerminalSocketRole: () => "control" as const,
       },
       lifecycle: {
         registerCleanup: (cleanup: () => void | Promise<void>) => {

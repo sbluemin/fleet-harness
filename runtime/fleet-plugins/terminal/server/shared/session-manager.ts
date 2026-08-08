@@ -34,6 +34,13 @@ interface TerminalSession {
   readonly titleListener?: TerminalTitleListener;
   readonly titleParser?: OscTitleParser;
   activeSocket: TerminalSocket | null;
+  /**
+   * 출력만 받는 소켓들. 제어를 원격에 넘긴 로컬 사용자가 여기 들어와 같은 화면을 계속 본다.
+   *
+   * activeSocket과 분리해 두는 것이 요점이다 — 한 칸짜리 소유권을 그대로 두어야 "입력은 한
+   * 곳에서만"이라는 성질이 유지되고, 관전자가 늘어도 누가 모는지는 여전히 하나로 답해진다.
+   */
+  readonly viewers: Set<TerminalSocket>;
   cols: number;
   rows: number;
   // theater-shell(캔버스 순정 셸) 전용: 소켓 단절 후 PTY 정리까지의 grace 타이머. 재연결 시 취소된다.
@@ -98,6 +105,44 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     }
     socket.on("message", (data, isBinary) => handleSocketMessage(session, data, isBinary));
     socket.once("close", () => detachSocket(session, socket));
+  }
+
+  /**
+   * 읽기 전용 부착. 제어 소켓을 건드리지 않는 것이 이 함수의 전부다 — 밀어내지 않고,
+   * activeSocket이 되지 않고, PTY를 리사이즈하지 않고, message 리스너를 달지 않는다.
+   * 마지막 항목이 입력 차단의 실제 수단이다: 핸들러가 없으면 보낸 바이트는 갈 곳이 없다.
+   *
+   * 세션을 만들지도 않는다. 볼 대상이 없는 관전은 성립하지 않고, 여기서 PTY를 띄우면
+   * 관전자가 프로세스를 시작시키는 셈이 된다.
+   */
+  function attachViewer(socket: TerminalSocket, sessionId: string): boolean {
+    const session = sessions.get(sessionId);
+    if (!session) return false;
+    session.viewers.add(socket);
+    replayScrollback(session, socket);
+    if (socket.readyState === WS_OPEN_STATE) {
+      socket.send(Buffer.from(JSON.stringify({ type: "replay_end" }), "utf8"), { binary: false });
+    }
+    socket.once("close", () => {
+      session.viewers.delete(socket);
+      scheduleTheaterShellCleanup(session);
+    });
+    return true;
+  }
+
+  /**
+   * 제어 보유자가 바뀌었으니 붙어 있는 소켓들을 다시 협상시킨다.
+   *
+   * 등급을 자리에서 올리고 내리는 대신 소켓을 닫는다. 클라이언트의 재연결 루프가 곧바로 새
+   * 티켓을 받고, 그 티켓의 등급은 이미 서버가 정한다 — 이미 옳게 도는 경로 하나만 쓰면
+   * 승격·강등 두 갈래를 따로 맞출 필요가 없다. 대가는 보유자가 바뀔 때의 scrollback 재생뿐이고,
+   * 그 일은 원격 세션 하나당 많아야 두 번 일어난다.
+   */
+  function renegotiateSockets(): void {
+    for (const session of sessions.values()) {
+      const sockets = [session.activeSocket, ...session.viewers].filter((socket): socket is TerminalSocket => socket !== null);
+      for (const socket of sockets) socket.close(4002, "terminal_control_changed");
+    }
   }
 
   async function createSession(context: TerminalTicketContext): Promise<void> {
@@ -226,6 +271,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       titleListener,
       ...(titleListener ? { titleParser: createOscTitleParser() } : {}),
       activeSocket: null,
+      viewers: new Set<TerminalSocket>(),
       cols: DEFAULT_COLS,
       rows: DEFAULT_ROWS,
       graceTimer: null,
@@ -266,6 +312,12 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     session.scrollback.push(buffer);
     while (session.scrollback.length > scrollbackLimit) session.scrollback.shift();
     liveSocket?.send(buffer, { binary: true });
+    // 관전자는 같은 바이트를 받되 질의에는 답하지 않는다 — 응답 권한은 제어 소켓 하나에만
+    // 있고, 둘이 답하면 PTY가 두 벌의 응답을 읽는다.
+    for (const viewer of session.viewers) {
+      if (viewer.readyState !== WS_OPEN_STATE) continue;
+      viewer.send(buffer, { binary: true });
+    }
   }
 
   function observeOscTitles(session: TerminalSession, buffer: Buffer): void {
@@ -309,6 +361,23 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     session.pty.resize(frame.cols, frame.rows);
   }
 
+  /**
+   * theater-shell은 "상태 미유지"라 아무도 보고 있지 않게 된 순간부터 짧은 유예 뒤 정리된다.
+   *
+   * 관전자도 보는 사람이므로 유예가 끝나도 남아 있으면 살려 둔다. 다만 그때 정리를 포기하면
+   * 마지막 관전자가 나간 뒤 아무도 다시 걸어 주지 않아 PTY가 영영 남는다 — 소켓이 하나라도
+   * 떨어질 때마다 다시 건다.
+   */
+  function scheduleTheaterShellCleanup(session: TerminalSession): void {
+    if (!isTheaterShell(session.id)) return;
+    if (session.activeSocket !== null || session.viewers.size > 0) return;
+    clearGraceTimer(session);
+    session.graceTimer = setTimeout(() => {
+      session.graceTimer = null;
+      if (session.activeSocket === null && session.viewers.size === 0) removeSession(session);
+    }, THEATER_SHELL_DETACH_GRACE_MS);
+  }
+
   function detachSocket(session: TerminalSession, socket: TerminalSocket): void {
     if (session.activeSocket !== socket) return;
     // 소켓이 끊겨도(콘솔 웹 종료·세션 전환 언마운트) PTY 세션은 유지한다. activeSocket만 비워
@@ -317,13 +386,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     session.activeSocket = null;
     // 예외: theater-shell(캔버스 순정 셸)은 "상태 미유지" 요구에 따라 소켓 단절 후 짧은 grace 뒤 PTY를 정리한다.
     // 패널 닫기·새로고침이 이 경로로 흘러 orphan PTY를 막는다. 재연결이 들어오면 attach가 타이머를 취소한다.
-    if (isTheaterShell(session.id)) {
-      clearGraceTimer(session);
-      session.graceTimer = setTimeout(() => {
-        session.graceTimer = null;
-        if (session.activeSocket === null) removeSession(session);
-      }, THEATER_SHELL_DETACH_GRACE_MS);
-    }
+    scheduleTheaterShellCleanup(session);
   }
 
   function replayScrollback(session: TerminalSession, socket: TerminalSocket): void {
@@ -350,6 +413,9 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     clearGraceTimer(session);
     session.activeSocket?.close(4001, "terminal_closed");
     session.activeSocket = null;
+    // 관전자도 같은 이유로 끝난다 — 남겨 두면 죽은 PTY를 보며 살아 있는 화면인 척한다.
+    for (const viewer of session.viewers) viewer.close(4001, "terminal_closed");
+    session.viewers.clear();
     for (const disposable of session.disposables) disposable.dispose();
     try {
       if (killPty) killPtyBestEffort(session.pty, session.ptyFds);
@@ -358,7 +424,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     }
   }
 
-  return { canAttach, createSession, attach, getSessionMessagePolicy, getSessionRenameCommand, getSessionGoalCommand, getSessionLastActivityAt, resolveSessionIdentity, terminate, stop, writeToSession };
+  return { canAttach, createSession, attach, attachViewer, renegotiateSockets, getSessionMessagePolicy, getSessionRenameCommand, getSessionGoalCommand, getSessionLastActivityAt, resolveSessionIdentity, terminate, stop, writeToSession };
 }
 
 async function runLaunchCleanup(cleanup: (() => void | Promise<void>) | undefined): Promise<void> {

@@ -12,6 +12,8 @@ export interface TerminalRuntime {
   readonly handleUpgrade: UpgradeHandler;
   issueTicket(context: TerminalTicketContext): TerminalTicket;
   invalidateTicketsForSession(sessionId: string): void;
+  /** 제어 보유자가 바뀌었을 때 붙어 있는 소켓들이 등급을 다시 받게 한다. */
+  renegotiateSockets(): void;
   canAttach(operationId: string): boolean;
   attach(context: TerminalTicketContext): Promise<void>;
   write(operationId: string, data: string): boolean;
@@ -61,6 +63,7 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
   return {
     handleUpgrade: upgrade.handleUpgrade,
     issueTicket: (context) => tickets.issue(context),
+    renegotiateSockets: () => sessions.renegotiateSockets(),
     invalidateTicketsForSession: (sessionId) => tickets.invalidateForSession(sessionId),
     canAttach: (operationId) => sessions.canAttach(operationId),
     attach: async (context) => {

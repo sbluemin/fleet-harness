@@ -1,5 +1,8 @@
 import path from "node:path";
 
+/** Console이 제어 보유자 변화를 알리는 채널. 이름은 core/host/access-control-contract.ts와 한 벌이다. */
+const CONTROL_HOLDER_EVENT_CHANNEL = "control:holder";
+
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { definePlugin, registerLaunchCatalog, registerWsHandler } from "@fleet-console/sdk/plugin/node";
@@ -84,6 +87,13 @@ export default definePlugin({
     const wireLog = createWireLogRuntime(ctx);
     applyStoredWireLog(ctx, aiGatewayStore.read);
     ctx.host.lifecycle.registerCleanup(() => setWireLogTarget(undefined));
+    /**
+     * 제어 보유자가 바뀌면 이미 붙어 있는 터미널 소켓도 등급을 다시 받아야 한다. 티켓 발급
+     * 시점의 판정만으로는 그때 이미 열려 있던 터미널이 옛 등급 그대로 남아, 회수한 뒤에도
+     * 읽기 전용에 갇히거나 넘긴 뒤에도 계속 입력이 간다.
+     */
+    const unsubscribeControl = ctx.host.events.subscribe(CONTROL_HOLDER_EVENT_CHANNEL, () => { runtime.renegotiateSockets(); });
+    ctx.host.lifecycle.registerCleanup(unsubscribeControl);
     registerShellRoutes(ctx, runtime);
     registerGlobalShellRoutes(ctx, runtime);
     registerTerminalSettingsRoutes(ctx, {

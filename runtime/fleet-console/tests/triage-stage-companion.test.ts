@@ -107,6 +107,8 @@ describe("Triage stage companion synchronization", () => {
 const STATE: ConsoleState = {
   connection: "connecting",
   connectionLostAt: null,
+  controlHolder: null,
+  controlCurtainDismissed: false,
   consoleName: "",
   channel: "unknown",
   activeTheme: "maritime",

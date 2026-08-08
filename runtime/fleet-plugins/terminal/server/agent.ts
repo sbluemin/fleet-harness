@@ -9,6 +9,7 @@ import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet
 import type { OperationLaunchKind, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
+import { readSocketRole } from "./shared/index.js";
 import type { TerminalRuntime } from "./shared/index.js";
 
 import { createDefaultAgentCliDetector, validateAgentCliPathForSave } from "./agent-api/agent-cli-detect.js";
@@ -268,7 +269,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         ctx.host.http.writeJson(res, 401, { error: "Unauthorized" });
         return true;
       }
-      const body = await ctx.host.http.readJsonBody<{ readonly operationId?: unknown; readonly colorScheme?: unknown }>(req);
+      const body = await ctx.host.http.readJsonBody<{ readonly operationId?: unknown; readonly colorScheme?: unknown; readonly role?: unknown }>(req);
       if (typeof body?.operationId !== "string") {
         ctx.host.http.writeJson(res, 400, { error: "terminal_session_not_found" });
         return true;
@@ -290,6 +291,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         return true;
       }
       const colorScheme = body?.colorScheme === "light" || body?.colorScheme === "dark" ? body.colorScheme : undefined;
+      // 등급은 Console이 정한다. 요청이 control을 원해도 제어를 쥔 원격이 있으면 관전으로 내려간다 —
+      // 새로고침 한 번이 조용히 제어를 되가져가는 경합을 클라이언트에 맡기지 않는다.
+      const role = ctx.host.security.resolveTerminalSocketRole(req) === "viewer" ? "viewer" : readSocketRole(body?.role);
       ctx.host.http.writeJson(res, 200, terminalRuntime.issueTicket({
         cwd,
         sessionId: operation.id,
@@ -299,6 +303,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         theaterId: operation.theaterId,
         cliId: readPayloadString(operation.payload, "cliId") ?? undefined,
         ...(colorScheme ? { colorScheme } : {}),
+        ...(role ? { role } : {}),
       }));
       return true;
     }

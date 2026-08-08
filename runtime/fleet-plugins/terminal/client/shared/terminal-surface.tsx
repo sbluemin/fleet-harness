@@ -11,6 +11,9 @@ import { createTerminalConnection, type TerminalConnection } from "./terminal-co
 import { createTerminalCopyOnSelect } from "./terminal-copy-on-select.js";
 import { createTerminalOsc52Clipboard } from "./terminal-osc52-clipboard.js";
 import { TERMINAL_OPTIONS } from "./terminal-options.js";
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+
+import { getT } from "../i18n/index.js";
 import { useTerminalPrefs } from "./terminal-preferences.js";
 import { createTerminalScrollFollow, type TerminalScrollFollowController } from "./terminal-scroll-follow.js";
 import { createTerminalStatusDetailReporter, type TerminalStatusDetailReporter } from "./status-detail.js";
@@ -34,6 +37,8 @@ export interface TerminalSurfaceProps {
   // 터미널 마운트 단의 역스케일(scale(1/zoom)) + fontSize×zoom으로 net scale=1을 만들어 좌표를 정정한다.
   readonly zoom?: number;
   readonly onStatusDetail?: (detail: string) => void;
+  /** 관전 배지 문구용. 넘기지 않으면 영어로 떨어진다 — 배지 외의 동작에는 영향이 없다. */
+  readonly locale?: ConsoleLocale;
 }
 
 interface TerminalOutputScheduler {
@@ -168,9 +173,10 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
   return LIGHT_TERMINAL_THEMES.has(theme) ? "light" : "dark";
 }
 
-export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail }: TerminalSurfaceProps) {
+export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail, locale }: TerminalSurfaceProps) {
   const activeTheme = theme;
   const { renderer: terminalRenderer, font: terminalFontSettings } = useTerminalPrefs();
+  const t = getT(locale);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
   const connectionRef = useRef<TerminalConnection | null>(null);
@@ -192,6 +198,8 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   const activeRef = useRef(active);
   activeRef.current = active;
   const [status, setStatus] = useState("connecting");
+  // 서버가 등급을 잠갔으면 되찾기를 제안하지 않는다 — 눌러도 다시 관전으로 돌아오는 버튼은 거짓이다.
+  const [controlLocked, setControlLocked] = useState(false);
   // 마운트 effect는 심볼 폰트 선대기 등 await 뒤에 ticket 연결을 만들고 테마 변경에 재실행되지 않으므로,
   // 최신 극성은 ref로 읽는다(activeRef와 같은 이유) — 대기 중 테마가 바뀌어도 첫 ticket이 현재 극성을 싣는다.
   const colorSchemeRef = useRef(terminalPolarityFor(activeTheme));
@@ -311,6 +319,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
           replayingScrollback = replaying;
         },
         onExit: () => onExitRef.current?.(),
+        onControlLockChange: (lock) => { setControlLocked(lock === "locked"); },
         onStatus: (nextStatus, message) => {
           setStatus(message ? `${nextStatus}: ${message}` : nextStatus);
         },
@@ -499,6 +508,11 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   // 연결이 'live'면 상태 바를 숨겨 터미널 canvas가 카드를 가득 채우게 하고,
   // connecting/error 등 문제 상황에서만 상태를 노출한다.
   const isLive = status.startsWith("live");
+  /**
+   * 관전 중에는 출력이 계속 흐르므로 화면을 가리지 않는다 — 상태 줄 대신 배지를 얹어
+   * "보이지만 칠 수 없다"만 말한다. 이 구분이 없으면 반응 없는 키보드가 연결 장애로 읽힌다.
+   */
+  const isViewing = status.startsWith("viewer");
   // 줌 보정: 마운트 단을 레이아웃상 zoom배로 키운 뒤 scale(1/zoom)으로 되돌려 부모 scale(zoom)과 net 1로 상쇄한다.
   // %는 position:relative인 .terminal-viewport 기준이라 별도 측정 없이 inner 크기에 정확히 맞춰진다. zoom=1이면
   // 기본 스타일(.terminal-canvas의 inset:0)을 그대로 써 캔버스 외 셸 패널 사용처에 영향이 없다.
@@ -514,10 +528,21 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   return (
     <section className="terminal-stage" aria-label="Terminal">
       <div className="terminal-shell">
-        {!isLive ? (
+        {!isLive && !isViewing ? (
           <div className="terminal-status" aria-live="polite">
             <span className="terminal-status-dot" aria-hidden="true" />
             {status}
+          </div>
+        ) : null}
+        {isViewing ? (
+          <div className="terminal-viewer-badge" role="status">
+            <span className="terminal-viewer-badge-dot" aria-hidden="true" />
+            <span className="terminal-viewer-badge-text">{t(controlLocked ? "terminal.viewer.remoteControlled" : "terminal.viewer.readOnly")}</span>
+            {controlLocked ? null : (
+              <button type="button" className="terminal-viewer-badge-action" onClick={() => connectionRef.current?.takeBackControl()}>
+                {t("terminal.viewer.takeBack")}
+              </button>
+            )}
           </div>
         ) : null}
         <div className="terminal-viewport">

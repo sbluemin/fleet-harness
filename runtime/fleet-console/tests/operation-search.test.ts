@@ -30,6 +30,8 @@ function makeState(
   return {
     connection: "connecting",
     connectionLostAt: null,
+    controlHolder: null,
+    controlCurtainDismissed: false,
     consoleName: "",
     channel: "unknown",
     activeTheme: "maritime",

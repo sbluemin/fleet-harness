@@ -62,6 +62,21 @@ export const chromeEn = {
   "chrome.link.staleHeadline": "Updates stopped here",
   "chrome.link.staleDetail": "Last updated {time}",
 
+  // remote control
+  "chrome.control.shared": "Shared",
+  "chrome.control.curtain.eyebrow": "REMOTE CONTROL · READ-ONLY VIEW",
+  "chrome.control.curtain.title": "{name} has control",
+  "chrome.control.curtain.body": "You can keep watching this Console, or take control back on this device.",
+  "chrome.control.takeBack": "Take back control",
+  "chrome.control.reclaiming": "Taking back…",
+  "chrome.control.keepWatching": "Keep watching",
+  "chrome.control.reclaimError": "Control could not be taken back. Try again.",
+  "chrome.control.bar.title": "{name} has control",
+  "chrome.control.bar.joined": "Joined {time}",
+  "chrome.control.reclaimed.eyebrow": "REMOTE CONTROL ENDED",
+  "chrome.control.reclaimed.title": "Control was taken back",
+  "chrome.control.reclaimed.body": "Returning you to your own console…",
+
   // operation-search
   "chrome.operationSearch.commandsDialog": "Console commands",
   "chrome.operationSearch.quickSearchDialog": "Operation quick search",
@@ -303,6 +318,21 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.link.reconnect": "다시 연결",
   "chrome.link.staleHeadline": "이 값은 갱신이 멈췄습니다",
   "chrome.link.staleDetail": "마지막 갱신 {time}",
+
+  // 원격 제어
+  "chrome.control.shared": "공유 중",
+  "chrome.control.curtain.eyebrow": "원격 제어 · 읽기 전용 보기",
+  "chrome.control.curtain.title": "{name}에서 제어 중입니다",
+  "chrome.control.curtain.body": "이 Console을 계속 지켜보거나 이 기기로 제어권을 가져올 수 있습니다.",
+  "chrome.control.takeBack": "제어권 가져오기",
+  "chrome.control.reclaiming": "제어권 가져오는 중…",
+  "chrome.control.keepWatching": "계속 지켜보기",
+  "chrome.control.reclaimError": "제어권을 가져오지 못했습니다. 다시 시도하세요.",
+  "chrome.control.bar.title": "{name}에서 제어 중",
+  "chrome.control.bar.joined": "{time} 접속",
+  "chrome.control.reclaimed.eyebrow": "원격 제어 종료",
+  "chrome.control.reclaimed.title": "제어권이 회수되었습니다",
+  "chrome.control.reclaimed.body": "내 Console로 돌아가는 중…",
 
   "chrome.operationSearch.commandsDialog": "Console 명령",
   "chrome.operationSearch.quickSearchDialog": "Operation 빠른 검색",

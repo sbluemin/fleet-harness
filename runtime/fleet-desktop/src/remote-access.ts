@@ -122,6 +122,9 @@ export async function joinRemoteConsole(sessionFetch: SessionFetch, joinUrl: str
     });
     if (response.status === 401) throw new Error("remote_link_rejected");
     if (response.status === 403) throw new Error("remote_link_host_mismatch");
+    // 409는 자격 문제가 아니다 — 그 콘솔의 제어를 이미 다른 기기가 쥐고 있다. 다른 4xx와
+    // 뭉개면 "링크를 새로 받아라"로 안내되고, 새 링크로도 같은 거절이 돌아온다.
+    if (response.status === 409) throw new Error("remote_link_control_held");
     if (!response.ok) throw new Error("remote_link_unverified");
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("remote_link_")) throw error;

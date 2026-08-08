@@ -213,6 +213,12 @@ export interface ApiCatalogEntry {
 
 export type ConnectionState = "connecting" | "live" | "offline";
 
+export interface ControlHolder {
+  readonly handle: string;
+  readonly device: string | null;
+  readonly openedAt: number;
+}
+
 export type NotificationKind = "ended" | "input-waiting";
 
 export interface OperationNotification {
@@ -241,6 +247,8 @@ export interface ConsoleState {
   readonly consoleName: string;
   readonly connection: ConnectionState;
   readonly connectionLostAt: number | null;
+  readonly controlHolder: ControlHolder | null;
+  readonly controlCurtainDismissed: boolean;
   readonly channel: ObserverStatus["channel"];
   readonly activeTheme: ConsoleTheme;
   readonly version: string;
