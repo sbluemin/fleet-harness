@@ -162,4 +162,14 @@ describe("ai-gateway settings", () => {
     });
     expect(selection.providerPriority).toEqual(["opencode", "codex"]);
   });
+
+  // 카탈로그 프루닝 마이그레이션: stale id가 정규형에 남으면 GET→PUT 에코 경로에서
+  // 검증기가 그 id를 거부해 AI Gateway 저장 전체가 400으로 잠긴다.
+  it("drops models and defaults that left the catalog", () => {
+    expect(normalizeAiGatewaySettings({
+      version: 1,
+      models: [{ id: "opencode--qwen3.7-max" }, { id: "kimi--k3", efforts: ["max"] }],
+      defaultModel: "opencode--qwen3.7-max",
+    })).toEqual({ version: 1, models: [{ id: "kimi--k3", efforts: ["max"] }] });
+  });
 });
