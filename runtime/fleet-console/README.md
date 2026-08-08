@@ -50,12 +50,15 @@ Codex/Fleet Wiki routes preserve the migrated wiki security boundary: Host allow
 ## Usage
 
 ```bash
+fleet console
+fleet console status
+fleet console stop
+
+# transitional alias
 fleet-console
-fleet-console status
-fleet-console stop
 ```
 
-The launcher ensures the local console server is running and opens `/console/` directly without browser token fragments.
+Prefer `fleet console`. The transitional `fleet-console` bin still works. The launcher ensures the local console server is running and opens `/console/` directly without browser token fragments.
 
 ## Desktop coexistence
 
@@ -76,6 +79,6 @@ pnpm --filter @dotobokuri/fleet-console typecheck
 pnpm --filter @dotobokuri/fleet-console build
 ```
 
-`build` emits `dist/cli.mjs`, `dist/cli-bin.mjs`, `dist/client/`, and `dist/fleet-plugins/terminal/routes.mjs`. There is no external embed step.
+`build` emits `dist/fleet.mjs`, `dist/cli.mjs`, `dist/client/`, and `dist/fleet-plugins/terminal/routes.mjs`. There is no external embed step.
 
 See `AGENTS.md` for ownership, token-boundary, and streaming invariants.

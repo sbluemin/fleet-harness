@@ -4,7 +4,7 @@ This document is the operational doctrine for agents working inside this reposit
 
 ## 1. Architecture State
 
-- `runtime/fleet-cli` owns the CLI host and Composition Root, consumes single-fleet Admiral policy from `@dotobokuri/fleet-admiral`, and owns one in-process MCP HTTP/JSON-RPC server per CLI process plus the console register publisher.
+- `runtime/fleet-console/cli` owns the thin `fleet` launcher Composition Root inside `@dotobokuri/fleet-console`: argv/process lifecycle, one in-process Fleet MCP (Wiki + `gateway_models`), an ephemeral loopback AI Gateway, and a Claude Code child with inherited stdio; it consumes single-fleet Admiral policy from `@dotobokuri/fleet-admiral`.
 - `packages/core-agent` owns the host-agnostic one-shot executor/session/model runtime engine (`executeOneShot`, which builds a fresh provider client per call and resumes only via a caller-supplied session id), the builtin external MCP catalog, Fleet-domain-agnostic in-process MCP server primitives, and the shared register data contract.
 - `packages/core-unified-agent` owns the unified ACP CLI backend client engine and the `CLI_BACKENDS` provider catalog.
 - `packages/core-infra` owns host-agnostic auth, data-dir resolution, data-dir/settings, and the durable `fs-store` I/O primitives.
@@ -13,30 +13,30 @@ This document is the operational doctrine for agents working inside this reposit
 
 ## 2. Ownership Model
 
-`fleet-cli` owns:
-- CLI lifecycle registration and agent CLI launch.
-- TUI rendering, overlays, widgets, and host input routing.
+The `fleet` launcher (under `runtime/fleet-console/cli`) owns:
+- Thin argv dispatch and process lifecycle for Claude Code passthrough, `fleet auth`, `fleet update`, and `fleet console`.
+- One in-process Fleet MCP (Wiki + `gateway_models`) and an ephemeral loopback AI Gateway for the Claude child.
 - Host adapters that consume Admiral prompt/protocol/tool policy from `@dotobokuri/fleet-admiral`.
-- Concrete runtime assembly in `src/runtime/runtime.ts`.
+- Concrete runtime assembly in `cli/runtime/runtime.ts`.
 
-`fleet-cli` must not own host-agnostic infrastructure internals or generic MCP transport internals.
+It must not own PTY, TUI, terminal I/O interception, host-agnostic infrastructure internals, or generic MCP transport internals.
 
 ## 3. Allowed Dependency Direction
 
 ```text
-fleet-cli
+@dotobokuri/fleet-console
+  (package-local: cli/ thin fleet launcher + Console service)
   -> fleet-admiral
   -> core-agent
   -> core-infra
-  -> fleet-console
-  -> fleet-wiki / fleet-console Codex surface
+  -> fleet-wiki
 
 core-agent / core-infra
   -> core-unified-agent
 ```
 
 Forbidden patterns:
-- Lower packages importing `fleet-cli`.
+- Lower packages importing a runtime host (`runtime/fleet-console` or `runtime/fleet-desktop`).
 - Recreating deleted compatibility packages or namespace facades.
 - Deep-importing package `src/**` or `internal/**` across package boundaries.
 
@@ -44,7 +44,7 @@ Forbidden patterns:
 
 1. Ask whether the behavior belongs to host assembly, generic infrastructure, or generic MCP transport.
 2. Put Admiral prompt/protocol/tool policy in `packages/fleet-admiral/src/**`.
-4. Keep runtime boot order explicit in `runtime/fleet-cli/src/runtime/runtime.ts`.
+4. Keep runtime boot order explicit in `runtime/fleet-console/cli/runtime/runtime.ts`.
 5. For operational work, let the protocol gate select exactly one protocol skill: trivial, standard, high-risk, or multi-agent.
 6. Follow the active protocol's declared checkpoints. Trivial has none and uses Mission Anchor Compact Mode.
 7. Use the reduced protocol cadence: emit `brief: <...>` after readiness checks and `status: executing` when execution begins.
@@ -63,14 +63,14 @@ Preserve:
 
 ## 6. Console Self-Update Operations
 
-The Fleet Console can update both `fleet-cli` and `fleet-console` globally through its own UI. Operators and contributors should keep the following behavioral facts in mind:
+Fleet Console UI and `fleet update` update only the sole published package `@dotobokuri/fleet-console`. Operators and contributors should keep the following behavioral facts in mind:
 
 - **Local builds are rejected.** The `POST /api/v1/updates/apply` route returns `403` for unpublished/local builds (for example `pnpm console` or `tsx` runs). Self-update only works against globally installed npm packages.
 - **Update applies immediately.** The update route accepts the request regardless of active terminal sessions; the running PTY sessions are not terminated before the update proceeds.
 - **Preflight before stop.** A writable global `npm`/`pnpm` install that owns the current package is resolved *before* anything is torn down — first server-side (the `POST /api/v1/updates/apply` route returns `503` and never spawns a worker when no usable, writable global manager is found) and again inside the detached worker. A preflight failure leaves the running console untouched, so the operator can install by hand; the server-side rejection surfaces as the `503` response rather than a worker file. Only failures that occur after preflight — for example a `node-pty` native rebuild during the install step, which runs once the old server has begun stopping — produce the worker status/log files described below.
 - **Failure recovery is file-based.** The detached worker writes a JSON status file and a plain-text log file under the console data directory. If the worker fails before the new server starts, inspect those files; do not rely on browser state.
 - **New server, new random port.** After a successful install the worker stops the old server and starts a fresh one on a new OS-assigned loopback port, then opens that URL in a browser. The previous tab is intentionally not reused or auto-reloaded.
-- **Version parity risk.** `fleet-cli` and `fleet-console` are updated as a matched pair from the same latest release. A partial update (for example a global `fleet-cli` install without the matching `fleet-console`) can leave cross-package interfaces out of sync; always update both packages together.
+- **One host package.** `@dotobokuri/fleet-console` is the sole published host and owns both bins. Each stable Console release also publishes a matching bin-free `@dotobokuri/fleet-cli` identity bridge so existing installs can keep resolving that package name; update only `@dotobokuri/fleet-console` for the runtime and bins.
 
 ### Desktop supervision
 

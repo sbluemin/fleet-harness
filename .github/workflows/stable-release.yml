@@ -272,7 +272,7 @@ jobs:
           console.log(`OK: ${checked} package.json file(s) synced to ${expected}`);
           NODE
 
-      # npm 배포(fleet-console/fleet-cli)와 desktop 빌드는 아래 별도 재사용 워크플로로 분리됐다.
+      # npm 배포(fleet-console)와 desktop 빌드는 아래 별도 재사용 워크플로로 분리됐다.
       # 이 잡은 릴리스 핵심 책임(버전 산정·changelog·커밋·태그·GitHub Release)만 담당한다.
 
       - name: Commit release changes
@@ -398,23 +398,7 @@ jobs:
       dist_tag: latest
     secrets: inherit
 
-  # fleet-cli → npm (같은 버전의 fleet-console에 의존하므로 console 배포 후 실행)
-  cli:
-    needs: [release, console, desktop-build, desktop-carry]
-    if: >-
-      !cancelled() &&
-      needs.release.outputs.should_release == 'true' &&
-      needs.console.result == 'success' &&
-      (needs.desktop-build.result == 'success' || needs.desktop-carry.result == 'success')
-    uses: ./.github/workflows/cli-release.yml
-    with:
-      ref: ${{ needs.release.outputs.release_sha }}
-      version: ${{ needs.release.outputs.next_version }}
-      dist_tag: latest
-    secrets: inherit
 
-  # desktop 셸 → 마지막 성공 빌드(desktop-v* 태그) 이후 변경이 있을 때만 네이티브 러너 매트릭스로
-  # 빌드해 초안 Release에 첨부한다. 셸은 main v* 트레인과 별개의 독립 버저닝을 쓴다.
   desktop-build:
     needs: release
     if: needs.release.outputs.should_release == 'true' && needs.release.outputs.desktop_changed == 'true'
@@ -474,17 +458,16 @@ jobs:
           gh api "repos/${{ github.repository }}/git/refs" -f ref="refs/tags/$DESKTOP_TAG" -f sha="$RELEASE_SHA"
 
   # 릴리스의 마무리 단계. npm 게시(latest)까지 끝난 뒤 초안 Release를 공개한다.
-  # console/cli가 실패하면 이 잡은 실행되지 않아 Release는 draft로 남는다(desktop 실패는 console
+  # console가 실패하면 이 잡은 실행되지 않아 Release는 draft로 남는다(desktop 실패는 console
   # 단계에서 이미 걸러진다). 진짜 커밋 지점은 npm publish 쪽으로 옮겨갔고, 여기 남은 draft 공개는
   # 가역(다시 draft로 되돌릴 수 있음)이자 멱등이라 부분 실패 시 이 잡만 재실행하면 수렴한다.
   # npm 산출물에 문제가 있으면 `npm deprecate <나쁜버전>` + 다음 패치 릴리스로 대응한다(unpublish는 쓰지 않는다).
   publish-release:
-    needs: [release, console, cli]
+    needs: [release, console]
     if: >-
       !cancelled() &&
       needs.release.outputs.should_release == 'true' &&
-      needs.console.result == 'success' &&
-      needs.cli.result == 'success'
+      needs.console.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -24,10 +24,11 @@ Node.js 20.19+ 와 `PATH`에 등록된 인증 완료 에이전트 CLI가 하나 
 ```bash
 npm install -g @dotobokuri/fleet-console
 
-fleet-console          # 로컬 콘솔을 시작하고 브라우저로 엽니다
+fleet console          # 권장: 로컬 콘솔을 시작하고 브라우저로 엽니다
+fleet-console          # 같은 콘솔 수명주기의 과도기 별칭
 ```
 
-`fleet-console`은 `status`, `restart`, `stop`도 지원합니다. 모든 실행은 내 머신 안에서 이루어집니다. 서버는 기본적으로 루프백에 바인딩되고, 브라우저에는 MCP·공급자 토큰이 전달되지 않습니다. 원격 접속은 켜기 전까지 꺼져 있으며, 켜면 직접 고른 인터페이스에 TLS로 콘솔을 엽니다.
+`fleet console`을 권장하고, 과도기 `fleet-console`도 `status`, `restart`, `stop`을 지원합니다. 모든 실행은 내 머신 안에서 이루어집니다. 서버는 기본적으로 루프백에 바인딩되고, 브라우저에는 MCP·공급자 토큰이 전달되지 않습니다. 원격 접속은 켜기 전까지 꺼져 있으며, 켜면 직접 고른 인터페이스에 TLS로 콘솔을 엽니다.
 
 네이티브 창을 원한다면 [최신 GitHub Release](https://github.com/sbluemin/fleet-harness/releases/latest)에서 플랫폼 빌드를 설치하세요.
 

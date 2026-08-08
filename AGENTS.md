@@ -20,7 +20,6 @@ Fleet is a multi-LLM orchestration kit. A host agent coordinates delegated runs 
 |---|---|
 | `docs/` | Human-facing architecture, development, and operating references |
 | `packages/` | Reusable core and Fleet domain packages |
-| `runtime/fleet-cli/` | Terminal host and CLI composition root |
 | `runtime/fleet-console/` | Standalone Console service and web product |
 | `runtime/fleet-desktop/` | Optional thin native shell for Fleet Console |
 | `runtime/fleet-plugins/` | Built-in Console plugin implementations |
@@ -33,7 +32,7 @@ Fleet is a multi-LLM orchestration kit. A host agent coordinates delegated runs 
 
 - Runtime hosts own composition, process lifecycle, UI, and host adapters. Reusable packages must not reach back into a host.
 - `core-*` packages are Fleet-domain-agnostic. Fleet semantics belong in `fleet-*` packages or runtime hosts; dependencies flow from runtime to Fleet domains to core capabilities.
-- Fleet CLI and Fleet Console are peer hosts. Console owns its service, browser, and plugin-host lifecycle; built-in plugin implementations live under `runtime/fleet-plugins/`, and Desktop remains a shell over the Console public protocol.
+- Fleet Console is the sole published host package for both the `fleet` terminal launcher and the Console web product. Built-in plugin implementations live under `runtime/fleet-plugins/`, and Desktop remains a shell over the Console public protocol.
 - Cross-package construction uses explicit dependency objects. Do not add DI containers, service locators, or hidden cross-layer lookups.
 - Consume declared package exports only. Source deep imports create shadow APIs and are forbidden across package boundaries.
 

@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.dirname(scriptDir);
-const packageRoot = path.join(root, "runtime", "fleet-cli");
-const scanRoots = ["src", "package.json", "AGENTS.md", "README.md", "CLAUDE.md"].map((entry) => path.join(packageRoot, entry));
+const packageRoot = path.join(root, "runtime", "fleet-console");
+const scanRoots = ["cli", "package.json", "AGENTS.md", "README.md", "CLAUDE.md"].map((entry) => path.join(packageRoot, entry));
 const forbidden = [
   /@dotobokuri\/fleet-harness/,
   /@dotobokuri\/fleet-ai/,

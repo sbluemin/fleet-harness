@@ -4,7 +4,7 @@
 
 Fleet now uses explicit package ownership without standalone Admiral compatibility packages.
 
-- `runtime/fleet-cli` owns CLI lifecycle wiring, TUI rendering, host-specific adapters, concrete runtime assembly, one in-process MCP HTTP/JSON-RPC server per CLI process, and the console register publisher; it consumes Admiral policy from `@dotobokuri/fleet-admiral`.
+- `runtime/fleet-console/cli` owns the thin `fleet` launcher: argv/process lifecycle, host-specific adapters, concrete runtime assembly, one in-process Fleet MCP, and an ephemeral loopback AI Gateway for a Claude Code child with inherited stdio; it consumes Admiral policy from `@dotobokuri/fleet-admiral` and does not own PTY/TUI/interception.
 - `runtime/fleet-console` owns the standalone loopback HTTP backend, REST/SSE/WebSocket, PTY/provider/plugin runtime, durable state, and static UI.
 - `runtime/fleet-desktop` is an optional thin Electron shell that supervises the existing Console Service through its public desktop protocol and loads `/console/`; it owns no duplicate UI or service runtime.
 - `packages/core-infra` owns host-agnostic infrastructure and I/O gateways.
@@ -18,12 +18,12 @@ The follow-up keeps lower packages host-agnostic while preserving a clear home f
 ## Current State
 
 - **Logical ownership:** Final package homes are split by domain.
-- **Dependency direction:** `fleet-cli` -> `fleet-admiral` -> `core-infra`, with `fleet-console` as the local Console Service, `fleet-desktop` -> `fleet-console` for the optional native shell, and `core-agent` consumed as a generic leaf.
+- **Dependency direction:** `fleet-console` -> `fleet-admiral` -> `core-infra`, with `fleet-desktop` -> `fleet-console` for the optional native shell, and `core-agent` consumed as a generic leaf.
 
 ## Goals
 
 - **Thin lower layers:** Keep lower packages focused on reusable infrastructure and MCP behavior.
-- **Explicit host assembly:** Keep concrete boot order in `fleet-cli`.
+- **Explicit host assembly:** Keep concrete boot order in `runtime/fleet-console/cli`.
 - **No compatibility facades:** Do not recreate deleted namespace or factory packages.
 
 ## Guardrails

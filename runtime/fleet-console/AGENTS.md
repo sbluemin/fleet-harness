@@ -1,11 +1,12 @@
 # Fleet Console
 
-`runtime/fleet-console` is the standalone loopback host and React product. The Console product — core plus built-ins under `../fleet-plugins/` — is the sole owner of Console HTTP, streaming, PTY/provider/plugin runtime, durable state, and browser UI.
+`runtime/fleet-console` is the sole published host for Fleet Console and the `fleet` terminal launcher. The Console product — core plus built-ins under `../fleet-plugins/` — owns Console HTTP, streaming, PTY/provider/plugin runtime, durable state, and browser UI; `cli/` owns the thin Claude Code launcher and shared auth/update commands.
 
 ## Directory index
 
 | Directory | Responsibility |
 |---|---|
+| `cli/` | Dual-entry `fleet` launcher (auth/update/console/cli passthrough) and thin Claude gateway |
 | `core/host/` | Server lifecycle, security, durable state, and core APIs |
 | `core/client/` | React application, host chrome, and browser state |
 | `desktop-protocol/` | Shared Console-Desktop protocol contract |
@@ -21,7 +22,7 @@
 - A **Theater** is any registered project root. An **Operation** is a Console-managed unit inside a Theater. A Codex workspace is the subset of a Theater or selected path that contains Fleet Wiki knowledge.
 - Console owns Theater and Operation state, window chrome, path selection, security gates, and plugin registries. Plugins own their panel bodies and plugin-scoped runtime behavior.
 - Desktop may supervise and display Console only through the public desktop protocol; it must not duplicate server, PTY, provider, plugin, state, or React behavior.
-- Host code may consume public APIs from lower-layer Fleet packages, but must not import `fleet-cli` or any package's implementation paths. Browser code remains Node-free. SDK dependencies point from host, client, and plugins into SDK, never back into core or plugin implementations.
+- Host code may consume public APIs from lower-layer Fleet packages, but must not import any package's implementation paths. Browser code remains Node-free. SDK dependencies point from host, client, and plugins into SDK, never back into core or plugin implementations.
 - Built-ins are trusted static plugins. Installing an external plugin grants same-process Node and same-origin browser privileges; external plugins are not sandboxed.
 
 ## Security and state constraints
@@ -46,7 +47,7 @@
 
 ## Distribution constraints
 
-- Console serves its own web build; there is no second gateway or embedded web owner.
+- Console serves its own web build and owns both published bins (`fleet`, `fleet-console`); there is no second Console web/HTTP owner. The `fleet` entry may still run an ephemeral per-process AI Gateway for Claude Code passthrough.
 - Published Console artifacts are self-contained: workspace packages are bundled and must not survive as workspace-version dependencies.
 - The published `./desktop-protocol` subpath is a compatibility surface for shipped Desktop shells under always-latest Console installs; keep its export surface unchanged.
 - Host and built-in plugin bundles may load separate copies of a module. Never coordinate across that boundary through module-scoped singleton state.

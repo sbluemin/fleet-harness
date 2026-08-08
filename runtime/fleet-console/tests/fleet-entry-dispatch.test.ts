@@ -1,0 +1,126 @@
+import { describe, expect, it, vi } from "vitest";
+
+import { dispatchFleetArgv } from "../cli/fleet-dispatch.js";
+
+function createIo() {
+  let stdout = "";
+  let stderr = "";
+  return {
+    stdout: {
+      write(chunk: string) {
+        stdout += chunk;
+        return true;
+      },
+      isTTY: false as boolean | undefined,
+      toString() {
+        return stdout;
+      },
+    },
+    stderr: {
+      write(chunk: string) {
+        stderr += chunk;
+        return true;
+      },
+      toString() {
+        return stderr;
+      },
+    },
+  };
+}
+
+describe("dual-entry dispatch", () => {
+  it("runs Console help for fleet console --help without Claude passthrough", async () => {
+    const io = createIo();
+    const runApp = vi.fn(async () => undefined);
+    const status = await dispatchFleetArgv(["console", "--help"], {
+      stdout: io.stdout,
+      stderr: io.stderr,
+      env: {},
+      runApp: runApp as never,
+      createInfraServices: (() => ({})) as never,
+      dispatchAuthCommand: (async () => 0) as never,
+      dispatchUpdateCommand: (async () => 0) as never,
+    });
+    expect(status).toBe(0);
+    expect(io.stdout.toString()).toContain("fleet console");
+    expect(io.stdout.toString()).toContain("fleet-console");
+    expect(runApp).not.toHaveBeenCalled();
+  });
+
+  it("rejects unknown fleet console modes without Claude passthrough", async () => {
+    const io = createIo();
+    const runApp = vi.fn(async () => undefined);
+    const status = await dispatchFleetArgv(["console", "unknown"], {
+      stdout: io.stdout,
+      stderr: io.stderr,
+      env: {},
+      runApp: runApp as never,
+      createInfraServices: (() => ({})) as never,
+      dispatchAuthCommand: (async () => 0) as never,
+      dispatchUpdateCommand: (async () => 0) as never,
+    });
+    expect(status).toBe(1);
+    expect(io.stderr.toString()).toContain("Unknown fleet console command: unknown");
+    expect(runApp).not.toHaveBeenCalled();
+  });
+
+  it("prints Fleet help for bare --help", async () => {
+    const io = createIo();
+    const runApp = vi.fn(async () => undefined);
+    const status = await dispatchFleetArgv(["--help"], {
+      stdout: io.stdout,
+      stderr: io.stderr,
+      env: {},
+      runApp: runApp as never,
+      createInfraServices: (() => ({})) as never,
+      dispatchAuthCommand: (async () => 0) as never,
+      dispatchUpdateCommand: (async () => 0) as never,
+    });
+    expect(status).toBe(0);
+    expect(io.stdout.toString()).toContain("fleet console");
+    expect(io.stdout.toString()).toContain("Unrecognized arguments are passed through to Claude Code.");
+    expect(runApp).not.toHaveBeenCalled();
+  });
+
+  it("strips fleet cli before help/passthrough", async () => {
+    const io = createIo();
+    const runApp = vi.fn(async () => undefined);
+    const helpStatus = await dispatchFleetArgv(["cli", "--help"], {
+      stdout: io.stdout,
+      stderr: io.stderr,
+      env: {},
+      runApp: runApp as never,
+      createInfraServices: (() => ({})) as never,
+      dispatchAuthCommand: (async () => 0) as never,
+      dispatchUpdateCommand: (async () => 0) as never,
+    });
+    expect(helpStatus).toBe(0);
+    expect(io.stdout.toString()).toContain("Unrecognized arguments are passed through to Claude Code.");
+    expect(runApp).not.toHaveBeenCalled();
+
+    const passthrough = await dispatchFleetArgv(["cli", "--model", "sonnet"], {
+      stdout: io.stdout,
+      stderr: io.stderr,
+      env: {},
+      runApp: runApp as never,
+      createInfraServices: (() => ({})) as never,
+      dispatchAuthCommand: (async () => 0) as never,
+      dispatchUpdateCommand: (async () => 0) as never,
+    });
+    expect(passthrough).toBe(0);
+    expect(runApp).toHaveBeenCalledWith({ passthroughArgs: ["--model", "sonnet"] });
+  });
+
+  it("keeps entry isolation: fleet entry never imports the direct-run-guarded Console entry", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+    const source = fs.readFileSync(path.join(packageRoot, "cli", "fleet-entry.ts"), "utf8");
+    expect(source).toContain("./fleet-dispatch.js");
+    expect(source).not.toContain("../core/host/cli.js");
+    expect(source).not.toContain("basename");
+    expect(source).toContain("process.exitCode = status");
+    expect(source).not.toContain("process.exit(status)");
+  });
+});

@@ -47,7 +47,7 @@ export interface ConsoleUpdateWorkerScriptConfig {
   readonly lockFile: string;
   readonly logFile: string;
   readonly packageManager: ConsoleUpdatePackageManagerSpec;
-  readonly packageNames: readonly [string, string];
+  readonly packageNames: readonly [string, ...string[]];
   readonly serverModulePath: string;
   readonly statusFile: string;
   readonly targetVersion: string;
@@ -73,7 +73,7 @@ export type ConsoleUpdateWorkerSpawner = (
   options: { readonly detached: true; readonly env: NodeJS.ProcessEnv; readonly stdio: "ignore"; readonly windowsHide: true },
 ) => ConsoleUpdateWorkerProcess;
 
-const PACKAGE_NAMES = ["@dotobokuri/fleet-cli", "@dotobokuri/fleet-console"] as const;
+const PACKAGE_NAMES = ["@dotobokuri/fleet-console"] as const;
 const WORKER_FILE_PREFIX = "fleet-console-update-";
 const WORKER_FILE_SUFFIX = ".mjs";
 const STATUS_FILE_SUFFIX = ".status.json";
