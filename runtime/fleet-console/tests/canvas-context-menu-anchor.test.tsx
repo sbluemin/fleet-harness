@@ -426,9 +426,14 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(document.querySelector(".canvas-context-menu-aside")).toBeNull();
 
     const row = document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!;
-    const chip = document.querySelector<HTMLButtonElement>('[data-launch-variant-chip="fable:max"]')!;
+    expect(row.getAttribute("aria-haspopup")).toBe("menu");
+    expect(document.querySelector(".operation-launch-effort-menu")).toBeNull();
     act(() => row.click());
     expect(onLaunchKind).toHaveBeenLastCalledWith("terminal", catalog[0]!.kinds[0], { model: "fable" });
+
+    act(() => row.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+    expect(document.querySelector(".operation-launch-effort-menu")).not.toBeNull();
+    const chip = document.querySelector<HTMLButtonElement>('[data-launch-variant-chip="fable:max"]')!;
     act(() => chip.click());
     expect(onLaunchKind).toHaveBeenLastCalledWith("terminal", catalog[0]!.kinds[0], { model: "fable", effort: "max" });
     act(() => parent.click());
@@ -451,7 +456,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(top).toBeLessThanOrEqual(bounds.height - 300 - 12);
   });
 
-  it("roves across flyout rows and chips, then restores parent focus with ArrowLeft", async () => {
+  it("opens the effort submenu from a model row, then restores focus with ArrowLeft", async () => {
     renderMenu({ x: 900, y: 156 }, { width: 1116, height: 856 }, gatewayVariantCatalog());
     const parent = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
 
@@ -465,25 +470,33 @@ describe("CanvasContextMenu launch kind attribute", () => {
 
     const flyout = document.querySelector<HTMLElement>(".operation-launch-flyout")!;
     const row = document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!;
-    const high = document.querySelector<HTMLButtonElement>('[data-launch-variant-chip="fable:high"]')!;
-    const max = document.querySelector<HTMLButtonElement>('[data-launch-variant-chip="fable:max"]')!;
     expect(flyout.parentElement).toBe(document.querySelector(".operation-launch-control--canvas"));
     expect(flyout.closest(".canvas-context-menu")).toBeNull();
     expect(flyout.classList.contains("is-left")).toBe(true);
     expect(document.activeElement).toBe(row);
 
-    pressFlyoutKey("ArrowDown");
+    pressFlyoutKey("ArrowRight");
+    await act(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
+    const high = document.querySelector<HTMLButtonElement>('[data-launch-variant-chip="fable:high"]')!;
+    const max = document.querySelector<HTMLButtonElement>('[data-launch-variant-chip="fable:max"]')!;
+    expect(document.querySelector(".operation-launch-effort-menu")).not.toBeNull();
     expect(document.activeElement).toBe(high);
+
     pressFlyoutKey("ArrowDown");
     expect(document.activeElement).toBe(max);
-    pressFlyoutKey("ArrowDown");
-    expect(document.activeElement).toBe(row);
     pressFlyoutKey("ArrowUp");
-    expect(document.activeElement).toBe(max);
+    expect(document.activeElement).toBe(high);
     pressFlyoutKey("Home");
-    expect(document.activeElement).toBe(row);
+    expect(document.activeElement).toBe(high);
     pressFlyoutKey("End");
     expect(document.activeElement).toBe(max);
+
+    pressFlyoutKey("ArrowLeft");
+    expect(document.querySelector(".operation-launch-effort-menu")).toBeNull();
+    expect(document.activeElement).toBe(row);
+    expect(document.querySelector(".operation-launch-flyout")).not.toBeNull();
 
     pressFlyoutKey("ArrowLeft");
     expect(document.querySelector(".operation-launch-flyout")).toBeNull();

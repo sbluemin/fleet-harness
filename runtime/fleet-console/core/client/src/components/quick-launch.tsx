@@ -11,7 +11,7 @@ import { readQuickLaunchSelection, writeQuickLaunchSelection } from "../quick-la
 import { findVariantLaunchKind, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, resolveSelection } from "../quick-launch.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { closeQuickLaunch, consumeQuickLaunchDraft, requestQuickLaunch, setActiveTheater } from "../store.js";
-import { launchProviderFromGroupId, launchProviderGlyph } from "./launch-provider-glyphs.js";
+import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph } from "./launch-provider-glyphs.js";
 
 // 카드 폭은 팔레트(920px)보다 좁다 — 팔레트는 결과 목록을 담고, 여기는 한 문단을 담는다.
 const CARD_WIDTH_FALLBACK = 760;
@@ -152,9 +152,17 @@ export function QuickLaunch() {
   const canSubmit = promptLength > 0 && !overLimit && !!theaterId && !!target && !submitting;
   const modelLabel = selectedRow?.label ?? t("chrome.quickLaunch.modelUnset");
   const rejectionKey = quickLaunchErrorMessageKey(state.quickLaunchError, state.quickLaunchErrorShortenBy);
-  const kindIcon = target
-    ? registry.plugins.find((plugin) => plugin.id === target.pluginId)?.renderLaunchIcon?.(target.kind) ?? null
+  // Prefer the selected model\'s provider mark. Falling back to the launch-kind
+  // icon would keep showing Claude even when a Cursor/Codex/Kimi model is chosen.
+  const selectedProvider = selectedRow
+    ? (launchProviderFromGroupId(groups.find((group) => group.rows.some((row) => row.id === selectedRow.id))?.id ?? "")
+      ?? launchProviderFromModelId(selectedRow.launch.model ?? selectedRow.id))
     : null;
+  const kindIcon = selectedProvider
+    ? launchProviderGlyph(selectedProvider)
+    : (target
+      ? registry.plugins.find((plugin) => plugin.id === target.pluginId)?.renderLaunchIcon?.(target.kind) ?? null
+      : null);
 
   return (
     <div
@@ -213,7 +221,14 @@ export function QuickLaunch() {
           >
             {/* 아이콘은 플러그인 소유다 — console-core는 어느 플러그인인지 모른 채 렌더만 위임한다
                 (캔버스 우클릭 메뉴의 renderKindIcon과 같은 계약). */}
-            {kindIcon ? <span className="quick-launch-kind-icon" aria-hidden="true">{kindIcon}</span> : null}
+            {kindIcon ? (
+              <span
+                className={`quick-launch-kind-icon${selectedProvider ? ` is-${selectedProvider}` : ""}`}
+                aria-hidden="true"
+              >
+                {kindIcon}
+              </span>
+            ) : null}
             <span className="quick-launch-chip-label">{modelLabel}</span>
             {selectedChip ? <span className="quick-launch-effort">{selectedChip.label}</span> : null}
             <span className="quick-launch-caret" aria-hidden="true">▾</span>
@@ -317,26 +332,82 @@ function VariantRow({ row, selectedModel, selectedEffort, onPick }: {
   readonly onPick: (model: string | null, effort: string | null) => void;
 }) {
   const rowModel = row.launch.model ?? null;
+  const hasEffort = (row.chips?.length ?? 0) > 0;
+  const [effortOpen, setEffortOpen] = useState(false);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelClose = () => {
+    if (closeTimerRef.current === null) return;
+    clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  };
+  const openEffort = () => {
+    cancelClose();
+    if (hasEffort) setEffortOpen(true);
+  };
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimerRef.current = setTimeout(() => {
+      closeTimerRef.current = null;
+      setEffortOpen(false);
+    }, 160);
+  };
+
+  useEffect(() => () => cancelClose(), []);
+
   return (
-    <div className="quick-launch-variant-row">
+    <div
+      className="quick-launch-variant-row"
+      onPointerEnter={openEffort}
+      onPointerLeave={scheduleClose}
+      onFocus={openEffort}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) scheduleClose();
+      }}
+    >
       <button
         type="button"
-        className="quick-launch-variant-name"
+        className={`quick-launch-variant-name${hasEffort ? " has-effort" : ""}`}
         role="menuitem"
-        aria-current={rowModel === selectedModel && selectedEffort === null}
+        aria-current={rowModel === selectedModel && (selectedEffort === null || !hasEffort)}
+        aria-haspopup={hasEffort ? "menu" : undefined}
+        aria-expanded={hasEffort ? effortOpen : undefined}
         onClick={() => onPick(rowModel, null)}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowRight" || !hasEffort) return;
+          event.preventDefault();
+          openEffort();
+          requestAnimationFrame(() => {
+            (event.currentTarget.parentElement?.querySelector(".quick-launch-effort-item") as HTMLButtonElement | null)?.focus();
+          });
+        }}
       >
         {row.starred ? <span className="quick-launch-variant-star" aria-hidden="true">★</span> : null}
-        {row.label}
+        <span className="quick-launch-variant-label">{row.label}</span>
+        {hasEffort ? <span className="quick-launch-variant-chevron" aria-hidden="true">›</span> : null}
       </button>
-      {row.chips && row.chips.length > 0 ? (
-        <div className="quick-launch-variant-chips">
-          {row.chips.map((chip) => (
+      {hasEffort && effortOpen ? (
+        <div
+          className="quick-launch-effort-menu theater-menu"
+          role="menu"
+          onPointerEnter={openEffort}
+          onPointerLeave={scheduleClose}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            setEffortOpen(false);
+            (event.currentTarget.parentElement?.querySelector(".quick-launch-variant-name") as HTMLButtonElement | null)?.focus();
+          }}
+        >
+          {row.chips!.map((chip) => (
             <button
               key={chip.id}
               type="button"
-              className="quick-launch-variant-chip"
-              aria-pressed={rowModel === selectedModel && chip.launch.effort === selectedEffort}
+              role="menuitem"
+              className="quick-launch-effort-item"
+              data-launch-variant-chip={`${row.id}:${chip.id}`}
+              aria-current={rowModel === selectedModel && chip.launch.effort === selectedEffort}
               onClick={() => onPick(chip.launch.model ?? rowModel, chip.launch.effort ?? null)}
             >
               {chip.label}

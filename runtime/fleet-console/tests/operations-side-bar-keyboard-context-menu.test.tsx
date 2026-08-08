@@ -153,7 +153,7 @@ describe("sidebar context menu keyboard path", () => {
     expect(document.activeElement).toBe(row);
   });
 
-  it("forwards a launch-variant chip payload through the sidebar menu", () => {
+  it("forwards a nested launch-effort payload through the sidebar menu", () => {
     const onLaunchKind = vi.fn();
     const catalog = gatewayVariantCatalog();
     renderSideBar(catalog, onLaunchKind);
@@ -167,6 +167,11 @@ describe("sidebar context menu keyboard path", () => {
     })));
     const parent = required<HTMLElement>('[data-operation-launch-kind="claude-gateway"]');
     act(() => parent.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+    const row = required<HTMLButtonElement>('[data-launch-variant-row="fable"]');
+    act(() => {
+      row.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+      row.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true }));
+    });
     act(() => required<HTMLButtonElement>('[data-launch-variant-chip="fable:max"]').click());
 
     expect(onLaunchKind).toHaveBeenCalledWith(

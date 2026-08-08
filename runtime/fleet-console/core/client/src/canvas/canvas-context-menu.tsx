@@ -31,6 +31,7 @@ interface CanvasContextMenuProps {
 const MENU_WIDTH = 288;
 const FLYOUT_WIDTH = 324;
 const FLYOUT_GAP = 10;
+const EFFORT_SUBMENU_WIDTH = 148;
 const FLYOUT_CLOSE_GRACE_MS = 160;
 const MENU_MAX_HEIGHT = 520;
 const MENU_MIN_HEIGHT = 120;
@@ -62,19 +63,41 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   const flyoutAnchorRefs = useRef(new Map<string, HTMLDivElement>());
   const flyoutRef = useRef<HTMLDivElement | null>(null);
   const flyoutCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [openEffortRow, setOpenEffortRow] = useState<string | null>(null);
+  const [effortPosition, setEffortPosition] = useState<{
+    readonly id: string;
+    readonly left: number;
+    readonly top: number;
+    readonly opensLeft: boolean;
+  } | null>(null);
+  const effortAnchorRefs = useRef(new Map<string, HTMLDivElement>());
+  const effortMenuRef = useRef<HTMLDivElement | null>(null);
+  const effortCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cancelFlyoutClose = () => {
     if (flyoutCloseTimerRef.current === null) return;
     clearTimeout(flyoutCloseTimerRef.current);
     flyoutCloseTimerRef.current = null;
   };
+  const cancelEffortClose = () => {
+    if (effortCloseTimerRef.current === null) return;
+    clearTimeout(effortCloseTimerRef.current);
+    effortCloseTimerRef.current = null;
+  };
+  const closeEffortMenu = () => {
+    cancelEffortClose();
+    setOpenEffortRow(null);
+    setEffortPosition(null);
+  };
   const closeFlyout = () => {
     cancelFlyoutClose();
+    closeEffortMenu();
     setOpenFlyout(null);
     setFlyoutPosition(null);
   };
   const openLaunchFlyout = (flyoutId: string) => {
     cancelFlyoutClose();
+    closeEffortMenu();
     const item = flyoutAnchorRefs.current.get(flyoutId);
     const container = containerRef.current;
     if (!item || !container) return;
@@ -113,10 +136,65 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     });
     setOpenFlyout(flyoutId);
   };
+  const openEffortMenu = (rowId: string) => {
+    cancelEffortClose();
+    cancelFlyoutClose();
+    const item = effortAnchorRefs.current.get(rowId);
+    const container = containerRef.current;
+    if (!item || !container) return;
+    const itemRect = item.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const styledLeft = Number.parseFloat(container.style.left);
+    const containerLeft = Number.isFinite(styledLeft) ? styledLeft : container.offsetLeft;
+    const itemLocalLeft = itemRect.left - containerRect.left;
+    const itemLocalRight = itemRect.right > itemRect.left
+      ? itemRect.right - containerRect.left
+      : itemLocalLeft + FLYOUT_WIDTH;
+    const itemLeft = containerLeft + itemLocalLeft;
+    const itemRight = containerLeft + itemLocalRight;
+    const rightCandidate = itemRight + FLYOUT_GAP;
+    const leftCandidate = itemLeft - FLYOUT_GAP - EFFORT_SUBMENU_WIDTH;
+    const boundsWidth = viewportBounds?.width;
+    const maxLeft = boundsWidth === undefined
+      ? Number.POSITIVE_INFINITY
+      : Math.max(MENU_MARGIN, boundsWidth - EFFORT_SUBMENU_WIDTH - MENU_MARGIN);
+    const rightFits = rightCandidate <= maxLeft;
+    const leftFits = leftCandidate >= MENU_MARGIN;
+    const rightRoom = boundsWidth === undefined ? Number.POSITIVE_INFINITY : boundsWidth - itemRight;
+    const leftRoom = itemLeft;
+    // Prefer continuing the parent flyout direction when both sides fit, so a
+    // cascade keeps reading left-to-right (or right-to-left) instead of folding back.
+    const preferLeft = flyoutPosition?.opensLeft === true;
+    const opensLeft = leftFits
+      ? !rightFits || (preferLeft && leftRoom >= rightRoom) || (!preferLeft && leftRoom > rightRoom)
+      : !rightFits && leftRoom > rightRoom;
+    const absoluteLeft = Math.max(MENU_MARGIN, Math.min(opensLeft ? leftCandidate : rightCandidate, maxLeft));
+    const styledTop = Number.parseFloat(container.style.top);
+    const containerTop = Number.isFinite(styledTop) ? styledTop : container.offsetTop;
+    const absoluteTop = Math.max(MENU_MARGIN, containerTop + itemRect.top - containerRect.top - 6);
+    setEffortPosition({
+      id: rowId,
+      left: absoluteLeft,
+      top: absoluteTop,
+      opensLeft,
+    });
+    setOpenEffortRow(rowId);
+  };
+  const scheduleEffortClose = () => {
+    cancelEffortClose();
+    effortCloseTimerRef.current = setTimeout(() => {
+      effortCloseTimerRef.current = null;
+      setOpenEffortRow(null);
+      setEffortPosition(null);
+    }, FLYOUT_CLOSE_GRACE_MS);
+  };
   const scheduleFlyoutClose = () => {
     cancelFlyoutClose();
+    // Cascade leave must wait for the grace window: closing the effort menu
+    // immediately would drop it before the pointer can reach the nested submenu.
     flyoutCloseTimerRef.current = setTimeout(() => {
       flyoutCloseTimerRef.current = null;
+      closeEffortMenu();
       setOpenFlyout(null);
       setFlyoutPosition(null);
       setHoverKey(null);
@@ -192,7 +270,10 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     menuRef.current?.focus();
   }, []);
 
-  useEffect(() => () => cancelFlyoutClose(), []);
+  useEffect(() => () => {
+    cancelFlyoutClose();
+    cancelEffortClose();
+  }, []);
 
   // 플러그인이 하나뿐이면 그 이름은 헤더 줄에 붙는다 — 항목 네 개짜리 메뉴에서 이름만 있는
   // 행 하나가 통째로 서는 것은 값을 못 한다. 둘 이상일 때만 그룹 라벨을 세운다.
@@ -240,10 +321,15 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     }
   };
 
-  const moveFlyoutFocus = (from: HTMLElement | null, delta: number, edge: "first" | "last" | null) => {
-    const flyout = flyoutRef.current;
-    if (!flyout) return;
-    const items = Array.from(flyout.querySelectorAll<HTMLButtonElement>(".operation-launch-variant-row, .operation-launch-variant-chip")).filter((item) => !item.disabled);
+  const moveMenuFocus = (
+    root: HTMLElement | null,
+    selector: string,
+    from: HTMLElement | null,
+    delta: number,
+    edge: "first" | "last" | null,
+  ) => {
+    if (!root) return;
+    const items = Array.from(root.querySelectorAll<HTMLButtonElement>(selector)).filter((item) => !item.disabled);
     if (items.length === 0) return;
     if (edge) {
       items[edge === "first" ? 0 : items.length - 1]!.focus();
@@ -253,6 +339,15 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     const next = index < 0 ? (delta > 0 ? 0 : items.length - 1) : (index + delta + items.length) % items.length;
     items[next]!.focus();
   };
+  const moveFlyoutFocus = (from: HTMLElement | null, delta: number, edge: "first" | "last" | null) => {
+    moveMenuFocus(flyoutRef.current, ".operation-launch-variant-row", from, delta, edge);
+  };
+  const moveEffortFocus = (from: HTMLElement | null, delta: number, edge: "first" | "last" | null) => {
+    moveMenuFocus(effortMenuRef.current, ".operation-launch-effort-item", from, delta, edge);
+  };
+  const effortTarget = openEffortRow === null || flyoutTarget === null
+    ? null
+    : findEffortRow(flyoutTarget.kind, openEffortRow);
 
   const activeDescription = useMemo(() => {
     if (!activeKey) return null;
@@ -431,10 +526,27 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                 event.preventDefault();
                 moveFlyoutFocus(null, 0, "last");
                 return;
+              case "ArrowRight": {
+                const rowId = target.closest<HTMLElement>("[data-launch-variant-row]")?.getAttribute("data-launch-variant-row");
+                if (!rowId) return;
+                const row = findEffortRow(flyoutTarget.kind, rowId);
+                if (!row || (row.chips?.length ?? 0) === 0) return;
+                event.preventDefault();
+                openEffortMenu(rowId);
+                requestAnimationFrame(() => {
+                  effortMenuRef.current?.querySelector<HTMLButtonElement>("[data-launch-variant-chip]")?.focus();
+                });
+                return;
+              }
               case "ArrowLeft":
               case "Escape":
                 event.preventDefault();
                 event.stopPropagation();
+                if (openEffortRow !== null) {
+                  effortAnchorRefs.current.get(openEffortRow)?.querySelector<HTMLButtonElement>("[data-launch-variant-row]")?.focus();
+                  closeEffortMenu();
+                  return;
+                }
                 flyoutAnchorRefs.current.get(openFlyout!)?.querySelector<HTMLButtonElement>("[data-operation-launch-kind]")?.focus();
                 closeFlyout();
                 return;
@@ -463,36 +575,114 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                   </p>
                 );
               })()}
-              {group.rows.map((row) => (
-                <div key={row.id} className="operation-launch-variant-entry">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="operation-launch-variant-row"
-                    data-launch-variant-row={row.id}
-                    onClick={() => onLaunchKind(flyoutTarget.pluginId, flyoutTarget.kind, row.launch)}
+              {group.rows.map((row) => {
+                const hasEffort = (row.chips?.length ?? 0) > 0;
+                const effortOpen = hasEffort && openEffortRow === row.id;
+                return (
+                  <div
+                    key={row.id}
+                    className="operation-launch-variant-entry"
+                    ref={(element) => {
+                      if (element) effortAnchorRefs.current.set(row.id, element);
+                      else effortAnchorRefs.current.delete(row.id);
+                    }}
+                    onPointerEnter={() => {
+                      if (hasEffort) openEffortMenu(row.id);
+                      else closeEffortMenu();
+                    }}
+                    onPointerLeave={() => {
+                      if (hasEffort) scheduleEffortClose();
+                    }}
+                    onFocus={() => {
+                      if (hasEffort) openEffortMenu(row.id);
+                      else closeEffortMenu();
+                    }}
+                    onBlur={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)
+                        && !effortMenuRef.current?.contains(event.relatedTarget as Node | null)) {
+                        scheduleEffortClose();
+                      }
+                    }}
                   >
-                    <span>{row.label}</span>
-                    {row.starred ? <span className="operation-launch-variant-star" aria-hidden="true">★</span> : null}
-                  </button>
-                  {(row.chips?.length ?? 0) > 0 ? (
-                    <div className="operation-launch-variant-chips">
-                      {row.chips!.map((chip) => (
-                        <button
-                          key={chip.id}
-                          type="button"
-                          className="operation-launch-variant-chip"
-                          data-launch-variant-chip={`${row.id}:${chip.id}`}
-                          onClick={() => onLaunchKind(flyoutTarget.pluginId, flyoutTarget.kind, chip.launch)}
-                        >
-                          {chip.label}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className={`operation-launch-variant-row${hasEffort ? " operation-launch-variant-row--effort" : ""}`}
+                      data-launch-variant-row={row.id}
+                      aria-haspopup={hasEffort ? "menu" : undefined}
+                      aria-expanded={hasEffort ? effortOpen : undefined}
+                      onClick={() => onLaunchKind(flyoutTarget.pluginId, flyoutTarget.kind, row.launch)}
+                    >
+                      <span>{row.label}</span>
+                      {row.starred ? <span className="operation-launch-variant-star" aria-hidden="true">★</span> : null}
+                      {hasEffort ? <span className="operation-launch-menu-chevron" aria-hidden="true">›</span> : null}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
+          ))}
+        </div>
+      ) : null}
+      {flyoutTarget && effortTarget && effortPosition?.id === openEffortRow ? (
+        <div
+          className={`operation-launch-effort-menu theater-menu${effortPosition.opensLeft ? " is-left" : ""}`}
+          role="menu"
+          ref={effortMenuRef}
+          style={{ position: "fixed", left: effortPosition.left, right: "auto", top: effortPosition.top }}
+          onPointerEnter={() => {
+            cancelEffortClose();
+            cancelFlyoutClose();
+          }}
+          onPointerLeave={scheduleEffortClose}
+          onFocus={() => {
+            cancelEffortClose();
+            cancelFlyoutClose();
+          }}
+          onBlur={(event) => {
+            if (!containerRef.current?.contains(event.relatedTarget as Node | null)) scheduleEffortClose();
+          }}
+          onKeyDown={(event) => {
+            const target = event.target as HTMLElement;
+            switch (event.key) {
+              case "ArrowDown":
+                event.preventDefault();
+                moveEffortFocus(target, 1, null);
+                return;
+              case "ArrowUp":
+                event.preventDefault();
+                moveEffortFocus(target, -1, null);
+                return;
+              case "Home":
+                event.preventDefault();
+                moveEffortFocus(null, 0, "first");
+                return;
+              case "End":
+                event.preventDefault();
+                moveEffortFocus(null, 0, "last");
+                return;
+              case "ArrowLeft":
+              case "Escape":
+                event.preventDefault();
+                event.stopPropagation();
+                effortAnchorRefs.current.get(openEffortRow!)?.querySelector<HTMLButtonElement>("[data-launch-variant-row]")?.focus();
+                closeEffortMenu();
+                return;
+              default:
+            }
+          }}
+        >
+          {effortTarget.chips!.map((chip) => (
+            <button
+              key={chip.id}
+              type="button"
+              role="menuitem"
+              className="operation-launch-effort-item"
+              data-launch-variant-chip={`${effortTarget.id}:${chip.id}`}
+              onClick={() => onLaunchKind(flyoutTarget.pluginId, flyoutTarget.kind, chip.launch)}
+            >
+              {chip.label}
+            </button>
           ))}
         </div>
       ) : null}
@@ -507,6 +697,14 @@ function findLaunchFlyout(catalog: readonly OperationCatalogPlugin[], flyoutId: 
   for (const plugin of catalog) {
     const kind = plugin.kinds.find((candidate) => itemKey(plugin.id, candidate.id) === flyoutId);
     if (kind?.variants && kind.variants.length > 0) return { pluginId: plugin.id, kind };
+  }
+  return null;
+}
+
+function findEffortRow(kind: OperationLaunchKind, rowId: string) {
+  for (const group of kind.variants ?? []) {
+    const row = group.rows.find((candidate) => candidate.id === rowId);
+    if (row && (row.chips?.length ?? 0) > 0) return row;
   }
   return null;
 }
