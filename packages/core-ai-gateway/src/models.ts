@@ -132,6 +132,15 @@ const GatewayBenchmarkModelEntrySchema = z.object({
   message: "Gateway benchmark model entry requires rungs or overall",
 });
 
+/**
+ * benchmarks.json 저작 규칙 — 스키마가 강제하지 못하는 두 가지:
+ * 모델 항목의 `source`는 그 모델의 도달 가능한 비교군을 더 많이 덮는 소스에 묶는다
+ * (CursorBench 우선, CursorBench에 행이 없는 모델만 SWE-rebench). 소스의 수치를
+ * 고치면 그 소스의 `observedAt`을 함께 올린다 — 로스터 revision이 이 스탬프를
+ * 실어 나르므로, 올리지 않은 편집은 호스트에게 보이지 않는다. 조인의 나머지
+ * 불변식(형제 키 공유·별칭 제외·고아 검출·내로잉 후 공백)은 validateRegistry와
+ * validateBenchmarkCoverage가 강제한다.
+ */
 const GatewayBenchmarksRegistrySchema = z.object({
   version: z.number().int().positive(),
   sources: z.record(z.string().min(1), GatewayBenchmarkSourceSchema),
