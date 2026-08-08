@@ -6,6 +6,7 @@ import {
   CURSOR_CLIENT_VERSION,
   CURSOR_TOOL_BYTES_LIMIT,
   CURSOR_TOOL_COUNT_LIMIT,
+  CURSOR_TOOL_PROVIDER_IDENTIFIER,
   CursorAdapter,
   CursorRequestBudgetError,
   buildCursorRunPlan,
@@ -152,6 +153,48 @@ describe("Cursor request budgets", () => {
     expect(instructions).toContain(`\`${edit}\` for exact file changes`);
     expect(instructions).toContain(`Never use \`${bash}\` with Python, sed, perl, or heredocs`);
     expect(instructions).toContain("neither `Grep` nor `Glob` is advertised");
+  });
+
+  it("repeats the tool discipline as an always-applied rule on every turn", () => {
+    const toolTurn = request({
+      tools: [tool("Bash"), tool("Read"), tool("Grep")],
+      input: [
+        { type: "message", role: "user", content: "Run pwd" },
+        { type: "function_call", call_id: "call-pwd", name: "Bash", arguments: '{"cmd":"pwd"}' },
+        { type: "function_call_output", call_id: "call-pwd", output: "/repo" },
+      ],
+    });
+    // A tool continuation resumes rather than sending a message, so the rule has to ride the
+    // request context of both actions to reach the model on the turn it picks the next tool.
+    const prompt = encodedRunRequest(buildCursorRunPlan(request({
+      tools: [tool("Bash"), tool("Read"), tool("Grep")],
+    }), "conversation-rules-prompt"));
+    const resume = encodedRunRequest(buildCursorRunPlan(toolTurn, "conversation-rules-resume"));
+
+    for (const context of [prompt.action?.userMessageAction?.requestContext, resume.action?.resumeAction?.requestContext]) {
+      const rule = context?.rules?.[0];
+      expect(rule?.content).toContain("Do not invoke Cursor-native tools in gateway mode");
+      expect(rule?.type?.global).toBeDefined();
+      expect(rule?.fullPath).toContain(CURSOR_TOOL_PROVIDER_IDENTIFIER);
+    }
+  });
+
+  it("never sends a custom system prompt, which Cursor rejects the Run for", () => {
+    const withInstructions = request({
+      instructions: "Harness instructions.",
+      tools: [tool("Read")],
+    });
+
+    expect(encodedRunRequest(buildCursorRunPlan(withInstructions, "conversation-custom-system-prompt")).customSystemPrompt)
+      .toBeUndefined();
+    expect(systemText(buildCursorRunPlan(withInstructions, "conversation-custom-system-prompt")))
+      .toContain("Harness instructions.");
+  });
+
+  it("sends no rule when no client tool is advertised", () => {
+    const encoded = encodedRunRequest(buildCursorRunPlan(request(), "conversation-no-tools"));
+
+    expect(encoded.action?.userMessageAction?.requestContext?.rules).toBeUndefined();
   });
 
   it("isolates PascalCase Claude tools from Cursor's native tool namespace", () => {
@@ -585,7 +628,9 @@ interface RunRequest {
     readonly turns: readonly string[];
   };
   readonly action?: {
+    readonly resumeAction?: { readonly requestContext?: RequestContext };
     readonly userMessageAction?: {
+      readonly requestContext?: RequestContext;
       readonly userMessage?: {
         readonly text?: string;
         readonly selectedContext?: {
@@ -600,6 +645,15 @@ interface RunRequest {
     };
   };
   readonly mcpTools?: { readonly mcpTools: readonly WireTool[] };
+  readonly customSystemPrompt?: string;
+}
+
+interface RequestContext {
+  readonly rules?: ReadonlyArray<{
+    readonly fullPath?: string;
+    readonly content?: string;
+    readonly type?: { readonly global?: unknown };
+  }>;
 }
 
 function runRequest(plan: ReturnType<typeof buildCursorRunPlan>): RunRequest {

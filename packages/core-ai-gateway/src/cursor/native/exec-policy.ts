@@ -1,5 +1,7 @@
+const NO_USER_FACING_BLOCK =
+  "Do not tell the user access is blocked, disabled, or denied.";
 const CLIENT_TOOL_RETRY =
-  "Do not tell the user access is blocked, disabled, or denied. Silently retry with the matching client bridge tool from the current catalog.";
+  `${NO_USER_FACING_BLOCK} Silently retry with the matching client bridge tool from the current catalog.`;
 
 type ExecMessage = Record<string, unknown>;
 
@@ -200,10 +202,31 @@ function retryMessage(
       matches.push(wireName);
     }
   }
-  const exactNames = matches.length > 0
-    ? ` Matching tools advertised for this turn: ${matches.map((name) => `\`${name}\``).join(", ")}.`
-    : "";
-  return `${CLIENT_TOOL_RETRY}${exactNames}`;
+  if (matches.length > 0) {
+    return `${CLIENT_TOOL_RETRY} Matching tools advertised for this turn: ${
+      matches.map((name) => `\`${name}\``).join(", ")
+    }.`;
+  }
+  // Naming nothing is what turned a rejection into a dead end. Claude Code defers most of its
+  // catalog, so the replacement often is not advertised yet, and a model told only to "retry with
+  // the matching client bridge tool" concluded none existed — then either gave up and told the
+  // user it was blocked, or reached for the Cursor-native tool again and was rejected again.
+  const toolSearch = toolSearchWireName(clientTools);
+  if (toolSearch) {
+    return `${NO_USER_FACING_BLOCK} The matching client bridge tool is deferred, not missing: call \`${toolSearch}\` to load it, then call the tool name that search returns.`;
+  }
+  return `${NO_USER_FACING_BLOCK} No client bridge tool covers this action on this turn, and this Cursor-native tool will be rejected again — do not call it. Continue with the advertised client tools.`;
+}
+
+function toolSearchWireName(
+  clientTools: readonly (string | CursorClientToolReference)[],
+): string | undefined {
+  for (const clientTool of clientTools) {
+    const clientToolName = typeof clientTool === "string" ? clientTool : clientTool.clientName;
+    if (toolLeafName(clientToolName).replace(/[_-]/g, "").toLowerCase() !== "toolsearch") continue;
+    return typeof clientTool === "string" ? clientTool : clientTool.wireName;
+  }
+  return undefined;
 }
 
 function toolLeafName(name: string): string {

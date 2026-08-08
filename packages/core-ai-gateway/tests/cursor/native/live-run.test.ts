@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 describe("Cursor live client-tool Run bridge", () => {
-  it.each(["kimi-k3-1m", "claude-opus-5"])(
+  it.each(["kimi-k3-1m", "claude-opus-5", "grok-4.5", "auto", "composer-2.5"])(
     "parks and attaches %s without opening a resume Run",
     async (model) => {
       const call = cursorCall("call-read-1", 21);
@@ -72,6 +72,45 @@ describe("Cursor live client-tool Run bridge", () => {
       }
     },
   );
+
+  it("parks a call whose exec message is the first of the Run", async () => {
+    // Cursor numbers exec messages from zero and `id` has implicit presence, so the first client
+    // tool of a Run arrives with no `id` field at all. Every other call here carries a nonzero id.
+    const call = cursorCall("call-first-exec-of-run", 0);
+    const stream = new BridgeCursorStream(
+      cursorToolFrames([call]),
+      cursorCompletionFrames("first exec completed"),
+      1,
+    );
+    const diagnostics: CursorDiagnosticEvent[] = [];
+    const harness = cursorHarness([stream], {
+      diagnostics: (event) => diagnostics.push(event),
+    });
+    const initial = cursorRequest("session-first-exec", "claude-opus-5");
+
+    try {
+      await collectCursorResponseWithDiagnostics(harness.adapter, initial, true);
+      const secondEvents = await collectCursorResponseWithDiagnostics(
+        harness.adapter,
+        cursorContinuation(initial, [call], [cursorResult(call, "README contents")]),
+        true,
+      );
+
+      expect(canonicalText(secondEvents)).toBe("first exec completed");
+      expect(diagnostics).toContainEqual(expect.objectContaining({
+        event: "bridge.park",
+        outcome: "client_tool_suspended",
+      }));
+      expect(diagnostics).toContainEqual(expect.objectContaining({
+        event: "bridge.attach",
+        outcome: "exact_match",
+      }));
+      expect(diagnostics).not.toContainEqual(expect.objectContaining({ event: "bridge.mismatch" }));
+      expect(harness.openedStreams).toBe(1);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
 
   it("keeps an enabled diagnostic reporter through a disabled tool continuation", async () => {
     const call = cursorCall("call-diagnostics-on", 22);
@@ -1122,33 +1161,158 @@ describe("Cursor live client-tool Run bridge", () => {
     }
   });
 
-  it.each(["auto", "composer-2.5", "grok-4.5"])(
-    "keeps %s on frozen cancel and cold-resume behavior",
-    async (model) => {
-      const call = cursorCall(`call-frozen-${model}`, 121);
-      const first = new BridgeCursorStream(cursorToolFrames([call]));
-      const resumed = new BridgeCursorStream(cursorCompletionFrames("cold model complete"));
-      const harness = cursorHarness([first, resumed]);
-      const initial = cursorRequest(`session-frozen-${model}`, model);
+  it("defers a call Cursor raced past the seal and carries it into the next segment", async () => {
+    // Measured against composer-2.5, grok-4.5 and auto: the model keeps emitting a parallel batch
+    // for 55-570ms past the finalize grace. That call cannot join the sealed segment, but the
+    // upstream is still waiting on it, so the continuation has to carry it.
+    const diagnostics: CursorDiagnosticEvent[] = [];
+    const first = cursorCall("call-raced-first", 151);
+    const late = cursorCall("call-raced-late", 152);
+    const stream = new BridgeCursorStream(
+      cursorToolFrames([first]),
+      cursorCompletionFrames("continued after the raced call"),
+      2,
+    );
+    const harness = cursorHarness([stream], {
+      diagnostics: (event) => diagnostics.push(event),
+    });
+    const initial = cursorRequest("session-raced", "composer-2.5");
 
-      try {
-        await collectCursorResponse(harness.adapter, initial);
-        await collectCursorResponse(
-          harness.adapter,
-          cursorContinuation(initial, [call], [cursorResult(call, "done")]),
-        );
+    try {
+      await collectCursorResponse(harness.adapter, initial);
+      // The batch is sealed and parked by now; Cursor writes the next call anyway.
+      await stream.emitFrames(cursorToolFrames([late]));
+      expect(stream.closed).toBe(false);
 
-        expect(harness.openedStreams).toBe(2);
-        expect(cursorMcpResultWrites(first)).toHaveLength(0);
-        expect(first.closeCode).toBe(http2.constants.NGHTTP2_CANCEL);
-        expect(cursorClientWrites(resumed)[0]).toMatchObject({
-          runRequest: { action: { resumeAction: {} } },
-        });
-      } finally {
-        harness.adapter.dispose();
-      }
-    },
-  );
+      const afterFirst = cursorContinuation(initial, [first], [cursorResult(first, "first result")]);
+      const continuationEvents = await collectCursorResponse(harness.adapter, afterFirst);
+      const finalEvents = await collectCursorResponse(harness.adapter, {
+        ...afterFirst,
+        input: [
+          ...afterFirst.input,
+          {
+            type: "function_call",
+            call_id: late.callId,
+            name: late.name,
+            arguments: JSON.stringify({ path: "README.md" }),
+          },
+          { type: "function_call_output", call_id: late.callId, output: "late result" },
+        ],
+      });
+
+      // The raced call reaches the client on the continuation, not as a discarded bridge.
+      expect(addedFunctionCallIds(continuationEvents)).toEqual([late.callId]);
+      expect(canonicalText(finalEvents)).toBe("continued after the raced call");
+      expect(harness.openedStreams).toBe(1);
+      expect(cursorMcpResultWrites(stream)).toHaveLength(2);
+      expect(diagnostics).toContainEqual(expect.objectContaining({ event: "bridge.defer" }));
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it.each<[string, (call: CursorCallSpec) => unknown[]]>([
+    ["token accounting", () => [{ interactionUpdate: { tokenDelta: { tokens: 3 } } }]],
+    ["the parked call's own tool update", (call) => [cursorToolCompletedFrame(call)]],
+  ])("keeps the bridge when %s trails the park", async (_label, tail) => {
+    const call = cursorCall("call-parked-tail", 131);
+    const stream = new BridgeCursorStream(
+      cursorToolFrames([call]),
+      cursorCompletionFrames("bridge survived the tail"),
+      1,
+    );
+    const harness = cursorHarness([stream]);
+    const initial = cursorRequest("session-parked-tail", "claude-opus-5");
+
+    try {
+      await collectCursorResponse(harness.adapter, initial);
+      await stream.emitFrames(tail(call));
+      expect(stream.closed).toBe(false);
+
+      const events = await collectCursorResponse(
+        harness.adapter,
+        cursorContinuation(initial, [call], [cursorResult(call, "README contents")]),
+      );
+
+      expect(canonicalText(events)).toBe("bridge survived the tail");
+      expect(harness.openedStreams).toBe(1);
+      expect(cursorMcpResultWrites(stream)).toHaveLength(1);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("still discards the bridge when the server runs ahead of the pending result", async () => {
+    const call = cursorCall("call-runs-ahead", 132);
+    const parked = new BridgeCursorStream(cursorToolFrames([call]));
+    const fallback = new BridgeCursorStream(cursorCompletionFrames("cold fallback"));
+    const harness = cursorHarness([parked, fallback]);
+    const initial = cursorRequest("session-runs-ahead", "claude-opus-5");
+
+    try {
+      await collectCursorResponse(harness.adapter, initial);
+      await parked.emitFrames([{ interactionUpdate: { textDelta: { text: "ran ahead" } } }]);
+
+      // A run-ahead is disposed with its error, which destroys the stream rather than cancelling it.
+      expect(parked.destroyed).toBe(true);
+
+      const events = await collectCursorResponse(
+        harness.adapter,
+        cursorContinuation(initial, [call], [cursorResult(call, "late")]),
+      );
+
+      expect(canonicalText(events)).toBe("cold fallback");
+      expect(harness.openedStreams).toBe(2);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("parks the next call after Cursor echoes the resumed call into the continuation", async () => {
+    const diagnostics: CursorDiagnosticEvent[] = [];
+    const first = cursorCall("call-echo-first", 141);
+    const second = cursorCall("call-echo-second", 142);
+    const stream = new BridgeCursorStream(
+      cursorToolFrames([first]),
+      [cursorToolCompletedFrame(first), ...cursorToolFrames([second])],
+      1,
+      [{ afterMcpResults: 2, frames: cursorCompletionFrames("continued past the echo") }],
+    );
+    const harness = cursorHarness([stream], {
+      diagnostics: (event) => diagnostics.push(event),
+    });
+    const initial = cursorRequest("session-echo", "claude-opus-5");
+    const afterFirst = cursorContinuation(initial, [first], [cursorResult(first, "first result")]);
+    const afterSecond: CanonicalResponseRequest = {
+      ...afterFirst,
+      input: [
+        ...afterFirst.input,
+        {
+          type: "function_call",
+          call_id: second.callId,
+          name: second.name,
+          arguments: JSON.stringify({ path: "README.md" }),
+        },
+        { type: "function_call_output", call_id: second.callId, output: "second result" },
+      ],
+    };
+
+    try {
+      await collectCursorResponse(harness.adapter, initial);
+      const continuationEvents = await collectCursorResponse(harness.adapter, afterFirst);
+      const finalEvents = await collectCursorResponse(harness.adapter, afterSecond);
+
+      // The echo must neither replay the answered call nor block the next one from parking.
+      expect(addedFunctionCallIds(continuationEvents)).toEqual([second.callId]);
+      expect(canonicalText(finalEvents)).toBe("continued past the echo");
+      expect(harness.openedStreams).toBe(1);
+      expect(cursorMcpResultWrites(stream)).toHaveLength(2);
+      expect(diagnostics.filter((event) => event.event === "bridge.park")).toHaveLength(2);
+      expect(diagnostics.filter((event) => event.event === "bridge.attach")).toHaveLength(2);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
 });
 
 async function expectCorrelationBatchColdFallback(
@@ -1365,6 +1529,14 @@ async function collectAdapterEvents(
   return events;
 }
 
+function addedFunctionCallIds(events: readonly CanonicalResponseEvent[]): readonly string[] {
+  return events.flatMap((event) => (
+    event.type === "response.output_item.added" && event.item.type === "function_call"
+      ? [event.item.call_id]
+      : []
+  ));
+}
+
 function canonicalText(events: readonly CanonicalResponseEvent[]): string {
   return events
     .filter((event): event is Extract<CanonicalResponseEvent, { type: "response.output_text.delta" }> => (
@@ -1539,6 +1711,17 @@ class BridgeCursorStream extends EventEmitter {
       ":status": 200,
       "content-type": "application/connect+proto",
     }));
+  }
+
+  /**
+   * Deliver frames at an arbitrary point, which is the only way to place Cursor's trailing tail
+   * after a park: the park itself is driven by the adapter's own finalize timer, so no
+   * write-triggered release can land on the far side of it.
+   */
+  async emitFrames(frames: readonly unknown[]): Promise<void> {
+    this.release(frames);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await new Promise<void>((resolve) => setImmediate(resolve));
   }
 
   private release(frames: readonly unknown[]): void {

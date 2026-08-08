@@ -332,7 +332,9 @@ describe("Cursor client tool suspension", () => {
       item: { name: "Read", arguments: JSON.stringify({ file_path: "README.md" }) },
     });
     expect(events.at(-1)?.type).toBe("response.completed");
-    expect(stream.closeCode).toBe(http2.constants.NGHTTP2_CANCEL);
+    // The suspended client tool parks this Run rather than cancelling it, so the transport stays
+    // open for the result to attach to.
+    expect(stream.closeCode).toBeUndefined();
 
     const replies = stream.writes.slice(1).map(decodeCursorClientFrame);
     expect(replies).toContainEqual(expect.objectContaining({
@@ -380,6 +382,30 @@ describe("Cursor client tool suspension", () => {
       }
     }
     expect(cursorNativeExecPolicyReplies(cases[6] ?? {}, ["Bash"])).toHaveLength(5);
+  });
+
+  it("points a rejected native exec at ToolSearch when its replacement is deferred", () => {
+    // Measured: told only to "retry with the matching client bridge tool", a model whose catalog
+    // did not advertise one answered "none appears available among the current tools" and stopped.
+    const reply = JSON.stringify(cursorNativeExecPolicyReplies(
+      { id: 1, shellStreamArgs: { command: "rg Fleet" } },
+      [{ clientName: "mcp__fleet__ToolSearch", wireName: "cc_tool_search_3161b03b" }],
+    ));
+
+    expect(reply).toContain("cc_tool_search_3161b03b");
+    expect(reply).toContain("deferred, not missing");
+  });
+
+  it("forbids retrying the native tool when nothing at all can replace it", () => {
+    // The other measured outcome: the model went back to the Cursor-native tool and was rejected
+    // again, which is the loop this branch exists to stop.
+    const reply = JSON.stringify(cursorNativeExecPolicyReplies(
+      { id: 1, shellStreamArgs: { command: "rg Fleet" } },
+      [{ clientName: "mcp__fleet__wiki_read", wireName: "cc_wiki_read_9f1" }],
+    ));
+
+    expect(reply).toContain("do not call it");
+    expect(reply).not.toContain("Matching tools advertised");
   });
 
   it("orders native-exec retry tools by operation fit instead of catalog order", () => {

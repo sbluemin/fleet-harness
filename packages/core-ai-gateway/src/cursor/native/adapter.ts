@@ -53,10 +53,14 @@ export const CURSOR_CLIENT_VERSION = "cli-2026.07.08-0c04a8a";
 export const CURSOR_TOOL_COUNT_LIMIT = 330;
 export const CURSOR_TOOL_BYTES_LIMIT = 120_000;
 export const CURSOR_TOOL_PROVIDER_IDENTIFIER = "fleet-gateway";
+/** `CursorRuleSource.CURSOR_RULE_SOURCE_USER`, carried as the int32 the field declares. */
+const CURSOR_RULE_SOURCE_USER = 2;
 export const CURSOR_TOOL_FINALIZE_GRACE_MS = 50;
 export const CURSOR_CLIENT_HEARTBEAT_MS = 5_000;
 export const CURSOR_PENDING_LIVE_RUN_TTL_MS = 5 * 60_000;
 export const CURSOR_PENDING_LIVE_RUN_CAPACITY = 64;
+/** Ceiling on the tool-call frames one parked Run will hold for its next segment. */
+const CURSOR_DEFERRED_TOOL_FRAME_LIMIT = 64;
 export const CONNECT_FLAG_COMPRESSED = 0x01;
 export const CONNECT_FLAG_END_STREAM = 0x02;
 /** Bounds for reading a rejected Run's own error body before forwarding it to the client. */
@@ -135,6 +139,7 @@ export type CursorDiagnosticEventName =
   | "server.frame"
   | "bridge.park"
   | "bridge.attach"
+  | "bridge.defer"
   | "bridge.expire"
   | "bridge.mismatch"
   | "turn.finish";
@@ -429,12 +434,18 @@ export function buildCursorRunPlan(
     ].join("\n"),
     wireModelId,
   );
+  const requestContext = {
+    env: { timeZone: runtimeTimeZone() },
+    ...(toolBudget.tools.length > 0
+      ? { rules: cursorClientToolRules(toolBudget.tools, nativeTools) }
+      : {}),
+  };
   const action = isToolContinuation || (activeText.trim().length === 0 && activeImages.length === 0)
-    ? { resumeAction: { requestContext: { env: { timeZone: runtimeTimeZone() } } } }
+    ? { resumeAction: { requestContext } }
     : {
       userMessageAction: {
         userMessage: cursorUserMessagePayload(activeText, activeImages),
-        requestContext: { env: { timeZone: runtimeTimeZone() } },
+        requestContext,
       },
     };
 
@@ -849,6 +860,31 @@ function cursorWireToolName(clientName: string): string {
   return `cc_${slug}_${digest}`;
 }
 
+/**
+ * The same tool discipline the system root carries, restated as an always-applied Cursor rule.
+ *
+ * Cursor's server assembles its own prompt around its native tools, and measurement put 45% to 71%
+ * of tool choices on those tools even with the root instruction in place — every one of them a
+ * generation the exec policy then had to reject and have reissued. Rules ride on the per-turn
+ * request context rather than the replayed conversation head, so this reaches the model where it
+ * chooses instead of thousands of tokens behind Cursor's own description of the native catalog.
+ *
+ * The two request fields that look like better levers are not: Cursor fails the Run outright for
+ * `custom_system_prompt` (`invalid_argument: unknown option '--system-prompt'`), and accepts
+ * `mcp_file_system_options` while leaving tool selection measurably unchanged.
+ */
+function cursorClientToolRules(
+  tools: readonly CursorWireTool[],
+  nativeTools: readonly CanonicalNativeTool[],
+): readonly unknown[] {
+  return [{
+    fullPath: `.cursor/rules/${CURSOR_TOOL_PROVIDER_IDENTIFIER}.mdc`,
+    content: cursorClientToolDiscipline(tools, nativeTools),
+    type: { global: {} },
+    source: CURSOR_RULE_SOURCE_USER,
+  }];
+}
+
 function cursorWireToolDefinition(
   tool: CursorWireTool,
 ): Omit<CursorWireTool, "clientName" | "inputSchemaValue"> {
@@ -1013,17 +1049,6 @@ function findCursorToolName(
   return undefined;
 }
 
-function isCursorNativeModel(modelId: string): boolean {
-  return modelId === "default" || modelId === "auto" || modelId.startsWith("composer-");
-}
-
-/** Explicit provider semantics: Auto/default, Composer, and Grok retain cold continuation. */
-function supportsCursorLiveToolBridge(wireModelId: string): boolean {
-  return !isCursorNativeModel(wireModelId)
-    && !wireModelId.startsWith("cursor-grok-")
-    && !wireModelId.startsWith("grok-");
-}
-
 interface CursorLiveRunDescriptor {
   readonly conversationId: string;
   readonly sessionId: string;
@@ -1122,7 +1147,6 @@ function cursorLiveRunMismatch(
   if (descriptor.wireModelId !== expected.wireModelId) return "wire_model";
   if (descriptor.effort !== expected.effort) return "effort";
   if (descriptor.toolCatalogFingerprint !== expected.toolCatalogFingerprint) return "tool_catalog";
-  if (!supportsCursorLiveToolBridge(descriptor.wireModelId)) return "ineligible_model";
 
   const resultIds = results.map((result) => result.call_id);
   if (new Set(resultIds).size !== resultIds.length) return "duplicate_result";
@@ -1593,7 +1617,9 @@ export class CursorAdapter implements AiGatewayAdapter {
       ),
       toolFinalizeGraceMs: this.toolFinalizeGraceMs,
       semanticStallTimeoutMs: this.idleTimeoutMs,
-      bridgeEnabled: supportsCursorLiveToolBridge(plan.wireModelId),
+      // Every Cursor model hands its client tool calls to this client, Auto and Composer included,
+      // so every one of them is eligible for the live bridge.
+      bridgeEnabled: true,
       initialSignal: options.signal,
       report,
       stopHeartbeat,
@@ -2105,6 +2131,20 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
   let state: CursorLiveRunState = "attached";
   let activeSegment: CursorResponseSegment;
   let parkedCalls: readonly CursorPendingToolCorrelation[] | undefined;
+  /**
+   * Identifiers of calls this Run already answered with an mcpResult. Cursor echoes a resumed
+   * call's tool updates into the continuation, and a continuation segment starts with an empty
+   * tool map, so without this set the echo registers as a brand-new unsuspended tool item.
+   */
+  const settledToolIdentifiers = new Set<string>();
+  /**
+   * Tool-call frames Cursor emitted after this Run was sealed. The model keeps writing a parallel
+   * batch for a few hundred milliseconds past the finalize grace, and the segment those calls
+   * belonged to is already closed, so they cannot be added to it. Discarding them cost a whole
+   * warm bridge; holding them until the client's results arrive lets the very next segment carry
+   * them instead, in order and with the upstream still waiting on the batch it already has.
+   */
+  let deferredToolFrames: CursorServerFrame[] = [];
   let buffer: Buffer = Buffer.alloc(0);
   let latestContextCheckpoint = previousContextCheckpoint;
   let contextWindow = previousContextCheckpoint?.contextWindow;
@@ -2493,8 +2533,15 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     dispose(`${outcome}_without_frames`, new Error("cursor stream produced no frames"));
   };
 
-  const handleFrame = (frame: CursorServerFrame): void => {
-    frameCount += 1;
+  const isSettledToolUpdate = (update: Record<string, unknown>): boolean => {
+    if (settledToolIdentifiers.size === 0) return false;
+    const identifiers = cursorToolUpdateIdentifiers(update);
+    return identifiers !== undefined
+      && identifiers.some((identifier) => settledToolIdentifiers.has(identifier));
+  };
+
+  /** `replayed` frames were counted and reported when they first arrived, while this Run was parked. */
+  const handleFrame = (frame: CursorServerFrame, replayed = false): void => {
     const unknownExecFields = frame[CURSOR_UNKNOWN_EXEC_FIELDS] ?? [];
     lastFrame = describeCursorServerFrame(frame, unknownExecFields);
     const tokenDetails = isRecord(frame.conversationCheckpointUpdate)
@@ -2503,13 +2550,16 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
       : undefined;
     const checkpointContextTokens = positiveTokenCount(tokenDetails?.usedTokens);
     const checkpointContextWindow = positiveTokenCount(tokenDetails?.maxTokens);
-    report("server.frame", {
-      model: diagnosticModel,
-      frame: lastFrame,
-      sequence: frameCount,
-      ...(checkpointContextTokens === undefined ? {} : { contextTokens: checkpointContextTokens }),
-      ...(checkpointContextWindow === undefined ? {} : { contextWindow: checkpointContextWindow }),
-    });
+    if (!replayed) {
+      frameCount += 1;
+      report("server.frame", {
+        model: diagnosticModel,
+        frame: lastFrame,
+        sequence: frameCount,
+        ...(checkpointContextTokens === undefined ? {} : { contextTokens: checkpointContextTokens }),
+        ...(checkpointContextWindow === undefined ? {} : { contextWindow: checkpointContextWindow }),
+      });
+    }
     if (isRecord(frame.conversationCheckpointUpdate)) {
       if (checkpointContextTokens !== undefined) {
         // Cursor reports a real token count only on some turns; every other turn
@@ -2589,6 +2639,20 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     }
     if (state === "parked") {
       if (isCursorHeartbeatFrame(frame)) return;
+      if (isCursorParkedResidueFrame(frame, parkedCalls)) return;
+      if (isCursorClientToolFrame(frame, tools)) {
+        if (deferredToolFrames.length >= CURSOR_DEFERRED_TOOL_FRAME_LIMIT) {
+          dispose("deferred_tool_overflow", new Error("Cursor queued too many calls while parked"));
+          return;
+        }
+        deferredToolFrames.push(frame);
+        report("bridge.defer", {
+          model: diagnosticModel,
+          frame: lastFrame,
+          count: deferredToolFrames.length,
+        });
+        return;
+      }
       dispose("protocol_frame_while_parked", new Error("Cursor sent progress while awaiting mcpResult"));
       return;
     }
@@ -2657,6 +2721,11 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
 
     const update = isRecord(frame.interactionUpdate) ? frame.interactionUpdate : undefined;
     if (update === undefined) return;
+    // The echo of an already-answered call must not reach the tool branches below. There it would
+    // register an unsuspended item this Run can never suspend — mcpArgs is the only thing that
+    // suspends one — which permanently disarms the turn-finish gate, and it would replay a
+    // function_call the client already executed.
+    if (isSettledToolUpdate(update)) return;
     if (isRecord(update.textDelta) && typeof update.textDelta.text === "string") {
       activeSegment.outputText += update.textDelta.text;
       emit({
@@ -2761,6 +2830,12 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     }
     const calls = parkedCalls;
     parkedCalls = undefined;
+    // Record before the first result byte goes out: Cursor may echo these calls back as soon as
+    // it resumes, and the continuation segment has no memory of the segment that sealed them.
+    for (const call of calls) {
+      settledToolIdentifiers.add(call.callId);
+      settledToolIdentifiers.add(call.toolCallId);
+    }
     const segment = createSegment(signal, continuationEstimatedInputTokens);
     try {
       for (const call of calls) {
@@ -2787,6 +2862,20 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     } catch (error) {
       const failure = error instanceof Error ? error : new Error(String(error));
       dispose("mcp_result_write_error", failure);
+    }
+    // Now that a segment exists again, hand it the calls Cursor raced past the seal. The upstream
+    // is still waiting on them, so they belong to this continuation rather than to nothing.
+    const deferred = deferredToolFrames;
+    deferredToolFrames = [];
+    if (deferred.length > 0) {
+      report("bridge.attach", {
+        model: diagnosticModel,
+        outcome: "deferred_replay",
+        count: deferred.length,
+      });
+      // `handleFrame` re-checks the state itself, so a replayed frame that seals or closes this
+      // Run routes the rest correctly: a fresh seal simply defers them again for the next segment.
+      for (const deferredFrame of deferred) handleFrame(deferredFrame, true);
     }
     return eventsFor(segment);
   };
@@ -3217,13 +3306,82 @@ function mcpCallFromToolUpdate(value: Record<string, unknown>): CursorMcpCall | 
   };
 }
 
+const CURSOR_TOOL_UPDATE_CASES = [
+  "toolCallStarted",
+  "partialToolCall",
+  "toolCallDelta",
+  "toolCallCompleted",
+] as const;
+
+/**
+ * Every identifier a tool-update frame carries, or `undefined` when the frame is not a tool
+ * update at all. An unattributable tool update yields an empty list so callers treat it as
+ * unmatched rather than as belonging to whichever call they were asking about.
+ */
+function cursorToolUpdateIdentifiers(
+  update: Record<string, unknown>,
+): readonly string[] | undefined {
+  for (const key of CURSOR_TOOL_UPDATE_CASES) {
+    const value = update[key];
+    if (!isRecord(value)) continue;
+    const call = mcpCallFromToolUpdate(value);
+    if (!call) return [];
+    return [...new Set(
+      [call.publicCallId, call.toolCallId, call.callId]
+        .filter((identifier): identifier is string => identifier !== undefined),
+    )];
+  }
+  return undefined;
+}
+
+/**
+ * A frame that carries a client tool call of ours and nothing the upstream is waiting on a reply
+ * for. Only these are safe to hold while parked: a native exec needs an answer on the wire now,
+ * and text or a turn ending means the model moved past the batch we are still holding.
+ */
+function isCursorClientToolFrame(
+  frame: CursorServerFrame,
+  tools: readonly CursorWireTool[],
+): boolean {
+  const update = isRecord(frame.interactionUpdate) ? frame.interactionUpdate : undefined;
+  if (update !== undefined) return cursorToolUpdateIdentifiers(update) !== undefined;
+  const exec = isRecord(frame.execServerMessage) ? frame.execServerMessage : undefined;
+  if (exec === undefined) return false;
+  const wireCall = mcpCallFromExecMessage(exec);
+  const call = wireCall ? cursorClientMcpCall(wireCall, tools) : null;
+  return call?.providerIdentifier === CURSOR_TOOL_PROVIDER_IDENTIFIER;
+}
+
+/**
+ * Cursor keeps writing the suspended turn's own tail after we seal it: token accounting, and the
+ * tool updates of the very call we parked on. Neither is progress the pending client result could
+ * invalidate, and counting them as the server running ahead is what discarded a warm bridge one
+ * frame after a park. Anything else — new text, a different call, an exec request — still is.
+ */
+function isCursorParkedResidueFrame(
+  frame: CursorServerFrame,
+  parked: readonly CursorPendingToolCorrelation[] | undefined,
+): boolean {
+  const update = isRecord(frame.interactionUpdate) ? frame.interactionUpdate : undefined;
+  if (update === undefined) return false;
+  if (isRecord(update.tokenDelta)) return true;
+  const identifiers = cursorToolUpdateIdentifiers(update);
+  if (identifiers === undefined || identifiers.length === 0 || parked === undefined) return false;
+  const sealed = new Set(parked.flatMap((call) => [call.callId, call.toolCallId]));
+  return identifiers.some((identifier) => sealed.has(identifier));
+}
+
 function mcpCallFromExecMessage(value: Record<string, unknown>): CursorMcpCall | null {
   const args = isRecord(value.mcpArgs) ? value.mcpArgs : undefined;
   if (!args) return null;
   const toolCallId = stringValue(args.toolCallId);
   if (!toolCallId) return null;
-  const messageId = typeof value.id === "number" && Number.isSafeInteger(value.id)
-    ? value.id
+  // `id` is an implicit-presence uint32, so the first exec message of a Run — id 0 — arrives with
+  // the field absent. Reading that as "no id" left the very first client tool of a Run
+  // uncorrelated, which failed every seal and denied the bridge a park.
+  const rawMessageId = value.id ?? 0;
+  const messageId = typeof rawMessageId === "number" && Number.isSafeInteger(rawMessageId)
+    ? rawMessageId
     : undefined;
   const execId = stringValue(value.execId);
   return {
