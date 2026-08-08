@@ -62,6 +62,24 @@ export { ANTHROPIC_MESSAGES_URL } from "../anthropic/native.js";
 export const AI_GATEWAY_ROUTE_SEGMENT = "ai-gateway";
 export const AI_GATEWAY_MODEL_ENV = "FLEET_AI_GATEWAY_MODEL";
 
+/**
+ * `/v1/messages` 본문의 상한.
+ *
+ * 이 리더는 본문을 전부 메모리에 모은 뒤에야 파싱하므로, 상한이 없으면 요청 하나가 호스트
+ * 프로세스를 밀어낼 수 있다. Console의 일반 API 리더가 쓰는 1 MiB를 그대로 가져올 수는 없다 —
+ * 대화 전체와 인라인 이미지를 매 턴 다시 싣는 이 본문은 정상적으로도 그보다 훨씬 크다.
+ * 이 패키지가 큰 JSON에 이미 쓰는 천장(claude-context의 16 MiB)의 두 배로 잡아, 1M 창을
+ * 가득 채운 요청까지 통과시키면서 무한 증가만 끊는다.
+ */
+export const MAX_GATEWAY_REQUEST_BODY_BYTES = 32 * 1024 * 1024;
+
+class RequestBodyTooLargeError extends Error {
+  constructor(readonly maxBytes: number) {
+    super(`Request body exceeds ${maxBytes} bytes`);
+    this.name = "RequestBodyTooLargeError";
+  }
+}
+
 /** Codex CLI가 ChatGPT 구독 로그인으로 저장해 둔 토큰. */
 export interface CodexSubscriptionAuth {
   readonly accessToken: string;
@@ -137,6 +155,22 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
   const gatewaySettings = (): AiGatewayStoredSettings | undefined => (
     deps.readAiGatewaySettings ? deps.readAiGatewaySettings() : undefined
   );
+  // 요청이 지목한 모델이 사용자가 켠 선별 안에 있는지 본다. 설정 리더가 없으면 노출이
+  // 곧 전체 카탈로그이므로(위 gatewaySettings 주석) 항상 참이다. 별칭·1M 마커로 들어와도
+  // findGatewayModel이 카탈로그 항목으로 정규화한 뒤이므로 id 비교로 충분하다.
+  const isModelExposed = (model: GatewayModel): boolean => {
+    let settings: AiGatewayStoredSettings | undefined;
+    try {
+      settings = gatewaySettings();
+    } catch {
+      // 설정 판독 실패는 기능을 낮출 뿐 요청을 막지 않는다 — cursorDiagnosticsEnabled가 이미
+      // 택한 규율이고, 그 계약은 "설정을 못 읽어도 Cursor를 막지 않는다"로 테스트에 박혀 있다.
+      // 파일 하나가 깨졌다고 모든 실행이 죽는 편이 끈 모델 한 번보다 나쁘다.
+      return true;
+    }
+    if (!settings) return true;
+    return resolveAiGatewaySelection(settings).models.some((entry) => entry.id === model.id);
+  };
   const cursorDiagnosticsEnabled = (): boolean | undefined => {
     if (!deps.readAiGatewaySettings) return undefined;
     try {
@@ -180,8 +214,14 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
 
     let body: AnthropicMessagesRequest | null;
     try {
-      body = await readJsonBody<AnthropicMessagesRequest>(req);
-    } catch {
+      body = await readJsonBody<AnthropicMessagesRequest>(req, MAX_GATEWAY_REQUEST_BODY_BYTES);
+    } catch (error) {
+      if (error instanceof RequestBodyTooLargeError) {
+        // 413이되 "context window"는 담지 않는다 — 그 문구는 Claude Code의 반응형 압축을 무장시키는
+        // 별도 계약(canonical/index.ts ContextWindowExceededError)이고, 큰 본문이 곧 창 초과는 아니다.
+        writeAnthropicError(res, 413, "invalid_request_error", `Request body exceeds the gateway limit of ${error.maxBytes} bytes.`);
+        return true;
+      }
       writeAnthropicError(res, 400, "invalid_request_error", "Request body was not valid JSON");
       return true;
     }
@@ -195,10 +235,19 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     }
 
     // 요청이 지목한 모델이 어느 구독으로 가는지 정한다. env 오버라이드가 있으면 그쪽이 이긴다.
-    const requested = deps.readModelOverride?.() ?? body.model;
+    const modelOverride = deps.readModelOverride?.();
+    const requested = modelOverride ?? body.model;
     const target = findGatewayModel(requested);
     if (!target && requested.startsWith(GATEWAY_MODEL_ALIAS_PREFIX)) {
       writeAnthropicError(res, 400, "invalid_request_error", `Unknown AI gateway model: ${requested}`);
+      return true;
+    }
+    // 디스커버리(/v1/models)가 켠 모델만 광고해도 실행 경로가 카탈로그 전체를 받아 주면, raw id를
+    // 아는 호출자는 사용자가 끈 모델로 그 구독을 그대로 쓴다. 선별은 광고 목록이 아니라 지출 계약이므로
+    // 여기서 함께 강제한다. env 오버라이드는 예외다 — 그 값을 세팅한 주체는 이 프로세스의 운영자이고,
+    // 선별 파일의 주인과 같은 사람이라 호출자 입력과 같은 신뢰 등급이 아니다.
+    if (target && modelOverride === undefined && !isModelExposed(target)) {
+      writeAnthropicError(res, 403, "permission_error", `AI gateway model is not enabled: ${requested}`);
       return true;
     }
 
@@ -434,10 +483,15 @@ export function callerAnthropicCredential(headers: Record<string, unknown>): str
 
 async function readJsonBody<T>(req: {
   [Symbol.asyncIterator](): AsyncIterator<Buffer | string>;
-}): Promise<T | null> {
+}, maxBytes: number): Promise<T | null> {
   const chunks: Buffer[] = [];
+  let total = 0;
   for await (const chunk of req) {
-    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+    const buffer = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+    total += buffer.length;
+    // 파싱 전에 끊는다. 다 모은 뒤 크기를 보면 이미 그만큼 실린 뒤다.
+    if (total > maxBytes) throw new RequestBodyTooLargeError(maxBytes);
+    chunks.push(buffer);
   }
   if (chunks.length === 0) return null;
   return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;

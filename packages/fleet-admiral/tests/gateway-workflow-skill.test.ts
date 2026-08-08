@@ -97,7 +97,7 @@ describe("gateway workflow skill asset", () => {
     expect(content).toContain("### Reading quality evidence");
     expect(content).toContain("Measurement outranks the claim.");
     expect(content).toContain("a measured `standard` model above the band beats an unmeasured `flagship` claim");
-    expect(content).toContain("Scores within `noiseBandPoints` are one band, not an ordering.");
+    expect(content).toContain("Scores within `routingTieBandPoints` are one band, not an ordering.");
     expect(content).toContain("Read `caveat` before trusting a standout.");
     // 우선순위는 allowance 축 전용이다 — 품질 밴드를 넘으면 판단석이 할당량 축으로 떨어진다.
     expect(content).toContain("`providerPriority` is the user's standing order on this axis.");

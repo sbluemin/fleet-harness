@@ -697,7 +697,7 @@ describe("model catalog", () => {
           observedAt: "2026-08-08T00:00:00Z",
           url: "https://example.com",
           method: "fixture",
-          noiseBandPoints: 1,
+          routingTieBandPoints: 1,
         },
       },
       models: {
@@ -773,7 +773,7 @@ describe("model catalog", () => {
           observedAt: "2026-08-08T00:00:00Z",
           url: "https://example.com",
           method: "fixture",
-          noiseBandPoints: 1,
+          routingTieBandPoints: 1,
         },
       },
       models: {
