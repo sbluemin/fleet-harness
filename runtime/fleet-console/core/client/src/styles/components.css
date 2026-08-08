@@ -7341,6 +7341,51 @@
   line-height: 1;
 }
 
+/* 강도 상자는 행 전체가 아니라 이 손잡이에서 열린다 — 목록을 훑는 동안 지나치는 행마다
+   캐스케이드가 튀어나오면, 모델을 고르려는 동작이 매번 서브메뉴를 여는 동작이 된다.
+   꺾쇠 하나로는 무엇이 열리는지 말하지 못하므로 계기 표식과 현재 단을 함께 묶는다. */
+.operation-launch-variant-effort-handle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  /* 행 안쪽 여백을 되먹어 손잡이 테두리가 행 오른쪽 끝선에 맞춰 선다. */
+  margin-right: -3px;
+  padding: 2px 3px 2px 5px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring);
+}
+
+/* 행을 짚으면 손잡이의 윤곽만 먼저 드러난다 — 누를 곳이 있다는 사실은 알리되, 아직 열지는 않는다. */
+.operation-launch-variant-row:hover .operation-launch-variant-effort-handle,
+.operation-launch-variant-row:focus-visible .operation-launch-variant-effort-handle {
+  border-color: color-mix(in oklch, var(--surface-rim) 85%, transparent);
+}
+
+.operation-launch-variant-effort-handle:hover,
+.operation-launch-variant-effort-handle[data-open="true"] {
+  border-color: color-mix(in oklch, var(--brass) 40%, transparent);
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+}
+
+.operation-launch-variant-effort-gauge {
+  flex: 0 0 auto;
+  height: 8px;
+}
+
+/* 소등 칸은 켜진 칸과 확실히 갈릴 만큼 물러서야 한다 — 램프의 낮은 단은 톤 자체가 판독 하한
+   근처라, 소등이 그 근처에 있으면 LOW에서 몇 칸이 켜졌는지 읽히지 않는다. */
+.operation-launch-variant-effort-gauge rect {
+  fill: color-mix(in oklch, var(--text-tertiary) 24%, transparent);
+  transition: fill var(--duration-fast) var(--ease-spring);
+}
+
+.operation-launch-variant-effort-gauge rect[data-lit="true"] {
+  fill: var(--effort-tone, var(--brass-ink));
+}
+
 .operation-launch-effort-menu.theater-menu {
   --flyout-enter-x: -4px;
   z-index: 42;
@@ -7358,6 +7403,24 @@
 /* ── 추론 강도 트랙 ─────────────────────────────────────────────────────────
    강도는 상태가 아니라 사용자가 고른 값이라, 채움은 위치·초점 채널인 brass를 쓴다. 신호색
    (aurora/warn/coral/positive)으로 칠하면 그 순간 "무슨 일이 일어났다"로 읽힌다. */
+
+/* 단계 톤. 램프는 판독 하한(--text-tertiary)에서 출발해 brass 한 채널 안에서 채도만 올린다 —
+   밝기 축으로 만들면 라이트 테마에서 방향이 뒤집힌다(그 테마는 tertiary가 brass보다 어두워,
+   "흐린 색"이 오히려 더 진하게 읽힌다). 어느 테마에서도 낮은 단이 하한 아래로 흐려지지 않는다.
+
+   보간 공간이 oklch가 아니라 oklab인 것은 이 파일에서 이곳뿐이며, 의도된 예외다: --text-tertiary는
+   채도가 0에 가까워도 hue를 하나 들고 있어(다크 3종은 245~250) oklch로 섞으면 중간 단이 그 hue와
+   brass(78) 사이 호를 따라간다 — instrument의 medium이 초록(174), carbon의 high가 붉은색(0)으로
+   서서, 상태 채널인 positive·coral을 강도 라벨이 흉내 내게 된다. oklab은 직선으로 섞어 hue를
+   brass 쪽에 두고 채도만 떨어뜨린다. */
+[data-effort-level] { --effort-tone: var(--text-secondary); }
+[data-effort-level="auto"] { --effort-tone: var(--text-tertiary); }
+[data-effort-level="low"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 20%, var(--text-tertiary)); }
+[data-effort-level="medium"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 42%, var(--text-tertiary)); }
+[data-effort-level="high"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 64%, var(--text-tertiary)); }
+[data-effort-level="xhigh"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 84%, var(--text-tertiary)); }
+[data-effort-level="max"] { --effort-tone: var(--brass-ink); }
+
 .effort-track-shell {
   display: flex;
   align-items: center;
@@ -7383,6 +7446,14 @@
 .effort-track:focus-visible {
   outline: 2px solid var(--brass);
   outline-offset: 2px;
+}
+
+/* 자동은 사다리 위의 한 단이 아니라 사다리를 쓰지 않는 상태다. 파선 테두리는 이 앱에서 "아직
+   확정되지 않은 자리"의 어휘이고(AI Gateway 컴포저의 파선 상자와 같다), 채움 0·빈 손잡이와
+   묶여 최소 단과 확실히 갈린다. */
+.effort-track[data-auto="true"] {
+  border-style: dashed;
+  border-color: color-mix(in oklch, var(--surface-rim) 85%, transparent);
 }
 
 .effort-track-fill {
@@ -7464,31 +7535,53 @@
   border-radius: 999px;
   background: var(--text-primary);
   box-shadow: 0 1px 3px oklch(0% 0 0 / 55%);
-  transition: left var(--duration-fast) var(--ease-spring);
+  transition:
+    left var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring),
+    box-shadow var(--duration-fast) var(--ease-spring);
   pointer-events: none;
+}
+
+/* 값을 쥐지 않은 손잡이는 속이 비어 있다 — 꽉 찬 손잡이는 어느 자리에 있든 "이 단을 골랐다"로 읽힌다. */
+.effort-track-knob[data-auto="true"] {
+  background: var(--surface-pillar);
+  box-shadow:
+    inset 0 0 0 2px color-mix(in oklch, var(--text-tertiary) 85%, transparent),
+    0 1px 3px oklch(0% 0 0 / 45%);
 }
 
 .effort-track-value {
   min-width: 44px;
-  color: var(--text-secondary);
+  color: var(--effort-tone, var(--text-secondary));
   font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
+  transition: color var(--duration-fast) var(--ease-spring);
 }
 
+/* 최고 단은 램프의 끝이라 색만으로는 바로 아랫단과 갈리지 않는다 — 무게가 그 마지막 한 칸을 맡는다. */
+.effort-track-value[data-effort-level="max"] {
+  font-weight: var(--weight-medium);
+}
+
+/* 파선 밑줄은 트랙의 파선 테두리와 같은 말이다: 이 값은 사다리 위의 단이 아니라 모델에 맡긴 자리다. */
 .effort-track-value[data-auto="true"] {
-  color: var(--text-tertiary);
+  text-decoration: underline dashed;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklch, var(--text-tertiary) 55%, transparent);
 }
 
 /* 트랙이 닫힌 뒤에도 이 행이 무엇으로 실행되는지 남기는 표식. */
 .operation-launch-variant-effort {
-  color: var(--brass);
+  color: var(--effort-tone, var(--brass-ink));
   font-family: var(--font-mono);
   font-size: 9.5px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  transition: color var(--duration-fast) var(--ease-spring);
 }
 
 /* 바 안에서는 자리를 정해 준다. 남는 폭을 두고 spacer와 겨루게 두면 트랙이 스톱 간격보다
@@ -11113,7 +11206,11 @@ body[data-codex-reading="true"] .operations-side-bar {
   .quick-launch-submit,
   .effort-track-fill,
   .effort-track-knob,
-  .effort-track-stop {
+  .effort-track-stop,
+  .effort-track-value,
+  .operation-launch-variant-effort,
+  .operation-launch-variant-effort-handle,
+  .operation-launch-variant-effort-gauge rect {
     animation: none;
     transition: none;
   }

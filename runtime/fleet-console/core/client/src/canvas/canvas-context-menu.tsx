@@ -4,7 +4,7 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 import { FEATURE_TOUR_BOUNDARY_ATTRIBUTE, FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import { useT } from "../i18n/index.js";
 import { resolveLaunchKindAnnotation } from "../launch-kind-annotations.js";
-import { EffortTrack } from "../components/effort-track.js";
+import { EffortTrack, effortLadderPosition } from "../components/effort-track.js";
 import { launchProviderFromGroupId, launchProviderGlyph } from "../components/launch-provider-glyphs.js";
 
 interface CanvasContextMenuProps {
@@ -599,16 +599,17 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                       if (element) effortAnchorRefs.current.set(rowKey, element);
                       else effortAnchorRefs.current.delete(rowKey);
                     }}
-                    onPointerEnter={() => {
-                      if (hasEffort) openEffortMenu(rowKey);
-                      else closeEffortMenu();
-                    }}
+                    // 행 본문은 강도를 열지 않는다 — 여는 것은 오른쪽 손잡이뿐이다. 다른 행으로
+                    // 넘어온 포인터는 유예를 두고 닫는다: 즉시 닫으면 손잡이에서 서브메뉴로
+                    // 비스듬히 가는 경로가 아래 행을 스칠 때 상자가 먼저 사라진다.
+                    onPointerEnter={scheduleEffortClose}
                     onPointerLeave={() => {
                       if (hasEffort) scheduleEffortClose();
                     }}
                     onFocus={() => {
-                      if (hasEffort) openEffortMenu(rowKey);
-                      else closeEffortMenu();
+                      // 키보드로 다른 행에 닿으면 앞 행의 상자는 닫는다. 이 행의 상자를 여는 것은
+                      // ArrowRight이지 포커스가 아니다.
+                      if (openEffortRow !== null && openEffortRow !== rowKey) closeEffortMenu();
                     }}
                     onBlur={(event) => {
                       if (!event.currentTarget.contains(event.relatedTarget as Node | null)
@@ -630,9 +631,35 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                     >
                       <span className="operation-launch-variant-row-label">{row.label}</span>
                       {row.starred ? <span className="operation-launch-variant-star" aria-hidden="true">★</span> : null}
-                      {/* 고른 강도를 행에 되비친다 — 트랙이 닫힌 뒤에도 이 행을 누르면 무엇으로 실행되는지 읽혀야 한다. */}
-                      {chosenChip ? <span className="operation-launch-variant-effort">{chosenChip.label}</span> : null}
-                      {hasEffort ? <span className="operation-launch-variant-chevron" aria-hidden="true">›</span> : null}
+                      {/* 강도 손잡이. 지금 실린 강도를 되비치는 표식이면서, 트랙을 여는 자리이기도 하다 —
+                          트랙이 닫힌 뒤에도 이 행을 누르면 무엇으로 실행되는지 여기서 읽힌다.
+                          버튼 안의 span이므로 초점 대상이 아니다: 키보드 경로는 지금처럼 행 버튼의
+                          ArrowRight이고, 그 행이 aria-expanded·aria-controls로 상자를 예고한다. */}
+                      {hasEffort ? (
+                        <span
+                          className="operation-launch-variant-effort-handle"
+                          data-launch-effort-handle={rowKey}
+                          data-effort-level={chosenEffort ?? "auto"}
+                          data-open={effortOpen ? "true" : undefined}
+                          title={t("launchVariants.effort.track")}
+                          onPointerEnter={() => openEffortMenu(rowKey)}
+                          onPointerLeave={scheduleEffortClose}
+                          onClick={(event) => {
+                            // 손잡이는 실행이 아니라 강도를 연다. 행 버튼까지 함께 발화하면 강도를
+                            // 고르려던 클릭이 그대로 출격이 된다.
+                            event.preventDefault();
+                            event.stopPropagation();
+                            if (effortOpen) closeEffortMenu();
+                            else openEffortMenu(rowKey);
+                          }}
+                        >
+                          <EffortGaugeGlyph {...effortLadderPosition(row, chosenEffort)} />
+                          <span className="operation-launch-variant-effort">
+                            {chosenChip?.label ?? t("launchVariants.effort.auto")}
+                          </span>
+                          <span className="operation-launch-variant-chevron" aria-hidden="true">›</span>
+                        </span>
+                      ) : null}
                     </button>
                   </div>
                 );
@@ -682,6 +709,47 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
         </div>
       ) : null}
     </div>
+  );
+}
+
+const GAUGE_BAR_WIDTH = 1.5;
+const GAUGE_BAR_PITCH = 2.5;
+const GAUGE_HEIGHT = 8;
+const GAUGE_MIN_BAR = 2;
+
+/**
+ * 강도 사다리를 그대로 줄인 계기 표식. 꺾쇠만으로는 이 손잡이가 무엇을 여는지 말하지 못하므로,
+ * 오르는 막대로 "단계를 고르는 자리"임을 아이콘 하나로 알린다. 자동은 한 칸도 켜지지 않는다 —
+ * 최소 단을 고른 것과 갈려야 한다.
+ */
+function EffortGaugeGlyph({ rung, total }: { readonly rung: number; readonly total: number }) {
+  if (total <= 0) return null;
+  const width = total * GAUGE_BAR_PITCH - (GAUGE_BAR_PITCH - GAUGE_BAR_WIDTH);
+  return (
+    <svg
+      className="operation-launch-variant-effort-gauge"
+      viewBox={`0 0 ${width} ${GAUGE_HEIGHT}`}
+      width={width}
+      height={GAUGE_HEIGHT}
+      aria-hidden="true"
+    >
+      {Array.from({ length: total }, (_unused, index) => {
+        const height = total === 1
+          ? GAUGE_HEIGHT
+          : GAUGE_MIN_BAR + (index * (GAUGE_HEIGHT - GAUGE_MIN_BAR)) / (total - 1);
+        return (
+          <rect
+            key={index}
+            x={index * GAUGE_BAR_PITCH}
+            y={GAUGE_HEIGHT - height}
+            width={GAUGE_BAR_WIDTH}
+            height={height}
+            rx={0.5}
+            data-lit={index < rung ? "true" : undefined}
+          />
+        );
+      })}
+    </svg>
   );
 }
 

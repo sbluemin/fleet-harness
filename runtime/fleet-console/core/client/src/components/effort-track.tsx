@@ -33,18 +33,14 @@ export function EffortTrack({ row, value, onChange, autoLabel, ariaLabel, autoVa
   const trackRef = useRef<HTMLDivElement | null>(null);
 
   const slots = useMemo<readonly EffortSlot[]>(() => {
-    const chips = row.chips ?? [];
-    const byId = new Map<string, OperationLaunchVariantChip>(chips.map((chip) => [chip.id, chip]));
-    // 축이 없으면 내놓은 단만이 축이다. 축에 없는 단이 오면 뒤에 붙여, 사다리가 늘어도 조용히 사라지지 않는다.
-    const axis = row.effortAxis ?? chips.map((chip) => chip.id);
-    const extra = chips.map((chip) => chip.id).filter((id) => !axis.includes(id));
-    const rungs = [...axis, ...extra].map((id) => ({
+    const byId = new Map<string, OperationLaunchVariantChip>((row.chips ?? []).map((chip) => [chip.id, chip]));
+    const rungs = ladderRungs(row).map((id) => ({
       id,
       label: byId.get(id)?.label ?? id.toUpperCase(),
       selectable: byId.has(id),
     }));
     return [{ id: null, label: autoLabel, selectable: true }, ...rungs];
-  }, [autoLabel, row.chips, row.effortAxis]);
+  }, [autoLabel, row]);
 
   const last = slots.length - 1;
   const index = Math.max(0, slots.findIndex((slot) => slot.id === value));
@@ -112,6 +108,9 @@ export function EffortTrack({ row, value, onChange, autoLabel, ariaLabel, autoVa
         aria-valuenow={index}
         aria-valuetext={isAuto ? autoValueText : current.label}
         data-at-max={index === last && !isAuto ? true : undefined}
+        // 자동은 사다리의 최소 단이 아니라 "사다리를 쓰지 않음"이다. 파선 테두리·빈 손잡이·채움 0이
+        // 한 어휘로 그것을 말한다 — 채움이 조금이라도 남으면 맨 왼쪽 단을 고른 것으로 읽힌다.
+        data-auto={isAuto ? true : undefined}
         onKeyDown={handleKeyDown}
         onPointerDown={(event) => {
           event.preventDefault();
@@ -124,7 +123,13 @@ export function EffortTrack({ row, value, onChange, autoLabel, ariaLabel, autoVa
           fromPointer(event);
         }}
       >
-        <span className="effort-track-fill" style={{ width: `calc(${EDGE}px + ${ratio} * (100% - ${EDGE * 2}px))` }} aria-hidden="true" />
+        {/* 자동은 폭 0이다. 손잡이 여백(EDGE)만큼이라도 남기면 트랙 왼쪽 끝에 brass 조각이 비쳐,
+            비운 상태가 최소 강도를 고른 것처럼 보인다. */}
+        <span
+          className="effort-track-fill"
+          style={{ width: isAuto ? 0 : `calc(${EDGE}px + ${ratio} * (100% - ${EDGE * 2}px))` }}
+          aria-hidden="true"
+        />
         <span className="effort-track-stops" aria-hidden="true">
           {slots.map((slot, position) => (
             <span
@@ -139,12 +144,38 @@ export function EffortTrack({ row, value, onChange, autoLabel, ariaLabel, autoVa
         <span
           className="effort-track-knob"
           style={{ left: `calc(${EDGE}px + ${ratio} * (100% - ${EDGE * 2}px))` }}
+          data-auto={isAuto ? true : undefined}
           aria-hidden="true"
         />
       </div>
-      <span className="effort-track-value" data-auto={isAuto}>{current.label}</span>
+      {/* 단계 톤은 CSS가 이 속성 하나로 읽는다 — 라벨 문자열은 번역·모델마다 달라 색의 기준이 될 수 없다. */}
+      <span className="effort-track-value" data-auto={isAuto} data-effort-level={current.id ?? "auto"}>
+        {current.label}
+      </span>
     </div>
   );
+}
+
+/**
+ * 이 행의 강도 사다리를 낮은 단부터 늘어놓는다. 축이 없으면 내놓은 단만이 축이고, 축에 없는 단이
+ * 오면 뒤에 붙여 사다리가 늘어도 조용히 사라지지 않는다.
+ */
+function ladderRungs(row: OperationLaunchVariantRow): readonly string[] {
+  const offered = (row.chips ?? []).map((chip) => chip.id);
+  const axis = row.effortAxis ?? offered;
+  return [...axis, ...offered.filter((id) => !axis.includes(id))];
+}
+
+/**
+ * 사다리 위 이 강도의 자리. 트랙을 열지 않고도 몇 번째 단인지 보여야 하는 표식(캔버스 실행 메뉴의
+ * 강도 손잡이)이 쓴다. 자동은 0단이다 — 사다리를 쓰지 않는 상태이지 최소 단이 아니다.
+ */
+export function effortLadderPosition(row: OperationLaunchVariantRow, effort: string | null): {
+  readonly rung: number;
+  readonly total: number;
+} {
+  const rungs = ladderRungs(row);
+  return { rung: effort === null ? 0 : rungs.indexOf(effort) + 1, total: rungs.length };
 }
 
 /** 기억해 둔 강도가 이 모델 사다리에 없으면 비운 상태로 떨어진다. */

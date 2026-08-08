@@ -442,20 +442,57 @@ describe("CanvasContextMenu launch kind attribute", () => {
     act(() => row.click());
     expect(onLaunchKind).toHaveBeenLastCalledWith("terminal", catalog[0]!.kinds[0], { model: "fable" });
 
+    // 행 본문을 지나는 것만으로는 강도 상자가 열리지 않는다 — 목록을 훑는 동작이 매번
+    // 캐스케이드를 여는 동작이 되면 모델을 고르는 일이 그 상자를 피해 다니는 일이 된다.
+    act(() => row.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+    expect(document.querySelector(".effort-track")).toBeNull();
+
     // 트랙은 값만 정한다 — 실행은 여전히 모델 행이 일으킨다.
-    act(() => row.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+    act(() => effortHandle("fable").dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
     const track = document.querySelector<HTMLElement>(".effort-track")!;
     expect(track).not.toBeNull();
     act(() => track.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
     expect(onLaunchKind).toHaveBeenCalledTimes(1);
 
     // 고른 강도는 행에 되비치고, 그 행을 눌러야 실행된다.
-    expect(document.querySelector(".operation-launch-variant-effort")?.textContent).toBe("MAX");
+    expect(effortHandle("fable").querySelector(".operation-launch-variant-effort")?.textContent).toBe("MAX");
+    expect(effortHandle("fable").dataset.effortLevel).toBe("max");
     act(() => document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!.click());
     expect(onLaunchKind).toHaveBeenLastCalledWith("terminal", catalog[0]!.kinds[0], { model: "fable", effort: "max" });
 
     act(() => parent.click());
     expect(onLaunchKind).toHaveBeenLastCalledWith("terminal", catalog[0]!.kinds[0]);
+  });
+
+  it("says on the row what the effort handle opens, and opens it without launching", () => {
+    const onLaunchKind = vi.fn();
+    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, gatewayVariantCatalog(), vi.fn(), false, onLaunchKind);
+    act(() => document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!
+      .parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+
+    const handle = effortHandle("fable");
+    // 꺾쇠 하나로는 무엇이 열리는지 말하지 못한다 — 계기 표식과 지금 실린 단이 함께 선다.
+    expect(handle.getAttribute("title")).toBe("Reasoning effort");
+    expect(handle.dataset.effortLevel).toBe("auto");
+    expect(handle.querySelector(".operation-launch-variant-effort")?.textContent).toBe("AUTO");
+    // 계기는 이 행의 사다리를 그대로 줄인다 — 이 행은 high·max 두 단만 내놓는다.
+    const bars = handle.querySelectorAll(".operation-launch-variant-effort-gauge rect");
+    expect(bars).toHaveLength(2);
+    // 자동은 한 칸도 켜지지 않는다 — 최소 단을 고른 것과 갈려야 한다.
+    expect(Array.from(bars).filter((bar) => bar.getAttribute("data-lit") === "true")).toHaveLength(0);
+
+    // 손잡이를 눌러도 출격하지 않는다. 강도를 고르려던 클릭이 실행이 되면 되돌릴 수 없다.
+    act(() => handle.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onLaunchKind).not.toHaveBeenCalled();
+    expect(document.querySelector(".effort-track")).not.toBeNull();
+    expect(effortHandle("fable").dataset.open).toBe("true");
+
+    act(() => document.querySelector<HTMLElement>(".effort-track")!
+      .dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
+    // 고른 단까지 계기가 차오른다 — max는 이 사다리의 끝이라 두 칸 전부다.
+    const lit = effortHandle("fable").querySelectorAll('.operation-launch-variant-effort-gauge rect[data-lit="true"]');
+    expect(lit).toHaveLength(2);
+    expect(effortHandle("fable").dataset.effortLevel).toBe("max");
   });
 
   it("clamps the flyout inside narrow horizontal and vertical bounds", () => {
@@ -485,8 +522,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
     const flyout = document.querySelector<HTMLElement>(".operation-launch-flyout")!;
     expect(flyout.classList.contains("is-left")).toBe(false);
 
-    const row = document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!;
-    act(() => row.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+    act(() => effortHandle("fable").dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
 
     const effort = document.querySelector<HTMLElement>(".operation-launch-effort-menu")!;
     expect(effort.classList.contains("is-left")).toBe(false);
@@ -518,8 +554,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
       renderMenu({ x: 200, y: 100 }, { width: 1280, height: 420 }, gatewayVariantCatalog());
       const parent = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
       act(() => parent.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
-      const entry = document.querySelector<HTMLElement>(".operation-launch-variant-entry")!;
-      act(() => entry.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+      act(() => effortHandle("fable").dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
       const topAfterOpen = document.querySelector<HTMLElement>(".operation-launch-effort-menu")!.style.top;
 
       // 행이 아직 flyout 안에 있으면 따라간다.
@@ -556,8 +591,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
       renderMenu({ x: 520, y: 120 }, bounds, gatewayVariantCatalog());
       const parent = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
       act(() => parent.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
-      const row = document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!;
-      act(() => row.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+      act(() => effortHandle("fable").dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
 
       const effort = document.querySelector<HTMLElement>(".operation-launch-effort-menu")!;
       // maxTop = max(12, 160 - 148 - 12) = 12 — anything taller must land on the margin.
@@ -738,6 +772,14 @@ function gatewayVariantCatalog(): readonly OperationCatalogPlugin[] {
       }],
     }],
   }];
+}
+
+/** 강도 상자를 여는 자리는 행이 아니라 행 오른쪽의 이 손잡이다. */
+function effortHandle(rowId: string): HTMLElement {
+  const entry = document.querySelector<HTMLElement>(`[data-launch-variant-row="${rowId}"]`)?.closest<HTMLElement>(".operation-launch-variant-entry");
+  const handle = entry?.querySelector<HTMLElement>(".operation-launch-variant-effort-handle");
+  if (!handle) throw new Error(`Missing the effort handle for ${rowId}`);
+  return handle;
 }
 
 function pressFlyoutKey(key: string): void {

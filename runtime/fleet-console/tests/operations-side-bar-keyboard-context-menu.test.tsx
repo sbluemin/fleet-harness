@@ -170,7 +170,8 @@ describe("sidebar context menu keyboard path", () => {
     const row = required<HTMLButtonElement>('[data-launch-variant-row="fable"]');
     act(() => {
       row.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-      row.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true }));
+      // 강도 상자는 행이 아니라 행 오른쪽 손잡이에서 열린다.
+      required<HTMLElement>('[data-launch-effort-handle]').dispatchEvent(new MouseEvent("pointerover", { bubbles: true }));
     });
     // 트랙은 값만 정한다 — 실행은 모델 행이 일으키고, 고른 강도를 그대로 싣는다.
     act(() => required<HTMLElement>(".effort-track").dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));

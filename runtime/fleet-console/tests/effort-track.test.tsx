@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 
-import { EffortTrack, resolveRowEffort } from "../core/client/src/components/effort-track.js";
+import { EffortTrack, effortLadderPosition, resolveRowEffort } from "../core/client/src/components/effort-track.js";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -59,8 +59,20 @@ function stops(): readonly HTMLElement[] {
 }
 
 function track(): HTMLElement {
-  const element = document.querySelector<HTMLElement>(".effort-track");
-  if (!element) throw new Error("Expected the track");
+  return required(".effort-track");
+}
+
+function fill(): HTMLElement {
+  return required(".effort-track-fill");
+}
+
+function value(): HTMLElement {
+  return required(".effort-track-value");
+}
+
+function required(selector: string): HTMLElement {
+  const element = document.querySelector<HTMLElement>(selector);
+  if (!element) throw new Error(`Expected ${selector}`);
   return element;
 }
 
@@ -91,6 +103,32 @@ describe("EffortTrack", () => {
     expect(track().getAttribute("aria-valuetext")).toBe("Automatic");
     expect(document.querySelector(".effort-track-value")?.textContent).toBe("AUTO");
     expect(document.querySelector<HTMLElement>(".effort-track-value")?.dataset.auto).toBe("true");
+  });
+
+  it("leaves the empty rung unfilled so it cannot read as the lowest rung", () => {
+    render(row(), null);
+
+    // 손잡이 여백만큼이라도 채우면 트랙 왼쪽 끝에 brass 조각이 남아 최소 단을 고른 것처럼 보인다.
+    expect(fill().style.width).toBe("0px");
+    expect(track().dataset.auto).toBe("true");
+    expect(document.querySelector<HTMLElement>(".effort-track-knob")?.dataset.auto).toBe("true");
+    // 축 위의 어느 점도 채워지지 않는다.
+    expect(stops().every((mark) => mark.dataset.filled === undefined)).toBe(true);
+
+    render(row(), "low");
+    expect(fill().style.width).not.toBe("0px");
+    expect(track().dataset.auto).toBeUndefined();
+    expect(document.querySelector<HTMLElement>(".effort-track-knob")?.dataset.auto).toBeUndefined();
+  });
+
+  it("names the rung it stands on so the value label can take its own tone", () => {
+    render(row(), null);
+    expect(value().dataset.effortLevel).toBe("auto");
+
+    for (const rung of ["low", "high", "max"]) {
+      render(row(), rung);
+      expect(value().dataset.effortLevel).toBe(rung);
+    }
   });
 
   it("steps over rungs the model does not offer", () => {
@@ -143,6 +181,20 @@ describe("EffortTrack", () => {
     // 비운 상태는 축의 맨 앞이지 최대가 아니다.
     render(row({ chips: [] }), null);
     expect(track().dataset.atMax).toBeUndefined();
+  });
+});
+
+describe("effortLadderPosition", () => {
+  it("counts the rung on the canonical axis, not on the rungs this model happens to offer", () => {
+    // high는 이 모델이 내놓는 세 단 중 둘째지만, 축 위에서는 다섯 중 셋째다.
+    expect(effortLadderPosition(row(), "high")).toEqual({ rung: 3, total: 5 });
+    expect(effortLadderPosition(row(), "max")).toEqual({ rung: 5, total: 5 });
+    // 자동은 0단이다 — 사다리를 쓰지 않는 상태이지 최소 단이 아니다.
+    expect(effortLadderPosition(row(), null)).toEqual({ rung: 0, total: 5 });
+  });
+
+  it("falls back to the offered rungs when the row carries no axis", () => {
+    expect(effortLadderPosition(row({ effortAxis: undefined }), "high")).toEqual({ rung: 2, total: 3 });
   });
 });
 
