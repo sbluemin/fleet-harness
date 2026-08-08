@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 
-import { buildGatewayModelsToolSpec, clampGoalCheckLimit, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, getAgentCliIds, getAgentCliMetadata, MAX_GOAL_CONDITION_CHARS, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, NATIVE_CLAUDE_MODEL_ALIASES, parseAgentCliId, sanitizeLaunchPrompt, sanitizePtyMessageText, type AgentCliId } from "@dotobokuri/fleet-admiral";
+import { buildGatewayModelsToolSpec, clampGoalCheckLimit, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, getAgentCliIds, getAgentCliMetadata, MAX_GOAL_CONDITION_CHARS, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, type AgentCliId } from "@dotobokuri/fleet-admiral";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -382,12 +382,13 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ctx.host.http.writeJson(res, 400, { error: "invalid_launch_option" });
       return false;
     }
-    if (NATIVE_CLAUDE_MODEL_ALIASES.includes(model as (typeof NATIVE_CLAUDE_MODEL_ALIASES)[number])) {
+    const nativeAlias = resolveNativeClaudeModelAlias(model);
+    if (nativeAlias) {
       if (effort !== undefined && !NATIVE_CLAUDE_EFFORTS.includes(effort as (typeof NATIVE_CLAUDE_EFFORTS)[number])) {
         ctx.host.http.writeJson(res, 400, { error: "invalid_effort" });
         return false;
       }
-      return { model, ...(effort === undefined ? {} : { effort }) };
+      return { model: nativeAlias, ...(effort === undefined ? {} : { effort }) };
     }
     const selection = resolveAiGatewaySelection(deps.readAiGatewaySettings?.());
     const gatewayModel = selection.models.find((candidate) => candidate.id === model);

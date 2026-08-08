@@ -12,7 +12,8 @@ const nativeVariants = {
   label: "Claude",
   rows: [
     nativeRow("fable", "Fable"),
-    nativeRow("opus", "Opus"),
+    // Claude Code's 1M coordinate launches under the plain "Opus" label.
+    nativeRow("opus[1m]", "Opus"),
     nativeRow("sonnet", "Sonnet"),
   ],
 };

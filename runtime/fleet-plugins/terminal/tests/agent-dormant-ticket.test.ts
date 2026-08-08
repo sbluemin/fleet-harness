@@ -153,6 +153,21 @@ describe("agent launch variants", () => {
     expect(resumeContext).not.toHaveProperty("effort");
   });
 
+  it("rewrites bare opus onto Claude Code's 1M coordinate before attach", async () => {
+    const harness = await createHarness({
+      body: { cliId: "claude-gateway", model: "opus", effort: "high" },
+    });
+
+    await harness.postSessions();
+
+    expect(harness.responses.at(-1)?.status).toBe(200);
+    expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({
+      cliId: "claude-gateway",
+      model: "opus[1m]",
+      effort: "high",
+    }));
+  });
+
   it("rejects a non-string prompt", async () => {
     const harness = await createHarness({
       body: { cliId: "claude-native", prompt: 12 },
