@@ -44,6 +44,8 @@ const FLYOUT_CLOSE_GRACE_MS = 160;
 const MENU_MAX_HEIGHT = 520;
 const MENU_MIN_HEIGHT = 120;
 const MENU_MARGIN = 12;
+// 한 번에 하나만 열리므로 고정 id로 충분하다 — 행이 aria-controls로 이 상자를 가리킨다.
+const EFFORT_POPUP_ID = "operation-launch-effort-track";
 // 설명 어사이드는 메뉴 옆에 뜬다. 오른쪽에 자리가 없으면 왼쪽으로 뒤집는다.
 const ASIDE_WIDTH = 208;
 const ASIDE_GAP = 8;
@@ -348,7 +350,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   };
   const effortTarget = openEffortRow === null || flyoutTarget === null
     ? null
-    : findEffortRow(flyoutTarget.kind, openEffortRow);
+    : findEffortRow(flyoutTarget.kind, openFlyout, openEffortRow);
 
   const activeDescription = useMemo(() => {
     if (!activeKey) return null;
@@ -528,12 +530,13 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                 moveFlyoutFocus(null, 0, "last");
                 return;
               case "ArrowRight": {
-                const rowId = target.closest<HTMLElement>("[data-launch-variant-row]")?.getAttribute("data-launch-variant-row");
-                if (!rowId) return;
-                const row = findEffortRow(flyoutTarget.kind, rowId);
+                const entry = target.closest<HTMLElement>(".operation-launch-variant-entry");
+                const rowKey = entry?.dataset.launchEffortKey;
+                if (!rowKey) return;
+                const row = findEffortRow(flyoutTarget.kind, openFlyout, rowKey);
                 if (!row || (row.chips?.length ?? 0) === 0) return;
                 event.preventDefault();
-                openEffortMenu(rowId);
+                openEffortMenu(rowKey);
                 requestAnimationFrame(() => {
                   effortMenuRef.current?.querySelector<HTMLElement>(".effort-track")?.focus();
                 });
@@ -578,9 +581,12 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
               })()}
               {group.rows.map((row) => {
                 const hasEffort = (row.chips?.length ?? 0) > 0;
-                const effortOpen = hasEffort && openEffortRow === row.id;
+                // 행 id는 그 그룹 안에서만 고유하다 — 실행 종류 설명을 itemKey로 잡는 것과 같은 이유로,
+                // 고른 강도도 종류·그룹까지 묶어야 같은 id를 쓰는 다른 행에 조용히 새지 않는다.
+                const rowKey = effortKey(openFlyout, group.id, row.id);
+                const effortOpen = hasEffort && openEffortRow === rowKey;
                 // 트랙은 값만 정한다 — 실행은 이 행이 일으키고, 고른 강도를 그대로 싣는다.
-                const chosenEffort = rowEfforts[row.id] ?? null;
+                const chosenEffort = rowEfforts[rowKey] ?? null;
                 const chosenChip = chosenEffort === null
                   ? undefined
                   : row.chips?.find((chip) => chip.id === chosenEffort);
@@ -588,19 +594,20 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                   <div
                     key={row.id}
                     className="operation-launch-variant-entry"
+                    data-launch-effort-key={rowKey}
                     ref={(element) => {
-                      if (element) effortAnchorRefs.current.set(row.id, element);
-                      else effortAnchorRefs.current.delete(row.id);
+                      if (element) effortAnchorRefs.current.set(rowKey, element);
+                      else effortAnchorRefs.current.delete(rowKey);
                     }}
                     onPointerEnter={() => {
-                      if (hasEffort) openEffortMenu(row.id);
+                      if (hasEffort) openEffortMenu(rowKey);
                       else closeEffortMenu();
                     }}
                     onPointerLeave={() => {
                       if (hasEffort) scheduleEffortClose();
                     }}
                     onFocus={() => {
-                      if (hasEffort) openEffortMenu(row.id);
+                      if (hasEffort) openEffortMenu(rowKey);
                       else closeEffortMenu();
                     }}
                     onBlur={(event) => {
@@ -615,8 +622,10 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                       role="menuitem"
                       className={`operation-launch-variant-row${hasEffort ? " operation-launch-variant-row--effort" : ""}`}
                       data-launch-variant-row={row.id}
-                      aria-haspopup={hasEffort ? "menu" : undefined}
+                      // 펼쳐지는 것이 메뉴가 아니므로 haspopup=menu로 예고하지 않는다 — 무엇이
+                      // 열렸는지는 aria-controls가 가리킨다.
                       aria-expanded={hasEffort ? effortOpen : undefined}
+                      aria-controls={effortOpen ? EFFORT_POPUP_ID : undefined}
                       onClick={() => onLaunchKind(flyoutTarget.pluginId, flyoutTarget.kind, chosenChip?.launch ?? row.launch)}
                     >
                       <span className="operation-launch-variant-row-label">{row.label}</span>
@@ -635,7 +644,11 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
       {flyoutTarget && effortTarget && effortPosition?.id === openEffortRow ? (
         <div
           className={`operation-launch-effort-menu theater-menu${effortPosition.opensLeft ? " is-left" : ""}`}
-          role="menu"
+          // 이 상자가 담는 것은 메뉴 항목이 아니라 슬라이더 하나다. menu로 선언하면 보조기술이
+          // 메뉴 탐색 모델을 씌워, 방향키를 항목 이동으로 가로채고 트랙을 조작 대상으로 보지 않는다.
+          role="group"
+          id={EFFORT_POPUP_ID}
+          aria-label={t("launchVariants.effort.track")}
           ref={effortMenuRef}
           style={{ position: "fixed", left: effortPosition.left, right: "auto", top: effortPosition.top }}
           onPointerEnter={() => {
@@ -660,8 +673,8 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
         >
           <EffortTrack
             row={effortTarget}
-            value={rowEfforts[effortTarget.id] ?? null}
-            onChange={(next) => setRowEfforts((previous) => ({ ...previous, [effortTarget.id]: next }))}
+            value={rowEfforts[openEffortRow] ?? null}
+            onChange={(next) => setRowEfforts((previous) => ({ ...previous, [openEffortRow]: next }))}
             autoLabel={t("launchVariants.effort.auto")}
             ariaLabel={t("launchVariants.effort.track")}
             autoValueText={t("launchVariants.effort.autoValue")}
@@ -725,10 +738,19 @@ function findLaunchFlyout(catalog: readonly OperationCatalogPlugin[], flyoutId: 
   return null;
 }
 
-function findEffortRow(kind: OperationLaunchKind, rowId: string) {
+// 행 id는 그 그룹 안에서만 고유하다. 실행 종류 설명을 itemKey로 잡는 것과 같은 이유로, 열린
+// 트랙과 고른 강도도 종류·그룹까지 묶어 둔다. 구분자는 id에 나타나지 않는 제어문자를 쓴다 —
+// 실행 종류 키는 `terminal:claude-gateway`, 그룹 키는 `gateway:codex`라 콜론은 이미 모호하다.
+function effortKey(flyoutId: string | null, groupId: string, rowId: string): string {
+  return `${flyoutId ?? ""}\u001f${groupId}\u001f${rowId}`;
+}
+
+function findEffortRow(kind: OperationLaunchKind, flyoutId: string | null, key: string) {
   for (const group of kind.variants ?? []) {
-    const row = group.rows.find((candidate) => candidate.id === rowId);
-    if (row && (row.chips?.length ?? 0) > 0) return row;
+    for (const row of group.rows) {
+      if (effortKey(flyoutId, group.id, row.id) !== key) continue;
+      return (row.chips?.length ?? 0) > 0 ? row : null;
+    }
   }
   return null;
 }

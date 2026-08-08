@@ -432,7 +432,10 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(document.querySelector(".canvas-context-menu-aside")).toBeNull();
 
     const row = document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!;
-    expect(row.getAttribute("aria-haspopup")).toBe("menu");
+    // 펼쳐지는 것은 메뉴가 아니라 슬라이더 하나짜리 상자다 — haspopup=menu로 예고하면 보조기술이
+    // 메뉴 탐색 모델을 씌워 트랙을 조작 대상으로 보지 않는다.
+    expect(row.hasAttribute("aria-haspopup")).toBe(false);
+    expect(row.getAttribute("aria-expanded")).toBe("false");
     expect(document.querySelector(".effort-track")).toBeNull();
 
     // 강도를 건드리지 않은 행은 모델만 싣는다.
@@ -588,7 +591,11 @@ describe("CanvasContextMenu launch kind attribute", () => {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     });
     const track = document.querySelector<HTMLElement>(".effort-track")!;
-    expect(document.querySelector(".operation-launch-effort-menu")).not.toBeNull();
+    const popup = document.querySelector<HTMLElement>(".operation-launch-effort-menu")!;
+    expect(popup).not.toBeNull();
+    // 상자는 그룹이고, 그것을 연 행이 aria-controls로 가리킨다.
+    expect(popup.getAttribute("role")).toBe("group");
+    expect(row.getAttribute("aria-controls")).toBe(popup.id);
     expect(document.activeElement).toBe(track);
 
     // 트랙 위에서 방향키는 값을 옮긴다 — 실행은 여전히 모델 행이 일으킨다.
