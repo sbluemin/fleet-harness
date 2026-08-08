@@ -258,6 +258,27 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     cancelEffortClose();
   }, []);
 
+  // 강도 서브메뉴는 fixed라 목록이 굴러도 제자리에 남는다. 짚고 있던 행이 스크롤로 올라가면
+  // 그 상자는 엉뚱한 행 옆에 붙어 그 행의 강도인 척한다 — 행을 눌러 실행하는 표면에서는
+  // 그대로 오실행이 된다. 행이 아직 보이면 따라가고, 시야를 벗어나면 관계가 끊겼으니 닫는다.
+  useEffect(() => {
+    const flyout = flyoutRef.current;
+    if (!flyout || openEffortRow === null) return;
+    const follow = () => {
+      const anchor = effortAnchorRefs.current.get(openEffortRow)?.getBoundingClientRect();
+      const bounds = flyout.getBoundingClientRect();
+      if (!anchor || anchor.bottom <= bounds.top || anchor.top >= bounds.bottom) {
+        closeEffortMenu();
+        return;
+      }
+      openEffortMenu(openEffortRow);
+    };
+    flyout.addEventListener("scroll", follow, { passive: true });
+    return () => flyout.removeEventListener("scroll", follow);
+    // 두 핸들러는 렌더마다 새로 만들어진다 — 여는 행이 바뀔 때만 다시 건다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openEffortRow]);
+
   // 플러그인이 하나뿐이면 그 이름은 헤더 줄에 붙는다 — 항목 네 개짜리 메뉴에서 이름만 있는
   // 행 하나가 통째로 서는 것은 값을 못 한다. 둘 이상일 때만 그룹 라벨을 세운다.
   const singlePlugin = catalog.length === 1 ? catalog[0]! : null;

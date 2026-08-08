@@ -500,6 +500,41 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(widthOf("\\.operation-launch-effort-menu")).toBe(OPERATION_LAUNCH_EFFORT_MENU_WIDTH);
   });
 
+  it("follows the model row while the flyout scrolls, and lets go once the row leaves it", () => {
+    // 서브메뉴는 fixed라 목록이 굴러도 제자리에 남는다. 짚고 있던 행이 올라가 버리면 그 상자는
+    // 엉뚱한 행 옆에서 그 행의 강도인 척하고, 행을 눌러 실행하는 표면에서는 그대로 오실행이 된다.
+    const flyoutRect = { top: 100, bottom: 400, left: 0, right: 216, width: 216, height: 300 };
+    let anchorRect = { top: 150, bottom: 178, left: 8, right: 208, width: 200, height: 28 };
+    const previous = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function getBoundingClientRect(): DOMRect {
+      if (this.classList.contains("operation-launch-flyout")) return { ...flyoutRect, x: 0, y: 100, toJSON: () => ({}) } as DOMRect;
+      if (this.classList.contains("operation-launch-variant-entry")) return { ...anchorRect, x: 8, y: anchorRect.top, toJSON: () => ({}) } as DOMRect;
+      return previous.call(this);
+    };
+    try {
+      renderMenu({ x: 200, y: 100 }, { width: 1280, height: 420 }, gatewayVariantCatalog());
+      const parent = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
+      act(() => parent.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+      const entry = document.querySelector<HTMLElement>(".operation-launch-variant-entry")!;
+      act(() => entry.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+      const topAfterOpen = document.querySelector<HTMLElement>(".operation-launch-effort-menu")!.style.top;
+
+      // 행이 아직 flyout 안에 있으면 따라간다.
+      anchorRect = { ...anchorRect, top: 120, bottom: 148 };
+      act(() => document.querySelector(".operation-launch-flyout")!.dispatchEvent(new Event("scroll")));
+      const menu = document.querySelector<HTMLElement>(".operation-launch-effort-menu");
+      expect(menu).not.toBeNull();
+      expect(menu!.style.top).not.toBe(topAfterOpen);
+
+      // 행이 flyout 위로 사라지면 "그 행의 강도"라는 관계가 끊긴다 — 따라가지 않고 닫는다.
+      anchorRect = { ...anchorRect, top: 40, bottom: 68 };
+      act(() => document.querySelector(".operation-launch-flyout")!.dispatchEvent(new Event("scroll")));
+      expect(document.querySelector(".operation-launch-effort-menu")).toBeNull();
+    } finally {
+      Element.prototype.getBoundingClientRect = previous;
+    }
+  });
+
   it("clamps the effort submenu inside short vertical bounds", () => {
     const bounds = { width: 1116, height: 160 };
     const effortHeight = 148;
