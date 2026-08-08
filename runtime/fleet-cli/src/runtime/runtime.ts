@@ -61,6 +61,7 @@ export async function createFleetCliRuntime(
         models: selection.models,
         effortExposure: selection.effortExposure,
         ...(selection.defaultModel ? { defaultModel: selection.defaultModel } : {}),
+        ...(selection.providerPriority ? { providerPriority: selection.providerPriority } : {}),
       };
     },
     readQuota: async () => {

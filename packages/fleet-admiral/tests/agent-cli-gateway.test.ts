@@ -107,6 +107,28 @@ describe("claude-gateway custom agents", () => {
     }
   });
 
+  it("embeds CursorBench figures and a role-fit sentence in each identity description", () => {
+    const solHigh = buildGatewayCustomAgents([requireGatewayModel("codex--gpt-5.6-sol-fast")])["codex-gpt-5-6-sol-fast-1m-high"];
+    expect(solHigh?.description).toContain("Bench CursorBench 3.2: 63.5% at high effort, ~14k tokens/task.");
+    expect(solHigh?.description).toContain("Class prior: judgment-seat candidate (decide, judge, synthesize) — the figures above, not the label, set its band.");
+
+    const lunaHigh = buildGatewayCustomAgents([requireGatewayModel("codex--gpt-5.6-luna-fast")])["codex-gpt-5-6-luna-fast-1m-high"];
+    expect(lunaHigh?.description).toContain("Class prior: light lineup — fits wide mechanical fans (recon, scan, extract, verify), though measured figures can still earn a band seat.");
+
+    const minimax = buildGatewayCustomAgents([requireGatewayModel("opencode--minimax-m3")])["opencode-minimax-m3-1m"];
+    expect(minimax?.description).toContain("Bench SWE-rebench 2026-07: 47.2% overall, ~13.9M tokens/task.");
+
+    for (const definition of Object.values(buildGatewayCustomAgents([requireGatewayModel("cursor--grok-4.5")]))) {
+      expect(definition.description).toContain("score carries a caveat");
+    }
+
+    const flash = Object.values(buildGatewayCustomAgents([requireGatewayModel("opencode--deepseek-v4-flash")]));
+    expect(flash.length).toBeGreaterThan(0);
+    for (const definition of flash) {
+      expect(definition.description).toContain("No bench evidence; capability class is the only prior.");
+    }
+  });
+
   it("registers gateway identities as plugin agent files, and never disables a built-in agent", async () => {
     const root = createTempRoot("fleet-admiral-gateway-agents-");
     const model = requireGatewayModel("cursor--claude-opus-5");

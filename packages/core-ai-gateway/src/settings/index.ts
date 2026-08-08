@@ -39,6 +39,12 @@ export interface AiGatewayStoredSettings {
    * 토글이 꺼지지 않는 결함이 된다.
    */
   readonly wireLogEnabled?: boolean;
+  /**
+   * The user's opt-in ordered preference for which provider allowances to spend
+   * first. It weights the allowance axis of run distribution only and never
+   * overrides quality evidence; absent means no preference.
+   */
+  readonly providerPriority?: readonly GatewayProvider[];
 }
 
 export interface AiGatewayUpdateValue {
@@ -52,7 +58,13 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
     ? value.models
       .filter((entry): entry is AiGatewayStoredModel =>
         isRecord(entry) && typeof entry.id === "string" && entry.id.length > 0)
-      .map((entry) => {
+      .flatMap((entry) => {
+        // 카탈로그를 떠난 모델은 저장에서도 접는다. 남겨두면 GET이 stale id를 클라이언트로
+        // 돌려보내고 클라이언트는 무관한 편집에도 전체 선택을 되돌려 보내므로, 검증기가
+        // 그 id를 거부해 모델을 지우기 전까지 AI Gateway 저장 전체가 400으로 잠긴다 —
+        // 아래 사다리-밖 단계 접기와 같은 규율의 모델 축이다.
+        const model = findGatewayModel(entry.id);
+        if (!model) return [];
         const efforts = Array.isArray(entry.efforts)
           ? entry.efforts.filter((level): level is string => typeof level === "string" && level.length > 0)
           : [];
@@ -62,21 +74,39 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
         // 하나 빼는 순간 그 모델을 지우기 전까지 AI Gateway 저장 전체가 400으로 잠긴다.
         // 빈 배열도 저장하지 않는다 — "정체성 0개"는 노출해 놓고 쓸 수 없는 모델이 된다.
         // 부재와 같은 뜻(사다리 전체)으로 접는다.
-        const model = efforts.length > 0 ? findGatewayModel(entry.id) : undefined;
-        const exposed = model ? narrowEffortLadder(model, efforts) : undefined;
-        return exposed ? { id: entry.id, efforts: [...exposed] } : { id: entry.id };
+        const exposed = efforts.length > 0 ? narrowEffortLadder(model, efforts) : undefined;
+        return [exposed ? { id: entry.id, efforts: [...exposed] } : { id: entry.id }];
       })
     : [];
+  // 기본 모델도 카탈로그 부재면 접는다 — stale 기본값 하나가 이후 모든 저장을 400으로 막는다.
   const defaultModel = typeof value.defaultModel === "string" && value.defaultModel.length > 0
+    && findGatewayModel(value.defaultModel)
     ? value.defaultModel
     : undefined;
+  const providerPriority = sanitizeProviderPriority(value.providerPriority);
   return {
     version: 1,
     ...(models.length > 0 ? { models } : {}),
     ...(defaultModel !== undefined ? { defaultModel } : {}),
     ...(value.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
     ...(typeof value.wireLogEnabled === "boolean" ? { wireLogEnabled: value.wireLogEnabled } : {}),
+    ...(providerPriority ? { providerPriority: [...providerPriority] } : {}),
   };
+}
+
+function sanitizeProviderPriority(value: unknown): readonly GatewayProvider[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const seen = new Set<GatewayProvider>();
+  const cleaned: GatewayProvider[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    if (!GATEWAY_PROVIDERS.includes(entry as GatewayProvider)) continue;
+    const provider = entry as GatewayProvider;
+    if (seen.has(provider)) continue;
+    seen.add(provider);
+    cleaned.push(provider);
+  }
+  return cleaned.length > 0 ? cleaned : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -100,6 +130,8 @@ export interface AiGatewaySelection {
   readonly effortExposure: GatewayEffortExposure;
   /** Resolved session-default model, when configured and exposed. */
   readonly defaultModel: GatewayModel | undefined;
+  /** Opt-in provider allowance spend order; absent means no preference. */
+  readonly providerPriority: readonly GatewayProvider[] | undefined;
 }
 
 export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | undefined): AiGatewaySelection {
@@ -118,7 +150,7 @@ export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | un
   const models = sortGatewayModelsByProvider(enabled);
   const configuredDefault = settings?.defaultModel ? findGatewayModel(settings.defaultModel) : undefined;
   const defaultModel = configuredDefault && models.includes(configuredDefault) ? configuredDefault : undefined;
-  return { models, effortExposure, defaultModel };
+  return { models, effortExposure, defaultModel, providerPriority: settings?.providerPriority };
 }
 
 /**

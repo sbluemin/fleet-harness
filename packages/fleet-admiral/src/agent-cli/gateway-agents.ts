@@ -23,6 +23,7 @@ import {
   type GatewayCapabilityClass,
   type GatewayEffortExposure,
   type GatewayModel,
+  type GatewayModelBenchmark,
   type GatewayReasoningEffort,
 } from "@dotobokuri/core-ai-gateway";
 
@@ -116,7 +117,13 @@ export function buildGatewayCustomAgents(
       for (const effort of exposedEffortLadder(model.id, constraints.effortLadder, exposure)) {
         const name = toGatewayAgentName(modelId, effort);
         agents[name] = {
-          description: gatewayAgentDescription(modelId, toGatewayAgentSelector(modelId, effort), constraints.capabilityClass, effort),
+          description: gatewayAgentDescription({
+            modelId,
+            selector: toGatewayAgentSelector(modelId, effort),
+            capabilityClass: constraints.capabilityClass,
+            effort,
+            benchmark: constraints.benchmark,
+          }),
           prompt: GENERAL_PURPOSE_AGENT_PROMPT,
           model: modelId,
           effort,
@@ -126,7 +133,12 @@ export function buildGatewayCustomAgents(
     }
     const name = toGatewayAgentName(modelId);
     agents[name] = {
-      description: gatewayAgentDescription(modelId, toGatewayAgentSelector(modelId), constraints.capabilityClass),
+      description: gatewayAgentDescription({
+        modelId,
+        selector: toGatewayAgentSelector(modelId),
+        capabilityClass: constraints.capabilityClass,
+        benchmark: constraints.benchmark,
+      }),
       prompt: GENERAL_PURPOSE_AGENT_PROMPT,
       model: modelId,
     };
@@ -189,24 +201,83 @@ export function toGatewayAgentName(modelId: string, effort?: GatewayReasoningEff
 /**
  * 이 문자열은 호스트가 identity를 고를 때 읽는 유일한 신호다. 이름과 모델 id는 철자가
  * 다르고 서로 대체되지 않으므로, 둘을 잇는 문장이 여기 없으면 그 매핑은 어디에도 없다.
+ * Bench·fit 문장은 정체성마다 달라지는 유일한 품질 신호이므로 로스터를 다시 열기 전에
+ * 이름만으로도 대역을 가를 수 있게 싣는다.
  */
-function gatewayAgentDescription(
-  modelId: string,
-  selector: string,
-  capabilityClass?: GatewayCapabilityClass,
-  effort?: GatewayReasoningEffort,
-): string {
+function gatewayAgentDescription(input: {
+  readonly modelId: string;
+  readonly selector: string;
+  readonly capabilityClass?: GatewayCapabilityClass;
+  readonly effort?: GatewayReasoningEffort;
+  readonly benchmark?: GatewayModelBenchmark;
+}): string {
+  const { modelId, selector, capabilityClass, effort, benchmark } = input;
   const effortPart = effort === undefined ? "no effort control" : `effort ${effort}`;
   // class 는 판단석 배정의 prior 라서 첫 문장에 실린다 — 여기 없으면 호스트는
   // 정체성을 고르는 순간에 로스터를 다시 열지 않는 한 등급을 볼 수 없다.
   const classPart = capabilityClass === undefined ? "no capability class" : `${capabilityClass} class`;
-  return [
+  const sentences = [
     `Gateway model ${modelId}, ${classPart}, ${effortPart}.`,
+  ];
+  const benchSentence = gatewayAgentBenchSentence(benchmark, effort, capabilityClass);
+  if (benchSentence !== undefined) sentences.push(benchSentence);
+  const fitSentence = gatewayAgentFitSentence(capabilityClass);
+  if (fitSentence !== undefined) sentences.push(fitSentence);
+  sentences.push(
     "Fleet execution agent that runs one mode — recon, decide, implement, or verify. Name the mode in the task.",
     "Use after calling gateway_models when this roster entry fits the stage.",
     `Select this identity by the agent type name ${selector}, colon included. The model id above is a value for a model field and is rejected wherever a name is expected.`,
-    ...(effort === undefined
-      ? []
-      : [`That name already carries ${effort}, so pinning a reasoning effort alongside it is redundant.`]),
-  ].join(" ");
+  );
+  if (effort !== undefined) {
+    sentences.push(`That name already carries ${effort}, so pinning a reasoning effort alongside it is redundant.`);
+  }
+  return sentences.join(" ");
+}
+
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return `${Math.round(n / 100_000) / 10}M`;
+  return n >= 1000 ? `${Math.round(n / 1000)}k` : `${n}`;
+}
+
+function gatewayAgentBenchSentence(
+  benchmark: GatewayModelBenchmark | undefined,
+  effort: GatewayReasoningEffort | undefined,
+  capabilityClass: GatewayCapabilityClass | undefined,
+): string | undefined {
+  const caveatClause = benchmark?.caveat
+    ? "; score carries a caveat — read it via gateway_models before trusting it"
+    : "";
+  if (effort !== undefined) {
+    const figures = benchmark?.rungs?.[effort];
+    if (figures) {
+      return `Bench ${benchmark!.source}: ${figures.score}% at ${effort} effort, ~${formatTokenCount(figures.tokensPerTask)} tokens/task${caveatClause}.`;
+    }
+    if (benchmark) {
+      return `No bench figure at ${effort}; capability class is the prior at this rung.`;
+    }
+  } else if (benchmark?.overall) {
+    return `Bench ${benchmark.source}: ${benchmark.overall.score}% overall, ~${formatTokenCount(benchmark.overall.tokensPerTask)} tokens/task${caveatClause}.`;
+  } else if (benchmark?.rungs) {
+    const scores = Object.values(benchmark.rungs).map((rung) => rung.score);
+    return `Bench ${benchmark.source}: ${Math.min(...scores)}%–${Math.max(...scores)}% across measured rungs, serving rung unknown${caveatClause}.`;
+  }
+  if (!benchmark && capabilityClass !== undefined) {
+    return "No bench evidence; capability class is the only prior.";
+  }
+  return undefined;
+}
+
+function gatewayAgentFitSentence(capabilityClass: GatewayCapabilityClass | undefined): string | undefined {
+  // class 만으로 fit 을 단정하면 측정 우선 독트린과 모순된다. 실측된 light rung 이
+  // 실측된 flagship 보다 높은 band 에 들 수 있으므로, class 는 명시적으로 약한 prior 다.
+  switch (capabilityClass) {
+    case "flagship":
+      return "Class prior: judgment-seat candidate (decide, judge, synthesize) — the figures above, not the label, set its band.";
+    case "standard":
+      return "Class prior: mid lineup — measured figures outrank this label in either direction.";
+    case "light":
+      return "Class prior: light lineup — fits wide mechanical fans (recon, scan, extract, verify), though measured figures can still earn a band seat.";
+    default:
+      return undefined;
+  }
 }

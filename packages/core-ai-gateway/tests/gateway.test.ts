@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ANTHROPIC_SSE_KEEPALIVE_INTERVAL_MS,
   AnthropicMessagesGateway,
+  GATEWAY_BENCHMARKS_STAMP,
   GATEWAY_MODELS,
   CODEX_SUBSCRIPTION_MODELS,
   CURSOR_SUBSCRIPTION_MODELS,
@@ -13,7 +14,9 @@ import {
   clampReasoningEffort,
   findGatewayModel,
   gatewayModelIdentity,
+  parseGatewayBenchmarksRegistry,
   parseGatewayModelsRegistry,
+  validateBenchmarkCoverage,
   projectAnthropicResponseUsage,
   resolveCursorUpstreamModelId,
   resolveGatewayModel,
@@ -684,10 +687,120 @@ describe("model catalog", () => {
     }
   });
 
+  it("resolves benchmark evidence from benchmarks.json", () => {
+    const base = findGatewayModel("codex--gpt-5.6-sol");
+    const fast = findGatewayModel("codex--gpt-5.6-sol-fast");
+    expect(base?.benchmark).toBeDefined();
+    expect(fast?.benchmark).toEqual(base?.benchmark);
+    expect(base?.benchmark?.source).toBe("CursorBench 3.2");
+
+    const cursorKimi = findGatewayModel("cursor--kimi-k3");
+    const moonshotKimi = findGatewayModel("kimi--k3");
+    expect(cursorKimi?.benchmark?.rungs && Object.keys(cursorKimi.benchmark.rungs).sort()).toEqual(["high", "low"]);
+    expect(moonshotKimi?.benchmark?.rungs && Object.keys(moonshotKimi.benchmark.rungs).sort()).toEqual(["high", "low", "max"]);
+
+    const minimax = findGatewayModel("opencode--minimax-m3");
+    expect(minimax?.benchmark).toMatchObject({
+      source: "SWE-rebench 2026-07",
+      overall: { score: 47.2, tokensPerTask: 13_869_459 },
+    });
+    expect(minimax?.benchmark?.overall).not.toHaveProperty("stepsPerTask");
+
+    const deepseek = findGatewayModel("opencode--deepseek-v4-pro");
+    expect(deepseek?.benchmark?.caveat).toContain("high reasoning setting");
+
+    const glm = findGatewayModel("opencode--glm-5.2");
+    expect(glm?.benchmark?.source).toBe("CursorBench 3.2");
+    expect(glm?.benchmark?.rungs && Object.keys(glm.benchmark.rungs).sort()).toEqual(["high", "max"]);
+    expect(glm?.benchmark?.caveat).toContain("effort control");
+
+    expect(GATEWAY_BENCHMARKS_STAMP).toContain("cursorbench:");
+    expect(GATEWAY_BENCHMARKS_STAMP).toContain("swe-rebench:");
+    expect(findGatewayModel("cursor--auto")?.benchmark).toBeUndefined();
+    expect(findGatewayModel("cursor--grok-4.5-fast")?.benchmark).toBeUndefined();
+
+    const constraints = buildGatewayModelConstraints(findGatewayModel("codex--gpt-5.6-sol")!);
+    expect(constraints.benchmark).toEqual(base?.benchmark);
+  });
+
+  it("rejects invalid benchmark registry wiring", () => {
+    expect(() => parseGatewayBenchmarksRegistry({
+      version: 2,
+      sources: {
+        known: {
+          name: "Known",
+          benchVersion: "1",
+          observedAt: "2026-08-08T00:00:00Z",
+          url: "https://example.com",
+          method: "fixture",
+          noiseBandPoints: 1,
+        },
+      },
+      models: {
+        orphaned: {
+          source: "missing",
+          overall: { score: 50, tokensPerTask: 1000 },
+        },
+      },
+    })).toThrow(/names an unknown source/);
+
+    const noResolvedFigures = minimalRegistry();
+    noResolvedFigures.providers.codex.models[0] = {
+      modelId: "codex-model",
+      name: "Model",
+      capabilityClass: "standard",
+      effort: { supported: true, levels: ["low"] },
+      benchmarkKey: "glm-5.2",
+    };
+    expect(() => parseGatewayModelsRegistry(noResolvedFigures)).toThrow(/resolves to no rungs or overall/);
+
+    const aliasWithKey = minimalRegistry();
+    aliasWithKey.providers.cursor.models[0] = {
+      modelId: "auto",
+      name: "Auto",
+      providerModelId: "default",
+      benchmarkKey: "gpt-5.6-sol",
+    };
+    expect(() => parseGatewayModelsRegistry(aliasWithKey)).toThrow(/routing alias cannot carry a benchmark key/);
+
+    const siblingDivergence = minimalRegistry();
+    siblingDivergence.providers.codex.models = [
+      { modelId: "codex-model", name: "Model", capabilityClass: "standard", benchmarkKey: "gpt-5.6-sol" },
+      {
+        modelId: "codex-model-fast",
+        name: "Model Fast",
+        providerModelId: "codex-model",
+        serviceTier: "priority",
+        capabilityClass: "standard",
+        benchmarkKey: "gpt-5.6-terra",
+      },
+    ];
+    expect(() => parseGatewayModelsRegistry(siblingDivergence)).toThrow(/sibling benchmark key differs from its base/);
+
+    const unknownKey = minimalRegistry();
+    unknownKey.providers.codex.models[0] = {
+      modelId: "codex-model",
+      name: "Model",
+      capabilityClass: "standard",
+      benchmarkKey: "missing-bench-key",
+    };
+    expect(() => parseGatewayModelsRegistry(unknownKey)).toThrow(/benchmark key is unknown/);
+
+    const orphanBench = minimalRegistry();
+    orphanBench.providers.codex.models[0] = {
+      modelId: "codex-model",
+      name: "Model",
+      capabilityClass: "standard",
+      benchmarkKey: "claude-fable-5",
+    };
+    expect(() => validateBenchmarkCoverage(parseGatewayModelsRegistry(orphanBench))).toThrow(/benchmark entry is orphaned/);
+  });
+
   it("contains only the approved latest provider families", () => {
     expect(CODEX_SUBSCRIPTION_MODELS).toHaveLength(6);
     expect(CURSOR_SUBSCRIPTION_MODELS).toHaveLength(10);
     expect(KIMI_SUBSCRIPTION_MODELS).toHaveLength(2);
+    expect(OPENCODE_SUBSCRIPTION_MODELS).toHaveLength(11);
     expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.upstreamId?.startsWith("gpt-5.6-"))).toBe(true);
     expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.contextWindow === 272_000)).toBe(true);
     expect(CURSOR_SUBSCRIPTION_MODELS.map((model) => model.upstreamId)).toEqual([
@@ -724,24 +837,13 @@ describe("model catalog", () => {
     // Anthropic passthrough, 그 외에는 선언된 네이티브 wire의 번역 경로를 탄다.
     expect(OPENCODE_SUBSCRIPTION_MODELS.map((model) => [model.upstreamId, model.wire ?? "anthropic"])).toEqual([
       ["minimax-m3", "anthropic"],
-      ["minimax-m2.7", "anthropic"],
-      ["minimax-m2.5", "anthropic"],
       ["qwen3.8-max", "anthropic"],
-      ["qwen3.7-max", "anthropic"],
-      ["qwen3.7-plus", "anthropic"],
-      ["qwen3.6-plus", "anthropic"],
-      ["qwen3.5-plus", "anthropic"],
       ["gpt-5.6-luna", "responses"],
       ["grok-4.5", "responses"],
       ["deepseek-v4-flash", "chat-completions"],
       ["deepseek-v4-pro", "chat-completions"],
       ["glm-5.2", "chat-completions"],
-      ["glm-5.1", "chat-completions"],
-      ["glm-5", "chat-completions"],
       ["kimi-k3", "chat-completions"],
-      ["kimi-k2.7-code", "chat-completions"],
-      ["kimi-k2.6", "chat-completions"],
-      ["kimi-k2.5", "chat-completions"],
       ["mimo-v2.5-pro", "chat-completions"],
       ["mimo-v2.5", "chat-completions"],
       ["hy3", "chat-completions"],

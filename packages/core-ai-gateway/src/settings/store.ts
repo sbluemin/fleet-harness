@@ -129,6 +129,9 @@ export function createAiGatewaySettingsStore(
       version: 1,
       ...(current.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
       ...(typeof current.wireLogEnabled === "boolean" ? { wireLogEnabled: current.wireLogEnabled } : {}),
+      // 우선순위는 이 update 계약이 나르지 않는 별도 표면의 설정이다. 이월하지 않으면
+      // 무관한 모델 노출 저장 한 번이 사용자의 소진 순서를 지운다.
+      ...(current.providerPriority ? { providerPriority: current.providerPriority } : {}),
       ...(value ?? {}),
     })),
     writeCursorDiagnosticsEnabled: (enabled) => update((current) => normalizeAiGatewaySettings({

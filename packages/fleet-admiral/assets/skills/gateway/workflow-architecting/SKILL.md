@@ -28,7 +28,7 @@ Propose runs blind: each proposer sees the constraints, never the other proposal
 
 ## Capability Classes
 
-Propose is the ceiling of the whole run: Judge only selects among what was proposed, and Commit only grafts what exists, so quality lost in a Propose seat is unrecoverable downstream. Propose, Judge, and Commit are all judgment seats — each keeps to the highest `capabilityClass` reachable (`workflow`, judgment regime), and diversity among proposers means diverse approaches and lineages **within** that class, never a lighter model in a seat. When too few class-eligible identities exist, shrink the panel or repeat-seat one blind — two strong proposals outweigh three where one is weak. Ground is mechanical: distribute it by allowance.
+Propose is the ceiling of the whole run: Judge only selects among what was proposed, and Commit only grafts what exists, so quality lost in a Propose seat is unrecoverable downstream. Propose, Judge, and Commit are all judgment seats — each keeps to the top quality band reachable, `benchmark` evidence first and the `capabilityClass` prior where unmeasured (`workflow`, judgment regime), and diversity among proposers means diverse approaches and lineages **within** that band, never a below-band model in a seat. When too few band-eligible identities exist, shrink the panel or repeat-seat one blind — two strong proposals outweigh three where one is weak. Ground is mechanical: distribute it by allowance.
 
 ## Fixed Judging Axes
 
@@ -45,7 +45,7 @@ Do not add an axis after seeing the proposals. An axis invented mid-run is usual
 ## Rules
 
 - **Ground first, and cite it.** A proposer that has not been told the binding constraints will invent a clean design that violates one. The constraints go into every proposer's prompt verbatim.
-- **Mixed lineage in Judge.** Judges that share a model lineage with each other, or with the session model, share blind spots. This is the one stage where lineage diversity earns its cost — and it diversifies within the class the judgment regime sets, never below it.
+- **Mixed lineage in Judge.** Judges that share a model lineage with each other, or with the session model, share blind spots. This is the one stage where lineage diversity earns its cost — and it diversifies within the band the judgment regime sets, never below it.
 - **A proposal that hedges is disqualified.** "Either A or B depending on…" is a proposer refusing to decide. Send it back or drop it; do not let the synthesis inherit the hedge.
 - **Name the cost, not just the choice.** A committed approach with no stated cost was not judged, only preferred.
 - **Silent-failure modes lose.** Between two approaches of similar merit, prefer the one whose breakage raises an error over the one that degrades quietly — a wrong answer nobody notices is worse than a loud stop.

@@ -10,11 +10,13 @@
  */
 
 import {
+  GATEWAY_BENCHMARKS_STAMP,
   GATEWAY_MODELS_UPDATED_AT,
   buildGatewayModelConstraints,
   toClaudeGatewayModelId,
   type GatewayModel,
   type GatewayModelConstraints,
+  type GatewayProvider,
 } from "@dotobokuri/core-ai-gateway";
 import { createHash } from "node:crypto";
 
@@ -161,6 +163,12 @@ export interface GatewayLoadout {
   readonly revision: string;
   readonly catalogUpdatedAt: string;
   /**
+   * The user's opt-in ordered spend preference across providers; it weights the
+   * allowance axis only and never overrides quality evidence; absent when the
+   * user set none.
+   */
+  readonly providerPriority?: readonly GatewayProvider[];
+  /**
    * Keyed by provider id. Each model sits under the allowance it spends, so the
    * window to read against a model is the one in the same entry — no join.
    * `constraints.quotaScope`, where a provider splits into pools, still selects
@@ -176,6 +184,8 @@ export interface BuildGatewayLoadoutInput {
   readonly effortExposure?: GatewayEffortExposure;
   readonly defaultModel?: GatewayModel;
   readonly quota?: GatewayQuotaSnapshot;
+  /** The user's opt-in ordered spend preference across providers; weights the allowance axis only. */
+  readonly providerPriority?: readonly GatewayProvider[];
   /** Injectable clock for derived quota metrics; defaults to Date.now. */
   readonly now?: () => number;
 }
@@ -190,10 +200,14 @@ export function buildGatewayLoadout(input: BuildGatewayLoadoutInput): GatewayLoa
     provider: model.provider as string,
     entry: toLoadoutModel(model, input.defaultModel, input.effortExposure),
   }));
+  const providerPriority = input.providerPriority
+    ? Object.freeze([...input.providerPriority])
+    : undefined;
   return {
-    revision: loadoutRevision(placed.map(({ entry }) => entry)),
+    revision: loadoutRevision(placed.map(({ entry }) => entry), providerPriority),
     catalogUpdatedAt: GATEWAY_MODELS_UPDATED_AT,
     providers: buildProviders(placed, input.quota, input.now ?? Date.now),
+    ...(providerPriority ? { providerPriority } : {}),
   };
 }
 
@@ -348,13 +362,22 @@ function enrichQuotaWindow(window: GatewayQuotaWindow, at: number): GatewayLoado
 // The rung set belongs in the material for the mirror reason: narrowing a
 // model's exposed levels changes which identities exist, and a revision that
 // stayed equal across that edit would report the roster as unchanged.
-function loadoutRevision(models: readonly GatewayLoadoutModel[]): string {
+// providerPriority is included because it is a deliberate Settings edit like
+// exposure — a host that pinned a fan under one spend order must see the roster
+// changed. Benchmark evidence is part of the catalog, so a bench refresh must
+// move the revision even when the model registry itself is unchanged.
+function loadoutRevision(
+  models: readonly GatewayLoadoutModel[],
+  priority?: readonly GatewayProvider[],
+): string {
   const material = [
     GATEWAY_MODELS_UPDATED_AT,
+    `bench:${GATEWAY_BENCHMARKS_STAMP}`,
     ...models
       .map((model) =>
         `${model.modelId}:${model.isSessionDefault ? "1" : "0"}:${model.constraints.effortLadder.join("+")}`)
       .sort(),
+    `priority:${(priority ?? []).join(">")}`,
   ].join("\n");
   return createHash("sha256").update(material).digest("hex").slice(0, 12);
 }
