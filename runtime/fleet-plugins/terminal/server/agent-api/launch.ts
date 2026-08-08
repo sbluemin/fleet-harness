@@ -222,7 +222,7 @@ async function createAgentCliLaunchSpec(options: {
     }
     const cliId = resolveAgentCliId(options.env, { cliId: options.cliId });
     // gateway Agent 주입과 ANTHROPIC_MODEL/cache는 같은 selection을 공유한다.
-    // resolveProfile보다 먼저 읽어 명시 모델 검증·`--agents`·cache가 한 스냅샷을 공유한다.
+    // resolveProfile보다 먼저 읽어 명시 모델 검증·Agent 정의 렌더·cache가 한 스냅샷을 공유한다.
     const gatewaySelection = cliId === "claude-gateway" && options.readAiGatewaySettings
       ? resolveAiGatewaySelection(options.readAiGatewaySettings())
       : undefined;

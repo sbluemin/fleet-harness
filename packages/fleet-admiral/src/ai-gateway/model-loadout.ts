@@ -20,7 +20,7 @@ import { createHash } from "node:crypto";
 
 import {
   exposedEffortLadder,
-  toGatewayAgentName,
+  toGatewayAgentSelector,
   type GatewayEffortExposure,
 } from "../agent-cli/gateway-agents.js";
 
@@ -230,10 +230,10 @@ function toAgentTypeSelectors(
   constraints: GatewayLoadoutConstraints,
 ): GatewayAgentTypeSelectors {
   if (!constraints.effortSupported) {
-    return Object.freeze({ none: toGatewayAgentName(id) });
+    return Object.freeze({ none: toGatewayAgentSelector(id) });
   }
   return Object.freeze(Object.fromEntries(
-    constraints.effortLadder.map((effort) => [effort, toGatewayAgentName(id, effort)]),
+    constraints.effortLadder.map((effort) => [effort, toGatewayAgentSelector(id, effort)]),
   ));
 }
 

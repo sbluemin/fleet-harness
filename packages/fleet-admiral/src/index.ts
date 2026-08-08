@@ -101,11 +101,15 @@ export {
 } from "./agent-cli/injection.js";
 
 export {
+  FLEET_PLUGIN_NAME,
   GENERAL_PURPOSE_AGENT_PROMPT,
+  buildGatewayAgentFiles,
   buildGatewayCustomAgents,
   toGatewayAgentName,
+  toGatewayAgentSelector,
   type ClaudeCustomAgentDefinition,
   type ClaudeCustomAgents,
+  type GatewayAgentFile,
   type GatewayEffortExposure,
 } from "./agent-cli/gateway-agents.js";
 

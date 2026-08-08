@@ -113,6 +113,9 @@ export async function injectAgentCliProfile(
       inputWaitingHookExec: options.inputWaitingHookExec,
       backgroundReportHookExec: options.backgroundReportHookExec,
       autoNameHookExec: options.autoNameHookExec,
+      // 게이트웨이 정체성은 플러그인이 파일로 싣는다 — argv에는 이미 있던 플러그인 경로만 남는다.
+      gatewayExposedModels: options.gatewayExposedModels,
+      gatewayEffortExposure: options.gatewayEffortExposure,
       withMarketplaceLock: options.withMarketplaceLock,
     });
     const cleanup = createOnceCleanup(() => {
@@ -124,13 +127,7 @@ export async function injectAgentCliProfile(
     });
     options.onCleanup?.(cleanup);
     const gatewayAgents = profile.id === "claude-gateway"
-      ? {
-        customAgents: buildGatewayCustomAgents(
-          options.gatewayExposedModels ?? [],
-          options.gatewayEffortExposure,
-        ),
-        skillOverrides: buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS),
-      }
+      ? { skillOverrides: buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS) }
       : {};
     const context: AgentCliInjectionContext = {
       cliId: profile.id,

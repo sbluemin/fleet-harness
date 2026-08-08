@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -6,6 +6,7 @@ import { findGatewayModel } from "@dotobokuri/core-ai-gateway";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  FLEET_PLUGIN_NAME,
   GATEWAY_DISABLED_CLAUDE_SKILLS,
   GENERAL_PURPOSE_AGENT_PROMPT,
   buildDisabledSkillOverrides,
@@ -86,7 +87,7 @@ describe("claude-gateway custom agents", () => {
       expect(agent.description).not.toMatch(/researching complex questions/i);
       // 이름과 모델 id는 철자가 다르고 서로 대체되지 않는다. 이 문장이 사라지면 둘을 잇는
       // 자리가 없어지고, 이름을 요구하는 자리에 모델 id를 넣는 실패로 되돌아간다.
-      expect(agent.description).toContain(`agent type name ${name}`);
+      expect(agent.description).toContain(`agent type name ${FLEET_PLUGIN_NAME}:${name}`);
     }
     const withEffort = names.find((name) => name.endsWith("-high"));
     expect(withEffort).toBeDefined();
@@ -106,7 +107,7 @@ describe("claude-gateway custom agents", () => {
     }
   });
 
-  it("injects --agents only for claude-gateway, and never disables a built-in agent", async () => {
+  it("registers gateway identities as plugin agent files, and never disables a built-in agent", async () => {
     const root = createTempRoot("fleet-admiral-gateway-agents-");
     const model = requireGatewayModel("cursor--claude-opus-5");
     const gateway = baseProfile("claude-gateway", {
@@ -131,29 +132,31 @@ describe("claude-gateway custom agents", () => {
     // 상속(unpinned) 위임이 막혀 세션 자신의 모델로 도는 작업을 만들 수 없다.
     expect(injectedGateway.args).not.toContain("--disallowedTools");
 
-    const agentsIndex = injectedGateway.args.indexOf("--agents");
-    expect(agentsIndex).toBeGreaterThanOrEqual(0);
-    const agentsJson = injectedGateway.args[agentsIndex + 1];
-    expect(typeof agentsJson).toBe("string");
-    const agents = JSON.parse(agentsJson as string) as Record<string, {
-      model: string;
-      prompt: string;
-      effort?: string;
-    }>;
-    expect(Object.keys(agents).length).toBeGreaterThan(0);
-    for (const agent of Object.values(agents)) {
-      expect(agent.model.startsWith("claude-gateway--")).toBe(true);
-      expect(agent.prompt).toBe(GENERAL_PURPOSE_AGENT_PROMPT);
-    }
-
-    expect(injectedNative.args).not.toContain("--disallowedTools");
+    // 정의가 argv에 실리면 Windows 명령줄 한도가 로스터 크기를 대신 정한다 — 정의 하나가
+    // 1.9KB쯤이라 스무 개만 노출해도 프롬프트를 싣기 전에 실행이 불가능해진다.
+    expect(injectedGateway.args).not.toContain("--agents");
     expect(injectedNative.args).not.toContain("--agents");
+    expect(injectedNative.args).not.toContain("--disallowedTools");
+
+    const files = readdirSync(agentsDirOf(injectedGateway));
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      // `:`는 플러그인 스코프 구분자로 예약돼 있어, 이름에 들어간 파일은 아예 적재되지 않는다.
+      expect(file).not.toContain(":");
+      const content = readFileSync(path.join(agentsDirOf(injectedGateway), file), "utf8");
+      expect(content.startsWith("---\n")).toBe(true);
+      expect(content).toContain(`name: ${JSON.stringify(file.replace(/\.md$/u, ""))}`);
+      expect(content).toContain('model: "claude-gateway--');
+      expect(content).toContain(GENERAL_PURPOSE_AGENT_PROMPT);
+    }
+    // native 세션은 게이트웨이 정체성을 하나도 얻지 않는다.
+    expect(readdirSync(agentsDirOf(injectedNative))).toEqual([]);
 
     injectedGateway.cleanup?.();
     injectedNative.cleanup?.();
   });
 
-  it("injects neither flag when no gateway models are exposed", async () => {
+  it("registers no identity when no gateway models are exposed", async () => {
     const root = createTempRoot("fleet-admiral-gateway-agents-empty-");
     const profile = baseProfile("claude-gateway", {
       args: [],
@@ -164,6 +167,7 @@ describe("claude-gateway custom agents", () => {
     // 노출 모델이 없으면 게이트웨이 세션은 내장 Agent만 가진 평범한 세션이다.
     expect(injected.args).not.toContain("--agents");
     expect(injected.args).not.toContain("--disallowedTools");
+    expect(readdirSync(agentsDirOf(injected))).toEqual([]);
     injected.cleanup?.();
   });
 });
@@ -221,6 +225,16 @@ function requireGatewayModel(id: string) {
   const model = findGatewayModel(id);
   if (!model) throw new Error(`missing gateway model fixture: ${id}`);
   return model;
+}
+
+/**
+ * 세션이 실제로 적재하는 정의가 놓인 자리. argv의 `--plugin-dir`를 따라가야 렌더가 실제
+ * 스폰이 가리키는 곳에 떨어졌는지까지 확인된다 — 경로를 따로 계산하면 그 연결이 빠진다.
+ */
+function agentsDirOf(profile: AgentCliProfile): string {
+  const index = profile.args.indexOf("--plugin-dir");
+  expect(index).toBeGreaterThanOrEqual(0);
+  return path.join(profile.args[index + 1]!, "agents");
 }
 
 function createTempRoot(prefix: string): string {

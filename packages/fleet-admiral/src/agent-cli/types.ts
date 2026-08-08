@@ -1,3 +1,5 @@
+import type { GatewayEffortExposure, GatewayModel } from "@dotobokuri/core-ai-gateway";
+
 import type { AdmiralDoctrine } from "../protocols/doctrine.js";
 import type { ClaudeSkillOverride } from "./gateway-skills.js";
 
@@ -71,16 +73,6 @@ export interface AgentCliMcpServerArg {
 export interface AgentCliInjectionContext {
   readonly cliId: AgentCliId;
   /**
-   * Claude Code `--agents` JSON object. Gateway sessions inject AI Gateway
-   * model/effort agents here without writing agent files.
-   */
-  readonly customAgents?: Readonly<Record<string, {
-    readonly description: string;
-    readonly prompt: string;
-    readonly model: string;
-    readonly effort?: string;
-  }>>;
-  /**
    * Claude Code `--settings`의 `skillOverrides` 맵. 세션이 싣지 않을 내장 스킬을
    * `off`로 넣는다. 프로세스 단위 필터라 서브에이전트 목록에도 함께 적용된다.
    */
@@ -132,6 +124,10 @@ export interface CreateAgentCliPluginOptions {
   readonly inputWaitingHookExec?: FleetHookExec;
   // 작전명 자동 작명(UserPromptSubmit)을 위해 prompt를 호스트로 전달하는 hook.
   readonly autoNameHookExec?: FleetHookExec;
+  // 사용자가 노출한 gateway 모델과 강도. claude-gateway 렌더만 읽어 `agents/` 정의를 만든다.
+  // 정의가 argv가 아니라 이 플러그인에 실리므로, 노출 목록은 스폰 인자가 아니라 렌더 입력이다.
+  readonly gatewayExposedModels?: readonly GatewayModel[];
+  readonly gatewayEffortExposure?: GatewayEffortExposure;
   readonly onCleanup?: (cleanup: () => void) => void;
   readonly rootDir?: string;
   readonly withMarketplaceLock: AgentCliPluginMarketplaceLock;

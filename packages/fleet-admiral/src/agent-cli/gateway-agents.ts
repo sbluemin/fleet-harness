@@ -1,9 +1,16 @@
 /**
- * gateway-agents — claude-gateway 스폰 시 주입하는 커스텀 Agent 정의.
+ * gateway-agents — claude-gateway 세션이 등록하는 Agent 정의.
  *
- * 파일 영속화 없이 `--agents`로만 전달한다. 모델 id는 반드시
- * `claude-gateway--*` 형태(toClaudeGatewayModelId)다. effort를 지원하는 모델은
- * ladder의 각 강도마다 Agent를 하나씩 만든다.
+ * 정의는 Fleet 플러그인의 `agents/` 디렉터리에 파일로 놓인다. 한때는 `--agents`
+ * JSON으로 argv에 실어 보냈는데, 정의 하나가 1.9KB쯤이고 모델×강도마다 하나씩
+ * 생기므로 로스터가 스무 개만 돼도 페이로드가 40KB에 이른다. Windows는 명령줄
+ * 전체가 CreateProcess에서 32,767자, npm `.cmd` shim처럼 cmd.exe를 경유하는
+ * 경로에서는 8,191자에서 잘리므로, 프롬프트를 한 글자도 싣기 전에 실행 자체가
+ * 불가능해진다. 파일로 옮기면 argv에는 이미 있던 `--plugin-dir` 경로만 남는다.
+ *
+ * 대가는 이름이다. 플러그인이 실은 Agent는 `<plugin>:<name>`으로 등록되므로
+ * 호스트가 고르는 철자가 `fleet:`을 얻는다 — 같은 플러그인이 싣는 스킬이 이미
+ * `fleet:workflow`로 불리는 것과 같은 규칙이다.
  *
  * 게이트웨이 정의는 Claude Code 내장 Agent를 대체하지 않고 그 옆에 놓인다.
  * 내장 Agent를 끄면 상속(unpinned) 위임 자체가 막혀, 게이트웨이 세션에서
@@ -40,6 +47,14 @@ export const GENERAL_PURPOSE_AGENT_PROMPT = [
   "Final reply: concise essentials only — mode, what changed or found, key evidence (path:line when relevant), and blockers/deviations.",
 ].join("\n");
 
+/**
+ * Fleet 플러그인이 선언하는 이름. Claude Code는 플러그인이 실은 Agent를
+ * `<plugin>:<name>`으로 등록하므로, 이 값이 곧 정체성 철자의 앞부분이다.
+ * 플러그인 매니페스트는 이 상수를 그대로 쓴다 — 둘이 갈라지면 호스트가 부르는
+ * 이름과 Claude Code가 등록한 이름이 조용히 어긋난다.
+ */
+export const FLEET_PLUGIN_NAME = "fleet";
+
 export interface ClaudeCustomAgentDefinition {
   readonly description: string;
   readonly prompt: string;
@@ -49,8 +64,14 @@ export interface ClaudeCustomAgentDefinition {
   readonly effort?: GatewayReasoningEffort;
 }
 
-/** Agent 이름 → 정의. `--agents` JSON 객체와 동일 형태. */
+/** Agent 이름(스코프 없는 파일 stem) → 정의. */
 export type ClaudeCustomAgents = Readonly<Record<string, ClaudeCustomAgentDefinition>>;
+
+/** 플러그인 `agents/` 아래에 놓일 파일 하나. */
+export interface GatewayAgentFile {
+  readonly fileName: string;
+  readonly content: string;
+}
 
 /**
  * Scoped gateway 모델 id(`kimi--k3-256k`) → 사용자가 정체성으로 내보낸 강도들.
@@ -95,7 +116,7 @@ export function buildGatewayCustomAgents(
       for (const effort of exposedEffortLadder(model.id, constraints.effortLadder, exposure)) {
         const name = toGatewayAgentName(modelId, effort);
         agents[name] = {
-          description: gatewayAgentDescription(modelId, name, constraints.capabilityClass, effort),
+          description: gatewayAgentDescription(modelId, toGatewayAgentSelector(modelId, effort), constraints.capabilityClass, effort),
           prompt: GENERAL_PURPOSE_AGENT_PROMPT,
           model: modelId,
           effort,
@@ -105,7 +126,7 @@ export function buildGatewayCustomAgents(
     }
     const name = toGatewayAgentName(modelId);
     agents[name] = {
-      description: gatewayAgentDescription(modelId, name, constraints.capabilityClass),
+      description: gatewayAgentDescription(modelId, toGatewayAgentSelector(modelId), constraints.capabilityClass),
       prompt: GENERAL_PURPOSE_AGENT_PROMPT,
       model: modelId,
     };
@@ -114,7 +135,42 @@ export function buildGatewayCustomAgents(
 }
 
 /**
- * Claude Code Agent 타입 키로 쓸 안전한 이름.
+ * 플러그인 `agents/`에 그대로 쓸 파일들. frontmatter의 `name`은 스코프 없는 stem이다 —
+ * Claude Code는 `:`를 스코프 구분자로 예약해 두어, 이름에 넣으면 그 파일을 아예 읽지 않는다.
+ *
+ * 값은 전부 JSON 문자열로 적는다. JSON은 YAML 1.2의 부분집합이라 따옴표·백슬래시·개행이
+ * 그대로 살고, `[1m]`처럼 흐름 시퀀스로 읽힐 수 있는 모델 id도 스칼라로 고정된다.
+ */
+export function buildGatewayAgentFiles(
+  exposed: readonly GatewayModel[],
+  exposure?: GatewayEffortExposure,
+): readonly GatewayAgentFile[] {
+  return Object.entries(buildGatewayCustomAgents(exposed, exposure)).map(([name, definition]) => ({
+    fileName: `${name}.md`,
+    content: [
+      "---",
+      `name: ${JSON.stringify(name)}`,
+      `description: ${JSON.stringify(definition.description)}`,
+      `model: ${JSON.stringify(definition.model)}`,
+      ...(definition.effort === undefined ? [] : [`effort: ${JSON.stringify(definition.effort)}`]),
+      "---",
+      "",
+      definition.prompt,
+      "",
+    ].join("\n"),
+  }));
+}
+
+/**
+ * 호스트가 정체성을 고를 때 쓰는 철자. 플러그인 스코프가 붙은 이 이름만 Agent 자리에
+ * 넣을 수 있고, 스코프 없는 stem은 파일 이름일 뿐이다.
+ */
+export function toGatewayAgentSelector(modelId: string, effort?: GatewayReasoningEffort): string {
+  return `${FLEET_PLUGIN_NAME}:${toGatewayAgentName(modelId, effort)}`;
+}
+
+/**
+ * Agent 파일 이름과 frontmatter `name`에 쓰는 stem.
  * `claude-gateway--cursor--claude-opus-5[1m]` + `high` → `cursor-claude-opus-5-1m-high`
  */
 export function toGatewayAgentName(modelId: string, effort?: GatewayReasoningEffort): string {
@@ -136,7 +192,7 @@ export function toGatewayAgentName(modelId: string, effort?: GatewayReasoningEff
  */
 function gatewayAgentDescription(
   modelId: string,
-  name: string,
+  selector: string,
   capabilityClass?: GatewayCapabilityClass,
   effort?: GatewayReasoningEffort,
 ): string {
@@ -148,7 +204,7 @@ function gatewayAgentDescription(
     `Gateway model ${modelId}, ${classPart}, ${effortPart}.`,
     "Fleet execution agent that runs one mode — recon, decide, implement, or verify. Name the mode in the task.",
     "Use after calling gateway_models when this roster entry fits the stage.",
-    `Select this identity by the agent type name ${name}. The model id above is a value for a model field and is rejected wherever a name is expected.`,
+    `Select this identity by the agent type name ${selector}, colon included. The model id above is a value for a model field and is rejected wherever a name is expected.`,
     ...(effort === undefined
       ? []
       : [`That name already carries ${effort}, so pinning a reasoning effort alongside it is redundant.`]),

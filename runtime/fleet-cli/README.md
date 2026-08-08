@@ -6,7 +6,7 @@ On startup it:
 
 - binds one in-process Fleet MCP server named `fleet` with Fleet Wiki tools and `gateway_models`;
 - injects that MCP endpoint into Claude Code through `--mcp-config`;
-- exposes configured gateway model × effort identities through Claude Code `--agents`;
+- registers configured gateway model × effort identities as agent files in the Fleet plugin, reachable as `fleet:<name>`;
 - serves the AI gateway on an ephemeral `127.0.0.1` port under `/ai-gateway`;
 - spawns Claude Code with inherited standard input, output, and error streams.
 
