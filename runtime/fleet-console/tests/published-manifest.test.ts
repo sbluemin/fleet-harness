@@ -13,6 +13,7 @@ describe("published Console manifest", () => {
         "@anthropic-ai/claude-agent-sdk": "^0.3.212",
         ws: "^8.18.0",
         "font-list": "^2.1.0",
+        selfsigned: "^5.5.0",
         "@fleet-console/desktop-protocol": "workspace:*",
       },
       devDependencies: {
@@ -29,6 +30,6 @@ describe("published Console manifest", () => {
       expect(Object.values(entries).some((value) => typeof value === "string" && value.startsWith("workspace:"))).toBe(false);
     }
     expect(manifest.devDependencies).toEqual({ typescript: "^6.0.2" });
-    expect(manifest.dependencies).toEqual({ "node-pty": "^1.0.0", "@anthropic-ai/claude-agent-sdk": "^0.3.212", ws: "^8.18.0", "font-list": "^2.1.0" });
+    expect(manifest.dependencies).toEqual({ "node-pty": "^1.0.0", "@anthropic-ai/claude-agent-sdk": "^0.3.212", ws: "^8.18.0", "font-list": "^2.1.0", selfsigned: "^5.5.0" });
   });
 });

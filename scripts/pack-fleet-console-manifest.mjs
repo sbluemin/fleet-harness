@@ -6,7 +6,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PKG_PATH = path.resolve(__dirname, "../runtime/fleet-console/package.json");
 const BACKUP_PATH = path.resolve(__dirname, "../runtime/fleet-console/.package.json.prepack-backup");
 const TEMP_PATH = path.resolve(__dirname, "../runtime/fleet-console/.package.json.prepack-tmp");
-const EXTERNAL_DEP_NAMES = ["node-pty", "ws", "font-list", "@anthropic-ai/claude-agent-sdk"];
+// 번들에 인라인되지 않고 산출물이 그대로 해석하려 드는 의존성. 빠뜨리면 게시본이 설치처에서
+// ERR_MODULE_NOT_FOUND로 죽으므로, check-dist-published-externals.mjs가 빌드마다 dist와 대조한다.
+const EXTERNAL_DEP_NAMES = ["node-pty", "ws", "font-list", "@anthropic-ai/claude-agent-sdk", "selfsigned"];
 
 if (process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const action = process.argv[2];
