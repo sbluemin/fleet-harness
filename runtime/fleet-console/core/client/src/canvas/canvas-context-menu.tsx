@@ -243,6 +243,27 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     return () => observer.disconnect();
   }, [openFlyout, viewportBounds]);
 
+  // Effort submenu uses the same measured-height clamp as the parent flyout —
+  // opening near the bottom would otherwise leave lower effort choices off-screen.
+  useLayoutEffect(() => {
+    const element = effortMenuRef.current;
+    if (!element || !viewportBounds || !openEffortRow) return;
+    const measure = () => {
+      const height = element.getBoundingClientRect().height;
+      const maxTop = Math.max(MENU_MARGIN, viewportBounds.height - height - MENU_MARGIN);
+      setEffortPosition((previous) => {
+        if (!previous || previous.id !== openEffortRow) return previous;
+        const nextTop = Math.max(MENU_MARGIN, Math.min(previous.top, maxTop));
+        return Math.abs(nextTop - previous.top) < 0.5 ? previous : { ...previous, top: nextTop };
+      });
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [openEffortRow, viewportBounds]);
+
   useEffect(() => {
     const handlePointer = (event: MouseEvent) => {
       const target = event.target as Node;

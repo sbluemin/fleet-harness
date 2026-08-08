@@ -64,6 +64,12 @@ describe("Quick Launch effort submenu layout", () => {
     const css = readFileSync(resolve(process.cwd(), "core/client/src/styles/components.css"), "utf8");
     expect(css).toMatch(/\.quick-launch-pop--model\s*\{\s*width:\s*264px;/u);
   });
+
+  it("styles the selected effort with aria-current to match the rendered attribute", () => {
+    const css = readFileSync(resolve(process.cwd(), "core/client/src/styles/components.css"), "utf8");
+    expect(css).toMatch(/\.quick-launch-effort-item\[aria-current="true"\]/u);
+    expect(css).not.toMatch(/\.quick-launch-effort-item\[aria-pressed="true"\]/u);
+  });
 });
 
 function renderMenu(): void {

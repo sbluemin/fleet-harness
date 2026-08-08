@@ -456,6 +456,34 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(top).toBeLessThanOrEqual(bounds.height - 300 - 12);
   });
 
+  it("clamps the effort submenu inside short vertical bounds", () => {
+    const bounds = { width: 1116, height: 160 };
+    const effortHeight = 148;
+    const previousGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function getBoundingClientRect(): DOMRect {
+      if (this.classList.contains("operation-launch-effort-menu")) {
+        return {
+          x: 0, y: 0, left: 0, top: 0, width: 148, height: effortHeight,
+          right: 148, bottom: effortHeight, toJSON: () => ({}),
+        };
+      }
+      return previousGetBoundingClientRect.call(this);
+    };
+    try {
+      renderMenu({ x: 520, y: 120 }, bounds, gatewayVariantCatalog());
+      const parent = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
+      act(() => parent.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+      const row = document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!;
+      act(() => row.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+
+      const effort = document.querySelector<HTMLElement>(".operation-launch-effort-menu")!;
+      // maxTop = max(12, 160 - 148 - 12) = 12 — anything taller must land on the margin.
+      expect(Number.parseFloat(effort.style.top)).toBe(12);
+    } finally {
+      Element.prototype.getBoundingClientRect = previousGetBoundingClientRect;
+    }
+  });
+
   it("opens the effort submenu from a model row, then restores focus with ArrowLeft", async () => {
     renderMenu({ x: 900, y: 156 }, { width: 1116, height: 856 }, gatewayVariantCatalog());
     const parent = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;

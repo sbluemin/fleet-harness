@@ -136,7 +136,12 @@ export function QuickLaunch() {
       closeQuickLaunch();
       return;
     }
-    if (event.key === "Tab") trapFocus(event, cardRef.current);
+    if (event.key === "Tab") {
+      // Portaled effort choices live outside cardRef; fold them into the modal cycle
+      // so Tab from the last effort item cannot escape behind the overlay.
+      const effortMenu = document.querySelector<HTMLElement>(".quick-launch-effort-menu");
+      trapFocus(event, cardRef.current, effortMenu);
+    }
   }, [closePopover, popover]);
 
   const handleInputKeyDown = useCallback((event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -425,9 +430,18 @@ function autoGrow(element: HTMLTextAreaElement): void {
   element.style.height = `${element.scrollHeight}px`;
 }
 
-function trapFocus(event: ReactKeyboardEvent<HTMLElement>, card: HTMLElement | null): void {
+function trapFocus(
+  event: ReactKeyboardEvent<HTMLElement>,
+  card: HTMLElement | null,
+  effortMenu: HTMLElement | null = null,
+): void {
   if (!card) return;
-  const focusable = Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((element) => element.offsetParent !== null);
+  // The effort submenu portals to document.body, so it sits outside the dialog
+  // tree; fold its buttons into the same Tab cycle as the card.
+  const focusable = [
+    ...Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
+    ...Array.from(effortMenu?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? []),
+  ].filter((element) => element.offsetParent !== null);
   if (focusable.length === 0) return;
   const first = focusable[0];
   const last = focusable[focusable.length - 1];
