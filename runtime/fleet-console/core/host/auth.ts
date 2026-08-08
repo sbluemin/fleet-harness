@@ -78,6 +78,12 @@ export interface AccessRegistry {
   issueGrant(audience: AccessAudience, access?: AccessClass): AccessGrant;
   /** 리스너의 audience와 일치하는 grant만 세션으로 교환된다. 교환된 grant는 소멸한다. */
   redeemGrant(token: string | null, audience: AccessAudience, device?: string | null): AccessSession | null;
+  /**
+   * 소모하지 않고 등급만 본다. 조인을 거절해야 하는 경우 자격을 태우기 전에 판정하기 위한 것이다 —
+   * redeemGrant는 거절할 때도 토큰을 지우므로, 그 뒤에서 막으면 1회용 링크만 소멸하고 아무도
+   * 붙지 못한 채 끝난다. 만료·audience 불일치는 여기서도 null이다.
+   */
+  peekGrant(token: string, audience: AccessAudience): AccessGrantSummary | null;
   resolveSession(id: string | null, audience: AccessAudience): AccessSession | null;
   listGrants(audience: AccessAudience): readonly AccessGrantSummary[];
   /** 아직 쓰이지 않은 링크를 하나만 무효화한다. */
@@ -85,6 +91,11 @@ export interface AccessRegistry {
   /** 이 audience의 미사용 링크를 전부 무효화한다. */
   revokeGrants(audience: AccessAudience): void;
   listSessions(audience: AccessAudience): readonly AccessSessionSummary[];
+  /**
+   * 이 audience에 해당 등급의 세션이 이미 열려 있는지. 제어를 쥔 원격은 한 번에 하나여야 하고,
+   * 그 판정을 조인 이전에 내려야 자격이 소모된 뒤 거절하는 일이 없다.
+   */
+  hasSession(audience: AccessAudience, access: AccessClass): boolean;
   revokeSession(id: string): boolean;
   /** 이미 열린 세션 하나를 공개 이름으로 끊는다. */
   revokeSessionByHandle(handle: string): boolean;
@@ -138,6 +149,13 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     return openSession(audience, grant.access, device);
   }
 
+  function peekGrant(token: string, audience: AccessAudience): AccessGrantSummary | null {
+    prune();
+    const grant = grants.get(token);
+    if (!grant || grant.audience !== audience || grant.expiresAt <= now()) return null;
+    return { id: grant.id, access: grant.access, issuedAt: grant.issuedAt, expiresAt: grant.expiresAt };
+  }
+
   function openSession(audience: AccessAudience, access: AccessClass, device: string | null): AccessSession {
     const id = randomToken();
     const handle = randomHandle();
@@ -188,6 +206,14 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
       .sort((left, right) => right.openedAt - left.openedAt);
   }
 
+  function hasSession(audience: AccessAudience, access: AccessClass): boolean {
+    prune();
+    for (const stored of sessions.values()) {
+      if (stored.audience === audience && stored.access === access) return true;
+    }
+    return false;
+  }
+
   function revokeSessionByHandle(handle: string): boolean {
     for (const [id, stored] of sessions) {
       if (stored.handle === handle) return sessions.delete(id);
@@ -219,7 +245,7 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     }
   }
 
-  return { grantTtlMs, issueGrant, redeemGrant, resolveSession, listGrants, revokeGrant, revokeGrants, listSessions, revokeSession, revokeSessionByHandle, revokeSessions, revokeAllSessions, prune };
+  return { grantTtlMs, issueGrant, redeemGrant, peekGrant, resolveSession, listGrants, revokeGrant, revokeGrants, listSessions, hasSession, revokeSession, revokeSessionByHandle, revokeSessions, revokeAllSessions, prune };
 }
 
 /**

@@ -1,6 +1,14 @@
 import crypto from "node:crypto";
 
-import type { TerminalTicket, TerminalTicketContext } from "./terminal-types.js";
+import type { TerminalSocketRole, TerminalTicket, TerminalTicketContext } from "./terminal-types.js";
+
+/**
+ * 티켓 요청이 밝힌 역할. `viewer`만 알아듣고 나머지는 전부 undefined로 떨어뜨린다 — 모르는
+ * 값을 control로 승격시키면 오타 하나가 읽기 전용 의도를 조용히 뒤집는다.
+ */
+export function readSocketRole(value: unknown): TerminalSocketRole | undefined {
+  return value === "viewer" ? "viewer" : undefined;
+}
 
 export interface TerminalTicketRegistryDeps {
   readonly ttlMs?: number;

@@ -11,7 +11,8 @@ import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
-import { createAccessRegistry, createLoopbackListenerIdentity, formatSessionCookie, readSessionCookie, resolveListenerIdentity, type AccessClass, type ListenerIdentity } from "./auth.js";
+import { CONTROL_CHANGED_EVENT, CONTROL_RECLAIMED_EVENT, controlChangedSnapshot, controlReclaimedSnapshot, type ControlHolderSnapshot } from "./access-control-contract.js";
+import { createAccessRegistry, createLoopbackListenerIdentity, formatSessionCookie, readSessionCookie, resolveListenerIdentity, type AccessAudience, type AccessClass, type ListenerIdentity } from "./auth.js";
 import { listRemoteInterfaces } from "./remote-interfaces.js";
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./console-contract-types.js";
 import { createCodexWorkspaceRouter } from "./codex/workspace-routes.js";
@@ -106,6 +107,18 @@ interface ConsolePortListenPlan {
   readonly requestedPort: number | null;
   readonly portMode: "dynamic" | "static";
   readonly allowFallback: boolean;
+}
+
+/**
+ * SSE 구독자는 이제 자기가 어느 리스너에서 왔는지를 들고 다닌다. 제어권 이벤트의 수신자가
+ * 구독자마다 다르기 때문이다 — 보유자 정보는 루프백만, 회수 통지는 끊긴 세션 하나만 받는다.
+ * 평면 Set으로 두면 원격 화면에 다른 기기의 이름이 실려 나간다.
+ */
+interface OperationSseSubscriber {
+  readonly res: http.ServerResponse;
+  readonly audience: AccessAudience;
+  /** 원격 구독자의 세션 공개 이름. 루프백 구독자는 null이다. */
+  readonly sessionHandle: string | null;
 }
 
 interface ConsolePortListenResult {
@@ -426,7 +439,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const pluginLaunchCatalogProviders = new Map<string, OperationLaunchCatalogProvider[]>();
   const pluginCleanupCallbacks = new Set<() => void | Promise<void>>();
   const pluginEventListeners = new Map<string, Set<(payload: unknown) => void>>();
-  const operationSseSubscribers = new Set<http.ServerResponse>();
+  const operationSseSubscribers = new Set<OperationSseSubscriber>();
   const desktopThemeSseSubscribers = new Set<http.ServerResponse>();
   function publishPluginEvent(channel: string, payload: unknown): void {
     for (const listener of pluginEventListeners.get(channel) ?? []) listener(payload);
@@ -457,15 +470,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return deletionCoordinator.deleteOperation(operationId) !== null;
   }
   let desktopFullscreen = false;
-  let desktopShell: DesktopShellSnapshot = emptyDesktopShell();
   /**
    * 셸의 집 주소를 되돌려 받을 자격은 그것을 게시한 창에만 있다.
    *
    * 이 값은 루프백 주소다. 다른 사람의 화면에 흘러가면 거기서는 그 사람의 기계를 가리키고,
    * 같은 포트를 쓰는 전혀 다른 콘솔로 데려간다. 그래서 게시한 세션(원격) 또는 루프백 요청
    * 자신(local)에게만 되돌려 준다.
+   *
+   * 소유자별로 나눠 담는다. 한 칸만 두면 마지막에 게시한 창이 앞의 것을 지우므로, 원격 Desktop이
+   * 붙는 순간 이 기계 앞 사람의 집 주소가 사라져 호스트 스위처에서 Home이 없어진다 — 두 창은
+   * 서로 다른 기계를 가리키고 있어 덮어쓸 관계가 아니다.
    */
-  let desktopShellOwner: string | "local" | null = null;
+  const desktopShellsByOwner = new Map<string | "local", DesktopShellSnapshot>();
   // 창을 들고 있는 Desktop이 게시하는 호스트 목록. 브라우저 단독이면 비어 있다.
   let unsubscribeUpdateCheckChanges = updateCheck.onChange?.(() => {
     broadcastUpdateAvailable();
@@ -648,12 +664,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
   });
   const desktopShellRouter = createDesktopShellRouter({
-    getShell: (req) => (shellOwnerOf(req) === desktopShellOwner ? desktopShell : emptyDesktopShell()),
+    getShell: (req) => {
+      const owner = shellOwnerOf(req);
+      return (owner === null ? undefined : desktopShellsByOwner.get(owner)) ?? emptyDesktopShell();
+    },
     isAuthorized: isExactConsoleOrigin,
     readJsonBody,
     setShell: (req, snapshot) => {
-      desktopShell = snapshot;
-      desktopShellOwner = snapshot.homeOrigin === null ? null : shellOwnerOf(req);
+      const owner = shellOwnerOf(req);
+      if (owner === null) return;
+      // homeOrigin이 비면 그 창은 더 이상 집을 주장하지 않는다 — 빈 스냅샷을 남기는 대신 지운다.
+      if (snapshot.homeOrigin === null) desktopShellsByOwner.delete(owner);
+      else desktopShellsByOwner.set(owner, snapshot);
     },
     writeJson,
     writeNoContent: (res) => { res.writeHead(204, withSecurityHeaders({})); res.end(); },
@@ -701,7 +723,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     resolveLaunchCatalog: resolveOperationCatalog,
     publishRenameEvent: (event) => pluginHostCapabilities.events.publish(OPERATION_RENAMED_EVENT_CHANNEL, event),
     broadcastOperationChanged,
-    subscribeOperationSse: (res) => {
+    subscribeOperationSse: (req, res) => {
       res.writeHead(200, withSecurityHeaders({
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -709,9 +731,20 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }));
       res.write(":connected\n\n");
       res.write(encodeSseData(DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot(desktopFullscreen)));
-      operationSseSubscribers.add(res);
+      const listener = listenerForRequest(req);
+      const audience: AccessAudience = listener?.audience ?? "local";
+      const sessionHandle = listener === null || listener.audience === "local"
+        ? null
+        : access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience)?.handle ?? null;
+      // 루프백은 붙는 순간 현재 보유자를 받는다 — 커튼은 세션이 열린 뒤에 새로고침한 화면에서도
+      // 떠 있어야 하고, 이벤트만으로는 그 사이에 놓친 사실을 되찾을 수 없다.
+      if (audience === "local") {
+        res.write(encodeSseData(CONTROL_CHANGED_EVENT, controlChangedSnapshot(currentControlHolder())));
+      }
+      const subscriber: OperationSseSubscriber = { res, audience, sessionHandle };
+      operationSseSubscribers.add(subscriber);
       startSseKeepaliveLifecycle(res, () => {
-        operationSseSubscribers.delete(res);
+        operationSseSubscribers.delete(subscriber);
       });
     },
   });
@@ -811,7 +844,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     if (pathname === "/api/v1/access-links") {
-      if (req.method === "GET") handleRemoteAccessStatus(res);
+      if (req.method === "GET") handleRemoteAccessStatus(req, res);
       else handleAccessLinkIssue(req, res);
       return;
     }
@@ -980,7 +1013,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 원격 리스너의 실제 상태. 설정값이 아니라 지금 열려 있는 리스너를 보고한다 — 켜 두었지만
    * 바인드에 실패한 경우를 설정 화면이 "켜짐"으로 오독하지 않게 한다.
    */
-  function handleRemoteAccessStatus(res: http.ServerResponse): void {
+  function handleRemoteAccessStatus(req: http.IncomingMessage, res: http.ServerResponse): void {
+    /**
+     * 읽기는 루프백이라는 사실만 요구한다 — 형제인 remote-hosts GET과 같은 선례다. Origin까지
+     * 요구하면 브라우저가 아닌 로컬 소비자(Desktop·진단 도구)가 함께 막힌다.
+     *
+     * 원격을 막는 것이 요점이다. 이 응답에는 인증서 지문, 열린 세션의 기기 이름, 미사용 링크,
+     * 그리고 이 기계가 가진 모든 주소가 실린다 — 초대받은 손님이 볼 목록이 아니다.
+     */
+    if (!isLoopbackListener(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
     const remote = listeners.find((entry) => entry.audience === "remote");
     writeJson(res, 200, {
       listening: remote !== undefined && remoteFingerprint !== null,
@@ -999,7 +1043,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 405, { error: "Method not allowed" });
       return;
     }
-    if (!isLockAuthorized(req) && !isExactConsoleOrigin(req)) {
+    if (!isAccessAdminAuthorized(req)) {
       writeJson(res, 401, { error: "unauthorized" });
       return;
     }
@@ -1016,14 +1060,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 405, { error: "Method not allowed" });
       return;
     }
-    if (!isLockAuthorized(req) && !isExactConsoleOrigin(req)) {
+    if (!isAccessAdminAuthorized(req)) {
       writeJson(res, 401, { error: "unauthorized" });
       return;
     }
-    if (!access.revokeSessionByHandle(decodeHandle(rawHandle))) {
+    const handle = decodeHandle(rawHandle);
+    if (!access.revokeSessionByHandle(handle)) {
       writeJson(res, 404, { error: "session_not_found" });
       return;
     }
+    // 세션이 사라지면 그 세션이 게시한 집 주소도 가리킬 주인이 없다. 남겨 두면 handle이
+    // 재사용되지 않는 이상 되살아나지는 않지만, 오래 뜬 서버에서 계속 쌓이기만 한다.
+    desktopShellsByOwner.delete(handle);
+    // 순서가 있다: 끊긴 쪽이 먼저 자기 안내를 받고, 그 다음 이 기계의 화면이 커튼을 걷는다.
+    notifyControlReclaimed(handle);
+    broadcastControlChanged();
     res.writeHead(204, withSecurityHeaders({}));
     res.end();
   }
@@ -1038,7 +1089,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 405, { error: "Method not allowed" });
       return true;
     }
-    if (!isLockAuthorized(req) && !isExactConsoleOrigin(req)) {
+    if (!isAccessAdminAuthorized(req)) {
       writeJson(res, 401, { error: "unauthorized" });
       return true;
     }
@@ -1087,7 +1138,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 405, { error: "Method not allowed" });
       return;
     }
-    if (!isLockAuthorized(req) && !isExactConsoleOrigin(req)) {
+    if (!isAccessAdminAuthorized(req)) {
       writeJson(res, 401, { error: "unauthorized" });
       return;
     }
@@ -1115,11 +1166,28 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const body = await readJsonBody<{ readonly token?: unknown; readonly device?: unknown }>(req);
     const token = isPlainObject(body) && typeof body.token === "string" ? body.token : null;
     const device = isPlainObject(body) ? sanitizeDeviceName(body.device) : null;
+    /**
+     * 제어를 쥔 원격은 한 번에 하나다. 커튼은 "누가" 몰고 있는지를 하나로 말해야 하고 회수
+     * 버튼은 대상이 하나여야 하므로, 둘째 full 조인은 받지 않는다. 밀어내기로 하지 않는 이유는
+     * 유효한 링크를 쥔 사람이 현 보유자를 조용히 축출할 수 있게 되기 때문이다 — 자리를 비우는
+     * 판단은 콘솔 주인의 몫으로 남긴다.
+     *
+     * 자격을 소모하기 전에 판정한다. redeemGrant는 성공 여부와 무관하게 토큰을 지우므로,
+     * 뒤에서 거절하면 1회용 링크만 태우고 아무도 붙지 못한다.
+     */
+    if (listener?.audience === "remote" && access.hasSession("remote", "full")) {
+      const pending = token === null ? null : access.peekGrant(token, listener.audience);
+      if (pending?.access === "full") {
+        writeJson(res, 409, { error: "remote_control_held" });
+        return true;
+      }
+    }
     const session = listener ? access.redeemGrant(token, listener.audience, device) : null;
     if (!listener || !session) {
       writeJson(res, 401, { error: "unauthorized" });
       return true;
     }
+    if (listener.audience === "remote" && session.access === "full") broadcastControlChanged();
     // 평문 http 리스너에 Secure를 붙이면 브라우저가 쿠키를 버린다.
     res.writeHead(204, withSecurityHeaders({ "Set-Cookie": formatSessionCookie(session, { secure: listener.secure, port: listener.port }) }));
     res.end();
@@ -1143,6 +1211,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function isRemoteHostWriteAuthorized(req: http.IncomingMessage): boolean {
+    return isLoopbackListener(req) && (isLockAuthorized(req) || isExactConsoleOrigin(req));
+  }
+
+  /**
+   * 원격을 관리하는 자리는 이 기계 앞이다. 자격을 발급하고, 목록을 읽고, 남의 세션을 끊고,
+   * 신원을 갈아 끼우는 일은 초대받은 쪽이 할 일이 아니다.
+   *
+   * `isExactConsoleOrigin`만으로는 이 경계가 서지 않는다 — 그 함수는 요청이 도착한 리스너의
+   * origin과 대조하므로, 원격 브라우저가 원격 origin으로 보내면 그대로 통과한다. 루프백
+   * 판정을 함께 요구해야 카탈로그가 이미 선언해 둔 gate가 런타임에서도 참이 된다.
+   */
+  function isAccessAdminAuthorized(req: http.IncomingMessage): boolean {
     return isLoopbackListener(req) && (isLockAuthorized(req) || isExactConsoleOrigin(req));
   }
 
@@ -1730,23 +1810,61 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     ];
     const sanitized = createSanitizedOpDto(node, { sensitiveFields });
     const data = encodeSseData("operation:changed", { operation: sanitized });
-    for (const res of operationSseSubscribers) {
-      res.write(data);
+    for (const subscriber of operationSseSubscribers) {
+      subscriber.res.write(data);
     }
   }
 
   function broadcastUpdateAvailable(): void {
     if (operationSseSubscribers.size === 0) return;
     const data = encodeSseData("update:available", {});
-    for (const res of operationSseSubscribers) {
-      res.write(data);
+    for (const subscriber of operationSseSubscribers) {
+      subscriber.res.write(data);
     }
   }
 
   function broadcastDesktopFullscreenChanged(): void {
     if (operationSseSubscribers.size === 0) return;
     const data = encodeSseData(DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot(desktopFullscreen));
-    for (const res of operationSseSubscribers) res.write(data);
+    for (const subscriber of operationSseSubscribers) subscriber.res.write(data);
+  }
+
+  /**
+   * 제어를 쥔 원격. full 등급 세션만 보유자가 된다 — monitoring은 명령을 실행하지 못하므로
+   * 그 접속으로 화면을 덮으면 아무것도 못 하는 관전자 때문에 콘솔이 잠긴다.
+   *
+   * 상한이 1이므로 목록에서 가장 먼저 나오는 하나가 곧 보유자다.
+   */
+  function currentControlHolder(): ControlHolderSnapshot | null {
+    for (const session of access.listSessions("remote")) {
+      if (session.access !== "full") continue;
+      return { handle: session.handle, device: session.device, openedAt: session.openedAt };
+    }
+    return null;
+  }
+
+  /** 보유자 변화는 이 기계 앞에 앉은 사람에게만 간다. 원격은 다른 세션의 존재를 알 이유가 없다. */
+  function broadcastControlChanged(): void {
+    if (operationSseSubscribers.size === 0) return;
+    const data = encodeSseData(CONTROL_CHANGED_EVENT, controlChangedSnapshot(currentControlHolder()));
+    for (const subscriber of operationSseSubscribers) {
+      if (subscriber.audience !== "local") continue;
+      subscriber.res.write(data);
+    }
+  }
+
+  /**
+   * 회수 통지는 끊긴 그 세션에게만. 쿠키는 이미 무효라 다음 요청이 401이 되는데, SPA가 떠 있는
+   * 동안에는 그 401을 아무도 마주치지 않는다 — 이 이벤트가 원격 화면에 안내를 띄우고 스스로
+   * 이동하게 만드는 유일한 신호다.
+   */
+  function notifyControlReclaimed(handle: string): void {
+    if (operationSseSubscribers.size === 0) return;
+    const data = encodeSseData(CONTROL_RECLAIMED_EVENT, controlReclaimedSnapshot("reclaimed"));
+    for (const subscriber of operationSseSubscribers) {
+      if (subscriber.sessionHandle !== handle) continue;
+      subscriber.res.write(data);
+    }
   }
 
   function broadcastDesktopThemeChanged(theme: ConsoleThemeId): void {
@@ -1946,6 +2064,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 옛 주소와 옛 지문을 실어 나르므로 함께 버린다.
     access.revokeSessions("remote");
     access.revokeGrants("remote");
+    for (const owner of desktopShellsByOwner.keys()) {
+      if (owner !== "local") desktopShellsByOwner.delete(owner);
+    }
+    // 원격을 끄면 보유자도 사라진다. 알리지 않으면 커튼이 아무도 없는 콘솔 위에 남는다 —
+    // 신원 갱신도 리스너를 다시 여는 경로라 이 자리를 지난다.
+    broadcastControlChanged();
     if (closing) await new Promise<void>((resolve) => closing.close(() => resolve()));
   }
 

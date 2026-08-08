@@ -1,3 +1,10 @@
+/**
+ * 소켓 역할. 서버의 같은 이름 타입과 값이 일치해야 하지만 타입을 건너 들여오지는 않는다 —
+ * 브라우저 코드가 서버 모듈을 참조하기 시작하면 그 경계는 조용히 사라진다. 서버는
+ * `readSocketRole`에서 "viewer" 외의 값을 전부 control로 떨어뜨리므로 오타는 여기서 끝난다.
+ */
+export type TerminalSocketRole = "control" | "viewer";
+
 export interface TerminalLike {
   readonly onData: (listener: (data: string) => void) => { readonly dispose: () => void };
   readonly write: (data: Uint8Array) => void;
@@ -29,6 +36,8 @@ export interface TerminalCloseInfo {
 export interface TerminalConnection {
   readonly start: () => void;
   readonly resize: (cols: number, rows: number) => void;
+  /** 관전 중인 소켓을 끊고 제어로 다시 붙는다. 지금 몰고 있는 소켓은 밀려난다. */
+  readonly takeBackControl: () => void;
   readonly dispose: () => void;
 }
 
@@ -43,7 +52,11 @@ export interface WebSocketLike {
   onerror: (() => void) | null;
 }
 
-export type TerminalConnectionStatus = "connecting" | "live" | "closed";
+/**
+ * `viewer`는 붙어 있고 출력도 흐르지만 입력이 가지 않는 상태다. `live`와 갈라 두는 이유는
+ * 화면이 그 차이를 말해야 하기 때문이다 — 반응 없는 키보드를 연결 문제로 읽게 두면 안 된다.
+ */
+export type TerminalConnectionStatus = "connecting" | "live" | "viewer" | "closed";
 
 const INITIAL_RECONNECT_DELAY_MS = 250;
 const MAX_RECONNECT_DELAY_MS = 5_000;
@@ -60,6 +73,11 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
   let inputSubscription: { readonly dispose: () => void } | null = null;
   let pendingSize: { readonly cols: number; readonly rows: number } | null = null;
   let started = false;
+  /**
+   * 이 연결이 지금 요구하는 역할. 밀려나면(4000) control에서 viewer로 내려가고, 사용자가
+   * 되찾겠다고 하면 control로 되돌린다 — 재접속 루프가 매 회 이 값으로 티켓을 받는다.
+   */
+  let role: TerminalSocketRole = "control";
 
   const disposeInput = () => {
     inputSubscription?.dispose();
@@ -68,6 +86,7 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
 
   const sendResize = (cols: number, rows: number) => {
     pendingSize = { cols, rows };
+    if (role === "viewer") return;
     if (socket?.readyState === OPEN_READY_STATE) {
       socket.send(JSON.stringify({ type: "resize", cols, rows }));
     }
@@ -77,7 +96,7 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
     while (!abort.signal.aborted) {
       options.onStatus?.("connecting");
       try {
-        const { ticket } = await requestTerminalTicket(options.ticketPath, options.operationId, abort.signal, options.colorScheme);
+        const { ticket } = await requestTerminalTicket(options.ticketPath, options.operationId, abort.signal, options.colorScheme, role);
         if (abort.signal.aborted) return;
         await attachSocket(buildTerminalWsUrl(ticket, options.location, options.wsPath), options);
         reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
@@ -98,8 +117,9 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
       socket = ws;
       ws.binaryType = "arraybuffer";
       ws.onopen = () => {
-        connectionOptions.onStatus?.("live");
-        if (pendingSize) sendResize(pendingSize.cols, pendingSize.rows);
+        connectionOptions.onStatus?.(role === "viewer" ? "viewer" : "live");
+        // 관전자는 PTY 크기를 협상하지 않는다 — 보는 사람의 창이 모는 사람의 터미널을 흔들면 안 된다.
+        if (role !== "viewer" && pendingSize) sendResize(pendingSize.cols, pendingSize.rows);
       };
       ws.onmessage = (event) => {
         if (event.data instanceof ArrayBuffer) {
@@ -120,6 +140,9 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
           if (socket !== ws) return;
           // 재생 바이트가 모두 파싱된 뒤다. 아래 입력 구독 조건과 무관하게 창은 닫는다.
           connectionOptions.onReplayStateChange?.(false);
+          // 입력 구독 자체를 만들지 않는 것이 관전의 실제 경계다. 서버도 viewer 소켓의 메시지를
+          // 듣지 않지만, 보내지 않는 편이 화면과 전송을 같은 이야기로 만든다.
+          if (role === "viewer") return;
           if (ws.readyState !== OPEN_READY_STATE || inputSubscription) return;
           disposeInput();
           inputSubscription = connectionOptions.terminal.onData((data) => {
@@ -135,8 +158,15 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
         if (socket === ws) socket = null;
         const code = event?.code;
         if (code === TERMINAL_REPLACED_CLOSE_CODE) {
-          abort.abort();
-          connectionOptions.onStatus?.("closed", "terminal_replaced");
+          /**
+           * 밀려났다고 해서 볼 자격까지 잃는 것은 아니다. 예전에는 여기서 재접속을 영구 포기해
+           * 화면에 `closed: terminal_replaced`만 남았는데, 그것은 터미널이 죽은 것인지 사람이
+           * 가져간 것인지 구분해 주지 않는 문자열이었다.
+           *
+           * 역할만 내려놓고 루프는 계속 돈다 — 곧바로 관전자로 다시 붙어 같은 출력을 본다.
+           */
+          role = "viewer";
+          connectionOptions.onStatus?.("connecting");
         } else if (code === TERMINAL_CLOSED_CLOSE_CODE) {
           abort.abort();
           connectionOptions.onStatus?.("closed", "terminal_closed");
@@ -157,6 +187,12 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
       void connectLoop();
     },
     resize: sendResize,
+    takeBackControl: () => {
+      if (role === "control") return;
+      role = "control";
+      // 소켓을 닫으면 연결 루프가 다음 회차를 control 티켓으로 받는다.
+      socket?.close();
+    },
     dispose: () => {
       abort.abort();
       disposeInput();
@@ -172,11 +208,12 @@ export function buildTerminalWsUrl(ticket: string, targetLocation: Pick<Location
   return `${protocol}://${targetLocation.host}${pathname}?ticket=${encodeURIComponent(ticket)}`;
 }
 
-async function requestTerminalTicket(ticketPath: string, operationId: string, signal: AbortSignal, colorScheme?: "light" | "dark"): Promise<{ readonly ticket: string; readonly ttlMs: number }> {
+async function requestTerminalTicket(ticketPath: string, operationId: string, signal: AbortSignal, colorScheme?: "light" | "dark", role?: TerminalSocketRole): Promise<{ readonly ticket: string; readonly ttlMs: number }> {
   const response = await fetch(ticketPath, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ operationId, ...(colorScheme ? { colorScheme } : {}) }),
+    // control은 서버 기본값이라 싣지 않는다 — 옛 서버에 붙어도 같은 요청이 된다.
+    body: JSON.stringify({ operationId, ...(colorScheme ? { colorScheme } : {}), ...(role === "viewer" ? { role } : {}) }),
     signal,
   });
   if (!response.ok) throw new Error(`Terminal ticket request failed: ${response.status}`);

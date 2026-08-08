@@ -369,6 +369,60 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
 
     await expect(fetch(`${fixture.loopbackEndpoint}api/v1/theaters`).then((r) => r.status)).resolves.toBe(200);
   });
+
+  /**
+   * 초대받은 손님은 초대장을 관리하지 못한다. 이 목록에는 인증서 지문, 다른 기기의 이름,
+   * 그리고 이 기계가 가진 모든 주소가 실려 있고, 이 쓰기들은 손님이 자기보다 오래 사는
+   * 초대장을 새로 찍거나 남의 자리를 끊거나 호스트 신원을 통째로 갈아 끼우게 한다.
+   */
+  it("keeps remote access administration on the loopback side", async () => {
+    const fixture = await startFixture({ remote: true });
+    const cookie = await joinAs(fixture, "full", "guest");
+    const remoteOrigin = `https://${BIND_HOST}:${fixture.remotePort}`;
+    const asRemote = { origin: remoteOrigin };
+
+    await expect(remoteRequest(fixture, "GET", "/api/v1/access-links", undefined, cookie, asRemote)).resolves.toMatchObject({ status: 401 });
+    await expect(remoteRequest(fixture, "POST", "/api/v1/access-links", undefined, cookie, asRemote)).resolves.toMatchObject({ status: 401 });
+    await expect(remoteRequest(fixture, "DELETE", "/api/v1/access-links/whatever", undefined, cookie, asRemote)).resolves.toMatchObject({ status: 401 });
+    await expect(remoteRequest(fixture, "POST", "/api/v1/remote-identity/rotations", undefined, cookie, asRemote)).resolves.toMatchObject({ status: 401 });
+
+    // 그 손님이 자기 handle을 알아도 끊는 일은 이 기계 앞에서만 일어난다.
+    const handle = (await readRemoteStatus(fixture)).sessions[0]!.handle;
+    await expect(remoteRequest(fixture, "DELETE", `/api/v1/access-sessions/${handle}`, undefined, cookie, asRemote)).resolves.toMatchObject({ status: 401 });
+    expect((await readRemoteStatus(fixture)).sessions).toHaveLength(1);
+  });
+
+  /**
+   * 제어를 쥔 원격은 하나다. 둘째를 받으면 커튼이 "누가" 몰고 있는지 하나로 말하지 못하고
+   * 회수 버튼의 대상도 갈라진다. 거절은 자격을 태우기 전에 일어나야 한다 — 뒤에서 막으면
+   * 1회용 링크만 소멸하고 아무도 붙지 못한다.
+   */
+  it("admits one full remote session and leaves the refused link usable", async () => {
+    const fixture = await startFixture({ remote: true });
+    await joinAs(fixture, "full", "first");
+    const secondLink = await createLink(fixture);
+
+    const refused = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(secondLink) }));
+    expect(refused.status).toBe(409);
+
+    const held = await readRemoteStatus(fixture);
+    expect(held.sessions).toHaveLength(1);
+    expect(held.links).toHaveLength(1);
+
+    // 보유자가 물러나면 같은 링크가 그대로 통한다 — 태워 버렸다면 여기서 401이 난다.
+    await expect(revoke(fixture, `access-sessions/${held.sessions[0]!.handle}`)).resolves.toBe(204);
+    await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(secondLink) }))).resolves.toMatchObject({ status: 204 });
+  });
+
+  /** monitoring은 제어를 쥐지 않으므로 상한과 무관하게 full 옆에 함께 붙는다. */
+  it("lets a monitoring session join while a full session holds control", async () => {
+    const fixture = await startFixture({ remote: true });
+    await joinAs(fixture, "full", "holder");
+    await joinAs(fixture, "monitoring", "watcher");
+
+    const status = await readRemoteStatus(fixture);
+    expect(status.sessions.map((entry) => entry.access).sort()).toEqual(["full", "monitoring"]);
+  });
 });
 
 interface RemoteAccessStatus {

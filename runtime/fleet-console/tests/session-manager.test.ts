@@ -228,6 +228,67 @@ describe("terminal session manager", () => {
     expect(secondA.closed).toEqual([]);
   });
 
+  /**
+   * 관전자는 출력만 받는다. 이 테스트가 지키는 것은 "본다"가 아니라 "몰지 않는다"이다 —
+   * 제어 소켓을 밀어내지 않고, PTY에 쓰지 않고, 크기를 바꾸지 않는다.
+   */
+  it("fans terminal output out to viewers without giving them the controls", async () => {
+    let pty: MockPty | null = null;
+    const manager = createTerminalSessionManager({
+      launch: async (cwd) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: {} }),
+      startShell: () => { pty = createMockPty(); return pty; },
+    });
+    const controller = createMockSocket();
+    const viewer = createMockSocket();
+
+    await manager.attach(controller, { sessionId: "session-a", cwd: "/a" });
+    expect(manager.attachViewer(viewer, "session-a")).toBe(true);
+    const beforeOutput = viewer.sent.length;
+
+    pty!.emitData("hello");
+
+    expect(controller.closed).toEqual([]);
+    expect(viewer.sent.slice(beforeOutput).map((chunk) => chunk.toString("utf8"))).toContain("hello");
+
+    // 관전자가 보낸 것은 어디에도 도달하지 않는다 — message 리스너 자체가 달려 있지 않다.
+    viewer.emitMessage(Buffer.from("rm -rf /", "utf8"), true);
+    viewer.emitMessage(Buffer.from(JSON.stringify({ type: "resize", cols: 1, rows: 1 }), "utf8"), false);
+    expect(pty!.writes).toEqual([]);
+    expect(pty!.resizes.some((size) => size.cols === 1 && size.rows === 1)).toBe(false);
+  });
+
+  /** 볼 대상이 없는 관전은 성립하지 않는다 — 여기서 PTY를 띄우면 관전이 실행이 된다. */
+  it("refuses to open a session for a viewer", () => {
+    const started: MockPty[] = [];
+    const manager = createTerminalSessionManager({
+      launch: async (cwd) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: {} }),
+      startShell: () => { const pty = createMockPty(); started.push(pty); return pty; },
+    });
+
+    expect(manager.attachViewer(createMockSocket(), "never-started")).toBe(false);
+    expect(started).toHaveLength(0);
+  });
+
+  /** 관전자는 자기가 붙기 전의 화면부터 본다 — 재생 없이는 빈 터미널을 보게 된다. */
+  it("replays scrollback to a viewer and stops sending once it closes", async () => {
+    let pty: MockPty | null = null;
+    const manager = createTerminalSessionManager({
+      launch: async (cwd) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: {} }),
+      startShell: () => { pty = createMockPty(); return pty; },
+    });
+    await manager.attach(createMockSocket(), { sessionId: "session-a", cwd: "/a" });
+    pty!.emitData("earlier");
+
+    const viewer = createMockSocket();
+    manager.attachViewer(viewer, "session-a");
+    expect(viewer.sent.map((chunk) => chunk.toString("utf8"))).toContain("earlier");
+
+    viewer.emitClose();
+    const afterClose = viewer.sent.length;
+    pty!.emitData("later");
+    expect(viewer.sent).toHaveLength(afterClose);
+  });
+
   it("keeps scrollback isolated per session", async () => {
     const ptys = new Map<string, MockPty>();
     const manager = createTerminalSessionManager({

@@ -40,6 +40,14 @@ export function createPluginTerminalUpgradeHandler(deps: TerminalUpgradeHandlerD
       return true;
     }
     const server = getWebSocketServer();
+    if (context.role === "viewer") {
+      // 관전은 살아 있는 세션에만 붙는다. 없으면 열자마자 닫아 클라이언트가 이유를 읽게 한다 —
+      // 소켓을 destroy하면 브라우저에는 원인 없는 연결 실패로만 보인다.
+      server.handleUpgrade(req, socket, head, (ws) => {
+        if (!deps.sessions.attachViewer(ws, context.sessionId)) ws.close(1013, "terminal_unavailable");
+      });
+      return true;
+    }
     server.handleUpgrade(req, socket, head, (ws) => {
       deps.sessions.attach(ws, context).catch((err: unknown) => {
         console.error("[terminal] attach failed", err);

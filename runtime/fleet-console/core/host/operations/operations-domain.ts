@@ -325,7 +325,8 @@ export interface OperationsRouterDeps {
   readonly isPendingDeletion?: (id: string) => boolean;
   readonly publishRenameEvent?: (event: OperationRenameEvent) => void;
   readonly broadcastOperationChanged?: (node: OperationNode) => void;
-  readonly subscribeOperationSse?: (res: http.ServerResponse) => void;
+  // 요청도 함께 넘긴다 — 구독자가 어느 리스너에서 왔는지에 따라 받을 이벤트가 갈린다.
+  readonly subscribeOperationSse?: (req: http.IncomingMessage, res: http.ServerResponse) => void;
   readonly getPluginSensitiveFields?: (pluginId: string) => readonly string[];
   readonly resolveLaunchCatalog?: () => Promise<{ readonly plugins: readonly OperationCatalogPlugin[] }>;
 }
@@ -370,7 +371,7 @@ export function createOperationsRouter(deps: OperationsRouterDeps): OperationsRo
         deps.writeJson(res, 405, { error: "Method not allowed" });
         return true;
       }
-      deps.subscribeOperationSse?.(res);
+      deps.subscribeOperationSse?.(req, res);
       return true;
     }
     if (pathname === "/api/v1/operations/groups") {

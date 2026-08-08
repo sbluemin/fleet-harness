@@ -499,6 +499,11 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   // 연결이 'live'면 상태 바를 숨겨 터미널 canvas가 카드를 가득 채우게 하고,
   // connecting/error 등 문제 상황에서만 상태를 노출한다.
   const isLive = status.startsWith("live");
+  /**
+   * 관전 중에는 출력이 계속 흐르므로 화면을 가리지 않는다 — 상태 줄 대신 배지를 얹어
+   * "보이지만 칠 수 없다"만 말한다. 이 구분이 없으면 반응 없는 키보드가 연결 장애로 읽힌다.
+   */
+  const isViewing = status.startsWith("viewer");
   // 줌 보정: 마운트 단을 레이아웃상 zoom배로 키운 뒤 scale(1/zoom)으로 되돌려 부모 scale(zoom)과 net 1로 상쇄한다.
   // %는 position:relative인 .terminal-viewport 기준이라 별도 측정 없이 inner 크기에 정확히 맞춰진다. zoom=1이면
   // 기본 스타일(.terminal-canvas의 inset:0)을 그대로 써 캔버스 외 셸 패널 사용처에 영향이 없다.
@@ -514,10 +519,19 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   return (
     <section className="terminal-stage" aria-label="Terminal">
       <div className="terminal-shell">
-        {!isLive ? (
+        {!isLive && !isViewing ? (
           <div className="terminal-status" aria-live="polite">
             <span className="terminal-status-dot" aria-hidden="true" />
             {status}
+          </div>
+        ) : null}
+        {isViewing ? (
+          <div className="terminal-viewer-badge" role="status">
+            <span className="terminal-viewer-badge-dot" aria-hidden="true" />
+            <span className="terminal-viewer-badge-text">Another device is using this terminal — read-only</span>
+            <button type="button" className="terminal-viewer-badge-action" onClick={() => connectionRef.current?.takeBackControl()}>
+              Take back control
+            </button>
           </div>
         ) : null}
         <div className="terminal-viewport">
