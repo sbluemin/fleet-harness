@@ -611,6 +611,32 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({}), first)).resolves.toMatchObject({ status: 409 });
   });
 
+  /**
+   * 인증서는 명시적 갱신 말고도 바뀐다. 바인드 주소를 옮기면 `ensure`가 조용히 새로 만드는데,
+   * 그 순간 옛 지문을 믿던 페어링은 이 콘솔에 닿을 수 없다 — 목록과 상한만 차지한다.
+   */
+  it("unpairs every device when the listener silently takes a new certificate", async () => {
+    const fixture = await startFixture({ remote: true });
+    await joinAs(fixture, "full", "MacBook Pro");
+    const before = await readRemoteStatus(fixture);
+    expect(before.devices).toHaveLength(1);
+
+    /**
+     * 바인드 주소를 옮긴 상태를 만든다. 저장된 신원이 다른 host의 것이 되면 `ensure`는 명시적
+     * 갱신 없이도 새 인증서를 만든다 — 바로 위 "재시작해도 페어링은 남는다"와 같은 재시작
+     * 경로이면서 지문만 달라지는 대비다.
+     */
+    const metaFile = path.join(fixture.dir, "fleet-home", "console", "remote", "identity.json");
+    const meta = JSON.parse(fs.readFileSync(metaFile, "utf8")) as Record<string, unknown>;
+    fs.writeFileSync(metaFile, JSON.stringify({ ...meta, host: "moved.example" }));
+    await saveRemoteAccess(fixture, { enabled: false, bindHost: BIND_HOST });
+    await saveRemoteAccess(fixture, { enabled: true, bindHost: BIND_HOST });
+
+    const after = await readRemoteStatus(fixture);
+    expect(normalizeFingerprint(after.fingerprint!)).not.toBe(normalizeFingerprint(before.fingerprint!));
+    expect(after.devices).toHaveLength(0);
+  });
+
   /** 저장된 것은 해시뿐이다 — 이 파일이 새어도 그것으로 붙을 수 없다. */
   it("writes no pairing secret to disk", async () => {
     const fixture = await startFixture({ remote: true });

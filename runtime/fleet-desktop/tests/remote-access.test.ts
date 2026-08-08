@@ -121,6 +121,23 @@ describe("remote console join", () => {
   });
 
   /**
+   * 409에는 이유가 둘이고 사용자가 할 일이 정반대다 — 기다리거나, 남의 기기를 지우거나.
+   * 하나로 뭉개면 상한에 걸린 사용자가 오지 않을 양보를 기다린다.
+   */
+  it("separates a full seat from a console that can hold no more devices", async () => {
+    const held = async (): Promise<Response> =>
+      new Response(JSON.stringify({ error: "remote_control_held" }), { status: 409, headers: { "content-type": "application/json" } });
+    const full = async (): Promise<Response> =>
+      new Response(JSON.stringify({ error: "paired_device_limit" }), { status: 409, headers: { "content-type": "application/json" } });
+    const opaque = async (): Promise<Response> => new Response(null, { status: 409 });
+
+    await expect(joinRemoteConsole(held, JOIN_URL, TOKEN)).rejects.toThrow("remote_link_control_held");
+    await expect(joinRemoteConsole(full, JOIN_URL, TOKEN)).rejects.toThrow("remote_link_device_limit");
+    // 본문을 읽을 수 없으면 지금까지의 뜻으로 되돌린다.
+    await expect(joinRemoteConsole(opaque, JOIN_URL, TOKEN)).rejects.toThrow("remote_link_control_held");
+  });
+
+  /**
    * "이 링크는 이미 썼다"와 "이 콘솔은 당신을 모른다"는 다른 사실이고, 사용자가 할 일도 다르다.
    * 하나로 뭉개면 페어링이 회수된 기기가 "링크를 다시 받아라" 대신 아무 안내도 못 받는다.
    */

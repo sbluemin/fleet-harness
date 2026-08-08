@@ -43,7 +43,7 @@ import {
 } from "./classic-launch-kind-migration.js";
 import { migrateLegacyCaptures } from "./legacy-capture-migration.js";
 import { createConsoleDataPaths } from "./paths.js";
-import { createRemoteIdentityStore } from "./remote-identity.js";
+import { createRemoteIdentityStore, fingerprintsMatch } from "./remote-identity.js";
 import { encodeAccessLink, parseAccessLink, sanitizeAccessLabel } from "./access-link.js";
 import { createRemoteHostStore, type RemoteHostRecord } from "./remote-hosts.js";
 import { probeRemoteIdentity } from "./remote-probe.js";
@@ -2303,7 +2303,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const configured = consoleSettingsStore.load().general?.remoteAccess;
     const bindHost = configured?.enabled === true ? configured.bindHost : undefined;
     if (!bindHost) return;
+    /**
+     * `ensure`는 조용히 갱신하기도 한다 — 바인드 주소가 바뀌었거나 만료가 가까우면 새 인증서를
+     * 만든다. 그 순간 옛 지문을 믿고 있던 페어링은 이 콘솔에 닿을 수 없으므로, 명시적 갱신과
+     * 같은 값을 치러야 한다. 그러지 않으면 붙지 못할 손님이 목록과 상한을 차지한 채 남는다.
+     *
+     * 판정은 지문으로만 한다. `ensure`는 콘솔이 뜰 때마다 불리고 대개는 있던 인증서를 그대로
+     * 돌려주는데, 호출 사실만으로 회수하면 재시작이 매번 손님을 내보내 페어링이 무의미해진다.
+     */
+    const previousFingerprint = remoteIdentityStore.read()?.fingerprint ?? null;
     const identity = await remoteIdentityStore.ensure(bindHost);
+    if (previousFingerprint === null || !fingerprintsMatch(previousFingerprint, identity.fingerprint)) {
+      pairedDeviceStore.revokeAll("remote");
+    }
     const started = await startRemoteListener({
       identity,
       bindHost,

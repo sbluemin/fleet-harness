@@ -127,9 +127,13 @@ export async function joinRemoteConsole(sessionFetch: SessionFetch, joinUrl: str
     // 자격을 내밀었는데 거절당한 것과, 이 콘솔이 더 이상 이 기기를 알아보지 못하는 것은 다른 사실이다.
     if (response.status === 401) throw new Error(token === null ? "remote_host_not_paired" : "remote_link_rejected");
     if (response.status === 403) throw new Error("remote_link_host_mismatch");
-    // 409는 자격 문제가 아니다 — 그 콘솔의 제어를 이미 다른 기기가 쥐고 있다. 다른 4xx와
-    // 뭉개면 "링크를 새로 받아라"로 안내되고, 새 링크로도 같은 거절이 돌아온다.
-    if (response.status === 409) throw new Error("remote_link_control_held");
+    /**
+     * 409는 자격 문제가 아니다 — 그 콘솔이 지금은 받을 수 없다는 뜻이고, 이유가 둘이다.
+     * 제어를 다른 기기가 쥐고 있거나, 그 콘솔이 기억할 수 있는 기기 수가 다 찼거나. 서버는
+     * 둘을 다른 코드로 보내는데 여기서 하나로 뭉개면, 자리만 비면 되는 경우와 남의 기기를
+     * 지워야 하는 경우에 같은 안내가 나가 사용자가 듣는 해법이 틀린다.
+     */
+    if (response.status === 409) throw new Error(await readConflictCode(response));
     if (!response.ok) throw new Error("remote_link_unverified");
   } catch (error) {
     // 이 함수가 스스로 내린 판정은 그대로 올려 보낸다. 접두사만으로 가르면 "이 기기를 모른다"는
@@ -138,6 +142,16 @@ export async function joinRemoteConsole(sessionFetch: SessionFetch, joinUrl: str
     throw new Error("remote_link_unreachable", { cause: error });
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/** 읽을 수 없는 본문은 지금까지의 뜻으로 되돌린다 — 제어 경합이 둘 중 훨씬 흔하다. */
+async function readConflictCode(response: Response): Promise<string> {
+  try {
+    const body = await response.json() as { readonly error?: unknown };
+    return body.error === "paired_device_limit" ? "remote_link_device_limit" : "remote_link_control_held";
+  } catch {
+    return "remote_link_control_held";
   }
 }
 
