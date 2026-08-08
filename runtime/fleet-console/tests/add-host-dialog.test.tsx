@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -185,6 +185,29 @@ describe("AddHostDialog", () => {
     });
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("still accepts the response under StrictMode's setup-cleanup-setup cycle", async () => {
+    // 개발 채널의 main.tsx는 앱을 StrictMode로 렌더한다 — effect가 setup→cleanup→setup으로
+    // 두 번 돌므로, 첫 cleanup이 내린 생존 표시를 두 번째 setup이 되돌리지 않으면 이후 모든
+    // 응답이 무시된다: 성공해도 창이 닫히지 않고 실패해도 "확인 중…"에 멈춘다.
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const payload = init?.method === "POST" ? { host: HOST } : { hosts: [HOST] };
+      return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as typeof globalThis.fetch;
+
+    const onClose = vi.fn();
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    act(() => root?.render(<StrictMode><AddHostDialog onClose={onClose} /></StrictMode>));
+    // 두 사이클 사이에서 cleanup이 여는 자리로 포커스를 되돌리므로, 두 번째 setup이 입력으로
+    // 다시 가져오는지도 함께 본다 — 열자마자 포커스가 창 밖에 있으면 안 된다.
+    expect(document.activeElement).toBe(card().querySelector("input"));
+    type(LINK);
+    await submit();
+
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("blocks submission while the field is empty", () => {

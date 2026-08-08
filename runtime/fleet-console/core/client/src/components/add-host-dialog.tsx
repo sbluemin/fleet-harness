@@ -35,6 +35,10 @@ export function AddHostDialog({ onClose, openerRef }: {
   const aliveRef = useRef(true);
 
   useEffect(() => {
+    // 개발 채널은 StrictMode로 렌더하므로 이 effect가 setup→cleanup→setup으로 돈다.
+    // 생존 표시를 setup에서 다시 세우지 않으면 첫 cleanup이 내린 값이 그대로 남아 이후
+    // 모든 응답이 버려진다 — 성공해도 창이 닫히지 않고 실패해도 "확인 중…"에 멈춘다.
+    aliveRef.current = true;
     const shell = document.querySelector<HTMLElement>(".console-shell");
     if (shell) shell.inert = true;
     inputRef.current?.focus();
