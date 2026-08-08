@@ -42,7 +42,7 @@ describe("Cowork DTO", () => {
     await writeWikiEntry(entry(), paths);
     const service = new CoworkService(new CoworkStore(), paths, root, new FakeConnector());
     const session = await service.create("workspace", "entry");
-    const server = createServer((request, response) => void handleCoworkRequest(request, response, { workspaceId: "workspace", paths, coworkService: service, allowedOrigins: new Set(["http://console.test"]), port: 0 }));
+    const server = createServer((request, response) => void handleCoworkRequest(request, response, { workspaceId: "workspace", paths, coworkService: service, allowedOrigins: new Set(["http://console.test"]), port: 0, admitted: true }));
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
     try {
@@ -69,7 +69,7 @@ describe("Cowork DTO", () => {
     const paths = createMemoryPaths(join(root, "knowledge"));
     await ensureMemoryRoot(paths);
     const service = new CoworkService(new CoworkStore(), paths, root, new FakeConnector());
-    const server = createServer((request, response) => void handleCoworkRequest(request, response, { workspaceId: "workspace", paths, coworkService: service, allowedOrigins: new Set(["http://console.test"]), port: 0 }));
+    const server = createServer((request, response) => void handleCoworkRequest(request, response, { workspaceId: "workspace", paths, coworkService: service, allowedOrigins: new Set(["http://console.test"]), port: 0, admitted: true }));
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
     try {
@@ -96,7 +96,7 @@ describe("Cowork DTO", () => {
     await writeWikiEntry(entry(), paths);
     const service = new CoworkService(new CoworkStore(), paths, root, new FakeConnector());
     const session = await service.create("workspace", "entry");
-    const server = createServer((request, response) => void handleCoworkRequest(request, response, { workspaceId: "workspace", paths, coworkService: service, allowedOrigins: new Set(["http://console.test"]), port: 0 }));
+    const server = createServer((request, response) => void handleCoworkRequest(request, response, { workspaceId: "workspace", paths, coworkService: service, allowedOrigins: new Set(["http://console.test"]), port: 0, admitted: true }));
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
     try {
@@ -132,7 +132,7 @@ describe("Cowork DTO", () => {
     const service = new CoworkService(new CoworkStore(), paths, root, connector);
     const session = await service.create("workspace", "entry");
     await service.prompt("workspace", session.id, "first");
-    const server = createServer((request, response) => void handleCoworkRequest(request, response, { workspaceId: "workspace", paths, coworkService: service, allowedOrigins: new Set(["http://console.test"]), port: 0 }));
+    const server = createServer((request, response) => void handleCoworkRequest(request, response, { workspaceId: "workspace", paths, coworkService: service, allowedOrigins: new Set(["http://console.test"]), port: 0, admitted: true }));
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
     try {

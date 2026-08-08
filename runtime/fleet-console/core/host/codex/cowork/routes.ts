@@ -7,12 +7,12 @@ import { withSecurityHeaders } from "../contracts.js";
 
 const CONFLICT_ERRORS = new Set(["cowork_busy", "cowork_apply_stale", "cowork_apply_busy", "cowork_apply_stale_revision"]);
 
-export async function handleCoworkRequest(request: IncomingMessage, response: ServerResponse, context: { workspaceId: string; paths: MemoryPaths; coworkService: CoworkService; allowedOrigins: Set<string>; port: number }): Promise<boolean> {
+export async function handleCoworkRequest(request: IncomingMessage, response: ServerResponse, context: { workspaceId: string; paths: MemoryPaths; coworkService: CoworkService; allowedOrigins: Set<string>; port: number; admitted: boolean }): Promise<boolean> {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
   if (!url.pathname.startsWith("/api/cowork")) return false;
-  // Read gate: loopback always; when a browser supplies Origin it must be an allowed one.
+  // Read gate: an admitted listener always; when a browser supplies Origin it must be an allowed one.
   if (!readAllowed(request, context)) return json(response, 403, { error: "origin_mismatch" });
-  // Write gate: loopback plus a mandatory allowed Origin.
+  // Write gate: an admitted listener plus a mandatory allowed Origin.
   if (request.method !== "GET" && !writeAllowed(request, context)) return json(response, 403, { error: "origin_mismatch" });
   // 인메모리 store 특성상 요청별 서비스 생성은 세션 소실로 이어진다 — 게이트웨이 캐시가 유일한 소유자다.
   const service = context.coworkService;
@@ -61,9 +61,10 @@ export async function handleCoworkRequest(request: IncomingMessage, response: Se
     return json(response, 404, { error: "not_found" });
   } catch (error) { const message = error instanceof Error ? error.message : "internal_error"; return json(response, CONFLICT_ERRORS.has(message) ? 409 : message.includes("not_found") ? 404 : 400, { error: message }); }
 }
-function isLoopback(r: IncomingMessage) { const addr = r.socket.remoteAddress; return addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1"; }
-function readAllowed(r: IncomingMessage, c: { allowedOrigins: Set<string> }) { if (!isLoopback(r)) return false; const origin = r.headers.origin; return typeof origin !== "string" || c.allowedOrigins.has(origin); }
-function writeAllowed(r: IncomingMessage, c: { allowedOrigins: Set<string> }) { return isLoopback(r) && typeof r.headers.origin === "string" && c.allowedOrigins.has(r.headers.origin); }
+// 자격은 피어 주소가 아니라 요청이 통과한 리스너가 정한다 — 원격 리스너 요청은 라우팅 이전에
+// 세션 게이트를 통과했고, 읽기 전용 자격도 거기서 이미 묶인다.
+function readAllowed(r: IncomingMessage, c: { allowedOrigins: Set<string>; admitted: boolean }) { if (!c.admitted) return false; const origin = r.headers.origin; return typeof origin !== "string" || c.allowedOrigins.has(origin); }
+function writeAllowed(r: IncomingMessage, c: { allowedOrigins: Set<string>; admitted: boolean }) { return c.admitted && typeof r.headers.origin === "string" && c.allowedOrigins.has(r.headers.origin); }
 async function body(r: IncomingMessage): Promise<Record<string, unknown>> { let raw = ""; for await (const c of r) { raw += String(c); if (raw.length > 1024 * 1024) throw new Error("body_too_large"); } try { const v: unknown = JSON.parse(raw || "{}"); return v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {}; } catch { throw new Error("invalid_json"); } }
 function annotation(value: unknown): CoworkAnnotationDto | null {
   if (!value || typeof value !== "object") return null;

@@ -567,7 +567,10 @@ function RemoteAccessSection({ state, saving }: { readonly state: GlobalSettings
     setLink(null);
     setActionError(null);
     setRotateArmed(false);
-    void setGlobalSettingsField("remoteAccess", next);
+    // 저장은 낙관적 상태를 먼저 쓴다. 그 값에 걸린 위 effect는 서버가 리스너를 다시 세우기 전에
+    // 상태를 읽고, 뒤이어 도착하는 응답은 값이 같아 effect를 다시 깨우지 않는다 — 저장이 끝난 뒤
+    // 한 번 더 읽지 않으면 신원과 링크는 새로 고침 전까지 예전 값에 머문다.
+    void setGlobalSettingsField("remoteAccess", next).finally(refresh);
   };
   const run = (kind: "create" | "rotate" | "revoke", action: () => Promise<unknown>) => {
     setBusy(kind);

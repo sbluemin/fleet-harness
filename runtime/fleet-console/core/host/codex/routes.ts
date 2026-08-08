@@ -55,6 +55,8 @@ interface RouteContext {
   workspaceId: string;
   allowedOrigins: Set<string>;
   externalMode: boolean;
+  /** 이 요청이 통과한 리스너가 쓰기를 허락하는가. 게이트웨이가 리스너로 판정해 넘긴다. */
+  admitted: boolean;
   coworkService?: CoworkService;
 }
 
@@ -227,7 +229,7 @@ async function routePost(url: URL, request: IncomingMessage, response: ServerRes
     return;
   }
 
-  if (!isLoopbackRemoteAddress(request.socket.remoteAddress)) {
+  if (!context.admitted) {
     sendJson(response, 403, { error: "write_loopback_only" });
     return;
   }
@@ -631,11 +633,13 @@ function isOriginAllowed(origin: string, allowedOrigins: Set<string>, serverPort
   } catch {
     return false;
   }
-  if (parsed.protocol !== "http:") return false;
+  // 원격 리스너는 TLS라 Origin이 https로 온다. 스킴을 http로 못 박으면 그 Origin은 어떤 집합과도
+  // 일치할 수 없다 — 허용 집합이 스킴까지 들고 있으므로 비교는 Origin의 스킴 그대로 한다.
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
   if (Number(parsed.port) !== serverPort) return false;
   const normalizedHost = normalizeOriginHostname(parsed.hostname);
   if (!normalizedHost) return false;
-  return allowedOrigins.has(`http://${net.isIP(normalizedHost) === 6 ? `[${normalizedHost}]` : normalizedHost}:${serverPort}`);
+  return allowedOrigins.has(`${parsed.protocol}//${net.isIP(normalizedHost) === 6 ? `[${normalizedHost}]` : normalizedHost}:${serverPort}`);
 }
 
 function sendJson(response: ServerResponse, statusCode: number, body: unknown): void {

@@ -404,6 +404,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     host,
     version,
     getPort: () => lockHandle?.payload.port ?? port,
+    resolveListener: (request) => listenerForRequest(request),
     wikiWorkspaceResolver,
     dataDir: durablePaths.dir,
   });
@@ -785,7 +786,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       runAsyncBooleanHandler(codex.handle(req, res), res, () => tryServeStaticConsole(req, res, pathname));
       return;
     }
-    // Host 게이트는 순서를 바꾸지 않는다 — Codex는 wildcard 바인드에서 더 넓은 host 집합을 쓴다.
+    // Host 게이트는 순서를 바꾸지 않는다 — Codex는 wildcard 바인드에서 더 넓은 host 집합을 쓰므로
+    // 자기 게이트를 그대로 유지한다. 대신 같은 리스너 판정을 주입받아, 원격 리스너의 Host·Origin도
+    // 그 게이트가 알고 있다.
     if (!isRequestHostAllowed(req)) {
       writeJson(res, 403, { error: "host_mismatch" });
       return;
