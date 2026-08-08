@@ -142,13 +142,20 @@ export async function injectAgentCliProfile(
     const injectedArgs = buildAgentCliArgs(capability.builderId, context);
     const mergedArgs = mergeAgentCliArgs(profile, capability.builderId, context, injectedArgs);
     // 명령줄 상한은 여기서만 판정할 수 있다 — 프롬프트 길이와 달리 주입 인자까지 합쳐진 뒤라야
-    // 실제 값이 나온다. 거부는 spawn 전에 끝나야 하므로 이 프로필이 만든 플러그인을 먼저 거둔다.
+    // 실제 값이 나온다. 프롬프트 없는 판본은 같은 병합을 한 번 더 돌려 만든다: 후미 인자라는
+    // 위치 가정을 두면 병합 순서가 바뀌는 날 조용히 어긋난다.
+    // 거부는 spawn 전에 끝나야 하므로 이 프로필이 만든 플러그인을 먼저 거둔다.
     try {
       assertLaunchCommandLineBudget({
         args: mergedArgs,
+        argsWithoutPrompt: mergeAgentCliArgs(
+          { ...profile, promptArgs: [] },
+          capability.builderId,
+          context,
+          injectedArgs,
+        ),
         bin: profile.bin,
         limit: profile.commandLineLimit,
-        promptChars: (profile.promptArgs ?? []).reduce((total, arg) => total + arg.length, 0),
       });
     } catch (error) {
       cleanup();

@@ -122,22 +122,29 @@ function quoteWindowsArg(value: string): string {
  * 플랫폼 오류로 죽어 사용자에게는 원인이 남지 않는다.
  */
 export function assertLaunchCommandLineBudget(options: {
+  /** 최종 argv 그대로. */
   readonly args: readonly string[];
+  /**
+   * 같은 argv에서 런치 프롬프트만 빠진 것. "프롬프트를 줄이면 고쳐지는가"는 프롬프트 길이가
+   * 아니라 이 값이 답한다 — 프롬프트가 초과분보다 짧으면 통째로 지워도 여전히 넘치고,
+   * 그때 "몇 자를 줄이라"는 지시는 따를 수 없는 말이 된다.
+   */
+  readonly argsWithoutPrompt: readonly string[];
   readonly bin: string;
   readonly limit: LaunchCommandLineLimit | undefined;
-  readonly promptChars: number;
 }): void {
   const { limit } = options;
   if (limit === undefined) return;
   const total = estimateWindowsCommandLineChars(options.bin, options.args);
   if (total <= limit.maxChars) return;
   const boundary = limit.via === "cmd-shim" ? "cmd.exe shim" : "CreateProcess";
-  // 프롬프트가 없는데도 넘겼다면 줄일 대상이 프롬프트가 아니다. 그 경우까지 "프롬프트를
-  // 줄이라"고 말하면 사용자는 고칠 수 없는 지시를 받는다.
-  if (options.promptChars === 0) {
+  // 프롬프트를 통째로 빼도 넘치면 줄일 대상이 프롬프트가 아니다. 프롬프트가 아예 없는 실행도
+  // 여기로 떨어진다 — 그때 argsWithoutPrompt는 args와 같다.
+  const withoutPrompt = estimateWindowsCommandLineChars(options.bin, options.argsWithoutPrompt);
+  if (withoutPrompt > limit.maxChars) {
     throw new LaunchPromptError(
       "launch_command_line_too_long",
-      `The launch command line is ${total} characters with no launch prompt, over the ${limit.maxChars}-character Windows ${boundary} limit. Shortening a prompt cannot help; reduce the launch configuration instead.`,
+      `The launch command line is ${withoutPrompt} characters before any launch prompt, over the ${limit.maxChars}-character Windows ${boundary} limit. Shortening the prompt cannot help; reduce the launch configuration instead.`,
     );
   }
   const shortenByChars = total - limit.maxChars;

@@ -86,18 +86,18 @@ describe("assertLaunchCommandLineBudget", () => {
   it("does nothing when the launch declares no limit", () => {
     expect(() => assertLaunchCommandLineBudget({
       args: ["x".repeat(100_000)],
+      argsWithoutPrompt: [],
       bin: "/usr/local/bin/claude",
       limit: undefined,
-      promptChars: 100_000,
     })).not.toThrow();
   });
 
   it("admits a launch that fits", () => {
     expect(() => assertLaunchCommandLineBudget({
       args: [...CMD_WRAPPED_PREFIX_ARGS, "hello"],
+      argsWithoutPrompt: [...CMD_WRAPPED_PREFIX_ARGS],
       bin: "cmd.exe",
       limit: CMD_SHIM_LIMIT,
-      promptChars: 5,
     })).not.toThrow();
   });
 
@@ -111,9 +111,9 @@ describe("assertLaunchCommandLineBudget", () => {
     try {
       assertLaunchCommandLineBudget({
         args: [...CMD_WRAPPED_PREFIX_ARGS, prompt],
+        argsWithoutPrompt: [...CMD_WRAPPED_PREFIX_ARGS],
         bin: "cmd.exe",
         limit: CMD_SHIM_LIMIT,
-        promptChars: prompt.length,
       });
       expect.unreachable("expected a refusal");
     } catch (error) {
@@ -130,9 +130,9 @@ describe("assertLaunchCommandLineBudget", () => {
     try {
       assertLaunchCommandLineBudget({
         args: [...CMD_WRAPPED_PREFIX_ARGS, "c".repeat(9_000)],
+        argsWithoutPrompt: [...CMD_WRAPPED_PREFIX_ARGS, "c".repeat(9_000)],
         bin: "cmd.exe",
         limit: CMD_SHIM_LIMIT,
-        promptChars: 0,
       });
       expect.unreachable("expected a refusal");
     } catch (error) {
@@ -146,25 +146,64 @@ describe("assertLaunchCommandLineBudget", () => {
     const injected = ["--mcp-config", "b".repeat(4_000)];
     expect(() => assertLaunchCommandLineBudget({
       args: [...CMD_WRAPPED_PREFIX_ARGS, prompt],
+      argsWithoutPrompt: [...CMD_WRAPPED_PREFIX_ARGS],
       bin: "cmd.exe",
       limit: CMD_SHIM_LIMIT,
-      promptChars: prompt.length,
     })).not.toThrow();
     expect(() => assertLaunchCommandLineBudget({
       args: [...CMD_WRAPPED_PREFIX_ARGS, ...injected, prompt],
+      argsWithoutPrompt: [...CMD_WRAPPED_PREFIX_ARGS, ...injected],
       bin: "cmd.exe",
       limit: CMD_SHIM_LIMIT,
-      promptChars: prompt.length,
     })).toThrow(LaunchPromptError);
+  });
+
+  // 프롬프트 길이로 "고칠 수 있는가"를 대신 물으면, 프롬프트가 초과분보다 짧을 때 틀린 답이 나온다 —
+  // 한 글자짜리 프롬프트에 수백 자를 줄이라는, 따를 수 없는 지시가 된다.
+  it("does not blame a prompt too short to close the overflow", () => {
+    const bulky = [...CMD_WRAPPED_PREFIX_ARGS, "--mcp-config", "b".repeat(9_000)];
+    try {
+      assertLaunchCommandLineBudget({
+        args: [...bulky, "x"],
+        argsWithoutPrompt: bulky,
+        bin: "cmd.exe",
+        limit: CMD_SHIM_LIMIT,
+      });
+      expect.unreachable("expected a refusal");
+    } catch (error) {
+      expect((error as LaunchPromptError).code).toBe("launch_command_line_too_long");
+      expect((error as LaunchPromptError).shortenByChars).toBeUndefined();
+      expect((error as LaunchPromptError).message).not.toMatch(/Shorten the launch prompt/);
+    }
+  });
+
+  it("still blames the prompt when removing it would bring the launch under the limit", () => {
+    // 경계 바로 옆: 프롬프트를 빼면 들어가므로, 이때는 몇 자를 줄이라고 말하는 것이 맞다.
+    const fits = [...CMD_WRAPPED_PREFIX_ARGS, "--mcp-config", "b".repeat(4_000)];
+    try {
+      assertLaunchCommandLineBudget({
+        args: [...fits, "p".repeat(5_000)],
+        argsWithoutPrompt: fits,
+        bin: "cmd.exe",
+        limit: CMD_SHIM_LIMIT,
+      });
+      expect.unreachable("expected a refusal");
+    } catch (error) {
+      expect((error as LaunchPromptError).code).toBe("prompt_command_line_too_long");
+      const cut = (error as LaunchPromptError).shortenByChars ?? 0;
+      // 지시가 따를 수 있는 것이어야 한다: 줄이라는 양이 프롬프트 자체보다 크면 안 된다.
+      expect(cut).toBeGreaterThan(0);
+      expect(cut).toBeLessThanOrEqual(5_000);
+    }
   });
 
   it("does not tell the user to shorten a prompt that is not there", () => {
     try {
       assertLaunchCommandLineBudget({
         args: [...CMD_WRAPPED_PREFIX_ARGS, "c".repeat(9_000)],
+        argsWithoutPrompt: [...CMD_WRAPPED_PREFIX_ARGS, "c".repeat(9_000)],
         bin: "cmd.exe",
         limit: CMD_SHIM_LIMIT,
-        promptChars: 0,
       });
       expect.unreachable("expected a refusal");
     } catch (error) {
@@ -177,15 +216,15 @@ describe("assertLaunchCommandLineBudget", () => {
     const args = [...CMD_WRAPPED_PREFIX_ARGS, "d".repeat(10_000)];
     expect(() => assertLaunchCommandLineBudget({
       args,
+      argsWithoutPrompt: [...CMD_WRAPPED_PREFIX_ARGS],
       bin: "cmd.exe",
       limit: { maxChars: WINDOWS_CREATE_PROCESS_COMMAND_LINE_MAX_CHARS, via: "create-process" },
-      promptChars: 10_000,
     })).not.toThrow();
     expect(() => assertLaunchCommandLineBudget({
       args,
+      argsWithoutPrompt: [...CMD_WRAPPED_PREFIX_ARGS],
       bin: "cmd.exe",
       limit: CMD_SHIM_LIMIT,
-      promptChars: 10_000,
     })).toThrow(LaunchPromptError);
   });
 });
