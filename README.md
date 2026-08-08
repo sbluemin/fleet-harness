@@ -7,7 +7,7 @@
 <p align="center">
   <strong>Fleet Console runs Claude Code and Claude Gateway as live, server-owned operations</strong><br/>
   you can arrange, observe, and delegate from one local workspace.<br/>
-  Native agent runtimes. Official protocols. No API wrapping or proxying.
+  Native agent runtimes. Official protocols. Provider credentials never enter the agent process.
 </p>
 
 <p align="center">
@@ -27,7 +27,7 @@ npm install -g @dotobokuri/fleet-console
 fleet-console          # start the local console and open it in your browser
 ```
 
-`fleet-console` also takes `status`, `restart`, and `stop`. Everything runs on your machine: the server binds to loopback only, and the browser never receives MCP or session tokens.
+`fleet-console` also takes `status`, `restart`, and `stop`. Everything runs on your machine: the server binds to loopback by default, and the browser never receives MCP or provider tokens. Remote access stays off until you turn it on; turning it on serves the console over TLS on an interface you pick.
 
 Prefer a native window? Install a platform build from the [latest GitHub Release](https://github.com/sbluemin/fleet-harness/releases/latest).
 
@@ -93,7 +93,7 @@ Fleet Wiki keeps architecture decisions, product history, and review queues in t
 
 ## Fleet Console Desktop — native when you want it
 
-Fleet Console Desktop is an optional thin native shell over Fleet Console — not a second server or a forked UI. It supervises the standard Console service, verifies the exact loopback origin, and loads the same `/console/` product in a sandboxed, Node-free renderer.
+Fleet Console Desktop is an optional thin native shell over Fleet Console — not a second server or a forked UI. It supervises the standard Console service, verifies the exact origin before it hands the window over — the loopback console, or a remote console whose live certificate matches the fingerprint your local Console holds for it — and loads the same `/console/` product in a sandboxed, Node-free renderer.
 
 - Native window, tray lifecycle, and platform update flow
 - Managed Node and Console runtime, replaceable independently of user state

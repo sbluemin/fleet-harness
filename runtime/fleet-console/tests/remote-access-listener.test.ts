@@ -59,6 +59,32 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await expect(response.json()).resolves.toEqual({ error: "remote_access_disabled" });
   });
 
+  // 오타가 조용히 넓은 등급으로 떨어지면, 좁히려고 고른 값이 좁히지 못한 채 링크가 나간다.
+  it("refuses an access class it does not recognise instead of widening it to full", async () => {
+    const fixture = await startFixture({ remote: true });
+
+    const response = await fetch(`${fixture.loopbackEndpoint}api/v1/access-links?access=monitorring`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${fixture.lockToken}` },
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "invalid_access_class" });
+    expect((await readRemoteStatus(fixture)).links).toHaveLength(0);
+  });
+
+  it("still issues a full link when no class is named", async () => {
+    const fixture = await startFixture({ remote: true });
+
+    const response = await fetch(`${fixture.loopbackEndpoint}api/v1/access-links`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${fixture.lockToken}` },
+    });
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({ access: "full" });
+  });
+
   it("serves the remote listener over tls with the fingerprint the link advertises", async () => {
     const fixture = await startFixture({ remote: true });
     const link = await createLink(fixture);

@@ -48,7 +48,9 @@ export interface TerminalSettingsState {
 export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, deps: TerminalSettingsRouteDeps): void {
   registerRouter(ctx, "settings", async ({ req, res }) => {
     if (req.method === "GET") {
-      // 상류 host 게이트(server.ts:423)로 loopback이 보장된다. 플러그인 컨텍스트에는 콘솔 포트가 없다.
+      // 세션 없는 요청은 상류가 이미 걷어냈다. 다만 상류가 보장하는 것은 loopback이 아니다 —
+      // 원격 리스너에서 온 GET도 여기 닿고, 원격 세션은 이 콘솔의 설정 화면을 그리는 주체이므로
+      // 그래야 한다. 플러그인 컨텍스트에는 콘솔 포트가 없어 여기서 Host를 다시 볼 수도 없다.
       ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
         deps.globalOptionsService.load(),
         deps.aiGatewayStore.read(),

@@ -72,7 +72,7 @@ const UI = {
 
   closerEy:    { ko: "Get started", en: "Get started" },
   closerTitle: { ko: ["콘솔을 켜고", "첫 Operation을 띄우세요."], en: ["Start the console,", "launch your first Operation."] },
-  closerSub:   { ko: "모든 실행은 내 머신 안에서 이루어진다. 서버는 루프백에만 바인딩되며, 브라우저에는 MCP·세션 토큰이 전달되지 않는다.", en: "Everything runs on your machine: the server binds to loopback only, and the browser never receives MCP or session tokens." },
+  closerSub:   { ko: "모든 실행은 내 머신 안에서 이루어진다. 서버는 기본적으로 루프백에 바인딩되고, 브라우저에는 MCP·공급자 토큰이 전달되지 않는다. 원격 접속은 켜야 열린다.", en: "Everything runs on your machine: the server binds to loopback by default, and the browser never receives MCP or provider tokens. Remote access opens only when you turn it on." },
   installCmt:  { ko: "# install the console", en: "# install the console" },
   setSailCmt:  { ko: "# Start it, and it opens in your browser.", en: "# Start it, and it opens in your browser." },
   footerLine:  { ko: "fleet-harness · Fleet Console", en: "fleet-harness · Fleet Console" },
