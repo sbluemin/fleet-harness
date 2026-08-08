@@ -32,7 +32,10 @@ function buildResumeArgs(resumeSessionId: string | undefined): string[] {
 function buildSystemPromptArgs(context: AgentCliInjectionContext): string[] {
   // native 세션은 Admiral 시스템 프롬프트를 붙이지 않는다.
   if (context.systemPromptFile === undefined) return [];
-  return ["--append-system-prompt-file", context.systemPromptFile];
+  const flag = context.replaceSystemPrompt
+    ? "--system-prompt-file"
+    : "--append-system-prompt-file";
+  return [flag, context.systemPromptFile];
 }
 
 function buildClaudeMcpConfig(servers: readonly AgentCliMcpServerArg[]): string {

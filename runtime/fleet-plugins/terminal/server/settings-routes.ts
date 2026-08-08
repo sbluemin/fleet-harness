@@ -24,6 +24,7 @@ interface TerminalSettingsRouteDeps {
 
 interface TerminalSettingsBody {
   readonly agentIdleDormantMinutes?: unknown;
+  readonly replaceClaudeGatewaySystemPrompt?: unknown;
   readonly aiGateway?: unknown;
   readonly cursorDiagnosticsEnabled?: unknown;
   readonly wireLogEnabled?: unknown;
@@ -31,6 +32,7 @@ interface TerminalSettingsBody {
 
 type TerminalSettingsUpdate =
   | { readonly agentIdleDormantMinutes: number | null }
+  | { readonly replaceClaudeGatewaySystemPrompt: boolean }
   | { readonly aiGateway: AiGatewayUpdateValue | undefined }
   | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean };
@@ -39,6 +41,7 @@ export const DEFAULT_AGENT_IDLE_DORMANT_MINUTES = 60;
 
 export interface TerminalSettingsState {
   readonly agentIdleDormantMinutes: number | null;
+  readonly replaceClaudeGatewaySystemPrompt: boolean;
   readonly aiGateway: AiGatewayUpdateValue | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
@@ -135,6 +138,7 @@ export function toTerminalSettingsState(
     agentIdleDormantMinutes: data.agentIdleDormantMinutes === undefined
       ? DEFAULT_AGENT_IDLE_DORMANT_MINUTES
       : data.agentIdleDormantMinutes,
+    replaceClaudeGatewaySystemPrompt: data.replaceClaudeGatewaySystemPrompt === true,
     aiGateway: configured
       ? {
         ...(aiGateway.models?.length ? { models: aiGateway.models } : {}),
@@ -163,6 +167,11 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
   if (keys[0] === "agentIdleDormantMinutes") {
     return isAgentIdleDormantMinutes(body.agentIdleDormantMinutes)
       ? { agentIdleDormantMinutes: body.agentIdleDormantMinutes }
+      : null;
+  }
+  if (keys[0] === "replaceClaudeGatewaySystemPrompt") {
+    return typeof body.replaceClaudeGatewaySystemPrompt === "boolean"
+      ? { replaceClaudeGatewaySystemPrompt: body.replaceClaudeGatewaySystemPrompt }
       : null;
   }
   if (keys[0] === "aiGateway") {

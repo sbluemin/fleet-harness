@@ -7,6 +7,8 @@ export interface GlobalOptionsData {
   readonly version: 1;
   /** Idle agent auto-DORMANT threshold in minutes. `null` disables; key absent means server default. */
   readonly agentIdleDormantMinutes?: number | null;
+  /** Replace Claude Code's built-in system prompt for new AI Gateway sessions. Missing means append. */
+  readonly replaceClaudeGatewaySystemPrompt?: boolean;
 }
 
 export interface GlobalOptionsValidationResult {
@@ -107,13 +109,18 @@ export function sanitizeGlobalOptionsData(value: unknown): GlobalOptionsValidati
   }
 
   const agentIdleDormantMinutes = sanitizeAgentIdleDormantMinutes(value.agentIdleDormantMinutes);
+  const replaceClaudeGatewaySystemPrompt = typeof value.replaceClaudeGatewaySystemPrompt === "boolean"
+    ? value.replaceClaudeGatewaySystemPrompt
+    : undefined;
   const data: GlobalOptionsData = {
     version: GLOBAL_OPTIONS_VERSION,
     ...(agentIdleDormantMinutes !== undefined ? { agentIdleDormantMinutes } : {}),
+    ...(replaceClaudeGatewaySystemPrompt !== undefined ? { replaceClaudeGatewaySystemPrompt } : {}),
   };
-  const allowedKeys = new Set(["version", "agentIdleDormantMinutes"]);
+  const allowedKeys = new Set(["version", "agentIdleDormantMinutes", "replaceClaudeGatewaySystemPrompt"]);
   const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
-    ("agentIdleDormantMinutes" in value && agentIdleDormantMinutes === undefined);
+    ("agentIdleDormantMinutes" in value && agentIdleDormantMinutes === undefined) ||
+    ("replaceClaudeGatewaySystemPrompt" in value && replaceClaudeGatewaySystemPrompt === undefined);
 
   return { data, changed };
 }

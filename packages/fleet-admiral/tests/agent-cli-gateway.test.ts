@@ -211,6 +211,26 @@ describe("claude-gateway custom agents", () => {
   });
 });
 
+describe("claude-gateway system prompt mode", () => {
+  it("uses the replacement flag only when explicitly requested", async () => {
+    const root = createTempRoot("fleet-admiral-gateway-system-prompt-");
+    const profile = baseProfile("claude-gateway", { args: [], cwd: root, env: { HOME: root } });
+
+    const appended = await injectAgentCliProfile(profile, baseInjectOptions(root));
+    const replaced = await injectAgentCliProfile(profile, baseInjectOptions(root, {
+      replaceSystemPrompt: true,
+    }));
+
+    expect(appended.args).toContain("--append-system-prompt-file");
+    expect(appended.args).not.toContain("--system-prompt-file");
+    expect(replaced.args).toContain("--system-prompt-file");
+    expect(replaced.args).not.toContain("--append-system-prompt-file");
+
+    appended.cleanup?.();
+    replaced.cleanup?.();
+  });
+});
+
 describe("claude-gateway disabled skills", () => {
   it("turns the built-in claude-api skill off through --settings", async () => {
     const root = createTempRoot("fleet-admiral-gateway-skills-");
@@ -306,6 +326,7 @@ function baseInjectOptions(
   overrides: {
     readonly gatewayDelegationModels?: Parameters<typeof injectAgentCliProfile>[1]["gatewayDelegationModels"];
     readonly captureSessionHookExec?: FleetHookExec;
+    readonly replaceSystemPrompt?: boolean;
   } = {},
 ): Parameters<typeof injectAgentCliProfile>[1] {
   return {
@@ -322,6 +343,7 @@ function baseInjectOptions(
     },
     ...(overrides.captureSessionHookExec ? { captureSessionHookExec: overrides.captureSessionHookExec } : {}),
     ...(overrides.gatewayDelegationModels ? { gatewayDelegationModels: overrides.gatewayDelegationModels } : {}),
+    ...(overrides.replaceSystemPrompt ? { replaceSystemPrompt: true } : {}),
     withMarketplaceLock: async (_target, fn) => fn(),
   };
 }

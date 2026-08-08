@@ -48,6 +48,7 @@ export interface AiGatewayCatalog {
 
 export interface SystemPromptSettingsState {
   readonly agentIdleDormantMinutes: number | null;
+  readonly replaceClaudeGatewaySystemPrompt: boolean;
   readonly aiGateway: AiGatewaySettings | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
@@ -56,6 +57,7 @@ export interface SystemPromptSettingsState {
 
 export type SystemPromptSettingsUpdate =
   | { readonly agentIdleDormantMinutes: number | null }
+  | { readonly replaceClaudeGatewaySystemPrompt: boolean }
   | { readonly aiGateway: AiGatewaySettings | null }
   | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean };
@@ -104,6 +106,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
   if (
     !payload
     || !isAgentIdleDormantMinutes(payload.agentIdleDormantMinutes)
+    || typeof payload.replaceClaudeGatewaySystemPrompt !== "boolean"
     || !isAiGatewayCatalog(payload.aiGatewayCatalog)
     || typeof payload.cursorDiagnosticsEnabled !== "boolean"
     || typeof payload.wireLogEnabled !== "boolean"
@@ -112,6 +115,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
   }
   return {
     agentIdleDormantMinutes: payload.agentIdleDormantMinutes,
+    replaceClaudeGatewaySystemPrompt: payload.replaceClaudeGatewaySystemPrompt,
     aiGateway: payload.aiGateway ?? null,
     aiGatewayCatalog: payload.aiGatewayCatalog,
     cursorDiagnosticsEnabled: payload.cursorDiagnosticsEnabled,
@@ -135,7 +139,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled";
+export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "replaceClaudeGatewaySystemPrompt" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -207,6 +211,9 @@ export async function setSystemPromptSettingsField<Field extends SystemPromptSet
 }
 
 function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptSettingsState): SystemPromptSettingsUpdate {
+  if (field === "replaceClaudeGatewaySystemPrompt") {
+    return { replaceClaudeGatewaySystemPrompt: state.replaceClaudeGatewaySystemPrompt };
+  }
   if (field === "aiGateway") return { aiGateway: state.aiGateway };
   if (field === "cursorDiagnosticsEnabled") {
     return { cursorDiagnosticsEnabled: state.cursorDiagnosticsEnabled };

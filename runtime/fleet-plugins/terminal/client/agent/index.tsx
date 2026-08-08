@@ -446,10 +446,49 @@ function GeneralSection() {
   // 제공하므로, 플러그인은 자체 래퍼로 감싸 그 간격을 가로채지 않는다(간격은 호스트 소관).
   return (
     <>
+      <ClaudeGatewaySystemPromptSettingsBlock />
       <IdleAgentSessionsSettingsBlock />
       <TerminalFontSettingsCard terminalFont={terminalFont} />
       <TerminalRendererCard terminalRenderer={terminalRenderer} />
     </>
+  );
+}
+
+function ClaudeGatewaySystemPromptSettingsBlock() {
+  const t = getT(useTerminalLocale());
+  const settings = useSystemPromptSettingsStore();
+  const state = settings.state;
+  const saving = settings.savingField !== null;
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void loadSystemPromptSettings(controller.signal);
+    return () => controller.abort();
+  }, []);
+
+  return (
+    <section className="global-settings-card" aria-label={t("terminal.settings.systemPromptAria")}>
+      {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
+      {state ? (
+        <>
+          <SettingToggleRow
+            title={t("terminal.settings.systemPromptTitle")}
+            help={t("terminal.settings.systemPromptHelp")}
+            onLabel={t("terminal.settings.systemPromptReplace")}
+            offLabel={t("terminal.settings.systemPromptAppend")}
+            value={state.replaceClaudeGatewaySystemPrompt}
+            disabled={saving}
+            onToggle={() => void setSystemPromptSettingsField(
+              "replaceClaudeGatewaySystemPrompt",
+              !state.replaceClaudeGatewaySystemPrompt,
+            )}
+          />
+          <p className="global-settings-foot">{t("terminal.settings.systemPromptFoot")}</p>
+        </>
+      ) : (
+        <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
+      )}
+    </section>
   );
 }
 
