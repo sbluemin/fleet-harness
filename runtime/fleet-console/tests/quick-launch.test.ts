@@ -196,6 +196,13 @@ describe("rejection messages", () => {
     expect(quickLaunchErrorMessageKey("prompt_unsafe_for_shim")).toBe("chrome.quickLaunch.errorUnsafePrompt");
     expect(quickLaunchErrorMessageKey("prompt_unsupported_launch")).toBe("chrome.quickLaunch.errorPromptUnsupported");
     expect(quickLaunchErrorMessageKey("prompt_too_long")).toBe("chrome.quickLaunch.errorTooLong");
+    expect(quickLaunchErrorMessageKey("prompt_command_line_too_long")).toBe("chrome.quickLaunch.errorCommandLineTooLong");
+    // 서버가 줄여야 할 글자 수를 실어 보내면, 그 수를 담는 문구로 올라선다. 브라우저는 이 실행의
+    // 명령줄 상한을 알 수 없어 스스로 계산할 수 없으므로 서버가 준 값이 유일한 출처다.
+    expect(quickLaunchErrorMessageKey("prompt_command_line_too_long", 2145)).toBe("chrome.quickLaunch.errorCommandLineTooLongBy");
+    // 다른 코드에는 그 수가 붙어도 문구가 바뀌지 않는다.
+    expect(quickLaunchErrorMessageKey("prompt_too_long", 2145)).toBe("chrome.quickLaunch.errorTooLong");
+    expect(quickLaunchErrorMessageKey("launch_command_line_too_long")).toBe("chrome.quickLaunch.errorLaunchCommandLineTooLong");
     expect(quickLaunchErrorMessageKey("gateway_model_not_enabled")).toBe("chrome.quickLaunch.errorModelOff");
     expect(quickLaunchErrorMessageKey("invalid_effort")).toBe("chrome.quickLaunch.errorEffortOff");
     expect(quickLaunchErrorMessageKey("agent_cli_unavailable")).toBe("chrome.quickLaunch.errorCliUnavailable");
@@ -215,6 +222,9 @@ describe("rejection messages", () => {
       "chrome.quickLaunch.errorUnsafePrompt",
       "chrome.quickLaunch.errorPromptUnsupported",
       "chrome.quickLaunch.errorTooLong",
+      "chrome.quickLaunch.errorCommandLineTooLong",
+      "chrome.quickLaunch.errorCommandLineTooLongBy",
+      "chrome.quickLaunch.errorLaunchCommandLineTooLong",
       "chrome.quickLaunch.errorModelOff",
       "chrome.quickLaunch.errorEffortOff",
       "chrome.quickLaunch.errorCliUnavailable",

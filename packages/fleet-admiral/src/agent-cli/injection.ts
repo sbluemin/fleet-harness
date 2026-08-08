@@ -6,6 +6,7 @@ import path from "node:path";
 import type { GatewayModel } from "@dotobokuri/core-ai-gateway";
 
 import { buildClaudeNativeArgs } from "./builders/claude.js";
+import { assertLaunchCommandLineBudget } from "./prompt.js";
 import { resolveDoctrineFromCliId } from "../protocols/doctrine.js";
 import { isHostSessionToolAllowed } from "../tools.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
@@ -139,9 +140,30 @@ export async function injectAgentCliProfile(
       ...gatewayAgents,
     };
     const injectedArgs = buildAgentCliArgs(capability.builderId, context);
+    const mergedArgs = mergeAgentCliArgs(profile, capability.builderId, context, injectedArgs);
+    // 명령줄 상한은 여기서만 판정할 수 있다 — 프롬프트 길이와 달리 주입 인자까지 합쳐진 뒤라야
+    // 실제 값이 나온다. 프롬프트 없는 판본은 같은 병합을 한 번 더 돌려 만든다: 후미 인자라는
+    // 위치 가정을 두면 병합 순서가 바뀌는 날 조용히 어긋난다.
+    // 거부는 spawn 전에 끝나야 하므로 이 프로필이 만든 플러그인을 먼저 거둔다.
+    try {
+      assertLaunchCommandLineBudget({
+        args: mergedArgs,
+        argsWithoutPrompt: mergeAgentCliArgs(
+          { ...profile, promptArgs: [] },
+          capability.builderId,
+          context,
+          injectedArgs,
+        ),
+        bin: profile.bin,
+        limit: profile.commandLineLimit,
+      });
+    } catch (error) {
+      cleanup();
+      throw error;
+    }
     return {
       ...profile,
-      args: mergeAgentCliArgs(profile, capability.builderId, context, injectedArgs),
+      args: mergedArgs,
       // 위치 인자는 이미 args 끝에 합쳐졌으므로 비운다. 남겨 두면 하류가 한 번 더 붙일 수 있다.
       promptArgs: [],
       cleanup,

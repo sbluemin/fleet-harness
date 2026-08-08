@@ -56,6 +56,7 @@ function makeState(
     quickLaunchOpen: false,
     quickLaunchDraft: null,
     quickLaunchError: null,
+    quickLaunchErrorShortenBy: null,
     pendingQuickLaunch: null,
     whatsNewOpen: false,
     releaseNotes: [],

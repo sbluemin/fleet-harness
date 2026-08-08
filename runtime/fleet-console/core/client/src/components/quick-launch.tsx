@@ -150,7 +150,7 @@ export function QuickLaunch() {
   const overLimit = promptLength > QUICK_LAUNCH_PROMPT_MAX_CHARS;
   const canSubmit = promptLength > 0 && !overLimit && !!theaterId && !!target && !submitting;
   const modelLabel = selectedRow?.label ?? t("chrome.quickLaunch.modelUnset");
-  const rejectionKey = quickLaunchErrorMessageKey(state.quickLaunchError);
+  const rejectionKey = quickLaunchErrorMessageKey(state.quickLaunchError, state.quickLaunchErrorShortenBy);
   const kindIcon = target
     ? registry.plugins.find((plugin) => plugin.id === target.pluginId)?.renderLaunchIcon?.(target.kind) ?? null
     : null;
@@ -226,7 +226,12 @@ export function QuickLaunch() {
           ) : rejectionKey ? (
             // 거절된 실행이 초안과 함께 돌아왔다. 무엇을 고쳐야 하는지 말하지 않으면 같은 Run이 반복된다.
             <span className="quick-launch-rejection" role="alert">
-              {t(rejectionKey as Parameters<typeof t>[0])}
+              {t(
+                rejectionKey as Parameters<typeof t>[0],
+                state.quickLaunchErrorShortenBy === null
+                  ? undefined
+                  : { over: String(state.quickLaunchErrorShortenBy) },
+              )}
             </span>
           ) : null}
           <kbd className="quick-launch-esc">esc</kbd>

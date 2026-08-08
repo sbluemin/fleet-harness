@@ -9,11 +9,17 @@ const FORBIDDEN_BROWSER_PAYLOAD_KEYS = ["canonicalCwd", "cwd", "providerSession"
 
 export class AgentApiError extends Error {
   readonly status: number;
+  /**
+   * 거절이 프롬프트를 몇 글자 줄이라고 말할 때 그 수. 서버만 아는 값이라(상한이 그 실행의
+   * argv 전체에 달려 있다) 브라우저가 되계산할 수 없어, 코드와 함께 실어 나른다.
+   */
+  readonly shortenByChars?: number;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, shortenByChars?: number) {
     super(message);
     this.name = "AgentApiError";
     this.status = status;
+    if (shortenByChars !== undefined) this.shortenByChars = shortenByChars;
   }
 }
 
@@ -89,10 +95,14 @@ export async function createAgentSession(
   // 거절 사유 코드를 그대로 실어 던진다 — Quick Launch가 초안을 되살리면서 무엇을 고쳐야 하는지
   // 말해 주려면, 상태 코드만으로는 부족하고 서버가 붙인 error 코드가 필요하다(setAgentCliPath와 같은 형태).
   if (!response.ok) {
-    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
+    const payload = await response.json().catch(() => null) as {
+      readonly error?: unknown;
+      readonly shortenByChars?: unknown;
+    } | null;
     throw new AgentApiError(
       response.status,
       typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`,
+      typeof payload?.shortenByChars === "number" ? payload.shortenByChars : undefined,
     );
   }
   return assertSessionInfo(await response.json(), response.status);

@@ -270,6 +270,9 @@ export interface ConsoleState {
   // 거절 사유의 서버 코드. 초안만 되살리면 결정적 실패(Windows shim 문자·FLEET_TERMINAL_CMD)는
   // 무엇을 고쳐야 하는지 모른 채 같은 Run을 반복하게 된다.
   readonly quickLaunchError: string | null;
+  // 거절이 "몇 글자 줄이라"고 말할 때 그 수. 상한이 서버 쪽 argv 전체에 달려 있어 브라우저가
+  // 되계산할 수 없으므로, 서버가 준 값만 싣는다.
+  readonly quickLaunchErrorShortenBy: number | null;
   // 컴포저가 넘긴 실행 의도. Operations 화면이 자기 지오메트리·포커스 규율로 소비한다
   // (pendingOperationFocus와 같은 request/consume 계약).
   readonly pendingQuickLaunch: QuickLaunchRequest | null;

@@ -77,12 +77,19 @@ export function resolveSelection(
  * 서버가 붙인 거절 코드를 사용자에게 보일 문구 키로 옮긴다. 모르는 코드는 일반 문구로 떨어뜨려
  * 아무 말도 못 하는 상태를 만들지 않는다.
  */
-export function quickLaunchErrorMessageKey(code: string | null): string | null {
+export function quickLaunchErrorMessageKey(code: string | null, shortenByChars: number | null = null): string | null {
   if (code === null) return null;
+  // 서버가 줄여야 할 글자 수를 실어 보냈을 때만 그 수를 담는 문구를 쓴다. 브라우저는 이 실행의
+  // 명령줄 상한을 알 수 없어 스스로 계산할 수 없으므로, 값이 없으면 수 없는 문구로 떨어진다.
+  if (code === "prompt_command_line_too_long" && shortenByChars !== null) {
+    return "chrome.quickLaunch.errorCommandLineTooLongBy";
+  }
   switch (code) {
     case "prompt_unsafe_for_shim": return "chrome.quickLaunch.errorUnsafePrompt";
     case "prompt_unsupported_launch": return "chrome.quickLaunch.errorPromptUnsupported";
     case "prompt_too_long": return "chrome.quickLaunch.errorTooLong";
+    case "prompt_command_line_too_long": return "chrome.quickLaunch.errorCommandLineTooLong";
+    case "launch_command_line_too_long": return "chrome.quickLaunch.errorLaunchCommandLineTooLong";
     case "gateway_model_not_enabled": return "chrome.quickLaunch.errorModelOff";
     case "invalid_effort": return "chrome.quickLaunch.errorEffortOff";
     case "agent_cli_unavailable": return "chrome.quickLaunch.errorCliUnavailable";
