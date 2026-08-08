@@ -1,11 +1,17 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OperationCatalogPlugin } from "@fleet-console/sdk/operations";
 
-import { CanvasContextMenu } from "../core/client/src/canvas/canvas-context-menu.js";
+import {
+  CanvasContextMenu,
+  OPERATION_LAUNCH_EFFORT_MENU_WIDTH,
+  OPERATION_LAUNCH_FLYOUT_WIDTH,
+} from "../core/client/src/canvas/canvas-context-menu.js";
 import {
   FEATURE_TOUR_BOUNDARY_ATTRIBUTE,
   FEATURE_TOUR_LAYER_ATTRIBUTE,
@@ -25,7 +31,7 @@ beforeEach(() => {
       return { ...originalGetBoundingClientRect.call(this), width: 288, height: 133 } as DOMRect;
     }
     if (this.classList.contains("operation-launch-flyout")) {
-      return { ...originalGetBoundingClientRect.call(this), width: 324, height: 300 } as DOMRect;
+      return { ...originalGetBoundingClientRect.call(this), width: 216, height: 300 } as DOMRect;
     }
     return originalGetBoundingClientRect.call(this);
   };
@@ -451,20 +457,50 @@ describe("CanvasContextMenu launch kind attribute", () => {
     const left = Number.parseFloat(flyout.style.left);
     const top = Number.parseFloat(flyout.style.top);
     expect(left).toBeGreaterThanOrEqual(12);
-    expect(left).toBeLessThanOrEqual(bounds.width - 324 - 12);
+    expect(left).toBeLessThanOrEqual(bounds.width - 216 - 12);
     expect(top).toBeGreaterThanOrEqual(12);
     expect(top).toBeLessThanOrEqual(bounds.height - 300 - 12);
+  });
+
+  it("continues the cascade to the right instead of folding onto the parent when both sides fit", () => {
+    // 캔버스 왼쪽에서 연 메뉴는 flyout이 오른쪽으로 열린다. 그때 강도 서브메뉴가 "왼쪽 여유가
+    // 더 넓다"는 이유로 접히면 부모 메뉴 위에 겹쳐, 짚은 행과 무관한 자리에 뜬 상자가 된다.
+    const bounds = { width: 1280, height: 800 };
+    renderMenu({ x: 260, y: 100 }, bounds, gatewayVariantCatalog());
+    const parent = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
+    act(() => parent.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+
+    const flyout = document.querySelector<HTMLElement>(".operation-launch-flyout")!;
+    expect(flyout.classList.contains("is-left")).toBe(false);
+
+    const row = document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!;
+    act(() => row.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+
+    const effort = document.querySelector<HTMLElement>(".operation-launch-effort-menu")!;
+    expect(effort.classList.contains("is-left")).toBe(false);
+    // 서브메뉴는 flyout 상자의 오른쪽 바깥에 선다 — 부모 위로 되돌아오지 않는다.
+    expect(Number.parseFloat(effort.style.left))
+      .toBeGreaterThanOrEqual(Number.parseFloat(flyout.style.left) + 216);
+  });
+
+  it("keeps the rendered widths in step with the placement constants", () => {
+    const css = readFileSync(resolve(process.cwd(), "core/client/src/styles/components.css"), "utf8");
+    const widthOf = (selector: string) =>
+      Number(new RegExp(`${selector}\\.theater-menu\\s*\\{[^}]*?width:\\s*(\\d+)px;`, "u").exec(css)?.[1]);
+    expect(widthOf("\\.operation-launch-flyout")).toBe(OPERATION_LAUNCH_FLYOUT_WIDTH);
+    expect(widthOf("\\.operation-launch-effort-menu")).toBe(OPERATION_LAUNCH_EFFORT_MENU_WIDTH);
   });
 
   it("clamps the effort submenu inside short vertical bounds", () => {
     const bounds = { width: 1116, height: 160 };
     const effortHeight = 148;
+    const effortWidth = 104;
     const previousGetBoundingClientRect = Element.prototype.getBoundingClientRect;
     Element.prototype.getBoundingClientRect = function getBoundingClientRect(): DOMRect {
       if (this.classList.contains("operation-launch-effort-menu")) {
         return {
-          x: 0, y: 0, left: 0, top: 0, width: 148, height: effortHeight,
-          right: 148, bottom: effortHeight, toJSON: () => ({}),
+          x: 0, y: 0, left: 0, top: 0, width: effortWidth, height: effortHeight,
+          right: effortWidth, bottom: effortHeight, toJSON: () => ({}),
         };
       }
       return previousGetBoundingClientRect.call(this);

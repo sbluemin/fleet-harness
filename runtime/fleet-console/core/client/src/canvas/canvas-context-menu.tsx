@@ -29,9 +29,15 @@ interface CanvasContextMenuProps {
 // .operation-launch-control--canvas .operation-launch-menu의 min-width. 하나만 고치면 컴파일은
 // 되고 치수만 조용히 어긋난다.
 const MENU_WIDTH = 288;
-const FLYOUT_WIDTH = 324;
+// 변형 목록은 모델 이름만 담는다 — 실행 강도는 자기 서브메뉴로 빠졌다. 이름의 실측 최대 폭
+// (약 181px)에 여유만 얹는다: 더 넓히면 라벨 오른쪽이 통째로 빈 상자가 되고, 부모 메뉴(288px)보다
+// 넓어져 캐스케이드의 시각적 위계가 뒤집힌다.
+const FLYOUT_WIDTH = 216;
 const FLYOUT_GAP = 10;
-const EFFORT_SUBMENU_WIDTH = 148;
+const EFFORT_SUBMENU_WIDTH = 104;
+// 두 폭은 components.css의 같은 선언과 짝이다. 계약 시험이 그 짝을 지킨다.
+export const OPERATION_LAUNCH_FLYOUT_WIDTH = FLYOUT_WIDTH;
+export const OPERATION_LAUNCH_EFFORT_MENU_WIDTH = EFFORT_SUBMENU_WIDTH;
 const FLYOUT_CLOSE_GRACE_MS = 160;
 const MENU_MAX_HEIGHT = 520;
 const MENU_MIN_HEIGHT = 120;
@@ -101,39 +107,16 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     const item = flyoutAnchorRefs.current.get(flyoutId);
     const container = containerRef.current;
     if (!item || !container) return;
-    const itemRect = item.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
-    const styledLeft = Number.parseFloat(container.style.left);
-    const containerLeft = Number.isFinite(styledLeft) ? styledLeft : container.offsetLeft;
-    const itemLocalLeft = itemRect.left - containerRect.left;
-    const itemLocalRight = itemRect.right > itemRect.left
-      ? itemRect.right - containerRect.left
-      : itemLocalLeft + (menuSize?.width ?? MENU_WIDTH);
-    const itemLeft = containerLeft + itemLocalLeft;
-    const itemRight = containerLeft + itemLocalRight;
-    const rightCandidate = itemRight + FLYOUT_GAP;
-    const leftCandidate = itemLeft - FLYOUT_GAP - FLYOUT_WIDTH;
-    const boundsWidth = viewportBounds?.width;
-    const maxLeft = boundsWidth === undefined
-      ? Number.POSITIVE_INFINITY
-      : Math.max(MENU_MARGIN, boundsWidth - FLYOUT_WIDTH - MENU_MARGIN);
-    const rightFits = rightCandidate <= maxLeft;
-    const leftFits = leftCandidate >= MENU_MARGIN;
-    const rightRoom = boundsWidth === undefined ? Number.POSITIVE_INFINITY : boundsWidth - itemRight;
-    const leftRoom = itemLeft;
-    const opensLeft = leftFits
-      ? !rightFits || leftRoom > rightRoom
-      : !rightFits && leftRoom > rightRoom;
-    const absoluteLeft = Math.max(MENU_MARGIN, Math.min(opensLeft ? leftCandidate : rightCandidate, maxLeft));
-    const styledTop = Number.parseFloat(container.style.top);
-    const containerTop = Number.isFinite(styledTop) ? styledTop : container.offsetTop;
-    const absoluteTop = Math.max(MENU_MARGIN, containerTop + itemRect.top - containerRect.top - 6);
-    setFlyoutPosition({
-      id: flyoutId,
-      left: absoluteLeft,
-      top: absoluteTop,
-      opensLeft,
+    const placement = placeCascade({
+      // 부모 상자는 컨테이너 왼쪽 끝에서 시작한다 — 그 바깥 경계가 다음 단의 기준이다.
+      boxLeft: containerLeft(container),
+      boxWidth: menuSize?.width ?? MENU_WIDTH,
+      top: itemTop(item, container),
+      width: FLYOUT_WIDTH,
+      boundsWidth: viewportBounds?.width,
+      preferLeft: false,
     });
+    setFlyoutPosition({ id: flyoutId, ...placement });
     setOpenFlyout(flyoutId);
   };
   const openEffortMenu = (rowId: string) => {
@@ -142,42 +125,17 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     const item = effortAnchorRefs.current.get(rowId);
     const container = containerRef.current;
     if (!item || !container) return;
-    const itemRect = item.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
-    const styledLeft = Number.parseFloat(container.style.left);
-    const containerLeft = Number.isFinite(styledLeft) ? styledLeft : container.offsetLeft;
-    const itemLocalLeft = itemRect.left - containerRect.left;
-    const itemLocalRight = itemRect.right > itemRect.left
-      ? itemRect.right - containerRect.left
-      : itemLocalLeft + FLYOUT_WIDTH;
-    const itemLeft = containerLeft + itemLocalLeft;
-    const itemRight = containerLeft + itemLocalRight;
-    const rightCandidate = itemRight + FLYOUT_GAP;
-    const leftCandidate = itemLeft - FLYOUT_GAP - EFFORT_SUBMENU_WIDTH;
-    const boundsWidth = viewportBounds?.width;
-    const maxLeft = boundsWidth === undefined
-      ? Number.POSITIVE_INFINITY
-      : Math.max(MENU_MARGIN, boundsWidth - EFFORT_SUBMENU_WIDTH - MENU_MARGIN);
-    const rightFits = rightCandidate <= maxLeft;
-    const leftFits = leftCandidate >= MENU_MARGIN;
-    const rightRoom = boundsWidth === undefined ? Number.POSITIVE_INFINITY : boundsWidth - itemRight;
-    const leftRoom = itemLeft;
-    // Prefer continuing the parent flyout direction when both sides fit, so a
-    // cascade keeps reading left-to-right (or right-to-left) instead of folding back.
-    const preferLeft = flyoutPosition?.opensLeft === true;
-    const opensLeft = leftFits
-      ? !rightFits || (preferLeft && leftRoom >= rightRoom) || (!preferLeft && leftRoom > rightRoom)
-      : !rightFits && leftRoom > rightRoom;
-    const absoluteLeft = Math.max(MENU_MARGIN, Math.min(opensLeft ? leftCandidate : rightCandidate, maxLeft));
-    const styledTop = Number.parseFloat(container.style.top);
-    const containerTop = Number.isFinite(styledTop) ? styledTop : container.offsetTop;
-    const absoluteTop = Math.max(MENU_MARGIN, containerTop + itemRect.top - containerRect.top - 6);
-    setEffortPosition({
-      id: rowId,
-      left: absoluteLeft,
-      top: absoluteTop,
-      opensLeft,
+    const placement = placeCascade({
+      // flyout이 이미 확정한 좌표가 진실의 원천이다 — 그 상자는 그 자리에 fixed로 그려진다.
+      boxLeft: flyoutPosition?.left ?? containerLeft(container),
+      boxWidth: flyoutPosition ? FLYOUT_WIDTH : (menuSize?.width ?? MENU_WIDTH),
+      top: itemTop(item, container),
+      width: EFFORT_SUBMENU_WIDTH,
+      boundsWidth: viewportBounds?.width,
+      // Continue the parent flyout's direction so the cascade keeps reading one way.
+      preferLeft: flyoutPosition?.opensLeft === true,
     });
+    setEffortPosition({ id: rowId, ...placement });
     setOpenEffortRow(rowId);
   };
   const scheduleEffortClose = () => {
@@ -634,9 +592,9 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                       aria-expanded={hasEffort ? effortOpen : undefined}
                       onClick={() => onLaunchKind(flyoutTarget.pluginId, flyoutTarget.kind, row.launch)}
                     >
-                      <span>{row.label}</span>
+                      <span className="operation-launch-variant-row-label">{row.label}</span>
                       {row.starred ? <span className="operation-launch-variant-star" aria-hidden="true">★</span> : null}
-                      {hasEffort ? <span className="operation-launch-menu-chevron" aria-hidden="true">›</span> : null}
+                      {hasEffort ? <span className="operation-launch-variant-chevron" aria-hidden="true">›</span> : null}
                     </button>
                   </div>
                 );
@@ -709,6 +667,48 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
       ) : null}
     </div>
   );
+}
+
+// 컨테이너는 자기 좌표를 인라인 스타일로 들고 있다. 캐스케이드의 모든 단이 이 좌표계 위에서
+// 계산된다 — 각 단은 fixed로 그 자리에 그려지므로, 다음 단의 기준은 DOM 측정이 아니라 앞 단이
+// 이미 확정한 좌표다.
+function containerLeft(container: HTMLElement): number {
+  const styled = Number.parseFloat(container.style.left);
+  return Number.isFinite(styled) ? styled : container.offsetLeft;
+}
+
+function itemTop(item: HTMLElement, container: HTMLElement): number {
+  const styled = Number.parseFloat(container.style.top);
+  const top = Number.isFinite(styled) ? styled : container.offsetTop;
+  return top + item.getBoundingClientRect().top - container.getBoundingClientRect().top - 6;
+}
+
+// 캐스케이드 한 단의 배치. 두 축의 기준이 서로 다르다: 가로는 앞 단의 **상자**가 정하고, 세로만
+// 짚은 행이 정한다. 가로까지 행에 맡기면 행은 상자 안쪽 패딩만큼 좁아, 다음 단이 부모 위로
+// 그만큼 파고든다.
+function placeCascade({ boxLeft, boxWidth, top, width, boundsWidth, preferLeft }: {
+  readonly boxLeft: number;
+  readonly boxWidth: number;
+  readonly top: number;
+  readonly width: number;
+  readonly boundsWidth: number | undefined;
+  readonly preferLeft: boolean;
+}): { readonly left: number; readonly top: number; readonly opensLeft: boolean } {
+  const maxLeft = boundsWidth === undefined
+    ? Number.POSITIVE_INFINITY
+    : Math.max(MENU_MARGIN, boundsWidth - width - MENU_MARGIN);
+  const rightCandidate = boxLeft + boxWidth + FLYOUT_GAP;
+  const leftCandidate = boxLeft - FLYOUT_GAP - width;
+  const rightFits = rightCandidate <= maxLeft;
+  const leftFits = leftCandidate >= MENU_MARGIN;
+  // 방향은 "여유가 더 넓은 쪽"이 아니라 캐스케이드가 읽히는 쪽이다. 넓이로 고르면 오른쪽에
+  // 충분한 자리가 있어도 왼쪽이 더 넓다는 이유로 접혀, 부모 위에 겹친 유령 상자가 된다.
+  const opensLeft = preferLeft ? (leftFits || !rightFits) : (!rightFits && leftFits);
+  return {
+    left: Math.max(MENU_MARGIN, Math.min(opensLeft ? leftCandidate : rightCandidate, maxLeft)),
+    top: Math.max(MENU_MARGIN, top),
+    opensLeft,
+  };
 }
 
 function findLaunchFlyout(catalog: readonly OperationCatalogPlugin[], flyoutId: string): {

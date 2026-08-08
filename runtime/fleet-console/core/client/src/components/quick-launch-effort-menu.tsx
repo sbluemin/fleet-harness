@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
-const MENU_WIDTH = 148;
+// 강도 라벨은 LOW·MED·HIGH·XHIGH·MAX뿐이라 실측 자연 폭이 70px 남짓이다.
+const MENU_WIDTH = 104;
 const MENU_GAP = 6;
 const VIEWPORT_MARGIN = 12;
 
@@ -36,11 +37,14 @@ export function QuickLaunchEffortMenu({
     const menu = menuRef.current;
     if (!open || !anchor || !menu) return;
     const anchorRect = anchor.getBoundingClientRect();
+    // 가로 기준은 행이 아니라 팝오버 상자다 — 행은 상자 안쪽 패딩만큼 좁아, 행에 붙이면
+    // 서브메뉴가 그만큼 팝오버 위로 파고들어 짚고 있던 행의 오른쪽 끝을 덮는다.
+    const popoverRect = anchor.closest(".quick-launch-pop")?.getBoundingClientRect() ?? anchorRect;
     const menuRect = menu.getBoundingClientRect();
     const menuWidth = menuRect.width || MENU_WIDTH;
     const menuHeight = menuRect.height;
-    const rightCandidate = anchorRect.right + MENU_GAP;
-    const leftCandidate = anchorRect.left - MENU_GAP - menuWidth;
+    const rightCandidate = popoverRect.right + MENU_GAP;
+    const leftCandidate = popoverRect.left - MENU_GAP - menuWidth;
     const rightFits = rightCandidate + menuWidth <= window.innerWidth - VIEWPORT_MARGIN;
     const leftFits = leftCandidate >= VIEWPORT_MARGIN;
     const opensLeft = !rightFits && leftFits;
@@ -70,8 +74,10 @@ export function QuickLaunchEffortMenu({
         if (event.key !== "ArrowLeft" && event.key !== "Escape") return;
         event.preventDefault();
         event.stopPropagation();
-        onClose();
+        // 포커스 복귀가 먼저다 — 짚은 행의 onFocus가 서브메뉴를 다시 여는데, 닫기를 먼저 하면
+        // 그 재열림이 나중이라 이겨서 메뉴가 닫히지 않는다.
         onReturnFocus();
+        onClose();
       }}
     >
       {children}

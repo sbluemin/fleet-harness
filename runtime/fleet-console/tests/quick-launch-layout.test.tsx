@@ -6,7 +6,7 @@ import { act, createRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { QuickLaunchEffortMenu } from "../core/client/src/components/quick-launch-effort-menu.js";
+import { QuickLaunchEffortMenu, QUICK_LAUNCH_EFFORT_MENU_WIDTH } from "../core/client/src/components/quick-launch-effort-menu.js";
 
 let container: HTMLDivElement;
 let anchor: HTMLButtonElement;
@@ -21,7 +21,7 @@ beforeEach(() => {
   anchorRect = rect({ left: 100, top: 80, width: 264, height: 32 });
   Element.prototype.getBoundingClientRect = function getBoundingClientRect(): DOMRect {
     if (this === anchor) return anchorRect;
-    if (this.classList.contains("quick-launch-effort-menu")) return rect({ width: 148, height: 72 });
+    if (this.classList.contains("quick-launch-effort-menu")) return rect({ width: 104, height: 72 });
     return originalGetBoundingClientRect.call(this);
   };
   Object.defineProperty(window, "innerWidth", { configurable: true, value: 900 });
@@ -56,13 +56,46 @@ describe("Quick Launch effort submenu layout", () => {
     renderMenu();
 
     const menu = effortMenu();
-    expect(menu.style.left).toBe("466px");
+    expect(menu.style.left).toBe("510px");
     expect(menu.classList.contains("is-left")).toBe(true);
   });
 
-  it("keeps the model popover at the compact 264px width", () => {
+  it("measures from the popover box, not the row inside its padding", () => {
+    // 행은 팝오버 안쪽 패딩만큼 좁다. 행에 붙이면 서브메뉴가 그만큼 팝오버 위로 파고들어
+    // 짚고 있던 행의 오른쪽 끝을 덮는다.
+    const popover = document.createElement("div");
+    popover.className = "quick-launch-pop quick-launch-pop--model";
+    container.append(popover);
+    popover.append(anchor);
+    const popoverRect = rect({ left: 92, top: 72, width: 280, height: 300 });
+    const previous = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function getBoundingClientRect(): DOMRect {
+      if (this === popover) return popoverRect;
+      return previous.call(this);
+    };
+    try {
+      renderMenu();
+      // 팝오버 오른쪽 끝(372) + 간격 6 — 행 오른쪽 끝(364)이 아니다.
+      expect(effortMenu().style.left).toBe("378px");
+    } finally {
+      Element.prototype.getBoundingClientRect = previous;
+    }
+  });
+
+  it("keeps the model popover and the effort submenu at their measured compact widths", () => {
     const css = readFileSync(resolve(process.cwd(), "core/client/src/styles/components.css"), "utf8");
-    expect(css).toMatch(/\.quick-launch-pop--model\s*\{\s*width:\s*264px;/u);
+    expect(css).toMatch(/\.quick-launch-pop--model\s*\{[^}]*width:\s*216px;/u);
+    // CSS 폭과 배치 계산의 폴백 상수가 어긋나면 컴파일은 되고 위치만 조용히 틀어진다.
+    const declared = /\.quick-launch-effort-menu\.theater-menu\s*\{[^}]*?width:\s*(\d+)px;/u.exec(css)?.[1];
+    expect(Number(declared)).toBe(QUICK_LAUNCH_EFFORT_MENU_WIDTH);
+  });
+
+  it("lets the label claim the row so a starred model keeps the list's left edge", () => {
+    // ★에 margin-left:auto를 걸면 그 행만 통째로 우측 정렬돼 목록의 기준선이 끊긴다.
+    const css = readFileSync(resolve(process.cwd(), "core/client/src/styles/components.css"), "utf8");
+    expect(/\.quick-launch-variant-star\s*\{[^}]*margin-left:\s*auto/u.test(css)).toBe(false);
+    expect(/\.operation-launch-variant-star\s*\{[^}]*margin-left:\s*auto/u.test(css)).toBe(false);
+    expect(css).toMatch(/\.quick-launch-variant-label\s*\{[^}]*flex:\s*1;/u);
   });
 
   it("styles the selected effort with aria-current to match the rendered attribute", () => {

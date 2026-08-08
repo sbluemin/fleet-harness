@@ -17,6 +17,8 @@ import { QuickLaunchEffortMenu } from "./quick-launch-effort-menu.js";
 // 카드 폭은 팔레트(920px)보다 좁다 — 팔레트는 결과 목록을 담고, 여기는 한 문단을 담는다.
 const CARD_WIDTH_FALLBACK = 760;
 const POPOVER_GAP = 8;
+// 포인터가 행에서 서브메뉴로 건너가는 동안의 닫힘 유예(캔버스 실행 메뉴와 같은 값).
+const EFFORT_CLOSE_GRACE_MS = 160;
 const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex='-1'])";
 
 type PopoverKind = "theater" | "model";
@@ -40,6 +42,11 @@ export function QuickLaunch() {
   const [model, setModel] = useState<string | null>(null);
   const [effort, setEffort] = useState<string | null>(null);
   const [popover, setPopover] = useState<PopoverKind | null>(null);
+  // 열려 있는 실행 강도 서브메뉴는 목록 전체에 하나뿐이다. 행마다 자기 열림 상태를 들면 닫힘
+  // 유예(160ms) 동안 지나온 행들의 메뉴가 함께 떠 있어, 목록을 훑는 것만으로 서로 어긋난
+  // 상자 여럿이 겹쳐 잔상처럼 남는다.
+  const [effortRowId, setEffortRowId] = useState<string | null>(null);
+  const effortCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const open = state.quickLaunchOpen;
@@ -104,7 +111,32 @@ export function QuickLaunch() {
     };
   }, [open]);
 
-  const closePopover = useCallback(() => setPopover(null), []);
+  const cancelEffortClose = useCallback(() => {
+    if (effortCloseTimerRef.current === null) return;
+    clearTimeout(effortCloseTimerRef.current);
+    effortCloseTimerRef.current = null;
+  }, []);
+  const openEffortMenu = useCallback((rowId: string) => {
+    cancelEffortClose();
+    setEffortRowId(rowId);
+  }, [cancelEffortClose]);
+  const closeEffortMenu = useCallback(() => {
+    cancelEffortClose();
+    setEffortRowId(null);
+  }, [cancelEffortClose]);
+  const scheduleEffortClose = useCallback(() => {
+    cancelEffortClose();
+    effortCloseTimerRef.current = setTimeout(() => {
+      effortCloseTimerRef.current = null;
+      setEffortRowId(null);
+    }, EFFORT_CLOSE_GRACE_MS);
+  }, [cancelEffortClose]);
+  useEffect(() => () => cancelEffortClose(), [cancelEffortClose]);
+
+  const closePopover = useCallback(() => {
+    closeEffortMenu();
+    setPopover(null);
+  }, [closeEffortMenu]);
 
   const submit = useCallback(() => {
     const text = prompt.trim();
@@ -313,6 +345,11 @@ export function QuickLaunch() {
                       row={row}
                       selectedModel={model}
                       selectedEffort={effort}
+                      effortOpen={effortRowId === row.id}
+                      onOpenEffort={openEffortMenu}
+                      onCloseEffort={closeEffortMenu}
+                      onScheduleEffortClose={scheduleEffortClose}
+                      onCancelEffortClose={cancelEffortClose}
                       onPick={(nextModel, nextEffort) => {
                         setModel(nextModel);
                         setEffort(nextEffort);
@@ -331,50 +368,50 @@ export function QuickLaunch() {
   );
 }
 
-function QuickLaunchVariantRow({ row, selectedModel, selectedEffort, onPick }: {
+function QuickLaunchVariantRow({
+  row,
+  selectedModel,
+  selectedEffort,
+  effortOpen,
+  onOpenEffort,
+  onCloseEffort,
+  onScheduleEffortClose,
+  onCancelEffortClose,
+  onPick,
+}: {
   readonly row: OperationLaunchVariantRow;
   readonly selectedModel: string | null;
   readonly selectedEffort: string | null;
+  readonly effortOpen: boolean;
+  readonly onOpenEffort: (rowId: string) => void;
+  readonly onCloseEffort: () => void;
+  readonly onScheduleEffortClose: () => void;
+  readonly onCancelEffortClose: () => void;
   readonly onPick: (model: string | null, effort: string | null) => void;
 }) {
   const rowModel = row.launch.model ?? null;
   const hasEffort = (row.chips?.length ?? 0) > 0;
-  const [effortOpen, setEffortOpen] = useState(false);
   const rowRef = useRef<HTMLDivElement | null>(null);
   const effortMenuRef = useRef<HTMLDivElement | null>(null);
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const cancelClose = () => {
-    if (closeTimerRef.current === null) return;
-    clearTimeout(closeTimerRef.current);
-    closeTimerRef.current = null;
+  // 강도가 없는 행으로 옮겨 가면 곧바로 닫는다 — 유예를 두면 강도를 못 고르는 행 옆에
+  // 직전 행의 선택지가 남아, 어느 행의 것인지 읽을 수 없는 상자가 된다.
+  const enterRow = () => {
+    if (hasEffort) onOpenEffort(row.id);
+    else onCloseEffort();
   };
-  const openEffort = () => {
-    cancelClose();
-    if (hasEffort) setEffortOpen(true);
-  };
-  const closeEffort = () => setEffortOpen(false);
-  const scheduleClose = () => {
-    cancelClose();
-    closeTimerRef.current = setTimeout(() => {
-      closeTimerRef.current = null;
-      closeEffort();
-    }, 160);
-  };
-
-  useEffect(() => () => cancelClose(), []);
 
   return (
     <div
       ref={rowRef}
       className="quick-launch-variant-row"
-      onPointerEnter={openEffort}
-      onPointerLeave={scheduleClose}
-      onFocus={openEffort}
+      onPointerEnter={enterRow}
+      onPointerLeave={() => { if (hasEffort) onScheduleEffortClose(); }}
+      onFocus={enterRow}
       onBlur={(event) => {
         const nextTarget = event.relatedTarget;
         if (nextTarget instanceof Node && (event.currentTarget.contains(nextTarget) || effortMenuRef.current?.contains(nextTarget))) return;
-        scheduleClose();
+        onScheduleEffortClose();
       }}
     >
       <button
@@ -388,21 +425,22 @@ function QuickLaunchVariantRow({ row, selectedModel, selectedEffort, onPick }: {
         onKeyDown={(event) => {
           if (event.key !== "ArrowRight" || !hasEffort) return;
           event.preventDefault();
-          openEffort();
+          onOpenEffort(row.id);
           requestAnimationFrame(() => effortMenuRef.current?.querySelector<HTMLButtonElement>(".quick-launch-effort-item")?.focus());
         }}
       >
-        {row.starred ? <span className="quick-launch-variant-star" aria-hidden="true">★</span> : null}
+        {/* ★는 라벨 뒤에 선다 — 앞에 두고 오른쪽으로 밀면 그 행만 통째로 우측 정렬돼 목록의 좌측 기준선이 끊긴다. */}
         <span className="quick-launch-variant-label">{row.label}</span>
+        {row.starred ? <span className="quick-launch-variant-star" aria-hidden="true">★</span> : null}
         {hasEffort ? <span className="quick-launch-variant-chevron" aria-hidden="true">›</span> : null}
       </button>
       <QuickLaunchEffortMenu
         anchor={rowRef.current}
         menuRef={effortMenuRef}
         open={hasEffort && effortOpen}
-        onCancelClose={cancelClose}
-        onScheduleClose={scheduleClose}
-        onClose={closeEffort}
+        onCancelClose={onCancelEffortClose}
+        onScheduleClose={onScheduleEffortClose}
+        onClose={onCloseEffort}
         onReturnFocus={() => rowRef.current?.querySelector<HTMLButtonElement>(".quick-launch-variant-name")?.focus()}
       >
         {row.chips?.map((chip) => (

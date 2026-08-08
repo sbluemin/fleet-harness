@@ -7079,7 +7079,9 @@
   left: calc(100% + 10px);
   right: auto;
   z-index: 41;
-  width: 324px;
+  /* 모델 이름만 담는 폭이다(실행 강도는 자기 서브메뉴로 빠졌다). canvas-context-menu.tsx의
+     FLYOUT_WIDTH와 같은 값이어야 한다 — 하나만 고치면 컴파일은 되고 배치만 조용히 어긋난다. */
+  width: 216px;
   max-height: var(--canvas-menu-max-height, 520px);
   overflow-y: auto;
   animation: operation-launch-flyout-in var(--duration-fast) var(--ease-spring) both;
@@ -7174,7 +7176,11 @@
   outline: none;
 }
 
-.operation-launch-variant-row-label {
+/* 라벨이 남는 폭을 전부 먹고 ★·꺾쇠는 그 뒤에 붙는다. 정렬을 표식 쪽 margin-left:auto로 만들면
+   표식이 둘일 때 여백이 그 사이에서 나뉘어 ★가 행 한가운데 뜬다. */
+.operation-launch-variant-row-label,
+.quick-launch-variant-label {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -7182,18 +7188,12 @@
 }
 
 .operation-launch-variant-star {
-  margin-left: auto;
   color: var(--brass);
   font-size: 9.5px;
 }
 
-.operation-launch-variant-row:has(.operation-launch-variant-star) .operation-launch-variant-chevron {
-  margin-left: 0;
-}
-
 .operation-launch-variant-chevron,
 .quick-launch-variant-chevron {
-  margin-left: auto;
   color: var(--text-tertiary);
   font-size: 12px;
   line-height: 1;
@@ -7202,7 +7202,8 @@
 .operation-launch-effort-menu.theater-menu {
   --flyout-enter-x: -4px;
   z-index: 42;
-  width: 148px;
+  /* canvas-context-menu.tsx의 EFFORT_SUBMENU_WIDTH와 같은 값이어야 한다. */
+  width: 104px;
   max-height: var(--canvas-menu-max-height, 520px);
   overflow-y: auto;
   animation: operation-launch-flyout-in var(--duration-fast) var(--ease-spring) both;
@@ -10753,8 +10754,9 @@ body[data-codex-reading="true"] .operations-side-bar {
   width: 288px;
 }
 
+/* 모델 이름과 공급자 밴드만 담는 폭이다 — 실측 자연 폭(약 189px)에 여유만 얹는다. */
 .quick-launch-pop--model {
-  width: 264px;
+  width: 216px;
 }
 
 .quick-launch-pop-item {
@@ -10833,13 +10835,8 @@ body[data-codex-reading="true"] .operations-side-bar {
 }
 
 .quick-launch-variant-star {
-  margin-left: auto;
   color: var(--brass);
   font-size: 10px;
-}
-
-.quick-launch-variant-name .quick-launch-variant-chevron {
-  margin-left: 0;
 }
 
 .quick-launch-effort-menu.theater-menu {
@@ -10847,7 +10844,8 @@ body[data-codex-reading="true"] .operations-side-bar {
   position: fixed;
   right: auto;
   z-index: 92;
-  width: 148px;
+  /* quick-launch-effort-menu.tsx의 MENU_WIDTH와 같은 값이어야 한다. */
+  width: 104px;
   max-height: 280px;
   overflow-y: auto;
   visibility: hidden;
