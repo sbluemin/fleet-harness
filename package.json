@@ -11,8 +11,8 @@
   "scripts": {
     "build": "pnpm -r --filter '!fleet-harness' --filter '!@dotobokuri/fleet-desktop' build",
     "check:core-boundary": "node scripts/check-core-boundary.mjs",
-    "cli": "pnpm --filter @dotobokuri/fleet-console build && node scripts/run-isolated.mjs cli",
-    "console": "pnpm --filter @dotobokuri/fleet-console build && node scripts/run-isolated.mjs console",
+    "cli": "node scripts/run-isolated.mjs cli",
+    "console": "node scripts/run-isolated.mjs console",
     "desktop": "node scripts/run-isolated.mjs desktop",
     "desktop:build": "pnpm --filter @dotobokuri/fleet-desktop build",
     "desktop:package": "pnpm --filter @dotobokuri/fleet-desktop package",

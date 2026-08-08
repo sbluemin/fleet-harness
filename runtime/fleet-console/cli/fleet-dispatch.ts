@@ -94,11 +94,11 @@ export async function dispatchFleetArgv(
       }
       if (mode === "restart") {
         await runConsoleRestart();
-        io.stdout.write("Fleet Console restarted.\n");
+        io.stdout.write(`Fleet Console restarted.\n${await runConsoleStatus()}\n`);
         return 0;
       }
       await openFleetConsole();
-      io.stdout.write("Fleet Console opened.\n");
+      io.stdout.write(`Fleet Console opened.\n${await runConsoleStatus()}\n`);
       return 0;
     } catch (error: unknown) {
       io.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);

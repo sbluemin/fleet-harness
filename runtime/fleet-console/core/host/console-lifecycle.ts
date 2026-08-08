@@ -372,11 +372,11 @@ export async function main(): Promise<void> {
   }
   if (mode === "restart") {
     await runConsoleRestart();
-    process.stdout.write("Fleet Console restarted.\n");
+    process.stdout.write(`Fleet Console restarted.\n${await runConsoleStatus()}\n`);
     return;
   }
   await openFleetConsole();
-  process.stdout.write("Fleet Console opened.\n");
+  process.stdout.write(`Fleet Console opened.\n${await runConsoleStatus()}\n`);
 }
 
 function resolveDefaultServerModulePath(): string {
