@@ -639,6 +639,20 @@ describe("Instrument core design contract", () => {
     expect(unclassed).not.toContain("border-color:");
   });
 
+  it("pins the AI Gateway provider-priority chip grammar — ink rank only, no signal colour, no brass", () => {
+    // 소진 순서는 상태가 아니라 사용자 선호다. 신호색이나 brass를 빌리는 순간 같은 카드의
+    // 상태·위치 채널과 충돌해 순위가 활동처럼 읽힌다 — 등급 배지와 같은 잉크 문법을 강제한다.
+    const css = externalSource(TERMINAL_AGENT_CLI_CSS_PATH).replace(/\r\n/g, "\n");
+    const chipRules = [...css.matchAll(/([^{}]*\.ai-gateway-priority[^{}]*)\{([^}]*)\}/g)];
+    expect(chipRules.length).toBeGreaterThan(0);
+    for (const [, , body] of chipRules) {
+      expect(body).not.toMatch(/var\(--(aurora|warn|coral|positive|brass)[a-z-]*\)/);
+    }
+    const ranked = css.match(/\.ai-gateway-priority-chip\.is-ranked \{[^}]*\}/)?.[0] ?? "";
+    expect(ranked).toContain("border-color: var(--surface-rim-strong);");
+    expect(ranked).toContain("color: var(--text-primary);");
+  });
+
   it("pins the shared panel motion layer and existence choreography grammar", () => {
     const components = source("styles/components.css");
     // (a) 공통 모션 레이어의 duration/easing은 토큰 표기만 — 리터럴 ms 진입 금지.

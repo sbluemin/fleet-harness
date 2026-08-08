@@ -348,6 +348,57 @@
   text-transform: uppercase;
 }
 
+/* 우선 소진 순서 — 상태가 아니라 사용자 선호이므로 등급 배지와 같은 규율로 신호색·brass 없이
+   잉크 농도와 순위 숫자로만 말한다. */
+.ai-gateway-priority {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 var(--space-1);
+}
+
+.ai-gateway-priority-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: 1px solid color-mix(in oklch, var(--surface-rim) 55%, transparent);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.ai-gateway-priority-chip:hover:not(:disabled) {
+  border-color: var(--surface-rim-strong);
+  color: var(--text-secondary);
+}
+
+.ai-gateway-priority-chip:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.ai-gateway-priority-chip.is-ranked {
+  border-color: var(--surface-rim-strong);
+  color: var(--text-primary);
+}
+
+.ai-gateway-priority-rank {
+  color: var(--text-primary);
+  font-weight: var(--weight-bold);
+}
+
+.ai-gateway-priority-help {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 .ai-gateway-default-star {
   flex: none;
   padding: var(--space-1);

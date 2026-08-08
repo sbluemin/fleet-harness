@@ -151,6 +151,18 @@ describe("terminal settings routes", () => {
     expect(harness.writes[0]?.body).toMatchObject({ agentIdleDormantMinutes: 60 });
   });
 
+  it("GET /plugins/terminal/settings returns a stored providerPriority", async () => {
+    const harness = createRouteHarness({
+      aiGateway: { version: 1, providerPriority: ["codex", "cursor"] },
+    });
+    await harness.handle({ req: req("GET"), res: res(), pathname: "/plugins/terminal/settings" });
+
+    expect(harness.writes[0]).toMatchObject({
+      status: 200,
+      body: { aiGateway: { providerPriority: ["codex", "cursor"] } },
+    });
+  });
+
   it("PUT /plugins/terminal/settings stores a catalog-valid aiGateway selection", async () => {
     const harness = createRouteHarness({
       body: {
@@ -185,6 +197,78 @@ describe("terminal settings routes", () => {
       defaultModel: "cursor--claude-opus-5",
     });
     expect(harness.currentData()).toEqual({ version: 1 });
+  });
+
+  it("PUT /plugins/terminal/settings persists and echoes providerPriority", async () => {
+    const harness = createRouteHarness({
+      body: {
+        aiGateway: {
+          models: [{ id: "cursor--auto" }],
+          providerPriority: ["opencode"],
+        },
+      },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+
+    expect(harness.writes[0]).toMatchObject({
+      status: 200,
+      body: {
+        aiGateway: {
+          models: [{ id: "cursor--auto" }],
+          providerPriority: ["opencode"],
+        },
+      },
+    });
+    expect(harness.currentAiGateway()).toEqual({
+      version: 1,
+      models: [{ id: "cursor--auto" }],
+      providerPriority: ["opencode"],
+    });
+  });
+
+  it("PUT /plugins/terminal/settings preserves providerPriority when the key is absent", async () => {
+    const harness = createRouteHarness({
+      body: { aiGateway: { models: [{ id: "kimi--k3" }] } },
+      aiGateway: { version: 1, providerPriority: ["codex"] },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+
+    expect(harness.currentAiGateway()).toEqual({
+      version: 1,
+      models: [{ id: "kimi--k3" }],
+      providerPriority: ["codex"],
+    });
+    expect(harness.writes[0]?.body).toMatchObject({
+      aiGateway: {
+        models: [{ id: "kimi--k3" }],
+        providerPriority: ["codex"],
+      },
+    });
+  });
+
+  it("PUT /plugins/terminal/settings explicitly clears providerPriority and replaces models", async () => {
+    const harness = createRouteHarness({
+      body: { aiGateway: { providerPriority: [] } },
+      aiGateway: {
+        version: 1,
+        models: [{ id: "cursor--auto" }],
+        providerPriority: ["codex"],
+      },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+
+    expect(harness.writes[0]).toMatchObject({ status: 200, body: { aiGateway: null } });
+    expect(harness.currentAiGateway()).toEqual({ version: 1 });
+  });
+
+  it("PUT /plugins/terminal/settings rejects an invalid providerPriority", async () => {
+    const harness = createRouteHarness({
+      body: { aiGateway: { providerPriority: ["unknown"] } },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+
+    expect(harness.writes).toEqual([{ status: 400, body: { error: "invalid_terminal_settings" } }]);
+    expect(harness.updateCalls).toBe(0);
   });
 
   it("PUT /plugins/terminal/settings toggles Cursor diagnostics without changing models", async () => {
@@ -376,6 +460,9 @@ function createRouteHarness(options: HarnessOptions = {}) {
             : {}),
           ...(typeof aiGateway.wireLogEnabled === "boolean"
             ? { wireLogEnabled: aiGateway.wireLogEnabled }
+            : {}),
+          ...(aiGateway.providerPriority
+            ? { providerPriority: aiGateway.providerPriority }
             : {}),
           ...(value ?? {}),
         });
