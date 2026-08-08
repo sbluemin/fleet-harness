@@ -1368,6 +1368,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 409, { error: "remote_host_fingerprint_mismatch" });
       return;
     }
+    // 탐침은 6초까지 끌 수 있고, 그 사이 요청자가 사라질 수 있다(창의 취소가 요청을 끊는다).
+    // 기억한다는 것은 목록에 남기고 1회용 자격을 예약한다는 뜻이므로, 아무도 받아 가지 않을
+    // 짝짓기를 남기지 않는다 — 취소가 진짜로 멈추려면 이 판정이 여기 있어야 한다.
+    if (res.writableEnded || res.destroyed) return;
     writeJson(res, 201, { host: remoteHostStore.remember(link) });
   }
 

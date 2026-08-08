@@ -210,6 +210,26 @@ describe("AddHostDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("aborts the in-flight add when the user dismisses the dialog", async () => {
+    // 취소가 붙은 창은 정말로 멈춰야 한다 — 인증서 탐침은 6초까지 끌 수 있고, 그 사이
+    // 요청이 살아 있으면 취소했다고 믿은 콘솔이 목록에 남는다.
+    let sent: AbortSignal | undefined;
+    globalThis.fetch = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      sent = init?.signal ?? undefined;
+      return new Promise<Response>(() => undefined);
+    }) as unknown as typeof globalThis.fetch;
+
+    mount(() => undefined);
+    type(LINK);
+    await submit();
+    expect(sent).toBeDefined();
+    expect(sent?.aborted).toBe(false);
+
+    await act(async () => root?.unmount());
+    root = null;
+    expect(sent?.aborted).toBe(true);
+  });
+
   it("blocks submission while the field is empty", () => {
     mount(() => undefined);
     const button = card().querySelector<HTMLButtonElement>(".add-host-submit");

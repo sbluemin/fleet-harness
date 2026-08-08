@@ -33,17 +33,22 @@ export function AddHostDialog({ onClose, openerRef }: {
   // 응답을 기다리는 동안에도 닫을 수 있다(닿지 않는 주소의 탐침은 몇 초를 끈다) — 닫힌 뒤
   // 도착한 결과로 사라진 화면을 되살리지 않기 위해 살아 있는지부터 본다.
   const aliveRef = useRef(true);
+  // 그리고 닫기는 화면만 걷는 것이 아니라 요청도 끊는다 — 취소가 붙은 창이 요청을 계속
+  // 보내면 취소했다고 믿은 콘솔이 목록에 남는다. 서버는 끊긴 요청의 링크를 기억하지 않는다.
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     // 개발 채널은 StrictMode로 렌더하므로 이 effect가 setup→cleanup→setup으로 돈다.
     // 생존 표시를 setup에서 다시 세우지 않으면 첫 cleanup이 내린 값이 그대로 남아 이후
     // 모든 응답이 버려진다 — 성공해도 창이 닫히지 않고 실패해도 "확인 중…"에 멈춘다.
     aliveRef.current = true;
+    abortRef.current = new AbortController();
     const shell = document.querySelector<HTMLElement>(".console-shell");
     if (shell) shell.inert = true;
     inputRef.current?.focus();
     return () => {
       aliveRef.current = false;
+      abortRef.current?.abort();
       // 순서가 계약이다 — inert를 먼저 풀지 않으면 focus()가 조용히 아무 일도 하지 않고,
       // 브라우저가 근처의 다른 버튼을 골라 준다(실측으로 잡힌 결함).
       if (shell) shell.inert = false;
@@ -93,7 +98,7 @@ export function AddHostDialog({ onClose, openerRef }: {
     if (value.length === 0 || busy) return;
     setBusy(true);
     setError(null);
-    void addRemoteHost(value)
+    void addRemoteHost(value, abortRef.current?.signal)
       .then(() => { if (aliveRef.current) onClose(); })
       .catch((cause: unknown) => {
         if (!aliveRef.current) return;
