@@ -943,86 +943,91 @@ export function AiGatewayModelRow({
   onSetEfforts,
 }: AiGatewayModelRowProps) {
   const t = getT(useTerminalLocale());
-  const [open, setOpen] = React.useState(false);
-  const ladder = model.effort?.levels ?? [];
-  const exposed = resolveExposedEfforts(ladder, exposedEfforts);
 
   return (
-    <div className={`ai-gateway-model-entry ${open ? "is-open" : ""}`}>
-      <div className="ai-gateway-model-row">
-        <button
-          type="button"
-          className={`ai-gateway-default-star ${isDefault ? "is-on" : ""}`}
-          aria-pressed={isDefault}
-          aria-label={t("terminal.settings.aiGatewayDefaultAria", { name: model.name })}
-          disabled={saving}
-          onClick={onSetDefault}
-        >
-          ★
-        </button>
-        <span className="ai-gateway-model-text">
-          <span className="ai-gateway-model-head">
-            <span className="ai-gateway-model-name">{model.name}</span>
-            <AiGatewayCapabilityBadge capabilityClass={model.capabilityClass} />
-          </span>
-          <span className="ai-gateway-model-id">{model.id}</span>
+    <div className="ai-gateway-model-row">
+      <button
+        type="button"
+        className={`ai-gateway-default-star ${isDefault ? "is-on" : ""}`}
+        aria-pressed={isDefault}
+        aria-label={t("terminal.settings.aiGatewayDefaultAria", { name: model.name })}
+        disabled={saving}
+        onClick={onSetDefault}
+      >
+        ★
+      </button>
+      <span className="ai-gateway-model-text">
+        <span className="ai-gateway-model-head">
+          <span className="ai-gateway-model-name">{model.name}</span>
+          <AiGatewayCapabilityBadge capabilityClass={model.capabilityClass} />
         </span>
-        <AiGatewayModelChips model={model} exposedEfforts={exposedEfforts} />
-        {ladder.length > 0 ? (
-          <button
-            type="button"
-            className="ai-gateway-levels-toggle"
-            aria-expanded={open}
-            aria-label={t("terminal.settings.aiGatewayLevelsAria", { name: model.name })}
-            onClick={() => setOpen((current) => !current)}
-          >
-            <span className="ai-gateway-levels-caret" aria-hidden="true">▸</span>
-            {t(open ? "terminal.settings.aiGatewayLevelsHide" : "terminal.settings.aiGatewayLevels")}
-          </button>
-        ) : null}
-        <button
-          type="button"
-          className="ai-gateway-remove"
-          aria-label={t("terminal.settings.aiGatewayRemoveAria", { name: model.name })}
-          disabled={saving}
-          onClick={onRemove}
-        >
-          ✕
-        </button>
-      </div>
-      {open && ladder.length > 0 ? (
-        <div className="ai-gateway-levels">
-          <div
-            className="ai-gateway-level-group"
-            role="group"
-            aria-label={t("terminal.settings.aiGatewayLevelsAria", { name: model.name })}
-          >
-            {ladder.map((level) => {
-              const isOn = exposed.includes(level);
-              return (
-                <button
-                  key={level}
-                  type="button"
-                  className={`ai-gateway-level ${isOn ? "is-on" : ""}`}
-                  aria-pressed={isOn}
-                  // 마지막 한 단계는 끌 수 없다 — 정체성이 0개인 모델은 켜 둔 채로
-                  // 쓸 수 없으므로, 그 상태는 아예 만들 수 없게 한다.
-                  disabled={saving || (isOn && exposed.length === 1)}
-                  onClick={() => onSetEfforts(isOn
-                    ? exposed.filter((current) => current !== level)
-                    : [...exposed, level])}
-                >
-                  {level}
-                </button>
-              );
-            })}
-          </div>
-          <span className="ai-gateway-levels-note">
-            {t("terminal.settings.aiGatewayIdentityCount", { count: exposed.length })}
-          </span>
-        </div>
-      ) : null}
+        <span className="ai-gateway-model-id">{model.id}</span>
+      </span>
+      <AiGatewayModelChips
+        model={model}
+        exposedEfforts={exposedEfforts}
+        saving={saving}
+        onSetEfforts={onSetEfforts}
+      />
+      <button
+        type="button"
+        className="ai-gateway-remove"
+        aria-label={t("terminal.settings.aiGatewayRemoveAria", { name: model.name })}
+        disabled={saving}
+        onClick={onRemove}
+      >
+        ✕
+      </button>
     </div>
+  );
+}
+
+/**
+ * 강도 배지를 펼친 형태. 배지 하나가 노출 사다리 전체를 보여주고 그 자리에서 고르게 한다 —
+ * 접기 뒤에 두면 어떤 단계가 살아 있는지가 한 번 더 펼쳐야 보이는 사실이 되고, 요약 숫자는
+ * 어느 단계를 껐는지 말하지 못한다. 켜진 세그먼트는 위치 채널(brass)로만 말한다.
+ */
+function AiGatewayEffortBadge({
+  model,
+  exposed,
+  saving,
+  onSetEfforts,
+}: {
+  readonly model: AiGatewayCatalogModel;
+  readonly exposed: readonly string[];
+  readonly saving: boolean;
+  readonly onSetEfforts: (efforts: readonly string[]) => void;
+}) {
+  const t = getT(useTerminalLocale());
+  const ladder = model.effort?.levels ?? [];
+  return (
+    <span
+      className="ai-gateway-effort"
+      role="group"
+      aria-label={t("terminal.settings.aiGatewayLevelsAria", { name: model.name })}
+      title={t("terminal.settings.aiGatewayIdentityCount", { count: exposed.length })}
+    >
+      <span className="ai-gateway-effort-label" aria-hidden="true">effort</span>
+      {ladder.map((level) => {
+        const isOn = exposed.includes(level);
+        return (
+          <button
+            key={level}
+            type="button"
+            className={`ai-gateway-effort-level ${isOn ? "is-on" : ""}`}
+            aria-pressed={isOn}
+            // 마지막 한 단계는 끌 수 없다 — 정체성이 0개인 모델은 켜 둔 채로
+            // 쓸 수 없으므로, 그 상태는 아예 만들 수 없게 한다.
+            disabled={saving || (isOn && exposed.length === 1)}
+            onClick={() => onSetEfforts(isOn
+              ? exposed.filter((current) => current !== level)
+              : [...exposed, level])}
+          >
+            {level}
+          </button>
+        );
+      })}
+    </span>
   );
 }
 
@@ -1039,9 +1044,14 @@ function resolveExposedEfforts(
 function AiGatewayModelChips({
   model,
   exposedEfforts,
+  saving = false,
+  onSetEfforts,
 }: {
   readonly model: AiGatewayCatalogModel;
   readonly exposedEfforts?: readonly string[];
+  readonly saving?: boolean;
+  /** 부재 = 아직 켜지 않은 모델의 미리보기라 고를 선택이 없다. */
+  readonly onSetEfforts?: (efforts: readonly string[]) => void;
 }) {
   const t = getT(useTerminalLocale());
   const contextLabel = formatAiGatewayContextWindow(model.contextWindow);
@@ -1050,15 +1060,14 @@ function AiGatewayModelChips({
   return (
     <span className="ai-gateway-chips">
       {contextLabel ? <span className="ai-gateway-chip">{contextLabel}</span> : null}
-      {ladder.length > 0 ? (
-        // 칩은 컨트롤이 아니라 속성이다. 좁힌 상태는 세는 값으로만 말하고,
-        // 고르는 일은 아래 단계 목록이 맡는다.
-        <span className={`ai-gateway-chip ${exposed.length < ladder.length ? "is-strong" : ""}`}>
-          {exposed.length < ladder.length
-            ? `effort ${exposed.length}/${ladder.length}`
-            : `effort ${ladder[0]}–${ladder[ladder.length - 1]}`}
+      {ladder.length === 0 ? null : onSetEfforts === undefined ? (
+        // 아직 켜지 않은 모델은 고를 선택이 없으므로 사다리의 양 끝만 속성으로 말한다.
+        <span className="ai-gateway-chip">
+          {`effort ${ladder[0]}–${ladder[ladder.length - 1]}`}
         </span>
-      ) : null}
+      ) : (
+        <AiGatewayEffortBadge model={model} exposed={exposed} saving={saving} onSetEfforts={onSetEfforts} />
+      )}
       {model.fast ? <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayFast")}</span> : null}
       {model.maxMode ? <span className="ai-gateway-chip is-strong">{t("terminal.settings.aiGatewayMaxMode")}</span> : null}
       {model.description ? <span className="ai-gateway-chip">{model.description}</span> : null}

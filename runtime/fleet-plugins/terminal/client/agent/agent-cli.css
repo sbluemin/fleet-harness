@@ -432,75 +432,38 @@
   color: var(--coral);
 }
 
-/* 강도 노출 편집. 행은 하나로 유지하고 단계 목록만 펼친다 — 칩은 속성 문법이라
-   컨트롤로 승격시키지 않고, 좁힌 상태는 요약 칩이 세는 값으로만 말한다.
-   컨트롤 문법은 코어 설정의 segmented(brass 워시+brass ink+inset 링)를 그대로
-   따르고 밀도만 플러그인 행에 맞춘다. */
-.ai-gateway-model-entry {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.ai-gateway-levels-toggle {
-  flex: none;
+/* 강도 노출 편집 — 속성 칩과 같은 알약 안에서 사다리를 펼친 배지다. 강도는 이 카드에서
+   유일하게 사용자가 좁히는 축이라, 접기 뒤에 두면 어느 단계가 살아 있는지가 한 번 더
+   펼쳐야 보이는 사실이 된다. 켜진 세그먼트의 컨트롤 문법은 코어 설정의 segmented(brass
+   워시+brass ink+inset 링)를 그대로 따르고 밀도만 칩 행에 맞춘다 — 이 배지에서 brass는
+   상태가 아니라 사다리 위의 위치를 말한다. */
+.ai-gateway-effort {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: var(--space-1) var(--space-2);
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    background var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring);
-}
-
-.ai-gateway-levels-toggle:hover {
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
-  color: var(--text-primary);
-}
-
-.ai-gateway-levels-toggle[aria-expanded="true"] {
-  color: var(--brass);
-}
-
-.ai-gateway-levels-caret {
-  display: inline-block;
-  transition: transform var(--duration-base) var(--ease-spring);
-}
-
-.ai-gateway-model-entry.is-open .ai-gateway-levels-caret {
-  transform: rotate(90deg);
-}
-
-.ai-gateway-levels {
-  display: flex;
-  align-items: center;
+  /* 사다리는 다섯 칸까지 자라고 이 카드는 좁은 폭까지 따라 내려간다. 한 줄을 고집하면
+     오른쪽 단계가 카드 밖으로 나가 눌리지 않으므로, 넘칠 때는 감춰지지 않고 접힌다. */
   flex-wrap: wrap;
-  gap: var(--space-3);
-  margin-left: var(--space-4);
-  padding: 0 var(--space-3) var(--space-1);
-  border-left: 1px solid color-mix(in oklch, var(--surface-rim) 60%, transparent);
-}
-
-.ai-gateway-level-group {
-  display: inline-flex;
-  overflow: hidden;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid color-mix(in oklch, var(--surface-rim) 90%, transparent);
+  border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--surface-glass-strong) 55%, transparent);
 }
 
-.ai-gateway-level {
-  padding: 3px var(--space-2);
+.ai-gateway-effort-label {
+  padding: 0 5px 0 var(--space-2);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ai-gateway-effort-level {
+  padding: 1px 7px;
   border: 0;
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
@@ -514,11 +477,11 @@
     color var(--duration-fast) var(--ease-spring);
 }
 
-.ai-gateway-level:hover:not(:disabled):not(.is-on) {
+.ai-gateway-effort-level:hover:not(:disabled):not(.is-on) {
   color: var(--text-primary);
 }
 
-.ai-gateway-level.is-on {
+.ai-gateway-effort-level.is-on {
   background: color-mix(in oklch, var(--brass) 16%, transparent);
   color: var(--brass-ink);
   box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 38%, transparent);
@@ -526,20 +489,13 @@
 
 /* 마지막 한 단계는 끌 수 없다. 켜진 채로 잠긴 상태이므로 흐리게 만들지 않는다 —
    흐려지면 꺼진 것으로 읽힌다. */
-.ai-gateway-level.is-on:disabled {
+.ai-gateway-effort-level.is-on:disabled {
   cursor: not-allowed;
 }
 
-.ai-gateway-level:disabled:not(.is-on) {
+.ai-gateway-effort-level:disabled:not(.is-on) {
   cursor: not-allowed;
   opacity: 0.45;
-}
-
-.ai-gateway-levels-note {
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
 }
 
 .ai-gateway-composer {

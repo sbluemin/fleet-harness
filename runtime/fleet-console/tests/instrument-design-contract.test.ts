@@ -653,6 +653,39 @@ describe("Instrument core design contract", () => {
     expect(ranked).toContain("color: var(--text-primary);");
   });
 
+  it("pins the AI Gateway effort badge grammar — chip shell, segmented selection, no disclosure", () => {
+    // 강도 배지는 속성 칩 줄에서 유일한 컨트롤이다. 껍데기는 칩 문법(알약·mono·9.5px)을
+    // 그대로 쓰고 선택만 세그먼트 문법으로 말해야, 같은 줄의 속성 칩들과 한 몸으로 읽힌다.
+    const css = externalSource(TERMINAL_AGENT_CLI_CSS_PATH).replace(/\r\n/g, "\n");
+    const shell = css.match(/^\.ai-gateway-effort \{[^}]*\}/m)?.[0] ?? "";
+    expect(shell).toContain("border-radius: var(--radius-pill);");
+    expect(shell).toMatch(/border: 1px solid color-mix\(in oklch, var\(--surface-rim\) \d+%, transparent\);/);
+    // 다섯 칸 사다리는 좁은 설정 카드보다 넓어진다. 한 줄을 고집하거나 넘침을 잘라내면
+    // 오른쪽 단계가 카드 밖에서 눌리지 않으므로, 접히기만 하고 감춰지지는 않아야 한다.
+    expect(shell).toContain("flex-wrap: wrap;");
+    expect(shell).not.toContain("overflow: hidden;");
+
+    // 켜진 단계는 사다리 위의 위치이지 Operation 상태가 아니다 — 신호색을 빌리면 같은 카드의
+    // 활동 축과 충돌하므로, 코어 segmented와 같은 brass 워시+brass ink+inset 링만 쓴다.
+    const on = css.match(/\.ai-gateway-effort-level\.is-on \{[^}]*\}/)?.[0] ?? "";
+    expect(on).toContain("background: color-mix(in oklch, var(--brass) 16%, transparent);");
+    expect(on).toContain("color: var(--brass-ink);");
+    expect(on).toContain("box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 38%, transparent);");
+    for (const [, , body] of css.matchAll(/([^{}]*\.ai-gateway-effort[^{}]*)\{([^}]*)\}/g)) {
+      expect(body).not.toMatch(/var\(--(aurora|warn|coral|positive)[a-z-]*\)/);
+    }
+
+    // 마지막 한 단계는 켜진 채로 잠긴다. 흐려지면 꺼진 것으로 읽히므로 opacity를 내리지 않는다.
+    const lockedOn = css.match(/\.ai-gateway-effort-level\.is-on:disabled \{[^}]*\}/)?.[0] ?? "";
+    expect(lockedOn).toContain("cursor: not-allowed;");
+    expect(lockedOn).not.toContain("opacity");
+
+    // 배지가 사다리 전체를 이미 보여주므로 접기 표면은 존재하지 않는다.
+    expect(css).not.toContain(".ai-gateway-levels");
+    expect(css).not.toContain(".ai-gateway-model-entry");
+    expect(externalSource(TERMINAL_AGENT_PATH)).not.toContain("ai-gateway-levels-toggle");
+  });
+
   it("pins the shared panel motion layer and existence choreography grammar", () => {
     const components = source("styles/components.css");
     // (a) 공통 모션 레이어의 duration/easing은 토큰 표기만 — 리터럴 ms 진입 금지.
