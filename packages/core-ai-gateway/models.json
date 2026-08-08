@@ -344,15 +344,13 @@
           "modelId": "minimax-m3",
           "name": "MiniMax-M3",
           "capabilityClass": "flagship",
-          "contextWindow": 1000000,
-          "benchmarkKey": "minimax-m3"
+          "contextWindow": 1000000
         },
         {
           "modelId": "qwen3.8-max",
           "name": "Qwen3.8-Max",
           "capabilityClass": "flagship",
-          "contextWindow": 1000000,
-          "benchmarkKey": "qwen3.8-max"
+          "contextWindow": 1000000
         },
         {
           "modelId": "gpt-5.6-luna",
@@ -393,16 +391,14 @@
           "name": "DeepSeek-V4-Flash",
           "capabilityClass": "light",
           "wire": "chat-completions",
-          "contextWindow": 1000000,
-          "benchmarkKey": "deepseek-v4-flash"
+          "contextWindow": 1000000
         },
         {
           "modelId": "deepseek-v4-pro",
           "name": "DeepSeek-V4-Pro",
           "capabilityClass": "flagship",
           "wire": "chat-completions",
-          "contextWindow": 1000000,
-          "benchmarkKey": "deepseek-v4-pro"
+          "contextWindow": 1000000
         },
         {
           "modelId": "glm-5.2",
@@ -425,24 +421,21 @@
           "name": "MiMo-V2.5-Pro",
           "capabilityClass": "flagship",
           "wire": "chat-completions",
-          "contextWindow": 1048576,
-          "benchmarkKey": "mimo-v2.5-pro"
+          "contextWindow": 1048576
         },
         {
           "modelId": "mimo-v2.5",
           "name": "MiMo-V2.5",
           "capabilityClass": "standard",
           "wire": "chat-completions",
-          "contextWindow": 1000000,
-          "benchmarkKey": "mimo-v2.5"
+          "contextWindow": 1000000
         },
         {
           "modelId": "hy3",
           "name": "HY3",
           "capabilityClass": "flagship",
           "wire": "chat-completions",
-          "contextWindow": 256000,
-          "benchmarkKey": "hy3"
+          "contextWindow": 256000
         }
       ]
     }

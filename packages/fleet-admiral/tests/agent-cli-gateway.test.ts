@@ -115,33 +115,21 @@ describe("claude-gateway custom agents", () => {
     const lunaHigh = buildGatewayCustomAgents([requireGatewayModel("codex--gpt-5.6-luna-fast")])["codex-gpt-5-6-luna-fast-1m-high"];
     expect(lunaHigh?.description).toContain("Class prior: light lineup — fits wide mechanical fans (recon, scan, extract, verify), though measured figures can still earn a band seat.");
 
-    const minimax = buildGatewayCustomAgents([requireGatewayModel("opencode--minimax-m3")])["opencode-minimax-m3-1m"];
-    expect(minimax?.description).toContain("Bench SWE-rebench 2026-07: 47.2% overall, ~13.9M tokens/task.");
-
     for (const definition of Object.values(buildGatewayCustomAgents([requireGatewayModel("cursor--grok-4.5")]))) {
       expect(definition.description).toContain("score carries a caveat");
     }
 
-    const aaBenchModels = [
-      ["qwen3.8-max", "81.3% overall, ~52k tokens/task.", true],
-      ["deepseek-v4-flash", "78.7% overall; score carries a caveat — read it via gateway_models before trusting it.", false],
-      ["hy3", "64.4% overall.", false],
-      ["mimo-v2.5", "63.7% overall.", false],
-    ] as const;
-    for (const [modelId, scoreClause, hasTokens] of aaBenchModels) {
+    // CursorBench 미측정 모델은 벤치 문장 없이 class 폴백 문장만 싣는다 —
+    // 단일 소스 정책이 호스트 판정을 class prior 로 유도하는 지점.
+    for (const modelId of ["minimax-m3", "deepseek-v4-pro", "qwen3.8-max", "deepseek-v4-flash", "hy3", "mimo-v2.5"]) {
       const definitions = Object.values(buildGatewayCustomAgents([requireGatewayModel(`opencode--${modelId}`)]));
       expect(definitions.length).toBeGreaterThan(0);
       for (const definition of definitions) {
-        expect(definition.description).toContain(`Bench AA Terminal-Bench v2.1: ${scoreClause}`);
-        expect(definition.description).not.toContain("No bench evidence; capability class is the only prior.");
-        if (!hasTokens) {
-          expect(definition.description).not.toContain("tokens/task");
-        }
+        expect(definition.description, modelId).toContain("No bench evidence; capability class is the only prior.");
+        expect(definition.description, modelId).not.toContain("Bench SWE-rebench");
+        expect(definition.description, modelId).not.toContain("Bench AA Terminal-Bench");
       }
     }
-
-    const qwen = buildGatewayCustomAgents([requireGatewayModel("opencode--qwen3.8-max")])["opencode-qwen3-8-max-1m"];
-    expect(qwen?.description).toContain("Bench AA Terminal-Bench v2.1: 81.3% overall, ~52k tokens/task.");
   });
 
   it("registers gateway identities as plugin agent files, and never disables a built-in agent", async () => {

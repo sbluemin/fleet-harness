@@ -437,8 +437,10 @@ describe("gateway_models tool doctrine", () => {
     expect(guidelines).toContain("the quality prior where no benchmark figures exist");
     expect(guidelines).toContain("Quality reads benchmark first");
     expect(guidelines).toContain("judgment seats keep to the top reachable band");
-    // 소스 간 점수 비교를 허용하면 공급자 간 class 비교와 같은 오류가 벤치 차원에서 재현된다.
-    expect(guidelines).toContain("Scores compare only within one source");
+    // 소스 간 점수 비교를 허용하면 공급자 간 class 비교와 같은 오류가 벤치 차원에서
+    // 재현된다 — 카탈로그는 단일 소스가 정책이고, 미측정 모델은 class 로만 판정한다.
+    expect(guidelines).toContain("The catalog carries one benchmark source deliberately");
+    expect(guidelines).toContain("judged by its capability class alone");
     expect(guidelines).toContain("neither quality nor allowance ever falls back to this session's own model");
     // 구 문언이 되살아나면 공급자 주장(class)이 다시 공급자 간 품질 통화가 된다.
     expect(guidelines).not.toContain("the roster's only quality signal");

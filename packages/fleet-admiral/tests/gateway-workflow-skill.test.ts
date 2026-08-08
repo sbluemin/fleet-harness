@@ -109,12 +109,11 @@ describe("gateway workflow skill asset", () => {
     // 후보가 관측 실패 전에 예보만으로 배제된다 — 실측 리뷰가 잡은 자기모순.
     expect(content).toContain("A listed provider's identities stay eligible for judgment seats at any forecast.");
     expect(content).toContain("not `critical` unless the user listed it in `providerPriority`");
-    // 소스가 둘이 되는 순간, 소스 간 점수 비교는 공급자 간 class 비교와 같은 오류다.
-    expect(content).toContain("Scores compare only within one source.");
-    expect(content).toContain("standing among its own source's comparators");
-    // 토큰 효율도 하네스 상대값이다 — 소스 경계 없이 비교하면 문제 단위가 큰 소스의
-    // 모델이 무조건 비싸 보인다(CursorBench ~10k/task vs SWE-rebench ~수 M/problem).
-    expect(content).toContain("a `tokensPerTask` from one harness never prices against another's");
+    // 소스가 둘이면 소스 간 점수 비교라는 오류 계열이 생긴다 — 카탈로그는 단일 소스가
+    // 정책이고, 미측정 모델은 class prior 로만 읽는다(빈칸을 외부 수치로 메우지 않는다).
+    expect(content).toContain("The catalog carries one benchmark source deliberately.");
+    expect(content).toContain("read it by its class prior alone");
+    expect(content).toContain("never fill the gap with a number from anywhere else");
     // E2가 예보만으로 열리면 우선 공급자의 critical이 관측 실패 없이 세션 모델 예외를
     // 여는 뒷문이 된다 — 우선순위의 "관측만이 이탈 근거" 규칙과 직접 충돌.
     expect(content).toContain("never opens E2 on its forecast");

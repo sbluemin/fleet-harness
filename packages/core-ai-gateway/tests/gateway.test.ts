@@ -687,30 +687,6 @@ describe("model catalog", () => {
     }
   });
 
-  it("accepts benchmark scores without token figures", () => {
-    const parsed = parseGatewayBenchmarksRegistry({
-      version: 2,
-      sources: {
-        known: {
-          name: "Known",
-          benchVersion: "1",
-          observedAt: "2026-08-08T00:00:00Z",
-          url: "https://example.com",
-          method: "fixture",
-          routingTieBandPoints: 1,
-        },
-      },
-      models: {
-        scoreOnly: {
-          source: "known",
-          overall: { score: 50 },
-        },
-      },
-    });
-
-    expect(parsed.models.scoreOnly?.overall).toEqual({ score: 50 });
-  });
-
   it("resolves benchmark evidence from benchmarks.json", () => {
     const base = findGatewayModel("codex--gpt-5.6-sol");
     const fast = findGatewayModel("codex--gpt-5.6-sol-fast");
@@ -723,30 +699,11 @@ describe("model catalog", () => {
     expect(cursorKimi?.benchmark?.rungs && Object.keys(cursorKimi.benchmark.rungs).sort()).toEqual(["high", "low"]);
     expect(moonshotKimi?.benchmark?.rungs && Object.keys(moonshotKimi.benchmark.rungs).sort()).toEqual(["high", "low", "max"]);
 
-    const minimax = findGatewayModel("opencode--minimax-m3");
-    expect(minimax?.benchmark).toMatchObject({
-      source: "SWE-rebench 2026-07",
-      overall: { score: 47.2, tokensPerTask: 13_869_459 },
-    });
-    expect(minimax?.benchmark?.overall).not.toHaveProperty("stepsPerTask");
-
-    const deepseek = findGatewayModel("opencode--deepseek-v4-pro");
-    expect(deepseek?.benchmark?.caveat).toContain("high reasoning setting");
-
-    const aaModels = [
-      ["qwen3.8-max", { score: 81.3, tokensPerTask: 52428 }],
-      ["deepseek-v4-flash", { score: 78.7 }],
-      ["hy3", { score: 64.4 }],
-      ["mimo-v2.5", { score: 63.7 }],
-    ] as const;
-    for (const [modelId, figures] of aaModels) {
-      const benchmark = findGatewayModel(`opencode--${modelId}`)?.benchmark;
-      expect(benchmark?.source, modelId).toBe("AA Terminal-Bench v2.1");
-      expect(benchmark?.overall, modelId).toEqual(figures);
+    // CursorBench가 측정하지 않은 모델은 벤치 항목 없이 class 폴백으로만 판정된다 —
+    // 단일 소스 정책(제2 소스 재도입은 사용자 재가 사항).
+    for (const modelId of ["minimax-m3", "deepseek-v4-pro", "qwen3.8-max", "deepseek-v4-flash", "hy3", "mimo-v2.5", "mimo-v2.5-pro"]) {
+      expect(findGatewayModel(`opencode--${modelId}`)?.benchmark, modelId).toBeUndefined();
     }
-    expect(findGatewayModel("opencode--deepseek-v4-flash")?.benchmark?.caveat).toContain(
-      "0731 re-post-trained build",
-    );
 
     const glm = findGatewayModel("opencode--glm-5.2");
     expect(glm?.benchmark?.source).toBe("CursorBench 3.2");
@@ -754,8 +711,8 @@ describe("model catalog", () => {
     expect(glm?.benchmark?.caveat).toContain("effort control");
 
     expect(GATEWAY_BENCHMARKS_STAMP).toContain("cursorbench:");
-    expect(GATEWAY_BENCHMARKS_STAMP).toContain("swe-rebench:");
-    expect(GATEWAY_BENCHMARKS_STAMP).toContain("aa-terminal-bench:");
+    expect(GATEWAY_BENCHMARKS_STAMP).not.toContain("swe-rebench:");
+    expect(GATEWAY_BENCHMARKS_STAMP).not.toContain("aa-terminal-bench:");
     expect(findGatewayModel("cursor--auto")?.benchmark).toBeUndefined();
     expect(findGatewayModel("cursor--grok-4.5-fast")?.benchmark).toBeUndefined();
 
