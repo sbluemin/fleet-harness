@@ -48,6 +48,16 @@ export function findVariantLaunchKind(catalog: readonly OperationCatalogPlugin[]
 }
 
 /**
+ * Canvas/Quick Launch 메뉴의 Opus 행은 Claude Code `opus[1m]`을 쓴다. 업그레이드 전
+ * `fleet-console.quickLaunch.selection`에 남은 bare `opus`는 같은 행으로 이어 붙인다 —
+ * 브라우저 코드는 fleet-admiral를 끌어올 수 없어 서버의 resolveNativeClaudeModelAlias와
+ * 같은 한 줄만 복제한다.
+ */
+function normalizeRememberedNativeModel(model: string): string {
+  return model === "opus" ? "opus[1m]" : model;
+}
+
+/**
  * 기억해 둔 조합을 현재 카탈로그에 비추어 되살린다. 설정에서 모델을 끄거나 강도 사다리가 좁아지면
  * 기억은 낡은 값이 되므로, 여기서 걸러 ★기본 행으로 되돌린다 — 낡은 조합을 그대로 보내면 서버가
  * 409 gateway_model_not_enabled로 거절한다.
@@ -57,9 +67,12 @@ export function resolveSelection(
   remembered: { readonly model: string | null; readonly effort: string | null },
 ): ResolvedSelection {
   const rows = groups.flatMap((group) => group.rows);
-  const rememberedRow = remembered.model === null
+  const rememberedModel = remembered.model === null
+    ? null
+    : normalizeRememberedNativeModel(remembered.model);
+  const rememberedRow = rememberedModel === null
     ? undefined
-    : rows.find((row) => row.launch.model === remembered.model);
+    : rows.find((row) => row.launch.model === rememberedModel);
   const row = rememberedRow ?? rows.find((candidate) => candidate.starred) ?? rows[0];
   if (!row) return { model: null, effort: null, modelLabel: null, effortLabel: null };
   const chip = rememberedRow && remembered.effort !== null

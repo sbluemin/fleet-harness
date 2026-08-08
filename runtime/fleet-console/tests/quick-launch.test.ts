@@ -31,13 +31,13 @@ const GROUPS: readonly OperationLaunchVariantGroup[] = [
         ],
       },
       {
-        id: "opus",
+        id: "opus[1m]",
         label: "Opus",
         starred: true,
-        launch: { model: "opus" },
+        launch: { model: "opus[1m]" },
         chips: [
-          { id: "opus-high", label: "HIGH", launch: { model: "opus", effort: "high" } },
-          { id: "opus-xhigh", label: "XHIGH", launch: { model: "opus", effort: "xhigh" } },
+          { id: "opus-high", label: "HIGH", launch: { model: "opus[1m]", effort: "high" } },
+          { id: "opus-xhigh", label: "XHIGH", launch: { model: "opus[1m]", effort: "xhigh" } },
         ],
       },
     ],
@@ -85,7 +85,7 @@ describe("resolveSelection", () => {
   it("falls back to the starred row when the remembered model is no longer enabled", () => {
     // 설정에서 모델을 끄면 기억은 낡은 값이 된다 — 그대로 보내면 서버가 409 gateway_model_not_enabled로 거절한다.
     expect(resolveSelection(GROUPS, { model: "retired-model", effort: "high" })).toEqual({
-      model: "opus",
+      model: "opus[1m]",
       effort: null,
       modelLabel: "Opus",
       effortLabel: null,
@@ -93,16 +93,25 @@ describe("resolveSelection", () => {
   });
 
   it("drops a remembered effort the model's ladder no longer exposes", () => {
-    expect(resolveSelection(GROUPS, { model: "opus", effort: "low" })).toEqual({
-      model: "opus",
+    expect(resolveSelection(GROUPS, { model: "opus[1m]", effort: "low" })).toEqual({
+      model: "opus[1m]",
       effort: null,
       modelLabel: "Opus",
       effortLabel: null,
     });
   });
 
+  it("rewrites a saved bare opus selection onto the 1M coordinate", () => {
+    expect(resolveSelection(GROUPS, { model: "opus", effort: "high" })).toEqual({
+      model: "opus[1m]",
+      effort: "high",
+      modelLabel: "Opus",
+      effortLabel: "HIGH",
+    });
+  });
+
   it("uses the starred row when nothing is remembered", () => {
-    expect(resolveSelection(GROUPS, { model: null, effort: null })).toMatchObject({ model: "opus", effort: null });
+    expect(resolveSelection(GROUPS, { model: null, effort: null })).toMatchObject({ model: "opus[1m]", effort: null });
   });
 
   it("returns an empty selection when the catalog has no rows", () => {
