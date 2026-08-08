@@ -657,8 +657,16 @@ describe("Instrument core design contract", () => {
     const tip = css.match(/\.ai-gateway-priority-tip \{[^}]*\}/)?.[0] ?? "";
     expect(tip).toContain("visibility: hidden;");
     expect(tip).toContain("pointer-events: none;");
-    expect(css).toContain(".ai-gateway-priority-toggle:hover .ai-gateway-priority-tip,");
-    expect(css).toContain(".ai-gateway-priority-toggle:focus-visible .ai-gateway-priority-tip {");
+    expect(css).toContain(".ai-gateway-priority-toggle:hover + .ai-gateway-priority-tip,");
+    expect(css).toContain(".ai-gateway-priority-toggle:focus-visible + .ai-gateway-priority-tip {");
+
+    // 말풍선의 기준 상자는 토글이 아니라 헤드 행이고 상한은 그 폭이다 — 토글 기준으로 두면
+    // 시작점이 행 중간이라 어떤 상한을 줘도 좁은 화면에서 오른쪽으로 넘친다.
+    expect(tip).toContain("max-width: 100%;");
+    const head = css.match(/\.ai-gateway-provider-head \{[^}]*\}/)?.[0] ?? "";
+    expect(head).toContain("position: relative;");
+    // 좁아지면 부제부터 접혀야 글리프·이름·토글이 잘리지 않는다.
+    expect(head).toContain("flex-wrap: wrap;");
   });
 
   it("pins the shared panel motion layer and existence choreography grammar", () => {

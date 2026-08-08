@@ -792,26 +792,32 @@ export function AiGatewayPriorityToggle({ provider, rank, saving, onToggle }: Ai
   const t = getT(useTerminalLocale());
   const ranked = rank >= 0;
   const providerLabel = t(AI_GATEWAY_PROVIDER_LABEL_KEYS[provider]);
+  const tipId = `ai-gateway-priority-tip-${provider}`;
   return (
-    <button
-      type="button"
-      className={`ai-gateway-priority-toggle${ranked ? " is-ranked" : ""}`}
-      disabled={saving}
-      aria-pressed={ranked}
-      aria-label={ranked
-        ? t("terminal.settings.aiGatewayPriorityRemoveAria", { provider: providerLabel, rank: rank + 1 })
-        : t("terminal.settings.aiGatewayPriorityAddAria", { provider: providerLabel })}
-      onClick={() => onToggle(provider)}
-    >
-      {ranked ? <span className="ai-gateway-priority-rank" aria-hidden="true">{rank + 1}</span> : null}
-      {t("terminal.settings.aiGatewayPriority")}
+    <>
+      <button
+        type="button"
+        className={`ai-gateway-priority-toggle${ranked ? " is-ranked" : ""}`}
+        disabled={saving}
+        aria-pressed={ranked}
+        aria-label={ranked
+          ? t("terminal.settings.aiGatewayPriorityRemoveAria", { provider: providerLabel, rank: rank + 1 })
+          : t("terminal.settings.aiGatewayPriorityAddAria", { provider: providerLabel })}
+        // 접근성 이름은 결과 행동만 말하므로, 소진 순서가 무엇인지는 말풍선이 설명으로 잇는다 —
+        // 말풍선을 트리에서 감추면 스크린리더에는 설명 없는 "소진 순서"만 남는다.
+        aria-describedby={tipId}
+        onClick={() => onToggle(provider)}
+      >
+        {ranked ? <span className="ai-gateway-priority-rank" aria-hidden="true">{rank + 1}</span> : null}
+        {t("terminal.settings.aiGatewayPriority")}
+      </button>
       {/* 칩 줄이 사라지며 의미를 말하던 라벨·도움말도 사라지므로, hover·키보드 포커스에서
-          한 줄 요약 말풍선이 그 자리를 진다. 접근성 이름은 결과 행동이 이미 말하므로
-          말풍선은 aria-hidden으로 두어 같은 사실을 두 번 읽지 않는다. */}
-      <span className="ai-gateway-priority-tip" aria-hidden="true">
+          한 줄 요약 말풍선이 그 자리를 진다. 버튼 밖 형제로 두는 것은 배치 문제다 —
+          버튼 안에 두면 폭 기준이 버튼이라 좁은 화면에서 말풍선이 뷰포트를 넘는다. */}
+      <span className="ai-gateway-priority-tip" id={tipId}>
         {t("terminal.settings.aiGatewayPriorityTip")}
       </span>
-    </button>
+    </>
   );
 }
 

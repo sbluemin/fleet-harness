@@ -107,15 +107,24 @@ describe("AiGatewayPriorityToggle", () => {
   });
 
   // 의미를 말하던 라벨·도움말 줄이 헤드 이전과 함께 사라졌으므로, 요약 말풍선이 항상 딸려야
-  // 한다. 접근성 이름은 행동만 말하므로 말풍선은 aria-hidden으로 중복 낭독을 막는다.
-  it("ships a one-line meaning summary as a hover bubble on every toggle, ranked or not", () => {
+  // 한다. 접근성 이름은 행동만 말하므로, 의미는 설명(aria-describedby)으로 이어야 스크린리더에
+  // "설명 없는 소진 순서"만 남지 않는다.
+  it("ships a one-line meaning summary that is both the hover bubble and the accessible description", () => {
     const toggles = render(["codex"], () => {});
     for (const toggle of toggles) {
-      const tip = toggle.querySelector(".ai-gateway-priority-tip");
+      const tipId = toggle.getAttribute("aria-describedby");
+      expect(tipId).toBeTruthy();
+      const tip = document.getElementById(tipId!);
       expect(tip).not.toBeNull();
-      expect(tip!.getAttribute("aria-hidden")).toBe("true");
+      expect(tip!.classList.contains("ai-gateway-priority-tip")).toBe(true);
+      expect(tip!.hasAttribute("aria-hidden")).toBe(false);
       expect((tip!.textContent ?? "").length).toBeGreaterThan(0);
+      // 말풍선은 버튼 밖 인접 형제여야 한다 — 버튼 안에 두면 폭 기준이 버튼이라 좁은 화면에서
+      // 요약이 뷰포트를 넘고, CSS의 인접 형제 여닫이도 성립하지 않는다.
+      expect(toggle.nextElementSibling).toBe(tip);
     }
+    // 공급자마다 설명이 하나씩 붙으므로 id가 겹치면 전원이 같은 설명을 가리킨다.
+    expect(new Set(toggles.map((b) => b.getAttribute("aria-describedby"))).size).toBe(toggles.length);
     // 네이티브 title이 함께 붙으면 같은 hover에서 말풍선이 두 겹으로 열린다.
     expect(toggles[0]!.hasAttribute("title")).toBe(false);
   });
