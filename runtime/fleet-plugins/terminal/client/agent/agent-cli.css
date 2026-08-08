@@ -348,55 +348,90 @@
   text-transform: uppercase;
 }
 
-/* 우선 소진 순서 — 상태가 아니라 사용자 선호이므로 등급 배지와 같은 규율로 신호색·brass 없이
-   잉크 농도와 순위 숫자로만 말한다. */
-.ai-gateway-priority {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin: var(--space-2) 0 var(--space-1);
-}
-
-.ai-gateway-priority-chip {
+/* 우선 소진 토글 — 공급자 헤드에서 이름 바로 오른쪽에 붙어 그 공급자 하나의 소진 순서 참여와
+   자리를 함께 말한다. 상태가 아니라 사용자 선호이므로 등급 배지와 같은 규율로 신호색·brass
+   없이 잉크 농도와 순위 숫자로만 말한다. */
+.ai-gateway-priority-toggle {
+  position: relative;
+  flex: none;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
   padding: 2px var(--space-2);
   border: 1px solid color-mix(in oklch, var(--surface-rim) 55%, transparent);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 9.5px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  white-space: nowrap;
   cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring);
 }
 
-.ai-gateway-priority-chip:hover:not(:disabled) {
+.ai-gateway-priority-toggle:hover:not(:disabled) {
   border-color: var(--surface-rim-strong);
   color: var(--text-secondary);
 }
 
-.ai-gateway-priority-chip:disabled {
+.ai-gateway-priority-toggle:disabled {
   cursor: default;
   opacity: 0.6;
 }
 
-.ai-gateway-priority-chip.is-ranked {
+.ai-gateway-priority-toggle.is-ranked {
   border-color: var(--surface-rim-strong);
   color: var(--text-primary);
 }
 
-.ai-gateway-priority-rank {
+/* 의미를 말하던 라벨·도움말 줄이 사라졌으므로, 한 줄 요약 말풍선이 hover·키보드 포커스에서
+   그 자리를 진다. 헤드는 카드 위쪽 가장자리에 붙으므로 말풍선은 아래로 편다 — 위로 펴면
+   첫 공급자에서 카드 밖으로 잘린다. */
+.ai-gateway-priority-tip {
+  position: absolute;
+  z-index: 1;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  visibility: hidden;
+  /* absolute 요소의 기본 폭은 버튼 폭으로 줄어든다 — max-width만 걸면 상한만 정해질 뿐
+     한 줄 요약이 버튼 너비 안에서 세로로 접힌다. max-content가 폭의 기준이고 상한은 창이 진다. */
+  width: max-content;
+  max-width: min(44em, 70vw);
+  padding: 3px var(--space-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xs);
+  background: var(--ink-veil);
   color: var(--text-primary);
-  font-weight: var(--weight-bold);
+  font-size: 10px;
+  letter-spacing: 0;
+  line-height: 1.4;
+  text-align: left;
+  text-transform: none;
+  /* 버튼이 자기 라벨을 위해 건 nowrap이 상속되면 한 줄 요약이 카드 밖으로 자란다. */
+  white-space: normal;
+  pointer-events: none;
 }
 
-.ai-gateway-priority-help {
-  flex-basis: 100%;
-  margin: 0;
+.ai-gateway-priority-toggle:hover .ai-gateway-priority-tip,
+.ai-gateway-priority-toggle:focus-visible .ai-gateway-priority-tip {
+  visibility: visible;
+}
+
+/* 순위는 켜짐의 부속 표시가 아니라 그 자체가 값이므로, 켜짐 농도 위에 테두리 한 겹으로 센다. */
+.ai-gateway-priority-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 13px;
+  height: 13px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-primary);
+  font-weight: var(--weight-bold);
 }
 
 .ai-gateway-default-star {
