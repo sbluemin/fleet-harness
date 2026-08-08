@@ -271,7 +271,8 @@ async function createAgentCliLaunchSpec(options: {
       mcpSessionLabel: options.sessionId,
       ...(gatewaySelection
         ? {
-          gatewayExposedModels: gatewaySelection.models,
+          // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.
+          gatewayDelegationModels: gatewaySelection.delegationModels,
           gatewayEffortExposure: gatewaySelection.effortExposure,
         }
         : {}),

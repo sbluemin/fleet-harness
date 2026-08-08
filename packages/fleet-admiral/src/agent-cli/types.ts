@@ -129,9 +129,10 @@ export interface CreateAgentCliPluginOptions {
   readonly inputWaitingHookExec?: FleetHookExec;
   // 작전명 자동 작명(UserPromptSubmit)을 위해 prompt를 호스트로 전달하는 hook.
   readonly autoNameHookExec?: FleetHookExec;
-  // 사용자가 노출한 gateway 모델과 강도. claude-gateway 렌더만 읽어 `agents/` 정의를 만든다.
-  // 정의가 argv가 아니라 이 플러그인에 실리므로, 노출 목록은 스폰 인자가 아니라 렌더 입력이다.
-  readonly gatewayExposedModels?: readonly GatewayModel[];
+  // 위임 정체성으로 등록할 gateway 모델과 강도. 사용자가 노출한 집합에서 host 전용 모델을 뺀
+  // 목록이며, `selection.models`를 넘기는 버그를 막기 위해 이름에 delegation을 명시한다.
+  // claude-gateway 렌더만 읽어 `agents/` 정의를 만든다.
+  readonly gatewayDelegationModels?: readonly GatewayModel[];
   readonly gatewayEffortExposure?: GatewayEffortExposure;
   readonly onCleanup?: (cleanup: () => void) => void;
   readonly rootDir?: string;

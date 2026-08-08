@@ -40,10 +40,10 @@ export interface InjectAgentCliProfileOptions {
   readonly resumeSessionId?: string;
   readonly withMarketplaceLock: AgentCliPluginMarketplaceLock;
   /**
-   * claude-gateway 전용: AI Gateway에 노출된 모델로 `--agents` JSON을 조립한다.
-   * 파일 영속화 없이 런치 인자로만 주입한다.
+   * claude-gateway 전용: 위임 정체성으로 등록할 모델, 즉 AI Gateway 노출 집합에서 host 전용
+   * 모델을 뺀 목록이다. `selection.models`를 넘기는 버그를 막기 위해 이름에 delegation을 명시한다.
    */
-  readonly gatewayExposedModels?: readonly GatewayModel[];
+  readonly gatewayDelegationModels?: readonly GatewayModel[];
   /** claude-gateway 전용: 모델별로 정체성을 만들 강도. 항목이 없으면 그 모델의 사다리 전체. */
   readonly gatewayEffortExposure?: GatewayEffortExposure;
 }
@@ -115,7 +115,7 @@ export async function injectAgentCliProfile(
       backgroundReportHookExec: options.backgroundReportHookExec,
       autoNameHookExec: options.autoNameHookExec,
       // 게이트웨이 정체성은 플러그인이 파일로 싣는다 — argv에는 이미 있던 플러그인 경로만 남는다.
-      gatewayExposedModels: options.gatewayExposedModels,
+      gatewayDelegationModels: options.gatewayDelegationModels,
       gatewayEffortExposure: options.gatewayEffortExposure,
       withMarketplaceLock: options.withMarketplaceLock,
     });

@@ -724,7 +724,21 @@ function AiGatewayModelsCard() {
       ...selection,
       models: enabled.map((entry) => entry.id !== model.id
         ? entry
-        : { id: entry.id, ...(ordered.length === ladder.length ? {} : { efforts: ordered }) }),
+        : {
+          id: entry.id,
+          ...(ordered.length === ladder.length ? {} : { efforts: ordered }),
+          ...(entry.hostOnly === true ? { hostOnly: true } : {}),
+        }),
+    });
+  };
+  const setModelHostOnly = (model: AiGatewayCatalogModel, next: boolean): void => {
+    save({
+      ...selection,
+      models: enabled.map((entry) => {
+        if (entry.id !== model.id) return entry;
+        const { hostOnly: _hostOnly, ...rest } = entry;
+        return next ? { ...rest, hostOnly: true } : rest;
+      }),
     });
   };
 
@@ -752,6 +766,7 @@ function AiGatewayModelsCard() {
           onRemove={removeModel}
           onSetDefault={setDefaultModel}
           onSetEfforts={setModelEfforts}
+          onSetHostOnly={setModelHostOnly}
         />
       ))}
       <p className="global-settings-foot">{t("terminal.settings.aiGatewayModelsFoot")}</p>
@@ -832,6 +847,7 @@ interface AiGatewayProviderBlockProps {
   readonly onRemove: (id: string) => void;
   readonly onSetDefault: (id: string) => void;
   readonly onSetEfforts: (model: AiGatewayCatalogModel, efforts: readonly string[]) => void;
+  readonly onSetHostOnly: (model: AiGatewayCatalogModel, next: boolean) => void;
 }
 
 function AiGatewayProviderBlock({
@@ -844,6 +860,7 @@ function AiGatewayProviderBlock({
   onRemove,
   onSetDefault,
   onSetEfforts,
+  onSetHostOnly,
 }: AiGatewayProviderBlockProps) {
   const t = getT(useTerminalLocale());
   const baseModels = provider.models.filter((model) => !model.fast);
@@ -852,7 +869,11 @@ function AiGatewayProviderBlock({
 
   const enabledRows = (selection.models ?? []).flatMap((entry) => {
     const model = provider.models.find((candidate) => candidate.id === entry.id);
-    return model === undefined ? [] : [{ model, efforts: entry.efforts }];
+    return model === undefined ? [] : [{
+      model,
+      efforts: entry.efforts,
+      hostOnly: entry.hostOnly === true,
+    }];
   });
 
   const draftBaseModel = provider.models.find((model) => model.id === draftBase) ?? baseModels[0];
@@ -887,16 +908,18 @@ function AiGatewayProviderBlock({
         <p className="global-settings-help">{t("terminal.settings.aiGatewayNone")}</p>
       ) : (
         <div className="ai-gateway-rows">
-          {enabledRows.map(({ model, efforts }) => (
+          {enabledRows.map(({ model, efforts, hostOnly }) => (
             <AiGatewayModelRow
               key={model.id}
               model={model}
               exposedEfforts={efforts}
+              hostOnly={hostOnly}
               isDefault={selection.defaultModel === model.id}
               saving={saving}
               onRemove={() => onRemove(model.id)}
               onSetDefault={() => onSetDefault(model.id)}
               onSetEfforts={(next) => onSetEfforts(model, next)}
+              onToggleHostOnly={() => onSetHostOnly(model, !hostOnly)}
             />
           ))}
         </div>
@@ -943,21 +966,25 @@ interface AiGatewayModelRowProps {
   readonly model: AiGatewayCatalogModel;
   /** 부재 = 사다리 전체 노출. */
   readonly exposedEfforts?: readonly string[];
+  readonly hostOnly: boolean;
   readonly isDefault: boolean;
   readonly saving: boolean;
   readonly onRemove: () => void;
   readonly onSetDefault: () => void;
   readonly onSetEfforts: (efforts: readonly string[]) => void;
+  readonly onToggleHostOnly: () => void;
 }
 
 export function AiGatewayModelRow({
   model,
   exposedEfforts,
+  hostOnly,
   isDefault,
   saving,
   onRemove,
   onSetDefault,
   onSetEfforts,
+  onToggleHostOnly,
 }: AiGatewayModelRowProps) {
   const t = getT(useTerminalLocale());
 
@@ -983,9 +1010,24 @@ export function AiGatewayModelRow({
       <AiGatewayModelChips
         model={model}
         exposedEfforts={exposedEfforts}
+        hostOnly={hostOnly}
         saving={saving}
         onSetEfforts={onSetEfforts}
       />
+      <button
+        type="button"
+        className={`ai-gateway-host-only ${hostOnly ? "is-on" : ""}`}
+        aria-pressed={hostOnly}
+        aria-label={t("terminal.settings.aiGatewayHostOnlyAria", { name: model.name })}
+        disabled={saving}
+        onClick={onToggleHostOnly}
+      >
+        {t("terminal.settings.aiGatewayHostOnly")}
+      </button>
+      {/* 인접 형제여야 hover·focus 선택자가 닿는다 — 사이에 무엇도 끼우지 말 것. */}
+      <span className="ai-gateway-host-only-tip" role="tooltip">
+        {t("terminal.settings.aiGatewayHostOnlyTip")}
+      </span>
       <button
         type="button"
         className="ai-gateway-remove"
@@ -1007,11 +1049,13 @@ export function AiGatewayModelRow({
 function AiGatewayEffortBadge({
   model,
   exposed,
+  hostOnly,
   saving,
   onSetEfforts,
 }: {
   readonly model: AiGatewayCatalogModel;
   readonly exposed: readonly string[];
+  readonly hostOnly: boolean;
   readonly saving: boolean;
   readonly onSetEfforts: (efforts: readonly string[]) => void;
 }) {
@@ -1022,7 +1066,10 @@ function AiGatewayEffortBadge({
       className="ai-gateway-effort"
       role="group"
       aria-label={t("terminal.settings.aiGatewayLevelsAria", { name: model.name })}
-      title={t("terminal.settings.aiGatewayIdentityCount", { count: exposed.length })}
+      // 호스트 전용 모델의 정체성 수는 0이라, 켜진 단계를 세어 보여 주면 그 문장이 거짓이 된다.
+      title={hostOnly
+        ? t("terminal.settings.aiGatewayHostOnlyNote")
+        : t("terminal.settings.aiGatewayIdentityCount", { count: exposed.length })}
     >
       <span className="ai-gateway-effort-label" aria-hidden="true">effort</span>
       {ladder.map((level) => {
@@ -1061,11 +1108,13 @@ function resolveExposedEfforts(
 function AiGatewayModelChips({
   model,
   exposedEfforts,
+  hostOnly = false,
   saving = false,
   onSetEfforts,
 }: {
   readonly model: AiGatewayCatalogModel;
   readonly exposedEfforts?: readonly string[];
+  readonly hostOnly?: boolean;
   readonly saving?: boolean;
   /** 부재 = 아직 켜지 않은 모델의 미리보기라 고를 선택이 없다. */
   readonly onSetEfforts?: (efforts: readonly string[]) => void;
@@ -1083,7 +1132,7 @@ function AiGatewayModelChips({
           {`effort ${ladder[0]}–${ladder[ladder.length - 1]}`}
         </span>
       ) : (
-        <AiGatewayEffortBadge model={model} exposed={exposed} saving={saving} onSetEfforts={onSetEfforts} />
+        <AiGatewayEffortBadge model={model} exposed={exposed} hostOnly={hostOnly} saving={saving} onSetEfforts={onSetEfforts} />
       )}
       {model.fast ? <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayFast")}</span> : null}
       {model.maxMode ? <span className="ai-gateway-chip is-strong">{t("terminal.settings.aiGatewayMaxMode")}</span> : null}

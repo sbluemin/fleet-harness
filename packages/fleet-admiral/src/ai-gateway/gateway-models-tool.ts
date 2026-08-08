@@ -20,7 +20,7 @@ import {
 export const GATEWAY_MODELS_TOOL_ID = "gateway_models";
 
 export interface GatewayModelsSelection {
-  /** Exactly the models the user exposed in the Console. Never the whole catalog. */
+  /** Exactly the delegable models the user exposed — the exposed set minus the ones reserved for the host session. Never the whole catalog. */
   readonly models: readonly GatewayModel[];
   /** Per-model reasoning rungs the user exposed. Absent entry = that model's whole ladder. */
   readonly effortExposure?: GatewayEffortExposure;
@@ -42,7 +42,7 @@ const GATEWAY_MODELS_DOCTRINE = {
   title: "gateway_models Tool Guidelines",
   description:
     `Report the gateway models currently available to this session, each model's routing constraints, capability class, and benchmark evidence, and the current provider allowances and the user's provider spend priority.`
-    + ` The roster is exactly what the user exposed in the Console and is editable while this session runs, so it is resolved at call time rather than remembered.`,
+    + ` The roster is the models the user exposed in the Console minus the ones reserved for the host session, and it is editable while this session runs, so it is resolved at call time rather than remembered.`,
   promptSnippet:
     `gateway_models — Live roster of assignable gateway models: constraints, capability class, benchmark evidence, provider allowances, and the user's provider priority.`,
   whenToUse: [
@@ -59,7 +59,7 @@ const GATEWAY_MODELS_DOCTRINE = {
     `Two spellings, never interchangeable. agentTypes names an identity once per reasoning rung, so a name already carries the level and nothing further pins effort; modelId is the model as a value. Prefer a name: a wrong one fails loudly, while modelId reaches whatever the catalog holds, including a model the user turned off, in silence.`,
     `Names are registered once at session start; this roster is re-read live. A model — or a level — exposed mid-session appears here under a name that will not resolve until a new session. That, not a stale roster, is what an unknown-name failure means.`,
     `effortLadder is what this session offers, not what the model can do. A level outside the model's own ladder is clamped down with no signal and refused when nothing is below it, and some models have no effort control at all.`,
-    `A model's window is in the provider entry that serves it, and a model in no entry is one the user turned off. Every entry reports its allowance, the parent subscription included; what differs is what you can select.`,
+    `A model's window is in the provider entry that serves it, and a model in no entry is one the user turned off or reserved for the host session. Every entry reports its allowance, the parent subscription included; what differs is what you can select.`,
     `claude reports a window but serves no model by design, so a session on a built-in Claude model spends an allowance you can read and never select; a session launched on a gateway default instead spends the entry that serves that model, which further runs can pile back onto.`,
     `Read pressure before doing arithmetic of your own; it is the verdict on one window, combining headroom with burn pace against that window's own clock, and it never says which model to choose. Compare usedPercent only within one cadence — a shared window id does not mean a shared length.`,
     `Where a provider splits into pools, quotaScope picks the window that applies and the isAggregate one stays out of headroom math. recoveryHalfLifeMs prices the drain: weeks of lockout for a monthly window, hours for a session one.`,

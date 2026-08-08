@@ -58,7 +58,8 @@ export async function createFleetCliRuntime(
     readSelection: () => {
       const selection = resolveAiGatewaySelection(aiGatewayStore.read());
       return {
-        models: selection.models,
+        // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.
+        models: selection.delegationModels,
         effortExposure: selection.effortExposure,
         ...(selection.defaultModel ? { defaultModel: selection.defaultModel } : {}),
         ...(selection.providerPriority ? { providerPriority: selection.providerPriority } : {}),

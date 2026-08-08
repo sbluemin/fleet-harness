@@ -37,7 +37,8 @@ export async function launchClaudeGateway(options: LaunchClaudeGatewayOptions): 
       buildSystemPrompt: () => buildGatewaySystemPrompt(),
       dataDir: options.dataDir,
       dedicatedMcpSession: options.runtime.dedicatedMcpSession,
-      gatewayExposedModels: selection.models,
+      // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.
+      gatewayDelegationModels: selection.delegationModels,
       gatewayEffortExposure: selection.effortExposure,
       withMarketplaceLock: withFleetMarketplaceLock,
       onCleanup: (cleanup) => profileCleanups.push(cleanup),
