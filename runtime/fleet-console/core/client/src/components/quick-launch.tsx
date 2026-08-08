@@ -12,13 +12,11 @@ import { findVariantLaunchKind, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorM
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { closeQuickLaunch, consumeQuickLaunchDraft, requestQuickLaunch, setActiveTheater } from "../store.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph } from "./launch-provider-glyphs.js";
-import { QuickLaunchEffortMenu } from "./quick-launch-effort-menu.js";
+import { EffortTrack, resolveRowEffort } from "./effort-track.js";
 
 // 카드 폭은 팔레트(920px)보다 좁다 — 팔레트는 결과 목록을 담고, 여기는 한 문단을 담는다.
 const CARD_WIDTH_FALLBACK = 760;
 const POPOVER_GAP = 8;
-// 포인터가 행에서 서브메뉴로 건너가는 동안의 닫힘 유예(캔버스 실행 메뉴와 같은 값).
-const EFFORT_CLOSE_GRACE_MS = 160;
 const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex='-1'])";
 
 type PopoverKind = "theater" | "model";
@@ -43,11 +41,6 @@ export function QuickLaunch() {
   const [model, setModel] = useState<string | null>(null);
   const [effort, setEffort] = useState<string | null>(null);
   const [popover, setPopover] = useState<PopoverKind | null>(null);
-  // 열려 있는 실행 강도 서브메뉴는 목록 전체에 하나뿐이다. 행마다 자기 열림 상태를 들면 닫힘
-  // 유예(160ms) 동안 지나온 행들의 메뉴가 함께 떠 있어, 목록을 훑는 것만으로 서로 어긋난
-  // 상자 여럿이 겹쳐 잔상처럼 남는다.
-  const [effortRowId, setEffortRowId] = useState<string | null>(null);
-  const effortCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [popoverLeft, setPopoverLeft] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -59,7 +52,6 @@ export function QuickLaunch() {
   const activeTheater = theaters.find((candidate) => candidate.id === theaterId) ?? null;
   const rows = useMemo(() => groups.flatMap((group) => group.rows), [groups]);
   const selectedRow = rows.find((row) => row.launch.model === model) ?? null;
-  const selectedChip = selectedRow?.chips?.find((chip) => chip.launch.effort === effort) ?? null;
 
   // 열릴 때마다 카탈로그를 새로 읽는다. 설정에서 모델을 켜고 끈 직후 열어도 목록이 실제와 어긋나지 않는다.
   useEffect(() => {
@@ -128,32 +120,7 @@ export function QuickLaunch() {
     setPopoverLeft(Math.max(0, Math.min(chip.offsetLeft, bar.clientWidth - width - POPOVER_GAP)));
   }, [popover]);
 
-  const cancelEffortClose = useCallback(() => {
-    if (effortCloseTimerRef.current === null) return;
-    clearTimeout(effortCloseTimerRef.current);
-    effortCloseTimerRef.current = null;
-  }, []);
-  const openEffortMenu = useCallback((rowId: string) => {
-    cancelEffortClose();
-    setEffortRowId(rowId);
-  }, [cancelEffortClose]);
-  const closeEffortMenu = useCallback(() => {
-    cancelEffortClose();
-    setEffortRowId(null);
-  }, [cancelEffortClose]);
-  const scheduleEffortClose = useCallback(() => {
-    cancelEffortClose();
-    effortCloseTimerRef.current = setTimeout(() => {
-      effortCloseTimerRef.current = null;
-      setEffortRowId(null);
-    }, EFFORT_CLOSE_GRACE_MS);
-  }, [cancelEffortClose]);
-  useEffect(() => () => cancelEffortClose(), [cancelEffortClose]);
-
-  const closePopover = useCallback(() => {
-    closeEffortMenu();
-    setPopover(null);
-  }, [closeEffortMenu]);
+  const closePopover = useCallback(() => setPopover(null), []);
 
   const submit = useCallback(() => {
     const text = prompt.trim();
@@ -185,12 +152,7 @@ export function QuickLaunch() {
       closeQuickLaunch();
       return;
     }
-    if (event.key === "Tab") {
-      // Portaled effort choices live outside cardRef; fold them into the modal cycle
-      // so Tab from the last effort item cannot escape behind the overlay.
-      const effortMenu = document.querySelector<HTMLElement>(".quick-launch-effort-menu");
-      trapFocus(event, cardRef.current, effortMenu);
-    }
+    if (event.key === "Tab") trapFocus(event, cardRef.current);
   }, [closePopover, popover]);
 
   const handleInputKeyDown = useCallback((event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -285,9 +247,22 @@ export function QuickLaunch() {
               </span>
             ) : null}
             <span className="quick-launch-chip-label">{modelLabel}</span>
-            {selectedChip ? <span className="quick-launch-effort">{selectedChip.label}</span> : null}
             <span className="quick-launch-caret" aria-hidden="true">▾</span>
           </button>
+
+          {/* 강도는 고른 모델에 딸린 값이라 그 칩 바로 옆에 산다. 사다리가 없는 모델에서는
+              접는다 — 조작할 수 없는 컨트롤이 자리를 지키면 바가 고장 난 것처럼 읽힌다. */}
+          {selectedRow && (selectedRow.chips?.length ?? 0) > 0 ? (
+            <EffortTrack
+              row={selectedRow}
+              value={effort}
+              onChange={setEffort}
+              autoLabel={t("launchVariants.effort.auto")}
+              ariaLabel={t("launchVariants.effort.track")}
+              autoValueText={t("launchVariants.effort.autoValue")}
+              className="quick-launch-effort-track"
+            />
+          ) : null}
 
           <span className="quick-launch-spacer" />
           {overLimit ? (
@@ -374,15 +349,10 @@ export function QuickLaunch() {
                       key={row.id}
                       row={row}
                       selectedModel={model}
-                      selectedEffort={effort}
-                      effortOpen={effortRowId === row.id}
-                      onOpenEffort={openEffortMenu}
-                      onCloseEffort={closeEffortMenu}
-                      onScheduleEffortClose={scheduleEffortClose}
-                      onCancelEffortClose={cancelEffortClose}
-                      onPick={(nextModel, nextEffort) => {
+                      onPick={(nextModel) => {
                         setModel(nextModel);
-                        setEffort(nextEffort);
+                        // 새 모델의 사다리에 없는 강도는 들고 갈 수 없다 — 비운 상태로 떨어진다.
+                        setEffort(resolveRowEffort(row, effort));
                         closePopover();
                         inputRef.current?.focus();
                       }}
@@ -398,95 +368,26 @@ export function QuickLaunch() {
   );
 }
 
-function QuickLaunchVariantRow({
-  row,
-  selectedModel,
-  selectedEffort,
-  effortOpen,
-  onOpenEffort,
-  onCloseEffort,
-  onScheduleEffortClose,
-  onCancelEffortClose,
-  onPick,
-}: {
+function QuickLaunchVariantRow({ row, selectedModel, onPick }: {
   readonly row: OperationLaunchVariantRow;
   readonly selectedModel: string | null;
-  readonly selectedEffort: string | null;
-  readonly effortOpen: boolean;
-  readonly onOpenEffort: (rowId: string) => void;
-  readonly onCloseEffort: () => void;
-  readonly onScheduleEffortClose: () => void;
-  readonly onCancelEffortClose: () => void;
-  readonly onPick: (model: string | null, effort: string | null) => void;
+  readonly onPick: (model: string | null) => void;
 }) {
   const rowModel = row.launch.model ?? null;
-  const hasEffort = (row.chips?.length ?? 0) > 0;
-  const rowRef = useRef<HTMLDivElement | null>(null);
-  const effortMenuRef = useRef<HTMLDivElement | null>(null);
-
-  // 강도가 없는 행으로 옮겨 가면 곧바로 닫는다 — 유예를 두면 강도를 못 고르는 행 옆에
-  // 직전 행의 선택지가 남아, 어느 행의 것인지 읽을 수 없는 상자가 된다.
-  const enterRow = () => {
-    if (hasEffort) onOpenEffort(row.id);
-    else onCloseEffort();
-  };
-
   return (
-    <div
-      ref={rowRef}
-      className="quick-launch-variant-row"
-      onPointerEnter={enterRow}
-      onPointerLeave={() => { if (hasEffort) onScheduleEffortClose(); }}
-      onFocus={enterRow}
-      onBlur={(event) => {
-        const nextTarget = event.relatedTarget;
-        if (nextTarget instanceof Node && (event.currentTarget.contains(nextTarget) || effortMenuRef.current?.contains(nextTarget))) return;
-        onScheduleEffortClose();
-      }}
-    >
+    <div className="quick-launch-variant-row">
       <button
         type="button"
-        className={`quick-launch-variant-name${hasEffort ? " has-effort" : ""}`}
-        role="menuitem"
-        aria-current={rowModel === selectedModel && (selectedEffort === null || !hasEffort)}
-        aria-haspopup={hasEffort ? "menu" : undefined}
-        aria-expanded={hasEffort ? effortOpen : undefined}
-        onClick={() => onPick(rowModel, null)}
-        onKeyDown={(event) => {
-          if (event.key !== "ArrowRight" || !hasEffort) return;
-          event.preventDefault();
-          onOpenEffort(row.id);
-          requestAnimationFrame(() => effortMenuRef.current?.querySelector<HTMLButtonElement>(".quick-launch-effort-item")?.focus());
-        }}
+        className="quick-launch-variant-name"
+        role="menuitemradio"
+        aria-checked={rowModel === selectedModel}
+        onClick={() => onPick(rowModel)}
       >
         {/* ★는 라벨 뒤에 선다 — 앞에 두고 오른쪽으로 밀면 그 행만 통째로 우측 정렬돼 목록의 좌측 기준선이 끊긴다. */}
         <span className="quick-launch-variant-label">{row.label}</span>
         {row.starred ? <span className="quick-launch-variant-star" aria-hidden="true">★</span> : null}
-        {hasEffort ? <span className="quick-launch-variant-chevron" aria-hidden="true">›</span> : null}
+        {rowModel === selectedModel ? <span className="quick-launch-pop-check" aria-hidden="true">✓</span> : null}
       </button>
-      <QuickLaunchEffortMenu
-        anchor={rowRef.current}
-        menuRef={effortMenuRef}
-        open={hasEffort && effortOpen}
-        onCancelClose={onCancelEffortClose}
-        onScheduleClose={onScheduleEffortClose}
-        onClose={onCloseEffort}
-        onReturnFocus={() => rowRef.current?.querySelector<HTMLButtonElement>(".quick-launch-variant-name")?.focus()}
-      >
-        {row.chips?.map((chip) => (
-          <button
-            key={chip.id}
-            type="button"
-            role="menuitem"
-            className="quick-launch-effort-item"
-            data-launch-variant-chip={`${row.id}:${chip.id}`}
-            aria-current={rowModel === selectedModel && chip.launch.effort === selectedEffort}
-            onClick={() => onPick(chip.launch.model ?? rowModel, chip.launch.effort ?? null)}
-          >
-            {chip.label}
-          </button>
-        ))}
-      </QuickLaunchEffortMenu>
     </div>
   );
 }
@@ -513,18 +414,10 @@ function autoGrow(element: HTMLTextAreaElement): void {
   element.style.height = `${element.scrollHeight}px`;
 }
 
-function trapFocus(
-  event: ReactKeyboardEvent<HTMLElement>,
-  card: HTMLElement | null,
-  effortMenu: HTMLElement | null = null,
-): void {
+function trapFocus(event: ReactKeyboardEvent<HTMLElement>, card: HTMLElement | null): void {
   if (!card) return;
-  // The effort submenu portals to document.body, so it sits outside the dialog
-  // tree; fold its buttons into the same Tab cycle as the card.
-  const focusable = [
-    ...Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
-    ...Array.from(effortMenu?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? []),
-  ].filter((element) => element.offsetParent !== null);
+  const focusable = Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+    .filter((element) => element.offsetParent !== null);
   if (focusable.length === 0) return;
   const first = focusable[0];
   const last = focusable[focusable.length - 1];

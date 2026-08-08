@@ -172,7 +172,9 @@ describe("sidebar context menu keyboard path", () => {
       row.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
       row.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true }));
     });
-    act(() => required<HTMLButtonElement>('[data-launch-variant-chip="fable:max"]').click());
+    // 트랙은 값만 정한다 — 실행은 모델 행이 일으키고, 고른 강도를 그대로 싣는다.
+    act(() => required<HTMLElement>(".effort-track").dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
+    act(() => required<HTMLButtonElement>('[data-launch-variant-row="fable"]').click());
 
     expect(onLaunchKind).toHaveBeenCalledWith(
       "terminal",

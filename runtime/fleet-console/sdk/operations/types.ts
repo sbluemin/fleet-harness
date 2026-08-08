@@ -52,6 +52,15 @@ export interface OperationLaunchVariantRow {
   readonly starred?: boolean;
   readonly launch: Readonly<Record<string, string>>;
   readonly chips?: readonly OperationLaunchVariantChip[];
+  /**
+   * The canonical ladder `chips` sit on, in order, when a surface renders them as
+   * one axis rather than a list. A row may offer only part of it — a model that
+   * supports low/high/max leaves the second and fourth positions empty, and that
+   * gap is the point: spacing the offered rungs evenly would put `high` in the
+   * middle of an axis where it belongs three fifths along. Absent means the
+   * surface has nothing but `chips` to go on and should treat them as the axis.
+   */
+  readonly effortAxis?: readonly string[];
 }
 
 export interface OperationLaunchVariantGroup {

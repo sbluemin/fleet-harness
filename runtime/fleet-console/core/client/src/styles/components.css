@@ -7209,7 +7209,7 @@
   --flyout-enter-x: -4px;
   z-index: 42;
   /* canvas-context-menu.tsx의 EFFORT_SUBMENU_WIDTH와 같은 값이어야 한다. */
-  width: 104px;
+  width: 216px;
   max-height: var(--canvas-menu-max-height, 520px);
   overflow-y: auto;
   animation: operation-launch-flyout-in var(--duration-fast) var(--ease-spring) both;
@@ -7219,30 +7219,154 @@
   --flyout-enter-x: 4px;
 }
 
-.operation-launch-effort-item {
+/* ── 추론 강도 트랙 ─────────────────────────────────────────────────────────
+   강도는 상태가 아니라 사용자가 고른 값이라, 채움은 위치·초점 채널인 brass를 쓴다. 신호색
+   (aurora/warn/coral/positive)으로 칠하면 그 순간 "무슨 일이 일어났다"로 읽힌다. */
+.effort-track-shell {
   display: flex;
   align-items: center;
-  width: 100%;
-  padding: 6px var(--space-2);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.effort-track {
+  position: relative;
+  flex: 1;
+  min-width: 116px;
+  height: 26px;
+  padding: 0 13px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--surface-rim);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--surface-pillar) 55%, transparent);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.effort-track:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.effort-track-fill {
+  position: absolute;
+  left: 1px;
+  top: 1px;
+  bottom: 1px;
+  border-radius: 999px;
+  /* 광택 스윕은 이 상자 안에서만 지나간다 — 가두지 않으면 트랙 밖 빈자리에 흰 띠로 남는다. */
+  overflow: hidden;
+  background: var(--brass);
+  transition: width var(--duration-fast) var(--ease-spring);
+  pointer-events: none;
+}
+
+/* 최고 단은 색을 갈지 않는다 — 채도가 뛰면 신호로 읽힌다. 최대 출력에 든 계기처럼
+   결만 얹고, 광택은 한 번 훑고 지나간다. */
+.effort-track[data-at-max="true"] .effort-track-fill {
+  background:
+    repeating-linear-gradient(
+      115deg,
+      color-mix(in oklch, var(--text-on-brass) 7%, transparent) 0 1.5px,
+      transparent 1.5px 10px),
+    var(--brass);
+}
+
+.effort-track[data-at-max="true"] .effort-track-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: linear-gradient(
+    100deg,
+    transparent 35%,
+    color-mix(in oklch, var(--text-primary) 26%, transparent) 50%,
+    transparent 65%);
+  animation: effort-track-sweep 2.6s var(--ease-spring) infinite;
+}
+
+@keyframes effort-track-sweep {
+  0% { transform: translateX(-100%); }
+  55%, 100% { transform: translateX(100%); }
+}
+
+.effort-track-stops {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  pointer-events: none;
+}
+
+.effort-track-stop {
+  position: absolute;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  border-radius: 999px;
+  background: var(--text-tertiary);
+  transition: background var(--duration-fast) var(--ease-spring);
+}
+
+.effort-track-stop[data-filled="true"] {
+  background: color-mix(in oklch, var(--text-on-brass) 42%, transparent);
+}
+
+/* 이 모델이 내놓지 않은 단. 자리는 지키되 비어 있어야, 고를 수 있는 단이 축 위 제자리에 선다. */
+.effort-track-stop[data-gap="true"] {
+  background: none;
+  box-shadow: 0 0 0 1.5px color-mix(in oklch, var(--text-tertiary) 78%, transparent);
+}
+
+.effort-track-knob {
+  position: absolute;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  border-radius: 999px;
+  background: var(--text-primary);
+  box-shadow: 0 1px 3px oklch(0% 0 0 / 55%);
+  transition: left var(--duration-fast) var(--ease-spring);
+  pointer-events: none;
+}
+
+.effort-track-value {
+  min-width: 44px;
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 10.5px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  text-align: left;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
+  white-space: nowrap;
 }
 
-.operation-launch-effort-item:hover,
-.operation-launch-effort-item:focus-visible {
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
-  color: var(--text-primary);
-  outline: none;
+.effort-track-value[data-auto="true"] {
+  color: var(--text-tertiary);
+}
+
+/* 트랙이 닫힌 뒤에도 이 행이 무엇으로 실행되는지 남기는 표식. */
+.operation-launch-variant-effort {
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* 바 안에서는 자리를 정해 준다. 남는 폭을 두고 spacer와 겨루게 두면 트랙이 스톱 간격보다
+   좁아져, 손잡이가 이웃 스톱을 덮는다. */
+.quick-launch-effort-track {
+  flex: 0 0 auto;
+  width: 204px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .effort-track[data-at-max="true"] .effort-track-fill::after {
+    animation: none;
+    opacity: 0.22;
+  }
 }
 
 @keyframes operation-launch-flyout-in {
@@ -9762,8 +9886,7 @@ body[data-codex-side="true"] .command-card {
 @media (prefers-reduced-motion: reduce) {
   .operation-launch-flyout,
   .operation-launch-effort-menu,
-  .operation-launch-variant-row,
-  .operation-launch-effort-item {
+  .operation-launch-variant-row {
     animation: none;
     transition: none;
   }
@@ -10665,13 +10788,6 @@ body[data-codex-reading="true"] .operations-side-bar {
   font-weight: var(--weight-bold);
 }
 
-.quick-launch-effort {
-  color: var(--brass);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
 
 .quick-launch-caret {
   color: var(--text-tertiary);
@@ -10852,51 +10968,6 @@ body[data-codex-reading="true"] .operations-side-bar {
   color: var(--text-primary);
 }
 
-.quick-launch-effort-menu.theater-menu {
-  --flyout-enter-x: -4px;
-  position: fixed;
-  right: auto;
-  z-index: 92;
-  /* quick-launch-effort-menu.tsx의 MENU_WIDTH와 같은 값이어야 한다. */
-  width: 104px;
-  max-height: 280px;
-  overflow-y: auto;
-  visibility: hidden;
-  animation: operation-launch-flyout-in var(--duration-fast) var(--ease-spring) both;
-}
-
-.quick-launch-effort-menu.theater-menu.is-left {
-  --flyout-enter-x: 4px;
-}
-
-.quick-launch-effort-item {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  padding: 7px var(--space-2);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  text-align: left;
-}
-
-.quick-launch-effort-item:hover,
-.quick-launch-effort-item:focus-visible {
-  background: color-mix(in oklch, var(--surface-pillar) 55%, transparent);
-  color: var(--text-primary);
-}
-
-.quick-launch-effort-item[aria-current="true"] {
-  background: color-mix(in oklch, var(--brass) 16%, transparent);
-  color: var(--brass);
-  font-weight: var(--weight-bold);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .quick-launch-overlay {
     animation: none;
@@ -10904,8 +10975,9 @@ body[data-codex-reading="true"] .operations-side-bar {
 
   .quick-launch-chip,
   .quick-launch-submit,
-  .quick-launch-effort-menu,
-  .quick-launch-effort-item {
+  .effort-track-fill,
+  .effort-track-knob,
+  .effort-track-stop {
     animation: none;
     transition: none;
   }

@@ -55,6 +55,7 @@ export function buildClaudeGatewayLaunchVariants(selection?: AiGatewaySelection)
       id: model,
       label: NATIVE_MODEL_LABELS[model],
       launch: { model },
+      effortAxis: EFFORT_AXIS,
       chips: NATIVE_CLAUDE_EFFORTS.map((effort) => ({
         id: effort,
         label: EFFORT_LABELS[effort]!,
@@ -80,6 +81,10 @@ export function buildClaudeGatewayLaunchVariants(selection?: AiGatewaySelection)
   return groups;
 }
 
+// 강도 축은 사다리 어휘를 아는 이쪽이 소유한다. 한 모델이 그 일부만 내놓아도(low/high/max)
+// 축은 그대로라, 표면이 내놓은 단을 균등히 벌리는 대신 제자리에 세울 수 있다.
+const EFFORT_AXIS: readonly string[] = NATIVE_CLAUDE_EFFORTS;
+
 function providerGroupId(provider: GatewayProvider): string {
   return `gateway:${provider}`;
 }
@@ -94,6 +99,7 @@ function toGatewayRow(model: GatewayModel, selection: AiGatewaySelection) {
     ...(selection.defaultModel?.id === model.id ? { starred: true } : {}),
     launch: { model: model.id },
     ...(efforts.length > 0 ? {
+      effortAxis: EFFORT_AXIS,
       chips: efforts.map((effort) => ({
         id: effort,
         label: EFFORT_LABELS[effort] ?? effort.toUpperCase(),

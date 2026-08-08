@@ -4,6 +4,7 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 import { FEATURE_TOUR_BOUNDARY_ATTRIBUTE, FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import { useT } from "../i18n/index.js";
 import { resolveLaunchKindAnnotation } from "../launch-kind-annotations.js";
+import { EffortTrack } from "../components/effort-track.js";
 import { launchProviderFromGroupId, launchProviderGlyph } from "../components/launch-provider-glyphs.js";
 
 interface CanvasContextMenuProps {
@@ -34,7 +35,8 @@ const MENU_WIDTH = 288;
 // 넓어져 캐스케이드의 시각적 위계가 뒤집힌다.
 const FLYOUT_WIDTH = 216;
 const FLYOUT_GAP = 10;
-const EFFORT_SUBMENU_WIDTH = 104;
+// 트랙과 그 값 라벨이 나란히 들어가는 폭이다.
+const EFFORT_SUBMENU_WIDTH = 216;
 // 두 폭은 components.css의 같은 선언과 짝이다. 계약 시험이 그 짝을 지킨다.
 export const OPERATION_LAUNCH_FLYOUT_WIDTH = FLYOUT_WIDTH;
 export const OPERATION_LAUNCH_EFFORT_MENU_WIDTH = EFFORT_SUBMENU_WIDTH;
@@ -70,6 +72,8 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   const flyoutRef = useRef<HTMLDivElement | null>(null);
   const flyoutCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [openEffortRow, setOpenEffortRow] = useState<string | null>(null);
+  // 행마다 고른 강도. 트랙은 값만 정하고 실행은 모델 행이 일으키므로, 그 사이를 이 상태가 잇는다.
+  const [rowEfforts, setRowEfforts] = useState<Readonly<Record<string, string | null>>>({});
   const [effortPosition, setEffortPosition] = useState<{
     readonly id: string;
     readonly left: number;
@@ -321,9 +325,6 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   const moveFlyoutFocus = (from: HTMLElement | null, delta: number, edge: "first" | "last" | null) => {
     moveMenuFocus(flyoutRef.current, ".operation-launch-variant-row", from, delta, edge);
   };
-  const moveEffortFocus = (from: HTMLElement | null, delta: number, edge: "first" | "last" | null) => {
-    moveMenuFocus(effortMenuRef.current, ".operation-launch-effort-item", from, delta, edge);
-  };
   const effortTarget = openEffortRow === null || flyoutTarget === null
     ? null
     : findEffortRow(flyoutTarget.kind, openEffortRow);
@@ -513,7 +514,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                 event.preventDefault();
                 openEffortMenu(rowId);
                 requestAnimationFrame(() => {
-                  effortMenuRef.current?.querySelector<HTMLButtonElement>("[data-launch-variant-chip]")?.focus();
+                  effortMenuRef.current?.querySelector<HTMLElement>(".effort-track")?.focus();
                 });
                 return;
               }
@@ -557,6 +558,11 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
               {group.rows.map((row) => {
                 const hasEffort = (row.chips?.length ?? 0) > 0;
                 const effortOpen = hasEffort && openEffortRow === row.id;
+                // 트랙은 값만 정한다 — 실행은 이 행이 일으키고, 고른 강도를 그대로 싣는다.
+                const chosenEffort = rowEfforts[row.id] ?? null;
+                const chosenChip = chosenEffort === null
+                  ? undefined
+                  : row.chips?.find((chip) => chip.id === chosenEffort);
                 return (
                   <div
                     key={row.id}
@@ -590,10 +596,12 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                       data-launch-variant-row={row.id}
                       aria-haspopup={hasEffort ? "menu" : undefined}
                       aria-expanded={hasEffort ? effortOpen : undefined}
-                      onClick={() => onLaunchKind(flyoutTarget.pluginId, flyoutTarget.kind, row.launch)}
+                      onClick={() => onLaunchKind(flyoutTarget.pluginId, flyoutTarget.kind, chosenChip?.launch ?? row.launch)}
                     >
                       <span className="operation-launch-variant-row-label">{row.label}</span>
                       {row.starred ? <span className="operation-launch-variant-star" aria-hidden="true">★</span> : null}
+                      {/* 고른 강도를 행에 되비친다 — 트랙이 닫힌 뒤에도 이 행을 누르면 무엇으로 실행되는지 읽혀야 한다. */}
+                      {chosenChip ? <span className="operation-launch-variant-effort">{chosenChip.label}</span> : null}
                       {hasEffort ? <span className="operation-launch-variant-chevron" aria-hidden="true">›</span> : null}
                     </button>
                   </div>
@@ -622,47 +630,21 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
             if (!containerRef.current?.contains(event.relatedTarget as Node | null)) scheduleEffortClose();
           }}
           onKeyDown={(event) => {
-            const target = event.target as HTMLElement;
-            switch (event.key) {
-              case "ArrowDown":
-                event.preventDefault();
-                moveEffortFocus(target, 1, null);
-                return;
-              case "ArrowUp":
-                event.preventDefault();
-                moveEffortFocus(target, -1, null);
-                return;
-              case "Home":
-                event.preventDefault();
-                moveEffortFocus(null, 0, "first");
-                return;
-              case "End":
-                event.preventDefault();
-                moveEffortFocus(null, 0, "last");
-                return;
-              case "ArrowLeft":
-              case "Escape":
-                event.preventDefault();
-                event.stopPropagation();
-                effortAnchorRefs.current.get(openEffortRow!)?.querySelector<HTMLButtonElement>("[data-launch-variant-row]")?.focus();
-                closeEffortMenu();
-                return;
-              default:
-            }
+            if (event.key !== "Escape" && event.key !== "ArrowLeft") return;
+            event.preventDefault();
+            event.stopPropagation();
+            effortAnchorRefs.current.get(openEffortRow!)?.querySelector<HTMLButtonElement>("[data-launch-variant-row]")?.focus();
+            closeEffortMenu();
           }}
         >
-          {effortTarget.chips!.map((chip) => (
-            <button
-              key={chip.id}
-              type="button"
-              role="menuitem"
-              className="operation-launch-effort-item"
-              data-launch-variant-chip={`${effortTarget.id}:${chip.id}`}
-              onClick={() => onLaunchKind(flyoutTarget.pluginId, flyoutTarget.kind, chip.launch)}
-            >
-              {chip.label}
-            </button>
-          ))}
+          <EffortTrack
+            row={effortTarget}
+            value={rowEfforts[effortTarget.id] ?? null}
+            onChange={(next) => setRowEfforts((previous) => ({ ...previous, [effortTarget.id]: next }))}
+            autoLabel={t("launchVariants.effort.auto")}
+            ariaLabel={t("launchVariants.effort.track")}
+            autoValueText={t("launchVariants.effort.autoValue")}
+          />
         </div>
       ) : null}
     </div>

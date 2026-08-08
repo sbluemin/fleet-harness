@@ -433,15 +433,24 @@ describe("CanvasContextMenu launch kind attribute", () => {
 
     const row = document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!;
     expect(row.getAttribute("aria-haspopup")).toBe("menu");
-    expect(document.querySelector(".operation-launch-effort-menu")).toBeNull();
+    expect(document.querySelector(".effort-track")).toBeNull();
+
+    // 강도를 건드리지 않은 행은 모델만 싣는다.
     act(() => row.click());
     expect(onLaunchKind).toHaveBeenLastCalledWith("terminal", catalog[0]!.kinds[0], { model: "fable" });
 
+    // 트랙은 값만 정한다 — 실행은 여전히 모델 행이 일으킨다.
     act(() => row.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
-    expect(document.querySelector(".operation-launch-effort-menu")).not.toBeNull();
-    const chip = document.querySelector<HTMLButtonElement>('[data-launch-variant-chip="fable:max"]')!;
-    act(() => chip.click());
+    const track = document.querySelector<HTMLElement>(".effort-track")!;
+    expect(track).not.toBeNull();
+    act(() => track.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
+    expect(onLaunchKind).toHaveBeenCalledTimes(1);
+
+    // 고른 강도는 행에 되비치고, 그 행을 눌러야 실행된다.
+    expect(document.querySelector(".operation-launch-variant-effort")?.textContent).toBe("MAX");
+    act(() => document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!.click());
     expect(onLaunchKind).toHaveBeenLastCalledWith("terminal", catalog[0]!.kinds[0], { model: "fable", effort: "max" });
+
     act(() => parent.click());
     expect(onLaunchKind).toHaveBeenLastCalledWith("terminal", catalog[0]!.kinds[0]);
   });
@@ -543,21 +552,16 @@ describe("CanvasContextMenu launch kind attribute", () => {
     await act(async () => {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     });
-    const high = document.querySelector<HTMLButtonElement>('[data-launch-variant-chip="fable:high"]')!;
-    const max = document.querySelector<HTMLButtonElement>('[data-launch-variant-chip="fable:max"]')!;
+    const track = document.querySelector<HTMLElement>(".effort-track")!;
     expect(document.querySelector(".operation-launch-effort-menu")).not.toBeNull();
-    expect(document.activeElement).toBe(high);
+    expect(document.activeElement).toBe(track);
 
-    pressFlyoutKey("ArrowDown");
-    expect(document.activeElement).toBe(max);
-    pressFlyoutKey("ArrowUp");
-    expect(document.activeElement).toBe(high);
-    pressFlyoutKey("Home");
-    expect(document.activeElement).toBe(high);
+    // 트랙 위에서 방향키는 값을 옮긴다 — 실행은 여전히 모델 행이 일으킨다.
     pressFlyoutKey("End");
-    expect(document.activeElement).toBe(max);
+    expect(document.querySelector(".operation-launch-variant-effort")?.textContent).toBe("MAX");
 
-    pressFlyoutKey("ArrowLeft");
+    // 그래서 서브메뉴에서 나오는 키는 방향키가 아니라 Escape다.
+    pressFlyoutKey("Escape");
     expect(document.querySelector(".operation-launch-effort-menu")).toBeNull();
     expect(document.activeElement).toBe(row);
     expect(document.querySelector(".operation-launch-flyout")).not.toBeNull();
