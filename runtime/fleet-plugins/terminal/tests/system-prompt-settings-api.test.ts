@@ -36,6 +36,7 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: CATALOG,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
+      replaceClaudeGatewaySystemPrompt: false,
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(fetchSystemPromptSettings()).resolves.toEqual({
@@ -44,17 +45,40 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: CATALOG,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
+      replaceClaudeGatewaySystemPrompt: false,
     });
     expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", { signal: undefined });
   });
 
-  it("saves the prompt boolean to the plugin route", async () => {
+  it("saves the Claude AI Gateway system prompt replacement policy", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      agentIdleDormantMinutes: 60,
+      aiGateway: null,
+      aiGatewayCatalog: EMPTY_CATALOG,
+      cursorDiagnosticsEnabled: false,
+      wireLogEnabled: false,
+      replaceClaudeGatewaySystemPrompt: true,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(saveSystemPromptSettings({ replaceClaudeGatewaySystemPrompt: true })).resolves.toMatchObject({
+      replaceClaudeGatewaySystemPrompt: true,
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ replaceClaudeGatewaySystemPrompt: true }),
+      signal: undefined,
+    });
+  });
+
+  it("saves Cursor diagnostics to the plugin route", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({
       cursorDiagnosticsEnabled: true,
       agentIdleDormantMinutes: 60,
       aiGateway: null,
       aiGatewayCatalog: EMPTY_CATALOG,
       wireLogEnabled: false,
+      replaceClaudeGatewaySystemPrompt: false,
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(saveSystemPromptSettings({ cursorDiagnosticsEnabled: true })).resolves.toMatchObject({
@@ -84,6 +108,7 @@ describe("system prompt settings api", () => {
       agentIdleDormantMinutes: 60,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
+      replaceClaudeGatewaySystemPrompt: false,
     })));
     await expect(fetchSystemPromptSettings()).rejects.toThrow("Invalid Terminal settings response");
   });
@@ -103,6 +128,7 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: EMPTY_CATALOG,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
+      replaceClaudeGatewaySystemPrompt: false,
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(saveSystemPromptSettings({ agentIdleDormantMinutes: null })).resolves.toMatchObject({
@@ -127,6 +153,7 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: CATALOG,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
+      replaceClaudeGatewaySystemPrompt: false,
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(saveSystemPromptSettings({ aiGateway })).resolves.toMatchObject({ aiGateway });
@@ -154,11 +181,13 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: CATALOG,
       cursorDiagnosticsEnabled: true,
       wireLogEnabled: false,
+      replaceClaudeGatewaySystemPrompt: false,
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(saveSystemPromptSettings({ cursorDiagnosticsEnabled: true })).resolves.toMatchObject({
       cursorDiagnosticsEnabled: true,
       wireLogEnabled: false,
+      replaceClaudeGatewaySystemPrompt: false,
     });
     expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", {
       method: "PUT",
@@ -175,6 +204,7 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: CATALOG,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: true,
+      replaceClaudeGatewaySystemPrompt: false,
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(saveSystemPromptSettings({ wireLogEnabled: true })).resolves.toMatchObject({

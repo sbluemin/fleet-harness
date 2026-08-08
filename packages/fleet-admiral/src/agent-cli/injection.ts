@@ -37,6 +37,7 @@ export interface InjectAgentCliProfileOptions {
   readonly autoNameHookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
   readonly pluginRootDir?: string;
+  readonly replaceSystemPrompt?: boolean;
   readonly resumeSessionId?: string;
   readonly withMarketplaceLock: AgentCliPluginMarketplaceLock;
   /**
@@ -135,6 +136,7 @@ export async function injectAgentCliProfile(
       mcpServers,
       pluginRoot: plugin.pluginRoot,
       pluginRoots: plugin.pluginRoots,
+      replaceSystemPrompt: options.replaceSystemPrompt,
       resumeSessionId: options.resumeSessionId,
       systemPromptFile,
       ...gatewayAgents,

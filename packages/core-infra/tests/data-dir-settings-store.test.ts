@@ -73,6 +73,26 @@ describe("data-dir settings store", () => {
     });
   });
 
+  it("preserves the Claude AI Gateway system prompt replacement policy", () => {
+    expect(sanitizeGlobalOptionsData({
+      version: 1,
+      replaceClaudeGatewaySystemPrompt: true,
+    })).toEqual({
+      changed: false,
+      data: {
+        version: 1,
+        replaceClaudeGatewaySystemPrompt: true,
+      },
+    });
+    expect(sanitizeGlobalOptionsData({
+      version: 1,
+      replaceClaudeGatewaySystemPrompt: "yes",
+    })).toEqual({
+      changed: true,
+      data: { version: 1 },
+    });
+  });
+
   it("preserves valid agentIdleDormantMinutes and drops invalid values", () => {
     expect(sanitizeGlobalOptionsData({
       version: 1,

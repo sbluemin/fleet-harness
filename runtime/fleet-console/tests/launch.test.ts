@@ -40,7 +40,10 @@ const TEMP_DIRS: string[] = [];
 
 // 전역 옵션을 고정 반환하는 InfraServices 스텁 —
 // launch resolver가 실제 ~/.fleet/settings.json을 읽지 않도록 테스트를 격리한다.
-function createFakeInfraServices(globalOptions: { readonly agentIdleDormantMinutes?: number | null } = {}) {
+function createFakeInfraServices(globalOptions: {
+  readonly agentIdleDormantMinutes?: number | null;
+  readonly replaceClaudeGatewaySystemPrompt?: boolean;
+} = {}) {
   const data = { version: 1 as const, ...globalOptions };
   return {
     authService: {},
@@ -412,6 +415,50 @@ describe("createDefaultTerminalLaunchResolver", () => {
     await spec.cleanup?.();
     expect(existsSync(promptPath!)).toBe(false);
     expect(releasedLabels).toEqual(["gateway-integration"]);
+  });
+
+  it("replaces the Claude Code system prompt only for new AI Gateway launches when enabled", async () => {
+    const root = makeTempDir();
+    const resolve = createDefaultTerminalLaunchResolver({
+      agentRuntime: {
+        carrierRuntime: { jobs: { streaming: { register: () => () => {} } } },
+        dedicatedMcpSession: {
+          async getEndpoint() {
+            return { servers: [{ name: "fleet", url: "http://127.0.0.1:9000/mcp" }] };
+          },
+          issueSessionToken() {
+            return [{ name: "fleet", token: "gateway-token" }];
+          },
+          releaseSessionToken() {},
+        },
+        mcpRegistry: { getAllAgentTools: () => [] },
+        async cleanup() {},
+      } as never,
+      aiGateway: {
+        routePath: "/plugins/terminal/ai-gateway",
+        origin: () => "http://127.0.0.1:43210",
+      },
+      createSessionIdentityResolver: (() => ({ resolve: async () => null })) as never,
+      cwd: root,
+      dataDir: root,
+      entryPath: "/console/cli.mjs",
+      env: {
+        CLAUDE_BIN: process.execPath,
+        CLAUDE_CONFIG_DIR: path.join(root, "claude-config"),
+        PATH: process.env.PATH,
+      },
+      execPath: process.execPath,
+      infraServices: createFakeInfraServices({ replaceClaudeGatewaySystemPrompt: true }) as never,
+    });
+
+    const spec = await resolve(root, {
+      cliId: "claude-gateway",
+      sessionId: "gateway-replace",
+    });
+
+    expect(spec.args).toContain("--system-prompt-file");
+    expect(spec.args).not.toContain("--append-system-prompt-file");
+    await spec.cleanup?.();
   });
 
   it("honors a FLEET_TERMINAL_CMD override verbatim as an explicit operator override", async () => {

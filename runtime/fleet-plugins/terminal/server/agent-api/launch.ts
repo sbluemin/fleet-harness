@@ -221,6 +221,7 @@ async function createAgentCliLaunchSpec(options: {
       throw new Error("Fleet Console agent runtime is unavailable.");
     }
     const cliId = resolveAgentCliId(options.env, { cliId: options.cliId });
+    const globalOptions = options.infraServices.globalOptionsService.load();
     // gateway Agent 주입과 ANTHROPIC_MODEL/cache는 같은 selection을 공유한다.
     // resolveProfile보다 먼저 읽어 명시 모델 검증·Agent 정의 렌더·cache가 한 스냅샷을 공유한다.
     const gatewaySelection = cliId === "claude-gateway" && options.readAiGatewaySettings
@@ -274,6 +275,9 @@ async function createAgentCliLaunchSpec(options: {
       resumeSessionId: options.resumeSessionId,
       withMarketplaceLock: withConsoleMarketplaceLock,
       mcpSessionLabel: options.sessionId,
+      ...(cliId === "claude-gateway" && globalOptions.replaceClaudeGatewaySystemPrompt === true
+        ? { replaceSystemPrompt: true }
+        : {}),
       ...(gatewaySelection
         ? {
           // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.
