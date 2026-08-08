@@ -47,3 +47,15 @@ Put code here when it owns the host-agnostic one-shot executor/session/model run
 ## 4. State Synchronization
 
 Fleet supports multiple concurrent instances sharing the same durable state files via the `fs-store` advisory directory lock (`withDirectoryLock`) combined with atomic writes and read-time snapshots. Developers must avoid hidden process-global state and use explicit service instances plus pull-based resolvers.
+
+## 5. Isolated Development Data
+
+By default every Fleet host reads and writes the real user data root at `~/.fleet` — credentials, global settings, AI Gateway selection, and workspaces all live there. `pnpm cli`, `pnpm console`, and `pnpm desktop` therefore run through `scripts/run-isolated.mjs`, which points all three at one checkout-local root so a development run cannot read or overwrite the user's own environment:
+
+| Variable | Development value | Owns |
+|---|---|---|
+| `FLEET_DATA_DIR` | `<checkout>/.fleet/isolated` | Credentials, global settings, AI Gateway selection, workspaces |
+| `FLEET_CONSOLE_DATA_DIR` | `<checkout>/.fleet/isolated/console` | Console durable state and runtime lock |
+| `FLEET_DESKTOP_DATA_DIR` | `<checkout>/.fleet/isolated/desktop` | Desktop owner identity and Electron user data |
+
+Because the root is isolated, a development run starts with no credentials, no installed marketplace plugins, and no accumulated workspace knowledge — that is the point of the isolation, not a defect. Set any variable yourself to override the default slot; each must be an absolute path, and a relative value fails loudly rather than silently falling back to the real root. `FLEET_CONSOLE_DIR` remains accepted as the former name of `FLEET_CONSOLE_DATA_DIR` so already-shipped Desktop shells keep working, but Desktop honors that older name only when packaged.

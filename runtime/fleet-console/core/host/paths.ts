@@ -35,11 +35,22 @@ const CONSOLE_RUNTIME_DIR_NAME = "console";
 const CONSOLE_DATA_DIR_NAME = "console";
 const CONSOLE_STATE_FILE_NAME = "state.json";
 const CONSOLE_SETTINGS_FILE_NAME = "settings.json";
+const CONSOLE_DATA_DIR_ENV = "FLEET_CONSOLE_DATA_DIR";
+/**
+ * 개명 전 이름. 게시된 Desktop 셸이 sidecar에 넘기고 capture hook 자식이 읽는 값이라,
+ * 이미 배포된 조합이 최신 Console과 계속 맞물리려면 계속 인정해야 한다.
+ */
+const LEGACY_CONSOLE_DATA_DIR_ENV = "FLEET_CONSOLE_DIR";
+
+/** 이 Console 인스턴스의 슬롯을 지정한 명시 override. 새 이름이 옛 이름을 이긴다. */
+function readConsoleDirOverride(env: NodeJS.ProcessEnv): string | undefined {
+  return env[CONSOLE_DATA_DIR_ENV] ?? env[LEGACY_CONSOLE_DATA_DIR_ENV];
+}
 
 export function createConsolePaths(deps: CreateConsolePathsDeps = {}): ConsolePaths {
   const env = deps.env ?? process.env;
   // 명시 override가 있으면 채널별 락 네임스페이스보다 사용자가 지정한 경로를 우선한다.
-  const base = env.FLEET_CONSOLE_DIR ?? defaultConsoleBaseDir(deps);
+  const base = readConsoleDirOverride(env) ?? defaultConsoleBaseDir(deps);
   return { dir: base, lockFile: path.join(base, "console.lock") };
 }
 
@@ -75,12 +86,13 @@ function defaultConsoleDataBaseDir(deps: CreateConsoleDataPathsDeps): string {
     return path.join(deps.fleetDataDir, CONSOLE_DATA_DIR_NAME);
   }
 
-  // 2순위: FLEET_CONSOLE_DIR escape hatch. lock(createConsolePaths)과 동일하게 durable state도
+  // 2순위: FLEET_CONSOLE_DATA_DIR escape hatch. lock(createConsolePaths)과 동일하게 durable state도
   // override 슬롯에 co-locate한다 — read-only 체크아웃에서 쓰기 가능 런타임 슬롯을 지정하는 경우 등에
   // state가 체크아웃이 아닌 선택된 데몬 디렉터리에 격리되도록 보장한다.
   const env = deps.env ?? process.env;
-  if (env.FLEET_CONSOLE_DIR) {
-    return env.FLEET_CONSOLE_DIR;
+  const override = readConsoleDirOverride(env);
+  if (override) {
+    return override;
   }
 
   // 3순위: 채널 기반 경로.

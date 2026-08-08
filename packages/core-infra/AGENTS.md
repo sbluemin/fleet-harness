@@ -16,4 +16,4 @@ Host-agnostic gateways for durable Fleet infrastructure I/O.
 
 - This is the bottom durable-I/O layer; it owns no Admiral, host, or UI policy.
 - Durable writes preserve atomic replacement, advisory locking, symlink guards, traversal defense, and secure modes as one shared contract.
-- Data-root resolution is self-contained; caller overrides are for isolation, not a second production policy.
+- Data-root resolution is self-contained; caller overrides and the `FLEET_DATA_DIR` environment override are for isolation, not a second production policy. `FLEET_DATA_DIR` moves the whole root — credentials, global settings, gateway selection, workspaces — and must stay absolute-or-throw, because a silently ignored value writes an isolated run into the real user root.

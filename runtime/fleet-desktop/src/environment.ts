@@ -32,7 +32,15 @@ const DESKTOP_CONTROL_ENV_KEYS = new Set([
   DESKTOP_RESOURCE_ROOT_ENV,
   "FLEET_CONSOLE_DESKTOP_VERSION",
   "FLEET_CONSOLE_DIR",
+  "FLEET_CONSOLE_DATA_DIR",
 ]);
+
+const CONSOLE_DATA_DIR_ENV = "FLEET_CONSOLE_DATA_DIR";
+const LEGACY_CONSOLE_DATA_DIR_ENV = "FLEET_CONSOLE_DIR";
+const DESKTOP_DATA_DIR_ENV = "FLEET_DESKTOP_DATA_DIR";
+// Fleet 루트는 sidecar까지 그대로 흘러야 하므로 위 제어 키 목록에 넣지 않는다 — Desktop이
+// 다시 세우는 값이 아니라, 이 실행 전체가 어느 루트에 격리됐는지를 나르는 입력이다.
+const FLEET_DATA_DIR_ENV = "FLEET_DATA_DIR";
 const LOGIN_SHELL_ARGUMENTS = ["-ilc", "printf '%s' \"$PATH\""] as const;
 const LOGIN_SHELL_PATH_TIMEOUT_MS = 1_000;
 const LOGIN_SHELL_PATH_MAX_BUFFER = 8 * 1_024;
@@ -45,16 +53,23 @@ const defaultLoginShellPathProbe: LoginShellPathProbe = {
   },
 };
 
-export function resolveDesktopUserDataDirectory(userDataDir: string, resourceRoot: string, isPackaged: boolean): string {
+export function resolveDesktopUserDataDirectory(userDataDir: string, resourceRoot: string, isPackaged: boolean, env: NodeJS.ProcessEnv = process.env): string {
+  // 격리 실행은 Desktop의 자리를 직접 지정한다 — 콘솔 슬롯 밑이 아니라 Fleet 루트의 형제로
+  // 앉아야 `~/.fleet/{console,desktop}`과 같은 모양이 된다.
+  const override = resolveDesktopDataDirectoryOverride(env);
+  if (override !== undefined) return override;
   return isPackaged ? userDataDir : path.join(resolveCanonicalLocalConsolePaths({ packageRoot: resourceRoot }).dir, "desktop");
 }
 
 export function createDesktopEnvironment(userDataDir: string, appVersion: string, resourceRoot: string, isPackaged: boolean, env: NodeJS.ProcessEnv = process.env, options: HydratedDesktopEnvironmentOptions & { readonly loginShellPath?: string } = {}): DesktopEnvironment {
-  const overrideDirectory = resolvePackagedConsoleDirectoryOverride(isPackaged, env);
-  const paths = isPackaged
-    ? resolveCanonicalStableConsolePaths({ tmpDir: os.tmpdir(), uid: typeof process.getuid === "function" ? process.getuid() : 0, fleetDataDir: path.join(os.homedir(), ".fleet"), consoleDirOverride: overrideDirectory })
+  // 개발 실행도 명시 슬롯을 존중한다 — 단 **새 이름만**. 옛 이름은 개발 모드에서 계속 무시하는
+  // 것이 기존 불변식이다: 개발자 셸에 떠돌던 값 하나가 dev Desktop을 엉뚱한 슬롯으로 끌고 가면
+  // 안 되기 때문이다. 새 이름은 이 런처가 의도적으로 심는 값이라 그 위험이 없다.
+  const overrideDirectory = resolveConsoleDirectoryOverride(env, isPackaged);
+  const paths = isPackaged || overrideDirectory !== undefined
+    ? resolveCanonicalStableConsolePaths({ tmpDir: os.tmpdir(), uid: typeof process.getuid === "function" ? process.getuid() : 0, fleetDataDir: resolveFleetDataDir(env), consoleDirOverride: overrideDirectory })
     : resolveCanonicalLocalConsolePaths({ packageRoot: resourceRoot });
-  const ownerDirectory = isPackaged ? userDataDir : paths.dir;
+  const ownerDirectory = resolveDesktopDataDirectoryOverride(env) ?? (isPackaged ? userDataDir : paths.dir);
   const ownerFile = path.join(ownerDirectory, "desktop-owner-id");
   fs.mkdirSync(ownerDirectory, { recursive: true, mode: 0o700 });
   const ownerId = fs.existsSync(ownerFile) ? fs.readFileSync(ownerFile, "utf8").trim() : crypto.randomUUID();
@@ -76,7 +91,9 @@ export function createDesktopEnvironment(userDataDir: string, appVersion: string
       [DESKTOP_PROTOCOL_VERSION_ENV]: String(DESKTOP_PROTOCOL_VERSION),
       [DESKTOP_RESOURCE_ROOT_ENV]: resourceRoot,
       ...(isPackaged ? {} : { [DESKTOP_DEVELOPMENT_ENV]: "1" }),
-      ...(isPackaged ? (overrideDirectory === undefined ? {} : { FLEET_CONSOLE_DIR: paths.dir }) : { FLEET_CONSOLE_DIR: paths.dir }),
+      // sidecar에는 두 이름을 함께 싣는다. 새 이름은 정식 경로이고, 옛 이름은 이 Desktop이
+      // 더 낡은 Console을 절차적으로 조달했을 때의 안전망이다 — 한쪽만 아는 Console도 자리를 찾는다.
+      ...(isPackaged && overrideDirectory === undefined ? {} : { FLEET_CONSOLE_DIR: paths.dir, FLEET_CONSOLE_DATA_DIR: paths.dir }),
       FLEET_CONSOLE_DESKTOP_VERSION: appVersion,
     },
   };
@@ -84,7 +101,10 @@ export function createDesktopEnvironment(userDataDir: string, appVersion: string
 
 export async function createHydratedDesktopEnvironment(userDataDir: string, appVersion: string, resourceRoot: string, isPackaged: boolean, env: NodeJS.ProcessEnv = process.env, options: HydratedDesktopEnvironmentOptions = {}): Promise<DesktopEnvironment> {
   const platform = options.platform ?? process.platform;
-  resolvePackagedConsoleDirectoryOverride(isPackaged, env);
+  // 잘못된 override는 느린 로그인 셸 프로브 **전에** 터뜨린다.
+  resolveConsoleDirectoryOverride(env, isPackaged);
+  resolveDesktopDataDirectoryOverride(env);
+  resolveFleetDataDir(env);
   const loginShellPath = await readInteractiveLoginShellPath(isPackaged, env, options);
   return createDesktopEnvironment(userDataDir, appVersion, resourceRoot, isPackaged, env, { platform, loginShellPath });
 }
@@ -150,10 +170,28 @@ function isSafeLoginShellPath(value: string): boolean {
   return value.trim().length > 0 && !INVALID_PATH_OUTPUT.test(value);
 }
 
-function resolvePackagedConsoleDirectoryOverride(isPackaged: boolean, env: NodeJS.ProcessEnv): string | undefined {
-  const overrideDirectory = isPackaged ? readEnvironmentValue(env, "FLEET_CONSOLE_DIR") : undefined;
-  if (overrideDirectory !== undefined && !path.isAbsolute(overrideDirectory)) throw new Error("desktop_console_dir_must_be_absolute");
-  return overrideDirectory;
+function resolveConsoleDirectoryOverride(env: NodeJS.ProcessEnv, isPackaged: boolean): string | undefined {
+  // 새 이름이 옛 이름을 이긴다. 옛 이름은 packaged 배포에서만 인정한다 — 개발 모드에서 상속된
+  // 제어 변수를 무시하는 계약을 그대로 둔다.
+  const overrideDirectory = readEnvironmentValue(env, CONSOLE_DATA_DIR_ENV)
+    ?? (isPackaged ? readEnvironmentValue(env, LEGACY_CONSOLE_DATA_DIR_ENV) : undefined);
+  return requireAbsoluteOverride(overrideDirectory, "desktop_console_dir_must_be_absolute");
+}
+
+function resolveDesktopDataDirectoryOverride(env: NodeJS.ProcessEnv): string | undefined {
+  return requireAbsoluteOverride(readEnvironmentValue(env, DESKTOP_DATA_DIR_ENV), "desktop_data_dir_must_be_absolute");
+}
+
+/** Fleet 루트. core-infra에 기대지 않되(Desktop은 그 패키지를 의존하지 않는다) 같은 스위치를 읽는다. */
+function resolveFleetDataDir(env: NodeJS.ProcessEnv): string {
+  return requireAbsoluteOverride(readEnvironmentValue(env, FLEET_DATA_DIR_ENV), "fleet_data_dir_must_be_absolute")
+    ?? path.join(os.homedir(), ".fleet");
+}
+
+function requireAbsoluteOverride(value: string | undefined, errorCode: string): string | undefined {
+  if (value === undefined || value.trim().length === 0) return undefined;
+  if (!path.isAbsolute(value)) throw new Error(errorCode);
+  return value;
 }
 
 function readEnvironmentValue(env: NodeJS.ProcessEnv, name: string): string | undefined {

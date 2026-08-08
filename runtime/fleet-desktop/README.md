@@ -15,7 +15,7 @@ Desktop-managed code lives under:
 
 Installation temporarily uses `console/.staging-*`; replacing `latest` can temporarily use `latest.rollback`. A failed installation preserves a usable previous `latest` or leaves no partial installation. This runtime directory is removable code, not user data.
 
-Console data remains in `~/.fleet/console`: durable state, captures, and lock files keep their existing ownership and semantics. `FLEET_CONSOLE_DIR` is the explicit operator/test override. Desktop never copies Console service, React UI, PTY, provider, plugin, or durable-state behavior into Electron.
+Console data remains in `~/.fleet/console`: durable state, captures, and lock files keep their existing ownership and semantics. `FLEET_CONSOLE_DATA_DIR` is the explicit operator/test override (`FLEET_CONSOLE_DIR` is its former name, still accepted from packaged shells), and `FLEET_DESKTOP_DATA_DIR` relocates Desktop's own owner identity and user data. `pnpm desktop` sets both, plus the `FLEET_DATA_DIR` root, to a checkout-local isolated slot. Desktop never copies Console service, React UI, PTY, provider, plugin, or durable-state behavior into Electron.
 
 ## Startup journeys
 

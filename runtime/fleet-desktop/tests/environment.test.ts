@@ -46,6 +46,38 @@ describe("desktop environment", () => {
     }
   });
 
+  it("routes a development shell into the isolated slots named by the current variables", () => {
+    const worktree = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-isolated-"));
+    TEMP_DIRS.push(worktree);
+    const isolatedRoot = path.join(worktree, ".fleet", "isolated");
+    const consoleDir = path.join(isolatedRoot, "console");
+    const desktopDir = path.join(isolatedRoot, "desktop");
+    const env = { FLEET_CONSOLE_DATA_DIR: consoleDir, FLEET_DESKTOP_DATA_DIR: desktopDir, FLEET_DATA_DIR: isolatedRoot };
+    const resourceRoot = path.join(worktree, "runtime", "fleet-console");
+
+    const environment = createDesktopEnvironment(path.join(worktree, "user-data"), "1.23.0", resourceRoot, false, env);
+
+    expect(environment.consoleDir).toBe(consoleDir);
+    expect(environment.dataDir).toBe(consoleDir);
+    // owner 파일은 Console 슬롯이 아니라 Desktop 자기 자리에 앉는다.
+    expect(fs.existsSync(path.join(desktopDir, "desktop-owner-id"))).toBe(true);
+    expect(fs.existsSync(path.join(consoleDir, "desktop-owner-id"))).toBe(false);
+    expect(resolveDesktopUserDataDirectory(path.join(worktree, "user-data"), resourceRoot, false, env)).toBe(desktopDir);
+    // sidecar는 두 이름을 모두 받아, 한쪽만 아는 Console도 같은 슬롯을 찾는다.
+    expect(environment.serviceEnv).toMatchObject({ FLEET_CONSOLE_DATA_DIR: consoleDir, FLEET_CONSOLE_DIR: consoleDir });
+    // 루트는 Desktop이 다시 세우는 값이 아니라 통과시키는 입력이다.
+    expect(environment.serviceEnv.FLEET_DATA_DIR).toBe(isolatedRoot);
+  });
+
+  it("rejects a relative isolation override instead of silently using the real user root", () => {
+    const worktree = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-relative-"));
+    TEMP_DIRS.push(worktree);
+    const resourceRoot = path.join(worktree, "runtime", "fleet-console");
+
+    expect(() => createDesktopEnvironment(path.join(worktree, "user-data"), "1.23.0", resourceRoot, false, { FLEET_DESKTOP_DATA_DIR: ".fleet/isolated/desktop" }))
+      .toThrow("desktop_data_dir_must_be_absolute");
+  });
+
   it("removes inherited control variables case-insensitively before adding packaged canonical values", () => {
     const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-packaged-env-"));
     TEMP_DIRS.push(userDataDir);
