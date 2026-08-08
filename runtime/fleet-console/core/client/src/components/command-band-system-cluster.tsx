@@ -11,6 +11,7 @@ import { fetchLocalConsoles, probeRemoteHost, refreshRemoteHosts, useRemoteHosts
 import { useConsoleState } from "../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
 import { openWhatsNew } from "../store.js";
+import { AddHostDialog } from "./add-host-dialog.js";
 import { forgetSeenFeatureTours, replayableFeatureTourIds } from "./feature-tour.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 
@@ -94,6 +95,7 @@ function HostSwitcher() {
   const canOpenRemote = isDesktopShell();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [local, setLocal] = useState<readonly LocalConsole[]>([]);
   const [reach, setReach] = useState<Readonly<Record<string, RemoteHostReach>>>({});
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -169,6 +171,10 @@ function HostSwitcher() {
     setOpen(false);
     navigate({ pathname: "/settings", search: "?section=remote-access" });
   };
+  const openAdd = () => {
+    setOpen(false);
+    setAddOpen(true);
+  };
   const go = (origin: string) => {
     setOpen(false);
     if (origin !== currentOrigin) location.assign(new URL("/console/", `${origin}/`).toString());
@@ -234,11 +240,17 @@ function HostSwitcher() {
             </>
           ) : null}
           <div className="host-switcher-divider" role="separator" />
+          {/* 콘솔을 더하는 일은 목록을 고르는 자리에서 시작된다 — 링크 한 줄 때문에 설정으로
+              건너가지 않도록 여기서 팝업을 연다. 관리(설정)는 그 아래에 남는다. */}
+          <button type="button" role="menuitem" className="host-switcher-link" onClick={openAdd}>
+            {t("chrome.hosts.add")}
+          </button>
           <button type="button" role="menuitem" className="host-switcher-link" onClick={openSettings}>
             {t("chrome.hosts.manage")}
           </button>
         </div>
       ) : null}
+      {addOpen ? <AddHostDialog openerRef={triggerRef} onClose={() => setAddOpen(false)} /> : null}
     </div>
   );
 }

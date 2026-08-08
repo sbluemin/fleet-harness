@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
 import type { ConsoleLocale, LocalizedText, Translate } from "@fleet-console/sdk/i18n";
@@ -7,13 +7,14 @@ import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import "@fleet-console/font-picker/styles.css";
 import { fetchSystemFonts, SystemFontsFetchError } from "@fleet-console/font-picker/system-fonts";
 
+import { AddHostDialog } from "../components/add-host-dialog.js";
 import { BackendApiSection } from "../components/backend-api-section.js";
 import { propagateSettingsEntryIndex } from "../components/command-band-system-cluster.js";
 import { createRemoteAccessLink, fetchRemoteAccessStatus, revokeRemoteAccessLink, revokeRemoteAccessSession, rotateRemoteIdentity } from "../global-settings-api.js";
 import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { renderMessage, useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { isDesktopShell } from "../desktop-shell.js";
-import { addRemoteHost, forgetRemoteHost, probeRemoteHost, refreshRemoteHosts, renameRemoteHost, useRemoteHosts, type RemoteHost, type RemoteHostReach } from "../remote-hosts.js";
+import { forgetRemoteHost, probeRemoteHost, refreshRemoteHosts, renameRemoteHost, useRemoteHosts, type RemoteHost, type RemoteHostReach } from "../remote-hosts.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { readLastDarkTheme, setActiveTheme, setActiveUiFont, themePolarity } from "../store.js";
@@ -640,18 +641,17 @@ function RemoteAccessSection({ state, saving }: { readonly state: GlobalSettings
 }
 
 /**
- * 다른 콘솔로 건너가는 목록. 스위처의 "호스트 추가/관리"가 닿는 곳이라 이 섹션의 첫 카드다.
+ * 다른 콘솔로 건너가는 목록. 스위처의 "호스트 관리"가 닿는 곳이라 이 섹션의 첫 카드다.
  *
- * 링크는 여기서 풀지 않는다 — 문자열 그대로 서버에 넘기고, 서버가 봉투를 열어 인증서를
- * 대조한 뒤에야 목록에 든다. 화면이 먼저 믿어 버리면 그 대조는 형식이 된다.
+ * 더하는 일은 이 카드가 하지 않는다 — 액세스 링크 입력은 스위처와 공유하는 팝업 하나가
+ * 소유한다(AddHostDialog). 이 카드는 이미 등록된 콘솔을 보고 고치고 지우는 자리다.
  */
 function RemoteHostsCard() {
   const t = useT();
   const hosts = useRemoteHosts();
-  const [link, setLink] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const [reach, setReach] = useState<Readonly<Record<string, RemoteHostReach | "checking">>>({});
+  const addRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -669,19 +669,13 @@ function RemoteHostsCard() {
     return () => controller.abort();
   }, [hosts]);
 
-  const submit = () => {
-    setBusy(true);
-    setError(null);
-    void addRemoteHost(link)
-      .then(() => setLink(""))
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
-      .finally(() => setBusy(false));
-  };
-
   return (
     <div className="remote-card">
       <div className="remote-card-head">
         <p className="remote-card-title">{t("settings.remote.hosts.title")}</p>
+        <button ref={addRef} type="button" className="remote-create" onClick={() => setAddOpen(true)}>
+          {t("chrome.hosts.add")}
+        </button>
       </div>
       <p className="remote-card-help">{t("settings.remote.hosts.help")}</p>
 
@@ -695,27 +689,8 @@ function RemoteHostsCard() {
         </ul>
       )}
 
-      <form
-        className="remote-link-field"
-        onSubmit={(event) => { event.preventDefault(); if (link.trim().length > 0 && !busy) submit(); }}
-      >
-        <input
-          value={link}
-          aria-label={t("settings.remote.hosts.addLabel")}
-          placeholder={t("settings.remote.hosts.addPlaceholder")}
-          autoComplete="off"
-          spellCheck={false}
-          maxLength={4096}
-          disabled={busy}
-          onChange={(event) => setLink(event.target.value)}
-        />
-        <button type="submit" disabled={busy || link.trim().length === 0}>
-          {busy ? t("settings.remote.hosts.adding") : t("settings.remote.hosts.add")}
-        </button>
-      </form>
-
-      {error ? <p className="global-settings-error" role="alert">{t(remoteHostErrorKey(error))}</p> : null}
       <p className="remote-card-help">{t("settings.remote.hosts.pinned")}</p>
+      {addOpen ? <AddHostDialog openerRef={addRef} onClose={() => setAddOpen(false)} /> : null}
     </div>
   );
 }
@@ -774,12 +749,6 @@ function reachLabel(reach: RemoteHostReach | "checking" | undefined, t: T): stri
   if (reach === undefined || reach === "checking") return t("settings.remote.hosts.checking");
   if (!reach.reachable) return t("settings.remote.hosts.unreachable");
   return reach.trusted ? t("settings.remote.hosts.reachable") : t("settings.remote.hosts.untrusted");
-}
-
-/** 서버가 준 코드만 문장으로 바꾼다 — 모르는 코드는 지어내지 않고 가장 흔한 원인으로 되돌린다. */
-function remoteHostErrorKey(code: string): CoreMessageKey {
-  const known = ["pairing_target_invalid", "remote_host_unreachable", "remote_host_fingerprint_mismatch", "remote_host_is_self"];
-  return (known.includes(code) ? `settings.remote.hosts.error.${code}` : "settings.remote.hosts.error.pairing_target_invalid") as CoreMessageKey;
 }
 
 function RemoteListenerCard({
