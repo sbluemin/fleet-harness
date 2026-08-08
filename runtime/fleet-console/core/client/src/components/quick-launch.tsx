@@ -12,6 +12,7 @@ import { findVariantLaunchKind, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorM
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { closeQuickLaunch, consumeQuickLaunchDraft, requestQuickLaunch, setActiveTheater } from "../store.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph } from "./launch-provider-glyphs.js";
+import { QuickLaunchEffortMenu } from "./quick-launch-effort-menu.js";
 
 // 카드 폭은 팔레트(920px)보다 좁다 — 팔레트는 결과 목록을 담고, 여기는 한 문단을 담는다.
 const CARD_WIDTH_FALLBACK = 760;
@@ -302,7 +303,7 @@ export function QuickLaunch() {
                     );
                   })()}
                   {group.rows.map((row) => (
-                    <VariantRow
+                    <QuickLaunchVariantRow
                       key={row.id}
                       row={row}
                       selectedModel={model}
@@ -325,7 +326,7 @@ export function QuickLaunch() {
   );
 }
 
-function VariantRow({ row, selectedModel, selectedEffort, onPick }: {
+function QuickLaunchVariantRow({ row, selectedModel, selectedEffort, onPick }: {
   readonly row: OperationLaunchVariantRow;
   readonly selectedModel: string | null;
   readonly selectedEffort: string | null;
@@ -334,6 +335,8 @@ function VariantRow({ row, selectedModel, selectedEffort, onPick }: {
   const rowModel = row.launch.model ?? null;
   const hasEffort = (row.chips?.length ?? 0) > 0;
   const [effortOpen, setEffortOpen] = useState(false);
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const effortMenuRef = useRef<HTMLDivElement | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cancelClose = () => {
@@ -345,11 +348,12 @@ function VariantRow({ row, selectedModel, selectedEffort, onPick }: {
     cancelClose();
     if (hasEffort) setEffortOpen(true);
   };
+  const closeEffort = () => setEffortOpen(false);
   const scheduleClose = () => {
     cancelClose();
     closeTimerRef.current = setTimeout(() => {
       closeTimerRef.current = null;
-      setEffortOpen(false);
+      closeEffort();
     }, 160);
   };
 
@@ -357,12 +361,15 @@ function VariantRow({ row, selectedModel, selectedEffort, onPick }: {
 
   return (
     <div
+      ref={rowRef}
       className="quick-launch-variant-row"
       onPointerEnter={openEffort}
       onPointerLeave={scheduleClose}
       onFocus={openEffort}
       onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) scheduleClose();
+        const nextTarget = event.relatedTarget;
+        if (nextTarget instanceof Node && (event.currentTarget.contains(nextTarget) || effortMenuRef.current?.contains(nextTarget))) return;
+        scheduleClose();
       }}
     >
       <button
@@ -377,44 +384,36 @@ function VariantRow({ row, selectedModel, selectedEffort, onPick }: {
           if (event.key !== "ArrowRight" || !hasEffort) return;
           event.preventDefault();
           openEffort();
-          requestAnimationFrame(() => {
-            (event.currentTarget.parentElement?.querySelector(".quick-launch-effort-item") as HTMLButtonElement | null)?.focus();
-          });
+          requestAnimationFrame(() => effortMenuRef.current?.querySelector<HTMLButtonElement>(".quick-launch-effort-item")?.focus());
         }}
       >
         {row.starred ? <span className="quick-launch-variant-star" aria-hidden="true">★</span> : null}
         <span className="quick-launch-variant-label">{row.label}</span>
         {hasEffort ? <span className="quick-launch-variant-chevron" aria-hidden="true">›</span> : null}
       </button>
-      {hasEffort && effortOpen ? (
-        <div
-          className="quick-launch-effort-menu theater-menu"
-          role="menu"
-          onPointerEnter={openEffort}
-          onPointerLeave={scheduleClose}
-          onKeyDown={(event) => {
-            if (event.key !== "ArrowLeft" && event.key !== "Escape") return;
-            event.preventDefault();
-            event.stopPropagation();
-            setEffortOpen(false);
-            (event.currentTarget.parentElement?.querySelector(".quick-launch-variant-name") as HTMLButtonElement | null)?.focus();
-          }}
-        >
-          {row.chips!.map((chip) => (
-            <button
-              key={chip.id}
-              type="button"
-              role="menuitem"
-              className="quick-launch-effort-item"
-              data-launch-variant-chip={`${row.id}:${chip.id}`}
-              aria-current={rowModel === selectedModel && chip.launch.effort === selectedEffort}
-              onClick={() => onPick(chip.launch.model ?? rowModel, chip.launch.effort ?? null)}
-            >
-              {chip.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
+      <QuickLaunchEffortMenu
+        anchor={rowRef.current}
+        menuRef={effortMenuRef}
+        open={hasEffort && effortOpen}
+        onCancelClose={cancelClose}
+        onScheduleClose={scheduleClose}
+        onClose={closeEffort}
+        onReturnFocus={() => rowRef.current?.querySelector<HTMLButtonElement>(".quick-launch-variant-name")?.focus()}
+      >
+        {row.chips?.map((chip) => (
+          <button
+            key={chip.id}
+            type="button"
+            role="menuitem"
+            className="quick-launch-effort-item"
+            data-launch-variant-chip={`${row.id}:${chip.id}`}
+            aria-current={rowModel === selectedModel && chip.launch.effort === selectedEffort}
+            onClick={() => onPick(chip.launch.model ?? rowModel, chip.launch.effort ?? null)}
+          >
+            {chip.label}
+          </button>
+        ))}
+      </QuickLaunchEffortMenu>
     </div>
   );
 }
