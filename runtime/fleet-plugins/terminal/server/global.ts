@@ -69,7 +69,9 @@ export function registerGlobalShellRoutes(ctx: FleetPluginServerContext, runtime
     // 재생성), ticket 발급 경로에서 별도의 stale 정리를 하지 않는다. 여기서 빈 write로 정리를 시도하면
     // 일시적 write 예외가 살아있는 세션을 오판 종료할 수 있어 오히려 위험하다.
     const colorScheme = body?.colorScheme === "light" || body?.colorScheme === "dark" ? body.colorScheme : undefined;
-    const role = readSocketRole(body?.role);
+    // 등급은 Console이 정한다. 요청이 control을 원해도 제어를 쥔 원격이 있으면 관전으로 내려간다 —
+    // 새로고침 한 번이 조용히 제어를 되가져가는 경합을 클라이언트에 맡기지 않는다.
+    const role = ctx.host.security.resolveTerminalSocketRole(req) === "viewer" ? "viewer" : readSocketRole(body?.role);
     ctx.host.http.writeJson(res, 200, runtime.issueTicket({
       cwd: theaterPath,
       sessionId: operationId,

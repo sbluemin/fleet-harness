@@ -435,7 +435,7 @@ function createRouteHarness(options: HarnessOptions = {}) {
       security: {
         validateHost: () => true,
         isTerminalAuthorized: () => options.terminalAuthorized ?? true,
-        isLockAuthorized: () => true,
+        isLockAuthorized: () => true, resolveTerminalSocketRole: () => "control" as const,
       },
     },
   } as unknown as FleetPluginServerContext;

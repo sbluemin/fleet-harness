@@ -20,6 +20,11 @@ export interface TerminalConnectionOptions {
   readonly colorScheme?: "light" | "dark";
   readonly onStatus?: (status: TerminalConnectionStatus, message?: string) => void;
   /**
+   * 제어를 되찾을 수 있는 상태인지 알린다. 원격이 제어를 쥐고 있어 서버가 관전으로 내려보낸
+   * 경우에는 되찾기가 성립하지 않는다 — 그 자리는 Console의 회수 버튼이 맡는다.
+   */
+  readonly onControlLockChange?: (lock: TerminalControlLock) => void;
+  /**
    * 서버 보유 scrollback을 재생하는 구간의 시작(true)과 끝(false)을 알린다. 재생 청크는 과거에 이미
    * 흘러간 바이트라, 그 안의 부수효과 시퀀스를 지금 다시 실행하면 안 되는 소비자를 위한 신호다.
    */
@@ -40,6 +45,9 @@ export interface TerminalConnection {
   readonly takeBackControl: () => void;
   readonly dispose: () => void;
 }
+
+/** 관전 중인 화면이 되찾기를 제안해도 되는지. 서버가 등급을 잠갔으면 제안할 수 없다. */
+export type TerminalControlLock = "open" | "locked";
 
 export interface WebSocketLike {
   binaryType: BinaryType;
@@ -96,8 +104,12 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
     while (!abort.signal.aborted) {
       options.onStatus?.("connecting");
       try {
-        const { ticket } = await requestTerminalTicket(options.ticketPath, options.operationId, abort.signal, options.colorScheme, role);
+        const requested = role;
+        const { ticket, role: granted } = await requestTerminalTicket(options.ticketPath, options.operationId, abort.signal, options.colorScheme, requested);
         if (abort.signal.aborted) return;
+        // 요청한 등급과 받은 등급이 갈리면 서버가 내려보낸 것이다 — 그 상태에서는 되찾기를 제안하지 않는다.
+        role = granted;
+        options.onControlLockChange?.(requested === "control" && granted === "viewer" ? "locked" : "open");
         await attachSocket(buildTerminalWsUrl(ticket, options.location, options.wsPath), options);
         reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
       } catch (err) {
@@ -208,7 +220,7 @@ export function buildTerminalWsUrl(ticket: string, targetLocation: Pick<Location
   return `${protocol}://${targetLocation.host}${pathname}?ticket=${encodeURIComponent(ticket)}`;
 }
 
-async function requestTerminalTicket(ticketPath: string, operationId: string, signal: AbortSignal, colorScheme?: "light" | "dark", role?: TerminalSocketRole): Promise<{ readonly ticket: string; readonly ttlMs: number }> {
+async function requestTerminalTicket(ticketPath: string, operationId: string, signal: AbortSignal, colorScheme?: "light" | "dark", role?: TerminalSocketRole): Promise<{ readonly ticket: string; readonly ttlMs: number; readonly role: TerminalSocketRole }> {
   const response = await fetch(ticketPath, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -217,11 +229,12 @@ async function requestTerminalTicket(ticketPath: string, operationId: string, si
     signal,
   });
   if (!response.ok) throw new Error(`Terminal ticket request failed: ${response.status}`);
-  const payload = await response.json() as { readonly ticket?: unknown; readonly ttlMs?: unknown };
+  const payload = await response.json() as { readonly ticket?: unknown; readonly ttlMs?: unknown; readonly role?: unknown };
   if (typeof payload.ticket !== "string" || typeof payload.ttlMs !== "number") {
     throw new Error("Invalid terminal ticket response");
   }
-  return { ticket: payload.ticket, ttlMs: payload.ttlMs };
+  // 옛 서버는 등급을 싣지 않는다. 그때는 요청한 대로 받은 것으로 본다.
+  return { ticket: payload.ticket, ttlMs: payload.ttlMs, role: payload.role === "viewer" ? "viewer" : (role ?? "control") };
 }
 
 function defaultWebSocketFactory(url: string): WebSocketLike {

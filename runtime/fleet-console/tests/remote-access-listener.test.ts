@@ -443,6 +443,28 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     remote.close();
   });
 
+  /**
+   * 만료는 조용하다. 알리지 않으면 화면은 이미 없는 보유자를 계속 띄우고, 그 보유자를 향한
+   * 회수는 404로 끝나 화면이 스스로 정리되지도 못한다.
+   */
+  it("clears a stale holder when the reclaim finds the session already gone", async () => {
+    const fixture = await startFixture({ remote: true });
+    const local = await openLoopbackEvents(fixture);
+    await joinAs(fixture, "full", "Ghost");
+    const held = await local.waitFor("control:changed", (data) => data.holder !== null);
+
+    await expect(revoke(fixture, `access-sessions/${held.holder.handle}`)).resolves.toBe(204);
+    await local.waitFor("control:changed", (data) => data.holder === null);
+
+    // 이미 사라진 세션을 다시 회수해도 화면이 정리되는 신호는 한 번 더 나간다.
+    const seenBefore = local.seen("control:changed");
+    await expect(revoke(fixture, `access-sessions/${held.holder.handle}`)).resolves.toBe(404);
+    await vi.waitFor(() => expect(local.seen("control:changed")).toBeGreaterThan(seenBefore));
+    expect(await local.waitFor("control:changed", (data) => data.holder === null)).toEqual({ holder: null });
+
+    local.close();
+  });
+
   /** monitoring은 제어를 쥐지 않으므로 상한과 무관하게 full 옆에 함께 붙는다. */
   it("lets a monitoring session join while a full session holds control", async () => {
     const fixture = await startFixture({ remote: true });

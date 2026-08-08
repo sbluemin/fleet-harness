@@ -71,6 +71,13 @@ export interface AccessRegistryDeps {
   readonly randomToken?: () => string;
   /** 목록에 실리는 공개 이름. 토큰과 다른 생성기를 써서 둘을 섞을 여지를 없앤다. */
   readonly randomHandle?: () => string;
+  /**
+   * prune이 실제로 세션을 걷어냈을 때 알린다. 만료는 조용히 일어나므로 알리지 않으면 화면은
+   * 이미 없는 보유자를 계속 띄운 채 남는다 — 명시적 회수와 같은 신호가 나가야 한다.
+   *
+   * prune은 다른 레지스트리 호출 안에서 돌기도 하므로 콜백은 재진입을 견뎌야 한다.
+   */
+  readonly onSessionsPruned?: () => void;
 }
 
 export interface AccessRegistry {
@@ -240,9 +247,14 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     for (const [token, grant] of grants) {
       if (grant.expiresAt <= current) grants.delete(token);
     }
+    let removed = false;
     for (const [id, stored] of sessions) {
-      if (stored.absoluteExpiresAt <= current || stored.idleExpiresAt <= current) sessions.delete(id);
+      if (stored.absoluteExpiresAt <= current || stored.idleExpiresAt <= current) {
+        sessions.delete(id);
+        removed = true;
+      }
     }
+    if (removed) deps.onSessionsPruned?.();
   }
 
   return { grantTtlMs, issueGrant, redeemGrant, peekGrant, resolveSession, listGrants, revokeGrant, revokeGrants, listSessions, hasSession, revokeSession, revokeSessionByHandle, revokeSessions, revokeAllSessions, prune };

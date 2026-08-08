@@ -294,6 +294,15 @@ export interface FleetPluginSecurityHost {
   validateHost(req: http.IncomingMessage): boolean;
   isTerminalAuthorized(req: http.IncomingMessage): boolean;
   isLockAuthorized(req: http.IncomingMessage): boolean;
+  /**
+   * 이 요청이 열 수 있는 소켓의 등급. 제어를 쥔 원격이 있는 동안 이 기계 앞의 새 터미널은
+   * 관전으로만 열린다 — 새로고침이나 패널 재마운트가 조용히 제어를 되가져가면 화면은
+   * 여전히 그 기기가 몰고 있다고 말하는데 실제 소유권은 넘어와 버린다.
+   *
+   * 플러그인이 스스로 판정할 수 없는 값이다. 어느 리스너로 들어왔는지도, 지금 제어를 쥔
+   * 세션이 있는지도 Console만 안다.
+   */
+  resolveTerminalSocketRole(req: http.IncomingMessage): "control" | "viewer";
 }
 
 export interface FleetPluginLifecycleHost {

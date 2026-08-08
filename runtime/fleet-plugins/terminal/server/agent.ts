@@ -291,7 +291,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         return true;
       }
       const colorScheme = body?.colorScheme === "light" || body?.colorScheme === "dark" ? body.colorScheme : undefined;
-      const role = readSocketRole(body?.role);
+      // 등급은 Console이 정한다. 요청이 control을 원해도 제어를 쥔 원격이 있으면 관전으로 내려간다 —
+      // 새로고침 한 번이 조용히 제어를 되가져가는 경합을 클라이언트에 맡기지 않는다.
+      const role = ctx.host.security.resolveTerminalSocketRole(req) === "viewer" ? "viewer" : readSocketRole(body?.role);
       ctx.host.http.writeJson(res, 200, terminalRuntime.issueTicket({
         cwd,
         sessionId: operation.id,

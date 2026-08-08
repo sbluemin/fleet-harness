@@ -198,6 +198,8 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   const activeRef = useRef(active);
   activeRef.current = active;
   const [status, setStatus] = useState("connecting");
+  // 서버가 등급을 잠갔으면 되찾기를 제안하지 않는다 — 눌러도 다시 관전으로 돌아오는 버튼은 거짓이다.
+  const [controlLocked, setControlLocked] = useState(false);
   // 마운트 effect는 심볼 폰트 선대기 등 await 뒤에 ticket 연결을 만들고 테마 변경에 재실행되지 않으므로,
   // 최신 극성은 ref로 읽는다(activeRef와 같은 이유) — 대기 중 테마가 바뀌어도 첫 ticket이 현재 극성을 싣는다.
   const colorSchemeRef = useRef(terminalPolarityFor(activeTheme));
@@ -317,6 +319,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
           replayingScrollback = replaying;
         },
         onExit: () => onExitRef.current?.(),
+        onControlLockChange: (lock) => { setControlLocked(lock === "locked"); },
         onStatus: (nextStatus, message) => {
           setStatus(message ? `${nextStatus}: ${message}` : nextStatus);
         },
@@ -534,10 +537,12 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         {isViewing ? (
           <div className="terminal-viewer-badge" role="status">
             <span className="terminal-viewer-badge-dot" aria-hidden="true" />
-            <span className="terminal-viewer-badge-text">{t("terminal.viewer.readOnly")}</span>
-            <button type="button" className="terminal-viewer-badge-action" onClick={() => connectionRef.current?.takeBackControl()}>
-              {t("terminal.viewer.takeBack")}
-            </button>
+            <span className="terminal-viewer-badge-text">{t(controlLocked ? "terminal.viewer.remoteControlled" : "terminal.viewer.readOnly")}</span>
+            {controlLocked ? null : (
+              <button type="button" className="terminal-viewer-badge-action" onClick={() => connectionRef.current?.takeBackControl()}>
+                {t("terminal.viewer.takeBack")}
+              </button>
+            )}
           </div>
         ) : null}
         <div className="terminal-viewport">

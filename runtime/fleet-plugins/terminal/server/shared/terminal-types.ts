@@ -37,6 +37,11 @@ export interface TerminalLaunchContext {
 export interface TerminalTicket {
   readonly ticket: string;
   readonly ttlMs: number;
+  /**
+   * 이 티켓이 실제로 여는 등급. 요청이 무엇을 원했든 결정은 Console이 한다 — 클라이언트는
+   * 자기가 무엇을 받았는지 알아야 입력 구독과 화면을 그 사실에 맞출 수 있다.
+   */
+  readonly role: TerminalSocketRole;
 }
 
 export interface TerminalTicketContext {

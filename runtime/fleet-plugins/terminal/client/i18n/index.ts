@@ -298,6 +298,7 @@ export const terminalEn = {
   "terminal.analysis.error.requestFailed": "Analysis request failed.",
   "terminal.viewer.readOnly": "Another device is using this terminal — read-only",
   "terminal.viewer.takeBack": "Take back control",
+  "terminal.viewer.remoteControlled": "A remote device has control — read-only",
 } as const;
 
 export const terminalKo: Record<keyof typeof terminalEn, string> = {
@@ -594,6 +595,7 @@ export const terminalKo: Record<keyof typeof terminalEn, string> = {
   "terminal.analysis.error.requestFailed": "분석 요청이 실패했습니다.",
   "terminal.viewer.readOnly": "다른 기기가 이 터미널을 쓰고 있습니다 — 읽기 전용",
   "terminal.viewer.takeBack": "제어권 가져오기",
+  "terminal.viewer.remoteControlled": "원격 기기가 제어 중입니다 — 읽기 전용",
 };
 
 export const TERMINAL_MESSAGES = { en: terminalEn, ko: terminalKo } as const;

@@ -42,7 +42,7 @@ export function createPluginTerminalTicketRegistry(deps: TerminalTicketRegistryD
     prune();
     const ticket = randomTicket();
     tickets.set(ticket, { context, expiresAt: now() + ttlMs });
-    return { ticket, ttlMs };
+    return { ticket, ttlMs, role: context.role ?? "control" };
   }
 
   function consume(ticket: string | null): TerminalTicketContext | null {

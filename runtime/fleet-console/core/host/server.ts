@@ -431,7 +431,22 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let remoteReconcile: Promise<void> = Promise.resolve();
   let remoteLastError: string | null = null;
   let boundPort: number | null = null;
-  const access = createAccessRegistry();
+  /**
+   * 만료도 회수와 같은 신호를 낸다. prune은 다른 레지스트리 호출 안에서 도는 일이 많아
+   * 브로드캐스트를 그 자리에서 부르면 listSessions -> prune으로 되돌아온다. 다음 틱으로
+   * 미뤄 재진입을 끊는다.
+   */
+  let controlPruneNotifyQueued = false;
+  const access = createAccessRegistry({
+    onSessionsPruned: () => {
+      if (controlPruneNotifyQueued) return;
+      controlPruneNotifyQueued = true;
+      queueMicrotask(() => {
+        controlPruneNotifyQueued = false;
+        broadcastControlChanged();
+      });
+    },
+  });
   const remoteIdentityStore = createRemoteIdentityStore(durablePaths.dir);
   const remoteHostStore = createRemoteHostStore(durablePaths.dir);
   const pluginOperationTypes = new Set<string>();
@@ -576,6 +591,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       validateHost: isRequestHostAllowed,
       isTerminalAuthorized,
       isLockAuthorized,
+      resolveTerminalSocketRole,
     },
     lifecycle: {
       registerCleanup: (cleanup) => {
@@ -1066,6 +1082,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     const handle = decodeHandle(rawHandle);
     if (!access.revokeSessionByHandle(handle)) {
+      // 이미 만료된 보유자를 향한 회수다. 404로만 끝내면 화면은 유령 보유자를 계속 띄운 채
+      // 남으므로, 사라졌다는 사실을 여기서 알려 스스로 정리되게 한다.
+      broadcastControlChanged();
       writeJson(res, 404, { error: "session_not_found" });
       return;
     }
@@ -1224,6 +1243,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    */
   function isAccessAdminAuthorized(req: http.IncomingMessage): boolean {
     return isLoopbackListener(req) && (isLockAuthorized(req) || isExactConsoleOrigin(req));
+  }
+
+  /**
+   * 터미널 소켓의 등급. 제어를 쥔 원격이 있는 동안 이 기계 앞에서 열리는 터미널은 관전이다.
+   *
+   * 클라이언트가 스스로 정하게 두면 새로고침 한 번이 제어를 되가져간다 — 새 연결은 언제나
+   * control로 시작하고 attach는 앞의 소켓을 밀어내므로, 원격은 말없이 관전자로 내려가고
+   * 화면은 여전히 그 기기가 몰고 있다고 말한다. 판정을 서버에 두면 그 경합 자체가 없다.
+   *
+   * 원격 쪽 요청은 그대로 control이다. full 세션은 하나뿐이고 monitoring은 애초에 업그레이드에
+   * 닿지 못하므로, 원격에서 오는 티켓 요청의 주인은 지금 제어를 쥔 그 기기뿐이다.
+   */
+  function resolveTerminalSocketRole(req: http.IncomingMessage): "control" | "viewer" {
+    if (!isLoopbackListener(req)) return "control";
+    return access.hasSession("remote", "full") ? "viewer" : "control";
   }
 
   async function handleRemoteHosts(req: http.IncomingMessage, res: http.ServerResponse, pathname: string): Promise<boolean> {
@@ -2055,7 +2089,29 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
   }
 
+  /**
+   * 만료를 알아채는 시계. prune은 누가 레지스트리를 건드릴 때만 도는데, 유휴로 만료되는
+   * 세션은 정의상 아무도 건드리지 않는다 — 쓸어 주는 쪽이 없으면 커튼이 사라진 기기를
+   * 몇 시간이고 띄운 채 남는다. 원격 리스너가 열려 있는 동안에만 돈다.
+   */
+  const CONTROL_EXPIRY_SWEEP_MS = 60_000;
+  let controlExpirySweep: ReturnType<typeof setInterval> | null = null;
+
+  function startControlExpirySweep(): void {
+    if (controlExpirySweep !== null) return;
+    controlExpirySweep = setInterval(() => access.prune(), CONTROL_EXPIRY_SWEEP_MS);
+    // 이 타이머가 프로세스를 붙잡아 두지 않게 한다.
+    controlExpirySweep.unref();
+  }
+
+  function stopControlExpirySweep(): void {
+    if (controlExpirySweep === null) return;
+    clearInterval(controlExpirySweep);
+    controlExpirySweep = null;
+  }
+
   async function stopRemoteAccess(): Promise<void> {
+    stopControlExpirySweep();
     const closing = remoteServer;
     remoteServer = null;
     remoteFingerprint = null;
@@ -2108,6 +2164,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     listeners = [...listeners, listener];
     remoteFingerprint = identity.fingerprint;
     remoteServer = started.server;
+    startControlExpirySweep();
   }
 
   function listenOnce(portToBind: number, statePatch: Omit<ConsolePortRuntimeState, "effectivePort">): Promise<ConsolePortListenResult> {

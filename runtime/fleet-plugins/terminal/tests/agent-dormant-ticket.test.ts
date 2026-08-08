@@ -385,7 +385,7 @@ async function createHarness(options: {
       security: {
         validateHost: () => true,
         isTerminalAuthorized: () => true,
-        isLockAuthorized: () => true,
+        isLockAuthorized: () => true, resolveTerminalSocketRole: () => "control" as const,
       },
       lifecycle: {
         registerCleanup: (cleanup: () => void | Promise<void>) => {
