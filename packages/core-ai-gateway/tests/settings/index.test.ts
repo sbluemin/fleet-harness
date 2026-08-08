@@ -144,6 +144,26 @@ describe("ai-gateway settings", () => {
       .toEqual(new Set(["flagship", "standard", "light", null]));
   });
 
+  it("accepts providerPriority updates including an explicit clear", () => {
+    expect(parseAiGatewayUpdate({ providerPriority: ["codex", "cursor"] })).toEqual({
+      ok: true,
+      value: { providerPriority: ["codex", "cursor"] },
+    });
+    expect(parseAiGatewayUpdate({
+      models: [{ id: "kimi--k3" }],
+      providerPriority: [],
+    })).toEqual({
+      ok: true,
+      value: { models: [{ id: "kimi--k3" }], providerPriority: [] },
+    });
+  });
+
+  it("rejects malformed providerPriority updates", () => {
+    expect(parseAiGatewayUpdate({ providerPriority: "codex" })).toEqual({ ok: false });
+    expect(parseAiGatewayUpdate({ providerPriority: ["unknown"] })).toEqual({ ok: false });
+    expect(parseAiGatewayUpdate({ providerPriority: ["codex", "codex"] })).toEqual({ ok: false });
+    expect(parseAiGatewayUpdate({ providerPriority: ["codex", 7] })).toEqual({ ok: false });
+  });
 
   it("providerPriority round-trips and drops unknown providers and duplicates", () => {
     expect(normalizeAiGatewaySettings({

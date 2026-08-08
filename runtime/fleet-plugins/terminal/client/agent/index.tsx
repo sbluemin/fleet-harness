@@ -668,9 +668,15 @@ function AiGatewayModelsCard() {
 
   const selection = state.aiGateway ?? {};
   const enabled = selection.models ?? [];
+  const priority = (selection.providerPriority ?? []).filter(
+    (id): id is AiGatewayProviderId => id in AI_GATEWAY_PROVIDER_LABEL_KEYS,
+  );
 
   const save = (next: AiGatewaySettings): void => {
     const models = next.models ?? [];
+    // 우선순위는 이 저장에 싣지 않는다 — 키 부재를 서버가 "보존"으로 읽으므로, 다른
+    // 호스트가 그 사이 바꾼 소진 순서를 모델·기본값 편집이 스테일 스냅숏으로 덮지
+    // 않는다. 우선순위를 싣는 유일한 경로는 칩 액션(savePriority)이다.
     const normalized = models.length === 0 && next.defaultModel === undefined ? null : {
       ...(models.length > 0 ? { models } : {}),
       ...(next.defaultModel !== undefined ? { defaultModel: next.defaultModel } : {}),
@@ -678,17 +684,32 @@ function AiGatewayModelsCard() {
     void setSystemPromptSettingsField("aiGateway", normalized);
   };
 
+  const savePriority = (nextPriority: readonly AiGatewayProviderId[]): void => {
+    // 전체-값 PUT 계약상 우선순위만 보내면 모델 선택이 지워진다 — 현재 스냅숏을 함께
+    // 싣는다. 빈 배열은 명시 해제의 유일한 철자이고, 해제할 것도 없는 전량 공백만 null.
+    const value: AiGatewaySettings = {
+      ...(enabled.length > 0 ? { models: enabled } : {}),
+      ...(selection.defaultModel !== undefined ? { defaultModel: selection.defaultModel } : {}),
+      providerPriority: nextPriority,
+    };
+    const nothingElse = enabled.length === 0 && selection.defaultModel === undefined;
+    const normalized = nothingElse && nextPriority.length === 0 && priority.length === 0 ? null : value;
+    void setSystemPromptSettingsField("aiGateway", normalized);
+  };
+
+  const toggleProviderPriority = (id: AiGatewayProviderId): void => {
+    const next = priority.includes(id)
+      ? priority.filter((entry) => entry !== id)
+      : [...priority, id];
+    savePriority(next);
+  };
+
   const addModel = (model: AiGatewayCatalogModel): void => {
     if (enabled.some((entry) => entry.id === model.id)) return;
     save({ ...selection, models: [...enabled, { id: model.id }] });
   };
   const removeModel = (id: string): void => {
-    save({
-      models: enabled.filter((entry) => entry.id !== id),
-      ...(selection.defaultModel !== undefined && selection.defaultModel !== id
-        ? { defaultModel: selection.defaultModel }
-        : {}),
-    });
+    save(composeAiGatewayRemoval(selection, id));
   };
   const setDefaultModel = (id: string): void => {
     save({ ...selection, defaultModel: id });
@@ -719,6 +740,12 @@ function AiGatewayModelsCard() {
       ) : selection.defaultModel === undefined ? (
         <p className="global-settings-help">{t("terminal.settings.aiGatewayDefaultUnset")}</p>
       ) : null}
+      <AiGatewayPriorityChips
+        providers={state.aiGatewayCatalog.providers.map((provider) => provider.id)}
+        priority={priority}
+        saving={saving}
+        onToggle={toggleProviderPriority}
+      />
       {state.aiGatewayCatalog.providers.map((provider) => (
         <AiGatewayProviderBlock
           key={provider.id}
@@ -733,6 +760,66 @@ function AiGatewayModelsCard() {
       ))}
       <p className="global-settings-foot">{t("terminal.settings.aiGatewayModelsFoot")}</p>
     </section>
+  );
+}
+
+/**
+ * 모델 제거 시 저장 본문. 제거되는 모델이 기본 모델이면 기본값도 함께 접되,
+ * providerPriority 등 나머지 축은 그대로 실어 보낸다 — 이 카드의 저장은 항상
+ * 우선순위 키를 에코하므로, 선택 스프레드를 빠뜨리면 제거 한 번이 해제로 둔갑한다.
+ */
+export function composeAiGatewayRemoval(selection: AiGatewaySettings, id: string): AiGatewaySettings {
+  const { defaultModel, models, ...rest } = selection;
+  return {
+    ...rest,
+    models: (models ?? []).filter((entry) => entry.id !== id),
+    ...(defaultModel !== undefined && defaultModel !== id ? { defaultModel } : {}),
+  };
+}
+
+interface AiGatewayPriorityChipsProps {
+  readonly providers: readonly AiGatewayProviderId[];
+  readonly priority: readonly AiGatewayProviderId[];
+  readonly saving: boolean;
+  readonly onToggle: (id: AiGatewayProviderId) => void;
+}
+
+/**
+ * 공급자 소진 순서 옵트인. 순서는 상태가 아니라 사용자 선호이므로 등급 배지와 같은
+ * 규율로 신호색·brass 없이 잉크 농도와 순위 숫자로만 말한다. 칩 클릭이 순서 끝에
+ * 추가/제거하는 유일한 문법이라 드래그 프리미티브 없이 공급자 전부를 다룬다.
+ */
+export function AiGatewayPriorityChips({ providers, priority, saving, onToggle }: AiGatewayPriorityChipsProps) {
+  const t = getT(useTerminalLocale());
+  return (
+    <div className="ai-gateway-priority" role="group" aria-label={t("terminal.settings.aiGatewayPriority")}>
+      <span className="ai-gateway-field-label" title={t("terminal.settings.aiGatewayPriorityTooltip")}>
+        {t("terminal.settings.aiGatewayPriority")}
+      </span>
+      {providers.map((id) => {
+        const rank = priority.indexOf(id);
+        const active = rank >= 0;
+        const provider = t(AI_GATEWAY_PROVIDER_LABEL_KEYS[id]);
+        return (
+          <button
+            key={id}
+            type="button"
+            className={`ai-gateway-priority-chip${active ? " is-ranked" : ""}`}
+            disabled={saving}
+            aria-pressed={active}
+            aria-label={active
+              ? t("terminal.settings.aiGatewayPriorityRemoveAria", { provider, rank: rank + 1 })
+              : t("terminal.settings.aiGatewayPriorityAddAria", { provider })}
+            title={t("terminal.settings.aiGatewayPriorityTooltip")}
+            onClick={() => onToggle(id)}
+          >
+            {active ? <span className="ai-gateway-priority-rank" aria-hidden="true">{rank + 1}</span> : null}
+            {provider}
+          </button>
+        );
+      })}
+      <p className="global-settings-help ai-gateway-priority-help">{t("terminal.settings.aiGatewayPriorityHint")}</p>
+    </div>
   );
 }
 

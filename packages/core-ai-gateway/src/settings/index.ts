@@ -50,6 +50,11 @@ export interface AiGatewayStoredSettings {
 export interface AiGatewayUpdateValue {
   readonly models?: readonly AiGatewayStoredModel[];
   readonly defaultModel?: string;
+  /**
+   * The user's opt-in ordered spend preference. An empty array explicitly clears
+   * it; an absent key preserves the stored value because the store carries it over.
+   */
+  readonly providerPriority?: readonly GatewayProvider[];
 }
 
 export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSettings {
@@ -190,8 +195,14 @@ export function parseAiGatewayUpdate(value: unknown):
   | { readonly ok: false } {
   if (value === null) return { ok: true, value: undefined };
   if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false };
-  const record = value as { readonly models?: unknown; readonly defaultModel?: unknown };
-  const extraKeys = Object.keys(record).filter((key) => key !== "models" && key !== "defaultModel");
+  const record = value as {
+    readonly models?: unknown;
+    readonly defaultModel?: unknown;
+    readonly providerPriority?: unknown;
+  };
+  const extraKeys = Object.keys(record).filter(
+    (key) => key !== "models" && key !== "defaultModel" && key !== "providerPriority",
+  );
   if (extraKeys.length > 0) return { ok: false };
 
   const models: AiGatewayStoredModel[] = [];
@@ -220,12 +231,29 @@ export function parseAiGatewayUpdate(value: unknown):
     defaultModel = model.id;
   }
 
-  if (models.length === 0 && defaultModel === undefined) return { ok: true, value: undefined };
+  let providerPriority: GatewayProvider[] | undefined;
+  const hasProviderPriority = Object.prototype.hasOwnProperty.call(record, "providerPriority");
+  if (hasProviderPriority) {
+    if (!Array.isArray(record.providerPriority)) return { ok: false };
+    providerPriority = [];
+    for (const raw of record.providerPriority) {
+      if (typeof raw !== "string") return { ok: false };
+      if (!GATEWAY_PROVIDERS.includes(raw as GatewayProvider)) return { ok: false };
+      const provider = raw as GatewayProvider;
+      if (providerPriority.includes(provider)) return { ok: false };
+      providerPriority.push(provider);
+    }
+  }
+
+  if (models.length === 0 && defaultModel === undefined && providerPriority === undefined) {
+    return { ok: true, value: undefined };
+  }
   return {
     ok: true,
     value: {
       ...(models.length > 0 ? { models } : {}),
       ...(defaultModel !== undefined ? { defaultModel } : {}),
+      ...(providerPriority !== undefined ? { providerPriority } : {}),
     },
   };
 }
