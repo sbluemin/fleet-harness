@@ -17,13 +17,17 @@ vi.mock("../core/client/src/api.js", () => ({
   fetchOperations: mocks.fetchOperations,
 }));
 
-vi.mock("../core/client/src/store.js", () => ({
-  applyObserverStatus: mocks.applyObserverStatus,
-  applyOperationUpdate: mocks.applyOperationUpdate,
-  getState: mocks.getState,
-  hydrateOperations: mocks.hydrateOperations,
-  setConnectionState: mocks.setConnectionState,
-}));
+vi.mock("../core/client/src/store.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../core/client/src/store.js")>();
+  return {
+    ...actual,
+    applyObserverStatus: mocks.applyObserverStatus,
+    applyOperationUpdate: mocks.applyOperationUpdate,
+    getState: mocks.getState,
+    hydrateOperations: mocks.hydrateOperations,
+    setConnectionState: mocks.setConnectionState,
+  };
+});
 
 vi.mock("../core/client/src/desktop-fullscreen.js", () => ({
   applyDesktopFullscreenSnapshot: mocks.applyDesktopFullscreenSnapshot,
@@ -169,6 +173,7 @@ describe("operations SSE update availability", () => {
     staleSource.emit("operation:changed", JSON.stringify({ operation: { id: "stale" } }));
     staleSource.emit("update:available");
     staleSource.emit("desktop:fullscreen", JSON.stringify({ fullscreen: true }));
+    staleSource.emit("control:changed", JSON.stringify({ holder: { handle: "stale", device: null, openedAt: 1 } }));
     staleSource.open();
     staleSource.onerror?.();
     await vi.advanceTimersByTimeAsync(30_000);
@@ -220,6 +225,31 @@ describe("operations SSE update availability", () => {
     TestEventSource.instances[0]?.onerror?.();
     expect(mocks.resetDesktopFullscreenSnapshot).toHaveBeenCalledTimes(2);
     expect(mocks.setConnectionState).toHaveBeenCalledWith("offline");
+  });
+
+  it("strictly replaces control holder snapshots and preserves them across SSE loss", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.getState.mockReturnValue({ activeTheaterId: null });
+    const actualState = await vi.importActual<typeof import("../core/client/src/store.js")>("../core/client/src/store.js");
+    actualState.setState({ controlHolder: null, controlCurtainDismissed: false });
+
+    connectOperationsSse();
+    const holder = { handle: "remote-a", device: "Kitchen iPad", openedAt: 42 };
+    TestEventSource.instances[0]?.emit("control:changed", JSON.stringify({ holder }));
+    expect(actualState.getState().controlHolder).toEqual(holder);
+
+    TestEventSource.instances[0]?.emit("control:changed", JSON.stringify({ holder: { ...holder, extra: true } }));
+    TestEventSource.instances[0]?.emit("control:changed", "{not-json");
+    expect(actualState.getState().controlHolder).toEqual(holder);
+
+    TestEventSource.instances[0]?.emit("control:changed", JSON.stringify({ holder: null }));
+    expect(actualState.getState().controlHolder).toBeNull();
+    TestEventSource.instances[0]?.emit("control:changed", JSON.stringify({ holder }));
+
+    TestEventSource.instances[0]?.onerror?.();
+    expect(actualState.getState().controlHolder).toEqual(holder);
+    actualState.setState({ controlHolder: null, controlCurtainDismissed: false });
   });
 
   it("marks the retry attempt connecting while preserving the existing exponential retry path", async () => {

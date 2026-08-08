@@ -487,9 +487,9 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       <div ref={bandLeftRef} className={`command-band-left${requestedOperationsViewVisible && sideBar.collapsed ? " is-collapsed" : ""}`}>
         <BrandHome />
         {state.channel === "local" ? <div className="command-band-environment">
-          <button ref={environmentTriggerRef} type="button" className="command-band-local-chip" aria-haspopup="dialog" aria-expanded={environmentOpen} onClick={() => { setSwitcherMenu(null); discardEnvironmentState(); setEnvironmentOpen((open) => !open); }}>
+          <button ref={environmentTriggerRef} type="button" className={`command-band-local-chip${state.controlHolder !== null ? " is-shared" : ""}`} aria-haspopup="dialog" aria-expanded={environmentOpen} onClick={() => { setSwitcherMenu(null); discardEnvironmentState(); setEnvironmentOpen((open) => !open); }}>
           <span className="command-band-local-dot" aria-hidden="true" />
-          <span className="command-band-local-chip-label">{desktopShell ? desktopChipLabel : t("chrome.commandBand.local")}</span>
+          <span className="command-band-local-chip-label">{state.controlHolder !== null ? t("chrome.control.shared") : desktopShell ? desktopChipLabel : t("chrome.commandBand.local")}</span>
           </button>
           {environmentOpen ? <div ref={environmentPopoverRef}><EnvironmentPopover environment={environment} error={environmentError} loading={environmentLoading} copiedValue={copiedValue} copyFailedValue={copyFailedValue} desktopShell={desktopShell} onCopy={copyEnvironmentValue} /></div> : null}
         </div> : null}

@@ -11,6 +11,9 @@ import { createTerminalConnection, type TerminalConnection } from "./terminal-co
 import { createTerminalCopyOnSelect } from "./terminal-copy-on-select.js";
 import { createTerminalOsc52Clipboard } from "./terminal-osc52-clipboard.js";
 import { TERMINAL_OPTIONS } from "./terminal-options.js";
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+
+import { getT } from "../i18n/index.js";
 import { useTerminalPrefs } from "./terminal-preferences.js";
 import { createTerminalScrollFollow, type TerminalScrollFollowController } from "./terminal-scroll-follow.js";
 import { createTerminalStatusDetailReporter, type TerminalStatusDetailReporter } from "./status-detail.js";
@@ -34,6 +37,8 @@ export interface TerminalSurfaceProps {
   // 터미널 마운트 단의 역스케일(scale(1/zoom)) + fontSize×zoom으로 net scale=1을 만들어 좌표를 정정한다.
   readonly zoom?: number;
   readonly onStatusDetail?: (detail: string) => void;
+  /** 관전 배지 문구용. 넘기지 않으면 영어로 떨어진다 — 배지 외의 동작에는 영향이 없다. */
+  readonly locale?: ConsoleLocale;
 }
 
 interface TerminalOutputScheduler {
@@ -168,9 +173,10 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
   return LIGHT_TERMINAL_THEMES.has(theme) ? "light" : "dark";
 }
 
-export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail }: TerminalSurfaceProps) {
+export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail, locale }: TerminalSurfaceProps) {
   const activeTheme = theme;
   const { renderer: terminalRenderer, font: terminalFontSettings } = useTerminalPrefs();
+  const t = getT(locale);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
   const connectionRef = useRef<TerminalConnection | null>(null);
@@ -528,9 +534,9 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         {isViewing ? (
           <div className="terminal-viewer-badge" role="status">
             <span className="terminal-viewer-badge-dot" aria-hidden="true" />
-            <span className="terminal-viewer-badge-text">Another device is using this terminal — read-only</span>
+            <span className="terminal-viewer-badge-text">{t("terminal.viewer.readOnly")}</span>
             <button type="button" className="terminal-viewer-badge-action" onClick={() => connectionRef.current?.takeBackControl()}>
-              Take back control
+              {t("terminal.viewer.takeBack")}
             </button>
           </div>
         ) : null}

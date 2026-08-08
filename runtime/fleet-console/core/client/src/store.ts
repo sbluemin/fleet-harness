@@ -9,6 +9,7 @@ import type {
   CodexReaderRequest,
   ConnectionState,
   ConsoleState,
+  ControlHolder,
   NotificationKind,
   NotificationPreferences,
   OperationGroup,
@@ -50,6 +51,8 @@ let commissioningMigrationAttempted = false;
 let state: ConsoleState = {
   connection: "connecting",
   connectionLostAt: null,
+  controlHolder: null,
+  controlCurtainDismissed: false,
   consoleName: "",
   channel: "unknown",
   // The SDK ConsoleTheme union matches ThemeId; the selected theme passes
@@ -132,6 +135,18 @@ export function setConnectionState(next: ConnectionState): void {
     return;
   }
   setState({ connection: next });
+}
+
+export function applyControlHolder(holder: ControlHolder | null): void {
+  const handleChanged = state.controlHolder?.handle !== holder?.handle;
+  setState({
+    controlHolder: holder,
+    ...(handleChanged ? { controlCurtainDismissed: false } : {}),
+  });
+}
+
+export function dismissControlCurtain(): void {
+  setState({ controlCurtainDismissed: true });
 }
 
 export function setOperationsViewActive(active: boolean): void {

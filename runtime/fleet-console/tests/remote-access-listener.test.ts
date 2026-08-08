@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import http from "node:http";
 import https from "node:https";
 import os from "node:os";
 import path from "node:path";
@@ -414,6 +415,34 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(secondLink) }))).resolves.toMatchObject({ status: 204 });
   });
 
+  /**
+   * 커튼이 뜨고 걷히는 근거 전체. 보유자 정보는 이 기계 앞 화면에만 가고, 회수 통지는 끊긴
+   * 세션 하나에만 간다 — 두 수신자가 갈리지 않으면 원격 화면에 다른 기기의 이름이 실린다.
+   */
+  it("tells the local console who holds control, and tells only the evicted session it was reclaimed", async () => {
+    const fixture = await startFixture({ remote: true });
+    const local = await openLoopbackEvents(fixture);
+
+    const cookie = await joinAs(fixture, "full", "Kitchen iPad");
+    const remote = await openRemoteEvents(fixture, cookie);
+
+    const held = await local.waitFor("control:changed", (data) => data.holder !== null);
+    expect(held.holder).toMatchObject({ device: "Kitchen iPad" });
+    expect(typeof held.holder.handle).toBe("string");
+
+    await expect(revoke(fixture, `access-sessions/${held.holder.handle}`)).resolves.toBe(204);
+
+    // 끊긴 쪽은 자기 회수를 듣는다.
+    expect(await remote.waitFor("control:reclaimed", () => true)).toEqual({ reason: "reclaimed" });
+    // 이 기계 앞 화면은 보유자가 사라진 것을 듣는다.
+    expect(await local.waitFor("control:changed", (data) => data.holder === null)).toEqual({ holder: null });
+    // 원격은 보유자 정보를 한 번도 받지 않는다.
+    expect(remote.seen("control:changed")).toBe(0);
+
+    local.close();
+    remote.close();
+  });
+
   /** monitoring은 제어를 쥐지 않으므로 상한과 무관하게 full 옆에 함께 붙는다. */
   it("lets a monitoring session join while a full session holds control", async () => {
     const fixture = await startFixture({ remote: true });
@@ -443,6 +472,83 @@ async function joinAs(fixture: Fixture, access: string, device: string): Promise
   const token = grantTokenOf((await response.json() as { link: string }).link);
   const joined = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token, device }));
   return (joined.headers["set-cookie"]?.[0] ?? "").split(";")[0]!;
+}
+
+/**
+ * SSE를 읽는 최소 클라이언트. EventSource가 없는 환경이라 프레임을 직접 가른다 — 스트림은
+ * 끝나지 않으므로 본문을 다 읽고 파싱하는 방식은 쓸 수 없다.
+ */
+interface EventProbe {
+  waitFor(event: string, predicate: (data: any) => boolean, timeoutMs?: number): Promise<any>;
+  seen(event: string): number;
+  close(): void;
+}
+
+function readEventStream(response: import("node:http").IncomingMessage): EventProbe {
+  const received: Array<{ readonly event: string; readonly data: unknown }> = [];
+  const waiters: Array<() => void> = [];
+  let buffer = "";
+  response.setEncoding("utf8");
+  response.on("data", (chunk: string) => {
+    buffer += chunk;
+    let split = buffer.indexOf("\n\n");
+    while (split !== -1) {
+      const frame = buffer.slice(0, split);
+      buffer = buffer.slice(split + 2);
+      const event = /^event: (.+)$/mu.exec(frame)?.[1];
+      const raw = /^data: (.*)$/mu.exec(frame)?.[1];
+      if (event && raw !== undefined) {
+        try {
+          received.push({ event, data: JSON.parse(raw) });
+        } catch {
+          // 프레임이 깨졌으면 그 프레임만 버린다.
+        }
+      }
+      while (waiters.length > 0) waiters.pop()!();
+      split = buffer.indexOf("\n\n");
+    }
+  });
+  return {
+    seen: (event) => received.filter((entry) => entry.event === event).length,
+    async waitFor(event, predicate, timeoutMs = 5_000) {
+      const deadline = Date.now() + timeoutMs;
+      for (;;) {
+        const hit = received.find((entry) => entry.event === event && predicate(entry.data));
+        if (hit) return hit.data;
+        if (Date.now() >= deadline) throw new Error(`timed out waiting for ${event}`);
+        await new Promise<void>((resolve) => {
+          waiters.push(resolve);
+          setTimeout(resolve, 50);
+        });
+      }
+    },
+    close: () => response.destroy(),
+  };
+}
+
+function openLoopbackEvents(fixture: Fixture): Promise<EventProbe> {
+  const url = new URL(`${fixture.loopbackEndpoint}api/v1/operations/events`);
+  return new Promise((resolve, reject) => {
+    const request = http.request({ host: url.hostname, port: Number(url.port), path: url.pathname, method: "GET" }, (response) => resolve(readEventStream(response)));
+    request.on("error", reject);
+    request.end();
+  });
+}
+
+function openRemoteEvents(fixture: Fixture, cookie: string): Promise<EventProbe> {
+  return new Promise((resolve, reject) => {
+    const request = https.request({
+      host: BIND_HOST,
+      port: fixture.remotePort,
+      path: "/api/v1/operations/events",
+      method: "GET",
+      rejectUnauthorized: false,
+      checkServerIdentity: () => undefined,
+      headers: { host: `${BIND_HOST}:${fixture.remotePort}`, cookie },
+    }, (response) => resolve(readEventStream(response)));
+    request.on("error", reject);
+    request.end();
+  });
 }
 
 async function revoke(fixture: Fixture, resource: string): Promise<number> {

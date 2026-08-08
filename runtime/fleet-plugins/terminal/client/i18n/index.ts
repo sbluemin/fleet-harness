@@ -296,6 +296,8 @@ export const terminalEn = {
   "terminal.settings.missing": "Missing",
   "terminal.analysis.error.sessionNotFound": "Analysis session was not found.",
   "terminal.analysis.error.requestFailed": "Analysis request failed.",
+  "terminal.viewer.readOnly": "Another device is using this terminal — read-only",
+  "terminal.viewer.takeBack": "Take back control",
 } as const;
 
 export const terminalKo: Record<keyof typeof terminalEn, string> = {
@@ -590,6 +592,8 @@ export const terminalKo: Record<keyof typeof terminalEn, string> = {
   "terminal.settings.missing": "없음",
   "terminal.analysis.error.sessionNotFound": "분석 세션을 찾을 수 없습니다.",
   "terminal.analysis.error.requestFailed": "분석 요청이 실패했습니다.",
+  "terminal.viewer.readOnly": "다른 기기가 이 터미널을 쓰고 있습니다 — 읽기 전용",
+  "terminal.viewer.takeBack": "제어권 가져오기",
 };
 
 export const TERMINAL_MESSAGES = { en: terminalEn, ko: terminalKo } as const;

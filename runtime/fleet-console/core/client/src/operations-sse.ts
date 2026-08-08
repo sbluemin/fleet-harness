@@ -1,9 +1,11 @@
 import { fetchObserverStatus, fetchOperations } from "./api.js";
 import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
-import { applyObserverStatus, applyOperationUpdate, getState, hydrateOperations, setConnectionState } from "./store.js";
-import type { OperationNode } from "./types.js";
+import { applyControlHolder, applyObserverStatus, applyOperationUpdate, getState, hydrateOperations, setConnectionState } from "./store.js";
+import type { ControlHolder, OperationNode } from "./types.js";
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
+const CONTROL_RECLAIM_NAVIGATION_DELAY_MS = 2_500;
+const CONTROL_RECLAIMED_EVENT = "fleet-console:control-reclaimed";
 
 // 누락 스냅샷은 SSE가 열리기 전에만 hydrate해 이후 실시간 프레임을 덮어쓰지 않는다.
 let reconnectDelayMs = 1_000;
@@ -50,6 +52,30 @@ export function connectOperationsSse(): void {
     }
   });
 
+  source.addEventListener("control:changed", (e) => {
+    if (!isCurrentSource()) return;
+    const msg = e as MessageEvent<string>;
+    try {
+      const data = JSON.parse(msg.data) as { readonly holder?: unknown };
+      if (isControlHolderSnapshot(data)) applyControlHolder(data.holder);
+    } catch {
+      // ignore malformed SSE event
+    }
+  });
+
+  source.addEventListener("control:reclaimed", (e) => {
+    if (!isCurrentSource()) return;
+    const msg = e as MessageEvent<string>;
+    try {
+      const data = JSON.parse(msg.data) as { readonly reason?: unknown };
+      if (!isControlReclaimed(data)) return;
+      window.dispatchEvent(new Event(CONTROL_RECLAIMED_EVENT));
+      window.setTimeout(() => location.reload(), CONTROL_RECLAIM_NAVIGATION_DELAY_MS);
+    } catch {
+      // ignore malformed SSE event
+    }
+  });
+
   source.onopen = () => {
     if (!isCurrentSource()) return;
     reconnectDelayMs = 1_000;
@@ -63,6 +89,7 @@ export function connectOperationsSse(): void {
     activeSource = null;
     const retryGeneration = ++connectionGeneration;
     resetDesktopFullscreenSnapshot();
+    // SSE 단절은 원격 제어 세션이 끝났다는 증거가 아니므로 holder는 마지막 권위 스냅샷을 유지한다.
     setConnectionState("offline");
     reconnectHandle = setTimeout(() => {
       reconnectHandle = null;
@@ -124,4 +151,18 @@ export function refreshObserverStatus(): void {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isControlHolderSnapshot(value: unknown): value is { readonly holder: ControlHolder | null } {
+  if (!isRecord(value) || Object.keys(value).length !== 1 || !("holder" in value)) return false;
+  if (value.holder === null) return true;
+  if (!isRecord(value.holder) || Object.keys(value.holder).length !== 3) return false;
+  return typeof value.holder.handle === "string"
+    && (value.holder.device === null || typeof value.holder.device === "string")
+    && typeof value.holder.openedAt === "number"
+    && Number.isFinite(value.holder.openedAt);
+}
+
+function isControlReclaimed(value: unknown): value is { readonly reason: "reclaimed" } {
+  return isRecord(value) && Object.keys(value).length === 1 && value.reason === "reclaimed";
 }
