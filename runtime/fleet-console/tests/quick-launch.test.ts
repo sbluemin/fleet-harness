@@ -130,8 +130,21 @@ describe("quick launch preferences", () => {
   });
 
   it("round-trips the last selection", () => {
-    writeQuickLaunchSelection({ theaterId: "t1", model: "opus", effort: "xhigh" });
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus", effort: "xhigh" });
+    writeQuickLaunchSelection({ theaterId: "t1", model: "opus[1m]", effort: "xhigh" });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "xhigh" });
+  });
+
+  it("rewrites a leftover bare opus selection when it is read", () => {
+    window.localStorage.setItem(
+      "fleet-console.quickLaunch.selection",
+      JSON.stringify({ theaterId: "t1", model: "opus", effort: "high" }),
+    );
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "high" });
+    expect(JSON.parse(window.localStorage.getItem("fleet-console.quickLaunch.selection")!)).toEqual({
+      theaterId: "t1",
+      model: "opus[1m]",
+      effort: "high",
+    });
   });
 
   it("reads an empty selection when nothing was stored", () => {

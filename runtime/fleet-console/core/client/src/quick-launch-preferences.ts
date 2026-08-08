@@ -25,15 +25,26 @@ export function readQuickLaunchSelection(): QuickLaunchSelection {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return EMPTY_QUICK_LAUNCH_SELECTION;
     const parsed = JSON.parse(raw) as Partial<Record<keyof QuickLaunchSelection, unknown>>;
-    return {
+    const selection = {
       theaterId: readNonEmptyString(parsed.theaterId),
-      model: readNonEmptyString(parsed.model),
+      model: migrateRememberedModel(readNonEmptyString(parsed.model)),
       effort: readNonEmptyString(parsed.effort),
     };
+    // Canvas/Quick Launch Opus now launches as `opus[1m]`. Rewrite a leftover bare
+    // `opus` once so a reopen does not restore a retired catalog id into React state.
+    if (selection.model !== readNonEmptyString(parsed.model)) {
+      writeQuickLaunchSelection(selection);
+    }
+    return selection;
   } catch {
     // 파싱 불가·스토리지 차단(사생활 보호 모드)은 "기억 없음"과 같은 상태다.
     return EMPTY_QUICK_LAUNCH_SELECTION;
   }
+}
+
+/** Bare `opus` was the pre-1M menu id; keep the same Opus row under `opus[1m]`. */
+function migrateRememberedModel(model: string | null): string | null {
+  return model === "opus" ? "opus[1m]" : model;
 }
 
 export function writeQuickLaunchSelection(selection: QuickLaunchSelection): void {
