@@ -23,6 +23,7 @@ beforeEach(() => {
   hydrateGlobalSettings({
     consolePortMode: "dynamic",
     consoleStaticPort: null,
+    remoteAccess: { enabled: false, bindHost: null },
     seenFeatureTours: [],
     theme: "instrument",
     uiFont: DEFAULT_UI_FONT,
@@ -37,6 +38,7 @@ function makeState(patch: Partial<ConsoleState> = {}): ConsoleState {
   return {
     connection: "connecting",
     connectionLostAt: null,
+    consoleName: "",
     channel: "unknown",
     activeTheme: "instrument",
     version: "1.30.0",

@@ -1,4 +1,4 @@
-import { DESKTOP_FULLSCREEN_API_CATALOG } from "./desktop-contract.js";
+import { DESKTOP_FULLSCREEN_API_CATALOG, DESKTOP_SHELL_API_CATALOG } from "./desktop-contract.js";
 import { DESKTOP_THEME_API_CATALOG } from "./desktop-contract.js";
 import { GLOBAL_SETTINGS_API_CATALOG } from "./settings/settings-domain.js";
 import { PLUGIN_SETTINGS_API_CATALOG } from "./settings/settings-domain.js";
@@ -20,6 +20,7 @@ export function buildApiCatalog(): ApiCatalogEntry[] {
   return [
     ...SERVER_API_CATALOG,
     ...DESKTOP_FULLSCREEN_API_CATALOG,
+    ...DESKTOP_SHELL_API_CATALOG,
     ...DESKTOP_THEME_API_CATALOG,
     ...GLOBAL_SETTINGS_API_CATALOG,
     ...PLUGIN_SETTINGS_API_CATALOG,

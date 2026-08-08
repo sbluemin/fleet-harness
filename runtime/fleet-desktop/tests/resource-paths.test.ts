@@ -20,7 +20,6 @@ describe("desktop resource paths", () => {
     expect(posix(paths.iconPath)).toMatch(/runtime\/fleet-desktop\/(src|dist)\/build\/icon\.png$/);
     expect(posix(paths.trayTemplateIconPath)).toMatch(/runtime\/fleet-desktop\/(src|dist)\/build\/trayTemplate\.png$/);
     expect(posix(paths.entryPagePath)).toMatch(/runtime\/fleet-desktop\/(src|dist)\/assets\/entry\/index\.html$/);
-    expect(posix(paths.pairingPagePath)).toMatch(/runtime\/fleet-desktop\/(src|dist)\/assets\/pairing\/index\.html$/);
     expect(paths.nodePath).not.toContain("app.asar");
     expect(paths.serviceRoot).not.toContain("app.asar");
     expect(paths.serviceRoot).toBe(resolveRuntimePaths(os.homedir()).latest);
@@ -35,7 +34,7 @@ describe("desktop resource paths", () => {
       expect(posix(paths.cliPath)).toMatch(/runtime\/fleet-console\/dist\/cli\.mjs$/);
       expect(posix(paths.iconPath)).toMatch(/runtime\/fleet-desktop\/(src|dist)\/build\/icon\.png$/);
       expect(posix(paths.trayTemplateIconPath)).toMatch(/runtime\/fleet-desktop\/(src|dist)\/build\/trayTemplate\.png$/);
-      expect(posix(paths.pairingPagePath)).toMatch(/runtime\/fleet-desktop\/(src|dist)\/assets\/pairing\/index\.html$/);
+      expect(posix(paths.entryPagePath)).toMatch(/runtime\/fleet-desktop\/(src|dist)\/assets\/entry\/index\.html$/);
     } finally {
       if (previous === undefined) delete process.env.FLEET_CONSOLE_NODE_PATH;
       else process.env.FLEET_CONSOLE_NODE_PATH = previous;

@@ -6,6 +6,8 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import { ApiError, applyConsoleUpdate } from "../api.js";
 import { FEATURE_TOURS } from "../feature-tour-catalog.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
+import { isDesktopShell, useDesktopHomeOrigin } from "../desktop-shell.js";
+import { fetchLocalConsoles, probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type LocalConsole, type RemoteHost, type RemoteHostReach } from "../remote-hosts.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
 import { openWhatsNew } from "../store.js";
@@ -61,6 +63,7 @@ export function CommandBandSystemCluster() {
   const state = useConsoleState();
   return (
     <div className="command-band-system-cluster">
+      <HostSwitcher />
       <SettingsButton updateAvailable={state.updateAvailable} />
       <HelpMenu
         version={state.version}
@@ -70,6 +73,267 @@ export function CommandBandSystemCluster() {
       />
     </div>
   );
+}
+
+/**
+ * 호스트 스위처. 목록은 이 콘솔이 들고 있고, 고른 호스트의 `/console/`로 그냥 항해한다 —
+ * 각 콘솔이 자기 UI를 서빙하므로 프록시가 없고, 그래서 목록 자체가 호스트마다 다를 수 있다.
+ *
+ * 그래서 "이 컴퓨터" 한 줄만은 콘솔이 아니라 셸에게서 온다. 원격 콘솔이 서빙한 화면은 자기가
+ * 떠나온 곳을 알 수 없으므로, 그 줄이 없으면 돌아갈 길이 사라진다.
+ *
+ * 닿는지 여부는 열어 볼 때 확인한다. 목록에 든 것만으로 매번 남의 기계를 두드리면, 보지도
+ * 않는 화면 때문에 조용한 네트워크 소음이 계속 흐른다.
+ */
+function HostSwitcher() {
+  const t = useT();
+  const state = useConsoleState();
+  const hosts = useRemoteHosts();
+  const homeOrigin = useDesktopHomeOrigin();
+  // 원격으로 건너가는 일은 셸의 인증서 배관을 거쳐야 한다. 브라우저 단독에서는 내주지 않는다.
+  const canOpenRemote = isDesktopShell();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [local, setLocal] = useState<readonly LocalConsole[]>([]);
+  const [reach, setReach] = useState<Readonly<Record<string, RemoteHostReach>>>({});
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void refreshRemoteHosts(controller.signal).catch(() => undefined);
+    void fetchLocalConsoles(controller.signal).then(setLocal).catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    // 열 때마다 다시 본다 — 이 기계의 콘솔은 조용히 뜨고 진다.
+    void fetchLocalConsoles(controller.signal).then(setLocal).catch(() => undefined);
+    for (const host of hosts) {
+      void probeRemoteHost(host.id, controller.signal)
+        .then((result) => setReach((previous) => ({ ...previous, [host.id]: result })))
+        .catch(() => undefined);
+    }
+    const onPointer = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!panelRef.current?.contains(target) && !triggerRef.current?.contains(target)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); triggerRef.current?.focus(); } };
+    document.addEventListener("pointerdown", onPointer, true);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      controller.abort();
+      document.removeEventListener("pointerdown", onPointer, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, hosts]);
+
+  const currentOrigin = location.origin;
+  const currentIsLoopback = isLoopbackOrigin(currentOrigin);
+  /**
+   * "이 컴퓨터"에 실릴 수 있는 것은 이 창이 실제로 닿을 수 있는 콘솔뿐이다.
+   *
+   * 스캔은 루프백 리스너에서만 답하므로, 원격 콘솔을 보고 있으면 비어 있다. 그때 돌아갈 곳을
+   * 아는 것은 셸뿐이라 셸의 말을 그대로 쓴다. 반대로 스캔이 답했다면 그 목록이 진실이고,
+   * 셸이 말한 집이 거기 없으면 그 콘솔은 이미 죽은 것이므로 줄을 세우지 않는다.
+   */
+  const homeIsLive = homeOrigin !== null && (local.length === 0 || local.some((entry) => entry.origin === homeOrigin));
+  const home = homeIsLive ? homeOrigin : null;
+  const placeholder = (origin: string): LocalConsole => ({ origin, version: "", owner: null, distro: null });
+  const nearby: readonly { readonly entry: LocalConsole; readonly home: boolean }[] = [
+    ...(home !== null ? [{ entry: local.find((item) => item.origin === home) ?? placeholder(home), home: true }] : []),
+    // 지금 서 있는 루프백 콘솔은 스캔에 안 잡혀도(격리 실행 등) 목록에 있어야 한다 — 눈앞에 있으니까.
+    ...(currentIsLoopback && currentOrigin !== home && !local.some((entry) => entry.origin === currentOrigin)
+      ? [{ entry: placeholder(currentOrigin), home: false }]
+      : []),
+    ...local.filter((entry) => entry.origin !== home).map((entry) => ({ entry, home: false })),
+  ];
+  const savedCurrent = hosts.find((host) => host.origin === currentOrigin) ?? null;
+  const nearbyCurrent = nearby.some(({ entry }) => entry.origin === currentOrigin);
+  /**
+   * 지금 서 있는 콘솔의 이름은 한 번만 정한다 — 칩과 목록이 서로 다른 규칙으로 지으면
+   * 같은 콘솔이 두 이름으로 보인다. 사용자가 고쳐 부른 이름이 있으면 그것이 우선이다.
+   */
+  const currentLabel = savedCurrent?.label || state.consoleName || location.host;
+  // 이 컴퓨터의 콘솔에 서 있으면 어느 콘솔인지가 아니라 "여기"라는 사실만 말한다.
+  const chipLabel = nearbyCurrent ? t("chrome.hosts.local") : currentLabel;
+
+  if (nearby.length === 0 && hosts.length === 0) return null;
+  const openSettings = () => {
+    setOpen(false);
+    navigate({ pathname: "/settings", search: "?section=remote-access" });
+  };
+  const go = (origin: string) => {
+    setOpen(false);
+    if (origin !== currentOrigin) location.assign(new URL("/console/", `${origin}/`).toString());
+  };
+
+  return (
+    <div className="host-switcher">
+      <button
+        ref={triggerRef}
+        type="button"
+        className="host-switcher-chip"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`${t("chrome.hosts.aria")}: ${chipLabel}`}
+        title={chipLabel}
+        onClick={() => setOpen((previous) => !previous)}
+      >
+        <span className="host-switcher-dot is-live" aria-hidden="true" />
+        <span className="host-switcher-name">{chipLabel}</span>
+        <ChevronGlyph />
+      </button>
+      {open ? (
+        <div ref={panelRef} className="host-switcher-panel" role="menu" aria-label={t("chrome.hosts.aria")}>
+          {nearby.length > 0 ? (
+            <>
+              <p className="host-switcher-heading">{t("chrome.hosts.nearby")}</p>
+              {nearby.map(({ entry, home }) => (
+                <HostRow
+                  key={entry.origin}
+                  live
+                  name={nearbyName(home, entry.origin === currentOrigin, currentLabel, t)}
+                  detail={nearbyDetail(entry, home)}
+                  badge={home || entry.origin === currentOrigin ? undefined : t("chrome.hosts.discovered")}
+                  current={entry.origin === currentOrigin}
+                  compact={home}
+                  onOpen={() => go(entry.origin)}
+                />
+              ))}
+            </>
+          ) : null}
+          {hosts.length > 0 ? (
+            <>
+              {nearby.length > 0 ? <div className="host-switcher-divider" role="separator" /> : null}
+              <p className="host-switcher-heading">{t("chrome.hosts.saved")}</p>
+              {hosts.map((host) => (
+                <HostRow
+                  key={host.id}
+                  live={Boolean(reach[host.id]?.trusted)}
+                  name={host.label}
+                  detail={canOpenRemote ? hostDetail(host, reach[host.id], t) : `${host.hostname}:${host.port} · ${t("chrome.hosts.desktopOnly")}`}
+                  current={host.origin === currentOrigin}
+                  disabled={!canOpenRemote || reach[host.id]?.reachable === false}
+                  onOpen={() => go(host.origin)}
+                />
+              ))}
+            </>
+          ) : null}
+          {/* 목록 어디에도 없는 콘솔에 서 있다면 그 사실을 숨기지 않는다. */}
+          {!nearbyCurrent && savedCurrent === null ? (
+            <>
+              <div className="host-switcher-divider" role="separator" />
+              <HostRow live name={currentLabel} detail={`${location.host} · ${t("chrome.hosts.notSaved")}`} current />
+            </>
+          ) : null}
+          <div className="host-switcher-divider" role="separator" />
+          <button type="button" role="menuitem" className="host-switcher-link" onClick={openSettings}>
+            {t("chrome.hosts.manage")}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function HostRow({
+  live,
+  name,
+  detail,
+  badge,
+  current,
+  disabled,
+  compact,
+  onOpen,
+}: {
+  readonly live: boolean;
+  readonly name: string;
+  readonly detail: string;
+  readonly badge?: string;
+  readonly current: boolean;
+  readonly disabled?: boolean;
+  /** 이 앱이 띄운 콘솔은 한 줄로 접어 강조한다 — 목록에서 유일하게 언제나 거기 있는 기준점이다. */
+  readonly compact?: boolean;
+  readonly onOpen?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitemradio"
+      aria-checked={current}
+      className={`${current ? "is-current" : ""} ${compact ? "is-home" : ""}`.trim()}
+      disabled={current || disabled === true || onOpen === undefined}
+      onClick={onOpen}
+    >
+      <span className={`host-switcher-dot ${live ? "is-live" : ""}`} aria-hidden="true" />
+      <span className="host-switcher-entry">
+        <span className="host-switcher-name">{name}</span>
+        <small>{detail}</small>
+      </span>
+      {badge ? <span className="host-switcher-badge">{badge}</span> : null}
+      {current ? <CheckGlyph /> : null}
+    </button>
+  );
+}
+
+/**
+ * 이름은 "누가 이 콘솔을 들고 있는가"로 가른다. 락에 적힌 owner는 어느 앱이 락을 썼는지일 뿐이라,
+ * 이 앱이 띄운 콘솔과 우연히 같은 기계에 떠 있는 콘솔이 둘 다 desktop으로 나온다 — 그것으로
+ * 이름을 지으면 두 줄이 똑같이 읽힌다.
+ */
+/** 루프백 콘솔만 이 창이 주소 그대로 열 수 있다 — 다른 기계의 127.0.0.1은 여기서 우리 기계다. */
+function isLoopbackOrigin(origin: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(origin);
+    return protocol === "http:" && (hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]");
+  } catch {
+    return false;
+  }
+}
+
+/** 같은 루프백 주소라도 어디에 사는지가 다르다 — WSL 안의 콘솔은 그 배포판 이름을 달고 선다. */
+function nearbyDetail(entry: LocalConsole, home: boolean): string {
+  const parts = [new URL(entry.origin).host];
+  if (entry.distro) parts.push(entry.distro);
+  if (entry.version && !home) parts.push(`v${entry.version}`);
+  return parts.join(" · ");
+}
+
+function nearbyName(home: boolean, current: boolean, currentName: string, t: ReturnType<typeof useT>): string {
+  if (home) return t("chrome.hosts.managedConsole");
+  // 지금 쓰고 있는 콘솔은 "발견"된 것이 아니다 — 자기 이름으로 부른다.
+  if (current && currentName) return currentName;
+  return t("chrome.hosts.console");
+}
+
+
+function hostDetail(host: RemoteHost, state: RemoteHostReach | undefined, t: ReturnType<typeof useT>): string {
+  const address = `${host.hostname}:${host.port}`;
+  if (state === undefined) return address;
+  if (!state.reachable) {
+    return host.lastOpenedAt === null
+      ? `${address} · ${t("chrome.hosts.unreachable")}`
+      : `${address} · ${t("chrome.hosts.unreachable")} · ${t("chrome.hosts.seen")} ${formatSeen(host.lastOpenedAt)}`;
+  }
+  return state.trusted ? address : `${address} · ${t("chrome.hosts.untrusted")}`;
+}
+
+function formatSeen(epochMs: number): string {
+  const minutes = Math.round((Date.now() - epochMs) / 60_000);
+  if (minutes < 60) return `${Math.max(1, minutes)} min ago`;
+  const hours = Math.round(minutes / 60);
+  return hours < 24 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`;
+}
+
+function ChevronGlyph() {
+  return <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function CheckGlyph() {
+  return <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 6.3 4.8 8.6 9.5 3.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 function SettingsButton({ updateAvailable }: { readonly updateAvailable: boolean }) {

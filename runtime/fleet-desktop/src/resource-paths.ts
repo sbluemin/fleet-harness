@@ -9,7 +9,6 @@ export interface DesktopResourcePaths {
   readonly iconPath: string;
   readonly trayTemplateIconPath: string;
   readonly entryPagePath: string;
-  readonly pairingPagePath: string;
 }
 
 const sourceDir = path.dirname(fileURLToPath(import.meta.url));
@@ -26,7 +25,6 @@ export function resolveDesktopResourcePaths(isPackaged: boolean, resourcesPath?:
     iconPath: path.join(sourceDir, "build", "icon.png"),
     trayTemplateIconPath: path.join(sourceDir, "build", "trayTemplate.png"),
     entryPagePath: path.join(sourceDir, "assets", "entry", "index.html"),
-    pairingPagePath: path.join(sourceDir, "assets", "pairing", "index.html"),
   };
 }
 

@@ -69,6 +69,7 @@ export interface TheaterBootstrap {
 }
 
 export interface ObserverStatus {
+  readonly name: string;
   readonly workspaces: number;
   readonly version: string;
   readonly channel: "stable" | "local" | "unknown";
@@ -137,9 +138,61 @@ export interface OperationNode {
   };
 }
 
+/** 원격 접속 설정. 바인드 주소는 구성 리터럴이며 요청이나 DNS에서 유도되지 않는다. */
+export interface RemoteAccessState {
+  readonly enabled: boolean;
+  readonly bindHost: string | null;
+}
+
+export type RemoteAccessClass = "full" | "monitoring";
+
+/** 발급 사실만 담은 공개 표현. 링크 문자열은 발급 응답에만 실리고 다시 조회되지 않는다. */
+export interface RemoteAccessLinkSummary {
+  readonly id: string;
+  readonly access: RemoteAccessClass;
+  readonly issuedAt: number;
+  readonly expiresAt: number;
+}
+
+export interface RemoteAccessSessionSummary {
+  readonly handle: string;
+  readonly device: string | null;
+  readonly access: RemoteAccessClass;
+  readonly openedAt: number;
+  readonly expiresAt: number;
+  readonly lastSeenAt: number;
+}
+
+/** 이 기계가 실제로 가진 주소. 사용자가 IP를 외워 적지 않도록 골라 준다. */
+export interface RemoteAccessInterface {
+  readonly kind: "tailscale" | "local";
+  readonly label: string;
+  readonly address: string;
+}
+
+/** 지금 열려 있는 리스너의 사실. 설정값과 달리 바인드 실패를 그대로 드러낸다. */
+export interface RemoteAccessStatus {
+  readonly listening: boolean;
+  readonly origin: string | null;
+  readonly fingerprint: string | null;
+  readonly lastError: string | null;
+  readonly links: readonly RemoteAccessLinkSummary[];
+  readonly sessions: readonly RemoteAccessSessionSummary[];
+  readonly interfaces: readonly RemoteAccessInterface[];
+}
+
+export interface RemoteAccessLink {
+  readonly id: string;
+  readonly link: string;
+  readonly access: RemoteAccessClass;
+  readonly expiresAt: number;
+  readonly fingerprint: string;
+}
+
 export interface GlobalSettingsState {
   readonly consolePortMode: "dynamic" | "static";
   readonly consoleStaticPort: number | null;
+  readonly remoteAccess: RemoteAccessState;
   readonly seenFeatureTours: readonly string[];
   readonly theme: ThemeId;
   readonly uiFont: UiFontSettings;
@@ -184,6 +237,8 @@ export type CodexReaderRequest =
   | { readonly kind: "schema"; readonly templateId?: string };
 
 export interface ConsoleState {
+  /** 이 콘솔이 스스로를 부르는 이름. 원격에서 보고 있어도 그 콘솔의 이름을 그대로 읽는다. */
+  readonly consoleName: string;
   readonly connection: ConnectionState;
   readonly connectionLostAt: number | null;
   readonly channel: ObserverStatus["channel"];

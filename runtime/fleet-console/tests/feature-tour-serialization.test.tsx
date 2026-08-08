@@ -11,6 +11,7 @@ import type { GlobalSettingsState } from "../core/client/src/types.js";
 const SETTINGS: GlobalSettingsState = {
   consolePortMode: "dynamic",
   consoleStaticPort: null,
+  remoteAccess: { enabled: false, bindHost: null },
   language: "auto",
   seenFeatureTours: [],
   theme: "instrument",

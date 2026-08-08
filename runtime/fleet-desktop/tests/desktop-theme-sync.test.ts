@@ -167,7 +167,10 @@ describe("desktop theme synchronizer", () => {
   it("rejects arbitrary origins and malformed or forged SSE payloads", async () => {
     const synchronizer = createDesktopThemeSynchronizer({ applyTheme: vi.fn(), fetch: vi.fn() });
 
-    await expect(synchronizer.start("https://fleet.example")).rejects.toThrow("desktop_theme_origin_invalid");
+    // 원격 콘솔이 생기면서 https origin 자체는 유효해졌다. 거절해야 하는 것은 모양이 어긋난 쪽이다.
+    for (const origin of ["http://fleet.example:4310", "https://fleet.example/console/", "https://user:pw@fleet.example", "http://127.0.0.1", "not-a-url"]) {
+      await expect(synchronizer.start(origin)).rejects.toThrow("desktop_theme_origin_invalid");
+    }
     expect(parseDesktopThemeEvent(`event: ${DESKTOP_THEME_EVENT}\ndata: ${JSON.stringify(snapshot("future-aurora", "#123456", "#abcdef", 48))}`)).toEqual(snapshot("future-aurora", "#123456", "#abcdef", 48));
     expect(parseDesktopThemeEvent(`event: ${DESKTOP_THEME_EVENT}\ndata: {"theme":"carbon","titleBarOverlay":{"color":"white","symbolColor":"#ffffff","height":44}}`)).toBeNull();
     expect(parseDesktopThemeEvent(`event: other\ndata: ${JSON.stringify(snapshot("carbon", "#334455", "#ddeeff", 52))}`)).toBeNull();

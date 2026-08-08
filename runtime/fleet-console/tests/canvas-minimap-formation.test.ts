@@ -534,6 +534,7 @@ const PEER_OPERATION: OperationNode = {
 const CANVAS_STATE: ConsoleState = {
   connection: "connecting",
   connectionLostAt: null,
+  consoleName: "",
   channel: "unknown",
   activeTheme: "maritime",
   version: "test",

@@ -10,6 +10,7 @@ const LEGACY_KEY = "fleet-console.commissioningSeen";
 const SETTINGS: GlobalSettingsState = {
   consolePortMode: "dynamic",
   consoleStaticPort: null,
+  remoteAccess: { enabled: false, bindHost: null },
   language: "auto",
   seenFeatureTours: [],
   theme: "instrument",

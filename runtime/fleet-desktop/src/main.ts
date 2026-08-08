@@ -3,8 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BrowserWindow, dialog, Menu, Notification, shell, Tray } from "electron";
-import { DESKTOP_PROTOCOL_VERSION } from "@fleet-console/desktop-protocol";
+import { app, BrowserWindow, dialog, Menu, Notification, session, shell, Tray } from "electron";
 
 import { createDesktopLifecycle } from "./app-lifecycle.js";
 import { isConsoleConflict, showConsoleConflictAndQuit } from "./console-conflict.js";
@@ -13,9 +12,11 @@ import { createHydratedDesktopEnvironment, resolveDesktopUserDataDirectory } fro
 import { pushEntrySnapshot } from "./entry-page.js";
 import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
 import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
-import { createPairingNotifier } from "./pairing-notifications.js";
-import { createPairingModal } from "./pairing-modal.js";
-import { createRuntimePairing } from "./runtime-pairing.js";
+import { createDesktopNotifier } from "./desktop-notices.js";
+import { isRemoteConsoleOrigin } from "./console-origin.js";
+import { installRemoteCertificatePins } from "./remote-access.js";
+import { createRemoteBridge, type RemoteBridge } from "./remote-bridge.js";
+import { findAccessLinkArgument, FLEET_PROTOCOL, isFleetProtocolLink } from "./fleet-protocol.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
 import { createDesktopThemeSynchronizer } from "./desktop-theme-sync.js";
 import { createDesktopFullscreenSynchronizer } from "./desktop-fullscreen-sync.js";
@@ -25,9 +26,6 @@ import { createConsoleInstallerDependencies, installConsole, reconcileConsoleIns
 import { bootstrapNodeRuntime, isManagedNodeRuntimeValid, reconcileNodeRuntime, satisfiesNodeEngine, type NodeRuntimeManifest } from "./runtime/node-bootstrap.js";
 import { createRegistryChecker } from "./runtime/registry-check.js";
 import { resolveRuntimePaths } from "./runtime/runtime-paths.js";
-import { createRemoteLastTargetStore } from "./runtime-pairing.js";
-import { connectManagedRemote } from "./runtime/remote/orchestrator.js";
-import { createOpenSshAdapter } from "./runtime/remote/ssh.js";
 import { SidecarSupervisor, type SidecarRuntime } from "./sidecar-supervisor.js";
 import { configureTray, createDesktopTray, shouldConfigureTray } from "./tray.js";
 import { createNoopUpdateController, createUpdateController, resolveActiveWindow, showWindowsHiddenUpdateDialog } from "./update-controller.js";
@@ -37,12 +35,15 @@ import { createZoomState } from "./zoom-state.js";
 type RuntimeProgress = (state: RuntimeEntryState, detail?: string, progress?: number) => Promise<void>;
 
 const PACKAGE_NAME = "@dotobokuri/fleet-console";
+// Console 계약의 경로 리터럴 — 다른 동기화기와 같은 방식으로 여기서 선언한다(Console 내부를 import하지 않는다).
+const DESKTOP_SHELL_PATH = "/api/v1/desktop/shell";
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const isPackaged = app.isPackaged;
 const desktopResources = resolveDesktopResourcePaths(isPackaged);
 
 applyDesktopIdentity(app);
 if (!isPackaged) app.setPath("userData", resolveDesktopUserDataDirectory(app.getPath("userData"), desktopResources.serviceRoot, false));
+app.setAsDefaultProtocolClient(FLEET_PROTOCOL);
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 else void boot().catch((error: unknown) => {
@@ -59,6 +60,23 @@ else void boot().catch((error: unknown) => {
 const trayHolder: { current: Tray | null } = { current: null };
 let bootLogger: DesktopLogger | null = null;
 
+// macOS는 앱이 준비되기 전에도 open-url을 던진다. boot()가 끝나기 전에 도착한 링크를 잃지
+// 않도록 여기서 먼저 받아 두고, 배관이 서면 그때 흘려보낸다.
+const pendingAccessLinks: string[] = [];
+let deliverAccessLink: ((link: string) => void) | null = null;
+
+function receiveAccessLink(link: string | null): void {
+  if (link === null) return;
+  if (deliverAccessLink) deliverAccessLink(link);
+  else pendingAccessLinks.push(link);
+}
+
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  receiveAccessLink(isFleetProtocolLink(url) ? url : null);
+});
+app.on("second-instance", (_event, argv) => receiveAccessLink(findAccessLinkArgument(argv)));
+
 async function boot(): Promise<void> {
   await app.whenReady();
   applyDesktopDockIcon(app, desktopResources.iconPath);
@@ -67,8 +85,6 @@ async function boot(): Promise<void> {
   const logger = createDesktopLogger(path.join(app.getPath("userData"), "logs"));
   bootLogger = logger;
   const registry = createRegistryChecker({ packageName: PACKAGE_NAME, statePath: path.join(runtimePaths.root, "registry-state.json") });
-  const remoteManifest = JSON.parse(fs.readFileSync(path.resolve(sourceDirectory, "build", "node-runtime.json"), "utf8")) as NodeRuntimeManifest;
-  const remoteLastTarget = createRemoteLastTargetStore(app.getPath("userData"));
   let pushRuntimeProgress: RuntimeProgress | null = null;
   const initialServiceVersion = readInstalledVersion(isPackaged ? runtimePaths.latest : desktopResources.serviceRoot) ?? "";
   const supervisor = new SidecarSupervisor({
@@ -84,8 +100,19 @@ async function boot(): Promise<void> {
   let window: BrowserWindow | null = null;
   let policy: ReturnType<typeof applyWindowPolicy> | null = null;
   let localConsoleOrigin: string | null = null;
+  // 원격 콘솔은 자체서명 인증서 뒤에서 세션을 요구한다. Node의 fetch는 둘 다 갖지 못하므로
+  // 그 origin으로 가는 메인 프로세스 요청은 창이 쓰는 바로 그 세션을 타야 한다.
+  const consoleSession = session.defaultSession;
+  const remotePins = installRemoteCertificatePins(consoleSession, (message) => logger.error(message));
+  const consoleFetch: typeof fetch = (input, init) => {
+    // 동기화기는 문자열 URL만 넘긴다. Request가 오면 조용히 다른 경로로 보내지 않고 기존 경로를 쓴다.
+    if (typeof input !== "string" && !(input instanceof URL)) return globalThis.fetch(input, init);
+    const url = typeof input === "string" ? input : input.href;
+    return isRemoteConsoleOrigin(new URL(url).origin) ? consoleSession.fetch(url, init) : globalThis.fetch(url, init);
+  };
   const themeSynchronizer = process.platform === "win32"
     ? createDesktopThemeSynchronizer({
+      fetch: consoleFetch,
       applyTheme: (snapshot) => {
         if (!window || window.isDestroyed()) return;
         window.setTitleBarOverlay(snapshot.titleBarOverlay);
@@ -96,13 +123,53 @@ async function boot(): Promise<void> {
   let refreshNativeUpdateActions: (() => void) | null = null;
   const zoomState = createZoomState(path.join(app.getPath("userData"), "desktop-state.json"));
   const controls = createConsoleControls({ zoomState, refreshNativeActions: () => refreshNativeUpdateActions?.() });
-  let pairing: ReturnType<typeof createRuntimePairing> | null = null;
+  /**
+   * 다른 콘솔로 건너가는 화면은 Console 안에 있다. Desktop이 남기는 것은 인증서 한 겹뿐이라,
+   * 이 다리는 메뉴에도 트레이에도 나타나지 않는다.
+   */
+  const notifier = createDesktopNotifier(Notification, { showMessageBox: (options) => dialog.showMessageBox(options) });
+  /**
+   * 창이 어느 콘솔에 있든 "이 셸이 띄운 콘솔이 어디인가"는 알려 준다. 원격 콘솔이 서빙한
+   * 화면은 자기가 떠나온 곳을 알 수 없으므로, 이것이 없으면 돌아갈 길이 사라진다.
+   */
+  const publishShellHome = async (origin: string): Promise<void> => {
+    const home = localConsoleOrigin;
+    if (!home) return;
+    try {
+      const response = await consoleFetch(`${origin}${DESKTOP_SHELL_PATH}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Origin: origin },
+        body: JSON.stringify({ homeOrigin: home }),
+      });
+      // 경로가 어긋나면 404가 조용히 돌아온다 — 돌아갈 줄이 사라진 이유를 로그에서 찾을 수 있어야 한다.
+      if (!response.ok) logger.error(`shell home publish rejected status=${response.status}`);
+    } catch (error) {
+      logger.error(`shell home publish failed: ${describeError(error)}`);
+    }
+  };
+  const bridge: RemoteBridge = createRemoteBridge({
+    pins: remotePins,
+    policy: () => policy,
+    sessionFetch: (input, init) => consoleSession.fetch(input, init),
+    localOrigin: () => localConsoleOrigin,
+    deviceName: os.hostname().replace(/\.local$/iu, ""),
+    loadConsole: async (url) => {
+      await window?.loadURL(url);
+      // 창이 옮겨 갔으면 타이틀바·전체화면 동기화와 "돌아갈 곳"도 그 콘솔을 따라가야 한다.
+      const origin = new URL(url).origin;
+      await themeSynchronizer?.start(origin);
+      fullscreenSynchronizer?.activate(origin);
+      await publishShellHome(origin);
+    },
+    notify: (notice) => notifier.show(notice),
+    log: (message) => logger.error(message),
+  });
   const lifecycle = createDesktopLifecycle(app, async () => {
     const launch = createLaunchController({
       createWindow: async () => {
         const createdWindow = createSecureWindow(BrowserWindow, { iconPath: desktopResources.iconPath, platform: process.platform });
         window = createdWindow;
-        fullscreenSynchronizer = createDesktopFullscreenSynchronizer(createdWindow);
+        fullscreenSynchronizer = createDesktopFullscreenSynchronizer(createdWindow, { fetch: consoleFetch });
         createdWindow.once("closed", () => {
           themeSynchronizer?.stop();
           fullscreenSynchronizer?.stop();
@@ -111,6 +178,7 @@ async function boot(): Promise<void> {
         controls.attachWindow(createdWindow);
         lifecycle.attachWindow(createdWindow);
         policy = applyWindowPolicy(createdWindow.webContents, async (external) => shell.openExternal(external));
+        bridge.attach(createdWindow.webContents);
         createdWindow.webContents.on("zoom-changed", (_event, zoomDirection) => controls.zoomChanged(createdWindow.webContents, zoomDirection));
         refreshNativeUpdateActions?.();
         await createdWindow.loadFile(desktopResources.entryPagePath);
@@ -121,6 +189,7 @@ async function boot(): Promise<void> {
         localConsoleOrigin = origin;
         policy?.activateConsoleOrigin(origin);
         controls.handoffStarted();
+        void publishShellHome(origin);
       },
       synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); },
       synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
@@ -131,7 +200,7 @@ async function boot(): Promise<void> {
       startOrAdopt: () => supervisor.startOrAdopt(),
     });
     return launch.start() as Promise<BrowserWindow>;
-  }, async () => { await pairing?.dispose(); await supervisor.stop(); });
+  }, async () => { bridge.dispose(); await supervisor.stop(); });
   const updates = isPackaged
     ? createUpdateController({
       currentVersion: () => readInstalledVersion(runtimePaths.latest) ?? "",
@@ -151,53 +220,9 @@ async function boot(): Promise<void> {
     zoomOut: () => controls.zoomOut(),
     actualSize: () => controls.actualSize(),
     reloadConsole: () => controls.reloadConsole(),
-    connectRuntime: () => {
-      if (!controls.consoleReady()) return;
-      void lifecycle.show().then((activeWindow) => {
-        if (!policy || activeWindow.isDestroyed()) return;
-        return pairing?.prompt(activeWindow, policy);
-      });
-    },
-    backToLocal: () => {
-      const localOrigin = localConsoleOrigin;
-      if (!localOrigin || !controls.consoleReady()) return;
-      void lifecycle.show().then((activeWindow) => {
-        if (!policy || activeWindow.isDestroyed()) return;
-        return pairing?.switchTo(localOrigin, activeWindow, policy);
-      });
-    },
     consoleReady: () => controls.consoleReady(),
-    isRemoteActive: () => localConsoleOrigin !== null && policy !== null && policy.currentConsoleOrigin() !== localConsoleOrigin,
     updates,
   };
-  pairing = createRuntimePairing({
-    notifier: createPairingNotifier(Notification, { showMessageBox: (options) => dialog.showMessageBox(options) }),
-    fullscreenSynchronizer: () => fullscreenSynchronizer,
-    themeSynchronizer,
-    modal: createPairingModal({ BrowserWindow, pairingPagePath: desktopResources.pairingPagePath }),
-    entryPagePath: desktopResources.entryPagePath,
-    localOrigin: () => localConsoleOrigin,
-    lastTargetStore: remoteLastTarget,
-    logger,
-    onRuntimeChanged: () => refreshNativeUpdateActions?.(),
-    connectRemote: async (target, onPhase) => {
-      const started = Date.now();
-      const ssh = await createOpenSshAdapter();
-      return connectManagedRemote(target.value, {
-        ssh,
-        manifest: remoteManifest,
-        registry,
-        ownerId: environment.ownerId,
-        protocolVersion: DESKTOP_PROTOCOL_VERSION,
-        desktopVersion: app.getVersion(),
-        consoleDirRel: ".fleet/console",
-        onPhase: (phase) => {
-          logger.info(`managed SSH phase=${phase} elapsedMs=${Date.now() - started}`);
-          onPhase(phase);
-        },
-      });
-    },
-  });
   trayHolder.current = createDesktopTray(process.platform, Tray, desktopResources, actions);
   refreshNativeUpdateActions = () => {
     installApplicationMenu(Menu, actions, process.platform, window ?? undefined);
@@ -206,6 +231,14 @@ async function boot(): Promise<void> {
   };
   refreshNativeUpdateActions();
   await lifecycle.start();
+  // 링크는 창을 하나 더 만들지 않는다 — 이미 떠 있는 Console에 넘겨 목록에 들이게 할 뿐이다.
+  deliverAccessLink = (link) => {
+    void lifecycle.show()
+      .then(() => bridge.receiveLink(link))
+      .catch((error: unknown) => bridge.report(error));
+  };
+  for (const link of pendingAccessLinks.splice(0)) deliverAccessLink(link);
+  receiveAccessLink(findAccessLinkArgument(process.argv));
   if (isPackaged) setInterval(() => { void updates.check(false); }, 60 * 60 * 1_000);
 }
 

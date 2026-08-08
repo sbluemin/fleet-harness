@@ -47,41 +47,30 @@ describe("tray menu", () => {
     const zoomOut = vi.fn();
     const actualSize = vi.fn();
     const reloadConsole = vi.fn();
-    const connectRuntime = vi.fn();
-    const backToLocal = vi.fn();
     let consoleReady = false;
-    let remoteActive = false;
     const updates = { check: vi.fn(async () => undefined), install: vi.fn(async () => undefined), availableVersion: () => "1.2.4", enabled: () => true };
 
-    configureTray(tray as never, menu as never, { show, quit, diagnostics, zoomIn, zoomOut, actualSize, reloadConsole, connectRuntime, backToLocal, consoleReady: () => consoleReady, isRemoteActive: () => remoteActive, updates });
+    configureTray(tray as never, menu as never, { show, quit, diagnostics, zoomIn, zoomOut, actualSize, reloadConsole, consoleReady: () => consoleReady, updates });
 
     const template = menu.buildFromTemplate.mock.calls[0]![0] as unknown as Array<{ label?: string; accelerator?: string; enabled?: boolean; click?: () => void }>;
-    expect(template.map((item) => item.label).filter(Boolean)).toEqual(["Show Fleet Console", "Connect to Runtime…", "Back to Local Runtime", "Zoom In", "Zoom Out", "Actual Size", "Reload Console", "Check for Updates", "Update to 1.2.4…", "Diagnostics", "Quit"]);
-    expect(template[1]?.enabled).toBe(false);
-    expect(template[2]?.enabled).toBe(false);
-    expect(template.slice(4, 8).map((item) => item.accelerator)).toEqual(["Ctrl+=", "Ctrl+-", "Ctrl+0", "Ctrl+R"]);
-    expect(template.slice(4, 8).every((item) => item.enabled === false)).toBe(true);
-    template[7]!.click?.();
+    // 다른 콘솔로 건너가는 동선은 Console 안에 있다 — 트레이는 그 일을 두 번째 자리에서 제공하지 않는다.
+    expect(template.map((item) => item.label).filter(Boolean)).toEqual(["Show Fleet Console", "Zoom In", "Zoom Out", "Actual Size", "Reload Console", "Check for Updates", "Update to 1.2.4\u2026", "Diagnostics", "Quit"]);
+    expect(template.slice(2, 6).map((item) => item.accelerator)).toEqual(["Ctrl+=", "Ctrl+-", "Ctrl+0", "Ctrl+R"]);
+    expect(template.slice(2, 6).every((item) => item.enabled === false)).toBe(true);
+    template[5]!.click?.();
     expect(reloadConsole).not.toHaveBeenCalled();
 
     consoleReady = true;
-    remoteActive = true;
-    configureTray(tray as never, menu as never, { show, quit, diagnostics, zoomIn, zoomOut, actualSize, reloadConsole, connectRuntime, backToLocal, consoleReady: () => consoleReady, isRemoteActive: () => remoteActive, updates });
+    configureTray(tray as never, menu as never, { show, quit, diagnostics, zoomIn, zoomOut, actualSize, reloadConsole, consoleReady: () => consoleReady, updates });
     const enabledTemplate = menu.buildFromTemplate.mock.calls[1]![0] as typeof template;
-    expect(enabledTemplate.slice(4, 8).every((item) => item.enabled === true)).toBe(true);
-    expect(enabledTemplate[1]?.enabled).toBe(true);
-    expect(enabledTemplate[2]?.enabled).toBe(true);
-    enabledTemplate[1]!.click?.();
+    expect(enabledTemplate.slice(2, 6).every((item) => item.enabled === true)).toBe(true);
     enabledTemplate[2]!.click?.();
+    enabledTemplate[3]!.click?.();
     enabledTemplate[4]!.click?.();
     enabledTemplate[5]!.click?.();
-    enabledTemplate[6]!.click?.();
     enabledTemplate[7]!.click?.();
-    enabledTemplate[9]!.click?.();
+    enabledTemplate[8]!.click?.();
     enabledTemplate[10]!.click?.();
-    enabledTemplate[12]!.click?.();
-    expect(connectRuntime).toHaveBeenCalledOnce();
-    expect(backToLocal).toHaveBeenCalledOnce();
     expect(zoomIn).toHaveBeenCalledOnce();
     expect(zoomOut).toHaveBeenCalledOnce();
     expect(actualSize).toHaveBeenCalledOnce();

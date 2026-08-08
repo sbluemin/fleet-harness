@@ -52,9 +52,8 @@ export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: Anal
   const inFlightStartDeletionMarkers = new Set<InFlightStartDeletionMarker>();
 
   registerRouter(ctx, "analysis", async ({ req, res, pathname }) => {
-    // The socket's bound local port is the only trustworthy expected Host port.
-    const localPort = req.socket.localPort;
-    if (!localPort || !ctx.host.security.validateHost(req, localPort) || !ctx.host.security.isTerminalAuthorized(req)) {
+    // 어느 리스너의 Host 경계인지는 호스트만 안다.
+    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) {
       writeError(ctx, res, 403, ANALYSIS_ERROR_CODES.catalogInvalid, "Analysis request is not accepted by this host.");
       return true;
     }

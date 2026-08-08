@@ -1,6 +1,6 @@
 import { ApiError } from "./api.js";
 import { normalizeUiFont } from "./ui-font.js";
-import type { ConsoleLanguagePreference, GlobalSettingsMutationResult, GlobalSettingsState } from "./types.js";
+import type { ConsoleLanguagePreference, GlobalSettingsMutationResult, GlobalSettingsState, RemoteAccessClass, RemoteAccessInterface, RemoteAccessLink, RemoteAccessLinkSummary, RemoteAccessSessionSummary, RemoteAccessState, RemoteAccessStatus } from "./types.js";
 
 export async function fetchGlobalSettingsState(signal?: AbortSignal): Promise<GlobalSettingsState> {
   const response = await fetch("/api/v1/settings/global", { signal });
@@ -21,6 +21,68 @@ export async function updateGlobalSettings(patch: Partial<GlobalSettingsState>, 
     throw new ApiError(response.status, "Invalid global settings mutation response");
   }
   return { state: assertGlobalSettingsState(payload.state, response.status) };
+}
+
+export async function fetchRemoteAccessStatus(signal?: AbortSignal): Promise<RemoteAccessStatus> {
+  const response = await fetch("/api/v1/access-links", { signal });
+  await assertOk(response);
+  const payload = await response.json() as Partial<RemoteAccessStatus>;
+  if (typeof payload?.listening !== "boolean") throw new ApiError(response.status, "Invalid remote access status response");
+  return {
+    listening: payload.listening,
+    origin: typeof payload.origin === "string" ? payload.origin : null,
+    fingerprint: typeof payload.fingerprint === "string" ? payload.fingerprint : null,
+    lastError: typeof payload.lastError === "string" ? payload.lastError : null,
+    links: Array.isArray(payload.links) ? payload.links.filter(isLinkSummary) : [],
+    sessions: Array.isArray(payload.sessions) ? payload.sessions.filter(isSessionSummary) : [],
+    interfaces: Array.isArray(payload.interfaces) ? payload.interfaces.filter(isInterfaceCandidate) : [],
+  };
+}
+
+export async function revokeRemoteAccessLink(id: string, signal?: AbortSignal): Promise<void> {
+  await assertRevoked(await fetch(`/api/v1/access-links/${encodeURIComponent(id)}`, { method: "DELETE", signal }));
+}
+
+export async function revokeRemoteAccessSession(handle: string, signal?: AbortSignal): Promise<void> {
+  await assertRevoked(await fetch(`/api/v1/access-sessions/${encodeURIComponent(handle)}`, { method: "DELETE", signal }));
+}
+
+/**
+ * 이미 사라진 자격의 회수는 실패가 아니다 — 목록이 낡았을 뿐이고, 사용자가 원한 상태는
+ * 이미 참이다. 404를 오류로 띄우면 "안 없어졌다"는 반대 인상을 준다.
+ */
+async function assertRevoked(response: Response): Promise<void> {
+  if (response.status === 404) return;
+  await assertOk(response);
+}
+
+export async function rotateRemoteIdentity(signal?: AbortSignal): Promise<void> {
+  await assertOk(await fetch("/api/v1/remote-identity/rotations", { method: "POST", signal }));
+}
+
+function isLinkSummary(value: unknown): value is RemoteAccessLinkSummary {
+  const entry = value as Partial<RemoteAccessLinkSummary> | null;
+  return Boolean(entry) && typeof entry?.id === "string" && typeof entry.issuedAt === "number" && typeof entry.expiresAt === "number";
+}
+
+function isInterfaceCandidate(value: unknown): value is RemoteAccessInterface {
+  const entry = value as Partial<RemoteAccessInterface> | null;
+  return Boolean(entry) && (entry?.kind === "tailscale" || entry?.kind === "local") && typeof entry.label === "string" && typeof entry.address === "string";
+}
+
+function isSessionSummary(value: unknown): value is RemoteAccessSessionSummary {
+  const entry = value as Partial<RemoteAccessSessionSummary> | null;
+  return Boolean(entry) && typeof entry?.handle === "string" && typeof entry.openedAt === "number" && typeof entry.expiresAt === "number" && typeof entry.lastSeenAt === "number";
+}
+
+export async function createRemoteAccessLink(access: RemoteAccessClass, signal?: AbortSignal): Promise<RemoteAccessLink> {
+  const response = await fetch(`/api/v1/access-links?access=${access}`, { method: "POST", signal });
+  await assertOk(response);
+  const payload = await response.json() as Partial<RemoteAccessLink>;
+  if (typeof payload?.link !== "string" || typeof payload.expiresAt !== "number" || typeof payload.fingerprint !== "string") {
+    throw new ApiError(response.status, "Invalid remote access link response");
+  }
+  return { id: String(payload.id ?? ""), link: payload.link, access: payload.access === "monitoring" ? "monitoring" : "full", expiresAt: payload.expiresAt, fingerprint: payload.fingerprint };
 }
 
 async function assertOk(response: Response): Promise<void> {
@@ -45,12 +107,14 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     || (payload.theme !== "instrument" && payload.theme !== "maritime" && payload.theme !== "carbon"
       && payload.theme !== "whites")
     || !isConsoleLanguagePreference(payload.language)
+    || !isRemoteAccessState(payload.remoteAccess)
   ) {
     throw new ApiError(status, "Invalid global settings state response");
   }
   return {
     consolePortMode: payload.consolePortMode,
     consoleStaticPort: payload.consoleStaticPort,
+    remoteAccess: payload.remoteAccess,
     seenFeatureTours: payload.seenFeatureTours,
     theme: payload.theme,
     uiFont: normalizeUiFont(payload.uiFont),
@@ -60,6 +124,12 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
 
 function isValidConsoleStaticPort(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1024 && value <= 65535;
+}
+
+function isRemoteAccessState(value: unknown): value is RemoteAccessState {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Partial<RemoteAccessState>;
+  return typeof entry.enabled === "boolean" && (entry.bindHost === null || typeof entry.bindHost === "string");
 }
 
 function isConsoleLanguagePreference(value: unknown): value is ConsoleLanguagePreference {

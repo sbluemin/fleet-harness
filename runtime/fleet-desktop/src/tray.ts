@@ -11,10 +11,7 @@ export interface TrayActions {
   readonly zoomOut: () => void;
   readonly actualSize: () => void;
   readonly reloadConsole: () => void;
-  readonly connectRuntime: () => void;
-  readonly backToLocal: () => void;
   readonly consoleReady: () => boolean;
-  readonly isRemoteActive: () => boolean;
   readonly updates: UpdateController;
 }
 
@@ -35,8 +32,6 @@ export function shouldConfigureTray(platform: NodeJS.Platform): boolean {
 export function configureTray(tray: Tray, MenuCtor: typeof Menu, actions: TrayActions): void {
   tray.setContextMenu(MenuCtor.buildFromTemplate([
     { label: "Show Fleet Console", click: actions.show },
-    { label: "Connect to Runtime…", enabled: actions.consoleReady(), click: () => { if (actions.consoleReady()) actions.connectRuntime(); } },
-    { label: "Back to Local Runtime", enabled: canReturnToLocal(actions), click: () => { if (canReturnToLocal(actions)) actions.backToLocal(); } },
     { type: "separator" },
     consoleAction("Zoom In", "Ctrl+=", actions.zoomIn, actions),
     consoleAction("Zoom Out", "Ctrl+-", actions.zoomOut, actions),
@@ -50,8 +45,6 @@ export function configureTray(tray: Tray, MenuCtor: typeof Menu, actions: TrayAc
     { label: "Quit", click: actions.quit },
   ]));
 }
-
-function canReturnToLocal(actions: TrayActions): boolean { return actions.consoleReady() && actions.isRemoteActive(); }
 
 function consoleAction(label: string, accelerator: string, action: () => void, actions: TrayActions): { label: string; accelerator: string; enabled: boolean; click: () => void } {
   return {

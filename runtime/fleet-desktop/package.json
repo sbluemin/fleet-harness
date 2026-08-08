@@ -14,7 +14,6 @@
     "build": "tsup && node scripts/copy-entry-assets.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "test:remote-live": "node scripts/remote-live-test.mjs",
     "package:dir": "pnpm build && electron-builder --dir --publish never",
     "package:unsigned": "pnpm build && electron-builder --publish never",
     "prepackage:release": "node scripts/verify-packaged-app.mjs --preflight",

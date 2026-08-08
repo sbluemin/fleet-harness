@@ -64,6 +64,8 @@ export interface ConsoleAgentCliMetadata {
 export type ConsoleObserverWikiServerStatus = "available" | "unavailable" | "unknown";
 
 export interface ConsoleObserverStatus {
+  /** 이 콘솔이 스스로를 부르는 이름. 액세스 링크의 label과 같은 값이라 양쪽에서 같게 읽힌다. */
+  readonly name: string;
   readonly workspaces: number;
   readonly version: string;
   readonly channel: "stable" | "local" | "unknown";
@@ -257,10 +259,16 @@ export interface ConsoleOperationResponse {
 // 브라우저로 나가는 General 설정 DTO. console-settings.ts의 ConsoleSettingsData에서
 // 내부 격리 키(version)를 제외하고 flat으로 변환해 표면화한다.
 
+export interface RemoteAccessState {
+  readonly enabled: boolean;
+  readonly bindHost: string | null;
+}
+
 export interface GlobalSettingsState {
   readonly consolePortMode: "dynamic" | "static";
   readonly consoleStaticPort: number | null;
   readonly language: "auto" | "en" | "ko";
+  readonly remoteAccess: RemoteAccessState;
   readonly seenFeatureTours: readonly string[];
   readonly theme: ConsoleThemeId;
   readonly uiFont: UiFontSettings;

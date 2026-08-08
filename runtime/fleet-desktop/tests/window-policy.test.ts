@@ -44,7 +44,7 @@ describe("secure window policy", () => {
     const rejected = vi.fn();
     (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault: rejected }, "http://localhost:4310/console/");
     expect(rejected).toHaveBeenCalledOnce();
-    expect(() => policy.activateConsoleOrigin("https://fleet.example")).toThrow("window_policy_console_origin_not_loopback");
+    expect(() => policy.activateConsoleOrigin("https://fleet.example")).toThrow("window_policy_console_origin_not_admitted");
   });
 
   it("allows a pending target only until a transactional pairing commits it", () => {

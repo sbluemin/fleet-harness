@@ -17,13 +17,55 @@ export type UiFontSettings =
   | { readonly source: "builtin"; readonly id: ConsoleUiFontId; readonly size: number }
   | { readonly source: "system"; readonly familyName: string; readonly size: number };
 
+/**
+ * 원격 접속은 기본으로 꺼져 있다. 켜질 때 사용자가 고른 바인드 주소는 구성 리터럴로만
+ * 취급되며, 요청 Host나 DNS에서 유도되지 않는다 — 그래야 Host 검사가 rebinding 경계로 남는다.
+ */
+export interface ConsoleRemoteAccessSettings {
+  readonly enabled?: boolean;
+  readonly bindHost?: string;
+}
+
 export interface ConsoleGeneralSettings {
   readonly consolePortMode?: "dynamic" | "static";
   readonly consoleStaticPort?: number;
   readonly language?: "auto" | "en" | "ko";
+  readonly remoteAccess?: ConsoleRemoteAccessSettings;
   readonly seenFeatureTours?: readonly string[];
   readonly theme?: ConsoleThemeId;
   readonly uiFont?: UiFontSettings;
+}
+
+/** 바인드 주소는 IPv4 리터럴이거나 단순 호스트명만 허용한다. */
+const REMOTE_BIND_HOST = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[A-Za-z0-9](?:[A-Za-z0-9._-]{0,252}[A-Za-z0-9])?)$/u;
+
+export function sanitizeRemoteAccessSettings(value: unknown): ConsoleRemoteAccessSettings | undefined {
+  if (!isRecord(value)) return undefined;
+  const enabled = typeof value.enabled === "boolean" ? value.enabled : undefined;
+  const bindHost = isValidRemoteBindHost(value.bindHost) ? canonicalizeRemoteBindHost(value.bindHost) : undefined;
+  if (enabled === undefined && bindHost === undefined) return undefined;
+  return { ...(enabled !== undefined ? { enabled } : {}), ...(bindHost !== undefined ? { bindHost } : {}) };
+}
+
+/**
+ * 원격 리스너는 루프백과 **같은 포트**를 다른 인터페이스에 바인드한다. 그래서 와일드카드는
+ * 값으로 성립하지 않는다 — `0.0.0.0:<port>`는 이미 `127.0.0.1:<port>`가 잡고 있어 반드시
+ * EADDRINUSE로 끝나고, 사용자는 "다른 프로그램이 쓰고 있다"는 오해를 사는 오류만 받는다.
+ */
+const UNUSABLE_REMOTE_BIND_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "0.0.0.0"]);
+
+/**
+ * DNS 이름은 대소문자를 가리지 않지만 `validateHost`는 Host 헤더를 바이트로 비교하고, 브라우저와
+ * Chromium은 URL 호스트명을 소문자로 정규화해 보낸다. 저장된 이름에 대문자가 남아 있으면 리스너와
+ * 인증서는 멀쩡한데 모든 요청이 403이다 — 조인까지 포함해서. 그래서 경계에서 한 번 접어 둔다.
+ */
+export function canonicalizeRemoteBindHost(value: string): string {
+  return value.toLowerCase();
+}
+
+export function isValidRemoteBindHost(value: unknown): value is string {
+  // 루프백은 원격 바인드가 아니다. 이 자리에 넣으면 원격 세션 규칙이 로컬 표면에 적용된다.
+  return typeof value === "string" && REMOTE_BIND_HOST.test(value) && !UNUSABLE_REMOTE_BIND_HOSTS.has(value);
 }
 
 export interface ConsoleSettingsData {
@@ -122,6 +164,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const language = value.language === "auto" || value.language === "en" || value.language === "ko"
     ? value.language
     : undefined;
+  const remoteAccess = sanitizeRemoteAccessSettings(value.remoteAccess);
   const seenFeatureTours = sanitizeSeenFeatureTours(value.seenFeatureTours);
   // 퇴역 라이트 테마(daywatch/drydock) 저장값은 whites로 무손실 폴백한다 — 라이트 사용자가
   // 업그레이드 직후 다크 기본값으로 떨어지는 극성 반전을 막는다.
@@ -136,6 +179,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(consolePortMode !== undefined ? { consolePortMode } : {}),
     ...(consoleStaticPort !== undefined ? { consoleStaticPort } : {}),
     ...(language !== undefined ? { language } : {}),
+    ...(remoteAccess !== undefined ? { remoteAccess } : {}),
     ...(seenFeatureTours !== undefined ? { seenFeatureTours } : {}),
     ...(theme !== undefined ? { theme } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
@@ -179,6 +223,11 @@ interface GlobalSettingsRouteDeps {
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
   readonly onThemeChanged?: (theme: ConsoleThemeId) => void;
+  /**
+   * 저장 직후 살아 있는 리스너를 설정에 맞춘다 — 켜자마자 링크를 만들 수 있어야 한다.
+   * 전환이 끝나기 전에 응답하면 저장 직후의 상태 조회가 항상 "꺼짐"을 읽는다.
+   */
+  readonly onRemoteAccessChanged?: () => void | Promise<void>;
 }
 
 interface GlobalSettingsRouteContext {
@@ -191,6 +240,7 @@ interface GlobalSettingsBody {
   readonly consolePortMode?: unknown;
   readonly consoleStaticPort?: unknown;
   readonly language?: unknown;
+  readonly remoteAccess?: unknown;
   readonly seenFeatureTours?: unknown;
   readonly theme?: unknown;
   readonly uiFont?: unknown;
@@ -269,6 +319,11 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_language" });
     return;
   }
+  // 읽기가 쓰기보다 느슨하면 GET 정규형을 그대로 PUT으로 돌려보낼 때 섹션 저장이 통째로 잠긴다.
+  if (body.remoteAccess !== undefined && !isValidRemoteAccessInput(body.remoteAccess)) {
+    deps.writeJson(res, 400, { error: "invalid_remote_access" });
+    return;
+  }
   if (body.seenFeatureTours !== undefined && !isSeenFeatureToursInput(body.seenFeatureTours)) {
     deps.writeJson(res, 400, { error: "invalid_seen_feature_tours" });
     return;
@@ -297,6 +352,7 @@ async function mutateGlobalSettings(
       ...(body.consolePortMode === "dynamic" || body.consolePortMode === "static" ? { consolePortMode: body.consolePortMode } : {}),
       ...(isValidGlobalStaticPortInput(body.consoleStaticPort) ? { consoleStaticPort: body.consoleStaticPort } : {}),
       ...(body.language === "auto" || body.language === "en" || body.language === "ko" ? { language: body.language } : {}),
+      ...(body.remoteAccess !== undefined ? { remoteAccess: normalizeRemoteAccessInput(body.remoteAccess) } : {}),
       ...(body.seenFeatureTours !== undefined ? { seenFeatureTours: sanitizeSeenFeatureTours(body.seenFeatureTours) ?? [] } : {}),
       ...(theme !== undefined ? { theme } : {}),
       ...(isUiFontSettings(body.uiFont) ? { uiFont: body.uiFont } : {}),
@@ -304,8 +360,24 @@ async function mutateGlobalSettings(
     plugins: current.plugins,
   }));
   if (theme !== undefined) deps.onThemeChanged?.(theme);
+  if (body.remoteAccess !== undefined) await deps.onRemoteAccessChanged?.();
   const response: GlobalSettingsMutationResult = { state: toGlobalSettingsState(updated) };
   deps.writeJson(res, 200, response);
+}
+
+/** GET 정규형은 bindHost를 null로 돌려주므로 PUT도 null을 받아들여야 왕복이 성립한다. */
+function isValidRemoteAccessInput(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (value.enabled !== undefined && typeof value.enabled !== "boolean") return false;
+  if (value.bindHost !== undefined && value.bindHost !== null && !isValidRemoteBindHost(value.bindHost)) return false;
+  // 원격을 켜려면 바인드 주소가 있어야 한다 — 주소 없이 켜면 리스너가 열릴 곳이 없다.
+  return value.enabled !== true || isValidRemoteBindHost(value.bindHost);
+}
+
+function normalizeRemoteAccessInput(value: unknown): ConsoleRemoteAccessSettings {
+  const record = isRecord(value) ? value : {};
+  const enabled = typeof record.enabled === "boolean" ? record.enabled : false;
+  return { enabled, ...(isValidRemoteBindHost(record.bindHost) ? { bindHost: record.bindHost } : {}) };
 }
 
 function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
@@ -314,6 +386,7 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     consolePortMode: general.consolePortMode ?? "dynamic",
     consoleStaticPort: general.consoleStaticPort ?? null,
     language: general.language ?? "auto",
+    remoteAccess: { enabled: general.remoteAccess?.enabled ?? false, bindHost: general.remoteAccess?.bindHost ?? null },
     seenFeatureTours: general.seenFeatureTours ?? [],
     theme: general.theme ?? "instrument",
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,

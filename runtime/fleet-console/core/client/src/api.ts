@@ -365,6 +365,7 @@ function assertObserverStatus(value: unknown, status: number): ObserverStatus {
   const payload = value as Partial<ObserverStatus>;
   if (
     !payload
+    || typeof payload.name !== "string"
     || typeof payload.workspaces !== "number"
     || typeof payload.version !== "string"
     || (payload.channel !== "stable" && payload.channel !== "local" && payload.channel !== "unknown")
@@ -379,6 +380,7 @@ function assertObserverStatus(value: unknown, status: number): ObserverStatus {
     throw new ApiError(status, "Invalid status response");
   }
   return {
+    name: payload.name,
     workspaces: payload.workspaces,
     version: payload.version,
     channel: payload.channel,

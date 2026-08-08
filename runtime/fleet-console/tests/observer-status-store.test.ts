@@ -5,6 +5,7 @@ import type { ObserverStatus } from "../core/client/src/types.js";
 
 function status(channel: ObserverStatus["channel"]): ObserverStatus {
   return {
+    name: "test-console",
     workspaces: 0,
     version: "1.0.0",
     channel,
