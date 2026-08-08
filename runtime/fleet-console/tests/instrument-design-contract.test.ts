@@ -939,6 +939,7 @@ describe("Instrument core design contract", () => {
       ".control-curtain-card",
       ".control-reclaimed-card",
       ".directory-browser-card",
+      ".add-host-card",
       ".codex-reading-sheet",
       ".app-toast",
       ".command-band-system-menu",
@@ -1444,6 +1445,32 @@ describe("Instrument core design contract", () => {
     // 메뉴 조상 관계가 올바라야 menuitem이 유효하다. dialog로 되돌아가면 ARIA가 깨진다.
     expect(contextMenu).toContain('role="menu"');
     expect(contextMenu).not.toContain('role="dialog"');
+  });
+
+  it("keeps the access-link entry in the host box and out of Settings", () => {
+    const systemCluster = source("components/command-band-system-cluster.tsx");
+    const settings = source("pages/global-settings.tsx");
+    const dialog = source("components/add-host-dialog.tsx");
+
+    // 추가는 관리보다 위에 선다 — 목록을 고르러 온 사람이 먼저 만나는 것은 새 콘솔을 붙이는 일이다.
+    const addAt = systemCluster.indexOf('t("chrome.hosts.add")');
+    const manageAt = systemCluster.indexOf('t("chrome.hosts.manage")');
+    expect(addAt).toBeGreaterThan(-1);
+    expect(manageAt).toBeGreaterThan(addAt);
+
+    // 입력 화면은 팝업 하나가 소유한다. 설정에 두 번째 폼이 생기면 오류 문장과 검증이 갈라진다.
+    // (.remote-link-field는 발급된 액세스 링크를 **보여 주는** 자리에도 쓰이므로 클래스로 판정하지
+    //  않는다 — 판정은 링크를 받는 입력 자체, 즉 그 placeholder와 POST 호출로 한다.)
+    expect(settings).toContain("<AddHostDialog");
+    expect(settings).not.toContain("settings.remote.hosts.addPlaceholder");
+    expect(settings).not.toContain("addRemoteHost");
+    expect(dialog).toContain("settings.remote.hosts.addPlaceholder");
+    expect(dialog).toContain("addRemoteHost");
+
+    // 포털이 아니면 팝업이 자기 자신을 inert로 만든다(control-curtain과 같은 계약).
+    expect(dialog).toContain("createPortal");
+    expect(dialog).toContain('aria-modal="true"');
+    expect(dialog).toContain("shell.inert = true");
   });
 
   it("keeps the v4 navigation, Theater, map, CLI, and rail visual producers", () => {
