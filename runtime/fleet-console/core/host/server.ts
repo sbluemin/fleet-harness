@@ -393,10 +393,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const folderGrants = createFolderGrantStore();
   const infraServices = createInfraServices();
   // channel은 createConsoleDataPaths가 release SSoT로 자체 감지한다(hook 서브프로세스·fallback과 동일 경로).
-  // 플러그인 fleet 루트: 명시 dataDir → FLEET_CONSOLE_DIR 격리 슬롯 → fleet 전역(~/.fleet).
-  // Fleet 데이터 루트는 fleet-cli와 공유하는 전역 상태라 채널 분기는 적용하지 않되,
-  // 명시 격리 오버라이드만은 durable state와 함께 이동해야 실사용자 store 오염을 막는다.
-  const fleetDataDir = deps.dataDir ?? process.env.FLEET_CONSOLE_DIR ?? getFleetDataDir();
+  // 플러그인 fleet 루트: 명시 dataDir → (FLEET_DATA_DIR 부재 시) 콘솔 슬롯 override → getFleetDataDir.
+  // Fleet 데이터 루트는 fleet-cli·Desktop과 공유하는 전역 상태라 채널 분기는 적용하지 않는다.
+  //
+  // FLEET_DATA_DIR이 루트의 정식 소유자다(getFleetDataDir이 읽는다). 콘솔 슬롯 override를 루트로
+  // 승격시키는 아래 폴백은 그 변수가 없던 시절의 하위호환 경로다 — 콘솔 슬롯만 지정하고 격리를
+  // 기대하던 실행이 조용히 실사용자 루트로 돌아가지 않게 남겨 둔다. 루트가 명시되면 슬롯은
+  // 슬롯일 뿐이므로 루트를 참칭해서는 안 된다.
+  const consoleSlotOverride = process.env.FLEET_CONSOLE_DATA_DIR ?? process.env.FLEET_CONSOLE_DIR;
+  const fleetDataDir = deps.dataDir
+    ?? (process.env.FLEET_DATA_DIR === undefined ? consoleSlotOverride : undefined)
+    ?? getFleetDataDir();
   const durablePaths = createConsoleDataPaths({ fleetDataDir: deps.dataDir });
   const durableStateStore = createConsoleDurableStateStore({ paths: durablePaths });
   const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });

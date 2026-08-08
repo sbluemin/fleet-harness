@@ -41,7 +41,7 @@ sidecar. Setting them on the spawned agent CLI is too late.
 
 ```bash
 env -u CLAUDE_CODE_CHILD_SESSION \
-  FLEET_CONSOLE_DIR=<e2e-dir> \
+  FLEET_CONSOLE_DATA_DIR=<e2e-dir> \
   FLEET_GATEWAY_WIRE_LOG=<scratch>/wire.jsonl \
   FLEET_AI_GATEWAY_MODEL='claude-gateway--opencode--deepseek-v4-flash[1m]' \
   node /abs/path/to/worktree/runtime/fleet-console/dist/cli.mjs serve
@@ -56,7 +56,7 @@ env -u CLAUDE_CODE_CHILD_SESSION \
   root from the settings file above — and ignores the variable, off writes nothing at all,
   and only an *unset* toggle falls through to the path you named
   (`applyWireLog` in `runtime/fleet-plugins/terminal/routes.ts`). A fresh
-  `FLEET_CONSOLE_DIR` has no stored value, which is why the variable works there — until
+  `FLEET_CONSOLE_DATA_DIR` has no stored value, which is why the variable works there — until
   someone touches the toggle. The file appears on the first gateway call, not at boot.
 - `FLEET_AI_GATEWAY_MODEL` — pins every request to one model whatever the client asked for
   (`packages/core-ai-gateway/src/gateway-router/router.ts`). Use the roster id verbatim,
@@ -67,8 +67,10 @@ env -u CLAUDE_CODE_CHILD_SESSION \
 
 `/model` lists a gateway entry — labelled `From gateway` — only for models the Console was
 told to expose, and that list is **isolated per runtime directory**: it lives at
-`<fleet-data-dir>/ai-gateway.json`, which under `FLEET_CONSOLE_DIR=<e2e-dir>` resolves to
-`<e2e-dir>/ai-gateway.json` — measured, not inferred. (The store also takes a `legacyDir`
+`<fleet-data-dir>/ai-gateway.json`, which under `FLEET_CONSOLE_DATA_DIR=<e2e-dir>` resolves to
+`<e2e-dir>/ai-gateway.json` — measured, not inferred. That promotion of the Console slot to
+the Fleet root only happens while `FLEET_DATA_DIR` is unset; set the root explicitly and the
+file follows the root instead, leaving the Console slot to state and locks alone. (The store also takes a `legacyDir`
 pointing at the plugin data directory, but that is a one-time migration source, never where
 current settings are written.) A fresh runtime directory has no such file, so the picker
 shows only the Claude entries and it reads as though gateway models were unsupported. They

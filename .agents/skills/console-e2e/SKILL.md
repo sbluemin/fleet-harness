@@ -40,8 +40,10 @@ Never restart or reuse an unknown Console daemon. Build the requested source, ch
 export PATH="<pnpm-bin>:$PATH"
 pnpm --filter @dotobokuri/fleet-console build
 E2E_DIR="${E2E_DIR:-/tmp/fleet-console-e2e-$$}"
-FLEET_CONSOLE_DIR="$E2E_DIR" node runtime/fleet-console/dist/cli.mjs serve
+FLEET_CONSOLE_DATA_DIR="$E2E_DIR" node runtime/fleet-console/dist/cli.mjs serve
 ```
+
+`FLEET_CONSOLE_DATA_DIR` isolates this Console's durable state, lock, and gateway selection while the run still reads the user's real credentials at `~/.fleet/auth.json` — which is what a scenario needing a logged-in Agent CLI depends on. Add `FLEET_DATA_DIR="$E2E_DIR/root"` only when the scenario must also start without credentials, installed plugins, or workspace knowledge; it isolates the whole Fleet root. (`FLEET_CONSOLE_DIR` is the former name of `FLEET_CONSOLE_DATA_DIR` and still works.)
 
 Run the server as a background/managed process and wait for `$E2E_DIR/console.lock`. Read `port` and `token` locally, but never print the token. Confirm the route returns `200`. Seed a real Theater through the Console folder UI or authorized API only when the scenario needs it; do not copy the user's durable state.
 
@@ -127,7 +129,7 @@ ab --session fleet-console-e2e-20260725-a7c3 reload
 ab --session fleet-console-e2e-20260725-a7c3 wait --load domcontentloaded
 ab --session fleet-console-e2e-20260725-a7c3 screenshot /tmp/fleet-console-e2e.png
 node .agents/skills/console-e2e/scripts/close-owned-session.mjs fleet-console-e2e-20260725-a7c3
-FLEET_CONSOLE_DIR="$E2E_DIR" node runtime/fleet-console/dist/cli.mjs stop
+FLEET_CONSOLE_DATA_DIR="$E2E_DIR" node runtime/fleet-console/dist/cli.mjs stop
 ```
 
 Once the first `open` is attempted, invoke `close-owned-session.mjs` on every success and error path before reporting. The helper closes only the exact owned session and polls until both the session and its recorded PID disappear; treat cleanup as successful only when the helper verifies it, not from the raw CLI close exit code.

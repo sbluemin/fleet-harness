@@ -34,6 +34,15 @@ describe("createConsolePaths", () => {
     expect(local.lockFile).toBe(path.join(overrideDir, "console.lock"));
     expect(stable.lockFile).toBe(path.join(overrideDir, "console.lock"));
   });
+
+  it("lets the current FLEET_CONSOLE_DATA_DIR name win over its former name", () => {
+    const currentDir = path.join(os.tmpdir(), "fleet-console-current");
+    const formerDir = path.join(os.tmpdir(), "fleet-console-former");
+    const env = { FLEET_CONSOLE_DATA_DIR: currentDir, FLEET_CONSOLE_DIR: formerDir } as NodeJS.ProcessEnv;
+
+    expect(createConsolePaths({ channel: "local", env, uid: TEST_UID }).dir).toBe(currentDir);
+    expect(createConsoleDataPaths({ channel: "local", env }).dir).toBe(currentDir);
+  });
 });
 
 describe("createConsoleDataPaths", () => {
