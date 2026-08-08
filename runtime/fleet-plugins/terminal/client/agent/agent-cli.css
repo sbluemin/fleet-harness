@@ -440,6 +440,9 @@
 .ai-gateway-effort {
   display: inline-flex;
   align-items: center;
+  /* 사다리는 다섯 칸까지 자라고 이 카드는 좁은 폭까지 따라 내려간다. 한 줄을 고집하면
+     오른쪽 단계가 카드 밖으로 나가 눌리지 않으므로, 넘칠 때는 감춰지지 않고 접힌다. */
+  flex-wrap: wrap;
   gap: 2px;
   padding: 2px;
   border: 1px solid color-mix(in oklch, var(--surface-rim) 90%, transparent);

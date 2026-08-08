@@ -660,6 +660,10 @@ describe("Instrument core design contract", () => {
     const shell = css.match(/^\.ai-gateway-effort \{[^}]*\}/m)?.[0] ?? "";
     expect(shell).toContain("border-radius: var(--radius-pill);");
     expect(shell).toMatch(/border: 1px solid color-mix\(in oklch, var\(--surface-rim\) \d+%, transparent\);/);
+    // 다섯 칸 사다리는 좁은 설정 카드보다 넓어진다. 한 줄을 고집하거나 넘침을 잘라내면
+    // 오른쪽 단계가 카드 밖에서 눌리지 않으므로, 접히기만 하고 감춰지지는 않아야 한다.
+    expect(shell).toContain("flex-wrap: wrap;");
+    expect(shell).not.toContain("overflow: hidden;");
 
     // 켜진 단계는 사다리 위의 위치이지 Operation 상태가 아니다 — 신호색을 빌리면 같은 카드의
     // 활동 축과 충돌하므로, 코어 segmented와 같은 brass 워시+brass ink+inset 링만 쓴다.
