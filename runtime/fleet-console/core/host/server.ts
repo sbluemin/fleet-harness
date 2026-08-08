@@ -1313,7 +1313,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
      */
     const pending = access.peekGrant(token, listener.audience);
     if (pending !== null && !canTakeControl(listener.audience, pending.access)) return { status: 409, error: "remote_control_held" };
-    // 상한에 걸린 조인도 grant를 태우지 않는다 — 자리를 비운 뒤 같은 링크로 다시 시도할 수 있어야 한다.
+    /**
+     * 상한에 걸린 조인은 grant를 태우지 않는다 — 자리를 비운 뒤 같은 링크가 아직 통해야 한다.
+     * 다만 되살아나는 것은 링크 문자열뿐이다. 셸이 들고 있던 자격은 handoff가 한 번만 넘기므로,
+     * 목록에서 그 콘솔을 다시 여는 길로는 돌아올 수 없고 링크를 다시 붙여넣어야 한다.
+     */
     if (pending !== null && listener.audience === "remote" && pairedDeviceStore.list("remote").length >= PAIRED_DEVICE_LIMIT) {
       return { status: 409, error: "paired_device_limit" };
     }

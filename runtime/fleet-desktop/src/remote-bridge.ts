@@ -258,8 +258,13 @@ function describe(code: string): string {
     // 자격이 나빠서가 아니라 자리가 차 있어서 거절된 경우다. "다시 받아라"로 안내하면 링크를
     // 새로 받아도 같은 거절이 돌아온다 — 기다리거나 물러나 달라고 말해야 한다.
     case "remote_link_control_held": return "Another device already has control of that console. Ask them to hand it back, then try again.";
-    // 자리를 기다리는 문제가 아니다 — 그 콘솔이 기억할 수 있는 기기가 다 찼으므로 하나를 지워야 한다.
-    case "remote_link_device_limit": return "That console has paired as many devices as it can hold. Remove one there, then try again.";
+    /*
+      자리를 기다리는 문제가 아니다 — 그 콘솔이 기억할 수 있는 기기가 다 찼으므로 하나를 지워야 한다.
+      "다시 시도"로 끝내면 지키지 못할 약속이 된다: 링크의 자격은 handoff가 한 번만 넘기므로,
+      목록에서 이 콘솔을 다시 열어도 보낼 것이 없다. 서버가 이 거절에서 grant를 태우지 않았으니
+      아직 유효한 링크 문자열을 다시 붙여넣는 길만 실제로 열려 있다.
+    */
+    case "remote_link_device_limit": return "That console has paired as many devices as it can hold. Remove one there, then paste the access link again.";
     case "remote_host_session_expired": return "That console no longer recognises this device. Ask for a fresh access link.";
     case "remote_link_host_mismatch": return "That console refused the link as meant for a different address.";
     case "remote_host_is_self": return "That link points back at this console.";
