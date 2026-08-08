@@ -18,14 +18,22 @@ import { createPublishedFleetConsoleManifest } from "./pack-fleet-console-manife
  */
 
 /**
- * 번들에 남아 있으나 게시 dependencies에 없어도 되는 지정자.
+ * 번들에 남아 있으나 게시 dependencies에 없는 지정자. 통과시키되, 통과의 근거는 "게시본이
+ * 그 경로에 도달하지 않는다"가 아니라 "무엇을 잃는지 알고 있다"여야 한다 — 도달 불가를
+ * 근거로 적으면 그 주장이 틀렸을 때 게이트가 결함을 승인한 기록으로 남는다.
  *
- * esbuild는 plugin-host가 dev 환경의 .ts 로더에서만 동적 import하는 devDependency다.
- * 게시본에서 그 경로에 도달하지 않으므로 설치처에 없어도 되고, 번들에 인라인하면
- * 내부 CJS의 require("fs")가 ESM 출력에서 boot 시 throw한다(tsup.config.ts 참조).
+ * esbuild는 devDependency이고 플랫폼 바이너리가 설치본마다 10MB 규모라 게시되지 않는다.
+ * 그 대가는 실재한다: plugin-host는 `~/.fleet/plugins`를 언제나 스캔하고 `.ts`/`.tsx`
+ * 엔트리를 확장자만으로 수락하므로(plugin-host.ts:54·273·467), TypeScript 엔트리를 쓰는
+ * 외부 플러그인은 게시 설치본에서 해석에 실패해 그 플러그인만 건너뛰어진다. 게시할지
+ * TypeScript 엔트리 수락을 접을지는 배포 무게와 저작 편의를 맞바꾸는 제품 결정이라
+ * 이 게이트가 정하지 않는다 — 게이트는 현재 상태를 사실대로 기록할 뿐이다.
+ *
+ * 번들 인라인은 대안이 아니다. 내부 CJS의 require("fs")가 ESM 출력에서 boot 시 throw한다
+ * (tsup.config.ts 참조).
  */
 const ALLOWED_OMISSIONS = new Map([
-  ["esbuild", "dev 전용 .ts 로더에서만 동적 import되는 devDependency"],
+  ["esbuild", "게시되지 않는 devDependency — 게시본은 TypeScript 플러그인 엔트리를 번들하지 못한다"],
 ]);
 
 /** npm 패키지 이름의 첫 세그먼트 모양. 산문이 지정자 자리처럼 보이는 경우를 걸러낸다. */
@@ -72,9 +80,12 @@ function main() {
   }
 
   const violations = [];
+  // 행사된 예외는 통과 로그에 드러낸다 — 조용히 넘긴 예외는 "전부 게시됨"과 구분되지 않는다.
+  const exercisedOmissions = new Set();
   for (const file of files) {
     for (const { name, line } of collectExternalPackages(readFileSync(file, "utf8"))) {
-      if (published.has(name) || ALLOWED_OMISSIONS.has(name)) continue;
+      if (published.has(name)) continue;
+      if (ALLOWED_OMISSIONS.has(name)) { exercisedOmissions.add(name); continue; }
       violations.push(`${path.relative(repoRoot, file)}:${line} needs "${name}", which the published manifest does not depend on`);
     }
   }
@@ -87,6 +98,9 @@ function main() {
   }
 
   console.log(`published externals verified across ${files.length} console bundle(s).`);
+  for (const name of exercisedOmissions) {
+    console.log(`- omitted on record: ${name} — ${ALLOWED_OMISSIONS.get(name)}`);
+  }
 }
 
 /**
