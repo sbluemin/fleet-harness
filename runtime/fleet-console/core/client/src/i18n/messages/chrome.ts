@@ -89,6 +89,9 @@ export const chromeEn = {
   "chrome.quickLaunch.modelMenu": "Choose a model and reasoning effort",
   "chrome.quickLaunch.modelUnset": "Default model",
   "chrome.quickLaunch.run": "Run",
+  // 아이콘만 남은 실행 버튼의 접근 이름 — 시각 레이블이 없으므로 단축키까지 이 이름이 싣는다.
+  "chrome.quickLaunch.runWithKey": "Run (Enter)",
+  "chrome.quickLaunch.escHint": "esc to close",
   "chrome.quickLaunch.tooLong": "{over} characters over the limit",
   "chrome.quickLaunch.errorUnsafePrompt": "Remove \" & < > ( ) @ ^ | % — the Windows command shim would rewrite them",
   "chrome.quickLaunch.errorPromptUnsupported": "This Console runs a custom terminal command, which cannot carry a prompt",
@@ -345,6 +348,8 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.quickLaunch.modelMenu": "모델과 추론 강도 선택",
   "chrome.quickLaunch.modelUnset": "기본 모델",
   "chrome.quickLaunch.run": "실행",
+  "chrome.quickLaunch.runWithKey": "실행 (Enter)",
+  "chrome.quickLaunch.escHint": "esc 닫기",
   "chrome.quickLaunch.tooLong": "{over}자 초과",
   "chrome.quickLaunch.errorUnsafePrompt": "\" & < > ( ) @ ^ | % 를 지워 주세요 — Windows 명령 shim이 다시 해석합니다",
   "chrome.quickLaunch.errorPromptUnsupported": "이 Console은 사용자 지정 터미널 명령으로 실행돼 프롬프트를 실을 수 없습니다",

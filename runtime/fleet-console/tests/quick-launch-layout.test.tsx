@@ -99,6 +99,26 @@ describe("Quick Launch effort submenu layout", () => {
     expect(ruleFor(css, ".quick-launch-variant-label")).toMatch(/flex:\s*1;/u);
   });
 
+  it("keeps the send control an icon-only circle and the key hint untouchable", () => {
+    const css = readFileSync(resolve(process.cwd(), "core/client/src/styles/components.css"), "utf8");
+    const submit = ruleFor(css, ".quick-launch-submit");
+    expect(submit).toMatch(/border-radius:\s*999px/u);
+    expect(submit).toMatch(/width:\s*32px/u);
+    // 버튼 안에 또 배지를 얹으면 하나의 표면이 두 겹이 된다.
+    expect(css).not.toMatch(/\.quick-launch-submit\s+kbd/u);
+    // 힌트는 읽히되 만져지지 않는다 — 테두리나 배경을 주면 바 위에서 액션 행세를 한다.
+    const esc = ruleFor(css, ".quick-launch-esc");
+    expect(esc).not.toMatch(/border/u);
+    expect(esc).not.toMatch(/background/u);
+  });
+
+  it("names the send control for assistive tech, since it carries no visible label", () => {
+    const src = readFileSync(resolve(process.cwd(), "core/client/src/components/quick-launch.tsx"), "utf8");
+    const button = /className="quick-launch-submit"[\s\S]*?<\/button>/u.exec(src);
+    if (!button) throw new Error("Expected the submit button markup");
+    expect(button[0]).toMatch(/aria-label=\{t\("chrome\.quickLaunch\.runWithKey"\)\}/u);
+  });
+
   it("gives both launch menus the same default-model star", () => {
     // 조판을 행에서 상속시키면 mono를 쓰는 캔버스 쪽 ★가 sans를 쓰는 Quick Launch 쪽의 절반
     // 폭으로 렌더돼, 같은 뜻의 표식이 표면마다 다른 기호로 읽힌다.

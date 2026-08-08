@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
 import type { OperationCatalogPlugin, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
@@ -31,6 +31,7 @@ export function QuickLaunch() {
 
   const cardRef = useRef<HTMLElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const barRef = useRef<HTMLDivElement | null>(null);
   const theaterChipRef = useRef<HTMLButtonElement | null>(null);
   const modelChipRef = useRef<HTMLButtonElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -47,6 +48,7 @@ export function QuickLaunch() {
   // 상자 여럿이 겹쳐 잔상처럼 남는다.
   const [effortRowId, setEffortRowId] = useState<string | null>(null);
   const effortCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [popoverLeft, setPopoverLeft] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const open = state.quickLaunchOpen;
@@ -110,6 +112,21 @@ export function QuickLaunch() {
       previousFocusRef.current?.focus();
     };
   }, [open]);
+
+  // 팝오버는 자기 칩 아래에 선다. 바 기준 고정 좌표로 두면 두 칩이 같은 자리를 써서, 모델 목록이
+  // Theater 칩 아래에 열린다 — 화면이 어느 칩을 눌렀는지 부정하는 셈이다.
+  useLayoutEffect(() => {
+    if (!popover) {
+      setPopoverLeft(null);
+      return;
+    }
+    const chip = (popover === "theater" ? theaterChipRef : modelChipRef).current;
+    const bar = barRef.current;
+    if (!chip || !bar) return;
+    const width = bar.querySelector<HTMLElement>(".quick-launch-pop")?.getBoundingClientRect().width ?? 0;
+    // 칩이 오른쪽으로 밀려 있어도 팝오버는 카드 안에 머문다.
+    setPopoverLeft(Math.max(0, Math.min(chip.offsetLeft, bar.clientWidth - width - POPOVER_GAP)));
+  }, [popover]);
 
   const cancelEffortClose = useCallback(() => {
     if (effortCloseTimerRef.current === null) return;
@@ -234,7 +251,7 @@ export function QuickLaunch() {
           />
         </div>
 
-        <div className="quick-launch-bar">
+        <div className="quick-launch-bar" ref={barRef}>
           <button
             ref={theaterChipRef}
             type="button"
@@ -288,19 +305,27 @@ export function QuickLaunch() {
               )}
             </span>
           ) : null}
-          <kbd className="quick-launch-esc">esc</kbd>
+          {/* 힌트일 뿐 누를 수 있는 것이 아니다 — 테두리를 두르면 바 안에서 액션 행세를 한다. */}
+          <span className="quick-launch-esc" aria-hidden="true">{t("chrome.quickLaunch.escHint")}</span>
           <button
             type="button"
             className="quick-launch-submit"
             disabled={!canSubmit}
             onClick={submit}
+            // 시각 레이블이 없으므로 이름과 단축키를 여기서 싣는다.
+            aria-label={t("chrome.quickLaunch.runWithKey")}
+            title={t("chrome.quickLaunch.runWithKey")}
           >
-            {t("chrome.quickLaunch.run")}
-            <kbd aria-hidden="true">↵</kbd>
+            <SubmitArrowIcon />
           </button>
 
           {popover === "theater" ? (
-            <div className="quick-launch-pop quick-launch-pop--theater theater-menu" role="menu" aria-label={t("chrome.quickLaunch.theaterMenu")}>
+            <div
+              className="quick-launch-pop quick-launch-pop--theater theater-menu"
+              role="menu"
+              aria-label={t("chrome.quickLaunch.theaterMenu")}
+              style={popoverLeft === null ? undefined : { left: popoverLeft }}
+            >
               {theaters.map((theater) => (
                 <button
                   key={theater.id}
@@ -323,7 +348,12 @@ export function QuickLaunch() {
           ) : null}
 
           {popover === "model" ? (
-            <div className="quick-launch-pop quick-launch-pop--model theater-menu" role="menu" aria-label={t("chrome.quickLaunch.modelMenu")}>
+            <div
+              className="quick-launch-pop quick-launch-pop--model theater-menu"
+              role="menu"
+              aria-label={t("chrome.quickLaunch.modelMenu")}
+              style={popoverLeft === null ? undefined : { left: popoverLeft }}
+            >
               {groups.map((group) => (
                 <div key={group.id} className="quick-launch-pop-group">
                   {(() => {
@@ -458,6 +488,21 @@ function QuickLaunchVariantRow({
         ))}
       </QuickLaunchEffortMenu>
     </div>
+  );
+}
+
+function SubmitArrowIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8 12.75V4.25M4.5 7.75 8 4.25l3.5 3.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
