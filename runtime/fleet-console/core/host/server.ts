@@ -437,6 +437,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 미뤄 재진입을 끊는다.
    */
   let controlPruneNotifyQueued = false;
+  /** 마지막으로 알린 보유자의 공개 이름. 바뀌지 않은 사실을 신호로 내보내지 않기 위한 기준이다. */
+  let lastPublishedControlHolder: string | null = null;
   const access = createAccessRegistry({
     onSessionsPruned: () => {
       if (controlPruneNotifyQueued) return;
@@ -1880,14 +1882,24 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   /** 보유자 변화는 이 기계 앞에 앉은 사람에게만 간다. 원격은 다른 세션의 존재를 알 이유가 없다. */
   function broadcastControlChanged(): void {
     /**
+     * 실제로 보유자가 바뀐 경우에만 알린다.
+     *
+     * 이 함수는 원격 세션이 사라지는 모든 자리에서 불리는데, 그중에는 제어를 쥔 적 없는
+     * monitoring 세션의 만료·회수도 있다. 그때까지 신호로 세면 터미널이 통째로 끊겼다
+     * 다시 붙으며 scrollback을 재생한다 — 아무것도 바뀌지 않았는데 화면이 깜빡인다.
+     */
+    const holder = currentControlHolder();
+    if (holder?.handle === lastPublishedControlHolder) return;
+    lastPublishedControlHolder = holder?.handle ?? null;
+    /**
      * 플러그인 쪽이 먼저다. 이미 열려 있는 터미널 소켓은 티켓 발급 시점의 등급을 그대로
      * 들고 있으므로, 화면이 새 사실을 그리기 전에 전송이 그 사실에 맞춰져야 한다.
      *
      * 구독자가 없어도 보낸다 — 이 신호의 수신자는 브라우저가 아니라 서버 안의 플러그인이다.
      */
-    publishPluginEvent(CONTROL_HOLDER_EVENT_CHANNEL, { holder: currentControlHolder() });
+    publishPluginEvent(CONTROL_HOLDER_EVENT_CHANNEL, { holder });
     if (operationSseSubscribers.size === 0) return;
-    const data = encodeSseData(CONTROL_CHANGED_EVENT, controlChangedSnapshot(currentControlHolder()));
+    const data = encodeSseData(CONTROL_CHANGED_EVENT, controlChangedSnapshot(holder));
     for (const subscriber of operationSseSubscribers) {
       if (subscriber.audience !== "local") continue;
       subscriber.res.write(data);

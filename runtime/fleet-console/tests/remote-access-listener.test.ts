@@ -465,6 +465,33 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     local.close();
   });
 
+  /**
+   * monitoring은 제어를 쥔 적이 없으므로 그 세션이 사라져도 보유자는 그대로다. 그때까지 신호로
+   * 세면 붙어 있던 터미널이 통째로 끊겼다 다시 붙으며 scrollback을 재생한다 — 아무것도 바뀌지
+   * 않았는데 화면이 깜빡인다.
+   */
+  it("stays quiet when a session that never held control goes away", async () => {
+    const fixture = await startFixture({ remote: true });
+    const local = await openLoopbackEvents(fixture);
+    await joinAs(fixture, "full", "holder");
+    const held = await local.waitFor("control:changed", (data) => data.holder !== null);
+    await joinAs(fixture, "monitoring", "watcher");
+
+    const watcher = (await readRemoteStatus(fixture)).sessions.find((entry) => entry.access === "monitoring");
+    const framesBefore = local.seen("control:changed");
+    await expect(revoke(fixture, `access-sessions/${watcher!.handle}`)).resolves.toBe(204);
+
+    // 보유자는 그대로다. 프레임이 늘지 않아야 한다.
+    await expect(readRemoteStatus(fixture).then((status) => status.sessions)).resolves.toHaveLength(1);
+    expect(local.seen("control:changed")).toBe(framesBefore);
+
+    // 진짜 보유자가 나가면 그때는 알린다 — 조용해진 것이지 멎은 것이 아니다.
+    await expect(revoke(fixture, `access-sessions/${held.holder.handle}`)).resolves.toBe(204);
+    expect(await local.waitFor("control:changed", (data) => data.holder === null)).toEqual({ holder: null });
+
+    local.close();
+  });
+
   /** monitoring은 제어를 쥐지 않으므로 상한과 무관하게 full 옆에 함께 붙는다. */
   it("lets a monitoring session join while a full session holds control", async () => {
     const fixture = await startFixture({ remote: true });
