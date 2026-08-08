@@ -110,7 +110,7 @@ export type GatewayCapabilityClass = typeof GATEWAY_CAPABILITY_CLASSES[number];
 
 const GatewayBenchmarkFiguresSchema = z.object({
   score: z.number().positive().max(100),
-  tokensPerTask: z.number().int().positive(),
+  tokensPerTask: z.number().int().positive().optional(),
   stepsPerTask: z.number().int().positive().optional(),
 }).strict();
 
@@ -133,13 +133,15 @@ const GatewayBenchmarkModelEntrySchema = z.object({
 });
 
 /**
- * benchmarks.json 저작 규칙 — 스키마가 강제하지 못하는 두 가지:
- * 모델 항목의 `source`는 그 모델의 도달 가능한 비교군을 더 많이 덮는 소스에 묶는다
- * (CursorBench 우선, CursorBench에 행이 없는 모델만 SWE-rebench). 소스의 수치를
- * 고치면 그 소스의 `observedAt`을 함께 올린다 — 로스터 revision이 이 스탬프를
- * 실어 나르므로, 올리지 않은 편집은 호스트에게 보이지 않는다. 조인의 나머지
- * 불변식(형제 키 공유·별칭 제외·고아 검출·내로잉 후 공백)은 validateRegistry와
- * validateBenchmarkCoverage가 강제한다.
+ * benchmarks.json 저작 규칙 — 스키마가 강제하지 못하는 세 가지:
+ * 모델 항목의 `source`는 그 모델의 도달 가능한 비교군을 더 많이 덮는 소스에 묶는다.
+ * CursorBench(에이전트형 다중 파일 코딩, 카탈로그 비교 모델이 가장 많음)를 우선하고,
+ * 행이 없으면 SWE-rebench, 둘 다 측정하지 않은 모델에만 AA Terminal-Bench v2.1을
+ * 쓴다. 소스가 그 모델의 토큰 수치를 공개하지 않으면 그 항목의 `tokensPerTask`는
+ * 비워 두고, 효율 타이브레이크는 토큰 수치를 둘 다 실은 항목 사이에서만 적용한다. 소스의 수치를 고치면 그 소스의 `observedAt`을
+ * 함께 올린다 — 로스터 revision이 이 스탬프를 실어 나르므로, 올리지 않은 편집은
+ * 호스트에게 보이지 않는다. 조인의 나머지 불변식(형제 키 공유·별칭 제외·고아 검출·
+ * 내로잉 후 공백)은 validateRegistry와 validateBenchmarkCoverage가 강제한다.
  */
 const GatewayBenchmarksRegistrySchema = z.object({
   version: z.number().int().positive(),
@@ -149,7 +151,7 @@ const GatewayBenchmarksRegistrySchema = z.object({
 
 export type GatewayBenchmarkFigures = {
   readonly score: number;
-  readonly tokensPerTask: number;
+  readonly tokensPerTask?: number;
   readonly stepsPerTask?: number;
 };
 

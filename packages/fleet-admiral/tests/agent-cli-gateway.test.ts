@@ -122,11 +122,26 @@ describe("claude-gateway custom agents", () => {
       expect(definition.description).toContain("score carries a caveat");
     }
 
-    const flash = Object.values(buildGatewayCustomAgents([requireGatewayModel("opencode--deepseek-v4-flash")]));
-    expect(flash.length).toBeGreaterThan(0);
-    for (const definition of flash) {
-      expect(definition.description).toContain("No bench evidence; capability class is the only prior.");
+    const aaBenchModels = [
+      ["qwen3.8-max", "81.3% overall, ~52k tokens/task.", true],
+      ["deepseek-v4-flash", "78.7% overall; score carries a caveat — read it via gateway_models before trusting it.", false],
+      ["hy3", "64.4% overall.", false],
+      ["mimo-v2.5", "63.7% overall.", false],
+    ] as const;
+    for (const [modelId, scoreClause, hasTokens] of aaBenchModels) {
+      const definitions = Object.values(buildGatewayCustomAgents([requireGatewayModel(`opencode--${modelId}`)]));
+      expect(definitions.length).toBeGreaterThan(0);
+      for (const definition of definitions) {
+        expect(definition.description).toContain(`Bench AA Terminal-Bench v2.1: ${scoreClause}`);
+        expect(definition.description).not.toContain("No bench evidence; capability class is the only prior.");
+        if (!hasTokens) {
+          expect(definition.description).not.toContain("tokens/task");
+        }
+      }
     }
+
+    const qwen = buildGatewayCustomAgents([requireGatewayModel("opencode--qwen3.8-max")])["opencode-qwen3-8-max-1m"];
+    expect(qwen?.description).toContain("Bench AA Terminal-Bench v2.1: 81.3% overall, ~52k tokens/task.");
   });
 
   it("registers gateway identities as plugin agent files, and never disables a built-in agent", async () => {
