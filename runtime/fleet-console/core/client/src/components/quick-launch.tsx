@@ -85,13 +85,13 @@ export function QuickLaunch() {
   }, [open, state.activeTheaterId, theaters]);
 
   // 카탈로그가 도착하면 기억해 둔 조합을 실제 목록에 맞춘다.
+  // model/effort도 의존성에 둔다 — 재오픈이 bare opus를 잠깐 복원해도 정규화된 값으로 다시 맞춘다.
   useEffect(() => {
     if (!open || groups.length === 0) return;
     const resolved = resolveSelection(groups, { model, effort });
     if (resolved.model !== model) setModel(resolved.model);
     if (resolved.effort !== effort) setEffort(resolved.effort);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, groups]);
+  }, [open, groups, model, effort]);
 
   useEffect(() => {
     if (!open) return;

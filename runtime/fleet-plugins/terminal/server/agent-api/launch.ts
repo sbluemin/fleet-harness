@@ -15,9 +15,9 @@ import {
   injectAgentCliProfile,
   prepareAiGatewayLaunchProfile,
   NATIVE_CLAUDE_EFFORTS,
-  NATIVE_CLAUDE_MODEL_ALIASES,
   resolveAgentCliId,
   resolveAgentCliProfile,
+  resolveNativeClaudeModelAlias,
   type AgentCliId,
   type AgentCliProfile,
   LaunchPromptError,
@@ -227,21 +227,26 @@ async function createAgentCliLaunchSpec(options: {
       ? resolveAiGatewaySelection(options.readAiGatewaySettings())
       : undefined;
     let resolvedModel = options.model;
-    if (cliId === "claude-gateway" && resolvedModel && !NATIVE_CLAUDE_MODEL_ALIASES.includes(resolvedModel as (typeof NATIVE_CLAUDE_MODEL_ALIASES)[number])) {
-      const model = gatewaySelection?.models.find((candidate) => candidate.id === resolvedModel);
-      if (!model) {
-        throw new GatewayLaunchOptionError(
-          "gateway_model_not_enabled",
-          `Gateway model "${resolvedModel}" is not enabled.`,
-        );
+    if (cliId === "claude-gateway" && resolvedModel) {
+      const nativeAlias = resolveNativeClaudeModelAlias(resolvedModel);
+      if (nativeAlias) {
+        resolvedModel = nativeAlias;
+      } else {
+        const model = gatewaySelection?.models.find((candidate) => candidate.id === resolvedModel);
+        if (!model) {
+          throw new GatewayLaunchOptionError(
+            "gateway_model_not_enabled",
+            `Gateway model "${resolvedModel}" is not enabled.`,
+          );
+        }
+        if (options.effort !== undefined && (!gatewaySelection || !isGatewayLaunchEffortAllowed(gatewaySelection, model, options.effort))) {
+          throw new GatewayLaunchOptionError(
+            "invalid_effort",
+            `Gateway effort "${options.effort}" is not enabled for model "${resolvedModel}".`,
+          );
+        }
+        resolvedModel = toClaudeGatewayModelId(model);
       }
-      if (options.effort !== undefined && (!gatewaySelection || !isGatewayLaunchEffortAllowed(gatewaySelection, model, options.effort))) {
-        throw new GatewayLaunchOptionError(
-          "invalid_effort",
-          `Gateway effort "${options.effort}" is not enabled for model "${resolvedModel}".`,
-        );
-      }
-      resolvedModel = toClaudeGatewayModelId(model);
     }
     const profile = await options.resolveProfile(options.env, options.cwd, {
       cliId,

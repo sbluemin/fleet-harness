@@ -96,6 +96,7 @@ export {
 export {
   NATIVE_CLAUDE_EFFORTS,
   NATIVE_CLAUDE_MODEL_ALIASES,
+  resolveNativeClaudeModelAlias,
 } from "./agent-cli/claude/definitions.js";
 
 // Agent CLI 주입 능력 맵
