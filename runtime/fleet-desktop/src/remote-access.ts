@@ -102,13 +102,17 @@ function readPresentedFingerprint(hostname: string, port: number, timeoutMs: num
 }
 
 /**
- * 1회용 자격을 세션으로 바꾼다. 자격은 본문으로만 보내 URL과 로그에 남기지 않고, 리다이렉트는
- * 받지 않는다 — 조인은 지문을 확인한 그 서버에서만 성립해야 한다.
+ * 조인한다. 링크를 처음 쓸 때는 1회용 자격을 함께 보내고, 이미 페어링된 콘솔로 돌아갈 때는
+ * 아무것도 보내지 않는다 — 그때의 통행증은 창의 쿠키 항아리에 있는 페어링 쿠키이고, 이 요청이
+ * 그것을 세션으로 바꾼다. 그래서 제어권을 회수당했거나 접속이 끊긴 뒤에도 링크 없이 돌아온다.
  *
- * 기기 이름은 자격이 아니라 상대편 운영자를 위한 표식이다. 그것이 없으면 원격 콘솔의 세션
+ * 자격은 본문으로만 보내 URL과 로그에 남기지 않고, 리다이렉트는 받지 않는다 — 조인은 지문을
+ * 확인한 그 서버에서만 성립해야 한다.
+ *
+ * 기기 이름은 자격이 아니라 상대편 운영자를 위한 표식이다. 그것이 없으면 원격 콘솔의 기기
  * 목록에서 어느 줄을 끊어야 하는지 알 수 없다.
  */
-export async function joinRemoteConsole(sessionFetch: SessionFetch, joinUrl: string, token: string, device: string | null = null, timeoutMs = REMOTE_REQUEST_TIMEOUT_MS): Promise<void> {
+export async function joinRemoteConsole(sessionFetch: SessionFetch, joinUrl: string, token: string | null, device: string | null = null, timeoutMs = REMOTE_REQUEST_TIMEOUT_MS): Promise<void> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -116,18 +120,21 @@ export async function joinRemoteConsole(sessionFetch: SessionFetch, joinUrl: str
       method: "POST",
       redirect: "error",
       headers: { "content-type": "application/json" },
-      // 기기 이름을 함께 보낸다 — 원격 쪽 세션 목록에서 "이름 없는 기기"로만 보이면 회수를 결정할 수 없다.
-      body: JSON.stringify(device === null ? { token } : { token, device }),
+      // 기기 이름을 함께 보낸다 — 원격 쪽 목록에서 "이름 없는 기기"로만 보이면 회수를 결정할 수 없다.
+      body: JSON.stringify({ ...(token === null ? {} : { token }), ...(device === null ? {} : { device }) }),
       signal: controller.signal,
     });
-    if (response.status === 401) throw new Error("remote_link_rejected");
+    // 자격을 내밀었는데 거절당한 것과, 이 콘솔이 더 이상 이 기기를 알아보지 못하는 것은 다른 사실이다.
+    if (response.status === 401) throw new Error(token === null ? "remote_host_not_paired" : "remote_link_rejected");
     if (response.status === 403) throw new Error("remote_link_host_mismatch");
     // 409는 자격 문제가 아니다 — 그 콘솔의 제어를 이미 다른 기기가 쥐고 있다. 다른 4xx와
     // 뭉개면 "링크를 새로 받아라"로 안내되고, 새 링크로도 같은 거절이 돌아온다.
     if (response.status === 409) throw new Error("remote_link_control_held");
     if (!response.ok) throw new Error("remote_link_unverified");
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("remote_link_")) throw error;
+    // 이 함수가 스스로 내린 판정은 그대로 올려 보낸다. 접두사만으로 가르면 "이 기기를 모른다"는
+    // 판정이 도달 실패로 뭉개져, 사용자는 네트워크를 의심하며 링크를 다시 받지 않는다.
+    if (error instanceof Error && (error.message.startsWith("remote_link_") || error.message === "remote_host_not_paired")) throw error;
     throw new Error("remote_link_unreachable", { cause: error });
   } finally {
     clearTimeout(timer);

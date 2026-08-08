@@ -96,8 +96,12 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     policy.admitRemoteConsoleOrigin(handoff.origin);
     policy.stageConsoleOrigin(handoff.origin);
     try {
-      // 자격은 한 번뿐이다. 이미 세션 쿠키가 있으면 token은 비어 오고, 그때는 조인을 건너뛴다.
-      if (handoff.token) await joinRemoteConsole(deps.sessionFetch, `${handoff.origin}${JOIN_PATH}`, handoff.token, deps.deviceName ?? null);
+      /**
+       * 링크의 1회용 자격은 처음 한 번만 실려 온다. 그 뒤로는 token이 비어 오지만 조인을
+       * 건너뛰지는 않는다 — 그 요청이 페어링 쿠키를 세션으로 바꾸는 유일한 자리이고,
+       * 제어권을 회수당했거나 접속이 만료된 뒤 돌아오는 길이 바로 이것이다.
+       */
+      await joinRemoteConsole(deps.sessionFetch, `${handoff.origin}${JOIN_PATH}`, handoff.token, deps.deviceName ?? null);
       await verifyConsoleReachable(handoff.origin);
       await deps.loadConsole(`${handoff.origin}${CONSOLE_PATH}`);
       policy.commitConsoleOrigin();
@@ -249,6 +253,8 @@ function describe(code: string): string {
     case "remote_link_fingerprint_mismatch":
     case "remote_host_fingerprint_mismatch": return "That address answered with a different certificate. Ask for a fresh access link.";
     case "remote_link_rejected": return "That access link was already used, or it expired. Ask for a fresh one.";
+    // 페어링이 회수되었거나 그 콘솔이 신원을 갈아 끼웠다. 링크를 새로 받는 것 말고는 길이 없다.
+    case "remote_host_not_paired": return "That console no longer recognises this device. Ask for a fresh access link.";
     // 자격이 나빠서가 아니라 자리가 차 있어서 거절된 경우다. "다시 받아라"로 안내하면 링크를
     // 새로 받아도 같은 거절이 돌아온다 — 기다리거나 물러나 달라고 말해야 한다.
     case "remote_link_control_held": return "Another device already has control of that console. Ask them to hand it back, then try again.";

@@ -154,13 +154,17 @@ export interface RemoteAccessLinkSummary {
   readonly expiresAt: number;
 }
 
-export interface RemoteAccessSessionSummary {
-  readonly handle: string;
+/**
+ * 링크를 한 번 쓴 기기. 링크와 달리 이 줄은 회수할 때까지 남고, 그 사이 몇 번이든 다시 붙는다.
+ * `sessionHandle`이 있으면 지금 붙어 있다는 뜻이며, 그것을 끊어도 이 줄은 사라지지 않는다.
+ */
+export interface RemoteAccessPairedDevice {
+  readonly id: string;
   readonly device: string | null;
   readonly access: RemoteAccessClass;
-  readonly openedAt: number;
-  readonly expiresAt: number;
+  readonly pairedAt: number;
   readonly lastSeenAt: number;
+  readonly sessionHandle: string | null;
 }
 
 /** 이 기계가 실제로 가진 주소. 사용자가 IP를 외워 적지 않도록 골라 준다. */
@@ -177,7 +181,7 @@ export interface RemoteAccessStatus {
   readonly fingerprint: string | null;
   readonly lastError: string | null;
   readonly links: readonly RemoteAccessLinkSummary[];
-  readonly sessions: readonly RemoteAccessSessionSummary[];
+  readonly devices: readonly RemoteAccessPairedDevice[];
   readonly interfaces: readonly RemoteAccessInterface[];
 }
 

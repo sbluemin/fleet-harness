@@ -206,8 +206,9 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(first) }));
     const afterJoin = await readRemoteStatus(fixture);
     expect(afterJoin.links).toHaveLength(1);
-    expect(afterJoin.sessions).toHaveLength(1);
-    expect(JSON.stringify(afterJoin.sessions)).not.toContain("fleet_console_session");
+    expect(afterJoin.devices).toHaveLength(1);
+    expect(JSON.stringify(afterJoin.devices)).not.toContain("fleet_console_session");
+    expect(JSON.stringify(afterJoin.devices)).not.toContain("fleet_console_pairing");
   });
 
   it("revokes one unused link and leaves the others usable", async () => {
@@ -228,16 +229,19 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     expect(outcomes.filter((status) => status === 401)).toHaveLength(1);
   });
 
-  it("ends one open session immediately", async () => {
+  it("ends one open session immediately while the pairing that opened it survives", async () => {
     const fixture = await startFixture({ remote: true });
     const joined = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(await createLink(fixture)) }));
-    const cookie = (joined.headers["set-cookie"]?.[0] ?? "").split(";")[0]!;
-    const handle = (await readRemoteStatus(fixture)).sessions[0]!.handle;
+    const cookie = cookiesOf(joined);
+    const handle = (await readRemoteStatus(fixture)).devices[0]!.sessionHandle!;
 
     await expect(revoke(fixture, `access-sessions/${handle}`)).resolves.toBe(204);
 
     await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, cookie)).resolves.toMatchObject({ status: 401 });
-    expect((await readRemoteStatus(fixture)).sessions).toHaveLength(0);
+    // 접속만 끊겼다. 그 기기는 여전히 이 콘솔의 손님이고 목록에 남는다.
+    const after = await readRemoteStatus(fixture);
+    expect(after.devices).toHaveLength(1);
+    expect(after.devices[0]!.sessionHandle).toBeNull();
   });
 
   it("rotates the identity and takes every link, session, and pin with it", async () => {
@@ -257,7 +261,8 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     expect(after.listening).toBe(true);
     expect(normalizeFingerprint(after.fingerprint!)).not.toBe(normalizeFingerprint(before.fingerprint!));
     expect(after.links).toHaveLength(0);
-    expect(after.sessions).toHaveLength(0);
+    // 지문이 바뀌면 그 지문을 믿고 붙던 페어링도 더는 성립하지 않는다.
+    expect(after.devices).toHaveLength(0);
     // 새 인증서를 실제로 제시해야 한다 — 상태만 바뀌고 리스너가 옛 키를 쓰면 핀이 어긋난다.
     expect(normalizeFingerprint(await readPresentedCertificateFingerprint(fixture.remotePort))).toBe(normalizeFingerprint(after.fingerprint!));
     await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(staleLink) }))).resolves.toMatchObject({ status: 401 });
@@ -342,7 +347,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await expect(remoteRequest(fixture, "POST", "/api/v1/theaters", "{}", operator)).resolves.not.toMatchObject({ status: 401 });
 
     const listed = await readRemoteStatus(fixture);
-    expect(listed.sessions.map((entry) => [entry.device, entry.access]).sort()).toEqual([["MacBook Pro", "full"], ["iPad", "monitoring"]].sort());
+    expect(listed.devices.map((entry) => [entry.device, entry.access]).sort()).toEqual([["MacBook Pro", "full"], ["iPad", "monitoring"]].sort());
   });
 
   it("refuses a websocket upgrade from a monitoring session even though the method reads", async () => {
@@ -388,9 +393,10 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await expect(remoteRequest(fixture, "POST", "/api/v1/remote-identity/rotations", undefined, cookie, asRemote)).resolves.toMatchObject({ status: 401 });
 
     // 그 손님이 자기 handle을 알아도 끊는 일은 이 기계 앞에서만 일어난다.
-    const handle = (await readRemoteStatus(fixture)).sessions[0]!.handle;
-    await expect(remoteRequest(fixture, "DELETE", `/api/v1/access-sessions/${handle}`, undefined, cookie, asRemote)).resolves.toMatchObject({ status: 401 });
-    expect((await readRemoteStatus(fixture)).sessions).toHaveLength(1);
+    const paired = (await readRemoteStatus(fixture)).devices[0]!;
+    await expect(remoteRequest(fixture, "DELETE", `/api/v1/access-sessions/${paired.sessionHandle}`, undefined, cookie, asRemote)).resolves.toMatchObject({ status: 401 });
+    await expect(remoteRequest(fixture, "DELETE", `/api/v1/paired-devices/${paired.id}`, undefined, cookie, asRemote)).resolves.toMatchObject({ status: 401 });
+    expect((await readRemoteStatus(fixture)).devices).toHaveLength(1);
   });
 
   /**
@@ -407,11 +413,11 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     expect(refused.status).toBe(409);
 
     const held = await readRemoteStatus(fixture);
-    expect(held.sessions).toHaveLength(1);
+    expect(held.devices).toHaveLength(1);
     expect(held.links).toHaveLength(1);
 
     // 보유자가 물러나면 같은 링크가 그대로 통한다 — 태워 버렸다면 여기서 401이 난다.
-    await expect(revoke(fixture, `access-sessions/${held.sessions[0]!.handle}`)).resolves.toBe(204);
+    await expect(revoke(fixture, `access-sessions/${held.devices[0]!.sessionHandle}`)).resolves.toBe(204);
     await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(secondLink) }))).resolves.toMatchObject({ status: 204 });
   });
 
@@ -477,12 +483,12 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     const held = await local.waitFor("control:changed", (data) => data.holder !== null);
     await joinAs(fixture, "monitoring", "watcher");
 
-    const watcher = (await readRemoteStatus(fixture)).sessions.find((entry) => entry.access === "monitoring");
+    const watcher = (await readRemoteStatus(fixture)).devices.find((entry) => entry.access === "monitoring");
     const framesBefore = local.seen("control:changed");
-    await expect(revoke(fixture, `access-sessions/${watcher!.handle}`)).resolves.toBe(204);
+    await expect(revoke(fixture, `access-sessions/${watcher!.sessionHandle}`)).resolves.toBe(204);
 
     // 보유자는 그대로다. 프레임이 늘지 않아야 한다.
-    await expect(readRemoteStatus(fixture).then((status) => status.sessions)).resolves.toHaveLength(1);
+    await expect(readRemoteStatus(fixture).then((status) => status.devices.filter((entry) => entry.sessionHandle !== null))).resolves.toHaveLength(1);
     expect(local.seen("control:changed")).toBe(framesBefore);
 
     // 진짜 보유자가 나가면 그때는 알린다 — 조용해진 것이지 멎은 것이 아니다.
@@ -499,7 +505,123 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await joinAs(fixture, "monitoring", "watcher");
 
     const status = await readRemoteStatus(fixture);
-    expect(status.sessions.map((entry) => entry.access).sort()).toEqual(["full", "monitoring"]);
+    expect(status.devices.map((entry) => entry.access).sort()).toEqual(["full", "monitoring"]);
+  });
+
+  /**
+   * 이 파일에서 가장 중요한 줄. 제어권을 회수당한 기기는 스스로 돌아올 수 있어야 한다 —
+   * 자격이 곧 세션이던 시절에는 회수가 자격까지 지워, 그 기기는 새 링크를 받기 전에는
+   * 영영 돌아오지 못했다. 링크는 이미 소진되었고 저장된 호스트에는 자격이 없기 때문이다.
+   */
+  it("lets a device return under its pairing after the local console takes control away", async () => {
+    const fixture = await startFixture({ remote: true });
+    const cookies = await joinAs(fixture, "full", "MacBook Pro");
+    const handle = (await readRemoteStatus(fixture)).devices[0]!.sessionHandle!;
+
+    await expect(revoke(fixture, `access-sessions/${handle}`)).resolves.toBe(204);
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, cookies)).resolves.toMatchObject({ status: 401 });
+
+    // 링크 없이, 들고 있던 페어링 쿠키만으로 다시 붙는다.
+    const resumed = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({}), cookies);
+    expect(resumed.status).toBe(204);
+
+    // 그리고 다시 제어를 쥔다 — 자리가 비어 있었으므로 등급이 깎이지 않는다.
+    const back = await readRemoteStatus(fixture);
+    expect(back.devices).toHaveLength(1);
+    expect(back.devices[0]).toMatchObject({ device: "MacBook Pro", access: "full" });
+    expect(back.devices[0]!.sessionHandle).not.toBeNull();
+    expect(back.devices[0]!.sessionHandle).not.toBe(handle);
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, cookiesOf(resumed))).resolves.toMatchObject({ status: 200 });
+  });
+
+  /** 재개는 링크와 달리 소모되지 않는다 — 콘솔이 살아 있는 한 몇 번이든 돌아온다. */
+  it("resumes the same pairing more than once", async () => {
+    const fixture = await startFixture({ remote: true });
+    const cookies = await joinAs(fixture, "full", "MacBook Pro");
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const handle = (await readRemoteStatus(fixture)).devices[0]!.sessionHandle!;
+      await expect(revoke(fixture, `access-sessions/${handle}`)).resolves.toBe(204);
+      await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({}), cookies)).resolves.toMatchObject({ status: 204 });
+    }
+
+    expect((await readRemoteStatus(fixture)).devices).toHaveLength(1);
+  });
+
+  /**
+   * 접속을 끊는 것과 손님을 내보내는 것은 다른 결정이다. 이쪽은 되돌아올 길까지 없앤다.
+   */
+  it("shuts a removed device out and clears the cookie it kept sending", async () => {
+    const fixture = await startFixture({ remote: true });
+    const cookies = await joinAs(fixture, "full", "MacBook Pro");
+    const paired = (await readRemoteStatus(fixture)).devices[0]!;
+
+    await expect(revoke(fixture, `paired-devices/${paired.id}`)).resolves.toBe(204);
+    await expect(revoke(fixture, `paired-devices/${paired.id}`)).resolves.toBe(404);
+
+    // 자격을 거두면서 그 자격으로 열려 있던 접속도 함께 끊긴다.
+    expect((await readRemoteStatus(fixture)).devices).toHaveLength(0);
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, cookies)).resolves.toMatchObject({ status: 401 });
+
+    const refused = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({}), cookies);
+    expect(refused.status).toBe(401);
+    // 죽은 값을 계속 보내지 않도록 그 기기에서도 지운다.
+    expect((refused.headers["set-cookie"] ?? []).join("; ")).toContain("Max-Age=0");
+  });
+
+  /**
+   * 원격을 껐다 켜는 것은 자격을 거두는 결정이 아니다. 리스너가 닫히면 접속은 사라지지만,
+   * 같은 인증서로 다시 열린 콘솔은 그 기기를 여전히 알아본다.
+   */
+  it("keeps pairings across a remote listener restart", async () => {
+    const fixture = await startFixture({ remote: true });
+    const cookies = await joinAs(fixture, "full", "MacBook Pro");
+
+    await saveRemoteAccess(fixture, { enabled: false, bindHost: BIND_HOST });
+    await saveRemoteAccess(fixture, { enabled: true, bindHost: BIND_HOST });
+
+    const reopened = await readRemoteStatus(fixture);
+    expect(reopened.devices).toHaveLength(1);
+    expect(reopened.devices[0]!.sessionHandle).toBeNull();
+    await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({}), cookies)).resolves.toMatchObject({ status: 204 });
+  });
+
+  /** 재개는 등급을 물려받을 뿐 올리지 못한다. 페어링이 등급의 유일한 근거다. */
+  it("resumes a monitoring pairing as monitoring, and refuses control while a full device holds it", async () => {
+    const fixture = await startFixture({ remote: true });
+    const watcher = await joinAs(fixture, "monitoring", "iPad");
+    await joinAs(fixture, "full", "MacBook Pro");
+
+    const resumed = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({}), watcher);
+    expect(resumed.status).toBe(204);
+
+    const cookies = cookiesOf(resumed);
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, cookies)).resolves.toMatchObject({ status: 200 });
+    await expect(remoteRequest(fixture, "POST", "/api/v1/theaters", "{}", cookies)).resolves.toMatchObject({ status: 401 });
+  });
+
+  /** 두 번째 full 기기는 자리가 차 있는 동안 돌아오지 못한다 — 축출은 주인의 결정이다. */
+  it("refuses a full pairing that tries to resume while another device holds control", async () => {
+    const fixture = await startFixture({ remote: true });
+    const first = await joinAs(fixture, "full", "first");
+    const held = (await readRemoteStatus(fixture)).devices[0]!.sessionHandle!;
+    await expect(revoke(fixture, `access-sessions/${held}`)).resolves.toBe(204);
+    await joinAs(fixture, "full", "second");
+
+    await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({}), first)).resolves.toMatchObject({ status: 409 });
+  });
+
+  /** 저장된 것은 해시뿐이다 — 이 파일이 새어도 그것으로 붙을 수 없다. */
+  it("writes no pairing secret to disk", async () => {
+    const fixture = await startFixture({ remote: true });
+    const cookies = await joinAs(fixture, "full", "MacBook Pro");
+    const secret = /fleet_console_pairing_\d+=([^;]+)/u.exec(cookies)?.[1];
+    expect(secret).toBeTruthy();
+
+    const stored = fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "paired-devices.json"), "utf8");
+
+    expect(stored).not.toContain(secret!);
+    expect(JSON.parse(stored)).toMatchObject({ version: 1, devices: [{ device: "MacBook Pro", access: "full" }] });
   });
 });
 
@@ -509,7 +631,7 @@ interface RemoteAccessStatus {
   readonly fingerprint: string | null;
   readonly lastError: string | null;
   readonly links: readonly { readonly id: string; readonly access: string; readonly issuedAt: number; readonly expiresAt: number }[];
-  readonly sessions: readonly { readonly handle: string; readonly device: string | null; readonly access: string; readonly openedAt: number; readonly expiresAt: number }[];
+  readonly devices: readonly { readonly id: string; readonly device: string | null; readonly access: string; readonly pairedAt: number; readonly lastSeenAt: number; readonly sessionHandle: string | null }[];
   readonly interfaces: readonly { readonly kind: string; readonly label: string; readonly address: string }[];
 }
 
@@ -520,7 +642,15 @@ async function joinAs(fixture: Fixture, access: string, device: string): Promise
   });
   const token = grantTokenOf((await response.json() as { link: string }).link);
   const joined = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token, device }));
-  return (joined.headers["set-cookie"]?.[0] ?? "").split(";")[0]!;
+  return cookiesOf(joined);
+}
+
+/**
+ * 조인은 쿠키를 둘 실어 보낸다 — 접속을 가리키는 세션 쿠키와, 회수 전까지 사는 페어링 쿠키.
+ * 앞의 하나만 집으면 재개 경로를 아예 시험할 수 없다.
+ */
+function cookiesOf(response: { readonly headers: import("node:http").IncomingHttpHeaders }): string {
+  return (response.headers["set-cookie"] ?? []).map((entry) => entry.split(";")[0]!).join("; ");
 }
 
 /**

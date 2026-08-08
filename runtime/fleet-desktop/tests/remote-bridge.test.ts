@@ -122,12 +122,18 @@ describe("remote bridge", () => {
     expect(request?.init.body).toBe(JSON.stringify({ origin: REMOTE }));
   });
 
-  it("skips the join when the grant was already spent, and still opens the console", async () => {
+  /**
+   * 링크의 1회용 자격은 처음 한 번만 실려 온다. 그 뒤로 token이 비어 와도 조인을 건너뛰지
+   * 않는다 — 그 요청이 창의 페어링 쿠키를 세션으로 바꾸는 유일한 자리이고, 제어권을
+   * 회수당했거나 접속이 만료된 뒤 돌아오는 길이 바로 그것이다. 건너뛰면 그 기기는 링크를
+   * 새로 받기 전에는 영영 돌아오지 못한다.
+   */
+  it("still joins when the grant was already spent, so a paired device can resume", async () => {
     const harness = createHarness({ responses: () => handoff({ token: null }) });
 
     await harness.bridge.open(REMOTE);
 
-    expect(harness.trace).not.toContain(`join:${REMOTE}/api/v1/join`);
+    expect(harness.trace).toContain(`join:${REMOTE}/api/v1/join`);
     expect(harness.trace).toContain(`load:${REMOTE}/console/`);
   });
 

@@ -9,7 +9,7 @@ import { fetchSystemFonts, SystemFontsFetchError } from "@fleet-console/font-pic
 
 import { BackendApiSection } from "../components/backend-api-section.js";
 import { propagateSettingsEntryIndex } from "../components/command-band-system-cluster.js";
-import { createRemoteAccessLink, fetchRemoteAccessStatus, revokeRemoteAccessLink, revokeRemoteAccessSession, rotateRemoteIdentity } from "../global-settings-api.js";
+import { createRemoteAccessLink, fetchRemoteAccessStatus, revokeRemoteAccessDevice, revokeRemoteAccessLink, revokeRemoteAccessSession, rotateRemoteIdentity } from "../global-settings-api.js";
 import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { renderMessage, useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { isDesktopShell } from "../desktop-shell.js";
@@ -630,6 +630,7 @@ function RemoteAccessSection({ state, saving }: { readonly state: GlobalSettings
             }}
             onRevokeLink={(id) => run("revoke", () => revokeRemoteAccessLink(id))}
             onRevokeSession={(handle) => run("revoke", () => revokeRemoteAccessSession(handle))}
+            onRevokeDevice={(id) => run("revoke", () => revokeRemoteAccessDevice(id))}
           />
         ) : null}
 
@@ -924,6 +925,7 @@ function RemoteLinksCard({
   onCopy,
   onRevokeLink,
   onRevokeSession,
+  onRevokeDevice,
 }: {
   readonly status: RemoteAccessStatus;
   readonly link: RemoteAccessLink | null;
@@ -935,22 +937,32 @@ function RemoteLinksCard({
   readonly onCopy: () => void;
   readonly onRevokeLink: (id: string) => void;
   readonly onRevokeSession: (handle: string) => void;
+  readonly onRevokeDevice: (id: string) => void;
 }) {
   const t = useT();
+  /**
+   * 두 종류의 줄이 한 표에 있다. 페어링된 기기는 회수해야 사라지고, 미사용 링크는 누가 쓰면
+   * 스스로 사라진다. 그래서 기기 줄에는 버튼이 둘이다 — 지금 붙어 있는 접속을 끊는 것과,
+   * 그 기기를 손님 목록에서 지우는 것은 되돌릴 수 있는 정도가 다르다.
+   */
   const rows = [
-    ...status.sessions.map((entry) => ({
-      key: entry.handle,
+    ...status.devices.map((entry) => ({
+      key: entry.id,
       name: entry.device ?? t("settings.remote.table.unnamedDevice"),
       access: entry.access,
-      when: formatRelative(entry.lastSeenAt),
-      revoke: () => onRevokeSession(entry.handle),
+      when: entry.sessionHandle === null ? formatRelative(entry.lastSeenAt) : t("settings.remote.table.connected"),
+      disconnect: entry.sessionHandle === null ? null : () => onRevokeSession(entry.sessionHandle!),
+      revoke: () => onRevokeDevice(entry.id),
+      revokeLabel: t("settings.remote.unpair"),
     })),
     ...status.links.map((entry) => ({
       key: entry.id,
       name: t("settings.remote.table.unusedLink"),
       access: entry.access,
       when: renderMessage(t("settings.remote.table.expiresIn"), { minutes: Math.max(0, Math.round((entry.expiresAt - Date.now()) / 60_000)) }),
+      disconnect: null,
       revoke: () => onRevokeLink(entry.id),
+      revokeLabel: t("settings.remote.revoke"),
     })),
   ];
 
@@ -1002,7 +1014,12 @@ function RemoteLinksCard({
               <td>{row.name}</td>
               <td><span className={`remote-access-chip is-${row.access}`}>{row.access}</span></td>
               <td>{row.when}</td>
-              <td><button type="button" className="remote-revoke" disabled={busy !== null} onClick={row.revoke}>{t("settings.remote.revoke")}</button></td>
+              <td className="remote-row-actions">
+                {row.disconnect ? (
+                  <button type="button" className="remote-disconnect" disabled={busy !== null} onClick={row.disconnect}>{t("settings.remote.disconnect")}</button>
+                ) : null}
+                <button type="button" className="remote-revoke" disabled={busy !== null} onClick={row.revoke}>{row.revokeLabel}</button>
+              </td>
             </tr>
           ))}
         </tbody>

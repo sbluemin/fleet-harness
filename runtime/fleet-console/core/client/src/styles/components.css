@@ -1056,6 +1056,22 @@
 
 .remote-revoke:disabled { cursor: not-allowed; opacity: 0.5; }
 
+.remote-row-actions { display: flex; gap: var(--space-4); justify-content: flex-end; }
+
+/*
+  접속을 끊는 것은 되돌릴 수 있고, 페어링을 지우는 것은 되돌릴 수 없다. coral은 뒤에 오는
+  파괴적 행동 하나만 쓰고, 이쪽은 중립 서체 색으로 두어 두 버튼의 무게를 눈으로 가른다.
+*/
+.remote-disconnect {
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+}
+
+.remote-disconnect:disabled { cursor: not-allowed; opacity: 0.5; }
+
 @media (prefers-reduced-motion: reduce) {
   .remote-switch, .remote-switch-knob { transition: none; }
 }
