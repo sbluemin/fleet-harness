@@ -239,6 +239,10 @@ function formatTokenCount(n: number): string {
   return n >= 1000 ? `${Math.round(n / 1000)}k` : `${n}`;
 }
 
+function gatewayAgentTokenClause(tokensPerTask: number | undefined): string {
+  return tokensPerTask === undefined ? "" : `, ~${formatTokenCount(tokensPerTask)} tokens/task`;
+}
+
 function gatewayAgentBenchSentence(
   benchmark: GatewayModelBenchmark | undefined,
   effort: GatewayReasoningEffort | undefined,
@@ -250,13 +254,13 @@ function gatewayAgentBenchSentence(
   if (effort !== undefined) {
     const figures = benchmark?.rungs?.[effort];
     if (figures) {
-      return `Bench ${benchmark!.source}: ${figures.score}% at ${effort} effort, ~${formatTokenCount(figures.tokensPerTask)} tokens/task${caveatClause}.`;
+      return `Bench ${benchmark!.source}: ${figures.score}% at ${effort} effort${gatewayAgentTokenClause(figures.tokensPerTask)}${caveatClause}.`;
     }
     if (benchmark) {
       return `No bench figure at ${effort}; capability class is the prior at this rung.`;
     }
   } else if (benchmark?.overall) {
-    return `Bench ${benchmark.source}: ${benchmark.overall.score}% overall, ~${formatTokenCount(benchmark.overall.tokensPerTask)} tokens/task${caveatClause}.`;
+    return `Bench ${benchmark.source}: ${benchmark.overall.score}% overall${gatewayAgentTokenClause(benchmark.overall.tokensPerTask)}${caveatClause}.`;
   } else if (benchmark?.rungs) {
     const scores = Object.values(benchmark.rungs).map((rung) => rung.score);
     return `Bench ${benchmark.source}: ${Math.min(...scores)}%–${Math.max(...scores)}% across measured rungs, serving rung unknown${caveatClause}.`;

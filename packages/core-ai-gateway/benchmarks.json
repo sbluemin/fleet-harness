@@ -16,6 +16,14 @@
       "url": "https://swe-rebench.com/",
       "method": "Third-party continuously refreshed software-engineering benchmark: real GitHub issues mined into a decontaminated time window (2026-05-15 to 2026-07-01, 111 problems), every model run in the same harness with per-problem Docker images. Scores are resolved rates; token figures are per-problem and harness-relative. Score differences within the noise band are not significant, and scores never compare across sources.",
       "noiseBandPoints": 3
+    },
+    "aa-terminal-bench": {
+      "name": "AA Terminal-Bench",
+      "benchVersion": "v2.1",
+      "observedAt": "2026-08-08T00:00:00Z",
+      "url": "https://artificialanalysis.ai/evaluations/terminalbench-v2-1",
+      "method": "Third-party independent rerun of the public Terminal-Bench v2.1 agentic terminal-task suite: Artificial Analysis executes every model itself in one harness at the vendor-recommended reasoning setting. The task set is fixed and public, so vendor benchmark-targeting is possible and can affect entries unevenly. Scores are resolved rates; token figures are published for only a top slice of models, so entries below that cutoff carry scores alone and efficiency compares only between entries that both carry token figures. Score differences within the noise band are not significant, and scores never compare across sources.",
+      "noiseBandPoints": 3
     }
   },
   "models": {
@@ -110,6 +118,14 @@
       "source": "swe-rebench",
       "overall": { "score": 40.2, "tokensPerTask": 3955414 },
       "caveat": "Measured at the high reasoning setting; the gateway serves this model without effort control."
-    }
+    },
+    "qwen3.8-max": { "source": "aa-terminal-bench", "overall": { "score": 81.3, "tokensPerTask": 52428 } },
+    "deepseek-v4-flash": {
+      "source": "aa-terminal-bench",
+      "overall": { "score": 78.7 },
+      "caveat": "Measured on the 0731 re-post-trained build DeepSeek serves since 2026-07-31; the earlier build measures 61.8 on the same run, and which build a gateway provider serves is not observable from the catalog."
+    },
+    "hy3": { "source": "aa-terminal-bench", "overall": { "score": 64.4 } },
+    "mimo-v2.5": { "source": "aa-terminal-bench", "overall": { "score": 63.7 } }
   }
 }

@@ -351,7 +351,8 @@
           "modelId": "qwen3.8-max",
           "name": "Qwen3.8-Max",
           "capabilityClass": "flagship",
-          "contextWindow": 1000000
+          "contextWindow": 1000000,
+          "benchmarkKey": "qwen3.8-max"
         },
         {
           "modelId": "gpt-5.6-luna",
@@ -392,7 +393,8 @@
           "name": "DeepSeek-V4-Flash",
           "capabilityClass": "light",
           "wire": "chat-completions",
-          "contextWindow": 1000000
+          "contextWindow": 1000000,
+          "benchmarkKey": "deepseek-v4-flash"
         },
         {
           "modelId": "deepseek-v4-pro",
@@ -431,14 +433,16 @@
           "name": "MiMo-V2.5",
           "capabilityClass": "standard",
           "wire": "chat-completions",
-          "contextWindow": 1000000
+          "contextWindow": 1000000,
+          "benchmarkKey": "mimo-v2.5"
         },
         {
           "modelId": "hy3",
           "name": "HY3",
           "capabilityClass": "flagship",
           "wire": "chat-completions",
-          "contextWindow": 256000
+          "contextWindow": 256000,
+          "benchmarkKey": "hy3"
         }
       ]
     }

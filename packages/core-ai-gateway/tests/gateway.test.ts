@@ -687,6 +687,30 @@ describe("model catalog", () => {
     }
   });
 
+  it("accepts benchmark scores without token figures", () => {
+    const parsed = parseGatewayBenchmarksRegistry({
+      version: 2,
+      sources: {
+        known: {
+          name: "Known",
+          benchVersion: "1",
+          observedAt: "2026-08-08T00:00:00Z",
+          url: "https://example.com",
+          method: "fixture",
+          noiseBandPoints: 1,
+        },
+      },
+      models: {
+        scoreOnly: {
+          source: "known",
+          overall: { score: 50 },
+        },
+      },
+    });
+
+    expect(parsed.models.scoreOnly?.overall).toEqual({ score: 50 });
+  });
+
   it("resolves benchmark evidence from benchmarks.json", () => {
     const base = findGatewayModel("codex--gpt-5.6-sol");
     const fast = findGatewayModel("codex--gpt-5.6-sol-fast");
@@ -709,6 +733,21 @@ describe("model catalog", () => {
     const deepseek = findGatewayModel("opencode--deepseek-v4-pro");
     expect(deepseek?.benchmark?.caveat).toContain("high reasoning setting");
 
+    const aaModels = [
+      ["qwen3.8-max", { score: 81.3, tokensPerTask: 52428 }],
+      ["deepseek-v4-flash", { score: 78.7 }],
+      ["hy3", { score: 64.4 }],
+      ["mimo-v2.5", { score: 63.7 }],
+    ] as const;
+    for (const [modelId, figures] of aaModels) {
+      const benchmark = findGatewayModel(`opencode--${modelId}`)?.benchmark;
+      expect(benchmark?.source, modelId).toBe("AA Terminal-Bench v2.1");
+      expect(benchmark?.overall, modelId).toEqual(figures);
+    }
+    expect(findGatewayModel("opencode--deepseek-v4-flash")?.benchmark?.caveat).toContain(
+      "0731 re-post-trained build",
+    );
+
     const glm = findGatewayModel("opencode--glm-5.2");
     expect(glm?.benchmark?.source).toBe("CursorBench 3.2");
     expect(glm?.benchmark?.rungs && Object.keys(glm.benchmark.rungs).sort()).toEqual(["high", "max"]);
@@ -716,6 +755,7 @@ describe("model catalog", () => {
 
     expect(GATEWAY_BENCHMARKS_STAMP).toContain("cursorbench:");
     expect(GATEWAY_BENCHMARKS_STAMP).toContain("swe-rebench:");
+    expect(GATEWAY_BENCHMARKS_STAMP).toContain("aa-terminal-bench:");
     expect(findGatewayModel("cursor--auto")?.benchmark).toBeUndefined();
     expect(findGatewayModel("cursor--grok-4.5-fast")?.benchmark).toBeUndefined();
 
