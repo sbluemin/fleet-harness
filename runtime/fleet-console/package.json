@@ -38,7 +38,7 @@
     "node": ">=20.19.0"
   },
   "scripts": {
-    "build": "pnpm generate:admiral-assets && pnpm generate:shim-keys && tsup && node ../../scripts/check-dist-node-protocol.mjs && pnpm generate:desktop-protocol-declaration && pnpm verify:desktop-protocol && vite build --config core/client/vite.config.ts",
+    "build": "pnpm generate:admiral-assets && pnpm generate:shim-keys && tsup && node ../../scripts/check-dist-node-protocol.mjs && node ../../scripts/check-dist-published-externals.mjs && pnpm generate:desktop-protocol-declaration && pnpm verify:desktop-protocol && vite build --config core/client/vite.config.ts",
     "cli": "tsx core/host/cli.ts",
     "dev": "vite --config core/client/vite.config.ts",
     "generate:admiral-assets": "node ../../scripts/generate-fleet-admiral-assets.mjs",
