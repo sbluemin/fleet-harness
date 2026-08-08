@@ -271,6 +271,9 @@ importers:
       '@xterm/xterm':
         specifier: ^6.0.0
         version: 6.0.0
+      esbuild:
+        specifier: 0.27.7
+        version: 0.27.7
       font-list:
         specifier: ^2.1.0
         version: 2.1.0
@@ -335,9 +338,6 @@ importers:
       dompurify:
         specifier: ^3.2.7
         version: 3.4.2
-      esbuild:
-        specifier: 0.27.7
-        version: 0.27.7
       highlight.js:
         specifier: ^11.11.1
         version: 11.11.1
