@@ -2,6 +2,7 @@ import path from "node:path";
 
 import { resolveDoctrineFromCliId, type AdmiralDoctrine } from "../../protocols/doctrine.js";
 import { EMBEDDED_AGENT_CLI_SKILL_ASSETS } from "../assets.generated.js";
+import { buildGatewayAgentFiles, FLEET_PLUGIN_NAME } from "../gateway-agents.js";
 import { writePrivateFile, writePrivateJson } from "./fs.js";
 import type { FleetHookExec } from "../types.js";
 import type { AssetPluginBundle, CreateAgentCliPluginOptions } from "../types.js";
@@ -13,7 +14,7 @@ export const assetBundle: AssetPluginBundle = {
   description: "Fleet workflow orchestration and wiki evidence plugin",
   directoryName: "fleet-gateway",
   displayName: "Fleet",
-  name: "fleet",
+  name: FLEET_PLUGIN_NAME,
   source: "asset",
 };
 
@@ -30,6 +31,17 @@ export function renderAssetPluginRoot(
   renderEmbeddedSkillAssets(pluginRoot, doctrine);
   if (options.cliId === "claude-native" || options.cliId === "claude-gateway") {
     writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), claudeHooks(options), pluginRoot);
+  }
+  // 게이트웨이 정체성은 이 플러그인이 싣는다. 렌더는 스테이징 디렉터리에 전부 쓰고
+  // 한 번에 rename하므로, 노출 목록이 줄어든 세션에서 옛 정의가 남아 있을 수 없다.
+  if (options.cliId === "claude-gateway") {
+    renderGatewayAgentAssets(pluginRoot, options);
+  }
+}
+
+function renderGatewayAgentAssets(pluginRoot: string, options: CreateAgentCliPluginOptions): void {
+  for (const file of buildGatewayAgentFiles(options.gatewayExposedModels ?? [], options.gatewayEffortExposure)) {
+    writePrivateFile(path.join(pluginRoot, "agents", file.fileName), file.content, pluginRoot);
   }
 }
 

@@ -6,13 +6,26 @@ import {
 } from "@dotobokuri/core-ai-gateway";
 import { describe, expect, it } from "vitest";
 
-import { buildGatewayCustomAgents } from "../src/agent-cli/gateway-agents.js";
+import { buildGatewayAgentFiles, FLEET_PLUGIN_NAME } from "../src/agent-cli/gateway-agents.js";
 import { buildGatewayModelsToolSpec, GATEWAY_MODELS_TOOL_ID } from "../src/ai-gateway/gateway-models-tool.js";
 import { buildGatewayLoadout, type GatewayLoadout } from "../src/ai-gateway/model-loadout.js";
 import { isHostSessionToolAllowed } from "../src/tools.js";
 
 function allModels(loadout: ReturnType<typeof buildGatewayLoadout>) {
   return Object.values(loadout.providers).flatMap((provider) => provider.models);
+}
+
+/**
+ * 세션이 실제로 등록하는 철자. 정의는 플러그인 `agents/`에 파일로 놓이고 Claude Code가
+ * `<plugin>:<파일 stem>`으로 등록하므로, 로스터가 보고하는 이름은 그 파일 집합에서 나와야
+ * 한다 — 다른 곳에서 다시 만들면 둘이 갈라져도 이 테스트가 알아채지 못한다.
+ */
+function registeredSelectors(
+  exposed: readonly GatewayModel[],
+  exposure?: Parameters<typeof buildGatewayAgentFiles>[1],
+): Set<string> {
+  return new Set(buildGatewayAgentFiles(exposed, exposure)
+    .map((file) => `${FLEET_PLUGIN_NAME}:${file.fileName.replace(/\.md$/u, "")}`));
 }
 
 function model(id: string): GatewayModel {
@@ -26,7 +39,7 @@ describe("gateway loadout agent type selectors", () => {
   // 이름을 요구하는 자리에 넣을 값을 회수할 방법이 없어 모델 id를 넣고 실패한다.
   it("keys selectors by the model's own ladder and matches the registered agents", () => {
     const exposed = [model("cursor--claude-opus-5"), model("opencode--deepseek-v4-pro")];
-    const registered = new Set(Object.keys(buildGatewayCustomAgents(exposed)));
+    const registered = registeredSelectors(exposed);
     const loadout = buildGatewayLoadout({ exposed });
 
     expect(allModels(loadout).length).toBe(exposed.length);
@@ -48,7 +61,7 @@ describe("gateway loadout agent type selectors", () => {
   it("reports only the exposed rungs and keeps them matched to the registered agents", () => {
     const kimi = model("kimi--k3");
     const effortExposure = { [kimi.id]: ["max"] as const };
-    const registered = new Set(Object.keys(buildGatewayCustomAgents([kimi], effortExposure)));
+    const registered = registeredSelectors([kimi], effortExposure);
     const loadout = buildGatewayLoadout({ exposed: [kimi], effortExposure });
     const entry = allModels(loadout)[0];
 

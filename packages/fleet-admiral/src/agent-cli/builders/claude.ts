@@ -9,7 +9,6 @@ export function buildClaudeNativeArgs(context: AgentCliInjectionContext): string
       pluginRoot,
     ]),
     ...(context.mcpServers.length > 0 ? ["--mcp-config", buildClaudeMcpConfig(context.mcpServers)] : []),
-    ...buildCustomAgentsArgs(context.customAgents),
     ...buildSettingsArgs(context.skillOverrides),
     "--dangerously-skip-permissions",
   ];
@@ -24,13 +23,6 @@ function buildSettingsArgs(
 ): string[] {
   if (skillOverrides === undefined || Object.keys(skillOverrides).length === 0) return [];
   return ["--settings", JSON.stringify({ skillOverrides })];
-}
-
-function buildCustomAgentsArgs(
-  agents: AgentCliInjectionContext["customAgents"],
-): string[] {
-  if (agents === undefined || Object.keys(agents).length === 0) return [];
-  return ["--agents", JSON.stringify(agents)];
 }
 
 function buildResumeArgs(resumeSessionId: string | undefined): string[] {
