@@ -740,18 +740,14 @@ function AiGatewayModelsCard() {
       ) : selection.defaultModel === undefined ? (
         <p className="global-settings-help">{t("terminal.settings.aiGatewayDefaultUnset")}</p>
       ) : null}
-      <AiGatewayPriorityChips
-        providers={state.aiGatewayCatalog.providers.map((provider) => provider.id)}
-        priority={priority}
-        saving={saving}
-        onToggle={toggleProviderPriority}
-      />
       {state.aiGatewayCatalog.providers.map((provider) => (
         <AiGatewayProviderBlock
           key={provider.id}
           provider={provider}
           selection={selection}
           saving={saving}
+          priorityRank={priority.indexOf(provider.id as AiGatewayProviderId)}
+          onTogglePriority={toggleProviderPriority}
           onAdd={addModel}
           onRemove={removeModel}
           onSetDefault={setDefaultModel}
@@ -777,49 +773,51 @@ export function composeAiGatewayRemoval(selection: AiGatewaySettings, id: string
   };
 }
 
-interface AiGatewayPriorityChipsProps {
-  readonly providers: readonly AiGatewayProviderId[];
-  readonly priority: readonly AiGatewayProviderId[];
+interface AiGatewayPriorityToggleProps {
+  readonly provider: AiGatewayProviderId;
+  /** 소진 순서에서의 0-기준 자리. 순서 밖이면 -1. */
+  readonly rank: number;
   readonly saving: boolean;
   readonly onToggle: (id: AiGatewayProviderId) => void;
 }
 
 /**
- * 공급자 소진 순서 옵트인. 순서는 상태가 아니라 사용자 선호이므로 등급 배지와 같은
- * 규율로 신호색·brass 없이 잉크 농도와 순위 숫자로만 말한다. 칩 클릭이 순서 끝에
- * 추가/제거하는 유일한 문법이라 드래그 프리미티브 없이 공급자 전부를 다룬다.
+ * 공급자 소진 순서 옵트인. 공급자를 고르는 자리는 그 공급자의 헤드 한 곳뿐이므로,
+ * 토글은 이름 옆에 붙어 자기 공급자만 말하고 순위 숫자로 자리를 함께 드러낸다.
+ * 순서는 상태가 아니라 사용자 선호라서 등급 배지와 같은 규율로 신호색·brass 없이
+ * 잉크 농도와 숫자로만 말한다. 누르면 순서 끝에 추가/제거하는 문법은 그대로라
+ * 드래그 프리미티브 없이 순서 전체를 다룬다.
  */
-export function AiGatewayPriorityChips({ providers, priority, saving, onToggle }: AiGatewayPriorityChipsProps) {
+export function AiGatewayPriorityToggle({ provider, rank, saving, onToggle }: AiGatewayPriorityToggleProps) {
   const t = getT(useTerminalLocale());
+  const ranked = rank >= 0;
+  const providerLabel = t(AI_GATEWAY_PROVIDER_LABEL_KEYS[provider]);
+  const tipId = `ai-gateway-priority-tip-${provider}`;
   return (
-    <div className="ai-gateway-priority" role="group" aria-label={t("terminal.settings.aiGatewayPriority")}>
-      <span className="ai-gateway-field-label" title={t("terminal.settings.aiGatewayPriorityTooltip")}>
+    <>
+      <button
+        type="button"
+        className={`ai-gateway-priority-toggle${ranked ? " is-ranked" : ""}`}
+        disabled={saving}
+        aria-pressed={ranked}
+        aria-label={ranked
+          ? t("terminal.settings.aiGatewayPriorityRemoveAria", { provider: providerLabel, rank: rank + 1 })
+          : t("terminal.settings.aiGatewayPriorityAddAria", { provider: providerLabel })}
+        // 접근성 이름은 결과 행동만 말하므로, 소진 순서가 무엇인지는 말풍선이 설명으로 잇는다 —
+        // 말풍선을 트리에서 감추면 스크린리더에는 설명 없는 "소진 순서"만 남는다.
+        aria-describedby={tipId}
+        onClick={() => onToggle(provider)}
+      >
+        {ranked ? <span className="ai-gateway-priority-rank" aria-hidden="true">{rank + 1}</span> : null}
         {t("terminal.settings.aiGatewayPriority")}
+      </button>
+      {/* 칩 줄이 사라지며 의미를 말하던 라벨·도움말도 사라지므로, hover·키보드 포커스에서
+          한 줄 요약 말풍선이 그 자리를 진다. 버튼 밖 형제로 두는 것은 배치 문제다 —
+          버튼 안에 두면 폭 기준이 버튼이라 좁은 화면에서 말풍선이 뷰포트를 넘는다. */}
+      <span className="ai-gateway-priority-tip" id={tipId}>
+        {t("terminal.settings.aiGatewayPriorityTip")}
       </span>
-      {providers.map((id) => {
-        const rank = priority.indexOf(id);
-        const active = rank >= 0;
-        const provider = t(AI_GATEWAY_PROVIDER_LABEL_KEYS[id]);
-        return (
-          <button
-            key={id}
-            type="button"
-            className={`ai-gateway-priority-chip${active ? " is-ranked" : ""}`}
-            disabled={saving}
-            aria-pressed={active}
-            aria-label={active
-              ? t("terminal.settings.aiGatewayPriorityRemoveAria", { provider, rank: rank + 1 })
-              : t("terminal.settings.aiGatewayPriorityAddAria", { provider })}
-            title={t("terminal.settings.aiGatewayPriorityTooltip")}
-            onClick={() => onToggle(id)}
-          >
-            {active ? <span className="ai-gateway-priority-rank" aria-hidden="true">{rank + 1}</span> : null}
-            {provider}
-          </button>
-        );
-      })}
-      <p className="global-settings-help ai-gateway-priority-help">{t("terminal.settings.aiGatewayPriorityHint")}</p>
-    </div>
+    </>
   );
 }
 
@@ -827,13 +825,26 @@ interface AiGatewayProviderBlockProps {
   readonly provider: AiGatewayCatalogProvider;
   readonly selection: AiGatewaySettings;
   readonly saving: boolean;
+  /** 소진 순서에서의 0-기준 자리. 순서 밖이면 -1. */
+  readonly priorityRank: number;
+  readonly onTogglePriority: (id: AiGatewayProviderId) => void;
   readonly onAdd: (model: AiGatewayCatalogModel) => void;
   readonly onRemove: (id: string) => void;
   readonly onSetDefault: (id: string) => void;
   readonly onSetEfforts: (model: AiGatewayCatalogModel, efforts: readonly string[]) => void;
 }
 
-function AiGatewayProviderBlock({ provider, selection, saving, onAdd, onRemove, onSetDefault, onSetEfforts }: AiGatewayProviderBlockProps) {
+function AiGatewayProviderBlock({
+  provider,
+  selection,
+  saving,
+  priorityRank,
+  onTogglePriority,
+  onAdd,
+  onRemove,
+  onSetDefault,
+  onSetEfforts,
+}: AiGatewayProviderBlockProps) {
   const t = getT(useTerminalLocale());
   const baseModels = provider.models.filter((model) => !model.fast);
   const [draftBase, setDraftBase] = React.useState(baseModels[0]?.id ?? "");
@@ -860,6 +871,12 @@ function AiGatewayProviderBlock({ provider, selection, saving, onAdd, onRemove, 
       <div className="ai-gateway-provider-head">
         <span className="ai-gateway-provider-glyph" aria-hidden="true"><AiGatewayProviderGlyph provider={provider.id as AiGatewayProviderId} /></span>
         <span className="ai-gateway-provider-name">{providerLabel}</span>
+        <AiGatewayPriorityToggle
+          provider={provider.id as AiGatewayProviderId}
+          rank={priorityRank}
+          saving={saving}
+          onToggle={onTogglePriority}
+        />
         <span className="ai-gateway-provider-sub">
           {t(AI_GATEWAY_PROVIDER_SUB_KEYS[provider.id as AiGatewayProviderId])}
           {" · "}
