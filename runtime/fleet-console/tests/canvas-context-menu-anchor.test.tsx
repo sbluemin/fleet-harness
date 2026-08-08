@@ -1,11 +1,17 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OperationCatalogPlugin } from "@fleet-console/sdk/operations";
 
-import { CanvasContextMenu } from "../core/client/src/canvas/canvas-context-menu.js";
+import {
+  CanvasContextMenu,
+  OPERATION_LAUNCH_EFFORT_MENU_WIDTH,
+  OPERATION_LAUNCH_FLYOUT_WIDTH,
+} from "../core/client/src/canvas/canvas-context-menu.js";
 import {
   FEATURE_TOUR_BOUNDARY_ATTRIBUTE,
   FEATURE_TOUR_LAYER_ATTRIBUTE,
@@ -25,7 +31,7 @@ beforeEach(() => {
       return { ...originalGetBoundingClientRect.call(this), width: 288, height: 133 } as DOMRect;
     }
     if (this.classList.contains("operation-launch-flyout")) {
-      return { ...originalGetBoundingClientRect.call(this), width: 324, height: 300 } as DOMRect;
+      return { ...originalGetBoundingClientRect.call(this), width: 216, height: 300 } as DOMRect;
     }
     return originalGetBoundingClientRect.call(this);
   };
@@ -426,11 +432,28 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(document.querySelector(".canvas-context-menu-aside")).toBeNull();
 
     const row = document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!;
-    const chip = document.querySelector<HTMLButtonElement>('[data-launch-variant-chip="fable:max"]')!;
+    // 펼쳐지는 것은 메뉴가 아니라 슬라이더 하나짜리 상자다 — haspopup=menu로 예고하면 보조기술이
+    // 메뉴 탐색 모델을 씌워 트랙을 조작 대상으로 보지 않는다.
+    expect(row.hasAttribute("aria-haspopup")).toBe(false);
+    expect(row.getAttribute("aria-expanded")).toBe("false");
+    expect(document.querySelector(".effort-track")).toBeNull();
+
+    // 강도를 건드리지 않은 행은 모델만 싣는다.
     act(() => row.click());
     expect(onLaunchKind).toHaveBeenLastCalledWith("terminal", catalog[0]!.kinds[0], { model: "fable" });
-    act(() => chip.click());
+
+    // 트랙은 값만 정한다 — 실행은 여전히 모델 행이 일으킨다.
+    act(() => row.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+    const track = document.querySelector<HTMLElement>(".effort-track")!;
+    expect(track).not.toBeNull();
+    act(() => track.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
+    expect(onLaunchKind).toHaveBeenCalledTimes(1);
+
+    // 고른 강도는 행에 되비치고, 그 행을 눌러야 실행된다.
+    expect(document.querySelector(".operation-launch-variant-effort")?.textContent).toBe("MAX");
+    act(() => document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!.click());
     expect(onLaunchKind).toHaveBeenLastCalledWith("terminal", catalog[0]!.kinds[0], { model: "fable", effort: "max" });
+
     act(() => parent.click());
     expect(onLaunchKind).toHaveBeenLastCalledWith("terminal", catalog[0]!.kinds[0]);
   });
@@ -446,12 +469,105 @@ describe("CanvasContextMenu launch kind attribute", () => {
     const left = Number.parseFloat(flyout.style.left);
     const top = Number.parseFloat(flyout.style.top);
     expect(left).toBeGreaterThanOrEqual(12);
-    expect(left).toBeLessThanOrEqual(bounds.width - 324 - 12);
+    expect(left).toBeLessThanOrEqual(bounds.width - 216 - 12);
     expect(top).toBeGreaterThanOrEqual(12);
     expect(top).toBeLessThanOrEqual(bounds.height - 300 - 12);
   });
 
-  it("roves across flyout rows and chips, then restores parent focus with ArrowLeft", async () => {
+  it("continues the cascade to the right instead of folding onto the parent when both sides fit", () => {
+    // 캔버스 왼쪽에서 연 메뉴는 flyout이 오른쪽으로 열린다. 그때 강도 서브메뉴가 "왼쪽 여유가
+    // 더 넓다"는 이유로 접히면 부모 메뉴 위에 겹쳐, 짚은 행과 무관한 자리에 뜬 상자가 된다.
+    const bounds = { width: 1280, height: 800 };
+    renderMenu({ x: 260, y: 100 }, bounds, gatewayVariantCatalog());
+    const parent = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
+    act(() => parent.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+
+    const flyout = document.querySelector<HTMLElement>(".operation-launch-flyout")!;
+    expect(flyout.classList.contains("is-left")).toBe(false);
+
+    const row = document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!;
+    act(() => row.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+
+    const effort = document.querySelector<HTMLElement>(".operation-launch-effort-menu")!;
+    expect(effort.classList.contains("is-left")).toBe(false);
+    // 서브메뉴는 flyout 상자의 오른쪽 바깥에 선다 — 부모 위로 되돌아오지 않는다.
+    expect(Number.parseFloat(effort.style.left))
+      .toBeGreaterThanOrEqual(Number.parseFloat(flyout.style.left) + 216);
+  });
+
+  it("keeps the rendered widths in step with the placement constants", () => {
+    const css = readFileSync(resolve(process.cwd(), "core/client/src/styles/components.css"), "utf8");
+    const widthOf = (selector: string) =>
+      Number(new RegExp(`${selector}\\.theater-menu\\s*\\{[^}]*?width:\\s*(\\d+)px;`, "u").exec(css)?.[1]);
+    expect(widthOf("\\.operation-launch-flyout")).toBe(OPERATION_LAUNCH_FLYOUT_WIDTH);
+    expect(widthOf("\\.operation-launch-effort-menu")).toBe(OPERATION_LAUNCH_EFFORT_MENU_WIDTH);
+  });
+
+  it("follows the model row while the flyout scrolls, and lets go once the row leaves it", () => {
+    // 서브메뉴는 fixed라 목록이 굴러도 제자리에 남는다. 짚고 있던 행이 올라가 버리면 그 상자는
+    // 엉뚱한 행 옆에서 그 행의 강도인 척하고, 행을 눌러 실행하는 표면에서는 그대로 오실행이 된다.
+    const flyoutRect = { top: 100, bottom: 400, left: 0, right: 216, width: 216, height: 300 };
+    let anchorRect = { top: 150, bottom: 178, left: 8, right: 208, width: 200, height: 28 };
+    const previous = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function getBoundingClientRect(): DOMRect {
+      if (this.classList.contains("operation-launch-flyout")) return { ...flyoutRect, x: 0, y: 100, toJSON: () => ({}) } as DOMRect;
+      if (this.classList.contains("operation-launch-variant-entry")) return { ...anchorRect, x: 8, y: anchorRect.top, toJSON: () => ({}) } as DOMRect;
+      return previous.call(this);
+    };
+    try {
+      renderMenu({ x: 200, y: 100 }, { width: 1280, height: 420 }, gatewayVariantCatalog());
+      const parent = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
+      act(() => parent.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+      const entry = document.querySelector<HTMLElement>(".operation-launch-variant-entry")!;
+      act(() => entry.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+      const topAfterOpen = document.querySelector<HTMLElement>(".operation-launch-effort-menu")!.style.top;
+
+      // 행이 아직 flyout 안에 있으면 따라간다.
+      anchorRect = { ...anchorRect, top: 120, bottom: 148 };
+      act(() => document.querySelector(".operation-launch-flyout")!.dispatchEvent(new Event("scroll")));
+      const menu = document.querySelector<HTMLElement>(".operation-launch-effort-menu");
+      expect(menu).not.toBeNull();
+      expect(menu!.style.top).not.toBe(topAfterOpen);
+
+      // 행이 flyout 위로 사라지면 "그 행의 강도"라는 관계가 끊긴다 — 따라가지 않고 닫는다.
+      anchorRect = { ...anchorRect, top: 40, bottom: 68 };
+      act(() => document.querySelector(".operation-launch-flyout")!.dispatchEvent(new Event("scroll")));
+      expect(document.querySelector(".operation-launch-effort-menu")).toBeNull();
+    } finally {
+      Element.prototype.getBoundingClientRect = previous;
+    }
+  });
+
+  it("clamps the effort submenu inside short vertical bounds", () => {
+    const bounds = { width: 1116, height: 160 };
+    const effortHeight = 148;
+    const effortWidth = 104;
+    const previousGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function getBoundingClientRect(): DOMRect {
+      if (this.classList.contains("operation-launch-effort-menu")) {
+        return {
+          x: 0, y: 0, left: 0, top: 0, width: effortWidth, height: effortHeight,
+          right: effortWidth, bottom: effortHeight, toJSON: () => ({}),
+        };
+      }
+      return previousGetBoundingClientRect.call(this);
+    };
+    try {
+      renderMenu({ x: 520, y: 120 }, bounds, gatewayVariantCatalog());
+      const parent = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
+      act(() => parent.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+      const row = document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!;
+      act(() => row.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+
+      const effort = document.querySelector<HTMLElement>(".operation-launch-effort-menu")!;
+      // maxTop = max(12, 160 - 148 - 12) = 12 — anything taller must land on the margin.
+      expect(Number.parseFloat(effort.style.top)).toBe(12);
+    } finally {
+      Element.prototype.getBoundingClientRect = previousGetBoundingClientRect;
+    }
+  });
+
+  it("opens the effort submenu from a model row, then restores focus with ArrowLeft", async () => {
     renderMenu({ x: 900, y: 156 }, { width: 1116, height: 856 }, gatewayVariantCatalog());
     const parent = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
 
@@ -465,25 +581,32 @@ describe("CanvasContextMenu launch kind attribute", () => {
 
     const flyout = document.querySelector<HTMLElement>(".operation-launch-flyout")!;
     const row = document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!;
-    const high = document.querySelector<HTMLButtonElement>('[data-launch-variant-chip="fable:high"]')!;
-    const max = document.querySelector<HTMLButtonElement>('[data-launch-variant-chip="fable:max"]')!;
     expect(flyout.parentElement).toBe(document.querySelector(".operation-launch-control--canvas"));
     expect(flyout.closest(".canvas-context-menu")).toBeNull();
     expect(flyout.classList.contains("is-left")).toBe(true);
     expect(document.activeElement).toBe(row);
 
-    pressFlyoutKey("ArrowDown");
-    expect(document.activeElement).toBe(high);
-    pressFlyoutKey("ArrowDown");
-    expect(document.activeElement).toBe(max);
-    pressFlyoutKey("ArrowDown");
-    expect(document.activeElement).toBe(row);
-    pressFlyoutKey("ArrowUp");
-    expect(document.activeElement).toBe(max);
-    pressFlyoutKey("Home");
-    expect(document.activeElement).toBe(row);
+    pressFlyoutKey("ArrowRight");
+    await act(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
+    const track = document.querySelector<HTMLElement>(".effort-track")!;
+    const popup = document.querySelector<HTMLElement>(".operation-launch-effort-menu")!;
+    expect(popup).not.toBeNull();
+    // 상자는 그룹이고, 그것을 연 행이 aria-controls로 가리킨다.
+    expect(popup.getAttribute("role")).toBe("group");
+    expect(row.getAttribute("aria-controls")).toBe(popup.id);
+    expect(document.activeElement).toBe(track);
+
+    // 트랙 위에서 방향키는 값을 옮긴다 — 실행은 여전히 모델 행이 일으킨다.
     pressFlyoutKey("End");
-    expect(document.activeElement).toBe(max);
+    expect(document.querySelector(".operation-launch-variant-effort")?.textContent).toBe("MAX");
+
+    // 그래서 서브메뉴에서 나오는 키는 방향키가 아니라 Escape다.
+    pressFlyoutKey("Escape");
+    expect(document.querySelector(".operation-launch-effort-menu")).toBeNull();
+    expect(document.activeElement).toBe(row);
+    expect(document.querySelector(".operation-launch-flyout")).not.toBeNull();
 
     pressFlyoutKey("ArrowLeft");
     expect(document.querySelector(".operation-launch-flyout")).toBeNull();

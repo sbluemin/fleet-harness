@@ -24,12 +24,17 @@ function readLaunchVariantRow(value: unknown): OperationLaunchVariantRow | null 
   const chips = Array.isArray(value.chips)
     ? value.chips.map(readLaunchVariantChip).filter((chip): chip is OperationLaunchVariantChip => chip !== null)
     : [];
+  // 축은 칩이 놓인 자리를 말한다 — 칩이 없으면 말할 자리도 없다.
+  const effortAxis = Array.isArray(value.effortAxis)
+    ? value.effortAxis.filter((rung): rung is string => typeof rung === "string" && rung.length > 0)
+    : [];
   return {
     id: value.id,
     label: value.label,
     ...(typeof value.starred === "boolean" ? { starred: value.starred } : {}),
     launch,
     ...(chips.length > 0 ? { chips } : {}),
+    ...(chips.length > 0 && effortAxis.length > 0 ? { effortAxis } : {}),
   };
 }
 

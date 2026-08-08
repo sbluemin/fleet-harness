@@ -1,5 +1,13 @@
 import type { OperationLaunchKind, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
-import { exposableEffortLadder, type AiGatewaySelection } from "@dotobokuri/core-ai-gateway";
+import {
+  bareModelName,
+  exposableEffortLadder,
+  GATEWAY_PROVIDER_NAMES,
+  GATEWAY_PROVIDERS,
+  type AiGatewaySelection,
+  type GatewayModel,
+  type GatewayProvider,
+} from "@dotobokuri/core-ai-gateway";
 import { NATIVE_CLAUDE_EFFORTS, NATIVE_CLAUDE_MODEL_ALIASES } from "@dotobokuri/fleet-admiral";
 
 import type { AgentCliLaunchMetadata } from "./agent-cli-launch-metadata.js";
@@ -47,6 +55,7 @@ export function buildClaudeGatewayLaunchVariants(selection?: AiGatewaySelection)
       id: model,
       label: NATIVE_MODEL_LABELS[model],
       launch: { model },
+      effortAxis: EFFORT_AXIS,
       chips: NATIVE_CLAUDE_EFFORTS.map((effort) => ({
         id: effort,
         label: EFFORT_LABELS[effort]!,
@@ -55,28 +64,49 @@ export function buildClaudeGatewayLaunchVariants(selection?: AiGatewaySelection)
     })),
   };
   if (!selection || selection.models.length === 0) return [native];
-  return [native, {
-    id: "gateway",
-    label: "Gateway",
-    rows: selection.models.map((model) => {
-      const efforts = (selection.effortExposure[model.id] ?? exposableEffortLadder(model))
-        .filter((effort): effort is (typeof NATIVE_CLAUDE_EFFORTS)[number] =>
-          NATIVE_CLAUDE_EFFORTS.includes(effort as (typeof NATIVE_CLAUDE_EFFORTS)[number]));
-      return {
-        id: model.id,
-        label: model.displayName,
-        ...(selection.defaultModel?.id === model.id ? { starred: true } : {}),
-        launch: { model: model.id },
-        ...(efforts.length > 0 ? {
-          chips: efforts.map((effort) => ({
-            id: effort,
-            label: EFFORT_LABELS[effort] ?? effort.toUpperCase(),
-            launch: { model: model.id, effort },
-          })),
-        } : {}),
-      };
-    }),
-  }];
+
+  // Gateway rows stay sorted by GATEWAY_PROVIDERS, but launch menus show one band
+  // per provider so glyphs and captions can identify the supplier without the
+  // Claude Code displayName prefix.
+  const groups: OperationLaunchVariantGroup[] = [native];
+  for (const provider of GATEWAY_PROVIDERS) {
+    const models = selection.models.filter((model) => model.provider === provider);
+    if (models.length === 0) continue;
+    groups.push({
+      id: providerGroupId(provider),
+      label: GATEWAY_PROVIDER_NAMES[provider],
+      rows: models.map((model) => toGatewayRow(model, selection)),
+    });
+  }
+  return groups;
+}
+
+// 강도 축은 사다리 어휘를 아는 이쪽이 소유한다. 한 모델이 그 일부만 내놓아도(low/high/max)
+// 축은 그대로라, 표면이 내놓은 단을 균등히 벌리는 대신 제자리에 세울 수 있다.
+const EFFORT_AXIS: readonly string[] = NATIVE_CLAUDE_EFFORTS;
+
+function providerGroupId(provider: GatewayProvider): string {
+  return `gateway:${provider}`;
+}
+
+function toGatewayRow(model: GatewayModel, selection: AiGatewaySelection) {
+  const efforts = (selection.effortExposure[model.id] ?? exposableEffortLadder(model))
+    .filter((effort): effort is (typeof NATIVE_CLAUDE_EFFORTS)[number] =>
+      NATIVE_CLAUDE_EFFORTS.includes(effort as (typeof NATIVE_CLAUDE_EFFORTS)[number]));
+  return {
+    id: model.id,
+    label: bareModelName(model),
+    ...(selection.defaultModel?.id === model.id ? { starred: true } : {}),
+    launch: { model: model.id },
+    ...(efforts.length > 0 ? {
+      effortAxis: EFFORT_AXIS,
+      chips: efforts.map((effort) => ({
+        id: effort,
+        label: EFFORT_LABELS[effort] ?? effort.toUpperCase(),
+        launch: { model: model.id, effort },
+      })),
+    } : {}),
+  };
 }
 
 function resolveDisabledReason(cli: AgentCliLaunchMetadata): string | undefined {

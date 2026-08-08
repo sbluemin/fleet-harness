@@ -7079,7 +7079,9 @@
   left: calc(100% + 10px);
   right: auto;
   z-index: 41;
-  width: 324px;
+  /* 모델 이름만 담는 폭이다(실행 강도는 자기 서브메뉴로 빠졌다). canvas-context-menu.tsx의
+     FLYOUT_WIDTH와 같은 값이어야 한다 — 하나만 고치면 컴파일은 되고 배치만 조용히 어긋난다. */
+  width: 216px;
   max-height: var(--canvas-menu-max-height, 520px);
   overflow-y: auto;
   animation: operation-launch-flyout-in var(--duration-fast) var(--ease-spring) both;
@@ -7090,6 +7092,9 @@
 }
 
 .operation-launch-variant-caption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
   padding: var(--space-1) var(--space-2);
   color: color-mix(in oklch, var(--brass) 72%, var(--text-tertiary));
@@ -7100,10 +7105,50 @@
   text-transform: uppercase;
 }
 
+.operation-launch-variant-caption.is-claude,
+.quick-launch-pop-band.is-claude { --launch-provider-tone: var(--provider-claude); }
+.operation-launch-variant-caption.is-codex,
+.quick-launch-pop-band.is-codex { --launch-provider-tone: var(--provider-codex); }
+.operation-launch-variant-caption.is-cursor,
+.quick-launch-pop-band.is-cursor { --launch-provider-tone: var(--provider-cursor); }
+.operation-launch-variant-caption.is-kimi,
+.quick-launch-pop-band.is-kimi { --launch-provider-tone: var(--provider-kimi); }
+.operation-launch-variant-caption.is-opencode,
+.quick-launch-pop-band.is-opencode { --launch-provider-tone: var(--provider-opencode); }
+
+.operation-launch-provider-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid color-mix(in oklch, var(--launch-provider-tone) 32%, transparent);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--launch-provider-tone) 12%, transparent);
+  color: var(--launch-provider-tone);
+}
+
+.operation-launch-provider-glyph svg {
+  width: 10px;
+  height: 10px;
+}
+
+.quick-launch-kind-icon.is-claude,
+.quick-launch-kind-icon.is-codex,
+.quick-launch-kind-icon.is-cursor,
+.quick-launch-kind-icon.is-kimi,
+.quick-launch-kind-icon.is-opencode {
+  color: var(--launch-provider-tone);
+}
+.quick-launch-kind-icon.is-claude { --launch-provider-tone: var(--provider-claude); }
+.quick-launch-kind-icon.is-codex { --launch-provider-tone: var(--provider-codex); }
+.quick-launch-kind-icon.is-cursor { --launch-provider-tone: var(--provider-cursor); }
+.quick-launch-kind-icon.is-kimi { --launch-provider-tone: var(--provider-kimi); }
+.quick-launch-kind-icon.is-opencode { --launch-provider-tone: var(--provider-opencode); }
+
 .operation-launch-variant-entry {
-  display: grid;
-  gap: 3px;
-  padding: 2px var(--space-1) 5px;
+  padding: 1px var(--space-1);
 }
 
 .operation-launch-variant-row {
@@ -7111,7 +7156,7 @@
   align-items: center;
   gap: var(--space-2);
   width: 100%;
-  padding: 4px var(--space-1);
+  padding: 6px var(--space-1);
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
@@ -7124,47 +7169,204 @@
 }
 
 .operation-launch-variant-row:hover,
-.operation-launch-variant-row:focus-visible {
+.operation-launch-variant-row:focus-visible,
+.operation-launch-variant-row[aria-expanded="true"] {
   background: color-mix(in oklch, var(--brass) 8%, transparent);
   color: var(--text-primary);
   outline: none;
 }
 
-.operation-launch-variant-star {
-  margin-left: auto;
+/* 라벨이 남는 폭을 전부 먹고 ★·꺾쇠는 그 뒤에 붙는다. 정렬을 표식 쪽 margin-left:auto로 만들면
+   표식이 둘일 때 여백이 그 사이에서 나뉘어 ★가 행 한가운데 뜬다. */
+.operation-launch-variant-row-label,
+.quick-launch-variant-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 기본 모델 표식은 두 실행 메뉴에서 같은 별이어야 한다. 조판을 행에서 상속시키면 mono를 쓰는
+   캔버스 쪽 ★가 sans를 쓰는 Quick Launch 쪽의 절반 폭으로 가늘게 렌더돼, 같은 뜻의 표식이
+   표면마다 다른 기호로 읽힌다. */
+.operation-launch-variant-star,
+.quick-launch-variant-star {
   color: var(--brass);
-  font-size: 9.5px;
+  font-family: var(--font-body);
+  font-size: 10px;
+  line-height: 1;
 }
 
-.operation-launch-variant-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 0 var(--space-1);
-}
-
-.operation-launch-variant-chip {
-  padding: 3px 6px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-sm);
-  background: transparent;
+.operation-launch-variant-chevron,
+.quick-launch-variant-chevron {
   color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.operation-launch-effort-menu.theater-menu {
+  --flyout-enter-x: -4px;
+  z-index: 42;
+  /* canvas-context-menu.tsx의 EFFORT_SUBMENU_WIDTH와 같은 값이어야 한다. */
+  width: 216px;
+  max-height: var(--canvas-menu-max-height, 520px);
+  overflow-y: auto;
+  animation: operation-launch-flyout-in var(--duration-fast) var(--ease-spring) both;
+}
+
+.operation-launch-effort-menu.theater-menu.is-left {
+  --flyout-enter-x: 4px;
+}
+
+/* ── 추론 강도 트랙 ─────────────────────────────────────────────────────────
+   강도는 상태가 아니라 사용자가 고른 값이라, 채움은 위치·초점 채널인 brass를 쓴다. 신호색
+   (aurora/warn/coral/positive)으로 칠하면 그 순간 "무슨 일이 일어났다"로 읽힌다. */
+.effort-track-shell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.effort-track {
+  position: relative;
+  flex: 1;
+  min-width: 116px;
+  height: 26px;
+  padding: 0 13px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--surface-rim);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--surface-pillar) 55%, transparent);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.effort-track:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.effort-track-fill {
+  position: absolute;
+  left: 1px;
+  top: 1px;
+  bottom: 1px;
+  border-radius: 999px;
+  /* 광택 스윕은 이 상자 안에서만 지나간다 — 가두지 않으면 트랙 밖 빈자리에 흰 띠로 남는다. */
+  overflow: hidden;
+  background: var(--brass);
+  transition: width var(--duration-fast) var(--ease-spring);
+  pointer-events: none;
+}
+
+/* 최고 단은 색을 갈지 않는다 — 채도가 뛰면 신호로 읽힌다. 최대 출력에 든 계기처럼
+   결만 얹고, 광택은 한 번 훑고 지나간다. */
+.effort-track[data-at-max="true"] .effort-track-fill {
+  background:
+    repeating-linear-gradient(
+      115deg,
+      color-mix(in oklch, var(--text-on-brass) 7%, transparent) 0 1.5px,
+      transparent 1.5px 10px),
+    var(--brass);
+}
+
+.effort-track[data-at-max="true"] .effort-track-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: linear-gradient(
+    100deg,
+    transparent 35%,
+    color-mix(in oklch, var(--text-primary) 26%, transparent) 50%,
+    transparent 65%);
+  animation: effort-track-sweep 2.6s var(--ease-spring) infinite;
+}
+
+@keyframes effort-track-sweep {
+  0% { transform: translateX(-100%); }
+  55%, 100% { transform: translateX(100%); }
+}
+
+.effort-track-stops {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  pointer-events: none;
+}
+
+.effort-track-stop {
+  position: absolute;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  border-radius: 999px;
+  background: var(--text-tertiary);
+  transition: background var(--duration-fast) var(--ease-spring);
+}
+
+.effort-track-stop[data-filled="true"] {
+  background: color-mix(in oklch, var(--text-on-brass) 42%, transparent);
+}
+
+/* 이 모델이 내놓지 않은 단. 자리는 지키되 비어 있어야, 고를 수 있는 단이 축 위 제자리에 선다. */
+.effort-track-stop[data-gap="true"] {
+  background: none;
+  box-shadow: 0 0 0 1.5px color-mix(in oklch, var(--text-tertiary) 78%, transparent);
+}
+
+.effort-track-knob {
+  position: absolute;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  border-radius: 999px;
+  background: var(--text-primary);
+  box-shadow: 0 1px 3px oklch(0% 0 0 / 55%);
+  transition: left var(--duration-fast) var(--ease-spring);
+  pointer-events: none;
+}
+
+.effort-track-value {
+  min-width: 44px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.effort-track-value[data-auto="true"] {
+  color: var(--text-tertiary);
+}
+
+/* 트랙이 닫힌 뒤에도 이 행이 무엇으로 실행되는지 남기는 표식. */
+.operation-launch-variant-effort {
+  color: var(--brass);
   font-family: var(--font-mono);
   font-size: 9.5px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring);
 }
 
-.operation-launch-variant-chip:hover,
-.operation-launch-variant-chip:focus-visible {
-  border-color: color-mix(in oklch, var(--brass) 38%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-  color: var(--text-primary);
-  outline: none;
+/* 바 안에서는 자리를 정해 준다. 남는 폭을 두고 spacer와 겨루게 두면 트랙이 스톱 간격보다
+   좁아져, 손잡이가 이웃 스톱을 덮는다. */
+.quick-launch-effort-track {
+  flex: 0 0 auto;
+  width: 204px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .effort-track[data-at-max="true"] .effort-track-fill::after {
+    animation: none;
+    opacity: 0.22;
+  }
 }
 
 @keyframes operation-launch-flyout-in {
@@ -9683,8 +9885,8 @@ body[data-codex-side="true"] .command-card {
 
 @media (prefers-reduced-motion: reduce) {
   .operation-launch-flyout,
-  .operation-launch-variant-row,
-  .operation-launch-variant-chip {
+  .operation-launch-effort-menu,
+  .operation-launch-variant-row {
     animation: none;
     transition: none;
   }
@@ -10586,13 +10788,6 @@ body[data-codex-reading="true"] .operations-side-bar {
   font-weight: var(--weight-bold);
 }
 
-.quick-launch-effort {
-  color: var(--brass);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
 
 .quick-launch-caret {
   color: var(--text-tertiary);
@@ -10630,39 +10825,51 @@ body[data-codex-reading="true"] .operations-side-bar {
   font-weight: var(--weight-bold);
 }
 
+/* 단축키 힌트는 읽히되 만져지지 않아야 한다. 테두리를 두른 배지로 두면 바 위에서 칩·전송과
+   같은 액션 문법을 입어, 누를 수 있는 것으로 읽힌다. */
 .quick-launch-esc {
-  padding: 2px 6px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-sm);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
 }
 
+/* 전송은 아이콘 하나짜리 원이다 — 컴포저의 유일한 확정 동작이라 이름을 글자로 되풀이하지 않고,
+   이름과 단축키는 접근 이름이 싣는다. */
 .quick-launch-submit {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 7px 14px;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
   border: 1px solid var(--brass);
-  border-radius: var(--radius-md);
+  border-radius: 999px;
   background: var(--brass);
   color: var(--text-on-brass);
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: var(--weight-bold);
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring);
 }
 
+.quick-launch-submit svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* 보낼 것이 없을 때는 흐린 brass가 아니라 조용한 표면이 된다 — 반투명하게만 두면 곧 눌릴 것처럼
+   보이는 채도가 남는다. 표면 값은 옆 칩과 같다: 테두리를 지우면 원이 카드 배경에 묻혀 누를
+   자리가 있다는 사실까지 사라진다. */
 .quick-launch-submit:disabled {
-  opacity: 0.35;
+  border-color: var(--surface-rim);
+  background: color-mix(in oklch, var(--surface-pillar) 40%, transparent);
+  color: var(--text-tertiary);
 }
 
-.quick-launch-submit kbd {
-  padding: 1px 4px;
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklch, var(--ink-abyss) 22%, transparent);
-  font-family: var(--font-mono);
-  font-size: 10px;
+.quick-launch-submit:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--brass) 82%, var(--text-on-brass));
+  border-color: color-mix(in oklch, var(--brass) 82%, var(--text-on-brass));
 }
 
 /* 팝오버는 .theater-menu의 팝업 스킨(테두리·언더레이·그림자)을 상속하고 위치·폭만 덮는다.
@@ -10681,8 +10888,9 @@ body[data-codex-reading="true"] .operations-side-bar {
   width: 288px;
 }
 
+/* 모델 이름과 공급자 밴드만 담는 폭이다 — 실측 자연 폭(약 189px)에 여유만 얹는다. */
 .quick-launch-pop--model {
-  width: 324px;
+  width: 216px;
 }
 
 .quick-launch-pop-item {
@@ -10720,6 +10928,9 @@ body[data-codex-reading="true"] .operations-side-bar {
 }
 
 .quick-launch-pop-band {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
   padding: var(--space-2) var(--space-2) 6px;
   color: var(--text-tertiary);
@@ -10730,7 +10941,8 @@ body[data-codex-reading="true"] .operations-side-bar {
 }
 
 .quick-launch-variant-row {
-  padding: 6px var(--space-2) var(--space-2);
+  position: relative;
+  padding: 2px var(--space-1);
 }
 
 .quick-launch-variant-name {
@@ -10738,8 +10950,9 @@ body[data-codex-reading="true"] .operations-side-bar {
   align-items: center;
   gap: 7px;
   width: 100%;
-  padding: 0 0 6px;
+  padding: 7px var(--space-2);
   border: 0;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
   font-family: inherit;
@@ -10749,49 +10962,10 @@ body[data-codex-reading="true"] .operations-side-bar {
 }
 
 .quick-launch-variant-name:hover,
-.quick-launch-variant-name:focus-visible {
+.quick-launch-variant-name:focus-visible,
+.quick-launch-variant-name[aria-expanded="true"] {
+  background: color-mix(in oklch, var(--surface-pillar) 55%, transparent);
   color: var(--text-primary);
-}
-
-.quick-launch-variant-star {
-  color: var(--brass);
-  font-size: 10px;
-}
-
-.quick-launch-variant-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.quick-launch-variant-chip {
-  min-width: 44px;
-  padding: 3px 6px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring);
-}
-
-.quick-launch-variant-chip:hover {
-  border-color: var(--brass);
-  background: var(--brass-glow);
-  color: var(--brass);
-}
-
-.quick-launch-variant-chip[aria-pressed="true"] {
-  border-color: var(--brass);
-  background: var(--brass);
-  color: var(--text-on-brass);
-  font-weight: var(--weight-bold);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -10800,7 +10974,11 @@ body[data-codex-reading="true"] .operations-side-bar {
   }
 
   .quick-launch-chip,
-  .quick-launch-variant-chip {
+  .quick-launch-submit,
+  .effort-track-fill,
+  .effort-track-knob,
+  .effort-track-stop {
+    animation: none;
     transition: none;
   }
 }

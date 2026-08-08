@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 
 import { buildAgentCliLaunchKinds } from "../server/agent-api/agent-cli-launch-kinds.js";
 
+// 축은 사다리 어휘 그대로다. 한 모델이 그 일부만 내놓아도 축은 줄지 않는다 — 그래야 표면이
+// 내놓은 단을 균등히 벌리는 대신 제자리에 세울 수 있다.
+const EFFORT_AXIS = ["low", "medium", "high", "xhigh", "max"];
+
 const nativeVariants = {
   id: "native",
   label: "Claude",
@@ -54,13 +58,14 @@ describe("buildAgentCliLaunchKinds", () => {
     expect(result[0]?.variants).toEqual([
       nativeVariants,
       {
-        id: "gateway",
-        label: "Gateway",
+        id: "gateway:codex",
+        label: "Codex",
         rows: [
           {
             id: "codex--gpt-5.6-sol-fast",
-            label: selection.models[0]!.displayName,
+            label: "GPT-5.6-Sol-Fast",
             launch: { model: "codex--gpt-5.6-sol-fast" },
+            effortAxis: EFFORT_AXIS,
             chips: [
               gatewayChip("codex--gpt-5.6-sol-fast", "low", "LOW"),
               gatewayChip("codex--gpt-5.6-sol-fast", "medium", "MED"),
@@ -69,11 +74,19 @@ describe("buildAgentCliLaunchKinds", () => {
               gatewayChip("codex--gpt-5.6-sol-fast", "max", "MAX"),
             ],
           },
+        ],
+      },
+      {
+        id: "gateway:kimi",
+        label: "Moonshot-Kimi",
+        rows: [
           {
             id: "kimi--k3",
-            label: selection.models[1]!.displayName,
+            label: "K3-1M",
             starred: true,
             launch: { model: "kimi--k3" },
+            // 노출은 MAX 한 단뿐이지만 축은 다섯 단 그대로다.
+            effortAxis: EFFORT_AXIS,
             chips: [gatewayChip("kimi--k3", "max", "MAX")],
           },
         ],
@@ -107,6 +120,7 @@ function nativeRow(model: string, label: string) {
     id: model,
     label,
     launch: { model },
+    effortAxis: EFFORT_AXIS,
     chips: [
       gatewayChip(model, "low", "LOW"),
       gatewayChip(model, "medium", "MED"),

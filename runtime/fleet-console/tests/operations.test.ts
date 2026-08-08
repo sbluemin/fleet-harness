@@ -261,6 +261,30 @@ describe("operations platform", () => {
     }]);
   });
 
+  it("carries the effort axis through, since the row is rebuilt field by field", () => {
+    // 이 함수는 행을 화이트리스트로 다시 짓는다 — 목록에 없는 필드는 오류 없이 사라진다.
+    const [group] = readLaunchVariantGroups([{
+      id: "gateway:kimi",
+      label: "Moonshot-Kimi",
+      rows: [{
+        id: "kimi--k3",
+        label: "K3-1M",
+        launch: { model: "kimi--k3" },
+        effortAxis: ["low", "medium", "high", "xhigh", "max", 7],
+        chips: [{ id: "low", label: "LOW", launch: { model: "kimi--k3", effort: "low" } }],
+      }],
+    }]);
+    expect(group?.rows[0]?.effortAxis).toEqual(["low", "medium", "high", "xhigh", "max"]);
+
+    // 축은 칩이 놓인 자리를 말한다 — 칩이 없으면 말할 자리도 없다.
+    const [bare] = readLaunchVariantGroups([{
+      id: "gateway:cursor",
+      label: "Cursor",
+      rows: [{ id: "cursor--auto", label: "Auto", launch: { model: "cursor--auto" }, effortAxis: ["low"] }],
+    }]);
+    expect(bare?.rows[0]).not.toHaveProperty("effortAxis");
+  });
+
   it("strictly reconstructs launch variants from the browser catalog response", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
       plugins: [{

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
 import type { OperationCatalogPlugin, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
@@ -11,6 +11,8 @@ import { readQuickLaunchSelection, writeQuickLaunchSelection } from "../quick-la
 import { findVariantLaunchKind, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, resolveSelection } from "../quick-launch.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { closeQuickLaunch, consumeQuickLaunchDraft, requestQuickLaunch, setActiveTheater } from "../store.js";
+import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph } from "./launch-provider-glyphs.js";
+import { EffortTrack, resolveRowEffort } from "./effort-track.js";
 
 // 카드 폭은 팔레트(920px)보다 좁다 — 팔레트는 결과 목록을 담고, 여기는 한 문단을 담는다.
 const CARD_WIDTH_FALLBACK = 760;
@@ -27,6 +29,7 @@ export function QuickLaunch() {
 
   const cardRef = useRef<HTMLElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const barRef = useRef<HTMLDivElement | null>(null);
   const theaterChipRef = useRef<HTMLButtonElement | null>(null);
   const modelChipRef = useRef<HTMLButtonElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -38,6 +41,7 @@ export function QuickLaunch() {
   const [model, setModel] = useState<string | null>(null);
   const [effort, setEffort] = useState<string | null>(null);
   const [popover, setPopover] = useState<PopoverKind | null>(null);
+  const [popoverLeft, setPopoverLeft] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const open = state.quickLaunchOpen;
@@ -48,7 +52,6 @@ export function QuickLaunch() {
   const activeTheater = theaters.find((candidate) => candidate.id === theaterId) ?? null;
   const rows = useMemo(() => groups.flatMap((group) => group.rows), [groups]);
   const selectedRow = rows.find((row) => row.launch.model === model) ?? null;
-  const selectedChip = selectedRow?.chips?.find((chip) => chip.launch.effort === effort) ?? null;
 
   // 열릴 때마다 카탈로그를 새로 읽는다. 설정에서 모델을 켜고 끈 직후 열어도 목록이 실제와 어긋나지 않는다.
   useEffect(() => {
@@ -102,6 +105,21 @@ export function QuickLaunch() {
     };
   }, [open]);
 
+  // 팝오버는 자기 칩 아래에 선다. 바 기준 고정 좌표로 두면 두 칩이 같은 자리를 써서, 모델 목록이
+  // Theater 칩 아래에 열린다 — 화면이 어느 칩을 눌렀는지 부정하는 셈이다.
+  useLayoutEffect(() => {
+    if (!popover) {
+      setPopoverLeft(null);
+      return;
+    }
+    const chip = (popover === "theater" ? theaterChipRef : modelChipRef).current;
+    const bar = barRef.current;
+    if (!chip || !bar) return;
+    const width = bar.querySelector<HTMLElement>(".quick-launch-pop")?.getBoundingClientRect().width ?? 0;
+    // 칩이 오른쪽으로 밀려 있어도 팝오버는 카드 안에 머문다.
+    setPopoverLeft(Math.max(0, Math.min(chip.offsetLeft, bar.clientWidth - width - POPOVER_GAP)));
+  }, [popover]);
+
   const closePopover = useCallback(() => setPopover(null), []);
 
   const submit = useCallback(() => {
@@ -151,9 +169,17 @@ export function QuickLaunch() {
   const canSubmit = promptLength > 0 && !overLimit && !!theaterId && !!target && !submitting;
   const modelLabel = selectedRow?.label ?? t("chrome.quickLaunch.modelUnset");
   const rejectionKey = quickLaunchErrorMessageKey(state.quickLaunchError, state.quickLaunchErrorShortenBy);
-  const kindIcon = target
-    ? registry.plugins.find((plugin) => plugin.id === target.pluginId)?.renderLaunchIcon?.(target.kind) ?? null
+  // Prefer the selected model\'s provider mark. Falling back to the launch-kind
+  // icon would keep showing Claude even when a Cursor/Codex/Kimi model is chosen.
+  const selectedProvider = selectedRow
+    ? (launchProviderFromGroupId(groups.find((group) => group.rows.some((row) => row.id === selectedRow.id))?.id ?? "")
+      ?? launchProviderFromModelId(selectedRow.launch.model ?? selectedRow.id))
     : null;
+  const kindIcon = selectedProvider
+    ? launchProviderGlyph(selectedProvider)
+    : (target
+      ? registry.plugins.find((plugin) => plugin.id === target.pluginId)?.renderLaunchIcon?.(target.kind) ?? null
+      : null);
 
   return (
     <div
@@ -187,7 +213,7 @@ export function QuickLaunch() {
           />
         </div>
 
-        <div className="quick-launch-bar">
+        <div className="quick-launch-bar" ref={barRef}>
           <button
             ref={theaterChipRef}
             type="button"
@@ -212,11 +238,31 @@ export function QuickLaunch() {
           >
             {/* 아이콘은 플러그인 소유다 — console-core는 어느 플러그인인지 모른 채 렌더만 위임한다
                 (캔버스 우클릭 메뉴의 renderKindIcon과 같은 계약). */}
-            {kindIcon ? <span className="quick-launch-kind-icon" aria-hidden="true">{kindIcon}</span> : null}
+            {kindIcon ? (
+              <span
+                className={`quick-launch-kind-icon${selectedProvider ? ` is-${selectedProvider}` : ""}`}
+                aria-hidden="true"
+              >
+                {kindIcon}
+              </span>
+            ) : null}
             <span className="quick-launch-chip-label">{modelLabel}</span>
-            {selectedChip ? <span className="quick-launch-effort">{selectedChip.label}</span> : null}
             <span className="quick-launch-caret" aria-hidden="true">▾</span>
           </button>
+
+          {/* 강도는 고른 모델에 딸린 값이라 그 칩 바로 옆에 산다. 사다리가 없는 모델에서는
+              접는다 — 조작할 수 없는 컨트롤이 자리를 지키면 바가 고장 난 것처럼 읽힌다. */}
+          {selectedRow && (selectedRow.chips?.length ?? 0) > 0 ? (
+            <EffortTrack
+              row={selectedRow}
+              value={effort}
+              onChange={setEffort}
+              autoLabel={t("launchVariants.effort.auto")}
+              ariaLabel={t("launchVariants.effort.track")}
+              autoValueText={t("launchVariants.effort.autoValue")}
+              className="quick-launch-effort-track"
+            />
+          ) : null}
 
           <span className="quick-launch-spacer" />
           {overLimit ? (
@@ -234,19 +280,27 @@ export function QuickLaunch() {
               )}
             </span>
           ) : null}
-          <kbd className="quick-launch-esc">esc</kbd>
+          {/* 힌트일 뿐 누를 수 있는 것이 아니다 — 테두리를 두르면 바 안에서 액션 행세를 한다. */}
+          <span className="quick-launch-esc" aria-hidden="true">{t("chrome.quickLaunch.escHint")}</span>
           <button
             type="button"
             className="quick-launch-submit"
             disabled={!canSubmit}
             onClick={submit}
+            // 시각 레이블이 없으므로 이름과 단축키를 여기서 싣는다.
+            aria-label={t("chrome.quickLaunch.runWithKey")}
+            title={t("chrome.quickLaunch.runWithKey")}
           >
-            {t("chrome.quickLaunch.run")}
-            <kbd aria-hidden="true">↵</kbd>
+            <SubmitArrowIcon />
           </button>
 
           {popover === "theater" ? (
-            <div className="quick-launch-pop quick-launch-pop--theater theater-menu" role="menu" aria-label={t("chrome.quickLaunch.theaterMenu")}>
+            <div
+              className="quick-launch-pop quick-launch-pop--theater theater-menu"
+              role="menu"
+              aria-label={t("chrome.quickLaunch.theaterMenu")}
+              style={popoverLeft === null ? undefined : { left: popoverLeft }}
+            >
               {theaters.map((theater) => (
                 <button
                   key={theater.id}
@@ -269,19 +323,36 @@ export function QuickLaunch() {
           ) : null}
 
           {popover === "model" ? (
-            <div className="quick-launch-pop quick-launch-pop--model theater-menu" role="menu" aria-label={t("chrome.quickLaunch.modelMenu")}>
+            <div
+              className="quick-launch-pop quick-launch-pop--model theater-menu"
+              role="menu"
+              aria-label={t("chrome.quickLaunch.modelMenu")}
+              style={popoverLeft === null ? undefined : { left: popoverLeft }}
+            >
               {groups.map((group) => (
                 <div key={group.id} className="quick-launch-pop-group">
-                  <p className="quick-launch-pop-band">{group.label}</p>
+                  {(() => {
+                    const provider = launchProviderFromGroupId(group.id);
+                    return (
+                      <p className={`quick-launch-pop-band${provider ? ` is-${provider}` : ""}`}>
+                        {provider ? (
+                          <span className="operation-launch-provider-glyph" aria-hidden="true">
+                            {launchProviderGlyph(provider)}
+                          </span>
+                        ) : null}
+                        <span>{group.label}</span>
+                      </p>
+                    );
+                  })()}
                   {group.rows.map((row) => (
-                    <VariantRow
+                    <QuickLaunchVariantRow
                       key={row.id}
                       row={row}
                       selectedModel={model}
-                      selectedEffort={effort}
-                      onPick={(nextModel, nextEffort) => {
+                      onPick={(nextModel) => {
                         setModel(nextModel);
-                        setEffort(nextEffort);
+                        // 새 모델의 사다리에 없는 강도는 들고 갈 수 없다 — 비운 상태로 떨어진다.
+                        setEffort(resolveRowEffort(row, effort));
                         closePopover();
                         inputRef.current?.focus();
                       }}
@@ -297,11 +368,10 @@ export function QuickLaunch() {
   );
 }
 
-function VariantRow({ row, selectedModel, selectedEffort, onPick }: {
+function QuickLaunchVariantRow({ row, selectedModel, onPick }: {
   readonly row: OperationLaunchVariantRow;
   readonly selectedModel: string | null;
-  readonly selectedEffort: string | null;
-  readonly onPick: (model: string | null, effort: string | null) => void;
+  readonly onPick: (model: string | null) => void;
 }) {
   const rowModel = row.launch.model ?? null;
   return (
@@ -309,29 +379,31 @@ function VariantRow({ row, selectedModel, selectedEffort, onPick }: {
       <button
         type="button"
         className="quick-launch-variant-name"
-        role="menuitem"
-        aria-current={rowModel === selectedModel && selectedEffort === null}
-        onClick={() => onPick(rowModel, null)}
+        role="menuitemradio"
+        aria-checked={rowModel === selectedModel}
+        onClick={() => onPick(rowModel)}
       >
+        {/* ★는 라벨 뒤에 선다 — 앞에 두고 오른쪽으로 밀면 그 행만 통째로 우측 정렬돼 목록의 좌측 기준선이 끊긴다. */}
+        <span className="quick-launch-variant-label">{row.label}</span>
         {row.starred ? <span className="quick-launch-variant-star" aria-hidden="true">★</span> : null}
-        {row.label}
+        {rowModel === selectedModel ? <span className="quick-launch-pop-check" aria-hidden="true">✓</span> : null}
       </button>
-      {row.chips && row.chips.length > 0 ? (
-        <div className="quick-launch-variant-chips">
-          {row.chips.map((chip) => (
-            <button
-              key={chip.id}
-              type="button"
-              className="quick-launch-variant-chip"
-              aria-pressed={rowModel === selectedModel && chip.launch.effort === selectedEffort}
-              onClick={() => onPick(chip.launch.model ?? rowModel, chip.launch.effort ?? null)}
-            >
-              {chip.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
     </div>
+  );
+}
+
+function SubmitArrowIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8 12.75V4.25M4.5 7.75 8 4.25l3.5 3.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
@@ -344,7 +416,8 @@ function autoGrow(element: HTMLTextAreaElement): void {
 
 function trapFocus(event: ReactKeyboardEvent<HTMLElement>, card: HTMLElement | null): void {
   if (!card) return;
-  const focusable = Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((element) => element.offsetParent !== null);
+  const focusable = Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+    .filter((element) => element.offsetParent !== null);
   if (focusable.length === 0) return;
   const first = focusable[0];
   const last = focusable[focusable.length - 1];

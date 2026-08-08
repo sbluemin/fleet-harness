@@ -63,6 +63,9 @@ export const commonEn = {
   "launchKind.claudeGateway.brief": "Other models",
   "launchVariants.group.native": "Claude built-in",
   "launchVariants.group.gateway": "Gateway — models you enabled",
+  "launchVariants.effort.track": "Reasoning effort",
+  "launchVariants.effort.auto": "AUTO",
+  "launchVariants.effort.autoValue": "Automatic — the model's own default",
 } as const;
 
 export const commonKo: Record<keyof typeof commonEn, string> = {
@@ -128,4 +131,7 @@ export const commonKo: Record<keyof typeof commonEn, string> = {
   "launchKind.claudeGateway.brief": "다른 모델",
   "launchVariants.group.native": "Claude 내장",
   "launchVariants.group.gateway": "Gateway — 설정에서 켠 모델",
+  "launchVariants.effort.track": "추론 강도",
+  "launchVariants.effort.auto": "자동",
+  "launchVariants.effort.autoValue": "자동 — 모델 자체 기본값",
 };
