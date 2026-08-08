@@ -78,6 +78,7 @@ let state: ConsoleState = {
   quickLaunchOpen: false,
   quickLaunchDraft: null,
   quickLaunchError: null,
+  quickLaunchErrorShortenBy: null,
   pendingQuickLaunch: null,
   whatsNewOpen: false,
   releaseNotes: [],
@@ -567,12 +568,12 @@ export function toggleOperationSearch(): void {
 }
 
 export function openQuickLaunch(): void {
-  setState({ quickLaunchOpen: true, quickLaunchError: null });
+  setState({ quickLaunchOpen: true, quickLaunchError: null, quickLaunchErrorShortenBy: null });
 }
 
 // 실행이 실패했을 때 초안과 사유를 함께 들고 컴포저를 되연다.
-export function reopenQuickLaunchWithDraft(draft: string, errorCode: string | null): void {
-  setState({ quickLaunchOpen: true, quickLaunchDraft: draft, quickLaunchError: errorCode });
+export function reopenQuickLaunchWithDraft(draft: string, errorCode: string | null, shortenByChars: number | null = null): void {
+  setState({ quickLaunchOpen: true, quickLaunchDraft: draft, quickLaunchError: errorCode, quickLaunchErrorShortenBy: shortenByChars });
 }
 
 export function consumeQuickLaunchDraft(): void {
@@ -581,11 +582,11 @@ export function consumeQuickLaunchDraft(): void {
 }
 
 export function closeQuickLaunch(): void {
-  setState({ quickLaunchOpen: false, quickLaunchError: null });
+  setState({ quickLaunchOpen: false, quickLaunchError: null, quickLaunchErrorShortenBy: null });
 }
 
 export function toggleQuickLaunch(): void {
-  setState({ quickLaunchOpen: !state.quickLaunchOpen, quickLaunchError: null });
+  setState({ quickLaunchOpen: !state.quickLaunchOpen, quickLaunchError: null, quickLaunchErrorShortenBy: null });
 }
 
 // pendingOperationFocus/consumeOperationFocus와 같은 request/consume 계약. 컴포저는 의도만 남기고,

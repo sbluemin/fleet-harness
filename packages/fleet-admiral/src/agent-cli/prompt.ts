@@ -31,11 +31,17 @@ export interface LaunchCommandLineLimit {
 
 export class LaunchPromptError extends Error {
   readonly code: LaunchPromptErrorCode;
+  /**
+   * 프롬프트를 몇 글자 줄여야 이 실행이 들어가는지. 호스트가 거절 응답에 실어 보내야
+   * 사용자에게 닿는다 — 문장으로만 들고 있으면 그 숫자는 서버에서 끝난다.
+   */
+  readonly shortenByChars?: number;
 
-  constructor(code: LaunchPromptErrorCode, message: string) {
+  constructor(code: LaunchPromptErrorCode, message: string, shortenByChars?: number) {
     super(message);
     this.name = "LaunchPromptError";
     this.code = code;
+    if (shortenByChars !== undefined) this.shortenByChars = shortenByChars;
   }
 }
 
@@ -75,15 +81,36 @@ export function resolveLaunchCommandLineLimit(
  * 있으나 마나가 된다.
  */
 export function estimateWindowsCommandLineChars(bin: string, args: readonly string[]): number {
-  return args.reduce((total, arg) => total + 1 + quotedArgChars(arg), quotedArgChars(bin));
+  return args.reduce((total, arg) => total + 1 + quoteWindowsArg(arg).length, quoteWindowsArg(bin).length);
 }
 
-function quotedArgChars(value: string): number {
-  // 빈 인자도 명령줄에서는 ""로 두 글자를 차지한다.
-  if (value.length === 0) return 2;
-  const innerQuotes = (value.match(/"/g) ?? []).length;
-  const needsQuoting = /[\s"]/.test(value);
-  return value.length + innerQuotes + (needsQuoting ? 2 : 0);
+/**
+ * 인자 하나가 Windows 명령줄에 실제로 실리는 형태.
+ *
+ * 길이를 근사식으로 세지 않고 인용 규칙을 그대로 돌린다 — 백슬래시는 `"` 앞이나 인용을 닫기
+ * 직전에서만 두 배가 되므로, 원본 글자 수만 세면 백슬래시로 끝나는 인자를 상한 아래로 잘못
+ * 재고 그대로 통과시킨다. 그 오차가 이 검사가 막으려던 실패다.
+ */
+function quoteWindowsArg(value: string): string {
+  if (value.length > 0 && !/[\s"]/.test(value)) return value;
+  let quoted = '"';
+  let backslashes = 0;
+  for (const char of value) {
+    if (char === "\\") {
+      backslashes += 1;
+      continue;
+    }
+    if (char === '"') {
+      // 앞선 백슬래시 런은 두 배가 되고, 따옴표 자신도 백슬래시 하나로 이스케이프된다.
+      quoted += "\\".repeat(backslashes * 2 + 1) + '"';
+      backslashes = 0;
+      continue;
+    }
+    quoted += "\\".repeat(backslashes) + char;
+    backslashes = 0;
+  }
+  // 인용을 닫는 따옴표 직전의 백슬래시 런도 두 배가 된다.
+  return `${quoted}${"\\".repeat(backslashes * 2)}"`;
 }
 
 /**
@@ -113,9 +140,11 @@ export function assertLaunchCommandLineBudget(options: {
       `The launch command line is ${total} characters with no launch prompt, over the ${limit.maxChars}-character Windows ${boundary} limit. Shortening a prompt cannot help; reduce the launch configuration instead.`,
     );
   }
+  const shortenByChars = total - limit.maxChars;
   throw new LaunchPromptError(
     "prompt_command_line_too_long",
-    `The launch command line is ${total} characters, over the ${limit.maxChars}-character Windows ${boundary} limit. Shorten the launch prompt by at least ${total - limit.maxChars} characters and try again.`,
+    `The launch command line is ${total} characters, over the ${limit.maxChars}-character Windows ${boundary} limit. Shorten the launch prompt by at least ${shortenByChars} characters and try again.`,
+    shortenByChars,
   );
 }
 

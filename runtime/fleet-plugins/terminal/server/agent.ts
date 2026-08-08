@@ -472,7 +472,12 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       // FLEET_TERMINAL_CMD 대체 실행). 요청이 잘못된 것이지 터미널이 죽은 게 아니므로 503이 아니라 400이다.
       if (error instanceof LaunchPromptError) {
         removeSession(sessionId);
-        ctx.host.http.writeJson(res, 400, { error: error.code });
+        // 몇 글자를 줄여야 하는지는 서버만 알 수 있다 — 상한이 이 실행의 argv 전체에 달려 있어
+        // 브라우저가 되계산할 수 없다. 코드만 실어 보내면 사용자는 다시 찍어 보는 수밖에 없다.
+        ctx.host.http.writeJson(res, 400, {
+          error: error.code,
+          ...(error.shortenByChars === undefined ? {} : { shortenByChars: error.shortenByChars }),
+        });
         return;
       }
       pendingRuntimeSessions.delete(sessionId);

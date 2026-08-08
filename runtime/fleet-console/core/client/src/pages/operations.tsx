@@ -364,7 +364,13 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         const draft = request.variant.prompt;
         if (!draft) return;
         // 플러그인 클라이언트가 서버 error 코드를 message로 실어 던진다. 코드를 모르면 일반 문구로 떨어진다.
-        reopenQuickLaunchWithDraft(draft, error instanceof Error ? error.message : null);
+        // 프롬프트를 몇 글자 줄여야 하는지도 같은 에러에 붙어 온다 — 플러그인 타입을 끌어오지 않으려고
+        // 구조로만 읽는다(코드를 message로 읽는 위 계약과 같은 형태).
+        reopenQuickLaunchWithDraft(
+          draft,
+          error instanceof Error ? error.message : null,
+          readShortenByChars(error),
+        );
       });
   }, [registry.plugins, state.activeTheaterId, state.pendingQuickLaunch]);
 
@@ -740,6 +746,14 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
   }
   focusMap();
   requestOperationKeyboardFocus(operationId);
+}
+
+// 거절 에러에 붙어 온 "줄여야 할 글자 수". 플러그인의 에러 클래스를 import하면 core가 플러그인
+// 구현에 의존하게 되므로 구조로만 읽고, 없거나 모양이 다르면 그냥 없는 것으로 둔다.
+function readShortenByChars(error: unknown): number | null {
+  if (!(error instanceof Error) || !("shortenByChars" in error)) return null;
+  const value = (error as { readonly shortenByChars?: unknown }).shortenByChars;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function sortedTheaterOperations(state: ConsoleState): readonly OperationNode[] {

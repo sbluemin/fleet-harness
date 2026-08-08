@@ -61,6 +61,25 @@ describe("estimateWindowsCommandLineChars", () => {
     const prompt = "x".repeat(1000);
     expect(estimateWindowsCommandLineChars("claude", [prompt])).toBeGreaterThanOrEqual(prompt.length);
   });
+
+  // Windows는 인용을 닫는 따옴표 직전의 백슬래시 런을 두 배로 직렬화한다. 원본 글자 수만 세면
+  // 백슬래시로 끝나는 프롬프트를 상한 아래로 잘못 재고 통과시킨다 — 이 검사가 막으려던 실패다.
+  it("counts the doubling of a backslash run that closes a quoted argument", () => {
+    // `a \\\\` -> `"a \\\\\\\\"`: 백슬래시 4개가 8개가 되고 따옴표 2개가 붙는다.
+    expect(estimateWindowsCommandLineChars("x", ["a " + "\\".repeat(4)]))
+      .toBe(1 + 1 + ('"a ' + "\\".repeat(8) + '"').length);
+  });
+
+  it("counts the doubling of a backslash run that precedes an inner quote", () => {
+    // `a \\"` -> `"a \\\\\""`: 앞선 백슬래시 2개가 4개가 되고 따옴표 자신도 이스케이프된다.
+    expect(estimateWindowsCommandLineChars("x", ['a ' + "\\".repeat(2) + '"']))
+      .toBe(1 + 1 + ('"a ' + "\\".repeat(4) + '\\""').length);
+  });
+
+  it("leaves backslashes alone when they neither close the argument nor precede a quote", () => {
+    // 인용은 필요하지만(공백) 백슬래시가 중간에 있으면 두 배가 되지 않는다.
+    expect(estimateWindowsCommandLineChars("x", ["a \\b"])).toBe(1 + 1 + '"a \\b"'.length);
+  });
 });
 
 describe("assertLaunchCommandLineBudget", () => {
@@ -102,6 +121,22 @@ describe("assertLaunchCommandLineBudget", () => {
       expect((error as LaunchPromptError).code).toBe("prompt_command_line_too_long");
       // 얼마나 줄여야 하는지를 말해 주지 않으면 사용자는 다시 찍어 볼 수밖에 없다.
       expect((error as LaunchPromptError).message).toMatch(/Shorten the launch prompt by at least \d+ characters/);
+      // 문장으로만 들고 있으면 그 수는 서버에서 끝난다. 호스트가 응답에 실을 수 있도록 값으로도 낸다.
+      expect((error as LaunchPromptError).shortenByChars).toBeGreaterThan(0);
+    }
+  });
+
+  it("carries no reduction figure on the refusal that a prompt cannot fix", () => {
+    try {
+      assertLaunchCommandLineBudget({
+        args: [...CMD_WRAPPED_PREFIX_ARGS, "c".repeat(9_000)],
+        bin: "cmd.exe",
+        limit: CMD_SHIM_LIMIT,
+        promptChars: 0,
+      });
+      expect.unreachable("expected a refusal");
+    } catch (error) {
+      expect((error as LaunchPromptError).shortenByChars).toBeUndefined();
     }
   });
 
