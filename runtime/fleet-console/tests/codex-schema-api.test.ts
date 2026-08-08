@@ -122,6 +122,7 @@ describe("Codex schema API", () => {
       workspaceId: "test",
       allowedOrigins: new Set(),
       externalMode: false,
+      admitted: true,
     });
     return result;
   }

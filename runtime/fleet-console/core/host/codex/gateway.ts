@@ -5,11 +5,12 @@ import net from "node:net";
 
 import type { MemoryPaths, WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 
-import { handleApiRequest } from "./routes.js";
+import { handleApiRequest, isLoopbackRemoteAddress } from "./routes.js";
 import { CoworkService, CoworkStore } from "@dotobokuri/fleet-wiki/cowork";
 import type { CoworkConnector } from "@dotobokuri/fleet-wiki/cowork";
 import { UnifiedAgent } from "@dotobokuri/core-unified-agent";
 import type { UnifiedClientOptions } from "@dotobokuri/core-unified-agent";
+import type { ListenerIdentity } from "../auth.js";
 import type { AllowedAccessSets } from "./contracts.js";
 import { WorkspaceRegistry } from "./workspaces.js";
 import type { WorkspaceRegistration } from "./workspaces.js";
@@ -20,6 +21,12 @@ interface CodexGatewayDeps {
   readonly host: string;
   readonly version: string;
   readonly getPort: () => number;
+  /**
+   * 요청이 도착한 리스너. Codex는 코어 Host 게이트보다 앞에서 분기하므로 자기 게이트가 유일한
+   * 경계인데, 그 경계는 바인드 호스트가 아니라 리스너마다 다르다. 원격 리스너를 모르는 게이트는
+   * 원격에서 연 Wiki를 전부 host_mismatch로 되돌린다.
+   */
+  readonly resolveListener?: (request: IncomingMessage) => ListenerIdentity | null;
   readonly wikiWorkspaceResolver: WikiWorkspaceResolver;
   readonly dataDir?: string;
 }
@@ -61,7 +68,7 @@ const LOOPBACK_HOST = "127.0.0.1";
 export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
   const workspaces = new WorkspaceRegistry();
   const workspaceOwners = new Map<string, Set<string>>();
-  let accessSets: AllowedAccessSets | null = null;
+  const accessSetsByGate = new Map<string, AllowedAccessSets>();
   let initialWorkspace: Promise<WorkspaceRegistration> | null = null;
   let initialWorkspaceId: string | null = null;
   const coworkServices = new Map<string, CoworkService>();
@@ -85,7 +92,8 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       return true;
     }
     const port = deps.getPort();
-    accessSets ??= buildAllowedAccessSets(deps.host, port);
+    const listener = deps.resolveListener?.(request) ?? null;
+    const accessSets = accessSetsFor(listener, port);
     if (!isHostAllowed(request.rawHeaders, request.url ?? "/", accessSets.allowedHosts, port)) {
       sendJson(response, 403, { error: "host_mismatch" });
       return true;
@@ -127,10 +135,31 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       workspaceId: workspace.id,
       allowedOrigins: accessSets.allowedOrigins,
       externalMode: accessSets.externalMode,
+      admitted: isRequestAdmitted(listener, request),
       coworkService,
     });
     request.url = originalUrl;
     return handled;
+  }
+
+  /**
+   * 루프백 리스너와 리스너를 찾지 못한 요청은 바인드 호스트에서 파생한 기존 집합을 그대로 쓴다 —
+   * wildcard 바인드가 열어 두던 LAN 주소 집합을 좁히지 않기 위해서다. 원격 리스너는 그와 달리
+   * 자기 주소 하나만 연다.
+   */
+  function accessSetsFor(listener: ListenerIdentity | null, port: number): AllowedAccessSets {
+    if (listener === null || listener.audience === "local") {
+      return cachedAccessSets(`bind|${deps.host}|${port}`, () => buildAllowedAccessSets(deps.host, port));
+    }
+    return cachedAccessSets(`listener|${listener.origin}`, () => buildListenerAccessSets(listener));
+  }
+
+  function cachedAccessSets(key: string, build: () => AllowedAccessSets): AllowedAccessSets {
+    const cached = accessSetsByGate.get(key);
+    if (cached) return cached;
+    const sets = build();
+    accessSetsByGate.set(key, sets);
+    return sets;
   }
 
   async function ensureInitialWorkspace(): Promise<WorkspaceRegistration> {
@@ -219,6 +248,31 @@ export function buildAllowedAccessSets(
     allowedOrigins.add(`http://${formatHostForUrl(canonical)}:${port}`);
   }
   return { allowedHosts, allowedOrigins, externalMode: !isLoopbackBindHost(host) };
+}
+
+/**
+ * 원격 리스너의 경계는 그 리스너 하나다. 바인드 호스트에서 파생한 집합은 루프백을 동반하고
+ * 스킴이 http로 고정돼 있어, TLS로 뜬 원격 리스너는 자기 주소도 자기 Origin도 통과시키지 못한다.
+ */
+export function buildListenerAccessSets(listener: ListenerIdentity): AllowedAccessSets {
+  const canonical = canonicalizeAllowedHost(listener.host);
+  const allowedHosts = new Set<string>();
+  const allowedOrigins = new Set<string>();
+  if (canonical) {
+    allowedHosts.add(canonical);
+    allowedOrigins.add(`${listener.secure ? "https" : "http"}://${formatHostForUrl(canonical)}:${listener.port}`);
+  }
+  return { allowedHosts, allowedOrigins, externalMode: true };
+}
+
+/**
+ * 쓰기 자격은 "이 기계에서 왔는가"가 아니라 "어느 리스너를 통과했는가"다. 원격 리스너 요청은
+ * 라우팅 이전에 세션 게이트를 통과했고, monitoring 자격은 거기서 이미 읽기로 묶인다 — 여기서
+ * 피어 주소를 다시 보면 원격은 세션이 있어도 영원히 읽기 전용이 된다.
+ */
+function isRequestAdmitted(listener: ListenerIdentity | null, request: IncomingMessage): boolean {
+  if (listener !== null && listener.audience !== "local") return true;
+  return isLoopbackRemoteAddress(request.socket.remoteAddress);
 }
 
 function selectWorkspace(requestUrl: string, workspaces: WorkspaceRegistry, cwd: string): WorkspaceSelection {

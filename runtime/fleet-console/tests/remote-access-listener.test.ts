@@ -251,6 +251,25 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
   });
 
   /**
+   * 원격 리스너의 Host는 루프백 바인드 호스트가 아니다. Codex가 자기 게이트를 바인드 호스트에서만
+   * 세우면, 세션을 정상적으로 연 사용자도 Wiki를 열 때마다 host_mismatch를 돌려받는다.
+   */
+  it("lets an admitted session reach Codex through the remote listener's own host", async () => {
+    const fixture = await startFixture({ remote: true });
+    const operator = await joinAs(fixture, "full", "MacBook Pro");
+
+    // 등록되지 않은 workspace라 라우팅은 곧장 404로 끝난다 — 여기서 보는 것은 Host 게이트뿐이다.
+    const reached = await remoteRequestBody(fixture, "GET", "/console/codex/w/absent/api/search", undefined, operator);
+    // 자기 주소만 연다: 원격 리스너에 붙어 다른 호스트를 주장하는 요청은 그대로 막힌다.
+    const foreign = await remoteRequestBody(fixture, "GET", "/console/codex/w/absent/api/search", `203.0.113.10:${fixture.remotePort}`, operator);
+
+    expect(reached.status).toBe(404);
+    expect(reached.body).toContain("workspace_not_found");
+    expect(foreign.status).toBe(403);
+    expect(foreign.body).toContain("host_mismatch");
+  });
+
+  /**
    * 저장된 주소는 어제 붙어 있던 인터페이스의 것이다. 그 주소가 사라졌을 때 기동까지 함께
    * 무너지면, 사용자는 설정을 고칠 화면조차 열 수 없다.
    */
@@ -432,6 +451,7 @@ function remoteRequestBody(
   requestPath: string,
   /** Host를 위조한 요청을 보내기 위한 자리 — 게이트가 헤더를 믿지 않는지 확인한다. */
   hostHeader?: string,
+  cookie?: string,
 ): Promise<{ status: number; headers: import("node:http").IncomingHttpHeaders; body: string }> {
   return new Promise((resolve, reject) => {
     const request = https.request({
@@ -441,7 +461,10 @@ function remoteRequestBody(
       method,
       rejectUnauthorized: false,
       checkServerIdentity: () => undefined,
-      headers: { host: hostHeader ?? `${BIND_HOST}:${fixture.remotePort}` },
+      headers: {
+        host: hostHeader ?? `${BIND_HOST}:${fixture.remotePort}`,
+        ...(cookie ? { cookie } : {}),
+      },
     }, (response) => {
       const chunks: Buffer[] = [];
       response.on("data", (chunk: Buffer) => chunks.push(chunk));

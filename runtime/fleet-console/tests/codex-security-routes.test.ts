@@ -7,7 +7,7 @@ import type { ServerResponse } from "node:http";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { buildAllowedAccessSets } from "../core/host/codex/gateway.js";
+import { buildAllowedAccessSets, buildListenerAccessSets } from "../core/host/codex/gateway.js";
 import { handleApiRequest, isLoopbackRemoteAddress } from "../core/host/codex/routes.js";
 import { startCodexTestServer } from "./codex-test-server.js";
 import type { CodexTestServer } from "./codex-test-server.js";
@@ -555,15 +555,54 @@ describe("loopback-only origin check", () => {
     expect(isLoopbackRemoteAddress("::ffff:192.168.1.10")).toBe(false);
   });
 
-  it("rejects non-loopback drydock writes before Origin validation", async () => {
+  it("rejects drydock writes the listener did not admit, before Origin validation", async () => {
     const response = createResponseRecorder();
     await handleApiRequest(
       createRouteRequest(`/api/drydock/${VALID_PATCH_ID}/decision`, "POST", "192.168.1.10"),
       response.response,
-      createMinimalRouteContext(),
+      createMinimalRouteContext({ admitted: false }),
     );
     expect(response.statusCode).toBe(403);
     expect(response.body).toContain("write_loopback_only");
+  });
+
+  // 원격 리스너를 통과한 요청은 피어 주소가 루프백이 아니어도 쓰기 자격을 갖는다 — 세션 게이트가
+  // 라우팅 이전에 이미 판정했고, 여기서 피어를 다시 보면 원격은 영원히 읽기 전용이 된다.
+  it("admits drydock writes from a remote listener with its own https Origin", async () => {
+    const request = createRouteRequest(`/api/drydock/${VALID_PATCH_ID}/decision`, "POST", "192.168.1.10");
+    request.headers.origin = "https://desk.local:3737";
+    const response = createResponseRecorder();
+    await handleApiRequest(request, response.response, createMinimalRouteContext({
+      allowedOrigins: new Set(["https://desk.local:3737"]),
+    }));
+    expect(response.statusCode).toBe(415);
+    expect(response.body).toContain("unsupported_media_type");
+  });
+
+  it("still rejects an Origin the listener does not allow", async () => {
+    const request = createRouteRequest(`/api/drydock/${VALID_PATCH_ID}/decision`, "POST", "192.168.1.10");
+    request.headers.origin = "https://evil.example:3737";
+    const response = createResponseRecorder();
+    await handleApiRequest(request, response.response, createMinimalRouteContext({
+      allowedOrigins: new Set(["https://desk.local:3737"]),
+    }));
+    expect(response.statusCode).toBe(403);
+    expect(response.body).toContain("origin_mismatch");
+  });
+
+  it("scopes a remote listener's access sets to that listener alone", () => {
+    const access = buildListenerAccessSets({
+      audience: "remote",
+      host: "desk.local",
+      port: 4242,
+      origin: "https://desk.local:4242",
+      secure: true,
+      bindAddress: "192.168.1.50",
+    });
+    expect(access.allowedHosts).toEqual(new Set(["desk.local"]));
+    expect(access.allowedOrigins).toEqual(new Set(["https://desk.local:4242"]));
+    expect(access.allowedHosts.has("127.0.0.1")).toBe(false);
+    expect(access.externalMode).toBe(true);
   });
 });
 
@@ -655,7 +694,9 @@ function findNonLoopbackIpv4(): string | null {
   return null;
 }
 
-function createMinimalRouteContext(): Parameters<typeof handleApiRequest>[2] {
+function createMinimalRouteContext(
+  overrides: { admitted?: boolean; allowedOrigins?: Set<string> } = {},
+): Parameters<typeof handleApiRequest>[2] {
   return {
     cwd: tempDir || "/tmp/fleet-console-codex-test",
     knowledgeRoot: path.join(tempDir || "/tmp/fleet-console-codex-test", ".fleet", "knowledge"),
@@ -672,8 +713,9 @@ function createMinimalRouteContext(): Parameters<typeof handleApiRequest>[2] {
     port: 3737,
     host: "127.0.0.1",
     workspaceId: "test-workspace",
-    allowedOrigins: new Set(["http://127.0.0.1:3737"]),
+    allowedOrigins: overrides.allowedOrigins ?? new Set(["http://127.0.0.1:3737"]),
     externalMode: false,
+    admitted: overrides.admitted ?? true,
   };
 }
 
