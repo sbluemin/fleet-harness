@@ -39,7 +39,8 @@
     "node": ">=20.19.0"
   },
   "scripts": {
-    "build": "pnpm generate:admiral-assets && pnpm generate:shim-keys && tsup && node ../../scripts/check-dist-node-protocol.mjs && node ../../scripts/check-dist-published-externals.mjs && pnpm generate:desktop-protocol-declaration && pnpm verify:desktop-protocol && vite build --config core/client/vite.config.ts",
+    "boundary:guard": "node ../../scripts/guard-fleet-agent-boundary.mjs",
+    "build": "pnpm boundary:guard && pnpm generate:admiral-assets && pnpm generate:shim-keys && tsup && node ../../scripts/check-dist-node-protocol.mjs && node ../../scripts/check-dist-published-externals.mjs && pnpm generate:desktop-protocol-declaration && pnpm verify:desktop-protocol && vite build --config core/client/vite.config.ts",
     "cli": "tsx cli/fleet-entry.ts",
     "fleet": "tsx cli/fleet-entry.ts",
     "dev": "vite --config core/client/vite.config.ts",
