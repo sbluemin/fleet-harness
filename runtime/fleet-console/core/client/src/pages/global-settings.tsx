@@ -950,7 +950,7 @@ function RemoteLinksCard({
       key: entry.id,
       name: entry.device ?? t("settings.remote.table.unnamedDevice"),
       access: entry.access,
-      when: entry.sessionHandle === null ? formatRelative(entry.lastSeenAt) : t("settings.remote.table.connected"),
+      when: entry.sessionHandle === null ? formatRelative(entry.lastSeenAt, t) : t("settings.remote.table.connected"),
       disconnect: entry.sessionHandle === null ? null : () => onRevokeSession(entry.sessionHandle!),
       revoke: () => onRevokeDevice(entry.id),
       revokeLabel: t("settings.remote.unpair"),
@@ -1003,7 +1003,7 @@ function RemoteLinksCard({
             <th scope="col">{t("settings.remote.table.device")}</th>
             <th scope="col">{t("settings.remote.table.access")}</th>
             <th scope="col">{t("settings.remote.table.lastUsedHead")}</th>
-            <th scope="col"><span className="visually-hidden">{t("settings.remote.revoke")}</span></th>
+            <th scope="col">{t("settings.remote.table.actionsHead")}</th>
           </tr>
         </thead>
         <tbody>
@@ -1028,12 +1028,13 @@ function RemoteLinksCard({
   );
 }
 
-function formatRelative(epochMs: number): string {
+/** 같은 셀에 "접속 중"과 나란히 서므로 이 문장도 화면 언어를 따라야 한다. */
+function formatRelative(epochMs: number, t: (key: CoreMessageKey) => string): string {
   const minutes = Math.round((Date.now() - epochMs) / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 1) return t("settings.remote.table.justNow");
+  if (minutes < 60) return t("settings.remote.table.minutesAgo").replace("{minutes}", String(minutes));
   const hours = Math.round(minutes / 60);
-  return hours < 24 ? `${hours} h ago` : new Date(epochMs).toLocaleDateString();
+  return hours < 24 ? t("settings.remote.table.hoursAgo").replace("{hours}", String(hours)) : new Date(epochMs).toLocaleDateString();
 }
 
 function WarningIcon() {
