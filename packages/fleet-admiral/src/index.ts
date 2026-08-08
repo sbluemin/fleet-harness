@@ -31,7 +31,18 @@ export {
   type PtyInputChunk,
 } from "./agent-cli/types.js";
 export { clampGoalCheckLimit } from "./agent-cli/goal.js";
-export { assertLaunchPromptShimSafe, LaunchPromptError, sanitizeLaunchPrompt, type LaunchPromptErrorCode } from "./agent-cli/prompt.js";
+export {
+  assertLaunchCommandLineBudget,
+  assertLaunchPromptShimSafe,
+  estimateWindowsCommandLineChars,
+  LaunchPromptError,
+  resolveLaunchCommandLineLimit,
+  sanitizeLaunchPrompt,
+  WINDOWS_CMD_SHIM_COMMAND_LINE_MAX_CHARS,
+  WINDOWS_CREATE_PROCESS_COMMAND_LINE_MAX_CHARS,
+  type LaunchCommandLineLimit,
+  type LaunchPromptErrorCode,
+} from "./agent-cli/prompt.js";
 
 export {
   KIMI_AUTH_PROVIDER_ID,

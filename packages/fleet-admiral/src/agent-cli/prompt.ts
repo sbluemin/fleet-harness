@@ -9,7 +9,25 @@
 // 나가는 이 런치 경로는 둘 다 제공하지 않는다. 따라서 따옴표 안이라는 가정도 성립하지 않는다.
 const CMD_UNSAFE_PROMPT_PATTERN = /["&<>()@^|%]/;
 
-export type LaunchPromptErrorCode = "prompt_unsafe_for_shim" | "prompt_unsupported_launch";
+/**
+ * Windows 명령줄 상한. cmd.exe를 경유하는 shim 실행은 8,191자, 실행 파일을 직접 부르는
+ * 경로는 CreateProcess의 32,767자에서 잘린다. 두 숫자와 이 저장소가 `--agents` JSON을
+ * argv에서 걷어낸 경위는 gateway-agents.ts에 적혀 있다 — 거기서는 왜 옮겼는지를 설명하고,
+ * 여기서는 남은 argv가 그 상한을 넘기지 않는지를 실제로 강제한다.
+ */
+export const WINDOWS_CMD_SHIM_COMMAND_LINE_MAX_CHARS = 8191;
+export const WINDOWS_CREATE_PROCESS_COMMAND_LINE_MAX_CHARS = 32767;
+
+export type LaunchPromptErrorCode =
+  | "prompt_unsafe_for_shim"
+  | "prompt_unsupported_launch"
+  | "prompt_command_line_too_long"
+  | "launch_command_line_too_long";
+
+export interface LaunchCommandLineLimit {
+  readonly maxChars: number;
+  readonly via: "cmd-shim" | "create-process";
+}
 
 export class LaunchPromptError extends Error {
   readonly code: LaunchPromptErrorCode;
@@ -31,6 +49,73 @@ export function assertLaunchPromptShimSafe(prompt: string | undefined, prefixArg
   throw new LaunchPromptError(
     "prompt_unsafe_for_shim",
     'The launch prompt contains a character cmd.exe would reinterpret (" & < > ( ) @ ^ | %) while running the Windows shim. Remove it and try again.',
+  );
+}
+
+/**
+ * 이 실행에 걸리는 명령줄 상한을 고른다. POSIX에는 이 크기대의 상한이 없어 선언하지 않는다.
+ * `prefixArgs`가 있다는 것은 core-process가 bin을 cmd.exe로 감쌌다는 뜻이고, 그때는 상한이
+ * CreateProcess가 아니라 cmd 쪽에서 먼저 걸린다.
+ */
+export function resolveLaunchCommandLineLimit(
+  prefixArgs: readonly string[],
+  platform: NodeJS.Platform = process.platform,
+): LaunchCommandLineLimit | undefined {
+  if (platform !== "win32") return undefined;
+  return prefixArgs.length > 0
+    ? { maxChars: WINDOWS_CMD_SHIM_COMMAND_LINE_MAX_CHARS, via: "cmd-shim" }
+    : { maxChars: WINDOWS_CREATE_PROCESS_COMMAND_LINE_MAX_CHARS, via: "create-process" };
+}
+
+/**
+ * 최종 명령줄이 차지할 문자 수를 어림한다. Windows는 bin과 인자를 하나의 문자열로 이어
+ * 자식에게 넘기므로, 프롬프트만이 아니라 bin·shim 선행 인자·주입 인자를 모두 세야 한다.
+ *
+ * 어림이지만 낮게 잡지는 않는다 — 실제보다 적게 세면 상한을 넘긴 실행을 통과시켜 이 검사가
+ * 있으나 마나가 된다.
+ */
+export function estimateWindowsCommandLineChars(bin: string, args: readonly string[]): number {
+  return args.reduce((total, arg) => total + 1 + quotedArgChars(arg), quotedArgChars(bin));
+}
+
+function quotedArgChars(value: string): number {
+  // 빈 인자도 명령줄에서는 ""로 두 글자를 차지한다.
+  if (value.length === 0) return 2;
+  const innerQuotes = (value.match(/"/g) ?? []).length;
+  const needsQuoting = /[\s"]/.test(value);
+  return value.length + innerQuotes + (needsQuoting ? 2 : 0);
+}
+
+/**
+ * 조립이 끝난 argv가 이 플랫폼의 명령줄 상한 안에 들어가는지 확인한다.
+ *
+ * 프롬프트 길이만 보는 검사(MAX_LAUNCH_PROMPT_CHARS)로는 부족하다 — 상한을 채우는 것은
+ * 프롬프트만이 아니라 bin·shim 선행 인자·`--mcp-config`/`--plugin-dir` 같은 주입 인자의
+ * 합계이고, 그 합계는 프로필이 조립된 뒤에야 알 수 있다. 여기서 막지 않으면 spawn이
+ * 플랫폼 오류로 죽어 사용자에게는 원인이 남지 않는다.
+ */
+export function assertLaunchCommandLineBudget(options: {
+  readonly args: readonly string[];
+  readonly bin: string;
+  readonly limit: LaunchCommandLineLimit | undefined;
+  readonly promptChars: number;
+}): void {
+  const { limit } = options;
+  if (limit === undefined) return;
+  const total = estimateWindowsCommandLineChars(options.bin, options.args);
+  if (total <= limit.maxChars) return;
+  const boundary = limit.via === "cmd-shim" ? "cmd.exe shim" : "CreateProcess";
+  // 프롬프트가 없는데도 넘겼다면 줄일 대상이 프롬프트가 아니다. 그 경우까지 "프롬프트를
+  // 줄이라"고 말하면 사용자는 고칠 수 없는 지시를 받는다.
+  if (options.promptChars === 0) {
+    throw new LaunchPromptError(
+      "launch_command_line_too_long",
+      `The launch command line is ${total} characters with no launch prompt, over the ${limit.maxChars}-character Windows ${boundary} limit. Shortening a prompt cannot help; reduce the launch configuration instead.`,
+    );
+  }
+  throw new LaunchPromptError(
+    "prompt_command_line_too_long",
+    `The launch command line is ${total} characters, over the ${limit.maxChars}-character Windows ${boundary} limit. Shorten the launch prompt by at least ${total - limit.maxChars} characters and try again.`,
   );
 }
 

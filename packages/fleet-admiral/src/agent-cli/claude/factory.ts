@@ -1,7 +1,7 @@
 import { createChildEnv, resolveBinary } from "@dotobokuri/core-agent";
 
 import { clampGoalCheckLimit } from "../goal.js";
-import { assertLaunchPromptShimSafe, sanitizeLaunchPrompt } from "../prompt.js";
+import { assertLaunchPromptShimSafe, resolveLaunchCommandLineLimit, sanitizeLaunchPrompt } from "../prompt.js";
 import type { AgentCliDefinition, AgentCliId, AgentCliProfileOptions } from "../types.js";
 
 interface ClaudeFamilyCliFactoryOptions {
@@ -20,6 +20,7 @@ export function createClaudeFamilyCliDefinition(
       const launchPrompt = sanitizeLaunchPrompt(profileOptions.prompt);
       // prefixArgs가 있으면 이 실행은 cmd.exe를 거친다 — 그 명령줄에 임의 텍스트를 실을 수 없다.
       assertLaunchPromptShimSafe(launchPrompt, prefixArgs);
+      const commandLineLimit = resolveLaunchCommandLineLimit(prefixArgs);
       // 한도를 건네지 않은 호스트의 환경은 건드리지 않는다. 덮어쓰면 운영자가 직접 설정한
       // CLAUDE_CODE_STOP_HOOK_BLOCK_CAP이 Console 기능 때문에 조용히 8로 바뀐다 —
       // Fleet CLI와 Console은 서로의 목표 동작을 바꾸지 않는 동격 호스트다.
@@ -38,6 +39,8 @@ export function createClaudeFamilyCliDefinition(
       return {
         args: [...prefixArgs, ...buildModelArgs(profileOptions.model), ...buildEffortArgs(profileOptions.effort)],
         bin,
+        // prefixArgs는 이 프로필의 args로 접혀 들어간다 — shim 경유 여부를 아는 것은 이 지점이 마지막이다.
+        ...(commandLineLimit === undefined ? {} : { commandLineLimit }),
         cwd: profileOptions.cwd,
         env: childEnv,
         id: options.id,

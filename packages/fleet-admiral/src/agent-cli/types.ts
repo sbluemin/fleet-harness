@@ -2,6 +2,7 @@ import type { GatewayEffortExposure, GatewayModel } from "@dotobokuri/core-ai-ga
 
 import type { AdmiralDoctrine } from "../protocols/doctrine.js";
 import type { ClaudeSkillOverride } from "./gateway-skills.js";
+import type { LaunchCommandLineLimit } from "./prompt.js";
 
 export type AgentCliId = "claude-native" | "claude-gateway";
 
@@ -18,6 +19,10 @@ export interface AgentCliProfile {
   // bin이 Windows .cmd shim을 cmd.exe로 래핑한 경우의 선행 인자(/d /s /c <shim>).
   readonly binPrefixArgs?: readonly string[];
   readonly args: readonly string[];
+  // 이 실행에 걸리는 명령줄 상한. 프로필을 만든 쪽만 bin이 shim으로 감싸였는지 알고,
+  // 최종 argv는 주입 계층에서야 완성되므로, 상한은 여기에 실어 그 계층까지 옮긴다.
+  // POSIX 실행은 선언하지 않는다.
+  readonly commandLineLimit?: LaunchCommandLineLimit;
   readonly cleanup?: () => void;
   readonly cwd: string;
   readonly env: Readonly<Record<string, string>>;

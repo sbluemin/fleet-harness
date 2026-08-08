@@ -196,6 +196,8 @@ describe("rejection messages", () => {
     expect(quickLaunchErrorMessageKey("prompt_unsafe_for_shim")).toBe("chrome.quickLaunch.errorUnsafePrompt");
     expect(quickLaunchErrorMessageKey("prompt_unsupported_launch")).toBe("chrome.quickLaunch.errorPromptUnsupported");
     expect(quickLaunchErrorMessageKey("prompt_too_long")).toBe("chrome.quickLaunch.errorTooLong");
+    expect(quickLaunchErrorMessageKey("prompt_command_line_too_long")).toBe("chrome.quickLaunch.errorCommandLineTooLong");
+    expect(quickLaunchErrorMessageKey("launch_command_line_too_long")).toBe("chrome.quickLaunch.errorLaunchCommandLineTooLong");
     expect(quickLaunchErrorMessageKey("gateway_model_not_enabled")).toBe("chrome.quickLaunch.errorModelOff");
     expect(quickLaunchErrorMessageKey("invalid_effort")).toBe("chrome.quickLaunch.errorEffortOff");
     expect(quickLaunchErrorMessageKey("agent_cli_unavailable")).toBe("chrome.quickLaunch.errorCliUnavailable");
@@ -215,6 +217,8 @@ describe("rejection messages", () => {
       "chrome.quickLaunch.errorUnsafePrompt",
       "chrome.quickLaunch.errorPromptUnsupported",
       "chrome.quickLaunch.errorTooLong",
+      "chrome.quickLaunch.errorCommandLineTooLong",
+      "chrome.quickLaunch.errorLaunchCommandLineTooLong",
       "chrome.quickLaunch.errorModelOff",
       "chrome.quickLaunch.errorEffortOff",
       "chrome.quickLaunch.errorCliUnavailable",

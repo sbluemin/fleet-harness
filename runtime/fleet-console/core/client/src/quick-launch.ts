@@ -83,6 +83,8 @@ export function quickLaunchErrorMessageKey(code: string | null): string | null {
     case "prompt_unsafe_for_shim": return "chrome.quickLaunch.errorUnsafePrompt";
     case "prompt_unsupported_launch": return "chrome.quickLaunch.errorPromptUnsupported";
     case "prompt_too_long": return "chrome.quickLaunch.errorTooLong";
+    case "prompt_command_line_too_long": return "chrome.quickLaunch.errorCommandLineTooLong";
+    case "launch_command_line_too_long": return "chrome.quickLaunch.errorLaunchCommandLineTooLong";
     case "gateway_model_not_enabled": return "chrome.quickLaunch.errorModelOff";
     case "invalid_effort": return "chrome.quickLaunch.errorEffortOff";
     case "agent_cli_unavailable": return "chrome.quickLaunch.errorCliUnavailable";
