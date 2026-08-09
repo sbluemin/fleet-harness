@@ -163,6 +163,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       cliId: context?.cliId,
       model: context?.model,
       effort: context?.effort,
+      useGatewayDefaultModel: context?.useGatewayDefaultModel,
       goalCheckLimit: context?.goalCheckLimit,
       prompt: context?.prompt,
       createSessionIdentityResolver: resolveSessionIdentityResolver,
@@ -198,6 +199,7 @@ async function createAgentCliLaunchSpec(options: {
   readonly cliId?: string;
   readonly model?: string;
   readonly effort?: string;
+  readonly useGatewayDefaultModel?: boolean;
   readonly createSessionCaptureHookExec: typeof createSessionCaptureHookExec;
   readonly createSessionIdentityResolver: typeof createSessionIdentityResolver;
   readonly createSystemPromptBuilder: typeof createSystemPromptBuilder;
@@ -275,9 +277,7 @@ async function createAgentCliLaunchSpec(options: {
       resumeSessionId: options.resumeSessionId,
       withMarketplaceLock: withConsoleMarketplaceLock,
       mcpSessionLabel: options.sessionId,
-      ...(cliId === "claude-gateway" && globalOptions.replaceClaudeGatewaySystemPrompt === true
-        ? { replaceSystemPrompt: true }
-        : {}),
+      systemPromptMode: globalOptions.claudeGatewaySystemPromptMode ?? "append",
       ...(gatewaySelection
         ? {
           // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.
@@ -305,6 +305,7 @@ async function createAgentCliLaunchSpec(options: {
       launchProfile = prepareAiGatewayLaunchProfile(injectedProfile, {
         baseUrl: `${origin}${options.aiGateway.routePath}`,
         selection: gatewaySelection,
+        useConfiguredDefaultModel: options.useGatewayDefaultModel,
       });
     }
     const sessionIdentityResolver = options.createSessionIdentityResolver({

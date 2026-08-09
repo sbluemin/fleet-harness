@@ -3,12 +3,14 @@ import * as path from "node:path";
 import { getFleetDataDir } from "../paths.js";
 import { createDurableJsonStore } from "../../fs-store/json-store.js";
 
+export type ClaudeGatewaySystemPromptMode = "append" | "replace" | "off";
+
 export interface GlobalOptionsData {
   readonly version: 1;
   /** Idle agent auto-DORMANT threshold in minutes. `null` disables; key absent means server default. */
   readonly agentIdleDormantMinutes?: number | null;
-  /** Replace Claude Code's built-in system prompt for new AI Gateway sessions. Missing means append. */
-  readonly replaceClaudeGatewaySystemPrompt?: boolean;
+  /** Fleet system-prompt composition for new AI Gateway sessions. */
+  readonly claudeGatewaySystemPromptMode?: ClaudeGatewaySystemPromptMode;
 }
 
 export interface GlobalOptionsValidationResult {
@@ -109,18 +111,19 @@ export function sanitizeGlobalOptionsData(value: unknown): GlobalOptionsValidati
   }
 
   const agentIdleDormantMinutes = sanitizeAgentIdleDormantMinutes(value.agentIdleDormantMinutes);
-  const replaceClaudeGatewaySystemPrompt = typeof value.replaceClaudeGatewaySystemPrompt === "boolean"
-    ? value.replaceClaudeGatewaySystemPrompt
-    : undefined;
+  const hasCanonicalMode = "claudeGatewaySystemPromptMode" in value;
+  const validMode = sanitizeClaudeGatewaySystemPromptMode(value.claudeGatewaySystemPromptMode);
+  const claudeGatewaySystemPromptMode = validMode
+    ?? (!hasCanonicalMode && value.replaceClaudeGatewaySystemPrompt === true ? "replace" : "append");
   const data: GlobalOptionsData = {
     version: GLOBAL_OPTIONS_VERSION,
     ...(agentIdleDormantMinutes !== undefined ? { agentIdleDormantMinutes } : {}),
-    ...(replaceClaudeGatewaySystemPrompt !== undefined ? { replaceClaudeGatewaySystemPrompt } : {}),
+    claudeGatewaySystemPromptMode,
   };
-  const allowedKeys = new Set(["version", "agentIdleDormantMinutes", "replaceClaudeGatewaySystemPrompt"]);
+  const allowedKeys = new Set(["version", "agentIdleDormantMinutes", "claudeGatewaySystemPromptMode"]);
   const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
     ("agentIdleDormantMinutes" in value && agentIdleDormantMinutes === undefined) ||
-    ("replaceClaudeGatewaySystemPrompt" in value && replaceClaudeGatewaySystemPrompt === undefined);
+    validMode === undefined;
 
   return { data, changed };
 }
@@ -129,6 +132,10 @@ function sanitizeAgentIdleDormantMinutes(value: unknown): number | null | undefi
   if (value === null) return null;
   if (typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value > 0) return value;
   return undefined;
+}
+
+function sanitizeClaudeGatewaySystemPromptMode(value: unknown): ClaudeGatewaySystemPromptMode | undefined {
+  return value === "append" || value === "replace" || value === "off" ? value : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

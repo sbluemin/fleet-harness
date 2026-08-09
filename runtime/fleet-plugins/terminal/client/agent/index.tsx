@@ -175,7 +175,7 @@ export const agentPlugin = definePlugin({
     return { id: session.sessionId };
   },
   renderLaunchIcon: (kind) => {
-    if (kind.id === "claude" || kind.id === "claude-native" || kind.id === "claude-gateway") return <ClaudeGlyph />;
+    if (kind.id === "claude-gateway") return <ClaudeGlyph />;
     return <AgentGlyph />;
   },
 });
@@ -473,18 +473,26 @@ function ClaudeGatewaySystemPromptSettingsBlock() {
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
       {state ? (
         <>
-          <SettingToggleRow
-            title={t("terminal.settings.systemPromptTitle")}
-            help={t("terminal.settings.systemPromptHelp")}
-            onLabel={t("terminal.settings.systemPromptReplace")}
-            offLabel={t("terminal.settings.systemPromptAppend")}
-            value={state.replaceClaudeGatewaySystemPrompt}
-            disabled={saving}
-            onToggle={() => void setSystemPromptSettingsField(
-              "replaceClaudeGatewaySystemPrompt",
-              !state.replaceClaudeGatewaySystemPrompt,
-            )}
-          />
+          <div className="global-settings-row">
+            <div className="global-settings-row-text">
+              <p className="global-settings-resp-title" id="claude-gateway-system-prompt-label">{t("terminal.settings.systemPromptTitle")}</p>
+              <p className="global-settings-help">{t("terminal.settings.systemPromptHelp")}</p>
+            </div>
+            <Select
+              aria-labelledby="claude-gateway-system-prompt-label"
+              value={state.claudeGatewaySystemPromptMode}
+              disabled={saving}
+              options={[
+                { value: "append", label: t("terminal.settings.systemPromptAppend") },
+                { value: "replace", label: t("terminal.settings.systemPromptReplace") },
+                { value: "off", label: t("terminal.settings.systemPromptOff") },
+              ]}
+              onChange={(value) => void setSystemPromptSettingsField(
+                "claudeGatewaySystemPromptMode",
+                value as "append" | "replace" | "off",
+              )}
+            />
+          </div>
           <p className="global-settings-foot">{t("terminal.settings.systemPromptFoot")}</p>
         </>
       ) : (
@@ -1502,7 +1510,7 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
 }
 
 function isSupportedAgentOperationCliId(value: string | undefined): boolean {
-  return value === "claude" || value === "claude-native" || value === "claude-gateway";
+  return value === "claude-gateway";
 }
 
 function sessionFromOperation(context: OperationRenderContext): SessionInfo {

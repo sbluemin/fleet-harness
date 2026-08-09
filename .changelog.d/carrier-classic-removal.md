@@ -4,8 +4,8 @@ branch: carrier-classic-removal
 
 ### fleet-console
 #### Breaking Changes
-- Retire the Claude (Classic) launch kind. New Operations launch as Claude (Native) or Claude (Gateway), and every existing Classic Operation moves to Claude (Gateway) once on first start, restored Operations inside the undo window included. The console keeps a one-time `state.json.classic-backup` beside its durable state before it rewrites anything.
-  ko: Claude (Classic) 실행 종류를 폐지합니다. 새 Operation은 Claude (Native) 또는 Claude (Gateway)로 시작하고, 기존 Classic Operation은 첫 기동 때 한 번에 Claude (Gateway)로 이주합니다. 되돌리기 대기 중인 Operation도 함께 이주하며, 이주 직전 상태는 `state.json.classic-backup`으로 한 번 보관합니다.
+- Retire the Claude (Classic) and Claude (Native) launch kinds. New Operations launch as Claude (Gateway), and every existing Classic or Native Operation moves to Gateway once on first start, restored Operations inside the undo window included. The console keeps a one-time `state.json.classic-backup` beside its durable state before it rewrites anything.
+  ko: Claude (Classic)과 Claude (Native) 실행 종류를 폐지합니다. 새 Operation은 Claude (Gateway)로 시작하고, 기존 Classic 또는 Native Operation은 첫 기동 때 한 번에 Gateway로 이주합니다. 되돌리기 대기 중인 Operation도 함께 이주하며, 이주 직전 상태는 `state.json.classic-backup`으로 한 번 보관합니다.
 - Remove the Carrier surfaces the Classic launch kind carried: the Carrier Streams panel and its companion, the Carrier settings section, and the Carrier deep-link target in Global Settings. Agent session status, attention, and title behavior are unchanged.
   ko: Classic 실행 종류가 데리고 있던 Carrier 표면을 제거합니다. Carrier Streams 패널과 컴패니언, Carrier 설정 구역, 전역 설정의 Carrier 딥링크 대상이 사라집니다. 에이전트 세션 상태·주의 표시·제목 동작은 그대로입니다.
 - Remove the Metaphor prompt setting. It only shaped the Classic prompt persona, so it no longer appears in Terminal settings and is dropped from stored settings on the next write.

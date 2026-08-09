@@ -5,7 +5,7 @@ import { assertLaunchPromptShimSafe, resolveLaunchCommandLineLimit, sanitizeLaun
 import type { AgentCliDefinition, AgentCliId, AgentCliProfileOptions } from "../types.js";
 
 interface ClaudeFamilyCliFactoryOptions {
-  readonly id: Extract<AgentCliId, "claude-native" | "claude-gateway">;
+  readonly id: AgentCliId;
   readonly label: string;
 }
 
@@ -30,12 +30,6 @@ export function createClaudeFamilyCliDefinition(
           ? {}
           : { CLAUDE_CODE_STOP_HOOK_BLOCK_CAP: String(clampGoalCheckLimit(profileOptions.goalCheckLimit)) },
       );
-      if (options.id === "claude-gateway") {
-        // Provider credentials stay in the Console gateway. The Console host
-        // supplies only the local gateway URL at launch time.
-        delete childEnv.ANTHROPIC_API_KEY;
-        delete childEnv.ANTHROPIC_AUTH_TOKEN;
-      }
       return {
         args: [...prefixArgs, ...buildModelArgs(profileOptions.model), ...buildEffortArgs(profileOptions.effort)],
         bin,

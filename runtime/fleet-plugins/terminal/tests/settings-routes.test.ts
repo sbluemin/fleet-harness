@@ -31,7 +31,7 @@ describe("terminal settings routes", () => {
     expect(harness.writes[0]?.status).toBe(200);
     expect(harness.writes[0]?.body).toMatchObject({
       agentIdleDormantMinutes: 60,
-      replaceClaudeGatewaySystemPrompt: false,
+      claudeGatewaySystemPromptMode: "append",
       aiGateway: null,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
@@ -71,19 +71,22 @@ describe("terminal settings routes", () => {
     expect(harness.currentData()).toEqual({ version: 1, agentIdleDormantMinutes: 30 });
   });
 
-  it("PUT /plugins/terminal/settings stores the Claude AI Gateway system prompt replacement policy", async () => {
-    const harness = createRouteHarness({
-      body: { replaceClaudeGatewaySystemPrompt: true },
-      data: { version: 1 },
-    });
-    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
-    expect(harness.writes[0]?.status).toBe(200);
-    expect(harness.writes[0]?.body).toMatchObject({ replaceClaudeGatewaySystemPrompt: true });
-    expect(harness.currentData()).toEqual({ version: 1, replaceClaudeGatewaySystemPrompt: true });
-  });
+  it.each(["append", "replace", "off"] as const)(
+    "PUT /plugins/terminal/settings round-trips Claude Gateway system prompt mode %s",
+    async (mode) => {
+      const harness = createRouteHarness({
+        body: { claudeGatewaySystemPromptMode: mode },
+        data: { version: 1 },
+      });
+      await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+      expect(harness.writes[0]?.status).toBe(200);
+      expect(harness.writes[0]?.body).toMatchObject({ claudeGatewaySystemPromptMode: mode });
+      expect(harness.currentData()).toEqual({ version: 1, claudeGatewaySystemPromptMode: mode });
+    },
+  );
 
   it("PUT /plugins/terminal/settings rejects an invalid system prompt replacement policy", async () => {
-    const harness = createRouteHarness({ body: { replaceClaudeGatewaySystemPrompt: "yes" } });
+    const harness = createRouteHarness({ body: { claudeGatewaySystemPromptMode: "yes" } });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
     expect(harness.writes[0]?.status).toBe(400);
     expect(harness.updateCalls).toBe(0);

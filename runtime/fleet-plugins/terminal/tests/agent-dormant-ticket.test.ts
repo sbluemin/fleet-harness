@@ -27,7 +27,6 @@ afterEach(async () => {
 describe("agent launch variants", () => {
   it.each([
     [{ cliId: "claude-gateway", model: 5 }, 400, "invalid_launch_option"],
-    [{ cliId: "claude-native", model: "fable" }, 400, "launch_option_unsupported"],
     [{ cliId: "claude-gateway", model: "cursor--missing" }, 409, "gateway_model_not_enabled"],
     [{ cliId: "claude-gateway", model: "fable", effort: "ultra" }, 400, "invalid_effort"],
     [{ cliId: "claude-gateway", effort: "max" }, 400, "invalid_launch_option"],
@@ -125,7 +124,7 @@ describe("agent launch variants", () => {
     expect(harness.operations).toHaveLength(1);
   });
 
-  it("threads a valid native alias and effort into the initial attach only", async () => {
+  it("threads a valid built-in model alias and effort into the initial attach only", async () => {
     const harness = await createHarness({
       body: { cliId: "claude-gateway", model: "fable", effort: "max" },
     });
@@ -170,7 +169,7 @@ describe("agent launch variants", () => {
 
   it("rejects a non-string prompt", async () => {
     const harness = await createHarness({
-      body: { cliId: "claude-native", prompt: 12 },
+      body: { cliId: "claude-gateway", prompt: 12 },
     });
 
     await harness.postSessions();
@@ -181,7 +180,7 @@ describe("agent launch variants", () => {
 
   it("rejects a prompt longer than MAX_LAUNCH_PROMPT_CHARS", async () => {
     const harness = await createHarness({
-      body: { cliId: "claude-native", prompt: "x".repeat(MAX_LAUNCH_PROMPT_CHARS + 1) },
+      body: { cliId: "claude-gateway", prompt: "x".repeat(MAX_LAUNCH_PROMPT_CHARS + 1) },
     });
 
     await harness.postSessions();
@@ -192,7 +191,7 @@ describe("agent launch variants", () => {
 
   it("omits a whitespace-only prompt from attach", async () => {
     const harness = await createHarness({
-      body: { cliId: "claude-native", prompt: "   \n\t  " },
+      body: { cliId: "claude-gateway", prompt: "   \n\t  " },
     });
 
     await harness.postSessions();
@@ -202,16 +201,16 @@ describe("agent launch variants", () => {
     expect(harness.attach.mock.calls[0]?.[0]).not.toHaveProperty("prompt");
   });
 
-  it("accepts prompt for claude-native and keeps it out of response and durable payload", async () => {
+  it("accepts prompt for claude-gateway and keeps it out of response and durable payload", async () => {
     const harness = await createHarness({
-      body: { cliId: "claude-native", prompt: "launch me" },
+      body: { cliId: "claude-gateway", prompt: "launch me" },
     });
 
     await harness.postSessions();
 
     expect(harness.responses.at(-1)?.status).toBe(200);
     expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({
-      cliId: "claude-native",
+      cliId: "claude-gateway",
       prompt: "launch me",
     }));
     expect(containsKey(harness.responses.at(-1)?.body, "prompt")).toBe(false);

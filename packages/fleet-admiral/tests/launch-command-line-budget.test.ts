@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -240,33 +240,47 @@ describe("injectAgentCliProfile command-line enforcement", () => {
       commandLineLimit: CMD_SHIM_LIMIT,
       cwd: root,
       env: { HOME: root },
-      id: "claude-native",
-      label: "claude-native",
+      id: "claude-gateway",
+      label: "claude-gateway",
       promptArgs: ["a".repeat(10_000)],
       terminalName: "xterm-256color",
     };
     let releasedToken = false;
+    const isolatedTmp = path.join(root, "tmp");
+    mkdirSync(isolatedTmp);
+    const originalTemp = process.env.TEMP;
+    const originalTmp = process.env.TMP;
+    process.env.TEMP = isolatedTmp;
+    process.env.TMP = isolatedTmp;
 
-    await expect(injectAgentCliProfile(profile, {
-      buildSystemPrompt: () => "Fleet doctrine",
-      dataDir: path.join(root, "data"),
-      dedicatedMcpSession: {
-        async getEndpoint() {
-          return { servers: [{ name: "fleet", url: "http://127.0.0.1:48123/mcp" }] };
+    try {
+      await expect(injectAgentCliProfile(profile, {
+        buildSystemPrompt: () => "Fleet doctrine",
+        dataDir: path.join(root, "data"),
+        dedicatedMcpSession: {
+          async getEndpoint() {
+            return { servers: [{ name: "fleet", url: "http://127.0.0.1:48123/mcp" }] };
+          },
+          issueSessionToken() {
+            return [{ name: "fleet", token: "token-123" }];
+          },
+          releaseSessionToken() {
+            releasedToken = true;
+          },
         },
-        issueSessionToken() {
-          return [{ name: "fleet", token: "token-123" }];
-        },
-        releaseSessionToken() {
-          releasedToken = true;
-        },
-      },
-      withMarketplaceLock: async (_target, fn) => fn(),
-    })).rejects.toThrow(LaunchPromptError);
+        withMarketplaceLock: async (_target, fn) => fn(),
+      })).rejects.toThrow(LaunchPromptError);
 
-    // 거부가 세션 토큰과 플러그인 디렉터리를 남기면, 실패한 실행마다 찌꺼기가 쌓인다.
-    expect(releasedToken).toBe(true);
-    expect(existsSync(path.join(root, "data", "plugins"))).toBe(false);
+      // 거부가 세션 토큰과 플러그인 디렉터리를 남기면, 실패한 실행마다 찌꺼기가 쌓인다.
+      expect(releasedToken).toBe(true);
+      expect(existsSync(path.join(root, "data", "plugins"))).toBe(false);
+      expect(readdirSync(isolatedTmp)).toEqual([]);
+    } finally {
+      if (originalTemp === undefined) delete process.env.TEMP;
+      else process.env.TEMP = originalTemp;
+      if (originalTmp === undefined) delete process.env.TMP;
+      else process.env.TMP = originalTmp;
+    }
   });
 
   it("admits the same launch when the platform declares no command-line limit", async () => {
@@ -276,8 +290,8 @@ describe("injectAgentCliProfile command-line enforcement", () => {
       bin: "claude",
       cwd: root,
       env: { HOME: root },
-      id: "claude-native",
-      label: "claude-native",
+      id: "claude-gateway",
+      label: "claude-gateway",
       promptArgs: ["a".repeat(10_000)],
       terminalName: "xterm-256color",
     };

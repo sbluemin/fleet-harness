@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -8,6 +8,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   FLEET_PLUGIN_NAME,
   GATEWAY_DISABLED_CLAUDE_SKILLS,
+  getAgentCliIds,
+  getAgentCliMetadata,
+  parseAgentCliId,
   GENERAL_PURPOSE_AGENT_PROMPT,
   buildDisabledSkillOverrides,
   buildGatewayAgentFiles,
@@ -18,6 +21,8 @@ import {
   type AgentCliProfile,
   type FleetHookExec,
 } from "../src/index.js";
+import { buildClaudeGatewayArgs } from "../src/agent-cli/builders/claude.js";
+import type { AgentCliInjectionContext } from "../src/agent-cli/types.js";
 
 const tempDirs: string[] = [];
 
@@ -28,7 +33,16 @@ afterEach(() => {
 });
 
 describe("claude-gateway profile", () => {
-  it("uses Claude Code while stripping inherited provider credentials", async () => {
+  it("is the only published Agent CLI and normalizes exact retired aliases", () => {
+    expect(getAgentCliIds()).toEqual(["claude-gateway"]);
+    expect(getAgentCliMetadata()).toEqual([{ id: "claude-gateway", label: "Claude (Gateway)" }]);
+    expect(parseAgentCliId("claude")).toBe("claude-gateway");
+    expect(parseAgentCliId("claude-native")).toBe("claude-gateway");
+    expect(parseAgentCliId("claude-gateway")).toBe("claude-gateway");
+    expect(() => parseAgentCliId("claude-native-extra")).toThrow(/Unsupported agent CLI/);
+  });
+
+  it("uses Claude Code while preserving inherited Anthropic credentials for built-in models", async () => {
     const profile = await resolveAgentCliProfile({
       ANTHROPIC_API_KEY: "api-secret",
       ANTHROPIC_AUTH_TOKEN: "bearer-secret",
@@ -47,9 +61,11 @@ describe("claude-gateway profile", () => {
       label: "Claude (Gateway)",
       renameCommand: "/rename",
     });
-    expect(profile.env.KEEP_ME).toBe("yes");
-    expect(profile.env).not.toHaveProperty("ANTHROPIC_API_KEY");
-    expect(profile.env).not.toHaveProperty("ANTHROPIC_AUTH_TOKEN");
+    expect(profile.env).toMatchObject({
+      ANTHROPIC_API_KEY: "api-secret",
+      ANTHROPIC_AUTH_TOKEN: "bearer-secret",
+      KEEP_ME: "yes",
+    });
   });
 });
 
@@ -154,16 +170,8 @@ describe("claude-gateway custom agents", () => {
       cwd: root,
       env: { HOME: root },
     });
-    const native = baseProfile("claude-native", {
-      args: [],
-      cwd: root,
-      env: { HOME: root },
-    });
 
     const injectedGateway = await injectAgentCliProfile(gateway, baseInjectOptions(root, {
-      gatewayDelegationModels: [model],
-    }));
-    const injectedNative = await injectAgentCliProfile(native, baseInjectOptions(root, {
       gatewayDelegationModels: [model],
     }));
 
@@ -174,8 +182,6 @@ describe("claude-gateway custom agents", () => {
     // 정의가 argv에 실리면 Windows 명령줄 한도가 로스터 크기를 대신 정한다 — 정의 하나가
     // 1.9KB쯤이라 스무 개만 노출해도 프롬프트를 싣기 전에 실행이 불가능해진다.
     expect(injectedGateway.args).not.toContain("--agents");
-    expect(injectedNative.args).not.toContain("--agents");
-    expect(injectedNative.args).not.toContain("--disallowedTools");
 
     const files = readdirSync(agentsDirOf(injectedGateway));
     expect(files.length).toBeGreaterThan(0);
@@ -188,11 +194,7 @@ describe("claude-gateway custom agents", () => {
       expect(content).toContain('model: "claude-gateway--');
       expect(content).toContain(GENERAL_PURPOSE_AGENT_PROMPT);
     }
-    // native 세션은 게이트웨이 정체성을 하나도 얻지 않는다.
-    expect(readdirSync(agentsDirOf(injectedNative))).toEqual([]);
-
     injectedGateway.cleanup?.();
-    injectedNative.cleanup?.();
   });
 
   it("registers no identity when no gateway models are exposed", async () => {
@@ -212,22 +214,110 @@ describe("claude-gateway custom agents", () => {
 });
 
 describe("claude-gateway system prompt mode", () => {
-  it("uses the replacement flag only when explicitly requested", async () => {
+  it.each(["append", "replace"] as const)("throws when %s mode has no system prompt file", (systemPromptMode) => {
+    const context: AgentCliInjectionContext = {
+      cliId: "claude-gateway",
+      mcpServers: [],
+      pluginRoot: "/fleet/plugin",
+      pluginRoots: ["/fleet/plugin"],
+      systemPromptMode,
+    };
+
+    expect(() => buildClaudeGatewayArgs(context)).toThrow(
+      `Claude Gateway system prompt file is required in ${systemPromptMode} mode`,
+    );
+  });
+
+  it("allows off mode to omit the system prompt file while preserving gateway composition", () => {
+    const args = buildClaudeGatewayArgs({
+      cliId: "claude-gateway",
+      mcpServers: [{ name: "fleet", endpointUrl: "http://127.0.0.1:48123/mcp", bearerToken: "token" }],
+      pluginRoot: "/fleet/plugin",
+      pluginRoots: ["/fleet/plugin"],
+      skillOverrides: { "claude-api": "off" },
+      systemPromptMode: "off",
+    });
+
+    expect(args).not.toContain("--append-system-prompt-file");
+    expect(args).not.toContain("--system-prompt-file");
+    expect(args).toContain("--plugin-dir");
+    expect(args).toContain("--mcp-config");
+    expect(args).toContain("--settings");
+    expect(args).toContain("--dangerously-skip-permissions");
+  });
+
+  it("cleans the prompt file when plugin injection fails", async () => {
+    const root = createTempRoot("fleet-admiral-gateway-injection-failure-");
+    const promptTempDirsBefore = new Set(readdirSync(os.tmpdir()).filter((name) => name.startsWith("fleet-claude-gateway-")));
+
+    await expect(injectAgentCliProfile(
+      baseProfile("claude-gateway", { args: [], cwd: root, env: { HOME: root } }),
+      {
+        ...baseInjectOptions(root),
+        withMarketplaceLock: async () => { throw new Error("injected marketplace failure"); },
+      },
+    )).rejects.toThrow("injected marketplace failure");
+
+    const promptTempDirsAfter = readdirSync(os.tmpdir()).filter((name) => name.startsWith("fleet-claude-gateway-"));
+    expect(promptTempDirsAfter.filter((name) => !promptTempDirsBefore.has(name))).toEqual([]);
+  });
+
+  it("composes append, replace, and off without disabling gateway assets", async () => {
     const root = createTempRoot("fleet-admiral-gateway-system-prompt-");
     const profile = baseProfile("claude-gateway", { args: [], cwd: root, env: { HOME: root } });
+    const model = requireGatewayModel("cursor--claude-opus-5");
+    let builtPrompts = 0;
+    const hook: FleetHookExec = { command: process.execPath, args: ["hook"] };
+    const options = (systemPromptMode: "append" | "replace" | "off") => ({
+      ...baseInjectOptions(root, {
+        systemPromptMode,
+        gatewayDelegationModels: [model],
+        captureSessionHookExec: hook,
+      }),
+      buildSystemPrompt: () => {
+        builtPrompts += 1;
+        return "Fleet doctrine";
+      },
+    });
 
-    const appended = await injectAgentCliProfile(profile, baseInjectOptions(root));
-    const replaced = await injectAgentCliProfile(profile, baseInjectOptions(root, {
-      replaceSystemPrompt: true,
-    }));
+    const appended = await injectAgentCliProfile(profile, options("append"));
+    const replaced = await injectAgentCliProfile(profile, options("replace"));
+    const off = await injectAgentCliProfile(profile, options("off"));
+    const appendedPromptPath = promptPathOf(appended, "--append-system-prompt-file");
+    const replacedPromptPath = promptPathOf(replaced, "--system-prompt-file");
 
-    expect(appended.args).toContain("--append-system-prompt-file");
+    expect(existsSync(appendedPromptPath)).toBe(true);
+    expect(existsSync(replacedPromptPath)).toBe(true);
     expect(appended.args).not.toContain("--system-prompt-file");
-    expect(replaced.args).toContain("--system-prompt-file");
     expect(replaced.args).not.toContain("--append-system-prompt-file");
+    expect(off.args).not.toContain("--append-system-prompt-file");
+    expect(off.args).not.toContain("--system-prompt-file");
+    expect(builtPrompts).toBe(2);
+    for (const injected of [appended, replaced, off]) {
+      expect(injected.args).toContain("--plugin-dir");
+      expect(injected.args).toContain("--mcp-config");
+      expect(injected.args).toContain("--settings");
+      expect(injected.args).toContain("--dangerously-skip-permissions");
+      const pluginRoot = injected.args[injected.args.indexOf("--plugin-dir") + 1]!;
+      const pluginJson = readFileSync(path.join(pluginRoot, ".claude-plugin", "plugin.json"), "utf8");
+      const hooksJson = JSON.parse(readFileSync(path.join(pluginRoot, "hooks", "hooks.json"), "utf8")) as {
+        hooks: { UserPromptSubmit: Array<{ hooks: Array<{ command: string }> }> };
+      };
+      expect(pluginJson).toContain(FLEET_PLUGIN_NAME);
+      expect(hooksJson.hooks.UserPromptSubmit[0]?.hooks[0]?.command).toBe(process.execPath);
+      expect(readdirSync(path.join(pluginRoot, "agents")).length).toBeGreaterThan(0);
+      expect(readdirSync(path.join(pluginRoot, "skills")).length).toBeGreaterThan(0);
+      const settings = JSON.parse(injected.args[injected.args.indexOf("--settings") + 1]!) as { skillOverrides: Record<string, string> };
+      expect(settings.skillOverrides).toEqual({ "claude-api": "off" });
+    }
 
     appended.cleanup?.();
     replaced.cleanup?.();
+    off.cleanup?.();
+    expect(existsSync(appendedPromptPath)).toBe(false);
+    expect(existsSync(path.dirname(appendedPromptPath))).toBe(false);
+    expect(existsSync(replacedPromptPath)).toBe(false);
+    expect(existsSync(path.dirname(replacedPromptPath))).toBe(false);
   });
 });
 
@@ -262,17 +352,6 @@ describe("claude-gateway disabled skills", () => {
     injected.cleanup?.();
   });
 
-  it("leaves native Claude sessions untouched", async () => {
-    const root = createTempRoot("fleet-admiral-gateway-skills-other-");
-    const native = baseProfile("claude-native", { args: [], cwd: root, env: { HOME: root } });
-
-    const injectedNative = await injectAgentCliProfile(native, baseInjectOptions(root));
-
-    expect(injectedNative.args).not.toContain("--settings");
-
-    injectedNative.cleanup?.();
-  });
-
   it("keeps the roster non-empty so the flag is never a no-op", () => {
     expect(GATEWAY_DISABLED_CLAUDE_SKILLS).toContain("claude-api");
     expect(buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS)).toBeDefined();
@@ -294,6 +373,12 @@ function agentsDirOf(profile: AgentCliProfile): string {
   const index = profile.args.indexOf("--plugin-dir");
   expect(index).toBeGreaterThanOrEqual(0);
   return path.join(profile.args[index + 1]!, "agents");
+}
+
+function promptPathOf(profile: AgentCliProfile, flag: "--append-system-prompt-file" | "--system-prompt-file"): string {
+  const index = profile.args.indexOf(flag);
+  expect(index).toBeGreaterThanOrEqual(0);
+  return profile.args[index + 1]!;
 }
 
 function createTempRoot(prefix: string): string {
@@ -326,7 +411,7 @@ function baseInjectOptions(
   overrides: {
     readonly gatewayDelegationModels?: Parameters<typeof injectAgentCliProfile>[1]["gatewayDelegationModels"];
     readonly captureSessionHookExec?: FleetHookExec;
-    readonly replaceSystemPrompt?: boolean;
+    readonly systemPromptMode?: "append" | "replace" | "off";
   } = {},
 ): Parameters<typeof injectAgentCliProfile>[1] {
   return {
@@ -343,7 +428,7 @@ function baseInjectOptions(
     },
     ...(overrides.captureSessionHookExec ? { captureSessionHookExec: overrides.captureSessionHookExec } : {}),
     ...(overrides.gatewayDelegationModels ? { gatewayDelegationModels: overrides.gatewayDelegationModels } : {}),
-    ...(overrides.replaceSystemPrompt ? { replaceSystemPrompt: true } : {}),
+    ...(overrides.systemPromptMode ? { systemPromptMode: overrides.systemPromptMode } : {}),
     withMarketplaceLock: async (_target, fn) => fn(),
   };
 }

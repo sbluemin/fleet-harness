@@ -127,9 +127,7 @@ function renderPluginRoot(
     writePrivateJson(path.join(stagedPluginRoot, ".claude-plugin", "plugin.json"), claudeManifest(bundle), stagedPluginRoot);
     switch (bundle.source) {
       case "asset":
-        if (options.cliId === "claude-native" || options.cliId === "claude-gateway") {
-          ensurePrivateDir(path.join(stagedPluginRoot, "agents"), stagedPluginRoot);
-        }
+        ensurePrivateDir(path.join(stagedPluginRoot, "agents"), stagedPluginRoot);
         ensurePrivateDir(path.join(stagedPluginRoot, "skills"), stagedPluginRoot);
         renderAssetPluginRoot(stagedPluginRoot, bundle, options);
         break;
@@ -165,7 +163,7 @@ function pruneMarketplaceRoot(target: MarketplaceTarget): void {
 
 // 이번 렌더에 포함되지 않은 번들의 잔재 디렉터리(예: 과거에 렌더된 fleet-global)를 plugins/ 아래에서 제거한다.
 // 제거된 번들의 stale 디렉터리가 marketplace 콘텐츠 해시에 섞여 불필요한 재등록을 유발하는 것을 막는다.
-// asset 번들은 doctrine별 루트(fleet-gateway / fleet-native)가 공존해야 하므로 둘 다 활성으로 취급한다.
+// asset 번들의 gateway 루트는 Fleet이 관리하는 활성 디렉터리다.
 function pruneStalePluginDirs(target: MarketplaceTarget, bundles: readonly PluginBundle[]): void {
   const pluginsDir = path.join(target.root, PLUGIN_BUNDLES_DIR_NAME);
   if (!existsSync(pluginsDir)) return;

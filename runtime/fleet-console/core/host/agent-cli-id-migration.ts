@@ -3,17 +3,19 @@ import fs from "node:fs";
 import type { DurableConsoleState, DurableDeletionTombstone } from "./durable-state.js";
 import type { OperationNode } from "./operations/operations-domain.js";
 
-/** 퇴역한 Classic launch kind / Agent CLI id. */
-export const CLASSIC_LAUNCH_KIND_ID = "claude";
-/** Classic을 대체하는 Gateway launch kind / Agent CLI id. */
+/** 퇴역한 launch kind / Agent CLI id 별칭. */
+export const RETIRED_AGENT_CLI_IDS = ["claude", "claude-native"] as const;
+/** 퇴역 별칭을 대체하는 Gateway launch kind / Agent CLI id. */
 export const GATEWAY_LAUNCH_KIND_ID = "claude-gateway";
+const RETIRED_AGENT_CLI_LABELS = ["Claude", "Claude (Native)"] as const;
+const GATEWAY_AGENT_CLI_LABEL = "Claude (Gateway)";
 
 /** 이주 대상 payload 필드. launchKindId는 표시 축, cliId는 실행 축이라 함께 옮겨야 한다. */
 const MIGRATED_PAYLOAD_KEYS = ["launchKindId", "cliId"] as const;
 
 const BACKUP_FILE_SUFFIX = ".classic-backup";
 
-export interface ClassicLaunchKindMigrationResult {
+export interface AgentCliIdMigrationResult {
   /** 이주가 반영된 state. 변경이 없으면 입력과 동일한 참조를 돌려준다. */
   readonly state: DurableConsoleState;
   /** 값이 하나라도 바뀌었는지 — 디스크 재기록 여부를 이 값으로만 판단한다. */
@@ -29,10 +31,10 @@ export interface ClassicLaunchKindMigrationResult {
  * Operation이 사라진 kind를 가리키면 launch kind 표시가 붕괴하기 때문이다. 스키마 버전은
  * 올리지 않는다(v3 내부 콘텐츠 이주).
  *
- * 정확 일치(`=== "claude"`)만 옮긴다. 부분 문자열 매칭은 `claude-native`/`claude-gateway`를
- * 함께 집어삼킨다.
+ * 정확 일치(`=== "claude"` 또는 `=== "claude-native"`)만 옮긴다. 부분 문자열 매칭은
+ * `claude-gateway`나 이름이 비슷한 제3의 값을 함께 집어삼킨다.
  */
-export function migrateClassicLaunchKinds(state: DurableConsoleState): ClassicLaunchKindMigrationResult {
+export function migrateAgentCliIds(state: DurableConsoleState): AgentCliIdMigrationResult {
   let migratedOperations = 0;
 
   const operations = state.operations.map((operation) => {
@@ -72,13 +74,13 @@ export function migrateClassicLaunchKinds(state: DurableConsoleState): ClassicLa
  * durable store의 원자적 교체는 찢어진 쓰기만 막고 이전 내용을 보존하지 않는다. 백업이 이미
  * 있으면 덮어쓰지 않는다 — 첫 이주 직전 상태가 되돌릴 가치가 있는 유일한 스냅샷이다.
  */
-export function backupDurableStateBeforeClassicMigration(stateFilePath: string): void {
+export function backupDurableStateBeforeAgentCliIdMigration(stateFilePath: string): void {
   const backupPath = `${stateFilePath}${BACKUP_FILE_SUFFIX}`;
   try {
     if (!fs.existsSync(stateFilePath) || fs.existsSync(backupPath)) return;
     fs.copyFileSync(stateFilePath, backupPath);
   } catch (error) {
-    console.warn(`[fleet-console] Classic launch kind migration backup skipped: ${error instanceof Error ? error.message : String(error)}`);
+    console.warn(`[fleet-console] Agent CLI id migration backup skipped: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -88,11 +90,23 @@ function migrateOperation(operation: OperationNode): OperationNode {
 }
 
 function migratePayload(payload: Record<string, unknown>): Record<string, unknown> {
-  const changedKeys = MIGRATED_PAYLOAD_KEYS.filter((key) => payload[key] === CLASSIC_LAUNCH_KIND_ID);
+  const changedKeys = MIGRATED_PAYLOAD_KEYS.filter((key) => isRetiredAgentCliId(payload[key]));
   if (changedKeys.length === 0) return payload;
   const next = { ...payload };
   for (const key of changedKeys) next[key] = GATEWAY_LAUNCH_KIND_ID;
+  if (isRetiredAgentCliLabel(payload.cliLabel)) next.cliLabel = GATEWAY_AGENT_CLI_LABEL;
+  // Retired Claude launches used Claude Code's built-in default. Do not let a later
+  // Start fresh inherit the user's non-Anthropic Gateway default.
+  next.useGatewayDefaultModel = false;
   return next;
+}
+
+function isRetiredAgentCliId(value: unknown): boolean {
+  return RETIRED_AGENT_CLI_IDS.some((id) => value === id);
+}
+
+function isRetiredAgentCliLabel(value: unknown): boolean {
+  return RETIRED_AGENT_CLI_LABELS.some((label) => value === label);
 }
 
 function migrateTombstone(tombstone: DurableDeletionTombstone): DurableDeletionTombstone {

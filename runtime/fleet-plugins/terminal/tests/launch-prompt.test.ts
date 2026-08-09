@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAgentTerminalLaunchResolver } from "../server/agent-api/launch.js";
 
 const baseProfile = {
-  id: "claude-native",
+  id: "claude-gateway",
   label: "Claude",
   bin: "/bin/claude",
   args: ["--model", "sonnet"],
@@ -12,6 +12,11 @@ const baseProfile = {
   messagePolicy: { bracketedPaste: true, multilineStrategy: "paste-mode" },
   terminalName: "xterm-256color",
 } as const;
+
+const AI_GATEWAY_BINDING = {
+  routePath: "/plugins/terminal/ai-gateway",
+  origin: () => "http://127.0.0.1:43210",
+};
 
 function createFakeRuntime() {
   return {
@@ -50,13 +55,14 @@ describe("createAgentTerminalLaunchResolver prompt threading", () => {
       cwd: "/work",
       env: { PATH: "/bin" } as NodeJS.ProcessEnv,
       agentRuntime: createFakeRuntime() as never,
+      aiGateway: AI_GATEWAY_BINDING,
       injectProfile: injectProfile as never,
       resolveProfile: resolveProfile as never,
     });
 
     await resolve("/work/project", {
       sessionId: "session-a",
-      cliId: "claude-native",
+      cliId: "claude-gateway",
       prompt: "ship the prompt threading",
     });
 
@@ -64,7 +70,7 @@ describe("createAgentTerminalLaunchResolver prompt threading", () => {
       expect.any(Object),
       "/work/project",
       expect.objectContaining({
-        cliId: "claude-native",
+        cliId: "claude-gateway",
         prompt: "ship the prompt threading",
       }),
     );
@@ -81,17 +87,18 @@ describe("createAgentTerminalLaunchResolver prompt threading", () => {
       cwd: "/work",
       env: { PATH: "/bin" } as NodeJS.ProcessEnv,
       agentRuntime: createFakeRuntime() as never,
+      aiGateway: AI_GATEWAY_BINDING,
       injectProfile: injectProfile as never,
       resolveProfile: resolveProfile as never,
     });
 
-    await resolve("/work/project", { sessionId: "session-a", cliId: "claude-native" });
+    await resolve("/work/project", { sessionId: "session-a", cliId: "claude-gateway" });
 
     expect(resolveProfile).toHaveBeenCalledWith(
       expect.any(Object),
       "/work/project",
       expect.objectContaining({
-        cliId: "claude-native",
+        cliId: "claude-gateway",
         prompt: undefined,
       }),
     );

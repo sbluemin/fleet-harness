@@ -31,7 +31,7 @@ const UI = {
   ctaModes:     { ko: "캔버스 모드 보기", en: "See the canvas modes" },
 
   metaKinds: { ko: "Launch kinds", en: "Launch kinds" },
-  metaKindsVal: { ko: "Native / Gateway", en: "Native / Gateway" },
+  metaKindsVal: { ko: "Claude Gateway", en: "Claude Gateway" },
   metaProviders: { ko: "Gateway providers", en: "Gateway providers" },
   metaProvidersVal: { ko: "구독과 API 키", en: "Subscriptions and API keys" },
   metaOrders: { ko: "Standing Orders", en: "Standing Orders" },
@@ -41,8 +41,8 @@ const UI = {
   hierarchyTitle: { ko: "결정 · 계획 · 실행", en: "Decide, plan, execute" },
   hierarchyLede:  { ko: "사용자는 코드를 쓰지 않는다. 결정한다. 호스트가 그 결정을 Operation으로 환원한다.", en: "You don't write code — you decide. The host turns each decision into an Operation." },
 
-  backendsEy:    { ko: "Launch kinds · 02", en: "Launch kinds · 02" },
-  backendsTitle: { ko: ["두 가지 실행 종류,", "하나의 캔버스."], en: ["Two launch kinds,", "one canvas."] },
+  backendsEy:    { ko: "Launch kind · 01", en: "Launch kind · 01" },
+  backendsTitle: { ko: ["하나의 Gateway,", "모든 모델."], en: ["One Gateway,", "every model."] },
   backendsLede:  { ko: "Fleet은 실제 CLI 바이너리를 선언된 제품 표면에서 실행한다. 제작사가 다듬은 에이전트 루프와 이미 쓰던 인증이 그대로 보존된다.", en: "Fleet launches the actual CLI binary in its declared product surface, preserving the model-native agent loop and the authentication you already use." },
 
   providersEy:    { ko: "AI Gateway · 04", en: "AI Gateway · 04" },
@@ -77,7 +77,7 @@ const UI = {
   setSailCmt:  { ko: "# Start it, and it opens in your browser.", en: "# Start it, and it opens in your browser." },
   footerLine:  { ko: "fleet-harness · Fleet Console", en: "fleet-harness · Fleet Console" },
   builtOn:     { ko: "native CLI orchestration", en: "native CLI orchestration" },
-  countMeta:   { ko: "· 2 Launch kinds · 4 Providers · 6 Standing Orders", en: "· 2 Launch kinds · 4 Providers · 6 Standing Orders" },
+  countMeta:   { ko: "· 1 Launch kind · 4 Providers · 6 Standing Orders", en: "· 1 Launch kind · 4 Providers · 6 Standing Orders" },
 };
 
 // ───── Data ─────
@@ -103,8 +103,7 @@ const HIERARCHY = [
 ];
 
 const CLI_BACKENDS = [
-  { num: "01", vendor: "Anthropic", name: "Claude (Native)", tag: { ko: "순정 Claude Code — Console 훅과 Wiki 스킬만 덧붙는다", en: "Plain Claude Code — Console hooks and Wiki skills are all that get added." }, color: "oklch(78% 0.13 75)" },
-  { num: "02", vendor: "Codex · Cursor · Moonshot · OpenCode", name: "Claude (Gateway)", tag: { ko: "설정에서 켠 모델로 구동되는 Claude Code", en: "Claude Code driving the models you enabled in Settings." }, color: "oklch(72% 0.17 25)" },
+  { num: "01", vendor: "Anthropic · Codex · Cursor · Moonshot · OpenCode", name: "Claude (Gateway)", tag: { ko: "Claude Code 자체 모델과 설정에서 켠 Gateway 모델을 하나의 실행 종류로 사용", en: "One launch kind for Claude Code's own models and the Gateway models enabled in Settings." }, color: "oklch(72% 0.17 25)" },
 ];
 
 const PROVIDERS = [

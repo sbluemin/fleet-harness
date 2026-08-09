@@ -30,24 +30,21 @@ afterEach(() => {
 });
 
 describe("agent CLI session resume and capture hooks", () => {
-  it("builds an Admiral system prompt for gateway but never for native", async () => {
+  it("builds the Admiral system prompt for the canonical gateway CLI", async () => {
     const built: string[] = [];
-
-    for (const cliId of ["claude-gateway", "claude-native"] as const) {
-      const root = createTempRoot(`fleet-admiral-doctrine-${cliId}-`);
-      const profile = baseProfile(cliId, {
-        args: [],
-        cwd: root,
-        env: { HOME: root },
-      });
-      const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
-        buildSystemPrompt: () => {
-          built.push(cliId);
-          return "Fleet doctrine";
-        },
-      }));
-      injected.cleanup?.();
-    }
+    const root = createTempRoot("fleet-admiral-doctrine-claude-gateway-");
+    const profile = baseProfile("claude-gateway", {
+      args: [],
+      cwd: root,
+      env: { HOME: root },
+    });
+    const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
+      buildSystemPrompt: () => {
+        built.push(profile.id);
+        return "Fleet doctrine";
+      },
+    }));
+    injected.cleanup?.();
 
     expect(built).toEqual(["claude-gateway"]);
   });

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentCliProfile, InjectAgentCliProfileOptions } from "@dotobokuri/fleet-admiral";
 
-import { createDefaultTerminalLaunchResolver } from "../../fleet-plugins/terminal/server/agent-api/launch.js";
+import { createDefaultTerminalLaunchResolver as createDefaultTerminalLaunchResolverImpl } from "../../fleet-plugins/terminal/server/agent-api/launch.js";
 import { createShellTerminalLaunchResolver, resolveNodePtyModulePath, resolveUseConptyDll } from "../../fleet-plugins/terminal/server/shared/pty.js";
 import type { TerminalLaunchSpec } from "../../fleet-plugins/terminal/server/shared/terminal-types.js";
 
@@ -26,7 +26,7 @@ interface FakeRuntime {
 }
 
 const baseProfile = {
-  id: "claude-native",
+  id: "claude-gateway",
   label: "Claude Code",
   bin: "/bin/claude",
   args: ["--model", "sonnet"],
@@ -37,12 +37,22 @@ const baseProfile = {
 } as const;
 
 const TEMP_DIRS: string[] = [];
+const DEFAULT_AI_GATEWAY = {
+  routePath: "/plugins/terminal/ai-gateway",
+  origin: () => "http://127.0.0.1:43210",
+};
+
+function createDefaultTerminalLaunchResolver(
+  options: Parameters<typeof createDefaultTerminalLaunchResolverImpl>[0],
+) {
+  return createDefaultTerminalLaunchResolverImpl({ aiGateway: DEFAULT_AI_GATEWAY, ...options });
+}
 
 // 전역 옵션을 고정 반환하는 InfraServices 스텁 —
 // launch resolver가 실제 ~/.fleet/settings.json을 읽지 않도록 테스트를 격리한다.
 function createFakeInfraServices(globalOptions: {
   readonly agentIdleDormantMinutes?: number | null;
-  readonly replaceClaudeGatewaySystemPrompt?: boolean;
+  readonly claudeGatewaySystemPromptMode?: "append" | "replace" | "off";
 } = {}) {
   const data = { version: 1 as const, ...globalOptions };
   return {
@@ -105,7 +115,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
   it("passes resumeSessionId and capture hook exec to fleet-admiral injection", async () => {
     const runtime = createFakeRuntime(() => undefined);
     const injectedOptions: InjectAgentCliProfileOptions[] = [];
-    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude-native" as const, label: "Claude", cwd, env: { ...env } }));
+    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude-gateway" as const, label: "Claude", cwd, env: { ...env } }));
     const injectProfile = vi.fn(async (profile: AgentCliProfile, options: InjectAgentCliProfileOptions) => {
       injectedOptions.push(options);
       return { ...profile, args: [...profile.args, "resume", "provider-session-a"] };
@@ -121,10 +131,10 @@ describe("createDefaultTerminalLaunchResolver", () => {
       resolveProfile: resolveProfile as never,
     });
 
-    await resolve("/work/project", { sessionId: "fleet-session-a", cliId: "claude-native", resumeSessionId: "provider-session-a" });
+    await resolve("/work/project", { sessionId: "fleet-session-a", cliId: "claude-gateway", resumeSessionId: "provider-session-a" });
 
     expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({
-      cliId: "claude-native",
+      cliId: "claude-gateway",
       resumeSessionId: "provider-session-a",
     }));
     expect(injectedOptions[0]).toMatchObject({ resumeSessionId: "provider-session-a" });
@@ -136,7 +146,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
   it("passes a selected Agent CLI id to fleet-admiral profile resolution", async () => {
     const runtime = createFakeRuntime(() => undefined);
-    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude-native" as const, label: "Claude", cwd, env: { ...env } }));
+    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude-gateway" as const, label: "Claude", cwd, env: { ...env } }));
     const injectProfile = vi.fn(async (profile) => profile);
     const resolve = createDefaultTerminalLaunchResolver({
       cwd: "/work",
@@ -146,44 +156,13 @@ describe("createDefaultTerminalLaunchResolver", () => {
       resolveProfile: resolveProfile as never,
     });
 
-    await resolve("/work/project", { sessionId: "session-a", cliId: "claude-native" });
+    await resolve("/work/project", { sessionId: "session-a", cliId: "claude-gateway" });
 
-    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "claude-native" }));
+    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "claude-gateway" }));
   });
 
-  it("uses the shared Admiral dependencies for gateway and standard operations", async () => {
-    const claudeConfigDir = makeTempDir("fleet-gateway-admiral-routing-");
-    const sharedResolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string, options: { readonly cliId?: string }) => ({
-      ...baseProfile,
-      id: options.cliId === "claude-gateway" ? "claude-gateway" as const : "claude" as const,
-      label: options.cliId === "claude-gateway" ? "Claude (Gateway)" : "Claude",
-      cwd,
-      env: { ...env },
-    }));
-    const sharedInjectProfile = vi.fn(async (profile: AgentCliProfile) => profile);
-    const resolve = createDefaultTerminalLaunchResolver({
-      cwd: "/work",
-      env: { CLAUDE_CONFIG_DIR: claudeConfigDir, PATH: "/bin" } as NodeJS.ProcessEnv,
-      agentRuntime: createFakeRuntime() as never,
-      aiGateway: {
-        routePath: "/plugins/terminal/ai-gateway",
-        origin: () => "http://127.0.0.1:43210",
-      },
-      infraServices: createFakeInfraServices() as never,
-      injectProfile: sharedInjectProfile as never,
-      resolveProfile: sharedResolveProfile as never,
-    });
 
-    await resolve("/work", { sessionId: "session-gateway-admiral", cliId: "claude-gateway" });
-    expect(sharedResolveProfile).toHaveBeenCalledTimes(1);
-    expect(sharedInjectProfile).toHaveBeenCalledTimes(1);
-
-    await resolve("/work", { sessionId: "session-standard-admiral", cliId: "claude-native" });
-    expect(sharedResolveProfile).toHaveBeenCalledTimes(2);
-    expect(sharedInjectProfile).toHaveBeenCalledTimes(2);
-  });
-
-  it("launches gateway variants with native aliases or converted scoped model ids", async () => {
+  it("launches gateway variants with built-in model aliases or converted scoped model ids", async () => {
     const root = makeTempDir("fleet-gateway-launch-variant-");
     const settings = {
       version: 1 as const,
@@ -448,7 +427,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
         PATH: process.env.PATH,
       },
       execPath: process.execPath,
-      infraServices: createFakeInfraServices({ replaceClaudeGatewaySystemPrompt: true }) as never,
+      infraServices: createFakeInfraServices({ claudeGatewaySystemPromptMode: "replace" }) as never,
     });
 
     const spec = await resolve(root, {
@@ -597,7 +576,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       createSessionIdentityResolver: createResolver as never,
     });
 
-    const spec = await resolve("/work", { sessionId: "session-a", cliId: "claude-native" });
+    const spec = await resolve("/work", { sessionId: "session-a", cliId: "claude-gateway" });
 
     expect(spec.sessionIdentityResolver).toMatchObject({ resolve: expect.any(Function) });
     expect(createResolver).toHaveBeenCalledWith(expect.objectContaining({
@@ -721,6 +700,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const resolve = createDefaultTerminalLaunchResolver({
       cwd: "/work",
       env: { FLEET_TERMINAL_CMD: "bash -l" } as NodeJS.ProcessEnv,
+      platform: "linux",
     });
 
     const spec = await resolve("/work");

@@ -1,6 +1,6 @@
 import type { AgentCliInjectionContext, AgentCliMcpServerArg } from "../types.js";
 
-export function buildClaudeNativeArgs(context: AgentCliInjectionContext): string[] {
+export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): string[] {
   return [
     ...buildResumeArgs(context.resumeSessionId),
     ...buildSystemPromptArgs(context),
@@ -30,9 +30,11 @@ function buildResumeArgs(resumeSessionId: string | undefined): string[] {
 }
 
 function buildSystemPromptArgs(context: AgentCliInjectionContext): string[] {
-  // native 세션은 Admiral 시스템 프롬프트를 붙이지 않는다.
-  if (context.systemPromptFile === undefined) return [];
-  const flag = context.replaceSystemPrompt
+  if (context.systemPromptMode === "off") return [];
+  if (context.systemPromptFile === undefined) {
+    throw new Error(`Claude Gateway system prompt file is required in ${context.systemPromptMode} mode`);
+  }
+  const flag = context.systemPromptMode === "replace"
     ? "--system-prompt-file"
     : "--append-system-prompt-file";
   return [flag, context.systemPromptFile];

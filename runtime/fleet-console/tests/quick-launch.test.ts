@@ -53,7 +53,6 @@ describe("findVariantLaunchKind", () => {
   it("picks the first enabled kind that declares model/effort variants", () => {
     const target = findVariantLaunchKind(catalog([
       { id: "shell", type: "shell", title: "Shell" },
-      { id: "claude-native", type: "agent", title: "Claude (Native)" },
       { id: "claude-gateway", type: "agent", title: "Claude (Gateway)", variants: GROUPS },
     ]));
 

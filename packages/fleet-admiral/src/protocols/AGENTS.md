@@ -10,7 +10,7 @@ Prompt policy that composes the active Fleet operating mode.
 
 ## Constraints
 
-- There are two doctrines and only one renders a prompt: gateway renders a preamble, a role block, and the Standing Orders; native renders no Admiral prompt at all. Gateway renders no protocol gate, no roster, no delegation-persona instruction, and no metaphor overlay; do not reintroduce any of them.
+- Gateway is the sole doctrine. It renders a preamble, a role block, and the Standing Orders, with no protocol gate, roster, delegation-persona instruction, or metaphor overlay; do not reintroduce any of them. The Terminal prompt-mode setting may omit this Fleet prompt at launch without changing gateway doctrine, tools, plugins, hooks, Agents, or skills.
 - `standing-orders/gateway.ts` holds all six Standing Order bodies outright. Do not refactor them into shared fragments, per-order modules, or doctrine conditionals inside one body.
 - Gateway doctrine names execution by surface, never by executor persona: `run` is the umbrella for one execution that returns its result, and `stage` is reserved for the workflow surface. Executor-persona, subagent, and delegation vocabulary stays out of that path — the prompt bodies and every skill asset the path renders — and `tests/prompts.test.ts` enforces the ban.
 - Gateway identities are already registered in the session, so the doctrine describes a run as a call that returns. The banned thing is the asynchronous job framing — filing a job, polling it, and learning it finished from a `<system-reminder>` — not the words themselves; `ASYNC_JOB_MARKERS` in `tests/prompts.test.ts` is the enforced list, and doctrine may still say a run files no job and polls nothing.

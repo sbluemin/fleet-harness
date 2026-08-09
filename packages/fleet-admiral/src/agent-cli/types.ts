@@ -4,7 +4,7 @@ import type { AdmiralDoctrine } from "../protocols/doctrine.js";
 import type { ClaudeSkillOverride } from "./gateway-skills.js";
 import type { LaunchCommandLineLimit } from "./prompt.js";
 
-export type AgentCliId = "claude-native" | "claude-gateway";
+export type AgentCliId = "claude-gateway";
 
 export const DEFAULT_GOAL_CHECK_LIMIT = 8;
 export const MIN_GOAL_CHECK_LIMIT = 1;
@@ -85,19 +85,14 @@ export interface AgentCliInjectionContext {
   readonly mcpServers: readonly AgentCliMcpServerArg[];
   readonly pluginRoot: string;
   readonly pluginRoots: readonly string[];
-  readonly replaceSystemPrompt?: boolean;
+  readonly systemPromptMode: "append" | "replace" | "off";
   readonly resumeSessionId?: string;
   readonly systemPromptFile?: string;
 }
 
 export interface AgentCliInjectionCapabilityEnabled {
   readonly enabled: true;
-  readonly builderId: "claude-native";
-}
-
-export interface AgentCliInjectionCapabilityDisabled {
-  readonly enabled: false;
-  readonly reason: "native-builder-not-implemented";
+  readonly builderId: "claude-gateway";
 }
 
 export interface FleetHookExec {
@@ -105,9 +100,7 @@ export interface FleetHookExec {
   readonly command: string;
 }
 
-export type AgentCliInjectionCapability =
-  | AgentCliInjectionCapabilityEnabled
-  | AgentCliInjectionCapabilityDisabled;
+export type AgentCliInjectionCapability = AgentCliInjectionCapabilityEnabled;
 
 export interface AgentCliPluginMarketplaceLock {
   <T>(target: string, fn: () => T | Promise<T>): T | Promise<T>;

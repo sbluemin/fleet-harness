@@ -18,7 +18,7 @@ const OPERATION: OperationNode = {
   type: "agent",
   pluginId: "terminal",
   title: "Agent",
-  payload: { cliId: "claude-native" },
+  payload: { cliId: "claude-gateway" },
   geometry: null,
   ts: { createdAt: 1, updatedAt: 1 },
 };
@@ -38,13 +38,13 @@ describe("companion panel availability", () => {
   });
 
   it("passes the OperationNode to the predicate", () => {
-    const nativeOnly = {
-      ...companion("native-only", true),
-      available: (operation: OperationNode) => operation.payload.cliId === "claude-native",
+    const gatewayOnly = {
+      ...companion("gateway-only", true),
+      available: (operation: OperationNode) => operation.payload.cliId === "claude-gateway",
     };
 
-    expect(availableCompanionPanels([nativeOnly], OPERATION)).toEqual([nativeOnly]);
-    expect(availableCompanionPanels([nativeOnly], {
+    expect(availableCompanionPanels([gatewayOnly], OPERATION)).toEqual([gatewayOnly]);
+    expect(availableCompanionPanels([gatewayOnly], {
       ...OPERATION,
       payload: { cliId: "codex" },
     })).toEqual([]);

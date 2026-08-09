@@ -14,10 +14,6 @@ export interface LaunchKindAnnotation {
 }
 
 export const LAUNCH_KIND_ANNOTATIONS: Readonly<Record<string, LaunchKindAnnotation>> = {
-  "claude-native": {
-    descriptionKey: "launchKind.claudeNative.description",
-    briefKey: "launchKind.claudeNative.brief",
-  },
   "claude-gateway": {
     descriptionKey: "launchKind.claudeGateway.description",
     briefKey: "launchKind.claudeGateway.brief",

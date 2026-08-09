@@ -36,11 +36,11 @@ import { createSanitizedOpDto } from "./operations/operations-domain.js";
 import { createOperationStore } from "./operations/operations-domain.js";
 import type { OperationNode } from "./operations/operations-domain.js";
 import {
-  backupDurableStateBeforeClassicMigration,
-  migrateClassicLaunchKinds,
-  CLASSIC_LAUNCH_KIND_ID,
+  backupDurableStateBeforeAgentCliIdMigration,
+  migrateAgentCliIds,
+  RETIRED_AGENT_CLI_IDS,
   GATEWAY_LAUNCH_KIND_ID,
-} from "./classic-launch-kind-migration.js";
+} from "./agent-cli-id-migration.js";
 import { migrateLegacyCaptures } from "./legacy-capture-migration.js";
 import { createConsoleDataPaths } from "./paths.js";
 import { createRemoteIdentityStore, fingerprintsMatch } from "./remote-identity.js";
@@ -1930,16 +1930,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   async function rehydrateDurableState(): Promise<void> {
     let state: DurableConsoleState;
-    let classicLaunchKindsMigrated = false;
+    let agentCliIdsMigrated = false;
     try {
       // 퇴역한 Classic launch kind는 store에 주입하기 전에 옮긴다. 그래야 live Operation과
       // tombstone 내장 Operation이 한 번에 이주되고, 이후의 어떤 save든 이주분을 기록한다.
       const loaded = durableStateStore.load();
-      const migration = migrateClassicLaunchKinds(loaded);
+      const migration = migrateAgentCliIds(loaded);
       if (migration.changed) {
-        classicLaunchKindsMigrated = true;
-        console.warn(`[fleet-console] Migrated ${migration.migratedOperations} operation(s) from the retired "${CLASSIC_LAUNCH_KIND_ID}" launch kind to "${GATEWAY_LAUNCH_KIND_ID}".`);
-        backupDurableStateBeforeClassicMigration(durablePaths.stateFile);
+        agentCliIdsMigrated = true;
+        console.warn(`[fleet-console] Migrated ${migration.migratedOperations} operation(s) from retired Agent CLI ids (${RETIRED_AGENT_CLI_IDS.join(", ")}) to "${GATEWAY_LAUNCH_KIND_ID}".`);
+        backupDurableStateBeforeAgentCliIdMigration(durablePaths.stateFile);
       }
       state = migration.state;
       theaters.restore(state.theaters);
@@ -1947,7 +1947,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       operations.replaceGroups(state.groups ?? []);
     } catch (error) {
       console.warn(`[fleet-console] Durable state restore skipped: ${error instanceof Error ? error.message : String(error)}`);
-      classicLaunchKindsMigrated = false;
+      agentCliIdsMigrated = false;
       state = emptyDurableConsoleState();
       theaters.restore([]);
       operations.replace([]);
@@ -1956,7 +1956,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     deletionCoordinator.load(state.deletionTombstones ?? []);
     // 이주분을 디스크에 확정한다. sanitizer는 출력만 바꿀 뿐 재기록을 유발하지 않으므로
     // 명시 save가 없으면 다음 부팅마다 같은 이주를 반복한다.
-    if (classicLaunchKindsMigrated) persistDurableState();
+    if (agentCliIdsMigrated) persistDurableState();
     // 퇴역한 Carrier 스토어 파일(carriers.json·carrier-subagent.json·carriers.json.lock)은
     // 그대로 둔다. `~/.fleet`는 CLI와 Console이 공유하는 데이터 루트라, 업그레이드 전 호스트가
     // 아직 그 스토어를 소유한 채 돌고 있을 수 있다. 특히 carriers.json.lock은 withDirectoryLock이

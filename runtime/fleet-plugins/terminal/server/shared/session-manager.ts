@@ -242,6 +242,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       ...(context.cliId ? { cliId: context.cliId } : {}),
       ...(context.model ? { model: context.model } : {}),
       ...(context.effort ? { effort: context.effort } : {}),
+      ...(context.useGatewayDefaultModel === false ? { useGatewayDefaultModel: false } : {}),
       ...(context.prompt ? { prompt: context.prompt } : {}),
       ...(context.resumeSessionId ? { resumeSessionId: context.resumeSessionId } : {}),
       ...(context.colorScheme ? { colorScheme: context.colorScheme } : {}),

@@ -9,7 +9,7 @@ describe("console terminal host hooks", () => {
     const exec = buildConsoleCaptureHookCommand({
       entryPath: "/app/fleet-console/dist/cli.mjs",
       execPath: "/usr/local/bin/node",
-    }, "claude-native");
+    }, "claude-gateway");
 
     expect(exec).toEqual({
       command: "/usr/local/bin/node",
@@ -36,7 +36,7 @@ describe("console terminal host hooks", () => {
       entryPath: "/app/fleet-console/core/host/cli.ts",
       execPath: "/usr/local/bin/node",
       tsxLoaderPath: "/app/fleet-console/node_modules/tsx/dist/loader.mjs",
-    }, "claude-native");
+    }, "claude-gateway");
 
     expect(exec).toEqual({
       command: "/usr/local/bin/node",

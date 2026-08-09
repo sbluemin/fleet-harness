@@ -1,12 +1,8 @@
 import type { AgentCliId, AgentCliInjectionCapability } from "./types.js";
 
 const AGENT_CLI_INJECTION_CAPABILITIES: Record<AgentCliId, AgentCliInjectionCapability> = {
-  "claude-native": {
-    builderId: "claude-native",
-    enabled: true,
-  },
   "claude-gateway": {
-    builderId: "claude-native",
+    builderId: "claude-gateway",
     enabled: true,
   },
 };

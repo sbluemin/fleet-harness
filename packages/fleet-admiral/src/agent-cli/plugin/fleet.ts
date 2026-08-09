@@ -7,8 +7,7 @@ import { writePrivateFile, writePrivateJson } from "./fs.js";
 import type { FleetHookExec } from "../types.js";
 import type { AssetPluginBundle, CreateAgentCliPluginOptions } from "../types.js";
 
-/** Gateway and native asset roots must coexist under the same marketplace. */
-export const ASSET_PLUGIN_DIRECTORY_NAMES = ["fleet-gateway", "fleet-native"] as const;
+export const ASSET_PLUGIN_DIRECTORY_NAMES = ["fleet-gateway"] as const;
 
 export const assetBundle: AssetPluginBundle = {
   description: "Fleet workflow orchestration and wiki evidence plugin",
@@ -18,8 +17,8 @@ export const assetBundle: AssetPluginBundle = {
   source: "asset",
 };
 
-export function resolveAssetPluginDirectoryName(doctrine: AdmiralDoctrine): string {
-  return doctrine === "native" ? "fleet-native" : "fleet-gateway";
+export function resolveAssetPluginDirectoryName(_doctrine: AdmiralDoctrine): string {
+  return "fleet-gateway";
 }
 
 export function renderAssetPluginRoot(
@@ -29,14 +28,10 @@ export function renderAssetPluginRoot(
 ): void {
   const doctrine = options.doctrine ?? resolveDoctrineFromCliId(options.cliId);
   renderEmbeddedSkillAssets(pluginRoot, doctrine);
-  if (options.cliId === "claude-native" || options.cliId === "claude-gateway") {
-    writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), claudeHooks(options), pluginRoot);
-  }
+  writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), claudeHooks(options), pluginRoot);
   // 게이트웨이 정체성은 이 플러그인이 싣는다. 렌더는 스테이징 디렉터리에 전부 쓰고
   // 한 번에 rename하므로, 노출 목록이 줄어든 세션에서 옛 정의가 남아 있을 수 없다.
-  if (options.cliId === "claude-gateway") {
-    renderGatewayAgentAssets(pluginRoot, options);
-  }
+  renderGatewayAgentAssets(pluginRoot, options);
 }
 
 function renderGatewayAgentAssets(pluginRoot: string, options: CreateAgentCliPluginOptions): void {
@@ -107,15 +102,8 @@ function renderEmbeddedSkillAssets(pluginRoot: string, doctrine: AdmiralDoctrine
 }
 
 function selectSkillAssetsForDoctrine(
-  doctrine: AdmiralDoctrine,
+  _doctrine: AdmiralDoctrine,
 ): ReadonlyArray<{ readonly relativePath: string; readonly content: string }> {
-  if (doctrine === "native") {
-    // native는 wiki-operations만 렌더한다. Console 훅은 별도로 유지된다.
-    return EMBEDDED_AGENT_CLI_SKILL_ASSETS.filter(
-      (asset) => asset.relativePath.startsWith("wiki-operations/"),
-    );
-  }
-
   // gateway/<name>/SKILL.md는 접두를 벗겨 동일 이름의 base 자산을 대체한다.
   {
     const overlays = new Map<string, string>();

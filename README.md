@@ -7,7 +7,7 @@
 <p align="center">
   <strong>Fleet Console runs Claude Code and Claude Gateway as live, server-owned operations</strong><br/>
   you can arrange, observe, and delegate from one local workspace.<br/>
-  Native agent runtimes. Official protocols. Provider credentials never enter the agent process.
+  Native agent runtimes. Official protocols. Non-Anthropic Gateway credentials stay out of the agent process.
 </p>
 
 <p align="center">
@@ -68,14 +68,13 @@ The Activity Rail ships with eight built-in panels — **Alerts, Codex, Shell, F
 
 ## Native runtimes, coordinated — not replaced
 
-Fleet launches the actual CLI binary in its declared product surface and speaks its supported protocol, preserving the model-native agent loop, capabilities, and authentication you already use. An Agent Operation starts as one of two kinds:
+Fleet launches the actual CLI binary in its declared product surface and speaks its supported protocol, preserving the model-native agent loop, capabilities, and authentication you already use. Agent Operations use one Claude launch kind:
 
 | Launch kind | What it runs |
 |---|---|
-| **Claude (Native)** | Plain Claude Code — Console hooks and Wiki skills are all that get added |
-| **Claude (Gateway)** | Claude Code driving the models you enabled in Settings |
+| **Claude (Gateway)** | Claude Code with its built-in Claude models and the gateway models you enabled in Settings |
 
-The gateway is a local Claude Code endpoint, not an API proxy: the Console makes the upstream request itself, and no provider credential ever enters the Claude Code process. Codex and Cursor ride the subscription you already have; Kimi and OpenCode Go take an API key you register in Settings.
+The gateway is a local Claude Code endpoint, not an API proxy. Built-in Claude models keep Claude Code's own Anthropic credential path; credentials for Codex, Cursor, Kimi, and OpenCode stay in the Console process while it makes those upstream requests. Codex and Cursor ride the subscription you already have; Kimi and OpenCode Go take an API key you register in Settings.
 
 | Provider | Models reachable through the gateway |
 |---|---|
