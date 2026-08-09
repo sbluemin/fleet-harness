@@ -7,6 +7,8 @@ import type { OperationNode } from "./operations/operations-domain.js";
 export const RETIRED_AGENT_CLI_IDS = ["claude", "claude-native"] as const;
 /** 퇴역 별칭을 대체하는 Gateway launch kind / Agent CLI id. */
 export const GATEWAY_LAUNCH_KIND_ID = "claude-gateway";
+const RETIRED_AGENT_CLI_LABELS = ["Claude", "Claude (Native)"] as const;
+const GATEWAY_AGENT_CLI_LABEL = "Claude (Gateway)";
 
 /** 이주 대상 payload 필드. launchKindId는 표시 축, cliId는 실행 축이라 함께 옮겨야 한다. */
 const MIGRATED_PAYLOAD_KEYS = ["launchKindId", "cliId"] as const;
@@ -92,11 +94,16 @@ function migratePayload(payload: Record<string, unknown>): Record<string, unknow
   if (changedKeys.length === 0) return payload;
   const next = { ...payload };
   for (const key of changedKeys) next[key] = GATEWAY_LAUNCH_KIND_ID;
+  if (isRetiredAgentCliLabel(payload.cliLabel)) next.cliLabel = GATEWAY_AGENT_CLI_LABEL;
   return next;
 }
 
 function isRetiredAgentCliId(value: unknown): boolean {
   return RETIRED_AGENT_CLI_IDS.some((id) => value === id);
+}
+
+function isRetiredAgentCliLabel(value: unknown): boolean {
+  return RETIRED_AGENT_CLI_LABELS.some((label) => value === label);
 }
 
 function migrateTombstone(tombstone: DurableDeletionTombstone): DurableDeletionTombstone {

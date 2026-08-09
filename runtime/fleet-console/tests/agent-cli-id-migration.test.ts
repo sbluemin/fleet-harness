@@ -76,6 +76,44 @@ describe("migrateAgentCliIds", () => {
     });
   });
 
+  it.each(["Claude", "Claude (Native)"])("migrates the known retired CLI label %s with a retired id", (cliLabel) => {
+    const state = makeState([
+      makeOperation("labeled", { cliId: RETIRED_AGENT_CLI_IDS[1], cliLabel }),
+    ]);
+
+    const result = migrateAgentCliIds(state);
+
+    expect(result.state.operations[0]?.payload).toEqual({
+      cliId: GATEWAY_LAUNCH_KIND_ID,
+      cliLabel: "Claude (Gateway)",
+    });
+  });
+
+  it("preserves user-authored labels while migrating a retired id", () => {
+    const state = makeState([
+      makeOperation("custom-label", { cliId: RETIRED_AGENT_CLI_IDS[1], cliLabel: "My Claude" }),
+    ]);
+
+    const result = migrateAgentCliIds(state);
+
+    expect(result.state.operations[0]?.payload).toEqual({
+      cliId: GATEWAY_LAUNCH_KIND_ID,
+      cliLabel: "My Claude",
+    });
+  });
+
+  it("does not migrate a retired label without a retired id axis", () => {
+    const state = makeState([
+      makeOperation("label-only", { cliLabel: "Claude (Native)" }),
+    ]);
+
+    expect(migrateAgentCliIds(state)).toEqual({
+      state,
+      changed: false,
+      migratedOperations: 0,
+    });
+  });
+
   it("leaves neighbouring values untouched — exact match only, never a prefix", () => {
     const state = makeState([
       makeOperation("other", { launchKindId: "claude-native-extra", cliId: "other" }),
