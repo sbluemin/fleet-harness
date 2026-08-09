@@ -5,7 +5,7 @@ import path from "node:path";
 
 import type { GatewayModel } from "@dotobokuri/core-ai-gateway";
 
-import { buildClaudeNativeArgs } from "./builders/claude.js";
+import { buildClaudeGatewayArgs } from "./builders/claude.js";
 import { assertLaunchCommandLineBudget } from "./prompt.js";
 import { resolveDoctrineFromCliId } from "../protocols/doctrine.js";
 import { isHostSessionToolAllowed } from "../tools.js";
@@ -37,7 +37,7 @@ export interface InjectAgentCliProfileOptions {
   readonly autoNameHookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
   readonly pluginRootDir?: string;
-  readonly replaceSystemPrompt?: boolean;
+  readonly systemPromptMode?: "append" | "replace" | "off";
   readonly resumeSessionId?: string;
   readonly withMarketplaceLock: AgentCliPluginMarketplaceLock;
   /**
@@ -80,29 +80,22 @@ export async function injectAgentCliProfile(
   options: InjectAgentCliProfileOptions,
 ): Promise<AgentCliProfile> {
   const capability = getAgentCliInjectionCapability(profile.id);
-  if (!capability.enabled) {
-    return profile;
-  }
-
   const doctrine = resolveDoctrineFromCliId(profile.id);
+  const systemPromptMode = options.systemPromptMode ?? "append";
   const endpoint = await options.dedicatedMcpSession.getEndpoint();
   const tokenLabel = options.mcpSessionLabel ?? `agent:${profile.id}:${crypto.randomUUID()}`;
   const tokens = await options.dedicatedMcpSession.issueSessionToken({
     cwd: profile.cwd,
-    // native는 위키 MCP만 남긴다.
+    // CLI doctrine에 허용된 호스트 도구만 세션 MCP에 노출한다.
     includeTool: (toolId) => isHostSessionToolAllowed(toolId, doctrine),
     label: tokenLabel,
   });
   const mcpServers = buildAgentCliMcpServerConfigs(endpoint.servers, tokens);
-  // native는 Admiral 시스템 프롬프트를 붙이지 않는다.
-  const systemPrompt = doctrine === "native"
-    ? undefined
-    : options.buildSystemPrompt();
   const tempCleanups: Array<() => void> = [];
   try {
-    const systemPromptFile = systemPrompt !== undefined && isClaudeFamilyProfile(profile)
-      ? writeSystemPromptFile(profile.id, systemPrompt, (cleanup) => tempCleanups.push(cleanup))
-      : undefined;
+    const systemPromptFile = systemPromptMode === "off"
+      ? undefined
+      : writeSystemPromptFile(profile.id, options.buildSystemPrompt(), (cleanup) => tempCleanups.push(cleanup));
     const plugin = await createAgentCliPlugin({
       cliId: profile.id,
       doctrine,
@@ -128,18 +121,15 @@ export async function injectAgentCliProfile(
       options.dedicatedMcpSession.releaseSessionToken(tokenLabel);
     });
     options.onCleanup?.(cleanup);
-    const gatewayAgents = profile.id === "claude-gateway"
-      ? { skillOverrides: buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS) }
-      : {};
     const context: AgentCliInjectionContext = {
       cliId: profile.id,
       mcpServers,
       pluginRoot: plugin.pluginRoot,
       pluginRoots: plugin.pluginRoots,
-      replaceSystemPrompt: options.replaceSystemPrompt,
+      skillOverrides: buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS),
+      systemPromptMode,
       resumeSessionId: options.resumeSessionId,
       systemPromptFile,
-      ...gatewayAgents,
     };
     const injectedArgs = buildAgentCliArgs(capability.builderId, context);
     const mergedArgs = mergeAgentCliArgs(profile, capability.builderId, context, injectedArgs);
@@ -179,9 +169,6 @@ export async function injectAgentCliProfile(
   }
 }
 
-function isClaudeFamilyProfile(profile: AgentCliProfile): boolean {
-  return profile.id === "claude-native" || profile.id === "claude-gateway";
-}
 
 function buildAgentCliMcpServerConfigs(
   endpoints: readonly { readonly name: string; readonly url: string }[],
@@ -230,15 +217,15 @@ function rmBestEffort(targetPath: string): void {
 }
 
 function buildAgentCliArgs(
-  builderId: "claude-native",
+  builderId: "claude-gateway",
   context: AgentCliInjectionContext,
 ): string[] {
-  return buildClaudeNativeArgs(context);
+  return buildClaudeGatewayArgs(context);
 }
 
 function mergeAgentCliArgs(
   profile: AgentCliProfile,
-  _builderId: "claude-native",
+  _builderId: "claude-gateway",
   _context: AgentCliInjectionContext,
   injectedArgs: readonly string[],
 ): string[] {

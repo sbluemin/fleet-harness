@@ -27,10 +27,7 @@ export function classifyOscAgentActivity(
   const first = title.codePointAt(0);
   if (first === undefined) return "unknown";
   if (first >= BRAILLE_START && first <= BRAILLE_END) return "working";
-  if (cliId === "claude-native" || cliId === "claude-gateway") {
-    return first === CLAUDE_NOT_WORKING ? "not-working" : "unknown";
-  }
-  return "unknown";
+  return first === CLAUDE_NOT_WORKING ? "not-working" : "unknown";
 }
 
 export function createOscAgentActivityTracker(options: OscAgentActivityTrackerOptions): OscAgentActivityTracker {

@@ -176,7 +176,6 @@ describe("feature tour", () => {
     const claude = FEATURE_TOURS.find((tour) => tour.id === "claude-operations");
     expect(claude?.spotlight).toBeNull();
     expect(claude?.walkthrough.map((step) => step.anchor)).toEqual([
-      '[data-operation-launch-kind="claude-native"]',
       '[data-operation-launch-kind="claude-gateway"]',
     ]);
     // 퇴역한 Classic 앵커가 되살아나면 잡는다.
@@ -220,7 +219,6 @@ describe("feature tour", () => {
   it("resolves the shipped Claude walkthrough on the open launch menu, step by step", () => {
     const claude = FEATURE_TOURS.find((tour) => tour.id === "claude-operations");
     document.body.innerHTML = [
-      '<button data-operation-launch-kind="claude-native">Claude (Native)</button>',
       '<button data-operation-launch-kind="codex">Codex</button>',
       '<button data-operation-launch-kind="claude-gateway">Claude (Gateway)</button>',
     ].join("");
@@ -256,9 +254,7 @@ describe("feature tour", () => {
     expect(resolveNextFeatureTour(FEATURE_TOURS, [], document)).toBeNull();
   });
 
-  it("names each Claude launch kind by what it loads, in both locales", () => {
-    expect(CORE_MESSAGES.en["featureTour.claudeOperations.step1Body"]).toContain("no Admiral prompt");
-    expect(CORE_MESSAGES.ko["featureTour.claudeOperations.step1Body"]).toContain("Admiral 프롬프트를 싣지 않은");
+  it("names the Claude Gateway launch kind by what it loads, in both locales", () => {
     expect(CORE_MESSAGES.en["featureTour.claudeOperations.step3Body"]).toContain("/model");
     expect(CORE_MESSAGES.ko["featureTour.claudeOperations.step3Body"]).toContain("/model");
   });

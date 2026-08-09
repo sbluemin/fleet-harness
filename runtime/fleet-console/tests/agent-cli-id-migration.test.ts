@@ -3,10 +3,10 @@ import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
-  CLASSIC_LAUNCH_KIND_ID,
+  RETIRED_AGENT_CLI_IDS,
   GATEWAY_LAUNCH_KIND_ID,
-  migrateClassicLaunchKinds,
-} from "../core/host/classic-launch-kind-migration.js";
+  migrateAgentCliIds,
+} from "../core/host/agent-cli-id-migration.js";
 import type { DurableConsoleState, DurableDeletionTombstone } from "../core/host/durable-state.js";
 import type { OperationNode } from "../core/host/operations/operations-domain.js";
 
@@ -36,13 +36,13 @@ function makeState(
   };
 }
 
-describe("migrateClassicLaunchKinds", () => {
+describe("migrateAgentCliIds", () => {
   it("moves both the display and execution axes off the retired Classic id", () => {
     const state = makeState([
-      makeOperation("op-1", { cwd: "/tmp", launchKindId: CLASSIC_LAUNCH_KIND_ID, cliId: CLASSIC_LAUNCH_KIND_ID }),
+      makeOperation("op-1", { cwd: "/tmp", launchKindId: RETIRED_AGENT_CLI_IDS[0], cliId: RETIRED_AGENT_CLI_IDS[0] }),
     ]);
 
-    const result = migrateClassicLaunchKinds(state);
+    const result = migrateAgentCliIds(state);
 
     expect(result.changed).toBe(true);
     expect(result.migratedOperations).toBe(1);
@@ -54,21 +54,35 @@ describe("migrateClassicLaunchKinds", () => {
   });
 
   it("migrates an operation that carries only the legacy cliId", () => {
-    const state = makeState([makeOperation("op-1", { cliId: CLASSIC_LAUNCH_KIND_ID })]);
+    const state = makeState([makeOperation("op-1", { cliId: RETIRED_AGENT_CLI_IDS[0] })]);
 
-    const result = migrateClassicLaunchKinds(state);
+    const result = migrateAgentCliIds(state);
 
     expect(result.state.operations[0]?.payload).toEqual({ cliId: GATEWAY_LAUNCH_KIND_ID });
     expect(result.state.operations[0]?.payload.launchKindId).toBeUndefined();
   });
 
-  it("leaves neighbouring launch kinds untouched — exact match only, never a prefix", () => {
+  it("migrates both retired aliases independently on both payload axes", () => {
     const state = makeState([
-      makeOperation("native", { launchKindId: "claude-native", cliId: "claude-native" }),
+      makeOperation("mixed", { launchKindId: RETIRED_AGENT_CLI_IDS[0], cliId: RETIRED_AGENT_CLI_IDS[1] }),
+    ]);
+
+    const result = migrateAgentCliIds(state);
+
+    expect(result.migratedOperations).toBe(1);
+    expect(result.state.operations[0]?.payload).toEqual({
+      launchKindId: GATEWAY_LAUNCH_KIND_ID,
+      cliId: GATEWAY_LAUNCH_KIND_ID,
+    });
+  });
+
+  it("leaves neighbouring values untouched — exact match only, never a prefix", () => {
+    const state = makeState([
+      makeOperation("other", { launchKindId: "claude-native-extra", cliId: "other" }),
       makeOperation("gateway", { launchKindId: GATEWAY_LAUNCH_KIND_ID, cliId: GATEWAY_LAUNCH_KIND_ID }),
     ]);
 
-    const result = migrateClassicLaunchKinds(state);
+    const result = migrateAgentCliIds(state);
 
     expect(result.changed).toBe(false);
     expect(result.migratedOperations).toBe(0);
@@ -82,10 +96,10 @@ describe("migrateClassicLaunchKinds", () => {
       deletedAt: 1,
       expiresAt: 2,
       kind: "operation",
-      operation: makeOperation("op-1", { launchKindId: CLASSIC_LAUNCH_KIND_ID }),
+      operation: makeOperation("op-1", { launchKindId: RETIRED_AGENT_CLI_IDS[0] }),
     };
 
-    const result = migrateClassicLaunchKinds(makeState([], [tombstone]));
+    const result = migrateAgentCliIds(makeState([], [tombstone]));
 
     expect(result.changed).toBe(true);
     expect(result.migratedOperations).toBe(1);
@@ -110,27 +124,27 @@ describe("migrateClassicLaunchKinds", () => {
         lastOpenedAt: "2026-01-01T00:00:00.000Z",
       },
       operations: [
-        makeOperation("op-1", { cliId: CLASSIC_LAUNCH_KIND_ID }),
-        makeOperation("op-2", { cliId: "claude-native" }),
+        makeOperation("op-1", { cliId: RETIRED_AGENT_CLI_IDS[0] }),
+        makeOperation("op-2", { cliId: RETIRED_AGENT_CLI_IDS[1] }),
       ],
       groups: [],
     };
 
-    const result = migrateClassicLaunchKinds(makeState([], [tombstone]));
+    const result = migrateAgentCliIds(makeState([], [tombstone]));
 
-    expect(result.migratedOperations).toBe(1);
+    expect(result.migratedOperations).toBe(2);
     const migrated = result.state.deletionTombstones?.[0];
     const operations = migrated?.kind === "theater" ? migrated.operations : [];
     expect(operations[0]?.payload.cliId).toBe(GATEWAY_LAUNCH_KIND_ID);
-    expect(operations[1]?.payload.cliId).toBe("claude-native");
+    expect(operations[1]?.payload.cliId).toBe(GATEWAY_LAUNCH_KIND_ID);
   });
 
   it("is idempotent — a second pass reports no change so boot stops rewriting the file", () => {
-    const first = migrateClassicLaunchKinds(
-      makeState([makeOperation("op-1", { launchKindId: CLASSIC_LAUNCH_KIND_ID, cliId: CLASSIC_LAUNCH_KIND_ID })]),
+    const first = migrateAgentCliIds(
+      makeState([makeOperation("op-1", { launchKindId: RETIRED_AGENT_CLI_IDS[0], cliId: RETIRED_AGENT_CLI_IDS[0] })]),
     );
 
-    const second = migrateClassicLaunchKinds(first.state);
+    const second = migrateAgentCliIds(first.state);
 
     expect(second.changed).toBe(false);
     expect(second.migratedOperations).toBe(0);
@@ -140,14 +154,14 @@ describe("migrateClassicLaunchKinds", () => {
   it("keeps the state reference identical when nothing matches", () => {
     const state = makeState([makeOperation("op-1", { cwd: "/tmp" })]);
 
-    expect(migrateClassicLaunchKinds(state).state).toBe(state);
+    expect(migrateAgentCliIds(state).state).toBe(state);
   });
 
   // `~/.fleet`는 CLI와 Console이 공유하는 데이터 루트다. carriers.json.lock은 withDirectoryLock이
   // 점유하는 잠금 디렉터리라, 업그레이드 전 호스트가 임계 구역에 있는 동안 지우면 두 번째 writer가
   // 들어온다. 이주는 자기 state.json 밖의 남의 스토어를 절대 건드리지 않는다.
   it("never reaches for the retired Carrier store — a legacy host may still hold its lock", () => {
-    const source = fs.readFileSync(new URL("../core/host/classic-launch-kind-migration.ts", import.meta.url), "utf8");
+    const source = fs.readFileSync(new URL("../core/host/agent-cli-id-migration.ts", import.meta.url), "utf8");
 
     expect(source).not.toContain("carriers.json");
     expect(source).not.toContain("carrier-subagent");

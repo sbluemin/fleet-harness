@@ -69,38 +69,52 @@ describe("data-dir settings store", () => {
       changed: true,
       data: {
         version: 1,
+        claudeGatewaySystemPromptMode: "append",
       },
     });
   });
 
-  it("preserves the Claude AI Gateway system prompt replacement policy", () => {
+  it("normalizes the Claude AI Gateway system prompt mode and legacy boolean", () => {
+    for (const mode of ["append", "replace", "off"] as const) {
+      expect(sanitizeGlobalOptionsData({
+        version: 1,
+        claudeGatewaySystemPromptMode: mode,
+        replaceClaudeGatewaySystemPrompt: mode !== "append",
+      })).toEqual({
+        changed: true,
+        data: { version: 1, claudeGatewaySystemPromptMode: mode },
+      });
+    }
+    expect(sanitizeGlobalOptionsData({ version: 1, replaceClaudeGatewaySystemPrompt: true })).toEqual({
+      changed: true,
+      data: { version: 1, claudeGatewaySystemPromptMode: "replace" },
+    });
+    expect(sanitizeGlobalOptionsData({ version: 1, replaceClaudeGatewaySystemPrompt: false })).toEqual({
+      changed: true,
+      data: { version: 1, claudeGatewaySystemPromptMode: "append" },
+    });
+    expect(sanitizeGlobalOptionsData({ version: 1, claudeGatewaySystemPromptMode: "invalid" })).toEqual({
+      changed: true,
+      data: { version: 1, claudeGatewaySystemPromptMode: "append" },
+    });
     expect(sanitizeGlobalOptionsData({
       version: 1,
+      claudeGatewaySystemPromptMode: "invalid",
       replaceClaudeGatewaySystemPrompt: true,
     })).toEqual({
-      changed: false,
-      data: {
-        version: 1,
-        replaceClaudeGatewaySystemPrompt: true,
-      },
-    });
-    expect(sanitizeGlobalOptionsData({
-      version: 1,
-      replaceClaudeGatewaySystemPrompt: "yes",
-    })).toEqual({
       changed: true,
-      data: { version: 1 },
+      data: { version: 1, claudeGatewaySystemPromptMode: "append" },
     });
   });
-
   it("preserves valid agentIdleDormantMinutes and drops invalid values", () => {
     expect(sanitizeGlobalOptionsData({
       version: 1,
       agentIdleDormantMinutes: 60,
     })).toEqual({
-      changed: false,
+      changed: true,
       data: {
         version: 1,
+        claudeGatewaySystemPromptMode: "append",
         agentIdleDormantMinutes: 60,
       },
     });
@@ -108,9 +122,10 @@ describe("data-dir settings store", () => {
       version: 1,
       agentIdleDormantMinutes: null,
     })).toEqual({
-      changed: false,
+      changed: true,
       data: {
         version: 1,
+        claudeGatewaySystemPromptMode: "append",
         agentIdleDormantMinutes: null,
       },
     });
@@ -119,35 +134,35 @@ describe("data-dir settings store", () => {
       agentIdleDormantMinutes: 0,
     })).toEqual({
       changed: true,
-      data: { version: 1 },
+      data: { version: 1, claudeGatewaySystemPromptMode: "append" },
     });
     expect(sanitizeGlobalOptionsData({
       version: 1,
       agentIdleDormantMinutes: -5,
     })).toEqual({
       changed: true,
-      data: { version: 1 },
+      data: { version: 1, claudeGatewaySystemPromptMode: "append" },
     });
     expect(sanitizeGlobalOptionsData({
       version: 1,
       agentIdleDormantMinutes: 1.5,
     })).toEqual({
       changed: true,
-      data: { version: 1 },
+      data: { version: 1, claudeGatewaySystemPromptMode: "append" },
     });
     expect(sanitizeGlobalOptionsData({
       version: 1,
       agentIdleDormantMinutes: Number.POSITIVE_INFINITY,
     })).toEqual({
       changed: true,
-      data: { version: 1 },
+      data: { version: 1, claudeGatewaySystemPromptMode: "append" },
     });
     expect(sanitizeGlobalOptionsData({
       version: 1,
       agentIdleDormantMinutes: "60",
     })).toEqual({
       changed: true,
-      data: { version: 1 },
+      data: { version: 1, claudeGatewaySystemPromptMode: "append" },
     });
   });
 
@@ -158,7 +173,7 @@ describe("data-dir settings store", () => {
       aiGateway: { models: [{ id: "cursor--claude-opus-5" }] },
     })).toEqual({
       changed: true,
-      data: { version: 1 },
+      data: { version: 1, claudeGatewaySystemPromptMode: "append" },
     });
   });
 
@@ -168,14 +183,14 @@ describe("data-dir settings store", () => {
       codexLaunchMode: "acp",
     })).toEqual({
       changed: true,
-      data: { version: 1 },
+      data: { version: 1, claudeGatewaySystemPromptMode: "append" },
     });
     expect(sanitizeGlobalOptionsData({
       version: 1,
       codexLaunchMode: "app-server",
     })).toEqual({
       changed: true,
-      data: { version: 1 },
+      data: { version: 1, claudeGatewaySystemPromptMode: "append" },
     });
   });
 
@@ -191,6 +206,7 @@ describe("data-dir settings store", () => {
       changed: true,
       data: {
         version: 1,
+        claudeGatewaySystemPromptMode: "append",
         agentIdleDormantMinutes: 45,
       },
     });
@@ -230,11 +246,13 @@ describe("data-dir settings store", () => {
 
     service.save({
       version: 1,
+      claudeGatewaySystemPromptMode: "append",
       agentIdleDormantMinutes: 90,
     });
 
     expect(JSON.parse(fs.readFileSync(path.join(dataDir, "settings.json"), "utf-8"))).toEqual({
       version: 1,
+      claudeGatewaySystemPromptMode: "append",
       agentIdleDormantMinutes: 90,
     });
     expect(fs.readdirSync(dataDir).filter((name) => name.startsWith(".tmp-settings.json"))).toEqual([]);
@@ -250,6 +268,7 @@ describe("data-dir settings store", () => {
       changed: true,
       data: {
         version: 1,
+        claudeGatewaySystemPromptMode: "append",
         agentIdleDormantMinutes: 30,
       },
     });
@@ -266,6 +285,7 @@ describe("data-dir settings store", () => {
 
     expect(staleStore.update((current) => current)).toEqual({
       version: 1,
+      claudeGatewaySystemPromptMode: "append",
     });
 
     fs.mkdirSync(lockPath);
@@ -313,6 +333,7 @@ describe("data-dir settings store", () => {
 
     expect(first.load()).toEqual({
       version: 1,
+      claudeGatewaySystemPromptMode: "append",
       agentIdleDormantMinutes: 45,
     });
   });

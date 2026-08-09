@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { combineAgentCliLaunchMetadata } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-launch-metadata.js";
 
 const METADATA = [
-  { id: "claude-native", label: "Claude (Native)" },
   { id: "claude-gateway", label: "Claude (Gateway)" },
 ] as const;
 
@@ -18,7 +17,6 @@ describe("combineAgentCliLaunchMetadata", () => {
     );
 
     expect(result).toEqual([
-      { id: "claude-native", label: "Claude (Native)", available: true, signedIn: true },
       { id: "claude-gateway", label: "Claude (Gateway)", available: true, signedIn: true },
     ]);
   });

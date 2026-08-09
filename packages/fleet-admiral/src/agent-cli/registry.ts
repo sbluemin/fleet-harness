@@ -1,4 +1,4 @@
-import { claudeGatewayCli, claudeNativeCli } from "./claude/definitions.js";
+import { claudeGatewayCli } from "./claude/definitions.js";
 import type { AgentCliDefinition, AgentCliId, AgentCliProfile } from "./types.js";
 
 export interface ResolveAgentCliProfileOptions {
@@ -16,9 +16,7 @@ export interface AgentCliMetadata {
 }
 
 const DEFAULT_CLI_ID: AgentCliId = "claude-gateway";
-// Console 캔버스 제어 메뉴 순서를 고정한다: Claude (Native) → Claude (Gateway).
 const DEFINITIONS: Record<AgentCliId, AgentCliDefinition> = {
-  "claude-native": claudeNativeCli,
   "claude-gateway": claudeGatewayCli,
 };
 
@@ -67,9 +65,7 @@ function parseEnvCliId(value: string | undefined): AgentCliId | undefined {
     return undefined;
   }
 
-  // 퇴역한 Classic id는 최소 한 릴리스 동안 gateway로 정규화한다. 이미 FLEET_AGENT_CLI=claude를
-  // 내보내 둔 환경이 업그레이드만으로 기동 불능이 되지 않게 한다.
-  if (value === RETIRED_CLASSIC_CLI_ID) {
+  if (value === "claude" || value === "claude-native") {
     return "claude-gateway";
   }
 
@@ -79,6 +75,3 @@ function parseEnvCliId(value: string | undefined): AgentCliId | undefined {
 
   throw new Error(`Unsupported agent CLI "${value}". Expected one of: ${getAgentCliIds().join(", ")}`);
 }
-
-/** 퇴역한 Classic Agent CLI id. 값 자체는 더 이상 해석되지 않고 gateway로 정규화된다. */
-const RETIRED_CLASSIC_CLI_ID = "claude";

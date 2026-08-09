@@ -122,11 +122,8 @@ describe("Admiral prompts", () => {
     }
   });
 
-  it("resolves every remaining CLI id to a doctrine that still exists", () => {
+  it("resolves the sole active CLI id to gateway doctrine", () => {
     expect(resolveDoctrineFromCliId("claude-gateway")).toBe("gateway");
-    expect(resolveDoctrineFromCliId("claude-native")).toBe("native");
-    // 퇴역한 Classic id는 더 이상 자기 doctrine을 갖지 않는다.
-    expect(resolveDoctrineFromCliId("claude")).toBe("gateway");
   });
 
   it("keeps six standing orders with delegation discipline named as orchestration", () => {
@@ -135,13 +132,10 @@ describe("Admiral prompts", () => {
     expect(buildPrompt()).toContain("## Orchestration Policy");
   });
 
-  it("gives native host sessions the wiki surface only", () => {
-    for (const toolId of ["wiki_read", "wiki_briefing"]) {
-      expect(isHostSessionToolAllowed(toolId, "native")).toBe(true);
+  it("gives gateway host sessions the complete Fleet tool surface", () => {
+    for (const toolId of ["wiki_read", "wiki_briefing", "gateway_models"]) {
       expect(isHostSessionToolAllowed(toolId, "gateway")).toBe(true);
     }
-    expect(isHostSessionToolAllowed("gateway_models", "native")).toBe(false);
-    expect(isHostSessionToolAllowed("gateway_models", "gateway")).toBe(true);
   });
 
   it("keeps retrieved content untrusted except for explicitly governing doctrine", () => {

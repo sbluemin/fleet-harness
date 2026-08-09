@@ -7,22 +7,21 @@ import { buildAgentCliLaunchKinds } from "../server/agent-api/agent-cli-launch-k
 // 내놓은 단을 균등히 벌리는 대신 제자리에 세울 수 있다.
 const EFFORT_AXIS = ["low", "medium", "high", "xhigh", "max"];
 
-const nativeVariants = {
+const builtinVariants = {
   id: "native",
   label: "Claude",
   rows: [
-    nativeRow("fable", "Fable"),
+    builtinRow("fable", "Fable"),
     // Claude Code's 1M coordinate launches under the plain "Opus" label.
-    nativeRow("opus[1m]", "Opus"),
-    nativeRow("sonnet", "Sonnet"),
+    builtinRow("opus[1m]", "Opus"),
+    builtinRow("sonnet", "Sonnet"),
   ],
 };
 
 describe("buildAgentCliLaunchKinds", () => {
-  it("adds the complete native model and effort menu to the enabled gateway kind", () => {
+  it("adds the complete built-in model and effort menu to the enabled gateway kind", () => {
     const result = buildAgentCliLaunchKinds(
       [
-        { id: "claude-native", label: "Claude (Native)", available: true, signedIn: true },
         { id: "claude-gateway", label: "Claude (Gateway)", available: true, signedIn: true },
       ],
       "agent",
@@ -30,12 +29,11 @@ describe("buildAgentCliLaunchKinds", () => {
     );
 
     expect(result).toEqual([
-      { id: "claude-native", type: "agent", title: "Claude (Native)" },
       {
         id: "claude-gateway",
         type: "agent",
         title: "Claude (Gateway)",
-        variants: [nativeVariants],
+        variants: [builtinVariants],
       },
     ]);
   });
@@ -57,7 +55,7 @@ describe("buildAgentCliLaunchKinds", () => {
     );
 
     expect(result[0]?.variants).toEqual([
-      nativeVariants,
+      builtinVariants,
       {
         id: "gateway:codex",
         label: "Codex",
@@ -100,7 +98,6 @@ describe("buildAgentCliLaunchKinds", () => {
     const result = buildAgentCliLaunchKinds(
       [
         { id: "claude-gateway", label: "Claude (Gateway)", available: false, signedIn: true },
-        { id: "claude-native", label: "Claude (Native)", available: true, signedIn: false },
       ],
       "agent",
       resolveAiGatewaySelection({
@@ -111,12 +108,11 @@ describe("buildAgentCliLaunchKinds", () => {
 
     expect(result).toEqual([
       { id: "claude-gateway", type: "agent", title: "Claude (Gateway)", disabled: true, disabledReason: "Not installed" },
-      { id: "claude-native", type: "agent", title: "Claude (Native)", disabled: true, disabledReason: "Sign in required" },
     ]);
   });
 });
 
-function nativeRow(model: string, label: string) {
+function builtinRow(model: string, label: string) {
   return {
     id: model,
     label,

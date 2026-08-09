@@ -192,11 +192,18 @@ describe("resolveAgentCliBinary", () => {
 });
 
 describe("Agent CLI launch env overlay", () => {
-  it("maps Claude variants to CLAUDE_BIN and does not overwrite existing env", () => {
+  it("maps canonical Gateway and Analyst provider IDs to the Claude command only", () => {
+    expect(agentCliCommandForId("claude-gateway")).toBe("claude");
+    expect(agentCliCommandForId("claude")).toBe("claude");
+    expect(agentCliCommandForId("claude-native")).toBeNull();
+    expect(agentCliCommandForId("unknown")).toBeNull();
+  });
+
+  it("maps Claude boundaries to CLAUDE_BIN and does not overwrite existing env", () => {
     expect(applyAgentCliPathEnvOverlay({ PATH: "/usr/bin" }, "claude-gateway", { claude: "/custom/claude" })).toMatchObject({
       CLAUDE_BIN: "/custom/claude",
     });
-    expect(applyAgentCliPathEnvOverlay({ PATH: "/usr/bin" }, "claude-native", { claude: "/custom/claude" })).toMatchObject({
+    expect(applyAgentCliPathEnvOverlay({ PATH: "/usr/bin" }, "claude", { claude: "/custom/claude" })).toMatchObject({
       CLAUDE_BIN: "/custom/claude",
     });
     expect(applyAgentCliPathEnvOverlay({ CLAUDE_BIN: "/managed/claude" }, "claude", { claude: "/custom/claude" })).toEqual({

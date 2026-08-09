@@ -95,7 +95,6 @@ describe("CanvasContextMenu launch kind attribute", () => {
         id: "terminal",
         title: "Terminal",
         kinds: [
-          { id: "claude-native", type: "agent", title: "Claude (Native)" },
           { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
         ],
       },
@@ -112,7 +111,6 @@ describe("CanvasContextMenu launch kind attribute", () => {
         id: "terminal",
         title: "Terminal",
         kinds: [
-          { id: "claude-native", type: "agent", title: "Claude (Native)" },
           { id: "codex", type: "agent", title: "Codex" },
           { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
           { id: "shell", type: "shell", title: "Shell" },
@@ -123,9 +121,8 @@ describe("CanvasContextMenu launch kind attribute", () => {
     const descriptionOf = (kindId: string) =>
       document.querySelector(`[data-operation-launch-kind="${kindId}"] .operation-launch-menu-description`)?.textContent;
 
-    expect(descriptionOf("claude-native")).toBe("Plain Claude Code, without the Admiral prompt");
     expect(descriptionOf("claude-gateway")).toContain("models you enabled in Settings");
-    // 설명은 Claude 두 갈래에만 붙는다 — 대비가 필요 없는 종류까지 늘리면 메뉴만 길어진다.
+    // 설명은 Claude Gateway에만 붙는다 — 대비가 필요 없는 종류까지 늘리면 메뉴만 길어진다.
     expect(descriptionOf("codex")).toBeUndefined();
     expect(descriptionOf("shell")).toBeUndefined();
 
@@ -141,12 +138,12 @@ describe("CanvasContextMenu launch kind attribute", () => {
         id: "terminal",
         title: "Terminal",
         kinds: [
-          { id: "claude-native", type: "agent", title: "Claude (Native)", disabled: true, disabledReason: "Not installed" },
+          { id: "claude-gateway", type: "agent", title: "Claude (Gateway)", disabled: true, disabledReason: "Not installed" },
         ],
       },
     ]);
 
-    const item = document.querySelector('[data-operation-launch-kind="claude-native"]');
+    const item = document.querySelector('[data-operation-launch-kind="claude-gateway"]');
     expect(item?.querySelector(".operation-launch-menu-reason")?.textContent).toBe("Not installed");
     expect(item?.querySelector(".operation-launch-menu-description")).toBeNull();
   });
@@ -183,7 +180,6 @@ describe("CanvasContextMenu launch kind attribute", () => {
         id: "terminal",
         title: "Terminal",
         kinds: [
-          { id: "claude-native", type: "agent", title: "Claude (Native)" },
           { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
         ],
       },
@@ -191,7 +187,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
 
     // 짧은 대비는 늘 행 위에 있다 — 터치와 정적 스캔에서도 종류가 갈려야 한다.
     const briefs = Array.from(document.querySelectorAll(".operation-launch-menu-brief")).map((node) => node.textContent);
-    expect(briefs).toEqual(["No Admiral", "Other models"]);
+    expect(briefs).toEqual(["Other models"]);
 
     // 설명 문장은 짚기 전에는 옆에 펴지지 않지만, 버튼 안에는 남아 접근 이름에 실린다.
     expect(document.querySelector(".canvas-context-menu-aside")).toBeNull();
@@ -212,7 +208,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
         id: "terminal",
         title: "Terminal",
         kinds: [
-          { id: "claude-native", type: "agent", title: "Claude (Native)" },
+          { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
           { id: "codex", type: "agent", title: "Codex", disabled: true, disabledReason: "Not installed" },
           { id: "shell", type: "shell", title: "Shell" },
         ],
@@ -226,7 +222,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(document.activeElement).toBe(menu);
 
     act(() => menu.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
-    expect(activeKind()).toBe("claude-native");
+    expect(activeKind()).toBe("claude-gateway");
 
     // 실행할 수 없는 종류는 건너뛴다.
     act(() => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
@@ -234,12 +230,12 @@ describe("CanvasContextMenu launch kind attribute", () => {
 
     // 끝에서 다시 처음으로 돈다.
     act(() => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
-    expect(activeKind()).toBe("claude-native");
+    expect(activeKind()).toBe("claude-gateway");
 
     act(() => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
     expect(activeKind()).toBe("shell");
     act(() => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })));
-    expect(activeKind()).toBe("claude-native");
+    expect(activeKind()).toBe("claude-gateway");
   });
 
   it("places the description aside on the side that has room and withholds it when neither does", () => {
@@ -279,23 +275,21 @@ describe("CanvasContextMenu launch kind attribute", () => {
       {
         id: "terminal",
         title: "Terminal",
-        kinds: [{ id: "claude-native", type: "agent", title: "Claude Local" }],
+        kinds: [{ id: "shared-agent", type: "agent", title: "Local Agent" }],
       },
       {
         id: "remote",
         title: "Remote",
-        kinds: [{ id: "claude-gateway", type: "agent", title: "Claude Remote" }],
+        kinds: [{ id: "shared-agent", type: "agent", title: "Remote Agent" }],
       },
     ]);
 
     const rows = document.querySelectorAll<HTMLButtonElement>(".canvas-context-menu-item");
     expect(rows).toHaveLength(2);
     act(() => rows[1]!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
-    expect(document.querySelector(".canvas-context-menu-aside")?.textContent)
-      .toBe("Runs Claude Code on the models you enabled in Settings");
+    expect(document.querySelector(".canvas-context-menu-aside")).toBeNull();
     act(() => rows[0]!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
-    expect(document.querySelector(".canvas-context-menu-aside")?.textContent)
-      .toContain("without the Admiral prompt");
+    expect(document.querySelector(".canvas-context-menu-aside")).toBeNull();
   });
 
   it("closes when focus leaves the menu, since its items sit outside the tab order", () => {
@@ -327,7 +321,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
       {
         id: "terminal",
         title: "Terminal",
-        kinds: [{ id: "claude-native", type: "agent", title: "Claude (Native)" }],
+        kinds: [{ id: "claude-gateway", type: "agent", title: "Claude (Gateway)" }],
       },
     ], onClose);
     tourLayer = document.createElement("div");
@@ -355,7 +349,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
         id: "terminal",
         title: "Terminal",
         kinds: [
-          { id: "claude-native", type: "agent", title: "Claude (Native)" },
+          { id: "shell", type: "shell", title: "Shell" },
           { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
         ],
       },
@@ -369,7 +363,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
     act(() => rows[0]!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
     act(() => rows[1]!.focus());
     // 가리키는 동안에는 포인터가 이긴다.
-    expect(asideText()).toBe("Plain Claude Code, without the Admiral prompt");
+    expect(asideText()).toBeUndefined();
 
     act(() => menu.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body })));
     // 포인터가 나가도 포커스가 짚고 있는 행의 설명은 남는다.

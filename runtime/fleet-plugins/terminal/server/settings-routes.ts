@@ -1,6 +1,6 @@
 import type http from "node:http";
 
-import type { GlobalOptionsData, GlobalOptionsService } from "@dotobokuri/core-infra";
+import type { ClaudeGatewaySystemPromptMode, GlobalOptionsData, GlobalOptionsService } from "@dotobokuri/core-infra";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 
@@ -24,7 +24,7 @@ interface TerminalSettingsRouteDeps {
 
 interface TerminalSettingsBody {
   readonly agentIdleDormantMinutes?: unknown;
-  readonly replaceClaudeGatewaySystemPrompt?: unknown;
+  readonly claudeGatewaySystemPromptMode?: unknown;
   readonly aiGateway?: unknown;
   readonly cursorDiagnosticsEnabled?: unknown;
   readonly wireLogEnabled?: unknown;
@@ -32,7 +32,7 @@ interface TerminalSettingsBody {
 
 type TerminalSettingsUpdate =
   | { readonly agentIdleDormantMinutes: number | null }
-  | { readonly replaceClaudeGatewaySystemPrompt: boolean }
+  | { readonly claudeGatewaySystemPromptMode: ClaudeGatewaySystemPromptMode }
   | { readonly aiGateway: AiGatewayUpdateValue | undefined }
   | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean };
@@ -41,7 +41,7 @@ export const DEFAULT_AGENT_IDLE_DORMANT_MINUTES = 60;
 
 export interface TerminalSettingsState {
   readonly agentIdleDormantMinutes: number | null;
-  readonly replaceClaudeGatewaySystemPrompt: boolean;
+  readonly claudeGatewaySystemPromptMode: ClaudeGatewaySystemPromptMode;
   readonly aiGateway: AiGatewayUpdateValue | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
@@ -138,7 +138,7 @@ export function toTerminalSettingsState(
     agentIdleDormantMinutes: data.agentIdleDormantMinutes === undefined
       ? DEFAULT_AGENT_IDLE_DORMANT_MINUTES
       : data.agentIdleDormantMinutes,
-    replaceClaudeGatewaySystemPrompt: data.replaceClaudeGatewaySystemPrompt === true,
+    claudeGatewaySystemPromptMode: data.claudeGatewaySystemPromptMode ?? "append",
     aiGateway: configured
       ? {
         ...(aiGateway.models?.length ? { models: aiGateway.models } : {}),
@@ -169,9 +169,9 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
       ? { agentIdleDormantMinutes: body.agentIdleDormantMinutes }
       : null;
   }
-  if (keys[0] === "replaceClaudeGatewaySystemPrompt") {
-    return typeof body.replaceClaudeGatewaySystemPrompt === "boolean"
-      ? { replaceClaudeGatewaySystemPrompt: body.replaceClaudeGatewaySystemPrompt }
+  if (keys[0] === "claudeGatewaySystemPromptMode") {
+    return isClaudeGatewaySystemPromptMode(body.claudeGatewaySystemPromptMode)
+      ? { claudeGatewaySystemPromptMode: body.claudeGatewaySystemPromptMode }
       : null;
   }
   if (keys[0] === "aiGateway") {
@@ -194,6 +194,10 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
 function isAgentIdleDormantMinutes(value: unknown): value is number | null {
   if (value === null) return true;
   return typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value > 0;
+}
+
+function isClaudeGatewaySystemPromptMode(value: unknown): value is ClaudeGatewaySystemPromptMode {
+  return value === "append" || value === "replace" || value === "off";
 }
 
 function isJsonRequest(req: http.IncomingMessage): boolean {

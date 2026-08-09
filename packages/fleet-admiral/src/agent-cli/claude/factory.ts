@@ -5,7 +5,7 @@ import { assertLaunchPromptShimSafe, resolveLaunchCommandLineLimit, sanitizeLaun
 import type { AgentCliDefinition, AgentCliId, AgentCliProfileOptions } from "../types.js";
 
 interface ClaudeFamilyCliFactoryOptions {
-  readonly id: Extract<AgentCliId, "claude-native" | "claude-gateway">;
+  readonly id: AgentCliId;
   readonly label: string;
 }
 

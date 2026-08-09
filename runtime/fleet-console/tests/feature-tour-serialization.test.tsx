@@ -24,7 +24,6 @@ const SETTINGS: GlobalSettingsState = {
 const LAUNCH_KINDS = [
   '<div class="command-band-mode-switch"></div>',
   '<div class="command-band-mode-tray"></div>',
-  '<button data-operation-launch-kind="claude-native">Claude (Native)</button>',
   '<button data-operation-launch-kind="claude-gateway">Claude (Gateway)</button>',
 ].join("");
 

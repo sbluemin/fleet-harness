@@ -53,11 +53,11 @@ describe("agent client launch prompt threading", () => {
     const launch = agentPlugin.launch;
     if (!launch) throw new Error("Agent plugin launch must exist.");
 
-    await launch(createLaunchContext({ prompt: "" }, "claude-native"));
+    await launch(createLaunchContext({ prompt: "" }, "claude-gateway"));
 
     expect(readCreateBody(fetch)).toEqual({
       theaterId: "theater-1",
-      cliId: "claude-native",
+      cliId: "claude-gateway",
     });
   });
 
@@ -73,17 +73,17 @@ describe("agent client launch prompt threading", () => {
 
   it("createAgentSession itself drops empty prompt while keeping non-empty prompt", async () => {
     const emptyFetch = stubSessionCreate();
-    await createAgentSession("theater-1", "claude-native", { prompt: "" });
+    await createAgentSession("theater-1", "claude-gateway", { prompt: "" });
     expect(readCreateBody(emptyFetch)).toEqual({
       theaterId: "theater-1",
-      cliId: "claude-native",
+      cliId: "claude-gateway",
     });
 
     const promptFetch = stubSessionCreate();
-    await createAgentSession("theater-1", "claude-native", { prompt: "keep me" });
+    await createAgentSession("theater-1", "claude-gateway", { prompt: "keep me" });
     expect(readCreateBody(promptFetch)).toEqual({
       theaterId: "theater-1",
-      cliId: "claude-native",
+      cliId: "claude-gateway",
       prompt: "keep me",
     });
   });

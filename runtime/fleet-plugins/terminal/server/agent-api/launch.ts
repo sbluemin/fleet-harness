@@ -275,9 +275,7 @@ async function createAgentCliLaunchSpec(options: {
       resumeSessionId: options.resumeSessionId,
       withMarketplaceLock: withConsoleMarketplaceLock,
       mcpSessionLabel: options.sessionId,
-      ...(cliId === "claude-gateway" && globalOptions.replaceClaudeGatewaySystemPrompt === true
-        ? { replaceSystemPrompt: true }
-        : {}),
+      systemPromptMode: globalOptions.claudeGatewaySystemPromptMode ?? "append",
       ...(gatewaySelection
         ? {
           // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.
