@@ -78,6 +78,23 @@ describe("CanvasContextMenu anchor placement", () => {
     expect(menuStyle().getPropertyValue("--canvas-menu-max-height")).toBe("376px");
   });
 
+  // 이 포커스는 높이 측정 전 좌표에서 발화한다 — 커서를 그대로 쓴 첫 렌더라 하단에서 열면 메뉴가
+  // 캔버스 밖으로 넘친다. 그 찰나의 위치로 조상을 굴리게 두면 판이 밀린 채 남으므로, 여는 포커스는
+  // 스크롤을 요구하지 않아야 한다.
+  it("takes the opening focus without asking any ancestor to scroll", () => {
+    const focus = vi.spyOn(HTMLElement.prototype, "focus");
+    try {
+      renderMenu({ x: 520, y: 756 }, { width: 1116, height: 856 });
+
+      const menuFocus = focus.mock.calls.filter((_call, index) =>
+        (focus.mock.instances[index] as HTMLElement).classList.contains("canvas-context-menu"));
+      expect(menuFocus).toHaveLength(1);
+      expect(menuFocus[0]![0]).toEqual({ preventScroll: true });
+    } finally {
+      focus.mockRestore();
+    }
+  });
+
   it("renders fixed at viewport coordinates when the fixed prop is set", () => {
     renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [], vi.fn(), true);
 
