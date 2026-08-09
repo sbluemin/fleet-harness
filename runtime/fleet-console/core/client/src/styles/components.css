@@ -4354,8 +4354,8 @@
 }
 
 /* 최소화 선반 — 휴면 선반과 같은 무채색 문법을 쓰되 그 위에 선다. 내가 직접 내린 것이 세션이
-   스스로 잠든 것보다 손에 가깝기 때문이다. 사용자가 만든 목록이라 비면 아예 서지 않는다
-   (휴면은 축 자체라 0건이어도 남는다). */
+   스스로 잠든 것보다 손에 가깝기 때문이다. War Room과 Theater STATUS 모두 0건이어도 자리를
+   지켜 회수 위치가 상태 변화에 따라 움직이지 않게 한다. */
 .triage-side-bar-minimized-shelf {
   flex: none;
   border-top: 1px solid var(--surface-rim);
@@ -4366,6 +4366,18 @@
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+.side-bar-status-recovery-shelves {
+  list-style: none;
+}
+
+.side-bar-status-recovery-shelf {
+  min-width: 0;
+}
+
+.side-bar-status-recovery-shelf .side-bar-status-section {
+  padding-bottom: 0;
 }
 
 .side-bar-theater-error {

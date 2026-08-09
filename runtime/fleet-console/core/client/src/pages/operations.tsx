@@ -7,6 +7,7 @@ import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } 
 import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, issueTheaterFolderGrant, patchOperation, patchTheaterOrder, renameOperation, updateGroup, ApiError, type DeferredDeletionReceipt } from "../api.js";
 import { isBlockingDialogOpen } from "../focus-guards.js";
 import { closeOperationCompletely } from "../operation-close.js";
+import { resumeOperationInPlace } from "../operation-resume.js";
 import { forgetTheaterCompletely } from "../theater-forget.js";
 import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
@@ -73,6 +74,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const triageMenuReturnFocusRef = useRef<HTMLElement | null>(null);
   const focusRequestEpochRef = useRef(0);
   const catalogRequestEpochRef = useRef(0);
+  const resumeBootProtectionRef = useRef<{ readonly theaterId: string; readonly operationId: string } | null>(null);
   stateRef.current = state;
 
   const refreshCatalog = useCallback(() => {
@@ -250,6 +252,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   }, [companionOperationId, formationView, maximizedOperationId, registry.operationKinds, viewMode.effective]);
 
   useEffect(() => {
+    const resumeBootProtection = resumeBootProtectionRef.current?.theaterId === state.activeTheaterId
+      ? resumeBootProtectionRef.current.operationId
+      : null;
+    if (resumeBootProtection !== null || viewMode.effective === "mobile") resumeBootProtectionRef.current = null;
     if (viewMode.effective === "mobile") return;
     for (const operationId of operationOrder) ensureDefaultGeometry(operationId);
     if (!state.operationsHydrated) return;
@@ -260,9 +266,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     if (!state.activeTheaterId) return;
     const bootOperationIds = claimBootPanelMinimization(state.activeTheaterId);
     if (bootOperationIds === null) return;
-    // 선택으로 진입한 경우(pendingOperationFocus) 그 패널은 최소화에서 제외해 곧바로 표면화한다 — 선택한 패널만 하나씩 노출.
+    // 선택·재개로 진입한 패널은 최소화에서 제외해 곧바로 표면화한다 — 선택한 패널만 하나씩 노출.
     const protectedIds = new Set([
       stateRef.current.pendingOperationFocus,
+      resumeBootProtection,
       getCompanionOperationId(),
       getMaximizedOperationId(),
     ].filter((id): id is string => id !== null));
@@ -402,6 +409,19 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     playMinimizeFlight(operationId);
     minimizeOperation(operationId);
   }, []);
+
+  const handleResume = useCallback((operationId: string) => {
+    const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);
+    if (!operation) return;
+    const resume = () => resumeOperationInPlace(operationId, stateRef.current.operations, registry.plugins, handleFocus);
+    if (operation.theaterId !== stateRef.current.activeTheaterId) {
+      resumeBootProtectionRef.current = { theaterId: operation.theaterId, operationId };
+      setActiveTheater(operation.theaterId);
+      resume();
+      return;
+    }
+    resume();
+  }, [handleFocus, registry.plugins]);
 
   const handleSetAccent = useCallback((operationId: string, accentKey: string | null) => {
     void patchOperation(operationId, { accent: accentKey })
@@ -610,6 +630,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         onClose={handleClose}
         onMinimize={handleMinimize}
         onFocus={handleFocus}
+        onResume={handleResume}
         onSetAccent={handleSetAccent}
         onRename={handleRename}
         onSetGroupId={handleSetGroupId}

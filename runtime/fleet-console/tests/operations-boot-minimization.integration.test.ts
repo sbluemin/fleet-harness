@@ -26,6 +26,7 @@ const keyboardShortcutMocks = vi.hoisted(() => ({
 }));
 const sideBarMocks = vi.hoisted(() => ({
   onFocus: null as null | ((operationId: string) => void),
+  onResume: null as null | ((operationId: string) => void),
   onClose: null as null | ((operationId: string) => void),
   onMinimize: null as null | ((operationId: string) => void),
 }));
@@ -38,6 +39,10 @@ const canvasMocks = vi.hoisted(() => ({
 const registryMocks = vi.hoisted(() => ({
   plugins: [] as Array<Record<string, unknown>>,
   operationKinds: [] as OperationKindDescriptor[],
+}));
+const bodyPoolMocks = vi.hoisted(() => ({
+  renderedOperationIds: [] as string[][],
+  order: [] as string[],
 }));
 
 vi.mock("../core/client/src/api.js", () => ({
@@ -80,6 +85,13 @@ vi.mock("../core/client/src/components/command-band.js", () => ({ CommandBand: (
 vi.mock("../core/client/src/components/commissioning-overlay.js", () => ({ CommissioningOverlay: () => null }));
 vi.mock("../core/client/src/components/keyboard-shortcuts-dialog.js", () => ({ isKeyboardShortcutsModalOpen: () => false, shouldHandleOperationsKeyboardShortcut: keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut }));
 vi.mock("../core/client/src/components/operation-search.js", () => ({ OperationSearch: () => null }));
+vi.mock("../core/client/src/mobile/operation-body-pool.js", () => ({
+  OperationBodyPool: ({ operations, children }: { readonly operations: readonly OperationNode[]; readonly children: ReactNode }) => {
+    bodyPoolMocks.renderedOperationIds.push(operations.map((operation) => operation.id));
+    bodyPoolMocks.order.push(`pool:${operations.map((operation) => operation.id).join(",")}`);
+    return createElement(Fragment, null, children);
+  },
+}));
 vi.mock("../core/client/src/components/toast.js", () => ({
   Toast: () => null,
   // App은 토스트를 ToastHost 스택으로 감싼다 — mock도 같은 쌍을 제공해야 App 렌더가 산다.
@@ -112,8 +124,9 @@ vi.mock("../core/client/src/sidebar/operations-side-bar-store.js", async (import
 // TriageSideBar가 같은 모듈의 목록 조립 헬퍼를 함께 읽으므로 부분 목이어야 한다.
 vi.mock("../core/client/src/sidebar/operations-side-bar.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../core/client/src/sidebar/operations-side-bar.js")>()),
-  OperationsSideBar: ({ onClose, onFocus, onMinimize }: { readonly onClose: (operationId: string) => void; readonly onFocus: (operationId: string) => void; readonly onMinimize: (operationId: string) => void }) => {
+  OperationsSideBar: ({ onClose, onFocus, onMinimize, onResume }: { readonly onClose: (operationId: string) => void; readonly onFocus: (operationId: string) => void; readonly onMinimize: (operationId: string) => void; readonly onResume: (operationId: string) => void }) => {
     sideBarMocks.onFocus = onFocus;
+    sideBarMocks.onResume = onResume;
     sideBarMocks.onClose = onClose;
     sideBarMocks.onMinimize = onMinimize;
     return null;
@@ -150,6 +163,7 @@ beforeEach(() => {
   apiMocks.restoreDeletion.mockResolvedValue({ ok: true, kind: "operation", targetId: "restored" });
   keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut.mockReturnValue(false);
   sideBarMocks.onFocus = null;
+  sideBarMocks.onResume = null;
   sideBarMocks.onClose = null;
   sideBarMocks.onMinimize = null;
   canvasMocks.catalog = [];
@@ -159,6 +173,8 @@ beforeEach(() => {
   vi.mocked(fetchOperationCatalog).mockReset().mockResolvedValue([]);
   registryMocks.plugins = [];
   registryMocks.operationKinds = [];
+  bodyPoolMocks.renderedOperationIds = [];
+  bodyPoolMocks.order = [];
   // 선별 처리는 Theater가 아니라 전역 축이라, Theater 단위 reset만으로는 꺼지지 않는다.
   setTriageActive(false);
   resetTriageTheater("theater-a");
@@ -188,6 +204,62 @@ afterEach(() => {
 });
 
 describe("Operations boot minimization", () => {
+  it("switches to an inactive dormant Operation's Theater before resuming without mounting its foreign body first", async () => {
+    const resumeOperation = vi.fn(() => { bodyPoolMocks.order.push(`resume:${getState().activeTheaterId}`); });
+    registryMocks.plugins = [{ id: "terminal", resumeOperation }];
+    await bootApp(
+      [
+        operation("home", BOOT_FRESH_CREATED_AT(), "theater-a"),
+        { ...operation("dormant", 1, "theater-b"), payload: { resumeAvailable: true } },
+      ],
+      [theater("theater-a", "Theater A"), theater("theater-b", "Theater B")],
+    );
+    await navigateTo("/operations");
+    expect(getState().activeTheaterId).toBe("theater-a");
+    expect(sideBarMocks.onResume).not.toBeNull();
+    expect(bodyPoolMocks.renderedOperationIds.at(-1)).toEqual(["home"]);
+    bodyPoolMocks.order = [];
+
+    await act(async () => {
+      sideBarMocks.onResume?.("dormant");
+      await Promise.resolve();
+    });
+
+    expect(bodyPoolMocks.order[0]).toBe("resume:theater-b");
+    expect(resumeOperation).toHaveBeenCalledWith("dormant");
+    expect(getState().activeTheaterId).toBe("theater-b");
+    expect(getState().activeOperationId).not.toBe("dormant");
+    expect(getState().pendingOperationFocus).toBeNull();
+    expect(bodyPoolMocks.renderedOperationIds.at(-1)).toEqual(["dormant"]);
+    expect(getSnapshot().minimized).not.toContain("dormant");
+  });
+
+  it("resumes a dormant Operation in the active Theater without switching, reloading, or setting focus state", async () => {
+    const resumeOperation = vi.fn();
+    registryMocks.plugins = [{ id: "terminal", resumeOperation }];
+    await bootApp([
+      operation("home", BOOT_FRESH_CREATED_AT(), "theater-a"),
+      { ...operation("dormant", 1, "theater-a"), payload: { resumeAvailable: true } },
+    ]);
+    await navigateTo("/operations");
+    expect(getState().activeTheaterId).toBe("theater-a");
+    expect(sideBarMocks.onResume).not.toBeNull();
+    const canvasSnapshot = getSnapshot();
+    const bodyPoolRenderCount = bodyPoolMocks.renderedOperationIds.length;
+
+    await act(async () => {
+      sideBarMocks.onResume?.("dormant");
+      await Promise.resolve();
+    });
+
+    expect(resumeOperation).toHaveBeenCalledWith("dormant");
+    expect(getState().activeTheaterId).toBe("theater-a");
+    expect(getState().activeOperationId).toBeNull();
+    expect(getState().pendingOperationFocus).toBeNull();
+    expect(getSnapshot()).toBe(canvasSnapshot);
+    expect(bodyPoolMocks.renderedOperationIds).toHaveLength(bodyPoolRenderCount);
+  });
+
   it("consumes a cold pending fit after loadForTheater restores the saved viewport", async () => {
     vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
       matches: query === "(prefers-reduced-motion: reduce)" || query === "(min-width: 832px)",

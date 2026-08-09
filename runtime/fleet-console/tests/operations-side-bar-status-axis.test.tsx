@@ -86,6 +86,7 @@ describe("OperationsSideBar STATUS axis", () => {
       "RUNNING",
       "BACKGROUND",
       "IDLE",
+      "Minimized",
       "DORMANT",
     ]);
     expect(container?.querySelector(".side-bar-group-header")).toBeNull();
@@ -104,14 +105,20 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(required<HTMLElement>('[data-side-bar-chip-id="awaiting"]').dataset.reorderEnabled).toBe("false");
   });
 
-  it("pins all five slots, defaults empty sections collapsed, and toggles empty and occupied sections independently", () => {
+  it("pins four live sections plus both recovery shelves, defaults empty sections collapsed, and toggles empty and occupied sections independently", () => {
     setConsoleState({ operationStatus: { only: "running" } });
     setSideBarStatusAxis(true);
     renderSideBar([makeOperation("only", null)]);
 
     const sections = Array.from(container?.querySelectorAll<HTMLElement>(".side-bar-status-section") ?? []);
-    expect(sections).toHaveLength(5);
-    expect(sections.map((section) => section.querySelector(".side-bar-status-header__count")?.textContent)).toEqual(["0", "1", "0", "0", "0"]);
+    expect(sections).toHaveLength(6);
+    expect(sections.map((section) => section.querySelector(".side-bar-status-header__count")?.textContent)).toEqual(["0", "1", "0", "0", "0", "0"]);
+    const recoveryShelves = Array.from(container?.querySelectorAll<HTMLElement>(".side-bar-status-recovery-shelf") ?? []);
+    expect(recoveryShelves).toHaveLength(2);
+    expect(recoveryShelves.map((shelf) => shelf.className)).toEqual([
+      "triage-side-bar-minimized-shelf side-bar-status-recovery-shelf",
+      "triage-side-bar-dormant-shelf side-bar-status-recovery-shelf",
+    ]);
 
     const awaiting = required<HTMLElement>(".side-bar-status-section--awaiting");
     expect(awaiting.className).toContain("side-bar-status-section--empty");
@@ -399,6 +406,87 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(container?.querySelector(".side-bar-status-header__unseen")).toBeNull();
   });
 
+  it("gives dormant recovery precedence over a minimized snapshot and keeps exactly-once membership", () => {
+    const operations = [
+      { ...makeOperation("dormant-minimized", null), payload: { resumeAvailable: true } },
+      makeOperation("live-minimized", null),
+      makeOperation("ordinary-live", null),
+    ];
+    setConsoleState({ operationStatus: { "dormant-minimized": "dormant", "live-minimized": "running", "ordinary-live": "idle" } });
+    setSideBarStatusAxis(true);
+    renderSideBar(operations, [], vi.fn(), THEATER.id, [THEATER], null, ["dormant-minimized", "live-minimized"]);
+
+    expect(container?.querySelectorAll('[data-side-bar-chip-id="dormant-minimized"]')).toHaveLength(1);
+    expect(container?.querySelectorAll('[data-side-bar-chip-id="live-minimized"]')).toHaveLength(1);
+    expect(required<HTMLElement>('[data-side-bar-chip-id="dormant-minimized"]').closest(".triage-side-bar-dormant-shelf")).not.toBeNull();
+    expect(required<HTMLElement>('[data-side-bar-chip-id="live-minimized"]').closest(".triage-side-bar-minimized-shelf")).not.toBeNull();
+    expect(required<HTMLElement>('[data-side-bar-chip-id="ordinary-live"]').closest(".side-bar-status-section--idle")).not.toBeNull();
+  });
+
+  it("preserves unseen arrival signals on the minimized recovery shelf but suppresses them on dormant recovery", () => {
+    const operations = [
+      makeOperation("minimized-unseen", null),
+      { ...makeOperation("dormant-unseen", null), payload: { resumeAvailable: true } },
+    ];
+    setConsoleState({ operationStatus: { "minimized-unseen": "running", "dormant-unseen": "running" } });
+    setSideBarStatusAxis(true);
+    renderSideBar(operations, [], vi.fn(), THEATER.id, [THEATER], null, ["minimized-unseen"]);
+    act(() => markIdleArrival("dormant-unseen"));
+    act(() => setConsoleState({ operationStatus: { "minimized-unseen": "idle", "dormant-unseen": "dormant" } }));
+
+    const minimizedShelf = required<HTMLElement>(".triage-side-bar-minimized-shelf");
+    const dormantShelf = required<HTMLElement>(".triage-side-bar-dormant-shelf");
+    const minimizedChip = required<HTMLElement>('[data-side-bar-chip-id="minimized-unseen"]');
+    const dormantChip = required<HTMLElement>('[data-side-bar-chip-id="dormant-unseen"]');
+    expect(minimizedChip.querySelector(".side-bar-chip-unseen")).not.toBeNull();
+    expect(minimizedChip.className).toContain("side-bar-chip--status-landed");
+    expect(minimizedShelf.querySelector(".side-bar-status-header__unseen")?.textContent).toBe("1");
+    expect(dormantChip.querySelector(".side-bar-chip-unseen")).toBeNull();
+    expect(dormantChip.className).not.toContain("side-bar-chip--status-landed");
+    expect(dormantShelf.querySelector(".side-bar-status-header__unseen")).toBeNull();
+  });
+
+  it.each([
+    { label: "active", activeTheaterId: THEATER.id },
+    { label: "inactive", activeTheaterId: THEATER_B.id },
+  ])("routes minimized activation through focus and dormant activation through resume in an $label Theater", ({ activeTheaterId }) => {
+    const onFocus = vi.fn();
+    const onResume = vi.fn();
+    const operations = [
+      { ...makeOperation("dormant", null), payload: { resumeAvailable: true } },
+      makeOperation("minimized", null),
+    ];
+    window.localStorage.setItem("fleet-console.canvas.theater-a", JSON.stringify({
+      viewport: { x: 0, y: 0, zoom: 1 },
+      operations: {},
+      operationOrder: ["dormant", "minimized"],
+      operationAccent: {},
+      minimized: ["minimized"],
+      collapsedGroups: [],
+    }));
+    setConsoleState({ operationStatus: { dormant: "dormant", minimized: "running" } });
+    setSideBarStatusAxis(true);
+    renderSideBar(
+      operations,
+      [],
+      vi.fn(),
+      activeTheaterId,
+      activeTheaterId === THEATER.id ? [THEATER] : [THEATER_B, THEATER],
+      null,
+      activeTheaterId === THEATER.id ? ["minimized"] : [],
+      onFocus,
+      onResume,
+    );
+
+    act(() => required<HTMLElement>('[data-side-bar-chip-id="minimized"]').click());
+    act(() => required<HTMLElement>('[data-side-bar-chip-id="dormant"]').click());
+
+    expect(onFocus).toHaveBeenCalledTimes(1);
+    expect(onFocus).toHaveBeenCalledWith("minimized");
+    expect(onResume).toHaveBeenCalledTimes(1);
+    expect(onResume).toHaveBeenCalledWith("dormant");
+  });
+
   it("baselines the first live status of a restored Operation before tracking later transitions", () => {
     const operation = {
       ...makeOperation("restored", null),
@@ -472,11 +560,14 @@ function renderSideBar(
   activeTheaterId: string = THEATER.id,
   theaters: readonly TheaterInfo[] = [THEATER],
   activeOperationId: string | null = null,
+  minimized: readonly string[] = [],
+  onFocus = vi.fn(),
+  onResume = vi.fn(),
 ): void {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
-  act(() => root?.render(sideBarElement(operations, groups, onSelectTheater, activeTheaterId, theaters, activeOperationId)));
+  act(() => root?.render(sideBarElement(operations, groups, onSelectTheater, activeTheaterId, theaters, activeOperationId, minimized, onFocus, onResume)));
 }
 
 function rerenderSideBar(
@@ -496,13 +587,16 @@ function sideBarElement(
   activeTheaterId: string,
   theaters: readonly TheaterInfo[],
   activeOperationId: string | null,
+  minimized: readonly string[] = [],
+  onFocus = vi.fn(),
+  onResume = vi.fn(),
 ) {
   return createElement(MemoryRouter, null, createElement(OperationsSideBar, {
     theaters,
     activeTheaterId,
     operations,
     groups,
-    minimized: [],
+    minimized,
     activeOperationId,
     operationNotifications: {},
     catalog: [],
@@ -514,7 +608,8 @@ function sideBarElement(
     onResetView: () => {},
     onClose: () => {},
     onMinimize: () => {},
-    onFocus: () => {},
+    onFocus,
+    onResume,
     onSetAccent: () => {},
     onRename: () => {},
     onSetGroupId: () => {},
