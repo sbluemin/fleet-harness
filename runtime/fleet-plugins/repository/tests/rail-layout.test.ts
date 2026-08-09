@@ -36,7 +36,7 @@ class FakeEventTarget {
 }
 
 describe("clampListPaneWidth", () => {
-  it("keeps the right list pane at its px width when the divider does not move", () => {
+  it("keeps the left list pane at its px width when the divider does not move", () => {
     expect(clampListPaneWidth({
       startWidth: 248,
       dx: 0,
@@ -47,7 +47,7 @@ describe("clampListPaneWidth", () => {
     })).toBe(248);
   });
 
-  it("shrinks the Diff panel's right list pane when dragging right", () => {
+  it("grows the Changes view's left list pane when dragging right", () => {
     expect(clampListPaneWidth({
       startWidth: 360,
       dx: 40,
@@ -55,13 +55,24 @@ describe("clampListPaneWidth", () => {
       listPaneMinWidth: 220,
       hunkPaneMinWidth: 140,
       dividerWidth: 4,
-    })).toBe(320);
+    })).toBe(400);
   });
 
-  it("grows the Diff panel's right list pane when dragging left", () => {
+  it("shrinks the Changes view's left list pane to its minimum when dragging left", () => {
+    expect(clampListPaneWidth({
+      startWidth: 360,
+      dx: -500,
+      containerWidth: 712,
+      listPaneMinWidth: 220,
+      hunkPaneMinWidth: 140,
+      dividerWidth: 4,
+    })).toBe(220);
+  });
+
+  it("stops the left list pane at the width that still preserves the diff pane minimum", () => {
     expect(clampListPaneWidth({
       startWidth: 248,
-      dx: -500,
+      dx: 500,
       containerWidth: 712,
       listPaneMinWidth: 220,
       hunkPaneMinWidth: 140,
@@ -82,10 +93,10 @@ describe("clampListPaneWidth", () => {
 });
 
 describe("buildDiffGridTemplate", () => {
-  it("저장된 우측 폭을 좌측 최소폭 보존 CSS clamp로 감싼다", () => {
-    const preservedLeftWidth = HUNK_PANE_MIN_WIDTH + DIFF_DIVIDER_WIDTH;
+  it("파일 목록을 좌측 고정 열에 두고 저장 폭을 우측 최소폭 보존 CSS clamp로 감싼다", () => {
+    const preservedRightWidth = HUNK_PANE_MIN_WIDTH + DIFF_DIVIDER_WIDTH;
     expect(buildDiffGridTemplate(568)).toBe(
-      `minmax(0, 1fr) ${DIFF_DIVIDER_WIDTH}px minmax(0, min(568px, calc(100% - ${preservedLeftWidth}px)))`,
+      `minmax(0, min(568px, calc(100% - ${preservedRightWidth}px))) ${DIFF_DIVIDER_WIDTH}px minmax(0, 1fr)`,
     );
   });
 });

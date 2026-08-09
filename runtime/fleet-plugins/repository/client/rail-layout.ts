@@ -42,12 +42,12 @@ export function clampListPaneWidth({
 }: ListPaneWidthInput): number | null {
   const maxWidth = containerWidth - hunkPaneMinWidth - dividerWidth;
   if (maxWidth < listPaneMinWidth) return NO_OP_SENTINEL;
-  return Math.max(listPaneMinWidth, Math.min(maxWidth, startWidth - dx));
+  return Math.max(listPaneMinWidth, Math.min(maxWidth, startWidth + dx));
 }
 
 export function buildDiffGridTemplate(listPaneWidth: number): string {
-  const preservedLeftWidth = HUNK_PANE_MIN_WIDTH + DIFF_DIVIDER_WIDTH;
-  return `minmax(0, 1fr) ${DIFF_DIVIDER_WIDTH}px minmax(0, min(${listPaneWidth}px, calc(100% - ${preservedLeftWidth}px)))`;
+  const preservedRightWidth = HUNK_PANE_MIN_WIDTH + DIFF_DIVIDER_WIDTH;
+  return `minmax(0, min(${listPaneWidth}px, calc(100% - ${preservedRightWidth}px))) ${DIFF_DIVIDER_WIDTH}px minmax(0, 1fr)`;
 }
 
 export function buildHistoryStackTemplate(logPaneHeight: number): string {
