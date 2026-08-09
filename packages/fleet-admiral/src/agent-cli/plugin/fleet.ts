@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import { resolveDoctrineFromCliId, type AdmiralDoctrine } from "../../protocols/doctrine.js";
-import { EMBEDDED_AGENT_CLI_SKILL_ASSETS } from "../assets.generated.js";
+import { EMBEDDED_AGENT_CLI_HOOK_ASSETS, EMBEDDED_AGENT_CLI_SKILL_ASSETS } from "../assets.generated.js";
 import { buildGatewayAgentFiles, FLEET_PLUGIN_NAME } from "../gateway-agents.js";
 import { writePrivateFile, writePrivateJson } from "./fs.js";
 import type { FleetHookExec } from "../types.js";
@@ -28,7 +28,8 @@ export function renderAssetPluginRoot(
 ): void {
   const doctrine = options.doctrine ?? resolveDoctrineFromCliId(options.cliId);
   renderEmbeddedSkillAssets(pluginRoot, doctrine);
-  writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), claudeHooks(options), pluginRoot);
+  const workflowGuardScriptPath = writeWorkflowGuardScript(pluginRoot);
+  writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), claudeHooks(options, workflowGuardScriptPath), pluginRoot);
   // 게이트웨이 정체성은 이 플러그인이 싣는다. 렌더는 스테이징 디렉터리에 전부 쓰고
   // 한 번에 rename하므로, 노출 목록이 줄어든 세션에서 옛 정의가 남아 있을 수 없다.
   renderGatewayAgentAssets(pluginRoot, options);
@@ -40,7 +41,15 @@ function renderGatewayAgentAssets(pluginRoot: string, options: CreateAgentCliPlu
   }
 }
 
-function claudeHooks(options: CreateAgentCliPluginOptions): unknown {
+function writeWorkflowGuardScript(pluginRoot: string): string {
+  const asset = EMBEDDED_AGENT_CLI_HOOK_ASSETS.find((entry) => entry.relativePath === "workflow-guard.mjs");
+  if (!asset) throw new Error("Missing embedded workflow-guard hook asset");
+  const scriptPath = path.join(pluginRoot, "hooks", "workflow-guard.mjs");
+  writePrivateFile(scriptPath, asset.content, pluginRoot);
+  return scriptPath;
+}
+
+function claudeHooks(options: CreateAgentCliPluginOptions, workflowGuardScriptPath?: string): unknown {
   // UserPromptSubmit: 세션 캡처 → 턴 시작 → 자동 작명 순서로 같은 이벤트에 렌더한다.
   const userPromptSubmitExecs = [options.captureSessionHookExec, options.turnStartHookExec, options.autoNameHookExec]
     .filter((exec): exec is FleetHookExec => exec !== undefined);
@@ -54,9 +63,23 @@ function claudeHooks(options: CreateAgentCliPluginOptions): unknown {
   // (idle_prompt(정상 유휴 대기, 차단 아님)·auth_success·elicitation_complete/response 등 비대기 타입 제외).
   // 한 번의 대기가 PreToolUse와 Notification 두 경로로 동시에 들어올 수 있어, 최종 중복 제거는 클라이언트(store)에서 세션별로 한다.
   const inputWaitingExec = options.inputWaitingHookExec;
-  const preToolUse = inputWaitingExec
-    ? [{ matcher: "AskUserQuestion", hooks: [claudeCommandHook(inputWaitingExec)] }]
-    : [];
+  const preToolUse = [
+    ...(inputWaitingExec
+      ? [{ matcher: "AskUserQuestion", hooks: [claudeCommandHook(inputWaitingExec)] }]
+      : []),
+    ...(workflowGuardScriptPath
+      ? [{
+          // 워크플로우 모델 가드: 백그라운드 카운팅 신호가 아니라 정책 게이트다. 동적 워크플로우
+          // 스크립트의 opts.model/agentType을 실행 전에 검증하고 위반 시 차단한다. #554에서 제거된
+          // Task/Agent/Workflow spawn 카운팅 훅과 달리 호스트로 어떤 신호도 보내지 않는다.
+          // 플러그인 루트는 렌더 시 스테이징 디렉터리에 쓰였다가 rename되므로 절대 경로를 남기지
+          // 않고 ${CLAUDE_PLUGIN_ROOT} 플레이스홀더를 사용한다 — 훅 실행 시점에 실제 루트로 치환된다.
+          // command는 런처의 다른 훅(capture-session 등)과 동일하게 절대 node 경로를 쓴다.
+          matcher: "Workflow",
+          hooks: [claudeCommandHook({ command: process.execPath, args: ["${CLAUDE_PLUGIN_ROOT}/hooks/workflow-guard.mjs"] })],
+        }]
+      : []),
+  ];
   return {
     hooks: {
       ...(userPromptSubmitExecs.length > 0 ? {
