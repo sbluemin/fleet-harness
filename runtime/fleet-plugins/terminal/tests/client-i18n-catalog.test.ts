@@ -20,6 +20,14 @@ const NEW_MESSAGE_KEYS = [
   "terminal.settings.aiGatewayDiagnosticsFoot",
   "terminal.settings.aiGatewayWireLog",
   "terminal.settings.aiGatewayWireLogHelp",
+  "terminal.settings.terminalDrawingAria",
+  "terminal.settings.terminalDrawingFoot",
+  "terminal.settings.inactiveFlush",
+  "terminal.settings.inactiveFlushHelp",
+  "terminal.settings.inactiveFlushAria",
+  "terminal.settings.inactiveFlushSaving",
+  "terminal.settings.inactiveFlushBalanced",
+  "terminal.settings.inactiveFlushInstant",
 ] as const satisfies readonly (keyof typeof terminalEn)[];
 
 const PLACEHOLDER_KEYS = [

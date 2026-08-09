@@ -1,5 +1,25 @@
 export type TerminalRenderer = "webgl" | "dom";
 
+export type TerminalInactiveFlush = "saving" | "balanced" | "instant";
+
+export const DEFAULT_TERMINAL_INACTIVE_FLUSH: TerminalInactiveFlush = "balanced";
+
+// 선택하지 않은 패널이 출력을 화면에 옮기는 주기. 활성 패널은 이 설정의 대상이 아니다 — 사용자가
+// 보고 있는 터미널을 느리게 만드는 선택지는 만들지 않는다. balanced가 이 설정이 생기기 전의 동작이다.
+const TERMINAL_INACTIVE_FLUSH_MS: Record<TerminalInactiveFlush, number> = {
+  saving: 500,
+  balanced: 250,
+  instant: 50,
+};
+
+export function terminalInactiveFlushMs(inactiveFlush: TerminalInactiveFlush): number {
+  return TERMINAL_INACTIVE_FLUSH_MS[inactiveFlush];
+}
+
+export function isTerminalInactiveFlush(value: unknown): value is TerminalInactiveFlush {
+  return value === "saving" || value === "balanced" || value === "instant";
+}
+
 export type TerminalFontId = "cascadia" | "jetbrains" | "fira-code" | "source-code-pro";
 
 export type TerminalFontSource = "curated" | "custom";
@@ -183,12 +203,14 @@ import type { ClientSettingsCapability } from "@fleet-console/sdk/plugin";
 
 interface TerminalPrefsState {
   readonly renderer: TerminalRenderer;
+  readonly inactiveFlush: TerminalInactiveFlush;
   readonly font: TerminalFontSettings;
 }
 
 type Listener = () => void;
 
 const RENDERER_KEY = "fleet-plugin.terminal.renderer";
+const INACTIVE_FLUSH_KEY = "fleet-plugin.terminal.inactiveFlush";
 const FONT_KEY = "fleet-plugin.terminal.font";
 const LEGACY_RENDERER_KEY = "fleet-console.terminalRenderer";
 const LEGACY_FONT_KEY = "fleet-console.terminalFont";
@@ -238,6 +260,10 @@ export function useTerminalRenderer(): TerminalRenderer {
   return useSyncExternalStore(subscribe, () => state.renderer, () => state.renderer);
 }
 
+export function useTerminalInactiveFlush(): TerminalInactiveFlush {
+  return useSyncExternalStore(subscribe, () => state.inactiveFlush, () => state.inactiveFlush);
+}
+
 export function useTerminalFontSettings(): TerminalFontSettings {
   return useSyncExternalStore(subscribe, () => state.font, () => state.font);
 }
@@ -245,6 +271,11 @@ export function useTerminalFontSettings(): TerminalFontSettings {
 export function setTerminalRenderer(renderer: TerminalRenderer): void {
   writeStoredRenderer(renderer);
   patchState({ renderer });
+}
+
+export function setTerminalInactiveFlush(inactiveFlush: TerminalInactiveFlush): void {
+  writeStoredInactiveFlush(inactiveFlush);
+  patchState({ inactiveFlush });
 }
 
 export function setTerminalFont(fontId: TerminalFontId): void {
@@ -345,6 +376,25 @@ function readStoredRenderer(): TerminalRenderer {
   }
 }
 
+function readStoredInactiveFlush(): TerminalInactiveFlush {
+  if (typeof window === "undefined") return DEFAULT_TERMINAL_INACTIVE_FLUSH;
+  try {
+    const stored = window.localStorage.getItem(INACTIVE_FLUSH_KEY);
+    return isTerminalInactiveFlush(stored) ? stored : DEFAULT_TERMINAL_INACTIVE_FLUSH;
+  } catch {
+    return DEFAULT_TERMINAL_INACTIVE_FLUSH;
+  }
+}
+
+function writeStoredInactiveFlush(inactiveFlush: TerminalInactiveFlush): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(INACTIVE_FLUSH_KEY, inactiveFlush);
+  } catch {
+    // 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
+  }
+}
+
 function readStoredFont(): TerminalFontSettings {
   if (typeof window === "undefined") return createDefaultTerminalFontSettings();
   try {
@@ -383,8 +433,8 @@ function getSnapshot(): TerminalPrefsState {
 
 function initState(): TerminalPrefsState {
   if (typeof window === "undefined") {
-    return { renderer: "webgl", font: createDefaultTerminalFontSettings() };
+    return { renderer: "webgl", inactiveFlush: DEFAULT_TERMINAL_INACTIVE_FLUSH, font: createDefaultTerminalFontSettings() };
   }
   migrateLegacyTerminalPrefs();
-  return { renderer: readStoredRenderer(), font: readStoredFont() };
+  return { renderer: readStoredRenderer(), inactiveFlush: readStoredInactiveFlush(), font: readStoredFont() };
 }

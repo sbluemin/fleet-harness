@@ -9,8 +9,8 @@ import { defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import type { OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { TerminalSurface } from "../shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE } from "../shared/terminal-preferences.js";
-import { getTerminalPrefsSnapshot, useTerminalPrefs, setInstalledTerminalFont, setTerminalRenderer, setTerminalFont, setTerminalFontSize } from "../shared/terminal-preferences.js";
-import type { TerminalFontId, TerminalFontSettings, TerminalRenderer } from "../shared/terminal-preferences.js";
+import { getTerminalPrefsSnapshot, useTerminalPrefs, setInstalledTerminalFont, setTerminalRenderer, setTerminalInactiveFlush, setTerminalFont, setTerminalFontSize } from "../shared/terminal-preferences.js";
+import type { TerminalFontId, TerminalFontSettings, TerminalInactiveFlush, TerminalRenderer } from "../shared/terminal-preferences.js";
 import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
 import { AnalystChatPanel } from "./analysis-chat-panel.js";
 import { fetchAnalysisReady } from "./analysis-api.js";
@@ -61,6 +61,8 @@ interface PinnedScrollLocal {
 }
 
 const RENDERER_IDS = ["webgl", "dom"] as const satisfies readonly TerminalRenderer[];
+// 절약 → 즉시 순서로 둔다 — 세그먼트를 오른쪽으로 갈수록 더 자주 그리는 축으로 읽게 한다.
+const INACTIVE_FLUSH_IDS = ["saving", "balanced", "instant"] as const satisfies readonly TerminalInactiveFlush[];
 
 const AGENT_TICKET_PATH = "/plugins/terminal/agent/ticket";
 const TERMINAL_WS_PATH = "/plugins/terminal/ws";
@@ -440,7 +442,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
 }
 
 function GeneralSection() {
-  const { renderer: terminalRenderer, font: terminalFont } = useTerminalPrefs();
+  const { renderer: terminalRenderer, inactiveFlush: terminalInactiveFlush, font: terminalFont } = useTerminalPrefs();
 
   // 카드를 Fragment로 직접 반환한다. 카드 간 간격은 호스트의 .global-settings-detail(그리드 gap)이
   // 제공하므로, 플러그인은 자체 래퍼로 감싸 그 간격을 가로채지 않는다(간격은 호스트 소관).
@@ -449,7 +451,7 @@ function GeneralSection() {
       <ClaudeGatewaySystemPromptSettingsBlock />
       <IdleAgentSessionsSettingsBlock />
       <TerminalFontSettingsCard terminalFont={terminalFont} />
-      <TerminalRendererCard terminalRenderer={terminalRenderer} />
+      <TerminalDrawingCard terminalRenderer={terminalRenderer} terminalInactiveFlush={terminalInactiveFlush} />
     </>
   );
 }
@@ -1619,11 +1621,21 @@ function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: Ter
   );
 }
 
-function TerminalRendererCard({ terminalRenderer }: { readonly terminalRenderer: TerminalRenderer }) {
+// 렌더러와 갱신 주기는 같은 축이다 — 둘 다 이 브라우저가 터미널을 그리는 방식이고, 둘 다 브라우저
+// 로컬에 남는다. 그래서 한 카드의 두 행으로 둔다(카드의 접근성 이름은 두 행을 아우른다).
+function TerminalDrawingCard({ terminalRenderer, terminalInactiveFlush }: {
+  readonly terminalRenderer: TerminalRenderer;
+  readonly terminalInactiveFlush: TerminalInactiveFlush;
+}) {
   const t = getT(useTerminalLocale());
-  const labels = { webgl: t("terminal.settings.webgl"), dom: t("terminal.settings.dom") } as const;
+  const rendererLabels = { webgl: t("terminal.settings.webgl"), dom: t("terminal.settings.dom") } as const;
+  const inactiveFlushLabels = {
+    saving: t("terminal.settings.inactiveFlushSaving"),
+    balanced: t("terminal.settings.inactiveFlushBalanced"),
+    instant: t("terminal.settings.inactiveFlushInstant"),
+  } as const;
   return (
-    <section className="global-settings-card" aria-label={t("terminal.settings.terminalRenderer")}>
+    <section className="global-settings-card" aria-label={t("terminal.settings.terminalDrawingAria")}>
       <div className="global-settings-row">
         <div className="global-settings-row-text">
           <p className="global-settings-resp-title">{t("terminal.settings.terminalRenderer")}</p>
@@ -1640,12 +1652,35 @@ function TerminalRendererCard({ terminalRenderer }: { readonly terminalRenderer:
                 className={`segmented-option ${isActive ? "is-active" : ""}`}
                 onClick={() => setTerminalRenderer(rendererId)}
               >
-                {labels[rendererId]}
+                {rendererLabels[rendererId]}
               </button>
             );
           })}
         </div>
       </div>
+      <div className="global-settings-row">
+        <div className="global-settings-row-text">
+          <p className="global-settings-resp-title">{t("terminal.settings.inactiveFlush")}</p>
+          <p className="global-settings-help">{t("terminal.settings.inactiveFlushHelp")}</p>
+        </div>
+        <div className="segmented" role="group" aria-label={t("terminal.settings.inactiveFlushAria")}>
+          {INACTIVE_FLUSH_IDS.map((inactiveFlushId) => {
+            const isActive = inactiveFlushId === terminalInactiveFlush;
+            return (
+              <button
+                key={inactiveFlushId}
+                type="button"
+                aria-pressed={isActive}
+                className={`segmented-option ${isActive ? "is-active" : ""}`}
+                onClick={() => setTerminalInactiveFlush(inactiveFlushId)}
+              >
+                {inactiveFlushLabels[inactiveFlushId]}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <p className="global-settings-foot">{t("terminal.settings.terminalDrawingFoot")}</p>
     </section>
   );
 }
