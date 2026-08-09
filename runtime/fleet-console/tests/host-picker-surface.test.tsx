@@ -222,11 +222,96 @@ describe("the list home unfolds", () => {
 });
 
 /**
- * 스캔이 답했는데 그 안에 집이 없다는 사실은, 이 화면을 집이 아닌 콘솔이 서빙했을 때에만
- * 사망의 증거가 된다 — 그 판정은 위 완화 뒤에도 그대로 남아야 한다.
+ * WSL 안의 콘솔은 `127.0.0.1`로 열리지만 그 콘솔이 도는 곳은 Windows 쪽을 볼 수 없는 다른
+ * 기계다 — 그쪽 스캔은 이 기계의 콘솔을 원리적으로 찾지 못한다. 주소 모양에는 그 경계가
+ * 드러나지 않으므로, 집인지 아닌지는 셸이 말한 집 주소와의 비교만이 답한다.
+ */
+describe("host box on a loopback console that is not home", () => {
+  const GUEST = "http://127.0.0.1:2253";
+
+  it("asks home to unfold its list instead of opening this console's", async () => {
+    stubLoopbackConsole(GUEST, [scanned(GUEST)]);
+
+    await mount(createElement(HostSwitcher));
+    await act(async () => { document.querySelector<HTMLButtonElement>(".host-switcher-chip")!.click(); });
+
+    expect(assign).toHaveBeenCalledOnce();
+    const url = new URL(assign.mock.calls[0]![0] as string);
+    expect(url.origin).toBe(HOME);
+    expect(url.pathname).toBe("/console/");
+    expect(url.searchParams.get("desktop-surface")).toBe("host-picker");
+    expect(url.searchParams.get("at")).toBe(GUEST);
+    // 이 콘솔의 판은 열리지 않는다 — 목록은 집의 것이다.
+    expect(rows()).toHaveLength(0);
+  });
+
+  /** 칩이 "여기"라고 말하면 집을 떠나 있다는 사실이 사라진다. */
+  it("names the console it is standing on instead of calling it local", async () => {
+    stubLoopbackConsole(GUEST, [scanned(GUEST)]);
+
+    await mount(createElement(HostSwitcher));
+
+    expect(document.querySelector(".host-switcher-chip")!.textContent).toContain("127.0.0.1:2253");
+  });
+
+  /**
+   * 집 주소는 창보다 늦게 도착할 수 있다. 그 사이 "여기"라고 말하면 손님 콘솔이 집 행세를
+   * 하고, 사용자는 그 말을 믿고 눌러 남의 목록을 편다. 모를 때는 아무 말도 하지 않는다.
+   */
+  it("does not call itself local while it has not been told where home is", async () => {
+    standOn(GUEST);
+    let tellHome = (_: Response) => {};
+    vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+      const path = new URL(input, GUEST).pathname;
+      if (path === "/api/v1/desktop/shell") return new Promise<Response>((resolve) => { tellHome = resolve; });
+      if (path === "/api/v1/local-consoles") return Response.json({ consoles: [scanned(GUEST)] });
+      if (path === "/api/v1/remote-hosts") return Response.json({ hosts: [] });
+      return Response.json({ reachable: true, trusted: true });
+    }));
+
+    await mount(createElement(HostSwitcher));
+
+    // 아직 답이 오지 않았다 — 이 콘솔은 자기가 집이라고 주장하지 않는다.
+    expect(document.querySelector(".host-switcher-chip")!.textContent).not.toContain("Local");
+
+    // 그새 눌러 이 콘솔의 판이 열렸더라도, 집 주소가 도착하면 그 판은 남의 목록이므로 걷힌다.
+    await act(async () => { document.querySelector<HTMLButtonElement>(".host-switcher-chip")!.click(); });
+    expect(assign).not.toHaveBeenCalled();
+
+    await act(async () => { tellHome(Response.json({ homeOrigin: HOME })); await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(rows()).toHaveLength(0);
+    // 누름은 사라지지 않는다 — 뜻대로 집의 목록을 청한다.
+    expect(assign).toHaveBeenCalledOnce();
+    const url = new URL(assign.mock.calls[0]![0] as string);
+    expect(url.origin).toBe(HOME);
+    expect(url.searchParams.get("desktop-surface")).toBe("host-picker");
+    expect(url.searchParams.get("at")).toBe(GUEST);
+  });
+
+  /** 집이 그린 판에서도 손님 줄은 손님의 이름을 달아야 한다. */
+  it("does not lend the serving console's own name to the guest row", async () => {
+    stubHomeConsole([scanned(HOME), { origin: GUEST, version: "1.52.0", owner: "cli", distro: "Ubuntu-26.04" }]);
+
+    await mount(createElement(HostPickerScreen, { surface: { at: GUEST } }));
+
+    const current = rows().find((row) => row.getAttribute("aria-checked") === "true");
+    expect(current?.textContent).toContain("Ubuntu-26.04");
+    expect(current?.textContent).not.toContain(new URL(HOME).host);
+    // 이름을 지어 준 적이 없으면 그 줄은 자기 폴백을 쓴다 — 주소는 상세가 이미 말한다.
+    expect(current?.textContent).toContain("Fleet Console");
+  });
+});
+
+/**
+ * 스캔이 답했는데 그 안에 집이 없다는 사실은, 셸이 끼어들지 않은 화면에서만 사망의 증거가
+ * 된다 — 그 판정은 위 완화 뒤에도 그대로 남아야 한다. 셸이 창을 들고 있으면 목록을 그리는
+ * 쪽이 집이므로, 이 콘솔의 스캔이 무엇을 못 봤는지는 그 동선을 가로막지 못한다.
  */
 describe("a home the scan disproves", () => {
   it("does not stand a row on a console that is not home", async () => {
+    delete document.documentElement.dataset.desktopShell;
     stubLoopbackConsole(NEIGHBOUR, [scanned(NEIGHBOUR)]);
 
     await mount(createElement(HostSwitcher));

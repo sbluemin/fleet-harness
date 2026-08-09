@@ -7,16 +7,30 @@ import { useEffect, useState } from "react";
  * 이 값은 게시한 창에만 되돌아온다. 다른 사람의 화면에 흘러가면 거기서는 그 사람의 기계를
  * 가리키기 때문이다 — 서버가 요청자를 보고 가리므로, 여기서는 한 번 읽어 오기만 한다.
  */
-export function useDesktopHomeOrigin(): string | null {
-  const [homeOrigin, setHomeOrigin] = useState<string | null>(null);
+export interface DesktopShellHome {
+  /** 셸이 게시한 집. 셸이 없거나 아직 게시하지 않았으면 null. */
+  readonly origin: string | null;
+  /** 아직 답을 받지 못했는가. */
+  readonly pending: boolean;
+}
+
+/**
+ * "아직 모른다"와 "집이 없다"는 다르다. 둘을 하나의 null로 합치면, 답이 오기 전 잠깐 동안
+ * 손님 콘솔이 자기가 집인 것처럼 보인다 — 그 사이 사용자가 칩을 누르면 남의 목록이 펼쳐진다.
+ */
+export function useDesktopHomeOrigin(): DesktopShellHome {
+  const [home, setHome] = useState<DesktopShellHome>({ origin: null, pending: true });
 
   useEffect(() => {
     const controller = new AbortController();
-    void fetchDesktopHomeOrigin(controller.signal).then(setHomeOrigin).catch(() => undefined);
+    void fetchDesktopHomeOrigin(controller.signal)
+      .then((origin) => setHome({ origin, pending: false }))
+      // 끊긴 요청은 답이 아니다 — 이 화면은 이미 사라졌거나 곧 다시 묻는다.
+      .catch(() => { if (!controller.signal.aborted) setHome({ origin: null, pending: false }); });
     return () => controller.abort();
   }, []);
 
-  return homeOrigin;
+  return home;
 }
 
 export async function fetchDesktopHomeOrigin(signal?: AbortSignal): Promise<string | null> {

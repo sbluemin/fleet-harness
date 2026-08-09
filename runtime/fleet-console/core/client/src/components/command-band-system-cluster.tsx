@@ -134,7 +134,8 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   const t = useT();
   const state = useConsoleState();
   const hosts = useRemoteHosts();
-  const homeOrigin = useDesktopHomeOrigin();
+  const shellHome = useDesktopHomeOrigin();
+  const homeOrigin = shellHome.origin;
   // 원격으로 건너가는 일은 셸의 인증서 배관을 거쳐야 한다. 브라우저 단독에서는 내주지 않는다.
   const canOpenRemote = isDesktopShell();
   const navigate = useNavigate();
@@ -208,6 +209,15 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   const currentOrigin = (inPicker ? picker.at : null) ?? location.origin;
   const currentIsLoopback = isLoopbackOrigin(currentOrigin);
   /**
+   * 집을 떠나 있는가. 셸이 말한 집과 지금 서 있는 콘솔이 다르면 그렇다.
+   *
+   * 주소 모양은 이 질문에 답하지 못한다. WSL 안의 콘솔은 `127.0.0.1`로 열리지만 그 콘솔이
+   * 도는 곳은 이 기계의 콘솔을 원리적으로 찾지 못하는 다른 기계다 — 루프백이라는 사실은
+   * 같은 기계라는 뜻이 아니다. 셸은 창을 옮길 때마다 집 주소를 게시하므로, 그 값과의 비교
+   * 하나가 원격·WSL·이웃 콘솔을 한 규칙으로 가른다.
+   */
+  const awayFromHome = homeOrigin !== null && currentOrigin !== homeOrigin;
+  /**
    * "이 컴퓨터"에 실릴 수 있는 것은 이 창이 실제로 닿을 수 있는 콘솔뿐이다.
    *
    * 스캔은 루프백 리스너에서만 답하므로, 원격 콘솔을 보고 있으면 비어 있다. 그때 돌아갈 곳을
@@ -218,6 +228,9 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
    * 때문이다. 스캔은 정규 슬롯 두 곳만 보므로 데이터 루트를 재지정한 콘솔(격리 실행 등)은
    * 설계상 자기 목록에도 잡히지 않는다. 그 추정을 그대로 두면 집이 살아 있는데도 집 줄이
    * 사라지고, 원격에서 펼친 목록에는 돌아갈 길이 아예 남지 않는다.
+   *
+   * 이 추정이 서는 곳은 이 콘솔이 직접 그리는 판뿐이다. 셸이 창을 들고 있으면 목록은 집이
+   * 그리므로(아래 `pickerHome`), 이 스캔이 무엇을 못 봤는지는 그 동선을 가로막지 못한다.
    */
   const homeIsLive = homeOrigin !== null
     && (homeOrigin === location.origin || local.length === 0 || local.some((entry) => entry.origin === homeOrigin));
@@ -236,22 +249,54 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   /**
    * 지금 서 있는 콘솔의 이름은 한 번만 정한다 — 칩과 목록이 서로 다른 규칙으로 지으면
    * 같은 콘솔이 두 이름으로 보인다. 사용자가 고쳐 부른 이름이 있으면 그것이 우선이다.
+   *
+   * 집이 펼친 목록에서는 이 화면의 이름도 주소도 빌려 오지 않는다. 거기서 도는 콘솔은 집이라,
+   * 그 이름을 손님 줄에 붙이면 집과 손님이 같은 이름으로 읽힌다. 사용자가 지어 준 이름이 없으면
+   * 비워 두고 각 줄이 자기 폴백을 쓰게 한다 — 주소는 이미 그 줄의 상세가 말한다.
    */
-  const currentLabel = savedCurrent?.label || state.consoleName || location.host;
-  // 이 컴퓨터의 콘솔에 서 있으면 어느 콘솔인지가 아니라 "여기"라는 사실만 말한다.
+  const currentLabel = savedCurrent?.label || (inPicker ? "" : state.consoleName || currentHost(currentOrigin));
+  /**
+   * 집에 서 있을 때만 "여기"라고 말한다. 집을 떠나 있으면 어느 콘솔인지가 답이다 — 칩을
+   * 누르면 집의 목록이 펼쳐지므로, 칩까지 "여기"라고 하면 어디에 서 있었는지가 사라진다.
+   *
+   * 셸이 창을 들고 있는데 아직 집 주소를 못 받았다면 아무 말도 하지 않는다. 그 순간 "여기"라고
+   * 하면 손님 콘솔이 집 행세를 하게 되고, 사용자는 그 말을 믿고 누른다. 셸이 아예 없을 때만
+   * 스캔에 든 사실로 대신한다 — 그때는 답이 늦는 것이 아니라 답할 셸이 없는 것이다.
+   */
+  const standingAtHome = canOpenRemote && shellHome.pending
+    ? false
+    : homeOrigin === null ? nearbyCurrent : currentOrigin === homeOrigin;
   const chipLabel = state.controlHolder !== null
     ? t("chrome.control.shared")
-    : nearbyCurrent
+    : standingAtHome
       ? t("chrome.hosts.local")
       : currentLabel;
 
   /**
-   * 원격 콘솔에서 칩을 누르면 이 콘솔의 목록을 펴는 대신 집에게 목록을 펴 달라고 한다.
+   * 집을 떠나 있을 때 칩을 누르면 이 콘솔의 목록을 펴는 대신 집에게 목록을 펴 달라고 한다.
    * 셸이 그 항해를 가로채 집의 화면을 이 위에 얹으므로, 이 콘솔은 남의 기계 주소를 받지 않는다.
+   *
+   * 목적지는 `home`이 아니라 셸이 말한 값 그대로다. `home`은 이 콘솔의 스캔이 확인해 준 집이고,
+   * WSL처럼 스캔이 닿지 못하는 곳에서는 비어 있다 — 그 침묵이 돌아가는 길까지 지워서는 안 된다.
    */
-  const pickerHome = !inPicker && canOpenRemote && !currentIsLoopback && home !== null ? home : null;
+  const pickerHome = !inPicker && canOpenRemote && awayFromHome ? homeOrigin : null;
 
-  if (!inPicker && nearby.length === 0 && hosts.length === 0) return null;
+  /**
+   * 집 주소는 늦게 도착할 수 있고, 그 전에 누른 칩은 이 콘솔의 판을 편다. 주소가 도착해 이
+   * 콘솔이 목록의 주인이 아니게 되면 그 판은 남의 목록이다 — 걷고, 사용자가 누른 뜻대로 집에게
+   * 목록을 청한다. 걷기만 하면 그 누름은 아무 일도 일어나지 않은 채 사라진다.
+   *
+   * 이 자리에 닿는 길은 그 어긋남 하나뿐이다. 주소를 알고 있었다면 칩이 처음부터 여기로 보냈고,
+   * 집이 펼친 목록에서는 `pickerHome`이 서지 않는다.
+   */
+  useEffect(() => {
+    if (pickerHome === null || !open) return;
+    setOpen(false);
+    location.assign(pickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin));
+  }, [pickerHome, open, currentOrigin]);
+
+  // 집을 떠나 있으면 목록이 비어 보여도 칩은 남는다 — 그 칩이 돌아가는 유일한 문이다.
+  if (!inPicker && pickerHome === null && nearby.length === 0 && hosts.length === 0) return null;
   const openSettings = () => {
     // 관리는 집의 설정 화면에서 한다. 덮개는 목록만 들고 있으므로 창째로 집에 보낸다.
     if (inPicker) {
@@ -337,7 +382,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
           {!nearbyCurrent && savedCurrent === null ? (
             <>
               <div className="host-switcher-divider" role="separator" />
-              <HostRow live name={currentLabel} detail={`${location.host} · ${t("chrome.hosts.notSaved")}`} current />
+              <HostRow live name={currentLabel || t("chrome.hosts.console")} detail={`${currentHost(currentOrigin)} · ${t("chrome.hosts.notSaved")}`} current />
             </>
           ) : null}
           <div className="host-switcher-divider" role="separator" />
@@ -408,6 +453,18 @@ function isLoopbackOrigin(origin: string): boolean {
     return protocol === "http:" && (hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]");
   } catch {
     return false;
+  }
+}
+
+/**
+ * 지금 서 있는 콘솔의 주소. 집이 펼친 목록에서는 이 화면을 서빙한 곳(집)이 아니라 목록을
+ * 부른 콘솔이 그 답이므로, `location.host`를 그대로 쓰면 손님 줄에 집 주소가 선다.
+ */
+function currentHost(origin: string): string {
+  try {
+    return new URL(origin).host;
+  } catch {
+    return origin;
   }
 }
 

@@ -77,6 +77,12 @@ const PICKER_SURFACE_DISMISS = "host-picker-dismiss";
 export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   const localFetch = deps.localFetch ?? globalThis.fetch;
   const confirmIdentity = deps.confirmIdentity ?? confirmRemoteIdentity;
+  /**
+   * 몇 번째 여는 시도인가. 예약한 origin은 정책에 한 자리뿐이라, 앞선 시도가 늦게 끝나면서
+   * 뒤에 온 시도의 예약을 확정하거나 지워 버릴 수 있다 — 그러면 정책은 창이 있지도 않은
+   * 콘솔을 가리킨다. 자기가 아직 최신인 시도만 그 자리에 손을 댄다.
+   */
+  let opening = 0;
   const attached: Array<{ readonly contents: Pick<WebContents, "on" | "removeListener">; readonly listener: (...args: never[]) => void; readonly event?: "did-navigate" }> = [];
 
   async function askLocalConsole(path: string, body: unknown): Promise<Response> {
@@ -118,6 +124,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     if (!policy) throw new Error("remote_bridge_no_window");
     deps.pins.pin(handoff.hostname, handoff.fingerprint);
     policy.admitRemoteConsoleOrigin(handoff.origin);
+    const attempt = ++opening;
     policy.stageConsoleOrigin(handoff.origin);
     try {
       /**
@@ -128,9 +135,10 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
       await joinRemoteConsole(deps.sessionFetch, `${handoff.origin}${JOIN_PATH}`, handoff.token, deps.deviceName ?? null);
       await verifyConsoleReachable(handoff.origin);
       await deps.loadConsole(`${handoff.origin}${CONSOLE_PATH}`);
-      policy.commitConsoleOrigin();
+      if (attempt === opening) policy.commitConsoleOrigin();
     } catch (error) {
-      policy.cancelPendingConsoleOrigin();
+      if (attempt === opening) policy.cancelPendingConsoleOrigin();
+      // 열지 못한 원격은 최신 시도가 아니어도 허용 목록에서 빼야 한다 — 지문 대조를 통과한 적이 없다.
       policy.withdrawRemoteConsoleOrigin(handoff.origin);
       deps.pins.unpin(handoff.hostname);
       throw error;
@@ -180,9 +188,22 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   async function openLocal(origin: string, url?: string): Promise<void> {
     const policy = deps.policy();
     if (!policy) throw new Error("remote_bridge_no_window");
-    policy.activateConsoleOrigin(origin);
     // 정해져 온 화면이 있어도 그 콘솔의 `/console/` 안이어야 한다 — 아니면 기본 화면으로 연다.
-    await deps.loadConsole(url !== undefined && consoleTarget(url, origin) === origin ? url : `${origin}${CONSOLE_PATH}`);
+    const target = url !== undefined && consoleTarget(url, origin) === origin ? url : `${origin}${CONSOLE_PATH}`;
+    /**
+     * 창이 실제로 도착한 뒤에 활성 origin을 옮긴다. 먼저 옮겨 두면 적재가 실패했을 때 정책은
+     * 새 콘솔을, 창은 옛 콘솔을 가리킨 채 갈라지고, 그 창은 자기가 보고 있는 화면 안에서조차
+     * 움직이지 못한다. 원격 경로가 이미 쓰는 예약·확정 문법을 여기서도 쓴다.
+     */
+    const attempt = ++opening;
+    policy.stageConsoleOrigin(origin);
+    try {
+      await deps.loadConsole(target);
+    } catch (error) {
+      if (attempt === opening) policy.cancelPendingConsoleOrigin();
+      throw error;
+    }
+    if (attempt === opening) policy.commitConsoleOrigin();
   }
 
   async function receiveLink(link: string): Promise<void> {
