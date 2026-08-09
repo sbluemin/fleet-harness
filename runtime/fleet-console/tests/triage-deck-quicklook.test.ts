@@ -201,7 +201,7 @@ describe("resolveTriagePreviewFit", () => {
     expect(fit.top + 600 * fit.scale).toBeGreaterThan(120);
   });
 
-  it("crops nothing for a body that declares no chrome", () => {
+  it("keeps the newest row in frame for a body that declares no chrome", () => {
     // 순정 셸·문서형 패널 — 바닥까지 출력이 흐르므로 최신 행이 프레임 안에 남아야 한다.
     const fit = resolveTriagePreviewFit({ width: 200, height: 120 }, { width: 800, height: 600 })!;
     expect(fit.top + 600 * fit.scale).toBeCloseTo(120, 5);
@@ -209,27 +209,32 @@ describe("resolveTriagePreviewFit", () => {
     expect(explicitZero).toEqual(fit);
   });
 
-  it("never crops horizontally, whatever the aspect ratio", () => {
-    // 왼쪽 정렬 텍스트는 줄의 시작을 잃으면 읽히지 않는다 — 폭은 어떤 종횡비에서도 온전해야 한다.
+  it("anchors the line starts at the frame's left edge, whatever the aspect ratio", () => {
+    // 읽을 수 없게 만드는 것은 가로 크롭 자체가 아니라 중앙 앵커다 — 그때만 모든 줄의 첫 글자가
+    // 사라진다. 어느 축이 배율을 정하든 왼쪽은 프레임의 왼쪽이어야 한다.
     for (const viewport of [{ width: 200, height: 120 }, { width: 640, height: 400 }, { width: 300, height: 40 }, { width: 200, height: 200 }, { width: 473, height: 209 }]) {
       const fit = resolveTriagePreviewFit(viewport, { width: 800, height: 600 }, AGENT_CHROME)!;
       expect(fit.left).toBe(0);
-      expect(800 * fit.scale).toBeCloseTo(viewport.width, 5);
+      // 폭이 이기는 경우에만 좌우가 프레임과 정확히 만나고, 그 밖에는 오른쪽으로 넘친다.
+      expect(800 * fit.scale).toBeGreaterThanOrEqual(viewport.width - 1e-9);
     }
   });
 
-  it("opens no top strip once the frame carries the output's own aspect", () => {
-    // 프레임은 칸을 꽉 채우지 않고 출력의 모양을 입는다(CSS aspect-ratio) — 종전에 상단 빈 띠를
-    // 열던 정사각 칸(200×200)에서도 프레임은 200×124로 서고 출력이 프레임을 정확히 채운다.
-    const contentHeight = resolveTriagePreviewContentHeight(600, AGENT_CHROME);
-    const frameHeight = Math.min(200, 200 * contentHeight / 800);
-    expect(frameHeight).toBeCloseTo(124, 10);
-    const fit = resolveTriagePreviewFit({ width: 200, height: frameHeight }, { width: 800, height: 600 }, AGENT_CHROME)!;
-    expect(fit.scale).toBeCloseTo(0.25, 10);
-    expect(fit.left).toBe(0);
-    expect(fit.top).toBeCloseTo(0, 10);
-    // 크롬은 여전히 프레임 아래로 밀려난다 — 여백을 없앤 대가로 컴포저가 돌아오지는 않는다.
-    expect(600 * fit.scale).toBeGreaterThan(frameHeight);
+  it("makes a top strip arithmetically impossible", () => {
+    // 이 판의 핵심 불변식 — 배율이 세로 요구를 하한으로 받으므로 출력은 언제나 프레임을 덮는다.
+    // 종전에 상단 빈 띠를 열던 정사각 칸(200×200)이 그 반례였다.
+    for (const viewport of [{ width: 200, height: 200 }, { width: 200, height: 120 }, { width: 300, height: 40 }, { width: 90, height: 300 }]) {
+      for (const chrome of [0, AGENT_CHROME, 300]) {
+        const fit = resolveTriagePreviewFit(viewport, { width: 800, height: 600 }, chrome)!;
+        expect(fit.top).toBeLessThanOrEqual(0);
+      }
+    }
+    const square = resolveTriagePreviewFit({ width: 200, height: 200 }, { width: 800, height: 600 }, AGENT_CHROME)!;
+    expect(square.scale).toBeCloseTo(200 / (600 - AGENT_CHROME), 10);
+    expect(square.top).toBeCloseTo(0, 10);
+    // 세로가 이겼으므로 폭은 오른쪽으로 넘친다 — 줄의 시작은 프레임 안에 남는다.
+    expect(800 * square.scale).toBeGreaterThan(200);
+    expect(square.left).toBe(0);
   });
 
   it("still crops the oldest rows when the output area is taller than the frame", () => {
@@ -256,9 +261,9 @@ describe("resolveTriagePreviewFit", () => {
     expect(resolveTriagePreviewFit({ width: 200, height: 0 }, { width: 800, height: 600 }, AGENT_CHROME)).toBeNull();
   });
 
-  // 프레임의 종횡비와 fit 산술은 같은 출력 높이를 보아야 한다 — 둘이 갈리면 프레임이 출력보다
-  // 길거나 짧아져 이 결함이 그대로 돌아온다. 두 소비자가 공유하는 이 함수가 그 접점이다.
-  it("shares one output height between the frame's aspect and the fit arithmetic", () => {
+  // 크롬 선언의 유효성 검증과 상한은 이 한 함수가 소유한다 — fit이 직접 계산하면 상한이
+  // 플러그인 값과 뒤섞여 어느 쪽이 묶었는지 읽을 수 없게 된다.
+  it("owns the declared band's validation and its cap", () => {
     expect(resolveTriagePreviewContentHeight(400, 98)).toBe(302);
     expect(resolveTriagePreviewContentHeight(400, 0)).toBe(400);
     // 선언값 검증과 30% 상한은 이 함수가 소유한다.
@@ -269,22 +274,40 @@ describe("resolveTriagePreviewFit", () => {
   });
 
   // 실측 회귀 — 1440×900 창, 덱 밀도 2.0×에서 Agent 카드가 상단 101.8px(뷰포트의 30.6%)의 빈
-  // 띠를 열던 조합이다. 프레임이 출력 종횡비를 입으면 같은 칸에서 프레임은 490×231.21875로 서고
-  // 출력이 그 프레임을 정확히 채운다.
+  // 띠를 열던 조합이다. 세로 요구가 배율을 정하면 출력이 그 칸을 정확히 덮는다.
   it("closes the worst measured letterbox (1440x900, density 2.0x, agent card)", () => {
     const SLOT = { width: 490, height: 333 };
     const SOURCE = { width: 640, height: 400 };
     const contentHeight = resolveTriagePreviewContentHeight(SOURCE.height, 98);
     expect(contentHeight).toBe(302);
-    const frameHeight = Math.min(SLOT.height, SLOT.width * contentHeight / SOURCE.width);
-    expect(frameHeight).toBeCloseTo(231.21875, 10);
-    const fit = resolveTriagePreviewFit({ width: SLOT.width, height: frameHeight }, SOURCE, 98)!;
-    expect(fit.scale).toBeCloseTo(0.765625, 10);
+    const fit = resolveTriagePreviewFit(SLOT, SOURCE, 98)!;
+    // 세로가 이긴다: 333/302 > 490/640.
+    expect(fit.scale).toBeCloseTo(333 / 302, 10);
     expect(fit.left).toBe(0);
     expect(fit.top).toBeCloseTo(0, 10);
-    // 종전 산술을 같은 칸에 그대로 대입하면 빈 띠가 나온다 — 이 fixture가 지키는 것이 그 차이다.
-    const previous = resolveTriagePreviewFit(SLOT, SOURCE, 98)!;
-    expect(previous.top).toBeGreaterThan(100);
+    // 대가는 오른쪽 끝이다 — 이 조합에서 640px 소스가 프레임보다 216.4px 넓게 선다(약 25열).
+    const overflow = SOURCE.width * fit.scale - SLOT.width;
+    expect(overflow).toBeCloseTo(215.7, 1);
+    // 밀도를 올린 만큼 글자도 커진다 — 폭에만 고정하던 종전 배율(0.7656)보다 크다.
+    expect(fit.scale).toBeGreaterThan(SLOT.width / SOURCE.width);
+  });
+
+  // 밀도가 오르면 카드가 커지고, 배율은 그 카드를 따라 단조 증가해야 한다 — 이것이 이 판의 목적이다.
+  it("grows the preview scale as the card grows", () => {
+    const SOURCE = { width: 640, height: 400 };
+    // 1440×900 실측 카드가 프리뷰에 내주는 칸 (밀도 0.7 / 1.0 / 1.5 / 2.0).
+    // 카드 높이는 max(84, round(210×밀도)) - 2 이고, 칸은 거기서 카드 크롬 83px를 뺀 값이다.
+    const SLOTS = [
+      { width: 171, height: 62 },
+      { width: 313, height: 125 },
+      { width: 491, height: 230 },
+      { width: 491, height: 335 },
+    ];
+    const scales = SLOTS.map((slot) => resolveTriagePreviewFit(slot, SOURCE, 98)!.scale);
+    for (let i = 1; i < scales.length; i += 1) expect(scales[i]).toBeGreaterThan(scales[i - 1]!);
+    // 화면상 글자 크기(터미널 셀 14px × 배율)는 3.7px에서 15.5px로 자란다.
+    expect(scales[0]! * 14).toBeCloseTo(3.7, 1);
+    expect(scales.at(-1)! * 14).toBeCloseTo(15.5, 1);
   });
 });
 
@@ -339,28 +362,28 @@ describe("resolveTriagePreviewFit — actual-size floor", () => {
     expect(fit.scale).toBeCloseTo(1, 10);
   });
 
-  it("leaves the unmagnified card on the plain width fit", () => {
+  it("leaves the unmagnified card on the axis that asks for the most", () => {
     const floored = resolveTriagePreviewFit({ width: 282, height: 123 }, SOURCE, 0, 0)!;
     const plain = resolveTriagePreviewFit({ width: 282, height: 123 }, SOURCE, 0)!;
     expect(floored).toEqual(plain);
+    // 이 칸에서는 폭이 이긴다(282/640 > 123/400).
     expect(plain.scale).toBeCloseTo(282 / 640, 10);
   });
 
-  it("keeps the frame width even where a taller fit would have magnified further", () => {
-    // 왼쪽 정렬 텍스트에서는 줄의 시작을 잃는 쪽이 더 비싸므로 폭(1.51875)이 이긴다. 남는 세로는
-    // 이제 프레임 안의 빈 띠가 아니라 프레임 밖이다 — 칸 336px 중 프레임은 303.75px만 쓴다.
-    // 실물 크기 하한은 그대로 살아 있다 — 다만 이 뷰포트에서는 폭이 이미 하한을 넘는다.
-    const frameHeight = Math.min(336, 486 * resolveTriagePreviewContentHeight(200, 0) / 320);
-    expect(frameHeight).toBeCloseTo(303.75, 10);
+  it("lets the taller axis win over both the width and the actual-size floor", () => {
+    // 486×336 칸에 320×200 소스 — 세로 요구(1.68)가 폭(1.51875)과 하한(1/1.95)을 모두 넘는다.
+    // 종전에는 폭이 이겨 위에 32.25px의 빈 띠가 열렸다.
     const fit = resolveTriagePreviewFit(
-      { width: 486, height: frameHeight },
+      { width: 486, height: 336 },
       { width: 320, height: 200 },
       0,
       resolveTriagePreviewMinScale(TRIAGE_DECK_QUICKLOOK_SCALE),
     )!;
-    expect(fit.scale).toBeCloseTo(486 / 320, 10);
+    expect(fit.scale).toBeCloseTo(336 / 200, 10);
     expect(fit.left).toBe(0);
     expect(fit.top).toBeCloseTo(0, 10);
+    // 넘치는 폭은 전부 오른쪽이다.
+    expect(320 * fit.scale - 486).toBeCloseTo(51.6, 1);
   });
 
   it("keeps the crop anchors under the floor", () => {

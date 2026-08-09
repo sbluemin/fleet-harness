@@ -107,9 +107,6 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--triage-card-min",
   "--triage-row-min",
   "--triage-row-max",
-  // Watch Deck preview TSX injects the body's output shape so the frame can take its aspect.
-  "--triage-preview-content-width",
-  "--triage-preview-content-height",
   // Fleet map TSX injects each theater zone's circle position/diameter and identity tint.
   "--zone-x",
   "--zone-y",
@@ -1693,30 +1690,16 @@ describe("War Room Quick-Look actual-size grammar", () => {
     expect(inner).not.toContain("transition");
   });
 
-  // 산술만 고치고 배선을 두면 화면은 조용히 예전 그대로다 — 프레임이 칸을 꽉 채우고 그 안에서
-  // 축소된 출력이 상단에 빈 띠를 남기던 동작으로 돌아간다.
-  it("gives the preview frame the output's own aspect instead of the whole cell", () => {
+  // 프레임은 카드가 내준 칸을 그대로 채운다 — 프레임 자체가 칸보다 작아지면 그 차이가 카드 안의
+  // 빈 띠가 되어, 산술이 막은 여백을 CSS가 되돌려 놓는다.
+  it("lets the preview frame fill the cell the card hands it", () => {
     const frame = components.match(/\.canvas-triage-deck-card-preview \{[^}]*\}/)?.[0] ?? "";
     expect(frame).not.toBe("");
-    expect(frame).toContain("aspect-ratio: var(--triage-preview-content-width) / var(--triage-preview-content-height)");
-    // 칸이 남으면 프레임은 위에 붙고 남는 세로는 카드 표면이 된다 — stretch면 비율이 무너진다.
-    expect(frame).toContain("align-self: start");
-    expect(frame).toContain("height: auto");
-    // 칸보다 길어지면 종전처럼 오래된 위쪽 행만 잘려 나간다.
-    expect(frame).toContain("max-height: 100%");
-    // 배율을 정하는 ResizeObserver는 패딩 박스를 읽고 aspect-ratio는 border 박스를 잡는다 —
-    // 실제 테두리나 패딩이 돌아오면 두 박스가 갈려 상단 띠가 1~2px 되살아난다.
-    expect(frame).toContain("border: 0;");
-    expect(frame).not.toMatch(/\n\s*padding:/);
-    expect(frame).toContain("box-shadow: inset 0 0 0 1px");
-    // 프레임 높이는 매 프레임 다시 잡히므로 전이를 걸면 출력과 프레임이 서로를 쫓는다.
+    expect(frame).not.toContain("aspect-ratio");
+    expect(frame).not.toContain("max-height");
+    expect(frame).not.toContain("align-self");
+    // 프레임 크기는 덱 줌 tween마다 다시 잡히므로 전이를 걸면 출력과 프레임이 서로를 쫓는다.
     expect(frame).not.toContain("transition");
-  });
-
-  it("feeds the frame the same output height the fit arithmetic uses", () => {
-    expect(deck).toContain("resolveTriagePreviewContentHeight(innerHeight, bottomChrome)");
-    expect(deck).toContain('"--triage-preview-content-width": String(innerWidth)');
-    expect(deck).toContain('"--triage-preview-content-height": String(contentHeight)');
   });
 
   it("keeps the magnification transition on the card that owns it", () => {

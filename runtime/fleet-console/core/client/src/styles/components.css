@@ -3400,41 +3400,26 @@
   align-self: start;
 }
 
-/* 프레임은 출력의 모양을 입는다 — 폭은 카드가 주는 만큼 다 쓰고, 높이는 그 폭에 출력 종횡비를
-   곱한 만큼만 가진다(비율은 JS가 --triage-preview-content-* 로 넘긴다). 종전에는 프레임이 칸을
-   꽉 채우고 그 안에서 축소된 출력이 상단에 빈 띠를 남겼다(실측 최악 30.6%) — 여백을 프레임 안이
-   아니라 카드 표면으로 내보내는 것이 그 결함의 해법이다. 칸보다 길어지면 max-height가 잘라
-   종전처럼 오래된 위쪽 행만 프레임 밖으로 나간다.
-
-   도트린 예외 — 테두리를 실제 border가 아니라 inset box-shadow로 그린다. 배율을 정하는
-   ResizeObserver는 clientWidth/clientHeight(=패딩 박스)를 읽는데, aspect-ratio가 잡는 것은
-   border 박스라 실제 테두리가 있으면 두 값이 어긋나 프레임 높이와 출력 높이가 매번 1~2px씩
-   엇나간다. shadow는 레이아웃을 차지하지 않아 두 박스가 같아진다 — 이 규칙에 border나 padding을
-   되살리면 상단 띠가 그대로 돌아온다. */
+/* 프레임은 카드가 내준 칸을 그대로 채운다 — 출력이 프레임을 채우는 쪽이 정책이므로(fit 산술의
+   height-cover) 프레임이 칸보다 작아질 이유가 없고, 안에 빈 띠가 열릴 수도 없다. */
 .canvas-triage-deck-card-preview {
   position: relative;
   display: block;
-  align-self: start;
-  width: 100%;
-  height: auto;
-  max-height: 100%;
   min-width: 0;
   min-height: 0;
-  aspect-ratio: var(--triage-preview-content-width) / var(--triage-preview-content-height);
   overflow: hidden;
-  border: 0;
+  border: 1px solid color-mix(in oklch, var(--hairline) 70%, transparent);
   border-radius: var(--radius-sm);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--hairline) 70%, transparent);
   background: var(--canvas-abyss);
   pointer-events: none;
 }
 
 /* 내부 박스는 패널의 원래 픽셀 크기를 유지한 채 transform으로만 축소된다(PTY 리사이즈 금지 계약).
-   translate+scale은 JS가 폭 고정 fit으로 계산해 좌우를 프레임에 맞추고 출력 하단에 앵커한다.
-   Quick-Look이 열리면 같은 값에 실물 크기 하한(1/카드배율)이 들어와 화면상 1:1이 서고, 그 하한이
-   폭을 넘어설 때만 가로가 중앙에서 잘린다. 이 transform에는 전이를 두지 않는다 — 전이는 카드
-   확대가 소유하고, 여기에 따로 걸면 덱 줌 tween처럼 fit이 매 프레임 다시 잡히는 동안 프리뷰가
-   뒤처져 가장자리에 빈 띠가 뜬다. */
+   translate+scale은 JS가 두 축 중 큰 요구를 따르는 fit으로 계산해 출력이 프레임을 채우게 하고,
+   출력 하단과 프레임 왼쪽에 앵커한다 — 넘치는 폭은 전부 오른쪽으로 나가 줄의 시작이 남는다.
+   Quick-Look이 열리면 같은 값에 실물 크기 하한(1/카드배율)이 들어와 화면상 1:1이 선다. 이
+   transform에는 전이를 두지 않는다 — 전이는 카드 확대가 소유하고, 여기에 따로 걸면 덱 줌
+   tween처럼 fit이 매 프레임 다시 잡히는 동안 프리뷰가 뒤처져 가장자리에 빈 띠가 뜬다. */
 .canvas-triage-deck-card-preview-inner {
   position: absolute;
   top: 0;
