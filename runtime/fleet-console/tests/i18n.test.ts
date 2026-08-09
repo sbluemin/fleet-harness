@@ -39,6 +39,7 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   "Companion {title}",
   "Map",
   "Activity Rail",
+  "Quick Launch",
   "Theater",
   "Codex",
   "Console",
