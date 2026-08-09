@@ -9,6 +9,8 @@ vi.mock("@xterm/addon-fit", () => ({ FitAddon: class FitAddon {} }));
 vi.mock("@xterm/addon-unicode11", () => ({ Unicode11Addon: class Unicode11Addon {} }));
 vi.mock("@xterm/addon-webgl", () => ({ WebglAddon: class WebglAddon {} }));
 
+const INACTIVE_FLUSH_MS = 250;
+
 describe("terminal output scheduler drain", () => {
   it("runs the callback synchronously when nothing is pending", () => {
     const { scheduler } = createHarness();
@@ -72,6 +74,6 @@ function createHarness(): { readonly scheduler: ReturnType<typeof createTerminal
       writes.push({ data, ...(callback ? { callback } : {}) });
     },
   } as unknown as XtermTerminal;
-  const scheduler = createTerminalOutputScheduler(terminal, false, () => {});
+  const scheduler = createTerminalOutputScheduler(terminal, false, INACTIVE_FLUSH_MS, () => {});
   return { scheduler, fake };
 }

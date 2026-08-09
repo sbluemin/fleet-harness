@@ -59,7 +59,8 @@ vi.mock("../client/shared/terminal-copy-on-select.js", () => ({
   createTerminalCopyOnSelect: () => ({ dispose() {} }),
 }));
 vi.mock("../client/shared/terminal-preferences.js", () => ({
-  useTerminalPrefs: () => ({ renderer: "dom", font: { family: "monospace", size: 14 } }),
+  useTerminalPrefs: () => ({ renderer: "dom", inactiveFlush: "balanced", font: { family: "monospace", size: 14 } }),
+  terminalInactiveFlushMs: () => 250,
 }));
 vi.mock("../client/shared/terminal-scroll-follow.js", () => ({
   createTerminalScrollFollow: () => ({

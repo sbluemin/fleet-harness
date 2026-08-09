@@ -14,7 +14,7 @@ import { TERMINAL_OPTIONS } from "./terminal-options.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
 import { getT } from "../i18n/index.js";
-import { useTerminalPrefs } from "./terminal-preferences.js";
+import { terminalInactiveFlushMs, useTerminalPrefs } from "./terminal-preferences.js";
 import { createTerminalScrollFollow, type TerminalScrollFollowController } from "./terminal-scroll-follow.js";
 import { createTerminalStatusDetailReporter, type TerminalStatusDetailReporter } from "./status-detail.js";
 import { createWindowsSelectionCopyHandler } from "./windows-selection-copy.js";
@@ -45,12 +45,12 @@ interface TerminalOutputScheduler {
   readonly write: (data: Uint8Array) => void;
   readonly drain: (callback: () => void) => void;
   readonly setActive: (active: boolean) => void;
+  readonly setInactiveFlushMs: (inactiveFlushMs: number) => void;
   readonly dispose: () => void;
 }
 
 const RESIZE_DEBOUNCE_MS = 80;
 const ACTIVE_OUTPUT_FLUSH_MS = 16;
-const INACTIVE_OUTPUT_FLUSH_MS = 250;
 const MAX_BUFFERED_OUTPUT_BYTES = 1024 * 1024;
 // 줌 보간(rAF tween)이 멈춘 뒤 보정을 1회만 적용하기 위한 디바운스. zoom prop은 보간 중 매 프레임 바뀌므로,
 // 마지막 변경 후 이 시간이 지나야(=settle) counter-scale/fontSize/fit을 적용한다. 보간 중에는 부모 transform에
@@ -175,7 +175,8 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
 
 export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail, locale }: TerminalSurfaceProps) {
   const activeTheme = theme;
-  const { renderer: terminalRenderer, font: terminalFontSettings } = useTerminalPrefs();
+  const { renderer: terminalRenderer, inactiveFlush: terminalInactiveFlush, font: terminalFontSettings } = useTerminalPrefs();
+  const inactiveFlushMs = terminalInactiveFlushMs(terminalInactiveFlush);
   const t = getT(locale);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
@@ -197,6 +198,9 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   // 비활성 Map 패널의 마운트 자동 포커스를 억제하기 위해 최신 active를 ref로 들고 있는다(마운트 effect는 재실행하지 않음).
   const activeRef = useRef(active);
   activeRef.current = active;
+  // 마운트 effect는 prefs에 의존하지 않으므로(재실행하면 세션이 끊긴다) 최신 주기도 ref로 읽는다.
+  const inactiveFlushMsRef = useRef(inactiveFlushMs);
+  inactiveFlushMsRef.current = inactiveFlushMs;
   const [status, setStatus] = useState("connecting");
   // 서버가 등급을 잠갔으면 되찾기를 제안하지 않는다 — 눌러도 다시 관전으로 돌아오는 버튼은 거짓이다.
   const [controlLocked, setControlLocked] = useState(false);
@@ -290,7 +294,12 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         imeEventTarget,
         scrollFollow.recordUserViewportChange,
       );
-      const outputScheduler = createTerminalOutputScheduler(terminal, activeRef.current !== false, scrollFollow.restoreAfterOutputParsing);
+      const outputScheduler = createTerminalOutputScheduler(
+        terminal,
+        activeRef.current !== false,
+        inactiveFlushMsRef.current,
+        scrollFollow.restoreAfterOutputParsing,
+      );
       outputSchedulerRef.current = outputScheduler;
       const statusDetailReporter = createTerminalStatusDetailReporter({
         report: (detail) => onStatusDetailRef.current?.(detail),
@@ -412,6 +421,12 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
     terminalRef.current?.focus();
     scrollFollowRef.current?.resumeFollowing();
   }, [active, keyboardFocusRequestId, inputReadyEpoch]);
+
+  // 갱신 주기 변경도 렌더러 전환처럼 세션을 끊지 않고 살아 있는 터미널에 바로 적용된다.
+  // mountedTerminalEpoch는 비동기 마운트가 끝난 뒤 새 스케줄러에 현재 설정을 다시 흘려보내기 위한 것이다.
+  useEffect(() => {
+    outputSchedulerRef.current?.setInactiveFlushMs(inactiveFlushMs);
+  }, [inactiveFlushMs, mountedTerminalEpoch]);
 
   // Renderer changes only attach/detach the WebGL addon; the live terminal and websocket stay intact.
   useEffect(() => {
@@ -669,8 +684,14 @@ function isTerminalScrollbackKey(event: KeyboardEvent): boolean {
   return event.key === "PageUp" || event.key === "PageDown" || event.key === "Home" || event.key === "End";
 }
 
-export function createTerminalOutputScheduler(terminal: XtermTerminal, initiallyActive: boolean, afterOutputParsing: () => void): TerminalOutputScheduler {
+export function createTerminalOutputScheduler(
+  terminal: XtermTerminal,
+  initiallyActive: boolean,
+  initialInactiveFlushMs: number,
+  afterOutputParsing: () => void,
+): TerminalOutputScheduler {
   let active = initiallyActive;
+  let inactiveFlushMs = initialInactiveFlushMs;
   let disposed = false;
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingBytes = 0;
@@ -713,7 +734,7 @@ export function createTerminalOutputScheduler(terminal: XtermTerminal, initially
 
   const scheduleFlush = () => {
     if (disposed || flushTimer || pendingBytes === 0) return;
-    flushTimer = setTimeout(flush, active ? ACTIVE_OUTPUT_FLUSH_MS : INACTIVE_OUTPUT_FLUSH_MS);
+    flushTimer = setTimeout(flush, active ? ACTIVE_OUTPUT_FLUSH_MS : inactiveFlushMs);
   };
 
   return {
@@ -744,6 +765,15 @@ export function createTerminalOutputScheduler(terminal: XtermTerminal, initially
         flush();
         return;
       }
+      scheduleFlush();
+    },
+    // 설정 변경을 살아 있는 터미널에 즉시 적용한다(렌더러 전환과 같은 계약). 대기 중인 타이머는
+    // 새 주기로 다시 건다 — 그렇게 하지 않으면 절약에서 즉시로 옮긴 직후 한 번은 옛 주기로 늦게 그려진다.
+    setInactiveFlushMs: (nextInactiveFlushMs) => {
+      if (inactiveFlushMs === nextInactiveFlushMs) return;
+      inactiveFlushMs = nextInactiveFlushMs;
+      if (active) return;
+      clearFlushTimer();
       scheduleFlush();
     },
     dispose: () => {
