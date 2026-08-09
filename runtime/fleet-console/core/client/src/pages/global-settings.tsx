@@ -586,7 +586,12 @@ function RemoteAccessSection({ state, saving }: { readonly state: GlobalSettings
     <>
       <section className="global-settings-card remote-section" aria-label={t("settings.remote.title")}>
         <header className="remote-section-head">
-          <h3>{t("settings.remote.title")}</h3>
+          {/* 성숙도 표시는 아래 .remote-danger(보안 경고)와 다른 것을 말한다 — 하나는 "아직 바뀔 수
+              있다", 하나는 "켜면 이 기계가 열린다"이므로 한 줄로 합치지 않는다. */}
+          <h3>
+            {t("settings.remote.title")}
+            <span className="experimental-badge">{t("common.experimental")}</span>
+          </h3>
           <p>{t("settings.remote.lede")}</p>
         </header>
 
@@ -671,7 +676,7 @@ function RemoteHostsCard() {
   }, [hosts]);
 
   return (
-    <div className="remote-card">
+    <div className="remote-card" data-remote-card="hosts">
       <div className="remote-card-head">
         <p className="remote-card-title">{t("settings.remote.hosts.title")}</p>
         <button ref={addRef} type="button" className="remote-create" onClick={() => setAddOpen(true)}>
@@ -783,7 +788,7 @@ function RemoteListenerCard({
   };
 
   return (
-    <div className="remote-card">
+    <div className="remote-card" data-remote-card="listener">
       <div className="remote-card-head">
         <div>
           <p className="remote-card-title">{t("settings.remote.accept.title")}</p>
@@ -865,7 +870,7 @@ function RemoteIdentityCard({
 }) {
   const t = useT();
   return (
-    <div className="remote-card">
+    <div className="remote-card" data-remote-card="identity">
       <div className="remote-card-head">
         <p className="remote-card-title">{t("settings.remote.identity.title")}</p>
         <button
@@ -936,7 +941,7 @@ function RemoteLinksCard({
   ];
 
   return (
-    <div className="remote-card">
+    <div className="remote-card" data-remote-card="links">
       <div className="remote-card-head">
         <p className="remote-card-title">{t("settings.remote.links.title")}</p>
         <button type="button" className="remote-create" disabled={busy !== null} onClick={onCreate}>

@@ -51,17 +51,97 @@ describe("feature tour", () => {
     expect(presentation?.steps).toEqual([TOUR.walkthrough[0]]);
   });
 
-  it("ships one walkthrough per reworked screen and no spotlight", () => {
+  it("ships one walkthrough per reworked screen, and a spotlight only where the screen cannot carry one", () => {
     expect(FEATURE_TOURS.map((tour) => tour.id)).toEqual([
       "canvas-modes",
       "war-room",
       "war-room-sidebar",
       "claude-operations",
+      "remote-access",
     ]);
     for (const tour of FEATURE_TOURS) {
-      expect(tour.spotlight).toBeNull();
       expect(tour.walkthrough.length).toBeGreaterThan(0);
     }
+    // 화면을 고쳐 만든 투어는 그 화면에서 전부 설명되므로 스포트라이트가 필요 없다.
+    for (const tour of FEATURE_TOURS.filter((entry) => entry.id !== "remote-access")) {
+      expect(tour.spotlight).toBeNull();
+    }
+  });
+
+  // 원격 접속만 두 단계를 쓴다 — 설명할 항목이 전부 설정 화면에 있어서, 그 화면에 오기 전에는
+  // 존재조차 알 길이 없는 유일한 기능이기 때문이다. 칩 스포트라이트가 그 존재를 알리고,
+  // 설정에 들어온 순간 워크스루가 항목을 순서대로 짚는다.
+  it("introduces remote access on the host chip and walks its settings cards in order", () => {
+    const remote = FEATURE_TOURS.find((tour) => tour.id === "remote-access");
+    expect(remote?.spotlight?.anchor).toBe(".host-switcher-chip");
+    expect(remote?.walkthrough.map((step) => step.anchor)).toEqual([
+      ".remote-section-head",
+      '[data-remote-card="hosts"]',
+      '[data-remote-card="listener"]',
+      '[data-remote-card="identity"]',
+      '[data-remote-card="links"]',
+    ]);
+  });
+
+  // 워크스루를 끝내면 스포트라이트도 본 것으로 남는다 — 설정에서 안내를 다 본 사용자에게
+  // 칩 하이라이트가 뒤늦게 다시 뜨면 같은 기능을 두 번 소개하는 셈이 된다.
+  it("retires the remote-access chip spotlight once its walkthrough is finished", () => {
+    const remote = FEATURE_TOURS.find((tour) => tour.id === "remote-access");
+    expect(remote).toBeDefined();
+    expect(featureTourCompletionBase([], remote!, "walkthrough")).toEqual(["remote-access.spotlight"]);
+  });
+
+  // 리스너가 꺼져 있으면 링크 카드가 렌더되지 않는다. 그 스텝만 빠지고 나머지는 그대로 재생되어야
+  // 한다 — 활성화 앵커가 섹션 머리라서 투어 자체는 살아 있다.
+  it("drops only the links step while the listener is off", () => {
+    document.body.innerHTML = [
+      '<header class="remote-section-head"></header>',
+      '<div data-remote-card="hosts"></div>',
+      '<div data-remote-card="listener"></div>',
+      '<div data-remote-card="identity"></div>',
+    ].join("");
+
+    const presentation = resolveNextFeatureTour(FEATURE_TOURS, [], document);
+    expect(presentation?.tour.id).toBe("remote-access");
+    expect(presentation?.phase).toBe("walkthrough");
+    expect(presentation?.steps.map((step) => step.anchor)).toEqual([
+      ".remote-section-head",
+      '[data-remote-card="hosts"]',
+      '[data-remote-card="listener"]',
+      '[data-remote-card="identity"]',
+    ]);
+  });
+
+  // 설정 밖에서는 워크스루 앵커가 없으므로 칩 스포트라이트로 떨어진다.
+  it("falls back to the chip spotlight away from the settings section", () => {
+    document.body.innerHTML = '<button class="host-switcher-chip"></button>';
+
+    const presentation = resolveNextFeatureTour(FEATURE_TOURS, [], document);
+    expect(presentation?.tour.id).toBe("remote-access");
+    expect(presentation?.phase).toBe("spotlight");
+  });
+
+  // 호스트 칩은 커맨드 밴드에 늘 있으므로, 가드가 없으면 다른 투어를 끝낸 그 자리에서 칩
+  // 스포트라이트가 곧바로 이어져 안내가 두 번 연달아 뜬다.
+  it("holds the chip spotlight back until the finished tour's screen is left", () => {
+    document.body.innerHTML = '<button class="host-switcher-chip"></button>';
+
+    expect(resolveNextFeatureTour(FEATURE_TOURS, [], document, true)).toBeNull();
+    expect(resolveNextFeatureTour(FEATURE_TOURS, [], document, false)?.phase).toBe("spotlight");
+  });
+
+  // 같은 마운트에서 다른 투어를 끝냈어도 워크스루는 지연되지 않는다 — 설정에 들어온 사용자는
+  // 그 자리에서 안내를 받아야 한다. 스포트라이트만 미루는 것이 이 가드의 범위다.
+  it("still runs the settings walkthrough right after another tour finished", () => {
+    document.body.innerHTML = [
+      '<button class="host-switcher-chip"></button>',
+      '<header class="remote-section-head"></header>',
+      '<div data-remote-card="hosts"></div>',
+    ].join("");
+
+    const presentation = resolveNextFeatureTour(FEATURE_TOURS, [], document, true);
+    expect(presentation?.tour.id).toBe("remote-access");
+    expect(presentation?.phase).toBe("walkthrough");
   });
 
   it("anchors the War Room walkthrough on the rail, so an empty queue still teaches the mode", () => {

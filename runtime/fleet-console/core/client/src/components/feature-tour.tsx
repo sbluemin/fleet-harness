@@ -298,6 +298,14 @@ export function resolveNextFeatureTour(
     const steps = availableFeatureTourSteps(tour.walkthrough, root);
     if (steps.length > 0) return { tour, phase: "walkthrough", steps };
   }
+  // 스포트라이트는 방금 다른 투어를 끝낸 마운트에서는 뜨지 않는다. 워크스루의
+  // deferAfterAnotherTour와 같은 이유이고, 여기서는 플래그 없이 항상 적용한다 — 스포트라이트는
+  // "이런 것도 있다"는 한 스텝짜리 곁가지라, 방금 끝낸 안내 뒤에 바로 붙으면 사용자에게는 스텝을
+  // 합친 것과 다르지 않다. 끝낸 투어의 화면을 떠나면 그 다음 방문에 제 순서로 뜬다.
+  //
+  // 플래그로 만들지 않는 이유: 플래그는 워크스루 루프도 함께 가두므로, 칩 스포트라이트를 미루려고
+  // 붙이면 설정 화면의 워크스루까지 같은 마운트에서 사라진다.
+  if (completedAnotherTour) return null;
   for (const tour of tours) {
     if (!tour.spotlight || seen.includes(featureTourSeenKey(tour.id, "spotlight"))) continue;
     if (resolveFeatureTourAnchor(tour.spotlight, root)) {

@@ -829,6 +829,26 @@
 /* 배지가 auto 여백을 가져가면 체크는 배지 뒤에 붙는다. */
 .host-switcher-panel > button.is-current .host-switcher-badge + svg { margin-left: var(--space-2); }
 
+/* ── 성숙도 표식 ───────────────────────────────────────────────────────
+   "아직 바뀔 수 있다"는 상태이므로 warn 채널을 쓴다. brass는 위치·포커스 전용이라 여기 오지
+   않는다. 같은 자리에 놓이는 보안 경고(.remote-danger)와는 다른 것을 말하므로 문법도 분리해
+   두었다 — 이쪽은 낱말 하나짜리 칩, 저쪽은 아이콘이 붙은 문장이다. */
+.experimental-badge {
+  margin-left: var(--space-2);
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--warn) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--warn) 34%, transparent);
+  color: var(--warn-ink);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 .host-switcher-entry { display: flex; min-width: 0; flex-direction: column; }
 .host-switcher-entry small { color: var(--text-tertiary); font-family: var(--font-mono); font-size: 11px; }
 .host-switcher-divider { height: 1px; margin: var(--space-2) var(--space-3); background: var(--surface-rim); }

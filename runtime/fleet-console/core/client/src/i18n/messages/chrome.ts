@@ -64,7 +64,7 @@ export const chromeEn = {
 
   // remote control
   "chrome.control.shared": "Shared",
-  "chrome.control.curtain.eyebrow": "REMOTE CONTROL · READ-ONLY VIEW",
+  "chrome.control.curtain.eyebrow": "REMOTE CONTROL · EXPERIMENTAL · READ-ONLY VIEW",
   "chrome.control.curtain.title": "{name} has control",
   "chrome.control.curtain.body": "You can keep watching this Console, or take control back on this device.",
   "chrome.control.takeBack": "Take back control",
@@ -186,7 +186,7 @@ export const chromeEn = {
   "chrome.hosts.heading": "Hosts",
   "chrome.hosts.add": "Add host...",
   "chrome.hosts.addTitle": "Add a console",
-  "chrome.hosts.addLede": "Paste an access link from another Fleet Console. Opening one needs the Fleet Console app; a browser cannot check its certificate.",
+  "chrome.hosts.addLede": "Paste an access link from another Fleet Console. Opening one needs the Fleet Console app; a browser cannot check its certificate. Remote access is experimental — how links and pairings behave can still change between releases.",
   "chrome.hosts.manage": "Manage hosts...",
   "chrome.hosts.local": "Local",
   "chrome.hosts.nearby": "On this computer",
@@ -328,7 +328,7 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
 
   // 원격 제어
   "chrome.control.shared": "공유 중",
-  "chrome.control.curtain.eyebrow": "원격 제어 · 읽기 전용 보기",
+  "chrome.control.curtain.eyebrow": "원격 제어 · 실험 기능 · 읽기 전용 보기",
   "chrome.control.curtain.title": "{name}에서 제어 중입니다",
   "chrome.control.curtain.body": "이 Console을 계속 지켜보거나 이 기기로 제어권을 가져올 수 있습니다.",
   "chrome.control.takeBack": "제어권 가져오기",
@@ -443,7 +443,7 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.hosts.heading": "호스트",
   "chrome.hosts.add": "호스트 추가...",
   "chrome.hosts.addTitle": "콘솔 추가",
-  "chrome.hosts.addLede": "다른 Fleet Console의 액세스 링크를 붙여넣으세요. 여는 데는 Fleet Console 앱이 필요합니다 — 브라우저는 인증서를 대조할 수 없습니다.",
+  "chrome.hosts.addLede": "다른 Fleet Console의 액세스 링크를 붙여넣으세요. 여는 데는 Fleet Console 앱이 필요합니다 — 브라우저는 인증서를 대조할 수 없습니다. 원격 접속은 실험 기능이라, 링크와 페어링이 처리되는 방식은 릴리스마다 달라질 수 있습니다.",
   "chrome.hosts.manage": "호스트 관리...",
   "chrome.hosts.local": "Local",
   "chrome.hosts.nearby": "이 컴퓨터",

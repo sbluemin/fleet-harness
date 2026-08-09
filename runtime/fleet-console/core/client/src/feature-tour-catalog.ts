@@ -116,4 +116,50 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
       },
     ],
   },
+  {
+    id: "remote-access",
+    // 두 단계를 모두 쓰는 첫 투어다. 원격 접속은 실험 기능이라 존재를 먼저 알려야 하는데,
+    // 설명할 항목은 전부 설정 화면에 있다. 그래서 어느 화면에서나 보이는 호스트 칩에
+    // 스포트라이트로 존재만 알리고(한 스텝), 설정의 원격 접속 섹션에 들어온 순간 각 카드를
+    // 순서대로 짚는다(워크스루).
+    //
+    // 두 단계를 한 투어로 묶는 것이 핵심이다 — featureTourCompletionBase가 워크스루 완료 시
+    // 스포트라이트 시청 기록도 함께 남기므로, 설정에서 안내를 다 본 사용자에게 칩 하이라이트가
+    // 뒤늦게 다시 뜨지 않는다. 투어 두 개로 나누면 그 연결이 끊어진다.
+    spotlight: {
+      anchor: ".host-switcher-chip",
+      titleKey: "featureTour.remoteAccess.spotlightTitle",
+      bodyKey: "featureTour.remoteAccess.spotlightBody",
+    },
+    // 활성화 앵커는 섹션 머리다 — 원격 접속 섹션이 열리면 항상 있다. 카드는 의미 속성으로 짚어
+    // 네 카드가 공유하는 .remote-card 클래스나 배치 순서가 바뀌어도 앵커가 살아남는다.
+    // 링크 카드는 리스너가 켜져 있을 때만 렌더되므로, 꺼져 있는 동안에는 그 스텝만 조용히 빠진다.
+    walkthrough: [
+      {
+        anchor: ".remote-section-head",
+        titleKey: "featureTour.remoteAccess.step1Title",
+        bodyKey: "featureTour.remoteAccess.step1Body",
+      },
+      {
+        anchor: '[data-remote-card="hosts"]',
+        titleKey: "featureTour.remoteAccess.step2Title",
+        bodyKey: "featureTour.remoteAccess.step2Body",
+      },
+      {
+        anchor: '[data-remote-card="listener"]',
+        titleKey: "featureTour.remoteAccess.step3Title",
+        bodyKey: "featureTour.remoteAccess.step3Body",
+      },
+      {
+        anchor: '[data-remote-card="identity"]',
+        titleKey: "featureTour.remoteAccess.step4Title",
+        bodyKey: "featureTour.remoteAccess.step4Body",
+      },
+      {
+        anchor: '[data-remote-card="links"]',
+        titleKey: "featureTour.remoteAccess.step5Title",
+        bodyKey: "featureTour.remoteAccess.step5Body",
+      },
+    ],
+  },
 ] as const;
