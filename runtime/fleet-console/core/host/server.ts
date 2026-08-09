@@ -73,7 +73,6 @@ export interface ConsoleServerDeps {
   readonly version?: string;
   readonly codexCwd?: string;
   readonly dataDir?: string;
-  readonly agentCliDetector?: unknown;
   readonly agentRuntime?: unknown;
   readonly release?: FleetConsoleRelease;
   readonly releaseNotes?: ConsoleReleaseNotesService;

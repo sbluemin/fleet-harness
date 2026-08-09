@@ -27,16 +27,36 @@ permissions:
   contents: write
 
 jobs:
+  # 릴리스 대상 revision을 한 번만 해석해 아래 두 잡에 같은 값으로 넘긴다. 이벤트 SHA가 아니라
+  # 실행 시점의 origin/main 끝을 쓰므로, 연달아 올라온 커밋을 한 릴리스로 묶던 기존 동작은 그대로다.
+  # 이 잡이 없으면 verify는 이벤트 revision을, release는 자기 시작 시점의 origin/main을 각각 집어
+  # 검증한 커밋과 게시하는 커밋이 어긋난다.
+  resolve:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.target.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: target
+        run: |
+          git fetch origin main
+          echo "sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
+
   # 되돌릴 수 없는 npm publish 앞에 워크스페이스 전체 타입체크·테스트를 세운다. PR·push에서
   # 상시 도는 것과 같은 잡을 재사용하므로, 여기서 처음 빨개지는 일은 main에 이미 빨간 커밋이
   # 올라온 경우뿐이다. 검증 대상은 릴리스 커밋 직전의 main이며, 릴리스 커밋 자체는 버전 필드와
   # 컴파일된 changelog만 바꾼다.
   verify:
-    if: github.actor != 'github-actions[bot]'
+    needs: resolve
     uses: ./.github/workflows/workspace-verify.yml
+    with:
+      ref: ${{ needs.resolve.outputs.sha }}
 
   release:
-    needs: verify
+    needs: [resolve, verify]
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     permissions:
@@ -55,10 +75,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Sync to latest main
+      # verify가 검증한 그 revision에 고정한다. 여기서 origin/main을 다시 집으면 검증 창(수 분)
+      # 사이에 올라온 미검증 커밋을 그대로 게시하게 된다. 그 사이 main이 더 나아갔다면 아래
+      # "Commit release changes"의 push가 non-fast-forward로 거절되고, 그 커밋이 띄운 자기 런이
+      # 검증부터 다시 밟는다 — 미검증 게시보다 멈추는 쪽이 옳다.
+      - name: Pin to the verified revision
+        env:
+          VERIFIED_SHA: ${{ needs.resolve.outputs.sha }}
         run: |
           git fetch origin main --tags
-          git checkout -B main origin/main
+          git checkout -B main "$VERIFIED_SHA"
 
       - name: Stop on release commit
         id: guard

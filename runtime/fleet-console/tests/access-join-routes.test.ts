@@ -4,7 +4,6 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-detect.js";
 import { sessionCookieName } from "../core/host/auth.js";
 import type { ConsoleLockPayload } from "../core/host/console-contract-types.js";
 import { createConsoleLock } from "../core/host/lock.js";
@@ -122,7 +121,6 @@ async function startFixture(): Promise<Fixture> {
     port: 0,
     version: "test",
     agentRuntime: createFakeConsoleRuntime() as never,
-    agentCliDetector: createStubAgentCliDetector(),
     dataDir: dataRoot,
     systemFonts: { getFonts: async () => [] },
   });
@@ -130,10 +128,6 @@ async function startFixture(): Promise<Fixture> {
   const endpoint = await server.start({ dir, lockFile: path.join(dir, "console.lock") });
   const lock = createConsoleLock().readLock(path.join(dir, "console.lock"))!;
   return { endpoint, lock };
-}
-
-function createStubAgentCliDetector(): AgentCliDetector {
-  return { detect: async () => [] };
 }
 
 function createFakeConsoleRuntime(): unknown {

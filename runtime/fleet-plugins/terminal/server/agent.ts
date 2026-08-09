@@ -12,7 +12,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { readSocketRole } from "./shared/index.js";
 import type { TerminalRuntime } from "./shared/index.js";
 
-import { createDefaultAgentCliDetector, validateAgentCliPathForSave } from "./agent-api/agent-cli-detect.js";
+import { createDefaultAgentCliDetector, validateAgentCliPathForSave, type AgentCliDetector } from "./agent-api/agent-cli-detect.js";
 import { buildAgentCliLaunchKinds } from "./agent-api/agent-cli-launch-kinds.js";
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-api/agent-cli-launch-metadata.js";
 import { AGENT_CLI_COMMANDS, createAgentCliPathStore, resolveAgentCliBinary } from "./agent-api/agent-cli-paths.js";
@@ -117,7 +117,12 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     canonicalizeTheaterPath: ctx.host.paths.canonicalizeTheaterPath,
     workspaceHash: ctx.host.paths.workspaceHash,
   });
-  const detector = createDefaultAgentCliDetector(readAgentCliPaths);
+  // __fleetTerminalLaunch/__fleetTerminalStartShell와 같은 자리의 테스트 훅이다. 플러그인 번들은
+  // 호스트와 별개 모듈 인스턴스라 호스트가 만든 detector가 여기로 오지 않으므로, 설치 여부를
+  // 고정하려면 이 훅을 거쳐야 한다. 이것이 없으면 세션 생성 테스트가 실행 기계에 Claude Code가
+  // 설치돼 있는지에 따라 갈린다.
+  const testDetector = (globalThis as { __fleetAgentCliDetector?: AgentCliDetector }).__fleetAgentCliDetector;
+  const detector = testDetector ?? createDefaultAgentCliDetector(readAgentCliPaths);
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
   const oscActivityTrackers = new Map<string, OscAgentActivityTracker>();

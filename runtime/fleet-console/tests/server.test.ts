@@ -94,6 +94,7 @@ afterEach(async () => {
   fleetAdmiralMock.resolveProfile = null;
   delete (globalThis as { __fleetTerminalLaunch?: unknown }).__fleetTerminalLaunch;
   delete (globalThis as { __fleetTerminalStartShell?: unknown }).__fleetTerminalStartShell;
+  delete (globalThis as { __fleetAgentCliDetector?: unknown }).__fleetAgentCliDetector;
   for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
   restoreStaticIndex();
 });
@@ -2546,7 +2547,7 @@ async function startReminderFixture(options: Parameters<typeof startFixture>[0] 
 
 async function startFixture(options: {
   readonly agentRuntime?: ConsoleServerDeps["agentRuntime"];
-  readonly agentCliDetector?: ConsoleServerDeps["agentCliDetector"];
+  readonly agentCliDetector?: AgentCliDetector;
   readonly beforeCreateServer?: (paths: { readonly fleetDataDir: string }) => void;
   readonly terminalLaunch?: (cwd?: string, context?: TerminalLaunchContext) => Promise<TerminalLaunchSpec>;
   readonly terminalStartShell?: (launch: TerminalLaunchSpec) => TerminalPtyHandle;
@@ -2561,18 +2562,23 @@ async function startFixture(options: {
   const terminalHooks = globalThis as {
     __fleetTerminalLaunch?: typeof options.terminalLaunch;
     __fleetTerminalStartShell?: typeof options.terminalStartShell;
+    __fleetAgentCliDetector?: AgentCliDetector;
   };
   if (options.terminalLaunch) terminalHooks.__fleetTerminalLaunch = options.terminalLaunch;
   if (options.terminalStartShell) terminalHooks.__fleetTerminalStartShell = options.terminalStartShell;
+  // 플러그인은 호스트와 별개 모듈 인스턴스라 createConsoleServer 인자로는 detector가 닿지 않는다.
+  // 설치 여부를 여기서 고정하지 않으면 세션 생성 테스트가 이 기계의 PATH에 Claude Code가 있는지에
+  // 좌우된다 — 개발기에서는 통과하고 CI에서만 409로 떨어진다.
+  terminalHooks.__fleetAgentCliDetector = options.agentCliDetector ?? createStubAgentCliDetector();
+  // 설치 판정을 통과해도 실행 스펙을 만들 때 바이너리를 한 번 더 해석한다. terminalLaunch를 주입하지
+  // 않는 테스트는 그 해석까지 도달하므로, 문서화된 오버라이드로 존재하는 실행파일을 가리켜 둔다.
+  process.env.CLAUDE_BIN ??= process.execPath;
   tempDirs.push(dir);
   const lockFile = path.join(dir, "console.lock");
   const server = createConsoleServer({
     ...(options.useDefaultPort ? {} : { port: 0 }),
     version: "test",
     agentRuntime: options.agentRuntime,
-    // 기본은 4개 바이너리 모두 설치된 것으로 stub해 기존 테스트(claude/codex 세션)가 PATH 환경에
-    // 의존하지 않게 한다. 게이트 거부 케이스는 개별 테스트가 overrides로 미설치를 주입한다.
-    agentCliDetector: options.agentCliDetector ?? createStubAgentCliDetector(),
     dataDir: fleetDataDir,
     release: options.release,
     updateApply: options.updateApply,

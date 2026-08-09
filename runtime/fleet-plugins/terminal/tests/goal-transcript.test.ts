@@ -88,7 +88,14 @@ describe("goal transcript reader", () => {
   it("reads a transcript larger than one chunk without losing or duplicating markers", async () => {
     const filler = { type: "attachment", attachment: { type: "goal_status", met: false, condition: "한글 채움" } };
     const lines = [goalLine({ met: false, sentinel: true, condition: "한글 목표" })];
-    while (Buffer.byteLength(lines.join("\n")) < 700_000) lines.push(JSON.stringify(filler));
+    // 누적 바이트를 세면서 채운다 — 매 반복마다 join으로 전체를 다시 만들면 줄 수의 제곱에
+    // 비례해 느려져, 느린 러너에서 이 테스트만 기본 타임아웃을 넘긴다.
+    const fillerLine = JSON.stringify(filler);
+    let bytes = Buffer.byteLength(lines[0]!);
+    while (bytes < 700_000) {
+      lines.push(fillerLine);
+      bytes += Buffer.byteLength(fillerLine) + 1;
+    }
     lines.push(goalLine({ met: true, condition: "한글 목표", iterations: 2 }));
     const transcriptPath = await createTranscript(lines);
 
