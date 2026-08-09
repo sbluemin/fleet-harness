@@ -3,10 +3,16 @@ name: Workspace Verify
 # 워크스페이스 전체의 타입체크와 테스트를 한 잡에서 돌린다. canary push에서 발화하고,
 # stable-release가 릴리스 커밋을 만들기 전에 workflow_call로 같은 잡을 재사용한다 —
 # 배포 파이프라인이 검증하는 기준과 개발 중 보는 기준을 하나로 묶기 위한 것이다.
+# 문서·마크다운 변경만 있는 push는 검증이 필요 없으므로 건너뛴다. 단 fleet-admiral이
+# postinstall에서 내장 자산으로 임베드하는 assets 하위의 SKILL.md·hook은 제외한다.
 on:
   push:
     branches:
       - canary
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '!packages/fleet-admiral/assets/**'
   workflow_call:
     inputs:
       ref:
