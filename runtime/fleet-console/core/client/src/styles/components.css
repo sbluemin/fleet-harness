@@ -2292,7 +2292,13 @@
   height: 100%;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  /* clip이지 hidden이 아니다. hidden은 스크롤 포트를 만든다 — 스크롤바만 감출 뿐, 프로그램적
+     스크롤은 그대로 열려 있다. 캔버스 밖으로 나간 자손에 포커스가 닿는 순간(예: 커서 아래로
+     펼쳐진 캔버스 제어 메뉴) 브라우저가 그 자손을 드러내려고 이 컨테이너를 굴려, 판이 통째로
+     밀린 채 남는다. 이 캔버스의 이동은 world의 transform이 소유하고 스크롤 오프셋은 언제나 0이어야
+     한다 — 0이 아니면 clientX-rect.left로 뽑는 캔버스 좌표까지 함께 어긋난다. clip은 스크롤 포트
+     자체를 만들지 않아 그 경로를 원천에서 닫는다. */
+  overflow: clip;
   contain: paint;
   border: 1px solid var(--surface-rim);
   border-left-color: transparent;

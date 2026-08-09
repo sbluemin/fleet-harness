@@ -369,6 +369,19 @@ describe("Instrument core design contract", () => {
     for (const path of OWNED_SOURCES) expect(source(path)).not.toMatch(FORBIDDEN_DECORATION);
   });
 
+  it("denies the canvas a scroll port so a focused overhanging descendant cannot shift the board", () => {
+    const components = source("styles/components.css");
+    const canvasBlock = components.match(/\n\.operations-canvas \{[\s\S]*?\n\}/)?.[0] ?? "";
+    const contextMenu = source("canvas/canvas-context-menu.tsx");
+
+    // hidden은 스크롤바만 감출 뿐 스크롤 포트를 남긴다 — 밖으로 나간 자손에 포커스가 닿으면
+    // 브라우저가 이 컨테이너를 굴려 판 전체가 밀린 채 남는다. clip은 그 포트를 만들지 않는다.
+    expect(canvasBlock).toContain("overflow: clip;");
+    expect(canvasBlock).not.toContain("overflow: hidden;");
+    // 메뉴는 커서 자리에 스스로 선다 — 조상을 굴려 드러낼 것이 없다.
+    expect(contextMenu).toContain("menuRef.current?.focus({ preventScroll: true });");
+  });
+
   it("keeps minimap navigation and collapse controls while hiding Map in Formation and maximize", () => {
     const minimap = source("canvas/canvas-minimap.tsx");
     const canvas = source("canvas/canvas.tsx");

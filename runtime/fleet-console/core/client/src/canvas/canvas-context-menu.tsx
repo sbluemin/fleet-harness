@@ -252,7 +252,11 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   useEffect(() => {
     // 첫 항목을 강제 포커스하지 않고 컨테이너만 포커스해 '이미 선택된 듯한' UX를 피한다.
     // 방향키를 처음 누른 순간에만 항목으로 들어간다.
-    menuRef.current?.focus();
+    // preventScroll: 이 메뉴는 커서 자리에 스스로 서므로 조상을 굴려 드러낼 것이 없다. 게다가 이
+    // 포커스는 높이 측정 전 좌표(커서를 그대로 쓴 첫 렌더)에서 발화한다 — 측정과 클램프는 layout
+    // effect가 페인트 전에 마치지만, passive effect인 이 focus는 그 재렌더보다 먼저 flush된다.
+    // 그 찰나의 위치로 스크롤을 허용하면 조상이 굴러간 채 남는다.
+    menuRef.current?.focus({ preventScroll: true });
   }, []);
 
   useEffect(() => () => {
