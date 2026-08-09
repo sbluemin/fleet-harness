@@ -418,7 +418,6 @@ describe("CanvasContextMenu launch kind attribute", () => {
         viewportBounds={{ width: 1116, height: 856 }}
         catalog={[{ id: "terminal", title: "Terminal", kinds: [{ id: "shell", type: "shell", title: "Shell" }] }]}
         canLaunch
-        theaterLabel="Alpha"
         renderKindIcon={() => null}
         onLaunchKind={vi.fn()}
         onClose={vi.fn()}
@@ -426,9 +425,9 @@ describe("CanvasContextMenu launch kind attribute", () => {
     ));
 
     const menu = document.querySelector(".canvas-context-menu")!;
-    expect(menu.getAttribute("aria-label")).toBe("Alpha controls · Terminal");
+    expect(menu.getAttribute("aria-label")).toBe("Controls · Terminal");
     // 같은 문자열이 눈에도 보이지만, 접근성 트리에는 메뉴 이름으로만 한 번 실린다.
-    expect(document.querySelector(".canvas-context-menu-head-text")?.textContent).toBe("Alpha controls · Terminal");
+    expect(document.querySelector(".canvas-context-menu-head-text")?.textContent).toBe("Controls · Terminal");
     expect(document.querySelector(".canvas-context-menu-head")?.getAttribute("aria-hidden")).toBe("true");
   });
 
@@ -511,6 +510,17 @@ describe("CanvasContextMenu launch kind attribute", () => {
         ?? "caption");
     // 카탈로그는 Shell을 마지막에 내놓지만(terminal/routes.ts), 목록에서는 첫 행이다.
     expect(order).toEqual(["shell", "caption", "fable"]);
+  });
+
+  it("keeps a locked menu on one direct row per kind instead of an unusable model band", () => {
+    // canLaunch=false는 Theater가 없거나 추가 중인 상태다. 밴드를 펴면 고를 수 없는 모델이
+    // 열두 줄 서고, 방향키 집합은 그 전부를 걸러 내 아무 항목도 남지 않는다.
+    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, gatewayVariantCatalog(), vi.fn(), false, vi.fn(), false);
+
+    expect(document.querySelector(".operation-launch-variant-caption")).toBeNull();
+    expect(document.querySelector("[data-launch-variant-row]")).toBeNull();
+    const locked = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
+    expect(locked.disabled).toBe(true);
   });
 
   it("expands a disabled variant kind as its own reason row instead of an unusable model band", () => {
@@ -833,6 +843,7 @@ function renderMenu(
   onClose = vi.fn(),
   fixed = false,
   onLaunchKind = vi.fn(),
+  canLaunch = true,
 ): void {
   act(() => root.render(
     <CanvasContextMenu
@@ -840,7 +851,7 @@ function renderMenu(
       viewportBounds={viewportBounds}
       fixed={fixed}
       catalog={catalog}
-      canLaunch
+      canLaunch={canLaunch}
       renderKindIcon={() => null}
       onLaunchKind={onLaunchKind}
       onClose={onClose}

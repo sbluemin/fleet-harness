@@ -53,7 +53,6 @@ interface TriageSideBarProps {
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
   readonly canLaunch: boolean;
   /** 소유자 없는 자리의 실행 대상 — 사이드바 빈 영역은 활성 Theater로 실행한다. */
-  readonly activeTheaterLabel?: string;
   readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>) => void;
   readonly onPick: (operationId: string) => void;
   readonly onClose: (operationId: string) => void;
@@ -70,7 +69,6 @@ export function TriageSideBar({
   plugins,
   renderKindIcon,
   canLaunch,
-  activeTheaterLabel,
   onLaunchKind,
   onPick,
   onClose,
@@ -247,7 +245,6 @@ export function TriageSideBar({
           renderKindIcon={renderKindIcon}
           onLaunchKind={(pluginId, kind, variantLaunch) => { setLaunchMenu(null); onLaunchKind(pluginId, kind, variantLaunch); }}
           onClose={() => setLaunchMenu(null)}
-          theaterLabel={activeTheaterLabel}
         />,
         document.body,
       ) : null}

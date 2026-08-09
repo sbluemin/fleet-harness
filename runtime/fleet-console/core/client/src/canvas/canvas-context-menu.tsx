@@ -21,8 +21,6 @@ interface CanvasContextMenuProps {
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
   readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>) => void;
   readonly onClose: () => void;
-  /** 특정 Theater 소유 영역에서 열렸을 때 메뉴 헤더에 그 소유자를 명시한다. */
-  readonly theaterLabel?: string;
   // true면 anchor를 뷰포트 기준 좌표로 보고 position: fixed로 띄운다 — 선별 처리처럼
   // 월드/스테이지 프레임이 anchor 좌표계를 침범하는 모드에서 쓴다.
   readonly fixed?: boolean;
@@ -49,7 +47,7 @@ const ASIDE_GAP = 8;
 // 방향키가 훑는 항목. 실행 종류 행과 모델 행은 이제 같은 목록의 형제라 한 집합으로 돈다.
 const MENU_ITEM_SELECTOR = ".canvas-context-menu-item, .operation-launch-variant-row";
 
-export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", fixed = false, catalog, canLaunch, renderKindIcon, onLaunchKind, onClose, theaterLabel }: CanvasContextMenuProps) {
+export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", fixed = false, catalog, canLaunch, renderKindIcon, onLaunchKind, onClose }: CanvasContextMenuProps) {
   const t = useT();
   const globalSettings = useGlobalSettingsStore();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -221,9 +219,11 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   // 플러그인이 하나뿐이면 그 이름은 헤더 줄에 붙는다 — 항목 네 개짜리 메뉴에서 이름만 있는
   // 행 하나가 통째로 서는 것은 값을 못 한다. 둘 이상일 때만 그룹 라벨을 세운다.
   const singlePlugin = catalog.length === 1 ? catalog[0]! : null;
-  const headTitle = theaterLabel ? t("canvas.menu.theaterTitle", { theater: theaterLabel }) : t("canvas.menu.title");
+  // 머리글은 어디서 열었든 같은 이름을 쓴다 — 상자 이름에 여는 자리(캔버스)나 소유 Theater를 섞으면
+  // 같은 메뉴가 표면마다 다른 이름으로 불린다.
+  const headTitle = t("canvas.menu.title");
   // 시각 머리글과 메뉴 이름이 같은 문자열이어야 한다 — 좁은 폭에서 머리글이 줄임표로 잘려도
-  // 어느 Theater로 실행되는지는 접근 이름에 온전히 남는다.
+  // 접근 이름에는 온전히 남는다.
   const headLabel = singlePlugin ? `${headTitle} · ${singlePlugin.title}` : headTitle;
 
   // 모델 행은 자기 행 키만 들고 다닌다(강도 상자·고른 단이 그 키에 매달린다). 실행은 여전히
@@ -235,7 +235,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
       readonly row: OperationLaunchVariantRow;
     }>();
     for (const plugin of catalog) {
-      for (const kind of plugin.kinds.filter(expandsVariants)) {
+      for (const kind of plugin.kinds.filter((kind) => expandsVariants(kind, canLaunch))) {
         for (const group of kind.variants ?? []) {
           for (const row of group.rows) {
             index.set(effortKey(itemKey(plugin.id, kind.id), group.id, row.id), { pluginId: plugin.id, kind, row });
@@ -244,7 +244,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
       }
     }
     return index;
-  }, [catalog]);
+  }, [catalog, canLaunch]);
 
   const moveFocus = useCallback((from: HTMLElement | null, delta: number, edge: "first" | "last" | null) => {
     const menu = menuRef.current;
@@ -319,7 +319,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   // 실행 종류가 모델 밴드를 여럿 펼치면 어느 밴드가 어느 종류의 것인지 캡션만으로는 갈리지 않는다.
   // 플러그인 라벨과 같은 규칙이다 — 하나뿐이면 세우지 않는다.
   const variantKindCount = catalog.reduce(
-    (total, plugin) => total + plugin.kinds.filter(expandsVariants).length,
+    (total, plugin) => total + plugin.kinds.filter((kind) => expandsVariants(kind, canLaunch)).length,
     0,
   );
 
@@ -366,8 +366,8 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
         {catalog.length > 0 ? catalog.map((plugin, index) => {
           // 모델 밴드를 펼치는 실행 종류와 바로 실행되는 종류를 갈라 세운다. 바로 실행되는 쪽이
           // 위다 — 캡션 아래에 놓인 무캡션 행은 그 밴드의 일원으로 읽힌다.
-          const directKinds = plugin.kinds.filter((kind) => !expandsVariants(kind));
-          const variantKinds = plugin.kinds.filter(expandsVariants);
+          const directKinds = plugin.kinds.filter((kind) => !expandsVariants(kind, canLaunch));
+          const variantKinds = plugin.kinds.filter((kind) => expandsVariants(kind, canLaunch));
           return (
             <div key={plugin.id} role="group" aria-label={plugin.title}>
               {index > 0 ? <div className="theater-menu-divider" role="separator" /> : null}
@@ -462,11 +462,17 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                               // 행 본문은 강도를 열지 않는다 — 여는 것은 오른쪽 손잡이뿐이다. 다른 행으로
                               // 넘어온 포인터는 유예를 두고 닫는다: 즉시 닫으면 손잡이에서 서브메뉴로
                               // 비스듬히 가는 경로가 아래 행을 스칠 때 상자가 먼저 사라진다.
-                              onPointerEnter={scheduleEffortClose}
+                              onPointerEnter={() => {
+                                // 모델 행에는 설명이 없다 — 앞서 짚던 직접 행의 어사이드를 걷지 않으면
+                                // 짚지도 않은 행의 설명이 목록 옆에 떠 있는 채로 남는다.
+                                setHoverKey(null);
+                                scheduleEffortClose();
+                              }}
                               onPointerLeave={() => {
                                 if (rowHasEffort) scheduleEffortClose();
                               }}
                               onFocus={() => {
+                                setFocusKey(null);
                                 // 키보드로 다른 행에 닿으면 앞 행의 상자는 닫는다. 이 행의 상자를 여는 것은
                                 // ArrowRight이지 포커스가 아니다.
                                 if (openEffortRow !== null && openEffortRow !== rowKey) closeEffortMenu();
@@ -486,7 +492,6 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                                 // 밴드로 펼쳐진 뒤에도 같은 속성으로 닿는다.
                                 data-operation-launch-kind={kind.id}
                                 data-launch-variant-row={row.id}
-                                disabled={!canLaunch}
                                 tabIndex={-1}
                                 // 펼쳐지는 것이 메뉴가 아니므로 haspopup=menu로 예고하지 않는다 — 무엇이
                                 // 열렸는지는 aria-controls가 가리킨다.
@@ -667,10 +672,11 @@ function EffortGaugeGlyph({ rung, total }: { readonly rung: number; readonly tot
   );
 }
 
-// 모델 밴드로 펼쳐지는 실행 종류. 비활성 종류는 변형을 들고 있더라도 펼치지 않는다 —
-// 고를 수 없는 모델 목록을 여는 대신, 왜 못 쓰는지 밝히는 한 줄짜리 행으로 남는 편이 정직하다.
-function expandsVariants(kind: OperationLaunchKind): boolean {
-  return kind.disabled !== true && (kind.variants?.length ?? 0) > 0;
+// 모델 밴드로 펼쳐지는 실행 종류. 지금 실행할 수 없으면 — 그 종류가 비활성이든 Theater가 없어
+// 메뉴 전체가 잠겼든 — 펼치지 않는다. 고를 수 없는 모델 열두 줄을 세우는 대신, 왜 못 쓰는지
+// 밝히는 한 줄짜리 행으로 남는 편이 정직하다.
+function expandsVariants(kind: OperationLaunchKind, canLaunch: boolean): boolean {
+  return canLaunch && kind.disabled !== true && (kind.variants?.length ?? 0) > 0;
 }
 
 // 컨테이너는 자기 좌표를 인라인 스타일로 들고 있다. 캐스케이드의 모든 단이 이 좌표계 위에서

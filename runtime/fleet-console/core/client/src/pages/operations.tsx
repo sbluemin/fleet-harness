@@ -616,7 +616,6 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           plugins={registry.plugins}
           renderKindIcon={renderKindIcon}
           canLaunch={canLaunch}
-          activeTheaterLabel={state.theaters.find((theater) => theater.id === state.activeTheaterId)?.label}
           onLaunchKind={handleSideBarLaunchKind}
           onPick={pickTriageOperation}
           onClose={handleClose}

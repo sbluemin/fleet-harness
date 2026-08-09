@@ -67,9 +67,8 @@ export const canvasEn = {
   "canvas.plugin.operationFailed": "Plugin operation failed to render.",
   "canvas.plugin.companionFailed": "Plugin companion failed to render.",
 
-  "canvas.menu.aria": "Canvas controls",
-  "canvas.menu.title": "Canvas controls",
-  "canvas.menu.theaterTitle": "{theater} controls",
+  "canvas.menu.aria": "Controls",
+  "canvas.menu.title": "Controls",
   "canvas.menu.launch": "Launch",
   "canvas.menu.empty": "No operations available.",
 
@@ -279,9 +278,8 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "canvas.plugin.operationFailed": "Plugin Operation을 렌더하지 못했습니다.",
   "canvas.plugin.companionFailed": "Plugin Companion을 렌더하지 못했습니다.",
 
-  "canvas.menu.aria": "캔버스 제어",
-  "canvas.menu.title": "캔버스 제어",
-  "canvas.menu.theaterTitle": "{theater} 제어",
+  "canvas.menu.aria": "제어",
+  "canvas.menu.title": "제어",
   "canvas.menu.launch": "실행",
   "canvas.menu.empty": "사용 가능한 Operation이 없습니다.",
 

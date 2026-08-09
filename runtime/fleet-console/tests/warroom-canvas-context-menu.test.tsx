@@ -24,6 +24,8 @@ import { loadForTheater, setState as setCanvasState } from "../core/client/src/c
 import { isTriageDeckMapMode, resetTriageDeckZoomForTests, resetTriageTheater, setTriageActive, setTriageDeckZoom } from "../core/client/src/canvas/triage-store.js";
 import type { ConsoleState, OperationNode } from "../core/client/src/types.js";
 
+type OperationsCanvasLaunchKind = Parameters<typeof OperationsCanvas>[0]["onLaunchKind"];
+
 const THEATER_A = "theater-a";
 // War Room은 전 Theater를 한 판에 얹는다 — 밴드가 자기 Theater를 소유하는지는 활성 Theater가
 // 아닌 밴드에서만 드러난다. 두 밴드가 같은 이름이면 밴드 소유와 캔버스 폴백이 구별되지 않는다.
@@ -92,8 +94,8 @@ describe("War Room canvas controls reach", () => {
       expect(menu.defaultPrevented).toBe(true);
       const opened = container!.querySelector(".canvas-context-menu");
       expect(opened, `deck zoom ${zoom}`).not.toBeNull();
-      // 소유자가 없는 자리의 실행 대상은 활성 Theater이며, 헤더가 그것을 밝힌다.
-      expect(opened?.querySelector(".canvas-context-menu-head-text")?.textContent).toContain("Alpha");
+      // 상자 이름은 어디서 열든 같다 — 여는 자리나 소유 Theater를 이름에 섞지 않는다.
+      expect(opened?.querySelector(".canvas-context-menu-head-text")?.textContent).toBe("Controls · Test");
       expect(opened?.querySelector('[data-operation-launch-kind="shell"]')).not.toBeNull();
       act(() => { window.dispatchEvent(new Event("canvas-context-menu-close")); });
       expect(container!.querySelector(".canvas-context-menu")).toBeNull();
@@ -105,8 +107,9 @@ describe("War Room canvas controls reach", () => {
   // 덱을 세운 뒤 덱 자신의 빈 자리에서 우클릭해야 "밀도가 실행 진입점을 없애지 않는다"가 검증된다.
   it("reaches canvas controls from the deck's own empty space once the entry curtain lifts", () => {
     vi.useFakeTimers();
+    const onLaunchKind = vi.fn();
     try {
-      renderCanvas();
+      renderCanvas(onLaunchKind);
       // 진입 커튼이 걷혀야 덱이 선다(커튼 중에는 TriageWatchDeck이 null을 낸다).
       act(() => { vi.advanceTimersByTime(2_000); });
 
@@ -139,9 +142,11 @@ describe("War Room canvas controls reach", () => {
       const bandMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 140, clientY: 260 });
       act(() => betaBand!.dispatchEvent(bandMenu));
       expect(bandMenu.defaultPrevented).toBe(true);
-      const bandHead = container!.querySelector(".canvas-context-menu-head-text")?.textContent;
-      expect(bandHead).toContain("Beta");
-      expect(bandHead).not.toContain("Alpha");
+      // 소유는 머리글 문구가 아니라 실행이 향하는 Theater로 재야 한다 — 상자 이름은 어디서 열든
+      // 같은 문자열이고, 그 이름을 재는 것은 소유가 아니라 라벨을 재는 것이다.
+      act(() => container!.querySelector<HTMLButtonElement>('[data-operation-launch-kind="shell"]')!.click());
+      expect(onLaunchKind).toHaveBeenCalledTimes(1);
+      expect(onLaunchKind.mock.calls[0]![3]).toBe(THEATER_B);
     } finally {
       act(() => { window.dispatchEvent(new Event("canvas-context-menu-close")); });
       vi.useRealTimers();
@@ -183,13 +188,13 @@ describe("War Room canvas controls reach", () => {
   });
 });
 
-function renderCanvas() {
+function renderCanvas(onLaunchKind: OperationsCanvasLaunchKind = () => {}) {
   act(() => root!.render(createElement(OperationsCanvas, {
     state: STATE,
     catalog: CATALOG,
     canLaunch: true,
     renderKindIcon: () => null,
-    onLaunchKind: () => {},
+    onLaunchKind,
     onLaunchAtGeometry: () => {},
     onClose: () => {},
     onFocus: () => {},
