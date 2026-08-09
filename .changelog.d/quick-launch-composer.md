@@ -6,8 +6,8 @@ branch: quick-launch-composer
 #### Added
 - Start work from anywhere with Mod+J: type what the agent should do, pick the Theater and the model with its reasoning effort, and press Enter to open a Claude (Gateway) Operation that is already working on it.
   ko: 어디에 있든 Mod+J로 작업을 시작합니다. 시킬 일을 적고 Theater와 모델·추론 강도를 고른 뒤 Enter를 누르면, 이미 그 일을 하고 있는 Claude (Gateway) Operation이 열립니다.
-- Choose the model and its reasoning effort in one click, from the same model-row and effort-chip grid the canvas right-click menu uses.
-  ko: 모델과 추론 강도를 클릭 한 번으로 함께 고릅니다. 캔버스 우클릭 메뉴가 쓰는 모델 행·강도 칩 격자를 그대로 씁니다.
+- Choose the model and the reasoning effort inside the composer itself: the model from a popover, the effort from the track beside the model chip.
+  ko: 모델과 추론 강도를 컴포저 안에서 그대로 고릅니다. 모델은 팝오버에서, 강도는 모델 칩 옆 트랙에서 정합니다.
 - Aim a launch at any Theater, not only the one on screen, and read which Theater it will land in from the chip the composer opens with. Choosing another Theater switches to it and brings up the new Operation there.
   ko: 화면에 떠 있는 Theater뿐 아니라 어느 Theater로든 실행을 겨눕니다. 어디로 갈지는 컴포저가 열릴 때 띄우는 칩에서 바로 읽히고, 다른 Theater를 고르면 그쪽으로 전환하며 새 Operation을 그 자리에 띄웁니다.
 - Reuse the last Theater, model and reasoning effort you launched with, so a repeat launch is one shortcut and one sentence.

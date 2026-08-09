@@ -3,6 +3,10 @@ branch: integrate-cli-into-console
 ---
 
 ### fleet-cli
+#### Breaking Changes
+- `@dotobokuri/fleet-cli` no longer provides the `fleet` command. It is now version-matched migration metadata that only depends on `@dotobokuri/fleet-console`, and npm does not expose a dependency's command in the global prefix. Running `fleet update` from an existing install carries you across on its own, but installing or updating that package directly with npm leaves no `fleet` on your PATH; install `@dotobokuri/fleet-console` instead.
+  ko: `@dotobokuri/fleet-cli`는 더 이상 `fleet` 명령을 제공하지 않습니다. 이제 `@dotobokuri/fleet-console`만 의존하는 같은 버전의 migration 메타데이터이며, npm은 의존 패키지의 명령을 전역 prefix에 노출하지 않습니다. 기존 설치에서 `fleet update`를 쓰면 알아서 넘어가지만, 그 패키지를 npm으로 직접 설치하거나 업데이트하면 PATH에 `fleet`가 남지 않습니다 — `@dotobokuri/fleet-console`을 설치하세요.
+
 #### Changed
 - Ship `fleet` from `@dotobokuri/fleet-console` with `fleet cli`, `fleet console`, and bare Claude Code passthrough.
   ko: `@dotobokuri/fleet-console`에서 `fleet`를 게시하며 `fleet cli`, `fleet console`, bare Claude Code 패스스루를 지원합니다.
