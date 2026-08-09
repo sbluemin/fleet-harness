@@ -30,6 +30,8 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   // 도메인·제품 원형 및 복수형 내비 라벨
   "Operations",
   "GitHub",
+  // Remote access Desktop 설치 링크 라벨 — GitHub 제품 표면 명칭을 그대로 둔다.
+  "GitHub releases",
   "Backend API",
   // 캔버스 모드 3종은 번역하지 않는 제품 고유 명칭이다.
   "Cruise",
