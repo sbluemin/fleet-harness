@@ -10,6 +10,8 @@ import { HostSwitcher, readHostPickerSurface } from "../core/client/src/componen
 import { HostPickerScreen } from "../core/client/src/components/host-picker-surface.js";
 
 const HOME = "http://127.0.0.1:59229";
+/** 같은 기계에서 따로 돌고 있는, 스캔이 정규 슬롯에서 찾아낸 콘솔. */
+const NEIGHBOUR = "http://127.0.0.1:50000";
 const HERE = "https://192.168.0.62:63371";
 const THERE = "https://10.211.55.3:6186";
 
@@ -34,16 +36,18 @@ function stubRemoteConsole(): void {
   }));
 }
 
-/** 집이 자기 루프백에서 목록을 내주는 화면. */
-function stubHomeConsole(): void {
-  standOn(HOME);
+const scanned = (origin: string) => ({ origin, version: "1.51.0", owner: "desktop", distro: null });
+
+/** 이 기계의 어느 콘솔이 자기 루프백에서 목록을 내주는 화면. 셸이 말하는 집은 언제나 HOME이다. */
+function stubLoopbackConsole(origin: string, consoles: readonly ReturnType<typeof scanned>[]): void {
+  standOn(origin);
   requested = [];
   vi.stubGlobal("fetch", vi.fn(async (input: string) => {
-    const path = new URL(input, HOME).pathname;
+    const path = new URL(input, origin).pathname;
     requested.push(path);
     if (path === "/api/v1/desktop/shell") return Response.json({ homeOrigin: HOME });
     if (path === "/api/v1/local-consoles") {
-      return Response.json({ consoles: [{ origin: HOME, version: "1.51.0", owner: "desktop", distro: null }] });
+      return Response.json({ consoles });
     }
     if (path === "/api/v1/remote-hosts") {
       return Response.json({
@@ -55,6 +59,11 @@ function stubHomeConsole(): void {
     }
     return Response.json({ reachable: true, trusted: true });
   }));
+}
+
+/** 집이 자기 루프백에서 목록을 내주는 화면. */
+function stubHomeConsole(consoles: readonly ReturnType<typeof scanned>[] = [scanned(HOME)]): void {
+  stubLoopbackConsole(HOME, consoles);
 }
 
 /** jsdom의 location은 재정의를 거부하므로 전역을 통째로 세워 둔다. */
@@ -194,5 +203,35 @@ describe("the list home unfolds", () => {
     await act(async () => { target.click(); });
 
     expect(assign).toHaveBeenCalledWith(`${THERE}/console/`);
+  });
+
+  /**
+   * 데이터 루트를 재지정한 콘솔(격리 실행 등)은 정규 슬롯에 락을 두지 않으므로 스캔이 자기
+   * 자신도 찾지 못한다. 그때 스캔의 침묵을 사망으로 읽으면 살아 있는 집이 목록에서 사라지고,
+   * 원격에서 펼친 이 화면에는 돌아갈 줄이 하나도 남지 않는다.
+   */
+  it("keeps home on the list when the scan cannot see the console serving it", async () => {
+    stubHomeConsole([scanned(NEIGHBOUR)]);
+
+    await mount(createElement(HostPickerScreen, { surface: { at: THERE } }));
+
+    const home = rows().find((row) => row.textContent?.includes(new URL(HOME).host));
+    expect(home).toBeDefined();
+    expect(home!.className).toContain("is-home");
+  });
+});
+
+/**
+ * 스캔이 답했는데 그 안에 집이 없다는 사실은, 이 화면을 집이 아닌 콘솔이 서빙했을 때에만
+ * 사망의 증거가 된다 — 그 판정은 위 완화 뒤에도 그대로 남아야 한다.
+ */
+describe("a home the scan disproves", () => {
+  it("does not stand a row on a console that is not home", async () => {
+    stubLoopbackConsole(NEIGHBOUR, [scanned(NEIGHBOUR)]);
+
+    await mount(createElement(HostSwitcher));
+    await act(async () => { document.querySelector<HTMLButtonElement>(".host-switcher-chip")!.click(); });
+
+    expect(rowText().some((text) => text.includes(new URL(HOME).host))).toBe(false);
   });
 });

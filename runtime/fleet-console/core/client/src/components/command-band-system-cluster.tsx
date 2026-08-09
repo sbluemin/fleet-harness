@@ -212,10 +212,16 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
    * "이 컴퓨터"에 실릴 수 있는 것은 이 창이 실제로 닿을 수 있는 콘솔뿐이다.
    *
    * 스캔은 루프백 리스너에서만 답하므로, 원격 콘솔을 보고 있으면 비어 있다. 그때 돌아갈 곳을
-   * 아는 것은 셸뿐이라 셸의 말을 그대로 쓴다. 반대로 스캔이 답했다면 그 목록이 진실이고,
-   * 셸이 말한 집이 거기 없으면 그 콘솔은 이미 죽은 것이므로 줄을 세우지 않는다.
+   * 아는 것은 셸뿐이라 셸의 말을 그대로 쓴다. 반대로 스캔이 답했는데 셸이 말한 집이 거기 없으면
+   * 그 콘솔은 이미 죽은 것이므로 줄을 세우지 않는다.
+   *
+   * 단 이 화면을 서빙한 곳이 곧 집이라면 그 추정을 쓰지 않는다 — 화면 자체가 생존 증거이기
+   * 때문이다. 스캔은 정규 슬롯 두 곳만 보므로 데이터 루트를 재지정한 콘솔(격리 실행 등)은
+   * 설계상 자기 목록에도 잡히지 않는다. 그 추정을 그대로 두면 집이 살아 있는데도 집 줄이
+   * 사라지고, 원격에서 펼친 목록에는 돌아갈 길이 아예 남지 않는다.
    */
-  const homeIsLive = homeOrigin !== null && (local.length === 0 || local.some((entry) => entry.origin === homeOrigin));
+  const homeIsLive = homeOrigin !== null
+    && (homeOrigin === location.origin || local.length === 0 || local.some((entry) => entry.origin === homeOrigin));
   const home = homeIsLive ? homeOrigin : null;
   const placeholder = (origin: string): LocalConsole => ({ origin, version: "", owner: null, distro: null });
   const nearby: readonly { readonly entry: LocalConsole; readonly home: boolean }[] = [
