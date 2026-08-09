@@ -10939,16 +10939,16 @@ body[data-codex-reading="true"] .operations-side-bar {
 }
 
 /* ── Quick Launch 컴포저 ──────────────────────────────────────────────
-   전역 단축키(Mod+J)로 열리는 프롬프트 컴포저. 오버레이 지오메트리와 스크림은
-   .operation-search-overlay의 계약을 그대로 승계한다 — 두 표면은 서로 배타적이며
-   (isBlockingDialogOpen이 aria-modal로 판정) 같은 z-index 층에 산다. */
+   전역 단축키(Mod+J)로 열리는 프롬프트 컴포저. 화면 중앙에 서되 스크림과 z-index는
+   .operation-search-overlay의 계약을 승계한다 — 두 표면은 서로 배타적이다
+   (isBlockingDialogOpen이 aria-modal로 판정). */
 .quick-launch-overlay {
   position: fixed;
   inset: 0;
   z-index: 90;
   display: grid;
-  place-items: start center;
-  padding: 14vh var(--space-5) var(--space-5);
+  place-items: center;
+  padding: var(--space-5);
   background: color-mix(in oklch, var(--ink-abyss) 66%, transparent);
   animation: fleet-pop 280ms var(--ease-spring) both;
 }
@@ -11138,14 +11138,14 @@ body[data-codex-reading="true"] .operations-side-bar {
 }
 
 /* 팝오버는 .theater-menu의 팝업 스킨(테두리·언더레이·그림자)을 상속하고 위치·폭만 덮는다.
-   카드는 화면 위쪽(14vh)에 고정이라 팝오버는 항상 아래로 연다 — 위로 열면 뷰포트 밖으로 잘린다. */
+   카드는 뷰포트 중앙에 두고 팝오버는 아래로 열되, 카드 중심선부터 아래 여백을 계산해 화면 안에서 자른다. */
 .quick-launch-pop {
   top: calc(100% + var(--space-2));
   right: auto;
   bottom: auto;
   left: var(--space-4);
   z-index: 41;
-  max-height: 340px;
+  max-height: min(340px, var(--quick-launch-pop-max-height, 340px));
   overflow-y: auto;
 }
 

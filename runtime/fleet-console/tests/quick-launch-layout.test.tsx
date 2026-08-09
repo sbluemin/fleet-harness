@@ -8,6 +8,22 @@ const css = readFileSync(resolve(process.cwd(), "core/client/src/styles/componen
 const quickLaunch = readFileSync(resolve(process.cwd(), "core/client/src/components/quick-launch.tsx"), "utf8");
 
 describe("Quick Launch composer layout", () => {
+  it("centers the overlay with symmetric viewport padding", () => {
+    const overlay = ruleFor(".quick-launch-overlay");
+    expect(overlay).toMatch(/place-items:\s*center;/u);
+    expect(overlay).toMatch(/padding:\s*var\(--space-5\);/u);
+    expect(overlay).not.toMatch(/14vh/u);
+  });
+
+  it("clamps the downward popover to the viewport while retaining its cap", () => {
+    const pop = ruleFor(".quick-launch-pop");
+    expect(pop).toMatch(/max-height:\s*min\(340px,\s*var\(--quick-launch-pop-max-height,\s*340px\)\);/u);
+    expect(quickLaunch).toMatch(/getBoundingClientRect\(\)\.top/iu);
+    expect(quickLaunch).toMatch(/window\.innerHeight\s*-\s*top\s*-\s*safePadding/u);
+    expect(quickLaunch).not.toMatch(/50vh|64px/u);
+    expect(pop).toMatch(/overflow-y:\s*auto;/u);
+  });
+
   it("keeps the model popover at its measured compact width", () => {
     expect(css).toMatch(/\.quick-launch-pop--model\s*\{[^}]*width:\s*216px;/u);
   });
@@ -57,6 +73,11 @@ describe("Quick Launch effort surface", () => {
   it("folds the track away for a model with no ladder", () => {
     // 조작할 수 없는 컨트롤이 자리를 지키면 바가 고장 난 것처럼 읽힌다.
     expect(quickLaunch).toMatch(/selectedRow && \(selectedRow\.chips\?\.length \?\? 0\) > 0/u);
+  });
+
+  it("writes the normalized model and effort at selection time", () => {
+    expect(quickLaunch).toMatch(/const nextEffort = resolveRowEffort\(row, effort\);[\s\S]*setModel\(nextModel\);[\s\S]*setEffort\(nextEffort\);[\s\S]*writeQuickLaunchModelEffort\(nextModel, nextEffort\);/u);
+    expect(quickLaunch).toMatch(/onChange=\{\(nextEffort\) => \{[\s\S]*setEffort\(nextEffort\);[\s\S]*writeQuickLaunchModelEffort\(model, nextEffort\);/u);
   });
 
   it("waits for the seeded model to resolve against the catalog before submission", () => {

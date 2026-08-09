@@ -99,6 +99,8 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--ws-dock-files-width",
   // Canvas context menu TSX injects the viewport-derived height ceiling for its own box.
   "--canvas-menu-max-height",
+  // Quick Launch TSX injects the viewport-derived height ceiling for its open popover.
+  "--quick-launch-pop-max-height",
   // Triage Watch Deck TSX injects the grid-capped quick-look magnification at hover time.
   "--triage-quicklook-scale",
   // Watch Deck zoom tween injects card column/row sizing each frame.

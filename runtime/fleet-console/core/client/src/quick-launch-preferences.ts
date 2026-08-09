@@ -55,6 +55,11 @@ export function writeQuickLaunchSelection(selection: QuickLaunchSelection): void
   }
 }
 
+export function writeQuickLaunchModelEffort(model: string | null, effort: string | null): void {
+  const remembered = readQuickLaunchSelection();
+  writeQuickLaunchSelection({ ...remembered, model, effort });
+}
+
 function readNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }

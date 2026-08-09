@@ -7,7 +7,7 @@ import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useT } from "../i18n/index.js";
 import { usePluginRegistry } from "../plugin-registry.js";
-import { readQuickLaunchSelection, writeQuickLaunchSelection } from "../quick-launch-preferences.js";
+import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchSelection } from "../quick-launch-preferences.js";
 import { findVariantLaunchKind, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, resolveSelection } from "../quick-launch.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { closeQuickLaunch, consumeQuickLaunchDraft, requestQuickLaunch, setActiveTheater } from "../store.js";
@@ -42,6 +42,8 @@ export function QuickLaunch() {
   const [effort, setEffort] = useState<string | null>(null);
   const [popover, setPopover] = useState<PopoverKind | null>(null);
   const [popoverLeft, setPopoverLeft] = useState<number | null>(null);
+  const [popoverMaxHeight, setPopoverMaxHeight] = useState<number | null>(null);
+  const [viewportEpoch, setViewportEpoch] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
   const open = state.quickLaunchOpen;
@@ -110,15 +112,32 @@ export function QuickLaunch() {
   useLayoutEffect(() => {
     if (!popover) {
       setPopoverLeft(null);
+      setPopoverMaxHeight(null);
       return;
     }
     const chip = (popover === "theater" ? theaterChipRef : modelChipRef).current;
     const bar = barRef.current;
-    if (!chip || !bar) return;
-    const width = bar.querySelector<HTMLElement>(".quick-launch-pop")?.getBoundingClientRect().width ?? 0;
+    const pop = bar?.querySelector<HTMLElement>(".quick-launch-pop");
+    if (!chip || !bar || !pop) return;
+    const width = pop.getBoundingClientRect().width;
     // 칩이 오른쪽으로 밀려 있어도 팝오버는 카드 안에 머문다.
     setPopoverLeft(Math.max(0, Math.min(chip.offsetLeft, bar.clientWidth - width - POPOVER_GAP)));
+    const top = pop.getBoundingClientRect().top;
+    const safePadding = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--space-5")) || 0;
+    setPopoverMaxHeight(Math.max(0, window.innerHeight - top - safePadding));
+  }, [popover, prompt, groups.length, theaters.length, viewportEpoch]);
+
+  useEffect(() => {
+    if (!popover) return;
+    const handleResize = () => setViewportEpoch((epoch) => epoch + 1);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, [popover]);
+
+  const updatePrompt = useCallback((nextPrompt: string, element: HTMLTextAreaElement) => {
+    setPrompt(nextPrompt);
+    autoGrow(element);
+  }, []);
 
   const closePopover = useCallback(() => setPopover(null), []);
 
@@ -202,10 +221,7 @@ export function QuickLaunch() {
             className="quick-launch-input"
             rows={1}
             value={prompt}
-            onChange={(event) => {
-              setPrompt(event.target.value);
-              autoGrow(event.target);
-            }}
+            onChange={(event) => updatePrompt(event.target.value, event.target)}
             onKeyDown={handleInputKeyDown}
             placeholder={t("chrome.quickLaunch.placeholder")}
             aria-label={t("chrome.quickLaunch.promptLabel")}
@@ -256,7 +272,10 @@ export function QuickLaunch() {
             <EffortTrack
               row={selectedRow}
               value={effort}
-              onChange={setEffort}
+              onChange={(nextEffort) => {
+                setEffort(nextEffort);
+                writeQuickLaunchModelEffort(model, nextEffort);
+              }}
               autoLabel={t("launchVariants.effort.auto")}
               ariaLabel={t("launchVariants.effort.track")}
               autoValueText={t("launchVariants.effort.autoValue")}
@@ -299,7 +318,7 @@ export function QuickLaunch() {
               className="quick-launch-pop quick-launch-pop--theater theater-menu"
               role="menu"
               aria-label={t("chrome.quickLaunch.theaterMenu")}
-              style={popoverLeft === null ? undefined : { left: popoverLeft }}
+              style={{ ...(popoverLeft === null ? {} : { left: popoverLeft }), ...(popoverMaxHeight === null ? {} : { "--quick-launch-pop-max-height": `${popoverMaxHeight}px` }) }}
             >
               {theaters.map((theater) => (
                 <button
@@ -327,7 +346,7 @@ export function QuickLaunch() {
               className="quick-launch-pop quick-launch-pop--model theater-menu"
               role="menu"
               aria-label={t("chrome.quickLaunch.modelMenu")}
-              style={popoverLeft === null ? undefined : { left: popoverLeft }}
+              style={{ ...(popoverLeft === null ? {} : { left: popoverLeft }), ...(popoverMaxHeight === null ? {} : { "--quick-launch-pop-max-height": `${popoverMaxHeight}px` }) }}
             >
               {groups.map((group) => (
                 <div key={group.id} className="quick-launch-pop-group">
@@ -350,9 +369,11 @@ export function QuickLaunch() {
                       row={row}
                       selectedModel={model}
                       onPick={(nextModel) => {
-                        setModel(nextModel);
                         // 새 모델의 사다리에 없는 강도는 들고 갈 수 없다 — 비운 상태로 떨어진다.
-                        setEffort(resolveRowEffort(row, effort));
+                        const nextEffort = resolveRowEffort(row, effort);
+                        setModel(nextModel);
+                        setEffort(nextEffort);
+                        writeQuickLaunchModelEffort(nextModel, nextEffort);
                         closePopover();
                         inputRef.current?.focus();
                       }}
