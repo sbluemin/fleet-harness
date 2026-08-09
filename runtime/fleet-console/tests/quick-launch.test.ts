@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
 
+import { isTokenInsideRanges, parseQuickLaunchFileToken, updatePastedRanges } from "../core/client/src/quick-launch-file-search.js";
 import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
 import { findVariantLaunchKind, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, resolveSelection } from "../core/client/src/quick-launch.js";
 import { getState, removeTheater, setState } from "../core/client/src/store.js";
@@ -191,6 +192,61 @@ describe("quick launch preferences", () => {
   it("drops non-string fields instead of trusting them", () => {
     window.localStorage.setItem("fleet-console.quickLaunch.selection", JSON.stringify({ theaterId: 7, model: "", effort: "high" }));
     expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: "high" });
+  });
+});
+
+describe("Quick Launch file token", () => {
+  it("recognizes a directly typed Theater file query at a token boundary", () => {
+    expect(parseQuickLaunchFileToken("Review @quick-launch", 20)).toEqual({
+      start: 7,
+      end: 20,
+      query: "quick-launch",
+    });
+  });
+
+  it("keeps email and identifier @ characters literal", () => {
+    expect(parseQuickLaunchFileToken("mail me@example.com", 19)).toBeNull();
+    expect(parseQuickLaunchFileToken("review foo@bar", 14)).toBeNull();
+  });
+
+  it("tracks a pasted multiline @ token as literal", () => {
+    const previous = "Review ";
+    const pasted = "first line\n@src/app.ts\nreview this file";
+    const next = previous + pasted;
+    const ranges = updatePastedRanges(previous, next, [], { start: previous.length, end: previous.length, text: pasted });
+    const caret = next.indexOf("\n", next.indexOf("@"));
+    const token = parseQuickLaunchFileToken(next, caret);
+    expect(token).not.toBeNull();
+    expect(token && isTokenInsideRanges(token, ranges)).toBe(true);
+  });
+
+  it("moves a pasted range when text is inserted before it", () => {
+    const ranges = updatePastedRanges("@literal", "prefix @literal", [{ start: 0, end: 8 }], null);
+    expect(ranges).toEqual([{ start: 7, end: 15 }]);
+    const token = parseQuickLaunchFileToken("prefix @literal", 15);
+    expect(token && isTokenInsideRanges(token, ranges)).toBe(true);
+  });
+
+  it("keeps edits inside a pasted token literal", () => {
+    const ranges = updatePastedRanges("@literal", "@literal-more", [{ start: 0, end: 8 }], null);
+    expect(ranges).toEqual([{ start: 0, end: 13 }]);
+    const token = parseQuickLaunchFileToken("@literal-more", 13);
+    expect(token && isTokenInsideRanges(token, ranges)).toBe(true);
+  });
+
+  it("switches or closes the active token when the caret moves", () => {
+    const prompt = "@first then @second";
+    expect(parseQuickLaunchFileToken(prompt, 6)?.query).toBe("first");
+    expect(parseQuickLaunchFileToken(prompt, prompt.length)?.query).toBe("second");
+    expect(parseQuickLaunchFileToken(prompt, 10)).toBeNull();
+  });
+
+  it("replaces the whole token even when the caret is in its middle", () => {
+    expect(parseQuickLaunchFileToken("Review @quick-launch please", 13)).toEqual({
+      start: 7,
+      end: 20,
+      query: "quick-launch",
+    });
   });
 });
 

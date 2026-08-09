@@ -2,11 +2,13 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useNavigate } from "react-router-dom";
 
 import type { OperationCatalogPlugin, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
+import type { QuickLaunchFileSearchResult } from "@fleet-console/sdk/quick-launch";
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 
 import { useConsoleState } from "../hooks/use-store.js";
 import { useT } from "../i18n/index.js";
 import { usePluginRegistry } from "../plugin-registry.js";
+import { isTokenInsideRanges, parseQuickLaunchFileToken, updatePastedRanges, type PendingPaste, type TextRange } from "../quick-launch-file-search.js";
 import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchSelection } from "../quick-launch-preferences.js";
 import { findVariantLaunchKind, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, resolveSelection } from "../quick-launch.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
@@ -45,6 +47,29 @@ export function QuickLaunch() {
   const [popoverMaxHeight, setPopoverMaxHeight] = useState<number | null>(null);
   const [viewportEpoch, setViewportEpoch] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [fileResults, setFileResults] = useState<readonly QuickLaunchFileSearchResult[]>([]);
+  const [activeFileIndex, setActiveFileIndex] = useState(0);
+  const [fileToken, setFileToken] = useState<{ readonly start: number; readonly end: number; readonly query: string } | null>(null);
+  const pastedRangesRef = useRef<readonly TextRange[]>([]);
+  const pendingPasteRef = useRef<PendingPaste | null>(null);
+  const previousPromptRef = useRef("");
+  const [selectionRevision, setSelectionRevision] = useState(0);
+  const fileSearchGenerationRef = useRef(0);
+  const fileSearchAbortRef = useRef<AbortController | null>(null);
+  const fileSearchTimerRef = useRef<number | null>(null);
+
+  const stopFileSearchWork = useCallback(() => {
+    fileSearchGenerationRef.current += 1;
+    fileSearchAbortRef.current?.abort();
+    if (fileSearchTimerRef.current !== null) window.clearTimeout(fileSearchTimerRef.current);
+  }, []);
+
+  const clearFileSearch = useCallback(() => {
+    stopFileSearchWork();
+    setFileResults([]);
+    setFileToken(null);
+    setActiveFileIndex(0);
+  }, [stopFileSearchWork]);
 
   const open = state.quickLaunchOpen;
   const theaters = state.theaters ?? [];
@@ -76,7 +101,11 @@ export function QuickLaunch() {
       ? remembered.theaterId
       : null;
     // 거절된 실행이 남긴 초안이 있으면 그것으로 되살린다(store가 되열 때 실어 준다).
-    setPrompt(state.quickLaunchDraft ?? "");
+    const draft = state.quickLaunchDraft ?? "";
+    previousPromptRef.current = draft;
+    pastedRangesRef.current = [];
+    pendingPasteRef.current = null;
+    setPrompt(draft);
     consumeQuickLaunchDraft();
     setPopover(null);
     setSubmitting(false);
@@ -106,6 +135,69 @@ export function QuickLaunch() {
       previousFocusRef.current?.focus();
     };
   }, [open]);
+
+  const parsedFileToken = useMemo(() => {
+    const token = parseQuickLaunchFileToken(prompt, inputRef.current?.selectionStart ?? prompt.length);
+    return token && !isTokenInsideRanges(token, pastedRangesRef.current) ? token : null;
+  }, [prompt, selectionRevision]);
+
+  const markSelectionChanged = useCallback(() => setSelectionRevision((value) => value + 1), []);
+
+  const insertFileResult = useCallback((result: QuickLaunchFileSearchResult) => {
+    if (!fileToken) return;
+    const next = `${prompt.slice(0, fileToken.start)}@${result.relativePath} ${prompt.slice(fileToken.end)}`;
+    pastedRangesRef.current = updatePastedRanges(prompt, next, pastedRangesRef.current, null);
+    previousPromptRef.current = next;
+    setPrompt(next);
+    setFileResults([]);
+    setFileToken(null);
+    setActiveFileIndex(0);
+    window.requestAnimationFrame(() => {
+      const caret = fileToken.start + result.relativePath.length + 2;
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(caret, caret);
+    });
+  }, [fileToken, prompt]);
+
+  const handleFileKeyDown = useCallback((event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (fileResults.length === 0 || !fileToken) return false;
+    if (event.key === "ArrowDown") { event.preventDefault(); event.stopPropagation(); setActiveFileIndex((index) => (index + 1) % fileResults.length); return true; }
+    if (event.key === "ArrowUp") { event.preventDefault(); event.stopPropagation(); setActiveFileIndex((index) => (index - 1 + fileResults.length) % fileResults.length); return true; }
+    if (event.key === "Enter" || event.key === "Tab") {
+      const result = fileResults[activeFileIndex];
+      if (!result) return false;
+      event.preventDefault();
+      event.stopPropagation();
+      insertFileResult(result);
+      return true;
+    }
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setFileResults([]); setFileToken(null); return true; }
+    return false;
+  }, [activeFileIndex, fileResults, fileToken, insertFileResult]);
+
+  useEffect(() => {
+    const provider = registry.quickLaunchFileSearch?.[0];
+    const token = parsedFileToken;
+    if (!open || !theaterId || !provider || !token) {
+      clearFileSearch();
+      return;
+    }
+    setFileToken(token);
+    fileSearchAbortRef.current?.abort();
+    if (fileSearchTimerRef.current !== null) window.clearTimeout(fileSearchTimerRef.current);
+    const generation = ++fileSearchGenerationRef.current;
+    if (token.query.length === 0) { setFileResults([]); return; }
+    fileSearchTimerRef.current = window.setTimeout(() => {
+      const abort = new AbortController();
+      fileSearchAbortRef.current = abort;
+      void provider({ query: token.query, theaterId, limit: 8, signal: abort.signal })
+        .then((results) => { if (!abort.signal.aborted && generation === fileSearchGenerationRef.current) { setFileResults(results.slice(0, 8)); setActiveFileIndex(0); } })
+        .catch(() => { if (!abort.signal.aborted && generation === fileSearchGenerationRef.current) setFileResults([]); });
+    }, 150);
+    return () => { if (fileSearchTimerRef.current !== null) window.clearTimeout(fileSearchTimerRef.current); };
+  }, [clearFileSearch, open, parsedFileToken, registry.quickLaunchFileSearch, theaterId]);
+
+  useEffect(() => stopFileSearchWork, [stopFileSearchWork]);
 
   // 팝오버는 자기 칩 아래에 선다. 바 기준 고정 좌표로 두면 두 칩이 같은 자리를 써서, 모델 목록이
   // Theater 칩 아래에 열린다 — 화면이 어느 칩을 눌렀는지 부정하는 셈이다.
@@ -175,11 +267,16 @@ export function QuickLaunch() {
   }, [closePopover, popover]);
 
   const handleInputKeyDown = useCallback((event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.nativeEvent.isComposing) return;
+    if (handleFileKeyDown(event)) return;
     // Enter 제출 · Shift+Enter 개행 · IME 조합 중 Enter는 확정이지 제출이 아니다(Analyst 컴포저와 같은 계약).
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+    if (event.key !== "Enter" || event.shiftKey) return;
     event.preventDefault();
     submit();
-  }, [submit]);
+  }, [handleFileKeyDown, submit]);
+
+  const fileListId = "quick-launch-file-results";
+  const filePickerOpen = !!fileToken && fileResults.length > 0;
 
   if (!open) return null;
 
@@ -215,14 +312,59 @@ export function QuickLaunch() {
         onKeyDown={handleKeyDown}
         style={{ maxWidth: CARD_WIDTH_FALLBACK }}
       >
+        {filePickerOpen ? (
+          <div id={fileListId} className="quick-launch-file-picker" role="listbox" aria-label={t("chrome.quickLaunch.fileResults")}>
+            {fileResults.map((result, index) => {
+              const parts = result.relativePath.split("/");
+              const basename = parts.pop() ?? result.relativePath;
+              return (
+                <button key={result.id} id={`${fileListId}-${index}`} type="button" role="option" aria-selected={index === activeFileIndex}
+                  className={`quick-launch-file-row${index === activeFileIndex ? " is-active" : ""}`} onMouseDown={(event) => event.preventDefault()} onClick={() => insertFileResult(result)}>
+                  <span className="quick-launch-file-icon" aria-hidden="true"><FileOutlineIcon /></span>
+                  <strong>{basename}</strong><span className="quick-launch-file-directory">{parts.length > 0 ? parts.join("/") : ""}</span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+
         <div className="quick-launch-field">
           <textarea
             ref={inputRef}
             className="quick-launch-input"
             rows={1}
             value={prompt}
-            onChange={(event) => updatePrompt(event.target.value, event.target)}
             onKeyDown={handleInputKeyDown}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={filePickerOpen}
+            aria-controls={filePickerOpen ? fileListId : undefined}
+            aria-activedescendant={filePickerOpen ? `${fileListId}-${activeFileIndex}` : undefined}
+            onSelect={markSelectionChanged}
+            onClick={markSelectionChanged}
+            onKeyUp={markSelectionChanged}
+            onPaste={(event) => {
+              pendingPasteRef.current = {
+                start: event.currentTarget.selectionStart,
+                end: event.currentTarget.selectionEnd,
+                text: event.clipboardData.getData("text/plain"),
+              };
+            }}
+            onCompositionEnd={markSelectionChanged}
+            onChange={(event) => {
+              const nextPrompt = event.target.value;
+              pastedRangesRef.current = updatePastedRanges(
+                previousPromptRef.current,
+                nextPrompt,
+                pastedRangesRef.current,
+                pendingPasteRef.current,
+              );
+              pendingPasteRef.current = null;
+              previousPromptRef.current = nextPrompt;
+              setPrompt(nextPrompt);
+              autoGrow(event.target);
+              markSelectionChanged();
+            }}
             placeholder={t("chrome.quickLaunch.placeholder")}
             aria-label={t("chrome.quickLaunch.promptLabel")}
             spellCheck={false}
@@ -329,6 +471,7 @@ export function QuickLaunch() {
                   aria-checked={theater.id === theaterId}
                   onClick={() => {
                     setTheaterId(theater.id);
+                    clearFileSearch();
                     closePopover();
                     inputRef.current?.focus();
                   }}
@@ -410,6 +553,14 @@ function QuickLaunchVariantRow({ row, selectedModel, onPick }: {
         {rowModel === selectedModel ? <span className="quick-launch-pop-check" aria-hidden="true">✓</span> : null}
       </button>
     </div>
+  );
+}
+
+function FileOutlineIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4 2.5h5l3 3v8H4zM9 2.5v3h3" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
+    </svg>
   );
 }
 
