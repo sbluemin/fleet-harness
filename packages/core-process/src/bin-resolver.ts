@@ -12,6 +12,7 @@ export interface ResolvedBinary {
 
 const DEFAULT_WINDOWS_PATHEXT = ".COM;.EXE;.BAT;.CMD";
 const WINDOWS_PATH_SEPARATOR = ";";
+const POSIX_PATH_SEPARATOR = ":";
 const WINDOWS_SHIM_EXTENSIONS = new Set([".cmd", ".bat"]);
 const CMD_EXPANSION_SENSITIVE_PATTERN = /[%^]/;
 
@@ -66,7 +67,7 @@ export function prependPathEntries(env: NodeJS.ProcessEnv, entries: readonly str
   const isWindows = platform === "win32";
   const pathKey = isWindows ? Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "Path" : "PATH";
   const existingPath = isWindows ? (env.Path ?? env.PATH) : env.PATH;
-  const separator = isWindows ? WINDOWS_PATH_SEPARATOR : path.delimiter;
+  const separator = isWindows ? WINDOWS_PATH_SEPARATOR : POSIX_PATH_SEPARATOR;
   const seen = new Set<string>();
   const pathEntries: string[] = [];
   for (const entry of [...entries, ...(existingPath?.split(separator) ?? [])]) {

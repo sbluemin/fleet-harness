@@ -188,10 +188,10 @@ describe("desktop environment", () => {
       const environment = await createHydratedDesktopEnvironment(userDataDir, "1.23.0", "/packaged/resources/fleet-console", true, {
         SHELL: "/bin/zsh",
         PATH: "/inherited/bin",
-      }, { platform: "darwin", loginShellPathProbe });
-      expect(environment.serviceEnv.PATH?.split(path.delimiter)).toEqual([
-        path.join(os.homedir(), ".local", "bin"),
-        path.join(os.homedir(), "Library", "pnpm"),
+      }, { platform: "darwin", homeDirectory: "/Users/alice", loginShellPathProbe });
+      expect(environment.serviceEnv.PATH?.split(":")).toEqual([
+        "/Users/alice/.local/bin",
+        "/Users/alice/Library/pnpm",
         "/opt/homebrew/bin",
         "/usr/local/bin",
         "/inherited/bin",
@@ -203,24 +203,24 @@ describe("desktop environment", () => {
   it("orders and deduplicates packaged macOS shell, inherited, and deterministic PATH entries", async () => {
     const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-shell-path-"));
     TEMP_DIRS.push(userDataDir);
-    const home = os.homedir();
+    const home = "/Users/alice";
     const environment = await createHydratedDesktopEnvironment(userDataDir, "1.23.0", "/packaged/resources/fleet-console", true, {
       SHELL: "/bin/zsh",
       PATH: "/inherited/bin:/shared/bin",
       npm_config_prefix: "/fallback-prefix",
       PNPM_HOME: "/shared/bin",
-    }, { platform: "darwin", loginShellPathProbe: { run: vi.fn(async () => ({ stdout: "/Users/alice/.opencode/bin:/shared/bin" })) } });
+    }, { platform: "darwin", homeDirectory: "/Users/alice", loginShellPathProbe: { run: vi.fn(async () => ({ stdout: "/Users/alice/.opencode/bin:/shared/bin" })) } });
 
     expect(environment.serviceEnv.PATH).toBe([
       "/Users/alice/.opencode/bin",
       "/shared/bin",
       "/inherited/bin",
       "/fallback-prefix/bin",
-      path.join(home, ".local", "bin"),
-      path.join(home, "Library", "pnpm"),
+      path.posix.join(home, ".local", "bin"),
+      path.posix.join(home, "Library", "pnpm"),
       "/opt/homebrew/bin",
       "/usr/local/bin",
-    ].join(path.delimiter));
+    ].join(":"));
   });
 
   it("adds macOS user and npm executable locations for a packaged GUI launch", () => {
