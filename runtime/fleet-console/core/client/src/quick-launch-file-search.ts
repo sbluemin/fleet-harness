@@ -55,7 +55,7 @@ export function updatePastedRanges(
   const transformed = ranges.flatMap((range): TextRange[] => {
     if (removedEnd === prefix && insertedEnd > prefix) {
       if (prefix <= range.start) return [{ start: range.start + delta, end: range.end + delta }];
-      if (prefix <= range.end) return [{ start: range.start, end: range.end + delta }];
+      if (prefix < range.end) return [{ start: range.start, end: range.end + delta }];
       return [range];
     }
     if (range.end <= prefix) return [range];

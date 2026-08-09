@@ -228,10 +228,17 @@ describe("Quick Launch file token", () => {
   });
 
   it("keeps edits inside a pasted token literal", () => {
-    const ranges = updatePastedRanges("@literal", "@literal-more", [{ start: 0, end: 8 }], null);
-    expect(ranges).toEqual([{ start: 0, end: 13 }]);
-    const token = parseQuickLaunchFileToken("@literal-more", 13);
+    const ranges = updatePastedRanges("@literal", "@lite-more-ral", [{ start: 0, end: 8 }], null);
+    expect(ranges).toEqual([{ start: 0, end: 14 }]);
+    const token = parseQuickLaunchFileToken("@lite-more-ral", 14);
     expect(token && isTokenInsideRanges(token, ranges)).toBe(true);
+  });
+
+  it("keeps directly typed text at a pasted range end outside the range", () => {
+    const ranges = updatePastedRanges("pasted", "pasted @src", [{ start: 0, end: 6 }], null);
+    expect(ranges).toEqual([{ start: 0, end: 6 }]);
+    const token = parseQuickLaunchFileToken("pasted @src", 11);
+    expect(token && isTokenInsideRanges(token, ranges)).toBe(false);
   });
 
   it("switches or closes the active token when the caret moves", () => {

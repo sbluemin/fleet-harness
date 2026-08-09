@@ -163,7 +163,7 @@ export function QuickLaunch() {
     if (fileResults.length === 0 || !fileToken) return false;
     if (event.key === "ArrowDown") { event.preventDefault(); event.stopPropagation(); setActiveFileIndex((index) => (index + 1) % fileResults.length); return true; }
     if (event.key === "ArrowUp") { event.preventDefault(); event.stopPropagation(); setActiveFileIndex((index) => (index - 1 + fileResults.length) % fileResults.length); return true; }
-    if (event.key === "Enter" || event.key === "Tab") {
+    if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
       const result = fileResults[activeFileIndex];
       if (!result) return false;
       event.preventDefault();
@@ -183,6 +183,8 @@ export function QuickLaunch() {
       return;
     }
     setFileToken(token);
+    setFileResults([]);
+    setActiveFileIndex(0);
     fileSearchAbortRef.current?.abort();
     if (fileSearchTimerRef.current !== null) window.clearTimeout(fileSearchTimerRef.current);
     const generation = ++fileSearchGenerationRef.current;
