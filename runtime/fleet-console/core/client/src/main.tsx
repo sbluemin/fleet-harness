@@ -22,6 +22,8 @@ import "./styles/theme.css";
 import "./styles/layout.css";
 import "./styles/components.css";
 import { App } from "./app.js";
+import { readHostPickerSurface } from "./components/command-band-system-cluster.js";
+import { HostPickerScreen } from "./components/host-picker-surface.js";
 import { fetchGlobalSettingsState } from "./global-settings-api.js";
 import { failGlobalSettingsLoad, hydrateGlobalSettings } from "./global-settings-store.js";
 import { connectOperationsSse } from "./operations-sse.js";
@@ -67,10 +69,24 @@ try {
   // 서버 미응답 시 기본 Theme 및 Manrope UI font를 유지한다.
 }
 
-const registry = await loadPluginRegistry();
-connectOperationsSse();
 const app = document.querySelector("#app");
-if (app) {
+/**
+ * 집이 목록만 펼쳐 내주는 표면으로 서빙됐다면 콘솔을 세우지 않는다 — 플러그인도 SSE도
+ * 이 화면과 무관하고, 그 둘을 켜는 순간 덮개 한 장이 콘솔 한 벌만큼 무거워진다.
+ */
+const hostPicker = app ? readHostPickerSurface(location.search) : null;
+if (app && hostPicker) {
+  document.documentElement.dataset.hostPicker = "true";
+  createRoot(app).render(
+    <StrictMode>
+      <BrowserRouter basename="/console">
+        <HostPickerScreen surface={hostPicker} />
+      </BrowserRouter>
+    </StrictMode>,
+  );
+} else if (app) {
+  const registry = await loadPluginRegistry();
+  connectOperationsSse();
   createRoot(app).render(
     <StrictMode>
       <BrowserRouter basename="/console">

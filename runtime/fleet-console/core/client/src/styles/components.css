@@ -834,6 +834,33 @@
 .host-switcher-divider { height: 1px; margin: var(--space-2) var(--space-3); background: var(--surface-rim); }
 .host-switcher-link { color: var(--aurora-ink); font-size: 13px; }
 
+/* ── 집이 펼친 호스트 목록 표면 ────────────────────────────────────────
+   원격 콘솔을 보고 있을 때 목록은 집이 그려 이 위에 얹힌다. 판 자체는 위와 같은 문법을 쓰고,
+   여기서 바꾸는 것은 "무엇 위에 서 있는가"뿐이다 — 아래에 깔린 콘솔이 비쳐야 사용자가 자기가
+   어디에 서 있었는지를 잃지 않는다. 그래서 이 화면에서만 문서 바탕을 비운다. */
+:root[data-host-picker="true"],
+:root[data-host-picker="true"] body {
+  background: transparent;
+}
+
+.host-picker-surface {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: calc(var(--chrome-band-height) + var(--space-2)) var(--space-3) var(--space-3);
+  background: color-mix(in oklch, var(--ink-abyss) 62%, transparent);
+}
+
+/* 칩이 없는 표면이라 판을 매달 기준점도 없다 — 흐름에 그대로 세운다. */
+.host-picker-surface .host-switcher.is-picker-surface { position: static; display: contents; }
+.host-picker-surface .host-switcher-panel {
+  position: static;
+  max-height: 100%;
+  overflow-y: auto;
+}
+
 /* ── 콘솔 추가 팝업 ───────────────────────────────────────────────────
    스위처의 "호스트 추가"와 설정의 추가 버튼이 함께 여는 한 장. 오버레이 지오메트리는
    .directory-browser-*의 계약을 승계한다 — 둘 다 배타적인 모달이라 같은 층에 산다. */

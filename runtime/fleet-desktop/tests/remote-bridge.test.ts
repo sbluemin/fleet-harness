@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { consoleTarget, createRemoteBridge } from "../src/remote-bridge.js";
+import { consoleTarget, createRemoteBridge, pickerSurfaceOf } from "../src/remote-bridge.js";
 
 const LOCAL = "http://127.0.0.1:4310";
 const REMOTE = "https://100.84.12.7:6768";
@@ -13,7 +13,7 @@ function handoff(overrides: Record<string, unknown> = {}): Response {
 }
 
 /** 무엇이 어떤 차례로 일어났는지가 이 다리의 계약이라, 호출을 한 줄로 기록해 둔다. */
-function createHarness(options: { readonly responses?: (path: string) => Response; readonly confirm?: () => Promise<void>; readonly load?: () => Promise<void>; readonly verify?: () => Response } = {}) {
+function createHarness(options: { readonly responses?: (path: string) => Response; readonly confirm?: () => Promise<void>; readonly load?: () => Promise<void>; readonly verify?: () => Response; readonly picker?: () => Promise<void> } = {}) {
   const trace: string[] = [];
   const requests: Array<{ url: string; init: RequestInit }> = [];
   const notices: Array<{ title: string; body: string }> = [];
@@ -57,6 +57,11 @@ function createHarness(options: { readonly responses?: (path: string) => Respons
       trace.push(`load:${url}`);
       if (options.load) await options.load();
     },
+    openPicker: async (url: string) => {
+      trace.push(`picker:open:${url}`);
+      if (options.picker) await options.picker();
+    },
+    closePicker: () => trace.push("picker:close"),
     notify: (notice) => notices.push({ title: notice.title, body: notice.body }),
     confirmIdentity: options.confirm ?? (async () => { trace.push("confirm"); }),
   });
@@ -295,5 +300,109 @@ describe("remote bridge", () => {
     harness.bridge.dispose();
 
     expect(contents.listenerCount("will-navigate")).toBe(0);
+  });
+});
+
+const PICKER_OPEN_URL = `${LOCAL}/console/?desktop-surface=host-picker&at=${encodeURIComponent(REMOTE)}`;
+const PICKER_DISMISS_URL = `${LOCAL}/console/?desktop-surface=host-picker-dismiss`;
+
+/** 항해 하나가 두 뜻으로 읽히면 안 된다 — 목록을 펴는 신호와, 창째로 집에 가는 길. */
+describe("host picker surface", () => {
+  it.each([
+    [PICKER_OPEN_URL, "open"],
+    [PICKER_DISMISS_URL, "dismiss"],
+  ])("reads %s as %s", (url, surface) => {
+    expect(pickerSurfaceOf(url, LOCAL)).toBe(surface);
+  });
+
+  it.each([
+    ["a plain console url", `${LOCAL}/console/`],
+    ["an unknown surface", `${LOCAL}/console/?desktop-surface=whatever`],
+    // 원격 콘솔이 자기 주소로 신호를 흉내 내도 집의 목록은 열리지 않는다.
+    ["the same query on another origin", `${REMOTE}/console/?desktop-surface=host-picker`],
+    ["a path outside the console", `${LOCAL}/join?desktop-surface=host-picker`],
+    ["a non-url", "not a url"],
+  ])("refuses %s", (_label, url) => {
+    expect(pickerSurfaceOf(url, LOCAL)).toBeNull();
+  });
+
+  it("claims no surface when the shell has no console of its own", () => {
+    expect(pickerSurfaceOf(PICKER_OPEN_URL, null)).toBeNull();
+  });
+
+  /**
+   * 이 판정이 consoleTarget보다 늦으면 목록이 열리는 대신 창이 집으로 넘어간다 — 고치려던
+   * 2단 동선 그대로다. 리스너 등록 순서가 아니라 이 다리 안의 순서가 그것을 정한다.
+   */
+  it("opens the home list instead of sending the window home", async () => {
+    const contents = new EventEmitter();
+    const harness = createHarness();
+    harness.bridge.attach(contents as never);
+    harness.setCurrent(REMOTE);
+    let prevented = false;
+
+    contents.emit("will-navigate", { preventDefault: () => { prevented = true; } }, PICKER_OPEN_URL, undefined, true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(prevented).toBe(true);
+    expect(harness.trace).toEqual([`picker:open:${PICKER_OPEN_URL}`]);
+    expect(harness.trace).not.toContain(`load:${LOCAL}/console/`);
+  });
+
+  it("takes the cover back down when the list asks to be dismissed", async () => {
+    const contents = new EventEmitter();
+    const harness = createHarness();
+    harness.bridge.attach(contents as never);
+    harness.setCurrent(REMOTE);
+
+    contents.emit("will-navigate", { preventDefault: () => undefined }, PICKER_DISMISS_URL, undefined, true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(harness.trace).toEqual(["picker:close"]);
+  });
+
+  it("sends the chosen console to the main window and takes the cover down", async () => {
+    const picker = new EventEmitter();
+    const harness = createHarness();
+    harness.bridge.attachPicker(picker as never);
+    harness.setCurrent(REMOTE);
+
+    picker.emit("will-navigate", { preventDefault: () => undefined }, `${REMOTE}/console/`, undefined, true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(harness.trace).toContain(`load:${REMOTE}/console/`);
+    expect(harness.trace.at(-1)).toBe("picker:close");
+  });
+
+  /** 실패한 채 덮개만 남으면 사용자는 멀쩡한 콘솔에 손이 닿지 않는다. */
+  it("takes the cover down even when the chosen console refuses", async () => {
+    const picker = new EventEmitter();
+    const harness = createHarness({ responses: () => Response.json({ error: "remote_host_unknown" }, { status: 404 }) });
+    harness.bridge.attachPicker(picker as never);
+
+    picker.emit("will-navigate", { preventDefault: () => undefined }, `${REMOTE}/console/`, undefined, true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(harness.trace).toContain("picker:close");
+    expect(harness.notices[0]?.body).toContain("no longer in this list");
+  });
+
+  it("does not summon a second list from inside the list", async () => {
+    const picker = new EventEmitter();
+    const harness = createHarness();
+    harness.bridge.attachPicker(picker as never);
+
+    picker.emit("will-navigate", { preventDefault: () => undefined }, PICKER_OPEN_URL, undefined, true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(harness.trace).toEqual(["picker:close"]);
+  });
+
+  /**
+   * 이 신호를 모르는 옛 셸에게 이 URL은 그냥 집의 콘솔이다 — 목록 대신 집에 착지하는,
+   * 오늘과 똑같은 동선으로 강등된다. 그 판정이 유지되는지 여기서 못박는다.
+   */
+  it("still reads as the home console for a shell that never heard of the surface", () => {
+    expect(consoleTarget(PICKER_OPEN_URL, LOCAL)).toBe(LOCAL);
   });
 });

@@ -24,6 +24,12 @@ export interface RemoteBridgeDeps {
   /** 원격 콘솔의 세션 목록에 남을 이 기기의 이름. */
   readonly deviceName?: string;
   readonly loadConsole: (url: string) => Promise<void>;
+  /**
+   * 집의 목록을 그 자리에서 펼친다. 원격 콘솔이 서빙한 화면은 남의 기계 주소를 알 수 없고
+   * 알아서도 안 되므로, 목록은 이 URL을 적재하는 홈 origin의 렌더러가 직접 그린다.
+   */
+  readonly openPicker?: (url: string) => Promise<void>;
+  readonly closePicker?: () => void;
   readonly notify: (notice: DesktopNotice) => void;
   readonly log?: (message: string) => void;
   readonly confirmIdentity?: (hostname: string, port: number, fingerprint: string) => Promise<void>;
@@ -31,6 +37,11 @@ export interface RemoteBridgeDeps {
 
 export interface RemoteBridge {
   attach(contents: Pick<WebContents, "on" | "removeListener">): void;
+  /**
+   * 집의 목록을 그리는 렌더러. 여기서 고른 콘솔은 메인 창이 받아 열고, 피커는 닫힌다 —
+   * 성공이든 실패든 닫는다. 실패한 채 덮개만 남으면 사용자는 돌아갈 화면을 잃는다.
+   */
+  attachPicker(contents: Pick<WebContents, "on" | "removeListener">): void;
   /** 목록에 이미 있는 호스트를 연다. */
   open(origin: string): Promise<void>;
   /** `fleet://join?code=…`를 로컬 Console에 넘기고, 받아들여지면 그 호스트를 연다. */
@@ -53,6 +64,15 @@ const LOCAL_CONSOLES_PATH = "/api/v1/local-consoles";
 const REMOTE_HOSTS_PATH = "/api/v1/remote-hosts";
 const CONSOLE_PATH = "/console/";
 const JOIN_PATH = "/api/v1/join";
+
+/**
+ * Console 계약의 쿼리 리터럴 — DESKTOP_SHELL_PATH와 같은 방식으로 여기서 선언한다
+ * (Console 내부를 import하지 않는다). 이 항해는 절대 기계를 떠나지 않는다: 아래 리스너가
+ * 요청이 나가기 전에 가로채고, 값을 실어 나르는 것도 아니라 어느 표면을 뜻하는지만 말한다.
+ */
+const PICKER_SURFACE_PARAM = "desktop-surface";
+const PICKER_SURFACE_OPEN = "host-picker";
+const PICKER_SURFACE_DISMISS = "host-picker-dismiss";
 
 export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   const localFetch = deps.localFetch ?? globalThis.fetch;
@@ -143,6 +163,16 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     }
   }
 
+  async function openPicker(url: string): Promise<void> {
+    if (!deps.openPicker) throw new Error("remote_bridge_no_picker");
+    await deps.openPicker(url);
+  }
+
+  /** 덮개를 걷는 일은 여러 경로에서 불린다 — 없어도, 이미 걷혔어도 실패가 아니다. */
+  function closePicker(): void {
+    deps.closePicker?.();
+  }
+
   async function openLocal(origin: string): Promise<void> {
     const policy = deps.policy();
     if (!policy) throw new Error("remote_bridge_no_window");
@@ -181,6 +211,17 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     attach(contents) {
       const listener = (event: { preventDefault: () => void }, url: string, _redirect?: unknown, isMainFrame?: boolean): void => {
         if (isMainFrame === false) return;
+        /**
+         * 피커 판정이 consoleTarget보다 먼저다. 센티넬도 홈의 `/console/`이라 아래 판정에
+         * 걸리는데, 그러면 목록을 펼치는 대신 창째로 집에 돌아가 버린다 — 지금의 2단 동선 그대로다.
+         */
+        const surface = pickerSurfaceOf(url, deps.localOrigin());
+        if (surface !== null) {
+          event.preventDefault();
+          if (surface === "open") void openPicker(url).catch(report);
+          else closePicker();
+          return;
+        }
         const target = consoleTarget(url, deps.localOrigin());
         // 이미 활성인 콘솔 안에서의 이동은 window policy의 몫이다.
         if (target === null || target === deps.policy()?.currentConsoleOrigin()) return;
@@ -200,6 +241,29 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
       };
       contents.on("did-navigate", landed as never);
       attached.push({ contents, listener: landed as never, event: "did-navigate" });
+    },
+
+    attachPicker(contents) {
+      const listener = (event: { preventDefault: () => void }, url: string, _redirect?: unknown, isMainFrame?: boolean): void => {
+        if (isMainFrame === false) return;
+        // 피커 안에서 다시 피커를 부르는 일은 없다. 스스로를 다시 여는 대신 조용히 닫는다.
+        const surface = pickerSurfaceOf(url, deps.localOrigin());
+        if (surface !== null) {
+          event.preventDefault();
+          closePicker();
+          return;
+        }
+        const target = consoleTarget(url, deps.localOrigin());
+        if (target === null) return;
+        event.preventDefault();
+        /**
+         * 고르고 난 뒤에는 성공이든 실패든 덮개를 걷는다. 실패한 채로 남기면 사용자는
+         * 아무 일도 일어나지 않은 목록을 마주하고, 그 아래 멀쩡한 콘솔에는 손이 닿지 않는다.
+         */
+        void open(target).then(closePicker, (error: unknown) => { closePicker(); report(error); });
+      };
+      contents.on("will-navigate", listener as never);
+      attached.push({ contents, listener: listener as never });
     },
     open,
     receiveLink,
@@ -221,6 +285,26 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
  * 돌아오는 길. 돌아오는 길도 여기를 거쳐야 하는 이유는 window policy가 활성 origin 밖으로의
  * 항해를 막기 때문이다.
  */
+/**
+ * 집의 목록을 펼치라는(또는 걷으라는) 신호인가.
+ *
+ * 신호는 홈 origin의 `/console/`로만 온다 — 원격 콘솔이 서빙한 화면이 남의 주소로 이 신호를
+ * 흉내 내도 여기서 걸린다. 실을 수 있는 것은 어느 표면이냐는 사실 하나뿐이고, 그래서 이 URL이
+ * 새어도 알려지는 것이 없다.
+ */
+export function pickerSurfaceOf(url: string, localOrigin: string | null): "open" | "dismiss" | null {
+  if (localOrigin === null) return null;
+  try {
+    const parsed = new URL(url);
+    if (parsed.origin !== localOrigin || !parsed.pathname.startsWith(CONSOLE_PATH)) return null;
+    const surface = parsed.searchParams.get(PICKER_SURFACE_PARAM);
+    if (surface === PICKER_SURFACE_OPEN) return "open";
+    return surface === PICKER_SURFACE_DISMISS ? "dismiss" : null;
+  } catch {
+    return null;
+  }
+}
+
 export function consoleTarget(url: string, localOrigin: string | null): string | null {
   try {
     const parsed = new URL(url);
@@ -269,6 +353,8 @@ function describe(code: string): string {
     case "remote_link_host_mismatch": return "That console refused the link as meant for a different address.";
     case "remote_host_is_self": return "That link points back at this console.";
     case "pairing_target_invalid": return "That is not a Fleet Console access link.";
+    // 덮개를 얹을 창이 없다. 목록은 이 셸이 띄운 콘솔에 그대로 있으므로 그리로 안내한다.
+    case "remote_bridge_no_picker": return "The host list could not open here. Go back to this computer's console to switch machines.";
     default: return "The connection failed. This console remains available.";
   }
 }
