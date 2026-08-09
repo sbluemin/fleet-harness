@@ -100,6 +100,20 @@ export function EffortTrack({ row, value, onChange, onConfirmCurrent, autoLabel,
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     if (!confirm || !gesture || gesture.dirty || !onConfirmCurrent) return;
+    // 주버튼으로 트랙 안에서 손을 뗄 때만 확정한다 — 우클릭·가운데 클릭이나
+    // 세로로 트랙 밖까지 끌어 뺀 해제는 값을 고르는 실수가 되지 않게 막는다.
+    if (event.button !== 0) return;
+    const track = trackRef.current;
+    if (!track) return;
+    const rect = track.getBoundingClientRect();
+    if (
+      event.clientX < rect.left
+      || event.clientX > rect.right
+      || event.clientY < rect.top
+      || event.clientY > rect.bottom
+    ) {
+      return;
+    }
     const next = indexFromPointer(event.clientX);
     // 처음부터 고른 단을 다시 눌렀고, 그 사이 다른 단으로 옮기지 않았을 때만 확정한다.
     if (next === gesture.originIndex) onConfirmCurrent();

@@ -245,8 +245,8 @@ describe("EffortTrack", () => {
 
     // high(3) 자리: EDGE 13 + 0.6 × (126 − 26) = 73. 같은 단을 다시 누르면 값이 아니라 확정이다.
     act(() => {
-      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, clientX: 73 }));
-      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, clientX: 73 }));
+      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, button: 0, clientX: 73, clientY: 13 }));
+      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, button: 0, clientX: 73, clientY: 13 }));
     });
     expect(onChange).not.toHaveBeenCalled();
     expect(onConfirmCurrent).toHaveBeenCalledTimes(1);
@@ -264,12 +264,34 @@ describe("EffortTrack", () => {
 
     // high → max로 옮긴 뒤 손을 떼면 값만 바뀌고 확정은 없다 — 그 제스처는 "고르기"다.
     act(() => {
-      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, clientX: 73 }));
-      element.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 1, clientX: 113 }));
-      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, clientX: 113 }));
+      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, button: 0, clientX: 73, clientY: 13 }));
+      element.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 1, button: 0, clientX: 113, clientY: 13 }));
+      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, button: 0, clientX: 113, clientY: 13 }));
     });
     expect(onChange).toHaveBeenCalledWith("max");
     expect(onConfirmCurrent).not.toHaveBeenCalled();
+  });
+
+  it("does not confirm a secondary-button release or a release outside the track", () => {
+    const onChange = vi.fn();
+    const onConfirmCurrent = vi.fn();
+    render(row(), "high", onChange, onConfirmCurrent);
+    const element = stubTrackPointer();
+
+    // 우클릭은 X가 같은 단이어도 확정이 아니다.
+    act(() => {
+      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 2, button: 2, clientX: 73, clientY: 13 }));
+      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 2, button: 2, clientX: 73, clientY: 13 }));
+    });
+    expect(onConfirmCurrent).not.toHaveBeenCalled();
+
+    // 세로로 트랙 밖에서 손을 떼면 같은 X라도 확정하지 않는다.
+    act(() => {
+      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 3, button: 0, clientX: 73, clientY: 13 }));
+      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 3, button: 0, clientX: 73, clientY: 40 }));
+    });
+    expect(onConfirmCurrent).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("leaves same-rung re-press quiet when onConfirmCurrent is omitted", () => {
@@ -278,8 +300,8 @@ describe("EffortTrack", () => {
     const element = stubTrackPointer();
 
     act(() => {
-      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, clientX: 73 }));
-      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, clientX: 73 }));
+      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, button: 0, clientX: 73, clientY: 13 }));
+      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, button: 0, clientX: 73, clientY: 13 }));
     });
     expect(onChange).not.toHaveBeenCalled();
   });
