@@ -134,7 +134,8 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   const t = useT();
   const state = useConsoleState();
   const hosts = useRemoteHosts();
-  const homeOrigin = useDesktopHomeOrigin();
+  const shellHome = useDesktopHomeOrigin();
+  const homeOrigin = shellHome.origin;
   // 원격으로 건너가는 일은 셸의 인증서 배관을 거쳐야 한다. 브라우저 단독에서는 내주지 않는다.
   const canOpenRemote = isDesktopShell();
   const navigate = useNavigate();
@@ -257,9 +258,14 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   /**
    * 집에 서 있을 때만 "여기"라고 말한다. 집을 떠나 있으면 어느 콘솔인지가 답이다 — 칩을
    * 누르면 집의 목록이 펼쳐지므로, 칩까지 "여기"라고 하면 어디에 서 있었는지가 사라진다.
-   * 셸이 없어 집을 모를 때만 스캔에 든 사실로 대신한다.
+   *
+   * 셸이 창을 들고 있는데 아직 집 주소를 못 받았다면 아무 말도 하지 않는다. 그 순간 "여기"라고
+   * 하면 손님 콘솔이 집 행세를 하게 되고, 사용자는 그 말을 믿고 누른다. 셸이 아예 없을 때만
+   * 스캔에 든 사실로 대신한다 — 그때는 답이 늦는 것이 아니라 답할 셸이 없는 것이다.
    */
-  const standingAtHome = homeOrigin === null ? nearbyCurrent : currentOrigin === homeOrigin;
+  const standingAtHome = canOpenRemote && shellHome.pending
+    ? false
+    : homeOrigin === null ? nearbyCurrent : currentOrigin === homeOrigin;
   const chipLabel = state.controlHolder !== null
     ? t("chrome.control.shared")
     : standingAtHome
@@ -274,6 +280,14 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
    * WSL처럼 스캔이 닿지 못하는 곳에서는 비어 있다 — 그 침묵이 돌아가는 길까지 지워서는 안 된다.
    */
   const pickerHome = !inPicker && canOpenRemote && awayFromHome ? homeOrigin : null;
+
+  /**
+   * 집 주소는 늦게 도착할 수 있고, 그 전에 누른 칩은 이 콘솔의 판을 편다. 주소가 도착해 이
+   * 콘솔이 목록의 주인이 아니게 되면 그 판은 남의 목록이므로 걷는다 — 다시 누르면 집의 것이 온다.
+   */
+  useEffect(() => {
+    if (pickerHome !== null) setOpen(false);
+  }, [pickerHome]);
 
   // 집을 떠나 있으면 목록이 비어 보여도 칩은 남는다 — 그 칩이 돌아가는 유일한 문이다.
   if (!inPicker && pickerHome === null && nearby.length === 0 && hosts.length === 0) return null;

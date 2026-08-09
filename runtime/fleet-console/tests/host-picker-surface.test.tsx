@@ -254,6 +254,34 @@ describe("host box on a loopback console that is not home", () => {
     expect(document.querySelector(".host-switcher-chip")!.textContent).toContain("127.0.0.1:2253");
   });
 
+  /**
+   * 집 주소는 창보다 늦게 도착할 수 있다. 그 사이 "여기"라고 말하면 손님 콘솔이 집 행세를
+   * 하고, 사용자는 그 말을 믿고 눌러 남의 목록을 편다. 모를 때는 아무 말도 하지 않는다.
+   */
+  it("does not call itself local while it has not been told where home is", async () => {
+    standOn(GUEST);
+    let tellHome = (_: Response) => {};
+    vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+      const path = new URL(input, GUEST).pathname;
+      if (path === "/api/v1/desktop/shell") return new Promise<Response>((resolve) => { tellHome = resolve; });
+      if (path === "/api/v1/local-consoles") return Response.json({ consoles: [scanned(GUEST)] });
+      if (path === "/api/v1/remote-hosts") return Response.json({ hosts: [] });
+      return Response.json({ reachable: true, trusted: true });
+    }));
+
+    await mount(createElement(HostSwitcher));
+
+    // 아직 답이 오지 않았다 — 이 콘솔은 자기가 집이라고 주장하지 않는다.
+    expect(document.querySelector(".host-switcher-chip")!.textContent).not.toContain("Local");
+
+    // 그새 눌러 이 콘솔의 판이 열렸더라도, 집 주소가 도착하면 그 판은 남의 목록이므로 걷힌다.
+    await act(async () => { document.querySelector<HTMLButtonElement>(".host-switcher-chip")!.click(); });
+    await act(async () => { tellHome(Response.json({ homeOrigin: HOME })); await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(rows()).toHaveLength(0);
+  });
+
   /** 집이 그린 판에서도 손님 줄은 손님의 이름을 달아야 한다. */
   it("does not lend the serving console's own name to the guest row", async () => {
     stubHomeConsole([scanned(HOME), { origin: GUEST, version: "1.52.0", owner: "cli", distro: "Ubuntu-26.04" }]);

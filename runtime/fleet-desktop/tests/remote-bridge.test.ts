@@ -13,7 +13,7 @@ function handoff(overrides: Record<string, unknown> = {}): Response {
 }
 
 /** 무엇이 어떤 차례로 일어났는지가 이 다리의 계약이라, 호출을 한 줄로 기록해 둔다. */
-function createHarness(options: { readonly responses?: (path: string) => Response; readonly confirm?: () => Promise<void>; readonly load?: () => Promise<void>; readonly verify?: () => Response; readonly picker?: () => Promise<void> } = {}) {
+function createHarness(options: { readonly responses?: (path: string) => Response; readonly confirm?: () => Promise<void>; readonly load?: (url: string) => Promise<void>; readonly verify?: () => Response; readonly picker?: () => Promise<void> } = {}) {
   const trace: string[] = [];
   const requests: Array<{ url: string; init: RequestInit }> = [];
   const notices: Array<{ title: string; body: string }> = [];
@@ -57,7 +57,7 @@ function createHarness(options: { readonly responses?: (path: string) => Respons
     localOrigin: () => LOCAL,
     loadConsole: async (url) => {
       trace.push(`load:${url}`);
-      if (options.load) await options.load();
+      if (options.load) await options.load(url);
     },
     openPicker: async (url: string) => {
       trace.push(`picker:open:${url}`);
@@ -300,6 +300,41 @@ describe("remote bridge", () => {
 
     // 핀도 자격도 거치지 않는다 — 같은 기계이므로 확인만으로 충분하다.
     expect(harness.trace).toEqual(["ask:/api/v1/local-consoles", `stage:${DISCOVERED}`, `load:${DISCOVERED}/console/`, "commit"]);
+  });
+
+  /**
+   * 예약 자리는 정책에 하나뿐이다. 앞선 시도가 늦게 끝나면서 뒤에 온 시도의 예약을 확정하면,
+   * 정책은 창이 가 있지도 않은 콘솔을 가리킨 채 남는다 — 그 창은 눈앞의 화면에서 움직이지 못한다.
+   */
+  it("does not let a slower open commit the origin a newer one staged", async () => {
+    const FIRST = "http://127.0.0.1:50001";
+    const SECOND = "http://127.0.0.1:50002";
+    const gates = new Map<string, () => void>();
+    const harness = createHarness({
+      responses: (path) => (path === "/api/v1/local-consoles"
+        ? Response.json({
+          consoles: [
+            { origin: FIRST, version: "1.52.0", owner: "cli", distro: null },
+            { origin: SECOND, version: "1.52.0", owner: "cli", distro: null },
+          ],
+        })
+        : handoff()),
+      load: (url) => new Promise<void>((resolve) => { gates.set(url, resolve); }),
+    });
+
+    const first = harness.bridge.open(FIRST);
+    await vi.waitFor(() => expect(gates.has(`${FIRST}/console/`)).toBe(true));
+    const second = harness.bridge.open(SECOND);
+    await vi.waitFor(() => expect(gates.has(`${SECOND}/console/`)).toBe(true));
+
+    // 먼저 시작한 쪽이 늦게 끝난다.
+    gates.get(`${FIRST}/console/`)!();
+    await first;
+    gates.get(`${SECOND}/console/`)!();
+    await second;
+
+    expect(harness.trace.filter((entry) => entry === "commit")).toHaveLength(1);
+    expect(harness.currentOrigin()).toBe(SECOND);
   });
 
   /**
