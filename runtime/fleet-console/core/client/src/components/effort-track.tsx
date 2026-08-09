@@ -41,7 +41,8 @@ export function EffortTrack({ row, value, onChange, onConfirmCurrent, autoLabel,
   // 제스처 동안 React 커밋을 기다리지 않고 고른 단을 추적한다 — 같은 포인터 시퀀스에서
   // "다른 단으로 옮겼다"와 "처음부터 이 단을 다시 눌렀다"를 갈라야 한다.
   const liveIndexRef = useRef(0);
-  const gestureRef = useRef<{ readonly originIndex: number; dirty: boolean } | null>(null);
+  // pointerId까지 묶어 두면 터치에서 두 번째 손가락(button===0)이 제스처를 덮어 쓰지 못한다.
+  const gestureRef = useRef<{ readonly pointerId: number; readonly originIndex: number; dirty: boolean } | null>(null);
 
   const slots = useMemo<readonly EffortSlot[]>(() => {
     const byId = new Map<string, OperationLaunchVariantChip>((row.chips ?? []).map((chip) => [chip.id, chip]));
@@ -95,11 +96,13 @@ export function EffortTrack({ row, value, onChange, onConfirmCurrent, autoLabel,
 
   const endGesture = useCallback((event: PointerEvent<HTMLDivElement>, { confirm }: { readonly confirm: boolean }) => {
     const gesture = gestureRef.current;
-    gestureRef.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-    if (!confirm || !gesture || gesture.dirty || !onConfirmCurrent) return;
+    // 시작한 포인터만 끝낸다 — 다른 접촉의 up이 활성 제스처를 지우면 안 된다.
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    gestureRef.current = null;
+    if (!confirm || gesture.dirty || !onConfirmCurrent) return;
     // 주버튼으로 트랙 안에서 손을 뗄 때만 확정한다 — 우클릭·가운데 클릭이나
     // 세로로 트랙 밖까지 끌어 뺀 해제는 값을 고르는 실수가 되지 않게 막는다.
     if (event.button !== 0) return;
@@ -165,15 +168,19 @@ export function EffortTrack({ row, value, onChange, onConfirmCurrent, autoLabel,
         data-auto={isAuto ? true : undefined}
         onKeyDown={handleKeyDown}
         onPointerDown={(event) => {
+          // 주 접촉만 받는다. 터치 두 번째 손가락도 button===0이라 isPrimary·활성 제스처로 막는다.
+          if (!event.isPrimary || event.button !== 0 || gestureRef.current) return;
           event.preventDefault();
           event.currentTarget.setPointerCapture(event.pointerId);
           event.currentTarget.focus();
-          gestureRef.current = { originIndex: liveIndexRef.current, dirty: false };
+          gestureRef.current = { pointerId: event.pointerId, originIndex: liveIndexRef.current, dirty: false };
           fromPointer(event);
         }}
         onPointerMove={(event) => {
           const next = indexFromPointer(event.clientX);
           if (next !== null) setPreviewIndex(next);
+          const gesture = gestureRef.current;
+          if (!gesture || gesture.pointerId !== event.pointerId) return;
           if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
           fromPointer(event);
         }}
