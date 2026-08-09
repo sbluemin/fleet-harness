@@ -946,11 +946,12 @@ describe("Instrument core design contract", () => {
     const layout = source("styles/layout.css");
     const skillsCss = externalSource(SKILLS_CSS_PATH);
     const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
-    // Doctrine: scrim-backed popup cards and floating menus composite their glass layers
-    // over an opaque var(--ink-deep) final layer — maritime/carbon glass tokens carry
-    // 60~80% alpha, so without the underlay popups bleed the canvas through and legibility
-    // collapses (canonical doctrine comment: .whatsnew-card in components.css). Non-popup
-    // glass surfaces keep the themes' translucent glass identity untouched.
+    // Doctrine: scrim-backed popup cards, floating menus, and anchored guidance cards
+    // composite their glass layers over an opaque var(--ink-deep) final layer —
+    // maritime/carbon/whites glass tokens carry 60~82% alpha, so without the underlay they
+    // bleed the canvas through and legibility collapses (canonical doctrine comment:
+    // .whatsnew-card in components.css). Non-popup glass surfaces keep the themes'
+    // translucent glass identity untouched.
     const componentsPopupSelectors = [
       ".whatsnew-card",
       ".commissioning-card",
@@ -966,6 +967,7 @@ describe("Instrument core design contract", () => {
       ".theater-menu",
       ".operation-search-card",
       ".quick-launch-card",
+      ".feature-tour-card",
     ];
     // Quick Launch 오버레이도 fleet-pop을 타므로 억제 절을 함께 못 박는다 — 규칙 옆에 붙은
     // 자체 reduced-motion 블록은 .fc-select__* 선례와 같은 형태다.
