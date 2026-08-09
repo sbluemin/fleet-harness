@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, type KeyboardEvent, type PointerEvent } from "react";
+import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
 import type { OperationLaunchVariantChip, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 
@@ -31,6 +31,7 @@ export interface EffortTrackProps {
  */
 export function EffortTrack({ row, value, onChange, autoLabel, ariaLabel, autoValueText, className }: EffortTrackProps) {
   const trackRef = useRef<HTMLDivElement | null>(null);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
   const slots = useMemo<readonly EffortSlot[]>(() => {
     const byId = new Map<string, OperationLaunchVariantChip>((row.chips ?? []).map((chip) => [chip.id, chip]));
@@ -63,15 +64,20 @@ export function EffortTrack({ row, value, onChange, autoLabel, ariaLabel, autoVa
     onChange(slot.id);
   }, [current.id, onChange, slots]);
 
-  const fromPointer = useCallback((event: PointerEvent<HTMLDivElement>) => {
+  const indexFromPointer = useCallback((clientX: number): number | null => {
     const track = trackRef.current;
-    if (!track || last === 0) return;
+    if (!track || last === 0) return null;
     const rect = track.getBoundingClientRect();
     const span = rect.width - EDGE * 2;
-    if (span <= 0) return;
-    const ratio = Math.max(0, Math.min((event.clientX - rect.left - EDGE) / span, 1));
-    commit(nearestSelectable(Math.round(ratio * last)));
-  }, [commit, last, nearestSelectable]);
+    if (span <= 0) return null;
+    const ratio = Math.max(0, Math.min((clientX - rect.left - EDGE) / span, 1));
+    return nearestSelectable(Math.round(ratio * last));
+  }, [last, nearestSelectable]);
+
+  const fromPointer = useCallback((event: PointerEvent<HTMLDivElement>) => {
+    const next = indexFromPointer(event.clientX);
+    if (next !== null) commit(next);
+  }, [commit, indexFromPointer]);
 
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     const direction = event.key === "ArrowLeft" || event.key === "ArrowDown"
@@ -119,9 +125,13 @@ export function EffortTrack({ row, value, onChange, autoLabel, ariaLabel, autoVa
           fromPointer(event);
         }}
         onPointerMove={(event) => {
+          const next = indexFromPointer(event.clientX);
+          if (next !== null) setPreviewIndex(next);
           if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
           fromPointer(event);
         }}
+        onPointerLeave={() => setPreviewIndex(null)}
+        onPointerCancel={() => setPreviewIndex(null)}
       >
         {/* 자동은 폭 0이다. 손잡이 여백(EDGE)만큼이라도 남기면 트랙 왼쪽 끝에 brass 조각이 비쳐,
             비운 상태가 최소 강도를 고른 것처럼 보인다. */}
@@ -138,6 +148,7 @@ export function EffortTrack({ row, value, onChange, autoLabel, ariaLabel, autoVa
               style={{ left: last === 0 ? "50%" : `${(position / last) * 100}%` }}
               data-filled={position <= index && !isAuto ? true : undefined}
               data-gap={slot.selectable ? undefined : true}
+              data-previewed={position === previewIndex ? true : undefined}
             />
           ))}
         </span>

@@ -7513,7 +7513,10 @@
   margin: -1.5px 0 0 -1.5px;
   border-radius: 999px;
   background: var(--text-tertiary);
-  transition: background var(--duration-fast) var(--ease-spring);
+  transition:
+    transform var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring),
+    box-shadow var(--duration-fast) var(--ease-spring);
 }
 
 .effort-track-stop[data-filled="true"] {
@@ -7524,6 +7527,16 @@
 .effort-track-stop[data-gap="true"] {
   background: none;
   box-shadow: 0 0 0 1.5px color-mix(in oklch, var(--text-tertiary) 78%, transparent);
+}
+
+/* 포인터가 가리킨 자리 대신 실제로 선택될 가장 가까운 단을 미리 비춘다. 비어 있는 단은 이 상태를
+   받을 수 없어, preview와 click이 서로 다른 강도를 말하지 않는다. filled 상태 뒤에서 덮어야
+   현재 값의 왼쪽을 탐색할 때도 같은 brass preview가 보인다. */
+.effort-track-stop[data-previewed="true"] {
+  z-index: 1;
+  background: var(--brass);
+  box-shadow: 0 0 0 3px var(--brass-glow);
+  transform: scale(3);
 }
 
 .effort-track-knob {
@@ -7537,9 +7550,15 @@
   box-shadow: 0 1px 3px oklch(0% 0 0 / 55%);
   transition:
     left var(--duration-fast) var(--ease-spring),
+    transform var(--duration-fast) var(--ease-spring),
     background var(--duration-fast) var(--ease-spring),
     box-shadow var(--duration-fast) var(--ease-spring);
   pointer-events: none;
+}
+
+.effort-track:hover .effort-track-knob {
+  box-shadow: 0 2px 8px oklch(0% 0 0 / 62%);
+  transform: scale(1.1);
 }
 
 /* 값을 쥐지 않은 손잡이는 속이 비어 있다 — 꽉 찬 손잡이는 어느 자리에 있든 "이 단을 골랐다"로 읽힌다. */
@@ -11213,6 +11232,15 @@ body[data-codex-reading="true"] .operations-side-bar {
   .operation-launch-variant-effort-gauge rect {
     animation: none;
     transition: none;
+  }
+
+  .effort-track:hover .effort-track-knob,
+  .effort-track-stop[data-previewed="true"] {
+    transform: none;
+  }
+
+  .effort-track-stop[data-previewed="true"] {
+    box-shadow: 0 0 0 2px var(--brass);
   }
 }
 

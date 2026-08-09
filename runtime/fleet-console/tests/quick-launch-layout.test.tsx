@@ -59,6 +59,13 @@ describe("Quick Launch effort surface", () => {
     expect(quickLaunch).toMatch(/selectedRow && \(selectedRow\.chips\?\.length \?\? 0\) > 0/u);
   });
 
+  it("waits for the seeded model to resolve against the catalog before submission", () => {
+    // 다른 plugin 카탈로그에 Opus가 없을 수 있다. passive 정규화 effect 전 한 프레임에서도 버튼과
+    // Enter 제출 모두 invalid opus[1m]을 보내면 안 되므로 같은 selectedRow gate를 공유한다.
+    expect(quickLaunch).toMatch(/\|\| !target \|\| !selectedRow \|\| submitting\) return;/u);
+    expect(quickLaunch).toMatch(/&& !!target && !!selectedRow && !submitting;/u);
+  });
+
   it("gives the track a fixed berth instead of letting it compete with the spacer", () => {
     // 남는 폭을 두고 겨루게 두면 트랙이 스톱 간격보다 좁아져 손잡이가 이웃 스톱을 덮는다.
     const rule = ruleFor(".quick-launch-effort-track");

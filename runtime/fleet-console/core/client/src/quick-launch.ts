@@ -16,6 +16,7 @@ import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVarian
  * 실제 서버 상수와의 일치를 못 박는다.
  */
 export const QUICK_LAUNCH_PROMPT_MAX_CHARS = 16000;
+export const QUICK_LAUNCH_DEFAULT_MODEL = "opus[1m]";
 
 export interface VariantKindTarget {
   readonly pluginId: string;
@@ -58,9 +59,9 @@ function normalizeRememberedNativeModel(model: string): string {
 }
 
 /**
- * 기억해 둔 조합을 현재 카탈로그에 비추어 되살린다. 설정에서 모델을 끄거나 강도 사다리가 좁아지면
- * 기억은 낡은 값이 되므로, 여기서 걸러 ★기본 행으로 되돌린다 — 낡은 조합을 그대로 보내면 서버가
- * 409 gateway_model_not_enabled로 거절한다.
+ * 기억해 둔 조합을 현재 카탈로그에 비추어 되살린다. 처음 열었거나 기억이 낡았으면 native Opus를
+ * 기본으로 삼고, 그 행조차 없을 때만 ★행과 첫 행 순서로 물러난다 — 사용자가 Gateway 기본 모델을
+ * 바꿔도 Quick Launch의 첫 모델이 함께 흔들리지 않으며, 낡은 조합을 보내 생기는 409도 막는다.
  */
 export function resolveSelection(
   groups: readonly OperationLaunchVariantGroup[],
@@ -73,7 +74,10 @@ export function resolveSelection(
   const rememberedRow = rememberedModel === null
     ? undefined
     : rows.find((row) => row.launch.model === rememberedModel);
-  const row = rememberedRow ?? rows.find((candidate) => candidate.starred) ?? rows[0];
+  const row = rememberedRow
+    ?? rows.find((candidate) => candidate.launch.model === QUICK_LAUNCH_DEFAULT_MODEL)
+    ?? rows.find((candidate) => candidate.starred)
+    ?? rows[0];
   if (!row) return { model: null, effort: null, modelLabel: null, effortLabel: null };
   const chip = rememberedRow && remembered.effort !== null
     ? row.chips?.find((candidate) => candidate.launch.effort === remembered.effort)
