@@ -764,8 +764,9 @@ describe("CanvasContextMenu launch kind attribute", () => {
 });
 
 describe("CanvasContextMenu effort confirm tip", () => {
-  it("shows a one-shot tip on the first non-AUTO selection and records it as seen", async () => {
-    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, gatewayVariantCatalog());
+  it("keeps showing the tip on non-AUTO selection until the confirm gesture graduates it", async () => {
+    const onLaunchKind = vi.fn();
+    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, gatewayVariantCatalog(), vi.fn(), false, onLaunchKind);
     act(() => document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!
       .parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
     act(() => effortHandle("fable").dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
@@ -773,13 +774,21 @@ describe("CanvasContextMenu effort confirm tip", () => {
     const track = document.querySelector<HTMLElement>(".effort-track")!;
     expect(document.querySelector(".operation-launch-effort-confirm-tip")).toBeNull();
 
-    await act(async () => {
-      track.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
-    });
-
+    act(() => track.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
     const tip = document.querySelector<HTMLElement>(".operation-launch-effort-confirm-tip");
     expect(tip?.textContent).toBe("Press the knob again to launch.");
     expect(tip?.getAttribute("role")).toBe("status");
+    // 선택만으로는 졸업하지 않는다 — 피처 투어를 건너뛰고 메뉴를 닫아도 다음에 다시 보인다.
+    expect(fetch).not.toHaveBeenCalled();
+    expect(getGlobalSettingsStoreState().state?.seenFeatureTours ?? []).not.toContain(EFFORT_CONFIRM_TIP_SEEN_KEY);
+
+    await act(async () => {
+      track.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(onLaunchKind).toHaveBeenCalledWith("terminal", gatewayVariantCatalog()[0]!.kinds[0], {
+      model: "fable",
+      effort: "max",
+    });
     expect(fetch).toHaveBeenCalledWith("/api/v1/settings/global", expect.objectContaining({
       method: "PUT",
       body: JSON.stringify({ seenFeatureTours: [EFFORT_CONFIRM_TIP_SEEN_KEY] }),

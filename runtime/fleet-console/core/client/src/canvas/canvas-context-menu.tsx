@@ -79,9 +79,6 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   const [openEffortRow, setOpenEffortRow] = useState<string | null>(null);
   // 행마다 고른 강도. 트랙은 값만 정하고 실행은 모델 행이 일으키므로, 그 사이를 이 상태가 잇는다.
   const [rowEfforts, setRowEfforts] = useState<Readonly<Record<string, string | null>>>({});
-  // 시청 기록이 저장되는 순간 팁이 사라지면 방금 읽던 안내가 눈앞에서 접힌다. 이번 메뉴가
-  // 열려 있는 동안은 첫 노출을 붙잡아 두고, 메뉴가 닫히면(언마운트) 기록만 남긴다.
-  const [effortConfirmTipSticky, setEffortConfirmTipSticky] = useState(false);
   const [effortPosition, setEffortPosition] = useState<{
     readonly id: string;
     readonly left: number;
@@ -91,15 +88,14 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   const effortAnchorRefs = useRef(new Map<string, HTMLDivElement>());
   const effortMenuRef = useRef<HTMLDivElement | null>(null);
   const effortCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // PUT 실패·동시 저장 거부로 설정이 되돌아가도 effect가 같은 마운트에서 무한 재시도하지 않게 한다.
-  // 메뉴를 다시 열면(재마운트) 한 번 더 시도한다.
-  const effortConfirmTipPersistStartedRef = useRef(false);
   const seenFeatureTours = globalSettings.state?.seenFeatureTours ?? [];
   const effortConfirmTipSeen = seenFeatureTours.includes(EFFORT_CONFIRM_TIP_SEEN_KEY);
   const openEffortValue = openEffortRow === null ? null : (rowEfforts[openEffortRow] ?? null);
+  // 선택만으로는 졸업시키지 않는다 — 피처 투어를 건너뛰고 메뉴를 닫아도, 같은 노브 재클릭으로
+  // 실행하기 전까지는 비-AUTO를 고를 때마다 팁이 다시 선다.
   const showEffortConfirmTip = globalSettings.state !== null
     && openEffortValue !== null
-    && (!effortConfirmTipSeen || effortConfirmTipSticky);
+    && !effortConfirmTipSeen;
 
   const cancelFlyoutClose = () => {
     if (flyoutCloseTimerRef.current === null) return;
@@ -242,17 +238,6 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     observer.observe(element);
     return () => observer.disconnect();
   }, [openEffortRow, viewportBounds]);
-
-  // 비-AUTO를 처음 고른 순간에 확인 팁을 붙이고 시청 기록을 남긴다. AUTO는 같은 단 재클릭이
-  // 실행이 아니므로 팁을 달지 않는다. 설정이 아직 안 실렸으면 거짓으로 보여 두고, 기록이
-  // 도착한 뒤에야 "처음"을 판정한다.
-  useEffect(() => {
-    if (!globalSettings.state || openEffortValue === null || effortConfirmTipSeen) return;
-    setEffortConfirmTipSticky(true);
-    if (effortConfirmTipPersistStartedRef.current) return;
-    effortConfirmTipPersistStartedRef.current = true;
-    void persistEffortConfirmTipSeen();
-  }, [effortConfirmTipSeen, globalSettings.state, openEffortValue]);
 
   useEffect(() => {
     const handlePointer = (event: MouseEvent) => {
@@ -739,6 +724,9 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                 if (effort === null) return;
                 const chip = effortTarget.chips?.find((entry) => entry.id === effort);
                 if (!chip) return;
+                // 같은 노브를 다시 눌러 실행한 순간에만 팁을 졸업시킨다. 선택·피처 투어 건너뛰기는
+                // 제스처를 익힌 증거가 아니다.
+                if (!effortConfirmTipSeen) void persistEffortConfirmTipSeen();
                 onLaunchKind(flyoutTarget.pluginId, flyoutTarget.kind, chip.launch);
               }}
               autoLabel={t("launchVariants.effort.auto")}
