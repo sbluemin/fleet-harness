@@ -77,7 +77,7 @@ interface TriageWatchDeckProps {
   readonly onMapMarkerMove?: (operationId: string, theaterId: string, geometry: OperationGeometry) => void;
   /** Operation 표면의 공용 메뉴와 Theater 소유 빈 영역의 launch 메뉴를 상위 canvas가 호스트한다. */
   readonly onOperationContextMenu?: (operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
-  readonly onTheaterContextMenu?: (theaterId: string, theaterLabel: string, anchor: { readonly x: number; readonly y: number }) => void;
+  readonly onTheaterContextMenu?: (theaterId: string, anchor: { readonly x: number; readonly y: number }) => void;
   /** 카드의 창 컨트롤 — 최소화는 이 판(deck)에서 내리는 동작이고, 닫기는 두 번 눌러 확정한다.
       상태 변경은 canvas가 단일 소유하므로 deck는 의도만 올려보낸다. */
   readonly onMinimizeOperation?: (operationId: string) => void;
@@ -910,7 +910,7 @@ export function TriageWatchDeck({
     event.preventDefault();
     event.stopPropagation();
     dismissQuicklook();
-    onTheaterContextMenu?.(theater.id, theater.label, { x: event.clientX, y: event.clientY });
+    onTheaterContextMenu?.(theater.id, { x: event.clientX, y: event.clientY });
   };
   const openMapOperationMenu = (operationId: string, event: ReactMouseEvent<HTMLButtonElement>) => {
     const activeDrag = mapDragRef.current;

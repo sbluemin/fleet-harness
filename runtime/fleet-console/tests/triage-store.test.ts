@@ -880,7 +880,7 @@ describe("triage store", () => {
     const fieldMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 71, clientY: 82 });
     act(() => bandBody.dispatchEvent(fieldMenu));
     expect(fieldMenu.defaultPrevented).toBe(true);
-    expect(theaterMenu).toHaveBeenCalledWith("theater-a", "Alpha", { x: 71, y: 82 });
+    expect(theaterMenu).toHaveBeenCalledWith("theater-a", { x: 71, y: 82 });
 
     act(() => setTriageDeckMapModeLive(true));
     const dot = container.querySelector<HTMLButtonElement>('[data-triage-map-dot="picked"]')!;
@@ -1406,7 +1406,6 @@ describe("triage store", () => {
       plugins: [],
       renderKindIcon: () => null,
       canLaunch: true,
-      activeTheaterLabel: "Alpha",
       onLaunchKind,
       onPick: () => {},
       onClose: () => {},
@@ -1429,8 +1428,8 @@ describe("triage store", () => {
     expect(bareMenu.defaultPrevented).toBe(true);
     const launchMenu = document.querySelector(".canvas-context-menu");
     expect(launchMenu).not.toBeNull();
-    // 소유자가 없는 자리이므로 어느 Theater로 실행되는지는 헤더가 밝힌다.
-    expect(launchMenu?.querySelector(".canvas-context-menu-head-text")?.textContent).toContain("Alpha");
+    // 상자 이름은 어디서 열든 같다 — 실행이 어디로 가는지는 아래에서 실행 인자로 잰다.
+    expect(launchMenu?.querySelector(".canvas-context-menu-head-text")?.textContent).toBe("Controls · Terminal");
     const shellItem = launchMenu?.querySelector<HTMLButtonElement>('[data-operation-launch-kind="shell"]');
     expect(shellItem).not.toBeNull();
     expect(shellItem?.disabled).toBe(false);

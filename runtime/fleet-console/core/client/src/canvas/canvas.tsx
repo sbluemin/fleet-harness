@@ -51,7 +51,6 @@ interface ContextMenuRequest {
   readonly anchor: CanvasPoint;
   readonly canvasPoint: CanvasPoint;
   readonly theaterId?: string;
-  readonly theaterLabel?: string;
 }
 
 interface PluginOperationRendererProps {
@@ -277,11 +276,7 @@ export function OperationsCanvas({
         setContextMenu(null);
         return;
       }
-      openTriageTheaterLaunchMenu(
-        activeTheaterId,
-        state.theaters.find((theater) => theater.id === activeTheaterId)?.label ?? activeTheaterId,
-        { x: event.clientX, y: event.clientY },
-      );
+      openTriageTheaterLaunchMenu(activeTheaterId, { x: event.clientX, y: event.clientY });
       return;
     }
     if (target?.closest("[data-canvas-blocker]")) return;
@@ -293,7 +288,7 @@ export function OperationsCanvas({
     onRefreshCatalog?.();
   };
 
-  const openTriageTheaterLaunchMenu = (theaterId: string, theaterLabel: string, cursor: CanvasPoint) => {
+  const openTriageTheaterLaunchMenu = (theaterId: string, cursor: CanvasPoint) => {
     const canvasRect = canvasRef.current?.getBoundingClientRect();
     if (!canvasRect) return;
     // 앵커와 클램프 경계는 같은 좌표계여야 한다 — 메뉴는 캔버스 크기로 클램프되므로 앵커도 캔버스-local이다.
@@ -309,7 +304,6 @@ export function OperationsCanvas({
       // 스냅샷의 뷰포트로 환산한다.
       canvasPoint: screenToCanvas(local, getTheaterCanvasSnapshot(theaterId).viewport),
       theaterId,
-      theaterLabel,
     });
     onRefreshCatalog?.();
   };
@@ -1130,7 +1124,6 @@ export function OperationsCanvas({
           renderKindIcon={renderKindIcon}
           onLaunchKind={handleContextMenuLaunchKind}
           onClose={() => setContextMenu(null)}
-          theaterLabel={contextMenu.theaterLabel}
           fixed={triageActive}
         />
       ) : null}
