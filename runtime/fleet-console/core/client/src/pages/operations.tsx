@@ -15,7 +15,7 @@ import { playMinimizeFlight, playRestoreFlight } from "../canvas/panel-motion.js
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode } from "../canvas/operation-accent.js";
-import { armTriageSetAside, deferTriageOperation, disarmTriageSetAside, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, getTriageSetAsideArmedId, isTriageActive, pickTriageOperation, recordTriageActivity, resolveTriageQueue, setTriageActive, useTriageActive } from "../canvas/triage-store.js";
+import { armTriageSetAside, deferTriageOperation, disarmTriageSetAside, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, getTriageSetAsideArmedId, isTriageActive, pickTriageOperation, recordTriageActivity, resolveTriageQueue, restoreTriageSession, setTriageActive, useTriageActive } from "../canvas/triage-store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
@@ -75,6 +75,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const focusRequestEpochRef = useRef(0);
   const catalogRequestEpochRef = useRef(0);
   const resumeBootProtectionRef = useRef<{ readonly theaterId: string; readonly operationId: string } | null>(null);
+  const warRoomSessionRestoredRef = useRef(false);
   stateRef.current = state;
 
   const refreshCatalog = useCallback(() => {
@@ -275,6 +276,16 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     ].filter((id): id is string => id !== null));
     minimizeOperations(bootOperationIds.filter((id) => !protectedIds.has(id)));
   }, [claimBootPanelMinimization, operationOrder, state.activeTheaterId, state.operationsHydrated, viewMode.effective]);
+
+  // War Room은 전역 모드라 Theater 로드가 되살리지 못한다 — 탭 세션에 적힌 모드를 부팅 때 한 번만
+  // 복원한다. 부팅 최소화 뒤에 두어, 복원이 지우는 focus layer가 최소화 보호 대상 판정을 앞지르지 않게 한다.
+  // 이후 사용자가 나가면 세션 표식도 함께 지워지므로 이 effect가 다시 들어오지 않는다.
+  useEffect(() => {
+    if (warRoomSessionRestoredRef.current || viewMode.effective === "mobile") return;
+    if (!state.operationsHydrated || state.theaters.length === 0) return;
+    warRoomSessionRestoredRef.current = true;
+    restoreTriageSession();
+  }, [state.operationsHydrated, state.theaters.length, viewMode.effective]);
 
   useEffect(() => {
     if (!state.operationsHydrated) return;

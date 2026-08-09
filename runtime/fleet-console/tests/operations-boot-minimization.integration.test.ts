@@ -10,7 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, requestFitAllOperations, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setViewport, subscribe as subscribeCanvas, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
 import { BOOT_MINIMIZATION_STORAGE_KEY, resetBootMinimizationSession } from "../core/client/src/boot-minimization-session.js";
-import { armTriageSetAside, getTriageSetAsideArmedId, resetTriageTheater, setTriageActive } from "../core/client/src/canvas/triage-store.js";
+import { CANVAS_MODE_STORAGE_KEY } from "../core/client/src/canvas/canvas-mode-session.js";
+import { armTriageSetAside, getTriageSetAsideArmedId, isTriageActive, resetTriageTheater, setTriageActive } from "../core/client/src/canvas/triage-store.js";
 import { focusOperation, getState, hydrateOperations, setActiveOperation, setState } from "../core/client/src/store.js";
 import type { OperationNode, TheaterBootstrap } from "../core/client/src/types.js";
 
@@ -146,7 +147,8 @@ let container: HTMLDivElement | null = null;
 beforeEach(() => {
   document.body.replaceChildren();
   window.localStorage.clear();
-  // 부팅 최소화의 "한 번"은 이제 탭 세션 단위라, 케이스마다 새 탭에서 시작한 것으로 되돌린다.
+  // 부팅 최소화의 "한 번"과 캔버스 모드는 이제 탭 세션 단위라, 케이스마다 새 탭에서 시작한 것으로 되돌린다.
+  window.sessionStorage.clear();
   resetBootMinimizationSession();
   window.history.replaceState({}, "", "/operations");
   loadForTheater("theater-a");
@@ -1322,6 +1324,20 @@ describe("Operations boot minimization", () => {
 
     // 이미 접혀 있던 패널이 목록 앞자리를 지키므로 순서가 아니라 집합으로 본다.
     expect([...getSnapshot().minimized].sort()).toEqual(["first", "second"]);
+  });
+
+  it("boots into War Room when the tab session was left in it", async () => {
+    window.sessionStorage.setItem(CANVAS_MODE_STORAGE_KEY, JSON.stringify({ formationTheaters: [], warRoom: true }));
+
+    await bootApp([operation("first")]);
+
+    expect(isTriageActive()).toBe(true);
+  });
+
+  it("boots into Cruise when the tab session remembers no mode", async () => {
+    await bootApp([operation("first")]);
+
+    expect(isTriageActive()).toBe(false);
   });
 });
 

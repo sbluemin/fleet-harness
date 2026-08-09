@@ -8,6 +8,7 @@ import { clearOperationStatusDetail, recordOperationActivityTransition } from ".
 import { getState, clearPendingSideBarSignals, registerFocusTheaterSwitchSuppression, setActiveOperation, setActiveTheater } from "../store.js";
 import { clearSideBarOperationAction } from "../sidebar/interaction.js";
 import type { OperationGeometry, OperationNode } from "../types.js";
+import { readCanvasModeSession, rememberWarRoomActive } from "./canvas-mode-session.js";
 import {
   clearFormationView,
   forceDropCompanionOperationId,
@@ -610,6 +611,7 @@ export function setTriageActive(active: boolean): void {
     clearFormationView();
     if (!triageActive) {
       triageActive = true;
+      rememberWarRoomActive(true);
       clearedCount = 0;
       enteredAt = Date.now();
       lastStagedTheaterId = null;
@@ -627,6 +629,7 @@ export function setTriageActive(active: boolean): void {
     return;
   }
   triageActive = false;
+  rememberWarRoomActive(false);
   pickedOperationId = null;
   enteredAt = null;
   // 미룸·치워둠 같은 transient 판정은 세션이 아니라 진입에 붙는다 — 껐다 다시 켜면 큐는
@@ -668,6 +671,16 @@ export function setTriageActive(active: boolean): void {
     setActiveTheater(returnTheaterId);
   }
   emitTriage();
+}
+
+// 탭 세션에 War Room이 적혀 있으면 부팅 시 그 모드로 되돌린다 — 콘솔을 오갔을 때 사용자가 서 있던
+// 모드가 Cruise로 리셋되지 않게 하는 유일한 복원 지점이다. 큐 판정(미룸·치워둠)은 진입에 붙는
+// transient 상태라 복원하지 않는다: 되살아나는 것은 모드뿐이고 큐는 처음 순서로 다시 선다.
+export function restoreTriageSession(): boolean {
+  if (triageActive) return false;
+  if (!readCanvasModeSession().warRoom) return false;
+  setTriageActive(true);
+  return true;
 }
 
 export function enterTriage(focusedOperationId: string | null): void {

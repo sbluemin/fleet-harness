@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 
+import { readCanvasModeSession, rememberFormationTheaters } from "./canvas-mode-session.js";
+
 
 export interface OperationGeometry {
   readonly x: number;
@@ -88,7 +90,11 @@ const companionPanelVisibilityListeners = new Set<Listener>();
 const formationViewListeners = new Set<Listener>();
 const formationLayoutListeners = new Set<Listener>();
 const focusLayersByTheater = new Map<string, FocusLayerState>();
-const formationViewsByTheater = new Map<string, true>();
+// 탭 세션에 남아 있던 Tactical Theater 목록으로 시작한다 — 콘솔 전환·새로고침으로 모듈 메모리가
+// 사라져도 Tactical로 보던 Theater가 Cruise로 떨어지지 않게 한다(canvas-mode-session).
+const formationViewsByTheater = new Map<string, true>(
+  readCanvasModeSession().formationTheaters.map((theaterId) => [theaterId, true] as const),
+);
 let activeTheaterId: string | null = null;
 let saveTimer: number | null = null;
 let state: CanvasState = EMPTY_STATE;
@@ -877,7 +883,7 @@ export function toggleFormationView(): void {
     beforeFormationViewActivation?.(activeTheaterId);
     forceDropCompanionOperationId();
     if (!formationView) {
-      formationViewsByTheater.set(activeTheaterId, true);
+      markFormationTheater(activeTheaterId);
       formationView = true;
       emitFormationView();
     }
@@ -890,7 +896,7 @@ export function toggleFormationView(): void {
   beforeFormationViewActivation?.(activeTheaterId);
   clearMaximizedOperationId();
   forceDropCompanionOperationId();
-  formationViewsByTheater.set(activeTheaterId, true);
+  markFormationTheater(activeTheaterId);
   formationView = true;
   emitFormationView();
 }
@@ -902,7 +908,7 @@ export function selectFormationLayout(layout: FormationLayout): void {
     beforeFormationViewActivation?.(activeTheaterId);
     forceDropCompanionOperationId();
     if (!formationView) {
-      formationViewsByTheater.set(activeTheaterId, true);
+      markFormationTheater(activeTheaterId);
       formationView = true;
       emitFormationView();
     }
@@ -917,17 +923,30 @@ export function selectFormationLayout(layout: FormationLayout): void {
     beforeFormationViewActivation?.(activeTheaterId);
     clearMaximizedOperationId();
     forceDropCompanionOperationId();
-    formationViewsByTheater.set(activeTheaterId, true);
+    markFormationTheater(activeTheaterId);
     formationView = true;
     emitFormationView();
   }
 }
 
 export function clearFormationView(theaterId = activeTheaterId): void {
-  if (theaterId) formationViewsByTheater.delete(theaterId);
+  if (theaterId) unmarkFormationTheater(theaterId);
   if (activeTheaterId !== theaterId || !formationView) return;
   formationView = false;
   emitFormationView();
+}
+
+// Tactical은 Theater별 상태라 목록으로 기억한다. 모듈 메모리와 탭 세션을 한 지점에서만 갱신해
+// 두 기록이 갈라지지 않게 한다.
+function markFormationTheater(theaterId: string): void {
+  if (formationViewsByTheater.has(theaterId)) return;
+  formationViewsByTheater.set(theaterId, true);
+  rememberFormationTheaters(formationViewsByTheater.keys());
+}
+
+function unmarkFormationTheater(theaterId: string): void {
+  if (!formationViewsByTheater.delete(theaterId)) return;
+  rememberFormationTheaters(formationViewsByTheater.keys());
 }
 
 export function registerBeforeFormationViewActivation(listener: (theaterId: string) => void): void {
