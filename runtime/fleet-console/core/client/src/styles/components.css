@@ -10939,16 +10939,16 @@ body[data-codex-reading="true"] .operations-side-bar {
 }
 
 /* ── Quick Launch 컴포저 ──────────────────────────────────────────────
-   전역 단축키(Mod+J)로 열리는 프롬프트 컴포저. 오버레이 지오메트리와 스크림은
-   .operation-search-overlay의 계약을 그대로 승계한다 — 두 표면은 서로 배타적이며
-   (isBlockingDialogOpen이 aria-modal로 판정) 같은 z-index 층에 산다. */
+   전역 단축키(Mod+J)로 열리는 프롬프트 컴포저. 화면 중앙에 서되 스크림과 z-index는
+   .operation-search-overlay의 계약을 승계한다 — 두 표면은 서로 배타적이다
+   (isBlockingDialogOpen이 aria-modal로 판정). */
 .quick-launch-overlay {
   position: fixed;
   inset: 0;
   z-index: 90;
   display: grid;
-  place-items: start center;
-  padding: 14vh var(--space-5) var(--space-5);
+  place-items: center;
+  padding: var(--space-5);
   background: color-mix(in oklch, var(--ink-abyss) 66%, transparent);
   animation: fleet-pop 280ms var(--ease-spring) both;
 }

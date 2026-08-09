@@ -256,7 +256,10 @@ export function QuickLaunch() {
             <EffortTrack
               row={selectedRow}
               value={effort}
-              onChange={setEffort}
+              onChange={(nextEffort) => {
+                setEffort(nextEffort);
+                writeQuickLaunchSelection({ theaterId, model, effort: nextEffort });
+              }}
               autoLabel={t("launchVariants.effort.auto")}
               ariaLabel={t("launchVariants.effort.track")}
               autoValueText={t("launchVariants.effort.autoValue")}
@@ -350,9 +353,11 @@ export function QuickLaunch() {
                       row={row}
                       selectedModel={model}
                       onPick={(nextModel) => {
-                        setModel(nextModel);
                         // 새 모델의 사다리에 없는 강도는 들고 갈 수 없다 — 비운 상태로 떨어진다.
-                        setEffort(resolveRowEffort(row, effort));
+                        const nextEffort = resolveRowEffort(row, effort);
+                        setModel(nextModel);
+                        setEffort(nextEffort);
+                        writeQuickLaunchSelection({ theaterId, model: nextModel, effort: nextEffort });
                         closePopover();
                         inputRef.current?.focus();
                       }}
