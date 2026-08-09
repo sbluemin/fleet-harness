@@ -122,7 +122,9 @@ export class OpenAIChatCompletionsAdapter implements AiGatewayAdapter {
     const controller = new AbortController();
     const unlinkAbort = linkAbortSignal(options.signal, controller);
     const supportsImageInput = imageInputPolicy.get(this)?.(request.model) ?? true;
-    const payload = forChatCompletionsBackend(request, supportsImageInput);
+    const omitTools = suggestionModeToolOmissionPolicy.has(this)
+      && isClaudeCodeSuggestionMode(request);
+    const payload = forChatCompletionsBackend(request, supportsImageInput, omitTools);
     wireLog("openai-chat.wire.request", { url: this.url, payload });
     let response: Response;
 
@@ -185,6 +187,13 @@ const imageInputPolicy = new WeakMap<
  */
 const argumentPruningPolicy = new WeakMap<OpenAIChatCompletionsAdapter, true>();
 
+/** OpenCode 전용 Claude Code Suggestion Mode 요청은 도구 호출을 허용하지 않는다. */
+const suggestionModeToolOmissionPolicy = new WeakMap<OpenAIChatCompletionsAdapter, true>();
+const CLAUDE_CODE_SUGGESTION_MODE_PREFIX =
+  "[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]";
+const CLAUDE_CODE_SUGGESTION_MODE_SUFFIX =
+  "Reply with ONLY the suggestion, no quotes or explanation.";
+
 export interface OpencodeGoChatCompletionsAdapterOptions {
   fetch?: FetchLike;
   maxBodyBytes?: number;
@@ -216,12 +225,24 @@ export class OpencodeGoChatCompletionsAdapter extends OpenAIChatCompletionsAdapt
     // 미선언 인자 키 정화도 같은 이유로 provider instance 한정이다 — 이 wire가 strict를
     // 무시한다는 실측은 OpenCode의 것이고, 다른 백엔드에 대해서는 측정된 바가 없다.
     argumentPruningPolicy.set(this, true);
+    suggestionModeToolOmissionPolicy.set(this, true);
   }
+}
+
+function isClaudeCodeSuggestionMode(request: CanonicalResponseRequest): boolean {
+  if (request.tool_choice !== undefined) return false;
+  const last = request.input.at(-1);
+  if (last?.type !== "message" || last.role !== "user" || typeof last.content !== "string") {
+    return false;
+  }
+  return last.content.startsWith(CLAUDE_CODE_SUGGESTION_MODE_PREFIX)
+    && last.content.endsWith(CLAUDE_CODE_SUGGESTION_MODE_SUFFIX);
 }
 
 function forChatCompletionsBackend(
   request: CanonicalResponseRequest,
   supportsImageInput: boolean,
+  omitTools = false,
 ): ChatWireRequest {
   const messages: ChatWireMessage[] = [];
   if (request.instructions !== undefined && request.instructions.length > 0) {
@@ -236,7 +257,7 @@ function forChatCompletionsBackend(
   // - 사이에 낀 user/developer 텍스트는 해당 호출의 결과 뒤로 미룬다(원문에서도 결과와
   //   함께 도착한 발화이므로 결과 직후가 의미상 제자리다).
   // DeepSeek V4 assistant/tool-turn reasoning 재생은 레거시 generic 어댑터의 HEAD
-  // 공개 동작으로 유지한다 — 이번 변경에서 OpenCode 래퍼에 국한되는 건 이미지 정책뿐이다.
+  // 공개 동작으로 유지한다. OpenCode 전용 정책은 instance-bound gate로만 적용한다.
   const replayReasoning = request.model.startsWith("deepseek-v4-");
   let pendingToolCalls: ChatWireToolCall[] = [];
   let pendingAssistantText: string | undefined;
@@ -304,7 +325,7 @@ function forChatCompletionsBackend(
     stream_options: { include_usage: true },
   };
 
-  const tools = (request.tools ?? []).map((tool) => ({
+  const tools = (omitTools ? [] : request.tools ?? []).map((tool) => ({
     type: "function" as const,
     function: {
       name: tool.name,

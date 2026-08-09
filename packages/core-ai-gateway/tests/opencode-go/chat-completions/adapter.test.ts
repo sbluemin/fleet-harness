@@ -114,6 +114,55 @@ describe("chat completions request translation", () => {
     expect(headers.get("authorization")).toBe("Bearer k");
   });
 
+  it("omits tools only for the exact Claude Code Suggestion Mode turn on OpenCode", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
+    const tools: CanonicalResponseRequest["tools"] = [{
+      type: "function",
+      name: "Read",
+      parameters: { type: "object", properties: {} },
+    }];
+    const suggestion = [
+      "[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]",
+      "Keep it short.",
+      "Reply with ONLY the suggestion, no quotes or explanation.",
+    ].join("\n");
+
+    await new OpencodeGoChatCompletionsAdapter({ fetch: fetchMock }).stream(request({
+      input: [{ type: "message", role: "user", content: suggestion }],
+      tools,
+      parallel_tool_calls: true,
+    }), { apiKey: "k" });
+    const optimized = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(optimized).not.toHaveProperty("tools");
+    expect(optimized).not.toHaveProperty("parallel_tool_calls");
+
+    fetchMock.mockClear();
+    await new OpencodeGoChatCompletionsAdapter({ fetch: fetchMock }).stream(request({
+      input: [{ type: "message", role: "user", content: `${suggestion}\nPlease use Read.` }],
+      tools,
+    }), { apiKey: "k" });
+    const nearMatch = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(nearMatch).toHaveProperty("tools");
+
+    fetchMock.mockClear();
+    await new OpencodeGoChatCompletionsAdapter({ fetch: fetchMock }).stream(request({
+      input: [{ type: "message", role: "user", content: suggestion }],
+      tools,
+      tool_choice: { type: "function", name: "Read" },
+    }), { apiKey: "k" });
+    const forcedTool = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(forcedTool).toHaveProperty("tools");
+    expect(forcedTool).toHaveProperty("tool_choice");
+
+    fetchMock.mockClear();
+    await adapter(fetchMock).stream(request({
+      input: [{ type: "message", role: "user", content: suggestion }],
+      tools,
+    }), { apiKey: "k" });
+    const generic = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(generic).toHaveProperty("tools");
+  });
+
   it("replays reasoning only for DeepSeek V4 assistant tool turns", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
     await adapter(fetchMock).stream(request({
