@@ -11014,7 +11014,10 @@ body[data-codex-reading="true"] .operations-side-bar {
 .quick-launch-file-picker {
   display: grid;
   gap: 1px;
-  max-height: 256px;
+  /* 목록은 최대 8건이다(서버 limit). 8행이 스크롤 없이 들어가도록 한 행만큼 여유를 두고 상한을
+     잡는다 — 행 높이는 내용에 따라 1px씩 흔들려서, 8행에 딱 맞춘 상한은 마지막 행을 반쯤 걸친 채
+     멈추고 목록이 더 있는지 없는지를 못 읽게 만든다. 더 좁은 창은 overflow-y가 받는다. */
+  max-height: calc((9 * 32px) + (8 * 1px) + (2 * var(--space-1)));
   overflow-y: auto;
   padding: var(--space-1) var(--space-2);
   border-top: 1px solid var(--surface-rim);

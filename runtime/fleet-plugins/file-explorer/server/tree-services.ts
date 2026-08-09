@@ -190,7 +190,7 @@ interface GitStatusDependencies {
   readonly environment?: NodeJS.ProcessEnv;
 }
 
-interface GitExecOptions {
+export interface GitExecOptions {
   readonly env: NodeJS.ProcessEnv;
   readonly killSignal: "SIGKILL";
   readonly maxBuffer: number;
@@ -363,13 +363,80 @@ function mapGitStatusFsError(error: unknown): GitStatusPathError {
 
 const SEARCH_DIRECTORY_CAP = 500;
 const SEARCH_ENTRY_CAP = 25_000;
+// 무시 규칙을 읽을 수 없는 Theater에서도 훑기가 의존성·VCS 디렉터리에 통째로 잡아먹히지 않게 막는
+// 최소 방어선이다. 규칙을 읽을 수 있으면 아래 git 경로가 이 목록보다 정확하다.
+const FALLBACK_IGNORED_DIRECTORY_NAMES = new Set([
+  ".git", ".hg", ".svn",
+  "node_modules", "vendor", "__pycache__", ".venv", "venv",
+  "dist", "build", "out", "target", "coverage",
+  ".next", ".nuxt", ".turbo", ".cache",
+]);
+// 최근순은 후보 전부의 mtime을 읽어야 한다. 그보다 큰 Theater는 경로 순으로 떨어뜨려, 목록 하나
+// 띄우자고 수만 번 stat을 돌지 않게 한다.
+const RECENT_STAT_CAP = 20_000;
 
-export async function searchTheaterFiles(theaterPath: string, query: string, limit: number): Promise<FileSearchItem[]> {
+export interface FileSearchDependencies {
+  readonly execGit?: (args: readonly string[], options: GitExecOptions) => Promise<string>;
+  readonly environment?: NodeJS.ProcessEnv;
+}
+
+export async function searchTheaterFiles(
+  theaterPath: string,
+  query: string,
+  limit: number,
+  deps: FileSearchDependencies = {},
+): Promise<FileSearchItem[]> {
   const realRoot = await fsp.realpath(theaterPath);
+  const candidates = await listTheaterFileCandidates(realRoot, deps);
   const tokens = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  // 쿼리가 비면 이름으로 고를 기준이 없다. 방금 만진 파일이 사용자가 가리키려는 파일이다.
+  if (tokens.length === 0) return await pickRecentlyModified(realRoot, candidates, limit);
+  const matches = candidates
+    .filter((relativePath) => {
+      const low = relativePath.toLocaleLowerCase();
+      return tokens.every((token) => low.includes(token));
+    })
+    .sort((left, right) => compareFileSearchItem({ relativePath: left }, { relativePath: right }, query));
+  return await takeExistingFiles(realRoot, matches, limit);
+}
+
+async function listTheaterFileCandidates(realRoot: string, deps: FileSearchDependencies): Promise<readonly string[]> {
+  // 무시 규칙의 판정자는 git이다 — 중첩 .gitignore, 부정 패턴, 사용자 전역 excludes까지 한 번에 맞는다.
+  // 결과가 비면 Theater 자체가 무시된 경로(예: 빌드 산출물 디렉터리)일 수 있으므로 훑기로 되돌린다.
+  const tracked = await listGitTheaterFiles(realRoot, deps);
+  return tracked && tracked.length > 0 ? tracked : await walkTheaterFiles(realRoot);
+}
+
+async function listGitTheaterFiles(realRoot: string, deps: FileSearchDependencies): Promise<readonly string[] | null> {
+  const execGit = deps.execGit ?? executeGit;
+  try {
+    const stdout = await execGit(
+      [
+        "-c", "core.fsmonitor=false",
+        "--no-optional-locks",
+        "-C", realRoot,
+        // --others + --exclude-standard: 아직 커밋하지 않은 새 파일도 후보에 남기되 무시 대상은 뺀다.
+        "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", ".",
+      ],
+      {
+        env: sanitizeGitEnvironment(deps.environment ?? process.env),
+        killSignal: "SIGKILL",
+        maxBuffer: GIT_MAX_BUFFER,
+        timeout: GIT_TIMEOUT_MS,
+      },
+    );
+    // -z 출력은 항목마다 NUL로 끝나므로 마지막 조각은 항상 빈 문자열이다.
+    return stdout.split("\0").filter((entry) => entry !== "");
+  } catch {
+    // git이 없거나 Theater가 저장소가 아니다 — 호출자가 훑기로 떨어진다.
+    return null;
+  }
+}
+
+async function walkTheaterFiles(realRoot: string): Promise<readonly string[]> {
   const pending: Array<{ readonly absolutePath: string; readonly relativePath: string }> = [{ absolutePath: realRoot, relativePath: "" }];
   const visited = new Set<string>();
-  const matches: FileSearchItem[] = [];
+  const files: string[] = [];
   let directoryCount = 0;
   let entryCount = 0;
 
@@ -405,18 +472,63 @@ export async function searchTheaterFiles(theaterPath: string, query: string, lim
         }
       }
       if (kind === "dir") {
+        if (FALLBACK_IGNORED_DIRECTORY_NAMES.has(entry.name)) continue;
         if (!visited.has(realPath)) pending.push({ absolutePath: realPath, relativePath });
         continue;
       }
       if (kind !== "file") continue;
-      const low = relativePath.toLocaleLowerCase();
-      if (tokens.every((token) => low.includes(token))) matches.push({ relativePath });
+      files.push(relativePath);
     }
   }
 
-  return matches
-    .sort((left, right) => compareFileSearchItem(left, right, query))
-    .slice(0, limit);
+  return files;
+}
+
+async function pickRecentlyModified(realRoot: string, candidates: readonly string[], limit: number): Promise<FileSearchItem[]> {
+  if (candidates.length > RECENT_STAT_CAP) {
+    const shallowFirst = [...candidates].sort(compareByDepthThenPath);
+    return await takeExistingFiles(realRoot, shallowFirst, limit);
+  }
+  const stamped = await Promise.all(candidates.map(async (relativePath) => {
+    const stat = await statContainedFile(realRoot, relativePath);
+    return stat === null ? null : { relativePath, mtimeMs: stat.mtimeMs };
+  }));
+  return stamped
+    .filter((entry): entry is { relativePath: string; mtimeMs: number } => entry !== null)
+    .sort((left, right) => right.mtimeMs - left.mtimeMs || left.relativePath.localeCompare(right.relativePath))
+    .slice(0, limit)
+    .map(({ relativePath }) => ({ relativePath }));
+}
+
+// git 인덱스는 지운 파일도 계속 들고 있다. 목록에 올릴 만큼만 존재를 확인해, 열 수 없는 경로를
+// 제시하지 않으면서도 후보 전체를 stat하지는 않는다.
+async function takeExistingFiles(realRoot: string, relativePaths: readonly string[], limit: number): Promise<FileSearchItem[]> {
+  const items: FileSearchItem[] = [];
+  for (const relativePath of relativePaths) {
+    if (items.length >= limit) break;
+    if (await statContainedFile(realRoot, relativePath) !== null) items.push({ relativePath });
+  }
+  return items;
+}
+
+// 후보가 어디서 왔든 Theater 밖을 가리키는 경로는 목록에 오르지 않는다 — 훑기가 심링크에 대해
+// 지키던 불변식을 git 목록도 똑같이 지켜야 한다. 어휘 검사 뒤 해석된 실경로로 포함을 확인한다.
+async function statContainedFile(realRoot: string, relativePath: string): Promise<{ readonly mtimeMs: number } | null> {
+  if (relativePath === "" || path.isAbsolute(relativePath) || relativePath.split("/").includes("..")) return null;
+  try {
+    const realPath = await fsp.realpath(path.join(realRoot, relativePath));
+    if (!isContained(realRoot, realPath)) return null;
+    const stat = await fsp.stat(realPath);
+    return stat.isFile() ? { mtimeMs: stat.mtimeMs } : null;
+  } catch {
+    return null;
+  }
+}
+
+function compareByDepthThenPath(left: string, right: string): number {
+  const leftDepth = left.split("/").length;
+  const rightDepth = right.split("/").length;
+  return leftDepth - rightDepth || left.localeCompare(right);
 }
 
 export async function handleFilesSearch(
@@ -435,7 +547,6 @@ export async function handleFilesSearch(
     !isPlainObject(body)
     || typeof body.theaterId !== "string"
     || typeof body.query !== "string"
-    || body.query.trim() === ""
     || !Number.isInteger(body.limit)
     || (body.limit as number) < 1
     || (body.limit as number) > 8

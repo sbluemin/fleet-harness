@@ -189,7 +189,8 @@ export function QuickLaunch() {
     fileSearchAbortRef.current?.abort();
     if (fileSearchTimerRef.current !== null) window.clearTimeout(fileSearchTimerRef.current);
     const generation = ++fileSearchGenerationRef.current;
-    if (token.query.length === 0) { setFileResults([]); return; }
+    // 쿼리가 비어도 검색한다 — `@`만 친 시점이 "무엇을 붙일지 아직 모른다"는 뜻이므로, 그때가
+    // 목록이 가장 필요한 순간이다(서버가 최근 만진 파일부터 돌려준다).
     fileSearchTimerRef.current = window.setTimeout(() => {
       const abort = new AbortController();
       fileSearchAbortRef.current = abort;
