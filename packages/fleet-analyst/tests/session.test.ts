@@ -1,224 +1,181 @@
-import { EventEmitter } from "node:events";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-  UnifiedAgent,
-  type AcpPermissionRequestParams,
-  type IUnifiedAgentClient,
-} from "@dotobokuri/core-unified-agent";
+import type { ClaudeGatewayMessage, ClaudeGatewaySdk, ClaudeGatewayTurn } from "@dotobokuri/core-agent/claude";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { AnalystSession } from "../src/session.js";
+import { AnalystSession, toAnalystEvents } from "../src/session.js";
+import type { AnalystEvent, AnalystSessionOptions } from "../src/types.js";
+
+const BASE_URL = "http://127.0.0.1:43210/plugins/terminal/ai-gateway";
 
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
-it.each([
-  ["claude", true],
-  ["codex", false],
-] as const)("builds the selected %s Analyst provider with capability-aware isolation", async (cliId, strictMcp) => {
-  const file = join(await mkdtemp(join(tmpdir(), "analyst-provider-")), "capture.jsonl");
+async function capture(): Promise<string> {
+  const file = join(await mkdtemp(join(tmpdir(), "analyst-session-")), "capture.jsonl");
   await writeFile(file, "");
-  const client = Object.assign(new EventEmitter(), {
-    connect: vi.fn().mockResolvedValue(undefined),
-    cancelPrompt: vi.fn().mockResolvedValue(undefined),
-    disconnect: vi.fn().mockResolvedValue(undefined),
-  }) as unknown as IUnifiedAgentClient;
-  const build = vi.spyOn(UnifiedAgent, "build").mockResolvedValue(client);
-  const session = new AnalystSession({
-    capturePath: file,
+  return file;
+}
+
+class FakeSdk {
+  createArgs: unknown = null;
+  readonly configDir = "/tmp/fake";
+  readonly models = ["test-model"];
+  readonly dispose = vi.fn(async () => undefined);
+  readonly close = vi.fn();
+  readonly startTurn: ReturnType<typeof vi.fn>;
+
+  constructor(stream: readonly ClaudeGatewayMessage[] = [{ type: "result", subtype: "success", is_error: false, session_id: "child-session" }]) {
+    const close = this.close;
+    this.startTurn = vi.fn(async (_turn: ClaudeGatewayTurn) => ({
+      [Symbol.asyncIterator]: async function* () {
+        for (const message of stream) yield message;
+      },
+      close,
+    }));
+  }
+
+  create(args: unknown): ClaudeGatewaySdk {
+    this.createArgs = args;
+    return this as unknown as ClaudeGatewaySdk;
+  }
+}
+
+async function session(overrides: Partial<AnalystSessionOptions> = {}, sdk = new FakeSdk()): Promise<{ analyst: AnalystSession; sdk: FakeSdk }> {
+  const analyst = new AnalystSession({
+    capturePath: await capture(),
     cwd: process.cwd(),
-    cliId,
-    cliPath: "/configured/agent-cli",
-    env: { PATH: "/isolated/bin", CLAUDE_BIN: "/configured/agent-cli" },
+    baseUrl: BASE_URL,
     model: "test-model",
+    createSdk: async (args) => sdk.create(args),
+    ...overrides,
   });
+  return { analyst, sdk };
+}
 
-  await session.start();
-
-  expect(build).toHaveBeenCalledWith({ cli: cliId });
-  expect(client.connect).toHaveBeenCalledWith(expect.objectContaining({
-    autoApprove: true,
-    fsAccess: false,
-    yoloMode: true,
-    strictMcp,
-    cliPath: "/configured/agent-cli",
-    env: { PATH: "/isolated/bin", CLAUDE_BIN: "/configured/agent-cli" },
-  }));
-  await session.dispose();
+it("binds the SDK to the host gateway and only the selected model", async () => {
+  const { analyst, sdk } = await session();
+  await analyst.start();
+  expect(sdk.createArgs).toEqual({ baseUrl: BASE_URL, models: ["test-model"] });
+  await analyst.dispose();
 });
 
-it("pins Korean output language in the provider system prompt at connect time", async () => {
-  const file = join(await mkdtemp(join(tmpdir(), "analyst-language-")), "capture.jsonl");
-  await writeFile(file, "");
-  const connect = vi.fn().mockResolvedValue(undefined);
-  const client = Object.assign(new EventEmitter(), {
-    connect,
-    cancelPrompt: vi.fn().mockResolvedValue(undefined),
-    disconnect: vi.fn().mockResolvedValue(undefined),
-  }) as unknown as IUnifiedAgentClient;
-  vi.spyOn(UnifiedAgent, "build").mockResolvedValue(client);
-  const session = new AnalystSession({ capturePath: file, cwd: process.cwd(), cliId: "claude", model: "test-model", language: "ko" });
+it("removes every built-in tool and admits only the analyst's own MCP tools", async () => {
+  // 앞선 ACP 경로는 도구 이름을 접두사로 알아보고 shell 같은 native 도구를 거부했다. 이제
+  // 내장 도구가 아예 없으므로 거부할 것이 남지 않는다.
+  const { analyst, sdk } = await session();
+  await analyst.start();
+  await analyst.send("hello");
+  const turn = sdk.startTurn.mock.calls[0]?.[0] as ClaudeGatewayTurn;
+  expect(turn.tools).toEqual([]);
+  expect(turn.permissionMode).toBe("dontAsk");
+  expect(turn.allowedTools).toEqual([
+    "mcp__session_analyst__session_outline",
+    "mcp__session_analyst__session_events",
+    "mcp__session_analyst__session_read",
+    "mcp__session_analyst__session_diff",
+    "mcp__session_analyst__live_tail",
+    "mcp__session_analyst__publish_artifact",
+  ]);
+  expect(Object.keys(turn.mcpServers ?? {})).toEqual(["session_analyst"]);
+  await analyst.dispose();
+});
 
-  await session.start();
+it("carries the analyst prompt as a replace-mode system prompt, not as user content", async () => {
+  // ACP 기본값 prepend는 이 프롬프트를 첫 사용자 메시지 본문에 실었다. 그러면 프롬프트 안의
+  // 안티-인젝션 조항이 자기가 삼키는 transcript와 같은 층위에 놓인다.
+  const { analyst, sdk } = await session();
+  await analyst.start();
+  await analyst.send("hello");
+  const turn = sdk.startTurn.mock.calls[0]?.[0] as ClaudeGatewayTurn;
+  expect(turn.systemPrompt?.mode).toBe("replace");
+  expect(turn.systemPrompt?.text).toContain("You are Session Analyst");
+  await analyst.dispose();
+});
 
-  const systemPrompt = connect.mock.calls[0]?.[0]?.systemPrompt as string;
-  expect(systemPrompt).toContain("\n\n# Language\nWrite every user-facing response in Korean (한국어): answers, follow-up suggestions, artifact titles, and artifact body text. Keep code, commands, file paths, identifiers, and protocol tokens in their original form.");
-  await session.dispose();
+it("pins Korean output language in the system prompt", async () => {
+  const { analyst, sdk } = await session({ language: "ko" });
+  await analyst.start();
+  await analyst.send("hello");
+  const turn = sdk.startTurn.mock.calls[0]?.[0] as ClaudeGatewayTurn;
+  expect(turn.systemPrompt?.text).toContain("\n\n# Language\nWrite every user-facing response in Korean (한국어): answers, follow-up suggestions, artifact titles, and artifact body text. Keep code, commands, file paths, identifiers, and protocol tokens in their original form.");
+  await analyst.dispose();
+});
+
+it("forwards only an effort the gateway ladder actually carries", async () => {
+  const { analyst, sdk } = await session({ effort: "low" });
+  await analyst.start();
+  await analyst.send("hello");
+  expect((sdk.startTurn.mock.calls[0]?.[0] as ClaudeGatewayTurn).effort).toBe("low");
+  await analyst.dispose();
+
+  const other = new FakeSdk();
+  const { analyst: second } = await session({ effort: "turbo" }, other);
+  await second.start();
+  await second.send("hello");
+  expect((other.startTurn.mock.calls[0]?.[0] as ClaudeGatewayTurn).effort).toBeUndefined();
+  await second.dispose();
+});
+
+it("continues the same analysis by resuming the child's session", async () => {
+  const { analyst, sdk } = await session();
+  await analyst.start();
+  await analyst.send("first");
+  await analyst.send("second");
+  expect((sdk.startTurn.mock.calls[0]?.[0] as ClaudeGatewayTurn).resume).toBeUndefined();
+  expect((sdk.startTurn.mock.calls[1]?.[0] as ClaudeGatewayTurn).resume).toBe("child-session");
+  await analyst.dispose();
 });
 
 it("rejects sends before start and disposes idempotently", async () => {
-  const session = new AnalystSession({
-    capturePath: "/not-used-before-start.jsonl",
-    cwd: process.cwd(),
-    cliId: "claude",
-    model: "test-model",
-  });
-
-  await expect(session.send("hello")).rejects.toThrow("Session not started");
-  await expect(session.dispose()).resolves.toBeUndefined();
-  await expect(session.dispose()).resolves.toBeUndefined();
+  const { analyst } = await session();
+  await expect(analyst.send("hello")).rejects.toThrow("Session not started");
+  await expect(analyst.dispose()).resolves.toBeUndefined();
+  await expect(analyst.dispose()).resolves.toBeUndefined();
 });
 
-it("bridges provider exits as analysis_exited errors", () => {
-  const events: unknown[] = [];
-  const session = new AnalystSession({
-    capturePath: "/not-used.jsonl",
-    cwd: process.cwd(),
-    cliId: "claude",
-    model: "test-model",
-    onEvent: event => events.push(event),
-  });
-  const client = new EventEmitter() as unknown as IUnifiedAgentClient;
-
-  (session as unknown as { bridge(value: IUnifiedAgentClient): void }).bridge(client);
-  (client as unknown as EventEmitter).emit("exit", 7, "SIGTERM");
-
-  expect(events).toEqual([{
-    type: "error",
-    error: { code: "analysis_exited", message: "Analysis process exited (code 7, signal SIGTERM)" },
-  }]);
+it("cancels an active turn on disposal and rejects later sends", async () => {
+  const { analyst, sdk } = await session();
+  await analyst.start();
+  void analyst.send("long prompt");
+  await Promise.resolve();
+  await analyst.dispose();
+  await expect(analyst.send("too late")).rejects.toThrow("Session disposed");
+  expect(sdk.dispose).toHaveBeenCalledOnce();
 });
 
-it("allows only explicitly qualified session_analyst MCP tools and rejects native tools", () => {
-  const session = new AnalystSession({
-    capturePath: "/not-used.jsonl",
-    cwd: process.cwd(),
-    cliId: "claude",
-    model: "test-model",
-  });
-  const client = new EventEmitter() as unknown as IUnifiedAgentClient;
-  const allow = vi.fn();
-  const reject = vi.fn();
-  const options = [
-    { optionId: "allow", name: "Allow", kind: "allow_once" as const },
-    { optionId: "reject", name: "Reject", kind: "reject_once" as const },
+it("reports a failed turn as an error event rather than a silent completion", async () => {
+  const events: AnalystEvent[] = [];
+  const sdk = new FakeSdk([{ type: "result", subtype: "error", is_error: true, result: "gateway refused" }]);
+  const { analyst } = await session({ onEvent: (event: AnalystEvent) => events.push(event) }, sdk);
+  await analyst.start();
+  await analyst.send("hello");
+  expect(events).toEqual([{ type: "error", error: { code: "analysis_error", message: "gateway refused" } }]);
+  await analyst.dispose();
+});
+
+it("redacts text, thought, and tool titles on the way out", () => {
+  const names = new Map<string, string>();
+  const redact = (value: string) => value.replace(/chunk-secret|thought-secret-value|ses_tool-secret/g, "[redacted]");
+  const emitted = [
+    ...toAnalystEvents(delta("text_delta", { text: "MY_APP_PASSWORD=chunk-secret" }), names, redact),
+    ...toAnalystEvents(delta("thinking_delta", { thinking: "Bearer thought-secret-value" }), names, redact),
+    ...toAnalystEvents({ type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "ses_tool-secret" }] } }, names, redact),
   ];
-
-  (session as unknown as { bridge(value: IUnifiedAgentClient): void }).bridge(client);
-  (client as unknown as EventEmitter).emit("permissionRequest", permissionRequest("mcp__session_analyst__session_outline", options), allow);
-  (client as unknown as EventEmitter).emit("permissionRequest", permissionRequest("shell", options), reject);
-
-  expect(allow).toHaveBeenCalledWith({ outcome: { outcome: "selected", optionId: "allow" } });
-  expect(reject).toHaveBeenCalledWith({ outcome: { outcome: "selected", optionId: "reject" } });
-});
-
-it("redacts provider text, thought, tool titles, and errors at the outbound bridge", () => {
-  const events: unknown[] = [];
-  const session = new AnalystSession({
-    capturePath: "/not-used.jsonl",
-    cwd: process.cwd(),
-    cliId: "claude",
-    model: "test-model",
-    onEvent: event => events.push(event),
-  });
-  const client = new EventEmitter() as unknown as IUnifiedAgentClient;
-
-  (session as unknown as { bridge(value: IUnifiedAgentClient): void }).bridge(client);
-  const emitter = client as unknown as EventEmitter;
-  emitter.emit("messageChunk", "MY_APP_PASSWORD=chunk-secret", "session-id");
-  emitter.emit("thoughtChunk", "Bearer thought-secret-value", "session-id");
-  emitter.emit("toolCall", "uses ses_tool-secret", "pending", "session-id");
-  emitter.emit("error", new Error("Authorization: Basic ZXJyb3I6c2VjcmV0"));
-
-  const exposed = JSON.stringify(events);
-  for (const secret of ["chunk-secret", "thought-secret-value", "ses_tool-secret", "ZXJyb3I6c2VjcmV0"]) {
+  const exposed = JSON.stringify(emitted);
+  for (const secret of ["chunk-secret", "thought-secret-value", "ses_tool-secret"]) {
     expect(exposed).not.toContain(secret);
   }
-  expect(events).toHaveLength(4);
+  expect(emitted.map((event) => event.type)).toEqual(["chunk", "thought", "tool"]);
 });
 
-it("registers a client before connect so concurrent disposal owns a pending connection", async () => {
-  const file = join(await mkdtemp(join(tmpdir(), "analyst-session-")), "capture.jsonl");
-  await writeFile(file, "");
-  const never = new Promise<never>(() => undefined);
-  const emitter = new EventEmitter();
-  const connect = vi.fn((_options: unknown) => never);
-  const client = Object.assign(emitter, {
-    connect,
-    cancelPrompt: vi.fn().mockResolvedValue(undefined),
-    disconnect: vi.fn().mockResolvedValue(undefined),
-  }) as unknown as IUnifiedAgentClient;
-  vi.spyOn(UnifiedAgent, "build").mockResolvedValue(client);
-  const session = new AnalystSession({
-    capturePath: file,
-    cwd: process.cwd(),
-    cliId: "claude",
-    model: "test-model",
-  });
-
-  void session.start();
-  await vi.waitFor(() => expect(connect).toHaveBeenCalledOnce());
-  expect(connect).toHaveBeenCalledWith(expect.objectContaining({
-    autoApprove: true,
-    fsAccess: false,
-    yoloMode: true,
-    strictMcp: true,
-  }));
-
-  await session.dispose();
-  expect(client.cancelPrompt).toHaveBeenCalledOnce();
-  expect(client.disconnect).toHaveBeenCalledOnce();
+it("keeps assistant text and reasoning on separate event kinds", () => {
+  const identity = (value: string): string => value;
+  expect(toAnalystEvents(delta("text_delta", { text: "hi" }), new Map(), identity)).toEqual([{ type: "chunk", text: "hi" }]);
+  expect(toAnalystEvents(delta("thinking_delta", { thinking: "hmm" }), new Map(), identity)).toEqual([{ type: "thought", text: "hmm" }]);
 });
 
-it("cancels an active turn, bounds disposal, and rejects sends once disposal begins", async () => {
-  vi.useFakeTimers();
-  const never = new Promise<never>(() => undefined);
-  const client = {
-    cancelPrompt: vi.fn().mockResolvedValue(undefined),
-    disconnect: vi.fn().mockResolvedValue(undefined),
-    sendMessage: vi.fn(() => never),
-  } as unknown as IUnifiedAgentClient;
-  const session = new AnalystSession({
-    capturePath: "/not-used.jsonl",
-    cwd: process.cwd(),
-    cliId: "claude",
-    model: "test-model",
-  });
-  const state = session as unknown as { client: IUnifiedAgentClient; started: boolean };
-  state.client = client;
-  state.started = true;
-  void session.send("long prompt");
-  await Promise.resolve();
-
-  const disposal = session.dispose();
-  expect(client.cancelPrompt).toHaveBeenCalledOnce();
-  await expect(session.send("too late")).rejects.toThrow("Session disposed");
-  expect(client.disconnect).not.toHaveBeenCalled();
-
-  await vi.advanceTimersByTimeAsync(2_000);
-  await disposal;
-  expect(client.disconnect).toHaveBeenCalledOnce();
-});
-
-function permissionRequest(
-  title: string,
-  options: AcpPermissionRequestParams["options"],
-): AcpPermissionRequestParams {
-  return {
-    sessionId: "session-id",
-    toolCall: { toolCallId: title, title },
-    options,
-  };
+function delta(type: string, payload: Record<string, unknown>): ClaudeGatewayMessage {
+  return { type: "stream_event", event: { type: "content_block_delta", delta: { type, ...payload } } };
 }

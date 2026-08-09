@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { resolvePathBinary, type ResolvedBinary } from "@dotobokuri/core-agent";
+import { resolvePathBinary, type ResolvedBinary } from "@dotobokuri/core-process";
 
 import type { UpdateCommandIo } from "./types.js";
 

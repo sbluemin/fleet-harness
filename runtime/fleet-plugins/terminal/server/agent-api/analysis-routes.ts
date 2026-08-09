@@ -2,15 +2,13 @@ import type http from "node:http";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
+import { resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 import { AnalystSession, type AnalystEvent } from "@dotobokuri/fleet-analyst";
-import { getProviderModels, type CliType } from "@dotobokuri/core-unified-agent";
 import type { FleetPluginServerContext, OperationNode } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 
-import { createDefaultAgentCliDetector } from "./agent-cli-detect.js";
-import { agentCliCommandForId, buildAgentCliClientEnvOverlay, resolveAgentCliBinary } from "./agent-cli-paths.js";
 import { AnalysisRegistry } from "./analysis-registry.js";
-import { ANALYSIS_ERROR_CODES, analysisError, buildAnalysisCatalog, isAnalysisSelection, isMessageBody, type AnalysisCatalog, type AnalysisEvent } from "./analysis-types.js";
+import { ANALYSIS_ERROR_CODES, analysisError, buildAnalysisCatalog, nativeClaudeAnalystModels, isAnalysisSelection, isMessageBody, resolveAnalysisGatewayBaseUrl, type AnalysisCatalog, type AnalysisEvent } from "./analysis-types.js";
 import { readAnalysisProviderSession } from "./provider-session.js";
 
 const AGENT_OPERATION_TYPE = "agent";
@@ -23,17 +21,15 @@ const SAFE_ARTIFACT_COLOR = /^(?:#[\da-f]{3,8}|(?:rgb|rgba|hsl|hsla|hwb|lab|lch|
 const ARTIFACT_CANVAS_STYLE_PROPERTIES = new Set(["background-color", "background-image", "color", "min-height", "color-scheme"]);
 const ARTIFACT_BODY_CANVAS_STYLE_PROPERTIES = new Set([...ARTIFACT_CANVAS_STYLE_PROPERTIES, "margin"]);
 
-type AnalysisSessionOptions = ConstructorParameters<typeof AnalystSession>[0] & {
-  readonly cliPath?: string;
-  readonly env?: Readonly<Record<string, string>>;
-};
+type AnalysisSessionOptions = ConstructorParameters<typeof AnalystSession>[0];
 
 type AnalysisRouteDeps = {
-  readonly detect?: () => ReturnType<ReturnType<typeof createDefaultAgentCliDetector>["detect"]>;
   readonly createSession?: (options: AnalysisSessionOptions) => AnalystSession;
-  readonly modelsFor?: typeof getProviderModels;
-  readonly readAgentCliPaths?: () => Promise<Readonly<Record<string, string>>>;
-  readonly env?: NodeJS.ProcessEnv;
+  /** 사용자가 Console에서 켠 게이트웨이 모델 선별. 미주입이면 분석가를 시작할 수 없다. */
+  readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
+  /** 분석가가 고를 수 있는 네이티브 Claude 별칭의 출처. */
+  /** 분석가가 고를 수 있는 native Claude 별칭. */
+  readonly nativeModels?: typeof nativeClaudeAnalystModels;
 };
 
 type InFlightStartDeletionMarker = {
@@ -43,12 +39,16 @@ type InFlightStartDeletionMarker = {
 
 export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: AnalysisRouteDeps = {}): void {
   const registry = new AnalysisRegistry();
-  const env = deps.env ?? process.env;
-  const readAgentCliPaths = deps.readAgentCliPaths;
-  const detect = deps.detect ?? createDefaultAgentCliDetector(readAgentCliPaths ?? (async () => ({})), env).detect;
-  const modelsFor = deps.modelsFor ?? getProviderModels;
   const createSession = deps.createSession ?? ((options) => new AnalystSession(options));
-  const catalog = async (): Promise<AnalysisCatalog> => buildAnalysisCatalog(await detect(), modelsFor);
+  const readAiGatewaySettings = deps.readAiGatewaySettings;
+  // 분석가가 쓸 수 있는 모델은 사용자가 켠 선별이고, 시작 가능 여부는 Console이 리슨 중인지에
+  // 달렸다. 등록 시점에 고정하면 이후 설정 변경이 카탈로그에 반영되지 않는다.
+  const nativeModels = deps.nativeModels ?? nativeClaudeAnalystModels;
+  const catalog = async (): Promise<AnalysisCatalog> => buildAnalysisCatalog(
+    nativeModels(),
+    readAiGatewaySettings ? resolveAiGatewaySelection(readAiGatewaySettings()).models : [],
+    ctx.host.server.origin() !== null,
+  );
   const inFlightStartDeletionMarkers = new Set<InFlightStartDeletionMarker>();
 
   registerRouter(ctx, "analysis", async ({ req, res, pathname }) => {
@@ -78,7 +78,7 @@ export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: Anal
       const deletionMarker: InFlightStartDeletionMarker = { operationId, deleted: false };
       inFlightStartDeletionMarkers.add(deletionMarker);
       try {
-        return await handleStart(ctx, req, res, operation, registry, catalog, createSession, readAgentCliPaths, env, deletionMarker);
+        return await handleStart(ctx, req, res, operation, registry, catalog, createSession, deletionMarker);
       } finally {
         inFlightStartDeletionMarkers.delete(deletionMarker);
       }
@@ -366,8 +366,6 @@ async function handleStart(
   registry: AnalysisRegistry,
   catalog: () => Promise<AnalysisCatalog>,
   createSession: (options: AnalysisSessionOptions) => AnalystSession,
-  readAgentCliPaths: (() => Promise<Readonly<Record<string, string>>>) | undefined,
-  env: NodeJS.ProcessEnv,
   deletionMarker: InFlightStartDeletionMarker,
 ): Promise<boolean> {
   if (req.method !== "POST") return methodNotAllowed(ctx, res);
@@ -398,22 +396,11 @@ async function handleStart(
     return true;
   }
   try {
-    let launchOptions: Pick<AnalysisSessionOptions, "cliPath" | "env"> = {};
-    if (readAgentCliPaths) {
-      const userPaths = await readAgentCliPaths();
-      const cliCommand = agentCliCommandForId(body.cliId);
-      const resolution = cliCommand
-        ? resolveAgentCliBinary({ cliCommand, env, userPaths })
-        : null;
-      if (!resolution?.resolved) throw new Error("analysis_cli_unavailable");
-      launchOptions = {
-        cliPath: resolution.launchPath,
-        env: buildAgentCliClientEnvOverlay(env, body.cliId, userPaths),
-      };
-    }
+    const origin = ctx.host.server.origin();
+    // 포트를 추측해 띄우면 자식이 첫 턴에서야 알 수 없는 이유로 죽는다.
+    if (!origin) throw new Error("analysis_gateway_unavailable");
     const result = await registry.start(operation.id, (onEvent) => createSession({
-      cliId: body.cliId,
-      ...launchOptions,
+      baseUrl: resolveAnalysisGatewayBaseUrl(origin),
       model: body.model,
       effort: body.effort || undefined,
       language: body.language,

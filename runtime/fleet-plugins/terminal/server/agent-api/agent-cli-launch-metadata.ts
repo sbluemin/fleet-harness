@@ -4,7 +4,6 @@
 // available/signedIn은 불린만 노출하며 경로·버전·providerId는 싣지 않는다(Token Boundary).
 // IO(탐지)는 호출자가 수행하고, 이 함수는 결합만 담당하므로 환경에 의존하지 않는 deterministic 단위 테스트가 가능하다.
 
-import { CLI_BACKENDS } from "@dotobokuri/core-unified-agent";
 import type { AgentCliId } from "@dotobokuri/fleet-admiral";
 
 export interface AgentCliLaunchMetadata {
@@ -33,8 +32,7 @@ export function combineAgentCliLaunchMetadata(
   }));
 }
 
-// claude-gateway는 Launch 전용이라 CLI_BACKENDS(Analyst 전송 카탈로그)에 등재하지 않는다.
-// 실행 바이너리는 claude이므로 설치 판정도 claude를 따른다.
+// claude-gateway가 실행하는 바이너리는 claude 하나이므로 설치 판정도 claude를 따른다.
 const LAUNCH_CLI_COMMAND = "claude";
 
 function resolveCliCommand(_id: AgentCliId): string {

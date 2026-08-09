@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import type http from "node:http";
 
+import { AI_GATEWAY_ROUTE_SEGMENT } from "@dotobokuri/core-ai-gateway";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 
@@ -17,6 +18,16 @@ export interface ChatRouteDeps {
   readonly createSession?: (options: ConstructorParameters<typeof ChatSession>[0]) => ChatSessionLike;
   readonly id?: () => string;
   readonly ensureDir?: (dir: string) => Promise<void>;
+}
+
+/**
+ * AI gateway를 서빙하는 것은 terminal 플러그인이다. 경로 조각은 core-ai-gateway가 소유하지만
+ * 어느 플러그인 아래 마운트되는지는 그 플러그인이 정하므로, 그 사실만 여기에 상수로 남긴다.
+ */
+const AI_GATEWAY_OWNER_PLUGIN_ID = "terminal";
+
+export function resolveAiGatewayBaseUrl(origin: string): string {
+  return `${origin.replace(/\/+$/u, "")}/plugins/${AI_GATEWAY_OWNER_PLUGIN_ID}/${AI_GATEWAY_ROUTE_SEGMENT}`;
 }
 
 export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRouteDeps = {}): SessionRegistry {
@@ -74,9 +85,14 @@ async function handleStart(
   try {
     // pluginDataDir 은 경로만 만들어 준다 — 없는 디렉터리에서 CLI를 띄우면 기동 자체가 실패한다.
     await ensureDir(workspace);
+    // 리슨이 확정되기 전에는 origin이 없다. 포트를 추측하지 않고 시작을 거절한다 — 잘못된 주소로
+    // 띄우면 자식이 첫 턴에서야 알 수 없는 이유로 죽는다.
+    const origin = ctx.host.server.origin();
+    if (!origin) throw new Error("Console origin is not available yet");
     result = await registry.start(chatId, (onEvent) => createSession({
       cwd: workspace,
       admiral: body.admiral,
+      baseUrl: resolveAiGatewayBaseUrl(origin),
       onEvent,
     }));
   } catch {

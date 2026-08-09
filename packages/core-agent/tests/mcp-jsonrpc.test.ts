@@ -2,21 +2,21 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   createExecutorSessionManager,
-  createInProcessMcpServer,
+  createServedMcpEndpoint,
   createMcpToolRegistry,
   createMcpToolSnapshotStore,
   registerExecutorSessionTools,
 } from "../src/index.js";
 import type {
   AgentToolSpec,
-  InProcessMcpServer,
+  ServedMcpEndpoint,
   JsonRpcResponse,
   McpRouterRuntime,
 } from "../src/index.js";
 
 const TOKEN = "session-token";
 
-let activeServers: InProcessMcpServer[] = [];
+let activeServers: ServedMcpEndpoint[] = [];
 
 afterEach(async () => {
   await Promise.all(activeServers.map((server) => server.stop()));
@@ -26,7 +26,7 @@ afterEach(async () => {
 describe("in-process MCP JSON-RPC server", () => {
   it("loopback HTTP endpoint에서 bearer 인증과 tools/list를 처리한다", async () => {
     const snapshotStore = createMcpToolSnapshotStore();
-    const server = createInProcessMcpServer({
+    const server = createServedMcpEndpoint({
       serverInfo: { name: "test-tools", version: "0.0.0" },
       toolSnapshotStore: snapshotStore,
     });
@@ -61,7 +61,7 @@ describe("in-process MCP JSON-RPC server", () => {
 
   it("tools/call은 세션별 FIFO pending call로 resolve된다", async () => {
     const snapshotStore = createMcpToolSnapshotStore();
-    const server = createInProcessMcpServer({ toolSnapshotStore: snapshotStore });
+    const server = createServedMcpEndpoint({ toolSnapshotStore: snapshotStore });
     activeServers.push(server);
     snapshotStore.registerToolsForSession(TOKEN, [{
       name: "echo",
@@ -103,7 +103,7 @@ describe("executor session manager", () => {
   it("main session과 executor session을 token과 tool snapshot으로 분리한다", async () => {
     const registry = createMcpToolRegistry();
     const snapshotStore = createMcpToolSnapshotStore();
-    const server = createInProcessMcpServer({ toolSnapshotStore: snapshotStore });
+    const server = createServedMcpEndpoint({ toolSnapshotStore: snapshotStore });
     activeServers.push(server);
     const runtime: McpRouterRuntime = { registry, server, snapshotStore };
     const allTool = makeToolSpec("all_tool");
@@ -142,7 +142,7 @@ describe("executor session manager", () => {
   it("issued session labels reach agent tool execution through the MCP router", async () => {
     const registry = createMcpToolRegistry();
     const snapshotStore = createMcpToolSnapshotStore();
-    const server = createInProcessMcpServer({ toolSnapshotStore: snapshotStore });
+    const server = createServedMcpEndpoint({ toolSnapshotStore: snapshotStore });
     activeServers.push(server);
     const runtime: McpRouterRuntime = { registry, server, snapshotStore };
     const seenSessionLabels: Array<string | undefined> = [];

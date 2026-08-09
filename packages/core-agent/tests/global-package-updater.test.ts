@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createGlobalPackageUpdater, type GlobalPackageInstallProcess } from "../src/global-package-updater.js";
+import { createGlobalPackageUpdater, type GlobalPackageInstallProcess } from "../src/update/global-package-updater.js";
 
 const TEMP_DIRS: string[] = [];
 const PACKAGE_NAMES = ["@example/cli", "@example/console"] as const;

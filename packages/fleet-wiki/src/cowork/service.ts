@@ -1,4 +1,4 @@
-import { createExecutorSessionManager, createInProcessMcpServer, createMcpToolRegistry, createMcpToolSnapshotStore } from "@dotobokuri/core-agent";
+import { createExecutorSessionManager, createServedMcpEndpoint, createMcpToolRegistry, createMcpToolSnapshotStore } from "@dotobokuri/core-agent";
 import { approvePatch, enqueuePatch } from "../patch.js";
 import { computeContentHash, readPatchFile, readWikiEntry, resolveWikiEntryPath } from "../store.js";
 import { createWikiDraftToolSpecs } from "../tools/draft.js";
@@ -14,7 +14,7 @@ import type { CoworkAnnotationDto, CoworkSessionDto, CoworkSessionRecord, Cowork
 export function createCoworkMcpRuntime(store: CoworkStore, workspaceId: string, sessionId: string, resolver?: WikiWorkspaceResolver) {
   const registry = createMcpToolRegistry();
   const snapshots = createMcpToolSnapshotStore();
-  const server = createInProcessMcpServer({ toolSnapshotStore: snapshots });
+  const server = createServedMcpEndpoint({ toolSnapshotStore: snapshots });
   const manager = createExecutorSessionManager({ runtimes: [{ name: "cowork", runtime: { registry, snapshotStore: snapshots, server } }] });
   const draftTools = createWikiDraftToolSpecs({ draft: store.draftPort(workspaceId, sessionId) });
   const allowedToolIds = ["wiki_draft_read", "wiki_draft_edit", "wiki_draft_write", "wiki_briefing", "wiki_orient", "wiki_read", "wiki_resolve"] as const;
@@ -29,7 +29,7 @@ export function createCoworkMcpRuntime(store: CoworkStore, workspaceId: string, 
 
 /**
  * 호스트가 주입하는 provider 클라이언트의 최소 표면 — fleet-wiki 독트린상 이 패키지는
- * provider 조립(core-unified-agent 등)을 알지 못하며, 커넥터는 반드시 호스트가 소유한다.
+ * provider 조립을 알지 못하며, 커넥터는 반드시 호스트가 소유한다.
  */
 export interface CoworkAgentClient {
   on(event: "toolCall", listener: (title: unknown, status: unknown) => void): unknown;
@@ -49,6 +49,8 @@ export interface CoworkConnectOptions {
   effort?: string;
   systemPrompt: string;
   mcpServers: readonly unknown[];
+  /** 이 세션에 노출되는 도구 id. 도메인이 정하고 호스트가 사전승인에 쓴다. */
+  allowedToolIds: readonly string[];
   strictMcp: boolean;
   yoloMode: boolean;
   autoApprove: boolean;
@@ -101,7 +103,7 @@ export class CoworkService {
       // 원샷 실행: provider 세션을 resume하지 않고 매 프롬프트마다 새로 연결한다.
       // 스코프 강제는 yolo + 전용 MCP 도구 주입 + 시스템 프롬프트가 담당한다.
       const providerCwd = await this.store.sessionDir(workspaceId, id);
-      const client = await this.connector.connect({ cwd: providerCwd, cli: session.cli, model: session.model, effort: session.effort, systemPrompt: COWORK_SYSTEM_PROMPT, mcpServers: [mcp.mcpServer], ...runtime.connection });
+      const client = await this.connector.connect({ cwd: providerCwd, cli: session.cli, model: session.model, effort: session.effort, systemPrompt: COWORK_SYSTEM_PROMPT, mcpServers: [mcp.mcpServer], allowedToolIds: [...runtime.allowedToolIds], ...runtime.connection });
       this.releaseLive(id);
       this.live.set(id, { workspaceId, client, annotations, cleanup: () => { try { mcp.cleanup(); } catch { /* already released */ } } });
       client.on("toolCall", (title, status) => { void this.emit(workspaceId, id, "tool", `${String(title).slice(0, 80)} · ${String(status).slice(0, 24)}`, false); });

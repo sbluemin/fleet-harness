@@ -122,13 +122,13 @@ export async function fetchConflictDetail(theaterId: string | null, id: string):
   return fetchJson<ConflictDetailResponse>(apiPath(theaterId, `/conflicts/${encodeURIComponent(id)}`));
 }
 
-export async function fetchCoworkOptions(theaterId: string | null, cli = "claude", model?: string): Promise<CoworkOptionsResponse> {
-  const query = new URLSearchParams({ cli });
-  if (model) query.set("model", model);
-  return fetchCoworkJson<CoworkOptionsResponse>(apiPath(theaterId, `/cowork/options?${query}`));
+export async function fetchCoworkOptions(theaterId: string | null, model?: string): Promise<CoworkOptionsResponse> {
+  // 모델이 없으면 빈 `?`를 남기지 않는다 — 같은 자원에 두 개의 URL이 생긴다.
+  const query = model ? `?${new URLSearchParams({ model })}` : "";
+  return fetchCoworkJson<CoworkOptionsResponse>(apiPath(theaterId, `/cowork/options${query}`));
 }
 
-export interface CoworkAgentSettings { cli?: string; model?: string; effort?: string; }
+export interface CoworkAgentSettings { model?: string; effort?: string; }
 
 export async function createCoworkSession(theaterId: string | null, entryId: string, settings?: CoworkAgentSettings): Promise<CoworkSessionDto> {
   return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, "/cowork/sessions"), { entryId, ...settings });

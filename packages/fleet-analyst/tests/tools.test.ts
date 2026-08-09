@@ -9,26 +9,22 @@ describe("AnalystTools", () => {
     const file = join(await mkdtemp(join(tmpdir(), "analyst-")), "capture.jsonl"); await writeFile(file, '{"type":"assistant","message":{"content":"one"}}\n');
     const events: string[] = []; const tools = new AnalystTools({ capturePath: file, cwd: process.cwd(), onEvent: event => events.push(event.type) }); await tools.refresh();
     const byId = new Map(tools.specs().map(spec => [spec.id, spec]));
+    // 모델에 도달하는 것은 description과 parameters뿐이다. 앞선 MCP 라우터도 그 둘만 발행했으므로
+    // whenToUse 같은 산문은 이 spec에 실리지 않는다 — 모델을 움직이려면 description에 넣어야 한다.
     expect(byId.get("session_outline")).toMatchObject({
       description: expect.not.stringContaining("Call this first"),
-      promptSnippet: expect.stringContaining("broad historical or session overview"),
-      whenToUse: expect.arrayContaining([expect.stringContaining("broad historical")]),
-      whenNotToUse: expect.arrayContaining([
-        expect.stringContaining("direct-answer questions"),
-        expect.stringContaining("before live_tail"),
-      ]),
     });
+    expect(byId.get("session_outline")).not.toHaveProperty("promptSnippet");
     expect(byId.get("live_tail")).toMatchObject({
       description: expect.stringContaining("Required before answering any question about current work"),
-      whenNotToUse: expect.any(Array),
     });
     expect(byId.get("publish_artifact")).toMatchObject({
       description: expect.stringContaining("--fleet-canvas, --fleet-surface, --fleet-ink, --fleet-muted, --fleet-hairline, --fleet-accent"),
     });
     expect(byId.get("publish_artifact")?.description).toContain("var(--fleet-surface, #f5f5f5)");
-    expect(await byId.get("session_read")!.execute({ ref: "e1", radius: 999 }, {} as never)).toMatchObject({ events: [{ ref: "e1" }] });
-    expect(await byId.get("publish_artifact")!.execute({ title: "A", html: "<p>x</p>" }, {} as never)).toMatchObject({ artifact: { title: "A" } });
-    await expect(byId.get("publish_artifact")!.execute({ title: "A", html: "x".repeat(50 * 1024 + 1) }, {} as never)).rejects.toThrow("50 KiB"); expect(events).toEqual(["artifact"]);
+    expect(await byId.get("session_read")!.execute({ ref: "e1", radius: 999 })).toMatchObject({ events: [{ ref: "e1" }] });
+    expect(await byId.get("publish_artifact")!.execute({ title: "A", html: "<p>x</p>" })).toMatchObject({ artifact: { title: "A" } });
+    await expect(byId.get("publish_artifact")!.execute({ title: "A", html: "x".repeat(50 * 1024 + 1) })).rejects.toThrow("50 KiB"); expect(events).toEqual(["artifact"]);
   });
 
   it("redacts transcript credentials, paths, MCP URLs, and session identifiers from event tools", async () => {
@@ -59,9 +55,9 @@ describe("AnalystTools", () => {
     const byId = new Map(tools.specs().map(spec => [spec.id, spec]));
 
     const responses = [
-      await byId.get("session_events")!.execute({}, {} as never),
-      await byId.get("session_read")!.execute({ ref: "e1", radius: 0 }, {} as never),
-      await byId.get("live_tail")!.execute({}, {} as never),
+      await byId.get("session_events")!.execute({}),
+      await byId.get("session_read")!.execute({ ref: "e1", radius: 0 }),
+      await byId.get("live_tail")!.execute({}),
     ];
     const exposed = JSON.stringify(responses);
     for (const secret of secrets) expect(exposed).not.toContain(secret);
@@ -84,7 +80,7 @@ describe("AnalystTools", () => {
     const publish = tools.specs().find(spec => spec.id === "publish_artifact")!;
     const html = "<p>Bearer deliberately-authored-value</p>";
 
-    await publish.execute({ title: "Raw agent artifact", html }, {} as never);
+    await publish.execute({ title: "Raw agent artifact", html });
 
     expect(emitted).toEqual([expect.objectContaining({ type: "artifact", artifact: expect.objectContaining({ html }) })]);
   });
@@ -96,15 +92,15 @@ describe("AnalystTools", () => {
     const tools = new AnalystTools({ capturePath: file, cwd: process.cwd(), onEvent: event => emitted.push(event) });
     const publish = tools.specs().find(spec => spec.id === "publish_artifact")!;
 
-    expect(publish.parameters).toMatchObject({
-      additionalProperties: false,
-      properties: { html: { minLength: 1 } },
-      required: ["title", "html"],
-    });
-    await expect(publish.execute({ title: "Wrong parameter", content: "<p>Hidden</p>" }, {} as never)).rejects.toThrow("'html' parameter");
-    await expect(publish.execute({ title: "Extra parameter", html: "<p>Visible</p>", content: "duplicate" }, {} as never)).rejects.toThrow("expected only 'title' and 'html'");
-    await expect(publish.execute({ title: "Empty document", html: "" }, {} as never)).rejects.toThrow("non-empty 'html' parameter");
-    await expect(publish.execute({ title: "Whitespace document", html: " \n\t " }, {} as never)).rejects.toThrow("non-empty 'html' parameter");
+    // 스키마는 이제 zod raw shape다. 모양은 zod가 보증하고, 알 수 없는 키 거부는 아래 핸들러가
+    // 계속 소유한다 — 스키마만으로는 'content' 같은 오용을 사용자에게 설명해 주지 못한다.
+    expect(Object.keys(publish.parameters)).toEqual(["title", "html"]);
+    expect(publish.parameters.title.isOptional()).toBe(false);
+    expect(publish.parameters.html.isOptional()).toBe(false);
+    await expect(publish.execute({ title: "Wrong parameter", content: "<p>Hidden</p>" })).rejects.toThrow("'html' parameter");
+    await expect(publish.execute({ title: "Extra parameter", html: "<p>Visible</p>", content: "duplicate" })).rejects.toThrow("expected only 'title' and 'html'");
+    await expect(publish.execute({ title: "Empty document", html: "" })).rejects.toThrow("non-empty 'html' parameter");
+    await expect(publish.execute({ title: "Whitespace document", html: " \n\t " })).rejects.toThrow("non-empty 'html' parameter");
     expect(emitted).toEqual([]);
   });
 
@@ -115,7 +111,7 @@ describe("AnalystTools", () => {
     const publish = tools.specs().find(spec => spec.id === "publish_artifact")!;
 
     for (let index = 0; index < 21; index += 1) {
-      await publish.execute({ title: `Artifact ${index}`, html: `<p>${index}</p>` }, {} as never);
+      await publish.execute({ title: `Artifact ${index}`, html: `<p>${index}</p>` });
     }
 
     const artifacts = (tools as unknown as { artifacts: { title: string }[] }).artifacts;

@@ -73,9 +73,7 @@
       ]
     }
   },
-  "dependencies": {
-    "@dotobokuri/core-unified-agent": "workspace:*"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "^24.10.0",
     "tsup": "^8.5.0",

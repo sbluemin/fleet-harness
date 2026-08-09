@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveBuiltinExternalMcpServers } from "../src/external-mcp.js";
-import { assertInternalMcpTokensNotShared } from "../src/internal/executor-engine.js";
+import { assertInternalMcpTokensNotShared, resolveBuiltinExternalMcpServers } from "../src/mcp/served/external-catalog.js";
 
 describe("resolveBuiltinExternalMcpServers", () => {
   it("allowed가 없으면 빈 배열을 반환한다", () => {
@@ -27,7 +26,7 @@ describe("resolveBuiltinExternalMcpServers", () => {
       type: "http",
       name: "grep_app",
       url: "https://mcp.grep.app",
-      toolTimeout: 1800,
+      toolTimeoutSeconds: 1800,
     }]);
     expect(servers[0]!.headers).toBeUndefined();
     expect(JSON.stringify(servers)).not.toContain("Authorization");

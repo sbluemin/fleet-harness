@@ -5,7 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { resolvePathBinary } from "@dotobokuri/core-agent";
+import { resolvePathBinary } from "@dotobokuri/core-process";
 
 import { resolveConsolePackageRequire } from "./console-require.js";
 import { stripConsoleInternalEnv } from "./launch-env.js";

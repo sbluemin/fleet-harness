@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { resolvePathBinary, type AgentCliLaunchResolver, type ResolvedBinary } from "@dotobokuri/core-agent";
+import { resolvePathBinary, type ResolvedBinary } from "@dotobokuri/core-process";
 import type { FleetPluginStorageHost } from "@fleet-console/sdk/plugin";
 
 export const AGENT_CLI_PATHS_STORAGE_KEY = "agent-cli-paths";

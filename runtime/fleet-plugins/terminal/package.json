@@ -23,7 +23,6 @@
     "@dotobokuri/core-ai-gateway": "workspace:*",
     "@dotobokuri/fleet-analyst": "workspace:*",
     "@dotobokuri/core-process": "workspace:*",
-    "@dotobokuri/core-unified-agent": "workspace:*",
     "@dotobokuri/fleet-admiral": "workspace:*",
     "@dotobokuri/core-infra": "workspace:*",
     "@dotobokuri/fleet-wiki": "workspace:*",

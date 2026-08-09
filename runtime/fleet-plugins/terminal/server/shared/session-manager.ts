@@ -1,7 +1,7 @@
 import { closeSync, fstatSync, readdirSync } from "node:fs";
 
 import type { CliMessagePolicy } from "@dotobokuri/fleet-admiral";
-import type { SessionIdentityResolver } from "@dotobokuri/core-unified-agent";
+import type { SessionIdentityResolver } from "../agent-api/session-identity.js";
 
 import { createOscTitleParser, type OscTitleParser } from "./osc-title-parser.js";
 import { startTerminalShell, type TerminalLaunchResolver } from "./pty.js";

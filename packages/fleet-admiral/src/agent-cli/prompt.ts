@@ -4,7 +4,7 @@
 // 않아 이스케이프로 막을 수단이 없다 — 그래서 core-process가 shim 경로에 대해 이미 택한 규율
 // (rejectCmdExpansionSensitiveShim: 이스케이프가 아니라 거부)을 프롬프트에도 그대로 적용한다.
 // %는 전개, 나머지는 cmd의 연산자·인용 경계다. 이 저장소의 quoteForCmd
-// (core-unified-agent BaseConnection)가 `& < > ( ) @ ^ |`와 `"`를 cmd 특수문자로 분류하면서
+// (구 ACP BaseConnection)가 `& < > ( ) @ ^ |`와 `"`를 cmd 특수문자로 분류하면서
 // **내부 `"`의 이중화와 windowsVerbatimArguments를 함께 요구**한다고 명시하는데, node-pty로
 // 나가는 이 런치 경로는 둘 다 제공하지 않는다. 따라서 따옴표 안이라는 가정도 성립하지 않는다.
 const CMD_UNSAFE_PROMPT_PATTERN = /["&<>()@^|%]/;

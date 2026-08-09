@@ -1,32 +1,47 @@
+/**
+ * @dotobokuri/core-agent
+ *
+ * 도구 어휘, MCP 서빙, Claude 게이트웨이 SDK, 업데이트 원시기능.
+ *
+ * 두 종류의 MCP가 있고 서로 다른 물건이다. `mcp/served/`는 자식이 포트와 Bearer 토큰으로
+ * 접속하는 HTTP 서버고, `mcp/embedded/`는 자식 프로세스에 값으로 건네는 in-process 도구다.
+ *
+ * 소비처는 `@anthropic-ai/claude-agent-sdk`를 직접 의존하지 않는다. 그 계약은 문서가 아니라
+ * `scripts/check-claude-agent-sdk-boundary.mjs`가 매 PR에 강제하며, 이 패키지 안에서도
+ * `src/claude/vendor-sdk.ts` 한 곳만 그 이름을 안다.
+ */
 export type {
   AgentToolCtx,
   AgentToolSpec,
-  JsonRpcPayload,
-  JsonRpcRequest,
-  JsonRpcResponse,
-  JsonRpcResultPayload,
   McpCallToolResult,
   McpTool,
   RegisteredTool,
   RegisterExecutorToolOptions,
+} from "./tools/spec.js";
+export type {
+  JsonRpcPayload,
+  JsonRpcRequest,
+  JsonRpcResponse,
+  JsonRpcResultPayload,
+  McpServerConfig,
   TrackStatus,
-} from "./types.js";
+} from "./mcp/types.js";
 export type {
   McpRouterRuntime,
   McpRouterServer,
   ToolCallArrivedCallback,
-} from "./mcp-router.js";
+} from "./mcp/served/router.js";
 export type {
   McpToolRegistry,
-} from "./tool-registry.js";
+} from "./tools/registry.js";
 export type {
   McpToolSnapshotStore,
-} from "./tool-snapshot.js";
+} from "./tools/snapshot.js";
 export type {
-  CreateInProcessMcpServerDeps,
-  InProcessMcpServer,
-  InProcessMcpServerInfo,
-} from "./mcp-jsonrpc.js";
+  CreateServedMcpEndpointDeps,
+  ServedMcpEndpoint,
+  ServedMcpEndpointInfo,
+} from "./mcp/served/jsonrpc.js";
 export type {
   CoreExecutorMcpSession,
   CoreExecutorMcpSessionRequest,
@@ -44,18 +59,10 @@ export type {
   ExecutorServerToken,
   ExecutorSessionManager,
   ExecutorSessionRequest,
-} from "./executor-session-manager.js";
-export type { AgentCliLaunchResolver, AuthEnvResolver, ExecuteOptions, ExecResult, OneShotExecution, OneShotReady } from "./internal/executor-engine.js";
-export type {
-  SelectableThinkingLevel,
-} from "./models.js";
-export type {
-  ResolvedBinary,
-  ResolveBinaryOptions,
-} from "@dotobokuri/core-process";
+} from "./mcp/served/session-manager.js";
 export type {
   UpdateChannel,
-} from "./version-check.js";
+} from "./update/version-check.js";
 export type {
   CreateGlobalPackageUpdaterDeps,
   GlobalPackageBinaryResolver,
@@ -79,48 +86,38 @@ export type {
   GlobalPackageUpdaterHook,
   GlobalPackageUpdaterReport,
   GlobalPackageVersionResolver,
-} from "./global-package-updater.js";
+} from "./update/global-package-updater.js";
 export {
   cleanupExecutorSession,
   installExecutorToolCallRouter,
   registerExecutorSessionTools,
   specToMcpTool,
-} from "./mcp-router.js";
+} from "./mcp/served/router.js";
 export {
   createMcpToolRegistry,
-} from "./tool-registry.js";
+} from "./tools/registry.js";
 export {
   convertToolSchema,
   createMcpToolSnapshotStore,
-} from "./tool-snapshot.js";
+} from "./tools/snapshot.js";
 export {
-  createInProcessMcpServer,
-} from "./mcp-jsonrpc.js";
+  createServedMcpEndpoint,
+} from "./mcp/served/jsonrpc.js";
 export {
   createExecutorMcpRuntimeProviderRuntime,
   createExecutorPortRuntime,
   createExecutorSessionManager,
   executorMcpRuntimeProviderRuntime,
   executorPortRuntime,
-} from "./executor-session-manager.js";
+} from "./mcp/served/session-manager.js";
 export {
-  getCliModels,
-  getCliEffortLevels,
-  SELECTABLE_THINKING_LEVELS,
-} from "./models.js";
-export {
+  assertInternalMcpTokensNotShared,
   resolveBuiltinExternalMcpServers,
-} from "./external-mcp.js";
-export {
-  createChildEnv,
-  resolveBinary,
-  resolvePathBinary,
-} from "@dotobokuri/core-process";
-export { executeOneShot } from "./internal/executor-engine.js";
+} from "./mcp/served/external-catalog.js";
 export {
   fetchLatestVersion,
   isVersionGreater,
-} from "./version-check.js";
+} from "./update/version-check.js";
 export {
   createGlobalPackageUpdater,
-} from "./global-package-updater.js";
+} from "./update/global-package-updater.js";

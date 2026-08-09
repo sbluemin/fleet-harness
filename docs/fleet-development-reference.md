@@ -12,7 +12,7 @@ Fleet development follows a hard one-way dependency graph:
 - `runtime/fleet-console` — standalone loopback Console Service and sole owner of CLI register ingest, REST/SSE/WebSocket, Terminal PTY/provider/plugin runtime, durable state, and static UI serving.
 - `runtime/fleet-desktop` — optional thin Electron native shell; supervises a separately packaged standard Node sidecar and has no renderer, HTTP server, PTY, provider, plugin, or durable-state implementation.
 - `packages/fleet-wiki` and `runtime/fleet-console` Codex — Fleet knowledge package and web UI.
-- `packages/core-unified-agent` — independent execution engine client package.
+- `packages/core-agent` — tool, MCP, and Claude gateway SDK substrate.
 
 ## 2. Where New Work Goes
 

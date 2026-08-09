@@ -6,10 +6,10 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("Cowork API client", () => {
   it("uses the workspace-scoped Cowork paths", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ clis: ["codex"], models: ["gpt"], efforts: [] }), { status: 200 }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ models: ["gpt"], efforts: [] }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
-    await fetchCoworkOptions("theater/a", "codex", "gpt");
-    expect(fetchMock).toHaveBeenCalledWith("/console/codex/w/theater%2Fa/api/cowork/options?cli=codex&model=gpt", expect.any(Object));
+    await fetchCoworkOptions("theater/a", "gpt");
+    expect(fetchMock).toHaveBeenCalledWith("/console/codex/w/theater%2Fa/api/cowork/options?model=gpt", expect.any(Object));
   });
 
   it("surfaces typed busy errors", async () => {

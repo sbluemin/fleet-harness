@@ -9,7 +9,7 @@ Fleet now uses explicit package ownership without standalone Admiral compatibili
 - `runtime/fleet-desktop` is an optional thin Electron shell that supervises the existing Console Service through its public desktop protocol and loads `/console/`; it owns no duplicate UI or service runtime.
 - `packages/core-infra` owns host-agnostic infrastructure and I/O gateways.
 - `packages/core-agent` owns Fleet-domain-agnostic executor runtime, generic in-process MCP server primitives, and the shared register data contract.
-- `@dotobokuri/core-unified-agent` remains the independent backend client package.
+- `@dotobokuri/core-agent` owns the tool vocabulary, MCP serving, and the Claude gateway SDK.
 
 ## Purpose
 

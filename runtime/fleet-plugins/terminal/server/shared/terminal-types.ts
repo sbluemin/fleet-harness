@@ -1,5 +1,5 @@
 import type { CliMessagePolicy } from "@dotobokuri/fleet-admiral";
-import type { SessionIdentityResolver } from "@dotobokuri/core-unified-agent";
+import type { SessionIdentityResolver } from "../agent-api/session-identity.js";
 
 export interface TerminalLaunchSpec {
   readonly bin: string;

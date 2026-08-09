@@ -8,8 +8,9 @@ import type { MemoryPaths, WikiWorkspaceResolver } from "@dotobokuri/fleet-wiki"
 import { handleApiRequest, isLoopbackRemoteAddress } from "./routes.js";
 import { CoworkService, CoworkStore } from "@dotobokuri/fleet-wiki/cowork";
 import type { CoworkConnector } from "@dotobokuri/fleet-wiki/cowork";
-import { UnifiedAgent } from "@dotobokuri/core-unified-agent";
-import type { UnifiedClientOptions } from "@dotobokuri/core-unified-agent";
+import { AI_GATEWAY_ROUTE_SEGMENT } from "@dotobokuri/core-ai-gateway";
+
+import { createCoworkGatewayConnector } from "./cowork/gateway-adapter.js";
 import type { ListenerIdentity } from "../auth.js";
 import type { AllowedAccessSets } from "./contracts.js";
 import { WorkspaceRegistry } from "./workspaces.js";
@@ -73,7 +74,13 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
   let initialWorkspaceId: string | null = null;
   const coworkServices = new Map<string, CoworkService>();
   // provider 조립은 호스트 소유 — fleet-wiki cowork 엔진에는 커넥터만 주입한다.
-  const coworkConnector: CoworkConnector = { connect: (options) => UnifiedAgent.connect(options as unknown as UnifiedClientOptions) };
+  // AI Gateway는 terminal 플러그인이 서빙하고, 그 basePath는 이 호스트가 안다.
+  const coworkConnector: CoworkConnector = createCoworkGatewayConnector({
+    baseUrl: () => {
+      const port = deps.getPort();
+      return port ? `http://127.0.0.1:${port}/plugins/terminal/${AI_GATEWAY_ROUTE_SEGMENT}` : null;
+    },
+  });
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
     let selected: WorkspaceSelection;

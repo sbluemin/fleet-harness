@@ -31,7 +31,7 @@ describe("assertLaunchPromptShimSafe", () => {
   });
 });
 
-// quoteForCmd(core-unified-agent BaseConnection)가 cmd 특수문자로 분류하는 집합이다. 그 헬퍼는
+// quoteForCmd(구 ACP BaseConnection)가 cmd 특수문자로 분류하는 집합이다. 그 헬퍼는
 // 내부 따옴표 이중화와 windowsVerbatimArguments를 함께 요구하는데 node-pty 런치 경로는 둘 다
 // 제공하지 않으므로, "따옴표로 감싸였으니 안전하다"는 가정 자체가 성립하지 않는다.
 describe("cmd special characters", () => {

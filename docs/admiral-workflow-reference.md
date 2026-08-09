@@ -6,7 +6,6 @@ This document is the operational doctrine for agents working inside this reposit
 
 - `runtime/fleet-console/cli` owns the thin `fleet` launcher Composition Root inside `@dotobokuri/fleet-console`: argv/process lifecycle, one in-process Fleet MCP (Wiki + `gateway_models`), an ephemeral loopback AI Gateway, and a Claude Code child with inherited stdio; it consumes single-fleet Admiral policy from `@dotobokuri/fleet-admiral`.
 - `packages/core-agent` owns the host-agnostic one-shot executor/session/model runtime engine (`executeOneShot`, which builds a fresh provider client per call and resumes only via a caller-supplied session id), the builtin external MCP catalog, Fleet-domain-agnostic in-process MCP server primitives, and the shared register data contract.
-- `packages/core-unified-agent` owns the unified ACP CLI backend client engine and the `CLI_BACKENDS` provider catalog.
 - `packages/core-infra` owns host-agnostic auth, data-dir resolution, data-dir/settings, and the durable `fs-store` I/O primitives.
 - `runtime/fleet-console` owns the standalone loopback Console Service: CLI register ingest, REST/SSE/WebSocket, Terminal PTY/provider/plugin runtime, durable state, and static UI.
 - `runtime/fleet-desktop` is an optional Electron main-process shell that supervises the Console Service's separately packaged standard Node sidecar and loads `/console/`; it never owns duplicate UI, server, PTY, plugin, provider, or state code.
@@ -32,7 +31,7 @@ It must not own PTY, TUI, terminal I/O interception, host-agnostic infrastructur
   -> fleet-wiki
 
 core-agent / core-infra
-  -> core-unified-agent
+  -> core-agent
 ```
 
 Forbidden patterns:

@@ -1,5 +1,6 @@
-import type { AnalystSession as AnalystSessionInstance, AnalystSessionOptions } from "@dotobokuri/fleet-analyst";
-import type { AgentCliStatus } from "./agent-cli-types.js";
+import { AI_GATEWAY_ROUTE_SEGMENT, toClaudeGatewayModelId, type GatewayModel } from "@dotobokuri/core-ai-gateway";
+import { NATIVE_CLAUDE_EFFORTS, NATIVE_CLAUDE_MODEL_ALIASES } from "@dotobokuri/fleet-admiral";
+import type { AnalystSession as AnalystSessionInstance } from "@dotobokuri/fleet-analyst";
 
 export const ANALYSIS_ERROR_CODES = {
   captureMissing: "analysis_capture_missing",
@@ -21,7 +22,48 @@ export type AnalysisCatalogCli = {
   readonly models: readonly AnalysisCatalogModel[];
 };
 export type AnalysisCatalogModel = { readonly id: string; readonly label: string; readonly effortLevels: readonly string[]; readonly defaultEffort?: string };
-export type AnalystCliId = AnalystSessionOptions["cliId"];
+/**
+ * 분석가 백엔드의 id.
+ *
+ * 예전에는 탐지된 Agent CLI를 골랐지만 이제 분석가는 AI Gateway 위에서만 돈다. 클라이언트는 이
+ * 값을 불투명 문자열로만 다루므로 항목이 하나로 줄어도 화면 계약은 그대로다.
+ */
+export type AnalystCliId = "claude-gateway";
+export const ANALYST_GATEWAY_CLI_ID: AnalystCliId = "claude-gateway";
+
+/**
+ * 분석가의 기본 선택.
+ *
+ * 오늘의 기본값은 `opus[1m]`/`xhigh`였다. 소유자가 sonnet/low로 낮추기로 정했으므로 여기서
+ * 한 곳으로 고정한다 — 선택지 자체는 좁히지 않으니 사용자는 여전히 올릴 수 있다.
+ */
+export const ANALYST_DEFAULT_MODEL = "sonnet";
+export const ANALYST_DEFAULT_EFFORT = "low";
+/**
+ * 분석가가 고를 수 있는 native Claude 별칭.
+ *
+ * Console Launch가 실제로 띄우는 로스터와 같은 출처를 쓴다. 예전에는 ACP 패키지의 모델
+ * 레지스트리를 읽었는데, 그쪽은 Launch가 제공하지 않는 별칭까지 담고 있어 분석가만 다른 목록을
+ * 보여 주고 있었다.
+ */
+const NATIVE_CLAUDE_LABELS: Readonly<Record<string, string>> = {
+  fable: "Claude Fable",
+  sonnet: "Claude Sonnet",
+  "opus[1m]": "Claude Opus [1M]",
+};
+
+export function nativeClaudeAnalystModels(): readonly {
+  readonly modelId: string;
+  readonly name: string;
+  readonly effort: { readonly supported: true; readonly levels: readonly string[] };
+}[] {
+  return NATIVE_CLAUDE_MODEL_ALIASES.map((modelId) => ({
+    modelId,
+    name: NATIVE_CLAUDE_LABELS[modelId] ?? modelId,
+    effort: { supported: true, levels: [...NATIVE_CLAUDE_EFFORTS] },
+  }));
+}
+
 export type AnalysisSession = AnalystSessionInstance;
 export type AnalysisEvent =
   | { readonly type: "connected" }
@@ -32,31 +74,60 @@ export type AnalysisEvent =
   | { readonly type: "complete" }
   | { readonly type: "error"; readonly error: { readonly code: string; readonly message: string } };
 
-export const ANALYST_CLI_ENTRIES: readonly { readonly binaryId: string; readonly cliId: AnalystCliId; readonly label?: string }[] = [
-  { binaryId: "claude", cliId: "claude" },
-];
+/**
+ * AI gateway는 이 플러그인이 직접 서빙한다. 경로 조각은 core-ai-gateway가 소유하고, 어느
+ * basePath 아래 마운트되는지는 여기가 안다.
+ */
+export function resolveAnalysisGatewayBaseUrl(origin: string): string {
+  return `${origin.replace(/\/+$/u, "")}/plugins/terminal/${AI_GATEWAY_ROUTE_SEGMENT}`;
+}
 
+/**
+ * 분석가가 고를 수 있는 모델.
+ *
+ * 두 갈래를 한 목록으로 낸다. native Claude 별칭은 게이트웨이 카탈로그에 없지만 라우터가 호출자
+ * 자격증명으로 Anthropic에 원문 중계하므로 그대로 돌고, 오늘 분석가가 제공하던 선택지가 바로
+ * 그것이다. 거기에 사용자가 Console에서 켠 게이트웨이 모델을 덧붙인다.
+ */
 export function buildAnalysisCatalog(
-  statuses: readonly AgentCliStatus[],
-  modelsFor: (cliId: AnalystCliId) => { readonly defaultModel: string; readonly models: readonly { readonly modelId: string; readonly name: string; readonly effort: { readonly supported: boolean; readonly levels?: readonly string[]; readonly default?: string | null } }[] },
+  nativeModels: readonly {
+    readonly modelId: string;
+    readonly name: string;
+    readonly effort: { readonly supported: boolean; readonly levels?: readonly string[]; readonly default?: string | null };
+  }[],
+  gatewayModels: readonly GatewayModel[],
+  available: boolean,
 ): AnalysisCatalog {
-  const statusById = new Map(statuses.map((status) => [status.id, status]));
-  return { clis: ANALYST_CLI_ENTRIES.map(({ binaryId, cliId, label }) => {
-    const provider = modelsFor(cliId);
-    const status = statusById.get(binaryId);
-    return {
-      cliId,
-      label: label ?? status?.displayName ?? cliId,
-      available: status?.available === true,
-      defaultModel: provider.defaultModel,
-      models: provider.models.map((model) => ({
-        id: model.modelId,
-        label: model.name,
-        effortLevels: model.effort.supported ? [...(model.effort.levels ?? [])] : [],
-        ...(model.effort.supported && model.effort.default ? { defaultEffort: model.effort.default } : {}),
-      })),
-    };
-  }) };
+  const native = nativeModels.map((model) => ({
+    id: model.modelId,
+    label: model.name,
+    effortLevels: model.effort.supported ? [...(model.effort.levels ?? [])] : [],
+    ...(model.modelId === ANALYST_DEFAULT_MODEL
+      ? { defaultEffort: ANALYST_DEFAULT_EFFORT }
+      : model.effort.supported && model.effort.default
+        ? { defaultEffort: model.effort.default }
+        : {}),
+  }));
+  const gateway = gatewayModels.map((model) => ({
+    id: toClaudeGatewayModelId(model),
+    label: model.displayName,
+    // 게이트웨이 모델 스키마에는 기본 강도가 없다. 없는 값을 지어내면 사용자가 고르지 않은
+    // 강도로 돈다.
+    effortLevels: model.effort.supported ? [...model.effort.levels] : [],
+  }));
+  const models = [...native, ...gateway];
+  return {
+    clis: [{
+      cliId: ANALYST_GATEWAY_CLI_ID,
+      label: "AI Gateway",
+      // 고를 모델이 없거나 Console이 아직 리슨 전이면 시작할 수 없다.
+      available: available && models.length > 0,
+      defaultModel: models.some((model) => model.id === ANALYST_DEFAULT_MODEL)
+        ? ANALYST_DEFAULT_MODEL
+        : models[0]?.id ?? "",
+      models,
+    }],
+  };
 }
 
 export function analysisError(code: AnalysisErrorCode, message: string): AnalysisError {

@@ -79,9 +79,9 @@ describe("Cowork DTO", () => {
       expect(response.status).toBe(200);
       const body = await response.json() as { models: string[]; efforts: string[]; defaultModel?: string; defaultEffort?: string };
       expect(body.models.length).toBeGreaterThan(0);
-      // cowork 제품 기본: claude는 레지스트리 기본(opus[1m])이 아니라 sonnet/medium.
+      // cowork 제품 기본은 sonnet/low다 — 무거운 기본으로 도는 편집 보조는 비용만 늘린다.
       expect(body.defaultModel).toBe("sonnet");
-      expect(body.defaultEffort).toBe("medium");
+      expect(body.defaultEffort).toBe("low");
     } finally {
       server.closeAllConnections();
       server.close();

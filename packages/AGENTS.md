@@ -7,8 +7,7 @@
 | Directory | Responsibility |
 |---|---|
 | `core-process/` | Dependency-free process and binary primitives |
-| `core-unified-agent/` | Provider-neutral Agent CLI client and transport normalization |
-| `core-agent/` | Executor, session, MCP, and tool-registry substrate |
+| `core-agent/` | Tool vocabulary, MCP serving, the Claude gateway SDK, and update primitives; the only sanctioned vendor-SDK import site |
 | `core-infra/` | Authentication, data-root, and durable filesystem gateways |
 | `fleet-admiral/` | Admiral prompt, protocol, tool, launch, and runtime policy |
 | `fleet-wiki/` | Fleet Wiki storage, retrieval, and approval-gated mutation domain |

@@ -44,7 +44,7 @@ export interface MountCoworkInlineOptions {
   onApplied(): void;
 }
 
-interface Settings { cli: string; model: string; effort: string; }
+interface Settings { model: string; effort: string; }
 interface AnnotationCard { id: string; quote: string; comment: string; status: "pending" | "sent" | "done"; }
 interface PromptAttempt { cancelled: boolean; submitted: boolean; }
 type RevisionOutcome = "idle" | "running" | "complete" | "stopped";
@@ -63,7 +63,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   let session: CoworkSessionDto | null = null;
   let unsubscribe: (() => void) | null = null;
   let lastEventId = 0;
-  let optionsDto: CoworkOptionsResponse = { clis: [], models: [], efforts: [] };
+  let optionsDto: CoworkOptionsResponse = { models: [], efforts: [] };
   let settings = readSettings();
   let annotations: AnnotationCard[] = [];
   let reply = "";
@@ -122,22 +122,18 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     if (!host) return;
     if (!settingsSelectRoot) settingsSelectRoot = createRoot(host);
     settingsSelectRoot.render(createElement(CoworkSettingsSelect, {
-      clis: optionsDto.clis,
       models: optionsDto.models,
       efforts: optionsDto.efforts,
-      cli: settings.cli,
       model: settings.model,
       effort: settings.effort,
-      onCliChange: (value) => handleSettingChange("cli", value),
       onModelChange: (value) => handleSettingChange("model", value),
       onEffortChange: (value) => handleSettingChange("effort", value),
     }));
   };
 
-  const handleSettingChange = (name: "cli" | "model" | "effort", value: string) => {
-    settings = name === "cli"
-      ? { cli: value, model: "", effort: "" }
-      : { ...settings, [name]: value };
+  const handleSettingChange = (name: "model" | "effort", value: string) => {
+    // 모델을 바꾸면 강도 사다리가 달라질 수 있으므로 강도는 비워 두고 옵션 재조회가 채우게 한다.
+    settings = name === "model" ? { model: value, effort: "" } : { ...settings, [name]: value };
     saveSettings(settings);
     if (!session) {
       if (name !== "effort") void updateOptions().then(() => { renderDock(); }).catch(() => undefined);
@@ -215,7 +211,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
         ${running ? '<span class="cowork-glow" aria-hidden="true"></span>' : ""}
         <button type="button" class="cowork-chip${panelOpen ? " is-active" : ""}" data-cowork-action="toggle-panel" aria-expanded="${panelOpen}" aria-label="${escapeAttribute(t("codex.cowork.annotationsAria"))}" ${running ? "disabled" : ""}><span aria-hidden="true">✦</span>${annotations.length}</button>
         <input class="cowork-dock-input" name="prompt" value="${escapeAttribute(promptText)}" placeholder="${escapeAttribute(annotations.length ? t("codex.cowork.instructionOptional") : t("codex.cowork.askAi"))}" aria-label="${escapeAttribute(t("codex.cowork.instructionAria"))}" ${running ? "disabled" : ""}>
-        <button type="button" class="cowork-chip cowork-chip--config${configOpen ? " is-active" : ""}" data-cowork-action="toggle-config" aria-expanded="${configOpen}" aria-label="${escapeAttribute(t("codex.cowork.agentSettingsAria"))}" ${running ? "disabled" : ""}>${escapeHtml(settings.cli || "agent")}</button>
+        <button type="button" class="cowork-chip cowork-chip--config${configOpen ? " is-active" : ""}" data-cowork-action="toggle-config" aria-expanded="${configOpen}" aria-label="${escapeAttribute(t("codex.cowork.agentSettingsAria"))}" ${running ? "disabled" : ""}>${escapeHtml(settings.model || "agent")}</button>
         ${running
           ? `<button type="button" class="cowork-send cowork-stop" data-cowork-action="cancel-run" aria-label="${escapeAttribute(t("codex.cowork.stopAria"))}"><span aria-hidden="true"></span></button>`
           : `<button type="button" class="cowork-send" data-cowork-action="send" aria-label="${escapeAttribute(t("codex.cowork.sendToAi"))}">↑</button>`}
@@ -397,12 +393,11 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   // ── 세션 수명주기 ───────────────────────────────────────────────────────────
 
   const updateOptions = async () => {
-    optionsDto = await fetchCoworkOptions(options.theaterId, settings.cli, settings.model || undefined);
-    // 저장값이 무효하면 provider 기본값(claude면 sonnet/medium)을 우선 채택한다.
+    optionsDto = await fetchCoworkOptions(options.theaterId, settings.model || undefined);
+    // 저장값이 무효하면 제품 기본값(sonnet/low)을 우선 채택한다.
     const fallbackModel = optionsDto.defaultModel && optionsDto.models.includes(optionsDto.defaultModel) ? optionsDto.defaultModel : optionsDto.models[0] ?? "";
     const fallbackEffort = optionsDto.defaultEffort && optionsDto.efforts.includes(optionsDto.defaultEffort) ? optionsDto.defaultEffort : optionsDto.efforts[0] ?? "";
     settings = {
-      cli: optionsDto.clis.includes(settings.cli) ? settings.cli : optionsDto.clis[0] ?? "",
       model: optionsDto.models.includes(settings.model) ? settings.model : fallbackModel,
       effort: optionsDto.efforts.includes(settings.effort) ? settings.effort : fallbackEffort,
     };
@@ -416,14 +411,14 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     const known = new Set(restored.map(card => card.id));
     annotations = [...restored, ...annotations.filter(card => !known.has(card.id))];
     if (next.cli || next.model || next.effort) {
-      settings = { cli: next.cli ?? settings.cli, model: next.model ?? settings.model, effort: next.effort ?? settings.effort };
+      settings = { model: next.model ?? settings.model, effort: next.effort ?? settings.effort };
       saveSettings(settings);
     }
     try { await updateOptions(); } catch { /* 설정 팝오버가 비어 보일 뿐, 편집은 계속 가능하다. */ }
     if (disposed) return;
     // 세션에 저장된 모델이 레지스트리에서 사라져 정규화로 바뀌었으면, 첫 실행이
     // 무효 모델로 접속하지 않도록 서버 세션 설정을 즉시 동기화한다.
-    if (session && (session.cli !== settings.cli || session.model !== settings.model || session.effort !== settings.effort)) {
+    if (session && (session.model !== settings.model || session.effort !== settings.effort)) {
       try { session = await updateCoworkSettings(options.theaterId, session.id, settings); } catch { /* 전송 시 오류로 표면화된다. */ }
     }
     if (disposed) return;
@@ -814,5 +809,7 @@ function annotationFromDto(dto: CoworkAnnotationDto): AnnotationCard { return { 
 function stripFrontmatter(markdown: string): string { return markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, ""); }
 function clip(value: string, max: number): string { return value.length > max ? `${value.slice(0, max - 1)}…` : value; }
 function annotationId(): string { return typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : `annotation-${Date.now()}-${Math.random().toString(16).slice(2)}`; }
-function readSettings(): Settings { try { const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}"); return { cli: typeof saved.cli === "string" ? saved.cli : "claude", model: typeof saved.model === "string" ? saved.model : "", effort: typeof saved.effort === "string" ? saved.effort : "medium" }; } catch { return { cli: "claude", model: "", effort: "medium" }; } }
+// 저장돼 있던 `cli`는 읽지 않는다 — Cowork가 Agent CLI를 고르지 않게 되면서 의미가 사라졌다.
+// 옛 값이 남아 있어도 무시될 뿐이라 마이그레이션이 필요 없다.
+function readSettings(): Settings { try { const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}"); return { model: typeof saved.model === "string" ? saved.model : "", effort: typeof saved.effort === "string" ? saved.effort : "low" }; } catch { return { model: "", effort: "low" }; } }
 function saveSettings(settings: Settings): void { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* Storage is optional. */ } }

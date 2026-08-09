@@ -18,7 +18,7 @@ const resolvePathBinaryMock = vi.hoisted(() =>
 );
 
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
-vi.mock("@dotobokuri/core-agent", () => ({
+vi.mock("@dotobokuri/core-process", () => ({
   resolvePathBinary: (...args: Parameters<typeof resolvePathBinaryMock>) => resolvePathBinaryMock(...args),
 }));
 

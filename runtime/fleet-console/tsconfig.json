@@ -17,7 +17,6 @@
     "baseUrl": ".",
     "paths": {
       "@dotobokuri/core-agent": ["../../packages/core-agent/dist/index.d.ts"],
-      "@dotobokuri/core-unified-agent": ["../../packages/core-unified-agent/dist/index.d.ts"],
       "@dotobokuri/fleet-admiral": ["../../packages/fleet-admiral/dist/index.d.ts"],
       "@dotobokuri/core-infra": ["../../packages/core-infra/dist/index.d.ts"],
       "@dotobokuri/core-ai-gateway": ["../../packages/core-ai-gateway/dist/index.d.ts"],

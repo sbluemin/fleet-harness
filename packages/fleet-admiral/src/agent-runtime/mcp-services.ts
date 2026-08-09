@@ -1,8 +1,8 @@
 import {
-	createInProcessMcpServer,
+	createServedMcpEndpoint,
 	createMcpToolRegistry,
 	createMcpToolSnapshotStore,
-	type InProcessMcpServer,
+	type ServedMcpEndpoint,
 	type McpToolRegistry,
 	type McpToolSnapshotStore,
 } from "@dotobokuri/core-agent";
@@ -11,7 +11,7 @@ import { FLEET_MCP_SERVER_NAME } from "../tools.js";
 
 export interface FleetAgentRuntimeMcpServices {
 	readonly name: string;
-	readonly mcpServer: InProcessMcpServer;
+	readonly mcpServer: ServedMcpEndpoint;
 	readonly mcpRegistry: McpToolRegistry;
 	readonly mcpToolSnapshotStore: McpToolSnapshotStore;
 }
@@ -19,7 +19,7 @@ export interface FleetAgentRuntimeMcpServices {
 export function createFleetAgentRuntimeMcpServices(): FleetAgentRuntimeMcpServices {
 	const mcpRegistry = createMcpToolRegistry();
 	const mcpToolSnapshotStore = createMcpToolSnapshotStore();
-	const mcpServer = createInProcessMcpServer({
+	const mcpServer = createServedMcpEndpoint({
 		serverInfo: { name: FLEET_MCP_SERVER_NAME },
 		toolSnapshotStore: mcpToolSnapshotStore,
 	});

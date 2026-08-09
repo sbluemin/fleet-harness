@@ -3,13 +3,10 @@ import { Select } from "@fleet-console/sdk/react/browser";
 import { useT } from "../i18n/index.js";
 
 export interface CoworkSettingsSelectProps {
-  readonly clis: readonly string[];
   readonly models: readonly string[];
   readonly efforts: readonly string[];
-  readonly cli: string;
   readonly model: string;
   readonly effort: string;
-  readonly onCliChange: (value: string) => void;
   readonly onModelChange: (value: string) => void;
   readonly onEffortChange: (value: string) => void;
 }
@@ -19,13 +16,10 @@ function toOptions(values: readonly string[]) {
 }
 
 export function CoworkSettingsSelect({
-  clis,
   models,
   efforts,
-  cli,
   model,
   effort,
-  onCliChange,
   onModelChange,
   onEffortChange,
 }: CoworkSettingsSelectProps) {
@@ -34,7 +28,6 @@ export function CoworkSettingsSelect({
     <>
       <div className="cowork-selector">
         <span>{t("codex.cowork.cli")}</span>
-        <Select label={t("codex.cowork.cli")} value={cli} options={toOptions(clis)} onChange={onCliChange} disabled={!clis.length} compact />
       </div>
       <div className="cowork-selector">
         <span>{t("codex.cowork.model")}</span>

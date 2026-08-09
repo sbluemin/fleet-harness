@@ -1,18 +1,30 @@
 import {
-  UnifiedAgent,
-  type AcpPermissionRequestParams,
-  type AcpPermissionResponse,
-  type IUnifiedAgentClient,
-} from "@dotobokuri/core-unified-agent";
-
-const DISPOSE_SETTLE_MS = 2_000;
-const WEB_TOOL_NAMES = new Set(["websearch", "webfetch"]);
+  createClaudeGatewaySdk,
+  type ClaudeGatewayMessage,
+  type ClaudeGatewayRun,
+  type ClaudeGatewaySdk,
+} from "@dotobokuri/core-agent/claude";
 
 export const SCUTTLEBUTT_AGENT = {
-  cliId: "claude",
+  /**
+   * 오늘과 같은 모델·강도. 구체 id가 아니라 별칭인 것이 오늘의 동작이고, 별칭은 자식이 보내기 전에
+   * 스스로 푼다 — 실측하면 `sonnet`이 와이어에서 `claude-sonnet-5`가 되므로 세대를 고정하지 않는다.
+   * 게이트웨이 카탈로그에 sonnet은 없으므로 라우터가 호출자 자격증명으로 Anthropic에 원문 중계한다.
+   * 즉 경로만 게이트웨이로 옮겨가고 과금처는 그대로다.
+   */
   model: "sonnet",
   effort: "low",
 } as const;
+
+/**
+ * 펫이 가질 수 있는 툴 전부.
+ *
+ * `tools`가 내장 툴의 기본 집합을 이 둘로 잘라내므로 파일·셸 도구는 아예 존재하지 않게 된다.
+ * `allowedTools`는 그 둘을 물어보지 않고 쓰게 하고, `dontAsk`는 그 밖의 무엇이든 승인을 기다리지
+ * 않고 거부한다 — 헤드리스에서 승인 대기는 곧 멈춘 대화다. 세 값은 하나의 경계이며, 앞선 ACP
+ * 권한 분류기가 도구 이름 없이 `kind`와 입력 모양으로 추측하던 것을 구조로 대체한다.
+ */
+export const PET_TOOLS = ["WebSearch", "WebFetch"] as const;
 
 export type AdmiralId = "tori" | "bori" | "dori";
 export const ADMIRAL_IDS = ["tori", "bori", "dori"] as const;
@@ -148,8 +160,17 @@ export type ChatEvent =
 export interface ChatSessionOptions {
   readonly cwd: string;
   readonly admiral: AdmiralId;
+  /** Console이 서빙 중인 AI gateway의 절대 URL. 호스트만 아는 값이라 주입받는다. */
+  readonly baseUrl: string;
   readonly onEvent?: (event: ChatEvent) => void;
-  readonly buildClient?: () => Promise<IUnifiedAgentClient>;
+  /**
+   * 테스트 seam. 세션이 조립한 생성 인자를 그대로 받는다 — 인자 없이 받으면 조립 자체가 검증
+   * 밖으로 나가고, 잘못된 baseUrl을 넘겨도 테스트가 통과한다.
+   */
+  readonly createSdk?: (options: {
+    readonly baseUrl: string;
+    readonly models: readonly string[];
+  }) => Promise<ClaudeGatewaySdk>;
 }
 
 export interface ChatSessionLike {
@@ -160,8 +181,10 @@ export interface ChatSessionLike {
 
 export class ChatSession implements ChatSessionLike {
   private readonly options: ChatSessionOptions;
-  private client: IUnifiedAgentClient | null = null;
-  private pendingClient: IUnifiedAgentClient | null = null;
+  private sdk: ClaudeGatewaySdk | null = null;
+  private run: ClaudeGatewayRun | null = null;
+  /** 같은 대화를 이어 가기 위한 자식 세션 id. 첫 턴이 알려 준다. */
+  private resumeId: string | null = null;
   private started = false;
   private disposed = false;
   private turn: Promise<void> = Promise.resolve();
@@ -174,49 +197,21 @@ export class ChatSession implements ChatSessionLike {
   async start(): Promise<void> {
     if (this.disposed) throw new Error("Session disposed");
     if (this.started) return;
-    const client = await (this.options.buildClient?.() ?? UnifiedAgent.build({ cli: SCUTTLEBUTT_AGENT.cliId }));
-    this.pendingClient = client;
+    const create = { baseUrl: this.options.baseUrl, models: [SCUTTLEBUTT_AGENT.model] };
+    const sdk = await (this.options.createSdk?.(create) ?? createClaudeGatewaySdk(create));
     if (this.disposed) {
-      await client.disconnect().catch(() => undefined);
-      if (this.pendingClient === client) this.pendingClient = null;
+      await sdk.dispose().catch(() => undefined);
       throw new Error("Session disposed");
     }
-    this.bridge(client);
-    try {
-      await client.connect({
-        cwd: this.options.cwd,
-        model: SCUTTLEBUTT_AGENT.model,
-        effort: SCUTTLEBUTT_AGENT.effort,
-        autoApprove: false,
-        yoloMode: false,
-        fsAccess: false,
-        strictMcp: true,
-        systemPrompt: ADMIRAL_SYSTEM_PROMPTS[this.options.admiral],
-        systemPromptMode: "replace",
-        mcpServers: [],
-      });
-    } catch (error) {
-      if (this.disposed) await (this.disposeFlight ?? Promise.resolve());
-      else await client.disconnect().catch(() => undefined);
-      if (this.pendingClient === client) this.pendingClient = null;
-      throw error;
-    }
-    if (this.disposed) {
-      await (this.disposeFlight ?? Promise.resolve());
-      throw new Error("Session disposed");
-    }
-    this.pendingClient = null;
-    this.client = client;
+    this.sdk = sdk;
     this.started = true;
   }
 
   send(text: string): Promise<void> {
     if (this.disposed) return Promise.reject(new Error("Session disposed"));
-    if (!this.started || !this.client) return Promise.reject(new Error("Session not started"));
+    if (!this.started || !this.sdk) return Promise.reject(new Error("Session not started"));
     if (!text.trim()) return Promise.reject(new Error("Message required"));
-    const run = this.turn.then(async () => {
-      await this.client!.sendMessage(text);
-    });
+    const run = this.turn.then(() => this.runTurn(text));
     this.turn = run.catch(() => undefined);
     return run;
   }
@@ -228,82 +223,122 @@ export class ChatSession implements ChatSessionLike {
     return this.disposeFlight;
   }
 
-  private async disposeResources(): Promise<void> {
-    const client = this.client ?? this.pendingClient;
-    const cancel = client?.cancelPrompt().catch(() => undefined) ?? Promise.resolve();
-    await settleWithin([cancel, this.turn.catch(() => undefined)], DISPOSE_SETTLE_MS);
+  private async runTurn(text: string): Promise<void> {
+    const sdk = this.sdk;
+    if (!sdk) throw new Error("Session not started");
+    const emit = (event: ChatEvent): void => this.options.onEvent?.(event);
+    const redact = (value: string) => redactScratchPath(value, this.options.cwd);
+    let run: ClaudeGatewayRun;
     try {
-      await client?.disconnect();
+      run = await sdk.startTurn({
+        prompt: text,
+        model: SCUTTLEBUTT_AGENT.model,
+        effort: SCUTTLEBUTT_AGENT.effort,
+        systemPrompt: { mode: "replace", text: ADMIRAL_SYSTEM_PROMPTS[this.options.admiral] },
+        cwd: this.options.cwd,
+        tools: [...PET_TOOLS],
+        allowedTools: [...PET_TOOLS],
+        permissionMode: "dontAsk",
+        // 텍스트를 흘려 보내려면 부분 메시지가 필요하다. SSE `chunk` 계약이 그것으로 만들어진다.
+        includePartialMessages: true,
+        ...(this.resumeId === null ? {} : { resume: this.resumeId }),
+      });
+    } catch (error) {
+      emit({ type: "error", error: { code: "chat_error", message: redact(message(error)) } });
+      throw error;
+    }
+    this.run = run;
+    const toolNames = new Map<string, string>();
+    try {
+      for await (const event of run) {
+        if (typeof event.session_id === "string" && this.resumeId === null) this.resumeId = event.session_id;
+        for (const mapped of toChatEvents(event, toolNames, redact)) emit(mapped);
+      }
+    } catch (error) {
+      if (this.disposed) return;
+      emit({ type: "error", error: { code: "chat_error", message: redact(message(error)) } });
+      throw error;
     } finally {
-      if (this.client === client) this.client = null;
-      if (this.pendingClient === client) this.pendingClient = null;
-      this.started = false;
+      if (this.run === run) this.run = null;
     }
   }
 
-  private bridge(client: IUnifiedAgentClient): void {
-    const redact = (text: string) => redactScratchPath(text, this.options.cwd);
-    client.on("messageChunk", (text) => this.options.onEvent?.({ type: "chunk", text: redact(text) }));
-    client.on("toolCall", (title, status) => this.options.onEvent?.({ type: "tool", title: redact(title), status: redact(status) }));
-    client.on("toolCallUpdate", (title, status) => this.options.onEvent?.({ type: "tool", title: redact(title), status: redact(status) }));
-    client.on("permissionRequest", (params, resolve) => resolveWebPermissionRequest(params, resolve));
-    client.on("promptComplete", () => this.options.onEvent?.({ type: "complete" }));
-    client.on("error", (error) => this.options.onEvent?.({
-      type: "error",
-      error: { code: "chat_error", message: redact(error.message) },
-    }));
-    client.on("exit", (code, signal) => this.options.onEvent?.({
-      type: "error",
-      error: {
-        code: "chat_exited",
-        message: redact(`Chat process exited (code ${code ?? "unknown"}, signal ${signal ?? "none"})`),
-      },
-    }));
+  private async disposeResources(): Promise<void> {
+    this.run?.close();
+    this.run = null;
+    await this.turn.catch(() => undefined);
+    const sdk = this.sdk;
+    this.sdk = null;
+    this.started = false;
+    await sdk?.dispose().catch(() => undefined);
   }
 }
 
-export function resolveWebPermissionRequest(
-  params: AcpPermissionRequestParams,
-  resolve: (response: AcpPermissionResponse) => void,
-): void {
-  const allowed = isWebToolPermission(params);
-  const option = allowed
-    ? params.options.find((candidate) => candidate.kind === "allow_once")
-      ?? params.options.find((candidate) => candidate.kind === "allow_always")
-    : params.options.find((candidate) => candidate.kind === "reject_once")
-      ?? params.options.find((candidate) => candidate.kind === "reject_always");
-  resolve(option
-    ? { outcome: { outcome: "selected", optionId: option.optionId } }
-    : { outcome: { outcome: "cancelled" } });
-}
-
-export function isWebToolPermission(params: AcpPermissionRequestParams): boolean {
-  const rawInput = record(params.toolCall.rawInput);
-  const candidates: unknown[] = [
-    params.toolCall.title,
-    typeof params.toolCall.rawInput === "string" ? params.toolCall.rawInput : undefined,
-    ...["toolName", "tool_name", "name", "title"].map((key) => rawInput[key]),
-  ];
-  if (candidates.some((candidate) => typeof candidate === "string" && isWebToolName(candidate))) return true;
-  return isWebToolCall(params.toolCall.kind, rawInput);
-}
-
 /**
- * ACP 권한 요청은 도구 이름을 싣지 않는다 — Claude 브리지는 WebSearch를 검색어만 담은 title로,
- * WebFetch를 "Fetch <url>"로 바꿔 보낸다. 이름만 대조하면 웹 검색이 매번 거부되어 기능이 죽는다.
- * 브리지가 kind:"fetch"로 분류하는 도구는 이 둘뿐이고, 입력 모양까지 맞을 때만 허용해 범위를 좁힌다.
+ * 자식이 흘리는 메시지를 이 플러그인의 SSE 계약(chunk/tool/complete/error)으로 옮긴다.
+ *
+ * 모양은 실측으로 고정했다. 텍스트는 `stream_event`의 `content_block_delta` 중 `text_delta`로만
+ * 오고, 같은 자리에 `thinking_delta`도 섞여 온다 — 그것까지 흘리면 펫이 생각을 소리내어 말하게
+ * 되므로 텍스트만 고른다. 도구는 assistant 메시지의 `tool_use` 블록으로 시작해 user 메시지의
+ * `tool_result`로 끝나고, 이름은 앞쪽에만 실려 있어 id로 짝지어 둔다.
  */
-export function isWebToolCall(kind: unknown, rawInput: Record<string, unknown>): boolean {
-  if (kind !== "fetch") return false;
-  return typeof rawInput.query === "string" || typeof rawInput.url === "string";
+export function toChatEvents(
+  event: ClaudeGatewayMessage,
+  toolNames: Map<string, string>,
+  redact: (value: string) => string,
+): readonly ChatEvent[] {
+  if (event.type === "stream_event") {
+    const inner = record(event.event);
+    if (inner.type !== "content_block_delta") return [];
+    const delta = record(inner.delta);
+    if (delta.type !== "text_delta" || typeof delta.text !== "string" || delta.text.length === 0) return [];
+    return [{ type: "chunk", text: redact(delta.text) }];
+  }
+  if (event.type === "assistant") {
+    const events: ChatEvent[] = [];
+    for (const block of blocks(event.message)) {
+      if (block.type !== "tool_use") continue;
+      const name = typeof block.name === "string" ? block.name : "tool";
+      if (typeof block.id === "string") toolNames.set(block.id, name);
+      events.push({ type: "tool", title: redact(toolTitle(name, block.input)), status: "running" });
+    }
+    return events;
+  }
+  if (event.type === "user") {
+    const events: ChatEvent[] = [];
+    for (const block of blocks(event.message)) {
+      if (block.type !== "tool_result") continue;
+      const name = typeof block.tool_use_id === "string" ? toolNames.get(block.tool_use_id) ?? "tool" : "tool";
+      events.push({ type: "tool", title: redact(name), status: block.is_error === true ? "error" : "done" });
+    }
+    return events;
+  }
+  if (event.type === "result") {
+    if (event.is_error === true) {
+      const detail = typeof event.result === "string" ? event.result : "Chat turn failed";
+      return [{ type: "error", error: { code: "chat_error", message: redact(detail) } }];
+    }
+    return [{ type: "complete" }];
+  }
+  return [];
 }
 
-export function isWebToolName(value: string): boolean {
-  let normalized = value.trim().toLowerCase();
-  if (WEB_TOOL_NAMES.has(normalized)) return true;
-  normalized = normalized.replace(/^mcp__/u, "");
-  const segments = normalized.split(/__|[./:]/u).map((part) => part.trim()).filter(Boolean);
-  return WEB_TOOL_NAMES.has(segments.at(-1) ?? "");
+function toolTitle(name: string, input: unknown): string {
+  const detail = record(input);
+  for (const key of ["query", "url", "prompt"]) {
+    const value = detail[key];
+    if (typeof value === "string" && value.trim()) return `${name}: ${value.trim()}`;
+  }
+  return name;
+}
+
+function blocks(message: unknown): readonly Record<string, unknown>[] {
+  const content = record(message).content;
+  return Array.isArray(content) ? content.map(record) : [];
+}
+
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function redactScratchPath(text: string, cwd: string): string {
@@ -318,18 +353,4 @@ export function redactScratchPath(text: string, cwd: string): string {
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-async function settleWithin(promises: readonly Promise<unknown>[], timeoutMs: number): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await Promise.race([
-      Promise.allSettled(promises),
-      new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
 }

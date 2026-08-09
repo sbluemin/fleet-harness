@@ -34,7 +34,8 @@
   "dependencies": {
     "@dotobokuri/core-agent": "workspace:*",
     "@dotobokuri/core-ai-gateway": "workspace:*",
-    "@dotobokuri/core-infra": "workspace:*"
+    "@dotobokuri/core-infra": "workspace:*",
+    "@dotobokuri/core-process": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

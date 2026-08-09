@@ -65,6 +65,8 @@ describe("chat routes", () => {
     expect(createSession).toHaveBeenCalledWith({
       cwd: "/private/fleet/plugins/scuttlebutt/workspace/bori",
       admiral: "bori",
+      // AI gateway는 terminal 플러그인이 서빙한다. 포트는 Console만 알므로 origin에서 받아 잇는다.
+      baseUrl: "http://127.0.0.1:43210/plugins/terminal/ai-gateway",
       onEvent: expect.any(Function),
     });
     // 제독별 작업 디렉터리는 먼저 만들어져야 한다 — 없는 경로에서는 CLI 기동이 실패한다.
@@ -128,7 +130,26 @@ describe("chat routes", () => {
   });
 });
 
-function createHarness(authorized: boolean, body: unknown = {}): {
+describe("AI gateway binding", () => {
+  it("refuses to start before the Console has an origin instead of guessing a port", async () => {
+    // 포트를 추측해 띄우면 자식이 첫 턴에서야 알 수 없는 이유로 죽는다.
+    const harness = createHarness(true, { admiral: "tori" }, null);
+    registerChatRoutes(harness.ctx, {
+      createSession: () => new FakeSession(),
+      id: () => "browser-chat-id",
+      ensureDir: async () => undefined,
+    });
+    await harness.handler()({
+      req: request("POST", { "content-type": "application/json" }) as never,
+      res: response() as never,
+      pathname: "/plugins/scuttlebutt/chat/start",
+    });
+    expect(harness.writeJson.mock.calls.at(-1)?.[1]).toBe(503);
+    expect(harness.writeJson.mock.calls.at(-1)?.[2]).toEqual({ error: "session_unavailable" });
+  });
+});
+
+function createHarness(authorized: boolean, body: unknown = {}, origin: string | null = "http://127.0.0.1:43210"): {
   readonly ctx: FleetPluginServerContext;
   readonly handler: () => RouteHandler;
   readonly writeJson: ReturnType<typeof vi.fn>;
@@ -148,6 +169,7 @@ function createHarness(authorized: boolean, body: unknown = {}): {
       security: { isTerminalAuthorized: () => authorized },
       http: { writeJson, readJsonBody: async () => body },
       paths: { pluginDataDir: () => "/private/fleet/plugins/scuttlebutt" },
+      server: { origin: () => origin },
       lifecycle: { registerCleanup: vi.fn(() => () => undefined) },
     },
   } as unknown as FleetPluginServerContext;

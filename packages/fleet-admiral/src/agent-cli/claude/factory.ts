@@ -1,4 +1,4 @@
-import { createChildEnv, resolveBinary } from "@dotobokuri/core-agent";
+import { createChildEnv, resolveBinary } from "@dotobokuri/core-process";
 
 import { clampGoalCheckLimit } from "../goal.js";
 import { assertLaunchPromptShimSafe, resolveLaunchCommandLineLimit, sanitizeLaunchPrompt } from "../prompt.js";

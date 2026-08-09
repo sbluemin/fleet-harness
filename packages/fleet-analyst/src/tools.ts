@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import type { AgentToolSpec } from "@dotobokuri/core-agent";
+import { z } from "zod";
 
 import { TranscriptIndexer } from "./transcript-indexer.js";
 import type { AnalystArtifact, SessionToolOptions } from "./types.js";
@@ -19,6 +19,23 @@ export const ANALYST_TOOL_IDS = {
   publishArtifact: "publish_artifact",
 } as const;
 
+/**
+ * 한 도구의 정의.
+ *
+ * 모델에게 실제로 도달하는 것은 `description`과 `parameters`뿐이다 — 앞선 MCP 라우터도
+ * `{name, description, parameters}`만 발행했다. 나머지 산문은 이 파일을 읽는 사람을 위한
+ * 것이고, 모델을 움직이려면 `description`에 넣어야 한다.
+ *
+ * `parameters`는 zod raw shape다. 게이트웨이 SDK의 in-process 도구가 그 모양을 요구하고,
+ * vendor는 zod 인스턴스 동일성이 아니라 형태로 판정하므로 이 패키지의 zod를 그대로 쓴다.
+ */
+export interface AnalystToolSpec {
+  readonly id: string;
+  readonly description: string;
+  readonly parameters: Record<string, z.ZodTypeAny>;
+  execute(args: Record<string, unknown>): unknown | Promise<unknown>;
+}
+
 interface ToolMetadata {
   readonly id: string;
   readonly description: string;
@@ -26,7 +43,7 @@ interface ToolMetadata {
   readonly whenToUse: readonly string[];
   readonly whenNotToUse: readonly string[];
   readonly usageGuidelines: readonly string[];
-  readonly parameters: unknown;
+  readonly parameters: Record<string, z.ZodTypeAny>;
 }
 
 const TOOL_METADATA: Record<string, ToolMetadata> = {
@@ -37,7 +54,7 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
     whenToUse: ["For broad historical or session-overview questions.", "To identify useful stages or file activity before drilling down."],
     whenNotToUse: ["Do not call it for identity, capability, limits, usage, or other direct-answer questions.", "Do not require it before live_tail for a current-state question.", "Do not use it as evidence for a specific event; retrieve that event instead."],
     usageGuidelines: ["Returns aggregate counts only and takes no parameters."],
-    parameters: { type: "object", properties: {} },
+    parameters: {},
   },
   [ANALYST_TOOL_IDS.sessionEvents]: {
     id: ANALYST_TOOL_IDS.sessionEvents,
@@ -46,7 +63,11 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
     whenToUse: ["To find events in a stage or event category.", "To page through a small relevant range."],
     whenNotToUse: ["Do not request the entire transcript when a narrow filter or page will do."],
     usageGuidelines: ["kind filters message, tool, stage, file, or unknown; cursor is a zero-based page offset; limit is capped at 100."],
-    parameters: { type: "object", properties: { kind: { type: "string", description: "Optional event kind filter." }, cursor: { type: "number", description: "Zero-based event offset." }, limit: { type: "number", description: "Page size, maximum 100." } } },
+    parameters: {
+      kind: z.string().optional().describe("Optional event kind filter."),
+      cursor: z.number().optional().describe("Zero-based event offset."),
+      limit: z.number().optional().describe("Page size, maximum 100."),
+    },
   },
   [ANALYST_TOOL_IDS.sessionRead]: {
     id: ANALYST_TOOL_IDS.sessionRead,
@@ -55,7 +76,10 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
     whenToUse: ["To inspect context around a specific event.", "To verify an observed claim before citing it."],
     whenNotToUse: ["Do not use an arbitrary or missing reference; locate it with session_events first."],
     usageGuidelines: ["ref is the required stable e# reference; radius is an optional surrounding-event count capped at 10."],
-    parameters: { type: "object", properties: { ref: { type: "string", description: "Required stable event reference, such as e12." }, radius: { type: "number", description: "Optional context radius, maximum 10." } }, required: ["ref"] },
+    parameters: {
+      ref: z.string().describe("Required stable event reference, such as e12."),
+      radius: z.number().optional().describe("Optional context radius, maximum 10."),
+    },
   },
   [ANALYST_TOOL_IDS.sessionDiff]: {
     id: ANALYST_TOOL_IDS.sessionDiff,
@@ -64,7 +88,7 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
     whenToUse: ["To summarize the current change footprint.", "To compare observed file activity with repository changes."],
     whenNotToUse: ["Do not use it to read file contents or infer why a change occurred."],
     usageGuidelines: ["Takes no parameters and returns only a bounded diff-stat summary."],
-    parameters: { type: "object", properties: {} },
+    parameters: {},
   },
   [ANALYST_TOOL_IDS.liveTail]: {
     id: ANALYST_TOOL_IDS.liveTail,
@@ -73,7 +97,7 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
     whenToUse: ["Before any current-state question.", "To refresh the index after new transcript data may have arrived."],
     whenNotToUse: ["Do not substitute it for targeted historical context; use session_read instead."],
     usageGuidelines: ["limit is an optional newest-event count capped at 100."],
-    parameters: { type: "object", properties: { limit: { type: "number", description: "Newest event count, maximum 100." } } },
+    parameters: { limit: z.number().optional().describe("Newest event count, maximum 100.") },
   },
   [ANALYST_TOOL_IDS.publishArtifact]: {
     id: ANALYST_TOOL_IDS.publishArtifact,
@@ -82,7 +106,10 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
     whenToUse: ["When a timeline, comparison, risk review, or visual brief is clearer than chat alone.", "After collecting cited evidence for the artifact."],
     whenNotToUse: ["Do not use it for raw transcript dumps, secrets, external resources, or oversized HTML."],
     usageGuidelines: ["Pass exactly title and html; never use content as an alias for html.", "html must be non-empty and is capped at 50KiB UTF-8."],
-    parameters: { type: "object", additionalProperties: false, properties: { title: { type: "string", minLength: 1, maxLength: 120, description: "Searchable artifact title, maximum 120 characters." }, html: { type: "string", minLength: 1, description: "Self-contained non-empty HTML, maximum 50KiB UTF-8. This property is named html, not content." } }, required: ["title", "html"] },
+    parameters: {
+      title: z.string().min(1).max(120).describe("Searchable artifact title, maximum 120 characters."),
+      html: z.string().min(1).describe("Self-contained non-empty HTML, maximum 50KiB UTF-8. This property is named html, not content."),
+    },
   },
 };
 
@@ -94,7 +121,7 @@ export class AnalystTools {
     this.indexer = new TranscriptIndexer(options.capturePath);
   }
 
-  specs(): AgentToolSpec[] {
+  specs(): AnalystToolSpec[] {
     return [
       this.spec(TOOL_METADATA[ANALYST_TOOL_IDS.sessionOutline], () => this.indexer.outline()),
       this.spec(TOOL_METADATA[ANALYST_TOOL_IDS.sessionEvents], (args) => this.events(args)),
@@ -107,8 +134,13 @@ export class AnalystTools {
 
   async refresh(): Promise<void> { await this.indexer.refresh(); }
 
-  private spec(metadata: ToolMetadata, execute: (args: Record<string, unknown>) => unknown | Promise<unknown>): AgentToolSpec {
-    return { ...metadata, tag: metadata.id, title: metadata.id, parameters: metadata.parameters, execute: async (args) => execute(record(args)) };
+  private spec(metadata: ToolMetadata, execute: (args: Record<string, unknown>) => unknown | Promise<unknown>): AnalystToolSpec {
+    return {
+      id: metadata.id,
+      description: metadata.description,
+      parameters: metadata.parameters,
+      execute: async (args) => execute(record(args)),
+    };
   }
 
   private events(args: Record<string, unknown>) {

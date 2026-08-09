@@ -6,11 +6,13 @@ import path from "node:path";
 
 import {
   createGlobalPackageUpdater,
-  resolvePathBinary,
   type GlobalPackageManagerInstall,
   type GlobalPackageSpawnContext,
   type GlobalPackageUpdater,
 } from "@dotobokuri/core-agent";
+import {
+  resolvePathBinary,
+} from "@dotobokuri/core-process";
 import { readFleetCliRelease } from "../release.js";
 import { checkUpdateStatus, resolveUpdateChannel } from "./check.js";
 import { resolveSiblingConsoleCliPath, stopRunningConsoleBeforeUpdate } from "./stop-console.js";

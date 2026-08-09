@@ -39,9 +39,9 @@ export default defineConfig([
     esbuildOptions(options) {
       options.alias = {
         ...options.alias,
+        "@dotobokuri/core-agent/claude": path.join(workspaceRoot, "packages/core-agent/src/claude"),
         "@dotobokuri/core-agent": path.join(workspaceRoot, "packages/core-agent/src"),
         "@dotobokuri/core-process": path.join(workspaceRoot, "packages/core-process/src"),
-        "@dotobokuri/core-unified-agent": path.join(workspaceRoot, "packages/core-unified-agent/src"),
         "@dotobokuri/fleet-admiral": path.join(workspaceRoot, "packages/fleet-admiral/src"),
         "@dotobokuri/fleet-analyst": path.join(workspaceRoot, "packages/fleet-analyst/src"),
         "@dotobokuri/core-infra/data-dir/settings": path.join(workspaceRoot, "packages/core-infra/src/data-dir/settings/store.ts"),

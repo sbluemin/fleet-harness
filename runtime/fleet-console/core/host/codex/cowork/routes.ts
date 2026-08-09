@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { MemoryPaths } from "@dotobokuri/fleet-wiki";
-import { getAllBackendConfigs, getEffort, getProviderModels, type CliType } from "@dotobokuri/core-unified-agent";
+import { NATIVE_CLAUDE_EFFORTS, NATIVE_CLAUDE_MODEL_ALIASES } from "@dotobokuri/fleet-admiral";
 import type { CoworkAnnotationDto, CoworkService, CoworkStoredEvent } from "@dotobokuri/fleet-wiki/cowork";
 import { encodeSseData } from "../../sse.js";
 import { withSecurityHeaders } from "../contracts.js";
@@ -18,9 +18,18 @@ export async function handleCoworkRequest(request: IncomingMessage, response: Se
   const service = context.coworkService;
   const parts = url.pathname.split("/").filter(Boolean);
   try {
-    // 저장돼 있던 CLI/모델이 레지스트리에서 사라졌어도 500이 아니라 기본값으로 복구한다.
-    if (request.method === "GET" && parts.length === 3 && parts[2] === "options") { const clis = getAllBackendConfigs().map(c => c.id); const requestedCli = url.searchParams.get("cli"); const cli = (requestedCli && (clis as string[]).includes(requestedCli) ? requestedCli : (clis as string[]).includes("claude") ? "claude" : clis[0] ?? "claude") as CliType; const provider = getProviderModels(cli); const models = provider.models.map(m => m.modelId); // cowork 제품 기본은 경량 모델 — provider 레지스트리 기본(claude=opus[1m])이 아니라 sonnet을 우선한다.
-      const preferredModel = models.includes("sonnet") ? "sonnet" : provider.defaultModel; const requested = url.searchParams.get("model"); const model = requested && models.includes(requested) ? requested : preferredModel; const effort = getEffort(cli, model); return json(response, 200, { clis, models, efforts: effort.supported ? effort.levels : [], defaultModel: preferredModel, defaultEffort: effort.supported ? effort.default : "" }); }
+    // Cowork는 더 이상 Agent CLI를 고르지 않는다 — 모델 하나만 고르고, 전송은 Console의 AI
+    // Gateway가 담당한다. 저장돼 있던 모델이 목록에서 사라졌어도 500이 아니라 기본값으로 복구한다.
+    if (request.method === "GET" && parts.length === 3 && parts[2] === "options") {
+      const models = [...NATIVE_CLAUDE_MODEL_ALIASES];
+      const efforts = [...NATIVE_CLAUDE_EFFORTS];
+      // cowork 제품 기본은 경량 모델이다.
+      const defaultModel = models.includes("sonnet") ? "sonnet" : models[0] ?? "";
+      const defaultEffort = efforts.includes("low") ? "low" : efforts[0] ?? "";
+      const requested = url.searchParams.get("model");
+      const model = requested && models.includes(requested as (typeof models)[number]) ? requested : defaultModel;
+      return json(response, 200, { models, efforts, defaultModel: model, defaultEffort });
+    }
     if (request.method === "POST" && parts.length === 3 && parts[2] === "sessions") { const b = await body(request); if (typeof b.entryId !== "string") return json(response, 400, { error: "invalid_entry_id" }); return json(response, 201, service.dto(await service.create(context.workspaceId, b.entryId, identity(b)))); }
     // 엔트리별 활성 세션 peek — 리딩 뷰가 세션을 만들지 않고 진행 중 초안을 복원할 때 쓴다.
     if (request.method === "GET" && parts.length === 5 && parts[2] === "entries" && parts[4] === "session") { const s = await service.peek(context.workspaceId, decodeURIComponent(parts[3] ?? "")); return s ? json(response, 200, service.dto(s)) : json(response, 404, { error: "cowork_session_not_found" }); }
@@ -72,5 +81,5 @@ function annotation(value: unknown): CoworkAnnotationDto | null {
   if (typeof input.id !== "string" || typeof input.quote !== "string" || typeof input.comment !== "string") return null;
   return { id: input.id, quote: input.quote, comment: input.comment, ...(typeof input.start === "number" && Number.isFinite(input.start) ? { start: input.start } : {}), ...(typeof input.end === "number" && Number.isFinite(input.end) ? { end: input.end } : {}) };
 }
-function identity(b: Record<string, unknown>): { cli?: string; model?: string; effort?: string } { const pick = (v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 64 ? v : undefined; return { cli: pick(b.cli), model: pick(b.model), effort: pick(b.effort) }; }
+function identity(b: Record<string, unknown>): { model?: string; effort?: string } { const pick = (v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 64 ? v : undefined; return { model: pick(b.model), effort: pick(b.effort) }; }
 function json(r: ServerResponse, status: number, value: unknown) { r.writeHead(status, withSecurityHeaders({ "content-type": "application/json; charset=utf-8" })); r.end(JSON.stringify(value)); return true; }

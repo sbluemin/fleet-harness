@@ -11,8 +11,40 @@ vi.mock("@dotobokuri/fleet-analyst", () => ({ AnalystSession: class {} }));
 import { analysisArtifactUrl } from "../../client/agent/analysis-api.js";
 import { AnalysisRegistry, MAX_ANALYSIS_ARTIFACTS, MAX_STOPPED_ANALYSIS_ARTIFACTS } from "./analysis-registry.js";
 import { ANALYSIS_ARTIFACT_CSP, registerAnalysisRoutes } from "./analysis-routes.js";
-import { ANALYSIS_ERROR_CODES, buildAnalysisCatalog, isAnalysisSelection, isMessageBody, type AnalysisEvent, type AnalystCliId } from "./analysis-types.js";
+// core-ai-gateway의 루트 facade는 `node:sqlite`를 동적 import한다. 이 스위트가 그것을 번들하려
+// 들면 수집 단계에서 죽으므로, 여기서 쓰는 세 표면만 세워 둔다.
+vi.mock("@dotobokuri/core-ai-gateway", () => ({
+  AI_GATEWAY_ROUTE_SEGMENT: "ai-gateway",
+  resolveAiGatewaySelection: () => ({ models: [] }),
+  toClaudeGatewayModelId: (model: { id: string }) => `claude-gateway--${model.id}`,
+}));
+
+import { ANALYSIS_ERROR_CODES, buildAnalysisCatalog, isAnalysisSelection, isMessageBody, type AnalysisEvent } from "./analysis-types.js";
 import { readProviderSession } from "./provider-session.js";
+
+/**
+ * 라우트 테스트가 쓰는 네이티브 별칭 로스터.
+ *
+ * 실제 native 별칭 로스터를 그대로 흘려보내면 이 스위트가 fleet-admiral의
+ * models.json 내용에 묶인다 — 거기서 한 모델의 강도 사다리만 바뀌어도 분석가와 무관한 이유로
+ * 여기가 깨진다. 강도를 지원하는 것과 아닌 것을 하나씩 둬서 두 갈래를 다 덮는다.
+ */
+const ANALYST_NATIVE_MODELS = [
+  { modelId: "sonnet", name: "Claude Sonnet", effort: { supported: true, levels: ["low", "high"], default: "medium" } },
+  { modelId: "fixed-effort", name: "Fixed Effort", effort: { supported: false } },
+] as const;
+
+/** 카탈로그가 받아들이는 선택. 강도를 지원하는 모델은 강도 없이 시작할 수 없다. */
+const START_SELECTION = { cliId: "claude-gateway", model: "sonnet", effort: "low" } as const;
+
+type AnalysisRouteDeps = NonNullable<Parameters<typeof registerAnalysisRoutes>[1]>;
+
+function registerAnalysis(router: { readonly ctx: unknown }, deps: Partial<AnalysisRouteDeps> = {}): void {
+  registerAnalysisRoutes(router.ctx as never, {
+    nativeModels: (() => [...ANALYST_NATIVE_MODELS]) as never,
+    ...deps,
+  });
+}
 
 function artifactBaseCss(colors: { readonly canvas: string; readonly surface: string; readonly foreground: string; readonly muted: string; readonly hairline: string; readonly accent: string }): string {
   return `:root{--fleet-canvas:${colors.canvas};--fleet-surface:${colors.surface};--fleet-ink:${colors.foreground};--fleet-muted:${colors.muted};--fleet-hairline:${colors.hairline};--fleet-accent:${colors.accent}}a{color:var(--fleet-accent)}code{background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:4px;padding:0 .3em}pre{background:var(--fleet-surface);border:1px solid var(--fleet-hairline);border-radius:8px;padding:12px;overflow-x:auto}pre code{background:none;border:none;padding:0}blockquote{border-left:3px solid var(--fleet-hairline);color:var(--fleet-muted);margin-left:0;padding-left:1em}hr{border:none;border-top:1px solid var(--fleet-hairline)}th,td{border-color:var(--fleet-hairline)}::selection{background:var(--fleet-accent);color:var(--fleet-canvas)}`;
@@ -34,27 +66,50 @@ describe("Session Analyst server contract", () => {
     });
   });
 
-  it("maps detected binaries to a non-sensitive authoritative catalog and rejects stale selections", () => {
-    const modelsFor = vi.fn((_cliId: AnalystCliId) => ({ defaultModel: "model-a", models: [{ modelId: "model-a", name: "Model A", effort: { supported: true, levels: ["low"], default: "low" } }] }));
-    const catalog = buildAnalysisCatalog([
-      { id: "claude", displayName: "Claude Code", available: true, version: "1.2.3" },
-    ], modelsFor);
-    expect(catalog.clis.map((cli) => cli.cliId)).toEqual(["claude"]);
-    expect(catalog.clis).toEqual(expect.arrayContaining([expect.objectContaining({ cliId: "claude", available: true })]));
+  it("offers native aliases beside the enabled gateway models and rejects stale selections", () => {
+    const native = [
+      { modelId: "sonnet", name: "Claude Sonnet", effort: { supported: true, levels: ["low", "high"], default: "medium" } },
+      { modelId: "opus", name: "Claude Opus", effort: { supported: true, levels: ["low", "high"], default: "xhigh" } },
+    ];
+    // 카탈로그 내용이 아니라 두 갈래가 한 목록으로 합쳐지는지를 본다. 실제 카탈로그를 import하면
+    // 이 스위트가 core-ai-gateway 전체(node:sqlite 포함)를 번들하려다 죽는다.
+    const gateway = [{
+      id: "codex--gpt-5.6-luna-fast",
+      displayName: "GPT-5.6-Luna-Fast",
+      provider: "codex",
+      effort: { supported: true, levels: ["low", "high"] },
+    }] as unknown as Parameters<typeof buildAnalysisCatalog>[1];
+    const catalog = buildAnalysisCatalog(native, gateway, true);
+    const entry = catalog.clis[0]!;
+    expect(catalog.clis.map((cli) => cli.cliId)).toEqual(["claude-gateway"]);
+    expect(entry.available).toBe(true);
+    // 소유자가 정한 기본은 sonnet/low다. 오늘의 기본이던 opus/xhigh를 낮춘 것이며, 선택지는 그대로다.
+    expect(entry.defaultModel).toBe("sonnet");
+    expect(entry.models.find((model) => model.id === "sonnet")?.defaultEffort).toBe("low");
+    expect(entry.models.find((model) => model.id === "opus")?.defaultEffort).toBe("xhigh");
+    expect(entry.models.some((model) => model.id.startsWith("claude-gateway--"))).toBe(true);
+    // 게이트웨이 모델 스키마에는 기본 강도가 없으므로 지어내지 않는다.
+    expect(entry.models.find((model) => model.id.startsWith("claude-gateway--"))).not.toHaveProperty("defaultEffort");
     expect(JSON.stringify(catalog)).not.toMatch(/path|version|session/i);
-    expect(modelsFor.mock.calls.map(([cliId]) => cliId)).toEqual(["claude"]);
-    expect(isAnalysisSelection(catalog, { cliId: "claude", model: "model-a", effort: "low" })).toBe(true);
-    expect(isAnalysisSelection(catalog, { cliId: "claude", model: "model-a", effort: "low", language: "ko" })).toBe(true);
-    expect(isAnalysisSelection(catalog, { cliId: "claude", model: "model-a", effort: "low", language: "ja" })).toBe(false);
-    expect(isAnalysisSelection(catalog, { cliId: "claude", model: "model-a" })).toBe(false);
-    expect(isAnalysisSelection(catalog, { cliId: "claude", model: "removed", effort: "low" })).toBe(false);
+    expect(isAnalysisSelection(catalog, { cliId: "claude-gateway", model: "sonnet", effort: "low" })).toBe(true);
+    expect(isAnalysisSelection(catalog, { cliId: "claude-gateway", model: "sonnet", effort: "low", language: "ko" })).toBe(true);
+    expect(isAnalysisSelection(catalog, { cliId: "claude-gateway", model: "sonnet", effort: "low", language: "ja" })).toBe(false);
+    // 강도를 지원하는 모델은 강도 없이 시작할 수 없다.
+    expect(isAnalysisSelection(catalog, { cliId: "claude-gateway", model: "sonnet" })).toBe(false);
+    expect(isAnalysisSelection(catalog, { cliId: "claude-gateway", model: "removed", effort: "low" })).toBe(false);
 
-    const noEffortCatalog = buildAnalysisCatalog([
-      { id: "claude", displayName: "Claude Code", available: true, version: "1.2.3" },
-    ], () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }));
-    expect(isAnalysisSelection(noEffortCatalog, { cliId: "claude", model: "model-b" })).toBe(true);
-    expect(isAnalysisSelection(noEffortCatalog, { cliId: "claude", model: "model-b", effort: "" })).toBe(true);
-    expect(isAnalysisSelection(noEffortCatalog, { cliId: "claude", model: "model-b", effort: "low" })).toBe(false);
+    // 반대로 강도가 없는 모델은 강도를 실으면 거부한다 — 사용자가 고르지 않은 값이기 때문이다.
+    const noEffortCatalog = buildAnalysisCatalog([{ modelId: "model-b", name: "Model B", effort: { supported: false } }], [], true);
+    expect(isAnalysisSelection(noEffortCatalog, { cliId: "claude-gateway", model: "model-b" })).toBe(true);
+    expect(isAnalysisSelection(noEffortCatalog, { cliId: "claude-gateway", model: "model-b", effort: "" })).toBe(true);
+    expect(isAnalysisSelection(noEffortCatalog, { cliId: "claude-gateway", model: "model-b", effort: "low" })).toBe(false);
+  });
+
+  it("reports the analyst unavailable before the Console is listening", () => {
+    // 포트를 추측해 자식을 띄우면 첫 턴에서야 알 수 없는 이유로 죽는다.
+    const native = [{ modelId: "sonnet", name: "Claude Sonnet", effort: { supported: true, levels: ["low"], default: "low" } }];
+    expect(buildAnalysisCatalog(native, [], false).clis[0]!.available).toBe(false);
+    expect(buildAnalysisCatalog([], [], true).clis[0]!.available).toBe(false);
   });
 
   it("accepts only the frozen message shape", () => {
@@ -266,96 +321,57 @@ describe("Session Analyst server contract", () => {
     const router = createRouterHarness(true);
     const createSession = vi.fn((_options: unknown) => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
-    registerAnalysisRoutes(router.ctx as never, {
-      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
-      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+    registerAnalysis(router, {
       createSession: createSession as never,
     });
 
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b", language: "ko" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude-gateway", model: "fixed-effort", language: "ko" });
     expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
     expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ effort: undefined, language: "ko" }));
   });
 
-  it("uses the configured Claude path for Analyst detection and execution", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "analysis-cli-path-"));
+  it("binds the session to this Console's own gateway and carries nothing about an Agent CLI", async () => {
+    // 예전에는 저장된 Agent CLI 경로와 정제된 env를 실어 자식을 직접 띄웠다. 이제 자식은 SDK가
+    // 띄우고 이 라우트가 정하는 것은 어느 게이트웨이로 말할지뿐이므로, 경로·env가 다시 새어
+    // 들어가면 여기서 걸린다.
+    const dir = await mkdtemp(join(tmpdir(), "analysis-session-wiring-"));
     const transcriptPath = join(dir, "captured.jsonl");
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
-    const readAgentCliPaths = vi.fn(async () => ({ claude: process.execPath }));
-    const createSession = vi.fn((_options: unknown) => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
+    const createSession = vi.fn((_options: Record<string, unknown>) => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
-    registerAnalysisRoutes(router.ctx as never, {
-      env: { PATH: "" },
-      readAgentCliPaths,
-      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      createSession: createSession as never,
-    });
+    registerAnalysis(router, { createSession: createSession as never });
 
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", START_SELECTION);
 
     expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
-    expect(readAgentCliPaths).toHaveBeenCalledTimes(2);
-    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({
-      cliId: "claude",
-      cliPath: process.execPath,
-      env: { CLAUDE_BIN: process.execPath },
-    }));
-  });
-
-  it("keeps an existing Analyst CLI env override ahead of a stored user path", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "analysis-cli-env-"));
-    const transcriptPath = join(dir, "captured.jsonl");
-    await writeFile(transcriptPath, "{}\n");
-    const router = createRouterHarness(true);
-    const readAgentCliPaths = vi.fn(async () => ({ claude: "/stored/path/must-not-win" }));
-    const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
-    router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
-    registerAnalysisRoutes(router.ctx as never, {
-      env: { PATH: "", CLAUDE_BIN: process.execPath },
-      readAgentCliPaths,
-      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      createSession: createSession as never,
+    const options = createSession.mock.calls[0]?.[0] ?? {};
+    expect(options).toMatchObject({
+      // 포트를 추측하지 않는다 — 호스트가 실제로 리슨 중인 origin 아래 이 플러그인의 게이트웨이다.
+      baseUrl: "http://127.0.0.1:43210/plugins/terminal/ai-gateway",
+      model: "sonnet",
+      effort: "low",
+      cwd: "/theater",
+      capturePath: transcriptPath,
     });
-
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
-
-    expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
-    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({
-      cliPath: process.execPath,
-      env: undefined,
-    }));
+    expect(Object.keys(options).filter((key) => /cli|path|env/i.test(key))).toEqual(["capturePath"]);
   });
 
-
-
-  it("passes no custom env when no Agent CLI user path is stored", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "analysis-cli-no-path-"));
+  it("refuses to start before the Console is listening instead of guessing a gateway port", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "analysis-no-origin-"));
     const transcriptPath = join(dir, "captured.jsonl");
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
     const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
-    registerAnalysisRoutes(router.ctx as never, {
-      env: {
-        PATH: "",
-        CLAUDE_BIN: process.execPath,
-        CLAUDECODE: "nested",
-        NODE_OPTIONS: "--inspect",
-        npm_config_user_agent: "must-not-return",
-      },
-      readAgentCliPaths: async () => ({}),
-      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
-      createSession: createSession as never,
-    });
+    router.setOrigin(null);
+    registerAnalysis(router, { createSession: createSession as never });
 
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", START_SELECTION);
 
-    expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
-    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({
-      cliPath: process.execPath,
-      env: undefined,
-    }));
+    // 리슨 전이면 카탈로그가 이미 unavailable이므로 선택 자체가 서지 않는다.
+    expect(router.responses.at(-1)).toMatchObject({ status: 400, body: { error: { code: "analysis_catalog_invalid" } } });
+    expect(createSession).not.toHaveBeenCalled();
   });
 
   it("disposes a registry entry when its Operation is deleted during pending start", async () => {
@@ -371,13 +387,11 @@ describe("Session Analyst server contract", () => {
       dispose,
     }));
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
-    registerAnalysisRoutes(router.ctx as never, {
-      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
-      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+    registerAnalysis(router, {
       createSession: createSession as never,
     });
 
-    const starting = router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    const starting = router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", START_SELECTION);
     await vi.waitFor(() => expect(createSession).toHaveBeenCalledOnce());
     router.deleteOperation();
     router.emitOperationDeleted({ operationId: "op", pluginId: "terminal", type: "agent" });
@@ -401,13 +415,11 @@ describe("Session Analyst server contract", () => {
       dispose,
     }));
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
-    registerAnalysisRoutes(router.ctx as never, {
-      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
-      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+    registerAnalysis(router, {
       createSession: createSession as never,
     });
 
-    const starting = router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    const starting = router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", START_SELECTION);
     await vi.waitFor(() => expect(createSession).toHaveBeenCalledOnce());
     router.deleteOperation();
     router.emitOperationDeleted({ operationId: "op", pluginId: "terminal", type: "agent" });
@@ -422,22 +434,19 @@ describe("Session Analyst server contract", () => {
     const transcriptPath = join(dir, "captured.jsonl");
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
-    const statuses = [{ id: "claude", displayName: "Claude Code", available: true, version: null }] as const;
-    let resolveDetect!: (value: typeof statuses) => void;
-    const detection = new Promise<typeof statuses>((resolve) => { resolveDetect = resolve; });
-    const detect = vi.fn(() => detection);
+    // 삭제 이벤트가 오지 않은 채 Operation만 사라지는 경로다. deletionMarker는 서지 않으므로
+    // 마지막 확인의 나머지 절반 — 준비가 끝난 시점에 Operation이 아직 있는가 — 만이 이것을 잡는다.
     const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
-    registerAnalysisRoutes(router.ctx as never, {
-      detect,
-      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+    registerAnalysis(router, {
       createSession: createSession as never,
     });
 
-    const starting = router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
-    await vi.waitFor(() => expect(detect).toHaveBeenCalledOnce());
+    const preparing = router.holdNextBodyRead();
+    const starting = router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", START_SELECTION);
+    await preparing.entered;
     router.deleteOperation();
-    resolveDetect(statuses);
+    preparing.release();
     await starting;
 
     expect(router.responses.at(-1)).toMatchObject({ status: 404, body: { error: { code: "analysis_session_not_found" } } });
@@ -449,24 +458,21 @@ describe("Session Analyst server contract", () => {
     const transcriptPath = join(dir, "captured.jsonl");
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
-    const statuses = [{ id: "claude", displayName: "Claude Code", available: true, version: null }] as const;
-    let resolveDetect!: (value: typeof statuses) => void;
-    const detection = new Promise<typeof statuses>((resolve) => { resolveDetect = resolve; });
-    const detect = vi.fn(() => detection);
+    // CLI 탐지가 사라져 그 자리의 hold point도 사라졌다. 준비 단계를 붙잡아 같은 경합을 만든다 —
+    // 같은 id로 다시 생긴 Operation은 별개이므로, 최종 확인은 id 존재가 아니라 삭제 사실을 봐야 한다.
     const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
-    registerAnalysisRoutes(router.ctx as never, {
-      detect,
-      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+    registerAnalysis(router, {
       createSession: createSession as never,
     });
 
-    const starting = router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
-    await vi.waitFor(() => expect(detect).toHaveBeenCalledOnce());
+    const preparing = router.holdNextBodyRead();
+    const starting = router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", START_SELECTION);
+    await preparing.entered;
     router.deleteOperation();
     router.emitOperationDeleted({ operationId: "op", pluginId: "terminal", type: "agent" });
     router.recreateOperation();
-    resolveDetect(statuses);
+    preparing.release();
     await starting;
 
     expect(router.responses.at(-1)).toMatchObject({ status: 404, body: { error: { code: "analysis_session_not_found" } } });
@@ -475,7 +481,7 @@ describe("Session Analyst server contract", () => {
 
   it("reports analysis as not ready when no provider capture exists", async () => {
     const router = createRouterHarness(true);
-    registerAnalysisRoutes(router.ctx as never);
+    registerAnalysis(router);
 
     await router.call("GET", "/api/v1/plugins/terminal/analysis/op/ready");
 
@@ -488,7 +494,7 @@ describe("Session Analyst server contract", () => {
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
-    registerAnalysisRoutes(router.ctx as never);
+    registerAnalysis(router);
 
     await router.call("GET", "/api/v1/plugins/terminal/analysis/op/ready");
 
@@ -503,14 +509,12 @@ describe("Session Analyst server contract", () => {
     const router = createRouterHarness(true);
     const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
     router.setProviderSession({ provider: "codex", sessionId: "legacy-private", capturedAt: "now", transcriptPath });
-    registerAnalysisRoutes(router.ctx as never, {
-      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
-      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+    registerAnalysis(router, {
       createSession: createSession as never,
     });
 
     await router.call("GET", "/api/v1/plugins/terminal/analysis/op/ready");
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", START_SELECTION);
 
     expect(router.responses.at(-2)).toEqual({ status: 200, body: { ready: true } });
     expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
@@ -524,7 +528,7 @@ describe("Session Analyst server contract", () => {
     await writeFile(fallbackPath, "{}\n");
     const router = createRouterHarness(true);
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath: join(dir, "missing-session.jsonl") });
-    registerAnalysisRoutes(router.ctx as never);
+    registerAnalysis(router);
 
     await router.call("GET", "/api/v1/plugins/terminal/analysis/op/ready");
 
@@ -539,13 +543,11 @@ describe("Session Analyst server contract", () => {
     const router = createRouterHarness(true);
     const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath: join(dir, "hook-session.jsonl") });
-    registerAnalysisRoutes(router.ctx as never, {
-      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
-      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+    registerAnalysis(router, {
       createSession: createSession as never,
     });
 
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", START_SELECTION);
     expect(router.responses.at(-1)).toMatchObject({ status: 409, body: { error: { code: "analysis_transcript_missing" } } });
     expect(createSession).not.toHaveBeenCalled();
   });
@@ -557,20 +559,18 @@ describe("Session Analyst server contract", () => {
     const router = createRouterHarness(true);
     const createSession = vi.fn(() => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }));
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath: join(dir, "hook-session.jsonl") });
-    registerAnalysisRoutes(router.ctx as never, {
-      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
-      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+    registerAnalysis(router, {
       createSession: createSession as never,
     });
 
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", START_SELECTION);
     expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
     expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ capturePath: activePath }));
   });
 
   it("writes connected and frozen error envelopes for a missing-session stream", async () => {
     const router = createRouterHarness(true);
-    registerAnalysisRoutes(router.ctx as never);
+    registerAnalysis(router);
 
     const response = await router.call("GET", "/api/v1/plugins/terminal/analysis/op/stream");
     expect(response.writes).toEqual([
@@ -588,15 +588,13 @@ describe("Session Analyst server contract", () => {
     let emit: ((event: { type: "artifact"; artifact: { id: string; title: string; html: string; createdAt: string } }) => void) | undefined;
     const dispose = vi.fn(async () => undefined);
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
-    registerAnalysisRoutes(router.ctx as never, {
-      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
-      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+    registerAnalysis(router, {
       createSession: ((options: { onEvent: typeof emit }) => {
         emit = options.onEvent;
         return { start: async () => undefined, send: async () => undefined, dispose };
       }) as never,
     });
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", START_SELECTION);
     const html = "<main>Artifact<script>globalThis.__artifactRan = true</script></main>";
     emit?.({ type: "artifact", artifact: { id: "artifact/id", title: "Artifact", html, createdAt: new Date(0).toISOString() } });
 
@@ -679,7 +677,7 @@ describe("Session Analyst server contract", () => {
     await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/artifact%2Fid");
     expect(router.responses.at(-1)).toMatchObject({ status: 404, body: { error: { message: "Analysis artifact was not found." } } });
 
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", START_SELECTION);
     emit?.({ type: "artifact", artifact: { id: "deleted-artifact", title: "Deleted artifact", html, createdAt: new Date(0).toISOString() } });
     router.emitOperationDeleted({ operationId: "op", pluginId: "terminal" });
     await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce());
@@ -697,15 +695,13 @@ describe("Session Analyst server contract", () => {
     const router = createRouterHarness(true);
     let emit: ((event: { type: "artifact"; artifact: { id: string; title: string; html: string; createdAt: string } }) => void) | undefined;
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
-    registerAnalysisRoutes(router.ctx as never, {
-      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
-      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+    registerAnalysis(router, {
       createSession: ((options: { onEvent: typeof emit }) => {
         emit = options.onEvent;
         return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined };
       }) as never,
     });
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", START_SELECTION);
     const hostileHtml = `<!doctype html><html lang="en" class='artifact-root' data-note="quoted > value" data-theme="artifact" style='scrollbar-gutter:stable;background-color:white!important'><head><style>html,body{background:linear-gradient(white,white)!important;color:white!important;min-height:1px!important;color-scheme:light!important}</style></head><body class="artifact-body" aria-label='Artifact > body' data-layout="report" style='display:grid;padding:24px;font-family:"Artifact Serif";--artifact-label:"alpha;beta";letter-spacing:.1em;margin:40px;background-color:hotpink!important;background-image:linear-gradient(white,white)!important;color:white!important;min-height:1px!important;color-scheme:light!important'><script>globalThis.__artifactRan=true</script><main>Artifact</main></body></html>`;
     emit?.({ type: "artifact", artifact: { id: "hostile", title: "Hostile", html: hostileHtml, createdAt: new Date(0).toISOString() } });
 
@@ -764,15 +760,13 @@ describe("Session Analyst server contract", () => {
     const router = createRouterHarness(true);
     let emit: ((event: { type: "artifact"; artifact: { id: string; title: string; html: string; createdAt: string } }) => void) | undefined;
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
-    registerAnalysisRoutes(router.ctx as never, {
-      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
-      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+    registerAnalysis(router, {
       createSession: ((options: { onEvent: typeof emit }) => {
         emit = options.onEvent;
         return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined };
       }) as never,
     });
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", START_SELECTION);
     emit?.({ type: "artifact", artifact: { id: "safe", title: "Safe", html: "<p>safe</p>", createdAt: new Date(0).toISOString() } });
     const hostile = 'red!important;"><script>globalThis.injected=true</script>';
     const query = new URLSearchParams({
@@ -810,7 +804,7 @@ describe("Session Analyst server contract", () => {
 
   it("host-gates artifact documents and returns 404 for unknown ids", async () => {
     const router = createRouterHarness(false);
-    registerAnalysisRoutes(router.ctx as never);
+    registerAnalysis(router);
 
     await router.call("GET", "/api/v1/plugins/terminal/analysis/artifacts/missing");
     expect(router.responses.at(-1)).toMatchObject({ status: 403 });
@@ -823,24 +817,22 @@ describe("Session Analyst server contract", () => {
   it("validates Host before route work and never reveals unavailable capture paths", async () => {
     const router = createRouterHarness(false);
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now" });
-    registerAnalysisRoutes(router.ctx as never, {
-      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
-      modelsFor: () => ({ defaultModel: "model-a", models: [{ modelId: "model-a", name: "Model A", effort: { supported: true, levels: ["low"], default: "low" } }] }) as never,
+    registerAnalysis(router, {
     });
     await router.call("GET", "/api/v1/plugins/terminal/analysis/catalog");
     expect(router.responses.at(-1)).toMatchObject({ status: 403, body: { error: { code: "analysis_catalog_invalid" } } });
 
     router.allowHost = true;
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-a", effort: "low" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude-gateway", model: "sonnet", effort: "low" });
     expect(router.responses.at(-1)).toMatchObject({ status: 409, body: { error: { code: "analysis_transcript_missing" } } });
     expect(JSON.stringify(router.responses)).not.toContain("private");
   });
 
   it("rejects a malicious Origin through the shared gate for every analysis action", async () => {
-    const detect = vi.fn(async () => []);
     const router = createRouterHarness(true);
-    registerAnalysisRoutes(router.ctx as never, { detect 
-    });
+    // 거부된 요청은 아무 일도 하지 않아야 한다. 설정을 읽었다면 경계 밖에서 일을 시작한 것이다.
+    const readAiGatewaySettings = vi.fn(() => ({}) as never);
+    registerAnalysis(router, { readAiGatewaySettings });
     const requests = [
       ["GET", "/api/v1/plugins/terminal/analysis/catalog"],
       ["GET", "/api/v1/plugins/terminal/analysis/stream"],
@@ -859,7 +851,7 @@ describe("Session Analyst server contract", () => {
 
     expect(router.responses).toHaveLength(requests.length);
     expect(router.responses).toEqual(requests.map(() => ({ status: 403, body: { error: { code: "analysis_catalog_invalid", message: "Analysis request is not accepted by this host." } } })));
-    expect(detect).not.toHaveBeenCalled();
+    expect(readAiGatewaySettings).not.toHaveBeenCalled();
   });
 
   it("routes registry publications through subscribeAll with operation isolation", async () => {
@@ -898,16 +890,14 @@ describe("Session Analyst server contract", () => {
     const router = createRouterHarness(true);
     const emitters = new Map<string, (event: AnalysisEvent) => void>();
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
-    registerAnalysisRoutes(router.ctx as never, {
-      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
-      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+    registerAnalysis(router, {
       createSession: ((options: { onEvent: (event: AnalysisEvent) => void; capturePath?: string }) => {
         emitters.set(options.capturePath ?? "default", options.onEvent);
         return { start: async () => undefined, send: async () => undefined, dispose: async () => undefined };
       }) as never,
     });
 
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", START_SELECTION);
     const response = await router.call("GET", "/api/v1/plugins/terminal/analysis/stream");
     expect(response.writes[0]).toBe(`data: ${JSON.stringify({ type: "connected", operationIds: ["op"] })}\n\n`);
     emitters.values().next().value?.({ type: "chunk", text: "isolated" });
@@ -945,14 +935,12 @@ describe("Session Analyst server contract", () => {
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
-    registerAnalysisRoutes(router.ctx as never, {
-      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
-      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+    registerAnalysis(router, {
       createSession: () => ({ start: async () => undefined, send: async () => undefined, dispose: async () => undefined }) as never,
     });
     const response = await router.call("GET", "/api/v1/plugins/terminal/analysis/stream");
     expect(response.writes[0]).toBe(`data: ${JSON.stringify({ type: "connected", operationIds: [] })}\n\n`);
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", START_SELECTION);
     await vi.waitFor(() => expect(response.writes.at(-1)).toBe(`data: ${JSON.stringify({ type: "connected", operationIds: ["op"] })}\n\n`));
     await router.call("POST", "/api/v1/plugins/terminal/analysis/op/stop", {});
     await vi.waitFor(() => expect(response.writes.at(-1)).toBe(`data: ${JSON.stringify({ type: "connected", operationIds: [] })}\n\n`));
@@ -964,16 +952,14 @@ describe("Session Analyst server contract", () => {
     await writeFile(transcriptPath, "{}\n");
     const router = createRouterHarness(true);
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
-    registerAnalysisRoutes(router.ctx as never, {
-      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
-      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+    registerAnalysis(router, {
       createSession: () => ({
         start: async () => undefined,
         send: async () => { throw new Error("/Users/alice/private token"); },
         dispose: async () => undefined,
       }) as never,
     });
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", START_SELECTION);
     const response = await router.call("GET", "/api/v1/plugins/terminal/analysis/stream");
     await router.call("POST", "/api/v1/plugins/terminal/analysis/op/message", { text: "review" });
     await vi.waitFor(() => expect(response.writes.at(-1)).toBe(`data: ${JSON.stringify({
@@ -992,15 +978,13 @@ describe("Session Analyst server contract", () => {
     let emit: ((event: AnalysisEvent) => void) | undefined;
     const dispose = vi.fn(async () => undefined);
     router.setProviderSession({ provider: "claude", sessionId: "private", capturedAt: "now", transcriptPath });
-    registerAnalysisRoutes(router.ctx as never, {
-      detect: async () => [{ id: "claude", displayName: "Claude Code", available: true, version: null }],
-      modelsFor: () => ({ defaultModel: "model-b", models: [{ modelId: "model-b", name: "Model B", effort: { supported: false } }] }) as never,
+    registerAnalysis(router, {
       createSession: ((options: { onEvent: typeof emit }) => {
         emit = options.onEvent;
         return { start: async () => undefined, send: async () => undefined, dispose };
       }) as never,
     });
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "model-b" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", START_SELECTION);
     const response = await router.call("GET", "/api/v1/plugins/terminal/analysis/stream");
     emit?.({ type: "error", error: { code: "analysis_exited", message: "exited" } });
     const eventWrite = `data: ${JSON.stringify({
@@ -1034,7 +1018,13 @@ function createRouterHarness(initialHostAllowance: boolean) {
   const operationLifecycleHandlers = new Map<string, (payload: unknown) => void>();
   const responses: Array<{ status: number; body: unknown }> = [];
   const operation = { id: "op", pluginId: "terminal", type: "agent", theaterId: "theater", payload: {} as Record<string, unknown>, ts: { createdAt: 0, updatedAt: 0 } };
-  const state = { allowHost: initialHostAllowance, operationPresent: true, operation };
+  const state = {
+    allowHost: initialHostAllowance,
+    operationPresent: true,
+    operation,
+    origin: "http://127.0.0.1:43210" as string | null,
+    bodyGate: null as { readonly entered: () => void; readonly held: Promise<void> } | null,
+  };
   const ctx = {
     pluginId: "terminal", basePath: "/api/v1/plugins/terminal",
     registerRouter: (_path: string, registered: typeof handler) => { handler = registered; },
@@ -1043,9 +1033,18 @@ function createRouterHarness(initialHostAllowance: boolean) {
         validateHost: () => state.allowHost,
         isTerminalAuthorized: (req: { headers: Record<string, string> }) => req.headers.origin !== "https://evil.example",
       },
-      http: { writeJson: (_res: EventEmitter, status: number, body: unknown) => responses.push({ status, body }), readJsonBody: async (req: EventEmitter & { body?: unknown }) => req.body ?? null },
+      http: {
+        writeJson: (_res: EventEmitter, status: number, body: unknown) => responses.push({ status, body }),
+        readJsonBody: async (req: EventEmitter & { body?: unknown }) => {
+          const gate = state.bodyGate;
+          if (gate) { state.bodyGate = null; gate.entered(); await gate.held; }
+          return req.body ?? null;
+        },
+      },
       operations: { get: (id: string) => state.operationPresent && id === "op" ? state.operation : null },
       paths: { resolveTheaterPath: () => "/theater" },
+      // 분석가는 Console origin이 있어야 게이트웨이 주소를 조립할 수 있다.
+      server: { origin: () => state.origin },
       events: {
         subscribe: (channel: string, subscriber: (payload: unknown) => void) => {
           operationLifecycleHandlers.set(channel, subscriber);
@@ -1060,6 +1059,16 @@ function createRouterHarness(initialHostAllowance: boolean) {
     get allowHost() { return state.allowHost; }, set allowHost(value: boolean) { state.allowHost = value; },
     setProviderSession(providerSession: { readonly provider: "claude" | "codex"; readonly sessionId: string; readonly capturedAt: string; readonly transcriptPath?: string; readonly source?: string }) {
       state.operation.payload = { ...state.operation.payload, providerSession };
+    },
+    setOrigin(origin: string | null) { state.origin = origin; },
+    /** 다음 요청의 본문 읽기를 붙잡아, 준비 단계 한가운데를 관측할 수 있는 지점으로 만든다. */
+    holdNextBodyRead(): { readonly entered: Promise<void>; readonly release: () => void } {
+      let entered!: () => void;
+      let release!: () => void;
+      const enteredPromise = new Promise<void>((resolve) => { entered = resolve; });
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      state.bodyGate = { entered, held };
+      return { entered: enteredPromise, release };
     },
     deleteOperation() { state.operationPresent = false; },
     recreateOperation() {

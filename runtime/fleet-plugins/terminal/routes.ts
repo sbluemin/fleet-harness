@@ -111,7 +111,8 @@ export default definePlugin({
     // store는 무상태 어댑터라 여기서 별도로 만들어도 저장 파일과 우선순위 계약은 하나로 유지된다.
     const agentCliPathStore = createAgentCliPathStore(ctx.host.storage, ctx.pluginId);
     registerAnalysisRoutes(ctx, {
-      readAgentCliPaths: async () => (await agentCliPathStore.read()).paths,
+      // 분석가는 이제 게이트웨이 위에서 돈다. 고를 수 있는 모델은 사용자가 켠 선별이다.
+      readAiGatewaySettings: aiGatewayStore.read,
     });
     const agentLaunchKinds = await registerAgentRoutes(ctx, runtime, {
       globalOptionsService: infraServices.globalOptionsService,

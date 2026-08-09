@@ -73,7 +73,7 @@ describe("Cowork inline copilot", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/cowork/entries/")) return new Response(JSON.stringify({ error: "cowork_session_not_found" }), { status: 404 });
-      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["codex"], models: ["gpt"], efforts: ["medium"] }));
+      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["gpt"], efforts: ["medium"] }));
       if (url.endsWith("/annotations")) { postedAnnotations = (JSON.parse(String(init?.body)) as { annotations: unknown[] }).annotations; return new Response(JSON.stringify(fresh)); }
       if (url.endsWith("/cowork/sessions")) return new Response(JSON.stringify(fresh), { status: 201 });
       return new Response(JSON.stringify(fresh));
@@ -114,7 +114,7 @@ describe("Cowork inline copilot", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/cowork/entries/")) return new Response(JSON.stringify({ error: "cowork_session_not_found" }), { status: 404 });
-      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["claude"], models: ["sonnet"], efforts: ["medium"], defaultModel: "sonnet", defaultEffort: "medium" }));
+      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["sonnet"], efforts: ["medium"], defaultModel: "sonnet", defaultEffort: "medium" }));
       if (url.endsWith("/cowork/sessions")) return new Response(JSON.stringify(fresh), { status: 201 });
       return new Response(JSON.stringify(fresh));
     });
@@ -157,7 +157,7 @@ describe("Cowork inline copilot", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/cowork/entries/")) return new Response(JSON.stringify({ error: "cowork_session_not_found" }), { status: 404 });
-      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["codex"], models: ["gpt"], efforts: ["medium"] }));
+      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["gpt"], efforts: ["medium"] }));
       if (url.endsWith("/cowork/sessions")) return createGate;
       return new Response(JSON.stringify(fresh));
     });
@@ -205,7 +205,7 @@ describe("Cowork inline copilot", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/cowork/entries/")) return new Response(JSON.stringify(sessionDto()));
-      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["codex"], models: ["gpt"], efforts: ["medium"] }));
+      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["gpt"], efforts: ["medium"] }));
       if (url.endsWith("/prompt")) {
         promptRequests += 1;
         await promptGate;
@@ -245,7 +245,7 @@ describe("Cowork inline copilot", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/cowork/entries/")) return new Response(JSON.stringify(sessionDto()));
-      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["codex"], models: ["gpt"], efforts: ["medium"] }));
+      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["gpt"], efforts: ["medium"] }));
       return new Response(JSON.stringify(sessionDto()));
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -287,7 +287,7 @@ describe("Cowork inline copilot", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/cowork/entries/")) return new Response(JSON.stringify(deletionOnly));
-      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["codex"], models: ["gpt"], efforts: ["medium"] }));
+      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["gpt"], efforts: ["medium"] }));
       return new Response(JSON.stringify(deletionOnly));
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -303,7 +303,7 @@ describe("Cowork inline copilot", () => {
     article.remove();
   });
 
-  it("refreshes model and effort lists when the CLI changes", async () => {
+  it("refreshes the effort list when the model changes and drops the stale effort", async () => {
     const listeners = new Map<string, EventListener>();
     class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
     vi.stubGlobal("EventSource", FakeEventSource);
@@ -311,9 +311,9 @@ describe("Cowork inline copilot", () => {
       const url = String(input);
       if (url.includes("/cowork/entries/")) return new Response(JSON.stringify(sessionDto()));
       if (url.includes("/options")) {
-        return url.includes("cli=claude")
-          ? new Response(JSON.stringify({ clis: ["codex", "claude"], models: ["opus"], efforts: ["high"] }))
-          : new Response(JSON.stringify({ clis: ["codex", "claude"], models: ["gpt"], efforts: ["medium"] }));
+        return url.includes("model=opus")
+          ? new Response(JSON.stringify({ models: ["gpt", "opus"], efforts: ["high"], defaultModel: "opus", defaultEffort: "high" }))
+          : new Response(JSON.stringify({ models: ["gpt", "opus"], efforts: ["medium"], defaultModel: "gpt", defaultEffort: "medium" }));
       }
       return new Response(JSON.stringify(sessionDto()));
     });
@@ -325,17 +325,16 @@ describe("Cowork inline copilot", () => {
     await vi.waitFor(() => expect(article.querySelector(".cowork-chip")?.textContent).toContain("1"));
 
     article.querySelector<HTMLElement>('[data-cowork-action="toggle-config"]')?.click();
-    await vi.waitFor(() => expect(article.querySelectorAll(".fc-select__trigger")).toHaveLength(3));
-    const cliTrigger = article.querySelectorAll<HTMLButtonElement>(".fc-select__trigger")[0]!;
-    cliTrigger.click();
+    // CLI 선택기가 사라져 이제 모델과 강도 둘뿐이다.
+    await vi.waitFor(() => expect(article.querySelectorAll(".fc-select__trigger")).toHaveLength(2));
+    const modelTrigger = article.querySelectorAll<HTMLButtonElement>(".fc-select__trigger")[0]!;
+    modelTrigger.click();
     await vi.waitFor(() => expect(document.querySelector(".fc-select__popup")).not.toBeNull());
-    [...document.querySelectorAll<HTMLLIElement>(".fc-select__option")].find((option) => option.textContent === "claude")!.click();
+    [...document.querySelectorAll<HTMLLIElement>(".fc-select__option")].find((option) => option.textContent === "opus")!.click();
 
-    // 이전 CLI의 model을 들고 재조회하면 안 되고, 새 CLI의 목록으로 교체되어야 한다.
-    await vi.waitFor(() => expect(article.querySelectorAll<HTMLButtonElement>(".fc-select__trigger")[1]?.textContent).toContain("opus"));
-    const claudeOptionsUrl = fetchMock.mock.calls.map(call => String(call[0])).find(url => url.includes("cli=claude"))!;
-    expect(claudeOptionsUrl).not.toContain("model=");
-    expect(article.querySelectorAll<HTMLButtonElement>(".fc-select__trigger")[2]?.textContent).toContain("high");
+    // 모델이 바뀌면 강도 사다리가 달라질 수 있으므로, 옛 강도를 들고 재조회하지 않고 새 목록으로 교체한다.
+    await vi.waitFor(() => expect(article.querySelectorAll<HTMLButtonElement>(".fc-select__trigger")[1]?.textContent).toContain("high"));
+    expect(fetchMock.mock.calls.map((call) => String(call[0])).some((url) => url.includes("model=opus"))).toBe(true);
 
     controller.destroy();
     expect(document.querySelectorAll(".fc-select__popup")).toHaveLength(0);
@@ -349,7 +348,7 @@ describe("Cowork inline copilot", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/cowork/entries/")) return new Response(JSON.stringify({ error: "cowork_session_not_found" }), { status: 404 });
-      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["codex", "claude"], models: ["gpt"], efforts: ["medium"] }));
+      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["gpt"], efforts: ["medium"] }));
       return new Response(JSON.stringify(sessionDto()));
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -362,12 +361,12 @@ describe("Cowork inline copilot", () => {
       article.querySelector<HTMLElement>('[data-cowork-action="toggle-config"]')!.click();
       await vi.waitFor(() => {
         const open = article.querySelector(".cowork-config") !== null;
-        expect(article.querySelectorAll(".fc-select").length).toBe(open ? 3 : 0);
+        expect(article.querySelectorAll(".fc-select").length).toBe(open ? 2 : 0);
         expect(article.querySelectorAll("[data-cowork-settings-host]").length).toBe(open ? 1 : 0);
       });
     }
 
-    expect(article.querySelectorAll(".fc-select__trigger")).toHaveLength(3);
+    expect(article.querySelectorAll(".fc-select__trigger")).toHaveLength(2);
     article.querySelector<HTMLElement>('[data-cowork-action="toggle-panel"]')!.click();
     await vi.waitFor(() => expect(article.querySelector(".cowork-config")).toBeNull());
     expect(document.querySelectorAll(".fc-select__popup")).toHaveLength(0);
@@ -386,7 +385,7 @@ describe("Cowork inline copilot", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/cowork/entries/")) return new Response(JSON.stringify(sessionDto()));
-      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["codex"], models: ["gpt"], efforts: ["medium"] }));
+      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["gpt"], efforts: ["medium"] }));
       if (url.endsWith("/close")) return new Response(JSON.stringify(sessionDto({ state: "closed" })));
       if (url.endsWith("/cowork/sessions")) return new Response(JSON.stringify(fresh), { status: 201 });
       return new Response(JSON.stringify(sessionDto()));
@@ -417,7 +416,7 @@ describe("Cowork inline copilot", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/cowork/entries/")) return new Response(JSON.stringify(sessionDto()));
-      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["codex"], models: ["gpt"], efforts: ["medium"] }));
+      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["gpt"], efforts: ["medium"] }));
       return new Response(JSON.stringify(sessionDto()));
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -453,7 +452,7 @@ describe("Cowork inline copilot", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/cowork/entries/")) return new Response(JSON.stringify(sessionDto()));
-      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["codex"], models: ["gpt"], efforts: ["medium"] }));
+      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["gpt"], efforts: ["medium"] }));
       return new Response(JSON.stringify(sessionDto()));
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -571,7 +570,7 @@ describe("Cowork inline copilot", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/cowork/entries/")) return new Response(JSON.stringify(sessionDto()));
-      if (url.includes("/options")) return new Response(JSON.stringify({ clis: ["codex"], models: ["gpt"], efforts: ["medium"] }));
+      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["gpt"], efforts: ["medium"] }));
       return new Response(JSON.stringify(sessionDto()));
     });
     vi.stubGlobal("fetch", fetchMock);

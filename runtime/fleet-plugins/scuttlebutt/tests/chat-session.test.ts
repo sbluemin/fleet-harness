@@ -1,124 +1,100 @@
-import { EventEmitter } from "node:events";
-
-import type {
-  AcpPermissionRequestParams,
-  AcpPermissionResponse,
-  IUnifiedAgentClient,
-} from "@dotobokuri/core-unified-agent";
 import { describe, expect, it, vi } from "vitest";
+
+import type { ClaudeGatewayMessage, ClaudeGatewaySdk, ClaudeGatewayTurn } from "@dotobokuri/core-agent/claude";
 
 import {
   ADMIRAL_SYSTEM_PROMPTS,
   ChatSession,
-  isWebToolName,
-  resolveWebPermissionRequest,
+  PET_TOOLS,
   SCUTTLEBUTT_AGENT,
+  toChatEvents,
+  type ChatEvent,
 } from "../server/chat-session.js";
 
-describe("Scuttlebutt permission gate", () => {
-  it.each([
-    ["WebSearch", true],
-    ["webfetch", true],
-    ["mcp__claude__WebSearch", true],
-    ["mcp__server__nested__WEBFETCH", true],
-    ["server.WebSearch", true],
-    ["server/WebFetch", true],
-    ["server:WebSearch", true],
-    ["Bash", false],
-    ["Edit", false],
-    ["Read", false],
-    ["Unknown", false],
-    ["SearchTheWeb", false],
-  ])("classifies %s", (title, expected) => {
-    expect(isWebToolName(title)).toBe(expected);
-  });
+const CWD = "/private/fleet/plugins/scuttlebutt/workspace";
+const BASE_URL = "http://127.0.0.1:43210/plugins/terminal/ai-gateway";
 
-  it("selects allow_once before allow_always only for web tools", () => {
-    expect(resolveFor("mcp__claude__WebSearch")).toEqual({
-      outcome: { outcome: "selected", optionId: "allow-once" },
-    });
-    expect(resolveFor("Bash")).toEqual({
-      outcome: { outcome: "selected", optionId: "reject-once" },
-    });
-  });
-
-  // 브리지가 실제로 보내는 모양 — 도구 이름이 없고 title은 검색어나 "Fetch <url>" 뿐이다.
-  it("allows the web tool payloads the Claude bridge actually sends", () => {
-    expect(resolveFor('"fleet console"', { query: "fleet console" }, undefined, "fetch")).toEqual({
-      outcome: { outcome: "selected", optionId: "allow-once" },
-    });
-    expect(resolveFor("Fetch https://example.com", { url: "https://example.com", prompt: "summarize" }, undefined, "fetch")).toEqual({
-      outcome: { outcome: "selected", optionId: "allow-once" },
-    });
-  });
-
-  it("keeps the fetch kind from widening past web search and fetch", () => {
-    expect(resolveFor("something else", { path: "/etc/passwd" }, undefined, "fetch")).toEqual({
-      outcome: { outcome: "selected", optionId: "reject-once" },
-    });
-    expect(resolveFor("ls -la", { command: "ls -la" }, undefined, "execute")).toEqual({
-      outcome: { outcome: "selected", optionId: "reject-once" },
-    });
-    expect(resolveFor("Read a file", { query: "still not a fetch" }, undefined, "read")).toEqual({
-      outcome: { outcome: "selected", optionId: "reject-once" },
-    });
-  });
-
-  it("recognizes a qualified rawInput tool name and cancels without a matching option", () => {
-    expect(resolveFor("not-a-tool", { tool_name: "server:WebFetch" })).toEqual({
-      outcome: { outcome: "selected", optionId: "allow-once" },
-    });
-    expect(resolveFor("WebSearch", {}, [])).toEqual({ outcome: { outcome: "cancelled" } });
-    expect(resolveFor("Read", {}, [{ kind: "allow_once", optionId: "unsafe" }])).toEqual({
-      outcome: { outcome: "cancelled" },
-    });
+describe("Scuttlebutt tool boundary", () => {
+  it("cuts the built-in tool set down to the two web tools and never waits for approval", async () => {
+    // 오늘의 ACP 권한 분류기는 도구 이름 없이 kind와 입력 모양으로 추측했다. 이제는 파일·셸 도구가
+    // 아예 존재하지 않는다 — 실측하면 자식의 system/init이 여기 준 목록 그대로를 보고한다.
+    const { session, sdk } = fakeSession();
+    await session.start();
+    await session.send("hello");
+    const turn = sdk.startTurn.mock.calls[0]?.[0] as ClaudeGatewayTurn;
+    expect(turn.tools).toEqual(["WebSearch", "WebFetch"]);
+    expect(turn.allowedTools).toEqual(["WebSearch", "WebFetch"]);
+    // 승인 대기는 헤드리스에서 멈춘 대화와 같다. 미승인 도구는 물어보지 않고 거부한다.
+    expect(turn.permissionMode).toBe("dontAsk");
+    expect(PET_TOOLS).toEqual(["WebSearch", "WebFetch"]);
   });
 });
 
 describe("ChatSession", () => {
-  it("connects with the frozen read-only contract and redacts every outbound text field", async () => {
-    const cwd = "/private/fleet/plugins/scuttlebutt/workspace";
-    const client = new FakeClient();
-    const events: unknown[] = [];
-    const session = new ChatSession({
-      cwd,
-      admiral: "bori",
-      onEvent: (event) => events.push(event),
-      buildClient: async () => client as unknown as IUnifiedAgentClient,
-    });
-
+  it("runs each turn with the admiral's own prompt in replace mode on the frozen model", async () => {
+    const { session, sdk } = fakeSession({ admiral: "bori" });
     await session.start();
-    expect(client.connect).toHaveBeenCalledWith({
-      cwd,
-      model: "sonnet",
-      effort: "low",
-      autoApprove: false,
-      yoloMode: false,
-      fsAccess: false,
-      strictMcp: true,
-      systemPrompt: ADMIRAL_SYSTEM_PROMPTS.bori,
-      systemPromptMode: "replace",
-      mcpServers: [],
+    expect(sdk.createArgs).toEqual({ baseUrl: BASE_URL, models: ["sonnet"] });
+
+    await session.send("hello");
+    const turn = sdk.startTurn.mock.calls[0]?.[0] as ClaudeGatewayTurn;
+    expect(turn.model).toBe("sonnet");
+    expect(turn.effort).toBe("low");
+    expect(turn.cwd).toBe(CWD);
+    expect(turn.systemPrompt).toEqual({ mode: "replace", text: ADMIRAL_SYSTEM_PROMPTS.bori });
+  });
+
+  it("continues the same conversation by resuming the child's session", async () => {
+    const { session, sdk } = fakeSession();
+    await session.start();
+    await session.send("first");
+    await session.send("second");
+    expect((sdk.startTurn.mock.calls[0]?.[0] as ClaudeGatewayTurn).resume).toBeUndefined();
+    expect((sdk.startTurn.mock.calls[1]?.[0] as ClaudeGatewayTurn).resume).toBe("child-session");
+  });
+
+  it("keeps the workspace path and the child's session id out of every emitted event", async () => {
+    const events: ChatEvent[] = [];
+    const { session } = fakeSession({
+      onEvent: (event) => events.push(event),
+      stream: [
+        { type: "system", subtype: "init", session_id: "child-session" },
+        textDelta(`See ${CWD}/result.md`),
+        { type: "result", subtype: "success", is_error: false, session_id: "child-session" },
+      ],
     });
+    await session.start();
+    await session.send("hello");
+    const serialized = JSON.stringify(events);
+    expect(serialized).not.toContain(CWD);
+    expect(serialized).not.toContain("child-session");
+    expect(events).toEqual([{ type: "chunk", text: "See [workspace]/result.md" }, { type: "complete" }]);
+  });
 
-    client.emit("messageChunk", `See ${cwd}/result.md`, "provider-session");
-    client.emit("toolCall", `${cwd}/WebSearch`, `${cwd}/running`, "provider-session");
-    client.emit("error", new Error(`failed at ${cwd}/secret`));
-    client.emit("exit", 1, cwd);
-    expect(JSON.stringify(events)).not.toContain(cwd);
-    expect(JSON.stringify(events)).not.toContain("provider-session");
+  it("reports a failed turn as an error event rather than a silent completion", async () => {
+    const events: ChatEvent[] = [];
+    const { session } = fakeSession({
+      onEvent: (event) => events.push(event),
+      stream: [{ type: "result", subtype: "error", is_error: true, result: `denied at ${CWD}` }],
+    });
+    await session.start();
+    await session.send("hello");
+    expect(events).toEqual([
+      { type: "error", error: { code: "chat_error", message: "denied at [workspace]" } },
+    ]);
+  });
 
+  it("disposes the SDK instance and its isolated directory", async () => {
+    const { session, sdk } = fakeSession();
+    await session.start();
     await session.dispose();
-    expect(client.cancelPrompt).toHaveBeenCalledOnce();
-    expect(client.disconnect).toHaveBeenCalledOnce();
+    expect(sdk.dispose).toHaveBeenCalledOnce();
+    await expect(session.send("hello")).rejects.toThrow(/disposed/i);
   });
 
   it("defines the fixed provider contract in one server constant", () => {
-    expect(SCUTTLEBUTT_AGENT).toEqual({
-      cliId: "claude",
-      model: "sonnet",
-      effort: "low",
-    });
+    // 별칭 그대로다. 구체 id로 고정하면 sonnet 세대가 바뀌어도 펫만 옛 모델에 남는다.
+    expect(SCUTTLEBUTT_AGENT).toEqual({ model: "sonnet", effort: "low" });
   });
 
   it("defines three distinct admiral identities over the shared safety contract", () => {
@@ -148,30 +124,92 @@ describe("ChatSession", () => {
   });
 });
 
-function resolveFor(
-  title: string,
-  rawInput: unknown = {},
-  options: readonly { kind: string; optionId: string }[] = [
-    { kind: "allow_always", optionId: "allow-always" },
-    { kind: "allow_once", optionId: "allow-once" },
-    { kind: "reject_always", optionId: "reject-always" },
-    { kind: "reject_once", optionId: "reject-once" },
-  ],
-  kind?: string,
-): AcpPermissionResponse {
-  let response: AcpPermissionResponse | undefined;
-  resolveWebPermissionRequest({
-    options,
-    toolCall: { title, rawInput, kind, toolCallId: "provider-tool-call" },
-  } as AcpPermissionRequestParams, (value) => {
-    response = value;
+describe("toChatEvents", () => {
+  const identity = (value: string): string => value;
+
+  it("streams assistant text and drops thinking from the same delta channel", () => {
+    // 두 종류가 같은 자리로 온다. 생각까지 흘리면 펫이 혼잣말을 소리내어 하게 된다.
+    expect(toChatEvents(textDelta("hi"), new Map(), identity)).toEqual([{ type: "chunk", text: "hi" }]);
+    expect(toChatEvents(thinkingDelta("hmm"), new Map(), identity)).toEqual([]);
   });
-  return response!;
+
+  it("pairs a tool call with its result through the id the start block carries", () => {
+    const names = new Map<string, string>();
+    const started = toChatEvents({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "t1", name: "WebSearch", input: { query: "fleet console" } }] },
+    }, names, identity);
+    expect(started).toEqual([{ type: "tool", title: "WebSearch: fleet console", status: "running" }]);
+
+    const finished = toChatEvents({
+      type: "user",
+      message: { content: [{ type: "tool_result", tool_use_id: "t1", is_error: false }] },
+    }, names, identity);
+    expect(finished).toEqual([{ type: "tool", title: "WebSearch", status: "done" }]);
+  });
+
+  it("marks a failed tool result rather than reporting it as done", () => {
+    const names = new Map([["t1", "WebFetch"]]);
+    expect(toChatEvents({
+      type: "user",
+      message: { content: [{ type: "tool_result", tool_use_id: "t1", is_error: true }] },
+    }, names, identity)).toEqual([{ type: "tool", title: "WebFetch", status: "error" }]);
+  });
+
+  it("ignores the message kinds the SSE contract has no event for", () => {
+    for (const type of ["system", "rate_limit_event", "stream_event"]) {
+      expect(toChatEvents({ type }, new Map(), identity)).toEqual([]);
+    }
+  });
+});
+
+function textDelta(text: string): ClaudeGatewayMessage {
+  return { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text } } };
 }
 
-class FakeClient extends EventEmitter {
-  readonly connect = vi.fn(async () => ({ cli: "claude", protocol: "acp" }));
-  readonly sendMessage = vi.fn(async () => ({ stopReason: "end_turn" }));
-  readonly cancelPrompt = vi.fn(async () => undefined);
-  readonly disconnect = vi.fn(async () => undefined);
+function thinkingDelta(thinking: string): ClaudeGatewayMessage {
+  return { type: "stream_event", event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking } } };
+}
+
+function fakeSession(overrides: {
+  admiral?: "tori" | "bori" | "dori";
+  onEvent?: (event: ChatEvent) => void;
+  stream?: readonly ClaudeGatewayMessage[];
+} = {}): { session: ChatSession; sdk: FakeSdk } {
+  const stream = overrides.stream ?? [
+    { type: "system", subtype: "init", session_id: "child-session" },
+    { type: "result", subtype: "success", is_error: false, session_id: "child-session" },
+  ];
+  const sdk = new FakeSdk(stream);
+  const session = new ChatSession({
+    cwd: CWD,
+    admiral: overrides.admiral ?? "tori",
+    baseUrl: BASE_URL,
+    ...(overrides.onEvent ? { onEvent: overrides.onEvent } : {}),
+    createSdk: async (args) => sdk.create(args),
+  });
+  return { session, sdk };
+}
+
+class FakeSdk {
+  /** 세션이 조립해 넘긴 생성 인자. 관측 대상이므로 지어내지 않는다. */
+  createArgs: unknown = null;
+  readonly configDir = "/tmp/fake";
+  readonly models = ["sonnet"];
+  readonly dispose = vi.fn(async () => undefined);
+  readonly startTurn: ReturnType<typeof vi.fn>;
+
+  constructor(stream: readonly ClaudeGatewayMessage[]) {
+    this.startTurn = vi.fn(async (_turn: ClaudeGatewayTurn) => ({
+      [Symbol.asyncIterator]: async function* () {
+        for (const message of stream) yield message;
+      },
+      close: () => {},
+    }));
+  }
+
+  create(args: unknown): ClaudeGatewaySdk {
+    this.createArgs = args;
+    return this as unknown as ClaudeGatewaySdk;
+  }
 }

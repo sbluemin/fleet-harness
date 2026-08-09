@@ -4,8 +4,8 @@
 
 // Cowork DTO의 단일 출처는 fleet-wiki cowork 서브패키지다(type-only라 브라우저 번들 무영향).
 export type { CoworkAnnotationDto, CoworkEventDto, CoworkSessionDto } from "@dotobokuri/fleet-wiki/cowork";
-/** 콘솔 options 라우트 계약 — CLI/모델 목록은 호스트가 core-unified-agent 레지스트리에서 채운다. */
-export interface CoworkOptionsResponse { clis: readonly string[]; models: readonly string[]; efforts: readonly string[]; defaultModel?: string; defaultEffort?: string; }
+/** 콘솔 options 라우트 계약 — 모델 목록은 호스트가 native Claude 별칭 로스터에서 채운다. */
+export interface CoworkOptionsResponse { models: readonly string[]; efforts: readonly string[]; defaultModel?: string; defaultEffort?: string; }
 
 // workspaces.ts 내부용 — /api/workspaces endpoint는 폐기됨, 타입만 유지
 export interface WorkspaceMetadata {

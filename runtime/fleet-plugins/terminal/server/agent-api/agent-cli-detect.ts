@@ -4,14 +4,12 @@
 // Windows `.cmd`/`.bat` shim을 `cmd.exe /d /s /c call`로 래핑)에 위임한다. 이렇게 하면 *nix의
 // 실행 파일/심볼릭링크와 Windows의 npm `.cmd` shim을 동일한 SSoT로 처리해 `--version` 실행이
 // 양 플랫폼에서 모두 성공한다. 해석 결과의 prefixArgs를 `--version` 앞에 붙여 호출하므로
-// Windows shim 래핑이 버전 조회에도 그대로 적용된다. 표시 대상은 CLI_BACKENDS를 cliCommand
-// 기준으로 중복제거한 바이너리(claude)다.
+// Windows shim 래핑이 버전 조회에도 그대로 적용된다. 표시 대상은 이 플러그인이 띄우는 바이너리(claude)다.
 
 import { execFile } from "node:child_process";
 
-import type { ResolvedBinary } from "@dotobokuri/core-agent";
+import type { ResolvedBinary } from "@dotobokuri/core-process";
 import { withHidden } from "@dotobokuri/core-process";
-import { CLI_BACKENDS } from "@dotobokuri/core-unified-agent";
 
 import type { AgentCliStatus } from "./agent-cli-types.js";
 import { AGENT_CLI_COMMANDS, resolveAgentCliBinary, validateUserAgentCliPath, type AgentCliBinaryResolution, type AgentCliPathError } from "./agent-cli-paths.js";
@@ -63,18 +61,10 @@ export function createDefaultAgentCliDetector(
   });
 }
 
-// CLI_BACKENDS를 선언 순서 그대로 cliCommand 기준 중복제거한다.
+// 탐지 대상은 이 플러그인이 실제로 띄우는 바이너리다. 예전에는 ACP 백엔드 카탈로그를 순회해
+// 같은 목록으로 좁혔지만, 그 카탈로그가 사라진 지금은 좁힐 대상이 곧 결과다.
 function distinctBinaryCommands(): string[] {
-  const seen = new Set<string>();
-  const commands: string[] = [];
-  for (const backend of Object.values(CLI_BACKENDS)) {
-    if (!AGENT_CLI_COMMANDS.includes(backend.cliCommand as (typeof AGENT_CLI_COMMANDS)[number])) continue;
-    if (!seen.has(backend.cliCommand)) {
-      seen.add(backend.cliCommand);
-      commands.push(backend.cliCommand);
-    }
-  }
-  return commands;
+  return [...new Set<string>(AGENT_CLI_COMMANDS)];
 }
 
 async function detectOne(

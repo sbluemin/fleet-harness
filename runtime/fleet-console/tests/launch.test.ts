@@ -579,15 +579,12 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const spec = await resolve("/work", { sessionId: "session-a", cliId: "claude-gateway" });
 
     expect(spec.sessionIdentityResolver).toMatchObject({ resolve: expect.any(Function) });
-    expect(createResolver).toHaveBeenCalledWith(expect.objectContaining({
-      provider: "claude",
-      command: "/custom/claude-wrapper",
-      commandPrefixArgs: ["--wrapper-prefix"],
-      cwd: "/work",
-    }));
+    // resolver는 세션 기록을 읽을 뿐이라 프로필에서 필요한 것은 그 기록이 놓인 cwd 하나다.
+    // 예전에는 provider와 spawn 명령까지 받았지만, 띄우는 CLI가 claude 하나로 좁혀지며 사라졌다.
+    expect(createResolver).toHaveBeenCalledWith({ cwd: "/work" });
   });
 
-  it("maps the Claude gateway profile to the Claude provider identity resolver", async () => {
+  it("binds a session identity resolver for the Claude gateway profile too", async () => {
     const claudeConfigDir = makeTempDir("fleet-gateway-identity-");
     const createResolver = vi.fn(() => ({ resolve: async () => null }));
     const resolve = createDefaultTerminalLaunchResolver({
@@ -606,9 +603,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
     await resolve("/work", { sessionId: "session-a", cliId: "claude-gateway" });
 
-    expect(createResolver).toHaveBeenCalledWith(expect.objectContaining({
-      provider: "claude",
-    }));
+    expect(createResolver).toHaveBeenCalledWith({ cwd: "/work" });
   });
 
   it("prewrites the complete Claude Code gateway model cache before launch", async () => {

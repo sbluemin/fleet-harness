@@ -30,7 +30,7 @@ import { createHash } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
 import fs from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { builtinModules } from "node:module";
+import { builtinModules, createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -364,10 +364,54 @@ const PLUGIN_DEV_EXTERNALS = [
   "stream",
   "events",
   "child_process",
-  "node-pty",
-  "ws",
   "@fleet-plugins/*",
 ];
+
+/**
+ * 호스트가 소유한 채로 플러그인에게 빌려주는 패키지. 번들에 넣지 않고 호스트가 설치한 실물을
+ * 그대로 쓴다.
+ *
+ * 여기 있는 것들은 번들에 인라인되면 못 쓰게 된다. `node-pty`는 네이티브 애드온이고,
+ * `@anthropic-ai/claude-agent-sdk`는 자기 네이티브 CLI 바이너리를 `import.meta.url` 기준
+ * 형제 패키지에서 찾는다 — 인라인되면 그 기준점이 번들 파일이 되어 바이너리를 못 찾는다.
+ */
+const PLUGIN_HOST_PACKAGE_EXTERNALS = [
+  "node-pty",
+  "ws",
+  "@anthropic-ai/claude-agent-sdk",
+];
+
+/**
+ * 호스트 소유 패키지를 절대 file URL로 고정한 채 external 처리한다.
+ *
+ * bare 지정자로 두면 안 되는 이유: 번들 결과는 플러그인 캐시 디렉터리에 쓰이고, 그 자리는
+ * Console 데이터 루트 아래라 호스트의 `node_modules`로 올라가는 경로가 없을 수 있다. 지금
+ * `ws`와 `node-pty`가 개발 환경에서 해석되는 것은 캐시 디렉터리가 우연히 체크아웃 안에 있어
+ * 상위 탐색이 루트 `node_modules`에 닿기 때문이고, 데이터 루트를 체크아웃 밖으로 옮기면 같은
+ * 방식으로 깨진다. 해석을 번들 시점에 끝내 두면 캐시 디렉터리 위치와 무관해진다.
+ *
+ * 해석에 실패하면 bare external로 남긴다. 인라인되어 조용히 오작동하는 것보다, import 시점에
+ * MODULE_NOT_FOUND로 크게 터지는 쪽이 낫다.
+ */
+function createHostPackageExternalsPlugin(consoleNodeModules: string | null): Plugin {
+  const requireFromConsole = consoleNodeModules
+    ? createRequire(path.join(path.dirname(consoleNodeModules), "package.json"))
+    : null;
+  return {
+    name: "fleet-console-plugin-host-package-externals",
+    setup(build) {
+      build.onResolve({ filter: /.*/ }, (args) => {
+        if (!PLUGIN_HOST_PACKAGE_EXTERNALS.includes(args.path)) return null;
+        if (!requireFromConsole) return { path: args.path, external: true };
+        try {
+          return { path: pathToFileURL(requireFromConsole.resolve(args.path)).href, external: true };
+        } catch {
+          return { path: args.path, external: true };
+        }
+      });
+    },
+  };
+}
 const PLUGIN_BUNDLE_DIR_PREFIX = "fleet-console-plugin-";
 const PLUGIN_BUNDLE_OWNER_FILE = ".fleet-console-plugin-owner.json";
 const PLUGIN_BUNDLE_PID_PATTERN = /^fleet-console-plugin-(\d+)-/u;
@@ -475,6 +519,7 @@ async function importPluginModule(entry: string, bundleCacheDir: string | undefi
       write: false,
       sourcemap: false,
       external: PLUGIN_DEV_EXTERNALS,
+      plugins: [createHostPackageExternalsPlugin(resolveConsolePackageNodeModules())],
       nodePaths: [resolveConsolePackageNodeModules()].filter((value): value is string => value !== null),
     });
     const bundled = output.outputFiles[0]?.text;

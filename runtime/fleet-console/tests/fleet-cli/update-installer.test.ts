@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import { execFileSync, spawn } from "node:child_process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { resolvePathBinary } from "@dotobokuri/core-agent";
+import { resolvePathBinary } from "@dotobokuri/core-process";
 import { readFleetCliRelease } from "../../cli/release.js";
 import { checkUpdateStatus } from "../../cli/update/check.js";
 import { __installerTestHooks, runFleetUpdate } from "../../cli/update/installer.js";
@@ -41,8 +41,8 @@ vi.mock("../../cli/update/check.js", () => ({
   resolveUpdateChannel: vi.fn(() => "latest"),
 }));
 
-vi.mock("@dotobokuri/core-agent", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@dotobokuri/core-agent")>();
+vi.mock("@dotobokuri/core-process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@dotobokuri/core-process")>();
   return {
     ...actual,
     resolvePathBinary: vi.fn(),

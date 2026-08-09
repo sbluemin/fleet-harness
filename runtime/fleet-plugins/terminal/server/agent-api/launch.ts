@@ -5,10 +5,9 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { resolvePathBinary } from "@dotobokuri/core-agent";
+import { resolvePathBinary } from "@dotobokuri/core-process";
 import { exposableEffortLadder, resolveAiGatewaySelection, toClaudeGatewayModelId } from "@dotobokuri/core-ai-gateway";
 import type { AiGatewaySelection, AiGatewayStoredSettings, GatewayModel, GatewayReasoningEffort } from "@dotobokuri/core-ai-gateway";
-import { createSessionIdentityResolver } from "@dotobokuri/core-unified-agent";
 import {
   createSessionCaptureHookExec,
   createSystemPromptBuilder,
@@ -29,6 +28,7 @@ import {
   type GlobalOptionsService,
 } from "@dotobokuri/core-infra";
 
+import { createSessionIdentityResolver } from "./session-identity.js";
 import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleBackgroundHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, toCaptureProvider, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
 import { stripConsoleInternalEnv } from "../shared/launch-env.js";
@@ -308,13 +308,7 @@ async function createAgentCliLaunchSpec(options: {
         useConfiguredDefaultModel: options.useGatewayDefaultModel,
       });
     }
-    const sessionIdentityResolver = options.createSessionIdentityResolver({
-      provider: toCaptureProvider(launchProfile.id),
-      command: launchProfile.bin,
-      commandPrefixArgs: launchProfile.binPrefixArgs,
-      cwd: launchProfile.cwd,
-      env: launchProfile.env,
-    });
+    const sessionIdentityResolver = options.createSessionIdentityResolver({ cwd: launchProfile.cwd });
     return toLaunchSpec(launchProfile, createOnceCleanup(async () => {
       for (const cleanup of [...cleanupStack].reverse()) {
         await cleanup();
