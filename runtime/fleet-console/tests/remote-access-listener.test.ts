@@ -643,7 +643,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     const secret = /fleet_console_pairing_\d+=([^;]+)/u.exec(cookies)?.[1];
     expect(secret).toBeTruthy();
 
-    const stored = fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "paired-devices.json"), "utf8");
+    const stored = fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "remote", "paired-devices.json"), "utf8");
 
     expect(stored).not.toContain(secret!);
     expect(JSON.parse(stored)).toMatchObject({ version: 1, devices: [{ device: "MacBook Pro", access: "full" }] });

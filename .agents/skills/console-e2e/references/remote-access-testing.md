@@ -105,7 +105,7 @@ The browser side is where the guest becomes visible. Settings -> Remote access -
 
 A connected device reads `Connected now` and carries **two** buttons — disconnect (reversible) and remove (permanent). After a disconnect the row stays, its time cell becomes relative, and only remove is left. A row that vanishes on disconnect is the old contract returning.
 
-Check `paired-devices.json` under the isolated `FLEET_CONSOLE_DIR` too: it must contain the device but never the cookie secret.
+Check `remote/paired-devices.json` under the isolated `FLEET_CONSOLE_DIR` too: it must contain the device but never the cookie secret.
 
 ## The curtain will block your clicks
 

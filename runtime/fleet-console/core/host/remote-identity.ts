@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import path from "node:path";
 
 import selfsigned from "selfsigned";
 
 import { normalizeFingerprint } from "./access-link.js";
+import { createRemoteStorage, type RemoteStorageDeps } from "./remote-storage.js";
 
 /**
  * 원격 리스너의 신원. 액세스 링크가 이 지문을 함께 실어 나르고, Desktop이 접속 직전
@@ -20,8 +20,8 @@ export interface RemoteIdentity {
   readonly expiresAt: number;
 }
 
-export interface RemoteIdentityStoreDeps {
-  readonly fileSystem?: Pick<typeof fs, "existsSync" | "mkdirSync" | "readFileSync" | "writeFileSync" | "renameSync" | "rmSync">;
+export interface RemoteIdentityStoreDeps extends RemoteStorageDeps {
+  readonly readFile?: (file: string) => string;
   readonly generate?: (host: string) => Promise<{ readonly certificatePem: string; readonly privateKeyPem: string }>;
   readonly now?: () => number;
 }
@@ -34,12 +34,9 @@ export interface RemoteIdentityStore {
   rotate(host: string): Promise<RemoteIdentity>;
 }
 
-const IDENTITY_DIR = "remote";
 const CERTIFICATE_FILE = "identity-cert.pem";
 const KEY_FILE = "identity-key.pem";
 const META_FILE = "identity.json";
-const FILE_MODE = 0o600;
-const DIR_MODE = 0o700;
 const VALIDITY_DAYS = 825;
 // 만료 직전에 새로 만들지 않으면 원격 접속이 어느 날 갑자기 끊긴다.
 const RENEW_BEFORE_MS = 30 * 24 * 60 * 60 * 1000;
@@ -51,16 +48,16 @@ interface StoredMeta {
 }
 
 export function createRemoteIdentityStore(consoleDir: string, deps: RemoteIdentityStoreDeps = {}): RemoteIdentityStore {
-  const fileSystem = deps.fileSystem ?? fs;
+  const storage = createRemoteStorage(consoleDir, deps);
+  const readFile = deps.readFile ?? ((file: string) => fs.readFileSync(file, "utf8"));
   const generate = deps.generate ?? generateSelfSignedCertificate;
   const now = deps.now ?? Date.now;
-  const directory = path.join(consoleDir, IDENTITY_DIR);
 
   function read(): RemoteIdentity | null {
     try {
-      const meta = JSON.parse(fileSystem.readFileSync(path.join(directory, META_FILE), "utf8")) as StoredMeta;
-      const certificatePem = fileSystem.readFileSync(path.join(directory, CERTIFICATE_FILE), "utf8");
-      const privateKeyPem = fileSystem.readFileSync(path.join(directory, KEY_FILE), "utf8");
+      const meta = JSON.parse(readFile(storage.path(META_FILE))) as StoredMeta;
+      const certificatePem = readFile(storage.path(CERTIFICATE_FILE));
+      const privateKeyPem = readFile(storage.path(KEY_FILE));
       if (typeof meta?.host !== "string" || typeof meta.expiresAt !== "number") return null;
       return { certificatePem, privateKeyPem, fingerprint: fingerprintOf(certificatePem), createdAt: meta.createdAt, expiresAt: meta.expiresAt };
     } catch {
@@ -80,25 +77,18 @@ export function createRemoteIdentityStore(consoleDir: string, deps: RemoteIdenti
     const createdAt = now();
     // 만료는 인증서 자신이 정한다. 별도로 계산해 두면 둘이 어긋나 어느 날 조용히 끊긴다.
     const expiresAt = Date.parse(new crypto.X509Certificate(certificatePem).validTo);
-    fileSystem.mkdirSync(directory, { recursive: true, mode: DIR_MODE });
-    writeSecret(path.join(directory, KEY_FILE), privateKeyPem);
-    writeSecret(path.join(directory, CERTIFICATE_FILE), certificatePem);
-    writeSecret(path.join(directory, META_FILE), `${JSON.stringify({ host, createdAt, expiresAt } satisfies StoredMeta)}\n`);
+    storage.write(KEY_FILE, privateKeyPem);
+    storage.write(CERTIFICATE_FILE, certificatePem);
+    storage.write(META_FILE, `${JSON.stringify({ host, createdAt, expiresAt } satisfies StoredMeta)}\n`);
     return { certificatePem, privateKeyPem, fingerprint: fingerprintOf(certificatePem), createdAt, expiresAt };
   }
 
   function readMeta(): StoredMeta | null {
     try {
-      return JSON.parse(fileSystem.readFileSync(path.join(directory, META_FILE), "utf8")) as StoredMeta;
+      return JSON.parse(readFile(storage.path(META_FILE))) as StoredMeta;
     } catch {
       return null;
     }
-  }
-
-  function writeSecret(file: string, content: string): void {
-    const temporary = `${file}.tmp`;
-    fileSystem.writeFileSync(temporary, content, { encoding: "utf8", mode: FILE_MODE });
-    fileSystem.renameSync(temporary, file);
   }
 
   return { ensure, read, rotate };

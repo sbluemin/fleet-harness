@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import path from "node:path";
 
 import { sanitizeAccessLabel, type ValidatedAccessLink } from "./access-link.js";
+import { createRemoteStorage, type RemoteStorageDeps } from "./remote-storage.js";
 
 /**
  * 이 콘솔에서 건너갈 수 있는 다른 콘솔들. 사용자가 액세스 링크를 붙여넣으면 여기에 남고,
@@ -42,15 +42,14 @@ export interface RemoteHostStore {
   takeHandoff(origin: string): RemoteHostHandoff | null;
 }
 
-export interface RemoteHostStoreDeps {
-  readonly fileSystem?: Pick<typeof fs, "mkdirSync" | "readFileSync" | "renameSync" | "writeFileSync">;
+export interface RemoteHostStoreDeps extends RemoteStorageDeps {
+  readonly readFile?: (file: string) => string;
   readonly now?: () => number;
   readonly randomId?: () => string;
 }
 
-const HOSTS_FILE = "remote-hosts.json";
-const FILE_MODE = 0o600;
-const DIR_MODE = 0o700;
+/** SSH의 known_hosts와 같은 뜻이다 — 이 콘솔이 아는 상대와, 그 상대에게 기대하는 신원. */
+const HOSTS_FILE = "known-hosts.json";
 const STORE_VERSION = 1;
 const MAX_HOSTS = 64;
 /** 붙여넣은 링크를 실제로 여는 데 걸리는 시간. 그 창을 넘기면 토큰은 버려진다. */
@@ -62,16 +61,16 @@ interface StoredFile {
 }
 
 export function createRemoteHostStore(consoleDir: string, deps: RemoteHostStoreDeps = {}): RemoteHostStore {
-  const fileSystem = deps.fileSystem ?? fs;
+  const storage = createRemoteStorage(consoleDir, deps);
+  const readFile = deps.readFile ?? ((file: string) => fs.readFileSync(file, "utf8"));
   const now = deps.now ?? Date.now;
   const randomId = deps.randomId ?? (() => crypto.randomUUID());
-  const file = path.join(consoleDir, HOSTS_FILE);
   const pending = new Map<string, { readonly token: string; readonly expiresAt: number }>();
   let hosts: RemoteHostRecord[] = read();
 
   function read(): RemoteHostRecord[] {
     try {
-      const parsed = JSON.parse(fileSystem.readFileSync(file, "utf8")) as StoredFile;
+      const parsed = JSON.parse(readFile(storage.path(HOSTS_FILE))) as StoredFile;
       if (parsed?.version !== STORE_VERSION || !Array.isArray(parsed.hosts)) return [];
       return parsed.hosts.filter(isRecord).slice(0, MAX_HOSTS);
     } catch {
@@ -81,10 +80,7 @@ export function createRemoteHostStore(consoleDir: string, deps: RemoteHostStoreD
 
   function write(): void {
     const body: StoredFile = { version: STORE_VERSION, hosts };
-    const temporary = `${file}.tmp`;
-    fileSystem.mkdirSync(consoleDir, { recursive: true, mode: DIR_MODE });
-    fileSystem.writeFileSync(temporary, `${JSON.stringify(body, null, 2)}\n`, { encoding: "utf8", mode: FILE_MODE });
-    fileSystem.renameSync(temporary, file);
+    storage.write(HOSTS_FILE, `${JSON.stringify(body, null, 2)}\n`);
   }
 
   return {
