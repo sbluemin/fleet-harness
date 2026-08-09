@@ -55,6 +55,53 @@ describe("codex responses adapter", () => {
     expect(body.store).toBe(false);
   });
 
+  it("omits tools from Claude Code suggestion-mode requests", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
+    await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request({
+      input: [{
+        type: "message",
+        role: "user",
+        content: "[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]\n\nReply with ONLY the suggestion.",
+      }],
+      tools: [{
+        type: "function",
+        name: "Bash",
+        parameters: { type: "object", properties: {}, additionalProperties: false },
+      }],
+      tool_choice: "auto",
+      parallel_tool_calls: true,
+      native_tools: [{ type: "web_search" }],
+    }), { apiKey: "k" });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(body).not.toHaveProperty("tools");
+    expect(body).not.toHaveProperty("tool_choice");
+    expect(body).not.toHaveProperty("parallel_tool_calls");
+    expect(body).not.toHaveProperty("include");
+  });
+
+  it("keeps tools when suggestion-mode text is not the last input", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
+    await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request({
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: "[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]",
+        },
+        { type: "message", role: "user", content: "Run the tool." },
+      ],
+      tools: [{
+        type: "function",
+        name: "Bash",
+        parameters: { type: "object", properties: {}, additionalProperties: false },
+      }],
+    }), { apiKey: "k" });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(body.tools).toHaveLength(1);
+  });
+
   it("validates explicit zero limits instead of silently accepting them", () => {
     expect(() => new CodexResponsesAdapter({ maxBodyBytes: 0 })).toThrow(TypeError);
     expect(() => new CodexResponsesAdapter({ idleTimeoutMs: 0 })).toThrow(TypeError);

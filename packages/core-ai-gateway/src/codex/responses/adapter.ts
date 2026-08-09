@@ -50,6 +50,9 @@ const CHATGPT_UNSUPPORTED_FIELDS = [
   "metadata",
 ] as const;
 
+const CLAUDE_CODE_SUGGESTION_MODE_PREFIX =
+  "[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]";
+
 /**
  * OpenAI Responses wire shapes. The canonical model keeps `native_tools` as a
  * provider-neutral list and `tool_choice` as a small closed union that has no member
@@ -321,9 +324,26 @@ function forChatGptBackend(request: CanonicalResponseRequest): CanonicalResponse
   for (const field of CHATGPT_UNSUPPORTED_FIELDS) {
     delete copy[field];
   }
+  if (isClaudeCodeSuggestionMode(request)) {
+    // Claude Code asks for one short text suggestion after the visible turn has already ended. Its
+    // own prompt forbids tool use, so replaying the full tool catalog on this stateless backend adds
+    // tens of kilobytes without creating a legal model action.
+    delete copy.tools;
+    delete copy.tool_choice;
+    delete copy.native_tools;
+    delete copy.parallel_tool_calls;
+  }
   // 백엔드가 명시적으로 요구한다: 생략하면 400 "Store must be set to false".
   copy.store = false;
   return copy as unknown as CanonicalResponseRequest;
+}
+
+function isClaudeCodeSuggestionMode(request: CanonicalResponseRequest): boolean {
+  const last = request.input.at(-1);
+  return last?.type === "message"
+    && last.role === "user"
+    && typeof last.content === "string"
+    && last.content.startsWith(CLAUDE_CODE_SUGGESTION_MODE_PREFIX);
 }
 
 type ReadOptions = UpstreamReadOptions;
