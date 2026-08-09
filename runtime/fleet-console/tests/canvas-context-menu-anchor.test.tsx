@@ -121,7 +121,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
     const descriptionOf = (kindId: string) =>
       document.querySelector(`[data-operation-launch-kind="${kindId}"] .operation-launch-menu-description`)?.textContent;
 
-    expect(descriptionOf("claude-gateway")).toContain("models you enabled in Settings");
+    expect(descriptionOf("claude-gateway")).toContain("built-in Claude and enabled Gateway models");
     // 설명은 Claude Gateway에만 붙는다 — 대비가 필요 없는 종류까지 늘리면 메뉴만 길어진다.
     expect(descriptionOf("codex")).toBeUndefined();
     expect(descriptionOf("shell")).toBeUndefined();
@@ -187,16 +187,16 @@ describe("CanvasContextMenu launch kind attribute", () => {
 
     // 짧은 대비는 늘 행 위에 있다 — 터치와 정적 스캔에서도 종류가 갈려야 한다.
     const briefs = Array.from(document.querySelectorAll(".operation-launch-menu-brief")).map((node) => node.textContent);
-    expect(briefs).toEqual(["Other models"]);
+    expect(briefs).toEqual(["Built-in + Gateway"]);
 
     // 설명 문장은 짚기 전에는 옆에 펴지지 않지만, 버튼 안에는 남아 접근 이름에 실린다.
     expect(document.querySelector(".canvas-context-menu-aside")).toBeNull();
     const gateway = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
-    expect(gateway.textContent).toContain("Runs Claude Code on the models you enabled in Settings");
+    expect(gateway.textContent).toContain("Runs Claude Code with built-in Claude and enabled Gateway models");
 
     act(() => gateway.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
     expect(document.querySelector(".canvas-context-menu-aside")?.textContent)
-      .toBe("Runs Claude Code on the models you enabled in Settings");
+      .toBe("Runs Claude Code with built-in Claude and enabled Gateway models");
 
     // 어사이드는 메뉴 상자 바깥 형제다 — 안에 두면 메뉴의 overflow가 잘라낸다.
     expect(document.querySelector(".canvas-context-menu")?.contains(document.querySelector(".canvas-context-menu-aside"))).toBe(false);
@@ -266,8 +266,8 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(document.querySelector(".canvas-context-menu-aside")).toBeNull();
     // 펴지 못해도 대비와 설명 문장 자체는 행에 남는다.
     const row = document.querySelector('[data-operation-launch-kind="claude-gateway"]')!;
-    expect(row.querySelector(".operation-launch-menu-brief")?.textContent).toBe("Other models");
-    expect(row.textContent).toContain("models you enabled in Settings");
+    expect(row.querySelector(".operation-launch-menu-brief")?.textContent).toBe("Built-in + Gateway");
+    expect(row.textContent).toContain("built-in Claude and enabled Gateway models");
   });
 
   it("keys the open description by plugin so two plugins may share a kind id", () => {
@@ -367,7 +367,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
 
     act(() => menu.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body })));
     // 포인터가 나가도 포커스가 짚고 있는 행의 설명은 남는다.
-    expect(asideText()).toBe("Runs Claude Code on the models you enabled in Settings");
+    expect(asideText()).toBe("Runs Claude Code with built-in Claude and enabled Gateway models");
   });
 
   it("names the menu after its launch target and keeps the visual head out of the menu tree", () => {

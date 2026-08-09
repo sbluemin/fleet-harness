@@ -68,12 +68,11 @@ The Activity Rail ships with eight built-in panels — **Alerts, Codex, Shell, F
 
 ## Native runtimes, coordinated — not replaced
 
-Fleet launches the actual CLI binary in its declared product surface and speaks its supported protocol, preserving the model-native agent loop, capabilities, and authentication you already use. An Agent Operation starts as one of two kinds:
+Fleet launches the actual CLI binary in its declared product surface and speaks its supported protocol, preserving the model-native agent loop, capabilities, and authentication you already use. Agent Operations use one Claude launch kind:
 
 | Launch kind | What it runs |
 |---|---|
-| **Claude (Native)** | Plain Claude Code — Console hooks and Wiki skills are all that get added |
-| **Claude (Gateway)** | Claude Code driving the models you enabled in Settings |
+| **Claude (Gateway)** | Claude Code with its built-in Claude models and the gateway models you enabled in Settings |
 
 The gateway is a local Claude Code endpoint, not an API proxy: the Console makes the upstream request itself, and no provider credential ever enters the Claude Code process. Codex and Cursor ride the subscription you already have; Kimi and OpenCode Go take an API key you register in Settings.
 

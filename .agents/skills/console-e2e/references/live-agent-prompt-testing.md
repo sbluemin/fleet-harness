@@ -110,7 +110,7 @@ ab --session fleet-console-e2e-20260807-strict eval "document.querySelectorAll('
 Theater registration is Console's own folder UI (`/n/folder-listings`), not a native
 dialog. Fill the **절대 경로로 이동 / absolute path** textbox, press 이동/Go, then
 Theater 추가. After that, `<theater>에서 새 Operation` opens a menu whose items are
-`Claude (Native)`, `Claude (Classic)`, `Claude (Gateway)`, `Shell`.
+`Claude (Gateway)` and `Shell`.
 
 Both entry points live in the sidebar, so a collapsed sidebar removes them from the
 accessibility tree and the snapshot simply has no `새 Theater` ref — which reads as a

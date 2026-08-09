@@ -68,12 +68,11 @@ Activity Rail에는 **Alerts, Codex, Shell, Files, Repository, Skills, Ledger, U
 
 ## 네이티브 런타임을 대체하지 않고 조율
 
-Fleet은 선언된 제품 표면에서 실제 CLI 바이너리를 실행하고 지원 프로토콜로 통신하므로, 제작사가 다듬은 모델 네이티브 에이전트 루프와 이미 사용 중인 기능·인증을 그대로 보존합니다. Agent Operation은 두 가지 종류로 시작합니다.
+Fleet은 선언된 제품 표면에서 실제 CLI 바이너리를 실행하고 지원 프로토콜로 통신하므로, 제작사가 다듬은 모델 네이티브 에이전트 루프와 이미 사용 중인 기능·인증을 그대로 보존합니다. Agent Operation은 하나의 Claude 실행 종류를 사용합니다.
 
 | 실행 종류 | 무엇을 실행하나 |
 |---|---|
-| **Claude (Native)** | 순정 Claude Code — Console 훅과 Wiki 스킬만 덧붙습니다 |
-| **Claude (Gateway)** | 설정에서 켠 모델로 구동되는 Claude Code |
+| **Claude (Gateway)** | Claude Code 내장 Claude 모델과 설정에서 켠 게이트웨이 모델 |
 
 게이트웨이는 API 프록시가 아니라 로컬 Claude Code 엔드포인트입니다. 상류 요청은 Console이 직접 보내고, 어떤 프로바이더의 자격 증명도 Claude Code 프로세스에 들어가지 않습니다. Codex와 Cursor는 이미 쓰던 구독을 타고, Kimi와 OpenCode Go는 설정에 등록한 API 키를 씁니다.
 
