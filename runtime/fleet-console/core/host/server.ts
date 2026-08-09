@@ -2452,6 +2452,7 @@ strong { color: #e6edf3; font-weight: 600; }
 <p>You have found the remote listener of a Fleet Console. It does not open in a browser: a browser cannot check this console&#39;s certificate fingerprint, so <strong>remote access is not available to browsers</strong>.</p>
 <p>Ask for an access link instead. It looks like <strong>fleet://join?code=&hellip;</strong> and carries the address, a one-time credential, and the fingerprint together.</p>
 <p>In the Fleet Console you are already using, open <strong>Settings &rarr; Remote access &rarr; Hosts</strong> and paste the link there.</p>
+<p><strong>Remote access is experimental.</strong> How links and pairings behave can still change between releases.</p>
 </main>
 </body>
 </html>

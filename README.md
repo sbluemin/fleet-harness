@@ -28,7 +28,7 @@ fleet console          # preferred: start the local console and open it in your 
 fleet-console          # transitional alias for the same console lifecycle
 ```
 
-Prefer `fleet console`; transitional `fleet-console` still takes `status`, `restart`, and `stop`. Everything runs on your machine: the server binds to loopback by default, and the browser never receives MCP or provider tokens. Remote access stays off until you turn it on; turning it on serves the console over TLS on an interface you pick.
+Prefer `fleet console`; transitional `fleet-console` still takes `status`, `restart`, and `stop`. Everything runs on your machine: the server binds to loopback by default, and the browser never receives MCP or provider tokens. Remote access is experimental and stays off until you turn it on; turning it on serves the console over TLS on an interface you pick.
 
 Prefer a native window? Install a platform build from the [latest GitHub Release](https://github.com/sbluemin/fleet-harness/releases/latest).
 
