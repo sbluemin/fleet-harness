@@ -22,8 +22,8 @@ edit_policy: |
 This document is the operational reference for the Admiral's prompt assembly and
 runtime lifecycle model. The current architecture has no per-turn runtime-context
 tag prefix. The Admiral system prompt is assembled inside each host — Fleet
-Console's terminal plugin for native/gateway launches, and the Console-owned
-`fleet` thin launcher for its gateway-doctrine launch — and live state is consumed
+Console's terminal plugin for gateway launches, and the Console-owned `fleet`
+thin launcher for its gateway-doctrine launch — and live state is consumed
 through public leaf package APIs and package-local policy modules.
 
 This document is for the Admiral. It is not a public spec and not a contributor
@@ -37,8 +37,8 @@ delegated.
 
 `createSystemPromptBuilder().build()` in
 `packages/fleet-admiral/src/prompts/index.ts` assembles the Admiral prompt and
-delegates the whole body to `prompts/gateway.ts`. Native doctrine renders no
-Admiral system prompt at all, so it never calls the builder.
+delegates the whole body to `prompts/gateway.ts`. Terminal's `off` mode skips
+this Fleet prompt construction while keeping the gateway runtime composition.
 
 **Gateway doctrine** static prompt:
 
@@ -56,7 +56,7 @@ Admiral system prompt at all, so it never calls the builder.
 Runtime state is read through direct owners:
 
 - Standing Order policy: `packages/fleet-admiral/src/protocols/**`. Bodies live in `standing-orders/gateway.ts`; prompt assembly lives in `src/prompts/gateway.ts`.
-- Built-in skill assets: base source at `packages/fleet-admiral/assets/skills/wiki-operations/SKILL.md`, plus gateway assets under `packages/fleet-admiral/assets/skills/gateway/<name>/SKILL.md`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_SKILL_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`. Gateway doctrine render remaps each `gateway/<name>` asset onto the live `skills/<name>` path; native doctrine renders `wiki-operations` only.
+- Built-in skill assets: base source at `packages/fleet-admiral/assets/skills/wiki-operations/SKILL.md`, plus gateway assets under `packages/fleet-admiral/assets/skills/gateway/<name>/SKILL.md`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_SKILL_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`. Gateway rendering remaps each `gateway/<name>` asset onto the live `skills/<name>` path; all three prompt modes retain that skill composition.
 - Executor/session/model state: `@dotobokuri/core-agent`
 - MCP registry/server state: `@dotobokuri/core-agent`
 
