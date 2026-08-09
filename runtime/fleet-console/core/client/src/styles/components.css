@@ -10877,13 +10877,18 @@ body[data-codex-reading="true"] .operations-side-bar {
   pointer-events: none;
 }
 
+/* 팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조).
+   안내 카드는 스크림 없이 캔버스·패널 바로 위에 떠서 가리키는 대상 옆에 서므로, 반투명 glass
+   토큰을 쓰는 테마에서는 카드 본문과 뒤 화면이 겹쳐 읽힌다. */
 .feature-tour-card {
   position: fixed;
   width: min(340px, calc(100vw - 24px));
   padding: var(--space-4);
   border: 1px solid color-mix(in oklch, var(--brass) 34%, var(--hairline));
   border-radius: var(--radius-md);
-  background: var(--surface-glass-strong);
+  background:
+    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
+    var(--ink-deep);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   pointer-events: auto;
