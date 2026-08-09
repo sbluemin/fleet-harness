@@ -130,11 +130,23 @@ describe("chat completions request translation", () => {
     await new OpencodeGoChatCompletionsAdapter({ fetch: fetchMock }).stream(request({
       input: [{ type: "message", role: "user", content: suggestion }],
       tools,
+      tool_choice: "auto",
       parallel_tool_calls: true,
     }), { apiKey: "k" });
     const optimized = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
     expect(optimized).not.toHaveProperty("tools");
+    expect(optimized).not.toHaveProperty("tool_choice");
     expect(optimized).not.toHaveProperty("parallel_tool_calls");
+
+    fetchMock.mockClear();
+    await new OpencodeGoChatCompletionsAdapter({ fetch: fetchMock }).stream(request({
+      input: [{ type: "message", role: "user", content: suggestion }],
+      tools,
+      tool_choice: "none",
+    }), { apiKey: "k" });
+    const disabledTools = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(disabledTools).not.toHaveProperty("tools");
+    expect(disabledTools).not.toHaveProperty("tool_choice");
 
     fetchMock.mockClear();
     await new OpencodeGoChatCompletionsAdapter({ fetch: fetchMock }).stream(request({
@@ -153,6 +165,16 @@ describe("chat completions request translation", () => {
     const forcedTool = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
     expect(forcedTool).toHaveProperty("tools");
     expect(forcedTool).toHaveProperty("tool_choice");
+
+    fetchMock.mockClear();
+    await new OpencodeGoChatCompletionsAdapter({ fetch: fetchMock }).stream(request({
+      input: [{ type: "message", role: "user", content: suggestion }],
+      tools,
+      tool_choice: "required",
+    }), { apiKey: "k" });
+    const requiredTool = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(requiredTool).toHaveProperty("tools");
+    expect(requiredTool.tool_choice).toBe("required");
 
     fetchMock.mockClear();
     await adapter(fetchMock).stream(request({

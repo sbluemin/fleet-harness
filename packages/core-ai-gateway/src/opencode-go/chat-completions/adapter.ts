@@ -230,7 +230,7 @@ export class OpencodeGoChatCompletionsAdapter extends OpenAIChatCompletionsAdapt
 }
 
 function isClaudeCodeSuggestionMode(request: CanonicalResponseRequest): boolean {
-  if (request.tool_choice !== undefined) return false;
+  if (request.tool_choice === "required" || typeof request.tool_choice === "object") return false;
   const last = request.input.at(-1);
   if (last?.type !== "message" || last.role !== "user" || typeof last.content !== "string") {
     return false;
@@ -337,7 +337,7 @@ function forChatCompletionsBackend(
     payload.tools = tools;
   }
 
-  const toolChoice = request.tool_choice;
+  const toolChoice = omitTools ? undefined : request.tool_choice;
   if (toolChoice !== undefined) {
     payload.tool_choice = typeof toolChoice === "string"
       ? toolChoice
