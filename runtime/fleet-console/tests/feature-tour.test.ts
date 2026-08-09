@@ -121,6 +121,29 @@ describe("feature tour", () => {
     expect(presentation?.phase).toBe("spotlight");
   });
 
+  // 호스트 칩은 커맨드 밴드에 늘 있으므로, 가드가 없으면 다른 투어를 끝낸 그 자리에서 칩
+  // 스포트라이트가 곧바로 이어져 안내가 두 번 연달아 뜬다.
+  it("holds the chip spotlight back until the finished tour's screen is left", () => {
+    document.body.innerHTML = '<button class="host-switcher-chip"></button>';
+
+    expect(resolveNextFeatureTour(FEATURE_TOURS, [], document, true)).toBeNull();
+    expect(resolveNextFeatureTour(FEATURE_TOURS, [], document, false)?.phase).toBe("spotlight");
+  });
+
+  // 같은 마운트에서 다른 투어를 끝냈어도 워크스루는 지연되지 않는다 — 설정에 들어온 사용자는
+  // 그 자리에서 안내를 받아야 한다. 스포트라이트만 미루는 것이 이 가드의 범위다.
+  it("still runs the settings walkthrough right after another tour finished", () => {
+    document.body.innerHTML = [
+      '<button class="host-switcher-chip"></button>',
+      '<header class="remote-section-head"></header>',
+      '<div data-remote-card="hosts"></div>',
+    ].join("");
+
+    const presentation = resolveNextFeatureTour(FEATURE_TOURS, [], document, true);
+    expect(presentation?.tour.id).toBe("remote-access");
+    expect(presentation?.phase).toBe("walkthrough");
+  });
+
   it("anchors the War Room walkthrough on the rail, so an empty queue still teaches the mode", () => {
     const warRoom = FEATURE_TOURS.find((tour) => tour.id === "war-room");
     // 활성화 스텝(첫 non-null 앵커)이 무대면 대기 0건 진입에서 투어 전체가 조용히 사라진다.
