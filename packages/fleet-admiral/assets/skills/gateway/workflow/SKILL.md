@@ -30,6 +30,14 @@ Every run that leaves the host carries a pinned identity. **An unpinned run is n
 
 **Call `gateway_models` first, every time.** Not once per session: allowances move while work is in flight, and a gate cleared against a remembered roster is not cleared.
 
+### Pinning a dynamic workflow
+
+A dynamic workflow stage pins its model on the **`opts.model`** field only. The value is either a lineage alias (`fable`, `opus`, `sonnet`, `haiku`) or the **full `modelId` copied verbatim** from `gateway_models` — the `claude-gateway--` prefix included. Never reconstruct a model id from memory and never drop the prefix; an alias must never carry the prefix either.
+
+**`agentType` is forbidden in dynamic workflow scripts.** It is reserved for the `Agent` tool and named-teammate surfaces, where a fleet execution agent's mode (recon / decide / implement / verify) is its contract. A dynamic workflow is host-composed and model-pinned; an `agentType` in a workflow script reverses the surface the gate assumes.
+
+A PreToolUse hook on the `Workflow` tool enforces both rules as a hard gate, rendered by the Admiral plugin: a script containing `agentType:` is blocked, and any `opts.model` value that is neither an alias nor a `claude-gateway--`-prefixed `modelId` is blocked with a copy-verbatim message. The hook cannot inspect `name`-based saved workflows; those are trusted as pre-vetted.
+
 ### Two axes, never collapsed
 
 | Axis | What it reads | What it decides |
@@ -176,6 +184,10 @@ Decisions must travel as literal values, not descriptions: name the exact token,
 - **Symptom:** A provider looked like it had room, but its requests began failing.
   **Action:** Read the window whose `scope` matches the model's `quotaScope`, not the provider's combined figure.
   **Why:** One subscription can bill through separate pools; the sum can read comfortable while the pool a given model draws from is nearly spent.
+
+- **Symptom:** A workflow dispatch is blocked before it runs with `[workflow-guard] opts.model 값이 올바르지 않습니다`.
+  **Action:** Re-read `gateway_models` and copy the `modelId` verbatim — the value dropped the `claude-gateway--` prefix (or an alias wrongly carries it). The guard also blocks any script containing `agentType:`.
+  **Why:** The PreToolUse guard treats a non-alias, non-prefixed model value as the mistyped-id slip that used to die at the gateway only after the run started.
 
 - **Symptom:** A stage returned nothing at all — no result, no error you can quote — while other stages on the same provider succeeded.
   **Action:** Treat a `"critical"` pressure — or a `usedPercent` near 100 — on that model's own window as the explanation and move those stages to another provider. Do not wait for a message that says exhausted.

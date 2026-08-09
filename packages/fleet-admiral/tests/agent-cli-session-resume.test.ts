@@ -134,7 +134,10 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(hooksJson.hooks.SubagentStop).toEqual([
       { hooks: [{ type: "command", command: "node", args: ["console.js", "hook", "background-report"] }] },
     ]);
-    expect(hooksJson.hooks.PreToolUse).toBeUndefined();
+    // Workflow 모델 가드는 spawn 카운팅이 아니라 정책 게이트라 input-waiting 훅 없이도 상주한다.
+    expect(hooksJson.hooks.PreToolUse).toEqual([
+      { matcher: "Workflow", hooks: [{ type: "command", command: process.execPath, args: ["${CLAUDE_PLUGIN_ROOT}/hooks/workflow-guard.mjs"] }] },
+    ]);
     injected.cleanup?.();
   });
 

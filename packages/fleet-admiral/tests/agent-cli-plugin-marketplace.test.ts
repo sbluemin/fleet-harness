@@ -100,10 +100,15 @@ describe("agent CLI plugin marketplace rendering", () => {
     };
     // AskUserQuestion은 Notification 훅을 발화하지 않으므로 PreToolUse(정확 매처)로 잡는다.
     // 백그라운드 축은 PreToolUse spawn을 세지 않는다 — 워크플로우 1건이 spawn 1회·stop N회를 내기 때문이다.
+    // 단, Workflow에는 정책 게이트(워크플로우 모델 가드)가 상주한다. spawn 카운팅 신호가 아니라
+    // opts.model/agentType 위반을 실행 전에 차단할 뿐이라 #554가 우려한 카운팅 불일치와 무관하다.
     expect(hooksJson.hooks.PreToolUse).toEqual([
       { matcher: "AskUserQuestion", hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "attention"] }] },
+      { matcher: "Workflow", hooks: [{ type: "command", command: process.execPath, args: ["${CLAUDE_PLUGIN_ROOT}/hooks/workflow-guard.mjs"] }] },
     ]);
-    expect(JSON.stringify(hooksJson.hooks)).not.toContain("Task|Agent|Workflow");
+    expect(existsSync(path.join(plugin.pluginRoot, "hooks", "workflow-guard.mjs"))).toBe(true);
+    // Task/Agent는 여전히 PreToolUse spawn 카운팅 대상이 아니다.
+    expect(JSON.stringify(hooksJson.hooks)).not.toContain("Task|Agent");
     expect(hooksJson.hooks.SubagentStop).toEqual([
       { hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "background-report"] }] },
     ]);
