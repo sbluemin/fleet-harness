@@ -26,6 +26,11 @@ import {
   AgentServerMessageSchema,
 } from "../../../src/cursor/native/generated/cursor-agent-protobuf.js";
 import { cursorNativeExecPolicyReplies } from "../../../src/cursor/native/exec-policy.js";
+import {
+  cursorNativeExecRedirect,
+  cursorNativeRedirectResultReplies,
+  isCursorHotPathToolName,
+} from "../../../src/cursor/native/exec-redirect.js";
 
 afterEach(() => resetCursorWireModelMemory());
 
@@ -254,10 +259,11 @@ describe("Cursor client tool suspension", () => {
     expect(completedCursorUsage(second.events)).not.toHaveProperty("context_window");
   });
 
-  it("rejects native exec without leaking placeholder tools, then completes a client tool turn", async () => {
-    const callId = "call-read-1";
-    const wireName = firstCursorWireToolName(readRequest());
-    expect(wireName).toMatch(/^cc_read_[a-f0-9]{8}$/);
+  it("rejects unmatched native exec, then completes a client tool turn", async () => {
+    const callId = "call-probe-1";
+    const clientRequest = request("claude-session-native-retry");
+    const wireName = firstCursorWireToolName(clientRequest);
+    expect(wireName).toBe("probe_tool");
     const { events, stream } = await runSyntheticCursorTurn([
       {
         interactionUpdate: {
@@ -307,7 +313,7 @@ describe("Cursor client tool suspension", () => {
             toolCallId: callId,
             providerIdentifier: CURSOR_TOOL_PROVIDER_IDENTIFIER,
             toolName: wireName,
-            args: { file_path: cursorValue("README.md") },
+            args: { value: cursorValue("probe") },
           },
         },
       },
@@ -320,7 +326,7 @@ describe("Cursor client tool suspension", () => {
           },
         },
       },
-    ], readRequest());
+    ], clientRequest);
 
     const toolEvents = events.filter(
       (event) => event.type === "response.output_item.added" || event.type === "response.output_item.done",
@@ -329,7 +335,7 @@ describe("Cursor client tool suspension", () => {
     expect(toolEvents).not.toContainEqual(expect.objectContaining({ item: { name: "tool" } }));
     expect(toolEvents.at(-1)).toMatchObject({
       type: "response.output_item.done",
-      item: { name: "Read", arguments: JSON.stringify({ file_path: "README.md" }) },
+      item: { name: "probe_tool", arguments: JSON.stringify({ value: "probe" }) },
     });
     expect(events.at(-1)?.type).toBe("response.completed");
     // The suspended client tool parks this Run rather than cancelling it, so the transport stays
@@ -341,7 +347,7 @@ describe("Cursor client tool suspension", () => {
       execClientMessage: {
         id: 11,
         execId: "grep-11",
-        grepResult: { error: { error: expect.stringContaining(`\`${wireName}\``) } },
+        grepResult: { error: { error: expect.stringContaining("No client bridge tool covers this action") } },
       },
     }));
     expect(replies).toContainEqual(expect.objectContaining({
@@ -352,6 +358,220 @@ describe("Cursor client tool suspension", () => {
       }),
     }));
     expect(replies).toContainEqual({ execClientControlMessage: { streamClose: { id: 12 } } });
+  });
+
+  it("redirects high-frequency native exec through advertised client tools", () => {
+    const tools = [
+      {
+        clientName: "Read",
+        wireName: "cc_read_aaaaaaaa",
+        inputSchemaValue: {
+          type: "object",
+          properties: { file_path: { type: "string" }, offset: { type: "number" }, limit: { type: "number" } },
+          required: ["file_path"],
+        },
+      },
+      {
+        clientName: "Grep",
+        wireName: "cc_grep_bbbbbbbb",
+        inputSchemaValue: {
+          type: "object",
+          properties: {
+            pattern: { type: "string" },
+            path: { type: "string" },
+            glob: { type: "string" },
+            output_mode: { type: "string" },
+          },
+          required: ["pattern"],
+        },
+      },
+      {
+        clientName: "Bash",
+        wireName: "cc_bash_cccccccc",
+        inputSchemaValue: {
+          type: "object",
+          properties: {
+            command: { type: "string" },
+            working_directory: { type: "string" },
+            description: { type: "string" },
+          },
+          required: ["command"],
+        },
+      },
+      {
+        clientName: "WebFetch",
+        wireName: "cc_web_fetch_dddddddd",
+        inputSchemaValue: {
+          type: "object",
+          properties: { url: { type: "string" } },
+          required: ["url"],
+        },
+      },
+      {
+        clientName: "Glob",
+        wireName: "cc_glob_eeeeeeee",
+        inputSchemaValue: {
+          type: "object",
+          properties: { pattern: { type: "string" }, path: { type: "string" } },
+          required: ["pattern"],
+        },
+      },
+    ] as const;
+
+    const read = cursorNativeExecRedirect(
+      { id: 1, execId: "read-1", readArgs: { path: "README.md", toolCallId: "native-read-1" } },
+      tools,
+      CURSOR_TOOL_PROVIDER_IDENTIFIER,
+    );
+    expect(read).toMatchObject({
+      execCase: "readArgs",
+      nativeResultType: "readResult",
+      call: {
+        name: "Read",
+        toolCallId: "native-read-1",
+        arguments: JSON.stringify({ file_path: "README.md" }),
+      },
+    });
+
+    const grep = cursorNativeExecRedirect(
+      { id: 2, execId: "grep-2", grepArgs: { pattern: "Fleet", path: "packages", glob: "*.ts" } },
+      tools,
+      CURSOR_TOOL_PROVIDER_IDENTIFIER,
+    );
+    expect(grep).toMatchObject({
+      execCase: "grepArgs",
+      nativeResultType: "grepResult",
+      call: {
+        name: "Grep",
+        arguments: JSON.stringify({ pattern: "Fleet", path: "packages", glob: "*.ts" }),
+      },
+    });
+
+    const shell = cursorNativeExecRedirect(
+      {
+        id: 3,
+        execId: "shell-3",
+        shellStreamArgs: { command: "pwd", workingDirectory: "/workspace", toolCallId: "native-shell-3" },
+      },
+      tools,
+      CURSOR_TOOL_PROVIDER_IDENTIFIER,
+    );
+    expect(shell).toMatchObject({
+      execCase: "shellStreamArgs",
+      nativeResultType: "shellStreamResult",
+      call: {
+        name: "Bash",
+        toolCallId: "native-shell-3",
+      },
+    });
+    expect(JSON.parse(shell?.call.arguments ?? "{}")).toMatchObject({
+      command: "pwd",
+      working_directory: "/workspace",
+    });
+
+    expect(cursorNativeExecRedirect(
+      { id: 4, readArgs: { path: "README.md", offset: 2, limit: 10 } },
+      tools,
+      CURSOR_TOOL_PROVIDER_IDENTIFIER,
+    )).toBeNull();
+    expect(cursorNativeExecRedirect(
+      { id: 5, fetchArgs: { url: "https://example.test" } },
+      tools,
+      CURSOR_TOOL_PROVIDER_IDENTIFIER,
+    )).toBeNull();
+    expect(cursorNativeExecRedirect(
+      { id: 6, lsArgs: { path: "src" } },
+      tools,
+      CURSOR_TOOL_PROVIDER_IDENTIFIER,
+    )).toBeNull();
+    expect(cursorNativeExecRedirect(
+      { id: 7, writeArgs: { path: "out.txt" } },
+      tools,
+      CURSOR_TOOL_PROVIDER_IDENTIFIER,
+    )).toBeNull();
+  });
+
+  it("formats redirected native results as typed Cursor success frames", () => {
+    const readReplies = cursorNativeRedirectResultReplies(
+      {
+        messageId: 1,
+        execId: "read-1",
+        nativeResultType: "readResult",
+        nativeArgs: { path: "README.md" },
+      },
+      "line1\nline2",
+      false,
+    );
+    expect(() => fromJson(AgentClientMessageSchema, readReplies[0] as JsonValue)).not.toThrow();
+    expect(readReplies[0]).toMatchObject({
+      execClientMessage: {
+        id: 1,
+        execId: "read-1",
+        readResult: {
+          success: expect.objectContaining({
+            path: "README.md",
+            content: "line1\nline2",
+          }),
+        },
+      },
+    });
+
+    const shellReplies = cursorNativeRedirectResultReplies(
+      {
+        messageId: 2,
+        execId: "shell-2",
+        nativeResultType: "shellStreamResult",
+        nativeArgs: { command: "pwd", workingDirectory: "/workspace" },
+      },
+      "/workspace\n",
+      false,
+    );
+    expect(shellReplies).toHaveLength(5);
+    for (const reply of shellReplies) {
+      expect(() => fromJson(AgentClientMessageSchema, reply as JsonValue)).not.toThrow();
+    }
+
+    const failedShellReplies = cursorNativeRedirectResultReplies(
+      {
+        messageId: 3,
+        execId: "shell-3",
+        nativeResultType: "shellStreamResult",
+        nativeArgs: { command: "false", workingDirectory: "/workspace" },
+      },
+      "Exit code 7\ncommand failed",
+      false,
+    );
+    expect(failedShellReplies).toHaveLength(5);
+    expect(failedShellReplies).toContainEqual(expect.objectContaining({
+      execClientMessage: expect.objectContaining({
+        shellStream: { stderr: { data: "command failed" } },
+      }),
+    }));
+    expect(failedShellReplies).toContainEqual(expect.objectContaining({
+      execClientMessage: expect.objectContaining({
+        shellStream: { exit: { code: 7, cwd: "/workspace", aborted: false } },
+      }),
+    }));
+    expect(failedShellReplies).toContainEqual(expect.objectContaining({
+      execClientMessage: expect.objectContaining({
+        shellResult: {
+          failure: expect.objectContaining({
+            exitCode: 7,
+            stdout: "",
+            stderr: "command failed",
+          }),
+        },
+      }),
+    }));
+    for (const reply of failedShellReplies) {
+      expect(() => fromJson(AgentClientMessageSchema, reply as JsonValue)).not.toThrow();
+    }
+  });
+
+  it("keeps hot-path tools eager under ToolSearch deferral", () => {
+    expect(isCursorHotPathToolName("Read")).toBe(true);
+    expect(isCursorHotPathToolName("mcp__fleet__ToolSearch")).toBe(true);
+    expect(isCursorHotPathToolName("mcp__fleet__wiki_read")).toBe(false);
   });
 
   it("encodes a typed fail-closed reply for every supported native exec case", () => {
@@ -406,6 +626,20 @@ describe("Cursor client tool suspension", () => {
 
     expect(reply).toContain("do not call it");
     expect(reply).not.toContain("Matching tools advertised");
+  });
+
+  it("tells an empty-catalog turn to answer in plain text instead of retrying natives", () => {
+    // Measured: Claude Code title-generation requests arrive with tools:[] and still carry the
+    // user prompt, so Cursor natives fire and the old "continue with the advertised client tools"
+    // message had nothing to point at.
+    const reply = JSON.stringify(cursorNativeExecPolicyReplies(
+      { id: 1, grepArgs: { pattern: "Fleet", path: "." } },
+      [],
+    ));
+
+    expect(reply).toContain("advertises no client tools");
+    expect(reply).toContain("plain text only");
+    expect(reply).not.toContain("Continue with the advertised client tools");
   });
 
   it("orders native-exec retry tools by operation fit instead of catalog order", () => {

@@ -107,8 +107,8 @@ describe("Cursor request budgets", () => {
 
     expect(encoded).toBeTypeOf("string");
     expect(toJson(ValueSchema, fromBinary(ValueSchema, Buffer.from(encoded!, "base64")))).toEqual(schema);
-    expect(systemText(plan)).toContain("available tool names are exactly `probe_tool`");
-    expect(systemText(plan)).toContain("including every required field");
+    expect(systemText(plan)).not.toContain("available tool names are exactly");
+    expect(systemText(plan)).not.toContain("including every required field");
   });
 
   it("routes Anthropic WebSearch through Cursor native search instead of MCP protobuf", () => {
@@ -139,20 +139,12 @@ describe("Cursor request budgets", () => {
     expect(systemText(plan)).toContain("no more than 8 searches");
   });
 
-  it("directs gateway models to prefer dedicated client tools over Bash", () => {
+  it("keeps gateway tool policy out of the replayed system root", () => {
     const plan = buildCursorRunPlan(request({
       tools: [tool("Bash"), tool("Edit"), tool("Read"), tool("Write")],
     }), "conversation-tool-discipline");
-    const instructions = systemText(plan);
-    const wireNames = runRequest(plan).mcpTools?.mcpTools.map((entry) => entry.toolName) ?? [];
-    const [bash, edit, read] = wireNames;
 
-    expect(instructions).toContain("Do not invoke Cursor-native tools in gateway mode");
-    expect(instructions).toContain(`Prefer purpose-built client tools over \`${bash}\``);
-    expect(instructions).toContain(`\`${read}\` for reading files`);
-    expect(instructions).toContain(`\`${edit}\` for exact file changes`);
-    expect(instructions).toContain(`Never use \`${bash}\` with Python, sed, perl, or heredocs`);
-    expect(instructions).toContain("neither `Grep` nor `Glob` is advertised");
+    expect(systemText(plan)).toBe("You are a helpful assistant.");
   });
 
   it("repeats the tool discipline as an always-applied rule on every turn", () => {
@@ -173,7 +165,9 @@ describe("Cursor request budgets", () => {
 
     for (const context of [prompt.action?.userMessageAction?.requestContext, resume.action?.resumeAction?.requestContext]) {
       const rule = context?.rules?.[0];
-      expect(rule?.content).toContain("Do not invoke Cursor-native tools in gateway mode");
+      expect(rule?.content).toContain("routed through the caller's tools and permissions");
+      expect(rule?.content).toContain("Native mutation, fetch");
+      expect(rule?.content).not.toContain("Do not invoke Cursor-native tools");
       expect(rule?.type?.global).toBeDefined();
       expect(rule?.fullPath).toContain(CURSOR_TOOL_PROVIDER_IDENTIFIER);
     }
@@ -191,10 +185,17 @@ describe("Cursor request budgets", () => {
       .toContain("Harness instructions.");
   });
 
-  it("sends no rule when no client tool is advertised", () => {
-    const encoded = encodedRunRequest(buildCursorRunPlan(request(), "conversation-no-tools"));
+  it("sends a no-tools rule when no client tool is advertised", () => {
+    // Claude Code title-generation turns hit the gateway with tools:[] but still embed the user
+    // prompt. Without a rule, Cursor only sees its native catalog and every exec is rejected.
+    const plan = buildCursorRunPlan(request(), "conversation-no-tools");
+    const encoded = encodedRunRequest(plan);
+    const rules = encoded.action?.userMessageAction?.requestContext?.rules;
 
-    expect(encoded.action?.userMessageAction?.requestContext?.rules).toBeUndefined();
+    expect(rules).toHaveLength(1);
+    expect(rules?.[0]?.content).toContain("No tool is available on this turn");
+    expect(rules?.[0]?.content).toContain("answer in plain text");
+    expect(systemText(plan)).toBe("You are a helpful assistant.");
   });
 
   it("isolates PascalCase Claude tools from Cursor's native tool namespace", () => {
@@ -203,11 +204,10 @@ describe("Cursor request budgets", () => {
     }), "conversation-tool-alias");
     const wireTools = runRequest(plan).mcpTools?.mcpTools ?? [];
 
-    expect(wireTools[0]?.name).toMatch(/^cc_read_[a-f0-9]{8}$/);
-    expect(wireTools[0]?.toolName).toBe(wireTools[0]?.name);
-    expect(wireTools[0]).not.toHaveProperty("clientName");
-    expect(wireTools[0]).not.toHaveProperty("inputSchemaValue");
-    expect(wireTools[1]?.toolName).toBe("read_file");
+    expect(wireTools).toHaveLength(1);
+    expect(wireTools[0]?.toolName).toBe("read_file");
+    expect(plan.redirectTools.find((tool) => tool.clientName === "Read")?.toolName)
+      .toMatch(/^cc_read_[a-f0-9]{8}$/);
   });
 
   it("loads only ToolSearch-selected deferred tools into the next Cursor catalog", () => {
@@ -223,9 +223,11 @@ describe("Cursor request budgets", () => {
     const toolSearchWireName = initialNames.find((name) => name.startsWith("cc_tool_search_"));
 
     expect(toolSearchWireName).toMatch(/^cc_tool_search_[a-f0-9]{8}$/);
-    expect(initialNames).toHaveLength(2);
+    expect(initialNames).toHaveLength(1);
     expect(initialNames).not.toContain("mcp__fleet__wiki_read");
-    expect(systemText(initialPlan)).toContain(`\`${toolSearchWireName}\` is Claude Code's ToolSearch bridge`);
+    const initialRule = encodedRunRequest(initialPlan).action?.userMessageAction?.requestContext?.rules?.[0]?.content;
+    expect(initialRule).toContain(`Use \`${toolSearchWireName}\` for deferred tools.`);
+    expect(systemText(initialPlan)).not.toContain(toolSearchWireName);
 
     const continuationPlan = buildCursorRunPlan(request({
       tools,
@@ -259,6 +261,42 @@ describe("Cursor request budgets", () => {
     expect(continuationNames).not.toContain("mcp__fleet__wiki_resolve");
   });
 
+  it("keeps deferred redirect tools local instead of forcing their schemas onto the wire", () => {
+    const tools = [
+      tool("ToolSearch"),
+      { ...tool("Read"), defer_loading: true },
+      { ...tool("Bash"), defer_loading: true },
+      { ...tool("Grep"), defer_loading: true },
+      { ...tool("mcp__fleet__wiki_read"), defer_loading: true },
+    ];
+    const plan = buildCursorRunPlan(request({ tools }), "conversation-hot-path-local");
+    const names = runRequest(plan).mcpTools?.mcpTools.map((entry) => entry.toolName) ?? [];
+
+    expect(names.some((name) => name.startsWith("cc_tool_search_"))).toBe(true);
+    expect(names.some((name) => name.startsWith("cc_read_"))).toBe(false);
+    expect(names.some((name) => name.startsWith("cc_bash_"))).toBe(false);
+    expect(names.some((name) => name.startsWith("cc_grep_"))).toBe(false);
+    expect(names).not.toContain("mcp__fleet__wiki_read");
+    expect(plan.redirectTools.map((tool) => tool.clientName)).toEqual(expect.arrayContaining([
+      "ToolSearch",
+      "Read",
+      "Bash",
+      "Grep",
+    ]));
+  });
+
+  it("puts a redirect tool back on the wire when the caller explicitly selects it", () => {
+    const plan = buildCursorRunPlan(request({
+      tools: [tool("Read"), tool("Grep")],
+      tool_choice: { type: "function", name: "Read" },
+    }), "conversation-explicit-redirect-tool");
+    const names = runRequest(plan).mcpTools?.mcpTools.map((entry) => entry.toolName) ?? [];
+
+    expect(names).toHaveLength(1);
+    expect(names[0]).toMatch(/^cc_read_[a-f0-9]{8}$/);
+    expect(plan.redirectTools.map((tool) => tool.clientName)).toEqual(["Read", "Grep"]);
+  });
+
   it("keeps deferred tools eager when the client did not advertise ToolSearch", () => {
     const plan = buildCursorRunPlan(request({
       tools: [{ ...tool("mcp__fleet__wiki_read"), defer_loading: true }],
@@ -283,9 +321,8 @@ describe("Cursor request budgets", () => {
     // The pre-flight sizing view must agree with the payload, not the declaration.
     expect(new CursorAdapter().wireTools(canonical).map((entry) => entry.name)).toEqual([
       "ToolSearch",
-      "Read",
     ]);
-    expect(runRequest(plan).mcpTools?.mcpTools).toHaveLength(2);
+    expect(runRequest(plan).mcpTools?.mcpTools).toHaveLength(1);
   });
 
   it("reports the capped survivors when the declared catalog overruns the byte budget", () => {
@@ -337,13 +374,14 @@ describe("Cursor request budgets", () => {
     const names = kept.map((entry) => entry.toolName);
 
     expect(kept).toHaveLength(CURSOR_TOOL_COUNT_LIMIT);
+    expect(names).not.toContain("exec_command");
+    expect(plan.redirectTools.some((tool) => tool.clientName === "exec_command")).toBe(true);
     expect(names).toEqual(expect.arrayContaining([
-      "exec_command",
       "apply_patch",
       "mcp__selected__chosen",
       "tool_search",
     ]));
-    expect(systemText(plan)).toContain("Cursor transport limits expose 330 of 354 tools");
+    expect(systemText(plan)).toContain("Cursor transport limits expose 330 of 353 tools");
     expect(systemText(plan)).toContain("Use tool_search");
   });
 

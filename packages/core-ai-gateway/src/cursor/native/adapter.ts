@@ -29,6 +29,13 @@ import {
   canonicalMessageText,
 } from "../../canonical/index.js";
 import { cursorNativeExecPolicyReplies } from "./exec-policy.js";
+import {
+  cursorNativeExecRedirect,
+  cursorNativeRedirectResultReplies,
+  isCursorHotPathToolName,
+  isCursorNativeRedirectToolName,
+  type CursorNativeRedirectResultType,
+} from "./exec-redirect.js";
 import { wireLog } from "../../transport/wire-log.js";
 import {
   cursorUnknownExecCaseName,
@@ -142,6 +149,9 @@ export type CursorDiagnosticEventName =
   | "bridge.defer"
   | "bridge.expire"
   | "bridge.mismatch"
+  | "exec.redirect.selected"
+  | "exec.redirect.attached"
+  | "exec.redirect.result_written"
   | "turn.finish";
 
 /** Mid-session wire-model switches keyed by credential-partitioned conversation identity. */
@@ -200,6 +210,9 @@ export interface CursorDiagnosticEvent {
   /** Cursor checkpoint's runtime context limit for the concrete routed model. */
   readonly contextWindow?: number;
   readonly outcome?: string;
+  /** Run-local sequence only; never a caller or provider identifier. */
+  readonly operationSequence?: number;
+  readonly adapter?: "read-direct" | "grep-direct" | "shell-direct";
   readonly error?: string;
 }
 
@@ -336,7 +349,10 @@ class BlobStore {
 export interface CursorRunPlan {
   readonly payload: unknown;
   readonly blobs: BlobStore;
+  /** Tools advertised to Cursor for direct model selection. */
   readonly tools: readonly CursorWireTool[];
+  /** Caller schemas retained locally for native-exec redirection, never forced onto the wire. */
+  readonly redirectTools: readonly CursorWireTool[];
   readonly wireModelId: string;
   /** Request-local estimate from the exact root/action text sent to Cursor. */
   readonly estimatedInputTokens: number;
@@ -385,13 +401,13 @@ export function buildCursorRunPlan(
   const wireModelId = modelSelection.upstreamModelId;
   const maxMode = options.maxMode ?? modelSelection.maxMode;
   const blobs = new BlobStore();
+  const redirectTools = cursorRedirectTools(request);
   const toolBudget = applyCursorToolBudget(request);
   const limitNote = cursorToolLimitNote(toolBudget);
   const nativeTools = request.native_tools ?? [];
   const instructions = [
     request.instructions?.trim(),
     cursorNativeToolGuidance(nativeTools),
-    cursorToolGuidance(toolBudget.tools, nativeTools),
     limitNote,
   ]
     .filter((part): part is string => Boolean(part))
@@ -402,7 +418,7 @@ export function buildCursorRunPlan(
   }, "system")];
 
   // 마지막 항목이 tool 결과면 이어가기 턴이다. 그때는 새 사용자 메시지 없이 resume한다.
-  const last = request.input.at(-1);
+  const last = lastCursorActionableInput(request.input);
   const isToolContinuation = last?.type === "function_call_output";
   const activeIndex = isToolContinuation ? -1 : lastUserIndex(request.input);
   const toolNames = new Map(
@@ -436,9 +452,10 @@ export function buildCursorRunPlan(
   );
   const requestContext = {
     env: { timeZone: runtimeTimeZone() },
-    ...(toolBudget.tools.length > 0
-      ? { rules: cursorClientToolRules(toolBudget.tools, nativeTools) }
-      : {}),
+    // Measured: Claude Code's title-generation turn hits the gateway with tools:[] but still embeds
+    // the full user prompt. Cursor then picks native tools and every one is rejected. A rule has to
+    // ride even on an empty catalog — the only lever that reaches the model where it chooses.
+    rules: cursorClientToolRules(toolBudget.tools, redirectTools, nativeTools),
   };
   const action = isToolContinuation || (activeText.trim().length === 0 && activeImages.length === 0)
     ? { resumeAction: { requestContext } }
@@ -470,6 +487,7 @@ export function buildCursorRunPlan(
     payload: { runRequest },
     blobs,
     tools: toolBudget.tools,
+    redirectTools,
     wireModelId,
     estimatedInputTokens,
     replayRootCount: replayRoots.length,
@@ -751,20 +769,27 @@ function runtimeTimeZone(): string {
   }
 }
 
+function cursorRedirectTools(request: CanonicalResponseRequest): readonly CursorWireTool[] {
+  return (request.tools ?? [])
+    .filter((tool) => isCursorHotPathToolName(tool.name))
+    .map(toCursorWireTool);
+}
+
 function applyCursorToolBudget(request: CanonicalResponseRequest): CursorToolBudget {
   const declaredTools = request.tools ?? [];
   const selectedName = typeof request.tool_choice === "object" ? request.tool_choice.name : undefined;
   const referencedNames = cursorReferencedToolNames(request.input);
   const supportsDeferredLoading = declaredTools.some((tool) => isCursorToolSearchName(tool.name));
   // Preserve legacy callers that attach defer_loading metadata without exposing ToolSearch.
-  const sourceTools = supportsDeferredLoading
-    ? declaredTools.filter((tool) => (
-        tool.defer_loading !== true
-        || isCursorToolSearchName(tool.name)
-        || referencedNames.has(tool.name)
-        || cursorToolMatches(tool.name, selectedName)
-      ))
-    : declaredTools;
+  const sourceTools = declaredTools.filter((tool) => {
+    const explicitlySelected = referencedNames.has(tool.name)
+      || cursorToolMatches(tool.name, selectedName);
+    if (isCursorNativeRedirectToolName(tool.name) && !explicitlySelected) return false;
+    return !supportsDeferredLoading
+      || tool.defer_loading !== true
+      || isCursorToolSearchName(tool.name)
+      || explicitlySelected;
+  });
   const wireTools = sourceTools.map(toCursorWireTool);
   if (
     wireTools.length <= CURSOR_TOOL_COUNT_LIMIT
@@ -875,11 +900,12 @@ function cursorWireToolName(clientName: string): string {
  */
 function cursorClientToolRules(
   tools: readonly CursorWireTool[],
+  redirectTools: readonly CursorWireTool[],
   nativeTools: readonly CanonicalNativeTool[],
 ): readonly unknown[] {
   return [{
     fullPath: `.cursor/rules/${CURSOR_TOOL_PROVIDER_IDENTIFIER}.mdc`,
-    content: cursorClientToolDiscipline(tools, nativeTools),
+    content: cursorClientToolDiscipline(tools, redirectTools, nativeTools),
     type: { global: {} },
     source: CURSOR_RULE_SOURCE_USER,
   }];
@@ -920,8 +946,9 @@ function cursorToolPriority(
   if (leafName === "exec_command" || leafName === "shell_command") return 0;
   if (leafName === "apply_patch") return 1;
   if (cursorToolMatches(name, selectedName)) return 2;
-  if (loadedFromToolSearch || isCursorToolSearchName(name)) return 3;
-  return name.includes("__") ? 5 : 4;
+  if (isCursorHotPathToolName(name)) return 3;
+  if (loadedFromToolSearch || isCursorToolSearchName(name)) return 4;
+  return name.includes("__") ? 6 : 5;
 }
 
 function cursorToolMatches(name: string, selectedName: string | undefined): boolean {
@@ -976,77 +1003,31 @@ function cursorNativeToolGuidance(tools: readonly CanonicalNativeTool[]): string
   return guidance.join(" ");
 }
 
-function cursorToolGuidance(
-  tools: readonly CursorWireTool[],
-  nativeTools: readonly CanonicalNativeTool[],
-): string | undefined {
-  if (tools.length === 0) return undefined;
-  const names = tools.map((tool) => `\`${tool.toolName}\``).join(", ");
-  return [
-    `Cursor tool calls: available tool names are exactly ${names}.`,
-    "Use the current tool catalog as ground truth and call only those exact names with their listed argument keys.",
-    "Every tool call must include valid JSON arguments satisfying its input schema, including every required field.",
-    cursorClientToolDiscipline(tools, nativeTools),
-  ].join(" ");
-}
-
 function cursorClientToolDiscipline(
   tools: readonly CursorWireTool[],
+  redirectTools: readonly CursorWireTool[],
   nativeTools: readonly CanonicalNativeTool[],
 ): string {
-  const bash = findCursorToolName(tools, ["Bash", "shell_command", "exec_command"]);
-  const read = findCursorToolName(tools, ["Read"]);
-  const edit = findCursorToolName(tools, ["Edit", "apply_patch"]);
-  const write = findCursorToolName(tools, ["Write", "apply_patch"]);
-  const grep = findCursorToolName(tools, ["Grep"]);
-  const glob = findCursorToolName(tools, ["Glob"]);
-  const toolSearch = tools.find((tool) => isCursorToolSearchName(tool.clientName))?.toolName;
   const nativeWebSearch = nativeTools.some((tool) => tool.type === "web_search");
+  const redirectLeaves = new Set(redirectTools.map((tool) => cursorToolLeafName(tool.clientName).replace(/[_-]/g, "").toLowerCase()));
+  const routed: string[] = [];
+  if (redirectLeaves.has("read")) routed.push("read");
+  if (redirectLeaves.has("grep")) routed.push("search");
+  if (["bash", "shellcommand", "execcommand"].some((leaf) => redirectLeaves.has(leaf))) routed.push("shell");
   const guidance = [
+    routed.length > 0
+      ? `Native ${routed.join(", ")} requests are routed through the caller's tools and permissions.`
+      : undefined,
     nativeWebSearch
-      ? "Do not invoke Cursor-native filesystem, shell, or editing tools in gateway mode; native web search is the only exception. Call the advertised client bridge tools for every other action."
-      : "Do not invoke Cursor-native tools in gateway mode; call the advertised client bridge tools directly.",
-  ];
-  if (toolSearch) {
-    guidance.push(
-      `\`${toolSearch}\` is Claude Code's ToolSearch bridge. Use it to load deferred client tools, then call only a tool name returned by that search on the next turn.`,
-    );
-  }
-  const dedicated = [
-    read ? `\`${read}\` for reading files` : undefined,
-    edit ? `\`${edit}\` for exact file changes` : undefined,
-    write ? `\`${write}\` for new files` : undefined,
-    grep ? `\`${grep}\` for content search` : undefined,
-    glob ? `\`${glob}\` for file discovery` : undefined,
+      ? "Native web search is available; native mutation and fetch remain unavailable."
+      : "Native mutation, fetch, and unsupported operations remain unavailable.",
   ].filter((entry): entry is string => entry !== undefined);
-  if (bash && dedicated.length > 0) {
-    guidance.push(`Prefer purpose-built client tools over \`${bash}\`: ${dedicated.join(", ")}.`);
-    guidance.push(
-      `Never use \`${bash}\` with Python, sed, perl, or heredocs to read or modify files when a purpose-built client tool above can do the work.`,
-    );
-  }
-  if (bash) {
-    const searchGuidance = grep || glob
-      ? "Use the advertised search tools instead of the shell for repository search."
-      : `Repository search with \`${bash}\` is expected because neither \`Grep\` nor \`Glob\` is advertised.`;
-    guidance.push(
-      `Use \`${bash}\` only for shell-native workflows such as git, builds, tests, package managers, and commands with no dedicated client tool. ${searchGuidance}`,
-    );
+  const toolSearch = tools.find((tool) => isCursorToolSearchName(tool.clientName))?.toolName;
+  if (toolSearch) guidance.push(`Use \`${toolSearch}\` for deferred tools.`);
+  if (tools.length === 0 && routed.length === 0 && !nativeWebSearch) {
+    guidance.push("No tool is available on this turn; answer in plain text.");
   }
   return guidance.join(" ");
-}
-
-function findCursorToolName(
-  tools: readonly CursorWireTool[],
-  candidates: readonly string[],
-): string | undefined {
-  for (const candidate of candidates) {
-    const match = tools.find((tool) => (
-      cursorToolLeafName(tool.clientName).toLowerCase() === candidate.toLowerCase()
-    ));
-    if (match) return match.toolName;
-  }
-  return undefined;
 }
 
 interface CursorLiveRunDescriptor {
@@ -1067,6 +1048,11 @@ interface CursorPendingToolCorrelation {
   /** Cursor exec envelope id sealed from execServerMessage. */
   readonly messageId: number;
   readonly execId: string;
+  /** Present when this parked call originated as a redirected Cursor-native exec. */
+  readonly nativeResultType?: CursorNativeRedirectResultType;
+  readonly nativeArgs?: Readonly<Record<string, string>>;
+  readonly operationSequence?: number;
+  readonly redirectAdapter?: "read-direct" | "grep-direct" | "shell-direct";
 }
 
 type CursorCanonicalToolResult = Extract<CanonicalInputItem, { type: "function_call_output" }>;
@@ -1119,26 +1105,58 @@ function cursorToolCatalogFingerprint(
 function trailingCursorToolResults(
   input: readonly CanonicalInputItem[],
 ): readonly CursorCanonicalToolResult[] | undefined {
-  if (input.at(-1)?.type !== "function_call_output") return undefined;
-  let start = input.length - 1;
-  while (start > 0 && input[start - 1]?.type === "function_call_output") start -= 1;
-  const preceding = input.slice(0, start);
-  let lastCallIndex = -1;
-  for (let index = preceding.length - 1; index >= 0; index -= 1) {
-    if (preceding[index]?.type !== "function_call") continue;
-    lastCallIndex = index;
-    break;
+  let end = input.length;
+  while (end > 1) {
+    const tail = input[end - 1];
+    if (
+      tail?.type !== "message"
+      || tail.role !== "developer"
+      || input[end - 2]?.type !== "function_call_output"
+    ) {
+      break;
+    }
+    end -= 1;
   }
-  if (lastCallIndex < 0 || lastUserIndex(preceding) > lastCallIndex) return undefined;
-  return input.slice(start) as readonly CursorCanonicalToolResult[];
+  if (input[end - 1]?.type !== "function_call_output") return undefined;
+  let start = end - 1;
+  while (start > 0 && input[start - 1]?.type === "function_call_output") start -= 1;
+  // Claude Code records parallel tool uses and results on independent transcript branches, then can
+  // append a developer attachment immediately after the result. The parked Run owns the expected id
+  // set; cursorLiveRunMismatch validates this batch before any result byte is written.
+  return input.slice(start, end) as readonly CursorCanonicalToolResult[];
 }
 
-function cursorLiveRunMismatch(
+function lastCursorActionableInput(
+  input: readonly CanonicalInputItem[],
+): CanonicalInputItem | undefined {
+  const results = trailingCursorToolResults(input);
+  return results?.at(-1) ?? input.at(-1);
+}
+
+function isCursorClientContextMessage(item: CanonicalInputItem | undefined): boolean {
+  if (item?.type !== "message" || (item.role !== "user" && item.role !== "developer")) return false;
+  const text = canonicalMessageText(item.content);
+  return item.role === "developer"
+    ? text.includes("<system-reminder>")
+    : text.trimStart().startsWith("<system-reminder>");
+}
+
+function cursorSupersedeOutcome(input: readonly CanonicalInputItem[]): string {
+  const actionable = lastCursorActionableInput(input);
+  if (actionable?.type === "message") {
+    return actionable.role === "assistant"
+      ? "superseded_by_model_continuation"
+      : "superseded_by_user_prompt";
+  }
+  return input.some((item) => isCursorClientContextMessage(item))
+    ? "result_batch_unrecognized_after_client_context"
+    : "result_batch_unrecognized";
+}
+
+function cursorLiveRunDescriptorMismatch(
   pending: CursorPendingLiveRun,
   descriptor: CursorLiveRunDescriptor,
-  results: readonly CursorCanonicalToolResult[] | undefined,
 ): string | undefined {
-  if (!results) return "superseded_by_prompt";
   const expected = pending.run.descriptor;
   if (descriptor.conversationId !== expected.conversationId) return "conversation";
   if (descriptor.sessionId !== expected.sessionId) return "session";
@@ -1147,6 +1165,18 @@ function cursorLiveRunMismatch(
   if (descriptor.wireModelId !== expected.wireModelId) return "wire_model";
   if (descriptor.effort !== expected.effort) return "effort";
   if (descriptor.toolCatalogFingerprint !== expected.toolCatalogFingerprint) return "tool_catalog";
+  return undefined;
+}
+
+function cursorLiveRunMismatch(
+  pending: CursorPendingLiveRun,
+  descriptor: CursorLiveRunDescriptor,
+  results: readonly CursorCanonicalToolResult[] | undefined,
+  input: readonly CanonicalInputItem[],
+): string | undefined {
+  const descriptorMismatch = cursorLiveRunDescriptorMismatch(pending, descriptor);
+  if (descriptorMismatch) return descriptorMismatch;
+  if (!results) return cursorSupersedeOutcome(input);
 
   const resultIds = results.map((result) => result.call_id);
   if (new Set(resultIds).size !== resultIds.length) return "duplicate_result";
@@ -1239,14 +1269,6 @@ export class CursorAdapter implements AiGatewayAdapter {
       identity.conversationId,
     );
     const results = trailingCursorToolResults(request.input);
-    const earlyPending = this.pendingLiveRuns.get(conversationStateKey);
-    if (!results && earlyPending && this.claimPendingLiveRun(earlyPending)) {
-      earlyPending.run.report("bridge.mismatch", {
-        model: cursorDiagnosticLabel(request.model),
-        outcome: "superseded_by_prompt",
-      });
-      earlyPending.run.dispose("bridge_mismatch_superseded_by_prompt");
-    }
     let plan: CursorRunPlan;
     try {
       plan = buildCursorRunPlan(request, identity.conversationId, {
@@ -1307,7 +1329,14 @@ export class CursorAdapter implements AiGatewayAdapter {
     };
     const pending = this.pendingLiveRuns.get(conversationStateKey);
     if (pending) {
-      const mismatch = cursorLiveRunMismatch(pending, descriptor, results);
+      const descriptorMismatch = cursorLiveRunDescriptorMismatch(pending, descriptor);
+      // Claude Code can issue auxiliary requests (for example title generation) under the same
+      // session identity while a tool batch is still executing. Those requests carry a different
+      // model or tool catalog and must not steal the parked Run from its eventual continuation.
+      if (!results && descriptorMismatch) {
+        return this.openRun(request, options, identity, plan, descriptor, contextRecall.checkpoint);
+      }
+      const mismatch = cursorLiveRunMismatch(pending, descriptor, results, request.input);
       if (mismatch === undefined && results && this.claimPendingLiveRun(pending)) {
         rememberCursorWireModel(
           identity.conversationId,
@@ -1606,6 +1635,7 @@ export class CursorAdapter implements AiGatewayAdapter {
       model: request.model,
       blobs: plan.blobs,
       tools: plan.tools,
+      redirectTools: plan.redirectTools,
       estimatedInputTokens: plan.estimatedInputTokens,
       previousContextCheckpoint,
       onContextCheckpoint: (checkpoint) => rememberCursorContextCheckpoint(
@@ -2074,6 +2104,7 @@ interface CursorLiveRunOptions {
   readonly model: string;
   readonly blobs: BlobStore;
   readonly tools: readonly CursorWireTool[];
+  readonly redirectTools: readonly CursorWireTool[];
   readonly estimatedInputTokens: number;
   readonly previousContextCheckpoint: CursorContextCheckpoint | undefined;
   readonly onContextCheckpoint: (checkpoint: CursorContextCheckpoint) => void;
@@ -2121,6 +2152,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     model,
     blobs,
     tools,
+    redirectTools,
     estimatedInputTokens,
     previousContextCheckpoint,
     toolFinalizeGraceMs,
@@ -2158,6 +2190,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
   let blobFetchCount = 0;
   let blobFetchBytes = 0;
   let blobFetchMisses = 0;
+  let redirectOperationSequence = 0;
 
   const usage = (segment: CursorResponseSegment): CanonicalUsage => {
     const outputTokens = Math.max(
@@ -2640,7 +2673,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     if (state === "parked") {
       if (isCursorHeartbeatFrame(frame)) return;
       if (isCursorParkedResidueFrame(frame, parkedCalls)) return;
-      if (isCursorClientToolFrame(frame, tools)) {
+      if (isCursorClientToolFrame(frame, tools, redirectTools)) {
         if (deferredToolFrames.length >= CURSOR_DEFERRED_TOOL_FRAME_LIMIT) {
           dispose("deferred_tool_overflow", new Error("Cursor queued too many calls while parked"));
           return;
@@ -2692,6 +2725,46 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
           ...(call.argumentRepairCount === undefined
             ? {}
             : { argumentRepairCount: call.argumentRepairCount }),
+        });
+        rescheduleToolTurnFinish();
+        return;
+      }
+      const redirect = cursorNativeExecRedirect(
+        frame.execServerMessage,
+        redirectTools.map((tool) => ({
+          clientName: tool.clientName,
+          wireName: tool.toolName,
+          inputSchemaValue: tool.inputSchemaValue,
+        })),
+        CURSOR_TOOL_PROVIDER_IDENTIFIER,
+      );
+      if (redirect) {
+        const operationSequence = ++redirectOperationSequence;
+        report("exec.redirect.selected", {
+          model: diagnosticModel,
+          operationSequence,
+          adapter: redirect.adapter,
+        });
+        clearToolFinalize(activeSegment);
+        const entry = ensureToolItem(redirect.call);
+        if (entry.suspended) invalidateToolCorrelation([entry]);
+        entry.suspended = true;
+        entry.correlation = activeSegment.correlationInvalid || entry.correlationInvalid
+          ? undefined
+          : {
+            callId: entry.itemId,
+            toolCallId: redirect.call.toolCallId,
+            execId: redirect.call.execId,
+            messageId: redirect.call.messageId,
+            nativeResultType: redirect.nativeResultType,
+            nativeArgs: redirect.nativeArgs,
+            operationSequence,
+            redirectAdapter: redirect.adapter,
+          };
+        completeToolItem(entry, redirect.call);
+        report("client.reply", {
+          model: diagnosticModel,
+          reply: `exec.redirect.${redirect.execCase}`,
         });
         rescheduleToolTurnFinish();
         return;
@@ -2838,9 +2911,36 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     }
     const segment = createSegment(signal, continuationEstimatedInputTokens);
     try {
+      let mcpResultCount = 0;
+      let nativeResultCount = 0;
       for (const call of calls) {
         const result = resultById.get(call.callId);
         if (!result) throw new Error("Cursor live Run result batch changed after claim");
+        if (call.nativeResultType) {
+          report("exec.redirect.attached", {
+            model: diagnosticModel,
+            operationSequence: call.operationSequence,
+            adapter: call.redirectAdapter,
+          });
+          const replies = cursorNativeRedirectResultReplies(
+            {
+              messageId: call.messageId,
+              execId: call.execId,
+              nativeResultType: call.nativeResultType,
+              ...(call.nativeArgs ? { nativeArgs: call.nativeArgs } : {}),
+            },
+            result.output,
+            result.is_error === true,
+          );
+          for (const reply of replies) stream.write(encodeCursorClientMessage(reply));
+          report("exec.redirect.result_written", {
+            model: diagnosticModel,
+            operationSequence: call.operationSequence,
+            adapter: call.redirectAdapter,
+          });
+          nativeResultCount += 1;
+          continue;
+        }
         stream.write(encodeCursorClientMessage({
           execClientMessage: {
             id: call.messageId,
@@ -2853,12 +2953,22 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
             },
           },
         }));
+        mcpResultCount += 1;
       }
-      report("client.reply", {
-        model: diagnosticModel,
-        reply: "exec.mcpResult",
-        count: calls.length,
-      });
+      if (mcpResultCount > 0) {
+        report("client.reply", {
+          model: diagnosticModel,
+          reply: "exec.mcpResult",
+          count: mcpResultCount,
+        });
+      }
+      if (nativeResultCount > 0) {
+        report("client.reply", {
+          model: diagnosticModel,
+          reply: "exec.nativeRedirectResult",
+          count: nativeResultCount,
+        });
+      }
     } catch (error) {
       const failure = error instanceof Error ? error : new Error(String(error));
       dispose("mcp_result_write_error", failure);
@@ -3338,10 +3448,14 @@ function cursorToolUpdateIdentifiers(
  * A frame that carries a client tool call of ours and nothing the upstream is waiting on a reply
  * for. Only these are safe to hold while parked: a native exec needs an answer on the wire now,
  * and text or a turn ending means the model moved past the batch we are still holding.
+ *
+ * Redirectable Cursor-native execs are treated as our own client tools: they will be remapped to
+ * the advertised bridge and parked with the rest of the batch.
  */
 function isCursorClientToolFrame(
   frame: CursorServerFrame,
   tools: readonly CursorWireTool[],
+  redirectTools: readonly CursorWireTool[],
 ): boolean {
   const update = isRecord(frame.interactionUpdate) ? frame.interactionUpdate : undefined;
   if (update !== undefined) return cursorToolUpdateIdentifiers(update) !== undefined;
@@ -3349,7 +3463,16 @@ function isCursorClientToolFrame(
   if (exec === undefined) return false;
   const wireCall = mcpCallFromExecMessage(exec);
   const call = wireCall ? cursorClientMcpCall(wireCall, tools) : null;
-  return call?.providerIdentifier === CURSOR_TOOL_PROVIDER_IDENTIFIER;
+  if (call?.providerIdentifier === CURSOR_TOOL_PROVIDER_IDENTIFIER) return true;
+  return cursorNativeExecRedirect(
+    exec,
+    redirectTools.map((tool) => ({
+      clientName: tool.clientName,
+      wireName: tool.toolName,
+      inputSchemaValue: tool.inputSchemaValue,
+    })),
+    CURSOR_TOOL_PROVIDER_IDENTIFIER,
+  ) !== null;
 }
 
 /**

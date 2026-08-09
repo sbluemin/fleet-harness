@@ -73,6 +73,231 @@ describe("Cursor live client-tool Run bridge", () => {
     },
   );
 
+  it("redirects a native read through the caller and attaches its typed result on the same Run", async () => {
+    const call = cursorCall("native-read-redirect", 24);
+    const stream = new BridgeCursorStream(
+      [{
+        execServerMessage: {
+          id: call.messageId,
+          execId: call.execId,
+          readArgs: { path: "README.md", toolCallId: call.callId },
+        },
+      }],
+      cursorCompletionFrames("native read continued"),
+      1,
+    );
+    const diagnostics: CursorDiagnosticEvent[] = [];
+    const harness = cursorHarness([stream], {
+      diagnostics: (event) => diagnostics.push(event),
+    });
+    const initial: CanonicalResponseRequest = {
+      ...cursorRequest("session-native-read-redirect", "composer-2.5"),
+      tools: [{
+        type: "function",
+        name: "Read",
+        description: "Read a file",
+        parameters: {
+          type: "object",
+          properties: { file_path: { type: "string" } },
+          required: ["file_path"],
+          additionalProperties: false,
+        },
+      }],
+    };
+
+    try {
+      const firstEvents = await collectCursorResponse(harness.adapter, initial);
+      expect(firstEvents).toContainEqual(expect.objectContaining({
+        type: "response.output_item.done",
+        item: expect.objectContaining({
+          call_id: call.callId,
+          name: "Read",
+          arguments: JSON.stringify({ file_path: "README.md" }),
+        }),
+      }));
+      const secondEvents = await collectCursorResponse(
+        harness.adapter,
+        cursorContinuation(initial, [{ ...call, name: "Read" }], [{
+          call_id: call.callId,
+          output: "1→first line\n2→second line",
+        }]),
+      );
+
+      expect(canonicalText(secondEvents)).toBe("native read continued");
+      expect(harness.openedStreams).toBe(1);
+      expect(diagnostics).toContainEqual(expect.objectContaining({
+        event: "client.reply",
+        reply: "exec.redirect.readArgs",
+      }));
+      expect(diagnostics).toContainEqual(expect.objectContaining({
+        event: "bridge.attach",
+        outcome: "exact_match",
+      }));
+      expect(diagnostics).toContainEqual(expect.objectContaining({
+        event: "client.reply",
+        reply: "exec.nativeRedirectResult",
+      }));
+      expect(diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          event: "exec.redirect.selected",
+          operationSequence: 1,
+          adapter: "read-direct",
+        }),
+        expect.objectContaining({
+          event: "exec.redirect.attached",
+          operationSequence: 1,
+          adapter: "read-direct",
+        }),
+        expect.objectContaining({
+          event: "exec.redirect.result_written",
+          operationSequence: 1,
+          adapter: "read-direct",
+        }),
+      ]));
+      expect(cursorClientWrites(stream)).toContainEqual(expect.objectContaining({
+        execClientMessage: {
+          id: call.messageId,
+          execId: call.execId,
+          readResult: {
+            success: expect.objectContaining({
+              path: "README.md",
+              content: "first line\nsecond line",
+            }),
+          },
+        },
+      }));
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("attaches mixed redirected-native and ordinary MCP results as one exact batch", async () => {
+    const nativeCall = cursorCall("mixed-native-read", 25);
+    const mcpCall = cursorCall("mixed-client-tool", 26);
+    const stream = new BridgeCursorStream(
+      [
+        {
+          execServerMessage: {
+            id: nativeCall.messageId,
+            execId: nativeCall.execId,
+            readArgs: { path: "README.md", toolCallId: nativeCall.callId },
+          },
+        },
+        ...cursorToolFrames([mcpCall]),
+      ],
+      cursorCompletionFrames("mixed batch continued"),
+      2,
+    );
+    const harness = cursorHarness([stream]);
+    const initial: CanonicalResponseRequest = {
+      ...cursorRequest("session-mixed-native-mcp", "composer-2.5"),
+      tools: [
+        {
+          type: "function",
+          name: "Read",
+          description: "Read a file",
+          parameters: {
+            type: "object",
+            properties: { file_path: { type: "string" } },
+            required: ["file_path"],
+            additionalProperties: false,
+          },
+        },
+        ...(cursorRequest("unused", "composer-2.5").tools ?? []),
+      ],
+    };
+
+    try {
+      const firstEvents = await collectCursorResponse(harness.adapter, initial);
+      expect(new Set(addedFunctionCallIds(firstEvents))).toEqual(new Set([
+        nativeCall.callId,
+        mcpCall.callId,
+      ]));
+      const events = await collectCursorResponse(
+        harness.adapter,
+        cursorContinuation(
+          initial,
+          [{ ...nativeCall, name: "Read" }, mcpCall],
+          [
+            { call_id: mcpCall.callId, output: "ordinary result" },
+            { call_id: nativeCall.callId, output: "1→native result" },
+          ],
+        ),
+      );
+
+      expect(canonicalText(events)).toBe("mixed batch continued");
+      expect(harness.openedStreams).toBe(1);
+      expect(cursorMcpResultWrites(stream)).toHaveLength(1);
+      expect(cursorClientWrites(stream)).toContainEqual(expect.objectContaining({
+        execClientMessage: expect.objectContaining({
+          id: nativeCall.messageId,
+          execId: nativeCall.execId,
+          readResult: {
+            success: expect.objectContaining({ content: "native result" }),
+          },
+        }),
+      }));
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("returns a typed native failure when the caller rejects a redirected read", async () => {
+    const call = cursorCall("native-read-error", 27);
+    const stream = new BridgeCursorStream(
+      [{
+        execServerMessage: {
+          id: call.messageId,
+          execId: call.execId,
+          readArgs: { path: "missing.txt", toolCallId: call.callId },
+        },
+      }],
+      cursorCompletionFrames("native error continued"),
+      1,
+    );
+    const harness = cursorHarness([stream]);
+    const initial: CanonicalResponseRequest = {
+      ...cursorRequest("session-native-read-error", "composer-2.5"),
+      tools: [{
+        type: "function",
+        name: "Read",
+        description: "Read a file",
+        parameters: {
+          type: "object",
+          properties: { file_path: { type: "string" } },
+          required: ["file_path"],
+          additionalProperties: false,
+        },
+      }],
+    };
+
+    try {
+      await collectCursorResponse(harness.adapter, initial);
+      const events = await collectCursorResponse(
+        harness.adapter,
+        cursorContinuation(initial, [{ ...call, name: "Read" }], [{
+          call_id: call.callId,
+          output: "File does not exist",
+          is_error: true,
+        }]),
+      );
+
+      expect(canonicalText(events)).toBe("native error continued");
+      expect(cursorClientWrites(stream)).toContainEqual(expect.objectContaining({
+        execClientMessage: expect.objectContaining({
+          id: call.messageId,
+          execId: call.execId,
+          readResult: {
+            error: { path: "missing.txt", error: "File does not exist" },
+          },
+        }),
+      }));
+      expect(harness.openedStreams).toBe(1);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
   it("parks a call whose exec message is the first of the Run", async () => {
     // Cursor numbers exec messages from zero and `id` has implicit presence, so the first client
     // tool of a Run arrives with no `id` field at all. Every other call here carries a nonzero id.
@@ -193,6 +418,70 @@ describe("Cursor live client-tool Run bridge", () => {
         true,
       );
       expect(diagnostics).toContainEqual(expect.objectContaining({ event: "turn.start" }));
+      expect(harness.openedStreams).toBe(2);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("attaches an exact result batch when parallel transcript replay has no linear preceding call", async () => {
+    const calls = [cursorCall("branched-a", 29), cursorCall("branched-b", 30)];
+    const stream = new BridgeCursorStream(
+      cursorToolFrames(calls),
+      cursorCompletionFrames("branched replay complete"),
+      calls.length,
+    );
+    const harness = cursorHarness([stream]);
+    const initial = cursorRequest("session-branched-replay", "composer-2.5");
+    const continuation: CanonicalResponseRequest = {
+      ...initial,
+      // Parallel Claude Code transcript branches can replay the result batch without a single
+      // linear function_call immediately before it. The parked Run's expected ids are authoritative.
+      input: [
+        initial.input[0]!,
+        { type: "message", role: "user", content: "parallel branch replay" },
+        ...calls.map((call) => cursorResult(call, `${call.callId} result`)),
+        {
+          type: "message",
+          role: "developer",
+          content: "Client context follows. <system-reminder>Deferred tool catalog updated.</system-reminder>",
+        },
+      ],
+    };
+
+    try {
+      await collectCursorResponse(harness.adapter, initial);
+      const events = await collectCursorResponse(harness.adapter, continuation);
+
+      expect(canonicalText(events)).toBe("branched replay complete");
+      expect(cursorMcpResultWrites(stream)).toHaveLength(2);
+      expect(harness.openedStreams).toBe(1);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("does not treat an ordinary user message after results as client context", async () => {
+    const calls = [cursorCall("ordinary-tail-a", 27), cursorCall("ordinary-tail-b", 28)];
+    const parked = new BridgeCursorStream(cursorToolFrames(calls));
+    const fallback = new BridgeCursorStream(cursorCompletionFrames("new prompt won"));
+    const harness = cursorHarness([parked, fallback]);
+    const initial = cursorRequest("session-ordinary-result-tail", "composer-2.5");
+
+    try {
+      await collectCursorResponse(harness.adapter, initial);
+      const events = await collectCursorResponse(harness.adapter, {
+        ...initial,
+        input: [
+          initial.input[0]!,
+          ...calls.map((call) => cursorResult(call, `${call.callId} result`)),
+          { type: "message", role: "user", content: "Start a different task." },
+        ],
+      });
+
+      expect(canonicalText(events)).toBe("new prompt won");
+      expect(cursorMcpResultWrites(parked)).toHaveLength(0);
+      expect(parked.closeCode).toBe(http2.constants.NGHTTP2_CANCEL);
       expect(harness.openedStreams).toBe(2);
     } finally {
       harness.adapter.dispose();
@@ -1136,7 +1425,48 @@ describe("Cursor live client-tool Run bridge", () => {
     harness.adapter.dispose();
   });
 
-  it("a new user prompt supersedes and disposes the parked Run", async () => {
+  it("keeps a parked Run while a different-catalog auxiliary prompt completes", async () => {
+    const diagnostics: CursorDiagnosticEvent[] = [];
+    const call = cursorCall("call-auxiliary-prompt", 110);
+    const parked = new BridgeCursorStream(
+      cursorToolFrames([call]),
+      cursorCompletionFrames("parked continuation survived"),
+      1,
+    );
+    const auxiliary = new BridgeCursorStream(cursorCompletionFrames("auxiliary complete"));
+    const harness = cursorHarness([parked, auxiliary], {
+      diagnostics: (event) => diagnostics.push(event),
+    });
+    const initial = cursorRequest("session-auxiliary-prompt", "composer-2.5");
+
+    try {
+      await collectCursorResponse(harness.adapter, initial);
+      const auxiliaryEvents = await collectCursorResponse(harness.adapter, {
+        ...initial,
+        tools: [],
+        input: [{ type: "message", role: "user", content: "Generate a short title." }],
+      });
+
+      expect(canonicalText(auxiliaryEvents)).toBe("auxiliary complete");
+      expect(parked.closed).toBe(false);
+      expect(diagnostics).not.toContainEqual(expect.objectContaining({
+        event: "bridge.mismatch",
+        outcome: "superseded_by_user_prompt",
+      }));
+
+      const continuationEvents = await collectCursorResponse(
+        harness.adapter,
+        cursorContinuation(initial, [call], [cursorResult(call, "tool result")]),
+      );
+      expect(canonicalText(continuationEvents)).toBe("parked continuation survived");
+      expect(cursorMcpResultWrites(parked)).toHaveLength(1);
+      expect(harness.openedStreams).toBe(2);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("a same-descriptor user prompt supersedes and disposes the parked Run", async () => {
     const call = cursorCall("call-superseded", 111);
     const parked = new BridgeCursorStream(cursorToolFrames([call]));
     const nextRun = new BridgeCursorStream(cursorCompletionFrames("new prompt complete"));
@@ -1622,6 +1952,13 @@ class FakeCursorSession extends EventEmitter {
   }
 }
 
+function cursorExecResultCompleted(message: Record<string, unknown>): boolean {
+  return message.mcpResult !== undefined
+    || message.readResult !== undefined
+    || message.grepResult !== undefined
+    || message.shellResult !== undefined;
+}
+
 interface BridgeCursorRelease {
   readonly afterMcpResults: number;
   readonly frames: readonly unknown[];
@@ -1670,7 +2007,7 @@ class BridgeCursorStream extends EventEmitter {
     if (
       isRecord(message)
       && isRecord(message.execClientMessage)
-      && message.execClientMessage.mcpResult !== undefined
+      && cursorExecResultCompleted(message.execClientMessage)
     ) {
       this.mcpResultCount += 1;
       for (const release of this.continuationReleases) {
