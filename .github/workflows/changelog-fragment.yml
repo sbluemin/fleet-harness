@@ -91,6 +91,21 @@ jobs:
             exit 1
           fi
 
+          # A declared amendment is itself the changelog record for a correction to unreleased behavior. Keep
+          # the three paths exclusive: an amendment neither adds a duplicate branch note nor claims no impact.
+          if [ -n "$amended" ]; then
+            if [ -n "$fragment_files" ]; then
+              echo "::error::This PR both amends an existing unreleased fragment and adds a branch fragment. Keep only the amendment."
+              exit 1
+            fi
+            if [ "$has_no_changelog" = "true" ]; then
+              echo "::error::This PR carries both a changelog amendment and the no-changelog label. Remove no-changelog."
+              exit 1
+            fi
+            echo "Existing unreleased changelog fragment amended; no branch fragment required."
+            exit 0
+          fi
+
           if [ -n "$fragment_files" ]; then
             if [ "$has_no_changelog" = "true" ]; then
               echo "::error::This PR carries both a changelog fragment and the no-changelog label. Remove one."

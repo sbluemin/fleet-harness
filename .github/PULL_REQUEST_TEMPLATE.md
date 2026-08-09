@@ -36,7 +36,7 @@
 
 ## Changelog
 
-- [ ] Added the branch-named fragment from `node scripts/compile-changelog-fragments.mjs --name-for-branch`, or declared `Changelog-Impact: none` below.
+- [ ] Added the branch-named fragment, amended a pending fragment with `changelog-amend` plus `Changelog-Amend: <file>.md`, or declared `Changelog-Impact: none` below.
 - [ ] Entries sit under the runtime the user notices them in — `### fleet-cli`, `### fleet-console`, or `### fleet-desktop` — not the package that implements them.
 - [ ] Section headings are `Added`, `Changed`, `Fixed`, `Removed`, or `Breaking Changes`; bullets are English ASCII with no package tag, each followed by its `  ko:` line.
 
