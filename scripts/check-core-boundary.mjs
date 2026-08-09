@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,7 +13,11 @@ for (const entry of readdirSync(packagesDir, { withFileTypes: true })) {
   const packageDir = path.join(packagesDir, entry.name);
 
   // manifest 검사: core-* package.json은 @dotobokuri/fleet-* 의존을 가질 수 없다.
+  // 매니페스트가 없는 core-* 디렉터리는 패키지가 아니다 — 은퇴한 패키지가 기존 체크아웃에
+  // 남긴 dist/node_modules 껍데기가 그렇다. CI의 새 체크아웃에는 없으니 게이트를 통과시키되,
+  // 개발자 체크아웃에서만 크래시하는 대신 조용히 건너뛴다.
   const manifestPath = path.join(packageDir, "package.json");
+  if (!existsSync(manifestPath)) continue;
   const manifest = readFileSync(manifestPath, "utf8");
   if (manifest.includes('"@dotobokuri/fleet-')) {
     violations.push(path.relative(repoRoot, manifestPath));
