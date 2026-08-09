@@ -524,14 +524,16 @@ function LanguageSettings({ state, saving }: { readonly state: GlobalSettingsSta
 }
 
 /**
- * Settings → Remote access. 시안 그대로 네 덩어리다 — 경고 배너, 수신 주소, 이 콘솔의 신원,
- * 액세스 링크와 그것을 쓴 기기들. 각 카드는 자기 사실만 말하고 서로의 상태를 추측하지 않는다.
+ * Settings → Remote access. 시안 그대로 — Desktop 설치 경로, 보안 경고, 수신 주소, 이 콘솔의
+ * 신원, 액세스 링크와 그것을 쓴 기기들. 각 카드는 자기 사실만 말하고 서로의 상태를 추측하지 않는다.
  */
 const REMOTE_BIND_HOST = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[A-Za-z0-9](?:[A-Za-z0-9._-]{0,252}[A-Za-z0-9])?)$/u;
 // 서버의 isValidRemoteBindHost와 같은 집합. 와일드카드는 루프백과 같은 포트를 다투므로 값이 아니다.
 const REMOTE_UNUSABLE_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "0.0.0.0"]);
 const REMOTE_GRANT_TTL_MINUTES = 15;
 const ROTATE_ARM_TIMEOUT_MS = 5_000;
+/** README와 같은 최신 Desktop 아티팩트 진입점 — bare /releases가 아니라 latest로 바로 보낸다. */
+const FLEET_DESKTOP_RELEASES_URL = "https://github.com/sbluemin/fleet-harness/releases/latest";
 
 function isValidRemoteBindHost(value: string): boolean {
   return REMOTE_BIND_HOST.test(value) && !REMOTE_UNUSABLE_HOSTS.has(value);
@@ -594,6 +596,19 @@ function RemoteAccessSection({ state, saving }: { readonly state: GlobalSettings
           </h3>
           <p>{t("settings.remote.lede")}</p>
         </header>
+
+        <p className="remote-positive" role="note">
+          <PositiveIcon />
+          <span>
+            {renderMessage(t("settings.remote.desktop.note"), {
+              releases: (
+                <a href={FLEET_DESKTOP_RELEASES_URL} target="_blank" rel="noopener noreferrer">
+                  {t("settings.remote.desktop.releases")}
+                </a>
+              ),
+            })}
+          </span>
+        </p>
 
         <p className="remote-danger" role="note">
           <WarningIcon />
@@ -1017,6 +1032,15 @@ function formatRelative(epochMs: number, t: (key: CoreMessageKey) => string): st
   if (minutes < 60) return t("settings.remote.table.minutesAgo").replace("{minutes}", String(minutes));
   const hours = Math.round(minutes / 60);
   return hours < 24 ? t("settings.remote.table.hoursAgo").replace("{hours}", String(hours)) : new Date(epochMs).toLocaleDateString();
+}
+
+function PositiveIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M5.2 8.1 7.1 10l3.7-4.2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 function WarningIcon() {

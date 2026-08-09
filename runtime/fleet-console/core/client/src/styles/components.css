@@ -1001,7 +1001,7 @@
   .add-host-close { transition: none; }
 }
 
-/* Remote access 섹션 — 시안의 네 덩어리(배너·수신 주소·신원·링크와 기기). */
+/* Remote access 섹션 — Desktop 설치 경로·보안 경고·수신 주소·신원·링크와 기기. */
 .remote-section { display: flex; flex-direction: column; gap: var(--space-4); }
 
 .remote-section-head h3 {
@@ -1018,6 +1018,30 @@
   font-size: 13px;
   line-height: 1.55;
 }
+
+/* Desktop 설치 경로는 positive 채널 — 완료 상태가 아니라 "다른 기기에서 열려면 이 앱이 필요하다"는
+   전제 안내다. 아래 위험 고지와 같은 좌측 레일 문법을 쓰고 색만 갈라, 둘을 한 문장으로 합치지 않는다. */
+.remote-positive {
+  display: flex;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid color-mix(in oklch, var(--positive) 40%, transparent);
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--positive) 10%, transparent);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.remote-positive svg { flex: none; margin-top: 2px; color: var(--positive-ink); }
+.remote-positive a {
+  color: var(--positive-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.remote-positive a:hover { color: var(--text-primary); }
 
 /* 위험 고지는 경고 채널을 쓰고 왼쪽 레일로 시선을 잡는다 — 읽지 않고 지나가면 안 되는 문장이다. */
 .remote-danger {
