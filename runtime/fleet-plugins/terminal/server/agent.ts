@@ -23,7 +23,7 @@ import type { AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 import type { AiGatewayLaunchBinding } from "./agent-api/launch.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
-import { resolveBackgroundPendingFromHookInput } from "./agent-api/background-report.js";
+import { readBackgroundHookReport } from "./agent-api/background-report.js";
 import { createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { writeAgentSessionEvents } from "./agent-api/observability-routes.js";
@@ -680,8 +680,10 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     oscActivityTrackers.get(sessionId)?.reset();
     // 턴 종료 payload가 실어 온 살아 있는 백그라운드 작업 보고를 같은 전이 안에서 반영한 뒤 한 번만 알린다.
     // 두 번 알리면 그 사이의 프레임에서 세션이 백그라운드 작업을 잊은 채 유휴로 읽힌다.
-    const pending = turnState === "ended" ? resolveBackgroundPendingFromHookInput(body?.input) : undefined;
-    const settled = pending === undefined ? updated : observability.setTerminalSessionBackgroundPending(sessionId, pending) ?? updated;
+    const report = turnState === "ended" ? readBackgroundHookReport(body?.input, observability.getTerminalSessionSettledAgentIds(sessionId)) : undefined;
+    const settled = report?.pending === undefined
+      ? updated
+      : observability.setTerminalSessionBackgroundPending(sessionId, report.pending, report.settledAgentIds) ?? updated;
     void notifySessionUpdated(settled);
     ctx.host.http.writeJson(res, 200, { ok: true });
     if (turnState === "ended") scheduleIdentityRefresh(sessionId);
@@ -692,13 +694,13 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     if (req.method !== "POST") return methodNotAllowed(res);
     if (!ctx.host.security.isLockAuthorized(req)) return unauthorized(res);
     const body = await ctx.host.http.readJsonBody<HookBackgroundBody>(req);
-    const pending = resolveBackgroundPendingFromHookInput(body?.input);
-    if (pending === undefined) {
+    const report = readBackgroundHookReport(body?.input, observability.getTerminalSessionSettledAgentIds(sessionId));
+    if (report.pending === undefined) {
       // background_tasks를 읽어내지 못한 보고는 무의견이다. 상태를 건드리지 않고 조용히 수용한다.
       ctx.host.http.writeJson(res, 200, { ok: true });
       return true;
     }
-    const updated = observability.setTerminalSessionBackgroundPending(sessionId, pending);
+    const updated = observability.setTerminalSessionBackgroundPending(sessionId, report.pending, report.settledAgentIds);
     if (!updated) {
       ctx.host.http.writeJson(res, 404, { error: "terminal_session_not_found" });
       return true;

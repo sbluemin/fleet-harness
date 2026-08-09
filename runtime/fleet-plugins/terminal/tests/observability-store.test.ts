@@ -132,6 +132,25 @@ describe("agent activity observability state", () => {
     expect(store.setTerminalSessionBackgroundPending("session-a", false)).not.toHaveProperty("backgroundPending");
   });
 
+  it("remembers stopped agents past a cleared badge, and forgets them with the session lifecycle", () => {
+    const store = createStore();
+
+    expect(store.getTerminalSessionSettledAgentIds("session-a")).toEqual(new Set());
+    // 배지가 꺼졌다고 stop 보고까지 잊으면, 상주 에이전트가 다음 턴 종료 payload에서 되살아난다.
+    store.setTerminalSessionBackgroundPending("session-a", false, new Set(["a5c0d92a34c49dcfe"]));
+    expect(store.getTerminalSessionSettledAgentIds("session-a")).toEqual(new Set(["a5c0d92a34c49dcfe"]));
+    store.setTerminalSessionBackgroundPending("session-a", true, new Set(["a5c0d92a34c49dcfe", "b77c0de1"]));
+    expect(store.getTerminalSessionSettledAgentIds("session-a")).toEqual(new Set(["a5c0d92a34c49dcfe", "b77c0de1"]));
+
+    // 세션이 dormant로 내려가면 그 기억은 CLI 프로세스와 함께 끝난다.
+    store.transitionTerminalSessionToDormant("session-a", {
+      provider: "claude",
+      sessionId: "provider-session",
+      capturedAt: "2026-07-25T00:00:00.000Z",
+    });
+    expect(store.getTerminalSessionSettledAgentIds("session-a")).toEqual(new Set());
+  });
+
   it("expires background pending after 30 minutes and emits an updated session", () => {
     vi.useFakeTimers();
     const store = createStore();

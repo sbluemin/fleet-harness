@@ -68,6 +68,7 @@ interface PendingTerminalSessionState {
   attentionPending?: boolean;
   backgroundPending?: boolean;
   backgroundPendingExpiry?: ReturnType<typeof setTimeout>;
+  settledAgentIds?: ReadonlySet<string>;
   registrationId?: string;
   cliRunId?: string;
   providerSession?: AgentProviderSession;
@@ -99,6 +100,7 @@ const TENANT_FINALIZED_JOB_LIMIT = 100;
 const TENANT_JOB_LIMIT = 200;
 const EVENT_TEXT_RETENTION_LIMIT = 8_192;
 const BACKGROUND_PENDING_TTL_MS = 30 * 60_000;
+const EMPTY_SETTLED_AGENT_IDS: ReadonlySet<string> = new Set<string>();
 const REDACTED_REQUEST_PATH = "[redacted path]";
 
 export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreDeps = {}) {
@@ -280,9 +282,19 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return toTerminalSessionInfo(session);
   }
 
+  // 이 세션이 이미 stop을 보고받은 agent id. 상주하는 teammate가 다음 턴 종료 payload에 계속 잡혀도
+  // 살아 있는 작업으로 다시 읽히지 않게 하는 기억이며, 세션 라이프사이클과 함께만 비워진다.
+  function getTerminalSessionSettledAgentIds(sessionId: string): ReadonlySet<string> {
+    return terminalSessionsById.get(sessionId)?.settledAgentIds ?? EMPTY_SETTLED_AGENT_IDS;
+  }
+
   // 살아 있는 백그라운드 작업 보고를 절대값으로 반영한다. 증감이 아니라 대입이므로, 하나의 Workflow가
   // 에이전트 수만큼 stop을 발화해도 남은 작업이 있는 한 pending이 꺼지지 않는다.
-  function setTerminalSessionBackgroundPending(sessionId: string, pending: boolean): AgentTerminalSessionInfo | null {
+  function setTerminalSessionBackgroundPending(
+    sessionId: string,
+    pending: boolean,
+    settledAgentIds?: ReadonlySet<string>,
+  ): AgentTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
     // dormant/closed/error 세션에 뒤늦게 도착한 best-effort hook은 무시한다 — 라이프사이클 정리
@@ -290,10 +302,13 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     if (session.status === "dormant" || session.status === "closed" || session.status === "error") return null;
     if (!pending) {
       // 꺼질 때는 만료 타이머도 함께 정리한다 — 30분 뒤 무의미한 false→false notify를 남기지 않는다.
+      // 기억은 그 정리 뒤에 심는다 — pending이 꺼졌다고 stop 보고까지 잊으면 상주 항목이 다음 턴에 되살아난다.
       clearTerminalSessionBackgroundPending(session);
+      if (settledAgentIds) session.settledAgentIds = settledAgentIds;
       return toTerminalSessionInfo(session);
     }
     session.backgroundPending = true;
+    if (settledAgentIds) session.settledAgentIds = settledAgentIds;
     if (session.backgroundPendingExpiry) clearTimeout(session.backgroundPendingExpiry);
     session.backgroundPendingExpiry = setTimeout(() => {
       session.backgroundPending = false;
@@ -418,6 +433,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     if (session.backgroundPendingExpiry) clearTimeout(session.backgroundPendingExpiry);
     delete session.backgroundPendingExpiry;
     session.backgroundPending = false;
+    delete session.settledAgentIds;
   }
 
   function removeTerminalSession(sessionId: string): boolean {
@@ -461,6 +477,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     updateTerminalSessionStatus,
     setTerminalSessionTurnState,
     setTerminalSessionBackgroundPending,
+    getTerminalSessionSettledAgentIds,
     setTerminalSessionModelActivity,
     transitionTerminalSessionToDormant,
     removeTerminalSession,

@@ -110,6 +110,39 @@ describe("agent provider capture grace", () => {
     expect((await harness.getSessions())[0]).not.toHaveProperty("backgroundPending");
   });
 
+  it("keeps a resident agent out of the background axis on every later turn end", async () => {
+    // 이름 붙은 에이전트는 일을 마쳐도 다음 지시를 기다리며 세션 목록에 running으로 남는다. 그 상주 항목을
+    // 턴이 끝날 때마다 다시 살아 있는 작업으로 읽으면, 아무것도 돌지 않는데 패널이 백그라운드에 묶여
+    // 유휴·입력 대기 전이를 잃는다. stop을 이미 보고받았다는 사실은 세션이 기억해야 한다.
+    const resident = { id: "a5c0d92a34c49dcfe", type: "teammate", status: "running", description: "probe" };
+    const body: Record<string, unknown> = {
+      cliId: "claude-gateway",
+      input: JSON.stringify({ hook_event_name: "SubagentStop", agent_id: resident.id, background_tasks: [resident] }),
+    };
+    const harness = await createHarness(body);
+    await harness.postSessions();
+    const sessionId = harness.operations[0]!.id;
+
+    await harness.backgroundSession(sessionId);
+    expect((await harness.getSessions())[0]).not.toHaveProperty("backgroundPending");
+
+    body.phase = "end";
+    body.input = JSON.stringify({ hook_event_name: "Stop", background_tasks: [resident] });
+    await harness.turnSession(sessionId);
+
+    expect((await harness.getSessions())[0]).toMatchObject({ sessionId, turnState: "ended" });
+    expect((await harness.getSessions())[0]).not.toHaveProperty("backgroundPending");
+
+    // 상주 항목 옆에 새로 뜬 작업이 있으면 그것은 여전히 백그라운드다.
+    body.input = JSON.stringify({
+      hook_event_name: "Stop",
+      background_tasks: [resident, { id: "wf-1", type: "workflow", status: "running" }],
+    });
+    await harness.turnSession(sessionId);
+
+    expect((await harness.getSessions())[0]).toMatchObject({ sessionId, backgroundPending: true });
+  });
+
   it("returns only invalid_agent_cli when a removed provider Operation is resumed", async () => {
     const harness = await createHarness({ cliId: "claude-gateway" });
     await harness.postSessions();
