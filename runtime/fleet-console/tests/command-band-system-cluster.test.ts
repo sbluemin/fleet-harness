@@ -3,16 +3,30 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CommandBandSystemCluster, propagateSettingsEntryIndex, resolveUpdateApplyCopy } from "../core/client/src/components/command-band-system-cluster.js";
+import { hydrateGlobalSettings } from "../core/client/src/global-settings-store.js";
 import { getT } from "../core/client/src/i18n/index.js";
+import type { GlobalSettingsState } from "../core/client/src/types.js";
+
+const SETTINGS: GlobalSettingsState = {
+  consolePortMode: "dynamic",
+  consoleStaticPort: null,
+  remoteAccess: { enabled: false, bindHost: null },
+  seenFeatureTours: [],
+  theme: "instrument",
+  uiFont: { source: "builtin", id: "manrope", size: 14 },
+  language: "auto",
+};
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 let originalRequestAnimationFrame: typeof window.requestAnimationFrame;
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   document.body.replaceChildren();
@@ -23,6 +37,7 @@ beforeEach(() => {
     callback(0);
     return 1;
   };
+  hydrateGlobalSettings(SETTINGS);
 });
 
 afterEach(() => {
@@ -31,6 +46,8 @@ afterEach(() => {
   root = null;
   container = null;
   window.requestAnimationFrame = originalRequestAnimationFrame;
+  globalThis.fetch = originalFetch;
+  vi.restoreAllMocks();
 });
 
 function mountCluster() {
@@ -157,7 +174,7 @@ describe("CommandBandSystemCluster", () => {
     expect(items).toHaveLength(5);
     // What's New stays disabled while release notes are empty, so focus starts on Keyboard Shortcuts.
     expect(document.activeElement).toBe(items[1]);
-    // 화면 안내는 짚을 앵커가 없는 화면에서 비활성이므로 포커스 순환에서도 빠진다.
+    // 화면 안내는 시청 기록이 없으면 되살릴 것도 없으므로 비활성 — 포커스 순환에서도 빠진다.
     expect((items[2] as HTMLButtonElement).disabled).toBe(true);
     expect(items[3]?.getAttribute("aria-label")).toBe("Open GitHub repository");
     expect(document.querySelector(".command-band-github-version")?.textContent).toMatch(/^v/);
@@ -168,16 +185,49 @@ describe("CommandBandSystemCluster", () => {
     expect(document.activeElement).toBe(items[1]);
   });
 
-  it("enables the screen guide entry only where a seen guide is anchored", () => {
+  it("enables the screen guide entry once any onboarding has been seen", () => {
     document.body.innerHTML = '<div class="command-band-mode-switch"></div>';
+    hydrateGlobalSettings({ ...SETTINGS, seenFeatureTours: ["canvas-modes.walkthrough"] });
     mountCluster();
     const trigger = document.querySelector<HTMLButtonElement>(".command-band-help")!;
     act(() => trigger.click());
 
-    // 시청 기록이 없으면 되살릴 것도 없다 — 아직 못 본 안내는 "다시 보기"의 대상이 아니다.
     const entry = menuItems()[2] as HTMLButtonElement;
     expect(entry.textContent).toContain("Show the screen guide");
-    expect(entry.disabled).toBe(true);
+    expect(entry.disabled).toBe(false);
+  });
+
+  it("resets every onboarding guide from the beginning on replay", async () => {
+    document.body.innerHTML = '<div class="command-band-mode-switch"></div>';
+    hydrateGlobalSettings({
+      ...SETTINGS,
+      seenFeatureTours: [
+        "canvas-modes.walkthrough",
+        "war-room.walkthrough",
+        "claude-operations.walkthrough",
+        "remote-access.spotlight",
+        "commissioning",
+      ],
+    });
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({
+      state: {
+        ...SETTINGS,
+        seenFeatureTours: [],
+      },
+    }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+    mountCluster();
+    const trigger = document.querySelector<HTMLButtonElement>(".command-band-help")!;
+    act(() => trigger.click());
+
+    const entry = menuItems()[2] as HTMLButtonElement;
+    expect(entry.disabled).toBe(false);
+    act(() => entry.click());
+
+    // 온보딩 전체(피처 투어 + 최초 설정 가이드)가 초기화되어 서버에 저장된다.
+    expect(fetch).toHaveBeenCalledWith("/api/v1/settings/global", expect.objectContaining({
+      method: "PUT",
+      body: JSON.stringify({ seenFeatureTours: [] }),
+    }));
   });
 
   it("closes the Help menu on Escape and returns focus to the trigger", () => {

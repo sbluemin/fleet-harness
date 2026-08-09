@@ -315,22 +315,6 @@ export function resolveNextFeatureTour(
   return null;
 }
 
-// "화면 안내 다시 보기" — 지금 화면에 앵커가 살아 있는 투어 중 가장 좁은 것 하나만 되살린다.
-// 대상 판정은 투어 발동과 같은 앵커 존재 규칙을 쓴다: 지금 보이지 않는 화면의 안내까지 되살리면
-// 사용자가 부른 적 없는 안내가 다른 화면에서 튀어나온다.
-//
-// 카탈로그는 넓은 화면에서 좁은 화면 순으로 놓여 있고, 넓은 쪽 앵커(모드 스위치 등)는 좁은 화면에도
-// 그대로 있다. 그래서 겹칠 때는 마지막에 놓인 투어가 지금 보고 있는 화면의 안내다 — 전부 되살리면
-// War Room에서 부른 재생이 모드 소개부터 다시 시작한다(실브라우저 실측).
-export function replayableFeatureTourIds(
-  tours: readonly FeatureTour[],
-  root: ParentNode,
-): readonly string[] {
-  const anchored = tours.filter((tour) => isFeatureTourAnchored(tour, root));
-  const narrowest = anchored.at(-1);
-  return narrowest ? [narrowest.id] : [];
-}
-
 // 방금 끝낸 투어의 화면에 아직 머물러 있는가 — 미뤄둔 투어가 같은 방문에서 이어 재생되는 것만
 // 막고, 화면을 떠났다 돌아오면 제 순서에 뜨게 하는 판정이다.
 export function isCompletedTourScreenVisible(
@@ -358,6 +342,15 @@ export function forgetSeenFeatureTours(
   const drop = new Set(tourIds.flatMap((id) => [featureTourSeenKey(id, "walkthrough"), featureTourSeenKey(id, "spotlight")]));
   const next = seen.filter((key) => !drop.has(key));
   return next.length === seen.length ? seen : next;
+}
+
+// "화면 안내 다시 보기" — 카탈로그 전체 투어의 시청 기록을 지운다. 화면에 닻을 건 투어 하나만
+// 되살리던 이전 동작과 달리, 온보딩 전체를 처음부터 다시 보게 하는 것이 버튼의 뜻이다.
+export function forgetAllFeatureTours(seen: readonly string[]): readonly string[] {
+  return forgetSeenFeatureTours(
+    seen,
+    FEATURE_TOURS.map((tour) => tour.id),
+  );
 }
 
 function resolveFeatureTourAnchor(step: FeatureTourStep, root: ParentNode): HTMLElement | null {

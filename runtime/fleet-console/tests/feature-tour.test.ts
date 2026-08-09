@@ -6,10 +6,10 @@ import {
   advanceFeatureTourStep,
   availableFeatureTourSteps,
   featureTourCompletionBase,
+  forgetAllFeatureTours,
   forgetSeenFeatureTours,
   isCompletedTourScreenVisible,
   persistFeatureTourSeen,
-  replayableFeatureTourIds,
   resolveFeatureTourCardPosition,
   resolveNextFeatureTour,
 } from "../core/client/src/components/feature-tour.js";
@@ -227,29 +227,29 @@ describe("feature tour", () => {
     expect(isCompletedTourScreenVisible(null, FEATURE_TOURS, document)).toBe(false);
   });
 
-  it("replays the narrowest guide anchored on the screen in front of the user", () => {
+  // "화면 안내 다시 보기"는 지금 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다.
+  it("forgets every feature tour seen key, regardless of which screen is anchored", () => {
     document.body.innerHTML = '<div class="command-band-mode-switch"></div>';
-    const seen = ["canvas-modes.walkthrough", "war-room.walkthrough", "claude-operations.walkthrough"];
+    const seen = [
+      "canvas-modes.walkthrough",
+      "war-room.walkthrough",
+      "war-room-sidebar.walkthrough",
+      "claude-operations.walkthrough",
+      "remote-access.walkthrough",
+      "remote-access.spotlight",
+    ];
 
-    // 모드 스위치는 War Room 투어의 마지막 스텝이기도 하지만, 활성화 앵커는 대기 레일이다.
-    expect(replayableFeatureTourIds(FEATURE_TOURS, document)).toEqual(["canvas-modes"]);
-    expect(forgetSeenFeatureTours(seen, replayableFeatureTourIds(FEATURE_TOURS, document)))
-      .toEqual(["war-room.walkthrough", "claude-operations.walkthrough"]);
-    // 되살릴 것이 없으면 같은 배열을 그대로 돌려준다 — 메뉴 항목의 비활성 판정이 이 동일성을 읽는다.
-    expect(forgetSeenFeatureTours(seen, [])).toBe(seen);
+    // 지금 화면에 닻이 있는 투어가 아니라 카탈로그 전체를 되살린다.
+    expect(forgetAllFeatureTours(seen)).toEqual([]);
+    // 화면에 걸린 앵커와 무관하게, 다른 seen 키는 그대로 둔다.
+    expect(forgetAllFeatureTours([...seen, "commissioning", "unrelated"])).toEqual(["commissioning", "unrelated"]);
   });
 
-  it("replays War Room, not the mode introduction, when both are anchored on screen", () => {
-    document.body.innerHTML = [
-      '<div class="command-band-mode-switch"></div>',
-      '<div class="command-band-mode-tray"></div>',
-      '<aside class="canvas-triage-rail"></aside>',
-      '<section class="canvas-triage-deck"></section>',
-    ].join("");
-
-    expect(replayableFeatureTourIds(FEATURE_TOURS, document)).toEqual(["war-room"]);
-    expect(forgetSeenFeatureTours(["canvas-modes.walkthrough", "war-room.walkthrough"], ["war-room"]))
-      .toEqual(["canvas-modes.walkthrough"]);
+  it("returns the same array when no feature tour has been seen", () => {
+    // 되살릴 것이 없으면 같은 배열을 그대로 돌려준다 — 메뉴 항목의 비활성 판정이 이 동일성을 읽는다.
+    const seen = ["commissioning"];
+    expect(forgetAllFeatureTours(seen)).toBe(seen);
+    expect(forgetSeenFeatureTours(seen, [])).toBe(seen);
   });
 
   it("walks the surviving Claude launch kinds in menu order without a spotlight", () => {

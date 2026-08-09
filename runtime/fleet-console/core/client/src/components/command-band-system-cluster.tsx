@@ -4,15 +4,14 @@ import { useLocation, useNavigate } from "react-router-dom";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import { ApiError, applyConsoleUpdate } from "../api.js";
-import { FEATURE_TOURS } from "../feature-tour-catalog.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { isDesktopShell, useDesktopHomeOrigin } from "../desktop-shell.js";
 import { fetchLocalConsoles, probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type LocalConsole, type RemoteHost, type RemoteHostReach } from "../remote-hosts.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
-import { openWhatsNew } from "../store.js";
+import { COMMISSIONING_SEEN_KEY, openWhatsNew } from "../store.js";
 import { AddHostDialog } from "./add-host-dialog.js";
-import { forgetSeenFeatureTours, replayableFeatureTourIds } from "./feature-tour.js";
+import { forgetAllFeatureTours } from "./feature-tour.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 
 type UpdateApplyState = "idle" | "applying" | "accepted" | "completed" | "blocked" | "error";
@@ -504,6 +503,16 @@ function SettingsButton({ updateAvailable }: { readonly updateAvailable: boolean
   );
 }
 
+// "화면 안내 다시 보기" — 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다.
+// 카탈로그의 모든 피처 투어 시청 기록(walkthrough·spotlight)과 최초 설정 가이드 기록을
+// 함께 지워, 어느 화면에 있든 온보딩을 처음부터 다시 보게 한다.
+function forgetAllOnboarding(seen: readonly string[]): readonly string[] {
+  const afterTours = forgetAllFeatureTours(seen);
+  return afterTours.includes(COMMISSIONING_SEEN_KEY)
+    ? afterTours.filter((key) => key !== COMMISSIONING_SEEN_KEY)
+    : afterTours;
+}
+
 function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: {
   readonly releaseDisabled: boolean;
   readonly updateAvailable: boolean;
@@ -518,15 +527,15 @@ function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: 
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const globalSettings = useGlobalSettingsStore();
   const seenFeatureTours = globalSettings.state?.seenFeatureTours ?? [];
-  // 지금 화면에서 되살릴 수 있는 안내를 메뉴가 열릴 때 한 번 잰다 — 없으면 항목을 눌러도
-  // 아무 일도 일어나지 않으므로, 무응답 대신 비활성으로 그 사실을 먼저 알린다.
-  const replayableTourIds = open ? replayableFeatureTourIds(FEATURE_TOURS, document) : [];
-  const replayDisabled = forgetSeenFeatureTours(seenFeatureTours, replayableTourIds) === seenFeatureTours;
+  // "화면 안내 다시 보기"는 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다 —
+  // 카탈로그의 모든 피처 투어 시청 기록과 최초 설정 가이드 기록을 함께 지워, 어느 화면에
+  // 있든 온보딩을 처음부터 다시 보게 한다.
+  const replayDisabled = forgetAllOnboarding(seenFeatureTours) === seenFeatureTours;
 
   useMenuButtonKeyboard(rootRef, triggerRef, menuRef, open, setOpen);
 
   const replayScreenGuide = () => {
-    const next = forgetSeenFeatureTours(seenFeatureTours, replayableTourIds);
+    const next = forgetAllOnboarding(seenFeatureTours);
     setOpen(false);
     if (next === seenFeatureTours) return;
     void setGlobalSettingsField("seenFeatureTours", next);
