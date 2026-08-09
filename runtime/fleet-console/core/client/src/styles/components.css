@@ -7258,42 +7258,6 @@
   width: 100%;
 }
 
-.operation-launch-menu-chevron {
-  flex: none;
-  margin-left: auto;
-  color: var(--text-tertiary);
-  font-size: 16px;
-  line-height: 1;
-}
-
-.operation-launch-menu-item--annotated.operation-launch-menu-item--variants {
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-}
-
-.operation-launch-menu-item--annotated .operation-launch-menu-chevron {
-  grid-column: 4;
-  grid-row: 1;
-  margin-left: 0;
-}
-
-.operation-launch-flyout.theater-menu {
-  --flyout-enter-x: -4px;
-  top: -6px;
-  left: calc(100% + 10px);
-  right: auto;
-  z-index: 41;
-  /* 모델 이름만 담는 폭이다(실행 강도는 자기 서브메뉴로 빠졌다). canvas-context-menu.tsx의
-     FLYOUT_WIDTH와 같은 값이어야 한다 — 하나만 고치면 컴파일은 되고 배치만 조용히 어긋난다. */
-  width: 216px;
-  max-height: var(--canvas-menu-max-height, 520px);
-  overflow-y: auto;
-  animation: operation-launch-flyout-in var(--duration-fast) var(--ease-spring) both;
-}
-
-.operation-launch-flyout.theater-menu.is-left {
-  --flyout-enter-x: 4px;
-}
-
 .operation-launch-variant-caption {
   display: flex;
   align-items: center;
@@ -7377,6 +7341,15 @@
   background: color-mix(in oklch, var(--brass) 8%, transparent);
   color: var(--text-primary);
   outline: none;
+}
+
+/* 캔버스 메뉴는 실행 종류 행과 모델 밴드를 한 목록에 세운다. 그 목록의 왼쪽 홈통은 표식 자리다 —
+   종류 행의 아이콘과 밴드 캡션의 공급자 글리프가 같은 x에 서고, 글자는 그 오른쪽 한 열로 모인다.
+   모델 행에는 표식이 없으므로 그 홈통 폭만큼 들여쓰지 않으면 모델 이름만 왼쪽으로 튀어나와,
+   같은 메뉴 안에서 글자 열이 둘로 갈린다. 값은 .theater-menu-item의 라벨 자리를 그대로 옮긴 것
+   (항목 패딩 + .theater-menu-check 14px + 간격)에서 자기 조상 패딩(entry·row)만 되뺀다. */
+.canvas-context-menu .operation-launch-variant-row {
+  padding-left: calc(var(--space-2) + 14px + var(--space-2) - var(--space-1));
 }
 
 /* 라벨이 남는 폭을 전부 먹고 ★·꺾쇠는 그 뒤에 붙는다. 정렬을 표식 쪽 margin-left:auto로 만들면
@@ -10222,7 +10195,6 @@ body[data-codex-side="true"] .command-card {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .operation-launch-flyout,
   .operation-launch-effort-menu,
   .operation-launch-variant-row {
     animation: none;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
+import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 
 import { FEATURE_TOUR_BOUNDARY_ATTRIBUTE, FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import { getGlobalSettingsStoreState, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
@@ -32,15 +32,10 @@ interface CanvasContextMenuProps {
 // .operation-launch-control--canvas .operation-launch-menu의 min-width. 하나만 고치면 컴파일은
 // 되고 치수만 조용히 어긋난다.
 const MENU_WIDTH = 288;
-// 변형 목록은 모델 이름만 담는다 — 실행 강도는 자기 서브메뉴로 빠졌다. 이름의 실측 최대 폭
-// (약 181px)에 여유만 얹는다: 더 넓히면 라벨 오른쪽이 통째로 빈 상자가 되고, 부모 메뉴(288px)보다
-// 넓어져 캐스케이드의 시각적 위계가 뒤집힌다.
-const FLYOUT_WIDTH = 216;
 const FLYOUT_GAP = 10;
 // 트랙과 그 값 라벨이 나란히 들어가는 폭이다.
 const EFFORT_SUBMENU_WIDTH = 216;
-// 두 폭은 components.css의 같은 선언과 짝이다. 계약 시험이 그 짝을 지킨다.
-export const OPERATION_LAUNCH_FLYOUT_WIDTH = FLYOUT_WIDTH;
+// components.css의 같은 선언과 짝이다. 계약 시험이 그 짝을 지킨다.
 export const OPERATION_LAUNCH_EFFORT_MENU_WIDTH = EFFORT_SUBMENU_WIDTH;
 const FLYOUT_CLOSE_GRACE_MS = 160;
 const MENU_MAX_HEIGHT = 520;
@@ -51,6 +46,8 @@ const EFFORT_POPUP_ID = "operation-launch-effort-track";
 // 설명 어사이드는 메뉴 옆에 뜬다. 오른쪽에 자리가 없으면 왼쪽으로 뒤집는다.
 const ASIDE_WIDTH = 208;
 const ASIDE_GAP = 8;
+// 방향키가 훑는 항목. 실행 종류 행과 모델 행은 이제 같은 목록의 형제라 한 집합으로 돈다.
+const MENU_ITEM_SELECTOR = ".canvas-context-menu-item, .operation-launch-variant-row";
 
 export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", fixed = false, catalog, canLaunch, renderKindIcon, onLaunchKind, onClose, theaterLabel }: CanvasContextMenuProps) {
   const t = useT();
@@ -66,16 +63,6 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   const [hoverKey, setHoverKey] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const activeKey = hoverKey ?? focusKey;
-  const [openFlyout, setOpenFlyout] = useState<string | null>(null);
-  const [flyoutPosition, setFlyoutPosition] = useState<{
-    readonly id: string;
-    readonly left: number;
-    readonly top: number;
-    readonly opensLeft: boolean;
-  } | null>(null);
-  const flyoutAnchorRefs = useRef(new Map<string, HTMLDivElement>());
-  const flyoutRef = useRef<HTMLDivElement | null>(null);
-  const flyoutCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [openEffortRow, setOpenEffortRow] = useState<string | null>(null);
   // 행마다 고른 강도. 트랙은 값만 정하고 실행은 모델 행이 일으키므로, 그 사이를 이 상태가 잇는다.
   const [rowEfforts, setRowEfforts] = useState<Readonly<Record<string, string | null>>>({});
@@ -97,11 +84,6 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     && openEffortValue !== null
     && !effortConfirmTipSeen;
 
-  const cancelFlyoutClose = () => {
-    if (flyoutCloseTimerRef.current === null) return;
-    clearTimeout(flyoutCloseTimerRef.current);
-    flyoutCloseTimerRef.current = null;
-  };
   const cancelEffortClose = () => {
     if (effortCloseTimerRef.current === null) return;
     clearTimeout(effortCloseTimerRef.current);
@@ -112,16 +94,9 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     setOpenEffortRow(null);
     setEffortPosition(null);
   };
-  const closeFlyout = () => {
-    cancelFlyoutClose();
-    closeEffortMenu();
-    setOpenFlyout(null);
-    setFlyoutPosition(null);
-  };
-  const openLaunchFlyout = (flyoutId: string) => {
-    cancelFlyoutClose();
-    closeEffortMenu();
-    const item = flyoutAnchorRefs.current.get(flyoutId);
+  const openEffortMenu = (rowId: string) => {
+    cancelEffortClose();
+    const item = effortAnchorRefs.current.get(rowId);
     const container = containerRef.current;
     if (!item || !container) return;
     const placement = placeCascade({
@@ -129,55 +104,23 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
       boxLeft: containerLeft(container),
       boxWidth: menuSize?.width ?? MENU_WIDTH,
       top: itemTop(item, container),
-      width: FLYOUT_WIDTH,
-      boundsWidth: viewportBounds?.width,
-      preferLeft: false,
-    });
-    setFlyoutPosition({ id: flyoutId, ...placement });
-    setOpenFlyout(flyoutId);
-  };
-  const openEffortMenu = (rowId: string) => {
-    cancelEffortClose();
-    cancelFlyoutClose();
-    const item = effortAnchorRefs.current.get(rowId);
-    const container = containerRef.current;
-    if (!item || !container) return;
-    const placement = placeCascade({
-      // flyout이 이미 확정한 좌표가 진실의 원천이다 — 그 상자는 그 자리에 fixed로 그려진다.
-      boxLeft: flyoutPosition?.left ?? containerLeft(container),
-      boxWidth: flyoutPosition ? FLYOUT_WIDTH : (menuSize?.width ?? MENU_WIDTH),
-      top: itemTop(item, container),
       width: EFFORT_SUBMENU_WIDTH,
       boundsWidth: viewportBounds?.width,
-      // Continue the parent flyout's direction so the cascade keeps reading one way.
-      preferLeft: flyoutPosition?.opensLeft === true,
+      preferLeft: false,
     });
     setEffortPosition({ id: rowId, ...placement });
     setOpenEffortRow(rowId);
   };
   const scheduleEffortClose = () => {
     cancelEffortClose();
+    // Cascade leave must wait for the grace window: closing the effort menu
+    // immediately would drop it before the pointer can reach the nested submenu.
     effortCloseTimerRef.current = setTimeout(() => {
       effortCloseTimerRef.current = null;
       setOpenEffortRow(null);
       setEffortPosition(null);
     }, FLYOUT_CLOSE_GRACE_MS);
   };
-  const scheduleFlyoutClose = () => {
-    cancelFlyoutClose();
-    // Cascade leave must wait for the grace window: closing the effort menu
-    // immediately would drop it before the pointer can reach the nested submenu.
-    flyoutCloseTimerRef.current = setTimeout(() => {
-      flyoutCloseTimerRef.current = null;
-      closeEffortMenu();
-      setOpenFlyout(null);
-      setFlyoutPosition(null);
-      setHoverKey(null);
-    }, FLYOUT_CLOSE_GRACE_MS);
-  };
-  const flyoutTarget = openFlyout === null
-    ? null
-    : findLaunchFlyout(catalog, openFlyout);
 
   // 배치 판정은 CSS의 max-height 상한이 아니라 실제 렌더 높이로 해야 한다 —
   // 상한(520px)으로 clamp하면 짧은 메뉴가 커서에서 수백 px 떨어진 곳에 열린다.
@@ -198,28 +141,8 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     return () => observer.disconnect();
   }, []);
 
-  useLayoutEffect(() => {
-    const element = flyoutRef.current;
-    const container = containerRef.current;
-    if (!element || !container || !viewportBounds || !openFlyout) return;
-    const measure = () => {
-      const height = element.getBoundingClientRect().height;
-      const maxTop = Math.max(MENU_MARGIN, viewportBounds.height - height - MENU_MARGIN);
-      setFlyoutPosition((previous) => {
-        if (!previous || previous.id !== openFlyout) return previous;
-        const nextTop = Math.max(MENU_MARGIN, Math.min(previous.top, maxTop));
-        return Math.abs(nextTop - previous.top) < 0.5 ? previous : { ...previous, top: nextTop };
-      });
-    };
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [openFlyout, viewportBounds]);
-
-  // Effort submenu uses the same measured-height clamp as the parent flyout —
-  // opening near the bottom would otherwise leave lower effort choices off-screen.
+  // Effort submenu uses a measured-height clamp — opening near the bottom would
+  // otherwise leave lower effort choices off-screen.
   useLayoutEffect(() => {
     const element = effortMenuRef.current;
     if (!element || !viewportBounds || !openEffortRow) return;
@@ -271,7 +194,6 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   }, []);
 
   useEffect(() => () => {
-    cancelFlyoutClose();
     cancelEffortClose();
   }, []);
 
@@ -279,19 +201,19 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   // 그 상자는 엉뚱한 행 옆에 붙어 그 행의 강도인 척한다 — 행을 눌러 실행하는 표면에서는
   // 그대로 오실행이 된다. 행이 아직 보이면 따라가고, 시야를 벗어나면 관계가 끊겼으니 닫는다.
   useEffect(() => {
-    const flyout = flyoutRef.current;
-    if (!flyout || openEffortRow === null) return;
+    const menu = menuRef.current;
+    if (!menu || openEffortRow === null) return;
     const follow = () => {
       const anchor = effortAnchorRefs.current.get(openEffortRow)?.getBoundingClientRect();
-      const bounds = flyout.getBoundingClientRect();
+      const bounds = menu.getBoundingClientRect();
       if (!anchor || anchor.bottom <= bounds.top || anchor.top >= bounds.bottom) {
         closeEffortMenu();
         return;
       }
       openEffortMenu(openEffortRow);
     };
-    flyout.addEventListener("scroll", follow, { passive: true });
-    return () => flyout.removeEventListener("scroll", follow);
+    menu.addEventListener("scroll", follow, { passive: true });
+    return () => menu.removeEventListener("scroll", follow);
     // 두 핸들러는 렌더마다 새로 만들어진다 — 여는 행이 바뀔 때만 다시 건다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openEffortRow]);
@@ -304,10 +226,30 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   // 어느 Theater로 실행되는지는 접근 이름에 온전히 남는다.
   const headLabel = singlePlugin ? `${headTitle} · ${singlePlugin.title}` : headTitle;
 
+  // 모델 행은 자기 행 키만 들고 다닌다(강도 상자·고른 단이 그 키에 매달린다). 실행은 여전히
+  // 실행 종류가 일으키므로, 키에서 그 종류로 되돌아오는 길을 카탈로그 한 번 훑어 만들어 둔다.
+  const variantRows = useMemo(() => {
+    const index = new Map<string, {
+      readonly pluginId: string;
+      readonly kind: OperationLaunchKind;
+      readonly row: OperationLaunchVariantRow;
+    }>();
+    for (const plugin of catalog) {
+      for (const kind of plugin.kinds.filter(expandsVariants)) {
+        for (const group of kind.variants ?? []) {
+          for (const row of group.rows) {
+            index.set(effortKey(itemKey(plugin.id, kind.id), group.id, row.id), { pluginId: plugin.id, kind, row });
+          }
+        }
+      }
+    }
+    return index;
+  }, [catalog]);
+
   const moveFocus = useCallback((from: HTMLElement | null, delta: number, edge: "first" | "last" | null) => {
     const menu = menuRef.current;
     if (!menu) return;
-    const items = Array.from(menu.querySelectorAll<HTMLButtonElement>(".canvas-context-menu-item")).filter((item) => !item.disabled);
+    const items = Array.from(menu.querySelectorAll<HTMLButtonElement>(MENU_ITEM_SELECTOR)).filter((item) => !item.disabled);
     if (items.length === 0) return;
     if (edge) {
       items[edge === "first" ? 0 : items.length - 1]!.focus();
@@ -320,7 +262,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
 
   const handleMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
-    const onItem = target.classList.contains("canvas-context-menu-item");
+    const onItem = target.matches?.(MENU_ITEM_SELECTOR) === true;
     switch (event.key) {
       case "ArrowDown":
         event.preventDefault();
@@ -338,34 +280,26 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
         event.preventDefault();
         moveFocus(null, 0, "last");
         return;
+      case "ArrowRight": {
+        // 모델 행에서만 오른쪽이 열 것을 가진다 — 그 행의 강도 트랙이다.
+        const entry = target.closest<HTMLElement>(".operation-launch-variant-entry");
+        const rowKey = entry?.dataset.launchEffortKey;
+        if (!rowKey) return;
+        const row = variantRows.get(rowKey)?.row;
+        if (!row || (row.chips?.length ?? 0) === 0) return;
+        event.preventDefault();
+        openEffortMenu(rowKey);
+        requestAnimationFrame(() => {
+          effortMenuRef.current?.querySelector<HTMLElement>(".effort-track")?.focus();
+        });
+        return;
+      }
       default:
     }
   };
 
-  const moveMenuFocus = (
-    root: HTMLElement | null,
-    selector: string,
-    from: HTMLElement | null,
-    delta: number,
-    edge: "first" | "last" | null,
-  ) => {
-    if (!root) return;
-    const items = Array.from(root.querySelectorAll<HTMLButtonElement>(selector)).filter((item) => !item.disabled);
-    if (items.length === 0) return;
-    if (edge) {
-      items[edge === "first" ? 0 : items.length - 1]!.focus();
-      return;
-    }
-    const index = from ? items.indexOf(from as HTMLButtonElement) : -1;
-    const next = index < 0 ? (delta > 0 ? 0 : items.length - 1) : (index + delta + items.length) % items.length;
-    items[next]!.focus();
-  };
-  const moveFlyoutFocus = (from: HTMLElement | null, delta: number, edge: "first" | "last" | null) => {
-    moveMenuFocus(flyoutRef.current, ".operation-launch-variant-row", from, delta, edge);
-  };
-  const effortTarget = openEffortRow === null || flyoutTarget === null
-    ? null
-    : findEffortRow(flyoutTarget.kind, openFlyout, openEffortRow);
+  const effortTarget = openEffortRow === null ? null : variantRows.get(openEffortRow) ?? null;
+  const effortTargetRow = effortTarget && (effortTarget.row.chips?.length ?? 0) > 0 ? effortTarget.row : null;
 
   const activeDescription = useMemo(() => {
     if (!activeKey) return null;
@@ -380,9 +314,14 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     return null;
   }, [activeKey, catalog, t]);
 
-  const asideSide = activeDescription && flyoutTarget === null
-    ? asidePlacement(anchor, viewportBounds, menuSize)
-    : null;
+  const asideSide = activeDescription ? asidePlacement(anchor, viewportBounds, menuSize) : null;
+
+  // 실행 종류가 모델 밴드를 여럿 펼치면 어느 밴드가 어느 종류의 것인지 캡션만으로는 갈리지 않는다.
+  // 플러그인 라벨과 같은 규칙이다 — 하나뿐이면 세우지 않는다.
+  const variantKindCount = catalog.reduce(
+    (total, plugin) => total + plugin.kinds.filter(expandsVariants).length,
+    0,
+  );
 
   return (
     <div
@@ -424,84 +363,180 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
           </span>
           <p className="canvas-context-menu-section">{t("canvas.menu.launch")}</p>
         </div>
-        {catalog.length > 0 ? catalog.map((plugin, index) => (
-          <div key={plugin.id} role="group" aria-label={plugin.title}>
-            {index > 0 ? <div className="theater-menu-divider" role="separator" /> : null}
-            {singlePlugin ? null : <p className="canvas-context-menu-plugin">{plugin.title}</p>}
-            {plugin.kinds.map((kind) => {
-              const disabled = kind.disabled === true || !canLaunch;
-              const annotation = resolveLaunchKindAnnotation(kind.id);
-              const flyoutId = itemKey(plugin.id, kind.id);
-              const hasVariants = !disabled && (kind.variants?.length ?? 0) > 0;
-              const flyoutOpen = hasVariants && openFlyout === flyoutId;
-              const activateDescription = () => {
-                setHoverKey(flyoutId);
-                if (!hasVariants) closeFlyout();
-              };
-              const activateFocus = () => {
-                setFocusKey(flyoutId);
-                if (!hasVariants) closeFlyout();
-              };
-              return (
-                <div
-                  key={flyoutId}
-                  className="operation-launch-menu-item-wrap"
-                  ref={(element) => {
-                    if (element) flyoutAnchorRefs.current.set(flyoutId, element);
-                    else flyoutAnchorRefs.current.delete(flyoutId);
-                  }}
-                  onPointerEnter={() => { if (hasVariants) openLaunchFlyout(flyoutId); }}
-                  onPointerLeave={() => { if (hasVariants) scheduleFlyoutClose(); }}
-                  onFocus={() => { if (hasVariants) openLaunchFlyout(flyoutId); }}
-                  onBlur={(event) => {
-                    if (!event.currentTarget.contains(event.relatedTarget)) scheduleFlyoutClose();
-                  }}
-                >
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className={`theater-menu-item canvas-context-menu-item operation-launch-menu-item${annotation ? " operation-launch-menu-item--annotated" : ""}${hasVariants ? " operation-launch-menu-item--variants" : ""}`}
-                    // 실행 종류의 안정 식별자. 기능 투어처럼 특정 항목을 짚어야 하는 바깥 선택자가
-                    // 번역 가능한 title/label 문자열 대신 이 속성에 걸리도록 한다.
-                    data-operation-launch-kind={kind.id}
-                    disabled={disabled}
-                    title={kind.disabledReason}
-                    tabIndex={-1}
-                    {...(hasVariants ? { "aria-haspopup": "menu" as const, "aria-expanded": flyoutOpen } : {})}
-                    onMouseEnter={activateDescription}
-                    onFocus={activateFocus}
-                    onKeyDown={(event) => {
-                      if (event.key !== "ArrowRight" || !hasVariants) return;
-                      event.preventDefault();
-                      openLaunchFlyout(flyoutId);
-                      requestAnimationFrame(() => {
-                        containerRef.current?.querySelector<HTMLButtonElement>("[data-launch-variant-row]")?.focus();
-                      });
-                    }}
-                    onClick={() => onLaunchKind(plugin.id, kind)}
-                  >
-                    <span className="theater-menu-check" aria-hidden="true">{renderKindIcon(plugin.id, kind) ?? <FallbackGlyph />}</span>
-                    <span className="theater-menu-label">{kind.title}</span>
-                    {/* 비활성 사유가 있으면 그것이 먼저다 — 지금 실행할 수 없다는 사실이 종류 설명보다 급하다. */}
-                    {kind.disabledReason
-                      ? <span className="operation-launch-menu-reason">{kind.disabledReason}</span>
-                      : annotation
-                        ? (
-                          <>
-                            <span className="operation-launch-menu-brief">{t(annotation.briefKey)}</span>
-                            {/* 설명 문장은 버튼 안에 남아 접근 이름에 실린다 — 시각적으로만 접고,
-                                variant가 없는 행에서만 같은 문자열을 옆 어사이드가 비춘다. */}
-                            <span className="operation-launch-menu-description operation-launch-menu-description--quiet">{t(annotation.descriptionKey)}</span>
-                          </>
-                        )
-                        : null}
-                    {hasVariants ? <span className="operation-launch-menu-chevron" aria-hidden="true">›</span> : null}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )) : <p className="theater-menu-empty">{t("canvas.menu.empty")}</p>}
+        {catalog.length > 0 ? catalog.map((plugin, index) => {
+          // 모델 밴드를 펼치는 실행 종류와 바로 실행되는 종류를 갈라 세운다. 바로 실행되는 쪽이
+          // 위다 — 캡션 아래에 놓인 무캡션 행은 그 밴드의 일원으로 읽힌다.
+          const directKinds = plugin.kinds.filter((kind) => !expandsVariants(kind));
+          const variantKinds = plugin.kinds.filter(expandsVariants);
+          return (
+            <div key={plugin.id} role="group" aria-label={plugin.title}>
+              {index > 0 ? <div className="theater-menu-divider" role="separator" /> : null}
+              {singlePlugin ? null : <p className="canvas-context-menu-plugin">{plugin.title}</p>}
+              {directKinds.map((kind) => {
+                const disabled = kind.disabled === true || !canLaunch;
+                const annotation = resolveLaunchKindAnnotation(kind.id);
+                const rowKey = itemKey(plugin.id, kind.id);
+                return (
+                  <div key={rowKey} className="operation-launch-menu-item-wrap">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className={`theater-menu-item canvas-context-menu-item operation-launch-menu-item${annotation ? " operation-launch-menu-item--annotated" : ""}`}
+                      // 실행 종류의 안정 식별자. 기능 투어처럼 특정 항목을 짚어야 하는 바깥 선택자가
+                      // 번역 가능한 title/label 문자열 대신 이 속성에 걸리도록 한다.
+                      data-operation-launch-kind={kind.id}
+                      disabled={disabled}
+                      title={kind.disabledReason}
+                      tabIndex={-1}
+                      onMouseEnter={() => setHoverKey(rowKey)}
+                      onFocus={() => setFocusKey(rowKey)}
+                      onClick={() => onLaunchKind(plugin.id, kind)}
+                    >
+                      <span className="theater-menu-check" aria-hidden="true">{renderKindIcon(plugin.id, kind) ?? <FallbackGlyph />}</span>
+                      <span className="theater-menu-label">{kind.title}</span>
+                      {/* 비활성 사유가 있으면 그것이 먼저다 — 지금 실행할 수 없다는 사실이 종류 설명보다 급하다. */}
+                      {kind.disabledReason
+                        ? <span className="operation-launch-menu-reason">{kind.disabledReason}</span>
+                        : annotation
+                          ? (
+                            <>
+                              <span className="operation-launch-menu-brief">{t(annotation.briefKey)}</span>
+                              {/* 설명 문장은 버튼 안에 남아 접근 이름에 실린다 — 시각적으로만 접고,
+                                  같은 문자열을 옆 어사이드가 비춘다. */}
+                              <span className="operation-launch-menu-description operation-launch-menu-description--quiet">{t(annotation.descriptionKey)}</span>
+                            </>
+                          )
+                          : null}
+                    </button>
+                  </div>
+                );
+              })}
+              {variantKinds.map((kind, kindIndex) => {
+                const kindKey = itemKey(plugin.id, kind.id);
+                return (
+                  <div key={kindKey} role="group" aria-label={kind.title}>
+                    {variantKindCount > 1 ? <p className="canvas-context-menu-plugin">{kind.title}</p> : null}
+                    {kind.variants!.map((group, groupIndex) => (
+                      <div key={group.id} className="operation-launch-variant-group">
+                        {directKinds.length > 0 || kindIndex > 0 || groupIndex > 0
+                          ? <div className="theater-menu-divider" role="separator" />
+                          : null}
+                        {(() => {
+                          const provider = launchProviderFromGroupId(group.id);
+                          const caption = group.id === "native"
+                            ? t("launchVariants.group.native")
+                            : group.id === "gateway"
+                              ? t("launchVariants.group.gateway")
+                              : group.label;
+                          return (
+                            <p className={`operation-launch-variant-caption${provider ? ` is-${provider}` : ""}`}>
+                              {provider ? (
+                                <span className="operation-launch-provider-glyph" aria-hidden="true">
+                                  {launchProviderGlyph(provider)}
+                                </span>
+                              ) : null}
+                              <span>{caption}</span>
+                            </p>
+                          );
+                        })()}
+                        {group.rows.map((row) => {
+                          const rowHasEffort = (row.chips?.length ?? 0) > 0;
+                          // 행 id는 그 그룹 안에서만 고유하다 — 실행 종류 설명을 itemKey로 잡는 것과 같은 이유로,
+                          // 고른 강도도 종류·그룹까지 묶어야 같은 id를 쓰는 다른 행에 조용히 새지 않는다.
+                          const rowKey = effortKey(kindKey, group.id, row.id);
+                          const effortOpen = rowHasEffort && openEffortRow === rowKey;
+                          // 트랙으로 단을 고르고, 행을 누르거나 같은 단을 다시 확정하면 그 강도를 싣고 실행한다.
+                          const chosenEffort = rowEfforts[rowKey] ?? null;
+                          const chosenChip = chosenEffort === null
+                            ? undefined
+                            : row.chips?.find((chip) => chip.id === chosenEffort);
+                          return (
+                            <div
+                              key={row.id}
+                              className="operation-launch-variant-entry"
+                              data-launch-effort-key={rowKey}
+                              ref={(element) => {
+                                if (element) effortAnchorRefs.current.set(rowKey, element);
+                                else effortAnchorRefs.current.delete(rowKey);
+                              }}
+                              // 행 본문은 강도를 열지 않는다 — 여는 것은 오른쪽 손잡이뿐이다. 다른 행으로
+                              // 넘어온 포인터는 유예를 두고 닫는다: 즉시 닫으면 손잡이에서 서브메뉴로
+                              // 비스듬히 가는 경로가 아래 행을 스칠 때 상자가 먼저 사라진다.
+                              onPointerEnter={scheduleEffortClose}
+                              onPointerLeave={() => {
+                                if (rowHasEffort) scheduleEffortClose();
+                              }}
+                              onFocus={() => {
+                                // 키보드로 다른 행에 닿으면 앞 행의 상자는 닫는다. 이 행의 상자를 여는 것은
+                                // ArrowRight이지 포커스가 아니다.
+                                if (openEffortRow !== null && openEffortRow !== rowKey) closeEffortMenu();
+                              }}
+                              onBlur={(event) => {
+                                if (!event.currentTarget.contains(event.relatedTarget as Node | null)
+                                  && !effortMenuRef.current?.contains(event.relatedTarget as Node | null)) {
+                                  scheduleEffortClose();
+                                }
+                              }}
+                            >
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className={`operation-launch-variant-row${rowHasEffort ? " operation-launch-variant-row--effort" : ""}`}
+                                // 모델 행도 결국 이 실행 종류를 띄운다 — 종류를 짚는 바깥 선택자(기능 투어)가
+                                // 밴드로 펼쳐진 뒤에도 같은 속성으로 닿는다.
+                                data-operation-launch-kind={kind.id}
+                                data-launch-variant-row={row.id}
+                                disabled={!canLaunch}
+                                tabIndex={-1}
+                                // 펼쳐지는 것이 메뉴가 아니므로 haspopup=menu로 예고하지 않는다 — 무엇이
+                                // 열렸는지는 aria-controls가 가리킨다.
+                                aria-expanded={rowHasEffort ? effortOpen : undefined}
+                                aria-controls={effortOpen ? EFFORT_POPUP_ID : undefined}
+                                onClick={() => onLaunchKind(plugin.id, kind, chosenChip?.launch ?? row.launch)}
+                              >
+                                <span className="operation-launch-variant-row-label">{row.label}</span>
+                                {row.starred ? <span className="operation-launch-variant-star" aria-hidden="true">★</span> : null}
+                                {/* 강도 손잡이. 지금 실린 강도를 되비치는 표식이면서, 트랙을 여는 자리이기도 하다 —
+                                    트랙이 닫힌 뒤에도 이 행을 누르면 무엇으로 실행되는지 여기서 읽힌다.
+                                    버튼 안의 span이므로 초점 대상이 아니다: 키보드 경로는 지금처럼 행 버튼의
+                                    ArrowRight이고, 그 행이 aria-expanded·aria-controls로 상자를 예고한다. */}
+                                {rowHasEffort ? (
+                                  <span
+                                    className="operation-launch-variant-effort-handle"
+                                    data-launch-effort-handle={rowKey}
+                                    data-effort-level={chosenEffort ?? "auto"}
+                                    data-open={effortOpen ? "true" : undefined}
+                                    title={t("launchVariants.effort.track")}
+                                    onPointerEnter={() => openEffortMenu(rowKey)}
+                                    onPointerLeave={scheduleEffortClose}
+                                    onClick={(event) => {
+                                      // 손잡이는 실행이 아니라 강도를 연다. 행 버튼까지 함께 발화하면 강도를
+                                      // 고르려던 클릭이 그대로 출격이 된다.
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      if (effortOpen) closeEffortMenu();
+                                      else openEffortMenu(rowKey);
+                                    }}
+                                  >
+                                    <EffortGaugeGlyph {...effortLadderPosition(row, chosenEffort)} />
+                                    <span className="operation-launch-variant-effort">
+                                      {chosenChip?.label ?? t("launchVariants.effort.auto")}
+                                    </span>
+                                    <span className="operation-launch-variant-chevron" aria-hidden="true">›</span>
+                                  </span>
+                                ) : null}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        }) : <p className="theater-menu-empty">{t("canvas.menu.empty")}</p>}
       </div>
       {activeDescription && asideSide
         ? (
@@ -513,177 +548,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
           </p>
         )
         : null}
-      {flyoutTarget && flyoutPosition?.id === openFlyout ? (
-        <div
-          className={`operation-launch-flyout theater-menu${flyoutPosition.opensLeft ? " is-left" : ""}`}
-          role="menu"
-          ref={flyoutRef}
-          style={{ position: "fixed", left: flyoutPosition.left, right: "auto", top: flyoutPosition.top }}
-          onPointerEnter={cancelFlyoutClose}
-          onPointerLeave={scheduleFlyoutClose}
-          onFocus={cancelFlyoutClose}
-          onBlur={(event) => {
-            if (!containerRef.current?.contains(event.relatedTarget)) scheduleFlyoutClose();
-          }}
-          onKeyDown={(event) => {
-            const target = event.target as HTMLElement;
-            switch (event.key) {
-              case "ArrowDown":
-                event.preventDefault();
-                moveFlyoutFocus(target, 1, null);
-                return;
-              case "ArrowUp":
-                event.preventDefault();
-                moveFlyoutFocus(target, -1, null);
-                return;
-              case "Home":
-                event.preventDefault();
-                moveFlyoutFocus(null, 0, "first");
-                return;
-              case "End":
-                event.preventDefault();
-                moveFlyoutFocus(null, 0, "last");
-                return;
-              case "ArrowRight": {
-                const entry = target.closest<HTMLElement>(".operation-launch-variant-entry");
-                const rowKey = entry?.dataset.launchEffortKey;
-                if (!rowKey) return;
-                const row = findEffortRow(flyoutTarget.kind, openFlyout, rowKey);
-                if (!row || (row.chips?.length ?? 0) === 0) return;
-                event.preventDefault();
-                openEffortMenu(rowKey);
-                requestAnimationFrame(() => {
-                  effortMenuRef.current?.querySelector<HTMLElement>(".effort-track")?.focus();
-                });
-                return;
-              }
-              case "ArrowLeft":
-              case "Escape":
-                event.preventDefault();
-                event.stopPropagation();
-                if (openEffortRow !== null) {
-                  effortAnchorRefs.current.get(openEffortRow)?.querySelector<HTMLButtonElement>("[data-launch-variant-row]")?.focus();
-                  closeEffortMenu();
-                  return;
-                }
-                flyoutAnchorRefs.current.get(openFlyout!)?.querySelector<HTMLButtonElement>("[data-operation-launch-kind]")?.focus();
-                closeFlyout();
-                return;
-              default:
-            }
-          }}
-        >
-          {flyoutTarget.kind.variants!.map((group, groupIndex) => (
-            <div key={group.id} className="operation-launch-variant-group">
-              {groupIndex > 0 ? <div className="theater-menu-divider" role="separator" /> : null}
-              {(() => {
-                const provider = launchProviderFromGroupId(group.id);
-                const caption = group.id === "native"
-                  ? t("launchVariants.group.native")
-                  : group.id === "gateway"
-                    ? t("launchVariants.group.gateway")
-                    : group.label;
-                return (
-                  <p className={`operation-launch-variant-caption${provider ? ` is-${provider}` : ""}`}>
-                    {provider ? (
-                      <span className="operation-launch-provider-glyph" aria-hidden="true">
-                        {launchProviderGlyph(provider)}
-                      </span>
-                    ) : null}
-                    <span>{caption}</span>
-                  </p>
-                );
-              })()}
-              {group.rows.map((row) => {
-                const hasEffort = (row.chips?.length ?? 0) > 0;
-                // 행 id는 그 그룹 안에서만 고유하다 — 실행 종류 설명을 itemKey로 잡는 것과 같은 이유로,
-                // 고른 강도도 종류·그룹까지 묶어야 같은 id를 쓰는 다른 행에 조용히 새지 않는다.
-                const rowKey = effortKey(openFlyout, group.id, row.id);
-                const effortOpen = hasEffort && openEffortRow === rowKey;
-                // 트랙으로 단을 고르고, 행을 누르거나 같은 단을 다시 확정하면 그 강도를 싣고 실행한다.
-                const chosenEffort = rowEfforts[rowKey] ?? null;
-                const chosenChip = chosenEffort === null
-                  ? undefined
-                  : row.chips?.find((chip) => chip.id === chosenEffort);
-                return (
-                  <div
-                    key={row.id}
-                    className="operation-launch-variant-entry"
-                    data-launch-effort-key={rowKey}
-                    ref={(element) => {
-                      if (element) effortAnchorRefs.current.set(rowKey, element);
-                      else effortAnchorRefs.current.delete(rowKey);
-                    }}
-                    // 행 본문은 강도를 열지 않는다 — 여는 것은 오른쪽 손잡이뿐이다. 다른 행으로
-                    // 넘어온 포인터는 유예를 두고 닫는다: 즉시 닫으면 손잡이에서 서브메뉴로
-                    // 비스듬히 가는 경로가 아래 행을 스칠 때 상자가 먼저 사라진다.
-                    onPointerEnter={scheduleEffortClose}
-                    onPointerLeave={() => {
-                      if (hasEffort) scheduleEffortClose();
-                    }}
-                    onFocus={() => {
-                      // 키보드로 다른 행에 닿으면 앞 행의 상자는 닫는다. 이 행의 상자를 여는 것은
-                      // ArrowRight이지 포커스가 아니다.
-                      if (openEffortRow !== null && openEffortRow !== rowKey) closeEffortMenu();
-                    }}
-                    onBlur={(event) => {
-                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)
-                        && !effortMenuRef.current?.contains(event.relatedTarget as Node | null)) {
-                        scheduleEffortClose();
-                      }
-                    }}
-                  >
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className={`operation-launch-variant-row${hasEffort ? " operation-launch-variant-row--effort" : ""}`}
-                      data-launch-variant-row={row.id}
-                      // 펼쳐지는 것이 메뉴가 아니므로 haspopup=menu로 예고하지 않는다 — 무엇이
-                      // 열렸는지는 aria-controls가 가리킨다.
-                      aria-expanded={hasEffort ? effortOpen : undefined}
-                      aria-controls={effortOpen ? EFFORT_POPUP_ID : undefined}
-                      onClick={() => onLaunchKind(flyoutTarget.pluginId, flyoutTarget.kind, chosenChip?.launch ?? row.launch)}
-                    >
-                      <span className="operation-launch-variant-row-label">{row.label}</span>
-                      {row.starred ? <span className="operation-launch-variant-star" aria-hidden="true">★</span> : null}
-                      {/* 강도 손잡이. 지금 실린 강도를 되비치는 표식이면서, 트랙을 여는 자리이기도 하다 —
-                          트랙이 닫힌 뒤에도 이 행을 누르면 무엇으로 실행되는지 여기서 읽힌다.
-                          버튼 안의 span이므로 초점 대상이 아니다: 키보드 경로는 지금처럼 행 버튼의
-                          ArrowRight이고, 그 행이 aria-expanded·aria-controls로 상자를 예고한다. */}
-                      {hasEffort ? (
-                        <span
-                          className="operation-launch-variant-effort-handle"
-                          data-launch-effort-handle={rowKey}
-                          data-effort-level={chosenEffort ?? "auto"}
-                          data-open={effortOpen ? "true" : undefined}
-                          title={t("launchVariants.effort.track")}
-                          onPointerEnter={() => openEffortMenu(rowKey)}
-                          onPointerLeave={scheduleEffortClose}
-                          onClick={(event) => {
-                            // 손잡이는 실행이 아니라 강도를 연다. 행 버튼까지 함께 발화하면 강도를
-                            // 고르려던 클릭이 그대로 출격이 된다.
-                            event.preventDefault();
-                            event.stopPropagation();
-                            if (effortOpen) closeEffortMenu();
-                            else openEffortMenu(rowKey);
-                          }}
-                        >
-                          <EffortGaugeGlyph {...effortLadderPosition(row, chosenEffort)} />
-                          <span className="operation-launch-variant-effort">
-                            {chosenChip?.label ?? t("launchVariants.effort.auto")}
-                          </span>
-                          <span className="operation-launch-variant-chevron" aria-hidden="true">›</span>
-                        </span>
-                      ) : null}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {flyoutTarget && effortTarget && effortPosition?.id === openEffortRow ? (
+      {effortTarget && effortTargetRow && effortPosition?.id === openEffortRow ? (
         <div
           className={`operation-launch-effort-menu theater-menu${effortPosition.opensLeft ? " is-left" : ""}`}
           // 이 상자가 담는 것은 메뉴 항목이 아니라 슬라이더 하나다. menu로 선언하면 보조기술이
@@ -693,15 +558,9 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
           aria-label={t("launchVariants.effort.track")}
           ref={effortMenuRef}
           style={{ position: "fixed", left: effortPosition.left, right: "auto", top: effortPosition.top }}
-          onPointerEnter={() => {
-            cancelEffortClose();
-            cancelFlyoutClose();
-          }}
+          onPointerEnter={cancelEffortClose}
           onPointerLeave={scheduleEffortClose}
-          onFocus={() => {
-            cancelEffortClose();
-            cancelFlyoutClose();
-          }}
+          onFocus={cancelEffortClose}
           onBlur={(event) => {
             if (!containerRef.current?.contains(event.relatedTarget as Node | null)) scheduleEffortClose();
           }}
@@ -715,19 +574,19 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
         >
           <div className="operation-launch-effort-menu-body">
             <EffortTrack
-              row={effortTarget}
-              value={rowEfforts[openEffortRow] ?? null}
-              onChange={(next) => setRowEfforts((previous) => ({ ...previous, [openEffortRow]: next }))}
+              row={effortTargetRow}
+              value={rowEfforts[openEffortRow!] ?? null}
+              onChange={(next) => setRowEfforts((previous) => ({ ...previous, [openEffortRow!]: next }))}
               onConfirmCurrent={() => {
                 // 자동을 다시 누르는 것은 값을 비운 채 머무는 일이다 — 모델만 싣는 실행은 행 본문이 맡는다.
-                const effort = rowEfforts[openEffortRow] ?? null;
+                const effort = rowEfforts[openEffortRow!] ?? null;
                 if (effort === null) return;
-                const chip = effortTarget.chips?.find((entry) => entry.id === effort);
+                const chip = effortTargetRow.chips?.find((entry) => entry.id === effort);
                 if (!chip) return;
                 // 같은 노브를 다시 눌러 실행한 순간에만 팁을 졸업시킨다. 선택·피처 투어 건너뛰기는
                 // 제스처를 익힌 증거가 아니다.
                 if (!effortConfirmTipSeen) void persistEffortConfirmTipSeen();
-                onLaunchKind(flyoutTarget.pluginId, flyoutTarget.kind, chip.launch);
+                onLaunchKind(effortTarget.pluginId, effortTarget.kind, chip.launch);
               }}
               autoLabel={t("launchVariants.effort.auto")}
               ariaLabel={t("launchVariants.effort.track")}
@@ -744,11 +603,6 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     </div>
   );
 }
-
-const GAUGE_BAR_WIDTH = 1.5;
-const GAUGE_BAR_PITCH = 2.5;
-const GAUGE_HEIGHT = 8;
-const GAUGE_MIN_BAR = 2;
 
 // 시청 기록 PUT은 전역 저장 슬롯 하나뿐이라, 피처 투어 완료 저장과 겹치면 뒤쪽 호출이 거절된다.
 // 잠깐 양보한 뒤 최신 seen 목록에 키를 합쳐 다시 쓴다. 실패해도 같은 마운트에서는 상한까지만
@@ -771,6 +625,11 @@ async function persistEffortConfirmTipSeen(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 40));
   }
 }
+
+const GAUGE_BAR_WIDTH = 1.5;
+const GAUGE_BAR_PITCH = 2.5;
+const GAUGE_HEIGHT = 8;
+const GAUGE_MIN_BAR = 2;
 
 /**
  * 강도 사다리를 그대로 줄인 계기 표식. 꺾쇠만으로는 이 손잡이가 무엇을 여는지 말하지 못하므로,
@@ -806,6 +665,12 @@ function EffortGaugeGlyph({ rung, total }: { readonly rung: number; readonly tot
       })}
     </svg>
   );
+}
+
+// 모델 밴드로 펼쳐지는 실행 종류. 비활성 종류는 변형을 들고 있더라도 펼치지 않는다 —
+// 고를 수 없는 모델 목록을 여는 대신, 왜 못 쓰는지 밝히는 한 줄짜리 행으로 남는 편이 정직하다.
+function expandsVariants(kind: OperationLaunchKind): boolean {
+  return kind.disabled !== true && (kind.variants?.length ?? 0) > 0;
 }
 
 // 컨테이너는 자기 좌표를 인라인 스타일로 들고 있다. 캐스케이드의 모든 단이 이 좌표계 위에서
@@ -850,32 +715,11 @@ function placeCascade({ boxLeft, boxWidth, top, width, boundsWidth, preferLeft }
   };
 }
 
-function findLaunchFlyout(catalog: readonly OperationCatalogPlugin[], flyoutId: string): {
-  readonly pluginId: string;
-  readonly kind: OperationLaunchKind;
-} | null {
-  for (const plugin of catalog) {
-    const kind = plugin.kinds.find((candidate) => itemKey(plugin.id, candidate.id) === flyoutId);
-    if (kind?.variants && kind.variants.length > 0) return { pluginId: plugin.id, kind };
-  }
-  return null;
-}
-
 // 행 id는 그 그룹 안에서만 고유하다. 실행 종류 설명을 itemKey로 잡는 것과 같은 이유로, 열린
 // 트랙과 고른 강도도 종류·그룹까지 묶어 둔다. 구분자는 id에 나타나지 않는 제어문자를 쓴다 —
 // 실행 종류 키는 `terminal:claude-gateway`, 그룹 키는 `gateway:codex`라 콜론은 이미 모호하다.
-function effortKey(flyoutId: string | null, groupId: string, rowId: string): string {
-  return `${flyoutId ?? ""}\u001f${groupId}\u001f${rowId}`;
-}
-
-function findEffortRow(kind: OperationLaunchKind, flyoutId: string | null, key: string) {
-  for (const group of kind.variants ?? []) {
-    for (const row of group.rows) {
-      if (effortKey(flyoutId, group.id, row.id) !== key) continue;
-      return (row.chips?.length ?? 0) > 0 ? row : null;
-    }
-  }
-  return null;
+function effortKey(kindKey: string, groupId: string, rowId: string): string {
+  return `${kindKey}\u001f${groupId}\u001f${rowId}`;
 }
 
 // 좌하단 런처 FAB와 메뉴 헤더가 공유하던 '커맨드 레티클' 마크 — 외곽 스코프 링 + 사방 조준 틱 +

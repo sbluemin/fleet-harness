@@ -165,9 +165,10 @@ describe("sidebar context menu keyboard path", () => {
       clientX: 120,
       clientY: 80,
     })));
-    const parent = required<HTMLElement>('[data-operation-launch-kind="claude-gateway"]');
-    act(() => parent.parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+    // 사이드바에서 연 메뉴도 모델 목록을 바로 편다 — 실행 종류를 짚어 여는 단은 없다.
+    expect(document.querySelector(".operation-launch-flyout")).toBeNull();
     const row = required<HTMLButtonElement>('[data-launch-variant-row="fable"]');
+    expect(row.getAttribute("data-operation-launch-kind")).toBe("claude-gateway");
     act(() => {
       row.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
       // 강도 상자는 행이 아니라 행 오른쪽 손잡이에서 열린다.
