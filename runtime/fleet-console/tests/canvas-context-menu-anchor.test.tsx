@@ -458,14 +458,19 @@ describe("CanvasContextMenu launch kind attribute", () => {
     act(() => row.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
     expect(document.querySelector(".effort-track")).toBeNull();
 
-    // 트랙은 값만 정한다 — 실행은 여전히 모델 행이 일으킨다.
+    // End는 단만 고른다. 같은 단을 다시 확정(Enter)하면 그 강도로 출격한다.
     act(() => effortHandle("fable").dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
     const track = document.querySelector<HTMLElement>(".effort-track")!;
     expect(track).not.toBeNull();
+    act(() => track.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(onLaunchKind).toHaveBeenCalledTimes(1);
     act(() => track.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
     expect(onLaunchKind).toHaveBeenCalledTimes(1);
+    act(() => track.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(onLaunchKind).toHaveBeenCalledTimes(2);
+    expect(onLaunchKind).toHaveBeenLastCalledWith("terminal", catalog[0]!.kinds[0], { model: "fable", effort: "max" });
 
-    // 고른 강도는 행에 되비치고, 그 행을 눌러야 실행된다.
+    // 고른 강도는 행에도 되비치고, 그 행을 눌러도 같은 페이로드로 실행된다.
     expect(effortHandle("fable").querySelector(".operation-launch-variant-effort")?.textContent).toBe("MAX");
     expect(effortHandle("fable").dataset.effortLevel).toBe("max");
     act(() => document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!.click());

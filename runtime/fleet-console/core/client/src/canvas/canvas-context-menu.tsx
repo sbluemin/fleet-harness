@@ -589,7 +589,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                 // 고른 강도도 종류·그룹까지 묶어야 같은 id를 쓰는 다른 행에 조용히 새지 않는다.
                 const rowKey = effortKey(openFlyout, group.id, row.id);
                 const effortOpen = hasEffort && openEffortRow === rowKey;
-                // 트랙은 값만 정한다 — 실행은 이 행이 일으키고, 고른 강도를 그대로 싣는다.
+                // 트랙으로 단을 고르고, 행을 누르거나 같은 단을 다시 확정하면 그 강도를 싣고 실행한다.
                 const chosenEffort = rowEfforts[rowKey] ?? null;
                 const chosenChip = chosenEffort === null
                   ? undefined
@@ -706,6 +706,14 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
             row={effortTarget}
             value={rowEfforts[openEffortRow] ?? null}
             onChange={(next) => setRowEfforts((previous) => ({ ...previous, [openEffortRow]: next }))}
+            onConfirmCurrent={() => {
+              // 자동을 다시 누르는 것은 값을 비운 채 머무는 일이다 — 모델만 싣는 실행은 행 본문이 맡는다.
+              const effort = rowEfforts[openEffortRow] ?? null;
+              if (effort === null) return;
+              const chip = effortTarget.chips?.find((entry) => entry.id === effort);
+              if (!chip) return;
+              onLaunchKind(flyoutTarget.pluginId, flyoutTarget.kind, chip.launch);
+            }}
             autoLabel={t("launchVariants.effort.auto")}
             ariaLabel={t("launchVariants.effort.track")}
             autoValueText={t("launchVariants.effort.autoValue")}
