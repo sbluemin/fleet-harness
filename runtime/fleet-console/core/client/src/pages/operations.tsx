@@ -74,7 +74,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const triageMenuReturnFocusRef = useRef<HTMLElement | null>(null);
   const focusRequestEpochRef = useRef(0);
   const catalogRequestEpochRef = useRef(0);
-  const resumeBootProtectionRef = useRef<{ readonly theaterId: string; readonly operationId: string } | null>(null);
+  const resumeBootProtectionRef = useRef<{
+    readonly sourceTheaterId: string | null;
+    readonly targetTheaterId: string;
+    readonly operationId: string;
+  } | null>(null);
   stateRef.current = state;
 
   const refreshCatalog = useCallback(() => {
@@ -252,11 +256,18 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   }, [companionOperationId, formationView, maximizedOperationId, registry.operationKinds, viewMode.effective]);
 
   useEffect(() => {
-    const resumeBootProtection = resumeBootProtectionRef.current?.theaterId === state.activeTheaterId
-      ? resumeBootProtectionRef.current.operationId
-      : null;
-    if (resumeBootProtection !== null || viewMode.effective === "mobile") resumeBootProtectionRef.current = null;
-    if (viewMode.effective === "mobile") return;
+    const resumeBootProtection = resumeBootProtectionRef.current;
+    let protectedResumeOperationId: string | null = null;
+    if (viewMode.effective === "mobile") {
+      resumeBootProtectionRef.current = null;
+      return;
+    }
+    if (resumeBootProtection && state.activeTheaterId !== resumeBootProtection.sourceTheaterId) {
+      resumeBootProtectionRef.current = null;
+      if (state.activeTheaterId === resumeBootProtection.targetTheaterId) {
+        protectedResumeOperationId = resumeBootProtection.operationId;
+      }
+    }
     for (const operationId of operationOrder) ensureDefaultGeometry(operationId);
     if (!state.operationsHydrated) return;
     pruneOperations(operationOrder);
@@ -269,7 +280,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     // 선택·재개로 진입한 패널은 최소화에서 제외해 곧바로 표면화한다 — 선택한 패널만 하나씩 노출.
     const protectedIds = new Set([
       stateRef.current.pendingOperationFocus,
-      resumeBootProtection,
+      protectedResumeOperationId,
       getCompanionOperationId(),
       getMaximizedOperationId(),
     ].filter((id): id is string => id !== null));
@@ -415,7 +426,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     if (!operation) return;
     const resume = () => resumeOperationInPlace(operationId, stateRef.current.operations, registry.plugins, handleFocus);
     if (operation.theaterId !== stateRef.current.activeTheaterId) {
-      resumeBootProtectionRef.current = { theaterId: operation.theaterId, operationId };
+      resumeBootProtectionRef.current = {
+        sourceTheaterId: stateRef.current.activeTheaterId,
+        targetTheaterId: operation.theaterId,
+        operationId,
+      };
       setActiveTheater(operation.theaterId);
       resume();
       return;
