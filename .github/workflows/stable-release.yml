@@ -311,6 +311,7 @@ jobs:
       # 이 잡은 릴리스 핵심 책임(버전 산정·changelog·커밋·태그·GitHub Release)만 담당한다.
 
       - name: Commit release changes
+        id: commit
         if: steps.version.outputs.should_release == 'true' && steps.release_state.outputs.release_committed != 'true'
         env:
           NEXT_TAG: ${{ steps.version.outputs.next_tag }}
@@ -327,7 +328,12 @@ jobs:
           # push까지 발이 묶인다. 하나라도 다른 경로가 섞였다면 그 코드는 이 런이 검증하지 않았고,
           # 그 커밋이 띄운 자기 런이 검증부터 다시 밟으므로 여기서 멈춘다.
           for attempt in 1 2 3; do
-            if git push origin HEAD:main; then exit 0; fi
+            if git push origin HEAD:main; then
+              # 민 커밋을 여기서 붙들어 둔다. 아래 스텝들이 origin/main을 다시 집으면, push 직후에
+              # 올라온 미검증 커밋이 태그·npm·Desktop 산출물로 그대로 나간다.
+              echo "release_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             git fetch origin main
             if ! node scripts/release-tip-guard.mjs "$VERIFIED_SHA" origin/main; then
               echo "::error::main advanced with changes this run did not verify or with release notes it did not compile. Re-run all jobs to resolve, verify and release the new tip."
@@ -346,9 +352,13 @@ jobs:
 
       - name: Sync release commit from main
         if: steps.version.outputs.should_release == 'true'
+        env:
+          PUSHED_SHA: ${{ steps.commit.outputs.release_sha }}
         run: |
           git fetch origin main --tags
-          git checkout -B main origin/main
+          # 이 런이 릴리스 커밋을 밀었다면 그 커밋에 그대로 선다. origin/main을 다시 해석하는 것은
+          # 릴리스 커밋이 이미 올라가 있는 재실행 경로에만 남긴다.
+          git checkout -B main "${PUSHED_SHA:-origin/main}"
 
       - name: Resolve release commit
         if: steps.version.outputs.should_release == 'true'
