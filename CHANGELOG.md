@@ -5,6 +5,31 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.53.0] - 2026-08-09
+
+### fleet-cli
+
+#### Fixed
+- Give AI Gateway API key login enough time for the live validation probe to return, so a slow OpenCode Go response no longer fails as a timeout before the key is stored.
+
+### fleet-console
+
+#### Added
+- When you pick a reasoning effort other than AUTO in the canvas launch cascade, a tip under the track says to press the knob again to launch; it keeps appearing until that confirm gesture succeeds, and Help > Show the screen guide restores it.
+- Settings > Remote access now points to the latest Fleet Desktop release under the section lead, with a link to GitHub releases, so another device can install the app that opens this console.
+
+#### Changed
+- Right-clicking the canvas or an empty sidebar row now opens the model list itself. The launch menu used to list launch kinds first and hide the models behind a side flyout, so picking a model took one hover more than it needed; now Shell sits on the first row and the provider bands follow it in the same menu, with reasoning effort still one step to the side. The menu keeps one name wherever it opens, so its heading no longer changes with the surface it was opened from.
+
+#### Fixed
+- Give AI Gateway API key sign-in enough time for the live validation probe to return, so a slow OpenCode Go response no longer fails as a timeout before the key is stored.
+- Moving to a console that runs somewhere else on this computer, such as one inside a WSL distribution or a second console you started yourself, no longer strips the way back. The host box now works out where you are standing from the console the app launched rather than from the shape of the address, so any console that is not that one unfolds your own computer's list exactly as a remote console does. The chip names the console you are standing on instead of calling it local, that console's row in the list carries its own name rather than borrowing the name of the console drawing the list, and the app tells a console where home is before the window arrives, so the way back no longer depends on which of the two gets there first.
+
+### fleet-desktop
+
+#### Fixed
+- Make access-link copy actions work in the Windows Desktop app while keeping clipboard permission limited to the active Console origin.
+
 ## [1.52.0] - 2026-08-09
 
 ### fleet-cli
