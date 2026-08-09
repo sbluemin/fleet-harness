@@ -11031,66 +11031,6 @@ body[data-codex-reading="true"] .operations-side-bar {
   padding: var(--space-3) var(--space-4) var(--space-2);
 }
 
-.quick-launch-file-picker {
-  display: grid;
-  gap: 1px;
-  max-height: 256px;
-  overflow-y: auto;
-  padding: var(--space-1) var(--space-2);
-  border-top: 1px solid var(--surface-rim);
-}
-
-.quick-launch-file-row {
-  display: grid;
-  grid-template-columns: 18px max-content minmax(0, 1fr);
-  align-items: center;
-  gap: var(--space-2);
-  min-height: 32px;
-  padding: 0 var(--space-2);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-secondary);
-  text-align: left;
-}
-
-.quick-launch-file-row.is-active,
-.quick-launch-file-row:hover {
-  background: color-mix(in oklch, var(--surface-pillar) 70%, transparent);
-  color: var(--text-primary);
-}
-
-.quick-launch-file-icon {
-  color: var(--text-tertiary);
-  text-align: center;
-}
-
-.quick-launch-file-icon svg {
-  width: 15px;
-  height: 15px;
-}
-
-.quick-launch-file-row strong {
-  overflow: hidden;
-  color: var(--text-primary);
-  font-size: 12.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.quick-launch-file-directory {
-  overflow: hidden;
-  color: var(--text-tertiary);
-  font-size: 11.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.quick-launch-file-row:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
-}
-
 .quick-launch-input {
   width: 100%;
   min-height: 46px;

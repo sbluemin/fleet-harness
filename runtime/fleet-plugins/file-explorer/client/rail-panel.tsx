@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import type { QuickLaunchFileSearchProvider } from "@fleet-console/sdk/quick-launch";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import type { FileReadResult, FileSearchResult, FolderEntry, FolderListResult } from "../server/types.js";
@@ -27,18 +26,6 @@ import {
 } from "./layout.js";
 import { setSelectedPath, setTreePaneWidth, setViewState, useFileExplorerViewState } from "./view-store.js";
 import { activateFileSearchTarget, consumeFileSearchTarget, useFileSearchTarget, type FileSearchTarget } from "./search-navigation.js";
-
-export const quickLaunchFileSearch: QuickLaunchFileSearchProvider = async ({ query, theaterId, limit, signal }) => {
-  const response = await fetch("/plugins/file-explorer/files/palette-search", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ theaterId, query, limit }),
-    signal,
-  });
-  if (!response.ok) throw new Error("file_search_failed");
-  const result = await response.json() as FileSearchResult;
-  return result.files.map((file) => ({ id: file.relativePath, relativePath: file.relativePath }));
-};
 
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
 const FEEDBACK_DURATION_MS = 2_500;

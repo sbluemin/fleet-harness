@@ -85,11 +85,6 @@
       "import": "./rail/types.ts",
       "default": "./rail/types.ts"
     },
-    "./quick-launch": {
-      "types": "./quick-launch/types.ts",
-      "import": "./quick-launch/types.ts",
-      "default": "./quick-launch/types.ts"
-    },
     "./i18n": {
       "types": "./i18n/types.ts",
       "import": "./i18n/types.ts",

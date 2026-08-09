@@ -9,7 +9,6 @@ import type { RailPanelDescriptor } from "../rail/types.js";
 import type { RouteHandler, UpgradeHandler } from "../routing/types.js";
 import type { NotificationKindDescriptor } from "../notifications/types.js";
 import type { SettingsSectionDescriptor } from "../settings/types.js";
-import type { QuickLaunchFileSearchProvider } from "../quick-launch/types.js";
 
 export interface LaunchContext {
   readonly theaterId: string;
@@ -34,7 +33,6 @@ export interface FleetClientPlugin {
   readonly settingsSections?: readonly SettingsSectionDescriptor[];
   readonly notificationKinds?: readonly NotificationKindDescriptor[];
   readonly railPanels?: readonly RailPanelDescriptor[];
-  readonly quickLaunchFileSearch?: QuickLaunchFileSearchProvider;
   readonly floatingWidgets?: readonly FloatingWidgetDescriptor[];
   readonly install?: (ctx: PluginInstallContext) => void | (() => void);
   readonly launch?: (ctx: LaunchContext) => Promise<{ readonly id: string }>;
