@@ -392,11 +392,14 @@ function grepShellArguments(
 const CURSOR_GREP_RECEIPT_PREFIX = "FLEET_CURSOR_GREP_V1:";
 const CURSOR_GREP_RECEIPT_SCRIPT = String.raw`
 const {spawn}=require("node:child_process");
-const {createInterface}=require("node:readline");
+const {TextDecoder}=require("node:util");
 const emit=(value)=>process.stdout.write("${CURSOR_GREP_RECEIPT_PREFIX}"+Buffer.from(JSON.stringify(value)).toString("base64url"));
 (async()=>{try {
   const input=JSON.parse(Buffer.from(process.argv[1],"base64url").toString("utf8"));
-  const args=["--json","--color=never","--line-number"];
+  const matchSeparator=30;
+  const contextSeparator=31;
+  const maxContentBytes=2000;
+  const args=["--color=never","--line-number","--with-filename","--null","--max-columns",String(maxContentBytes),"--max-columns-preview","--field-match-separator",String.fromCharCode(matchSeparator),"--field-context-separator",String.fromCharCode(contextSeparator),"--no-context-separator"];
   if(input.caseInsensitive)args.push("--ignore-case");
   if(input.glob)args.push("--glob",input.glob);
   if(input.type)args.push("--type",input.type);
@@ -413,11 +416,13 @@ const emit=(value)=>process.stdout.write("${CURSOR_GREP_RECEIPT_PREFIX}"+Buffer.
     child.once("close",(code,signal)=>signal?reject(new Error("rg terminated by signal "+signal)):resolve(code));
   });
   const byteBudget=12*1024;
+  const maxRecordBytes=64*1024;
+  const truncatedSuffix=" [... omitted end of long line]";
+  const decoder=new TextDecoder("utf-8",{fatal:true});
   let retainedBytes=0;
   let clientTruncated=false;
   let totalLines=0;
   let totalMatchedLines=0;
-  let totalMatches=0;
   const files=[];
   const counts=new Map();
   const matches=[];
@@ -426,27 +431,45 @@ const emit=(value)=>process.stdout.write("${CURSOR_GREP_RECEIPT_PREFIX}"+Buffer.
     if(retainedBytes+bytes>byteBudget){clientTruncated=true;return;}
     retainedBytes+=bytes;target.push(value);
   };
-  try {
-    for await(const line of createInterface({input:child.stdout,crlfDelay:Infinity})){
-      if(!line)continue;
-      const event=JSON.parse(line);
-      if(event.type!=="match"&&event.type!=="context")continue;
-      const data=event.data||{};
-      if(!data.path||typeof data.path.text!=="string"||!data.lines||typeof data.lines.text!=="string")throw new Error("rg returned non-text search data");
-      const file=data.path.text;
-      totalLines+=1;
-      if(event.type==="match"){
-        const count=Array.isArray(data.submatches)?data.submatches.length:0;
-        totalMatches+=count;
-        totalMatchedLines+=1;
-        counts.set(file,(counts.get(file)||0)+count);
-      }
-      if(input.outputMode==="content"){
-        const fullContent=data.lines.text.replace(/\r?\n$/,"");
-        const content=fullContent.slice(0,2000);
-        retain(matches,{file,lineNumber:data.line_number,content,contentTruncated:content.length<fullContent.length,isContextLine:event.type==="context"});
-      }
+  let buffered=Buffer.alloc(0);
+  const consume=(record,nul)=>{
+    const fields=record.subarray(nul+1);
+    const matchIndex=fields.indexOf(matchSeparator);
+    const contextIndex=fields.indexOf(contextSeparator);
+    const separator=matchIndex>=0&&contextIndex>=0?Math.min(matchIndex,contextIndex):Math.max(matchIndex,contextIndex);
+    if(separator<1)throw new Error("rg returned an invalid bounded search record");
+    const lineText=fields.subarray(0,separator).toString("ascii");
+    if(!/^\d+$/.test(lineText))throw new Error("rg returned an invalid search line number");
+    const lineNumber=Number(lineText);
+    if(!Number.isSafeInteger(lineNumber)||lineNumber<1)throw new Error("rg returned an invalid search line number");
+    const file=decoder.decode(record.subarray(0,nul));
+    let content=decoder.decode(fields.subarray(separator+1));
+    if(content.endsWith("\r"))content=content.slice(0,-1);
+    const contentTruncated=Buffer.byteLength(content)>maxContentBytes&&content.endsWith(truncatedSuffix);
+    if(contentTruncated)content=content.slice(0,-truncatedSuffix.length);
+    const isContextLine=fields[separator]===contextSeparator;
+    totalLines+=1;
+    if(!isContextLine){
+      totalMatchedLines+=1;
+      counts.set(file,(counts.get(file)||0)+1);
     }
+    retain(matches,{file,lineNumber,content,contentTruncated,isContextLine});
+  };
+  try {
+    for await(const chunk of child.stdout){
+      buffered=buffered.length===0?chunk:Buffer.concat([buffered,chunk]);
+      while(true){
+        const nul=buffered.indexOf(0);
+        if(nul<0)break;
+        const newline=buffered.indexOf(10,nul+1);
+        if(newline<0)break;
+        if(newline>maxRecordBytes)throw new Error("rg exceeded the bounded search record limit");
+        consume(buffered.subarray(0,newline),nul);
+        buffered=buffered.subarray(newline+1);
+      }
+      if(buffered.length>maxRecordBytes)throw new Error("rg exceeded the bounded search record limit");
+    }
+    if(buffered.length!==0)throw new Error("rg returned an incomplete bounded search record");
   }catch(error){child.kill();await completion.catch(()=>undefined);throw error;}
   const code=await completion;
   if(code!==0&&code!==1)throw new Error((stderr||"rg failed with exit "+code).trim());
@@ -455,7 +478,7 @@ const emit=(value)=>process.stdout.write("${CURSOR_GREP_RECEIPT_PREFIX}"+Buffer.
   }
   const retainedCounts=[];
   if(input.outputMode==="count")for(const entry of counts)retain(retainedCounts,entry);
-  emit({ok:true,outputMode:input.outputMode,files,counts:retainedCounts,matches,totalFiles:counts.size,totalLines,totalMatchedLines,totalMatches,clientTruncated});
+  emit({ok:true,outputMode:input.outputMode,files,counts:retainedCounts,matches,totalFiles:counts.size,totalLines,totalMatchedLines,clientTruncated});
 }catch(error){emit({ok:false,error:error instanceof Error?error.message:String(error)});}})();
 `.trim();
 
@@ -498,7 +521,6 @@ interface GrepShellReceipt {
   readonly totalFiles: number;
   readonly totalLines: number;
   readonly totalMatchedLines: number;
-  readonly totalMatches: number;
   readonly clientTruncated: boolean;
 }
 
@@ -546,7 +568,7 @@ function parseGrepShellReceipt(
     ))) {
       throw new Error("receipt matches are invalid");
     }
-    for (const key of ["totalFiles", "totalLines", "totalMatchedLines", "totalMatches"] as const) {
+    for (const key of ["totalFiles", "totalLines", "totalMatchedLines"] as const) {
       if (typeof decoded[key] !== "number" || !Number.isSafeInteger(decoded[key]) || decoded[key] < 0) {
         throw new Error(`receipt ${key} is invalid`);
       }
@@ -581,7 +603,7 @@ function buildGrepReceiptSuccess(
       count: {
         counts: receipt.counts.map(([file, count]) => ({ file, count })),
         totalFiles: receipt.totalFiles,
-        totalMatches: receipt.totalMatches,
+        totalMatches: receipt.counts.reduce((sum, [, count]) => sum + count, 0),
         clientTruncated: receipt.clientTruncated,
         ripgrepTruncated: false,
       },

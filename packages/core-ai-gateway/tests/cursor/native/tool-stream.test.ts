@@ -497,9 +497,14 @@ describe("Cursor client tool suspension", () => {
       adapter: "grep-shell",
       call: { name: "Bash", toolCallId: "native-grep-shell-5" },
     });
-    expect(JSON.parse(grepShell?.call.arguments ?? "{}")).toEqual(expect.objectContaining({
-      command: expect.stringContaining("process.argv.splice(1,1)"),
-    }));
+    const grepShellCommand = JSON.parse(grepShell?.call.arguments ?? "{}").command as string;
+    expect(grepShellCommand).toContain("process.argv.splice(1,1)");
+    const encodedScript = grepShellCommand.split(" ").at(-2);
+    expect(encodedScript).toBeDefined();
+    const grepShellScript = Buffer.from(encodedScript ?? "", "base64url").toString("utf8");
+    expect(grepShellScript).toContain('"--max-columns",String(maxContentBytes)');
+    expect(grepShellScript).toContain("maxRecordBytes=64*1024");
+    expect(grepShellScript).not.toContain('"--json"');
     expect(cursorNativeExecRedirect(
       { id: 6, grepArgs: { pattern: "Fleet", path: "packages", outputMode: "files_with_matches" } },
       tools.filter((tool) => tool.clientName !== "Grep"),
