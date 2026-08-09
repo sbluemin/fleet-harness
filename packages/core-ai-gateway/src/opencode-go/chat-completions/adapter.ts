@@ -191,8 +191,10 @@ const argumentPruningPolicy = new WeakMap<OpenAIChatCompletionsAdapter, true>();
 const suggestionModeToolOmissionPolicy = new WeakMap<OpenAIChatCompletionsAdapter, true>();
 const CLAUDE_CODE_SUGGESTION_MODE_PREFIX =
   "[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]";
-const CLAUDE_CODE_SUGGESTION_MODE_SUFFIX =
-  "Reply with ONLY the suggestion, no quotes or explanation.";
+const CLAUDE_CODE_SUGGESTION_MODE_SUFFIXES = [
+  "Reply with ONLY the suggestion.",
+  "Reply with ONLY the suggestion, no quotes or explanation.",
+] as const;
 
 export interface OpencodeGoChatCompletionsAdapterOptions {
   fetch?: FetchLike;
@@ -235,8 +237,9 @@ function isClaudeCodeSuggestionMode(request: CanonicalResponseRequest): boolean 
   if (last?.type !== "message" || last.role !== "user" || typeof last.content !== "string") {
     return false;
   }
-  return last.content.startsWith(CLAUDE_CODE_SUGGESTION_MODE_PREFIX)
-    && last.content.endsWith(CLAUDE_CODE_SUGGESTION_MODE_SUFFIX);
+  const content = last.content;
+  return content.startsWith(CLAUDE_CODE_SUGGESTION_MODE_PREFIX)
+    && CLAUDE_CODE_SUGGESTION_MODE_SUFFIXES.some((suffix) => content.endsWith(suffix));
 }
 
 function forChatCompletionsBackend(

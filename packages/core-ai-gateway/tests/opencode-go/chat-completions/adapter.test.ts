@@ -150,6 +150,23 @@ describe("chat completions request translation", () => {
 
     fetchMock.mockClear();
     await new OpencodeGoChatCompletionsAdapter({ fetch: fetchMock }).stream(request({
+      input: [{
+        type: "message",
+        role: "user",
+        content: [
+          "[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]",
+          "Reply with ONLY the suggestion.",
+        ].join("\n"),
+      }],
+      tools,
+      tool_choice: "auto",
+    }), { apiKey: "k" });
+    const legacyPrompt = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(legacyPrompt).not.toHaveProperty("tools");
+    expect(legacyPrompt).not.toHaveProperty("tool_choice");
+
+    fetchMock.mockClear();
+    await new OpencodeGoChatCompletionsAdapter({ fetch: fetchMock }).stream(request({
       input: [{ type: "message", role: "user", content: `${suggestion}\nPlease use Read.` }],
       tools,
     }), { apiKey: "k" });
