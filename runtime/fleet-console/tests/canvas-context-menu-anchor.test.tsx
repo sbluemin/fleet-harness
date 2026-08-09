@@ -494,6 +494,28 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(onLaunchKind).toHaveBeenLastCalledWith("terminal", catalog[0]!.kinds[0], { model: "fable", effort: "max" });
   });
 
+  it("drops the description aside when the pointer reaches a model row, even while focus sits on an annotated row", () => {
+    // 두 채널을 합치는 `hoverKey ?? focusKey`는 포인터 쪽을 비우면 포커스가 짚던 행으로 되돌아간다.
+    // 모델 행은 자기 키로 덮어야 "설명 없는 자리"가 되고, 포인터가 메뉴를 벗어나면 다시 포커스가 드러난다.
+    const [gateway] = gatewayVariantCatalog();
+    renderMenu({ x: 320, y: 156 }, { width: 1400, height: 856 }, [
+      { id: "terminal", title: "Terminal", kinds: [{ id: "claude-gateway", type: "agent", title: "Claude (Gateway)" }] },
+      { ...gateway!, id: "models", title: "Models" },
+    ]);
+
+    const annotated = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
+    act(() => annotated.focus());
+    expect(document.querySelector(".canvas-context-menu-aside")).not.toBeNull();
+
+    const entry = document.querySelector<HTMLElement>(".operation-launch-variant-entry")!;
+    act(() => entry.dispatchEvent(new PointerEvent("pointerover", { bubbles: true })));
+    expect(document.querySelector(".canvas-context-menu-aside")).toBeNull();
+
+    // 포인터가 메뉴를 떠나면 포커스가 짚던 설명이 다시 드러난다.
+    act(() => document.querySelector(".canvas-context-menu")!.dispatchEvent(new MouseEvent("mouseout", { bubbles: true })));
+    expect(document.querySelector(".canvas-context-menu-aside")).not.toBeNull();
+  });
+
   it("keeps direct-launch kinds above the model bands", () => {
     // 캡션 아래에 놓인 무캡션 행은 그 밴드의 일원으로 읽힌다 — 바로 실행되는 종류는 밴드보다 위다.
     const [gateway] = gatewayVariantCatalog();

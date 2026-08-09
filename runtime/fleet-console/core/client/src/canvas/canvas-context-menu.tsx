@@ -462,17 +462,20 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                               // 행 본문은 강도를 열지 않는다 — 여는 것은 오른쪽 손잡이뿐이다. 다른 행으로
                               // 넘어온 포인터는 유예를 두고 닫는다: 즉시 닫으면 손잡이에서 서브메뉴로
                               // 비스듬히 가는 경로가 아래 행을 스칠 때 상자가 먼저 사라진다.
+                              // 짚은 자리를 비우지 않고 이 행의 키로 덮는다. 비우면 두 채널을 합치는
+                              // `hoverKey ?? focusKey`가 앞서 포커스가 짚던 직접 행으로 되돌아가, 포인터가
+                              // 모델 행 위에 있는데 그 행과 무관한 설명이 옆에 남는다. 행 키는 어떤 실행
+                              // 종류 키와도 같아질 수 없으므로 "설명 없는 자리를 짚고 있다"가 된다 —
+                              // 평탄화 전 변형 부모 행을 짚었을 때와 같은 상태다.
                               onPointerEnter={() => {
-                                // 모델 행에는 설명이 없다 — 앞서 짚던 직접 행의 어사이드를 걷지 않으면
-                                // 짚지도 않은 행의 설명이 목록 옆에 떠 있는 채로 남는다.
-                                setHoverKey(null);
+                                setHoverKey(rowKey);
                                 scheduleEffortClose();
                               }}
                               onPointerLeave={() => {
                                 if (rowHasEffort) scheduleEffortClose();
                               }}
                               onFocus={() => {
-                                setFocusKey(null);
+                                setFocusKey(rowKey);
                                 // 키보드로 다른 행에 닿으면 앞 행의 상자는 닫는다. 이 행의 상자를 여는 것은
                                 // ArrowRight이지 포커스가 아니다.
                                 if (openEffortRow !== null && openEffortRow !== rowKey) closeEffortMenu();
