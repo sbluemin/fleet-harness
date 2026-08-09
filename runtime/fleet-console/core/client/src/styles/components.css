@@ -11138,14 +11138,14 @@ body[data-codex-reading="true"] .operations-side-bar {
 }
 
 /* 팝오버는 .theater-menu의 팝업 스킨(테두리·언더레이·그림자)을 상속하고 위치·폭만 덮는다.
-   카드는 화면 위쪽(14vh)에 고정이라 팝오버는 항상 아래로 연다 — 위로 열면 뷰포트 밖으로 잘린다. */
+   카드는 뷰포트 중앙에 두고 팝오버는 아래로 열되, 카드 중심선부터 아래 여백을 계산해 화면 안에서 자른다. */
 .quick-launch-pop {
   top: calc(100% + var(--space-2));
   right: auto;
   bottom: auto;
   left: var(--space-4);
   z-index: 41;
-  max-height: 340px;
+  max-height: min(340px, calc(50vh - 64px - var(--space-2) - var(--space-5)));
   overflow-y: auto;
 }
 

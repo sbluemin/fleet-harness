@@ -15,6 +15,12 @@ describe("Quick Launch composer layout", () => {
     expect(overlay).not.toMatch(/14vh/u);
   });
 
+  it("clamps the downward popover to the viewport while retaining its cap", () => {
+    const pop = ruleFor(".quick-launch-pop");
+    expect(pop).toMatch(/max-height:\s*min\(340px,\s*calc\(50vh\s*-\s*64px\s*-\s*var\(--space-2\)\s*-\s*var\(--space-5\)\)\);/u);
+    expect(pop).toMatch(/overflow-y:\s*auto;/u);
+  });
+
   it("keeps the model popover at its measured compact width", () => {
     expect(css).toMatch(/\.quick-launch-pop--model\s*\{[^}]*width:\s*216px;/u);
   });
