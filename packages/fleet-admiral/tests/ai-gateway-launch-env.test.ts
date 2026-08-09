@@ -62,6 +62,22 @@ describe("prepareAiGatewayLaunchProfile", () => {
 		expect(statSync(cachePath).mode & 0o777).toBe(0o600);
 	});
 
+	it("leaves Claude Code on its built-in default when configured default inheritance is disabled", () => {
+		const selection = resolveAiGatewaySelection({
+			version: 1,
+			models: [{ id: "kimi--k3-256k" }],
+			defaultModel: "kimi--k3-256k",
+		});
+		const prepared = prepareAiGatewayLaunchProfile(makeProfile(), {
+			baseUrl: "http://127.0.0.1:4310/gateway",
+			homeDir: makeTemporaryDirectory(),
+			selection,
+			useConfiguredDefaultModel: false,
+		});
+
+		expect(prepared.env).not.toHaveProperty("ANTHROPIC_MODEL");
+	});
+
 	it("sets the configured default model only when the profile did not provide one", () => {
 		const selection = resolveAiGatewaySelection({
 			version: 1,

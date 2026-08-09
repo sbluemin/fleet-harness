@@ -16,6 +16,7 @@ export interface AiGatewayLaunchEnvOptions {
 	readonly baseUrl: string;
 	readonly selection?: AiGatewaySelection;
 	readonly homeDir?: string;
+	readonly useConfiguredDefaultModel?: boolean;
 }
 
 export function prepareAiGatewayLaunchProfile(
@@ -37,7 +38,7 @@ export function prepareAiGatewayLaunchProfile(
 	// native auto policy remains model-relative. Do not inject the process-wide
 	// compact-window override: it would also retune built-in Claude models. An
 	// explicit user value already present in profile.env remains untouched above.
-	if (options.selection?.defaultModel && !env.ANTHROPIC_MODEL) {
+	if (options.useConfiguredDefaultModel !== false && options.selection?.defaultModel && !env.ANTHROPIC_MODEL) {
 		// AI Gateway 설정의 세션 기본 모델. 프로필 env가 명시한 값이 항상 이긴다.
 		env.ANTHROPIC_MODEL = toClaudeGatewayModelId(options.selection.defaultModel);
 	}

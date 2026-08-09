@@ -549,6 +549,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         pluginId: node.pluginId,
         theaterId: node.theaterId,
         cliId,
+        ...(node.payload.useGatewayDefaultModel === false ? { useGatewayDefaultModel: false } : {}),
         ...(fresh ? {} : { resumeSessionId: providerSession?.sessionId }),
       });
       const runtimeSession = pendingRuntimeSessions.get(sessionId);

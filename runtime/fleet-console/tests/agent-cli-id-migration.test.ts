@@ -50,6 +50,7 @@ describe("migrateAgentCliIds", () => {
       cwd: "/tmp",
       launchKindId: GATEWAY_LAUNCH_KIND_ID,
       cliId: GATEWAY_LAUNCH_KIND_ID,
+      useGatewayDefaultModel: false,
     });
   });
 
@@ -58,7 +59,10 @@ describe("migrateAgentCliIds", () => {
 
     const result = migrateAgentCliIds(state);
 
-    expect(result.state.operations[0]?.payload).toEqual({ cliId: GATEWAY_LAUNCH_KIND_ID });
+    expect(result.state.operations[0]?.payload).toEqual({
+      cliId: GATEWAY_LAUNCH_KIND_ID,
+      useGatewayDefaultModel: false,
+    });
     expect(result.state.operations[0]?.payload.launchKindId).toBeUndefined();
   });
 
@@ -73,6 +77,7 @@ describe("migrateAgentCliIds", () => {
     expect(result.state.operations[0]?.payload).toEqual({
       launchKindId: GATEWAY_LAUNCH_KIND_ID,
       cliId: GATEWAY_LAUNCH_KIND_ID,
+      useGatewayDefaultModel: false,
     });
   });
 
@@ -85,6 +90,7 @@ describe("migrateAgentCliIds", () => {
 
     expect(result.state.operations[0]?.payload).toEqual({
       cliId: GATEWAY_LAUNCH_KIND_ID,
+      useGatewayDefaultModel: false,
       cliLabel: "Claude (Gateway)",
     });
   });
@@ -98,6 +104,7 @@ describe("migrateAgentCliIds", () => {
 
     expect(result.state.operations[0]?.payload).toEqual({
       cliId: GATEWAY_LAUNCH_KIND_ID,
+      useGatewayDefaultModel: false,
       cliLabel: "My Claude",
     });
   });

@@ -163,6 +163,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       cliId: context?.cliId,
       model: context?.model,
       effort: context?.effort,
+      useGatewayDefaultModel: context?.useGatewayDefaultModel,
       goalCheckLimit: context?.goalCheckLimit,
       prompt: context?.prompt,
       createSessionIdentityResolver: resolveSessionIdentityResolver,
@@ -198,6 +199,7 @@ async function createAgentCliLaunchSpec(options: {
   readonly cliId?: string;
   readonly model?: string;
   readonly effort?: string;
+  readonly useGatewayDefaultModel?: boolean;
   readonly createSessionCaptureHookExec: typeof createSessionCaptureHookExec;
   readonly createSessionIdentityResolver: typeof createSessionIdentityResolver;
   readonly createSystemPromptBuilder: typeof createSystemPromptBuilder;
@@ -303,6 +305,7 @@ async function createAgentCliLaunchSpec(options: {
       launchProfile = prepareAiGatewayLaunchProfile(injectedProfile, {
         baseUrl: `${origin}${options.aiGateway.routePath}`,
         selection: gatewaySelection,
+        useConfiguredDefaultModel: options.useGatewayDefaultModel,
       });
     }
     const sessionIdentityResolver = options.createSessionIdentityResolver({

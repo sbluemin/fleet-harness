@@ -266,6 +266,20 @@ describe("agent session goal snapshot", () => {
     expect(harness.operations[0]!.payload.goal).toBeUndefined();
     expect(harness.operations[0]!.payload.goalClearedBaseline).toBeUndefined();
   });
+
+  it("preserves a migrated Native Operation's built-in default on Start fresh", async () => {
+    const harness = await createHarness({ cliId: "claude", fresh: true });
+    await harness.postSessions();
+    const operation = harness.operations[0]!;
+    operation.payload.useGatewayDefaultModel = false;
+
+    await harness.resumeSession(operation.id);
+
+    expect(harness.attach).toHaveBeenLastCalledWith(expect.objectContaining({
+      cliId: "claude-gateway",
+      useGatewayDefaultModel: false,
+    }));
+  });
 });
 
 function writeGoalTranscript(lines: readonly Record<string, unknown>[]): string {
