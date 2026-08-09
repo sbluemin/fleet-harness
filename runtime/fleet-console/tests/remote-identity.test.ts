@@ -144,8 +144,12 @@ describe("fingerprints", () => {
     const identity = await createRemoteIdentityStore(createDir()).ensure("127.0.0.1");
     const compact = normalizeFingerprint(identity.fingerprint).toLowerCase();
 
+    // 마지막 바이트는 고정값이 아니라 실제 값을 뒤집어 바꾼다 — 고정값이면 지문이 마침 그 값으로 끝나는
+    // 256분의 1의 인증서에서 "다른 지문"이 원본과 같아져 이 케이스가 무작위로 무너진다.
+    const flippedTail = ((Number.parseInt(compact.slice(-2), 16) ^ 0xff) >>> 0).toString(16).padStart(2, "0");
+
     expect(fingerprintsMatch(identity.fingerprint, compact)).toBe(true);
-    expect(fingerprintsMatch(identity.fingerprint, `${compact.slice(0, -2)}00`)).toBe(false);
+    expect(fingerprintsMatch(identity.fingerprint, `${compact.slice(0, -2)}${flippedTail}`)).toBe(false);
     expect(fingerprintsMatch(identity.fingerprint, "")).toBe(false);
     // 길이가 다른 값은 접두사가 같아도 통과하면 안 된다.
     expect(fingerprintsMatch(identity.fingerprint, compact.slice(0, 40))).toBe(false);
