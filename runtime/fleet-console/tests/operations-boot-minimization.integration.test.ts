@@ -9,6 +9,7 @@ import type { OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, requestFitAllOperations, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setViewport, subscribe as subscribeCanvas, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
+import { BOOT_MINIMIZATION_STORAGE_KEY, resetBootMinimizationSession } from "../core/client/src/boot-minimization-session.js";
 import { armTriageSetAside, getTriageSetAsideArmedId, resetTriageTheater, setTriageActive } from "../core/client/src/canvas/triage-store.js";
 import { focusOperation, getState, hydrateOperations, setActiveOperation, setState } from "../core/client/src/store.js";
 import type { OperationNode, TheaterBootstrap } from "../core/client/src/types.js";
@@ -145,6 +146,8 @@ let container: HTMLDivElement | null = null;
 beforeEach(() => {
   document.body.replaceChildren();
   window.localStorage.clear();
+  // 부팅 최소화의 "한 번"은 이제 탭 세션 단위라, 케이스마다 새 탭에서 시작한 것으로 되돌린다.
+  resetBootMinimizationSession();
   window.history.replaceState({}, "", "/operations");
   loadForTheater("theater-a");
   clearMaximizedOperationId();
@@ -1291,7 +1294,58 @@ describe("Operations boot minimization", () => {
     expect(getSnapshot().operations).toHaveProperty("b1");
     expect(getSnapshot().operations).toHaveProperty("b2");
   });
+
+  // 콘솔 전환(로컬↔원격)은 origin을 건너뛰는 전체 페이지 이동이라 App이 통째로 다시 뜬다. 그때마다
+  // 부팅 최소화가 다시 걸리면 사용자가 펼쳐둔 패널이 매번 접혀, 오갈 때마다 하나하나 다시 열어야 했다.
+  it("keeps a restored panel open when the console reloads inside the same tab session", async () => {
+    await bootApp([operation("first"), operation("second")]);
+    expect(getSnapshot().minimized).toEqual(["first", "second"]);
+
+    restoreOperation("first");
+    expect(getSnapshot().minimized).toEqual(["second"]);
+
+    await reloadTab();
+    await bootApp([operation("first"), operation("second")]);
+
+    expect(getSnapshot().minimized).toEqual(["second"]);
+  });
+
+  // 세션 단위로 좁힌 것이지 기능을 끈 것이 아니다 — 새 탭은 여전히 깨끗한 Map으로 시작한다.
+  it("minimizes boot panels again in a new tab session", async () => {
+    await bootApp([operation("first"), operation("second")]);
+    restoreOperation("first");
+    expect(getSnapshot().minimized).toEqual(["second"]);
+
+    await reloadTab();
+    resetBootMinimizationSession();
+    await bootApp([operation("first"), operation("second")]);
+
+    // 이미 접혀 있던 패널이 목록 앞자리를 지키므로 순서가 아니라 집합으로 본다.
+    expect([...getSnapshot().minimized].sort()).toEqual(["first", "second"]);
+  });
 });
+
+/**
+ * 같은 탭에서 페이지가 다시 뜬 상황을 만든다. localStorage와 sessionStorage는 그대로 두고 React 트리와
+ * 캔버스 로드 상태만 부팅 직전으로 되돌린다 — 콘솔 전환이 브라우저에서 일으키는 것과 같은 초기화다.
+ *
+ * 모듈 메모리도 반드시 함께 비운다. 실제 페이지 로드는 번들을 다시 평가해 모듈 수준 상태를 통째로
+ * 날리므로, 그것을 남겨두면 부팅 최소화 표식이 sessionStorage가 아니라 메모리로 살아남아 — 영속화를
+ * 지워도 통과하는 — 가짜 초록이 된다.
+ */
+async function reloadTab(): Promise<void> {
+  await act(async () => root?.unmount());
+  // 이탈 시점의 캔버스 상태를 localStorage로 흘려보낸 뒤 로드를 비운다.
+  loadForTheater(null);
+  const survivingSession = window.sessionStorage.getItem(BOOT_MINIMIZATION_STORAGE_KEY);
+  resetBootMinimizationSession();
+  if (survivingSession !== null) window.sessionStorage.setItem(BOOT_MINIMIZATION_STORAGE_KEY, survivingSession);
+  container?.remove();
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+  setState({ activeOperationId: null, activeTheaterId: null, groups: [], keyboardFocusRequest: null, operations: [], operationsHydrated: false, theaters: [] });
+}
 
 async function navigateTo(pathname: string): Promise<void> {
   await act(async () => {
