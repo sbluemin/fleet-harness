@@ -1,8 +1,0 @@
----
-branch: warroom-preview-width
----
-
-### fleet-console
-#### Fixed
-- Watch Deck card previews now fill their card and grow their text with it, and a quick-look opens at actual size. The preview used to be centred when it overflowed sideways, so raising the deck density cut the start of every line; it now anchors to the frame's left edge, so whichever way it overflows every line still begins inside the frame and only the far right runs past it. The output fills the frame at every density instead of sitting under a band of empty backdrop, and because the frame drives the magnification, text grows as the card grows, roughly four times larger at the highest density than at the lowest, with the newest rows anchored to the bottom edge. Hovering a card used to magnify the card and the shrunken preview inside it together, so the same thumbnail simply got bigger and its terminal text stayed under reading size; the quick-look now cancels that magnification and stands at 1:1, putting the text at the size you read it at in the panel itself and showing as much of the latest output as the frame can hold. The fleet map's quick-look window reads at the same size.
-  ko: Watch Deck 카드 프리뷰가 카드를 채우고 글자도 카드에 맞춰 커지며, 확대창은 실제 크기로 열립니다. 지금까지는 좌우로 넘칠 때 가운데를 기준으로 잘라 덱 밀도를 올릴수록 모든 줄의 시작이 사라졌지만, 이제 프리뷰는 프레임 왼쪽에 붙어 어느 쪽으로 넘치든 모든 줄의 시작이 프레임 안에 남고 오른쪽 끝만 밖으로 나갑니다. 어느 밀도에서든 출력이 빈 배경 띠 아래 놓이지 않고 프레임을 채우며, 배율을 프레임이 정하므로 카드가 커지는 만큼 글자도 커지고(최고 밀도에서 최저 밀도의 약 네 배) 최신 행은 하단에 붙습니다. 카드에 마우스를 올리면 카드와 그 안의 축소된 프리뷰가 함께 커져 같은 축소판이 커지기만 할 뿐 터미널 글자는 판독 크기에 미치지 못했는데, 이제 확대창이 그 배율을 상쇄해 1:1로 서므로 글자가 패널에서 읽던 그 크기가 되고 프레임에는 담을 수 있는 만큼의 최신 출력이 보입니다. 작전지도의 확대창도 같은 크기로 읽힙니다.
