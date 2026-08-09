@@ -227,6 +227,7 @@ function renderSideBar(onSelectTheater = vi.fn()): void {
     onClose: () => {},
     onMinimize: () => {},
     onFocus: () => {},
+    onResume: () => {},
     onSetAccent: () => {},
     onRename: () => {},
     onSetGroupId: () => {},

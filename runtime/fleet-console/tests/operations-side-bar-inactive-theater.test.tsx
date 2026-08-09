@@ -103,6 +103,7 @@ function renderSideBar(onFocus = vi.fn()): void {
     onClose: () => {},
     onMinimize: () => {},
     onFocus,
+    onResume: () => {},
     onSetAccent: () => {},
     onRename: () => {},
     onSetGroupId: () => {},

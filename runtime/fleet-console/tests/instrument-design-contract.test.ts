@@ -862,7 +862,10 @@ describe("Instrument core design contract", () => {
     expect(operations).toContain('event.code === "KeyS" && !event.shiftKey');
     expect(operations).toContain("toggleSideBarStatusAxis();");
     expect(sidebar).toContain('title={t("sidebar.theater.sortByStatusTitle")}');
-    expect(sidebar).toContain("groupOperationsByStatus(allEntries, getStatusTransitionTick, t)");
+    expect(sidebar).toContain("groupTheaterStatusEntries(");
+    expect(sidebar).toContain("minimizedIds.has(entry.operation.id) && !dormantIds.has(entry.operation.id)");
+    expect(sidebar).toContain("<StatusRecoveryShelves");
+    expect(components).toContain(".side-bar-status-section--minimized {");
     expect(sidebar).toContain("trackOperationActivityTransitions({");
     expect(sidebar).toContain("const landedIds = consumeStatusLandings();");
     expect(sidebar).not.toContain("recordStatusTransitions(movedIds);");

@@ -225,6 +225,7 @@ function renderSideBar(
     onClose: vi.fn(),
     onMinimize: vi.fn(),
     onFocus: vi.fn(),
+    onResume: vi.fn(),
     onSetAccent: vi.fn(),
     onRename: vi.fn(),
     onSetGroupId: vi.fn(),

@@ -60,6 +60,7 @@ interface OperationsSideBarProps {
   readonly onClose: (operationId: string) => void;
   readonly onMinimize: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
+  readonly onResume: (operationId: string) => void;
   readonly onSetAccent: (operationId: string, accentKey: string | null) => void;
   readonly onRename: (operationId: string, title: string) => void;
   readonly onSetGroupId: (operationId: string, groupId: string | null) => void;
@@ -176,6 +177,7 @@ interface TheaterInactiveSectionProps {
   readonly dragOffsetY: number;
   readonly onSelectTheater: (theaterId: string) => void;
   readonly onFocus: (operationId: string) => void;
+  readonly onResume: (operationId: string) => void;
   readonly onToggleCollapsed: (theaterId: string) => void;
   readonly onToggleStatusAxis: () => void;
   readonly onOpenActions: (anchor: DOMRect, returnFocus?: HTMLButtonElement | null) => void;
@@ -264,6 +266,42 @@ export function StatusSectionSlot({
   );
 }
 
+function StatusRecoveryShelves({
+  theaterId,
+  minimizedSection,
+  minimizedUnseenCount,
+  dormantSection,
+  renderEntry,
+}: {
+  readonly theaterId: string;
+  readonly minimizedSection: StatusSection;
+  readonly minimizedUnseenCount: number;
+  readonly dormantSection: StatusSection;
+  readonly renderEntry: (entry: SideBarEntry, index: number, recovery: "minimized" | "dormant") => ReactNode;
+}) {
+  const t = useT();
+  return (
+    <li className="side-bar-status-recovery-shelves">
+      <section className="triage-side-bar-minimized-shelf side-bar-status-recovery-shelf" onContextMenu={(event) => event.preventDefault()}>
+        <p className="triage-side-bar-caption">{t("sidebar.status.minimizedShelf")}</p>
+        <ol className="triage-side-bar-minimized-list" aria-label={t("sidebar.status.minimizedShelf")}>
+          <StatusSectionSlot theaterId={theaterId} section={minimizedSection} unseenCount={minimizedUnseenCount}>
+            {minimizedSection.entries.map((entry, index) => renderEntry(entry, index, "minimized"))}
+          </StatusSectionSlot>
+        </ol>
+      </section>
+      <footer className="triage-side-bar-dormant-shelf side-bar-status-recovery-shelf" onContextMenu={(event) => event.preventDefault()}>
+        <p className="triage-side-bar-caption">{t("sidebar.status.dormantShelf")}</p>
+        <ol className="triage-side-bar-dormant-list" aria-label={t("sidebar.status.dormantShelf")}>
+          <StatusSectionSlot theaterId={theaterId} section={dormantSection}>
+            {dormantSection.entries.map((entry, index) => renderEntry(entry, index, "dormant"))}
+          </StatusSectionSlot>
+        </ol>
+      </footer>
+    </li>
+  );
+}
+
 function StatusSectionCollapseArrow({ collapsed }: { readonly collapsed: boolean }) {
   return (
     <svg
@@ -292,6 +330,7 @@ export function OperationsSideBar({
   onClose,
   onMinimize,
   onFocus,
+  onResume,
   onSetAccent,
   onRename,
   onSetGroupId,
@@ -367,7 +406,12 @@ export function OperationsSideBar({
     };
   });
   const groupedSections = groupOperations(allEntries, activeGroups, canvas.operationOrder);
-  const statusSections = groupOperationsByStatus(allEntries, getStatusTransitionTick, t);
+  const { living: statusSections, minimized: minimizedSection, dormant: dormantSection } = groupTheaterStatusEntries(
+    allEntries,
+    minimizedSet,
+    getStatusTransitionTick,
+    t,
+  );
   const idleUnseenIds = idleArrivalIds;
   const isIdleUnseen = (id: string) => id !== activeOperationId && idleUnseenIds.has(id);
   // STATUS 축 렌더는 entry/그룹 조회가 칩마다 반복되므로 O(n²)를 피해 Map으로 한 번만 인덱싱한다.
@@ -385,6 +429,48 @@ export function OperationsSideBar({
   const statusSignature = operations
     .map((operation) => `${operation.id}:${resolveOperationActivity(operation, operationStatus)}`)
     .join("\0");
+  const renderActiveStatusEntry = (
+    entry: SideBarEntry,
+    index: number,
+    recovery?: "minimized" | "dormant",
+  ) => {
+    const globalIndex = entryIndexById.get(entry.operation.id) ?? index;
+    const accentKey = canvas.operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
+    const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
+    const groupMark = entry.operation.groupId ? groupMarkByGroupId.get(entry.operation.groupId) ?? null : null;
+    const dormant = recovery === "dormant";
+    return (
+      <OperationsSideBarChip
+        key={entry.operation.id}
+        entry={entry}
+        index={globalIndex}
+        isCloseArmed={armedCloseId === entry.operation.id}
+        accentValue={accentValue}
+        groupMark={groupMark}
+        statusAxis
+        idleUnseen={recovery !== "dormant" && isIdleUnseen(entry.operation.id)}
+        statusLanded={recovery !== "dormant" && statusLandingIds.has(entry.operation.id)}
+        reorderEnabled={false}
+        minimizeEnabled={!recovery}
+        menuEnabled={!recovery}
+        resumeOnActivate={dormant}
+        dragging={false}
+        dragOffsetY={0}
+        dropTarget={false}
+        onArmClose={armClose}
+        onDisarmClose={disarmClose}
+        onClose={onClose}
+        onMinimize={onMinimize}
+        onFocus={dormant ? onResume : onFocus}
+        onKeyboardMove={keyboardMove}
+        onPointerDragStart={beginPointerDrag}
+        onOpenAccent={(operationId, anchor, returnFocus, requestedAction) => {
+          setActiveContextMenu({ kind: "chip", operationId, anchor, returnFocus, requestedAction });
+        }}
+        onRename={onRename}
+      />
+    );
+  };
 
   const clearCloseArmTimer = useCallback(() => {
     if (closeArmTimeoutRef.current === null) return;
@@ -879,6 +965,7 @@ export function OperationsSideBar({
                 dragOffsetY={theaterDragOffsetY}
                 onSelectTheater={onSelectTheater}
                 onFocus={onFocus}
+                onResume={onResume}
                 onToggleCollapsed={toggleTheaterSectionCollapsed}
                 onToggleStatusAxis={toggleSideBarStatusAxis}
                 onOpenActions={(anchor, returnFocus) => {
@@ -937,42 +1024,18 @@ export function OperationsSideBar({
                     section={section}
                     unseenCount={section.entries.filter((entry) => isIdleUnseen(entry.operation.id)).length}
                   >
-                    {section.entries.map((entry) => {
-                      const globalIndex = entryIndexById.get(entry.operation.id) ?? 0;
-                      const accentKey = canvas.operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
-                      const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
-                      const groupMark = entry.operation.groupId ? groupMarkByGroupId.get(entry.operation.groupId) ?? null : null;
-                      return (
-                        <OperationsSideBarChip
-                          key={entry.operation.id}
-                          entry={entry}
-                          index={globalIndex}
-                          isCloseArmed={armedCloseId === entry.operation.id}
-                          accentValue={accentValue}
-                          groupMark={groupMark}
-                          statusAxis
-                          idleUnseen={isIdleUnseen(entry.operation.id)}
-                          statusLanded={statusLandingIds.has(entry.operation.id)}
-                          reorderEnabled={false}
-                          dragging={false}
-                          dragOffsetY={0}
-                          dropTarget={false}
-                          onArmClose={armClose}
-                          onDisarmClose={disarmClose}
-                          onClose={onClose}
-                          onMinimize={onMinimize}
-                          onFocus={onFocus}
-                          onKeyboardMove={keyboardMove}
-                          onPointerDragStart={beginPointerDrag}
-                          onOpenAccent={(operationId, anchor, returnFocus, requestedAction) => {
-                            setActiveContextMenu({ kind: "chip", operationId, anchor, returnFocus, requestedAction });
-                          }}
-                          onRename={onRename}
-                        />
-                      );
-                    })}
+                    {section.entries.map((entry, index) => renderActiveStatusEntry(entry, index))}
                   </StatusSectionSlot>
-                )) : groupedSections.map((section) => {
+                )).concat([
+                  <StatusRecoveryShelves
+                    key="__recovery__"
+                    theaterId={theater.id}
+                    minimizedSection={minimizedSection}
+                    minimizedUnseenCount={minimizedSection.entries.filter((entry) => isIdleUnseen(entry.operation.id)).length}
+                    dormantSection={dormantSection}
+                    renderEntry={renderActiveStatusEntry}
+                  />,
+                ]) : groupedSections.map((section) => {
           const isCollapsed = section.groupId !== null && collapsedGroupSet.has(section.groupId);
           const grpColor = section.group ? resolveAccentColor(section.group.color) : null;
           const sectionStyle = grpColor ? ({ "--grp-color": grpColor } as CSSProperties) : undefined;
@@ -1175,6 +1238,46 @@ export function groupOperations(
 
   void operationOrder;
   return [...sections, ungrouped];
+}
+
+export function groupTheaterStatusEntries(
+  entries: readonly SideBarEntry[],
+  minimizedIds: ReadonlySet<string>,
+  getTick?: (id: string) => number | undefined,
+  t: Translate<CoreMessageKey> = getT("en"),
+): {
+  readonly living: StatusSection[];
+  readonly minimized: StatusSection;
+  readonly dormant: StatusSection;
+} {
+  const dormantEntries = entries
+    .filter((entry) => entry.status === "dormant")
+    .map((entry) => entry.minimized ? { ...entry, minimized: false } : entry);
+  const dormantIds = new Set(dormantEntries.map((entry) => entry.operation.id));
+  const minimizedEntries = entries.filter((entry) =>
+    minimizedIds.has(entry.operation.id) && !dormantIds.has(entry.operation.id));
+  const recoveryIds = new Set([
+    ...dormantEntries.map((entry) => entry.operation.id),
+    ...minimizedEntries.map((entry) => entry.operation.id),
+  ]);
+  const sections = groupOperationsByStatus(
+    entries.filter((entry) => !recoveryIds.has(entry.operation.id)),
+    getTick,
+    t,
+  );
+  return {
+    living: sections.filter((section) => section.status !== "dormant"),
+    minimized: {
+      status: "minimized",
+      label: t("triageSidebar.minimized"),
+      entries: minimizedEntries,
+    },
+    dormant: {
+      status: "dormant",
+      label: t("sidebar.status.dormant"),
+      entries: dormantEntries,
+    },
+  };
 }
 
 export function groupOperationsByStatus(
@@ -1414,6 +1517,7 @@ function TheaterInactiveSection({
   dragOffsetY,
   onSelectTheater,
   onFocus,
+  onResume,
   onToggleCollapsed,
   onToggleStatusAxis,
   onOpenActions,
@@ -1423,9 +1527,54 @@ function TheaterInactiveSection({
 }: TheaterInactiveSectionProps) {
   const t = useT();
   const sections = groupOperations(entries, groups, []);
-  const statusSections = groupOperationsByStatus(entries, getStatusTransitionTick, t);
+  const minimizedSet = new Set(entries.filter((entry) => entry.minimized).map((entry) => entry.operation.id));
+  const { living: statusSections, minimized: minimizedSection, dormant: dormantSection } = groupTheaterStatusEntries(
+    entries,
+    minimizedSet,
+    getStatusTransitionTick,
+    t,
+  );
   const idleUnseenIds = getIdleArrivalIds();
   const hasCustomGroups = sections.some((section) => section.group !== null);
+  const renderInactiveStatusEntry = (
+    entry: SideBarEntry,
+    index: number,
+    recovery?: "minimized" | "dormant",
+  ) => {
+    const accentKey = operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
+    const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
+    const dormant = recovery === "dormant";
+    return (
+      <OperationsSideBarChip
+        key={entry.operation.id}
+        entry={entry}
+        index={index}
+        isCloseArmed={false}
+        accentValue={accentValue}
+        groupMark={resolveEntryGroupMark(entry, groups)}
+        statusAxis
+        idleUnseen={recovery !== "dormant" && idleUnseenIds.has(entry.operation.id)}
+        statusLanded={recovery !== "dormant" && statusLandingIds.has(entry.operation.id)}
+        reorderEnabled={false}
+        minimizeEnabled={false}
+        menuEnabled={false}
+        resumeOnActivate={dormant}
+        dragging={false}
+        dragOffsetY={0}
+        dropTarget={false}
+        preview
+        onArmClose={() => {}}
+        onDisarmClose={() => {}}
+        onClose={() => {}}
+        onMinimize={() => {}}
+        onFocus={dormant ? onResume : onFocus}
+        onKeyboardMove={() => {}}
+        onPointerDragStart={() => {}}
+        onOpenAccent={() => {}}
+        onRename={() => {}}
+      />
+    );
+  };
   return (
     <li
       className={[
@@ -1462,39 +1611,18 @@ function TheaterInactiveSection({
               section={section}
               unseenCount={section.entries.filter((entry) => idleUnseenIds.has(entry.operation.id)).length}
             >
-              {section.entries.map((entry, index) => {
-                const accentKey = operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
-                const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
-                return (
-                  <OperationsSideBarChip
-                    key={entry.operation.id}
-                    entry={entry}
-                    index={index}
-                    isCloseArmed={false}
-                    accentValue={accentValue}
-                    groupMark={resolveEntryGroupMark(entry, groups)}
-                    statusAxis
-                    idleUnseen={idleUnseenIds.has(entry.operation.id)}
-                    statusLanded={statusLandingIds.has(entry.operation.id)}
-                    reorderEnabled={false}
-                    dragging={false}
-                    dragOffsetY={0}
-                    dropTarget={false}
-                    preview
-                    onArmClose={() => {}}
-                    onDisarmClose={() => {}}
-                    onClose={() => {}}
-                    onMinimize={() => {}}
-                    onFocus={onFocus}
-                    onKeyboardMove={() => {}}
-                    onPointerDragStart={() => {}}
-                    onOpenAccent={() => {}}
-                    onRename={() => {}}
-                  />
-                );
-              })}
+              {section.entries.map((entry, index) => renderInactiveStatusEntry(entry, index))}
             </StatusSectionSlot>
-          )) : sections.map((section) => {
+          )).concat([
+            <StatusRecoveryShelves
+              key="__recovery__"
+              theaterId={theater.id}
+              minimizedSection={minimizedSection}
+              minimizedUnseenCount={minimizedSection.entries.filter((entry) => idleUnseenIds.has(entry.operation.id)).length}
+              dormantSection={dormantSection}
+              renderEntry={renderInactiveStatusEntry}
+            />,
+          ]) : sections.map((section) => {
             const isCollapsed = section.groupId !== null && collapsedGroups.has(section.groupId);
             const grpColor = section.group ? resolveAccentColor(section.group.color) : null;
             return (

@@ -126,6 +126,7 @@ function operationsSideBarElement() {
     onClose: () => {},
     onMinimize: () => {},
     onFocus: () => {},
+    onResume: () => {},
     onSetAccent: () => {},
     onRename: () => {},
     onSetGroupId: () => {},
