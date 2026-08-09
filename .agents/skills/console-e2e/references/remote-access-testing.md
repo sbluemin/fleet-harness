@@ -128,7 +128,18 @@ Onboarding gets in the way first on a fresh data directory: skip commissioning (
 ## Restarting and rotating
 
 - Toggling remote access off and on **keeps** pairings. Sessions and unused links die with the listener; the devices come back with the same cookie.
-- `POST /api/v1/remote-identity/rotations` unpairs everyone by design — the fingerprint those devices trusted is gone, so a pairing that could never connect again would be a lie in the list. Expect `devices: []` afterwards and a new fingerprint on the wire.
+- `POST /api/v1/remote-identity/rotations` unpairs everyone by design — the fingerprint those devices trusted is gone, so a pairing that could never connect again would be a lie in the list. Expect `devices: []` afterwards and a new fingerprint on the wire. It also releases the published port, so the origin moves to the console's current port.
+
+**A toggle is not a restart, and the difference is the whole bug class.** The console port is dynamic by default, so a real process restart hands the loopback listener a new port while a toggle freezes it. Anything keyed to the port — the origin a peer console saved, the `fleet_console_pairing_<port>` cookie name — passes a toggle and fails a restart. Stop the process and start it again on the same `FLEET_CONSOLE_DATA_DIR`:
+
+```js
+// the loopback port MUST differ across the two boots, or the run proves nothing
+const before = (await status()).origin;   // https://<bind>:<published>
+// … kill, relaunch, read the new lock …
+const after = (await status()).origin;    // must still be `before`
+```
+
+The remote listener keeps the port it first opened on (`remote/listener.json`) rather than following the console port, so `origin` survives while the loopback port moves. A resume against the **old saved origin** with the pairing cookie alone must answer `204`; `ECONNREFUSED` means the listener followed the console port again, and `401` means the cookie name did.
 
 Confirm the wire, not the state: read the certificate the listener actually presents and compare it to the reported fingerprint. A rotation that changes state while the listener keeps the old key breaks every pin.
 

@@ -611,6 +611,7 @@ function RemoteAccessSection({ state, saving }: { readonly state: GlobalSettings
 
         <RemoteIdentityCard
           status={status}
+          configured={remote.enabled && Boolean(remote.bindHost)}
           armed={rotateArmed}
           busy={busy}
           onRotate={() => {
@@ -859,11 +860,14 @@ function RemoteListenerCard({
 
 function RemoteIdentityCard({
   status,
+  configured,
   armed,
   busy,
   onRotate,
 }: {
   readonly status: RemoteAccessStatus | null;
+  /** 리스너가 열렸는지가 아니라 원격 접속이 켜져 있는지. 아래 주석이 그 구분에 기댄다. */
+  readonly configured: boolean;
   readonly armed: boolean;
   readonly busy: string | null;
   readonly onRotate: () => void;
@@ -876,7 +880,11 @@ function RemoteIdentityCard({
         <button
           type="button"
           className={`remote-rotate ${armed ? "is-armed" : ""}`}
-          disabled={busy !== null || !status?.fingerprint}
+          /*
+            지문이 없다고 잠그지 않는다. 리스너가 열리지 못하면 지문도 없는데, 갱신이 가장
+            필요한 자리가 바로 그때다 — 공표한 포트를 남이 쥐고 있을 때 그것을 놓는 길이다.
+          */
+          disabled={busy !== null || !(status?.fingerprint || configured)}
           onClick={onRotate}
         >
           {busy === "rotate" ? t("settings.remote.rotate.busy") : armed ? t("settings.remote.rotate.arm") : t("settings.remote.rotate")}
@@ -1024,6 +1032,7 @@ function remoteErrorKey(code: string): CoreMessageKey {
   switch (code) {
     case "bind_address_unavailable": return "settings.remote.error.bind_address_unavailable";
     case "bind_address_in_use": return "settings.remote.error.bind_address_in_use";
+    case "remote_port_unavailable": return "settings.remote.error.remote_port_unavailable";
     case "bind_permission_denied": return "settings.remote.error.bind_permission_denied";
     default: return "settings.remote.error.remote_listener_failed";
   }

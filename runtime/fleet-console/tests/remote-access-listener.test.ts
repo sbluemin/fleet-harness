@@ -32,6 +32,7 @@ function findBindableHost(): string | null {
 
 interface Fixture {
   readonly dir: string;
+  readonly server: ConsoleServer;
   readonly loopbackEndpoint: string;
   readonly remotePort: number;
   readonly lockToken: string;
@@ -298,6 +299,43 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     expect(reached.body).toContain("workspace_not_found");
     expect(foreign.status).toBe(403);
     expect(foreign.body).toContain("host_mismatch");
+  });
+
+  /**
+   * 그리고 그 Host의 포트도 원격 리스너의 것이다. 두 리스너가 늘 같은 포트를 쓰던 동안에는
+   * 콘솔 포트로 대조해도 우연히 맞았지만, 재시작이 둘을 갈라 놓으면 그 우연이 끝난다.
+   */
+  it("keeps Codex reachable after a restart moves the console port away from the published one", async () => {
+    const restarted = await restartFixture(await startFixture({ remote: true }));
+    expect(restarted.remotePort).not.toBe(Number(new URL(restarted.loopbackEndpoint).port));
+    const operator = await joinAs(restarted, "full", "MacBook Pro");
+
+    const reached = await remoteRequestBody(restarted, "GET", "/console/codex/w/absent/api/search", undefined, operator);
+
+    expect(reached.status).toBe(404);
+    expect(reached.body).toContain("workspace_not_found");
+  });
+
+  /**
+   * 읽기만 되는 것으로는 부족하다. 쓰기는 Host가 아니라 Origin으로 한 번 더 갈리는데, 그 판정도
+   * 콘솔 포트를 보고 있었다 — 포트가 갈라지면 제어를 쥔 원격이 결재만 못 하는 상태가 된다.
+   */
+  it("keeps a Codex write reachable after that restart, not only a read", async () => {
+    const restarted = await restartFixture(await startFixture({ remote: true }));
+    const origin = `https://${BIND_HOST}:${restarted.remotePort}`;
+    expect(origin).not.toBe(`https://${BIND_HOST}:${new URL(restarted.loopbackEndpoint).port}`);
+    const operator = await joinAs(restarted, "full", "MacBook Pro");
+
+    const decided = await remoteRequest(restarted, "POST", "/console/codex/api/drydock/2026-08-09T00-00-00-000Z-0123abcd/decision", "{}", operator, {
+      origin,
+      "content-type": "application/json",
+    });
+
+    /**
+     * Origin 게이트를 지나 본문 판정까지 갔다는 것이 여기서 볼 것의 전부다. 포트가 어긋나면
+     * 이 자리에 닿기 전에 `403 origin_mismatch`로 끝난다.
+     */
+    expect({ status: decided.status, body: decided.body }).toEqual({ status: 400, body: JSON.stringify({ error: "invalid_action" }) });
   });
 
   /**
@@ -585,6 +623,97 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({}), cookies)).resolves.toMatchObject({ status: 204 });
   });
 
+  /**
+   * 위 테스트가 볼 수 없던 절반. 살아 있는 서버의 설정을 껐다 켜면 포트가 그대로라, 이름에
+   * 포트가 박힌 쿠키도 저장된 주소도 어긋날 일이 없다. 진짜 재기동은 콘솔 포트를 다시 뽑는다 —
+   * 원격이 그 포트를 따라가던 동안에는 페어링이 남아 있어도 그 기기는 죽은 주소를 두드렸다.
+   */
+  it("reopens the published port after a console restart moves the console port", async () => {
+    const first = await startFixture({ remote: true });
+    const cookies = await joinAs(first, "full", "MacBook Pro");
+    const publishedOrigin = (await readRemoteStatus(first)).origin;
+    const consolePort = Number(new URL(first.loopbackEndpoint).port);
+
+    const restarted = await restartFixture(first);
+
+    // 콘솔 포트는 새로 뽑혔지만, 손님에게 알려 준 주소는 그대로여야 한다.
+    expect(Number(new URL(restarted.loopbackEndpoint).port)).not.toBe(consolePort);
+    const status = await readRemoteStatus(restarted);
+    expect(status.origin).toBe(publishedOrigin);
+    expect(status.devices).toHaveLength(1);
+    expect(status.devices[0]!.sessionHandle).toBeNull();
+
+    // 그리고 링크 없이, 처음 받은 그 쿠키만으로 돌아온다.
+    await expect(remoteRequest(restarted, "POST", "/api/v1/join", JSON.stringify({}), cookies)).resolves.toMatchObject({ status: 204 });
+  });
+
+  /** 페어링이 없어도 주소는 약속이다 — 링크를 받아 갈 기기가 아직 없을 때도 같은 곳이 열린다. */
+  it("keeps the published port even when the console port moves before anyone pairs", async () => {
+    const first = await startFixture({ remote: true });
+    const publishedOrigin = (await readRemoteStatus(first)).origin;
+
+    const restarted = await restartFixture(first);
+
+    await expect(readRemoteStatus(restarted).then((status) => status.origin)).resolves.toBe(publishedOrigin);
+  });
+
+  /**
+   * 안내가 가리키는 복구 경로를 실제로 밟아 본다. 공표한 포트를 남이 쥐면 원격은 열리지 않고
+   * 지문도 없는데, 그때 갱신이 막히면 안내가 지키지 못할 약속이 된다 — 리스너가 없는 상태가
+   * 바로 이 버튼이 필요한 자리다.
+   */
+  it("still rotates out of a published port another program has taken", async () => {
+    const paired = await startFixture({ remote: true });
+    const published = Number(new URL((await readRemoteStatus(paired)).origin!).port);
+
+    // 콘솔을 내려 두고 그 포트를 남이 잡는다. 그 상태로 다시 뜨는 것이 사용자가 겪는 순서다.
+    await stopFixture(paired);
+    const squatter = http.createServer();
+    await new Promise<void>((resolve, reject) => {
+      squatter.once("error", reject);
+      squatter.listen(published, BIND_HOST, () => { squatter.off("error", reject); resolve(); });
+    });
+    try {
+      const stuck = await bootFixtureFrom(paired);
+      const failed = await readRemoteStatus(stuck);
+      expect(failed.listening).toBe(false);
+      expect(failed.lastError).toBe("remote_port_unavailable");
+
+      // 안내가 시키는 대로 신원을 갱신한다 — 리스너가 없어도 받아들여져야 한다.
+      const rotated = await fetch(`${stuck.loopbackEndpoint}api/v1/remote-identity/rotations`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${stuck.lockToken}` },
+      });
+      expect(rotated.status).toBe(200);
+
+      const recovered = await readRemoteStatus(stuck);
+      expect(recovered.listening).toBe(true);
+      expect(recovered.origin).toBe(`https://${BIND_HOST}:${new URL(stuck.loopbackEndpoint).port}`);
+    } finally {
+      await new Promise<void>((resolve) => squatter.close(() => resolve()));
+    }
+  });
+
+  /**
+   * 신원 갱신은 이미 손님을 전부 내보내는 자리다. 그 순간에는 주소를 붙들 이유가 없고, 남이
+   * 그 포트를 쥐어 원격이 열리지 않을 때 빠져나오는 길도 이것 하나뿐이다.
+   */
+  it("re-anchors the published port when the identity is rotated", async () => {
+    // 재기동을 한 번 거쳐야 공표된 포트와 콘솔 포트가 갈라진다 — 갈라져야 재고정이 보인다.
+    const restarted = await restartFixture(await startFixture({ remote: true }));
+    const before = (await readRemoteStatus(restarted)).origin;
+    const consoleOrigin = `https://${BIND_HOST}:${new URL(restarted.loopbackEndpoint).port}`;
+    expect(before).not.toBe(consoleOrigin);
+
+    const rotated = await fetch(`${restarted.loopbackEndpoint}api/v1/remote-identity/rotations`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${restarted.lockToken}` },
+    });
+    expect(rotated.status).toBe(200);
+
+    await expect(readRemoteStatus(restarted).then((status) => status.origin)).resolves.toBe(consoleOrigin);
+  });
+
   /** 재개는 등급을 물려받을 뿐 올리지 못한다. 페어링이 등급의 유일한 근거다. */
   it("resumes a monitoring pairing as monitoring, and refuses control while a full device holds it", async () => {
     const fixture = await startFixture({ remote: true });
@@ -634,6 +763,25 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     const after = await readRemoteStatus(fixture);
     expect(normalizeFingerprint(after.fingerprint!)).not.toBe(normalizeFingerprint(before.fingerprint!));
     expect(after.devices).toHaveLength(0);
+  });
+
+  /**
+   * 그리고 그 순간에는 공표한 포트도 놓는다. 아무도 이 주소로 돌아오지 못하므로 붙들 이유가
+   * 없고, 그사이 남이 그 포트를 쥐었다면 놓지 않는 편이 원격을 아예 못 열게 만든다.
+   */
+  it("releases the published port when the certificate silently changes", async () => {
+    // 재기동으로 공표된 포트와 콘솔 포트를 갈라 둔다 — 갈라져야 놓은 것이 보인다.
+    const restarted = await restartFixture(await startFixture({ remote: true }));
+    const consoleOrigin = `https://${BIND_HOST}:${new URL(restarted.loopbackEndpoint).port}`;
+    expect((await readRemoteStatus(restarted)).origin).not.toBe(consoleOrigin);
+
+    const metaFile = path.join(restarted.dir, "fleet-home", "console", "remote", "identity.json");
+    const meta = JSON.parse(fs.readFileSync(metaFile, "utf8")) as Record<string, unknown>;
+    fs.writeFileSync(metaFile, JSON.stringify({ ...meta, host: "moved.example" }));
+    await saveRemoteAccess(restarted, { enabled: false, bindHost: BIND_HOST });
+    await saveRemoteAccess(restarted, { enabled: true, bindHost: BIND_HOST });
+
+    await expect(readRemoteStatus(restarted).then((status) => status.origin)).resolves.toBe(consoleOrigin);
   });
 
   /** 저장된 것은 해시뿐이다 — 이 파일이 새어도 그것으로 붙을 수 없다. */
@@ -762,7 +910,11 @@ async function revoke(fixture: Fixture, resource: string): Promise<number> {
 }
 
 async function readRemoteStatus(fixture: Fixture): Promise<RemoteAccessStatus> {
-  const response = await fetch(`${fixture.loopbackEndpoint}api/v1/access-links`);
+  return readRemoteStatusAt(fixture.loopbackEndpoint);
+}
+
+async function readRemoteStatusAt(loopbackEndpoint: string): Promise<RemoteAccessStatus> {
+  const response = await fetch(`${loopbackEndpoint}api/v1/access-links`);
   return await response.json() as RemoteAccessStatus;
 }
 
@@ -809,7 +961,7 @@ function remoteRequest(
   body?: string,
   cookie?: string,
   extraHeaders?: Record<string, string>,
-): Promise<{ status: number; headers: import("node:http").IncomingHttpHeaders }> {
+): Promise<{ status: number; headers: import("node:http").IncomingHttpHeaders; body: string }> {
   return new Promise((resolve, reject) => {
     const request = https.request({
       host: BIND_HOST,
@@ -826,8 +978,9 @@ function remoteRequest(
         ...extraHeaders,
       },
     }, (response) => {
-      response.resume();
-      response.on("end", () => resolve({ status: response.statusCode ?? 0, headers: response.headers }));
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer) => chunks.push(chunk));
+      response.on("end", () => resolve({ status: response.statusCode ?? 0, headers: response.headers, body: Buffer.concat(chunks).toString("utf8") }));
     });
     request.on("error", reject);
     if (body) request.write(body);
@@ -878,6 +1031,30 @@ async function startFixture(options: { readonly remote: boolean; readonly bindHo
       JSON.stringify({ version: 1, general: { remoteAccess: { enabled: true, bindHost: options.bindHost ?? BIND_HOST } }, plugins: {} }),
     );
   }
+  return bootFixture(dir, dataRoot, consoleDataDir, options.remote);
+}
+
+/**
+ * 프로세스 재기동을 흉내 낸다 — 같은 데이터 디렉터리에 서버를 새로 세운다. 살아 있는 서버의
+ * 설정만 껐다 켜는 것과 달리 콘솔 포트가 다시 뽑히고, 디스크에 남은 것만으로 원격이 복원된다.
+ */
+async function restartFixture(fixture: Fixture): Promise<Fixture> {
+  await stopFixture(fixture);
+  return bootFixtureFrom(fixture);
+}
+
+/** 재기동을 두 걸음으로 가른다 — 그사이에 포트가 비는 순간을 시험이 쓸 수 있게. */
+async function stopFixture(fixture: Fixture): Promise<void> {
+  const index = servers.findIndex((entry) => entry === fixture.server);
+  if (index !== -1) await servers.splice(index, 1)[0]!.stop();
+}
+
+function bootFixtureFrom(fixture: Fixture): Promise<Fixture> {
+  const dataRoot = path.join(fixture.dir, "fleet-home");
+  return bootFixture(fixture.dir, dataRoot, path.join(dataRoot, "console"), true);
+}
+
+async function bootFixture(dir: string, dataRoot: string, consoleDataDir: string, remote: boolean): Promise<Fixture> {
   const server = createConsoleServer({
     port: 0,
     version: "test",
@@ -889,10 +1066,18 @@ async function startFixture(options: { readonly remote: boolean; readonly bindHo
   const loopbackEndpoint = await server.start({ dir, lockFile: path.join(dir, "console.lock") });
   const lock = createConsoleLock().readLock(path.join(dir, "console.lock"))!;
   const certificateFile = path.join(consoleDataDir, "remote", "identity-cert.pem");
-  const fingerprint = options.remote && fs.existsSync(certificateFile)
+  const fingerprint = remote && fs.existsSync(certificateFile)
     ? new crypto.X509Certificate(fs.readFileSync(certificateFile, "utf8")).fingerprint256
     : "";
-  return { dir, loopbackEndpoint, remotePort: lock.port, lockToken: lock.token, fingerprint };
+  /**
+   * 원격 포트는 콘솔 포트를 따라가지 않는다 — 처음 열린 포트를 계속 연다. 그러니 테스트도
+   * lock의 포트가 아니라 리스너가 실제로 공표한 origin에서 읽어야 한다.
+   */
+  const base = { dir, server, loopbackEndpoint, lockToken: lock.token, fingerprint };
+  if (!remote) return { ...base, remotePort: lock.port };
+  const status = await readRemoteStatusAt(loopbackEndpoint);
+  const published = status.origin === null ? null : Number(new URL(status.origin).port);
+  return { ...base, remotePort: published ?? lock.port };
 }
 
 function createFakeConsoleRuntime(): unknown {
