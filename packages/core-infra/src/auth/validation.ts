@@ -6,7 +6,10 @@ import type {
 
 import { formatAuthValidationFailureMessage } from "./auth-storage.js";
 
-const DEFAULT_AUTH_VALIDATION_TIMEOUT_MS = 5_000;
+// Auth validation issues a real 1-token generation probe. Upstream TTFB for a
+// live model often exceeds a few seconds, so a short budget falsely times out
+// valid keys (observed on OpenCode Go / minimax-m3) before they can be stored.
+export const DEFAULT_AUTH_VALIDATION_TIMEOUT_MS = 20_000;
 
 export async function validateAnthropicCompatibleApiKey(
   request: AuthValidationRequest,
@@ -36,6 +39,9 @@ export async function validateAnthropicCompatibleApiKey(
       }),
       signal: controller.signal,
     });
+    // Status alone decides validity; drop the body so a slow token stream cannot
+    // keep the socket (or the provider generation) alive after we already know.
+    if (response.body) void response.body.cancel();
 
     if (response.ok) {
       return { providerId: request.providerId, status: "success" };
@@ -87,5 +93,8 @@ function buildMessagesUrl(baseUrl: string): string {
 }
 
 function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
+  if (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError") {
+    return true;
+  }
+  return error instanceof Error && error.name === "AbortError";
 }

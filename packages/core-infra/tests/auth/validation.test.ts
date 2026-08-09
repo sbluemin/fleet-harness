@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  DEFAULT_AUTH_VALIDATION_TIMEOUT_MS,
   createAuthValidationError,
   isAuthValidationSuccess,
   validateAnthropicCompatibleApiKey,
@@ -62,6 +63,10 @@ describe("auth validation", () => {
     });
   });
 
+  it("keeps the default probe budget long enough for live model TTFB", () => {
+    expect(DEFAULT_AUTH_VALIDATION_TIMEOUT_MS).toBe(20_000);
+  });
+
   it("distinguishes timeout failures", async () => {
     const timeoutError = new DOMException("The operation was aborted.", "AbortError");
     vi.spyOn(globalThis, "fetch").mockRejectedValue(timeoutError);
@@ -69,6 +74,28 @@ describe("auth validation", () => {
     await expect(validateAnthropicCompatibleApiKey(baseRequest())).resolves.toMatchObject({
       status: "timeout",
     });
+  });
+
+  it("treats AbortError-named Errors as timeouts", async () => {
+    const timeoutError = new Error("This operation was aborted");
+    timeoutError.name = "AbortError";
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(timeoutError);
+
+    await expect(validateAnthropicCompatibleApiKey(baseRequest())).resolves.toMatchObject({
+      status: "timeout",
+    });
+  });
+
+  it("cancels the response body after reading the auth status", async () => {
+    const response = new Response("{}", { status: 200 });
+    if (!response.body) throw new Error("Expected a Response body for cancel coverage.");
+    const cancel = vi.spyOn(response.body, "cancel").mockResolvedValue(undefined);
+    mockFetch(response);
+
+    await expect(validateAnthropicCompatibleApiKey(baseRequest())).resolves.toMatchObject({
+      status: "success",
+    });
+    expect(cancel).toHaveBeenCalledOnce();
   });
 
   it("distinguishes network failures", async () => {
