@@ -478,6 +478,16 @@ describe("Cursor client tool suspension", () => {
       tools,
       CURSOR_TOOL_PROVIDER_IDENTIFIER,
     )).toBeNull();
+    expect(cursorNativeExecRedirect(
+      { id: 4, readArgs: { path: "README.md", offset: -1 } },
+      tools,
+      CURSOR_TOOL_PROVIDER_IDENTIFIER,
+    )).toBeNull();
+    expect(cursorNativeExecRedirect(
+      { id: 4, readArgs: { path: "README.md", limit: -1 } },
+      tools,
+      CURSOR_TOOL_PROVIDER_IDENTIFIER,
+    )).toBeNull();
     const grepShell = cursorNativeExecRedirect(
       { id: 5, execId: "grep-shell-5", grepArgs: { pattern: "Fleet", path: "packages", toolCallId: "native-grep-shell-5" } },
       tools.map((tool) => tool.clientName === "Grep"
@@ -502,8 +512,9 @@ describe("Cursor client tool suspension", () => {
     const encodedScript = grepShellCommand.split(" ").at(-2);
     expect(encodedScript).toBeDefined();
     const grepShellScript = Buffer.from(encodedScript ?? "", "base64url").toString("utf8");
-    expect(grepShellScript).toContain('"--max-columns",String(maxContentBytes)');
+    expect(grepShellScript).toContain('"--sort","path","--max-columns",String(maxContentBytes)');
     expect(grepShellScript).toContain("maxRecordBytes=64*1024");
+    expect(grepShellScript).not.toContain("new Map()");
     expect(grepShellScript).not.toContain('"--json"');
     expect(cursorNativeExecRedirect(
       { id: 6, grepArgs: { pattern: "Fleet", path: "packages", outputMode: "files_with_matches" } },

@@ -87,6 +87,9 @@ export function cursorNativeExecRedirect(
   if (isRecord(exec.readArgs)) {
     const path = stringValue(exec.readArgs.path);
     if (!path) return null;
+    if ([exec.readArgs.offset, exec.readArgs.limit].some((value) => (
+      typeof value === "number" && value < 0
+    ))) return null;
     const offset = positiveNumber(exec.readArgs.offset);
     const limit = positiveNumber(exec.readArgs.limit);
     if (offset !== undefined || limit !== undefined) return null;
@@ -399,7 +402,7 @@ const emit=(value)=>process.stdout.write("${CURSOR_GREP_RECEIPT_PREFIX}"+Buffer.
   const matchSeparator=30;
   const contextSeparator=31;
   const maxContentBytes=2000;
-  const args=["--color=never","--line-number","--with-filename","--null","--max-columns",String(maxContentBytes),"--max-columns-preview","--field-match-separator",String.fromCharCode(matchSeparator),"--field-context-separator",String.fromCharCode(contextSeparator),"--no-context-separator"];
+  const args=["--color=never","--line-number","--with-filename","--null","--sort","path","--max-columns",String(maxContentBytes),"--max-columns-preview","--field-match-separator",String.fromCharCode(matchSeparator),"--field-context-separator",String.fromCharCode(contextSeparator),"--no-context-separator"];
   if(input.caseInsensitive)args.push("--ignore-case");
   if(input.glob)args.push("--glob",input.glob);
   if(input.type)args.push("--type",input.type);
@@ -421,10 +424,12 @@ const emit=(value)=>process.stdout.write("${CURSOR_GREP_RECEIPT_PREFIX}"+Buffer.
   const decoder=new TextDecoder("utf-8",{fatal:true});
   let retainedBytes=0;
   let clientTruncated=false;
+  let totalFiles=0;
   let totalLines=0;
   let totalMatchedLines=0;
+  let previousFile;
   const files=[];
-  const counts=new Map();
+  const counts=[];
   const matches=[];
   const retain=(target,value)=>{
     const bytes=Buffer.byteLength(JSON.stringify(value));
@@ -448,11 +453,12 @@ const emit=(value)=>process.stdout.write("${CURSOR_GREP_RECEIPT_PREFIX}"+Buffer.
     const contentTruncated=Buffer.byteLength(content)>maxContentBytes&&content.endsWith(truncatedSuffix);
     if(contentTruncated)content=content.slice(0,-truncatedSuffix.length);
     const isContextLine=fields[separator]===contextSeparator;
-    totalLines+=1;
-    if(!isContextLine){
-      totalMatchedLines+=1;
-      counts.set(file,(counts.get(file)||0)+1);
+    if(file!==previousFile){
+      totalFiles+=1;
+      previousFile=file;
     }
+    totalLines+=1;
+    if(!isContextLine)totalMatchedLines+=1;
     retain(matches,{file,lineNumber,content,contentTruncated,isContextLine});
   };
   try {
@@ -473,12 +479,7 @@ const emit=(value)=>process.stdout.write("${CURSOR_GREP_RECEIPT_PREFIX}"+Buffer.
   }catch(error){child.kill();await completion.catch(()=>undefined);throw error;}
   const code=await completion;
   if(code!==0&&code!==1)throw new Error((stderr||"rg failed with exit "+code).trim());
-  for(const [file] of counts){
-    if(input.outputMode==="files_with_matches")retain(files,file);
-  }
-  const retainedCounts=[];
-  if(input.outputMode==="count")for(const entry of counts)retain(retainedCounts,entry);
-  emit({ok:true,outputMode:input.outputMode,files,counts:retainedCounts,matches,totalFiles:counts.size,totalLines,totalMatchedLines,clientTruncated});
+  emit({ok:true,outputMode:input.outputMode,files,counts,matches,totalFiles,totalLines,totalMatchedLines,clientTruncated});
 }catch(error){emit({ok:false,error:error instanceof Error?error.message:String(error)});}})();
 `.trim();
 
