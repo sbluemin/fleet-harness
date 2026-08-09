@@ -1691,15 +1691,43 @@ describe("War Room Quick-Look actual-size grammar", () => {
   });
 
   // 프레임은 카드가 내준 칸을 그대로 채운다 — 프레임 자체가 칸보다 작아지면 그 차이가 카드 안의
-  // 빈 띠가 되어, 산술이 막은 여백을 CSS가 되돌려 놓는다.
+  // 빈 띠가 되어, 산술이 막은 여백을 CSS가 되돌려 놓는다. 채움은 grid 항목의 stretch 기본값에
+  // 기대므로, 명시적 크기나 정렬이 들어오는 순간 조용히 풀린다 — 부재를 검사하는 이유다.
   it("lets the preview frame fill the cell the card hands it", () => {
     const frame = components.match(/\.canvas-triage-deck-card-preview \{[^}]*\}/)?.[0] ?? "";
     expect(frame).not.toBe("");
-    expect(frame).not.toContain("aspect-ratio");
-    expect(frame).not.toContain("max-height");
-    expect(frame).not.toContain("align-self");
+    // 확정 크기는 stretch를 start로 바꿔 칸을 남긴다(css-align §6.3). 비율·상한·정렬도 마찬가지다.
+    expect(frame).not.toMatch(/\n\s*(?:width|height|max-width|max-height|aspect-ratio|align-self|justify-self|inset|top|bottom):/);
+    // min-width/min-height는 0으로만 허용한다 — grid 자식의 축소 하한을 푸는 용도다.
+    expect(frame).toContain("min-width: 0;");
+    expect(frame).toContain("min-height: 0;");
+    // 넘치는 출력은 프레임에서 잘려야 한다. 이것이 풀리면 카드 밖으로 글자가 새어 나온다.
+    expect(frame).toContain("overflow: hidden;");
     // 프레임 크기는 덱 줌 tween마다 다시 잡히므로 전이를 걸면 출력과 프레임이 서로를 쫓는다.
     expect(frame).not.toContain("transition");
+  });
+
+  // 삭제하면 조용히 깨지는 배선 — 산술은 순수 함수 테스트가 지키지만, 그 함수에 무엇이 들어가는지는
+  // 여기서만 고정된다. bottomChrome이 0으로 흘러 들어가면 Agent CLI의 컴포저와 상태줄이 프레임
+  // 안으로 되돌아오는데(실측 490×333 칸에서 화면상 81.6px), 순수 함수 테스트는 전부 green이다.
+  it("carries the body-declared bottom chrome all the way into the fit", () => {
+    const canvas = source("canvas/canvas.tsx");
+    // kind가 선언한 값을 core가 그대로 싣는다 — 미선언은 0이고, core는 그 구조를 알지 못한다.
+    expect(canvas).toContain("bottomChrome: descriptor.previewBottomChrome?.() ?? 0");
+    // 카드 면이 그 값을 프리뷰로 넘기고, 프리뷰가 fit으로 넘긴다.
+    expect(deck).toContain("bottomChrome={preview.bottomChrome}");
+    expect(deck).toMatch(/resolveTriagePreviewFit\(\s*\{[^}]*\},\s*\{[^}]*\},\s*bottomChrome,/);
+  });
+
+  // 프리뷰의 측정 크기가 카드를 따라가면 FitAddon이 PTY cols/rows를 타일 크기로 재조정해 실세션
+  // 레이아웃이 깨진다 — 이 판 전체가 transform scale만 쓰는 이유이자 가장 비싼 회귀다.
+  it("keeps the preview body at the panel's own pixel size, never the card's", () => {
+    expect(deck).toContain("const innerWidth = Math.max(320, config.geometry.width);");
+    expect(deck).toContain("const innerHeight = Math.max(200, config.geometry.height);");
+    // 인라인 크기는 그 두 값이어야 한다. 뷰포트 측정값이 여기 들어오면 계약이 뒤집힌다.
+    expect(deck).toMatch(/width:\s*innerWidth,\s*\n\s*height:\s*innerHeight,/);
+    const inner = components.match(/\.canvas-triage-deck-card-preview-inner \{[^}]*\}/)?.[0] ?? "";
+    expect(inner).toContain("position: absolute;");
   });
 
   it("keeps the magnification transition on the card that owns it", () => {

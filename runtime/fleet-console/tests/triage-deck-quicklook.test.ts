@@ -212,11 +212,22 @@ describe("resolveTriagePreviewFit", () => {
   it("anchors the line starts at the frame's left edge, whatever the aspect ratio", () => {
     // 읽을 수 없게 만드는 것은 가로 크롭 자체가 아니라 중앙 앵커다 — 그때만 모든 줄의 첫 글자가
     // 사라진다. 어느 축이 배율을 정하든 왼쪽은 프레임의 왼쪽이어야 한다.
+    const SOURCE = { width: 800, height: 600 };
+    const contentHeight = resolveTriagePreviewContentHeight(SOURCE.height, AGENT_CHROME);
     for (const viewport of [{ width: 200, height: 120 }, { width: 640, height: 400 }, { width: 300, height: 40 }, { width: 200, height: 200 }, { width: 473, height: 209 }]) {
-      const fit = resolveTriagePreviewFit(viewport, { width: 800, height: 600 }, AGENT_CHROME)!;
+      const fit = resolveTriagePreviewFit(viewport, SOURCE, AGENT_CHROME)!;
       expect(fit.left).toBe(0);
-      // 폭이 이기는 경우에만 좌우가 프레임과 정확히 만나고, 그 밖에는 오른쪽으로 넘친다.
-      expect(800 * fit.scale).toBeGreaterThanOrEqual(viewport.width - 1e-9);
+      // 두 축을 직접 비교해 어느 쪽이 이겼는지 판정하고, 그 축에 대해서만 정확한 등식을 요구한다.
+      // 부등식 하나로 뭉뚱그리면 배율에 임의의 여유를 곱해도 통과해 폭 정합이 풀린다.
+      const widthWins = viewport.width / SOURCE.width >= viewport.height / contentHeight;
+      if (widthWins) {
+        // 폭이 이기면 좌우가 프레임과 정확히 만난다 — 넘침도 여백도 없다.
+        expect(SOURCE.width * fit.scale).toBeCloseTo(viewport.width, 10);
+      } else {
+        // 세로가 이기면 넘치는 폭은 전부 오른쪽이고, 세로는 프레임을 정확히 덮는다.
+        expect(SOURCE.width * fit.scale).toBeGreaterThan(viewport.width);
+        expect(contentHeight * fit.scale).toBeCloseTo(viewport.height, 10);
+      }
     }
   });
 
@@ -285,7 +296,7 @@ describe("resolveTriagePreviewFit", () => {
     expect(fit.scale).toBeCloseTo(333 / 302, 10);
     expect(fit.left).toBe(0);
     expect(fit.top).toBeCloseTo(0, 10);
-    // 대가는 오른쪽 끝이다 — 이 조합에서 640px 소스가 프레임보다 216.4px 넓게 선다(약 25열).
+    // 대가는 오른쪽 끝이다 — 이 조합에서 640px 소스가 프레임보다 215.7px 넓게 선다(약 25열).
     const overflow = SOURCE.width * fit.scale - SLOT.width;
     expect(overflow).toBeCloseTo(215.7, 1);
     // 밀도를 올린 만큼 글자도 커진다 — 폭에만 고정하던 종전 배율(0.7656)보다 크다.
