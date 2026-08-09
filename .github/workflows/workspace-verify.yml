@@ -1,0 +1,42 @@
+name: Workspace Verify
+
+# 워크스페이스 전체의 타입체크와 테스트를 한 잡에서 돌린다. PR·push에서 상시 발화하고,
+# stable-release가 릴리스 커밋을 만들기 전에 workflow_call로 같은 잡을 재사용한다 —
+# 배포 파이프라인이 검증하는 기준과 개발 중 보는 기준을 하나로 묶기 위한 것이다.
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - canary
+  workflow_call:
+    inputs:
+      ref:
+        description: 검증할 git ref/sha (미지정 시 이벤트 ref)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # postinstall이 워크스페이스 빌드를 수행하므로 --ignore-scripts를 쓰지 않는다.
+      # 타입체크와 테스트 모두 dist를 참조하는 경로가 있어 빌드가 선행되어야 한다.
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck every workspace package
+        run: pnpm typecheck
+      - name: Test every workspace package
+        run: pnpm test

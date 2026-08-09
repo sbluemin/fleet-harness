@@ -18,7 +18,9 @@
     "desktop:package": "pnpm --filter @dotobokuri/fleet-desktop package",
     "desktop:package:dir": "pnpm --filter @dotobokuri/fleet-desktop package:dir",
     "desktop:package:unsigned": "pnpm --filter @dotobokuri/fleet-desktop package:unsigned",
-    "postinstall": "node scripts/fix-node-pty-spawn-helper.mjs && node scripts/generate-fleet-admiral-assets.mjs && pnpm -r --filter '!fleet-harness' --filter '!@dotobokuri/fleet-desktop' build"
+    "postinstall": "node scripts/fix-node-pty-spawn-helper.mjs && node scripts/generate-fleet-admiral-assets.mjs && pnpm -r --filter '!fleet-harness' --filter '!@dotobokuri/fleet-desktop' build",
+    "test": "pnpm -r --no-bail --filter '!fleet-harness' test",
+    "typecheck": "pnpm -r --filter '!fleet-harness' typecheck"
   },
   "bin": {
     "fleet": "./runtime/fleet-console/dist/fleet.mjs"
