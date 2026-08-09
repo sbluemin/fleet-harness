@@ -40,18 +40,48 @@ function row(overrides: Partial<OperationLaunchVariantRow> = {}): OperationLaunc
   };
 }
 
-function render(node: OperationLaunchVariantRow, value: string | null, onChange = vi.fn()) {
+function render(
+  node: OperationLaunchVariantRow,
+  value: string | null,
+  onChange = vi.fn(),
+  onConfirmCurrent?: () => void,
+) {
   act(() => root.render(
     <EffortTrack
       row={node}
       value={value}
       onChange={onChange}
+      onConfirmCurrent={onConfirmCurrent}
       autoLabel="AUTO"
       ariaLabel="Reasoning effort"
       autoValueText="Automatic"
     />,
   ));
   return onChange;
+}
+
+function stubTrackPointer(width = 126) {
+  const element = track();
+  let captured: number | null = null;
+  Object.defineProperties(element, {
+    getBoundingClientRect: {
+      configurable: true,
+      value: () => ({ left: 0, right: width, top: 0, bottom: 26, width, height: 26, x: 0, y: 0, toJSON: () => ({}) }),
+    },
+    setPointerCapture: {
+      configurable: true,
+      value: (pointerId: number) => { captured = pointerId; },
+    },
+    releasePointerCapture: {
+      configurable: true,
+      value: () => { captured = null; },
+    },
+    hasPointerCapture: {
+      configurable: true,
+      value: (pointerId: number) => captured === pointerId,
+    },
+  });
+  return element;
 }
 
 function stops(): readonly HTMLElement[] {
@@ -205,6 +235,97 @@ describe("EffortTrack", () => {
     // 비운 상태는 축의 맨 앞이지 최대가 아니다.
     render(row({ chips: [] }), null);
     expect(track().dataset.atMax).toBeUndefined();
+  });
+
+  it("confirms the current rung on re-press when onConfirmCurrent is set", () => {
+    const onChange = vi.fn();
+    const onConfirmCurrent = vi.fn();
+    render(row(), "high", onChange, onConfirmCurrent);
+    const element = stubTrackPointer();
+
+    // high(3) 자리: EDGE 13 + 0.6 × (126 − 26) = 73. 같은 단을 다시 누르면 값이 아니라 확정이다.
+    act(() => {
+      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 73, clientY: 13 }));
+      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 73, clientY: 13 }));
+    });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onConfirmCurrent).toHaveBeenCalledTimes(1);
+
+    onConfirmCurrent.mockClear();
+    act(() => element.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(onConfirmCurrent).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not confirm when the pointer first moves to another rung", () => {
+    const onChange = vi.fn();
+    const onConfirmCurrent = vi.fn();
+    render(row(), "high", onChange, onConfirmCurrent);
+    const element = stubTrackPointer();
+
+    // high → max로 옮긴 뒤 손을 떼면 값만 바뀌고 확정은 없다 — 그 제스처는 "고르기"다.
+    act(() => {
+      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 73, clientY: 13 }));
+      element.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 113, clientY: 13 }));
+      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 113, clientY: 13 }));
+    });
+    expect(onChange).toHaveBeenCalledWith("max");
+    expect(onConfirmCurrent).not.toHaveBeenCalled();
+  });
+
+  it("does not confirm a secondary-button release or a release outside the track", () => {
+    const onChange = vi.fn();
+    const onConfirmCurrent = vi.fn();
+    render(row(), "high", onChange, onConfirmCurrent);
+    const element = stubTrackPointer();
+
+    // 우클릭은 X가 같은 단이어도 확정이 아니다.
+    act(() => {
+      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 2, button: 2, isPrimary: true, clientX: 73, clientY: 13 }));
+      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 2, button: 2, isPrimary: true, clientX: 73, clientY: 13 }));
+    });
+    expect(onConfirmCurrent).not.toHaveBeenCalled();
+
+    // 세로로 트랙 밖에서 손을 떼면 같은 X라도 확정하지 않는다.
+    act(() => {
+      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 3, button: 0, isPrimary: true, clientX: 73, clientY: 13 }));
+      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 3, button: 0, isPrimary: true, clientX: 73, clientY: 40 }));
+    });
+    expect(onConfirmCurrent).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("ignores a second contact while the first gesture is active", () => {
+    const onChange = vi.fn();
+    const onConfirmCurrent = vi.fn();
+    render(row(), "high", onChange, onConfirmCurrent);
+    const element = stubTrackPointer();
+
+    // 첫 손가락은 잡고, 두 번째(비-primary)가 같은 단에서 떼어도 확정하지 않는다.
+    act(() => {
+      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 73, clientY: 13 }));
+      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 2, button: 0, isPrimary: false, clientX: 73, clientY: 13 }));
+      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 2, button: 0, isPrimary: false, clientX: 73, clientY: 13 }));
+    });
+    expect(onConfirmCurrent).not.toHaveBeenCalled();
+
+    // 시작한 포인터를 같은 단에서 떼면 그때 확정한다.
+    act(() => {
+      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 73, clientY: 13 }));
+    });
+    expect(onConfirmCurrent).toHaveBeenCalledTimes(1);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("leaves same-rung re-press quiet when onConfirmCurrent is omitted", () => {
+    const onChange = vi.fn();
+    render(row(), "high", onChange);
+    const element = stubTrackPointer();
+
+    act(() => {
+      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 73, clientY: 13 }));
+      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 73, clientY: 13 }));
+    });
+    expect(onChange).not.toHaveBeenCalled();
   });
 });
 

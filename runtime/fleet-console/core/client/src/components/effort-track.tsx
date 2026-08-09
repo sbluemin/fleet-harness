@@ -17,6 +17,12 @@ export interface EffortTrackProps {
   /** 선택된 강도. `null`은 강도를 비운 상태(모델 기본값)다. */
   readonly value: string | null;
   readonly onChange: (effort: string | null) => void;
+  /**
+   * 이미 고른 단에 다시 눌렀을 때. 드래그로 다른 단을 거쳐 돌아온 경우는 호출하지 않는다 —
+   * 값을 고르는 제스처와 "이 값으로 확정" 제스처를 갈라야 한다. 생략하면 같은 단 재클릭은
+   * 아무 일도 없다(Quick Launch처럼 제출이 다른 자리인 표면).
+   */
+  readonly onConfirmCurrent?: () => void;
   /** 강도를 비운 상태를 트랙 맨 앞 자리로 노출한다. */
   readonly autoLabel: string;
   readonly ariaLabel: string;
@@ -29,9 +35,14 @@ export interface EffortTrackProps {
  * 모델이 내놓지 않은 단도 자리를 지킨다 — low/high/max만 있는 모델에서 셋을 균등히 벌리면
  * high가 한가운데 서서, 실제로는 3/5 지점인 단을 절반이라고 말하게 된다.
  */
-export function EffortTrack({ row, value, onChange, autoLabel, ariaLabel, autoValueText, className }: EffortTrackProps) {
+export function EffortTrack({ row, value, onChange, onConfirmCurrent, autoLabel, ariaLabel, autoValueText, className }: EffortTrackProps) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  // 제스처 동안 React 커밋을 기다리지 않고 고른 단을 추적한다 — 같은 포인터 시퀀스에서
+  // "다른 단으로 옮겼다"와 "처음부터 이 단을 다시 눌렀다"를 갈라야 한다.
+  const liveIndexRef = useRef(0);
+  // pointerId까지 묶어 두면 터치에서 두 번째 손가락(button===0)이 제스처를 덮어 쓰지 못한다.
+  const gestureRef = useRef<{ readonly pointerId: number; readonly originIndex: number; dirty: boolean } | null>(null);
 
   const slots = useMemo<readonly EffortSlot[]>(() => {
     const byId = new Map<string, OperationLaunchVariantChip>((row.chips ?? []).map((chip) => [chip.id, chip]));
@@ -47,6 +58,7 @@ export function EffortTrack({ row, value, onChange, autoLabel, ariaLabel, autoVa
   const index = Math.max(0, slots.findIndex((slot) => slot.id === value));
   const current = slots[index]!;
   const isAuto = current.id === null;
+  liveIndexRef.current = index;
 
   const nearestSelectable = useCallback((target: number): number => {
     const bounded = Math.max(0, Math.min(target, last));
@@ -55,14 +67,16 @@ export function EffortTrack({ row, value, onChange, autoLabel, ariaLabel, autoVa
       if (slots[bounded - step]?.selectable) return bounded - step;
       if (slots[bounded + step]?.selectable) return bounded + step;
     }
-    return index;
-  }, [index, last, slots]);
+    return liveIndexRef.current;
+  }, [last, slots]);
 
   const commit = useCallback((next: number) => {
     const slot = slots[next];
-    if (!slot || slot.id === current.id) return;
+    if (!slot || slot.id === slots[liveIndexRef.current]?.id) return false;
+    liveIndexRef.current = next;
     onChange(slot.id);
-  }, [current.id, onChange, slots]);
+    return true;
+  }, [onChange, slots]);
 
   const indexFromPointer = useCallback((clientX: number): number | null => {
     const track = trackRef.current;
@@ -76,8 +90,37 @@ export function EffortTrack({ row, value, onChange, autoLabel, ariaLabel, autoVa
 
   const fromPointer = useCallback((event: PointerEvent<HTMLDivElement>) => {
     const next = indexFromPointer(event.clientX);
-    if (next !== null) commit(next);
+    if (next === null) return;
+    if (commit(next) && gestureRef.current) gestureRef.current.dirty = true;
   }, [commit, indexFromPointer]);
+
+  const endGesture = useCallback((event: PointerEvent<HTMLDivElement>, { confirm }: { readonly confirm: boolean }) => {
+    const gesture = gestureRef.current;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    // 시작한 포인터만 끝낸다 — 다른 접촉의 up이 활성 제스처를 지우면 안 된다.
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    gestureRef.current = null;
+    if (!confirm || gesture.dirty || !onConfirmCurrent) return;
+    // 주버튼으로 트랙 안에서 손을 뗄 때만 확정한다 — 우클릭·가운데 클릭이나
+    // 세로로 트랙 밖까지 끌어 뺀 해제는 값을 고르는 실수가 되지 않게 막는다.
+    if (event.button !== 0) return;
+    const track = trackRef.current;
+    if (!track) return;
+    const rect = track.getBoundingClientRect();
+    if (
+      event.clientX < rect.left
+      || event.clientX > rect.right
+      || event.clientY < rect.top
+      || event.clientY > rect.bottom
+    ) {
+      return;
+    }
+    const next = indexFromPointer(event.clientX);
+    // 처음부터 고른 단을 다시 눌렀고, 그 사이 다른 단으로 옮기지 않았을 때만 확정한다.
+    if (next === gesture.originIndex) onConfirmCurrent();
+  }, [indexFromPointer, onConfirmCurrent]);
 
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     const direction = event.key === "ArrowLeft" || event.key === "ArrowDown"
@@ -92,12 +135,18 @@ export function EffortTrack({ row, value, onChange, autoLabel, ariaLabel, autoVa
     }
     if (event.key === "Home") next = 0;
     if (event.key === "End") next = nearestSelectable(last);
+    if (event.key === "Enter" && onConfirmCurrent) {
+      event.preventDefault();
+      event.stopPropagation();
+      onConfirmCurrent();
+      return;
+    }
     if (next === null) return;
     event.preventDefault();
     // 트랙은 메뉴 안에 산다. 방향키가 위로 새면 메뉴가 항목 이동으로 받아 함께 움직인다.
     event.stopPropagation();
     commit(next);
-  }, [commit, index, last, nearestSelectable, slots]);
+  }, [commit, index, last, nearestSelectable, onConfirmCurrent, slots]);
 
   const ratio = last === 0 ? 0 : index / last;
 
@@ -119,19 +168,25 @@ export function EffortTrack({ row, value, onChange, autoLabel, ariaLabel, autoVa
         data-auto={isAuto ? true : undefined}
         onKeyDown={handleKeyDown}
         onPointerDown={(event) => {
+          // 주 접촉만 받는다. 터치 두 번째 손가락도 button===0이라 isPrimary·활성 제스처로 막는다.
+          if (!event.isPrimary || event.button !== 0 || gestureRef.current) return;
           event.preventDefault();
           event.currentTarget.setPointerCapture(event.pointerId);
           event.currentTarget.focus();
+          gestureRef.current = { pointerId: event.pointerId, originIndex: liveIndexRef.current, dirty: false };
           fromPointer(event);
         }}
         onPointerMove={(event) => {
           const next = indexFromPointer(event.clientX);
           if (next !== null) setPreviewIndex(next);
+          const gesture = gestureRef.current;
+          if (!gesture || gesture.pointerId !== event.pointerId) return;
           if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
           fromPointer(event);
         }}
+        onPointerUp={(event) => endGesture(event, { confirm: true })}
         onPointerLeave={() => setPreviewIndex(null)}
-        onPointerCancel={() => setPreviewIndex(null)}
+        onPointerCancel={(event) => endGesture(event, { confirm: false })}
       >
         {/* 자동은 폭 0이다. 손잡이 여백(EDGE)만큼이라도 남기면 트랙 왼쪽 끝에 brass 조각이 비쳐,
             비운 상태가 최소 강도를 고른 것처럼 보인다. */}
