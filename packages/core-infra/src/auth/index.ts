@@ -2,6 +2,7 @@
 
 export { createAuthService, DEFAULT_AUTH_PATH } from "./auth-storage.js";
 export {
+  DEFAULT_AUTH_VALIDATION_TIMEOUT_MS,
   createAuthValidationError,
   isAuthValidationSuccess,
   validateAnthropicCompatibleApiKey,
