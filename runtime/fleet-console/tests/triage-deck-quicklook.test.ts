@@ -6,6 +6,7 @@ import { resolveTriageMapMarkerLayout } from "../core/client/src/canvas/triage-s
 import {
   resolveTriageMapQuicklookPlacement,
   resolveTriageMorphFrame,
+  resolveTriagePreviewContentHeight,
   resolveTriagePreviewFit,
   resolveTriagePreviewMinScale,
   resolveTriageQuicklookOrigin,
@@ -217,12 +218,18 @@ describe("resolveTriagePreviewFit", () => {
     }
   });
 
-  it("trades the old horizontal crop for a top strip when the viewport is narrower in aspect than the output area", () => {
-    // 종전 cover-fit이 좌우를 잘라내던 바로 그 조건(viewport 비율 1.00 < 출력 영역 비율 800/496 ≈ 1.61)이다.
-    const fit = resolveTriagePreviewFit({ width: 200, height: 200 }, { width: 800, height: 600 }, AGENT_CHROME)!;
-    expect(fit.scale).toBeCloseTo(0.25, 5);
-    expect(fit.top).toBeCloseTo(200 - (600 - AGENT_CHROME) * 0.25, 5);
-    expect(fit.top).toBeGreaterThan(0);
+  it("opens no top strip once the frame carries the output's own aspect", () => {
+    // 프레임은 칸을 꽉 채우지 않고 출력의 모양을 입는다(CSS aspect-ratio) — 종전에 상단 빈 띠를
+    // 열던 정사각 칸(200×200)에서도 프레임은 200×124로 서고 출력이 프레임을 정확히 채운다.
+    const contentHeight = resolveTriagePreviewContentHeight(600, AGENT_CHROME);
+    const frameHeight = Math.min(200, 200 * contentHeight / 800);
+    expect(frameHeight).toBeCloseTo(124, 10);
+    const fit = resolveTriagePreviewFit({ width: 200, height: frameHeight }, { width: 800, height: 600 }, AGENT_CHROME)!;
+    expect(fit.scale).toBeCloseTo(0.25, 10);
+    expect(fit.left).toBe(0);
+    expect(fit.top).toBeCloseTo(0, 10);
+    // 크롬은 여전히 프레임 아래로 밀려난다 — 여백을 없앤 대가로 컴포저가 돌아오지는 않는다.
+    expect(600 * fit.scale).toBeGreaterThan(frameHeight);
   });
 
   it("still crops the oldest rows when the output area is taller than the frame", () => {
@@ -247,6 +254,37 @@ describe("resolveTriagePreviewFit", () => {
   it("returns null for a collapsed viewport", () => {
     expect(resolveTriagePreviewFit({ width: 0, height: 120 }, { width: 800, height: 600 }, AGENT_CHROME)).toBeNull();
     expect(resolveTriagePreviewFit({ width: 200, height: 0 }, { width: 800, height: 600 }, AGENT_CHROME)).toBeNull();
+  });
+
+  // 프레임의 종횡비와 fit 산술은 같은 출력 높이를 보아야 한다 — 둘이 갈리면 프레임이 출력보다
+  // 길거나 짧아져 이 결함이 그대로 돌아온다. 두 소비자가 공유하는 이 함수가 그 접점이다.
+  it("shares one output height between the frame's aspect and the fit arithmetic", () => {
+    expect(resolveTriagePreviewContentHeight(400, 98)).toBe(302);
+    expect(resolveTriagePreviewContentHeight(400, 0)).toBe(400);
+    // 선언값 검증과 30% 상한은 이 함수가 소유한다.
+    expect(resolveTriagePreviewContentHeight(400, -40)).toBe(400);
+    expect(resolveTriagePreviewContentHeight(400, Number.NaN)).toBe(400);
+    expect(resolveTriagePreviewContentHeight(400, Number.POSITIVE_INFINITY)).toBe(400);
+    expect(resolveTriagePreviewContentHeight(200, 104)).toBe(140);
+  });
+
+  // 실측 회귀 — 1440×900 창, 덱 밀도 2.0×에서 Agent 카드가 상단 101.8px(뷰포트의 30.6%)의 빈
+  // 띠를 열던 조합이다. 프레임이 출력 종횡비를 입으면 같은 칸에서 프레임은 490×231.21875로 서고
+  // 출력이 그 프레임을 정확히 채운다.
+  it("closes the worst measured letterbox (1440x900, density 2.0x, agent card)", () => {
+    const SLOT = { width: 490, height: 333 };
+    const SOURCE = { width: 640, height: 400 };
+    const contentHeight = resolveTriagePreviewContentHeight(SOURCE.height, 98);
+    expect(contentHeight).toBe(302);
+    const frameHeight = Math.min(SLOT.height, SLOT.width * contentHeight / SOURCE.width);
+    expect(frameHeight).toBeCloseTo(231.21875, 10);
+    const fit = resolveTriagePreviewFit({ width: SLOT.width, height: frameHeight }, SOURCE, 98)!;
+    expect(fit.scale).toBeCloseTo(0.765625, 10);
+    expect(fit.left).toBe(0);
+    expect(fit.top).toBeCloseTo(0, 10);
+    // 종전 산술을 같은 칸에 그대로 대입하면 빈 띠가 나온다 — 이 fixture가 지키는 것이 그 차이다.
+    const previous = resolveTriagePreviewFit(SLOT, SOURCE, 98)!;
+    expect(previous.top).toBeGreaterThan(100);
   });
 });
 
@@ -309,18 +347,20 @@ describe("resolveTriagePreviewFit — actual-size floor", () => {
   });
 
   it("keeps the frame width even where a taller fit would have magnified further", () => {
-    // 종전에는 여기서 세로 비율(1.68)이 이겨 레터박스를 피했다. 왼쪽 정렬 텍스트에서는 줄의
-    // 시작을 잃는 쪽이 더 비싸므로 이제 폭(1.51875)이 이기고, 남는 세로는 상단 여백이 된다.
+    // 왼쪽 정렬 텍스트에서는 줄의 시작을 잃는 쪽이 더 비싸므로 폭(1.51875)이 이긴다. 남는 세로는
+    // 이제 프레임 안의 빈 띠가 아니라 프레임 밖이다 — 칸 336px 중 프레임은 303.75px만 쓴다.
     // 실물 크기 하한은 그대로 살아 있다 — 다만 이 뷰포트에서는 폭이 이미 하한을 넘는다.
+    const frameHeight = Math.min(336, 486 * resolveTriagePreviewContentHeight(200, 0) / 320);
+    expect(frameHeight).toBeCloseTo(303.75, 10);
     const fit = resolveTriagePreviewFit(
-      { width: 486, height: 336 },
+      { width: 486, height: frameHeight },
       { width: 320, height: 200 },
       0,
       resolveTriagePreviewMinScale(TRIAGE_DECK_QUICKLOOK_SCALE),
     )!;
     expect(fit.scale).toBeCloseTo(486 / 320, 10);
     expect(fit.left).toBe(0);
-    expect(fit.top).toBeGreaterThan(0);
+    expect(fit.top).toBeCloseTo(0, 10);
   });
 
   it("keeps the crop anchors under the floor", () => {
@@ -331,9 +371,12 @@ describe("resolveTriagePreviewFit — actual-size floor", () => {
       104,
       resolveTriagePreviewMinScale(TRIAGE_DECK_QUICKLOOK_SCALE),
     )!;
-    // 상단에 빈 띠가 열리지 않고, 가로는 중앙에 남는다.
+    // 상단에 빈 띠가 열리지 않는다.
     expect(fit.top).toBeLessThanOrEqual(0);
-    expect(fit.left).toBeCloseTo((282 - 640 * fit.scale) / 2, 10);
+    // 하한이 폭을 넘어 실물이 프레임보다 넓어져도 왼쪽은 앵커된다 — 줄의 시작을 나눠 버리는
+    // 중앙 크롭과 달리, 넘치는 폭이 전부 오른쪽으로 나가야 모든 줄을 처음부터 읽을 수 있다.
+    expect(fit.left).toBe(0);
+    expect(640 * fit.scale).toBeGreaterThan(282);
     // 크롬을 뺀 출력 영역의 바닥은 여전히 프레임 바닥에 닿는다.
     expect(fit.top + (400 - 104) * fit.scale).toBeCloseTo(123, 10);
   });

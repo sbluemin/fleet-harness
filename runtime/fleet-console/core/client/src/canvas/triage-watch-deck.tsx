@@ -1455,25 +1455,38 @@ function TriageDeckCardFace({ operationId, title, label, detail, accentColor, pr
 // 선언값 104px를 그대로 빼면 남는 출력 영역이 절반 밑으로 떨어져 프리뷰가 오히려 덜 읽힌다.
 const TRIAGE_PREVIEW_BOTTOM_CHROME_MAX_RATIO = 0.3;
 
-// 프리뷰 fit — 기본 배율은 폭 하나로 정한다. 프리뷰가 담는 것은 왼쪽 정렬 텍스트(터미널 출력·
-// 문서·파일 트리)라 두 크롭이 등가가 아니다: 세로로 잘리면 오래된 줄만 사라지고 최신 줄은
-// 온전하지만, 가로로 잘리면 모든 줄의 시작 문자가 사라져 남은 화면이 읽히지 않는다.
-// cover-fit(두 비율의 max)은 카드가 원본보다 세로로 길 때 그 읽히지 않는 쪽을 골랐다 — 밀도를
-// 올릴수록 카드 크롬(패딩·상태줄·제목)이 고정이라 프리뷰 뷰포트가 상대적으로 길어지고, 좌우가
-// 잘려 나갔다. 폭 고정은 `inner.width * scale === viewport.width`를 성립시켜 그 크롭을 정책이
-// 아니라 수식으로 불가능하게 만든다. 대가는 상단 여백이다: 축소된 출력이 프레임보다 짧으면 위에
-// 프레임 배경이 남는다(종전에 좌우를 잘라내던 바로 그 조건이다).
+// 출력 영역의 높이 — 패널 높이에서 body 소유자가 선언한 바닥 크롬을 뺀 만큼이다. 밴드 높이는
+// kind가 선언하며(OperationKindDescriptor.previewBottomChrome), 선언이 없는 body는 바닥까지
+// 출력이 흐른다는 뜻이므로 0 — 순정 셸과 문서형 패널은 최신 행을 잃지 않는다. 선언값은 플러그인이
+// 넘기는 값이라 음수·비유한 값이 계산 전체를 NaN으로 만들지 않게 여기서 막고, 상한도 여기서 건다.
+// 프레임의 종횡비와 fit 산술이 같은 값을 보아야 하므로 두 소비자가 이 한 함수를 공유한다.
+export function resolveTriagePreviewContentHeight(innerHeight: number, bottomChrome: number): number {
+  const declared = Number.isFinite(bottomChrome) ? Math.max(0, bottomChrome) : 0;
+  const chrome = Math.min(declared, innerHeight * TRIAGE_PREVIEW_BOTTOM_CHROME_MAX_RATIO);
+  return innerHeight - chrome;
+}
+
+// 프리뷰 fit — 배율은 폭 하나로 정한다. 프리뷰가 담는 것은 왼쪽 정렬 텍스트(터미널 출력·문서·
+// 파일 트리)라 두 크롭이 등가가 아니다: 세로로 잘리면 오래된 줄만 사라지고 최신 줄은 온전하지만,
+// 가로로 잘리면 줄의 시작 문자가 사라져 남은 화면이 읽히지 않는다. 폭 고정은
+// `inner.width * scale === viewport.width`를 성립시켜 그 크롭을 정책이 아니라 수식으로 막는다.
+//
+// 종전에는 그 대가가 상단 여백이었다: 축소된 출력이 프레임보다 짧으면 위에 프레임 배경이 남았고,
+// 밀도를 올릴수록 카드 크롬(패딩·상태줄·제목)이 고정이라 프리뷰 뷰포트가 상대적으로 세로로 길어져
+// 실측 최악 30.6%까지 빈 띠가 열렸다. 지금은 프레임 자체가 출력 종횡비를 따라 줄어든다
+// (`.canvas-triage-deck-card-preview`의 aspect-ratio) — 프레임이 곧 출력의 모양이므로 이 함수가
+// 받는 viewport는 이미 그 비율이고, 남는 세로는 프레임 안의 빈 띠가 아니라 카드 표면이 된다.
+// 어느 쪽도 잘라내지 않고 여백을 프레임 밖으로 내보내는 것이 이 결함의 해법이다.
 //
 // minScale은 확대창이 요구하는 배율 하한이며, 폭 고정보다 위에 선다. Quick-Look은 "축소판을 크게
 // 키운 그림"이 아니라 "실물을 들여다보는 창"이다. 표면이 화면에서 S배로 확대돼 있을 때 1/S를
 // 하한으로 받으면 두 배율이 상쇄되어 화면상 1:1이 서고, 글자는 패널에서 읽던 크기 그대로가 된다.
-// 대신 보이는 범위는 창이 담는 만큼으로 좁아진다(그것이 돋보기다) — 하한이 폭을 넘어설 때의 가로
-// 크롭은 손실이 아니라 돋보기의 정의이므로, 그때만 종전처럼 가로 중앙에 앵커한다.
+// 대신 보이는 범위는 창이 담는 만큼으로 좁아진다(그것이 돋보기다) — 하한이 폭을 넘어설 때 생기는
+// 가로 크롭은 손실이 아니라 돋보기의 정의이지만, 그때도 왼쪽은 앵커된다: 줄의 시작을 나눠 버리는
+// 중앙 크롭과 달리 오른쪽 끝만 넘어가면 모든 줄을 처음부터 읽을 수 있다.
 //
 // 세로 앵커는 언제나 출력 영역의 하단 — 에이전트 CLI의 최신 출력은 컴포저 바로 위에 쌓이므로
-// 모니터링 가치가 있는 영역이 살아남고, 빈 셸이 비어 보이는 것은 정직한 상태 표현이다. 밴드
-// 높이는 body 소유자인 kind가 선언하며(OperationKindDescriptor.previewBottomChrome), 선언이
-// 없는 body는 바닥까지 출력이 흐른다는 뜻이므로 0 — 순정 셸과 문서형 패널은 최신 행을 잃지 않는다.
+// 모니터링 가치가 있는 영역이 살아남고, 빈 셸이 비어 보이는 것은 정직한 상태 표현이다.
 export function resolveTriagePreviewFit(
   viewport: { readonly width: number; readonly height: number },
   inner: { readonly width: number; readonly height: number },
@@ -1482,19 +1495,15 @@ export function resolveTriagePreviewFit(
 ): { scale: number; left: number; top: number } | null {
   if (viewport.width <= 0 || viewport.height <= 0) return null;
   if (inner.width <= 0 || inner.height <= 0) return null;
-  // 선언값은 플러그인이 넘기는 값이다 — 음수·비유한 값이 fit 전체를 NaN으로 만들지 않게 막는다.
-  const declared = Number.isFinite(bottomChrome) ? Math.max(0, bottomChrome) : 0;
-  const chrome = Math.min(declared, inner.height * TRIAGE_PREVIEW_BOTTOM_CHROME_MAX_RATIO);
-  const contentHeight = inner.height - chrome;
+  const contentHeight = resolveTriagePreviewContentHeight(inner.height, bottomChrome);
   const floor = Number.isFinite(minScale) ? Math.max(0, minScale) : 0;
   const widthFit = viewport.width / inner.width;
   const scale = Math.max(floor, widthFit);
   return {
     scale,
-    // 폭 고정이 이기면 좌우가 프레임과 정확히 만나므로 0으로 확정한다(뺄셈으로 두면 부동소수점
-    // 잔차가 남는다). 실물 크기 하한이 폭을 넘어설 때만 음수가 되어 종전처럼 가로 중앙 크롭이
-    // 선다 — 프레임보다 넓은 실물을 창이 담는 모습이다.
-    left: scale > widthFit ? (viewport.width - inner.width * scale) / 2 : 0,
+    // 왼쪽은 언제나 프레임의 왼쪽이다. 폭 고정이 이길 때는 좌우가 프레임과 정확히 만나고, 실물
+    // 크기 하한이 폭을 넘어설 때는 넘치는 만큼이 전부 오른쪽으로 나간다 — 줄의 시작은 남는다.
+    left: 0,
     top: viewport.height - contentHeight * scale,
   };
 }
@@ -1523,6 +1532,9 @@ function TriageDeckCardPreview({ operationId, config, bottomChrome, surfaceScale
   const innerWidth = Math.max(320, config.geometry.width);
   const innerHeight = Math.max(200, config.geometry.height);
   const minScale = resolveTriagePreviewMinScale(surfaceScale);
+  // 프레임은 출력의 모양을 입는다 — 카드가 내준 칸보다 세로로 짧으면 그만큼을 카드 표면에
+  // 돌려주고, 길면 max-height에 잘려 종전처럼 오래된 위쪽 행만 프레임 밖으로 나간다.
+  const contentHeight = resolveTriagePreviewContentHeight(innerHeight, bottomChrome);
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
@@ -1544,7 +1556,16 @@ function TriageDeckCardPreview({ operationId, config, bottomChrome, surfaceScale
     // 이 변화를 잡지 못한다.
   }, [bottomChrome, innerHeight, innerWidth, minScale]);
   return (
-    <span className="canvas-triage-deck-card-preview" ref={viewportRef} aria-hidden="true" inert>
+    <span
+      className="canvas-triage-deck-card-preview"
+      ref={viewportRef}
+      aria-hidden="true"
+      inert
+      style={{
+        "--triage-preview-content-width": String(innerWidth),
+        "--triage-preview-content-height": String(contentHeight),
+      } as CSSProperties}
+    >
       {fit ? (
         // 이 transform에는 전이를 붙이지 않는다. 전이는 카드 확대가 이미 소유하고 있고 프리뷰
         // 배율은 거기에 올라탄다 — 프리뷰가 자기 전이를 따로 가지면 두 전이가 서로 다른 값을
