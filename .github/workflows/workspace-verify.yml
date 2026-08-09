@@ -1,13 +1,11 @@
 name: Workspace Verify
 
-# 워크스페이스 전체의 타입체크와 테스트를 한 잡에서 돌린다. PR·push에서 상시 발화하고,
+# 워크스페이스 전체의 타입체크와 테스트를 한 잡에서 돌린다. canary push에서 발화하고,
 # stable-release가 릴리스 커밋을 만들기 전에 workflow_call로 같은 잡을 재사용한다 —
 # 배포 파이프라인이 검증하는 기준과 개발 중 보는 기준을 하나로 묶기 위한 것이다.
 on:
-  pull_request:
   push:
     branches:
-      - main
       - canary
   workflow_call:
     inputs:

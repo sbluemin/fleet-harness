@@ -45,10 +45,9 @@ jobs:
           git fetch origin main
           echo "sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
 
-  # 되돌릴 수 없는 npm publish 앞에 워크스페이스 전체 타입체크·테스트를 세운다. PR·push에서
-  # 상시 도는 것과 같은 잡을 재사용하므로, 여기서 처음 빨개지는 일은 main에 이미 빨간 커밋이
-  # 올라온 경우뿐이다. 검증 대상은 릴리스 커밋 직전의 main이며, 릴리스 커밋 자체는 버전 필드와
-  # 컴파일된 changelog만 바꾼다.
+  # 되돌릴 수 없는 npm publish 앞에 워크스페이스 전체 타입체크·테스트를 세운다. verify는 canary
+  # push와 workflow_call로만 발화하므로, main은 릴리스 전 여기서만 전체 검증을 받는다. 검증 대상은
+  # 릴리스 커밋 직전의 main이며, 릴리스 커밋 자체는 버전 필드와 컴파일된 changelog만 바꾼다.
   verify:
     needs: resolve
     uses: ./.github/workflows/workspace-verify.yml
