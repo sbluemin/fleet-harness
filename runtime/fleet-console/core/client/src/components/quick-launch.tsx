@@ -126,7 +126,7 @@ export function QuickLaunch() {
     const text = prompt.trim();
     // 상한을 넘긴 요청은 서버가 반드시 400으로 거절한다. 그대로 보내면 컴포저만 닫히고 초안이
     // 사라지므로, 확실히 실패할 요청으로는 넘기지 않는다.
-    if (text.length === 0 || text.length > QUICK_LAUNCH_PROMPT_MAX_CHARS || !theaterId || !target || submitting) return;
+    if (text.length === 0 || text.length > QUICK_LAUNCH_PROMPT_MAX_CHARS || !theaterId || !target || !selectedRow || submitting) return;
     setSubmitting(true);
     const variant: Record<string, string> = { prompt: text };
     if (model) variant.model = model;
@@ -138,7 +138,7 @@ export function QuickLaunch() {
     requestQuickLaunch({ theaterId, pluginId: target.pluginId, kind: target.kind, variant });
     navigate("/operations");
     closeQuickLaunch();
-  }, [effort, model, navigate, prompt, submitting, target, theaterId]);
+  }, [effort, model, navigate, prompt, selectedRow, submitting, target, theaterId]);
 
   const handleKeyDown = useCallback((event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") {
@@ -166,7 +166,7 @@ export function QuickLaunch() {
 
   const promptLength = prompt.trim().length;
   const overLimit = promptLength > QUICK_LAUNCH_PROMPT_MAX_CHARS;
-  const canSubmit = promptLength > 0 && !overLimit && !!theaterId && !!target && !submitting;
+  const canSubmit = promptLength > 0 && !overLimit && !!theaterId && !!target && !!selectedRow && !submitting;
   const modelLabel = selectedRow?.label ?? t("chrome.quickLaunch.modelUnset");
   const rejectionKey = quickLaunchErrorMessageKey(state.quickLaunchError, state.quickLaunchErrorShortenBy);
   // Prefer the selected model\'s provider mark. Falling back to the launch-kind
