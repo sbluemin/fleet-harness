@@ -66,7 +66,8 @@ export function updatePastedRanges(
   });
 
   if (pendingPaste) {
-    const pasteEnd = pendingPaste.start + pendingPaste.text.length;
+    const normalizedText = pendingPaste.text.replace(/\r\n?/gu, "\n");
+    const pasteEnd = pendingPaste.start + normalizedText.length;
     transformed.push({ start: pendingPaste.start, end: pasteEnd });
   }
   return mergeRanges(transformed);

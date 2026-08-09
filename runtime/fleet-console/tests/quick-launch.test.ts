@@ -241,6 +241,16 @@ describe("Quick Launch file token", () => {
     expect(token && isTokenInsideRanges(token, ranges)).toBe(false);
   });
 
+  it("uses textarea-normalized line endings for pasted ranges", () => {
+    const previous = "";
+    const next = "first\nsecond @src";
+    const ranges = updatePastedRanges(previous, "first\nsecond", [], { start: 0, end: 0, text: "first\r\nsecond" });
+    expect(ranges).toEqual([{ start: 0, end: 12 }]);
+    const shifted = updatePastedRanges("first\nsecond", next, ranges, null);
+    const token = parseQuickLaunchFileToken(next, next.length);
+    expect(token && isTokenInsideRanges(token, shifted)).toBe(false);
+  });
+
   it("switches or closes the active token when the caret moves", () => {
     const prompt = "@first then @second";
     expect(parseQuickLaunchFileToken(prompt, 6)?.query).toBe("first");
