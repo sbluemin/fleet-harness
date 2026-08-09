@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BrowserWindow, dialog, Menu, Notification, session, shell, Tray } from "electron";
+import { app, BrowserWindow, dialog, Menu, Notification, session, shell, Tray, WebContentsView } from "electron";
 
 import { createDesktopLifecycle } from "./app-lifecycle.js";
 import { isConsoleConflict, showConsoleConflictAndQuit } from "./console-conflict.js";
@@ -13,9 +13,10 @@ import { pushEntrySnapshot } from "./entry-page.js";
 import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
 import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
 import { createDesktopNotifier } from "./desktop-notices.js";
+import { createHostPickerView } from "./host-picker-view.js";
 import { isRemoteConsoleOrigin } from "./console-origin.js";
 import { installRemoteCertificatePins } from "./remote-access.js";
-import { createRemoteBridge, type RemoteBridge } from "./remote-bridge.js";
+import { consoleTarget, createRemoteBridge, type RemoteBridge } from "./remote-bridge.js";
 import { findAccessLinkArgument, FLEET_PROTOCOL, isFleetProtocolLink } from "./fleet-protocol.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
 import { createDesktopThemeSynchronizer } from "./desktop-theme-sync.js";
@@ -29,7 +30,7 @@ import { resolveRuntimePaths } from "./runtime/runtime-paths.js";
 import { SidecarSupervisor, type SidecarRuntime } from "./sidecar-supervisor.js";
 import { configureTray, createDesktopTray, shouldConfigureTray } from "./tray.js";
 import { createNoopUpdateController, createUpdateController, resolveActiveWindow, showWindowsHiddenUpdateDialog } from "./update-controller.js";
-import { applyWindowPolicy, createSecureWindow } from "./window-policy.js";
+import { applyWindowPolicy, confinePickerNavigation, createSecureWindow } from "./window-policy.js";
 import { createZoomState } from "./zoom-state.js";
 
 type RuntimeProgress = (state: RuntimeEntryState, detail?: string, progress?: number) => Promise<void>;
@@ -161,7 +162,27 @@ async function boot(): Promise<void> {
       fullscreenSynchronizer?.activate(origin);
       await publishShellHome(origin);
     },
+    openPicker: (url) => picker.open(url),
+    closePicker: () => picker.close(),
     notify: (notice) => notifier.show(notice),
+    log: (message) => logger.error(message),
+  });
+  /**
+   * 집의 목록을 지금 보고 있는 콘솔 위에 펼치는 덮개. 화면은 집이 그리고, Desktop은 그 렌더러를
+   * 얹었다 걷는 일만 한다 — 어느 콘솔을 고를지도, 그 이름도 여기서 정하지 않는다.
+   */
+  const picker = createHostPickerView({
+    createView: () => {
+      const view = new WebContentsView({
+        webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
+      });
+      // 덮개는 아래 콘솔 위에 합성된다 — 목록을 보는 동안에도 어느 콘솔에 서 있었는지가 남아야 한다.
+      view.setBackgroundColor("#00000000");
+      return view;
+    },
+    window: () => window,
+    confine: (contents) => confinePickerNavigation(contents, localConsoleOrigin ?? "", (url) => consoleTarget(url, localConsoleOrigin) !== null),
+    attachBridge: (contents) => bridge.attachPicker(contents),
     log: (message) => logger.error(message),
   });
   const lifecycle = createDesktopLifecycle(app, async () => {
@@ -174,11 +195,14 @@ async function boot(): Promise<void> {
           themeSynchronizer?.stop();
           fullscreenSynchronizer?.stop();
           fullscreenSynchronizer = null;
+          picker.close();
         });
         controls.attachWindow(createdWindow);
         lifecycle.attachWindow(createdWindow);
         policy = applyWindowPolicy(createdWindow.webContents, async (external) => shell.openExternal(external));
         bridge.attach(createdWindow.webContents);
+        // 창이 어디로 옮겨 가든 덮개는 따라가지 않는다 — 새 콘솔 위에 남은 옛 목록은 거짓말이다.
+        createdWindow.webContents.on("did-navigate", () => picker.close());
         createdWindow.webContents.on("zoom-changed", (_event, zoomDirection) => controls.zoomChanged(createdWindow.webContents, zoomDirection));
         refreshNativeUpdateActions?.();
         await createdWindow.loadFile(desktopResources.entryPagePath);

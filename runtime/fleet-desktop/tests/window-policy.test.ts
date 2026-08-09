@@ -1,6 +1,56 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { applyWindowPolicy, createSecureWindow, isAllowedConsoleUrl } from "../src/window-policy.js";
+import { applyWindowPolicy, confinePickerNavigation, createSecureWindow, isAllowedConsoleUrl } from "../src/window-policy.js";
+
+const HOME = "http://127.0.0.1:4310";
+
+function createPickerContents() {
+  const listeners = new Map<string, (...args: never[]) => unknown>();
+  const session = { setPermissionRequestHandler: vi.fn() };
+  const contents = {
+    on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)),
+    setWindowOpenHandler: vi.fn(),
+    session,
+  };
+  return { contents, session, navigate: (url: string) => {
+    const preventDefault = vi.fn();
+    (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault }, url);
+    return preventDefault;
+  } };
+}
+
+describe("host picker view confinement", () => {
+  /**
+   * 이 뷰는 메인 창과 같은 defaultSession에 산다. applyWindowPolicy를 그대로 쓰면 세션 단위인
+   * 권한 핸들러를 집 origin 기준으로 갈아 끼우고, 덮개를 걷어도 그대로 남아 원격 콘솔의
+   * 클립보드 판정이 조용히 뒤집힌다. 그래서 세션에는 손대지 않는다.
+   */
+  it("never touches the session it shares with the main window", () => {
+    const { contents, session } = createPickerContents();
+
+    confinePickerNavigation(contents as never, HOME, () => false);
+
+    expect(session.setPermissionRequestHandler).not.toHaveBeenCalled();
+  });
+
+  it("keeps the list on its own console and denies popups", () => {
+    const { contents, navigate } = createPickerContents();
+    confinePickerNavigation(contents as never, HOME, () => false);
+
+    expect(navigate(`${HOME}/console/settings`)).not.toHaveBeenCalled();
+    expect(navigate(`${HOME}/api/v1/remote-hosts`)).toHaveBeenCalledOnce();
+    expect(navigate("https://100.84.12.7:6768/console/")).toHaveBeenCalledOnce();
+    expect(contents.setWindowOpenHandler.mock.calls[0]?.[0]?.({ url: "https://example.com" })).toEqual({ action: "deny" });
+  });
+
+  /** 콘솔을 갈아타는 항해는 remote bridge가 같은 이벤트에서 가져간다 — 여기서 막을 일이 아니다. */
+  it("leaves a console switch to the bridge", () => {
+    const { contents, navigate } = createPickerContents();
+    confinePickerNavigation(contents as never, HOME, (url) => url.startsWith("https://100.84.12.7:6768/console/"));
+
+    expect(navigate("https://100.84.12.7:6768/console/")).not.toHaveBeenCalled();
+  });
+});
 
 describe("secure window policy", () => {
   it("creates a renderer without Node or preload privilege", () => {

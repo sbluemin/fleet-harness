@@ -87,6 +87,30 @@ export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: s
   };
 }
 
+/**
+ * 집의 목록을 그리는 덮개 렌더러의 항해 울타리.
+ *
+ * `applyWindowPolicy`를 그대로 쓸 수는 없다. 그쪽은 세션 단위인 `setPermissionRequestHandler`를
+ * 갈아 끼우는데, 이 뷰는 메인 창과 같은 defaultSession에 산다 — 덮개를 한 번 얹는 것만으로
+ * 메인 창(원격 origin)의 클립보드 권한 판정이 집 origin 기준으로 바뀌고, 덮개를 걷어도
+ * 그대로 남는다. 그래서 여기서는 세션에 손대지 않고 이 contents의 항해만 가둔다.
+ *
+ * 콘솔을 갈아타는 항해는 여기서 막지 않는다 — remote bridge가 같은 이벤트에서 가로채
+ * 메인 창으로 보내는 것이 그 동선의 전부이기 때문이다.
+ */
+export function confinePickerNavigation(
+  contents: Pick<WebContents, "on" | "setWindowOpenHandler">,
+  origin: string,
+  isConsoleSwitch: (url: string) => boolean,
+): void {
+  contents.on("will-navigate", (event, url) => {
+    if (isAllowedConsoleUrl(url, origin) || isConsoleSwitch(url)) return;
+    event.preventDefault();
+  });
+  // 덮개에서 새 창은 열리지 않는다. 바깥으로 나가는 링크는 메인 창의 몫이다.
+  contents.setWindowOpenHandler(() => ({ action: "deny" }));
+}
+
 export function isAllowedConsoleUrl(url: string, origin: string): boolean { try { const parsed = new URL(url); return parsed.origin === origin && parsed.pathname.startsWith("/console/"); } catch { return false; } }
 function isHttpUrl(url: string): boolean { try { return ["http:", "https:"].includes(new URL(url).protocol); } catch { return false; } }
 function hasExactOrigin(url: string, origin: string): boolean { try { return new URL(url).origin === origin; } catch { return false; } }

@@ -37,6 +37,51 @@ const GITHUB_STARS_CACHE_KEY = "fleet-console.github-stars";
 const GITHUB_STARS_TTL_MS = 6 * 60 * 60 * 1000;
 const ENABLED_MENU_ITEM_SELECTOR = '[role="menuitem"]:not([disabled])';
 
+/**
+ * Desktop 셸과의 계약 리터럴 — 셸이 이 항해를 가로채므로 요청은 기계를 떠나지 않는다.
+ * 같은 값이 fleet-desktop/src/remote-bridge.ts에도 선언되어 있다(Console 내부를 import하지
+ * 않는다는 규칙 때문이며, DESKTOP_SHELL_PATH와 같은 방식이다). 한쪽만 고치면 목록이 열리지
+ * 않고 창이 집으로 돌아가 버리므로, 양쪽을 함께 고친다.
+ */
+const PICKER_SURFACE_PARAM = "desktop-surface";
+const PICKER_SURFACE_OPEN = "host-picker";
+const PICKER_SURFACE_DISMISS = "host-picker-dismiss";
+/** 목록을 펼칠 때 실려 가는 유일한 값: 지금 사용자가 서 있는 콘솔. 남의 기계는 실리지 않는다. */
+const PICKER_AT_PARAM = "at";
+
+export interface HostPickerContext {
+  /** 이 목록을 부른 콘솔. 현재 줄을 표시하는 데만 쓴다. */
+  readonly at: string | null;
+}
+
+/**
+ * 이 화면이 "집의 목록만 펼치는 표면"으로 서빙됐는가.
+ *
+ * 부른 쪽이 실어 보낸 origin은 그대로 믿지 않는다 — 화면에 그릴 값이므로 모양을 먼저 본다.
+ */
+export function readHostPickerSurface(search: string): HostPickerContext | null {
+  const params = new URLSearchParams(search);
+  if (params.get(PICKER_SURFACE_PARAM) !== PICKER_SURFACE_OPEN) return null;
+  const at = params.get(PICKER_AT_PARAM);
+  return { at: at !== null && isConsoleOriginShape(at) ? at : null };
+}
+
+function isConsoleOriginShape(origin: string): boolean {
+  try {
+    const parsed = new URL(origin);
+    return parsed.origin === origin && (parsed.protocol === "http:" || parsed.protocol === "https:");
+  } catch {
+    return false;
+  }
+}
+
+function pickerUrl(homeOrigin: string, surface: string, at?: string): string {
+  const url = new URL("/console/", `${homeOrigin}/`);
+  url.searchParams.set(PICKER_SURFACE_PARAM, surface);
+  if (at !== undefined) url.searchParams.set(PICKER_AT_PARAM, at);
+  return url.toString();
+}
+
 // 설정 진입 시점의 history index를 기록하는 세션 스코프 마커. GlobalSettings의 섹션
 // 이동은 state 없이 push하므로 location.state로는 이 마커가 전파되지 않는다 — 모듈
 // 스코프 변수로 들고 있다가 selectSection이 다음 항목으로 전파한다(아래 export 참조).
@@ -86,7 +131,7 @@ export function CommandBandSystemCluster() {
  * 닿는지 여부는 열어 볼 때 확인한다. 목록에 든 것만으로 매번 남의 기계를 두드리면, 보지도
  * 않는 화면 때문에 조용한 네트워크 소음이 계속 흐른다.
  */
-function HostSwitcher() {
+export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext } = {}) {
   const t = useT();
   const state = useConsoleState();
   const hosts = useRemoteHosts();
@@ -94,22 +139,42 @@ function HostSwitcher() {
   // 원격으로 건너가는 일은 셸의 인증서 배관을 거쳐야 한다. 브라우저 단독에서는 내주지 않는다.
   const canOpenRemote = isDesktopShell();
   const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
+  /** 집이 펼친 목록으로 서빙된 화면. 칩은 없고, 판은 처음부터 열려 있다. */
+  const inPicker = picker !== undefined;
+  const [open, setOpen] = useState(inPicker);
   const [addOpen, setAddOpen] = useState(false);
   const [local, setLocal] = useState<readonly LocalConsole[]>([]);
   const [reach, setReach] = useState<Readonly<Record<string, RemoteHostReach>>>({});
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  /**
+   * 목록을 접는 일. 집이 펼친 판은 이 화면의 상태가 아니라 셸이 얹은 덮개라, 접겠다는 말도
+   * 셸에게 가야 한다 — 여기서 state만 내리면 빈 덮개가 콘솔을 가린 채 남는다.
+   */
+  const dismiss = () => {
+    if (inPicker) location.assign(pickerUrl(location.origin, PICKER_SURFACE_DISMISS));
+    else setOpen(false);
+  };
+
+  /**
+   * 이 화면을 내주는 콘솔에게 목록을 물어도 되는가.
+   *
+   * 원격 콘솔에게는 묻지 않는다. 그 두 경로는 루프백 전용이라 어차피 401이지만, 답이 없다는
+   * 것과 묻지 않는다는 것은 다르다 — 남의 기계에 내 목록을 묻는 요청 자체가 남지 않아야 한다.
+   * 집이 펼친 목록(피커)은 집이 서빙하므로 이 판정이 참이고, 평소대로 묻는다.
+   */
+  const servedFromLoopback = isLoopbackOrigin(location.origin);
 
   useEffect(() => {
+    if (!servedFromLoopback) return;
     const controller = new AbortController();
     void refreshRemoteHosts(controller.signal).catch(() => undefined);
     void fetchLocalConsoles(controller.signal).then(setLocal).catch(() => undefined);
     return () => controller.abort();
-  }, []);
+  }, [servedFromLoopback]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !servedFromLoopback) return;
     const controller = new AbortController();
     // 열 때마다 다시 본다 — 이 기계의 콘솔은 조용히 뜨고 진다.
     void fetchLocalConsoles(controller.signal).then(setLocal).catch(() => undefined);
@@ -118,21 +183,30 @@ function HostSwitcher() {
         .then((result) => setReach((previous) => ({ ...previous, [host.id]: result })))
         .catch(() => undefined);
     }
+    return () => controller.abort();
+  }, [open, hosts, servedFromLoopback]);
+
+  // 판을 닫는 길은 목록을 어디서 읽어 왔는지와 무관하다 — 묻지 않는 콘솔에서도 판은 닫혀야 한다.
+  useEffect(() => {
+    if (!open) return;
     const onPointer = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (!panelRef.current?.contains(target) && !triggerRef.current?.contains(target)) setOpen(false);
+      if (!panelRef.current?.contains(target) && !triggerRef.current?.contains(target)) dismiss();
     };
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); triggerRef.current?.focus(); } };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { dismiss(); triggerRef.current?.focus(); } };
     document.addEventListener("pointerdown", onPointer, true);
     document.addEventListener("keydown", onKey);
     return () => {
-      controller.abort();
       document.removeEventListener("pointerdown", onPointer, true);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open, hosts]);
+  }, [open]);
 
-  const currentOrigin = location.origin;
+  /**
+   * 어느 콘솔에 서 있는가. 집이 펼친 목록에서는 이 화면(집)이 아니라 목록을 부른 콘솔이
+   * 그 답이다 — 아니면 사용자가 지금 보고 있는 콘솔에 현재 표시가 서지 않는다.
+   */
+  const currentOrigin = (inPicker ? picker.at : null) ?? location.origin;
   const currentIsLoopback = isLoopbackOrigin(currentOrigin);
   /**
    * "이 컴퓨터"에 실릴 수 있는 것은 이 창이 실제로 닿을 수 있는 콘솔뿐이다.
@@ -166,13 +240,25 @@ function HostSwitcher() {
       ? t("chrome.hosts.local")
       : currentLabel;
 
-  if (nearby.length === 0 && hosts.length === 0) return null;
+  /**
+   * 원격 콘솔에서 칩을 누르면 이 콘솔의 목록을 펴는 대신 집에게 목록을 펴 달라고 한다.
+   * 셸이 그 항해를 가로채 집의 화면을 이 위에 얹으므로, 이 콘솔은 남의 기계 주소를 받지 않는다.
+   */
+  const pickerHome = !inPicker && canOpenRemote && !currentIsLoopback && home !== null ? home : null;
+
+  if (!inPicker && nearby.length === 0 && hosts.length === 0) return null;
   const openSettings = () => {
+    // 관리는 집의 설정 화면에서 한다. 덮개는 목록만 들고 있으므로 창째로 집에 보낸다.
+    if (inPicker) {
+      location.assign(new URL("/console/settings?section=remote-access", `${location.origin}/`).toString());
+      return;
+    }
     setOpen(false);
     navigate({ pathname: "/settings", search: "?section=remote-access" });
   };
   const openAdd = () => {
-    setOpen(false);
+    // 덮개에서는 판을 접지 않는다 — 접으면 팝업이 닫힌 뒤 빈 덮개만 남는다.
+    if (!inPicker) setOpen(false);
     setAddOpen(true);
   };
   const go = (origin: string) => {
@@ -181,21 +267,26 @@ function HostSwitcher() {
   };
 
   return (
-    <div className="host-switcher">
-      <button
-        ref={triggerRef}
-        type="button"
-        className={`host-switcher-chip${state.controlHolder !== null ? " is-shared" : ""}`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label={`${t("chrome.hosts.aria")}: ${chipLabel}`}
-        title={chipLabel}
-        onClick={() => setOpen((previous) => !previous)}
-      >
-        <span className={`host-switcher-dot ${state.controlHolder !== null ? "is-shared" : "is-live"}`} aria-hidden="true" />
-        <span className="host-switcher-name">{chipLabel}</span>
-        <ChevronGlyph />
-      </button>
+    <div className={`host-switcher${inPicker ? " is-picker-surface" : ""}`}>
+      {inPicker ? null : (
+        <button
+          ref={triggerRef}
+          type="button"
+          className={`host-switcher-chip${state.controlHolder !== null ? " is-shared" : ""}`}
+          aria-haspopup="menu"
+          aria-expanded={pickerHome === null && open}
+          aria-label={`${t("chrome.hosts.aria")}: ${chipLabel}`}
+          title={chipLabel}
+          onClick={() => {
+            if (pickerHome !== null) { location.assign(pickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin)); return; }
+            setOpen((previous) => !previous);
+          }}
+        >
+          <span className={`host-switcher-dot ${state.controlHolder !== null ? "is-shared" : "is-live"}`} aria-hidden="true" />
+          <span className="host-switcher-name">{chipLabel}</span>
+          <ChevronGlyph />
+        </button>
+      )}
       {open ? (
         <div ref={panelRef} className="host-switcher-panel" role="menu" aria-label={t("chrome.hosts.aria")}>
           {nearby.length > 0 ? (
