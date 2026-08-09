@@ -12,6 +12,10 @@ import { useT, type CoreMessageKey } from "../i18n/index.js";
 
 export type FeatureTourPhase = "spotlight" | "walkthrough";
 
+// 캔버스 실행 캐스케이드의 강도 확인 팁. Feature Tour 카탈로그 항목은 아니지만 같은
+// seenFeatureTours 필드에 실어, "화면 안내 다시 보기"가 투어·커미셔닝과 함께 되돌린다.
+export const EFFORT_CONFIRM_TIP_SEEN_KEY = "effort-confirm-tip";
+
 export interface FeatureTourPresentation {
   readonly tour: FeatureTour;
   readonly phase: FeatureTourPhase;

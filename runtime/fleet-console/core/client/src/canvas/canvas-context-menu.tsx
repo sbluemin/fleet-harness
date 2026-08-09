@@ -2,9 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 
 import { FEATURE_TOUR_BOUNDARY_ATTRIBUTE, FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
+import { getGlobalSettingsStoreState, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import { resolveLaunchKindAnnotation } from "../launch-kind-annotations.js";
 import { EffortTrack, effortLadderPosition } from "../components/effort-track.js";
+import { appendSeenFeatureTour, EFFORT_CONFIRM_TIP_SEEN_KEY } from "../components/feature-tour.js";
 import { launchProviderFromGroupId, launchProviderGlyph } from "../components/launch-provider-glyphs.js";
 
 interface CanvasContextMenuProps {
@@ -52,6 +54,7 @@ const ASIDE_GAP = 8;
 
 export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", fixed = false, catalog, canLaunch, renderKindIcon, onLaunchKind, onClose, theaterLabel }: CanvasContextMenuProps) {
   const t = useT();
+  const globalSettings = useGlobalSettingsStore();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [menuSize, setMenuSize] = useState<{ readonly width: number; readonly height: number } | null>(null);
@@ -85,6 +88,14 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   const effortAnchorRefs = useRef(new Map<string, HTMLDivElement>());
   const effortMenuRef = useRef<HTMLDivElement | null>(null);
   const effortCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seenFeatureTours = globalSettings.state?.seenFeatureTours ?? [];
+  const effortConfirmTipSeen = seenFeatureTours.includes(EFFORT_CONFIRM_TIP_SEEN_KEY);
+  const openEffortValue = openEffortRow === null ? null : (rowEfforts[openEffortRow] ?? null);
+  // 선택만으로는 졸업시키지 않는다 — 피처 투어를 건너뛰고 메뉴를 닫아도, 같은 노브 재클릭으로
+  // 실행하기 전까지는 비-AUTO를 고를 때마다 팁이 다시 선다.
+  const showEffortConfirmTip = globalSettings.state !== null
+    && openEffortValue !== null
+    && !effortConfirmTipSeen;
 
   const cancelFlyoutClose = () => {
     if (flyoutCloseTimerRef.current === null) return;
@@ -702,22 +713,32 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
             closeEffortMenu();
           }}
         >
-          <EffortTrack
-            row={effortTarget}
-            value={rowEfforts[openEffortRow] ?? null}
-            onChange={(next) => setRowEfforts((previous) => ({ ...previous, [openEffortRow]: next }))}
-            onConfirmCurrent={() => {
-              // 자동을 다시 누르는 것은 값을 비운 채 머무는 일이다 — 모델만 싣는 실행은 행 본문이 맡는다.
-              const effort = rowEfforts[openEffortRow] ?? null;
-              if (effort === null) return;
-              const chip = effortTarget.chips?.find((entry) => entry.id === effort);
-              if (!chip) return;
-              onLaunchKind(flyoutTarget.pluginId, flyoutTarget.kind, chip.launch);
-            }}
-            autoLabel={t("launchVariants.effort.auto")}
-            ariaLabel={t("launchVariants.effort.track")}
-            autoValueText={t("launchVariants.effort.autoValue")}
-          />
+          <div className="operation-launch-effort-menu-body">
+            <EffortTrack
+              row={effortTarget}
+              value={rowEfforts[openEffortRow] ?? null}
+              onChange={(next) => setRowEfforts((previous) => ({ ...previous, [openEffortRow]: next }))}
+              onConfirmCurrent={() => {
+                // 자동을 다시 누르는 것은 값을 비운 채 머무는 일이다 — 모델만 싣는 실행은 행 본문이 맡는다.
+                const effort = rowEfforts[openEffortRow] ?? null;
+                if (effort === null) return;
+                const chip = effortTarget.chips?.find((entry) => entry.id === effort);
+                if (!chip) return;
+                // 같은 노브를 다시 눌러 실행한 순간에만 팁을 졸업시킨다. 선택·피처 투어 건너뛰기는
+                // 제스처를 익힌 증거가 아니다.
+                if (!effortConfirmTipSeen) void persistEffortConfirmTipSeen();
+                onLaunchKind(flyoutTarget.pluginId, flyoutTarget.kind, chip.launch);
+              }}
+              autoLabel={t("launchVariants.effort.auto")}
+              ariaLabel={t("launchVariants.effort.track")}
+              autoValueText={t("launchVariants.effort.autoValue")}
+            />
+            {showEffortConfirmTip ? (
+              <p className="operation-launch-effort-confirm-tip" role="status">
+                {t("launchVariants.effort.confirmTip")}
+              </p>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>
@@ -728,6 +749,28 @@ const GAUGE_BAR_WIDTH = 1.5;
 const GAUGE_BAR_PITCH = 2.5;
 const GAUGE_HEIGHT = 8;
 const GAUGE_MIN_BAR = 2;
+
+// 시청 기록 PUT은 전역 저장 슬롯 하나뿐이라, 피처 투어 완료 저장과 겹치면 뒤쪽 호출이 거절된다.
+// 잠깐 양보한 뒤 최신 seen 목록에 키를 합쳐 다시 쓴다. 실패해도 같은 마운트에서는 상한까지만
+// 재시도해, 오프라인처럼 계속 실패하는 경우에도 요청이 무한히 돌지 않는다.
+async function persistEffortConfirmTipSeen(): Promise<void> {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const store = getGlobalSettingsStoreState();
+    if (store.savingField !== null) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      continue;
+    }
+    const seen = store.state?.seenFeatureTours;
+    if (!seen) return;
+    if (seen.includes(EFFORT_CONFIRM_TIP_SEEN_KEY)) return;
+    const saved = await setGlobalSettingsField(
+      "seenFeatureTours",
+      appendSeenFeatureTour(seen, EFFORT_CONFIRM_TIP_SEEN_KEY),
+    );
+    if (saved) return;
+    await new Promise((resolve) => setTimeout(resolve, 40));
+  }
+}
 
 /**
  * 강도 사다리를 그대로 줄인 계기 표식. 꺾쇠만으로는 이 손잡이가 무엇을 여는지 말하지 못하므로,

@@ -207,6 +207,7 @@ describe("CommandBandSystemCluster", () => {
         "claude-operations.walkthrough",
         "remote-access.spotlight",
         "commissioning",
+        "effort-confirm-tip",
       ],
     });
     globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({
@@ -223,7 +224,7 @@ describe("CommandBandSystemCluster", () => {
     expect(entry.disabled).toBe(false);
     act(() => entry.click());
 
-    // 온보딩 전체(피처 투어 + 최초 설정 가이드)가 초기화되어 서버에 저장된다.
+    // 온보딩 전체(피처 투어 + 최초 설정 가이드 + 강도 확인 팁)가 초기화되어 서버에 저장된다.
     expect(fetch).toHaveBeenCalledWith("/api/v1/settings/global", expect.objectContaining({
       method: "PUT",
       body: JSON.stringify({ seenFeatureTours: [] }),

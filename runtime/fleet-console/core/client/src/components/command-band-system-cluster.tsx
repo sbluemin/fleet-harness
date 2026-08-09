@@ -11,7 +11,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
 import { COMMISSIONING_SEEN_KEY, openWhatsNew } from "../store.js";
 import { AddHostDialog } from "./add-host-dialog.js";
-import { forgetAllFeatureTours } from "./feature-tour.js";
+import { EFFORT_CONFIRM_TIP_SEEN_KEY, forgetAllFeatureTours } from "./feature-tour.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 
 type UpdateApplyState = "idle" | "applying" | "accepted" | "completed" | "blocked" | "error";
@@ -504,13 +504,13 @@ function SettingsButton({ updateAvailable }: { readonly updateAvailable: boolean
 }
 
 // "화면 안내 다시 보기" — 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다.
-// 카탈로그의 모든 피처 투어 시청 기록(walkthrough·spotlight)과 최초 설정 가이드 기록을
-// 함께 지워, 어느 화면에 있든 온보딩을 처음부터 다시 보게 한다.
+// 카탈로그의 모든 피처 투어 시청 기록(walkthrough·spotlight)·최초 설정 가이드·강도 확인 팁
+// 기록을 함께 지워, 어느 화면에 있든 온보딩을 처음부터 다시 보게 한다.
 function forgetAllOnboarding(seen: readonly string[]): readonly string[] {
+  const drop = new Set([COMMISSIONING_SEEN_KEY, EFFORT_CONFIRM_TIP_SEEN_KEY]);
   const afterTours = forgetAllFeatureTours(seen);
-  return afterTours.includes(COMMISSIONING_SEEN_KEY)
-    ? afterTours.filter((key) => key !== COMMISSIONING_SEEN_KEY)
-    : afterTours;
+  const next = afterTours.filter((key) => !drop.has(key));
+  return next.length === afterTours.length ? afterTours : next;
 }
 
 function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: {

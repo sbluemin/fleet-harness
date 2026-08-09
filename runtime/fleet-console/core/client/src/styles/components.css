@@ -7467,6 +7467,29 @@
   --flyout-enter-x: 4px;
 }
 
+.operation-launch-effort-menu-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* 같은 단을 다시 눌러 실행한다는 숨은 확정 제스처를 처음 비-AUTO를 고른 순간에만 알려 준다.
+   파선 테두리는 이 앱에서 "아직 확정되지 않은 자리"의 어휘이고, brass 워시로 위치·초점 채널에
+   묶는다 — 신호색을 쓰면 "무슨 일이 일어났다"로 읽힌다. */
+.operation-launch-effort-confirm-tip {
+  margin: 0;
+  padding: 7px 9px;
+  border: 1px dashed color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--brass) 8%, transparent);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 11px;
+  line-height: 1.35;
+  text-wrap: pretty;
+}
+
 /* ── 추론 강도 트랙 ─────────────────────────────────────────────────────────
    강도는 상태가 아니라 사용자가 고른 값이라, 채움은 위치·초점 채널인 brass를 쓴다. 신호색
    (aurora/warn/coral/positive)으로 칠하면 그 순간 "무슨 일이 일어났다"로 읽힌다. */
