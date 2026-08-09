@@ -73,7 +73,7 @@ describe("Cursor live client-tool Run bridge", () => {
     },
   );
 
-  it("redirects a native read through the caller and attaches its typed result on the same Run", async () => {
+  it("redirects native read through caller Read without inventing whole-file metadata", async () => {
     const call = cursorCall("native-read-redirect", 24);
     const stream = new BridgeCursorStream(
       [{
@@ -115,7 +115,7 @@ describe("Cursor live client-tool Run bridge", () => {
           arguments: JSON.stringify({ file_path: "README.md" }),
         }),
       }));
-      const secondEvents = await collectCursorResponse(
+      const events = await collectCursorResponse(
         harness.adapter,
         cursorContinuation(initial, [{ ...call, name: "Read" }], [{
           call_id: call.callId,
@@ -123,56 +123,33 @@ describe("Cursor live client-tool Run bridge", () => {
         }]),
       );
 
-      expect(canonicalText(secondEvents)).toBe("native read continued");
-      expect(harness.openedStreams).toBe(1);
-      expect(diagnostics).toContainEqual(expect.objectContaining({
-        event: "client.reply",
-        reply: "exec.redirect.readArgs",
-      }));
-      expect(diagnostics).toContainEqual(expect.objectContaining({
-        event: "bridge.attach",
-        outcome: "exact_match",
-      }));
-      expect(diagnostics).toContainEqual(expect.objectContaining({
-        event: "client.reply",
-        reply: "exec.nativeRedirectResult",
-      }));
-      expect(diagnostics).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          event: "exec.redirect.selected",
-          operationSequence: 1,
-          adapter: "read-direct",
-        }),
-        expect.objectContaining({
-          event: "exec.redirect.attached",
-          operationSequence: 1,
-          adapter: "read-direct",
-        }),
-        expect.objectContaining({
-          event: "exec.redirect.result_written",
-          operationSequence: 1,
-          adapter: "read-direct",
-        }),
-      ]));
+      expect(canonicalText(events)).toBe("native read continued");
       expect(cursorClientWrites(stream)).toContainEqual(expect.objectContaining({
         execClientMessage: {
           id: call.messageId,
           execId: call.execId,
           readResult: {
-            success: expect.objectContaining({
+            error: {
               path: "README.md",
-              content: "first line\nsecond line",
-            }),
+              error: expect.stringContaining("Caller output:\n1→first line\n2→second line"),
+            },
           },
         },
       }));
+      expect(diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({ event: "exec.redirect.selected", adapter: "read-direct" }),
+        expect.objectContaining({ event: "exec.redirect.attached", adapter: "read-direct" }),
+        expect.objectContaining({ event: "exec.redirect.result_written", adapter: "read-direct" }),
+        expect.objectContaining({ event: "bridge.attach", outcome: "exact_match" }),
+      ]));
+      expect(harness.openedStreams).toBe(1);
     } finally {
       harness.adapter.dispose();
     }
   });
 
   it("attaches mixed redirected-native and ordinary MCP results as one exact batch", async () => {
-    const nativeCall = cursorCall("mixed-native-read", 25);
+    const nativeCall = cursorCall("mixed-native-grep", 25);
     const mcpCall = cursorCall("mixed-client-tool", 26);
     const stream = new BridgeCursorStream(
       [
@@ -180,7 +157,12 @@ describe("Cursor live client-tool Run bridge", () => {
           execServerMessage: {
             id: nativeCall.messageId,
             execId: nativeCall.execId,
-            readArgs: { path: "README.md", toolCallId: nativeCall.callId },
+            grepArgs: {
+              pattern: "Fleet",
+              path: "packages",
+              outputMode: "content",
+              toolCallId: nativeCall.callId,
+            },
           },
         },
         ...cursorToolFrames([mcpCall]),
@@ -194,12 +176,16 @@ describe("Cursor live client-tool Run bridge", () => {
       tools: [
         {
           type: "function",
-          name: "Read",
-          description: "Read a file",
+          name: "Grep",
+          description: "Search file contents",
           parameters: {
             type: "object",
-            properties: { file_path: { type: "string" } },
-            required: ["file_path"],
+            properties: {
+              pattern: { type: "string" },
+              path: { type: "string" },
+              output_mode: { type: "string" },
+            },
+            required: ["pattern"],
             additionalProperties: false,
           },
         },
@@ -217,10 +203,10 @@ describe("Cursor live client-tool Run bridge", () => {
         harness.adapter,
         cursorContinuation(
           initial,
-          [{ ...nativeCall, name: "Read" }, mcpCall],
+          [{ ...nativeCall, name: "Grep" }, mcpCall],
           [
             { call_id: mcpCall.callId, output: "ordinary result" },
-            { call_id: nativeCall.callId, output: "1→native result" },
+            { call_id: nativeCall.callId, output: "packages/a.ts:1:Fleet" },
           ],
         ),
       );
@@ -232,8 +218,8 @@ describe("Cursor live client-tool Run bridge", () => {
         execClientMessage: expect.objectContaining({
           id: nativeCall.messageId,
           execId: nativeCall.execId,
-          readResult: {
-            success: expect.objectContaining({ content: "native result" }),
+          grepResult: {
+            success: expect.objectContaining({ outputMode: "content" }),
           },
         }),
       }));
@@ -242,57 +228,175 @@ describe("Cursor live client-tool Run bridge", () => {
     }
   });
 
-  it("returns a typed native failure when the caller rejects a redirected read", async () => {
-    const call = cursorCall("native-read-error", 27);
+  it("runs native Grep through caller Bash and writes a verified typed result", async () => {
+    const nativeCall = cursorCall("native-grep-shell", 27);
     const stream = new BridgeCursorStream(
       [{
         execServerMessage: {
-          id: call.messageId,
-          execId: call.execId,
-          readArgs: { path: "missing.txt", toolCallId: call.callId },
+          id: nativeCall.messageId,
+          execId: nativeCall.execId,
+          grepArgs: {
+            pattern: "Fleet",
+            path: "packages",
+            toolCallId: nativeCall.callId,
+          },
         },
       }],
-      cursorCompletionFrames("native error continued"),
+      cursorCompletionFrames("grep shell continued"),
+      1,
+    );
+    const diagnostics: CursorDiagnosticEvent[] = [];
+    const harness = cursorHarness([stream], {
+      diagnostics: (event) => diagnostics.push(event),
+    });
+    const bash: CanonicalFunctionTool = {
+      type: "function",
+      name: "Bash",
+      description: "Run a shell command under caller permissions",
+      parameters: {
+        type: "object",
+        properties: {
+          command: { type: "string" },
+          description: { type: "string" },
+        },
+        required: ["command"],
+        additionalProperties: false,
+      },
+    };
+    const initial: CanonicalResponseRequest = {
+      ...cursorRequest("session-native-grep-shell", "composer-2.5"),
+      tools: [bash],
+    };
+
+    try {
+      const initialEvents = await collectCursorResponse(harness.adapter, initial);
+      const bashCall = initialEvents.find((event) => (
+        event.type === "response.output_item.done"
+        && event.item.type === "function_call"
+        && event.item.name === "Bash"
+      ));
+      expect(bashCall).toMatchObject({
+        type: "response.output_item.done",
+        item: expect.objectContaining({
+          name: "Bash",
+          arguments: expect.stringContaining("process.argv.splice(1,1)"),
+        }),
+      });
+      if (bashCall?.type !== "response.output_item.done" || bashCall.item.type !== "function_call") {
+        throw new Error("Missing redirected Bash call");
+      }
+      const receipt = cursorGrepReceipt({
+        ok: true,
+        outputMode: "content",
+        files: [],
+        counts: [],
+        matches: [{
+          file: "packages/a.ts",
+          lineNumber: 1,
+          content: "Fleet",
+          contentTruncated: false,
+          isContextLine: false,
+        }],
+        totalFiles: 1,
+        totalLines: 1,
+        totalMatchedLines: 1,
+        totalMatches: 1,
+        clientTruncated: false,
+      });
+      const completedEvents = await collectCursorResponse(
+        harness.adapter,
+        cursorContinuation(
+          initial,
+          [{ ...nativeCall, name: "Bash" }],
+          [{ call_id: bashCall.item.call_id, output: receipt }],
+        ),
+      );
+
+      expect(canonicalText(completedEvents)).toBe("grep shell continued");
+      expect(harness.openedStreams).toBe(1);
+      expect(diagnostics).not.toContainEqual(expect.objectContaining({ event: "bridge.mismatch" }));
+      expect(diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({ event: "exec.redirect.selected", adapter: "grep-shell" }),
+        expect.objectContaining({ event: "exec.redirect.attached", adapter: "grep-shell" }),
+        expect.objectContaining({ event: "exec.redirect.result_written", adapter: "grep-shell" }),
+      ]));
+      expect(cursorClientWrites(stream)).toContainEqual(expect.objectContaining({
+        execClientMessage: expect.objectContaining({
+          grepResult: {
+            success: expect.objectContaining({
+              outputMode: "content",
+              workspaceResults: {
+                packages: {
+                  content: expect.objectContaining({
+                    totalLines: 1,
+                    totalMatchedLines: 1,
+                  }),
+                },
+              },
+            }),
+          },
+        }),
+      }));
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("fails closed on the same Run when the caller Bash Grep receipt is incomplete", async () => {
+    const nativeCall = cursorCall("native-grep-shell-failure", 29);
+    const stream = new BridgeCursorStream(
+      [{
+        execServerMessage: {
+          id: nativeCall.messageId,
+          execId: nativeCall.execId,
+          grepArgs: {
+            pattern: "Fleet",
+            path: "packages",
+            toolCallId: nativeCall.callId,
+          },
+        },
+      }],
+      cursorCompletionFrames("grep failure handled"),
       1,
     );
     const harness = cursorHarness([stream]);
     const initial: CanonicalResponseRequest = {
-      ...cursorRequest("session-native-read-error", "composer-2.5"),
+      ...cursorRequest("session-native-grep-shell-failure", "composer-2.5"),
       tools: [{
         type: "function",
-        name: "Read",
-        description: "Read a file",
+        name: "Bash",
+        description: "Run a shell command under caller permissions",
         parameters: {
           type: "object",
-          properties: { file_path: { type: "string" } },
-          required: ["file_path"],
+          properties: { command: { type: "string" } },
+          required: ["command"],
           additionalProperties: false,
         },
       }],
     };
 
     try {
-      await collectCursorResponse(harness.adapter, initial);
+      const initialEvents = await collectCursorResponse(harness.adapter, initial);
+      const callId = addedFunctionCallIds(initialEvents)[0];
+      if (!callId) throw new Error("Missing redirected Bash call");
       const events = await collectCursorResponse(
         harness.adapter,
-        cursorContinuation(initial, [{ ...call, name: "Read" }], [{
-          call_id: call.callId,
-          output: "File does not exist",
-          is_error: true,
-        }]),
+        cursorContinuation(
+          initial,
+          [{ ...nativeCall, name: "Bash" }],
+          [{ call_id: callId, output: "truncated caller output" }],
+        ),
       );
 
-      expect(canonicalText(events)).toBe("native error continued");
+      expect(canonicalText(events)).toBe("grep failure handled");
+      expect(harness.openedStreams).toBe(1);
       expect(cursorClientWrites(stream)).toContainEqual(expect.objectContaining({
         execClientMessage: expect.objectContaining({
-          id: call.messageId,
-          execId: call.execId,
-          readResult: {
-            error: { path: "missing.txt", error: "File does not exist" },
+          grepResult: {
+            error: { error: expect.stringContaining("complete Fleet Grep receipt") },
           },
         }),
       }));
-      expect(harness.openedStreams).toBe(1);
     } finally {
       harness.adapter.dispose();
     }
@@ -1694,6 +1798,10 @@ function cursorCall(callId: string, messageId: number): CursorCallSpec {
     execId: `exec-${messageId}`,
     name: "probe_tool",
   };
+}
+
+function cursorGrepReceipt(value: unknown): string {
+  return `FLEET_CURSOR_GREP_V1:${Buffer.from(JSON.stringify(value), "utf8").toString("base64url")}`;
 }
 
 function cursorResult(

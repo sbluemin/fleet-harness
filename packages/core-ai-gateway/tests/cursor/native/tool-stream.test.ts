@@ -418,12 +418,11 @@ describe("Cursor client tool suspension", () => {
       },
     ] as const;
 
-    const read = cursorNativeExecRedirect(
+    expect(cursorNativeExecRedirect(
       { id: 1, execId: "read-1", readArgs: { path: "README.md", toolCallId: "native-read-1" } },
       tools,
       CURSOR_TOOL_PROVIDER_IDENTIFIER,
-    );
-    expect(read).toMatchObject({
+    )).toMatchObject({
       execCase: "readArgs",
       nativeResultType: "readResult",
       call: {
@@ -443,7 +442,12 @@ describe("Cursor client tool suspension", () => {
       nativeResultType: "grepResult",
       call: {
         name: "Grep",
-        arguments: JSON.stringify({ pattern: "Fleet", path: "packages", glob: "*.ts" }),
+        arguments: JSON.stringify({
+          pattern: "Fleet",
+          path: "packages",
+          glob: "*.ts",
+          output_mode: "content",
+        }),
       },
     });
 
@@ -474,8 +478,55 @@ describe("Cursor client tool suspension", () => {
       tools,
       CURSOR_TOOL_PROVIDER_IDENTIFIER,
     )).toBeNull();
+    const grepShell = cursorNativeExecRedirect(
+      { id: 5, execId: "grep-shell-5", grepArgs: { pattern: "Fleet", path: "packages", toolCallId: "native-grep-shell-5" } },
+      tools.map((tool) => tool.clientName === "Grep"
+        ? {
+          ...tool,
+          inputSchemaValue: {
+            type: "object",
+            properties: { pattern: { type: "string" } },
+            required: ["pattern"],
+          },
+        }
+        : tool),
+      CURSOR_TOOL_PROVIDER_IDENTIFIER,
+    );
+    expect(grepShell).toMatchObject({
+      nativeResultType: "grepShellResult",
+      adapter: "grep-shell",
+      call: { name: "Bash", toolCallId: "native-grep-shell-5" },
+    });
+    expect(JSON.parse(grepShell?.call.arguments ?? "{}")).toEqual(expect.objectContaining({
+      command: expect.stringContaining("process.argv.splice(1,1)"),
+    }));
     expect(cursorNativeExecRedirect(
-      { id: 5, fetchArgs: { url: "https://example.test" } },
+      { id: 6, grepArgs: { pattern: "Fleet", path: "packages", outputMode: "files_with_matches" } },
+      tools.filter((tool) => tool.clientName !== "Grep"),
+      CURSOR_TOOL_PROVIDER_IDENTIFIER,
+    )).toBeNull();
+    expect(cursorNativeExecRedirect(
+      { id: 7, grepArgs: { pattern: "Fleet", path: "packages", multiline: true } },
+      tools.filter((tool) => tool.clientName !== "Grep"),
+      CURSOR_TOOL_PROVIDER_IDENTIFIER,
+    )).toBeNull();
+    expect(cursorNativeExecRedirect(
+      { id: 8, grepArgs: { pattern: "Fleet", path: "packages", offset: 2 } },
+      tools.filter((tool) => tool.clientName !== "Grep"),
+      CURSOR_TOOL_PROVIDER_IDENTIFIER,
+    )).toBeNull();
+    expect(cursorNativeExecRedirect(
+      { id: 9, grepArgs: { pattern: "Fleet", path: "packages", sort: "path" } },
+      tools.filter((tool) => tool.clientName !== "Grep"),
+      CURSOR_TOOL_PROVIDER_IDENTIFIER,
+    )).toBeNull();
+    expect(cursorNativeExecRedirect(
+      { id: 10, grepArgs: { pattern: "Fleet", path: "packages", context: -1 } },
+      tools.filter((tool) => tool.clientName !== "Grep"),
+      CURSOR_TOOL_PROVIDER_IDENTIFIER,
+    )).toBeNull();
+    expect(cursorNativeExecRedirect(
+      { id: 6, fetchArgs: { url: "https://example.test" } },
       tools,
       CURSOR_TOOL_PROVIDER_IDENTIFIER,
     )).toBeNull();
@@ -491,31 +542,103 @@ describe("Cursor client tool suspension", () => {
     )).toBeNull();
   });
 
-  it("formats redirected native results as typed Cursor success frames", () => {
-    const readReplies = cursorNativeRedirectResultReplies(
+  it("returns redirected Read output without claiming unverified whole-file metadata", () => {
+    const replies = cursorNativeRedirectResultReplies(
       {
         messageId: 1,
         execId: "read-1",
         nativeResultType: "readResult",
         nativeArgs: { path: "README.md" },
       },
-      "line1\nline2",
+      "1→first line\n2→second line",
       false,
     );
-    expect(() => fromJson(AgentClientMessageSchema, readReplies[0] as JsonValue)).not.toThrow();
-    expect(readReplies[0]).toMatchObject({
+
+    expect(() => fromJson(AgentClientMessageSchema, replies[0] as JsonValue)).not.toThrow();
+    expect(replies[0]).toMatchObject({
       execClientMessage: {
-        id: 1,
-        execId: "read-1",
         readResult: {
-          success: expect.objectContaining({
+          error: {
             path: "README.md",
-            content: "line1\nline2",
-          }),
+            error: expect.stringContaining("Caller output:\n1→first line\n2→second line"),
+          },
         },
       },
     });
+    expect(replies[0]).not.toEqual(expect.objectContaining({
+      execClientMessage: expect.objectContaining({ readResult: expect.objectContaining({ success: expect.anything() }) }),
+    }));
+  });
 
+  it("accepts only complete caller Bash receipts as native Grep success", () => {
+    const receipt = `FLEET_CURSOR_GREP_V1:${Buffer.from(JSON.stringify({
+      ok: true,
+      outputMode: "content",
+      files: [],
+      counts: [],
+      matches: [{
+        file: "packages/a.ts",
+        lineNumber: 7,
+        content: "Fleet",
+        contentTruncated: false,
+        isContextLine: false,
+      }],
+      totalFiles: 1,
+      totalLines: 1,
+      totalMatchedLines: 1,
+      totalMatches: 1,
+      clientTruncated: false,
+    }), "utf8").toString("base64url")}`;
+    const success = cursorNativeRedirectResultReplies(
+      {
+        messageId: 2,
+        execId: "grep-shell-2",
+        nativeResultType: "grepShellResult",
+        nativeArgs: { pattern: "Fleet", path: "packages", outputMode: "content" },
+      },
+      receipt,
+      false,
+    );
+    expect(success).toContainEqual(expect.objectContaining({
+      execClientMessage: expect.objectContaining({
+        grepResult: {
+          success: expect.objectContaining({
+            outputMode: "content",
+            workspaceResults: {
+              packages: {
+                content: expect.objectContaining({
+                  totalLines: 1,
+                  totalMatchedLines: 1,
+                  clientTruncated: false,
+                }),
+              },
+            },
+          }),
+        },
+      }),
+    }));
+
+    const incomplete = cursorNativeRedirectResultReplies(
+      {
+        messageId: 3,
+        execId: "grep-shell-3",
+        nativeResultType: "grepShellResult",
+        nativeArgs: { pattern: "Fleet", path: "packages", outputMode: "content" },
+      },
+      "FLEET_CURSOR_GREP_V1:truncated",
+      false,
+    );
+    expect(incomplete).toContainEqual(expect.objectContaining({
+      execClientMessage: expect.objectContaining({
+        grepResult: { error: { error: expect.stringContaining("invalid Fleet Grep receipt") } },
+      }),
+    }));
+    for (const reply of [...success, ...incomplete]) {
+      expect(() => fromJson(AgentClientMessageSchema, reply as JsonValue)).not.toThrow();
+    }
+  });
+
+  it("formats redirected native results as typed Cursor success frames", () => {
     const shellReplies = cursorNativeRedirectResultReplies(
       {
         messageId: 2,

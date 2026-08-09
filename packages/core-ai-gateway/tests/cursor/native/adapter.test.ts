@@ -165,7 +165,8 @@ describe("Cursor request budgets", () => {
 
     for (const context of [prompt.action?.userMessageAction?.requestContext, resume.action?.resumeAction?.requestContext]) {
       const rule = context?.rules?.[0];
-      expect(rule?.content).toContain("routed through the caller's tools and permissions");
+      expect(rule?.content).toContain("Native read, search, shell requests are routed through the caller's tools and permissions");
+      expect(rule?.content).not.toContain("cannot preserve partial-file metadata");
       expect(rule?.content).toContain("Native mutation, fetch");
       expect(rule?.content).not.toContain("Do not invoke Cursor-native tools");
       expect(rule?.type?.global).toBeDefined();
@@ -204,8 +205,7 @@ describe("Cursor request budgets", () => {
     }), "conversation-tool-alias");
     const wireTools = runRequest(plan).mcpTools?.mcpTools ?? [];
 
-    expect(wireTools).toHaveLength(1);
-    expect(wireTools[0]?.toolName).toBe("read_file");
+    expect(wireTools.map((entry) => entry.toolName)).toEqual(["read_file"]);
     expect(plan.redirectTools.find((tool) => tool.clientName === "Read")?.toolName)
       .toMatch(/^cc_read_[a-f0-9]{8}$/);
   });
@@ -224,6 +224,7 @@ describe("Cursor request budgets", () => {
 
     expect(toolSearchWireName).toMatch(/^cc_tool_search_[a-f0-9]{8}$/);
     expect(initialNames).toHaveLength(1);
+    expect(initialNames.some((name) => name.startsWith("cc_read_"))).toBe(false);
     expect(initialNames).not.toContain("mcp__fleet__wiki_read");
     const initialRule = encodedRunRequest(initialPlan).action?.userMessageAction?.requestContext?.rules?.[0]?.content;
     expect(initialRule).toContain(`Use \`${toolSearchWireName}\` for deferred tools.`);
@@ -261,7 +262,7 @@ describe("Cursor request budgets", () => {
     expect(continuationNames).not.toContain("mcp__fleet__wiki_resolve");
   });
 
-  it("keeps deferred redirect tools local instead of forcing their schemas onto the wire", () => {
+  it("keeps native redirect schemas local instead of forcing duplicates onto the wire", () => {
     const tools = [
       tool("ToolSearch"),
       { ...tool("Read"), defer_loading: true },
@@ -285,7 +286,7 @@ describe("Cursor request budgets", () => {
     ]));
   });
 
-  it("puts a redirect tool back on the wire when the caller explicitly selects it", () => {
+  it("keeps an explicitly selected caller Read on the wire", () => {
     const plan = buildCursorRunPlan(request({
       tools: [tool("Read"), tool("Grep")],
       tool_choice: { type: "function", name: "Read" },
