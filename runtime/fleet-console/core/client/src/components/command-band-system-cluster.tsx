@@ -283,11 +283,17 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
 
   /**
    * 집 주소는 늦게 도착할 수 있고, 그 전에 누른 칩은 이 콘솔의 판을 편다. 주소가 도착해 이
-   * 콘솔이 목록의 주인이 아니게 되면 그 판은 남의 목록이므로 걷는다 — 다시 누르면 집의 것이 온다.
+   * 콘솔이 목록의 주인이 아니게 되면 그 판은 남의 목록이다 — 걷고, 사용자가 누른 뜻대로 집에게
+   * 목록을 청한다. 걷기만 하면 그 누름은 아무 일도 일어나지 않은 채 사라진다.
+   *
+   * 이 자리에 닿는 길은 그 어긋남 하나뿐이다. 주소를 알고 있었다면 칩이 처음부터 여기로 보냈고,
+   * 집이 펼친 목록에서는 `pickerHome`이 서지 않는다.
    */
   useEffect(() => {
-    if (pickerHome !== null) setOpen(false);
-  }, [pickerHome]);
+    if (pickerHome === null || !open) return;
+    setOpen(false);
+    location.assign(pickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin));
+  }, [pickerHome, open, currentOrigin]);
 
   // 집을 떠나 있으면 목록이 비어 보여도 칩은 남는다 — 그 칩이 돌아가는 유일한 문이다.
   if (!inPicker && pickerHome === null && nearby.length === 0 && hosts.length === 0) return null;

@@ -276,10 +276,18 @@ describe("host box on a loopback console that is not home", () => {
 
     // 그새 눌러 이 콘솔의 판이 열렸더라도, 집 주소가 도착하면 그 판은 남의 목록이므로 걷힌다.
     await act(async () => { document.querySelector<HTMLButtonElement>(".host-switcher-chip")!.click(); });
+    expect(assign).not.toHaveBeenCalled();
+
     await act(async () => { tellHome(Response.json({ homeOrigin: HOME })); await Promise.resolve(); });
     await act(async () => { await Promise.resolve(); });
 
     expect(rows()).toHaveLength(0);
+    // 누름은 사라지지 않는다 — 뜻대로 집의 목록을 청한다.
+    expect(assign).toHaveBeenCalledOnce();
+    const url = new URL(assign.mock.calls[0]![0] as string);
+    expect(url.origin).toBe(HOME);
+    expect(url.searchParams.get("desktop-surface")).toBe("host-picker");
+    expect(url.searchParams.get("at")).toBe(GUEST);
   });
 
   /** 집이 그린 판에서도 손님 줄은 손님의 이름을 달아야 한다. */
