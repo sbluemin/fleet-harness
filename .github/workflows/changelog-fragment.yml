@@ -45,23 +45,49 @@ jobs:
           else
             has_no_changelog=false
           fi
+          # Doctrine requires a correction to an unreleased change to be folded into that change's pending
+          # fragment (.changelog.d/AGENTS.md, Release Baseline). Blanket protection would make that impossible,
+          # so an amendment is allowed when it is declared twice over: the label states the intent, and one
+          # Changelog-Amend line per fragment names exactly which note is being rewritten. An accidental edit
+          # still fails, because it names nothing.
+          if node -e "const labels = JSON.parse(process.env.LABELS_JSON); process.exit(labels.some((label) => label.name === 'changelog-amend') ? 0 : 1);"; then
+            has_changelog_amend=true
+          else
+            has_changelog_amend=false
+          fi
+          declared_amendments=$(printf '%s\n' "$PR_BODY" | tr -d '\r' \
+            | sed -n 's/^Changelog-Amend:[[:space:]]*//p' | sed 's/[[:space:]]*$//' | grep -v '^$' || true)
 
           # Every fragment already on the base branch belongs to another change that has not been released yet.
-          # This PR must leave all of them byte-identical: an edit overwrites another branch's release note (two
-          # branch names can slug to one filename), and a delete or rename removes it outright. Compare each base
-          # fragment across the range rather than filtering by change type, so M, D and R are all caught.
+          # This PR must leave all of them byte-identical unless it declares an amendment: an undeclared edit
+          # overwrites another branch's release note (two branch names can slug to one filename), and a delete or
+          # rename removes it outright. Compare each base fragment across the range rather than filtering by
+          # change type, so M, D and R are all caught.
           base_fragments=$(git ls-tree -r --name-only "$merge_base" -- .changelog.d | fragment_filter)
           disturbed=""
+          amended=""
           while IFS= read -r fragment; do
             [ -n "$fragment" ] || continue
-            if ! git diff --quiet "$merge_base" "$HEAD_REF" -- "$fragment"; then
-              disturbed="${disturbed}${fragment}"$'\n'
+            git diff --quiet "$merge_base" "$HEAD_REF" -- "$fragment" && continue
+            # An amendment rewrites a note; it never removes one. Requiring the path to still exist at HEAD keeps
+            # deletes and renames on the failing path even when the file is declared.
+            if [ "$has_changelog_amend" = "true" ] \
+              && git cat-file -e "$HEAD_REF:$fragment" 2>/dev/null \
+              && printf '%s\n' "$declared_amendments" | grep -Fxq "${fragment#.changelog.d/}"; then
+              amended="${amended}${fragment}"$'\n'
+              continue
             fi
+            disturbed="${disturbed}${fragment}"$'\n'
           done <<< "$base_fragments"
+          if [ -n "$amended" ]; then
+            printf 'Declared changelog amendments:\n%s' "$amended"
+          fi
           if [ -n "$disturbed" ]; then
             echo "::error::This PR changes a changelog fragment that already exists on the base branch, which discards another change's unreleased release note."
             printf '%s' "$disturbed"
             echo "Leave other branches' fragments untouched. If the name collides with yours, rename this branch so it derives a free filename, then rename your fragment and its branch: frontmatter to match."
+            echo "To correct an unreleased note on purpose, apply the changelog-amend label AND add one line per fragment to the PR body:"
+            echo "  Changelog-Amend: <fragment-file-name>.md"
             exit 1
           fi
 
