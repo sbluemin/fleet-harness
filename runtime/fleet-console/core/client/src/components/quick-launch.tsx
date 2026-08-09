@@ -8,7 +8,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { useT } from "../i18n/index.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { readQuickLaunchSelection, writeQuickLaunchSelection } from "../quick-launch-preferences.js";
-import { findVariantLaunchKind, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, resolveSelection } from "../quick-launch.js";
+import { findVariantLaunchKind, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, resolveSelection } from "../quick-launch.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { closeQuickLaunch, consumeQuickLaunchDraft, requestQuickLaunch, setActiveTheater } from "../store.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph } from "./launch-provider-glyphs.js";
@@ -38,7 +38,7 @@ export function QuickLaunch() {
   const [catalog, setCatalog] = useState<readonly OperationCatalogPlugin[]>([]);
   const [prompt, setPrompt] = useState("");
   const [theaterId, setTheaterId] = useState<string | null>(null);
-  const [model, setModel] = useState<string | null>(null);
+  const [model, setModel] = useState<string | null>(QUICK_LAUNCH_DEFAULT_MODEL);
   const [effort, setEffort] = useState<string | null>(null);
   const [popover, setPopover] = useState<PopoverKind | null>(null);
   const [popoverLeft, setPopoverLeft] = useState<number | null>(null);
@@ -79,7 +79,7 @@ export function QuickLaunch() {
     setPopover(null);
     setSubmitting(false);
     setTheaterId(rememberedTheater ?? state.activeTheaterId ?? theaters[0]?.id ?? null);
-    setModel(remembered.model);
+    setModel(remembered.model ?? QUICK_LAUNCH_DEFAULT_MODEL);
     setEffort(remembered.effort);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, state.activeTheaterId, theaters]);

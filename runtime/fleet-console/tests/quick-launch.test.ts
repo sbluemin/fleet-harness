@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
 
 import { readQuickLaunchSelection, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
-import { findVariantLaunchKind, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, resolveSelection } from "../core/client/src/quick-launch.js";
+import { findVariantLaunchKind, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, resolveSelection } from "../core/client/src/quick-launch.js";
 import { getState, removeTheater, setState } from "../core/client/src/store.js";
 import type { TheaterInfo } from "../core/client/src/types.js";
 
@@ -82,14 +82,34 @@ describe("resolveSelection", () => {
     });
   });
 
-  it("falls back to the starred row when the remembered model is no longer enabled", () => {
+  it("falls back to native Opus when the remembered model is no longer enabled", () => {
     // 설정에서 모델을 끄면 기억은 낡은 값이 된다 — 그대로 보내면 서버가 409 gateway_model_not_enabled로 거절한다.
     expect(resolveSelection(GROUPS, { model: "retired-model", effort: "high" })).toEqual({
-      model: "opus[1m]",
+      model: QUICK_LAUNCH_DEFAULT_MODEL,
       effort: null,
       modelLabel: "Opus",
       effortLabel: null,
     });
+  });
+
+  it("prefers native Opus over a starred Gateway default when nothing is remembered", () => {
+    const groups = [
+      {
+        id: "gateway",
+        label: "Gateway",
+        rows: [{ id: "kimi", label: "Kimi", starred: true, launch: { model: "kimi" } }],
+      },
+      ...GROUPS,
+    ];
+    expect(resolveSelection(groups, { model: null, effort: null })).toMatchObject({
+      model: QUICK_LAUNCH_DEFAULT_MODEL,
+      modelLabel: "Opus",
+    });
+  });
+
+  it("uses the starred row only when native Opus is absent", () => {
+    const groups = [{ id: "gateway", label: "Gateway", rows: [{ id: "kimi", label: "Kimi", starred: true, launch: { model: "kimi" } }] }];
+    expect(resolveSelection(groups, { model: null, effort: null })).toMatchObject({ model: "kimi", modelLabel: "Kimi" });
   });
 
   it("drops a remembered effort the model's ladder no longer exposes", () => {
@@ -110,8 +130,8 @@ describe("resolveSelection", () => {
     });
   });
 
-  it("uses the starred row when nothing is remembered", () => {
-    expect(resolveSelection(GROUPS, { model: null, effort: null })).toMatchObject({ model: "opus[1m]", effort: null });
+  it("uses native Opus when nothing is remembered", () => {
+    expect(resolveSelection(GROUPS, { model: null, effort: null })).toMatchObject({ model: QUICK_LAUNCH_DEFAULT_MODEL, effort: null });
   });
 
   it("returns an empty selection when the catalog has no rows", () => {

@@ -171,6 +171,30 @@ describe("EffortTrack", () => {
     document.body.removeEventListener("keydown", onMenuKey);
   });
 
+  it("previews the selectable rung that a pointer action would choose", () => {
+    const onChange = render(row(), "low");
+    Object.defineProperties(track(), {
+      getBoundingClientRect: {
+        configurable: true,
+        value: () => ({ left: 0, right: 126, top: 0, bottom: 26, width: 126, height: 26, x: 0, y: 0, toJSON: () => ({}) }),
+      },
+      hasPointerCapture: { configurable: true, value: () => false },
+    });
+
+    // medium(2) 자리를 가리켜도 이 모델이 실제로 고를 수 있는 가까운 low(1)를 비춘다.
+    act(() => track().dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: 53 })));
+    expect(stops().map((mark) => mark.dataset.previewed ?? null)).toEqual([null, "true", null, null, null, null]);
+    expect(onChange).not.toHaveBeenCalled();
+
+    // high(3)은 선택 가능하므로 그 자리 자체가 preview다.
+    act(() => track().dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: 73 })));
+    expect(stops().map((mark) => mark.dataset.previewed ?? null)).toEqual([null, null, null, "true", null, null]);
+    expect(onChange).not.toHaveBeenCalled();
+
+    act(() => track().dispatchEvent(new PointerEvent("pointerout", { bubbles: true })));
+    expect(stops().every((mark) => mark.dataset.previewed === undefined)).toBe(true);
+  });
+
   it("marks only the top rung as the one at maximum", () => {
     render(row(), "max");
     expect(track().dataset.atMax).toBe("true");

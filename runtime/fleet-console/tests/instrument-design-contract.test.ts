@@ -1635,6 +1635,26 @@ describe("Instrument core design contract", () => {
   });
 });
 
+describe("Effort track interaction grammar", () => {
+  it("pins the shared effort track's pointer preview motion", () => {
+    const components = source("styles/components.css");
+    const quickLaunch = source("components/quick-launch.tsx");
+    const canvasMenu = source("canvas/canvas-context-menu.tsx");
+    const preview = components.match(/\.effort-track-stop\[data-previewed="true"\] \{[^}]*\}/)?.[0] ?? "";
+    const knobHover = components.match(/\.effort-track:hover \.effort-track-knob \{[^}]*\}/)?.[0] ?? "";
+
+    // 한 공유 계기가 Quick Launch와 캔버스 실행 메뉴 양쪽의 hover 문법을 소유한다.
+    expect(quickLaunch).toContain("<EffortTrack");
+    expect(canvasMenu).toContain("<EffortTrack");
+    expect(preview).toContain("background: var(--brass)");
+    expect(preview).toContain("transform: scale(3)");
+    expect(knobHover).toContain("transform: scale(1.1)");
+    // 모션을 줄인 환경에서도 어떤 단을 가리키는지는 정적인 brass ring으로 남는다.
+    expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.effort-track:hover \.effort-track-knob,[\s\S]*\.effort-track-stop\[data-previewed="true"\] \{\s*transform: none;/);
+    expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.effort-track-stop\[data-previewed="true"\] \{\s*box-shadow: 0 0 0 2px var\(--brass\);/);
+  });
+});
+
 // War Room Quick-Look은 확대창 안의 프리뷰를 화면상 실물 크기(1:1)로 세운다. 배율 산술은
 // triage-deck-quicklook.test.ts가 고정하지만, 산술이 맞아도 배선이 끊기거나 전이 소유가 옮겨가면
 // 화면은 조용히 예전 동작 — 같은 축소판이 커지기만 하는 확대 — 으로 돌아간다.
