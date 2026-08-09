@@ -17,7 +17,10 @@ describe("Quick Launch composer layout", () => {
 
   it("clamps the downward popover to the viewport while retaining its cap", () => {
     const pop = ruleFor(".quick-launch-pop");
-    expect(pop).toMatch(/max-height:\s*min\(340px,\s*calc\(50vh\s*-\s*64px\s*-\s*var\(--space-2\)\s*-\s*var\(--space-5\)\)\);/u);
+    expect(pop).toMatch(/max-height:\s*min\(340px,\s*var\(--quick-launch-pop-max-height,\s*340px\)\);/u);
+    expect(quickLaunch).toMatch(/getBoundingClientRect\(\)\.top/iu);
+    expect(quickLaunch).toMatch(/window\.innerHeight\s*-\s*top\s*-\s*safePadding/u);
+    expect(quickLaunch).not.toMatch(/50vh|64px/u);
     expect(pop).toMatch(/overflow-y:\s*auto;/u);
   });
 
@@ -73,8 +76,8 @@ describe("Quick Launch effort surface", () => {
   });
 
   it("writes the normalized model and effort at selection time", () => {
-    expect(quickLaunch).toMatch(/const nextEffort = resolveRowEffort\(row, effort\);[\s\S]*setModel\(nextModel\);[\s\S]*setEffort\(nextEffort\);[\s\S]*writeQuickLaunchSelection\(\{ theaterId, model: nextModel, effort: nextEffort \}\);/u);
-    expect(quickLaunch).toMatch(/onChange=\{\(nextEffort\) => \{[\s\S]*setEffort\(nextEffort\);[\s\S]*writeQuickLaunchSelection\(\{ theaterId, model, effort: nextEffort \}\);/u);
+    expect(quickLaunch).toMatch(/const nextEffort = resolveRowEffort\(row, effort\);[\s\S]*setModel\(nextModel\);[\s\S]*setEffort\(nextEffort\);[\s\S]*writeQuickLaunchModelEffort\(nextModel, nextEffort\);/u);
+    expect(quickLaunch).toMatch(/onChange=\{\(nextEffort\) => \{[\s\S]*setEffort\(nextEffort\);[\s\S]*writeQuickLaunchModelEffort\(model, nextEffort\);/u);
   });
 
   it("waits for the seeded model to resolve against the catalog before submission", () => {

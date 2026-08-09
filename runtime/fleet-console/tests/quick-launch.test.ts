@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
 
-import { readQuickLaunchSelection, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
+import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
 import { findVariantLaunchKind, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, resolveSelection } from "../core/client/src/quick-launch.js";
 import { getState, removeTheater, setState } from "../core/client/src/store.js";
 import type { TheaterInfo } from "../core/client/src/types.js";
@@ -152,6 +152,18 @@ describe("quick launch preferences", () => {
   it("round-trips the last selection", () => {
     writeQuickLaunchSelection({ theaterId: "t1", model: "opus[1m]", effort: "xhigh" });
     expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "xhigh" });
+  });
+
+  it("updates model and effort without replacing the last launched Theater", () => {
+    writeQuickLaunchSelection({ theaterId: "launched", model: "opus[1m]", effort: "high" });
+
+    writeQuickLaunchModelEffort("codex--gpt-5.6-luna-fast", "max");
+
+    expect(readQuickLaunchSelection()).toEqual({
+      theaterId: "launched",
+      model: "codex--gpt-5.6-luna-fast",
+      effort: "max",
+    });
   });
 
   it("rewrites a leftover bare opus selection when it is read", () => {
