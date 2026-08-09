@@ -56,11 +56,13 @@ function renderRow(options: {
     root?.render(createElement(AiGatewayModelRow, {
       model: model(options.levels ?? ["low", "medium", "high"]),
       ...(options.exposedEfforts ? { exposedEfforts: options.exposedEfforts } : {}),
+      hostOnly: false,
       isDefault: false,
       saving: options.saving ?? false,
       onRemove: () => {},
       onSetDefault: () => {},
       onSetEfforts: (efforts) => picked.push([...efforts]),
+      onToggleHostOnly: () => {},
     }));
   });
   return { host: container, picked };

@@ -193,7 +193,7 @@ describe("Session Analyst Evidence Pulse", () => {
       operationId: "chat-test",
       hiddenCompanionPanelIds: [ANALYST_ARTIFACTS_COMPANION_ID],
       onSetCompanionPanelVisible: setCompanionPanelVisible,
-    } as OperationRenderContext;
+    } as unknown as OperationRenderContext;
     storeState = analysisReducer(initialAnalysisState, { type: "sending", started: true, text: "Publish this", now: Date.now() });
     const { container, root } = renderPanel(context);
 
@@ -538,7 +538,7 @@ describe("Session Analyst Evidence Pulse", () => {
       hiddenCompanionPanelIds: [ANALYST_ARTIFACTS_COMPANION_ID],
       onRequestCompanions,
       onSetCompanionPanelVisible,
-    } as OperationRenderContext);
+    } as unknown as OperationRenderContext);
     const textarea = container.querySelector("textarea")!;
 
     act(() => textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
@@ -564,7 +564,7 @@ describe("Session Analyst Evidence Pulse", () => {
       hiddenCompanionPanelIds: [],
       onRequestCompanions,
       onSetCompanionPanelVisible,
-    } as OperationRenderContext);
+    } as unknown as OperationRenderContext);
     const textarea = container.querySelector("textarea")!;
 
     act(() => textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));

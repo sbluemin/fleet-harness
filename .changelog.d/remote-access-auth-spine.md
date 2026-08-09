@@ -14,8 +14,8 @@ branch: remote-access-auth-spine
   ko: 원격 리스너의 주소를 브라우저로 열면 인증 오류만 돌려주는 대신, 액세스 링크가 어떻게 생겼고 어디에 붙여넣는지 안내합니다.
 
 #### Changed
-- Access links are now a single `fleet://join?code=...` string. The address, the credential, the fingerprint, and the console's name travel inside one encoded envelope, so pasting a link into a chat no longer exposes a private address.
-  ko: 액세스 링크가 이제 `fleet://join?code=...` 한 줄입니다. 주소·자격·지문·Console 이름이 인코딩된 봉투 하나에 함께 들어가므로, 링크를 대화창에 붙여넣어도 사설 주소가 드러나지 않습니다.
+- Access links are now a single `fleet://join?code=...` string. The address, the credential, the fingerprint, and the console's name travel inside one encoded envelope, so a pasted link no longer spells a private address out on screen. The envelope is encoding, not encryption: anyone holding the string can read the address back out and use the credential, so treat a link as a secret and send it over a channel you trust.
+  ko: 액세스 링크가 이제 `fleet://join?code=...` 한 줄입니다. 주소·자격·지문·Console 이름이 인코딩된 봉투 하나에 함께 들어가므로, 붙여넣은 링크가 사설 주소를 화면에 그대로 적어 놓지 않습니다. 다만 이 봉투는 암호화가 아니라 인코딩입니다. 문자열을 가진 사람은 주소를 되읽고 자격을 쓸 수 있으므로, 링크는 비밀로 다루고 믿을 수 있는 경로로만 전달하세요.
 - Console sessions now open through a single-use grant on both the loopback and remote listeners, and each listener judges the request that arrived on it: a grant issued for one never opens a session on the other.
   ko: Console 세션은 이제 루프백과 원격 양쪽에서 1회용 grant로 열리며, 각 리스너는 자기에게 도착한 요청만 판정합니다 — 한쪽에서 발급된 grant는 다른 쪽에서 세션을 열지 못합니다.
 

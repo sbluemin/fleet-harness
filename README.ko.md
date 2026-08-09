@@ -80,9 +80,9 @@ Fleet은 선언된 제품 표면에서 실제 CLI 바이너리를 실행하고 �
 | 프로바이더 | 게이트웨이로 닿는 모델 |
 |---|---|
 | **Codex** | GPT-5.6 Sol · Terra · Luna, 각각 Fast 변형 |
-| **Cursor** | Composer 2.5 · Grok 4.5 · GPT-5.6 Sol · Claude Opus 5 · Claude Fable 5 · Kimi K3 · Auto |
-| **Moonshot-Kimi** | Kimi K3, K3 256K |
-| **OpenCode** | MiniMax M3 · Qwen3 Max · DeepSeek V4 · GLM-5 · Kimi K3 · MiMo · Grok 4.5 · GPT-5.6 Luna |
+| **Cursor** | Composer 2.5 · Composer 2.5 Fast · Grok 4.5 · Grok 4.5 Fast · GPT-5.6 Sol · Claude Opus 5 · Claude Fable 5 · Kimi K3 · Kimi K3 1M · Auto |
+| **Moonshot-Kimi** | Kimi K3 1M, K3 256K |
+| **OpenCode** | MiniMax M3 · Qwen3.8 Max · DeepSeek V4 Flash · DeepSeek V4 Pro · GLM-5.2 · Kimi K3 · MiMo V2.5 · MiMo V2.5 Pro · HY3 · Grok 4.5 · GPT-5.6 Luna |
 
 무엇을 노출할지는 Settings → Plugins → Terminal → **AI Gateway**에서 고릅니다. 여기서 켠 모델만 Claude Code의 `/model` 피커와 실행 기본값에 나타나며, 모델을 펼치면 어떤 추론 강도로 제공할지까지 지정할 수 있습니다.
 

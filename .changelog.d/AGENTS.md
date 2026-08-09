@@ -20,6 +20,7 @@ Work no user perceives — refactors, boundary gates, doctrine and prompt edits,
 - The fragment declares its own branch in `branch:` frontmatter, and the compiler rejects a filename that disagrees with it. Renaming a branch means renaming the file and correcting the frontmatter in the same commit.
 - The branch exists before the work does, so the fragment belongs in the same commit as the change it describes.
 - Explicitly authorized direct `canary` work writes `canary.md`, which carries no frontmatter. Append to an existing `canary.md`; do not overwrite another direct change.
+- A fragment already on the base branch belongs to another change and stays byte-identical by default. Folding a correction into someone's pending fragment — which Release Baseline below requires — is the one exception, and it must be declared twice: apply the `changelog-amend` label and add one `Changelog-Amend: <file-name>.md` line to the PR body per fragment you rewrite. An amendment only rewrites; deleting or renaming a base fragment stays refused.
 
 ## Fragment Body
 

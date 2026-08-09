@@ -271,6 +271,7 @@ function operation() {
     theaterId: "theater",
     title: "Ready test",
     payload: {},
+    geometry: null,
     ts: { createdAt: 1, updatedAt: 1 },
   };
 }

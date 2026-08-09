@@ -7,7 +7,6 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-detect.js";
 import { createConsoleLock } from "../core/host/lock.js";
 import { normalizeFingerprint } from "../core/host/remote-identity.js";
 import { parseAccessLink } from "../core/host/access-link.js";
@@ -883,7 +882,6 @@ async function startFixture(options: { readonly remote: boolean; readonly bindHo
     port: 0,
     version: "test",
     agentRuntime: createFakeConsoleRuntime() as never,
-    agentCliDetector: { detect: async () => [] } satisfies AgentCliDetector,
     dataDir: dataRoot,
     systemFonts: { getFonts: async () => [] },
   });

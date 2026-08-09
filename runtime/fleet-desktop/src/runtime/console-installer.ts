@@ -36,6 +36,8 @@ export interface InstallConsoleOptions {
   readonly version: string;
   readonly nodeRuntimeVersion: string;
   readonly platform: NodeJS.Platform;
+  /** 부재 = 현재 프로세스의 아키텍처. platform과 같이 주입 가능해야 호스트 아키텍처와 무관하게 검증된다. */
+  readonly architecture?: string;
   readonly dependencies?: ConsoleInstallerDependencies;
 }
 
@@ -69,7 +71,7 @@ export async function installConsole(options: InstallConsoleOptions): Promise<In
       await dependencies.fileSystem.rm(npmGlobalConfiguration);
     }
     await normalizePrefixInstallation(staging, options.packageName, dependencies.fileSystem);
-    await repairConsoleNativeExecutables(staging, options.platform, process.arch, dependencies.fileSystem);
+    await repairConsoleNativeExecutables(staging, options.platform, options.architecture ?? process.arch, dependencies.fileSystem);
     await verifyInstallation(staging, options.version, options.nodeRuntimeVersion, dependencies.fileSystem);
     await replaceLatest(options.paths.latest, staging, dependencies.fileSystem);
     return { root: options.paths.latest, version: options.version };

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { deriveWhatsNewOverview, deriveWhatsNewTabs, filterWhatsNewSections, isWhatsNewTabAvailable } from "../core/client/src/whatsnew-tabs.js";
 import type { ReleaseNotes } from "../core/client/src/types.js";
@@ -8,6 +8,16 @@ function note(items: ReleaseNotes["sections"][number]["items"]): ReleaseNotes {
 }
 
 describe("What's New tabs", () => {
+  // 탭 라벨은 auto 언어 해석을 타므로 `navigator.language`를 읽는다. Node에도 `navigator`가 있어
+  // 고정하지 않으면 개발기의 OS 로케일이 그대로 새어 들어와, 같은 커밋이 기기마다 다르게 실패한다.
+  beforeEach(() => {
+    vi.stubGlobal("navigator", { language: "en-US" });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("derives fixed-order product tabs without reading package tags", () => {
     const release = note([
       { packageTags: ["fleet-cli"], text: "Console provenance", product: "fleet-console" },

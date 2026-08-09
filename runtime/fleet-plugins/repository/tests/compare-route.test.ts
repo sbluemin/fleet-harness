@@ -193,7 +193,12 @@ describe("compare route", () => {
         {} as never,
         makeContext(plainDir, { theaterId: "theater", base: "refs/heads/a", head: "refs/heads/b" }, writes),
       );
-      expect(writes).toEqual([{ status: 422, payload: { error: "no_git_repo" } }]);
+      // no_git_repo 판정은 git이 내는 산문을 문자열로 훑어 정한다. 그 문장은 git 버전과 환경에
+      // 따라 달라지므로, 어긋났을 때 무엇을 보고 그렇게 판정했는지 실패 메시지에 실어 둔다.
+      const observed = await runGit(["diff", "--relative", "--name-status", "--end-of-options", "refs/heads/a...refs/heads/b", "--", "."], { cwd: plainDir })
+        .then(() => "resolved")
+        .catch((error: { code?: string; exitCode?: number; stderr?: string }) => `${error.code}/exit=${error.exitCode} :: ${String(error.stderr ?? "").split("\n")[0]}`);
+      expect(writes, `cwd=${plainDir} git=${observed}`).toEqual([{ status: 422, payload: { error: "no_git_repo" } }]);
     } finally {
       await fs.rm(plainDir, { recursive: true, force: true });
     }

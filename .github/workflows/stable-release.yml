@@ -27,7 +27,36 @@ permissions:
   contents: write
 
 jobs:
+  # 릴리스 대상 revision을 한 번만 해석해 아래 두 잡에 같은 값으로 넘긴다. 이벤트 SHA가 아니라
+  # 실행 시점의 origin/main 끝을 쓰므로, 연달아 올라온 커밋을 한 릴리스로 묶던 기존 동작은 그대로다.
+  # 이 잡이 없으면 verify는 이벤트 revision을, release는 자기 시작 시점의 origin/main을 각각 집어
+  # 검증한 커밋과 게시하는 커밋이 어긋난다.
+  resolve:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.target.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: target
+        run: |
+          git fetch origin main
+          echo "sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
+
+  # 되돌릴 수 없는 npm publish 앞에 워크스페이스 전체 타입체크·테스트를 세운다. PR·push에서
+  # 상시 도는 것과 같은 잡을 재사용하므로, 여기서 처음 빨개지는 일은 main에 이미 빨간 커밋이
+  # 올라온 경우뿐이다. 검증 대상은 릴리스 커밋 직전의 main이며, 릴리스 커밋 자체는 버전 필드와
+  # 컴파일된 changelog만 바꾼다.
+  verify:
+    needs: resolve
+    uses: ./.github/workflows/workspace-verify.yml
+    with:
+      ref: ${{ needs.resolve.outputs.sha }}
+
   release:
+    needs: [resolve, verify]
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     permissions:
@@ -46,10 +75,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Sync to latest main
+      # verify가 검증한 그 revision에 고정한다. 여기서 origin/main을 다시 집으면 검증 창(수 분)
+      # 사이에 올라온 미검증 커밋을 그대로 게시하게 된다. 그 사이 main이 더 나아갔다면 아래
+      # "Commit release changes"의 push가 non-fast-forward로 거절되고, 그 커밋이 띄운 자기 런이
+      # 검증부터 다시 밟는다 — 미검증 게시보다 멈추는 쪽이 옳다.
+      - name: Pin to the verified revision
+        env:
+          VERIFIED_SHA: ${{ needs.resolve.outputs.sha }}
         run: |
           git fetch origin main --tags
-          git checkout -B main origin/main
+          git checkout -B main "$VERIFIED_SHA"
 
       - name: Stop on release commit
         id: guard
@@ -276,22 +311,54 @@ jobs:
       # 이 잡은 릴리스 핵심 책임(버전 산정·changelog·커밋·태그·GitHub Release)만 담당한다.
 
       - name: Commit release changes
+        id: commit
         if: steps.version.outputs.should_release == 'true' && steps.release_state.outputs.release_committed != 'true'
         env:
           NEXT_TAG: ${{ steps.version.outputs.next_tag }}
+          VERIFIED_SHA: ${{ needs.resolve.outputs.sha }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A CHANGELOG.md CHANGELOG.ko.md .changelog.d
           git ls-files | grep -E '(^|/)package\.json$' | xargs git add
           git commit -m "chore(release): $NEXT_TAG"
-          git push origin HEAD:main
+          # 검증이 도는 동안 main이 나아가면 이 push가 거절된다. 그 사이 커밋이 위 paths-ignore가
+          # 이미 릴리스 산출물과 무관하다고 선언한 경로뿐이라면 릴리스 커밋을 그 위로 옮겨 다시
+          # 민다 — 그런 push는 자기 런을 띄우지 않으므로 여기서 멈추면 유효한 릴리스가 다음 코드
+          # push까지 발이 묶인다. 하나라도 다른 경로가 섞였다면 그 코드는 이 런이 검증하지 않았고,
+          # 그 커밋이 띄운 자기 런이 검증부터 다시 밟으므로 여기서 멈춘다.
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              # 민 커밋을 여기서 붙들어 둔다. 아래 스텝들이 origin/main을 다시 집으면, push 직후에
+              # 올라온 미검증 커밋이 태그·npm·Desktop 산출물로 그대로 나간다.
+              echo "release_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            git fetch origin main
+            if ! node scripts/release-tip-guard.mjs "$VERIFIED_SHA" origin/main; then
+              echo "::error::main advanced with changes this run did not verify or with release notes it did not compile. Re-run all jobs to resolve, verify and release the new tip."
+              exit 1
+            fi
+            echo "main advanced only on release-irrelevant paths; replaying the release commit on the new tip (attempt $attempt)."
+            if ! git rebase origin/main; then
+              # 중간 상태로 남겨 두면 이어지는 스텝이 반쯤 rebase된 트리를 릴리스한다.
+              git rebase --abort || true
+              echo "::error::Replaying the release commit onto the new tip conflicted. Re-run all jobs to resolve, verify and release the new tip."
+              exit 1
+            fi
+          done
+          echo "::error::Could not land the release commit after 3 attempts."
+          exit 1
 
       - name: Sync release commit from main
         if: steps.version.outputs.should_release == 'true'
+        env:
+          PUSHED_SHA: ${{ steps.commit.outputs.release_sha }}
         run: |
           git fetch origin main --tags
-          git checkout -B main origin/main
+          # 이 런이 릴리스 커밋을 밀었다면 그 커밋에 그대로 선다. origin/main을 다시 해석하는 것은
+          # 릴리스 커밋이 이미 올라가 있는 재실행 경로에만 남긴다.
+          git checkout -B main "${PUSHED_SHA:-origin/main}"
 
       - name: Resolve release commit
         if: steps.version.outputs.should_release == 'true'

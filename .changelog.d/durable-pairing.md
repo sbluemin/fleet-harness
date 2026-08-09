@@ -11,5 +11,5 @@ branch: durable-pairing
 
 ### fleet-desktop
 #### Added
-- A saved console reopens without a fresh access link. The link is spent the first time, and afterwards the window reconnects on its own, so a console that took control back, went idle, or restarted is reachable again from the host list. Only a console that removed this device asks for a new link.
-  ko: 저장된 Console을 다시 열 때 새 액세스 링크가 필요하지 않습니다. 링크는 처음 한 번만 쓰이고 이후에는 창이 스스로 다시 접속하므로, 제어권을 회수했거나 유휴로 끊겼거나 재시작한 Console도 호스트 목록에서 그대로 다시 열립니다. 새 링크를 요구하는 것은 이 기기를 삭제한 Console뿐입니다.
+- A saved console reopens without a fresh access link. The link is spent the first time, and afterwards the window reconnects on its own, so a console that took control back, went idle, or restarted is reachable again from the host list. A new link is needed when the console removed this device, when it took a new certificate, or when this device has stayed away from it for about a year.
+  ko: 저장된 Console을 다시 열 때 새 액세스 링크가 필요하지 않습니다. 링크는 처음 한 번만 쓰이고 이후에는 창이 스스로 다시 접속하므로, 제어권을 회수했거나 유휴로 끊겼거나 재시작한 Console도 호스트 목록에서 그대로 다시 열립니다. 새 링크가 필요한 경우는 그 Console이 이 기기를 삭제했을 때, 새 인증서를 갖게 됐을 때, 그리고 이 기기가 약 1년 동안 그 Console을 열지 않았을 때입니다.
