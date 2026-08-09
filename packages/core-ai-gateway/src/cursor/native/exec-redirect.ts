@@ -391,9 +391,10 @@ function grepShellArguments(
 
 const CURSOR_GREP_RECEIPT_PREFIX = "FLEET_CURSOR_GREP_V1:";
 const CURSOR_GREP_RECEIPT_SCRIPT = String.raw`
-const {spawnSync}=require("node:child_process");
+const {spawn}=require("node:child_process");
+const {createInterface}=require("node:readline");
 const emit=(value)=>process.stdout.write("${CURSOR_GREP_RECEIPT_PREFIX}"+Buffer.from(JSON.stringify(value)).toString("base64url"));
-try {
+(async()=>{try {
   const input=JSON.parse(Buffer.from(process.argv[1],"base64url").toString("utf8"));
   const args=["--json","--color=never","--line-number"];
   if(input.caseInsensitive)args.push("--ignore-case");
@@ -402,12 +403,15 @@ try {
   if(input.contextBefore)args.push("--before-context",String(input.contextBefore));
   if(input.contextAfter)args.push("--after-context",String(input.contextAfter));
   if(input.context)args.push("--context",String(input.context));
-  if(input.sort&&input.sort!=="none")args.push(input.sortAscending===false?"--sortr":"--sort",input.sort);
   args.push("--regexp",input.pattern,"--",input.path);
-  const result=spawnSync("rg",args,{encoding:"utf8",maxBuffer:32*1024*1024});
-  if(result.error)throw result.error;
-  if(result.signal)throw new Error("rg terminated by signal "+result.signal);
-  if(result.status!==0&&result.status!==1)throw new Error((result.stderr||"rg failed with exit "+result.status).trim());
+  const child=spawn("rg",args,{stdio:["ignore","pipe","pipe"]});
+  let stderr="";
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data",(chunk)=>{if(stderr.length<16384)stderr+=chunk.slice(0,16384-stderr.length);});
+  const completion=new Promise((resolve,reject)=>{
+    child.once("error",reject);
+    child.once("close",(code,signal)=>signal?reject(new Error("rg terminated by signal "+signal)):resolve(code));
+  });
   const byteBudget=12*1024;
   let retainedBytes=0;
   let clientTruncated=false;
@@ -422,33 +426,37 @@ try {
     if(retainedBytes+bytes>byteBudget){clientTruncated=true;return;}
     retainedBytes+=bytes;target.push(value);
   };
-  for(const line of result.stdout.split(/\r?\n/)){
-    if(!line)continue;
-    const event=JSON.parse(line);
-    if(event.type!=="match"&&event.type!=="context")continue;
-    const data=event.data||{};
-    if(!data.path||typeof data.path.text!=="string"||!data.lines||typeof data.lines.text!=="string")throw new Error("rg returned non-text search data");
-    const file=data.path.text;
-    totalLines+=1;
-    if(event.type==="match"){
-      const count=Array.isArray(data.submatches)?data.submatches.length:0;
-      totalMatches+=count;
-      totalMatchedLines+=1;
-      counts.set(file,(counts.get(file)||0)+count);
+  try {
+    for await(const line of createInterface({input:child.stdout,crlfDelay:Infinity})){
+      if(!line)continue;
+      const event=JSON.parse(line);
+      if(event.type!=="match"&&event.type!=="context")continue;
+      const data=event.data||{};
+      if(!data.path||typeof data.path.text!=="string"||!data.lines||typeof data.lines.text!=="string")throw new Error("rg returned non-text search data");
+      const file=data.path.text;
+      totalLines+=1;
+      if(event.type==="match"){
+        const count=Array.isArray(data.submatches)?data.submatches.length:0;
+        totalMatches+=count;
+        totalMatchedLines+=1;
+        counts.set(file,(counts.get(file)||0)+count);
+      }
+      if(input.outputMode==="content"){
+        const fullContent=data.lines.text.replace(/\r?\n$/,"");
+        const content=fullContent.slice(0,2000);
+        retain(matches,{file,lineNumber:data.line_number,content,contentTruncated:content.length<fullContent.length,isContextLine:event.type==="context"});
+      }
     }
-    if(input.outputMode==="content"){
-      const fullContent=data.lines.text.replace(/\r?\n$/,"");
-      const content=fullContent.slice(0,2000);
-      retain(matches,{file,lineNumber:data.line_number,content,contentTruncated:content.length<fullContent.length,isContextLine:event.type==="context"});
-    }
-  }
-  for(const [file,count] of counts){
+  }catch(error){child.kill();await completion.catch(()=>undefined);throw error;}
+  const code=await completion;
+  if(code!==0&&code!==1)throw new Error((stderr||"rg failed with exit "+code).trim());
+  for(const [file] of counts){
     if(input.outputMode==="files_with_matches")retain(files,file);
   }
   const retainedCounts=[];
   if(input.outputMode==="count")for(const entry of counts)retain(retainedCounts,entry);
   emit({ok:true,outputMode:input.outputMode,files,counts:retainedCounts,matches,totalFiles:counts.size,totalLines,totalMatchedLines,totalMatches,clientTruncated});
-}catch(error){emit({ok:false,error:error instanceof Error?error.message:String(error)});}
+}catch(error){emit({ok:false,error:error instanceof Error?error.message:String(error)});}})();
 `.trim();
 
 function shellArguments(
