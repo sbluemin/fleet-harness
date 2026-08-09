@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type SpawnOptions } from "node:child_process";
 import { withHidden } from "@dotobokuri/core-process";
 
 export type GitErrorCode = "timeout" | "non_zero_exit" | "spawn_failed" | "no_git_repo" | "git_unavailable";
@@ -27,6 +27,7 @@ export interface GitRunResult {
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_BUFFER = 8 * 1024 * 1024;
 const STDERR_MAX_BUFFER = 1024 * 1024;
+const PROBE_TIMEOUT_MS = 5_000;
 const GIT_HARDENING_PREFIX = ["-c", "core.fsmonitor=false", "--no-optional-locks"] as const;
 
 function sanitizeGitEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -140,13 +141,58 @@ export function runGit(
           resolve({ stdout, stderr, truncated, stderrTruncated });
           return;
         }
-        // macOS git diff는 "Not a git repository"(대문자 N)로 출력하므로 대소문자 무관하게 비교
-        const isNoRepo = stderr.toLowerCase().includes("not a git repository");
-        reject(new GitExecutorError(isNoRepo ? "no_git_repo" : "non_zero_exit", stderr, code ?? undefined));
+        // 산문 매칭은 빠른 길일 뿐이다. git은 버전마다 다른 진단을 내며 — 새 git은 비-저장소
+        // 경로에서 "not a git repository" 대신 pathspec 경고부터 낸다 — 그 문장이 없다고 저장소가
+        // 있는 것은 아니다. 못 알아본 실패는 git에게 직접 물어 판정한다.
+        if (stderr.toLowerCase().includes("not a git repository")) {
+          reject(new GitExecutorError("no_git_repo", stderr, code ?? undefined));
+          return;
+        }
+        isInsideRepository(opts.cwd).then((inside) => {
+          reject(new GitExecutorError(inside ? "non_zero_exit" : "no_git_repo", stderr, code ?? undefined));
+        });
         return;
       }
       const stdout = Buffer.concat(stdoutChunks).toString("utf8");
       resolve({ stdout, stderr, truncated, stderrTruncated });
     });
+  });
+}
+
+// 저장소 여부를 git에게 직접 묻는다. 종료 코드만 보므로 git의 문구·로케일·버전에 흔들리지 않는다.
+// 실패한 명령 뒤에서만 부르므로 정상 경로에는 추가 프로세스가 생기지 않는다. 판정할 수 없으면
+// true를 돌려 원래 분류(non_zero_exit)를 유지한다 — 확신 없이 no_git_repo로 낮추지 않는다.
+function isInsideRepository(cwd: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (inside: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(inside);
+    };
+    try {
+      const probeOptions: SpawnOptions = {
+        cwd,
+        env: sanitizeGitEnvironment(process.env),
+        stdio: "ignore",
+        shell: false,
+      };
+      const probe = spawn("git", [...GIT_HARDENING_PREFIX, "rev-parse", "--git-dir"], withHidden(probeOptions));
+      const timer = setTimeout(() => {
+        probe.kill("SIGKILL");
+        done(true);
+      }, PROBE_TIMEOUT_MS);
+      timer.unref?.();
+      probe.on("error", () => {
+        clearTimeout(timer);
+        done(true);
+      });
+      probe.on("close", (code) => {
+        clearTimeout(timer);
+        done(code === 0);
+      });
+    } catch {
+      done(true);
+    }
   });
 }

@@ -314,13 +314,30 @@ jobs:
         if: steps.version.outputs.should_release == 'true' && steps.release_state.outputs.release_committed != 'true'
         env:
           NEXT_TAG: ${{ steps.version.outputs.next_tag }}
+          VERIFIED_SHA: ${{ needs.resolve.outputs.sha }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A CHANGELOG.md CHANGELOG.ko.md .changelog.d
           git ls-files | grep -E '(^|/)package\.json$' | xargs git add
           git commit -m "chore(release): $NEXT_TAG"
-          git push origin HEAD:main
+          # 검증이 도는 동안 main이 나아가면 이 push가 거절된다. 그 사이 커밋이 위 paths-ignore가
+          # 이미 릴리스 산출물과 무관하다고 선언한 경로뿐이라면 릴리스 커밋을 그 위로 옮겨 다시
+          # 민다 — 그런 push는 자기 런을 띄우지 않으므로 여기서 멈추면 유효한 릴리스가 다음 코드
+          # push까지 발이 묶인다. 하나라도 다른 경로가 섞였다면 그 코드는 이 런이 검증하지 않았고,
+          # 그 커밋이 띄운 자기 런이 검증부터 다시 밟으므로 여기서 멈춘다.
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then exit 0; fi
+            git fetch origin main
+            if ! node scripts/release-tip-guard.mjs "$VERIFIED_SHA" origin/main; then
+              echo "::error::main advanced with changes this run did not verify; the newer commit's own release run publishes them."
+              exit 1
+            fi
+            echo "main advanced only on release-irrelevant paths; replaying the release commit on the new tip (attempt $attempt)."
+            git rebase origin/main
+          done
+          echo "::error::Could not land the release commit after 3 attempts."
+          exit 1
 
       - name: Sync release commit from main
         if: steps.version.outputs.should_release == 'true'
