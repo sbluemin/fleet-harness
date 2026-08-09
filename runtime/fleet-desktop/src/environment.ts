@@ -21,6 +21,7 @@ export interface LoginShellPathProbe {
 
 export interface HydratedDesktopEnvironmentOptions {
   readonly platform?: NodeJS.Platform;
+  readonly homeDirectory?: string;
   readonly loginShellPathProbe?: LoginShellPathProbe;
 }
 
@@ -76,7 +77,7 @@ export function createDesktopEnvironment(userDataDir: string, appVersion: string
   if (!fs.existsSync(ownerFile)) fs.writeFileSync(ownerFile, `${ownerId}\n`, { mode: 0o600 });
   const sanitized = sanitizeEnvironment(env);
   const serviceBase = isPackaged
-    ? createPackagedServiceEnvironment(sanitized, options.loginShellPath, options.platform ?? process.platform)
+    ? createPackagedServiceEnvironment(sanitized, options.loginShellPath, options.platform ?? process.platform, options.homeDirectory ?? os.homedir())
     : sanitized;
   // TLS 검사 프록시 환경 대응(issue #531): sidecar Node가 OS 신뢰 저장소를 기본 신뢰하도록 한다. opt-out은 FLEET_CONSOLE_NO_SYSTEM_CA=1.
   const serviceBaseWithCa = env.FLEET_CONSOLE_NO_SYSTEM_CA === "1" ? serviceBase : withNodeSystemCa(serviceBase);
@@ -106,7 +107,7 @@ export async function createHydratedDesktopEnvironment(userDataDir: string, appV
   resolveDesktopDataDirectoryOverride(env);
   resolveFleetDataDir(env);
   const loginShellPath = await readInteractiveLoginShellPath(isPackaged, env, options);
-  return createDesktopEnvironment(userDataDir, appVersion, resourceRoot, isPackaged, env, { platform, loginShellPath });
+  return createDesktopEnvironment(userDataDir, appVersion, resourceRoot, isPackaged, env, { platform, homeDirectory: options.homeDirectory, loginShellPath });
 }
 
 export async function readInteractiveLoginShellPath(isPackaged: boolean, env: NodeJS.ProcessEnv, options: HydratedDesktopEnvironmentOptions = {}): Promise<string | undefined> {
@@ -131,19 +132,20 @@ export async function readInteractiveLoginShellPath(isPackaged: boolean, env: No
 export function desktopExecutableSearchPaths(homeDirectory: string, env: NodeJS.ProcessEnv, platform: NodeJS.Platform): readonly string[] {
   const configuredPrefix = readEnvironmentValue(env, "npm_config_prefix");
   const pnpmHome = readEnvironmentValue(env, "PNPM_HOME");
+  const platformPath = platform === "win32" ? path.win32 : path.posix;
   if (platform === "win32") {
     const appData = readEnvironmentValue(env, "APPDATA");
     return compactPaths([
       configuredPrefix,
       pnpmHome,
-      appData ? path.win32.join(appData, "npm") : undefined,
+      appData ? platformPath.join(appData, "npm") : undefined,
     ]);
   }
   return compactPaths([
-    configuredPrefix ? path.join(configuredPrefix, "bin") : undefined,
+    configuredPrefix ? platformPath.join(configuredPrefix, "bin") : undefined,
     pnpmHome,
-    path.join(homeDirectory, ".local", "bin"),
-    ...(platform === "darwin" ? [path.join(homeDirectory, "Library", "pnpm"), "/opt/homebrew/bin"] : []),
+    platformPath.join(homeDirectory, ".local", "bin"),
+    ...(platform === "darwin" ? [platformPath.join(homeDirectory, "Library", "pnpm"), "/opt/homebrew/bin"] : []),
     "/usr/local/bin",
   ]);
 }
@@ -157,13 +159,14 @@ export function sanitizeEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return next;
 }
 
-function createPackagedServiceEnvironment(sanitized: NodeJS.ProcessEnv, loginShellPath: string | undefined, platform: NodeJS.Platform): NodeJS.ProcessEnv {
-  const fallbackEnvironment = prependPathEntries(sanitized, desktopExecutableSearchPaths(os.homedir(), sanitized, platform), { platform });
+function createPackagedServiceEnvironment(sanitized: NodeJS.ProcessEnv, loginShellPath: string | undefined, platform: NodeJS.Platform, homeDirectory: string): NodeJS.ProcessEnv {
+  const fallbackEnvironment = prependPathEntries(sanitized, desktopExecutableSearchPaths(homeDirectory, sanitized, platform), { platform });
   if (platform !== "darwin" || loginShellPath === undefined) return fallbackEnvironment;
   // 로그인 셸, Finder가 물려준 PATH, 기존의 결정적 폴백 순서로 한 번만 정규화한다.
   // 셸에서 온 값은 오직 PATH 출력이며, 다른 셸 환경 변수는 sidecar로 전달하지 않는다.
-  const inheritedAndFallbackPath = [sanitized.PATH, ...desktopExecutableSearchPaths(os.homedir(), sanitized, platform)].filter((value): value is string => value !== undefined).join(path.delimiter);
-  return prependPathEntries({ ...sanitized, PATH: inheritedAndFallbackPath }, loginShellPath.split(path.delimiter), { platform });
+  const pathDelimiter = ":";
+  const inheritedAndFallbackPath = [sanitized.PATH, ...desktopExecutableSearchPaths(homeDirectory, sanitized, platform)].filter((value): value is string => value !== undefined).join(pathDelimiter);
+  return prependPathEntries({ ...sanitized, PATH: inheritedAndFallbackPath }, loginShellPath.split(pathDelimiter), { platform });
 }
 
 function isSafeLoginShellPath(value: string): boolean {

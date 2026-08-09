@@ -6,7 +6,7 @@ const HOME = "http://127.0.0.1:4310";
 
 function createPickerContents() {
   const listeners = new Map<string, (...args: never[]) => unknown>();
-  const session = { setPermissionRequestHandler: vi.fn() };
+  const session = { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn() };
   const contents = {
     on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)),
     setWindowOpenHandler: vi.fn(),
@@ -30,6 +30,7 @@ describe("host picker view confinement", () => {
 
     confinePickerNavigation(contents as never, HOME, () => false);
 
+    expect(session.setPermissionCheckHandler).not.toHaveBeenCalled();
     expect(session.setPermissionRequestHandler).not.toHaveBeenCalled();
   });
 
@@ -81,7 +82,7 @@ describe("secure window policy", () => {
 
   it("locks the entry renderer until the main process activates one exact Console origin", () => {
     const listeners = new Map<string, (...args: never[]) => unknown>();
-    const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session: { setPermissionRequestHandler: vi.fn() } };
+    const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session: { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn() } };
     const policy = applyWindowPolicy(contents as never, async () => undefined);
     const before = vi.fn();
     (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault: before }, "http://127.0.0.1:4310/console/");
@@ -97,9 +98,33 @@ describe("secure window policy", () => {
     expect(() => policy.activateConsoleOrigin("https://fleet.example")).toThrow("window_policy_console_origin_not_admitted");
   });
 
+  it("allows clipboard writes only after activating the exact Console origin", () => {
+    const listeners = new Map<string, (...args: never[]) => unknown>();
+    const session = { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn() };
+    const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session };
+    const policy = applyWindowPolicy(contents as never, async () => undefined);
+    const check = session.setPermissionCheckHandler.mock.calls[0]![0] as (requestingContents: unknown, permission: string, requestingOrigin: string, details: { requestingUrl?: string }) => boolean;
+    const request = session.setPermissionRequestHandler.mock.calls[0]![0] as (_contents: unknown, permission: string, callback: (allowed: boolean) => void, details: { requestingUrl: string }) => void;
+
+    expect(check(contents, "clipboard-sanitized-write", HOME, { requestingUrl: `${HOME}/console/settings` })).toBe(false);
+    policy.activateConsoleOrigin(HOME);
+    // Windows의 clipboard check는 origin 대신 빈 문자열을 넘길 수 있으므로 마지막 frame URL로 판정한다.
+    expect(check(contents, "clipboard-sanitized-write", "", { requestingUrl: `${HOME}/console/settings` })).toBe(true);
+    expect(check(null, "clipboard-sanitized-write", "", { requestingUrl: `${HOME}/console/settings` })).toBe(true);
+    expect(check(contents, "clipboard-read", HOME, { requestingUrl: `${HOME}/console/settings` })).toBe(false);
+    expect(check(contents, "clipboard-sanitized-write", "", { requestingUrl: "http://localhost:4310/console/settings" })).toBe(false);
+    expect(check({}, "clipboard-sanitized-write", HOME, { requestingUrl: `${HOME}/console/settings` })).toBe(false);
+
+    const callback = vi.fn();
+    request(null, "clipboard-sanitized-write", callback, { requestingUrl: `${HOME}/console/settings` });
+    expect(callback).toHaveBeenCalledWith(true);
+    request(null, "clipboard-sanitized-write", callback, { requestingUrl: "https://fleet.example/console/settings" });
+    expect(callback).toHaveBeenLastCalledWith(false);
+  });
+
   it("allows a pending target only until a transactional pairing commits it", () => {
     const listeners = new Map<string, (...args: never[]) => unknown>();
-    const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session: { setPermissionRequestHandler: vi.fn() } };
+    const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session: { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn() } };
     const policy = applyWindowPolicy(contents as never, "http://127.0.0.1:4000", async () => undefined);
     policy.stageConsoleOrigin("http://127.0.0.1:4310");
     const pendingAllowed = vi.fn();
@@ -119,7 +144,7 @@ describe("secure window policy", () => {
   it("blocks popups and navigation while brokering HTTP links only", async () => {
     const listeners = new Map<string, (...args: never[]) => unknown>();
     const openExternal = vi.fn(async () => undefined);
-    const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session: { setPermissionRequestHandler: vi.fn() } };
+    const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session: { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn() } };
     applyWindowPolicy(contents as never, "http://127.0.0.1:4310", openExternal);
     const handler = contents.setWindowOpenHandler.mock.calls[0]![0] as ({ url }: { url: string }) => { action: string };
     expect(handler({ url: "https://fleet.example/docs" })).toEqual({ action: "deny" });

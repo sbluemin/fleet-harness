@@ -57,7 +57,14 @@ export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: s
     if (consoleOrigin && isHttpUrl(url)) void openExternal(url);
     return { action: "deny" };
   });
-  contents.session.setPermissionRequestHandler((_wc, permission, callback, details) => callback(Boolean(consoleOrigin) && permission === "clipboard-sanitized-write" && hasExactOrigin(details.requestingUrl, consoleOrigin ?? "")));
+  const permitsClipboardWrite = (permission: string, requestingUrl: string): boolean =>
+    Boolean(consoleOrigin) && permission === "clipboard-sanitized-write" && hasExactOrigin(requestingUrl, consoleOrigin ?? "");
+  // Chromium은 플랫폼별로 check에서 곧장 끝내기도, 거부된 check 뒤 request로 이어 가기도 한다.
+  // 둘을 같은 exact-origin 판정에 묶어 Windows에서도 쓰기를 허용하되 권한 범위는 넓히지 않는다.
+  contents.session.setPermissionCheckHandler((requestingContents, permission, requestingOrigin, details) =>
+    (requestingContents === null || requestingContents === contents)
+    && permitsClipboardWrite(permission, details.requestingUrl ?? requestingOrigin));
+  contents.session.setPermissionRequestHandler((_wc, permission, callback, details) => callback(permitsClipboardWrite(permission, details.requestingUrl)));
   const admittedRemoteOrigins = new Set<string>();
   const validateOrigin = (origin: string): void => {
     // 루프백은 언제나, 원격은 지문을 대조해 들인 뒤에만.
@@ -90,7 +97,7 @@ export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: s
 /**
  * 집의 목록을 그리는 덮개 렌더러의 항해 울타리.
  *
- * `applyWindowPolicy`를 그대로 쓸 수는 없다. 그쪽은 세션 단위인 `setPermissionRequestHandler`를
+ * `applyWindowPolicy`를 그대로 쓸 수는 없다. 그쪽은 세션 단위인 permission check/request handler를
  * 갈아 끼우는데, 이 뷰는 메인 창과 같은 defaultSession에 산다 — 덮개를 한 번 얹는 것만으로
  * 메인 창(원격 origin)의 클립보드 권한 판정이 집 origin 기준으로 바뀌고, 덮개를 걷어도
  * 그대로 남는다. 그래서 여기서는 세션에 손대지 않고 이 contents의 항해만 가둔다.

@@ -8,7 +8,7 @@ import { resolveRuntimePaths } from "../src/runtime/runtime-paths.js";
 function missing(): NodeJS.ErrnoException { const error = new Error("missing") as NodeJS.ErrnoException; error.code = "ENOENT"; return error; }
 
 function fileSystem(existing = new Set<string>()) {
-  const stat = vi.fn(async (target: string) => { if (!existing.has(target) && !target.includes(".staging-test/")) throw missing(); });
+  const stat = vi.fn(async (target: string) => { if (!existing.has(target) && !target.replaceAll("\\", "/").includes(".staging-test/")) throw missing(); });
   const rename = vi.fn(async (from: string, to: string) => { if (!existing.has(from) && !from.includes(".staging-test") && !from.endsWith(".package")) throw missing(); existing.delete(from); existing.add(to); });
   return {
     accessExecutable: vi.fn(async () => undefined),
@@ -28,9 +28,12 @@ describe("console installer", () => {
     const fs = fileSystem();
     const run = vi.fn<(command: string, arguments_: readonly string[], options: { readonly env: NodeJS.ProcessEnv }) => Promise<void>>(async () => undefined);
     const paths = resolveRuntimePaths("/Users/fleet");
-    await expect(installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", version: "1.2.3", nodeRuntimeVersion: "22.23.1", platform: "darwin", architecture: "arm64", dependencies: { environment: { NODE_OPTIONS: "--require attacker", npm_config_registry: "https://attacker.invalid", NPM_CONFIG_CACHE: "/attacker", PATH: "/safe/bin" }, fileSystem: fs, run, randomSuffix: () => "test" } })).resolves.toEqual({ root: paths.latest, version: "1.2.3" });
-    // 번들 node bin("/runtime/node/bin")이 PATH 앞에 붙어야 npm lifecycle 스크립트가 node를 찾는다.
-    expect(run).toHaveBeenCalledWith("/runtime/node/bin/node", ["/runtime/node/lib/node_modules/npm/bin/npm-cli.js", "install", "--prefix", "/Users/fleet/.fleet/desktop/runtime/console/.staging-test", "--global=false", "--force=false", "--package-lock=false", "--no-audit", "--no-fund", "@dotobokuri/fleet-console@1.2.3"], { env: expect.objectContaining({ PATH: "/runtime/node/bin:/safe/bin", npm_config_registry: "https://registry.npmjs.org/", npm_config_userconfig: "/Users/fleet/.fleet/desktop/runtime/console/.staging-test/.npmrc", npm_config_globalconfig: "/Users/fleet/.fleet/desktop/runtime/console/.staging-test/.npmrc-global" }) });
+    const nodeRoot = path.resolve("/runtime/node");
+    const staging = path.join(paths.console, ".staging-test");
+    await expect(installConsole({ paths, nodeRoot, packageName: "@dotobokuri/fleet-console", version: "1.2.3", nodeRuntimeVersion: "22.23.1", platform: "darwin", architecture: "arm64", dependencies: { environment: { NODE_OPTIONS: "--require attacker", npm_config_registry: "https://attacker.invalid", NPM_CONFIG_CACHE: "/attacker", PATH: "/safe/bin" }, fileSystem: fs, run, randomSuffix: () => "test" } })).resolves.toEqual({ root: paths.latest, version: "1.2.3" });
+    const nodeBin = path.join(nodeRoot, "bin");
+    // 번들 node bin이 PATH 앞에 붙어야 npm lifecycle 스크립트가 node를 찾는다.
+    expect(run).toHaveBeenCalledWith(path.join(nodeBin, "node"), [path.join(nodeRoot, "lib", "node_modules", "npm", "bin", "npm-cli.js"), "install", "--prefix", staging, "--global=false", "--force=false", "--package-lock=false", "--no-audit", "--no-fund", "@dotobokuri/fleet-console@1.2.3"], { env: expect.objectContaining({ PATH: `${nodeBin}:/safe/bin`, npm_config_registry: "https://registry.npmjs.org/", npm_config_userconfig: path.join(staging, ".npmrc"), npm_config_globalconfig: path.join(staging, ".npmrc-global") }) });
     const firstRun = run.mock.calls[0];
     if (!firstRun) throw new Error("npm invocation was not captured");
     const runEnvironment = firstRun[2].env;
@@ -38,16 +41,17 @@ describe("console installer", () => {
     expect(runEnvironment.npm_config_registry).toBe("https://registry.npmjs.org/");
     expect(runEnvironment.NPM_CONFIG_CACHE).toBeUndefined();
     expect(runEnvironment.npm_config_userconfig).not.toBe(runEnvironment.npm_config_globalconfig);
-    expect(fs.writeFile).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/.npmrc", "");
-    expect(fs.writeFile).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/.npmrc-global", "");
-    expect(fs.rm).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/.npmrc");
-    expect(fs.rm).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/.npmrc-global");
-    expect(fs.rename).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/node_modules/@dotobokuri/fleet-console", "/Users/fleet/.fleet/desktop/runtime/console/.staging-test.package");
-    expect(fs.stat).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/dist/cli.mjs");
-    expect(fs.stat).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/node_modules/node-pty");
-    expect(fs.writeFile).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/.fleet-console-resource-root", "1\n");
-    expect(fs.chmod).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper", 0o755);
-    expect(fs.accessExecutable).toHaveBeenCalledWith("/Users/fleet/.fleet/desktop/runtime/console/.staging-test/node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper");
+    expect(fs.writeFile).toHaveBeenCalledWith(path.join(staging, ".npmrc"), "");
+    expect(fs.writeFile).toHaveBeenCalledWith(path.join(staging, ".npmrc-global"), "");
+    expect(fs.rm).toHaveBeenCalledWith(path.join(staging, ".npmrc"));
+    expect(fs.rm).toHaveBeenCalledWith(path.join(staging, ".npmrc-global"));
+    expect(fs.rename).toHaveBeenCalledWith(path.join(staging, "node_modules", "@dotobokuri", "fleet-console"), `${staging}.package`);
+    expect(fs.stat).toHaveBeenCalledWith(path.join(staging, "dist", "cli.mjs"));
+    expect(fs.stat).toHaveBeenCalledWith(path.join(staging, "node_modules", "node-pty"));
+    expect(fs.writeFile).toHaveBeenCalledWith(path.join(staging, ".fleet-console-resource-root"), "1\n");
+    const spawnHelper = path.join(staging, "node_modules", "node-pty", "prebuilds", "darwin-arm64", "spawn-helper");
+    expect(fs.chmod).toHaveBeenCalledWith(spawnHelper, 0o755);
+    expect(fs.accessExecutable).toHaveBeenCalledWith(spawnHelper);
   });
 
   it("rejects npm aliases, URLs, ranges, and prereleases before spawning npm", async () => {
@@ -73,8 +77,9 @@ describe("console installer", () => {
   it("repairs an existing packaged macOS Console before sidecar launch", async () => {
     const fs = fileSystem();
     await repairConsoleNativeExecutables("/console/latest", "darwin", "x64", fs);
-    expect(fs.chmod).toHaveBeenCalledWith("/console/latest/node_modules/node-pty/prebuilds/darwin-x64/spawn-helper", 0o755);
-    expect(fs.accessExecutable).toHaveBeenCalledWith("/console/latest/node_modules/node-pty/prebuilds/darwin-x64/spawn-helper");
+    const spawnHelper = path.join("/console/latest", "node_modules", "node-pty", "prebuilds", "darwin-x64", "spawn-helper");
+    expect(fs.chmod).toHaveBeenCalledWith(spawnHelper, 0o755);
+    expect(fs.accessExecutable).toHaveBeenCalledWith(spawnHelper);
   });
 
   it("fails closed when the repaired macOS spawn helper is still not executable", async () => {
@@ -101,7 +106,7 @@ describe("console installer", () => {
     fs.readdir.mockResolvedValueOnce(["latest.rollback", ".staging-crashed", "keep"]);
     await reconcileConsoleInstallations(paths, fs);
     expect(fs.rename).toHaveBeenCalledWith(`${paths.latest}.rollback`, paths.latest);
-    expect(fs.rm).toHaveBeenCalledWith(`${paths.console}/.staging-crashed`);
+    expect(fs.rm).toHaveBeenCalledWith(path.join(paths.console, ".staging-crashed"));
   });
 
   it("keeps promoted latest when rollback cleanup fails so the next start can reconcile it", async () => {

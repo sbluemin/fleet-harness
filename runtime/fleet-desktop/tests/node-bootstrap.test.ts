@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 const execFileMock = vi.hoisted(() => vi.fn());
@@ -20,10 +22,13 @@ function dependencies() {
 describe("Node runtime bootstrap", () => {
   it("downloads, verifies, extracts, and promotes the pinned runtime", async () => {
     const injected = dependencies();
-    await expect(bootstrapNodeRuntime({ destination: "/runtime/node", manifest, platform: "darwin", architecture: "arm64", dependencies: injected })).resolves.toEqual({ nodePath: "/runtime/node/bin/node", version: "22.23.1" });
-    expect(injected.download).toHaveBeenCalledWith("https://node.invalid/node.tar.gz", "/runtime/node.staging/node.tar.gz");
-    expect(injected.extract).toHaveBeenCalledWith("/runtime/node.staging/node.tar.gz", "/runtime/node.staging", "darwin");
-    expect(injected.fileSystem.rename).toHaveBeenCalledWith("/runtime/node.staging", "/runtime/node");
+    const destination = path.resolve("/runtime/node");
+    const staging = `${destination}.staging`;
+    const archive = path.join(staging, "node.tar.gz");
+    await expect(bootstrapNodeRuntime({ destination, manifest, platform: "darwin", architecture: "arm64", dependencies: injected })).resolves.toEqual({ nodePath: path.join(destination, "bin", "node"), version: "22.23.1" });
+    expect(injected.download).toHaveBeenCalledWith("https://node.invalid/node.tar.gz", archive);
+    expect(injected.extract).toHaveBeenCalledWith(archive, staging, "darwin");
+    expect(injected.fileSystem.rename).toHaveBeenCalledWith(staging, destination);
   });
 
   it("cleans partial output when checksum verification fails", async () => {
@@ -35,14 +40,17 @@ describe("Node runtime bootstrap", () => {
 
   it("exposes a reusable verified archive seam before an archive can be consumed", async () => {
     const injected = dependencies();
-    const archive = await downloadVerifiedNodeArchive({ directory: "/temporary", manifest, target: manifest.targets["darwin-arm64"]!, dependencies: injected });
-    expect(archive).toEqual({ path: "/temporary/node.tar.gz", content: new Uint8Array([1]) });
-    expect(injected.download).toHaveBeenCalledWith("https://node.invalid/node.tar.gz", "/temporary/node.tar.gz");
+    const directory = path.resolve("/temporary");
+    const archivePath = path.join(directory, "node.tar.gz");
+    const archive = await downloadVerifiedNodeArchive({ directory, manifest, target: manifest.targets["darwin-arm64"]!, dependencies: injected });
+    expect(archive).toEqual({ path: archivePath, content: new Uint8Array([1]) });
+    expect(injected.download).toHaveBeenCalledWith("https://node.invalid/node.tar.gz", archivePath);
   });
 
   it("uses the Windows node executable without executing it", async () => {
     const injected = dependencies();
-    await expect(bootstrapNodeRuntime({ destination: "C:/runtime/node", manifest, platform: "win32", architecture: "x64", dependencies: injected })).resolves.toMatchObject({ nodePath: "C:/runtime/node/node.exe" });
+    const destination = path.resolve("C:/runtime/node");
+    await expect(bootstrapNodeRuntime({ destination, manifest, platform: "win32", architecture: "x64", dependencies: injected })).resolves.toMatchObject({ nodePath: path.join(destination, "node.exe") });
   });
 
   it("accepts the trusted manifest only when it satisfies the installed Console engine", () => {
