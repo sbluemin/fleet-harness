@@ -330,11 +330,16 @@ jobs:
             if git push origin HEAD:main; then exit 0; fi
             git fetch origin main
             if ! node scripts/release-tip-guard.mjs "$VERIFIED_SHA" origin/main; then
-              echo "::error::main advanced with changes this run did not verify; the newer commit's own release run publishes them."
+              echo "::error::main advanced with changes this run did not verify or with release notes it did not compile. Re-run all jobs to resolve, verify and release the new tip."
               exit 1
             fi
             echo "main advanced only on release-irrelevant paths; replaying the release commit on the new tip (attempt $attempt)."
-            git rebase origin/main
+            if ! git rebase origin/main; then
+              # 중간 상태로 남겨 두면 이어지는 스텝이 반쯤 rebase된 트리를 릴리스한다.
+              git rebase --abort || true
+              echo "::error::Replaying the release commit onto the new tip conflicted. Re-run all jobs to resolve, verify and release the new tip."
+              exit 1
+            fi
           done
           echo "::error::Could not land the release commit after 3 attempts."
           exit 1

@@ -9,6 +9,7 @@ import {
   areAllPathsIgnorable,
   changedFiles,
   compilePattern,
+  consumesReleaseInput,
   parsePathsIgnore,
 } from './release-tip-guard.mjs';
 
@@ -68,6 +69,16 @@ test('holds the release only when every changed path is declared release-irrelev
   const patterns = ['docs/**', '.github/**', '**.md'];
   assert.equal(areAllPathsIgnorable(['docs/a.txt', 'README.md'], patterns), true);
   assert.equal(areAllPathsIgnorable(['docs/a.txt', 'runtime/fleet-console/core/host/server.ts'], patterns), false);
+});
+
+test('stops for an unreleased fragment even though paths-ignore lets it through', () => {
+  // `.changelog.d/*.md`는 `**.md`에 걸려 릴리스를 트리거하지 않지만 컴파일된 노트로 들어간다.
+  // 그 위로 릴리스 커밋을 옮겨 실으면 방금 올라온 정정이 빠진 노트가 게시된다.
+  const patterns = workflowPatterns();
+  assert.equal(areAllPathsIgnorable(['.changelog.d/durable-pairing.md'], patterns), false);
+  assert.equal(areAllPathsIgnorable(['docs/a.md', '.changelog.d/canary.md'], patterns), false);
+  assert.equal(consumesReleaseInput('.changelog.d/durable-pairing.md'), true);
+  assert.equal(consumesReleaseInput('docs/changelog.d/notes.md'), false, 'prefix must anchor at the repository root');
 });
 
 test('fails closed when there is nothing to judge with', () => {
