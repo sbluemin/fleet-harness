@@ -478,20 +478,20 @@ function ClaudeGatewaySystemPromptSettingsBlock() {
               <p className="global-settings-resp-title" id="claude-gateway-system-prompt-label">{t("terminal.settings.systemPromptTitle")}</p>
               <p className="global-settings-help">{t("terminal.settings.systemPromptHelp")}</p>
             </div>
-            <select
-              className="global-settings-select"
+            <Select
               aria-labelledby="claude-gateway-system-prompt-label"
               value={state.claudeGatewaySystemPromptMode}
               disabled={saving}
-              onChange={(event) => void setSystemPromptSettingsField(
+              options={[
+                { value: "append", label: t("terminal.settings.systemPromptAppend") },
+                { value: "replace", label: t("terminal.settings.systemPromptReplace") },
+                { value: "off", label: t("terminal.settings.systemPromptOff") },
+              ]}
+              onChange={(value) => void setSystemPromptSettingsField(
                 "claudeGatewaySystemPromptMode",
-                event.currentTarget.value as "append" | "replace" | "off",
+                value as "append" | "replace" | "off",
               )}
-            >
-              <option value="append">{t("terminal.settings.systemPromptAppend")}</option>
-              <option value="replace">{t("terminal.settings.systemPromptReplace")}</option>
-              <option value="off">{t("terminal.settings.systemPromptOff")}</option>
-            </select>
+            />
           </div>
           <p className="global-settings-foot">{t("terminal.settings.systemPromptFoot")}</p>
         </>

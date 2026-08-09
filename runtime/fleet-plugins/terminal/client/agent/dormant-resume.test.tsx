@@ -41,7 +41,7 @@ describe("dormant resume feedback", () => {
 
   it("offers Start fresh for a supported Operation without captured resume metadata", async () => {
     const fetch = vi.fn().mockResolvedValue(sessionResponse("live"));
-    await renderOperation(fetch, { cliId: "claude" });
+    await renderOperation(fetch, { cliId: "claude-gateway" });
 
     const button = dormantButton();
     expect(button.textContent).toContain("Start fresh");
