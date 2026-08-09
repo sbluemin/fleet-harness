@@ -10,13 +10,13 @@ import { fileURLToPath } from "node:url";
 // 고쳐져 검증하지 않은 코드가 게시될 수 있기 때문이다.
 export const WORKFLOW_RELATIVE_PATH = ".github/workflows/stable-release.yml";
 
-// paths-ignore가 릴리스를 트리거하지 않는다고 선언한 경로 중에도, 릴리스 커밋이 내용을 읽어
-// 산출물로 옮기는 것이 있다. 미출시 프래그먼트가 그렇다: `**.md`에 걸려 트리거는 하지 않지만
-// 컴파일된 릴리스 노트로 들어가고, 컴파일러가 원본을 지운다. 그런 변경 위로 릴리스 커밋을 옮겨
-// 실으면 방금 올라온 정정이 빠진 노트를 게시하게 되고, 지운 파일과 고친 파일이 부딪혀 rebase도
-// 깨진다. 트리거 여부와 무관하게 릴리스를 멈춘다 — 멈춘 런은 전체 재실행으로 회복되지만,
-// 틀린 릴리스 노트는 되돌릴 수 없다.
-export const RELEASE_INPUT_PREFIXES = [".changelog.d/"];
+// paths-ignore가 릴리스를 트리거하지 않는다고 선언한 경로 중에도, 빌드가 읽어 산출물로 옮기는
+// 것이 있다. `**.md`가 특히 그렇다 — 미출시 프래그먼트는 컴파일된 릴리스 노트가 되고, 내장 스킬
+// 마크다운은 생성 자산으로 번들된다. 어느 마크다운이 산출물이 되는지 하나씩 세는 목록은 새 자산이
+// 생길 때마다 조용히 뒤처지므로, 게시되는 소스 트리 안이면 확장자와 무관하게 릴리스 입력으로 본다.
+// 그 안의 순수 문서까지 함께 멈추는 것은 감수한다 — 멈춘 런은 전체 재실행으로 회복되지만, 검증하지
+// 않은 채 게시된 것은 되돌릴 수 없다.
+export const RELEASE_INPUT_PREFIXES = [".changelog.d/", "packages/", "runtime/"];
 
 export function consumesReleaseInput(file) {
   return RELEASE_INPUT_PREFIXES.some((prefix) => file.startsWith(prefix));

@@ -5,6 +5,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  RELEASE_INPUT_PREFIXES,
   WORKFLOW_RELATIVE_PATH,
   areAllPathsIgnorable,
   changedFiles,
@@ -71,14 +72,32 @@ test('holds the release only when every changed path is declared release-irrelev
   assert.equal(areAllPathsIgnorable(['docs/a.txt', 'runtime/fleet-console/core/host/server.ts'], patterns), false);
 });
 
-test('stops for an unreleased fragment even though paths-ignore lets it through', () => {
-  // `.changelog.d/*.md`는 `**.md`에 걸려 릴리스를 트리거하지 않지만 컴파일된 노트로 들어간다.
-  // 그 위로 릴리스 커밋을 옮겨 실으면 방금 올라온 정정이 빠진 노트가 게시된다.
+test('stops for markdown that the build turns into a published artifact', () => {
+  // 두 종류 모두 `**.md`에 걸려 릴리스를 트리거하지 않지만 산출물이 된다: 프래그먼트는 컴파일된
+  // 릴리스 노트로, 내장 스킬 마크다운은 생성 자산으로. 어느 쪽이든 replay하면 검증하지 않은
+  // 내용이 게시된다.
   const patterns = workflowPatterns();
   assert.equal(areAllPathsIgnorable(['.changelog.d/durable-pairing.md'], patterns), false);
+  assert.equal(areAllPathsIgnorable(['packages/fleet-admiral/assets/skills/gateway/workflow.md'], patterns), false);
+  assert.equal(areAllPathsIgnorable(['runtime/fleet-console/AGENTS.md'], patterns), false);
   assert.equal(areAllPathsIgnorable(['docs/a.md', '.changelog.d/canary.md'], patterns), false);
   assert.equal(consumesReleaseInput('.changelog.d/durable-pairing.md'), true);
   assert.equal(consumesReleaseInput('docs/changelog.d/notes.md'), false, 'prefix must anchor at the repository root');
+});
+
+test('keeps the trees that cannot reach an artifact replayable', () => {
+  const patterns = workflowPatterns();
+  assert.equal(areAllPathsIgnorable(['docs/architecture.md', 'README.md', '.github/workflows/pr-title.yml'], patterns), true);
+});
+
+test('holds the guard to the trees the build actually publishes from', () => {
+  // 이 목록이 게시 소스 트리와 어긋나면 검증하지 않은 산출물이 새어 나간다. 새 게시 루트가
+  // 생기면 여기서 먼저 걸리게 둔다.
+  const workspace = readFileSync(path.join(repoRoot, 'pnpm-workspace.yaml'), 'utf8');
+  for (const root of ['packages/', 'runtime/']) {
+    assert.ok(workspace.includes(root.slice(0, -1)), `pnpm-workspace.yaml must still publish from ${root}`);
+    assert.ok(RELEASE_INPUT_PREFIXES.includes(root), `${root} must be treated as a release input`);
+  }
 });
 
 test('fails closed when there is nothing to judge with', () => {
