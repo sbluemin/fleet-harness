@@ -17,6 +17,7 @@ import { OperationSearch } from "./components/operation-search.js";
 import { QuickLaunch } from "./components/quick-launch.js";
 import { ReconnectButton } from "./components/reconnect-button.js";
 import { Toast, ToastHost } from "./components/toast.js";
+import { claimTheaterBootMinimization } from "./boot-minimization-session.js";
 import { appendPendingDeletion, deletionCountdownSeconds, latestPendingDeletion } from "./deletion-undo.js";
 import { WhatsNewModal } from "./components/whatsnew-modal.js";
 import { FloatingWidgetLayer } from "./floating-widget-layer.js";
@@ -47,7 +48,6 @@ const THEME_NOTICE_AUTO_DISMISS_MS = 8_000;
 
 export function App() {
   const state = useConsoleState();
-  const minimizedTheatersRef = useRef<Set<string>>(new Set());
   const bootOperationIdsRef = useRef<readonly string[] | null>(null);
   const location = useLocation();
   const registry = usePluginRegistry();
@@ -125,13 +125,14 @@ export function App() {
       : []) ?? [];
   }, [consoleLocale, registry.operationKinds, state.activeOperationId, state.operations]);
 
-  // 세션 중 각 Theater를 처음 여는 시점에 한 번, 그 Theater의 "부팅 시점에 이미 존재하던" 패널 집합을 최소화 대상으로 반환한다.
+  // 브라우저 세션 중 각 Theater를 처음 여는 시점에 한 번, 그 Theater의 "부팅 시점에 이미 존재하던" 패널 집합을 최소화 대상으로 반환한다.
   // App boot의 활성 Theater뿐 아니라 이후 선택·전환으로 처음 진입하는 Theater도 깨끗하게 열려, 선택한 패널만 하나씩 표면화된다.
+  // "처음"의 기준은 페이지 수명이 아니라 탭 세션이다 — 콘솔 전환·새로고침으로 같은 탭에 돌아왔을 때
+  // 사용자가 펼쳐둔 패널을 다시 접지 않기 위해서다.
   // 반환값은 전 Theater를 아우르는 초기 id 목록이고, 실제 최소화는 호출 측이 현재 Theater 패널로 좁힌다.
   const claimBootPanelMinimization = useCallback((theaterId: string): readonly string[] | null => {
     if (bootOperationIdsRef.current === null) return null;
-    if (minimizedTheatersRef.current.has(theaterId)) return null;
-    minimizedTheatersRef.current.add(theaterId);
+    if (!claimTheaterBootMinimization(theaterId)) return null;
     return bootOperationIdsRef.current;
   }, []);
 
