@@ -212,7 +212,7 @@ export interface CursorDiagnosticEvent {
   readonly outcome?: string;
   /** Run-local sequence only; never a caller or provider identifier. */
   readonly operationSequence?: number;
-  readonly adapter?: "read-direct" | "grep-direct" | "shell-direct";
+  readonly adapter?: "read-direct" | "grep-direct" | "grep-shell" | "shell-direct";
   readonly error?: string;
 }
 
@@ -1012,8 +1012,9 @@ function cursorClientToolDiscipline(
   const redirectLeaves = new Set(redirectTools.map((tool) => cursorToolLeafName(tool.clientName).replace(/[_-]/g, "").toLowerCase()));
   const routed: string[] = [];
   if (redirectLeaves.has("read")) routed.push("read");
-  if (redirectLeaves.has("grep")) routed.push("search");
-  if (["bash", "shellcommand", "execcommand"].some((leaf) => redirectLeaves.has(leaf))) routed.push("shell");
+  const hasShell = ["bash", "shellcommand", "execcommand"].some((leaf) => redirectLeaves.has(leaf));
+  if (redirectLeaves.has("grep") || hasShell) routed.push("search");
+  if (hasShell) routed.push("shell");
   const guidance = [
     routed.length > 0
       ? `Native ${routed.join(", ")} requests are routed through the caller's tools and permissions.`
@@ -1052,7 +1053,7 @@ interface CursorPendingToolCorrelation {
   readonly nativeResultType?: CursorNativeRedirectResultType;
   readonly nativeArgs?: Readonly<Record<string, string>>;
   readonly operationSequence?: number;
-  readonly redirectAdapter?: "read-direct" | "grep-direct" | "shell-direct";
+  readonly redirectAdapter?: "read-direct" | "grep-direct" | "grep-shell" | "shell-direct";
 }
 
 type CursorCanonicalToolResult = Extract<CanonicalInputItem, { type: "function_call_output" }>;

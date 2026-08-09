@@ -3,6 +3,7 @@ type ExecMessage = Record<string, unknown>;
 export type CursorNativeRedirectResultType =
   | "readResult"
   | "grepResult"
+  | "grepShellResult"
   | "shellResult"
   | "shellStreamResult";
 
@@ -25,7 +26,24 @@ export interface CursorNativeExecRedirect {
   readonly nativeResultType: CursorNativeRedirectResultType;
   readonly nativeArgs: Readonly<Record<string, string>>;
   readonly execCase: string;
-  readonly adapter: "read-direct" | "grep-direct" | "shell-direct";
+  readonly adapter: "read-direct" | "grep-direct" | "grep-shell" | "shell-direct";
+}
+
+interface CursorGrepInput {
+  readonly pattern: string;
+  readonly path: string;
+  readonly glob: string;
+  readonly outputMode: "content" | "files_with_matches" | "count";
+  readonly caseInsensitive: boolean;
+  readonly contextBefore?: number;
+  readonly contextAfter?: number;
+  readonly context?: number;
+  readonly type?: string;
+  readonly headLimit?: number;
+  readonly multiline: boolean;
+  readonly sort?: string;
+  readonly sortAscending?: boolean;
+  readonly offset?: number;
 }
 
 const READ_CANDIDATES = ["Read"] as const;
@@ -69,22 +87,29 @@ export function cursorNativeExecRedirect(
   if (isRecord(exec.readArgs)) {
     const path = stringValue(exec.readArgs.path);
     if (!path) return null;
-    const offset = numberOrUndefined(exec.readArgs.offset);
-    const limit = numberOrUndefined(exec.readArgs.limit);
-    // Fleet's vendored ReadSuccess has no rangeApplied field. Redirecting a ranged read would force
-    // totalLines to claim either the slice length or zero as the whole-file count, so keep it on the
-    // typed fail-closed path until the wire can represent that distinction.
+    if ([exec.readArgs.offset, exec.readArgs.limit].some((value) => (
+      typeof value === "number" && value < 0
+    ))) return null;
+    const offset = positiveNumber(exec.readArgs.offset);
+    const limit = positiveNumber(exec.readArgs.limit);
     if (offset !== undefined || limit !== undefined) return null;
     const mapped = tools
       .filter((tool) => matchesLeaf(tool, READ_CANDIDATES))
-      .map((tool) => ({ tool, args: readArguments(tool.inputSchemaValue, path, offset, limit) }))
+      .map((tool) => ({ tool, args: readArguments(tool.inputSchemaValue, path) }))
       .find((candidate) => candidate.args !== null);
     if (!mapped?.args) return null;
-    return redirect(exec, mapped.tool, providerIdentifier, messageId, execId, "readArgs", "readResult", "read-direct", mapped.args, {
-      path,
-      ...(offset === undefined ? {} : { offset: String(offset) }),
-      ...(limit === undefined ? {} : { limit: String(limit) }),
-    });
+    return redirect(
+      exec,
+      mapped.tool,
+      providerIdentifier,
+      messageId,
+      execId,
+      "readArgs",
+      "readResult",
+      "read-direct",
+      mapped.args,
+      { path },
+    );
   }
 
   if (isRecord(exec.grepArgs)) {
@@ -95,34 +120,81 @@ export function cursorNativeExecRedirect(
     const glob = stringValue(grepArgs.glob);
     const outputMode = normalizedGrepOutputMode(stringValue(grepArgs.outputMode));
     if (!outputMode) return null;
+    const sort = stringValue(grepArgs.sort) || undefined;
+    if (sort && !["none", "path", "modified", "accessed", "created"].includes(sort)) return null;
+    const numericOptions = [
+      grepArgs.contextBefore,
+      grepArgs.contextAfter,
+      grepArgs.context,
+      grepArgs.headLimit,
+      grepArgs.offset,
+    ];
+    if (numericOptions.some((value) => typeof value === "number" && value < 0)) return null;
+    const mappingInput: CursorGrepInput = {
+      pattern,
+      path,
+      glob,
+      outputMode,
+      caseInsensitive: grepArgs.caseInsensitive === true,
+      contextBefore: positiveNumber(grepArgs.contextBefore),
+      contextAfter: positiveNumber(grepArgs.contextAfter),
+      context: positiveNumber(grepArgs.context),
+      type: stringValue(grepArgs.type) || undefined,
+      headLimit: positiveNumber(grepArgs.headLimit),
+      multiline: grepArgs.multiline === true,
+      sort,
+      sortAscending: Object.prototype.hasOwnProperty.call(grepArgs, "sortAscending")
+        ? grepArgs.sortAscending === true
+        : undefined,
+      offset: positiveNumber(grepArgs.offset),
+    };
     const mapped = tools
       .filter((tool) => matchesLeaf(tool, GREP_CANDIDATES))
-      .map((tool) => ({
-        tool,
-        args: grepArguments(tool, {
-          pattern,
-          path,
-          glob,
-          outputMode,
-          caseInsensitive: grepArgs.caseInsensitive === true,
-          contextBefore: numberOrUndefined(grepArgs.contextBefore),
-          contextAfter: numberOrUndefined(grepArgs.contextAfter),
-          context: numberOrUndefined(grepArgs.context),
-          headLimit: numberOrUndefined(grepArgs.headLimit),
-          offset: numberOrUndefined(grepArgs.offset),
-        }),
-      }))
+      .map((tool) => ({ tool, args: grepArguments(tool, mappingInput) }))
       .find((candidate) => candidate.args !== null);
-    if (!mapped?.args) return null;
-    return redirect(exec, mapped.tool, providerIdentifier, messageId, execId, "grepArgs", "grepResult", "grep-direct", mapped.args, {
+    const nativeArgs = {
       pattern,
       path,
       outputMode,
       ...(glob ? { glob } : {}),
-      ...(numberOrUndefined(grepArgs.offset) === undefined
+      ...(positiveNumber(grepArgs.offset) === undefined
         ? {}
-        : { offset: String(numberOrUndefined(grepArgs.offset)) }),
-    });
+        : { offset: String(positiveNumber(grepArgs.offset)) }),
+    };
+    if (mapped?.args) {
+      return redirect(
+        exec,
+        mapped.tool,
+        providerIdentifier,
+        messageId,
+        execId,
+        "grepArgs",
+        "grepResult",
+        "grep-direct",
+        mapped.args,
+        nativeArgs,
+      );
+    }
+    const shell = tools
+      .filter((tool) => matchesLeaf(tool, SHELL_CANDIDATES))
+      .map((tool) => ({
+        tool,
+        args: grepShellArguments(tool.inputSchemaValue, mappingInput),
+      }))
+      .find((candidate) => candidate.args !== null);
+    if (!shell?.args) return null;
+    return redirect(
+      exec,
+      shell.tool,
+      providerIdentifier,
+      messageId,
+      execId,
+      "grepArgs",
+      "grepShellResult",
+      "grep-shell",
+      shell.args,
+      nativeArgs,
+    );
   }
 
   if (isRecord(exec.shellArgs) || isRecord(exec.shellStreamArgs)) {
@@ -176,16 +248,21 @@ export function cursorNativeRedirectResultReplies(
 
   switch (correlation.nativeResultType) {
     case "readResult": {
-      const parsed = parseCallerReadOutput(output);
+      // Claude Code keeps truncation metadata in a transcript-only attachment that is absent from
+      // the Anthropic request. Preserve caller execution and same-Run continuation, but never claim
+      // partial text is a complete Cursor ReadSuccess with invented whole-file metadata.
       return [execReply(exec, "readResult", {
-        success: {
+        error: {
           path: args.path ?? "",
-          totalLines: lineCount(parsed.content),
-          fileSize: String(Buffer.byteLength(parsed.content, "utf8")),
-          truncated: parsed.truncated,
-          content: parsed.content,
+          error: `The caller Read tool completed, but Fleet cannot verify whether this text is the complete file. Use the caller Read tool for authoritative paging. Caller output:\n${output}`,
         },
       })];
+    }
+    case "grepShellResult": {
+      const receipt = parseGrepShellReceipt(output, args.outputMode ?? "content");
+      return [execReply(exec, "grepResult", receipt.ok
+        ? { success: buildGrepReceiptSuccess(args, receipt) }
+        : { error: { error: receipt.error } })];
     }
     case "grepResult": {
       return [execReply(exec, "grepResult", {
@@ -233,6 +310,7 @@ function cursorNativeRedirectErrorReplies(
   switch (correlation.nativeResultType) {
     case "readResult":
       return [execReply(exec, "readResult", { error: { path: args.path ?? "", error } })];
+    case "grepShellResult":
     case "grepResult":
       return [execReply(exec, "grepResult", { error: { error } })];
     case "shellResult":
@@ -253,36 +331,14 @@ function cursorNativeRedirectErrorReplies(
 function readArguments(
   schema: Record<string, unknown>,
   path: string,
-  offset: number | undefined,
-  limit: number | undefined,
 ): Record<string, unknown> | null {
   const pathKey = firstSchemaProperty(schema, ["file_path", "path"]);
-  if (!pathKey) return null;
-  if (offset !== undefined && !schemaHasProperty(schema, "offset")) return null;
-  if (limit !== undefined && !schemaHasProperty(schema, "limit")) return null;
-  return {
-    [pathKey]: path,
-    ...(offset === undefined ? {} : { offset }),
-    ...(limit === undefined ? {} : { limit }),
-  };
-}
-
-interface GrepMappingInput {
-  readonly pattern: string;
-  readonly path: string;
-  readonly glob: string;
-  readonly outputMode: "content" | "files_with_matches" | "count";
-  readonly caseInsensitive: boolean;
-  readonly contextBefore?: number;
-  readonly contextAfter?: number;
-  readonly context?: number;
-  readonly headLimit?: number;
-  readonly offset?: number;
+  return pathKey ? { [pathKey]: path } : null;
 }
 
 function grepArguments(
   tool: CursorRedirectToolReference,
-  input: GrepMappingInput,
+  input: CursorGrepInput,
 ): Record<string, unknown> | null {
   const leaf = normalizedLeaf(tool.clientName);
   if (leaf === "grep") {
@@ -294,12 +350,16 @@ function grepArguments(
     }
     const optionMappings: ReadonlyArray<readonly [unknown, string]> = [
       [input.glob || undefined, "glob"],
-      [input.outputMode === "content" ? undefined : input.outputMode, "output_mode"],
+      [input.outputMode, "output_mode"],
       [input.caseInsensitive ? true : undefined, "case_insensitive"],
       [input.contextBefore, "context_before"],
       [input.contextAfter, "context_after"],
       [input.context, "context"],
+      [input.type, "type"],
       [input.headLimit, "head_limit"],
+      [input.multiline ? true : undefined, "multiline"],
+      [input.sort, "sort"],
+      [input.sortAscending, "sort_ascending"],
       [input.offset, "offset"],
     ];
     for (const [value, key] of optionMappings) {
@@ -311,6 +371,117 @@ function grepArguments(
   }
   return null;
 }
+
+function grepShellArguments(
+  schema: Record<string, unknown>,
+  input: CursorGrepInput,
+): Record<string, unknown> | null {
+  if (
+    input.outputMode !== "content"
+    || input.headLimit !== undefined
+    || input.offset !== undefined
+    || input.multiline
+    || input.sort !== undefined
+  ) {
+    return null;
+  }
+  const script = Buffer.from(CURSOR_GREP_RECEIPT_SCRIPT, "utf8").toString("base64url");
+  const payload = Buffer.from(JSON.stringify(input), "utf8").toString("base64url");
+  const bootstrap = `eval(Buffer.from(process.argv.splice(1,1)[0],'base64url').toString('utf8'))`;
+  const command = `node -e "${bootstrap}" ${script} ${payload}`;
+  return shellArguments(schema, command, undefined, undefined);
+}
+
+const CURSOR_GREP_RECEIPT_PREFIX = "FLEET_CURSOR_GREP_V1:";
+const CURSOR_GREP_RECEIPT_SCRIPT = String.raw`
+const {spawn}=require("node:child_process");
+const {TextDecoder}=require("node:util");
+const emit=(value)=>process.stdout.write("${CURSOR_GREP_RECEIPT_PREFIX}"+Buffer.from(JSON.stringify(value)).toString("base64url"));
+(async()=>{try {
+  const input=JSON.parse(Buffer.from(process.argv[1],"base64url").toString("utf8"));
+  const matchSeparator=30;
+  const contextSeparator=31;
+  const maxContentBytes=2000;
+  const args=["--color=never","--line-number","--with-filename","--null","--sort","path","--max-columns",String(maxContentBytes),"--max-columns-preview","--field-match-separator",String.fromCharCode(matchSeparator),"--field-context-separator",String.fromCharCode(contextSeparator),"--no-context-separator"];
+  if(input.caseInsensitive)args.push("--ignore-case");
+  if(input.glob)args.push("--glob",input.glob);
+  if(input.type)args.push("--type",input.type);
+  if(input.contextBefore)args.push("--before-context",String(input.contextBefore));
+  if(input.contextAfter)args.push("--after-context",String(input.contextAfter));
+  if(input.context)args.push("--context",String(input.context));
+  args.push("--regexp",input.pattern,"--",input.path);
+  const child=spawn("rg",args,{stdio:["ignore","pipe","pipe"]});
+  let stderr="";
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data",(chunk)=>{if(stderr.length<16384)stderr+=chunk.slice(0,16384-stderr.length);});
+  const completion=new Promise((resolve,reject)=>{
+    child.once("error",reject);
+    child.once("close",(code,signal)=>signal?reject(new Error("rg terminated by signal "+signal)):resolve(code));
+  });
+  const byteBudget=12*1024;
+  const maxRecordBytes=64*1024;
+  const truncatedSuffix=" [... omitted end of long line]";
+  const decoder=new TextDecoder("utf-8",{fatal:true});
+  let retainedBytes=0;
+  let clientTruncated=false;
+  let totalFiles=0;
+  let totalLines=0;
+  let totalMatchedLines=0;
+  let previousFile;
+  const files=[];
+  const counts=[];
+  const matches=[];
+  const retain=(target,value)=>{
+    const bytes=Buffer.byteLength(JSON.stringify(value));
+    if(retainedBytes+bytes>byteBudget){clientTruncated=true;return;}
+    retainedBytes+=bytes;target.push(value);
+  };
+  let buffered=Buffer.alloc(0);
+  const consume=(record,nul)=>{
+    const fields=record.subarray(nul+1);
+    const matchIndex=fields.indexOf(matchSeparator);
+    const contextIndex=fields.indexOf(contextSeparator);
+    const separator=matchIndex>=0&&contextIndex>=0?Math.min(matchIndex,contextIndex):Math.max(matchIndex,contextIndex);
+    if(separator<1)throw new Error("rg returned an invalid bounded search record");
+    const lineText=fields.subarray(0,separator).toString("ascii");
+    if(!/^\d+$/.test(lineText))throw new Error("rg returned an invalid search line number");
+    const lineNumber=Number(lineText);
+    if(!Number.isSafeInteger(lineNumber)||lineNumber<1)throw new Error("rg returned an invalid search line number");
+    const file=decoder.decode(record.subarray(0,nul));
+    let content=decoder.decode(fields.subarray(separator+1));
+    if(content.endsWith("\r"))content=content.slice(0,-1);
+    const contentTruncated=Buffer.byteLength(content)>maxContentBytes&&content.endsWith(truncatedSuffix);
+    if(contentTruncated)content=content.slice(0,-truncatedSuffix.length);
+    const isContextLine=fields[separator]===contextSeparator;
+    if(file!==previousFile){
+      totalFiles+=1;
+      previousFile=file;
+    }
+    totalLines+=1;
+    if(!isContextLine)totalMatchedLines+=1;
+    retain(matches,{file,lineNumber,content,contentTruncated,isContextLine});
+  };
+  try {
+    for await(const chunk of child.stdout){
+      buffered=buffered.length===0?chunk:Buffer.concat([buffered,chunk]);
+      while(true){
+        const nul=buffered.indexOf(0);
+        if(nul<0)break;
+        const newline=buffered.indexOf(10,nul+1);
+        if(newline<0)break;
+        if(newline>maxRecordBytes)throw new Error("rg exceeded the bounded search record limit");
+        consume(buffered.subarray(0,newline),nul);
+        buffered=buffered.subarray(newline+1);
+      }
+      if(buffered.length>maxRecordBytes)throw new Error("rg exceeded the bounded search record limit");
+    }
+    if(buffered.length!==0)throw new Error("rg returned an incomplete bounded search record");
+  }catch(error){child.kill();await completion.catch(()=>undefined);throw error;}
+  const code=await completion;
+  if(code!==0&&code!==1)throw new Error((stderr||"rg failed with exit "+code).trim());
+  emit({ok:true,outputMode:input.outputMode,files,counts,matches,totalFiles,totalLines,totalMatchedLines,clientTruncated});
+}catch(error){emit({ok:false,error:error instanceof Error?error.message:String(error)});}})();
+`.trim();
 
 function shellArguments(
   schema: Record<string, unknown>,
@@ -334,6 +505,139 @@ function shellArguments(
     args.description = "Cursor-native tool redirected through the Fleet client bridge";
   }
   return args;
+}
+
+interface GrepShellReceipt {
+  readonly ok: true;
+  readonly outputMode: "content" | "files_with_matches" | "count";
+  readonly files: readonly string[];
+  readonly counts: readonly (readonly [string, number])[];
+  readonly matches: readonly {
+    readonly file: string;
+    readonly lineNumber: number;
+    readonly content: string;
+    readonly contentTruncated: boolean;
+    readonly isContextLine: boolean;
+  }[];
+  readonly totalFiles: number;
+  readonly totalLines: number;
+  readonly totalMatchedLines: number;
+  readonly clientTruncated: boolean;
+}
+
+function parseGrepShellReceipt(
+  output: string,
+  expectedOutputMode: string,
+): GrepShellReceipt | { readonly ok: false; readonly error: string } {
+  if (!output.startsWith(CURSOR_GREP_RECEIPT_PREFIX)) {
+    return { ok: false, error: "The caller Bash result did not contain a complete Fleet Grep receipt." };
+  }
+  try {
+    const decoded = JSON.parse(Buffer.from(
+      output.slice(CURSOR_GREP_RECEIPT_PREFIX.length).trim(),
+      "base64url",
+    ).toString("utf8")) as unknown;
+    if (!isRecord(decoded)) throw new Error("receipt is not an object");
+    if (decoded.ok === false && typeof decoded.error === "string") {
+      return { ok: false, error: decoded.error };
+    }
+    if (decoded.ok !== true || decoded.outputMode !== expectedOutputMode) {
+      throw new Error("receipt mode does not match the native search");
+    }
+    if (!Array.isArray(decoded.files) || !decoded.files.every((file) => typeof file === "string")) {
+      throw new Error("receipt files are invalid");
+    }
+    if (!Array.isArray(decoded.counts) || !decoded.counts.every((entry) => (
+      Array.isArray(entry)
+      && entry.length === 2
+      && typeof entry[0] === "string"
+      && typeof entry[1] === "number"
+      && Number.isSafeInteger(entry[1])
+      && entry[1] >= 0
+    ))) {
+      throw new Error("receipt counts are invalid");
+    }
+    if (!Array.isArray(decoded.matches) || !decoded.matches.every((entry) => (
+      isRecord(entry)
+      && typeof entry.file === "string"
+      && typeof entry.lineNumber === "number"
+      && Number.isSafeInteger(entry.lineNumber)
+      && entry.lineNumber > 0
+      && typeof entry.content === "string"
+      && typeof entry.contentTruncated === "boolean"
+      && typeof entry.isContextLine === "boolean"
+    ))) {
+      throw new Error("receipt matches are invalid");
+    }
+    for (const key of ["totalFiles", "totalLines", "totalMatchedLines"] as const) {
+      if (typeof decoded[key] !== "number" || !Number.isSafeInteger(decoded[key]) || decoded[key] < 0) {
+        throw new Error(`receipt ${key} is invalid`);
+      }
+    }
+    if (typeof decoded.clientTruncated !== "boolean") throw new Error("receipt truncation flag is invalid");
+    return decoded as unknown as GrepShellReceipt;
+  } catch (error) {
+    return {
+      ok: false,
+      error: `The caller Bash result contained an invalid Fleet Grep receipt: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+function buildGrepReceiptSuccess(
+  args: Readonly<Record<string, string>>,
+  receipt: GrepShellReceipt,
+): Record<string, unknown> {
+  const path = args.path || ".";
+  let result: Record<string, unknown>;
+  if (receipt.outputMode === "files_with_matches") {
+    result = {
+      files: {
+        files: receipt.files,
+        totalFiles: receipt.totalFiles,
+        clientTruncated: receipt.clientTruncated,
+        ripgrepTruncated: false,
+      },
+    };
+  } else if (receipt.outputMode === "count") {
+    result = {
+      count: {
+        counts: receipt.counts.map(([file, count]) => ({ file, count })),
+        totalFiles: receipt.totalFiles,
+        totalMatches: receipt.counts.reduce((sum, [, count]) => sum + count, 0),
+        clientTruncated: receipt.clientTruncated,
+        ripgrepTruncated: false,
+      },
+    };
+  } else {
+    const byFile = new Map<string, Array<Record<string, unknown>>>();
+    for (const match of receipt.matches) {
+      const entries = byFile.get(match.file) ?? [];
+      entries.push({
+        lineNumber: match.lineNumber,
+        content: match.content,
+        contentTruncated: match.contentTruncated,
+        isContextLine: match.isContextLine,
+      });
+      byFile.set(match.file, entries);
+    }
+    const matches = [...byFile].map(([file, fileMatches]) => ({ file, matches: fileMatches }));
+    result = {
+      content: {
+        matches,
+        totalLines: receipt.totalLines,
+        totalMatchedLines: receipt.totalMatchedLines,
+        clientTruncated: receipt.clientTruncated,
+        ripgrepTruncated: false,
+      },
+    };
+  }
+  return {
+    pattern: args.pattern ?? "",
+    path,
+    outputMode: receipt.outputMode,
+    workspaceResults: { [path]: result },
+  };
 }
 
 function buildGrepSuccess(
@@ -411,30 +715,6 @@ function buildGrepSuccess(
     path,
     outputMode,
     workspaceResults: { [path]: result },
-  };
-}
-
-function parseCallerReadOutput(output: string): { readonly content: string; readonly truncated: boolean } {
-  const lines = output.split(/\r?\n/);
-  const contentLines: string[] = [];
-  let numbered = 0;
-  let truncated = false;
-  for (const line of lines) {
-    if (/^\s*\[?(?:showing|output truncated|truncated)/i.test(line)) {
-      truncated = true;
-      continue;
-    }
-    const match = line.match(/^\s*\d+[→\t│|]\s?(.*)$/);
-    if (match) {
-      numbered += 1;
-      contentLines.push(match[1] ?? "");
-    } else {
-      contentLines.push(line);
-    }
-  }
-  return {
-    content: numbered > 0 ? contentLines.join("\n") : output,
-    truncated,
   };
 }
 
@@ -567,11 +847,6 @@ function execReply(exec: ExecMessage, resultName: string, result: unknown): unkn
 
 function toolLeafName(name: string): string {
   return name.split("__").at(-1) ?? name;
-}
-
-function lineCount(text: string): number {
-  if (text.length === 0) return 0;
-  return text.split("\n").length;
 }
 
 function numberValue(value: unknown): number {
