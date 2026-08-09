@@ -9,7 +9,6 @@ export interface TerminalLaunchSpec {
   readonly env: NodeJS.ProcessEnv;
   readonly messagePolicy?: CliMessagePolicy;
   readonly renameCommand?: string;
-  readonly goalCommand?: string;
   /** Spawn-time selected opaque provider identity reader; never browser-visible. */
   readonly sessionIdentityResolver?: SessionIdentityResolver;
   readonly terminalName?: string;
@@ -27,7 +26,6 @@ export interface TerminalLaunchContext {
   readonly model?: string;
   readonly effort?: string;
   readonly useGatewayDefaultModel?: boolean;
-  readonly goalCheckLimit?: number;
   /** 런치 시 첫 턴으로 제출될 프롬프트. argv 위치 인자로 나가며 PTY로 주입하지 않는다. */
   readonly prompt?: string;
   readonly resumeSessionId?: string;
@@ -116,7 +114,6 @@ export interface TerminalSessionManager {
   renegotiateSockets(): void;
   getSessionMessagePolicy(sessionId: string): CliMessagePolicy | undefined;
   getSessionRenameCommand(sessionId: string): string | undefined;
-  getSessionGoalCommand(sessionId: string): string | undefined;
   getSessionLastActivityAt(sessionId: string): number | null;
   resolveSessionIdentity(sessionId: string, providerSessionId: string): Promise<string | null>;
   terminate(sessionId: string): boolean;

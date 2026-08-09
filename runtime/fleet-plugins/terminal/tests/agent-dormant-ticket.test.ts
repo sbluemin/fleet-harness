@@ -304,7 +304,6 @@ async function createHarness(options: {
     terminate: () => true,
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
-    getGoalCommand: () => undefined,
     getSessionLastActivityAt: () => null,
     resolveSessionIdentity: async () => null,
     onExit: (callback) => {

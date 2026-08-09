@@ -38,7 +38,6 @@ const JSX_FACTORY_NAMES = new Set(["createElement", "jsx", "jsxs"]);
 const SKILLS_CSS_PATH = new URL("../../fleet-plugins/skills/client/skills.css", import.meta.url);
 const TERMINAL_AGENT_PATH = new URL("../../fleet-plugins/terminal/client/agent/index.tsx", import.meta.url);
 const TERMINAL_ANALYSIS_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/analysis.css", import.meta.url);
-const TERMINAL_GOAL_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/goal.css", import.meta.url);
 const TERMINAL_AGENT_CLI_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/agent-cli.css", import.meta.url);
 const SDK_RAIL_TYPES_PATH = new URL("../sdk/rail/types.ts", import.meta.url);
 const SDK_VERSION_PATH = new URL("../sdk/version.ts", import.meta.url);
@@ -549,77 +548,6 @@ describe("Instrument core design contract", () => {
     expect(minimapDotBlock).toContain("background: var(--user-accent);");
     expect(components.match(/var\(--user-accent\)/g)).toHaveLength(5);
     expect(accentSources).not.toMatch(/--op-accent|--chip-accent/);
-  });
-
-  it("keeps the goal axis off the activity colour channel and pins its two sanctioned exceptions", () => {
-    // 목표 생애주기는 Operation 활동과 별개의 두 번째 축이다. 활동 신호색으로 칠하면
-    // 같은 카드에서 두 축이 서로를 부정한다(진행 중인 목표 + 유휴 Operation 등).
-    const css = externalSource(TERMINAL_GOAL_CSS_PATH).replace(/\r\n/g, "\n");
-
-    // aurora(awaiting)와 positive(idle)는 목표 축에 전혀 등장하지 않는다.
-    expect(css).not.toContain("var(--aurora)");
-    expect(css).not.toContain("var(--positive)");
-
-    // 예외 1 — 한도 소진 눈금만 coral을 쓴다. 정확히 한 번, 그 규칙에서만.
-    expect(css.match(/var\(--coral\)/g)).toHaveLength(1);
-    const exhaustedBlock = css.match(/\.terminal-goal-ledger\.is-exhausted[^{]*\{[^}]*\}/)?.[0] ?? "";
-    expect(exhaustedBlock).toContain("background: var(--coral);");
-
-    // 예외 2 — 지시문 취급 경고(disclosure)만 warn wash를 쓴다. warn을 쓰는 규칙은 오직
-    // disclosure를 선택자로 가진 규칙뿐이어야 한다 — 셀렉터 목록을 훑어 확인한다.
-    const warnRules = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)]
-      .filter(([, , body]) => (body ?? "").includes("var(--warn)"));
-    expect(warnRules.length).toBeGreaterThan(0);
-    for (const [, selector] of warnRules) expect(selector).toContain(".terminal-goal-disclosure");
-
-    // brass는 위치·포커스 채널 전용이다 — 현재 눈금과 hover/focus 링에만 나타난다.
-    expect(css).toContain(".terminal-goal-tick.is-current { background: var(--brass); }");
-
-    // 눈금은 이산 단위다. 연속 막대로 바뀌면 Fleet에 없는 정밀도를 주장하게 된다.
-    const tickBlock = css.match(/\.terminal-goal-tick \{[^}]*\}/)?.[0] ?? "";
-    expect(tickBlock).toContain("width: 13px;");
-    expect(tickBlock).toContain("height: 4px;");
-
-    // 목표 표면은 터미널 위에 겹쳐 뜨고 그 기하는 절대 건드리지 않는다 — 자리를 나눠 가지면
-    // 여닫을 때마다 터미널이 리사이즈되고 그 리사이즈가 PTY까지 전파된다.
-    expect(css).not.toContain(".terminal-stage");
-    const stripBlock = css.match(/\.terminal-goal-strip \{[^}]*\}/)?.[0] ?? "";
-    expect(stripBlock).toContain("position: absolute;");
-    expect(stripBlock).toContain("pointer-events: none;");
-
-    // 패널 명판은 최대화·formation·companion 배치에서 패널 우상단 안쪽으로 내려온다.
-    // 첫 행이 그 띠를 비켜 주고 조작 버튼은 바닥 행이 가져가야, 명판에 가려 누를 수 없는
-    // 버튼이 생기지 않는다.
-    // 서랍은 하단에서 위로 열리고, 손잡이는 그 위 가장자리에 가로 중앙으로 매달린다 —
-    // 중앙이어야 명판(우상단)과 레일 손잡이(우측)를 모두 비켜난다.
-    expect(stripBlock).toContain("bottom: 0;");
-    const tabBlock = css.match(/\.terminal-goal-tab \{[^}]*\}/)?.[0] ?? "";
-    expect(tabBlock).toContain("bottom: 100%;");
-    expect(tabBlock).toContain("left: 50%;");
-    // 한 줄 예산: 행은 절대 줄바꿈하지 않고, 늘고 주는 칸은 detail 하나뿐이다.
-    const rowBlock = css.match(/\.terminal-goal-row,[^{]*\{[^}]*\}/)?.[0] ?? "";
-    expect(rowBlock).toContain("flex-wrap: nowrap;");
-    const detailBlock = css.match(/\.terminal-goal-detail \{[^}]*\}/)?.[0] ?? "";
-    expect(detailBlock).toContain("flex: 1;");
-    expect(detailBlock).toContain("text-overflow: ellipsis;");
-    // 한 줄은 터미널을 가리는 면적이 작다 — 비치게 두지 않는다.
-    expect(css).not.toContain("var(--ink-deep) 88%");
-    // 조작 버튼은 1행 안에 인라인으로 선다 — 별도 행으로 떨어지면 세 줄 예산을 먹는다.
-    // 명판 회피는 서랍이 하단이라는 사실이 이미 보장한다.
-    const actionsBlock = css.match(/\.terminal-goal-actions \{[^}]*\}/)?.[0] ?? "";
-    expect(actionsBlock).toContain("display: inline-flex;");
-    expect(actionsBlock).toContain("flex: none;");
-
-    // 여닫이 모션은 공통 토큰만 쓰고, prefers-reduced-motion에서 전이를 끊는다.
-    const motionRules = [...css.matchAll(/([^{}]+)\{([^}]*transition:[^}]*)\}/g)];
-    expect(motionRules.length).toBeGreaterThan(0);
-    for (const [, , body] of motionRules) {
-      if (!(body ?? "").includes("transition: none")) {
-        expect(body).toMatch(/var\(--duration-[a-z]+\)/);
-        expect(body).toMatch(/var\(--ease-[a-z]+\)/);
-      }
-    }
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[^{]*\{[^}]*\.terminal-goal-body/);
   });
 
   it("pins the AI Gateway capability-class badge grammar — ink rank, no signal colour, dashed for unclassed", () => {

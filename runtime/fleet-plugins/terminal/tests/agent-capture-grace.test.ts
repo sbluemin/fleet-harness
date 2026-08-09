@@ -200,73 +200,7 @@ describe("agent provider capture grace", () => {
   });
 });
 
-describe("agent session goal snapshot", () => {
-  // 목표는 SSE 브로드캐스트에만 실려서는 안 된다. 새로 연 페이지와 재연결한 클라이언트는
-  // GET 스냅샷만 받으므로, 여기서 빠지면 영수증이 영영 나타나지 않는다(헤디드 QA가 잡은 결함).
-  it("includes the derived goal in the sessions snapshot, not only in the update broadcast", async () => {
-    const harness = await createHarness({ cliId: "claude" });
-    await harness.postSessions();
-    const operation = harness.operations[0]!;
-
-    const transcriptDirectory = mkdtempSync(path.join(os.tmpdir(), "fleet-goal-snapshot-"));
-    temporaryDirectories.push(transcriptDirectory);
-    const transcriptPath = path.join(transcriptDirectory, "transcript.jsonl");
-    writeFileSync(transcriptPath, `${JSON.stringify({
-      type: "attachment",
-      attachment: { type: "goal_status", met: false, sentinel: true, condition: "ship it" },
-    })}\n`);
-
-    operation.payload.providerSession = { provider: "claude", sessionId: "provider-1", transcriptPath, capturedAt: "2026-08-07T00:00:00.000Z" };
-    operation.payload.goal = { origin: "fleet", checkLimit: 8, requestedAt: 1, markerBaseline: 0, condition: "ship it" };
-
-    const sessions = await harness.getSessions();
-
-    expect(sessions).toHaveLength(1);
-    expect(sessions[0]!.goal).toMatchObject({ origin: "fleet", condition: "ship it", checkLimit: 8 });
-  });
-
-  // 목표는 트랜스크립트에서 매번 파생되고 sentinel 마커는 지워지지 않는다 — 기록만 지우면
-  // 바로 다음 파생이 같은 마커를 터미널 소유 목표로 되살려, 해제 버튼이 아무 일도 못 한다.
-  it("does not resurrect a dismissed goal from the markers already in the transcript", async () => {
-    const harness = await createHarness({ cliId: "claude" });
-    await harness.postSessions();
-    const operation = harness.operations[0]!;
-    const sessionId = operation.id;
-    operation.payload.providerSession = {
-      provider: "claude",
-      sessionId: "provider-1",
-      transcriptPath: writeGoalTranscript([
-        { type: "attachment", attachment: { type: "goal_status", met: false, sentinel: true, condition: "ship it" } },
-        { type: "attachment", attachment: { type: "goal_status", met: true, condition: "ship it", iterations: 1 } },
-      ]),
-      capturedAt: "2026-08-07T00:00:00.000Z",
-    };
-    operation.payload.goal = { origin: "fleet", checkLimit: 8, requestedAt: 1, markerBaseline: 0, condition: "ship it" };
-    expect((await harness.getSessions())[0]).toHaveProperty("goal");
-
-    await harness.clearGoal(sessionId);
-
-    expect(harness.operations[0]!.payload.goal).toBeUndefined();
-    expect(harness.operations[0]!.payload.goalClearedBaseline).toBe(2);
-    expect((await harness.getSessions())[0]).not.toHaveProperty("goal");
-  });
-
-  // Start fresh는 조건문을 다시 주입하지 않는다 — 새 프로세스가 강제하지 않는 목표를
-  // 남겨 두면 영수증이 "요청됨"이라고 거짓말한다. 기준선도 사라진 트랜스크립트의 수다.
-  it("drops a goal a fresh launch will not enforce", async () => {
-    const harness = await createHarness({ cliId: "claude", fresh: true });
-    await harness.postSessions();
-    const operation = harness.operations[0]!;
-    harness.markProviderSession(operation.id);
-    operation.payload.goal = { origin: "fleet", checkLimit: 8, requestedAt: 1, markerBaseline: 3, condition: "ship it" };
-    operation.payload.goalClearedBaseline = 1;
-
-    await harness.resumeSession(operation.id);
-
-    expect(harness.operations[0]!.payload.goal).toBeUndefined();
-    expect(harness.operations[0]!.payload.goalClearedBaseline).toBeUndefined();
-  });
-
+describe("agent session resume", () => {
   it("preserves a migrated Native Operation's built-in default on Start fresh", async () => {
     const harness = await createHarness({ cliId: "claude", fresh: true });
     await harness.postSessions();
@@ -281,14 +215,6 @@ describe("agent session goal snapshot", () => {
     }));
   });
 });
-
-function writeGoalTranscript(lines: readonly Record<string, unknown>[]): string {
-  const directory = mkdtempSync(path.join(os.tmpdir(), "fleet-goal-route-"));
-  temporaryDirectories.push(directory);
-  const transcriptPath = path.join(directory, "transcript.jsonl");
-  writeFileSync(transcriptPath, `${lines.map((line) => JSON.stringify(line)).join("\n")}\n`);
-  return transcriptPath;
-}
 
 async function createHarness(body: Record<string, unknown>) {
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-initial-prompt-"));
@@ -314,7 +240,6 @@ async function createHarness(body: Record<string, unknown>) {
     terminate,
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
-    getGoalCommand: () => undefined,
     getSessionLastActivityAt: () => null,
     resolveSessionIdentity: async () => null,
     onExit: (callback) => {
@@ -462,14 +387,6 @@ async function createHarness(body: Record<string, unknown>) {
         sessionId: "provider-session-1",
         capturedAt: "2026-07-25T00:00:00.000Z",
       };
-    },
-    clearGoal: async (sessionId: string) => {
-      if (!route) throw new Error("Agent route was not registered");
-      await route({
-        req: { method: "DELETE", url: `/plugins/terminal/agent/sessions/${sessionId}/goal` } as http.IncomingMessage,
-        res: {} as http.ServerResponse,
-        pathname: `/plugins/terminal/agent/sessions/${sessionId}/goal`,
-      });
     },
     deleteSession: async (sessionId: string) => {
       if (!route) throw new Error("Agent route was not registered");

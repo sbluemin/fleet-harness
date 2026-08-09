@@ -14,7 +14,6 @@ import type { TerminalFontId, TerminalFontSettings, TerminalInactiveFlush, Termi
 import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
 import { AnalystChatPanel } from "./analysis-chat-panel.js";
 import { fetchAnalysisReady } from "./analysis-api.js";
-import { GoalStrip } from "./goal-strip.js";
 import {
   ANALYST_ARTIFACTS_COMPANION_ID,
   ANALYST_CHAT_COMPANION_ID,
@@ -374,11 +373,6 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   // 초기값 true: 닫힘 상태로 마운트해도 첫 effect가 re-arm한다(force-drop과 동시 언마운트로
   // EXIT 전이를 관찰하지 못한 경우 복구). Theater 복귀는 companionsOpen=true 마운트라 disarm이 보존된다.
   const previousCompanionsOpenRef = React.useRef(true);
-  // 목표 줄은 접힌 채로 시작한다 — 열려 있는 것이 기본이면 목표가 없는 Operation까지
-  // 세로 공간을 내주게 된다. 머리글 자신이 여닫이다.
-  const [goalExpanded, setGoalExpanded] = React.useState(false);
-  const toggleGoalExpanded = React.useCallback(() => setGoalExpanded((open) => !open), []);
-
   React.useEffect(() => {
     const companionsOpen = context.companionsOpen ?? false;
     const wasOpen = previousCompanionsOpenRef.current;
@@ -408,11 +402,6 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     return (
       <div className="agent-stream-host">
         {handles}
-        {/* 휴면 카드 위에 영수증을 둔다 — 재개 버튼 바로 옆이 "재개하면 목표가 다시 시작된다"를
-            읽어야 할 자리다. 휴면에서는 새 목표를 걸 수 없으므로 빈 상태 진입점은 띄우지 않는다. */}
-        {session.goal
-          ? <GoalStrip session={session} language={context.language ?? "en"} expanded={goalExpanded} onToggleExpanded={toggleGoalExpanded} />
-          : null}
         {session.resumeAvailable || isSupportedAgentOperationCliId(session.cliId)
           ? <DormantOperationView context={context} session={session} />
           : <div className="canvas-operation-dormant"><span className="canvas-operation-dormant-status">{getT(context.language ?? "en")("terminal.dormant.status")}</span></div>}
@@ -423,9 +412,6 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   return (
     <div className="agent-stream-host">
       {handles}
-      {/* 목표가 없으면 접힌 상태에서 아무것도 그리지 않는다 — 진입점은 우측 레일 손잡이가 맡고,
-          펼치면 곧바로 목표 설정 시트가 열린다. */}
-      <GoalStrip session={session} language={context.language ?? "en"} expanded={goalExpanded} onToggleExpanded={toggleGoalExpanded} />
       <TerminalSurface
         operationId={session.sessionId}
         ticketPath={AGENT_TICKET_PATH}

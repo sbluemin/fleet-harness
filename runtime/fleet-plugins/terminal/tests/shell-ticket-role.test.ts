@@ -69,7 +69,6 @@ async function mount(options: MountOptions): Promise<{
     createSession: async () => {},
     getSessionMessagePolicy: () => undefined,
     getSessionRenameCommand: () => undefined,
-    getSessionGoalCommand: () => undefined,
     getSessionLastActivityAt: () => null,
     resolveSessionIdentity: async () => null,
     terminate: () => true,

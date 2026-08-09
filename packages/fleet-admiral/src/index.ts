@@ -15,11 +15,7 @@ export {
 
 // Agent CLI launch-spec types (구조적 DI 타입 포함)
 export {
-  DEFAULT_GOAL_CHECK_LIMIT,
-  MAX_GOAL_CHECK_LIMIT,
-  MAX_GOAL_CONDITION_CHARS,
   MAX_LAUNCH_PROMPT_CHARS,
-  MIN_GOAL_CHECK_LIMIT,
   type AgentCliDefinition,
   type AgentCliId,
   type AgentCliInjectionCapability,
@@ -30,7 +26,6 @@ export {
   type FleetHookExec,
   type PtyInputChunk,
 } from "./agent-cli/types.js";
-export { clampGoalCheckLimit } from "./agent-cli/goal.js";
 export {
   assertLaunchCommandLineBudget,
   assertLaunchPromptShimSafe,

@@ -1,5 +1,5 @@
 import type { OperationNode } from "@fleet-console/sdk/operations";
-import type { AgentCliDiagnostics, AgentCliMetadata, AgentCliState, SessionGoal, SessionInfo } from "./types.js";
+import type { AgentCliDiagnostics, AgentCliMetadata, AgentCliState, SessionInfo } from "./types.js";
 
 export interface OperationsSnapshot {
   readonly operations: readonly OperationNode[];
@@ -155,34 +155,6 @@ export function assertSessionInfo(value: unknown, status: number): SessionInfo {
     tenantId: typeof payload.tenantId === "string" ? payload.tenantId : undefined,
     registrationId: typeof payload.registrationId === "string" ? payload.registrationId : undefined,
     resumeAvailable: payload.resumeAvailable === true,
-    goal: assertSessionGoal(payload.goal),
-  };
-}
-
-function assertSessionGoal(value: unknown): SessionGoal | undefined {
-  if (value === undefined) return undefined;
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const goal = value as Partial<SessionGoal>;
-  if (
-    (goal.state !== "requested" && goal.state !== "active" && goal.state !== "deferred" && goal.state !== "met" && goal.state !== "impossible" && goal.state !== "capped" && goal.state !== "unknown")
-    || typeof goal.live !== "boolean"
-    || (goal.origin !== "fleet" && goal.origin !== "terminal")
-    || typeof goal.checksUsed !== "number"
-    || !Number.isFinite(goal.checksUsed)
-    || typeof goal.checkLimit !== "number"
-    || !Number.isFinite(goal.checkLimit)
-  ) return undefined;
-  return {
-    state: goal.state,
-    live: goal.live,
-    origin: goal.origin,
-    checksUsed: goal.checksUsed,
-    checkLimit: goal.checkLimit,
-    ...(typeof goal.totalChecks === "number" && Number.isFinite(goal.totalChecks) ? { totalChecks: goal.totalChecks } : {}),
-    ...(typeof goal.pendingCheckLimit === "number" && Number.isFinite(goal.pendingCheckLimit) ? { pendingCheckLimit: goal.pendingCheckLimit } : {}),
-    ...(typeof goal.condition === "string" ? { condition: goal.condition } : {}),
-    ...(typeof goal.durationMs === "number" && Number.isFinite(goal.durationMs) ? { durationMs: goal.durationMs } : {}),
-    ...(typeof goal.tokens === "number" && Number.isFinite(goal.tokens) ? { tokens: goal.tokens } : {}),
   };
 }
 

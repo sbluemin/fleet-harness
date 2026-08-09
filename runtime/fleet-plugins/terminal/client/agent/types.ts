@@ -40,21 +40,6 @@ export interface AgentCliMetadata {
   readonly signedIn: boolean;
 }
 
-export type GoalState = "requested" | "active" | "deferred" | "met" | "impossible" | "capped" | "unknown";
-
-export interface SessionGoal {
-  readonly state: GoalState;
-  readonly live: boolean;
-  readonly origin: "fleet" | "terminal";
-  readonly checksUsed: number;
-  readonly checkLimit: number;
-  readonly pendingCheckLimit?: number;
-  readonly totalChecks?: number;
-  readonly condition?: string;
-  readonly durationMs?: number;
-  readonly tokens?: number;
-}
-
 export interface SessionInfo {
   readonly sessionId: string;
   readonly terminalSessionId: string;
@@ -72,7 +57,6 @@ export interface SessionInfo {
   readonly tenantId?: string;
   readonly registrationId?: string;
   readonly resumeAvailable: boolean;
-  readonly goal?: SessionGoal;
 }
 
 export interface AgentClientState {
