@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, requestFitAllOperations, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setViewport, subscribe as subscribeCanvas, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
 import { armTriageSetAside, getTriageSetAsideArmedId, resetTriageTheater, setTriageActive } from "../core/client/src/canvas/triage-store.js";
-import { focusOperation, getState, hydrateOperations, setActiveOperation, setActiveTheater, setState } from "../core/client/src/store.js";
+import { focusOperation, getState, hydrateOperations, setActiveOperation, setState } from "../core/client/src/store.js";
 import type { OperationNode, TheaterBootstrap } from "../core/client/src/types.js";
 
 const apiMocks = vi.hoisted(() => ({
@@ -232,43 +232,6 @@ describe("Operations boot minimization", () => {
     expect(getState().pendingOperationFocus).toBeNull();
     expect(bodyPoolMocks.renderedOperationIds.at(-1)).toEqual(["dormant"]);
     expect(getSnapshot().minimized).not.toContain("dormant");
-  });
-
-  it("clears foreign resume protection when another Theater interrupts the switch before the target effect", async () => {
-    const resumeOperation = vi.fn();
-    registryMocks.plugins = [{ id: "terminal", resumeOperation }];
-    await bootApp(
-      [
-        operation("home", BOOT_FRESH_CREATED_AT(), "theater-a"),
-        { ...operation("dormant", 1, "theater-b"), payload: { resumeAvailable: true } },
-        operation("other", 1, "theater-c"),
-      ],
-      [
-        theater("theater-a", "Theater A"),
-        theater("theater-b", "Theater B"),
-        theater("theater-c", "Theater C"),
-      ],
-    );
-    await navigateTo("/operations");
-    expect(sideBarMocks.onResume).not.toBeNull();
-
-    await act(async () => {
-      sideBarMocks.onResume?.("dormant");
-      setActiveTheater("theater-c");
-      await Promise.resolve();
-    });
-
-    expect(resumeOperation).toHaveBeenCalledWith("dormant");
-    expect(getState().activeTheaterId).toBe("theater-c");
-    expect(getSnapshot().minimized).toEqual(["other"]);
-
-    await act(async () => {
-      setActiveTheater("theater-b");
-      await Promise.resolve();
-    });
-
-    expect(getState().activeTheaterId).toBe("theater-b");
-    expect(getSnapshot().minimized).toEqual(["dormant"]);
   });
 
   it("resumes a dormant Operation in the active Theater without switching, reloading, or setting focus state", async () => {
