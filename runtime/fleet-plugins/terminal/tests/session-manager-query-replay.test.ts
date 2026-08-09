@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createTerminalSessionManager } from "../server/shared/session-manager.js";
 import type { TerminalPtyHandle, TerminalSocket, TerminalSocketData } from "../server/shared/terminal-types.js";
@@ -71,6 +71,19 @@ describe("session-manager terminal query replay", () => {
     expect(socket.sent).toHaveLength(1);
     expect(socket.sent[0]).toMatchObject({ binary: false });
     expect(JSON.parse(socket.sent[0]?.data.toString("utf8") ?? "null")).toEqual({ type: "replay_end" });
+    await manager.stop();
+  });
+
+  it("threads configured Gateway default suppression into the launch resolver", async () => {
+    const launch = vi.fn(async (cwd?: string) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: {} }));
+    const manager = createTerminalSessionManager({ launch, startShell: createMockPty });
+
+    await manager.createSession({ ...CONTEXT, useGatewayDefaultModel: false });
+
+    expect(launch).toHaveBeenCalledWith("/work", expect.objectContaining({
+      sessionId: "session-a",
+      useGatewayDefaultModel: false,
+    }));
     await manager.stop();
   });
 });

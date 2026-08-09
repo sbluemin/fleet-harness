@@ -795,7 +795,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     return buildAgentCliLaunchKinds(metadata, AGENT_OPERATION_TYPE, selection);
   }
 
-  function launch(cwd: string | undefined, context: { readonly operationId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string } | undefined) {
+  function launch(cwd: string | undefined, context: { readonly operationId?: string; readonly model?: string; readonly effort?: string; readonly useGatewayDefaultModel?: boolean; readonly prompt?: string } | undefined) {
     const operationId = context?.operationId ?? "";
     const operation = ctx.host.operations.get(operationId);
     const cliId = typeof operation?.payload.cliId === "string" ? operation.payload.cliId : undefined;
@@ -819,6 +819,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ...(cliId ? { cliId } : {}),
       ...(context?.model ? { model: context.model } : {}),
       ...(context?.effort ? { effort: context.effort } : {}),
+      ...(context?.useGatewayDefaultModel === false ? { useGatewayDefaultModel: false } : {}),
       goalCheckLimit: launchCheckLimit,
       ...(context?.prompt ? { prompt: context.prompt } : {}),
       ...(providerSession ? { resumeSessionId: providerSession } : {}),
