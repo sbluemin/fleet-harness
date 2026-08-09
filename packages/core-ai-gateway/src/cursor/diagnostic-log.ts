@@ -40,6 +40,9 @@ const CURSOR_DIAGNOSTIC_EVENTS = new Set<CursorDiagnosticEventName>([
   "bridge.defer",
   "bridge.expire",
   "bridge.mismatch",
+  "exec.redirect.selected",
+  "exec.redirect.attached",
+  "exec.redirect.result_written",
   "turn.finish",
 ]);
 
@@ -153,6 +156,8 @@ function serializeCursorDiagnosticEvent(event: CursorDiagnosticEvent): string | 
   addNumber(record, "contextTokens", event.contextTokens);
   addNumber(record, "contextWindow", event.contextWindow);
   addString(record, "outcome", event.outcome, 128);
+  addNumber(record, "operationSequence", event.operationSequence);
+  addString(record, "adapter", event.adapter, 32);
   addString(record, "error", event.error, 128);
   return `${JSON.stringify(record)}\n`;
 }

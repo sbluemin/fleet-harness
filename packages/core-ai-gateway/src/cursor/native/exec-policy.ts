@@ -215,6 +215,12 @@ function retryMessage(
   if (toolSearch) {
     return `${NO_USER_FACING_BLOCK} The matching client bridge tool is deferred, not missing: call \`${toolSearch}\` to load it, then call the tool name that search returns.`;
   }
+  if (clientTools.length === 0) {
+    // Measured on Claude Code title-generation turns: tools:[] still carries the user prompt, so
+    // Cursor reaches for natives and every reject previously said "continue with the advertised
+    // client tools" — there were none, and the model kept retrying natives.
+    return `${NO_USER_FACING_BLOCK} This turn advertises no client tools. Do not call any tool — answer in plain text only. This Cursor-native tool will be rejected again.`;
+  }
   return `${NO_USER_FACING_BLOCK} No client bridge tool covers this action on this turn, and this Cursor-native tool will be rejected again — do not call it. Continue with the advertised client tools.`;
 }
 

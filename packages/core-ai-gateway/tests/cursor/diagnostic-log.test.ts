@@ -152,6 +152,30 @@ describe("Cursor diagnostic log", () => {
     expect(contents).not.toContain("user_id");
   });
 
+  it("persists payload-free redirect operation diagnostics", async () => {
+    const root = await temporaryDirectory();
+    const log = createCursorDiagnosticLog(path.join(root, "ai-gateway"));
+
+    log.write({
+      ...diagnosticEvent({
+        event: "exec.redirect.result_written",
+        operationSequence: 3,
+        adapter: "grep-direct",
+      }),
+      callId: "SECRET_CALL_ID",
+      toolOutput: "SECRET_TOOL_OUTPUT",
+    } as CursorDiagnosticEvent);
+    await log.flush();
+
+    const contents = await readFile(log.path, "utf8");
+    expect(JSON.parse(contents)).toMatchObject({
+      event: "exec.redirect.result_written",
+      operationSequence: 3,
+      adapter: "grep-direct",
+    });
+    expect(contents).not.toContain("SECRET_");
+  });
+
   it("persists payload-free live bridge lifecycle diagnostics", async () => {
     const root = await temporaryDirectory();
     const log = createCursorDiagnosticLog(path.join(root, "ai-gateway"));
