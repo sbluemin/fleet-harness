@@ -43,6 +43,7 @@ import {
 } from "./agent-cli-id-migration.js";
 import { migrateLegacyCaptures } from "./legacy-capture-migration.js";
 import { createConsoleDataPaths } from "./paths.js";
+import { createRemoteEndpointStore } from "./remote-endpoint.js";
 import { createRemoteIdentityStore, fingerprintsMatch } from "./remote-identity.js";
 import { encodeAccessLink, parseAccessLink, sanitizeAccessLabel } from "./access-link.js";
 import { createRemoteHostStore, type RemoteHostRecord } from "./remote-hosts.js";
@@ -466,6 +467,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const remoteIdentityStore = createRemoteIdentityStore(durablePaths.dir);
   const remoteHostStore = createRemoteHostStore(durablePaths.dir);
   const pairedDeviceStore = createPairedDeviceStore(durablePaths.dir);
+  const remoteEndpointStore = createRemoteEndpointStore(durablePaths.dir);
   const pluginOperationTypes = new Set<string>();
   const pluginPayloadSanitizers = new Map<string, readonly string[]>();
   const pluginLaunchCatalogProviders = new Map<string, OperationLaunchCatalogProvider[]>();
@@ -1176,6 +1178,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    *
    * 페어링도 같이 간다. 페어링은 회수 전까지 사는 자격이지만, 그 기기가 이 콘솔을 알아보는
    * 근거였던 지문이 방금 바뀌었다 — 붙을 수 없는 손님을 목록에 남기는 것은 사실이 아니다.
+   *
+   * 공표한 포트도 여기서 놓는다. 어차피 아무도 이 주소로 돌아오지 못하는 순간이므로, 포트를
+   * 붙들고 있을 이유가 없다 — 그리고 이것이 남이 쥔 포트에서 빠져나오는 유일한 길이다.
+   * 이 버튼은 이미 "모두 새 링크를 받아야 한다"는 뜻이고, 새 링크는 새 주소를 싣고 나간다.
    */
   async function handleRemoteIdentityRotation(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
     if (req.method !== "POST") {
@@ -1186,7 +1192,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 401, { error: "unauthorized" });
       return true;
     }
-    const bindHost = listeners.find((entry) => entry.audience === "remote")?.host;
+    /**
+     * 살아 있는 리스너가 없어도 설정이 켜져 있으면 갱신은 성립해야 한다. 리스너가 열리지
+     * 못한 상태야말로 이 버튼이 가장 필요한 자리다 — 공표한 포트를 남이 쥐고 있을 때 그것을
+     * 놓는 유일한 길이 여기이고, 리스너를 조건으로 걸면 그 길이 자기 자신에 막힌다.
+     */
+    const configured = consoleSettingsStore.load().general?.remoteAccess;
+    const bindHost = listeners.find((entry) => entry.audience === "remote")?.host
+      ?? (configured?.enabled === true ? configured.bindHost : null);
     if (!bindHost) {
       writeJson(res, 409, { error: "remote_access_disabled" });
       return true;
@@ -1194,6 +1207,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     await remoteIdentityStore.rotate(bindHost);
     access.revokeGrants("remote");
     pairedDeviceStore.revokeAll("remote");
+    remoteEndpointStore.forget();
     await reconcileRemoteIdentity();
     if (remoteFingerprint === null) {
       writeJson(res, 500, { error: remoteLastError ?? "remote_listener_failed" });
@@ -2310,8 +2324,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   /**
-   * 원격 리스너는 설정이 켜졌을 때만 열린다. 루프백과 같은 포트를 다른 인터페이스에 바인드해
-   * 링크 주소의 포트가 콘솔 포트와 어긋나지 않게 한다.
+   * 원격 리스너는 설정이 켜졌을 때만 열린다. 처음 열릴 때는 콘솔이 지금 쓰는 포트를 다른
+   * 인터페이스에 그대로 바인드하고, 그 포트를 공표된 주소로 적어 둔다.
+   *
+   * 그 뒤로는 콘솔 포트가 아니라 적어 둔 포트를 연다. 루프백 포트는 dynamic이면 기동마다
+   * 달라지는데, 액세스 링크는 주소를 한 번만 실어 보내고 상대는 그것을 저장해 두기 때문이다 —
+   * 포트가 움직이면 페어링이 남아 있어도 그 기기는 죽은 주소를 두드린다. 재시작이 손님의
+   * 돌아올 길을 빼앗지 않는다는 계약은 주소가 고정되어야만 참이다.
+   *
+   * 적어 둔 포트를 열지 못하면 조용히 다른 포트로 옮기지 않는다. 옮기는 순간 페어링 전원이
+   * 아무 신호 없이 닿을 수 없게 되므로, 실패를 상태로 남기고 리스너는 닫힌 채 둔다.
    */
   async function startRemoteAccessIfEnabled(actualPort: number): Promise<void> {
     const configured = consoleSettingsStore.load().general?.remoteAccess;
@@ -2329,11 +2351,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const identity = await remoteIdentityStore.ensure(bindHost);
     if (previousFingerprint === null || !fingerprintsMatch(previousFingerprint, identity.fingerprint)) {
       pairedDeviceStore.revokeAll("remote");
+      // 아무도 이 주소로 돌아올 수 없게 된 순간이다. 붙들고 있던 포트가 그사이 남의 것이
+      // 되었다면 그것 때문에 열리지 못할 이유도 함께 사라진다 — 명시적 갱신과 같은 처분이다.
+      remoteEndpointStore.forget();
     }
+    // 포트는 신원 처분이 끝난 뒤에 읽는다. 방금 놓은 포트를 그대로 다시 여는 순서가 되면
+    // 위의 처분이 아무 일도 하지 않는다.
+    const published = remoteEndpointStore.read();
+    const publishedPort = published ?? actualPort;
     const started = await startRemoteListener({
       identity,
       bindHost,
-      port: actualPort,
+      port: publishedPort,
       handler: handleRequest,
       upgradeRegistry,
       isHostAllowed: isRequestHostAllowed,
@@ -2341,21 +2370,34 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const resolved = listenerForRequest(req);
         return resolved === null || resolved.audience === "local" || isRemoteRequestAdmitted(resolved, req, getPathname(req));
       },
+    }).catch((error: unknown) => {
+      // 공표해 둔 포트를 남이 쥐고 있다. "주소가 쓰이는 중"으로만 말하면 사용자는 바인드
+      // 주소를 의심하는데, 실제로 막힌 것은 이 콘솔이 이미 손님에게 알려 준 포트다.
+      if (published !== null && isAddressInUse(error)) throw remotePortUnavailable(error);
+      throw error;
     });
     const listener: ListenerIdentity = {
       audience: "remote",
       host: bindHost,
-      port: actualPort,
-      origin: `https://${bindHost}:${actualPort}`,
+      port: publishedPort,
+      origin: `https://${bindHost}:${publishedPort}`,
       secure: true,
       // 게이트는 소켓의 실제 주소로 리스너를 찾는다. 설정이 이름을 받으므로, 여기에 그 이름을
       // 그대로 두면 어떤 요청도 자기 리스너를 찾지 못해 조인부터 전부 막힌다 — 리스너와 링크는
       // 멀쩡해 보이는 채로.
       bindAddress: started.address,
     };
+    /**
+     * 열린 소켓을 먼저 이 서버의 것으로 만든다. 아래 쓰기가 실패하면 상위 가드가 원격을 닫는데,
+     * 그 정리는 `remoteServer`에 담긴 것만 닫는다 — 담기 전에 던지면 아무도 소유하지 않은 채
+     * 열려 있는 리스너가 남아, 상태는 "닫혔다"고 말하면서 그 포트를 계속 붙들고 있다.
+     */
     listeners = [...listeners, listener];
     remoteFingerprint = identity.fingerprint;
     remoteServer = started.server;
+    // 실제로 열린 뒤에만 적는다. 바인드가 실패한 포트를 공표된 주소로 남기면, 그 주소를 믿는
+    // 기기가 생기기도 전에 다음 기동이 같은 실패를 반복한다.
+    remoteEndpointStore.remember(publishedPort);
     startControlExpirySweep();
   }
 
@@ -2469,11 +2511,30 @@ function decodeHandle(raw: string): string {
 
 /** 원격 바인드 실패 사유를 안전한 코드로만 표면화한다 — 주소·경로는 밖으로 내보내지 않는다. */
 function remoteAccessErrorCode(error: unknown): string {
-  const code = typeof error === "object" && error !== null && "code" in error && typeof error.code === "string" ? error.code : "";
+  const code = errorCodeOf(error);
+  if (code === REMOTE_PORT_UNAVAILABLE) return "remote_port_unavailable";
   if (code === "EADDRNOTAVAIL") return "bind_address_unavailable";
   if (code === "EADDRINUSE") return "bind_address_in_use";
   if (code === "EACCES") return "bind_permission_denied";
   return "remote_listener_failed";
+}
+
+function errorCodeOf(error: unknown): string {
+  return typeof error === "object" && error !== null && "code" in error && typeof error.code === "string" ? error.code : "";
+}
+
+function isAddressInUse(error: unknown): boolean {
+  return errorCodeOf(error) === "EADDRINUSE";
+}
+
+/**
+ * 공표한 포트를 열지 못한 실패는 다른 바인드 실패와 결이 다르다 — 주소는 멀쩡하고, 막힌 것은
+ * 이미 손님에게 알려 준 한 지점이다. 그래서 사용자에게 나가는 안내도 달라야 한다.
+ */
+const REMOTE_PORT_UNAVAILABLE = "FLEET_REMOTE_PORT_UNAVAILABLE";
+
+function remotePortUnavailable(cause: unknown): Error {
+  return Object.assign(new Error("remote_port_unavailable"), { code: REMOTE_PORT_UNAVAILABLE, cause });
 }
 
 function resolveBuiltInPluginDiscoveryRoots(packageRoot: string): { readonly builtInSourceRoot?: string; readonly builtInDistRoot: string } {

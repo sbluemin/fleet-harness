@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { encodeAccessLink, parseAccessLink } from "../core/host/access-link.js";
 import { createPairedDeviceStore } from "../core/host/paired-devices.js";
+import { createRemoteEndpointStore } from "../core/host/remote-endpoint.js";
 import { createRemoteHostStore } from "../core/host/remote-hosts.js";
 import { createRemoteIdentityStore, fingerprintOf, fingerprintsMatch, normalizeFingerprint } from "../core/host/remote-identity.js";
 
@@ -153,6 +154,52 @@ describe("fingerprints", () => {
     expect(fingerprintsMatch(identity.fingerprint, "")).toBe(false);
     // 길이가 다른 값은 접두사가 같아도 통과하면 안 된다.
     expect(fingerprintsMatch(identity.fingerprint, compact.slice(0, 40))).toBe(false);
+  });
+});
+
+/**
+ * 공표한 포트는 신원과 같은 성격의 사실이다 — 손님이 돌아올 때 믿는 것. 그래서 같은
+ * 디렉터리에 살고, 손님을 전부 내보내는 자리에서만 놓인다.
+ */
+describe("remote endpoint store", () => {
+  it("remembers the published port across a fresh store", () => {
+    const dir = createDir();
+    createRemoteEndpointStore(dir).remember(54_321);
+
+    expect(createRemoteEndpointStore(dir).read()).toBe(54_321);
+  });
+
+  it("reports no port before the listener has ever opened", () => {
+    expect(createRemoteEndpointStore(createDir()).read()).toBeNull();
+  });
+
+  it("forgets the port so the next start picks a new one", () => {
+    const dir = createDir();
+    const store = createRemoteEndpointStore(dir);
+    store.remember(54_321);
+    store.forget();
+
+    expect(store.read()).toBeNull();
+    expect(createRemoteEndpointStore(dir).read()).toBeNull();
+  });
+
+  // 0은 "아무 포트나"라는 뜻이라 공표할 수 없다. 적어 두면 다음 기동이 전혀 다른 곳을 연다.
+  it("refuses a port that cannot be published", () => {
+    const dir = createDir();
+    const store = createRemoteEndpointStore(dir);
+    store.remember(0);
+    store.remember(70_000);
+
+    expect(store.read()).toBeNull();
+  });
+
+  it("ignores a stored file it cannot trust", () => {
+    const dir = createDir();
+    createRemoteEndpointStore(dir).remember(54_321);
+    const file = path.join(dir, "remote", "listener.json");
+    fs.writeFileSync(file, JSON.stringify({ version: 99, port: 54_321 }));
+
+    expect(createRemoteEndpointStore(dir).read()).toBeNull();
   });
 });
 

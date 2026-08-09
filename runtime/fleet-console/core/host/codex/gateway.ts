@@ -94,7 +94,12 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     const port = deps.getPort();
     const listener = deps.resolveListener?.(request) ?? null;
     const accessSets = accessSetsFor(listener, port);
-    if (!isHostAllowed(request.rawHeaders, request.url ?? "/", accessSets.allowedHosts, port)) {
+    /**
+     * Host의 포트는 그 요청이 도착한 리스너의 것과 맞아야 한다. 콘솔 포트를 쓰면 원격 리스너가
+     * 자기 포트를 쓰는 순간 — 두 리스너가 늘 같은 포트를 쓰던 시절이 끝난 지금 — 올바른 Host를
+     * 실은 원격 요청이 전부 host_mismatch로 떨어진다.
+     */
+    if (!isHostAllowed(request.rawHeaders, request.url ?? "/", accessSets.allowedHosts, listener?.port ?? port)) {
       sendJson(response, 403, { error: "host_mismatch" });
       return true;
     }
