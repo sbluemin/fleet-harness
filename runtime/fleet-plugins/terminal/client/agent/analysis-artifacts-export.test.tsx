@@ -324,7 +324,7 @@ function mountPanel(): {
     language: "en",
     theme: "dark",
     api: {},
-  } as OperationRenderContext;
+  } as unknown as OperationRenderContext;
   const render = () => {
     act(() => root.render(createElement(AnalystArtifactsPanel, { context })));
   };
@@ -343,11 +343,9 @@ function keydown(key: string): KeyboardEvent {
   return new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
 }
 
-function stubDownload(): {
-  readonly createObjectURL: ReturnType<typeof vi.fn>;
-  readonly revokeObjectURL: ReturnType<typeof vi.fn>;
-  readonly click: ReturnType<typeof vi.spyOn<HTMLAnchorElement, "click">>;
-} {
+// 반환 타입은 추론에 맡긴다 — `vi.spyOn`의 인스턴스화 표현식은 접근자 오버로드를 먼저 집어
+// 메서드 키인 "click"을 제약 위반으로 판정한다.
+function stubDownload() {
   const createObjectURL = vi.fn(() => "blob:artifact");
   const revokeObjectURL = vi.fn();
   Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
