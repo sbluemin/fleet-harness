@@ -8,6 +8,7 @@ import { app, BrowserWindow, dialog, Menu, Notification, session, shell, Tray, W
 import { createDesktopLifecycle } from "./app-lifecycle.js";
 import { isConsoleConflict, showConsoleConflictAndQuit } from "./console-conflict.js";
 import { createConsoleControls } from "./console-controls.js";
+import { handOffWindowToConsole } from "./console-handoff.js";
 import { createHydratedDesktopEnvironment, resolveDesktopUserDataDirectory } from "./environment.js";
 import { pushEntrySnapshot } from "./entry-page.js";
 import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
@@ -130,8 +131,9 @@ async function boot(): Promise<void> {
    */
   const notifier = createDesktopNotifier(Notification, { showMessageBox: (options) => dialog.showMessageBox(options) });
   /**
-   * 창이 어느 콘솔에 있든 "이 셸이 띄운 콘솔이 어디인가"는 알려 준다. 원격 콘솔이 서빙한
-   * 화면은 자기가 떠나온 곳을 알 수 없으므로, 이것이 없으면 돌아갈 길이 사라진다.
+   * 창이 어느 콘솔에 있든 "이 셸이 띄운 콘솔이 어디인가"는 알려 준다. 집이 아닌 콘솔이 서빙한
+   * 화면은 자기가 떠나온 곳을 알 수 없으므로 — 원격이든 이 기계의 다른 콘솔이든 — 이것이 없으면
+   * 돌아갈 길이 사라진다. 이 값이 창보다 먼저 도착해야 하는 이유는 console-handoff.ts에 있다.
    */
   const publishShellHome = async (origin: string): Promise<void> => {
     const home = localConsoleOrigin;
@@ -154,14 +156,12 @@ async function boot(): Promise<void> {
     sessionFetch: (input, init) => consoleSession.fetch(input, init),
     localOrigin: () => localConsoleOrigin,
     deviceName: os.hostname().replace(/\.local$/iu, ""),
-    loadConsole: async (url) => {
-      await window?.loadURL(url);
-      // 창이 옮겨 갔으면 타이틀바·전체화면 동기화와 "돌아갈 곳"도 그 콘솔을 따라가야 한다.
-      const origin = new URL(url).origin;
-      await themeSynchronizer?.start(origin);
-      fullscreenSynchronizer?.activate(origin);
-      await publishShellHome(origin);
-    },
+    loadConsole: (url) => handOffWindowToConsole({
+      publishShellHome,
+      loadUrl: async (target) => { await window?.loadURL(target); },
+      synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); },
+      synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
+    }, url),
     openPicker: (url) => picker.open(url),
     closePicker: () => picker.close(),
     notify: (notice) => notifier.show(notice),

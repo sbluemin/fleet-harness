@@ -19,12 +19,14 @@ function createHarness(options: { readonly responses?: (path: string) => Respons
   const notices: Array<{ title: string; body: string }> = [];
   let current: string | null = LOCAL;
 
+  let pending: string | null = null;
   const policy = {
-    activateConsoleOrigin: (origin: string) => { trace.push(`activate:${origin}`); current = origin; },
+    activateConsoleOrigin: (origin: string) => { trace.push(`activate:${origin}`); current = origin; pending = null; },
     currentConsoleOrigin: () => current,
-    stageConsoleOrigin: (origin: string) => trace.push(`stage:${origin}`),
-    commitConsoleOrigin: () => { trace.push("commit"); },
-    cancelPendingConsoleOrigin: () => trace.push("cancel"),
+    // 실제 정책과 같은 의미론으로 둔다 — 확정 전까지 활성 origin은 옛 콘솔 그대로다.
+    stageConsoleOrigin: (origin: string) => { trace.push(`stage:${origin}`); pending = origin; },
+    commitConsoleOrigin: () => { trace.push("commit"); if (pending !== null) current = pending; pending = null; },
+    cancelPendingConsoleOrigin: () => { trace.push("cancel"); pending = null; },
     admitRemoteConsoleOrigin: (origin: string) => trace.push(`admit:${origin}`),
     withdrawRemoteConsoleOrigin: (origin: string) => trace.push(`withdraw:${origin}`),
   };
@@ -66,7 +68,15 @@ function createHarness(options: { readonly responses?: (path: string) => Respons
     confirmIdentity: options.confirm ?? (async () => { trace.push("confirm"); }),
   });
 
-  return { bridge, trace, requests, notices, sessionFetch, setCurrent: (origin: string | null) => { current = origin; } };
+  return {
+    bridge,
+    trace,
+    requests,
+    notices,
+    sessionFetch,
+    currentOrigin: () => current,
+    setCurrent: (origin: string | null) => { current = origin; },
+  };
 }
 
 describe("console target", () => {
@@ -247,9 +257,23 @@ describe("remote bridge", () => {
 
     await harness.bridge.open(LOCAL);
 
-    expect(harness.trace).toEqual([`activate:${LOCAL}`, `load:${LOCAL}/console/`]);
+    expect(harness.trace).toEqual([`stage:${LOCAL}`, `load:${LOCAL}/console/`, "commit"]);
     expect(harness.requests).toEqual([]);
     expect(harness.sessionFetch).not.toHaveBeenCalled();
+  });
+
+  /**
+   * 적재가 실패했는데 활성 origin만 옮겨 두면, 정책은 새 콘솔을 창은 옛 콘솔을 가리킨 채
+   * 갈라진다 — 그 창은 눈앞의 화면 안에서조차 항해하지 못한다.
+   */
+  it("leaves the window on the console it can still see when the load fails", async () => {
+    const harness = createHarness({ load: async () => { throw new Error("ERR_CONNECTION_REFUSED"); } });
+    harness.setCurrent(REMOTE);
+
+    await expect(harness.bridge.open(LOCAL)).rejects.toThrow("ERR_CONNECTION_REFUSED");
+
+    expect(harness.trace).toEqual([`stage:${LOCAL}`, `load:${LOCAL}/console/`, "cancel"]);
+    expect(harness.currentOrigin()).toBe(REMOTE);
   });
 
   it("intercepts the way home, which the window policy would otherwise block", () => {
@@ -275,7 +299,25 @@ describe("remote bridge", () => {
     await harness.bridge.open(DISCOVERED);
 
     // 핀도 자격도 거치지 않는다 — 같은 기계이므로 확인만으로 충분하다.
-    expect(harness.trace).toEqual(["ask:/api/v1/local-consoles", `activate:${DISCOVERED}`, `load:${DISCOVERED}/console/`]);
+    expect(harness.trace).toEqual(["ask:/api/v1/local-consoles", `stage:${DISCOVERED}`, `load:${DISCOVERED}/console/`, "commit"]);
+  });
+
+  /**
+   * WSL 안의 콘솔은 루프백 주소로 열리지만 집이 아니다. 그 화면에서 목록을 펴 달라는 신호는
+   * 원격에서 온 것과 똑같이 가로채여 덮개로 가야 한다 — 창째로 집에 돌아가 버리면 사용자는
+   * 보고 있던 콘솔을 잃는다.
+   */
+  it("overlays home's list when the signal comes from a loopback console that is not home", () => {
+    const contents = new EventEmitter();
+    const harness = createHarness();
+    harness.bridge.attach(contents as never);
+    harness.setCurrent("http://127.0.0.1:2253");
+
+    const event = { preventDefault: vi.fn() };
+    contents.emit("will-navigate", event, `${LOCAL}/console/?desktop-surface=host-picker&at=${encodeURIComponent("http://127.0.0.1:2253")}`, false, true);
+
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+    expect(harness.trace).toEqual([`picker:open:${LOCAL}/console/?desktop-surface=host-picker&at=${encodeURIComponent("http://127.0.0.1:2253")}`]);
   });
 
   /**

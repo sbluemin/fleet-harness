@@ -180,9 +180,21 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   async function openLocal(origin: string, url?: string): Promise<void> {
     const policy = deps.policy();
     if (!policy) throw new Error("remote_bridge_no_window");
-    policy.activateConsoleOrigin(origin);
     // 정해져 온 화면이 있어도 그 콘솔의 `/console/` 안이어야 한다 — 아니면 기본 화면으로 연다.
-    await deps.loadConsole(url !== undefined && consoleTarget(url, origin) === origin ? url : `${origin}${CONSOLE_PATH}`);
+    const target = url !== undefined && consoleTarget(url, origin) === origin ? url : `${origin}${CONSOLE_PATH}`;
+    /**
+     * 창이 실제로 도착한 뒤에 활성 origin을 옮긴다. 먼저 옮겨 두면 적재가 실패했을 때 정책은
+     * 새 콘솔을, 창은 옛 콘솔을 가리킨 채 갈라지고, 그 창은 자기가 보고 있는 화면 안에서조차
+     * 움직이지 못한다. 원격 경로가 이미 쓰는 예약·확정 문법을 여기서도 쓴다.
+     */
+    policy.stageConsoleOrigin(origin);
+    try {
+      await deps.loadConsole(target);
+    } catch (error) {
+      policy.cancelPendingConsoleOrigin();
+      throw error;
+    }
+    policy.commitConsoleOrigin();
   }
 
   async function receiveLink(link: string): Promise<void> {
