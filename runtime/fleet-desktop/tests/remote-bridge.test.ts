@@ -387,6 +387,29 @@ describe("host picker surface", () => {
     expect(harness.notices[0]?.body).toContain("no longer in this list");
   });
 
+  /** "호스트 관리"는 이름대로 관리 화면을 열어야 한다 — 집의 기본 화면에 내려놓으면 거짓말이다. */
+  it("keeps the screen the list asked for when it sends the window home", async () => {
+    const picker = new EventEmitter();
+    const harness = createHarness();
+    harness.bridge.attachPicker(picker as never);
+    harness.setCurrent(REMOTE);
+
+    picker.emit("will-navigate", { preventDefault: () => undefined }, `${LOCAL}/console/settings?section=remote-access`, undefined, true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(harness.trace).toContain(`load:${LOCAL}/console/settings?section=remote-access`);
+  });
+
+  it("falls back to the default screen when the asked-for screen is not that console's", async () => {
+    const picker = new EventEmitter();
+    const harness = createHarness();
+    harness.bridge.attachPicker(picker as never);
+
+    await harness.bridge.open(LOCAL, `${REMOTE}/console/settings`);
+
+    expect(harness.trace).toContain(`load:${LOCAL}/console/`);
+  });
+
   it("does not summon a second list from inside the list", async () => {
     const picker = new EventEmitter();
     const harness = createHarness();

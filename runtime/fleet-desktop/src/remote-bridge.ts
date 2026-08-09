@@ -42,8 +42,8 @@ export interface RemoteBridge {
    * 성공이든 실패든 닫는다. 실패한 채 덮개만 남으면 사용자는 돌아갈 화면을 잃는다.
    */
   attachPicker(contents: Pick<WebContents, "on" | "removeListener">): void;
-  /** 목록에 이미 있는 호스트를 연다. */
-  open(origin: string): Promise<void>;
+  /** 목록에 이미 있는 호스트를 연다. `url`은 루프백 대상의 특정 화면까지 정해져 온 경우에만 쓰인다. */
+  open(origin: string, url?: string): Promise<void>;
   /** `fleet://join?code=…`를 로컬 Console에 넘기고, 받아들여지면 그 호스트를 연다. */
   receiveLink(link: string): Promise<void>;
   /** 실패를 사람이 읽을 수 있는 한 줄로 바꿔 알린다. 화면이 없는 배관의 유일한 발화 지점이다. */
@@ -90,9 +90,13 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     });
   }
 
-  async function open(origin: string): Promise<void> {
+  /**
+   * `url`은 루프백 콘솔로 갈 때만 쓰인다 — 그 콘솔 안의 어느 화면을 열지까지 정해져 온 경우다
+   * (덮개의 "호스트 관리"가 그렇다). 원격은 핸드오프가 돌려준 origin의 `/console/`로만 간다.
+   */
+  async function open(origin: string, url?: string): Promise<void> {
     // 집으로 돌아가는 길에는 핀도 자격도 필요 없다 — 루프백은 언제나 허용된 origin이다.
-    if (origin === deps.localOrigin()) return openLocal(origin);
+    if (origin === deps.localOrigin()) return openLocal(origin, url);
     /**
      * 이 기계의 다른 콘솔도 핀과 자격 없이 열 수 있다. 다만 창을 아무 로컬 포트로나 보낼 수는
      * 없다 — 원격 콘솔이 서빙한 페이지가 `http://127.0.0.1:<임의>`로 항해를 걸면 그 주소는
@@ -100,7 +104,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
      */
     if (isLoopbackConsoleOrigin(origin)) {
       if (!(await isDiscoveredLocally(origin))) throw new Error("remote_host_unknown");
-      return openLocal(origin);
+      return openLocal(origin, url);
     }
     const response = await askLocalConsole(HANDOFF_PATH, { origin });
     if (response.status === 404) throw new Error("remote_host_unknown");
@@ -173,11 +177,12 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     deps.closePicker?.();
   }
 
-  async function openLocal(origin: string): Promise<void> {
+  async function openLocal(origin: string, url?: string): Promise<void> {
     const policy = deps.policy();
     if (!policy) throw new Error("remote_bridge_no_window");
     policy.activateConsoleOrigin(origin);
-    await deps.loadConsole(`${origin}${CONSOLE_PATH}`);
+    // 정해져 온 화면이 있어도 그 콘솔의 `/console/` 안이어야 한다 — 아니면 기본 화면으로 연다.
+    await deps.loadConsole(url !== undefined && consoleTarget(url, origin) === origin ? url : `${origin}${CONSOLE_PATH}`);
   }
 
   async function receiveLink(link: string): Promise<void> {
@@ -260,7 +265,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
          * 고르고 난 뒤에는 성공이든 실패든 덮개를 걷는다. 실패한 채로 남기면 사용자는
          * 아무 일도 일어나지 않은 목록을 마주하고, 그 아래 멀쩡한 콘솔에는 손이 닿지 않는다.
          */
-        void open(target).then(closePicker, (error: unknown) => { closePicker(); report(error); });
+        void open(target, url).then(closePicker, (error: unknown) => { closePicker(); report(error); });
       };
       contents.on("will-navigate", listener as never);
       attached.push({ contents, listener: listener as never });
