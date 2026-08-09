@@ -42,7 +42,7 @@ describe("claude-gateway profile", () => {
     expect(() => parseAgentCliId("claude-native-extra")).toThrow(/Unsupported agent CLI/);
   });
 
-  it("uses Claude Code while stripping inherited provider credentials", async () => {
+  it("uses Claude Code while preserving inherited Anthropic credentials for built-in models", async () => {
     const profile = await resolveAgentCliProfile({
       ANTHROPIC_API_KEY: "api-secret",
       ANTHROPIC_AUTH_TOKEN: "bearer-secret",
@@ -61,9 +61,11 @@ describe("claude-gateway profile", () => {
       label: "Claude (Gateway)",
       renameCommand: "/rename",
     });
-    expect(profile.env.KEEP_ME).toBe("yes");
-    expect(profile.env).not.toHaveProperty("ANTHROPIC_API_KEY");
-    expect(profile.env).not.toHaveProperty("ANTHROPIC_AUTH_TOKEN");
+    expect(profile.env).toMatchObject({
+      ANTHROPIC_API_KEY: "api-secret",
+      ANTHROPIC_AUTH_TOKEN: "bearer-secret",
+      KEEP_ME: "yes",
+    });
   });
 });
 

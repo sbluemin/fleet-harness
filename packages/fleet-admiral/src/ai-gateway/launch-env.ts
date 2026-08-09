@@ -47,10 +47,8 @@ export function prepareAiGatewayLaunchProfile(
 		options.homeDir ?? os.homedir(),
 		options.selection?.models ?? GATEWAY_MODELS,
 	);
-	// 자체 bearer를 주입하지 않는다. 주입하면 Claude Code가 claude.ai OAuth 대신 그것을 보내고,
-	// Anthropic 모델을 원문 중계할 자격증명이 사라져 게이트웨이가 토큰을 대신 읽는 우회가 된다.
-	delete env.ANTHROPIC_AUTH_TOKEN;
-	delete env.ANTHROPIC_API_KEY;
+	// 자체 bearer는 주입하지 않는다. Claude Code가 이미 가진 OAuth 또는 환경변수 자격을 보내면
+	// built-in Anthropic 모델은 그대로 중계하고, 다른 provider 분기는 Console 소유 자격으로 교체한다.
 	return { ...profile, env };
 }
 

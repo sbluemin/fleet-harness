@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 describe("prepareAiGatewayLaunchProfile", () => {
-	it("copies the profile, sets gateway env, deletes credentials, and writes the fallback cache", () => {
+	it("copies the profile, sets gateway env, preserves Anthropic credentials, and writes the fallback cache", () => {
 		const homeDir = makeTemporaryDirectory();
 		const profile = makeProfile({
 			ANTHROPIC_AUTH_TOKEN: "token",
@@ -44,12 +44,12 @@ describe("prepareAiGatewayLaunchProfile", () => {
 			ANTHROPIC_API_KEY: "key",
 		});
 		expect(prepared.env).toMatchObject({
+			ANTHROPIC_AUTH_TOKEN: "token",
+			ANTHROPIC_API_KEY: "key",
 			ANTHROPIC_BASE_URL: "http://127.0.0.1:4310/plugins/terminal/ai-gateway",
 			CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
 			ENABLE_TOOL_SEARCH: "true",
 		});
-		expect(prepared.env).not.toHaveProperty("ANTHROPIC_AUTH_TOKEN");
-		expect(prepared.env).not.toHaveProperty("ANTHROPIC_API_KEY");
 
 		const cachePath = path.join(homeDir, ".claude", "cache", "gateway-models.json");
 		const cache = JSON.parse(readFileSync(cachePath, "utf8")) as {
