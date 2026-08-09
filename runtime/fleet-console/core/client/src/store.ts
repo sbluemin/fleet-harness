@@ -31,7 +31,8 @@ const THEME_HINT_STORAGE_KEY = "fleet-console.theme-hint";
 const LAST_DARK_THEME_STORAGE_KEY = "fleet-console.last-dark-theme";
 // 서버 seenFeatureTours로 일방향 승격하기 위한 legacy migration 읽기·삭제 전용 키다. 새 값은 쓰지 않는다.
 const COMMISSIONING_SEEN_STORAGE_KEY = "fleet-console.commissioningSeen";
-const COMMISSIONING_SEEN_KEY = "commissioning";
+// "화면 안내 다시 보기"가 온보딩 전체를 초기화할 때 함께 지우는 최초 설정 가이드 시청 키.
+export const COMMISSIONING_SEEN_KEY = "commissioning";
 const WHATS_NEW_SEEN_VERSION_STORAGE_KEY = "fleet-console.whatsNewSeenVersion";
 const NOTIFICATION_PREFERENCES_STORAGE_KEY = "fleet-console.notificationPreferences";
 const NOTIFICATION_PREFERENCES_VERSION = 1;
