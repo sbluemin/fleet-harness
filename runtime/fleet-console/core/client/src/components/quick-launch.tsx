@@ -156,14 +156,15 @@ export function QuickLaunch() {
       const caret = fileToken.start + result.relativePath.length + 2;
       inputRef.current?.focus();
       inputRef.current?.setSelectionRange(caret, caret);
+      markSelectionChanged();
     });
-  }, [fileToken, prompt]);
+  }, [fileToken, markSelectionChanged, prompt]);
 
   const handleFileKeyDown = useCallback((event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (fileResults.length === 0 || !fileToken) return false;
     if (event.key === "ArrowDown") { event.preventDefault(); event.stopPropagation(); setActiveFileIndex((index) => (index + 1) % fileResults.length); return true; }
     if (event.key === "ArrowUp") { event.preventDefault(); event.stopPropagation(); setActiveFileIndex((index) => (index - 1 + fileResults.length) % fileResults.length); return true; }
-    if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
+    if ((event.key === "Enter" && !event.shiftKey) || (event.key === "Tab" && !event.shiftKey)) {
       const result = fileResults[activeFileIndex];
       if (!result) return false;
       event.preventDefault();
