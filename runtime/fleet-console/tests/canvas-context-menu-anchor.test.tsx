@@ -778,7 +778,7 @@ describe("CanvasContextMenu effort confirm tip", () => {
     });
 
     const tip = document.querySelector<HTMLElement>(".operation-launch-effort-confirm-tip");
-    expect(tip?.textContent).toBe("Click the same rung again to launch with this effort.");
+    expect(tip?.textContent).toBe("Press the knob again to launch.");
     expect(tip?.getAttribute("role")).toBe("status");
     expect(fetch).toHaveBeenCalledWith("/api/v1/settings/global", expect.objectContaining({
       method: "PUT",

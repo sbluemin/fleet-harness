@@ -73,7 +73,7 @@ export const commonEn = {
   "launchVariants.effort.track": "Reasoning effort",
   "launchVariants.effort.auto": "AUTO",
   "launchVariants.effort.autoValue": "Automatic — the model's own default",
-  "launchVariants.effort.confirmTip": "Click the same rung again to launch with this effort.",
+  "launchVariants.effort.confirmTip": "Press the knob again to launch.",
 } as const;
 
 export const commonKo: Record<keyof typeof commonEn, string> = {
@@ -150,5 +150,5 @@ export const commonKo: Record<keyof typeof commonEn, string> = {
   "launchVariants.effort.track": "추론 강도",
   "launchVariants.effort.auto": "자동",
   "launchVariants.effort.autoValue": "자동 — 모델 자체 기본값",
-  "launchVariants.effort.confirmTip": "같은 단을 다시 누르면 이 강도로 실행합니다.",
+  "launchVariants.effort.confirmTip": "노브를 다시 누르면 실행됩니다.",
 };

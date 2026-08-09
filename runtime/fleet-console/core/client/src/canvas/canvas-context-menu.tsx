@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 
 import { FEATURE_TOUR_BOUNDARY_ATTRIBUTE, FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
-import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
+import { getGlobalSettingsStoreState, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import { resolveLaunchKindAnnotation } from "../launch-kind-annotations.js";
 import { EffortTrack, effortLadderPosition } from "../components/effort-track.js";
@@ -91,6 +91,9 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   const effortAnchorRefs = useRef(new Map<string, HTMLDivElement>());
   const effortMenuRef = useRef<HTMLDivElement | null>(null);
   const effortCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // PUT 실패·동시 저장 거부로 설정이 되돌아가도 effect가 같은 마운트에서 무한 재시도하지 않게 한다.
+  // 메뉴를 다시 열면(재마운트) 한 번 더 시도한다.
+  const effortConfirmTipPersistStartedRef = useRef(false);
   const seenFeatureTours = globalSettings.state?.seenFeatureTours ?? [];
   const effortConfirmTipSeen = seenFeatureTours.includes(EFFORT_CONFIRM_TIP_SEEN_KEY);
   const openEffortValue = openEffortRow === null ? null : (rowEfforts[openEffortRow] ?? null);
@@ -246,10 +249,9 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   useEffect(() => {
     if (!globalSettings.state || openEffortValue === null || effortConfirmTipSeen) return;
     setEffortConfirmTipSticky(true);
-    void setGlobalSettingsField(
-      "seenFeatureTours",
-      appendSeenFeatureTour(globalSettings.state.seenFeatureTours, EFFORT_CONFIRM_TIP_SEEN_KEY),
-    );
+    if (effortConfirmTipPersistStartedRef.current) return;
+    effortConfirmTipPersistStartedRef.current = true;
+    void persistEffortConfirmTipSeen();
   }, [effortConfirmTipSeen, globalSettings.state, openEffortValue]);
 
   useEffect(() => {
@@ -759,6 +761,28 @@ const GAUGE_BAR_WIDTH = 1.5;
 const GAUGE_BAR_PITCH = 2.5;
 const GAUGE_HEIGHT = 8;
 const GAUGE_MIN_BAR = 2;
+
+// 시청 기록 PUT은 전역 저장 슬롯 하나뿐이라, 피처 투어 완료 저장과 겹치면 뒤쪽 호출이 거절된다.
+// 잠깐 양보한 뒤 최신 seen 목록에 키를 합쳐 다시 쓴다. 실패해도 같은 마운트에서는 상한까지만
+// 재시도해, 오프라인처럼 계속 실패하는 경우에도 요청이 무한히 돌지 않는다.
+async function persistEffortConfirmTipSeen(): Promise<void> {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const store = getGlobalSettingsStoreState();
+    if (store.savingField !== null) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      continue;
+    }
+    const seen = store.state?.seenFeatureTours;
+    if (!seen) return;
+    if (seen.includes(EFFORT_CONFIRM_TIP_SEEN_KEY)) return;
+    const saved = await setGlobalSettingsField(
+      "seenFeatureTours",
+      appendSeenFeatureTour(seen, EFFORT_CONFIRM_TIP_SEEN_KEY),
+    );
+    if (saved) return;
+    await new Promise((resolve) => setTimeout(resolve, 40));
+  }
+}
 
 /**
  * 강도 사다리를 그대로 줄인 계기 표식. 꺾쇠만으로는 이 손잡이가 무엇을 여는지 말하지 못하므로,
