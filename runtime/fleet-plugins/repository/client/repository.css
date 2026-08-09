@@ -49,7 +49,8 @@
   /* .repository-tree-pane과 동일한 암시적 auto 열 클램프 */
   grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
-  border-right: 1px solid var(--surface-rim);
+  /* diff는 목록 오른쪽 열이므로 경계선도 디바이더 쪽(왼쪽)에 둔다 */
+  border-left: 1px solid var(--surface-rim);
   position: relative;
   min-width: 0;
 }
