@@ -1,11 +1,11 @@
 ---
 name: pr-workflow
-description: End-to-end PR lifecycle on sbluemin/fleet-harness — commit staged work together with its branch-named changelog fragment, open a PR, await Codex review, adversarially adjudicate context-incomplete feedback against frozen product intent, roll back review-driven scope drift, and auto-merge only after a final context audit. Supersedes the former pr-creates and pr-review-fixes skills.
+description: End-to-end PR lifecycle on sbluemin/fleet-harness — commit staged work (with an autonomous feature-level changelog fragment when warranted), open a PR, await Codex review, adversarially adjudicate context-incomplete feedback against frozen product intent, roll back review-driven scope drift, and auto-merge only after a final context audit. Supersedes the former pr-creates and pr-review-fixes skills.
 ---
 
 # PR Workflow
 
-Use this skill to drive a change from committed work to a merged pull request on `sbluemin/fleet-harness`, mirroring the full cycle the Admiral runs by hand: **commit the change with its changelog fragment → open PR → await Codex review → judge & apply feedback → re-review → detect approval → auto-merge**.
+Use this skill to drive a change from committed work to a merged pull request on `sbluemin/fleet-harness`, mirroring the full cycle the Admiral runs by hand: **commit the change (plus a feature-level changelog fragment when warranted) → open PR → await Codex review → judge & apply feedback → re-review → detect approval → auto-merge**.
 
 This is a single end-to-end workflow. Enter at Phase 1 for a fresh change; if the branch is already committed and pushed with an open PR, skip to Phase 3 to resume at the review loop; if the PR is already approved, resume at Phase 6 to merge it.
 
@@ -32,13 +32,15 @@ Replace each `<placeholder>` before running. Optional inputs may be left blank �
 
 Publish a PR authored by the authenticated user's GitHub account, carry it through the Codex automated review by applying only the feedback that passes the Admiral judgment gate, and — after Codex signals approval and the cumulative review-driven diff passes a final product-context audit — auto-merge the PR into `<base>` (rebasing the head onto `<base>` and force-pushing first when the PR conflicts), unless `<auto_merge>` is `false`.
 
-## Changelog Fragment Requirement
+## Changelog Fragment (autonomous)
 
-Every release-impacting PR must carry its release note by one of two mutually exclusive paths. A newly releasable change adds exactly one fragment named after its own branch. A correction to behavior whose fragment is still unreleased in `.changelog.d/` rewrites that existing fragment instead, applies the `changelog-amend` label, and adds one exact `Changelog-Amend: <file-name>.md` line to the PR body per rewritten fragment; it adds no branch fragment and does not declare `no-changelog`. Inspect pending fragments and the public release baseline before choosing the path. The alternative is not the `no-changelog` label on its own: unless every changed path is mechanically internal (tests, `.agents/`, `.github/`, `AGENTS.md`/`CLAUDE.md`, `.changelog.d/`, the changelog compiler), CI also requires a `Changelog-Impact: none` line and a `No-Changelog-Reason: <code>` line in the PR body, with a sentence saying why no user notices the change. The branch already exists when the work starts, so a new fragment is staged and committed **together with the change it describes** — there is no second commit and nothing to wait for. Read a new fragment's filename from `node scripts/compile-changelog-fragments.mjs --name-for-branch`; never derive it by hand.
+Decide autonomously whether the change is a product-visible feature-level delta a user would notice in a shipped runtime. The PR template does not force a changelog checklist, and CI does not require a `no-changelog` declaration when you omit a fragment. See `.changelog.d/AGENTS.md` for the inclusion criterion and authoring contract.
+
+When a fragment is warranted, use one of two mutually exclusive paths. A new feature-level change adds exactly one fragment named after its own branch. A correction to behavior whose fragment is still unreleased in `.changelog.d/` rewrites that existing fragment instead, applies the `changelog-amend` label, and adds one exact `Changelog-Amend: <file-name>.md` line to the PR body per rewritten fragment; it adds no branch fragment. Inspect pending fragments and the public release baseline before choosing the path. The branch already exists when the work starts, so a new fragment is staged and committed **together with the change it describes** — there is no second commit and nothing to wait for. Read a new fragment's filename from `node scripts/compile-changelog-fragments.mjs --name-for-branch`; never derive it by hand.
 
 The fragment opens with `---`, `branch: <exact git branch name>`, `---`, and the compiler rejects a filename that disagrees with that value. The body groups entries under `### <runtime>` and `#### <section>` headings. Runtimes are `fleet-cli`, `fleet-console`, and `fleet-desktop` — the runtime a user notices the change in, never the package that implements it; sections are `Added`, `Changed`, `Fixed`, `Removed`, and `Breaking Changes`. Each `- English summary.` line is immediately followed by exactly one two-space-indented `  ko: 한글 요약.` line. Bullets carry no package tag. English summaries must be ASCII-only and Korean summaries must contain Hangul. Validate with `node scripts/compile-changelog-fragments.mjs --check` before pushing. `canary.md` is reserved for explicitly authorized direct-canary work outside this PR workflow and must never be used for a PR.
 
-Work no user perceives — refactors, boundary gates, doctrine and prompt edits, test repairs, release tooling — is `no-changelog` and writes no fragment. See `.changelog.d/AGENTS.md` for the full authoring contract.
+When the change is not a feature-level product delta — refactors, boundary gates, doctrine and prompt edits, test repairs, release tooling, and similar — write no fragment and do not invent a `no-changelog` ceremony.
 
 ## Admiral Judgment Policy
 
@@ -78,13 +80,13 @@ If resuming after review fixes and this record or a trustworthy pre-fix `REVIEW_
 
 1. Confirm the environment in parallel: `pwd`; OS info (`uname -a`); shell (`echo "SHELL=$SHELL"`); `gh auth status`; `gh repo view --json nameWithOwner` (must equal `sbluemin/fleet-harness`).
 2. Read the repository root `AGENTS.md`. For each subdirectory the change touches, read its `AGENTS.md` too — child rules override parent rules within their scope.
-3. Classify the change as a new release note, an amendment to an existing unreleased note, or `no-changelog`, and record which runtimes a user notices it in. Inspect `.changelog.d/` and the public release baseline: a correction to still-unreleased behavior amends its pending fragment rather than adding a standalone `Fixed` or `Changed` entry.
+3. Decide autonomously whether a feature-level changelog fragment is warranted. If yes, classify it as a new release note or an amendment to an existing unreleased note, and record which runtimes a user notices it in. Inspect `.changelog.d/` and the public release baseline: a correction to still-unreleased behavior amends its pending fragment rather than adding a standalone `Fixed` or `Changed` entry. If no, omit the fragment with no declaration.
 
 ### Phase 1 — Commit
 
 1. Inspect: `git status --short --branch`; `git branch --show-current`.
-2. For a new release note, write the branch-named fragment now. For a correction to still-unreleased behavior, rewrite the existing pending fragment instead and record its filename for the Phase 2 `changelog-amend` declaration. Author either path per `.changelog.d/AGENTS.md` and validate the set with `node scripts/compile-changelog-fragments.mjs --check`. A `no-changelog` change writes no fragment.
-3. Stage only the files belonging to this change, including the new or amended fragment: `git add <file> [<file> ...]`. Do not use `git add -A` / `git add .` unless every pending change belongs to this commit.
+2. When warranted, write the branch-named fragment now. For a correction to still-unreleased behavior, rewrite the existing pending fragment instead and record its filename for the Phase 2 `changelog-amend` declaration. Author either path per `.changelog.d/AGENTS.md` and validate the set with `node scripts/compile-changelog-fragments.mjs --check`. Otherwise write no fragment.
+3. Stage only the files belonging to this change, including any new or amended fragment: `git add <file> [<file> ...]`. Do not use `git add -A` / `git add .` unless every pending change belongs to this commit.
 4. Write the commit message in English using Conventional Commits (allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`). Subject `<commit_subject>` or inferred; body `<commit_body>` or addressed-change bullets.
 5. Pre-commit self-check: re-read `git diff --cached` once and confirm the subject/body match what is staged — nothing more, nothing less.
 6. Commit via HEREDOC. Do NOT use `--amend`, `--no-verify`, `--no-gpg-sign`, or any hook bypass. If a pre-commit hook fails, fix the cause and create a new commit (never amend).
@@ -93,10 +95,10 @@ If resuming after review fixes and this record or a trustworthy pre-fix `REVIEW_
 
 1. Resolve `<head>` (default current branch) and `<base>` (default `canary`; reject `main`/`master` unless overridden). If `<head>` equals `<base>`, stop and ask.
 2. `git push -u origin <head>` and verify `git status --short --branch` reports up-to-date with the remote.
-3. Build PR metadata: derive `<title>` (≤ 70 chars, Conventional Commits) and `<body>` (`## Summary` 1–3 bullets + `## Test Plan` checklist) if not provided.
-   - For a new release note, name the committed branch fragment in the changelog checklist.
-   - For an amendment, apply the `changelog-amend` label after creating the PR and add one `Changelog-Amend: <file-name>.md` line per amended fragment to the body; do not add a branch fragment or `no-changelog` declaration.
-   - For `no-changelog`, record that classification and its reason explicitly.
+3. Build PR metadata: derive `<title>` (≤ 70 chars, Conventional Commits) and `<body>` (`## Summary` 1–3 bullets + `## Test Plan` checklist) if not provided. Do not add a Changelog checklist to the PR body.
+   - When a new release note was committed, the fragment itself is the record; no PR-body ceremony is required.
+   - For an amendment, apply the `changelog-amend` label after creating the PR and add one `Changelog-Amend: <file-name>.md` line per amended fragment to the body; do not add a branch fragment.
+   - When no fragment was warranted, leave the PR body without changelog declarations.
 4. Echo the final title/body/base/head/draft once for the record, then create directly — invoking this skill is itself the authorization to open the PR, so do not pause for a separate confirmation round-trip. The safety guards still bind: the base-branch guard rejects `main`/`master` unless explicitly overridden, and `<head>` must not equal `<base>` (step 1). Pause for the Admiral of the Navy only when metadata is genuinely ambiguous or a safety guard trips.
    ```bash
    gh pr create --repo sbluemin/fleet-harness --base "$base" --head "$head" \
@@ -114,7 +116,7 @@ If resuming after review fixes and this record or a trustworthy pre-fix `REVIEW_
 
 The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronously. The skill **waits with a deterministic background poll that wakes you only when something real changes** — never ask the Admiral to run `/loop` by hand, and prefer this over a fixed-interval cron that re-invokes the model every tick whether or not anything happened. A cheap `gh` loop runs in the background (no model tokens) and re-invokes you on the first genuine signal.
 
-0. **Ensure PR metadata, changelog completion, the right branch, and frozen context.** Confirm `<pr_number>`, `<repo>`, and `<headRefName>` are known. On a fresh run they come from Phase 2; on a resume entry, resolve them first via `gh pr view --json number,headRefName,url` for the current branch (or the `<pr_number>` carried in the resume prompt). Never poll or push without them. For a new release note, require the branch-named fragment on the remote head. For an amendment, require every declared pending fragment on the remote head plus the `changelog-amend` label and exact `Changelog-Amend:` body lines. If the selected path is incomplete, return to Phase 1 or 2 before activating review. Then confirm the **current branch equals `<headRefName>`** (`git branch --show-current`); if it does not, stop and ask the Admiral before editing or committing — do not auto-checkout and never commit fixes onto a non-head branch. Finally confirm the **working tree is clean** (`git status --short`); if there are unrelated uncommitted changes, stop and ask the Admiral before editing — never overwrite them or fold pre-existing changes into a review-fix commit. Before the first review-fix, freeze the Product Context Record and set `REVIEW_BASE_HEAD` to the current pushed head SHA.
+0. **Ensure PR metadata, any warranted changelog path, the right branch, and frozen context.** Confirm `<pr_number>`, `<repo>`, and `<headRefName>` are known. On a fresh run they come from Phase 2; on a resume entry, resolve them first via `gh pr view --json number,headRefName,url` for the current branch (or the `<pr_number>` carried in the resume prompt). Never poll or push without them. When a new release note was chosen, require the branch-named fragment on the remote head. For an amendment, require every declared pending fragment on the remote head plus the `changelog-amend` label and exact `Changelog-Amend:` body lines. Omission of a fragment needs no declaration. If the selected path is incomplete, return to Phase 1 or 2 before activating review. Then confirm the **current branch equals `<headRefName>`** (`git branch --show-current`); if it does not, stop and ask the Admiral before editing or committing — do not auto-checkout and never commit fixes onto a non-head branch. Finally confirm the **working tree is clean** (`git status --short`); if there are unrelated uncommitted changes, stop and ask the Admiral before editing — never overwrite them or fold pre-existing changes into a review-fix commit. Before the first review-fix, freeze the Product Context Record and set `REVIEW_BASE_HEAD` to the current pushed head SHA.
 1. **Activate the initial review before waiting.** Apply this gate once per PR, before the first long-running poll. Skip it after Codex has already reacted, reviewed, commented, or been explicitly requested.
    1. Check PR-body reactions, reviews, and Codex top-level comments. Any `chatgpt-codex-connector[bot]` reaction, review, or comment means the reviewer is active; continue to step 2.
    2. If no Codex signal exists, post `@codex Please review this PR.` as a PR comment and record its comment ID, URL, and creation time. Do not start the 40-minute poll yet.
@@ -217,7 +219,7 @@ Then report in Korean:
 - PR number, title, head/base, URL, draft flag.
 - Frozen Product Context Record evidence, `REVIEW_BASE_HEAD`, and the final cumulative context-audit outcome.
 - Each review item across all passes: fix / declined / deferred, with verification evidence.
-- Files changed, the initial commit SHA (fragment included when release-impacting), later fix commit SHA(s), and push target(s).
+- Files changed, the initial commit SHA (fragment included when a feature-level note was warranted), later fix commit SHA(s), and push target(s).
 - Validation commands and pass/fail status; note any check not run.
 - The approval signal observed (Codex `+1` on the PR body), or the explicit activation request URL plus `codex_activation_timeout`; include every `@codex` follow-up comment URL.
 - **Merge outcome**: merged (`<merge_method>` + merge commit SHA + whether a pre-merge rebase/force-push was needed), or — when `<auto_merge>` is `false` or auto-merge halted — the approved-but-unmerged state and the reason. The Phase 3 wait poll was stopped in Phase 6.

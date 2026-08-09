@@ -228,7 +228,7 @@ jobs:
           export RELEASE_DATE
 
           # 이번 구간에서 릴리스 노트 없이 들어온 변경을 릴리스 직전에 드러낸다. 사용자 체감 여부는 기계가
-          # 판정할 수 없으므로 막지 않고 기록만 남긴다 — 잘못된 no-changelog 판단이 배포 전에 눈에 띄게 한다.
+          # 판정할 수 없으므로 막지 않고 기록만 남긴다 — 기능 단위로 보여야 할 커밋이 프래그먼트 없이 빠진 경우 배포 전에 눈에 띄게 한다.
           previous_release=$(git log --format='%H %s' --max-count=400 --skip=1 | grep -m1 -E '^[0-9a-f]+ chore\(release\):' | cut -d' ' -f1 || true)
           audit_range=${previous_release:+$previous_release..HEAD}
           echo "::group::Changes recorded with no release note${previous_release:+ (since $previous_release)}"
