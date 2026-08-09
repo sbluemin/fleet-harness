@@ -98,6 +98,18 @@ describe("auth validation", () => {
     expect(cancel).toHaveBeenCalledOnce();
   });
 
+  it("keeps the auth status when body cancellation fails", async () => {
+    const response = new Response("{}", { status: 200 });
+    if (!response.body) throw new Error("Expected a Response body for cancel coverage.");
+    const cancel = vi.spyOn(response.body, "cancel").mockRejectedValue(new TypeError("body already closed"));
+    mockFetch(response);
+
+    await expect(validateAnthropicCompatibleApiKey(baseRequest())).resolves.toMatchObject({
+      status: "success",
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
   it("distinguishes network failures", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("network failed"));
 

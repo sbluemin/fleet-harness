@@ -41,7 +41,9 @@ export async function validateAnthropicCompatibleApiKey(
     });
     // Status alone decides validity; drop the body so a slow token stream cannot
     // keep the socket (or the provider generation) alive after we already know.
-    if (response.body) void response.body.cancel();
+    // cancel() can reject after a dropped connection — absorb so cleanup never
+    // overrides the status we already have or becomes an unhandled rejection.
+    if (response.body) void response.body.cancel().catch(() => undefined);
 
     if (response.ok) {
       return { providerId: request.providerId, status: "success" };
