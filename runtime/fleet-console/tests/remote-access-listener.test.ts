@@ -317,6 +317,28 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
   });
 
   /**
+   * 읽기만 되는 것으로는 부족하다. 쓰기는 Host가 아니라 Origin으로 한 번 더 갈리는데, 그 판정도
+   * 콘솔 포트를 보고 있었다 — 포트가 갈라지면 제어를 쥔 원격이 결재만 못 하는 상태가 된다.
+   */
+  it("keeps a Codex write reachable after that restart, not only a read", async () => {
+    const restarted = await restartFixture(await startFixture({ remote: true }));
+    const origin = `https://${BIND_HOST}:${restarted.remotePort}`;
+    expect(origin).not.toBe(`https://${BIND_HOST}:${new URL(restarted.loopbackEndpoint).port}`);
+    const operator = await joinAs(restarted, "full", "MacBook Pro");
+
+    const decided = await remoteRequest(restarted, "POST", "/console/codex/api/drydock/2026-08-09T00-00-00-000Z-0123abcd/decision", "{}", operator, {
+      origin,
+      "content-type": "application/json",
+    });
+
+    /**
+     * Origin 게이트를 지나 본문 판정까지 갔다는 것이 여기서 볼 것의 전부다. 포트가 어긋나면
+     * 이 자리에 닿기 전에 `403 origin_mismatch`로 끝난다.
+     */
+    expect({ status: decided.status, body: decided.body }).toEqual({ status: 400, body: JSON.stringify({ error: "invalid_action" }) });
+  });
+
+  /**
    * 저장된 주소는 어제 붙어 있던 인터페이스의 것이다. 그 주소가 사라졌을 때 기동까지 함께
    * 무너지면, 사용자는 설정을 고칠 화면조차 열 수 없다.
    */
@@ -939,7 +961,7 @@ function remoteRequest(
   body?: string,
   cookie?: string,
   extraHeaders?: Record<string, string>,
-): Promise<{ status: number; headers: import("node:http").IncomingHttpHeaders }> {
+): Promise<{ status: number; headers: import("node:http").IncomingHttpHeaders; body: string }> {
   return new Promise((resolve, reject) => {
     const request = https.request({
       host: BIND_HOST,
@@ -956,8 +978,9 @@ function remoteRequest(
         ...extraHeaders,
       },
     }, (response) => {
-      response.resume();
-      response.on("end", () => resolve({ status: response.statusCode ?? 0, headers: response.headers }));
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer) => chunks.push(chunk));
+      response.on("end", () => resolve({ status: response.statusCode ?? 0, headers: response.headers, body: Buffer.concat(chunks).toString("utf8") }));
     });
     request.on("error", reject);
     if (body) request.write(body);

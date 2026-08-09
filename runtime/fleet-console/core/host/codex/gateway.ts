@@ -95,11 +95,13 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     const listener = deps.resolveListener?.(request) ?? null;
     const accessSets = accessSetsFor(listener, port);
     /**
-     * Host의 포트는 그 요청이 도착한 리스너의 것과 맞아야 한다. 콘솔 포트를 쓰면 원격 리스너가
-     * 자기 포트를 쓰는 순간 — 두 리스너가 늘 같은 포트를 쓰던 시절이 끝난 지금 — 올바른 Host를
-     * 실은 원격 요청이 전부 host_mismatch로 떨어진다.
+     * 이 게이트가 대조할 포트는 요청이 도착한 리스너의 것이다. 콘솔 포트를 쓰면 원격 리스너가
+     * 자기 포트를 쓰는 순간 — 두 리스너가 늘 같은 포트를 쓰던 시절이 끝난 지금 — 올바른 주소를
+     * 실은 원격 요청이 전부 막힌다. 읽기는 Host로, 쓰기는 Origin으로 갈리므로 두 판정이 같은
+     * 값을 봐야 한다: 한쪽만 고치면 원격이 읽기만 되고 결재는 못 하는 상태로 남는다.
      */
-    if (!isHostAllowed(request.rawHeaders, request.url ?? "/", accessSets.allowedHosts, listener?.port ?? port)) {
+    const gatePort = listener?.port ?? port;
+    if (!isHostAllowed(request.rawHeaders, request.url ?? "/", accessSets.allowedHosts, gatePort)) {
       sendJson(response, 403, { error: "host_mismatch" });
       return true;
     }
@@ -136,7 +138,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       knowledgeRoot: paths.root,
       paths,
       host: deps.host,
-      port,
+      port: gatePort,
       workspaceId: workspace.id,
       allowedOrigins: accessSets.allowedOrigins,
       externalMode: accessSets.externalMode,
