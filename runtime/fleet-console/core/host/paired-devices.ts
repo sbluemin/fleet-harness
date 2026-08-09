@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import path from "node:path";
 
 import type { AccessAudience, AccessClass } from "./auth.js";
+import { createRemoteStorage, type RemoteStorageDeps } from "./remote-storage.js";
 
 /**
  * 액세스 링크가 만든 페어링. 링크 자체는 여전히 1회용이지만, 그 교환으로 생긴 이 기록은
@@ -43,16 +43,14 @@ export interface PairedDeviceStore {
   revokeAll(audience: AccessAudience): readonly PairedDevice[];
 }
 
-export interface PairedDeviceStoreDeps {
-  readonly fileSystem?: Pick<typeof fs, "mkdirSync" | "readFileSync" | "renameSync" | "writeFileSync">;
+export interface PairedDeviceStoreDeps extends RemoteStorageDeps {
+  readonly readFile?: (file: string) => string;
   readonly now?: () => number;
   readonly randomId?: () => string;
   readonly randomSecret?: () => string;
 }
 
 const DEVICES_FILE = "paired-devices.json";
-const FILE_MODE = 0o600;
-const DIR_MODE = 0o700;
 const STORE_VERSION = 1;
 /** 한 콘솔이 기억하는 페어링 수. 상한에 닿으면 조용히 밀어내지 않고 거절한다. */
 export const PAIRED_DEVICE_LIMIT = 64;
@@ -77,17 +75,17 @@ export function hashPairingSecret(secret: string): string {
 }
 
 export function createPairedDeviceStore(consoleDir: string, deps: PairedDeviceStoreDeps = {}): PairedDeviceStore {
-  const fileSystem = deps.fileSystem ?? fs;
+  const storage = createRemoteStorage(consoleDir, deps);
+  const readFile = deps.readFile ?? ((file: string) => fs.readFileSync(file, "utf8"));
   const now = deps.now ?? Date.now;
   const randomId = deps.randomId ?? (() => crypto.randomBytes(8).toString("hex"));
   const randomSecret = deps.randomSecret ?? (() => crypto.randomBytes(32).toString("base64url"));
-  const file = path.join(consoleDir, DEVICES_FILE);
   let devices: StoredDevice[] = read();
   let flushedAt = now();
 
   function read(): StoredDevice[] {
     try {
-      const parsed = JSON.parse(fileSystem.readFileSync(file, "utf8")) as StoredFile;
+      const parsed = JSON.parse(readFile(storage.path(DEVICES_FILE))) as StoredFile;
       if (parsed?.version !== STORE_VERSION || !Array.isArray(parsed.devices)) return [];
       return parsed.devices.filter(isStoredDevice).slice(0, MAX_DEVICES);
     } catch {
@@ -97,10 +95,7 @@ export function createPairedDeviceStore(consoleDir: string, deps: PairedDeviceSt
 
   function write(): void {
     const body: StoredFile = { version: STORE_VERSION, devices };
-    const temporary = `${file}.tmp`;
-    fileSystem.mkdirSync(consoleDir, { recursive: true, mode: DIR_MODE });
-    fileSystem.writeFileSync(temporary, `${JSON.stringify(body, null, 2)}\n`, { encoding: "utf8", mode: FILE_MODE });
-    fileSystem.renameSync(temporary, file);
+    storage.write(DEVICES_FILE, `${JSON.stringify(body, null, 2)}\n`);
     flushedAt = now();
   }
 

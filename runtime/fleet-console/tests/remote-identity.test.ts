@@ -6,6 +6,9 @@ import tls from "node:tls";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { encodeAccessLink, parseAccessLink } from "../core/host/access-link.js";
+import { createPairedDeviceStore } from "../core/host/paired-devices.js";
+import { createRemoteHostStore } from "../core/host/remote-hosts.js";
 import { createRemoteIdentityStore, fingerprintOf, fingerprintsMatch, normalizeFingerprint } from "../core/host/remote-identity.js";
 
 const tempDirs: string[] = [];
@@ -73,6 +76,45 @@ describe("remote identity store", () => {
     const mode = fs.statSync(path.join(dir, "remote", "identity-key.pem")).mode & 0o777;
 
     expect(mode).toBe(0o600);
+  });
+
+  /**
+   * 만들 때 한 번 0700을 주는 것으로는 부족하다 — 그 뒤에 느슨해진 권한을 되돌릴 길이 없는데
+   * 이 디렉터리에는 리스너의 개인키가 있다. 콘솔 데이터 루트가 durable state를 쓸 때마다
+   * 같은 방식으로 굳는 것과 같은 계약이다.
+   */
+  it("hardens the remote directory again on every write, not only when it creates it", async () => {
+    const dir = createDir();
+    const store = createRemoteIdentityStore(dir);
+    await store.ensure("127.0.0.1");
+    const remoteDir = path.join(dir, "remote");
+    fs.chmodSync(remoteDir, 0o755);
+
+    await store.rotate("127.0.0.1");
+
+    expect(fs.statSync(remoteDir).mode & 0o777).toBe(0o700);
+  });
+
+  /** 신원과 페어링과 상대 목록은 함께 거둬지므로 한 디렉터리에 산다. */
+  it("keeps every remote-access file in one directory", async () => {
+    const dir = createDir();
+    await createRemoteIdentityStore(dir).ensure("127.0.0.1");
+    createPairedDeviceStore(dir).pair({ audience: "remote", access: "full", device: "MacBook Pro" });
+    createRemoteHostStore(dir).remember(parseAccessLink(encodeAccessLink({
+      endpoint: "https://100.84.12.7:6768",
+      token: "sEPaty9_Yzq-N46FjCUfme4_DrCZeYlTitGcbWd8kLA",
+      fingerprint: "8D3FBB2A855053305C32280A2ABB566FFF9C5B14C353AE0527092ED476CBB70F",
+      label: "devbox",
+    })));
+
+    expect(fs.readdirSync(dir)).toEqual(["remote"]);
+    expect(fs.readdirSync(path.join(dir, "remote")).sort()).toEqual([
+      "identity-cert.pem",
+      "identity-key.pem",
+      "identity.json",
+      "known-hosts.json",
+      "paired-devices.json",
+    ]);
   });
 
   it("rotates on request and leaves the previous fingerprint behind", async () => {

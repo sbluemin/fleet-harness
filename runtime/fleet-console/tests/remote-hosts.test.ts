@@ -23,13 +23,13 @@ function createHarness(start = 10_000) {
   let current = start;
   let counter = 0;
   const deps: RemoteHostStoreDeps = {
+    ensureDirectory: () => undefined,
+    readFile: (file: string) => {
+      const found = files.get(file);
+      if (found === undefined) throw new Error("ENOENT");
+      return found;
+    },
     fileSystem: {
-      mkdirSync: () => undefined,
-      readFileSync: ((file: string) => {
-        const found = files.get(file);
-        if (found === undefined) throw new Error("ENOENT");
-        return found;
-      }) as never,
       writeFileSync: ((file: string, content: string) => { files.set(file, content); }) as never,
       renameSync: ((from: string, to: string) => {
         files.set(to, files.get(from) ?? "");
@@ -43,7 +43,7 @@ function createHarness(start = 10_000) {
     deps,
     files,
     advance: (ms: number) => { current += ms; },
-    stored: () => files.get("/console/remote-hosts.json") ?? "",
+    stored: () => files.get("/console/remote/known-hosts.json") ?? "",
     open: () => createRemoteHostStore("/console", deps),
   };
 }
@@ -139,14 +139,14 @@ describe("remote host store", () => {
 
   it("starts empty rather than throwing on a file it cannot read", () => {
     const harness = createHarness();
-    harness.files.set("/console/remote-hosts.json", "{ not json");
+    harness.files.set("/console/remote/known-hosts.json", "{ not json");
 
     expect(harness.open().list()).toEqual([]);
   });
 
   it("drops entries that lost their shape instead of trusting them", () => {
     const harness = createHarness();
-    harness.files.set("/console/remote-hosts.json", JSON.stringify({
+    harness.files.set("/console/remote/known-hosts.json", JSON.stringify({
       version: 1,
       hosts: [
         { id: "keep", label: "ok", origin: "https://a.test:4310", hostname: "a.test", port: 4310, fingerprint: FINGERPRINT_A, addedAt: 1, lastOpenedAt: null },
