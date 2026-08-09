@@ -16,11 +16,25 @@ import {
   FEATURE_TOUR_BOUNDARY_ATTRIBUTE,
   FEATURE_TOUR_LAYER_ATTRIBUTE,
 } from "../core/client/src/feature-tour-catalog.js";
+import { EFFORT_CONFIRM_TIP_SEEN_KEY } from "../core/client/src/components/feature-tour.js";
+import { getGlobalSettingsStoreState, hydrateGlobalSettings } from "../core/client/src/global-settings-store.js";
+import type { GlobalSettingsState } from "../core/client/src/types.js";
+
+const SETTINGS: GlobalSettingsState = {
+  consolePortMode: "dynamic",
+  consoleStaticPort: null,
+  remoteAccess: { enabled: false, bindHost: null },
+  language: "auto",
+  seenFeatureTours: [],
+  theme: "instrument",
+  uiFont: { source: "builtin", id: "manrope", size: 14 },
+};
 
 let container: HTMLDivElement;
 let root: Root;
 let originalGetBoundingClientRect: typeof Element.prototype.getBoundingClientRect;
 let tourLayer: HTMLDivElement | null;
+const originalFetch = globalThis.fetch;
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -39,6 +53,18 @@ beforeEach(() => {
   document.body.append(container);
   root = createRoot(container);
   tourLayer = null;
+  hydrateGlobalSettings(SETTINGS);
+  globalThis.fetch = vi.fn(async (_input, init) => {
+    const body = typeof init?.body === "string" ? JSON.parse(init.body) as Partial<GlobalSettingsState> : {};
+    const previous = getGlobalSettingsStoreState().state ?? SETTINGS;
+    return new Response(JSON.stringify({
+      state: {
+        ...previous,
+        ...body,
+        seenFeatureTours: body.seenFeatureTours ?? previous.seenFeatureTours,
+      },
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
 });
 
 afterEach(() => {
@@ -46,6 +72,8 @@ afterEach(() => {
   tourLayer?.remove();
   container.remove();
   Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+  globalThis.fetch = originalFetch;
+  hydrateGlobalSettings(SETTINGS);
 });
 
 describe("CanvasContextMenu anchor placement", () => {
@@ -732,6 +760,47 @@ describe("CanvasContextMenu launch kind attribute", () => {
 
     act(() => document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
     expect(onClose).toHaveBeenCalledOnce();
+  });
+});
+
+describe("CanvasContextMenu effort confirm tip", () => {
+  it("shows a one-shot tip on the first non-AUTO selection and records it as seen", async () => {
+    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, gatewayVariantCatalog());
+    act(() => document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!
+      .parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+    act(() => effortHandle("fable").dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+
+    const track = document.querySelector<HTMLElement>(".effort-track")!;
+    expect(document.querySelector(".operation-launch-effort-confirm-tip")).toBeNull();
+
+    await act(async () => {
+      track.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
+    });
+
+    const tip = document.querySelector<HTMLElement>(".operation-launch-effort-confirm-tip");
+    expect(tip?.textContent).toBe("Click the same rung again to launch with this effort.");
+    expect(tip?.getAttribute("role")).toBe("status");
+    expect(fetch).toHaveBeenCalledWith("/api/v1/settings/global", expect.objectContaining({
+      method: "PUT",
+      body: JSON.stringify({ seenFeatureTours: [EFFORT_CONFIRM_TIP_SEEN_KEY] }),
+    }));
+    expect(getGlobalSettingsStoreState().state?.seenFeatureTours).toContain(EFFORT_CONFIRM_TIP_SEEN_KEY);
+  });
+
+  it("keeps AUTO quiet and skips the tip when the confirm gesture was already seen", () => {
+    hydrateGlobalSettings({ ...SETTINGS, seenFeatureTours: [EFFORT_CONFIRM_TIP_SEEN_KEY] });
+    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, gatewayVariantCatalog());
+    act(() => document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!
+      .parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+    act(() => effortHandle("fable").dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+
+    const track = document.querySelector<HTMLElement>(".effort-track")!;
+    act(() => track.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(document.querySelector(".operation-launch-effort-confirm-tip")).toBeNull();
+
+    act(() => track.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
+    expect(document.querySelector(".operation-launch-effort-confirm-tip")).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

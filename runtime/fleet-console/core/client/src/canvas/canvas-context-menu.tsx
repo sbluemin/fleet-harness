@@ -2,9 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 
 import { FEATURE_TOUR_BOUNDARY_ATTRIBUTE, FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
+import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import { resolveLaunchKindAnnotation } from "../launch-kind-annotations.js";
 import { EffortTrack, effortLadderPosition } from "../components/effort-track.js";
+import { appendSeenFeatureTour, EFFORT_CONFIRM_TIP_SEEN_KEY } from "../components/feature-tour.js";
 import { launchProviderFromGroupId, launchProviderGlyph } from "../components/launch-provider-glyphs.js";
 
 interface CanvasContextMenuProps {
@@ -52,6 +54,7 @@ const ASIDE_GAP = 8;
 
 export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", fixed = false, catalog, canLaunch, renderKindIcon, onLaunchKind, onClose, theaterLabel }: CanvasContextMenuProps) {
   const t = useT();
+  const globalSettings = useGlobalSettingsStore();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [menuSize, setMenuSize] = useState<{ readonly width: number; readonly height: number } | null>(null);
@@ -76,6 +79,9 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   const [openEffortRow, setOpenEffortRow] = useState<string | null>(null);
   // 행마다 고른 강도. 트랙은 값만 정하고 실행은 모델 행이 일으키므로, 그 사이를 이 상태가 잇는다.
   const [rowEfforts, setRowEfforts] = useState<Readonly<Record<string, string | null>>>({});
+  // 시청 기록이 저장되는 순간 팁이 사라지면 방금 읽던 안내가 눈앞에서 접힌다. 이번 메뉴가
+  // 열려 있는 동안은 첫 노출을 붙잡아 두고, 메뉴가 닫히면(언마운트) 기록만 남긴다.
+  const [effortConfirmTipSticky, setEffortConfirmTipSticky] = useState(false);
   const [effortPosition, setEffortPosition] = useState<{
     readonly id: string;
     readonly left: number;
@@ -85,6 +91,12 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   const effortAnchorRefs = useRef(new Map<string, HTMLDivElement>());
   const effortMenuRef = useRef<HTMLDivElement | null>(null);
   const effortCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seenFeatureTours = globalSettings.state?.seenFeatureTours ?? [];
+  const effortConfirmTipSeen = seenFeatureTours.includes(EFFORT_CONFIRM_TIP_SEEN_KEY);
+  const openEffortValue = openEffortRow === null ? null : (rowEfforts[openEffortRow] ?? null);
+  const showEffortConfirmTip = globalSettings.state !== null
+    && openEffortValue !== null
+    && (!effortConfirmTipSeen || effortConfirmTipSticky);
 
   const cancelFlyoutClose = () => {
     if (flyoutCloseTimerRef.current === null) return;
@@ -227,6 +239,18 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     observer.observe(element);
     return () => observer.disconnect();
   }, [openEffortRow, viewportBounds]);
+
+  // 비-AUTO를 처음 고른 순간에 확인 팁을 붙이고 시청 기록을 남긴다. AUTO는 같은 단 재클릭이
+  // 실행이 아니므로 팁을 달지 않는다. 설정이 아직 안 실렸으면 거짓으로 보여 두고, 기록이
+  // 도착한 뒤에야 "처음"을 판정한다.
+  useEffect(() => {
+    if (!globalSettings.state || openEffortValue === null || effortConfirmTipSeen) return;
+    setEffortConfirmTipSticky(true);
+    void setGlobalSettingsField(
+      "seenFeatureTours",
+      appendSeenFeatureTour(globalSettings.state.seenFeatureTours, EFFORT_CONFIRM_TIP_SEEN_KEY),
+    );
+  }, [effortConfirmTipSeen, globalSettings.state, openEffortValue]);
 
   useEffect(() => {
     const handlePointer = (event: MouseEvent) => {
@@ -702,22 +726,29 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
             closeEffortMenu();
           }}
         >
-          <EffortTrack
-            row={effortTarget}
-            value={rowEfforts[openEffortRow] ?? null}
-            onChange={(next) => setRowEfforts((previous) => ({ ...previous, [openEffortRow]: next }))}
-            onConfirmCurrent={() => {
-              // 자동을 다시 누르는 것은 값을 비운 채 머무는 일이다 — 모델만 싣는 실행은 행 본문이 맡는다.
-              const effort = rowEfforts[openEffortRow] ?? null;
-              if (effort === null) return;
-              const chip = effortTarget.chips?.find((entry) => entry.id === effort);
-              if (!chip) return;
-              onLaunchKind(flyoutTarget.pluginId, flyoutTarget.kind, chip.launch);
-            }}
-            autoLabel={t("launchVariants.effort.auto")}
-            ariaLabel={t("launchVariants.effort.track")}
-            autoValueText={t("launchVariants.effort.autoValue")}
-          />
+          <div className="operation-launch-effort-menu-body">
+            <EffortTrack
+              row={effortTarget}
+              value={rowEfforts[openEffortRow] ?? null}
+              onChange={(next) => setRowEfforts((previous) => ({ ...previous, [openEffortRow]: next }))}
+              onConfirmCurrent={() => {
+                // 자동을 다시 누르는 것은 값을 비운 채 머무는 일이다 — 모델만 싣는 실행은 행 본문이 맡는다.
+                const effort = rowEfforts[openEffortRow] ?? null;
+                if (effort === null) return;
+                const chip = effortTarget.chips?.find((entry) => entry.id === effort);
+                if (!chip) return;
+                onLaunchKind(flyoutTarget.pluginId, flyoutTarget.kind, chip.launch);
+              }}
+              autoLabel={t("launchVariants.effort.auto")}
+              ariaLabel={t("launchVariants.effort.track")}
+              autoValueText={t("launchVariants.effort.autoValue")}
+            />
+            {showEffortConfirmTip ? (
+              <p className="operation-launch-effort-confirm-tip" role="status">
+                {t("launchVariants.effort.confirmTip")}
+              </p>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>
