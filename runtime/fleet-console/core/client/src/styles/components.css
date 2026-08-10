@@ -7334,34 +7334,33 @@
   height: 10px;
 }
 
-/* 공급자 한 쌍 — 하네스 상자(Claude Code)와 모델 공급자 상자를 잇는다. Fleet은 공급자의 CLI를
-   띄우지 않고 모델만 빌려 쓰므로, 공급자 마크가 홀로 서면 그 회사 CLI로 실행된다고 잘못 읽힌다. */
+/* 공급자 한 쌍 — 하네스 상자(Claude Code)가 뒤, 모델 공급자 상자가 앞이다. Fleet은 공급자의 CLI를
+   띄우지 않고 모델만 빌려 쓰므로, 공급자 마크가 홀로 서면 그 회사 CLI로 실행된다고 잘못 읽힌다.
+   겹침의 앞뒤가 곧 그 관계다 — 하네스를 딛고 이 모델이 선다. */
 .operation-launch-provider-pair {
   display: inline-flex;
   align-items: center;
   flex: none;
-  gap: 1px;
+  /* 앞 상자의 z-index가 밴드 바깥 층과 겨루지 않도록 쌍 안에서만 쌓이게 가둔다. */
+  isolation: isolate;
 }
 
-/* 두 상자는 서로 반대로 기울어 꽃잎처럼 마주 선다 — 기운 각이 같고 방향만 반대라야 한쪽이
-   비뚤어진 것이 아니라 한 쌍이라고 읽힌다. 회전은 레이아웃 상자를 넓히지 않으므로, 기운 모서리가
-   먹는 여백만큼 이음매 폭으로 갚는다. */
-.operation-launch-provider-pair .operation-launch-provider-glyph {
-  transform: rotate(15deg);
-}
-
+/* 두 상자는 같은 각을 반대로 기울여 꽃잎처럼 마주 선다 — 각이 어긋나면 한 쌍이 아니라 한쪽이
+   비뚤어진 것으로 읽힌다. */
 .operation-launch-provider-glyph.is-harness {
   --launch-provider-tone: var(--provider-claude);
   transform: rotate(-15deg);
 }
 
-/* 이음매는 신원이 아니라 두 상자의 관계다 — 어느 쪽 공급자 톤도 빌리지 않고, 기운 상자 사이에서
-   홀로 수평을 지켜 둘을 잇는 축이 된다. */
-.operation-launch-provider-link {
-  flex: none;
-  width: 9px;
-  height: 3px;
-  color: var(--text-tertiary);
+.operation-launch-provider-glyph.is-model {
+  position: relative;
+  z-index: 1;
+  /* 겹침 폭은 뒤 상자의 마크를 먹지 않는 선까지다 — 더 물리면 하네스가 잘린 조각으로 보인다. */
+  margin-left: -5px;
+  transform: rotate(15deg);
+  /* 앞 상자는 자기 실루엣을 메뉴 바닥색으로 한 번 끊는다. 끊지 않으면 반투명한 두 상자의 테두리가
+     겹친 자리에서 뭉쳐 앞뒤가 사라진다. 색은 .theater-menu 바닥과 같은 식이다. */
+  box-shadow: 0 0 0 1.5px color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar));
 }
 
 .quick-launch-kind-icon.is-claude,

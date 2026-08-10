@@ -56,8 +56,8 @@ export function launchProviderGlyph(provider: LaunchProviderGlyphId): ReactNode 
 /**
  * 실행 밴드가 다는 공급자 표식. Fleet은 공급자의 CLI를 띄우는 것이 아니라 Claude Code를 하네스로
  * 두고 그 회사의 모델만 빌려 쓴다 — 공급자 마크가 홀로 서면 그 회사 CLI로 실행되는 것처럼 읽히므로,
- * 하네스 상자와 공급자 상자를 이어 "Claude Code로, 이 모델을"이라고 말하게 한다.
- * Claude 모델은 이을 상대가 없으니 상자 하나로 남는다.
+ * 하네스 상자를 뒤에 깔고 공급자 상자를 그 위에 겹쳐 "Claude Code로, 이 모델을"이라고 말하게 한다.
+ * Claude 모델은 겹칠 상대가 없으니 상자 하나로 남는다.
  */
 export function LaunchProviderMark({ provider }: { readonly provider: LaunchProviderGlyphId }): ReactNode {
   if (provider === "claude") {
@@ -70,12 +70,7 @@ export function LaunchProviderMark({ provider }: { readonly provider: LaunchProv
   return (
     <span className="operation-launch-provider-pair" aria-hidden="true">
       <span className="operation-launch-provider-glyph is-harness">{launchProviderGlyph("claude")}</span>
-      <svg className="operation-launch-provider-link" viewBox="0 0 9 3" aria-hidden="true">
-        <circle cx="1.5" cy="1.5" r="0.95" fill="currentColor" />
-        <circle cx="4.5" cy="1.5" r="0.95" fill="currentColor" />
-        <circle cx="7.5" cy="1.5" r="0.95" fill="currentColor" />
-      </svg>
-      <span className="operation-launch-provider-glyph">{launchProviderGlyph(provider)}</span>
+      <span className="operation-launch-provider-glyph is-model">{launchProviderGlyph(provider)}</span>
     </span>
   );
 }

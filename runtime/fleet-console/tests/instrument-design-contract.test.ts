@@ -1561,7 +1561,7 @@ describe("Instrument core design contract", () => {
     expect(source("components/command-band.tsx")).toContain("launchProviderFromKindId(activeCliId)");
   });
 
-  it("pins the launch-band supplier pair — harness box, neutral link, single box for Claude", () => {
+  it("pins the launch-band supplier pair — harness box behind, mirrored tilt, single box for Claude", () => {
     // Fleet은 공급자의 CLI를 띄우지 않고 모델만 빌려 쓴다. 공급자 마크가 홀로 서면 그 회사 CLI로
     // 실행된다고 읽히므로, 밴드는 하네스 상자와 공급자 상자를 이은 한 쌍으로 말해야 한다.
     const glyphs = source("components/launch-provider-glyphs.tsx");
@@ -1578,14 +1578,26 @@ describe("Instrument core design contract", () => {
     const harness = components.match(/\.operation-launch-provider-glyph\.is-harness \{[^}]*\}/)?.[0] ?? "";
     expect(harness).toContain("--launch-provider-tone: var(--provider-claude);");
     // 두 상자는 같은 각을 반대로 기울여야 한 쌍으로 읽힌다 — 각이 어긋나면 비뚤어진 상자 하나가 된다.
-    const pairTilt = components.match(/\.operation-launch-provider-pair \.operation-launch-provider-glyph \{[^}]*\}/)?.[0] ?? "";
+    const model = components.match(/\.operation-launch-provider-glyph\.is-model \{[^}]*\}/)?.[0] ?? "";
     const tiltAngle = (block: string): string => block.match(/transform: rotate\((-?[\d.]+)deg\);/)?.[1] ?? "";
-    expect(tiltAngle(pairTilt)).not.toBe("");
-    expect(tiltAngle(harness)).toBe(`-${tiltAngle(pairTilt)}`);
-    // 이음매는 관계이지 신원이 아니라, 공급자 톤도 신호색도 빌리지 않는다.
-    const link = components.match(/\.operation-launch-provider-link \{[^}]*\}/)?.[0] ?? "";
-    expect(link).toContain("color: var(--text-tertiary);");
-    expect(link).not.toMatch(/--launch-provider-tone|--aurora|--coral|--warn|--positive|--brass/);
+    expect(tiltAngle(model)).not.toBe("");
+    expect(tiltAngle(harness)).toBe(`-${tiltAngle(model)}`);
+
+    // 겹침의 앞뒤가 하네스와 모델의 관계를 말한다 — 공급자 상자가 앞이고, 물리는 폭이 0이면
+    // 두 상자는 그냥 나란히 선 도장 두 개가 된다.
+    const overlapPx = Number(model.match(/margin-left: -([\d.]+)px;/)?.[1] ?? 0);
+    expect(overlapPx).toBeGreaterThan(0);
+    // 뒤 상자의 마크(16px 상자 안 10px 글리프 = 양옆 3px 여백)를 먹기 시작하면 하네스가 잘려 보인다.
+    expect(overlapPx).toBeLessThanOrEqual(6);
+    expect(model).toContain("z-index: 1;");
+    expect(harness).not.toMatch(/z-index/);
+    // 쌓임을 쌍 안에 가두지 않으면 앞 상자가 밴드 바깥 층까지 뚫고 올라간다.
+    const pair = components.match(/\.operation-launch-provider-pair \{[^}]*\}/)?.[0] ?? "";
+    expect(pair).toContain("isolation: isolate;");
+    // 실루엣을 끊는 링은 메뉴 바닥이지 신원이 아니다 — 공급자 톤도 신호색도 빌리지 않는다.
+    const ring = model.match(/box-shadow: [^;]*;/)?.[0] ?? "";
+    expect(ring).toContain("color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar))");
+    expect(ring).not.toMatch(/--launch-provider-tone|--aurora|--coral|--warn|--positive|--brass/);
   });
 
   it("forbids native product selects in Console core, SDK, and built-in plugins", () => {
