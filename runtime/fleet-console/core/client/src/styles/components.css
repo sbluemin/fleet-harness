@@ -7407,12 +7407,14 @@
 
 /* 소등 칸은 켜진 칸과 확실히 갈릴 만큼 물러서야 한다 — 램프의 낮은 단은 톤 자체가 판독 하한
    근처라, 소등이 그 근처에 있으면 LOW에서 몇 칸이 켜졌는지 읽히지 않는다. */
-.operation-launch-variant-effort-gauge rect {
+.operation-launch-variant-effort-gauge rect,
+.operation-launch-variant-effort-gauge circle {
   fill: color-mix(in oklch, var(--text-tertiary) 24%, transparent);
   transition: fill var(--duration-fast) var(--ease-spring);
 }
 
-.operation-launch-variant-effort-gauge rect[data-lit="true"] {
+.operation-launch-variant-effort-gauge rect[data-lit="true"],
+.operation-launch-variant-effort-gauge circle[data-lit="true"] {
   fill: var(--effort-tone, var(--brass-ink));
 }
 
@@ -7473,27 +7475,40 @@
 [data-effort-level="high"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 64%, var(--text-tertiary)); }
 [data-effort-level="xhigh"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 84%, var(--text-tertiary)); }
 [data-effort-level="max"] { --effort-tone: var(--brass-ink); }
+/* ultracode는 램프의 한 칸 더가 아니다 — xhigh 깊이에 오케스트레이션을 얹은 모드다. brass를 더
+   태우면 max보다 깊게 생각한다는 거짓이 되므로, 깊이 채널에서 내려 비용 채널로 옮긴다. */
+[data-effort-level="ultracode"] { --effort-tone: var(--warn-ink); }
 
 .effort-track-shell {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
 }
 
-.effort-track {
+/* 축의 좌표계. 채움·스톱·손잡이는 모두 이 상자를 기준으로 자리를 재므로, 레일이 챔버로 자라도
+   이미 고른 단이 제자리에 남는다 — 레일을 기준으로 재면 펼치는 순간 축 전체가 눈금을 다시
+   그려, 방금 고른 값이 옮겨 간 것처럼 읽힌다. */
+.effort-track-frame {
   position: relative;
   flex: 1;
   min-width: 116px;
   height: 26px;
-  padding: 0 13px;
-  display: flex;
-  align-items: center;
+}
+
+.effort-track {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
   border: 1px solid var(--surface-rim);
   border-radius: 999px;
   background: color-mix(in oklch, var(--surface-pillar) 55%, transparent);
   cursor: pointer;
   touch-action: none;
+  /* 펼침은 레일이 챔버로 자라는 일이다. 폭 하나만 움직이므로 스톱과 손잡이는 흔들리지 않는다. */
+  transition: width var(--duration-base) var(--ease-spring);
 }
 
 .effort-track:focus-visible {
@@ -7524,7 +7539,7 @@
 
 /* 최고 단은 색을 갈지 않는다 — 채도가 뛰면 신호로 읽힌다. 최대 출력에 든 계기처럼
    결만 얹고, 광택은 한 번 훑고 지나간다. */
-.effort-track[data-at-max="true"] .effort-track-fill {
+.effort-track[data-at-max="true"] ~ .effort-track-fill {
   background:
     repeating-linear-gradient(
       115deg,
@@ -7533,7 +7548,7 @@
     var(--brass);
 }
 
-.effort-track[data-at-max="true"] .effort-track-fill::after {
+.effort-track[data-at-max="true"] ~ .effort-track-fill::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -7552,9 +7567,8 @@
 }
 
 .effort-track-stops {
-  position: relative;
-  flex: 1;
-  height: 100%;
+  position: absolute;
+  inset: 0;
   pointer-events: none;
 }
 
@@ -7609,7 +7623,9 @@
   pointer-events: none;
 }
 
-.effort-track:hover .effort-track-knob {
+/* 레일 위에 손이 있을 때만이다. 프레임 전체로 넓히면 챔버의 게이트를 스쳐도 손잡이가 커져,
+   레일을 만지고 있다고 말하게 된다. */
+.effort-track:hover ~ .effort-track-knob {
   box-shadow: 0 2px 8px oklch(0% 0 0 / 62%);
   transform: scale(1.1);
 }
@@ -7634,9 +7650,145 @@
 }
 
 /* 최고 단은 램프의 끝이라 색만으로는 바로 아랫단과 갈리지 않는다 — 무게가 그 마지막 한 칸을 맡는다. */
-.effort-track-value[data-effort-level="max"] {
+.effort-track-value[data-effort-level="max"],
+.effort-track-value[data-effort-level="ultracode"] {
   font-weight: var(--weight-medium);
 }
+
+/* ── 챔버: 평범한 레일 뒤에 사는 비싼 단들 ────────────────────────────────────────────── */
+
+/* 게이트는 챔버가 차지할 자리를 그대로 지킨다. 접혀 있을 때 그 폭을 비워 두므로 펼쳐도 평범한
+   단들이 움직이지 않고, 사용자는 무엇이 어디로 자랄지 미리 본다. */
+.effort-track-gate {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 0;
+  border: 1px dashed color-mix(in oklch, var(--warn) 38%, var(--surface-rim));
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--warn) 6%, transparent);
+  color: var(--warn-ink);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring);
+}
+
+.effort-track-gate:hover {
+  background: color-mix(in oklch, var(--warn) 13%, transparent);
+  border-color: color-mix(in oklch, var(--warn) 62%, var(--surface-rim));
+}
+
+.effort-track-gate:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+/* 두 겹의 꺾쇠. 안쪽으로 모여 있다가 손이 오면 벌어져, 여는 방향을 화살표 하나보다 분명히 말한다. */
+.effort-track-gate-leaf {
+  width: 4px;
+  height: 4px;
+  border-top: 1.25px solid currentcolor;
+  border-right: 1.25px solid currentcolor;
+  transform: rotate(45deg);
+  transition: transform var(--duration-fast) var(--ease-spring);
+}
+
+.effort-track-gate:hover .effort-track-gate-leaf:first-child { transform: rotate(45deg) translate(-1px, 1px); }
+.effort-track-gate:hover .effort-track-gate-leaf:last-child { transform: rotate(45deg) translate(1px, -1px); }
+
+/* 챔버 안의 스톱은 눈금이 아니라 문턱이다 — 비용 채널로 칠해, 축을 훑는 눈이 여기서 멈춘다. */
+.effort-track-stop[data-special] {
+  background: none;
+  box-shadow: 0 0 0 1.5px var(--warn);
+}
+
+.effort-track-stop[data-special][data-filled="true"] {
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--warn-glow);
+}
+
+/* 비싼 단을 쥔 손잡이. 색을 갈지 않고 비용 채널의 테를 두른다 — 손잡이 본체가 물들면 어느 단을
+   쥐었는지가 아니라 "경고"가 먼저 읽힌다. */
+.effort-track-knob[data-special] {
+  box-shadow:
+    0 0 0 2px var(--warn),
+    0 0 10px var(--warn-glow),
+    0 1px 3px oklch(0% 0 0 / 55%);
+}
+
+/* 챔버가 열릴 때 한 번 지나가는 빛. 열림에 매달려 있으므로 루프가 없다 — 계속 움직이는 표면은
+   값이 아직 정해지지 않았다고 말한다. */
+.effort-track-reveal-sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: linear-gradient(
+    100deg,
+    transparent 38%,
+    color-mix(in oklch, var(--warn) 30%, transparent) 50%,
+    transparent 62%);
+  animation: effort-track-reveal var(--duration-slow) var(--ease-spring) 1;
+  pointer-events: none;
+}
+
+@keyframes effort-track-reveal {
+  from { opacity: 0; transform: translateX(-40%); }
+  60% { opacity: 1; }
+  to { opacity: 0; transform: translateX(40%); }
+}
+
+/* 흐름 밖으로 띄운다. 트랙 옆에 흐름대로 놓으면 챔버를 열 때마다 프레임이 그만큼 좁아져,
+   움직이지 않아야 할 평범한 단들이 제자리에서 밀린다 — 펼침이 축을 다시 눈금 그리는 일이 된다. */
+.effort-track-chamber-note {
+  position: absolute;
+  bottom: calc(100% + var(--space-1));
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 280px;
+  padding: 2px var(--space-2);
+  border: 1px solid color-mix(in oklch, var(--warn) 32%, var(--surface-rim));
+  border-radius: var(--radius-sm);
+  background: var(--surface-frame);
+  color: var(--warn-ink);
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+.effort-track-collapse {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-spring);
+}
+
+.effort-track-collapse:hover { color: var(--text-secondary); }
+
+.effort-track-collapse:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
 
 /* 파선 밑줄은 트랙의 파선 테두리와 같은 말이다: 이 값은 사다리 위의 단이 아니라 모델에 맡긴 자리다. */
 .effort-track-value[data-auto="true"] {
@@ -7664,7 +7816,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .effort-track[data-at-max="true"] .effort-track-fill::after {
+  .effort-track[data-at-max="true"] ~ .effort-track-fill::after {
     animation: none;
     opacity: 0.22;
   }
@@ -11280,18 +11432,30 @@ body[data-codex-reading="true"] .operations-side-bar {
 
   .quick-launch-chip,
   .quick-launch-submit,
+  .effort-track,
   .effort-track-fill,
   .effort-track-knob,
   .effort-track-stop,
   .effort-track-value,
+  .effort-track-gate,
+  .effort-track-gate-leaf,
+  .effort-track-collapse,
   .operation-launch-variant-effort,
   .operation-launch-variant-effort-handle,
-  .operation-launch-variant-effort-gauge rect {
+  .operation-launch-variant-effort-gauge rect,
+  .operation-launch-variant-effort-gauge circle {
     animation: none;
     transition: none;
   }
 
-  .effort-track:hover .effort-track-knob,
+  /* 펼침의 빛은 지나가는 움직임 그 자체다 — 멈춰 세우면 트랙 위에 흰 띠로 남으므로 지운다.
+     비싼 단이라는 사실은 색·테·경고문이 이미 말하고 있어 잃는 것이 없다. */
+  .effort-track-reveal-sheen {
+    display: none;
+  }
+
+  .effort-track:hover ~ .effort-track-knob,
+  .effort-track-gate:hover .effort-track-gate-leaf,
   .effort-track-stop[data-previewed="true"] {
     transform: none;
   }

@@ -8,7 +8,12 @@ import {
   type GatewayModel,
   type GatewayProvider,
 } from "@dotobokuri/core-ai-gateway";
-import { NATIVE_CLAUDE_EFFORTS, NATIVE_CLAUDE_MODEL_ALIASES } from "@dotobokuri/fleet-admiral";
+import {
+  NATIVE_CLAUDE_EFFORTS,
+  NATIVE_CLAUDE_LAUNCH_EFFORTS,
+  NATIVE_CLAUDE_MODEL_ALIASES,
+  NATIVE_CLAUDE_SPECIAL_EFFORTS,
+} from "@dotobokuri/fleet-admiral";
 
 import type { AgentCliLaunchMetadata } from "./agent-cli-launch-metadata.js";
 
@@ -18,6 +23,8 @@ const EFFORT_LABELS: Readonly<Record<string, string>> = {
   high: "HIGH",
   xhigh: "XHIGH",
   max: "MAX",
+  // 특수 강도는 줄여 쓰지 않는다 — 무엇을 켜는지 이름이 다 말해야 한다.
+  ultracode: "ULTRACODE",
 };
 
 const NATIVE_MODEL_LABELS: Readonly<Record<(typeof NATIVE_CLAUDE_MODEL_ALIASES)[number], string>> = {
@@ -57,7 +64,8 @@ export function buildClaudeGatewayLaunchVariants(selection?: AiGatewaySelection)
       label: NATIVE_MODEL_LABELS[model],
       launch: { model },
       effortAxis: EFFORT_AXIS,
-      chips: NATIVE_CLAUDE_EFFORTS.map((effort) => ({
+      ...(NATIVE_EFFORT_EXPANSION ? { effortExpansion: NATIVE_EFFORT_EXPANSION } : {}),
+      chips: NATIVE_CLAUDE_LAUNCH_EFFORTS.map((effort) => ({
         id: effort,
         label: EFFORT_LABELS[effort]!,
         launch: { model, effort },
@@ -84,16 +92,35 @@ export function buildClaudeGatewayLaunchVariants(selection?: AiGatewaySelection)
 
 // 강도 축은 사다리 어휘를 아는 이쪽이 소유한다. 한 모델이 그 일부만 내놓아도(low/high/max)
 // 축은 그대로라, 표면이 내놓은 단을 균등히 벌리는 대신 제자리에 세울 수 있다.
-const EFFORT_AXIS: readonly string[] = NATIVE_CLAUDE_EFFORTS;
+const EFFORT_AXIS: readonly string[] = NATIVE_CLAUDE_LAUNCH_EFFORTS;
+
+/**
+ * 평범한 레일의 천장. 이 뒤(max·ultracode)는 한 번 더 펼쳐야 닿는다 — 값이 비싸서가 아니라
+ * 스쳐 지나간 드래그가 그 값을 고르는 일이 사고이기 때문이다.
+ */
+const EFFORT_EXPANSION_AFTER = "xhigh";
+
+function effortExpansionFor(offered: readonly string[]): { readonly after: string; readonly rungs: readonly string[] } | undefined {
+  const boundary = EFFORT_AXIS.indexOf(EFFORT_EXPANSION_AFTER);
+  const rungs = EFFORT_AXIS.slice(boundary + 1).filter((rung) => offered.includes(rung));
+  return rungs.length > 0 ? { after: EFFORT_EXPANSION_AFTER, rungs } : undefined;
+}
+
+const NATIVE_EFFORT_EXPANSION = effortExpansionFor(NATIVE_CLAUDE_LAUNCH_EFFORTS);
 
 function providerGroupId(provider: GatewayProvider): string {
   return `gateway:${provider}`;
 }
 
 function toGatewayRow(model: GatewayModel, selection: AiGatewaySelection) {
-  const efforts = (selection.effortExposure[model.id] ?? exposableEffortLadder(model))
+  const ladder = selection.effortExposure[model.id] ?? exposableEffortLadder(model);
+  const efforts: string[] = ladder
     .filter((effort): effort is (typeof NATIVE_CLAUDE_EFFORTS)[number] =>
       NATIVE_CLAUDE_EFFORTS.includes(effort as (typeof NATIVE_CLAUDE_EFFORTS)[number]));
+  // ultracode는 이 모델의 단이 아니라 Claude Code 세션 모드이고 상류에는 xhigh로 나간다.
+  // xhigh를 내놓는 모델에만 걸어 주지 않으면 고른 단이 조용히 깎인다.
+  if (efforts.includes("xhigh")) efforts.push(...NATIVE_CLAUDE_SPECIAL_EFFORTS);
+  const expansion = effortExpansionFor(efforts);
   return {
     id: model.id,
     label: bareModelName(model),
@@ -101,6 +128,7 @@ function toGatewayRow(model: GatewayModel, selection: AiGatewaySelection) {
     launch: { model: model.id },
     ...(efforts.length > 0 ? {
       effortAxis: EFFORT_AXIS,
+      ...(expansion ? { effortExpansion: expansion } : {}),
       chips: efforts.map((effort) => ({
         id: effort,
         label: EFFORT_LABELS[effort] ?? effort.toUpperCase(),

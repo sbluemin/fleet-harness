@@ -1652,7 +1652,8 @@ describe("Effort track interaction grammar", () => {
     const quickLaunch = source("components/quick-launch.tsx");
     const canvasMenu = source("canvas/canvas-context-menu.tsx");
     const preview = components.match(/\.effort-track-stop\[data-previewed="true"\] \{[^}]*\}/)?.[0] ?? "";
-    const knobHover = components.match(/\.effort-track:hover \.effort-track-knob \{[^}]*\}/)?.[0] ?? "";
+    // 손잡이는 레일의 형제다 — 프레임이 좌표계를 지고, 레일은 그 위에서 챔버로 자란다.
+    const knobHover = components.match(/\.effort-track:hover ~ \.effort-track-knob \{[^}]*\}/)?.[0] ?? "";
 
     // 한 공유 계기가 Quick Launch와 캔버스 실행 메뉴 양쪽의 hover 문법을 소유한다.
     expect(quickLaunch).toContain("<EffortTrack");
@@ -1661,8 +1662,36 @@ describe("Effort track interaction grammar", () => {
     expect(preview).toContain("transform: scale(3)");
     expect(knobHover).toContain("transform: scale(1.1)");
     // 모션을 줄인 환경에서도 어떤 단을 가리키는지는 정적인 brass ring으로 남는다.
-    expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.effort-track:hover \.effort-track-knob,[\s\S]*\.effort-track-stop\[data-previewed="true"\] \{\s*transform: none;/);
+    expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.effort-track:hover ~ \.effort-track-knob,[\s\S]*\.effort-track-stop\[data-previewed="true"\] \{\s*transform: none;/);
     expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.effort-track-stop\[data-previewed="true"\] \{\s*box-shadow: 0 0 0 2px var\(--brass\);/);
+  });
+
+  it("grows the rail into the reserved chamber without re-ruling the axis", () => {
+    const components = source("styles/components.css");
+    const frame = components.match(/\.effort-track-frame \{[^}]*\}/)?.[0] ?? "";
+    const rail = components.match(/\n\.effort-track \{[^}]*\}/)?.[0] ?? "";
+    const note = components.match(/\.effort-track-chamber-note \{[^}]*\}/)?.[0] ?? "";
+    const gate = components.match(/\.effort-track-gate \{[^}]*\}/)?.[0] ?? "";
+
+    // 좌표계는 프레임이 진다. 레일은 그 위에서 폭만 자라므로 스톱과 손잡이가 흔들리지 않는다.
+    expect(frame).toContain("position: relative");
+    expect(rail).toContain("position: absolute");
+    expect(rail).toMatch(/transition:[^;]*width/);
+
+    // 게이트는 챔버가 차지할 자리를 지킨다 — 접혀 있을 때 그 폭이 비어 있어야 펼쳐도 축이 그대로다.
+    expect(gate).toContain("position: absolute");
+
+    /**
+     * 비용 알림과 닫는 손잡이는 흐름 밖에 뜬다. 트랙 옆에 흐름대로 놓으면 챔버를 열 때마다
+     * 프레임이 그만큼 좁아져, 평범한 단들이 제자리에서 밀린다 — 펼침이 축을 다시 눈금 그리는
+     * 일이 되어 방금 고른 값이 옮겨 간 것처럼 읽힌다.
+     */
+    expect(note).toContain("position: absolute");
+
+    // 펼침의 빛은 한 번만 지나간다. 상시 루프는 값이 아직 정해지지 않았다고 말한다.
+    const sheen = components.match(/\.effort-track-reveal-sheen \{[^}]*\}/)?.[0] ?? "";
+    expect(sheen).toMatch(/animation:[^;]*\b1\b/);
+    expect(sheen).not.toContain("infinite");
   });
 });
 

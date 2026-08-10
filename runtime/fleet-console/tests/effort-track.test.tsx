@@ -40,6 +40,25 @@ function row(overrides: Partial<OperationLaunchVariantRow> = {}): OperationLaunc
   };
 }
 
+const CHAMBER_AXIS = ["low", "medium", "high", "xhigh", "max", "ultracode"] as const;
+
+/** 평범한 레일이 xhigh에서 끊기고 max·ultracode가 챔버 뒤에 사는 행. */
+function chamberRow(overrides: Partial<OperationLaunchVariantRow> = {}): OperationLaunchVariantRow {
+  return {
+    id: "claude--fable",
+    label: "FABLE-1M",
+    launch: { model: "fable[1m]" },
+    effortAxis: [...CHAMBER_AXIS],
+    effortExpansion: { after: "xhigh", rungs: ["max", "ultracode"] },
+    chips: CHAMBER_AXIS.map((id) => ({
+      id,
+      label: id.toUpperCase(),
+      launch: { model: "fable[1m]", effort: id },
+    })),
+    ...overrides,
+  };
+}
+
 function render(
   node: OperationLaunchVariantRow,
   value: string | null,
@@ -55,6 +74,9 @@ function render(
       autoLabel="AUTO"
       ariaLabel="Reasoning effort"
       autoValueText="Automatic"
+      revealLabel="Reveal high-cost efforts"
+      collapseLabel="Put the high-cost efforts away"
+      specialWarning="High cost"
     />,
   ));
   return onChange;
@@ -63,10 +85,14 @@ function render(
 function stubTrackPointer(width = 126) {
   const element = track();
   let captured: number | null = null;
+  const rect = (box: number) => () => ({ left: 0, right: box, top: 0, bottom: 26, width: box, height: 26, x: 0, y: 0, toJSON: () => ({}) });
+  // 좌표계는 프레임이 소유한다 — 접힌 레일은 축의 일부만 덮으므로 그 폭으로 자리를 잴 수 없다.
+  const frame = document.querySelector<HTMLElement>(".effort-track-frame");
+  if (frame) Object.defineProperty(frame, "getBoundingClientRect", { configurable: true, value: rect(width) });
   Object.defineProperties(element, {
     getBoundingClientRect: {
       configurable: true,
-      value: () => ({ left: 0, right: width, top: 0, bottom: 26, width, height: 26, x: 0, y: 0, toJSON: () => ({}) }),
+      value: rect(width),
     },
     setPointerCapture: {
       configurable: true,
@@ -115,7 +141,8 @@ describe("EffortTrack", () => {
     const marks = stops();
     expect(marks).toHaveLength(6);
     expect(marks.map((mark) => mark.dataset.gap ?? null)).toEqual([null, null, "true", null, "true", null]);
-    expect(marks[3]!.style.left).toBe("60%");
+    // 자리는 손잡이 여백을 뺀 폭 위에서 잰다 — 양 끝 스톱에서 손잡이가 트랙을 넘지 않아야 한다.
+    expect(marks[3]!.style.left).toBe("calc(13px + 0.6 * (100% - 26px))");
   });
 
   it("falls back to the offered rungs when the row carries no axis", () => {
@@ -203,13 +230,8 @@ describe("EffortTrack", () => {
 
   it("previews the selectable rung that a pointer action would choose", () => {
     const onChange = render(row(), "low");
-    Object.defineProperties(track(), {
-      getBoundingClientRect: {
-        configurable: true,
-        value: () => ({ left: 0, right: 126, top: 0, bottom: 26, width: 126, height: 26, x: 0, y: 0, toJSON: () => ({}) }),
-      },
-      hasPointerCapture: { configurable: true, value: () => false },
-    });
+    // 아직 잡은 포인터가 없으므로 hasPointerCapture는 false다 — 이동만으로는 값이 바뀌지 않는다.
+    stubTrackPointer();
 
     // medium(2) 자리를 가리켜도 이 모델이 실제로 고를 수 있는 가까운 low(1)를 비춘다.
     act(() => track().dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: 53 })));
@@ -332,14 +354,166 @@ describe("EffortTrack", () => {
 describe("effortLadderPosition", () => {
   it("counts the rung on the canonical axis, not on the rungs this model happens to offer", () => {
     // high는 이 모델이 내놓는 세 단 중 둘째지만, 축 위에서는 다섯 중 셋째다.
-    expect(effortLadderPosition(row(), "high")).toEqual({ rung: 3, total: 5 });
-    expect(effortLadderPosition(row(), "max")).toEqual({ rung: 5, total: 5 });
+    expect(effortLadderPosition(row(), "high")).toEqual({ rung: 3, total: 5, special: null });
+    expect(effortLadderPosition(row(), "max")).toEqual({ rung: 5, total: 5, special: null });
     // 자동은 0단이다 — 사다리를 쓰지 않는 상태이지 최소 단이 아니다.
-    expect(effortLadderPosition(row(), null)).toEqual({ rung: 0, total: 5 });
+    expect(effortLadderPosition(row(), null)).toEqual({ rung: 0, total: 5, special: null });
   });
 
   it("falls back to the offered rungs when the row carries no axis", () => {
-    expect(effortLadderPosition(row({ effortAxis: undefined }), "high")).toEqual({ rung: 2, total: 3 });
+    expect(effortLadderPosition(row({ effortAxis: undefined }), "high")).toEqual({ rung: 2, total: 3, special: null });
+  });
+
+  // 챔버 안의 단은 눈금 하나가 아니다. 막대를 더 얹으면 "칸이 많으니 더 깊다"를 그리는데,
+  // ultracode는 xhigh 깊이에 오케스트레이션을 얹은 모드다.
+  it("counts the gauge only up to the ordinary rail and reports the special mode apart from it", () => {
+    expect(effortLadderPosition(chamberRow(), "xhigh")).toEqual({ rung: 4, total: 4, special: null });
+    expect(effortLadderPosition(chamberRow(), "max")).toEqual({ rung: 4, total: 4, special: "max" });
+    expect(effortLadderPosition(chamberRow(), "ultracode")).toEqual({ rung: 4, total: 4, special: "ultracode" });
+  });
+});
+
+// 챔버는 값을 숨기는 장치가 아니라 스쳐서 닿지 않게 하는 장치다. 아래 성질들이 그 구분을 진다.
+describe("EffortTrack high-cost chamber", () => {
+  function gate(): HTMLElement | null {
+    return document.querySelector<HTMLElement>(".effort-track-gate");
+  }
+
+  it("caps the ordinary rail at the expansion boundary and reserves the rest for the gate", () => {
+    render(chamberRow(), "high");
+
+    // AUTO + low..xhigh만 선다. max·ultracode는 자리를 잡아 두고도 아직 눈에 없다.
+    expect(stops()).toHaveLength(5);
+    expect(track().getAttribute("aria-valuemax")).toBe("4");
+    expect(gate()).not.toBeNull();
+    expect(document.querySelector(".effort-track-chamber-note")).toBeNull();
+  });
+
+  it("cannot reach a chamber rung by dragging past the end of the collapsed rail", () => {
+    const onChange = render(chamberRow(), "low");
+    const element = stubTrackPointer();
+
+    act(() => {
+      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 30, clientY: 13 }));
+      // 트랙 끝을 지나 한참 밖까지 끌어도 평범한 천장에서 멈춘다.
+      element.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 400, clientY: 13 }));
+      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 400, clientY: 13 }));
+    });
+
+    expect(onChange.mock.calls.map((call) => call[0])).toEqual(["xhigh"]);
+  });
+
+  it("opens the chamber only on the gate, and keeps the ordinary rungs on the same coordinates", () => {
+    render(chamberRow(), "high");
+    const highLeft = stops()[3]!.style.left;
+
+    act(() => gate()!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+    expect(stops()).toHaveLength(7);
+    expect(track().getAttribute("aria-valuemax")).toBe("6");
+    expect(gate()).toBeNull();
+    // 펼쳐도 xhigh는 제자리다 — 축이 눈금을 다시 그리면 방금 고른 값이 옮겨 간 것처럼 읽힌다.
+    expect(stops()[3]!.style.left).toBe(highLeft);
+    // 비용은 챔버가 열려 있는 동안 계속 화면에 남고, 닫는 손잡이도 그 알림과 함께 흐름 밖에 뜬다.
+    const note = document.querySelector(".effort-track-chamber-note");
+    expect(note?.querySelector("[role='status']")?.textContent).toBe("High cost");
+    expect(note?.querySelector(".effort-track-collapse")).not.toBeNull();
+    // 게이트가 사라지므로 초점은 레일로 옮겨 간다 — body로 떨어지면 키보드 경로가 끊긴다.
+    expect(document.activeElement).toBe(track());
+  });
+
+  it("lets the pointer reach a chamber rung once the chamber is open", () => {
+    const onChange = render(chamberRow(), "high");
+    act(() => gate()!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const element = stubTrackPointer();
+
+    act(() => {
+      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 113, clientY: 13 }));
+      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 113, clientY: 13 }));
+    });
+
+    expect(onChange.mock.calls.map((call) => call[0])).toEqual(["ultracode"]);
+  });
+
+  it("arms a chamber rung without launching it, however the press arrives", () => {
+    const onChange = vi.fn();
+    const onConfirmCurrent = vi.fn();
+    render(chamberRow(), "ultracode", onChange, onConfirmCurrent);
+    const element = stubTrackPointer();
+
+    // 이미 실린 단을 다시 눌러도 실행되지 않는다 — 평범한 단이라면 여기서 확정된다.
+    act(() => {
+      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 113, clientY: 13 }));
+      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 113, clientY: 13 }));
+    });
+    act(() => track().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+
+    expect(onConfirmCurrent).not.toHaveBeenCalled();
+  });
+
+  it("still confirms an ordinary rung while the chamber is open", () => {
+    const onConfirmCurrent = vi.fn();
+    render(chamberRow(), "xhigh", vi.fn(), onConfirmCurrent);
+    act(() => gate()!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+    act(() => track().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+
+    expect(onConfirmCurrent).toHaveBeenCalledTimes(1);
+  });
+
+  it("hands the arrow key at the ceiling to the gate instead of opening the chamber", () => {
+    const onChange = render(chamberRow(), "xhigh");
+
+    act(() => track().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+
+    // 방향키가 비싼 모드를 여는 손잡이가 되면 그 문은 문이 아니다.
+    expect(onChange).not.toHaveBeenCalled();
+    expect(stops()).toHaveLength(5);
+    expect(document.activeElement).toBe(gate());
+  });
+
+  it("never leaves a chamber rung armed behind a closed rail", () => {
+    // 이미 특수 단이 실려 들어오면 챔버는 열린 채로 그려진다 — 접힌 레일이 비싼 모드를 숨기면
+    // 아무도 고르지 않은 값으로 다음 실행이 나간다.
+    const onChange = render(chamberRow(), "max");
+    expect(stops()).toHaveLength(7);
+    expect(gate()).toBeNull();
+    expect(track().dataset.special).toBe("max");
+
+    // 접는 것은 그 모드를 내려놓는 일이다. 값이 남은 채 사라질 수는 없다.
+    act(() => track().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(onChange.mock.calls.map((call) => call[0])).toEqual([null]);
+  });
+
+  it("keeps the top of the collapsed rail reading as the ceiling", () => {
+    render(chamberRow(), "xhigh");
+    expect(track().dataset.atMax).toBe("true");
+
+    render(chamberRow(), "high");
+    expect(track().dataset.atMax).toBeUndefined();
+  });
+
+  it("reads the chamber rung by what the mode is, not by its short label", () => {
+    act(() => root.render(
+      <EffortTrack
+        row={chamberRow()}
+        value="ultracode"
+        onChange={vi.fn()}
+        autoLabel="AUTO"
+        ariaLabel="Reasoning effort"
+        autoValueText="Automatic"
+        specialDescriptions={{ ultracode: "XHIGH plus orchestration" }}
+      />,
+    ));
+
+    expect(track().getAttribute("aria-valuetext")).toBe("XHIGH plus orchestration");
+  });
+
+  it("leaves rows without a chamber exactly as they were", () => {
+    render(row(), "max");
+    expect(gate()).toBeNull();
+    expect(track().getAttribute("aria-valuemax")).toBe("5");
+    expect(track().dataset.atMax).toBe("true");
   });
 });
 

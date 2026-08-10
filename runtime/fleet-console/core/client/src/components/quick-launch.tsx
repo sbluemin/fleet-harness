@@ -12,7 +12,7 @@ import { findVariantLaunchKind, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { closeQuickLaunch, consumeQuickLaunchDraft, requestQuickLaunch, setActiveTheater } from "../store.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph } from "./launch-provider-glyphs.js";
-import { EffortTrack, resolveRowEffort } from "./effort-track.js";
+import { EffortTrack, isSpecialEffort, resolveRowEffort } from "./effort-track.js";
 
 // 카드 폭은 팔레트(920px)보다 좁다 — 팔레트는 결과 목록을 담고, 여기는 한 문단을 담는다.
 const CARD_WIDTH_FALLBACK = 760;
@@ -274,11 +274,23 @@ export function QuickLaunch() {
               value={effort}
               onChange={(nextEffort) => {
                 setEffort(nextEffort);
-                writeQuickLaunchModelEffort(model, nextEffort);
+                // 챔버 뒤의 단은 이 실행에만 실린다. 디스크에 남기면 다음 세션이 아무도 고르지 않은
+                // 비싼 모드로 열려, 게이트를 둔 이유가 그대로 사라진다.
+                writeQuickLaunchModelEffort(
+                  model,
+                  isSpecialEffort(selectedRow, nextEffort) ? null : nextEffort,
+                );
               }}
               autoLabel={t("launchVariants.effort.auto")}
               ariaLabel={t("launchVariants.effort.track")}
               autoValueText={t("launchVariants.effort.autoValue")}
+              revealLabel={t("launchVariants.effort.reveal")}
+              collapseLabel={t("launchVariants.effort.collapse")}
+              specialWarning={t("launchVariants.effort.specialWarning")}
+              specialDescriptions={{
+                max: t("launchVariants.effort.maxValue"),
+                ultracode: t("launchVariants.effort.ultracodeValue"),
+              }}
               className="quick-launch-effort-track"
             />
           ) : null}

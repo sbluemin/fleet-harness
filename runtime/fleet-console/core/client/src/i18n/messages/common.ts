@@ -74,6 +74,11 @@ export const commonEn = {
   "launchVariants.effort.auto": "AUTO",
   "launchVariants.effort.autoValue": "Automatic — the model's own default",
   "launchVariants.effort.confirmTip": "Press the knob again to launch.",
+  "launchVariants.effort.reveal": "Reveal high-cost efforts — MAX and ULTRACODE",
+  "launchVariants.effort.collapse": "Put the high-cost efforts away",
+  "launchVariants.effort.specialWarning": "High cost — spends far more of your allowance per run.",
+  "launchVariants.effort.maxValue": "MAX — the deepest reasoning this model offers, at the highest cost per run",
+  "launchVariants.effort.ultracodeValue": "ULTRACODE — XHIGH reasoning plus multi-agent workflow orchestration, for this session only",
 } as const;
 
 export const commonKo: Record<keyof typeof commonEn, string> = {
@@ -151,4 +156,9 @@ export const commonKo: Record<keyof typeof commonEn, string> = {
   "launchVariants.effort.auto": "자동",
   "launchVariants.effort.autoValue": "자동 — 모델 자체 기본값",
   "launchVariants.effort.confirmTip": "노브를 다시 누르면 실행됩니다.",
+  "launchVariants.effort.reveal": "비용이 큰 강도 펼치기 — MAX와 ULTRACODE",
+  "launchVariants.effort.collapse": "비용이 큰 강도 접기",
+  "launchVariants.effort.specialWarning": "비용이 큽니다 — 실행 한 번에 할당량을 훨씬 많이 씁니다.",
+  "launchVariants.effort.maxValue": "MAX — 이 모델이 내놓는 가장 깊은 추론, 실행당 비용도 가장 큽니다",
+  "launchVariants.effort.ultracodeValue": "ULTRACODE — XHIGH 추론에 다중 에이전트 워크플로우 오케스트레이션을 얹은 모드, 이 세션에만 걸립니다",
 };

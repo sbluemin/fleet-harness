@@ -285,6 +285,39 @@ describe("operations platform", () => {
     expect(bare?.rows[0]).not.toHaveProperty("effortAxis");
   });
 
+  // 펼침 경계는 축 위의 좌표라서 축 없이는 뜻이 없다. 반쯤 살려 두면 표면이 평범한 레일의 천장을
+  // 잘못 잡아, 비싼 단이 게이트 없이 레일 위에 서거나 고를 수 있는 단이 사라진다.
+  it("keeps the expansion boundary only when the axis can carry it", () => {
+    function rowWith(effortExpansion: unknown) {
+      const [group] = readLaunchVariantGroups([{
+        id: "native",
+        label: "Claude",
+        rows: [{
+          id: "fable[1m]",
+          label: "Fable",
+          launch: { model: "fable[1m]" },
+          effortAxis: ["low", "high", "xhigh", "max", "ultracode"],
+          chips: [{ id: "low", label: "LOW", launch: { model: "fable[1m]", effort: "low" } }],
+          effortExpansion,
+        }],
+      }]);
+      return group?.rows[0];
+    }
+
+    expect(rowWith({ after: "xhigh", rungs: ["max", "ultracode"] })?.effortExpansion)
+      .toEqual({ after: "xhigh", rungs: ["max", "ultracode"] });
+
+    // 축에 없는 경계, 축의 끝을 가리키는 경계, 형태가 아닌 값은 모두 버린다.
+    expect(rowWith({ after: "medium", rungs: ["max"] })).not.toHaveProperty("effortExpansion");
+    expect(rowWith({ after: "ultracode", rungs: [] })).not.toHaveProperty("effortExpansion");
+    expect(rowWith({ rungs: ["max"] })).not.toHaveProperty("effortExpansion");
+    expect(rowWith("xhigh")).not.toHaveProperty("effortExpansion");
+
+    // 공표된 꼬리가 축과 어긋나면 축을 따른다 — 자리의 근거는 축 하나다.
+    expect(rowWith({ after: "xhigh", rungs: ["max", "invented"] })?.effortExpansion)
+      .toEqual({ after: "xhigh", rungs: ["max", "ultracode"] });
+  });
+
   it("strictly reconstructs launch variants from the browser catalog response", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
       plugins: [{

@@ -77,7 +77,8 @@ describe("Quick Launch effort surface", () => {
 
   it("writes the normalized model and effort at selection time", () => {
     expect(quickLaunch).toMatch(/const nextEffort = resolveRowEffort\(row, effort\);[\s\S]*setModel\(nextModel\);[\s\S]*setEffort\(nextEffort\);[\s\S]*writeQuickLaunchModelEffort\(nextModel, nextEffort\);/u);
-    expect(quickLaunch).toMatch(/onChange=\{\(nextEffort\) => \{[\s\S]*setEffort\(nextEffort\);[\s\S]*writeQuickLaunchModelEffort\(model, nextEffort\);/u);
+    // 챔버 뒤의 단은 이 실행에만 실린다 — 디스크로 새면 다음 세션이 아무도 고르지 않은 비싼 모드로 열린다.
+    expect(quickLaunch).toMatch(/onChange=\{\(nextEffort\) => \{[\s\S]*setEffort\(nextEffort\);[\s\S]*writeQuickLaunchModelEffort\(\s*model,\s*isSpecialEffort\(selectedRow, nextEffort\) \? null : nextEffort,\s*\);/u);
   });
 
   it("waits for the seeded model to resolve against the catalog before submission", () => {

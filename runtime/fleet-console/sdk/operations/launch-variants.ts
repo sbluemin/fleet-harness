@@ -28,6 +28,7 @@ function readLaunchVariantRow(value: unknown): OperationLaunchVariantRow | null 
   const effortAxis = Array.isArray(value.effortAxis)
     ? value.effortAxis.filter((rung): rung is string => typeof rung === "string" && rung.length > 0)
     : [];
+  const effortExpansion = readEffortExpansion(value.effortExpansion, effortAxis);
   return {
     id: value.id,
     label: value.label,
@@ -35,7 +36,28 @@ function readLaunchVariantRow(value: unknown): OperationLaunchVariantRow | null 
     launch,
     ...(chips.length > 0 ? { chips } : {}),
     ...(chips.length > 0 && effortAxis.length > 0 ? { effortAxis } : {}),
+    ...(chips.length > 0 && effortExpansion ? { effortExpansion } : {}),
   };
+}
+
+/**
+ * 펼침 경계는 축 위의 좌표라서 축 없이는 뜻이 없다. `after`가 축에 없거나 그 뒤에 남는 단이 없으면
+ * 경계를 세울 수 없으므로 통째로 버린다 — 반쯤 살려 두면 표면이 평범한 레일의 천장을 잘못 잡는다.
+ */
+function readEffortExpansion(
+  value: unknown,
+  effortAxis: readonly string[],
+): OperationLaunchVariantRow["effortExpansion"] | null {
+  if (!isRecord(value) || typeof value.after !== "string") return null;
+  const boundary = effortAxis.indexOf(value.after);
+  if (boundary < 0 || boundary === effortAxis.length - 1) return null;
+  const declared = Array.isArray(value.rungs)
+    ? value.rungs.filter((rung): rung is string => typeof rung === "string" && rung.length > 0)
+    : [];
+  const tail = effortAxis.slice(boundary + 1);
+  // 공표된 순서가 축의 꼬리와 어긋나면 축을 따른다. 축이 자리의 유일한 근거다.
+  const rungs = declared.length > 0 && declared.every((rung) => tail.includes(rung)) ? declared : tail;
+  return rungs.length > 0 ? { after: value.after, rungs } : null;
 }
 
 function readLaunchVariantChip(value: unknown): OperationLaunchVariantChip | null {

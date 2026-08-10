@@ -90,7 +90,9 @@ export {
 } from "./agent-cli/registry.js";
 export {
   NATIVE_CLAUDE_EFFORTS,
+  NATIVE_CLAUDE_LAUNCH_EFFORTS,
   NATIVE_CLAUDE_MODEL_ALIASES,
+  NATIVE_CLAUDE_SPECIAL_EFFORTS,
   resolveNativeClaudeModelAlias,
 } from "./agent-cli/claude/definitions.js";
 

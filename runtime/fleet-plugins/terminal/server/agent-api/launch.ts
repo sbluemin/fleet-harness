@@ -14,6 +14,7 @@ import {
   injectAgentCliProfile,
   prepareAiGatewayLaunchProfile,
   NATIVE_CLAUDE_EFFORTS,
+  NATIVE_CLAUDE_SPECIAL_EFFORTS,
   resolveAgentCliId,
   resolveAgentCliProfile,
   resolveNativeClaudeModelAlias,
@@ -87,8 +88,14 @@ export function isGatewayLaunchEffortAllowed(
   model: GatewayModel,
   effort: string,
 ): boolean {
-  if (!NATIVE_CLAUDE_EFFORTS.includes(effort as (typeof NATIVE_CLAUDE_EFFORTS)[number])) return false;
   const efforts = selection.effortExposure[model.id] ?? exposableEffortLadder(model);
+  // ultracode는 게이트웨이 사다리의 단이 아니라 Claude Code 세션 모드이고, 상류에는 언제나
+  // xhigh로 나간다. 그래서 xhigh를 내놓지 못하는 모델에는 걸어 줄 수 없다 — 걸면 사용자가 고른
+  // 단이 상류에서 조용히 깎인다.
+  if (NATIVE_CLAUDE_SPECIAL_EFFORTS.includes(effort as (typeof NATIVE_CLAUDE_SPECIAL_EFFORTS)[number])) {
+    return efforts.includes("xhigh");
+  }
+  if (!NATIVE_CLAUDE_EFFORTS.includes(effort as (typeof NATIVE_CLAUDE_EFFORTS)[number])) return false;
   return efforts.includes(effort as GatewayReasoningEffort);
 }
 

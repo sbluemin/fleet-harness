@@ -630,6 +630,13 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
               autoLabel={t("launchVariants.effort.auto")}
               ariaLabel={t("launchVariants.effort.track")}
               autoValueText={t("launchVariants.effort.autoValue")}
+              revealLabel={t("launchVariants.effort.reveal")}
+              collapseLabel={t("launchVariants.effort.collapse")}
+              specialWarning={t("launchVariants.effort.specialWarning")}
+              specialDescriptions={{
+                max: t("launchVariants.effort.maxValue"),
+                ultracode: t("launchVariants.effort.ultracodeValue"),
+              }}
             />
             {showEffortConfirmTip ? (
               <p className="operation-launch-effort-confirm-tip" role="status">
@@ -675,15 +682,23 @@ const GAUGE_MIN_BAR = 2;
  * 오르는 막대로 "단계를 고르는 자리"임을 아이콘 하나로 알린다. 자동은 한 칸도 켜지지 않는다 —
  * 최소 단을 고른 것과 갈려야 한다.
  */
-function EffortGaugeGlyph({ rung, total }: { readonly rung: number; readonly total: number }) {
+function EffortGaugeGlyph({ rung, total, special }: {
+  readonly rung: number;
+  readonly total: number;
+  readonly special: string | null;
+}) {
   if (total <= 0) return null;
-  const width = total * GAUGE_BAR_PITCH - (GAUGE_BAR_PITCH - GAUGE_BAR_WIDTH);
+  const bars = total * GAUGE_BAR_PITCH - (GAUGE_BAR_PITCH - GAUGE_BAR_WIDTH);
+  // 특수 모드 표식은 눈금 밖에 붙는다 — 막대를 하나 더 얹으면 "칸이 더 많으니 더 깊다"가 되는데,
+  // ultracode는 xhigh 깊이에 오케스트레이션을 얹은 모드다.
+  const width = special === null ? bars : bars + GAUGE_BAR_PITCH + GAUGE_BAR_WIDTH;
   return (
     <svg
       className="operation-launch-variant-effort-gauge"
       viewBox={`0 0 ${width} ${GAUGE_HEIGHT}`}
       width={width}
       height={GAUGE_HEIGHT}
+      data-special={special ?? undefined}
       aria-hidden="true"
     >
       {Array.from({ length: total }, (_unused, index) => {
@@ -702,6 +717,26 @@ function EffortGaugeGlyph({ rung, total }: { readonly rung: number; readonly tot
           />
         );
       })}
+      {special === "max" ? (
+        // 떨어져 선 마루 — 눈금 위의 한 칸이 아니라 눈금이 끝난 뒤의 천장이다.
+        <rect
+          x={bars + GAUGE_BAR_PITCH}
+          y={0}
+          width={GAUGE_BAR_WIDTH}
+          height={GAUGE_HEIGHT}
+          rx={0.5}
+          data-lit="true"
+          data-cap="true"
+        />
+      ) : null}
+      {special === "ultracode" ? (
+        // 깊이가 아니라 갈라지는 일감을 말한다 — 한 줄기에서 갈린 세 점.
+        <g data-orchestration="true">
+          {[0, GAUGE_HEIGHT / 2, GAUGE_HEIGHT].map((y, index) => (
+            <circle key={index} cx={bars + GAUGE_BAR_PITCH + GAUGE_BAR_WIDTH / 2} cy={Math.max(0.75, Math.min(y, GAUGE_HEIGHT - 0.75))} r={0.75} data-lit="true" />
+          ))}
+        </g>
+      ) : null}
     </svg>
   );
 }

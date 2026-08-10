@@ -61,6 +61,16 @@ export interface OperationLaunchVariantRow {
    * surface has nothing but `chips` to go on and should treat them as the axis.
    */
   readonly effortAxis?: readonly string[];
+  /**
+   * The tail of `effortAxis` that a surface must not offer on the ordinary track. Everything
+   * after `after` sits behind a deliberate reveal, because those rungs cost enough that reaching
+   * them by a stray drag would be a misfire rather than a choice. Absent means the whole axis is
+   * ordinary. `rungs` is the revealed order, so a surface never has to re-derive it from `after`.
+   */
+  readonly effortExpansion?: {
+    readonly after: string;
+    readonly rungs: readonly string[];
+  };
 }
 
 export interface OperationLaunchVariantGroup {
