@@ -18,12 +18,15 @@ afterEach(() => {
   }
 });
 
-function runGuard(toolInput: unknown): { readonly status: number; readonly stderr: string } {
+function runGuard(
+  toolInput: unknown,
+  toolName = "Workflow",
+): { readonly status: number; readonly stderr: string; readonly stdout: string } {
   const result = spawnSync(process.execPath, [GUARD_SCRIPT], {
-    input: JSON.stringify({ tool_name: "Workflow", tool_input: toolInput }),
+    input: JSON.stringify({ tool_name: toolName, tool_input: toolInput }),
     encoding: "utf8",
   });
-  return { status: result.status ?? -1, stderr: result.stderr };
+  return { status: result.status ?? -1, stderr: result.stderr, stdout: result.stdout };
 }
 
 describe("workflow-guard hook", () => {
@@ -76,11 +79,169 @@ describe("workflow-guard hook", () => {
     expect(status).toBe(0);
   });
 
-  it("ignores non-Workflow tools", () => {
-    const result = spawnSync(process.execPath, [GUARD_SCRIPT], {
-      input: JSON.stringify({ tool_name: "Bash", tool_input: { command: "ls" } }),
-      encoding: "utf8",
+  it("blocks an agent call with an empty options object and identifies it", () => {
+    const { status, stderr, stdout } = runGuard({ script: `agent("x", {})` });
+    expect(status).toBe(2);
+    expect(stderr).toContain("1번째 agent() 호출");
+    expect(stderr).toContain(`agent("x", {})`);
+    expect(stdout).toBe("");
+  });
+
+  it("blocks an agent call without an options argument", () => {
+    const { status, stderr } = runGuard({ script: `agent("x")` });
+    expect(status).toBe(2);
+    expect(stderr).toContain("리터럴 opts.model pin");
+  });
+
+  it("identifies the unpinned call in a mixed script", () => {
+    const { status, stderr } = runGuard({
+      script: `
+        const pinned = agent("pinned", { model: "sonnet" });
+        const unpinned = agent("unpinned", { effort: "low" });
+      `,
     });
-    expect(result.status).toBe(0);
+    expect(status).toBe(2);
+    expect(stderr).toContain("2번째 agent() 호출");
+    expect(stderr).toContain(`agent("unpinned", { effort: "low" })`);
+    expect(stderr).not.toContain(`agent("pinned", { model: "sonnet" })`);
+  });
+
+  it("passes when every call pins a lineage alias", () => {
+    const { status, stdout } = runGuard({
+      script: `
+        agent("a", { model: "fable" });
+        agent("b", { 'model': "opus" });
+        agent("c", { "model": "sonnet" });
+        agent("d", { model: "haiku" });
+      `,
+    });
+    expect(status).toBe(0);
+    expect(stdout).toBe("");
+  });
+
+  it("passes when every call pins a full gateway modelId", () => {
+    const { status } = runGuard({
+      script: `
+        agent("a", { model: "claude-gateway--codex--gpt-5.6-sol-fast[1m]" });
+        agent("b", { model: "claude-gateway--cursor--grok-4.5[1m]" });
+      `,
+    });
+    expect(status).toBe(0);
+  });
+
+  it("handles templates, nested delimiters, and nested schema objects", () => {
+    const { status } = runGuard({
+      script: `
+        agent("x", {
+          model: "sonnet",
+          prompt: \`inspect \${run({ value: "nested ) quote", list: [1, (2 + 3)] })}\`,
+          schema: { output: { nested: true } },
+        });
+      `,
+    });
+    expect(status).toBe(0);
+  });
+
+  it("does not count a model key nested under schema as a pin", () => {
+    const { status, stderr } = runGuard({
+      script: `agent("x", { schema: { model: "sonnet" } })`,
+    });
+    expect(status).toBe(2);
+    expect(stderr).toContain("1번째 agent() 호출");
+  });
+
+  it("ignores lookalike callees", () => {
+    const { status } = runGuard({
+      script: `
+        subagent("x", {});
+        spawnAgent("x", {});
+        obj.agent("x", {});
+        function agent(x) {}
+        agent("real", { model: "sonnet" });
+      `,
+    });
+    expect(status).toBe(0);
+  });
+
+  it("ignores agent call text in comments and string literals", () => {
+    const { status } = runGuard({
+      script: String.raw`
+        // agent("comment", {})
+        /* agent("block", {}) */
+        const single = 'agent("single", {})';
+        const double = "agent('double', {})";
+        const template = \`agent("template", {})\`;
+        agent("real", { model: "sonnet" });
+      `,
+    });
+    expect(status).toBe(0);
+  });
+
+  it("keeps agentType precedence over the unpinned check", () => {
+    const { status, stderr } = runGuard({
+      script: `agent("x", { agentType: "fleet:example" })`,
+    });
+    expect(status).toBe(2);
+    expect(stderr).toContain("agentType");
+    expect(stderr).not.toContain("리터럴 opts.model pin");
+  });
+
+  it("ignores an unpinned script for non-Workflow tools", () => {
+    const { status } = runGuard({ script: `agent("x", {})` }, "Bash");
+    expect(status).toBe(0);
+  });
+
+  it("passes an unreadable scriptPath without inspection", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "workflow-guard-"));
+    tempDirs.push(dir);
+    const { status } = runGuard({ scriptPath: path.join(dir, "missing.js") });
+    expect(status).toBe(0);
+  });
+
+  /**
+   * 값 검사는 코드 위치의 `model:`만 본다. 스크립트 전체를 정규식으로 훑으면 프롬프트 문장이나
+   * 주석에 적힌 산문이 값으로 읽혀, 제대로 핀을 박은 워크플로우가 차단된다 — 하드 차단에서
+   * 이 오탐은 곧 "정상 스크립트를 못 돌린다"가 된다.
+   */
+  it("reads model pins as code, not as prose inside prompts and comments", () => {
+    expect(runGuard({
+      script: 'await agent(`Report which model: "gpt-4" was used.`, { model: "opus" })',
+    }).status).toBe(0);
+
+    expect(runGuard({
+      script: '// always pin a model: "sonnet-x" style id\nawait agent("x", { model: "opus" })',
+    }).status).toBe(0);
+
+    expect(runGuard({
+      script: 'const hint = "model: \\"x\\""; await agent("x", { model: "opus" })',
+    }).status).toBe(0);
+
+    // 스키마가 우연히 model이라는 속성을 담아도 그것은 이 워크플로우의 핀이 아니다.
+    expect(runGuard({
+      script: 'await agent("x", { model: "opus", schema: { properties: { model: { type: "string" } } } })',
+    }).status).toBe(0);
+  });
+
+  // 산문을 걸러 내면서도 검사의 사정거리는 좁히지 않는다 — 헬퍼 객체에 잘못 박힌 값도 그대로 잡는다.
+  it("still rejects a bad value wherever the code puts it", () => {
+    const helper = runGuard({
+      script: 'const OPTS = { model: "nope" };\nawait agent("x", { model: "opus" })',
+    });
+    expect(helper.status).toBe(2);
+    expect(helper.stderr).toContain("nope");
+
+    const quoted = runGuard({ script: 'await agent("x", { "model": "sol-fast" })' });
+    expect(quoted.status).toBe(2);
+    expect(quoted.stderr).toContain("sol-fast");
+  });
+
+  it("blocks an unpinned script loaded from scriptPath", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "workflow-guard-"));
+    tempDirs.push(dir);
+    const scriptPath = path.join(dir, "unpinned.js");
+    writeFileSync(scriptPath, `agent("from-file", { schema: S })`);
+    const { status, stderr } = runGuard({ scriptPath });
+    expect(status).toBe(2);
+    expect(stderr).toContain(`agent("from-file", { schema: S })`);
   });
 });
