@@ -132,6 +132,13 @@ Add tests for both sides of every classifier:
 
 When adding diagnostics, test both persistence of allowed metrics and absence of secret payloads.
 
+### Retry safety checklist
+
+- **Mixed attempts after a transient failure:** derive the commit boundary from the client-facing encoder's first semantically unreplayable output, buffer every replay-safe lead event per attempt, discard only an attempt that will be replayed, flush the terminal attempt, and integration-test that encoder; canonical setup/reasoning events or their encoder frames need not commit the attempt.
+- **More provider calls than any phase allows:** share one retry budget across the whole request and permanently test cross-phase failure sequences; independently bounded fetch and stream handlers compose into request amplification.
+- **A closed consumer leaves `next()` or a socket pending:** give the initial read, retry delay, and retry fetch one per-call cancellation owner, then test caller abort plus iterator `return()` and `throw()` in each phase; a generator awaiting its source cannot enter cleanup merely because a retry controller was aborted.
+- **A recovered retry has no failure evidence:** record payload-light evidence at the seam that discards the failed attempt, and test successful-event non-duplication plus secret absence; a downstream logger cannot recover events already removed upstream.
+
 Do not edit compiler-owned changelogs. Amend the applicable `.changelog.d/` fragment only for user-visible behavior.
 
 ## Phase 4 — Measure with the frozen workload
