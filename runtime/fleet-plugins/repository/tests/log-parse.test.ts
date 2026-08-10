@@ -82,6 +82,14 @@ describe("refBadges", () => {
     expect(badges).toEqual([{ label: "main", kind: "branch", hasRemote: true }]);
   });
 
+  it("detached HEAD는 remote를 흡수하지 않고 실제 원격 이름을 보존한다", () => {
+    const badges = refBadges(makeEntry({ refs: ["HEAD", "refs/remotes/origin/main"] }));
+    expect(badges).toEqual([
+      { label: "HEAD", kind: "head" },
+      { label: "origin/main", kind: "remote" },
+    ]);
+  });
+
   it("full decoration의 HEAD 접두는 로컬 branch 배지로 분류한다", () => {
     const badges = refBadges(makeEntry({ refs: ["HEAD -> refs/heads/main"] }));
     expect(badges).toEqual([{ label: "main", kind: "branch" }]);

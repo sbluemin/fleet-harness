@@ -94,8 +94,9 @@ export function refBadges(entry: LogCommitEntry): RefBadge[] {
     }
   }
 
-  if (local.length === 0) return [...remote, ...tags.sort((left, right) => left.label.localeCompare(right.label))];
-  const mergedLocal = local.map((badge, index) => index === 0 && remote.length > 0 ? { ...badge, hasRemote: true } : badge);
+  const remoteTargetIndex = local.findIndex((badge) => badge.kind === "branch");
+  if (remoteTargetIndex < 0) return [...local, ...remote, ...tags.sort((left, right) => left.label.localeCompare(right.label))];
+  const mergedLocal = local.map((badge, index) => index === remoteTargetIndex && remote.length > 0 ? { ...badge, hasRemote: true } : badge);
   return [...mergedLocal, ...tags.sort((left, right) => left.label.localeCompare(right.label))];
 }
 
