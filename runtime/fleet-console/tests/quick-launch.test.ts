@@ -24,10 +24,10 @@ const GROUPS: readonly OperationLaunchVariantGroup[] = [
       {
         id: "fable",
         label: "Fable",
-        launch: { model: "fable" },
+        launch: { model: "fable[1m]" },
         chips: [
-          { id: "fable-low", label: "LOW", launch: { model: "fable", effort: "low" } },
-          { id: "fable-max", label: "MAX", launch: { model: "fable", effort: "max" } },
+          { id: "fable-low", label: "LOW", launch: { model: "fable[1m]", effort: "low" } },
+          { id: "fable-max", label: "MAX", launch: { model: "fable[1m]", effort: "max" } },
         ],
       },
       {
@@ -74,7 +74,7 @@ describe("findVariantLaunchKind", () => {
 describe("resolveSelection", () => {
   it("restores a remembered model and effort", () => {
     expect(resolveSelection(GROUPS, { model: "fable", effort: "max" })).toEqual({
-      model: "fable",
+      model: "fable[1m]",
       effort: "max",
       modelLabel: "Fable",
       effortLabel: "MAX",
@@ -120,7 +120,13 @@ describe("resolveSelection", () => {
     });
   });
 
-  it("rewrites a saved bare opus selection onto the 1M coordinate", () => {
+  it("rewrites saved bare native selections onto 1M coordinates", () => {
+    expect(resolveSelection(GROUPS, { model: "fable", effort: "max" })).toEqual({
+      model: "fable[1m]",
+      effort: "max",
+      modelLabel: "Fable",
+      effortLabel: "MAX",
+    });
     expect(resolveSelection(GROUPS, { model: "opus", effort: "high" })).toEqual({
       model: "opus[1m]",
       effort: "high",

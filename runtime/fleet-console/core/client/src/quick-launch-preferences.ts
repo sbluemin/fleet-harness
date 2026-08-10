@@ -30,8 +30,8 @@ export function readQuickLaunchSelection(): QuickLaunchSelection {
       model: migrateRememberedModel(readNonEmptyString(parsed.model)),
       effort: readNonEmptyString(parsed.effort),
     };
-    // Canvas/Quick Launch Opus now launches as `opus[1m]`. Rewrite a leftover bare
-    // `opus` once so a reopen does not restore a retired catalog id into React state.
+    // Canvas/Quick Launch native models now launch on their 1M coordinates. Rewrite a leftover bare
+    // selection once so a reopen does not restore a retired catalog id into React state.
     if (selection.model !== readNonEmptyString(parsed.model)) {
       writeQuickLaunchSelection(selection);
     }
@@ -42,9 +42,11 @@ export function readQuickLaunchSelection(): QuickLaunchSelection {
   }
 }
 
-/** Bare `opus` was the pre-1M menu id; keep the same Opus row under `opus[1m]`. */
+/** Bare native model ids were the pre-1M menu ids; keep their rows under the 1M coordinates. */
 function migrateRememberedModel(model: string | null): string | null {
-  return model === "opus" ? "opus[1m]" : model;
+  if (model === "opus") return "opus[1m]";
+  if (model === "fable") return "fable[1m]";
+  return model;
 }
 
 export function writeQuickLaunchSelection(selection: QuickLaunchSelection): void {

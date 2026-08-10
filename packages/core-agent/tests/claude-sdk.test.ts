@@ -26,6 +26,7 @@ const { createClaudeGatewaySdk } = await import("../src/claude/sdk.js");
 const BASE_URL = "http://127.0.0.1:43210/plugins/terminal/ai-gateway";
 const LUNA = "claude-gateway--codex--gpt-5.6-luna-fast[1m]";
 const SOL = "claude-gateway--codex--gpt-5.6-sol-fast[1m]";
+const FABLE_1M = "fable[1m]";
 
 async function drain(run: AsyncIterable<unknown>): Promise<void> {
   for await (const _ of run) { /* 스트림을 끝까지 읽어 실행 슬롯을 돌려준다 */ }
@@ -56,6 +57,13 @@ describe("construction", () => {
     const aliased = await createClaudeGatewaySdk({ baseUrl: BASE_URL, models: ["sonnet"] });
     expect(aliased.models).toEqual(["sonnet"]);
     await aliased.dispose();
+
+    const fable = await createClaudeGatewaySdk({ baseUrl: BASE_URL, models: [FABLE_1M] });
+    expect(fable.models).toEqual([FABLE_1M]);
+    await drain(await fable.startTurn({ prompt: "hi", model: FABLE_1M }));
+    const options = runVendorQuery.mock.calls[0]?.[0].options as Record<string, unknown>;
+    expect(options.model).toBe(FABLE_1M);
+    await fable.dispose();
   });
 
   it("owns an isolated config directory", async () => {

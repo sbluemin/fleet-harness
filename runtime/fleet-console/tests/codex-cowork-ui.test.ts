@@ -106,6 +106,22 @@ describe("Cowork inline copilot", () => {
     article.remove();
   });
 
+  it("migrates a stored bare Fable setting before roster matching", async () => {
+    localStorage.setItem("fleet.codex.cowork.settings", JSON.stringify({ model: "fable", effort: "max" }));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["fable[1m]"], efforts: ["max"] }));
+      return new Response(JSON.stringify({ error: "cowork_session_not_found" }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { article, body } = host();
+    const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: vi.fn() });
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("model=fable%5B1m%5D"))).toBe(true));
+    expect(JSON.parse(localStorage.getItem("fleet.codex.cowork.settings")!)).toMatchObject({ model: "fable[1m]" });
+    controller.destroy();
+    article.remove();
+  });
+
   it("shows the dock immediately and defers session creation until the first send", async () => {
     const listeners = new Map<string, EventListener>();
     class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
