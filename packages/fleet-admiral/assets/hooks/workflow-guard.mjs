@@ -56,6 +56,55 @@ function skipComment(source, start) {
   return start;
 }
 
+/**
+ * `/`가 나눗셈이 아니라 정규식의 시작인지. 직전 유효 문자가 값을 끝내는 자리(식별자·숫자·닫는
+ * 괄호)면 나눗셈이고, 그렇지 않으면 정규식이다. 판정이 서지 않으면 나눗셈으로 본다 — 정규식으로
+ * 오인해 뒤를 통째로 삼키는 쪽이 훨씬 나쁘다.
+ */
+function isRegexPosition(source, start) {
+  let index = start - 1;
+  while (index >= 0 && /\s/.test(source[index])) index -= 1;
+  if (index < 0) return true;
+  const previous = source[index];
+  if (/[)\]}]/.test(previous)) return false;
+  if (/[A-Za-z0-9_$]/.test(previous)) {
+    let wordEnd = index + 1;
+    let wordStart = index;
+    while (wordStart >= 0 && /[A-Za-z0-9_$]/.test(source[wordStart])) wordStart -= 1;
+    const word = source.slice(wordStart + 1, wordEnd);
+    return ["return", "typeof", "instanceof", "in", "of", "new", "delete", "void", "case", "do", "else", "yield", "await"].includes(word);
+  }
+  return true;
+}
+
+/**
+ * 정규식 리터럴을 건너뛴다. 문자 클래스(`[...]`) 안의 `/`는 종결자가 아니므로 클래스 안팎을
+ * 따로 센다 — 이 구분이 없으면 `/[)]/g` 같은 리터럴의 `)`가 실제 닫는 괄호로 읽혀,
+ * 정상 스크립트의 `agent()` 인수 경계를 찾지 못하고 pin이 없다고 오판한다.
+ */
+function skipRegexLiteral(source, start) {
+  if (source[start] !== "/" || !isRegexPosition(source, start)) return start;
+  let index = start + 1;
+  let inClass = false;
+  while (index < source.length) {
+    const character = source[index];
+    if (character === "\\") {
+      index += 2;
+      continue;
+    }
+    if (character === "\n") return start;
+    if (character === "[") inClass = true;
+    else if (character === "]") inClass = false;
+    else if (character === "/" && !inClass) {
+      index += 1;
+      while (index < source.length && /[a-z]/.test(source[index])) index += 1;
+      return index;
+    }
+    index += 1;
+  }
+  return start;
+}
+
 function findMatchingDelimiter(source, openIndex) {
   const first = source[openIndex];
   if (!OPEN_TO_CLOSE[first]) return -1;
@@ -75,6 +124,11 @@ function findMatchingDelimiter(source, openIndex) {
     const afterComment = skipComment(source, index);
     if (afterComment !== index) {
       index = afterComment;
+      continue;
+    }
+    const afterRegex = skipRegexLiteral(source, index);
+    if (afterRegex !== index) {
+      index = afterRegex;
       continue;
     }
     if (OPEN_TO_CLOSE[character]) {
@@ -124,6 +178,11 @@ function skipTrivia(source, start, end = source.length) {
       index = Math.min(afterComment, end);
       continue;
     }
+    const afterRegex = skipRegexLiteral(source, index);
+    if (afterRegex !== index) {
+      index = Math.min(afterRegex, end);
+      continue;
+    }
     break;
   }
   return index;
@@ -141,6 +200,11 @@ function findAgentCallsInRange(source, start, end, calls) {
     const afterComment = skipComment(source, index);
     if (afterComment !== index) {
       index = Math.min(afterComment, end);
+      continue;
+    }
+    const afterRegex = skipRegexLiteral(source, index);
+    if (afterRegex !== index) {
+      index = Math.min(afterRegex, end);
       continue;
     }
     if (character === "'" || character === '"') {
@@ -207,6 +271,11 @@ function splitTopLevelRanges(source, start, end) {
     const afterComment = skipComment(source, index);
     if (afterComment !== index) {
       index = afterComment;
+      continue;
+    }
+    const afterRegex = skipRegexLiteral(source, index);
+    if (afterRegex !== index) {
+      index = afterRegex;
       continue;
     }
     if (OPEN_TO_CLOSE[character]) {
@@ -298,6 +367,11 @@ function findModelPinValues(source, start, end, values) {
     const afterComment = skipComment(source, index);
     if (afterComment !== index) {
       index = Math.min(afterComment, end);
+      continue;
+    }
+    const afterRegex = skipRegexLiteral(source, index);
+    if (afterRegex !== index) {
+      index = Math.min(afterRegex, end);
       continue;
     }
     if (character === "'" || character === '"') {

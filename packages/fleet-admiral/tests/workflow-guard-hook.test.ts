@@ -235,6 +235,32 @@ describe("workflow-guard hook", () => {
     expect(quoted.stderr).toContain("sol-fast");
   });
 
+  /**
+   * 정규식 리터럴 안의 괄호는 코드의 괄호가 아니다. 이것을 세면 `agent(` 의 인수 경계를 못 찾아,
+   * 제대로 핀을 박은 워크플로우가 "핀이 없다"며 하드 차단된다 — 가드가 막아야 할 것을 막는 대신
+   * 정상 실행을 막는 쪽이 훨씬 나쁘다.
+   */
+  it("reads regex literals as literals, not as stray delimiters", () => {
+    expect(runGuard({
+      script: 'const clean = (s) => s.replace(/[)}]/g, "");\nawait agent("x", { model: "opus" })',
+    }).status).toBe(0);
+
+    // 문자 클래스 안의 닫는 괄호가 실제 경계로 읽히면, 이 호출의 인수 범위 자체를 잃는다.
+    expect(runGuard({
+      script: 'await agent("x", { model: "opus", label: name.replace(/[)\\]]/g, "") })',
+    }).status).toBe(0);
+
+    // 정규식 안의 따옴표도 문자열을 열지 않는다.
+    expect(runGuard({
+      script: 'const q = /["\'`]/g;\nawait agent("x", { model: "opus" })',
+    }).status).toBe(0);
+
+    // 나눗셈은 나눗셈으로 남아야 한다 — 정규식으로 오인하면 뒤의 코드를 통째로 삼킨다.
+    expect(runGuard({
+      script: 'const half = total / 2;\nawait agent("x", { schema: S })',
+    }).status).toBe(2);
+  });
+
   it("blocks an unpinned script loaded from scriptPath", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "workflow-guard-"));
     tempDirs.push(dir);
