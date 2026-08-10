@@ -25,6 +25,7 @@ import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
 import { readBackgroundHookReport } from "./agent-api/background-report.js";
 import { createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
+import { AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY, agentLaunchProviderFromModel, isAgentLaunchProvider } from "./agent-api/launch-provider.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { writeAgentSessionEvents } from "./agent-api/observability-routes.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./agent-api/osc-agent-activity.js";
@@ -78,6 +79,17 @@ export function buildAgentLaunchKindBackfillPatch(operation: AgentLaunchKindBack
   if (typeof cliId !== "string" || cliId.length === 0) return null;
   if (operation.payload.launchKindId !== undefined) return null;
   return { payload: { ...operation.payload, launchKindId: cliId } };
+}
+
+/**
+ * 공급자 기록이 없는 agent Operation을 순정 Claude로 메운다. 이 축이 생기기 전에 실행된
+ * Operation의 실제 모델은 어디에도 남아 있지 않지만, 그때도 크롬은 Claude 마크를 보여 주고
+ * 있었으므로 같은 사실로 메워야 새 실행과 표현이 갈라지지 않는다.
+ */
+export function buildAgentLaunchProviderBackfillPatch(operation: AgentLaunchKindBackfillOperation): Pick<OperationPatchInput, "payload"> | null {
+  if (operation.pluginId !== TERMINAL_PLUGIN_ID || operation.type !== AGENT_OPERATION_TYPE) return null;
+  if (isAgentLaunchProvider(operation.payload[AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY])) return null;
+  return { payload: { ...operation.payload, [AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY]: "claude" } };
 }
 
 // 로스터는 호출 시점에 해석한다. 노출 선별은 세션이 도는 동안에도 사용자가 바꿀 수 있고,
@@ -182,7 +194,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     observability.notifySessionUpdated(dormant);
   });
 
-  backfillAgentOperationLaunchKinds();
+  backfillAgentOperationLaunchAxes();
   rehydrateDormantAgentOperations();
   startIdleAgentDormantSweeper({
     loadGlobalOptions: () => deps.globalOptionsService.load(),
@@ -421,7 +433,12 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       type: AGENT_OPERATION_TYPE,
       pluginId: ctx.pluginId,
       title: session.label ?? path.basename(cwd),
-      payload: toOperationPayload(undefined, cwd, session),
+      // 공급자는 실행 시점에 한 번 확정되고 이후 어떤 patch도 다시 쓰지 않는다 —
+      // toOperationPayload가 지우는 키 목록 밖이라 resume·복원을 지나도 그대로 남는다.
+      payload: {
+        ...toOperationPayload(undefined, cwd, session),
+        [AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY]: agentLaunchProviderFromModel(launchOptions.model),
+      },
       createdAt: session.createdAt,
     });
     try {
@@ -832,11 +849,15 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     }
   }
 
-  function backfillAgentOperationLaunchKinds(): void {
+  function backfillAgentOperationLaunchAxes(): void {
     for (const operation of ctx.host.operations.list()) {
-      const patch = buildAgentLaunchKindBackfillPatch(operation);
-      if (!patch) continue;
-      ctx.host.operations.patch(operation.id, patch);
+      // 두 축을 같은 payload 위에 겹쳐 쌓아 한 번만 patch한다 — 축마다 patch하면
+      // 뒤 patch가 읽는 payload가 앞 patch 이전 스냅숏이라 먼저 메운 축이 지워진다.
+      const kindPatch = buildAgentLaunchKindBackfillPatch(operation);
+      const payload = kindPatch?.payload ?? operation.payload;
+      const providerPatch = buildAgentLaunchProviderBackfillPatch({ ...operation, payload });
+      const next = providerPatch?.payload ?? kindPatch?.payload;
+      if (next) ctx.host.operations.patch(operation.id, { payload: next });
     }
   }
 

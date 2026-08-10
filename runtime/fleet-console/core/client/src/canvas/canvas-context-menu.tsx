@@ -411,7 +411,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                 const kindKey = itemKey(plugin.id, kind.id);
                 return (
                   <div key={kindKey} role="group" aria-label={kind.title}>
-                    {variantKindCount > 1 ? <p className="canvas-context-menu-plugin">{kind.title}</p> : null}
+                    {variantKindCount > 1 ? <p className="operation-launch-variant-caption">{kind.title}</p> : null}
                     {kind.variants!.map((group, groupIndex) => (
                       <div key={group.id} className="operation-launch-variant-group">
                         {directKinds.length > 0 || kindIndex > 0 || groupIndex > 0
@@ -544,7 +544,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
           {terminalShellKinds.length > 0 ? (
             <div role="group" aria-label={t("canvas.menu.etc")}>
               {primaryCatalog.length > 0 ? <div className="theater-menu-divider" role="separator" /> : null}
-              <p className="canvas-context-menu-plugin canvas-context-menu-plugin--etc">
+              <p className="operation-launch-variant-caption">
                 <span className="operation-launch-provider-glyph operation-launch-provider-glyph--etc" aria-hidden="true">
                   {launchEtcGlyph()}
                 </span>

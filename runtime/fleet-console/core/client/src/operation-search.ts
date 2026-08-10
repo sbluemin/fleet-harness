@@ -2,6 +2,7 @@ import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 
+import { launchProviderFromOperationPayload, type LaunchProviderGlyphId } from "./components/launch-provider-glyphs.js";
 import { getGlobalSettingsStoreState } from "./global-settings-store.js";
 import { resolveOperationActivity } from "./operation-activity.js";
 import type { ConsoleState, OperationNode, TheaterInfo } from "./types.js";
@@ -15,6 +16,8 @@ export interface OperationSearchEntry {
   readonly pluginId: string;
   readonly status: string;
   readonly activity: OperationActivity;
+  /** 실행된 공급자. 기록하지 않는 플러그인의 Operation은 null이고 마크를 그리지 않는다. */
+  readonly launchProvider: LaunchProviderGlyphId | null;
 }
 
 export interface OperationSearchGroup {
@@ -142,6 +145,7 @@ function toOperationSearchEntry(
     pluginId: operation.pluginId,
     status: "operation",
     activity: resolveOperationActivity(operation, operationStatus),
+    launchProvider: launchProviderFromOperationPayload(operation.payload),
   };
 }
 

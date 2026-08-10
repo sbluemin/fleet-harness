@@ -278,7 +278,7 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "canvas.plugin.companionFailed": "Plugin Companion을 렌더하지 못했습니다.",
 
   "canvas.menu.aria": "Operation 실행 메뉴",
-  "canvas.menu.etc": "Etc",
+  "canvas.menu.etc": "기타",
   "canvas.menu.empty": "사용 가능한 Operation이 없습니다.",
 
   "canvas.minimap.open": "Map 열기",
