@@ -142,7 +142,7 @@
     "cursor": {
       "name": "Cursor",
       "defaultModel": "auto",
-      "source": "Cursor GetUsableModels + Run conversationCheckpointUpdate.token_details.max_tokens (cli-2026.07.08-0c04a8a; standard and Max Mode observed 2026-08-01, gpt-5.6-sol observed 2026-08-05 on cursor-agent 2026.07.23-e383d2b, claude-opus-5 and claude-fable-5 standard/Max Mode windows observed 2026-08-10); quotaScope from DashboardService/GetCurrentPeriodUsage autoBucketModels (2026-08-05)",
+      "source": "Cursor GetUsableModels + Run conversationCheckpointUpdate.token_details.max_tokens (cli-2026.07.08-0c04a8a; auto, composer-2.5, and grok-4.5 families observed 2026-08-01); quotaScope from DashboardService/GetCurrentPeriodUsage autoBucketModels (2026-08-05)",
       "models": [
         {
           "modelId": "auto",
@@ -201,139 +201,6 @@
             ],
             "upstreamModelIdTemplate": "cursor-grok-4.5-{effort}-fast"
           }
-        },
-        {
-          "modelId": "gpt-5.6-sol",
-          "name": "GPT-5.6-Sol",
-          "capabilityClass": "flagship",
-          "quotaScope": "api",
-          "contextWindow": 272000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ],
-            "upstreamModelIdTemplate": "gpt-5.6-sol-{effort}"
-          },
-          "benchmarkKey": "gpt-5.6-sol"
-        },
-        {
-          "modelId": "claude-opus-5",
-          "name": "Opus-5",
-          "capabilityClass": "flagship",
-          "quotaScope": "api",
-          "contextWindow": 300000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ],
-            "upstreamModelIdTemplate": "claude-opus-5-{effort}",
-            "upstreamModelIds": {
-              "xhigh": "claude-opus-5-thinking-xhigh",
-              "max": "claude-opus-5-thinking-max"
-            }
-          },
-          "benchmarkKey": "claude-opus-5"
-        },
-        {
-          "modelId": "claude-opus-5-1m",
-          "name": "Opus-5-1M",
-          "capabilityClass": "flagship",
-          "quotaScope": "api",
-          "contextWindow": 1000000,
-          "cursorMaxMode": true,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ],
-            "upstreamModelIdTemplate": "claude-opus-5-{effort}",
-            "upstreamModelIds": {
-              "xhigh": "claude-opus-5-thinking-xhigh",
-              "max": "claude-opus-5-thinking-max"
-            }
-          },
-          "benchmarkKey": "claude-opus-5"
-        },
-        {
-          "modelId": "claude-fable-5",
-          "name": "Fable-5",
-          "capabilityClass": "flagship",
-          "quotaScope": "api",
-          "description": "NO ZDR",
-          "contextWindow": 300000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ],
-            "upstreamModelIdTemplate": "claude-fable-5-{effort}"
-          },
-          "benchmarkKey": "claude-fable-5"
-        },
-        {
-          "modelId": "claude-fable-5-1m",
-          "name": "Fable-5-1M",
-          "capabilityClass": "flagship",
-          "quotaScope": "api",
-          "description": "NO ZDR",
-          "contextWindow": 1000000,
-          "cursorMaxMode": true,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ],
-            "upstreamModelIdTemplate": "claude-fable-5-{effort}"
-          },
-          "benchmarkKey": "claude-fable-5"
-        },
-        {
-          "modelId": "kimi-k3-1m",
-          "name": "Kimi-K3-1M",
-          "capabilityClass": "flagship",
-          "quotaScope": "api",
-          "providerModelId": "kimi-k3-max",
-          "contextWindow": 1048576,
-          "cursorMaxMode": true,
-          "benchmarkKey": "kimi-k3"
-        },
-        {
-          "modelId": "kimi-k3",
-          "name": "Kimi-K3",
-          "capabilityClass": "flagship",
-          "quotaScope": "api",
-          "contextWindow": 200000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "high"
-            ],
-            "upstreamModelIdTemplate": "kimi-k3-{effort}"
-          },
-          "benchmarkKey": "kimi-k3"
         }
       ]
     },
@@ -383,7 +250,7 @@
     "opencode": {
       "name": "OpenCode",
       "defaultModel": "minimax-m3",
-      "source": "live GET https://opencode.ai/zen/go/v1/models + per-model wire probes on /messages, /responses, /chat/completions (2026-08-03); contextWindow cross-checked against models.dev api.json opencode-go entries and oh-my-pi packages/catalog/src/models.json (2026-08-03, both agree). Excluded: mimo-v2-pro/mimo-v2-omni (upstream server_error), hy3-preview (listed but Router.ModelNotFound); superseded generations removed 2026-08-08 — the catalog keeps each lineup's current generation only",
+      "source": "live GET https://opencode.ai/zen/go/v1/models + per-model wire probes on /messages, /responses, /chat/completions (2026-08-03); contextWindow cross-checked against models.dev api.json opencode-go entries and oh-my-pi packages/catalog/src/models.json (2026-08-03, both agree). Excluded: mimo-v2-pro/mimo-v2-omni (upstream server_error), hy3-preview (listed but Router.ModelNotFound); superseded generations removed 2026-08-08 \u2014 the catalog keeps each lineup's current generation only",
       "models": [
         {
           "modelId": "minimax-m3",

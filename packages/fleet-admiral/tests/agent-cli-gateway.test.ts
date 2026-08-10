@@ -85,7 +85,7 @@ describe("claude-gateway custom agents", () => {
   });
 
   it("expands exposed models into claude-gateway-- agents with GP prompt", () => {
-    const model = requireGatewayModel("cursor--claude-opus-5");
+    const model = requireGatewayModel("cursor--grok-4.5");
     const agents = buildGatewayCustomAgents([model]);
     const names = Object.keys(agents);
     expect(names.length).toBeGreaterThan(0);
@@ -113,7 +113,7 @@ describe("claude-gateway custom agents", () => {
   });
 
   it("builds identities only for the models the caller provides", () => {
-    const included = requireGatewayModel("cursor--claude-opus-5");
+    const included = requireGatewayModel("cursor--grok-4.5");
     const omittedModelId = "claude-gateway--opencode--deepseek-v4-flash";
 
     const agents = buildGatewayCustomAgents([included]);
@@ -164,7 +164,7 @@ describe("claude-gateway custom agents", () => {
 
   it("registers gateway identities as plugin agent files, and never disables a built-in agent", async () => {
     const root = createTempRoot("fleet-admiral-gateway-agents-");
-    const model = requireGatewayModel("cursor--claude-opus-5");
+    const model = requireGatewayModel("cursor--grok-4.5");
     const gateway = baseProfile("claude-gateway", {
       args: [],
       cwd: root,
@@ -265,7 +265,7 @@ describe("claude-gateway system prompt mode", () => {
   it("composes append, replace, and off without disabling gateway assets", async () => {
     const root = createTempRoot("fleet-admiral-gateway-system-prompt-");
     const profile = baseProfile("claude-gateway", { args: [], cwd: root, env: { HOME: root } });
-    const model = requireGatewayModel("cursor--claude-opus-5");
+    const model = requireGatewayModel("cursor--grok-4.5");
     let builtPrompts = 0;
     const hook: FleetHookExec = { command: process.execPath, args: ["hook"] };
     const options = (systemPromptMode: "append" | "replace" | "off") => ({

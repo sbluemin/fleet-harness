@@ -166,7 +166,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const root = makeTempDir("fleet-gateway-launch-variant-");
     const settings = {
       version: 1 as const,
-      models: [{ id: "cursor--claude-opus-5" }],
+      models: [{ id: "cursor--grok-4.5" }],
     };
     const resolve = createDefaultTerminalLaunchResolver({
       cwd: root,
@@ -195,26 +195,26 @@ describe("createDefaultTerminalLaunchResolver", () => {
     });
     const scoped = await resolve(root, {
       cliId: "claude-gateway",
-      model: "cursor--claude-opus-5",
-      effort: "xhigh",
+      model: "cursor--grok-4.5",
+      effort: "high",
       sessionId: "gateway-scoped-variant",
     });
     const rowOnly = await resolve(root, {
       cliId: "claude-gateway",
-      model: "cursor--claude-opus-5",
+      model: "cursor--grok-4.5",
       sessionId: "gateway-scoped-row",
     });
 
     expect(native.args).toEqual(["--model", "fable[1m]", "--effort", "max"]);
     expect(scoped.args).toEqual([
       "--model",
-      "claude-gateway--cursor--claude-opus-5[1m]",
+      "claude-gateway--cursor--grok-4.5[1m]",
       "--effort",
-      "xhigh",
+      "high",
     ]);
     expect(rowOnly.args).toEqual([
       "--model",
-      "claude-gateway--cursor--claude-opus-5[1m]",
+      "claude-gateway--cursor--grok-4.5[1m]",
     ]);
     expect(rowOnly.args).not.toContain("--effort");
     for (const spec of [native, scoped, rowOnly]) {
@@ -233,7 +233,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const settings = {
       version: 1 as const,
       models: [
-        { id: "cursor--claude-opus-5", hostOnly: true },
+        { id: "cursor--auto", hostOnly: true },
         { id: "cursor--grok-4.5" },
       ],
     };
@@ -262,12 +262,12 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
     const spec = await resolve(root, {
       cliId: "claude-gateway",
-      model: "cursor--claude-opus-5",
+      model: "cursor--auto",
       sessionId: "gateway-host-only",
     });
 
     // 호스트 세션 쪽: 여전히 고를 수 있고, --model args로 배선된다.
-    expect(spec.args).toEqual(["--model", "claude-gateway--cursor--claude-opus-5[1m]"]);
+    expect(spec.args).toEqual(["--model", "claude-gateway--cursor--auto[1m]"]);
     expect(spec.env.ANTHROPIC_MODEL).toBeUndefined();
     // 위임 쪽: 정체성을 만들 목록에서만 빠진다.
     const delegable = (injected?.gatewayDelegationModels ?? []).map((model) => model.id);
@@ -640,20 +640,21 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(cache.baseUrl).toBe(spec.env.ANTHROPIC_BASE_URL);
     expect(cache.fetchedAt).toEqual(expect.any(Number));
     // core-ai-gateway의 GATEWAY_MODELS 전량이 prewrite되어야 한다 — 카탈로그가 바뀌면 이 수도 함께 맞춘다.
-    expect(cache.models).toHaveLength(31);
+    expect(cache.models).toHaveLength(24);
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast[1m]");
     expect(ids).toContain("claude-gateway--cursor--auto[1m]");
-    expect(ids).toContain("claude-gateway--cursor--claude-opus-5-1m[1m]");
-    expect(ids).toContain("claude-gateway--cursor--claude-fable-5-1m[1m]");
-    expect(ids).toContain("claude-gateway--cursor--kimi-k3");
-    expect(ids).toContain("claude-gateway--cursor--kimi-k3-1m[1m]");
+    expect(ids).toContain("claude-gateway--cursor--composer-2.5");
+    expect(ids).toContain("claude-gateway--cursor--grok-4.5[1m]");
+    expect(ids).toContain("claude-gateway--cursor--grok-4.5-fast[1m]");
+    expect(ids).not.toContain("claude-gateway--cursor--claude-opus-5-1m[1m]");
+    expect(ids).not.toContain("claude-gateway--cursor--kimi-k3");
     expect(ids).not.toContain("claude-gateway--cursor--gpt-5.6-luna[1m]");
     expect(ids).toContain("claude-gateway--kimi--k3[1m]");
     expect(ids).toContain("claude-gateway--kimi--k3-256k");
     expect(ids.some((id) => id.includes("--codex--") && id.endsWith("[1m]"))).toBe(true);
     expect(cache.models).toContainEqual(expect.objectContaining({
-      id: "claude-gateway--cursor--kimi-k3-1m[1m]",
-      display_name: "Cursor-Kimi-K3-1M (1M Context)",
+      id: "claude-gateway--cursor--grok-4.5[1m]",
+      display_name: "Cursor-Grok-4.5",
     }));
     expect(cache.models).toContainEqual(expect.objectContaining({
       id: "claude-gateway--kimi--k3[1m]",

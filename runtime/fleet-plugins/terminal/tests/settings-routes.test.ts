@@ -48,16 +48,22 @@ describe("terminal settings routes", () => {
     const providers = body.aiGatewayCatalog.providers;
     expect(providers.map((provider) => provider.id)).toEqual(["codex", "cursor", "kimi", "opencode"]);
     const allIds = providers.flatMap((provider) => provider.models.map((model) => model.id));
-    // Cursor 경유 Kimi와 Kimi 프로바이더는 다른 경로다 — 둘 다 노출한다.
+    // Cursor는 auto/composer/grok만 지원하고, Kimi 프로바이더는 별개 경로로 그대로 노출한다.
     expect(allIds).toContain("kimi--k3");
     for (const id of [
-      "cursor--claude-opus-5-1m",
-      "cursor--claude-fable-5-1m",
-      "cursor--kimi-k3-1m",
+      "cursor--auto",
+      "cursor--composer-2.5",
+      "cursor--composer-2.5-fast",
+      "cursor--grok-4.5",
+      "cursor--grok-4.5-fast",
     ]) {
       expect(allIds).toContain(id);
-      expect(providers[1]?.models.find((model) => model.id === id)?.maxMode).toBe(true);
     }
+    expect(allIds).not.toContain("cursor--claude-opus-5-1m");
+    expect(allIds).not.toContain("cursor--claude-fable-5-1m");
+    expect(allIds).not.toContain("cursor--kimi-k3-1m");
+    // 남은 Cursor 라인업에는 Max Mode 경로가 없다 — 제거된 1M Max Mode 모델을 되살리지 않는다.
+    expect(providers[1]?.models.every((model) => model.maxMode === false)).toBe(true);
     const fastIds = allIds.filter((id) => id.endsWith("-fast"));
     expect(fastIds.length).toBeGreaterThan(0);
     // 등급은 이 응답으로만 브라우저에 닿는다 — 투영에서 잘리면 로스터 배지가 사라진다.
@@ -195,7 +201,7 @@ describe("terminal settings routes", () => {
       body: {
         aiGateway: {
           models: [
-            { id: "cursor--claude-opus-5" },
+            { id: "cursor--grok-4.5" },
             { id: "kimi--k3-256k" },
           ],
         },
@@ -207,7 +213,7 @@ describe("terminal settings routes", () => {
     expect(harness.writes[0]?.body).toMatchObject({
       aiGateway: {
         models: [
-          { id: "cursor--claude-opus-5" },
+          { id: "cursor--grok-4.5" },
           { id: "kimi--k3-256k" },
         ],
       },
@@ -216,7 +222,7 @@ describe("terminal settings routes", () => {
     expect(harness.currentAiGateway()).toEqual({
       version: 1,
       models: [
-        { id: "cursor--claude-opus-5" },
+        { id: "cursor--grok-4.5" },
         { id: "kimi--k3-256k" },
       ],
     });
@@ -293,7 +299,7 @@ describe("terminal settings routes", () => {
         aiGateway: {
           models: [
             { id: "cursor--auto", hostOnly: true },
-            { id: "cursor--claude-opus-5", efforts: ["high"] },
+            { id: "cursor--grok-4.5", efforts: ["high"] },
           ],
         },
       },
@@ -301,7 +307,7 @@ describe("terminal settings routes", () => {
         version: 1,
         models: [
           { id: "cursor--auto", hostOnly: true },
-          { id: "cursor--claude-opus-5", efforts: ["high"] },
+          { id: "cursor--grok-4.5", efforts: ["high"] },
         ],
       },
     });
@@ -311,7 +317,7 @@ describe("terminal settings routes", () => {
       aiGateway: {
         models: [
           { id: "cursor--auto", hostOnly: true },
-          { id: "cursor--claude-opus-5" },
+          { id: "cursor--grok-4.5" },
         ],
       },
     });
@@ -319,7 +325,7 @@ describe("terminal settings routes", () => {
       version: 1,
       models: [
         { id: "cursor--auto", hostOnly: true },
-        { id: "cursor--claude-opus-5", efforts: ["high"] },
+        { id: "cursor--grok-4.5", efforts: ["high"] },
       ],
     });
   });
@@ -401,7 +407,7 @@ describe("terminal settings routes", () => {
       body: { cursorDiagnosticsEnabled: true },
       aiGateway: {
         version: 1,
-        models: [{ id: "cursor--claude-opus-5" }],
+        models: [{ id: "cursor--grok-4.5" }],
       },
     });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
@@ -411,13 +417,13 @@ describe("terminal settings routes", () => {
       body: {
         cursorDiagnosticsEnabled: true,
         aiGateway: {
-          models: [{ id: "cursor--claude-opus-5" }],
+          models: [{ id: "cursor--grok-4.5" }],
         },
       },
     });
     expect(harness.currentAiGateway()).toEqual({
       version: 1,
-      models: [{ id: "cursor--claude-opus-5" }],
+      models: [{ id: "cursor--grok-4.5" }],
       cursorDiagnosticsEnabled: true,
     });
   });
@@ -504,8 +510,8 @@ describe("terminal settings routes", () => {
     for (const aiGateway of [
       { models: [{ id: "cursor--no-such-model" }] },
       // 모델별 effort는 폐기된 계약 — 잔존 필드는 거부한다.
-      { models: [{ id: "cursor--claude-opus-5", effort: "max" }] },
-      { models: [{ id: "cursor--claude-opus-5" }, { id: "cursor--claude-opus-5" }] },
+      { models: [{ id: "cursor--grok-4.5", effort: "max" }] },
+      { models: [{ id: "cursor--grok-4.5" }, { id: "cursor--grok-4.5" }] },
       { models: "all" },
       { extra: true },
       [],

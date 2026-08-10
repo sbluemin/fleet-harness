@@ -38,7 +38,7 @@ describe("gateway loadout agent type selectors", () => {
   // 로스터는 호스트가 매 run 직전에 읽는 유일한 권위다. 여기에 이름이 없으면 호스트는
   // 이름을 요구하는 자리에 넣을 값을 회수할 방법이 없어 모델 id를 넣고 실패한다.
   it("keys selectors by the model's own ladder and matches the registered agents", () => {
-    const exposed = [model("cursor--claude-opus-5"), model("opencode--deepseek-v4-pro")];
+    const exposed = [model("cursor--grok-4.5"), model("opencode--deepseek-v4-pro")];
     const registered = registeredSelectors(exposed);
     const loadout = buildGatewayLoadout({ exposed });
 

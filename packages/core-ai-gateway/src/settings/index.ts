@@ -300,7 +300,7 @@ export interface AiGatewayCatalogProvider {
 }
 
 export interface AiGatewayCatalogModel {
-  /** Scoped gateway model id, e.g. `cursor--claude-opus-5`. */
+  /** Scoped gateway model id, e.g. `cursor--grok-4.5`. */
   readonly id: string;
   /** Bare model label without the provider prefix. */
   readonly name: string;

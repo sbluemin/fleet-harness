@@ -170,7 +170,7 @@ describe("data-dir settings store", () => {
     // AI Gateway 선별은 core-ai-gateway가 소유하는 별도 파일(`<dataDir>/ai-gateway.json`)로 이전됐다.
     expect(sanitizeGlobalOptionsData({
       version: 1,
-      aiGateway: { models: [{ id: "cursor--claude-opus-5" }] },
+      aiGateway: { models: [{ id: "cursor--grok-4.5" }] },
     })).toEqual({
       changed: true,
       data: { version: 1, claudeGatewaySystemPromptMode: "append" },

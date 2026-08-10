@@ -238,21 +238,21 @@ describe("Cursor client tool suspension", () => {
 
     await runSyntheticCursorTurn(firstFrames, {
       ...request("claude-session-model-switch"),
-      model: "kimi-k3",
+      model: "grok-4.5",
       reasoning: { summary: "auto", effort: "low" },
     }, { diagnostics: (event) => diagnostics.push(event) });
     const second = await runSyntheticCursorTurn(secondFrames, {
       ...request("claude-session-model-switch"),
-      model: "kimi-k3",
+      model: "grok-4.5",
       reasoning: { summary: "auto", effort: "high" },
     }, { diagnostics: (event) => diagnostics.push(event) });
 
     expect(diagnostics.filter((event) => event.event === "model.switch")).toEqual([
       expect.objectContaining({
         event: "model.switch",
-        model: "kimi-k3",
-        previousWireModel: "kimi-k3-low",
-        wireModel: "kimi-k3-high",
+        model: "grok-4.5",
+        previousWireModel: "cursor-grok-4.5-low",
+        wireModel: "cursor-grok-4.5-high",
       }),
     ]);
     expect(completedCursorUsage(second.events).input_tokens).toBeLessThan(90_000);
@@ -1030,7 +1030,7 @@ describe("Cursor client tool suspension", () => {
       { interactionUpdate: { turnEnded: {} } },
     ], {
       ...request("SECRET_SESSION_ID"),
-      model: "claude-opus-5",
+      model: "grok-4.5",
       reasoning: { summary: "auto", effort: "xhigh" },
     }, {
       diagnostics: (event) => diagnostics.push(event),
@@ -1039,8 +1039,9 @@ describe("Cursor client tool suspension", () => {
     expect(events.at(-1)?.type).toBe("response.completed");
     expect(diagnostics).toContainEqual(expect.objectContaining({
       event: "turn.start",
-      model: "claude-opus-5",
-      wireModel: "claude-opus-5-thinking-xhigh",
+      model: "grok-4.5",
+      // Grok's ladder tops out at high, so xhigh clamps onto that wire suffix.
+      wireModel: "cursor-grok-4.5-high",
       requestedEffort: "xhigh",
       turn: "prompt",
       toolCount: 1,

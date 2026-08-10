@@ -127,9 +127,9 @@ describe("ai-gateway settings", () => {
   it("resolves stale ids out of the exposed selection", () => {
     const selection = resolveAiGatewaySelection({
       version: 1,
-      models: [{ id: "cursor--claude-opus-5" }, { id: "cursor--retired-model" }],
+      models: [{ id: "cursor--grok-4.5" }, { id: "cursor--claude-opus-5" }],
     });
-    expect(selection.models.map((model) => model.id)).toEqual(["cursor--claude-opus-5"]);
+    expect(selection.models.map((model) => model.id)).toEqual(["cursor--grok-4.5"]);
   });
 
   it("keeps host-only models on the wire while provider-sorting the delegation subset", () => {
