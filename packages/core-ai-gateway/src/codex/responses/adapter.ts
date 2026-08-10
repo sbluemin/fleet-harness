@@ -37,6 +37,7 @@ export const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 export const CHATGPT_CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
 export const DEFAULT_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
 export const DEFAULT_UPSTREAM_IDLE_TIMEOUT_MS = 30_000;
+const CODEX_SOCKET_RETRY_DELAY_MS = 200;
 
 // ChatGPT 백엔드는 Platform API가 받는 샘플링 파라미터를 400으로 거절한다.
 // 실측으로 확정한 거부 목록. metadata는 "Unsupported parameter", 샘플링 필드는 400으로 돌아온다.
@@ -223,12 +224,124 @@ export class CodexResponsesAdapter extends OpenAIResponsesAdapter {
         ...(options.accountId ? { "chatgpt-account-id": options.accountId } : {}),
         ...options.headers,
       },
-      ...(options.fetch ? { fetch: options.fetch } : {}),
+      fetch: markCodexFetchFailures(options.fetch ?? globalThis.fetch.bind(globalThis)),
       // `!== undefined` 여야 명시적 0이 상속된 positiveInteger 검증을 통과한다.
       ...(options.maxBodyBytes !== undefined ? { maxBodyBytes: options.maxBodyBytes } : {}),
       ...(options.idleTimeoutMs !== undefined ? { idleTimeoutMs: options.idleTimeoutMs } : {}),
     });
   }
+
+  override async stream(
+    request: CanonicalResponseRequest,
+    options: AdapterCallOptions,
+  ): Promise<AdapterResponse> {
+    let response: AdapterResponse;
+    try {
+      response = await super.stream(request, options);
+    } catch (error) {
+      if (!isRetryableCodexFetchSocketTermination(error, options.signal)) {
+        throw error;
+      }
+      await abortableDelay(CODEX_SOCKET_RETRY_DELAY_MS, options.signal);
+      return await super.stream(request, options);
+    }
+    if (!response.ok) {
+      return response;
+    }
+    return {
+      ...response,
+      events: retryCodexStreamBeforeFirstEvent(response.events, async () => {
+        await abortableDelay(CODEX_SOCKET_RETRY_DELAY_MS, options.signal);
+        const retried = await super.stream(request, options);
+        if (!retried.ok) {
+          throw new UpstreamProtocolError(`Codex retry failed with status ${retried.status}`);
+        }
+        return retried.events;
+      }, options.signal),
+    };
+  }
+}
+
+async function* retryCodexStreamBeforeFirstEvent(
+  events: AsyncIterable<CanonicalResponseEvent>,
+  retry: () => Promise<AsyncIterable<CanonicalResponseEvent>>,
+  signal?: AbortSignal,
+): AsyncGenerator<CanonicalResponseEvent> {
+  let yielded = false;
+  try {
+    for await (const event of events) {
+      yielded = true;
+      yield event;
+    }
+  } catch (error) {
+    if (yielded || signal?.aborted === true || !isUndiciSocketTermination(error)) {
+      throw error;
+    }
+    yield* await retry();
+  }
+}
+
+const codexFetchFailures = new WeakSet<object>();
+
+function markCodexFetchFailures(fetchImpl: FetchLike): FetchLike {
+  return async (input, init) => {
+    try {
+      return await fetchImpl(input, init);
+    } catch (error) {
+      if (error !== null && typeof error === "object") {
+        codexFetchFailures.add(error);
+      }
+      throw error;
+    }
+  };
+}
+
+function isRetryableCodexFetchSocketTermination(error: unknown, signal?: AbortSignal): boolean {
+  return signal?.aborted !== true
+    && isMarkedCodexFetchFailure(error)
+    && isUndiciSocketTermination(error);
+}
+
+function isMarkedCodexFetchFailure(error: unknown): boolean {
+  return error !== null && typeof error === "object" && codexFetchFailures.has(error);
+}
+
+function isUndiciSocketTermination(error: unknown): boolean {
+  const seen = new Set<object>();
+  let current: unknown = error;
+  for (let depth = 0; depth <= 4; depth += 1) {
+    if (current === null || typeof current !== "object" || seen.has(current)) {
+      return false;
+    }
+    seen.add(current);
+    if ((current as { code?: unknown }).code === "UND_ERR_SOCKET") {
+      return true;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+async function abortableDelay(delayMs: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted === true) {
+    throw signal.reason;
+  }
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(finishResolve, delayMs);
+    function cleanup(): void {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", finishReject);
+    }
+    function finishResolve(): void {
+      cleanup();
+      resolve();
+    }
+    function finishReject(): void {
+      cleanup();
+      reject(signal?.reason);
+    }
+    signal?.addEventListener("abort", finishReject, { once: true });
+  });
 }
 
 function forOpenAIResponsesBackend(
