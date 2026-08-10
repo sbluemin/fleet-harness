@@ -795,7 +795,7 @@ describe("model catalog", () => {
 
   it("contains only the approved latest provider families", () => {
     expect(CODEX_SUBSCRIPTION_MODELS).toHaveLength(6);
-    expect(CURSOR_SUBSCRIPTION_MODELS).toHaveLength(10);
+    expect(CURSOR_SUBSCRIPTION_MODELS).toHaveLength(12);
     expect(KIMI_SUBSCRIPTION_MODELS).toHaveLength(2);
     expect(OPENCODE_SUBSCRIPTION_MODELS).toHaveLength(11);
     expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.upstreamId?.startsWith("gpt-5.6-"))).toBe(true);
@@ -808,7 +808,9 @@ describe("model catalog", () => {
       "grok-4.5-fast",
       "gpt-5.6-sol",
       "claude-opus-5",
+      "claude-opus-5-1m",
       "claude-fable-5",
+      "claude-fable-5-1m",
       "kimi-k3-max",
       "kimi-k3",
     ]);
@@ -817,7 +819,9 @@ describe("model catalog", () => {
       model.contextWindow,
     ]))).toEqual({
       "claude-opus-5": 300_000,
+      "claude-opus-5-1m": 1_000_000,
       "claude-fable-5": 300_000,
+      "claude-fable-5-1m": 1_000_000,
       "gpt-5.6-sol": 272_000,
       "composer-2.5": 200_000,
       "composer-2.5-fast": 200_000,
@@ -827,8 +831,14 @@ describe("model catalog", () => {
       "kimi-k3": 200_000,
       default: 256_000,
     });
-    expect(CURSOR_SUBSCRIPTION_MODELS.find((model) => model.id === "cursor--kimi-k3-1m"))
-      .toMatchObject({ cursorMaxMode: true });
+    for (const id of [
+      "cursor--claude-opus-5-1m",
+      "cursor--claude-fable-5-1m",
+      "cursor--kimi-k3-1m",
+    ]) {
+      expect(CURSOR_SUBSCRIPTION_MODELS.find((model) => model.id === id))
+        .toMatchObject({ cursorMaxMode: true });
+    }
     expect(KIMI_SUBSCRIPTION_MODELS.map((model) => model.upstreamId)).toEqual(["k3", "k3-256k"]);
     // OpenCode Go의 서비스 가능 전 모델(2026-08-03 라이브 프로브). wire 미선언 =
     // Anthropic passthrough, 그 외에는 선언된 네이티브 wire의 번역 경로를 탄다.
@@ -888,6 +898,13 @@ describe("model catalog", () => {
         max: "claude-opus-5-thinking-max",
       },
     });
+    expect(efforts["cursor--claude-opus-5-1m"]).toEqual(efforts["cursor--claude-opus-5"]);
+    expect(efforts["cursor--claude-fable-5"]).toEqual({
+      supported: true,
+      levels: ["low", "medium", "high", "xhigh", "max"],
+      upstreamModelIdTemplate: "claude-fable-5-{effort}",
+    });
+    expect(efforts["cursor--claude-fable-5-1m"]).toEqual(efforts["cursor--claude-fable-5"]);
     expect(efforts["cursor--auto"]).toEqual({ supported: false });
   });
 
@@ -899,6 +916,10 @@ describe("model catalog", () => {
     ["claude-opus-5", "high", "claude-opus-5-high"],
     ["claude-opus-5", "xhigh", "claude-opus-5-thinking-xhigh"],
     ["claude-opus-5", "max", "claude-opus-5-thinking-max"],
+    ["claude-opus-5-1m", "high", "claude-opus-5-high"],
+    ["claude-opus-5-1m", "xhigh", "claude-opus-5-thinking-xhigh"],
+    ["claude-opus-5-1m", "max", "claude-opus-5-thinking-max"],
+    ["claude-fable-5-1m", "high", "claude-fable-5-high"],
     ["grok-4.5-fast", "low", "cursor-grok-4.5-low-fast"],
     ["composer-2.5", "high", "composer-2.5"],
     ["unknown-model", "high", "unknown-model"],
@@ -954,6 +975,14 @@ describe("model catalog", () => {
     });
     expect(list.data.some((entry) => entry.id.includes("--codex--") && entry.id.endsWith("[1m]")))
       .toBe(true);
+    expect(list.data.find((entry) => entry.id.endsWith("cursor--claude-opus-5-1m[1m]"))).toMatchObject({
+      display_name: "Cursor-Opus-5-1M (1M Context)",
+      max_input_tokens: 1_000_000,
+    });
+    expect(list.data.find((entry) => entry.id.endsWith("cursor--claude-fable-5-1m[1m]"))).toMatchObject({
+      display_name: "Cursor-Fable-5-1M (1M Context)",
+      max_input_tokens: 1_000_000,
+    });
     expect(list.data.find((entry) => entry.id.endsWith("cursor--kimi-k3-1m[1m]"))).toMatchObject({
       display_name: "Cursor-Kimi-K3-1M (1M Context)",
       max_input_tokens: 1_048_576,
@@ -1078,6 +1107,18 @@ describe("model catalog", () => {
       id: "codex--gpt-5.6-luna",
     });
     expect(findGatewayModel("claude-gateway--kimi--k3")).toMatchObject({ id: "kimi--k3" });
+    expect(findGatewayModel("claude-gateway--cursor--claude-opus-5-1m[1m]")).toMatchObject({
+      id: "cursor--claude-opus-5-1m",
+      upstreamId: "claude-opus-5-1m",
+      contextWindow: 1_000_000,
+      cursorMaxMode: true,
+    });
+    expect(findGatewayModel("claude-gateway--cursor--claude-fable-5-1m[1m]")).toMatchObject({
+      id: "cursor--claude-fable-5-1m",
+      upstreamId: "claude-fable-5-1m",
+      contextWindow: 1_000_000,
+      cursorMaxMode: true,
+    });
     expect(findGatewayModel("claude-gateway--cursor--kimi-k3-1m[1m]")).toMatchObject({
       id: "cursor--kimi-k3-1m",
       upstreamId: "kimi-k3-max",

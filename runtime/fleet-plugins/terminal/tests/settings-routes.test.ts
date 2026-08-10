@@ -39,7 +39,7 @@ describe("terminal settings routes", () => {
     expect(harness.writes[0]?.body).not.toHaveProperty("consolePortMode");
   });
 
-  it("GET /plugins/terminal/settings ships the gateway catalog with both Kimi routes", async () => {
+  it("GET /plugins/terminal/settings ships the gateway catalog with Cursor Max Mode routes", async () => {
     const harness = createRouteHarness({ data: { version: 1 } });
     await harness.handle({ req: req("GET"), res: res(), pathname: "/plugins/terminal/settings" });
     const body = harness.writes[0]?.body as {
@@ -49,10 +49,15 @@ describe("terminal settings routes", () => {
     expect(providers.map((provider) => provider.id)).toEqual(["codex", "cursor", "kimi", "opencode"]);
     const allIds = providers.flatMap((provider) => provider.models.map((model) => model.id));
     // Cursor 경유 Kimi와 Kimi 프로바이더는 다른 경로다 — 둘 다 노출한다.
-    expect(allIds).toContain("cursor--kimi-k3-1m");
     expect(allIds).toContain("kimi--k3");
-    const cursorKimi = providers[1]?.models.find((model) => model.id === "cursor--kimi-k3-1m");
-    expect(cursorKimi?.maxMode).toBe(true);
+    for (const id of [
+      "cursor--claude-opus-5-1m",
+      "cursor--claude-fable-5-1m",
+      "cursor--kimi-k3-1m",
+    ]) {
+      expect(allIds).toContain(id);
+      expect(providers[1]?.models.find((model) => model.id === id)?.maxMode).toBe(true);
+    }
     const fastIds = allIds.filter((id) => id.endsWith("-fast"));
     expect(fastIds.length).toBeGreaterThan(0);
     // 등급은 이 응답으로만 브라우저에 닿는다 — 투영에서 잘리면 로스터 배지가 사라진다.
