@@ -53,6 +53,16 @@ export function launchProviderGlyph(provider: LaunchProviderGlyphId): ReactNode 
   return <CodexGlyph />;
 }
 
+export function launchEtcGlyph(): ReactNode {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="5" cy="12" r="2" fill="currentColor" />
+      <circle cx="12" cy="12" r="2" fill="currentColor" />
+      <circle cx="19" cy="12" r="2" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function launchProviderFromGroupId(groupId: string): LaunchProviderGlyphId | null {
   if (groupId === "native") return "claude";
   if (!groupId.startsWith("gateway:")) return null;

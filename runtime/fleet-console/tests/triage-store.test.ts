@@ -1428,8 +1428,9 @@ describe("triage store", () => {
     expect(bareMenu.defaultPrevented).toBe(true);
     const launchMenu = document.querySelector(".canvas-context-menu");
     expect(launchMenu).not.toBeNull();
-    // 상자 이름은 어디서 열든 같다 — 실행이 어디로 가는지는 아래에서 실행 인자로 잰다.
-    expect(launchMenu?.querySelector(".canvas-context-menu-head-text")?.textContent).toBe("Controls · Terminal");
+    // 시각 헤더는 반복하지 않고, 메뉴 역할은 접근 이름으로만 유지한다.
+    expect(launchMenu?.getAttribute("aria-label")).toBe("Operation launcher");
+    expect(launchMenu?.querySelector(".canvas-context-menu-head")).toBeNull();
     const shellItem = launchMenu?.querySelector<HTMLButtonElement>('[data-operation-launch-kind="shell"]');
     expect(shellItem).not.toBeNull();
     expect(shellItem?.disabled).toBe(false);
