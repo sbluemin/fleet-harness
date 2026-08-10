@@ -26,17 +26,9 @@ export async function updateGlobalSettings(patch: Partial<GlobalSettingsState>, 
 export async function fetchRemoteAccessStatus(signal?: AbortSignal): Promise<RemoteAccessStatus> {
   const response = await fetch("/api/v1/access-links", { signal });
   await assertOk(response);
-  const payload = await response.json() as Partial<RemoteAccessStatus>;
-  if (typeof payload?.listening !== "boolean") throw new ApiError(response.status, "Invalid remote access status response");
-  return {
-    listening: payload.listening,
-    origin: typeof payload.origin === "string" ? payload.origin : null,
-    fingerprint: typeof payload.fingerprint === "string" ? payload.fingerprint : null,
-    lastError: typeof payload.lastError === "string" ? payload.lastError : null,
-    links: Array.isArray(payload.links) ? payload.links.filter(isLinkSummary) : [],
-    devices: Array.isArray(payload.devices) ? payload.devices.filter(isPairedDevice) : [],
-    interfaces: Array.isArray(payload.interfaces) ? payload.interfaces.filter(isInterfaceCandidate) : [],
-  };
+  const payload = await response.json();
+  if (!isRemoteAccessStatus(payload)) throw new ApiError(response.status, "Invalid remote access status response");
+  return payload;
 }
 
 export async function revokeRemoteAccessLink(id: string, signal?: AbortSignal): Promise<void> {
@@ -67,29 +59,92 @@ export async function rotateRemoteIdentity(signal?: AbortSignal): Promise<void> 
 }
 
 function isLinkSummary(value: unknown): value is RemoteAccessLinkSummary {
-  const entry = value as Partial<RemoteAccessLinkSummary> | null;
-  return Boolean(entry) && typeof entry?.id === "string" && typeof entry.issuedAt === "number" && typeof entry.expiresAt === "number";
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Partial<RemoteAccessLinkSummary>;
+  return isNonEmptyString(entry.id) && (entry.access === "full" || entry.access === "monitoring")
+    && typeof entry.issuedAt === "number" && Number.isFinite(entry.issuedAt)
+    && typeof entry.expiresAt === "number" && Number.isFinite(entry.expiresAt);
 }
 
 function isInterfaceCandidate(value: unknown): value is RemoteAccessInterface {
-  const entry = value as Partial<RemoteAccessInterface> | null;
-  return Boolean(entry) && (entry?.kind === "tailscale" || entry?.kind === "local") && typeof entry.label === "string" && typeof entry.address === "string";
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Partial<RemoteAccessInterface>;
+  return (entry.kind === "tailscale" || entry.kind === "local") && typeof entry.label === "string" && typeof entry.address === "string";
 }
 
 function isPairedDevice(value: unknown): value is RemoteAccessPairedDevice {
-  const entry = value as Partial<RemoteAccessPairedDevice> | null;
-  return Boolean(entry) && typeof entry?.id === "string" && typeof entry.pairedAt === "number" && typeof entry.lastSeenAt === "number"
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Partial<RemoteAccessPairedDevice>;
+  return isNonEmptyString(entry.id) && (entry.device === null || typeof entry.device === "string")
+    && (entry.access === "full" || entry.access === "monitoring")
+    && typeof entry.pairedAt === "number" && Number.isFinite(entry.pairedAt)
+    && typeof entry.lastSeenAt === "number" && Number.isFinite(entry.lastSeenAt)
     && (entry.sessionHandle === null || typeof entry.sessionHandle === "string");
+}
+
+function isRemoteAccessStatus(value: unknown): value is RemoteAccessStatus {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Partial<RemoteAccessStatus>;
+  const listener = entry.listener as Partial<RemoteAccessStatus["listener"]> | null | undefined;
+  if (!listener) return false;
+  return typeof listener.listening === "boolean"
+    && (listener.origin === null || typeof listener.origin === "string")
+    && (listener.lastError === null || typeof listener.lastError === "string")
+    && entry.publicReachability === "unverified"
+    && (entry.fingerprint === null || isNonEmptyString(entry.fingerprint))
+    && Array.isArray(entry.links) && entry.links.every(isLinkSummary)
+    && Array.isArray(entry.devices) && entry.devices.every(isPairedDevice)
+    && Array.isArray(entry.interfaces) && entry.interfaces.every(isInterfaceCandidate);
+}
+
+function isPort(value: unknown): value is RemoteAccessState["listenPort"] {
+  if (!value || typeof value !== "object") return false;
+  const port = value as RemoteAccessState["listenPort"];
+  return (port.mode === "auto" || port.mode === "custom") && typeof port.value === "number"
+    && Number.isInteger(port.value) && port.value >= 1 && port.value <= 65535;
+}
+
+function isRemoteAcknowledgment(value: unknown): value is NonNullable<RemoteAccessState["acknowledgment"]> {
+  if (!value || typeof value !== "object") return false;
+  const ack = value as NonNullable<RemoteAccessState["acknowledgment"]>;
+  return ack.version === 1 && typeof ack.listenAddress === "string" && typeof ack.listenPort === "number"
+    && Number.isInteger(ack.listenPort) && ack.listenPort >= 1 && ack.listenPort <= 65535
+    && typeof ack.advertisedHost === "string" && typeof ack.advertisedPort === "number"
+    && Number.isInteger(ack.advertisedPort) && ack.advertisedPort >= 1 && ack.advertisedPort <= 65535;
+}
+
+function isRemoteAccessState(value: unknown): value is RemoteAccessState {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Partial<RemoteAccessState>;
+  return typeof entry.enabled === "boolean" && typeof entry.listenAddress === "string"
+    && typeof entry.advertisedHost === "string" && isPort(entry.listenPort) && isPort(entry.advertisedPort)
+    && (entry.acknowledgment === null || isRemoteAcknowledgment(entry.acknowledgment));
+}
+
+export const REMOTE_PORT_MIN = 1;
+export const REMOTE_PORT_MAX = 65535;
+export const REMOTE_AUTO_PORT_MIN = 49152;
+export const REMOTE_AUTO_PORT_MAX = 65535;
+
+function isRemoteAccessLink(value: unknown): value is RemoteAccessLink {
+  if (!value || typeof value !== "object") return false;
+  const link = value as Partial<RemoteAccessLink>;
+  return isNonEmptyString(link.id) && isNonEmptyString(link.link)
+    && (link.access === "full" || link.access === "monitoring")
+    && typeof link.expiresAt === "number" && Number.isFinite(link.expiresAt)
+    && isNonEmptyString(link.fingerprint);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
 }
 
 export async function createRemoteAccessLink(access: RemoteAccessClass, signal?: AbortSignal): Promise<RemoteAccessLink> {
   const response = await fetch(`/api/v1/access-links?access=${access}`, { method: "POST", signal });
   await assertOk(response);
-  const payload = await response.json() as Partial<RemoteAccessLink>;
-  if (typeof payload?.link !== "string" || typeof payload.expiresAt !== "number" || typeof payload.fingerprint !== "string") {
-    throw new ApiError(response.status, "Invalid remote access link response");
-  }
-  return { id: String(payload.id ?? ""), link: payload.link, access: payload.access === "monitoring" ? "monitoring" : "full", expiresAt: payload.expiresAt, fingerprint: payload.fingerprint };
+  const payload = await response.json();
+  if (!isRemoteAccessLink(payload)) throw new ApiError(response.status, "Invalid remote access link response");
+  return payload;
 }
 
 async function assertOk(response: Response): Promise<void> {
@@ -131,12 +186,6 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
 
 function isValidConsoleStaticPort(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1024 && value <= 65535;
-}
-
-function isRemoteAccessState(value: unknown): value is RemoteAccessState {
-  if (!value || typeof value !== "object") return false;
-  const entry = value as Partial<RemoteAccessState>;
-  return typeof entry.enabled === "boolean" && (entry.bindHost === null || typeof entry.bindHost === "string");
 }
 
 function isConsoleLanguagePreference(value: unknown): value is ConsoleLanguagePreference {

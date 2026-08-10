@@ -445,7 +445,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let remoteFingerprint: string | null = null;
   let remoteReconcile: Promise<void> = Promise.resolve();
   let remoteLastError: string | null = null;
-  let remoteReachabilityAcknowledged = false;
   let boundPort: number | null = null;
   /**
    * 만료도 회수와 같은 신호를 낸다. prune은 다른 레지스트리 호출 안에서 도는 일이 많아
@@ -2317,7 +2316,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     listeners = listeners.filter((entry) => entry.audience !== "remote");
     // A listener stop ends live sessions, but unused grants remain valid unless public identity changes.
     access.revokeSessions("remote");
-    remoteReachabilityAcknowledged = false;
     for (const owner of desktopShellsByOwner.keys()) {
       if (owner !== "local") desktopShellsByOwner.delete(owner);
     }
@@ -2365,7 +2363,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     remoteFingerprint = identity.fingerprint;
     remoteServer = started.server;
     remoteEndpointStore.remember({ listenPort: started.port, advertisedPort: configured.advertisedPort.value });
-    remoteReachabilityAcknowledged = true;
     startControlExpirySweep();
   }
 

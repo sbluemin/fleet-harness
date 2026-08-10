@@ -10,7 +10,7 @@ import { fetchSystemFonts, SystemFontsFetchError } from "@fleet-console/font-pic
 import { AddHostDialog } from "../components/add-host-dialog.js";
 import { BackendApiSection } from "../components/backend-api-section.js";
 import { propagateSettingsEntryIndex } from "../components/command-band-system-cluster.js";
-import { createRemoteAccessLink, fetchRemoteAccessStatus, revokeRemoteAccessDevice, revokeRemoteAccessLink, revokeRemoteAccessSession, rotateRemoteIdentity } from "../global-settings-api.js";
+import { createRemoteAccessLink, fetchRemoteAccessStatus, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, revokeRemoteAccessDevice, revokeRemoteAccessLink, revokeRemoteAccessSession, rotateRemoteIdentity } from "../global-settings-api.js";
 import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { renderMessage, useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { isDesktopShell } from "../desktop-shell.js";
@@ -557,7 +557,7 @@ function RemoteAccessSection({ state, saving }: { readonly state: GlobalSettings
       .then(setStatus)
       .catch(() => { if (!controller.signal.aborted) setStatus(null); });
     return () => controller.abort();
-  }, [remote.enabled, remote.bindHost, reloadToken]);
+  }, [remote.enabled, remote.listenAddress, remote.listenPort.value, remote.advertisedHost, remote.advertisedPort.value, reloadToken]);
 
   useEffect(() => {
     if (!rotateArmed) return;
@@ -566,7 +566,7 @@ function RemoteAccessSection({ state, saving }: { readonly state: GlobalSettings
   }, [rotateArmed]);
 
   const refresh = () => setReloadToken((token) => token + 1);
-  const save = (next: { readonly enabled: boolean; readonly bindHost: string | null }) => {
+  const save = (next: GlobalSettingsState["remoteAccess"]) => {
     setLink(null);
     setActionError(null);
     setRotateArmed(false);
@@ -626,7 +626,7 @@ function RemoteAccessSection({ state, saving }: { readonly state: GlobalSettings
 
         <RemoteIdentityCard
           status={status}
-          configured={remote.enabled && Boolean(remote.bindHost)}
+          configured={remote.enabled && Boolean(remote.advertisedHost)}
           armed={rotateArmed}
           busy={busy}
           onRotate={() => {
@@ -637,7 +637,7 @@ function RemoteAccessSection({ state, saving }: { readonly state: GlobalSettings
           }}
         />
 
-        {status?.listening ? (
+        {status?.listener.listening ? (
           <RemoteLinksCard
             status={status}
             link={link}
@@ -782,26 +782,38 @@ function RemoteListenerCard({
   readonly state: GlobalSettingsState;
   readonly saving: boolean;
   readonly status: RemoteAccessStatus | null;
-  readonly onSave: (next: { readonly enabled: boolean; readonly bindHost: string | null }) => void;
+  readonly onSave: (next: GlobalSettingsState["remoteAccess"]) => void;
 }) {
   const t = useT();
   const remote = state.remoteAccess;
   const candidates = status?.interfaces ?? [];
-  const knownAddress = candidates.some((entry) => entry.address === remote.bindHost);
-  const [custom, setCustom] = useState(knownAddress ? "" : remote.bindHost ?? "");
-  const [customChosen, setCustomChosen] = useState(Boolean(remote.bindHost) && !knownAddress);
+  const [draft, setDraft] = useState(remote);
 
-  useEffect(() => {
-    if (remote.bindHost && !candidates.some((entry) => entry.address === remote.bindHost)) {
-      setCustom(remote.bindHost);
-      setCustomChosen(true);
-    }
-  }, [remote.bindHost, candidates]);
+  useEffect(() => setDraft(remote), [remote]);
 
-  const choose = (address: string) => {
-    setCustomChosen(false);
-    onSave({ enabled: remote.enabled, bindHost: address });
+  const saveChanged = (patch: Partial<typeof remote>) => {
+    const next = { ...draft, ...patch, enabled: false, acknowledgment: null };
+    setDraft(next);
+    onSave(next);
   };
+  const regenerate = (field: "listenPort" | "advertisedPort") => {
+    const value = Math.floor(Math.random() * (REMOTE_AUTO_PORT_MAX - REMOTE_AUTO_PORT_MIN + 1)) + REMOTE_AUTO_PORT_MIN;
+    saveChanged({ [field]: { mode: "auto", value } });
+  };
+  const acknowledge = (checked: boolean) => {
+    const acknowledgment = checked ? {
+      version: 1 as const,
+      listenAddress: draft.listenAddress,
+      listenPort: draft.listenPort.value,
+      advertisedHost: draft.advertisedHost,
+      advertisedPort: draft.advertisedPort.value,
+    } : null;
+    const next = { ...draft, acknowledgment };
+    setDraft(next);
+    onSave(next);
+  };
+  const ready = isValidRemoteBindHost(draft.listenAddress) && REMOTE_BIND_HOST.test(draft.advertisedHost)
+    && draft.acknowledgment !== null;
 
   return (
     <div className="remote-card" data-remote-card="listener">
@@ -813,64 +825,72 @@ function RemoteListenerCard({
         <button
           type="button"
           role="switch"
-          aria-checked={remote.enabled}
+          aria-checked={draft.enabled}
           aria-label={t("settings.remote.accept.title")}
-          className={`remote-switch ${remote.enabled ? "is-on" : ""}`}
-          disabled={saving || (!remote.enabled && !remote.bindHost)}
-          onClick={() => onSave({ enabled: !remote.enabled, bindHost: remote.bindHost })}
+          className={`remote-switch ${draft.enabled ? "is-on" : ""}`}
+          disabled={saving || (!draft.enabled && !ready)}
+          onClick={() => onSave({ ...draft, enabled: !draft.enabled })}
         >
           <span className="remote-switch-knob" aria-hidden="true" />
         </button>
       </div>
 
-      <div className="remote-choices" role="radiogroup" aria-label={t("settings.remote.accept.help")}>
-        {candidates.map((entry) => (
-          <label key={entry.address} className="remote-choice">
-            <input
-              type="radio"
-              name="remote-bind-host"
-              checked={!customChosen && remote.bindHost === entry.address}
-              disabled={saving}
-              onChange={() => choose(entry.address)}
-            />
-            <span className="remote-choice-label">{entry.label}</span>
-            <code>{entry.address}</code>
-          </label>
-        ))}
-        <label className="remote-choice">
-          <input
-            type="radio"
-            name="remote-bind-host"
-            checked={customChosen}
-            disabled={saving}
-            onChange={() => setCustomChosen(true)}
-          />
-          <span className="remote-choice-label">{t("settings.remote.accept.custom")}</span>
+      <div className="remote-endpoint-grid">
+        <label className="remote-field">
+          <span>{t("settings.remote.listenAddress")}</span>
+          <input list="remote-listen-addresses" value={draft.listenAddress} disabled={saving}
+            onChange={(event) => setDraft({ ...draft, listenAddress: event.target.value, acknowledgment: null })}
+            onBlur={() => saveChanged({ listenAddress: draft.listenAddress.trim() })} />
         </label>
-        {customChosen ? (
-          <div className="remote-custom">
-            <input
-              className={`console-port-input ${custom.trim() && !isValidRemoteBindHost(custom.trim()) ? "is-invalid" : ""}`}
-              placeholder="192.168.1.20"
-              value={custom}
-              disabled={saving}
-              autoComplete="off"
-              spellCheck={false}
-              onChange={(event) => setCustom(event.target.value)}
-              onBlur={() => {
-                const next = custom.trim();
-                if (!isValidRemoteBindHost(next) || next === remote.bindHost) return;
-                onSave({ enabled: remote.enabled, bindHost: next });
-              }}
-            />
-            <span className="console-port-hint">{t("settings.remote.hostHint")}</span>
-          </div>
-        ) : null}
+        <datalist id="remote-listen-addresses">{candidates.map((entry) => <option key={entry.address} value={entry.address}>{entry.label}</option>)}</datalist>
+        <RemotePortControl label={t("settings.remote.listenPort")} port={draft.listenPort} saving={saving}
+          onMode={(mode) => saveChanged({ listenPort: { ...draft.listenPort, mode } })}
+          onValue={(value) => saveChanged({ listenPort: { mode: "custom", value } })}
+          onRegenerate={() => regenerate("listenPort")} />
+        {draft.listenPort.mode === "custom" && draft.listenPort.value < 1024 ? <p className="remote-card-alert">{t("settings.remote.listenPrivileged")}</p> : null}
+        <label className="remote-field">
+          <span>{t("settings.remote.advertisedHost")}</span>
+          <input value={draft.advertisedHost} disabled={saving} autoComplete="off" spellCheck={false}
+            onChange={(event) => setDraft({ ...draft, advertisedHost: event.target.value, acknowledgment: null })}
+            onBlur={() => saveChanged({ advertisedHost: draft.advertisedHost.trim().toLowerCase() })} />
+        </label>
+        <RemotePortControl label={t("settings.remote.advertisedPort")} port={draft.advertisedPort} saving={saving}
+          onMode={(mode) => saveChanged({ advertisedPort: { ...draft.advertisedPort, mode } })}
+          onValue={(value) => saveChanged({ advertisedPort: { mode: "custom", value } })}
+          onRegenerate={() => regenerate("advertisedPort")} />
       </div>
 
-      {status?.lastError ? <p className="remote-card-alert">{t(remoteErrorKey(status.lastError))}</p> : null}
+      <p className="remote-route-preview"><code>{`https://${draft.advertisedHost || "public-host"}:${draft.advertisedPort.value}`}</code><span aria-hidden="true">→</span><code>{`${draft.listenAddress || "listen-address"}:${draft.listenPort.value}`}</code></p>
+      <p className="remote-card-help">{t("settings.remote.advertisedAutoHelp")}</p>
+      <label className="remote-acknowledgment">
+        <input type="checkbox" checked={draft.acknowledgment !== null} disabled={saving || !isValidRemoteBindHost(draft.listenAddress) || !REMOTE_BIND_HOST.test(draft.advertisedHost)} onChange={(event) => acknowledge(event.target.checked)} />
+        <span>{t("settings.remote.acknowledgment")}</span>
+      </label>
+      <div className="remote-status-grid">
+        <p><strong>{t("settings.remote.listenerState")}</strong> {status?.listener.listening ? t("settings.remote.listenerActive") : t("settings.remote.listenerInactive")}</p>
+        <p><strong>{t("settings.remote.publicReachability")}</strong> {t("settings.remote.publicUnverified")}</p>
+      </div>
+      {status?.listener.lastError ? <p className="remote-card-alert">{t(remoteErrorKey(status.listener.lastError))}</p> : null}
     </div>
   );
+}
+
+function RemotePortControl({ label, port, saving, onMode, onValue, onRegenerate }: {
+  readonly label: string;
+  readonly port: GlobalSettingsState["remoteAccess"]["listenPort"];
+  readonly saving: boolean;
+  readonly onMode: (mode: "auto" | "custom") => void;
+  readonly onValue: (value: number) => void;
+  readonly onRegenerate: () => void;
+}) {
+  const t = useT();
+  return <fieldset className="remote-port-control">
+    <legend>{label}</legend>
+    <label><input type="radio" checked={port.mode === "auto"} disabled={saving} onChange={() => onMode("auto")} />{t("settings.remote.portAuto")}</label>
+    <label><input type="radio" checked={port.mode === "custom"} disabled={saving} onChange={() => onMode("custom")} />{t("settings.remote.portCustom")}</label>
+    <input type="number" min={1} max={65535} value={port.value} disabled={saving || port.mode !== "custom"} onChange={(event) => onValue(Number(event.target.value))} />
+    <button type="button" className="remote-create" disabled={saving || port.mode !== "auto"} onClick={onRegenerate}>{t("settings.remote.portRegenerate")}</button>
+  </fieldset>;
 }
 
 function RemoteIdentityCard({
@@ -1054,6 +1074,8 @@ function WarningIcon() {
 
 function remoteErrorKey(code: string): CoreMessageKey {
   switch (code) {
+    case "auto_port_exhausted": return "settings.remote.error.auto_port_exhausted";
+    case "custom_port_unavailable": return "settings.remote.error.custom_port_unavailable";
     case "bind_address_unavailable": return "settings.remote.error.bind_address_unavailable";
     case "bind_address_in_use": return "settings.remote.error.bind_address_in_use";
     case "remote_port_unavailable": return "settings.remote.error.remote_port_unavailable";

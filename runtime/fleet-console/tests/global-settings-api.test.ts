@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../core/client/src/api.js";
-import { fetchGlobalSettingsState, updateGlobalSettings } from "../core/client/src/global-settings-api.js";
+import { createRemoteAccessLink, fetchGlobalSettingsState, fetchRemoteAccessStatus, updateGlobalSettings } from "../core/client/src/global-settings-api.js";
 
 const originalFetch = globalThis.fetch;
-const SETTINGS = { consolePortMode: "dynamic", consoleStaticPort: null, remoteAccess: { enabled: false, bindHost: null }, seenFeatureTours: [], theme: "instrument", uiFont: { source: "builtin", id: "manrope", size: 14 }, language: "auto" } as const;
+const SETTINGS = { consolePortMode: "dynamic", consoleStaticPort: null, remoteAccess: { enabled: false, listenAddress: "", advertisedHost: "", listenPort: { mode: "auto", value: 49152 }, advertisedPort: { mode: "auto", value: 49153 }, acknowledgment: null }, seenFeatureTours: [], theme: "instrument", uiFont: { source: "builtin", id: "manrope", size: 14 }, language: "auto" } as const;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -76,5 +76,19 @@ describe("global settings client transport", () => {
 
     await expect(updateGlobalSettings({ uiFont })).resolves.toEqual({ state: { ...SETTINGS, uiFont } });
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/settings/global", expect.objectContaining({ body: JSON.stringify({ uiFont }) }));
+  });
+
+  it("strictly validates remote status arrays and the split listener state", async () => {
+    const status = { listener: { listening: true, origin: "https://console.example:5443", lastError: null }, publicReachability: "unverified", fingerprint: "AA", links: [{ id: "link-1", access: "full", issuedAt: 1, expiresAt: 2 }], devices: [{ id: "device-1", device: null, access: "monitoring", pairedAt: 1, lastSeenAt: 2, sessionHandle: null }], interfaces: [{ kind: "local", label: "LAN", address: "192.168.1.20" }] };
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify(status))) as typeof fetch;
+    await expect(fetchRemoteAccessStatus()).resolves.toEqual(status);
+
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ ...status, links: [{ ...status.links[0], access: "admin" }] }))) as typeof fetch;
+    await expect(fetchRemoteAccessStatus()).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("rejects permissive access-link fallbacks", async () => {
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ id: "", link: "fleet://join?code=x", access: "admin", expiresAt: 1, fingerprint: "AA" }))) as typeof fetch;
+    await expect(createRemoteAccessLink("full")).rejects.toBeInstanceOf(ApiError);
   });
 });

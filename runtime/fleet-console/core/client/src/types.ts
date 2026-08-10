@@ -138,10 +138,27 @@ export interface OperationNode {
   };
 }
 
-/** 원격 접속 설정. 바인드 주소는 구성 리터럴이며 요청이나 DNS에서 유도되지 않는다. */
+/** Remote listener and public endpoint settings. Port values are recommendations until the listener reports otherwise. */
+export interface RemoteAccessPort {
+  readonly mode: "auto" | "custom";
+  readonly value: number;
+}
+
+export interface RemoteAccessAcknowledgment {
+  readonly version: 1;
+  readonly listenAddress: string;
+  readonly listenPort: number;
+  readonly advertisedHost: string;
+  readonly advertisedPort: number;
+}
+
 export interface RemoteAccessState {
   readonly enabled: boolean;
-  readonly bindHost: string | null;
+  readonly listenAddress: string;
+  readonly advertisedHost: string;
+  readonly listenPort: RemoteAccessPort;
+  readonly advertisedPort: RemoteAccessPort;
+  readonly acknowledgment: RemoteAccessAcknowledgment | null;
 }
 
 export type RemoteAccessClass = "full" | "monitoring";
@@ -174,12 +191,15 @@ export interface RemoteAccessInterface {
   readonly address: string;
 }
 
-/** 지금 열려 있는 리스너의 사실. 설정값과 달리 바인드 실패를 그대로 드러낸다. */
+/** 로컬 리스너와 공개 도달성은 서로를 추측하지 않고 별도 상태로 보고한다. */
 export interface RemoteAccessStatus {
-  readonly listening: boolean;
-  readonly origin: string | null;
+  readonly listener: {
+    readonly listening: boolean;
+    readonly origin: string | null;
+    readonly lastError: string | null;
+  };
+  readonly publicReachability: "unverified";
   readonly fingerprint: string | null;
-  readonly lastError: string | null;
   readonly links: readonly RemoteAccessLinkSummary[];
   readonly devices: readonly RemoteAccessPairedDevice[];
   readonly interfaces: readonly RemoteAccessInterface[];

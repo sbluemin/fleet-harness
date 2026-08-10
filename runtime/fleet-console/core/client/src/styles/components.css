@@ -1109,6 +1109,31 @@
 .remote-custom { display: flex; flex-direction: column; gap: 4px; margin-left: 26px; }
 .remote-custom .console-port-input { width: 100%; max-width: 260px; }
 
+.remote-endpoint-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.remote-field { display: flex; flex-direction: column; gap: var(--space-2); color: var(--text-secondary); font-size: 12px; }
+.remote-field input, .remote-port-control input[type="number"] {
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px var(--space-3);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-abyss) 48%, transparent);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+.remote-port-control { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; padding: var(--space-3); border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); }
+.remote-port-control legend { padding: 0 var(--space-1); color: var(--text-secondary); font-size: 12px; }
+.remote-port-control label { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--text-secondary); font-size: 12px; }
+.remote-port-control input[type="radio"], .remote-acknowledgment input { accent-color: var(--brass); }
+.remote-port-control input[type="number"] { width: 110px; }
+.remote-route-preview { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; color: var(--text-secondary); font-size: 12px; }
+.remote-route-preview code { color: var(--aurora-ink); font-family: var(--font-mono); overflow-wrap: anywhere; }
+.remote-acknowledgment { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border: 1px solid color-mix(in oklch, var(--coral) 35%, transparent); border-radius: var(--radius-sm); background: color-mix(in oklch, var(--coral) 8%, transparent); color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+.remote-status-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.remote-status-grid p { margin: 0; color: var(--text-secondary); font-size: 12px; }
+.remote-status-grid strong { color: var(--text-primary); }
+@media (max-width: 720px) { .remote-endpoint-grid, .remote-status-grid { grid-template-columns: 1fr; } }
+
 .remote-fingerprint {
   overflow-wrap: anywhere;
   color: var(--aurora-ink);

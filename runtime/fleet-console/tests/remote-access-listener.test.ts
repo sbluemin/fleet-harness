@@ -662,8 +662,9 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
    * 지문도 없는데, 그때 갱신이 막히면 안내가 지키지 못할 약속이 된다 — 리스너가 없는 상태가
    * 바로 이 버튼이 필요한 자리다.
    */
-  it("still rotates out of a published port another program has taken", async () => {
+  it("keeps an occupied Custom port after destructive identity rotation without falling back", async () => {
     const paired = await startFixture({ remote: true });
+    await joinAs(paired, "full", "MacBook Pro");
     const published = Number(new URL((await readRemoteStatus(paired)).listener.origin!).port);
 
     // 콘솔을 내려 두고 그 포트를 남이 잡는다. 그 상태로 다시 뜨는 것이 사용자가 겪는 순서다.
@@ -679,16 +680,19 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
       expect(failed.listener.listening).toBe(false);
       expect(failed.listener.lastError).toBe("custom_port_unavailable");
 
-      // 안내가 시키는 대로 신원을 갱신한다 — 리스너가 없어도 받아들여져야 한다.
       const rotated = await fetch(`${stuck.loopbackEndpoint}api/v1/remote-identity/rotations`, {
         method: "POST",
         headers: { Authorization: `Bearer ${stuck.lockToken}` },
       });
-      expect(rotated.status).toBe(200);
+      expect(rotated.status).toBe(500);
 
-      const recovered = await readRemoteStatus(stuck);
-      expect(recovered.listener.listening).toBe(true);
-      expect(recovered.listener.origin).toBe(`https://${BIND_HOST}:${new URL(stuck.loopbackEndpoint).port}`);
+      const afterRotation = await readRemoteStatus(stuck);
+      expect(afterRotation.listener.listening).toBe(false);
+      expect(afterRotation.listener.lastError).toBe("custom_port_unavailable");
+      expect(afterRotation.devices).toHaveLength(0);
+      const saved = JSON.parse(fs.readFileSync(path.join(stuck.dir, "fleet-home", "console", "settings.json"), "utf8")) as { general: { remoteAccess: { listenPort: { value: number }; advertisedPort: { value: number } } } };
+      expect(saved.general.remoteAccess.listenPort.value).toBe(published);
+      expect(saved.general.remoteAccess.advertisedPort.value).toBe(published);
     } finally {
       await new Promise<void>((resolve) => squatter.close(() => resolve()));
     }
@@ -698,12 +702,9 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
    * 신원 갱신은 이미 손님을 전부 내보내는 자리다. 그 순간에는 주소를 붙들 이유가 없고, 남이
    * 그 포트를 쥐어 원격이 열리지 않을 때 빠져나오는 길도 이것 하나뿐이다.
    */
-  it("re-anchors the published port when the identity is rotated", async () => {
-    // 재기동을 한 번 거쳐야 공표된 포트와 콘솔 포트가 갈라진다 — 갈라져야 재고정이 보인다.
+  it("preserves configured Custom ports when the identity is rotated", async () => {
     const restarted = await restartFixture(await startFixture({ remote: true }));
     const before = (await readRemoteStatus(restarted)).listener.origin;
-    const consoleOrigin = `https://${BIND_HOST}:${new URL(restarted.loopbackEndpoint).port}`;
-    expect(before).not.toBe(consoleOrigin);
 
     const rotated = await fetch(`${restarted.loopbackEndpoint}api/v1/remote-identity/rotations`, {
       method: "POST",
@@ -711,7 +712,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     });
     expect(rotated.status).toBe(200);
 
-    await expect(readRemoteStatus(restarted).then((status) => status.listener.origin)).resolves.toBe(consoleOrigin);
+    await expect(readRemoteStatus(restarted).then((status) => status.listener.origin)).resolves.toBe(before);
   });
 
   /** 재개는 등급을 물려받을 뿐 올리지 못한다. 페어링이 등급의 유일한 근거다. */
@@ -769,11 +770,9 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
    * 그리고 그 순간에는 공표한 포트도 놓는다. 아무도 이 주소로 돌아오지 못하므로 붙들 이유가
    * 없고, 그사이 남이 그 포트를 쥐었다면 놓지 않는 편이 원격을 아예 못 열게 만든다.
    */
-  it("releases the published port when the certificate silently changes", async () => {
-    // 재기동으로 공표된 포트와 콘솔 포트를 갈라 둔다 — 갈라져야 놓은 것이 보인다.
+  it("preserves configured Custom ports when the certificate silently changes", async () => {
     const restarted = await restartFixture(await startFixture({ remote: true }));
-    const consoleOrigin = `https://${BIND_HOST}:${new URL(restarted.loopbackEndpoint).port}`;
-    expect((await readRemoteStatus(restarted)).listener.origin).not.toBe(consoleOrigin);
+    const before = (await readRemoteStatus(restarted)).listener.origin;
 
     const metaFile = path.join(restarted.dir, "fleet-home", "console", "remote", "identity.json");
     const meta = JSON.parse(fs.readFileSync(metaFile, "utf8")) as Record<string, unknown>;
@@ -781,7 +780,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await saveRemoteAccess(restarted, { enabled: false, bindHost: BIND_HOST });
     await saveRemoteAccess(restarted, { enabled: true, bindHost: BIND_HOST });
 
-    await expect(readRemoteStatus(restarted).then((status) => status.listener.origin)).resolves.toBe(consoleOrigin);
+    await expect(readRemoteStatus(restarted).then((status) => status.listener.origin)).resolves.toBe(before);
   });
 
   /** 저장된 것은 해시뿐이다 — 이 파일이 새어도 그것으로 붙을 수 없다. */
