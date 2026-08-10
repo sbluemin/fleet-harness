@@ -85,6 +85,61 @@ export function formatCountdown(target: number | undefined, now: number): string
   return `${minutes}m`;
 }
 
+/**
+ * The gateway's own verdict decides the meter's severity. Re-deriving one from
+ * `usedPercent` alone is what let a window read calm here while the roster a
+ * model reads called it critical: a pool 44% spent one fifth of the way into
+ * its cycle is in trouble, and no percentage band can see that. The local bands
+ * survive only as a fallback for a reading that arrived without a verdict.
+ */
+export function meterSeverity(window: QuotaWindow): "normal" | "warning" | "critical" {
+  switch (window.risk?.pressure) {
+    case "critical": return "critical";
+    case "elevated": return "warning";
+    case "ok": return "normal";
+    default: return window.usedPercent >= 90 ? "critical" : window.usedPercent >= 70 ? "warning" : "normal";
+  }
+}
+
+function clampPercent(value: number): number {
+  return Math.min(100, Math.max(0, value));
+}
+
+/**
+ * The stretch of the bar the current burn rate is on track to consume before
+ * the window resets. The gateway carries a projection only when it lands short
+ * of the reset, so an absent span states "this lasts to reset" rather than
+ * "unknown".
+ */
+export function projectedSpan(window: QuotaWindow): { readonly left: number; readonly width: number } | null {
+  if (window.risk?.projectedExhaustionAt === undefined) return null;
+  const left = clampPercent(window.usedPercent);
+  return left >= 100 ? null : { left, width: 100 - left };
+}
+
+/** Where the window's clock stands, which is what makes the fill's position mean anything. */
+export function elapsedMarkPercent(window: QuotaWindow): number | null {
+  const elapsed = window.risk?.elapsedFraction;
+  return elapsed === undefined ? null : clampPercent(Math.round(elapsed * 100));
+}
+
+export function formatPace(paceRatio: number): string {
+  return `${Math.round(paceRatio * 10) / 10}`;
+}
+
+function riskNote(window: QuotaWindow, now: number, t: T): string | null {
+  const risk = window.risk;
+  if (!risk) return null;
+  if (risk.projectedExhaustionAt !== undefined) {
+    return t("quota.meter.exhausts", { t: formatCountdown(risk.projectedExhaustionAt, now) });
+  }
+  // Below the gateway's own elevated threshold a ratio is just noise on a bar.
+  if (risk.paceRatio !== undefined && risk.pressure !== "ok") {
+    return t("quota.meter.pace", { n: formatPace(risk.paceRatio) });
+  }
+  return null;
+}
+
 function Meter({
   window,
   cycleDays,
@@ -96,7 +151,7 @@ function Meter({
   readonly now: number;
   readonly t: T;
 }) {
-  const severity = window.usedPercent >= 90 ? "critical" : window.usedPercent >= 70 ? "warning" : "normal";
+  const severity = meterSeverity(window);
   const label = window.label ?? t(
     window.id === "session"
       ? "quota.meter.session"
@@ -107,16 +162,47 @@ function Meter({
     : window.id === "weekly"
       ? "7d"
       : window.id === "cycle" && cycleDays !== undefined ? `${cycleDays}d` : undefined;
+  const usedText = t("quota.meter.used", { pct: window.usedPercent });
+  const note = riskNote(window, now, t);
+  const projection = projectedSpan(window);
+  const elapsedMark = elapsedMarkPercent(window);
   return (
     <div className={`quota-meter quota-meter--${severity}`}>
       <div className="quota-meter__top">
         <span className="quota-meter__label">{label}{windowChip ? <span className="quota-meter__window">{windowChip}</span> : null}</span>
-        <span className="quota-meter__percent">{t("quota.meter.used", { pct: window.usedPercent })}</span>
+        <span className="quota-meter__percent">{usedText}</span>
       </div>
-      <div className="quota-meter__bar" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={window.usedPercent}>
-        <span className="quota-meter__fill" style={{ width: `${window.usedPercent}%` }} />
+      <div
+        className="quota-meter__bar"
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={window.usedPercent}
+        {...(note !== null ? { "aria-valuetext": `${usedText} · ${note}` } : {})}
+      >
+        {projection ? (
+          <span
+            className="quota-meter__projection"
+            title={t("quota.meter.projected")}
+            style={{ left: `${projection.left}%`, width: `${projection.width}%` }}
+          />
+        ) : null}
+        <span className="quota-meter__fill" style={{ width: `${clampPercent(window.usedPercent)}%` }} />
+        {elapsedMark !== null ? (
+          <span
+            className="quota-meter__elapsed"
+            title={t("quota.meter.elapsed", { pct: elapsedMark })}
+            style={{ left: `${elapsedMark}%` }}
+          />
+        ) : null}
       </div>
-      {window.resetsAt !== undefined ? <div className="quota-meter__reset">{t("quota.meter.resets", { t: formatCountdown(window.resetsAt, now) })}</div> : null}
+      {note !== null || window.resetsAt !== undefined ? (
+        <div className="quota-meter__foot">
+          {note !== null ? <span className="quota-meter__risk">{note}</span> : null}
+          {window.resetsAt !== undefined ? <span className="quota-meter__reset">{t("quota.meter.resets", { t: formatCountdown(window.resetsAt, now) })}</span> : null}
+        </div>
+      ) : null}
     </div>
   );
 }

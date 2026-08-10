@@ -7,6 +7,7 @@ import { fetchKimiUsage } from "../kimi/quota.js";
 import { fetchOpencodeUsage } from "../opencode-go/quota.js";
 import { scanOpencodeGoWindows } from "../opencode-go/usage-scan.js";
 import { defaultCredentialDeps, type CredentialResolverDeps } from "../transport/credentials.js";
+import { deriveQuotaWindowRisk } from "./pressure.js";
 import type { ProviderDto, ProviderResult, ProviderSuccess, QuotaSummaryDto } from "./types.js";
 import { sanitizeProviderError, type ProviderDeps } from "./windows.js";
 
@@ -140,6 +141,22 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     return task;
   }
 
+  /**
+   * Risk is derived against `fetchedAt` rather than the current clock: a
+   * summary can be served from cache for minutes, and re-timing the reading on
+   * every read would let pace decay while nothing was actually spent.
+   */
+  function withRisk(provider: ProviderDto): ProviderDto {
+    if (!provider.windows || provider.windows.length === 0) return provider;
+    const at = typeof provider.fetchedAt === "number" && Number.isFinite(provider.fetchedAt)
+      ? provider.fetchedAt
+      : now();
+    return {
+      ...provider,
+      windows: provider.windows.map((window) => ({ ...window, risk: deriveQuotaWindowRisk(window, at) })),
+    };
+  }
+
   return {
     async getSummary(options = {}) {
       const [claude, codex, cursor, kimi, opencode] = await Promise.all([
@@ -149,7 +166,15 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
         load("kimi", options.force === true || options.forceProvider === "kimi"),
         load("opencode", options.force === true || options.forceProvider === "opencode"),
       ]);
-      return { providers: { claude, codex, cursor, kimi, opencode } };
+      return {
+        providers: {
+          claude: withRisk(claude),
+          codex: withRisk(codex),
+          cursor: withRisk(cursor),
+          kimi: withRisk(kimi),
+          opencode: withRisk(opencode),
+        },
+      };
     },
   };
 }

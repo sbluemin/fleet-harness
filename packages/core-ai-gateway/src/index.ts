@@ -19,6 +19,7 @@ export type {
   ProviderSuccess,
   ProviderResult,
 } from "./quota/types.js";
+export * from "./quota/pressure.js";
 export * from "./quota/windows.js";
 export * from "./quota/service.js";
 export * from "./anthropic/quota.js";

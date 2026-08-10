@@ -13,10 +13,13 @@ import {
   GATEWAY_BENCHMARKS_STAMP,
   GATEWAY_MODELS_UPDATED_AT,
   buildGatewayModelConstraints,
+  deriveQuotaWindowRisk,
   toClaudeGatewayModelId,
   type GatewayModel,
   type GatewayModelConstraints,
   type GatewayProvider,
+  type QuotaWindowPressure,
+  type QuotaWindowRisk,
 } from "@dotobokuri/core-ai-gateway";
 import { createHash } from "node:crypto";
 
@@ -54,36 +57,20 @@ export interface GatewayQuotaWindow {
   readonly amounts?: { readonly used: string; readonly limit: string };
 }
 
-export type GatewayWindowPressure = "ok" | "elevated" | "critical";
+export type GatewayWindowPressure = QuotaWindowPressure;
 
 /**
  * A quota window as the loadout reports it: the reading's facts plus the
  * derived judgements the server can make honestly. The consumer of this
  * roster is a language model, and every derivation it is asked to perform
  * itself — epoch arithmetic, pace normalization — is a place it can go wrong,
- * so whatever the server can compute, it does. A derived field is omitted
- * whenever its inputs cannot support it; absence means "could not tell",
- * never "safe".
+ * so whatever the server can compute, it does.
+ *
+ * The judgements are spread flat here rather than nested under `risk` as the
+ * quota DTO carries them: this roster is read as prose by a model, and one
+ * level of nesting is one more hop between a window and its verdict.
  */
-export interface GatewayLoadoutQuotaWindow extends GatewayQuotaWindow {
-  /** Normalized reset-length class; window ids like `cycle` do not name one. */
-  readonly cadence?: "session" | "daily" | "weekly" | "monthly";
-  /**
-   * (used fraction) ÷ (elapsed fraction of the window). Above 1.0 the window
-   * is being spent faster than its clock refills it. Omitted while the window
-   * is too young for the ratio to mean anything.
-   */
-  readonly paceRatio?: number;
-  /** Linear projection of when the window empties; present only when that lands before the reset. */
-  readonly projectedExhaustionAt?: number;
-  /** Half the window length: the average lockout bought by draining this pool now. */
-  readonly recoveryHalfLifeMs?: number;
-  /**
-   * The server's verdict on this window's state. It describes the window —
-   * never which model to choose; that judgement stays with the host.
-   */
-  readonly pressure: GatewayWindowPressure;
-}
+export interface GatewayLoadoutQuotaWindow extends GatewayQuotaWindow, QuotaWindowRisk {}
 
 export interface GatewayProviderQuota {
   readonly status: string;
@@ -277,17 +264,6 @@ function buildProviders(
   }])));
 }
 
-const MS_PER_HOUR = 3_600_000;
-const CADENCE_SESSION_MAX_MS = 20 * MS_PER_HOUR;
-const CADENCE_DAILY_MAX_MS = 3 * 24 * MS_PER_HOUR;
-const CADENCE_WEEKLY_MAX_MS = 20 * 24 * MS_PER_HOUR;
-/** Below this elapsed fraction a pace ratio is noise, so it is omitted rather than clamped. */
-const MIN_ELAPSED_FRACTION = 0.05;
-const PACE_CRITICAL = 1.5;
-const PACE_ELEVATED = 1.1;
-const USED_CRITICAL_PERCENT = 95;
-const USED_ELEVATED_PERCENT = 80;
-
 function enrichProviderQuota(
   quota: GatewayProviderQuota | undefined,
   now: () => number,
@@ -302,59 +278,8 @@ function enrichProviderQuota(
   return { ...rest, windows: windows.map((window) => enrichQuotaWindow(window, at)) };
 }
 
-function windowCadence(durationMs: number): NonNullable<GatewayLoadoutQuotaWindow["cadence"]> {
-  if (durationMs <= CADENCE_SESSION_MAX_MS) return "session";
-  if (durationMs <= CADENCE_DAILY_MAX_MS) return "daily";
-  if (durationMs <= CADENCE_WEEKLY_MAX_MS) return "weekly";
-  return "monthly";
-}
-
-function windowPressure(usedPercent: number, paceRatio: number | undefined): GatewayWindowPressure {
-  if (usedPercent >= USED_CRITICAL_PERCENT || (paceRatio !== undefined && paceRatio >= PACE_CRITICAL)) {
-    return "critical";
-  }
-  if (usedPercent >= USED_ELEVATED_PERCENT || (paceRatio !== undefined && paceRatio >= PACE_ELEVATED)) {
-    return "elevated";
-  }
-  return "ok";
-}
-
 function enrichQuotaWindow(window: GatewayQuotaWindow, at: number): GatewayLoadoutQuotaWindow {
-  const durationMs = window.period?.durationMs;
-  if (typeof durationMs !== "number" || !Number.isFinite(durationMs) || durationMs <= 0) {
-    // 기간 없는 판독은 percent 대역만으로 판정한다. 파생 필드의 부재는 "계산 불가"이지
-    // 안전의 표시가 아니다.
-    return { ...window, pressure: windowPressure(window.usedPercent, undefined) };
-  }
-  const startsAt = window.period?.startsAt
-    ?? (window.resetsAt !== undefined && window.resetsAt > durationMs ? window.resetsAt - durationMs : undefined);
-  // 관측이 회차 종료 이후라면 그 percent는 이미 끝난 회차의 것이다 — pace 계열을 만들지
-  // 않는다. resetsAt이 없어도 startsAt+durationMs가 같은 경계를 말한다.
-  const resetBoundary = window.resetsAt ?? (startsAt !== undefined ? startsAt + durationMs : undefined);
-  const stale = resetBoundary !== undefined && at > resetBoundary;
-  let paceRatio: number | undefined;
-  let projectedExhaustionAt: number | undefined;
-  if (startsAt !== undefined && resetBoundary !== undefined && !stale && at > startsAt) {
-    const elapsed = Math.min(1, (at - startsAt) / durationMs);
-    if (elapsed >= MIN_ELAPSED_FRACTION) {
-      const used = Math.min(1, Math.max(0, window.usedPercent / 100));
-      paceRatio = Math.round((used / elapsed) * 100) / 100;
-      if (used > 0) {
-        // 선형 외삽: 지금까지의 평균 소진율이 유지될 때 100%에 닿는 시각. 리셋보다
-        // 엄격히 이를 때만 싣는다 — 부재로 "리셋까지 안전"을 표현한다.
-        const exhaustionAt = startsAt + Math.round((at - startsAt) / used);
-        if (exhaustionAt < resetBoundary) projectedExhaustionAt = exhaustionAt;
-      }
-    }
-  }
-  return {
-    ...window,
-    cadence: windowCadence(durationMs),
-    ...(paceRatio !== undefined ? { paceRatio } : {}),
-    ...(projectedExhaustionAt !== undefined ? { projectedExhaustionAt } : {}),
-    recoveryHalfLifeMs: Math.round(durationMs / 2),
-    pressure: windowPressure(window.usedPercent, paceRatio),
-  };
+  return { ...window, ...deriveQuotaWindowRisk(window, at) };
 }
 
 // Quota is deliberately excluded: it moves on its own and would make every

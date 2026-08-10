@@ -123,8 +123,21 @@
   font-size: 12px;
 }
 
+.quota-meter {
+  --meter-accent: var(--ink-fog);
+}
+
+.quota-meter--warning {
+  --meter-accent: var(--warn);
+}
+
+.quota-meter--critical {
+  --meter-accent: var(--coral);
+}
+
 .quota-meter__bar {
-  height: 5px;
+  position: relative;
+  height: 6px;
   overflow: hidden;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
@@ -132,30 +145,66 @@
 }
 
 .quota-meter__fill {
-  display: block;
-  height: 100%;
+  position: absolute;
+  inset-block: 0;
+  left: 0;
   border-radius: var(--radius-pill);
-  background: var(--ink-fog);
+  background: var(--meter-accent);
   transition: width 200ms ease, background-color 200ms ease;
 }
 
-.quota-meter__reset {
+/* The stretch the current burn rate reaches before the reset. Hatched rather
+   than solid so it never reads as allowance already spent. */
+.quota-meter__projection {
+  position: absolute;
+  inset-block: 0;
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--meter-accent) 42%, transparent) 0 2px,
+    transparent 2px 5px
+  );
+}
+
+/* Where the window's clock stands. Fill short of this mark is underspending,
+   past it is overspending — the comparison the bar exists to make. */
+.quota-meter__elapsed {
+  position: absolute;
+  inset-block: 0;
+  width: 2px;
+  transform: translateX(-1px);
+  background: color-mix(in oklab, var(--text-primary) 62%, transparent);
+}
+
+.quota-meter__foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
   margin-top: 4px;
+}
+
+.quota-meter__risk {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+}
+
+.quota-meter--warning .quota-meter__risk {
+  color: var(--warn-ink);
+}
+
+.quota-meter--critical .quota-meter__risk {
+  color: var(--coral-ink);
+}
+
+.quota-meter__reset {
+  margin-left: auto;
   color: var(--text-tertiary);
   text-align: right;
   font-size: 11.5px;
 }
 
-.quota-meter--warning .quota-meter__fill {
-  background: var(--warn);
-}
-
 .quota-meter--warning .quota-meter__percent {
   color: var(--warn-ink);
-}
-
-.quota-meter--critical .quota-meter__fill {
-  background: var(--coral);
 }
 
 .quota-meter--critical .quota-meter__percent {

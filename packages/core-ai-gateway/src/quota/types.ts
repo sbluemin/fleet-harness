@@ -1,3 +1,5 @@
+import type { QuotaWindowRisk } from "./pressure.js";
+
 export type ProviderStatus = "ok" | "not_connected" | "signed_out" | "expired" | "no_subscription" | "stale" | "error";
 export type CredentialMethod = "keychain" | "file";
 export type WindowId = "session" | "weekly" | "model" | "cycle";
@@ -56,6 +58,12 @@ export interface QuotaWindow {
    */
   readonly isAggregate?: true;
   readonly amounts?: QuotaWindowAmounts;
+  /**
+   * Judgements derived from the fields above, attached by the summary service.
+   * Provider probes never set it — keeping it in its own object is what stops a
+   * reader from mistaking a verdict for something the provider stated.
+   */
+  readonly risk?: QuotaWindowRisk;
 }
 
 export interface ResetCredits {
