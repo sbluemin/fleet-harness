@@ -5,6 +5,32 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.54.0] - 2026-08-10
+
+### fleet-cli
+
+#### Removed
+- 지원하지 않는 Cursor AI Gateway 모델을 디스커버리에서 제거합니다. Cursor 카탈로그는 Auto·Composer 2.5·Grok 4.5(및 fast 변형)만 유지하며, Claude·GPT·Kimi 항목은 Cursor 공급자에 더 이상 나타나지 않습니다.
+- 안정 Console 릴리스마다 게시하던 버전 일치·bin 없는 `@dotobokuri/fleet-cli` migration bridge 게시를 중단합니다. 대신 `@dotobokuri/fleet-console`을 설치하세요.
+
+### fleet-console
+
+#### Added
+- 추론 강도 트랙의 일상 사다리가 XHIGH에서 닫히고 MAX·ULTRACODE는 모델이 실제로 내놓은 apex 단만 apex 확장 버튼 뒤로 숨습니다. 지원하지 않는 apex는 축에도 올리지 않아 닫힌 게이지에 빈 MAX·ULTRACODE 자리가 남지 않습니다. 펼치면 단계적 등장 애니메이션이 재생되고, MAX는 용융 구리 crest 채널로, ULTRACODE는 보라 게이지와 흐르는 라벨 물결로 표현됩니다.
+- ULTRACODE로 실행하면 Claude Code에 `--effort ultracode`가 전달되어 xhigh 강도와 상시 멀티에이전트 오케스트레이션이 함께 적용됩니다.
+- 기존 Kimi K3 1M 카탈로그 모델 옆에 Cursor Max Mode 1M 변형 Opus 5·Fable 5를 제공합니다.
+
+#### Changed
+- Operation 실행 메뉴의 모델 행을 간결하게 정리하고 Shell을 마지막 Etc 그룹으로 묶습니다.
+- 기존 Fable 표시 이름을 유지하면서 Claude Code의 1M 컨텍스트 좌표로 Fable을 실행합니다.
+- 각 Agent Operation에 어떤 공급자의 모델로 실행되었는지를 새겨, 사이드바와 커맨드 밴드, 검색 팔레트가 모두 하나의 획일적인 Claude 마크 대신 그 공급자의 글리프를 고유한 캐리어 색으로 보여 줍니다.
+- 사용 한도 미터가 AI Gateway 로스터와 같은 위험 판정을 읽습니다. 리셋 주기가 채워주는 속도보다 빠르게 소진 중인 창은 막대가 가득 차기를 기다리지 않고 위험 상태로 표시됩니다. 각 막대는 리셋 주기가 얼마나 지났는지 표시하고, 현재 소진 속도로 소모될 잔여분을 음영으로 보여주며, 그 속도라면 얼마나 버티는지 알려줍니다. 갱신 시각·새로고침·도움말은 스크롤해도 자리를 지키는 하단 바에 모였고, 도움말에서 채움·눈금·빗금의 뜻과 수치의 출처를 확인할 수 있습니다.
+- 저장소 그래프 배지에서 브랜치를 태그보다 먼저 배치하고 원격 추적 정보를 브랜치 표식에 통합하며 대비를 높이고, 패널 크기를 조절해도 표시되는 배지가 잘리지 않게 합니다.
+
+#### Removed
+- 설정 카탈로그와 실행 선택기에서 지원하지 않는 Cursor AI Gateway 모델을 제거합니다. Cursor 공급자는 Auto·Composer 2.5·Grok 4.5(및 fast 변형)만 유지하며, Claude·GPT·Kimi 항목은 Cursor 아래에 더 이상 나타나지 않습니다.
+- AI Gateway 모델 별표(세션 기본 모델)를 제거합니다. 새 게이트웨이 세션은 Claude Code 자체 모델 선택을 유지하며, 호스트 로스터도 설정 기본값을 표시하지 않습니다.
+
 ## [1.53.0] - 2026-08-09
 
 ### fleet-cli

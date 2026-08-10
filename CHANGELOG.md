@@ -5,6 +5,32 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.54.0] - 2026-08-10
+
+### fleet-cli
+
+#### Removed
+- Drop unsupported Cursor AI Gateway models from discovery. The Cursor catalog keeps Auto, Composer 2.5, and Grok 4.5 (including their fast variants); Claude, GPT, and Kimi entries no longer appear on the Cursor provider.
+- Stop publishing the version-matched, bin-free `@dotobokuri/fleet-cli` migration bridge on stable Console releases; install `@dotobokuri/fleet-console` instead.
+
+### fleet-console
+
+#### Added
+- The reasoning effort track now closes its everyday ladder at XHIGH and keeps MAX and ULTRACODE behind an apex expander that appears only for the apex tiers the model actually exposes; unsupported apex rungs stay off the axis so the closed gauge does not reserve empty MAX or ULTRACODE stops. Opening the gate plays a staged reveal, MAX uses a molten-copper crest channel, and ULTRACODE paints the gauge violet with a flowing label wave.
+- ULTRACODE launches the operation with Claude Code `--effort ultracode`, which applies xhigh effort and standing multi-agent orchestration together.
+- Offer Cursor Max Mode 1M variants of Opus 5 and Fable 5 beside the existing Kimi K3 1M catalog model.
+
+#### Changed
+- Streamline the Operation launch menu with compact model rows and a final Etc group for Shell.
+- Launch Fable with Claude Code's 1M context coordinate while keeping the existing Fable labels.
+- Mark each Agent Operation with the provider whose model launched it, so the sidebar, the command band, and the search palette all show that provider's glyph in its own carrier colour instead of one uniform Claude mark.
+- Usage limit meters now read the same risk verdict the AI Gateway roster uses, so a window being spent faster than its clock refills shows as at-risk instead of waiting for the bar to look full. Each bar marks how far its reset cycle has run, shades the headroom the current burn rate is on track to consume, and says how long the window lasts at that pace. The panel now keeps its update time, refresh, and a help control on a bar that stays put as you scroll; the help explains what the fill, the tick, and the hatching mean, and where the readings come from.
+- Make Repository graph badges easier to scan by placing branches before tags, folding remote tracking into the branch mark, strengthening contrast, and keeping every visible badge whole as the panel resizes.
+
+#### Removed
+- Drop unsupported Cursor AI Gateway models from the settings catalog and launch pickers. The Cursor provider keeps Auto, Composer 2.5, and Grok 4.5 (including their fast variants); Claude, GPT, and Kimi entries no longer appear under Cursor.
+- Remove the AI Gateway model star that set a session default. New gateway sessions keep Claude Code's own model choice; the host loadout no longer marks a settings default.
+
 ## [1.53.0] - 2026-08-09
 
 ### fleet-cli
