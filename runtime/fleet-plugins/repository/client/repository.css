@@ -841,6 +841,10 @@
   white-space: nowrap;
 }
 
+.history-commit-badges.is-overflowing {
+  display: none;
+}
+
 /* Fork 문법의 ref 뱃지 — 알약이 아니라 아이콘 칸과 라벨 칸이 구분선으로 나뉜 라운드 사각이고,
    라벨은 볼드 sans로 훑어 읽힌다. 색조는 --badge-tone 하나로만 흐르며 테두리·아이콘·바탕이 그 톤을 공유한다.
    기본 톤은 중성이고, 종류가 고정된 축(체크아웃 위치=brass, 태그=plum)만 아래 규칙이 덮어쓴다.

@@ -211,7 +211,8 @@ describe("Repository design grammar", () => {
     expect(badges).toContain("min-width: max-content");
     expect(badges).not.toContain("overflow: hidden");
     expect(css).not.toContain("max-width: 40cqw");
-    // 극소 폭에서는 반쪽 칩을 남기지 않고 배지 그룹 전체가 한 번에 빠진다.
+    // 콘텐츠 실측이나 극소 폭 경계가 반쪽 칩을 남기지 않고 배지 그룹 전체를 한 번에 뺀다.
+    expect(blockOf(".history-commit-badges.is-overflowing")).toContain("display: none");
     expect(css).toContain("@container (max-width: 420px)");
     expect(blocksOf(".history-commit-badges").some((body) => body.includes("display: none"))).toBe(true);
   });

@@ -75,7 +75,7 @@ describe("CommitRow", () => {
     const rowChildren = (Array.isArray(row.props.children) ? row.props.children : [row.props.children]) as readonly ReactNode[];
     const mainButton = rowChildren.find((child) => isElement(child) && child.type === "button" && child.props.className === "history-commit-row-main");
     const children = (isElement(mainButton) ? mainButton.props.children : []) as readonly ReactNode[];
-    const badgeGroup = children.find((child) => isElement(child) && child.props.className === "history-commit-badges");
+    const badgeGroup = children.find((child) => isElement(child) && typeof child.type === "function" && "identity" in child.props);
     const badgeChildren = isElement(badgeGroup) && Array.isArray(badgeGroup.props.children) ? badgeGroup.props.children.flat() : [];
     const badges = badgeChildren.filter(isElement);
 
@@ -87,9 +87,12 @@ describe("CommitRow", () => {
     const segments = (Array.isArray(renderedBadge.props.children) ? renderedBadge.props.children : []).filter(isElement);
     expect(segments.map((segment) => segment.props.className)).toEqual([
       "history-badge-mark history-badge-remote-mark",
+      "repository-sr-only",
       "history-badge-mark",
       "history-badge-label",
     ]);
+    expect(segments[0]?.props["aria-hidden"]).toBe("true");
+    expect(segments[1]?.props.children).toBe("Remote tracked");
   });
 });
 

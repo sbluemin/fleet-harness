@@ -186,16 +186,38 @@ function BadgeMark({ kind, checkout }: { readonly kind: RefBadgeKind; readonly c
 }
 
 /** `lane`을 넘기지 않으면 색조를 CSS 기본값에 맡긴다 — 그래프가 없는 검사기 칩이 그 경로를 쓴다. */
-function RefBadgeChip({ badge, checkout, lane }: { readonly badge: RefBadge; readonly checkout?: WorktreeCheckout | null; readonly lane?: number }) {
+function RefBadgeChip({ badge, checkout, lane, remoteDescription }: { readonly badge: RefBadge; readonly checkout?: WorktreeCheckout | null; readonly lane?: number; readonly remoteDescription?: string }) {
   const tone = laneBadgeTone(badge.kind, checkout, lane);
   return <span
     className={`history-badge history-badge--${badge.kind}${checkout?.isCurrent ? " is-current" : ""}${badge.hasRemote ? " has-remote" : ""}`}
     style={tone ? ({ "--badge-tone": tone } as CSSProperties) : undefined}
   >
-    {badge.hasRemote && <span className="history-badge-mark history-badge-remote-mark"><RemoteIcon /></span>}
+    {badge.hasRemote && <span className="history-badge-mark history-badge-remote-mark" aria-hidden="true"><RemoteIcon /></span>}
+    {badge.hasRemote && remoteDescription && <span className="repository-sr-only">{remoteDescription}</span>}
     <span className="history-badge-mark"><BadgeMark kind={badge.kind} checkout={checkout} /></span>
     <span className="history-badge-label">{badge.label}</span>
   </span>;
+}
+
+function ResponsiveBadgeGroup({ identity, children }: { readonly identity: string; readonly children: ReactNode }) {
+  const groupRef = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const group = groupRef.current;
+    const row = group?.closest<HTMLElement>(".history-commit-row-main");
+    if (!group || !row) return;
+    const measure = () => {
+      // 먼저 전체 고유 폭으로 재서 들어갈 때만 남긴다. class toggle은 같은 layout frame 안에서 끝나므로
+      // 긴 ref가 잠깐 잘려 보이지 않고, 숨긴 뒤에도 다음 실제 row resize에서 다시 판정할 수 있다.
+      group.classList.remove("is-overflowing");
+      group.classList.toggle("is-overflowing", row.scrollWidth > row.clientWidth);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [identity]);
+  return <span ref={groupRef} className="history-commit-badges">{children}</span>;
 }
 
 
@@ -209,15 +231,16 @@ export function CommitRow({ entry, checkouts, selected, picked = false, pin = nu
   // Fork 문법: refs 뱃지는 제목 왼쪽(그래프 바로 뒤)에서 커밋의 정체를 먼저 알린다.
   return <div className={`history-commit-row${selected ? " is-selected" : ""}${entry.onHead ? "" : " is-off-head"}${picked ? " is-picked" : ""}`} title={entry.onHead ? undefined : t("repository.history.offHead")}>
     <button ref={rowRef} type="button" className="history-commit-row-main" onClick={(event) => activateRow(entry, event.shiftKey)}>
-      <span className="history-commit-badges">
+      <ResponsiveBadgeGroup identity={`${entry.fullHash}:${badges.map((badge) => `${badge.kind}:${badge.label}:${badge.hasRemote ? "remote" : "local"}`).join("|")}:${detached ? "detached" : "attached"}`}>
         {badges.map((badge) => <RefBadgeChip
           key={`${badge.kind}:${badge.label}`}
           badge={badge}
           checkout={badge.kind === "branch" ? checkouts.find((item) => item.branch === badge.label) : null}
           lane={graphNode.lane}
+          remoteDescription={badge.hasRemote ? t("repository.history.remoteTracked") : undefined}
         />)}
         {detached && <RefBadgeChip badge={{ kind: "worktree", label: t("repository.history.detached") }} checkout={detached} lane={graphNode.lane} />}
-      </span>
+      </ResponsiveBadgeGroup>
       <span className="history-commit-subject" title={entry.subject}>{subject.prefix ? <><b className="history-commit-kind">{subject.prefix}</b> {subject.rest}</> : entry.subject}</span>
       {/* 본문이 더 있는 커밋만 표시한다 — 목록에서 "열어 볼 값이 있는 커밋"을 가려내는 Fork의 ↵ 마커. */}
       {entry.hasBody && <span className="history-commit-body-mark" aria-label={t("repository.history.hasBody")} title={t("repository.history.hasBody")}>↵</span>}
@@ -281,7 +304,7 @@ function CommitInspector({ ctx, repoRel, target, workspace, onSelectCommit, onPi
   return <div className={`history-inspector${workspace ? " repository-ws-inspector" : ""}`} onKeyDown={(event) => { if (isInspectorDismissKey(event.key)) { event.preventDefault(); onClose(); } }}>{workspace ? content : <><div className="history-segmented"><button type="button" aria-pressed={tab === "details"} onClick={() => setTab("details")}>{t("repository.history.details")}</button><button type="button" aria-pressed={tab === "changes"} onClick={() => setTab("changes")}>{t("repository.source.changes")} {state.kind === "ok" && <span>{state.result.files.length}</span>}</button><button type="button" className="history-detail-close history-inspector-close" aria-label={t("repository.history.closeInspector")} title={t("repository.history.closeInspector")} onClick={onClose}>✕</button></div>{content}</>}</div>;
 }
 
-function CommitHeader({ meta, entry, fullHash, copied, onCopy, onParent, locale, t }: { readonly meta: CommitResult["meta"]; readonly entry?: LogCommitEntry; readonly fullHash: string; readonly copied: boolean; readonly onCopy: () => void; readonly onParent: (full: string) => void; readonly locale: ConsoleLocale | undefined; readonly t: T }) { return <div className="history-inspector-head"><div className="history-inspector-subject" title={meta.subject}>{meta.subject}</div>{meta.body && <pre className="history-inspector-message">{meta.body}</pre>}<div className="history-author"><span className="history-avatar">{initials(meta.authorName)}</span><span><b>{meta.authorName}</b><small>{meta.authorEmail}</small></span><time title={new Date(meta.authorAt * 1000).toLocaleString(localeTag(locale))}>{formatCommitTime(meta.authorAt, new Date(), locale)}</time></div><div className="history-inspector-ids"><button type="button" className={`history-sha-copy${copied ? " is-copied" : ""}`} onClick={onCopy}>{fullHash}<span>{copied ? t("repository.history.copied") : t("repository.history.copy")}</span></button>{meta.parents.map((parent) => <button type="button" className="history-parent" key={parent.full} onClick={() => onParent(parent.full)}>{t("repository.history.parent", { short: parent.short })}</button>)}</div>{entry && <div className="history-ref-chips">{refBadges(entry).map((badge) => <RefBadgeChip key={`${badge.kind}:${badge.label}`} badge={badge} />)}</div>}</div>; }
+function CommitHeader({ meta, entry, fullHash, copied, onCopy, onParent, locale, t }: { readonly meta: CommitResult["meta"]; readonly entry?: LogCommitEntry; readonly fullHash: string; readonly copied: boolean; readonly onCopy: () => void; readonly onParent: (full: string) => void; readonly locale: ConsoleLocale | undefined; readonly t: T }) { return <div className="history-inspector-head"><div className="history-inspector-subject" title={meta.subject}>{meta.subject}</div>{meta.body && <pre className="history-inspector-message">{meta.body}</pre>}<div className="history-author"><span className="history-avatar">{initials(meta.authorName)}</span><span><b>{meta.authorName}</b><small>{meta.authorEmail}</small></span><time title={new Date(meta.authorAt * 1000).toLocaleString(localeTag(locale))}>{formatCommitTime(meta.authorAt, new Date(), locale)}</time></div><div className="history-inspector-ids"><button type="button" className={`history-sha-copy${copied ? " is-copied" : ""}`} onClick={onCopy}>{fullHash}<span>{copied ? t("repository.history.copied") : t("repository.history.copy")}</span></button>{meta.parents.map((parent) => <button type="button" className="history-parent" key={parent.full} onClick={() => onParent(parent.full)}>{t("repository.history.parent", { short: parent.short })}</button>)}</div>{entry && <div className="history-ref-chips">{refBadges(entry).map((badge) => <RefBadgeChip key={`${badge.kind}:${badge.label}`} badge={badge} remoteDescription={badge.hasRemote ? t("repository.history.remoteTracked") : undefined} />)}</div>}</div>; }
 function CommitFiles({ files, selectedPath, additions, deletions, viewMode, onViewMode, onSelect, t }: { readonly files: readonly DiffFileEntry[]; readonly selectedPath: string | null; readonly additions: number; readonly deletions: number; readonly viewMode: FilesViewMode; readonly onViewMode: (mode: FilesViewMode) => void; readonly onSelect: (file: DiffFileEntry) => void; readonly t: T }) { return <section className="history-commit-files"><div className="history-files-title"><span className="history-files-label">{t("repository.history.changedFiles")}</span><span className="history-files-stats">{files.length} <i>+{additions}</i> <em>−{deletions}</em></span><FilesViewToggle mode={viewMode} onMode={onViewMode} t={t} /></div><div className="history-files-scroll">{viewMode === "tree" ? <DiffTreeView files={files} selectedPath={selectedPath} onSelect={onSelect} /> : files.map((file) => <FileRow key={file.path} entry={file} isSelected={file.path === selectedPath} onSelect={onSelect} t={t} />)}</div></section>; }
 
 interface HistoryPanelProps {
