@@ -65,6 +65,16 @@ describe("Command Band rename cancel follows the displayed Operation", () => {
   });
 });
 
+describe("Command Band switcher disclosure", () => {
+  it("keeps the Theater and Operation carets visible without hover", () => {
+    const styles = readFileSync(resolve(process.cwd(), "core/client/src/styles/layout.css"), "utf8");
+    const caretRule = styles.match(/\.command-band-trigger-caret \{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+
+    expect(caretRule).toContain("opacity: 0.75");
+    expect(styles).not.toContain(".command-band-segment-trigger:hover .command-band-trigger-caret");
+  });
+});
+
 describe("Command Band switcher focusout close decision", () => {
   it("stays open while focus moves within the wrapper and closes when it leaves or vanishes", () => {
     const wrapper = document.createElement("div");
