@@ -47,6 +47,11 @@
   --apex-ink: var(--apex);
   --apex-glow: oklch(75% 0.13 295 / 14%);
   --apex-halo: 0 0 16px var(--apex-glow);
+  /* crest 채널은 MAX 단 전용 — brass보다 뜨겁고 apex(295)와 갈린 용융 구리(hue ~48). */
+  --crest: oklch(78% 0.14 48);
+  --crest-ink: var(--crest);
+  --crest-glow: oklch(78% 0.14 48 / 16%);
+  --crest-halo: 0 0 16px var(--crest-glow);
 
   /* 신호 ink 티어 — 텍스트로 쓰이는 신호색 전용 채널. 다크 3종은 base 신호색을 그대로 별칭하고,
      라이트(Whites)만 L 42~46% 리터럴로 오버라이드해 자기 glow 틴트 위에서도 AA(4.5:1)를 지킨다.
@@ -222,6 +227,8 @@
   /* apex 채널은 강도 사다리의 게이트 뒤 티어 전용이며, 신호가 아니라 비어 있던 hue 295의 티어를 말한다. */
   --apex: oklch(80% 0.14 295);
   --apex-glow: oklch(80% 0.14 295 / 22%);
+  --crest: oklch(82% 0.15 48);
+  --crest-glow: oklch(82% 0.15 48 / 24%);
 
   --canvas-abyss: oklch(7% 0.015 246);
   --canvas-sea-core: oklch(15% 0.03 235);
@@ -278,6 +285,8 @@
   /* apex 채널은 강도 사다리의 게이트 뒤 티어 전용이며, 신호가 아니라 비어 있던 hue 295의 티어를 말한다. */
   --apex: oklch(76% 0.12 292);
   --apex-glow: oklch(76% 0.12 292 / 20%);
+  --crest: oklch(78% 0.14 46);
+  --crest-glow: oklch(78% 0.14 46 / 22%);
 
   --canvas-abyss: oklch(8% 0.006 255);
   --canvas-sea-core: oklch(15% 0.012 250);
@@ -361,6 +370,10 @@
   --apex-ink: oklch(43% 0.13 296);
   --apex-glow: oklch(52% 0.14 296 / 15%);
   --apex-halo: none;
+  --crest: oklch(54% 0.15 48);
+  --crest-ink: oklch(44% 0.14 48);
+  --crest-glow: oklch(54% 0.15 48 / 16%);
+  --crest-halo: none;
   --brass-halo: none;
   --positive-halo: none;
 

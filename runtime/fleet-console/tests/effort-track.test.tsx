@@ -355,6 +355,9 @@ describe("EffortTrack", () => {
     expect(required(".effort-track-apex-collapse").getAttribute("aria-label")).toBe("Hide Max and Ultracode");
     expect(document.querySelectorAll("[data-apex-rung=true]")).toHaveLength(2);
     expect(track().getAttribute("aria-valuemax")).toBe("6");
+    // 열린 뒤에도 닫힌 사다리 간격 비율을 유지한다 — 셸 여분을 트랙이 먹어 간격을 벌리지 않는다.
+    expect(track().style.getPropertyValue("--effort-intervals")).toBe("6");
+    expect(track().style.getPropertyValue("--effort-closed-intervals")).toBe("4");
   });
 
   it("marks a selected gated rung as apex and maximum", () => {
@@ -390,10 +393,17 @@ describe("EffortTrack", () => {
 
     expect(track().dataset.apexOpen).toBe("true");
     expect(document.querySelector(".effort-track-apex-toggle")).toBeNull();
-    // apex 값이 선택된 동안은 접힘 셰브론도 숨는다 — 접으면 트랙이 AUTO를 그리면서
-    // 제출은 apex 값을 내는 모순 상태가 된다.
-    expect(document.querySelector(".effort-track-apex-collapse")).toBeNull();
+    // apex 값이 선택된 동안에도 접힘 셰브론은 남는다 — 접으면 일상 단으로 내려
+    // 숨은 apex 제출 모순을 만들지 않는다.
+    expect(required(".effort-track-apex-collapse").getAttribute("aria-label")).toBe("Hide Max and Ultracode");
     expect(document.querySelectorAll("[data-apex-rung=true]")).toHaveLength(1);
+  });
+
+  it("demotes a gated value to the last ordinary rung when collapsed", () => {
+    const onChange = render(row({ gatedEfforts: ["max"] }), "max");
+    act(() => required(".effort-track-apex-collapse").click());
+    // 이 모델의 일상 사다리에서 고를 수 있는 마지막 단은 high다(xhigh는 gap).
+    expect(onChange).toHaveBeenLastCalledWith("high");
   });
 
   it("preserves the gate-free rendering contract", () => {

@@ -7419,20 +7419,14 @@
 .operation-launch-effort-menu.theater-menu {
   --flyout-enter-x: -4px;
   z-index: 42;
-  /* 닫힘 폭은 게이트 이전 그대로다. canvas-context-menu.tsx의 EFFORT_SUBMENU_WIDTH는
-     열림 폭(아래 :has 규칙)과 같은 값으로, 뷰포트 배치가 최악 폭을 기준으로 잡히게 한다. */
-  width: 216px;
+  /* 콘텐츠(트랙·토글·라벨)에 맞춘다 — 고정 폭이면 짧을 때 라벨이 잘리고 길면
+     오른쪽에 빈 칸이 남는다. 배치 최악 폭은 canvas-context-menu의 EFFORT_SUBMENU_WIDTH. */
+  width: max-content;
   max-height: var(--canvas-menu-max-height, 520px);
-  overflow-y: auto;
-  overflow-x: hidden;
+  /* auto가 아니다 — apex burst의 transform scale이 스크롤 높이를 잠깐 밀어 세로
+     스크롤바가 깜빡인다. 트랙+팁은 max-height 아래에 남는다. */
+  overflow: hidden;
   animation: operation-launch-flyout-in var(--duration-fast) var(--ease-spring) both;
-  transition: width var(--duration-slow) var(--ease-spring);
-}
-
-/* 게이트가 열리면 상자가 트랙과 함께 넓어진다 — 열린 7스톱과 ULTRACODE 라벨이
-   가로 스크롤 없이 들어가는 폭. */
-.operation-launch-effort-menu.theater-menu:has(.effort-track[data-apex-open="true"]) {
-  width: 376px;
 }
 
 .operation-launch-effort-menu.theater-menu.is-left {
@@ -7443,7 +7437,11 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  min-width: 0;
+  min-width: max-content;
+}
+
+.operation-launch-effort-menu .effort-track-shell {
+  min-width: max-content;
 }
 
 /* 같은 단을 다시 눌러 실행한다는 숨은 확정 제스처를 처음 비-AUTO를 고른 순간에만 알려 준다.
@@ -7481,7 +7479,7 @@
 [data-effort-level="medium"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 42%, var(--text-tertiary)); }
 [data-effort-level="high"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 64%, var(--text-tertiary)); }
 [data-effort-level="xhigh"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 84%, var(--text-tertiary)); }
-[data-effort-level="max"] { --effort-tone: var(--brass-ink); }
+[data-effort-level="max"] { --effort-tone: var(--crest-ink); }
 [data-effort-level="ultra"] { --effort-tone: var(--apex-ink); }
 
 .effort-track-shell {
@@ -7493,8 +7491,13 @@
 
 .effort-track {
   position: relative;
-  flex: 1;
-  min-width: 116px;
+  /* 남는 셸 폭을 먹어 스톱 간격을 벌리지 않는다 — 폭은 닫힌 간격×현재 구간 수.
+     Quick Launch와 캔버스 추론강도 트랙이 같은 값을 쓴다. */
+  flex: 0 0 auto;
+  --effort-closed-track-width: 116px;
+  --effort-intervals: 1;
+  --effort-closed-intervals: 1;
+  width: calc(var(--effort-closed-track-width) * var(--effort-intervals) / var(--effort-closed-intervals));
   height: 26px;
   padding: 0 13px;
   display: flex;
@@ -7505,6 +7508,7 @@
   cursor: pointer;
   touch-action: none;
   transition:
+    width var(--duration-slow) var(--ease-spring),
     border-color var(--duration-base) var(--ease-spring),
     box-shadow var(--duration-base) var(--ease-spring);
 }
@@ -7564,16 +7568,32 @@
   55%, 100% { transform: translateX(100%); }
 }
 
-/* 최고 단이 색을 갈지 않는다는 위 결정은 max가 일상 사다리의 끝이던 때의 것이다. 게이트 뒤
-   티어에는 상태 신호와 구분되는 별도 강도 채널(--apex)을 둔다. */
-.effort-track[data-apex="true"] {
+/* 게이트 뒤 티어: MAX는 용융 구리(--crest), ULTRACODE는 보라(--apex). 같은 data-apex라도
+   단이 다르면 채널을 갈라, 둘을 한 색으로 읽히지 않게 한다. */
+.effort-track[data-apex="true"][data-effort-level="max"] {
+  border-color: color-mix(in oklch, var(--crest) 55%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--crest) 22%, transparent),
+    0 0 22px -4px var(--crest-glow);
+}
+
+.effort-track[data-apex="true"][data-effort-level="max"] .effort-track-fill {
+  background:
+    repeating-linear-gradient(
+      115deg,
+      color-mix(in oklch, var(--text-on-brass) 9%, transparent) 0 1.5px,
+      transparent 1.5px 10px),
+    linear-gradient(90deg, var(--brass) 0%, var(--crest) 82%);
+}
+
+.effort-track[data-apex="true"][data-effort-level="ultra"] {
   border-color: color-mix(in oklch, var(--apex) 55%, transparent);
   box-shadow:
     0 0 0 1px color-mix(in oklch, var(--apex) 22%, transparent),
     0 0 22px -4px var(--apex-glow);
 }
 
-.effort-track[data-apex="true"] .effort-track-fill {
+.effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill {
   background:
     repeating-linear-gradient(
       115deg,
@@ -7751,7 +7771,14 @@
   transform: scale(1.1);
 }
 
-.effort-track[data-apex="true"] .effort-track-knob {
+.effort-track[data-apex="true"][data-effort-level="max"] .effort-track-knob {
+  box-shadow:
+    0 0 0 2.5px var(--crest),
+    var(--crest-halo),
+    0 1px 3px oklch(0% 0 0 / 55%);
+}
+
+.effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-knob {
   box-shadow:
     0 0 0 2.5px var(--apex),
     var(--apex-halo),
@@ -7767,24 +7794,46 @@
 }
 
 .effort-track-value {
-  min-width: 44px;
+  /* ULTRACODE 한 줄이 들어가는 칸. 짧은 단은 가운데. */
+  flex: 0 0 auto;
+  min-width: 9.5ch;
   color: var(--effort-tone, var(--text-secondary));
   font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: 0.06em;
+  text-align: center;
   text-transform: uppercase;
   white-space: nowrap;
   transition: color var(--duration-fast) var(--ease-spring);
 }
 
-/* 최고 단은 램프의 끝이라 색만으로는 바로 아랫단과 갈리지 않는다 — 무게가 그 마지막 한 칸을 맡는다. */
 .effort-track-value[data-effort-level="max"] {
   font-weight: var(--weight-medium);
+  text-shadow: 0 0 12px var(--crest-glow);
 }
 
+/* ULTRACODE — 그라데이션이 글자를 가로질러 흘러 물결처럼 읽힌다. */
 .effort-track-value[data-effort-level="ultra"] {
-  min-width: 64px;
   font-weight: var(--weight-medium);
+  background-image: linear-gradient(
+    105deg,
+    var(--apex-ink) 0%,
+    color-mix(in oklch, var(--apex) 55%, white) 16%,
+    var(--apex-ink) 32%,
+    color-mix(in oklch, var(--apex) 65%, var(--brass)) 48%,
+    var(--apex-ink) 64%,
+    color-mix(in oklch, var(--apex) 55%, white) 80%,
+    var(--apex-ink) 100%
+  );
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: effort-ultracode-wave 2.6s linear infinite;
+}
+
+@keyframes effort-ultracode-wave {
+  to { background-position: -240% 0; }
 }
 
 /* 파선 밑줄은 트랙의 파선 테두리와 같은 말이다: 이 값은 사다리 위의 단이 아니라 모델에 맡긴 자리다. */
@@ -7805,25 +7854,13 @@
   transition: color var(--duration-fast) var(--ease-spring);
 }
 
-/* 바 안에서는 자리를 정해 준다. 남는 폭을 두고 spacer와 겨루게 두면 트랙이 스톱 간격보다
-   좁아져, 손잡이가 이웃 스톱을 덮는다. */
+/* 바 안에서는 자리를 정해 준다. 트랙 폭은 캔버스 추론강도 트랙과 같은 116px 비례 규칙을
+   그대로 쓰고, 셸은 트랙·토글·라벨만 품는 max-content다. */
 .quick-launch-effort-track {
   flex: 0 0 auto;
-  width: 204px;
+  width: max-content;
+  min-width: max-content;
   transition: width var(--duration-slow) var(--ease-spring);
-}
-
-/* 게이트 토글(26px)과 양쪽 간격(8px×2)은 셸이 추가로 품는다 — 토글을 트랙 안에 넣고 폭을
-   그대로 두면 일상 트랙이 204→118px로 쪼그라든다(2026-08-11 실측). 열림에서는 트랙이
-   288px이 되도록 셸을 374px로 늘린다. */
-.quick-launch-effort-track:has(.effort-track-apex-toggle) {
-  width: 290px;
-}
-
-.quick-launch-effort-track:has(.effort-track[data-apex-open="true"]) {
-  /* 374px는 Theater 칩 라벨이 길 때 바의 콘텐츠 폭(730px)을 6px 넘겨 실행 버튼을 다음 줄로
-     밀었다(2026-08-11 실측) — 360px면 가장 긴 조합에서도 한 줄에 남는다. */
-  width: 360px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -7836,10 +7873,19 @@
     animation: none;
   }
 
+  .effort-track-value[data-effort-level="ultra"] {
+    animation: none;
+    background-image: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    color: var(--apex-ink);
+  }
+
   .effort-track-stop[data-apex-rung="true"] {
     animation: none;
   }
 
+  .effort-track,
   .effort-track-apex-seam,
   .effort-track-apex-toggle,
   .quick-launch-effort-track {

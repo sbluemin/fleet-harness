@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 
 import type { OperationLaunchVariantChip, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 
@@ -209,6 +209,9 @@ export function EffortTrack({
 
   const ratio = last === 0 ? 0 : index / last;
   const seamRatio = ladder.length === 0 ? 0 : (ordinaryRungs.length + 0.5) / ladder.length;
+  // 닫힌 사다리(일상 단) 간격 폭을 열린 뒤에도 유지한다 — 스톱 수를 늘릴 때 트랙만
+  // 비례해 넓히고, 셸이 남는 폭을 트랙에 밀어 넣어 간격을 벌리지 않는다.
+  const closedIntervals = Math.max(ordinaryRungs.length, 1);
 
   return (
     <div className={`effort-track-shell${className ? ` ${className}` : ""}`}>
@@ -228,6 +231,11 @@ export function EffortTrack({
         // 자동은 사다리의 최소 단이 아니라 "사다리를 쓰지 않음"이다. 파선 테두리·빈 손잡이·채움 0이
         // 한 어휘로 그것을 말한다 — 채움이 조금이라도 남으면 맨 왼쪽 단을 고른 것으로 읽힌다.
         data-auto={isAuto ? true : undefined}
+        data-effort-level={current.id ?? "auto"}
+        style={{
+          "--effort-intervals": Math.max(last, 1),
+          "--effort-closed-intervals": closedIntervals,
+        } as CSSProperties}
         onKeyDown={handleKeyDown}
         onPointerDown={(event) => {
           // 주 접촉만 받는다. 터치 두 번째 손가락도 button===0이라 isPrimary·활성 제스처로 막는다.
@@ -312,11 +320,10 @@ export function EffortTrack({
           }}
         >✦</button>
       ) : null}
-      {hasGate && apexOpen && !isApex ? (
-        // 열림에서는 ✦가 사라지고 트랙이 그 자리까지 늘어난다 — 접힘은 이 얇은 셰브론과
-        // 일상 단 선택(자동 접힘)만이 담당한다. apex 단이 선택된 동안은 셰브론도 숨긴다:
-        // 접으면 선택된 단이 슬롯에서 사라져, 트랙은 AUTO를 그리면서 제출은 apex 값을 내는
-        // 모순 상태가 된다.
+      {hasGate && apexOpen ? (
+        // 열림에서는 ✦가 사라지고 트랙이 그 자리까지 늘어난다 — 접힘은 이 얇은 셰브론이
+        // 맡는다. apex 단이 선택된 동안에도 셰브론은 남긴다: 접으면 일상 사다리의 마지막
+        // 고를 수 있는 단으로 내려, 숨은 apex 값을 제출하는 모순을 만들지 않는다.
         <button
           type="button"
           className="effort-track-apex-collapse"
@@ -324,6 +331,12 @@ export function EffortTrack({
           title={apexCollapseLabel}
           onClick={() => {
             clearCollapseTimer();
+            if (isApex) {
+              const fallback = [...ordinaryRungs]
+                .reverse()
+                .find((id) => (row.chips ?? []).some((chip) => chip.id === id));
+              onChange(fallback ?? null);
+            }
             setApexOpen(false);
           }}
         >‹</button>

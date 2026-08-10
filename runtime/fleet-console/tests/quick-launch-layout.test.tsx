@@ -87,20 +87,25 @@ describe("Quick Launch effort surface", () => {
   });
 
   it("gives the track a fixed berth instead of letting it compete with the spacer", () => {
-    // 남는 폭을 두고 겨루게 두면 트랙이 스톱 간격보다 좁아져 손잡이가 이웃 스톱을 덮는다.
+    // 셸은 max-content, 트랙 폭은 캔버스 추론강도와 같은 116px 비례 규칙을 쓴다.
     const rule = ruleFor(".quick-launch-effort-track");
     expect(rule).toMatch(/flex:\s*0 0 auto/u);
-    expect(rule).toMatch(/width:\s*204px/u);
+    expect(rule).toMatch(/width:\s*max-content/u);
+    expect(css).not.toMatch(/\.quick-launch-effort-track \.effort-track \{[^}]*flex:\s*1/u);
+    expect(css).toMatch(/\.effort-track \{[^}]*--effort-closed-track-width:\s*116px/u);
   });
 });
 
 describe("canvas effort submenu", () => {
-  it("keeps the rendered open width in step with the placement constant", () => {
-    // 배치 상수는 게이트가 열린 최악 폭과 보조를 맞춘다 — 닫힘 폭은 더 좁다.
-    const open = /\.operation-launch-effort-menu\.theater-menu:has\([^)]*\)\s*\{[^}]*?width:\s*(\d+)px;/u.exec(css)?.[1];
-    expect(Number(open)).toBe(OPERATION_LAUNCH_EFFORT_MENU_WIDTH);
-    const closed = /\.operation-launch-effort-menu\.theater-menu\s*\{[^}]*?width:\s*(\d+)px;/u.exec(css)?.[1];
-    expect(Number(closed)).toBeLessThan(OPERATION_LAUNCH_EFFORT_MENU_WIDTH);
+  it("sizes the flyout to its content so labels are not clipped", () => {
+    // 고정 폭이면 짧을 때 잘리고 길면 빈 칸이 남는다 — max-content가 둘을 막는다.
+    const rule = ruleFor(".operation-launch-effort-menu.theater-menu");
+    expect(rule).toMatch(/width:\s*max-content/u);
+    expect(css).not.toMatch(/\.operation-launch-effort-menu\.theater-menu:has\([^)]*\)\s*\{[^}]*width:\s*\d+px/u);
+  });
+
+  it("keeps the placement constant as an open-state ceiling", () => {
+    expect(OPERATION_LAUNCH_EFFORT_MENU_WIDTH).toBeGreaterThanOrEqual(300);
   });
 });
 
