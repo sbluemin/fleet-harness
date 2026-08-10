@@ -77,19 +77,16 @@ describe("AiGatewayPriorityToggle", () => {
   it("keeps providerPriority and the default when composing a model removal", () => {
     const removed = composeAiGatewayRemoval({
       models: [{ id: "cursor--grok-4.5" }, { id: "kimi--k3" }],
-      defaultModel: "cursor--grok-4.5",
       providerPriority: ["codex"],
     }, "kimi--k3");
     expect(removed).toEqual({
       models: [{ id: "cursor--grok-4.5" }],
-      defaultModel: "cursor--grok-4.5",
       providerPriority: ["codex"],
     });
 
     // 기본 모델 자체를 제거하면 기본값만 접히고 우선순위는 남는다.
     const removedDefault = composeAiGatewayRemoval({
       models: [{ id: "cursor--grok-4.5" }],
-      defaultModel: "cursor--grok-4.5",
       providerPriority: ["codex", "cursor"],
     }, "cursor--grok-4.5");
     expect(removedDefault).toEqual({

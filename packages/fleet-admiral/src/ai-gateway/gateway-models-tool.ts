@@ -24,7 +24,6 @@ export interface GatewayModelsSelection {
   readonly models: readonly GatewayModel[];
   /** Per-model reasoning rungs the user exposed. Absent entry = that model's whole ladder. */
   readonly effortExposure?: GatewayEffortExposure;
-  readonly defaultModel?: GatewayModel;
   /** The user's opt-in ordered spend preference across providers; weights the allowance axis only. */
   readonly providerPriority?: readonly GatewayProvider[];
 }
@@ -67,7 +66,6 @@ const GATEWAY_MODELS_DOCTRINE = {
     `Quality reads benchmark first — third-party figures measured about the vendor model, with scores inside routingTieBandPoints forming one band and a caveat changing what its figures are evidence of — and capabilityClass where unmeasured: judgment seats keep to the top reachable band, and neither quality nor allowance ever falls back to this session's own model. The catalog carries one benchmark source deliberately; a model it has not measured carries no figures and is judged by its capability class alone.`,
     `providerPriority is the user's standing spend order: listed providers spend first everywhere allowance decides, the pressure forecast included — leave one only on observed failure, and never lift an identity across a quality band for it.`,
     `Absence is never safety. A missing derived field means the reading could not support it, and status "unsupported" means the allowance could not be read at all.`,
-    `The roster cannot tell which provider this session itself runs on — make that match yourself and read that window. isSessionDefault reflects Settings as it stands now, not what an already-running session launched with.`,
   ],
 };
 
@@ -104,7 +102,6 @@ async function resolveLoadout(deps: GatewayModelsToolDeps): Promise<GatewayLoado
   return buildGatewayLoadout({
     exposed: selection.models,
     ...(selection.effortExposure ? { effortExposure: selection.effortExposure } : {}),
-    ...(selection.defaultModel ? { defaultModel: selection.defaultModel } : {}),
     ...(selection.providerPriority ? { providerPriority: selection.providerPriority } : {}),
     ...(quota ? { quota } : {}),
   });

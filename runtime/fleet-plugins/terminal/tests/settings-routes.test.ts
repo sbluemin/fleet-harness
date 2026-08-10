@@ -198,7 +198,6 @@ describe("terminal settings routes", () => {
             { id: "cursor--claude-opus-5" },
             { id: "kimi--k3-256k" },
           ],
-          defaultModel: "cursor--claude-opus-5",
         },
       },
       data: { version: 1 },
@@ -211,7 +210,6 @@ describe("terminal settings routes", () => {
           { id: "cursor--claude-opus-5" },
           { id: "kimi--k3-256k" },
         ],
-        defaultModel: "cursor--claude-opus-5",
       },
     });
     // 콘솔 durable state의 플러그인 슬롯에 저장되고, Fleet 전역 옵션은 건드리지 않는다.
@@ -221,7 +219,6 @@ describe("terminal settings routes", () => {
         { id: "cursor--claude-opus-5" },
         { id: "kimi--k3-256k" },
       ],
-      defaultModel: "cursor--claude-opus-5",
     });
     expect(harness.currentData()).toEqual({ version: 1 });
   });
@@ -290,22 +287,21 @@ describe("terminal settings routes", () => {
     expect(harness.updateCalls).toBe(0);
   });
 
-  it("PUT /plugins/terminal/settings preserves hostOnly when only defaultModel changes", async () => {
+  it("PUT /plugins/terminal/settings preserves hostOnly when editing efforts", async () => {
     const harness = createRouteHarness({
       body: {
         aiGateway: {
           models: [
             { id: "cursor--auto", hostOnly: true },
-            { id: "cursor--claude-opus-5" },
+            { id: "cursor--claude-opus-5", efforts: ["high"] },
           ],
-          defaultModel: "cursor--claude-opus-5",
         },
       },
       aiGateway: {
         version: 1,
         models: [
           { id: "cursor--auto", hostOnly: true },
-          { id: "cursor--claude-opus-5" },
+          { id: "cursor--claude-opus-5", efforts: ["high"] },
         ],
       },
     });
@@ -317,16 +313,14 @@ describe("terminal settings routes", () => {
           { id: "cursor--auto", hostOnly: true },
           { id: "cursor--claude-opus-5" },
         ],
-        defaultModel: "cursor--claude-opus-5",
       },
     });
     expect(harness.currentAiGateway()).toEqual({
       version: 1,
       models: [
         { id: "cursor--auto", hostOnly: true },
-        { id: "cursor--claude-opus-5" },
+        { id: "cursor--claude-opus-5", efforts: ["high"] },
       ],
-      defaultModel: "cursor--claude-opus-5",
     });
   });
 
@@ -408,7 +402,6 @@ describe("terminal settings routes", () => {
       aiGateway: {
         version: 1,
         models: [{ id: "cursor--claude-opus-5" }],
-        defaultModel: "cursor--claude-opus-5",
       },
     });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
@@ -419,14 +412,12 @@ describe("terminal settings routes", () => {
         cursorDiagnosticsEnabled: true,
         aiGateway: {
           models: [{ id: "cursor--claude-opus-5" }],
-          defaultModel: "cursor--claude-opus-5",
         },
       },
     });
     expect(harness.currentAiGateway()).toEqual({
       version: 1,
       models: [{ id: "cursor--claude-opus-5" }],
-      defaultModel: "cursor--claude-opus-5",
       cursorDiagnosticsEnabled: true,
     });
   });
@@ -514,10 +505,8 @@ describe("terminal settings routes", () => {
       { models: [{ id: "cursor--no-such-model" }] },
       // 모델별 effort는 폐기된 계약 — 잔존 필드는 거부한다.
       { models: [{ id: "cursor--claude-opus-5", effort: "max" }] },
-      { models: [{ id: "cursor--claude-opus-5" }], defaultModel: "kimi--k3" },
       { models: [{ id: "cursor--claude-opus-5" }, { id: "cursor--claude-opus-5" }] },
       { models: "all" },
-      { defaultModel: 7 },
       { extra: true },
       [],
       "reset",

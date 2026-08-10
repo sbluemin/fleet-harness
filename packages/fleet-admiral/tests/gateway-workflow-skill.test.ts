@@ -259,7 +259,7 @@ describe("gateway workflow skill asset", () => {
     expect(content).toContain("never what this session itself runs on");
     // 게이트웨이 기본으로 기동된 세션의 실패 양상은 재귀다 — 이미 이 세션을 지고 있는
     // 창에 실행을 더 얹는다.
-    expect(content).toContain("A session launched on a gateway default spends an entry that both reports *and* serves");
+    expect(content).toContain("A session launched on a gateway model spends an entry that both reports *and* serves");
     expect(content).toContain("drains one allowance twice");
     // claude 항목도 창을 보고한다(model-loadout.ts buildProviders 가 PARENT_PROVIDER_ID 를
     // 항상 넣고 스냅샷을 enrich 한다). "보이지 않는다"고 쓰면 호스트가 실제로 읽히는
@@ -267,8 +267,6 @@ describe("gateway workflow skill asset", () => {
     expect(content).toContain("every provider's allowance is reported, the parent subscription included");
     expect(content).not.toContain("that spend surfaces in no window at all");
     expect(content).not.toContain("nothing in the response will show it rising");
-    // isSessionDefault 는 현재 Settings 를 비출 뿐, 이미 돌고 있는 세션의 기동값이 아니다.
-    expect(content).toContain("`isSessionDefault` does not settle which case you are in");
     // claude 를 보편 기준선으로 되돌리면 그 구분이 통째로 사라진다.
     expect(content).not.toContain("it is what an unpinned run spends, and the baseline any offload is measured against");
   });

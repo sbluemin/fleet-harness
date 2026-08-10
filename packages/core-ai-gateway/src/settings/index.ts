@@ -35,7 +35,6 @@ export interface AiGatewayStoredModel {
 export interface AiGatewayStoredSettings {
   readonly version: 1;
   readonly models?: readonly AiGatewayStoredModel[];
-  readonly defaultModel?: string;
   /** 부재/false는 기본 Off. 저장 정규형은 opt-in인 true만 보존한다. */
   readonly cursorDiagnosticsEnabled?: boolean;
   /**
@@ -55,7 +54,6 @@ export interface AiGatewayStoredSettings {
 
 export interface AiGatewayUpdateValue {
   readonly models?: readonly AiGatewayStoredModel[];
-  readonly defaultModel?: string;
   /**
    * The user's opt-in ordered spend preference. An empty array explicitly clears
    * it; an absent key preserves the stored value because the store carries it over.
@@ -80,7 +78,7 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
           ? entry.efforts.filter((level): level is string => typeof level === "string" && level.length > 0)
           : [];
         // 카탈로그에 대조해 지금 고를 수 있는 단계만 남긴다. 이 정규형이 설정 GET이
-        // 돌려주는 값이고 클라이언트는 그 배열을 무관한 편집(모델 추가·기본 모델 변경)에도
+        // 돌려주는 값이고 클라이언트는 그 배열을 무관한 편집(모델 추가)에도
         // 그대로 되돌려 보내는데, 검증기는 사다리 밖 단계를 거부하므로 카탈로그가 단계를
         // 하나 빼는 순간 그 모델을 지우기 전까지 AI Gateway 저장 전체가 400으로 잠긴다.
         // 빈 배열도 저장하지 않는다 — "정체성 0개"는 노출해 놓고 쓸 수 없는 모델이 된다.
@@ -93,16 +91,11 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
         }];
       })
     : [];
-  // 기본 모델도 카탈로그 부재면 접는다 — stale 기본값 하나가 이후 모든 저장을 400으로 막는다.
-  const defaultModel = typeof value.defaultModel === "string" && value.defaultModel.length > 0
-    && findGatewayModel(value.defaultModel)
-    ? value.defaultModel
-    : undefined;
+  // 레거시 defaultModel 키는 조용히 버린다 — 저장하지도, 보존하지도 않는다.
   const providerPriority = sanitizeProviderPriority(value.providerPriority);
   return {
     version: 1,
     ...(models.length > 0 ? { models } : {}),
-    ...(defaultModel !== undefined ? { defaultModel } : {}),
     ...(value.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
     ...(typeof value.wireLogEnabled === "boolean" ? { wireLogEnabled: value.wireLogEnabled } : {}),
     ...(providerPriority ? { providerPriority: [...providerPriority] } : {}),
@@ -148,8 +141,6 @@ export interface AiGatewaySelection {
    * model kept at its top rung alone stays usable from the /model picker.
    */
   readonly effortExposure: GatewayEffortExposure;
-  /** Resolved session-default model, when configured and exposed. */
-  readonly defaultModel: GatewayModel | undefined;
   /** Opt-in provider allowance spend order; absent means no preference. */
   readonly providerPriority: readonly GatewayProvider[] | undefined;
 }
@@ -172,9 +163,7 @@ export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | un
   // on the wire regardless of Add-click membership order.
   const models = sortGatewayModelsByProvider(enabled);
   const delegationModels = models.filter((model) => !hostOnlyIds.has(model.id));
-  const configuredDefault = settings?.defaultModel ? findGatewayModel(settings.defaultModel) : undefined;
-  const defaultModel = configuredDefault && models.includes(configuredDefault) ? configuredDefault : undefined;
-  return { models, delegationModels, effortExposure, defaultModel, providerPriority: settings?.providerPriority };
+  return { models, delegationModels, effortExposure, providerPriority: settings?.providerPriority };
 }
 
 /**
@@ -248,14 +237,7 @@ export function parseAiGatewayUpdate(value: unknown):
     }
   }
 
-  let defaultModel: string | undefined;
-  if (record.defaultModel !== undefined) {
-    if (typeof record.defaultModel !== "string") return { ok: false };
-    const model = findGatewayModel(record.defaultModel);
-    if (!model) return { ok: false };
-    if (models.length > 0 && !models.some((entry) => entry.id === model.id)) return { ok: false };
-    defaultModel = model.id;
-  }
+  // 레거시 defaultModel 키는 허용하되 무시한다 — 저장하지도, extra key로 거부하지도 않는다.
 
   let providerPriority: GatewayProvider[] | undefined;
   const hasProviderPriority = Object.prototype.hasOwnProperty.call(record, "providerPriority");
@@ -271,14 +253,13 @@ export function parseAiGatewayUpdate(value: unknown):
     }
   }
 
-  if (models.length === 0 && defaultModel === undefined && providerPriority === undefined) {
+  if (models.length === 0 && providerPriority === undefined) {
     return { ok: true, value: undefined };
   }
   return {
     ok: true,
     value: {
       ...(models.length > 0 ? { models } : {}),
-      ...(defaultModel !== undefined ? { defaultModel } : {}),
       ...(providerPriority !== undefined ? { providerPriority } : {}),
     },
   };

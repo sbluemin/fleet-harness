@@ -48,11 +48,10 @@ describe("ai-gateway settings store", () => {
     // 읽기만으로는 파일이 생기지 않는다 — 미구성과 "빈 설정을 저장함"은 다른 상태다.
     expect(existsSync(store.path)).toBe(false);
 
-    store.write({ models: [{ id: "cursor--claude-opus-5" }], defaultModel: "cursor--claude-opus-5" });
+    store.write({ models: [{ id: "cursor--claude-opus-5" }] });
     expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual({
       version: 1,
       models: [{ id: "cursor--claude-opus-5" }],
-      defaultModel: "cursor--claude-opus-5",
     });
   });
 
@@ -76,12 +75,11 @@ describe("ai-gateway settings store", () => {
   it("keeps each setting axis independent across writes", () => {
     const store = createAiGatewaySettingsStore({ dataDir: createDataDir() });
 
-    store.write({ models: [{ id: "cursor--claude-opus-5" }], defaultModel: "cursor--claude-opus-5" });
+    store.write({ models: [{ id: "cursor--claude-opus-5" }] });
     store.writeCursorDiagnosticsEnabled(true);
     expect(store.read()).toEqual({
       version: 1,
       models: [{ id: "cursor--claude-opus-5" }],
-      defaultModel: "cursor--claude-opus-5",
       cursorDiagnosticsEnabled: true,
     });
     store.write({ models: [{ id: "cursor--auto" }] });
@@ -124,10 +122,10 @@ describe("ai-gateway settings store", () => {
     });
     const store = createAiGatewaySettingsStore({ dataDir, legacyDir });
 
+    // 레거시 defaultModel은 승계 시 조용히 버린다.
     expect(store.read()).toEqual({
       version: 1,
       models: [{ id: "kimi--k3", efforts: ["max"] }, { id: "cursor--auto" }],
-      defaultModel: "cursor--auto",
       wireLogEnabled: false,
     });
     // 승계는 새 축에 실제로 안착해야 한다 — 매 부팅 과거 파일을 다시 읽는 상태로 남으면 안 된다.
@@ -195,7 +193,7 @@ describe("ai-gateway settings store", () => {
     [
       "writeCursorDiagnosticsEnabled",
       (store: ReturnType<typeof createAiGatewaySettingsStore>) => store.writeCursorDiagnosticsEnabled(false),
-      { version: 1, models: [{ id: "cursor--auto" }], defaultModel: "cursor--auto" },
+      { version: 1, models: [{ id: "cursor--auto" }] },
     ],
     [
       "writeWireLogEnabled",
@@ -203,7 +201,6 @@ describe("ai-gateway settings store", () => {
       {
         version: 1,
         models: [{ id: "cursor--auto" }],
-        defaultModel: "cursor--auto",
         cursorDiagnosticsEnabled: true,
         wireLogEnabled: true,
       },

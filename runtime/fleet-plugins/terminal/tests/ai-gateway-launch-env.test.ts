@@ -41,45 +41,6 @@ describe("Claude gateway launch environment", () => {
     expect(configured.env).not.toHaveProperty("ANTHROPIC_MODEL");
   });
 
-  it("starts the session on the configured gateway default model and narrows the cache", () => {
-    const configDir = mkdtempSync(path.join(os.tmpdir(), "fleet-ai-gateway-claude-"));
-    temporaryDirectories.push(configDir);
-
-    const selection = resolveAiGatewaySelection({
-      version: 1,
-      models: [
-        { id: "cursor--claude-opus-5" },
-        { id: "cursor--kimi-k3-1m" },
-        { id: "kimi--k3-256k" },
-      ],
-      defaultModel: "cursor--claude-opus-5",
-    });
-    const configured = prepareAiGatewayLaunchProfile({
-      id: "claude-gateway",
-      label: "Claude Gateway",
-      bin: "claude",
-      args: [],
-      cwd: "/workspace",
-      env: { CLAUDE_CONFIG_DIR: configDir },
-      terminalName: "xterm-256color",
-    } as const, {
-      baseUrl: "http://127.0.0.1:4310/plugins/terminal/ai-gateway",
-      selection,
-    });
-
-    expect(configured.env.ANTHROPIC_MODEL).toBe("claude-gateway--cursor--claude-opus-5[1m]");
-    // effort는 Claude Code 소관이다 — launch env는 건드리지 않는다.
-    expect(configured.env).not.toHaveProperty("CLAUDE_CODE_EFFORT_LEVEL");
-    const cache = JSON.parse(readFileSync(path.join(configDir, "cache", "gateway-models.json"), "utf8")) as {
-      readonly models: readonly { readonly id: string }[];
-    };
-    // Cursor 경유 Kimi와 Kimi 프로바이더 모델이 함께 남는다 — 이중 경로 동시 노출.
-    expect(cache.models.map((model) => model.id)).toEqual([
-      "claude-gateway--cursor--claude-opus-5[1m]",
-      "claude-gateway--cursor--kimi-k3-1m[1m]",
-      "claude-gateway--kimi--k3-256k",
-    ]);
-  });
 
   it("writes the discovery cache in provider clusters even when membership was interleaved", () => {
     const configDir = mkdtempSync(path.join(os.tmpdir(), "fleet-ai-gateway-claude-"));
@@ -148,7 +109,6 @@ describe("Claude gateway launch environment", () => {
     const selection = resolveAiGatewaySelection({
       version: 1,
       models: [{ id: "kimi--k3-256k" }],
-      defaultModel: "kimi--k3-256k",
     });
     const configured = prepareAiGatewayLaunchProfile({
       id: "claude-gateway",

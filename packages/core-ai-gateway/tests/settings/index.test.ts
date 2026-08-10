@@ -124,14 +124,12 @@ describe("ai-gateway settings", () => {
     expect(stale.effortExposure).toEqual({});
   });
 
-  it("resolves stale ids out and keeps the default only when exposed", () => {
+  it("resolves stale ids out of the exposed selection", () => {
     const selection = resolveAiGatewaySelection({
       version: 1,
       models: [{ id: "cursor--claude-opus-5" }, { id: "cursor--retired-model" }],
-      defaultModel: "cursor--retired-model",
     });
     expect(selection.models.map((model) => model.id)).toEqual(["cursor--claude-opus-5"]);
-    expect(selection.defaultModel).toBeUndefined();
   });
 
   it("keeps host-only models on the wire while provider-sorting the delegation subset", () => {
@@ -143,7 +141,6 @@ describe("ai-gateway settings", () => {
         { id: "kimi--k3" },
         { id: "codex--gpt-5.6-luna-fast" },
       ],
-      defaultModel: "cursor--grok-4.5-fast",
     });
     expect(selection.models.map((model) => model.id)).toEqual([
       "codex--gpt-5.6-sol-fast",
@@ -156,7 +153,6 @@ describe("ai-gateway settings", () => {
       "codex--gpt-5.6-luna-fast",
       "kimi--k3",
     ]);
-    expect(selection.defaultModel?.id).toBe("cursor--grok-4.5-fast");
   });
 
   it("carries every model's capability class into the catalog, and null where the registry forbids one", () => {
@@ -228,11 +224,27 @@ describe("ai-gateway settings", () => {
 
   // 카탈로그 프루닝 마이그레이션: stale id가 정규형에 남으면 GET→PUT 에코 경로에서
   // 검증기가 그 id를 거부해 AI Gateway 저장 전체가 400으로 잠긴다.
-  it("drops models and defaults that left the catalog", () => {
+  it("drops models that left the catalog", () => {
     expect(normalizeAiGatewaySettings({
       version: 1,
       models: [{ id: "opencode--qwen3.7-max" }, { id: "kimi--k3", efforts: ["max"] }],
-      defaultModel: "opencode--qwen3.7-max",
     })).toEqual({ version: 1, models: [{ id: "kimi--k3", efforts: ["max"] }] });
+  });
+
+  it("accepts a legacy defaultModel key but drops it instead of storing it", () => {
+    expect(parseAiGatewayUpdate({
+      models: [{ id: "kimi--k3" }],
+      defaultModel: "kimi--k3",
+    })).toEqual({ ok: true, value: { models: [{ id: "kimi--k3" }] } });
+    // defaultModel 단독은 빈 갱신으로 본다 — 저장할 축이 남지 않는다.
+    expect(parseAiGatewayUpdate({ defaultModel: "kimi--k3" })).toEqual({ ok: true, value: undefined });
+    // normalize는 저장된 레거시 defaultModel을 조용히 버린다.
+    expect(normalizeAiGatewaySettings({
+      version: 1,
+      models: [{ id: "kimi--k3" }],
+      defaultModel: "kimi--k3",
+    })).toEqual({ version: 1, models: [{ id: "kimi--k3" }] });
+    // 다른 모르는 키는 여전히 거부된다 — defaultModel만 무시의 예외다.
+    expect(parseAiGatewayUpdate({ defaultModel: "kimi--k3", unknown: true })).toEqual({ ok: false });
   });
 });

@@ -710,12 +710,9 @@ function AiGatewayModelsCard() {
   const save = (next: AiGatewaySettings): void => {
     const models = next.models ?? [];
     // 우선순위는 이 저장에 싣지 않는다 — 키 부재를 서버가 "보존"으로 읽으므로, 다른
-    // 호스트가 그 사이 바꾼 소진 순서를 모델·기본값 편집이 스테일 스냅숏으로 덮지
-    // 않는다. 우선순위를 싣는 유일한 경로는 칩 액션(savePriority)이다.
-    const normalized = models.length === 0 && next.defaultModel === undefined ? null : {
-      ...(models.length > 0 ? { models } : {}),
-      ...(next.defaultModel !== undefined ? { defaultModel: next.defaultModel } : {}),
-    };
+    // 호스트가 그 사이 바꾼 소진 순서를 모델 편집이 스테일 스냅숏으로 덮지 않는다.
+    // 우선순위를 싣는 유일한 경로는 칩 액션(savePriority)이다.
+    const normalized = models.length === 0 ? null : { models };
     void setSystemPromptSettingsField("aiGateway", normalized);
   };
 
@@ -724,10 +721,9 @@ function AiGatewayModelsCard() {
     // 싣는다. 빈 배열은 명시 해제의 유일한 철자이고, 해제할 것도 없는 전량 공백만 null.
     const value: AiGatewaySettings = {
       ...(enabled.length > 0 ? { models: enabled } : {}),
-      ...(selection.defaultModel !== undefined ? { defaultModel: selection.defaultModel } : {}),
       providerPriority: nextPriority,
     };
-    const nothingElse = enabled.length === 0 && selection.defaultModel === undefined;
+    const nothingElse = enabled.length === 0;
     const normalized = nothingElse && nextPriority.length === 0 && priority.length === 0 ? null : value;
     void setSystemPromptSettingsField("aiGateway", normalized);
   };
@@ -745,9 +741,6 @@ function AiGatewayModelsCard() {
   };
   const removeModel = (id: string): void => {
     save(composeAiGatewayRemoval(selection, id));
-  };
-  const setDefaultModel = (id: string): void => {
-    save({ ...selection, defaultModel: id });
   };
   // 사다리 전체는 부재로 접어 저장한다 — 저장형이 하나여야 "전체 노출"이 두 가지
   // 철자를 갖지 않는다. 마지막 한 단계는 UI가 끄지 못하게 막지만, 여기서도 지킨다.
@@ -786,8 +779,6 @@ function AiGatewayModelsCard() {
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
       {enabled.length === 0 ? (
         <p className="global-settings-help">{t("terminal.settings.aiGatewayAllExposed")}</p>
-      ) : selection.defaultModel === undefined ? (
-        <p className="global-settings-help">{t("terminal.settings.aiGatewayDefaultUnset")}</p>
       ) : null}
       {state.aiGatewayCatalog.providers.map((provider) => (
         <AiGatewayProviderBlock
@@ -799,7 +790,6 @@ function AiGatewayModelsCard() {
           onTogglePriority={toggleProviderPriority}
           onAdd={addModel}
           onRemove={removeModel}
-          onSetDefault={setDefaultModel}
           onSetEfforts={setModelEfforts}
           onSetHostOnly={setModelHostOnly}
         />
@@ -815,11 +805,10 @@ function AiGatewayModelsCard() {
  * 우선순위 키를 에코하므로, 선택 스프레드를 빠뜨리면 제거 한 번이 해제로 둔갑한다.
  */
 export function composeAiGatewayRemoval(selection: AiGatewaySettings, id: string): AiGatewaySettings {
-  const { defaultModel, models, ...rest } = selection;
+  const { models, ...rest } = selection;
   return {
     ...rest,
     models: (models ?? []).filter((entry) => entry.id !== id),
-    ...(defaultModel !== undefined && defaultModel !== id ? { defaultModel } : {}),
   };
 }
 
@@ -880,7 +869,6 @@ interface AiGatewayProviderBlockProps {
   readonly onTogglePriority: (id: AiGatewayProviderId) => void;
   readonly onAdd: (model: AiGatewayCatalogModel) => void;
   readonly onRemove: (id: string) => void;
-  readonly onSetDefault: (id: string) => void;
   readonly onSetEfforts: (model: AiGatewayCatalogModel, efforts: readonly string[]) => void;
   readonly onSetHostOnly: (model: AiGatewayCatalogModel, next: boolean) => void;
 }
@@ -893,7 +881,6 @@ function AiGatewayProviderBlock({
   onTogglePriority,
   onAdd,
   onRemove,
-  onSetDefault,
   onSetEfforts,
   onSetHostOnly,
 }: AiGatewayProviderBlockProps) {
@@ -949,10 +936,8 @@ function AiGatewayProviderBlock({
               model={model}
               exposedEfforts={efforts}
               hostOnly={hostOnly}
-              isDefault={selection.defaultModel === model.id}
               saving={saving}
               onRemove={() => onRemove(model.id)}
-              onSetDefault={() => onSetDefault(model.id)}
               onSetEfforts={(next) => onSetEfforts(model, next)}
               onToggleHostOnly={() => onSetHostOnly(model, !hostOnly)}
             />
@@ -1002,10 +987,8 @@ interface AiGatewayModelRowProps {
   /** 부재 = 사다리 전체 노출. */
   readonly exposedEfforts?: readonly string[];
   readonly hostOnly: boolean;
-  readonly isDefault: boolean;
   readonly saving: boolean;
   readonly onRemove: () => void;
-  readonly onSetDefault: () => void;
   readonly onSetEfforts: (efforts: readonly string[]) => void;
   readonly onToggleHostOnly: () => void;
 }
@@ -1014,10 +997,8 @@ export function AiGatewayModelRow({
   model,
   exposedEfforts,
   hostOnly,
-  isDefault,
   saving,
   onRemove,
-  onSetDefault,
   onSetEfforts,
   onToggleHostOnly,
 }: AiGatewayModelRowProps) {
@@ -1025,16 +1006,6 @@ export function AiGatewayModelRow({
 
   return (
     <div className="ai-gateway-model-row">
-      <button
-        type="button"
-        className={`ai-gateway-default-star ${isDefault ? "is-on" : ""}`}
-        aria-pressed={isDefault}
-        aria-label={t("terminal.settings.aiGatewayDefaultAria", { name: model.name })}
-        disabled={saving}
-        onClick={onSetDefault}
-      >
-        ★
-      </button>
       <span className="ai-gateway-model-text">
         <span className="ai-gateway-model-head">
           <span className="ai-gateway-model-name">{model.name}</span>

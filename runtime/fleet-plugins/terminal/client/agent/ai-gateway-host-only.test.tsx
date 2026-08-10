@@ -48,10 +48,8 @@ function renderRow(options: {
     root?.render(createElement(AiGatewayModelRow, {
       model: MODEL,
       hostOnly: options.hostOnly,
-      isDefault: false,
       saving: options.saving ?? false,
       onRemove: () => {},
-      onSetDefault: () => {},
       onSetEfforts: () => {},
       onToggleHostOnly: options.onToggleHostOnly ?? (() => {}),
     }));

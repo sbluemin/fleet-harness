@@ -196,7 +196,6 @@ function readLegacySettings(legacyPath: string): LegacyProbe {
 
 function hasStoredValue(settings: AiGatewayStoredSettings): boolean {
   return (settings.models?.length ?? 0) > 0
-    || settings.defaultModel !== undefined
     || settings.cursorDiagnosticsEnabled !== undefined
     || settings.wireLogEnabled !== undefined;
 }

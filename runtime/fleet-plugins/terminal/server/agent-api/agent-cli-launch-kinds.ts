@@ -97,7 +97,6 @@ function toGatewayRow(model: GatewayModel, selection: AiGatewaySelection) {
   return {
     id: model.id,
     label: bareModelName(model),
-    ...(selection.defaultModel?.id === model.id ? { starred: true } : {}),
     launch: { model: model.id },
     ...(efforts.length > 0 ? {
       effortAxis: EFFORT_AXIS,
