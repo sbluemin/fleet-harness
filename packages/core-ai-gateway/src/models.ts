@@ -846,12 +846,17 @@ function registerLookupId(lookupIds: Set<string>, id: string, owner: string): vo
   lookupIds.add(id);
 }
 
+// 이 집합은 두 곳을 먹인다 — 콘솔 실행 행의 기본 노출 사다리(exposableEffortLadder 경유)와
+// fleet-admiral의 위임 신원 로스터(constraints.effortLadder 경유). ultra를 추가하면 카탈로그가
+// ultra를 낸 모델(Codex Sol/Terra 계열)에 -ultra 위임 신원이 기본 노출로 늘어난다; 노출 폭은
+// 사용자의 effort exposure 설정이 그대로 상한을 쥔다.
 const ANTHROPIC_EFFORT_RUNGS = new Set<GatewayReasoningEffort>([
   "low",
   "medium",
   "high",
   "xhigh",
   "max",
+  "ultra",
 ]);
 
 function freezeGatewayModelEffort(

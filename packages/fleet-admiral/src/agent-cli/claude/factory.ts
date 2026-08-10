@@ -48,6 +48,11 @@ function buildModelArgs(model: string | undefined): string[] {
   return model === undefined ? [] : ["--model", model];
 }
 
+// Console의 ultra 단은 Claude Code의 --effort ultracode다. CLI가 그 값으로 xhigh 강도와
+// standing dynamic-workflow orchestration을 함께 켠다 — max로 바꾸거나 settings로
+// ultracode를 우회 주입하지 않는다.
 function buildEffortArgs(effort: string | undefined): string[] {
-  return effort === undefined ? [] : ["--effort", effort];
+  if (effort === undefined) return [];
+  if (effort === "ultra") return ["--effort", "ultracode"];
+  return ["--effort", effort];
 }

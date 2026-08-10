@@ -61,6 +61,8 @@ export interface OperationLaunchVariantRow {
    * surface has nothing but `chips` to go on and should treat them as the axis.
    */
   readonly effortAxis?: readonly string[];
+  /** 게이트 뒤로 숨는 apex 티어의 강도 id들(사다리 순). 비어 있거나 생략되면 트랙은 게이트 없이 전체 축을 보인다. */
+  readonly gatedEfforts?: readonly string[];
 }
 
 export interface OperationLaunchVariantGroup {

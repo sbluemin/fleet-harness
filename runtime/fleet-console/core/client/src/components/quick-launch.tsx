@@ -279,6 +279,8 @@ export function QuickLaunch() {
               autoLabel={t("launchVariants.effort.auto")}
               ariaLabel={t("launchVariants.effort.track")}
               autoValueText={t("launchVariants.effort.autoValue")}
+              apexToggleLabel={t("launchVariants.effort.apexToggle")}
+              apexCollapseLabel={t("launchVariants.effort.apexCollapse")}
               className="quick-launch-effort-track"
             />
           ) : null}
@@ -299,8 +301,6 @@ export function QuickLaunch() {
               )}
             </span>
           ) : null}
-          {/* 힌트일 뿐 누를 수 있는 것이 아니다 — 테두리를 두르면 바 안에서 액션 행세를 한다. */}
-          <span className="quick-launch-esc" aria-hidden="true">{t("chrome.quickLaunch.escHint")}</span>
           <button
             type="button"
             className="quick-launch-submit"

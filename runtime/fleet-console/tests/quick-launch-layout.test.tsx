@@ -28,16 +28,15 @@ describe("Quick Launch composer layout", () => {
     expect(css).toMatch(/\.quick-launch-pop--model\s*\{[^}]*width:\s*216px;/u);
   });
 
-  it("keeps the send control an icon-only circle and the key hint untouchable", () => {
+  it("keeps the send control an icon-only circle", () => {
     const submit = ruleFor(".quick-launch-submit");
     expect(submit).toMatch(/border-radius:\s*999px/u);
     expect(submit).toMatch(/width:\s*32px/u);
     // 버튼 안에 또 배지를 얹으면 하나의 표면이 두 겹이 된다.
     expect(css).not.toMatch(/\.quick-launch-submit\s+kbd/u);
-    // 힌트는 읽히되 만져지지 않는다 — 테두리나 배경을 주면 바 위에서 액션 행세를 한다.
-    const esc = ruleFor(".quick-launch-esc");
-    expect(esc).not.toMatch(/border/u);
-    expect(esc).not.toMatch(/background/u);
+    // esc 힌트는 제거됐다 — apex 확장이 바를 넓히면서 힌트가 바를 두 줄로 밀었다.
+    expect(css).not.toMatch(/\.quick-launch-esc/u);
+    expect(quickLaunch).not.toMatch(/escHint/u);
   });
 
   it("names the send control for assistive tech, since it carries no visible label", () => {
@@ -88,17 +87,25 @@ describe("Quick Launch effort surface", () => {
   });
 
   it("gives the track a fixed berth instead of letting it compete with the spacer", () => {
-    // 남는 폭을 두고 겨루게 두면 트랙이 스톱 간격보다 좁아져 손잡이가 이웃 스톱을 덮는다.
+    // 셸은 max-content, 트랙 폭은 캔버스 추론강도와 같은 116px 비례 규칙을 쓴다.
     const rule = ruleFor(".quick-launch-effort-track");
     expect(rule).toMatch(/flex:\s*0 0 auto/u);
-    expect(rule).toMatch(/width:\s*204px/u);
+    expect(rule).toMatch(/width:\s*max-content/u);
+    expect(css).not.toMatch(/\.quick-launch-effort-track \.effort-track \{[^}]*flex:\s*1/u);
+    expect(css).toMatch(/\.effort-track \{[^}]*--effort-closed-track-width:\s*116px/u);
   });
 });
 
 describe("canvas effort submenu", () => {
-  it("keeps the rendered width in step with the placement constant", () => {
-    const declared = /\.operation-launch-effort-menu\.theater-menu\s*\{[^}]*?width:\s*(\d+)px;/u.exec(css)?.[1];
-    expect(Number(declared)).toBe(OPERATION_LAUNCH_EFFORT_MENU_WIDTH);
+  it("sizes the flyout to its content so labels are not clipped", () => {
+    // 고정 폭이면 짧을 때 잘리고 길면 빈 칸이 남는다 — max-content가 둘을 막는다.
+    const rule = ruleFor(".operation-launch-effort-menu.theater-menu");
+    expect(rule).toMatch(/width:\s*max-content/u);
+    expect(css).not.toMatch(/\.operation-launch-effort-menu\.theater-menu:has\([^)]*\)\s*\{[^}]*width:\s*\d+px/u);
+  });
+
+  it("keeps the placement constant as an open-state ceiling", () => {
+    expect(OPERATION_LAUNCH_EFFORT_MENU_WIDTH).toBeGreaterThanOrEqual(300);
   });
 });
 

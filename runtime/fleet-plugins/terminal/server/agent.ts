@@ -375,7 +375,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     }
     const nativeAlias = resolveNativeClaudeModelAlias(model);
     if (nativeAlias) {
-      if (effort !== undefined && !NATIVE_CLAUDE_EFFORTS.includes(effort as (typeof NATIVE_CLAUDE_EFFORTS)[number])) {
+      // ultracode는 wire effort가 아니라 하네스 능력이라 네이티브 행도 ultra를 받는다 —
+      // wire로의 번역(max + settings)은 launch factory가 담당한다.
+      if (effort !== undefined && !([...NATIVE_CLAUDE_EFFORTS, "ultra"] as readonly string[]).includes(effort)) {
         ctx.host.http.writeJson(res, 400, { error: "invalid_effort" });
         return false;
       }

@@ -3,14 +3,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import type { AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
+import { resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 import { MAX_LAUNCH_PROMPT_CHARS } from "@dotobokuri/fleet-admiral";
 import type { OperationCreateInput, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GatewayLaunchOptionError } from "../server/agent-api/launch.js";
+import { GatewayLaunchOptionError, isGatewayLaunchEffortAllowed } from "../server/agent-api/launch.js";
 import { registerAgentRoutes } from "../server/agent.js";
 import type { TerminalRuntime } from "../server/shared/index.js";
 import { createPluginTerminalTicketRegistry } from "../server/shared/tickets.js";
@@ -28,7 +28,8 @@ describe("agent launch variants", () => {
   it.each([
     [{ cliId: "claude-gateway", model: 5 }, 400, "invalid_launch_option"],
     [{ cliId: "claude-gateway", model: "cursor--missing" }, 409, "gateway_model_not_enabled"],
-    [{ cliId: "claude-gateway", model: "fable", effort: "ultra" }, 400, "invalid_effort"],
+    // 네이티브 행의 ultra는 하네스 능력이라 허용된다 — 사다리 어휘 밖의 값만 거부한다.
+    [{ cliId: "claude-gateway", model: "fable", effort: "minimal" }, 400, "invalid_effort"],
     [{ cliId: "claude-gateway", effort: "max" }, 400, "invalid_launch_option"],
   ] as const)("rejects invalid launch body %#", async (body, status, error) => {
     const harness = await createHarness({ body });
@@ -54,19 +55,17 @@ describe("agent launch variants", () => {
     expect(harness.attach).not.toHaveBeenCalled();
   });
 
-  it("rejects ultra even when the gateway model catalog includes it", async () => {
-    const harness = await createHarness({
-      body: { cliId: "claude-gateway", model: "codex--gpt-5.6-sol-fast", effort: "ultra" },
-      aiGatewaySettings: {
-        version: 1,
-        models: [{ id: "codex--gpt-5.6-sol-fast" }],
-      },
+  it("accepts ultra when the gateway model catalog includes it", () => {
+    const selection = resolveAiGatewaySelection({
+      version: 1,
+      models: [{ id: "codex--gpt-5.6-sol-fast" }],
     });
+    const model = selection.models[0]!;
 
-    await harness.postSessions();
-
-    expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "invalid_effort" } });
-    expect(harness.attach).not.toHaveBeenCalled();
+    expect(isGatewayLaunchEffortAllowed({
+      ...selection,
+      effortExposure: { [model.id]: ["ultra"] },
+    }, model, "ultra")).toBe(true);
   });
 
   it("threads a valid scoped gateway model and effort into attach", async () => {

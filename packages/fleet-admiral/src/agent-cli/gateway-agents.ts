@@ -89,16 +89,23 @@ export type { GatewayEffortExposure } from "@dotobokuri/core-ai-gateway";
  * 사용자가 고른 강도만 남긴 사다리. 순서는 카탈로그 사다리를 따른다.
  * 선택이 없거나 사다리와 하나도 겹치지 않으면 전체 사다리로 되돌린다 — 정체성이
  * 0개인 모델은 노출해 놓고 쓸 수 없는 상태라 어떤 선택보다도 나쁘다.
+ *
+ * ultra는 위임 정체성으로 내지 않는다. ultracode는 커스텀 Agent frontmatter의 일상 사다리
+ * 단이 아니라 Operation launch factory가 `--effort ultracode`로 넘기는 세션 능력이다.
+ * 정체성 로스터에 ultra를 올리면 frontmatter effort가 CLI 일상 단과 어긋난다. 이 사다리는
+ * 정체성 생성(buildGatewayCustomAgents)과 로스터 셀렉터(model-loadout)가 함께 타는
+ * 깔때기라, 여기서 걸러야 둘이 어긋나지 않는다.
  */
 export function exposedEffortLadder(
   modelId: string,
   ladder: readonly GatewayReasoningEffort[],
   exposure: GatewayEffortExposure | undefined,
 ): readonly GatewayReasoningEffort[] {
+  const deliverable = ladder.filter((rung) => rung !== "ultra");
   const chosen = exposure?.[modelId];
-  if (chosen === undefined || chosen.length === 0) return ladder;
-  const narrowed = ladder.filter((rung) => chosen.includes(rung));
-  return narrowed.length > 0 ? narrowed : ladder;
+  if (chosen === undefined || chosen.length === 0) return deliverable;
+  const narrowed = deliverable.filter((rung) => chosen.includes(rung));
+  return narrowed.length > 0 ? narrowed : deliverable;
 }
 
 /**

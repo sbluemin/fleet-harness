@@ -7419,10 +7419,13 @@
 .operation-launch-effort-menu.theater-menu {
   --flyout-enter-x: -4px;
   z-index: 42;
-  /* canvas-context-menu.tsx의 EFFORT_SUBMENU_WIDTH와 같은 값이어야 한다. */
-  width: 216px;
+  /* 콘텐츠(트랙·토글·라벨)에 맞춘다 — 고정 폭이면 짧을 때 라벨이 잘리고 길면
+     오른쪽에 빈 칸이 남는다. 배치 최악 폭은 canvas-context-menu의 EFFORT_SUBMENU_WIDTH. */
+  width: max-content;
   max-height: var(--canvas-menu-max-height, 520px);
-  overflow-y: auto;
+  /* auto가 아니다 — apex burst의 transform scale이 스크롤 높이를 잠깐 밀어 세로
+     스크롤바가 깜빡인다. 트랙+팁은 max-height 아래에 남는다. */
+  overflow: hidden;
   animation: operation-launch-flyout-in var(--duration-fast) var(--ease-spring) both;
 }
 
@@ -7434,7 +7437,11 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  min-width: 0;
+  min-width: max-content;
+}
+
+.operation-launch-effort-menu .effort-track-shell {
+  min-width: max-content;
 }
 
 /* 같은 단을 다시 눌러 실행한다는 숨은 확정 제스처를 처음 비-AUTO를 고른 순간에만 알려 준다.
@@ -7472,7 +7479,8 @@
 [data-effort-level="medium"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 42%, var(--text-tertiary)); }
 [data-effort-level="high"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 64%, var(--text-tertiary)); }
 [data-effort-level="xhigh"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 84%, var(--text-tertiary)); }
-[data-effort-level="max"] { --effort-tone: var(--brass-ink); }
+[data-effort-level="max"] { --effort-tone: var(--crest-ink); }
+[data-effort-level="ultra"] { --effort-tone: var(--apex-ink); }
 
 .effort-track-shell {
   display: flex;
@@ -7483,8 +7491,13 @@
 
 .effort-track {
   position: relative;
-  flex: 1;
-  min-width: 116px;
+  /* 남는 셸 폭을 먹어 스톱 간격을 벌리지 않는다 — 폭은 닫힌 간격×현재 구간 수.
+     Quick Launch와 캔버스 추론강도 트랙이 같은 값을 쓴다. */
+  flex: 0 0 auto;
+  --effort-closed-track-width: 116px;
+  --effort-intervals: 1;
+  --effort-closed-intervals: 1;
+  width: calc(var(--effort-closed-track-width) * var(--effort-intervals) / var(--effort-closed-intervals));
   height: 26px;
   padding: 0 13px;
   display: flex;
@@ -7494,6 +7507,10 @@
   background: color-mix(in oklch, var(--surface-pillar) 55%, transparent);
   cursor: pointer;
   touch-action: none;
+  transition:
+    width var(--duration-slow) var(--ease-spring),
+    border-color var(--duration-base) var(--ease-spring),
+    box-shadow var(--duration-base) var(--ease-spring);
 }
 
 .effort-track:focus-visible {
@@ -7551,6 +7568,134 @@
   55%, 100% { transform: translateX(100%); }
 }
 
+/* 게이트 뒤 티어: MAX는 용융 구리(--crest), ULTRACODE는 보라(--apex). 같은 data-apex라도
+   단이 다르면 채널을 갈라, 둘을 한 색으로 읽히지 않게 한다. */
+.effort-track[data-apex="true"][data-effort-level="max"] {
+  border-color: color-mix(in oklch, var(--crest) 55%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--crest) 22%, transparent),
+    0 0 22px -4px var(--crest-glow);
+}
+
+.effort-track[data-apex="true"][data-effort-level="max"] .effort-track-fill {
+  background:
+    repeating-linear-gradient(
+      115deg,
+      color-mix(in oklch, var(--text-on-brass) 9%, transparent) 0 1.5px,
+      transparent 1.5px 10px),
+    linear-gradient(90deg, var(--brass) 0%, var(--crest) 82%);
+}
+
+.effort-track[data-apex="true"][data-effort-level="ultra"] {
+  border-color: color-mix(in oklch, var(--apex) 55%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--apex) 22%, transparent),
+    0 0 22px -4px var(--apex-glow);
+}
+
+.effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill {
+  background:
+    repeating-linear-gradient(
+      115deg,
+      color-mix(in oklch, var(--text-on-brass) 9%, transparent) 0 1.5px,
+      transparent 1.5px 10px),
+    linear-gradient(90deg, var(--brass) 0%, var(--apex) 82%);
+}
+
+.effort-track-apex-toggle {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px dashed color-mix(in oklch, var(--text-tertiary) 65%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-base) var(--ease-spring),
+    border-style var(--duration-base) var(--ease-spring),
+    color var(--duration-base) var(--ease-spring),
+    box-shadow var(--duration-base) var(--ease-spring);
+}
+
+.effort-track-apex-toggle:hover,
+.effort-track-apex-toggle[aria-pressed="true"] {
+  border-color: var(--apex);
+  border-style: solid;
+  color: var(--apex-ink);
+  box-shadow: var(--apex-halo);
+}
+
+.effort-track-apex-toggle:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+/* 열린 동안 ✦를 대신하는 접힘 컨트롤 — 게이트는 한 번 열리면 트랙이 그 자리를 물려받아
+   늘어나므로, 닫기 장치는 시각 무게를 거의 갖지 않는 얇은 셰브론이다. */
+.effort-track-apex-collapse {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-spring);
+}
+
+.effort-track-apex-collapse:hover {
+  color: var(--apex-ink);
+}
+
+.effort-track-apex-collapse:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.effort-track-apex-seam {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, var(--apex) 40% 60%, transparent);
+  opacity: 0;
+  transform: scaleY(0.2);
+  transition: opacity 360ms var(--ease-spring) 120ms, transform 360ms var(--ease-spring) 120ms;
+  pointer-events: none;
+}
+
+.effort-track[data-apex-open="true"] .effort-track-apex-seam {
+  opacity: 0.9;
+  transform: scaleY(1);
+}
+
+.effort-track-apex-burst {
+  position: absolute;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  border: 2px solid var(--apex);
+  border-radius: 999px;
+  opacity: 0;
+  animation: effort-track-apex-burst 620ms var(--ease-spring) 1;
+  pointer-events: none;
+}
+
+@keyframes effort-track-apex-burst {
+  0% { opacity: 0.95; transform: scale(1); }
+  100% { opacity: 0; transform: scale(3.2); }
+}
+
 .effort-track-stops {
   position: relative;
   flex: 1;
@@ -7574,6 +7719,18 @@
 
 .effort-track-stop[data-filled="true"] {
   background: color-mix(in oklch, var(--text-on-brass) 42%, transparent);
+}
+
+/* apex 스톱은 게이트가 열리는 그 커밋에서 새로 삽입된다 — 새 요소의 첫 계산값은 transition을
+   타지 않으므로, 캐스케이드는 keyframes로 연다. fill은 backwards: 지연 구간에만 from 값을 들고
+   끝나면 기본 스타일로 돌려, preview의 scale(3) transition과 충돌하지 않는다. */
+.effort-track-stop[data-apex-rung="true"] {
+  animation: effort-track-apex-stop-in var(--duration-base) var(--ease-spring) backwards;
+}
+
+@keyframes effort-track-apex-stop-in {
+  from { opacity: 0; transform: scale(0); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 /* 이 모델이 내놓지 않은 단. 자리는 지키되 비어 있어야, 고를 수 있는 단이 축 위 제자리에 선다. */
@@ -7614,6 +7771,20 @@
   transform: scale(1.1);
 }
 
+.effort-track[data-apex="true"][data-effort-level="max"] .effort-track-knob {
+  box-shadow:
+    0 0 0 2.5px var(--crest),
+    var(--crest-halo),
+    0 1px 3px oklch(0% 0 0 / 55%);
+}
+
+.effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-knob {
+  box-shadow:
+    0 0 0 2.5px var(--apex),
+    var(--apex-halo),
+    0 1px 3px oklch(0% 0 0 / 55%);
+}
+
 /* 값을 쥐지 않은 손잡이는 속이 비어 있다 — 꽉 찬 손잡이는 어느 자리에 있든 "이 단을 골랐다"로 읽힌다. */
 .effort-track-knob[data-auto="true"] {
   background: var(--surface-pillar);
@@ -7623,19 +7794,46 @@
 }
 
 .effort-track-value {
-  min-width: 44px;
+  /* ULTRACODE 한 줄이 들어가는 칸. 짧은 단은 가운데. */
+  flex: 0 0 auto;
+  min-width: 9.5ch;
   color: var(--effort-tone, var(--text-secondary));
   font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: 0.06em;
+  text-align: center;
   text-transform: uppercase;
   white-space: nowrap;
   transition: color var(--duration-fast) var(--ease-spring);
 }
 
-/* 최고 단은 램프의 끝이라 색만으로는 바로 아랫단과 갈리지 않는다 — 무게가 그 마지막 한 칸을 맡는다. */
 .effort-track-value[data-effort-level="max"] {
   font-weight: var(--weight-medium);
+  text-shadow: 0 0 12px var(--crest-glow);
+}
+
+/* ULTRACODE — 그라데이션이 글자를 가로질러 흘러 물결처럼 읽힌다. */
+.effort-track-value[data-effort-level="ultra"] {
+  font-weight: var(--weight-medium);
+  background-image: linear-gradient(
+    105deg,
+    var(--apex-ink) 0%,
+    color-mix(in oklch, var(--apex) 55%, white) 16%,
+    var(--apex-ink) 32%,
+    color-mix(in oklch, var(--apex) 65%, var(--brass)) 48%,
+    var(--apex-ink) 64%,
+    color-mix(in oklch, var(--apex) 55%, white) 80%,
+    var(--apex-ink) 100%
+  );
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: effort-ultracode-wave 2.6s linear infinite;
+}
+
+@keyframes effort-ultracode-wave {
+  to { background-position: -240% 0; }
 }
 
 /* 파선 밑줄은 트랙의 파선 테두리와 같은 말이다: 이 값은 사다리 위의 단이 아니라 모델에 맡긴 자리다. */
@@ -7656,17 +7854,42 @@
   transition: color var(--duration-fast) var(--ease-spring);
 }
 
-/* 바 안에서는 자리를 정해 준다. 남는 폭을 두고 spacer와 겨루게 두면 트랙이 스톱 간격보다
-   좁아져, 손잡이가 이웃 스톱을 덮는다. */
+/* 바 안에서는 자리를 정해 준다. 트랙 폭은 캔버스 추론강도 트랙과 같은 116px 비례 규칙을
+   그대로 쓰고, 셸은 트랙·토글·라벨만 품는 max-content다. */
 .quick-launch-effort-track {
   flex: 0 0 auto;
-  width: 204px;
+  width: max-content;
+  min-width: max-content;
+  transition: width var(--duration-slow) var(--ease-spring);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .effort-track[data-at-max="true"] .effort-track-fill::after {
     animation: none;
     opacity: 0.22;
+  }
+
+  .effort-track-apex-burst {
+    animation: none;
+  }
+
+  .effort-track-value[data-effort-level="ultra"] {
+    animation: none;
+    background-image: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    color: var(--apex-ink);
+  }
+
+  .effort-track-stop[data-apex-rung="true"] {
+    animation: none;
+  }
+
+  .effort-track,
+  .effort-track-apex-seam,
+  .effort-track-apex-toggle,
+  .quick-launch-effort-track {
+    transition: none;
   }
 }
 
@@ -11146,12 +11369,6 @@ body[data-codex-reading="true"] .operations-side-bar {
 
 /* 단축키 힌트는 읽히되 만져지지 않아야 한다. 테두리를 두른 배지로 두면 바 위에서 칩·전송과
    같은 액션 문법을 입어, 누를 수 있는 것으로 읽힌다. */
-.quick-launch-esc {
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-}
 
 /* 전송은 아이콘 하나짜리 원이다 — 컴포저의 유일한 확정 동작이라 이름을 글자로 되풀이하지 않고,
    이름과 단축키는 접근 이름이 싣는다. */
@@ -11292,8 +11509,16 @@ body[data-codex-reading="true"] .operations-side-bar {
     animation: none;
   }
 
+  .effort-track-apex-burst {
+    animation: none;
+  }
+
   .quick-launch-chip,
   .quick-launch-submit,
+  .effort-track-apex-seam,
+  .effort-track-stop[data-apex-rung="true"],
+  .effort-track-apex-toggle,
+  .quick-launch-effort-track,
   .effort-track-fill,
   .effort-track-knob,
   .effort-track-stop,

@@ -67,6 +67,21 @@ describe("claude-gateway profile", () => {
       KEEP_ME: "yes",
     });
   });
+
+  it("delivers ultra as Claude Code --effort ultracode", async () => {
+    const profile = await resolveAgentCliProfile({
+      CLAUDE_BIN: process.execPath,
+    }, "/tmp", {
+      cliId: "claude-gateway",
+      model: "claude-gateway--codex--gpt-5.6-sol",
+      effort: "ultra",
+    });
+
+    // CLI가 ultracode를 xhigh + standing orchestration으로 해석한다 — max/settings로 우회하지 않는다.
+    expect(profile).toMatchObject({
+      args: ["--model", "claude-gateway--codex--gpt-5.6-sol", "--effort", "ultracode"],
+    });
+  });
 });
 
 describe("claude-gateway custom agents", () => {
@@ -110,6 +125,17 @@ describe("claude-gateway custom agents", () => {
     expect(withEffort).toBeDefined();
     expect(agents[withEffort!]!.effort).toBe("high");
     expect(toGatewayAgentName(agents[withEffort!]!.model, "high")).toBe(withEffort);
+  });
+
+  it("never registers an ultra identity — ultracode is a launch --effort, not a roster rung", () => {
+    // codex--gpt-5.6-sol의 카탈로그 사다리는 ultra까지 닿지만, 커스텀 Agent frontmatter
+    // 일상 사다리에는 올리지 않는다. ultracode는 Operation launch의 --effort ultracode 경로다.
+    const model = requireGatewayModel("codex--gpt-5.6-sol");
+    const agents = buildGatewayCustomAgents([model]);
+    const names = Object.keys(agents);
+    expect(names.some((name) => name.endsWith("-ultra"))).toBe(false);
+    expect(names.some((name) => name.endsWith("-max"))).toBe(true);
+    for (const name of names) expect(agents[name]!.effort).not.toBe("ultra");
   });
 
   it("builds identities only for the models the caller provides", () => {

@@ -19,6 +19,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   act(() => root.unmount());
   container.remove();
 });
@@ -55,6 +56,8 @@ function render(
       autoLabel="AUTO"
       ariaLabel="Reasoning effort"
       autoValueText="Automatic"
+      apexToggleLabel="Show Max and Ultracode"
+      apexCollapseLabel="Hide Max and Ultracode"
     />,
   ));
   return onChange;
@@ -326,6 +329,91 @@ describe("EffortTrack", () => {
       element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 73, clientY: 13 }));
     });
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("hides gated stops behind the apex toggle", () => {
+    render(row({ gatedEfforts: ["max", "ultra"] }), "high");
+
+    const toggle = required(".effort-track-apex-toggle");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(toggle.getAttribute("aria-label")).toBe("Show Max and Ultracode");
+    expect(stops()).toHaveLength(5);
+    expect(document.querySelector("[data-apex-rung=true]")).toBeNull();
+    expect(track().getAttribute("aria-valuemax")).toBe("4");
+  });
+
+  it("reveals gated stops and extends the slider range when toggled", () => {
+    render(row({
+      effortAxis: [...AXIS, "ultra"],
+      chips: [...row().chips!, { id: "ultra", label: "ULTRA", launch: { model: "kimi--k3", effort: "ultra" } }],
+      gatedEfforts: ["max", "ultra"],
+    }), "high");
+
+    act(() => required(".effort-track-apex-toggle").click());
+    // 열리면 ✦는 사라지고 그 자리를 트랙이 물려받는다 — 접힘은 얇은 셰브론이 맡는다.
+    expect(document.querySelector(".effort-track-apex-toggle")).toBeNull();
+    expect(required(".effort-track-apex-collapse").getAttribute("aria-label")).toBe("Hide Max and Ultracode");
+    expect(document.querySelectorAll("[data-apex-rung=true]")).toHaveLength(2);
+    expect(track().getAttribute("aria-valuemax")).toBe("6");
+    // 열린 뒤에도 닫힌 사다리 간격 비율을 유지한다 — 셸 여분을 트랙이 먹어 간격을 벌리지 않는다.
+    expect(track().style.getPropertyValue("--effort-intervals")).toBe("6");
+    expect(track().style.getPropertyValue("--effort-closed-intervals")).toBe("4");
+  });
+
+  it("marks a selected gated rung as apex and maximum", () => {
+    const gatedRow = row({ gatedEfforts: ["max"] });
+    const onChange = render(gatedRow, "xhigh");
+    act(() => required(".effort-track-apex-toggle").click());
+    act(() => track().dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
+    expect(onChange).toHaveBeenLastCalledWith("max");
+
+    render(gatedRow, "max", onChange);
+    expect(track().dataset.apex).toBe("true");
+    expect(track().dataset.atMax).toBe("true");
+  });
+
+  it("collapses 600ms after selecting an ordinary rung while open", () => {
+    vi.useFakeTimers();
+    const gatedRow = row({ gatedEfforts: ["max"] });
+    const onChange = render(gatedRow, "max");
+    act(() => track().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
+    expect(onChange).toHaveBeenLastCalledWith("high");
+    expect(track().dataset.apexOpen).toBe("true");
+
+    render(gatedRow, "high", onChange);
+    act(() => vi.advanceTimersByTime(599));
+    expect(track().dataset.apexOpen).toBe("true");
+    act(() => vi.advanceTimersByTime(1));
+    expect(track().dataset.apexOpen).toBeUndefined();
+    expect(document.querySelector("[data-apex-rung=true]")).toBeNull();
+  });
+
+  it("mounts open when the controlled value is gated", () => {
+    render(row({ gatedEfforts: ["max"] }), "max");
+
+    expect(track().dataset.apexOpen).toBe("true");
+    expect(document.querySelector(".effort-track-apex-toggle")).toBeNull();
+    // apex 값이 선택된 동안에도 접힘 셰브론은 남는다 — 접으면 일상 단으로 내려
+    // 숨은 apex 제출 모순을 만들지 않는다.
+    expect(required(".effort-track-apex-collapse").getAttribute("aria-label")).toBe("Hide Max and Ultracode");
+    expect(document.querySelectorAll("[data-apex-rung=true]")).toHaveLength(1);
+  });
+
+  it("demotes a gated value to the last ordinary rung when collapsed", () => {
+    const onChange = render(row({ gatedEfforts: ["max"] }), "max");
+    act(() => required(".effort-track-apex-collapse").click());
+    // 이 모델의 일상 사다리에서 고를 수 있는 마지막 단은 high다(xhigh는 gap).
+    expect(onChange).toHaveBeenLastCalledWith("high");
+  });
+
+  it("preserves the gate-free rendering contract", () => {
+    render(row(), "high");
+
+    expect(document.querySelector(".effort-track-apex-toggle")).toBeNull();
+    expect(document.querySelector(".effort-track-apex-seam")).toBeNull();
+    expect(track().dataset.apexOpen).toBeUndefined();
+    expect(track().dataset.apex).toBeUndefined();
+    expect(stops()).toHaveLength(6);
   });
 });
 

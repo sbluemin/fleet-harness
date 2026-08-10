@@ -87,7 +87,8 @@ export function isGatewayLaunchEffortAllowed(
   model: GatewayModel,
   effort: string,
 ): boolean {
-  if (!NATIVE_CLAUDE_EFFORTS.includes(effort as (typeof NATIVE_CLAUDE_EFFORTS)[number])) return false;
+  // 첫 검사는 어휘만 판별하고, 실제 모델이 그 단을 제공하는지는 아래 카탈로그 사다리가 판다.
+  if (!([...NATIVE_CLAUDE_EFFORTS, "ultra"] as readonly string[]).includes(effort)) return false;
   const efforts = selection.effortExposure[model.id] ?? exposableEffortLadder(model);
   return efforts.includes(effort as GatewayReasoningEffort);
 }
