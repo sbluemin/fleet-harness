@@ -1558,7 +1558,28 @@ describe("Instrument core design contract", () => {
     expect(source("components/launch-provider-glyphs.tsx")).toContain("export function launchProviderFromKindId");
     expect(source("sidebar/operations-side-bar.tsx").match(/iconProvider: launchProviderFromKindId\(kind\?\.id\)/g)).toHaveLength(2);
     expect(source("sidebar/operations-side-bar-chip.tsx")).toContain('entry.iconProvider ? ` is-${entry.iconProvider}` : ""');
-    expect(source("components/command-band.tsx")).toContain("launchProviderFromKindId(activeCliId ?? activeOperation?.type)");
+    expect(source("components/command-band.tsx")).toContain("launchProviderFromKindId(activeCliId)");
+  });
+
+  it("pins the launch-band supplier pair — harness box, neutral link, single box for Claude", () => {
+    // Fleet은 공급자의 CLI를 띄우지 않고 모델만 빌려 쓴다. 공급자 마크가 홀로 서면 그 회사 CLI로
+    // 실행된다고 읽히므로, 밴드는 하네스 상자와 공급자 상자를 이은 한 쌍으로 말해야 한다.
+    const glyphs = source("components/launch-provider-glyphs.tsx");
+    expect(glyphs).toContain("export function LaunchProviderMark");
+    expect(glyphs).toContain('<span className="operation-launch-provider-glyph is-harness">{launchProviderGlyph("claude")}</span>');
+    // 두 밴드 표면이 같은 표식을 쓰지 않으면 같은 실행 목록이 표면마다 다른 신원을 주장한다.
+    for (const path of ["canvas/canvas-context-menu.tsx", "components/quick-launch.tsx"] as const) {
+      expect(source(path)).toContain("<LaunchProviderMark provider={provider} />");
+      expect(source(path)).not.toContain('<span className="operation-launch-provider-glyph" aria-hidden="true">');
+    }
+
+    const components = source("styles/components.css");
+    // 하네스 상자는 어느 밴드에 있든 Claude 톤이다 — 캡션이 물려준 공급자 톤을 쓰면 두 상자가 같은 색이 된다.
+    expect(components).toContain(".operation-launch-provider-glyph.is-harness {\n  --launch-provider-tone: var(--provider-claude);\n}");
+    // 이음매는 관계이지 신원이 아니라, 공급자 톤도 신호색도 빌리지 않는다.
+    const link = components.match(/\.operation-launch-provider-link \{[^}]*\}/)?.[0] ?? "";
+    expect(link).toContain("color: var(--text-tertiary);");
+    expect(link).not.toMatch(/--launch-provider-tone|--aurora|--coral|--warn|--positive|--brass/);
   });
 
   it("forbids native product selects in Console core, SDK, and built-in plugins", () => {

@@ -53,6 +53,33 @@ export function launchProviderGlyph(provider: LaunchProviderGlyphId): ReactNode 
   return <CodexGlyph />;
 }
 
+/**
+ * 실행 밴드가 다는 공급자 표식. Fleet은 공급자의 CLI를 띄우는 것이 아니라 Claude Code를 하네스로
+ * 두고 그 회사의 모델만 빌려 쓴다 — 공급자 마크가 홀로 서면 그 회사 CLI로 실행되는 것처럼 읽히므로,
+ * 하네스 상자와 공급자 상자를 이어 "Claude Code로, 이 모델을"이라고 말하게 한다.
+ * Claude 모델은 이을 상대가 없으니 상자 하나로 남는다.
+ */
+export function LaunchProviderMark({ provider }: { readonly provider: LaunchProviderGlyphId }): ReactNode {
+  if (provider === "claude") {
+    return (
+      <span className="operation-launch-provider-glyph" aria-hidden="true">
+        {launchProviderGlyph("claude")}
+      </span>
+    );
+  }
+  return (
+    <span className="operation-launch-provider-pair" aria-hidden="true">
+      <span className="operation-launch-provider-glyph is-harness">{launchProviderGlyph("claude")}</span>
+      <svg className="operation-launch-provider-link" viewBox="0 0 14 4" aria-hidden="true">
+        <circle cx="2" cy="2" r="1.1" fill="currentColor" />
+        <circle cx="7" cy="2" r="1.1" fill="currentColor" />
+        <circle cx="12" cy="2" r="1.1" fill="currentColor" />
+      </svg>
+      <span className="operation-launch-provider-glyph">{launchProviderGlyph(provider)}</span>
+    </span>
+  );
+}
+
 function asLaunchProvider(value: string | undefined): LaunchProviderGlyphId | null {
   if (
     value === "claude"
@@ -79,12 +106,20 @@ export function launchProviderFromModelId(modelId: string | null | undefined): L
   return asLaunchProvider(modelId.split("--", 1)[0]);
 }
 
+// 실행 종류 id는 플러그인이 자유롭게 짓는 문자열이라, 앞 토막을 공급자로 읽으면 `claude-report`
+// 같은 남의 어휘까지 신원을 주장한다. 아는 Agent CLI id만 적고 나머지는 중립으로 남긴다.
+const KIND_ID_PROVIDERS: Readonly<Record<string, LaunchProviderGlyphId>> = {
+  "claude-gateway": "claude",
+  // 퇴역 별칭 — 부팅 시 마이그레이션이 claude-gateway로 옮기지만, 그전까지도 Claude가 맞다.
+  claude: "claude",
+  "claude-native": "claude",
+};
+
 /**
- * Resolve the provider tone for a launch-kind id (`claude-gateway`). Agent CLI ids lead with the
- * supplier they speak to, so the leading segment is the same identity the launch menu bands carry.
- * Non-agent kinds such as `shell` have no supplier and stay untinted.
+ * Resolve the provider tone for an Agent CLI launch-kind id (`claude-gateway`). Any other kind —
+ * `shell`, a plugin's own vocabulary — has no supplier identity and stays untinted.
  */
 export function launchProviderFromKindId(kindId: string | null | undefined): LaunchProviderGlyphId | null {
   if (!kindId) return null;
-  return asLaunchProvider(kindId.split("-", 1)[0]);
+  return KIND_ID_PROVIDERS[kindId] ?? null;
 }

@@ -135,7 +135,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   const activeKindTitle = activeKind ? resolveLocalizedText(activeKind.title, language) : null;
   const activeOperationIcon = activeOperation && activePlugin?.renderLaunchIcon ? activePlugin.renderLaunchIcon({ id: activeCliId ?? activeOperation.type, type: activeOperation.type, title: activeKindTitle ?? activeOperation.type }) : null;
-  const activeOperationProvider = launchProviderFromKindId(activeCliId ?? activeOperation?.type);
+  const activeOperationProvider = launchProviderFromKindId(activeCliId);
   const environmentTriggerRef = useRef<HTMLButtonElement>(null);
   const environmentPopoverRef = useRef<HTMLDivElement>(null);
   const commandBandRef = useRef<HTMLElement>(null);

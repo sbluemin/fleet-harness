@@ -11,7 +11,7 @@ import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunch
 import { findVariantLaunchKind, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, resolveSelection } from "../quick-launch.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { closeQuickLaunch, consumeQuickLaunchDraft, requestQuickLaunch, setActiveTheater } from "../store.js";
-import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph } from "./launch-provider-glyphs.js";
+import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, LaunchProviderMark } from "./launch-provider-glyphs.js";
 import { EffortTrack, resolveRowEffort } from "./effort-track.js";
 
 // 카드 폭은 팔레트(920px)보다 좁다 — 팔레트는 결과 목록을 담고, 여기는 한 문단을 담는다.
@@ -354,11 +354,7 @@ export function QuickLaunch() {
                     const provider = launchProviderFromGroupId(group.id);
                     return (
                       <p className={`quick-launch-pop-band${provider ? ` is-${provider}` : ""}`}>
-                        {provider ? (
-                          <span className="operation-launch-provider-glyph" aria-hidden="true">
-                            {launchProviderGlyph(provider)}
-                          </span>
-                        ) : null}
+                        {provider ? <LaunchProviderMark provider={provider} /> : null}
                         <span>{group.label}</span>
                       </p>
                     );

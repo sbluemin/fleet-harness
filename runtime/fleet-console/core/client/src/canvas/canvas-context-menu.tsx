@@ -7,7 +7,7 @@ import { useT } from "../i18n/index.js";
 import { resolveLaunchKindAnnotation } from "../launch-kind-annotations.js";
 import { EffortTrack, effortLadderPosition } from "../components/effort-track.js";
 import { appendSeenFeatureTour, EFFORT_CONFIRM_TIP_SEEN_KEY } from "../components/feature-tour.js";
-import { launchProviderFromGroupId, launchProviderGlyph } from "../components/launch-provider-glyphs.js";
+import { launchProviderFromGroupId, LaunchProviderMark } from "../components/launch-provider-glyphs.js";
 
 interface CanvasContextMenuProps {
   // 캔버스(<main>) 기준 화면 좌표. 메뉴를 이 지점에 띄운다.
@@ -430,11 +430,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                               : group.label;
                           return (
                             <p className={`operation-launch-variant-caption${provider ? ` is-${provider}` : ""}`}>
-                              {provider ? (
-                                <span className="operation-launch-provider-glyph" aria-hidden="true">
-                                  {launchProviderGlyph(provider)}
-                                </span>
-                              ) : null}
+                              {provider ? <LaunchProviderMark provider={provider} /> : null}
                               <span>{caption}</span>
                             </p>
                           );

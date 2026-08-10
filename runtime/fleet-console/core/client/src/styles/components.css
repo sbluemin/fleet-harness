@@ -7334,6 +7334,27 @@
   height: 10px;
 }
 
+/* 공급자 한 쌍 — 하네스 상자(Claude Code)와 모델 공급자 상자를 잇는다. Fleet은 공급자의 CLI를
+   띄우지 않고 모델만 빌려 쓰므로, 공급자 마크가 홀로 서면 그 회사 CLI로 실행된다고 잘못 읽힌다. */
+.operation-launch-provider-pair {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 3px;
+}
+
+.operation-launch-provider-glyph.is-harness {
+  --launch-provider-tone: var(--provider-claude);
+}
+
+/* 이음매는 신원이 아니라 두 상자의 관계다 — 어느 쪽 공급자 톤도 빌리지 않는다. */
+.operation-launch-provider-link {
+  flex: none;
+  width: 11px;
+  height: 4px;
+  color: var(--text-tertiary);
+}
+
 .quick-launch-kind-icon.is-claude,
 .quick-launch-kind-icon.is-codex,
 .quick-launch-kind-icon.is-cursor,
