@@ -94,8 +94,9 @@ describe("War Room canvas controls reach", () => {
       expect(menu.defaultPrevented).toBe(true);
       const opened = container!.querySelector(".canvas-context-menu");
       expect(opened, `deck zoom ${zoom}`).not.toBeNull();
-      // 상자 이름은 어디서 열든 같다 — 여는 자리나 소유 Theater를 이름에 섞지 않는다.
-      expect(opened?.querySelector(".canvas-context-menu-head-text")?.textContent).toBe("Controls · Test");
+      // 시각 헤더 없이도 메뉴 역할은 접근 이름으로 유지한다.
+      expect(opened?.getAttribute("aria-label")).toBe("Operation launcher");
+      expect(opened?.querySelector(".canvas-context-menu-head")).toBeNull();
       expect(opened?.querySelector('[data-operation-launch-kind="shell"]')).not.toBeNull();
       act(() => { window.dispatchEvent(new Event("canvas-context-menu-close")); });
       expect(container!.querySelector(".canvas-context-menu")).toBeNull();

@@ -2275,7 +2275,7 @@
   /* 캔버스 메뉴 폭의 단일 소유자. 메뉴 박스와 설명 어사이드의 기준점이 여기 하나로 모인다 —
      컨테이너에 폭이 없으면 어사이드의 100%가 메뉴 오른쪽이 아니라 왼쪽 모서리를 가리켜
      설명이 메뉴 위를 덮는다. 컴포넌트의 MENU_WIDTH(측정 전 clamp 폴백)만 이 값을 따로 안다. */
-  --canvas-menu-width: 288px;
+  --canvas-menu-width: 264px;
   width: var(--canvas-menu-width);
 }
 
@@ -3683,50 +3683,6 @@
   background: color-mix(in oklch, var(--aurora) 9%, color-mix(in oklch, var(--ink-deep) 28%, transparent));
 }
 
-/* Canvas controls 헤더 — 실행 대상과 Launch 라벨이 한 줄을 나눠 쓴다. 이 메뉴는 설명서가 아니라
-   런처이므로 첫 액션 앞에 세울 수 있는 크롬은 이 한 줄이 전부다. 실행 대상 이름은 남는다 —
-   어느 Theater로 실행되는지 알려주는 표면이 여기 말고는 없다. */
-.canvas-context-menu-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-1) var(--space-2);
-  line-height: 16px;
-}
-
-.canvas-context-menu-head-text {
-  min-width: 0;
-  overflow: hidden;
-}
-
-/* 긴 Theater 이름은 줄임표로 끝난다 — 줄임표가 없으면 글자가 중간에서 그냥 끊겨 이름이
-   잘렸다는 사실 자체가 보이지 않는다. 온전한 이름은 메뉴의 접근 이름이 계속 들고 있다. */
-.canvas-context-menu-head-text strong {
-  display: block;
-  font-family: var(--font-body);
-  font-weight: var(--weight-medium);
-  font-size: 11px;
-  letter-spacing: -0.005em;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Launch 섹션 라벨 — 헤더 줄 오른쪽 끝에 선다. */
-.canvas-context-menu-section {
-  margin: 0;
-  padding: 0;
-  flex: none;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--brass-ink);
-}
-
 .canvas-context-menu {
   width: var(--canvas-menu-width);
   /* 상한은 뷰포트 높이에서 산출된 geometry 변수가 소유한다 — 짧은 화면에서도 메뉴가 잘리지 않는다. */
@@ -3790,6 +3746,16 @@
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.canvas-context-menu-plugin--etc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.operation-launch-provider-glyph--etc {
+  --launch-provider-tone: color-mix(in oklch, var(--brass) 72%, var(--text-tertiary));
 }
 
 .canvas-context-menu-help {

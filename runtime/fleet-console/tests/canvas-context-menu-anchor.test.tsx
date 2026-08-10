@@ -41,7 +41,7 @@ beforeEach(() => {
   originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
   Element.prototype.getBoundingClientRect = function getBoundingClientRect(): DOMRect {
     if (this.classList.contains("canvas-context-menu")) {
-      return { ...originalGetBoundingClientRect.call(this), width: 288, height: 133 } as DOMRect;
+      return { ...originalGetBoundingClientRect.call(this), width: 264, height: 133 } as DOMRect;
     }
     return originalGetBoundingClientRect.call(this);
   };
@@ -93,7 +93,7 @@ describe("CanvasContextMenu anchor placement", () => {
   it("clamps the menu horizontally using its rendered width", () => {
     renderMenu({ x: 1000, y: 156 }, { width: 1116, height: 856 });
 
-    expect(menuStyle().left).toBe("816px");
+    expect(menuStyle().left).toBe("840px");
   });
 
   it("derives the menu max-height from a short viewport", () => {
@@ -189,30 +189,37 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(item?.querySelector(".operation-launch-menu-description")).toBeNull();
   });
 
-  it("merges a lone plugin name into the head line and keeps group labels once a second plugin appears", () => {
+  it("omits role and plugin chrome while keeping Terminal Shell in a final Etc group", () => {
     const terminal: OperationCatalogPlugin = {
       id: "terminal",
       title: "Terminal",
-      kinds: [{ id: "shell", type: "shell", title: "Shell" }],
+      kinds: [
+        { id: "codex", type: "agent", title: "Codex" },
+        { id: "shell", type: "shell", title: "Shell" },
+      ],
     };
     renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [terminal]);
 
-    // 플러그인이 하나면 이름만 있는 행이 값을 못 한다 — 머리글 줄에 붙인다.
-    expect(document.querySelector(".canvas-context-menu-plugin")).toBeNull();
-    expect(document.querySelector(".canvas-context-menu-head-text")?.textContent).toContain("Terminal");
+    expect(document.querySelector(".canvas-context-menu-head")).toBeNull();
+    expect(document.querySelector(".canvas-context-menu")?.textContent).not.toContain("Controls");
+    expect(document.querySelector(".canvas-context-menu")?.textContent).not.toContain("Terminal");
+    const groupLabels = Array.from(document.querySelectorAll(".canvas-context-menu-plugin")).map((node) => node.textContent?.trim());
+    expect(groupLabels).toEqual(["Etc"]);
+    const etcGlyph = document.querySelector(".operation-launch-provider-glyph--etc");
+    expect(etcGlyph?.querySelectorAll("circle")).toHaveLength(3);
+    expect(etcGlyph?.getAttribute("aria-hidden")).toBe("true");
 
-    const notebooks: OperationCatalogPlugin = {
-      id: "notebooks",
-      title: "Notebooks",
-      kinds: [{ id: "notebook", type: "agent", title: "Notebook" }],
-    };
-    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [terminal, notebooks]);
+    const order = Array.from(document.querySelectorAll("[data-operation-launch-kind]"))
+      .map((node) => node.getAttribute("data-operation-launch-kind"));
+    expect(order).toEqual(["codex", "shell"]);
+    expect(document.querySelector('[aria-label="Etc"] [data-operation-launch-kind="shell"]')).not.toBeNull();
+    expect(document.querySelectorAll(".theater-menu-divider")).toHaveLength(1);
 
-    // 둘 이상이면 어느 공급자가 어떤 종류를 갖는지 다시 밝혀야 한다.
-    const groupLabels = Array.from(document.querySelectorAll(".canvas-context-menu-plugin")).map((node) => node.textContent);
-    expect(groupLabels).toEqual(["Terminal", "Notebooks"]);
-    expect(document.querySelector(".canvas-context-menu-head-text")?.textContent).not.toContain("Terminal");
-    expect(document.querySelectorAll('[role="group"]')).toHaveLength(2);
+    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [{
+      ...terminal,
+      kinds: [{ id: "shell", type: "shell", title: "Shell" }],
+    }]);
+    expect(document.querySelectorAll(".theater-menu-divider")).toHaveLength(0);
   });
 
   it("keeps the kind contrast on the row and opens the full description only for the pointed kind", () => {
@@ -400,18 +407,18 @@ describe("CanvasContextMenu launch kind attribute", () => {
     const rows = document.querySelectorAll<HTMLButtonElement>(".canvas-context-menu-item");
     const asideText = () => document.querySelector(".canvas-context-menu-aside")?.textContent;
 
-    // 포인터로 열고 방향키로 옮기는 혼합 입력이 흔하다.
-    act(() => rows[0]!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
-    act(() => rows[1]!.focus());
-    // 가리키는 동안에는 포인터가 이긴다.
+    // 포인터로 열고 방향키로 옮기는 혼합 입력이 흔하다. Claude가 먼저, Shell은 Etc의 마지막 행이다.
+    act(() => rows[1]!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
+    act(() => rows[0]!.focus());
+    // 가리키는 동안에는 포인터가 이겨 설명 없는 Shell 상태를 유지한다.
     expect(asideText()).toBeUndefined();
 
     act(() => menu.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body })));
-    // 포인터가 나가도 포커스가 짚고 있는 행의 설명은 남는다.
+    // 포인터가 나가면 포커스가 짚고 있는 Claude 행의 설명이 다시 드러난다.
     expect(asideText()).toBe("Runs Claude Code with built-in Claude and enabled Gateway models");
   });
 
-  it("names the menu after its launch target and keeps the visual head out of the menu tree", () => {
+  it("keeps a concise accessible name without rendering a visual header", () => {
     act(() => root.render(
       <CanvasContextMenu
         anchor={{ x: 520, y: 156 }}
@@ -425,10 +432,8 @@ describe("CanvasContextMenu launch kind attribute", () => {
     ));
 
     const menu = document.querySelector(".canvas-context-menu")!;
-    expect(menu.getAttribute("aria-label")).toBe("Controls · Terminal");
-    // 같은 문자열이 눈에도 보이지만, 접근성 트리에는 메뉴 이름으로만 한 번 실린다.
-    expect(document.querySelector(".canvas-context-menu-head-text")?.textContent).toBe("Controls · Terminal");
-    expect(document.querySelector(".canvas-context-menu-head")?.getAttribute("aria-hidden")).toBe("true");
+    expect(menu.getAttribute("aria-label")).toBe("Operation launcher");
+    expect(document.querySelector(".canvas-context-menu-head")).toBeNull();
   });
 
   it("gives the menu a valid ancestor for its menu items", () => {
@@ -516,8 +521,8 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(document.querySelector(".canvas-context-menu-aside")).not.toBeNull();
   });
 
-  it("keeps direct-launch kinds above the model bands", () => {
-    // 캡션 아래에 놓인 무캡션 행은 그 밴드의 일원으로 읽힌다 — 바로 실행되는 종류는 밴드보다 위다.
+  it("keeps Terminal Shell below the model bands in the Etc group", () => {
+    // Terminal Shell은 모델 실행과 성격이 달라, 카탈로그 순서와 무관하게 마지막 Etc 그룹으로 간다.
     const [gateway] = gatewayVariantCatalog();
     renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [{
       ...gateway!,
@@ -530,8 +535,8 @@ describe("CanvasContextMenu launch kind attribute", () => {
       .map((element) => element.getAttribute("data-launch-variant-row")
         ?? element.getAttribute("data-operation-launch-kind")
         ?? "caption");
-    // 카탈로그는 Shell을 마지막에 내놓지만(terminal/routes.ts), 목록에서는 첫 행이다.
-    expect(order).toEqual(["shell", "caption", "fable"]);
+    expect(order).toEqual(["caption", "fable", "shell"]);
+    expect(document.querySelector('[aria-label="Etc"] [data-operation-launch-kind="shell"]')).not.toBeNull();
   });
 
   it("keeps a locked menu on one direct row per kind instead of an unusable model band", () => {
@@ -612,7 +617,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
     const effort = document.querySelector<HTMLElement>(".operation-launch-effort-menu")!;
     expect(effort.classList.contains("is-left")).toBe(false);
     // 서브메뉴는 메뉴 상자의 오른쪽 바깥에 선다 — 부모 위로 되돌아오지 않는다.
-    expect(Number.parseFloat(effort.style.left)).toBeGreaterThanOrEqual(260 + 288);
+    expect(Number.parseFloat(effort.style.left)).toBeGreaterThanOrEqual(260 + 264);
   });
 
   it("keeps the rendered widths in step with the placement constants", () => {
@@ -628,7 +633,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
     // 서브메뉴는 fixed라 목록이 굴러도 제자리에 남는다. 짚고 있던 행이 올라가 버리면 그 상자는
     // 엉뚱한 행 옆에서 그 행의 강도인 척하고, 행을 눌러 실행하는 표면에서는 그대로 오실행이 된다.
     // 목록이 메뉴 자체가 되었으므로 굴러가는 상자도 메뉴다.
-    const menuRect = { top: 100, bottom: 400, left: 0, right: 288, width: 288, height: 300 };
+    const menuRect = { top: 100, bottom: 400, left: 0, right: 264, width: 264, height: 300 };
     let anchorRect = { top: 150, bottom: 178, left: 8, right: 208, width: 200, height: 28 };
     const previous = Element.prototype.getBoundingClientRect;
     Element.prototype.getBoundingClientRect = function getBoundingClientRect(): DOMRect {
@@ -694,13 +699,13 @@ describe("CanvasContextMenu launch kind attribute", () => {
     const shell = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="shell"]')!;
     const model = document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!;
 
-    // 두 종류의 행이 한 목록의 형제가 됐다 — 방향키는 그 사이를 건너다녀야 한다.
+    // 두 종류의 행이 한 목록의 형제다. 모델이 먼저이고 Etc의 Shell이 마지막이어도 순환한다.
     act(() => menu.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
-    expect(document.activeElement).toBe(shell);
-    pressFlyoutKey("ArrowDown");
     expect(document.activeElement).toBe(model);
-    pressFlyoutKey("ArrowUp");
+    pressFlyoutKey("ArrowDown");
     expect(document.activeElement).toBe(shell);
+    pressFlyoutKey("ArrowUp");
+    expect(document.activeElement).toBe(model);
   });
 
   it("opens the effort submenu from a model row with ArrowRight, then restores focus with Escape", async () => {

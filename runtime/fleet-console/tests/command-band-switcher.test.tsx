@@ -186,14 +186,14 @@ describe("side bar signal consumption", () => {
   it("consumes the Theater launch request by opening the launch menu at the Theater's New Operation button", async () => {
     const onSelectTheater = vi.fn();
     renderSideBar(onSelectTheater);
-    expect(document.querySelector(".canvas-context-menu-head")).toBeNull();
+    expect(document.querySelector(".canvas-context-menu")).toBeNull();
 
     act(() => requestSideBarTheaterLaunch("theater-b"));
 
     // jsdom 기하는 항상 0이라 width 전환 미정착 경로(220ms 지연 실측)를 탄다. consume도 실측 시점에 일어난다.
     await act(() => new Promise((resolve) => setTimeout(resolve, 240)));
     expect(getState().pendingSideBarTheaterLaunch).toBeNull();
-    expect(document.querySelector(".canvas-context-menu-head")).not.toBeNull();
+    expect(document.querySelector(".canvas-context-menu")).not.toBeNull();
     expect(onSelectTheater).toHaveBeenCalledWith("theater-b");
   });
 });

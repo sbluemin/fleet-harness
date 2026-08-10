@@ -431,7 +431,9 @@ describe("Instrument core design contract", () => {
     expect(components).toContain("background-size: 48px 48px !important;");
     expect(components).toContain(".canvas-formation-guide {");
     expect(components).toContain(".canvas-operation-formation-slot {");
-    expect(contextMenu).toContain('<p className="canvas-context-menu-section">{t("canvas.menu.launch")}</p>');
+    expect(contextMenu).not.toContain("canvas-context-menu-head");
+    expect(contextMenu).toContain('aria-label={t("canvas.menu.etc")}');
+    expect(contextMenu).toContain("operation-launch-provider-glyph--etc");
     expect(contextMenu).not.toContain("CanvasContextMenuMode");
     expect(contextMenu).not.toContain("canvas-context-menu-tabs");
     expect(contextMenu).not.toContain("Formation view");
@@ -1372,18 +1374,21 @@ describe("Instrument core design contract", () => {
     expect(contextMenu).toContain('className="operation-launch-menu-brief"');
     expect(contextMenu).toContain("operation-launch-menu-description operation-launch-menu-description--quiet");
 
-    // 헤더는 한 줄이다 — 레티클 마크와 그 30px 블록은 메뉴에서 물러났다. 실행 대상 이름은
-    // 남는다: 어느 Theater로 실행되는지 알려주는 표면이 여기 말고는 없다.
+    // 역할·플러그인·동작 이름을 반복하던 시각 헤더는 제거한다. 메뉴 역할은 aria-label이,
+    // Terminal Shell의 별도 성격은 최하단 Etc 그룹이 맡는다.
     expect(components).not.toContain(".canvas-context-menu-reticle");
     expect(contextMenu).not.toContain('className="canvas-context-menu-reticle"');
-    expect(contextMenu).toContain('className="canvas-context-menu-head-text"');
-    expect(components).toContain(".canvas-context-menu-head {\n  display: flex;\n  align-items: baseline;");
+    expect(contextMenu).not.toContain("canvas-context-menu-head");
+    expect(components).not.toContain(".canvas-context-menu-head {");
+    expect(contextMenu).toContain('aria-label={menuLabel}');
+    expect(contextMenu).toContain('aria-label={t("canvas.menu.etc")}');
+    expect(contextMenu).toContain("operation-launch-provider-glyph--etc");
 
     // 폭은 세 곳이 함께 알아야 한다. 하나만 고치면 컴파일은 되고 치수만 조용히 어긋난다.
     // 폭은 컨테이너가 단일 소유자다. 컨테이너에 폭이 없으면 설명 어사이드의 100%가 메뉴
     // 오른쪽이 아니라 왼쪽 모서리를 가리켜 설명이 메뉴 위를 덮는다(실측으로 확인).
-    expect(contextMenu).toContain("const MENU_WIDTH = 288;");
-    expect(components).toMatch(/\.operation-launch-control--canvas \{[^}]*--canvas-menu-width: 288px;[^}]*width: var\(--canvas-menu-width\);/);
+    expect(contextMenu).toContain("const MENU_WIDTH = 264;");
+    expect(components).toMatch(/\.operation-launch-control--canvas \{[^}]*--canvas-menu-width: 264px;[^}]*width: var\(--canvas-menu-width\);/);
     expect(components).toContain(".canvas-context-menu {\n  width: var(--canvas-menu-width);");
     expect(components).toMatch(/\.operation-launch-control--canvas \.operation-launch-menu \{[^}]*min-width: var\(--canvas-menu-width\);/);
     // 캔버스 전용 패딩은 두 클래스를 함께 짚어야 한다 — 한 클래스면 뒤쪽의 .theater-menu와

@@ -7,7 +7,7 @@ import { useT } from "../i18n/index.js";
 import { resolveLaunchKindAnnotation } from "../launch-kind-annotations.js";
 import { EffortTrack, effortLadderPosition } from "../components/effort-track.js";
 import { appendSeenFeatureTour, EFFORT_CONFIRM_TIP_SEEN_KEY } from "../components/feature-tour.js";
-import { launchProviderFromGroupId, launchProviderGlyph } from "../components/launch-provider-glyphs.js";
+import { launchEtcGlyph, launchProviderFromGroupId, launchProviderGlyph } from "../components/launch-provider-glyphs.js";
 
 interface CanvasContextMenuProps {
   // 캔버스(<main>) 기준 화면 좌표. 메뉴를 이 지점에 띄운다.
@@ -29,7 +29,7 @@ interface CanvasContextMenuProps {
 // 폭은 세 곳이 함께 알아야 한다 — 이 상수(측정 전 clamp 폴백), .canvas-context-menu의 width,
 // .operation-launch-control--canvas .operation-launch-menu의 min-width. 하나만 고치면 컴파일은
 // 되고 치수만 조용히 어긋난다.
-const MENU_WIDTH = 288;
+const MENU_WIDTH = 264;
 const FLYOUT_GAP = 10;
 // 트랙과 그 값 라벨이 나란히 들어가는 폭이다.
 const EFFORT_SUBMENU_WIDTH = 216;
@@ -216,15 +216,19 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openEffortRow]);
 
-  // 플러그인이 하나뿐이면 그 이름은 헤더 줄에 붙는다 — 항목 네 개짜리 메뉴에서 이름만 있는
-  // 행 하나가 통째로 서는 것은 값을 못 한다. 둘 이상일 때만 그룹 라벨을 세운다.
-  const singlePlugin = catalog.length === 1 ? catalog[0]! : null;
-  // 머리글은 어디서 열었든 같은 이름을 쓴다 — 상자 이름에 여는 자리(캔버스)나 소유 Theater를 섞으면
-  // 같은 메뉴가 표면마다 다른 이름으로 불린다.
-  const headTitle = t("canvas.menu.title");
-  // 시각 머리글과 메뉴 이름이 같은 문자열이어야 한다 — 좁은 폭에서 머리글이 줄임표로 잘려도
-  // 접근 이름에는 온전히 남는다.
-  const headLabel = singlePlugin ? `${headTitle} · ${singlePlugin.title}` : headTitle;
+  // 시각 헤더 없이도 보조기술에는 메뉴의 역할을 온전히 알린다. 플러그인 이름이나 동작 이름을
+  // 상자 위에 반복하지 않아 첫 번째 실제 선택지가 곧 메뉴의 시작점이 되게 한다.
+  const menuLabel = t("canvas.menu.aria");
+  // Terminal의 Shell은 에이전트/모델 실행과 성격이 다르다. 카탈로그 순서와 무관하게 마지막 Etc
+  // 섹션으로 보내되, 실제 실행 소유권과 아이콘 렌더링에는 원래 plugin id를 그대로 쓴다.
+  const terminalShellKinds = catalog
+    .find((plugin) => plugin.id === "terminal")
+    ?.kinds.filter((kind) => kind.type === "shell") ?? [];
+  const primaryCatalog = catalog
+    .map((plugin) => plugin.id === "terminal"
+      ? { ...plugin, kinds: plugin.kinds.filter((kind) => kind.type !== "shell") }
+      : plugin)
+    .filter((plugin) => plugin.kinds.length > 0);
 
   // 모델 행은 자기 행 키만 들고 다닌다(강도 상자·고른 단이 그 키에 매달린다). 실행은 여전히
   // 실행 종류가 일으키므로, 키에서 그 종류로 되돌아오는 길을 카탈로그 한 번 훑어 만들어 둔다.
@@ -333,9 +337,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
       <div
         className="operation-launch-menu theater-menu canvas-context-menu"
         role="menu"
-        // 머리글은 시각 표면이고, 그 정보는 메뉴 이름이 대신 싣는다 — role="menu" 아래에 일반
-        // 콘텐츠를 두면 화면 낭독기의 메뉴 탐색이 첫 항목으로 곧장 들어가지 못한다.
-        aria-label={headLabel}
+        aria-label={menuLabel}
         aria-orientation="vertical"
         tabIndex={-1}
         ref={menuRef}
@@ -357,21 +359,15 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
         }}
         {...{ [FEATURE_TOUR_BOUNDARY_ATTRIBUTE]: "" }}
       >
-        <div className="canvas-context-menu-head" aria-hidden="true">
-          <span className="canvas-context-menu-head-text">
-            <strong>{headLabel}</strong>
-          </span>
-          <p className="canvas-context-menu-section">{t("canvas.menu.launch")}</p>
-        </div>
-        {catalog.length > 0 ? catalog.map((plugin, index) => {
-          // 모델 밴드를 펼치는 실행 종류와 바로 실행되는 종류를 갈라 세운다. 바로 실행되는 쪽이
-          // 위다 — 캡션 아래에 놓인 무캡션 행은 그 밴드의 일원으로 읽힌다.
-          const directKinds = plugin.kinds.filter((kind) => !expandsVariants(kind, canLaunch));
-          const variantKinds = plugin.kinds.filter((kind) => expandsVariants(kind, canLaunch));
-          return (
-            <div key={plugin.id} role="group" aria-label={plugin.title}>
-              {index > 0 ? <div className="theater-menu-divider" role="separator" /> : null}
-              {singlePlugin ? null : <p className="canvas-context-menu-plugin">{plugin.title}</p>}
+        {catalog.length > 0 ? <>
+          {primaryCatalog.map((plugin, index) => {
+            // 모델 밴드를 펼치는 실행 종류와 바로 실행되는 종류를 갈라 세운다. Terminal Shell은
+            // 성격이 다른 최하단 Etc 섹션이 소유하므로 primaryCatalog에서 이미 제외됐다.
+            const directKinds = plugin.kinds.filter((kind) => !expandsVariants(kind, canLaunch));
+            const variantKinds = plugin.kinds.filter((kind) => expandsVariants(kind, canLaunch));
+            return (
+              <div key={plugin.id} role="group" aria-label={plugin.title}>
+                {index > 0 ? <div className="theater-menu-divider" role="separator" /> : null}
               {directKinds.map((kind) => {
                 const disabled = kind.disabled === true || !canLaunch;
                 const annotation = resolveLaunchKindAnnotation(kind.id);
@@ -543,8 +539,43 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                 );
               })}
             </div>
-          );
-        }) : <p className="theater-menu-empty">{t("canvas.menu.empty")}</p>}
+            );
+          })}
+          {terminalShellKinds.length > 0 ? (
+            <div role="group" aria-label={t("canvas.menu.etc")}>
+              {primaryCatalog.length > 0 ? <div className="theater-menu-divider" role="separator" /> : null}
+              <p className="canvas-context-menu-plugin canvas-context-menu-plugin--etc">
+                <span className="operation-launch-provider-glyph operation-launch-provider-glyph--etc" aria-hidden="true">
+                  {launchEtcGlyph()}
+                </span>
+                <span>{t("canvas.menu.etc")}</span>
+              </p>
+              {terminalShellKinds.map((kind) => {
+                const disabled = kind.disabled === true || !canLaunch;
+                return (
+                  <div key={itemKey("terminal", kind.id)} className="operation-launch-menu-item-wrap">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="theater-menu-item canvas-context-menu-item operation-launch-menu-item"
+                      data-operation-launch-kind={kind.id}
+                      disabled={disabled}
+                      title={kind.disabledReason}
+                      tabIndex={-1}
+                      onMouseEnter={() => setHoverKey(itemKey("terminal", kind.id))}
+                      onFocus={() => setFocusKey(itemKey("terminal", kind.id))}
+                      onClick={() => onLaunchKind("terminal", kind)}
+                    >
+                      <span className="theater-menu-check" aria-hidden="true">{renderKindIcon("terminal", kind) ?? <FallbackGlyph />}</span>
+                      <span className="theater-menu-label">{kind.title}</span>
+                      {kind.disabledReason ? <span className="operation-launch-menu-reason">{kind.disabledReason}</span> : null}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+        </> : <p className="theater-menu-empty">{t("canvas.menu.empty")}</p>}
       </div>
       {activeDescription && asideSide
         ? (
