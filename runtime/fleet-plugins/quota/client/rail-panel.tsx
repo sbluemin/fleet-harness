@@ -212,12 +212,12 @@ function StatusStrip({ kind, children }: { readonly kind: "expired" | "stale" | 
 }
 
 /**
- * 막대의 채움·눈금·빗금이 각각 무엇인지 설명한다. 미터마다 두지 않고 패널에 하나만
- * 두는 이유는 한 번 읽으면 끝나는 설명이기 때문이다 — 최대 11개까지 뜨는 미터마다
- * 붙이면 같은 문장을 열한 번 물어보게 된다.
+ * 막대의 채움·눈금·빗금이 각각 무엇인지, 그리고 이 수치가 어디서 오는지 설명한다.
+ * 미터마다 두지 않고 패널에 하나만 두는 이유는 한 번 읽으면 끝나는 설명이기 때문이다 —
+ * 최대 11개까지 뜨는 미터마다 붙이면 같은 문장을 열한 번 물어보게 된다.
  *
- * hover는 마우스용이고, 포인터가 없는 기기에서는 눌러서 고정한다. 두 경로를 모두
- * 두지 않으면 터치에서는 영영 열리지 않는다.
+ * 상주 푸터에 사는 만큼 위로 열린다. hover는 마우스용이고, 포인터가 없는 기기에서는
+ * 눌러서 고정한다. 두 경로를 모두 두지 않으면 터치에서는 영영 열리지 않는다.
  */
 function BarLegend({ t }: { readonly t: T }) {
   const [pinned, setPinned] = useState(false);
@@ -265,6 +265,7 @@ function BarLegend({ t }: { readonly t: T }) {
           <span className="quota-legend__swatch" aria-hidden="true"><i className="quota-legend__swatch-projection" /></span>
           {t("quota.legend.projection")}
         </p>
+        <p className="quota-legend__note">{t("quota.privacy")}</p>
       </div>
     </div>
   );
@@ -433,7 +434,6 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
         {!data && !requestError ? <div className="quota-loading" aria-live="polite">…</div> : null}
         {data ? (
           <>
-            <BarLegend t={t} />
             <ProviderCard id="claude" provider={data.providers.claude} now={now} t={t} connect={connect} />
             <ProviderCard id="codex" provider={data.providers.codex} now={now} t={t} connect={connect} />
             <ProviderCard id="cursor" provider={data.providers.cursor} now={now} t={t} connect={connect} />
@@ -445,9 +445,9 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
       <footer className="quota-footer">
         <div className="quota-footer__row">
           {fetchedAt > 0 ? <span>{updatedMinutes < 1 ? t("quota.updated.now") : t("quota.updated.ago", { m: updatedMinutes })}</span> : null}
+          <BarLegend t={t} />
           <button type="button" className="quota-refresh" onClick={() => refresh(true)}>{t("quota.refresh")}</button>
         </div>
-        <p>{t("quota.privacy")}</p>
       </footer>
     </div>
   );

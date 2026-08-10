@@ -1,22 +1,27 @@
+/* 스크롤은 본문이 가지고 푸터는 상주한다. 갱신 시각·새로고침·범례는 어디까지
+   스크롤했든 늘 같은 자리에 있어야 하는 패널 단위 컨트롤이기 때문이다. */
 .quota-root {
+  display: flex;
+  flex-direction: column;
   height: 100%;
-  overflow-y: auto;
   color: var(--text-primary);
 }
 
 .quota-body {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 14px;
+  min-height: 0;
   padding: 16px;
+  overflow-y: auto;
 }
 
-/* 패널에 하나뿐인 막대 범례. 본문 흐름에서 빠져 나와 카드 사이 간격을 벌리지 않는다. */
+/* 패널에 하나뿐인 막대 범례. 상주 푸터의 오른쪽 끝, 새로고침 바로 앞에 산다. */
 .quota-legend {
   position: relative;
-  align-self: flex-end;
-  height: 0;
-  margin-top: -4px;
+  display: flex;
+  margin-left: auto;
 }
 
 .quota-legend__toggle {
@@ -44,8 +49,8 @@
 
 .quota-legend__bubble {
   position: absolute;
-  top: calc(100% + 21px);
-  right: 0;
+  bottom: calc(100% + 9px);
+  right: -8px;
   z-index: 3;
   width: 268px;
   padding: 11px 13px;
@@ -77,6 +82,17 @@
 
 .quota-legend__row:last-child {
   margin-bottom: 0;
+}
+
+/* 조회 경로 고지. 연결 시점의 고지는 connect 카드가 따로 지고 있고, 이쪽은 이미
+   연결한 사용자를 위한 상시 확인용이라 같은 말풍선 안에 둔다. */
+.quota-legend__note {
+  margin: 9px 0 0;
+  padding-top: 9px;
+  border-top: 1px solid var(--hairline);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .quota-legend__swatch {
@@ -417,8 +433,10 @@
 }
 
 .quota-footer {
+  flex: none;
   border-top: 1px solid var(--hairline);
-  padding: 10px 16px 14px;
+  padding: 9px 16px 10px;
+  background: var(--surface-glass);
 }
 
 .quota-footer__row {
@@ -431,7 +449,6 @@
 }
 
 .quota-refresh {
-  margin-left: auto;
   padding: 4px 6px;
   border: 0;
   border-radius: var(--radius-sm);
@@ -441,13 +458,6 @@
   font-family: var(--font-body);
   font-size: 12px;
   cursor: pointer;
-}
-
-.quota-footer p {
-  margin: 10px 0 0;
-  color: var(--text-tertiary);
-  font-size: 11.5px;
-  line-height: 1.45;
 }
 
 @media (prefers-reduced-motion: reduce) {
