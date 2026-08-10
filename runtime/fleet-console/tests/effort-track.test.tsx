@@ -406,6 +406,17 @@ describe("EffortTrack", () => {
     expect(onChange).toHaveBeenLastCalledWith("high");
   });
 
+  it("places the apex seam between ordinary and gated stops when only max is gated", () => {
+    render(row({ gatedEfforts: ["max"] }), "xhigh");
+    act(() => required(".effort-track-apex-toggle").click());
+
+    // auto + low/med/high/xhigh + max → last=5, ordinary=4 → seam at 4.5/5 = 0.9.
+    expect(track().getAttribute("aria-valuemax")).toBe("5");
+    expect(required(".effort-track-apex-seam").style.left).toContain("0.9");
+    expect(document.querySelectorAll("[data-apex-rung=true]")).toHaveLength(1);
+    expect(stops()).toHaveLength(6);
+  });
+
   it("preserves the gate-free rendering contract", () => {
     render(row(), "high");
 

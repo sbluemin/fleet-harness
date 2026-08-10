@@ -208,7 +208,9 @@ export function EffortTrack({
   }, [commit, index, last, nearestSelectable, onConfirmCurrent, slots]);
 
   const ratio = last === 0 ? 0 : index / last;
-  const seamRatio = ladder.length === 0 ? 0 : (ordinaryRungs.length + 0.5) / ladder.length;
+  // 심은 열린 트랙의 슬롯 좌표로 둔다 — 전체 사다리 길이로 나누면 게이트 부분집합
+  // (max만 등)에서 심이 max/ultra 사이가 아니라 엉뚱한 자리에 선다.
+  const seamRatio = !apexOpen || last === 0 ? 0 : (ordinaryRungs.length + 0.5) / last;
   // 닫힌 사다리(일상 단) 간격 폭을 열린 뒤에도 유지한다 — 스톱 수를 늘릴 때 트랙만
   // 비례해 넓히고, 셸이 남는 폭을 트랙에 밀어 넣어 간격을 벌리지 않는다.
   const closedIntervals = Math.max(ordinaryRungs.length, 1);

@@ -92,8 +92,8 @@ export function buildClaudeGatewayLaunchVariants(selection?: AiGatewaySelection)
 }
 
 // 강도 축은 사다리 어휘를 아는 이쪽이 소유한다. 한 모델이 그 일부만 내놓아도(low/high/max)
-// 축은 그대로라, 표면이 내놓은 단을 균등히 벌리는 대신 제자리에 세울 수 있다. 게이트웨이
-// 카탈로그는 max 뒤에 ultra 단을 두므로(GATEWAY_REASONING_EFFORTS), 축은 그 끝까지 세운다.
+// 일상 단의 자리는 지키되, 게이트 티어(max/ultra)는 모델이 실제로 내놓은 것만 축에 올린다 —
+// 안 내놓은 apex를 축에 남겨 두면 + 없이도 빈 스톱이 일상 사다리 끝에 붙는다.
 const EFFORT_AXIS: readonly string[] = [...NATIVE_CLAUDE_EFFORTS, "ultra"];
 
 function providerGroupId(provider: GatewayProvider): string {
@@ -105,13 +105,16 @@ function toGatewayRow(model: GatewayModel, selection: AiGatewaySelection) {
     .filter((effort): effort is Extract<GatewayReasoningEffort, (typeof EFFORT_AXIS)[number]> =>
       EFFORT_AXIS.includes(effort));
   const gatedEfforts = APEX_EFFORTS.filter((effort) => efforts.includes(effort));
+  // apex는 게이트 뒤 전용이다. 노출되지 않은 max/ultra는 축에서도 빼, 닫힌 트랙에
+  // 유령 스톱이 서지 않게 한다. 일상 단(medium/xhigh 등)의 빈 자리는 그대로 둔다.
+  const effortAxis = EFFORT_AXIS.filter((effort) =>
+    !(APEX_EFFORTS as readonly string[]).includes(effort) || efforts.includes(effort));
   return {
     id: model.id,
     label: bareModelName(model),
     launch: { model: model.id },
     ...(efforts.length > 0 ? {
-      effortAxis: EFFORT_AXIS,
-      // apex + 는 모델이 실제로 내놓은 max/ultra 가 있을 때만. 빈 게이트는 일상 축만 둔다.
+      effortAxis,
       ...(gatedEfforts.length > 0 ? { gatedEfforts } : {}),
       chips: efforts.map((effort) => ({
         id: effort,
