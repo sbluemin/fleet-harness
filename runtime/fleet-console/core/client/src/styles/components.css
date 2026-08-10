@@ -4893,6 +4893,15 @@
   flex: none;
 }
 
+/* 아이콘이 곧 공급자 신원이다 — 실행 메뉴 밴드가 쓰는 provider 톤을 그대로 빌려, 칩 목록에서도
+   같은 마크가 같은 색으로 읽히게 한다. 상자는 빌리지 않는다: 아이콘을 담은 beacon 버튼이 이미
+   hover에서 테두리를 켜므로 상자가 겹친다. Shell처럼 공급자가 없는 종류는 중립으로 남는다. */
+.side-bar-chip-op-icon.is-claude { color: var(--provider-claude); }
+.side-bar-chip-op-icon.is-codex { color: var(--provider-codex); }
+.side-bar-chip-op-icon.is-cursor { color: var(--provider-cursor); }
+.side-bar-chip-op-icon.is-kimi { color: var(--provider-kimi); }
+.side-bar-chip-op-icon.is-opencode { color: var(--provider-opencode); }
+
 
 .side-bar-chip-name {
   flex: 1;

@@ -594,6 +594,13 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
 
 .command-band-operation-kind { display: flex; align-items: center; line-height: 0; }
 .command-band-operation-kind svg { display: block; width: 13px; height: 13px; }
+/* 사이드바 칩과 같은 판정이다 — 마크는 공급자 신원을 지니므로 실행 메뉴의 provider 톤을 쓰고,
+   그 옆의 CLI 라벨은 속성 칩의 중립 잉크로 남겨 색이 한 번만 말하게 한다. */
+.command-band-operation-kind.is-claude { color: var(--provider-claude); }
+.command-band-operation-kind.is-codex { color: var(--provider-codex); }
+.command-band-operation-kind.is-cursor { color: var(--provider-cursor); }
+.command-band-operation-kind.is-kimi { color: var(--provider-kimi); }
+.command-band-operation-kind.is-opencode { color: var(--provider-opencode); }
 
 /* ===== Command Band 세그먼트 드롭다운 전환기 — 메뉴 문법은 components.css .theater-menu 계열의 밴드 스코프 미러 ===== */
 .command-band-switcher {

@@ -53,35 +53,38 @@ export function launchProviderGlyph(provider: LaunchProviderGlyphId): ReactNode 
   return <CodexGlyph />;
 }
 
+function asLaunchProvider(value: string | undefined): LaunchProviderGlyphId | null {
+  if (
+    value === "claude"
+    || value === "codex"
+    || value === "cursor"
+    || value === "kimi"
+    || value === "opencode"
+  ) {
+    return value;
+  }
+  return null;
+}
+
 export function launchProviderFromGroupId(groupId: string): LaunchProviderGlyphId | null {
   if (groupId === "native") return "claude";
   if (!groupId.startsWith("gateway:")) return null;
-  const provider = groupId.slice("gateway:".length);
-  if (
-    provider === "claude"
-    || provider === "codex"
-    || provider === "cursor"
-    || provider === "kimi"
-    || provider === "opencode"
-  ) {
-    return provider;
-  }
-  return null;
+  return asLaunchProvider(groupId.slice("gateway:".length));
 }
 
 /** Resolve the provider glyph for a selected launch-model id (`fable` or `cursor--grok-4.5`). */
 export function launchProviderFromModelId(modelId: string | null | undefined): LaunchProviderGlyphId | null {
   if (!modelId) return null;
   if (!modelId.includes("--")) return "claude";
-  const provider = modelId.split("--", 1)[0];
-  if (
-    provider === "claude"
-    || provider === "codex"
-    || provider === "cursor"
-    || provider === "kimi"
-    || provider === "opencode"
-  ) {
-    return provider;
-  }
-  return null;
+  return asLaunchProvider(modelId.split("--", 1)[0]);
+}
+
+/**
+ * Resolve the provider tone for a launch-kind id (`claude-gateway`). Agent CLI ids lead with the
+ * supplier they speak to, so the leading segment is the same identity the launch menu bands carry.
+ * Non-agent kinds such as `shell` have no supplier and stay untinted.
+ */
+export function launchProviderFromKindId(kindId: string | null | undefined): LaunchProviderGlyphId | null {
+  if (!kindId) return null;
+  return asLaunchProvider(kindId.split("-", 1)[0]);
 }

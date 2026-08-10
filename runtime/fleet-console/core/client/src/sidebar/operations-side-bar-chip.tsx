@@ -2,6 +2,7 @@ import { useEffect, useRef, type CSSProperties, type PointerEvent as ReactPointe
 
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
+import type { LaunchProviderGlyphId } from "../components/launch-provider-glyphs.js";
 import { useT } from "../i18n/index.js";
 import { operationActivityLabel, operationActivityVisual } from "../operation-activity.js";
 import { useInlineRename } from "../use-inline-rename.js";
@@ -18,6 +19,8 @@ export interface SideBarEntry {
   readonly notificationCount: number;
   readonly status?: OperationActivity;
   readonly icon: ReactNode;
+  /** Supplier behind the icon, when the Operation has one — carries the launch menu's provider tone. */
+  readonly iconProvider?: LaunchProviderGlyphId | null;
 }
 
 interface SideBarChipProps {
@@ -221,7 +224,7 @@ export function OperationsSideBarChip({
       }}
     >
       <span className="side-bar-chip-beacon-button" aria-hidden="true">
-        <span className="side-bar-chip-op-icon">
+        <span className={`side-bar-chip-op-icon${entry.iconProvider ? ` is-${entry.iconProvider}` : ""}`}>
           {entry.icon ?? <DefaultOpIcon />}
         </span>
       </span>

@@ -11,6 +11,7 @@ import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo 
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
 import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../focus-guards.js";
 import { DirectoryBrowserModal } from "../components/directory-browser-modal.js";
+import { launchProviderFromKindId } from "../components/launch-provider-glyphs.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
@@ -403,6 +404,7 @@ export function OperationsSideBar({
       notificationCount: operationNotifications[operation.id] ? 1 : 0,
       status: resolveOperationActivity(operation, operationStatus),
       icon,
+      iconProvider: launchProviderFromKindId(kind?.id),
     };
   });
   const groupedSections = groupOperations(allEntries, activeGroups, canvas.operationOrder);
@@ -1358,6 +1360,7 @@ export function buildTheaterEntries({
       notificationCount: operationNotifications[operation.id] ? 1 : 0,
       status: resolveOperationActivity(operation, operationStatus),
       icon,
+      iconProvider: launchProviderFromKindId(kind?.id),
     };
   });
 }

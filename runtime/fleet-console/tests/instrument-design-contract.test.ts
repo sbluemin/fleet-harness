@@ -1529,6 +1529,38 @@ describe("Instrument core design contract", () => {
     expect(rail).toContain("width: 44px");
   });
 
+  it("pins the Operation mark provider tone — launch-menu token, tone only, supplier-less kinds neutral", () => {
+    // 같은 마크가 표면마다 다른 색으로 읽히면 공급자 신원이 아니라 표면 장식이 된다. 사이드바 칩과
+    // 커맨드 밴드는 실행 메뉴 밴드가 쓰는 provider 토큰을 그대로 빌리되, 색만 빌린다.
+    const components = source("styles/components.css");
+    const layout = source("styles/layout.css");
+    const PROVIDERS = ["claude", "codex", "cursor", "kimi", "opencode"];
+
+    for (const [css, selector] of [[components, "\\.side-bar-chip-op-icon"], [layout, "\\.command-band-operation-kind"]] as const) {
+      const rules = [...css.matchAll(new RegExp(`${selector}\\.is-([a-z]+) \\{([^}]*)\\}`, "g"))];
+      expect(rules.map(([, provider]) => provider)).toEqual(PROVIDERS);
+      for (const [, provider, declarations] of rules) {
+        const body = declarations ?? "";
+        expect(body.trim()).toBe(`color: var(--provider-${provider});`);
+        // 상자까지 빌리면 실행 메뉴의 캡션 밴드 문법이 칩 안으로 새어, 아이콘을 감싼 beacon 버튼의
+        // hover 테두리와 두 겹으로 겹친다 — 톤만 옮기고 테두리·채움은 남겨 둔다.
+        expect(body).not.toMatch(/border|background/);
+      }
+    }
+
+    // 공급자가 없는 종류(Shell)는 중립 잉크로 남아야 색이 "공급자가 있다"만 말한다.
+    expect(components).toContain(".side-bar-chip-op-icon {\n  display: flex;");
+    expect(components).toMatch(/\.side-bar-chip-op-icon \{[^}]*color: var\(--text-secondary\);/);
+    // 밴드에서는 마크만 색을 말하고 그 옆 CLI 라벨은 속성 칩의 중립 잉크로 남는다.
+    expect(layout).toMatch(/\.command-band-operation-attribute \{[^}]*color: var\(--text-tertiary\);/);
+
+    // 톤의 출처는 실행 종류 id 하나다 — 표면마다 제 나름의 공급자 추론을 두면 서로 어긋난다.
+    expect(source("components/launch-provider-glyphs.tsx")).toContain("export function launchProviderFromKindId");
+    expect(source("sidebar/operations-side-bar.tsx").match(/iconProvider: launchProviderFromKindId\(kind\?\.id\)/g)).toHaveLength(2);
+    expect(source("sidebar/operations-side-bar-chip.tsx")).toContain('entry.iconProvider ? ` is-${entry.iconProvider}` : ""');
+    expect(source("components/command-band.tsx")).toContain("launchProviderFromKindId(activeCliId ?? activeOperation?.type)");
+  });
+
   it("forbids native product selects in Console core, SDK, and built-in plugins", () => {
     const hits = findRawProductSelects();
     expect(hits, hits.map((hit) => `${hit.file}:${hit.line} ${hit.snippet}`).join("\n")).toEqual([]);

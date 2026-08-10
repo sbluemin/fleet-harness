@@ -10,6 +10,7 @@ import { cycleTriageDeckZoomPreset } from "../canvas/triage-watch-deck.js";
 import { COMMAND_BAND_RAIL_STRIP_PX, commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandMapControlsAnchor, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
 import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
+import { launchProviderFromKindId } from "./launch-provider-glyphs.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { setRailChromeExpanded, toggleRailChrome, useRailChromeExpanded } from "../rail/rail-store.js";
@@ -134,6 +135,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   const activeKindTitle = activeKind ? resolveLocalizedText(activeKind.title, language) : null;
   const activeOperationIcon = activeOperation && activePlugin?.renderLaunchIcon ? activePlugin.renderLaunchIcon({ id: activeCliId ?? activeOperation.type, type: activeOperation.type, title: activeKindTitle ?? activeOperation.type }) : null;
+  const activeOperationProvider = launchProviderFromKindId(activeCliId ?? activeOperation?.type);
   const environmentTriggerRef = useRef<HTMLButtonElement>(null);
   const environmentPopoverRef = useRef<HTMLDivElement>(null);
   const commandBandRef = useRef<HTMLElement>(null);
@@ -611,7 +613,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
                 <span className="command-band-segment-label">{activeOperation.title}</span>
                 <CommandBandTriggerCaret />
               </button>}
-              {activeCliLabel ? <span className="command-band-operation-attribute" title={activeKindTitle ?? activeCliLabel}>{activeOperationIcon ? <span className="command-band-operation-kind" aria-hidden="true">{activeOperationIcon}</span> : null}{activeCliLabel}</span> : null}
+              {activeCliLabel ? <span className="command-band-operation-attribute" title={activeKindTitle ?? activeCliLabel}>{activeOperationIcon ? <span className={`command-band-operation-kind${activeOperationProvider ? ` is-${activeOperationProvider}` : ""}`} aria-hidden="true">{activeOperationIcon}</span> : null}{activeCliLabel}</span> : null}
             </> : <button
               ref={operationTriggerRef}
               type="button"
