@@ -94,7 +94,7 @@ export function buildClaudeGatewayLaunchVariants(selection?: AiGatewaySelection)
 // 강도 축은 사다리 어휘를 아는 이쪽이 소유한다. 한 모델이 그 일부만 내놓아도(low/high/max)
 // 일상 단의 자리는 지키되, 게이트 티어(max/ultra)는 모델이 실제로 내놓은 것만 축에 올린다 —
 // 안 내놓은 apex를 축에 남겨 두면 + 없이도 빈 스톱이 일상 사다리 끝에 붙는다.
-const EFFORT_AXIS: readonly string[] = [...NATIVE_CLAUDE_EFFORTS, "ultra"];
+const EFFORT_AXIS = [...NATIVE_CLAUDE_EFFORTS, "ultra"] as const;
 
 function providerGroupId(provider: GatewayProvider): string {
   return `gateway:${provider}`;
