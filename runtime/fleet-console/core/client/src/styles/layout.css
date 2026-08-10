@@ -632,17 +632,10 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   place-items: center;
   flex: none;
   color: var(--text-tertiary);
-  opacity: 0;
-  transition: opacity var(--duration-fast) var(--ease-spring);
+  opacity: 0.75;
 }
 
 .command-band-trigger-caret svg { display: block; width: 10px; height: 10px; }
-
-.command-band-segment-trigger:hover .command-band-trigger-caret,
-.command-band-segment-trigger:focus-visible .command-band-trigger-caret,
-.command-band-segment-trigger.is-open .command-band-trigger-caret {
-  opacity: 0.75;
-}
 
 .command-band-operation-placeholder {
   color: var(--text-tertiary);
