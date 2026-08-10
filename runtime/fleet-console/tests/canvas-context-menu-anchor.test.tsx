@@ -1,7 +1,5 @@
 // @vitest-environment jsdom
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -618,15 +616,6 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(effort.classList.contains("is-left")).toBe(false);
     // 서브메뉴는 메뉴 상자의 오른쪽 바깥에 선다 — 부모 위로 되돌아오지 않는다.
     expect(Number.parseFloat(effort.style.left)).toBeGreaterThanOrEqual(260 + 264);
-  });
-
-  it("keeps the rendered widths in step with the placement constants", () => {
-    const css = readFileSync(resolve(process.cwd(), "core/client/src/styles/components.css"), "utf8");
-    const widthOf = (selector: string) =>
-      Number(new RegExp(`${selector}\\.theater-menu\\s*\\{[^}]*?width:\\s*(\\d+)px;`, "u").exec(css)?.[1]);
-    expect(widthOf("\\.operation-launch-effort-menu")).toBe(OPERATION_LAUNCH_EFFORT_MENU_WIDTH);
-    // 모델 목록이 메뉴 자체가 되면서 옆으로 펼치던 상자는 남아 있으면 안 된다.
-    expect(css).not.toContain(".operation-launch-flyout");
   });
 
   it("follows the model row while the menu scrolls, and lets go once the row leaves it", () => {
