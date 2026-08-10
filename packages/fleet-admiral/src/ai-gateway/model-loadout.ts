@@ -124,7 +124,6 @@ export interface GatewayLoadoutModel {
    */
   readonly modelId: string;
   readonly constraints: GatewayLoadoutConstraints;
-  readonly isSessionDefault: boolean;
 }
 
 export interface GatewayLoadoutProvider {
@@ -169,7 +168,6 @@ export interface BuildGatewayLoadoutInput {
   readonly exposed: readonly GatewayModel[];
   /** Per-model reasoning rungs the user exposed. Absent entry = that model's whole ladder. */
   readonly effortExposure?: GatewayEffortExposure;
-  readonly defaultModel?: GatewayModel;
   readonly quota?: GatewayQuotaSnapshot;
   /** The user's opt-in ordered spend preference across providers; weights the allowance axis only. */
   readonly providerPriority?: readonly GatewayProvider[];
@@ -185,7 +183,7 @@ const PARENT_PROVIDER_ID = "claude";
 export function buildGatewayLoadout(input: BuildGatewayLoadoutInput): GatewayLoadout {
   const placed = input.exposed.map((model) => ({
     provider: model.provider as string,
-    entry: toLoadoutModel(model, input.defaultModel, input.effortExposure),
+    entry: toLoadoutModel(model, input.effortExposure),
   }));
   const providerPriority = input.providerPriority
     ? Object.freeze([...input.providerPriority])
@@ -200,7 +198,6 @@ export function buildGatewayLoadout(input: BuildGatewayLoadoutInput): GatewayLoa
 
 function toLoadoutModel(
   model: GatewayModel,
-  defaultModel?: GatewayModel,
   exposure?: GatewayEffortExposure,
 ): GatewayLoadoutModel {
   const modelId = toClaudeGatewayModelId(model);
@@ -216,7 +213,6 @@ function toLoadoutModel(
     agentTypes: toAgentTypeSelectors(modelId, constraints),
     modelId,
     constraints,
-    isSessionDefault: defaultModel !== undefined && defaultModel.id === model.id,
   };
 }
 
@@ -300,7 +296,7 @@ function loadoutRevision(
     `bench:${GATEWAY_BENCHMARKS_STAMP}`,
     ...models
       .map((model) =>
-        `${model.modelId}:${model.isSessionDefault ? "1" : "0"}:${model.constraints.effortLadder.join("+")}`)
+        `${model.modelId}:${model.constraints.effortLadder.join("+")}`)
       .sort(),
     `priority:${(priority ?? []).join(">")}`,
   ].join("\n");

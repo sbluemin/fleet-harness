@@ -107,11 +107,10 @@ describe("gateway loadout quality signal", () => {
 });
 
 describe("gateway loadout", () => {
-  it("reports only the exposed models and marks the session default", () => {
+  it("reports only the exposed models", () => {
     const exposed = [model("kimi--k3"), model("cursor--grok-4.5-fast")];
-    const loadout = buildGatewayLoadout({ exposed, defaultModel: exposed[0] });
+    const loadout = buildGatewayLoadout({ exposed });
     expect(allModels(loadout)).toHaveLength(2);
-    expect(allModels(loadout).map((entry) => entry.isSessionDefault)).toEqual([true, false]);
     // 노출하지 않은 모델은 게이트웨이가 여전히 실행하므로, 로스터에 새면
     // 사용자가 끈 선택이 오류 없이 뒤집힌다.
     const ids = allModels(loadout).map((entry) => entry.modelId);
@@ -151,7 +150,6 @@ describe("gateway loadout", () => {
     // 기준선으로 발표하면 이미 떠 있는 세션과 어긋난 답을 자신 있게 내놓게 된다.
     const settled = buildGatewayLoadout({
       exposed: [model("kimi--k3"), model("cursor--grok-4.5-fast")],
-      defaultModel: model("kimi--k3"),
     });
     for (const provider of Object.values(settled.providers)) {
       expect(Object.keys(provider)).toEqual(["quota", "models"]);
@@ -167,13 +165,11 @@ describe("gateway loadout", () => {
   it("moves the revision when exposure changes but not when a reading does", () => {
     const one = buildGatewayLoadout({ exposed: [model("kimi--k3")] });
     const two = buildGatewayLoadout({ exposed: [model("kimi--k3"), model("cursor--grok-4.5-fast")] });
-    const defaulted = buildGatewayLoadout({ exposed: [model("kimi--k3")], defaultModel: model("kimi--k3") });
     const requoted = buildGatewayLoadout({
       exposed: [model("kimi--k3")],
       quota: { kimi: { status: "ok", windows: [{ id: "cycle", usedPercent: 47 }] } },
     });
     expect(one.revision).not.toBe(two.revision);
-    expect(one.revision).not.toBe(defaulted.revision);
     // 사용량은 스스로 움직인다. 이것까지 revision에 넣으면 매 조회가 로스터 변경으로
     // 보여, 실제 노출 편집이 묻힌다.
     expect(one.revision).toBe(requoted.revision);

@@ -167,7 +167,6 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const settings = {
       version: 1 as const,
       models: [{ id: "cursor--claude-opus-5" }],
-      defaultModel: "cursor--claude-opus-5",
     };
     const resolve = createDefaultTerminalLaunchResolver({
       cwd: root,
@@ -219,7 +218,9 @@ describe("createDefaultTerminalLaunchResolver", () => {
     ]);
     expect(rowOnly.args).not.toContain("--effort");
     for (const spec of [native, scoped, rowOnly]) {
-      expect(spec.env.ANTHROPIC_MODEL).toBe("claude-gateway--cursor--claude-opus-5[1m]");
+      // 세션 기본 모델 축이 없으므로 launch env는 ANTHROPIC_MODEL을 주입하지 않는다.
+      // 모델 선택은 CLI args(--model)가 담당한다.
+      expect(spec.env.ANTHROPIC_MODEL).toBeUndefined();
       expect(spec.env.CLAUDE_CODE_EFFORT_LEVEL).toBeUndefined();
       await spec.cleanup?.();
     }
@@ -235,7 +236,6 @@ describe("createDefaultTerminalLaunchResolver", () => {
         { id: "cursor--claude-opus-5", hostOnly: true },
         { id: "cursor--grok-4.5" },
       ],
-      defaultModel: "cursor--claude-opus-5",
     };
     let injected: InjectAgentCliProfileOptions | undefined;
     const resolve = createDefaultTerminalLaunchResolver({
@@ -266,9 +266,9 @@ describe("createDefaultTerminalLaunchResolver", () => {
       sessionId: "gateway-host-only",
     });
 
-    // 호스트 세션 쪽: 여전히 고를 수 있고, 세션 모델로도 배선된다.
+    // 호스트 세션 쪽: 여전히 고를 수 있고, --model args로 배선된다.
     expect(spec.args).toEqual(["--model", "claude-gateway--cursor--claude-opus-5[1m]"]);
-    expect(spec.env.ANTHROPIC_MODEL).toBe("claude-gateway--cursor--claude-opus-5[1m]");
+    expect(spec.env.ANTHROPIC_MODEL).toBeUndefined();
     // 위임 쪽: 정체성을 만들 목록에서만 빠진다.
     const delegable = (injected?.gatewayDelegationModels ?? []).map((model) => model.id);
     expect(delegable).toEqual(["cursor--grok-4.5"]);

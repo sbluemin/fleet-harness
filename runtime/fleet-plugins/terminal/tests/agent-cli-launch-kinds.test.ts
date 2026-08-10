@@ -45,7 +45,6 @@ describe("buildAgentCliLaunchKinds", () => {
         { id: "kimi--k3", efforts: ["max"] },
         { id: "codex--gpt-5.6-sol-fast" },
       ],
-      defaultModel: "kimi--k3",
     });
 
     const result = buildAgentCliLaunchKinds(
@@ -82,7 +81,6 @@ describe("buildAgentCliLaunchKinds", () => {
           {
             id: "kimi--k3",
             label: "K3-1M",
-            starred: true,
             launch: { model: "kimi--k3" },
             // 노출은 MAX 한 단뿐이지만 축은 다섯 단 그대로다.
             effortAxis: EFFORT_AXIS,

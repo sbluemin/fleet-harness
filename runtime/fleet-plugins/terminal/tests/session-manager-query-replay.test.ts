@@ -74,18 +74,6 @@ describe("session-manager terminal query replay", () => {
     await manager.stop();
   });
 
-  it("threads configured Gateway default suppression into the launch resolver", async () => {
-    const launch = vi.fn(async (cwd?: string) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: {} }));
-    const manager = createTerminalSessionManager({ launch, startShell: createMockPty });
-
-    await manager.createSession({ ...CONTEXT, useGatewayDefaultModel: false });
-
-    expect(launch).toHaveBeenCalledWith("/work", expect.objectContaining({
-      sessionId: "session-a",
-      useGatewayDefaultModel: false,
-    }));
-    await manager.stop();
-  });
 });
 
 interface MockPty extends TerminalPtyHandle {

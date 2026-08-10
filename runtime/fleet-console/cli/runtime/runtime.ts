@@ -61,7 +61,6 @@ export async function createFleetCliRuntime(
         // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.
         models: selection.delegationModels,
         effortExposure: selection.effortExposure,
-        ...(selection.defaultModel ? { defaultModel: selection.defaultModel } : {}),
         ...(selection.providerPriority ? { providerPriority: selection.providerPriority } : {}),
       };
     },

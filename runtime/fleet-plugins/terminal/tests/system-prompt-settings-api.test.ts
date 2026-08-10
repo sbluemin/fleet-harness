@@ -160,7 +160,6 @@ describe("system prompt settings api", () => {
   it("saves the aiGateway selection to the plugin route", async () => {
     const aiGateway = {
       models: [{ id: "cursor--claude-opus-5" }],
-      defaultModel: "cursor--claude-opus-5",
     };
     const fetchMock = vi.fn(async () => jsonResponse({
       agentIdleDormantMinutes: 60,

@@ -442,22 +442,6 @@
   font-weight: var(--weight-bold);
 }
 
-.ai-gateway-default-star {
-  flex: none;
-  padding: var(--space-1);
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-tertiary);
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.ai-gateway-default-star:hover:not(:disabled),
-.ai-gateway-default-star.is-on {
-  color: var(--brass);
-}
 
 /* 호스트 전용 예약 토글. 켜짐은 brass 워시로만 말한다 — 이 축은 상태가 아니라 사용자가
    고른 위치(어느 표면에 내보낼지)이고, 등급 배지처럼 신호색을 빌리지 않는다. */
@@ -677,7 +661,6 @@
 
 .ai-gateway-add-button:disabled,
 .ai-gateway-axis-toggle:disabled,
-.ai-gateway-default-star:disabled,
 .ai-gateway-remove:disabled {
   opacity: 0.45;
   cursor: not-allowed;

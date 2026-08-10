@@ -5,7 +5,6 @@ import path from "node:path";
 import {
 	GATEWAY_MODELS,
 	buildAnthropicModelList,
-	toClaudeGatewayModelId,
 	type AiGatewaySelection,
 } from "@dotobokuri/core-ai-gateway";
 import { writeAtomicSync } from "@dotobokuri/core-infra";
@@ -16,7 +15,6 @@ export interface AiGatewayLaunchEnvOptions {
 	readonly baseUrl: string;
 	readonly selection?: AiGatewaySelection;
 	readonly homeDir?: string;
-	readonly useConfiguredDefaultModel?: boolean;
 }
 
 export function prepareAiGatewayLaunchProfile(
@@ -34,14 +32,6 @@ export function prepareAiGatewayLaunchProfile(
 		// 호환 프로바이더 경계는 각자의 eager wire 형식으로 정규화한다.
 		ENABLE_TOOL_SEARCH: "true",
 	};
-	// Marked provider usage is projected onto Claude Code's 1M coordinate, so its
-	// native auto policy remains model-relative. Do not inject the process-wide
-	// compact-window override: it would also retune built-in Claude models. An
-	// explicit user value already present in profile.env remains untouched above.
-	if (options.useConfiguredDefaultModel !== false && options.selection?.defaultModel && !env.ANTHROPIC_MODEL) {
-		// AI Gateway 설정의 세션 기본 모델. 프로필 env가 명시한 값이 항상 이긴다.
-		env.ANTHROPIC_MODEL = toClaudeGatewayModelId(options.selection.defaultModel);
-	}
 	writeClaudeGatewayModelCache(
 		options.baseUrl,
 		env,

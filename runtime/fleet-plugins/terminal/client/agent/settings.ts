@@ -7,7 +7,6 @@ export interface AiGatewayModelSelection {
 
 export interface AiGatewaySettings {
   readonly models?: readonly AiGatewayModelSelection[];
-  readonly defaultModel?: string;
   /**
    * 옵트인 공급자 소진 순서. 부재 = 선호 없음. 저장 시 키 부재는 서버가 "보존"으로
    * 읽으므로, 해제는 빈 배열로만 표현된다.

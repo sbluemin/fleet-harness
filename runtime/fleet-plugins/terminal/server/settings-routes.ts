@@ -132,7 +132,6 @@ export function toTerminalSettingsState(
   wireLogEnabled: boolean,
 ): TerminalSettingsState {
   const configured = (aiGateway.models?.length ?? 0) > 0
-    || aiGateway.defaultModel !== undefined
     || (aiGateway.providerPriority?.length ?? 0) > 0;
   return {
     agentIdleDormantMinutes: data.agentIdleDormantMinutes === undefined
@@ -142,7 +141,6 @@ export function toTerminalSettingsState(
     aiGateway: configured
       ? {
         ...(aiGateway.models?.length ? { models: aiGateway.models } : {}),
-        ...(aiGateway.defaultModel !== undefined ? { defaultModel: aiGateway.defaultModel } : {}),
         ...(aiGateway.providerPriority?.length ? { providerPriority: aiGateway.providerPriority } : {}),
       }
       : null,

@@ -95,9 +95,6 @@ function migratePayload(payload: Record<string, unknown>): Record<string, unknow
   const next = { ...payload };
   for (const key of changedKeys) next[key] = GATEWAY_LAUNCH_KIND_ID;
   if (isRetiredAgentCliLabel(payload.cliLabel)) next.cliLabel = GATEWAY_AGENT_CLI_LABEL;
-  // Retired Claude launches used Claude Code's built-in default. Do not let a later
-  // Start fresh inherit the user's non-Anthropic Gateway default.
-  next.useGatewayDefaultModel = false;
   return next;
 }
 

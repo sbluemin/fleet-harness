@@ -93,7 +93,6 @@ function buildGatewayLoadoutTools(deps: AgentRouteDeps): readonly AgentToolSpec[
         // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.
         models: selection.delegationModels,
         effortExposure: selection.effortExposure,
-        ...(selection.defaultModel ? { defaultModel: selection.defaultModel } : {}),
         ...(selection.providerPriority ? { providerPriority: selection.providerPriority } : {}),
       };
     },
@@ -518,7 +517,6 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         pluginId: node.pluginId,
         theaterId: node.theaterId,
         cliId,
-        ...(node.payload.useGatewayDefaultModel === false ? { useGatewayDefaultModel: false } : {}),
         ...(fresh ? {} : { resumeSessionId: providerSession?.sessionId }),
       });
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
@@ -680,7 +678,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     return buildAgentCliLaunchKinds(metadata, AGENT_OPERATION_TYPE, selection);
   }
 
-  function launch(cwd: string | undefined, context: { readonly operationId?: string; readonly model?: string; readonly effort?: string; readonly useGatewayDefaultModel?: boolean; readonly prompt?: string } | undefined) {
+  function launch(cwd: string | undefined, context: { readonly operationId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string } | undefined) {
     const operationId = context?.operationId ?? "";
     const operation = ctx.host.operations.get(operationId);
     const cliId = typeof operation?.payload.cliId === "string" ? operation.payload.cliId : undefined;
@@ -695,7 +693,6 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ...(cliId ? { cliId } : {}),
       ...(context?.model ? { model: context.model } : {}),
       ...(context?.effort ? { effort: context.effort } : {}),
-      ...(context?.useGatewayDefaultModel === false ? { useGatewayDefaultModel: false } : {}),
       ...(context?.prompt ? { prompt: context.prompt } : {}),
       ...(providerSession ? { resumeSessionId: providerSession } : {}),
     });

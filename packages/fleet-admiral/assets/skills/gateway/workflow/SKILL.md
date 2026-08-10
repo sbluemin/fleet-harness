@@ -54,9 +54,7 @@ Identify which allowance that is first, because the roster cannot tell you — i
 | This session runs on | The failure to avoid |
 |---|---|
 | a built-in Claude model | It spends the `claude` entry, which reports a window but serves no roster model, so **it can never be selected, only inherited** — spare it by pinning away, not by choosing it. |
-| a gateway default | **A session launched on a gateway default spends an entry that both reports *and* serves**, so routing more runs there **drains one allowance twice** while the rest sit idle. |
-
-`isSessionDefault` does not settle which case you are in: it reflects Settings as they stand now, not what an already-running session launched with. Prefer any other provider with room — whatever this session runs on is the most expensive way to obtain what any identity produces equally well.
+| a gateway model | **A session launched on a gateway model spends an entry that both reports *and* serves**, so routing more runs there **drains one allowance twice** while the rest sit idle. |
 
 ### Four exceptions, and only these four.
 

@@ -205,13 +205,11 @@ describe("agent session resume", () => {
     const harness = await createHarness({ cliId: "claude", fresh: true });
     await harness.postSessions();
     const operation = harness.operations[0]!;
-    operation.payload.useGatewayDefaultModel = false;
 
     await harness.resumeSession(operation.id);
 
     expect(harness.attach).toHaveBeenLastCalledWith(expect.objectContaining({
       cliId: "claude-gateway",
-      useGatewayDefaultModel: false,
     }));
   });
 });
