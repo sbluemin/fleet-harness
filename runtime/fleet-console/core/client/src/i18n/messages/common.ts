@@ -74,6 +74,7 @@ export const commonEn = {
   "launchVariants.effort.auto": "AUTO",
   "launchVariants.effort.autoValue": "Automatic — the model's own default",
   "launchVariants.effort.apexToggle": "Show Max and Ultracode",
+  "launchVariants.effort.apexCollapse": "Hide Max and Ultracode",
   "launchVariants.effort.confirmTip": "Press the knob again to launch.",
 } as const;
 
@@ -152,5 +153,6 @@ export const commonKo: Record<keyof typeof commonEn, string> = {
   "launchVariants.effort.auto": "자동",
   "launchVariants.effort.autoValue": "자동 — 모델 자체 기본값",
   "launchVariants.effort.apexToggle": "MAX·ULTRACODE 펼치기",
+  "launchVariants.effort.apexCollapse": "MAX·ULTRACODE 접기",
   "launchVariants.effort.confirmTip": "노브를 다시 누르면 실행됩니다.",
 };

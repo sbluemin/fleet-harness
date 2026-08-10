@@ -32,7 +32,8 @@ interface CanvasContextMenuProps {
 const MENU_WIDTH = 264;
 const FLYOUT_GAP = 10;
 // 트랙과 그 값 라벨이 나란히 들어가는 폭이다.
-const EFFORT_SUBMENU_WIDTH = 216;
+// 열린 apex 트랙(7스톱)+접힘 셰브론+ULTRACODE 라벨이 스크롤 없이 들어가는 폭.
+const EFFORT_SUBMENU_WIDTH = 376;
 // components.css의 같은 선언과 짝이다. 계약 시험이 그 짝을 지킨다.
 export const OPERATION_LAUNCH_EFFORT_MENU_WIDTH = EFFORT_SUBMENU_WIDTH;
 const FLYOUT_CLOSE_GRACE_MS = 160;
@@ -631,6 +632,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
               ariaLabel={t("launchVariants.effort.track")}
               autoValueText={t("launchVariants.effort.autoValue")}
               apexToggleLabel={t("launchVariants.effort.apexToggle")}
+              apexCollapseLabel={t("launchVariants.effort.apexCollapse")}
             />
             {showEffortConfirmTip ? (
               <p className="operation-launch-effort-confirm-tip" role="status">

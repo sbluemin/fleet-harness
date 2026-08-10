@@ -127,12 +127,14 @@ function builtinRow(model: string, label: string) {
     launch: { model },
     effortAxis: EFFORT_AXIS,
     gatedEfforts: APEX_EFFORTS,
+    // ultracode는 하네스 능력이라 네이티브 행도 ultra 칩을 낸다.
     chips: [
       gatewayChip(model, "low", "LOW"),
       gatewayChip(model, "medium", "MED"),
       gatewayChip(model, "high", "HIGH"),
       gatewayChip(model, "xhigh", "XHIGH"),
       gatewayChip(model, "max", "MAX"),
+      gatewayChip(model, "ultra", "ULTRACODE"),
     ],
   };
 }

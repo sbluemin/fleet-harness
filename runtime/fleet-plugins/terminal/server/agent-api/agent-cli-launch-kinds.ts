@@ -63,7 +63,10 @@ export function buildClaudeGatewayLaunchVariants(selection?: AiGatewaySelection)
       launch: { model },
       effortAxis: EFFORT_AXIS,
       gatedEfforts: APEX_EFFORTS,
-      chips: NATIVE_CLAUDE_EFFORTS.map((effort) => ({
+      // 네이티브 행도 ultra 칩을 낸다 — ultracode는 모델 사다리의 단이 아니라 하네스
+      // 능력(standing orchestration)이라 모델 독립이다. wire 번역(max + settings)은
+      // launch factory가 담당한다.
+      chips: EFFORT_AXIS.map((effort) => ({
         id: effort,
         label: EFFORT_LABELS[effort]!,
         launch: { model, effort },
@@ -91,7 +94,6 @@ export function buildClaudeGatewayLaunchVariants(selection?: AiGatewaySelection)
 // 강도 축은 사다리 어휘를 아는 이쪽이 소유한다. 한 모델이 그 일부만 내놓아도(low/high/max)
 // 축은 그대로라, 표면이 내놓은 단을 균등히 벌리는 대신 제자리에 세울 수 있다. 게이트웨이
 // 카탈로그는 max 뒤에 ultra 단을 두므로(GATEWAY_REASONING_EFFORTS), 축은 그 끝까지 세운다.
-// 네이티브 Claude 행의 칩은 max에서 닫히므로 ultra 칩은 카탈로그가 낸 게이트웨이 행에만 선다.
 const EFFORT_AXIS: readonly string[] = [...NATIVE_CLAUDE_EFFORTS, "ultra"];
 
 function providerGroupId(provider: GatewayProvider): string {

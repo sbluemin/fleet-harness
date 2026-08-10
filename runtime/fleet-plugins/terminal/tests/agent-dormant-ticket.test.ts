@@ -28,7 +28,8 @@ describe("agent launch variants", () => {
   it.each([
     [{ cliId: "claude-gateway", model: 5 }, 400, "invalid_launch_option"],
     [{ cliId: "claude-gateway", model: "cursor--missing" }, 409, "gateway_model_not_enabled"],
-    [{ cliId: "claude-gateway", model: "fable", effort: "ultra" }, 400, "invalid_effort"],
+    // 네이티브 행의 ultra는 하네스 능력이라 허용된다 — 사다리 어휘 밖의 값만 거부한다.
+    [{ cliId: "claude-gateway", model: "fable", effort: "minimal" }, 400, "invalid_effort"],
     [{ cliId: "claude-gateway", effort: "max" }, 400, "invalid_launch_option"],
   ] as const)("rejects invalid launch body %#", async (body, status, error) => {
     const harness = await createHarness({ body });

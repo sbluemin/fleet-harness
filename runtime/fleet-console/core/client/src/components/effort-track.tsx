@@ -28,6 +28,8 @@ export interface EffortTrackProps {
   readonly ariaLabel: string;
   readonly autoValueText: string;
   readonly apexToggleLabel?: string;
+  /** 게이트가 열린 동안 ✦ 자리를 물려받는 접힘 셰브론의 라벨. */
+  readonly apexCollapseLabel?: string;
   readonly className?: string;
 }
 
@@ -45,6 +47,7 @@ export function EffortTrack({
   ariaLabel,
   autoValueText,
   apexToggleLabel,
+  apexCollapseLabel,
   className,
 }: EffortTrackProps) {
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -296,7 +299,7 @@ export function EffortTrack({
           aria-hidden="true"
         />
       </div>
-      {hasGate ? (
+      {hasGate && !apexOpen ? (
         <button
           type="button"
           className="effort-track-apex-toggle"
@@ -305,9 +308,23 @@ export function EffortTrack({
           title={apexToggleLabel}
           onClick={() => {
             clearCollapseTimer();
-            setApexOpen((open) => !open);
+            setApexOpen(true);
           }}
         >✦</button>
+      ) : null}
+      {hasGate && apexOpen ? (
+        // 열림에서는 ✦가 사라지고 트랙이 그 자리까지 늘어난다 — 접힘은 이 얇은 셰브론과
+        // 일상 단 선택(자동 접힘)만이 담당한다.
+        <button
+          type="button"
+          className="effort-track-apex-collapse"
+          aria-label={apexCollapseLabel}
+          title={apexCollapseLabel}
+          onClick={() => {
+            clearCollapseTimer();
+            setApexOpen(false);
+          }}
+        >‹</button>
       ) : null}
       {/* 단계 톤은 CSS가 이 속성 하나로 읽는다 — 라벨 문자열은 번역·모델마다 달라 색의 기준이 될 수 없다. */}
       <span className="effort-track-value" data-auto={isAuto} data-effort-level={current.id ?? "auto"}>

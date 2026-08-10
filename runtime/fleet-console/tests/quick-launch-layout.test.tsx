@@ -28,16 +28,15 @@ describe("Quick Launch composer layout", () => {
     expect(css).toMatch(/\.quick-launch-pop--model\s*\{[^}]*width:\s*216px;/u);
   });
 
-  it("keeps the send control an icon-only circle and the key hint untouchable", () => {
+  it("keeps the send control an icon-only circle", () => {
     const submit = ruleFor(".quick-launch-submit");
     expect(submit).toMatch(/border-radius:\s*999px/u);
     expect(submit).toMatch(/width:\s*32px/u);
     // 버튼 안에 또 배지를 얹으면 하나의 표면이 두 겹이 된다.
     expect(css).not.toMatch(/\.quick-launch-submit\s+kbd/u);
-    // 힌트는 읽히되 만져지지 않는다 — 테두리나 배경을 주면 바 위에서 액션 행세를 한다.
-    const esc = ruleFor(".quick-launch-esc");
-    expect(esc).not.toMatch(/border/u);
-    expect(esc).not.toMatch(/background/u);
+    // esc 힌트는 제거됐다 — apex 확장이 바를 넓히면서 힌트가 바를 두 줄로 밀었다.
+    expect(css).not.toMatch(/\.quick-launch-esc/u);
+    expect(quickLaunch).not.toMatch(/escHint/u);
   });
 
   it("names the send control for assistive tech, since it carries no visible label", () => {

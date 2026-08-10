@@ -57,6 +57,7 @@ function render(
       ariaLabel="Reasoning effort"
       autoValueText="Automatic"
       apexToggleLabel="Show Max and Ultracode"
+      apexCollapseLabel="Hide Max and Ultracode"
     />,
   ));
   return onChange;
@@ -349,7 +350,9 @@ describe("EffortTrack", () => {
     }), "high");
 
     act(() => required(".effort-track-apex-toggle").click());
-    expect(required(".effort-track-apex-toggle").getAttribute("aria-pressed")).toBe("true");
+    // 열리면 ✦는 사라지고 그 자리를 트랙이 물려받는다 — 접힘은 얇은 셰브론이 맡는다.
+    expect(document.querySelector(".effort-track-apex-toggle")).toBeNull();
+    expect(required(".effort-track-apex-collapse").getAttribute("aria-label")).toBe("Hide Max and Ultracode");
     expect(document.querySelectorAll("[data-apex-rung=true]")).toHaveLength(2);
     expect(track().getAttribute("aria-valuemax")).toBe("6");
   });
@@ -386,7 +389,8 @@ describe("EffortTrack", () => {
     render(row({ gatedEfforts: ["max"] }), "max");
 
     expect(track().dataset.apexOpen).toBe("true");
-    expect(required(".effort-track-apex-toggle").getAttribute("aria-pressed")).toBe("true");
+    expect(document.querySelector(".effort-track-apex-toggle")).toBeNull();
+    expect(required(".effort-track-apex-collapse")).toBeTruthy();
     expect(document.querySelectorAll("[data-apex-rung=true]")).toHaveLength(1);
   });
 

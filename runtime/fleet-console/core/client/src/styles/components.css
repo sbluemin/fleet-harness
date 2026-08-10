@@ -7419,10 +7419,12 @@
 .operation-launch-effort-menu.theater-menu {
   --flyout-enter-x: -4px;
   z-index: 42;
-  /* canvas-context-menu.tsx의 EFFORT_SUBMENU_WIDTH와 같은 값이어야 한다. */
-  width: 216px;
+  /* canvas-context-menu.tsx의 EFFORT_SUBMENU_WIDTH와 같은 값이어야 한다. 열린 apex 트랙
+     (7스톱)과 ULTRACODE 라벨이 가로 스크롤 없이 들어가는 폭이다. */
+  width: 376px;
   max-height: var(--canvas-menu-max-height, 520px);
   overflow-y: auto;
+  overflow-x: hidden;
   animation: operation-launch-flyout-in var(--duration-fast) var(--ease-spring) both;
 }
 
@@ -7602,6 +7604,32 @@
 }
 
 .effort-track-apex-toggle:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+/* 열린 동안 ✦를 대신하는 접힘 컨트롤 — 게이트는 한 번 열리면 트랙이 그 자리를 물려받아
+   늘어나므로, 닫기 장치는 시각 무게를 거의 갖지 않는 얇은 셰브론이다. */
+.effort-track-apex-collapse {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-spring);
+}
+
+.effort-track-apex-collapse:hover {
+  color: var(--apex-ink);
+}
+
+.effort-track-apex-collapse:focus-visible {
   outline: 2px solid var(--brass);
   outline-offset: 2px;
 }
@@ -7786,7 +7814,9 @@
 }
 
 .quick-launch-effort-track:has(.effort-track[data-apex-open="true"]) {
-  width: 374px;
+  /* 374px는 Theater 칩 라벨이 길 때 바의 콘텐츠 폭(730px)을 6px 넘겨 실행 버튼을 다음 줄로
+     밀었다(2026-08-11 실측) — 360px면 가장 긴 조합에서도 한 줄에 남는다. */
+  width: 360px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -11272,12 +11302,6 @@ body[data-codex-reading="true"] .operations-side-bar {
 
 /* 단축키 힌트는 읽히되 만져지지 않아야 한다. 테두리를 두른 배지로 두면 바 위에서 칩·전송과
    같은 액션 문법을 입어, 누를 수 있는 것으로 읽힌다. */
-.quick-launch-esc {
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-}
 
 /* 전송은 아이콘 하나짜리 원이다 — 컴포저의 유일한 확정 동작이라 이름을 글자로 되풀이하지 않고,
    이름과 단축키는 접근 이름이 싣는다. */
