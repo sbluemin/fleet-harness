@@ -106,13 +106,25 @@ function clampPercent(value: number): number {
 }
 
 /**
+ * The gateway's projection, but only while it is still a forecast. A reading
+ * outlives it: the summary is cached for two minutes and served stale for
+ * thirty, so the target can pass before the next one lands. Both the hatching
+ * and the note read the projection through here so a lapsed one cannot survive
+ * in one channel after being suppressed in the other.
+ */
+function liveProjectionAt(window: QuotaWindow, now: number): number | undefined {
+  const projectedExhaustionAt = window.risk?.projectedExhaustionAt;
+  return projectedExhaustionAt !== undefined && projectedExhaustionAt > now ? projectedExhaustionAt : undefined;
+}
+
+/**
  * The stretch of the bar the current burn rate is on track to consume before
  * the window resets. The gateway carries a projection only when it lands short
  * of the reset, so an absent span states "this lasts to reset" rather than
  * "unknown".
  */
-export function projectedSpan(window: QuotaWindow): { readonly left: number; readonly width: number } | null {
-  if (window.risk?.projectedExhaustionAt === undefined) return null;
+export function projectedSpan(window: QuotaWindow, now: number): { readonly left: number; readonly width: number } | null {
+  if (liveProjectionAt(window, now) === undefined) return null;
   const left = clampPercent(window.usedPercent);
   return left >= 100 ? null : { left, width: 100 - left };
 }
@@ -130,13 +142,11 @@ export function formatPace(paceRatio: number): string {
 export function riskNote(window: QuotaWindow, now: number, t: T): string | null {
   const risk = window.risk;
   if (!risk) return null;
-  // A reading outlives its own forecast: the summary is cached for two minutes
-  // and served stale for thirty, so a target that has since passed would render
-  // through `formatCountdown`'s clamp as "out in 0m" — a lapsed forecast dressed
-  // as a future one. The pace is what the same reading still supports, so say
-  // that instead.
-  if (risk.projectedExhaustionAt !== undefined && risk.projectedExhaustionAt > now) {
-    return t("quota.meter.exhausts", { t: formatCountdown(risk.projectedExhaustionAt, now) });
+  // Past its target the countdown would clamp to "out in 0m" — a lapsed forecast
+  // dressed as a future one. The pace is what the same reading still supports.
+  const projectedExhaustionAt = liveProjectionAt(window, now);
+  if (projectedExhaustionAt !== undefined) {
+    return t("quota.meter.exhausts", { t: formatCountdown(projectedExhaustionAt, now) });
   }
   // Below the gateway's own elevated threshold a ratio is just noise on a bar.
   if (risk.paceRatio !== undefined && risk.pressure !== "ok") {
@@ -169,7 +179,7 @@ function Meter({
       : window.id === "cycle" && cycleDays !== undefined ? `${cycleDays}d` : undefined;
   const usedText = t("quota.meter.used", { pct: window.usedPercent });
   const note = riskNote(window, now, t);
-  const projection = projectedSpan(window);
+  const projection = projectedSpan(window, now);
   const elapsedMark = elapsedMarkPercent(window);
   return (
     <div className={`quota-meter quota-meter--${severity}`}>

@@ -39,6 +39,11 @@ describe("meter risk", () => {
     return { id: "weekly", usedPercent, ...(risk ? { risk } : {}) };
   }
 
+  // The note names its key so the assertions read as "which sentence", not "which wording".
+  const t = ((key: string, vars?: Record<string, unknown>) =>
+    `${key}(${Object.entries(vars ?? {}).map(([name, value]) => `${name}=${String(value)}`).join(",")})`
+  ) as unknown as Parameters<typeof riskNote>[2];
+
   // The defect this replaced: a pool 44% spent a fifth of the way into its week
   // is on track to run dry days early, and the gateway says so — but a local
   // 70/90 percent band painted it calm, so the panel and the roster a model
@@ -56,14 +61,26 @@ describe("meter risk", () => {
   });
 
   it("spans the projection from what is spent to the end of the bar", () => {
-    expect(projectedSpan(window(44, { pressure: "critical", projectedExhaustionAt: 5 })))
+    expect(projectedSpan(window(44, { pressure: "critical", projectedExhaustionAt: 5 }), 0))
       .toEqual({ left: 44, width: 56 });
   });
 
   it("draws no projection when the window lasts to its reset", () => {
-    expect(projectedSpan(window(44, { pressure: "ok" }))).toBeNull();
+    expect(projectedSpan(window(44, { pressure: "ok" }), 0)).toBeNull();
     // A drained pool has no remaining stretch to project into.
-    expect(projectedSpan(window(100, { pressure: "critical", projectedExhaustionAt: 5 }))).toBeNull();
+    expect(projectedSpan(window(100, { pressure: "critical", projectedExhaustionAt: 5 }), 0)).toBeNull();
+  });
+
+  // The hatching and the note are two renderings of one forecast. Suppressing the
+  // lapsed one in the text while the picture kept claiming "this much is spent
+  // before the reset" left the meter asserting what its own caption had withdrawn.
+  it("withdraws the hatching once the projected instant has passed", () => {
+    const now = 1_000_000;
+    const spent = window(44, { pressure: "critical", paceRatio: 2.11, projectedExhaustionAt: now - 60_000 });
+    expect(projectedSpan(spent, now)).toBeNull();
+    expect(riskNote(spent, now, t)).toBe("quota.meter.pace(n=2.1)");
+    const ahead = window(44, { pressure: "critical", paceRatio: 2.11, projectedExhaustionAt: now + 60_000 });
+    expect(projectedSpan(ahead, now)).toEqual({ left: 44, width: 56 });
   });
 
   it("places the elapsed mark only when the window's clock is known", () => {
@@ -75,11 +92,6 @@ describe("meter risk", () => {
     expect(formatPace(2.11)).toBe("2.1");
     expect(formatPace(1)).toBe("1");
   });
-
-  // The note names its key so the assertions read as "which sentence", not "which wording".
-  const t = ((key: string, vars?: Record<string, unknown>) =>
-    `${key}(${Object.entries(vars ?? {}).map(([name, value]) => `${name}=${String(value)}`).join(",")})`
-  ) as unknown as Parameters<typeof riskNote>[2];
 
   it("forecasts exhaustion only while the projection is still ahead", () => {
     const now = 1_000_000;
