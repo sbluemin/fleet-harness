@@ -19,7 +19,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { readLastDarkTheme, setActiveTheme, setActiveUiFont, themePolarity } from "../store.js";
 import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_DESCRIPTION_KEYS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
-import { REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, type GlobalSettingsState, type RemoteAccessLink, type RemoteAccessStatus, type ThemeId, type UiFontId, type UiFontSettings } from "../types.js";
+import { generateRemoteAutoPort, isCommittableRemotePortDraft, type GlobalSettingsState, type RemoteAccessLink, type RemoteAccessStatus, type ThemeId, type UiFontId, type UiFontSettings } from "../types.js";
 
 interface LanguageOption {
   readonly id: GlobalSettingsState["language"];
@@ -797,8 +797,7 @@ function RemoteListenerCard({
     onSave(next);
   };
   const regenerate = (field: "listenPort" | "advertisedPort") => {
-    const value = Math.floor(Math.random() * (REMOTE_AUTO_PORT_MAX - REMOTE_AUTO_PORT_MIN + 1)) + REMOTE_AUTO_PORT_MIN;
-    saveChanged({ [field]: { mode: "auto", value } });
+    saveChanged({ [field]: { mode: "auto", value: generateRemoteAutoPort() } });
   };
   const acknowledge = (checked: boolean) => {
     const acknowledgment = checked ? {
@@ -884,11 +883,23 @@ function RemotePortControl({ label, port, saving, onMode, onValue, onRegenerate 
   readonly onRegenerate: () => void;
 }) {
   const t = useT();
+  const [draft, setDraft] = useState(String(port.value));
+  useEffect(() => setDraft(String(port.value)), [port.value]);
+  const commit = () => {
+    if (!isCommittableRemotePortDraft(draft)) {
+      setDraft(String(port.value));
+      return;
+    }
+    const value = Number(draft);
+    if (value !== port.value) onValue(value);
+  };
   return <fieldset className="remote-port-control">
     <legend>{label}</legend>
     <label><input type="radio" checked={port.mode === "auto"} disabled={saving} onChange={() => onMode("auto")} />{t("settings.remote.portAuto")}</label>
     <label><input type="radio" checked={port.mode === "custom"} disabled={saving} onChange={() => onMode("custom")} />{t("settings.remote.portCustom")}</label>
-    <input type="number" min={1} max={65535} value={port.value} disabled={saving || port.mode !== "custom"} onChange={(event) => onValue(Number(event.target.value))} />
+    <input type="number" min={1} max={65535} value={draft} disabled={saving || port.mode !== "custom"}
+      onChange={(event) => setDraft(event.target.value)} onBlur={commit}
+      onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
     <button type="button" className="remote-create" disabled={saving || port.mode !== "auto"} onClick={onRegenerate}>{t("settings.remote.portRegenerate")}</button>
   </fieldset>;
 }

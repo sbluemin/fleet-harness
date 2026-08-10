@@ -11,7 +11,7 @@ import { createConsoleLock } from "../core/host/lock.js";
 import { normalizeFingerprint } from "../core/host/remote-identity.js";
 import { parseAccessLink } from "../core/host/access-link.js";
 import { createConsoleServer, type ConsoleServer } from "../core/host/server.js";
-import type { ConsoleRemoteAccessSettings } from "../core/host/settings/settings-domain.js";
+import { REMOTE_AUTO_PORT_ATTEMPTS, type ConsoleRemoteAccessSettings } from "../core/host/settings/settings-domain.js";
 
 // 원격 리스너는 자기 인증서로만 신원을 증명한다. 링크가 실어 나른 지문으로 검증해야
 // 하므로, 테스트 클라이언트도 CA가 아니라 지문으로 서버를 확인한다.
@@ -184,6 +184,39 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     expect(disabled.devices).toHaveLength(1);
   });
 
+  it("preserves unused links and pairings for a local-only endpoint edit", async () => {
+    const fixture = await startFixture({ remote: true });
+    await joinAs(fixture, "monitoring", "paired-device");
+    await createLink(fixture);
+    const active = await readRemoteStatus(fixture);
+    const remoteAccess = remoteSettings(false, BIND_HOST, fixture.remotePort);
+    remoteAccess.listenPort = { mode: "custom", value: fixture.remotePort + 1 };
+    remoteAccess.acknowledgment = null;
+
+    await putRemoteAccess(fixture, remoteAccess);
+
+    const stopped = await readRemoteStatus(fixture);
+    expect(stopped.listener.listening).toBe(false);
+    expect(stopped.links).toEqual(active.links);
+    expect(stopped.devices).toHaveLength(1);
+  });
+
+  it("revokes links and pairings immediately for a public identity edit", async () => {
+    const fixture = await startFixture({ remote: true });
+    await joinAs(fixture, "monitoring", "paired-device");
+    await createLink(fixture);
+    const remoteAccess = remoteSettings(false, BIND_HOST, fixture.remotePort);
+    remoteAccess.advertisedHost = "new-public.example";
+    remoteAccess.acknowledgment = null;
+
+    await putRemoteAccess(fixture, remoteAccess);
+
+    const stopped = await readRemoteStatus(fixture);
+    expect(stopped.listener.listening).toBe(false);
+    expect(stopped.links).toHaveLength(0);
+    expect(stopped.devices).toHaveLength(0);
+  });
+
   it("kills the sessions a closed remote listener issued instead of leaving them redeemable", async () => {
     const fixture = await startFixture({ remote: true });
     const joined = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(await createLink(fixture)) }));
@@ -236,6 +269,41 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
       await new Promise<void>((resolve) => reusable.close(() => resolve()));
     } finally {
       await new Promise<void>((resolve) => occupied.close(() => resolve()));
+    }
+  });
+
+  it("bounds duplicate RNG draws and falls back to an unattempted Auto candidate", async () => {
+    const occupied = http.createServer();
+    await new Promise<void>((resolve, reject) => {
+      occupied.once("error", reject);
+      occupied.listen(0, BIND_HOST, () => { occupied.off("error", reject); resolve(); });
+    });
+    const address = occupied.address();
+    const occupiedPort = typeof address === "object" && address ? address.port : 0;
+    const repeated = 49_152;
+    const repeatedOccupier = http.createServer();
+    await new Promise<void>((resolve, reject) => {
+      repeatedOccupier.once("error", reject);
+      repeatedOccupier.listen(repeated, BIND_HOST, () => { repeatedOccupier.off("error", reject); resolve(); });
+    });
+    const randomInt = vi.fn(() => repeated);
+    try {
+      const remoteAccess: ConsoleRemoteAccessSettings = {
+        enabled: true,
+        listenAddress: BIND_HOST,
+        advertisedHost: BIND_HOST,
+        listenPort: { mode: "auto", value: occupiedPort },
+        advertisedPort: { mode: "custom", value: 50_000 },
+        acknowledgment: { version: 1, listenAddress: BIND_HOST, listenPort: occupiedPort, advertisedHost: BIND_HOST, advertisedPort: 50_000 },
+      };
+      const fixture = await startFixture({ remote: true, remoteAccess, remoteRandomInt: randomInt });
+      expect((await readRemoteStatus(fixture)).listener.lastError).toBe("acknowledgment_required");
+      expect(randomInt).toHaveBeenCalledTimes(REMOTE_AUTO_PORT_ATTEMPTS + 1);
+      const saved = JSON.parse(fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "settings.json"), "utf8")) as { general: { remoteAccess: ConsoleRemoteAccessSettings } };
+      expect(saved.general.remoteAccess.listenPort.value).toBe(49_153);
+    } finally {
+      await new Promise<void>((resolve) => occupied.close(() => resolve()));
+      await new Promise<void>((resolve) => repeatedOccupier.close(() => resolve()));
     }
   });
 
@@ -975,6 +1043,13 @@ async function readRemoteStatusAt(loopbackEndpoint: string): Promise<RemoteAcces
 
 async function saveRemoteAccess(fixture: Fixture, input: { readonly enabled: boolean; readonly bindHost: string }): Promise<void> {
   const remoteAccess = remoteSettings(input.enabled, input.bindHost, fixture.remotePort);
+  await putRemoteAccess(fixture, remoteAccess);
+  // 저장 응답은 리스너 전환이 끝난 뒤에 온다. 곧바로 읽은 상태가 이미 확정이어야 한다.
+  const status = await readRemoteStatus(fixture);
+  expect(status.listener.listening).toBe(remoteAccess.enabled && status.listener.lastError === null);
+}
+
+async function putRemoteAccess(fixture: Fixture, remoteAccess: ConsoleRemoteAccessSettings): Promise<void> {
   const origin = fixture.loopbackEndpoint.replace(/\/$/u, "");
   const response = await fetch(`${origin}/api/v1/settings/global`, {
     method: "PUT",
@@ -982,9 +1057,6 @@ async function saveRemoteAccess(fixture: Fixture, input: { readonly enabled: boo
     body: JSON.stringify({ remoteAccess }),
   });
   if (!response.ok) throw new Error(`settings save failed: ${response.status} ${await response.text()}`);
-  // 저장 응답은 리스너 전환이 끝난 뒤에 온다. 곧바로 읽은 상태가 이미 확정이어야 한다.
-  const status = await readRemoteStatus(fixture);
-  expect(status.listener.listening).toBe(remoteAccess.enabled && status.listener.lastError === null);
 }
 
 function grantTokenOf(link: string): string {

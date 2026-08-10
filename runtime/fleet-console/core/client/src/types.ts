@@ -240,6 +240,20 @@ export function isWarnableLocalPort(port: RemoteAccessPort): boolean {
   return port.mode === "custom" && port.value < 1024;
 }
 
+export function generateRemoteAutoPort(randomValues: (values: Uint32Array<ArrayBuffer>) => Uint32Array<ArrayBuffer> = (values) => crypto.getRandomValues(values)): number {
+  const range = REMOTE_AUTO_PORT_MAX - REMOTE_AUTO_PORT_MIN + 1;
+  const limit = Math.floor(0x1_0000_0000 / range) * range;
+  const sample = new Uint32Array(1);
+  do randomValues(sample); while (sample[0]! >= limit);
+  return REMOTE_AUTO_PORT_MIN + (sample[0]! % range);
+}
+
+export function isCommittableRemotePortDraft(value: string): boolean {
+  if (!/^\d{1,5}$/u.test(value)) return false;
+  const port = Number(value);
+  return Number.isInteger(port) && port >= REMOTE_PORT_MIN && port <= REMOTE_PORT_MAX;
+}
+
 export function isValidRemoteAccessPort(value: unknown): value is RemoteAccessPort {
   if (!value || typeof value !== "object") return false;
   const port = value as Partial<RemoteAccessPort>;

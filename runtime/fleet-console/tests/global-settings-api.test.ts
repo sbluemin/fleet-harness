@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../core/client/src/api.js";
 import { createRemoteAccessLink, fetchGlobalSettingsState, fetchRemoteAccessStatus, updateGlobalSettings } from "../core/client/src/global-settings-api.js";
+import { generateRemoteAutoPort, isCommittableRemotePortDraft, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN } from "../core/client/src/types.js";
 
 const originalFetch = globalThis.fetch;
 const SETTINGS = { consolePortMode: "dynamic", consoleStaticPort: null, remoteAccess: { enabled: false, listenAddress: "", advertisedHost: "", listenPort: { mode: "auto", value: 49152 }, advertisedPort: { mode: "auto", value: 49153 }, acknowledgment: null }, seenFeatureTours: [], theme: "instrument", uiFont: { source: "builtin", id: "manrope", size: 14 }, language: "auto" } as const;
@@ -90,5 +91,14 @@ describe("global settings client transport", () => {
   it("rejects permissive access-link fallbacks", async () => {
     globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ id: "", link: "fleet://join?code=x", access: "admin", expiresAt: 1, fingerprint: "AA:BB" }))) as typeof fetch;
     await expect(createRemoteAccessLink("full")).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("generates Auto ports with browser crypto and rejects incomplete Custom drafts", () => {
+    expect(generateRemoteAutoPort((values) => { values[0] = 0; return values; })).toBe(REMOTE_AUTO_PORT_MIN);
+    expect(generateRemoteAutoPort((values) => { values[0] = REMOTE_AUTO_PORT_MAX - REMOTE_AUTO_PORT_MIN; return values; })).toBe(REMOTE_AUTO_PORT_MAX);
+    expect(isCommittableRemotePortDraft("")).toBe(false);
+    expect(isCommittableRemotePortDraft("0")).toBe(false);
+    expect(isCommittableRemotePortDraft("65536")).toBe(false);
+    expect(isCommittableRemotePortDraft("5443")).toBe(true);
   });
 });

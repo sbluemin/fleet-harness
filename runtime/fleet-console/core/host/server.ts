@@ -2246,12 +2246,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return queueRemoteReconcile(() => {
       const configured = consoleSettingsStore.load().general?.remoteAccess;
       const active = listeners.find((entry) => entry.audience === "remote");
-      if (configured?.enabled !== true) {
-        if (active) return stopRemoteAccessForDisable;
-        return null;
+      if (!configured || !active) return configured?.enabled === true ? restartRemoteAccess : null;
+      const samePublicIdentity = active.host === configured.advertisedHost && active.port === configured.advertisedPort.value;
+      const sameLocalEndpoint = active.bindAddress === configured.listenAddress && active.bindPort === configured.listenPort.value;
+      if (configured.enabled !== true) {
+        if (!samePublicIdentity) return stopRemoteAccessForPublicChange;
+        return sameLocalEndpoint ? stopRemoteAccessForDisable : stopRemoteAccess;
       }
-      const samePublicIdentity = active?.host === configured.advertisedHost && active?.port === configured.advertisedPort.value;
-      const sameLocalEndpoint = active?.bindAddress === configured.listenAddress && active?.bindPort === configured.listenPort.value;
       return samePublicIdentity && sameLocalEndpoint ? null : restartRemoteAccess;
     });
   }
@@ -2279,6 +2280,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   async function stopRemoteAccessForDisable(): Promise<void> {
     await stopRemoteAccess();
     access.revokeGrants("remote");
+  }
+
+  async function stopRemoteAccessForPublicChange(): Promise<void> {
+    await stopRemoteAccess();
+    access.revokeGrants("remote");
+    pairedDeviceStore.revokeAll("remote");
+    remoteEndpointStore.forget();
   }
 
   /**
@@ -2336,16 +2344,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   /**
-   * 원격 리스너는 설정이 켜졌을 때만 열린다. 처음 열릴 때는 콘솔이 지금 쓰는 포트를 다른
-   * 인터페이스에 그대로 바인드하고, 그 포트를 공표된 주소로 적어 둔다.
+   * 원격 리스너는 사용자가 확인한 split endpoint만 연다. 소켓은 listenAddress/listenPort에
+   * 바인드하고, Host·Origin·링크·쿠키·인증서는 advertisedHost/advertisedPort를 사용한다.
    *
-   * 그 뒤로는 콘솔 포트가 아니라 적어 둔 포트를 연다. 루프백 포트는 dynamic이면 기동마다
-   * 달라지는데, 액세스 링크는 주소를 한 번만 실어 보내고 상대는 그것을 저장해 두기 때문이다 —
-   * 포트가 움직이면 페어링이 남아 있어도 그 기기는 죽은 주소를 두드린다. 재시작이 손님의
-   * 돌아올 길을 빼앗지 않는다는 계약은 주소가 고정되어야만 참이다.
-   *
-   * 적어 둔 포트를 열지 못하면 조용히 다른 포트로 옮기지 않는다. 옮기는 순간 페어링 전원이
-   * 아무 신호 없이 닿을 수 없게 되므로, 실패를 상태로 남기고 리스너는 닫힌 채 둔다.
+   * Custom listen port는 정확히 한 번만 시도하고 대체하지 않는다. Auto는 저장된 concrete 값을
+   * 먼저 시도한 뒤 EADDRINUSE/EADDRNOTAVAIL에 한해서만 다른 무작위 후보를 최대 12회까지 시험한다.
+   * 다른 후보가 실제로 열리면 그 소켓은 probe로 닫고 성공값만 저장한다. resolved tuple이 바뀌었으므로
+   * acknowledgment와 enabled를 지워, 사용자가 새 public→local 경로를 확인하기 전에는 리스너가 남지 않는다.
+   * advertised Auto는 저장된 공개 추천값일 뿐 라우터 예약이나 forwarding을 수행하지 않는다.
    */
   async function startRemoteAccessIfEnabled(_actualPort: number): Promise<void> {
     const configured = consoleSettingsStore.load().general?.remoteAccess;
@@ -2413,10 +2419,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   function nextRemoteAutoPort(attempted: ReadonlySet<number>): number {
     const randomInt = deps.remoteRandomInt ?? crypto.randomInt;
-    do {
+    // 주입된 RNG도 같은 값을 계속 돌려줄 수 있다. 무한 재추첨 대신 bounded draw 뒤에 순차
+    // fallback으로 아직 시도하지 않은 값을 보장한다 — bind attempt 수는 바깥 Set이 12로 제한한다.
+    for (let draw = 0; draw < REMOTE_AUTO_PORT_ATTEMPTS; draw += 1) {
       const candidate = randomInt(REMOTE_AUTO_PORT_MIN, REMOTE_AUTO_PORT_MAX + 1);
       if (!attempted.has(candidate)) return candidate;
-    } while (attempted.size < REMOTE_AUTO_PORT_MAX - REMOTE_AUTO_PORT_MIN + 1);
+    }
+    for (let candidate = REMOTE_AUTO_PORT_MIN; candidate <= REMOTE_AUTO_PORT_MAX; candidate += 1) {
+      if (!attempted.has(candidate)) return candidate;
+    }
     throw codedRemoteError("FLEET_AUTO_PORT_EXHAUSTED");
   }
 
