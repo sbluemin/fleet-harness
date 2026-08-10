@@ -54,6 +54,17 @@
   --brass-halo: 0 0 18px var(--brass-glow);
   --positive-halo: 0 0 12px var(--positive-glow);
 
+  /* 특수 강도 스펙트럼 — 세션 한정 고비용 모드 전용 연출 채널.
+     단계 램프(brass)도 상태 채널(warn/coral)도 아닌 별도 채널인 이유는 둘 다 거짓을 말하기
+     때문이다: 램프를 더 태우면 "더 깊다"가 되고, 상태색을 쓰면 경고와 구분되지 않는다. 이
+     스펙트럼은 오직 "평범한 사다리 밖의 모드가 실렸다"만 말하며 다른 표면에서 쓰지 않는다.
+     양 끝 색상각을 맞물려 두어 흐를 때 이음매가 보이지 않는다. */
+  --effort-spectrum-max: linear-gradient(90deg,
+    oklch(80% 0.13 60), oklch(74% 0.16 25), oklch(72% 0.17 350), oklch(74% 0.16 25), oklch(80% 0.13 60));
+  --effort-spectrum-ultracode: linear-gradient(90deg,
+    oklch(80% 0.15 40), oklch(84% 0.14 95), oklch(80% 0.15 150), oklch(80% 0.13 210),
+    oklch(72% 0.16 285), oklch(74% 0.18 340), oklch(80% 0.15 40));
+
   /* Operations 캔버스(Map)는 bg0 근방의 저채도 심층 계조만 사용한다. */
   --canvas-abyss: oklch(11% 0.014 245);
   --canvas-sea-core: oklch(13% 0.018 245);
@@ -346,6 +357,14 @@
   --positive-ink: oklch(42% 0.11 160);
   --brass-halo: none;
   --positive-halo: none;
+
+  /* 라이트 테마의 스펙트럼은 어둡게 내린다 — 이 위에 앉는 표식이 near-white(--text-on-brass)라
+     다크와 같은 밝기로 두면 채움 위 눈금과 손잡이가 사라진다. */
+  --effort-spectrum-max: linear-gradient(90deg,
+    oklch(58% 0.13 60), oklch(52% 0.16 25), oklch(50% 0.17 350), oklch(52% 0.16 25), oklch(58% 0.13 60));
+  --effort-spectrum-ultracode: linear-gradient(90deg,
+    oklch(57% 0.15 40), oklch(58% 0.14 95), oklch(54% 0.15 150), oklch(53% 0.13 210),
+    oklch(48% 0.16 285), oklch(52% 0.18 340), oklch(57% 0.15 40));
 
   --canvas-abyss: oklch(97.8% 0.003 100);
   --canvas-sea-core: oklch(94% 0.006 98);

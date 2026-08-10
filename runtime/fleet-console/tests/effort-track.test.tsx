@@ -379,6 +379,10 @@ describe("EffortTrack high-cost chamber", () => {
     return document.querySelector<HTMLElement>(".effort-track-gate");
   }
 
+  function tiles(): HTMLElement[] {
+    return [...document.querySelectorAll<HTMLElement>(".effort-track-chamber-tile")];
+  }
+
   it("caps the ordinary rail at the expansion boundary and reserves the rest for the gate", () => {
     render(chamberRow(), "high");
 
@@ -403,36 +407,58 @@ describe("EffortTrack high-cost chamber", () => {
     expect(onChange.mock.calls.map((call) => call[0])).toEqual(["xhigh"]);
   });
 
-  it("opens the chamber only on the gate, and keeps the ordinary rungs on the same coordinates", () => {
+  it("opens the chamber onto its own surface without touching the rail", () => {
     render(chamberRow(), "high");
-    const highLeft = stops()[3]!.style.left;
+    const before = stops().map((stop) => stop.style.left);
 
     act(() => gate()!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
 
-    expect(stops()).toHaveLength(7);
-    expect(track().getAttribute("aria-valuemax")).toBe("6");
-    expect(gate()).toBeNull();
-    // 펼쳐도 xhigh는 제자리다 — 축이 눈금을 다시 그리면 방금 고른 값이 옮겨 간 것처럼 읽힌다.
-    expect(stops()[3]!.style.left).toBe(highLeft);
-    // 비용은 챔버가 열려 있는 동안 계속 화면에 남고, 닫는 손잡이도 그 알림과 함께 흐름 밖에 뜬다.
-    const note = document.querySelector(".effort-track-chamber-note");
-    expect(note?.querySelector("[role='status']")?.textContent).toBe("High cost");
-    expect(note?.querySelector(".effort-track-collapse")).not.toBeNull();
-    // 게이트가 사라지므로 초점은 레일로 옮겨 간다 — body로 떨어지면 키보드 경로가 끊긴다.
-    expect(document.activeElement).toBe(track());
+    /**
+     * 레일은 자라지 않는다. 같은 폭에 단만 늘리면 간격이 좁아져 손잡이가 이웃 단을 덮고,
+     * 게이트를 세운 이유(스쳐서 닿을 수 없어야 한다)가 그대로 무너진다.
+     */
+    expect(stops().map((stop) => stop.style.left)).toEqual(before);
+    expect(track().getAttribute("aria-valuemax")).toBe("4");
+
+    // 비싼 단은 흐름 안의 별도 면에 카드로 선다 — 띄우면 플라이아웃의 overflow가 잘라 낸다.
+    const chamber = document.querySelector(".effort-track-chamber");
+    expect(chamber).not.toBeNull();
+    expect(chamber!.querySelector(".effort-track-chamber-warning")?.textContent).toBe("High cost");
+    expect([...chamber!.querySelectorAll(".effort-track-chamber-tile-name")].map((node) => node.textContent))
+      .toEqual(["MAX", "ULTRACODE"]);
+
+    // 여닫이는 하나다 — 게이트가 사라졌다 나타나면 그 폭만큼 레일이 흔들린다.
+    expect(gate()).not.toBeNull();
+    expect(gate()!.getAttribute("aria-expanded")).toBe("true");
   });
 
-  it("lets the pointer reach a chamber rung once the chamber is open", () => {
+  it("arms a chamber rung from its tile, and disarms it on a second press", () => {
     const onChange = render(chamberRow(), "high");
     act(() => gate()!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    const element = stubTrackPointer();
 
-    act(() => {
-      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 113, clientY: 13 }));
-      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 113, clientY: 13 }));
-    });
-
+    act(() => tiles()[1]!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onChange.mock.calls.map((call) => call[0])).toEqual(["ultracode"]);
+
+    // 실린 타일을 다시 누르면 장전이 풀리고, 챔버에 들어오기 전 딛고 있던 평범한 단으로 돌아간다.
+    const armed = render(chamberRow(), "ultracode");
+    act(() => tiles()[1]!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(armed.mock.calls.map((call) => call[0])).toEqual(["high"]);
+  });
+
+  /**
+   * 경계는 `rungs`가 아니라 `after`가 정한다. `rungs`로 잡으면 이 모델이 내주지 않는 MAX가
+   * 평범한 빈 단으로 레일에 실려, 게이트가 서기도 전에 레일이 천장을 넘어간다.
+   */
+  it("draws the chamber boundary from `after`, not from what the model happens to offer", () => {
+    render(chamberRow({ effortExpansion: { after: "xhigh", rungs: ["ultracode"] } }), "high");
+    expect(track().getAttribute("aria-valuemax")).toBe("4");
+
+    act(() => gate()!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+    // MAX는 축에 남아 자리를 지키되 고를 수 없다 — 조용히 지우면 사다리가 거짓말을 한다.
+    expect(tiles().map((tile) => tile.textContent?.startsWith("MAX") ?? false)).toEqual([true, false]);
+    expect(tiles()[0]!.hasAttribute("disabled")).toBe(true);
+    expect(tiles()[1]!.hasAttribute("disabled")).toBe(false);
   });
 
   it("arms a chamber rung without launching it, however the press arrives", () => {
@@ -461,24 +487,27 @@ describe("EffortTrack high-cost chamber", () => {
     expect(onConfirmCurrent).toHaveBeenCalledTimes(1);
   });
 
-  it("hands the arrow key at the ceiling to the gate instead of opening the chamber", () => {
+  it("never lets an arrow key walk into the chamber", () => {
     const onChange = render(chamberRow(), "xhigh");
 
     act(() => track().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+    act(() => track().dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
 
     // 방향키가 비싼 모드를 여는 손잡이가 되면 그 문은 문이 아니다.
     expect(onChange).not.toHaveBeenCalled();
-    expect(stops()).toHaveLength(5);
-    expect(document.activeElement).toBe(gate());
+    expect(document.querySelector(".effort-track-chamber")).toBeNull();
   });
 
-  it("never leaves a chamber rung armed behind a closed rail", () => {
-    // 이미 특수 단이 실려 들어오면 챔버는 열린 채로 그려진다 — 접힌 레일이 비싼 모드를 숨기면
+  it("never leaves a chamber rung armed behind a closed chamber", () => {
+    // 이미 특수 단이 실려 들어오면 챔버는 열린 채로 그려진다 — 접힌 면이 비싼 모드를 숨기면
     // 아무도 고르지 않은 값으로 다음 실행이 나간다.
     const onChange = render(chamberRow(), "max");
-    expect(stops()).toHaveLength(7);
-    expect(gate()).toBeNull();
+    expect(document.querySelector(".effort-track-chamber")).not.toBeNull();
     expect(track().dataset.special).toBe("max");
+    // 레일은 천장을 가리키고 채움은 축 밖을 뜻하는 스펙트럼으로 넘어간다.
+    expect(track().getAttribute("aria-valuenow")).toBe("4");
+    expect(document.querySelector<HTMLElement>(".effort-track-fill")!.dataset.flood).toBe("true");
+    expect(gate()!.dataset.armed).toBe("true");
 
     // 접는 것은 그 모드를 내려놓는 일이다. 값이 남은 채 사라질 수는 없다.
     act(() => track().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));

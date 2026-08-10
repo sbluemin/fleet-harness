@@ -1314,7 +1314,8 @@ describe("Instrument core design contract", () => {
       const declarations = block.match(/^\s{2}[^\n:]+:/gm) ?? [];
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
-        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|canvas|surface|hairline|text|id|provider|shadow|scrollbar)[a-z-]*|--weight-regular|color-scheme):$/);
+        // --effort-spectrum-*: 라이트만 따로 내려 앉히는 특수 강도 전용 채널 — 다크 3종은 base를 그대로 쓴다.
+        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|canvas|surface|hairline|text|id|provider|shadow|scrollbar|effort-spectrum)[a-z-]*|--weight-regular|color-scheme):$/);
       }
     }
     // 신호 ink 티어는 base에서 별칭으로 존재해 다크 3종이 var 간접으로 base 신호색을 상속한다.
@@ -1666,53 +1667,80 @@ describe("Effort track interaction grammar", () => {
     expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.effort-track-stop\[data-previewed="true"\] \{\s*box-shadow: 0 0 0 2px var\(--brass\);/);
   });
 
-  it("grows the rail into the reserved chamber without re-ruling the axis", () => {
+  /**
+   * 챔버는 레일에 눈금을 더 얹는 방식이 될 수 없다. 같은 폭에 단만 늘면 간격이 좁아져 손잡이가
+   * 이웃 단을 덮고, 게이트를 세운 이유(스쳐서 닿을 수 없어야 한다)가 그대로 무너진다. 레일은
+   * 고정 폭으로 평범한 천장에서 끝나고, 비싼 단은 흐름 안의 별도 면이 맡는다.
+   */
+  it("keeps the rail fixed and gives the chamber its own surface in flow", () => {
     const components = source("styles/components.css");
-    const frame = components.match(/\.effort-track-frame \{[^}]*\}/)?.[0] ?? "";
     const rail = components.match(/\n\.effort-track \{[^}]*\}/)?.[0] ?? "";
-    const note = components.match(/\.effort-track-chamber-note \{[^}]*\}/)?.[0] ?? "";
+    const row = components.match(/\.effort-track-row \{[^}]*\}/)?.[0] ?? "";
+    const frame = components.match(/\.effort-track-frame \{[^}]*\}/)?.[0] ?? "";
     const gate = components.match(/\.effort-track-gate \{[^}]*\}/)?.[0] ?? "";
+    const chamber = components.match(/\.effort-track-chamber \{[^}]*\}/)?.[0] ?? "";
 
-    // 좌표계는 프레임이 진다. 레일은 그 위에서 폭만 자라므로 스톱과 손잡이가 흔들리지 않는다.
+    // 좌표계는 프레임이 지고, 레일은 그 위에 고정 폭으로 눕는다 — 폭이 움직이면 눈금이 다시 그려진다.
     expect(frame).toContain("position: relative");
     expect(rail).toContain("position: absolute");
-    expect(rail).toMatch(/transition:[^;]*width/);
+    expect(rail).toContain("width: 100%");
+    expect(rail).not.toMatch(/transition:[^;]*width/);
 
-    // 게이트는 챔버가 차지할 자리를 지킨다 — 접혀 있을 때 그 폭이 비어 있어야 펼쳐도 축이 그대로다.
-    expect(gate).toContain("position: absolute");
+    // 게이트는 여닫이 하나로 행에 상주한다. 열림/닫힘에 서로 다른 버튼을 세우면 그 붙고 떨어짐이
+    // 레일 폭을 흔들어, 움직이지 않아야 할 단들이 제자리에서 밀린다.
+    expect(row).toContain("display: flex");
+    expect(gate).toContain("flex: 0 0 auto");
+    expect(gate).not.toContain("position: absolute");
+    expect(components).toContain('.effort-track-gate[aria-expanded="true"] .effort-track-gate-leaf');
+    expect(components).not.toContain(".effort-track-collapse");
 
     /**
-     * 비용 알림과 닫는 손잡이는 흐름 밖에 뜬다. 트랙 옆에 흐름대로 놓으면 챔버를 열 때마다
-     * 프레임이 그만큼 좁아져, 평범한 단들이 제자리에서 밀린다 — 펼침이 축을 다시 눈금 그리는
-     * 일이 되어 방금 고른 값이 옮겨 간 것처럼 읽힌다.
+     * 챔버는 흐름 안에 선다. 레일 위로 띄우면 플라이아웃의 `overflow-y: auto`가 잘라 내 —
+     * 비용을 밝히려고 만든 면이 정작 화면에 없다.
      */
-    expect(note).toContain("position: absolute");
-
-    // 펼침의 빛은 한 번만 지나간다. 상시 루프는 값이 아직 정해지지 않았다고 말한다.
-    const sheen = components.match(/\.effort-track-reveal-sheen \{[^}]*\}/)?.[0] ?? "";
-    expect(sheen).toMatch(/animation:[^;]*\b1\b/);
-    expect(sheen).not.toContain("infinite");
-    // 채움을 지나는 빛은 무채색이다. 비용 채널로 칠하면 brass에 녹아 아무것도 지나가지 않은 것으로 보인다.
-    expect(sheen).toContain("var(--text-primary)");
-    expect(sheen).not.toContain("var(--warn)");
+    expect(chamber).not.toContain("position: absolute");
+    expect(components).not.toContain(".effort-track-chamber-note");
+    const menu = components.match(/\.canvas-context-menu \{[^}]*\}/)?.[0] ?? "";
+    expect(menu).toContain("overflow-y: auto");
   });
 
   /**
-   * 비용 채널은 이 팔레트에서 brass의 이웃이다 — `whites`는 색상각(82°)까지 같고 명도만 1% 다르다.
-   * 그래서 채움 위에 앉는 챔버 표식은 warn 하나로 설 수 없다: brass 위에서 읽히도록 정의된 토큰이
-   * 대비를 지고, 비용 채널은 그 테 밖에서 말해야 실린 단이 평범한 눈금과 갈린다.
+   * 특수 강도는 단계 램프(brass)로도 상태 채널(warn)로도 말할 수 없다. 램프를 더 태우면 "더 깊다"는
+   * 거짓이 되고 — ultracode는 xhigh 깊이에 오케스트레이션을 얹은 모드다 — 상태색을 쓰면 경고와
+   * 갈리지 않는다. 그래서 이 모드만 쓰는 별도 스펙트럼 채널을 두고, 그 위에 앉는 표식은 흐르는
+   * 색에 기대지 않도록 무채색 대비 기준으로만 선다.
    */
-  it("rides the cost mark on a brass-readable ring instead of hue alone", () => {
+  it("speaks the special efforts on their own spectrum channel", () => {
     const components = source("styles/components.css");
-    const armedStop = components.match(/\.effort-track-stop\[data-special\]\[data-filled="true"\] \{[^}]*\}/)?.[0] ?? "";
-    const armedKnob = components.match(/\.effort-track-knob\[data-special\] \{[^}]*\}/)?.[0] ?? "";
+    const theme = source("styles/theme.css");
 
-    for (const rule of [armedStop, armedKnob]) {
-      expect(rule).toContain("var(--text-on-brass)");
-      expect(rule).toContain("var(--warn)");
-      // 대비 기준이 비용 채널보다 안쪽에 있어야 warn 테가 채움이 아니라 그 테를 등지고 선다.
-      expect(rule.indexOf("var(--text-on-brass)")).toBeLessThan(rule.indexOf("var(--warn)"));
+    // 유채색 리터럴은 theme.css의 토큰 정의에만 산다.
+    for (const token of ["--effort-spectrum-max", "--effort-spectrum-ultracode"]) {
+      expect(theme).toContain(`${token}: linear-gradient`);
+      expect(components).not.toMatch(new RegExp(`${token}:\\s*linear-gradient`));
     }
+    // 라이트 테마는 따로 내려 앉힌다 — 이 위에 앉는 표식이 near-white라 같은 밝기로 두면 사라진다.
+    expect(theme.split('[data-theme="whites"]')[1] ?? "").toContain("--effort-spectrum-ultracode:");
+
+    const flood = components.match(/\.effort-track-fill\[data-flood\] \{[^}]*\}/)?.[0] ?? "";
+    expect(flood).toContain("var(--effort-spectrum");
+    expect(flood).not.toContain("var(--brass)");
+    expect(flood).not.toContain("var(--warn)");
+
+    // 흐르는 색 위의 표식은 무채색 대비 기준으로만 선다 — 유채색 표식은 매 프레임 대비가 달라진다.
+    const armedKnob = components.match(/\.effort-track-knob\[data-special\] \{[^}]*\}/)?.[0] ?? "";
+    expect(armedKnob).toContain("var(--text-on-brass)");
+    expect(armedKnob).not.toContain("var(--warn)");
+
+    /**
+     * 도트린 예외(의도): 이 앱의 표면은 값이 정해지면 멈춘다. 세션 한정 고비용 모드는 정해졌다는
+     * 사실 자체가 계속 알려야 할 상태라, 이 채널에만 상시 애니메이션을 허용한다. 다만 모션을 끈
+     * 환경에서는 흐름만 걷고 색은 남긴다 — 상태를 움직임에만 실으면 그 사람에게는 전달되지 않는다.
+     */
+    expect(flood).toContain("infinite");
+    expect(components).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.effort-track-fill\[data-flood\],[\s\S]*\{\s*animation: none;\s*background-position:/,
+    );
   });
 });
 

@@ -7482,18 +7482,25 @@
 .effort-track-shell {
   position: relative;
   display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* 레일 행의 구성은 상태와 무관하게 고정이다 — 게이트가 붙었다 떨어지면 flex 레일이 그만큼
+   넓어졌다 좁아져, 움직이지 않아야 할 단들이 제자리에서 밀린다. */
+.effort-track-row {
+  display: flex;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
 }
 
-/* 축의 좌표계. 채움·스톱·손잡이는 모두 이 상자를 기준으로 자리를 재므로, 레일이 챔버로 자라도
-   이미 고른 단이 제자리에 남는다 — 레일을 기준으로 재면 펼치는 순간 축 전체가 눈금을 다시
-   그려, 방금 고른 값이 옮겨 간 것처럼 읽힌다. */
+/* 축의 좌표계. 채움·스톱·손잡이가 모두 이 상자를 기준으로 자리를 잰다. */
 .effort-track-frame {
   position: relative;
   flex: 1;
-  min-width: 116px;
+  min-width: 96px;
   height: 26px;
 }
 
@@ -7501,14 +7508,13 @@
   position: absolute;
   left: 0;
   top: 0;
+  width: 100%;
   height: 100%;
   border: 1px solid var(--surface-rim);
   border-radius: 999px;
   background: color-mix(in oklch, var(--surface-pillar) 55%, transparent);
   cursor: pointer;
   touch-action: none;
-  /* 펼침은 레일이 챔버로 자라는 일이다. 폭 하나만 움직이므로 스톱과 손잡이는 흔들리지 않는다. */
-  transition: width var(--duration-base) var(--ease-spring);
 }
 
 .effort-track:focus-visible {
@@ -7657,13 +7663,12 @@
 
 /* ── 챔버: 평범한 레일 뒤에 사는 비싼 단들 ────────────────────────────────────────────── */
 
-/* 게이트는 챔버가 차지할 자리를 그대로 지킨다. 접혀 있을 때 그 폭을 비워 두므로 펼쳐도 평범한
-   단들이 움직이지 않고, 사용자는 무엇이 어디로 자랄지 미리 본다. */
+/* 게이트는 여닫이 하나다 — 열림과 닫힘에 서로 다른 버튼을 세우면, 한쪽이 사라질 때 행이
+   재배치되어 레일이 넓어졌다 좁아진다. 같은 자리에 남아 aria-expanded만 뒤집는다. */
 .effort-track-gate {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -7703,98 +7708,156 @@
 .effort-track-gate:hover .effort-track-gate-leaf:first-child { transform: rotate(45deg) translate(-1px, 1px); }
 .effort-track-gate:hover .effort-track-gate-leaf:last-child { transform: rotate(45deg) translate(1px, -1px); }
 
-/* 챔버 안의 스톱은 눈금이 아니라 문턱이다 — 비용 채널로 칠해, 축을 훑는 눈이 여기서 멈춘다. */
-.effort-track-stop[data-special] {
-  background: none;
-  box-shadow: 0 0 0 1.5px var(--warn);
+/* 열린 게이트는 되돌리는 손잡이다 — 꺾쇠를 뒤집어 가리키는 방향이 곧 하는 일이 된다. */
+.effort-track-gate[aria-expanded="true"] .effort-track-gate-leaf { transform: rotate(225deg); }
+.effort-track-gate[aria-expanded="true"]:hover .effort-track-gate-leaf:first-child { transform: rotate(225deg) translate(-1px, 1px); }
+.effort-track-gate[aria-expanded="true"]:hover .effort-track-gate-leaf:last-child { transform: rotate(225deg) translate(1px, -1px); }
+
+/**
+ * 장전된 게이트는 스펙트럼을 두른다. 게이트는 접힌 뒤에도 남는 유일한 표식이므로, 여기서까지
+ * 조용하면 비싼 모드가 실린 채 평범한 행처럼 보인다.
+ */
+.effort-track-gate[data-armed] {
+  border-style: solid;
+  border-color: transparent;
+  background: var(--effort-spectrum-ultracode) border-box;
+  background-size: 220% 100%;
+  color: var(--text-on-brass);
+  animation: effort-spectrum-drift 7s linear infinite;
 }
 
-/* 실린 챔버 단은 채움 위에 앉는다. 이 팔레트에서 비용 채널은 brass의 이웃이라(밝은 테마는 색상각까지
-   같다) 그 위에 warn을 칠하면 평범한 눈금과 갈리지 않는다. 그래서 대비 기준은 brass 위에서 읽히도록
-   정의된 토큰이 맡고, 비용 채널은 그 테 밖에서 말한다 — 색상 하나에 판정을 걸지 않는다. */
-.effort-track-stop[data-special][data-filled="true"] {
+/**
+ * 특수 강도가 실리면 레일 전체가 스펙트럼으로 흐른다.
+ *
+ * 도트린 예외(의도): 이 앱의 표면은 값이 정해지면 움직임을 멈춘다 — 계속 도는 표면은 "아직
+ * 정해지지 않았다"는 뜻이기 때문이다. 세션 한정 고비용 모드는 그 반대다. 정해졌다는 사실 자체가
+ * 계속 알려야 할 상태이므로, 이 한 곳에서만 상시 애니메이션을 허용한다. 색도 마찬가지로 단계
+ * 램프(brass)나 상태 채널(warn/coral)이 아니라, 이 모드에만 쓰는 별도 스펙트럼 토큰을 쓴다 —
+ * 램프를 더 태우면 "더 깊다"는 거짓이 되고, 상태 채널을 쓰면 경고와 구분되지 않는다.
+ */
+.effort-track-fill[data-flood] {
+  right: 1px;
+  background: var(--effort-spectrum, var(--effort-spectrum-ultracode));
+  background-size: 220% 100%;
+  animation: effort-spectrum-drift 7s linear infinite;
+}
+
+.effort-track[data-special="max"] ~ .effort-track-fill { --effort-spectrum: var(--effort-spectrum-max); }
+.effort-track[data-special="ultracode"] ~ .effort-track-fill { --effort-spectrum: var(--effort-spectrum-ultracode); }
+
+@keyframes effort-spectrum-drift {
+  from { background-position: 0% 50%; }
+  to { background-position: -220% 50%; }
+}
+
+/* 스펙트럼 위의 스톱과 손잡이. 무채색 대비 기준으로만 서야 한다 — 흐르는 색 위에서 유채색 표식은
+   매 프레임 다른 대비를 갖는다. */
+.effort-track-fill[data-flood] ~ .effort-track-stops .effort-track-stop[data-filled="true"] {
+  background: color-mix(in oklab, var(--text-on-brass) 72%, transparent);
+}
+
+.effort-track-knob[data-special] {
   background: var(--text-on-brass);
   box-shadow:
-    0 0 0 2px var(--text-on-brass),
-    0 0 0 3.5px var(--warn);
-}
-
-/* 비싼 단을 쥔 손잡이. 색을 갈지 않고 비용 채널의 테를 두른다 — 손잡이 본체가 물들면 어느 단을
-   쥐었는지가 아니라 "경고"가 먼저 읽힌다. 이 테도 채움 위에 앉으므로 홀로 서지 못한다:
-   brass 위에서 읽히는 테를 먼저 두르고 그 밖에 비용 채널을 둔다. */
-.effort-track-knob[data-special] {
-  box-shadow:
-    0 0 0 2px var(--text-on-brass),
-    0 0 0 4px var(--warn),
-    0 0 10px var(--warn-glow),
+    0 0 0 2px oklch(0% 0 0 / 45%),
     0 1px 3px oklch(0% 0 0 / 55%);
 }
 
-/* 챔버가 열릴 때 한 번 지나가는 빛. 열림에 매달려 있으므로 루프가 없다 — 계속 움직이는 표면은
-   값이 아직 정해지지 않았다고 말한다. */
-.effort-track-reveal-sheen {
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  /* 빛은 무채색이다 — 최고 단 스윕과 같은 어휘이고, 채움을 지날 때 비용 채널처럼 brass에 녹지 않는다. */
-  background: linear-gradient(
-    100deg,
-    transparent 38%,
-    color-mix(in oklab, var(--text-primary) 30%, transparent) 50%,
-    transparent 62%);
-  animation: effort-track-reveal var(--duration-slow) var(--ease-spring) 1;
-  pointer-events: none;
-}
+/* ── 챔버 면: 비싼 모드를 고르는 자리 ────────────────────────────────────────────────── */
 
-@keyframes effort-track-reveal {
-  from { opacity: 0; transform: translateX(-40%); }
-  60% { opacity: 1; }
-  to { opacity: 0; transform: translateX(40%); }
-}
-
-/* 흐름 밖으로 띄운다. 트랙 옆에 흐름대로 놓으면 챔버를 열 때마다 프레임이 그만큼 좁아져,
-   움직이지 않아야 할 평범한 단들이 제자리에서 밀린다 — 펼침이 축을 다시 눈금 그리는 일이 된다. */
-.effort-track-chamber-note {
-  position: absolute;
-  bottom: calc(100% + var(--space-1));
-  left: 0;
-  z-index: 2;
+/**
+ * 흐름 안에 편다. 레일 위로 띄우면 플라이아웃의 `overflow-y: auto`가 잘라 내 — 비용을 밝히려고
+ * 만든 면이 정작 화면에 없다. 흐름 안에 있으면 팝업이 그만큼 높아질 뿐 잘리지 않는다.
+ */
+.effort-track-chamber {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--space-2);
-  max-width: 280px;
-  padding: 2px var(--space-2);
-  border: 1px solid color-mix(in oklch, var(--warn) 32%, var(--surface-rim));
-  border-radius: var(--radius-sm);
-  background: var(--surface-frame);
+  padding: var(--space-2);
+  border: 1px solid color-mix(in oklch, var(--warn) 30%, var(--surface-rim));
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--warn) 5%, var(--surface-frame));
+  animation: effort-chamber-open var(--duration-base) var(--ease-spring) 1;
+}
+
+@keyframes effort-chamber-open {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.effort-track-chamber-warning {
+  margin: 0;
   color: var(--warn-ink);
   font-size: 10.5px;
-  line-height: 1.35;
+  line-height: 1.4;
 }
 
-.effort-track-collapse {
-  flex: 0 0 auto;
+.effort-track-chamber-tiles {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  border: none;
-  border-radius: 999px;
-  background: none;
-  color: var(--text-tertiary);
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
-  transition: color var(--duration-fast) var(--ease-spring);
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
-.effort-track-collapse:hover { color: var(--text-secondary); }
+/* 타일은 레일의 눈금이 아니라 카드다 — 손잡이 하나가 이웃을 덮던 자리를, 오해할 수 없는 폭으로 바꾼다. */
+.effort-track-chamber-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: var(--surface-pillar);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  transition:
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
 
-.effort-track-collapse:focus-visible {
+.effort-track-chamber-tile:hover:not(:disabled) { border-color: var(--brass); }
+
+.effort-track-chamber-tile:focus-visible {
   outline: 2px solid var(--brass);
   outline-offset: 2px;
+}
+
+.effort-track-chamber-tile:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+/* 장전된 타일. 스펙트럼은 테두리로만 흐른다 — 본문까지 물들이면 설명 문장이 매 프레임 다른
+   바탕 위에 놓여 읽히지 않는다. */
+.effort-track-chamber-tile[aria-pressed="true"] {
+  border-color: transparent;
+  background:
+    linear-gradient(var(--surface-pillar), var(--surface-pillar)) padding-box,
+    var(--effort-spectrum-ultracode) border-box;
+  background-size: auto, 220% 100%;
+  animation: effort-spectrum-drift 7s linear infinite;
+}
+
+.effort-track-chamber-tile[data-effort-level="max"][aria-pressed="true"] {
+  background:
+    linear-gradient(var(--surface-pillar), var(--surface-pillar)) padding-box,
+    var(--effort-spectrum-max) border-box;
+  background-size: auto, 220% 100%;
+}
+
+.effort-track-chamber-tile-name {
+  color: var(--effort-tone, var(--text-primary));
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.effort-track-chamber-tile-note {
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  line-height: 1.35;
 }
 
 
@@ -11447,7 +11510,8 @@ body[data-codex-reading="true"] .operations-side-bar {
   .effort-track-value,
   .effort-track-gate,
   .effort-track-gate-leaf,
-  .effort-track-collapse,
+  .effort-track-chamber,
+  .effort-track-chamber-tile,
   .operation-launch-variant-effort,
   .operation-launch-variant-effort-handle,
   .operation-launch-variant-effort-gauge rect,
@@ -11456,10 +11520,13 @@ body[data-codex-reading="true"] .operations-side-bar {
     transition: none;
   }
 
-  /* 펼침의 빛은 지나가는 움직임 그 자체다 — 멈춰 세우면 트랙 위에 흰 띠로 남으므로 지운다.
-     비싼 단이라는 사실은 색·테·경고문이 이미 말하고 있어 잃는 것이 없다. */
-  .effort-track-reveal-sheen {
-    display: none;
+  /* 스펙트럼은 멈춰도 스펙트럼이다 — 흐름만 걷어 내고 색은 남긴다. 비싼 모드가 실렸다는 사실을
+     움직임에만 실어 두면, 모션을 끈 사람에게는 그 상태가 아예 전달되지 않는다. */
+  .effort-track-fill[data-flood],
+  .effort-track-gate[data-armed],
+  .effort-track-chamber-tile[aria-pressed="true"] {
+    animation: none;
+    background-position: 50% 50%;
   }
 
   .effort-track:hover ~ .effort-track-knob,

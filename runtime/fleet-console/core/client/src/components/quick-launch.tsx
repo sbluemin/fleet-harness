@@ -150,7 +150,9 @@ export function QuickLaunch() {
     const variant: Record<string, string> = { prompt: text };
     if (model) variant.model = model;
     if (effort) variant.effort = effort;
-    writeQuickLaunchSelection({ theaterId, model, effort });
+    // 실행에는 실리되 디스크에는 남지 않는다. 챔버 뒤의 강도는 이 세션 한정이므로, 저장해 두면
+    // 다음에 컴포저를 열 때 아무도 고르지 않은 고비용 모드가 복원돼 게이트를 지나지 않고 나간다.
+    writeQuickLaunchSelection({ theaterId, model, effort: isSpecialEffort(selectedRow, effort) ? null : effort });
     // 대상 Theater로 전환한 뒤 Operations로 이동한다. 실행은 그 화면이 자기 지오메트리·포커스 규율로
     // 수행한다(pendingOperationFocus와 같은 request/consume 계약) — 컴포저는 의도만 넘긴다.
     setActiveTheater(theaterId);
