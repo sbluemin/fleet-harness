@@ -436,6 +436,10 @@ describe("Instrument core design contract", () => {
     expect(contextMenu).not.toContain("canvas-context-menu-head");
     expect(contextMenu).toContain('aria-label={t("canvas.menu.etc")}');
     expect(contextMenu).toContain("operation-launch-provider-glyph--etc");
+    // 그룹 머리글은 캔버스 메뉴 전체에서 한 클래스뿐이다 — 머리글 문법이 갈라지면 머리글과 첫
+    // 항목 사이 간격이 그룹마다 어긋난다(Etc가 하위 항목에 붙어 보였던 회귀).
+    expect(contextMenu).not.toContain("canvas-context-menu-plugin");
+    expect(components).not.toContain(".canvas-context-menu-plugin");
     expect(contextMenu).not.toContain("CanvasContextMenuMode");
     expect(contextMenu).not.toContain("canvas-context-menu-tabs");
     expect(contextMenu).not.toContain("Formation view");
@@ -584,6 +588,30 @@ describe("Instrument core design contract", () => {
     const unclassed = css.match(/\.ai-gateway-class-badge\.is-unclassed \{[^}]*\}/)?.[0] ?? "";
     expect(unclassed).toContain("border-style: dashed;");
     expect(unclassed).not.toContain("border-color:");
+  });
+
+  it("pins the Operation provider mark grammar — one tone table, ink only, no state repaint", () => {
+    // 사이드바 칩·커맨드 밴드·팔레트는 같은 Operation을 세 곳에서 센다. 세 표면이 각자 톤을
+    // 적으면 한 곳만 고쳐도 컴파일은 되고 같은 Operation이 두 색으로 보인다 — 대조표는
+    // .operation-provider-mark 한 곳에만 있어야 하고, 표면 클래스는 치수만 소유한다.
+    const css = source("styles/components.css");
+    for (const provider of ["claude", "codex", "cursor", "kimi", "opencode"]) {
+      expect(css).toContain(`.operation-provider-mark.is-${provider} { color: var(--provider-${provider}); }`);
+    }
+    // 공급자는 정체성 축이다 — 마크의 잉크에만 머물러야 하므로 배경·테두리로 번지지 않고,
+    // 신호색·brass를 빌려 상태·위치 채널과 충돌하지도 않는다.
+    for (const [, body] of css.matchAll(/\.operation-provider-mark[^{}]*\{([^}]*)\}/g)) {
+      expect(body).not.toMatch(/background|border|box-shadow/);
+      expect(body).not.toMatch(/var\(--(aurora|warn|coral|positive|brass)[a-z-]*\)/);
+    }
+    // 정체성은 포커스·활성으로 다시 칠하지 않는다. 명령 행 글리프가 brass로 반응하는 것과
+    // 달리, 공급자 마크는 어느 상태에서도 같은 톤을 유지해야 같은 Operation으로 읽힌다.
+    expect(css).not.toMatch(/\.is-active[^{}]*\.operation-provider-mark/);
+
+    // 세 표면 모두 공용 마크 클래스를 통해 톤을 받는다 — 하나라도 자기 색을 적으면 대조표가 갈라진다.
+    expect(source("sidebar/operations-side-bar-chip.tsx")).toContain("operation-provider-mark is-${entry.launchProvider}");
+    expect(source("components/command-band.tsx")).toContain("operation-provider-mark is-${activeLaunchProvider}");
+    expect(source("components/operation-search.tsx")).toContain("operation-provider-mark is-${entry.launchProvider}");
   });
 
   it("pins the AI Gateway provider-priority toggle grammar — ink rank only, no signal colour, no brass", () => {

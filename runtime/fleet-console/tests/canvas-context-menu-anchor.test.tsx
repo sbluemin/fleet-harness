@@ -203,7 +203,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(document.querySelector(".canvas-context-menu-head")).toBeNull();
     expect(document.querySelector(".canvas-context-menu")?.textContent).not.toContain("Controls");
     expect(document.querySelector(".canvas-context-menu")?.textContent).not.toContain("Terminal");
-    const groupLabels = Array.from(document.querySelectorAll(".canvas-context-menu-plugin")).map((node) => node.textContent?.trim());
+    const groupLabels = Array.from(document.querySelectorAll(".operation-launch-variant-caption")).map((node) => node.textContent?.trim());
     expect(groupLabels).toEqual(["Etc"]);
     const etcGlyph = document.querySelector(".operation-launch-provider-glyph--etc");
     expect(etcGlyph?.querySelectorAll("circle")).toHaveLength(3);
@@ -534,8 +534,8 @@ describe("CanvasContextMenu launch kind attribute", () => {
       .querySelectorAll('[data-operation-launch-kind="shell"], .operation-launch-variant-caption, [data-launch-variant-row]'))
       .map((element) => element.getAttribute("data-launch-variant-row")
         ?? element.getAttribute("data-operation-launch-kind")
-        ?? "caption");
-    expect(order).toEqual(["caption", "fable", "shell"]);
+        ?? `caption:${element.textContent?.trim()}`);
+    expect(order).toEqual(["caption:Claude built-in", "fable", "caption:Etc", "shell"]);
     expect(document.querySelector('[aria-label="Etc"] [data-operation-launch-kind="shell"]')).not.toBeNull();
   });
 

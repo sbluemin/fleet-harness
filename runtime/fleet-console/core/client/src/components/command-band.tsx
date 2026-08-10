@@ -10,6 +10,7 @@ import { cycleTriageDeckZoomPreset } from "../canvas/triage-watch-deck.js";
 import { COMMAND_BAND_RAIL_STRIP_PX, commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandMapControlsAnchor, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
 import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
+import { launchProviderFromOperationPayload, launchProviderGlyph } from "./launch-provider-glyphs.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { setRailChromeExpanded, toggleRailChrome, useRailChromeExpanded } from "../rail/rail-store.js";
@@ -133,7 +134,14 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   const activeKindTitle = activeKind ? resolveLocalizedText(activeKind.title, language) : null;
-  const activeOperationIcon = activeOperation && activePlugin?.renderLaunchIcon ? activePlugin.renderLaunchIcon({ id: activeCliId ?? activeOperation.type, type: activeOperation.type, title: activeKindTitle ?? activeOperation.type }) : null;
+  // 사이드바 칩과 같은 규율: 실행된 공급자가 기록된 Operation은 그 공급자의 마크가
+  // 플러그인 실행 종류 아이콘을 대신하고, 캐리어 시그니처 톤을 함께 입는다.
+  const activeLaunchProvider = launchProviderFromOperationPayload(activeOperation?.payload);
+  const activeOperationIcon = activeLaunchProvider
+    ? launchProviderGlyph(activeLaunchProvider)
+    : activeOperation && activePlugin?.renderLaunchIcon
+      ? activePlugin.renderLaunchIcon({ id: activeCliId ?? activeOperation.type, type: activeOperation.type, title: activeKindTitle ?? activeOperation.type })
+      : null;
   const environmentTriggerRef = useRef<HTMLButtonElement>(null);
   const environmentPopoverRef = useRef<HTMLDivElement>(null);
   const commandBandRef = useRef<HTMLElement>(null);
@@ -611,7 +619,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
                 <span className="command-band-segment-label">{activeOperation.title}</span>
                 <CommandBandTriggerCaret />
               </button>}
-              {activeCliLabel ? <span className="command-band-operation-attribute" title={activeKindTitle ?? activeCliLabel}>{activeOperationIcon ? <span className="command-band-operation-kind" aria-hidden="true">{activeOperationIcon}</span> : null}{activeCliLabel}</span> : null}
+              {activeCliLabel ? <span className="command-band-operation-attribute" title={activeKindTitle ?? activeCliLabel}>{activeOperationIcon ? <span className={`command-band-operation-kind${activeLaunchProvider ? ` operation-provider-mark is-${activeLaunchProvider}` : ""}`} aria-hidden="true">{activeOperationIcon}</span> : null}{activeCliLabel}</span> : null}
             </> : <button
               ref={operationTriggerRef}
               type="button"

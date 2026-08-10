@@ -5,6 +5,7 @@ import type { FleetClientPlugin } from "@fleet-console/sdk/plugin";
 import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 
 import { fetchSearch } from "../codex/api.js";
+import { launchProviderGlyph } from "./launch-provider-glyphs.js";
 import { propagateSettingsEntryIndex, recordSettingsEntryIndex } from "./command-band-system-cluster.js";
 import { setGlobalSettingsField } from "../global-settings-store.js";
 import { toggleCommandBandDocked } from "../fullscreen-band-store.js";
@@ -659,6 +660,11 @@ export function OperationSearch({
                           onMouseEnter={() => setSelectedIndex(index)}
                           onClick={() => selectEntry(entry.operationId)}
                         >
+                          {entry.launchProvider ? (
+                            <span className={`operation-search-op-mark operation-provider-mark is-${entry.launchProvider}`} aria-hidden="true">
+                              {launchProviderGlyph(entry.launchProvider)}
+                            </span>
+                          ) : null}
                           <span className="operation-search-result-text">
                             <strong>{highlightText(entry.operationName, tokens)}</strong>
                             <small>{operationMeta(entry)}</small>

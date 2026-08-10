@@ -79,6 +79,29 @@ export function launchProviderFromGroupId(groupId: string): LaunchProviderGlyphI
   return null;
 }
 
+/**
+ * Read the provider an Operation was launched with from its payload.
+ *
+ * The launching plugin records this once at launch, so chrome marks the supplier that
+ * actually ran without asking the plugin to re-derive it per surface. Operations whose
+ * plugin does not record a provider return `null` and keep their plugin-owned kind icon.
+ */
+export function launchProviderFromOperationPayload(
+  payload: Readonly<Record<string, unknown>> | undefined,
+): LaunchProviderGlyphId | null {
+  const provider = payload?.launchProvider;
+  if (
+    provider === "claude"
+    || provider === "codex"
+    || provider === "cursor"
+    || provider === "kimi"
+    || provider === "opencode"
+  ) {
+    return provider;
+  }
+  return null;
+}
+
 /** Resolve the provider glyph for a selected launch-model id (`fable` or `cursor--grok-4.5`). */
 export function launchProviderFromModelId(modelId: string | null | undefined): LaunchProviderGlyphId | null {
   if (!modelId) return null;
