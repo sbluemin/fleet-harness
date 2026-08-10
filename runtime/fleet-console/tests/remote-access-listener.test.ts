@@ -11,6 +11,7 @@ import { createConsoleLock } from "../core/host/lock.js";
 import { normalizeFingerprint } from "../core/host/remote-identity.js";
 import { parseAccessLink } from "../core/host/access-link.js";
 import { createConsoleServer, type ConsoleServer } from "../core/host/server.js";
+import type { ConsoleRemoteAccessSettings } from "../core/host/settings/settings-domain.js";
 
 // 원격 리스너는 자기 인증서로만 신원을 증명한다. 링크가 실어 나른 지문으로 검증해야
 // 하므로, 테스트 클라이언트도 CA가 아니라 지문으로 서버를 확인한다.
@@ -193,6 +194,49 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await saveRemoteAccess(fixture, { enabled: true, bindHost: BIND_HOST });
 
     await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, session)).resolves.toMatchObject({ status: 401 });
+  });
+
+  it("tries the persisted Auto value first, then closes a random successful probe until the new tuple is acknowledged", async () => {
+    const occupied = http.createServer();
+    await new Promise<void>((resolve, reject) => {
+      occupied.once("error", reject);
+      occupied.listen(0, BIND_HOST, () => { occupied.off("error", reject); resolve(); });
+    });
+    const occupiedAddress = occupied.address();
+    const occupiedPort = typeof occupiedAddress === "object" && occupiedAddress ? occupiedAddress.port : 0;
+    const candidateProbe = http.createServer();
+    await new Promise<void>((resolve, reject) => {
+      candidateProbe.once("error", reject);
+      candidateProbe.listen(0, BIND_HOST, () => { candidateProbe.off("error", reject); resolve(); });
+    });
+    const candidateAddress = candidateProbe.address();
+    const candidatePort = typeof candidateAddress === "object" && candidateAddress ? candidateAddress.port : 0;
+    await new Promise<void>((resolve) => candidateProbe.close(() => resolve()));
+    const randomInt = vi.fn(() => candidatePort);
+    try {
+      const remoteAccess = {
+        enabled: true,
+        listenAddress: BIND_HOST,
+        advertisedHost: BIND_HOST,
+        listenPort: { mode: "auto" as const, value: occupiedPort },
+        advertisedPort: { mode: "custom" as const, value: 50_000 },
+        acknowledgment: { version: 1 as const, listenAddress: BIND_HOST, listenPort: occupiedPort, advertisedHost: BIND_HOST, advertisedPort: 50_000 },
+      };
+      const fixture = await startFixture({ remote: true, remoteAccess, remoteRandomInt: randomInt });
+      const status = await readRemoteStatus(fixture);
+      expect(status.listener).toMatchObject({ listening: false, origin: null, lastError: "acknowledgment_required" });
+      expect(randomInt).toHaveBeenCalledTimes(1);
+      const saved = JSON.parse(fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "settings.json"), "utf8")) as { general: { remoteAccess: typeof remoteAccess } };
+      expect(saved.general.remoteAccess).toMatchObject({ enabled: false, listenPort: { mode: "auto", value: candidatePort }, acknowledgment: null });
+      const reusable = http.createServer();
+      await new Promise<void>((resolve, reject) => {
+        reusable.once("error", reject);
+        reusable.listen(candidatePort, BIND_HOST, () => { reusable.off("error", reject); resolve(); });
+      });
+      await new Promise<void>((resolve) => reusable.close(() => resolve()));
+    } finally {
+      await new Promise<void>((resolve) => occupied.close(() => resolve()));
+    }
   });
 
   it("reports a bind failure as a code instead of taking the console down", async () => {
@@ -1041,7 +1085,7 @@ function remoteSettings(enabled: boolean, host: string, port: number) {
   };
 }
 
-async function startFixture(options: { readonly remote: boolean; readonly bindHost?: string }): Promise<Fixture> {
+async function startFixture(options: { readonly remote: boolean; readonly bindHost?: string; readonly remoteAccess?: ConsoleRemoteAccessSettings; readonly remoteRandomInt?: (min: number, maxExclusive: number) => number }): Promise<Fixture> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-remote-"));
   const dataRoot = path.join(dir, "fleet-home");
   tempDirs.push(dir);
@@ -1051,10 +1095,10 @@ async function startFixture(options: { readonly remote: boolean; readonly bindHo
     fs.mkdirSync(consoleDataDir, { recursive: true });
     fs.writeFileSync(
       path.join(consoleDataDir, "settings.json"),
-      JSON.stringify({ version: 1, general: { remoteAccess: remoteSettings(true, options.bindHost ?? BIND_HOST, 50_000) }, plugins: {} }),
+      JSON.stringify({ version: 1, general: { remoteAccess: options.remoteAccess ?? remoteSettings(true, options.bindHost ?? BIND_HOST, 50_000) }, plugins: {} }),
     );
   }
-  return bootFixture(dir, dataRoot, consoleDataDir, options.remote);
+  return bootFixture(dir, dataRoot, consoleDataDir, options.remote, options.remoteRandomInt);
 }
 
 /**
@@ -1077,13 +1121,14 @@ function bootFixtureFrom(fixture: Fixture): Promise<Fixture> {
   return bootFixture(fixture.dir, dataRoot, path.join(dataRoot, "console"), true);
 }
 
-async function bootFixture(dir: string, dataRoot: string, consoleDataDir: string, remote: boolean): Promise<Fixture> {
+async function bootFixture(dir: string, dataRoot: string, consoleDataDir: string, remote: boolean, remoteRandomInt?: (min: number, maxExclusive: number) => number): Promise<Fixture> {
   const server = createConsoleServer({
     port: 0,
     version: "test",
     agentRuntime: createFakeConsoleRuntime() as never,
     dataDir: dataRoot,
     systemFonts: { getFonts: async () => [] },
+    remoteRandomInt,
   });
   servers.push(server);
   const loopbackEndpoint = await server.start({ dir, lockFile: path.join(dir, "console.lock") });
