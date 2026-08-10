@@ -630,6 +630,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
               autoLabel={t("launchVariants.effort.auto")}
               ariaLabel={t("launchVariants.effort.track")}
               autoValueText={t("launchVariants.effort.autoValue")}
+              apexToggleLabel={t("launchVariants.effort.apexToggle")}
             />
             {showEffortConfirmTip ? (
               <p className="operation-launch-effort-confirm-tip" role="status">

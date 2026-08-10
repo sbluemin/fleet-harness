@@ -3,14 +3,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import type { AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
+import { resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 import { MAX_LAUNCH_PROMPT_CHARS } from "@dotobokuri/fleet-admiral";
 import type { OperationCreateInput, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GatewayLaunchOptionError } from "../server/agent-api/launch.js";
+import { GatewayLaunchOptionError, isGatewayLaunchEffortAllowed } from "../server/agent-api/launch.js";
 import { registerAgentRoutes } from "../server/agent.js";
 import type { TerminalRuntime } from "../server/shared/index.js";
 import { createPluginTerminalTicketRegistry } from "../server/shared/tickets.js";
@@ -54,19 +54,17 @@ describe("agent launch variants", () => {
     expect(harness.attach).not.toHaveBeenCalled();
   });
 
-  it("rejects ultra even when the gateway model catalog includes it", async () => {
-    const harness = await createHarness({
-      body: { cliId: "claude-gateway", model: "codex--gpt-5.6-sol-fast", effort: "ultra" },
-      aiGatewaySettings: {
-        version: 1,
-        models: [{ id: "codex--gpt-5.6-sol-fast" }],
-      },
+  it("accepts ultra when the gateway model catalog includes it", () => {
+    const selection = resolveAiGatewaySelection({
+      version: 1,
+      models: [{ id: "codex--gpt-5.6-sol-fast" }],
     });
+    const model = selection.models[0]!;
 
-    await harness.postSessions();
-
-    expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "invalid_effort" } });
-    expect(harness.attach).not.toHaveBeenCalled();
+    expect(isGatewayLaunchEffortAllowed({
+      ...selection,
+      effortExposure: { [model.id]: ["ultra"] },
+    }, model, "ultra")).toBe(true);
   });
 
   it("threads a valid scoped gateway model and effort into attach", async () => {

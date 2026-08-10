@@ -7473,6 +7473,7 @@
 [data-effort-level="high"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 64%, var(--text-tertiary)); }
 [data-effort-level="xhigh"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 84%, var(--text-tertiary)); }
 [data-effort-level="max"] { --effort-tone: var(--brass-ink); }
+[data-effort-level="ultra"] { --effort-tone: var(--apex-ink); }
 
 .effort-track-shell {
   display: flex;
@@ -7494,6 +7495,9 @@
   background: color-mix(in oklch, var(--surface-pillar) 55%, transparent);
   cursor: pointer;
   touch-action: none;
+  transition:
+    border-color var(--duration-base) var(--ease-spring),
+    box-shadow var(--duration-base) var(--ease-spring);
 }
 
 .effort-track:focus-visible {
@@ -7551,6 +7555,92 @@
   55%, 100% { transform: translateX(100%); }
 }
 
+/* 최고 단이 색을 갈지 않는다는 위 결정은 max가 일상 사다리의 끝이던 때의 것이다. 게이트 뒤
+   티어에는 상태 신호와 구분되는 별도 강도 채널(--apex)을 둔다. */
+.effort-track[data-apex="true"] {
+  border-color: color-mix(in oklch, var(--apex) 55%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--apex) 22%, transparent),
+    0 0 22px -4px var(--apex-glow);
+}
+
+.effort-track[data-apex="true"] .effort-track-fill {
+  background:
+    repeating-linear-gradient(
+      115deg,
+      color-mix(in oklch, var(--text-on-brass) 9%, transparent) 0 1.5px,
+      transparent 1.5px 10px),
+    linear-gradient(90deg, var(--brass) 0%, var(--apex) 82%);
+}
+
+.effort-track-apex-toggle {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px dashed color-mix(in oklch, var(--text-tertiary) 65%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-base) var(--ease-spring),
+    border-style var(--duration-base) var(--ease-spring),
+    color var(--duration-base) var(--ease-spring),
+    box-shadow var(--duration-base) var(--ease-spring);
+}
+
+.effort-track-apex-toggle:hover,
+.effort-track-apex-toggle[aria-pressed="true"] {
+  border-color: var(--apex);
+  border-style: solid;
+  color: var(--apex-ink);
+  box-shadow: var(--apex-halo);
+}
+
+.effort-track-apex-toggle:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.effort-track-apex-seam {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, var(--apex) 40% 60%, transparent);
+  opacity: 0;
+  transform: scaleY(0.2);
+  transition: opacity 360ms var(--ease-spring) 120ms, transform 360ms var(--ease-spring) 120ms;
+  pointer-events: none;
+}
+
+.effort-track[data-apex-open="true"] .effort-track-apex-seam {
+  opacity: 0.9;
+  transform: scaleY(1);
+}
+
+.effort-track-apex-burst {
+  position: absolute;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  border: 2px solid var(--apex);
+  border-radius: 999px;
+  opacity: 0;
+  animation: effort-track-apex-burst 620ms var(--ease-spring) 1;
+  pointer-events: none;
+}
+
+@keyframes effort-track-apex-burst {
+  0% { opacity: 0.95; transform: scale(1); }
+  100% { opacity: 0; transform: scale(3.2); }
+}
+
 .effort-track-stops {
   position: relative;
   flex: 1;
@@ -7574,6 +7664,18 @@
 
 .effort-track-stop[data-filled="true"] {
   background: color-mix(in oklch, var(--text-on-brass) 42%, transparent);
+}
+
+/* apex 스톱은 게이트가 열리는 그 커밋에서 새로 삽입된다 — 새 요소의 첫 계산값은 transition을
+   타지 않으므로, 캐스케이드는 keyframes로 연다. fill은 backwards: 지연 구간에만 from 값을 들고
+   끝나면 기본 스타일로 돌려, preview의 scale(3) transition과 충돌하지 않는다. */
+.effort-track-stop[data-apex-rung="true"] {
+  animation: effort-track-apex-stop-in var(--duration-base) var(--ease-spring) backwards;
+}
+
+@keyframes effort-track-apex-stop-in {
+  from { opacity: 0; transform: scale(0); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 /* 이 모델이 내놓지 않은 단. 자리는 지키되 비어 있어야, 고를 수 있는 단이 축 위 제자리에 선다. */
@@ -7614,6 +7716,13 @@
   transform: scale(1.1);
 }
 
+.effort-track[data-apex="true"] .effort-track-knob {
+  box-shadow:
+    0 0 0 2.5px var(--apex),
+    var(--apex-halo),
+    0 1px 3px oklch(0% 0 0 / 55%);
+}
+
 /* 값을 쥐지 않은 손잡이는 속이 비어 있다 — 꽉 찬 손잡이는 어느 자리에 있든 "이 단을 골랐다"로 읽힌다. */
 .effort-track-knob[data-auto="true"] {
   background: var(--surface-pillar);
@@ -7635,6 +7744,11 @@
 
 /* 최고 단은 램프의 끝이라 색만으로는 바로 아랫단과 갈리지 않는다 — 무게가 그 마지막 한 칸을 맡는다. */
 .effort-track-value[data-effort-level="max"] {
+  font-weight: var(--weight-medium);
+}
+
+.effort-track-value[data-effort-level="ultra"] {
+  min-width: 64px;
   font-weight: var(--weight-medium);
 }
 
@@ -7661,12 +7775,38 @@
 .quick-launch-effort-track {
   flex: 0 0 auto;
   width: 204px;
+  transition: width var(--duration-slow) var(--ease-spring);
+}
+
+/* 게이트 토글(26px)과 양쪽 간격(8px×2)은 셸이 추가로 품는다 — 토글을 트랙 안에 넣고 폭을
+   그대로 두면 일상 트랙이 204→118px로 쪼그라든다(2026-08-11 실측). 열림에서는 트랙이
+   288px이 되도록 셸을 374px로 늘린다. */
+.quick-launch-effort-track:has(.effort-track-apex-toggle) {
+  width: 290px;
+}
+
+.quick-launch-effort-track:has(.effort-track[data-apex-open="true"]) {
+  width: 374px;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .effort-track[data-at-max="true"] .effort-track-fill::after {
     animation: none;
     opacity: 0.22;
+  }
+
+  .effort-track-apex-burst {
+    animation: none;
+  }
+
+  .effort-track-stop[data-apex-rung="true"] {
+    animation: none;
+  }
+
+  .effort-track-apex-seam,
+  .effort-track-apex-toggle,
+  .quick-launch-effort-track {
+    transition: none;
   }
 }
 
@@ -11278,8 +11418,16 @@ body[data-codex-reading="true"] .operations-side-bar {
     animation: none;
   }
 
+  .effort-track-apex-burst {
+    animation: none;
+  }
+
   .quick-launch-chip,
   .quick-launch-submit,
+  .effort-track-apex-seam,
+  .effort-track-stop[data-apex-rung="true"],
+  .effort-track-apex-toggle,
+  .quick-launch-effort-track,
   .effort-track-fill,
   .effort-track-knob,
   .effort-track-stop,

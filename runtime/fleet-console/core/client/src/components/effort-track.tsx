@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
 import type { OperationLaunchVariantChip, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 
@@ -27,6 +27,7 @@ export interface EffortTrackProps {
   readonly autoLabel: string;
   readonly ariaLabel: string;
   readonly autoValueText: string;
+  readonly apexToggleLabel?: string;
   readonly className?: string;
 }
 
@@ -35,29 +36,69 @@ export interface EffortTrackProps {
  * 모델이 내놓지 않은 단도 자리를 지킨다 — low/high/max만 있는 모델에서 셋을 균등히 벌리면
  * high가 한가운데 서서, 실제로는 3/5 지점인 단을 절반이라고 말하게 된다.
  */
-export function EffortTrack({ row, value, onChange, onConfirmCurrent, autoLabel, ariaLabel, autoValueText, className }: EffortTrackProps) {
+export function EffortTrack({
+  row,
+  value,
+  onChange,
+  onConfirmCurrent,
+  autoLabel,
+  ariaLabel,
+  autoValueText,
+  apexToggleLabel,
+  className,
+}: EffortTrackProps) {
   const trackRef = useRef<HTMLDivElement | null>(null);
+  const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const ladder = useMemo(() => ladderRungs(row), [row]);
+  const gatedRungs = useMemo(() => {
+    const gated = new Set(row.gatedEfforts ?? []);
+    return ladder.filter((id) => gated.has(id));
+  }, [ladder, row]);
+  const hasGate = gatedRungs.length > 0;
+  const ordinaryRungs = useMemo(
+    () => ladder.filter((id) => !gatedRungs.includes(id)),
+    [gatedRungs, ladder],
+  );
+  const [apexOpen, setApexOpen] = useState(() => value !== null && gatedRungs.includes(value));
+  const [burstKey, setBurstKey] = useState(0);
+  const [burstLeft, setBurstLeft] = useState("50%");
   // 제스처 동안 React 커밋을 기다리지 않고 고른 단을 추적한다 — 같은 포인터 시퀀스에서
   // "다른 단으로 옮겼다"와 "처음부터 이 단을 다시 눌렀다"를 갈라야 한다.
   const liveIndexRef = useRef(0);
   // pointerId까지 묶어 두면 터치에서 두 번째 손가락(button===0)이 제스처를 덮어 쓰지 못한다.
   const gestureRef = useRef<{ readonly pointerId: number; readonly originIndex: number; dirty: boolean } | null>(null);
 
+  const clearCollapseTimer = useCallback(() => {
+    if (collapseTimerRef.current === null) return;
+    clearTimeout(collapseTimerRef.current);
+    collapseTimerRef.current = null;
+  }, []);
+
+  useEffect(() => clearCollapseTimer, [clearCollapseTimer]);
+
+  useEffect(() => {
+    if (value === null || !gatedRungs.includes(value)) return;
+    clearCollapseTimer();
+    setApexOpen(true);
+  }, [clearCollapseTimer, gatedRungs, value]);
+
   const slots = useMemo<readonly EffortSlot[]>(() => {
     const byId = new Map<string, OperationLaunchVariantChip>((row.chips ?? []).map((chip) => [chip.id, chip]));
-    const rungs = ladderRungs(row).map((id) => ({
+    const visibleRungs = apexOpen ? ladder : ordinaryRungs;
+    const rungs = visibleRungs.map((id) => ({
       id,
       label: byId.get(id)?.label ?? id.toUpperCase(),
       selectable: byId.has(id),
     }));
     return [{ id: null, label: autoLabel, selectable: true }, ...rungs];
-  }, [autoLabel, row]);
+  }, [apexOpen, autoLabel, ladder, ordinaryRungs, row]);
 
   const last = slots.length - 1;
   const index = Math.max(0, slots.findIndex((slot) => slot.id === value));
   const current = slots[index]!;
   const isAuto = current.id === null;
+  const isApex = value !== null && gatedRungs.includes(value);
   liveIndexRef.current = index;
 
   const nearestSelectable = useCallback((target: number): number => {
@@ -71,12 +112,27 @@ export function EffortTrack({ row, value, onChange, onConfirmCurrent, autoLabel,
   }, [last, slots]);
 
   const commit = useCallback((next: number) => {
+    clearCollapseTimer();
     const slot = slots[next];
-    if (!slot || slot.id === slots[liveIndexRef.current]?.id) return false;
+    const previous = slots[liveIndexRef.current];
+    if (!slot || slot.id === previous?.id) return false;
+    const entersApex = slot.id !== null
+      && gatedRungs.includes(slot.id)
+      && (previous?.id == null || !gatedRungs.includes(previous.id));
     liveIndexRef.current = next;
+    if (entersApex) {
+      const ratio = last === 0 ? 0 : next / last;
+      setBurstLeft(`calc(${EDGE}px + ${ratio} * (100% - ${EDGE * 2}px))`);
+      setBurstKey((key) => key + 1);
+    } else if (apexOpen && (slot.id === null || !gatedRungs.includes(slot.id))) {
+      collapseTimerRef.current = setTimeout(() => {
+        collapseTimerRef.current = null;
+        setApexOpen(false);
+      }, 600);
+    }
     onChange(slot.id);
     return true;
-  }, [onChange, slots]);
+  }, [apexOpen, clearCollapseTimer, gatedRungs, last, onChange, slots]);
 
   const indexFromPointer = useCallback((clientX: number): number | null => {
     const track = trackRef.current;
@@ -149,6 +205,7 @@ export function EffortTrack({ row, value, onChange, onConfirmCurrent, autoLabel,
   }, [commit, index, last, nearestSelectable, onConfirmCurrent, slots]);
 
   const ratio = last === 0 ? 0 : index / last;
+  const seamRatio = ladder.length === 0 ? 0 : (ordinaryRungs.length + 0.5) / ladder.length;
 
   return (
     <div className={`effort-track-shell${className ? ` ${className}` : ""}`}>
@@ -162,7 +219,9 @@ export function EffortTrack({ row, value, onChange, onConfirmCurrent, autoLabel,
         aria-valuemax={last}
         aria-valuenow={index}
         aria-valuetext={isAuto ? autoValueText : current.label}
-        data-at-max={index === last && !isAuto ? true : undefined}
+        data-apex-open={hasGate && apexOpen ? true : undefined}
+        data-apex={isApex ? true : undefined}
+        data-at-max={hasGate ? (isApex ? true : undefined) : (index === last && !isAuto ? true : undefined)}
         // 자동은 사다리의 최소 단이 아니라 "사다리를 쓰지 않음"이다. 파선 테두리·빈 손잡이·채움 0이
         // 한 어휘로 그것을 말한다 — 채움이 조금이라도 남으면 맨 왼쪽 단을 고른 것으로 읽힌다.
         data-auto={isAuto ? true : undefined}
@@ -196,17 +255,40 @@ export function EffortTrack({ row, value, onChange, onConfirmCurrent, autoLabel,
           aria-hidden="true"
         />
         <span className="effort-track-stops" aria-hidden="true">
-          {slots.map((slot, position) => (
-            <span
-              key={slot.id ?? "auto"}
-              className="effort-track-stop"
-              style={{ left: last === 0 ? "50%" : `${(position / last) * 100}%` }}
-              data-filled={position <= index && !isAuto ? true : undefined}
-              data-gap={slot.selectable ? undefined : true}
-              data-previewed={position === previewIndex ? true : undefined}
-            />
-          ))}
+          {slots.map((slot, position) => {
+            const gatedIndex = slot.id === null ? -1 : gatedRungs.indexOf(slot.id);
+            return (
+              <span
+                key={slot.id ?? "auto"}
+                className="effort-track-stop"
+                style={{
+                  left: last === 0 ? "50%" : `${(position / last) * 100}%`,
+                  animationDelay: gatedIndex >= 0 ? `${(gatedIndex + 1) * 90}ms` : undefined,
+                }}
+                data-apex-rung={gatedIndex >= 0 ? true : undefined}
+                data-filled={position <= index && !isAuto ? true : undefined}
+                data-gap={slot.selectable ? undefined : true}
+                data-previewed={position === previewIndex ? true : undefined}
+              />
+            );
+          })}
         </span>
+        {hasGate ? (
+          <span
+            className="effort-track-apex-seam"
+            style={{ left: `calc(${EDGE}px + ${seamRatio} * (100% - ${EDGE * 2}px))` }}
+            aria-hidden="true"
+          />
+        ) : null}
+        {burstKey > 0 ? (
+          <span
+            key={burstKey}
+            className="effort-track-apex-burst"
+            style={{ left: burstLeft }}
+            onAnimationEnd={() => setBurstKey(0)}
+            aria-hidden="true"
+          />
+        ) : null}
         <span
           className="effort-track-knob"
           style={{ left: `calc(${EDGE}px + ${ratio} * (100% - ${EDGE * 2}px))` }}
@@ -214,6 +296,19 @@ export function EffortTrack({ row, value, onChange, onConfirmCurrent, autoLabel,
           aria-hidden="true"
         />
       </div>
+      {hasGate ? (
+        <button
+          type="button"
+          className="effort-track-apex-toggle"
+          aria-pressed={apexOpen}
+          aria-label={apexToggleLabel}
+          title={apexToggleLabel}
+          onClick={() => {
+            clearCollapseTimer();
+            setApexOpen((open) => !open);
+          }}
+        >✦</button>
+      ) : null}
       {/* 단계 톤은 CSS가 이 속성 하나로 읽는다 — 라벨 문자열은 번역·모델마다 달라 색의 기준이 될 수 없다. */}
       <span className="effort-track-value" data-auto={isAuto} data-effort-level={current.id ?? "auto"}>
         {current.label}

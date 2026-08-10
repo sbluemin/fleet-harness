@@ -279,6 +279,7 @@ export function QuickLaunch() {
               autoLabel={t("launchVariants.effort.auto")}
               ariaLabel={t("launchVariants.effort.track")}
               autoValueText={t("launchVariants.effort.autoValue")}
+              apexToggleLabel={t("launchVariants.effort.apexToggle")}
               className="quick-launch-effort-track"
             />
           ) : null}

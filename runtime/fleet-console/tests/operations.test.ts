@@ -270,19 +270,28 @@ describe("operations platform", () => {
         id: "kimi--k3",
         label: "K3-1M",
         launch: { model: "kimi--k3" },
-        effortAxis: ["low", "medium", "high", "xhigh", "max", 7],
+        effortAxis: ["low", "medium", "high", "xhigh", "max", "ultra", 7],
+        gatedEfforts: ["max", "ultra", 7],
         chips: [{ id: "low", label: "LOW", launch: { model: "kimi--k3", effort: "low" } }],
       }],
     }]);
-    expect(group?.rows[0]?.effortAxis).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(group?.rows[0]?.effortAxis).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
+    expect(group?.rows[0]?.gatedEfforts).toEqual(["max", "ultra"]);
 
     // 축은 칩이 놓인 자리를 말한다 — 칩이 없으면 말할 자리도 없다.
     const [bare] = readLaunchVariantGroups([{
       id: "gateway:cursor",
       label: "Cursor",
-      rows: [{ id: "cursor--auto", label: "Auto", launch: { model: "cursor--auto" }, effortAxis: ["low"] }],
+      rows: [{
+        id: "cursor--auto",
+        label: "Auto",
+        launch: { model: "cursor--auto" },
+        effortAxis: ["low"],
+        gatedEfforts: ["max"],
+      }],
     }]);
     expect(bare?.rows[0]).not.toHaveProperty("effortAxis");
+    expect(bare?.rows[0]).not.toHaveProperty("gatedEfforts");
   });
 
   it("strictly reconstructs launch variants from the browser catalog response", async () => {

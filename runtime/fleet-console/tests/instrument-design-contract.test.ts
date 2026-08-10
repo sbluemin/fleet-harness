@@ -1302,7 +1302,7 @@ describe("Instrument core design contract", () => {
       const declarations = block.match(/^\s{2}[^\n:]+:/gm) ?? [];
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
-        expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|canvas|surface|hairline|text|id)[a-z-]*:$/);
+        expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|apex|canvas|surface|hairline|text|id)[a-z-]*:$/);
       }
     }
     // Light 테마만 팔레트 + 광학(color-scheme/shadow/scrollbar/신호 ink·halo/본문 regular 굵기 보정)을 허용한다.
@@ -1314,7 +1314,7 @@ describe("Instrument core design contract", () => {
       const declarations = block.match(/^\s{2}[^\n:]+:/gm) ?? [];
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
-        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|canvas|surface|hairline|text|id|provider|shadow|scrollbar)[a-z-]*|--weight-regular|color-scheme):$/);
+        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|canvas|surface|hairline|text|id|provider|shadow|scrollbar)[a-z-]*|--weight-regular|color-scheme):$/);
       }
     }
     // 신호 ink 티어는 base에서 별칭으로 존재해 다크 3종이 var 간접으로 base 신호색을 상속한다.
@@ -1647,6 +1647,22 @@ describe("Instrument core design contract", () => {
 });
 
 describe("Effort track interaction grammar", () => {
+  it("pins the apex tier channel and its reduced-motion cutoff", () => {
+    const components = source("styles/components.css");
+    const theme = source("styles/theme.css");
+    const apexRule = components.match(/\.effort-track\[data-apex="true"\] \{[^}]*\}/)?.[0] ?? "";
+    expect(apexRule).toContain("var(--apex)");
+
+    const themeBlocks = [theme.slice(0, theme.indexOf(':root[data-theme="'))];
+    for (const name of ["maritime", "carbon", "whites"]) {
+      const start = theme.lastIndexOf(`:root[data-theme="${name}"] {`);
+      themeBlocks.push(theme.slice(start, theme.indexOf("\n}", start)));
+    }
+    for (const block of themeBlocks) expect(block).toContain("--apex:");
+
+    expect(components).toMatch(/\.effort-track-apex-burst \{\s*animation: none;\s*\}/);
+  });
+
   it("pins the shared effort track's pointer preview motion", () => {
     const components = source("styles/components.css");
     const quickLaunch = source("components/quick-launch.tsx");

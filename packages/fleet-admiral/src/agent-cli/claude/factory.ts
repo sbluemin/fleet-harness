@@ -48,6 +48,12 @@ function buildModelArgs(model: string | undefined): string[] {
   return model === undefined ? [] : ["--model", model];
 }
 
+// ultracode는 wire effort가 아니라 하네스 능력(standing multi-agent orchestration)이다.
+// Claude Code CLI 2.1.226의 --effort는 max에서 닫히고 알 수 없는 값은 경고 후 기본값으로
+// 떨어지므로(2026-08-11 와이어 실측: --effort/--settings 모두 ultra→xhigh 클램프),
+// wire effort는 유효 최고 단인 max로 고정하고 능력은 settings 병합 채널로 켠다.
 function buildEffortArgs(effort: string | undefined): string[] {
-  return effort === undefined ? [] : ["--effort", effort];
+  if (effort === undefined) return [];
+  if (effort === "ultra") return ["--effort", "max", "--settings", "{\"ultracode\":true}"];
+  return ["--effort", effort];
 }

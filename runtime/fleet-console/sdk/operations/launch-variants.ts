@@ -28,13 +28,19 @@ function readLaunchVariantRow(value: unknown): OperationLaunchVariantRow | null 
   const effortAxis = Array.isArray(value.effortAxis)
     ? value.effortAxis.filter((rung): rung is string => typeof rung === "string" && rung.length > 0)
     : [];
+  const gatedEfforts = Array.isArray(value.gatedEfforts)
+    ? value.gatedEfforts.filter((effort): effort is string => typeof effort === "string" && effort.length > 0)
+    : [];
   return {
     id: value.id,
     label: value.label,
     ...(typeof value.starred === "boolean" ? { starred: value.starred } : {}),
     launch,
     ...(chips.length > 0 ? { chips } : {}),
-    ...(chips.length > 0 && effortAxis.length > 0 ? { effortAxis } : {}),
+    ...(chips.length > 0 && effortAxis.length > 0 ? {
+      effortAxis,
+      ...(gatedEfforts.length > 0 ? { gatedEfforts } : {}),
+    } : {}),
   };
 }
 

@@ -41,6 +41,12 @@
   --warn-glow: oklch(75% 0.08 90 / 13%);
   --positive: oklch(76% 0.11 160);
   --positive-glow: oklch(76% 0.11 160 / 13%);
+  /* apex 채널은 강도 사다리의 게이트 뒤 티어 전용이다 — 신호가 아니라 티어를 말한다.
+     hue 295는 brass 78·warn 85·coral 25·positive 160·aurora 200이 점유하지 않은 유일한 공백이다. */
+  --apex: oklch(75% 0.13 295);
+  --apex-ink: var(--apex);
+  --apex-glow: oklch(75% 0.13 295 / 14%);
+  --apex-halo: 0 0 16px var(--apex-glow);
 
   /* 신호 ink 티어 — 텍스트로 쓰이는 신호색 전용 채널. 다크 3종은 base 신호색을 그대로 별칭하고,
      라이트(Whites)만 L 42~46% 리터럴로 오버라이드해 자기 glow 틴트 위에서도 AA(4.5:1)를 지킨다.
@@ -213,6 +219,9 @@
   --warn-glow: oklch(80% 0.13 85 / 22%);
   --positive: oklch(80% 0.15 152);
   --positive-glow: oklch(80% 0.15 152 / 24%);
+  /* apex 채널은 강도 사다리의 게이트 뒤 티어 전용이며, 신호가 아니라 비어 있던 hue 295의 티어를 말한다. */
+  --apex: oklch(80% 0.14 295);
+  --apex-glow: oklch(80% 0.14 295 / 22%);
 
   --canvas-abyss: oklch(7% 0.015 246);
   --canvas-sea-core: oklch(15% 0.03 235);
@@ -266,6 +275,9 @@
   --warn-glow: oklch(79% 0.12 80 / 22%);
   --positive: oklch(78% 0.13 158);
   --positive-glow: oklch(78% 0.13 158 / 24%);
+  /* apex 채널은 강도 사다리의 게이트 뒤 티어 전용이며, 신호가 아니라 비어 있던 hue 295의 티어를 말한다. */
+  --apex: oklch(76% 0.12 292);
+  --apex-glow: oklch(76% 0.12 292 / 20%);
 
   --canvas-abyss: oklch(8% 0.006 255);
   --canvas-sea-core: oklch(15% 0.012 250);
@@ -344,6 +356,11 @@
   --coral-ink: oklch(44% 0.15 25);
   --warn-ink: oklch(44% 0.1 82);
   --positive-ink: oklch(42% 0.11 160);
+  /* apex 채널은 강도 사다리의 게이트 뒤 티어 전용이며, 신호가 아니라 비어 있던 hue 295의 티어를 말한다. */
+  --apex: oklch(52% 0.14 296);
+  --apex-ink: oklch(43% 0.13 296);
+  --apex-glow: oklch(52% 0.14 296 / 15%);
+  --apex-halo: none;
   --brass-halo: none;
   --positive-halo: none;
 

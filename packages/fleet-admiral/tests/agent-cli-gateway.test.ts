@@ -67,6 +67,22 @@ describe("claude-gateway profile", () => {
       KEEP_ME: "yes",
     });
   });
+
+  it("delivers ultra as the ultracode capability with wire effort pinned to max", async () => {
+    const profile = await resolveAgentCliProfile({
+      CLAUDE_BIN: process.execPath,
+    }, "/tmp", {
+      cliId: "claude-gateway",
+      model: "claude-gateway--codex--gpt-5.6-sol",
+      effort: "ultra",
+    });
+
+    // CLI 2.1.226은 --effort ultra를 경고 후 기본값으로 떨어뜨린다 — wire는 max로 고정하고
+    // 능력(standing orchestration)은 settings 병합으로 켠다.
+    expect(profile).toMatchObject({
+      args: ["--model", "claude-gateway--codex--gpt-5.6-sol", "--effort", "max", "--settings", "{\"ultracode\":true}"],
+    });
+  });
 });
 
 describe("claude-gateway custom agents", () => {

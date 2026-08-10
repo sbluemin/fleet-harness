@@ -614,10 +614,10 @@ describe("model catalog", () => {
       if (!model) throw new Error(`missing catalog model: ${id}`);
       return buildGatewayModelConstraints(model);
     };
-    // `ultra` exists in the Codex ladder but discovery never advertises it, so a
-    // caller offered that rung would have it silently clamped upstream.
+    // `ultra` is advertised by discovery since codex-cli 0.147.0 (measured 2026-08-11:
+    // sol/sol-wm/terra advertise it, luna stops at max) — the ladder follows the catalog.
     const codex = constraintsFor("codex--gpt-5.6-sol");
-    expect(codex.effortLadder).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(codex.effortLadder).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
     expect(codex.effortSupported).toBe(true);
     // Kimi's ladder has no `medium`; assuming one would be clamped without notice.
     expect(constraintsFor("kimi--k3").effortLadder).toEqual(["low", "high", "max"]);

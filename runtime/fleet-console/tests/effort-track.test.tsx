@@ -19,6 +19,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   act(() => root.unmount());
   container.remove();
 });
@@ -55,6 +56,7 @@ function render(
       autoLabel="AUTO"
       ariaLabel="Reasoning effort"
       autoValueText="Automatic"
+      apexToggleLabel="Show Max and Ultracode"
     />,
   ));
   return onChange;
@@ -326,6 +328,76 @@ describe("EffortTrack", () => {
       element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 73, clientY: 13 }));
     });
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("hides gated stops behind the apex toggle", () => {
+    render(row({ gatedEfforts: ["max", "ultra"] }), "high");
+
+    const toggle = required(".effort-track-apex-toggle");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(toggle.getAttribute("aria-label")).toBe("Show Max and Ultracode");
+    expect(stops()).toHaveLength(5);
+    expect(document.querySelector("[data-apex-rung=true]")).toBeNull();
+    expect(track().getAttribute("aria-valuemax")).toBe("4");
+  });
+
+  it("reveals gated stops and extends the slider range when toggled", () => {
+    render(row({
+      effortAxis: [...AXIS, "ultra"],
+      chips: [...row().chips!, { id: "ultra", label: "ULTRA", launch: { model: "kimi--k3", effort: "ultra" } }],
+      gatedEfforts: ["max", "ultra"],
+    }), "high");
+
+    act(() => required(".effort-track-apex-toggle").click());
+    expect(required(".effort-track-apex-toggle").getAttribute("aria-pressed")).toBe("true");
+    expect(document.querySelectorAll("[data-apex-rung=true]")).toHaveLength(2);
+    expect(track().getAttribute("aria-valuemax")).toBe("6");
+  });
+
+  it("marks a selected gated rung as apex and maximum", () => {
+    const gatedRow = row({ gatedEfforts: ["max"] });
+    const onChange = render(gatedRow, "xhigh");
+    act(() => required(".effort-track-apex-toggle").click());
+    act(() => track().dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
+    expect(onChange).toHaveBeenLastCalledWith("max");
+
+    render(gatedRow, "max", onChange);
+    expect(track().dataset.apex).toBe("true");
+    expect(track().dataset.atMax).toBe("true");
+  });
+
+  it("collapses 600ms after selecting an ordinary rung while open", () => {
+    vi.useFakeTimers();
+    const gatedRow = row({ gatedEfforts: ["max"] });
+    const onChange = render(gatedRow, "max");
+    act(() => track().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
+    expect(onChange).toHaveBeenLastCalledWith("high");
+    expect(track().dataset.apexOpen).toBe("true");
+
+    render(gatedRow, "high", onChange);
+    act(() => vi.advanceTimersByTime(599));
+    expect(track().dataset.apexOpen).toBe("true");
+    act(() => vi.advanceTimersByTime(1));
+    expect(track().dataset.apexOpen).toBeUndefined();
+    expect(document.querySelector("[data-apex-rung=true]")).toBeNull();
+  });
+
+  it("mounts open when the controlled value is gated", () => {
+    render(row({ gatedEfforts: ["max"] }), "max");
+
+    expect(track().dataset.apexOpen).toBe("true");
+    expect(required(".effort-track-apex-toggle").getAttribute("aria-pressed")).toBe("true");
+    expect(document.querySelectorAll("[data-apex-rung=true]")).toHaveLength(1);
+  });
+
+  it("preserves the gate-free rendering contract", () => {
+    render(row(), "high");
+
+    expect(document.querySelector(".effort-track-apex-toggle")).toBeNull();
+    expect(document.querySelector(".effort-track-apex-seam")).toBeNull();
+    expect(track().dataset.apexOpen).toBeUndefined();
+    expect(track().dataset.apex).toBeUndefined();
+    expect(stops()).toHaveLength(6);
   });
 });
 
