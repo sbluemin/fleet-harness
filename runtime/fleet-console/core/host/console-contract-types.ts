@@ -266,6 +266,7 @@ export interface RemotePortState {
 
 export interface RemoteAccessState {
   readonly enabled: boolean;
+  readonly publicEndpointEnabled: boolean;
   readonly listenAddress: string;
   readonly advertisedHost: string;
   readonly listenPort: RemotePortState;

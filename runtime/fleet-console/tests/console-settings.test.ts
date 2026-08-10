@@ -4,6 +4,7 @@ import os from "node:os";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { listRemoteInterfaces } from "../core/host/remote-interfaces.js";
 import {
   createConsoleSettingsStore,
   sanitizeConsoleSettingsData,
@@ -32,6 +33,18 @@ function makeFakePaths(dir: string): ConsoleDataPaths {
     settingsFile: path.join(dir, "settings.json"),
   };
 }
+
+describe("remote interface candidates", () => {
+  it("keeps device names in local and Tailscale labels", () => {
+    expect(listRemoteInterfaces({
+      en0: [{ family: "IPv4", internal: false, address: "192.168.1.20" }],
+      tailscale0: [{ family: "IPv4", internal: false, address: "100.64.0.7" }],
+    })).toEqual([
+      { kind: "tailscale", label: "Tailscale (tailscale0)", address: "100.64.0.7" },
+      { kind: "local", label: "Local network (en0)", address: "192.168.1.20" },
+    ]);
+  });
+});
 
 describe("sanitizeConsoleSettingsData", () => {
   it("returns empty for non-object input", () => {
@@ -195,6 +208,43 @@ describe("sanitizeConsoleSettingsData", () => {
     })).toEqual({ version: 1, general: {}, plugins: {} });
   });
 
+  it("normalizes current v2 data without the public opt-in key from a valid acknowledgment", () => {
+    const tuple = {
+      enabled: true,
+      listenAddress: "192.0.2.10",
+      advertisedHost: "console.example",
+      listenPort: { mode: "custom", value: 50_001 },
+      advertisedPort: { mode: "custom", value: 50_002 },
+    } as const;
+    const acknowledgment = { version: 1, listenAddress: tuple.listenAddress, listenPort: 50_001, advertisedHost: tuple.advertisedHost, advertisedPort: 50_002 };
+
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { remoteAccess: { ...tuple, acknowledgment } } }).general?.remoteAccess)
+      .toEqual({ ...tuple, publicEndpointEnabled: true, acknowledgment });
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { remoteAccess: { ...tuple, enabled: false, acknowledgment: null } } }).general?.remoteAccess)
+      .toEqual({ ...tuple, enabled: false, publicEndpointEnabled: false, acknowledgment: null });
+
+    const dir = makeTempDir();
+    const paths = makeFakePaths(dir);
+    fs.writeFileSync(paths.settingsFile, JSON.stringify({ version: 1, general: { remoteAccess: { ...tuple, acknowledgment } }, plugins: {} }));
+    createConsoleSettingsStore({ paths }).load();
+    expect(JSON.parse(fs.readFileSync(paths.settingsFile, "utf8"))).toMatchObject({ general: { remoteAccess: { publicEndpointEnabled: true } } });
+  });
+
+  it("sanitizes LAN-only state without a public hostname or acknowledgment", () => {
+    const remoteAccess = {
+      enabled: true,
+      publicEndpointEnabled: false,
+      listenAddress: "192.0.2.10",
+      advertisedHost: "",
+      listenPort: { mode: "auto", value: 49_152 },
+      advertisedPort: { mode: "custom", value: 443 },
+      acknowledgment: null,
+    } as const;
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { remoteAccess } }).general?.remoteAccess).toEqual(remoteAccess);
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { remoteAccess: { ...remoteAccess, acknowledgment: { version: 1, listenAddress: "192.0.2.10", listenPort: 49_152, advertisedHost: "console.example", advertisedPort: 443 } } } }).general?.remoteAccess)
+      .toEqual(remoteAccess);
+  });
+
   it("generates concrete Auto port defaults once and persists them", () => {
     const dir = makeTempDir();
     const paths = makeFakePaths(dir);
@@ -203,6 +253,7 @@ describe("sanitizeConsoleSettingsData", () => {
 
     expect(store.load().general?.remoteAccess).toEqual({
       enabled: false,
+      publicEndpointEnabled: false,
       listenAddress: "",
       advertisedHost: "",
       listenPort: { mode: "auto", value: 49_152 },
@@ -225,11 +276,12 @@ describe("sanitizeConsoleSettingsData", () => {
 
     expect(migrated).toEqual({
       enabled: true,
+      publicEndpointEnabled: false,
       listenAddress: "console.example",
       advertisedHost: "console.example",
       listenPort: { mode: "custom", value: 54_321 },
       advertisedPort: { mode: "custom", value: 54_321 },
-      acknowledgment: { version: 1, listenAddress: "console.example", listenPort: 54_321, advertisedHost: "console.example", advertisedPort: 54_321 },
+      acknowledgment: null,
     });
     expect(fs.readFileSync(path.join(dir, "remote", "pairings.json"), "utf8")).toBe("preserve-me");
     expect(JSON.stringify(createConsoleSettingsStore({ paths }).load())).not.toContain("bindHost");

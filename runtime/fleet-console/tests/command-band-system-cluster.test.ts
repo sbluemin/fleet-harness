@@ -13,7 +13,7 @@ import type { GlobalSettingsState } from "../core/client/src/types.js";
 const SETTINGS: GlobalSettingsState = {
   consolePortMode: "dynamic",
   consoleStaticPort: null,
-  remoteAccess: { enabled: false, listenAddress: "", advertisedHost: "", listenPort: { mode: "auto", value: 49152 }, advertisedPort: { mode: "auto", value: 49153 }, acknowledgment: null },
+  remoteAccess: { enabled: false, publicEndpointEnabled: false, listenAddress: "", advertisedHost: "", listenPort: { mode: "auto", value: 49152 }, advertisedPort: { mode: "auto", value: 49153 }, acknowledgment: null },
   seenFeatureTours: [],
   theme: "instrument",
   uiFont: { source: "builtin", id: "manrope", size: 14 },

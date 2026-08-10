@@ -7,6 +7,7 @@ import type { ConsoleSettingsData, ConsoleGeneralSettings } from "../core/host/s
 
 const DEFAULT_REMOTE_ACCESS = {
   enabled: false,
+  publicEndpointEnabled: false,
   listenAddress: "",
   advertisedHost: "",
   listenPort: { mode: "auto", value: 49_152 },
@@ -54,6 +55,7 @@ describe("global settings routes", () => {
   it("round-trips the disabled Auto remote-access default without exposing bindHost", async () => {
     const remoteAccess = {
       enabled: false,
+      publicEndpointEnabled: false,
       listenAddress: "",
       advertisedHost: "",
       listenPort: { mode: "auto", value: 49_152 },
@@ -107,9 +109,24 @@ describe("global settings routes", () => {
     expect(harness.writes[0]?.status).toBe(200);
   });
 
+  it("requires the exact publicEndpointEnabled key and enables LAN-only without acknowledgment", async () => {
+    const missingKey = { ...DEFAULT_REMOTE_ACCESS } as Record<string, unknown>;
+    delete missingKey.publicEndpointEnabled;
+    const invalid = createRouterHarness({ authorized: true, body: { remoteAccess: missingKey } });
+    await invalid.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(invalid.writes[0]).toEqual({ status: 400, body: { error: "invalid_remote_access" } });
+
+    const lanOnly = { ...DEFAULT_REMOTE_ACCESS, enabled: true, listenAddress: "192.0.2.10", advertisedHost: "", acknowledgment: null };
+    const valid = createRouterHarness({ authorized: true, body: { remoteAccess: lanOnly } });
+    await valid.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(valid.writes[0]?.status).toBe(200);
+    expect(valid.currentGeneral()?.remoteAccess).toEqual(lanOnly);
+  });
+
   it("requires the exact numeric version-1 tuple before enabling remote access", async () => {
     const base = {
       enabled: true,
+      publicEndpointEnabled: true,
       listenAddress: "192.0.2.10",
       advertisedHost: "console.example",
       listenPort: { mode: "custom", value: 50_001 },

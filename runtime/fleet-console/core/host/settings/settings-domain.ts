@@ -38,11 +38,23 @@ export interface RemoteAccessAcknowledgment {
 
 export interface ConsoleRemoteAccessSettings {
   readonly enabled: boolean;
+  readonly publicEndpointEnabled: boolean;
   readonly listenAddress: string;
   readonly advertisedHost: string;
   readonly listenPort: RemotePortSetting;
   readonly advertisedPort: RemotePortSetting;
   readonly acknowledgment: RemoteAccessAcknowledgment | null;
+}
+
+export interface RemoteAccessAdvertisedTuple {
+  readonly host: string;
+  readonly port: number;
+}
+
+export function effectiveRemoteAccessAdvertisedTuple(settings: ConsoleRemoteAccessSettings): RemoteAccessAdvertisedTuple {
+  return settings.publicEndpointEnabled
+    ? { host: settings.advertisedHost, port: settings.advertisedPort.value }
+    : { host: settings.listenAddress, port: settings.listenPort.value };
 }
 
 export interface ConsoleGeneralSettings {
@@ -63,13 +75,25 @@ export function sanitizeRemoteAccessSettings(value: unknown): ConsoleRemoteAcces
   if (typeof value.enabled !== "boolean") return undefined;
   const listenAddress = value.listenAddress === "" ? "" : isValidRemoteBindHost(value.listenAddress) ? canonicalizeRemoteBindHost(value.listenAddress) : null;
   const advertisedHost = value.advertisedHost === "" ? "" : isValidRemoteAdvertisedHost(value.advertisedHost) ? canonicalizeRemoteBindHost(value.advertisedHost) : null;
-  if (listenAddress === null || advertisedHost === null || (value.enabled && (listenAddress === "" || advertisedHost === ""))) return undefined;
+  if (listenAddress === null || advertisedHost === null) return undefined;
   const listenPort = sanitizeRemotePortSetting(value.listenPort);
   const advertisedPort = sanitizeRemotePortSetting(value.advertisedPort);
   if (!listenPort || !advertisedPort) return undefined;
   const acknowledgment = sanitizeAcknowledgment(value.acknowledgment);
-  if (value.acknowledgment !== null && !acknowledgment) return undefined;
-  return { enabled: value.enabled, listenAddress, advertisedHost, listenPort, advertisedPort, acknowledgment };
+  const explicitPublicEndpointEnabled = typeof value.publicEndpointEnabled === "boolean" ? value.publicEndpointEnabled : null;
+  if (explicitPublicEndpointEnabled === true && value.acknowledgment !== null && !acknowledgment) return undefined;
+  const publicEndpointEnabled = explicitPublicEndpointEnabled
+    ?? acknowledgmentMatches({ listenAddress, advertisedHost, listenPort, advertisedPort }, acknowledgment);
+  if (value.enabled && (listenAddress === "" || (publicEndpointEnabled && (advertisedHost === "" || !acknowledgmentMatches({ listenAddress, advertisedHost, listenPort, advertisedPort }, acknowledgment))))) return undefined;
+  return {
+    enabled: value.enabled,
+    publicEndpointEnabled,
+    listenAddress,
+    advertisedHost,
+    listenPort,
+    advertisedPort,
+    acknowledgment: publicEndpointEnabled ? acknowledgment : null,
+  };
 }
 
 /**
@@ -143,7 +167,7 @@ export function createConsoleSettingsStore(deps: CreateConsoleSettingsStoreDeps 
     const legacy = readLegacyRemoteAccess(raw, paths.dir, readFile, randomInt);
     const remoteAccess = current.general?.remoteAccess ?? legacy ?? createDefaultRemoteAccess(randomInt);
     const next = { ...current, general: { ...current.general, remoteAccess } };
-    if (!current.general?.remoteAccess || legacy) base.save(next);
+    if (!current.general?.remoteAccess || legacy || currentRemoteAccessNeedsMigration(raw)) base.save(next);
     return next;
   }
   return {
@@ -268,7 +292,7 @@ export function acknowledgmentMatches(settings: Pick<ConsoleRemoteAccessSettings
 }
 
 function createDefaultRemoteAccess(randomInt: (min: number, max: number) => number): ConsoleRemoteAccessSettings {
-  return { enabled: false, listenAddress: "", advertisedHost: "", listenPort: { mode: "auto", value: randomAutoPort(randomInt) }, advertisedPort: { mode: "auto", value: randomAutoPort(randomInt) }, acknowledgment: null };
+  return { enabled: false, publicEndpointEnabled: false, listenAddress: "", advertisedHost: "", listenPort: { mode: "auto", value: randomAutoPort(randomInt) }, advertisedPort: { mode: "auto", value: randomAutoPort(randomInt) }, acknowledgment: null };
 }
 
 function randomAutoPort(randomInt: (min: number, max: number) => number): number {
@@ -283,6 +307,11 @@ function readRawSettings(file: string, readFile: (file: string) => string): unkn
   try { return JSON.parse(readFile(file)); } catch { return null; }
 }
 
+function currentRemoteAccessNeedsMigration(raw: unknown): boolean {
+  return isRecord(raw) && raw.version === 1 && isRecord(raw.general) && isRecord(raw.general.remoteAccess)
+    && !("bindHost" in raw.general.remoteAccess) && typeof raw.general.remoteAccess.publicEndpointEnabled !== "boolean";
+}
+
 function readLegacyRemoteAccess(raw: unknown, consoleDir: string, readFile: (file: string) => string, randomInt: (min: number, max: number) => number): ConsoleRemoteAccessSettings | null {
   if (!isRecord(raw) || raw.version !== 1 || !isRecord(raw.general) || !isRecord(raw.general.remoteAccess)) return null;
   const legacy = raw.general.remoteAccess;
@@ -295,9 +324,7 @@ function readLegacyRemoteAccess(raw: unknown, consoleDir: string, readFile: (fil
   } catch {}
   const listenPort: RemotePortSetting = port === null ? { mode: "auto", value: randomAutoPort(randomInt) } : { mode: "custom", value: port };
   const advertisedPort: RemotePortSetting = port === null ? { mode: "auto", value: randomAutoPort(randomInt) } : { mode: "custom", value: port };
-  const acknowledgment: RemoteAccessAcknowledgment | null = legacy.enabled === true
-    ? { version: 1, listenAddress: host, listenPort: listenPort.value, advertisedHost: host, advertisedPort: advertisedPort.value } : null;
-  return { enabled: legacy.enabled === true, listenAddress: host, advertisedHost: host, listenPort, advertisedPort, acknowledgment };
+  return { enabled: legacy.enabled === true, publicEndpointEnabled: false, listenAddress: host, advertisedHost: host, listenPort, advertisedPort, acknowledgment: null };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -477,28 +504,32 @@ async function mutateGlobalSettings(
 }
 
 function isValidRemoteAccessInput(value: unknown): boolean {
-  if (!isRecord(value) || "bindHost" in value || typeof value.enabled !== "boolean") return false;
+  if (!isRecord(value) || "bindHost" in value || typeof value.enabled !== "boolean" || typeof value.publicEndpointEnabled !== "boolean") return false;
   const validListenAddress = value.listenAddress === "" || isValidRemoteBindHost(value.listenAddress);
   const validAdvertisedHost = value.advertisedHost === "" || isValidRemoteAdvertisedHost(value.advertisedHost);
   if (!validListenAddress || !validAdvertisedHost) return false;
-  if (value.enabled === true && (value.listenAddress === "" || value.advertisedHost === "")) return false;
   const listenPort = sanitizeRemotePortSetting(value.listenPort);
   const advertisedPort = sanitizeRemotePortSetting(value.advertisedPort);
   if (!listenPort || !advertisedPort) return false;
   const acknowledgment = sanitizeAcknowledgment(value.acknowledgment);
   if (value.acknowledgment !== null && !acknowledgment) return false;
-  return value.enabled !== true || acknowledgmentMatches({ listenAddress: value.listenAddress as string, advertisedHost: value.advertisedHost as string, listenPort, advertisedPort }, acknowledgment);
+  if (value.publicEndpointEnabled !== true) return value.acknowledgment === null && (value.enabled !== true || value.listenAddress !== "");
+  if (value.enabled !== true) return true;
+  return value.listenAddress !== "" && value.advertisedHost !== ""
+    && acknowledgmentMatches({ listenAddress: value.listenAddress as string, advertisedHost: value.advertisedHost as string, listenPort, advertisedPort }, acknowledgment);
 }
 
 function normalizeRemoteAccessInput(value: unknown): ConsoleRemoteAccessSettings {
   const record = value as Record<string, unknown>;
+  const publicEndpointEnabled = record.publicEndpointEnabled === true;
   return {
     enabled: record.enabled === true,
+    publicEndpointEnabled,
     listenAddress: record.listenAddress === "" ? "" : canonicalizeRemoteBindHost(record.listenAddress as string),
     advertisedHost: record.advertisedHost === "" ? "" : canonicalizeRemoteBindHost(record.advertisedHost as string),
     listenPort: sanitizeRemotePortSetting(record.listenPort)!,
     advertisedPort: sanitizeRemotePortSetting(record.advertisedPort)!,
-    acknowledgment: sanitizeAcknowledgment(record.acknowledgment),
+    acknowledgment: publicEndpointEnabled ? sanitizeAcknowledgment(record.acknowledgment) : null,
   };
 }
 

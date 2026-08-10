@@ -18,7 +18,7 @@ import { listRemoteInterfaces } from "./remote-interfaces.js";
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./console-contract-types.js";
 import { createCodexWorkspaceRouter } from "./codex/workspace-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
-import { acknowledgmentMatches, createConsoleSettingsStore, REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "./settings/settings-domain.js";
+import { acknowledgmentMatches, createConsoleSettingsStore, effectiveRemoteAccessAdvertisedTuple, REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "./settings/settings-domain.js";
 import { DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot } from "./desktop-contract.js";
 import { createDesktopFullscreenRouter, createDesktopShellRouter, emptyDesktopShell, type DesktopShellSnapshot } from "./desktop-contract.js";
 import { DESKTOP_THEME_EVENT, desktopThemeSnapshot } from "./desktop-contract.js";
@@ -1204,7 +1204,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
      */
     const configured = consoleSettingsStore.load().general?.remoteAccess;
     const advertisedHost = listeners.find((entry) => entry.audience === "remote")?.host
-      ?? (configured?.enabled === true ? configured.advertisedHost : null);
+      ?? (configured?.enabled === true ? effectiveRemoteAccessAdvertisedTuple(configured).host : null);
     if (!advertisedHost) {
       writeJson(res, 409, { error: "remote_access_disabled" });
       return true;
@@ -2245,15 +2245,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function reconcileRemoteAccess(change: RemoteAccessSettingsChange): Promise<void> {
     return queueRemoteReconcile(() => {
       const { previous, next } = change;
-      const publicChanged = previous.advertisedHost !== next.advertisedHost
-        || previous.advertisedPort.value !== next.advertisedPort.value;
-      const localChanged = previous.listenAddress !== next.listenAddress
-        || previous.listenPort.value !== next.listenPort.value;
+      const previousAdvertised = effectiveRemoteAccessAdvertisedTuple(previous);
+      const nextAdvertised = effectiveRemoteAccessAdvertisedTuple(next);
+      const publicChanged = previousAdvertised.host !== nextAdvertised.host || previousAdvertised.port !== nextAdvertised.port;
+      const localChanged = previous.listenAddress !== next.listenAddress || previous.listenPort.value !== next.listenPort.value;
       const explicitDisable = previous.enabled && !next.enabled && !publicChanged && !localChanged;
       if (publicChanged) return () => reconcilePublicEndpointChange(next);
       if (explicitDisable) return stopRemoteAccessForDisable;
       if (localChanged) return () => reconcileLocalEndpointChange(next);
-      if (next.enabled) return restartRemoteAccess;
+      if (!previous.enabled && next.enabled) return restartRemoteAccess;
       return null;
     });
   }
@@ -2285,10 +2285,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   async function reconcileLocalEndpointChange(next: ConsoleRemoteAccessSettings): Promise<void> {
     await stopRemoteAccess();
-    if (next.enabled) {
-      remoteLastError = null;
-      await startRemoteAccessGuarded(boundPort!);
-    }
+    remoteLastError = null;
+    if (next.enabled) await startRemoteAccessGuarded(boundPort!);
   }
 
   async function reconcilePublicEndpointChange(next: ConsoleRemoteAccessSettings): Promise<void> {
@@ -2357,35 +2355,40 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   /**
-   * 원격 리스너는 사용자가 확인한 split endpoint만 연다. 소켓은 listenAddress/listenPort에
-   * 바인드하고, Host·Origin·링크·쿠키·인증서는 advertisedHost/advertisedPort를 사용한다.
+   * 원격 리스너는 listenAddress/listenPort에 바인드한다. LAN-only는 그 tuple을 그대로 공표하고,
+   * 명시적으로 Public endpoint를 켠 경우에만 advertisedHost/advertisedPort를 Host·Origin·링크·쿠키·인증서에 쓴다.
    *
    * Custom listen port는 정확히 한 번만 시도하고 대체하지 않는다. Auto는 저장된 concrete 값을
    * 먼저 시도한 뒤 EADDRINUSE/EADDRNOTAVAIL에 한해서만 다른 무작위 후보를 최대 12회까지 시험한다.
-   * 다른 후보가 실제로 열리면 그 소켓은 probe로 닫고 성공값만 저장한다. resolved tuple이 바뀌었으므로
-   * acknowledgment와 enabled를 지워, 사용자가 새 public→local 경로를 확인하기 전에는 리스너가 남지 않는다.
-   * advertised Auto는 저장된 공개 추천값일 뿐 라우터 예약이나 forwarding을 수행하지 않는다.
+   * Public mode의 새 후보는 확인이 필요한 split route라 리스너를 닫고 비활성화한다. LAN-only에서는
+   * 새 후보 자체가 공표 tuple이므로 즉시 저장하고 같은 리스너를 정상 활성화한다.
    */
   async function startRemoteAccessIfEnabled(_actualPort: number): Promise<void> {
     const configured = consoleSettingsStore.load().general?.remoteAccess;
-    if (configured?.enabled !== true || !acknowledgmentMatches(configured, configured.acknowledgment)) return;
+    if (configured?.enabled !== true || configured.listenAddress === "") return;
+    if (configured.publicEndpointEnabled && !acknowledgmentMatches(configured, configured.acknowledgment)) return;
+    const advertised = effectiveRemoteAccessAdvertisedTuple(configured);
     const previousIdentity = remoteIdentityStore.read();
-    const identity = await remoteIdentityStore.ensure(configured.advertisedHost);
+    const identity = await remoteIdentityStore.ensure(advertised.host);
     const storedEndpoint = remoteEndpointStore.read();
+    const started = await startConfiguredRemoteListener(configured, identity);
+    const effectiveConfigured = started.port === configured.listenPort.value
+      ? configured
+      : { ...configured, listenPort: { ...configured.listenPort, value: started.port } };
+    const effectiveAdvertised = effectiveRemoteAccessAdvertisedTuple(effectiveConfigured);
     const publicIdentityChanged = previousIdentity === null || !fingerprintsMatch(previousIdentity.fingerprint, identity.fingerprint)
-      || (storedEndpoint !== null && storedEndpoint.advertisedPort !== configured.advertisedPort.value);
+      || (storedEndpoint !== null && storedEndpoint.advertisedPort !== effectiveAdvertised.port);
     if (publicIdentityChanged) {
       access.revokeGrants("remote");
       access.revokeSessions("remote");
       pairedDeviceStore.revokeAll("remote");
       remoteEndpointStore.forget();
     }
-    const started = await startConfiguredRemoteListener(configured, identity);
     const listener: ListenerIdentity = {
       audience: "remote",
-      host: configured.advertisedHost,
-      port: configured.advertisedPort.value,
-      origin: `https://${configured.advertisedHost}:${configured.advertisedPort.value}`,
+      host: effectiveAdvertised.host,
+      port: effectiveAdvertised.port,
+      origin: remoteOrigin(effectiveAdvertised.host, effectiveAdvertised.port),
       secure: true,
       bindAddress: started.address,
       bindPort: started.port,
@@ -2393,7 +2396,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     listeners = [...listeners, listener];
     remoteFingerprint = identity.fingerprint;
     remoteServer = started.server;
-    remoteEndpointStore.remember({ listenPort: started.port, advertisedPort: configured.advertisedPort.value });
+    remoteEndpointStore.remember({ listenPort: started.port, advertisedPort: effectiveAdvertised.port });
     startControlExpirySweep();
   }
 
@@ -2413,9 +2416,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       try {
         const started = await startRemoteListener({ identity, bindHost: configured.listenAddress, port: candidate, handler: handleRequest, upgradeRegistry, isHostAllowed: isRequestHostAllowed, isAdmitted: remoteAdmission });
         if (candidate === configured.listenPort.value) return started;
-        await closeHttpServer(started.server);
-        consoleSettingsStore.update((current) => ({ ...current, general: { ...current.general, remoteAccess: { ...configured, enabled: false, listenPort: { mode: "auto", value: candidate }, acknowledgment: null } } }));
-        throw codedRemoteError("FLEET_ACKNOWLEDGMENT_REQUIRED");
+        const updated = { ...configured, listenPort: { mode: "auto" as const, value: candidate }, acknowledgment: null };
+        if (configured.publicEndpointEnabled) {
+          await closeHttpServer(started.server);
+          consoleSettingsStore.update((current) => ({ ...current, general: { ...current.general, remoteAccess: { ...updated, enabled: false } } }));
+          throw codedRemoteError("FLEET_ACKNOWLEDGMENT_REQUIRED");
+        }
+        consoleSettingsStore.update((current) => ({ ...current, general: { ...current.general, remoteAccess: updated } }));
+        return started;
       } catch (error) {
         const code = errorCodeOf(error);
         if (code === "FLEET_ACKNOWLEDGMENT_REQUIRED") throw error;
@@ -2423,6 +2431,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }
     }
     throw codedRemoteError("FLEET_AUTO_PORT_EXHAUSTED");
+  }
+
+  function remoteOrigin(hostname: string, port: number): string {
+    const formattedHost = hostname.includes(":") && !hostname.startsWith("[") ? `[${hostname}]` : hostname;
+    return `https://${formattedHost}:${port}`;
   }
 
   function remoteAdmission(req: http.IncomingMessage): boolean {

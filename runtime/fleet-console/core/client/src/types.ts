@@ -154,6 +154,7 @@ export interface RemoteAccessAcknowledgment {
 
 export interface RemoteAccessState {
   readonly enabled: boolean;
+  readonly publicEndpointEnabled: boolean;
   readonly listenAddress: string;
   readonly advertisedHost: string;
   readonly listenPort: RemoteAccessPort;
@@ -279,11 +280,13 @@ export function isValidRemoteAccessAcknowledgment(value: unknown): value is Remo
 export function isValidRemoteAccessState(value: unknown): value is RemoteAccessState {
   if (!value || typeof value !== "object") return false;
   const state = value as Partial<RemoteAccessState>;
-  if (typeof state.enabled !== "boolean" || typeof state.listenAddress !== "string" || typeof state.advertisedHost !== "string") return false;
-  if (state.enabled && (state.listenAddress.length === 0 || state.advertisedHost.length === 0)) return false;
+  if (typeof state.enabled !== "boolean" || typeof state.publicEndpointEnabled !== "boolean" || typeof state.listenAddress !== "string" || typeof state.advertisedHost !== "string") return false;
+  if (state.enabled && (state.listenAddress.length === 0 || (state.publicEndpointEnabled && state.advertisedHost.length === 0))) return false;
   return isValidRemoteAccessPort(state.listenPort)
     && isValidRemoteAccessPort(state.advertisedPort)
-    && isValidRemoteAccessAcknowledgment(state.acknowledgment);
+    && isValidRemoteAccessAcknowledgment(state.acknowledgment)
+    && (state.publicEndpointEnabled || state.acknowledgment === null)
+    && (!state.enabled || !state.publicEndpointEnabled || remoteAccessAcknowledgmentMatches(state as RemoteAccessState));
 }
 
 export function isValidRemoteAccessId(value: unknown): value is string {

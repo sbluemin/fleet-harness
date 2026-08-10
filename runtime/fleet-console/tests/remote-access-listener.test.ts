@@ -184,7 +184,60 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     expect(disabled.devices).toHaveLength(1);
   });
 
-  it("preserves unused links and pairings for a local-only endpoint edit", async () => {
+  it("uses the listen tuple for LAN-only links, TLS identity, Host checks, and persisted advertised port", async () => {
+    const port = await reservePort(BIND_HOST);
+    const remoteAccess: ConsoleRemoteAccessSettings = {
+      enabled: true,
+      publicEndpointEnabled: false,
+      listenAddress: BIND_HOST,
+      advertisedHost: "public-draft.example",
+      listenPort: { mode: "custom", value: port },
+      advertisedPort: { mode: "custom", value: 443 },
+      acknowledgment: null,
+    };
+    const fixture = await startFixture({ remote: true, remoteAccess });
+    const parsed = parseAccessLink(await createLink(fixture));
+    const certificate = new crypto.X509Certificate(fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "remote", "identity-cert.pem"), "utf8"));
+    const savedEndpoint = JSON.parse(fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "remote", "listener.json"), "utf8")) as { advertisedPort: number };
+
+    expect(parsed.origin).toBe(`https://${BIND_HOST}:${port}`);
+    expect(certificate.subjectAltName).toContain(`IP Address:${BIND_HOST}`);
+    expect(savedEndpoint.advertisedPort).toBe(port);
+    const joined = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(await createLink(fixture)) }));
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, cookiesOf(joined), { host: `public-draft.example:443` })).resolves.toMatchObject({ status: 403 });
+  });
+
+  it("keeps credentials when a disabled LAN-only public draft changes", async () => {
+    const fixture = await startFixture({ remote: true });
+    await joinAs(fixture, "monitoring", "paired-device");
+    await createLink(fixture);
+    const lanOnly = { ...remoteSettings(false, BIND_HOST, fixture.remotePort), publicEndpointEnabled: false, acknowledgment: null };
+    await putRemoteAccess(fixture, lanOnly);
+    const before = await readRemoteStatus(fixture);
+
+    await putRemoteAccess(fixture, { ...lanOnly, advertisedHost: "unused-public.example", advertisedPort: { mode: "custom", value: 443 } });
+
+    const after = await readRemoteStatus(fixture);
+    expect(after.links).toEqual(before.links);
+    expect(after.devices).toEqual(before.devices);
+  });
+
+  it("treats a LAN-only listen tuple edit as a public identity change", async () => {
+    const lanOnly = { ...remoteSettings(true, BIND_HOST, await reservePort(BIND_HOST)), publicEndpointEnabled: false, acknowledgment: null };
+    const fixture = await startFixture({ remote: true, remoteAccess: lanOnly });
+    await joinAs(fixture, "monitoring", "paired-device");
+    await createLink(fixture);
+    const before = await readRemoteStatus(fixture);
+    expect(before).toMatchObject({ links: [expect.any(Object)], devices: [expect.any(Object)] });
+
+    await putRemoteAccess(fixture, { ...lanOnly, enabled: false, listenPort: { mode: "custom", value: fixture.remotePort + 1 } });
+
+    const after = await readRemoteStatus(fixture);
+    expect(after.links).toHaveLength(0);
+    expect(after.devices).toHaveLength(0);
+  });
+
+  it("preserves unused links and pairings when a public route keeps its effective tuple", async () => {
     const fixture = await startFixture({ remote: true });
     await joinAs(fixture, "monitoring", "paired-device");
     await createLink(fixture);
@@ -293,6 +346,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     try {
       const remoteAccess = {
         enabled: true,
+        publicEndpointEnabled: true,
         listenAddress: BIND_HOST,
         advertisedHost: BIND_HOST,
         listenPort: { mode: "auto" as const, value: occupiedPort },
@@ -316,6 +370,39 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     }
   });
 
+  it("keeps a successful LAN-only Auto retry active without requiring acknowledgment", async () => {
+    const occupied = http.createServer();
+    await new Promise<void>((resolve, reject) => {
+      occupied.once("error", reject);
+      occupied.listen(0, BIND_HOST, () => { occupied.off("error", reject); resolve(); });
+    });
+    const occupiedAddress = occupied.address();
+    const occupiedPort = typeof occupiedAddress === "object" && occupiedAddress ? occupiedAddress.port : 0;
+    const candidatePort = await reservePort(BIND_HOST);
+    try {
+      const remoteAccess: ConsoleRemoteAccessSettings = {
+        enabled: true,
+        publicEndpointEnabled: false,
+        listenAddress: BIND_HOST,
+        advertisedHost: "",
+        listenPort: { mode: "auto", value: occupiedPort },
+        advertisedPort: { mode: "auto", value: 50_000 },
+        acknowledgment: null,
+      };
+      const fixture = await startFixture({ remote: true, remoteAccess, remoteRandomInt: () => candidatePort });
+      const status = await readRemoteStatus(fixture);
+      expect(status.listener).toMatchObject({ listening: true, origin: `https://${BIND_HOST}:${candidatePort}`, lastError: null });
+      const parsed = parseAccessLink(await createLink(fixture));
+      expect(parsed.origin).toBe(`https://${BIND_HOST}:${candidatePort}`);
+      const saved = JSON.parse(fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "settings.json"), "utf8")) as { general: { remoteAccess: ConsoleRemoteAccessSettings } };
+      expect(saved.general.remoteAccess).toMatchObject({ enabled: true, listenPort: { mode: "auto", value: candidatePort }, acknowledgment: null });
+      const endpoint = JSON.parse(fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "remote", "listener.json"), "utf8")) as { advertisedPort: number };
+      expect(endpoint.advertisedPort).toBe(candidatePort);
+    } finally {
+      await new Promise<void>((resolve) => occupied.close(() => resolve()));
+    }
+  });
+
   it("bounds duplicate RNG draws and falls back to an unattempted Auto candidate", async () => {
     const occupied = http.createServer();
     await new Promise<void>((resolve, reject) => {
@@ -334,6 +421,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     try {
       const remoteAccess: ConsoleRemoteAccessSettings = {
         enabled: true,
+        publicEndpointEnabled: true,
         listenAddress: BIND_HOST,
         advertisedHost: BIND_HOST,
         listenPort: { mode: "auto", value: occupiedPort },
@@ -1085,6 +1173,18 @@ async function readRemoteStatusAt(loopbackEndpoint: string): Promise<RemoteAcces
   return await response.json() as RemoteAccessStatus;
 }
 
+async function reservePort(host: string): Promise<number> {
+  const probe = http.createServer();
+  await new Promise<void>((resolve, reject) => {
+    probe.once("error", reject);
+    probe.listen(0, host, () => { probe.off("error", reject); resolve(); });
+  });
+  const address = probe.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  return port;
+}
+
 async function saveRemoteAccess(fixture: Fixture, input: { readonly enabled: boolean; readonly bindHost: string }): Promise<void> {
   const remoteAccess = remoteSettings(input.enabled, input.bindHost, fixture.remotePort);
   await putRemoteAccess(fixture, remoteAccess);
@@ -1193,6 +1293,7 @@ function remoteRequestBody(
 function remoteSettings(enabled: boolean, host: string, port: number) {
   return {
     enabled,
+    publicEndpointEnabled: true,
     listenAddress: host,
     advertisedHost: host,
     listenPort: { mode: "custom" as const, value: port },

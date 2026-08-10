@@ -19,7 +19,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { readLastDarkTheme, setActiveTheme, setActiveUiFont, themePolarity } from "../store.js";
 import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_DESCRIPTION_KEYS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
-import { generateRemoteAutoPort, isCommittableRemotePortDraft, type GlobalSettingsState, type RemoteAccessLink, type RemoteAccessStatus, type ThemeId, type UiFontId, type UiFontSettings } from "../types.js";
+import { generateRemoteAutoPort, isCommittableRemotePortDraft, remoteAccessAcknowledgmentMatches, type GlobalSettingsState, type RemoteAccessLink, type RemoteAccessStatus, type ThemeId, type UiFontId, type UiFontSettings } from "../types.js";
 
 interface LanguageOption {
   readonly id: GlobalSettingsState["language"];
@@ -557,7 +557,7 @@ function RemoteAccessSection({ state, saving }: { readonly state: GlobalSettings
       .then(setStatus)
       .catch(() => { if (!controller.signal.aborted) setStatus(null); });
     return () => controller.abort();
-  }, [remote.enabled, remote.listenAddress, remote.listenPort.value, remote.advertisedHost, remote.advertisedPort.value, reloadToken]);
+  }, [remote.enabled, remote.publicEndpointEnabled, remote.listenAddress, remote.listenPort.value, remote.advertisedHost, remote.advertisedPort.value, reloadToken]);
 
   useEffect(() => {
     if (!rotateArmed) return;
@@ -626,7 +626,7 @@ function RemoteAccessSection({ state, saving }: { readonly state: GlobalSettings
 
         <RemoteIdentityCard
           status={status}
-          configured={remote.enabled && Boolean(remote.advertisedHost)}
+          configured={remote.enabled && Boolean(remote.publicEndpointEnabled ? remote.advertisedHost : remote.listenAddress)}
           armed={rotateArmed}
           busy={busy}
           onRotate={() => {
@@ -796,6 +796,11 @@ function RemoteListenerCard({
     setDraft(next);
     onSave(next);
   };
+  const savePublicEndpointEnabled = (publicEndpointEnabled: boolean) => {
+    const next = { ...draft, publicEndpointEnabled, enabled: false, acknowledgment: null };
+    setDraft(next);
+    onSave(next);
+  };
   const regenerate = (field: "listenPort" | "advertisedPort") => {
     saveChanged({ [field]: { mode: "auto", value: generateRemoteAutoPort() } });
   };
@@ -811,8 +816,12 @@ function RemoteListenerCard({
     setDraft(next);
     onSave(next);
   };
-  const ready = isValidRemoteBindHost(draft.listenAddress) && REMOTE_BIND_HOST.test(draft.advertisedHost)
-    && draft.acknowledgment !== null;
+  const localReady = isValidRemoteBindHost(draft.listenAddress);
+  const publicReady = REMOTE_BIND_HOST.test(draft.advertisedHost) && remoteAccessAcknowledgmentMatches(draft);
+  const ready = localReady && (!draft.publicEndpointEnabled || publicReady);
+  const route = draft.publicEndpointEnabled
+    ? `https://${draft.advertisedHost || "public-host"}:${draft.advertisedPort.value}`
+    : `https://${draft.listenAddress || "listen-address"}:${draft.listenPort.value}`;
 
   return (
     <div className="remote-card" data-remote-card="listener">
@@ -828,46 +837,82 @@ function RemoteListenerCard({
           aria-label={t("settings.remote.accept.title")}
           className={`remote-switch ${draft.enabled ? "is-on" : ""}`}
           disabled={saving || (!draft.enabled && !ready)}
-          onClick={() => onSave({ ...draft, enabled: !draft.enabled })}
+          onClick={() => {
+            const next = { ...draft, enabled: !draft.enabled, acknowledgment: draft.publicEndpointEnabled ? draft.acknowledgment : null };
+            setDraft(next);
+            onSave(next);
+          }}
         >
           <span className="remote-switch-knob" aria-hidden="true" />
         </button>
       </div>
 
       <div className="remote-endpoint-grid">
-        <label className="remote-field">
-          <span>{t("settings.remote.listenAddress")}</span>
-          <input list="remote-listen-addresses" value={draft.listenAddress} disabled={saving}
-            onChange={(event) => setDraft({ ...draft, listenAddress: event.target.value, acknowledgment: null })}
-            onBlur={() => saveChanged({ listenAddress: draft.listenAddress.trim() })} />
-        </label>
-        <datalist id="remote-listen-addresses">{candidates.map((entry) => <option key={entry.address} value={entry.address}>{entry.label}</option>)}</datalist>
+        <div className="remote-listen-address-control">
+          <label className="remote-field">
+            <span>{t("settings.remote.listenAddress")}</span>
+            <input value={draft.listenAddress} disabled={saving}
+              onChange={(event) => setDraft({ ...draft, listenAddress: event.target.value, acknowledgment: null })}
+              onBlur={() => saveChanged({ listenAddress: draft.listenAddress.trim() })} />
+          </label>
+          {candidates.length > 0 ? (
+            <div className="remote-interface-presets" role="group" aria-label={t("settings.remote.listenPresets")}>
+              {candidates.map((entry) => {
+                const selected = draft.listenAddress === entry.address;
+                return <button key={entry.address} type="button" className={`remote-interface-preset ${selected ? "is-selected" : ""}`}
+                  aria-pressed={selected} disabled={saving} onClick={() => saveChanged({ listenAddress: entry.address })}>
+                  <span>{entry.label}</span><code>{entry.address}</code>
+                </button>;
+              })}
+            </div>
+          ) : null}
+        </div>
         <RemotePortControl label={t("settings.remote.listenPort")} port={draft.listenPort} saving={saving}
           onMode={(mode) => mode === "auto" ? regenerate("listenPort") : saveChanged({ listenPort: { ...draft.listenPort, mode } })}
           onValue={(value) => saveChanged({ listenPort: { mode: "custom", value } })}
           onRegenerate={() => regenerate("listenPort")} />
         {draft.listenPort.mode === "custom" && draft.listenPort.value < 1024 ? <p className="remote-card-alert">{t("settings.remote.listenPrivileged")}</p> : null}
-        <label className="remote-field">
-          <span>{t("settings.remote.advertisedHost")}</span>
-          <input value={draft.advertisedHost} disabled={saving} autoComplete="off" spellCheck={false}
-            onChange={(event) => setDraft({ ...draft, advertisedHost: event.target.value, acknowledgment: null })}
-            onBlur={() => saveChanged({ advertisedHost: draft.advertisedHost.trim().toLowerCase() })} />
-        </label>
-        <RemotePortControl label={t("settings.remote.advertisedPort")} port={draft.advertisedPort} saving={saving}
-          onMode={(mode) => mode === "auto" ? regenerate("advertisedPort") : saveChanged({ advertisedPort: { ...draft.advertisedPort, mode } })}
-          onValue={(value) => saveChanged({ advertisedPort: { mode: "custom", value } })}
-          onRegenerate={() => regenerate("advertisedPort")} />
       </div>
 
-      <p className="remote-route-preview"><code>{`https://${draft.advertisedHost || "public-host"}:${draft.advertisedPort.value}`}</code><span aria-hidden="true">→</span><code>{`${draft.listenAddress || "listen-address"}:${draft.listenPort.value}`}</code></p>
-      <p className="remote-card-help">{t("settings.remote.advertisedAutoHelp")}</p>
-      <label className="remote-acknowledgment">
-        <input type="checkbox" checked={draft.acknowledgment !== null} disabled={saving || !isValidRemoteBindHost(draft.listenAddress) || !REMOTE_BIND_HOST.test(draft.advertisedHost)} onChange={(event) => acknowledge(event.target.checked)} />
-        <span>{`${t("settings.remote.acknowledgment")} https://${draft.advertisedHost}:${draft.advertisedPort.value} → ${draft.listenAddress}:${draft.listenPort.value}`}</span>
-      </label>
+      <div className="remote-public-endpoint-head">
+        <div>
+          <p className="remote-card-title">{t("settings.remote.publicEndpoint.title")}</p>
+          <p className="remote-card-help">{t("settings.remote.publicEndpoint.help")}</p>
+        </div>
+        <button type="button" role="switch" aria-checked={draft.publicEndpointEnabled}
+          aria-label={t("settings.remote.publicEndpoint.title")}
+          className={`remote-switch ${draft.publicEndpointEnabled ? "is-on" : ""}`}
+          disabled={saving} onClick={() => savePublicEndpointEnabled(!draft.publicEndpointEnabled)}>
+          <span className="remote-switch-knob" aria-hidden="true" />
+        </button>
+      </div>
+
+      {draft.publicEndpointEnabled ? (
+        <>
+          <div className="remote-endpoint-grid">
+            <label className="remote-field">
+              <span>{t("settings.remote.advertisedHost")}</span>
+              <input value={draft.advertisedHost} disabled={saving} autoComplete="off" spellCheck={false}
+                onChange={(event) => setDraft({ ...draft, advertisedHost: event.target.value, acknowledgment: null })}
+                onBlur={() => saveChanged({ advertisedHost: draft.advertisedHost.trim().toLowerCase() })} />
+            </label>
+            <RemotePortControl label={t("settings.remote.advertisedPort")} port={draft.advertisedPort} saving={saving}
+              onMode={(mode) => mode === "auto" ? regenerate("advertisedPort") : saveChanged({ advertisedPort: { ...draft.advertisedPort, mode } })}
+              onValue={(value) => saveChanged({ advertisedPort: { mode: "custom", value } })}
+              onRegenerate={() => regenerate("advertisedPort")} />
+          </div>
+          <p className="remote-route-preview"><code>{route}</code><span aria-hidden="true">→</span><code>{`${draft.listenAddress || "listen-address"}:${draft.listenPort.value}`}</code></p>
+          <p className="remote-card-help">{t("settings.remote.advertisedAutoHelp")}</p>
+          <label className="remote-acknowledgment">
+            <input type="checkbox" checked={draft.acknowledgment !== null} disabled={saving || !localReady || !REMOTE_BIND_HOST.test(draft.advertisedHost)} onChange={(event) => acknowledge(event.target.checked)} />
+            <span>{`${t("settings.remote.acknowledgment")} ${route} → ${draft.listenAddress}:${draft.listenPort.value}`}</span>
+          </label>
+        </>
+      ) : <p className="remote-route-preview"><code>{route}</code></p>}
+
       <div className="remote-status-grid">
         <p><strong>{t("settings.remote.listenerState")}</strong> {status?.listener.listening ? t("settings.remote.listenerActive") : t("settings.remote.listenerInactive")}</p>
-        <p><strong>{t("settings.remote.publicReachability")}</strong> {t("settings.remote.publicUnverified")}</p>
+        {draft.publicEndpointEnabled ? <p><strong>{t("settings.remote.publicReachability")}</strong> {t("settings.remote.publicUnverified")}</p> : null}
       </div>
       {status?.listener.lastError ? <p className="remote-card-alert">{t(remoteErrorKey(status.listener.lastError))}</p> : null}
     </div>
