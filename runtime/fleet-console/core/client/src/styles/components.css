@@ -7709,16 +7709,23 @@
   box-shadow: 0 0 0 1.5px var(--warn);
 }
 
+/* 실린 챔버 단은 채움 위에 앉는다. 이 팔레트에서 비용 채널은 brass의 이웃이라(밝은 테마는 색상각까지
+   같다) 그 위에 warn을 칠하면 평범한 눈금과 갈리지 않는다. 그래서 대비 기준은 brass 위에서 읽히도록
+   정의된 토큰이 맡고, 비용 채널은 그 테 밖에서 말한다 — 색상 하나에 판정을 걸지 않는다. */
 .effort-track-stop[data-special][data-filled="true"] {
-  background: var(--warn);
-  box-shadow: 0 0 0 2px var(--warn-glow);
+  background: var(--text-on-brass);
+  box-shadow:
+    0 0 0 2px var(--text-on-brass),
+    0 0 0 3.5px var(--warn);
 }
 
 /* 비싼 단을 쥔 손잡이. 색을 갈지 않고 비용 채널의 테를 두른다 — 손잡이 본체가 물들면 어느 단을
-   쥐었는지가 아니라 "경고"가 먼저 읽힌다. */
+   쥐었는지가 아니라 "경고"가 먼저 읽힌다. 이 테도 채움 위에 앉으므로 홀로 서지 못한다:
+   brass 위에서 읽히는 테를 먼저 두르고 그 밖에 비용 채널을 둔다. */
 .effort-track-knob[data-special] {
   box-shadow:
-    0 0 0 2px var(--warn),
+    0 0 0 2px var(--text-on-brass),
+    0 0 0 4px var(--warn),
     0 0 10px var(--warn-glow),
     0 1px 3px oklch(0% 0 0 / 55%);
 }
@@ -7729,10 +7736,11 @@
   position: absolute;
   inset: 0;
   border-radius: 999px;
+  /* 빛은 무채색이다 — 최고 단 스윕과 같은 어휘이고, 채움을 지날 때 비용 채널처럼 brass에 녹지 않는다. */
   background: linear-gradient(
     100deg,
     transparent 38%,
-    color-mix(in oklch, var(--warn) 30%, transparent) 50%,
+    color-mix(in oklab, var(--text-primary) 30%, transparent) 50%,
     transparent 62%);
   animation: effort-track-reveal var(--duration-slow) var(--ease-spring) 1;
   pointer-events: none;

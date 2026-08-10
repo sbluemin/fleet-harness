@@ -1692,6 +1692,27 @@ describe("Effort track interaction grammar", () => {
     const sheen = components.match(/\.effort-track-reveal-sheen \{[^}]*\}/)?.[0] ?? "";
     expect(sheen).toMatch(/animation:[^;]*\b1\b/);
     expect(sheen).not.toContain("infinite");
+    // 채움을 지나는 빛은 무채색이다. 비용 채널로 칠하면 brass에 녹아 아무것도 지나가지 않은 것으로 보인다.
+    expect(sheen).toContain("var(--text-primary)");
+    expect(sheen).not.toContain("var(--warn)");
+  });
+
+  /**
+   * 비용 채널은 이 팔레트에서 brass의 이웃이다 — `whites`는 색상각(82°)까지 같고 명도만 1% 다르다.
+   * 그래서 채움 위에 앉는 챔버 표식은 warn 하나로 설 수 없다: brass 위에서 읽히도록 정의된 토큰이
+   * 대비를 지고, 비용 채널은 그 테 밖에서 말해야 실린 단이 평범한 눈금과 갈린다.
+   */
+  it("rides the cost mark on a brass-readable ring instead of hue alone", () => {
+    const components = source("styles/components.css");
+    const armedStop = components.match(/\.effort-track-stop\[data-special\]\[data-filled="true"\] \{[^}]*\}/)?.[0] ?? "";
+    const armedKnob = components.match(/\.effort-track-knob\[data-special\] \{[^}]*\}/)?.[0] ?? "";
+
+    for (const rule of [armedStop, armedKnob]) {
+      expect(rule).toContain("var(--text-on-brass)");
+      expect(rule).toContain("var(--warn)");
+      // 대비 기준이 비용 채널보다 안쪽에 있어야 warn 테가 채움이 아니라 그 테를 등지고 선다.
+      expect(rule.indexOf("var(--text-on-brass)")).toBeLessThan(rule.indexOf("var(--warn)"));
+    }
   });
 });
 
