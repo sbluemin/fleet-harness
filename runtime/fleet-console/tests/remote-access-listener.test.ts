@@ -217,6 +217,50 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     expect(stopped.devices).toHaveLength(0);
   });
 
+  it("revokes public credentials after a prior local edit already removed the active listener", async () => {
+    const fixture = await startFixture({ remote: true });
+    await joinAs(fixture, "monitoring", "paired-device");
+    await createLink(fixture);
+    const localEdit = remoteSettings(false, BIND_HOST, fixture.remotePort);
+    localEdit.listenPort = { mode: "custom", value: fixture.remotePort + 1 };
+    localEdit.acknowledgment = null;
+    await putRemoteAccess(fixture, localEdit);
+    expect((await readRemoteStatus(fixture))).toMatchObject({ links: [expect.any(Object)], devices: [expect.any(Object)] });
+
+    const publicEdit = { ...localEdit, advertisedHost: "sequential-public.example" };
+    await putRemoteAccess(fixture, publicEdit);
+
+    const stopped = await readRemoteStatus(fixture);
+    expect(stopped.listener.listening).toBe(false);
+    expect(stopped.links).toHaveLength(0);
+    expect(stopped.devices).toHaveLength(0);
+  });
+
+  it("revokes unused grants when a failed listener is explicitly disabled", async () => {
+    const fixture = await startFixture({ remote: true });
+    await createLink(fixture);
+    const squatter = http.createServer();
+    await new Promise<void>((resolve, reject) => {
+      squatter.once("error", reject);
+      squatter.listen(0, BIND_HOST, () => { squatter.off("error", reject); resolve(); });
+    });
+    try {
+      const address = squatter.address();
+      const occupiedPort = typeof address === "object" && address ? address.port : 0;
+      const failed = remoteSettings(true, BIND_HOST, fixture.remotePort);
+      failed.listenPort = { mode: "custom", value: occupiedPort };
+      failed.acknowledgment = { ...failed.acknowledgment!, listenPort: occupiedPort };
+      await putRemoteAccess(fixture, failed);
+      expect((await readRemoteStatus(fixture))).toMatchObject({ listener: { listening: false, lastError: "custom_port_unavailable" }, links: [expect.any(Object)] });
+
+      await putRemoteAccess(fixture, { ...failed, enabled: false, acknowledgment: null });
+
+      expect((await readRemoteStatus(fixture)).links).toHaveLength(0);
+    } finally {
+      await new Promise<void>((resolve) => squatter.close(() => resolve()));
+    }
+  });
+
   it("kills the sessions a closed remote listener issued instead of leaving them redeemable", async () => {
     const fixture = await startFixture({ remote: true });
     const joined = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(await createLink(fixture)) }));

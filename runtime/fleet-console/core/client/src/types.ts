@@ -213,6 +213,7 @@ export const REMOTE_PORT_MAX = 65535;
 export type RemoteAccessErrorCode =
   | "auto_port_exhausted"
   | "custom_port_unavailable"
+  | "acknowledgment_required"
   | "bind_address_unavailable"
   | "bind_address_in_use"
   | "remote_port_unavailable"

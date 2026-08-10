@@ -26,6 +26,7 @@ interface RouterHarnessOptions {
   readonly general?: ConsoleGeneralSettings;
   readonly plugins?: ConsoleSettingsData["plugins"];
   readonly onThemeChanged?: (theme: "instrument" | "maritime" | "carbon" | "whites") => void;
+  readonly onRemoteAccessChanged?: (change: { readonly previous: ConsoleGeneralSettings["remoteAccess"] & {}; readonly next: ConsoleGeneralSettings["remoteAccess"] & {} }) => void;
 }
 
 describe("global settings routes", () => {
@@ -66,6 +67,17 @@ describe("global settings routes", () => {
     expect(harness.currentGeneral()?.remoteAccess).toEqual(remoteAccess);
     expect(harness.writes[0]?.body).toMatchObject({ state: { remoteAccess } });
     expect(JSON.stringify(harness.writes[0]?.body)).not.toContain("bindHost");
+  });
+
+  it("passes the exact captured previous and normalized next remote settings to lifecycle reconciliation", async () => {
+    const previous = { ...DEFAULT_REMOTE_ACCESS, listenAddress: "192.0.2.10" };
+    const next = { ...previous, advertisedHost: "Console.Example" };
+    const changes: unknown[] = [];
+    const harness = createRouterHarness({ authorized: true, general: { remoteAccess: previous }, body: { remoteAccess: next }, onRemoteAccessChanged: (change) => changes.push(change) });
+
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+
+    expect(changes).toEqual([{ previous, next: { ...next, advertisedHost: "console.example" } }]);
   });
 
   it("allows disabled endpoint addresses to be edited independently", async () => {
@@ -326,6 +338,7 @@ function createRouterHarness(options: RouterHarnessOptions = {}) {
     },
     isAuthorized: () => options.authorized ?? true,
     onThemeChanged: options.onThemeChanged,
+    onRemoteAccessChanged: options.onRemoteAccessChanged,
     readJsonBody: async () => (options.bodyNull ? null : (options.body ?? {})) as never,
     writeJson: (_res, status, body) => { writes.push({ status, body }); },
   });

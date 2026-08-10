@@ -18,7 +18,7 @@ import { listRemoteInterfaces } from "./remote-interfaces.js";
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./console-contract-types.js";
 import { createCodexWorkspaceRouter } from "./codex/workspace-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
-import { acknowledgmentMatches, createConsoleSettingsStore, REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, type ConsoleRemoteAccessSettings, type ConsoleThemeId } from "./settings/settings-domain.js";
+import { acknowledgmentMatches, createConsoleSettingsStore, REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "./settings/settings-domain.js";
 import { DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot } from "./desktop-contract.js";
 import { createDesktopFullscreenRouter, createDesktopShellRouter, emptyDesktopShell, type DesktopShellSnapshot } from "./desktop-contract.js";
 import { DESKTOP_THEME_EVENT, desktopThemeSnapshot } from "./desktop-contract.js";
@@ -680,7 +680,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     readJsonBody,
     writeJson,
     onThemeChanged: broadcastDesktopThemeChanged,
-    onRemoteAccessChanged: () => reconcileRemoteAccess(),
+    onRemoteAccessChanged: (change) => reconcileRemoteAccess(change),
   });
   const desktopThemeRouter = createDesktopThemeRouter({
     getTheme: () => consoleSettingsStore.load().general?.theme ?? "instrument",
@@ -2242,18 +2242,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 만들 수 없고, 그 실패는 설정이 저장되지 않은 것처럼 보인다. 전환은 직렬화한다 —
    * 두 저장이 겹치면 같은 포트에 두 번 바인드하려 든다.
    */
-  function reconcileRemoteAccess(): Promise<void> {
+  function reconcileRemoteAccess(change: RemoteAccessSettingsChange): Promise<void> {
     return queueRemoteReconcile(() => {
-      const configured = consoleSettingsStore.load().general?.remoteAccess;
-      const active = listeners.find((entry) => entry.audience === "remote");
-      if (!configured || !active) return configured?.enabled === true ? restartRemoteAccess : null;
-      const samePublicIdentity = active.host === configured.advertisedHost && active.port === configured.advertisedPort.value;
-      const sameLocalEndpoint = active.bindAddress === configured.listenAddress && active.bindPort === configured.listenPort.value;
-      if (configured.enabled !== true) {
-        if (!samePublicIdentity) return stopRemoteAccessForPublicChange;
-        return sameLocalEndpoint ? stopRemoteAccessForDisable : stopRemoteAccess;
-      }
-      return samePublicIdentity && sameLocalEndpoint ? null : restartRemoteAccess;
+      const { previous, next } = change;
+      const publicChanged = previous.advertisedHost !== next.advertisedHost
+        || previous.advertisedPort.value !== next.advertisedPort.value;
+      const localChanged = previous.listenAddress !== next.listenAddress
+        || previous.listenPort.value !== next.listenPort.value;
+      const explicitDisable = previous.enabled && !next.enabled && !publicChanged && !localChanged;
+      if (publicChanged) return () => reconcilePublicEndpointChange(next);
+      if (explicitDisable) return stopRemoteAccessForDisable;
+      if (localChanged) return () => reconcileLocalEndpointChange(next);
+      if (next.enabled) return restartRemoteAccess;
+      return null;
     });
   }
 
@@ -2282,11 +2283,23 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     access.revokeGrants("remote");
   }
 
-  async function stopRemoteAccessForPublicChange(): Promise<void> {
+  async function reconcileLocalEndpointChange(next: ConsoleRemoteAccessSettings): Promise<void> {
+    await stopRemoteAccess();
+    if (next.enabled) {
+      remoteLastError = null;
+      await startRemoteAccessGuarded(boundPort!);
+    }
+  }
+
+  async function reconcilePublicEndpointChange(next: ConsoleRemoteAccessSettings): Promise<void> {
     await stopRemoteAccess();
     access.revokeGrants("remote");
     pairedDeviceStore.revokeAll("remote");
     remoteEndpointStore.forget();
+    if (next.enabled) {
+      remoteLastError = null;
+      await startRemoteAccessGuarded(boundPort!);
+    }
   }
 
   /**

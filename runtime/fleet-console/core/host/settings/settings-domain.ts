@@ -320,6 +320,11 @@ function sanitizeSystemFontFamily(value: string): string {
   return value.replace(/[\x00-\x1F\x7F]/g, "").trim().slice(0, 128);
 }
 
+export interface RemoteAccessSettingsChange {
+  readonly previous: ConsoleRemoteAccessSettings;
+  readonly next: ConsoleRemoteAccessSettings;
+}
+
 interface GlobalSettingsRouteDeps {
   readonly consoleSettingsStore: DurableJsonStore<ConsoleSettingsData>;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
@@ -330,7 +335,7 @@ interface GlobalSettingsRouteDeps {
    * 저장 직후 살아 있는 리스너를 설정에 맞춘다 — 켜자마자 링크를 만들 수 있어야 한다.
    * 전환이 끝나기 전에 응답하면 저장 직후의 상태 조회가 항상 "꺼짐"을 읽는다.
    */
-  readonly onRemoteAccessChanged?: () => void | Promise<void>;
+  readonly onRemoteAccessChanged?: (change: RemoteAccessSettingsChange) => void | Promise<void>;
 }
 
 interface GlobalSettingsRouteContext {
@@ -447,6 +452,9 @@ async function mutateGlobalSettings(
     || body.theme === "whites"
     ? body.theme
     : undefined;
+  const beforeUpdate = deps.consoleSettingsStore.load();
+  const previousRemoteAccess = beforeUpdate.general?.remoteAccess ?? createDefaultRemoteAccess(crypto.randomInt);
+  const nextRemoteAccess = body.remoteAccess !== undefined ? normalizeRemoteAccessInput(body.remoteAccess) : previousRemoteAccess;
   const updated = deps.consoleSettingsStore.update((current) => ({
     ...current,
     version: 1,
@@ -455,7 +463,7 @@ async function mutateGlobalSettings(
       ...(body.consolePortMode === "dynamic" || body.consolePortMode === "static" ? { consolePortMode: body.consolePortMode } : {}),
       ...(isValidGlobalStaticPortInput(body.consoleStaticPort) ? { consoleStaticPort: body.consoleStaticPort } : {}),
       ...(body.language === "auto" || body.language === "en" || body.language === "ko" ? { language: body.language } : {}),
-      ...(body.remoteAccess !== undefined ? { remoteAccess: normalizeRemoteAccessInput(body.remoteAccess) } : {}),
+      ...(body.remoteAccess !== undefined ? { remoteAccess: nextRemoteAccess } : {}),
       ...(body.seenFeatureTours !== undefined ? { seenFeatureTours: sanitizeSeenFeatureTours(body.seenFeatureTours) ?? [] } : {}),
       ...(theme !== undefined ? { theme } : {}),
       ...(isUiFontSettings(body.uiFont) ? { uiFont: body.uiFont } : {}),
@@ -463,7 +471,7 @@ async function mutateGlobalSettings(
     plugins: current.plugins,
   }));
   if (theme !== undefined) deps.onThemeChanged?.(theme);
-  if (body.remoteAccess !== undefined) await deps.onRemoteAccessChanged?.();
+  if (body.remoteAccess !== undefined) await deps.onRemoteAccessChanged?.({ previous: previousRemoteAccess, next: nextRemoteAccess });
   const response: GlobalSettingsMutationResult = { state: toGlobalSettingsState(updated) };
   deps.writeJson(res, 200, response);
 }
