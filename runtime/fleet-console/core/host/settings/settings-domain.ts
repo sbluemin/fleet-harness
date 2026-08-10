@@ -250,6 +250,7 @@ function isValidRemoteAdvertisedHost(value: unknown): value is string {
 
 function sanitizeRemotePortSetting(value: unknown): RemotePortSetting | null {
   if (!isRecord(value) || (value.mode !== "auto" && value.mode !== "custom") || !isBindablePort(value.value)) return null;
+  if (value.mode === "auto" && (value.value < REMOTE_AUTO_PORT_MIN || value.value > REMOTE_AUTO_PORT_MAX)) return null;
   return { mode: value.mode, value: value.value };
 }
 
@@ -469,8 +470,10 @@ async function mutateGlobalSettings(
 
 function isValidRemoteAccessInput(value: unknown): boolean {
   if (!isRecord(value) || "bindHost" in value || typeof value.enabled !== "boolean") return false;
-  const validAddresses = isValidRemoteBindHost(value.listenAddress) && isValidRemoteAdvertisedHost(value.advertisedHost);
-  if (!validAddresses && !(value.enabled === false && value.listenAddress === "" && value.advertisedHost === "")) return false;
+  const validListenAddress = value.listenAddress === "" || isValidRemoteBindHost(value.listenAddress);
+  const validAdvertisedHost = value.advertisedHost === "" || isValidRemoteAdvertisedHost(value.advertisedHost);
+  if (!validListenAddress || !validAdvertisedHost) return false;
+  if (value.enabled === true && (value.listenAddress === "" || value.advertisedHost === "")) return false;
   const listenPort = sanitizeRemotePortSetting(value.listenPort);
   const advertisedPort = sanitizeRemotePortSetting(value.advertisedPort);
   if (!listenPort || !advertisedPort) return false;

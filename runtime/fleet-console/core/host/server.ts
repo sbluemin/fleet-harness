@@ -80,6 +80,8 @@ export interface ConsoleServerDeps {
   readonly updateCheck?: ConsoleUpdateCheckService;
   readonly updateApply?: ConsoleUpdateApplyService;
   readonly systemFonts?: SystemFontsService;
+  /** 테스트가 Auto 포트 후보를 결정적으로 주입하는 경계. 반환값은 [min, maxExclusive) 범위다. */
+  readonly remoteRandomInt?: (min: number, maxExclusive: number) => number;
 }
 
 export interface ConsoleServer {
@@ -2244,7 +2246,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return queueRemoteReconcile(() => {
       const configured = consoleSettingsStore.load().general?.remoteAccess;
       const active = listeners.find((entry) => entry.audience === "remote");
-      if (configured?.enabled !== true) return active ? restartRemoteAccess : null;
+      if (configured?.enabled !== true) {
+        if (active) return stopRemoteAccessForDisable;
+        return null;
+      }
       const samePublicIdentity = active?.host === configured.advertisedHost && active?.port === configured.advertisedPort.value;
       const sameLocalEndpoint = active?.bindAddress === configured.listenAddress && active?.bindPort === configured.listenPort.value;
       return samePublicIdentity && sameLocalEndpoint ? null : restartRemoteAccess;
@@ -2269,6 +2274,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     await stopRemoteAccess();
     remoteLastError = null;
     await startRemoteAccessGuarded(boundPort!);
+  }
+
+  async function stopRemoteAccessForDisable(): Promise<void> {
+    await stopRemoteAccess();
+    access.revokeGrants("remote");
   }
 
   /**
@@ -2342,7 +2352,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (configured?.enabled !== true || !acknowledgmentMatches(configured, configured.acknowledgment)) return;
     const previousIdentity = remoteIdentityStore.read();
     const identity = await remoteIdentityStore.ensure(configured.advertisedHost);
-    const publicIdentityChanged = previousIdentity === null || !fingerprintsMatch(previousIdentity.fingerprint, identity.fingerprint);
+    const storedEndpoint = remoteEndpointStore.read();
+    const publicIdentityChanged = previousIdentity === null || !fingerprintsMatch(previousIdentity.fingerprint, identity.fingerprint)
+      || (storedEndpoint !== null && storedEndpoint.advertisedPort !== configured.advertisedPort.value);
     if (publicIdentityChanged) {
       access.revokeGrants("remote");
       access.revokeSessions("remote");
@@ -2377,16 +2389,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     const attempted = new Set<number>();
     while (attempted.size < REMOTE_AUTO_PORT_ATTEMPTS) {
-      const candidate = nextRemoteAutoPort(attempted);
+      const candidate = attempted.size === 0 ? configured.listenPort.value : nextRemoteAutoPort(attempted);
       attempted.add(candidate);
       try {
         const started = await startRemoteListener({ identity, bindHost: configured.listenAddress, port: candidate, handler: handleRequest, upgradeRegistry, isHostAllowed: isRequestHostAllowed, isAdmitted: remoteAdmission });
-        if (candidate !== configured.listenPort.value) {
-          consoleSettingsStore.update((current) => ({ ...current, general: { ...current.general, remoteAccess: { ...configured, listenPort: { mode: "auto", value: candidate }, acknowledgment: null } } }));
-        }
-        return started;
+        if (candidate === configured.listenPort.value) return started;
+        await closeHttpServer(started.server);
+        consoleSettingsStore.update((current) => ({ ...current, general: { ...current.general, remoteAccess: { ...configured, enabled: false, listenPort: { mode: "auto", value: candidate }, acknowledgment: null } } }));
+        throw codedRemoteError("FLEET_ACKNOWLEDGMENT_REQUIRED");
       } catch (error) {
         const code = errorCodeOf(error);
+        if (code === "FLEET_ACKNOWLEDGMENT_REQUIRED") throw error;
         if (code !== "EADDRINUSE" && code !== "EADDRNOTAVAIL") throw error;
       }
     }
@@ -2399,8 +2412,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function nextRemoteAutoPort(attempted: ReadonlySet<number>): number {
-    for (let port = REMOTE_AUTO_PORT_MIN; port <= REMOTE_AUTO_PORT_MAX; port += 1) if (!attempted.has(port)) return port;
-    return REMOTE_AUTO_PORT_MIN;
+    const randomInt = deps.remoteRandomInt ?? crypto.randomInt;
+    do {
+      const candidate = randomInt(REMOTE_AUTO_PORT_MIN, REMOTE_AUTO_PORT_MAX + 1);
+      if (!attempted.has(candidate)) return candidate;
+    } while (attempted.size < REMOTE_AUTO_PORT_MAX - REMOTE_AUTO_PORT_MIN + 1);
+    throw codedRemoteError("FLEET_AUTO_PORT_EXHAUSTED");
   }
 
   function listenOnce(portToBind: number, statePatch: Omit<ConsolePortRuntimeState, "effectivePort">): Promise<ConsolePortListenResult> {
@@ -2516,6 +2533,7 @@ function decodeHandle(raw: string): string {
 function remoteAccessErrorCode(error: unknown): string {
   const code = errorCodeOf(error);
   if (code === "FLEET_AUTO_PORT_EXHAUSTED") return "auto_port_exhausted";
+  if (code === "FLEET_ACKNOWLEDGMENT_REQUIRED") return "acknowledgment_required";
   if (code === "FLEET_CUSTOM_PORT_UNAVAILABLE") return "custom_port_unavailable";
   if (code === REMOTE_PORT_UNAVAILABLE) return "remote_port_unavailable";
   if (code === "EADDRNOTAVAIL") return "bind_address_unavailable";

@@ -68,6 +68,33 @@ describe("global settings routes", () => {
     expect(JSON.stringify(harness.writes[0]?.body)).not.toContain("bindHost");
   });
 
+  it("allows disabled endpoint addresses to be edited independently", async () => {
+    for (const remoteAccess of [
+      { ...DEFAULT_REMOTE_ACCESS, listenAddress: "192.0.2.10" },
+      { ...DEFAULT_REMOTE_ACCESS, advertisedHost: "console.example" },
+    ]) {
+      const harness = createRouterHarness({ authorized: true, body: { remoteAccess } });
+      await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+      expect(harness.writes[0]?.status).toBe(200);
+      expect(harness.currentGeneral()?.remoteAccess).toEqual(remoteAccess);
+    }
+  });
+
+  it("rejects Auto values outside the recommendation range while preserving Custom migration ports", async () => {
+    for (const remoteAccess of [
+      { ...DEFAULT_REMOTE_ACCESS, listenPort: { mode: "auto", value: 1024 } },
+      { ...DEFAULT_REMOTE_ACCESS, advertisedPort: { mode: "auto", value: 65536 } },
+    ]) {
+      const harness = createRouterHarness({ authorized: true, body: { remoteAccess } });
+      await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+      expect(harness.writes[0]).toEqual({ status: 400, body: { error: "invalid_remote_access" } });
+    }
+    const custom = { ...DEFAULT_REMOTE_ACCESS, listenPort: { mode: "custom" as const, value: 80 }, advertisedPort: { mode: "custom" as const, value: 80 } };
+    const harness = createRouterHarness({ authorized: true, body: { remoteAccess: custom } });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(harness.writes[0]?.status).toBe(200);
+  });
+
   it("requires the exact numeric version-1 tuple before enabling remote access", async () => {
     const base = {
       enabled: true,

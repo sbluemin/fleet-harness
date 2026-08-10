@@ -10,7 +10,7 @@ import { fetchSystemFonts, SystemFontsFetchError } from "@fleet-console/font-pic
 import { AddHostDialog } from "../components/add-host-dialog.js";
 import { BackendApiSection } from "../components/backend-api-section.js";
 import { propagateSettingsEntryIndex } from "../components/command-band-system-cluster.js";
-import { createRemoteAccessLink, fetchRemoteAccessStatus, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, revokeRemoteAccessDevice, revokeRemoteAccessLink, revokeRemoteAccessSession, rotateRemoteIdentity } from "../global-settings-api.js";
+import { createRemoteAccessLink, fetchRemoteAccessStatus, revokeRemoteAccessDevice, revokeRemoteAccessLink, revokeRemoteAccessSession, rotateRemoteIdentity } from "../global-settings-api.js";
 import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { renderMessage, useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { isDesktopShell } from "../desktop-shell.js";
@@ -19,7 +19,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { readLastDarkTheme, setActiveTheme, setActiveUiFont, themePolarity } from "../store.js";
 import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_DESCRIPTION_KEYS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
-import type { GlobalSettingsState, RemoteAccessLink, RemoteAccessStatus, ThemeId, UiFontId, UiFontSettings } from "../types.js";
+import { REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, type GlobalSettingsState, type RemoteAccessLink, type RemoteAccessStatus, type ThemeId, type UiFontId, type UiFontSettings } from "../types.js";
 
 interface LanguageOption {
   readonly id: GlobalSettingsState["language"];
@@ -844,7 +844,7 @@ function RemoteListenerCard({
         </label>
         <datalist id="remote-listen-addresses">{candidates.map((entry) => <option key={entry.address} value={entry.address}>{entry.label}</option>)}</datalist>
         <RemotePortControl label={t("settings.remote.listenPort")} port={draft.listenPort} saving={saving}
-          onMode={(mode) => saveChanged({ listenPort: { ...draft.listenPort, mode } })}
+          onMode={(mode) => mode === "auto" ? regenerate("listenPort") : saveChanged({ listenPort: { ...draft.listenPort, mode } })}
           onValue={(value) => saveChanged({ listenPort: { mode: "custom", value } })}
           onRegenerate={() => regenerate("listenPort")} />
         {draft.listenPort.mode === "custom" && draft.listenPort.value < 1024 ? <p className="remote-card-alert">{t("settings.remote.listenPrivileged")}</p> : null}
@@ -855,7 +855,7 @@ function RemoteListenerCard({
             onBlur={() => saveChanged({ advertisedHost: draft.advertisedHost.trim().toLowerCase() })} />
         </label>
         <RemotePortControl label={t("settings.remote.advertisedPort")} port={draft.advertisedPort} saving={saving}
-          onMode={(mode) => saveChanged({ advertisedPort: { ...draft.advertisedPort, mode } })}
+          onMode={(mode) => mode === "auto" ? regenerate("advertisedPort") : saveChanged({ advertisedPort: { ...draft.advertisedPort, mode } })}
           onValue={(value) => saveChanged({ advertisedPort: { mode: "custom", value } })}
           onRegenerate={() => regenerate("advertisedPort")} />
       </div>
@@ -864,7 +864,7 @@ function RemoteListenerCard({
       <p className="remote-card-help">{t("settings.remote.advertisedAutoHelp")}</p>
       <label className="remote-acknowledgment">
         <input type="checkbox" checked={draft.acknowledgment !== null} disabled={saving || !isValidRemoteBindHost(draft.listenAddress) || !REMOTE_BIND_HOST.test(draft.advertisedHost)} onChange={(event) => acknowledge(event.target.checked)} />
-        <span>{t("settings.remote.acknowledgment")}</span>
+        <span>{`${t("settings.remote.acknowledgment")} https://${draft.advertisedHost}:${draft.advertisedPort.value} → ${draft.listenAddress}:${draft.listenPort.value}`}</span>
       </label>
       <div className="remote-status-grid">
         <p><strong>{t("settings.remote.listenerState")}</strong> {status?.listener.listening ? t("settings.remote.listenerActive") : t("settings.remote.listenerInactive")}</p>
@@ -1075,6 +1075,7 @@ function WarningIcon() {
 function remoteErrorKey(code: string): CoreMessageKey {
   switch (code) {
     case "auto_port_exhausted": return "settings.remote.error.auto_port_exhausted";
+    case "acknowledgment_required": return "settings.remote.error.acknowledgment_required";
     case "custom_port_unavailable": return "settings.remote.error.custom_port_unavailable";
     case "bind_address_unavailable": return "settings.remote.error.bind_address_unavailable";
     case "bind_address_in_use": return "settings.remote.error.bind_address_in_use";

@@ -170,6 +170,19 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await expect(remoteRequest(fixture, "GET", "/api/v1/theaters")).rejects.toThrow();
   });
 
+  it("revokes unused links on an explicit disable while preserving pairings", async () => {
+    const fixture = await startFixture({ remote: true });
+    await joinAs(fixture, "monitoring", "paired-device");
+    await createLink(fixture);
+    expect((await readRemoteStatus(fixture)).links).toHaveLength(1);
+    expect((await readRemoteStatus(fixture)).devices).toHaveLength(1);
+
+    await saveRemoteAccess(fixture, { enabled: false, bindHost: BIND_HOST });
+    const disabled = await readRemoteStatus(fixture);
+    expect(disabled.links).toHaveLength(0);
+    expect(disabled.devices).toHaveLength(1);
+  });
+
   it("kills the sessions a closed remote listener issued instead of leaving them redeemable", async () => {
     const fixture = await startFixture({ remote: true });
     const joined = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(await createLink(fixture)) }));

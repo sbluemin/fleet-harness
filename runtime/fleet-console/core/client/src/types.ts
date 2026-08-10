@@ -138,7 +138,7 @@ export interface OperationNode {
   };
 }
 
-/** Remote listener and public endpoint settings. Port values are recommendations until the listener reports otherwise. */
+/** Remote listener and public endpoint settings. Auto and Custom modes both carry persisted concrete candidates. */
 export interface RemoteAccessPort {
   readonly mode: "auto" | "custom";
   readonly value: number;
@@ -203,6 +203,92 @@ export interface RemoteAccessStatus {
   readonly links: readonly RemoteAccessLinkSummary[];
   readonly devices: readonly RemoteAccessPairedDevice[];
   readonly interfaces: readonly RemoteAccessInterface[];
+}
+
+export const REMOTE_AUTO_PORT_MIN = 49152;
+export const REMOTE_AUTO_PORT_MAX = 65535;
+export const REMOTE_PORT_MIN = 1;
+export const REMOTE_PORT_MAX = 65535;
+
+export type RemoteAccessErrorCode =
+  | "auto_port_exhausted"
+  | "custom_port_unavailable"
+  | "bind_address_unavailable"
+  | "bind_address_in_use"
+  | "remote_port_unavailable"
+  | "bind_permission_denied"
+  | "remote_listener_failed";
+
+export function remoteAccessOrigin(host: string, port: number): string {
+  const formattedHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+  return `https://${formattedHost}:${port}`;
+}
+
+export function remoteAccessAcknowledgmentMatches(
+  state: RemoteAccessState,
+  acknowledgment: RemoteAccessAcknowledgment | null = state.acknowledgment,
+): boolean {
+  return acknowledgment !== null
+    && acknowledgment.version === 1
+    && acknowledgment.listenAddress === state.listenAddress
+    && acknowledgment.listenPort === state.listenPort.value
+    && acknowledgment.advertisedHost === state.advertisedHost
+    && acknowledgment.advertisedPort === state.advertisedPort.value;
+}
+
+export function isWarnableLocalPort(port: RemoteAccessPort): boolean {
+  return port.mode === "custom" && port.value < 1024;
+}
+
+export function isValidRemoteAccessPort(value: unknown): value is RemoteAccessPort {
+  if (!value || typeof value !== "object") return false;
+  const port = value as Partial<RemoteAccessPort>;
+  return (port.mode === "auto" || port.mode === "custom")
+    && typeof port.value === "number"
+    && Number.isInteger(port.value)
+    && port.value >= (port.mode === "auto" ? REMOTE_AUTO_PORT_MIN : REMOTE_PORT_MIN)
+    && port.value <= REMOTE_PORT_MAX;
+}
+
+export function isValidRemoteAccessAcknowledgment(value: unknown): value is RemoteAccessAcknowledgment | null {
+  if (value === null) return true;
+  if (!value || typeof value !== "object") return false;
+  const acknowledgment = value as Partial<RemoteAccessAcknowledgment>;
+  return acknowledgment.version === 1
+    && typeof acknowledgment.listenAddress === "string"
+    && isValidRemotePortNumber(acknowledgment.listenPort)
+    && typeof acknowledgment.advertisedHost === "string"
+    && isValidRemotePortNumber(acknowledgment.advertisedPort);
+}
+
+export function isValidRemoteAccessState(value: unknown): value is RemoteAccessState {
+  if (!value || typeof value !== "object") return false;
+  const state = value as Partial<RemoteAccessState>;
+  if (typeof state.enabled !== "boolean" || typeof state.listenAddress !== "string" || typeof state.advertisedHost !== "string") return false;
+  if (state.enabled && (state.listenAddress.length === 0 || state.advertisedHost.length === 0)) return false;
+  return isValidRemoteAccessPort(state.listenPort)
+    && isValidRemoteAccessPort(state.advertisedPort)
+    && isValidRemoteAccessAcknowledgment(state.acknowledgment);
+}
+
+export function isValidRemoteAccessId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(value);
+}
+
+export function isValidRemoteAccessLinkValue(value: unknown): value is string {
+  return typeof value === "string" && /^fleet:\/\/join\?code=[A-Za-z0-9._~-]+$/u.test(value);
+}
+
+export function isValidRemoteFingerprint(value: unknown): value is string | null {
+  return value === null || (typeof value === "string" && /^[0-9a-f]{2}(?::[0-9a-f]{2})+$/iu.test(value));
+}
+
+export function isValidRemoteTimestamp(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function isValidRemotePortNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= REMOTE_PORT_MIN && value <= REMOTE_PORT_MAX;
 }
 
 export interface RemoteAccessLink {

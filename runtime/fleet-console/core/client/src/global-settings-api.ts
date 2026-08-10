@@ -1,6 +1,6 @@
 import { ApiError } from "./api.js";
 import { normalizeUiFont } from "./ui-font.js";
-import type { ConsoleLanguagePreference, GlobalSettingsMutationResult, GlobalSettingsState, RemoteAccessClass, RemoteAccessInterface, RemoteAccessLink, RemoteAccessLinkSummary, RemoteAccessPairedDevice, RemoteAccessState, RemoteAccessStatus } from "./types.js";
+import { REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, REMOTE_PORT_MAX, REMOTE_PORT_MIN, isValidRemoteAccessAcknowledgment, isValidRemoteAccessId, isValidRemoteAccessPort, isValidRemoteAccessState, isValidRemoteFingerprint, isValidRemoteTimestamp, type ConsoleLanguagePreference, type GlobalSettingsMutationResult, type GlobalSettingsState, type RemoteAccessClass, type RemoteAccessInterface, type RemoteAccessLink, type RemoteAccessLinkSummary, type RemoteAccessPairedDevice, type RemoteAccessStatus } from "./types.js";
 
 export async function fetchGlobalSettingsState(signal?: AbortSignal): Promise<GlobalSettingsState> {
   const response = await fetch("/api/v1/settings/global", { signal });
@@ -61,9 +61,10 @@ export async function rotateRemoteIdentity(signal?: AbortSignal): Promise<void> 
 function isLinkSummary(value: unknown): value is RemoteAccessLinkSummary {
   if (!value || typeof value !== "object") return false;
   const entry = value as Partial<RemoteAccessLinkSummary>;
-  return isNonEmptyString(entry.id) && (entry.access === "full" || entry.access === "monitoring")
-    && typeof entry.issuedAt === "number" && Number.isFinite(entry.issuedAt)
-    && typeof entry.expiresAt === "number" && Number.isFinite(entry.expiresAt);
+  return isValidRemoteAccessId(entry.id) && (entry.access === "full" || entry.access === "monitoring")
+    && isValidRemoteTimestamp(entry.issuedAt)
+    && isValidRemoteTimestamp(entry.expiresAt)
+    && entry.expiresAt > entry.issuedAt;
 }
 
 function isInterfaceCandidate(value: unknown): value is RemoteAccessInterface {
@@ -75,11 +76,11 @@ function isInterfaceCandidate(value: unknown): value is RemoteAccessInterface {
 function isPairedDevice(value: unknown): value is RemoteAccessPairedDevice {
   if (!value || typeof value !== "object") return false;
   const entry = value as Partial<RemoteAccessPairedDevice>;
-  return isNonEmptyString(entry.id) && (entry.device === null || typeof entry.device === "string")
+  return isValidRemoteAccessId(entry.id) && (entry.device === null || typeof entry.device === "string")
     && (entry.access === "full" || entry.access === "monitoring")
-    && typeof entry.pairedAt === "number" && Number.isFinite(entry.pairedAt)
-    && typeof entry.lastSeenAt === "number" && Number.isFinite(entry.lastSeenAt)
-    && (entry.sessionHandle === null || typeof entry.sessionHandle === "string");
+    && isValidRemoteTimestamp(entry.pairedAt)
+    && isValidRemoteTimestamp(entry.lastSeenAt)
+    && (entry.sessionHandle === null || isValidRemoteAccessId(entry.sessionHandle));
 }
 
 function isRemoteAccessStatus(value: unknown): value is RemoteAccessStatus {
@@ -91,48 +92,19 @@ function isRemoteAccessStatus(value: unknown): value is RemoteAccessStatus {
     && (listener.origin === null || typeof listener.origin === "string")
     && (listener.lastError === null || typeof listener.lastError === "string")
     && entry.publicReachability === "unverified"
-    && (entry.fingerprint === null || isNonEmptyString(entry.fingerprint))
+    && isValidRemoteFingerprint(entry.fingerprint)
     && Array.isArray(entry.links) && entry.links.every(isLinkSummary)
     && Array.isArray(entry.devices) && entry.devices.every(isPairedDevice)
     && Array.isArray(entry.interfaces) && entry.interfaces.every(isInterfaceCandidate);
 }
 
-function isPort(value: unknown): value is RemoteAccessState["listenPort"] {
-  if (!value || typeof value !== "object") return false;
-  const port = value as RemoteAccessState["listenPort"];
-  return (port.mode === "auto" || port.mode === "custom") && typeof port.value === "number"
-    && Number.isInteger(port.value) && port.value >= 1 && port.value <= 65535;
-}
-
-function isRemoteAcknowledgment(value: unknown): value is NonNullable<RemoteAccessState["acknowledgment"]> {
-  if (!value || typeof value !== "object") return false;
-  const ack = value as NonNullable<RemoteAccessState["acknowledgment"]>;
-  return ack.version === 1 && typeof ack.listenAddress === "string" && typeof ack.listenPort === "number"
-    && Number.isInteger(ack.listenPort) && ack.listenPort >= 1 && ack.listenPort <= 65535
-    && typeof ack.advertisedHost === "string" && typeof ack.advertisedPort === "number"
-    && Number.isInteger(ack.advertisedPort) && ack.advertisedPort >= 1 && ack.advertisedPort <= 65535;
-}
-
-function isRemoteAccessState(value: unknown): value is RemoteAccessState {
-  if (!value || typeof value !== "object") return false;
-  const entry = value as Partial<RemoteAccessState>;
-  return typeof entry.enabled === "boolean" && typeof entry.listenAddress === "string"
-    && typeof entry.advertisedHost === "string" && isPort(entry.listenPort) && isPort(entry.advertisedPort)
-    && (entry.acknowledgment === null || isRemoteAcknowledgment(entry.acknowledgment));
-}
-
-export const REMOTE_PORT_MIN = 1;
-export const REMOTE_PORT_MAX = 65535;
-export const REMOTE_AUTO_PORT_MIN = 49152;
-export const REMOTE_AUTO_PORT_MAX = 65535;
-
 function isRemoteAccessLink(value: unknown): value is RemoteAccessLink {
   if (!value || typeof value !== "object") return false;
   const link = value as Partial<RemoteAccessLink>;
-  return isNonEmptyString(link.id) && isNonEmptyString(link.link)
+  return isValidRemoteAccessId(link.id) && isNonEmptyString(link.link)
     && (link.access === "full" || link.access === "monitoring")
-    && typeof link.expiresAt === "number" && Number.isFinite(link.expiresAt)
-    && isNonEmptyString(link.fingerprint);
+    && isValidRemoteTimestamp(link.expiresAt)
+    && isValidRemoteFingerprint(link.fingerprint) && link.fingerprint !== null;
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -169,7 +141,7 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     || (payload.theme !== "instrument" && payload.theme !== "maritime" && payload.theme !== "carbon"
       && payload.theme !== "whites")
     || !isConsoleLanguagePreference(payload.language)
-    || !isRemoteAccessState(payload.remoteAccess)
+    || !isValidRemoteAccessState(payload.remoteAccess)
   ) {
     throw new ApiError(status, "Invalid global settings state response");
   }
