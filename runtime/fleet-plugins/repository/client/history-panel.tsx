@@ -189,9 +189,10 @@ function BadgeMark({ kind, checkout }: { readonly kind: RefBadgeKind; readonly c
 function RefBadgeChip({ badge, checkout, lane }: { readonly badge: RefBadge; readonly checkout?: WorktreeCheckout | null; readonly lane?: number }) {
   const tone = laneBadgeTone(badge.kind, checkout, lane);
   return <span
-    className={`history-badge history-badge--${badge.kind}${checkout?.isCurrent ? " is-current" : ""}`}
+    className={`history-badge history-badge--${badge.kind}${checkout?.isCurrent ? " is-current" : ""}${badge.hasRemote ? " has-remote" : ""}`}
     style={tone ? ({ "--badge-tone": tone } as CSSProperties) : undefined}
   >
+    {badge.hasRemote && <span className="history-badge-mark history-badge-remote-mark"><RemoteIcon /></span>}
     <span className="history-badge-mark"><BadgeMark kind={badge.kind} checkout={checkout} /></span>
     <span className="history-badge-label">{badge.label}</span>
   </span>;

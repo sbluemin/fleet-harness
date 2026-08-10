@@ -72,6 +72,16 @@ describe("refBadges", () => {
     expect(badges).toEqual([{ label: "origin/main", kind: "remote" }]);
   });
 
+  it("같은 커밋의 원격 ref를 첫 로컬 branch 배지의 표식으로 합친다", () => {
+    const badges = refBadges(makeEntry({ refs: ["refs/remotes/origin/canary", "refs/heads/topic"] }));
+    expect(badges).toEqual([{ label: "topic", kind: "branch", hasRemote: true }]);
+  });
+
+  it("여러 remote ref도 하나의 로컬 배지 표식으로 접는다", () => {
+    const badges = refBadges(makeEntry({ refs: ["refs/remotes/origin/main", "refs/heads/main", "refs/remotes/upstream/main"] }));
+    expect(badges).toEqual([{ label: "main", kind: "branch", hasRemote: true }]);
+  });
+
   it("full decoration의 HEAD 접두는 로컬 branch 배지로 분류한다", () => {
     const badges = refBadges(makeEntry({ refs: ["HEAD -> refs/heads/main"] }));
     expect(badges).toEqual([{ label: "main", kind: "branch" }]);
@@ -89,12 +99,38 @@ describe("refBadges", () => {
     expect(badges[0]?.kind).toBe("branch");
   });
 
-  it("HEAD + branch + tag 혼합 ref를 모두 분류한다", () => {
-    const badges = refBadges(makeEntry({ refs: ["HEAD", "refs/heads/main", "tag: v2.0"] }));
-    expect(badges).toHaveLength(3);
-    expect(badges[0]?.kind).toBe("head");
-    expect(badges[1]?.kind).toBe("branch");
-    expect(badges[2]?.kind).toBe("tag");
+  it("로컬 ref에 remote를 접고 tag보다 앞세워 decoration을 정규화한다", () => {
+    const badges = refBadges(makeEntry({ refs: ["tag: v2.0", "refs/remotes/origin/topic", "refs/heads/main", "HEAD"] }));
+    expect(badges).toEqual([
+      { label: "main", kind: "branch", hasRemote: true },
+      { label: "HEAD", kind: "head" },
+      { label: "v2.0", kind: "tag" },
+    ]);
+  });
+
+  it("로컬 ref가 없으면 remote 배지를 보존한다", () => {
+    const badges = refBadges(makeEntry({ refs: ["tag: v2.0", "refs/remotes/origin/topic"] }));
+    expect(badges).toEqual([
+      { label: "origin/topic", kind: "remote" },
+      { label: "v2.0", kind: "tag" },
+    ]);
+  });
+
+  it("tag를 label 순으로 안정화한다", () => {
+    const badges = refBadges(makeEntry({ refs: ["tag: v1.53.0", "refs/heads/main", "tag: desktop-v0.5.1"] }));
+    expect(badges).toEqual([
+      { label: "main", kind: "branch" },
+      { label: "desktop-v0.5.1", kind: "tag" },
+      { label: "v1.53.0", kind: "tag" },
+    ]);
+  });
+
+  it("HEAD가 가리키는 local branch에는 원격 표식을 합치고 tag보다 앞세운다", () => {
+    const badges = refBadges(makeEntry({ refs: ["tag: v2.0", "refs/remotes/origin/main", "HEAD -> refs/heads/main"] }));
+    expect(badges).toEqual([
+      { label: "main", kind: "branch", hasRemote: true },
+      { label: "v2.0", kind: "tag" },
+    ]);
   });
 });
 

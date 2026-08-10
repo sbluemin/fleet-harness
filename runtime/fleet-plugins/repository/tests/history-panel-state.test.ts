@@ -62,6 +62,35 @@ describe("CommitRow", () => {
     expect(isElement(subject) && subject.props.title).toBe(COMMIT.subject);
     expect(isElement(subject) && subject.props.children).toBe(COMMIT.subject);
   });
+
+  it("combines remote provenance and checkout state into one branch badge", () => {
+    const entry = { ...COMMIT, refs: ["refs/remotes/origin/main", "HEAD -> refs/heads/main"] };
+    const row = CommitRow({
+      entry,
+      checkouts: [{ sha: COMMIT.fullHash, branch: "main", isCurrent: true }],
+      selected: false,
+      graphNode: layoutGraph([entry]).nodes[0]!,
+      onSelect: vi.fn(),
+    });
+    const rowChildren = (Array.isArray(row.props.children) ? row.props.children : [row.props.children]) as readonly ReactNode[];
+    const mainButton = rowChildren.find((child) => isElement(child) && child.type === "button" && child.props.className === "history-commit-row-main");
+    const children = (isElement(mainButton) ? mainButton.props.children : []) as readonly ReactNode[];
+    const badgeGroup = children.find((child) => isElement(child) && child.props.className === "history-commit-badges");
+    const badgeChildren = isElement(badgeGroup) && Array.isArray(badgeGroup.props.children) ? badgeGroup.props.children.flat() : [];
+    const badges = badgeChildren.filter(isElement);
+
+    expect(badges).toHaveLength(1);
+    const badgeElement = badges[0]!;
+    expect(typeof badgeElement.type).toBe("function");
+    const renderedBadge = (badgeElement.type as (props: ElementProps) => ReactElement<ElementProps>)(badgeElement.props);
+    expect(renderedBadge.props.className).toBe("history-badge history-badge--branch is-current has-remote");
+    const segments = (Array.isArray(renderedBadge.props.children) ? renderedBadge.props.children : []).filter(isElement);
+    expect(segments.map((segment) => segment.props.className)).toEqual([
+      "history-badge-mark history-badge-remote-mark",
+      "history-badge-mark",
+      "history-badge-label",
+    ]);
+  });
 });
 
 describe("History window rendering", () => {

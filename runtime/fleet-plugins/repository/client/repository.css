@@ -835,9 +835,9 @@
 
 .history-commit-badges {
   display: inline-flex;
-  min-width: 0;
+  width: max-content;
+  min-width: max-content;
   gap: 4px;
-  overflow: hidden;
   white-space: nowrap;
 }
 
@@ -852,12 +852,12 @@
   align-items: stretch;
   flex: none;
   overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--badge-tone) 62%, transparent);
+  border: 1px solid color-mix(in oklch, var(--badge-tone) 82%, transparent);
   border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--badge-tone) 15%, transparent);
+  background: color-mix(in oklch, var(--badge-tone) 22%, transparent);
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: var(--weight-bold);
   letter-spacing: 0.01em;
   line-height: 1.5;
@@ -867,8 +867,12 @@
   display: inline-flex;
   align-items: center;
   padding: 0 3px;
-  border-right: 1px solid color-mix(in oklch, var(--badge-tone) 45%, transparent);
-  color: color-mix(in oklch, var(--badge-tone) 85%, var(--text-primary));
+  border-right: 1px solid color-mix(in oklch, var(--badge-tone) 65%, transparent);
+  color: color-mix(in oklch, var(--badge-tone) 88%, var(--text-primary));
+}
+
+.history-badge-remote-mark {
+  background: color-mix(in oklch, var(--badge-tone) 12%, transparent);
 }
 
 .history-badge-label {
@@ -1048,8 +1052,9 @@
    grid-row: 1로 전 셀을 단일 28px 트랙에 묶어 노드와 커밋 텍스트를 정렬한다. 본문 마커는 조건부 셀이라
    나머지 셀도 열을 명시해야 마커가 없는 행에서 뒤 셀들이 한 칸씩 당겨지지 않는다. */
 .history-graph-gutter { grid-column: 1; grid-row: 1; }
-/* Fork 문법 — refs 뱃지가 제목 앞(그래프 뒤)에서 커밋의 정체를 먼저 알린다. */
-.history-commit-badges { grid-column: 2; grid-row: 1; max-width: 40cqw; }
+/* Fork 문법 — refs 뱃지가 제목 앞(그래프 뒤)에서 커밋의 정체를 먼저 알린다.
+   칩은 표시되는 동안 고유 폭을 보존하고, 좁은 패널에서는 아래 container query가 그룹 전체를 숨긴다. */
+.history-commit-badges { grid-column: 2; grid-row: 1; }
 .history-commit-subject { grid-column: 3; grid-row: 1; min-width: 96px; }
 .history-commit-body-mark { grid-column: 4; grid-row: 1; }
 .history-commit-author { grid-column: 5; grid-row: 1; }
