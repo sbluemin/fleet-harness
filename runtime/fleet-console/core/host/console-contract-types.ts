@@ -259,9 +259,24 @@ export interface ConsoleOperationResponse {
 // 브라우저로 나가는 General 설정 DTO. console-settings.ts의 ConsoleSettingsData에서
 // 내부 격리 키(version)를 제외하고 flat으로 변환해 표면화한다.
 
+export interface RemotePortState {
+  readonly mode: "auto" | "custom";
+  readonly value: number;
+}
+
 export interface RemoteAccessState {
   readonly enabled: boolean;
-  readonly bindHost: string | null;
+  readonly listenAddress: string;
+  readonly advertisedHost: string;
+  readonly listenPort: RemotePortState;
+  readonly advertisedPort: RemotePortState;
+  readonly acknowledgment: {
+    readonly version: 1;
+    readonly listenAddress: string;
+    readonly listenPort: number;
+    readonly advertisedHost: string;
+    readonly advertisedPort: number;
+  } | null;
 }
 
 export interface GlobalSettingsState {

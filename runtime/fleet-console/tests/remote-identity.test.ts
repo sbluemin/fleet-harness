@@ -162,11 +162,20 @@ describe("fingerprints", () => {
  * 디렉터리에 살고, 손님을 전부 내보내는 자리에서만 놓인다.
  */
 describe("remote endpoint store", () => {
-  it("remembers the published port across a fresh store", () => {
+  it("remembers the local and advertised ports across a fresh store", () => {
     const dir = createDir();
-    createRemoteEndpointStore(dir).remember(54_321);
+    createRemoteEndpointStore(dir).remember({ listenPort: 54_321, advertisedPort: 54_322 });
 
-    expect(createRemoteEndpointStore(dir).read()).toBe(54_321);
+    expect(createRemoteEndpointStore(dir).read()).toEqual({ listenPort: 54_321, advertisedPort: 54_322 });
+  });
+
+  it("migrates a v1 published port losslessly to both v2 endpoints", () => {
+    const dir = createDir();
+    const remoteDir = path.join(dir, "remote");
+    fs.mkdirSync(remoteDir, { recursive: true });
+    fs.writeFileSync(path.join(remoteDir, "listener.json"), JSON.stringify({ version: 1, port: 54_321 }));
+
+    expect(createRemoteEndpointStore(dir).read()).toEqual({ listenPort: 54_321, advertisedPort: 54_321 });
   });
 
   it("reports no port before the listener has ever opened", () => {

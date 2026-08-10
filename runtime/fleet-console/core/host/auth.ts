@@ -306,18 +306,18 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
  */
 export interface ListenerIdentity {
   readonly audience: AccessAudience;
-  /** Host 헤더와 대조할 호스트 부분. */
+  /** Client-facing host used by Host checks, links, cookies, and saved hosts. */
   readonly host: string;
   readonly port: number;
-  /** 브라우저 Origin과 대조할 정규 origin. */
   readonly origin: string;
   readonly secure: boolean;
-  /** 이 리스너가 바인드한 로컬 주소. 요청 소켓의 localAddress와 대조한다. */
+  /** Socket-local tuple used only to identify which listener accepted a request. */
   readonly bindAddress: string;
+  readonly bindPort?: number;
 }
 
 export function createLoopbackListenerIdentity(port: number): ListenerIdentity {
-  return { audience: "local", host: "127.0.0.1", port, origin: `http://127.0.0.1:${port}`, secure: false, bindAddress: "127.0.0.1" };
+  return { audience: "local", host: "127.0.0.1", port, origin: `http://127.0.0.1:${port}`, secure: false, bindAddress: "127.0.0.1", bindPort: port };
 }
 
 /** IPv4-mapped IPv6(`::ffff:127.0.0.1`)와 IPv6 루프백을 같은 주소로 본다. */
@@ -332,7 +332,7 @@ export function resolveListenerIdentity(
   socket: { readonly localAddress?: string | undefined; readonly localPort?: number | undefined },
 ): ListenerIdentity | null {
   const address = normalizeBindAddress(socket.localAddress);
-  return listeners.find((listener) => listener.bindAddress === address && (socket.localPort === undefined || listener.port === socket.localPort)) ?? null;
+  return listeners.find((listener) => listener.bindAddress === address && (socket.localPort === undefined || (listener.bindPort ?? listener.port) === socket.localPort)) ?? null;
 }
 
 /**

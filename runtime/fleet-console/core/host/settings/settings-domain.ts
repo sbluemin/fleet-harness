@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 
@@ -17,13 +19,30 @@ export type UiFontSettings =
   | { readonly source: "builtin"; readonly id: ConsoleUiFontId; readonly size: number }
   | { readonly source: "system"; readonly familyName: string; readonly size: number };
 
-/**
- * 원격 접속은 기본으로 꺼져 있다. 켜질 때 사용자가 고른 바인드 주소는 구성 리터럴로만
- * 취급되며, 요청 Host나 DNS에서 유도되지 않는다 — 그래야 Host 검사가 rebinding 경계로 남는다.
- */
+export const REMOTE_AUTO_PORT_MIN = 49152;
+export const REMOTE_AUTO_PORT_MAX = 65535;
+export const REMOTE_AUTO_PORT_ATTEMPTS = 12;
+
+export interface RemotePortSetting {
+  readonly mode: "auto" | "custom";
+  readonly value: number;
+}
+
+export interface RemoteAccessAcknowledgment {
+  readonly version: 1;
+  readonly listenAddress: string;
+  readonly listenPort: number;
+  readonly advertisedHost: string;
+  readonly advertisedPort: number;
+}
+
 export interface ConsoleRemoteAccessSettings {
-  readonly enabled?: boolean;
-  readonly bindHost?: string;
+  readonly enabled: boolean;
+  readonly listenAddress: string;
+  readonly advertisedHost: string;
+  readonly listenPort: RemotePortSetting;
+  readonly advertisedPort: RemotePortSetting;
+  readonly acknowledgment: RemoteAccessAcknowledgment | null;
 }
 
 export interface ConsoleGeneralSettings {
@@ -40,11 +59,17 @@ export interface ConsoleGeneralSettings {
 const REMOTE_BIND_HOST = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[A-Za-z0-9](?:[A-Za-z0-9._-]{0,252}[A-Za-z0-9])?)$/u;
 
 export function sanitizeRemoteAccessSettings(value: unknown): ConsoleRemoteAccessSettings | undefined {
-  if (!isRecord(value)) return undefined;
-  const enabled = typeof value.enabled === "boolean" ? value.enabled : undefined;
-  const bindHost = isValidRemoteBindHost(value.bindHost) ? canonicalizeRemoteBindHost(value.bindHost) : undefined;
-  if (enabled === undefined && bindHost === undefined) return undefined;
-  return { ...(enabled !== undefined ? { enabled } : {}), ...(bindHost !== undefined ? { bindHost } : {}) };
+  if (!isRecord(value) || "bindHost" in value) return undefined;
+  if (typeof value.enabled !== "boolean") return undefined;
+  const listenAddress = value.listenAddress === "" ? "" : isValidRemoteBindHost(value.listenAddress) ? canonicalizeRemoteBindHost(value.listenAddress) : null;
+  const advertisedHost = value.advertisedHost === "" ? "" : isValidRemoteAdvertisedHost(value.advertisedHost) ? canonicalizeRemoteBindHost(value.advertisedHost) : null;
+  if (listenAddress === null || advertisedHost === null || (value.enabled && (listenAddress === "" || advertisedHost === ""))) return undefined;
+  const listenPort = sanitizeRemotePortSetting(value.listenPort);
+  const advertisedPort = sanitizeRemotePortSetting(value.advertisedPort);
+  if (!listenPort || !advertisedPort) return undefined;
+  const acknowledgment = sanitizeAcknowledgment(value.acknowledgment);
+  if (value.acknowledgment !== null && !acknowledgment) return undefined;
+  return { enabled: value.enabled, listenAddress, advertisedHost, listenPort, advertisedPort, acknowledgment };
 }
 
 /**
@@ -75,6 +100,8 @@ export interface ConsoleSettingsData {
 }
 
 export interface CreateConsoleSettingsStoreDeps {
+  readonly randomInt?: (min: number, max: number) => number;
+  readonly readFile?: (file: string) => string;
   readonly paths?: ConsoleDataPaths;
   readonly createStore?: (deps: CreateDurableJsonStoreDeps<ConsoleSettingsData>) => DurableJsonStore<ConsoleSettingsData>;
   readonly now?: () => number;
@@ -96,7 +123,9 @@ const MAX_FEATURE_TOUR_KEY_LENGTH = 64;
 export function createConsoleSettingsStore(deps: CreateConsoleSettingsStoreDeps = {}): DurableJsonStore<ConsoleSettingsData> {
   const paths = deps.paths ?? createConsoleDataPaths();
   const createStore = deps.createStore ?? createDurableJsonStore;
-  return createStore({
+  const randomInt = deps.randomInt ?? crypto.randomInt;
+  const readFile = deps.readFile ?? ((file: string) => fs.readFileSync(file, "utf8"));
+  const base = createStore({
     filePath: paths.settingsFile,
     lockDir: path.join(paths.dir, SETTINGS_LOCK_DIR_NAME),
     lockOwnerFileName: SETTINGS_LOCK_OWNER_FILE_NAME,
@@ -105,6 +134,24 @@ export function createConsoleSettingsStore(deps: CreateConsoleSettingsStoreDeps 
     sensitivity: "sensitive",
     tempCleanupPrefix: SETTINGS_TEMP_PREFIX,
   });
+  let initialized = false;
+  function initialize(): ConsoleSettingsData {
+    if (initialized) return base.load();
+    initialized = true;
+    const current = base.load();
+    const raw = readRawSettings(paths.settingsFile, readFile);
+    const legacy = readLegacyRemoteAccess(raw, paths.dir, readFile, randomInt);
+    const remoteAccess = current.general?.remoteAccess ?? legacy ?? createDefaultRemoteAccess(randomInt);
+    const next = { ...current, general: { ...current.general, remoteAccess } };
+    if (!current.general?.remoteAccess || legacy) base.save(next);
+    return next;
+  }
+  return {
+    path: base.path,
+    load: initialize,
+    save(data) { initialized = true; base.save(data); },
+    update(mutate) { const next = mutate(initialize()); base.save(next); return base.load(); },
+  };
 }
 
 export function sanitizeConsoleSettingsData(value: unknown): ConsoleSettingsData {
@@ -195,6 +242,61 @@ function readConsolePluginSettings(value: unknown): Record<string, Record<string
     result[key] = entry;
   }
   return result;
+}
+
+function isValidRemoteAdvertisedHost(value: unknown): value is string {
+  return typeof value === "string" && REMOTE_BIND_HOST.test(value);
+}
+
+function sanitizeRemotePortSetting(value: unknown): RemotePortSetting | null {
+  if (!isRecord(value) || (value.mode !== "auto" && value.mode !== "custom") || !isBindablePort(value.value)) return null;
+  return { mode: value.mode, value: value.value };
+}
+
+function sanitizeAcknowledgment(value: unknown): RemoteAccessAcknowledgment | null {
+  if (value === null) return null;
+  if (!isRecord(value) || value.version !== 1 || !isValidRemoteBindHost(value.listenAddress)
+    || !isValidRemoteAdvertisedHost(value.advertisedHost) || !isBindablePort(value.listenPort) || !isBindablePort(value.advertisedPort)) return null;
+  return { version: 1, listenAddress: canonicalizeRemoteBindHost(value.listenAddress), listenPort: value.listenPort, advertisedHost: canonicalizeRemoteBindHost(value.advertisedHost), advertisedPort: value.advertisedPort };
+}
+
+export function acknowledgmentMatches(settings: Pick<ConsoleRemoteAccessSettings, "listenAddress" | "listenPort" | "advertisedHost" | "advertisedPort">, acknowledgment: RemoteAccessAcknowledgment | null): boolean {
+  return acknowledgment !== null && acknowledgment.version === 1
+    && acknowledgment.listenAddress === settings.listenAddress && acknowledgment.listenPort === settings.listenPort.value
+    && acknowledgment.advertisedHost === settings.advertisedHost && acknowledgment.advertisedPort === settings.advertisedPort.value;
+}
+
+function createDefaultRemoteAccess(randomInt: (min: number, max: number) => number): ConsoleRemoteAccessSettings {
+  return { enabled: false, listenAddress: "", advertisedHost: "", listenPort: { mode: "auto", value: randomAutoPort(randomInt) }, advertisedPort: { mode: "auto", value: randomAutoPort(randomInt) }, acknowledgment: null };
+}
+
+function randomAutoPort(randomInt: (min: number, max: number) => number): number {
+  return randomInt(REMOTE_AUTO_PORT_MIN, REMOTE_AUTO_PORT_MAX + 1);
+}
+
+function isBindablePort(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= 65_535;
+}
+
+function readRawSettings(file: string, readFile: (file: string) => string): unknown {
+  try { return JSON.parse(readFile(file)); } catch { return null; }
+}
+
+function readLegacyRemoteAccess(raw: unknown, consoleDir: string, readFile: (file: string) => string, randomInt: (min: number, max: number) => number): ConsoleRemoteAccessSettings | null {
+  if (!isRecord(raw) || raw.version !== 1 || !isRecord(raw.general) || !isRecord(raw.general.remoteAccess)) return null;
+  const legacy = raw.general.remoteAccess;
+  if (!isValidRemoteBindHost(legacy.bindHost)) return null;
+  const host = canonicalizeRemoteBindHost(legacy.bindHost);
+  let port: number | null = null;
+  try {
+    const endpoint = JSON.parse(readFile(path.join(consoleDir, "remote", "listener.json"))) as unknown;
+    if (isRecord(endpoint) && endpoint.version === 1 && isBindablePort(endpoint.port)) port = endpoint.port;
+  } catch {}
+  const listenPort: RemotePortSetting = port === null ? { mode: "auto", value: randomAutoPort(randomInt) } : { mode: "custom", value: port };
+  const advertisedPort: RemotePortSetting = port === null ? { mode: "auto", value: randomAutoPort(randomInt) } : { mode: "custom", value: port };
+  const acknowledgment: RemoteAccessAcknowledgment | null = legacy.enabled === true
+    ? { version: 1, listenAddress: host, listenPort: listenPort.value, advertisedHost: host, advertisedPort: advertisedPort.value } : null;
+  return { enabled: legacy.enabled === true, listenAddress: host, advertisedHost: host, listenPort, advertisedPort, acknowledgment };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -365,19 +467,28 @@ async function mutateGlobalSettings(
   deps.writeJson(res, 200, response);
 }
 
-/** GET 정규형은 bindHost를 null로 돌려주므로 PUT도 null을 받아들여야 왕복이 성립한다. */
 function isValidRemoteAccessInput(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  if (value.enabled !== undefined && typeof value.enabled !== "boolean") return false;
-  if (value.bindHost !== undefined && value.bindHost !== null && !isValidRemoteBindHost(value.bindHost)) return false;
-  // 원격을 켜려면 바인드 주소가 있어야 한다 — 주소 없이 켜면 리스너가 열릴 곳이 없다.
-  return value.enabled !== true || isValidRemoteBindHost(value.bindHost);
+  if (!isRecord(value) || "bindHost" in value || typeof value.enabled !== "boolean") return false;
+  const validAddresses = isValidRemoteBindHost(value.listenAddress) && isValidRemoteAdvertisedHost(value.advertisedHost);
+  if (!validAddresses && !(value.enabled === false && value.listenAddress === "" && value.advertisedHost === "")) return false;
+  const listenPort = sanitizeRemotePortSetting(value.listenPort);
+  const advertisedPort = sanitizeRemotePortSetting(value.advertisedPort);
+  if (!listenPort || !advertisedPort) return false;
+  const acknowledgment = sanitizeAcknowledgment(value.acknowledgment);
+  if (value.acknowledgment !== null && !acknowledgment) return false;
+  return value.enabled !== true || acknowledgmentMatches({ listenAddress: value.listenAddress as string, advertisedHost: value.advertisedHost as string, listenPort, advertisedPort }, acknowledgment);
 }
 
 function normalizeRemoteAccessInput(value: unknown): ConsoleRemoteAccessSettings {
-  const record = isRecord(value) ? value : {};
-  const enabled = typeof record.enabled === "boolean" ? record.enabled : false;
-  return { enabled, ...(isValidRemoteBindHost(record.bindHost) ? { bindHost: record.bindHost } : {}) };
+  const record = value as Record<string, unknown>;
+  return {
+    enabled: record.enabled === true,
+    listenAddress: record.listenAddress === "" ? "" : canonicalizeRemoteBindHost(record.listenAddress as string),
+    advertisedHost: record.advertisedHost === "" ? "" : canonicalizeRemoteBindHost(record.advertisedHost as string),
+    listenPort: sanitizeRemotePortSetting(record.listenPort)!,
+    advertisedPort: sanitizeRemotePortSetting(record.advertisedPort)!,
+    acknowledgment: sanitizeAcknowledgment(record.acknowledgment),
+  };
 }
 
 function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
@@ -386,7 +497,7 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     consolePortMode: general.consolePortMode ?? "dynamic",
     consoleStaticPort: general.consoleStaticPort ?? null,
     language: general.language ?? "auto",
-    remoteAccess: { enabled: general.remoteAccess?.enabled ?? false, bindHost: general.remoteAccess?.bindHost ?? null },
+    remoteAccess: general.remoteAccess ?? createDefaultRemoteAccess(crypto.randomInt),
     seenFeatureTours: general.seenFeatureTours ?? [],
     theme: general.theme ?? "instrument",
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,

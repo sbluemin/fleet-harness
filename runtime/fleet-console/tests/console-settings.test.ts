@@ -195,12 +195,52 @@ describe("sanitizeConsoleSettingsData", () => {
     })).toEqual({ version: 1, general: {}, plugins: {} });
   });
 
+  it("generates concrete Auto port defaults once and persists them", () => {
+    const dir = makeTempDir();
+    const paths = makeFakePaths(dir);
+    const ports = [49_152, 65_535];
+    const store = createConsoleSettingsStore({ paths, randomInt: () => ports.shift()! });
+
+    expect(store.load().general?.remoteAccess).toEqual({
+      enabled: false,
+      listenAddress: "",
+      advertisedHost: "",
+      listenPort: { mode: "auto", value: 49_152 },
+      advertisedPort: { mode: "auto", value: 65_535 },
+      acknowledgment: null,
+    });
+    expect(createConsoleSettingsStore({ paths, randomInt: () => { throw new Error("must not regenerate"); } }).load().general?.remoteAccess)
+      .toEqual(store.load().general?.remoteAccess);
+  });
+
+  it("migrates legacy bindHost plus listener v1 port without rotating adjacent remote state", () => {
+    const dir = makeTempDir();
+    const paths = makeFakePaths(dir);
+    fs.mkdirSync(path.join(dir, "remote"), { recursive: true });
+    fs.writeFileSync(paths.settingsFile, JSON.stringify({ version: 1, general: { remoteAccess: { enabled: true, bindHost: "Console.Example" } }, plugins: {} }));
+    fs.writeFileSync(path.join(dir, "remote", "listener.json"), JSON.stringify({ version: 1, port: 54_321 }));
+    fs.writeFileSync(path.join(dir, "remote", "pairings.json"), "preserve-me");
+
+    const migrated = createConsoleSettingsStore({ paths }).load().general?.remoteAccess;
+
+    expect(migrated).toEqual({
+      enabled: true,
+      listenAddress: "console.example",
+      advertisedHost: "console.example",
+      listenPort: { mode: "custom", value: 54_321 },
+      advertisedPort: { mode: "custom", value: 54_321 },
+      acknowledgment: { version: 1, listenAddress: "console.example", listenPort: 54_321, advertisedHost: "console.example", advertisedPort: 54_321 },
+    });
+    expect(fs.readFileSync(path.join(dir, "remote", "pairings.json"), "utf8")).toBe("preserve-me");
+    expect(JSON.stringify(createConsoleSettingsStore({ paths }).load())).not.toContain("bindHost");
+  });
+
   it("round-trips valid data through store", () => {
     const dir = makeTempDir();
     const paths = makeFakePaths(dir);
     const store = createConsoleSettingsStore({ paths });
 
-    expect(store.load()).toEqual({ version: 1, general: {}, plugins: {} });
+    expect(store.load()).toMatchObject({ version: 1, general: { remoteAccess: { enabled: false, acknowledgment: null } }, plugins: {} });
 
     store.update(() => ({
       version: 1,
@@ -227,19 +267,14 @@ describe("sanitizeConsoleSettingsData", () => {
     }), "utf8");
     const store = createConsoleSettingsStore({ paths });
 
-    expect(store.load()).toEqual({
+    expect(store.load()).toMatchObject({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "maritime", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "maritime", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 }, remoteAccess: { enabled: false, acknowledgment: null } },
       plugins: { terminal: { font: { size: 14 } }, skills: { includePrerelease: true } },
     });
-    expect(JSON.parse(fs.readFileSync(paths.settingsFile, "utf8"))).toEqual({
+    expect(JSON.parse(fs.readFileSync(paths.settingsFile, "utf8"))).toMatchObject({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "maritime", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
-      plugins: { terminal: { font: { size: 14 } }, skills: { includePrerelease: true } },
-    });
-    expect(JSON.parse(fs.readFileSync(paths.settingsFile, "utf8"))).toEqual({
-      version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "maritime", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "maritime", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 }, remoteAccess: { enabled: false, acknowledgment: null } },
       plugins: { terminal: { font: { size: 14 } }, skills: { includePrerelease: true } },
     });
   });
