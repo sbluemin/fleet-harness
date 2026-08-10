@@ -37,7 +37,7 @@ export const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 export const CHATGPT_CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
 export const DEFAULT_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
 export const DEFAULT_UPSTREAM_IDLE_TIMEOUT_MS = 30_000;
-const CODEX_SOCKET_RETRY_DELAY_MS = 200;
+const CODEX_RETRY_DELAY_MS = 200;
 
 // ChatGPT 백엔드는 Platform API가 받는 샘플링 파라미터를 400으로 거절한다.
 // 실측으로 확정한 거부 목록. metadata는 "Unsupported parameter", 샘플링 필드는 400으로 돌아온다.
@@ -242,7 +242,7 @@ export class CodexResponsesAdapter extends OpenAIResponsesAdapter {
       if (!isRetryableCodexFetchSocketTermination(error, options.signal)) {
         throw error;
       }
-      await abortableDelay(CODEX_SOCKET_RETRY_DELAY_MS, options.signal);
+      await abortableDelay(CODEX_RETRY_DELAY_MS, options.signal);
       return await super.stream(request, options);
     }
     if (!response.ok) {
@@ -250,9 +250,9 @@ export class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     }
     return {
       ...response,
-      events: retryCodexStreamBeforeFirstEvent(response.events, async () => {
-        await abortableDelay(CODEX_SOCKET_RETRY_DELAY_MS, options.signal);
-        const retried = await super.stream(request, options);
+      events: retryCodexStream(response.events, async (retrySignal) => {
+        await abortableDelay(CODEX_RETRY_DELAY_MS, retrySignal);
+        const retried = await super.stream(request, { ...options, signal: retrySignal });
         if (!retried.ok) {
           throw new UpstreamProtocolError(`Codex retry failed with status ${retried.status}`);
         }
@@ -262,22 +262,137 @@ export class CodexResponsesAdapter extends OpenAIResponsesAdapter {
   }
 }
 
-async function* retryCodexStreamBeforeFirstEvent(
+function retryCodexStream(
   events: AsyncIterable<CanonicalResponseEvent>,
-  retry: () => Promise<AsyncIterable<CanonicalResponseEvent>>,
+  retry: (signal: AbortSignal) => Promise<AsyncIterable<CanonicalResponseEvent>>,
+  signal?: AbortSignal,
+): AsyncIterable<CanonicalResponseEvent> {
+  return {
+    [Symbol.asyncIterator]() {
+      const retryController = new AbortController();
+      const unlinkRetryAbort = linkAbortSignal(signal, retryController);
+      const source = events[Symbol.asyncIterator]();
+      const iterator = generateCodexRetryStream(
+        source,
+        retry,
+        retryController,
+        unlinkRetryAbort,
+        signal,
+      );
+      return {
+        next: () => iterator.next(),
+        return: async () => {
+          retryController.abort();
+          return await iterator.return(undefined);
+        },
+        throw: async (error?: unknown) => {
+          retryController.abort(error);
+          return await iterator.throw(error);
+        },
+      };
+    },
+  };
+}
+
+async function* generateCodexRetryStream(
+  source: AsyncIterator<CanonicalResponseEvent>,
+  retry: (signal: AbortSignal) => Promise<AsyncIterable<CanonicalResponseEvent>>,
+  retryController: AbortController,
+  unlinkRetryAbort: () => void,
   signal?: AbortSignal,
 ): AsyncGenerator<CanonicalResponseEvent> {
   let yielded = false;
+  let committedOutput = false;
+  let pendingProviderError: CanonicalResponseEvent | undefined;
   try {
-    for await (const event of events) {
+    while (true) {
+      let result: IteratorResult<CanonicalResponseEvent>;
+      try {
+        result = await source.next();
+      } catch (error) {
+        if (yielded || signal?.aborted === true || !isUndiciSocketTermination(error)) {
+          throw error;
+        }
+        yield* await retry(retryController.signal);
+        return;
+      }
+      if (result.done) {
+        if (pendingProviderError !== undefined) {
+          yield pendingProviderError;
+        }
+        return;
+      }
+      const event = result.value;
+      if (isRetryableCodexServerFailure(event, committedOutput, signal)) {
+        await source.return?.();
+        yield* await retry(retryController.signal);
+        return;
+      }
+      if (pendingProviderError !== undefined) {
+        const matchesFailurePair = event.type === "response.failed"
+          && isRetryableCodexProviderErrorType(event.response.error.type)
+          && signal?.aborted !== true
+          && !committedOutput;
+        if (matchesFailurePair) {
+          await source.return?.();
+          yield* await retry(retryController.signal);
+          return;
+        }
+        yield pendingProviderError;
+        pendingProviderError = undefined;
+        yielded = true;
+        committedOutput = true;
+      }
+      if (isRetryableCodexProviderError(event, committedOutput, signal)) {
+        pendingProviderError = event;
+        continue;
+      }
       yielded = true;
+      committedOutput ||= commitsCodexOutput(event);
       yield event;
     }
-  } catch (error) {
-    if (yielded || signal?.aborted === true || !isUndiciSocketTermination(error)) {
-      throw error;
-    }
-    yield* await retry();
+  } finally {
+    retryController.abort();
+    unlinkRetryAbort();
+    await source.return?.();
+  }
+}
+
+function isRetryableCodexServerFailure(
+  event: CanonicalResponseEvent,
+  committedOutput: boolean,
+  signal?: AbortSignal,
+): boolean {
+  return signal?.aborted !== true
+    && !committedOutput
+    && event.type === "response.failed"
+    && isRetryableCodexProviderErrorType(event.response.error.type);
+}
+
+function isRetryableCodexProviderError(
+  event: CanonicalResponseEvent,
+  committedOutput: boolean,
+  signal?: AbortSignal,
+): boolean {
+  return signal?.aborted !== true
+    && !committedOutput
+    && event.type === "error"
+    && isRetryableCodexProviderErrorType(event.error.type);
+}
+
+function isRetryableCodexProviderErrorType(type: string): boolean {
+  return type === "server_error"
+    || type === "server_is_overloaded"
+    || type === "service_unavailable_error";
+}
+
+function commitsCodexOutput(event: CanonicalResponseEvent): boolean {
+  switch (event.type) {
+    case "response.created":
+    case "response.reasoning_summary_text.delta":
+      return false;
+    default:
+      return true;
   }
 }
 

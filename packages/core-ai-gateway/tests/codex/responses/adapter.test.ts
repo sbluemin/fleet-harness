@@ -153,6 +153,181 @@ describe("codex responses adapter", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("retries one server_error after reasoning but before output", async () => {
+    const failed = 'data: {"type":"response.failed","response":{"id":"r1","model":"gpt-5.6-luna","error":{"code":"server_error","message":"An error occurred while processing your request. Please include request ID req-1."}}}\n\n';
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(sse(
+        'data: {"type":"response.created","response":{"id":"r1","model":"gpt-5.6-luna"}}\n\n',
+        'data: {"type":"response.reasoning_text.delta","item_id":"reasoning-1","output_index":0,"delta":"checking"}\n\n',
+        failed,
+      ))
+      .mockResolvedValueOnce(sse(
+        'data: {"type":"response.created","response":{"id":"r2","model":"gpt-5.6-luna"}}\n\n',
+        'data: {"type":"response.output_text.delta","item_id":"message-1","output_index":0,"content_index":0,"delta":"OK"}\n\n',
+        'data: {"type":"response.completed","response":{"id":"r2","model":"gpt-5.6-luna","usage":{"input_tokens":1,"output_tokens":1}}}\n\n',
+      ));
+
+    const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected success");
+    const events = [];
+    for await (const event of response.events) events.push(event);
+    expect(events.map((event) => event.type)).toEqual([
+      "response.created",
+      "response.reasoning_summary_text.delta",
+      "response.created",
+      "response.output_text.delta",
+      "response.completed",
+    ]);
+    expect(events).not.toContainEqual(expect.objectContaining({ type: "response.failed" }));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries the observed overload error pair before output", async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(sse(
+        'data: {"type":"response.created","response":{"id":"r1","model":"gpt-5.6-luna"}}\n\n',
+        'data: {"type":"error","error":{"code":"service_unavailable_error","message":"temporarily unavailable"}}\n\n',
+        'data: {"type":"response.failed","response":{"id":"r1","model":"gpt-5.6-luna","error":{"code":"server_is_overloaded","message":"overloaded"}}}\n\n',
+      ))
+      .mockResolvedValueOnce(sse(
+        'data: {"type":"response.created","response":{"id":"r2","model":"gpt-5.6-luna"}}\n\n',
+        'data: {"type":"response.completed","response":{"id":"r2","model":"gpt-5.6-luna","usage":{"input_tokens":1,"output_tokens":1}}}\n\n',
+      ));
+
+    const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected success");
+    const events = [];
+    for await (const event of response.events) events.push(event);
+    expect(events.map((event) => event.type)).toEqual([
+      "response.created",
+      "response.created",
+      "response.completed",
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves a standalone retryable provider error when no failed event follows", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => sse(
+      'data: {"type":"error","error":{"code":"service_unavailable_error","message":"temporarily unavailable"}}\n\n',
+    ));
+
+    const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected success");
+    const events = [];
+    for await (const event of response.events) events.push(event);
+    expect(events).toEqual([{
+      type: "error",
+      error: { type: "service_unavailable_error", message: "temporarily unavailable" },
+    }]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry again when the server_error retry fails", async () => {
+    const failed = 'data: {"type":"response.failed","response":{"id":"r1","model":"gpt-5.6-luna","error":{"code":"server_error","message":"internal"}}}\n\n';
+    const socketError = Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" });
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(sse(failed))
+      .mockRejectedValueOnce(new TypeError("terminated", { cause: socketError }));
+
+    const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected success");
+    await expect((async () => {
+      for await (const _event of response.events) {
+        // drain
+      }
+    })()).rejects.toMatchObject({ message: "terminated" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels a pending retry when the consumer closes the iterator", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => sse(
+      'data: {"type":"response.created","response":{"id":"r1","model":"gpt-5.6-luna"}}\n\n',
+      'data: {"type":"response.failed","response":{"id":"r1","model":"gpt-5.6-luna","error":{"code":"server_error","message":"internal"}}}\n\n',
+    ));
+
+    const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected success");
+    const iterator = response.events[Symbol.asyncIterator]();
+    await expect(iterator.next()).resolves.toMatchObject({ value: { type: "response.created" } });
+    const pendingNext = iterator.next().catch((error: unknown) => error);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    const closeResult = await Promise.race([
+      iterator.return?.().then(() => "closed" as const),
+      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 150)),
+    ]);
+    expect(closeResult).toBe("closed");
+    await pendingNext;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts an in-flight retry fetch when the consumer closes the iterator", async () => {
+    let retryStarted: (() => void) | undefined;
+    const retryStart = new Promise<void>((resolve) => {
+      retryStarted = resolve;
+    });
+    let retryAborted = false;
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(sse(
+        'data: {"type":"response.created","response":{"id":"r1","model":"gpt-5.6-luna"}}\n\n',
+        'data: {"type":"response.failed","response":{"id":"r1","model":"gpt-5.6-luna","error":{"code":"server_error","message":"internal"}}}\n\n',
+      ))
+      .mockImplementationOnce(async (_input, init) => {
+        retryStarted?.();
+        return await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            retryAborted = true;
+            reject(init.signal?.reason);
+          }, { once: true });
+        });
+      });
+
+    const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected success");
+    const iterator = response.events[Symbol.asyncIterator]();
+    await iterator.next();
+    const pendingNext = iterator.next().catch((error: unknown) => error);
+    await retryStart;
+    await iterator.return?.();
+    await pendingNext;
+    expect(retryAborted).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry terminal provider errors or server_error after output", async () => {
+    const cases = [
+      { error: { code: "invalid_prompt", message: "bad prompt" }, prefix: [] },
+      { error: { code: "rate_limit_exceeded", message: "try later" }, prefix: [] },
+      {
+        error: { code: "server_error", message: "second terminal error" },
+        prefix: ['data: {"type":"error","error":{"code":"api_error","message":"first terminal error"}}\n\n'],
+      },
+      {
+        error: { code: "server_error", message: "internal" },
+        prefix: ['data: {"type":"response.output_text.delta","item_id":"m","output_index":0,"content_index":0,"delta":"partial"}\n\n'],
+      },
+      {
+        error: { code: "server_error", message: "internal" },
+        prefix: ['data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"f","call_id":"c","name":"Bash","arguments":"{}"}}\n\n'],
+      },
+    ];
+
+    for (const testCase of cases) {
+      const failed = `data: ${JSON.stringify({
+        type: "response.failed",
+        response: { id: "r", model: "gpt-5.6-luna", error: testCase.error },
+      })}\n\n`;
+      const fetchMock = vi.fn<typeof fetch>(async () => sse(...testCase.prefix, failed));
+      const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request(), { apiKey: "k" });
+      if (!response.ok) throw new Error("expected success");
+      const events = [];
+      for await (const event of response.events) events.push(event);
+      expect(events.at(-1)).toMatchObject({ type: "response.failed" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+  });
+
   it("does not retry a known HTTP status when its error body socket terminates", async () => {
     const socketError = Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" });
     const terminated = new ReadableStream<Uint8Array>({
