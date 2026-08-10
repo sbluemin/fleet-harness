@@ -322,11 +322,19 @@ async function readPersistedSelection(settings: ClientSettingsCapability | undef
     if (!current) return null;
     const analyst = record(current["analyst"]);
     const selection = record(analyst["selection"]);
-    return typeof selection["cliId"] === "string"
-      && typeof selection["model"] === "string"
-      && typeof selection["effort"] === "string"
-      ? { cliId: selection["cliId"], model: selection["model"], effort: selection["effort"] }
-      : null;
+    if (typeof selection["cliId"] !== "string"
+      || typeof selection["model"] !== "string"
+      || typeof selection["effort"] !== "string") return null;
+    const persisted = {
+      cliId: selection["cliId"],
+      model: selection["model"] === "fable" ? "fable[1m]" : selection["model"],
+      effort: selection["effort"],
+    };
+    // 이전 Fable id는 새 카탈로그와 맞춘 뒤 한 번 저장한다. 저장 실패가 현재 복원을 막지는 않는다.
+    if (persisted.model !== selection["model"]) {
+      await mergeTerminalSettingsRecord(settings, { analyst: { selection: persisted } }).catch(() => {});
+    }
+    return persisted;
   } catch {
     return null;
   }

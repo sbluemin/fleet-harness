@@ -206,7 +206,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       sessionId: "gateway-scoped-row",
     });
 
-    expect(native.args).toEqual(["--model", "fable", "--effort", "max"]);
+    expect(native.args).toEqual(["--model", "fable[1m]", "--effort", "max"]);
     expect(scoped.args).toEqual([
       "--model",
       "claude-gateway--cursor--claude-opus-5[1m]",

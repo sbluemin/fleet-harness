@@ -47,7 +47,7 @@ export const ANALYST_DEFAULT_EFFORT = "low";
  * 보여 주고 있었다.
  */
 const NATIVE_CLAUDE_LABELS: Readonly<Record<string, string>> = {
-  fable: "Claude Fable",
+  "fable[1m]": "Claude Fable",
   sonnet: "Claude Sonnet",
   "opus[1m]": "Claude Opus [1M]",
 };

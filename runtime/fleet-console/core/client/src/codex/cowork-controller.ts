@@ -393,6 +393,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   // ── 세션 수명주기 ───────────────────────────────────────────────────────────
 
   const updateOptions = async () => {
+    settings = { ...settings, model: normalizeRememberedModel(settings.model) };
     optionsDto = await fetchCoworkOptions(options.theaterId, settings.model || undefined);
     // 저장값이 무효하면 제품 기본값(sonnet/low)을 우선 채택한다.
     const fallbackModel = optionsDto.defaultModel && optionsDto.models.includes(optionsDto.defaultModel) ? optionsDto.defaultModel : optionsDto.models[0] ?? "";
@@ -811,5 +812,15 @@ function clip(value: string, max: number): string { return value.length > max ? 
 function annotationId(): string { return typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : `annotation-${Date.now()}-${Math.random().toString(16).slice(2)}`; }
 // 저장돼 있던 `cli`는 읽지 않는다 — Cowork가 Agent CLI를 고르지 않게 되면서 의미가 사라졌다.
 // 옛 값이 남아 있어도 무시될 뿐이라 마이그레이션이 필요 없다.
-function readSettings(): Settings { try { const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}"); return { model: typeof saved.model === "string" ? saved.model : "", effort: typeof saved.effort === "string" ? saved.effort : "low" }; } catch { return { model: "", effort: "low" }; } }
+function normalizeRememberedModel(model: string): string {
+  return model === "fable" ? "fable[1m]" : model;
+}
+function readSettings(): Settings {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}");
+    const settings = { model: typeof saved.model === "string" ? normalizeRememberedModel(saved.model) : "", effort: typeof saved.effort === "string" ? saved.effort : "low" };
+    if (settings.model !== saved.model) saveSettings(settings);
+    return settings;
+  } catch { return { model: "", effort: "low" }; }
+}
 function saveSettings(settings: Settings): void { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* Storage is optional. */ } }

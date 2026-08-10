@@ -11,8 +11,8 @@ const builtinVariants = {
   id: "native",
   label: "Claude",
   rows: [
-    builtinRow("fable", "Fable"),
-    // Claude Code's 1M coordinate launches under the plain "Opus" label.
+    // Claude Code's 1M coordinates launch under their plain labels.
+    builtinRow("fable[1m]", "Fable"),
     builtinRow("opus[1m]", "Opus"),
     builtinRow("sonnet", "Sonnet"),
   ],

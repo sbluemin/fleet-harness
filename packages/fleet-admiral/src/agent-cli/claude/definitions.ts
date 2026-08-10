@@ -1,15 +1,16 @@
 import { createClaudeFamilyCliDefinition } from "./factory.js";
 
-// Claude Code's bare `opus` alias is the default context window. Console's Opus
-// row launches the 1M coordinate (`opus[1m]`) while the menu label stays "Opus".
-export const NATIVE_CLAUDE_MODEL_ALIASES = ["fable", "opus[1m]", "sonnet"] as const;
+// Claude Code's bare `fable` and `opus` aliases use their default context windows.
+// Console launches their 1M coordinates while keeping the plain menu labels.
+export const NATIVE_CLAUDE_MODEL_ALIASES = ["fable[1m]", "opus[1m]", "sonnet"] as const;
 export const NATIVE_CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 const NATIVE_CLAUDE_MODEL_ALIAS_REWRITES = {
+  fable: "fable[1m]",
   opus: "opus[1m]",
 } as const satisfies Readonly<Record<string, (typeof NATIVE_CLAUDE_MODEL_ALIASES)[number]>>;
 
-/** Resolve a Console-native Claude Code model alias, rewriting legacy `opus` to `opus[1m]`. */
+/** Resolve a Console-native Claude Code model alias, rewriting legacy bare aliases to 1M coordinates. */
 export function resolveNativeClaudeModelAlias(
   model: string,
 ): (typeof NATIVE_CLAUDE_MODEL_ALIASES)[number] | undefined {

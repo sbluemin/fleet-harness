@@ -49,13 +49,14 @@ export function findVariantLaunchKind(catalog: readonly OperationCatalogPlugin[]
 }
 
 /**
- * Canvas/Quick Launch 메뉴의 Opus 행은 Claude Code `opus[1m]`을 쓴다. 업그레이드 전
- * `fleet-console.quickLaunch.selection`에 남은 bare `opus`는 같은 행으로 이어 붙인다 —
- * 브라우저 코드는 fleet-admiral를 끌어올 수 없어 서버의 resolveNativeClaudeModelAlias와
- * 같은 한 줄만 복제한다.
+ * Canvas/Quick Launch 메뉴의 Opus/Fable 행은 Claude Code의 1M 좌표를 쓴다. 업그레이드 전
+ * 저장된 bare native selection은 같은 행으로 이어 붙인다 — 브라우저 코드는 fleet-admiral를 끌어올 수
+ * 없어 서버의 resolveNativeClaudeModelAlias와 같은 작은 정규화만 복제한다.
  */
 function normalizeRememberedNativeModel(model: string): string {
-  return model === "opus" ? "opus[1m]" : model;
+  if (model === "opus") return "opus[1m]";
+  if (model === "fable") return "fable[1m]";
+  return model;
 }
 
 /**

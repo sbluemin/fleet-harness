@@ -28,7 +28,7 @@ import { runVendorQuery } from "./vendor-sdk.js";
  * 것을 실측했다.
  */
 /** 자식이 스스로 구체 id로 푸는 vendor 모델 별칭. */
-const NATIVE_MODEL_ALIASES = new Set(["sonnet", "opus", "haiku", "fable"]);
+const NATIVE_MODEL_ALIASES = new Set(["sonnet", "opus", "haiku", "fable", "fable[1m]"]);
 
 type AcceptedModel =
   | { readonly kind: "catalog"; readonly id: string; readonly model: GatewayModel }

@@ -151,6 +151,33 @@ describe("per-operation analysis store", () => {
     await vi.waitFor(() => expect(harness.fetch.mock.calls.some((call) => call[1] === "analysis/operation-store-share/stop")).toBe(true));
   });
 
+  it("migrates a persisted bare Fable selection before catalog hydration", async () => {
+    const catalogBody = JSON.stringify({ clis: [{ cliId: "claude-gateway", label: "AI Gateway", available: true, defaultModel: "sonnet", models: [
+      { id: "sonnet", label: "Claude Sonnet", effortLevels: ["low"], defaultEffort: "low" },
+      { id: "fable[1m]", label: "Claude Fable", effortLevels: ["max"] },
+    ] }] });
+    const harness = createHarness((path) => path === "analysis/catalog"
+      ? new Response(catalogBody, { status: 200, headers: { "Content-Type": "application/json" } })
+      : null);
+    let terminalRecord: Record<string, unknown> = {
+      font: { source: "curated", id: "jetbrains", customName: "", size: 16 },
+      analyst: { selection: { cliId: "claude-gateway", model: "fable", effort: "max" } },
+    };
+    const settings: ClientSettingsCapability = {
+      read: vi.fn(async () => terminalRecord),
+      write: vi.fn(async (_pluginId, value) => { terminalRecord = value; }),
+    };
+    const operationId = "operation-store-fable-selection-migration";
+    const store = getAnalysisStore(operationId, harness.api, settings);
+
+    await vi.waitFor(() => expect(store.getSnapshot()).toMatchObject({ cliId: "claude-gateway", model: "fable[1m]", effort: "max" }));
+    expect(settings.write).toHaveBeenCalledWith("terminal", {
+      font: { source: "curated", id: "jetbrains", customName: "", size: 16 },
+      analyst: { selection: { cliId: "claude-gateway", model: "fable[1m]", effort: "max" } },
+    });
+    disposeAnalysisStore(operationId);
+  });
+
   it("hydrates, auto-saves with terminal sibling preservation, confirms the save, and resets to persisted selection", async () => {
     const catalogBody = JSON.stringify({ clis: [{ cliId: "claude", label: "Claude", available: true, defaultModel: "sonnet", models: [
       { id: "sonnet", label: "Sonnet", effortLevels: ["medium"], defaultEffort: "medium" },

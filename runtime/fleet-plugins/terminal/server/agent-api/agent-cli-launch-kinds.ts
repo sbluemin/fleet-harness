@@ -21,8 +21,8 @@ const EFFORT_LABELS: Readonly<Record<string, string>> = {
 };
 
 const NATIVE_MODEL_LABELS: Readonly<Record<(typeof NATIVE_CLAUDE_MODEL_ALIASES)[number], string>> = {
-  fable: "Fable",
-  // Claude Code's 1M coordinate stays under the plain "Opus" menu label.
+  // Claude Code's 1M coordinates stay under their plain menu labels.
+  "fable[1m]": "Fable",
   "opus[1m]": "Opus",
   sonnet: "Sonnet",
 };
