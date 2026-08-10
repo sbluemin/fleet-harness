@@ -1594,9 +1594,25 @@ describe("Instrument core design contract", () => {
     // 쌓임을 쌍 안에 가두지 않으면 앞 상자가 밴드 바깥 층까지 뚫고 올라간다.
     const pair = components.match(/\.operation-launch-provider-pair \{[^}]*\}/)?.[0] ?? "";
     expect(pair).toContain("isolation: isolate;");
-    // 실루엣을 끊는 링은 메뉴 바닥이지 신원이 아니다 — 공급자 톤도 신호색도 빌리지 않는다.
+    // 바닥은 이 표식이 놓이는 메뉴 표면이지 신원이 아니다 — 공급자 톤도 신호색도 빌리지 않는다.
+    expect(pair).toContain("--launch-pair-floor: color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar));");
+    // 앞뒤를 만드는 것은 z-index가 아니라 불투명함이다 — 앞 상자가 비치면 뒤 상자의 마크가 그대로
+    // 올라와 앞 글리프가 반쯤 지워진 것으로 읽힌다. 그 불투명은 섞어서 얻지 않고 층으로 쌓는다:
+    // 라이트의 pillar는 알파를 가져 섞은 값이 불투명해지지 않고, 유채색 톤을 무채색 바닥과 oklch로
+    // 섞으면 색상환을 가로질러 라이트에서 테두리가 초록으로 돈다(실측 hue 255 → 149).
+    const background = model.match(/background:[^;]*;/)?.[0] ?? "";
+    expect(background).toContain("color-mix(in oklch, var(--launch-provider-tone) 12%, transparent)");
+    expect(background).toContain("var(--launch-pair-floor)");
+    // 마지막 층은 팝업 언더레이 계약과 같은 불투명 바닥이다.
+    expect(background).toMatch(/var\(--ink-deep\);$/);
+    // 톤과 바닥을 한 색으로 섞는 순간 위 두 함정이 함께 돌아온다.
+    expect(model).not.toMatch(/color-mix\([^)]*--launch-provider-tone[^)]*--launch-pair-floor/);
+    // 테두리는 기본 규칙의 톤 위임으로 남는다 — 앞 상자는 이미 제 불투명 바닥을 깔았으므로
+    // transparent와 섞인 테두리도 뒤 상자가 아니라 자기 채움 위에 얹힌다.
+    expect(model).not.toContain("border-color:");
+    // 실루엣을 끊는 링도 같은 바닥이다.
     const ring = model.match(/box-shadow: [^;]*;/)?.[0] ?? "";
-    expect(ring).toContain("color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar))");
+    expect(ring).toContain("var(--launch-pair-floor)");
     expect(ring).not.toMatch(/--launch-provider-tone|--aurora|--coral|--warn|--positive|--brass/);
   });
 

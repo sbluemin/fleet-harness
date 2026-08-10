@@ -7343,6 +7343,10 @@
   flex: none;
   /* 앞 상자의 z-index가 밴드 바깥 층과 겨루지 않도록 쌍 안에서만 쌓이게 가둔다. */
   isolation: isolate;
+  /* 앞 상자가 딛고 설 바닥. 이 표식이 놓이는 두 표면(캔버스 실행 메뉴·Quick Launch 모델 팝오버)이
+     모두 .theater-menu 바닥을 쓰므로 그 식을 그대로 딴다. 라이트에서 pillar가 알파를 가지므로 이
+     값 자체는 완전 불투명이 아니다 — 불투명이 필요한 자리에서는 섞지 말고 --ink-deep 위에 쌓는다. */
+  --launch-pair-floor: color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar));
 }
 
 /* 두 상자는 같은 각을 반대로 기울여 꽃잎처럼 마주 선다 — 각이 어긋나면 한 쌍이 아니라 한쪽이
@@ -7358,9 +7362,21 @@
   /* 겹침 폭은 뒤 상자의 마크를 먹지 않는 선까지다 — 더 물리면 하네스가 잘린 조각으로 보인다. */
   margin-left: -5px;
   transform: rotate(15deg);
-  /* 앞 상자는 자기 실루엣을 메뉴 바닥색으로 한 번 끊는다. 끊지 않으면 반투명한 두 상자의 테두리가
-     겹친 자리에서 뭉쳐 앞뒤가 사라진다. 색은 .theater-menu 바닥과 같은 식이다. */
-  box-shadow: 0 0 0 1.5px color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar));
+  /* 앞 상자는 불투명하게 선다. 투명 위에 얹으면 뒤 상자의 마크가 그대로 비쳐 앞 글리프가 반쯤
+     지워진 것처럼 읽힌다 — 겹침에서 앞뒤를 만드는 것은 z-index가 아니라 불투명함이다.
+     바닥을 섞지 않고 겹쳐 쌓는 이유는 두 가지다. 하나, 라이트의 pillar는 알파를 가져 섞은 값이
+     불투명해지지 않는다. 둘, 유채색 톤과 무채색 바닥을 oklch로 섞으면 색상환을 가로질러 라이트에서
+     테두리가 초록으로 돈다(실측 hue 255 → 149). 톤 워시는 투명 위에 두고 불투명은 아래 층이 진다.
+     마지막 --ink-deep 층은 팝업 언더레이 계약과 같은 형태다. */
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--launch-provider-tone) 12%, transparent),
+      color-mix(in oklch, var(--launch-provider-tone) 12%, transparent)
+    ),
+    linear-gradient(var(--launch-pair-floor), var(--launch-pair-floor)),
+    var(--ink-deep);
+  /* 실루엣을 바닥색으로 한 번 끊어 두 상자의 테두리가 겹친 자리에서 뭉치지 않게 한다. */
+  box-shadow: 0 0 0 1.5px var(--launch-pair-floor);
 }
 
 .quick-launch-kind-icon.is-claude,
