@@ -390,7 +390,9 @@ describe("EffortTrack", () => {
 
     expect(track().dataset.apexOpen).toBe("true");
     expect(document.querySelector(".effort-track-apex-toggle")).toBeNull();
-    expect(required(".effort-track-apex-collapse")).toBeTruthy();
+    // apex 값이 선택된 동안은 접힘 셰브론도 숨는다 — 접으면 트랙이 AUTO를 그리면서
+    // 제출은 apex 값을 내는 모순 상태가 된다.
+    expect(document.querySelector(".effort-track-apex-collapse")).toBeNull();
     expect(document.querySelectorAll("[data-apex-rung=true]")).toHaveLength(1);
   });
 

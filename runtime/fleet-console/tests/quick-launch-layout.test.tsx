@@ -95,9 +95,12 @@ describe("Quick Launch effort surface", () => {
 });
 
 describe("canvas effort submenu", () => {
-  it("keeps the rendered width in step with the placement constant", () => {
-    const declared = /\.operation-launch-effort-menu\.theater-menu\s*\{[^}]*?width:\s*(\d+)px;/u.exec(css)?.[1];
-    expect(Number(declared)).toBe(OPERATION_LAUNCH_EFFORT_MENU_WIDTH);
+  it("keeps the rendered open width in step with the placement constant", () => {
+    // 배치 상수는 게이트가 열린 최악 폭과 보조를 맞춘다 — 닫힘 폭은 더 좁다.
+    const open = /\.operation-launch-effort-menu\.theater-menu:has\([^)]*\)\s*\{[^}]*?width:\s*(\d+)px;/u.exec(css)?.[1];
+    expect(Number(open)).toBe(OPERATION_LAUNCH_EFFORT_MENU_WIDTH);
+    const closed = /\.operation-launch-effort-menu\.theater-menu\s*\{[^}]*?width:\s*(\d+)px;/u.exec(css)?.[1];
+    expect(Number(closed)).toBeLessThan(OPERATION_LAUNCH_EFFORT_MENU_WIDTH);
   });
 });
 

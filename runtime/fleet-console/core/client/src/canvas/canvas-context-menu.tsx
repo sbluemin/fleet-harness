@@ -32,7 +32,8 @@ interface CanvasContextMenuProps {
 const MENU_WIDTH = 264;
 const FLYOUT_GAP = 10;
 // 트랙과 그 값 라벨이 나란히 들어가는 폭이다.
-// 열린 apex 트랙(7스톱)+접힘 셰브론+ULTRACODE 라벨이 스크롤 없이 들어가는 폭.
+// 열린 apex 트랙(7스톱)+접힘 셰브론+ULTRACODE 라벨이 스크롤 없이 들어가는, 게이트가
+// 열린 상태의 폭. 닫힘 폭(216)은 CSS가 쥐고, 배치는 이 최악 폭을 기준으로 잡는다.
 const EFFORT_SUBMENU_WIDTH = 376;
 // components.css의 같은 선언과 짝이다. 계약 시험이 그 짝을 지킨다.
 export const OPERATION_LAUNCH_EFFORT_MENU_WIDTH = EFFORT_SUBMENU_WIDTH;

@@ -7419,13 +7419,20 @@
 .operation-launch-effort-menu.theater-menu {
   --flyout-enter-x: -4px;
   z-index: 42;
-  /* canvas-context-menu.tsx의 EFFORT_SUBMENU_WIDTH와 같은 값이어야 한다. 열린 apex 트랙
-     (7스톱)과 ULTRACODE 라벨이 가로 스크롤 없이 들어가는 폭이다. */
-  width: 376px;
+  /* 닫힘 폭은 게이트 이전 그대로다. canvas-context-menu.tsx의 EFFORT_SUBMENU_WIDTH는
+     열림 폭(아래 :has 규칙)과 같은 값으로, 뷰포트 배치가 최악 폭을 기준으로 잡히게 한다. */
+  width: 216px;
   max-height: var(--canvas-menu-max-height, 520px);
   overflow-y: auto;
   overflow-x: hidden;
   animation: operation-launch-flyout-in var(--duration-fast) var(--ease-spring) both;
+  transition: width var(--duration-slow) var(--ease-spring);
+}
+
+/* 게이트가 열리면 상자가 트랙과 함께 넓어진다 — 열린 7스톱과 ULTRACODE 라벨이
+   가로 스크롤 없이 들어가는 폭. */
+.operation-launch-effort-menu.theater-menu:has(.effort-track[data-apex-open="true"]) {
+  width: 376px;
 }
 
 .operation-launch-effort-menu.theater-menu.is-left {

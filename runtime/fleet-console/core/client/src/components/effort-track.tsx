@@ -312,9 +312,11 @@ export function EffortTrack({
           }}
         >✦</button>
       ) : null}
-      {hasGate && apexOpen ? (
+      {hasGate && apexOpen && !isApex ? (
         // 열림에서는 ✦가 사라지고 트랙이 그 자리까지 늘어난다 — 접힘은 이 얇은 셰브론과
-        // 일상 단 선택(자동 접힘)만이 담당한다.
+        // 일상 단 선택(자동 접힘)만이 담당한다. apex 단이 선택된 동안은 셰브론도 숨긴다:
+        // 접으면 선택된 단이 슬롯에서 사라져, 트랙은 AUTO를 그리면서 제출은 apex 값을 내는
+        // 모순 상태가 된다.
         <button
           type="button"
           className="effort-track-apex-collapse"

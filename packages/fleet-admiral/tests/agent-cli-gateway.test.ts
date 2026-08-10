@@ -128,6 +128,17 @@ describe("claude-gateway custom agents", () => {
     expect(toGatewayAgentName(agents[withEffort!]!.model, "high")).toBe(withEffort);
   });
 
+  it("never registers an ultra identity — ultracode is a capability, not a wire rung", () => {
+    // codex--gpt-5.6-sol의 카탈로그 사다리는 ultra까지 닿지만, 커스텀 Agent frontmatter의
+    // effort로는 ultra를 전달할 수 없다(CLI가 클램프). 정체성 사다리는 max에서 닫혀야 한다.
+    const model = requireGatewayModel("codex--gpt-5.6-sol");
+    const agents = buildGatewayCustomAgents([model]);
+    const names = Object.keys(agents);
+    expect(names.some((name) => name.endsWith("-ultra"))).toBe(false);
+    expect(names.some((name) => name.endsWith("-max"))).toBe(true);
+    for (const name of names) expect(agents[name]!.effort).not.toBe("ultra");
+  });
+
   it("builds identities only for the models the caller provides", () => {
     const included = requireGatewayModel("cursor--claude-opus-5");
     const omittedModelId = "claude-gateway--opencode--deepseek-v4-flash";
