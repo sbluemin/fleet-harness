@@ -35,6 +35,8 @@ describe("Cursor request budgets", () => {
     ["kimi-k3-1m", "low", "kimi-k3-max"],
     ["claude-opus-5", "xhigh", "claude-opus-5-thinking-xhigh"],
     ["claude-opus-5", "max", "claude-opus-5-thinking-max"],
+    ["claude-opus-5-1m", "xhigh", "claude-opus-5-thinking-xhigh"],
+    ["claude-fable-5-1m", "high", "claude-fable-5-high"],
     ["grok-4.5-fast", "low", "cursor-grok-4.5-low-fast"],
     ["gpt-5.6-sol", "max", "gpt-5.6-sol-max"],
   ] as const)("writes Cursor model %s with effort %s as %s", (model, effort, expected) => {
@@ -52,11 +54,18 @@ describe("Cursor request budgets", () => {
     expect(runRequest(plan).modelDetails.modelId).toBe("kimi-k3-high");
   });
 
-  it("encodes Cursor Max Mode for the fixed Kimi K3 1M catalog model", () => {
-    const plan = buildCursorRunPlan(request({ model: "kimi-k3-1m" }), "conversation-kimi-1m");
+  it.each([
+    ["kimi-k3-1m", undefined, "kimi-k3-max"],
+    ["claude-opus-5-1m", "high", "claude-opus-5-high"],
+    ["claude-fable-5-1m", "high", "claude-fable-5-high"],
+  ] as const)("encodes Cursor Max Mode for catalog model %s", (model, effort, wireModel) => {
+    const plan = buildCursorRunPlan(request({
+      model,
+      ...(effort ? { reasoning: { summary: "auto" as const, effort } } : {}),
+    }), `conversation-${model}`);
 
     expect(encodedRunRequest(plan).modelDetails).toMatchObject({
-      modelId: "kimi-k3-max",
+      modelId: wireModel,
       maxMode: true,
     });
   });

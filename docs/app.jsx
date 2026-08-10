@@ -135,7 +135,7 @@ const PROVIDERS = [
       { ko: "Composer 2.5", en: "Composer 2.5" },
       { ko: "Grok 4.5", en: "Grok 4.5" },
       { ko: "GPT-5.6 Sol", en: "GPT-5.6 Sol" },
-      { ko: "Claude Opus 5 · Claude Fable 5", en: "Claude Opus 5 and Claude Fable 5" },
+      { ko: "Claude Opus 5 · Claude Fable 5 — 각각 Max Mode 1M 변형 포함", en: "Claude Opus 5 and Claude Fable 5 — each with a Max Mode 1M variant" },
       { ko: "Kimi K3 · Auto", en: "Kimi K3 and Auto" },
     ],
   },
