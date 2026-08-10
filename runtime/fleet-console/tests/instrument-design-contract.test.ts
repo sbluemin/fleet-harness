@@ -39,6 +39,8 @@ const SKILLS_CSS_PATH = new URL("../../fleet-plugins/skills/client/skills.css", 
 const TERMINAL_AGENT_PATH = new URL("../../fleet-plugins/terminal/client/agent/index.tsx", import.meta.url);
 const TERMINAL_ANALYSIS_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/analysis.css", import.meta.url);
 const TERMINAL_AGENT_CLI_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/agent-cli.css", import.meta.url);
+const QUOTA_CSS_PATH = new URL("../../fleet-plugins/quota/client/quota.css", import.meta.url);
+const QUOTA_PANEL_PATH = new URL("../../fleet-plugins/quota/client/rail-panel.tsx", import.meta.url);
 const SDK_RAIL_TYPES_PATH = new URL("../sdk/rail/types.ts", import.meta.url);
 const SDK_VERSION_PATH = new URL("../sdk/version.ts", import.meta.url);
 const OWNED_SOURCES = [
@@ -643,6 +645,62 @@ describe("Instrument core design contract", () => {
     expect(css).not.toContain(".ai-gateway-levels");
     expect(css).not.toContain(".ai-gateway-model-entry");
     expect(externalSource(TERMINAL_AGENT_PATH)).not.toContain("ai-gateway-levels-toggle");
+  });
+
+  it("pins the quota meter grammar — one signal channel, neutral clock tick, hatched forecast", () => {
+    // 쿼터 막대는 세 겹이 한 트랙에 사는 유일한 표면이다. 채움은 게이트웨이의 압력 판정을
+    // 그대로 입고, 경과 눈금은 창의 시계라 신호색을 갖지 않으며, 예측은 아직 쓰지 않은 몫이라
+    // 빗금으로만 말한다. 셋 중 하나가 채널을 바꾸면 같은 그림이 정반대를 뜻하게 된다.
+    const css = externalSource(QUOTA_CSS_PATH).replace(/\r\n/g, "\n");
+
+    // (a) 심각도는 --meter-accent 한 채널로만 흐른다 — 채움과 빗금이 각자 색을 집으면
+    // 한 막대가 두 판정을 말한다. 기준선(normal)은 중립 잉크라 신호색을 쓰지 않는다.
+    const meterBase = css.match(/^\.quota-meter \{[^}]*\}/m)?.[0] ?? "";
+    expect(meterBase).toContain("--meter-accent: var(--ink-fog);");
+    expect(css).toMatch(/\.quota-meter--warning \{[^}]*--meter-accent: var\(--warn\);/);
+    expect(css).toMatch(/\.quota-meter--critical \{[^}]*--meter-accent: var\(--coral\);/);
+    const fill = css.match(/\.quota-meter__fill \{[^}]*\}/)?.[0] ?? "";
+    expect(fill).toContain("background: var(--meter-accent);");
+
+    // (b) 예측은 아직 쓰지 않은 몫이다 — 단색으로 칠하는 순간 이미 쓴 양으로 읽힌다.
+    const projection = css.match(/\.quota-meter__projection \{[^}]*\}/)?.[0] ?? "";
+    expect(projection).toContain("repeating-linear-gradient(");
+    expect(projection).not.toMatch(/background:\s*var\(--meter-accent\)/);
+
+    // (c) 경과 눈금은 상태가 아니라 시계다 — 신호색을 빌리면 위험 표식으로 읽히고,
+    // 채움이 이 눈금보다 앞섰는지 뒤졌는지를 비교하는 기준 자체가 사라진다.
+    const elapsedMark = css.match(/\.quota-meter__elapsed \{[^}]*\}/)?.[0] ?? "";
+    expect(elapsedMark).toMatch(/background: color-mix\(in oklab, var\(--text-primary\) \d+%, transparent\);/);
+    expect(elapsedMark).not.toMatch(/var\(--(?:warn|coral|positive|aurora|brass)/);
+
+    // (d) 세 겹은 트랙 안에 갇힌다 — 100%를 넘긴 예측이 새면 이웃 미터 위에 그려진다.
+    const bar = css.match(/\.quota-meter__bar \{[^}]*\}/)?.[0] ?? "";
+    expect(bar).toContain("position: relative;");
+    expect(bar).toContain("overflow: hidden;");
+  });
+
+  it("pins the quota legend as a footer-bounded disclosure that focus cannot hold open", () => {
+    const css = externalSource(QUOTA_CSS_PATH).replace(/\r\n/g, "\n");
+    const panel = externalSource(QUOTA_PANEL_PATH).replace(/\r\n/g, "\n");
+
+    // 말풍선의 기준 상자는 버튼이 아니라 푸터다 — 레일은 240px까지 좁아지고 패널 슬롯은
+    // overflow:hidden이라, 버튼에 걸린 고정 폭은 좁은 레일에서 왼쪽이 잘려 읽히지 않는다.
+    const footer = css.match(/\.quota-footer \{[^}]*\}/)?.[0] ?? "";
+    expect(footer).toContain("position: relative;");
+    const legend = css.match(/^\.quota-legend \{[^}]*\}/m)?.[0] ?? "";
+    expect(legend).not.toContain("position: relative;");
+    const bubble = css.match(/\.quota-legend__bubble \{[^}]*\}/)?.[0] ?? "";
+    expect(bubble).toContain("left: 16px;");
+    expect(bubble).toContain("right: 16px;");
+    expect(bubble).toContain("width: auto;");
+    expect(bubble).toContain("max-width: 268px;");
+
+    // 포커스는 표시를 결정하지 않는다 — :focus-within으로 열면 Escape가 상태를 내려도
+    // 포커스가 버튼에 남아 말풍선은 보이는 채로 aria-expanded만 false가 되어,
+    // 눈에 보이는 것과 접근성 트리가 서로를 부정한다.
+    expect(css).not.toMatch(/\.quota-legend[^{}]*:focus-within/);
+    expect(panel).toContain("aria-expanded={pinned}");
+    expect(panel).toContain('if (event.key === "Escape") setPinned(false);');
   });
 
   it("pins the shared panel motion layer and existence choreography grammar", () => {

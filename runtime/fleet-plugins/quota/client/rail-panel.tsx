@@ -127,10 +127,15 @@ export function formatPace(paceRatio: number): string {
   return `${Math.round(paceRatio * 10) / 10}`;
 }
 
-function riskNote(window: QuotaWindow, now: number, t: T): string | null {
+export function riskNote(window: QuotaWindow, now: number, t: T): string | null {
   const risk = window.risk;
   if (!risk) return null;
-  if (risk.projectedExhaustionAt !== undefined) {
+  // A reading outlives its own forecast: the summary is cached for two minutes
+  // and served stale for thirty, so a target that has since passed would render
+  // through `formatCountdown`'s clamp as "out in 0m" — a lapsed forecast dressed
+  // as a future one. The pace is what the same reading still supports, so say
+  // that instead.
+  if (risk.projectedExhaustionAt !== undefined && risk.projectedExhaustionAt > now) {
     return t("quota.meter.exhausts", { t: formatCountdown(risk.projectedExhaustionAt, now) });
   }
   // Below the gateway's own elevated threshold a ratio is just noise on a bar.
@@ -216,8 +221,9 @@ function StatusStrip({ kind, children }: { readonly kind: "expired" | "stale" | 
  * 미터마다 두지 않고 패널에 하나만 두는 이유는 한 번 읽으면 끝나는 설명이기 때문이다 —
  * 최대 11개까지 뜨는 미터마다 붙이면 같은 문장을 열한 번 물어보게 된다.
  *
- * 상주 푸터에 사는 만큼 위로 열린다. hover는 마우스용이고, 포인터가 없는 기기에서는
- * 눌러서 고정한다. 두 경로를 모두 두지 않으면 터치에서는 영영 열리지 않는다.
+ * 상주 푸터에 사는 만큼 위로 열린다. hover는 마우스용이고, 포인터가 없는 기기와
+ * 키보드는 버튼을 눌러 고정한다. 두 경로를 모두 두지 않으면 터치에서는 영영 열리지 않는다.
+ * 포커스만으로는 열지 않는다 — 그러면 Escape가 상태를 내려도 화면에는 남는다.
  */
 function BarLegend({ t }: { readonly t: T }) {
   const [pinned, setPinned] = useState(false);

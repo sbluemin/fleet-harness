@@ -17,9 +17,9 @@
   overflow-y: auto;
 }
 
-/* 패널에 하나뿐인 막대 범례. 상주 푸터의 오른쪽 끝, 새로고침 바로 앞에 산다. */
+/* 패널에 하나뿐인 막대 범례. 상주 푸터의 오른쪽 끝, 새로고침 바로 앞에 산다.
+   기준 상자는 푸터가 지므로(.quota-footer) 여기서는 위치를 잡지 않는다. */
 .quota-legend {
-  position: relative;
   display: flex;
   margin-left: auto;
 }
@@ -47,12 +47,18 @@
   border-color: var(--brass);
 }
 
+/* 레일은 240px까지 좁아지고 패널 슬롯은 overflow:hidden이라, 버튼에 걸어 고정 폭을
+   주면 좁은 레일에서 왼쪽이 잘려 읽을 수 없다. 푸터 폭 안에 가두고 남는 자리에서만
+   268px까지 벌린다. */
 .quota-legend__bubble {
   position: absolute;
-  bottom: calc(100% + 9px);
-  right: -8px;
+  bottom: calc(100% + 4px);
+  left: 16px;
+  right: 16px;
   z-index: 3;
-  width: 268px;
+  width: auto;
+  max-width: 268px;
+  margin-left: auto;
   padding: 11px 13px;
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-sm);
@@ -63,8 +69,11 @@
   transition: opacity 120ms ease;
 }
 
+/* 포커스는 표시를 결정하지 않는다. :focus-within으로 열면 Escape가 pinned를 내려도
+   포커스가 버튼에 남아 말풍선이 그대로 보이고, aria-expanded만 false가 되어
+   화면과 접근성 트리가 어긋난다. 키보드 경로는 버튼 활성화(Enter/Space)가 지고,
+   호버는 포인터가 떠나면 닫히는 별개 채널이다. */
 .quota-legend:hover .quota-legend__bubble,
-.quota-legend:focus-within .quota-legend__bubble,
 .quota-legend--pinned .quota-legend__bubble {
   opacity: 1;
   visibility: visible;
@@ -217,7 +226,10 @@
   margin-left: 0;
 }
 
+/* 심각도는 이 채널 하나로만 흐른다 — 채움과 예측 빗금이 각자 색을 집으면
+   한 막대가 두 판정을 말하게 된다. */
 .quota-meter {
+  --meter-accent: var(--ink-fog);
   margin-top: 12px;
 }
 
@@ -246,10 +258,6 @@
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 12px;
-}
-
-.quota-meter {
-  --meter-accent: var(--ink-fog);
 }
 
 .quota-meter--warning {
@@ -433,6 +441,7 @@
 }
 
 .quota-footer {
+  position: relative;
   flex: none;
   border-top: 1px solid var(--hairline);
   padding: 9px 16px 10px;

@@ -12,6 +12,7 @@ import {
   meterSeverity,
   NO_SUBSCRIPTION_KEY,
   projectedSpan,
+  riskNote,
   SIGNED_OUT_KEY,
 } from "../client/rail-panel.js";
 import { QUOTA_MESSAGES } from "../client/i18n/messages.js";
@@ -73,6 +74,34 @@ describe("meter risk", () => {
   it("states pace to one decimal", () => {
     expect(formatPace(2.11)).toBe("2.1");
     expect(formatPace(1)).toBe("1");
+  });
+
+  // The note names its key so the assertions read as "which sentence", not "which wording".
+  const t = ((key: string, vars?: Record<string, unknown>) =>
+    `${key}(${Object.entries(vars ?? {}).map(([name, value]) => `${name}=${String(value)}`).join(",")})`
+  ) as unknown as Parameters<typeof riskNote>[2];
+
+  it("forecasts exhaustion only while the projection is still ahead", () => {
+    const now = 1_000_000;
+    expect(riskNote(window(44, { pressure: "critical", paceRatio: 2.11, projectedExhaustionAt: now + 3_600_000 }), now, t))
+      .toBe("quota.meter.exhausts(t=1h 0m)");
+  });
+
+  // A reading outlives its forecast: the summary is cached for two minutes and served
+  // stale for thirty, so the target can pass before the next one lands. The countdown
+  // clamps to zero there, which announced "at this pace, out in 0m" — a lapsed forecast
+  // read as a future one. The pace is what the same reading still supports.
+  it("falls back to pace once the projected instant has passed", () => {
+    const now = 1_000_000;
+    expect(riskNote(window(44, { pressure: "critical", paceRatio: 2.11, projectedExhaustionAt: now - 60_000 }), now, t))
+      .toBe("quota.meter.pace(n=2.1)");
+    expect(riskNote(window(44, { pressure: "critical", paceRatio: 2.11, projectedExhaustionAt: now }), now, t))
+      .toBe("quota.meter.pace(n=2.1)");
+  });
+
+  it("says nothing when a calm window has no forecast to report", () => {
+    expect(riskNote(window(44, { pressure: "ok", paceRatio: 0.4 }), 1_000_000, t)).toBeNull();
+    expect(riskNote(window(44), 1_000_000, t)).toBeNull();
   });
 });
 
