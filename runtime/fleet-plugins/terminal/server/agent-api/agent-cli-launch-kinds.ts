@@ -63,9 +63,9 @@ export function buildClaudeGatewayLaunchVariants(selection?: AiGatewaySelection)
       launch: { model },
       effortAxis: EFFORT_AXIS,
       gatedEfforts: APEX_EFFORTS,
-      // 네이티브 행도 ultra 칩을 낸다 — ultracode는 모델 사다리의 단이 아니라 하네스
-      // 능력(standing orchestration)이라 모델 독립이다. wire 번역(max + settings)은
-      // launch factory가 담당한다.
+      // 네이티브 행은 max·ultra를 항상 노출한다 — ultracode는 모델 사다리의 단이 아니라
+      // 하네스 능력(standing orchestration)이라 Claude native에서 모델 독립이다.
+      // spawn은 launch factory가 `--effort ultracode`로 전달한다.
       chips: EFFORT_AXIS.map((effort) => ({
         id: effort,
         label: EFFORT_LABELS[effort]!,
@@ -104,13 +104,15 @@ function toGatewayRow(model: GatewayModel, selection: AiGatewaySelection) {
   const efforts = (selection.effortExposure[model.id] ?? exposableEffortLadder(model))
     .filter((effort): effort is Extract<GatewayReasoningEffort, (typeof EFFORT_AXIS)[number]> =>
       EFFORT_AXIS.includes(effort));
+  const gatedEfforts = APEX_EFFORTS.filter((effort) => efforts.includes(effort));
   return {
     id: model.id,
     label: bareModelName(model),
     launch: { model: model.id },
     ...(efforts.length > 0 ? {
       effortAxis: EFFORT_AXIS,
-      gatedEfforts: APEX_EFFORTS,
+      // apex + 는 모델이 실제로 내놓은 max/ultra 가 있을 때만. 빈 게이트는 일상 축만 둔다.
+      ...(gatedEfforts.length > 0 ? { gatedEfforts } : {}),
       chips: efforts.map((effort) => ({
         id: effort,
         label: EFFORT_LABELS[effort] ?? effort.toUpperCase(),

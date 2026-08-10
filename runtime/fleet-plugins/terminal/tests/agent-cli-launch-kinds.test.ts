@@ -92,14 +92,40 @@ describe("buildAgentCliLaunchKinds", () => {
             id: "kimi--k3",
             label: "K3-1M",
             launch: { model: "kimi--k3" },
-            // 노출은 MAX 한 단뿐이지만 축은 여섯 단 그대로다.
+            // 노출은 MAX 한 단뿐이지만 축은 여섯 단 그대로다. 게이트도 노출된 apex만.
             effortAxis: EFFORT_AXIS,
-            gatedEfforts: APEX_EFFORTS,
+            gatedEfforts: ["max"],
             chips: [gatewayChip("kimi--k3", "max", "MAX")],
           },
         ],
       },
     ]);
+  });
+
+  it("omits the apex expander when the model exposes neither max nor ultra", () => {
+    const selection = resolveAiGatewaySelection({
+      version: 1,
+      models: [{ id: "kimi--k3", efforts: ["low", "high"] }],
+    });
+
+    const result = buildAgentCliLaunchKinds(
+      [{ id: "claude-gateway", label: "Claude (Gateway)", available: true, signedIn: true }],
+      "agent",
+      selection,
+    );
+    const row = result[0]?.variants?.find((group) => group.id === "gateway:kimi")?.rows[0];
+
+    expect(row).toEqual({
+      id: "kimi--k3",
+      label: "K3-1M",
+      launch: { model: "kimi--k3" },
+      effortAxis: EFFORT_AXIS,
+      chips: [
+        gatewayChip("kimi--k3", "low", "LOW"),
+        gatewayChip("kimi--k3", "high", "HIGH"),
+      ],
+    });
+    expect(row).not.toHaveProperty("gatedEfforts");
   });
 
   it("keeps disabled reasons and does not attach variants to a disabled gateway kind", () => {
