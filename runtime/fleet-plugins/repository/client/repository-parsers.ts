@@ -33,6 +33,7 @@ export type RefBadgeKind = "head" | "tag" | "branch" | "remote" | "worktree";
 export interface RefBadge {
   readonly label: string;
   readonly kind: RefBadgeKind;
+  readonly hasRemote?: boolean;
 }
 
 // ─── functions ───────────────────────────────────────────────────────────────
@@ -66,31 +67,37 @@ export function splitCommitSubject(subject: string): { readonly prefix: string |
 }
 
 export function refBadges(entry: LogCommitEntry): RefBadge[] {
-  const badges: RefBadge[] = [];
+  const local: RefBadge[] = [];
+  const remote: RefBadge[] = [];
+  const tags: RefBadge[] = [];
   for (const ref of entry.refs) {
     if (ref === "HEAD") {
-      badges.push({ label: "HEAD", kind: "head" });
+      local.push({ label: "HEAD", kind: "head" });
     } else if (ref.startsWith("HEAD -> refs/heads/")) {
-      badges.push({ label: ref.slice("HEAD -> refs/heads/".length), kind: "branch" });
+      local.push({ label: ref.slice("HEAD -> refs/heads/".length), kind: "branch" });
     } else if (ref.startsWith("HEAD -> ")) {
-      badges.push({ label: ref.slice(8), kind: "branch" });
+      local.push({ label: ref.slice(8), kind: "branch" });
     } else if (ref.startsWith("tag: refs/tags/")) {
-      badges.push({ label: ref.slice("tag: refs/tags/".length), kind: "tag" });
+      tags.push({ label: ref.slice("tag: refs/tags/".length), kind: "tag" });
     } else if (ref.startsWith("tag: ")) {
-      badges.push({ label: ref.slice(5), kind: "tag" });
+      tags.push({ label: ref.slice(5), kind: "tag" });
     } else if (ref.startsWith("refs/remotes/")) {
       const label = ref.slice(13);
-      // origin/HEAD 심볼릭 ref는 기본 브랜치 칩과 중복이므로 표시하지 않는다
-      if (!label.endsWith("/HEAD")) badges.push({ label, kind: "remote" });
+      // remote/HEAD 심볼릭 ref는 기본 브랜치 칩과 중복이므로 표시하지 않는다.
+      if (!label.endsWith("/HEAD")) remote.push({ label, kind: "remote" });
     } else if (ref.startsWith("refs/worktrees/")) {
-      badges.push({ label: ref.slice(15), kind: "worktree" });
+      local.push({ label: ref.slice(15), kind: "worktree" });
     } else if (ref.startsWith("refs/heads/")) {
-      badges.push({ label: ref.slice(11), kind: "branch" });
+      local.push({ label: ref.slice(11), kind: "branch" });
     } else {
-      badges.push({ label: ref, kind: "branch" });
+      local.push({ label: ref, kind: "branch" });
     }
   }
-  return badges;
+
+  const remoteTargetIndex = local.findIndex((badge) => badge.kind === "branch");
+  if (remoteTargetIndex < 0) return [...local, ...remote, ...tags.sort((left, right) => left.label.localeCompare(right.label))];
+  const mergedLocal = local.map((badge, index) => index === remoteTargetIndex && remote.length > 0 ? { ...badge, hasRemote: true } : badge);
+  return [...mergedLocal, ...tags.sort((left, right) => left.label.localeCompare(right.label))];
 }
 
 // ═══ hunk-parse ══════════════════════════════════════════════════════════════

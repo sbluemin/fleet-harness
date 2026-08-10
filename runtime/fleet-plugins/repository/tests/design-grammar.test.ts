@@ -173,7 +173,12 @@ describe("Repository design grammar", () => {
     expect(badge).not.toContain("border-radius: 999px");
     expect(badge).toContain("border-radius: var(--radius-xs)");
     expect(badge).toContain("font-family: var(--font-body)");
+    expect(badge).toContain("font-size: 11px");
     expect(badge).toContain("font-weight: var(--weight-bold)");
+    expect(badge).toContain("var(--badge-tone) 82%");
+    expect(badge).toContain("var(--badge-tone) 22%");
+    expect(blockOf(".history-badge-mark")).toContain("var(--badge-tone) 65%");
+    expect(blockOf(".history-badge-remote-mark")).toContain("var(--badge-tone)");
 
     for (const selector of [".history-badge--head", ".history-badge.is-current"]) {
       expect(blockOf(selector), selector).toContain("var(--brass)");
@@ -198,6 +203,18 @@ describe("Repository design grammar", () => {
       expect(body).not.toContain("white-space: normal");
     }
     expect(subjects.some((body) => body.includes("white-space: nowrap") && body.includes("text-overflow: ellipsis"))).toBe(true);
+  });
+
+  it("keeps every visible ref badge whole while the subject yields panel width", () => {
+    const badges = blockOf(".history-commit-badges");
+    expect(badges).toContain("width: max-content");
+    expect(badges).toContain("min-width: max-content");
+    expect(badges).not.toContain("overflow: hidden");
+    expect(css).not.toContain("max-width: 40cqw");
+    // 콘텐츠 실측이나 극소 폭 경계가 반쪽 칩을 남기지 않고 배지 그룹 전체를 한 번에 뺀다.
+    expect(blockOf(".history-commit-badges.is-overflowing")).toContain("display: none");
+    expect(css).toContain("@container (max-width: 420px)");
+    expect(blocksOf(".history-commit-badges").some((body) => body.includes("display: none"))).toBe(true);
   });
 
   it("resizes the inspector dock through an injected width variable, not an inline track list", () => {
