@@ -415,6 +415,12 @@ function commitsCodexOutput(event: CanonicalResponseEvent): boolean {
     case "response.created":
     case "response.reasoning_summary_text.delta":
       return false;
+    // output_item.added(message)는 메시지 아이템의 시작을 알리는 설정 이벤트일 뿐,
+    // Anthropic 변환에서 caller-visible 출력을 만들지 않는다. server_error retry를
+    // 막지 않도록 lead 버퍼에 보류한다. function_call/web_search 추가와 message done은
+    // 기존대로 출력을 확정한다.
+    case "response.output_item.added":
+      return event.item.type !== "message";
     default:
       return true;
   }

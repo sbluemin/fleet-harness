@@ -278,6 +278,74 @@ describe("codex responses adapter", () => {
     });
   });
 
+  it("retries a server_error after a message output_item.added setup event", async () => {
+    const failed = 'data: {"type":"response.failed","response":{"id":"r1","model":"gpt-5.6-luna","error":{"code":"server_error","message":"An error occurred while processing your request. Please include request ID req-1."}}}\n\n';
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(sse(
+        'data: {"type":"response.created","response":{"id":"r1","model":"gpt-5.6-luna"}}\n\n',
+        'data: {"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":"msg-1","role":"assistant"}}\n\n',
+        failed,
+      ))
+      .mockResolvedValueOnce(sse(
+        'data: {"type":"response.created","response":{"id":"r2","model":"gpt-5.6-luna"}}\n\n',
+        'data: {"type":"response.output_text.delta","item_id":"message-1","output_index":0,"content_index":0,"delta":"OK"}\n\n',
+        'data: {"type":"response.completed","response":{"id":"r2","model":"gpt-5.6-luna","usage":{"input_tokens":1,"output_tokens":1}}}\n\n',
+      ));
+
+    const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected success");
+    const events = [];
+    for await (const event of response.events) events.push(event);
+    // output_item.added(message)는 caller-visible 출력이 아니므로 retry를 막지 않는다.
+    expect(events.map((event) => event.type)).toEqual([
+      "response.created",
+      "response.output_text.delta",
+      "response.completed",
+    ]);
+    expect(events[0]).toMatchObject({ response: { id: "r2" } });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a message setup event inside the retry lead so the Anthropic caller sees only r2", async () => {
+    const failed = 'data: {"type":"response.failed","response":{"id":"r1","model":"gpt-5.6-luna","error":{"code":"server_error","message":"An error occurred while processing your request. Please include request ID req-1."}}}\n\n';
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(sse(
+        'data: {"type":"response.created","response":{"id":"r1","model":"gpt-5.6-luna"}}\n\n',
+        'data: {"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":"msg-1","role":"assistant"}}\n\n',
+        failed,
+      ))
+      .mockResolvedValueOnce(sse(
+        'data: {"type":"response.created","response":{"id":"r2","model":"gpt-5.6-luna"}}\n\n',
+        'data: {"type":"response.output_text.delta","item_id":"message-1","output_index":0,"content_index":0,"delta":"OK"}\n\n',
+        'data: {"type":"response.completed","response":{"id":"r2","model":"gpt-5.6-luna","usage":{"input_tokens":1,"output_tokens":1}}}\n\n',
+      ));
+
+    const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected success");
+    const frames = parseSse(await collectBody(encodeAnthropicSse(response.events)));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // r1의 created/add(message)는 버퍼에서 폐기된다. message_start는 r2를 싣고
+    // r2의 내용과 usage가 atomic하게 내려온다.
+    expect(frames.map((frame) => frame.event)).toEqual([
+      "message_start",
+      "content_block_start",
+      "content_block_delta",
+      "content_block_stop",
+      "message_delta",
+      "message_stop",
+    ]);
+    expect(frames[0]?.data).toMatchObject({
+      type: "message_start",
+      message: { id: "r2", model: "gpt-5.6-luna" },
+    });
+    expect(frames[2]?.data).toMatchObject({ delta: { type: "text_delta", text: "OK" } });
+    expect(frames[4]?.data).toMatchObject({
+      type: "message_delta",
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+  });
+
   it("retries the observed overload error pair before output", async () => {
     const fetchMock = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(sse(
