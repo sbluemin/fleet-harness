@@ -7340,18 +7340,27 @@
   display: inline-flex;
   align-items: center;
   flex: none;
-  gap: 3px;
+  gap: 1px;
+}
+
+/* 두 상자는 서로 반대로 기울어 꽃잎처럼 마주 선다 — 기운 각이 같고 방향만 반대라야 한쪽이
+   비뚤어진 것이 아니라 한 쌍이라고 읽힌다. 회전은 레이아웃 상자를 넓히지 않으므로, 기운 모서리가
+   먹는 여백만큼 이음매 폭으로 갚는다. */
+.operation-launch-provider-pair .operation-launch-provider-glyph {
+  transform: rotate(15deg);
 }
 
 .operation-launch-provider-glyph.is-harness {
   --launch-provider-tone: var(--provider-claude);
+  transform: rotate(-15deg);
 }
 
-/* 이음매는 신원이 아니라 두 상자의 관계다 — 어느 쪽 공급자 톤도 빌리지 않는다. */
+/* 이음매는 신원이 아니라 두 상자의 관계다 — 어느 쪽 공급자 톤도 빌리지 않고, 기운 상자 사이에서
+   홀로 수평을 지켜 둘을 잇는 축이 된다. */
 .operation-launch-provider-link {
   flex: none;
-  width: 11px;
-  height: 4px;
+  width: 9px;
+  height: 3px;
   color: var(--text-tertiary);
 }
 

@@ -1575,7 +1575,13 @@ describe("Instrument core design contract", () => {
 
     const components = source("styles/components.css");
     // 하네스 상자는 어느 밴드에 있든 Claude 톤이다 — 캡션이 물려준 공급자 톤을 쓰면 두 상자가 같은 색이 된다.
-    expect(components).toContain(".operation-launch-provider-glyph.is-harness {\n  --launch-provider-tone: var(--provider-claude);\n}");
+    const harness = components.match(/\.operation-launch-provider-glyph\.is-harness \{[^}]*\}/)?.[0] ?? "";
+    expect(harness).toContain("--launch-provider-tone: var(--provider-claude);");
+    // 두 상자는 같은 각을 반대로 기울여야 한 쌍으로 읽힌다 — 각이 어긋나면 비뚤어진 상자 하나가 된다.
+    const pairTilt = components.match(/\.operation-launch-provider-pair \.operation-launch-provider-glyph \{[^}]*\}/)?.[0] ?? "";
+    const tiltAngle = (block: string): string => block.match(/transform: rotate\((-?[\d.]+)deg\);/)?.[1] ?? "";
+    expect(tiltAngle(pairTilt)).not.toBe("");
+    expect(tiltAngle(harness)).toBe(`-${tiltAngle(pairTilt)}`);
     // 이음매는 관계이지 신원이 아니라, 공급자 톤도 신호색도 빌리지 않는다.
     const link = components.match(/\.operation-launch-provider-link \{[^}]*\}/)?.[0] ?? "";
     expect(link).toContain("color: var(--text-tertiary);");

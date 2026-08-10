@@ -70,10 +70,10 @@ export function LaunchProviderMark({ provider }: { readonly provider: LaunchProv
   return (
     <span className="operation-launch-provider-pair" aria-hidden="true">
       <span className="operation-launch-provider-glyph is-harness">{launchProviderGlyph("claude")}</span>
-      <svg className="operation-launch-provider-link" viewBox="0 0 14 4" aria-hidden="true">
-        <circle cx="2" cy="2" r="1.1" fill="currentColor" />
-        <circle cx="7" cy="2" r="1.1" fill="currentColor" />
-        <circle cx="12" cy="2" r="1.1" fill="currentColor" />
+      <svg className="operation-launch-provider-link" viewBox="0 0 9 3" aria-hidden="true">
+        <circle cx="1.5" cy="1.5" r="0.95" fill="currentColor" />
+        <circle cx="4.5" cy="1.5" r="0.95" fill="currentColor" />
+        <circle cx="7.5" cy="1.5" r="0.95" fill="currentColor" />
       </svg>
       <span className="operation-launch-provider-glyph">{launchProviderGlyph(provider)}</span>
     </span>
