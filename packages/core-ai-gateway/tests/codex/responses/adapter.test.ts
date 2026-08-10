@@ -3,8 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   CHATGPT_CODEX_RESPONSES_URL,
   CodexResponsesAdapter,
+  encodeAnthropicSse,
 } from "../../../src/index.js";
-import type { CanonicalResponseRequest } from "../../../src/index.js";
+import type { CanonicalResponseEvent, CanonicalResponseRequest } from "../../../src/index.js";
 
 function request(overrides: Partial<CanonicalResponseRequest> = {}): CanonicalResponseRequest {
   return {
@@ -20,6 +21,30 @@ function sse(...frames: string[]): Response {
     status: 200,
     headers: { "content-type": "text/event-stream" },
   });
+}
+
+async function collectBody(body: AsyncIterable<Uint8Array>): Promise<string> {
+  const decoder = new TextDecoder();
+  let text = "";
+  for await (const chunk of body) {
+    text += decoder.decode(chunk, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
+function parseSse(body: string): Array<{ event: string; data: Record<string, unknown> }> {
+  return body
+    .trim()
+    .split(/\r?\n\r?\n/)
+    .map((frameText) => {
+      const lines = frameText.split(/\r?\n/);
+      const event = lines.find((line) => line.startsWith("event: "))?.slice(7);
+      const data = lines.find((line) => line.startsWith("data: "))?.slice(6);
+      if (event === undefined || data === undefined) {
+        throw new Error(`Invalid SSE frame: ${frameText}`);
+      }
+      return { event, data: JSON.parse(data) as Record<string, unknown> };
+    });
 }
 
 describe("codex responses adapter", () => {
@@ -132,14 +157,14 @@ describe("codex responses adapter", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("does not retry UND_ERR_SOCKET after a canonical event was yielded", async () => {
+  it("does not retry UND_ERR_SOCKET after caller-visible output was yielded", async () => {
     const encoder = new TextEncoder();
     const socketError = Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" });
     let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
     const terminated = new ReadableStream<Uint8Array>({
       start(controller) {
         streamController = controller;
-        controller.enqueue(encoder.encode('data: {"type":"response.created","response":{"id":"r","model":"gpt-5.6-luna"}}\n\n'));
+        controller.enqueue(encoder.encode('data: {"type":"response.output_text.delta","item_id":"m","output_index":0,"content_index":0,"delta":"partial"}\n\n'));
       },
     });
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(terminated, { status: 200 }));
@@ -147,13 +172,43 @@ describe("codex responses adapter", () => {
     const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request(), { apiKey: "k" });
     if (!response.ok) throw new Error("expected success");
     const iterator = response.events[Symbol.asyncIterator]();
-    await expect(iterator.next()).resolves.toMatchObject({ value: { type: "response.created" } });
+    await expect(iterator.next()).resolves.toMatchObject({ value: { type: "response.output_text.delta" } });
     streamController?.error(new TypeError("terminated", { cause: socketError }));
     await expect(iterator.next()).rejects.toMatchObject({ message: "terminated" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("retries one server_error after reasoning but before output", async () => {
+  it("retries UND_ERR_SOCKET while created/reasoning are still buffered", async () => {
+    const encoder = new TextEncoder();
+    const socketError = Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" });
+    const terminated = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"type":"response.created","response":{"id":"r1","model":"gpt-5.6-luna"}}\n\n'));
+        controller.error(new TypeError("terminated", { cause: socketError }));
+      },
+    });
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(terminated, { status: 200 }))
+      .mockResolvedValueOnce(sse(
+        'data: {"type":"response.created","response":{"id":"r2","model":"gpt-5.6-luna"}}\n\n',
+        'data: {"type":"response.output_text.delta","item_id":"m","output_index":0,"content_index":0,"delta":"OK"}\n\n',
+        'data: {"type":"response.completed","response":{"id":"r2","model":"gpt-5.6-luna","usage":{"input_tokens":1,"output_tokens":1}}}\n\n',
+      ));
+
+    const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected success");
+    const events = [];
+    for await (const event of response.events) events.push(event);
+    expect(events.map((event) => event.type)).toEqual([
+      "response.created",
+      "response.output_text.delta",
+      "response.completed",
+    ]);
+    expect(events[0]).toMatchObject({ response: { id: "r2" } });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries one server_error after reasoning but before output and discards the failed attempt's lead", async () => {
     const failed = 'data: {"type":"response.failed","response":{"id":"r1","model":"gpt-5.6-luna","error":{"code":"server_error","message":"An error occurred while processing your request. Please include request ID req-1."}}}\n\n';
     const fetchMock = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(sse(
@@ -171,15 +226,56 @@ describe("codex responses adapter", () => {
     if (!response.ok) throw new Error("expected success");
     const events = [];
     for await (const event of response.events) events.push(event);
+    // 첫 attempt의 created/reasoning은 retry 시 폐기되고 두 번째 attempt만 노출된다.
     expect(events.map((event) => event.type)).toEqual([
-      "response.created",
-      "response.reasoning_summary_text.delta",
       "response.created",
       "response.output_text.delta",
       "response.completed",
     ]);
+    expect(events[0]).toMatchObject({ response: { id: "r2" } });
     expect(events).not.toContainEqual(expect.objectContaining({ type: "response.failed" }));
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("exposes only the retried attempt to the Anthropic SSE caller", async () => {
+    const failed = 'data: {"type":"response.failed","response":{"id":"r1","model":"gpt-5.6-luna","error":{"code":"server_error","message":"An error occurred while processing your request. Please include request ID req-1."}}}\n\n';
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(sse(
+        'data: {"type":"response.created","response":{"id":"r1","model":"gpt-5.6-luna"}}\n\n',
+        'data: {"type":"response.reasoning_text.delta","item_id":"reasoning-1","output_index":0,"delta":"checking"}\n\n',
+        failed,
+      ))
+      .mockResolvedValueOnce(sse(
+        'data: {"type":"response.created","response":{"id":"r2","model":"gpt-5.6-luna"}}\n\n',
+        'data: {"type":"response.output_text.delta","item_id":"message-1","output_index":0,"content_index":0,"delta":"OK"}\n\n',
+        'data: {"type":"response.completed","response":{"id":"r2","model":"gpt-5.6-luna","usage":{"input_tokens":1,"output_tokens":1}}}\n\n',
+      ));
+
+    const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected success");
+    const frames = parseSse(await collectBody(encodeAnthropicSse(response.events)));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // r1의 created/reasoning은 retry 시 폐기된다. message_start r1/thinking이 아니라
+    // r2 헤더 아래 r2의 내용과 usage가 atomic하게 실려야 한다.
+    expect(frames.map((frame) => frame.event)).toEqual([
+      "message_start",
+      "content_block_start",
+      "content_block_delta",
+      "content_block_stop",
+      "message_delta",
+      "message_stop",
+    ]);
+    expect(frames[0]?.data).toMatchObject({
+      type: "message_start",
+      message: { id: "r2", model: "gpt-5.6-luna" },
+    });
+    expect(frames[1]?.data).toMatchObject({ content_block: { type: "text", text: "" } });
+    expect(frames[2]?.data).toMatchObject({ delta: { type: "text_delta", text: "OK" } });
+    expect(frames[4]?.data).toMatchObject({
+      type: "message_delta",
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
   });
 
   it("retries the observed overload error pair before output", async () => {
@@ -198,11 +294,12 @@ describe("codex responses adapter", () => {
     if (!response.ok) throw new Error("expected success");
     const events = [];
     for await (const event of response.events) events.push(event);
+    // r1의 created는 retry 시 폐기되고 r2만 노출된다.
     expect(events.map((event) => event.type)).toEqual([
-      "response.created",
       "response.created",
       "response.completed",
     ]);
+    expect(events[0]).toMatchObject({ response: { id: "r2" } });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -219,6 +316,49 @@ describe("codex responses adapter", () => {
       type: "error",
       error: { type: "service_unavailable_error", message: "temporarily unavailable" },
     }]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves created and reasoning in order when the first attempt succeeds", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => sse(
+      'data: {"type":"response.created","response":{"id":"r1","model":"gpt-5.6-luna"}}\n\n',
+      'data: {"type":"response.reasoning_text.delta","item_id":"reasoning-1","output_index":0,"delta":"checking"}\n\n',
+      'data: {"type":"response.output_text.delta","item_id":"message-1","output_index":0,"content_index":0,"delta":"OK"}\n\n',
+      'data: {"type":"response.completed","response":{"id":"r1","model":"gpt-5.6-luna","usage":{"input_tokens":1,"output_tokens":1}}}\n\n',
+    ));
+
+    const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected success");
+    const events = [];
+    for await (const event of response.events) events.push(event);
+    expect(events.map((event) => event.type)).toEqual([
+      "response.created",
+      "response.reasoning_summary_text.delta",
+      "response.output_text.delta",
+      "response.completed",
+    ]);
+    expect(events[0]).toMatchObject({ response: { id: "r1" } });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves created and reasoning before a non-retryable terminal failure", async () => {
+    const failed = 'data: {"type":"response.failed","response":{"id":"r1","model":"gpt-5.6-luna","error":{"code":"invalid_prompt","message":"bad prompt"}}}\n\n';
+    const fetchMock = vi.fn<typeof fetch>(async () => sse(
+      'data: {"type":"response.created","response":{"id":"r1","model":"gpt-5.6-luna"}}\n\n',
+      'data: {"type":"response.reasoning_text.delta","item_id":"reasoning-1","output_index":0,"delta":"checking"}\n\n',
+      failed,
+    ));
+
+    const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected success");
+    const events = [];
+    for await (const event of response.events) events.push(event);
+    expect(events.map((event) => event.type)).toEqual([
+      "response.created",
+      "response.reasoning_summary_text.delta",
+      "response.failed",
+    ]);
+    expect(events.at(-1)).toMatchObject({ response: { error: { type: "invalid_prompt" } } });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -248,7 +388,7 @@ describe("codex responses adapter", () => {
     const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request(), { apiKey: "k" });
     if (!response.ok) throw new Error("expected success");
     const iterator = response.events[Symbol.asyncIterator]();
-    await expect(iterator.next()).resolves.toMatchObject({ value: { type: "response.created" } });
+    // 첫 next()가 created를 버퍼링하고 실패를 만나 retry 지연에 진입한다.
     const pendingNext = iterator.next().catch((error: unknown) => error);
     await new Promise((resolve) => setTimeout(resolve, 25));
 
@@ -286,7 +426,7 @@ describe("codex responses adapter", () => {
     const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request(), { apiKey: "k" });
     if (!response.ok) throw new Error("expected success");
     const iterator = response.events[Symbol.asyncIterator]();
-    await iterator.next();
+    // 첫 next()가 created를 버퍼링하고 실패를 만나 retry fetch를 시작한다.
     const pendingNext = iterator.next().catch((error: unknown) => error);
     await retryStart;
     await iterator.return?.();

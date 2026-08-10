@@ -301,6 +301,11 @@ async function* generateCodexRetryStream(
   unlinkRetryAbort: () => void,
   signal?: AbortSignal,
 ): AsyncGenerator<CanonicalResponseEvent> {
+  // retry 확정 전까지 response.created/reasoning을 보류한다. 이 lead 이벤트들은 Anthropic
+  // 변환에서 message_start/thinking으로 즉시 발화되므로, retry가 r2로 전환된 뒤에도 r1 헤더
+  // 아래 r2 본문이 뒤섞이지 않도록 커밋(committing) 또는 terminal 이벤트에서 한꺼번에
+  // 내보낸다. retry가 확정되면 보류분을 버리고 두 번째 attempt만 atomic하게 노출한다.
+  const bufferedLead: CanonicalResponseEvent[] = [];
   let yielded = false;
   let committedOutput = false;
   let pendingProviderError: CanonicalResponseEvent | undefined;
@@ -313,10 +318,16 @@ async function* generateCodexRetryStream(
         if (yielded || signal?.aborted === true || !isUndiciSocketTermination(error)) {
           throw error;
         }
+        // 아직 아무것도 노출하지 않았다면 r1 lead 버퍼를 폐기하고 재시도한다.
+        bufferedLead.length = 0;
         yield* await retry(retryController.signal);
         return;
       }
       if (result.done) {
+        // attempt가 terminal 없이 끝나면 보류했던 created/reasoning을 원래 순서대로
+        // 내보내고 종료한다(호출측 변환은 미완료 스트림으로 처리한다).
+        yield* bufferedLead;
+        bufferedLead.length = 0;
         if (pendingProviderError !== undefined) {
           yield pendingProviderError;
         }
@@ -325,6 +336,7 @@ async function* generateCodexRetryStream(
       const event = result.value;
       if (isRetryableCodexServerFailure(event, committedOutput, signal)) {
         await source.return?.();
+        bufferedLead.length = 0;
         yield* await retry(retryController.signal);
         return;
       }
@@ -335,9 +347,13 @@ async function* generateCodexRetryStream(
           && !committedOutput;
         if (matchesFailurePair) {
           await source.return?.();
+          bufferedLead.length = 0;
           yield* await retry(retryController.signal);
           return;
         }
+        // 실패 쌍이 아니라면 대기 중이던 error를 terminal로 확정하고 보류분을 먼저 내보낸다.
+        yield* bufferedLead;
+        bufferedLead.length = 0;
         yield pendingProviderError;
         pendingProviderError = undefined;
         yielded = true;
@@ -347,9 +363,16 @@ async function* generateCodexRetryStream(
         pendingProviderError = event;
         continue;
       }
-      yielded = true;
-      committedOutput ||= commitsCodexOutput(event);
-      yield event;
+      if (commitsCodexOutput(event)) {
+        // 출력을 확정하는 이벤트에 도달했으므로 보류 lead를 원래 순서대로 방출한다.
+        yield* bufferedLead;
+        bufferedLead.length = 0;
+        yielded = true;
+        committedOutput = true;
+        yield event;
+      } else {
+        bufferedLead.push(event);
+      }
     }
   } finally {
     retryController.abort();
@@ -386,6 +409,7 @@ function isRetryableCodexProviderErrorType(type: string): boolean {
     || type === "service_unavailable_error";
 }
 
+/** 출력을 확정하는(그 뒤로 retry가 금지되는) 이벤트인지 판정한다. false면 lead 버퍼에 보류된다. */
 function commitsCodexOutput(event: CanonicalResponseEvent): boolean {
   switch (event.type) {
     case "response.created":
