@@ -85,6 +85,76 @@ export function formatCountdown(target: number | undefined, now: number): string
   return `${minutes}m`;
 }
 
+/**
+ * The gateway's own verdict decides the meter's severity. Re-deriving one from
+ * `usedPercent` alone is what let a window read calm here while the roster a
+ * model reads called it critical: a pool 44% spent one fifth of the way into
+ * its cycle is in trouble, and no percentage band can see that. The local bands
+ * survive only as a fallback for a reading that arrived without a verdict.
+ */
+export function meterSeverity(window: QuotaWindow): "normal" | "warning" | "critical" {
+  switch (window.risk?.pressure) {
+    case "critical": return "critical";
+    case "elevated": return "warning";
+    case "ok": return "normal";
+    default: return window.usedPercent >= 90 ? "critical" : window.usedPercent >= 70 ? "warning" : "normal";
+  }
+}
+
+function clampPercent(value: number): number {
+  return Math.min(100, Math.max(0, value));
+}
+
+/**
+ * The gateway's projection, but only while it is still a forecast. A reading
+ * outlives it: the summary is cached for two minutes and served stale for
+ * thirty, so the target can pass before the next one lands. Both the hatching
+ * and the note read the projection through here so a lapsed one cannot survive
+ * in one channel after being suppressed in the other.
+ */
+function liveProjectionAt(window: QuotaWindow, now: number): number | undefined {
+  const projectedExhaustionAt = window.risk?.projectedExhaustionAt;
+  return projectedExhaustionAt !== undefined && projectedExhaustionAt > now ? projectedExhaustionAt : undefined;
+}
+
+/**
+ * The stretch of the bar the current burn rate is on track to consume before
+ * the window resets. The gateway carries a projection only when it lands short
+ * of the reset, so an absent span states "this lasts to reset" rather than
+ * "unknown".
+ */
+export function projectedSpan(window: QuotaWindow, now: number): { readonly left: number; readonly width: number } | null {
+  if (liveProjectionAt(window, now) === undefined) return null;
+  const left = clampPercent(window.usedPercent);
+  return left >= 100 ? null : { left, width: 100 - left };
+}
+
+/** Where the window's clock stands, which is what makes the fill's position mean anything. */
+export function elapsedMarkPercent(window: QuotaWindow): number | null {
+  const elapsed = window.risk?.elapsedFraction;
+  return elapsed === undefined ? null : clampPercent(Math.round(elapsed * 100));
+}
+
+export function formatPace(paceRatio: number): string {
+  return `${Math.round(paceRatio * 10) / 10}`;
+}
+
+export function riskNote(window: QuotaWindow, now: number, t: T): string | null {
+  const risk = window.risk;
+  if (!risk) return null;
+  // Past its target the countdown would clamp to "out in 0m" — a lapsed forecast
+  // dressed as a future one. The pace is what the same reading still supports.
+  const projectedExhaustionAt = liveProjectionAt(window, now);
+  if (projectedExhaustionAt !== undefined) {
+    return t("quota.meter.exhausts", { t: formatCountdown(projectedExhaustionAt, now) });
+  }
+  // Below the gateway's own elevated threshold a ratio is just noise on a bar.
+  if (risk.paceRatio !== undefined && risk.pressure !== "ok") {
+    return t("quota.meter.pace", { n: formatPace(risk.paceRatio) });
+  }
+  return null;
+}
+
 function Meter({
   window,
   cycleDays,
@@ -96,7 +166,7 @@ function Meter({
   readonly now: number;
   readonly t: T;
 }) {
-  const severity = window.usedPercent >= 90 ? "critical" : window.usedPercent >= 70 ? "warning" : "normal";
+  const severity = meterSeverity(window);
   const label = window.label ?? t(
     window.id === "session"
       ? "quota.meter.session"
@@ -107,22 +177,114 @@ function Meter({
     : window.id === "weekly"
       ? "7d"
       : window.id === "cycle" && cycleDays !== undefined ? `${cycleDays}d` : undefined;
+  const usedText = t("quota.meter.used", { pct: window.usedPercent });
+  const note = riskNote(window, now, t);
+  const projection = projectedSpan(window, now);
+  const elapsedMark = elapsedMarkPercent(window);
   return (
     <div className={`quota-meter quota-meter--${severity}`}>
       <div className="quota-meter__top">
         <span className="quota-meter__label">{label}{windowChip ? <span className="quota-meter__window">{windowChip}</span> : null}</span>
-        <span className="quota-meter__percent">{t("quota.meter.used", { pct: window.usedPercent })}</span>
+        <span className="quota-meter__percent">{usedText}</span>
       </div>
-      <div className="quota-meter__bar" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={window.usedPercent}>
-        <span className="quota-meter__fill" style={{ width: `${window.usedPercent}%` }} />
+      <div
+        className="quota-meter__bar"
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={window.usedPercent}
+        {...(note !== null ? { "aria-valuetext": `${usedText} · ${note}` } : {})}
+      >
+        {projection ? (
+          <span
+            className="quota-meter__projection"
+            title={t("quota.meter.projected")}
+            style={{ left: `${projection.left}%`, width: `${projection.width}%` }}
+          />
+        ) : null}
+        <span className="quota-meter__fill" style={{ width: `${clampPercent(window.usedPercent)}%` }} />
+        {elapsedMark !== null ? (
+          <span
+            className="quota-meter__elapsed"
+            title={t("quota.meter.elapsed", { pct: elapsedMark })}
+            style={{ left: `${elapsedMark}%` }}
+          />
+        ) : null}
       </div>
-      {window.resetsAt !== undefined ? <div className="quota-meter__reset">{t("quota.meter.resets", { t: formatCountdown(window.resetsAt, now) })}</div> : null}
+      {note !== null || window.resetsAt !== undefined ? (
+        <div className="quota-meter__foot">
+          {note !== null ? <span className="quota-meter__risk">{note}</span> : null}
+          {window.resetsAt !== undefined ? <span className="quota-meter__reset">{t("quota.meter.resets", { t: formatCountdown(window.resetsAt, now) })}</span> : null}
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function StatusStrip({ kind, children }: { readonly kind: "expired" | "stale" | "error"; readonly children: React.ReactNode }) {
   return <div className={`quota-strip quota-strip--${kind}`}>{children}</div>;
+}
+
+/**
+ * 막대의 채움·눈금·빗금이 각각 무엇인지, 그리고 이 수치가 어디서 오는지 설명한다.
+ * 미터마다 두지 않고 패널에 하나만 두는 이유는 한 번 읽으면 끝나는 설명이기 때문이다 —
+ * 최대 11개까지 뜨는 미터마다 붙이면 같은 문장을 열한 번 물어보게 된다.
+ *
+ * 상주 푸터에 사는 만큼 위로 열린다. hover는 마우스용이고, 포인터가 없는 기기와
+ * 키보드는 버튼을 눌러 고정한다. 두 경로를 모두 두지 않으면 터치에서는 영영 열리지 않는다.
+ * 포커스만으로는 열지 않는다 — 그러면 Escape가 상태를 내려도 화면에는 남는다.
+ */
+function BarLegend({ t }: { readonly t: T }) {
+  const [pinned, setPinned] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!pinned) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPinned(false);
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && rootRef.current?.contains(target) === true) return;
+      setPinned(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [pinned]);
+
+  return (
+    <div className={`quota-legend${pinned ? " quota-legend--pinned" : ""}`} ref={rootRef}>
+      <button
+        type="button"
+        className="quota-legend__toggle"
+        aria-expanded={pinned}
+        aria-label={t("quota.legend.action")}
+        onClick={() => setPinned((value) => !value)}
+      >
+        ?
+      </button>
+      <div className="quota-legend__bubble" role="note">
+        <p className="quota-legend__row">
+          <span className="quota-legend__swatch" aria-hidden="true"><i className="quota-legend__swatch-fill" /></span>
+          {t("quota.legend.fill")}
+        </p>
+        <p className="quota-legend__row">
+          <span className="quota-legend__swatch" aria-hidden="true"><i className="quota-legend__swatch-elapsed" /></span>
+          {t("quota.legend.elapsed")}
+        </p>
+        <p className="quota-legend__row">
+          <span className="quota-legend__swatch" aria-hidden="true"><i className="quota-legend__swatch-projection" /></span>
+          {t("quota.legend.projection")}
+        </p>
+        <p className="quota-legend__note">{t("quota.privacy")}</p>
+      </div>
+    </div>
+  );
 }
 
 function ProviderCard({
@@ -299,9 +461,9 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
       <footer className="quota-footer">
         <div className="quota-footer__row">
           {fetchedAt > 0 ? <span>{updatedMinutes < 1 ? t("quota.updated.now") : t("quota.updated.ago", { m: updatedMinutes })}</span> : null}
+          <BarLegend t={t} />
           <button type="button" className="quota-refresh" onClick={() => refresh(true)}>{t("quota.refresh")}</button>
         </div>
-        <p>{t("quota.privacy")}</p>
       </footer>
     </div>
   );
