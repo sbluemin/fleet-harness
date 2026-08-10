@@ -30,15 +30,10 @@ describe("Cursor request budgets", () => {
   });
 
   it.each([
-    ["kimi-k3", "medium", "kimi-k3-low"],
-    ["kimi-k3", "xhigh", "kimi-k3-high"],
-    ["kimi-k3-1m", "low", "kimi-k3-max"],
-    ["claude-opus-5", "xhigh", "claude-opus-5-thinking-xhigh"],
-    ["claude-opus-5", "max", "claude-opus-5-thinking-max"],
-    ["claude-opus-5-1m", "xhigh", "claude-opus-5-thinking-xhigh"],
-    ["claude-fable-5-1m", "high", "claude-fable-5-high"],
+    ["grok-4.5", "low", "cursor-grok-4.5-low"],
+    ["grok-4.5", "medium", "cursor-grok-4.5-medium"],
     ["grok-4.5-fast", "low", "cursor-grok-4.5-low-fast"],
-    ["gpt-5.6-sol", "max", "gpt-5.6-sol-max"],
+    ["composer-2.5", "high", "composer-2.5"],
   ] as const)("writes Cursor model %s with effort %s as %s", (model, effort, expected) => {
     const plan = buildCursorRunPlan(request({
       model,
@@ -49,31 +44,15 @@ describe("Cursor request budgets", () => {
   });
 
   it("uses the registry default when a Cursor reasoning model has no explicit effort", () => {
-    const plan = buildCursorRunPlan(request({ model: "kimi-k3" }), "conversation-default-effort");
+    const plan = buildCursorRunPlan(request({ model: "grok-4.5" }), "conversation-default-effort");
 
-    expect(runRequest(plan).modelDetails.modelId).toBe("kimi-k3-high");
+    expect(runRequest(plan).modelDetails.modelId).toBe("cursor-grok-4.5-high");
   });
 
-  it.each([
-    ["kimi-k3-1m", undefined, "kimi-k3-max"],
-    ["claude-opus-5-1m", "high", "claude-opus-5-high"],
-    ["claude-fable-5-1m", "high", "claude-fable-5-high"],
-  ] as const)("encodes Cursor Max Mode for catalog model %s", (model, effort, wireModel) => {
-    const plan = buildCursorRunPlan(request({
-      model,
-      ...(effort ? { reasoning: { summary: "auto" as const, effort } } : {}),
-    }), `conversation-${model}`);
+  it("keeps supported Cursor catalog models out of Max Mode unless explicitly enabled", () => {
+    const plan = buildCursorRunPlan(request({ model: "grok-4.5" }), "conversation-grok-standard");
 
-    expect(encodedRunRequest(plan).modelDetails).toMatchObject({
-      modelId: wireModel,
-      maxMode: true,
-    });
-  });
-
-  it("keeps the standard Kimi K3 catalog model out of Cursor Max Mode", () => {
-    const plan = buildCursorRunPlan(request({ model: "kimi-k3" }), "conversation-kimi-standard");
-
-    expect(encodedRunRequest(plan).modelDetails).toMatchObject({ modelId: "kimi-k3-high" });
+    expect(encodedRunRequest(plan).modelDetails).toMatchObject({ modelId: "cursor-grok-4.5-high" });
     expect(encodedRunRequest(plan).modelDetails).not.toHaveProperty("maxMode");
   });
 
@@ -598,7 +577,7 @@ describe("Cursor request budgets", () => {
 
   it("replays an external-model tool result through the same structured tool step", () => {
     const plan = buildCursorRunPlan(request({
-      model: "kimi-k3",
+      model: "grok-4.5",
       input: [
         { type: "message", role: "user", content: "Run pwd" },
         { type: "function_call", call_id: "call-pwd", name: "exec_command", arguments: '{"cmd":"pwd"}' },

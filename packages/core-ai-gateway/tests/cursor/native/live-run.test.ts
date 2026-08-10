@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 describe("Cursor live client-tool Run bridge", () => {
-  it.each(["kimi-k3-1m", "claude-opus-5", "grok-4.5", "auto", "composer-2.5"])(
+  it.each(["grok-4.5", "grok-4.5-fast", "auto", "composer-2.5", "composer-2.5-fast"])(
     "parks and attaches %s without opening a resume Run",
     async (model) => {
       const call = cursorCall("call-read-1", 21);
@@ -415,7 +415,7 @@ describe("Cursor live client-tool Run bridge", () => {
     const harness = cursorHarness([stream], {
       diagnostics: (event) => diagnostics.push(event),
     });
-    const initial = cursorRequest("session-first-exec", "claude-opus-5");
+    const initial = cursorRequest("session-first-exec", "grok-4.5");
 
     try {
       await collectCursorResponseWithDiagnostics(harness.adapter, initial, true);
@@ -452,7 +452,7 @@ describe("Cursor live client-tool Run bridge", () => {
     const harness = cursorHarness([stream], {
       diagnostics: (event) => diagnostics.push(event),
     });
-    const initial = cursorRequest("session-diagnostics-on", "kimi-k3-1m");
+    const initial = cursorRequest("session-diagnostics-on", "grok-4.5");
 
     try {
       await collectCursorResponseWithDiagnostics(harness.adapter, initial, true);
@@ -483,7 +483,7 @@ describe("Cursor live client-tool Run bridge", () => {
     const harness = cursorHarness([stream], {
       diagnostics: (event) => diagnostics.push(event),
     });
-    const initial = cursorRequest("session-diagnostics-off", "kimi-k3-1m");
+    const initial = cursorRequest("session-diagnostics-off", "grok-4.5");
 
     try {
       await collectCursorResponseWithDiagnostics(harness.adapter, initial, false);
@@ -511,14 +511,14 @@ describe("Cursor live client-tool Run bridge", () => {
     try {
       await collectCursorResponseWithDiagnostics(
         harness.adapter,
-        cursorRequest("session-diagnostics-next-off", "kimi-k3"),
+        cursorRequest("session-diagnostics-next-off", "grok-4.5-fast"),
         false,
       );
       expect(diagnostics).toEqual([]);
 
       await collectCursorResponseWithDiagnostics(
         harness.adapter,
-        cursorRequest("session-diagnostics-next-on", "kimi-k3"),
+        cursorRequest("session-diagnostics-next-on", "grok-4.5-fast"),
         true,
       );
       expect(diagnostics).toContainEqual(expect.objectContaining({ event: "turn.start" }));
@@ -600,7 +600,7 @@ describe("Cursor live client-tool Run bridge", () => {
       calls.length,
     );
     const harness = cursorHarness([stream]);
-    const initial = cursorRequest("session-parallel", "kimi-k3");
+    const initial = cursorRequest("session-parallel", "grok-4.5-fast");
 
     try {
       await collectCursorResponse(harness.adapter, initial);
@@ -709,7 +709,7 @@ describe("Cursor live client-tool Run bridge", () => {
       1,
     );
     const harness = cursorHarness([stream]);
-    const initial = cursorRequest("session-exec-first", "kimi-k3-1m");
+    const initial = cursorRequest("session-exec-first", "grok-4.5");
 
     try {
       const initialEvents = await collectCursorResponse(harness.adapter, initial);
@@ -751,7 +751,7 @@ describe("Cursor live client-tool Run bridge", () => {
       2,
     );
     const harness = cursorHarness([stream]);
-    const initial = cursorRequest("session-reordered-parallel", "claude-opus-5");
+    const initial = cursorRequest("session-reordered-parallel", "grok-4.5");
 
     try {
       await collectCursorResponse(harness.adapter, initial);
@@ -797,7 +797,7 @@ describe("Cursor live client-tool Run bridge", () => {
       [{ afterMcpResults: 2, frames: cursorCompletionFrames("two cycles complete") }],
     );
     const harness = cursorHarness([stream]);
-    const initial = cursorRequest("session-checkpoint-cycle", "kimi-k3-1m");
+    const initial = cursorRequest("session-checkpoint-cycle", "grok-4.5");
     const firstContinuation = cursorContinuation(initial, [first], [
       cursorResult(first, "first result"),
     ]);
@@ -849,7 +849,7 @@ describe("Cursor live client-tool Run bridge", () => {
       cursorCompletionFrames("compacted turn complete"),
     );
     const harness = cursorHarness([largeStream, compactedStream]);
-    const base = cursorRequest("session-checkpoint-staleness", "kimi-k3-1m");
+    const base = cursorRequest("session-checkpoint-staleness", "grok-4.5");
     const large: CanonicalResponseRequest = {
       ...base,
       input: [{ type: "message", role: "user", content: "x".repeat(60_000) }],
@@ -882,7 +882,7 @@ describe("Cursor live client-tool Run bridge", () => {
       ...cursorCompletionFrames("window is full"),
     ]);
     const harness = cursorHarness([saturating]);
-    const request = cursorRequest("session-window-saturated", "kimi-k3-1m");
+    const request = cursorRequest("session-window-saturated", "grok-4.5");
 
     try {
       await collectCursorResponse(harness.adapter, request);
@@ -912,7 +912,7 @@ describe("Cursor live client-tool Run bridge", () => {
       ...cursorToolFrames([call]),
     ]);
     const harness = cursorHarness([stream]);
-    const initial = cursorRequest("session-window-continuation", "kimi-k3-1m");
+    const initial = cursorRequest("session-window-continuation", "grok-4.5");
 
     try {
       await collectCursorResponse(harness.adapter, initial);
@@ -949,7 +949,7 @@ describe("Cursor live client-tool Run bridge", () => {
     );
     const cold = new BridgeCursorStream(cursorCompletionFrames("cold run opened"));
     const harness = cursorHarness([parked, cold]);
-    const base = cursorRequest("session-window-retry", "kimi-k3-1m");
+    const base = cursorRequest("session-window-retry", "grok-4.5");
     const large: CanonicalResponseRequest = {
       ...base,
       input: [{ type: "message", role: "user", content: "x".repeat(60_000) }],
@@ -993,7 +993,7 @@ describe("Cursor live client-tool Run bridge", () => {
     );
     const cold = new BridgeCursorStream(cursorCompletionFrames("cold run opened"));
     const harness = cursorHarness([parked, cold]);
-    const base = cursorRequest("session-window-selfcompact", "kimi-k3-1m");
+    const base = cursorRequest("session-window-selfcompact", "grok-4.5");
     const large: CanonicalResponseRequest = {
       ...base,
       input: [{ type: "message", role: "user", content: "x".repeat(60_000) }],
@@ -1026,7 +1026,7 @@ describe("Cursor live client-tool Run bridge", () => {
     ]);
     const next = new BridgeCursorStream(cursorCompletionFrames("second turn complete"));
     const harness = cursorHarness([belowWindow, next]);
-    const request = cursorRequest("session-window-under", "kimi-k3-1m");
+    const request = cursorRequest("session-window-under", "grok-4.5");
 
     try {
       await collectCursorResponse(harness.adapter, request);
@@ -1055,7 +1055,7 @@ describe("Cursor live client-tool Run bridge", () => {
     ]);
     const compacted = new BridgeCursorStream(cursorCompletionFrames("compacted turn complete"));
     const harness = cursorHarness([saturating, compacted]);
-    const base = cursorRequest("session-window-compacted", "kimi-k3-1m");
+    const base = cursorRequest("session-window-compacted", "grok-4.5");
     const large: CanonicalResponseRequest = {
       ...base,
       input: [{ type: "message", role: "user", content: "x".repeat(60_000) }],
@@ -1082,7 +1082,7 @@ describe("Cursor live client-tool Run bridge", () => {
       const parked = new BridgeCursorStream(cursorToolFrames(calls));
       const fallback = new BridgeCursorStream(cursorCompletionFrames("cold fallback"));
       const harness = cursorHarness([parked, fallback]);
-      const initial = cursorRequest(`session-${kind}`, "kimi-k3-1m");
+      const initial = cursorRequest(`session-${kind}`, "grok-4.5");
       const exact = calls.map((call) => cursorResult(call, `${call.callId} result`));
       const results = kind === "partial"
         ? exact.slice(0, 1)
@@ -1121,11 +1121,11 @@ describe("Cursor live client-tool Run bridge", () => {
       const harness = cursorHarness([parked, fallback]);
       const initial = cursorRequest(
         `session-separation-${partition}`,
-        partition === "effort" ? "kimi-k3" : "kimi-k3-1m",
+        partition === "effort" ? "grok-4.5-fast" : "grok-4.5",
         partition === "effort" ? "low" : undefined,
       );
       let continuation = cursorContinuation(initial, [call], [cursorResult(call, "done")]);
-      if (partition === "model") continuation = { ...continuation, model: "claude-opus-5" };
+      if (partition === "model") continuation = { ...continuation, model: "composer-2.5" };
       if (partition === "effort") {
         continuation = { ...continuation, reasoning: { summary: "auto", effort: "high" } };
       }
@@ -1151,7 +1151,7 @@ describe("Cursor live client-tool Run bridge", () => {
 
   it("cold-resumes a live model when ToolSearch activates deferred tools", async () => {
     const initial: CanonicalResponseRequest = {
-      model: "claude-opus-5",
+      model: "grok-4.5",
       instructions: "Use ToolSearch before calling a deferred Fleet tool.",
       input: [{ type: "message", role: "user", content: "Read a Fleet Wiki entry." }],
       tools: [
@@ -1242,7 +1242,7 @@ describe("Cursor live client-tool Run bridge", () => {
       cursorCompletionFrames("credential B cold fallback"),
     );
     const harness = cursorHarness([credentialARun, credentialBRun]);
-    const initial = cursorRequest("shared-credential-conversation", "kimi-k3-1m");
+    const initial = cursorRequest("shared-credential-conversation", "grok-4.5");
     const continuation = cursorContinuation(initial, [call], [cursorResult(call, "done")]);
 
     try {
@@ -1291,13 +1291,13 @@ describe("Cursor live client-tool Run bridge", () => {
     const harness = cursorHarness([credentialARun, credentialBRun], {
       diagnostics: (event) => diagnostics.push(event),
     });
-    const initial = cursorRequest("shared-prompt-conversation", "kimi-k3-1m");
+    const initial = cursorRequest("shared-prompt-conversation", "grok-4.5");
 
     try {
       await collectCursorResponse(harness.adapter, initial, credentialA);
       const credentialBEvents = await collectCursorResponse(harness.adapter, {
         ...initial,
-        model: "claude-opus-5",
+        model: "grok-4.5",
         input: [{ type: "message", role: "user", content: "Start another task." }],
       }, credentialB);
 
@@ -1324,9 +1324,9 @@ describe("Cursor live client-tool Run bridge", () => {
     const parked = new BridgeCursorStream(cursorToolFrames([call]));
     const separate = new BridgeCursorStream(cursorCompletionFrames("other conversation"));
     const harness = cursorHarness([parked, separate]);
-    const initial = cursorRequest("conversation-a", "kimi-k3-1m");
+    const initial = cursorRequest("conversation-a", "grok-4.5");
     const other = cursorContinuation(
-      cursorRequest("conversation-b", "kimi-k3-1m"),
+      cursorRequest("conversation-b", "grok-4.5"),
       [call],
       [cursorResult(call, "wrong conversation")],
     );
@@ -1349,7 +1349,7 @@ describe("Cursor live client-tool Run bridge", () => {
     );
     const fallback = new BridgeCursorStream(cursorCompletionFrames("duplicate fallback"));
     const harness = cursorHarness([parked, fallback]);
-    const initial = cursorRequest("session-atomic", "claude-fable-5");
+    const initial = cursorRequest("session-atomic", "composer-2.5-fast");
     const continuation = cursorContinuation(initial, [call], [cursorResult(call, "once")]);
 
     try {
@@ -1381,7 +1381,7 @@ describe("Cursor live client-tool Run bridge", () => {
 
     await collectCursorResponse(
       harness.adapter,
-      cursorRequest("session-expire", "kimi-k3-1m"),
+      cursorRequest("session-expire", "grok-4.5"),
     );
     await waitFor(() => parked.closed);
 
@@ -1401,8 +1401,8 @@ describe("Cursor live client-tool Run bridge", () => {
     const streamB = new BridgeCursorStream(cursorToolFrames([callB]));
     const harness = cursorHarness([streamA, streamB], { pendingLiveRunCapacity: 1 });
 
-    await collectCursorResponse(harness.adapter, cursorRequest("capacity-a", "kimi-k3-1m"));
-    await collectCursorResponse(harness.adapter, cursorRequest("capacity-b", "kimi-k3-1m"));
+    await collectCursorResponse(harness.adapter, cursorRequest("capacity-a", "grok-4.5"));
+    await collectCursorResponse(harness.adapter, cursorRequest("capacity-b", "grok-4.5"));
     expect(streamA.closed).toBe(true);
     expect(streamA.closeCode).toBe(http2.constants.NGHTTP2_CANCEL);
     expect(streamB.closed).toBe(false);
@@ -1429,8 +1429,8 @@ describe("Cursor live client-tool Run bridge", () => {
       pendingLiveRunCapacity: 1,
       diagnostics: (event) => diagnostics.push(event),
     });
-    const requestA = cursorRequest("capacity-owner", "kimi-k3-1m");
-    const requestB = cursorRequest("capacity-pressure", "kimi-k3-1m");
+    const requestA = cursorRequest("capacity-owner", "grok-4.5");
+    const requestB = cursorRequest("capacity-pressure", "grok-4.5");
 
     try {
       await collectCursorResponse(harness.adapter, requestA, credentialA);
@@ -1488,7 +1488,7 @@ describe("Cursor live client-tool Run bridge", () => {
     const stream = new BridgeCursorStream(cursorToolFrames([call]), [], 1);
     const harness = cursorHarness([stream]);
     const firstController = new AbortController();
-    const initial = cursorRequest("session-abort-segment", "kimi-k3-1m");
+    const initial = cursorRequest("session-abort-segment", "grok-4.5");
 
     await collectCursorResponse(
       harness.adapter,
@@ -1517,7 +1517,7 @@ describe("Cursor live client-tool Run bridge", () => {
     const harness = cursorHarness([stream]);
     const controller = new AbortController();
     const response = await harness.adapter.stream(
-      cursorRequest("session-abort-before", "kimi-k3-1m"),
+      cursorRequest("session-abort-before", "grok-4.5"),
       { apiKey: "cursor-test-token", signal: controller.signal },
     );
     const collecting = collectAdapterEvents(response);
@@ -1575,7 +1575,7 @@ describe("Cursor live client-tool Run bridge", () => {
     const parked = new BridgeCursorStream(cursorToolFrames([call]));
     const nextRun = new BridgeCursorStream(cursorCompletionFrames("new prompt complete"));
     const harness = cursorHarness([parked, nextRun]);
-    const initial = cursorRequest("session-new-prompt", "kimi-k3-1m");
+    const initial = cursorRequest("session-new-prompt", "grok-4.5");
 
     try {
       await collectCursorResponse(harness.adapter, initial);
@@ -1656,7 +1656,7 @@ describe("Cursor live client-tool Run bridge", () => {
       1,
     );
     const harness = cursorHarness([stream]);
-    const initial = cursorRequest("session-parked-tail", "claude-opus-5");
+    const initial = cursorRequest("session-parked-tail", "grok-4.5");
 
     try {
       await collectCursorResponse(harness.adapter, initial);
@@ -1681,7 +1681,7 @@ describe("Cursor live client-tool Run bridge", () => {
     const parked = new BridgeCursorStream(cursorToolFrames([call]));
     const fallback = new BridgeCursorStream(cursorCompletionFrames("cold fallback"));
     const harness = cursorHarness([parked, fallback]);
-    const initial = cursorRequest("session-runs-ahead", "claude-opus-5");
+    const initial = cursorRequest("session-runs-ahead", "grok-4.5");
 
     try {
       await collectCursorResponse(harness.adapter, initial);
@@ -1715,7 +1715,7 @@ describe("Cursor live client-tool Run bridge", () => {
     const harness = cursorHarness([stream], {
       diagnostics: (event) => diagnostics.push(event),
     });
-    const initial = cursorRequest("session-echo", "claude-opus-5");
+    const initial = cursorRequest("session-echo", "grok-4.5");
     const afterFirst = cursorContinuation(initial, [first], [cursorResult(first, "first result")]);
     const afterSecond: CanonicalResponseRequest = {
       ...afterFirst,
@@ -1757,7 +1757,7 @@ async function expectCorrelationBatchColdFallback(
   const rejected = new BridgeCursorStream(frames);
   const fallback = new BridgeCursorStream(cursorCompletionFrames("correlation cold fallback"));
   const harness = cursorHarness([rejected, fallback]);
-  const initial = cursorRequest(userId, "kimi-k3-1m");
+  const initial = cursorRequest(userId, "grok-4.5");
 
   try {
     await collectCursorResponse(harness.adapter, initial);

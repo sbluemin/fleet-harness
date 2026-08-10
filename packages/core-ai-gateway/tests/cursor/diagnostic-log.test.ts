@@ -50,13 +50,13 @@ describe("Cursor diagnostic log", () => {
     const log = createCursorDiagnosticLog(path.join(root, "ai-gateway"));
     const event = diagnosticEvent({
       event: "server.frame",
-      model: "claude-opus-5",
-      wireModel: "claude-opus-5-thinking-xhigh",
-      requestedEffort: "xhigh",
+      model: "grok-4.5",
+      wireModel: "cursor-grok-4.5-high",
+      requestedEffort: "high",
       frame: "interactionUpdate.toolCallStarted",
       sequence: 1,
       contextTokens: 42_000,
-      contextWindow: 300_000,
+      contextWindow: 256_000,
       argumentRepairCount: 1,
     });
     log.write({
@@ -69,13 +69,13 @@ describe("Cursor diagnostic log", () => {
     const contents = await readFile(log.path, "utf8");
     expect(JSON.parse(contents)).toEqual(expect.objectContaining({
       event: "server.frame",
-      model: "claude-opus-5",
-      wireModel: "claude-opus-5-thinking-xhigh",
-      requestedEffort: "xhigh",
+      model: "grok-4.5",
+      wireModel: "cursor-grok-4.5-high",
+      requestedEffort: "high",
       frame: "interactionUpdate.toolCallStarted",
       sequence: 1,
       contextTokens: 42_000,
-      contextWindow: 300_000,
+      contextWindow: 256_000,
       argumentRepairCount: 1,
     }));
     expect(contents).not.toContain("SECRET_PROMPT");
@@ -111,8 +111,8 @@ describe("Cursor diagnostic log", () => {
 
     log.write(diagnosticEvent({
       event: "transport.semantic_timeout",
-      model: "claude-fable-5",
-      wireModel: "claude-fable-5-high",
+      model: "composer-2.5-fast",
+      wireModel: "composer-2.5-fast",
       requestedEffort: "high",
       outcome: "semantic_stall_timeout",
     }));
@@ -120,8 +120,8 @@ describe("Cursor diagnostic log", () => {
 
     expect(JSON.parse(await readFile(log.path, "utf8"))).toMatchObject({
       event: "transport.semantic_timeout",
-      model: "claude-fable-5",
-      wireModel: "claude-fable-5-high",
+      model: "composer-2.5-fast",
+      wireModel: "composer-2.5-fast",
       requestedEffort: "high",
       outcome: "semantic_stall_timeout",
     });
@@ -133,9 +133,9 @@ describe("Cursor diagnostic log", () => {
 
     log.write(diagnosticEvent({
       event: "model.switch",
-      model: "claude-opus-5",
-      wireModel: "claude-opus-5-thinking-max",
-      previousWireModel: "claude-opus-5-thinking-xhigh",
+      model: "grok-4.5",
+      wireModel: "cursor-grok-4.5-high",
+      previousWireModel: "cursor-grok-4.5-low",
       turn: "prompt",
     }));
     await log.flush();
@@ -143,9 +143,9 @@ describe("Cursor diagnostic log", () => {
     const contents = await readFile(log.path, "utf8");
     expect(JSON.parse(contents)).toEqual(expect.objectContaining({
       event: "model.switch",
-      model: "claude-opus-5",
-      wireModel: "claude-opus-5-thinking-max",
-      previousWireModel: "claude-opus-5-thinking-xhigh",
+      model: "grok-4.5",
+      wireModel: "cursor-grok-4.5-high",
+      previousWireModel: "cursor-grok-4.5-low",
       turn: "prompt",
     }));
     expect(contents).not.toContain("claude-session");

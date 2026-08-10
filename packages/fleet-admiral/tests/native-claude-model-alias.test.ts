@@ -20,6 +20,6 @@ describe("resolveNativeClaudeModelAlias", () => {
 
   it("rejects unrecognized aliases", () => {
     expect(resolveNativeClaudeModelAlias("haiku")).toBeUndefined();
-    expect(resolveNativeClaudeModelAlias("cursor--claude-opus-5")).toBeUndefined();
+    expect(resolveNativeClaudeModelAlias("cursor--grok-4.5")).toBeUndefined();
   });
 });

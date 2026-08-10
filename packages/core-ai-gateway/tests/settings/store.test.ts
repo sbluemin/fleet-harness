@@ -48,10 +48,10 @@ describe("ai-gateway settings store", () => {
     // 읽기만으로는 파일이 생기지 않는다 — 미구성과 "빈 설정을 저장함"은 다른 상태다.
     expect(existsSync(store.path)).toBe(false);
 
-    store.write({ models: [{ id: "cursor--claude-opus-5" }] });
+    store.write({ models: [{ id: "cursor--grok-4.5" }] });
     expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual({
       version: 1,
-      models: [{ id: "cursor--claude-opus-5" }],
+      models: [{ id: "cursor--grok-4.5" }],
     });
   });
 
@@ -75,11 +75,11 @@ describe("ai-gateway settings store", () => {
   it("keeps each setting axis independent across writes", () => {
     const store = createAiGatewaySettingsStore({ dataDir: createDataDir() });
 
-    store.write({ models: [{ id: "cursor--claude-opus-5" }] });
+    store.write({ models: [{ id: "cursor--grok-4.5" }] });
     store.writeCursorDiagnosticsEnabled(true);
     expect(store.read()).toEqual({
       version: 1,
-      models: [{ id: "cursor--claude-opus-5" }],
+      models: [{ id: "cursor--grok-4.5" }],
       cursorDiagnosticsEnabled: true,
     });
     store.write({ models: [{ id: "cursor--auto" }] });

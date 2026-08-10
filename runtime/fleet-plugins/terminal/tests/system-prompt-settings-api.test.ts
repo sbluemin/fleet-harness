@@ -9,15 +9,15 @@ const CATALOG = {
       id: "cursor",
       models: [
         {
-          id: "cursor--claude-opus-5",
-          name: "Opus-5",
-          contextWindow: 300000,
+          id: "cursor--grok-4.5",
+          name: "Grok-4.5",
+          contextWindow: 256000,
           oneMillion: true,
           maxMode: false,
           fast: false,
           capabilityClass: "flagship",
           description: null,
-          effort: { levels: ["low", "medium", "high", "xhigh", "max"] },
+          effort: { levels: ["low", "medium", "high"] },
         },
       ],
     },
@@ -159,7 +159,7 @@ describe("system prompt settings api", () => {
 
   it("saves the aiGateway selection to the plugin route", async () => {
     const aiGateway = {
-      models: [{ id: "cursor--claude-opus-5" }],
+      models: [{ id: "cursor--grok-4.5" }],
     };
     const fetchMock = vi.fn(async () => jsonResponse({
       agentIdleDormantMinutes: 60,

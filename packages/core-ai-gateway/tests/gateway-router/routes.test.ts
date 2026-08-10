@@ -71,7 +71,7 @@ describe("router lifecycle", () => {
         await router.handle(ctx({
           res: response(),
           token: ANTHROPIC_CRED,
-          model: "claude-gateway--cursor--kimi-k3",
+          model: "claude-gateway--cursor--grok-4.5[1m]",
         }));
       }
       expect(adapters).toHaveLength(2);
@@ -236,12 +236,12 @@ describe("upstream credential", () => {
     await router.handle(ctx({
       res: response(),
       token: ANTHROPIC_CRED,
-      model: "claude-gateway--cursor--kimi-k3",
+      model: "claude-gateway--cursor--grok-4.5[1m]",
       thinking: { type: "adaptive" },
       outputConfig: { effort: "medium" },
     }));
 
-    expect(canonical?.model).toBe("kimi-k3");
+    expect(canonical?.model).toBe("grok-4.5");
     expect(canonical?.reasoning).toEqual({ summary: "auto", effort: "medium" });
     expect(streamSpy.mock.calls[0]?.[1]).not.toHaveProperty("reasoningEfforts");
   });
@@ -362,7 +362,7 @@ describe("upstream credential", () => {
     await router.handle(ctx({
       res,
       token: ANTHROPIC_CRED,
-      model: "claude-gateway--cursor--kimi-k3-1m[1m]",
+      model: "claude-gateway--cursor--grok-4.5[1m]",
       metadata: null,
     }));
 
@@ -412,7 +412,7 @@ describe("model context window", () => {
     ["claude-gateway--cursor--grok-4.5-fast", 256_000, 256_000],
     // A 200000-window Cursor native model earns no `[1m]` marker, so it gets no
     // projection denominator — but the guard still needs its real window.
-    ["claude-gateway--cursor--kimi-k3", 200_000, undefined],
+    ["claude-gateway--cursor--composer-2.5", 200_000, undefined],
   ])("passes %s's real window as modelContextWindow", async (model, expected, projected) => {
     const gateway = stubGateway();
     const streamSpy = vi.spyOn(gateway, "stream");
@@ -1470,21 +1470,23 @@ describe("route surface", () => {
     const ids = list.data.map((entry) => entry.id);
     // picker가 버리지 않도록 모든 항목이 claude- alias로 나가야 한다.
     expect(ids.every((id) => id.startsWith("claude"))).toBe(true);
-    expect(list.data).toHaveLength(31);
+    expect(list.data).toHaveLength(24);
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast[1m]");
     expect(ids).toContain("claude-gateway--cursor--auto[1m]");
-    expect(ids).toContain("claude-gateway--cursor--gpt-5.6-sol[1m]");
-    expect(ids).toContain("claude-gateway--cursor--claude-opus-5-1m[1m]");
-    expect(ids).toContain("claude-gateway--cursor--claude-fable-5-1m[1m]");
-    expect(ids).toContain("claude-gateway--cursor--kimi-k3");
-    expect(ids).toContain("claude-gateway--cursor--kimi-k3-1m[1m]");
+    expect(ids).toContain("claude-gateway--cursor--composer-2.5");
+    expect(ids).toContain("claude-gateway--cursor--composer-2.5-fast");
+    expect(ids).toContain("claude-gateway--cursor--grok-4.5[1m]");
+    expect(ids).toContain("claude-gateway--cursor--grok-4.5-fast[1m]");
+    expect(ids).not.toContain("claude-gateway--cursor--gpt-5.6-sol[1m]");
+    expect(ids).not.toContain("claude-gateway--cursor--claude-opus-5-1m[1m]");
+    expect(ids).not.toContain("claude-gateway--cursor--kimi-k3");
     expect(ids).toContain("claude-gateway--kimi--k3[1m]");
     expect(ids).toContain("claude-gateway--kimi--k3-256k");
     expect(ids).toContain("claude-gateway--opencode--minimax-m3[1m]");
     expect(ids.some((id) => id.includes("--codex--") && id.endsWith("[1m]"))).toBe(true);
     expect(list.data).toContainEqual(expect.objectContaining({
-      id: "claude-gateway--cursor--kimi-k3-1m[1m]",
-      display_name: "Cursor-Kimi-K3-1M (1M Context)",
+      id: "claude-gateway--cursor--grok-4.5[1m]",
+      display_name: "Cursor-Grok-4.5",
     }));
     expect(list.data).toContainEqual(expect.objectContaining({
       id: "claude-gateway--kimi--k3[1m]",
@@ -1500,9 +1502,9 @@ describe("route surface", () => {
       readAiGatewaySettings: aiGatewaySettingsStub({
         version: 1,
         models: [
-          { id: "cursor--claude-opus-5" },
-          // Cursor 경유 Kimi와 Kimi 프로바이더는 별개 경로 — 동시 노출을 보존한다.
-          { id: "cursor--kimi-k3-1m" },
+          { id: "cursor--grok-4.5" },
+          // Cursor composer와 Kimi 프로바이더는 별개 경로 — 동시 노출을 보존한다.
+          { id: "cursor--composer-2.5" },
           { id: "kimi--k3-256k" },
           { id: "kimi--no-longer-in-catalog" },
         ],
@@ -1514,8 +1516,8 @@ describe("route surface", () => {
     expect(res.status).toBe(200);
     const list = JSON.parse(res.body) as { data: Array<{ id: string }> };
     expect(list.data.map((entry) => entry.id)).toEqual([
-      "claude-gateway--cursor--claude-opus-5[1m]",
-      "claude-gateway--cursor--kimi-k3-1m[1m]",
+      "claude-gateway--cursor--composer-2.5",
+      "claude-gateway--cursor--grok-4.5[1m]",
       "claude-gateway--kimi--k3-256k",
     ]);
   });
