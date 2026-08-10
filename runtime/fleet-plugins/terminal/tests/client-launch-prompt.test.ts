@@ -39,12 +39,12 @@ describe("agent client launch prompt threading", () => {
     const launch = agentPlugin.launch;
     if (!launch) throw new Error("Agent plugin launch must exist.");
 
-    await launch(createLaunchContext({ model: "fable" }));
+    await launch(createLaunchContext({ model: "fable[1m]" }));
 
     expect(readCreateBody(fetch)).toEqual({
       theaterId: "theater-1",
       cliId: "claude-gateway",
-      model: "fable",
+      model: "fable[1m]",
     });
   });
 

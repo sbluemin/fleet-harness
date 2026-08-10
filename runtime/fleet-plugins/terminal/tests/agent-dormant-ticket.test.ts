@@ -126,7 +126,7 @@ describe("agent launch variants", () => {
 
   it("threads a valid built-in model alias and effort into the initial attach only", async () => {
     const harness = await createHarness({
-      body: { cliId: "claude-gateway", model: "fable", effort: "max" },
+      body: { cliId: "claude-gateway", model: "fable[1m]", effort: "max" },
     });
 
     await harness.postSessions();
@@ -134,7 +134,7 @@ describe("agent launch variants", () => {
     expect(harness.responses.at(-1)?.status).toBe(200);
     expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({
       cliId: "claude-gateway",
-      model: "fable",
+      model: "fable[1m]",
       effort: "max",
     }));
 
@@ -152,9 +152,12 @@ describe("agent launch variants", () => {
     expect(resumeContext).not.toHaveProperty("effort");
   });
 
-  it("rewrites bare opus onto Claude Code's 1M coordinate before attach", async () => {
+  it.each([
+    ["fable", "fable[1m]"],
+    ["opus", "opus[1m]"],
+  ])("rewrites bare %s onto Claude Code's 1M coordinate before attach", async (model, expected) => {
     const harness = await createHarness({
-      body: { cliId: "claude-gateway", model: "opus", effort: "high" },
+      body: { cliId: "claude-gateway", model, effort: "high" },
     });
 
     await harness.postSessions();
@@ -162,7 +165,7 @@ describe("agent launch variants", () => {
     expect(harness.responses.at(-1)?.status).toBe(200);
     expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({
       cliId: "claude-gateway",
-      model: "opus[1m]",
+      model: expected,
       effort: "high",
     }));
   });
