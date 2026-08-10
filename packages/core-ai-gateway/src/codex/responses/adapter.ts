@@ -37,7 +37,7 @@ export const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 export const CHATGPT_CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
 export const DEFAULT_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
 export const DEFAULT_UPSTREAM_IDLE_TIMEOUT_MS = 30_000;
-const CODEX_SOCKET_RETRY_DELAY_MS = 200;
+const CODEX_RETRY_DELAY_MS = 200;
 
 // ChatGPT 백엔드는 Platform API가 받는 샘플링 파라미터를 400으로 거절한다.
 // 실측으로 확정한 거부 목록. metadata는 "Unsupported parameter", 샘플링 필드는 400으로 돌아온다.
@@ -235,49 +235,242 @@ export class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     request: CanonicalResponseRequest,
     options: AdapterCallOptions,
   ): Promise<AdapterResponse> {
+    // 호출자 signal을 내부 per-call 컨트롤러로 옮긴다. 초기 super.stream도 이 컨트롤러의
+    // signal로 호출해야 retry 래퍼가 abort했을 때 대기 중인 초기 read까지 즉시 취소된다.
+    // 호출자 abort는 link로 계속 전파되고, 성공 응답은 소비자가 반복을 시작하기 전에
+    // abort되지 않는다 — 컨트롤러는 래퍼의 return/throw 또는 생성기 종료 시점에만 abort된다.
+    const callController = new AbortController();
+    const unlinkCallAbort = linkAbortSignal(options.signal, callController);
+    const callOptions = { ...options, signal: callController.signal };
+
+    // 최대 2회 호출 예산. fetch-level UND_ERR_SOCKET retry가 이 예산을 소모하면
+    // stream-level retry는 허용하지 않아 3번째 호출을 막는다.
+    let retryAvailable = true;
+
     let response: AdapterResponse;
     try {
-      response = await super.stream(request, options);
+      response = await super.stream(request, callOptions);
     } catch (error) {
-      if (!isRetryableCodexFetchSocketTermination(error, options.signal)) {
+      if (!isRetryableCodexFetchSocketTermination(error, callOptions.signal)) {
+        unlinkCallAbort();
         throw error;
       }
-      await abortableDelay(CODEX_SOCKET_RETRY_DELAY_MS, options.signal);
-      return await super.stream(request, options);
+      // fetch-level retry 전에 예산을 소모한다. 이 뒤로 도착한 응답 스트림은
+      // retry 없이 원본 순서로만 노출된다.
+      retryAvailable = false;
+      wireLog("codex.retry.discarded", {
+        reason: "socket_termination",
+        phase: "fetch",
+      });
+      try {
+        await abortableDelay(CODEX_RETRY_DELAY_MS, callOptions.signal);
+        response = await super.stream(request, callOptions);
+      } catch (retryError) {
+        unlinkCallAbort();
+        throw retryError;
+      }
     }
     if (!response.ok) {
+      unlinkCallAbort();
       return response;
     }
     return {
       ...response,
-      events: retryCodexStreamBeforeFirstEvent(response.events, async () => {
-        await abortableDelay(CODEX_SOCKET_RETRY_DELAY_MS, options.signal);
-        const retried = await super.stream(request, options);
+      events: retryCodexStream(response.events, async (retrySignal) => {
+        await abortableDelay(CODEX_RETRY_DELAY_MS, retrySignal);
+        const retried = await super.stream(request, { ...callOptions, signal: retrySignal });
         if (!retried.ok) {
           throw new UpstreamProtocolError(`Codex retry failed with status ${retried.status}`);
         }
         return retried.events;
-      }, options.signal),
+      }, callController, unlinkCallAbort, retryAvailable),
     };
   }
 }
 
-async function* retryCodexStreamBeforeFirstEvent(
+function retryCodexStream(
   events: AsyncIterable<CanonicalResponseEvent>,
-  retry: () => Promise<AsyncIterable<CanonicalResponseEvent>>,
-  signal?: AbortSignal,
+  retry: (signal: AbortSignal) => Promise<AsyncIterable<CanonicalResponseEvent>>,
+  callController: AbortController,
+  unlinkCallAbort: () => void,
+  retryAvailable: boolean,
+): AsyncIterable<CanonicalResponseEvent> {
+  return {
+    [Symbol.asyncIterator]() {
+      const source = events[Symbol.asyncIterator]();
+      const iterator = generateCodexRetryStream(source, retry, callController, unlinkCallAbort, retryAvailable);
+      return {
+        next: () => iterator.next(),
+        return: async () => {
+          // 초기 스트림과 진행 중인 retry(지연/fetch) 모두 이 컨트롤러의 signal로
+          // 실행되므로 하나의 abort로 전부 취소된다. caller signal은 stream()에서
+          // 이미 callController에 연결되어 있어 여기서 다시 전파할 필요가 없다.
+          callController.abort();
+          return await iterator.return(undefined);
+        },
+        throw: async (error?: unknown) => {
+          callController.abort(error);
+          return await iterator.throw(error);
+        },
+      };
+    },
+  };
+}
+
+async function* generateCodexRetryStream(
+  source: AsyncIterator<CanonicalResponseEvent>,
+  retry: (signal: AbortSignal) => Promise<AsyncIterable<CanonicalResponseEvent>>,
+  callController: AbortController,
+  unlinkCallAbort: () => void,
+  retryAvailable: boolean,
 ): AsyncGenerator<CanonicalResponseEvent> {
+  // retry 확정 전까지 response.created/reasoning을 보류한다. 이 lead 이벤트들은 Anthropic
+  // 변환에서 message_start/thinking으로 즉시 발화되므로, retry가 r2로 전환된 뒤에도 r1 헤더
+  // 아래 r2 본문이 뒤섞이지 않도록 커밋(committing) 또는 terminal 이벤트에서 한꺼번에
+  // 내보낸다. retry가 확정되면 보류분을 버리고 두 번째 attempt만 atomic하게 노출한다.
+  //
+  // 취소는 stream()이 만든 per-call 컨트롤러 하나로 통일한다. 초기 스트림과 retry
+  // (지연/fetch) 모두 이 signal로 실행되므로 return/throw가 abort하면 대기 중인 read도
+  // 즉시 풀린다. 호출자 abort는 컨트롤러 연결을 통해 같은 경로로 전파된다.
+  //
+  // retryAvailable=false면 (fetch-level retry가 이미 예산을 소모) stream-level retry를
+  // 금지한다. created/reasoning/message setup은 보류하다가 그대로 노출하고, retryable
+  // response.failed/error는 retry/pending 없이 원래 순서로 terminal로 통과시킨다.
+  const bufferedLead: CanonicalResponseEvent[] = [];
   let yielded = false;
+  let committedOutput = false;
+  let pendingProviderError: CanonicalResponseEvent | undefined;
   try {
-    for await (const event of events) {
-      yielded = true;
-      yield event;
+    while (true) {
+      let result: IteratorResult<CanonicalResponseEvent>;
+      try {
+        result = await source.next();
+      } catch (error) {
+        if (yielded || callController.signal.aborted === true || !isUndiciSocketTermination(error)) {
+          throw error;
+        }
+        if (!retryAvailable) {
+          // 예산이 없으면 보류 lead를 원래 순서대로 내보낸 뒤 소켓 에러를 전파한다.
+          yield* bufferedLead;
+          bufferedLead.length = 0;
+          throw error;
+        }
+        // 아직 아무것도 노출하지 않았다면 r1 lead 버퍼를 폐기하고 재시도한다. 소켓
+        // termination은 canonical 이벤트가 없으므로 phase만 남기는 payload-free 진단.
+        wireLog("codex.retry.discarded", {
+          reason: "socket_termination",
+          phase: "pre_commit",
+        });
+        bufferedLead.length = 0;
+        yield* await retry(callController.signal);
+        return;
+      }
+      if (result.done) {
+        // attempt가 terminal 없이 끝나면 보류했던 created/reasoning을 원래 순서대로
+        // 내보내고 종료한다(호출측 변환은 미완료 스트림으로 처리한다).
+        yield* bufferedLead;
+        bufferedLead.length = 0;
+        if (pendingProviderError !== undefined) {
+          yield pendingProviderError;
+        }
+        return;
+      }
+      const event = result.value;
+      if (retryAvailable && isRetryableCodexServerFailure(event, committedOutput, callController.signal)) {
+        // 폐기되는 response.failed가 게이트웨이 wrapper에 도달하기 전에 버려지므로 이
+        // seam에서 증거를 남긴다. 직전에 대기 중인 retryable error도 함께 버려진다면
+        // 둘 다(쌍) 남기고, 아니면 response.failed 단독을 남긴다.
+        wireLog("codex.retry.discarded", pendingProviderError === undefined
+          ? { reason: "response.failed", event }
+          : { reason: "error_failed_pair", events: [pendingProviderError, event] });
+        await source.return?.();
+        bufferedLead.length = 0;
+        yield* await retry(callController.signal);
+        return;
+      }
+      if (pendingProviderError !== undefined) {
+        const matchesFailurePair = event.type === "response.failed"
+          && isRetryableCodexProviderErrorType(event.response.error.type)
+          && callController.signal.aborted !== true
+          && !committedOutput;
+        if (matchesFailurePair) {
+          await source.return?.();
+          bufferedLead.length = 0;
+          yield* await retry(callController.signal);
+          return;
+        }
+        // 실패 쌍이 아니라면 대기 중이던 error를 terminal로 확정하고 보류분을 먼저 내보낸다.
+        yield* bufferedLead;
+        bufferedLead.length = 0;
+        yield pendingProviderError;
+        pendingProviderError = undefined;
+        yielded = true;
+        committedOutput = true;
+      }
+      if (retryAvailable && isRetryableCodexProviderError(event, committedOutput, callController.signal)) {
+        pendingProviderError = event;
+        continue;
+      }
+      if (commitsCodexOutput(event)) {
+        // 출력을 확정하는 이벤트에 도달했으므로 보류 lead를 원래 순서대로 방출한다.
+        yield* bufferedLead;
+        bufferedLead.length = 0;
+        yielded = true;
+        committedOutput = true;
+        yield event;
+      } else {
+        bufferedLead.push(event);
+      }
     }
-  } catch (error) {
-    if (yielded || signal?.aborted === true || !isUndiciSocketTermination(error)) {
-      throw error;
-    }
-    yield* await retry();
+  } finally {
+    callController.abort();
+    unlinkCallAbort();
+    await source.return?.();
+  }
+}
+
+function isRetryableCodexServerFailure(
+  event: CanonicalResponseEvent,
+  committedOutput: boolean,
+  signal?: AbortSignal,
+): boolean {
+  return signal?.aborted !== true
+    && !committedOutput
+    && event.type === "response.failed"
+    && isRetryableCodexProviderErrorType(event.response.error.type);
+}
+
+function isRetryableCodexProviderError(
+  event: CanonicalResponseEvent,
+  committedOutput: boolean,
+  signal?: AbortSignal,
+): boolean {
+  return signal?.aborted !== true
+    && !committedOutput
+    && event.type === "error"
+    && isRetryableCodexProviderErrorType(event.error.type);
+}
+
+function isRetryableCodexProviderErrorType(type: string): boolean {
+  return type === "server_error"
+    || type === "server_is_overloaded"
+    || type === "service_unavailable_error";
+}
+
+/** 출력을 확정하는(그 뒤로 retry가 금지되는) 이벤트인지 판정한다. false면 lead 버퍼에 보류된다. */
+function commitsCodexOutput(event: CanonicalResponseEvent): boolean {
+  switch (event.type) {
+    case "response.created":
+    case "response.reasoning_summary_text.delta":
+      return false;
+    // output_item.added(message)는 메시지 아이템의 시작을 알리는 설정 이벤트일 뿐,
+    // Anthropic 변환에서 caller-visible 출력을 만들지 않는다. server_error retry를
+    // 막지 않도록 lead 버퍼에 보류한다. function_call/web_search 추가와 message done은
+    // 기존대로 출력을 확정한다.
+    case "response.output_item.added":
+      return event.item.type !== "message";
+    default:
+      return true;
   }
 }
 
