@@ -112,7 +112,10 @@ export function deriveQuotaWindowRisk(window: QuotaWindowRiskInput, at: number):
     if (elapsed >= MIN_ELAPSED_FRACTION) {
       const used = Math.min(1, Math.max(0, window.usedPercent / 100));
       paceRatio = Math.round((used / elapsed) * 100) / 100;
-      if (used > 0) {
+      // An already-drained pool has nothing left to forecast: the extrapolation
+      // would return the reading's own instant and state a past event as a
+      // prediction. `usedPercent` and the pressure verdict already say it.
+      if (used > 0 && used < 1) {
         // Linear extrapolation of the average burn so far. Carried only when it
         // lands strictly before the reset — absence states "lasts to reset".
         const exhaustionAt = startsAt + Math.round((at - startsAt) / used);

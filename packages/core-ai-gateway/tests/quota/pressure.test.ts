@@ -40,6 +40,14 @@ describe("quota window risk", () => {
     expect(weekly(44, 0.9)).not.toHaveProperty("projectedExhaustionAt");
   });
 
+  // A drained pool's extrapolation returns the reading's own instant, which a
+  // surface renders as "runs out in 0m" — a past event dressed as a forecast.
+  it("stops forecasting once the pool is already drained", () => {
+    const drained = weekly(100, 0.5);
+    expect(drained.pressure).toBe("critical");
+    expect(drained).not.toHaveProperty("projectedExhaustionAt");
+  });
+
   it("withholds pace while the window is too young for it to mean anything", () => {
     const young = weekly(3, 0.01);
     expect(young).not.toHaveProperty("paceRatio");
