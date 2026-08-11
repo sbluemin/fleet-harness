@@ -19,7 +19,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { readLastDarkTheme, setActiveTheme, setActiveUiFont, themePolarity } from "../store.js";
 import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_DESCRIPTION_KEYS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
-import { buildRemoteEndpointPresentation, generateRemoteAutoPort, isCommittableRemotePortDraft, isValidRemoteAdvertisedHost, isValidRemoteListenAddress, isWarnableLocalPort, remoteAccessStateEquals, remoteEndpointImpact, type GlobalSettingsState, type RemoteAccessLink, type RemoteAccessState, type RemoteAccessStatus, type RemoteEndpointRequirement, type RemoteForwardRule, type ThemeId, type UiFontId, type UiFontSettings } from "../types.js";
+import { buildRemoteEndpointPresentation, generateRemoteAutoPort, isCommittableRemotePortDraft, isValidRemoteAdvertisedHost, isValidRemoteListenAddress, isWarnableLocalPort, remoteAccessStateEquals, remoteEndpointImpact, type GlobalSettingsState, type RemoteAccessLink, type RemoteAccessPort, type RemoteAccessState, type RemoteAccessStatus, type RemoteEndpointRequirement, type RemoteForwardRule, type ThemeId, type UiFontId, type UiFontSettings } from "../types.js";
 
 interface LanguageOption {
   readonly id: GlobalSettingsState["language"];
@@ -90,10 +90,17 @@ function buildLanguages(t: T): readonly LanguageOption[] {
   ];
 }
 
-function buildCoreSettingsSections(t: T): readonly SettingsSectionNavItem[] {
+/**
+ * 원격 접속에는 remoteAccess가 실리지 않는다. 그 부재를 그대로 읽어 섹션을 세우지 않는다 —
+ * 비활성 항목으로 남겨 두면 손님이 열어 보고 빈 카드를 만나고, 그 카드가 다루는 값은
+ * 애초에 이 자리에서 볼 것이 아니다.
+ */
+function buildCoreSettingsSections(t: T, state: GlobalSettingsState | null): readonly SettingsSectionNavItem[] {
   return [
     { id: "general", label: t("settings.core.general.label"), eyebrow: t("settings.core.general.eyebrow") },
-    { id: "remote-access", label: t("settings.core.remoteAccess.label"), eyebrow: t("settings.core.remoteAccess.eyebrow") },
+    ...(state !== null && state.remoteAccess === undefined
+      ? []
+      : [{ id: "remote-access" as const, label: t("settings.core.remoteAccess.label"), eyebrow: t("settings.core.remoteAccess.eyebrow") }]),
     { id: "backend-api", label: t("settings.core.backendApi.label"), eyebrow: t("settings.core.backendApi.eyebrow") },
   ];
 }
@@ -111,7 +118,7 @@ export function GlobalSettings() {
   const registry = usePluginRegistry();
   const locale = useConsoleLocale();
   const t = useT();
-  const coreSections = buildCoreSettingsSections(t);
+  const coreSections = buildCoreSettingsSections(t, state);
   const pluginSections = collectPluginSettingsSections(registry.plugins, locale, t);
   const pluginGroups = groupPluginSettingsSections(pluginSections);
   const selectSection = (sectionId: SettingsSectionId) => {
@@ -231,7 +238,9 @@ function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettin
         </>
       );
     case "remote-access":
-      return state ? <RemoteAccessSection state={state} saving={saving} /> : <p className="global-settings-help">{t("settings.general.loading")}</p>;
+      if (state === null) return <p className="global-settings-help">{t("settings.general.loading")}</p>;
+      // 목록에서 뺀 것과 별개로 경로도 막는다 — 주소로 직접 들어오는 길이 남으면 숨긴 것이 아니다.
+      return state.remoteAccess === undefined ? null : <RemoteAccessSection remote={state.remoteAccess} saving={saving} />;
     case "backend-api":
       return <BackendApiSection />;
   }
@@ -532,9 +541,8 @@ const ROTATE_ARM_TIMEOUT_MS = 5_000;
 /** README와 같은 최신 Desktop 아티팩트 진입점 — bare /releases가 아니라 latest로 바로 보낸다. */
 const FLEET_DESKTOP_RELEASES_URL = "https://github.com/sbluemin/fleet-harness/releases/latest";
 
-function RemoteAccessSection({ state, saving }: { readonly state: GlobalSettingsState; readonly saving: boolean }) {
+function RemoteAccessSection({ remote, saving }: { readonly remote: RemoteAccessState; readonly saving: boolean }) {
   const t = useT();
-  const remote = state.remoteAccess;
   const [status, setStatus] = useState<RemoteAccessStatus | null>(null);
   const [link, setLink] = useState<RemoteAccessLink | null>(null);
   const [monitoringOnly, setMonitoringOnly] = useState(false);
@@ -559,7 +567,7 @@ function RemoteAccessSection({ state, saving }: { readonly state: GlobalSettings
   }, [rotateArmed]);
 
   const refresh = () => setReloadToken((token) => token + 1);
-  const save = (next: GlobalSettingsState["remoteAccess"]) => {
+  const save = (next: RemoteAccessState) => {
     setLink(null);
     setActionError(null);
     setRotateArmed(false);
@@ -611,7 +619,7 @@ function RemoteAccessSection({ state, saving }: { readonly state: GlobalSettings
         <RemoteHostsCard />
 
         <RemoteListenerCard
-          state={state}
+          remote={remote}
           saving={saving}
           status={status}
           onSave={save}
@@ -767,18 +775,17 @@ function reachLabel(reach: RemoteHostReach | "checking" | undefined, t: T): stri
 }
 
 function RemoteListenerCard({
-  state,
+  remote,
   saving,
   status,
   onSave,
 }: {
-  readonly state: GlobalSettingsState;
+  readonly remote: RemoteAccessState;
   readonly saving: boolean;
   readonly status: RemoteAccessStatus | null;
-  readonly onSave: (next: GlobalSettingsState["remoteAccess"]) => void;
+  readonly onSave: (next: RemoteAccessState) => void;
 }) {
   const t = useT();
-  const remote = state.remoteAccess;
   const candidates = status?.interfaces ?? [];
   // 저장된 값이 기준선이고 draft는 아직 보내지 않은 편집이다. 어떤 필드도 스스로 저장하지 않는다 —
   // 저장은 아래 액션 넷뿐이며, 그래야 살아 있는 리스너가 편집 한 번에 조용히 꺼지지 않는다.
@@ -1139,7 +1146,7 @@ function RemoteConsequenceShelf({ kind, t, busy, onConfirm, onCancel }: {
 function RemotePortControl({ label, errorId, port, raw, saving, onMode, onRaw, onRegenerate }: {
   readonly label: string;
   readonly errorId: string;
-  readonly port: GlobalSettingsState["remoteAccess"]["listenPort"];
+  readonly port: RemoteAccessPort;
   readonly raw: string | null;
   readonly saving: boolean;
   readonly onMode: (mode: "auto" | "custom") => void;

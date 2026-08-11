@@ -424,7 +424,8 @@ export interface RemoteAccessLink {
 export interface GlobalSettingsState {
   readonly consolePortMode: "dynamic" | "static";
   readonly consoleStaticPort: number | null;
-  readonly remoteAccess: RemoteAccessState;
+  /** 원격 접속에는 실리지 않는다. 부재는 "여기서는 다루지 않는다"는 뜻이며 화면은 섹션을 세우지 않는다. */
+  readonly remoteAccess?: RemoteAccessState;
   readonly seenFeatureTours: readonly string[];
   readonly theme: ThemeId;
   readonly uiFont: UiFontSettings;

@@ -149,14 +149,14 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     || (payload.theme !== "instrument" && payload.theme !== "maritime" && payload.theme !== "carbon"
       && payload.theme !== "whites")
     || !isConsoleLanguagePreference(payload.language)
-    || !isValidRemoteAccessState(payload.remoteAccess)
+    || (payload.remoteAccess !== undefined && !isValidRemoteAccessState(payload.remoteAccess))
   ) {
     throw new ApiError(status, "Invalid global settings state response");
   }
   return {
     consolePortMode: payload.consolePortMode,
     consoleStaticPort: payload.consoleStaticPort,
-    remoteAccess: payload.remoteAccess,
+    ...(payload.remoteAccess === undefined ? {} : { remoteAccess: payload.remoteAccess }),
     seenFeatureTours: payload.seenFeatureTours,
     theme: payload.theme,
     uiFont: normalizeUiFont(payload.uiFont),

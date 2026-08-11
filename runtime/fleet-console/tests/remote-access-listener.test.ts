@@ -691,6 +691,29 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
    * 그리고 이 기계가 가진 모든 주소가 실려 있고, 이 쓰기들은 손님이 자기보다 오래 사는
    * 초대장을 새로 찍거나 남의 자리를 끊거나 호스트 신원을 통째로 갈아 끼우게 한다.
    */
+  it("does not ship the remote access section to a remote session at all", async () => {
+    const fixture = await startFixture({ remote: true });
+    const cookie = await joinAs(fixture, "full", "guest");
+    const asRemote = { origin: `https://${BIND_HOST}:${fixture.remotePort}` };
+
+    const seen = await remoteRequest(fixture, "GET", "/api/v1/settings/global", undefined, cookie, asRemote);
+    expect(seen.status).toBe(200);
+    const remoteView = JSON.parse(seen.body) as Record<string, unknown>;
+    // 이 기계의 LAN 주소는 초대받은 손님이 읽을 값이 아니다 — 관리 목록을 루프백에 둔 것과 같은 이유다.
+    expect(remoteView).not.toHaveProperty("remoteAccess");
+    expect(remoteView).toHaveProperty("theme");
+    expect(JSON.stringify(remoteView)).not.toContain(BIND_HOST);
+
+    // 원격이 쓴 응답도 같은 규칙을 따른다 — 한쪽만 가리면 왕복 한 번에 새어 나간다.
+    const wrote = await remoteRequest(fixture, "PUT", "/api/v1/settings/global", JSON.stringify({ theme: "carbon" }), cookie, asRemote);
+    expect(wrote.status).toBe(200);
+    expect(JSON.parse(wrote.body).state).not.toHaveProperty("remoteAccess");
+
+    // 루프백에서는 그대로 보인다.
+    const owner = await fetch(`${fixture.loopbackEndpoint}api/v1/settings/global`, { headers: { Origin: fixture.loopbackEndpoint.replace(/\/$/u, "") } });
+    expect(await owner.json()).toHaveProperty("remoteAccess");
+  });
+
   it("refuses a remote session the listener's own settings, not just the access routes", async () => {
     const fixture = await startFixture({ remote: true });
     const cookie = await joinAs(fixture, "full", "guest");

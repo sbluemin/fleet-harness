@@ -284,7 +284,8 @@ export interface GlobalSettingsState {
   readonly consolePortMode: "dynamic" | "static";
   readonly consoleStaticPort: number | null;
   readonly language: "auto" | "en" | "ko";
-  readonly remoteAccess: RemoteAccessState;
+  /** 원격 리스너로 들어온 요청에는 실리지 않는다 — 이 섹션은 소유자 것이다. */
+  readonly remoteAccess?: RemoteAccessState;
   readonly seenFeatureTours: readonly string[];
   readonly theme: ConsoleThemeId;
   readonly uiFont: UiFontSettings;

@@ -416,7 +416,7 @@ export function createGlobalSettingsRouter(deps: GlobalSettingsRouteDeps): (cont
     const { req, res, pathname } = context;
     if (pathname === "/api/v1/settings/global") {
       if (req.method === "GET") {
-        deps.writeJson(res, 200, buildGlobalSettingsState(deps.consoleSettingsStore));
+        deps.writeJson(res, 200, withRemoteAccessVisibility(buildGlobalSettingsState(deps.consoleSettingsStore), req, deps));
         return true;
       }
       if (req.method === "PUT") {
@@ -513,7 +513,7 @@ async function mutateGlobalSettings(
   }));
   if (theme !== undefined) deps.onThemeChanged?.(theme);
   if (body.remoteAccess !== undefined) await deps.onRemoteAccessChanged?.({ previous: previousRemoteAccess, next: nextRemoteAccess });
-  const response: GlobalSettingsMutationResult = { state: toGlobalSettingsState(updated) };
+  const response: GlobalSettingsMutationResult = { state: withRemoteAccessVisibility(toGlobalSettingsState(updated), req, deps) };
   deps.writeJson(res, 200, response);
 }
 
@@ -545,6 +545,17 @@ function normalizeRemoteAccessInput(value: unknown): ConsoleRemoteAccessSettings
     advertisedPort: sanitizeRemotePortSetting(record.advertisedPort)!,
     acknowledgment: publicEndpointEnabled ? sanitizeAcknowledgment(record.acknowledgment) : null,
   };
+}
+
+/**
+ * 원격 세션에는 이 섹션이 아예 없다. 값을 비워 보내면 화면이 거짓을 그리고, 그대로 보내면
+ * 손님이 이 기계의 LAN 주소를 읽는다 — 관리 라우트를 루프백에 둔 것과 같은 이유다.
+ * 부재가 곧 "여기서는 다루지 않는다"는 뜻이고, 화면은 그때 섹션을 세우지 않는다.
+ */
+function withRemoteAccessVisibility(state: GlobalSettingsState, req: http.IncomingMessage, deps: GlobalSettingsRouteDeps): GlobalSettingsState {
+  if (deps.isRemoteAccessOwner === undefined || deps.isRemoteAccessOwner(req)) return state;
+  const { remoteAccess: _hidden, ...rest } = state;
+  return rest as GlobalSettingsState;
 }
 
 function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
