@@ -5,6 +5,30 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.55.0] - 2026-08-11
+
+### fleet-console
+
+#### Added
+- Open Remote access on the local network by default, with an optional public hostname and NAT route that must be enabled and acknowledged explicitly.
+- Edit the remote endpoint as a draft and apply it deliberately. Choosing an interface, changing a port mode, or turning the public endpoint on no longer touches a running listener; Start listening, Save for later, Apply changes, and Stop listening are the only actions that save.
+- Say what applying a change costs before it happens: a listener restart keeps paired devices, while any change to the address devices trust disconnects sessions, revokes unused access links, and unpairs every device.
+- Show the connection route once, and only once every required value is valid, so an incomplete endpoint reads as a named requirement instead of a placeholder hostname.
+- Spell the router rule out in the fields a router actually asks for - external port, internal IP address, internal port - and say so when the external and internal ports differ, because entering the public port on both sides forwards to a socket nothing is listening on.
+- Leave pairing as the only thing a remote listener answers without a session. Pairing happens in the Fleet Console apps, which check this console's certificate fingerprint, so the listener no longer serves a browser-facing page explaining that.
+- Spend a failure budget on that pairing door so a public endpoint cannot be hammered for free, and report the rejected attempts in Settings instead of counting them silently. A successful pairing clears its source's budget, so a device that connects is never punished for someone else's noise.
+- Keep the listener's own settings on the owner's side. Remote access does not appear in Settings when you are connected from another device, so a paired device can neither read the address this machine listens on nor rewrite the one it publishes, and a public hostname that no device could reach - a loopback or wildcard address - is refused the same way a listen address already was.
+
+#### Changed
+- Show the Claude launch group as Claude instead of Claude built-in.
+- MAX and ULTRACODE efforts each carry their own signature motion: the MAX label flickers like embers over a molten copper fill with a breathing knob halo, while the ULTRACODE fill drifts like an aurora with twinkling gate glyphs in place of the white sweep. Reduced-motion environments keep every treatment static.
+- Replace the launch menu's native scrollbar with directional edge strips: hover a strip to glide through a long model list, click it to jump a page, and a slim gauge shows the position while scrolling. Wheel and arrow-key scrolling keep working, and reduced-motion setups get click-step jumps instead of the glide.
+
+#### Fixed
+- Backend API settings now organize Console Operations and successfully loaded plugin HTTP, SSE, WebSocket, and proxy routes into default-visible, collapsible Core and per-plugin groups.
+- Opening the apex effort gate no longer shifts the track's existing stops and knob: the ladder keeps its closed spacing and only extends to the right.
+- Preserve the selected Claude Code model and effort when dormant Agent panels resume, with Opus 1M as the default for legacy panels that lack saved launch settings.
+
 ## [1.54.1] - 2026-08-11
 
 ### fleet-cli
